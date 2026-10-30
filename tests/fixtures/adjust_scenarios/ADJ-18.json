@@ -1867,6 +1867,7 @@
    "A-36": {
     "side": "none",
     "step_basis": null,
+    "step_value": null,
     "trades": [],
     "after": [
      {
@@ -1915,7 +1916,8 @@
    },
    "A-01": {
     "side": "put",
-    "step_basis": "delta 0.30",
+    "step_basis": "delta",
+    "step_value": "0.30",
     "trades": [
      {
       "action": "BUY",
@@ -2028,7 +2030,8 @@
    },
    "A-05": {
     "side": "call",
-    "step_basis": "delta 0.30",
+    "step_basis": "delta",
+    "step_value": "0.30",
     "trades": [
      {
       "action": "BUY",
@@ -2142,6 +2145,7 @@
    "A-29": {
     "side": "call",
     "step_basis": null,
+    "step_value": null,
     "trades": [
      {
       "action": "BUY",
@@ -2235,6 +2239,7 @@
    "A-28": {
     "side": "call",
     "step_basis": null,
+    "step_value": null,
     "trades": [
      {
       "action": "BUY",
@@ -2308,6 +2313,7 @@
    "A-11": {
     "side": "both",
     "step_basis": null,
+    "step_value": null,
     "trades": [
      {
       "action": "BUY",
@@ -2483,6 +2489,7 @@
    "A-31": {
     "side": "both",
     "step_basis": null,
+    "step_value": null,
     "trades": [
      {
       "action": "BUY",

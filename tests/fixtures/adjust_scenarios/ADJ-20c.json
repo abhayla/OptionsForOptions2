@@ -1832,19 +1832,19 @@
     },
     {
      "id": "A-01",
-     "reason": "No price for NIFTY 3 Nov 22,400 PE: this approach trades it"
+     "reason": "Leg 1 (BUY NIFTY 22,400 PE, expiry 03 Nov 2026) has no price, and this approach trades it."
     },
     {
      "id": "A-24",
-     "reason": "No price for NIFTY 3 Nov 22,400 PE: this approach trades it"
+     "reason": "Leg 1 (BUY NIFTY 22,400 PE, expiry 03 Nov 2026) has no price, and this approach trades it."
     },
     {
      "id": "A-25",
-     "reason": "No price for NIFTY 3 Nov 22,400 PE: this approach trades it"
+     "reason": "Leg 1 (BUY NIFTY 22,400 PE, expiry 03 Nov 2026) has no price, and this approach trades it."
     },
     {
      "id": "A-31",
-     "reason": "No price for NIFTY 3 Nov 22,400 PE: this approach trades it"
+     "reason": "Leg 1 (BUY NIFTY 22,400 PE, expiry 03 Nov 2026) has no price, and this approach trades it."
     }
    ],
    "greyed": [
@@ -1911,6 +1911,7 @@
    "A-36": {
     "side": "none",
     "step_basis": null,
+    "step_value": null,
     "trades": [],
     "after": [
      {
@@ -1959,12 +1960,14 @@
    },
    "A-01": {
     "side": "put",
-    "refused": "No price for NIFTY 3 Nov 22,400 PE: this approach trades it",
-    "step_basis": "delta 0.30"
+    "refused": "Leg 1 (BUY NIFTY 22,400 PE, expiry 03 Nov 2026) has no price, and this approach trades it.",
+    "step_basis": "delta",
+    "step_value": "0.30"
    },
    "A-05": {
     "side": "call",
-    "step_basis": "delta 0.30",
+    "step_basis": "delta",
+    "step_value": "0.30",
     "trades": [
      {
       "action": "BUY",
@@ -2078,6 +2081,7 @@
    "A-29": {
     "side": "call",
     "step_basis": null,
+    "step_value": null,
     "trades": [
      {
       "action": "BUY",
@@ -2171,6 +2175,7 @@
    "A-28": {
     "side": "call",
     "step_basis": null,
+    "step_value": null,
     "trades": [
      {
       "action": "BUY",
@@ -2243,13 +2248,15 @@
    },
    "A-11": {
     "side": "both",
-    "refused": "Only with 3+ days left (1 left)",
-    "step_basis": null
+    "refused": "This approach needs at least 3 days left; days left now: 1.",
+    "step_basis": null,
+    "step_value": null
    },
    "A-31": {
     "side": "both",
-    "refused": "No price for NIFTY 3 Nov 22,400 PE: this approach trades it",
-    "step_basis": null
+    "refused": "Leg 1 (BUY NIFTY 22,400 PE, expiry 03 Nov 2026) has no price, and this approach trades it.",
+    "step_basis": null,
+    "step_value": null
    }
   },
   "approach_after": {

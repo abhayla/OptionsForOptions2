@@ -1110,9 +1110,41 @@ _LEG_EDIT_TEMPLATES: tuple[MessageTemplate, ...] = (
           "Use Shift, or put every leg on one expiry.", {}),
 )
 
+# W-196 (REQ-155 AC-1, AC-8; ADR-214): the adjustment approach builder. A refusal leaves that one approach out and every
+# other approach still shows; the low-OI unknown text is a warning on the leg, never a refusal. Decision support only.
+_ADJ_REFUSED = "This approach was not built; the other approaches still show."
+_ADJ_BLOCKED = "This approach."
+_ADJ_PICK_OTHER = "Compare the other approaches, or change the legs in the Builder."
+_ADJUSTMENT_TEMPLATES: tuple[MessageTemplate, ...] = (
+    _gate("adjust_no_price", _UI, 105, "{leg} has no price, and this approach trades it.",
+          _ADJ_REFUSED, _ADJ_BLOCKED, "Wait for a price for this contract, or compare the other approaches.",
+          {"leg": LegRef}),
+    _gate("adjust_low_oi_blocked", _UI, 106, "Zerodha blocks fresh orders in {leg} because its open interest is low.",
+          _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {"leg": LegRef}),
+    _gate("adjust_low_oi_unknown", _UI, 107,
+          "Zerodha may refuse fresh orders in {leg}: its low open interest state is not known.",
+          "The approach is still shown.", "Nothing yet; Zerodha decides when the order is placed.",
+          "Check the open interest of this contract before you place the order.", {"leg": LegRef}),
+    _gate("adjust_no_strike_at_delta", _UI, 108, "No strike in the chain brings {leg} to the target delta.",
+          _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {"leg": LegRef}),
+    _gate("adjust_roll_would_cross", _UI, 109,
+          "Moving {leg} to {strikes} would cross the other short leg at {other}.",
+          _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {"leg": LegRef, "strikes": Strikes, "other": Strikes}),
+    _gate("adjust_reduce_needs_two_lots", _UI, 110, "{leg} holds {lots} lot, so half of it is not a whole lot.",
+          _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {"leg": LegRef, "lots": Count}),
+    _gate("adjust_recentre_days_left", _UI, 111, "This approach needs at least {need} days left; days left now: {days}.",
+          _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {"need": Count, "days": Count}),
+    _gate("adjust_needs_two_spreads", _UI, 112,
+          "This approach needs one call spread and one put spread with a short leg each, on one expiry.",
+          _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {}),
+    _gate("adjust_no_strike_both_types", _UI, 113, "No strike is listed for both a call and a put on {expiry}.",
+          _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {"expiry": Date}),
+)
+
 _TEMPLATES = (_TEMPLATES + _GATE_TEMPLATES + _SEND_TEMPLATES + _RECONCILIATION_TEMPLATES + _PART4_TEMPLATES
               + _BOUNDARY_TEMPLATES + _BROKER_LOGIN_TEMPLATES + _STRATEGY_DRAFT_TEMPLATES + _FREEZE_TEMPLATES
-              + _MARGIN_GATE_TEMPLATES + _ORDER_PATH_TEMPLATES + _READY_MADE_TEMPLATES + _LEG_EDIT_TEMPLATES)
+              + _MARGIN_GATE_TEMPLATES + _ORDER_PATH_TEMPLATES + _READY_MADE_TEMPLATES + _LEG_EDIT_TEMPLATES
+              + _ADJUSTMENT_TEMPLATES)
 
 
 #: Read-only public view of the catalogue (for the CI scan and for callers listing templates).

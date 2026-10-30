@@ -1,4 +1,4 @@
-# ruff: noqa: PLR2004 - strikes, lots and counts of the scenario cases
+# ruff: noqa: PLR2004, E501 - strikes, lots and counts of the scenario cases; catalogue texts quoted whole
 """REQ-155 AC-1 and AC-8: the approach builder (backend/ofo/adjustment/approaches.py) against the scenario library's
 hand-derived approach legs (tests/adjust_scenarios_gen.py ``hand_approaches``, written without backend/ofo), plus the
 AC-1 example, the tested-side flip and every answer state of the chain row a new leg lands on."""
@@ -58,11 +58,12 @@ def inputs(sc: dict) -> tuple[Position, list[ChainRow], D]:
 
 def plain(built) -> dict:
     """The builder's answer in the fixture's text form."""
-    if built.refusal is not None:
-        return {"side": built.side, "refused": built.refusal, "step_basis": built.step_basis}
-
     def t(v):
         return format(v, "f") if isinstance(v, D) else v.isoformat() if isinstance(v, datetime.date) else v
+
+    basis = {"step_basis": built.step_basis, "step_value": t(built.step_value)}
+    if built.refusal is not None:
+        return {"side": built.side, "refused": built.refusal, **basis}
 
     def leg(x, keys):
         return {k: t(getattr(x, k)) for k in keys}
@@ -70,7 +71,7 @@ def plain(built) -> dict:
               for x in built.trades]
     after_keys = ("side", "type", "strike", "expiry", "lots", "entry", "tradingsymbol")
     closed_keys = ("side", "type", "strike", "expiry", "lots", "quantity", "entry", "exit", "tradingsymbol")
-    return {"side": built.side, "step_basis": built.step_basis, "trades": trades,
+    return {"side": built.side, **basis, "trades": trades,
             "after": [leg(x, after_keys) for x in built.after],
             "closed": [leg(x, closed_keys) for x in built.closed],
             "warnings": list(built.warnings)}
@@ -116,7 +117,7 @@ def test_ac1_example_put_spread_up_200_calls_unchanged():
     position, chain, spot = inputs(load("ADJ-20a"))
     a01 = build_approach(position, _no_delta(chain), spot, "A-01", CFG)
     assert a01.refusal is None and a01.side == "put"
-    assert a01.step_basis == "points 200 (delta not available)"
+    assert (a01.step_basis, a01.step_value) == ("points", D("200"))
     assert sorted(strikes_of(a01.after)) == sorted([("BUY", "PE", D("22600")), ("SELL", "PE", D("22800")),
                                                     ("SELL", "CE", D("23450")), ("BUY", "CE", D("23650"))])
     assert all(x.lots == 2 for x in a01.after)
@@ -162,7 +163,7 @@ def test_ac8_adj20d_refuses_only_a05_naming_the_leg():
     assert built["A-05"].trades == ()
     refused = {a for a, b in built.items() if b.refusal}
     assert refused == {"A-05", "A-11"}  # A-11 only for its own rule (1 day left)
-    assert built["A-11"].refusal == "Only with 3+ days left (1 left)"
+    assert built["A-11"].refusal == "This approach needs at least 3 days left; days left now: 1."
 
 
 def test_ac8_adj20e_low_oi_unknown_is_a_warning_not_a_refusal():
@@ -175,19 +176,19 @@ def test_ac8_adj20e_low_oi_unknown_is_a_warning_not_a_refusal():
                  else r for r in chain]
     a05 = build_approach(position, row_moved, spot, "A-05", CFG)
     assert a05.refusal is None
-    assert a05.warnings == ("Low-OI state unknown for NIFTY 3 Nov 23,700 CE: Zerodha may refuse fresh orders in "
-                            "low-OI contracts",)
+    assert a05.warnings == ("Zerodha may refuse fresh orders in Leg 4 (BUY NIFTY 23,700 CE, expiry 03 Nov 2026): its low open "
+                            "interest state is not known.",)
     # closing a leg in an unknown-low-OI contract is not a fresh order: no warning, no refusal
     a28 = build_approach(position, chain, spot, "A-28", CFG)
     assert a28.refusal is None and a28.warnings == ()
 
 
 def test_adj20c_unpriced_leg_refuses_the_approaches_that_trade_it():
-    """ADJ-20c (one leg unpriced, the 22400 PE wing): a stated state, 'No price for ...' naming the leg; the
+    """ADJ-20c (one leg unpriced, the 22400 PE wing): a stated state, '... has no price' naming the leg; the
     approaches that do not trade it still build."""
     position, chain, spot = inputs(load("ADJ-20c"))
     built = {a.id: a for a in applicable_approaches(position, chain, spot, CFG)}
-    text = "No price for NIFTY 3 Nov 22,400 PE: this approach trades it"
+    text = "Leg 1 (BUY NIFTY 22,400 PE, expiry 03 Nov 2026) has no price, and this approach trades it."
     assert built["A-01"].refusal == text and built["A-31"].refusal == text
     for aid in ("A-36", "A-05", "A-28", "A-29"):
         assert built[aid].refusal is None, aid
@@ -195,10 +196,10 @@ def test_adj20c_unpriced_leg_refuses_the_approaches_that_trade_it():
 
 @pytest.mark.parametrize(("change", "reason"), [
     ({"listed": False}, "No 23,700 CE is listed for 03 Nov 2026, so leg 4 cannot move there."),
-    ({"tradable": False}, "NIFTY 3 Nov 23,700 CE is listed but not tradable: this approach opens it"),
+    ({"tradable": False}, "Leg 4 (BUY NIFTY 23,700 CE, expiry 03 Nov 2026) cannot be traded from Zerodha's current data."),
     ({"low_oi_state": "stated", "low_oi_blocked": True},
-     "Zerodha blocks fresh orders in NIFTY 3 Nov 23,700 CE (low OI, M-15): this approach opens it"),
-    ({"ltp": None, "bid": None, "ask": None}, "No price for NIFTY 3 Nov 23,700 CE: this approach trades it"),
+     "Zerodha blocks fresh orders in Leg 4 (BUY NIFTY 23,700 CE, expiry 03 Nov 2026) because its open interest is low."),
+    ({"ltp": None, "bid": None, "ask": None}, "Leg 4 (BUY NIFTY 23,700 CE, expiry 03 Nov 2026) has no price, and this approach trades it."),
 ])
 def test_ac8_every_answer_state_of_the_landing_row(change, reason):
     """AC-8 answer states of the row a new leg lands on (A-05's wing lands on 23,700 CE in ADJ-20a)."""
@@ -233,7 +234,8 @@ def test_a01_that_would_cross_the_other_short_is_refused():
     position = Position("NIFTY", 65, "weekly", datetime.date(2026, 11, 2), legs)
     chain = _synthetic(range(22500, 23700, 50), expiry)
     a01 = build_approach(position, chain, D("23090"), "A-01", CFG)
-    assert a01.refusal == "Rolling the put spread to 23,200 would cross the other short at 23,100"
+    assert a01.refusal == ("Moving Leg 2 (SELL NIFTY 23,000 PE, expiry 03 Nov 2026) to 23,200 would cross the other short "
+                           "leg at 23,100.")
 
 
 def test_a29_one_lot_is_refused_and_two_lots_halve():
@@ -241,7 +243,7 @@ def test_a29_one_lot_is_refused_and_two_lots_halve():
     position, chain, spot = inputs(load("ADJ-20a"))
     one = replace(position, legs=tuple(replace(x, lots=1) for x in position.legs))
     assert build_approach(one, chain, spot, "A-29", CFG).refusal == \
-        "Reduce needs at least 2 lots on the call side (it holds 1)"
+        "Leg 3 (SELL NIFTY 23,450 CE, expiry 03 Nov 2026) holds 1 lot, so half of it is not a whole lot."
     two = build_approach(position, chain, spot, "A-29", CFG)
     assert [(c.type, c.lots) for c in two.closed] == [("CE", 1), ("CE", 1)]
     assert sorted((x.type, x.lots) for x in two.after) == [("CE", 1), ("CE", 1), ("PE", 2), ("PE", 2)]
@@ -251,20 +253,20 @@ def test_sensex_uses_its_500_point_step_and_lot_20():
     """Attack 4 + 5: SENSEX (ADJ-21) with no delta on the chain rolls 500 points, quantities in SENSEX lots of 20."""
     position, chain, spot = inputs(load("ADJ-21"))
     a05 = build_approach(position, _no_delta(chain), spot, "A-05", CFG)
-    assert a05.step_basis == "points 500 (delta not available)"
+    assert (a05.step_basis, a05.step_value) == ("points", D("500"))
     assert a05.side == "call"
     assert sorted(x.strike for x in a05.after if x.type == "CE") == [D("78000"), D("79000")]
     assert {t.quantity for t in a05.trades} == {40}
     # with delta: the monthly Early delta of the playbook (0.25), labelled
-    assert build_approach(position, chain, spot, "A-05", CFG).step_basis == "delta 0.25"
+    assert build_approach(position, chain, spot, "A-05", CFG).step_value == D("0.25")
 
 
 def test_delta_absent_falls_back_to_points_labelled():
     """Attack 5: NIFTY without delta rolls 200 points and says so; with delta it says the target delta."""
     position, chain, spot = inputs(load("ADJ-02"))
-    assert build_approach(position, chain, spot, "A-05", CFG).step_basis == "delta 0.30"
+    assert build_approach(position, chain, spot, "A-05", CFG).step_value == D("0.30")
     flat = build_approach(position, _no_delta(chain), spot, "A-05", CFG)
-    assert flat.step_basis == "points 200 (delta not available)"
+    assert (flat.step_basis, flat.step_value) == ("points", D("200"))
     assert sorted(x.strike for x in flat.after if x.type == "CE") == [D("23700"), D("23900")]
 
 
@@ -273,7 +275,7 @@ def test_non_condor_shape_builds_only_no_change_and_exit():
     strangle = replace(position, legs=tuple(x for x in position.legs if x.side == "SELL"))
     built = {a.id: a for a in applicable_approaches(strangle, chain, spot, CFG)}
     assert built["A-36"].refusal is None and built["A-31"].refusal is None
-    assert built["A-05"].refusal == "Roll the tested spread out (same width) needs an iron condor (the first delivery)"
+    assert built["A-05"].refusal == "This approach needs one call spread and one put spread with a short leg each, on one expiry."
 
 
 def test_unknown_approach_is_an_error():

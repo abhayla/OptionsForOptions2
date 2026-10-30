@@ -473,12 +473,14 @@ def hand_approaches(u: str, lot: int, kind: str, today: datetime.date, spot: Dec
     target = D(APPROACH_CONFIG["target_short_delta"][kind])
 
     def name(x):
-        return f"{u} {x['expiry'].day} {x['expiry'].strftime('%b')} {x['strike']:,} {x['type']}"
+        """The catalogue's leg reference: 'Leg 4 (SELL NIFTY 23,700 CE, expiry 03 Nov 2026)' (number = position order)."""
+        n = next(i for i, y in enumerate(legs) if y["tradingsymbol"] == x["tradingsymbol"]) + 1
+        return f"Leg {n} ({x['side']} {u} {x['strike']:,} {x['type']}, expiry {x['expiry'].strftime('%d %b %Y')})"
 
     def price(x):
         p = hand_price(by.get((x["type"], x["strike"])))
         if p is None:
-            raise HandRefused(f"No price for {name(x)}: this approach trades it")
+            raise HandRefused(f"{name(x)} has no price, and this approach trades it.")
         return p
 
     def close(x, lots):
@@ -503,11 +505,11 @@ def hand_approaches(u: str, lot: int, kind: str, today: datetime.date, spot: Dec
                 new = {**x, "strike": targets[i]}
                 r = by[(x["type"], targets[i])]
                 if not r["tradable"]:
-                    raise HandRefused(f"{name(new)} is listed but not tradable: this approach opens it")
+                    raise HandRefused(f"{name(new)} cannot be traded from Zerodha's current data.")
                 if r["low_oi"]["state"] == "stated" and r["low_oi"]["blocked"]:
-                    raise HandRefused(f"Zerodha blocks fresh orders in {name(new)} (low OI, M-15): this approach opens it")
+                    raise HandRefused(f"Zerodha blocks fresh orders in {name(new)} because its open interest is low.")
                 if r["low_oi"]["state"] != "stated":
-                    warnings.append(f"Low-OI state unknown for {name(new)}: Zerodha may refuse fresh orders in low-OI contracts")
+                    warnings.append(f"Zerodha may refuse fresh orders in {name(new)}: its low open interest state is not known.")
                 p = price(new)
                 new = {**new, "entry": p, "tradingsymbol": r["tradingsymbol"]}
                 trades += [t, {"action": x["side"], "type": x["type"], "strike": targets[i], "expiry": x["expiry"],
@@ -518,27 +520,29 @@ def hand_approaches(u: str, lot: int, kind: str, today: datetime.date, spot: Dec
                 after.append(x)
         return trades, after, closed
 
-    def distance(short, out):
+    def distance(short, out, basis):
         up = (short["type"] == "CE") == out
         cands = [r for r in rows if r["type"] == short["type"] and (r["strike"] > short["strike"] if up else r["strike"] < short["strike"])]
         with_delta = [r for r in cands if r["delta"] is not None]
         if not with_delta:
             pts = D(APPROACH_CONFIG["roll_points_without_delta"][u])
-            return (pts if up else -pts), f"points {pts} (delta not available)"
+            basis.update(step_basis="points", step_value=pts)
+            return pts if up else -pts
+        basis.update(step_basis="delta", step_value=target)
         fit = [r for r in with_delta if abs(r["delta"]) <= target]
         if not fit:
-            raise HandRefused(f"No strike {'beyond' if out else 'inside'} {name(short)} has delta {target} or less")
+            raise HandRefused(f"No strike in the chain brings {name(short)} to the target delta.")
         if out:  # the first strike beyond the short
             best = sorted(fit, key=lambda r: abs(r["strike"] - short["strike"]))[0]
         else:  # the strike nearest spot
             best = sorted(fit, key=lambda r: abs(r["strike"] - spot))[0]
-        return best["strike"] - short["strike"], f"delta {target}"
+        return best["strike"] - short["strike"]
 
     legs_out, after_out = {}, {}
     for aid in IC_APPROACHES:
         side = {"A-36": "none", "A-31": "both", "A-11": "both", "A-01": untested}.get(aid, tested)
         warnings: list[str] = []
-        basis = None
+        basis = {"step_basis": None, "step_value": None}
         try:
             trades, after, closed = [], list(legs), []
             if aid == "A-31":
@@ -550,13 +554,13 @@ def hand_approaches(u: str, lot: int, kind: str, today: datetime.date, spot: Dec
             elif aid in ("A-05", "A-01"):
                 s = tested if aid == "A-05" else untested
                 si, wi = pos[(s, "short")], pos[(s, "wing")]
-                dist, basis = distance(legs[si], aid == "A-05")
+                dist = distance(legs[si], aid == "A-05", basis)
                 targets = {si: legs[si]["strike"] + dist, wi: legs[wi]["strike"] + dist}
                 check_listed(targets)
                 if aid == "A-01":
                     other = cs if s == "put" else ps
                     if (s == "put" and targets[si] > other) or (s == "call" and targets[si] < other):
-                        raise HandRefused(f"Rolling the {s} spread to {targets[si]:,} would cross the other short at {other:,}")
+                        raise HandRefused(f"Moving {name(legs[si])} to {targets[si]:,} would cross the other short leg at {other:,}.")
                 trades, after, closed = reopen(targets, warnings)
             elif aid == "A-28":
                 gone = [pos[(tested, "short")], pos[(tested, "wing")]]
@@ -568,7 +572,8 @@ def hand_approaches(u: str, lot: int, kind: str, today: datetime.date, spot: Dec
             elif aid == "A-29":
                 cut = [pos[(tested, "short")], pos[(tested, "wing")]]
                 if min(legs[i]["lots"] for i in cut) < 2:
-                    raise HandRefused(f"Reduce needs at least 2 lots on the {tested} side (it holds 1)")
+                    short = legs[pos[(tested, "short")]]
+                    raise HandRefused(f"{name(short)} holds {short['lots']} lot, so half of it is not a whole lot.")
                 after = []
                 for i, x in enumerate(legs):
                     if i in cut:
@@ -583,7 +588,7 @@ def hand_approaches(u: str, lot: int, kind: str, today: datetime.date, spot: Dec
                 days = (expiry - today).days
                 need = APPROACH_CONFIG["iron_fly_min_days_left"]
                 if days < need:
-                    raise HandRefused(f"Only with {need}+ days left ({days} left)")
+                    raise HandRefused(f"This approach needs at least {need} days left; days left now: {max(days, 0)}.")
                 both = sorted({k for t, k in listed if t == "CE"} & {k for t, k in listed if t == "PE"})
                 atm = sorted(both, key=lambda k: (abs(k - spot), -k))[0]
                 targets = {}
@@ -594,12 +599,12 @@ def hand_approaches(u: str, lot: int, kind: str, today: datetime.date, spot: Dec
                 check_listed(targets)
                 trades, after, closed = reopen(targets, warnings)
         except HandRefused as e:
-            legs_out[aid] = {"side": side, "refused": str(e), "step_basis": basis}
+            legs_out[aid] = {"side": side, "refused": str(e), **basis}
             continue
         trades = [t for t in trades if t["action"] == "BUY"] + [t for t in trades if t["action"] == "SELL"]
         keys = ("side", "type", "strike", "expiry", "lots", "quantity", "entry", "tradingsymbol")
         after = [{k: x["lots"] * lot if k == "quantity" else x[k] for k in keys} for x in after]
-        legs_out[aid] = {"side": side, "step_basis": basis, "trades": trades, "after": after, "closed": closed,
+        legs_out[aid] = {"side": side, **basis, "trades": trades, "after": after, "closed": closed,
                          "warnings": warnings}
         total = booked + sum(Fraction(sign(c["side"]) * c["quantity"] * (c["exit"] - c["entry"])) for c in closed)
         if after:
@@ -1136,7 +1141,8 @@ def scenarios() -> list[dict]:  # noqa: PLR0915 - a flat list of scenario specs
                      group="IC weekly, broker answer states", margin={"state": "empty", "value": None},
                      warnings=["Zerodha returned no margin; every approach shows 'margin unknown'"]))
     s.append(ic_spec("ADJ-20c", "Broker: one leg unpriced (long put wing)", ["F-21", "REQ-046 AC-5"], broker_base["clock"],
-                     broker_base["spot"], group="IC weekly, broker answer states", unpriced_leg=symbol("NIFTY", day(N3), "PE", D(22400), False),                     refused=[{"id": a, "reason": "No price for NIFTY 3 Nov 22,400 PE: this approach trades it"}
+                     broker_base["spot"], group="IC weekly, broker answer states", unpriced_leg=symbol("NIFTY", day(N3), "PE", D(22400), False),
+                     refused=[{"id": a, "reason": "Leg 1 (BUY NIFTY 22,400 PE, expiry 03 Nov 2026) has no price, and this approach trades it."}
                               for a in ("A-01", "A-24", "A-25", "A-31", "A-11")]))
     s.append(ic_spec("ADJ-20d", "Broker: landing strike not listed (that approach refused, others shown)", ["A-05", "M-15"],
                      broker_base["clock"], broker_base["spot"], group="IC weekly, broker answer states",

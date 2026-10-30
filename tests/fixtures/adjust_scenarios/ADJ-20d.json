@@ -1900,6 +1900,7 @@
    "A-36": {
     "side": "none",
     "step_basis": null,
+    "step_value": null,
     "trades": [],
     "after": [
      {
@@ -1948,7 +1949,8 @@
    },
    "A-01": {
     "side": "put",
-    "step_basis": "delta 0.30",
+    "step_basis": "delta",
+    "step_value": "0.30",
     "trades": [
      {
       "action": "BUY",
@@ -2062,11 +2064,13 @@
    "A-05": {
     "side": "call",
     "refused": "No 23,700 CE is listed for 03 Nov 2026, so leg 4 cannot move there.",
-    "step_basis": "delta 0.30"
+    "step_basis": "delta",
+    "step_value": "0.30"
    },
    "A-29": {
     "side": "call",
     "step_basis": null,
+    "step_value": null,
     "trades": [
      {
       "action": "BUY",
@@ -2160,6 +2164,7 @@
    "A-28": {
     "side": "call",
     "step_basis": null,
+    "step_value": null,
     "trades": [
      {
       "action": "BUY",
@@ -2232,12 +2237,14 @@
    },
    "A-11": {
     "side": "both",
-    "refused": "Only with 3+ days left (1 left)",
-    "step_basis": null
+    "refused": "This approach needs at least 3 days left; days left now: 1.",
+    "step_basis": null,
+    "step_value": null
    },
    "A-31": {
     "side": "both",
     "step_basis": null,
+    "step_value": null,
     "trades": [
      {
       "action": "BUY",
