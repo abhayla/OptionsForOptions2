@@ -26,6 +26,7 @@ from ofo_app.live_push import LiveFeed
 from ofo_app.routes import paper as paper_routes
 from ofo_app.routes.outcome import MarketContext
 
+MAX_WAIT_S = 2.5
 IST = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
 T0 = datetime.datetime(2026, 10, 30, 11, 0, tzinfo=IST)
 EXPIRY = datetime.date(2026, 11, 3)
@@ -87,7 +88,7 @@ class Provider(MarketDataProvider):
         return out
 
 
-def _rig():
+def _rig(hold_legs: bool = True):
     provider = Provider()
     ctx = MarketContext(provider, lambda: T0, Decimal("0.065"))
     feed = LiveFeed(ctx, FanOut(provider))
@@ -95,7 +96,8 @@ def _rig():
                  if lc.contract.strike == k and lc.contract.instrument_type == "CE") for k in (Decimal(22950),
                                                                                                 Decimal(23150))]
     nolisten = lambda _q: None  # noqa: E731
-    feed.fanout.subscribe(nolisten, legs)  # the book's own hold: the legs only, no other screen open
+    if hold_legs:
+        feed.fanout.subscribe(nolisten, legs)  # the book's own hold: the legs only, no other screen open
     return provider, ctx, feed, legs
 
 
@@ -151,3 +153,24 @@ async def test_no_legs_no_hold(n):
     provider, ctx, feed, _legs = _rig()
     snap = await paper_routes._snapshot(ctx, feed, "NIFTY", [])
     assert snap.legs == {} and provider.vendor == set(_legs)
+
+
+async def test_core_f3_a_contract_nobody_holds_is_priced_and_keeps_its_iv_inputs(monkeypatch):
+    """GC-LIVE F-3: the priced-hold released the legs before the IV hold re-read, so a leg no other screen holds came
+    back with no quote (price_state missing, book PAUSED). Every open contract is priced AND has an IV."""
+    monkeypatch.setattr(paper_routes, "FORWARD_WAIT_S", 0.2, raising=False)
+    provider, ctx, feed, legs = _rig(hold_legs=False)
+    snap = await paper_routes._snapshot(ctx, feed, "NIFTY", legs)
+    assert [paper.leg_price(snap, k).state for k in legs] == [paper.LIVE, paper.LIVE]
+    assert all(paper_decay.solved_iv(snap, "NIFTY", _open(snap, k)) is not None for k in legs)
+    assert provider.vendor == set()  # everything the read held is released
+
+
+async def test_nobody_holds_and_the_provider_is_cold_after_hours_does_not_wait(monkeypatch):
+    """Market closed: the ready check is the display price (last close), so it never waits the full hold."""
+    provider, _ctx, feed, legs = _rig(hold_legs=False)
+    ctx2 = MarketContext(provider, lambda: datetime.datetime(2026, 10, 31, 11, 0, tzinfo=IST), Decimal("0.065"))
+    loop = __import__("asyncio").get_event_loop()
+    t0 = loop.time()
+    await paper_routes._snapshot(ctx2, feed, "NIFTY", legs)
+    assert loop.time() - t0 < MAX_WAIT_S

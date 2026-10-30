@@ -67,7 +67,7 @@ from ofo_app.routes.outcome import (
     get_market_context,
     load_charge_rates,
 )
-from ofo_app.routes.planned_entry import _no_listener, get_live_feed, hold_until_priced
+from ofo_app.routes.planned_entry import _no_listener, get_live_feed
 from ofo_app.routes.strategies import StrategyRefused, refused_answer
 from ofo_app.underlying import Underlying
 
@@ -274,8 +274,11 @@ FORWARD_WAIT_S = 3.0
 
 
 def _iv_inputs_missing(snapshot) -> bool:
-    """True when an IV cannot be solved yet for an option leg: no index reading, or an option expiry whose forward is
-    missing or fell back to spot (ADR-061: parity needs the ATM call/put pairs, D-C33)."""
+    """True when an IV cannot be solved yet for an option leg of a market that is open: no index reading, or an option
+    expiry whose forward is missing or fell back to spot (ADR-061: parity needs the ATM call/put pairs, D-C33). A
+    closed market waits for nothing (ADR-212: the figures are the last close)."""
+    if snapshot.market_closed:
+        return False
     expiries = {lm.contract.contract.expiry for lm in snapshot.legs.values()
                 if lm.contract is not None and lm.contract.contract.instrument_type in ("CE", "PE")}
     if not expiries:
@@ -284,22 +287,27 @@ def _iv_inputs_missing(snapshot) -> bool:
         (f := snapshot.forwards.get(e)) is None or f.source != "parity" for e in expiries)
 
 
-async def _hold_for_iv(feed: LiveFeed, ctx: MarketContext, underlying: str, ids: list[str], snapshot):
-    """RCA of 'every paper book is no_iv': the read held only the contracts the book holds, so with no other screen
-    open the index had no quote (spot refused) and the expiry's chain had no call/put pair (no parity forward), and
-    ``solved_iv`` answered None. Hold the index and ``forward_strike_ids`` (the outcome push's own D-C33 choice) until
-    they quote or ``FORWARD_WAIT_S`` passes, and ALWAYS release exactly that hold. A provider that knows none of them
-    leaves the book as it is and the figure an honest None."""
+def _read_ready(snapshot, ids: list[str]) -> bool:
+    """Every open contract has its display price and the IV inputs are there."""
+    return (all(paper.display_price(snapshot, i).state == paper.LIVE for i in ids)
+            and not _iv_inputs_missing(snapshot))
+
+
+async def _hold_until_ready(feed: LiveFeed, ctx: MarketContext, underlying: str, ids: list[str], snapshot):
+    """ONE hold for the whole read, released once at the end (GC-LIVE). Holds the open contracts nobody else holds, the
+    index and ``forward_strike_ids`` (the outcome push's own D-C33 choice) until every contract is priced and an IV can
+    be solved, or ``FORWARD_WAIT_S`` passes. RCA 1 (F-1, 'every paper book is no_iv'): the read held only the book's
+    contracts, so with no other screen open the index had no quote and the chain no call/put pair. RCA 2 (F-3): the
+    contracts' own hold was released before the IV inputs were read, and a released contract's quote is parked, so an
+    unheld contract came back 'missing'. A provider that knows none of the ids leaves the read as it is."""
     provider = ctx.provider
     spot = provider.underlying_quote(underlying)
     live_spot = spot.ltp if spot is not None and spot.ltp is not None and spot.ltp > 0 else None
     index_id = getattr(provider, "index_id", lambda _u: None)(underlying)
-    extra = [*([index_id] if index_id else []),
-             *forward_strike_ids(provider.instrument_master(), underlying, ids, live_spot)]
-    if not extra:
-        return snapshot
+    wanted = [*ids, *([index_id] if index_id else []),
+              *forward_strike_ids(provider.instrument_master(), underlying, ids, live_spot)]
     try:
-        handle = feed.fanout.subscribe(_no_listener, extra, max_queue=1)
+        handle = feed.fanout.subscribe(_no_listener, list(dict.fromkeys(wanted)), max_queue=1)
     except KeyError:  # a contract the provider has no token for: nothing was subscribed, the answer stands
         return snapshot
     try:
@@ -308,7 +316,7 @@ async def _hold_for_iv(feed: LiveFeed, ctx: MarketContext, underlying: str, ids:
         while True:
             await asyncio.sleep(POLL_SECONDS)
             snapshot = read_snapshot(provider, underlying, ids, ctx.clock(), ctx.rate, feed_scope(ctx))
-            if not _iv_inputs_missing(snapshot) or not provider.status().connected or loop.time() >= deadline:
+            if _read_ready(snapshot, ids) or not provider.status().connected or loop.time() >= deadline:
                 return snapshot
     finally:
         with contextlib.suppress(Exception):
@@ -316,15 +324,11 @@ async def _hold_for_iv(feed: LiveFeed, ctx: MarketContext, underlying: str, ids:
 
 
 async def _snapshot(ctx: MarketContext, feed: LiveFeed | None, underlying: str, ids: list[str]):
-    """One market read (the tracking routes' rule): with a live feed, contracts nobody holds are held until their first
-    live quote or the planned-entry wait passes; then the index and the forward strikes are held the same way, so the
-    Greeks and Decay have what an IV is solved from (GC-LIVE)."""
+    """One market read (the tracking routes' rule): with a live feed, a read that is not ready (a contract unpriced, or
+    no IV inputs) holds what it needs in one hold until it is, or the wait passes (GC-LIVE F-1, F-3)."""
     snapshot = read_snapshot(ctx.provider, underlying, ids, ctx.clock(), ctx.rate, feed_scope(ctx))
-    unpriced = [i for i in ids if paper.leg_price(snapshot, i).state != paper.LIVE]
-    if unpriced and feed is not None:
-        _, snapshot, _ = await hold_until_priced(feed, ctx, underlying, ids, unpriced)
-    if feed is not None and ids and _iv_inputs_missing(snapshot):
-        snapshot = await _hold_for_iv(feed, ctx, underlying, ids, snapshot)
+    if feed is not None and ids and not _read_ready(snapshot, ids):
+        snapshot = await _hold_until_ready(feed, ctx, underlying, ids, snapshot)
     return snapshot
 
 
