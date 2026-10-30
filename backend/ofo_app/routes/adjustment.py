@@ -360,7 +360,7 @@ def _available(position: Position, chain: Sequence[ChainRow], spot: Decimal | No
 
 
 def _days_to_expiry(position: Position) -> int | None:
-    """Whole days from the reply's market day (``position.today``) to the nearest open leg's expiry; None with no leg."""
+    """Whole days from the reply's market day (``position.today``) to the nearest open leg's expiry; None: no leg."""
     if not position.legs:
         return None
     return max((min(x.expiry for x in position.legs) - position.today).days, 0)
