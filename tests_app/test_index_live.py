@@ -423,12 +423,65 @@ async def test_cold_plain_read_in_a_closed_market_holds_nothing():
     assert provider.subscribe_calls == 0
 
 
-async def test_cold_fallback_read_stays_not_connected_and_holds_nothing():
-    """ADR-077: fallback=true is never live, and the read does not hold the indices for it."""
+async def test_cold_fallback_read_holds_the_ids_and_answers_not_connected_with_both_values():
+    """ADR-213 core (was: values null, nothing held): fallback=true on a cold feed holds the ids itself, answers
+    INSIDE the hold, keeps NOT_CONNECTED (the page's own socket is down) with both values filled, and releases."""
     provider, feed, wall = cold_rig()
     answer = await first_paint(feed, wall, fallback=True)
+    assert answer.state == "NOT_CONNECTED"
+    assert [r.value for r in answer.indices] == [Decimal("25145.50"), Decimal("82010.25")]
+    assert feed.fanout.subscriber_count(NIFTY_ID) == 0 and provider.vendor_subscribed == set()
+
+
+async def test_cold_fallback_read_with_one_index_priced_by_the_deadline_fills_that_one():
+    provider, feed, wall = cold_rig(pending_ids=(NIFTY_ID,))
+    answer = await first_paint(feed, wall, fallback=True, wait=0.1)
+    assert answer.state == "NOT_CONNECTED"
+    assert [(r.underlying, r.value) for r in answer.indices] == [("NIFTY", Decimal("25145.50")), ("SENSEX", None)]
+    assert provider.vendor_subscribed == set()
+
+
+async def test_cold_fallback_read_with_the_provider_disconnected_stays_null():
+    provider, feed, wall = cold_rig(pending_ids=(), connected=False)
+    answer = await first_paint(feed, wall, fallback=True)
     assert answer.state == "NOT_CONNECTED" and all(r.value is None for r in answer.indices)
+    assert provider.vendor_subscribed == set()
+
+
+async def test_cold_fallback_read_without_a_feed_is_unchanged():
+    answer = await indices.indices_first_paint(None, None, None, fallback=True, now=Wall())
+    assert answer.state == "NOT_CONNECTED" and all(r.value is None for r in answer.indices)
+
+
+async def test_cold_fallback_read_in_a_closed_market_is_unchanged_and_holds_nothing():
+    provider, feed, wall = cold_rig()
+    wall.now = datetime.datetime(2026, 10, 17, 11, 0, tzinfo=IST)  # a Saturday
+    answer = await first_paint(feed, wall, fallback=True)
+    assert answer.state == "NOT_CONNECTED" and answer.market_closed is True
     assert provider.subscribe_calls == 0
+
+
+async def test_fallback_read_while_another_socket_streams_is_never_live_and_has_values():
+    """Finding liveness-from-shared-subscribers: another socket holds the ids; this page's fallback answer is still
+    NOT_CONNECTED (never LIVE), now with the values filled."""
+    provider, feed, channel, _mono, push = make_rig()
+    both(provider, "25145.50", "82010.25", T0)
+    task = asyncio.create_task(push.run())
+    await settle()
+    answer = await first_paint(feed, Wall(), fallback=True)
+    await close(channel, task)
+    assert answer.state == "NOT_CONNECTED"
+    assert [r.value for r in answer.indices] == [Decimal("25145.50"), Decimal("82010.25")]
+
+
+async def test_cold_fallback_read_when_the_fanout_refuses_the_ids_is_unchanged():
+    _provider, feed, wall = cold_rig()
+
+    def refuse(*_a, **_k):
+        raise KeyError("no token")
+    feed.fanout.subscribe = refuse
+    answer = await first_paint(feed, wall, fallback=True)
+    assert answer.state == "NOT_CONNECTED" and all(r.value is None for r in answer.indices)
 
 
 async def test_cold_plain_read_with_an_unknown_index_id_answers_as_today():
