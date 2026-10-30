@@ -1473,8 +1473,11 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         {"leg": Recorded}),
     ExplanationTemplate("adjust_cmp_no_new_leg", "values_seen", "Not available: this approach opens no new leg."),
     ExplanationTemplate("adjust_cmp_nothing_open", "values_seen", "Not available: no leg stays open."),
+    ExplanationTemplate("adjust_cmp_low_oi", "values_seen",
+                        "{value}% (Zerodha may refuse fresh orders in {legs}: low open interest state not known)",
+                        {"value": Recorded, "legs": Recorded}),
     ExplanationTemplate("adjust_cmp_adjustments_unknown", "values_seen",
-                        "Not available: the adjustments used so far could not be read."),
+                        "Not available: the paper book does not record adjustments yet."),
     ExplanationTemplate("adjust_cmp_margin_before_unknown", "values_seen",
                         "Not available: the margin of the current legs is not available."),
     # GC-TP fix1 (ADR-211 (5)): the breakeven dash of a card on legs with different expiries; "Exited" moved unchanged

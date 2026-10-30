@@ -2172,7 +2172,7 @@
     "reviewed": "pending owner read"
   },
   "explanation:adjust_cmp_adjustments_unknown": {
-    "sha256": "0ffa00c792dc4d4807602a80967f4022b04f32d6f94314057ac3699a60d49a47",
+    "sha256": "a1bb7f8f5961fc897dea66cad7933202c486026584671caa88d183d82659e82f",
     "reviewed": "pending owner read"
   },
   "explanation:adjust_cmp_margin_before_unknown": {
@@ -2337,6 +2337,10 @@
   },
   "labels:adjustment_leader": {
     "sha256": "60bdbdd54b2e77d613f01e835013d69bdbcb679a5cb35f15263d9fc4fffd5ccb",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_low_oi": {
+    "sha256": "82f04f38da1e6ef73c272b68f20b43abe1b57d92ab6723cadac73b4f56d3e45b",
     "reviewed": "pending owner read"
   }
 }

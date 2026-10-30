@@ -53,13 +53,13 @@ from ofo.engine.legs import Action, Instrument, Leg
 from ofo.engine.metrics import UNLIMITED
 from ofo.engine.pop import Why
 from ofo.engine.strategy import Strategy
-from ofo.engine.whole_trade import WholeTradeAfter, whole_trade_after
+from ofo.engine.whole_trade import WholeTradeAfter, whole_pnl_at, whole_trade_after
 from ofo.errors.explanations import (
     ADJUSTMENT_CRITERION_LABEL_TEXT,
     ExplanationText,
     render_explanation,
 )
-from ofo.money import PAISE
+from ofo.money import HUNDREDTH, PAISE
 
 MONEY_NOW, RISK_AFTER, REWARD_AFTER, GREEKS_AFTER, PRACTICAL = (
     "money_now", "risk_after", "reward_after", "greeks_after", "practical")
@@ -74,12 +74,10 @@ ROWS: tuple[tuple[str, str, str], ...] = (
     ("vega", GREEKS_AFTER, LOW_ABS),
     ("adjustments", PRACTICAL, LOW), ("liquidity", PRACTICAL, LOW), ("fresh", PRACTICAL, LOW),
 )
-MOVES: Mapping[str, Decimal] = {"move_m2": Decimal("-0.02"), "move_m1": Decimal("-0.01"),
-                                "move_p1": Decimal("0.01"), "move_p2": Decimal("0.02")}
+MOVES: Mapping[str, int] = {"move_m2": -2, "move_m1": -1, "move_p1": 1, "move_p2": 2}  # spot moves, in percent
 CURVE_RANGE = Decimal("0.06")  # the payoff curves span spot -6 % .. +6 %
 CURVE_STEPS = 48  # the fixed step of the curve grid = the range / 48, plus every strike inside it
-PERCENT_STEP = Decimal("0.01")
-INFINITE = Decimal("Infinity")
+INFINITE = Decimal("Infinity")  # the rank of an unlimited figure in a "highest" row
 
 #: POP's named reasons -> the catalogue's words (shared with the route, one home)
 POP_TEXT: Mapping[Why, str] = {Why.NO_VOLATILITY: "adjust_pop_no_volatility", Why.NO_FORWARD: "adjust_pop_no_forward",
@@ -178,15 +176,13 @@ def _strategy(legs: Sequence[PositionLeg], lot: int, price: Callable[[PositionLe
                               x.entry if price is None else price(x)) for x in legs))
 
 
-def whole_pnl_at(col_legs: Sequence[PositionLeg], lot: int, whole: WholeTradeAfter, level: Decimal) -> Decimal:
-    """Whole-trade at-expiry P&L after every charge line at ``level``: the open legs' engine expiry P&L plus the
-    booked P&L less the total charges (the same flat shift ``whole_trade_after`` applies)."""
-    open_pnl = _strategy(col_legs, lot).expiry_pnl_at(level) if col_legs else Decimal(0)
-    return open_pnl + whole.booked_pnl - whole.total_charges
+def _pnl_at(legs: Sequence[PositionLeg], lot: int, whole: WholeTradeAfter, level: Decimal) -> Decimal:
+    """The engine's whole-trade P&L after charges at ``level`` (``whole_trade.whole_pnl_at``)."""
+    return whole_pnl_at(_strategy(legs, lot) if legs else None, whole, level)
 
 
-def _move_level(spot: Decimal, p: Decimal) -> Decimal:
-    return (spot * (1 + p)).quantize(PAISE, rounding=ROUND_HALF_EVEN)
+def _move_level(spot: Decimal, percent: int) -> Decimal:
+    return (spot * (100 + percent) / 100).quantize(PAISE, rounding=ROUND_HALF_EVEN)
 
 
 class _Rows:
@@ -242,11 +238,11 @@ class _Rows:
             return Cell(render_explanation("adjust_cmp_unlimited"))  # shown, cannot lead (AC-3, attack 4)
         return _rupees(loss)  # type: ignore[arg-type]
 
-    def move(self, p: Decimal) -> Cell:
+    def move(self, p: int) -> Cell:
         reason = self._after_reason()
         if reason is not None:
             return _dash(reason)
-        return _rupees(whole_pnl_at(self.b.after, self.lot, self.col.whole, _move_level(self.ctx.spot, p)))  # type: ignore[arg-type]
+        return _rupees(_pnl_at(self.b.after, self.lot, self.col.whole, _move_level(self.ctx.spot, p)))  # type: ignore[arg-type]
 
     def breakevens(self) -> Cell:
         reason = self._after_reason()
@@ -288,7 +284,7 @@ class _Rows:
             return _dash(self.col.no_whole_reason)
         if self.col.whole.pop is None:
             return _dash(render_explanation(POP_TEXT[self.col.whole.pop_unavailable or Why.NO_VOLATILITY]))
-        pct = (self.col.whole.pop * 100).quantize(PERCENT_STEP, rounding=ROUND_HALF_UP)
+        pct = (self.col.whole.pop * 100).quantize(HUNDREDTH, rounding=ROUND_HALF_UP)
         return Cell(render_explanation("adjust_cmp_percent", value=pct), self.col.whole.pop, None, pct)
 
     def greeks(self) -> Mapping[str, Cell] | Cell:
@@ -298,8 +294,10 @@ class _Rows:
             if g is None:
                 return _dash(render_explanation("adjust_cmp_no_greeks", leg=x.tradingsymbol))
             qty = x.lots * self.lot * (1 if x.side == "BUY" else -1)
-            for name in total:
-                total[name] += getattr(g, name) * qty
+            total["delta"] += g.delta * qty
+            total["gamma"] += g.gamma * qty
+            total["theta"] += g.theta * qty
+            total["vega"] += g.vega * qty
         out = {}
         for name, v in total.items():
             shown = v.quantize(GREEK_STEP, rounding=ROUND_HALF_EVEN)
@@ -318,14 +316,19 @@ class _Rows:
         if not new:
             return _dash(render_explanation("adjust_cmp_no_new_leg"))
         widest = Decimal(0)
+        unknown_oi: list[str] = []
         for x in new:
             row = self._row(x)
             if row is None or row.bid is None or row.ask is None or row.bid <= 0 or row.ask < row.bid:
                 return _dash(render_explanation("adjust_cmp_no_bid_ask", leg=x.tradingsymbol))
+            if row.low_oi_state != "stated":  # the builder's low-OI warning, carried into this cell too
+                unknown_oi.append(x.tradingsymbol)
             mid = (row.bid + row.ask) / 2
             widest = max(widest, (row.ask - row.bid) / mid * 100)
-        pct = widest.quantize(PERCENT_STEP, rounding=ROUND_HALF_UP)
-        return Cell(render_explanation("adjust_cmp_percent", value=pct), pct, None, pct)
+        pct = widest.quantize(HUNDREDTH, rounding=ROUND_HALF_UP)
+        text = render_explanation("adjust_cmp_low_oi", value=pct, legs=",".join(unknown_oi)) if unknown_oi else \
+            render_explanation("adjust_cmp_percent", value=pct)
+        return Cell(text, pct, None, pct)
 
     def fresh(self) -> Cell:
         legs = self.b.after
@@ -420,12 +423,12 @@ def _curves(columns: Sequence[Column], ctx: Context, before: WholeTradeAfter | N
     levels = _curve_levels(ctx, columns)
     out: dict[str, tuple[tuple[Decimal, Decimal], ...]] = {}
     if before is not None and before_charges_known:
-        out["before"] = tuple((k, whole_pnl_at(ctx.position.legs, ctx.position.lot, before, k)) for k in levels)
+        out["before"] = tuple((k, _pnl_at(ctx.position.legs, ctx.position.lot, before, k)) for k in levels)
     for c in columns:
         if c.whole is not None and c.charges_known:
-            out[c.built.id] = tuple((k, whole_pnl_at(c.built.after, ctx.position.lot, c.whole, k)) for k in levels)
+            out[c.built.id] = tuple((k, _pnl_at(c.built.after, ctx.position.lot, c.whole, k)) for k in levels)
     return out
 
 
 __all__ = ["POP_TEXT", "Cell", "Column", "Comparison", "Context", "Criterion", "MarginRead", "column_order", "compare",
-           "leaders", "whole_pnl_at"]
+           "leaders"]

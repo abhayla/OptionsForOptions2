@@ -141,7 +141,7 @@ def test_core_every_criterion_has_a_value_or_reason_and_money_equals_the_hand_va
         hand["premium_left"][a] = sum((-gen.sign(x["side"]) * x["quantity"] * D(rows[x["tradingsymbol"]]["ltp"])
                                        for x in legs[a]["after"]), D(0))
         for rid, p in MOVES.items():
-            level = spot * (1 + Fraction(p))
+            level = spot * (100 + p) / 100
             pnl = gen.hand_pnl_at(legs[a]["after"], Fraction(after[a]["booked_pnl"]), level)
             hand[rid][a] = D(pnl.numerator) / D(pnl.denominator) - total(sc, a)
     for rid, values in hand.items():
@@ -296,3 +296,17 @@ def test_ac2_curves_equal_the_hand_payoff_at_every_level():
         for level, pnl in points:
             h = gen.hand_pnl_at(legs[key]["after"], Fraction(after[key]["booked_pnl"]), Fraction(level))
             assert pnl == D(h.numerator) / D(h.denominator) - total(sc, key), (a, level)
+
+
+def test_ac2_liquidity_cell_carries_the_low_oi_warning():
+    """REQ-155 AC-8 warning carried into REQ-156's liquidity cell: a new leg whose low-OI state is not known is
+    named in that approach's cell; the value and leader rule are unchanged."""
+    _, cols, ctx = build_columns("ADJ-02")
+    a11 = next(c for c in cols if c.built.id == "A-11")
+    new = sorted({x.tradingsymbol for x in a11.built.after} - {x.tradingsymbol for x in ctx.position.legs})
+    chain = [replace(r, low_oi_state="unknown") if r.tradingsymbol == new[0] else r for r in ctx.chain]
+    plain = row(compare(cols, ctx), "liquidity").values["A-11"]
+    warned = row(compare(cols, replace(ctx, chain=chain)), "liquidity").values["A-11"]
+    assert warned.value == plain.value and warned.rank == plain.rank
+    assert warned.text == (f"{plain.value}% (Zerodha may refuse fresh orders in {new[0]}: "
+                           "low open interest state not known)")

@@ -273,7 +273,7 @@ def _leg_out(x: Any) -> dict:
 # ---- route --------------------------------------------------------------------------------------------------------
 
 @router.post("/api/strategies/{strategy_id}/adjustment-approaches", response_model=AdjustApproachesOut)
-async def adjustment_approaches(  # noqa: C901, PLR0913, PLR0915 - FastAPI dependencies, one per input; one reply walk
+async def adjustment_approaches(  # noqa: PLR0913 - FastAPI dependencies, one per input
         strategy_id: int, body: ApproachesIn,
         tracked_reader: Annotated[TrackedReader, Depends(get_tracked_reader)],
         market_reader: Annotated[MarketReader, Depends(get_market_reader)],
@@ -322,30 +322,14 @@ async def adjustment_approaches(  # noqa: C901, PLR0913, PLR0915 - FastAPI depen
         out = []
         columns: list[Column] = []
         for a, built in built_list:
-            if built is None:  # attack 2: refused by name, the others still answer
-                out.append({"id": a, "refusal": render_explanation("adjust_unknown_approach", approach=a)})
-                continue
-            item: dict[str, Any] = {"id": built.id, "name": render_explanation(approach_name_id(built.id)),
-                                    "kind": built.kind, "side": built.side,
-                                    "step_basis": built.step_basis,
-                                    "step_value": None if built.step_value is None else _money(built.step_value),
-                                    "refusal": built.refusal_message, "warnings": list(built.warning_messages)}
-            if built.refusal_message is None:
-                item |= {"trades": [_leg_out(t) for t in built.trades],
-                         "after_legs": [_leg_out(x) for x in built.after],
-                         "closed_legs": [_leg_out(c) for c in built.closed], **_after_block(priced[a], pop_on)}
-                item["margin"] = await _margin(margin_of, built, market)
+            item = await _approach_item(a, built, priced, pop_on, margin_of, market)
+            if built is not None and built.refusal_message is None:
                 columns.append(Column(built, priced[a].after, priced[a].reason, priced[a].charges_known,
                                       _margin_read(item["margin"])))
             out.append(item)
         reply["approaches"] = out
-        before_margin = next((c.margin for c in columns if c.built.id == "A-36"), None)
-        if before_margin is None:  # the current legs' margin = "No change"'s After margin
-            unchanged = build_approach(position, market.chain, spot.value, "A-36", _CONFIG)  # type: ignore[arg-type]
-            before_margin = _margin_read(await _margin(margin_of, unchanged, market))
-        ctx_cmp = Context(position, spot.value, market.chain, rates, pop_on, before_margin,  # type: ignore[arg-type]
-                          market.leg_greeks, tracked.adjustments_used)
-        reply |= _compare_block(compare(columns, ctx_cmp, before.after, before.charges_known))
+        reply |= await _compare_reply(columns, tracked, spot.value, market, rates, pop_on, before,  # type: ignore[arg-type]
+                                      margin_of)
     total = time.perf_counter() - started
     log.info("adjustment approaches strategy=%s approaches=%s engine_s=%.4f total_s=%.4f",
              strategy_id, len(built_list), engine, total)
@@ -353,6 +337,38 @@ async def adjustment_approaches(  # noqa: C901, PLR0913, PLR0915 - FastAPI depen
         reply["timing"] = {"engine_seconds": Decimal(f"{engine:.4f}"), "total_seconds": Decimal(f"{total:.4f}"),
                            "approaches": len(built_list)}
     return AdjustApproachesOut.model_validate(reply)
+
+
+async def _approach_item(a: str, built: ApproachLegs | None, priced: Mapping[str, Priced], pop_on: bool,  # noqa: PLR0913
+                         margin_of: ApproachMargin, market: MarketInputs) -> dict[str, Any]:
+    """One approach of the reply: unknown id -> refused by name (attack 2); refused -> its reason; else the full
+    answer with its margin."""
+    if built is None:
+        return {"id": a, "refusal": render_explanation("adjust_unknown_approach", approach=a)}
+    item: dict[str, Any] = {"id": built.id, "name": render_explanation(approach_name_id(built.id)),
+                            "kind": built.kind, "side": built.side, "step_basis": built.step_basis,
+                            "step_value": None if built.step_value is None else _money(built.step_value),
+                            "refusal": built.refusal_message, "warnings": list(built.warning_messages)}
+    if built.refusal_message is None:
+        item |= {"trades": [_leg_out(t) for t in built.trades], "after_legs": [_leg_out(x) for x in built.after],
+                 "closed_legs": [_leg_out(c) for c in built.closed], **_after_block(priced[a], pop_on)}
+        item["margin"] = await _margin(margin_of, built, market)
+    return item
+
+
+async def _compare_reply(columns: list[Column], tracked: Tracked, spot: Decimal, market: MarketInputs,  # noqa: PLR0913
+                         rates: ChargeRates | None, pop_on: bool, before: Priced,
+                         margin_of: ApproachMargin) -> dict[str, Any]:
+    """REQ-156: the compare over the built approaches; the current legs' margin is "No change"'s (read once more
+    only when A-36 was not asked)."""
+    position = tracked.position
+    before_margin = next((c.margin for c in columns if c.built.id == "A-36"), None)
+    if before_margin is None:
+        unchanged = build_approach(position, market.chain, spot, "A-36", _CONFIG)
+        before_margin = _margin_read(await _margin(margin_of, unchanged, market))
+    ctx = Context(position, spot, market.chain, rates, pop_on, before_margin, market.leg_greeks,
+                  tracked.adjustments_used)
+    return _compare_block(compare(columns, ctx, before.after, before.charges_known))
 
 
 def _margin_read(block: Mapping[str, Any]) -> MarginRead:
