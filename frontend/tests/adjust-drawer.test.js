@@ -93,7 +93,8 @@ describe('REQ-046 AC-1..AC-3: the drawer layers', () => {
     expect([v('pnl'), v('booked'), v('unbooked'), v('index'), v('open_legs')]).toEqual(['+195.00', '0.00', '+195.00', '23420.00', '4'])
     expect([v('max_profit'), v('max_loss'), v('breakevens')]).toEqual([cellText(adj02, 'max_profit'), cellText(adj02, 'max_loss'), cellText(adj02, 'breakevens')])
     expect([v('delta'), v('gamma'), v('theta'), v('vega')]).toEqual(['delta', 'gamma', 'theta', 'vega'].map((id) => cellText(adj02, id)))
-    expect(v('margin')).toBe(adj02.approaches[0].margin.value)
+    expect(adj02.approaches[0].margin.value).toBe('100000.00')
+    expect(v('margin')).toBe('₹1,00,000.00') // the raw decimal text printed in the app's money form, not as sent
     expect(v('days_left')).toBe(String(adj02.days_to_expiry))
     expect(v('days_left')).toBe('3')
     expect(d.textContent).toMatch(/1 · Why detected[\s\S]*2 · Current state[\s\S]*3 · Possible approaches/)
@@ -145,6 +146,17 @@ describe('REQ-046 AC-1..AC-3: the drawer layers', () => {
   })
 })
 
+describe('GC-ADJ1 follow-up: raw decimals in the current state', () => {
+  it('ADJ-13 recaptured reply: Margin needed reads like other money (720252.00 -> ₹7,20,252.00)', async () => {
+    expect(adj13.approaches[0].margin.value).toBe('720252.00')
+    const w = await card({}, adj13)
+    await openDrawer(w)
+    expect(drawerOf().querySelector('[data-testid="drawer-state-margin"]').textContent).toBe('₹7,20,252.00')
+    expect(replyRows(adj13).find((r) => r.id === 'margin').value).toBe('₹7,20,252.00')
+    expect(replyRows({ approaches: [{ id: 'A-36', margin: { state: 'failed', value: null } }] }).find((r) => r.id === 'margin').value).toBe('-')
+  })
+})
+
 describe('REQ-046 drawer behaviour', () => {
   it('Escape and the scrim close it and focus returns to the Review adjustment button', async () => {
     const w = await card()
@@ -166,6 +178,8 @@ describe('REQ-046 drawer behaviour', () => {
     const w = await card()
     await openDrawer(w)
     expect(drawerOf().className).toContain('w-full')
+    expect(drawerOf().className).toContain('sm:max-w-md') // the width cap starts at 640 px (Tailwind sm), never below it
+    expect(drawerOf().className.split(/\s+/)).not.toContain('max-w-md')
     expect(document.body.querySelector('[data-testid="drawer-compare"]').parentElement.className).toContain('sticky')
   })
 
@@ -187,18 +201,24 @@ describe('REQ-046 drawer behaviour', () => {
 
 describe('the server decides which approaches apply', () => {
   it('attack 5: approaches the server says do not apply are listed with its reason and cannot be ticked; No change stays; Compare still opens', async () => {
-    const w = await card({}, adj13)
+    // the recaptured ADJ-13 reply applies everything now, so one approach is made not to apply here (the server's own shape)
+    const reply = structuredClone(adj13)
+    const off = reply.available.find((a) => a.id === 'A-05')
+    off.applicable = false
+    off.reason = { what_happened: 'No listed strike is near enough for this move.' }
+    const w = await card({}, reply)
     await openDrawer(w)
     const bs = boxes()
-    expect(bs.map(idOf)).toEqual(adj13.available.map((a) => a.id))
-    for (const a of adj13.available) {
+    expect(bs.map(idOf)).toEqual(reply.available.map((a) => a.id))
+    expect(reply.available.some((a) => !a.applicable)).toBe(true)
+    for (const a of reply.available) {
       const box = bs.find((b) => idOf(b) === a.id)
       expect(box.disabled).toBe(!a.applicable || a.id === 'A-36')
       if (!a.applicable) expect(document.body.querySelector(`[data-testid="drawer-reason-${a.id}"]`).textContent).toBe(a.reason.what_happened)
     }
     expect(bs.find((b) => idOf(b) === 'A-36').checked).toBe(true)
     document.body.querySelector('[data-testid="drawer-compare"]').click()
-    expect(push).toHaveBeenCalledWith('/strategy/builder?adjust=72&pick=A-36')
+    expect(push).toHaveBeenCalledWith('/strategy/builder?adjust=72&pick=A-36,A-01,A-29,A-28,A-11,A-31') // the one that does not apply (A-05) is never in the pick
   })
 
   it('a failed read shows the error text, lists no approach, and Compare still opens with No change', async () => {

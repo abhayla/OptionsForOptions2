@@ -3,6 +3,8 @@
 // money: the filters COMPARE two decimal texts (cmpDecimal, string rules only), they never add, multiply or round.
 // New file; the legacy autopilot adjustment screens compute client P&L and are REFERENCE only (not copied).
 
+import { rupeesText, percentFromFraction } from '@/lib/displayFormat'
+
 // The server's own catalogue id of "No change" (backend ADJUSTMENT_APPROACH_LABEL_TEXT, A-36).
 export const NO_CHANGE_ID = 'A-36'
 export const UNAVAILABLE_FOR_FILTER = 'not available for this filter'
@@ -31,12 +33,15 @@ export const RISK_CHIPS = Object.freeze([
 ])
 // at: 'most' keeps values at or under the chosen limit, 'least' keeps values at or over it (REQ-157 AC-1).
 export const RANGES = Object.freeze([
-  { id: 'debit', label: 'Largest debit I accept', at: 'most' },
-  { id: 'max_loss', label: 'Max loss at most', at: 'most' },
-  { id: 'pop', label: 'Chance of profit at least', at: 'least' },
-  { id: 'charges', label: 'Charges + bid-ask at most', at: 'most' },
+  { id: 'debit', label: 'Largest debit I accept', at: 'most', form: 'money' },
+  { id: 'max_loss', label: 'Max loss at most', at: 'most', form: 'money' },
+  { id: 'pop', label: 'Chance of profit at least', at: 'least', form: 'percent' },
+  { id: 'charges', label: 'Charges + bid-ask at most', at: 'most', form: 'money' },
   { id: 'orders', label: 'Orders to place at most', at: 'most' },
 ])
+
+/** A range end (a decimal text of the reply) in the app's display form for its filter: rupees, percent, or a plain count. */
+export const rangeEndText = (range, text) => (range.form === 'money' ? rupeesText(text) : range.form === 'percent' ? percentFromFraction(text) : text)
 
 const DEC = /^-?\d+(\.\d+)?$/
 
