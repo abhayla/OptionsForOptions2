@@ -24,6 +24,7 @@ MAY_IMPORT_CONCRETE_PROVIDER = {
     "ofo_app.kite_ws": "the socket that owns the vendor connection (the provider's one producer)",
     "ofo_app.live_market": "builds the single process-wide provider and its FanOut",
     "ofo_app.replay_mode": "builds the recorded-replay provider for dev/e2e (APP_ENV=test)",
+    "ofo_app.scenario_mode": "builds the scenario provider from the adjustment library (APP_ENV dev/test)",
     "ofo_app.execute_replay": "builds the recorded replay used by the Execute tests and replay mode",
 }
 #: module -> reason it may import the fan-out (the event stream every screen push subscribes to)
@@ -32,6 +33,7 @@ MAY_IMPORT_FANOUT = {
     "ofo_app.live_market": "builds the process-wide FanOut",
     "ofo_app.live_push": "the platform socket pushes subscribe through it",
     "ofo_app.replay_mode": "the replay context's FanOut",
+    "ofo_app.scenario_mode": "the scenario context's FanOut (dev/test)",
 }
 #: module -> reason it may import the quote store / feed state directly (health labels only, never a price path)
 MAY_IMPORT_FEED_HEALTH = {

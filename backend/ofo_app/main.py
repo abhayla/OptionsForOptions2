@@ -28,6 +28,7 @@ from ofo_app import (
     paper_settlement,
     pinned_clock,
     replay_mode,
+    scenario_mode,
 )
 from ofo_app.broker_config import BrokerConfig, load_broker_config
 from ofo_app.config import Settings, app_env
@@ -144,6 +145,10 @@ def create_app(broker_config: BrokerConfig | None = None) -> FastAPI:
         Settings()  # type: ignore[call-arg]  # ADR-078: raises (the factory fails) on a test/unnamed database; the lifespan catch never sees it
     held_switches.require_valid_configuration()  # W-125: a held feature on without a reference refuses to start
     live.set_replay_feed(None)
+    scenario = None
+    if scenario_mode.scenario_requested():  # GC-ADJ1 1b dev/test only; refused elsewhere, before anything is served
+        scenario_mode.require_dev_or_test(app_env())
+        scenario = scenario_mode.current()  # also refuses a malformed or unknown scenario id
     if pinned_clock.pin_requested():  # #237 test-only; refused outside APP_ENV=test, before anything is served
         pinned_clock.require_test_env(app_env() or "")
         pinned_clock.pinned_today()  # also refuses a value that is not a plain date
@@ -160,4 +165,9 @@ def create_app(broker_config: BrokerConfig | None = None) -> FastAPI:
         # Execute + return answer from the recorded 2026-10-16 replies, no live session
         app.dependency_overrides.update(execute_replay.overrides())
     _mount_routes(app, config)
+    if scenario is not None:
+        unclassified = scenario_mode.unclassified_mutating_routes(app.routes)
+        if unclassified:  # fail closed: a new mutating route must be classified before scenario mode serves it
+            raise scenario_mode.ScenarioRefused(f"unclassified mutating routes in scenario mode: {unclassified}")
+        app.dependency_overrides.update(scenario_mode.overrides(scenario))  # every seam a scenario serves
     return app

@@ -69,6 +69,7 @@ from ofo_app.routes.outcome import (
 )
 from ofo_app.routes.planned_entry import get_live_feed
 from ofo_app.routes.strategies import StrategyRefused, refused_answer
+from ofo_app.scenario_mode import refuse_orders
 from ofo_app.underlying import Underlying
 
 router = APIRouter(route_class=ClosedRoute)
@@ -687,7 +688,8 @@ def _check_price(price: Decimal) -> None:
         raise StrategyRefused("paper_price_invalid")
 
 
-@router.post("/paper/strategies/{strategy_id}/orders", status_code=201, response_model=PaperBookOut)
+@router.post("/paper/strategies/{strategy_id}/orders", status_code=201, response_model=PaperBookOut,
+             dependencies=[Depends(refuse_orders)])  # GC-ADJ1 1b: no order in scenario mode
 async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR0913 - FastAPI dependencies
                              db: Annotated[Any, Depends(get_db)], user_ref: Annotated[str, Depends(current_user_ref)],
                              ctx: Annotated[MarketContext | None, Depends(get_market_context)],
@@ -822,7 +824,8 @@ def _new_triggers(body: TriggerIn, underlying: str, open_ids: Sequence[int]) -> 
     return new
 
 
-@router.post("/paper/strategies/{strategy_id}/triggers", status_code=201, response_model=TriggersOut)
+@router.post("/paper/strategies/{strategy_id}/triggers", status_code=201, response_model=TriggersOut,
+             dependencies=[Depends(refuse_orders)])  # GC-ADJ1 1b: no order in scenario mode
 async def add_paper_triggers(strategy_id: int, body: TriggerIn, db: Annotated[Any, Depends(get_db)],
                              user_ref: Annotated[str, Depends(current_user_ref)]) -> TriggersOut:
     stored = await _load_strategy(db, user_ref, strategy_id)
@@ -841,7 +844,8 @@ async def add_paper_triggers(strategy_id: int, body: TriggerIn, db: Annotated[An
     return await _triggers_out(db, strategy_id)
 
 
-@router.delete("/paper/strategies/{strategy_id}/triggers/{trigger_id}", response_model=TriggersOut)
+@router.delete("/paper/strategies/{strategy_id}/triggers/{trigger_id}", response_model=TriggersOut,
+             dependencies=[Depends(refuse_orders)])  # GC-ADJ1 1b: no order in scenario mode
 async def cancel_paper_trigger(strategy_id: int, trigger_id: int, db: Annotated[Any, Depends(get_db)],
                                user_ref: Annotated[str, Depends(current_user_ref)]) -> TriggersOut:
     await _load_strategy(db, user_ref, strategy_id)

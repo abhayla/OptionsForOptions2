@@ -40,6 +40,9 @@ class Settings(BaseSettings):
     #: #237: TEST-ONLY. Pins the catalogue routes' "today" (ofo_app.pinned_clock) so a recorded fixture stays live in CI.
     #: Refused unless APP_ENV is exactly "test".
     TEST_CATALOGUE_DATE: str | None = None
+    #: GC-ADJ1 step 1b: DEV/TEST-ONLY. Declared only to refuse it outside APP_ENV development/test; the one
+    #: reader of the value is ofo_app.scenario_mode. Blank = not set.
+    OFO_SCENARIO: str | None = None
     #: #370, GC-6: the API's database pool. The ofo_app role has CONNECTION LIMIT 5 (ADR-048) and a developer runs two
     #: API processes beside a 13-card page, so one process may open 2 + 0 = 2 connections (2 processes x 2 = 4 <= 5).
     #: A bigger pool is set per environment; start-up refuses a pool above the role's limit (db.verify_pool_budget).
@@ -51,6 +54,10 @@ class Settings(BaseSettings):
     def _replay_is_test_only(self) -> "Settings":
         if self.TEST_CATALOGUE_DATE and self.APP_ENV != "test":
             raise ValueError("TEST_CATALOGUE_DATE is a test-only setting: it needs APP_ENV=test")
+        # APP_ENV must be SET to development/test: the field default "development" is not an answer (unset refuses)
+        if (self.OFO_SCENARIO or "").strip() and ("APP_ENV" not in self.model_fields_set
+                                                 or self.APP_ENV not in ("development", "test")):
+            raise ValueError("OFO_SCENARIO is a development/test-only setting: it needs APP_ENV=development or test")
         if self.OUTCOME_REPLAY and self.APP_ENV != "test":
             raise ValueError("OUTCOME_REPLAY is a test-only setting: it needs APP_ENV=test")
         if self.LIVE_MARKET and self.APP_ENV == "test" and self.KITE_WS_URL.startswith("wss://ws.kite.trade"):
