@@ -145,6 +145,7 @@ into `feature/adjustments` after a passing prepush --full (no PR to main); run t
 
 | # | What | Where | Decision |
 |---|---|---|---|
+| 1 | Catalogue features in no contract (F-05 on the After, F-09..F-16, F-18 effectiveness, F-19, F-20, triggers T-03..T-19, approaches beyond the 7, every strategy type but the iron condor) | catalogue Part 5a / 9a | Owner 2026-10-30 19:5x: run GC-ADJ1 as written; the handover carries a GC-ADJ3+ outline mapping each uncovered feature, for owner approval |
 
 ## Parked
 
