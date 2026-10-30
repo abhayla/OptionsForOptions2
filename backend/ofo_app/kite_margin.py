@@ -57,12 +57,13 @@ _EXCHANGES: Final = frozenset(code for code, segment in ZERODHA_EXCHANGE_TO_SEGM
 class KiteMarginError(Exception):
     """A margin read failed. Carries only a code; never the token, a header, a URL or the response body."""
 
-    def __init__(self, code: str, *, empty: bool = False) -> None:
+    def __init__(self, code: str, *, empty: bool = False, funds: bool = False) -> None:
         super().__init__(code)
         self.code = code
         #: only with ``kite_margin_no_figure``: Zerodha answered in full and stated NO figure at all (an EMPTY answer),
         #: as opposed to an AMBIGUOUS one (rows that do not match the basket, a figure missing beside others)
         self.empty = empty
+        self.funds = funds  #: the figure missing is the available-funds read, not the basket read
 
 
 @dataclass(frozen=True)
@@ -158,8 +159,8 @@ def _is_figure(value: object) -> bool:
     return type(value) is Decimal or type(value) is int
 
 
-def _no_figure(*, empty: bool) -> KiteMarginError:
-    return KiteMarginError("kite_margin_no_figure", empty=empty)
+def _no_figure(*, empty: bool, funds: bool = False) -> KiteMarginError:
+    return KiteMarginError("kite_margin_no_figure", empty=empty, funds=funds)
 
 
 def _basket_empty(data: Mapping[str, object], orders: Sequence[BasketOrder]) -> bool:
@@ -212,7 +213,7 @@ class KiteMargin:
         data = self._data("GET", FUNDS_PATH, None)
         equity = data.get("equity")
         if not isinstance(equity, dict) or equity.get("net") is None:
-            raise _no_figure(empty=not any(isinstance(s, dict) and _is_figure(s.get("net")) for s in data.values()))
+            raise _no_figure(empty=not any(isinstance(s, dict) and _is_figure(s.get("net")) for s in data.values()), funds=True)
         return _money(equity.get("net"))
 
     def fetch_basket_margin(self, orders: Sequence[BasketOrder]) -> BasketMargin:

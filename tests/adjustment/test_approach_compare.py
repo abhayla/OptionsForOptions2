@@ -186,7 +186,7 @@ def test_ac2_breakevens_and_margin_change_and_adjustments_rows():
     assert mc.values["A-36"].value == D(0) and mc.values["A-01"].value == D("-1999.50")
     assert mc.values["A-31"].value == D("-100000") and mc.leaders == ("A-31",)
     # the leader is the LOWEST value (frees the most margin), so it is never called "smallest"; the row says the sign
-    assert (mc.label, mc.leader_label) == ("Margin change (negative = margin freed)", "Lowest margin after the change")
+    assert (mc.label, mc.leader_label) == ("Margin change (negative = margin freed)", "Lowest margin change")
     a29 = mc.values["A-29"]
     assert a29.text == "-" and "Zerodha returned no margin figure for this basket" in a29.unavailable_reason
     adj = row(cmp, "adjustments")

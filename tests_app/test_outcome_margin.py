@@ -548,6 +548,7 @@ async def test_empty_reads_are_unreadable_with_no_figure(funds, basket) -> None:
 
 UNREADABLE_TEXT = "Margin from Zerodha could not be read just now, so no margin figure is shown."
 EMPTY_TEXT = "Zerodha returned no margin figure for this basket."
+EMPTY_FUNDS_TEXT = "Zerodha returned no available-funds figure for this account."
 
 
 def _no_figure(d):
@@ -564,13 +565,14 @@ def _no_figure_reordered(d):
 EMPTY_FUNDS = json.dumps({"status": "success", "data": {}})  # ADJ-20b's funds reply shape
 
 
-@pytest.mark.parametrize(("funds", "basket"), [(None, _basket(_no_figure)), (EMPTY_FUNDS, None)],
+@pytest.mark.parametrize(("funds", "basket", "text"),
+                         [(None, _basket(_no_figure), EMPTY_TEXT), (EMPTY_FUNDS, None, EMPTY_FUNDS_TEXT)],
                          ids=["basket-rows-no-figure", "funds-no-figure"])
-async def test_empty_reply_is_worded_as_empty_and_shows_no_figure(funds, basket) -> None:
+async def test_empty_reply_is_worded_as_empty_and_shows_no_figure(funds, basket, text) -> None:
     m = await margin_answer(source(replies(funds, basket)), CTX, plan())
     assert m.state == "UNREADABLE" and m.empty is True
     assert m.needed is None and m.available is None and m.broker_needed is None and m.shortfall_reason is None
-    assert str(m.reason) == EMPTY_TEXT
+    assert str(m.reason) == text
 
 
 async def test_empty_figures_with_rows_that_do_not_match_the_basket_stay_ambiguous() -> None:

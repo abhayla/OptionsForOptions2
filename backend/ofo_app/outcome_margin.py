@@ -198,7 +198,7 @@ class OutcomeMargin:
             if exc.code == MARGIN_BUSY_CODE:
                 return margin_busy(), False
             # an EMPTY answer (Zerodha answered in full and stated no figure) is worded apart, still with no figure
-            return (MARGIN if exc.code == "kite_margin_token" else margin_empty() if exc.empty
+            return (MARGIN if exc.code == "kite_margin_token" else margin_empty(funds=exc.funds) if exc.empty
                     else margin_unreadable()), False
         except Exception as exc:  # noqa: BLE001 - a timeout, the token store, anything: "could not be read"
             log.warning("outcome margin: Zerodha could not be read: %s", type(exc).__name__)

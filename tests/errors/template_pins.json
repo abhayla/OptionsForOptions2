@@ -2260,7 +2260,7 @@
     "reviewed": "pending owner read"
   },
   "explanation:adjust_cmp_lead_margin_change": {
-    "sha256": "6e4b950779110430b3ec30776939fcad8ea76f8009347e740057e64a6ea3deb0",
+    "sha256": "2360b30fc640d57027bfa0ccd34acba62ef1ba81f90625fce49bfa6a9ce287ef",
     "reviewed": "pending owner read"
   },
   "explanation:adjust_cmp_lead_max_loss": {
@@ -2332,7 +2332,7 @@
     "reviewed": "pending owner read"
   },
   "labels:adjustment_leader": {
-    "sha256": "3027f545c8dac0926f3f82d65a120693895c23b13366244ee618ed20373c2108",
+    "sha256": "1e4812a60b2e9dd9b30a81494d5812049bee1bfa03c92e5346d4fabf77f3778e",
     "reviewed": "pending owner read"
   },
   "explanation:adjust_cmp_low_oi": {
@@ -2441,6 +2441,10 @@
   },
   "explanation:outcome_margin_empty": {
     "sha256": "49edba32d72299608e9472bf3fd57803b2592e2f1427ca0181ea878f28e09dcd",
+    "reviewed": "pending owner read"
+  },
+  "explanation:outcome_margin_empty_funds": {
+    "sha256": "a4c9c0f8f7cf7e9b6b40f7843e88944003017d87dd706d3d97bd0961047c39b4",
     "reviewed": "pending owner read"
   }
 }
