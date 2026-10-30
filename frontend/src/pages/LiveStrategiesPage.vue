@@ -5,6 +5,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import api, { NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
+import PageHeader from '@/components/common/PageHeader.vue'
 import LiveStrategyCard from '@/components/live/LiveStrategyCard.vue'
 import MarketClosedBanner from '@/components/states/MarketClosedBanner.vue'
 
@@ -50,25 +51,24 @@ onMounted(async () => {
 
 <template>
   <section data-testid="live-strategies" :data-state="state">
-    <h1 class="text-xl font-semibold" data-testid="page-title">Live Strategies</h1>
-    <p class="mt-1 text-sm text-ink-muted">Your saved strategies followed on live market data. This is for monitoring, not a recommendation.</p>
+    <PageHeader parent="Strategies" title="Live Strategies" note="Your saved strategies followed on live market data. This is for monitoring, not a recommendation." note-testid="live-note" />
     <!-- User test 2026-10-30: one market-closed banner per screen (ADR-177), not one per card -->
-    <MarketClosedBanner v-if="closedAt" class="mt-3" :prices-at="closedAt" />
-    <p v-if="state === 'loading'" class="mt-4" data-testid="live-list-loading">Loading your strategies...</p>
-    <ErrorMessage v-else-if="state === 'error'" class="mt-4" :parts="errorParts" data-testid="state-error" />
-    <p v-else-if="!all.length" class="mt-4 text-ink-muted" data-testid="live-empty">
-      No saved strategies yet. Build one in the <router-link to="/strategy/builder" class="underline">Strategy Builder</router-link>.
+    <MarketClosedBanner v-if="closedAt" class="mb-4" :prices-at="closedAt" />
+    <p v-if="state === 'loading'" class="text-sm text-ink-muted" data-testid="live-list-loading">Loading your strategies...</p>
+    <ErrorMessage v-else-if="state === 'error'" :parts="errorParts" data-testid="state-error" />
+    <p v-else-if="!all.length" class="rounded-lg border border-line bg-surface px-4 py-8 text-center text-sm text-ink-muted" data-testid="live-empty">
+      No saved strategies yet. Build one in the <router-link to="/strategy/builder" class="link">Strategy Builder</router-link>.
     </p>
     <template v-else>
-      <p v-if="capped" class="mt-2 text-sm text-ink-muted" data-testid="live-capped">Showing the 20 most recent</p>
+      <p v-if="capped" class="text-xs text-ink-muted" data-testid="live-capped">Showing the 20 most recent</p>
       <section v-if="executed.length" class="mt-4" data-testid="live-group-executed">
-        <h2 class="text-lg font-medium">Executed</h2>
+        <h2 class="text-sm font-semibold text-ink-muted">Executed</h2>
         <div class="mt-2 grid grid-cols-1 gap-4 lg:grid-cols-2">
           <LiveStrategyCard v-for="s in executed" :key="s.id" :strategy="s" :start="startIndex(s) <= current" @settled="release(startIndex(s))" @closed="(at) => { closedAt = at }" />
         </div>
       </section>
       <section v-if="drafts.length" class="mt-4" data-testid="live-group-drafts">
-        <h2 class="text-lg font-medium">Saved drafts (live prices)</h2>
+        <h2 class="text-sm font-semibold text-ink-muted">Saved drafts (live prices)</h2>
         <div class="mt-2 grid grid-cols-1 gap-4 lg:grid-cols-2">
           <LiveStrategyCard v-for="s in drafts" :key="s.id" :strategy="s" :start="startIndex(s) <= current" @settled="release(startIndex(s))" @closed="(at) => { closedAt = at }" />
         </div>
