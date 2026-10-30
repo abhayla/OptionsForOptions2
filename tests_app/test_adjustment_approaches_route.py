@@ -16,9 +16,9 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 from ofo.adjustment.approaches import APPROACH_IDS, ChainRow, Position, PositionLeg
+from ofo.adjustment.compare import ROWS
 from ofo.charges import ChargeRates
 from ofo.engine.black_scholes import year_fraction
-from ofo.errors.explanations import ADJUSTMENT_CRITERION_LABEL_TEXT
 from ofo.marketdata.spot_source import SourceReading, SourceState
 from ofo.outcome.service import MARGIN_CHECKED, Margin, margin_unreadable
 from ofo_app.main import create_app
@@ -258,7 +258,7 @@ def test_req156_ac2_adj02_reply_carries_every_criterion_for_every_approach_and_t
     sc = load("ADJ-02")
     body = post(client_for(sc, rates=RATES)).json()
     built = [a["id"] for a in body["approaches"] if a["refusal"] is None]
-    assert [c["id"] for c in body["criteria"]] == list(ADJUSTMENT_CRITERION_LABEL_TEXT)
+    assert [c["id"] for c in body["criteria"]] == [r for r, _, _ in ROWS]  # the catalogue order (domain test pins it)
     assert {c["group"] for c in body["criteria"]} == {"money_now", "risk_after", "reward_after", "greeks_after",
                                                      "practical"}
     for c in body["criteria"]:

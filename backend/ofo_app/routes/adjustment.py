@@ -34,11 +34,13 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends
 from ofo.adjustment.approaches import (
     APPROACH_IDS,
+    NO_CHANGE,
     ApproachLegs,
     ChainRow,
     Position,
     PositionLeg,
     build_approach,
+    is_no_change,
     load_config,
 )
 from ofo.adjustment.compare import POP_TEXT, Column, Context, MarginRead, compare
@@ -362,9 +364,9 @@ async def _compare_reply(columns: list[Column], tracked: Tracked, spot: Decimal,
     """REQ-156: the compare over the built approaches; the current legs' margin is "No change"'s (read once more
     only when A-36 was not asked)."""
     position = tracked.position
-    before_margin = next((c.margin for c in columns if c.built.id == "A-36"), None)
+    before_margin = next((c.margin for c in columns if is_no_change(c.built)), None)
     if before_margin is None:
-        unchanged = build_approach(position, market.chain, spot, "A-36", _CONFIG)
+        unchanged = build_approach(position, market.chain, spot, NO_CHANGE, _CONFIG)
         before_margin = _margin_read(await _margin(margin_of, unchanged, market))
     ctx = Context(position, spot, market.chain, rates, pop_on, before_margin, market.leg_greeks,
                   tracked.adjustments_used)

@@ -44,10 +44,19 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from decimal import ROUND_HALF_EVEN, ROUND_HALF_UP, Decimal
 
-from ofo.adjustment.approaches import APPROACH_IDS, ApproachLegs, ChainRow, Position, PositionLeg, planned_price
+from ofo.adjustment.approaches import (
+    APPROACH_IDS,
+    NO_CHANGE,
+    ApproachLegs,
+    ChainRow,
+    Position,
+    PositionLeg,
+    planned_price,
+)
 from ofo.charges import ChargeRates
 from ofo.charges.calculator import ChargeOrder, charges_for_orders
 from ofo.charges.round_trip import charge_segment, to_paise_up
+from ofo.engine import adjust_money
 from ofo.engine.black_scholes import GREEK_STEP, Greeks
 from ofo.engine.legs import Action, Instrument, Leg
 from ofo.engine.metrics import UNLIMITED
@@ -205,21 +214,20 @@ class _Rows:
         return None
 
     def credit(self) -> Cell:
-        return _rupees(sum((t.price * t.quantity * (1 if t.action == "SELL" else -1) for t in self.b.trades),
-                           Decimal(0)))
+        return _rupees(adjust_money.trade_credit((t.action, t.price, t.quantity) for t in self.b.trades))
 
     def cost(self) -> Cell:
         if not self.b.trades:
             return _rupees(Decimal(0))
         if self.col.whole is None or not self.col.charges_known:
             return _dash(self._after_reason())
-        spread = Decimal(0)
+        quotes = []
         for t in self.b.trades:
             row = self._row(t)
             if row is None or row.bid is None or row.ask is None or row.bid <= 0 or row.ask < row.bid:
                 return _dash(render_explanation("adjust_cmp_no_bid_ask", leg=t.tradingsymbol))
-            spread += (row.ask - row.bid) / 2 * t.quantity
-        return _rupees(self.col.whole.adjustment_charges + spread)
+            quotes.append((row.bid, row.ask, t.quantity))
+        return _rupees(adjust_money.cost_with_spread(self.col.whole.adjustment_charges, quotes))
 
     def margin_change(self) -> Cell:
         before, after = self.ctx.before_margin, self.col.margin
@@ -227,7 +235,7 @@ class _Rows:
             return _dash(after.reason)
         if before.value is None:
             return _dash(render_explanation("adjust_cmp_margin_before_unknown"))
-        return _rupees(after.value - before.value)
+        return _rupees(adjust_money.margin_change(after.value, before.value))
 
     def max_loss(self) -> Cell:
         reason = self._after_reason()
@@ -269,13 +277,13 @@ class _Rows:
         return _rupees(top)  # type: ignore[arg-type]
 
     def premium_left(self) -> Cell:
-        total = Decimal(0)
+        legs = []
         for x in self.b.after:
             price = planned_price(self._row(x))
             if price is None:
                 return _dash(render_explanation("adjust_cmp_no_price", leg=x.tradingsymbol))
-            total += price * x.lots * self.lot * (1 if x.side == "SELL" else -1)
-        return _rupees(total)
+            legs.append((x.side, price, x.lots * self.lot))
+        return _rupees(adjust_money.premium_left(legs))
 
     def pop(self) -> Cell:
         if not self.ctx.pop_on:
@@ -373,7 +381,8 @@ def _single(legs: Sequence[PositionLeg]) -> bool:
 
 def column_order(ids: Sequence[str]) -> list[str]:
     """AC-4: "No change" first, then the catalogue order; never sorted by how many rows a column leads."""
-    return sorted(ids, key=lambda a: (a != "A-36", APPROACH_IDS.index(a) if a in APPROACH_IDS else len(APPROACH_IDS)))
+    last = len(APPROACH_IDS)
+    return sorted(ids, key=lambda a: (a != NO_CHANGE, APPROACH_IDS.index(a) if a in APPROACH_IDS else last))
 
 
 def _curve_levels(ctx: Context, cols: Sequence[Column]) -> list[Decimal]:
