@@ -238,16 +238,9 @@ def price_after(legs: Sequence[PositionLeg], position: Position, booked: Decimal
                                           x.entry) for x in legs], rates)  # type: ignore[arg-type]
         except ValueError:
             known = False
-    if not legs:  # A-31 exits everything: the whole trade is the flat booked amount (no payoff left to walk)
-        b = booked.quantize(Decimal("0.01"))
-        total = (paid or Decimal(0)) + adjustment + exits if known else Decimal(0)
-
-        def flat(v: Decimal) -> WholeTradeFigures:
-            return WholeTradeFigures(v, -v if v < 0 else Decimal(0), (), ())
-        return Priced(WholeTradeAfter(flat(b), flat(b - total), b, paid if known else Decimal(0), adjustment, exits,
-                                      total, Decimal(1) if b - total > 0 else Decimal(0), None), known)
     try:
-        after = whole_trade_after(_strategy(legs, position.lot), booked_pnl=booked.quantize(Decimal("0.01")),
+        open_legs = _strategy(legs, position.lot) if legs else None  # None: every leg exited (A-31)
+        after = whole_trade_after(open_legs, booked_pnl=booked.quantize(Decimal("0.01")),
                                   paid_charges=paid if known else Decimal(0),  # type: ignore[arg-type]
                                   adjustment_charges=adjustment if known else Decimal(0),
                                   open_exit_charges=exits if known else Decimal(0),

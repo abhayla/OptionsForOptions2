@@ -206,3 +206,23 @@ def test_ac4_pop_missing_input_gives_a_named_reason_never_an_exception_or_a_blan
                           open_exit_charges=ZERO, forward=forward, years=years, vol=vol)
     assert w.pop is None and w.pop_unavailable is why
     assert w.gross.max_loss == D("20858.5")  # the other figures still come back
+
+
+@pytest.mark.parametrize(("booked", "charges", "profit", "loss", "pop"), [
+    ("-2015", "0", "-2015", "2015", "0"),       # ADJ-13 A-31: exit everything at a loss
+    ("962", "100", "862", "0", "1"),            # a booked gain larger than the charges
+    ("50", "50", "0", "0", "0"),                # exactly flat after charges: not a profit
+])
+def test_ac2_no_open_leg_is_the_flat_booked_amount_less_charges(booked, charges, profit, loss, pop):
+    w = whole_trade_after(None, booked_pnl=D(booked), paid_charges=D(charges), adjustment_charges=ZERO,
+                          open_exit_charges=ZERO)
+    assert (w.gross.max_profit, w.gross.breakevens) == (D(booked), ())
+    assert (w.after_charges.max_profit, w.after_charges.max_loss) == (D(profit), D(loss))
+    assert w.after_charges.breakevens == () and (w.pop, w.pop_unavailable) == (D(pop), None)
+    assert bool(w.after_charges.loss_regions) is (D(profit) < 0)
+
+
+def test_no_open_leg_still_refuses_bad_amounts_by_name():
+    with pytest.raises(ValueError, match="booked_pnl"):
+        whole_trade_after(None, booked_pnl=D("1.001"), paid_charges=ZERO, adjustment_charges=ZERO,
+                          open_exit_charges=ZERO)
