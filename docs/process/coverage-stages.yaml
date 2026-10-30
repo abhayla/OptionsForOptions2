@@ -511,6 +511,7 @@ issues:
   "#608": S6.4  # User test 2026-10-30: remaining layout, display and after-hours items
   "#612": S6.4  # Index REST fallback answers NOT_CONNECTED cold while Zerodha is connected (GC-LIVE F-5)
   "#613": S6.4  # Checker target breakevens off by 0.11 points in 1 of 3 live runs (GC-LIVE F-6 remainder, parked after 2 rounds)
+  "#614": S6.4  # Leg-stop alert says 'exited 1 legs' (GC-LIVE2 M3)
 
 # Work items whose status is not done.
 work_items:
