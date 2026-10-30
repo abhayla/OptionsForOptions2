@@ -212,7 +212,8 @@ async def test_a_fully_exited_strategy_counts_in_booked_and_decays_nothing(db):
                               "charges": None, "charges_text": None, "charges_reason": "rates_unavailable",
                               # ADR-210: each reason code carries its sentence (GC-TPD); a None code, None text
                               "totals_reason_text": None, "decay_reason_text": None,
-                              "charges_reason_text": str(reason_text("rates_unavailable"))}
+                              "charges_reason_text": str(reason_text("rates_unavailable")),
+                              "totals_as_of": None}  # GC-LIVE L3a: no paused book, no pause time
 
 
 async def test_no_paper_strategies_answers_an_empty_list_and_zero_totals(db):
@@ -226,7 +227,7 @@ async def test_no_paper_strategies_answers_an_empty_list_and_zero_totals(db):
                               "decay_text": zero, "decay_reason": None, "charges": "0.00",
                               "charges_text": str(render_explanation("paper_charges", amount=D("0"))),
                               "charges_reason": None, "totals_reason_text": None, "decay_reason_text": None,
-                              "charges_reason_text": None}
+                              "charges_reason_text": None, "totals_as_of": None}
 
 
 # --- alerts carry the strategy name -----------------------------------------------------------------------------------
