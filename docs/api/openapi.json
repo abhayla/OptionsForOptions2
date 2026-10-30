@@ -3611,6 +3611,22 @@
               }
             ]
           },
+          "dividend_yields": {
+            "anyOf": [
+              {
+                "patternProperties": {
+                  "^[A-Za-z0-9_\\-.]{1,64}$": {
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dividend Yields"
+          },
           "last_price_at": {
             "anyOf": [
               {
@@ -3853,6 +3869,18 @@
             "format": "date-time",
             "title": "Answered At",
             "type": "string"
+          },
+          "as_of": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "As Of"
           },
           "booked": {
             "title": "Booked",
@@ -4725,6 +4753,18 @@
       "PaperStrategyOut": {
         "additionalProperties": false,
         "properties": {
+          "as_of": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "As Of"
+          },
           "booked": {
             "title": "Booked",
             "type": "string"
@@ -5281,6 +5321,18 @@
               }
             ],
             "title": "Total Text"
+          },
+          "totals_as_of": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Totals As Of"
           },
           "totals_reason": {
             "anyOf": [
@@ -7589,6 +7641,16 @@
         "additionalProperties": false,
         "description": "Position Greeks at the target, one row per leg in leg order (null: that leg has no time left) and the total\n(null unless every leg has a value; ``unavailable`` names why).",
         "properties": {
+          "dividend_yields": {
+            "default": {},
+            "patternProperties": {
+              "^[A-Za-z0-9_\\-.]{1,64}$": {
+                "type": "string"
+              }
+            },
+            "title": "Dividend Yields",
+            "type": "object"
+          },
           "legs": {
             "items": {
               "anyOf": [

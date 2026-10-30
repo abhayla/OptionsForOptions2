@@ -374,6 +374,7 @@ decisions:
   ADR-210: S6.1         # seven user sentences for paper figures not shown (owner, 2026-10-29)
   ADR-211: S6.1         # eight user sentences for badge, Target block, paper (owner, 2026-10-29)
   ADR-212: S6.1         # paper positions after hours show the last close (owner, 2026-10-30)
+  ADR-213: S6.4         # index strip socket drop keeps fresh values under the not-live message (owner, 2026-10-30)
   ADR-214: S6.4         # where adjustments live: drawer, adjust mode, compare, filters, playbooks (owner, 2026-10-30)
 
 questions:
@@ -519,6 +520,11 @@ issues:
   "#606": S6.4  # GC-TPL live run (expert-trader paper, market hours) not run at the 2026-10-29 land
   "#607": S6.4  # GC-TPD Part 2: R-25 R-23 R-27 R-13 R-35 + wording question (after GC-TPL)
   "#608": S6.4  # User test 2026-10-30: remaining layout, display and after-hours items
+  "#612": S6.4  # Index REST fallback answers NOT_CONNECTED cold while Zerodha is connected (GC-LIVE F-5)
+  "#613": S6.4  # Checker target breakevens off by 0.11 points in 1 of 3 live runs (GC-LIVE F-6 remainder, parked after 2 rounds)
+  "#614": S6.4  # Leg-stop alert says 'exited 1 legs' (GC-LIVE2 M3)
+  "#615": S6.4  # Strike picker first cold read says LIVE with no spot or prices (same class as #612)
+  "#616": S6.4  # After the close: Paper has no market-closed banner and shows no-IV text; index read returns nulls
 
 # Work items whose status is not done.
 work_items:

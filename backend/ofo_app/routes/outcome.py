@@ -712,6 +712,7 @@ class TargetGreeksOut(ApiModel):
     total: GreeksOut | None
     unavailable: Literal["no_time_left"] | None
     unavailable_text: CatalogueText | None  # REQ-084 AC-2: "No Greeks at expiry: the options have no time left."
+    dividend_yields: dict[Identifier, Money] = {}  # expiry date -> the q the engine priced it with (checker input, not shown)
 
 
 class TargetBadgeOut(ApiModel):
@@ -791,6 +792,8 @@ class OutcomeResponse(ApiModel):
     summary: SummaryOut | None
     #: present whenever a snapshot was read and the answer is live (absent, not empty, when not connected or not live)
     leg_quotes: list[LegQuoteOut] | None = None
+    #: GC-LIVE: the dividend yield q each option expiry was priced with (expiry date -> q); a read-only echo for the checker
+    dividend_yields: dict[Identifier, Money] | None = None
     #: FROM_ENTRIES only (REQ-077 AC-9): where the level grid is centred when there is no live index price, and why
     centre_label: CatalogueText | None = None
     charges_breakdown: ChargesBreakdownOut | None = None  # REQ-081 AC-2 / ADR-167 (2)

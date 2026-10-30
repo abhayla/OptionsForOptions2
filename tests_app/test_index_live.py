@@ -336,6 +336,171 @@ def test_ac2_rest_with_no_feed_is_not_connected_with_null_values():
         ("NIFTY", None, None, None), ("SENSEX", None, None, None)]
 
 
+# ---- the plain first-paint read on a COLD feed (issue #612): the read holds the index ids itself ---------------------
+
+class ColdProvider(FakeProvider):
+    """Quotes exist at the vendor but only arrive once the ids are subscribed (the live cold case, 30 Oct 12:20)."""
+
+    def __init__(self, ids, pending: list[NormalizedQuote], connected: bool = True) -> None:
+        super().__init__(ids)
+        self.pending = pending
+        self.connected = connected
+
+    def status(self):
+        return type("Status", (), {"connected": self.connected})()
+
+    def subscribe(self, ids) -> None:
+        super().subscribe(ids)
+        for q in self.pending:
+            if q.instrument_id in ids:
+                self.tick(q)
+
+
+def cold_rig(pending_ids=(NIFTY_ID, SENSEX_ID), connected: bool = True, ids=None):
+    quotes = {NIFTY_ID: quote(NIFTY_ID, "NIFTY", "25145.50", T0),
+              SENSEX_ID: quote(SENSEX_ID, "SENSEX", "82010.25", T0)}
+    provider = ColdProvider({"NIFTY": NIFTY_ID, "SENSEX": SENSEX_ID} if ids is None else ids,
+                            [quotes[i] for i in pending_ids], connected)
+    wall = Wall()
+    feed = LiveFeed(MarketContext(provider, wall, Decimal("0.065")), FanOut(provider))
+    return provider, feed, wall
+
+
+async def first_paint(feed, wall, *, fallback=False, wait=0.3):
+    return await indices.indices_first_paint(feed.ctx, Held(feed), feed, fallback=fallback, now=wall, wait=wait)
+
+
+async def test_cold_plain_read_holds_the_index_ids_and_answers_live_with_both_values():
+    """#612 core: no socket holds the indices, quotes only arrive once subscribed: the plain read is LIVE with both
+    values, and the hold is released after the answer."""
+    provider, feed, wall = cold_rig()
+    answer = await first_paint(feed, wall)
+    assert answer.state == "LIVE"
+    assert [r.value for r in answer.indices] == [Decimal("25145.50"), Decimal("82010.25")]
+    assert feed.fanout.subscriber_count(NIFTY_ID) == 0 and provider.vendor_subscribed == set()
+
+
+async def test_cold_plain_read_with_one_index_priced_by_the_deadline_is_live_with_the_other_unavailable():
+    """Only NIFTY arrives: the read waits out the deadline, then answers what it has (SENSEX unavailable)."""
+    provider, feed, wall = cold_rig(pending_ids=(NIFTY_ID,))
+    answer = await first_paint(feed, wall, wait=0.1)
+    assert answer.state == "LIVE"
+    assert [(r.underlying, r.value, r.health) for r in answer.indices] == [
+        ("NIFTY", Decimal("25145.50"), "available"), ("SENSEX", None, "unavailable")]
+    assert provider.vendor_subscribed == set()
+
+
+async def test_cold_plain_read_with_the_provider_disconnected_stays_not_connected():
+    provider, feed, wall = cold_rig(pending_ids=(), connected=False)
+    answer = await first_paint(feed, wall)
+    assert answer.state == "NOT_CONNECTED" and all(r.value is None for r in answer.indices)
+    assert provider.vendor_subscribed == set()
+
+
+async def test_cold_read_without_a_feed_is_unchanged_not_connected():
+    wall = Wall()
+    answer = await indices.indices_first_paint(None, None, None, fallback=False, now=wall)
+    assert answer.state == "NOT_CONNECTED" and all(r.value is None for r in answer.indices)
+
+
+async def test_a_streaming_socket_means_no_extra_hold():
+    """A socket already holds the indices: LIVE as today, and the read subscribes nothing itself."""
+    provider, feed, channel, _mono, push = make_rig()
+    both(provider, "25145.50", "82010.25", T0)
+    task = asyncio.create_task(push.run())
+    await settle()
+    calls = provider.subscribe_calls
+    answer = await first_paint(feed, Wall())
+    await close(channel, task)
+    assert answer.state == "LIVE" and provider.subscribe_calls == calls
+
+
+async def test_cold_plain_read_in_a_closed_market_holds_nothing():
+    provider, feed, wall = cold_rig()
+    wall.now = datetime.datetime(2026, 10, 17, 11, 0, tzinfo=IST)  # a Saturday
+    answer = await first_paint(feed, wall)
+    assert answer.state == "NOT_CONNECTED" and answer.market_closed is True
+    assert provider.subscribe_calls == 0
+
+
+async def test_cold_fallback_read_holds_the_ids_and_answers_not_connected_with_both_values():
+    """ADR-213 core (was: values null, nothing held): fallback=true on a cold feed holds the ids itself, answers
+    INSIDE the hold, keeps NOT_CONNECTED (the page's own socket is down) with both values filled, and releases."""
+    provider, feed, wall = cold_rig()
+    answer = await first_paint(feed, wall, fallback=True)
+    assert answer.state == "NOT_CONNECTED"
+    assert [r.value for r in answer.indices] == [Decimal("25145.50"), Decimal("82010.25")]
+    assert feed.fanout.subscriber_count(NIFTY_ID) == 0 and provider.vendor_subscribed == set()
+
+
+async def test_cold_fallback_read_with_one_index_priced_by_the_deadline_fills_that_one():
+    provider, feed, wall = cold_rig(pending_ids=(NIFTY_ID,))
+    answer = await first_paint(feed, wall, fallback=True, wait=0.1)
+    assert answer.state == "NOT_CONNECTED"
+    assert [(r.underlying, r.value) for r in answer.indices] == [("NIFTY", Decimal("25145.50")), ("SENSEX", None)]
+    assert provider.vendor_subscribed == set()
+
+
+async def test_cold_fallback_read_with_the_provider_disconnected_stays_null():
+    provider, feed, wall = cold_rig(pending_ids=(), connected=False)
+    answer = await first_paint(feed, wall, fallback=True)
+    assert answer.state == "NOT_CONNECTED" and all(r.value is None for r in answer.indices)
+    assert provider.vendor_subscribed == set()
+
+
+async def test_cold_fallback_read_without_a_feed_is_unchanged():
+    answer = await indices.indices_first_paint(None, None, None, fallback=True, now=Wall())
+    assert answer.state == "NOT_CONNECTED" and all(r.value is None for r in answer.indices)
+
+
+async def test_cold_fallback_read_in_a_closed_market_is_unchanged_and_holds_nothing():
+    provider, feed, wall = cold_rig()
+    wall.now = datetime.datetime(2026, 10, 17, 11, 0, tzinfo=IST)  # a Saturday
+    answer = await first_paint(feed, wall, fallback=True)
+    assert answer.state == "NOT_CONNECTED" and answer.market_closed is True
+    assert provider.subscribe_calls == 0
+
+
+async def test_fallback_read_while_another_socket_streams_is_never_live_and_has_values():
+    """Finding liveness-from-shared-subscribers: another socket holds the ids; this page's fallback answer is still
+    NOT_CONNECTED (never LIVE), now with the values filled."""
+    _provider, feed, wall = cold_rig()
+    other = feed.fanout.subscribe(lambda _q: None, [NIFTY_ID, SENSEX_ID])  # another socket streams both ids
+    answer = await first_paint(feed, wall, fallback=True)
+    assert feed.fanout.subscriber_count(NIFTY_ID) == ONE  # only the other holder remains
+    feed.fanout.unsubscribe(other)
+    assert answer.state == "NOT_CONNECTED"
+    assert [r.value for r in answer.indices] == [Decimal("25145.50"), Decimal("82010.25")]
+
+
+async def test_cold_fallback_read_when_the_fanout_refuses_the_ids_is_unchanged():
+    _provider, feed, wall = cold_rig()
+
+    def refuse(*_a, **_k):
+        raise KeyError("no token")
+    feed.fanout.subscribe = refuse
+    answer = await first_paint(feed, wall, fallback=True)
+    assert answer.state == "NOT_CONNECTED" and all(r.value is None for r in answer.indices)
+
+
+async def test_cold_plain_read_with_an_unknown_index_id_answers_as_today():
+    """The catalogue does not know SENSEX: nothing to subscribe for it; NIFTY is held and LIVE, SENSEX unavailable."""
+    _provider, feed, wall = cold_rig(ids={"NIFTY": NIFTY_ID, "SENSEX": None})
+    answer = await first_paint(feed, wall, wait=0.1)
+    assert answer.state == "LIVE"
+    assert [(r.underlying, r.value) for r in answer.indices] == [("NIFTY", Decimal("25145.50")), ("SENSEX", None)]
+
+
+async def test_cold_plain_read_when_the_fanout_refuses_the_ids_answers_as_today():
+    _provider, feed, wall = cold_rig()
+
+    def refuse(*_a, **_k):
+        raise KeyError("no token")
+    feed.fanout.subscribe = refuse
+    answer = await first_paint(feed, wall)
+    assert answer.state == "NOT_CONNECTED" and all(r.value is None for r in answer.indices)
+
+
 # ---- the real app on the test replay (in-process, no lifespan, no database) ------------------------------------------
 
 def _replay_app(monkeypatch):

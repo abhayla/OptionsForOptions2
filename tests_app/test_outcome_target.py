@@ -66,6 +66,8 @@ async def test_target_at_now_is_the_estimated_now_curve(provider):
     assert t["curve"]["points"] == out["curves"]["estimated_now"]["points"]  # same function, same levels
     assert t["greeks"]["total"] is not None and t["greeks"]["unavailable"] is None
     assert len(t["greeks"]["legs"]) == len(out["legs"])
+    assert set(t["greeks"]["dividend_yields"]) == {leg["expiry"] for leg in out["legs"]}  # GC-LIVE: the q priced with
+    assert out["dividend_yields"] == t["greeks"]["dividend_yields"]  # the main reply echoes the same q
     assert isinstance(t["breakevens"], list) and t["breakevens_reason"] is None
 
 

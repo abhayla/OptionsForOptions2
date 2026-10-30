@@ -69,8 +69,11 @@ async function readAnswer(fallback) {
 /**
  * The ONE answer state machine for every screen that shows index values (index page, Home strip): first-paint read,
  * socket pushes, drop counter (a read sent before the latest drop is ignored), clear-on-drop (REQ-049 AC-4: an old LIVE
- * number is never kept; only each index's last time stays), fallback read. `shownValue(row)` returns a number only from a
- * LIVE answer received after the latest drop, or (stale, with its time) from a market-closed answer. Screens render `rowFor`/`shownValue`/`notLive` and hold no answer state.
+ * number is never kept; only each index's last time stays), fallback read. `shownValue(row)` returns a number only from
+ * a LIVE answer received after the latest drop, from a market-closed answer (stale, with its time), or (ADR-213) from a
+ * NOT_CONNECTED answer whose row carries a value: the server's fallback answer, which it read itself while this page's
+ * own socket was down; the not-live message stays. A value of the dead socket is never kept (`notLiveAfterDrop`).
+ * Screens render `rowFor`/`shownValue`/`notLive` and hold no answer state.
  */
 export function useIndexAnswer({ url, WebSocketImpl } = {}) {
   const answer = ref(null)
@@ -117,7 +120,8 @@ export function useIndexAnswer({ url, WebSocketImpl } = {}) {
   const isLive = () => isLiveIndexAnswer(answer.value)
   const marketClosed = () => answer.value?.market_closed === true
   // REQ-072 AC-2: on a closed market the last value is shown as such (stale, "Last updated <time>"), never as live
-  const shownValue = (row) => ((isLive() || marketClosed()) && typeof row?.value === 'string' ? row.value : VALUE_UNAVAILABLE)
+  // ADR-213: a NOT_CONNECTED answer shows the string value the server filled (its fallback read); the not-live message stays
+  const shownValue = (row) => (typeof row?.value === 'string' ? row.value : VALUE_UNAVAILABLE)
   // ADR-177: a closed market shows the banner once, never a per-index "stale" word or sentence
   const healthOf = (row) => shownHealth(row?.health, marketClosed())
   const notLive = () => (answer.value !== null && !isLive()) || failed.value

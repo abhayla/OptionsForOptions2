@@ -28,9 +28,12 @@ from ofo_app.errors import SocketClosed
 from ofo_app.outcome_margin import OutcomeMargin
 from ofo_app.outcome_oi import hold_ids as oi_hold_ids
 from ofo_app.routes.outcome import (
+    BookedReader,
     ContractLookup,
     MarketContext,
     OutcomeRequest,
+    get_booked,
+    get_booked_reader,
     get_contract_lookup,
     get_margin_source,
     load_charge_rates,
@@ -63,7 +66,7 @@ def _input_state(quote) -> tuple:
     return (quote.ltp, quote.bid, quote.ask, quote.health)
 
 
-def _no_listener(_quote: Any) -> None:
+def no_listener(_quote: Any) -> None:
     """The forward strikes' holder: reads take the provider's current quotes; a forward tick alone pushes nothing."""
 
 
@@ -71,8 +74,12 @@ class StrategyPush:
     def __init__(self, channel: Channel, feed: Optional[LiveFeed], *,  # noqa: PLR0913 - one seam per collaborator
                  monotonic: Callable[[], float],
                  poll: float = POLL_SECONDS, lookup: Optional[ContractLookup] = None,
-                 margin_source: Optional[OutcomeMargin] = None) -> None:
+                 margin_source: Optional[OutcomeMargin] = None,
+                 booked_reader: BookedReader | None = None) -> None:
         self._channel = channel
+        # GC-LIVE R-26 (ADR-209): the follow message may carry a what-if target and a paper strategy; each push then
+        # reads that strategy's booked P&L with the REST route's own reader, so its target block equals the REST answer
+        self._booked_reader = booked_reader if booked_reader is not None else get_booked_reader()
         # ADR-099: the app's one plan-keyed margin cache, shared with the REST route: a tick re-push reads no margin
         self._margin_source = margin_source if margin_source is not None else get_margin_source()
         self._feed = feed
@@ -119,7 +126,7 @@ class StrategyPush:
         if not ids:
             return None
         try:
-            return self._feed.fanout.subscribe(_no_listener, ids, max_queue=1)
+            return self._feed.fanout.subscribe(no_listener, ids, max_queue=1)
         except KeyError:
             return None
 
@@ -139,7 +146,7 @@ class StrategyPush:
         new_handle = None
         if ids:
             try:
-                new_handle = self._feed.fanout.subscribe(_no_listener, list(ids), max_queue=1)
+                new_handle = self._feed.fanout.subscribe(no_listener, list(ids), max_queue=1)
             except KeyError:  # a contract the provider does not know: hold nothing (the reply says not streaming)
                 new_handle = None
         self._release_forward(self._oi_handle)
@@ -190,8 +197,9 @@ class StrategyPush:
             ctx = None if self._feed is None else self._feed.ctx
             stored = await stored_legs_for(req, ctx, self._lookup)  # same helper as the REST route
             margin = await margin_for_request(req, ctx, self._margin_source)  # same step as the REST route
+            booked = await get_booked(req, self._booked_reader)  # same step as the REST route (nothing for a plan)
             # REQ-133 AC-2: the push echoes the version (seq) of the follow message it was computed for (echo_seq)
-            body = outcome_response(req, ctx, stored=stored, rates=rates, margin=margin, seq=req.seq)
+            body = outcome_response(req, ctx, stored=stored, rates=rates, margin=margin, seq=req.seq, booked=booked)
         except Exception:  # a path we did not expect: one fixed message, the exception is not shown
             await self._error()
             return

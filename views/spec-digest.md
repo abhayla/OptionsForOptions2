@@ -4,10 +4,9 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (209)
+## Decisions (210)
 
-- Older decisions: 169 rows, ADR-1..ADR-172 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
-- ADR-173 2026-10-23: Makes ADR-152 binding by machine. [refines ADR-152]
+- Older decisions: 170 rows, ADR-1..ADR-173 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
 - ADR-174 2026-10-23: Kept as built (REQ-015 AC-1, ADR-053): a user who has not connected Zerodha can open the screens an… [applies ADR-152]
 - ADR-175 2026-10-23: Copied from the reference product's login page (study 2026-10-21, screen 180): (1) the Connect Zero… [extends REQ-015; applies ADR-173]
 - ADR-176 2026-10-23: Refines ADR-152 and ADR-173. [refines ADR-152, ADR-173]
@@ -46,6 +45,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-210 2026-10-29: A paper or what-if figure that cannot be shown displays "-" with one of these sentences (REQ-152 AC… [refines REQ-109 and REQ-084 AC-5 (no wording ther…]
 - ADR-211 2026-10-29: (1) The projected badge at exactly zero reads "Projected P/L: 0" (Sensibull's own words: badge "Pro… [refines REQ-144 AC-3 and AC-4 and REQ-109 (paper…]
 - ADR-212 2026-10-30: SPEC CHANGE to REQ-109 AC-5. [SPEC CHANGE to REQ-109 AC-5 (after hours the last…]
+- ADR-213 2026-10-30: SPEC CHANGE to ADR-077 / REQ-049 AC-5 for the NIFTY 50 and SENSEX index strip. [SPEC CHANGE to ADR-077 / REQ-049 AC-5 for the ind…]
 - ADR-214 2026-10-30: Where adjustments sit in the app. [Places REQ-045 AC-7/AC-9 and REQ-046 on named scr…]
 
 ## Requirements (154)

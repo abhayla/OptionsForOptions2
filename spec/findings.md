@@ -975,36 +975,57 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   and nothing links a later save to it. Class: every saved strategy with an open paper position (15 in ofo_dev on
   2026-10-29) whose plan is saved again. Bears on REQ-109, REQ-044 AC-2; decided by ADR-207 (2).
   Status: **measured once, live; defect class registered (`knowledge/findings/paper-plan-diverges-from-position.json`)**.
+  **FIXED, re-tested live 2026-10-30 (GC-LIVE L6):** in Drafts Mode an edit of an open paper strategy becomes pending
+  changes that only turn into paper orders through a review list: strategy 69 strike step 23050 -> 23100 CE showed
+  "2 pending changes" and "B Exit 23050 CE / S Add 23100 CE"; after Confirm the paper position and the plan both read
+  23100 (11:14). Class file `paper-plan-diverges-from-position.json` now guarded.
 
 ## F-66 - The builder prices an open paper position at the plan's entry prices, not its paper fills
 - Same walk: strategy 63 reopened from its URL showed planned entry 73.90 / 103.60 / 118.65 / 78.80 and max profit
   +4,274 on them, while its paper fills were 72.60 / 102.00 / 122.25 / 80.95. Every summary figure of an open paper
   position (max profit / loss, breakevens, reward/risk) is therefore of a trade he did not make. Bears on REQ-109,
   REQ-046 AC-2; decided by ADR-207 (2). Status: **measured once, live**.
+  **FIXED, re-tested live 2026-10-30 (GC-LIVE L6):** strategy 69 opened in the builder lists each leg's planned entry as
+  its paper average (61.00 / 90.00 / 88.50 / 52.50, the typed fills) under "Paper average", and after a roll / add the
+  rows read the new averages (23100 CE 80.95 = (81.90 + 80.00) / 2); checker `--paper-orders 69` 11:23 match 48 /
+  mismatch 0.
 
 ## F-67 - Paper entry is the LTP at "Start tracking", not the planned or typed entry price, and there is no confirm step
 - Same walk: planned (captured 10:23:04) 73.90 / 103.60 / 118.65 / 78.80; recorded paper entry at ~10:25
   72.60 / 102.00 / 122.25 / 80.95 - all four legs differ (-1.30, -1.60, +3.65, +2.15 per unit). Code: `capture_entry`
   takes the live LTP only (`ofo/tracking/paper.py:64`). Sensibull's Add to Drafts shows a confirm list with price and
   quantity (catalogue 171-173). Bears on REQ-109, REQ-077; decided by ADR-207 (1). Status: **measured once, live**.
+  **FIXED, re-tested live 2026-10-30 (GC-LIVE L6):** Add to Paper opens a confirm list ("This is not a real trade")
+  with an editable Lots and Price per leg; strategies 69 / 70 / 71 placed at TYPED 61.00 / 90.00 / 88.50 / 52.50,
+  471.00 / 530.00, 129.00 / 232.00 and recorded at exactly those averages (GET /paper/strategies/69, 70, 71 at 10:58,
+  10:59, 11:01).
 
 ## F-68 - An open paper leg has no expiry settlement: after expiry it has no price and its exit is refused
 - Code read 2026-10-29: an expired contract is "missing" (no price) in `ofo/tracking/paper.py:14`, and exit is refused
   with `tracking_exit_contract_not_live` (`routes/tracking.py:389`). Real cases waiting: four SENSEX 29 Oct paper
   strategies open at 10:30 IST on 2026-10-29 (GCBP P7, W2 P7, W2 P8; GCBP P8 already exited). Bears on REQ-109;
   decided by ADR-207 (6). Status: **from code, NOT yet seen live (check after 15:30 IST on 2026-10-29)**.
+  **FIXED, seen 2026-10-30 (GC-LIVE L6):** the 29 Oct SENSEX strategies 52, 60, 61 carry `settle` orders at 15:30 IST
+  29 Oct at intrinsic from BSE's close 74,151.04 (bseindia.com Previous Close read 30 Oct 10:26): 73000 CE 1151.04,
+  73200 CE 951.04, every out-of-the-money put 0.00; each book EXITED.
 
 ## F-69 - The Positions screen opens on a tab that says the user holds nothing while paper positions are open
 - Same walk: `/positions/current-positions` opened on "Positions": "No open positions - Zerodha shows no open
   positions, and none of your strategies holds any." with 17 paper strategies (15 with open legs) in the Paper tab; the
   just-placed strategy was 17th of 17. The menu's bare `/positions` page is a placeholder ("This page is a
   placeholder"). Bears on ADR-201 (2), REQ-044 AC-3; decided by ADR-207 (3). Status: **measured once, live**.
+  **FIXED, re-tested live 2026-10-30 (GC-LIVE L6):** `/positions/current-positions` opens on the Paper tab
+  (aria-selected Paper at 10:35); the Positions tab reads "No open Zerodha positions. 16 paper strategies are open -
+  see Paper."
 
 ## F-70 - "% of funds" divides by available funds; at low cash it reads as a meaningless 1045%, and Sensibull divides by funds needed
 - Same walk: max profit +4,274 "(1045% of funds)", max loss -2,226 "(544% of funds)" with margin available 409 and
   margin needed 61,163 (of margin needed: about 7.0% and 3.6%). REQ-081 AC-9 / ADR-164 take available funds and say
   "as Sensibull does", but the study records Sensibull's percent as "of funds needed" (catalogue line 42). Decided by
   ADR-207 (8) (SPEC CHANGE). Status: **measured once, live; basis read from the spec and the study**.
+  **FIXED, re-tested live 2026-10-30 (GC-LIVE L6):** the builder shows "+3,994 (6.4% of margin needed)" and
+  "-2,506 (4.0% of margin needed)" for the NIFTY short iron condor with margin needed 62,063 (3,994 / 62,063 = 6.44%;
+  2,506 / 62,063 = 4.04% by hand), and Live 11:22 "38.9% of margin needed" on the projected badge.
 
 ## F-71 - The "near a short strike" adjustment detection fires at entry for a shape whose short strike is near spot by design
 - Same walk: right after tracking, "Adjustment opportunity detected: Index is near a short strike: 22900, 78.95 points
