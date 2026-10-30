@@ -47,4 +47,18 @@ describe('REQ-109 AC-5: paused text carries the quote time', () => {
     d.totals.totals_as_of = null
     expect(readPaperList(d).totals.totalReason).toBe(PAPER_PAUSED)
   })
+  it('Total Decay: a prices_not_live decay reason carries totals_as_of; another decay reason does not', () => {
+    const d = clone()
+    Object.assign(d.totals, { decay_reason: 'prices_not_live', decay_reason_text: PAPER_PAUSED, totals_as_of: AT })
+    expect(readPaperList(d).totals.decayReason).toBe(`${PAPER_PAUSED}, as of ${istTime(AT)}`)
+    Object.assign(d.totals, { decay_reason: 'no_iv', decay_reason_text: 'No IV' })
+    expect(readPaperList(d).totals.decayReason).toBe('No IV')
+  })
+  it('Greeks: a paused book prints its prices_not_live greeks sentence with the book as_of', () => {
+    const d = clone()
+    d.strategies[0].as_of = AT
+    expect(first(d).greeksReason).toBe(`${d.strategies[0].greeks_reason_text}, as of ${istTime(AT)}`)
+    d.strategies[0].as_of = null
+    expect(first(d).greeksReason).toBe(d.strategies[0].greeks_reason_text)
+  })
 })

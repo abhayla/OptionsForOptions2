@@ -80,7 +80,7 @@ function readSummary(s) {
     maxProfit: profit.text, maxProfitReason: profit.reason,
     maxLoss: loss.text, maxLossReason: loss.reason,
     greeks: greeksOk ? { legs, net } : null,
-    greeksReason: greeksOk ? null : absent(s.greeks_reason_text),
+    greeksReason: greeksOk ? null : (s.state === 'PAUSED' && s.greeks_reason === 'prices_not_live' ? withAsOf(absent(s.greeks_reason_text), s.as_of) : absent(s.greeks_reason_text)),
   }
 }
 
@@ -121,7 +121,7 @@ function readTotals(t) {
   return {
     total: text(t.total_text), booked: text(t.booked_text), unbooked: text(t.unbooked_text), decay: text(t.decay_text),
     charges: text(t.charges_text), chargesReason: text(t.charges_reason_text),
-    totalReason: withAsOf(text(t.totals_reason_text), t.totals_as_of), decayReason: text(t.decay_reason_text),
+    totalReason: withAsOf(text(t.totals_reason_text), t.totals_as_of), decayReason: t.decay_reason === 'prices_not_live' ? withAsOf(text(t.decay_reason_text), t.totals_as_of) : text(t.decay_reason_text),
   }
 }
 
