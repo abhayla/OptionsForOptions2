@@ -78,8 +78,8 @@ The run tree has no `.env`, so run the MAIN checkout's dev_run.py with the run t
 | M1 | **Rebuild the GC-LIVE fixes on main and re-prove them live** (details below) | cherry-pick list with new shas; test runs; five live lines | DONE 12:26 (F-7, F-8 fixed 12:36) |
 | M2 | **Fix #612**: the index REST route must answer LIVE with values on a cold read in market hours (details below) | RCA line; red then green test; cold live proof; #612 comment | DONE 12:55 (plain read 12:37; fallback per ADR-213 round 2) |
 | M3 | **Leg stop fires live once, and not again after an API restart** (details below) | trigger rows, order rows (kind `stop`), alert, bell, after-restart counts | DONE 12:29 |
-| M4 | **Watch the 15:30 close live** (15:25-15:40), then post the #611 comment (details below) | one line per screen before and after 15:30; comment URL | Not started |
-| M5 | Handover: DONE / PENDING / BLOCKED / PARKED / OWED / NEXT appended here; memory note; servers stopped (recorded PIDs); lock removed; Chrome tabs closed; worktrees kept for the land | commit on this docs branch and on `live2/2026-10-30` | Not started |
+| M4 | **Watch the 15:30 close live** (15:25-15:40), then post the #611 comment (details below) | one line per screen before and after 15:30; comment URL | DONE 15:33 (Paper failed after the close: deferred #616) |
+| M5 | Handover: DONE / PENDING / BLOCKED / PARKED / OWED / NEXT appended here; memory note; servers stopped (recorded PIDs); lock removed; Chrome tabs closed; worktrees kept for the land | commit on this docs branch and on `live2/2026-10-30` | DONE 15:34 |
 
 ### M1 detail: rebuild on main
 
@@ -148,13 +148,13 @@ The run tree has no `.env`, so run the MAIN checkout's dev_run.py with the run t
 
 ## Definition of Done
 
-- [ ] M0 recorded, including the "no upstream" proof line.
-- [ ] M1: all 13 commits cherry-picked onto main (conflicts listed); the listed test runs pass; all five live proofs recorded with times; checker 0 mismatches on all 5 `--paper-orders` strategies and on 63 target mode.
-- [ ] M2: #612 fixed with a red-then-green test and a COLD live proof, or PARKED after 2 rounds with evidence; #612 commented.
-- [ ] M3: the leg stop fired exactly once and did not fire again after an API restart (counts recorded), or "price did not cross" recorded after 2 attempts.
-- [ ] M4: every listed screen has a line before and after 15:30; failures filed `deferred`; #611 comment posted (URL recorded).
-- [ ] Nothing pushed at any time: `git rev-parse --abbrev-ref "@{u}"` reports no upstream on `live2/2026-10-30`, and `git ls-remote origin ui/sensibull-layout-2026-10-30` still shows f9619949.
-- [ ] M5 handover committed here and on `live2/2026-10-30`.
+- [x] M0 recorded, including the "no upstream" proof line.
+- [x] M1: all 13 commits cherry-picked onto main (conflicts listed); the listed test runs pass; all five live proofs recorded with times; checker 0 mismatches on all 5 `--paper-orders` strategies and on 63 target mode. (Proof 2 is by route test: no book was paused in market hours.)
+- [x] M2: #612 fixed with a red-then-green test and a COLD live proof, or PARKED after 2 rounds with evidence; #612 commented. (Fallback built per ADR-213, owner decision.)
+- [x] M3: the leg stop fired exactly once and did not fire again after an API restart (counts recorded), or "price did not cross" recorded after 2 attempts.
+- [x] M4: every listed screen has a line before and after 15:30; failures filed `deferred`; #611 comment posted (URL recorded).
+- [x] Nothing pushed at any time: `git rev-parse --abbrev-ref "@{u}"` reports no upstream on `live2/2026-10-30`, and `git ls-remote origin ui/sensibull-layout-2026-10-30` still shows f9619949.
+- [x] M5 handover committed here and on `live2/2026-10-30`.
 
 ## Run lines (GC-LIVE2)
 
@@ -178,6 +178,13 @@ pm-ci.log). wt-link-modules failed as the contract expects.
 - M2 round 2 (Sonnet builder): a82ca376 red (3 failed on `[None, None] == [...]`, the value assertion), b690ca54 backend (`indices_answer(fill=True)` only in the fallback hold), a5225be7 frontend (`shownValue` shows a server-filled value under the not-live message). Merged d3189ed1. Session runs in the run tree: test_index_live 33, test_strategy_live_push 40, test_index_closed_market 12, test_market_closed_answers 3, test_openapi_drift 1, tests/test_no_order_placement 53 passed; full vitest 114 / 1656 passed (exit 0). Only fill answers and closed answers carry values while not LIVE (code read of index_push._row), so the wider `shownValue` shows nothing new beyond ADR-213.
 - M2 round 2 COLD proof (API PID 19712 stopped 12:54:31, new API up 12:54:40, no tab): fallback 12:54:40 NOT_CONNECTED 23105.60 / 74711.77 (0.77 s), 12:54:44 23104.30 / 74714.71, 12:54:47 23103.35 / 74711.30; plain 12:54:51 LIVE 23104.25 / 74710.30. #612 second comment posted. NOT proven live: the strip on a real browser socket drop (vitest only). Land risk: e2e/index-view.spec.ts 62-69 expects "Not available" after a socket kill. 13:55 code read: no workflow sets LIVE_MARKET (grep .github/workflows: 0 hits), so main.py:73 never starts the live market, `live_market.current_feed()` is None, and the fallback takes the old no-hold path (nulls): the spec should stay green. Unrun; confirm in the land run.
 
+- #615 deferred 14:17: strike picker cold read 14:17:58 -> state LIVE, reason SPOT_MISSING, spot null, 0 of 21 rows priced; 14:18:09 13 of 21; 14:18:14 all 21, spot 23046.45. Same class as #612. Staged a432e763.
+- M4 pre-close (own tab, 1536 px): 15:24:31 Home (placeholder page on main, no figure, 0 closed/stale text); 15:24:46 Paper (Total P&L +20,262.90, 0 closed/stale/paused); 15:24:59 Option Chain ("NIFTY 23010.00 as of 3:24:58 PM", "live", 0 closed); 15:25:13 Builder 69 (NIFTY 23010.00, Short Iron Condor, 0 closed/stale); 15:25:26 Live Strategies ("NIFTY 23010.00 at 30 Oct 2026, 15:25:25 IST", 0 closed/stale).
+- M4 post-close: 15:31:35 Home: no banner, no strip (placeholder on main). 15:31:50 Paper: FAIL, 0 `market-closed-banner`, a leg says "no implied volatility for this leg", figures still moving (Total P&L +20,252.65, 74100 PE LTP 406.65), 0 "paused", 0 stale. 15:31:57 `GET /api/market/indices`: market_closed true, NIFTY and SENSEX value null, last_price_at null (FAIL against ADR-212). 15:32:27 Option Chain PASS: one banner "Market closed. Prices are from 30 Oct 2026, 15:30:00 IST.", NIFTY 23053.10 as of 3:30:00 PM, 0 stale. 15:32:44 Builder 69 PASS: one banner, NIFTY 23053.10, 0 stale. 15:32:58 Live Strategies PASS: one banner, "NIFTY 23053.10", 0 stale. Failures filed deferred #616 (staged on live2, main checkout clean).
+- M4 #611 comment 15:33:24 (c611.md unchanged plus one M4 line): https://github.com/abhayla/OptionsForOptions2/pull/611#issuecomment-6520075902
+- No push 15:25:32: `live2/2026-10-30` -> "fatal: no upstream configured for branch 'live2/2026-10-30'"; `fix/live2-612-index-hold` -> no upstream; `git ls-remote origin` shows ui/sensibull-layout-2026-10-30 = f9619949 and no live2 or fix/live2 branch. (This docs branch tracks origin/main from GC-LIVE's creation; nothing was pushed from it.)
+- M5 15:33:37: API PID 2024 (port 8765) and Vite PID 22000 (port 5174) stopped by PID; 0 listeners after. Chrome tab closed.
+
 ## Found during the run
 
 | F | Step | What failed (seen) | Class / RCA | Fix commit | Re-test |
@@ -189,3 +196,60 @@ pm-ci.log). wt-link-modules failed as the contract expects.
 
 | Row / item | Why (evidence) | What is left |
 |---|---|---|
+| none | | |
+
+## M5 HANDOVER (30 Oct 2026, 15:34 IST)
+
+**DONE (proof in the run lines above)**
+- M0 run tree `OptionsForOptions2-live2` on `live2/2026-10-30` from db8cdf91, no upstream.
+- M1 all 13 GC-LIVE commits cherry-picked onto main with 0 conflicts. F-7 (golden reply) and F-8 (private-name import) fixed. vitest 1656 passed; the DB files passed. Five live proofs recorded. Checker 156/0, and target mode 358/0 + 22/0, three times out of three.
+- M2 #612: the plain first-paint read holds the index ids (cold LIVE at 12:36). The fallback follows ADR-213 (owner: "Go with what sensibull does") and fills values under NOT_CONNECTED (cold at 12:54). Two #612 comments.
+- M3 leg stop on strategy 70 fired once at 12:27:42: one stop order, BUY 20 @ 683.00, booked -4,240.00, alerts +1, bell +1. No re-fire after an API restart.
+- M4 all five screens read before (15:24-15:25) and after (15:31-15:33) the close. Option Chain, Builder 69 and Live Strategies pass. Paper fails after the close, and the index read returns nulls after the close: deferred #616. #611 comment posted.
+
+**PENDING**: none in this contract.
+
+**BLOCKED**: none.
+
+**PARKED**: none in this contract. (#613 from GC-LIVE stays parked.)
+
+**DEFERRED (filed, not fixed)**
+- #614 leg-stop alert says "exited 1 legs".
+- #615 strike picker's first cold read says LIVE with no spot or prices (same class as #612). Two more routes are named in it but were not checked live: leg_edit.py:351 and ready_made.py:116.
+- #616 after the close:
+  - Paper shows no market-closed banner, and a leg shows "no implied volatility for this leg".
+  - `GET /api/market/indices` returns null values with market_closed true.
+  - Check first whether the #612 hold releasing the index ids leaves no close snapshot. If it does, this is a side effect of M2, and it should be fixed in the same land.
+
+**OWED / for the owner**
+- ADR-213 keeps our not-live wording. Sensibull's "Prices might be off (Websocket is Disconnected)" wording would be a separate owner call.
+- Not proven live: the index strip showing values on a real browser socket drop (vitest only).
+
+**Waiting to land (nothing pushed)**
+- `live2/2026-10-30` = main + GC-LIVE fixes + F-7 + ADR-213 + M2 rounds 1-2 (merges cc3d9ccf, d3189ed1) + #614/#615/#616 stage lines.
+- Land order:
+  1. #611 first.
+  2. ONE fix PR from this branch, with `Fixes #612`.
+- Before landing: run prepush --full once, and confirm e2e/index-view.spec.ts is green (by code read it should be).
+- Look at #616's index-null question before that PR. If it is caused by the hold, fix it in the same PR.
+
+**Worktrees kept for the land**
+- OptionsForOptions2-live2 (run tree; lock removed at M5)
+- OptionsForOptions2-live2-612
+- GC-LIVE's live1030* trees
+- The harness trees agent-a520c9b3... and agent-a6de03c5...
+- Remove them with wt-rm after the land.
+
+**Lessons**
+- `pytest tests -x` hid two GC-LIVE defects behind the first failure. A "whole suite" proof runs without `-x`.
+- A builder's "red" that is an AttributeError proves nothing. Round 2's brief demanded a red on the value assertion, and got one.
+- gh_issue.py --stage writes to coverage-stages.yaml of the checkout it runs from. Run it from the run tree (done for #616), never from main.
+- I typed a guessed time once (13:20 instead of 13:55); it is fixed. Read `date` in the same step.
+- I sat idle from 12:55 to 13:50 waiting for M4 before the owner asked. The queue had real work in it the whole time: the e2e risk check, this draft, and the #615 check.
+- A hold that releases ids can leave a surface with no last value after the close (#616, unconfirmed). The next hold design checks the closed path too.
+
+**NEXT**
+- After hours: land #611, then the GC-LIVE2 fix PR (one push), with #616's index question first.
+- Then #613, #614, #615.
+- Mon 2 Nov: R-24 (arm by 09:10).
+- Mon 3 Nov: NIFTY settlement proof after 15:45.
