@@ -29,7 +29,7 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 from ofo_app import live_market
 from ofo_app.api_models import ApiModel, Identifier, Money
 from ofo_app.errors import ClosedRoute
-from ofo_app.live_push import POLL_SECONDS, LiveFeed
+from ofo_app.live_push import POLL_SECONDS, LiveFeed, no_listener
 from ofo_app.routes.outcome import (
     AnswerClock,
     MarketContext,
@@ -96,10 +96,6 @@ def _can_price(ctx: MarketContext | None, at) -> bool:
     return not status.session_ended and market_state(ctx, ctx.clock() if at is None else at).closed
 
 
-def _no_listener(_quote) -> None:  # the route only waits for the book to fill; it needs no pushed quotes
-    return None
-
-
 def _read(ctx: MarketContext, underlying: str, ids: list[str]):
     valuation = ctx.clock()
     snapshot = read_snapshot(ctx.provider, underlying, ids, valuation, ctx.rate, feed_scope(ctx))
@@ -126,7 +122,7 @@ async def hold_until_priced(feed: LiveFeed, ctx: MarketContext, underlying: str,
     client disconnect). Subscribe and release run on the event loop, like the live push's. A contract that already has
     a live price is never acquired, so another holder's hold is never touched by this one."""
     try:
-        handle = feed.fanout.subscribe(_no_listener, unpriced, max_queue=1)
+        handle = feed.fanout.subscribe(no_listener, unpriced, max_queue=1)
     except KeyError:  # a contract the provider has no token for: nothing was subscribed, the unpriced answer stands
         return _read(ctx, underlying, ids)
     try:

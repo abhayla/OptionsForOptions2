@@ -56,7 +56,7 @@ from ofo_app import strategy_store as store
 from ofo_app.api_models import ApiModel, CatalogueText, Money
 from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure
-from ofo_app.live_push import POLL_SECONDS, LiveFeed
+from ofo_app.live_push import POLL_SECONDS, LiveFeed, no_listener
 from ofo_app.paper_reasons import breakevens_reason_text, extremes_reason_text, greeks_reason_text, reason_text
 from ofo_app.routes.broker import current_user_ref
 from ofo_app.routes.outcome import (
@@ -67,7 +67,7 @@ from ofo_app.routes.outcome import (
     get_market_context,
     load_charge_rates,
 )
-from ofo_app.routes.planned_entry import _no_listener, get_live_feed
+from ofo_app.routes.planned_entry import get_live_feed
 from ofo_app.routes.strategies import StrategyRefused, refused_answer
 from ofo_app.underlying import Underlying
 
@@ -307,7 +307,7 @@ async def _hold_until_ready(feed: LiveFeed, ctx: MarketContext, underlying: str,
     wanted = [*ids, *([index_id] if index_id else []),
               *forward_strike_ids(provider.instrument_master(), underlying, ids, live_spot)]
     try:
-        handle = feed.fanout.subscribe(_no_listener, list(dict.fromkeys(wanted)), max_queue=1)
+        handle = feed.fanout.subscribe(no_listener, list(dict.fromkeys(wanted)), max_queue=1)
     except KeyError:  # a contract the provider has no token for: nothing was subscribed, the answer stands
         return snapshot
     try:

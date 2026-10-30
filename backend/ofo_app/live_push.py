@@ -66,7 +66,7 @@ def _input_state(quote) -> tuple:
     return (quote.ltp, quote.bid, quote.ask, quote.health)
 
 
-def _no_listener(_quote: Any) -> None:
+def no_listener(_quote: Any) -> None:
     """The forward strikes' holder: reads take the provider's current quotes; a forward tick alone pushes nothing."""
 
 
@@ -126,7 +126,7 @@ class StrategyPush:
         if not ids:
             return None
         try:
-            return self._feed.fanout.subscribe(_no_listener, ids, max_queue=1)
+            return self._feed.fanout.subscribe(no_listener, ids, max_queue=1)
         except KeyError:
             return None
 
@@ -146,7 +146,7 @@ class StrategyPush:
         new_handle = None
         if ids:
             try:
-                new_handle = self._feed.fanout.subscribe(_no_listener, list(ids), max_queue=1)
+                new_handle = self._feed.fanout.subscribe(no_listener, list(ids), max_queue=1)
             except KeyError:  # a contract the provider does not know: hold nothing (the reply says not streaming)
                 new_handle = None
         self._release_forward(self._oi_handle)
