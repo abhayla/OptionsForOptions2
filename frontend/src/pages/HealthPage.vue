@@ -1,6 +1,7 @@
 <!-- Core proof page (W-054): shows the live database status read through the same-origin /api proxy from GET /health.
      Neutral cues only: green/yellow/orange/red are reserved for strategy health (ADR-010, ADR-049). -->
 <script setup>
+import PageHeader from '@/components/common/PageHeader.vue'
 import { onMounted, ref } from 'vue'
 import api from '@/services/api'
 
@@ -21,8 +22,8 @@ onMounted(async () => {
 
 <template>
   <section data-testid="health-page">
-    <h1 class="text-xl font-semibold" data-testid="page-title">System health</h1>
-    <div class="mt-4 rounded border border-line bg-surface p-4" :data-state="state" data-testid="health-status">
+    <PageHeader title="System health" />
+    <div class="rounded-lg border border-line bg-surface p-4" :data-state="state" data-testid="health-status">
       <p v-if="state === 'loading'" data-testid="health-loading">Checking...</p>
       <p v-else-if="state === 'ok'" class="font-medium" data-testid="health-database">database: ok</p>
       <p v-else class="font-medium" data-testid="health-unavailable">Status unavailable</p>

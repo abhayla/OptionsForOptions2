@@ -47,7 +47,7 @@ const rowName = computed(() => strategyLabel(props.row, `Draft ${props.row.id}`)
   <button
     v-else-if="flow.confirming !== row.id"
     type="button"
-    class="underline"
+    :class="icon ? 'underline' : 'link'"
     :disabled="flow.busy"
     :data-testid="`delete-${row.id}`"
     :aria-label="icon ? `Delete ${rowName}` : undefined"
@@ -65,7 +65,7 @@ const rowName = computed(() => strategyLabel(props.row, `Draft ${props.row.id}`)
     <span>{{ DELETE_CONFIRM_TEXT }}</span>
     <button
       type="button"
-      class="underline"
+      class="link"
       :disabled="flow.busy"
       data-testid="delete-confirm"
       @click="flow.confirm(row.id)"
@@ -74,7 +74,7 @@ const rowName = computed(() => strategyLabel(props.row, `Draft ${props.row.id}`)
     </button>
     <button
       type="button"
-      class="underline"
+      class="link"
       data-testid="delete-cancel"
       @click="flow.cancel()"
     >
