@@ -5,14 +5,12 @@ import datetime
 from decimal import Decimal
 
 import pytest
-
+from marketdata._kite_fixture import all_instrument_ids, new_provider, replay
 from ofo.marketdata.forward import FALLBACK_LABEL, spot_fallback_forward
 from ofo.outcome import OutcomeState, build_outcome, read_snapshot
 from ofo.outcome.serialize import outcome_to_dict
 from ofo.outcome.target import TargetAsk
 from ofo.rules.inputs import DataHealth
-
-from marketdata._kite_fixture import all_instrument_ids, new_provider, replay
 from outcome.test_same_engine import RATE, VALUATION, definition
 
 EXPIRY = datetime.date(2026, 10, 13)

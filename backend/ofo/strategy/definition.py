@@ -14,7 +14,6 @@ changing rules, risk limits or preferences (they change risk). Leg ORDER and the
 under ADR-045 (T2 #84 does not list preferences); it records more, never less.
 """
 from __future__ import annotations
-from ofo.errors.explanations import DEFAULT_STRATEGY_NAME, render_explanation, strike_text, user_words
 
 import datetime
 import re
@@ -25,6 +24,7 @@ from typing import Mapping, Union
 
 from ofo.engine.legs import Action, Instrument, require_decimal, require_price
 from ofo.engine.strategy import Strategy
+from ofo.errors.explanations import DEFAULT_STRATEGY_NAME, render_explanation, strike_text, user_words
 from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS
 from ofo.limits import INTEGER_MAX
 from ofo.strategy import settings_value
@@ -104,7 +104,8 @@ def describe_contract(contract: Contract) -> str:
 
 
 def display_contract(contract: Contract) -> str:
-    """REQ-151: the contract as the screens print it, "NIFTY 3 Nov 22650 PE" / "NIFTY 24 Nov FUT" (never an ISO date)."""
+    """REQ-151: the contract as the screens print it, "NIFTY 3 Nov 22650 PE" / "NIFTY 24 Nov FUT"
+    (never an ISO date)."""
     underlying, instrument, strike, expiry = contract
     return render_explanation("contract_display", underlying=underlying, day=expiry.day,
                               month=_MONTHS[expiry.month - 1], strike=strike_text(strike), instrument=instrument.value)
