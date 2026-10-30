@@ -41,9 +41,11 @@ from ofo.adjustment.approaches import (
     build_approach,
     load_config,
 )
+from ofo.adjustment.compare import POP_TEXT, Column, Context, MarginRead, compare
 from ofo.charges import ChargeRates
 from ofo.charges.calculator import ChargeOrder, charges_for_orders
 from ofo.charges.round_trip import charge_segment, to_paise_up
+from ofo.engine.black_scholes import Greeks
 from ofo.engine.legs import Action, Instrument, Leg
 from ofo.engine.metrics import UNLIMITED, MultiExpiryError
 from ofo.engine.pop import Why
@@ -80,6 +82,7 @@ class Tracked:
     position: Position
     booked: Decimal | None
     paid_charges: Decimal | None
+    adjustments_used: int | None = None  # None: the count could not be read (the compare shows "-" with the reason)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -95,6 +98,8 @@ class MarketInputs:
     last_close: SourceReading | None
     now: datetime.datetime
     expiry_kind: str | None = None  # weekly / monthly from the listed expiries (None: keep the tracked value)
+    #: trading symbol -> per-unit engine Greeks (``chain_values.chain_model``); a symbol absent -> "-" in the compare
+    leg_greeks: Mapping[str, Greeks] = dataclasses.field(default_factory=dict)
 
 
 TrackedReader = Callable[[int, ChargeRates | None], Awaitable[Tracked | None]]
@@ -152,9 +157,7 @@ def _figures(f: WholeTradeFigures) -> dict:
             "loss_regions": [[None if x is None else _money(x) for x in r[:2]] for r in f.loss_regions]}
 
 
-_POP_TEXT = {Why.NO_VOLATILITY: "adjust_pop_no_volatility", Why.NO_FORWARD: "adjust_pop_no_forward",
-             Why.MIXED_EXPIRIES: "adjust_pop_different_expiries",
-             Why.SPOT_STALE_OR_MISSING: "adjust_pop_spot_stale_or_missing"}
+_POP_TEXT = POP_TEXT
 
 
 def pop_block(after: WholeTradeAfter, pop_on: bool) -> dict:
@@ -270,7 +273,7 @@ def _leg_out(x: Any) -> dict:
 # ---- route --------------------------------------------------------------------------------------------------------
 
 @router.post("/api/strategies/{strategy_id}/adjustment-approaches", response_model=AdjustApproachesOut)
-async def adjustment_approaches(  # noqa: PLR0913 - FastAPI dependencies, one per input
+async def adjustment_approaches(  # noqa: C901, PLR0913, PLR0915 - FastAPI dependencies, one per input; one reply walk
         strategy_id: int, body: ApproachesIn,
         tracked_reader: Annotated[TrackedReader, Depends(get_tracked_reader)],
         market_reader: Annotated[MarketReader, Depends(get_market_reader)],
@@ -317,6 +320,7 @@ async def adjustment_approaches(  # noqa: PLR0913 - FastAPI dependencies, one pe
                                         _trade_orders(built, position.underlying), rates, market)
         engine = time.perf_counter() - t0
         out = []
+        columns: list[Column] = []
         for a, built in built_list:
             if built is None:  # attack 2: refused by name, the others still answer
                 out.append({"id": a, "refusal": render_explanation("adjust_unknown_approach", approach=a)})
@@ -331,8 +335,17 @@ async def adjustment_approaches(  # noqa: PLR0913 - FastAPI dependencies, one pe
                          "after_legs": [_leg_out(x) for x in built.after],
                          "closed_legs": [_leg_out(c) for c in built.closed], **_after_block(priced[a], pop_on)}
                 item["margin"] = await _margin(margin_of, built, market)
+                columns.append(Column(built, priced[a].after, priced[a].reason, priced[a].charges_known,
+                                      _margin_read(item["margin"])))
             out.append(item)
         reply["approaches"] = out
+        before_margin = next((c.margin for c in columns if c.built.id == "A-36"), None)
+        if before_margin is None:  # the current legs' margin = "No change"'s After margin
+            unchanged = build_approach(position, market.chain, spot.value, "A-36", _CONFIG)  # type: ignore[arg-type]
+            before_margin = _margin_read(await _margin(margin_of, unchanged, market))
+        ctx_cmp = Context(position, spot.value, market.chain, rates, pop_on, before_margin,  # type: ignore[arg-type]
+                          market.leg_greeks, tracked.adjustments_used)
+        reply |= _compare_block(compare(columns, ctx_cmp, before.after, before.charges_known))
     total = time.perf_counter() - started
     log.info("adjustment approaches strategy=%s approaches=%s engine_s=%.4f total_s=%.4f",
              strategy_id, len(built_list), engine, total)
@@ -340,6 +353,25 @@ async def adjustment_approaches(  # noqa: PLR0913 - FastAPI dependencies, one pe
         reply["timing"] = {"engine_seconds": Decimal(f"{engine:.4f}"), "total_seconds": Decimal(f"{total:.4f}"),
                            "approaches": len(built_list)}
     return AdjustApproachesOut.model_validate(reply)
+
+
+def _margin_read(block: Mapping[str, Any]) -> MarginRead:
+    """The margin block as the compare reads it: stated -> value; nothing open -> 0; anything else -> its reason."""
+    if block["state"] == "stated":
+        return MarginRead(block["value"])
+    if block["state"] == "not_needed":
+        return MarginRead(Decimal(0))
+    return MarginRead(None, block["reason"])
+
+
+def _compare_block(cmp: Any) -> dict:
+    """REQ-156: criteria rows, leads per approach and the payoff curves, as the reply carries them."""
+    criteria = [{"id": c.id, "group": c.group, "label": c.label, "leader_label": c.leader_label,
+                 "leaders": list(c.leaders),
+                 "values": {a: {"text": v.text, "value": v.value, "unavailable_reason": v.unavailable_reason}
+                            for a, v in c.values.items()}} for c in cmp.criteria]
+    return {"criteria": criteria, "leads": {a: {"n": n, "m": m} for a, (n, m) in cmp.leads.items()},
+            "curves": {k: [[level, pnl] for level, pnl in points] for k, points in cmp.curves.items()}}
 
 
 async def _margin(margin_of: ApproachMargin, built: ApproachLegs, market: MarketInputs) -> dict:

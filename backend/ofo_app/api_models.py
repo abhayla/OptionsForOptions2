@@ -483,6 +483,30 @@ class AdjustTimingOut(ApiModel):
     approaches: int
 
 
+class AdjustCellOut(ApiModel):
+    """One approach's value on one compare criterion (REQ-156 AC-3): ``text`` always shown; ``value`` the exact
+    number when there is one; ``unavailable_reason`` beside a "-"."""
+
+    text: CatalogueText
+    value: Money | None = None
+    unavailable_reason: CatalogueText | None = None
+
+
+class AdjustCriterionOut(ApiModel):
+    id: Identifier
+    group: Literal["money_now", "risk_after", "reward_after", "greeks_after", "practical"]
+    label: CatalogueText
+    hint: CatalogueText | None = None
+    leader_label: CatalogueText
+    leaders: list[Identifier]  # every tied leader; empty = no approach can lead this row
+    values: dict[Identifier, AdjustCellOut]  # approach id -> cell, "No change" first then catalogue order
+
+
+class AdjustLeadsOut(ApiModel):
+    n: int  # rows this approach leads
+    m: int  # rows with a leader
+
+
 class AdjustApproachesOut(ApiModel):
     strategy_id: int
     view: Literal["at_expiry", "estimated_now"]
@@ -490,4 +514,7 @@ class AdjustApproachesOut(ApiModel):
     pop_switch_on: bool
     before: AdjustWholeOut | None
     approaches: list[AdjustApproachOut]
+    criteria: list[AdjustCriterionOut] = []  # REQ-156 AC-2/AC-3; refused approaches take no part
+    leads: dict[Identifier, AdjustLeadsOut] = {}  # REQ-156 AC-4 "Leads on N of M"
+    curves: dict[Identifier, list[list[Money]]] = {}  # "before" / approach id -> [[level, P&L after charges], ...]
     timing: AdjustTimingOut | None = None

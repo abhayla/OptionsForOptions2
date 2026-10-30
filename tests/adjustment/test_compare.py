@@ -9,6 +9,7 @@ credit are sums over the scenario's own chain rows and hand trades, and every le
 from __future__ import annotations
 
 import datetime
+import itertools
 import json
 import re
 from dataclasses import replace
@@ -170,7 +171,7 @@ def test_ac2_breakevens_and_margin_change_and_adjustments_rows():
             return gen.hand_pnl_at(legs[a]["after"], Fraction(after[a]["booked_pnl"]), x) - Fraction(total(sc, a))
         points = sorted({Fraction(x["strike"]) for x in legs[a]["after"]})
         zeros = []
-        for lo, hi in zip(points, points[1:], strict=False):
+        for lo, hi in itertools.pairwise(points):
             if (pnl(lo) < 0) != (pnl(hi) < 0):
                 z = lo + (hi - lo) * pnl(lo) / (pnl(lo) - pnl(hi))
                 zeros.append((D(z.numerator) / D(z.denominator)).quantize(D("0.01")))
@@ -182,7 +183,8 @@ def test_ac2_breakevens_and_margin_change_and_adjustments_rows():
     mc = row(cmp, "margin_change")
     assert mc.values["A-36"].value == D(0) and mc.values["A-01"].value == D("-1999.50")
     assert mc.values["A-31"].value == D("-100000") and mc.leaders == ("A-31",)
-    assert mc.values["A-29"].text == "-" and "Zerodha answered without a margin figure" in mc.values["A-29"].unavailable_reason
+    a29 = mc.values["A-29"]
+    assert a29.text == "-" and "Zerodha answered without a margin figure" in a29.unavailable_reason
     adj = row(cmp, "adjustments")
     assert adj.values["A-36"].text == "0 used; no plan maximum set" and adj.values["A-05"].value == 1
     assert adj.leaders == ("A-36",)
@@ -236,7 +238,8 @@ def test_ac2_liquidity_no_bid_dashes_that_approach_only():
     _, cols, ctx = build_columns("ADJ-02")
     a05 = next(c for c in cols if c.built.id == "A-05")
     a11 = next(c for c in cols if c.built.id == "A-11")
-    new = {x.tradingsymbol for x in a05.built.after} - {x.tradingsymbol for x in ctx.position.legs}         - {x.tradingsymbol for x in a11.built.after}
+    new = ({x.tradingsymbol for x in a05.built.after} - {x.tradingsymbol for x in ctx.position.legs}
+           - {x.tradingsymbol for x in a11.built.after})
     assert new
     chain = [replace(r, bid=None) if r.tradingsymbol in new else r for r in ctx.chain]
     crit = row(compare(cols, replace(ctx, chain=chain)), "liquidity")
