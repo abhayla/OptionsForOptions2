@@ -322,8 +322,8 @@ def margin_unreadable() -> Margin:
 def margin_empty(*, funds: bool = False) -> Margin:
     """Zerodha answered the margin read in full and stated no figure (an EMPTY answer, not an ambiguous one): still no
     figure and never 0, worded as what Zerodha returned."""
-    return Margin(MARGIN_UNREADABLE, render_explanation("outcome_margin_empty_funds" if funds else "outcome_margin_empty"),
-                  empty=True)
+    key = "outcome_margin_empty_funds" if funds else "outcome_margin_empty"
+    return Margin(MARGIN_UNREADABLE, render_explanation(key), empty=True)
 
 
 def margin_busy() -> Margin:

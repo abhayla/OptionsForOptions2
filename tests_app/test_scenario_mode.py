@@ -168,10 +168,9 @@ def test_empty_margin_still_no_figure_through_fetch_basket_margin():
 
 def test_funds_call_is_served_per_state():
     assert _margin("ADJ-02").fetch_available_funds() == Decimal("10000000")
-    with pytest.raises(KiteMarginError, match="kite_margin_no_figure"):
-        _margin("ADJ-20b").fetch_available_funds()
-    with pytest.raises(KiteMarginError, match="kite_margin_unavailable"):
-        _margin("ADJ-20a").fetch_available_funds()
+    # only the BASKET reply is empty / failed in 20b / 20a: the funds read is answered normally in every state
+    assert _margin("ADJ-20b").fetch_available_funds() == Decimal("10000000")
+    assert _margin("ADJ-20a").fetch_available_funds() == Decimal("10000000")
 
 
 def test_exchange_token_start_is_above_every_twin():

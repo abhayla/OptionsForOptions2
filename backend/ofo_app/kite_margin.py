@@ -213,7 +213,8 @@ class KiteMargin:
         data = self._data("GET", FUNDS_PATH, None)
         equity = data.get("equity")
         if not isinstance(equity, dict) or equity.get("net") is None:
-            raise _no_figure(empty=not any(isinstance(s, dict) and _is_figure(s.get("net")) for s in data.values()), funds=True)
+            empty = not any(isinstance(s, dict) and _is_figure(s.get("net")) for s in data.values())
+            raise _no_figure(empty=empty, funds=True)
         return _money(equity.get("net"))
 
     def fetch_basket_margin(self, orders: Sequence[BasketOrder]) -> BasketMargin:
