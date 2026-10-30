@@ -1,0 +1,22 @@
+{
+  "id": "interpolated-level-finer-than-paise-refused",
+  "scope": "generic",
+  "class": "Any level the engine derives by interpolation or by subtracting a flat amount (a breakeven after charges, a zero crossing between two strikes) can carry more decimal places than paise; a downstream function that validates its input as a money value (at most 2 decimals) then refuses it and the whole figure fails. Tests built on round strikes and round charges never produce such a level, so the class stays hidden until real prices are used.",
+  "mechanism": "backend/ofo/engine/metrics.py:210-220 loss_regions_after_charges subtracts charges from expiry P&L and finds the zero crossing by interpolation, giving 22771.372; ofo.engine.pop probability_below refuses a level with more than 2 decimals ('a Decimal built from a float is refused').",
+  "first_seen": {
+    "date": "2026-10-30",
+    "where": "adjustments core proof (throwaway script, read-only, real NIFTY 3 Nov chain at 14:56:56 IST), approach A: iron condor put spread rolled up 200",
+    "evidence": "main3.log: 'POP unavailable: ValueError level must have at most 2 decimal places (a Decimal built from a float is refused), got 22771.372'; Before, B and C computed POP (87%, 92%, 94%) because their after-charge breakevens happened to fall on paise"
+  },
+  "fix": "Not fixed. Class-level fix to decide in the build: either quantise every derived level at the single place it is produced (with a stated rounding rule) or let the probability functions accept a level as a price, not a money amount. Today no user sees it: POP sits behind the held switch probability_of_profit (backend/ofo_app/held_switches.py:24) and nothing outside pop.py calls probability_of_profit.",
+  "detection": {
+    "status": "unguarded",
+    "checks": [],
+    "note": "Needed: a property test that feeds the POP path strategies with non-round entry prices and charges (real-chain shaped) and asserts a POP or a named refusal, never a ValueError."
+  },
+  "spec_ref": [
+    "spec/requirements/REQ-046.md",
+    "spec/findings.md"
+  ],
+  "occurrences": []
+}
