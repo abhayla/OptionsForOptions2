@@ -76,8 +76,8 @@ The run tree has no `.env`, so run the MAIN checkout's dev_run.py with the run t
 |---|---|---|---|
 | M0 | Preflight: run tree from origin/main (record sha), upstream unset (proof line), ports free, lock written, npm ci exit 0 | status lines with times, sha, "no upstream" line | DONE 12:11 |
 | M1 | **Rebuild the GC-LIVE fixes on main and re-prove them live** (details below) | cherry-pick list with new shas; test runs; five live lines | Not started |
-| M2 | **Fix #612**: the index REST route must answer LIVE with values on a cold read in market hours (details below) | RCA line; red then green test; cold live proof; #612 comment | Not started |
-| M3 | **Leg stop fires live once, and not again after an API restart** (details below) | trigger rows, order rows (kind `stop`), alert, bell, after-restart counts | Not started |
+| M2 | **Fix #612**: the index REST route must answer LIVE with values on a cold read in market hours (details below) | RCA line; red then green test; cold live proof; #612 comment | DONE 12:37 |
+| M3 | **Leg stop fires live once, and not again after an API restart** (details below) | trigger rows, order rows (kind `stop`), alert, bell, after-restart counts | DONE 12:29 |
 | M4 | **Watch the 15:30 close live** (15:25-15:40), then post the #611 comment (details below) | one line per screen before and after 15:30; comment URL | Not started |
 | M5 | Handover: DONE / PENDING / BLOCKED / PARKED / OWED / NEXT appended here; memory note; servers stopped (recorded PIDs); lock removed; Chrome tabs closed; worktrees kept for the land | commit on this docs branch and on `live2/2026-10-30` | Not started |
 
@@ -171,13 +171,16 @@ pm-ci.log). wt-link-modules failed as the contract expects.
   5. 12:21:48-55 checker `--paper-orders`: 69 48/0, 70 20/0, 59 20/0, 63 48/0, 65 20/0. 12:23:27/36/44 target mode 63 (legs captured_at refreshed 12:23:18): main 358/0, target 22/0, three runs out of three.
 - M2 12:20:38 cold BEFORE: `GET /api/market/indices` -> NOT_CONNECTED, NIFTY and SENSEX value null, while `/api/broker/status` live_market_data connected. #612 reproduced.
 - M2 decision (technical, spec-conformant): ONLY the plain first-paint read gets the hold. `?fallback=true` keeps answering NOT_CONNECTED, because ADR-077 / REQ-049 AC-5 and the guarded finding liveness-from-shared-subscribers say a page whose own socket is down is not live, whoever else holds the feed. The contract's "fallback ... hold then release" line would contradict that, so it is not built. Owner note in the handover.
+- M3 12:27:25 strategy 70 short 74500 CE LTP 678.95 -> stop Above 679.95 set via Paper card -> Stops -> Stop on a leg (12:27:41). FIRED 12:27:42 (trigger 6, fired_at 06:57:42.711Z): ONE new order id 90 BUY SENSEX 74500 CE 20 @ 683.00 kind `stop`; 74500 CE net 0, 74100 PE stays -20; booked -4,240.00 = -20 x (683.00 - 471.00); alerts 2 -> 3 (unread 1 -> 2), body "Stop-loss: SENSEX 5 Nov 74500 CE crossed above 679.95; exited 1 legs at ... 683.00. A paper exit only: no order was sent to Zerodha."; bell "Alerts, 2 unread" 12:28:09 (was 1). API PID 7164 stopped 12:28:20, new API PID 13984 up 12:28:32; at 12:29:32 trigger 6 still fired, same fired_at; orders 3 (1 stop); alerts 3 unread 2: no re-fire. Wording "1 legs" -> deferred #614 (staged 2621b4c4).
+- M2 builder (Sonnet, round 1/2): 019feec6 test + e6088d38 fix (plain read holds the index ids itself, answers inside the hold, releases; F-8 fixed by making `no_listener` public in live_push.py). Merged cc3d9ccf. Session re-runs in the run tree: test_index_live 27, test_openapi_drift 1, test_strategy_live_push 40, test_paper_iv_forward 8, test_paper_routes 29 passed; tests/test_no_order_placement + test_both_curves 60 passed. Weak spot, recorded: the builder's "red" was an AttributeError (helper missing), not the cold behaviour; the live before/after is the discriminating proof.
+- M2 COLD proof (API PID 13984 stopped 12:36:18, new API up 12:36:26, no app tab open): 12:36:26 LIVE NIFTY 23099.10 / SENSEX 74673.41 (0.68 s); 12:36:30 LIVE 23098.60 / 74674.42; 12:36:33 LIVE 23098.70 / 74675.44. `?fallback=true` 12:36:36 NOT_CONNECTED (ADR-077, unchanged). #612 comment https://github.com/abhayla/OptionsForOptions2/issues/612#issuecomment-6517054178. No detection change: the cold-read test in test_index_live.py is the check. Same-shape reads (builder grep, unconfirmed): leg_picker.py:352, leg_edit.py:351, ready_made.py:116.
 
 ## Found during the run
 
 | F | Step | What failed (seen) | Class / RCA | Fix commit | Re-test |
 |---|---|---|---|---|---|
 | F-7 | M1 | tests/outcome/test_both_curves.py flag-off golden: reply has a new `dividend_yields` key | c3a396ef added the field to the main reply, and the recorded golden was never updated | 19280504 (golden +14 lines, all that key; checked with diff --strip-trailing-cr) | test_both_curves 7 passed |
-| F-8 | M1 | tests/test_no_order_placement.py scan: "ofo_app/routes/paper.py:70: uses another module's private name ofo_app.routes.planned_entry._no_listener" | 4ef2df45's one-hold reused a private helper across modules | given to the M2 builder (same helper) | pending |
+| F-8 | M1 | tests/test_no_order_placement.py scan: "ofo_app/routes/paper.py:70: uses another module's private name ofo_app.routes.planned_entry._no_listener" | 4ef2df45's one-hold reused a private helper across modules | e6088d38 (`no_listener` public in live_push.py), merged cc3d9ccf | tests/test_no_order_placement 53 passed (with test_both_curves: 60) |
 
 ## Parked
 
