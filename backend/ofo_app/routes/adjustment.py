@@ -49,11 +49,12 @@ from ofo.engine.metrics import UNLIMITED, MultiExpiryError
 from ofo.engine.pop import Why
 from ofo.engine.strategy import Strategy
 from ofo.engine.whole_trade import WholeTradeAfter, WholeTradeFigures, whole_trade_after
-from ofo.errors.explanations import render_explanation
+from ofo.errors.explanations import approach_name_id, render_explanation
 from ofo.marketdata.spot_source import SourceReading, SourceState, SpotAnswer, resolve_spot
 from ofo.outcome.service import MARGIN_CHECKED, Margin
 from pydantic import BaseModel, ConfigDict, Field
 
+from ofo_app.api_models import AdjustApproachesOut
 from ofo_app.config import app_env
 from ofo_app.errors import ClosedRoute, Failure
 from ofo_app.held_switches import PROBABILITY_OF_PROFIT, held_on
@@ -147,7 +148,7 @@ class ApproachesIn(BaseModel):
 
 
 def _money(value: Decimal | object) -> str:
-    return "UNLIMITED" if value is UNLIMITED else format(value, "f")
+    return "UNLIMITED" if value is UNLIMITED else value  # type: ignore[return-value]  # Money serializes as text
 
 
 def _figures(f: WholeTradeFigures) -> dict:
@@ -275,13 +276,12 @@ def _trade_orders(built: ApproachLegs, underlying: str) -> list[ChargeOrder]:
 
 
 def _leg_out(x: Any) -> dict:
-    return {k: (_money(v) if isinstance(v, Decimal) else v.isoformat() if isinstance(v, datetime.date) else v)
-            for k, v in dataclasses.asdict(x).items()}
+    return dataclasses.asdict(x)
 
 
 # ---- route --------------------------------------------------------------------------------------------------------
 
-@router.post("/api/strategies/{strategy_id}/adjustment-approaches")
+@router.post("/api/strategies/{strategy_id}/adjustment-approaches", response_model=AdjustApproachesOut)
 async def adjustment_approaches(  # noqa: PLR0913 - FastAPI dependencies, one per input
         strategy_id: int, body: ApproachesIn,
         tracked_reader: Annotated[TrackedReader, Depends(get_tracked_reader)],
@@ -290,7 +290,7 @@ async def adjustment_approaches(  # noqa: PLR0913 - FastAPI dependencies, one pe
         margin_of: Annotated[ApproachMargin, Depends(get_approach_margin)],
         ctx: Annotated[MarketContext | None, Depends(get_market_context)],
         rates: Annotated[ChargeRates | None, Depends(load_charge_rates)],
-        held_environ: Annotated[Mapping[str, str] | None, Depends(get_held_environ)]) -> dict:
+        held_environ: Annotated[Mapping[str, str] | None, Depends(get_held_environ)]) -> AdjustApproachesOut:
     started = time.perf_counter()
     tracked = await tracked_reader(strategy_id, rates if isinstance(rates, ChargeRates) else None)
     if tracked is None:  # not this user's, or no such strategy: nothing priced (attack 1)
@@ -325,11 +325,12 @@ async def adjustment_approaches(  # noqa: PLR0913 - FastAPI dependencies, one pe
             if built is None:  # attack 2: refused by name, the others still answer
                 out.append({"id": a, "refusal": render_explanation("adjust_unknown_approach", approach=a)})
                 continue
-            item: dict[str, Any] = {"id": built.id, "name": built.name, "kind": built.kind, "side": built.side,
+            item: dict[str, Any] = {"id": built.id, "name": render_explanation(approach_name_id(built.id)),
+                                    "kind": built.kind, "side": built.side,
                                     "step_basis": built.step_basis,
                                     "step_value": None if built.step_value is None else _money(built.step_value),
-                                    "refusal": built.refusal, "warnings": list(built.warnings)}
-            if built.refusal is None:
+                                    "refusal": built.refusal_message, "warnings": list(built.warning_messages)}
+            if built.refusal_message is None:
                 item |= {"trades": [_leg_out(t) for t in built.trades],
                          "after_legs": [_leg_out(x) for x in built.after],
                          "closed_legs": [_leg_out(c) for c in built.closed], **_after_block(priced[a], pop_on)}
@@ -340,9 +341,9 @@ async def adjustment_approaches(  # noqa: PLR0913 - FastAPI dependencies, one pe
     log.info("adjustment approaches strategy=%s approaches=%s engine_s=%.4f total_s=%.4f",
              strategy_id, len(built_list), engine, total)
     if app_env() in _DEV_TIMING:
-        reply["timing"] = {"engine_seconds": f"{engine:.4f}", "total_seconds": f"{total:.4f}",
+        reply["timing"] = {"engine_seconds": Decimal(f"{engine:.4f}"), "total_seconds": Decimal(f"{total:.4f}"),
                            "approaches": len(built_list)}
-    return reply
+    return AdjustApproachesOut.model_validate(reply)
 
 
 async def _margin(margin_of: ApproachMargin, built: ApproachLegs, market: MarketInputs) -> dict:

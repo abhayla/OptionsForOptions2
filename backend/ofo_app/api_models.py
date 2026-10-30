@@ -362,3 +362,132 @@ def emit_message(message: UserFacingError) -> Emitted:
     except DoorRefused as exc:
         log.error("response door refused: %s", exc)
         raise
+
+
+# ---- REQ-155 (W-196): POST /api/strategies/{id}/adjustment-approaches ------------------------------------------------
+#: a whole-trade figure: exact rupees, or UNLIMITED when the payoff is unbounded on that side
+Figure = Money | Literal["UNLIMITED"]
+_Side = Literal["BUY", "SELL"]
+_Type = Literal["CE", "PE"]
+
+
+class AdjustFiguresOut(ApiModel):
+    max_profit: Figure
+    max_loss: Figure
+    breakevens: list[Money]
+    loss_regions: list[list[Money | None]]
+
+
+class AdjustAfterOut(ApiModel):
+    gross: AdjustFiguresOut
+    after_charges: AdjustFiguresOut | None  # None: the charges are not available (the gross figures still shown)
+    booked_pnl: Money
+
+
+class AdjustChargesOut(ApiModel):
+    this_adjustment: Money | None
+    paid_so_far: Money | None
+    open_exit: Money | None
+    not_available: CatalogueText | None
+
+
+class AdjustPopOut(ApiModel):
+    value: Money | None  # a probability in [0, 1], exact
+    not_available: bool
+    reason: CatalogueText | None
+
+
+class AdjustMarginOut(ApiModel):
+    state: Identifier
+    value: Money | None
+    at: datetime.datetime | None
+    reason: CatalogueText | None
+
+
+class AdjustSpotReasonOut(ApiModel):
+    source: Identifier
+    reason: Identifier
+
+
+class AdjustSpotOut(ApiModel):
+    value: Money | None
+    source: Identifier | None
+    source_text: CatalogueText | None
+    at: datetime.datetime | None
+    reasons: list[AdjustSpotReasonOut]
+    text: CatalogueText | None
+
+
+class AdjustTradeOut(ApiModel):
+    action: _Side
+    type: _Type
+    strike: Money
+    expiry: datetime.date
+    lots: int
+    quantity: int
+    price: Money
+    tradingsymbol: Identifier
+
+
+class AdjustLegOut(ApiModel):
+    side: _Side
+    type: _Type
+    strike: Money
+    expiry: datetime.date
+    lots: int
+    entry: Money
+    tradingsymbol: Identifier
+
+
+class AdjustClosedLegOut(ApiModel):
+    side: _Side
+    type: _Type
+    strike: Money
+    expiry: datetime.date
+    lots: int
+    quantity: int
+    entry: Money
+    exit: Money
+    tradingsymbol: Identifier
+
+
+class AdjustWholeOut(ApiModel):
+    after: AdjustAfterOut | None
+    charges: AdjustChargesOut | None
+    pop: AdjustPopOut | None
+    after_reason: CatalogueText | None
+
+
+class AdjustApproachOut(ApiModel):
+    id: Identifier
+    name: CatalogueText | None = None
+    kind: Identifier | None = None
+    side: Identifier | None = None
+    step_basis: Identifier | None = None
+    step_value: Money | None = None
+    refusal: CatalogueText | None = None
+    warnings: list[CatalogueText] = []
+    trades: list[AdjustTradeOut] | None = None
+    after_legs: list[AdjustLegOut] | None = None
+    closed_legs: list[AdjustClosedLegOut] | None = None
+    after: AdjustAfterOut | None = None
+    charges: AdjustChargesOut | None = None
+    pop: AdjustPopOut | None = None
+    after_reason: CatalogueText | None = None
+    margin: AdjustMarginOut | None = None
+
+
+class AdjustTimingOut(ApiModel):
+    engine_seconds: Money  # seconds, exact decimal text
+    total_seconds: Money
+    approaches: int
+
+
+class AdjustApproachesOut(ApiModel):
+    strategy_id: int
+    view: Literal["at_expiry", "estimated_now"]
+    spot: AdjustSpotOut
+    pop_switch_on: bool
+    before: AdjustWholeOut | None
+    approaches: list[AdjustApproachOut]
+    timing: AdjustTimingOut | None = None

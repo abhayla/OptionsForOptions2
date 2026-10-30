@@ -922,6 +922,11 @@ class ExplanationTemplate:
         object.__setattr__(self, "slots", MappingProxyType(dict(self.slots)))
 
 
+def approach_name_id(approach_id: str) -> str:
+    """The template id of an adjustment approach's shown name (``A-36`` -> ``adjust_approach_name_a_36``)."""
+    return "adjust_approach_name_" + approach_id.lower().replace("-", "_")
+
+
 _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("why_triggered", "what_triggered", "Your rule was triggered: {rule_text} ({kind} rule {rule_id}).",
                         {"rule_text": Quoted, "kind": Recorded, "rule_id": Recorded}),
@@ -1411,6 +1416,8 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("catalogue_template_name", "values_seen", "{text}", {"text": TemplateText}),
     ExplanationTemplate("catalogue_template_description", "values_seen", "{text}", {"text": TemplateText}),
     *(ExplanationTemplate(f"table_reason_{key}", "values_seen", text) for key, text in TABLE_REASON_TEXT.items()),
+    *(ExplanationTemplate(approach_name_id(key), "values_seen", text)  # REQ-155: each approach's shown name
+      for key, text in ADJUSTMENT_APPROACH_LABEL_TEXT.items()),
 )
 
 EXPLANATIONS: Mapping[str, ExplanationTemplate] = MappingProxyType({t.id: t for t in _EXPLANATIONS})

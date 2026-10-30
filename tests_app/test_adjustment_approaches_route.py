@@ -136,8 +136,10 @@ def test_ac2_adj13_booked_pnl_is_in_the_after():
 
 def test_ac4_adj23_pop_present_and_held_switch_off_gives_dash_with_reason():
     sc = load("ADJ-23")
-    on = post(client_for(sc)).json()
-    assert all(a["pop"]["value"] is not None for a in on["approaches"] if a["refusal"] is None and a["after_legs"])
+    on = post(client_for(sc, environ={"APP_ENV": "test"})).json()  # held_switches: ON in development and test
+    assert on["pop_switch_on"] is True
+    pops = {a["id"]: a["pop"] for a in on["approaches"] if a["refusal"] is None}
+    assert all(p["value"] is not None for p in pops.values()), pops
     off = post(client_for(sc, environ={"APP_ENV": "production"})).json()
     assert off["pop_switch_on"] is False
     for a in off["approaches"]:
@@ -185,11 +187,16 @@ def test_attack4_one_approach_margin_raises_others_keep_theirs():
 def test_ac8_refusal_or_warning_while_others_still_show(sid):
     sc = load(sid)
     body = post(client_for(sc)).json()
+    hand = sc["expected"]["approach_legs"]
     shown = [a for a in body["approaches"] if a["refusal"] is None]
-    assert len(shown) >= 2  # noqa: PLR2004
-    if sid == "ADJ-20e":
-        assert any(a["warnings"] for a in shown)
-    else:
+    assert len(shown) >= 2  # noqa: PLR2004 - the other approaches still show
+    for a in body["approaches"]:
+        h = hand[a["id"]]
+        if "refused" in h:
+            assert a["refusal"] is not None and a["after"] is None, (sid, a["id"])
+        else:
+            assert a["refusal"] is None and len(a["warnings"]) == len(h["warnings"]), (sid, a["id"])
+    if sid != "ADJ-20e":
         assert any(a["refusal"] for a in body["approaches"])
 
 
@@ -223,6 +230,10 @@ def test_ac7_seven_approaches_engine_time_at_most_one_second_and_no_order_path(m
     def no_order(*_a, **_k):
         raise AssertionError("an order path was called")
     monkeypatch.setattr(paper_store, "place", no_order)
+    monkeypatch.setattr(route, "app_env", lambda: "production")
+    assert "timing" not in post(client_for(load("ADJ-02"))).json() or post(
+        client_for(load("ADJ-02"))).json()["timing"] is None  # dev/test only
+    monkeypatch.setattr(route, "app_env", lambda: "test")
     body = post(client_for(load("ADJ-02"))).json()
     assert body["timing"]["approaches"] == len(APPROACH_IDS)
     assert D(body["timing"]["engine_seconds"]) <= 1
