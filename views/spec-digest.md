@@ -4,10 +4,9 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (208)
+## Decisions (209)
 
-- Older decisions: 168 rows, ADR-1..ADR-171 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
-- ADR-172 2026-10-23: Amends the locked formulas (scenario-calculations.md section 4): each option leg's implied volatili… [amends ADR-008]
+- Older decisions: 169 rows, ADR-1..ADR-172 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
 - ADR-173 2026-10-23: Makes ADR-152 binding by machine. [refines ADR-152]
 - ADR-174 2026-10-23: Kept as built (REQ-015 AC-1, ADR-053): a user who has not connected Zerodha can open the screens an… [applies ADR-152]
 - ADR-175 2026-10-23: Copied from the reference product's login page (study 2026-10-21, screen 180): (1) the Connect Zero… [extends REQ-015; applies ADR-173]
@@ -47,8 +46,9 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-210 2026-10-29: A paper or what-if figure that cannot be shown displays "-" with one of these sentences (REQ-152 AC… [refines REQ-109 and REQ-084 AC-5 (no wording ther…]
 - ADR-211 2026-10-29: (1) The projected badge at exactly zero reads "Projected P/L: 0" (Sensibull's own words: badge "Pro… [refines REQ-144 AC-3 and AC-4 and REQ-109 (paper…]
 - ADR-212 2026-10-30: SPEC CHANGE to REQ-109 AC-5. [SPEC CHANGE to REQ-109 AC-5 (after hours the last…]
+- ADR-214 2026-10-30: Where adjustments sit in the app. [Places REQ-045 AC-7/AC-9 and REQ-046 on named scr…]
 
-## Requirements (145)
+## Requirements (154)
 
 - REQ-001 [Approved]: V1 scope: underlyings, leg types, broker
 - REQ-002 [Approved]: Account boundaries
@@ -195,8 +195,17 @@ One line per decision, requirement and spec section. Read it before asking the o
 - REQ-152 [Approved]: Number format of builder figures - whole rupees, Indian grouping and signs on summary money, paise kept on pe…
 - REQ-153 [Approved]: Breakeven percent from spot beside each breakeven, for Expiry and Target
 - REQ-154 [Approved]: An unsaved builder strategy survives a page reload - kept on the server for the signed-in user until saved or…
+- REQ-155 [Approved]: Adjustment approach builder - the server builds a picked approach's exact legs and prices the whole trade's A…
+- REQ-156 [Approved]: Compare adjustment approaches side by side on named criteria, each criterion naming its leader, never an over…
+- REQ-157 [Approved]: Filters on the approach compare are computed from the current approaches, never a fixed list
+- REQ-158 [Approved]: Adjustment playbooks - one read-only system playbook per strategy type, any number of named user playbooks, o…
+- REQ-159 [Approved]: What a playbook holds - user-defined stages, triggers per stage, day-and-date rules, situations, limits and g…
+- REQ-160 [Approved]: Playbook editor is one step-by-step flow with a plain-words summary, and Test shows what the playbook would f…
+- REQ-161 [Approved]: Start tracking opens a strategy plan sheet pre-filled from the type's active playbook, accepted in one click
+- REQ-162 [Approved]: Positions > Adjustment opportunities lists every opportunity across strategies with its label and outcome
+- REQ-163 [Approved]: A strategy's adjustment history shows the entry, every adjustment and the whole-trade totals
 
-## Spec sections (241)
+## Spec sections (245)
 
 ### spec/SPEC-DEVIATION.md
 
@@ -329,6 +338,10 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ## F-70 - "% of funds" divides by available funds; at low cash it reads…
 - ## F-71 - The "near a short strike" adjustment detection fires at entry…
 - ## F-72 - Kite's day candle for an index carries the exchange's official…
+- ## F-73 - The engine prices an adjustment's After correctly and fast on…
+- ## F-74 - An adjustment's After shows open legs only: booked P&L of clos…
+- ## F-75 - POP fails on a real adjusted iron condor because the after-cha…
+- ## F-76 - The NIFTY spot cannot be read over Kite REST: the quote allow-…
 
 ### spec/open-questions.md
 
