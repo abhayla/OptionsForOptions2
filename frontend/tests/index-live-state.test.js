@@ -28,6 +28,8 @@ const row = (underlying, value, at, health = 'available') => ({
 const live = (n, s, at) => ({ state: 'LIVE', indices: [row('NIFTY', n, at), row('SENSEX', s, at)], answered_at: at })
 const notConnected = (at) => ({ state: 'NOT_CONNECTED', answered_at: at,
   indices: [row('NIFTY', null, at, null), row('SENSEX', null, at, null)] })
+const notConnectedWithValues = (n, s, at) => ({ state: 'NOT_CONNECTED', answered_at: at,
+  indices: [row('NIFTY', n, at, 'available'), row('SENSEX', s, at, 'available')] })
 const T1 = '2026-10-19T09:20:00+05:30'
 const T2 = '2026-10-19T09:20:01+05:30'
 
@@ -76,6 +78,46 @@ describe.each(SCREENS)('$name: after its own socket drops no old number is shown
       expect(w.get(`[data-testid="${screen.state}"]`).text()).toBe('Index values unavailable.')
     })
   }
+
+  it('ADR-213: LIVE push, drop, the fallback answers NOT_CONNECTED WITH values -> the server values and the message', async () => {
+    apiAnswer = (params) => (params.fallback
+      ? Promise.resolve({ data: notConnectedWithValues('25160.00', '82020.50', T2) }) : Promise.resolve({ data: notConnected(null) }))
+    const w = await mountScreen()
+    await liveThenDrop(w)
+    expect(values(w)).toEqual(['25160.00', '82020.50'])
+    expect(w.text()).not.toContain('25150.00') // never the dead socket's number
+    expect(w.get(`[data-testid="${screen.state}"]`).text()).toBe('Index values unavailable.')
+  })
+
+  it('ADR-213: after the drop and before the fallback answer comes, no number (the dead socket value is not kept)', async () => {
+    apiAnswer = (params) => (params.fallback ? new Promise(() => {}) : Promise.resolve({ data: notConnected(null) }))
+    const w = await mountScreen()
+    await liveThenDrop(w)
+    expect(values(w)).toEqual(['Not available', 'Not available'])
+  })
+
+  it('ADR-213: the fallback answer fills one index only -> that value, the other Not available, message shown', async () => {
+    apiAnswer = (params) => (params.fallback
+      ? Promise.resolve({ data: notConnectedWithValues('25160.00', null, T2) }) : Promise.resolve({ data: notConnected(null) }))
+    const w = await mountScreen()
+    await liveThenDrop(w)
+    expect(values(w)).toEqual(['25160.00', 'Not available'])
+    expect(w.get(`[data-testid="${screen.state}"]`).text()).toBe('Index values unavailable.')
+  })
+
+  it('ADR-213: a LIVE answer is unchanged (values, no message)', async () => {
+    apiAnswer = live('25150.00', '82010.25', T1)
+    const w = await mountScreen()
+    expect(values(w)).toEqual(['25150.00', '82010.25'])
+    expect(w.find(`[data-testid="${screen.state}"]`).exists()).toBe(false)
+  })
+
+  it('ADR-213: a market-closed answer is unchanged (last values shown, no not-live message)', async () => {
+    apiAnswer = { ...notConnectedWithValues('25000.00', '81000.00', T1), market_closed: true, last_price_at: T1 }
+    const w = await mountScreen()
+    expect(values(w)).toEqual(['25000.00', '81000.00'])
+    expect(w.find(`[data-testid="${screen.state}"]`).exists()).toBe(false)
+  })
 
   it('AC-4: LIVE push, drop, the fallback read hangs -> no number anywhere', async () => {
     apiAnswer = (params) => (params.fallback ? new Promise(() => {}) : Promise.resolve({ data: notConnected(null) }))
