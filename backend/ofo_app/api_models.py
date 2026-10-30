@@ -507,6 +507,17 @@ class AdjustLeadsOut(ApiModel):
     m: int  # rows with a leader
 
 
+class AdjustAvailableOut(ApiModel):
+    """GC-ADJ1 step 3 (REQ-046 AC-3, REQ-045 AC-5): one generic approach for the Review adjustment drawer. No figure:
+    the id, the shown name, one plain line, and whether it can be built for this position now (else the reason)."""
+
+    id: Identifier
+    name: CatalogueText
+    explanation: CatalogueText
+    applicable: bool
+    reason: CatalogueText | None = None
+
+
 class AdjustApproachesOut(ApiModel):
     strategy_id: int
     view: Literal["at_expiry", "estimated_now"]
@@ -518,3 +529,5 @@ class AdjustApproachesOut(ApiModel):
     leads: dict[Identifier, AdjustLeadsOut] = {}  # REQ-156 AC-4 "Leads on N of M"
     curves: dict[Identifier, list[list[Money]]] = {}  # "before" / approach id -> [[level, P&L after charges], ...]
     timing: AdjustTimingOut | None = None
+    available: list[AdjustAvailableOut] = []  # every generic approach, whatever was asked (no figures)
+    days_to_expiry: int | None = None  # whole days from the reply's own market day to the nearest open leg's expiry

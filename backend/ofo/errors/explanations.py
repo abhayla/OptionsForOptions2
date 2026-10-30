@@ -245,6 +245,17 @@ ADJUSTMENT_APPROACH_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
     "A-11": "Re-centre both shorts at the money",
     "A-31": "Exit the whole strategy",
 })
+#: GC-ADJ1 step 3 (REQ-046 AC-3, REQ-045 AC-5): one plain line per approach, shown in the Review adjustment drawer before
+#: any pick. No figure, no ranking word (ADR-003).
+ADJUSTMENT_APPROACH_ABOUT_TEXT: Mapping[str, str] = MappingProxyType({
+    "A-36": "Keep every leg as it is. This is the baseline the others are compared with.",
+    "A-01": "Move the side spot is moving away from closer to spot, keeping its width.",
+    "A-05": "Move the side spot is pressing on further out, keeping its width.",
+    "A-29": "Close part of the side spot is pressing on and keep the rest.",
+    "A-28": "Close the whole side spot is pressing on and keep the other side.",
+    "A-11": "Move both short strikes to the strike nearest spot, keeping each wing's distance.",
+    "A-31": "Close every open leg.",
+})
 #: REQ-156 AC-2 (ADR-214 (2a)): each compare criterion row's shown name, in the AC-2 group order
 ADJUSTMENT_CRITERION_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
     "credit": "Credit (+) or debit (-)",
@@ -971,6 +982,11 @@ def approach_name_id(approach_id: str) -> str:
     return "adjust_approach_name_" + approach_id.lower().replace("-", "_")
 
 
+def approach_about_id(approach_id: str) -> str:
+    """The template id of an approach's one-line text (``A-36`` -> ``adjust_approach_about_a_36``)."""
+    return "adjust_approach_about_" + approach_id.lower().replace("-", "_")
+
+
 _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("why_triggered", "what_triggered", "Your rule was triggered: {rule_text} ({kind} rule {rule_id}).",
                         {"rule_text": Quoted, "kind": Recorded, "rule_id": Recorded}),
@@ -1246,6 +1262,8 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         "Charges not available, so the figures after charges are not shown."),
     ExplanationTemplate("adjust_unknown_approach", "values_seen", "{approach} is not an approach this screen builds.",
                         {"approach": Recorded}),
+    ExplanationTemplate("adjust_available_spot_missing", "values_seen",
+                        "Not checked now: the spot is not available, so no approach can be built."),
     ExplanationTemplate("adjust_needs_one_expiry", "values_seen",
                         "The whole-trade After needs every open leg on one expiry."),
     ExplanationTemplate("outcome_feed_disconnected", "values_seen",
@@ -1491,6 +1509,8 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     *(ExplanationTemplate(f"table_reason_{key}", "values_seen", text) for key, text in TABLE_REASON_TEXT.items()),
     *(ExplanationTemplate(approach_name_id(key), "values_seen", text)  # REQ-155: each approach's shown name
       for key, text in ADJUSTMENT_APPROACH_LABEL_TEXT.items()),
+    *(ExplanationTemplate(approach_about_id(key), "values_seen", text)  # REQ-046 AC-3: each approach's one-line text
+      for key, text in ADJUSTMENT_APPROACH_ABOUT_TEXT.items()),
     *(ExplanationTemplate(f"adjust_cmp_row_{key}", "values_seen", text)  # REQ-156: each criterion row's name
       for key, text in ADJUSTMENT_CRITERION_LABEL_TEXT.items()),
     *(ExplanationTemplate(f"adjust_cmp_lead_{key}", "values_seen", text)  # REQ-156 AC-3: each row's leader words
@@ -1505,7 +1525,7 @@ LABEL_TABLES: Mapping[str, Mapping[str, str]] = MappingProxyType({
     "direction": DIRECTION_TEXT, "measure": MEASURE_TEXT, "choice": CHOICE_LABEL_TEXT, "step": STEP_LABEL_TEXT,
     "builder": BUILDER_LABEL_TEXT, "scenario_view": SCENARIO_VIEW_LABEL_TEXT, "health": HEALTH_LABEL_TEXT,
     "column": COLUMN_LABEL_TEXT, "table_reason": TABLE_REASON_TEXT, "level_region": LEVEL_REGION_TEXT,
-    "adjustment_approach": ADJUSTMENT_APPROACH_LABEL_TEXT,
+    "adjustment_approach": ADJUSTMENT_APPROACH_LABEL_TEXT, "adjustment_approach_about": ADJUSTMENT_APPROACH_ABOUT_TEXT,
     "adjustment_criterion": ADJUSTMENT_CRITERION_LABEL_TEXT, "adjustment_leader": ADJUSTMENT_LEADER_LABEL_TEXT,
 })
 

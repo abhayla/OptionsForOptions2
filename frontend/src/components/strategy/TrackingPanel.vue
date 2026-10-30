@@ -37,12 +37,21 @@
         <p class="font-semibold" data-testid="detection-line">{{ d.line }}</p>
         <FigureHint id="adjustment_detection" label="Why detected" :lines="d.details" />
       </div>
+      <!-- GC-ADJ1 step 3 (REQ-046 AC-1..AC-3): the drawer with layers 1-3; shown only while a detection is shown -->
+      <button v-if="view.detections.length" ref="reviewBtn" type="button" class="mt-2 rounded border border-line bg-surface px-2 py-1 text-xs font-medium" data-testid="review-adjustment" @click="openDrawer">{{ REVIEW_BUTTON_TEXT }}</button>
     </div>
+    <AdjustDrawer
+      :open="drawerOpen" :strategy-id="savedId" :lines="drawerLines" :detected="!!view?.detections?.length" :card-rows="cardRows(raw)"
+      @close="closeDrawer" @compare="goCompare"
+    />
   </section>
 </template>
 
 <script setup>
-import { ref, watch } from 'vue'
+import { inject, nextTick, ref, watch } from 'vue'
+import { routerKey } from 'vue-router'
+import AdjustDrawer from '@/components/strategy/AdjustDrawer.vue'
+import { REVIEW_BUTTON_TEXT, cardRows } from '@/lib/adjustDrawer'
 import Chip from '@/components/common/Chip.vue'
 import FigureHint from '@/components/common/FigureHint.vue'
 import api, { NEUTRAL_ERROR } from '@/services/api'
@@ -57,6 +66,24 @@ const props = defineProps({
 const status = ref('loading')
 const view = ref(null)
 const error = ref('')
+const raw = ref(null) // the last tracking reply, for the drawer's layer 2 (display only)
+const router = inject(routerKey, null) // absent in a panel mounted without a router: Compare then goes nowhere
+const reviewBtn = ref(null)
+const drawerOpen = ref(false)
+const drawerLines = ref([]) // layer 1: the detection's own text; kept when the detection lapses while the drawer is open
+function openDrawer() {
+  drawerLines.value = (view.value?.detections ?? []).flatMap((d) => [d.line, ...d.details])
+  drawerOpen.value = true
+}
+async function closeDrawer() {
+  drawerOpen.value = false
+  await nextTick()
+  reviewBtn.value?.focus?.() // the button may be gone if the detection lapsed
+}
+function goCompare({ url }) {
+  drawerOpen.value = false
+  router?.push(url)
+}
 
 function failed(e) {
   view.value = null
@@ -66,6 +93,8 @@ function failed(e) {
 async function load(id) {
   status.value = 'loading'
   view.value = null
+  raw.value = null
+  drawerOpen.value = false
   error.value = ''
   if (!id) return
   try {
@@ -73,6 +102,7 @@ async function load(id) {
     if (id !== props.savedId) return // R1-2: the user opened another strategy while this read was out
     status.value = 'tracked'
     view.value = readTracking(data, props.legs)
+    raw.value = data
   } catch (e) {
     if (id !== props.savedId) return
     if (e?.status === 404) status.value = 'untracked'
@@ -88,6 +118,7 @@ usePaperRefresh({
   onData: (data) => {
     error.value = ''
     view.value = readTracking(data, props.legs)
+    raw.value = data
   },
   onError: failed,
 })

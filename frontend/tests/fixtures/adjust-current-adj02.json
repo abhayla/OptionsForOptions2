@@ -1,0 +1,989 @@
+{
+ "strategy_id": 72,
+ "view": "at_expiry",
+ "spot": {
+  "value": "23420",
+  "source": "feed",
+  "source_text": "Spot from the live feed",
+  "at": "2026-11-06T11:39:59+05:30",
+  "reasons": [],
+  "text": null
+ },
+ "pop_switch_on": true,
+ "before": {
+  "after": {
+   "gross": {
+    "max_profit": "5726.50",
+    "max_loss": "20273.50",
+    "breakevens": [
+     "22655.95",
+     "23544.05"
+    ],
+    "loss_regions": [
+     [
+      null,
+      "22655.95"
+     ],
+     [
+      "23544.05",
+      null
+     ]
+    ]
+   },
+   "after_charges": {
+    "max_profit": "5499.61",
+    "max_loss": "20500.39",
+    "breakevens": [
+     "22657.70",
+     "23542.30"
+    ],
+    "loss_regions": [
+     [
+      null,
+      "22657.70"
+     ],
+     [
+      "23542.30",
+      null
+     ]
+    ]
+   },
+   "booked_pnl": "0.00"
+  },
+  "charges": {
+   "this_adjustment": "0",
+   "paid_so_far": "117.65",
+   "open_exit": "109.24",
+   "not_available": null
+  },
+  "pop": {
+   "value": "0.648380210",
+   "not_available": false,
+   "reason": null
+  },
+  "after_reason": null
+ },
+ "approaches": [
+  {
+   "id": "A-36",
+   "name": "No change",
+   "kind": "none",
+   "side": "none",
+   "step_basis": null,
+   "step_value": null,
+   "refusal": null,
+   "warnings": [],
+   "trades": [],
+   "after_legs": [
+    {
+     "side": "BUY",
+     "type": "PE",
+     "strike": "22500.00",
+     "expiry": "2026-11-09",
+     "lots": 2,
+     "entry": "21.75",
+     "tradingsymbol": "NIFTY26N0922500PE"
+    },
+    {
+     "side": "SELL",
+     "type": "PE",
+     "strike": "22700.00",
+     "expiry": "2026-11-09",
+     "lots": 2,
+     "entry": "41.8",
+     "tradingsymbol": "NIFTY26N0922700PE"
+    },
+    {
+     "side": "SELL",
+     "type": "CE",
+     "strike": "23500.00",
+     "expiry": "2026-11-09",
+     "lots": 2,
+     "entry": "42",
+     "tradingsymbol": "NIFTY26N0923500CE"
+    },
+    {
+     "side": "BUY",
+     "type": "CE",
+     "strike": "23700.00",
+     "expiry": "2026-11-09",
+     "lots": 2,
+     "entry": "18",
+     "tradingsymbol": "NIFTY26N0923700CE"
+    }
+   ],
+   "closed_legs": [],
+   "after": {
+    "gross": {
+     "max_profit": "5726.50",
+     "max_loss": "20273.50",
+     "breakevens": [
+      "22655.95",
+      "23544.05"
+     ],
+     "loss_regions": [
+      [
+       null,
+       "22655.95"
+      ],
+      [
+       "23544.05",
+       null
+      ]
+     ]
+    },
+    "after_charges": {
+     "max_profit": "5499.61",
+     "max_loss": "20500.39",
+     "breakevens": [
+      "22657.70",
+      "23542.30"
+     ],
+     "loss_regions": [
+      [
+       null,
+       "22657.70"
+      ],
+      [
+       "23542.30",
+       null
+      ]
+     ]
+    },
+    "booked_pnl": "0.00"
+   },
+   "charges": {
+    "this_adjustment": "0",
+    "paid_so_far": "117.65",
+    "open_exit": "109.24",
+    "not_available": null
+   },
+   "pop": {
+    "value": "0.648380210",
+    "not_available": false,
+    "reason": null
+   },
+   "after_reason": null,
+   "margin": {
+    "state": "stated",
+    "value": "100000.00",
+    "at": "2026-11-06T11:40:00+05:30",
+    "reason": null
+   }
+  }
+ ],
+ "criteria": [
+  {
+   "id": "credit",
+   "group": "money_now",
+   "label": "Credit (+) or debit (-)",
+   "hint": null,
+   "leader_label": "Most credit",
+   "leaders": [
+    "A-36"
+   ],
+   "values": {
+    "A-36": {
+     "text": "₹0.00",
+     "value": "0.00",
+     "unavailable_reason": null
+    }
+   }
+  },
+  {
+   "id": "cost",
+   "group": "money_now",
+   "label": "Charges plus bid-ask cost",
+   "hint": null,
+   "leader_label": "Lowest cost",
+   "leaders": [
+    "A-36"
+   ],
+   "values": {
+    "A-36": {
+     "text": "₹0.00",
+     "value": "0.00",
+     "unavailable_reason": null
+    }
+   }
+  },
+  {
+   "id": "margin_change",
+   "group": "money_now",
+   "label": "Margin change",
+   "hint": null,
+   "leader_label": "Smallest margin change",
+   "leaders": [
+    "A-36"
+   ],
+   "values": {
+    "A-36": {
+     "text": "₹0.00",
+     "value": "0.00",
+     "unavailable_reason": null
+    }
+   }
+  },
+  {
+   "id": "max_loss",
+   "group": "risk_after",
+   "label": "Max loss",
+   "hint": null,
+   "leader_label": "Smallest max loss",
+   "leaders": [
+    "A-36"
+   ],
+   "values": {
+    "A-36": {
+     "text": "₹20,500.39",
+     "value": "20500.39",
+     "unavailable_reason": null
+    }
+   }
+  },
+  {
+   "id": "move_m2",
+   "group": "risk_after",
+   "label": "P&L if spot falls 2%",
+   "hint": null,
+   "leader_label": "Highest P&L at -2%",
+   "leaders": [
+    "A-36"
+   ],
+   "values": {
+    "A-36": {
+     "text": "₹5,499.61",
+     "value": "5499.61",
+     "unavailable_reason": null
+    }
+   }
+  },
+  {
+   "id": "move_m1",
+   "group": "risk_after",
+   "label": "P&L if spot falls 1%",
+   "hint": null,
+   "leader_label": "Highest P&L at -1%",
+   "leaders": [
+    "A-36"
+   ],
+   "values": {
+    "A-36": {
+     "text": "₹5,499.61",
+     "value": "5499.61",
+     "unavailable_reason": null
+    }
+   }
+  },
+  {
+   "id": "move_p1",
+   "group": "risk_after",
+   "label": "P&L if spot rises 1%",
+   "hint": null,
+   "leader_label": "Highest P&L at +1%",
+   "leaders": [
+    "A-36"
+   ],
+   "values": {
+    "A-36": {
+     "text": "−₹14,546.39",
+     "value": "-14546.39",
+     "unavailable_reason": null
+    }
+   }
+  },
+  {
+   "id": "move_p2",
+   "group": "risk_after",
+   "label": "P&L if spot rises 2%",
+   "hint": null,
+   "leader_label": "Highest P&L at +2%",
+   "leaders": [
+    "A-36"
+   ],
+   "values": {
+    "A-36": {
+     "text": "−₹20,500.39",
+     "value": "-20500.39",
+     "unavailable_reason": null
+    }
+   }
+  },
+  {
+   "id": "breakevens",
+   "group": "risk_after",
+   "label": "Breakevens",
+   "hint": null,
+   "leader_label": "Widest profit range",
+   "leaders": [
+    "A-36"
+   ],
+   "values": {
+    "A-36": {
+     "text": "22657.70/23542.30 (profit range 884.60 points)",
+     "value": "884.60",
+     "unavailable_reason": null
+    }
+   }
+  },
+  {
+   "id": "max_profit",
+   "group": "reward_after",
+   "label": "Max profit",
+   "hint": null,
+   "leader_label": "Highest max profit",
+   "leaders": [
+    "A-36"
+   ],
+   "values": {
+    "A-36": {
+     "text": "₹5,499.61",
+     "value": "5499.61",
+     "unavailable_reason": null
+    }
+   }
+  },
+  {
+   "id": "premium_left",
+   "group": "reward_after",
+   "label": "Premium still left to earn",
+   "hint": null,
+   "leader_label": "Most premium left",
+   "leaders": [
+    "A-36"
+   ],
+   "values": {
+    "A-36": {
+     "text": "₹7,338.50",
+     "value": "7338.50",
+     "unavailable_reason": null
+    }
+   }
+  },
+  {
+   "id": "pop",
+   "group": "reward_after",
+   "label": "POP",
+   "hint": null,
+   "leader_label": "Highest POP",
+   "leaders": [
+    "A-36"
+   ],
+   "values": {
+    "A-36": {
+     "text": "64.84%",
+     "value": "0.648380210",
+     "unavailable_reason": null
+    }
+   }
+  },
+  {
+   "id": "delta",
+   "group": "greeks_after",
+   "label": "Net delta",
+   "hint": null,
+   "leader_label": "Closest to delta-neutral",
+   "leaders": [
+    "A-36"
+   ],
+   "values": {
+    "A-36": {
+     "text": "-27.5600",
+     "value": "-27.5600",
+     "unavailable_reason": null
+    }
+   }
+  },
+  {
+   "id": "gamma",
+   "group": "greeks_after",
+   "label": "Gamma",
+   "hint": null,
+   "leader_label": "Lowest gamma",
+   "leaders": [
+    "A-36"
+   ],
+   "values": {
+    "A-36": {
+     "text": "-0.0717",
+     "value": "-0.0717",
+     "unavailable_reason": null
+    }
+   }
+  },
+  {
+   "id": "theta",
+   "group": "greeks_after",
+   "label": "Theta",
+   "hint": null,
+   "leader_label": "Most theta",
+   "leaders": [
+    "A-36"
+   ],
+   "values": {
+    "A-36": {
+     "text": "1006.1870",
+     "value": "1006.1870",
+     "unavailable_reason": null
+    }
+   }
+  },
+  {
+   "id": "vega",
+   "group": "greeks_after",
+   "label": "Vega",
+   "hint": null,
+   "leader_label": "Lowest vega",
+   "leaders": [
+    "A-36"
+   ],
+   "values": {
+    "A-36": {
+     "text": "-429.7280",
+     "value": "-429.7280",
+     "unavailable_reason": null
+    }
+   }
+  },
+  {
+   "id": "adjustments",
+   "group": "practical",
+   "label": "Adjustments used",
+   "hint": null,
+   "leader_label": "Fewest adjustments",
+   "leaders": [],
+   "values": {
+    "A-36": {
+     "text": "-",
+     "value": null,
+     "unavailable_reason": "Not available: the paper book does not record adjustments yet."
+    }
+   }
+  },
+  {
+   "id": "liquidity",
+   "group": "practical",
+   "label": "Strike liquidity (widest bid-ask spread)",
+   "hint": null,
+   "leader_label": "Tightest spreads",
+   "leaders": [],
+   "values": {
+    "A-36": {
+     "text": "-",
+     "value": null,
+     "unavailable_reason": "Not available: this approach opens no new leg."
+    }
+   }
+  },
+  {
+   "id": "fresh",
+   "group": "practical",
+   "label": "Would you open this fresh",
+   "hint": null,
+   "leader_label": "Smallest fresh max loss",
+   "leaders": [
+    "A-36"
+   ],
+   "values": {
+    "A-36": {
+     "text": "Max profit ₹7,113.59, max loss ₹18,886.41",
+     "value": "18886.41",
+     "unavailable_reason": null
+    }
+   }
+  }
+ ],
+ "leads": {
+  "A-36": {
+   "n": 17,
+   "m": 17
+  }
+ },
+ "curves": {
+  "before": [
+   [
+    "22014.80",
+    "-20500.39"
+   ],
+   [
+    "22073.35",
+    "-20500.39"
+   ],
+   [
+    "22131.90",
+    "-20500.39"
+   ],
+   [
+    "22190.45",
+    "-20500.39"
+   ],
+   [
+    "22249.00",
+    "-20500.39"
+   ],
+   [
+    "22307.55",
+    "-20500.39"
+   ],
+   [
+    "22366.10",
+    "-20500.39"
+   ],
+   [
+    "22424.65",
+    "-20500.39"
+   ],
+   [
+    "22483.20",
+    "-20500.39"
+   ],
+   [
+    "22500.00",
+    "-20500.39"
+   ],
+   [
+    "22541.75",
+    "-15072.89"
+   ],
+   [
+    "22600.30",
+    "-7461.39"
+   ],
+   [
+    "22658.85",
+    "150.11"
+   ],
+   [
+    "22700.00",
+    "5499.61"
+   ],
+   [
+    "22717.40",
+    "5499.61"
+   ],
+   [
+    "22775.95",
+    "5499.61"
+   ],
+   [
+    "22834.50",
+    "5499.61"
+   ],
+   [
+    "22893.05",
+    "5499.61"
+   ],
+   [
+    "22951.60",
+    "5499.61"
+   ],
+   [
+    "23010.15",
+    "5499.61"
+   ],
+   [
+    "23068.70",
+    "5499.61"
+   ],
+   [
+    "23127.25",
+    "5499.61"
+   ],
+   [
+    "23185.80",
+    "5499.61"
+   ],
+   [
+    "23244.35",
+    "5499.61"
+   ],
+   [
+    "23302.90",
+    "5499.61"
+   ],
+   [
+    "23361.45",
+    "5499.61"
+   ],
+   [
+    "23420.00",
+    "5499.61"
+   ],
+   [
+    "23478.55",
+    "5499.61"
+   ],
+   [
+    "23500.00",
+    "5499.61"
+   ],
+   [
+    "23537.10",
+    "676.61"
+   ],
+   [
+    "23595.65",
+    "-6934.89"
+   ],
+   [
+    "23654.20",
+    "-14546.39"
+   ],
+   [
+    "23700.00",
+    "-20500.39"
+   ],
+   [
+    "23712.75",
+    "-20500.39"
+   ],
+   [
+    "23771.30",
+    "-20500.39"
+   ],
+   [
+    "23829.85",
+    "-20500.39"
+   ],
+   [
+    "23888.40",
+    "-20500.39"
+   ],
+   [
+    "23946.95",
+    "-20500.39"
+   ],
+   [
+    "24005.50",
+    "-20500.39"
+   ],
+   [
+    "24064.05",
+    "-20500.39"
+   ],
+   [
+    "24122.60",
+    "-20500.39"
+   ],
+   [
+    "24181.15",
+    "-20500.39"
+   ],
+   [
+    "24239.70",
+    "-20500.39"
+   ],
+   [
+    "24298.25",
+    "-20500.39"
+   ],
+   [
+    "24356.80",
+    "-20500.39"
+   ],
+   [
+    "24415.35",
+    "-20500.39"
+   ],
+   [
+    "24473.90",
+    "-20500.39"
+   ],
+   [
+    "24532.45",
+    "-20500.39"
+   ],
+   [
+    "24591.00",
+    "-20500.39"
+   ],
+   [
+    "24649.55",
+    "-20500.39"
+   ],
+   [
+    "24708.10",
+    "-20500.39"
+   ],
+   [
+    "24766.65",
+    "-20500.39"
+   ],
+   [
+    "24825.20",
+    "-20500.39"
+   ]
+  ],
+  "A-36": [
+   [
+    "22014.80",
+    "-20500.39"
+   ],
+   [
+    "22073.35",
+    "-20500.39"
+   ],
+   [
+    "22131.90",
+    "-20500.39"
+   ],
+   [
+    "22190.45",
+    "-20500.39"
+   ],
+   [
+    "22249.00",
+    "-20500.39"
+   ],
+   [
+    "22307.55",
+    "-20500.39"
+   ],
+   [
+    "22366.10",
+    "-20500.39"
+   ],
+   [
+    "22424.65",
+    "-20500.39"
+   ],
+   [
+    "22483.20",
+    "-20500.39"
+   ],
+   [
+    "22500.00",
+    "-20500.39"
+   ],
+   [
+    "22541.75",
+    "-15072.89"
+   ],
+   [
+    "22600.30",
+    "-7461.39"
+   ],
+   [
+    "22658.85",
+    "150.11"
+   ],
+   [
+    "22700.00",
+    "5499.61"
+   ],
+   [
+    "22717.40",
+    "5499.61"
+   ],
+   [
+    "22775.95",
+    "5499.61"
+   ],
+   [
+    "22834.50",
+    "5499.61"
+   ],
+   [
+    "22893.05",
+    "5499.61"
+   ],
+   [
+    "22951.60",
+    "5499.61"
+   ],
+   [
+    "23010.15",
+    "5499.61"
+   ],
+   [
+    "23068.70",
+    "5499.61"
+   ],
+   [
+    "23127.25",
+    "5499.61"
+   ],
+   [
+    "23185.80",
+    "5499.61"
+   ],
+   [
+    "23244.35",
+    "5499.61"
+   ],
+   [
+    "23302.90",
+    "5499.61"
+   ],
+   [
+    "23361.45",
+    "5499.61"
+   ],
+   [
+    "23420.00",
+    "5499.61"
+   ],
+   [
+    "23478.55",
+    "5499.61"
+   ],
+   [
+    "23500.00",
+    "5499.61"
+   ],
+   [
+    "23537.10",
+    "676.61"
+   ],
+   [
+    "23595.65",
+    "-6934.89"
+   ],
+   [
+    "23654.20",
+    "-14546.39"
+   ],
+   [
+    "23700.00",
+    "-20500.39"
+   ],
+   [
+    "23712.75",
+    "-20500.39"
+   ],
+   [
+    "23771.30",
+    "-20500.39"
+   ],
+   [
+    "23829.85",
+    "-20500.39"
+   ],
+   [
+    "23888.40",
+    "-20500.39"
+   ],
+   [
+    "23946.95",
+    "-20500.39"
+   ],
+   [
+    "24005.50",
+    "-20500.39"
+   ],
+   [
+    "24064.05",
+    "-20500.39"
+   ],
+   [
+    "24122.60",
+    "-20500.39"
+   ],
+   [
+    "24181.15",
+    "-20500.39"
+   ],
+   [
+    "24239.70",
+    "-20500.39"
+   ],
+   [
+    "24298.25",
+    "-20500.39"
+   ],
+   [
+    "24356.80",
+    "-20500.39"
+   ],
+   [
+    "24415.35",
+    "-20500.39"
+   ],
+   [
+    "24473.90",
+    "-20500.39"
+   ],
+   [
+    "24532.45",
+    "-20500.39"
+   ],
+   [
+    "24591.00",
+    "-20500.39"
+   ],
+   [
+    "24649.55",
+    "-20500.39"
+   ],
+   [
+    "24708.10",
+    "-20500.39"
+   ],
+   [
+    "24766.65",
+    "-20500.39"
+   ],
+   [
+    "24825.20",
+    "-20500.39"
+   ]
+  ]
+ },
+ "timing": {
+  "engine_seconds": "0.0025",
+  "total_seconds": "0.7289",
+  "approaches": 1
+ },
+ "available": [
+  {
+   "id": "A-36",
+   "name": "No change",
+   "explanation": "Keep every leg as it is. This is the baseline the others are compared with.",
+   "applicable": true,
+   "reason": null
+  },
+  {
+   "id": "A-01",
+   "name": "Roll the untested spread toward spot",
+   "explanation": "Move the side spot is moving away from closer to spot, keeping its width.",
+   "applicable": true,
+   "reason": null
+  },
+  {
+   "id": "A-05",
+   "name": "Roll the tested spread out (same width)",
+   "explanation": "Move the side spot is pressing on further out, keeping its width.",
+   "applicable": true,
+   "reason": null
+  },
+  {
+   "id": "A-29",
+   "name": "Reduce the tested side",
+   "explanation": "Close part of the side spot is pressing on and keep the rest.",
+   "applicable": true,
+   "reason": null
+  },
+  {
+   "id": "A-28",
+   "name": "Close the tested spread",
+   "explanation": "Close the whole side spot is pressing on and keep the other side.",
+   "applicable": true,
+   "reason": null
+  },
+  {
+   "id": "A-11",
+   "name": "Re-centre both shorts at the money",
+   "explanation": "Move both short strikes to the strike nearest spot, keeping each wing's distance.",
+   "applicable": true,
+   "reason": null
+  },
+  {
+   "id": "A-31",
+   "name": "Exit the whole strategy",
+   "explanation": "Close every open leg.",
+   "applicable": true,
+   "reason": null
+  }
+ ],
+ "days_to_expiry": 3
+}

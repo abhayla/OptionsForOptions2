@@ -303,3 +303,44 @@ def test_req156_no_spot_no_criteria():
     """No spot -> no After, so no criteria, no leads and no curves (nothing made up)."""
     body = post(client_for(load("ADJ-24b"), rates=RATES)).json()
     assert body["approaches"] == [] and body["criteria"] == [] and body["leads"] == {} and body["curves"] == {}
+
+
+# ---- GC-ADJ1 step 3: the Review adjustment drawer's one read (REQ-046 AC-2 / AC-3, REQ-045 AC-5) -------------------
+
+def test_drawer_a36_only_builds_no_change_and_lists_every_generic_approach_without_a_figure():
+    """Asking for A-36 alone builds ONLY the current position; `available` still names all seven, with no number."""
+    body = post(client_for(load("ADJ-02"), rates=RATES), body={"approaches": ["A-36"]}).json()
+    assert [a["id"] for a in body["approaches"]] == ["A-36"]
+    assert [a["id"] for a in body["available"]] == list(APPROACH_IDS)
+    for a in body["available"]:
+        assert set(a) == {"id", "name", "explanation", "applicable", "reason"}
+        assert a["name"] and a["explanation"] and not re.search(r"\d", a["explanation"]), a  # REQ-045 AC-5: no figure
+    assert body["available"][0]["name"] == "No change" and all(a["applicable"] for a in body["available"])
+
+
+def test_drawer_layer2_current_state_comes_from_the_a36_column_and_days_to_expiry_from_the_legs():
+    sc = load("ADJ-02")
+    tracked, market = tracked_of(sc), market_of(sc)
+    body = post(client_for(sc, rates=RATES), body={"approaches": ["A-36"]}).json()
+    rows = {c["id"]: c["values"]["A-36"] for c in body["criteria"]}
+    for need in ("delta", "gamma", "theta", "vega", "breakevens", "max_profit", "max_loss"):
+        assert rows[need]["text"], need
+    nearest = min(x.expiry for x in tracked.position.legs)
+    assert body["days_to_expiry"] == (nearest - market.now.astimezone(route.IST).date()).days
+    assert body["approaches"][0]["margin"]["state"] == "stated"
+
+
+@pytest.mark.parametrize("sid", ["ADJ-02", "ADJ-20c", "ADJ-20d", "ADJ-13"])
+def test_drawer_applicable_equals_the_full_replys_refusal_state_with_the_same_reason(sid):
+    sc = load(sid)
+    full = {a["id"]: a for a in post(client_for(sc, rates=RATES)).json()["approaches"]}
+    only = post(client_for(sc, rates=RATES), body={"approaches": ["A-36"]}).json()["available"]
+    for a in only:
+        assert a["applicable"] == (full[a["id"]]["refusal"] is None), (sid, a["id"])
+        assert a["reason"] == full[a["id"]]["refusal"], (sid, a["id"])
+
+
+def test_drawer_no_spot_means_no_approach_can_be_built_and_the_reason_says_so():
+    body = post(client_for(load("ADJ-24b"), rates=RATES), body={"approaches": ["A-36"]}).json()
+    assert [a["id"] for a in body["available"]] == list(APPROACH_IDS)
+    assert all(not a["applicable"] and a["reason"].startswith("Not checked now") for a in body["available"])

@@ -3,12 +3,13 @@
 // money: the filters COMPARE two decimal texts (cmpDecimal, string rules only), they never add, multiply or round.
 // New file; the legacy autopilot adjustment screens compute client P&L and are REFERENCE only (not copied).
 
-export const NO_CHANGE_ID = 'no_change'
+// The server's own catalogue id of "No change" (backend ADJUSTMENT_APPROACH_LABEL_TEXT, A-36).
+export const NO_CHANGE_ID = 'A-36'
 export const UNAVAILABLE_FOR_FILTER = 'not available for this filter'
 export const UNAVAILABLE_VALUE = '-'
 
 // The criteria the filters read when the approach itself does not carry the figure (ids as the route's `criteria` names them).
-export const CRITERION = Object.freeze({ cash: 'credit_debit', cost: 'charges_bidask' })
+export const CRITERION = Object.freeze({ cash: 'credit', cost: 'cost' })
 
 export const GROUP_TITLES = Object.freeze({
   money_now: 'Money now',
@@ -78,7 +79,13 @@ export function spanOf(values) {
 }
 
 export const isNoChange = (a) => a?.id === NO_CHANGE_ID
-export const isRefused = (a) => typeof a?.refusal === 'string' && a.refusal !== ''
+// A refusal is the server's error parts ({what_happened, ...}); a plain text is read as it is. Anything else = not refused.
+export const refusalText = (a) => {
+  const r = a?.refusal
+  if (typeof r === 'string') return r
+  return r && typeof r === 'object' ? (r.what_happened ?? 'Not offered now.') : ''
+}
+export const isRefused = (a) => refusalText(a) !== ''
 
 /** REQ-156 AC-1 / AC-4: the approaches in the table: No change first, then the reply's own (catalogue) order; refused ones
  *  are left out (they are listed apart). Never sorted by Leads on. */
