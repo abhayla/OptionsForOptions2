@@ -1,6 +1,6 @@
 # Session handover: GC-ADJ1 (adjustments core), 2026-10-30 / 31
 
-Branch: everything is on `build/gcadj1` (run tree `OptionsForOptions2-gcadj1-run`); the merge into `feature/adjustments` is NOT done yet (see BLOCKED). Nothing was pushed, no PR was opened,
+Branch: merged into local `feature/adjustments` (01c7a992, after prepush --full PASS on cb4a1b89, 2026-10-31 ~01:35). Not pushed; main untouched. Nothing was pushed, no PR was opened,
 main was not touched (owner rule 2026-10-30, written into the contract's Owner decisions as the run's first commit).
 Contract: `docs/process/goal-contract-GC-ADJ1-2026-10-30.md` (progress log section 0.3, "Found during the run" rows
 1-22 hold every decision taken in the run).
@@ -43,16 +43,16 @@ Contract: `docs/process/goal-contract-GC-ADJ1-2026-10-30.md` (progress log secti
 
 ## BLOCKED / owner
 
-- Step 4 not closed: `python scripts/orchestrator/prepush.py --repo D:/Abhay/Ventures/OptionsForOptions2-gcadj1-run --full` was started at about 23:37 and stopped by Claude Code because the machine ran critically low on memory (not a test failure; no result was produced). The contract requires it to PASS before `build/gcadj1` merges `--no-ff` into `feature/adjustments`, so that merge has not happened. Next, once memory allows (close other apps and Claude sessions first): (1) re-run that prepush command; (2) only if it PASSes, in the run tree: `git checkout feature/adjustments && git merge --no-ff build/gcadj1 && git checkout build/gcadj1` (local only; nothing to main, no push).
-
-- Q2 in `docs/process/owner-questions-2026-10-30.md`: should "Exit whole strategy" lead the Greeks rows only because
-  nothing stays open (Exit leads 5 of 18 on ADJ-02, 6 of 18 on ADJ-13)? Recommendation: show "No position left after
-  exit" and exclude Exit from leading those rows (SPEC CHANGE to REQ-156 AC-3).
+- Q2 ANSWERED (2026-10-31): Exit shows "No position left after exit" in the Greeks rows and cannot lead them
+  (ADR-215, REQ-156 AC-3). Code change owed: backend/ofo/adjustment/compare.py + one test (follow-up item).
 - Worktrees cannot be removed: `wt-rm.ps1` needs the branch on origin/main, and the owner rule keeps this work off
   main (contract row 11). Kept, all merged into feature/adjustments, no node_modules except the run tree's own copy:
   `OptionsForOptions2-gcadj1-run`, `-gcadj1-pop`, `-gcadj1-spot`, `-gcadj1-appr`, `-gcadj1-scen`, plus agent
   worktrees under `.claude/worktrees/agent-*` from this run.
 - Stray file `D:\tmp_a.log` (345 bytes, a builder's test log): deletion was blocked by the safety check; please delete.
+
+- Spec wording: `spec/business-rules/scenario-calculations.md` section 3 still says "a non-terminating breakeven is
+  rounded"; the engine now rounds every derived level (F-75). Update the wording.
 
 ## PARKED
 
@@ -60,7 +60,9 @@ None.
 
 ## NEXT
 
-1. Owner: answer Q2; read the pinned texts (PENDING 8); approve the iron condor playbook numbers before GC-ADJ2.
+1. Build the texts review page (owner 2026-10-31: "Review page later"): one private page listing the 115 pinned texts
+   by screen, each with "OK" / "change to..."; apply the answers in one batch. Then the ADR-215 code change.
+   Owner: approve the iron condor playbook numbers before GC-ADJ2.
 2. GC-ADJ2 (playbooks, plan sheet, inbox, history; REQ-158..163), outline at the end of the GC-ADJ1 contract.
 3. GC-ADJ3+ (owner 2026-10-30: outline for approval) - catalogue features in no contract yet:
 
