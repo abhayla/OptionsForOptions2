@@ -129,7 +129,14 @@ const targetPick = ref({ level: '', dateIndex: 0 })
 const targetShown = ref(null)
 const targetStale = ref(false)
 const dateStopList = computed(() => dateStops(data.value?.valuation, firstExpiry(data.value?.legs)))
-const loadSoon = debounced(() => load())
+// GC-LIVE R-26: a pick goes to BOTH answer paths: the live socket's follow message (so every push of the new version
+// carries the target block, refreshed as prices move) and one REST request (the answer while the socket is not live).
+// Before, only REST carried the pick: a push (about once a second) cancelled the target request in flight and, carrying
+// no figures, marked the last ones "Stale", so in market hours a pick froze or was never answered.
+const loadSoon = debounced(() => {
+  syncLive()
+  load()
+})
 const pickTarget = (patch) => {
   targetPick.value = { ...targetPick.value, ...patch } // both back at spot / now: no target field is sent
   loadSoon()
@@ -228,7 +235,7 @@ function applyOutcome(body) {
     targetShown.value = body.target
     targetStale.value = false
   } else if (moved && targetShown.value) {
-    targetStale.value = true // a live push carries the limits but no figures: the last figures stay, marked
+    targetStale.value = true // an answer for the current version with no figures (not connected, refused): the last figures stay, marked
   } else {
     targetShown.value = body.target ?? null
   }
@@ -260,7 +267,11 @@ const live = useStrategyLive({
 function syncLive() {
   if (linkRefused.value) return
   const draft = buildDraft(legs.value)
-  if (draft) live.follow({ ...draft, ...choiceFields(choice.value), ...CHART_FLAGS })
+  // GC-LIVE R-26: the follow message carries the same target and Add Booked P&L fields as the REST request, so the
+  // server computes the target block in every push (ADR-008: the browser computes none)
+  const target = targetFields(targetPick.value, dateStopList.value)
+  const booked = bookedFields(paper.value?.book?.strategy_id, includeBooked.value)
+  if (draft) live.follow({ ...draft, ...choiceFields(choice.value), ...CHART_FLAGS, ...target, ...booked })
   else live.stop()
 }
 
