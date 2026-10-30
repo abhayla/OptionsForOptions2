@@ -9,7 +9,8 @@ import api from '@/services/api'
 import { createLiveSocket, useReconnecting, useReconnectingText } from './useStrategyLive'
 
 export const INDEX_LIVE_PATH = '/api/market/indices/live'
-export const INDEX_REST_PATH = '/api/market/indices'
+// relative to the api client's baseURL ('/api'), so the browser calls /api/market/indices
+export const INDEX_REST_PATH = '/market/indices'
 
 /** Same-origin socket URL: never a host from config, never a query string. */
 export function indexLiveUrl(loc = window.location) {

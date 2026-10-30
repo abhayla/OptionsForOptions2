@@ -15,6 +15,7 @@ import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import Icon from '@/components/common/Icon.vue'
 import EmptyState from '@/components/states/EmptyState.vue'
 import Tabs from '@/components/common/Tabs.vue'
+import { useHeldFeature } from '@/lib/heldFeatures'
 import DraftDelete from '@/components/strategy/DraftDelete.vue'
 import DraftDeleteStatus from '@/components/strategy/DraftDeleteStatus.vue'
 import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
@@ -60,9 +61,16 @@ async function closeMenu() {
   menuButton.value?.focus?.()
 }
 useOutsideClose(() => menuOpen.value, () => menuRoot.value, closeMenu)
-const BUILDER_TABS = [{ key: 'ready-made', label: 'Ready-made' }, { key: 'positions', label: 'Positions' }, { key: 'saved', label: 'Saved Strategies' }, { key: 'tracked', label: 'Paper' }]
+const ALL_BUILDER_TABS = [{ key: 'ready-made', label: 'Ready-made' }, { key: 'positions', label: 'Positions' }, { key: 'saved', label: 'Saved Strategies' }, { key: 'tracked', label: 'Paper' }]
+// the Ready-made tab is the held feature `platform_strikes`: with the switch off its header is absent (not greyed), and the first tab left opens
+const readyMadeOn = useHeldFeature('platform_strikes')
+const BUILDER_TABS = computed(() => ALL_BUILDER_TABS.filter((t) => t.key !== 'ready-made' || readyMadeOn.value))
 const SAVED_TAB_ROWS = 10
-const tab = ref('ready-made')
+const picked = ref(null)
+const tab = computed({
+  get: () => (picked.value && BUILDER_TABS.value.some((t) => t.key === picked.value) ? picked.value : BUILDER_TABS.value[0].key),
+  set: (key) => { picked.value = key },
+})
 const search = ref('')
 const recentDrafts = computed(() => {
   const q = search.value.trim().toLowerCase()
@@ -391,9 +399,12 @@ v-if="current" type="button" role="menuitem" data-testid="rename-open"
           <slot name="menu" :close="closeMenu" :add-to-paper="startPaper" :can-add-to-paper="canAddToPaper" />
         </span>
       </span>
-      <span v-if="savedId" class="truncate" data-testid="save-status" :data-saved-id="savedId">{{ strategyLabel({ name: savedName }, `Draft ${savedId}`) }} saved.</span>
-      <span v-else data-testid="save-status" data-saved-id=""></span>
     </div>
+    <!-- the confirmation has its own line under the buttons, so it never squeezes the row (Add to Paper stayed on one line) -->
+    <p class="mt-1 min-h-[1.25rem] truncate px-1 text-sm" aria-live="polite">
+      <span v-if="savedId" data-testid="save-status" :data-saved-id="savedId">{{ strategyLabel({ name: savedName }, `Draft ${savedId}`) }} saved.</span>
+      <span v-else data-testid="save-status" data-saved-id=""></span>
+    </p>
     <slot name="after-actions" />
     <!-- GC-UI 6b D-C16 (S-116): the centred modal; Cancel + a primary Save; the 20-character limit and the counter are unchanged -->
     <Modal :open="!!asking" :title="NAME_TITLES[asking] ?? 'Save New Strategy'" fallback-focus="[data-testid='save-draft']" data-testid="name-modal" @close="cancelName">

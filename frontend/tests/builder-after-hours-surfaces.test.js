@@ -113,14 +113,14 @@ describe('attack 1: no legs at 18:00, the drawer and the page carry the banner',
   }
 
   it('the page with no draft shows the banner from the index answer (no outcome reply exists)', async () => {
-    answers['GET /api/market/indices'] = indices(true)
+    answers['GET /market/indices'] = indices(true)
     const w = await openEmptyBuilder()
     expect(w.find('[data-testid="strategy-builder"]').attributes('data-state')).toBe('no-draft')
     expect(bannerTexts(w)).toEqual([BANNER])
   })
 
   it('the page with no draft in market hours: no banner', async () => {
-    answers['GET /api/market/indices'] = indices(false)
+    answers['GET /market/indices'] = indices(false)
     const w = await openEmptyBuilder()
     expect(bannerTexts(w)).toEqual([])
   })
@@ -202,7 +202,7 @@ describe('ADR-197 round 2: the close label survives a leg edit and a draft link'
 
   it('a draft link reopened later keeps the close label of each leg', async () => {
     answers['POST /strategies/outcome'] = { state: 'NOT_CONNECTED', status_label: 'x', legs: [], underlying: 'NIFTY' }
-    answers['GET /api/market/indices'] = indices(true)
+    answers['GET /market/indices'] = indices(true)
     const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/strategy/builder', component: StrategyBuilderPage }] })
     await router.push({ path: '/strategy/builder', query: { draft: JSON.stringify({ underlying: 'NIFTY', legs: [{ ...base, close_at: QUOTE_AT }] }) } })
     await router.isReady()

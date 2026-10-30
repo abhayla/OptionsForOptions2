@@ -153,6 +153,8 @@ export function centreText(strikes, timeText) {
 
 /** A price-like cell value as shown: the server's string, or '-' when it sent none. */
 export const shown = (value) => (value == null || value === '' ? PRICE_MISSING : String(value))
+/** A strike-table cell: the server's string, or the one shared dash (OI_MISSING) in every column, so empty cells never mix glyphs. */
+export const cellShown = (value) => (value == null || value === '' ? OI_MISSING : String(value))
 
 /** The shared dash for an answer with no value (S-032): the OI shows it for null, undefined, empty and non-numbers. */
 export const OI_MISSING = '—'

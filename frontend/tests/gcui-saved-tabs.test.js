@@ -41,9 +41,28 @@ beforeEach(() => {
 })
 
 describe('D-C01 lower tab labels', () => {
-  it('reads Ready-made / Positions / Saved Strategies / Paper', async () => {
+  it('reads Ready-made / Positions / Saved Strategies / Paper when the held feature platform_strikes is on', async () => {
+    answers['GET /features'] = { held: ['platform_strikes'] }
     const w = await bar([])
     expect(w.findAll('[role="tab"]').map((x) => x.text())).toEqual(['Ready-made', 'Positions', 'Saved Strategies', 'Paper'])
+    expect(t(w, 'builder-tabs').attributes('data-tab')).toBe('ready-made')
+  })
+  it('U5: with platform_strikes off the Ready-made header is absent and Positions is the default tab', async () => {
+    answers['GET /features'] = { held: [] }
+    const w = await bar([])
+    expect(w.findAll('[role="tab"]').map((x) => x.text())).toEqual(['Positions', 'Saved Strategies', 'Paper'])
+    expect(t(w, 'builder-tabs').attributes('data-tab')).toBe('positions')
+  })
+  it('U5: a failed features read also hides Ready-made (fail closed)', async () => {
+    answers['GET /features'] = new Error('down')
+    const w = await bar([])
+    expect(w.findAll('[role="tab"]').map((x) => x.text())).not.toContain('Ready-made')
+  })
+  it('U12: the saved confirmation is outside the button row', async () => {
+    answers['GET /features'] = { held: [] }
+    const w = await bar([])
+    expect(t(w, 'action-row').find('[data-testid="save-status"]').exists()).toBe(false)
+    expect(t(w, 'save-status').exists()).toBe(true)
   })
 })
 
