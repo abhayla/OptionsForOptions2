@@ -1978,5 +1978,45 @@
   "explanation:contract_display": {
     "sha256": "6c54155c5009219d21a0471a70ec975773321e399015937a5bf241d45fa71068",
     "reviewed": "pending owner read"
+  },
+  "adjust_no_price": {
+    "sha256": "3161fd1f9d403e3250119cf5efe6fec872e839912f79237441b5f3f6ad225348",
+    "reviewed": "pending owner read"
+  },
+  "adjust_low_oi_blocked": {
+    "sha256": "2be90ddb6de34860f49d83d284698858e29a206eaaf8c1a302977f678a36556e",
+    "reviewed": "pending owner read"
+  },
+  "adjust_low_oi_unknown": {
+    "sha256": "d3d0824117761c5a55ed062a6c26ff1d3c520c48c02f71036bff0d7ea6149956",
+    "reviewed": "pending owner read"
+  },
+  "adjust_no_strike_at_delta": {
+    "sha256": "1e2dc91080befdff9da9b50a0d132a7fbfa2193be84aa3f5df0920715b74f9b5",
+    "reviewed": "pending owner read"
+  },
+  "adjust_roll_would_cross": {
+    "sha256": "152bd1f636cc20b4fc1ccae871eff43e347837dc354c67bd84cf480898bff8b8",
+    "reviewed": "pending owner read"
+  },
+  "adjust_reduce_needs_two_lots": {
+    "sha256": "2f9c767db2a56ccb3c5af4a5d0c9fff75d030851704e433ba50777e85384ede7",
+    "reviewed": "pending owner read"
+  },
+  "adjust_recentre_days_left": {
+    "sha256": "36037bf5f92f9332bcaeaa5c4e0a2234a21a8557478e70edf9a5d697bd46c518",
+    "reviewed": "pending owner read"
+  },
+  "adjust_needs_two_spreads": {
+    "sha256": "83d7afb8073da3c82fba6a643deee6d94be11d32a1e161947bcb2b0f9320fa0c",
+    "reviewed": "pending owner read"
+  },
+  "adjust_no_strike_both_types": {
+    "sha256": "f78312644996de3491e6eae33d3c1aab436d1391f455b183c4efc9bd1ff57c28",
+    "reviewed": "pending owner read"
+  },
+  "labels:adjustment_approach": {
+    "sha256": "0a6c009de0f8e74f255d9bec8a3f82d259d5c43fef5b487dfdf2822139102caa",
+    "reviewed": "pending owner read"
   }
 }

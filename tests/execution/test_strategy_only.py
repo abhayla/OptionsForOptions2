@@ -224,6 +224,11 @@ _ALLOWED_LEG_SHAPES = {
     "outcome/service.py:OutcomeLeg": "a display row of the outcome view (W-063); it has no route to the broker",
     "tracking/paper.py:TrackedLeg": "a paper entry leg (W-122, REQ-109 AC-3): stored only under its saved strategy's "
                                     "tracking row; no order route imports ofo.tracking",
+    "adjustment/approaches.py:Trade": "a planned trade of a suggested approach (W-196, REQ-155; ADR-003 suggest-only): "
+                                      "a display row; acting on it goes through the builder's Execute path, which "
+                                      "re-derives orders from a strategy version",
+    "adjustment/approaches.py:ClosedLeg": "a display row of a leg an approach would close, for booked P&L (F-74); "
+                                          "it has no route to the broker",
 }
 
 

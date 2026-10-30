@@ -235,6 +235,16 @@ BUILDER_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
     "RESTORE": "User restored an earlier configuration",
     "UNDO": "User undid the last change",
 })
+#: W-196 (REQ-155, ADR-214): the names of the iron condor adjustment approaches, by catalogue A-id (decision support).
+ADJUSTMENT_APPROACH_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
+    "A-36": "No change",
+    "A-01": "Roll the untested spread toward spot",
+    "A-05": "Roll the tested spread out (same width)",
+    "A-29": "Reduce the tested side",
+    "A-28": "Close the tested spread",
+    "A-11": "Re-centre both shorts at the money",
+    "A-31": "Exit the whole strategy",
+})
 SCENARIO_VIEW_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
     "AT_EXPIRY": "At Expiry",
     "ESTIMATED_NOW": "Estimated Now (estimate)",
@@ -1383,6 +1393,7 @@ LABEL_TABLES: Mapping[str, Mapping[str, str]] = MappingProxyType({
     "direction": DIRECTION_TEXT, "measure": MEASURE_TEXT, "choice": CHOICE_LABEL_TEXT, "step": STEP_LABEL_TEXT,
     "builder": BUILDER_LABEL_TEXT, "scenario_view": SCENARIO_VIEW_LABEL_TEXT, "health": HEALTH_LABEL_TEXT,
     "column": COLUMN_LABEL_TEXT, "table_reason": TABLE_REASON_TEXT, "level_region": LEVEL_REGION_TEXT,
+    "adjustment_approach": ADJUSTMENT_APPROACH_LABEL_TEXT,
 })
 
 
