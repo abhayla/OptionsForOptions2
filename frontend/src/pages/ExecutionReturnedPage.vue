@@ -2,6 +2,7 @@
      Nothing runs on load: the page reads only the locally stored id of the last executed strategy and offers the
      owner's "Check with Zerodha"; with none stored, a link back to the strategies. New file, copy from: none. -->
 <script setup>
+import PageHeader from '@/components/common/PageHeader.vue'
 import ReturnCheck from '@/components/execution/ReturnCheck.vue'
 import { readLastExecuted } from '@/lib/execute'
 
@@ -9,9 +10,9 @@ const strategyId = readLastExecuted()
 </script>
 
 <template>
-  <section class="p-4" data-testid="execution-returned">
-    <h1 class="text-xl font-semibold" data-testid="page-title">Back from Kite</h1>
-    <p class="mt-2">Your orders were handled on Kite's page.</p>
+  <section data-testid="execution-returned">
+    <PageHeader parent="Strategies" title="Back from Kite" />
+    <p>Your orders were handled on Kite's page.</p>
     <ReturnCheck v-if="strategyId !== null" :strategy-id="strategyId" />
     <p v-else class="mt-2" data-testid="returned-no-strategy">
       <RouterLink to="/strategies" class="underline">Back to your strategies</RouterLink>

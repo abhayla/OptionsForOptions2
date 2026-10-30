@@ -10,6 +10,8 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import api, { NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
+import PageHeader from '@/components/common/PageHeader.vue'
+import EmptyState from '@/components/states/EmptyState.vue'
 import DraftDelete from '@/components/strategy/DraftDelete.vue'
 import DraftDeleteStatus from '@/components/strategy/DraftDeleteStatus.vue'
 import { istTime } from '@/lib/displayFormat'
@@ -18,6 +20,10 @@ import { useOrderPath } from '@/lib/orderPath'
 import { useDeleteFlow } from '@/lib/strategyActivity'
 
 const COMPLETED_STATUSES = []
+// Owner 2026-10-30 (Sensibull 117): one column grid shared by the header row and every strategy row, so columns line up
+// User test 2026-10-30 round 2 widths: last saved 16rem holds "last saved 30 Oct 2026, 08:28:55 IST" on one line
+const COLS = 'lg:grid lg:grid-cols-[minmax(0,1fr)_4rem_minmax(0,2.4fr)_3.5rem_16rem_5.5rem_14rem]'
+const HEADS = ['Name', 'Index', 'Legs', 'Status', 'Last saved', 'Tracking', '']
 
 // W-121 (REQ-073 AC-6, ADR-165): the Execute link is absent (not disabled) unless the server said the order path is on.
 const orderPathOn = useOrderPath()
@@ -100,43 +106,51 @@ async function confirmRename(row) {
 
 <template>
   <section :data-testid="completedOnly ? 'completed-strategies' : 'my-strategies'">
-    <p class="text-xs text-ink-muted" data-testid="page-parent">{{ route.meta.parent }}</p>
-    <h1 class="text-xl font-semibold" data-testid="page-title">{{ route.meta.title }}</h1>
-    <ErrorMessage v-if="errorParts" class="mt-3" :parts="errorParts" compact prefix="list-error" data-testid="list-error" />
-    <p v-else-if="!loaded" class="mt-3 text-ink-muted" data-testid="list-loading">Loading...</p>
-    <p v-else-if="!shown.length" class="mt-3 text-ink-muted" data-testid="list-empty">
-      {{ completedOnly ? 'No strategy is completed yet.' : 'You have no saved strategies yet. Save a draft from the Strategy Builder and it will appear here.' }}
-    </p>
+    <PageHeader :parent="route.meta.parent ?? ''" :title="route.meta.title">
+      <template v-if="loaded && shown.length" #actions>
+        <input
+          v-model="query" type="search" class="field w-64" data-testid="strategy-search"
+          placeholder="Search name" aria-label="Search saved strategies by name" autocomplete="off" />
+      </template>
+    </PageHeader>
+    <ErrorMessage v-if="errorParts" :parts="errorParts" compact prefix="list-error" data-testid="list-error" />
+    <p v-else-if="!loaded" class="text-sm text-ink-muted" data-testid="list-loading">Loading...</p>
+    <EmptyState
+      v-else-if="!shown.length" data-testid="list-empty"
+      :message="completedOnly ? 'No strategy is completed yet.' : 'You have no saved strategies yet. Save a draft from the Strategy Builder and it will appear here.'"
+    />
     <template v-else>
-      <input
-v-model="query" type="search" class="mt-4 w-full rounded border border-line px-3 py-2 text-sm" data-testid="strategy-search"
-             placeholder="Search name" aria-label="Search saved strategies by name" autocomplete="off" />
-      <p v-if="!visible.length" class="mt-3 text-ink-muted" data-testid="search-no-match">{{ noMatchText(query) }}</p>
-      <ul v-else class="mt-4 divide-y divide-line rounded border border-line bg-surface" data-testid="strategy-list">
-        <li v-for="s in visible" :key="s.id" class="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-sm lg:grid lg:grid-cols-[minmax(0,1fr)_4rem_minmax(0,2.4fr)_3.5rem_16rem_5.5rem_14rem]" data-testid="strategy-row" :data-strategy-id="s.id">
+      <p v-if="!visible.length" class="text-sm text-ink-muted" data-testid="search-no-match">{{ noMatchText(query) }}</p>
+      <div v-else class="overflow-hidden rounded-lg border border-line bg-surface">
+      <div class="hidden gap-x-3 border-b border-line bg-surface-muted px-4 py-1.5 text-[11px] leading-4 font-medium text-ink-muted" :class="COLS" aria-hidden="true">
+        <span v-for="(h, i) in HEADS" :key="i" :class="{ 'text-right': i === HEADS.length - 1 }">{{ h }}</span>
+      </div>
+      <ul class="divide-y divide-line" data-testid="strategy-list">
+        <li v-for="s in visible" :key="s.id" class="flex flex-wrap min-h-9 items-center gap-x-3 gap-y-1 px-4 py-1.5 text-[13px] hover:bg-surface-muted" :class="COLS" data-testid="strategy-row" :data-strategy-id="s.id">
           <span class="min-w-0 max-w-full truncate font-medium" :title="strategyLabel(s, `Strategy ${s.id}`)" data-testid="row-name">{{ strategyLabel(s, `Strategy ${s.id}`) }}</span>
           <span data-testid="row-underlying">{{ s.underlying }}</span>
           <span v-if="legsLine(s)" class="min-w-0 max-w-full truncate text-ink-muted" :title="legsLine(s)" data-testid="row-legs">{{ legsLine(s) }}</span>
           <span v-else class="hidden lg:block" aria-hidden="true"></span>
           <span data-testid="row-status">{{ s.status }}</span>
-          <span class="whitespace-nowrap text-ink-muted" data-testid="row-saved">last saved {{ istTime(s.updated_at) }}</span>
+          <span class="num whitespace-nowrap text-ink-muted" data-testid="row-saved">last saved {{ istTime(s.updated_at) }}</span>
           <span v-if="trackedText(s.tracked)" class="max-w-full truncate text-ink-muted" data-testid="row-tracked">{{ trackedText(s.tracked) }}</span>
-          <span v-else class="hidden lg:block" aria-hidden="true"></span>
+          <span v-else aria-hidden="true"></span>
           <span class="flex flex-wrap items-center justify-end gap-x-3 gap-y-1" data-testid="row-actions">
-          <button type="button" class="underline" :disabled="busy" :data-testid="`open-builder-${s.id}`" @click="openInBuilder(s.id)">Open in Builder</button>
-          <button v-if="'name' in s" type="button" class="underline" :disabled="busy" :data-testid="`rename-${s.id}`" @click="startRename(s)">Rename</button>
+          <button type="button" class="link" :disabled="busy" :data-testid="`open-builder-${s.id}`" @click="openInBuilder(s.id)">Open in Builder</button>
+          <button v-if="'name' in s" type="button" class="link" :disabled="busy" :data-testid="`rename-${s.id}`" @click="startRename(s)">Rename</button>
           <DraftDelete :row="s" :flow="deleteFlow" />
-          <router-link v-if="orderPathOn" :to="`/strategy/${s.id}/execute`" class="underline" :data-testid="`open-execute-${s.id}`">Execute Strategy</router-link>
+          <router-link v-if="orderPathOn" :to="`/strategy/${s.id}/execute`" class="link" :data-testid="`open-execute-${s.id}`">Execute Strategy</router-link>
           </span>
           <form v-if="renaming && renaming.id === s.id" class="col-span-full flex w-full flex-wrap items-center gap-2" data-testid="rename-form" @submit.prevent="confirmRename(s)">
-            <input v-model="renaming.text" type="text" class="rounded border border-line px-2 py-1" data-testid="rename-input" :maxlength="STRATEGY_NAME_MAX" aria-label="New strategy name" autocomplete="off" />
+            <input v-model="renaming.text" type="text" class="field" data-testid="rename-input" :maxlength="STRATEGY_NAME_MAX" aria-label="New strategy name" autocomplete="off" />
             <span class="text-xs" :class="renaming.text.length > STRATEGY_NAME_MAX ? 'text-warn' : 'text-ink-muted'" data-testid="rename-count">{{ renaming.text.length }}/{{ STRATEGY_NAME_MAX }}</span>
-            <button type="submit" class="underline" :disabled="busy" data-testid="rename-save">Save</button>
-            <button type="button" class="underline" data-testid="rename-cancel" @click="renaming = null">Cancel</button>
+            <button type="submit" class="btn btn-sm btn-primary" :disabled="busy" data-testid="rename-save">Save</button>
+            <button type="button" class="btn btn-sm" data-testid="rename-cancel" @click="renaming = null">Cancel</button>
           </form>
           <ErrorMessage v-if="renameError && renameError.id === s.id" class="col-span-full w-full" :parts="renameError.parts" compact prefix="rename-error" data-testid="rename-error" />
         </li>
       </ul>
+      </div>
     </template>
     <DraftDeleteStatus :flow="deleteFlow" />
   </section>

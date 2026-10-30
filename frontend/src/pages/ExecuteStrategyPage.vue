@@ -7,6 +7,7 @@
      3. Kite's page opens only on the owner's click (BasketForm); then "Check with Zerodha" reads the result (ReturnCheck).
      New file, copy from: none (legacy-reuse row 149's BasketOrderModal builds the basket in the browser; ADR-054). -->
 <script setup>
+import PageHeader from '@/components/common/PageHeader.vue'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import api, { NEUTRAL_PARTS } from '@/services/api'
@@ -135,8 +136,8 @@ async function prepare(action) {
 </script>
 
 <template>
-  <section class="p-4" data-testid="execute-screen" :data-phase="phase">
-    <h1 class="text-xl font-semibold" data-testid="page-title">Execute Strategy {{ strategyName ?? strategyId ?? '' }}</h1>
+  <section data-testid="execute-screen" :data-phase="phase">
+    <PageHeader parent="Strategies" :title="`Execute Strategy ${strategyName ?? strategyId ?? ''}`" />
     <p v-if="live.reconnecting.value" class="mt-2 text-sm font-medium" data-testid="live-reconnecting">{{ live.reconnectingText.value }}</p>
     <p v-if="phase === 'loading' || phase === 'waiting-live'" data-testid="execute-waiting">Waiting for live prices for every leg...</p>
     <ErrorMessage v-if="errorParts" class="mt-2" :parts="errorParts" prefix="execute-error" />

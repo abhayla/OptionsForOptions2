@@ -54,6 +54,112 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Shared page layer (owner 2026-10-30, ADR-193: Sensibull's layout and density, our tokens). Every built screen uses
+   these instead of hand-rolled spacing: `ui-table` (compact 36 px rows, muted 11 px headers, sticky header, hover tint;
+   `ui-num` right-aligns a number column in tabular figures), `btn` (+ `btn-primary`, `btn-sm`), `field` (a select or input
+   that sizes to its content, never full width), `field-label`, and `link` (an accent text action). */
+@layer components {
+  .ui-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    line-height: 18px;
+  }
+  .ui-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--color-surface-muted);
+    color: var(--color-ink-muted);
+    font-size: 11px;
+    line-height: 16px;
+    font-weight: 500;
+    text-align: left;
+    padding: 6px 12px;
+    border-bottom: 1px solid var(--color-line);
+    white-space: nowrap;
+  }
+  .ui-table tbody td {
+    height: 36px;
+    padding: 4px 12px;
+    border-bottom: 1px solid var(--color-line);
+    vertical-align: middle;
+  }
+  .ui-table tbody tr:last-child td {
+    border-bottom: 0;
+  }
+  .ui-table tbody tr:hover {
+    background: var(--color-surface-muted);
+  }
+  .ui-table .ui-num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    min-height: 32px;
+    padding: 0 12px;
+    border: 1px solid var(--color-line);
+    border-radius: 6px;
+    background: var(--color-surface);
+    color: var(--color-ink);
+    font-size: 13px;
+    line-height: 18px;
+    font-weight: 500;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .btn:hover {
+    background: var(--color-surface-muted);
+  }
+  .btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  .btn-primary {
+    border-color: var(--color-accent);
+    background: var(--color-accent);
+    color: #fff;
+  }
+  .btn-primary:hover {
+    background: var(--color-accent-hover);
+  }
+  .btn-sm {
+    min-height: 26px;
+    padding: 0 8px;
+    font-size: 12px;
+  }
+  .field {
+    min-height: 32px;
+    padding: 0 8px;
+    border: 1px solid var(--color-line);
+    border-radius: 6px;
+    background: var(--color-surface);
+    color: var(--color-ink);
+    font-size: 13px;
+  }
+  .field:focus {
+    outline: 2px solid var(--color-accent-soft);
+    border-color: var(--color-accent);
+  }
+  .field-label {
+    color: var(--color-ink-muted);
+    font-size: 12px;
+    line-height: 16px;
+  }
+  .link {
+    color: var(--color-accent);
+    cursor: pointer;
+  }
+  .link:hover {
+    text-decoration: underline;
+  }
+}
+
 body {
   margin: 0;
   background: var(--color-bg);
