@@ -106,6 +106,14 @@ def _to_decimal(value: Fraction) -> Decimal:
         return result.quantize(HUNDREDTH, rounding=ROUND_HALF_EVEN)
 
 
+def _breakeven_levels(zeros: list[Fraction]) -> tuple[Decimal, ...]:
+    """The reported breakevens: each exact zero rounded by ``_to_decimal``, ascending. A zero that rounds to 0.00 is
+    dropped (§3: breakevens only above 0). Two exact zeros that round to ONE level (a profit or loss stretch narrower
+    than 0.01, e.g. 21999.99999 and 22000.00001) are reported once: the list names levels, and the stretch itself is
+    carried by the loss regions as an "except" level or a single-level region (ADR-072, W-066 round 8)."""
+    return tuple(dict.fromkeys(level for level in map(_to_decimal, zeros) if level > 0))
+
+
 def _shown(level: Decimal) -> Decimal:
     """``level`` as the display prints it: rounded half-even to the 0.01 point step (engine.display.format_points)."""
     return level.quantize(HUNDREDTH, rounding=ROUND_HALF_EVEN)
@@ -209,7 +217,7 @@ def strategy_metrics(strategy: Strategy) -> StrategyMetrics:
     else:
         max_loss = -min_pnl if min_pnl < 0 else Decimal(0)
     zeros = _breakevens(points, values, upper_slope)
-    breakevens = tuple(_to_decimal(x) for x in zeros)
+    breakevens = _breakeven_levels(zeros)
     return StrategyMetrics(max_profit=max_profit, min_pnl=min_pnl, max_loss=max_loss, breakevens=breakevens,
                            loss_regions=_loss_regions(points, values, upper_slope, zeros))
 
@@ -235,4 +243,4 @@ def breakevens_with_shift(strategy: Strategy, shift: Decimal) -> tuple[Decimal, 
     points = [Decimal(0), *sorted({leg.strike for leg in strategy.legs if leg.is_option})]
     values = [strategy.expiry_pnl_at(p) + shift for p in points]
     upper_slope = sum(_upper_tail_slope(leg) for leg in strategy.legs)
-    return tuple(_to_decimal(x) for x in _breakevens(points, values, upper_slope))
+    return _breakeven_levels(_breakevens(points, values, upper_slope))

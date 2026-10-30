@@ -124,3 +124,24 @@ def test_ac4_round_levels_are_unchanged(shift):
     for level in breakevens_with_shift(s, shift):
         assert level == level.quantize(HUNDREDTH)
     assert breakevens_with_shift(s, D("962")) == (D("22860.45"), D("23489.55"))  # ADJ-13 hand values
+
+
+def test_ac4_a_level_that_rounds_to_zero_is_not_a_breakeven():
+    """§3: breakevens only above 0. SELL 1000 x 1.00 PE @ 0.99 plus +7 booked is -3 at level 0 with slope 1000, so its
+    zero is 0.003, which rounds to 0.00 and is dropped; without the shift the zero is 0.01 and is kept."""
+    s = Strategy((_leg(Action.SELL, Instrument.PE, "1.00", "0.99", 1000),))
+    assert breakevens_with_shift(s, D("7")) == ()
+    assert breakevens_with_shift(s, D("0")) == (D("0.01"),)
+
+
+def test_ac4_two_zeros_that_round_to_one_level_are_reported_once():
+    """Judgement (§3 breakevens are levels; ADR-072 carries a sub-paisa stretch in the loss regions): SELL 1 x 22,000
+    CE @ 0.01 + SELL 999 x 22,000 CE @ 0 + SELL 1000 x 22,000 PE @ 0 is +0.01 at 22,000 with slope 1000 each side, so
+    its exact zeros are 21,999.99999 and 22,000.00001; both round to 22,000.00, reported ONCE, and the loss regions
+    still name the peak as an except level (the profit point is never called a loss)."""
+    s = Strategy((_leg(Action.SELL, Instrument.CE, "22000", "0.01", 1),
+                  _leg(Action.SELL, Instrument.CE, "22000", "0", 999),
+                  _leg(Action.SELL, Instrument.PE, "22000", "0", 1000)))
+    m = strategy_metrics(s)
+    assert m.breakevens == (D("22000.00"),)
+    assert m.loss_regions == ((None, None, (D("22000"),)),)

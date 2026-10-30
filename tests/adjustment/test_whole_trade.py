@@ -13,8 +13,10 @@ from decimal import Decimal as D
 from pathlib import Path
 
 import pytest
+from ofo.engine.black_scholes import probability_below
 from ofo.engine.legs import Action, Instrument, Leg
 from ofo.engine.metrics import UNLIMITED, MultiExpiryError, breakevens_with_shift, strategy_metrics
+from ofo.engine.pop import Why
 from ofo.engine.strategy import Strategy
 from ofo.engine.whole_trade import whole_trade_after
 from ofo.money import HUNDREDTH
@@ -153,3 +155,54 @@ def test_ac4_after_charges_levels_are_on_the_paise_step_adj23():
 def test_bad_amounts_are_refused_by_name(kwargs, name):
     with pytest.raises(ValueError, match=name):
         _after(_strategy(_load("ADJ-13")), **kwargs)
+
+
+@pytest.mark.parametrize(("kwargs", "name"), [
+    ({"booked": D("962.005")}, "booked_pnl"),
+    ({"paid": D("0.001")}, "paid_charges"),
+    ({"adjustment": D("92.405")}, "adjustment_charges"),
+    ({"exits": D("60.1000001")}, "open_exit_charges"),
+])
+def test_amounts_finer_than_paise_are_refused_by_name(kwargs, name):
+    with pytest.raises(ValueError, match=name):
+        _after(_strategy(_load("ADJ-13")), **kwargs)
+
+
+ADJ13_FORWARD, ADJ13_YEARS, ADJ13_VOL = D("23250"), D(4) / D(365), D("0.13")  # ADJ-13 market: spot, dte, atm_iv
+
+
+def _adj13_pop(booked: D, paid=ZERO, adjustment=ZERO, exits=ZERO):
+    return whole_trade_after(_strategy(_load("ADJ-13")), booked_pnl=booked, paid_charges=paid,
+                             adjustment_charges=adjustment, open_exit_charges=exits,
+                             forward=ADJ13_FORWARD, years=ADJ13_YEARS, vol=ADJ13_VOL)
+
+
+def test_ac2_pop_includes_booked_pnl_and_charges():
+    """AC-2: booked +962 widens the profit zone, so POP rises; charges narrow it, so POP falls. The figure equals the
+    lognormal mass between the whole trade's own after-charges breakevens (probability_below at each level)."""
+    without, booked = _adj13_pop(ZERO), _adj13_pop(D("962"))
+    charged = _adj13_pop(D("962"), paid=D("150.25"), adjustment=D("92.40"), exits=D("60.10"))
+    assert without.pop_unavailable is None and booked.pop_unavailable is None
+    assert ZERO < without.pop < booked.pop < D(1)
+    assert charged.pop < booked.pop
+    lo, hi = charged.after_charges.breakevens
+    between = (probability_below(hi, ADJ13_FORWARD, ADJ13_YEARS, ADJ13_VOL)
+               - probability_below(lo, ADJ13_FORWARD, ADJ13_YEARS, ADJ13_VOL))
+    assert charged.pop == between
+
+
+def test_ac2_pop_is_zero_when_the_booked_loss_exceeds_what_the_open_legs_can_make():
+    w = _adj13_pop(D("-10000"))
+    assert w.pop == ZERO and w.pop_unavailable is None
+
+
+@pytest.mark.parametrize(("forward", "years", "vol", "why"), [
+    (ADJ13_FORWARD, ADJ13_YEARS, None, Why.NO_VOLATILITY),
+    (ADJ13_FORWARD, None, ADJ13_VOL, Why.NO_VOLATILITY),
+    (None, ADJ13_YEARS, ADJ13_VOL, Why.NO_FORWARD),
+])
+def test_ac4_pop_missing_input_gives_a_named_reason_never_an_exception_or_a_blank(forward, years, vol, why):
+    w = whole_trade_after(_strategy(_load("ADJ-13")), booked_pnl=D("962"), paid_charges=ZERO, adjustment_charges=ZERO,
+                          open_exit_charges=ZERO, forward=forward, years=years, vol=vol)
+    assert w.pop is None and w.pop_unavailable is why
+    assert w.gross.max_loss == D("20858.5")  # the other figures still come back

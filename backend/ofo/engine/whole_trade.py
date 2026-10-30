@@ -22,15 +22,24 @@ Each of the three is kept as its own line on the answer and subtracted exactly o
 Example (ADJ-13): open legs credit 4,179.50 + booked 962 -> gross max profit 5,141.50, max loss 20,858.50,
 breakevens 22,860.45 / 23,489.55 (the open legs alone would give max loss 21,820.50).
 
+POP of the whole trade (REQ-155 AC-2, AC-4): ``ofo.engine.pop.probability_of_profit`` on the open legs with
+``charges = total_charges - booked_pnl``. That function takes a flat amount off every level of the open legs' expiry
+P&L, so this is P(open legs + booked - every charge line > 0): the after-charges whole trade, booked P&L included,
+through the one POP path (no second formula). Its levels are the after-charges levels above, rounded at their one
+producer. Answer: ``pop`` a fraction in [0, 1] with ``pop_unavailable`` None, or ``pop`` None with
+``pop_unavailable`` the named reason (``pop.Why``: no volatility, no forward, ...); never an exception, never both
+None. The words shown ("POP not available") are the route's job.
+
 Answer states: single expiry -> figures; legs on more than one expiry -> ``MultiExpiryError`` (no exact at-expiry
-payoff, nothing made up); a non-Decimal, non-finite amount or a negative charge -> ``ValueError``.
+payoff, nothing made up); a non-Decimal, non-finite or not-whole-paise amount, or a negative charge -> ``ValueError``
+naming the argument.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal
 
-from ofo.engine.legs import require_decimal
+from ofo.engine.legs import require_price
 from ofo.engine.metrics import (
     UNLIMITED,
     LossRegion,
@@ -40,7 +49,9 @@ from ofo.engine.metrics import (
     loss_regions_after_charges,
     strategy_metrics,
 )
+from ofo.engine.pop import Unavailable, Why, probability_of_profit
 from ofo.engine.strategy import Strategy
+from ofo.money import PAISE
 
 __all__ = ["MultiExpiryError", "WholeTradeAfter", "WholeTradeFigures", "whole_trade_after"]
 
@@ -68,6 +79,9 @@ class WholeTradeAfter:
     adjustment_charges: Decimal
     open_exit_charges: Decimal
     total_charges: Decimal
+    #: P(after-charges whole-trade P&L > 0), or None when ``pop_unavailable`` names why (exactly one is set).
+    pop: Decimal | None
+    pop_unavailable: Why | None
 
 
 def _figures(strategy: Strategy, shift: Decimal) -> WholeTradeFigures:
@@ -84,23 +98,32 @@ def _figures(strategy: Strategy, shift: Decimal) -> WholeTradeFigures:
                              loss_regions_after_charges(strategy, -shift))
 
 
-def _signed(value: object, name: str) -> Decimal:
-    if not isinstance(value, Decimal) or not value.is_finite():
-        raise ValueError(f"{name} must be a finite decimal.Decimal, got {value!r}")
+def _signed_paise(value: object, name: str) -> Decimal:
+    """A signed rupee amount (booked P&L can be a loss): a finite Decimal of whole paise, else ValueError by name."""
+    if not isinstance(value, Decimal) or not value.is_finite() or value.quantize(PAISE) != value:
+        raise ValueError(f"{name} must be a finite decimal.Decimal of whole paise, got {value!r}")
     return value
 
 
-def whole_trade_after(strategy: Strategy, *, booked_pnl: Decimal, paid_charges: Decimal,
-                      adjustment_charges: Decimal, open_exit_charges: Decimal) -> WholeTradeAfter:
+def whole_trade_after(strategy: Strategy, *, booked_pnl: Decimal, paid_charges: Decimal,  # noqa: PLR0913
+                      adjustment_charges: Decimal, open_exit_charges: Decimal, forward: Decimal | None = None,
+                      years: Decimal | None = None, vol: Decimal | None = None) -> WholeTradeAfter:
     """The whole-trade After of ``strategy`` (the legs open after the adjustment). See the module docstring for which
-    order each charge line covers. Raises ``MultiExpiryError`` for legs on more than one expiry."""
+    order each charge line covers and how POP is taken; ``forward`` / ``years`` / ``vol`` are POP's inputs (None ->
+    the named reason). Raises ``MultiExpiryError`` for legs on more than one expiry."""
     if not strategy.is_single_expiry:
         raise MultiExpiryError("the whole-trade After needs every open leg on one expiry")
-    booked = _signed(booked_pnl, "booked_pnl")
-    paid = require_decimal(paid_charges, "paid_charges")
-    adjustment = require_decimal(adjustment_charges, "adjustment_charges")
-    exits = require_decimal(open_exit_charges, "open_exit_charges")
+    booked = _signed_paise(booked_pnl, "booked_pnl")
+    paid = require_price(paid_charges, "paid_charges")
+    adjustment = require_price(adjustment_charges, "adjustment_charges")
+    exits = require_price(open_exit_charges, "open_exit_charges")
     total = paid + adjustment + exits
+    pop: Decimal | None = None
+    why: Why | None = None
+    try:
+        pop = probability_of_profit(strategy, forward=forward, years=years, vol=vol, charges=total - booked)
+    except Unavailable as missing:
+        why = missing.why
     return WholeTradeAfter(gross=_figures(strategy, booked), after_charges=_figures(strategy, booked - total),
                            booked_pnl=booked, paid_charges=paid, adjustment_charges=adjustment,
-                           open_exit_charges=exits, total_charges=total)
+                           open_exit_charges=exits, total_charges=total, pop=pop, pop_unavailable=why)
