@@ -77,10 +77,10 @@ for (const [name, size] of [
         await row.getByTestId(`select-${side}`).check()
         await row.getByTestId(`${action}-${side}`).click()
       }
-      await pick('23000.00', 'ce', 'buy')
-      await pick('22800.00', 'ce', 'sell')
-      await pick('22400.00', 'pe', 'buy')
-      await pick('22200.00', 'pe', 'sell')
+      await pick('23000', 'ce', 'buy')
+      await pick('22800', 'ce', 'sell')
+      await pick('22400', 'pe', 'buy')
+      await pick('22200', 'pe', 'sell')
 
       const add = page.getByTestId('add-selected')
       await expect(add).toHaveText('Add Selected (4)')

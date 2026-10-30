@@ -22,6 +22,7 @@ from test_strategy_store import AS_OF, _fixture_rows, _ids
 
 LIST_DAY = AS_OF.date()  # 2026-10-08, the recorded list's day
 DB_TODAY = text("SELECT (now() AT TIME ZONE 'Asia/Kolkata')::date")
+SATURDAY = 5  # datetime.weekday()
 NO_SUCH_CONTRACT = 999_999_999
 LISTED_OFF = text("UPDATE public.catalogue_contracts SET currently_listed = FALSE WHERE id = :id")
 
@@ -87,7 +88,10 @@ async def test_the_real_list_check_is_current_on_the_loaded_day_and_not_the_day_
             assert await route.get_list_current() is False  # nothing loaded in this database
             await apply_update(conn, _fixture_rows(), as_of=AS_OF)
             assert await route.get_list_current() is True  # loaded now, judged today
-            _wired(monkeypatch, conn, db_today + datetime.timedelta(days=1))
-            assert await route.get_list_current() is False  # the same load, judged tomorrow: yesterday's list
+            next_session_day = db_today + datetime.timedelta(days=1)
+            while next_session_day.weekday() >= SATURDAY:  # a weekend judges as Friday 08:30, so judge on a weekday
+                next_session_day += datetime.timedelta(days=1)
+            _wired(monkeypatch, conn, next_session_day)
+            assert await route.get_list_current() is False  # the same load, judged next session day: yesterday's list
         finally:
             await trans.rollback()
