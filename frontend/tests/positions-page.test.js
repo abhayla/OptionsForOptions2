@@ -99,6 +99,12 @@ describe('Positions pages', () => {
     expect(w.find('[data-testid=positions-outside]').exists()).toBe(false)
   })
 
+  it('#611: a wide pending table scrolls inside its card (ui-table parent is overflow-x-auto)', async () => {
+    answer = () => Promise.resolve({ data: reply([group(1, [waiting(65, [1])], true)], { blocked: [1] }) })
+    const w = await show('current')
+    expect(w.get('table.ui-table').element.parentElement.classList.contains('overflow-x-auto')).toBe(true)
+  })
+
   it('ADR-110: a pending row shows waiting, the plan, Zerodha 65 not yet confirmed, the badge, and no own units', async () => {
     answer = () => Promise.resolve({ data: reply([group(1, [waiting(65, [1])], true)], { blocked: [1] }) })
     const w = await show('current')

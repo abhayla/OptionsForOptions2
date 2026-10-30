@@ -122,7 +122,8 @@ onMounted(async () => {
           <span v-if="g.blocked" class="font-normal text-warn" data-testid="position-mismatch-badge">({{ BLOCKED }})</span>
         </h2>
         <p v-if="!g.contracts.length" class="px-4 py-3 text-ink-muted" data-testid="position-group-empty">{{ NO_ROW }}</p>
-        <table v-else class="ui-table">
+        <div v-else class="overflow-x-auto">
+        <table class="ui-table">
           <thead>
             <tr><th>Contract</th><th class="ui-num">Your units</th><th class="ui-num">Zerodha units</th><th>Status</th></tr>
           </thead>
@@ -142,6 +143,7 @@ onMounted(async () => {
             </tr>
           </tbody>
         </table>
+        </div>
       </section>
     </div>
     </template>
