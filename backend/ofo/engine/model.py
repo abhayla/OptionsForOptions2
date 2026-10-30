@@ -191,6 +191,19 @@ def model_inputs(inputs: StrategyInput, forwards: Forwards) -> ModelInputs:
                              label=join_labels(dlabel, FALLBACK_LABEL if fell_back else None))
 
 
+def market_closed_model(model: ModelInputs) -> ModelInputs:
+    """ADR-200 (2): the same gated inputs with the "stale since" data label dropped everywhere it is read (every curve,
+    the payoff table, the target): the held last close sits under the one market-closed banner. The model's own
+    "estimated from spot" (ADR-061) stays. Numbers are untouched; only the labels change."""
+    expiries = {d: ExpiryModel._make(_TOKEN, expiry=em.expiry, level=em.level, dividend_yield=em.dividend_yield,
+                                     source=em.source, label=em.forward.label, forward=em.forward, spot_at=em.spot_at)
+                for d, em in model.expiries.items()}
+    fell_back = any(em.forward.label for em in expiries.values())
+    return ModelInputs._make(_TOKEN, inputs=model.inputs, spot_level=model.spot_level, spot_at=model.spot_at,
+                             data_label=None, expiries=types.MappingProxyType(expiries),
+                             label=FALLBACK_LABEL if fell_back else None)
+
+
 def _require(model: object) -> ModelInputs:
     if not isinstance(model, ModelInputs):
         raise ValueError(f"a ModelInputs (ofo.engine.model.model_inputs) is required, got {model!r}")
