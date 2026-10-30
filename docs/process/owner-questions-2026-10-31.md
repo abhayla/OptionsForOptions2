@@ -21,3 +21,5 @@ Options:
 
 Recommendation: 1, because nothing is lost by keeping the trees and the other two options either change nothing or
 keep the run open for days.
+
+**Answered 2026-10-31 ~02:00 (question tool): option 1, "Keep trees, GC-ADJ1 done".** Recorded as contract row 25.
