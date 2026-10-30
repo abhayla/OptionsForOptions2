@@ -192,7 +192,7 @@ async function load() {
   try { // layers 1-2 again (display only); a strategy that is not tracked simply shows no card
     const body = (await props.client.get(`/strategies/${props.strategyId}/tracking`)).data
     const t = readTracking(body)
-    why.value = { lines: t.detections.map((d) => d.line), rows: stateRows(body) }
+    why.value = { lines: t.detections.map((d) => d.line), rows: stateRows(body, reply.value) } // the reply already carries layer 2's figures
   } catch { why.value = null }
   try { // the name and underlying are a convenience: the compare works without them
     const s = (await props.client.get(`/strategies/${props.strategyId}`)).data
@@ -255,7 +255,7 @@ const spotLine = computed(() => {
   if (!s || s.value == null) return `Spot not available${s?.text ? `: ${s.text}` : ''}`
   const src = s.source_text ?? s.source ?? ''
   const at = s.at ? istTime(s.at) : ''
-  return ['Spot ' + s.value, src, at].filter(Boolean).join(' · ')
+  return [`Spot ${s.value}`, src, at].filter(Boolean).join(' · ')
 })
 
 function flip(group, id) {

@@ -232,8 +232,10 @@ describe('GC-ADJ1 step 3: picks from the drawer and the hand-off', () => {
     const { w } = await show(adj02, { picked: PICKS }, { tracking })
     expect(t(w, 'adjust-why-line').text()).toBe('Adjustment opportunity detected: Index is near a short strike: 23500, 80.00 points (0.34%) away')
     expect(t(w, 'adjust-why-pnl').text()).toBe('+195.00')
-    expect(t(w, 'adjust-why-breakevens').text()).toBe('22655.95, 23544.05')
-    expect(t(w, 'adjust-why-delta').text()).toBe('-')
+    const cell = (id) => adj02.criteria.find((c) => c.id === id).values['A-36'].text // layer 2's figures come from the reply itself
+    expect(t(w, 'adjust-why-breakevens').text()).toBe(cell('breakevens'))
+    expect(t(w, 'adjust-why-delta').text()).toBe(cell('delta'))
+    expect(t(w, 'adjust-why-open_legs').text()).toBe('0') // the tracking body above has no legs
   })
 
   it('the button hands the chosen approach\'s After legs on as builder legs; no order is placed (one POST only: the compare read)', async () => {

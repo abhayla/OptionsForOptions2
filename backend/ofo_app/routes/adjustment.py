@@ -53,7 +53,7 @@ from ofo.engine.metrics import UNLIMITED, MultiExpiryError
 from ofo.engine.pop import Why
 from ofo.engine.strategy import Strategy
 from ofo.engine.whole_trade import WholeTradeAfter, WholeTradeFigures, whole_trade_after
-from ofo.errors.explanations import approach_name_id, render_explanation
+from ofo.errors.explanations import approach_about_id, approach_name_id, render_explanation
 from ofo.marketdata.spot_source import SourceReading, SpotAnswer, resolve_spot
 from ofo.money import PAISE
 from ofo.outcome.service import MARGIN_CHECKED, Margin
@@ -332,6 +332,8 @@ async def adjustment_approaches(  # noqa: PLR0913 - FastAPI dependencies, one pe
         reply["approaches"] = out
         reply |= await _compare_reply(columns, tracked, spot.value, market, rates, pop_on, before,  # type: ignore[arg-type]
                                       margin_of)
+    reply["available"] = _available(position, market.chain, spot.value if spot.available else None, dict(built_list))
+    reply["days_to_expiry"] = _days_to_expiry(position)
     total = time.perf_counter() - started
     log.info("adjustment approaches strategy=%s approaches=%s engine_s=%.4f total_s=%.4f",
              strategy_id, len(built_list), engine, total)
@@ -339,6 +341,29 @@ async def adjustment_approaches(  # noqa: PLR0913 - FastAPI dependencies, one pe
         reply["timing"] = {"engine_seconds": Decimal(f"{engine:.4f}"), "total_seconds": Decimal(f"{total:.4f}"),
                            "approaches": len(built_list)}
     return AdjustApproachesOut.model_validate(reply)
+
+
+def _available(position: Position, chain: Sequence[ChainRow], spot: Decimal | None,
+               built: Mapping[str, ApproachLegs | None]) -> list[dict[str, Any]]:
+    """REQ-046 AC-3 / REQ-045 AC-5: every generic approach with its one-line text and whether it can be built for this
+    position now (else the refusal's own reason). No figure; nothing is priced here. No spot -> none can be built."""
+    out: list[dict[str, Any]] = []
+    for a in APPROACH_IDS:
+        item: dict[str, Any] = {"id": a, "name": render_explanation(approach_name_id(a)),
+                                "explanation": render_explanation(approach_about_id(a))}
+        if spot is None:
+            out.append(item | {"applicable": False, "reason": render_explanation("adjust_available_spot_missing")})
+            continue
+        b = built.get(a) or build_approach(position, chain, spot, a, _CONFIG)
+        out.append(item | {"applicable": b.refusal_message is None, "reason": b.refusal_message})
+    return out
+
+
+def _days_to_expiry(position: Position) -> int | None:
+    """Whole days from the reply's market day (``position.today``) to the nearest open leg's expiry; None with no leg."""
+    if not position.legs:
+        return None
+    return max((min(x.expiry for x in position.legs) - position.today).days, 0)
 
 
 async def _approach_item(a: str, built: ApproachLegs | None, priced: Mapping[str, Priced], pop_on: bool,  # noqa: PLR0913

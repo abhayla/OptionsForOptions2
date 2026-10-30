@@ -41,7 +41,7 @@
       <button v-if="view.detections.length" ref="reviewBtn" type="button" class="mt-2 rounded border border-line bg-surface px-2 py-1 text-xs font-medium" data-testid="review-adjustment" @click="openDrawer">{{ REVIEW_BUTTON_TEXT }}</button>
     </div>
     <AdjustDrawer
-      :open="drawerOpen" :strategy-id="savedId" :lines="drawerLines" :detected="!!view?.detections?.length" :rows="stateRows(raw)" :legs="raw?.legs ?? []"
+      :open="drawerOpen" :strategy-id="savedId" :lines="drawerLines" :detected="!!view?.detections?.length" :card-rows="cardRows(raw)"
       @close="closeDrawer" @compare="goCompare"
     />
   </section>
@@ -51,7 +51,7 @@
 import { inject, nextTick, ref, watch } from 'vue'
 import { routerKey } from 'vue-router'
 import AdjustDrawer from '@/components/strategy/AdjustDrawer.vue'
-import { REVIEW_BUTTON_TEXT, stateRows } from '@/lib/adjustDrawer'
+import { REVIEW_BUTTON_TEXT, cardRows } from '@/lib/adjustDrawer'
 import Chip from '@/components/common/Chip.vue'
 import FigureHint from '@/components/common/FigureHint.vue'
 import api, { NEUTRAL_ERROR } from '@/services/api'

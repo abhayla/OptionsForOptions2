@@ -1,6 +1,8 @@
 <!-- Review-adjustment drawer (GC-ADJ1 step 3; REQ-046 AC-1..AC-3, REQ-045 AC-5; ADR-214 (1)).
      Layer 1 why detected, layer 2 current state, layer 3 generic approaches with tick boxes and NO figure per approach.
-     Display only; Compare opens the compare with the picks. No outcome is recorded here (GC-ADJ2). -->
+     One read when it opens: POST /strategies/{id}/adjustment-approaches asking for No change only (the current position), which
+     answers `available` (name, one line, whether it applies) and the current state's figures. Display only: nothing is computed
+     here and no approach text lives in the browser. Compare opens the compare with the picks. No outcome is recorded (GC-ADJ2). -->
 <template>
   <div v-if="open" class="fixed inset-0 z-40" data-testid="adjust-drawer-root">
     <div class="absolute inset-0 bg-black/40" data-testid="adjust-drawer-scrim" @click="close" />
@@ -30,12 +32,17 @@
         <section class="mt-4" data-testid="drawer-approaches">
           <h3 class="text-sm font-semibold">3 · Possible approaches</h3>
           <p class="mt-1 text-xs text-ink-muted" data-testid="drawer-pick-note">{{ PICK_NOTE }}</p>
-          <p v-if="!condor" class="mt-1 text-xs text-ink-muted" data-testid="drawer-type-note">{{ NOT_IRON_CONDOR_NOTE }}</p>
+          <p v-if="state === 'loading'" class="mt-2 text-sm text-ink-muted" data-testid="drawer-loading">{{ LOADING_TEXT }}</p>
+          <ErrorMessage v-else-if="state === 'error'" :parts="errorParts" compact prefix="drawer-error" data-testid="drawer-error" />
           <ul class="mt-2 flex flex-col gap-2">
-            <li v-for="a in approaches" :key="a.id" class="rounded border border-line p-2">
+            <li v-for="a in approaches" :key="a.id" class="rounded border border-line p-2" :data-applicable="a.applicable ? 'true' : 'false'">
               <label class="flex items-start gap-2">
-                <input v-model="ticked" type="checkbox" :value="a.id" :disabled="a.id === NO_CHANGE_ID" class="mt-1 h-4 w-4" :data-testid="`drawer-approach-${a.id}`" />
-                <span><span class="block text-sm font-medium">{{ a.name }}</span><span class="block text-xs text-ink-muted">{{ a.about }}</span></span>
+                <input v-model="ticked" type="checkbox" :value="a.id" :disabled="a.id === NO_CHANGE_ID || !a.applicable" class="mt-1 h-4 w-4" :data-testid="`drawer-approach-${a.id}`" />
+                <span>
+                  <span class="block text-sm font-medium">{{ a.name }}</span>
+                  <span class="block text-xs text-ink-muted">{{ a.explanation }}</span>
+                  <span v-if="!a.applicable" class="block text-xs text-ink-muted" :data-testid="`drawer-reason-${a.id}`">{{ refusalText({ refusal: a.reason }) }}</span>
+                </span>
               </label>
             </li>
           </ul>
@@ -50,29 +57,50 @@
 
 <script setup>
 import { computed, nextTick, ref, watch } from 'vue'
-import { NO_CHANGE_ID } from '@/lib/adjustCompare'
-import { LAPSED_TEXT, NOT_IRON_CONDOR_NOTE, PICK_NOTE, approachesFor, compareUrl, isIronCondor } from '@/lib/adjustDrawer'
+import api, { NEUTRAL_PARTS } from '@/services/api'
+import ErrorMessage from '@/components/common/ErrorMessage.vue'
+import { NO_CHANGE_ID, refusalText } from '@/lib/adjustCompare'
+import { CURRENT_STATE_BODY, LAPSED_TEXT, LOADING_TEXT, PICK_NOTE, availableOf, compareUrl, replyRows } from '@/lib/adjustDrawer'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
   strategyId: { type: [String, Number], required: true },
   lines: { type: Array, default: () => [] }, // layer 1: the detection's own texts, as the card shows them
   detected: { type: Boolean, default: true }, // false when the detection lapsed while the drawer was open
-  rows: { type: Array, default: () => [] }, // layer 2: [{id, label, value}]
-  legs: { type: Array, default: () => [] }, // the tracking reply's legs (decides which approaches fit)
+  cardRows: { type: Array, default: () => [] }, // layer 2, the part the card has: [{id, label, value}]
+  client: { type: Object, default: () => api }, // the api module; a test passes a stand-in
 })
 const emit = defineEmits(['close', 'compare']) // compare: { ids, url }
 
 const closeBtn = ref(null)
 const ticked = ref([NO_CHANGE_ID])
-const condor = computed(() => isIronCondor(props.legs))
-const approaches = computed(() => approachesFor(props.legs))
+const state = ref('loading') // loading | ready | error
+const reply = ref(null)
+const errorParts = ref(NEUTRAL_PARTS)
+const approaches = computed(() => availableOf(reply.value))
+const rows = computed(() => [...props.cardRows, ...replyRows(reply.value)])
 
+async function load() {
+  state.value = 'loading'
+  reply.value = null
+  ticked.value = [NO_CHANGE_ID]
+  try {
+    const res = await props.client.post(`/strategies/${props.strategyId}/adjustment-approaches`, CURRENT_STATE_BODY)
+    reply.value = res.data
+    state.value = 'ready'
+    ticked.value = approaches.value.filter((a) => a.applicable).map((a) => a.id) // every applicable approach starts ticked
+    if (!ticked.value.includes(NO_CHANGE_ID)) ticked.value.unshift(NO_CHANGE_ID)
+  } catch (e) {
+    errorParts.value = e?.parts ?? NEUTRAL_PARTS
+    state.value = 'error'
+  }
+}
 watch(() => props.open, async (now) => {
   if (!now) return
-  ticked.value = approaches.value.map((a) => a.id) // every generic approach starts ticked; untick to narrow
+  const reading = load()
   await nextTick()
   closeBtn.value?.focus()
+  await reading
 }, { immediate: true, flush: 'post' })
 const close = () => emit('close')
 function compare() {
