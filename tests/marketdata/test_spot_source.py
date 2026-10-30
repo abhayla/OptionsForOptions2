@@ -13,7 +13,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
 
 from ofo.marketdata.feed_health import FEED_STALE
 from ofo.marketdata.spot_source import (
+    REASON_FUTURE,
     REASON_NO_PRICE,
+    REASON_NOT_FINITE,
     REASON_STALE,
     SOURCE_FEED,
     SOURCE_LAST_CLOSE,
@@ -123,3 +125,20 @@ def test_adj_24b_every_source_failed_spot_not_available() -> None:
     assert len(a.reasons) == len(SOURCE_ORDER)
     assert d["expected"]["suggest"] is False
     assert d["expected"]["approaches"]["withheld"].lower() == "no suggestion: spot not available"
+
+
+@pytest.mark.parametrize("bad", ["NaN", "sNaN", "Infinity", "-Infinity"])
+@pytest.mark.parametrize("slot", [0, 1, 2], ids=["feed", "rest", "last_close"])
+def test_a_non_finite_value_is_a_reason_never_a_spot_never_an_exception(slot: int, bad: str) -> None:
+    readings = [SourceReading(S.STATED, Decimal(bad), NOW - datetime.timedelta(seconds=1)), None, None]
+    readings = [readings[0] if i == slot else SourceReading(S.ABSENT) for i in range(3)]
+    a = resolve_spot(*readings, now=NOW)
+    assert a.value is None and a.reasons[slot] == (SOURCE_ORDER[slot], REASON_NOT_FINITE)
+
+
+@pytest.mark.parametrize("slot", [1, 2], ids=["rest", "last_close"])
+def test_a_future_dated_rest_quote_or_last_close_is_refused_like_the_feed(slot: int) -> None:
+    future = SourceReading(S.STATED, Decimal("23090"), NOW + datetime.timedelta(seconds=5))
+    readings = [future if i == slot else SourceReading(S.ABSENT) for i in range(3)]
+    a = resolve_spot(*readings, now=NOW)
+    assert a.value is None and a.reasons[slot] == (SOURCE_ORDER[slot], REASON_FUTURE)

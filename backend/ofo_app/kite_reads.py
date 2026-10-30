@@ -25,7 +25,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Final
 
-from ofo.broker.kite_http import QUOTE_INSTRUMENT, KiteCallRefused, check_call
+from ofo.broker.kite_http import QUOTE_INDEX_NAMES, QUOTE_INSTRUMENT, KiteCallRefused, check_call
 from ofo.broker.rate_limit import identity
 
 from ofo_app import broker_sync
@@ -188,6 +188,14 @@ def holdings_unchanged(before: Sequence[Holding], after: Sequence[Holding]) -> t
                  if old.get(k) != new.get(k))
 
 
+def index_quote_path(name: str) -> str:
+    """The one quote path for an index spot: ``/quote?i=`` + the name with its space written as ``%20`` (the only
+    raw form the door accepts for ``QUOTE_INDEX_NAMES``). Any other name is refused (``kite_read_refused``)."""
+    if name not in QUOTE_INDEX_NAMES:
+        raise KiteReadError("kite_read_refused")
+    return QUOTE_PATH + "?i=" + name.replace(" ", "%20")
+
+
 class KiteReads:
     def __init__(self, *, api_key: str, access_token: str, transport: Transport = urllib_transport,
                  base_url: str = KITE_API_URL) -> None:
@@ -298,6 +306,20 @@ class KiteReads:
             raise KiteReadError("kite_read_bad_reply")
         broker_sync.note_read()
         return rows
+
+    def fetch_index_quote(self, name: str) -> dict | None:
+        """``GET /quote?i=NSE:NIFTY%2050``: the REST quote of one index (REQ-155 AC-5, F-76), for the spot resolver.
+
+        ``name`` must be one of the door's index names (``QUOTE_INDEX_NAMES``), else refused before anything is sent.
+        The URL is built by ``index_quote_path`` (the space written as ``%20`` here, never ``urlencode``, which gives
+        ``+`` and ``NSE%3A`` and is refused by the door). Answer: the quote object Kite returned for that name, or None
+        when the reply does not carry it (NOT FOUND); a failed read raises ``KiteReadError``."""
+        data = self._data("GET", index_quote_path(name))
+        if not isinstance(data, dict):
+            raise KiteReadError("kite_read_bad_reply")
+        broker_sync.note_read()
+        quote = data.get(name)
+        return quote if isinstance(quote, dict) else None
 
     def fetch_circuit_bands(self, instruments: Sequence[str]) -> dict[str, tuple[Decimal, Decimal]]:
         """``GET /quote?i=...``: ``{EXCHANGE:SYMBOL: (lower, upper)}`` circuit limits, exact Decimal (ADR-080).
