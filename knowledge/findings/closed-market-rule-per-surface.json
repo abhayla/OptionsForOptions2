@@ -1,5 +1,6 @@
 {
   "id": "closed-market-rule-per-surface",
+  "scope": "project",
   "class": "Any screen or answer that shows market data after hours, where the closed-market rule (ADR-177 one banner, ADR-200 (2) no stale/read-time labels, ADR-197/ADR-212 numbers from the last close) is applied by that surface's own code instead of one shared path: each surface that was not touched keeps showing 'stale since <read time>', per-cell stale sentences, a 'live' tag, the fetch time as the price time, or blank numbers.",
   "mechanism": "The rule lives in the outcome service's answer label only (service.py `_closed_output_label`), while curves, tables, target, chain cells, index cards, live cards, the strike drawer and the paper figures each read the raw model or quote health; a STALE close looks like any stale price to them.",
   "first_seen": {
@@ -13,5 +14,10 @@
     "checks": [],
     "note": "Each fixed surface has its own unit test; no check walks every after-hours answer/screen for 'stale since', 'Stale:' or a read-time stamp. Candidate: a test that serialises each closed-market answer (outcome, chain, indices, live, picker, paper) and fails on those strings."
   },
-  "spec_ref": ["spec/decisions/ADR-177.md", "spec/decisions/ADR-200.md", "spec/decisions/ADR-197.md", "spec/decisions/ADR-212.md"]
+  "spec_ref": [
+    "spec/decisions/ADR-177.md",
+    "spec/decisions/ADR-200.md",
+    "spec/decisions/ADR-197.md",
+    "spec/decisions/ADR-212.md"
+  ]
 }
