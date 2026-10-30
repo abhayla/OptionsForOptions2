@@ -1,4 +1,4 @@
-# Goal contract GC-ADJ1: compare every adjustment approach for a live iron condor, on real numbers (2026-10-30)
+# Goal contract GC-ADJ1: compare every adjustment approach for an iron condor, proved on scenario data (2026-10-30)
 
 Written 2026-10-30 after the owner's go ("Go ahead as per your recommendation"). Run it with `/goal` in a FRESH
 session. Scope: the CORE of the adjustments feature, iron condor only, paper strategies first. Playbooks, the plan
@@ -16,13 +16,22 @@ sheet, the inbox and the history are the next contract (GC-ADJ2, outline at the 
 - Findings to fix as classes: F-74 (booked P&L and adjustment-trade charges missing from the After), F-75 + class
   `knowledge/findings/interpolated-level-finer-than-paise-refused.json` (POP on a level finer than paise), F-76 (no
   spot over REST). F-73 is the baseline (engine 0.27 s for 7 approaches; I/O is the cost).
+- Branch (owner, 2026-10-30): ALL adjustment work lives on `feature/adjustments`. This run branches from it and
+  merges back into it locally. NO PR to main from this goal; main gets the whole feature once, after GC-ADJ2 is done.
+- Test data (owner, 2026-10-30: "Create test data for all scenarios and use it for testing as getting live market data
+  for all scenarios is not possible"): every proof below runs on the scenario library
+  `tests/fixtures/adjust_scenarios/` (43 synthetic scenarios ADJ-01..ADJ-41, `_playbooks.json`, `INDEX.md`; generator
+  `tests/adjust_scenarios_gen.py`; expected values derived without the engine; 132 tests in
+  `tests/test_adjust_scenarios.py`). The real-chain anchor already exists (F-73); a live re-check is optional, never a
+  blocker. Add a scenario (generator + expected values) when a case is missing; never hand-type numbers.
 - Target screens: the published mockup https://claude.ai/artifact/RwzCxhDod7yVCk6TWrQc9e screens 1 and 2 (card +
   drawer; compare + filters). Look and words follow the mockup; numbers come only from the engine.
 
 ## §0.1 Where the run works
 
 - Run tree: `~/.claude/tools/wt-new.ps1 -Repo D:\Abhay\Ventures\OptionsForOptions2 -Name gcadj1-run -Branch
-  build/gcadj1 -Base origin/main -Purpose "GC-ADJ1 run" -TtlHours 72`. Never work in the main checkout.
+  build/gcadj1 -Base feature/adjustments -Purpose "GC-ADJ1 run" -TtlHours 72`. Before starting: `git merge origin/main`
+  into `feature/adjustments` (keeps the final merge small). Never work in the main checkout.
 - Builder sub-worktrees `wt-new.ps1 -Name gcadj1-<item> -Base build/gcadj1`; `frontend\node_modules` linked as a
   junction (`~/.claude/tools/wt-link-modules.ps1`), never `npm install`; merged locally into `build/gcadj1`.
 - Lock: `.run-active.lock` with the session token at the run tree root; removed on any stop. If another session's
@@ -50,9 +59,9 @@ Each step ends with one line here: `step N DONE <sha> <proof line>` or `PARKED (
 ## Rules for the run
 
 - Prove the core first: step 1's proof must pass before steps 2-4 start. A failing core STOPS the run (report, park).
-- No push / PR / CI while the market is open (09:15-15:30 IST). One PR at the end, after hours, through
-  `scripts/orchestrator/land.py` after `python scripts/orchestrator/prepush.py --repo <run tree> --full` (memory rule:
-  a goal that merges code ends with prepush --full). Never `gh pr merge` directly.
+- No PR to main (owner branch rule). At the close: `python scripts/orchestrator/prepush.py --repo <run tree> --full`
+  must PASS, then `build/gcadj1` merges `--no-ff` into `feature/adjustments`. Pushing `feature/adjustments` to origin is
+  only a backup, after market hours (CI runs on push). Never `gh pr merge`.
 - Money is Decimal; every P&L/payoff/POP number comes from the one engine (ADR-008). Engine changes get the
   `options-math-review` checklist in the builder brief and an Opus reviewer (Tier A: money numbers users act on).
 - Every build brief carries: Core, Proof, Budget, Report: evidence-table, Spec quote, Findings checked, Sensibull line
@@ -69,8 +78,13 @@ Each step ends with one line here: `step N DONE <sha> <proof line>` or `PARKED (
 - As GC-TP "Running the app": check ports 8765 / 5174 first; stop only recorded PIDs; API via
   `scripts/orchestrator/dev_run.py` on ofo_dev (never ofo_test); Vite `OFO_API_TARGET=http://127.0.0.1:8765 npx vite
   --port 5174 --strictPort`. Kite token expires 06:00 IST: the owner logs in once in a PRIVATE window at
-  http://127.0.0.1:8765/broker/zerodha/login. Live checks only in market hours; after hours use the last close (ADR-197,
-  ADR-212) and say so in the proof.
+  http://127.0.0.1:8765/broker/zerodha/login. Live checks are optional (market hours; after hours the last close per
+  ADR-197 / ADR-212, labelled).
+- **Scenario mode (dev and test only).** Built in step 1b: with `APP_ENV` = development or test and
+  `OFO_SCENARIO=<ADJ-id>`, the API serves that scenario's chain, spot, clock, data state and broker answers through the
+  same parsers as Kite (fixture shapes of `tests/fixtures/kite_quotes` / `kite_margins`), so the screens show the
+  scenario. Refused at start-up in any other environment (fail closed, like `held_switches.py`); one place reads the
+  variable; a banner on every screen says "Scenario ADJ-xx - test data, not the market". No order path in this mode.
 
 ## Design decisions (pre-made; the run does not pause on these)
 
@@ -109,19 +123,20 @@ Each step ends with one line here: `step N DONE <sha> <proof line>` or `PARKED (
 
 ## Items
 
-| Step | What | REQ / finding | Proof (real data) | Status |
+| Step | What | REQ / finding | Proof (scenario data) | Status |
 |---|---|---|---|---|
 | 0 | Overlap check: grep main for any adjustment-approach code or route already built; list in "Overlap" | — | the grep output | TODO |
-| 1 | **CORE**: approach builder + whole-trade After + adjustment charges + POP fix + spot allow-list + API | REQ-155, F-74, F-75, F-76 | On a real paper NIFTY iron condor (market hours, or last close after hours, labelled): the API answers 7 approaches; for 3 of them max profit / max loss / breakevens equal a hand intrinsic check to the paisa INCLUDING booked P&L; POP present for all 7; server time for the 7 <= 1 s excluding broker calls; one refused approach (a far strike) shows its reason while the others show | TODO |
-| 2 | Compare screen in builder adjust mode + filters | REQ-156, REQ-157 | Owner's Chrome, same strategy: every criterion shows a leader; "Leads on" counts add up; filters' ranges equal the API's min/max; hiding an approach updates chart, table and picker; wording check passes | TODO |
-| 3 | Drawer on the Live Strategies card + "Prepare basket" hand-off | REQ-046, REQ-045 AC-4/AC-5 | Chrome: detection line -> drawer -> Compare opens step 2's screen for that strategy; "Open in builder and prepare basket" shows the After legs in the builder; no order is placed | TODO |
-| 4 | Close: prepush --full, one PR after hours, land; handover with DONE / PENDING / BLOCKED / PARKED / NEXT | — | `land.py` MERGED line | TODO |
+| 1 | **CORE**: approach builder + whole-trade After + adjustment charges + POP fix + spot allow-list + API | REQ-155, F-74, F-75, F-76 | A test per scenario ADJ-01..ADJ-29 (iron condor ones): the API answers the 7 approaches; max profit / max loss / breakevens equal the scenario's hand values to the paisa INCLUDING booked P&L (ADJ-13); POP present (ADJ-23 is the F-75 regression); spot sources per ADJ-24a/b; refusals and warnings per ADJ-20a..e while other approaches still show; engine time for 7 approaches <= 1 s (REQ-155 AC-7) | TODO |
+| 1b | Scenario mode (dev/test only) | owner test-data instruction | `OFO_SCENARIO=ADJ-02` on dev shows that chain and clock with the banner; the same variable under `APP_ENV=production` refuses start-up (test); no order route answers in this mode (test) | TODO |
+| 2 | Compare screen in builder adjust mode + filters | REQ-156, REQ-157 | Component tests on ADJ-02, ADJ-13, ADJ-20c, ADJ-23; then owner's Chrome in scenario mode ADJ-02 and ADJ-13: every criterion shows a leader; "Leads on" counts add up; filters' ranges equal the API's min/max; hiding an approach updates chart, table and picker; wording check passes | TODO |
+| 3 | Drawer on the Live Strategies card + "Prepare basket" hand-off | REQ-046, REQ-045 AC-4/AC-5 | Chrome in scenario mode ADJ-02 (fires) and ADJ-01 (quiet, no button): detection line -> drawer -> Compare opens step 2's screen for that strategy; "Open in builder and prepare basket" shows the After legs in the builder; no order is placed | TODO |
+| 4 | Close: prepush --full PASS, merge `build/gcadj1` into `feature/adjustments` (no PR to main); handover with DONE / PENDING / BLOCKED / PARKED / NEXT | — | prepush marker + `git log feature/adjustments` showing the merge | TODO |
 
 ## Definition of Done
 
 Steps 1-3 DONE with their proof lines recorded in §0.3, or PARKED with an issue; F-74, F-75, F-76 marked fixed in
-`spec/findings.md` with the proof, and the POP class file moved to `guarded` naming its test; one PR merged after
-hours; run tree removed with `wt-rm.ps1`; handover written; memory note updated.
+`spec/findings.md` with the proof, and the POP class file moved to `guarded` naming its test; `build/gcadj1` merged
+into `feature/adjustments` after a passing prepush --full (no PR to main); run tree removed with `wt-rm.ps1`; handover written; memory note updated.
 
 ## Found during the run
 
@@ -139,4 +154,7 @@ REQ-158 (store, one active per type, save as new / in place), REQ-159 (stages, t
 situations, guards; fixes F-71 by making the distance trigger relative to the playbook), REQ-160 (step editor, plain
 summary, test), REQ-161 (plan sheet at Start tracking), REQ-162 (inbox), REQ-163 (history). Needs a DB migration
 (Tier A review). Owner input needed BEFORE GC-ADJ2 ships defaults: approval of the iron condor playbook numbers
-(catalogue PB-04 / mockup screen 4), which are DRAFT today.
+(catalogue PB-04 / mockup screen 4), which are DRAFT today. GC-ADJ2 also branches from `feature/adjustments`; when it is
+done, ONE PR takes the whole feature to main. Open points from the scenario library (`_playbooks.json` "conventions"):
+the T-14 gamma-loss formula, a "% of premium paid" trigger for long options (PB-08's +100%), and the meaning of
+"tighten every trigger by X%" - each decided in GC-ADJ2 and the scenario expectations regenerated.
