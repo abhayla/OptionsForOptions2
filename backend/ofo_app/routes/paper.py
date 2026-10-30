@@ -146,6 +146,7 @@ PAPER_CHARGES = "paper_charges"
 class PaperFigures(ApiModel):
     state: BookState
     pause_reason: paper.PauseReason | None
+    as_of: datetime.datetime | None = None  # REQ-109 AC-5: PAUSED only: oldest known quote time of a contract not live
     booked: Money
     unbooked: Money | None
     total: Money | None
@@ -246,6 +247,7 @@ class PaperTotalsOut(ApiModel):
     total: Money | None
     total_text: CatalogueText | None
     totals_reason: paper.PauseReason | None
+    totals_as_of: datetime.datetime | None = None  # the oldest as_of among the paused books (None: no known quote time)
     decay: Money | None  # REQ-145 AC-2: rupees to the next market open over every open contract, rounded once
     decay_text: CatalogueText | None
     decay_reason: TotalsReason | None
@@ -407,15 +409,17 @@ def _figures(orders: Sequence[paper_store.StoredOrder], found: dict[int, tracked
     positions = [_position(p, found[int(p.instrument_id)], prices.get(int(p.instrument_id))) for p in view.positions]
     reason = next((found[c].state for c in prices if found[c].state != tracked_contracts.LIVE), None)
     paused = view.unbooked is None
+    as_of = None
     if not prices:
         state, pause = "EXITED", None
     elif not connected:
         state, pause = "NOT_CONNECTED", reason
     elif paused:
         state, pause = "PAUSED", reason or paper.PRICES_NOT_LIVE
+        as_of = paper.paused_as_of(prices.values())  # the engine's own rule (ofo.tracking.paper), not a second way
     else:
         state, pause = "LIVE", None
-    return {"state": state, "pause_reason": pause, "pause_reason_text": reason_text(pause),
+    return {"state": state, "pause_reason": pause, "pause_reason_text": reason_text(pause), "as_of": as_of,
             "booked": _exact(view.booked), "unbooked": _exact(view.unbooked),
             "total": _exact(view.total), "booked_text": _signed(view.booked), "unbooked_text": _signed(view.unbooked),
             "total_text": _signed(view.total), "positions": positions}
@@ -654,7 +658,9 @@ def _totals(strategies: Sequence[dict], decays: Sequence[paper_decay.Decay]) -> 
     booked, unbooked, total, decay = got.booked, got.unbooked, got.total, got.decay
     totals_reason = None if paused is None else (paused["pause_reason"] or paper.PRICES_NOT_LIVE)
     decay_reason = None if missing is None else missing.reason
-    return {"booked": _exact(booked), "booked_text": _signed(booked), "unbooked": _exact(unbooked),
+    times = [s["as_of"] for s in strategies if s["unbooked"] is None and s.get("as_of") is not None]
+    return {"totals_as_of": min(times) if times else None,
+            "booked": _exact(booked), "booked_text": _signed(booked), "unbooked": _exact(unbooked),
             "unbooked_text": _signed(unbooked), "total": _exact(total), "total_text": _signed(total),
             "totals_reason": totals_reason, "totals_reason_text": reason_text(totals_reason),
             "decay": decay, "decay_text": _signed(decay), "decay_reason": decay_reason,

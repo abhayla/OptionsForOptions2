@@ -227,3 +227,31 @@ async def test_fix1_paused_reply_carries_the_paused_texts(db):  # noqa: F811
     assert paused["greeks_reason_text"] == "Paper P&L paused - prices not live"
     assert paused["extremes_reason_text"].startswith("Profit left and Loss left are not worked out")
     assert paused["breakevens_reason_text"] is None
+
+
+async def test_a_paused_book_carries_the_oldest_known_quote_time_in_the_list_and_the_single_route(db):  # noqa: F811
+    """REQ-109 AC-5: "prices not live, as of <time>". Class: every PAUSED paper book (list, single, totals strip)."""
+    app, stored, _provider, clock, last, _fixture = await _seed_fixture(db)
+    clock.now = last + datetime.timedelta(minutes=10)
+    single, listed = await _both(app, stored.id)
+    async with _client(app) as c:
+        totals = (await c.get("/paper/strategies")).json()["totals"]
+    assert listed["state"] == single["state"] == "PAUSED"
+    assert listed["as_of"] == single["as_of"] and listed["as_of"] is not None
+    assert datetime.datetime.fromisoformat(listed["as_of"].replace("Z", "+00:00")) <= last.astimezone(datetime.UTC)
+    assert totals["totals_reason"] == "prices_not_live" and totals["totals_as_of"] is not None
+
+
+async def test_a_live_book_has_no_as_of(db):  # noqa: F811
+    app, stored, *_ = await _seed_fixture(db)
+    single, listed = await _both(app, stored.id)
+    assert listed["state"] == "LIVE" and listed["as_of"] is None and single["as_of"] is None
+
+
+async def test_an_exited_book_has_no_as_of(db):  # noqa: F811
+    app, stored, *_ = await _setup(db)
+    c0 = stored.saved.contract_ids[0]
+    await paper_store.place(db, stored.user_ref, stored.id, [_new(c0, "SELL", 65, "100.00"),
+                                                              _new(c0, "BUY", 65, "80.00", "exit")])
+    _single, listed = await _both(app, stored.id)
+    assert listed["state"] == "EXITED" and listed["as_of"] is None
