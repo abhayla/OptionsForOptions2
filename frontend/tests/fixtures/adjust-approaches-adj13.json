@@ -1,0 +1,1077 @@
+{
+ "strategy_id": 73,
+ "view": "at_expiry",
+ "spot": {
+  "value": "23420",
+  "source": "feed",
+  "source_text": "Spot from the live feed",
+  "at": "2026-11-06T11:39:59+05:30",
+  "reasons": [],
+  "text": null
+ },
+ "pop_switch_on": true,
+ "before": {
+  "after": {
+   "gross": {
+    "max_profit": "5141.50",
+    "max_loss": "20858.50",
+    "breakevens": [
+     "22860.45",
+     "23489.55"
+    ],
+    "loss_regions": [
+     [
+      null,
+      "22860.45"
+     ],
+     [
+      "23489.55",
+      null
+     ]
+    ]
+   },
+   "after_charges": {
+    "max_profit": "4829.00",
+    "max_loss": "21171.00",
+    "breakevens": [
+     "22862.85",
+     "23487.15"
+    ],
+    "loss_regions": [
+     [
+      null,
+      "22862.85"
+     ],
+     [
+      "23487.15",
+      null
+     ]
+    ]
+   },
+   "booked_pnl": "962.00"
+  },
+  "charges": {
+   "this_adjustment": "0",
+   "paid_so_far": "209.56",
+   "open_exit": "102.94",
+   "not_available": null
+  },
+  "pop": {
+   "value": null,
+   "not_available": true,
+   "reason": "POP not available: no implied volatility or time to expiry for this expiry."
+  },
+  "after_reason": null
+ },
+ "approaches": [
+  {
+   "id": "A-36",
+   "name": "No change",
+   "kind": "none",
+   "side": "none",
+   "step_basis": null,
+   "step_value": null,
+   "refusal": null,
+   "warnings": [],
+   "trades": [],
+   "after_legs": [
+    {
+     "side": "BUY",
+     "type": "PE",
+     "strike": "22700.00",
+     "expiry": "2026-11-03",
+     "lots": 2,
+     "entry": "6.1",
+     "tradingsymbol": "NIFTY26N0322700PE"
+    },
+    {
+     "side": "SELL",
+     "type": "PE",
+     "strike": "22900.00",
+     "expiry": "2026-11-03",
+     "lots": 2,
+     "entry": "16.85",
+     "tradingsymbol": "NIFTY26N0322900PE"
+    },
+    {
+     "side": "SELL",
+     "type": "CE",
+     "strike": "23450.00",
+     "expiry": "2026-11-03",
+     "lots": 2,
+     "entry": "36.9",
+     "tradingsymbol": "NIFTY26N0323450CE"
+    },
+    {
+     "side": "BUY",
+     "type": "CE",
+     "strike": "23650.00",
+     "expiry": "2026-11-03",
+     "lots": 2,
+     "entry": "15.5",
+     "tradingsymbol": "NIFTY26N0323650CE"
+    }
+   ],
+   "closed_legs": [],
+   "after": {
+    "gross": {
+     "max_profit": "5141.50",
+     "max_loss": "20858.50",
+     "breakevens": [
+      "22860.45",
+      "23489.55"
+     ],
+     "loss_regions": [
+      [
+       null,
+       "22860.45"
+      ],
+      [
+       "23489.55",
+       null
+      ]
+     ]
+    },
+    "after_charges": {
+     "max_profit": "4829.00",
+     "max_loss": "21171.00",
+     "breakevens": [
+      "22862.85",
+      "23487.15"
+     ],
+     "loss_regions": [
+      [
+       null,
+       "22862.85"
+      ],
+      [
+       "23487.15",
+       null
+      ]
+     ]
+    },
+    "booked_pnl": "962.00"
+   },
+   "charges": {
+    "this_adjustment": "0",
+    "paid_so_far": "209.56",
+    "open_exit": "102.94",
+    "not_available": null
+   },
+   "pop": {
+    "value": null,
+    "not_available": true,
+    "reason": "POP not available: no implied volatility or time to expiry for this expiry."
+   },
+   "after_reason": null,
+   "margin": {
+    "state": "failed",
+    "value": null,
+    "at": null,
+    "reason": "Margin not available: Margin from Zerodha could not be read just now, so no margin figure is shown."
+   }
+  },
+  {
+   "id": "A-01",
+   "name": "Roll the untested spread toward spot",
+   "kind": "roll",
+   "side": "put",
+   "step_basis": "points",
+   "step_value": "200",
+   "refusal": {
+    "error_class": "USER_INPUT",
+    "code": "USER_INPUT_014",
+    "what_happened": "No 22,900.00 PE is listed for 03 Nov 2026, so leg 1 cannot move there.",
+    "impact": "The move was refused and no leg changed.",
+    "what_is_blocked": "This move.",
+    "next_action": "Use the stepper or the leg picker to choose a listed strike.",
+    "external_text": null
+   },
+   "warnings": [],
+   "trades": null,
+   "after_legs": null,
+   "closed_legs": null,
+   "after": null,
+   "charges": null,
+   "pop": null,
+   "after_reason": null,
+   "margin": null
+  },
+  {
+   "id": "A-05",
+   "name": "Roll the tested spread out (same width)",
+   "kind": "roll",
+   "side": "call",
+   "step_basis": "points",
+   "step_value": "200",
+   "refusal": {
+    "error_class": "USER_INPUT",
+    "code": "USER_INPUT_014",
+    "what_happened": "No 23,650.00 CE is listed for 03 Nov 2026, so leg 3 cannot move there.",
+    "impact": "The move was refused and no leg changed.",
+    "what_is_blocked": "This move.",
+    "next_action": "Use the stepper or the leg picker to choose a listed strike.",
+    "external_text": null
+   },
+   "warnings": [],
+   "trades": null,
+   "after_legs": null,
+   "closed_legs": null,
+   "after": null,
+   "charges": null,
+   "pop": null,
+   "after_reason": null,
+   "margin": null
+  },
+  {
+   "id": "A-29",
+   "name": "Reduce the tested side",
+   "kind": "reduce",
+   "side": "call",
+   "step_basis": null,
+   "step_value": null,
+   "refusal": {
+    "error_class": "USER_INPUT",
+    "code": "USER_INPUT_105",
+    "what_happened": "Leg 3 (SELL NIFTY 23,450.00 CE, expiry 03 Nov 2026) has no price, and this approach trades it.",
+    "impact": "This approach was not built; the other approaches still show.",
+    "what_is_blocked": "This approach.",
+    "next_action": "Wait for a price for this contract, or compare the other approaches.",
+    "external_text": null
+   },
+   "warnings": [],
+   "trades": null,
+   "after_legs": null,
+   "closed_legs": null,
+   "after": null,
+   "charges": null,
+   "pop": null,
+   "after_reason": null,
+   "margin": null
+  },
+  {
+   "id": "A-28",
+   "name": "Close the tested spread",
+   "kind": "close_part",
+   "side": "call",
+   "step_basis": null,
+   "step_value": null,
+   "refusal": {
+    "error_class": "USER_INPUT",
+    "code": "USER_INPUT_105",
+    "what_happened": "Leg 3 (SELL NIFTY 23,450.00 CE, expiry 03 Nov 2026) has no price, and this approach trades it.",
+    "impact": "This approach was not built; the other approaches still show.",
+    "what_is_blocked": "This approach.",
+    "next_action": "Wait for a price for this contract, or compare the other approaches.",
+    "external_text": null
+   },
+   "warnings": [],
+   "trades": null,
+   "after_legs": null,
+   "closed_legs": null,
+   "after": null,
+   "charges": null,
+   "pop": null,
+   "after_reason": null,
+   "margin": null
+  },
+  {
+   "id": "A-11",
+   "name": "Re-centre both shorts at the money",
+   "kind": "convert",
+   "side": "both",
+   "step_basis": null,
+   "step_value": null,
+   "refusal": {
+    "error_class": "USER_INPUT",
+    "code": "USER_INPUT_111",
+    "what_happened": "This approach needs at least 3 days left; days left now: 0.",
+    "impact": "This approach was not built; the other approaches still show.",
+    "what_is_blocked": "This approach.",
+    "next_action": "Compare the other approaches, or change the legs in the Builder.",
+    "external_text": null
+   },
+   "warnings": [],
+   "trades": null,
+   "after_legs": null,
+   "closed_legs": null,
+   "after": null,
+   "charges": null,
+   "pop": null,
+   "after_reason": null,
+   "margin": null
+  },
+  {
+   "id": "A-31",
+   "name": "Exit the whole strategy",
+   "kind": "exit",
+   "side": "both",
+   "step_basis": null,
+   "step_value": null,
+   "refusal": {
+    "error_class": "USER_INPUT",
+    "code": "USER_INPUT_105",
+    "what_happened": "Leg 1 (BUY NIFTY 22,700.00 PE, expiry 03 Nov 2026) has no price, and this approach trades it.",
+    "impact": "This approach was not built; the other approaches still show.",
+    "what_is_blocked": "This approach.",
+    "next_action": "Wait for a price for this contract, or compare the other approaches.",
+    "external_text": null
+   },
+   "warnings": [],
+   "trades": null,
+   "after_legs": null,
+   "closed_legs": null,
+   "after": null,
+   "charges": null,
+   "pop": null,
+   "after_reason": null,
+   "margin": null
+  }
+ ],
+ "criteria": [
+  {
+   "id": "credit",
+   "group": "money_now",
+   "label": "Credit (+) or debit (-)",
+   "hint": null,
+   "leader_label": "Most credit",
+   "leaders": [
+    "A-36"
+   ],
+   "values": {
+    "A-36": {
+     "text": "₹0.00",
+     "value": "0.00",
+     "unavailable_reason": null
+    }
+   }
+  },
+  {
+   "id": "cost",
+   "group": "money_now",
+   "label": "Charges plus bid-ask cost",
+   "hint": null,
+   "leader_label": "Lowest cost",
+   "leaders": [
+    "A-36"
+   ],
+   "values": {
+    "A-36": {
+     "text": "₹0.00",
+     "value": "0.00",
+     "unavailable_reason": null
+    }
+   }
+  },
+  {
+   "id": "margin_change",
+   "group": "money_now",
+   "label": "Margin change",
+   "hint": null,
+   "leader_label": "Smallest margin change",
+   "leaders": [],
+   "values": {
+    "A-36": {
+     "text": "-",
+     "value": null,
+     "unavailable_reason": "Margin not available: Margin from Zerodha could not be read just now, so no margin figure is shown."
+    }
+   }
+  },
+  {
+   "id": "max_loss",
+   "group": "risk_after",
+   "label": "Max loss",
+   "hint": null,
+   "leader_label": "Smallest max loss",
+   "leaders": [
+    "A-36"
+   ],
+   "values": {
+    "A-36": {
+     "text": "₹21,171.00",
+     "value": "21171.00",
+     "unavailable_reason": null
+    }
+   }
+  },
+  {
+   "id": "move_m2",
+   "group": "risk_after",
+   "label": "P&L if spot falls 2%",
+   "hint": null,
+   "leader_label": "Highest P&L at -2%",
+   "leaders": [
+    "A-36"
+   ],
+   "values": {
+    "A-36": {
+     "text": "₹4,829.00",
+     "value": "4829.00",
+     "unavailable_reason": null
+    }
+   }
+  },
+  {
+   "id": "move_m1",
+   "group": "risk_after",
+   "label": "P&L if spot falls 1%",
+   "hint": null,
+   "leader_label": "Highest P&L at -1%",
+   "leaders": [
+    "A-36"
+   ],
+   "values": {
+    "A-36": {
+     "text": "₹4,829.00",
+     "value": "4829.00",
+     "unavailable_reason": null
+    }
+   }
+  },
+  {
+   "id": "move_p1",
+   "group": "risk_after",
+   "label": "P&L if spot rises 1%",
+   "hint": null,
+   "leader_label": "Highest P&L at +1%",
+   "leaders": [
+    "A-36"
+   ],
+   "values": {
+    "A-36": {
+     "text": "−₹21,171.00",
+     "value": "-21171.00",
+     "unavailable_reason": null
+    }
+   }
+  },
+  {
+   "id": "move_p2",
+   "group": "risk_after",
+   "label": "P&L if spot rises 2%",
+   "hint": null,
+   "leader_label": "Highest P&L at +2%",
+   "leaders": [
+    "A-36"
+   ],
+   "values": {
+    "A-36": {
+     "text": "−₹21,171.00",
+     "value": "-21171.00",
+     "unavailable_reason": null
+    }
+   }
+  },
+  {
+   "id": "breakevens",
+   "group": "risk_after",
+   "label": "Breakevens",
+   "hint": null,
+   "leader_label": "Widest profit range",
+   "leaders": [
+    "A-36"
+   ],
+   "values": {
+    "A-36": {
+     "text": "22862.85/23487.15 (profit range 624.30 points)",
+     "value": "624.30",
+     "unavailable_reason": null
+    }
+   }
+  },
+  {
+   "id": "max_profit",
+   "group": "reward_after",
+   "label": "Max profit",
+   "hint": null,
+   "leader_label": "Highest max profit",
+   "leaders": [
+    "A-36"
+   ],
+   "values": {
+    "A-36": {
+     "text": "₹4,829.00",
+     "value": "4829.00",
+     "unavailable_reason": null
+    }
+   }
+  },
+  {
+   "id": "premium_left",
+   "group": "reward_after",
+   "label": "Premium still left to earn",
+   "hint": null,
+   "leader_label": "Most premium left",
+   "leaders": [],
+   "values": {
+    "A-36": {
+     "text": "-",
+     "value": null,
+     "unavailable_reason": "Not available: NIFTY26N0322700PE has no current price."
+    }
+   }
+  },
+  {
+   "id": "pop",
+   "group": "reward_after",
+   "label": "POP",
+   "hint": null,
+   "leader_label": "Highest POP",
+   "leaders": [],
+   "values": {
+    "A-36": {
+     "text": "-",
+     "value": null,
+     "unavailable_reason": "POP not available: no implied volatility or time to expiry for this expiry."
+    }
+   }
+  },
+  {
+   "id": "delta",
+   "group": "greeks_after",
+   "label": "Net delta",
+   "hint": null,
+   "leader_label": "Closest to delta-neutral",
+   "leaders": [],
+   "values": {
+    "A-36": {
+     "text": "-",
+     "value": null,
+     "unavailable_reason": "Not available: no Greeks for NIFTY26N0322700PE."
+    }
+   }
+  },
+  {
+   "id": "gamma",
+   "group": "greeks_after",
+   "label": "Gamma",
+   "hint": null,
+   "leader_label": "Lowest gamma",
+   "leaders": [],
+   "values": {
+    "A-36": {
+     "text": "-",
+     "value": null,
+     "unavailable_reason": "Not available: no Greeks for NIFTY26N0322700PE."
+    }
+   }
+  },
+  {
+   "id": "theta",
+   "group": "greeks_after",
+   "label": "Theta",
+   "hint": null,
+   "leader_label": "Most theta",
+   "leaders": [],
+   "values": {
+    "A-36": {
+     "text": "-",
+     "value": null,
+     "unavailable_reason": "Not available: no Greeks for NIFTY26N0322700PE."
+    }
+   }
+  },
+  {
+   "id": "vega",
+   "group": "greeks_after",
+   "label": "Vega",
+   "hint": null,
+   "leader_label": "Lowest vega",
+   "leaders": [],
+   "values": {
+    "A-36": {
+     "text": "-",
+     "value": null,
+     "unavailable_reason": "Not available: no Greeks for NIFTY26N0322700PE."
+    }
+   }
+  },
+  {
+   "id": "adjustments",
+   "group": "practical",
+   "label": "Adjustments used",
+   "hint": null,
+   "leader_label": "Fewest adjustments",
+   "leaders": [],
+   "values": {
+    "A-36": {
+     "text": "-",
+     "value": null,
+     "unavailable_reason": "Not available: the paper book does not record adjustments yet."
+    }
+   }
+  },
+  {
+   "id": "liquidity",
+   "group": "practical",
+   "label": "Strike liquidity (widest bid-ask spread)",
+   "hint": null,
+   "leader_label": "Tightest spreads",
+   "leaders": [],
+   "values": {
+    "A-36": {
+     "text": "-",
+     "value": null,
+     "unavailable_reason": "Not available: this approach opens no new leg."
+    }
+   }
+  },
+  {
+   "id": "fresh",
+   "group": "practical",
+   "label": "Would you open this fresh",
+   "hint": null,
+   "leader_label": "Smallest fresh max loss",
+   "leaders": [],
+   "values": {
+    "A-36": {
+     "text": "-",
+     "value": null,
+     "unavailable_reason": "Not available: NIFTY26N0322700PE has no current price."
+    }
+   }
+  }
+ ],
+ "leads": {
+  "A-36": {
+   "n": 9,
+   "m": 9
+  }
+ },
+ "curves": {
+  "before": [
+   [
+    "22014.80",
+    "-21171.00"
+   ],
+   [
+    "22073.35",
+    "-21171.00"
+   ],
+   [
+    "22131.90",
+    "-21171.00"
+   ],
+   [
+    "22190.45",
+    "-21171.00"
+   ],
+   [
+    "22249.00",
+    "-21171.00"
+   ],
+   [
+    "22307.55",
+    "-21171.00"
+   ],
+   [
+    "22366.10",
+    "-21171.00"
+   ],
+   [
+    "22424.65",
+    "-21171.00"
+   ],
+   [
+    "22483.20",
+    "-21171.00"
+   ],
+   [
+    "22541.75",
+    "-21171.00"
+   ],
+   [
+    "22600.30",
+    "-21171.00"
+   ],
+   [
+    "22658.85",
+    "-21171.00"
+   ],
+   [
+    "22700.00",
+    "-21171.00"
+   ],
+   [
+    "22717.40",
+    "-18909.00"
+   ],
+   [
+    "22775.95",
+    "-11297.50"
+   ],
+   [
+    "22834.50",
+    "-3686.00"
+   ],
+   [
+    "22893.05",
+    "3925.50"
+   ],
+   [
+    "22900.00",
+    "4829.00"
+   ],
+   [
+    "22951.60",
+    "4829.00"
+   ],
+   [
+    "23010.15",
+    "4829.00"
+   ],
+   [
+    "23068.70",
+    "4829.00"
+   ],
+   [
+    "23127.25",
+    "4829.00"
+   ],
+   [
+    "23185.80",
+    "4829.00"
+   ],
+   [
+    "23244.35",
+    "4829.00"
+   ],
+   [
+    "23302.90",
+    "4829.00"
+   ],
+   [
+    "23361.45",
+    "4829.00"
+   ],
+   [
+    "23420.00",
+    "4829.00"
+   ],
+   [
+    "23450.00",
+    "4829.00"
+   ],
+   [
+    "23478.55",
+    "1117.50"
+   ],
+   [
+    "23537.10",
+    "-6494.00"
+   ],
+   [
+    "23595.65",
+    "-14105.50"
+   ],
+   [
+    "23650.00",
+    "-21171.00"
+   ],
+   [
+    "23654.20",
+    "-21171.00"
+   ],
+   [
+    "23712.75",
+    "-21171.00"
+   ],
+   [
+    "23771.30",
+    "-21171.00"
+   ],
+   [
+    "23829.85",
+    "-21171.00"
+   ],
+   [
+    "23888.40",
+    "-21171.00"
+   ],
+   [
+    "23946.95",
+    "-21171.00"
+   ],
+   [
+    "24005.50",
+    "-21171.00"
+   ],
+   [
+    "24064.05",
+    "-21171.00"
+   ],
+   [
+    "24122.60",
+    "-21171.00"
+   ],
+   [
+    "24181.15",
+    "-21171.00"
+   ],
+   [
+    "24239.70",
+    "-21171.00"
+   ],
+   [
+    "24298.25",
+    "-21171.00"
+   ],
+   [
+    "24356.80",
+    "-21171.00"
+   ],
+   [
+    "24415.35",
+    "-21171.00"
+   ],
+   [
+    "24473.90",
+    "-21171.00"
+   ],
+   [
+    "24532.45",
+    "-21171.00"
+   ],
+   [
+    "24591.00",
+    "-21171.00"
+   ],
+   [
+    "24649.55",
+    "-21171.00"
+   ],
+   [
+    "24708.10",
+    "-21171.00"
+   ],
+   [
+    "24766.65",
+    "-21171.00"
+   ],
+   [
+    "24825.20",
+    "-21171.00"
+   ]
+  ],
+  "A-36": [
+   [
+    "22014.80",
+    "-21171.00"
+   ],
+   [
+    "22073.35",
+    "-21171.00"
+   ],
+   [
+    "22131.90",
+    "-21171.00"
+   ],
+   [
+    "22190.45",
+    "-21171.00"
+   ],
+   [
+    "22249.00",
+    "-21171.00"
+   ],
+   [
+    "22307.55",
+    "-21171.00"
+   ],
+   [
+    "22366.10",
+    "-21171.00"
+   ],
+   [
+    "22424.65",
+    "-21171.00"
+   ],
+   [
+    "22483.20",
+    "-21171.00"
+   ],
+   [
+    "22541.75",
+    "-21171.00"
+   ],
+   [
+    "22600.30",
+    "-21171.00"
+   ],
+   [
+    "22658.85",
+    "-21171.00"
+   ],
+   [
+    "22700.00",
+    "-21171.00"
+   ],
+   [
+    "22717.40",
+    "-18909.00"
+   ],
+   [
+    "22775.95",
+    "-11297.50"
+   ],
+   [
+    "22834.50",
+    "-3686.00"
+   ],
+   [
+    "22893.05",
+    "3925.50"
+   ],
+   [
+    "22900.00",
+    "4829.00"
+   ],
+   [
+    "22951.60",
+    "4829.00"
+   ],
+   [
+    "23010.15",
+    "4829.00"
+   ],
+   [
+    "23068.70",
+    "4829.00"
+   ],
+   [
+    "23127.25",
+    "4829.00"
+   ],
+   [
+    "23185.80",
+    "4829.00"
+   ],
+   [
+    "23244.35",
+    "4829.00"
+   ],
+   [
+    "23302.90",
+    "4829.00"
+   ],
+   [
+    "23361.45",
+    "4829.00"
+   ],
+   [
+    "23420.00",
+    "4829.00"
+   ],
+   [
+    "23450.00",
+    "4829.00"
+   ],
+   [
+    "23478.55",
+    "1117.50"
+   ],
+   [
+    "23537.10",
+    "-6494.00"
+   ],
+   [
+    "23595.65",
+    "-14105.50"
+   ],
+   [
+    "23650.00",
+    "-21171.00"
+   ],
+   [
+    "23654.20",
+    "-21171.00"
+   ],
+   [
+    "23712.75",
+    "-21171.00"
+   ],
+   [
+    "23771.30",
+    "-21171.00"
+   ],
+   [
+    "23829.85",
+    "-21171.00"
+   ],
+   [
+    "23888.40",
+    "-21171.00"
+   ],
+   [
+    "23946.95",
+    "-21171.00"
+   ],
+   [
+    "24005.50",
+    "-21171.00"
+   ],
+   [
+    "24064.05",
+    "-21171.00"
+   ],
+   [
+    "24122.60",
+    "-21171.00"
+   ],
+   [
+    "24181.15",
+    "-21171.00"
+   ],
+   [
+    "24239.70",
+    "-21171.00"
+   ],
+   [
+    "24298.25",
+    "-21171.00"
+   ],
+   [
+    "24356.80",
+    "-21171.00"
+   ],
+   [
+    "24415.35",
+    "-21171.00"
+   ],
+   [
+    "24473.90",
+    "-21171.00"
+   ],
+   [
+    "24532.45",
+    "-21171.00"
+   ],
+   [
+    "24591.00",
+    "-21171.00"
+   ],
+   [
+    "24649.55",
+    "-21171.00"
+   ],
+   [
+    "24708.10",
+    "-21171.00"
+   ],
+   [
+    "24766.65",
+    "-21171.00"
+   ],
+   [
+    "24825.20",
+    "-21171.00"
+   ]
+  ]
+ },
+ "timing": {
+  "engine_seconds": "0.0181",
+  "total_seconds": "0.8103",
+  "approaches": 7
+ }
+}

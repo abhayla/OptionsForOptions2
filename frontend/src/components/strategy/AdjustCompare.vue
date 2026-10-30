@@ -11,6 +11,21 @@
     <p v-else-if="state === 'loading'" class="text-sm text-ink-muted" data-testid="adjust-loading">Loading the approaches.</p>
 
     <template v-else-if="reply">
+      <div v-if="picked.length" class="flex flex-wrap items-center gap-2 text-sm" data-testid="adjust-scope">
+        <label class="flex items-center gap-2">Approaches in the compare
+          <select v-model="scope" class="h-9 rounded border border-line px-2" data-testid="adjust-scope-select">
+            <option value="all">All {{ allCount }} that apply</option>
+            <option value="picked">Only the ones picked in the drawer</option>
+          </select>
+        </label>
+      </div>
+      <div v-if="why" class="rounded-lg border border-line bg-surface p-3" data-testid="adjust-why">
+        <h3 class="text-sm font-semibold">Why detected · current state</h3>
+        <p v-for="l in why.lines" :key="l" class="mt-1 text-sm" data-testid="adjust-why-line">{{ l }}</p>
+        <dl class="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-sm min-[700px]:grid-cols-4">
+          <template v-for="r in why.rows" :key="r.id"><dt class="text-ink-muted">{{ r.label }}</dt><dd class="tabular-nums" :data-testid="`adjust-why-${r.id}`">{{ r.value }}</dd></template>
+        </dl>
+      </div>
       <div class="grid min-w-0 grid-cols-1 gap-4 min-[1100px]:grid-cols-2">
         <div class="min-w-0 rounded-lg border border-line bg-surface p-3" data-testid="adjust-chart-card">
           <h3 class="mb-1 text-sm font-semibold">Payoff at expiry, whole trade</h3>
@@ -107,7 +122,7 @@
       <div v-if="refused.length" class="rounded-lg border border-line bg-surface p-3" data-testid="adjust-refused">
         <h3 class="text-sm font-semibold">Not offered for this strategy now</h3>
         <ul class="mt-1 text-sm">
-          <li v-for="a in refused" :key="a.id" :data-testid="`adjust-refused-${a.id}`"><span class="font-semibold">{{ a.name ?? a.id }}</span>: {{ a.refusal }}</li>
+          <li v-for="a in refused" :key="a.id" :data-testid="`adjust-refused-${a.id}`"><span class="font-semibold">{{ a.name ?? a.id }}</span>: {{ refusalText(a) }}<span v-if="a.refusal?.next_action" class="text-ink-muted"> {{ a.refusal.next_action }}</span></li>
         </ul>
       </div>
 
@@ -132,14 +147,17 @@ import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import AdjustPayoffChart from '@/components/strategy/AdjustPayoffChart.vue'
 import { istTime } from '@/lib/displayFormat'
 import { plainName } from '@/lib/saveDraft'
+import { readTracking } from '@/lib/tracking'
+import { stateRows } from '@/lib/adjustDrawer'
 import {
   EMPTY_FILTERS, GROUP_TITLES, KIND_TITLES, NO_CHANGE_ID, RANGES, SIDE_TITLES, UNAVAILABLE_FOR_FILTER, UNAVAILABLE_VALUE,
-  applyFilters, buildFacets, cmpDecimal, isNoChange, legsFromApproach, refusedApproaches, showingText, tableApproaches,
+  applyFilters, buildFacets, cmpDecimal, isNoChange, legsFromApproach, refusalText, refusedApproaches, showingText, tableApproaches,
 } from '@/lib/adjustCompare'
 
 const props = defineProps({
   strategyId: { type: [String, Number], required: true },
   client: { type: Object, default: () => api }, // the api module; a test passes a stand-in
+  picked: { type: Array, default: () => [] }, // the approach ids ticked in the drawer (`pick` in the address); none = all
 })
 const emit = defineEmits(['prepare']) // { legs, underlying }: the chosen approach's legs as builder legs (no order is placed)
 
@@ -157,6 +175,8 @@ const prepareError = ref(null)
 const filters = ref(EMPTY_FILTERS())
 const hiddenLines = ref([])
 const pick = ref('')
+const scope = ref(props.picked.length ? 'picked' : 'all') // 'all' | 'picked'
+const why = ref(null) // the drawer's layers 1-2 again: { lines, rows } from a tracking read, null when it cannot be read
 
 async function load() {
   state.value = 'loading'
@@ -169,6 +189,11 @@ async function load() {
     state.value = 'error'
     return
   }
+  try { // layers 1-2 again (display only); a strategy that is not tracked simply shows no card
+    const body = (await props.client.get(`/strategies/${props.strategyId}/tracking`)).data
+    const t = readTracking(body)
+    why.value = { lines: t.detections.map((d) => d.line), rows: stateRows(body) }
+  } catch { why.value = null }
   try { // the name and underlying are a convenience: the compare works without them
     const s = (await props.client.get(`/strategies/${props.strategyId}`)).data
     name.value = plainName(s?.name)
@@ -177,7 +202,14 @@ async function load() {
 }
 onMounted(load)
 
-const facets = computed(() => (reply.value ? buildFacets(reply.value) : { kinds: [], sides: [], risk: [], ranges: {} }))
+// Which approaches the compare covers: all that apply, or only the ones picked in the drawer (No change is always in).
+// A picked approach the server refused stays listed with its reason; a refused one nobody picked is not mentioned.
+const view = computed(() => {
+  const r = reply.value
+  if (!r || scope.value !== 'picked' || !props.picked.length) return r
+  return { ...r, approaches: (r.approaches ?? []).filter((a) => isNoChange(a) || props.picked.includes(a.id)) }
+})
+const facets = computed(() => (view.value ? buildFacets(view.value) : { kinds: [], sides: [], risk: [], ranges: {} }))
 // REQ-157 AC-2: when the approaches are recomputed, a choice or limit that is no longer offered is dropped.
 watch(facets, (f) => {
   const keep = (sel, list) => sel.filter((s) => list.some((x) => x.id === s))
@@ -186,10 +218,11 @@ watch(facets, (f) => {
   filters.value = { kinds: keep(cur.kinds, f.kinds), sides: keep(cur.sides, f.sides), risk: keep(cur.risk, f.risk), limits }
 })
 
-const all = computed(() => (reply.value ? tableApproaches(reply.value) : []))
-const kept = computed(() => (reply.value ? applyFilters(reply.value, filters.value) : []))
+const all = computed(() => (view.value ? tableApproaches(view.value) : []))
+const kept = computed(() => (view.value ? applyFilters(view.value, filters.value) : []))
+const allCount = computed(() => (reply.value ? tableApproaches(reply.value).length : 0))
 const total = computed(() => all.value.length)
-const refused = computed(() => (reply.value ? refusedApproaches(reply.value) : []))
+const refused = computed(() => (view.value ? refusedApproaches(view.value) : []))
 const pickable = computed(() => kept.value.filter((x) => !isNoChange(x.a)))
 watch(pickable, (list) => { if (!list.some((x) => x.a.id === pick.value)) pick.value = list[0]?.a.id ?? '' }, { immediate: true })
 
