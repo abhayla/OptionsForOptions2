@@ -15,6 +15,14 @@ export function healthSentence(health) {
   return Object.hasOwn(HEALTH_SENTENCES, health) ? HEALTH_SENTENCES[health] : HEALTH_UNKNOWN_SENTENCE
 }
 
+/** ADR-177 / ADR-212: the health word a screen may show. A closed market holds the last close, which the feed marks
+ *  stale whatever frames arrive; the one market-closed banner already says so, so no word and no sentence then. In
+ *  market hours: the word when the health is not `available`, else ''. Never built from a price or a time here. */
+export function shownHealth(health, marketClosed) {
+  if (marketClosed === true || !health || health === 'available') return ''
+  return health
+}
+
 export const MISSING_REASONS = {
   no_contract: 'There is no contract at this strike for this expiry.',
   no_quote: 'No price has been received for this contract yet.',

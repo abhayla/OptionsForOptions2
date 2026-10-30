@@ -90,7 +90,7 @@ describe('AC-7: index screens on a closed market', () => {
         expect(w.text()).not.toContain(UNAVAILABLE_LABEL)
       })
     }
-    it(`AC-7: ${name}, closed answer: each index's last value with the stale word`, async () => {
+    it(`AC-7: ${name}, closed answer: each index's last value, no stale word or sentence (U18, ADR-177: the banner says it once)`, async () => {
       apiAnswer = CLOSED
       const w = await mountScreen(screen)
       const panel = name === 'index view' ? 'index-panel' : 'strip'
@@ -98,8 +98,11 @@ describe('AC-7: index screens on a closed market', () => {
       const value = name === 'index view' ? 'index-value' : 'strip-value'
       for (const [u, v] of [['NIFTY', '25100.55'], ['SENSEX', '81000.10']]) {
         expect(w.get(`[data-testid="${panel}-${u}"] [data-testid="${value}"]`).text()).toBe(v)
-        expect(w.get(`[data-testid="${panel}-${u}"] [data-testid="${health}"]`).text()).toBe('stale')
+        expect(w.find(`[data-testid="${panel}-${u}"] [data-testid="${health}"]`).exists()).toBe(false)
       }
+      expect(w.find('[data-testid="index-health-reason"]').exists()).toBe(false)
+      expect(w.text()).not.toContain('Stale:')
+      expect(w.text()).not.toContain('stale')
     })
     it(`AC-7 negative case: ${name}, open LIVE answer: no banner, the value shown, no stale word`, async () => {
       apiAnswer = OPEN

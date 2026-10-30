@@ -9,7 +9,7 @@ import MarketClosedBanner from '@/components/states/MarketClosedBanner.vue'
 import { INDEX_KEYS, INDEX_NAMES, NOT_LIVE_LABEL, useIndexAnswer } from '@/composables/useIndexLive'
 
 defineProps({ showStatus: { type: Boolean, default: false } }) // W-117: Market context adds one status line
-const { answer, start, reconnecting, reconnectingText, rowFor, shownValue, notLive, isLive, marketClosed } = useIndexAnswer()
+const { answer, start, reconnecting, reconnectingText, rowFor, shownValue, notLive, isLive, marketClosed, healthOf } = useIndexAnswer()
 onMounted(start)
 // a closed market is never live (isLive reads the answer's market state too, ADR-015)
 const statusText = () => (isLive() ? 'Index values are live.' : notLive() ? 'Index values are not live.' : '')
@@ -25,7 +25,7 @@ const timeText = (row) => (row?.at ? istTime(row.at) : '')
       <span class="font-medium">{{ INDEX_NAMES[u] }}</span>
       <span class="tabular-nums" data-testid="strip-value">{{ shownValue(rowFor(u)) }}</span>
       <span class="text-xs text-ink-muted" data-testid="strip-at">{{ timeText(rowFor(u)) }}</span>
-      <span v-if="rowFor(u)?.health && rowFor(u).health !== 'available'" class="text-xs font-medium" data-testid="strip-health">{{ rowFor(u).health }}</span>
+      <span v-if="healthOf(rowFor(u))" class="text-xs font-medium" data-testid="strip-health">{{ healthOf(rowFor(u)) }}</span>
     </span>
     <span v-if="showStatus && statusText()" class="basis-full text-xs text-ink-muted" data-testid="market-status">{{ statusText() }}</span>
   </div>
