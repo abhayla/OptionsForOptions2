@@ -208,7 +208,7 @@ class Margin:
     checked_at: datetime.datetime | None = None
     shortfall: bool = False  # CHECKED only: Zerodha's available funds are below the amount needed (Decimal compare)
     shortfall_reason: ExplanationText | None = None  # REQ-055 AC-4: set only with ``shortfall`` (the one comparison)
-    no_figure: bool = False  # UNREADABLE only: Zerodha answered, but without a margin figure (empty, not failed)
+    no_figure: bool = False  # UNREADABLE only: answered without a figure
 
 
 @dataclass(frozen=True)
