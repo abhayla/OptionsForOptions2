@@ -251,6 +251,8 @@ class Scenario:
         """``KiteMargin``'s transport seam: the scenario's margin reply as Kite sends it."""
         margin = self.data["broker"]["margin"]
         state = margin.get("state")
+        if state == "stated" and method == "GET":  # the available-funds call (/user/margins)
+            return 200, json.dumps(margin["funds_reply"])
         if state == "stated":
             return 200, json.dumps(_reply_for_basket(margin["reply"], body))
         if state == "empty":

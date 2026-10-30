@@ -1626,6 +1626,10 @@
    "reply": {
     "status": "success",
     "data": {}
+   },
+   "funds_reply": {
+    "status": "success",
+    "data": {}
    }
   },
   "quote": {
