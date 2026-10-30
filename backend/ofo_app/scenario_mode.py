@@ -86,8 +86,8 @@ NON_ORDER_ROUTES: frozenset[tuple[str, str]] = frozenset({
     ("POST", "/api/strategies/outcome"),  # engine answer (a read)
     ("POST", "/paper/alerts/read"),  # marks alerts read
     ("POST", "/api/strategies/planned-entry"),  # captures planned prices
-    ("POST", "/api/ready-made/load"),
-    ("POST", "/api/ready-made/quick-pick"),
+    ("POST", "/api/strategies/load-template"),  # a ready-made shape into the builder
+    ("POST", "/api/strategies/quick-pick"),  # a quick pick into the builder
     ("POST", "/strategies"),
     ("PATCH", "/strategies/{strategy_id}/name"),
     ("DELETE", "/strategies/{strategy_id}"),

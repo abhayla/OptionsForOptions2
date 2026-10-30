@@ -10,7 +10,7 @@ from typing import Literal
 
 from fastapi import APIRouter
 
-from ofo_app.api_models import ApiModel
+from ofo_app.api_models import ApiModel, Identifier
 from ofo_app.errors import ClosedRoute
 from ofo_app.held_switches import features_on
 from ofo_app.order_path_switch import order_path_on
@@ -27,7 +27,7 @@ class FeaturesOut(ApiModel):
                        "events_calendar", "fii_dii", "market_event_warning", "strategy_price_history"]]
     #: GC-ADJ1 step 1b: the scenario id when the API serves a scenario of the adjustment library (dev/test only,
     #: ofo_app.scenario_mode), else null. Every screen shows the "test data, not the market" banner on a non-null.
-    scenario: str | None = None
+    scenario: Identifier | None = None
 
 
 @router.get("/features", response_model=FeaturesOut)
