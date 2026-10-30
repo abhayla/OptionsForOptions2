@@ -50,9 +50,10 @@ from ofo.engine.pop import Why
 from ofo.engine.strategy import Strategy
 from ofo.engine.whole_trade import WholeTradeAfter, WholeTradeFigures, whole_trade_after
 from ofo.errors.explanations import approach_name_id, render_explanation
-from ofo.marketdata.spot_source import SourceReading, SourceState, SpotAnswer, resolve_spot
+from ofo.marketdata.spot_source import SourceReading, SpotAnswer, resolve_spot
 from ofo.money import PAISE
 from ofo.outcome.service import MARGIN_CHECKED, Margin
+from ofo.timeutil import IST
 from pydantic import BaseModel, ConfigDict, Field
 
 from ofo_app.api_models import AdjustApproachesOut
@@ -93,6 +94,7 @@ class MarketInputs:
     feed: SourceReading | None
     last_close: SourceReading | None
     now: datetime.datetime
+    expiry_kind: str | None = None  # weekly / monthly from the listed expiries (None: keep the tracked value)
 
 
 TrackedReader = Callable[[int, ChargeRates | None], Awaitable[Tracked | None]]
@@ -101,30 +103,22 @@ RestSpotReader = Callable[[str], Awaitable[SourceReading]]
 ApproachMargin = Callable[[list[PlannedOrderIn]], Awaitable[Margin]]
 
 
-async def _no_tracked(strategy_id: int, rates: ChargeRates | None) -> Tracked | None:
-    return None
-
-
 def get_tracked_reader() -> TrackedReader:
-    """The tracked-strategy reader. Not wired to the paper book in this item (W-196 part 2 reports it owed): the
-    default answers "not found" (404, nothing priced) rather than guessing a position."""
-    return _no_tracked
-
-
-async def _absent_market(tracked: Tracked, ctx: MarketContext | None) -> MarketInputs:
-    raise StrategyRefused("user_input_request_not_available", Failure.NOT_FOUND)
+    """The paper book reader (``adjustment_readers.read_tracked``); tests override it."""
+    from ofo_app.adjustment_readers import read_tracked  # noqa: PLC0415 - it imports this module's dataclasses
+    return read_tracked
 
 
 def get_market_reader() -> MarketReader:
-    return _absent_market
-
-
-async def _rest_absent(underlying: str) -> SourceReading:
-    return SourceReading(SourceState.ABSENT)
+    """The market reader over the outcome's market context (``adjustment_readers.read_market``)."""
+    from ofo_app.adjustment_readers import read_market  # noqa: PLC0415 - as above
+    return read_market
 
 
 def get_rest_spot_reader() -> RestSpotReader:
-    return _rest_absent
+    """The REST index quote (``adjustment_readers.read_rest_spot``; scenario mode answers through the same client)."""
+    from ofo_app.adjustment_readers import read_rest_spot  # noqa: PLC0415 - as above
+    return read_rest_spot
 
 
 def get_approach_margin(ctx: Annotated[MarketContext | None, Depends(get_market_context)],
@@ -286,11 +280,19 @@ async def adjustment_approaches(  # noqa: PLR0913 - FastAPI dependencies, one pe
         rates: Annotated[ChargeRates | None, Depends(load_charge_rates)],
         held_environ: Annotated[Mapping[str, str] | None, Depends(get_held_environ)]) -> AdjustApproachesOut:
     started = time.perf_counter()
-    tracked = await tracked_reader(strategy_id, rates if isinstance(rates, ChargeRates) else None)
+    from ofo_app.adjustment_readers import TrackedUnreadable  # noqa: PLC0415 - as above
+    try:
+        tracked = await tracked_reader(strategy_id, rates if isinstance(rates, ChargeRates) else None)
+    except TrackedUnreadable as exc:  # the strategy is this user's but its legs cannot be read: named, not guessed
+        log.warning("adjustment approaches: strategy %s unreadable: %s", strategy_id, exc)
+        raise StrategyRefused("user_input_request_not_available", Failure.CONFLICT) from None
     if tracked is None:  # not this user's, or no such strategy: nothing priced (attack 1)
         raise StrategyRefused("user_input_request_not_available", Failure.NOT_FOUND)
     rates = rates if isinstance(rates, ChargeRates) else None
     market = await market_reader(tracked, ctx)
+    tracked = dataclasses.replace(tracked, position=dataclasses.replace(
+        tracked.position, today=market.now.astimezone(IST).date(),
+        expiry_kind=market.expiry_kind or tracked.position.expiry_kind))
     spot = resolve_spot(market.feed, await rest_reader(tracked.position.underlying), market.last_close, now=market.now)
     pop_on = held_on(PROBABILITY_OF_PROFIT, held_environ)
     asked = list(dict.fromkeys(body.approaches)) if body.approaches is not None else list(APPROACH_IDS)
