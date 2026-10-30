@@ -290,6 +290,8 @@ class _Rows:
             return _dash(render_explanation("adjust_pop_held"))
         if self.col.whole is None:
             return _dash(self.col.no_whole_reason)
+        if not self.col.charges_known:
+            return _dash(render_explanation("adjust_charges_unknown"))
         if self.col.whole.pop is None:
             return _dash(render_explanation(POP_TEXT[self.col.whole.pop_unavailable or Why.NO_VOLATILITY]))
         pct = (self.col.whole.pop * 100).quantize(HUNDREDTH, rounding=ROUND_HALF_UP)

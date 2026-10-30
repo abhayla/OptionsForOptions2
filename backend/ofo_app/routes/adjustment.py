@@ -162,10 +162,13 @@ def _figures(f: WholeTradeFigures) -> dict:
 _POP_TEXT = POP_TEXT
 
 
-def pop_block(after: WholeTradeAfter, pop_on: bool) -> dict:
-    """The held switch first: OFF -> "-" with the held reason, never a figure (ADR-156 / ADR-165)."""
+def pop_block(after: WholeTradeAfter, pop_on: bool, charges_known: bool) -> dict:
+    """The held switch first: OFF -> "-" with the held reason, never a figure (ADR-156 / ADR-165). Unknown charges ->
+    "-" with the charges-unknown reason: a POP computed with 0 charges is not an after-charges figure."""
     if not pop_on:
         return {"value": None, "not_available": True, "reason": render_explanation("adjust_pop_held")}
+    if not charges_known:
+        return {"value": None, "not_available": True, "reason": render_explanation("adjust_charges_unknown")}
     if after.pop is None:
         why = after.pop_unavailable or Why.NO_VOLATILITY
         return {"value": None, "not_available": True, "reason": render_explanation(_POP_TEXT[why])}
@@ -260,7 +263,7 @@ def _after_block(priced: Priced, pop_on: bool) -> dict:
                 "not_available": render_explanation("adjust_charges_unknown")})
     return {"after": {"gross": _figures(a.gross), "after_charges": _figures(a.after_charges)
                       if priced.charges_known else None, "booked_pnl": _money(a.booked_pnl)},
-            "charges": charges, "pop": pop_block(a, pop_on), "after_reason": None}
+            "charges": charges, "pop": pop_block(a, pop_on, priced.charges_known), "after_reason": None}
 
 
 def _trade_orders(built: ApproachLegs, underlying: str) -> list[ChargeOrder]:

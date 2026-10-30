@@ -228,6 +228,21 @@ def test_attack5_rates_unreadable_gross_shown_after_charges_withheld():
     assert a["charges"]["not_available"].startswith("Charges not available")
 
 
+def test_adj20a_charges_unknown_withholds_pop_and_no_pop_leader():
+    """A-31 / ADJ-20a: unreadable charge rates -> POP "-" with the charges-unknown reason, in the route and the compare."""
+    body = post(client_for(load("ADJ-20a"), rates=None, environ={"APP_ENV": "test"})).json()
+    shown = [a for a in body["approaches"] if a["refusal"] is None and a["after"] is not None]
+    assert shown
+    for a in shown:
+        assert a["charges"]["not_available"].startswith("Charges not available")
+        assert a["pop"]["value"] is None and a["pop"]["not_available"] is True, (a["id"], a["pop"])
+        assert a["pop"]["reason"].startswith("Charges not available"), a["pop"]
+    pop = next(c for c in body["criteria"] if c["id"] == "pop")
+    assert pop["leaders"] == []
+    assert all(v["text"] == "-" and v["unavailable_reason"].startswith("Charges not available")
+               for v in pop["values"].values())
+
+
 def test_ac7_seven_approaches_engine_time_at_most_one_second_and_no_order_path(monkeypatch):
     from ofo_app import paper_store
     def no_order(*_a, **_k):
