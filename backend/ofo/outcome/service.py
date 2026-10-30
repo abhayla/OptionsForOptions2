@@ -51,11 +51,12 @@ from ofo.engine.model import (
     iv_price,
     join_labels,
     leg_greeks_unrounded,
+    market_closed_model,
     model_inputs,
 )
 from ofo.errors.explanations import ExplanationText, join_explanations, render_explanation
 from ofo.instruments.models import ZERODHA
-from ofo.marketdata.forward import FALLBACK_LABEL, ForwardUnavailable, spot_fallback_forward
+from ofo.marketdata.forward import ForwardUnavailable, spot_fallback_forward
 from ofo.marketdata.quote import NormalizedQuote, is_live_price, planning_price_usable
 from ofo.marketdata.shared_compute import FeedScope
 from ofo.money import HUNDREDTH
@@ -392,14 +393,6 @@ def _not_live_label(snapshot: MarketSnapshot) -> ExplanationText:
 def _quote_label(q: NormalizedQuote) -> ExplanationText | None:
     """The one stale/delayed wording (ofo.engine.model.data_label) applied to a leg quote's own time and health."""
     return data_label(SpotReading(Decimal(1), q.timestamp, q.health))
-
-
-def _closed_output_label(model: ModelInputs) -> ExplanationText | None:
-    """ADR-200 (2): outside market hours the answer's data label is the market-closed banner (sent as
-    ``market_closed`` + ``last_price_at``, rendered once by the screen from the shared ADR-177 text), so "stale since"
-    is dropped; the model's own "estimated from spot" (ADR-061) stays."""
-    fell_back = any(em.forward.label for em in model.expiries.values())
-    return FALLBACK_LABEL if fell_back else None
 
 
 def _feed_message(snapshot: MarketSnapshot) -> ExplanationText | None:
@@ -882,6 +875,8 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
         spot = spot_reading(snapshot.spot)
         model = model_inputs(StrategyInput(definition.underlying, spot, valuation, snapshot.rate, tuple(inputs)),
                              snapshot.forwards)
+        if closed:  # ADR-200 (2): one place drops "stale since" for every output built from the model
+            model = market_closed_model(model)
     except SpotRefused:
         spot_q = snapshot.spot
         if spot_q is None or not is_live_price(spot_q.ltp):
@@ -923,7 +918,7 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
     return Outcome(
         state=OutcomeState.COMPUTED, underlying=definition.underlying, status_label=message,
         reason=None, legs=tuple(legs), margin=MARGIN, valuation=valuation,
-        output_label=_closed_output_label(model) if closed else model.label, spot_level=model.spot_level,
+        output_label=model.label, spot_level=model.spot_level,
         spot_at=model.spot_at,
         level_set=level_set, scenario=values, table=table, visible_columns=visible_columns(table),
         payoff_points=points,
