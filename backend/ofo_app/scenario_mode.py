@@ -61,6 +61,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
 
+from ofo.engine import adjust_money
 from ofo.instruments.models import BSE_FO, BSE_INDEX, INDEX_ROWS, NSE_FO, NSE_INDEX
 from ofo.instruments.parser import parse_instruments_rows
 from ofo.marketdata.kite_provider import KiteProvider
@@ -113,20 +114,12 @@ def _times(units: int, rate: Decimal) -> float:
     return float(Decimal(units) * rate)
 
 
-_SELL_MARGIN_RATE = Decimal("0.12")  # TEST DATA ONLY: a stand-in rate, not Zerodha's SPAN
-
-
 def _stand_in_margin(orders: Sequence[Mapping], strikes: Mapping[str, Decimal]) -> Decimal:
-    """TEST DATA, not Zerodha's SPAN: a deterministic basket figure so different baskets get different margins.
-    Sum over SELL legs of strike x quantity x 0.12, minus sum over BUY legs of premium x quantity, floored at 0, in
-    paise. A SELL leg whose strike the scenario does not list counts 0."""
-    total = Decimal(0)
-    for order in orders:
-        if order.get("transaction_type") == "SELL":
-            total += strikes.get(order["tradingsymbol"], Decimal(0)) * order["quantity"] * _SELL_MARGIN_RATE
-        else:
-            total -= Decimal(str(order["price"])) * order["quantity"]
-    return max(total, Decimal(0)).quantize(Decimal("0.01"))
+    """TEST DATA, not Zerodha's SPAN: the engine's ``stand_in_basket_margin`` of the request (a SELL leg's strike comes
+    from the scenario's chain, 0 when unlisted; a BUY leg's figure is its limit price)."""
+    return adjust_money.stand_in_basket_margin(
+        (o["transaction_type"], strikes.get(o["tradingsymbol"], Decimal(0)) if o["transaction_type"] == "SELL"
+         else Decimal(str(o["price"])), o["quantity"]) for o in orders)
 
 
 def _reply_for_basket(reply: Mapping, body: str | None, strikes: Mapping[str, Decimal] | None = None) -> dict:
