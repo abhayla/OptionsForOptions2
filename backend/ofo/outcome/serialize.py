@@ -181,7 +181,8 @@ def _target(t: Any, margin: Any = None) -> dict[str, Any]:
     pnl = None if t.pnl is None else {"value": _s(t.pnl), "display": render_explanation("cell_rupees", amount=t.pnl)}
     greeks = None if t.greeks is None else {"legs": [_greeks_out(g) for g in t.greeks.legs],
                                             "total": _greeks_out(t.greeks.total), "unavailable": t.greeks.unavailable,
-                                            "unavailable_text": t.greeks.unavailable_text}
+                                            "unavailable_text": t.greeks.unavailable_text,
+                                            "dividend_yields": {e.isoformat(): _s(q) for e, q in t.greeks.dividend_yields}}
     return {"limits": _limits(t.limits),
             "level": _s(t.level), "level_clamped": t.level_clamped, "level_clamp_text": t.level_clamp_text,
             "at": t.at, "at_clamped": t.at_clamped, "clamp": t.clamp, "at_clamp_text": t.at_clamp_text, "at_refused_reason": t.at_refused_reason, "kind": t.kind, "model": t.model,

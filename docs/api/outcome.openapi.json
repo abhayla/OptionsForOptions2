@@ -2662,6 +2662,16 @@
               }
             ],
             "title": "Unavailable Text"
+          },
+          "dividend_yields": {
+            "patternProperties": {
+              "^[A-Za-z0-9_\\-.]{1,64}$": {
+                "type": "string"
+              }
+            },
+            "type": "object",
+            "title": "Dividend Yields",
+            "default": {}
           }
         },
         "additionalProperties": false,

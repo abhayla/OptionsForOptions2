@@ -98,3 +98,13 @@ def test_no_time_left_greeks_carry_the_sentence_and_live_greeks_do_not():
     assert at_close.greeks.unavailable_text == NO_GREEKS
     now = live_target(TargetAsk(D(23000)), m, _levels(m), STEP)
     assert now.greeks is not None and now.greeks.unavailable_text is None
+
+
+def test_target_greeks_echo_the_q_each_option_expiry_was_priced_with():
+    """GC-LIVE: the checker re-prices with the q the server used (ADR-008), never one it re-solves."""
+    m = _model(SPREAD)
+    g = live_target(TargetAsk(D(23000)), m, _levels(m), STEP).greeks
+    expiries = {leg.expiry for leg in m.legs if leg.instrument is not Instrument.FUT}
+    assert g is not None and expiries and {e for e, _q in g.dividend_yields} == expiries
+    for e, q in g.dividend_yields:
+        assert q == m.expiry_model(e).dividend_yield

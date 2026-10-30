@@ -84,6 +84,9 @@ class TargetGreeks:
     legs: tuple[Greeks | None, ...]
     total: Greeks | None
     unavailable: GreeksGap | None
+    # the dividend yield q the engine priced each option expiry with (read-only echo, ADR-008: one engine; an
+    # independent re-computation must use this q, not re-solve one from rounded IVs and prices of other instants)
+    dividend_yields: tuple[tuple[datetime.date, Decimal], ...] = ()
 
     @property
     def unavailable_text(self) -> ExplanationText | None:
@@ -187,9 +190,16 @@ def _greeks(model: ModelInputs, level: Decimal, at: datetime.datetime) -> Target
         pos = position_greeks(unit, leg.action, leg.quantity)
         raw.append(pos)
         rows.append(_rounded(pos))
+    yields = _yields_of(model)
     if len(raw) != len(rows):
-        return TargetGreeks(tuple(rows), None, "no_time_left")
-    return TargetGreeks(tuple(rows), _rounded(greeks_total(raw)), None)
+        return TargetGreeks(tuple(rows), None, "no_time_left", yields)
+    return TargetGreeks(tuple(rows), _rounded(greeks_total(raw)), None, yields)
+
+
+def _yields_of(model: ModelInputs) -> tuple[tuple[datetime.date, Decimal], ...]:
+    """The q of each option expiry in the strategy, as `leg_greeks_at_unrounded` reads it (`em.dividend_yield`)."""
+    return tuple(sorted({(leg.expiry, model.expiry_model(leg.expiry).dividend_yield)
+                         for leg in model.legs if leg.instrument is not Instrument.FUT}))
 
 
 def _rounded(g: Greeks) -> Greeks:
