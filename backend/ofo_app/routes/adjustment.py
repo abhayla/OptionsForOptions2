@@ -43,7 +43,7 @@ from ofo.adjustment.approaches import (
 )
 from ofo.charges import ChargeRates
 from ofo.charges.calculator import ChargeOrder, charges_for_orders
-from ofo.charges.round_trip import _segment, to_paise_up
+from ofo.charges.round_trip import charge_segment, to_paise_up
 from ofo.engine.legs import Action, Instrument, Leg
 from ofo.engine.metrics import UNLIMITED, MultiExpiryError
 from ofo.engine.pop import Why
@@ -228,7 +228,7 @@ def price_after(legs: Sequence[PositionLeg], position: Position, booked: Decimal
     """The whole-trade After of ``legs`` (``booked`` already includes the legs this approach closes)."""
     if booked is None:
         return Priced(None, False, render_explanation("adjust_booked_unknown"))
-    segment = _segment(position.underlying)
+    segment = charge_segment(position.underlying)
     known = rates is not None and paid is not None
     adjustment = exits = Decimal(0)
     if known:
@@ -264,7 +264,7 @@ def _after_block(priced: Priced, pop_on: bool) -> dict:
 
 
 def _trade_orders(built: ApproachLegs, underlying: str) -> list[ChargeOrder]:
-    segment = _segment(underlying)
+    segment = charge_segment(underlying)
     return [ChargeOrder(segment, t.action, t.quantity, t.price) for t in built.trades]
 
 

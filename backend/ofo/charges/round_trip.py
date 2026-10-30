@@ -35,7 +35,9 @@ class ChargesNotComputable(ValueError):
     """The strategy has a leg the options rate table cannot price."""
 
 
-def _segment(underlying: str) -> str:
+def charge_segment(underlying: str) -> str:
+    """The exchange segment whose charge rates apply to ``underlying``'s options (NIFTY -> NSE_FO, SENSEX -> BSE_FO); an
+    unknown underlying raises ``ChargesNotComputable``, never a guessed segment."""
     try:
         return SEGMENT_BY_UNDERLYING[underlying]
     except KeyError:
@@ -52,7 +54,7 @@ def round_trip_charges(legs: Sequence[Leg], underlying: str, rates: ChargeRates)
     """Total charges and taxes of entering and leaving every leg at its planned (entry) price."""
     if not legs:
         raise ChargesNotComputable("a strategy needs at least one leg")
-    segment = _segment(underlying)
+    segment = charge_segment(underlying)
     _check_options(legs)
     orders: list[ChargeOrder] = []
     try:
@@ -91,7 +93,7 @@ def round_trip_breakdown(legs: Sequence[Leg], underlying: str, rates: ChargeRate
     """The charges of :func:`round_trip_charges`, split by component; ChargesNotComputable gives no breakdown at all."""
     # copied from origin/build/W-127-b2-payoff @194cc405 (backend/ofo/charges/round_trip.py), plus read_on
     total = round_trip_charges(legs, underlying, rates)  # raises ChargesNotComputable for what has no rate
-    segment = _segment(underlying)
+    segment = charge_segment(underlying)
     orders: list[ChargeOrder] = []
     for leg in legs:
         entry = "BUY" if leg.action is Action.BUY else "SELL"
