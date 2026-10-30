@@ -4,6 +4,7 @@
 // re-grouped: no sum, no product, no difference is formed here. The only arithmetic is on units (an integer count) when an
 // exit order is built, and its price is the reply's own ltp string.
 import { plainName } from '@/lib/saveDraft'
+import { contractName, CONTRACT_UNAVAILABLE } from '@/lib/displayFormat'
 import { UNREADABLE_TEXT, EXITED_TEXT } from '@/lib/tracking'
 import { LAST_CLOSE_LABEL } from '@/lib/paperDrafts'
 
@@ -23,7 +24,13 @@ export const GREEK_COLUMNS = [
 const text = (v) => (typeof v === 'string' && v.trim() !== '' ? v.trim() : null)
 const isCount = (v) => Number.isInteger(v) && v >= 0
 
-function readPosition(p) {
+// U16 (REQ-151): the same 'NIFTY 3 Nov 22950 CE' text every other screen shows; the server's contract_text (ISO date) is the fallback.
+function shownName(p, underlying) {
+  const name = contractName({ underlying, expiry: p.expiry, strike: p.strike, instrument: p.instrument })
+  return name === CONTRACT_UNAVAILABLE ? p.contract_text : name
+}
+
+function readPosition(p, underlying) {
   if (!p || !Number.isInteger(p.contract_id) || !Number.isInteger(p.net_quantity) || typeof p.contract_text !== 'string') return null
   if (!Number.isInteger(p.lot_size) || p.lot_size <= 0) return null // no lot size, no lots: the group does not read
   const open = p.net_quantity !== 0
@@ -32,7 +39,7 @@ function readPosition(p) {
   return {
     key: String(p.contract_id),
     contractId: p.contract_id,
-    name: p.contract_text,
+    name: shownName(p, underlying),
     side: p.net_quantity > 0 ? 'B' : p.net_quantity < 0 ? 'S' : null,
     open,
     units: p.net_quantity,
@@ -79,7 +86,7 @@ export function readPaperStrategy(s, index = 0) {
   if (!s || typeof s !== 'object') return bad(null)
   const id = Number.isInteger(s.strategy_id) ? s.strategy_id : null
   if (id === null || !STATES.has(s.state) || !Array.isArray(s.positions) || !isCount(s.open_count) || !isCount(s.position_count)) return bad(id)
-  const positions = s.positions.map(readPosition)
+  const positions = s.positions.map((p) => readPosition(p, s.underlying))
   if (positions.some((p) => p === null)) return bad(id)
   let stateText = ''
   if (s.state === 'PAUSED') stateText = PAPER_PAUSED
