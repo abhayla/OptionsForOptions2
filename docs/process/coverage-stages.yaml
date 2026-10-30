@@ -365,6 +365,7 @@ decisions:
   ADR-210: S6.1         # seven user sentences for paper figures not shown (owner, 2026-10-29)
   ADR-211: S6.1         # eight user sentences for badge, Target block, paper (owner, 2026-10-29)
   ADR-212: S6.1         # paper positions after hours show the last close (owner, 2026-10-30)
+  ADR-214: S6.4         # where adjustments live: drawer, adjust mode, compare, filters, playbooks (owner, 2026-10-30)
 
 questions:
   Q210: 4a              # external: Zerodha's written answer; ADR-051 covers the owner's own account
@@ -696,6 +697,10 @@ findings:
   F-70: S6.1      # % of funds divides by available funds
   F-71: S6.1      # near-short-strike adjustment fires at entry by design shape
   F-72: S6.1      # Kite index day candle = official close (SENSEX 28 Oct)
+  F-73: S6.4      # adjustment After correct + fast on a real chain; time is DB/broker I/O
+  F-74: S6.4      # After omits booked P&L and the adjustment trade charges
+  F-75: S6.4      # POP fails on an after-charges breakeven finer than paise
+  F-76: S6.4      # NIFTY spot unreadable over REST (allow-list has no space)
 
 hypotheses:
   H1: done
