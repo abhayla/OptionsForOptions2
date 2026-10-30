@@ -53,7 +53,7 @@ from ofo.engine.metrics import UNLIMITED, MultiExpiryError
 from ofo.engine.pop import Why
 from ofo.engine.strategy import Strategy
 from ofo.engine.whole_trade import WholeTradeAfter, WholeTradeFigures, whole_trade_after
-from ofo.errors.explanations import approach_about_id, approach_name_id, render_explanation
+from ofo.errors.explanations import EXPLANATIONS, approach_about_id, approach_name_id, render_explanation
 from ofo.marketdata.spot_source import SourceReading, SpotAnswer, resolve_spot
 from ofo.money import PAISE
 from ofo.outcome.service import MARGIN_CHECKED, Margin
@@ -187,16 +187,25 @@ def margin_block(margin: Margin | None) -> dict:
         return {"state": "stated", "value": _money(margin.needed if margin.needed is not None
                                                      else margin.broker_needed),
                 "at": margin.checked_at, "reason": None}
+    if margin.no_figure:
+        return {"state": "empty", "value": None, "at": None, "reason": render_explanation("adjust_margin_empty")}
     return {"state": margin.state.lower(), "value": None, "at": None,
             "reason": render_explanation("adjust_margin_not_available", reason=margin.reason)}
+
+
+def _spot_why(source: str, code: str) -> Any:
+    """One source's reason code in plain words: the source-specific sentence when the catalogue has one."""
+    specific = f"adjust_spot_why_{source}_{code}"
+    return render_explanation(specific if specific in EXPLANATIONS else f"adjust_spot_why_{code}")
 
 
 def _spot_block(answer: SpotAnswer) -> dict:
     reasons = [{"source": s, "reason": r} for s, r in answer.reasons]
     if not answer.available:
-        why = dict(answer.reasons)
-        text = render_explanation("adjust_spot_not_available", feed=why.get("feed", "absent"),
-                                  rest=why.get("rest_quote", "absent"), close=why.get("last_close", "absent"))
+        why = {src: _spot_why(src, code) for src, code in answer.reasons}
+        absent = render_explanation("adjust_spot_why_absent")
+        text = render_explanation("adjust_spot_not_available", feed=why.get("feed", absent),
+                                  rest=why.get("rest_quote", absent), close=why.get("last_close", absent))
         return {"value": None, "source": None, "source_text": None, "at": None, "reasons": reasons, "text": text}
     return {"value": _money(answer.value), "source": answer.source,
             "source_text": render_explanation(f"adjust_spot_from_{answer.source}"), "at": answer.at,

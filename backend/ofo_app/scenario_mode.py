@@ -56,7 +56,7 @@ import os
 import pathlib
 import re
 import struct
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
@@ -113,13 +113,35 @@ def _times(units: int, rate: Decimal) -> float:
     return float(Decimal(units) * rate)
 
 
-def _reply_for_basket(reply: Mapping, body: str | None) -> dict:
+_SELL_MARGIN_RATE = Decimal("0.12")  # TEST DATA ONLY: a stand-in rate, not Zerodha's SPAN
+
+
+def _stand_in_margin(orders: Sequence[Mapping], strikes: Mapping[str, Decimal]) -> Decimal:
+    """TEST DATA, not Zerodha's SPAN: a deterministic basket figure so different baskets get different margins.
+    Sum over SELL legs of strike x quantity x 0.12, minus sum over BUY legs of premium x quantity, floored at 0, in
+    paise. A SELL leg whose strike the scenario does not list counts 0."""
+    total = Decimal(0)
+    for order in orders:
+        if order.get("transaction_type") == "SELL":
+            total += strikes.get(order["tradingsymbol"], Decimal(0)) * order["quantity"] * _SELL_MARGIN_RATE
+        else:
+            total -= Decimal(str(order["price"])) * order["quantity"]
+    return max(total, Decimal(0)).quantize(Decimal("0.01"))
+
+
+def _reply_for_basket(reply: Mapping, body: str | None, strikes: Mapping[str, Decimal] | None = None) -> dict:
     """Kite's basket-margin reply lists one row per order sent (symbol, exchange, option_premium, total); the
     scenario states only the basket figure, so the rows echo the request (an option BUY's premium row is the
-    request's own quantity x limit, i.e. no top-up) and carry no other figure."""
+    request's own quantity x limit, i.e. no top-up) and carry no other figure. The basket's initial and final
+    totals are ``_stand_in_margin`` of the request (test data), so two baskets differ."""
     out = json.loads(json.dumps(reply))
     rows = []
-    for order in json.loads(body or "[]", parse_float=Decimal):
+    orders = json.loads(body or "[]", parse_float=Decimal)
+    if not orders:  # no basket to price (a bare parser probe): the scenario's own stated figure stands
+        return out
+    out["data"]["initial"] = {"total": float(_stand_in_margin(orders, strikes or {}))}  # float-ok: synthetic reply
+    out["data"]["final"] = dict(out["data"]["initial"])
+    for order in orders:
         row = {"tradingsymbol": order["tradingsymbol"], "exchange": order["exchange"], "total": 0}
         if order.get("transaction_type") == "BUY":
             row["option_premium"] = _times(order["quantity"], order["price"])
@@ -254,12 +276,16 @@ class Scenario:
         if state == "stated" and method == "GET":  # the available-funds call (/user/margins)
             return 200, json.dumps(margin["funds_reply"])
         if state == "stated":
-            return 200, json.dumps(_reply_for_basket(margin["reply"], body))
+            return 200, json.dumps(_reply_for_basket(margin["reply"], body, self._strikes()))
         if state == "empty":
             return 200, json.dumps(margin["reply"])
         if state == "failed":
             return 504, json.dumps(margin["reply"])
         raise ScenarioRefused(f"unknown margin state {state!r}")
+
+    def _strikes(self) -> dict[str, Decimal]:
+        return {r["tradingsymbol"]: Decimal(str(r["strike"])) for c in self.data["market"]["chains"]
+                for r in c["rows"]}
 
     def quote_reply(self) -> dict:
         """Kite ``GET /quote`` reply for the position's legs; a ``not found`` leg is absent from ``data``."""

@@ -139,7 +139,7 @@ def test_ac2_adj13_booked_pnl_is_in_the_after():
 
 def test_ac4_adj23_pop_present_and_held_switch_off_gives_dash_with_reason():
     sc = load("ADJ-23")
-    on = post(client_for(sc, environ={"APP_ENV": "test"})).json()  # held_switches: ON in development and test
+    on = post(client_for(sc, rates=RATES, environ={"APP_ENV": "test"})).json()  # held_switches: ON in development and test
     assert on["pop_switch_on"] is True
     pops = {a["id"]: a["pop"] for a in on["approaches"] if a["refusal"] is None}
     assert all(p["value"] is not None for p in pops.values()), pops
@@ -359,3 +359,14 @@ def test_drawer_no_spot_means_no_approach_can_be_built_and_the_reason_says_so():
     body = post(client_for(load("ADJ-24b"), rates=RATES), body={"approaches": ["A-36"]}).json()
     assert [a["id"] for a in body["available"]] == list(APPROACH_IDS)
     assert all(not a["applicable"] and a["reason"].startswith("Not checked now") for a in body["available"])
+
+
+def test_spot_not_available_words_every_source_reason_never_a_raw_code():
+    b = post(client_for(load("ADJ-24b"))).json()
+    assert b["spot"]["text"] == ("Spot not available (live feed: the feed is not connected; REST quote: the quote "
+                                 "request failed; last close: no close is stored), so no After is computed.")
+    assert route._spot_why("feed", "not_finite") == "the feed's last price was not a number"
+    assert route._spot_why("rest_quote", "empty") == "the quote had no price"
+    assert route._spot_why("last_close", "not_finite") == "its last price was not a number"
+    assert route._spot_why("rest_quote", "absent") == "no quote was requested"
+    assert "not_finite" not in b["spot"]["text"] and "absent" not in b["spot"]["text"]
