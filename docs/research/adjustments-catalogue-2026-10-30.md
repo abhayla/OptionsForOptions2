@@ -212,6 +212,27 @@ condition engine (`backend/ofo/rules/conditions.py`). New triggers an expert use
 | T-20 | Spot crosses a user level (support/resistance the user typed) | user-entered | The user's own technical view without us storing history | Spec'd (underlying level) |
 | T-21 | Stale or missing data | no tick for N seconds | Never suggest on stale prices; say "data stale" instead | likely Built (check before build) |
 
+**Variants added while designing the playbook editor (2026-10-30, ADR-214 (4a)):**
+
+| ID | Trigger | Example threshold | Why | State |
+|---|---|---|---|---|
+| T-01b | Spot within X **points** of a short strike | 180 / 120 / 70 NIFTY points by stage | Some traders think in points, not % | **New** |
+| T-06b | Loss reaches K × the credit received | 1 / 1 / 0.75 (weekly) | The classic seller stop, next to % of max loss | **New** |
+| T-10b | Clock time reached, set per stage | 14:30 on the last day | Replaces a single fixed clock rule | **New** |
+| T-10c | Clock time on any day (intraday check) | 15:00 | Daily review point | **New** |
+| T-11 (refined) | Options' own IV changed N points since entry | 3 points | Works without India VIX (owner Q246: VIX later) | **New** |
+| T-11c | IV percentile above X | 80 | Needs price history (out of V1) | **New**, blocked |
+| T-14t | Theta per day falls below X% of premium left | 5% | Time decay no longer pays for the risk | **New** |
+| T-14v | Loss from +1 IV point (vega) at least X% of max profit | 10% | Vega risk in one number | **New** |
+| T-20b | Market trending vs range-bound | — | Owner video row 25, needs history (out of V1) | **New**, blocked |
+
+**Stages and day rules (ADR-214 (4c)):** the "far / near / last" DTE buckets above are only defaults. Each playbook
+holds its own stages (name, from and to days left), separately for weekly and monthly expiries, and every trigger
+number is set per stage. Calendar rules (weekday, last session before a weekend, day before a holiday, first session
+after a break, expiry day, day before expiry, monthly-expiry week, day of month, a specific date, an event day, the
+user's own unavailable days) each carry a time and an action (carry check, show reduce/exit, show add-hedge, pause,
+tighten every trigger by X%, prepare an exit, no rolls).
+
 Compound triggers (AND/OR) are Spec'd. An expert's favourite compound, as an example default: *"T-01 within 0.5%
 AND T-10 DTE ≥ 2 → roll approaches; T-01 AND DTE ≤ 1 → close/hedge approaches only"*.
 
