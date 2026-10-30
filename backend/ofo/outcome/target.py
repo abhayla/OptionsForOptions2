@@ -190,13 +190,13 @@ def _greeks(model: ModelInputs, level: Decimal, at: datetime.datetime) -> Target
         pos = position_greeks(unit, leg.action, leg.quantity)
         raw.append(pos)
         rows.append(_rounded(pos))
-    yields = _yields_of(model)
+    yields = yields_of(model)
     if len(raw) != len(rows):
         return TargetGreeks(tuple(rows), None, "no_time_left", yields)
     return TargetGreeks(tuple(rows), _rounded(greeks_total(raw)), None, yields)
 
 
-def _yields_of(model: ModelInputs) -> tuple[tuple[datetime.date, Decimal], ...]:
+def yields_of(model: ModelInputs) -> tuple[tuple[datetime.date, Decimal], ...]:
     """The q of each option expiry in the strategy, as `leg_greeks_at_unrounded` reads it (`em.dividend_yield`)."""
     return tuple(sorted({(leg.expiry, model.expiry_model(leg.expiry).dividend_yield)
                          for leg in model.legs if leg.instrument is not Instrument.FUT}))
