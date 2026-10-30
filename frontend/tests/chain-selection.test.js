@@ -49,7 +49,7 @@ async function mountPage(expiry = '2026-10-27', blocked = {}) {
   await flushPromises()
   return w
 }
-const rowAt = (w, strike) => w.findAll('[data-testid="chain-row"]').find((r) => r.find('[data-testid="strike"]').text() === strike)
+const rowAt = (w, strike) => w.findAll('[data-testid="chain-row"]').find((r) => r.find('[data-testid="strike"]').text() === strike.replace(/\.00$/, ''))
 const pick = async (w, strike, side, action) => {
   const r = rowAt(w, strike)
   await r.get(`[data-testid="select-${side}"]`).setValue(true)

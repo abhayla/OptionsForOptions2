@@ -6,6 +6,7 @@
 // strategy socket's (createLiveSocket, imported from useStrategyLive.js, not copied).
 import { onBeforeUnmount, ref } from 'vue'
 import api from '@/services/api'
+import { shownHealth } from '@/lib/dataHealthText'
 import { createLiveSocket, useReconnecting, useReconnectingText } from './useStrategyLive'
 
 export const INDEX_LIVE_PATH = '/api/market/indices/live'
@@ -117,8 +118,10 @@ export function useIndexAnswer({ url, WebSocketImpl } = {}) {
   const marketClosed = () => answer.value?.market_closed === true
   // REQ-072 AC-2: on a closed market the last value is shown as such (stale, "Last updated <time>"), never as live
   const shownValue = (row) => ((isLive() || marketClosed()) && typeof row?.value === 'string' ? row.value : VALUE_UNAVAILABLE)
+  // ADR-177: a closed market shows the banner once, never a per-index "stale" word or sentence
+  const healthOf = (row) => shownHealth(row?.health, marketClosed())
   const notLive = () => (answer.value !== null && !isLive()) || failed.value
-  return { answer, status, reconnecting, reconnectingText, start, rowFor, shownValue, isLive, notLive, marketClosed }
+  return { answer, status, reconnecting, reconnectingText, start, rowFor, shownValue, isLive, notLive, marketClosed, healthOf }
 }
 
 /**

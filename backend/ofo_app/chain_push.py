@@ -71,7 +71,7 @@ from ofo.engine.chain_values import (
 from ofo.errors import UserFacingError, render
 from ofo.instruments import eligibility as el
 from ofo.instruments.eligibility import EligibilityStatus
-from ofo.marketdata.quote import NormalizedQuote, is_live_price, priced
+from ofo.marketdata.quote import NormalizedQuote, is_live_price, planning_price_usable
 from ofo.money import PAISE  # money leaves the API as a 2-decimal string
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, ValidationError
 from sqlalchemy.exc import SQLAlchemyError
@@ -348,9 +348,12 @@ def _gamma_shown(g: ChainGreeks) -> Decimal:
     return g.gamma.quantize(GREEK_STEP)
 
 
-def _greek_fields(quote: NormalizedQuote | None, model: ChainModel | None, instrument_id: str) -> dict[str, Any]:
-    """The cell's engine values as shown: all None unless its own quote is priced now and the engine gave values."""
-    g = None if model is None or not priced(quote) else model.greeks.get(instrument_id)
+def _greek_fields(quote: NormalizedQuote | None, model: ChainModel | None, instrument_id: str,
+                  *, market_closed: bool = False) -> dict[str, Any]:
+    """The cell's engine values as shown: all None unless its own quote is priced now (closed market: the held close
+    counts, ``planning_price_usable``, ADR-197) and the engine gave values."""
+    usable = planning_price_usable(quote, market_closed=market_closed)
+    g = None if model is None or not usable else model.greeks.get(instrument_id)
     if g is None:
         return dict(_NO_GREEKS)
     return {"iv": (g.iv * _PERCENT).quantize(PAISE), "delta": g.delta.quantize(GREEK_STEP),
@@ -358,8 +361,8 @@ def _greek_fields(quote: NormalizedQuote | None, model: ChainModel | None, instr
             "vega": g.vega.quantize(GREEK_STEP)}
 
 
-def _cell(contract: PickableContract, quote: NormalizedQuote | None, slow: SlowValues | None,
-          catalogue: ChainCatalogue, model: ChainModel | None) -> ChainCellOut:
+def _cell(contract: PickableContract, quote: NormalizedQuote | None, slow: SlowValues | None,  # noqa: PLR0913
+          catalogue: ChainCatalogue, model: ChainModel | None, *, market_closed: bool = False) -> ChainCellOut:
     permitted, reason = _permission(catalogue, contract)
     if quote is None:  # held, but no quote yet, or a contract the provider does not know: shown as such
         return ChainCellOut(instrument_id=contract.instrument_id, ltp=None, bid=None, ask=None, change=None, oi=None,
@@ -370,7 +373,7 @@ def _cell(contract: PickableContract, quote: NormalizedQuote | None, slow: SlowV
     return ChainCellOut(instrument_id=contract.instrument_id, ltp=_given_money(quote.ltp), bid=_given_money(quote.bid),
                         ask=_given_money(quote.ask), change=None, oi=oi, oi_change=oi_change, volume=quote.volume,
                         health=quote.health.value, at=quote.timestamp, permitted=permitted, unavailable_reason=reason,
-                        **_greek_fields(quote, model, contract.instrument_id))
+                        **_greek_fields(quote, model, contract.instrument_id, market_closed=market_closed))
 
 
 def _meets(cell: ChainCellOut | None, req: ChainRequest) -> tuple[bool, bool, bool, bool]:
@@ -398,13 +401,16 @@ def window_quotes(ctx: MarketContext, req: ChainRequest) -> dict[str, Normalized
 def model_of(ctx: MarketContext, req: ChainRequest, valuation: datetime.datetime) -> ChainModel:
     """The engine's IV and Greeks of the expiry's priced quotes at the live spot (the leg picker's inputs: priced quotes
     only, the index's own quote, ``ctx.rate``), with the forward's basis or why there are none."""
-    usable = [q for q in ctx.provider.option_chain_snapshot(req.underlying, req.expiry) if priced(q)]
-    return chain_model(usable, _spot_quote(ctx, req.underlying), req.expiry, valuation, ctx.rate)
+    closed = market_state(ctx, valuation).closed
+    usable = [q for q in ctx.provider.option_chain_snapshot(req.underlying, req.expiry)
+              if planning_price_usable(q, market_closed=closed) and is_live_price(q.ltp)]
+    return chain_model(usable, _spot_quote(ctx, req.underlying), req.expiry, valuation, ctx.rate, market_closed=closed)
 
 
 def _rows(ctx: MarketContext, req: ChainRequest, catalogue: ChainCatalogue,  # noqa: PLR0913
           window: tuple[Decimal, ...], slow: SlowValues | None,
-          unknown: frozenset[str], model: ChainModel, atm: Decimal | None) -> list[ChainRowOut]:
+          unknown: frozenset[str], model: ChainModel, atm: Decimal | None,
+          *, market_closed: bool = False) -> list[ChainRowOut]:
     quotes = {i: q for i, q in window_quotes(ctx, req).items() if i not in unknown}
     by_strike: dict[Decimal, dict[str, PickableContract]] = {s: {} for s in window}
     for c in catalogue.contracts:
@@ -416,9 +422,9 @@ def _rows(ctx: MarketContext, req: ChainRequest, catalogue: ChainCatalogue,  # n
         ce, pe = sides.get("CE"), sides.get("PE")
         out.append(ChainRowOut(strike=strike.quantize(PAISE), moneyness=None if atm is None else moneyness(strike, atm),
                                ce=None if ce is None else _cell(ce, quotes.get(ce.instrument_id), slow, catalogue,
-                                                                model),
+                                                                model, market_closed=market_closed),
                                pe=None if pe is None else _cell(pe, quotes.get(pe.instrument_id), slow, catalogue,
-                                                                model)))
+                                                                model, market_closed=market_closed)))
     return [r for r in out if row_passes(r, req)]
 
 
@@ -459,7 +465,8 @@ def chain_answer(ctx: MarketContext | None, req: ChainRequest, catalogue: ChainC
         atm_strike=atm_strike(grid, spot).quantize(PAISE) if spot is not None and grid else None,
         rows_missing=missing,
         rows=[] if model is None or window is None else _rows(
-            ctx, req, catalogue, window, slow, unknown, model, None if spot is None else atm_strike(grid, spot)),
+            ctx, req, catalogue, window, slow, unknown, model, None if spot is None else atm_strike(grid, spot),
+            market_closed=state.closed),
         answered_at=answered_at, market_closed=state.closed, last_price_at=shown_at,
         greeks_basis=None if model is None else model.basis, greeks_missing=None if model is None else model.missing,
         greeks_label=None if model is None else model.label)
@@ -624,8 +631,9 @@ class ChainPush:
         else:
             for i, q in quotes.items():
                 self._slow.setdefault(i, (q.oi, q.oi_change))
-        priced_ids = frozenset(i for i, q in quotes.items() if priced(q))
-        spot_now = _spot_state(ctx, req.underlying)
+        closed = market_state(ctx, ctx.clock()).closed
+        priced_ids = frozenset(i for i, q in quotes.items() if planning_price_usable(q, market_closed=closed))
+        spot_now = (*_spot_state(ctx, req.underlying), closed)
         # a contract new to the window, or a change of the spot's health: at once (never a 5 s-old Greek off a spot that
         # has since gone unhealthy, ``forward.py``: an unhealthy spot is never used in a calculation)
         if due or self._model is None or not priced_ids <= self._model_ids or spot_now != self._model_spot:

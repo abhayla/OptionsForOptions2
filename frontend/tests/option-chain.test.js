@@ -79,8 +79,8 @@ describe('Option Chain screen', () => {
     expect(heads).toEqual(['Calls', 'Strike', 'Puts'])
     const bodyRow = w.findAll('[data-testid="chain-row"]').at(1)
     const tds = bodyRow.findAll('td:not([data-testid^="sel-"])').map((t) => t.text())
-    expect(tds).toEqual(['120.50', '-', '1000', '50', '12.34', '24500.00', '95.25', '-', '1000', '50', '12.34'])
-    expect(cellsOf(w, 'strike')).toEqual(['24450.00', '24500.00', '24550.00'])
+    expect(tds).toEqual(['120.50', '-', '1000', '50', '12.34', '24500', '95.25', '-', '1000', '50', '12.34'])
+    expect(cellsOf(w, 'strike')).toEqual(['24450', '24500', '24550'])
     expect(w.find('[data-testid="underlying-select"]').element.value).toBe('NIFTY')
   })
 
@@ -354,7 +354,7 @@ describe('Option Chain screen', () => {
     await flushPromises()
     expect(w.findAll('[data-testid="selected-leg"]')).toHaveLength(1)
     await w.find('[data-testid="filter-moneyness"]').setValue('OTM')
-    expect(cellsOf(w, 'strike')).toEqual(['24550.00'])
+    expect(cellsOf(w, 'strike')).toEqual(['24550'])
     expect(cellsOf(w, 'ce-ltp')).toEqual(['90.00'])
     expect(w.find('[data-testid="selected-leg-name"]').text()).toContain('24450.00')
     const sentBefore = sock().sent.length
@@ -372,7 +372,7 @@ describe('Option Chain screen', () => {
     expect(JSON.parse(sock().sent.at(-1))).toEqual({ underlying: 'NIFTY', expiry: '2026-10-20', strikes_each_side: 15 })
     sock().serverPush({ ...answer(), expiry: '2026-10-20' })
     await flushPromises()
-    expect(cellsOf(w, 'strike')).toEqual(['24450.00', '24500.00', '24550.00'])
+    expect(cellsOf(w, 'strike')).toEqual(['24450', '24500', '24550'])
     expect(w.findAll('[data-testid="selected-leg"]')).toHaveLength(1)
   })
 
@@ -401,7 +401,7 @@ describe('Option Chain screen', () => {
     expect(w.find('[data-testid="filtered-empty"]').exists()).toBe(false)
     expect(w.find('[data-testid="rows-missing"]').text()).toMatch(/underlying price is missing/)
     expect(w.find('[data-testid="rows-missing"]').text()).toMatch(/option prices are shown/)
-    expect(cellsOf(w, 'strike')).toEqual(['24450.00', '24500.00', '24550.00'])
+    expect(cellsOf(w, 'strike')).toEqual(['24450', '24500', '24550'])
     expect(w.find('[data-testid="greeks-line"]').text()).toMatch(/underlying price is not usable/)
     // and with no rows at all (a window never picked) the reason is still the one shown, not "No strikes match"
     sock().serverPush({ ...kept, rows: [], expiry: '2026-10-20' })
@@ -430,5 +430,28 @@ describe('Option Chain screen', () => {
     await flushPromises()
     expect(w.find('[data-testid="greeks-stale-line"]').exists()).toBe(false)
     expect(w.find('[data-testid="ce-iv"]').attributes('data-stale')).toBeUndefined()
+  })
+
+  it('U18 / ADR-177: a closed market prints no per-cell Stale text, no "stale since" line, no live tag; hours unchanged', async () => {
+    script({ chain: () => Promise.resolve({ data: notConnected() }) })
+    const w = await mountPage()
+    sock().serverOpen()
+    const base = answer('120.50', { spot_health: 'stale', greeks_basis: 'PARITY', greeks_label: 'stale since 08:17 IST' })
+    base.rows.forEach((r) => { r.ce.health = 'stale'; r.pe.health = 'stale' })
+    sock().serverPush({ ...base, expiry: '2026-10-20', market_closed: false })
+    await flushPromises()
+    expect(w.find('[data-testid="ce-health"]').exists()).toBe(true) // market hours: unchanged
+    expect(w.find('[data-testid="greeks-stale-line"]').exists()).toBe(true)
+    expect(w.find('[data-testid="socket-status"]').text()).toBe('live')
+    sock().serverPush({ ...base, expiry: '2026-10-20', market_closed: true, last_price_at: '2026-10-29T10:00:00+00:00' })
+    await flushPromises()
+    expect(w.find('[data-testid="ce-health"]').exists()).toBe(false)
+    expect(w.find('[data-testid="pe-health"]').exists()).toBe(false)
+    expect(w.find('[data-testid="spot-health"]').exists()).toBe(false)
+    expect(w.find('[data-testid="greeks-stale-line"]').exists()).toBe(false)
+    expect(w.find('[data-testid="socket-status"]').text()).toBe('')
+    expect(w.text()).not.toContain('Stale:')
+    expect(w.text()).not.toContain('stale since')
+    expect(cellsOf(w, 'ce-iv')).toEqual(['12.34', '12.34', '12.34']) // IV from the close is shown as the server sent it
   })
 })

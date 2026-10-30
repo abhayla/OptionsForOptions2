@@ -18,7 +18,8 @@ import { ACTIONS, contractOf, useChainSelection } from '@/stores/chainSelection'
 import { UNAVAILABLE_LABEL, isPermitted, reasonLine } from '@/lib/chainUnavailable'
 import { UNDERLYINGS } from '@/lib/underlyings'
 import api from '@/services/api'
-import { healthSentence, missingCode, missingReason } from '@/lib/dataHealthText'
+import { healthSentence, missingCode, missingReason, shownHealth } from '@/lib/dataHealthText'
+import { strikeLabel } from '@/lib/displayFormat'
 import MarketClosedBanner from '@/components/states/MarketClosedBanner.vue'
 import { NOT_LIVE_LABEL, STRIKES_EACH_SIDE, VALUE_UNAVAILABLE, chainRequest, daysLeft, useChainAnswer } from '@/composables/useChainLive'
 import { GREEKS_BASIS_LINES, GREEKS_MISSING_LINES, MONEYNESS, NO_FILTERS, STRIKE_RANGES, anyServerFilter, fieldsFor, filterParams, filterRows, greeksStaleLabel } from '@/lib/chainDisplay'
@@ -139,7 +140,8 @@ const spotTime = computed(() => {
 
 // RD-048: a missing value carries its short reason in place (tooltip + data-reason), per code in lib/dataHealthText.js.
 const text = (v) => (typeof v === 'string' || typeof v === 'number' ? String(v) : VALUE_UNAVAILABLE)
-const healthWord = (cell) => (cell && cell.health && cell.health !== 'available' ? cell.health : '')
+const healthWord = (cell) => shownHealth(cell?.health, view.value?.market_closed)
+const socketStatus = computed(() => (view.value?.market_closed === true && status.value === 'live' ? '' : status.value))
 const isAtm = (row) => view.value?.atm_strike != null && row.strike === view.value.atm_strike
 const shownRows = computed(() => (view.value ? filterRows(view.value.rows, filters.value.moneyness) : []))
 const nothingMatches = computed(() => !!view.value && !view.value.rows_missing && view.value.state === 'LIVE'
@@ -172,9 +174,9 @@ const resetFilters = () => (filters.value = { ...NO_FILTERS })
         <span class="text-ink-muted">{{ underlying }}</span>
         <span class="ml-1 font-semibold" data-testid="spot">{{ view ? text(view.spot) : VALUE_UNAVAILABLE }}</span>
         <span v-if="spotTime" class="ml-1 text-ink-muted" data-testid="spot-time">as of {{ spotTime }}</span>
-        <span v-if="view && view.spot_health && view.spot_health !== 'available'" class="ml-1 text-ink-muted" data-testid="spot-health">{{ healthSentence(view.spot_health) }}</span>
+        <span v-if="view && shownHealth(view.spot_health, view.market_closed)" class="ml-1 text-ink-muted" data-testid="spot-health">{{ healthSentence(view.spot_health) }}</span>
       </p>
-      <span class="text-xs text-ink-muted" data-testid="socket-status">{{ status }}</span>
+      <span class="text-xs text-ink-muted" data-testid="socket-status">{{ socketStatus }}</span>
     </div>
 
     <div class="mt-3 flex flex-wrap items-end gap-3 text-sm" data-testid="chain-filters">
@@ -255,7 +257,7 @@ const resetFilters = () => (filters.value = { ...NO_FILTERS })
             <td v-for="[key] in SIDE_FIELDS" :key="'c' + key" class="px-2 py-1 text-right" :data-testid="'ce-' + key" :title="missingReason(row.ce, key) || greeksStaleLabel(view, key) || undefined" :data-reason="missingCode(row.ce, key)" :data-stale="greeksStaleLabel(view, key) || null">
               {{ row.ce ? text(row.ce[key]) : VALUE_UNAVAILABLE }}<span v-if="key === 'ltp' && healthWord(row.ce)" class="ml-1 text-xs text-ink-muted" data-testid="ce-health">{{ healthSentence(healthWord(row.ce)) }}</span>
             </td>
-            <td class="px-2 py-1 text-center" data-testid="strike">{{ row.strike }}</td>
+            <td class="px-2 py-1 text-center" data-testid="strike">{{ strikeLabel(row.strike) }}</td>
             <td v-for="[key] in SIDE_FIELDS" :key="'p' + key" class="px-2 py-1 text-right" :data-testid="'pe-' + key" :title="missingReason(row.pe, key) || greeksStaleLabel(view, key) || undefined" :data-reason="missingCode(row.pe, key)" :data-stale="greeksStaleLabel(view, key) || null">
               {{ row.pe ? text(row.pe[key]) : VALUE_UNAVAILABLE }}<span v-if="key === 'ltp' && healthWord(row.pe)" class="ml-1 text-xs text-ink-muted" data-testid="pe-health">{{ healthSentence(healthWord(row.pe)) }}</span>
             </td>

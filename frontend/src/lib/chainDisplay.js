@@ -36,6 +36,7 @@ export const GREEK_KEYS = ['iv', 'delta', 'gamma', 'theta', 'vega']
  *  IST"). Only the IV and Greek columns carry it, and only when the server sent one (a live spot sends none). Never
  *  built or timed here (ADR-008). */
 export function greeksStaleLabel(view, key) {
+  if (view?.market_closed === true) return '' // ADR-177: the one market-closed banner carries it
   const label = view?.greeks_label
   return GREEK_KEYS.includes(key) && typeof label === 'string' ? label : ''
 }
