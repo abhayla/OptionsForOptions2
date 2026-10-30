@@ -46,7 +46,9 @@ def test_generator_output_is_byte_identical(tmp_path):
     for name in first:
         a = (tmp_path / "a" / name).read_bytes()
         assert a == (tmp_path / "b" / name).read_bytes(), name
-        assert a == (FIX / name).read_bytes(), f"{name} differs from a fresh run: regenerate the library"
+        # a Windows checkout with core.autocrlf may turn the committed LF files into CRLF; compare content only
+        committed_bytes = (FIX / name).read_bytes().replace(b"\r\n", b"\n")
+        assert a == committed_bytes, f"{name} differs from a fresh run: regenerate the library"
 
 
 TOP = {"id", "title", "group", "refs", "family", "playbook_ref", "underlying", "lot", "tick", "strike_step", "exchange",
