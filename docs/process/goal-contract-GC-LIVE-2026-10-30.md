@@ -152,7 +152,8 @@ any other L2 defect is fixed in parallel by a builder while the walk runs.
 - Add Booked P&L: live line 11:12 (above); exact difference left to L5.
 - 11:22 Paper tab two looks 8 s apart: Total +20,049.90 -> +19,886.40, Unbooked +42,338.75 -> +42,175.25, Decay +11,646.78 -> +11,757.29, Booked -22,288.85 (unchanged), Charges 2,821.67; 70 SENSEX -132.00 -> -179.00 (LIVE after F-3).
 - Look notes for the owner: calendar Max Profit / Max Loss "Not available (no worst case for legs on different expiries)"; an exited strategy still lists its unfired conditional-exit side as armed.
-- Possible defect F-5 (not yet triaged): 11:18 GET /api/market/indices answered state NOT_CONNECTED with null values while broker status said live_market_data connected and Market context showed 23016.05 live.
+- F-5 -> deferred issue #612 (staged S6.4, 68262ca5): 11:18 GET /api/market/indices answered NOT_CONNECTED with null values while broker status said live_market_data connected; 11:45 with a builder tab holding the index it answered LIVE 23045.05. Only the socket-drop fallback reads it.
+- Combined pass on the run tree after the merges (11:30-11:42): full vitest 114 files / 1647 passed; tests_app test_live_push_target 5, test_strategy_live_push 40 passed; domain suite `pytest tests -x` 1 failed / 7169 passed: tests/test_no_broker_name_in_feature_code.py AC-3 = 31 stale allow-list entries, ALL in #611's restyled pages (PositionsPage 11, BrokerSettingsPage 8, BrokerConnectedPage 4, ExecutionReturnedPage 4, BrokerRefusedPage 2, HomeOverviewPage 2), none touched by GC-LIVE -> #611 land blocker, goes into the #611 comment. ruff on GC-LIVE-changed .py: live_push.py findings pre-date GC-LIVE (db8cdf91 copy has more).
 
 ## Parked
 
