@@ -158,6 +158,10 @@ into `feature/adjustments` after a passing prepush --full (no PR to main); run t
 | 4 | ADJ-20d's unlisted strike sat where the delta rule never lands | scenario generator | Moved to 23,700 CE (where A-05 lands) through the generator, refusal text regenerated |
 | 5 | Whole-trade After needs exit charges of still-open legs (the outcome screen charges a round trip) | `backend/ofo/engine/whole_trade.py` | Third charge input `open_exit_charges`, each line subtracted once (AC-3) |
 | 6 | Contract asked for a node_modules junction; the project `link_guard` hook refuses junctions into main | run setup | `npm ci` per tree instead |
+| 7 | POP round-2 checker: NaN/Infinity vol, years or forward makes `probability_of_profit` raise (AC-4 "never an exception") | `backend/ofo/engine/pop.py:48` | Severity MINOR: unreachable from the engine's own producers (`black_scholes.py` and `marketdata/forward.py` refuse non-finite values before returning). POP piece merged after round 2 with this finding listed; the structural guard (non-finite -> named reason in `probability_of_profit`) is in the wave-2 route brief |
+| 8 | Spot checker: no code builds a quote URL with an index name (`kite_reads.py:313` pre-checks with the plain pattern), so the new allow-list is unreachable; non-finite or future-dated REST/last close accepted | `backend/ofo_app/kite_reads.py`, `spot_source.py` | Domain part PASS and merged; the index-quote fetcher (emits `%20` itself) and both minors are in the wave-2 route brief. A live read of `NSE:NIFTY%2050` from Kite is owed (optional per this contract; in the handover) |
+| 9 | Approach checker minors: AC-1 wording loose on A-01 vs A-05; refused A-01 on a non-condor reports side "call"; A-29 rounds down | `approaches.py` | Shipped with findings listed; non-condor side is out of this run's scope (deferred); AC-1 wording note for the spec at close |
+| 10 | Scenario checker MAJOR: `tracking/exit` writes paper exit orders but was classed as a non-order route | `backend/ofo_app/routes/tracking.py:425-430` | Fix round 2 of 2: move to the refused list + a structural test that any route reaching `paper_store.place` is refused |
 
 ## Parked
 
