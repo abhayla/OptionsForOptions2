@@ -208,6 +208,15 @@ describe('AC-4: stale or unavailable data is marked, never shown as live', () =>
     expect(cards(w)[0].find('[data-testid="live-spot-at"]').text()).toBe('19 Oct 2026, 10:15:00 IST')
   })
 
+  it('the spot line keeps a space between the level and "at" (whitespace condense must not glue them)', async () => {
+    const w = await mountPage()
+    openAll()
+    FakeSocket.all[0].serverPush(computed({ spot_level: '25123.45' }))
+    await flushPromises()
+    const line = cards(w)[0].find('[data-testid="live-spot"]').element.parentElement.textContent
+    expect(line).toContain('25123.45 at 19 Oct 2026, 10:15:00 IST')
+  })
+
   it('REQ-133 AC-2: the card drops a push for an older strategy version and draws the current one', async () => {
     const w = await mountPage()
     openAll()
