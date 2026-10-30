@@ -74,7 +74,7 @@ The run tree has no `.env`, so run the MAIN checkout's dev_run.py with the run t
 
 | Step | What | Proof | Status |
 |---|---|---|---|
-| M0 | Preflight: run tree from origin/main (record sha), upstream unset (proof line), ports free, lock written, npm ci exit 0 | status lines with times, sha, "no upstream" line | Not started |
+| M0 | Preflight: run tree from origin/main (record sha), upstream unset (proof line), ports free, lock written, npm ci exit 0 | status lines with times, sha, "no upstream" line | DONE 12:11 |
 | M1 | **Rebuild the GC-LIVE fixes on main and re-prove them live** (details below) | cherry-pick list with new shas; test runs; five live lines | Not started |
 | M2 | **Fix #612**: the index REST route must answer LIVE with values on a cold read in market hours (details below) | RCA line; red then green test; cold live proof; #612 comment | Not started |
 | M3 | **Leg stop fires live once, and not again after an API restart** (details below) | trigger rows, order rows (kind `stop`), alert, bell, after-restart counts | Not started |
@@ -156,10 +156,28 @@ The run tree has no `.env`, so run the MAIN checkout's dev_run.py with the run t
 - [ ] Nothing pushed at any time: `git rev-parse --abbrev-ref "@{u}"` reports no upstream on `live2/2026-10-30`, and `git ls-remote origin ui/sensibull-layout-2026-10-30` still shows f9619949.
 - [ ] M5 handover committed here and on `live2/2026-10-30`.
 
+## Run lines (GC-LIVE2)
+
+- M0 12:11:14: run tree `D:\Abhay\Ventures\OptionsForOptions2-live2` on `live2/2026-10-30` from origin/main db8cdf91; `git rev-parse --abbrev-ref "@{u}"` -> "fatal: no upstream configured for branch 'live2/2026-10-30'"; ports 8765/5174 free; lock written; `npm ci` exit 0 (log D:\Abhay\scratch\gclive2
+pm-ci.log). wt-link-modules failed as the contract expects.
+- M1 cherry-picks 12:11, ZERO conflicts: e8697681->a0527f57, a83ce26e->68dd1949, fd3050f8->a6701123, 274235f7->d1c12804, 4ef2df45->e4148d6a, a8c76b81->bd5b8366, 730d289d->2d0110e4, b4cb55b6->99ff962c, c700719a->a20d1865, acf123b3->29847b49, 68262ca5->39ad4ea2, c3a396ef->74c6a032, ad289338->bd3d9075.
+- M1 tests: vitest 114 files / 1646 passed (exit 0). DB files each passed: test_paper_iv_forward 8, test_paper_list_figures 14, test_paper_totals 11, test_paper_reason_texts 8, test_live_push_target 5, test_strategy_live_push 40, test_outcome_target 18, test_outcome_route 25, test_openapi_drift 1.
+- M1 domain `pytest tests -q`: 2 failed / 7928 passed (F-7, F-8 below). Both came from GC-LIVE commits; GC-LIVE ran `pytest tests -x`, which stopped at the #611 allow-list failure and never reached them.
+- M1 live (API PID 7164 started 12:20 with no tab open, Vite PID 22000):
+  1. 12:20:48 cold `GET /paper/strategies`: 25 books = 18 LIVE + 7 EXITED; greeks_reason None on all 18; totals decay 11741.70.
+  2. 12:20:48 no book PAUSED; 12:24:50 Paper tab: 0 pause sentences. No book paused in market hours, so the proof is the route test (test_paper_reason_texts 8 passed, test_paper_list_figures 14 passed).
+  3. 12:25:28-34 builder 56, target 23100: "Projected profit: Rs 16,465 / 16,510 / 16,420 / 16,485 / 16,430 / 16,430 / 16,456" as NIFTY moved 23091.50 -> 23090.95, Stale text absent each second. 23200 typed at 12:25:47: "Rs 21,871" already shown before Enter, then 21,807 / 21,889 / 21,883 / 21,956 through 12:25:52, never stale.
+  4. 12:26:06 Live Strategies: "NIFTY 23093.00 at 30 Oct 2026, 12:26:04 IST", "SENSEX 74671.20 at 30 Oct 2026, 12:26:04 IST"; 0 glued "at".
+  5. 12:21:48-55 checker `--paper-orders`: 69 48/0, 70 20/0, 59 20/0, 63 48/0, 65 20/0. 12:23:27/36/44 target mode 63 (legs captured_at refreshed 12:23:18): main 358/0, target 22/0, three runs out of three.
+- M2 12:20:38 cold BEFORE: `GET /api/market/indices` -> NOT_CONNECTED, NIFTY and SENSEX value null, while `/api/broker/status` live_market_data connected. #612 reproduced.
+- M2 decision (technical, spec-conformant): ONLY the plain first-paint read gets the hold. `?fallback=true` keeps answering NOT_CONNECTED, because ADR-077 / REQ-049 AC-5 and the guarded finding liveness-from-shared-subscribers say a page whose own socket is down is not live, whoever else holds the feed. The contract's "fallback ... hold then release" line would contradict that, so it is not built. Owner note in the handover.
+
 ## Found during the run
 
 | F | Step | What failed (seen) | Class / RCA | Fix commit | Re-test |
 |---|---|---|---|---|---|
+| F-7 | M1 | tests/outcome/test_both_curves.py flag-off golden: reply has a new `dividend_yields` key | c3a396ef added the field to the main reply, and the recorded golden was never updated | 19280504 (golden +14 lines, all that key; checked with diff --strip-trailing-cr) | test_both_curves 7 passed |
+| F-8 | M1 | tests/test_no_order_placement.py scan: "ofo_app/routes/paper.py:70: uses another module's private name ofo_app.routes.planned_entry._no_listener" | 4ef2df45's one-hold reused a private helper across modules | given to the M2 builder (same helper) | pending |
 
 ## Parked
 
