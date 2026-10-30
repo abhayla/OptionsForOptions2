@@ -4,7 +4,7 @@
 
 Generated from `spec/requirements/REQ-*.md`, grouped by each requirement's `section`. Before writing a new requirement, find its section here and run `python tools/spec_similar.py . "<text>"`; extend or cite a match, never restate it.
 
-Requirements: 145; sections: 19
+Requirements: 154; sections: 19
 
 ## Accounts and identity (5)
 
@@ -16,7 +16,7 @@ Requirements: 145; sections: 19
 | REQ-014 | Zerodha Client ID binding and anti-abuse | feature | Approved |
 | REQ-125 | Every request acts for one signed-in user, and no user can read or act on another user's data | foundation | Draft |
 
-## Adjustments (5)
+## Adjustments (14)
 
 | id | title | layer | status |
 |---|---|---|---|
@@ -25,6 +25,15 @@ Requirements: 145; sections: 19
 | REQ-047 | Adjustment-relevant data collection | feature | Approved |
 | REQ-071 | Adjustment data requirements from the owner's reference video | feature | Approved |
 | REQ-112 | Every adjustment or exit suggestion records what the user did with it - dismissed, acted on, completed or lapsed | feature | Approved |
+| REQ-155 | Adjustment approach builder - the server builds a picked approach's exact legs and prices the whole trade's After | feature | Approved |
+| REQ-156 | Compare adjustment approaches side by side on named criteria, each criterion naming its leader, never an overall winner | feature | Approved |
+| REQ-157 | Filters on the approach compare are computed from the current approaches, never a fixed list | feature | Approved |
+| REQ-158 | Adjustment playbooks - one read-only system playbook per strategy type, any number of named user playbooks, one active | feature | Approved |
+| REQ-159 | What a playbook holds - user-defined stages, triggers per stage, day-and-date rules, situations, limits and guards | feature | Approved |
+| REQ-160 | Playbook editor is one step-by-step flow with a plain-words summary, and Test shows what the playbook would flag today | feature | Approved |
+| REQ-161 | Start tracking opens a strategy plan sheet pre-filled from the type's active playbook, accepted in one click | feature | Approved |
+| REQ-162 | Positions > Adjustment opportunities lists every opportunity across strategies with its label and outcome | feature | Approved |
+| REQ-163 | A strategy's adjustment history shows the entry, every adjustment and the whole-trade totals | feature | Approved |
 
 ## Broker and execution (17)
 

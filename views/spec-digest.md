@@ -48,7 +48,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-212 2026-10-30: SPEC CHANGE to REQ-109 AC-5. [SPEC CHANGE to REQ-109 AC-5 (after hours the last…]
 - ADR-214 2026-10-30: Where adjustments sit in the app. [Places REQ-045 AC-7/AC-9 and REQ-046 on named scr…]
 
-## Requirements (145)
+## Requirements (154)
 
 - REQ-001 [Approved]: V1 scope: underlyings, leg types, broker
 - REQ-002 [Approved]: Account boundaries
@@ -195,6 +195,15 @@ One line per decision, requirement and spec section. Read it before asking the o
 - REQ-152 [Approved]: Number format of builder figures - whole rupees, Indian grouping and signs on summary money, paise kept on pe…
 - REQ-153 [Approved]: Breakeven percent from spot beside each breakeven, for Expiry and Target
 - REQ-154 [Approved]: An unsaved builder strategy survives a page reload - kept on the server for the signed-in user until saved or…
+- REQ-155 [Approved]: Adjustment approach builder - the server builds a picked approach's exact legs and prices the whole trade's A…
+- REQ-156 [Approved]: Compare adjustment approaches side by side on named criteria, each criterion naming its leader, never an over…
+- REQ-157 [Approved]: Filters on the approach compare are computed from the current approaches, never a fixed list
+- REQ-158 [Approved]: Adjustment playbooks - one read-only system playbook per strategy type, any number of named user playbooks, o…
+- REQ-159 [Approved]: What a playbook holds - user-defined stages, triggers per stage, day-and-date rules, situations, limits and g…
+- REQ-160 [Approved]: Playbook editor is one step-by-step flow with a plain-words summary, and Test shows what the playbook would f…
+- REQ-161 [Approved]: Start tracking opens a strategy plan sheet pre-filled from the type's active playbook, accepted in one click
+- REQ-162 [Approved]: Positions > Adjustment opportunities lists every opportunity across strategies with its label and outcome
+- REQ-163 [Approved]: A strategy's adjustment history shows the entry, every adjustment and the whole-trade totals
 
 ## Spec sections (245)
 
