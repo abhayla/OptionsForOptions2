@@ -9,12 +9,19 @@
 - ``GET /api/market/indices``: the page's first paint, and with ``fallback=true`` the refresh of a page whose own socket
   is down: then the answer is NOT_CONNECTED with each index's last value time, whoever else holds the indices (finding
   liveness-from-shared-subscribers). No live feed: NOT_CONNECTED, every value null.
+  The PLAIN read (``fallback`` false) on
+  a cold feed (the market open, no socket holds the index ids) holds the ids itself on the shared fan-out until both are
+  priced, the provider reports disconnected, or ``INDEX_WAIT_S`` passes, reads its answer INSIDE that hold (a released
+  id's quote is parked, GC-LIVE F-3) and then releases (issue #612). The route's own hold is a holder, so the answer
+  is live; ``fallback`` true never holds and stays NOT_CONNECTED.
 
 V1 has one fixed owner and no login (``routes/broker.py`` ``current_user_ref``); like ``/api/strategies/live`` these
 reads carry no user value.
 """
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import time
 from collections.abc import Callable
 from typing import Annotated
@@ -23,11 +30,22 @@ from fastapi import APIRouter, Depends, Query
 
 from ofo_app.errors import ClosedRoute, ClosedSocket, ClosedWebSocketRoute
 from ofo_app.index_push import IndexPush, IndicesOut, index_ids, indices_answer
+from ofo_app.live_push import POLL_SECONDS, LiveFeed, no_listener
 from ofo_app.routes import live, outcome
-from ofo_app.routes.outcome import AnswerClock, MarketContext, get_answer_clock, get_market_context, get_streaming
+from ofo_app.routes.outcome import (
+    AnswerClock,
+    MarketContext,
+    get_answer_clock,
+    get_market_context,
+    get_streaming,
+    market_state,
+)
+from ofo_app.routes.planned_entry import get_live_feed
 
 PATH = "/api/market/indices/live"
 REST_PATH = "/api/market/indices"
+#: The longest the plain first-paint read waits for both index quotes (the paper read's FORWARD_WAIT_S, 3 s).
+INDEX_WAIT_S = 3.0
 
 router = APIRouter(route_class=ClosedRoute)
 
@@ -51,14 +69,51 @@ def indices_read(ctx: MarketContext | None, streaming: Callable[[str], bool] | N
     return indices_answer(ctx, live=live_now, now=now)
 
 
+def _both_priced(ctx: MarketContext, ids: list[str]) -> bool:
+    answer = indices_answer(ctx, live=True, now=ctx.clock)
+    return all(r.value is not None for r in answer.indices if r.instrument_id in ids)
+
+
+async def indices_first_paint(ctx: MarketContext | None,  # noqa: PLR0913 - one seam per collaborator
+                              streaming: Callable[[str], bool] | None,
+                              feed: LiveFeed | None, *, fallback: bool, now: AnswerClock,
+                              wait: float = INDEX_WAIT_S) -> IndicesOut:
+    """The plain read's answer (issue #612). Not live as ``indices_read`` says it (fallback, no feed, a closed market,
+    or a socket already holds the ids): that answer, nothing held. Otherwise hold the known index ids on the shared
+    fan-out until each is priced, the provider is disconnected or ``wait`` passes; the answer is read INSIDE the hold,
+    which is released in ``finally``. A KeyError from the fan-out (no token for an id): the unheld answer stands."""
+    unheld = ctx is not None and not held_by_a_socket(ctx, streaming) and not market_state(ctx, ctx.clock()).closed
+    if feed is None or ctx is None or fallback or not unheld:
+        return indices_read(ctx, streaming, fallback=fallback, now=now)
+    ids = [i for i in index_ids(ctx).values() if i is not None]
+    if not ids:
+        return indices_read(ctx, streaming, fallback=fallback, now=now)
+    try:
+        handle = feed.fanout.subscribe(no_listener, ids, max_queue=1)
+    except KeyError:
+        return indices_read(ctx, streaming, fallback=fallback, now=now)
+    try:
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + wait
+        while not _both_priced(ctx, ids) and ctx.provider.status().connected and loop.time() < deadline:  # noqa: ASYNC110
+            await asyncio.sleep(POLL_SECONDS)
+        if not ctx.provider.status().connected:  # the hold is a subscriber, so not indices_read: not live, plainly
+            return indices_answer(ctx, live=False, now=now)
+        return indices_answer(ctx, live=True, now=now)  # inside the hold: this read is itself a holder
+    finally:
+        with contextlib.suppress(Exception):
+            feed.fanout.unsubscribe(handle)
+
+
 @router.get(REST_PATH, response_model=IndicesOut)
-def market_indices(ctx: Annotated[MarketContext | None, Depends(get_market_context)],
+async def market_indices(ctx: Annotated[MarketContext | None, Depends(get_market_context)],
                    streaming: Annotated[Callable[[str], bool] | None, Depends(get_streaming)],
+                   feed: Annotated[LiveFeed | None, Depends(get_live_feed)],
                    now: Annotated[AnswerClock, Depends(get_answer_clock)],
                    fallback: Annotated[bool, Query(description="true when the page's own index socket is down "
                                                                "(ADR-077): the answer is then not live whoever else "
                                                                "subscribes")] = False) -> IndicesOut:
-    return indices_read(ctx, streaming, fallback=fallback, now=now)
+    return await indices_first_paint(ctx, streaming, feed, fallback=fallback, now=now)
 
 
 async def indices_live(socket: ClosedSocket) -> None:

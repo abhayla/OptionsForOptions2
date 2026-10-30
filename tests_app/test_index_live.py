@@ -357,7 +357,8 @@ class ColdProvider(FakeProvider):
 
 
 def cold_rig(pending_ids=(NIFTY_ID, SENSEX_ID), connected: bool = True, ids=None):
-    quotes = {NIFTY_ID: quote(NIFTY_ID, "NIFTY", "25145.50", T0), SENSEX_ID: quote(SENSEX_ID, "SENSEX", "82010.25", T0)}
+    quotes = {NIFTY_ID: quote(NIFTY_ID, "NIFTY", "25145.50", T0),
+              SENSEX_ID: quote(SENSEX_ID, "SENSEX", "82010.25", T0)}
     provider = ColdProvider({"NIFTY": NIFTY_ID, "SENSEX": SENSEX_ID} if ids is None else ids,
                             [quotes[i] for i in pending_ids], connected)
     wall = Wall()
@@ -380,7 +381,7 @@ async def test_cold_plain_read_holds_the_index_ids_and_answers_live_with_both_va
 
 
 async def test_cold_plain_read_with_one_index_priced_by_the_deadline_is_live_with_the_other_unavailable():
-    """Only NIFTY arrives: the read waits out the deadline, then answers what it has (LIVE, SENSEX unavailable, null)."""
+    """Only NIFTY arrives: the read waits out the deadline, then answers what it has (SENSEX unavailable)."""
     provider, feed, wall = cold_rig(pending_ids=(NIFTY_ID,))
     answer = await first_paint(feed, wall, wait=0.1)
     assert answer.state == "LIVE"
@@ -432,14 +433,14 @@ async def test_cold_fallback_read_stays_not_connected_and_holds_nothing():
 
 async def test_cold_plain_read_with_an_unknown_index_id_answers_as_today():
     """The catalogue does not know SENSEX: nothing to subscribe for it; NIFTY is held and LIVE, SENSEX unavailable."""
-    provider, feed, wall = cold_rig(ids={"NIFTY": NIFTY_ID, "SENSEX": None})
+    _provider, feed, wall = cold_rig(ids={"NIFTY": NIFTY_ID, "SENSEX": None})
     answer = await first_paint(feed, wall, wait=0.1)
     assert answer.state == "LIVE"
     assert [(r.underlying, r.value) for r in answer.indices] == [("NIFTY", Decimal("25145.50")), ("SENSEX", None)]
 
 
 async def test_cold_plain_read_when_the_fanout_refuses_the_ids_answers_as_today():
-    provider, feed, wall = cold_rig()
+    _provider, feed, wall = cold_rig()
 
     def refuse(*_a, **_k):
         raise KeyError("no token")
