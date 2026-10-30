@@ -12,6 +12,7 @@ import { onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import api, { NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
+import PageHeader from '@/components/common/PageHeader.vue'
 import Tabs from '@/components/common/Tabs.vue'
 import EmptyState from '@/components/states/EmptyState.vue'
 import { panelId, tabId } from '@/components/common/tabIds.js'
@@ -79,62 +80,69 @@ onMounted(async () => {
 </script>
 
 <template>
-  <section class="p-4" data-testid="positions-page" :data-view="view">
-    <p class="text-xs text-ink-muted">{{ route.meta.parent }}</p>
-    <h1 class="text-xl font-semibold" data-testid="page-title">{{ route.meta.title }}</h1>
+  <!-- Owner 2026-10-30 (Sensibull 050 / 090): the shared header, a summary bar (read time left, outside lots right), then one
+       card per strategy with its contracts in an aligned table (Contract | Your units | Zerodha | Status). -->
+  <section data-testid="positions-page" :data-view="view">
+    <PageHeader :parent="route.meta.parent ?? ''" :title="route.meta.title" />
     <!-- GC-BP step 6 (ADR-201 (2)): "Positions" = this page as it was; "Paper" = the shared paper list, which loads by
          itself and is never held up by the Zerodha read. Paper figures never appear in the Positions tab. -->
-    <Tabs v-model="tab" class="mt-2" :tabs="POSITION_TABS" label="Positions or paper trades" id-prefix="positions" />
-    <div :id="panelId('positions', tab)" role="tabpanel" :aria-labelledby="tabId('positions', tab)">
-    <PaperStrategies v-if="tab === 'paper'" class="mt-2" data-testid="positions-paper" />
+    <Tabs v-model="tab" :tabs="POSITION_TABS" label="Positions or paper trades" id-prefix="positions" />
+    <div :id="panelId('positions', tab)" role="tabpanel" :aria-labelledby="tabId('positions', tab)" class="mt-4">
+    <PaperStrategies v-if="tab === 'paper'" data-testid="positions-paper" />
     <template v-else>
-    <p v-if="loading" class="mt-2" data-testid="positions-loading">Reading your positions from Zerodha.</p>
-    <ErrorMessage v-else-if="errorParts" class="mt-2" :parts="errorParts" compact prefix="positions-error" />
-    <div v-else-if="result" class="mt-2 text-sm">
-      <p>Read from Zerodha at <span data-testid="positions-read-at">{{ istTime(result.read_at) }}</span>.</p>
-      <div v-if="result.blocked" data-testid="positions-blocked">
-        <p>A strategy is {{ BLOCKED }}.</p>
-        <ul>
+    <p v-if="loading" class="text-sm text-ink-muted" data-testid="positions-loading">Reading your positions from Zerodha.</p>
+    <ErrorMessage v-else-if="errorParts" :parts="errorParts" compact prefix="positions-error" />
+    <div v-else-if="result" class="grid gap-4 text-sm">
+      <div class="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 rounded-lg border border-line bg-surface px-4 py-3">
+        <p class="text-ink-muted">Read from Zerodha at <span class="num font-medium text-ink" data-testid="positions-read-at">{{ istTime(result.read_at) }}</span>.</p>
+        <p v-if="result.has_outside" data-testid="positions-outside">
+          <span data-testid="positions-outside-count">{{ outsideText(result.outside_lots) }}</span> -
+          <a :href="KITE_POSITIONS_URL" target="_blank" rel="noopener noreferrer" class="link" data-testid="positions-outside-kite">{{ VIEW_ON_KITE }}</a>
+        </p>
+      </div>
+      <div v-if="result.blocked" class="rounded-lg border border-line bg-surface px-4 py-3" data-testid="positions-blocked">
+        <p class="font-medium text-warn">A strategy is {{ BLOCKED }}.</p>
+        <ul class="mt-1">
           <li v-for="id in result.blocked_strategy_ids" :key="id" data-testid="positions-blocked-strategy" :data-strategy="id">
-            <RouterLink v-if="orderPathOn" :to="`/strategy/${id}/execute`" class="underline" data-testid="positions-blocked-link">Strategy {{ id }}</RouterLink><span v-else>Strategy {{ id }}</span> ({{ BLOCKED }})
+            <RouterLink v-if="orderPathOn" :to="`/strategy/${id}/execute`" class="link" data-testid="positions-blocked-link">Strategy {{ id }}</RouterLink><span v-else>Strategy {{ id }}</span> ({{ BLOCKED }})
           </li>
         </ul>
       </div>
       <!-- GC-UI D-C40 (Sensibull 050): the shared empty state; the title is new text (owner read), the line is ours as before. -->
-      <div v-if="!result.strategies.length && !result.has_outside" class="mt-2" data-testid="positions-empty">
+      <div v-if="!result.strategies.length && !result.has_outside" data-testid="positions-empty">
         <p v-if="paperOpen > 0" data-testid="positions-paper-open">{{ NO_ZERODHA }} {{ paperOpenText(paperOpen) }}</p>
         <EmptyState v-else title="No open positions" message="Zerodha shows no open positions, and none of your strategies holds any." />
       </div>
-      <p v-else-if="!result.strategies.length" class="mt-2" data-testid="positions-no-strategy">
+      <p v-else-if="!result.strategies.length" class="text-ink-muted" data-testid="positions-no-strategy">
         None of your strategies holds a position.
       </p>
-      <div v-for="g in result.strategies" :key="g.strategy_id" class="mt-3" data-testid="position-group" :data-strategy="g.strategy_id">
-        <h2 class="font-semibold">
-          <RouterLink v-if="orderPathOn" :to="`/strategy/${g.strategy_id}/execute`" class="underline" data-testid="position-strategy-link">Strategy {{ g.strategy_id }}</RouterLink><span v-else data-testid="position-strategy-name">Strategy {{ g.strategy_id }}</span>
-          <span v-if="g.blocked" class="ml-1" data-testid="position-mismatch-badge">({{ BLOCKED }})</span>
+      <section v-for="g in result.strategies" :key="g.strategy_id" class="overflow-hidden rounded-lg border border-line bg-surface" data-testid="position-group" :data-strategy="g.strategy_id">
+        <h2 class="flex h-11 items-center gap-2 border-b border-line px-4 text-sm font-semibold">
+          <RouterLink v-if="orderPathOn" :to="`/strategy/${g.strategy_id}/execute`" class="link" data-testid="position-strategy-link">Strategy {{ g.strategy_id }}</RouterLink><span v-else data-testid="position-strategy-name">Strategy {{ g.strategy_id }}</span>
+          <span v-if="g.blocked" class="font-normal text-warn" data-testid="position-mismatch-badge">({{ BLOCKED }})</span>
         </h2>
-        <p v-if="!g.contracts.length" data-testid="position-group-empty">{{ NO_ROW }}</p>
-        <ul v-else>
-          <li v-for="c in g.contracts" :key="c.tradingsymbol" data-testid="position-row" :data-symbol="c.tradingsymbol">
-            <span>{{ c.tradingsymbol }}</span>:
-            <template v-if="c.pending">
-              <span data-testid="position-waiting">{{ WAITING }}</span>
-              (plan <span data-testid="position-pending-plans">{{ c.pending_plans.join(', ') }}</span>).
-              Zerodha: <span data-testid="position-zerodha">{{ c.zerodha_units }}</span> units,
-              <span data-testid="position-unconfirmed">{{ UNCONFIRMED }}</span>.
-              <span data-testid="position-pending-holders">{{ HOLDERS }}</span>
-            </template>
-            <template v-else>
-              <span data-testid="position-own-units">{{ c.units }}</span> units
-              (Zerodha shows <span data-testid="position-zerodha">{{ c.zerodha_units }}</span> on this contract)
-            </template>
-          </li>
-        </ul>
-      </div>
-      <p v-if="result.has_outside" class="mt-3" data-testid="positions-outside">
-        <span data-testid="positions-outside-count">{{ outsideText(result.outside_lots) }}</span> -
-        <a :href="KITE_POSITIONS_URL" target="_blank" rel="noopener noreferrer" class="underline" data-testid="positions-outside-kite">{{ VIEW_ON_KITE }}</a>
-      </p>
+        <p v-if="!g.contracts.length" class="px-4 py-3 text-ink-muted" data-testid="position-group-empty">{{ NO_ROW }}</p>
+        <table v-else class="ui-table">
+          <thead>
+            <tr><th>Contract</th><th class="ui-num">Your units</th><th class="ui-num">Zerodha units</th><th>Status</th></tr>
+          </thead>
+          <tbody>
+            <tr v-for="c in g.contracts" :key="c.tradingsymbol" data-testid="position-row" :data-symbol="c.tradingsymbol">
+              <td class="font-medium">{{ c.tradingsymbol }}</td>
+              <template v-if="c.pending">
+                <td class="ui-num"><span data-testid="position-waiting">{{ WAITING }}</span> (plan <span data-testid="position-pending-plans">{{ c.pending_plans.join(', ') }}</span>)</td>
+                <td class="ui-num"><span data-testid="position-zerodha">{{ c.zerodha_units }}</span></td>
+                <td class="text-ink-muted"><span data-testid="position-unconfirmed">{{ UNCONFIRMED }}</span>. <span data-testid="position-pending-holders">{{ HOLDERS }}</span></td>
+              </template>
+              <template v-else>
+                <td class="ui-num"><span data-testid="position-own-units">{{ c.units }}</span></td>
+                <td class="ui-num"><span data-testid="position-zerodha">{{ c.zerodha_units }}</span></td>
+                <td></td>
+              </template>
+            </tr>
+          </tbody>
+        </table>
+      </section>
     </div>
     </template>
     </div>
