@@ -22,6 +22,8 @@ The user comes from the session (``current_user_ref``), never from the request.
 """
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import datetime
 from collections.abc import Sequence
 from decimal import ROUND_HALF_UP, Decimal
@@ -41,6 +43,7 @@ from ofo.money import PAISE
 from ofo.outcome import read_snapshot
 from ofo.outcome.price_text import price_text
 from ofo.outcome.serialize import breakevens_display
+from ofo.outcome.snapshot import forward_strike_ids
 from ofo.strategy import stored_form as sf
 from ofo.strategy.definition import describe_contract
 from ofo.table.model import display_number
@@ -53,7 +56,7 @@ from ofo_app import strategy_store as store
 from ofo_app.api_models import ApiModel, CatalogueText, Money
 from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure
-from ofo_app.live_push import LiveFeed
+from ofo_app.live_push import POLL_SECONDS, LiveFeed
 from ofo_app.paper_reasons import breakevens_reason_text, extremes_reason_text, greeks_reason_text, reason_text
 from ofo_app.routes.broker import current_user_ref
 from ofo_app.routes.outcome import (
@@ -64,7 +67,7 @@ from ofo_app.routes.outcome import (
     get_market_context,
     load_charge_rates,
 )
-from ofo_app.routes.planned_entry import get_live_feed, hold_until_priced
+from ofo_app.routes.planned_entry import _no_listener, get_live_feed, hold_until_priced
 from ofo_app.routes.strategies import StrategyRefused, refused_answer
 from ofo_app.underlying import Underlying
 
@@ -264,13 +267,62 @@ def _connected(ctx: MarketContext | None) -> bool:
     return ctx is not None and ctx.provider.status().connected
 
 
+#: GC-LIVE 30 Oct 2026: the longest the paper read waits for the index and the forward strikes' first live quotes.
+FORWARD_WAIT_S = 3.0
+
+
+def _iv_inputs_missing(snapshot) -> bool:
+    """True when an IV cannot be solved yet for an option leg: no index reading, or an option expiry whose forward is
+    missing or fell back to spot (ADR-061: parity needs the ATM call/put pairs, D-C33)."""
+    expiries = {lm.contract.contract.expiry for lm in snapshot.legs.values()
+                if lm.contract is not None and lm.contract.contract.instrument_type in ("CE", "PE")}
+    if not expiries:
+        return False
+    return snapshot.spot is None or any(
+        (f := snapshot.forwards.get(e)) is None or f.source != "parity" for e in expiries)
+
+
+async def _hold_for_iv(feed: LiveFeed, ctx: MarketContext, underlying: str, ids: list[str], snapshot):
+    """RCA of 'every paper book is no_iv': the read held only the contracts the book holds, so with no other screen
+    open the index had no quote (spot refused) and the expiry's chain had no call/put pair (no parity forward), and
+    ``solved_iv`` answered None. Hold the index and ``forward_strike_ids`` (the outcome push's own D-C33 choice) until
+    they quote or ``FORWARD_WAIT_S`` passes, and ALWAYS release exactly that hold. A provider that knows none of them
+    leaves the book as it is and the figure an honest None."""
+    provider = ctx.provider
+    spot = provider.underlying_quote(underlying)
+    live_spot = spot.ltp if spot is not None and spot.ltp is not None and spot.ltp > 0 else None
+    index_id = getattr(provider, "index_id", lambda _u: None)(underlying)
+    extra = [*([index_id] if index_id else []),
+             *forward_strike_ids(provider.instrument_master(), underlying, ids, live_spot)]
+    if not extra:
+        return snapshot
+    try:
+        handle = feed.fanout.subscribe(_no_listener, extra, max_queue=1)
+    except KeyError:  # a contract the provider has no token for: nothing was subscribed, the answer stands
+        return snapshot
+    try:
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + FORWARD_WAIT_S
+        while True:
+            await asyncio.sleep(POLL_SECONDS)
+            snapshot = read_snapshot(provider, underlying, ids, ctx.clock(), ctx.rate, feed_scope(ctx))
+            if not _iv_inputs_missing(snapshot) or not provider.status().connected or loop.time() >= deadline:
+                return snapshot
+    finally:
+        with contextlib.suppress(Exception):
+            feed.fanout.unsubscribe(handle)
+
+
 async def _snapshot(ctx: MarketContext, feed: LiveFeed | None, underlying: str, ids: list[str]):
     """One market read (the tracking routes' rule): with a live feed, contracts nobody holds are held until their first
-    live quote or the planned-entry wait passes."""
+    live quote or the planned-entry wait passes; then the index and the forward strikes are held the same way, so the
+    Greeks and Decay have what an IV is solved from (GC-LIVE)."""
     snapshot = read_snapshot(ctx.provider, underlying, ids, ctx.clock(), ctx.rate, feed_scope(ctx))
     unpriced = [i for i in ids if paper.leg_price(snapshot, i).state != paper.LIVE]
     if unpriced and feed is not None:
         _, snapshot, _ = await hold_until_priced(feed, ctx, underlying, ids, unpriced)
+    if feed is not None and ids and _iv_inputs_missing(snapshot):
+        snapshot = await _hold_for_iv(feed, ctx, underlying, ids, snapshot)
     return snapshot
 
 
