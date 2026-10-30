@@ -84,6 +84,13 @@ describe('header bell', () => {
 })
 
 describe('Alerts page', () => {
+  it('shows the title once: an older body that opens with it loses that repeat', async () => {
+    const one = { ...TWO.alerts[0], title: 'Paper strategy - X', body: 'Paper strategy - X: Conditional exit: NIFTY crossed below 22,845.00; exited 1 legs' }
+    answers['GET /paper/alerts'] = ok({ alerts: [one], unread: 0 })
+    const w = await page()
+    expect(t(w, 'alert-title').text()).toBe('Paper strategy - X')
+    expect(t(w, 'alert-body').text()).toBe('Conditional exit: NIFTY crossed below 22,845.00; exited 1 legs')
+  })
   it('lists both rows newest first as sent, time in IST, and calls POST /paper/alerts/read once', async () => {
     answers['GET /paper/alerts'] = ok(TWO)
     answers['POST /paper/alerts/read'] = ok({ alerts: TWO.alerts.map((a) => ({ ...a, read: true })), unread: 0 })

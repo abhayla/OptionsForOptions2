@@ -150,7 +150,9 @@ function openInBuilder(card) {
   router.push({ path: '/strategy/builder', query: { draft: JSON.stringify({ underlying: underlying.value, legs: card.legs }) } })
 }
 
-const money = (v, unlimited) => (unlimited ? 'Unlimited' : v ?? '—')
+// U25 (REQ-152, ADR-008): the server's own display strings ("+7,114", "−5,886"); the exact value is the fallback only
+const money = (display, exact, unlimited) => (unlimited ? 'Unlimited' : display ?? exact ?? '—')
+const levels = (s) => (s.breakevens_display?.length ? s.breakevens_display : s.breakevens).join(', ') || '—'
 </script>
 
 <template>
@@ -243,9 +245,9 @@ v-for="c in shownCards" :key="c.id" class="rounded border border-line bg-surface
             <h3 class="font-medium" data-testid="card-name">{{ c.name }}</h3>
             <p class="text-xs text-ink-muted" data-testid="card-meta">{{ c.level }} · Market view: {{ c.views.join(', ') }}</p>
             <template v-if="c.priced">
-              <p class="mt-1 text-sm">Max profit: <span data-testid="card-max-profit">{{ money(c.summary.max_profit, c.summary.max_profit_unlimited) }}</span></p>
-              <p class="text-sm">Max loss: <span data-testid="card-max-loss">{{ money(c.summary.max_loss, c.summary.max_loss_unlimited) }}</span></p>
-              <p class="text-sm">Breakevens: <span data-testid="card-breakevens">{{ c.summary.breakevens.join(', ') || '—' }}</span></p>
+              <p class="mt-1 text-sm">Max profit: <span data-testid="card-max-profit">{{ money(c.summary.max_profit_display, c.summary.max_profit, c.summary.max_profit_unlimited) }}</span></p>
+              <p class="text-sm">Max loss: <span data-testid="card-max-loss">{{ money(c.summary.max_loss_display, c.summary.max_loss, c.summary.max_loss_unlimited) }}</span></p>
+              <p class="text-sm">Breakevens: <span data-testid="card-breakevens">{{ levels(c.summary) }}</span></p>
               <button
 type="button" class="mt-1 min-h-[44px] text-sm underline" data-testid="card-details-toggle"
                       @click="details[c.id] = !details[c.id]">View details</button>
