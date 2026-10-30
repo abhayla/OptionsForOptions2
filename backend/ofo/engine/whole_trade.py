@@ -98,6 +98,13 @@ def _figures(strategy: Strategy, shift: Decimal) -> WholeTradeFigures:
                              loss_regions_after_charges(strategy, -shift))
 
 
+def _flat(amount: Decimal) -> WholeTradeFigures:
+    """No open leg: the trade's P&L is ``amount`` at every level. Max profit is that amount (signed), max loss its
+    magnitude when below zero; no breakeven; a loss everywhere when below zero, nowhere otherwise."""
+    loss: tuple[LossRegion, ...] = ((None, None),) if amount < 0 else ()  # type: ignore[assignment]
+    return WholeTradeFigures(amount, -amount if amount < 0 else Decimal(0), (), loss)
+
+
 def _signed_paise(value: object, name: str) -> Decimal:
     """A signed rupee amount (booked P&L can be a loss): a finite Decimal of whole paise, else ValueError by name."""
     if not isinstance(value, Decimal) or not value.is_finite() or value.quantize(PAISE) != value:
@@ -105,12 +112,24 @@ def _signed_paise(value: object, name: str) -> Decimal:
     return value
 
 
-def whole_trade_after(strategy: Strategy, *, booked_pnl: Decimal, paid_charges: Decimal,  # noqa: PLR0913
+def whole_trade_after(strategy: Strategy | None, *, booked_pnl: Decimal, paid_charges: Decimal,  # noqa: PLR0913
                       adjustment_charges: Decimal, open_exit_charges: Decimal, forward: Decimal | None = None,
                       years: Decimal | None = None, vol: Decimal | None = None) -> WholeTradeAfter:
     """The whole-trade After of ``strategy`` (the legs open after the adjustment). See the module docstring for which
     order each charge line covers and how POP is taken; ``forward`` / ``years`` / ``vol`` are POP's inputs (None ->
-    the named reason). Raises ``MultiExpiryError`` for legs on more than one expiry."""
+    the named reason). Raises ``MultiExpiryError`` for legs on more than one expiry.
+
+    ``strategy`` None = no leg is open After (an exit of every leg, A-31): the whole trade is the booked P&L less the
+    charges at every level, so the figures are flat (``_flat``) and POP is 1 when that amount is above 0, else 0 (no
+    model input is needed: nothing is left to the market)."""
+    if strategy is None:
+        b = _signed_paise(booked_pnl, "booked_pnl")
+        p, a, e = (require_price(paid_charges, "paid_charges"), require_price(adjustment_charges, "adjustment_charges"),
+                   require_price(open_exit_charges, "open_exit_charges"))
+        total = p + a + e
+        return WholeTradeAfter(gross=_flat(b), after_charges=_flat(b - total), booked_pnl=b, paid_charges=p,
+                               adjustment_charges=a, open_exit_charges=e, total_charges=total,
+                               pop=Decimal(1) if b - total > 0 else Decimal(0), pop_unavailable=None)
     if not strategy.is_single_expiry:
         raise MultiExpiryError("the whole-trade After needs every open leg on one expiry")
     booked = _signed_paise(booked_pnl, "booked_pnl")

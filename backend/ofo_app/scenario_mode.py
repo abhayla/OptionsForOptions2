@@ -85,6 +85,7 @@ NON_ORDER_ROUTES: frozenset[tuple[str, str]] = frozenset({
     ("POST", "/api/broker/disconnect"),  # ends the broker session
     ("POST", "/api/strategies/leg-edit"),  # engine answer for one edited leg
     ("POST", "/api/strategies/outcome"),  # engine answer (a read)
+    ("POST", "/api/strategies/{strategy_id}/adjustment-approaches"),  # REQ-155 engine answer, suggest-only (a read)
     ("POST", "/paper/alerts/read"),  # marks alerts read
     ("POST", "/api/strategies/planned-entry"),  # captures planned prices
     ("POST", "/api/strategies/load-template"),  # a ready-made shape into the builder
@@ -102,6 +103,31 @@ MUTATING_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 _SEGMENT_CODE = {"NFO": 2, "BFO": 4}  # Kite instrument_token low byte (ofo.marketdata.kite_frames.SEGMENT_DIVISOR)
 _INDEX_SEGMENT_CODE = 9
 _INDEX_OF = {"NIFTY": (NSE_INDEX, "NSE"), "SENSEX": (BSE_INDEX, "BSE")}
+def _first_free_exchange_token(twins: Mapping[str, tuple[int, int]] | None) -> int:
+    """The exchange-token counter start: above ``_FIRST_TOKEN`` and every twin's token (a token number, not money)."""
+    return max(_FIRST_TOKEN, max((ex for _s, (_t, ex) in (twins or {}).items()), default=0))
+
+
+def _times(units: int, rate: Decimal) -> float:
+    """``units`` x ``rate`` as the exact decimal product, back to a JSON number (synthetic reply row only)."""
+    return float(Decimal(units) * rate)
+
+
+def _reply_for_basket(reply: Mapping, body: str | None) -> dict:
+    """Kite's basket-margin reply lists one row per order sent (symbol, exchange, option_premium, total); the
+    scenario states only the basket figure, so the rows echo the request (an option BUY's premium row is the
+    request's own quantity x limit, i.e. no top-up) and carry no other figure."""
+    out = json.loads(json.dumps(reply))
+    rows = []
+    for order in json.loads(body or "[]", parse_float=Decimal):
+        row = {"tradingsymbol": order["tradingsymbol"], "exchange": order["exchange"], "total": 0}
+        if order.get("transaction_type") == "BUY":
+            row["option_premium"] = _times(order["quantity"], order["price"])
+        rows.append(row)
+    out["data"]["orders"] = rows
+    return out
+
+
 _FIRST_TOKEN = 5_000_000  # synthetic exchange tokens: above every real one (BFO reaches ~1.1M); x256 stays in int32
 _FEED_STATES = frozenset({"ok", "stale", "missing"})
 _REST_STATES = frozenset({"ok", "failed"})
@@ -225,7 +251,11 @@ class Scenario:
         """``KiteMargin``'s transport seam: the scenario's margin reply as Kite sends it."""
         margin = self.data["broker"]["margin"]
         state = margin.get("state")
-        if state in ("stated", "empty"):
+        if state == "stated" and method == "GET":  # the available-funds call (/user/margins)
+            return 200, json.dumps(margin["funds_reply"])
+        if state == "stated":
+            return 200, json.dumps(_reply_for_basket(margin["reply"], body))
+        if state == "empty":
             return 200, json.dumps(margin["reply"])
         if state == "failed":
             return 504, json.dumps(margin["reply"])
@@ -368,7 +398,7 @@ def _instrument_rows(scn: dict, twins: Mapping[str, tuple[int, int]] | None = No
              "instrument_type": "EQ", "segment": "INDICES", "exchange": index_exchange}]
     priced: list[tuple[int, dict]] = []
     code = _SEGMENT_CODE[exchange]
-    n = max([_FIRST_TOKEN] + [ex for _t, ex in (twins or {}).values()])  # synthetic ones start above every twin
+    n = _first_free_exchange_token(twins)  # synthetic ones start above every twin
     for chain in scn["market"].get("chains") or []:
         for row in chain["rows"]:
             n += 1

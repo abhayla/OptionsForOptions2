@@ -34,6 +34,7 @@ from ofo_app.broker_config import BrokerConfig, load_broker_config
 from ofo_app.config import Settings, app_env
 from ofo_app.db import close_db, verify_pool_budget
 from ofo_app.routes import (
+    adjustment,
     broker,
     broker_capabilities,
     broker_status,
@@ -99,6 +100,7 @@ def _mount_routes(app: FastAPI, config: BrokerConfig) -> None:
     errors.add_socket_route(app, live.socket_route())  # W-065: the strategy live push, a door socket
     errors.add_socket_route(app, chain.socket_route())  # W-116: the read-only Option Chain push, a door socket
     app.include_router(chain.router)  # W-116: the chain's first paint and socket-down fallback
+    app.include_router(adjustment.router)  # W-196: adjustment approaches (REQ-155)
     app.include_router(leg_edit.router)  # W-148: one leg edit, answered by the engine
     app.include_router(leg_picker.router)  # W-147: the leg picker's strikes, futures and depth reads (REQ-080)
     errors.add_socket_route(app, indices.socket_route())  # W-114: the read-only index push, a door socket

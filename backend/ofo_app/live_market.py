@@ -31,10 +31,12 @@ from ofo.instruments.models import ZERODHA, ListedContract
 from ofo.marketdata.fanout import FanOut
 from ofo.marketdata.feed_health import FEED_IDLE, FEED_WAITING, market_closed_for
 from ofo.marketdata.kite_provider import IST, KiteProvider
+from ofo.marketdata.spot_source import SourceReading, SourceState
 from redis.exceptions import RedisError
 
 from ofo_app import feed_bus, feed_mode, kite_period_reads
 from ofo_app.config import app_env, get_settings
+from ofo_app.execute_plan import quote_time
 from ofo_app.feed_bus import BusSocket
 from ofo_app.kite_margin import KiteMargin, urllib_transport
 from ofo_app.kite_reads import TOKEN_CODE, KiteReadError, KiteReads
@@ -450,3 +452,40 @@ async def pick_up_login(broker_config) -> None:
     if market is None or not live_requested():
         return
     await market.pick_up_login(broker_config)
+
+
+def _index_reading(reads: KiteReads, name: str) -> SourceReading:
+    """One REST index quote as the spot resolver's reading: every answer state named, never a made-up 0."""
+    try:
+        quote = reads.fetch_index_quote(name)
+    except KiteReadError as exc:
+        log.warning("REST index quote failed: %s", exc.code)
+        return SourceReading(SourceState.FAILED)
+    if quote is None:
+        return SourceReading(SourceState.NOT_FOUND)
+    price = quote.get("last_price")
+    if isinstance(price, bool) or not isinstance(price, (Decimal, int)):
+        return SourceReading(SourceState.EMPTY)
+    return SourceReading(SourceState.STATED, Decimal(price), quote_time(quote))
+
+
+async def index_spot(name: str, scenario_answer: tuple[int, str] | None = None) -> SourceReading:
+    """REQ-155 AC-5 (F-76): the index spot from Kite's REST quote (``KiteReads.fetch_index_quote``, the door's ``%20``
+    path) with the owner's session; no session -> ABSENT (not asked). ``scenario_answer`` (scenario mode only): the
+    scenario's (HTTP status, reply text) served to the SAME client as its transport, so it passes the same door."""
+    if scenario_answer is not None:
+        status, text = scenario_answer
+
+        def transport(method: str, url: str, headers: dict, body: object) -> tuple[int, str]:
+            return status, text
+        reads = KiteReads(api_key="scenario", access_token="scenario", transport=transport)  # noqa: S106
+    else:
+        owner = await owner_kite_reads()
+        if owner is None:
+            return SourceReading(SourceState.ABSENT)
+        reads = owner[1]
+    try:
+        return await asyncio.wait_for(asyncio.to_thread(_index_reading, reads, name),
+                                      timeout=CALL_TIMEOUT_SECONDS + 5)
+    except TimeoutError:
+        return SourceReading(SourceState.FAILED)

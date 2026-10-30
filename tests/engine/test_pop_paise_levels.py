@@ -17,8 +17,9 @@ from pathlib import Path
 import pytest
 from ofo.engine.legs import Action, Instrument, Leg
 from ofo.engine.metrics import breakevens_with_shift, loss_regions_after_charges, strategy_metrics
-from ofo.engine.pop import Unavailable, probability_of_profit
+from ofo.engine.pop import Unavailable, Why, probability_of_profit
 from ofo.engine.strategy import Strategy
+from ofo.engine.whole_trade import whole_trade_after
 from ofo.money import HUNDREDTH
 
 EXP = datetime.date(2026, 11, 3)
@@ -145,3 +146,29 @@ def test_ac4_two_zeros_that_round_to_one_level_are_reported_once():
     m = strategy_metrics(s)
     assert m.breakevens == (D("22000.00"),)
     assert m.loss_regions == ((None, None, (D("22000"),)),)
+
+
+_NON_FINITE = [D("NaN"), D("sNaN"), D("Infinity")]
+
+
+@pytest.mark.parametrize("bad", _NON_FINITE, ids=["nan", "snan", "inf"])
+@pytest.mark.parametrize("field", ["vol", "years"])
+def test_ac4_non_finite_vol_or_years_is_no_volatility_never_an_exception(field, bad):
+    kwargs = {"forward": FORWARD, "years": YEARS, "vol": VOL, field: bad}
+    with pytest.raises(Unavailable) as caught:
+        probability_of_profit(_sold_put("100"), **kwargs)
+    assert caught.value.why is Why.NO_VOLATILITY
+
+
+@pytest.mark.parametrize("bad", _NON_FINITE, ids=["nan", "snan", "inf"])
+def test_ac4_non_finite_forward_is_no_forward_never_an_exception(bad):
+    with pytest.raises(Unavailable) as caught:
+        probability_of_profit(_sold_put("100"), forward=bad, years=YEARS, vol=VOL)
+    assert caught.value.why is Why.NO_FORWARD
+
+
+def test_ac4_non_finite_vol_keeps_the_whole_trade_figures():
+    after = whole_trade_after(_sold_put("100"), booked_pnl=D("0"), paid_charges=D("0"), adjustment_charges=D("0"),
+                              open_exit_charges=D("0"), forward=FORWARD, years=YEARS, vol=D("NaN"))
+    assert after.pop is None and after.pop_unavailable is Why.NO_VOLATILITY
+    assert after.gross.max_profit == D("100")

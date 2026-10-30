@@ -155,17 +155,21 @@ class ApproachLegs:
     warnings: tuple[str, ...] = ()
     step_basis: str | None = None  # "delta" / "points" (rolls only)
     step_value: Decimal | None = None  # the target delta or the points moved
+    #: the refusal and warnings as catalogue messages, for the API door (``refusal`` / ``warnings`` hold their text)
+    refusal_message: UserFacingError | None = None
+    warning_messages: tuple[UserFacingError, ...] = ()
 
 
 class _Refused(Exception):
-    def __init__(self, reason: str) -> None:
-        super().__init__(reason)
-        self.reason = reason
+    def __init__(self, message: UserFacingError) -> None:
+        super().__init__(message.what_happened)
+        self.reason = message.what_happened
+        self.message = message
 
 
 def _refusal(template: str, **slots: object) -> _Refused:
     """A refusal whose text is the catalogue template's (``render``), never a sentence of this module."""
-    return _Refused(render(template, **slots).what_happened)
+    return _Refused(render(template, **slots))
 
 
 @dataclass(frozen=True)
@@ -227,6 +231,7 @@ class _Builder:
         self.chain = chain
         self.listing = listing or listing_from_chain(position.underlying, position.lot, chain, position.today)
         self.warnings: list[str] = []
+        self.warning_messages: list[UserFacingError] = []  # the same warnings as catalogue messages (API door)
         self.basis: tuple[str, Decimal] | None = None
 
     def ref(self, leg: PositionLeg) -> LegValue:
@@ -259,7 +264,9 @@ class _Builder:
         if row.low_oi_state == "stated" and row.low_oi_blocked:
             raise _refusal("adjust_low_oi_blocked", leg=self.ref(leg))
         if row.low_oi_state != "stated":
-            self.warnings.append(render("adjust_low_oi_unknown", leg=self.ref(leg)).what_happened)
+            warning = render("adjust_low_oi_unknown", leg=self.ref(leg))
+            self.warnings.append(warning.what_happened)
+            self.warning_messages.append(warning)
         price = self.price_of(leg)
         new = replace(leg, entry=price, tradingsymbol=row.tradingsymbol)
         return Trade(leg.side, leg.type, leg.strike, leg.expiry, leg.lots, leg.lots * self.p.lot, price,
@@ -273,7 +280,7 @@ class _Builder:
             moved = leg_edit.land(self.listing, self.p.underlying, edit, targets)
         except LegEditRefused as refused:
             # the message is the catalogue's rendered error (leg_edit annotates it as str)
-            raise _Refused(cast(UserFacingError, refused.message).what_happened) from refused
+            raise _Refused(cast(UserFacingError, refused.message)) from refused
         return {i: strike for i in targets if (strike := moved.legs[i].leg.strike) is not None}
 
     def roll_distance(self, leg: PositionLeg, outward: bool) -> Decimal:
@@ -390,13 +397,15 @@ def build_approach(position: Position, chain: Sequence[ChainRow], spot: Decimal,
             trades, after, closed = b.replace(b.land(targets))
     except _Refused as refused:
         refusal: str | None = refused.reason
+        refusal_message: UserFacingError | None = refused.message
     else:
-        refusal = None
+        refusal = refusal_message = None
     basis, value = b.basis if b.basis is not None else (None, None)
     base = ApproachLegs(approach_id, NAMES[approach_id], KINDS[approach_id], side, step_basis=basis, step_value=value)
     if refusal is not None:
-        return replace(base, refusal=refusal)
-    return replace(base, trades=_ordered(trades), after=tuple(after), closed=tuple(closed), warnings=tuple(b.warnings))
+        return replace(base, refusal=refusal, refusal_message=refusal_message)
+    return replace(base, trades=_ordered(trades), after=tuple(after), closed=tuple(closed), warnings=tuple(b.warnings),
+                   warning_messages=tuple(b.warning_messages))
 
 
 def applicable_approaches(position: Position, chain: Sequence[ChainRow], spot: Decimal, config: Config,

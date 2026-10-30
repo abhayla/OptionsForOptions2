@@ -12,6 +12,8 @@ Rules:
   dated in the future is not fresh either (fail closed);
 - a REST answer or a last close counts only when stated with a price above 0 (``is_live_price``): a 200 with no
   ``last_price`` is EMPTY, never 0;
+- a value that is not finite (NaN, sNaN, Infinity) is ``not_finite``, checked before any comparison, never a spot and
+  never an exception; a reading dated in the future is refused for EVERY source, not only the feed (fail closed);
 - the last close is labelled with its own date, never as live (ADR-212 / ADR-177).
 
 Standard library only; no wall clock (the caller passes ``now``).
@@ -40,6 +42,7 @@ REASON_NO_PRICE: Final = "no_price"
 REASON_NO_TIME: Final = "no_time"
 REASON_FUTURE: Final = "tick_in_future"
 REASON_STALE: Final = "stale"
+REASON_NOT_FINITE: Final = "not_finite"
 
 
 class SourceState(enum.Enum):
@@ -78,10 +81,16 @@ def _why_not(name: str, reading: SourceReading | None, now: datetime.datetime) -
         return REASON_ABSENT
     if reading.state is not SourceState.STATED:
         return reading.state.name.lower()
-    if not isinstance(reading.value, Decimal) or not is_live_price(reading.value):
+    if not isinstance(reading.value, Decimal):
+        return REASON_NO_PRICE
+    if not reading.value.is_finite():  # before any comparison: comparing a NaN raises
+        return REASON_NOT_FINITE
+    if not is_live_price(reading.value):
         return REASON_NO_PRICE
     if reading.at is None or reading.at.tzinfo is None:
         return REASON_NO_TIME
+    if reading.at > now:
+        return REASON_FUTURE
     return _feed_age_problem(now - reading.at) if name == SOURCE_FEED else None
 
 
