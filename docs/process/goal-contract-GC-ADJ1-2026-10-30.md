@@ -16,6 +16,9 @@ sheet, the inbox and the history are the next contract (GC-ADJ2, outline at the 
 - Findings to fix as classes: F-74 (booked P&L and adjustment-trade charges missing from the After), F-75 + class
   `knowledge/findings/interpolated-level-finer-than-paise-refused.json` (POP on a level finer than paise), F-76 (no
   spot over REST). F-73 is the baseline (engine 0.27 s for 7 approaches; I/O is the cost).
+- **Owner rule (2026-10-30, set at the start of this run): every change stays on `feature/adjustments`. Never open a
+  PR to main, never merge or push to main, even when the feature is done. Only the owner's explicit approval allows
+  that.**
 - Branch (owner, 2026-10-30): ALL adjustment work lives on `feature/adjustments`. This run branches from it and
   merges back into it locally. NO PR to main from this goal; main gets the whole feature once, after GC-ADJ2 is done.
 - Test data (owner, 2026-10-30: "Create test data for all scenarios and use it for testing as getting live market data
