@@ -251,6 +251,12 @@ def _sd(sd: Any) -> dict[str, Any]:
             "spot": _s(sd.spot), "rows": rows, "bands": bands}
 
 
+def _yield_fields(out: Any) -> dict[str, Any]:
+    """GC-LIVE: the q each option expiry was priced with (read-only echo for the independent checker); no key when
+    nothing was priced, so an answer without options keeps its exact keys."""
+    return {"dividend_yields": {e.isoformat(): _s(q) for e, q in out.dividend_yields}} if out.dividend_yields else {}
+
+
 def outcome_to_dict(out: Outcome, today: datetime.date | None = None) -> dict[str, Any]:
     """``today``: the IST date of the answer's own clock (REQ-135 AC-2); the legs' days to expiry count from it."""
     scenario = payoff = summary = table = None
@@ -310,6 +316,7 @@ def outcome_to_dict(out: Outcome, today: datetime.date | None = None) -> dict[st
         body["payoff_table"] = _payoff_table(out.payoff_table)
     if out.standard_deviation is not None:  # REQ-083 AC-4 / REQ-137 AC-3: sd_bands asked for
         body["standard_deviation"] = _sd(out.standard_deviation)
+    body.update(_yield_fields(out))
     if out.centre_label is not None:  # FROM_ENTRIES only: every other answer keeps its exact keys
         body["centre_label"] = out.centre_label
     if out.target is not None:  # REQ-084 AC-4: the limits alone unless a target level or time was sent

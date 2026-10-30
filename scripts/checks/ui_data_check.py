@@ -1119,6 +1119,16 @@ def check_outcome(name, est, atx, chains_before, chains_after, futures=None, r=R
         }
         fallback = why_b is not None and (why_a is not None or fa is None)  # spot fallback on every read we have
         qinfo[e].update(_q_band(chains_before.get(e), fb, fa, qb, t, r, fallback))
+        echoed = (est.get("dividend_yields") or {}).get(e)
+        if echoed is not None and qinfo[e]["q_mid"] is not None:
+            # GC-LIVE: the q the server priced with replaces our point + one-sided band for every figure below (the
+            # server read its own snapshot between our two reads, so its q can lie on either side of our mid). It must
+            # still lie inside OUR parity band: that is what keeps q itself independently checked.
+            q_mid, q_hi = qinfo[e]["q_mid"], qinfo[e]["q_hi"]
+            rep.add(f"dividend yield {e} (echoed by the reply vs our parity band)", echoed, round(q_mid, 6),
+                    Decimal(str(round(abs(q_hi - q_mid) + 1e-6, 6))), note="tol = our forward band, both sides")
+            qinfo[e]["q_mid"] = qinfo[e]["q_hi"] = float(echoed)
+            qinfo[e]["q_echoed"] = True
         # C-4: the basis the reply states (the chain's greeks_basis, else the reply's "estimated from spot" label)
         # against the basis OUR rule gives from the live quotes (ADR-061: fewer than 3 live two-sided strikes = spot)
         label = f"{est.get('status_label') or ''} {est.get('output_label') or ''}"
