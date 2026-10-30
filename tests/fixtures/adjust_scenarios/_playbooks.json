@@ -1,0 +1,2331 @@
+{
+ "source": "Published mockup screen 4 (claude.ai artifact RwzCxhDod7yVCk6TWrQc9e) and docs/research/adjustments-catalogue-2026-10-30.md Part 3 (incl. variants) and PB-04; ADR-214 (4a)-(4d)",
+ "status": "DRAFT: playbook numbers await owner approval (catalogue Part 9b question 1)",
+ "stages": {
+  "weekly": [
+   {
+    "name": "Early",
+    "from": 5,
+    "to": null
+   },
+   {
+    "name": "Middle",
+    "from": 2,
+    "to": 4
+   },
+   {
+    "name": "Last day",
+    "from": 0,
+    "to": 1
+   }
+  ],
+  "monthly": [
+   {
+    "name": "Early",
+    "from": 10,
+    "to": null
+   },
+   {
+    "name": "Middle",
+    "from": 3,
+    "to": 9
+   },
+   {
+    "name": "Last 2 days",
+    "from": 0,
+    "to": 2
+   }
+  ]
+ },
+ "triggers": {
+  "T-01": {
+   "label": "Spot within this % of a short strike",
+   "unit": "%",
+   "cmp": "le",
+   "weekly": [
+    "0.75",
+    "0.5",
+    "0.3"
+   ],
+   "monthly": [
+    "1.5",
+    "1.0",
+    "0.5"
+   ],
+   "on_by_default": true,
+   "data": "ok"
+  },
+  "T-01b": {
+   "label": "Spot within this many points of a short strike",
+   "unit": "pts",
+   "cmp": "le",
+   "weekly": [
+    "180",
+    "120",
+    "70"
+   ],
+   "monthly": [
+    "350",
+    "240",
+    "120"
+   ],
+   "on_by_default": false,
+   "data": "ok"
+  },
+  "T-02": {
+   "label": "Spot crosses a breakeven",
+   "unit": "",
+   "cmp": "",
+   "weekly": null,
+   "monthly": null,
+   "on_by_default": true,
+   "data": "ok"
+  },
+  "T-12": {
+   "label": "Spot has moved this many expected moves (SD) since entry",
+   "unit": "SD",
+   "cmp": "ge",
+   "weekly": [
+    "1",
+    "1",
+    "1"
+   ],
+   "monthly": [
+    "1",
+    "1",
+    "1"
+   ],
+   "on_by_default": false,
+   "data": "ok"
+  },
+  "T-13": {
+   "label": "Gap at the open of at least this %",
+   "unit": "%",
+   "cmp": "ge",
+   "weekly": [
+    "0.75",
+    "0.75",
+    "0.5"
+   ],
+   "monthly": [
+    "1",
+    "1",
+    "0.75"
+   ],
+   "on_by_default": true,
+   "data": "ok"
+  },
+  "T-20": {
+   "label": "Spot crosses a level you set (support / resistance)",
+   "unit": "pts",
+   "cmp": "",
+   "weekly": null,
+   "monthly": null,
+   "on_by_default": false,
+   "data": "user"
+  },
+  "T-20b": {
+   "label": "Market trending vs range-bound",
+   "unit": "",
+   "cmp": "",
+   "weekly": null,
+   "monthly": null,
+   "on_by_default": false,
+   "data": "hist"
+  },
+  "T-03": {
+   "label": "Tested short's delta reaches",
+   "unit": "delta",
+   "cmp": "ge",
+   "weekly": [
+    "0.30",
+    "0.35",
+    "0.40"
+   ],
+   "monthly": [
+    "0.25",
+    "0.30",
+    "0.35"
+   ],
+   "on_by_default": true,
+   "data": "ok"
+  },
+  "T-04": {
+   "label": "Net delta beyond +/- this per lot",
+   "unit": "delta/lot",
+   "cmp": "ge",
+   "weekly": [
+    "0.15",
+    "0.15",
+    "0.20"
+   ],
+   "monthly": [
+    "0.15",
+    "0.15",
+    "0.20"
+   ],
+   "on_by_default": false,
+   "data": "ok"
+  },
+  "T-14": {
+   "label": "Loss from a 1% move (gamma) at least this % of margin",
+   "unit": "%",
+   "cmp": "ge",
+   "weekly": [
+    "3",
+    "3",
+    "2"
+   ],
+   "monthly": [
+    "4",
+    "3",
+    "2"
+   ],
+   "on_by_default": true,
+   "data": "ok"
+  },
+  "T-14v": {
+   "label": "Loss from +1 IV point (vega) at least this % of max profit",
+   "unit": "%",
+   "cmp": "ge",
+   "weekly": [
+    "10",
+    "10",
+    "10"
+   ],
+   "monthly": [
+    "15",
+    "15",
+    "10"
+   ],
+   "on_by_default": false,
+   "data": "ok"
+  },
+  "T-14t": {
+   "label": "Theta per day falls below this % of premium left",
+   "unit": "%",
+   "cmp": "le",
+   "weekly": [
+    "5",
+    "5",
+    "5"
+   ],
+   "monthly": [
+    "3",
+    "3",
+    "3"
+   ],
+   "on_by_default": false,
+   "data": "ok"
+  },
+  "T-11": {
+   "label": "Options' IV changed this many points since entry",
+   "unit": "pts",
+   "cmp": "ge",
+   "weekly": [
+    "3",
+    "3",
+    "4"
+   ],
+   "monthly": [
+    "3",
+    "3",
+    "4"
+   ],
+   "on_by_default": true,
+   "data": "ok"
+  },
+  "T-11b": {
+   "label": "India VIX up this % today",
+   "unit": "%",
+   "cmp": "ge",
+   "weekly": [
+    "10",
+    "10",
+    "10"
+   ],
+   "monthly": [
+    "10",
+    "10",
+    "10"
+   ],
+   "on_by_default": false,
+   "data": "vix"
+  },
+  "T-11c": {
+   "label": "IV percentile above",
+   "unit": "%",
+   "cmp": "ge",
+   "weekly": [
+    "80",
+    "80",
+    "80"
+   ],
+   "monthly": [
+    "80",
+    "80",
+    "80"
+   ],
+   "on_by_default": false,
+   "data": "hist"
+  },
+  "T-06": {
+   "label": "Loss reaches this % of max loss",
+   "unit": "%",
+   "cmp": "ge",
+   "weekly": [
+    "50",
+    "50",
+    "40"
+   ],
+   "monthly": [
+    "50",
+    "50",
+    "40"
+   ],
+   "on_by_default": true,
+   "data": "ok"
+  },
+  "T-06b": {
+   "label": "Loss reaches this many x the credit received",
+   "unit": "x",
+   "cmp": "ge",
+   "weekly": [
+    "1",
+    "1",
+    "0.75"
+   ],
+   "monthly": [
+    "1.5",
+    "1",
+    "0.75"
+   ],
+   "on_by_default": false,
+   "data": "ok"
+  },
+  "T-07": {
+   "label": "Profit reaches this % of max profit",
+   "unit": "%",
+   "cmp": "ge",
+   "weekly": [
+    "50",
+    "50",
+    "80"
+   ],
+   "monthly": [
+    "50",
+    "50",
+    "75"
+   ],
+   "on_by_default": true,
+   "data": "ok"
+  },
+  "T-05": {
+   "label": "One side's value is this many x the other side's",
+   "unit": "x",
+   "cmp": "ge",
+   "weekly": [
+    "3",
+    "3",
+    "4"
+   ],
+   "monthly": [
+    "3",
+    "3",
+    "4"
+   ],
+   "on_by_default": false,
+   "data": "ok"
+  },
+  "T-08": {
+   "label": "A leg's premium reaches this many x its entry (leg stop)",
+   "unit": "x",
+   "cmp": "ge",
+   "weekly": [
+    "2",
+    "2",
+    "2.5"
+   ],
+   "monthly": [
+    "2",
+    "2",
+    "2.5"
+   ],
+   "on_by_default": false,
+   "data": "ok"
+  },
+  "T-09": {
+   "label": "A short leg's premium falls below Rs (close for pennies)",
+   "unit": "Rs",
+   "cmp": "le",
+   "weekly": [
+    "3",
+    "3",
+    "2"
+   ],
+   "monthly": [
+    "3",
+    "3",
+    "2"
+   ],
+   "on_by_default": true,
+   "data": "ok"
+  },
+  "T-19": {
+   "label": "Premium still left to earn is below this many x the adjustment's cost",
+   "unit": "x",
+   "cmp": "le",
+   "weekly": [
+    "2",
+    "2",
+    "2"
+   ],
+   "monthly": [
+    "2",
+    "2",
+    "2"
+   ],
+   "on_by_default": true,
+   "data": "ok"
+  },
+  "T-16": {
+   "label": "Loss reaches this % of the margin blocked",
+   "unit": "%",
+   "cmp": "ge",
+   "weekly": [
+    "4",
+    "4",
+    "3"
+   ],
+   "monthly": [
+    "4",
+    "4",
+    "3"
+   ],
+   "on_by_default": true,
+   "data": "ok"
+  },
+  "T-10b": {
+   "label": "Clock time reached (checked in this stage)",
+   "unit": "time",
+   "cmp": "ge",
+   "weekly": [
+    "",
+    "",
+    "14:30"
+   ],
+   "monthly": [
+    "",
+    "",
+    "14:30"
+   ],
+   "on_by_default": true,
+   "data": "ok"
+  },
+  "T-15": {
+   "label": "Margin used reaches this % of available",
+   "unit": "%",
+   "cmp": "ge",
+   "weekly": [
+    "80",
+    "80",
+    "80"
+   ],
+   "monthly": [
+    "80",
+    "80",
+    "80"
+   ],
+   "on_by_default": false,
+   "data": "ok"
+  },
+  "T-18": {
+   "label": "Adjustments used reach the plan's maximum",
+   "unit": "",
+   "cmp": "",
+   "weekly": null,
+   "monthly": null,
+   "on_by_default": true,
+   "data": "ok"
+  },
+  "T-21": {
+   "label": "Prices stale or missing (no suggestion is made)",
+   "unit": "",
+   "cmp": "",
+   "weekly": null,
+   "monthly": null,
+   "on_by_default": true,
+   "data": "ok"
+  }
+ },
+ "evaluated_in_library": [
+  "T-01",
+  "T-02",
+  "T-03",
+  "T-06",
+  "T-07",
+  "T-09",
+  "T-10b",
+  "T-11",
+  "T-13",
+  "T-16",
+  "T-18",
+  "T-19",
+  "T-21"
+ ],
+ "not_evaluated_in_library": {
+  "T-14": "Loss-from-a-1%-move formula not settled; defined in the GC-ADJ1 build"
+ },
+ "approaches": {
+  "A-01": {
+   "label": "Roll the untested side toward spot",
+   "on_by_default": true,
+   "note": ""
+  },
+  "A-02": {
+   "label": "Roll the tested short away",
+   "on_by_default": true,
+   "note": ""
+  },
+  "A-05": {
+   "label": "Roll the tested spread (keep width)",
+   "on_by_default": true,
+   "note": ""
+  },
+  "A-03": {
+   "label": "Roll out in time (same strikes, next expiry)",
+   "on_by_default": false,
+   "note": "Avoid if an event falls before the new expiry"
+  },
+  "A-04": {
+   "label": "Roll up/down and out (diagonal roll)",
+   "on_by_default": true,
+   "note": ""
+  },
+  "A-06": {
+   "label": "Shift a leg by +/- N strikes",
+   "on_by_default": true,
+   "note": "Building block for every roll"
+  },
+  "A-07": {
+   "label": "Re-centre / reset around spot",
+   "on_by_default": false,
+   "note": "Max once per expiry"
+  },
+  "A-08": {
+   "label": "Straddle-ise (move the untested short to the tested strike)",
+   "on_by_default": false,
+   "note": ""
+  },
+  "A-09": {
+   "label": "Add wings (cap the loss)",
+   "on_by_default": true,
+   "note": "Before an event or overnight"
+  },
+  "A-10": {
+   "label": "Inverted strangle",
+   "on_by_default": false,
+   "note": "Locks in the strike gap as a loss"
+  },
+  "A-11": {
+   "label": "Convert to iron butterfly",
+   "on_by_default": true,
+   "note": "Only with 3+ days left"
+  },
+  "A-12": {
+   "label": "Convert to a (broken-wing) butterfly",
+   "on_by_default": false,
+   "note": ""
+  },
+  "A-13": {
+   "label": "Jade lizard (no risk on one side)",
+   "on_by_default": false,
+   "note": "Only when credit > call-spread width"
+  },
+  "A-14": {
+   "label": "Calendar / diagonal on the tested side",
+   "on_by_default": false,
+   "note": "Shows the expiry-day margin change"
+  },
+  "A-15": {
+   "label": "Ratio fix (buy back the extra short or add a far long)",
+   "on_by_default": true,
+   "note": ""
+  },
+  "A-16": {
+   "label": "Long option to debit spread",
+   "on_by_default": true,
+   "note": ""
+  },
+  "A-17": {
+   "label": "Roll a winning long up and take capital out",
+   "on_by_default": true,
+   "note": ""
+  },
+  "A-18": {
+   "label": "Gamma scalp with futures",
+   "on_by_default": true,
+   "note": ""
+  },
+  "A-19": {
+   "label": "Add a second calendar at the new spot",
+   "on_by_default": true,
+   "note": ""
+  },
+  "A-20": {
+   "label": "Delta hedge with futures",
+   "on_by_default": false,
+   "note": "For large size; margin heavy"
+  },
+  "A-21": {
+   "label": "Delta hedge with a synthetic future",
+   "on_by_default": false,
+   "note": ""
+  },
+  "A-22": {
+   "label": "Debit spread in the direction of the breach",
+   "on_by_default": false,
+   "note": ""
+  },
+  "A-23": {
+   "label": "Delta-neutral helper (calculator)",
+   "on_by_default": true,
+   "note": "A tool, not an order"
+  },
+  "A-24": {
+   "label": "Take profit, whole strategy",
+   "on_by_default": true,
+   "note": ""
+  },
+  "A-25": {
+   "label": "Take partial profit (close X%)",
+   "on_by_default": true,
+   "note": ""
+  },
+  "A-26": {
+   "label": "Close the untested side for profit",
+   "on_by_default": true,
+   "note": ""
+  },
+  "A-27": {
+   "label": "Buy back cheap shorts",
+   "on_by_default": true,
+   "note": ""
+  },
+  "A-28": {
+   "label": "Close the tested leg or spread",
+   "on_by_default": true,
+   "note": ""
+  },
+  "A-29": {
+   "label": "Reduce lots on the tested side",
+   "on_by_default": true,
+   "note": ""
+  },
+  "A-31": {
+   "label": "Exit whole strategy",
+   "on_by_default": true,
+   "note": ""
+  },
+  "A-35": {
+   "label": "Time exit",
+   "on_by_default": true,
+   "note": ""
+  },
+  "A-32": {
+   "label": "Stop-loss per leg",
+   "on_by_default": false,
+   "note": "Mostly an intraday style"
+  },
+  "A-33": {
+   "label": "Move stop to cost after one stop",
+   "on_by_default": false,
+   "note": ""
+  },
+  "A-34": {
+   "label": "Re-enter after a stop",
+   "on_by_default": false,
+   "note": ""
+  },
+  "A-30": {
+   "label": "Add lots to the tested side",
+   "on_by_default": false,
+   "note": "Adds risk at the worst time"
+  },
+  "A-36": {
+   "label": "No change (always shown as the baseline)",
+   "on_by_default": true,
+   "note": ""
+  },
+  "A-37": {
+   "label": "Alert only / watch a level",
+   "on_by_default": true,
+   "note": ""
+  },
+  "A-38": {
+   "label": "Pause monitoring until a time",
+   "on_by_default": true,
+   "note": "e.g. after a gap, until 09:30"
+  }
+ },
+ "exit_or_reduce_after_limit": [
+  "A-23",
+  "A-24",
+  "A-25",
+  "A-26",
+  "A-27",
+  "A-28",
+  "A-29",
+  "A-31",
+  "A-35",
+  "A-36",
+  "A-37",
+  "A-38"
+ ],
+ "day_rule_kinds": {
+  "weekday": "Every week on",
+  "beforeWeekend": "The last session before a weekend",
+  "beforeHoliday": "The day before a market holiday",
+  "afterBreak": "The first session after a weekend or holiday",
+  "expiry": "Expiry day",
+  "beforeExpiry": "The day before expiry",
+  "monthlyWeek": "Monthly-expiry week",
+  "dom": "Day of the month",
+  "date": "A specific date",
+  "event": "A known event day (needs the admin event list)",
+  "away": "My unavailable days (fires the session before the first day)"
+ },
+ "day_rule_actions": [
+  "Run the carry check (overnight margin, gap loss)",
+  "Show reduce / partial profit / exit",
+  "Show add-hedge where it applies",
+  "Pause suggestions",
+  "Tighten every trigger by this %",
+  "Prepare an exit for review",
+  "Do not suggest rolls"
+ ],
+ "day_rules": [
+  {
+   "on": true,
+   "when": "beforeWeekend",
+   "at": "15:00",
+   "action": 0
+  },
+  {
+   "on": true,
+   "when": "beforeHoliday",
+   "at": "15:00",
+   "action": 0
+  },
+  {
+   "on": true,
+   "when": "expiry",
+   "at": "13:00",
+   "action": 4,
+   "percent": "20"
+  },
+  {
+   "on": false,
+   "when": "away",
+   "at": "14:30",
+   "action": 1,
+   "from": "",
+   "to": ""
+  },
+  {
+   "on": false,
+   "when": "event",
+   "at": "14:30",
+   "action": 1
+  }
+ ],
+ "situations": {
+  "S-01": {
+   "name": "Gap at the open",
+   "rule": "Wait until 09:30 before suggesting, unless a short opens in the money"
+  },
+  "S-02": {
+   "name": "Trending day",
+   "rule": "Show early rolls when net delta grows past 0.15 per lot"
+  },
+  "S-03": {
+   "name": "Range day",
+   "rule": "Show only the profit target; no adjustments"
+  },
+  "S-04": {
+   "name": "IV jumps without a big move",
+   "rule": "Show where the P&L came from; suggest No change unless an event is within 1 session"
+  },
+  "S-05": {
+   "name": "IV crush after an event",
+   "rule": "Show take-profit at 40% of max profit"
+  },
+  "S-06": {
+   "name": "Afternoon carry check",
+   "rule": "At 15:00: show overnight margin and the loss at +/-2% gap"
+  },
+  "S-07": {
+   "name": "Expiry day",
+   "rule": "From 13:00: buy back shorts below Rs 2; close a position whose short is within 0.3% by 14:30; warn about STT on in-the-money options"
+  },
+  "S-10": {
+   "name": "Broker or data outage",
+   "rule": "No suggestion; show the last good data and its age"
+  },
+  "S-11": {
+   "name": "Adjustment limit reached",
+   "rule": "Only exit and reduce are offered"
+  },
+  "S-12": {
+   "name": "Big win early",
+   "rule": "If profit reaches 40% of max profit on day 1, show take profit"
+  }
+ },
+ "guards": {
+  "profit_target_pct_of_max_profit": "50",
+  "stop_line_pct_of_max_loss": "50",
+  "max_adjustments": 2,
+  "entry_guide": "shorts at 0.15 to 0.20 delta, wings 200 to 400 points out",
+  "warn_cost_pct_of_premium_left": "50",
+  "roll_debit_limit": "Rs 500 or 10% of max profit",
+  "hide_spread_pct_of_mid_above": "5",
+  "hide_oi_below": 10000,
+  "order_sequence": "buy legs first; buy back shorts before selling hedges"
+ },
+ "families": {
+  "strangle": {
+   "name": "Short strangle: system default",
+   "system": true,
+   "status": "DRAFT",
+   "triggers_on": [
+    "T-01",
+    "T-02",
+    "T-13",
+    "T-03",
+    "T-14",
+    "T-11",
+    "T-06",
+    "T-07",
+    "T-09",
+    "T-19",
+    "T-16",
+    "T-10b",
+    "T-18",
+    "T-21"
+   ],
+   "triggers_greyed": [
+    {
+     "id": "T-20b",
+     "reason": "Needs price history (not in V1)"
+    },
+    {
+     "id": "T-11c",
+     "reason": "Needs price history (not in V1)"
+    }
+   ],
+   "approaches": {
+    "applicable": [
+     "A-01",
+     "A-02",
+     "A-04",
+     "A-06",
+     "A-09",
+     "A-23",
+     "A-24",
+     "A-25",
+     "A-26",
+     "A-27",
+     "A-28",
+     "A-29",
+     "A-31",
+     "A-35",
+     "A-36",
+     "A-37",
+     "A-38"
+    ],
+    "off_in_playbook": [
+     "A-03",
+     "A-07",
+     "A-08",
+     "A-10",
+     "A-14",
+     "A-20",
+     "A-21",
+     "A-22",
+     "A-32",
+     "A-33",
+     "A-34",
+     "A-30"
+    ],
+    "greyed": [
+     {
+      "id": "A-05",
+      "reason": "No spread to roll"
+     },
+     {
+      "id": "A-11",
+      "reason": "Iron condors only"
+     },
+     {
+      "id": "A-12",
+      "reason": "Needs a credit spread"
+     },
+     {
+      "id": "A-13",
+      "reason": "Needs a short put"
+     },
+     {
+      "id": "A-15",
+      "reason": "Ratio spreads only"
+     },
+     {
+      "id": "A-16",
+      "reason": "Long options only"
+     },
+     {
+      "id": "A-17",
+      "reason": "Long options only"
+     },
+     {
+      "id": "A-18",
+      "reason": "Long volatility only"
+     },
+     {
+      "id": "A-19",
+      "reason": "Calendars only"
+     }
+    ]
+   }
+  },
+  "straddle": {
+   "name": "Short straddle: system default",
+   "system": true,
+   "status": "DRAFT",
+   "triggers_on": [
+    "T-01",
+    "T-02",
+    "T-13",
+    "T-03",
+    "T-14",
+    "T-11",
+    "T-06",
+    "T-07",
+    "T-09",
+    "T-19",
+    "T-16",
+    "T-10b",
+    "T-18",
+    "T-21"
+   ],
+   "triggers_greyed": [
+    {
+     "id": "T-20b",
+     "reason": "Needs price history (not in V1)"
+    },
+    {
+     "id": "T-11c",
+     "reason": "Needs price history (not in V1)"
+    }
+   ],
+   "approaches": {
+    "applicable": [
+     "A-01",
+     "A-02",
+     "A-04",
+     "A-06",
+     "A-09",
+     "A-23",
+     "A-24",
+     "A-25",
+     "A-26",
+     "A-27",
+     "A-28",
+     "A-29",
+     "A-31",
+     "A-35",
+     "A-36",
+     "A-37",
+     "A-38"
+    ],
+    "off_in_playbook": [
+     "A-03",
+     "A-07",
+     "A-14",
+     "A-20",
+     "A-21",
+     "A-22",
+     "A-32",
+     "A-33",
+     "A-34",
+     "A-30"
+    ],
+    "greyed": [
+     {
+      "id": "A-05",
+      "reason": "No spread to roll"
+     },
+     {
+      "id": "A-08",
+      "reason": "Strangles only"
+     },
+     {
+      "id": "A-10",
+      "reason": "Strangles only"
+     },
+     {
+      "id": "A-11",
+      "reason": "Iron condors only"
+     },
+     {
+      "id": "A-12",
+      "reason": "Needs a credit spread"
+     },
+     {
+      "id": "A-13",
+      "reason": "Needs a short put"
+     },
+     {
+      "id": "A-15",
+      "reason": "Ratio spreads only"
+     },
+     {
+      "id": "A-16",
+      "reason": "Long options only"
+     },
+     {
+      "id": "A-17",
+      "reason": "Long options only"
+     },
+     {
+      "id": "A-18",
+      "reason": "Long volatility only"
+     },
+     {
+      "id": "A-19",
+      "reason": "Calendars only"
+     }
+    ]
+   }
+  },
+  "ic": {
+   "name": "Iron condor: system default",
+   "system": true,
+   "status": "DRAFT",
+   "triggers_on": [
+    "T-01",
+    "T-02",
+    "T-13",
+    "T-03",
+    "T-14",
+    "T-11",
+    "T-06",
+    "T-07",
+    "T-09",
+    "T-19",
+    "T-16",
+    "T-10b",
+    "T-18",
+    "T-21"
+   ],
+   "triggers_greyed": [
+    {
+     "id": "T-20b",
+     "reason": "Needs price history (not in V1)"
+    },
+    {
+     "id": "T-11c",
+     "reason": "Needs price history (not in V1)"
+    }
+   ],
+   "approaches": {
+    "applicable": [
+     "A-01",
+     "A-02",
+     "A-05",
+     "A-04",
+     "A-06",
+     "A-11",
+     "A-23",
+     "A-24",
+     "A-25",
+     "A-26",
+     "A-27",
+     "A-28",
+     "A-29",
+     "A-31",
+     "A-35",
+     "A-36",
+     "A-37",
+     "A-38"
+    ],
+    "off_in_playbook": [
+     "A-03",
+     "A-07",
+     "A-12",
+     "A-13",
+     "A-14",
+     "A-20",
+     "A-21",
+     "A-22",
+     "A-32",
+     "A-33",
+     "A-34",
+     "A-30"
+    ],
+    "greyed": [
+     {
+      "id": "A-08",
+      "reason": "Strangles only"
+     },
+     {
+      "id": "A-09",
+      "reason": "Loss already capped"
+     },
+     {
+      "id": "A-10",
+      "reason": "Strangles only"
+     },
+     {
+      "id": "A-15",
+      "reason": "Ratio spreads only"
+     },
+     {
+      "id": "A-16",
+      "reason": "Long options only"
+     },
+     {
+      "id": "A-17",
+      "reason": "Long options only"
+     },
+     {
+      "id": "A-18",
+      "reason": "Long volatility only"
+     },
+     {
+      "id": "A-19",
+      "reason": "Calendars only"
+     }
+    ]
+   }
+  },
+  "ifly": {
+   "name": "Iron butterfly: system default",
+   "system": true,
+   "status": "DRAFT",
+   "triggers_on": [
+    "T-01",
+    "T-02",
+    "T-13",
+    "T-03",
+    "T-14",
+    "T-11",
+    "T-06",
+    "T-07",
+    "T-09",
+    "T-19",
+    "T-16",
+    "T-10b",
+    "T-18",
+    "T-21"
+   ],
+   "triggers_greyed": [
+    {
+     "id": "T-20b",
+     "reason": "Needs price history (not in V1)"
+    },
+    {
+     "id": "T-11c",
+     "reason": "Needs price history (not in V1)"
+    }
+   ],
+   "approaches": {
+    "applicable": [
+     "A-01",
+     "A-02",
+     "A-05",
+     "A-04",
+     "A-06",
+     "A-23",
+     "A-24",
+     "A-25",
+     "A-26",
+     "A-27",
+     "A-28",
+     "A-29",
+     "A-31",
+     "A-35",
+     "A-36",
+     "A-37",
+     "A-38"
+    ],
+    "off_in_playbook": [
+     "A-03",
+     "A-07",
+     "A-14",
+     "A-20",
+     "A-21",
+     "A-22",
+     "A-32",
+     "A-33",
+     "A-34",
+     "A-30"
+    ],
+    "greyed": [
+     {
+      "id": "A-08",
+      "reason": "Strangles only"
+     },
+     {
+      "id": "A-09",
+      "reason": "Loss already capped"
+     },
+     {
+      "id": "A-10",
+      "reason": "Strangles only"
+     },
+     {
+      "id": "A-11",
+      "reason": "Iron condors only"
+     },
+     {
+      "id": "A-12",
+      "reason": "Needs a credit spread"
+     },
+     {
+      "id": "A-13",
+      "reason": "Needs a short put"
+     },
+     {
+      "id": "A-15",
+      "reason": "Ratio spreads only"
+     },
+     {
+      "id": "A-16",
+      "reason": "Long options only"
+     },
+     {
+      "id": "A-17",
+      "reason": "Long options only"
+     },
+     {
+      "id": "A-18",
+      "reason": "Long volatility only"
+     },
+     {
+      "id": "A-19",
+      "reason": "Calendars only"
+     }
+    ]
+   }
+  },
+  "credit": {
+   "name": "Credit spreads: system default",
+   "system": true,
+   "status": "DRAFT",
+   "triggers_on": [
+    "T-01",
+    "T-02",
+    "T-13",
+    "T-03",
+    "T-14",
+    "T-11",
+    "T-06",
+    "T-07",
+    "T-09",
+    "T-19",
+    "T-16",
+    "T-10b",
+    "T-18",
+    "T-21"
+   ],
+   "triggers_greyed": [
+    {
+     "id": "T-20b",
+     "reason": "Needs price history (not in V1)"
+    },
+    {
+     "id": "T-11c",
+     "reason": "Needs price history (not in V1)"
+    },
+    {
+     "id": "T-05",
+     "reason": "Needs a call side and a put side"
+    }
+   ],
+   "approaches": {
+    "applicable": [
+     "A-02",
+     "A-05",
+     "A-04",
+     "A-06",
+     "A-23",
+     "A-24",
+     "A-25",
+     "A-27",
+     "A-28",
+     "A-29",
+     "A-31",
+     "A-35",
+     "A-36",
+     "A-37",
+     "A-38"
+    ],
+    "off_in_playbook": [
+     "A-03",
+     "A-12",
+     "A-13",
+     "A-14",
+     "A-20",
+     "A-21",
+     "A-22",
+     "A-32",
+     "A-33",
+     "A-34",
+     "A-30"
+    ],
+    "greyed": [
+     {
+      "id": "A-01",
+      "reason": "Needs two sides"
+     },
+     {
+      "id": "A-07",
+      "reason": "Not a range trade"
+     },
+     {
+      "id": "A-08",
+      "reason": "Strangles only"
+     },
+     {
+      "id": "A-09",
+      "reason": "Loss already capped"
+     },
+     {
+      "id": "A-10",
+      "reason": "Strangles only"
+     },
+     {
+      "id": "A-11",
+      "reason": "Iron condors only"
+     },
+     {
+      "id": "A-15",
+      "reason": "Ratio spreads only"
+     },
+     {
+      "id": "A-16",
+      "reason": "Long options only"
+     },
+     {
+      "id": "A-17",
+      "reason": "Long options only"
+     },
+     {
+      "id": "A-18",
+      "reason": "Long volatility only"
+     },
+     {
+      "id": "A-19",
+      "reason": "Calendars only"
+     },
+     {
+      "id": "A-26",
+      "reason": "Needs two sides"
+     }
+    ]
+   }
+  },
+  "debit": {
+   "name": "Debit spreads: system default",
+   "system": true,
+   "status": "DRAFT",
+   "triggers_on": [
+    "T-01",
+    "T-02",
+    "T-13",
+    "T-03",
+    "T-14",
+    "T-11",
+    "T-06",
+    "T-07",
+    "T-16",
+    "T-10b",
+    "T-18",
+    "T-21"
+   ],
+   "triggers_greyed": [
+    {
+     "id": "T-20b",
+     "reason": "Needs price history (not in V1)"
+    },
+    {
+     "id": "T-11c",
+     "reason": "Needs price history (not in V1)"
+    },
+    {
+     "id": "T-06b",
+     "reason": "No credit received"
+    },
+    {
+     "id": "T-05",
+     "reason": "Needs a call side and a put side"
+    },
+    {
+     "id": "T-09",
+     "reason": "No short leg"
+    },
+    {
+     "id": "T-19",
+     "reason": "No premium to earn"
+    }
+   ],
+   "approaches": {
+    "applicable": [
+     "A-05",
+     "A-06",
+     "A-23",
+     "A-24",
+     "A-25",
+     "A-28",
+     "A-29",
+     "A-31",
+     "A-35",
+     "A-36",
+     "A-37",
+     "A-38"
+    ],
+    "off_in_playbook": [
+     "A-03",
+     "A-20",
+     "A-21",
+     "A-32",
+     "A-33",
+     "A-34",
+     "A-30"
+    ],
+    "greyed": [
+     {
+      "id": "A-01",
+      "reason": "Needs two sides"
+     },
+     {
+      "id": "A-02",
+      "reason": "No short leg"
+     },
+     {
+      "id": "A-04",
+      "reason": "No short leg"
+     },
+     {
+      "id": "A-07",
+      "reason": "Not a range trade"
+     },
+     {
+      "id": "A-08",
+      "reason": "Strangles only"
+     },
+     {
+      "id": "A-09",
+      "reason": "Loss already capped"
+     },
+     {
+      "id": "A-10",
+      "reason": "Strangles only"
+     },
+     {
+      "id": "A-11",
+      "reason": "Iron condors only"
+     },
+     {
+      "id": "A-12",
+      "reason": "Needs a credit spread"
+     },
+     {
+      "id": "A-13",
+      "reason": "Needs a short put"
+     },
+     {
+      "id": "A-14",
+      "reason": "No short leg"
+     },
+     {
+      "id": "A-15",
+      "reason": "Ratio spreads only"
+     },
+     {
+      "id": "A-16",
+      "reason": "Long options only"
+     },
+     {
+      "id": "A-17",
+      "reason": "Long options only"
+     },
+     {
+      "id": "A-18",
+      "reason": "Long volatility only"
+     },
+     {
+      "id": "A-19",
+      "reason": "Calendars only"
+     },
+     {
+      "id": "A-22",
+      "reason": "No short side to protect"
+     },
+     {
+      "id": "A-26",
+      "reason": "Needs two sides"
+     },
+     {
+      "id": "A-27",
+      "reason": "No short leg"
+     }
+    ]
+   }
+  },
+  "longopt": {
+   "name": "Single long option: system default",
+   "system": true,
+   "status": "DRAFT",
+   "triggers_on": [
+    "T-02",
+    "T-13",
+    "T-14",
+    "T-11",
+    "T-06",
+    "T-07",
+    "T-16",
+    "T-10b",
+    "T-18",
+    "T-21"
+   ],
+   "triggers_greyed": [
+    {
+     "id": "T-01",
+     "reason": "No short strike"
+    },
+    {
+     "id": "T-01b",
+     "reason": "No short strike"
+    },
+    {
+     "id": "T-20b",
+     "reason": "Needs price history (not in V1)"
+    },
+    {
+     "id": "T-03",
+     "reason": "No short leg"
+    },
+    {
+     "id": "T-14t",
+     "reason": "Long options pay theta"
+    },
+    {
+     "id": "T-11c",
+     "reason": "Needs price history (not in V1)"
+    },
+    {
+     "id": "T-06b",
+     "reason": "No credit received"
+    },
+    {
+     "id": "T-05",
+     "reason": "Needs a call side and a put side"
+    },
+    {
+     "id": "T-09",
+     "reason": "No short leg"
+    },
+    {
+     "id": "T-19",
+     "reason": "No premium to earn"
+    }
+   ],
+   "approaches": {
+    "applicable": [
+     "A-06",
+     "A-16",
+     "A-17",
+     "A-23",
+     "A-24",
+     "A-25",
+     "A-28",
+     "A-29",
+     "A-31",
+     "A-35",
+     "A-36",
+     "A-37",
+     "A-38"
+    ],
+    "off_in_playbook": [
+     "A-03",
+     "A-20",
+     "A-21",
+     "A-32",
+     "A-33",
+     "A-34",
+     "A-30"
+    ],
+    "greyed": [
+     {
+      "id": "A-01",
+      "reason": "Needs two sides"
+     },
+     {
+      "id": "A-02",
+      "reason": "No short leg"
+     },
+     {
+      "id": "A-05",
+      "reason": "No spread to roll"
+     },
+     {
+      "id": "A-04",
+      "reason": "No short leg"
+     },
+     {
+      "id": "A-07",
+      "reason": "Not a range trade"
+     },
+     {
+      "id": "A-08",
+      "reason": "Strangles only"
+     },
+     {
+      "id": "A-09",
+      "reason": "Loss already capped"
+     },
+     {
+      "id": "A-10",
+      "reason": "Strangles only"
+     },
+     {
+      "id": "A-11",
+      "reason": "Iron condors only"
+     },
+     {
+      "id": "A-12",
+      "reason": "Needs a credit spread"
+     },
+     {
+      "id": "A-13",
+      "reason": "Needs a short put"
+     },
+     {
+      "id": "A-14",
+      "reason": "No short leg"
+     },
+     {
+      "id": "A-15",
+      "reason": "Ratio spreads only"
+     },
+     {
+      "id": "A-18",
+      "reason": "Long volatility only"
+     },
+     {
+      "id": "A-19",
+      "reason": "Calendars only"
+     },
+     {
+      "id": "A-22",
+      "reason": "No short side to protect"
+     },
+     {
+      "id": "A-26",
+      "reason": "Needs two sides"
+     },
+     {
+      "id": "A-27",
+      "reason": "No short leg"
+     }
+    ]
+   }
+  },
+  "longvol": {
+   "name": "Long straddle / strangle: system default",
+   "system": true,
+   "status": "DRAFT",
+   "triggers_on": [
+    "T-02",
+    "T-13",
+    "T-14",
+    "T-11",
+    "T-06",
+    "T-07",
+    "T-16",
+    "T-10b",
+    "T-18",
+    "T-21"
+   ],
+   "triggers_greyed": [
+    {
+     "id": "T-01",
+     "reason": "No short strike"
+    },
+    {
+     "id": "T-01b",
+     "reason": "No short strike"
+    },
+    {
+     "id": "T-20b",
+     "reason": "Needs price history (not in V1)"
+    },
+    {
+     "id": "T-03",
+     "reason": "No short leg"
+    },
+    {
+     "id": "T-14t",
+     "reason": "Long options pay theta"
+    },
+    {
+     "id": "T-11c",
+     "reason": "Needs price history (not in V1)"
+    },
+    {
+     "id": "T-06b",
+     "reason": "No credit received"
+    },
+    {
+     "id": "T-05",
+     "reason": "Needs a call side and a put side"
+    },
+    {
+     "id": "T-09",
+     "reason": "No short leg"
+    },
+    {
+     "id": "T-19",
+     "reason": "No premium to earn"
+    }
+   ],
+   "approaches": {
+    "applicable": [
+     "A-06",
+     "A-18",
+     "A-23",
+     "A-24",
+     "A-25",
+     "A-28",
+     "A-29",
+     "A-31",
+     "A-35",
+     "A-36",
+     "A-37",
+     "A-38"
+    ],
+    "off_in_playbook": [
+     "A-03",
+     "A-20",
+     "A-21",
+     "A-32",
+     "A-33",
+     "A-34",
+     "A-30"
+    ],
+    "greyed": [
+     {
+      "id": "A-01",
+      "reason": "Needs two sides"
+     },
+     {
+      "id": "A-02",
+      "reason": "No short leg"
+     },
+     {
+      "id": "A-05",
+      "reason": "No spread to roll"
+     },
+     {
+      "id": "A-04",
+      "reason": "No short leg"
+     },
+     {
+      "id": "A-07",
+      "reason": "Not a range trade"
+     },
+     {
+      "id": "A-08",
+      "reason": "Strangles only"
+     },
+     {
+      "id": "A-09",
+      "reason": "Loss already capped"
+     },
+     {
+      "id": "A-10",
+      "reason": "Strangles only"
+     },
+     {
+      "id": "A-11",
+      "reason": "Iron condors only"
+     },
+     {
+      "id": "A-12",
+      "reason": "Needs a credit spread"
+     },
+     {
+      "id": "A-13",
+      "reason": "Needs a short put"
+     },
+     {
+      "id": "A-14",
+      "reason": "No short leg"
+     },
+     {
+      "id": "A-15",
+      "reason": "Ratio spreads only"
+     },
+     {
+      "id": "A-16",
+      "reason": "Long options only"
+     },
+     {
+      "id": "A-17",
+      "reason": "Long options only"
+     },
+     {
+      "id": "A-19",
+      "reason": "Calendars only"
+     },
+     {
+      "id": "A-22",
+      "reason": "No short side to protect"
+     },
+     {
+      "id": "A-26",
+      "reason": "Needs two sides"
+     },
+     {
+      "id": "A-27",
+      "reason": "No short leg"
+     }
+    ]
+   }
+  },
+  "calendar": {
+   "name": "Calendar / diagonal: system default",
+   "system": true,
+   "status": "DRAFT",
+   "triggers_on": [
+    "T-01",
+    "T-02",
+    "T-13",
+    "T-03",
+    "T-14",
+    "T-11",
+    "T-06",
+    "T-07",
+    "T-09",
+    "T-19",
+    "T-16",
+    "T-10b",
+    "T-18",
+    "T-21"
+   ],
+   "triggers_greyed": [
+    {
+     "id": "T-20b",
+     "reason": "Needs price history (not in V1)"
+    },
+    {
+     "id": "T-11c",
+     "reason": "Needs price history (not in V1)"
+    },
+    {
+     "id": "T-05",
+     "reason": "Needs a call side and a put side"
+    }
+   ],
+   "approaches": {
+    "applicable": [
+     "A-02",
+     "A-04",
+     "A-06",
+     "A-19",
+     "A-23",
+     "A-24",
+     "A-25",
+     "A-27",
+     "A-28",
+     "A-29",
+     "A-31",
+     "A-35",
+     "A-36",
+     "A-37",
+     "A-38"
+    ],
+    "off_in_playbook": [
+     "A-03",
+     "A-07",
+     "A-14",
+     "A-20",
+     "A-21",
+     "A-22",
+     "A-32",
+     "A-33",
+     "A-34",
+     "A-30"
+    ],
+    "greyed": [
+     {
+      "id": "A-01",
+      "reason": "Needs two sides"
+     },
+     {
+      "id": "A-05",
+      "reason": "No spread to roll"
+     },
+     {
+      "id": "A-08",
+      "reason": "Strangles only"
+     },
+     {
+      "id": "A-09",
+      "reason": "Loss already capped"
+     },
+     {
+      "id": "A-10",
+      "reason": "Strangles only"
+     },
+     {
+      "id": "A-11",
+      "reason": "Iron condors only"
+     },
+     {
+      "id": "A-12",
+      "reason": "Needs a credit spread"
+     },
+     {
+      "id": "A-13",
+      "reason": "Needs a short put"
+     },
+     {
+      "id": "A-15",
+      "reason": "Ratio spreads only"
+     },
+     {
+      "id": "A-16",
+      "reason": "Long options only"
+     },
+     {
+      "id": "A-17",
+      "reason": "Long options only"
+     },
+     {
+      "id": "A-18",
+      "reason": "Long volatility only"
+     },
+     {
+      "id": "A-26",
+      "reason": "Needs two sides"
+     }
+    ]
+   }
+  },
+  "ratio": {
+   "name": "Ratio and back-spreads: system default",
+   "system": true,
+   "status": "DRAFT",
+   "triggers_on": [
+    "T-01",
+    "T-02",
+    "T-13",
+    "T-03",
+    "T-14",
+    "T-11",
+    "T-06",
+    "T-07",
+    "T-09",
+    "T-19",
+    "T-16",
+    "T-10b",
+    "T-18",
+    "T-21"
+   ],
+   "triggers_greyed": [
+    {
+     "id": "T-20b",
+     "reason": "Needs price history (not in V1)"
+    },
+    {
+     "id": "T-11c",
+     "reason": "Needs price history (not in V1)"
+    },
+    {
+     "id": "T-05",
+     "reason": "Needs a call side and a put side"
+    }
+   ],
+   "approaches": {
+    "applicable": [
+     "A-02",
+     "A-04",
+     "A-06",
+     "A-09",
+     "A-15",
+     "A-23",
+     "A-24",
+     "A-25",
+     "A-27",
+     "A-28",
+     "A-29",
+     "A-31",
+     "A-35",
+     "A-36",
+     "A-37",
+     "A-38"
+    ],
+    "off_in_playbook": [
+     "A-03",
+     "A-14",
+     "A-20",
+     "A-21",
+     "A-22",
+     "A-32",
+     "A-33",
+     "A-34",
+     "A-30"
+    ],
+    "greyed": [
+     {
+      "id": "A-01",
+      "reason": "Needs two sides"
+     },
+     {
+      "id": "A-05",
+      "reason": "No spread to roll"
+     },
+     {
+      "id": "A-07",
+      "reason": "Not a range trade"
+     },
+     {
+      "id": "A-08",
+      "reason": "Strangles only"
+     },
+     {
+      "id": "A-10",
+      "reason": "Strangles only"
+     },
+     {
+      "id": "A-11",
+      "reason": "Iron condors only"
+     },
+     {
+      "id": "A-12",
+      "reason": "Needs a credit spread"
+     },
+     {
+      "id": "A-13",
+      "reason": "Needs a short put"
+     },
+     {
+      "id": "A-16",
+      "reason": "Long options only"
+     },
+     {
+      "id": "A-17",
+      "reason": "Long options only"
+     },
+     {
+      "id": "A-18",
+      "reason": "Long volatility only"
+     },
+     {
+      "id": "A-19",
+      "reason": "Calendars only"
+     },
+     {
+      "id": "A-26",
+      "reason": "Needs two sides"
+     }
+    ]
+   }
+  },
+  "dirfly": {
+   "name": "Directional butterflies / condors: system default",
+   "system": true,
+   "status": "DRAFT",
+   "triggers_on": [
+    "T-01",
+    "T-02",
+    "T-13",
+    "T-03",
+    "T-14",
+    "T-11",
+    "T-06",
+    "T-07",
+    "T-16",
+    "T-10b",
+    "T-18",
+    "T-21"
+   ],
+   "triggers_greyed": [
+    {
+     "id": "T-20b",
+     "reason": "Needs price history (not in V1)"
+    },
+    {
+     "id": "T-11c",
+     "reason": "Needs price history (not in V1)"
+    },
+    {
+     "id": "T-06b",
+     "reason": "No credit received"
+    },
+    {
+     "id": "T-05",
+     "reason": "Needs a call side and a put side"
+    },
+    {
+     "id": "T-09",
+     "reason": "No short leg"
+    },
+    {
+     "id": "T-19",
+     "reason": "No premium to earn"
+    }
+   ],
+   "approaches": {
+    "applicable": [
+     "A-05",
+     "A-06",
+     "A-23",
+     "A-24",
+     "A-25",
+     "A-28",
+     "A-29",
+     "A-31",
+     "A-35",
+     "A-36",
+     "A-37",
+     "A-38"
+    ],
+    "off_in_playbook": [
+     "A-03",
+     "A-07",
+     "A-20",
+     "A-21",
+     "A-32",
+     "A-33",
+     "A-34",
+     "A-30"
+    ],
+    "greyed": [
+     {
+      "id": "A-01",
+      "reason": "Needs two sides"
+     },
+     {
+      "id": "A-02",
+      "reason": "No short leg"
+     },
+     {
+      "id": "A-04",
+      "reason": "No short leg"
+     },
+     {
+      "id": "A-08",
+      "reason": "Strangles only"
+     },
+     {
+      "id": "A-09",
+      "reason": "Loss already capped"
+     },
+     {
+      "id": "A-10",
+      "reason": "Strangles only"
+     },
+     {
+      "id": "A-11",
+      "reason": "Iron condors only"
+     },
+     {
+      "id": "A-12",
+      "reason": "Needs a credit spread"
+     },
+     {
+      "id": "A-13",
+      "reason": "Needs a short put"
+     },
+     {
+      "id": "A-14",
+      "reason": "No short leg"
+     },
+     {
+      "id": "A-15",
+      "reason": "Ratio spreads only"
+     },
+     {
+      "id": "A-16",
+      "reason": "Long options only"
+     },
+     {
+      "id": "A-17",
+      "reason": "Long options only"
+     },
+     {
+      "id": "A-18",
+      "reason": "Long volatility only"
+     },
+     {
+      "id": "A-19",
+      "reason": "Calendars only"
+     },
+     {
+      "id": "A-22",
+      "reason": "No short side to protect"
+     },
+     {
+      "id": "A-26",
+      "reason": "Needs two sides"
+     },
+     {
+      "id": "A-27",
+      "reason": "No short leg"
+     }
+    ]
+   }
+  },
+  "other": {
+   "name": "Naked shorts, futures, others: system default",
+   "system": true,
+   "status": "DRAFT",
+   "triggers_on": [
+    "T-01",
+    "T-02",
+    "T-13",
+    "T-03",
+    "T-14",
+    "T-11",
+    "T-06",
+    "T-07",
+    "T-09",
+    "T-19",
+    "T-16",
+    "T-10b",
+    "T-18",
+    "T-21"
+   ],
+   "triggers_greyed": [
+    {
+     "id": "T-20b",
+     "reason": "Needs price history (not in V1)"
+    },
+    {
+     "id": "T-11c",
+     "reason": "Needs price history (not in V1)"
+    },
+    {
+     "id": "T-05",
+     "reason": "Needs a call side and a put side"
+    }
+   ],
+   "approaches": {
+    "applicable": [
+     "A-02",
+     "A-04",
+     "A-06",
+     "A-09",
+     "A-23",
+     "A-24",
+     "A-25",
+     "A-27",
+     "A-28",
+     "A-29",
+     "A-31",
+     "A-35",
+     "A-36",
+     "A-37",
+     "A-38"
+    ],
+    "off_in_playbook": [
+     "A-03",
+     "A-13",
+     "A-14",
+     "A-20",
+     "A-21",
+     "A-22",
+     "A-32",
+     "A-33",
+     "A-34",
+     "A-30"
+    ],
+    "greyed": [
+     {
+      "id": "A-01",
+      "reason": "Needs two sides"
+     },
+     {
+      "id": "A-05",
+      "reason": "No spread to roll"
+     },
+     {
+      "id": "A-07",
+      "reason": "Not a range trade"
+     },
+     {
+      "id": "A-08",
+      "reason": "Strangles only"
+     },
+     {
+      "id": "A-10",
+      "reason": "Strangles only"
+     },
+     {
+      "id": "A-11",
+      "reason": "Iron condors only"
+     },
+     {
+      "id": "A-12",
+      "reason": "Needs a credit spread"
+     },
+     {
+      "id": "A-15",
+      "reason": "Ratio spreads only"
+     },
+     {
+      "id": "A-16",
+      "reason": "Long options only"
+     },
+     {
+      "id": "A-17",
+      "reason": "Long options only"
+     },
+     {
+      "id": "A-18",
+      "reason": "Long volatility only"
+     },
+     {
+      "id": "A-19",
+      "reason": "Calendars only"
+     },
+     {
+      "id": "A-26",
+      "reason": "Needs two sides"
+     }
+    ]
+   }
+  }
+ },
+ "conventions": {
+  "rate": "0.065 continuous (admin default, Q248)",
+  "time": "calendar days / 365 to 15:30 IST on the expiry date",
+  "days_left": "calendar days from the clock's date to the expiry date; 0 on expiry day",
+  "iv_smile": "ATM IV + 0.012 per 1% the strike is below spot + 0.004 per 1% above; one IV per strike; 4 dp",
+  "atm_iv": "NIFTY 0.13 weekly, SENSEX 0.14 (calibrated to the real 30 Oct 2026 NIFTY chain, F-73)",
+  "price": "Black-Scholes (ofo.engine.black_scholes) rounded half-up to the 0.05 tick, minimum 0.05",
+  "bid_ask": "mid -/+ max(0.05, 0.5% of mid) rounded up to the tick; bid floored at 0",
+  "oi": "lot x round(4000 / (1 + (strike steps from ATM / 5)^2))",
+  "pnl_now": "open legs marked at LTP plus booked P&L of closed legs (whole trade, F-74)",
+  "max_profit_loss_breakevens": "whole trade at expiry: sum of side x qty x (intrinsic - entry) plus booked P&L; evaluated at 0 and every strike plus the upper-tail slope; a breakeven that does not terminate in decimal is rounded half-even to 0.01",
+  "premium_left": "sum over open short legs of LTP x qty minus the same over open long legs",
+  "adjustment_cost": "sum over open legs of (ask - bid) x qty plus Rs 40 per open leg (close and reopen once)",
+  "tighten": "'Tighten every trigger by X%': an 'le' limit is multiplied by (1 + X/100), a 'ge' limit by (1 - X/100); applies to T-01, T-03, T-06, T-07, T-09, T-11, T-13, T-16, T-19",
+  "close": "a trigger not fired is 'close' when value >= 0.8 x limit (ge) or value <= 1.25 x limit (le)",
+  "margin": "synthetic broker answer (not a Zerodha SPAN figure); stated per scenario",
+  "symbols": "synthetic Kite-style tradingsymbols for the shape only; not in the instrument slice"
+ }
+}

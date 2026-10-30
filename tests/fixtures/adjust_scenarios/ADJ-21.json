@@ -1,0 +1,3688 @@
+{
+ "id": "ADJ-21",
+ "title": "SENSEX monthly, 20 days, calm",
+ "group": "IC monthly, SENSEX 2 lots",
+ "refs": [
+  "M-02",
+  "PB-04"
+ ],
+ "family": "ic",
+ "playbook_ref": {
+  "file": "_playbooks.json",
+  "family": "ic",
+  "expiry_kind": "monthly",
+  "plan_overrides": {}
+ },
+ "underlying": "SENSEX",
+ "lot": 20,
+ "tick": "0.05",
+ "strike_step": 100,
+ "exchange": "BFO",
+ "clock": {
+  "ist": "2026-11-06T11:00:00+05:30",
+  "weekday": "Friday",
+  "day_type": [
+   "last session before weekend"
+  ]
+ },
+ "expiry": "2026-11-26",
+ "expiry_kind": "monthly",
+ "dte": 20,
+ "market": {
+  "spot": "74900",
+  "prev_close": null,
+  "day_open": null,
+  "india_vix": null,
+  "atm_iv": "0.14",
+  "rate": "0.065",
+  "futures": [],
+  "chains": [
+   {
+    "expiry": "2026-11-26",
+    "kind": "monthly",
+    "rows": [
+     {
+      "strike": "70200",
+      "type": "CE",
+      "ltp": "5101.50",
+      "bid": "5075.95",
+      "ask": "5127.05",
+      "iv": "0.2153",
+      "delta": "0.9156",
+      "gamma": "0.000041",
+      "oi": 900,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV70200CE"
+     },
+     {
+      "strike": "70200",
+      "type": "PE",
+      "ltp": "149.55",
+      "bid": "148.80",
+      "ask": "150.30",
+      "iv": "0.2153",
+      "delta": "-0.0844",
+      "gamma": "0.000041",
+      "oi": 900,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV70200PE"
+     },
+     {
+      "strike": "70300",
+      "type": "CE",
+      "ltp": "5006.80",
+      "bid": "4981.75",
+      "ask": "5031.85",
+      "iv": "0.2137",
+      "delta": "0.9127",
+      "gamma": "0.000042",
+      "oi": 940,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV70300CE"
+     },
+     {
+      "strike": "70300",
+      "type": "PE",
+      "ltp": "154.50",
+      "bid": "153.70",
+      "ask": "155.30",
+      "iv": "0.2137",
+      "delta": "-0.0873",
+      "gamma": "0.000042",
+      "oi": 940,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV70300PE"
+     },
+     {
+      "strike": "70400",
+      "type": "CE",
+      "ltp": "4912.30",
+      "bid": "4887.70",
+      "ask": "4936.90",
+      "iv": "0.2121",
+      "delta": "0.9097",
+      "gamma": "0.000044",
+      "oi": 980,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV70400CE"
+     },
+     {
+      "strike": "70400",
+      "type": "PE",
+      "ltp": "159.65",
+      "bid": "158.85",
+      "ask": "160.45",
+      "iv": "0.2121",
+      "delta": "-0.0903",
+      "gamma": "0.000044",
+      "oi": 980,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV70400PE"
+     },
+     {
+      "strike": "70500",
+      "type": "CE",
+      "ltp": "4818.00",
+      "bid": "4793.90",
+      "ask": "4842.10",
+      "iv": "0.2105",
+      "delta": "0.9066",
+      "gamma": "0.000045",
+      "oi": 1020,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV70500CE"
+     },
+     {
+      "strike": "70500",
+      "type": "PE",
+      "ltp": "165.00",
+      "bid": "164.15",
+      "ask": "165.85",
+      "iv": "0.2105",
+      "delta": "-0.0934",
+      "gamma": "0.000045",
+      "oi": 1020,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV70500PE"
+     },
+     {
+      "strike": "70600",
+      "type": "CE",
+      "ltp": "4723.90",
+      "bid": "4700.25",
+      "ask": "4747.55",
+      "iv": "0.2089",
+      "delta": "0.9034",
+      "gamma": "0.000046",
+      "oi": 1060,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV70600CE"
+     },
+     {
+      "strike": "70600",
+      "type": "PE",
+      "ltp": "170.55",
+      "bid": "169.65",
+      "ask": "171.45",
+      "iv": "0.2089",
+      "delta": "-0.0966",
+      "gamma": "0.000046",
+      "oi": 1060,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV70600PE"
+     },
+     {
+      "strike": "70700",
+      "type": "CE",
+      "ltp": "4630.05",
+      "bid": "4606.85",
+      "ask": "4653.25",
+      "iv": "0.2073",
+      "delta": "0.9000",
+      "gamma": "0.000048",
+      "oi": 1120,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV70700CE"
+     },
+     {
+      "strike": "70700",
+      "type": "PE",
+      "ltp": "176.35",
+      "bid": "175.45",
+      "ask": "177.25",
+      "iv": "0.2073",
+      "delta": "-0.1000",
+      "gamma": "0.000048",
+      "oi": 1120,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV70700PE"
+     },
+     {
+      "strike": "70800",
+      "type": "CE",
+      "ltp": "4536.40",
+      "bid": "4513.70",
+      "ask": "4559.10",
+      "iv": "0.2057",
+      "delta": "0.8966",
+      "gamma": "0.000050",
+      "oi": 1180,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV70800CE"
+     },
+     {
+      "strike": "70800",
+      "type": "PE",
+      "ltp": "182.35",
+      "bid": "181.40",
+      "ask": "183.30",
+      "iv": "0.2057",
+      "delta": "-0.1034",
+      "gamma": "0.000050",
+      "oi": 1180,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV70800PE"
+     },
+     {
+      "strike": "70900",
+      "type": "CE",
+      "ltp": "4443.05",
+      "bid": "4420.80",
+      "ask": "4465.30",
+      "iv": "0.2041",
+      "delta": "0.8929",
+      "gamma": "0.000051",
+      "oi": 1240,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV70900CE"
+     },
+     {
+      "strike": "70900",
+      "type": "PE",
+      "ltp": "188.60",
+      "bid": "187.65",
+      "ask": "189.55",
+      "iv": "0.2041",
+      "delta": "-0.1071",
+      "gamma": "0.000051",
+      "oi": 1240,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV70900PE"
+     },
+     {
+      "strike": "71000",
+      "type": "CE",
+      "ltp": "4349.90",
+      "bid": "4328.15",
+      "ask": "4371.65",
+      "iv": "0.2025",
+      "delta": "0.8892",
+      "gamma": "0.000053",
+      "oi": 1300,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV71000CE"
+     },
+     {
+      "strike": "71000",
+      "type": "PE",
+      "ltp": "195.10",
+      "bid": "194.10",
+      "ask": "196.10",
+      "iv": "0.2025",
+      "delta": "-0.1108",
+      "gamma": "0.000053",
+      "oi": 1300,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV71000PE"
+     },
+     {
+      "strike": "71100",
+      "type": "CE",
+      "ltp": "4257.05",
+      "bid": "4235.75",
+      "ask": "4278.35",
+      "iv": "0.2009",
+      "delta": "0.8853",
+      "gamma": "0.000055",
+      "oi": 1360,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV71100CE"
+     },
+     {
+      "strike": "71100",
+      "type": "PE",
+      "ltp": "201.90",
+      "bid": "200.85",
+      "ask": "202.95",
+      "iv": "0.2009",
+      "delta": "-0.1147",
+      "gamma": "0.000055",
+      "oi": 1360,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV71100PE"
+     },
+     {
+      "strike": "71200",
+      "type": "CE",
+      "ltp": "4164.45",
+      "bid": "4143.60",
+      "ask": "4185.30",
+      "iv": "0.1993",
+      "delta": "0.8812",
+      "gamma": "0.000057",
+      "oi": 1440,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV71200CE"
+     },
+     {
+      "strike": "71200",
+      "type": "PE",
+      "ltp": "208.95",
+      "bid": "207.90",
+      "ask": "210.00",
+      "iv": "0.1993",
+      "delta": "-0.1188",
+      "gamma": "0.000057",
+      "oi": 1440,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV71200PE"
+     },
+     {
+      "strike": "71300",
+      "type": "CE",
+      "ltp": "4072.15",
+      "bid": "4051.75",
+      "ask": "4092.55",
+      "iv": "0.1977",
+      "delta": "0.8770",
+      "gamma": "0.000058",
+      "oi": 1520,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV71300CE"
+     },
+     {
+      "strike": "71300",
+      "type": "PE",
+      "ltp": "216.25",
+      "bid": "215.15",
+      "ask": "217.35",
+      "iv": "0.1977",
+      "delta": "-0.1230",
+      "gamma": "0.000058",
+      "oi": 1520,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV71300PE"
+     },
+     {
+      "strike": "71400",
+      "type": "CE",
+      "ltp": "3980.15",
+      "bid": "3960.20",
+      "ask": "4000.10",
+      "iv": "0.1961",
+      "delta": "0.8726",
+      "gamma": "0.000060",
+      "oi": 1600,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV71400CE"
+     },
+     {
+      "strike": "71400",
+      "type": "PE",
+      "ltp": "223.90",
+      "bid": "222.75",
+      "ask": "225.05",
+      "iv": "0.1961",
+      "delta": "-0.1274",
+      "gamma": "0.000060",
+      "oi": 1600,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV71400PE"
+     },
+     {
+      "strike": "71500",
+      "type": "CE",
+      "ltp": "3888.45",
+      "bid": "3869.00",
+      "ask": "3907.90",
+      "iv": "0.1945",
+      "delta": "0.8680",
+      "gamma": "0.000062",
+      "oi": 1700,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV71500CE"
+     },
+     {
+      "strike": "71500",
+      "type": "PE",
+      "ltp": "231.90",
+      "bid": "230.70",
+      "ask": "233.10",
+      "iv": "0.1945",
+      "delta": "-0.1320",
+      "gamma": "0.000062",
+      "oi": 1700,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV71500PE"
+     },
+     {
+      "strike": "71600",
+      "type": "CE",
+      "ltp": "3797.10",
+      "bid": "3778.10",
+      "ask": "3816.10",
+      "iv": "0.1929",
+      "delta": "0.8633",
+      "gamma": "0.000064",
+      "oi": 1800,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV71600CE"
+     },
+     {
+      "strike": "71600",
+      "type": "PE",
+      "ltp": "240.15",
+      "bid": "238.90",
+      "ask": "241.40",
+      "iv": "0.1929",
+      "delta": "-0.1367",
+      "gamma": "0.000064",
+      "oi": 1800,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV71600PE"
+     },
+     {
+      "strike": "71700",
+      "type": "CE",
+      "ltp": "3706.10",
+      "bid": "3687.55",
+      "ask": "3724.65",
+      "iv": "0.1913",
+      "delta": "0.8583",
+      "gamma": "0.000067",
+      "oi": 1900,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV71700CE"
+     },
+     {
+      "strike": "71700",
+      "type": "PE",
+      "ltp": "248.80",
+      "bid": "247.55",
+      "ask": "250.05",
+      "iv": "0.1913",
+      "delta": "-0.1417",
+      "gamma": "0.000067",
+      "oi": 1900,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV71700PE"
+     },
+     {
+      "strike": "71800",
+      "type": "CE",
+      "ltp": "3615.50",
+      "bid": "3597.40",
+      "ask": "3633.60",
+      "iv": "0.1897",
+      "delta": "0.8532",
+      "gamma": "0.000069",
+      "oi": 2020,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV71800CE"
+     },
+     {
+      "strike": "71800",
+      "type": "PE",
+      "ltp": "257.80",
+      "bid": "256.50",
+      "ask": "259.10",
+      "iv": "0.1897",
+      "delta": "-0.1468",
+      "gamma": "0.000069",
+      "oi": 2020,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV71800PE"
+     },
+     {
+      "strike": "71900",
+      "type": "CE",
+      "ltp": "3525.25",
+      "bid": "3507.60",
+      "ask": "3542.90",
+      "iv": "0.1881",
+      "delta": "0.8479",
+      "gamma": "0.000071",
+      "oi": 2160,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV71900CE"
+     },
+     {
+      "strike": "71900",
+      "type": "PE",
+      "ltp": "267.20",
+      "bid": "265.85",
+      "ask": "268.55",
+      "iv": "0.1881",
+      "delta": "-0.1521",
+      "gamma": "0.000071",
+      "oi": 2160,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV71900PE"
+     },
+     {
+      "strike": "72000",
+      "type": "CE",
+      "ltp": "3435.35",
+      "bid": "3418.15",
+      "ask": "3452.55",
+      "iv": "0.1865",
+      "delta": "0.8424",
+      "gamma": "0.000073",
+      "oi": 2300,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV72000CE"
+     },
+     {
+      "strike": "72000",
+      "type": "PE",
+      "ltp": "277.00",
+      "bid": "275.60",
+      "ask": "278.40",
+      "iv": "0.1865",
+      "delta": "-0.1576",
+      "gamma": "0.000073",
+      "oi": 2300,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV72000PE"
+     },
+     {
+      "strike": "72100",
+      "type": "CE",
+      "ltp": "3345.95",
+      "bid": "3329.20",
+      "ask": "3362.70",
+      "iv": "0.1849",
+      "delta": "0.8366",
+      "gamma": "0.000076",
+      "oi": 2480,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV72100CE"
+     },
+     {
+      "strike": "72100",
+      "type": "PE",
+      "ltp": "287.20",
+      "bid": "285.75",
+      "ask": "288.65",
+      "iv": "0.1849",
+      "delta": "-0.1634",
+      "gamma": "0.000076",
+      "oi": 2480,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV72100PE"
+     },
+     {
+      "strike": "72200",
+      "type": "CE",
+      "ltp": "3256.95",
+      "bid": "3240.65",
+      "ask": "3273.25",
+      "iv": "0.1833",
+      "delta": "0.8306",
+      "gamma": "0.000078",
+      "oi": 2660,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV72200CE"
+     },
+     {
+      "strike": "72200",
+      "type": "PE",
+      "ltp": "297.85",
+      "bid": "296.35",
+      "ask": "299.35",
+      "iv": "0.1833",
+      "delta": "-0.1694",
+      "gamma": "0.000078",
+      "oi": 2660,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV72200PE"
+     },
+     {
+      "strike": "72300",
+      "type": "CE",
+      "ltp": "3168.40",
+      "bid": "3152.55",
+      "ask": "3184.25",
+      "iv": "0.1817",
+      "delta": "0.8244",
+      "gamma": "0.000081",
+      "oi": 2860,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV72300CE"
+     },
+     {
+      "strike": "72300",
+      "type": "PE",
+      "ltp": "308.95",
+      "bid": "307.40",
+      "ask": "310.50",
+      "iv": "0.1817",
+      "delta": "-0.1756",
+      "gamma": "0.000081",
+      "oi": 2860,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV72300PE"
+     },
+     {
+      "strike": "72400",
+      "type": "CE",
+      "ltp": "3080.35",
+      "bid": "3064.90",
+      "ask": "3095.80",
+      "iv": "0.1801",
+      "delta": "0.8179",
+      "gamma": "0.000083",
+      "oi": 3080,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV72400CE"
+     },
+     {
+      "strike": "72400",
+      "type": "PE",
+      "ltp": "320.55",
+      "bid": "318.90",
+      "ask": "322.20",
+      "iv": "0.1801",
+      "delta": "-0.1821",
+      "gamma": "0.000083",
+      "oi": 3080,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV72400PE"
+     },
+     {
+      "strike": "72500",
+      "type": "CE",
+      "ltp": "2992.80",
+      "bid": "2977.80",
+      "ask": "3007.80",
+      "iv": "0.1785",
+      "delta": "0.8112",
+      "gamma": "0.000086",
+      "oi": 3320,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV72500CE"
+     },
+     {
+      "strike": "72500",
+      "type": "PE",
+      "ltp": "332.60",
+      "bid": "330.90",
+      "ask": "334.30",
+      "iv": "0.1785",
+      "delta": "-0.1888",
+      "gamma": "0.000086",
+      "oi": 3320,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV72500PE"
+     },
+     {
+      "strike": "72600",
+      "type": "CE",
+      "ltp": "2905.25",
+      "bid": "2890.70",
+      "ask": "2919.80",
+      "iv": "0.1768",
+      "delta": "0.8044",
+      "gamma": "0.000089",
+      "oi": 3620,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV72600CE"
+     },
+     {
+      "strike": "72600",
+      "type": "PE",
+      "ltp": "344.75",
+      "bid": "343.00",
+      "ask": "346.50",
+      "iv": "0.1768",
+      "delta": "-0.1956",
+      "gamma": "0.000089",
+      "oi": 3620,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV72600PE"
+     },
+     {
+      "strike": "72700",
+      "type": "CE",
+      "ltp": "2818.80",
+      "bid": "2804.70",
+      "ask": "2832.90",
+      "iv": "0.1752",
+      "delta": "0.7971",
+      "gamma": "0.000091",
+      "oi": 3920,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV72700CE"
+     },
+     {
+      "strike": "72700",
+      "type": "PE",
+      "ltp": "357.90",
+      "bid": "356.10",
+      "ask": "359.70",
+      "iv": "0.1752",
+      "delta": "-0.2029",
+      "gamma": "0.000091",
+      "oi": 3920,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV72700PE"
+     },
+     {
+      "strike": "72800",
+      "type": "CE",
+      "ltp": "2732.85",
+      "bid": "2719.15",
+      "ask": "2746.55",
+      "iv": "0.1736",
+      "delta": "0.7896",
+      "gamma": "0.000094",
+      "oi": 4300,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV72800CE"
+     },
+     {
+      "strike": "72800",
+      "type": "PE",
+      "ltp": "371.60",
+      "bid": "369.70",
+      "ask": "373.50",
+      "iv": "0.1736",
+      "delta": "-0.2104",
+      "gamma": "0.000094",
+      "oi": 4300,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV72800PE"
+     },
+     {
+      "strike": "72900",
+      "type": "CE",
+      "ltp": "2647.55",
+      "bid": "2634.30",
+      "ask": "2660.80",
+      "iv": "0.1720",
+      "delta": "0.7818",
+      "gamma": "0.000097",
+      "oi": 4700,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV72900CE"
+     },
+     {
+      "strike": "72900",
+      "type": "PE",
+      "ltp": "385.95",
+      "bid": "384.00",
+      "ask": "387.90",
+      "iv": "0.1720",
+      "delta": "-0.2182",
+      "gamma": "0.000097",
+      "oi": 4700,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV72900PE"
+     },
+     {
+      "strike": "73000",
+      "type": "CE",
+      "ltp": "2562.90",
+      "bid": "2550.05",
+      "ask": "2575.75",
+      "iv": "0.1704",
+      "delta": "0.7736",
+      "gamma": "0.000100",
+      "oi": 5180,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV73000CE"
+     },
+     {
+      "strike": "73000",
+      "type": "PE",
+      "ltp": "400.90",
+      "bid": "398.85",
+      "ask": "402.95",
+      "iv": "0.1704",
+      "delta": "-0.2264",
+      "gamma": "0.000100",
+      "oi": 5180,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV73000PE"
+     },
+     {
+      "strike": "73100",
+      "type": "CE",
+      "ltp": "2478.85",
+      "bid": "2466.45",
+      "ask": "2491.25",
+      "iv": "0.1688",
+      "delta": "0.7652",
+      "gamma": "0.000103",
+      "oi": 5740,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV73100CE"
+     },
+     {
+      "strike": "73100",
+      "type": "PE",
+      "ltp": "416.55",
+      "bid": "414.45",
+      "ask": "418.65",
+      "iv": "0.1688",
+      "delta": "-0.2348",
+      "gamma": "0.000103",
+      "oi": 5740,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV73100PE"
+     },
+     {
+      "strike": "73200",
+      "type": "CE",
+      "ltp": "2395.55",
+      "bid": "2383.55",
+      "ask": "2407.55",
+      "iv": "0.1672",
+      "delta": "0.7565",
+      "gamma": "0.000106",
+      "oi": 6360,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV73200CE"
+     },
+     {
+      "strike": "73200",
+      "type": "PE",
+      "ltp": "432.85",
+      "bid": "430.65",
+      "ask": "435.05",
+      "iv": "0.1672",
+      "delta": "-0.2435",
+      "gamma": "0.000106",
+      "oi": 6360,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV73200PE"
+     },
+     {
+      "strike": "73300",
+      "type": "CE",
+      "ltp": "2312.95",
+      "bid": "2301.35",
+      "ask": "2324.55",
+      "iv": "0.1656",
+      "delta": "0.7474",
+      "gamma": "0.000110",
+      "oi": 7120,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV73300CE"
+     },
+     {
+      "strike": "73300",
+      "type": "PE",
+      "ltp": "449.90",
+      "bid": "447.65",
+      "ask": "452.15",
+      "iv": "0.1656",
+      "delta": "-0.2526",
+      "gamma": "0.000110",
+      "oi": 7120,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV73300PE"
+     },
+     {
+      "strike": "73400",
+      "type": "CE",
+      "ltp": "2231.10",
+      "bid": "2219.90",
+      "ask": "2242.30",
+      "iv": "0.1640",
+      "delta": "0.7379",
+      "gamma": "0.000113",
+      "oi": 8000,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV73400CE"
+     },
+     {
+      "strike": "73400",
+      "type": "PE",
+      "ltp": "467.70",
+      "bid": "465.35",
+      "ask": "470.05",
+      "iv": "0.1640",
+      "delta": "-0.2621",
+      "gamma": "0.000113",
+      "oi": 8000,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV73400PE"
+     },
+     {
+      "strike": "73500",
+      "type": "CE",
+      "ltp": "2150.10",
+      "bid": "2139.30",
+      "ask": "2160.90",
+      "iv": "0.1624",
+      "delta": "0.7282",
+      "gamma": "0.000116",
+      "oi": 9040,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV73500CE"
+     },
+     {
+      "strike": "73500",
+      "type": "PE",
+      "ltp": "486.30",
+      "bid": "483.85",
+      "ask": "488.75",
+      "iv": "0.1624",
+      "delta": "-0.2718",
+      "gamma": "0.000116",
+      "oi": 9040,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV73500PE"
+     },
+     {
+      "strike": "73600",
+      "type": "CE",
+      "ltp": "2069.90",
+      "bid": "2059.55",
+      "ask": "2080.25",
+      "iv": "0.1608",
+      "delta": "0.7180",
+      "gamma": "0.000119",
+      "oi": 10300,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV73600CE"
+     },
+     {
+      "strike": "73600",
+      "type": "PE",
+      "ltp": "505.75",
+      "bid": "503.20",
+      "ask": "508.30",
+      "iv": "0.1608",
+      "delta": "-0.2820",
+      "gamma": "0.000119",
+      "oi": 10300,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV73600PE"
+     },
+     {
+      "strike": "73700",
+      "type": "CE",
+      "ltp": "1990.55",
+      "bid": "1980.55",
+      "ask": "2000.55",
+      "iv": "0.1592",
+      "delta": "0.7075",
+      "gamma": "0.000123",
+      "oi": 11840,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV73700CE"
+     },
+     {
+      "strike": "73700",
+      "type": "PE",
+      "ltp": "526.05",
+      "bid": "523.40",
+      "ask": "528.70",
+      "iv": "0.1592",
+      "delta": "-0.2925",
+      "gamma": "0.000123",
+      "oi": 11840,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV73700PE"
+     },
+     {
+      "strike": "73800",
+      "type": "CE",
+      "ltp": "1912.10",
+      "bid": "1902.50",
+      "ask": "1921.70",
+      "iv": "0.1576",
+      "delta": "0.6966",
+      "gamma": "0.000126",
+      "oi": 13700,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV73800CE"
+     },
+     {
+      "strike": "73800",
+      "type": "PE",
+      "ltp": "547.30",
+      "bid": "544.55",
+      "ask": "550.05",
+      "iv": "0.1576",
+      "delta": "-0.3034",
+      "gamma": "0.000126",
+      "oi": 13700,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV73800PE"
+     },
+     {
+      "strike": "73900",
+      "type": "CE",
+      "ltp": "1834.65",
+      "bid": "1825.45",
+      "ask": "1843.85",
+      "iv": "0.1560",
+      "delta": "0.6853",
+      "gamma": "0.000129",
+      "oi": 16000,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV73900CE"
+     },
+     {
+      "strike": "73900",
+      "type": "PE",
+      "ltp": "569.45",
+      "bid": "566.60",
+      "ask": "572.30",
+      "iv": "0.1560",
+      "delta": "-0.3147",
+      "gamma": "0.000129",
+      "oi": 16000,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV73900PE"
+     },
+     {
+      "strike": "74000",
+      "type": "CE",
+      "ltp": "1758.15",
+      "bid": "1749.35",
+      "ask": "1766.95",
+      "iv": "0.1544",
+      "delta": "0.6737",
+      "gamma": "0.000133",
+      "oi": 18860,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV74000CE"
+     },
+     {
+      "strike": "74000",
+      "type": "PE",
+      "ltp": "592.60",
+      "bid": "589.60",
+      "ask": "595.60",
+      "iv": "0.1544",
+      "delta": "-0.3263",
+      "gamma": "0.000133",
+      "oi": 18860,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV74000PE"
+     },
+     {
+      "strike": "74100",
+      "type": "CE",
+      "ltp": "1682.70",
+      "bid": "1674.25",
+      "ask": "1691.15",
+      "iv": "0.1528",
+      "delta": "0.6616",
+      "gamma": "0.000136",
+      "oi": 22480,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV74100CE"
+     },
+     {
+      "strike": "74100",
+      "type": "PE",
+      "ltp": "616.80",
+      "bid": "613.70",
+      "ask": "619.90",
+      "iv": "0.1528",
+      "delta": "-0.3384",
+      "gamma": "0.000136",
+      "oi": 22480,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV74100PE"
+     },
+     {
+      "strike": "74200",
+      "type": "CE",
+      "ltp": "1608.35",
+      "bid": "1600.30",
+      "ask": "1616.40",
+      "iv": "0.1512",
+      "delta": "0.6491",
+      "gamma": "0.000139",
+      "oi": 27020,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV74200CE"
+     },
+     {
+      "strike": "74200",
+      "type": "PE",
+      "ltp": "642.10",
+      "bid": "638.85",
+      "ask": "645.35",
+      "iv": "0.1512",
+      "delta": "-0.3509",
+      "gamma": "0.000139",
+      "oi": 27020,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV74200PE"
+     },
+     {
+      "strike": "74300",
+      "type": "CE",
+      "ltp": "1535.10",
+      "bid": "1527.40",
+      "ask": "1542.80",
+      "iv": "0.1496",
+      "delta": "0.6362",
+      "gamma": "0.000142",
+      "oi": 32780,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV74300CE"
+     },
+     {
+      "strike": "74300",
+      "type": "PE",
+      "ltp": "668.50",
+      "bid": "665.15",
+      "ask": "671.85",
+      "iv": "0.1496",
+      "delta": "-0.3638",
+      "gamma": "0.000142",
+      "oi": 32780,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV74300PE"
+     },
+     {
+      "strike": "74400",
+      "type": "CE",
+      "ltp": "1463.05",
+      "bid": "1455.70",
+      "ask": "1470.40",
+      "iv": "0.1480",
+      "delta": "0.6229",
+      "gamma": "0.000146",
+      "oi": 40000,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV74400CE"
+     },
+     {
+      "strike": "74400",
+      "type": "PE",
+      "ltp": "696.05",
+      "bid": "692.55",
+      "ask": "699.55",
+      "iv": "0.1480",
+      "delta": "-0.3771",
+      "gamma": "0.000146",
+      "oi": 40000,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV74400PE"
+     },
+     {
+      "strike": "74500",
+      "type": "CE",
+      "ltp": "1392.25",
+      "bid": "1385.25",
+      "ask": "1399.25",
+      "iv": "0.1464",
+      "delta": "0.6092",
+      "gamma": "0.000149",
+      "oi": 48780,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV74500CE"
+     },
+     {
+      "strike": "74500",
+      "type": "PE",
+      "ltp": "724.90",
+      "bid": "721.25",
+      "ask": "728.55",
+      "iv": "0.1464",
+      "delta": "-0.3908",
+      "gamma": "0.000149",
+      "oi": 48780,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV74500PE"
+     },
+     {
+      "strike": "74600",
+      "type": "CE",
+      "ltp": "1322.70",
+      "bid": "1316.05",
+      "ask": "1329.35",
+      "iv": "0.1448",
+      "delta": "0.5950",
+      "gamma": "0.000152",
+      "oi": 58820,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV74600CE"
+     },
+     {
+      "strike": "74600",
+      "type": "PE",
+      "ltp": "755.00",
+      "bid": "751.20",
+      "ask": "758.80",
+      "iv": "0.1448",
+      "delta": "-0.4050",
+      "gamma": "0.000152",
+      "oi": 58820,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV74600PE"
+     },
+     {
+      "strike": "74700",
+      "type": "CE",
+      "ltp": "1254.45",
+      "bid": "1248.15",
+      "ask": "1260.75",
+      "iv": "0.1432",
+      "delta": "0.5804",
+      "gamma": "0.000155",
+      "oi": 68960,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV74700CE"
+     },
+     {
+      "strike": "74700",
+      "type": "PE",
+      "ltp": "786.40",
+      "bid": "782.45",
+      "ask": "790.35",
+      "iv": "0.1432",
+      "delta": "-0.4196",
+      "gamma": "0.000155",
+      "oi": 68960,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV74700PE"
+     },
+     {
+      "strike": "74800",
+      "type": "CE",
+      "ltp": "1187.65",
+      "bid": "1181.70",
+      "ask": "1193.60",
+      "iv": "0.1416",
+      "delta": "0.5654",
+      "gamma": "0.000158",
+      "oi": 76920,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV74800CE"
+     },
+     {
+      "strike": "74800",
+      "type": "PE",
+      "ltp": "819.20",
+      "bid": "815.10",
+      "ask": "823.30",
+      "iv": "0.1416",
+      "delta": "-0.4346",
+      "gamma": "0.000158",
+      "oi": 76920,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV74800PE"
+     },
+     {
+      "strike": "74900",
+      "type": "CE",
+      "ltp": "1122.25",
+      "bid": "1116.60",
+      "ask": "1127.90",
+      "iv": "0.1400",
+      "delta": "0.5500",
+      "gamma": "0.000161",
+      "oi": 80000,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV74900CE"
+     },
+     {
+      "strike": "74900",
+      "type": "PE",
+      "ltp": "853.45",
+      "bid": "849.15",
+      "ask": "857.75",
+      "iv": "0.1400",
+      "delta": "-0.4500",
+      "gamma": "0.000161",
+      "oi": 80000,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV74900PE"
+     },
+     {
+      "strike": "75000",
+      "type": "CE",
+      "ltp": "1073.05",
+      "bid": "1067.65",
+      "ask": "1078.45",
+      "iv": "0.1405",
+      "delta": "0.5338",
+      "gamma": "0.000161",
+      "oi": 76920,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV75000CE"
+     },
+     {
+      "strike": "75000",
+      "type": "PE",
+      "ltp": "903.90",
+      "bid": "899.35",
+      "ask": "908.45",
+      "iv": "0.1405",
+      "delta": "-0.4662",
+      "gamma": "0.000161",
+      "oi": 76920,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV75000PE"
+     },
+     {
+      "strike": "75100",
+      "type": "CE",
+      "ltp": "1026.20",
+      "bid": "1021.05",
+      "ask": "1031.35",
+      "iv": "0.1411",
+      "delta": "0.5178",
+      "gamma": "0.000160",
+      "oi": 68960,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV75100CE"
+     },
+     {
+      "strike": "75100",
+      "type": "PE",
+      "ltp": "956.70",
+      "bid": "951.90",
+      "ask": "961.50",
+      "iv": "0.1411",
+      "delta": "-0.4822",
+      "gamma": "0.000160",
+      "oi": 68960,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV75100PE"
+     },
+     {
+      "strike": "75200",
+      "type": "CE",
+      "ltp": "980.20",
+      "bid": "975.25",
+      "ask": "985.15",
+      "iv": "0.1416",
+      "delta": "0.5018",
+      "gamma": "0.000160",
+      "oi": 58820,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV75200CE"
+     },
+     {
+      "strike": "75200",
+      "type": "PE",
+      "ltp": "1010.35",
+      "bid": "1005.25",
+      "ask": "1015.45",
+      "iv": "0.1416",
+      "delta": "-0.4982",
+      "gamma": "0.000160",
+      "oi": 58820,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV75200PE"
+     },
+     {
+      "strike": "75300",
+      "type": "CE",
+      "ltp": "935.85",
+      "bid": "931.15",
+      "ask": "940.55",
+      "iv": "0.1421",
+      "delta": "0.4860",
+      "gamma": "0.000159",
+      "oi": 48780,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV75300CE"
+     },
+     {
+      "strike": "75300",
+      "type": "PE",
+      "ltp": "1065.60",
+      "bid": "1060.25",
+      "ask": "1070.95",
+      "iv": "0.1421",
+      "delta": "-0.5140",
+      "gamma": "0.000159",
+      "oi": 48780,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV75300PE"
+     },
+     {
+      "strike": "75400",
+      "type": "CE",
+      "ltp": "893.75",
+      "bid": "889.25",
+      "ask": "898.25",
+      "iv": "0.1427",
+      "delta": "0.4704",
+      "gamma": "0.000158",
+      "oi": 40000,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV75400CE"
+     },
+     {
+      "strike": "75400",
+      "type": "PE",
+      "ltp": "1123.15",
+      "bid": "1117.50",
+      "ask": "1128.80",
+      "iv": "0.1427",
+      "delta": "-0.5296",
+      "gamma": "0.000158",
+      "oi": 40000,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV75400PE"
+     },
+     {
+      "strike": "75500",
+      "type": "CE",
+      "ltp": "852.45",
+      "bid": "848.15",
+      "ask": "856.75",
+      "iv": "0.1432",
+      "delta": "0.4549",
+      "gamma": "0.000157",
+      "oi": 32780,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV75500CE"
+     },
+     {
+      "strike": "75500",
+      "type": "PE",
+      "ltp": "1181.55",
+      "bid": "1175.60",
+      "ask": "1187.50",
+      "iv": "0.1432",
+      "delta": "-0.5451",
+      "gamma": "0.000157",
+      "oi": 32780,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV75500PE"
+     },
+     {
+      "strike": "75600",
+      "type": "CE",
+      "ltp": "812.70",
+      "bid": "808.60",
+      "ask": "816.80",
+      "iv": "0.1437",
+      "delta": "0.4396",
+      "gamma": "0.000156",
+      "oi": 27020,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV75600CE"
+     },
+     {
+      "strike": "75600",
+      "type": "PE",
+      "ltp": "1241.40",
+      "bid": "1235.15",
+      "ask": "1247.65",
+      "iv": "0.1437",
+      "delta": "-0.5604",
+      "gamma": "0.000156",
+      "oi": 27020,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV75600PE"
+     },
+     {
+      "strike": "75700",
+      "type": "CE",
+      "ltp": "775.15",
+      "bid": "771.25",
+      "ask": "779.05",
+      "iv": "0.1443",
+      "delta": "0.4246",
+      "gamma": "0.000154",
+      "oi": 22480,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV75700CE"
+     },
+     {
+      "strike": "75700",
+      "type": "PE",
+      "ltp": "1303.50",
+      "bid": "1296.95",
+      "ask": "1310.05",
+      "iv": "0.1443",
+      "delta": "-0.5754",
+      "gamma": "0.000154",
+      "oi": 22480,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV75700PE"
+     },
+     {
+      "strike": "75800",
+      "type": "CE",
+      "ltp": "738.35",
+      "bid": "734.65",
+      "ask": "742.05",
+      "iv": "0.1448",
+      "delta": "0.4098",
+      "gamma": "0.000152",
+      "oi": 18860,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV75800CE"
+     },
+     {
+      "strike": "75800",
+      "type": "PE",
+      "ltp": "1366.30",
+      "bid": "1359.45",
+      "ask": "1373.15",
+      "iv": "0.1448",
+      "delta": "-0.5902",
+      "gamma": "0.000152",
+      "oi": 18860,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV75800PE"
+     },
+     {
+      "strike": "75900",
+      "type": "CE",
+      "ltp": "702.95",
+      "bid": "699.40",
+      "ask": "706.50",
+      "iv": "0.1453",
+      "delta": "0.3952",
+      "gamma": "0.000150",
+      "oi": 16000,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV75900CE"
+     },
+     {
+      "strike": "75900",
+      "type": "PE",
+      "ltp": "1430.55",
+      "bid": "1423.35",
+      "ask": "1437.75",
+      "iv": "0.1453",
+      "delta": "-0.6048",
+      "gamma": "0.000150",
+      "oi": 16000,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV75900PE"
+     },
+     {
+      "strike": "76000",
+      "type": "CE",
+      "ltp": "669.65",
+      "bid": "666.30",
+      "ask": "673.00",
+      "iv": "0.1459",
+      "delta": "0.3810",
+      "gamma": "0.000148",
+      "oi": 13700,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV76000CE"
+     },
+     {
+      "strike": "76000",
+      "type": "PE",
+      "ltp": "1496.90",
+      "bid": "1489.40",
+      "ask": "1504.40",
+      "iv": "0.1459",
+      "delta": "-0.6190",
+      "gamma": "0.000148",
+      "oi": 13700,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV76000PE"
+     },
+     {
+      "strike": "76100",
+      "type": "CE",
+      "ltp": "637.00",
+      "bid": "633.80",
+      "ask": "640.20",
+      "iv": "0.1464",
+      "delta": "0.3669",
+      "gamma": "0.000146",
+      "oi": 11840,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV76100CE"
+     },
+     {
+      "strike": "76100",
+      "type": "PE",
+      "ltp": "1563.90",
+      "bid": "1556.05",
+      "ask": "1571.75",
+      "iv": "0.1464",
+      "delta": "-0.6331",
+      "gamma": "0.000146",
+      "oi": 11840,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV76100PE"
+     },
+     {
+      "strike": "76200",
+      "type": "CE",
+      "ltp": "605.70",
+      "bid": "602.65",
+      "ask": "608.75",
+      "iv": "0.1469",
+      "delta": "0.3532",
+      "gamma": "0.000144",
+      "oi": 10300,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV76200CE"
+     },
+     {
+      "strike": "76200",
+      "type": "PE",
+      "ltp": "1632.25",
+      "bid": "1624.05",
+      "ask": "1640.45",
+      "iv": "0.1469",
+      "delta": "-0.6468",
+      "gamma": "0.000144",
+      "oi": 10300,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV76200PE"
+     },
+     {
+      "strike": "76300",
+      "type": "CE",
+      "ltp": "576.35",
+      "bid": "573.45",
+      "ask": "579.25",
+      "iv": "0.1475",
+      "delta": "0.3398",
+      "gamma": "0.000141",
+      "oi": 9040,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV76300CE"
+     },
+     {
+      "strike": "76300",
+      "type": "PE",
+      "ltp": "1702.55",
+      "bid": "1694.00",
+      "ask": "1711.10",
+      "iv": "0.1475",
+      "delta": "-0.6602",
+      "gamma": "0.000141",
+      "oi": 9040,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV76300PE"
+     },
+     {
+      "strike": "76400",
+      "type": "CE",
+      "ltp": "547.60",
+      "bid": "544.85",
+      "ask": "550.35",
+      "iv": "0.1480",
+      "delta": "0.3267",
+      "gamma": "0.000138",
+      "oi": 8000,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV76400CE"
+     },
+     {
+      "strike": "76400",
+      "type": "PE",
+      "ltp": "1773.40",
+      "bid": "1764.50",
+      "ask": "1782.30",
+      "iv": "0.1480",
+      "delta": "-0.6733",
+      "gamma": "0.000138",
+      "oi": 8000,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV76400PE"
+     },
+     {
+      "strike": "76500",
+      "type": "CE",
+      "ltp": "520.05",
+      "bid": "517.40",
+      "ask": "522.70",
+      "iv": "0.1485",
+      "delta": "0.3139",
+      "gamma": "0.000136",
+      "oi": 7120,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV76500CE"
+     },
+     {
+      "strike": "76500",
+      "type": "PE",
+      "ltp": "1845.50",
+      "bid": "1836.25",
+      "ask": "1854.75",
+      "iv": "0.1485",
+      "delta": "-0.6861",
+      "gamma": "0.000136",
+      "oi": 7120,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV76500PE"
+     },
+     {
+      "strike": "76600",
+      "type": "CE",
+      "ltp": "494.30",
+      "bid": "491.80",
+      "ask": "496.80",
+      "iv": "0.1491",
+      "delta": "0.3015",
+      "gamma": "0.000133",
+      "oi": 6360,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV76600CE"
+     },
+     {
+      "strike": "76600",
+      "type": "PE",
+      "ltp": "1919.45",
+      "bid": "1909.85",
+      "ask": "1929.05",
+      "iv": "0.1491",
+      "delta": "-0.6985",
+      "gamma": "0.000133",
+      "oi": 6360,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV76600PE"
+     },
+     {
+      "strike": "76700",
+      "type": "CE",
+      "ltp": "469.10",
+      "bid": "466.75",
+      "ask": "471.45",
+      "iv": "0.1496",
+      "delta": "0.2894",
+      "gamma": "0.000130",
+      "oi": 5740,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV76700CE"
+     },
+     {
+      "strike": "76700",
+      "type": "PE",
+      "ltp": "1993.90",
+      "bid": "1983.90",
+      "ask": "2003.90",
+      "iv": "0.1496",
+      "delta": "-0.7106",
+      "gamma": "0.000130",
+      "oi": 5740,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV76700PE"
+     },
+     {
+      "strike": "76800",
+      "type": "CE",
+      "ltp": "445.05",
+      "bid": "442.80",
+      "ask": "447.30",
+      "iv": "0.1501",
+      "delta": "0.2775",
+      "gamma": "0.000127",
+      "oi": 5180,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV76800CE"
+     },
+     {
+      "strike": "76800",
+      "type": "PE",
+      "ltp": "2069.45",
+      "bid": "2059.10",
+      "ask": "2079.80",
+      "iv": "0.1501",
+      "delta": "-0.7225",
+      "gamma": "0.000127",
+      "oi": 5180,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV76800PE"
+     },
+     {
+      "strike": "76900",
+      "type": "CE",
+      "ltp": "422.60",
+      "bid": "420.45",
+      "ask": "424.75",
+      "iv": "0.1507",
+      "delta": "0.2662",
+      "gamma": "0.000124",
+      "oi": 4700,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV76900CE"
+     },
+     {
+      "strike": "76900",
+      "type": "PE",
+      "ltp": "2146.65",
+      "bid": "2135.90",
+      "ask": "2157.40",
+      "iv": "0.1507",
+      "delta": "-0.7338",
+      "gamma": "0.000124",
+      "oi": 4700,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV76900PE"
+     },
+     {
+      "strike": "77000",
+      "type": "CE",
+      "ltp": "400.65",
+      "bid": "398.60",
+      "ask": "402.70",
+      "iv": "0.1512",
+      "delta": "0.2550",
+      "gamma": "0.000121",
+      "oi": 4300,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV77000CE"
+     },
+     {
+      "strike": "77000",
+      "type": "PE",
+      "ltp": "2224.35",
+      "bid": "2213.20",
+      "ask": "2235.50",
+      "iv": "0.1512",
+      "delta": "-0.7450",
+      "gamma": "0.000121",
+      "oi": 4300,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV77000PE"
+     },
+     {
+      "strike": "77100",
+      "type": "CE",
+      "ltp": "379.70",
+      "bid": "377.80",
+      "ask": "381.60",
+      "iv": "0.1517",
+      "delta": "0.2442",
+      "gamma": "0.000117",
+      "oi": 3920,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV77100CE"
+     },
+     {
+      "strike": "77100",
+      "type": "PE",
+      "ltp": "2303.00",
+      "bid": "2291.45",
+      "ask": "2314.55",
+      "iv": "0.1517",
+      "delta": "-0.7558",
+      "gamma": "0.000117",
+      "oi": 3920,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV77100PE"
+     },
+     {
+      "strike": "77200",
+      "type": "CE",
+      "ltp": "360.25",
+      "bid": "358.40",
+      "ask": "362.10",
+      "iv": "0.1523",
+      "delta": "0.2339",
+      "gamma": "0.000114",
+      "oi": 3620,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV77200CE"
+     },
+     {
+      "strike": "77200",
+      "type": "PE",
+      "ltp": "2383.20",
+      "bid": "2371.25",
+      "ask": "2395.15",
+      "iv": "0.1523",
+      "delta": "-0.7661",
+      "gamma": "0.000114",
+      "oi": 3620,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV77200PE"
+     },
+     {
+      "strike": "77300",
+      "type": "CE",
+      "ltp": "341.20",
+      "bid": "339.45",
+      "ask": "342.95",
+      "iv": "0.1528",
+      "delta": "0.2237",
+      "gamma": "0.000111",
+      "oi": 3320,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV77300CE"
+     },
+     {
+      "strike": "77300",
+      "type": "PE",
+      "ltp": "2463.80",
+      "bid": "2451.45",
+      "ask": "2476.15",
+      "iv": "0.1528",
+      "delta": "-0.7763",
+      "gamma": "0.000111",
+      "oi": 3320,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV77300PE"
+     },
+     {
+      "strike": "77400",
+      "type": "CE",
+      "ltp": "323.55",
+      "bid": "321.90",
+      "ask": "325.20",
+      "iv": "0.1534",
+      "delta": "0.2141",
+      "gamma": "0.000108",
+      "oi": 3080,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV77400CE"
+     },
+     {
+      "strike": "77400",
+      "type": "PE",
+      "ltp": "2545.80",
+      "bid": "2533.05",
+      "ask": "2558.55",
+      "iv": "0.1534",
+      "delta": "-0.7859",
+      "gamma": "0.000108",
+      "oi": 3080,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV77400PE"
+     },
+     {
+      "strike": "77500",
+      "type": "CE",
+      "ltp": "306.25",
+      "bid": "304.70",
+      "ask": "307.80",
+      "iv": "0.1539",
+      "delta": "0.2046",
+      "gamma": "0.000105",
+      "oi": 2860,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV77500CE"
+     },
+     {
+      "strike": "77500",
+      "type": "PE",
+      "ltp": "2628.10",
+      "bid": "2614.95",
+      "ask": "2641.25",
+      "iv": "0.1539",
+      "delta": "-0.7954",
+      "gamma": "0.000105",
+      "oi": 2860,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV77500PE"
+     },
+     {
+      "strike": "77600",
+      "type": "CE",
+      "ltp": "289.75",
+      "bid": "288.30",
+      "ask": "291.20",
+      "iv": "0.1544",
+      "delta": "0.1954",
+      "gamma": "0.000102",
+      "oi": 2660,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV77600CE"
+     },
+     {
+      "strike": "77600",
+      "type": "PE",
+      "ltp": "2711.30",
+      "bid": "2697.70",
+      "ask": "2724.90",
+      "iv": "0.1544",
+      "delta": "-0.8046",
+      "gamma": "0.000102",
+      "oi": 2660,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV77600PE"
+     },
+     {
+      "strike": "77700",
+      "type": "CE",
+      "ltp": "274.60",
+      "bid": "273.20",
+      "ask": "276.00",
+      "iv": "0.1550",
+      "delta": "0.1867",
+      "gamma": "0.000098",
+      "oi": 2480,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV77700CE"
+     },
+     {
+      "strike": "77700",
+      "type": "PE",
+      "ltp": "2795.75",
+      "bid": "2781.75",
+      "ask": "2809.75",
+      "iv": "0.1550",
+      "delta": "-0.8133",
+      "gamma": "0.000098",
+      "oi": 2480,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV77700PE"
+     },
+     {
+      "strike": "77800",
+      "type": "CE",
+      "ltp": "259.70",
+      "bid": "258.40",
+      "ask": "261.00",
+      "iv": "0.1555",
+      "delta": "0.1782",
+      "gamma": "0.000095",
+      "oi": 2300,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV77800CE"
+     },
+     {
+      "strike": "77800",
+      "type": "PE",
+      "ltp": "2880.50",
+      "bid": "2866.05",
+      "ask": "2894.95",
+      "iv": "0.1555",
+      "delta": "-0.8218",
+      "gamma": "0.000095",
+      "oi": 2300,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV77800PE"
+     },
+     {
+      "strike": "77900",
+      "type": "CE",
+      "ltp": "245.50",
+      "bid": "244.25",
+      "ask": "246.75",
+      "iv": "0.1560",
+      "delta": "0.1700",
+      "gamma": "0.000092",
+      "oi": 2160,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV77900CE"
+     },
+     {
+      "strike": "77900",
+      "type": "PE",
+      "ltp": "2965.95",
+      "bid": "2951.10",
+      "ask": "2980.80",
+      "iv": "0.1560",
+      "delta": "-0.8300",
+      "gamma": "0.000092",
+      "oi": 2160,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV77900PE"
+     },
+     {
+      "strike": "78000",
+      "type": "CE",
+      "ltp": "232.50",
+      "bid": "231.30",
+      "ask": "233.70",
+      "iv": "0.1566",
+      "delta": "0.1623",
+      "gamma": "0.000089",
+      "oi": 2020,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV78000CE"
+     },
+     {
+      "strike": "78000",
+      "type": "PE",
+      "ltp": "3052.60",
+      "bid": "3037.30",
+      "ask": "3067.90",
+      "iv": "0.1566",
+      "delta": "-0.8377",
+      "gamma": "0.000089",
+      "oi": 2020,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV78000PE"
+     },
+     {
+      "strike": "78100",
+      "type": "CE",
+      "ltp": "219.70",
+      "bid": "218.60",
+      "ask": "220.80",
+      "iv": "0.1571",
+      "delta": "0.1547",
+      "gamma": "0.000086",
+      "oi": 1900,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV78100CE"
+     },
+     {
+      "strike": "78100",
+      "type": "PE",
+      "ltp": "3139.45",
+      "bid": "3123.75",
+      "ask": "3155.15",
+      "iv": "0.1571",
+      "delta": "-0.8453",
+      "gamma": "0.000086",
+      "oi": 1900,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV78100PE"
+     },
+     {
+      "strike": "78200",
+      "type": "CE",
+      "ltp": "207.60",
+      "bid": "206.55",
+      "ask": "208.65",
+      "iv": "0.1576",
+      "delta": "0.1474",
+      "gamma": "0.000083",
+      "oi": 1800,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV78200CE"
+     },
+     {
+      "strike": "78200",
+      "type": "PE",
+      "ltp": "3226.95",
+      "bid": "3210.80",
+      "ask": "3243.10",
+      "iv": "0.1576",
+      "delta": "-0.8526",
+      "gamma": "0.000083",
+      "oi": 1800,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV78200PE"
+     },
+     {
+      "strike": "78300",
+      "type": "CE",
+      "ltp": "196.45",
+      "bid": "195.45",
+      "ask": "197.45",
+      "iv": "0.1582",
+      "delta": "0.1405",
+      "gamma": "0.000080",
+      "oi": 1700,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV78300CE"
+     },
+     {
+      "strike": "78300",
+      "type": "PE",
+      "ltp": "3315.45",
+      "bid": "3298.85",
+      "ask": "3332.05",
+      "iv": "0.1582",
+      "delta": "-0.8595",
+      "gamma": "0.000080",
+      "oi": 1700,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV78300PE"
+     },
+     {
+      "strike": "78400",
+      "type": "CE",
+      "ltp": "185.50",
+      "bid": "184.55",
+      "ask": "186.45",
+      "iv": "0.1587",
+      "delta": "0.1338",
+      "gamma": "0.000077",
+      "oi": 1600,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV78400CE"
+     },
+     {
+      "strike": "78400",
+      "type": "PE",
+      "ltp": "3404.20",
+      "bid": "3387.15",
+      "ask": "3421.25",
+      "iv": "0.1587",
+      "delta": "-0.8662",
+      "gamma": "0.000077",
+      "oi": 1600,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV78400PE"
+     },
+     {
+      "strike": "78500",
+      "type": "CE",
+      "ltp": "175.15",
+      "bid": "174.25",
+      "ask": "176.05",
+      "iv": "0.1592",
+      "delta": "0.1273",
+      "gamma": "0.000074",
+      "oi": 1520,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV78500CE"
+     },
+     {
+      "strike": "78500",
+      "type": "PE",
+      "ltp": "3493.45",
+      "bid": "3475.95",
+      "ask": "3510.95",
+      "iv": "0.1592",
+      "delta": "-0.8727",
+      "gamma": "0.000074",
+      "oi": 1520,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV78500PE"
+     },
+     {
+      "strike": "78600",
+      "type": "CE",
+      "ltp": "165.70",
+      "bid": "164.85",
+      "ask": "166.55",
+      "iv": "0.1598",
+      "delta": "0.1213",
+      "gamma": "0.000072",
+      "oi": 1440,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV78600CE"
+     },
+     {
+      "strike": "78600",
+      "type": "PE",
+      "ltp": "3583.65",
+      "bid": "3565.70",
+      "ask": "3601.60",
+      "iv": "0.1598",
+      "delta": "-0.8787",
+      "gamma": "0.000072",
+      "oi": 1440,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV78600PE"
+     },
+     {
+      "strike": "78700",
+      "type": "CE",
+      "ltp": "156.35",
+      "bid": "155.55",
+      "ask": "157.15",
+      "iv": "0.1603",
+      "delta": "0.1154",
+      "gamma": "0.000069",
+      "oi": 1360,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV78700CE"
+     },
+     {
+      "strike": "78700",
+      "type": "PE",
+      "ltp": "3673.95",
+      "bid": "3655.55",
+      "ask": "3692.35",
+      "iv": "0.1603",
+      "delta": "-0.8846",
+      "gamma": "0.000069",
+      "oi": 1360,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV78700PE"
+     },
+     {
+      "strike": "78800",
+      "type": "CE",
+      "ltp": "147.55",
+      "bid": "146.80",
+      "ask": "148.30",
+      "iv": "0.1608",
+      "delta": "0.1097",
+      "gamma": "0.000066",
+      "oi": 1300,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV78800CE"
+     },
+     {
+      "strike": "78800",
+      "type": "PE",
+      "ltp": "3764.75",
+      "bid": "3745.90",
+      "ask": "3783.60",
+      "iv": "0.1608",
+      "delta": "-0.8903",
+      "gamma": "0.000066",
+      "oi": 1300,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV78800PE"
+     },
+     {
+      "strike": "78900",
+      "type": "CE",
+      "ltp": "139.50",
+      "bid": "138.80",
+      "ask": "140.20",
+      "iv": "0.1614",
+      "delta": "0.1044",
+      "gamma": "0.000064",
+      "oi": 1240,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV78900CE"
+     },
+     {
+      "strike": "78900",
+      "type": "PE",
+      "ltp": "3856.40",
+      "bid": "3837.10",
+      "ask": "3875.70",
+      "iv": "0.1614",
+      "delta": "-0.8956",
+      "gamma": "0.000064",
+      "oi": 1240,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV78900PE"
+     },
+     {
+      "strike": "79000",
+      "type": "CE",
+      "ltp": "131.60",
+      "bid": "130.90",
+      "ask": "132.30",
+      "iv": "0.1619",
+      "delta": "0.0992",
+      "gamma": "0.000061",
+      "oi": 1180,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV79000CE"
+     },
+     {
+      "strike": "79000",
+      "type": "PE",
+      "ltp": "3948.10",
+      "bid": "3928.35",
+      "ask": "3967.85",
+      "iv": "0.1619",
+      "delta": "-0.9008",
+      "gamma": "0.000061",
+      "oi": 1180,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV79000PE"
+     },
+     {
+      "strike": "79100",
+      "type": "CE",
+      "ltp": "124.10",
+      "bid": "123.45",
+      "ask": "124.75",
+      "iv": "0.1624",
+      "delta": "0.0942",
+      "gamma": "0.000059",
+      "oi": 1120,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV79100CE"
+     },
+     {
+      "strike": "79100",
+      "type": "PE",
+      "ltp": "4040.25",
+      "bid": "4020.00",
+      "ask": "4060.50",
+      "iv": "0.1624",
+      "delta": "-0.9058",
+      "gamma": "0.000059",
+      "oi": 1120,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV79100PE"
+     },
+     {
+      "strike": "79200",
+      "type": "CE",
+      "ltp": "117.30",
+      "bid": "116.70",
+      "ask": "117.90",
+      "iv": "0.1630",
+      "delta": "0.0896",
+      "gamma": "0.000056",
+      "oi": 1060,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV79200CE"
+     },
+     {
+      "strike": "79200",
+      "type": "PE",
+      "ltp": "4133.10",
+      "bid": "4112.40",
+      "ask": "4153.80",
+      "iv": "0.1630",
+      "delta": "-0.9104",
+      "gamma": "0.000056",
+      "oi": 1060,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV79200PE"
+     },
+     {
+      "strike": "79300",
+      "type": "CE",
+      "ltp": "110.60",
+      "bid": "110.00",
+      "ask": "111.20",
+      "iv": "0.1635",
+      "delta": "0.0851",
+      "gamma": "0.000054",
+      "oi": 1020,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV79300CE"
+     },
+     {
+      "strike": "79300",
+      "type": "PE",
+      "ltp": "4226.05",
+      "bid": "4204.90",
+      "ask": "4247.20",
+      "iv": "0.1635",
+      "delta": "-0.9149",
+      "gamma": "0.000054",
+      "oi": 1020,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "SENSEX26NOV79300PE"
+     }
+    ]
+   }
+  ]
+ },
+ "events": [],
+ "data_state": {
+  "prices": "fresh",
+  "age_seconds": 1,
+  "spot_source": "feed",
+  "feed": "ok",
+  "rest": "ok"
+ },
+ "position": {
+  "entry": {
+   "clock": "2026-11-02T10:00:00+05:30",
+   "spot": "74800",
+   "atm_iv": "0.14"
+  },
+  "legs": [
+   {
+    "side": "BUY",
+    "type": "PE",
+    "strike": "71000",
+    "expiry": "2026-11-26",
+    "lots": 2,
+    "quantity": 40,
+    "entry": "263.45",
+    "tradingsymbol": "SENSEX26NOV71000PE"
+   },
+   {
+    "side": "SELL",
+    "type": "PE",
+    "strike": "72000",
+    "expiry": "2026-11-26",
+    "lots": 2,
+    "quantity": 40,
+    "entry": "355.85",
+    "tradingsymbol": "SENSEX26NOV72000PE"
+   },
+   {
+    "side": "SELL",
+    "type": "CE",
+    "strike": "77500",
+    "expiry": "2026-11-26",
+    "lots": 2,
+    "quantity": 40,
+    "entry": "374.30",
+    "tradingsymbol": "SENSEX26NOV77500CE"
+   },
+   {
+    "side": "BUY",
+    "type": "CE",
+    "strike": "78500",
+    "expiry": "2026-11-26",
+    "lots": 2,
+    "quantity": 40,
+    "entry": "230.05",
+    "tradingsymbol": "SENSEX26NOV78500CE"
+   }
+  ],
+  "history": [],
+  "booked_pnl": "0",
+  "adjustments_used": 0,
+  "credit_received": "9466.00"
+ },
+ "broker": {
+  "margin": {
+   "state": "stated",
+   "value": "110000",
+   "reply": {
+    "status": "success",
+    "data": {
+     "initial": {
+      "total": 110000.0
+     },
+     "final": {
+      "total": 110000.0
+     },
+     "orders": [],
+     "charges": {
+      "total": 0
+     }
+    }
+   }
+  },
+  "quote": {
+   "state": "stated",
+   "lot": 20,
+   "tick": 0.05,
+   "legs": [
+    {
+     "tradingsymbol": "SENSEX26NOV71000PE",
+     "side": "BUY",
+     "quantity": 40,
+     "last_price": 195.1,
+     "timestamp": "2026-11-06 11:00:00",
+     "depth": {
+      "buy": [
+       {
+        "price": 194.1,
+        "quantity": 200,
+        "orders": 5
+       }
+      ],
+      "sell": [
+       {
+        "price": 196.1,
+        "quantity": 200,
+        "orders": 5
+       }
+      ]
+     },
+     "state": "stated"
+    },
+    {
+     "tradingsymbol": "SENSEX26NOV72000PE",
+     "side": "SELL",
+     "quantity": 40,
+     "last_price": 277.0,
+     "timestamp": "2026-11-06 11:00:00",
+     "depth": {
+      "buy": [
+       {
+        "price": 275.6,
+        "quantity": 200,
+        "orders": 5
+       }
+      ],
+      "sell": [
+       {
+        "price": 278.4,
+        "quantity": 200,
+        "orders": 5
+       }
+      ]
+     },
+     "state": "stated"
+    },
+    {
+     "tradingsymbol": "SENSEX26NOV77500CE",
+     "side": "SELL",
+     "quantity": 40,
+     "last_price": 306.25,
+     "timestamp": "2026-11-06 11:00:00",
+     "depth": {
+      "buy": [
+       {
+        "price": 304.7,
+        "quantity": 200,
+        "orders": 5
+       }
+      ],
+      "sell": [
+       {
+        "price": 307.8,
+        "quantity": 200,
+        "orders": 5
+       }
+      ]
+     },
+     "state": "stated"
+    },
+    {
+     "tradingsymbol": "SENSEX26NOV78500CE",
+     "side": "BUY",
+     "quantity": 40,
+     "last_price": 175.15,
+     "timestamp": "2026-11-06 11:00:00",
+     "depth": {
+      "buy": [
+       {
+        "price": 174.25,
+        "quantity": 200,
+        "orders": 5
+       }
+      ],
+      "sell": [
+       {
+        "price": 176.05,
+        "quantity": 200,
+        "orders": 5
+       }
+      ]
+     },
+     "state": "stated"
+    }
+   ]
+  },
+  "low_oi": [
+   {
+    "tradingsymbol": "SENSEX26NOV71000PE",
+    "state": "stated",
+    "blocked": false
+   },
+   {
+    "tradingsymbol": "SENSEX26NOV72000PE",
+    "state": "stated",
+    "blocked": false
+   },
+   {
+    "tradingsymbol": "SENSEX26NOV77500CE",
+    "state": "stated",
+    "blocked": false
+   },
+   {
+    "tradingsymbol": "SENSEX26NOV78500CE",
+    "state": "stated",
+    "blocked": false
+   }
+  ]
+ },
+ "expected": {
+  "stage": "Early",
+  "stage_index": 0,
+  "stage_count": 3,
+  "suggest": true,
+  "pnl_now": "946.0000",
+  "premium_left": "8520.00",
+  "adjustment_cost": "548.00",
+  "triggers_fired": [],
+  "triggers_close": [
+   {
+    "id": "T-03",
+    "value": "0.2046",
+    "limit": "0.2500",
+    "cmp": "ge"
+   }
+  ],
+  "triggers_not_evaluated": [
+   {
+    "id": "T-14",
+    "reason": "Loss-from-a-1%-move formula not settled; defined in the GC-ADJ1 build"
+   },
+   {
+    "id": "T-10b",
+    "reason": "no value in the Early stage"
+   }
+  ],
+  "day_rules": [
+   {
+    "rule": "beforeWeekend",
+    "at": "15:00",
+    "action": "Run the carry check (overnight margin, gap loss)",
+    "due": false
+   }
+  ],
+  "tighten_percent": null,
+  "situations": [],
+  "gap_hold": null,
+  "approaches": {
+   "applicable": [
+    "A-01",
+    "A-02",
+    "A-05",
+    "A-04",
+    "A-06",
+    "A-11",
+    "A-23",
+    "A-24",
+    "A-25",
+    "A-26",
+    "A-27",
+    "A-28",
+    "A-29",
+    "A-31",
+    "A-35",
+    "A-36",
+    "A-37",
+    "A-38"
+   ],
+   "refused": [],
+   "greyed": [
+    {
+     "id": "A-08",
+     "reason": "Strangles only"
+    },
+    {
+     "id": "A-09",
+     "reason": "Loss already capped"
+    },
+    {
+     "id": "A-10",
+     "reason": "Strangles only"
+    },
+    {
+     "id": "A-15",
+     "reason": "Ratio spreads only"
+    },
+    {
+     "id": "A-16",
+     "reason": "Long options only"
+    },
+    {
+     "id": "A-17",
+     "reason": "Long options only"
+    },
+    {
+     "id": "A-18",
+     "reason": "Long volatility only"
+    },
+    {
+     "id": "A-19",
+     "reason": "Calendars only"
+    }
+   ],
+   "off_in_playbook": [
+    "A-03",
+    "A-07",
+    "A-12",
+    "A-13",
+    "A-14",
+    "A-20",
+    "A-21",
+    "A-22",
+    "A-32",
+    "A-33",
+    "A-34",
+    "A-30"
+   ],
+   "warnings": []
+  },
+  "at_expiry_whole_trade": {
+   "exact": true,
+   "max_profit": "9466",
+   "max_loss": "30534",
+   "breakevens": [
+    "71763.35",
+    "77736.65"
+   ]
+  },
+  "notes": []
+ }
+}
