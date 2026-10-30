@@ -50,6 +50,7 @@ from ofo_app.routes.broker import current_user_ref
 from ofo_app.routes.outcome import AnswerClock, MarketContext, feed_scope, get_answer_clock, get_market_context
 from ofo_app.routes.planned_entry import get_live_feed, hold_until_priced
 from ofo_app.routes.strategies import StrategyRefused, refused_answer
+from ofo_app.scenario_mode import refuse_orders
 from ofo_app.underlying import Underlying
 
 router = APIRouter(route_class=ClosedRoute)
@@ -387,7 +388,8 @@ async def get_tracking(strategy_id: int,  # noqa: PLR0913 - FastAPI dependencies
     return await _answer(db, stored, bk, ctx, feed, threshold, now())
 
 
-@router.post("/strategies/{strategy_id}/tracking/exit", response_model=TrackingOut)
+@router.post("/strategies/{strategy_id}/tracking/exit", response_model=TrackingOut,
+             dependencies=[Depends(refuse_orders)])  # GC-ADJ1 1b: places paper exit orders: refused in scenario mode
 async def exit_tracking(strategy_id: int, body: TrackingExitIn,  # noqa: PLR0913 - FastAPI dependencies
                         db: Annotated[Any, Depends(get_db)], user_ref: Annotated[str, Depends(current_user_ref)],
                         ctx: Annotated[MarketContext | None, Depends(get_market_context)],

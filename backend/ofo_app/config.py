@@ -54,7 +54,9 @@ class Settings(BaseSettings):
     def _replay_is_test_only(self) -> "Settings":
         if self.TEST_CATALOGUE_DATE and self.APP_ENV != "test":
             raise ValueError("TEST_CATALOGUE_DATE is a test-only setting: it needs APP_ENV=test")
-        if (self.OFO_SCENARIO or "").strip() and self.APP_ENV not in ("development", "test"):
+        # APP_ENV must be SET to development/test: the field default "development" is not an answer (unset refuses)
+        if (self.OFO_SCENARIO or "").strip() and ("APP_ENV" not in self.model_fields_set
+                                                 or self.APP_ENV not in ("development", "test")):
             raise ValueError("OFO_SCENARIO is a development/test-only setting: it needs APP_ENV=development or test")
         if self.OUTCOME_REPLAY and self.APP_ENV != "test":
             raise ValueError("OUTCOME_REPLAY is a test-only setting: it needs APP_ENV=test")

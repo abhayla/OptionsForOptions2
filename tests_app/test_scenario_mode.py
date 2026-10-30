@@ -2,7 +2,12 @@
 under APP_ENV development/test, and refuses every order route."""
 from __future__ import annotations
 
+import ast
 import datetime
+import inspect
+import re as re_mod
+import sys
+import textwrap
 from decimal import Decimal
 
 import pytest
@@ -181,3 +186,74 @@ def test_unclassified_route_found():
         methods = frozenset({"POST"})
         path = "/api/new-order"
     assert scenario_mode.unclassified_mutating_routes([R()]) == [("POST", "/api/new-order")]
+
+
+def test_settings_refuse_scenario_when_app_env_unset(monkeypatch):
+    monkeypatch.delenv("APP_ENV", raising=False)
+    with pytest.raises(ValueError, match="development/test-only"):
+        Settings(DATABASE_URL=DB, OFO_SCENARIO="ADJ-02", _env_file=None)
+
+
+# ---- structural: a route that reaches an order write is an ORDER route -----------------------------------------------
+#: What places, changes or cancels an order (paper or real). Reaching one makes a route an order route.
+ORDER_SINKS = {("ofo_app.paper_store", "place")}
+#: A call the scan cannot resolve whose name looks like an order action is treated as one (fail closed).
+ORDERISH = re_mod.compile(r"(^|_)(place|cancel|modify)(_|$)|order|basket", re_mod.IGNORECASE)
+_UNRESOLVED = object()
+
+
+def _resolve(node, scope):
+    if isinstance(node, ast.Name):
+        return scope.get(node.id, _UNRESOLVED)
+    if isinstance(node, ast.Attribute):
+        base = _resolve(node.value, scope)
+        return _UNRESOLVED if base is _UNRESOLVED else getattr(base, node.attr, _UNRESOLVED)
+    return _UNRESOLVED
+
+
+def _last_name(node) -> str:
+    return node.id if isinstance(node, ast.Name) else node.attr if isinstance(node, ast.Attribute) else ""
+
+
+def reaches_order(fn, seen: set) -> bool:
+    """True when ``fn`` (transitively, within ofo_app) calls an ORDER_SINK, or calls an unresolvable order-like name."""
+    fn = inspect.unwrap(fn)
+    key = (getattr(fn, "__module__", ""), getattr(fn, "__qualname__", ""))
+    if key in seen:
+        return False
+    seen.add(key)
+    if (key[0], getattr(fn, "__name__", "")) in ORDER_SINKS:
+        return True
+    try:
+        tree = ast.parse(textwrap.dedent(inspect.getsource(fn)))
+    except (OSError, TypeError):
+        return False
+    scope = vars(sys.modules[fn.__module__])
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        target = _resolve(node.func, scope)
+        if target is _UNRESOLVED:
+            if ORDERISH.search(_last_name(node.func)):
+                return True  # fail closed: an order-like call the scan cannot follow
+            continue
+        mod = getattr(inspect.unwrap(target), "__module__", "") or ""
+        if callable(target) and mod.startswith("ofo_app") and reaches_order(target, seen):
+            return True
+    return False
+
+
+def test_every_route_reaching_an_order_write_is_an_order_route(monkeypatch):
+    monkeypatch.delenv("OFO_SCENARIO", raising=False)
+    found = set()
+    for r in create_app().routes:
+        for m in getattr(r, "methods", None) or ():
+            if m in scenario_mode.MUTATING_METHODS and reaches_order(r.endpoint, set()):
+                found.add((m, r.path))
+    assert found - scenario_mode.ORDER_ROUTES == set()
+    assert ("POST", "/strategies/{strategy_id}/tracking/exit") in found  # the scan sees the checker's case
+
+
+def test_the_scan_follows_a_call_into_the_paper_store():
+    from ofo_app.routes import tracking  # noqa: PLC0415
+    assert reaches_order(tracking.exit_tracking, set())

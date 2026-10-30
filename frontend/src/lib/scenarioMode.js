@@ -6,6 +6,7 @@
 //   any other value (a sentence, a number, "") -> a banner WITHOUT the id ("Scenario - test data, not the market"):
 //                                                 the server said something is set, so never hide the warning;
 //   request failed                               -> no banner (the server also refuses scenario mode outside dev/test).
+// Known gap, accepted (GC-ADJ1 1b round 2): if GET /features fails while a scenario IS served, the banner is hidden.
 import { ref } from "vue";
 import { fetchFeaturesBody } from "./orderPath";
 

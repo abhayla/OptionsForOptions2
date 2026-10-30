@@ -77,6 +77,7 @@ ORDER_ROUTES: frozenset[tuple[str, str]] = frozenset({
     ("POST", "/paper/strategies/{strategy_id}/orders"),
     ("POST", "/paper/strategies/{strategy_id}/triggers"),
     ("DELETE", "/paper/strategies/{strategy_id}/triggers/{trigger_id}"),
+    ("POST", "/strategies/{strategy_id}/tracking/exit"),  # places paper exit orders (paper_store.place)
 })
 #: Every other mutating route, each one checked: none of them prepares, places, modifies or cancels an order.
 NON_ORDER_ROUTES: frozenset[tuple[str, str]] = frozenset({
@@ -94,7 +95,6 @@ NON_ORDER_ROUTES: frozenset[tuple[str, str]] = frozenset({
     ("PUT", "/strategies/{strategy_id}"),
     ("POST", "/strategies/{strategy_id}/restore/{seq}"),
     ("POST", "/strategies/{strategy_id}/versions/{number}/confirm"),
-    ("POST", "/strategies/{strategy_id}/tracking/exit"),  # stops paper tracking; sends no order
 })
 MUTATING_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 

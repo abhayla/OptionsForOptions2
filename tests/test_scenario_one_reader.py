@@ -21,5 +21,8 @@ def test_one_reader_of_the_variable():
             readers.append(path.name)
         if "OFO_SCENARIO" in text and path.name not in ("scenario_mode.py", "config.py"):
             readers.append(path.name)
+        if path.name != "scenario_mode.py" and re.search(
+                r"scenario_mode\.ENV_NAME|from ofo_app\.scenario_mode import[^\n]*\bENV_NAME\b", text):
+            readers.append(path.name)
     assert readers == []
     assert 'os.environ.get(ENV_NAME' in (ROOT / "backend/ofo_app/scenario_mode.py").read_text(encoding="utf-8")
