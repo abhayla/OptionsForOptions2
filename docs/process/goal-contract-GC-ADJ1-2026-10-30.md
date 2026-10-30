@@ -153,6 +153,11 @@ into `feature/adjustments` after a passing prepush --full (no PR to main); run t
 | # | What | Where | Decision |
 |---|---|---|---|
 | 1 | Catalogue features in no contract (F-05 on the After, F-09..F-16, F-18 effectiveness, F-19, F-20, triggers T-03..T-19, approaches beyond the 7, every strategy type but the iron condor) | catalogue Part 5a / 9a | Owner 2026-10-30 19:5x: run GC-ADJ1 as written; the handover carries a GC-ADJ3+ outline mapping each uncovered feature, for owner approval |
+| 2 | Contract said POP levels round ROUND_HALF_UP; the spec says half-even | `spec/business-rules/scenario-calculations.md` section 3 ("rounded half-even to 0.01 points") | Spec wins: half-even at `metrics._to_decimal` (no shown level changes; contract wording was wrong) |
+| 3 | Approach rules the contract left open | `backend/ofo/adjustment/approaches.py` | Builder calls (technical, spec-silent): tested-side tie -> call side (same as `leg_edit.width`); monthly target delta 0.25 (playbook Early T-03); A-05 rolls to the first strike past the short with delta <= target, A-01 to the strike nearest spot with delta <= target, wing moves the same distance; A-01 refused if the short would cross the other short; A-29 = half the lots rounded down, refused under 2 lots; A-11 ATM = listed strike nearest spot (tie: higher), refused under 3 days; closing a leg needs only a price; trades BUY first then SELL; planned price = ADR-068 (1) (LTP, else mid) |
+| 4 | ADJ-20d's unlisted strike sat where the delta rule never lands | scenario generator | Moved to 23,700 CE (where A-05 lands) through the generator, refusal text regenerated |
+| 5 | Whole-trade After needs exit charges of still-open legs (the outcome screen charges a round trip) | `backend/ofo/engine/whole_trade.py` | Third charge input `open_exit_charges`, each line subtracted once (AC-3) |
+| 6 | Contract asked for a node_modules junction; the project `link_guard` hook refuses junctions into main | run setup | `npm ci` per tree instead |
 
 ## Parked
 
