@@ -31,12 +31,12 @@ from ofo.instruments.models import ZERODHA, ListedContract
 from ofo.marketdata.fanout import FanOut
 from ofo.marketdata.feed_health import FEED_IDLE, FEED_WAITING, market_closed_for
 from ofo.marketdata.kite_provider import IST, KiteProvider
+from ofo.marketdata.kite_quote_time import quote_time
 from ofo.marketdata.spot_source import SourceReading, SourceState
 from redis.exceptions import RedisError
 
 from ofo_app import feed_bus, feed_mode, kite_period_reads
 from ofo_app.config import app_env, get_settings
-from ofo_app.execute_plan import quote_time
 from ofo_app.feed_bus import BusSocket
 from ofo_app.kite_margin import KiteMargin, urllib_transport
 from ofo_app.kite_reads import TOKEN_CODE, KiteReadError, KiteReads

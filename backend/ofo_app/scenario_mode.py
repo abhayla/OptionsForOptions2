@@ -495,7 +495,7 @@ def refuse_orders() -> None:
     own dependencies, so no Kite call and no database write happen."""
     if scenario_requested():
         from ofo_app.errors import Failure  # noqa: PLC0415 - late, like order_path_switch
-        from ofo_app.routes.strategies import StrategyRefused  # noqa: PLC0415
+        from ofo_app.strategy_refused import StrategyRefused  # noqa: PLC0415
 
         raise StrategyRefused(TEMPLATE, Failure.CONFLICT)
 

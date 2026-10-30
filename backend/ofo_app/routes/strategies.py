@@ -37,18 +37,18 @@ from typing import Annotated, Any, Literal, Optional
 from fastapi import APIRouter, Depends, Query
 from ofo.engine.legs import Action
 from ofo.engine.legs import Leg as EngineLeg
-from ofo.errors import LegValue, UserFacing, UserFacingError, render
+from ofo.errors import LegValue, render
 from ofo.strategy import stored_form as sf
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ofo_app import eligibility_from_zerodha as elig
-from ofo_app import paper_store
+from ofo_app import paper_store, tracked_contracts
 from ofo_app import strategy_store as store
-from ofo_app import tracked_contracts
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier, Money
 from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure
 from ofo_app.routes.broker import current_user_ref
+from ofo_app.strategy_refused import StrategyRefused
 from ofo_app.tracked_contracts import ContractState
 from ofo_app.underlying import Underlying
 
@@ -234,17 +234,6 @@ class EntryOut(ApiModel):
 
 class HistoryOut(ApiModel):
     entries: list[EntryOut]
-
-
-class StrategyRefused(UserFacing, Exception):
-    """A refused Save Draft call: carries only its `render()` message; the error boundary shows it (422), or at the status of
-    ``failure`` (404 not found; 409 for a stale revision or a saved form that no longer reads)."""
-
-    def __init__(self, template: str, failure: Failure | None = None, *,
-                 message: UserFacingError | None = None) -> None:
-        self.message: UserFacingError = render(template) if message is None else message
-        super().__init__(template)
-        self.failure: Failure | None = failure
 
 
 _FORM_TEMPLATE = MappingProxyType({
