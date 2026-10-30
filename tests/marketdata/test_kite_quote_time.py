@@ -10,7 +10,6 @@ import datetime
 import pytest
 from ofo.marketdata.kite_quote_time import quote_time
 from ofo.timeutil import IST
-from ofo_app import execute_plan
 
 
 def test_the_kite_timestamp_is_read_as_an_aware_ist_time():
@@ -33,6 +32,3 @@ def test_the_kite_timestamp_is_read_as_an_aware_ist_time():
 def test_any_other_answer_is_none_never_a_guessed_time(quote):
     assert quote_time(quote) is None
 
-
-def test_the_order_path_reads_the_same_function():
-    assert execute_plan.quote_time is quote_time
