@@ -3611,6 +3611,22 @@
               }
             ]
           },
+          "dividend_yields": {
+            "anyOf": [
+              {
+                "patternProperties": {
+                  "^[A-Za-z0-9_\\-.]{1,64}$": {
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dividend Yields"
+          },
           "last_price_at": {
             "anyOf": [
               {

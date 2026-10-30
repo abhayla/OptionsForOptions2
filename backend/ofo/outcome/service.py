@@ -75,7 +75,7 @@ from ofo.scenario.levels import (
     graph_level_set,
 )
 from ofo.scenario.spot import spot_reading
-from ofo.outcome.target import Target, TargetAsk, TargetOffer, entries_target, live_target, target_offer
+from ofo.outcome.target import Target, TargetAsk, TargetOffer, entries_target, live_target, target_offer, yields_of
 from ofo.scenario.views import DEFAULT_VIEW, LABELS, ScenarioValues, View, on_levels, scenario_values
 from ofo.table import ColumnSpec, Table, build_table, visible_columns
 from ofo.timeutil import IST
@@ -238,6 +238,8 @@ class Outcome:
     payoff_table: PayoffTable | None = None  # REQ-137 AC-1: only when asked for (a step or both views)
     standard_deviation: StandardDeviation | None = None  # REQ-083 AC-4 / REQ-137 AC-3: only when asked for
     target: Target | TargetOffer | None = None  # REQ-084 AC-4: the limits alone unless a target was sent (AC-6)
+    # GC-LIVE: the dividend yield q each option expiry was priced with (read-only echo; the checker re-prices with it)
+    dividend_yields: tuple[tuple[datetime.date, Decimal], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -925,7 +927,7 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
         summary=_summary(_metrics_of(model.strategy), level_set, model, charges, charges is None,
                          spot=model.spot_level),
         charges_breakdown=breakdown, curves=curves, other_view=other, payoff_table=table_p,
-        standard_deviation=sd,
+        standard_deviation=sd, dividend_yields=yields_of(model),
         target=(live_target(target, model, graph_levels, payoff_table_default_step(definition.underlying))
                 if target is not None and target.asked
                 else target_offer(model, payoff_table_default_step(definition.underlying), live=True)))
