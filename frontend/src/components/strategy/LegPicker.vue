@@ -690,7 +690,7 @@ defineExpose({ startEdit, showStrikes })
           <p v-if="strikesReason" data-testid="strikes-reason">{{ strikesReason }}</p>
           <p v-if="centreLine" data-testid="strikes-centre">{{ centreLine }}</p>
           <!-- UI-202 column heads: Call side | Strike | Put side, the same columns as every row below -->
-          <div class="mt-2 grid items-end gap-x-[3px] border-b border-line pb-1 text-[9px] leading-tight text-ink-muted" :style="gridStyle" data-testid="strike-head">
+          <div class="sticky top-0 z-10 mt-2 grid items-end gap-x-[3px] border-b border-line bg-surface pb-1 text-[9px] leading-tight text-ink-muted" :style="gridStyle" data-testid="strike-head">
             <span v-for="col in sideColumns('ce')" :key="`ce-${col}`" class="whitespace-nowrap text-right">{{ col === 'act' ? '' : `Call ${COLUMN_LABEL[col]}` }}</span>
             <span class="text-center">Strike</span>
             <span v-for="col in sideColumns('pe')" :key="`pe-${col}`" class="whitespace-nowrap">{{ col === 'act' ? '' : `Put ${COLUMN_LABEL[col]}` }}</span>
