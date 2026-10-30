@@ -29,6 +29,8 @@ NOT_SCANS = {
         "globs the hook folder only to copy it into a tmp dir for ~100 s of mutation runs; not a source-tree scan",
     "tests/test_adjust_scenarios.py":
         "globs tests/fixtures/adjust_scenarios only to list the ADJ-*.json scenario files; reads no source module",
+    "tests/adjustment/test_whole_trade.py":
+        "globs tests/fixtures/adjust_scenarios only to list the ADJ-*.json scenario files; reads no source module",
 }
 
 # First layer: scans that MUST carry the mark, by node id (file::test). The first three are the finding's occurrences.
