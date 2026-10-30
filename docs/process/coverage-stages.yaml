@@ -513,6 +513,7 @@ issues:
   "#613": S6.4  # Checker target breakevens off by 0.11 points in 1 of 3 live runs (GC-LIVE F-6 remainder, parked after 2 rounds)
   "#614": S6.4  # Leg-stop alert says 'exited 1 legs' (GC-LIVE2 M3)
   "#615": S6.4  # Strike picker first cold read says LIVE with no spot or prices (same class as #612)
+  "#616": S6.4  # After the close: Paper has no market-closed banner and shows no-IV text; index read returns nulls
 
 # Work items whose status is not done.
 work_items:
