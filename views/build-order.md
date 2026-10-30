@@ -80,6 +80,7 @@ Done (7): REQ-020, REQ-032, REQ-033, REQ-040, REQ-057, REQ-059, REQ-072; Superse
 | REQ-076 | Builder leg rows - strike stepper, multiplier, analysis-only leg toggle and the shape name | feature | normal | waiting: on REQ-028, REQ-035 |
 | REQ-141 | The builder's Positions tab lists the user's Zerodha positions and loads ticked ones into the builder as a draft to analyse, attaching and reconciling nothing | feature | high | waiting: on REQ-076, REQ-077 |
 | REQ-078 | Shift, Width and Hedge move the user's own strikes by one strike step per click, computed on the server | feature | normal | waiting: on REQ-076 |
+| REQ-155 | Adjustment approach builder - the server builds a picked approach's exact legs and prices the whole trade's After | feature | high | waiting: on REQ-045, REQ-046, REQ-078 |
 | REQ-079 | Ready-made shapes and straddle/strangle quick picks load into the builder at strikes placed by a fixed rule (held for the legal check) | feature | normal | waiting: on REQ-028, REQ-076 |
 | REQ-080 | Leg picker with live prices per strike, a market-depth popup per leg, and the futures and forward price per expiry | feature | normal | waiting: on REQ-035 |
 | REQ-083 | Payoff chart - expiry and estimated curves together, a two-value hover, expected-move bands and open-interest bars | feature | normal | waiting: on REQ-034 |
@@ -96,6 +97,7 @@ Done (7): REQ-020, REQ-032, REQ-033, REQ-040, REQ-057, REQ-059, REQ-072; Superse
 | REQ-108 | An events calendar, "events before this expiry" on a strategy, and daily FII and DII activity, each held until its data source is cleared | feature | normal | waiting: on REQ-052 |
 | REQ-109 | A saved strategy can be paper-tracked on its own, with paper P&L since it was saved and a paper exit, never through a global switch | feature | normal | waiting: on REQ-038, REQ-049 |
 | REQ-112 | Every adjustment or exit suggestion records what the user did with it - dismissed, acted on, completed or lapsed | feature | normal | waiting: on REQ-042, REQ-045, REQ-046 |
+| REQ-163 | A strategy's adjustment history shows the entry, every adjustment and the whole-trade totals | feature | high | waiting: on REQ-112, REQ-155 |
 | REQ-116 | Every outbound notification goes through the shared Notifier gateway, and alert sending never sits in the order path | feature | normal | blocked: behind REQ-048 (W-134 blocked: PARKED #517 after two failed Tier A rounds: AC-5 redesign as a reply-field inventory (structural), with a fresh independent designer first), REQ-050 (W-136 blocked: PARKED #519 after the final Tier A round: build each cache key from the engine call itself (structural), plus a one-input-at-a-time test; 30 of 40 key parts unguarded) |
 | REQ-110 | Each trading day the user gets a "does Zerodha agree with us" report for their strategies | feature | normal | blocked: behind REQ-048 (W-134 blocked: PARKED #517 after two failed Tier A rounds: AC-5 redesign as a reply-field inventory (structural), with a fresh independent designer first), REQ-050 (W-136 blocked: PARKED #519 after the final Tier A round: build each cache key from the engine call itself (structural), plus a one-input-at-a-time test; 30 of 40 key parts unguarded) |
 | REQ-134 | Saved strategies have a name the user chooses, Save As makes a copy, a saved strategy can be renamed, and the saved list can be searched | feature | normal | waiting: on REQ-038, REQ-070 |
@@ -115,6 +117,13 @@ Done (7): REQ-020, REQ-032, REQ-033, REQ-040, REQ-057, REQ-059, REQ-072; Superse
 | REQ-150 | Strike drawer Greeks view - call delta, IV, put delta, theta, vega and gamma per strike, and the drawer opens on the nearest expiry | feature | normal | waiting: on REQ-080, REQ-084 |
 | REQ-153 | Breakeven percent from spot beside each breakeven, for Expiry and Target | feature | normal | waiting: on REQ-081, REQ-084, REQ-139 |
 | REQ-154 | An unsaved builder strategy survives a page reload - kept on the server for the signed-in user until saved or cleared | feature | normal | waiting: on REQ-038, REQ-077, REQ-138 |
+| REQ-156 | Compare adjustment approaches side by side on named criteria, each criterion naming its leader, never an overall winner | feature | normal | waiting: on REQ-155 |
+| REQ-157 | Filters on the approach compare are computed from the current approaches, never a fixed list | feature | normal | waiting: on REQ-156 |
+| REQ-158 | Adjustment playbooks - one read-only system playbook per strategy type, any number of named user playbooks, one active | feature | normal | waiting: on REQ-045 |
+| REQ-159 | What a playbook holds - user-defined stages, triggers per stage, day-and-date rules, situations, limits and guards | feature | normal | waiting: on REQ-047, REQ-158 |
+| REQ-160 | Playbook editor is one step-by-step flow with a plain-words summary, and Test shows what the playbook would flag today | feature | normal | waiting: on REQ-159 |
+| REQ-161 | Start tracking opens a strategy plan sheet pre-filled from the type's active playbook, accepted in one click | feature | normal | waiting: on REQ-109, REQ-158 |
+| REQ-162 | Positions > Adjustment opportunities lists every opportunity across strategies with its label and outcome | feature | normal | waiting: on REQ-045, REQ-112, REQ-156 |
 | REQ-004 | Responsive web, desktop and mobile priorities | polish | normal | next |
 | REQ-011 | Learn section | polish | normal | next |
 | REQ-111 | The user can keep private notes on a strategy | polish | normal | waiting: on REQ-038 |

@@ -1040,3 +1040,32 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   minute candle is not used: an index's official close is computed by the exchange, not the last minute's price. NIFTY
   28 Oct read `22698.85` (not yet compared with NSE's published value). Basis for REQ-109 AC-7 (settlement price) and
   ADR-207 (6). Status: **measured once, live, SENSEX; today's expiry close (29 Oct) to be compared after 15:30**.
+
+## F-73 - The engine prices an adjustment's After correctly and fast on a real chain; the cost is the database and broker round trips
+- Measured 2026-10-30 14:56:56 IST, adjustments core proof (throwaway, read-only script; real NIFTY 3 Nov chain, one
+  Kite quote of 208 contracts, Zerodha basket margin x4): a 2-lot iron condor -23450CE/+23650CE/-22600PE/+22400PE and
+  three approaches (roll puts up 200, roll calls out 200, close calls) all computed (`state=COMPUTED`, no unpriced leg).
+  Max profit, max loss and breakevens equal an independent intrinsic-value hand check to the paisa (Before: hand
+  1956.50 - charges 200.53 = engine 1755.97). Engine time: 7 calls 0.27 s total, p95 0.0425 s. In the same run the
+  first DB connection + token read over the tunnel took 1.86 s, catalogue load 0.78 s, charge rates 0.49-0.57 s,
+  margin 0.26-0.41 s, quote 0.21 s; so the ~2 s per leg edit measured on 2026-10-26 (REQ-078 AC-1) is I/O, not the
+  engine (not measured inside the route itself). Bears on REQ-046 AC-4, REQ-078 AC-1. Status: **measured once, live**.
+
+## F-74 - An adjustment's After shows open legs only: booked P&L of closed legs and the adjustment trade's own charges are left out
+- Same run. `ofo/outcome/service.py` has no booked P&L; booked P&L is added only to the what-if target block
+  (`ofo/outcome/target.py:232-237`) and read only for a paper strategy id (`ofo_app/routes/outcome.py:240-264`).
+  Charges in the outcome are a round trip of the After legs as a fresh trade, so closing the old legs costs nothing in
+  the figure. Effect: the whole-trade max profit, max loss and breakevens an adjustment compare needs (catalogue F-06,
+  P-02) are not representable today. Bears on REQ-046 AC-4, REQ-112. Status: **measured once, live; read from the code**.
+
+## F-75 - POP fails on a real adjusted iron condor because the after-charges breakeven is finer than paise
+- Same run, approach A: `ValueError level must have at most 2 decimal places ... got 22771.372`
+  (`ofo/engine/metrics.py:210-220` -> `ofo/engine/pop.py`); Before, B and C gave 87%, 92%, 94%. Hidden from users
+  today: POP is behind the held switch `probability_of_profit` (`ofo_app/held_switches.py:24`). Defect class:
+  `knowledge/findings/interpolated-level-finer-than-paise-refused.json`. Status: **measured once, live**.
+
+## F-76 - The NIFTY spot cannot be read over Kite REST: the quote allow-list refuses index symbols with a space
+- Same run: `NSE:NIFTY 50` was refused before sending because `QUOTE_INSTRUMENT` (`ofo/broker/kite_http.py:37`,
+  `[A-Z0-9_-]+:[A-Z0-9_-]+`) has no space; the spike took spot from put-call parity (23020.45). Today spot comes only
+  from the live feed. An adjustment compare on a closed market or without the feed needs a spot source. Status:
+  **measured once, live; read from the code**.
