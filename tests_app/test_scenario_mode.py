@@ -257,3 +257,75 @@ def test_every_route_reaching_an_order_write_is_an_order_route(monkeypatch):
 def test_the_scan_follows_a_call_into_the_paper_store():
     from ofo_app.routes import tracking  # noqa: PLC0415
     assert reaches_order(tracking.exit_tracking, set())
+
+
+# ---- a scenario contract with a catalogue twin is served under the catalogue's own token ---------------------
+def test_catalogue_twin_served_under_real_token_others_synthetic(monkeypatch):
+    rows = scenario_mode.load("ADJ-02").data["market"]["chains"][0]["rows"]
+    twin, other = rows[0]["tradingsymbol"], rows[1]["tradingsymbol"]
+    real_token, real_ex = 1_234_567 * 256 + 2, 1_234_567
+    monkeypatch.setattr(scenario_mode, "catalogue_twins", lambda symbols: {twin: (real_token, real_ex)})
+    scn = scenario_mode.load("ADJ-02")
+    by_symbol = {lc.broker_refs[0].broker_symbol: lc for lc in scn.provider.instrument_master()}
+    assert int(by_symbol[twin].broker_refs[0].broker_token) == real_token
+    assert by_symbol[twin].contract.exchange_token == real_ex
+    assert by_symbol[other].contract.exchange_token >= scenario_mode._FIRST_TOKEN  # no twin: keeps the synthetic token
+    assert scenario_mode.instrument_id(by_symbol[twin]) in scn.rows_by_id  # priced under the real id
+
+
+WANTED = [("S", "NFO", "2026-11-09", 23500, "CE")]
+
+
+class _Row:
+    def __init__(self, **kw):
+        self.__dict__.update(broker_symbol="S", broker_token=2560, exchange_token=10, exchange_segment="NSE_FO",
+                             expiry=datetime.date(2026, 11, 9), strike=Decimal("23500.00"), instrument_type="CE")
+        self.__dict__.update(kw)
+
+
+def test_unreadable_catalogue_keeps_every_token_synthetic(monkeypatch):
+    async def down(symbols):
+        raise OSError("no db")
+
+    monkeypatch.setattr(scenario_mode, "_database_name", lambda: "ofo_dev")
+    monkeypatch.setattr(scenario_mode, "_read_twins", down)
+    assert scenario_mode.catalogue_twins(WANTED) == {}
+
+
+def test_twin_carrying_a_would_be_synthetic_token_collides_with_nothing(monkeypatch):
+    rows = scenario_mode.load("ADJ-02").data["market"]["chains"][0]["rows"]
+    would_be = scenario_mode._FIRST_TOKEN + 1  # exactly the first synthetic exchange token
+    monkeypatch.setattr(scenario_mode, "catalogue_twins",
+                        lambda wanted: {rows[0]["tradingsymbol"]: (would_be * 256 + 2, would_be)})
+    master = scenario_mode.load("ADJ-02").provider.instrument_master()
+    tokens = [int(lc.broker_refs[0].broker_token) for lc in master]
+    assert len(tokens) == len(set(tokens))
+    assert len({lc.contract.exchange_token for lc in master}) == len(master)
+
+
+def test_forced_duplicate_token_refuses_scenario_mode():
+    row = {"instrument_token": "1", "exchange_token": "7", "tradingsymbol": "A", "exchange": "NFO"}
+    with pytest.raises(ScenarioRefused, match="collision"):
+        scenario_mode.check_no_repeated_token([row, {**row, "tradingsymbol": "B", "exchange_token": "8"}])
+    with pytest.raises(ScenarioRefused, match="collision"):
+        scenario_mode.check_no_repeated_token([row, {**row, "tradingsymbol": "B", "instrument_token": "2"}])
+
+
+def test_twin_must_agree_on_exchange_expiry_strike_and_type():
+    assert scenario_mode.match_twins([_Row()], WANTED) == {"S": (2560, 10)}
+    for off in ({"exchange_segment": "BSE_FO"}, {"expiry": datetime.date(2026, 11, 16)}, {"strike": Decimal("23600")},
+                {"instrument_type": "PE"}):
+        assert scenario_mode.match_twins([_Row(**off)], WANTED) == {}
+
+
+def test_two_active_catalogue_rows_for_one_symbol_give_no_twin():
+    assert scenario_mode.match_twins([_Row(), _Row(broker_token=5120, exchange_token=20)], WANTED) == {}
+
+
+def test_other_database_reads_no_twins(monkeypatch):
+    async def fail(symbols):
+        pytest.fail("must not read")
+
+    monkeypatch.setattr(scenario_mode, "_database_name", lambda: "ofo_prod")
+    monkeypatch.setattr(scenario_mode, "_read_twins", fail)
+    assert scenario_mode.catalogue_twins(WANTED) == {}
