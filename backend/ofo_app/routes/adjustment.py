@@ -344,8 +344,8 @@ async def adjustment_approaches(  # noqa: PLR0913 - FastAPI dependencies, one pe
 
 async def _margin(margin_of: ApproachMargin, built: ApproachLegs, market: MarketInputs) -> dict:
     """AC-6: the After legs' basket margin; one approach's failure never touches another's (attack 4)."""
-    if not built.after:
-        return margin_block(None) | {"state": "no_basket"}
+    if not built.after:  # every leg exits (A-31): nothing stays open, so no margin is needed (no figure, not 0)
+        return {"state": "not_needed", "value": None, "at": None, "reason": None}
     try:
         legs = [PlannedOrderIn(market.instrument_ids[x.tradingsymbol], x.side, x.lots, x.entry) for x in built.after]
         return margin_block(await margin_of(legs))

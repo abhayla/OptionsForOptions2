@@ -85,6 +85,7 @@ NON_ORDER_ROUTES: frozenset[tuple[str, str]] = frozenset({
     ("POST", "/api/broker/disconnect"),  # ends the broker session
     ("POST", "/api/strategies/leg-edit"),  # engine answer for one edited leg
     ("POST", "/api/strategies/outcome"),  # engine answer (a read)
+    ("POST", "/api/strategies/{strategy_id}/adjustment-approaches"),  # REQ-155 engine answer, suggest-only (a read)
     ("POST", "/paper/alerts/read"),  # marks alerts read
     ("POST", "/api/strategies/planned-entry"),  # captures planned prices
     ("POST", "/api/strategies/load-template"),  # a ready-made shape into the builder
