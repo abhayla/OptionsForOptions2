@@ -53,6 +53,7 @@ import datetime
 import json
 import os
 import pathlib
+import logging
 import re
 import struct
 from collections.abc import Mapping
@@ -104,6 +105,15 @@ _INDEX_OF = {"NIFTY": (NSE_INDEX, "NSE"), "SENSEX": (BSE_INDEX, "BSE")}
 _FIRST_TOKEN = 900_000  # synthetic exchange tokens: far from the real catalogue's, never written to the database
 _FEED_STATES = frozenset({"ok", "stale", "missing"})
 _REST_STATES = frozenset({"ok", "failed"})
+
+
+log = logging.getLogger(__name__)
+
+#: READ-ONLY twin lookup: a scenario tradingsymbol that is also a live catalogue contract (same Zerodha symbol).
+_TWIN_SQL = (
+    "SELECT b.broker_symbol, b.broker_token, c.exchange_token FROM public.contracts AS c "  # noqa: S608 constants only
+    "JOIN public.broker_instruments AS b ON b.contract_id = c.id "
+    "WHERE NOT c.retired AND NOT c.delisted AND b.broker = 'zerodha' AND b.broker_symbol = ANY(CAST(:symbols AS TEXT[]))")
 
 
 class ScenarioRefused(RuntimeError):
@@ -250,7 +260,43 @@ class Scenario:
             "timestamp": stamp}}}
 
 
-def _instrument_rows(scn: dict) -> tuple[list[dict], list[tuple[int, dict]], int]:
+async def _read_twins(symbols: list[str]) -> dict[str, tuple[int, int]]:
+    from sqlalchemy import text  # noqa: PLC0415 - only in scenario mode
+    from sqlalchemy.ext.asyncio import create_async_engine  # noqa: PLC0415
+    from sqlalchemy.pool import NullPool  # noqa: PLC0415
+
+    from ofo_app.config import get_settings  # noqa: PLC0415
+
+    engine = create_async_engine(get_settings().DATABASE_URL, poolclass=NullPool)  # own loop, own engine, no pool
+    try:
+        async with engine.connect() as conn:
+            rows = (await conn.execute(text(_TWIN_SQL), {"symbols": symbols})).all()
+    finally:
+        await engine.dispose()
+    return {r.broker_symbol: (int(r.broker_token), int(r.exchange_token)) for r in rows}
+
+
+def catalogue_twins(symbols: list[str]) -> dict[str, tuple[int, int]]:
+    """``{tradingsymbol: (instrument_token, exchange_token)}`` of the scenario symbols that are live catalogue
+    contracts (one read-only SELECT, ofo_dev). An unreadable catalogue -> {} (every contract keeps a synthetic token)."""
+    import asyncio  # noqa: PLC0415
+    from concurrent.futures import ThreadPoolExecutor  # noqa: PLC0415
+
+    if not symbols:
+        return {}
+    try:
+        with ThreadPoolExecutor(max_workers=1) as pool:  # a fresh thread: create_app may already be inside a loop
+            found = pool.submit(lambda: asyncio.run(_read_twins(symbols))).result()
+    except Exception as exc:  # noqa: BLE001 - no database / no catalogue tables: synthetic tokens, said in the log
+        log.debug("scenario: catalogue not read (%s); synthetic tokens for all contracts", type(exc).__name__)
+        return {}
+    log.debug("scenario: %d of %d contracts served under the catalogue's own token, the rest synthetic",
+              len(found), len(symbols))
+    return found
+
+
+def _instrument_rows(scn: dict, twins: Mapping[str, tuple[int, int]] | None = None,
+                     ) -> tuple[list[dict], list[tuple[int, dict]], int]:
     """Zerodha instrument-list rows (the real CSV columns) for the index and every LISTED chain row, the (token, row)
     pairs that get a packet, and the index token."""
     underlying, exchange = scn["underlying"], scn.get("exchange", "NFO")
@@ -269,8 +315,8 @@ def _instrument_rows(scn: dict) -> tuple[list[dict], list[tuple[int, dict]], int
             n += 1
             if not row.get("listed", True):
                 continue  # not in the instrument list (ADJ-20d)
-            token = n * 256 + code
-            rows.append({"instrument_token": str(token), "exchange_token": str(n),
+            token, ex_token = twins.get(row["tradingsymbol"], (n * 256 + code, n)) if twins else (n * 256 + code, n)
+            rows.append({"instrument_token": str(token), "exchange_token": str(ex_token),
                          "tradingsymbol": row["tradingsymbol"], "name": underlying, "last_price": "0",
                          "expiry": chain["expiry"], "strike": str(row["strike"]), "tick_size": str(scn["tick"]),
                          "lot_size": str(scn["lot"]), "instrument_type": row["type"], "segment": f"{exchange}-OPT",
@@ -290,7 +336,9 @@ def load(scenario_id: str) -> Scenario:
         raise ScenarioRefused(f"unknown feed state {feed!r}")
     if state.get("rest", "ok") not in _REST_STATES:
         raise ScenarioRefused(f"unknown REST state {state.get('rest')!r}")
-    rows, priced, index_token = _instrument_rows(scn)
+    symbols = [r["tradingsymbol"] for c in scn["market"].get("chains") or [] for r in c["rows"]
+               if r.get("listed", True)]
+    rows, priced, index_token = _instrument_rows(scn, catalogue_twins(symbols))
     listed = list(parse_instruments_rows(rows))  # the real instrument-list parser
     provider = KiteProvider(listed, clock=lambda: clock_at)
     provider.subscribe([instrument_id(lc) for lc in listed])
