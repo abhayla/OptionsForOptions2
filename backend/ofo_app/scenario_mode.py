@@ -56,11 +56,12 @@ import os
 import pathlib
 import re
 import struct
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
 
+from ofo.engine import adjust_money
 from ofo.instruments.models import BSE_FO, BSE_INDEX, INDEX_ROWS, NSE_FO, NSE_INDEX
 from ofo.instruments.parser import parse_instruments_rows
 from ofo.marketdata.kite_provider import KiteProvider
@@ -113,13 +114,27 @@ def _times(units: int, rate: Decimal) -> float:
     return float(Decimal(units) * rate)
 
 
-def _reply_for_basket(reply: Mapping, body: str | None) -> dict:
+def _stand_in_margin(orders: Sequence[Mapping], strikes: Mapping[str, Decimal]) -> Decimal:
+    """TEST DATA, not Zerodha's SPAN: the engine's ``stand_in_basket_margin`` of the request (a SELL leg's strike comes
+    from the scenario's chain, 0 when unlisted; a BUY leg's figure is its limit price)."""
+    return adjust_money.stand_in_basket_margin(
+        (o["transaction_type"], strikes.get(o["tradingsymbol"], Decimal(0)) if o["transaction_type"] == "SELL"
+         else Decimal(str(o["price"])), o["quantity"]) for o in orders)
+
+
+def _reply_for_basket(reply: Mapping, body: str | None, strikes: Mapping[str, Decimal] | None = None) -> dict:
     """Kite's basket-margin reply lists one row per order sent (symbol, exchange, option_premium, total); the
     scenario states only the basket figure, so the rows echo the request (an option BUY's premium row is the
-    request's own quantity x limit, i.e. no top-up) and carry no other figure."""
+    request's own quantity x limit, i.e. no top-up) and carry no other figure. The basket's initial and final
+    totals are ``_stand_in_margin`` of the request (test data), so two baskets differ."""
     out = json.loads(json.dumps(reply))
     rows = []
-    for order in json.loads(body or "[]", parse_float=Decimal):
+    orders = json.loads(body or "[]", parse_float=Decimal)
+    if not orders:  # no basket to price (a bare parser probe): the scenario's own stated figure stands
+        return out
+    out["data"]["initial"] = {"total": float(_stand_in_margin(orders, strikes or {}))}  # float-ok: synthetic reply
+    out["data"]["final"] = dict(out["data"]["initial"])
+    for order in orders:
         row = {"tradingsymbol": order["tradingsymbol"], "exchange": order["exchange"], "total": 0}
         if order.get("transaction_type") == "BUY":
             row["option_premium"] = _times(order["quantity"], order["price"])
@@ -254,12 +269,16 @@ class Scenario:
         if state == "stated" and method == "GET":  # the available-funds call (/user/margins)
             return 200, json.dumps(margin["funds_reply"])
         if state == "stated":
-            return 200, json.dumps(_reply_for_basket(margin["reply"], body))
+            return 200, json.dumps(_reply_for_basket(margin["reply"], body, self._strikes()))
         if state == "empty":
             return 200, json.dumps(margin["reply"])
         if state == "failed":
             return 504, json.dumps(margin["reply"])
         raise ScenarioRefused(f"unknown margin state {state!r}")
+
+    def _strikes(self) -> dict[str, Decimal]:
+        return {r["tradingsymbol"]: Decimal(str(r["strike"])) for c in self.data["market"]["chains"]
+                for r in c["rows"]}
 
     def quote_reply(self) -> dict:
         """Kite ``GET /quote`` reply for the position's legs; a ``not found`` leg is absent from ``data``."""

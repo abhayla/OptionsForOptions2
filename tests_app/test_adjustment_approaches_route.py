@@ -139,7 +139,7 @@ def test_ac2_adj13_booked_pnl_is_in_the_after():
 
 def test_ac4_adj23_pop_present_and_held_switch_off_gives_dash_with_reason():
     sc = load("ADJ-23")
-    on = post(client_for(sc, environ={"APP_ENV": "test"})).json()  # held_switches: ON in development and test
+    on = post(client_for(sc, rates=RATES, environ={"APP_ENV": "test"})).json()  # held_switches: ON in development and test
     assert on["pop_switch_on"] is True
     pops = {a["id"]: a["pop"] for a in on["approaches"] if a["refusal"] is None}
     assert all(p["value"] is not None for p in pops.values()), pops
@@ -226,6 +226,21 @@ def test_attack5_rates_unreadable_gross_shown_after_charges_withheld():
     a = next(x for x in body["approaches"] if x["id"] == "A-36")
     assert a["after"]["gross"]["max_profit"] and a["after"]["after_charges"] is None
     assert a["charges"]["not_available"].startswith("Charges not available")
+
+
+def test_adj20a_charges_unknown_withholds_pop_and_no_pop_leader():
+    """A-31 / ADJ-20a: unreadable charge rates -> POP "-" with the charges-unknown reason, in the route and the compare."""
+    body = post(client_for(load("ADJ-20a"), rates=None, environ={"APP_ENV": "test"})).json()
+    shown = [a for a in body["approaches"] if a["refusal"] is None and a["after"] is not None]
+    assert shown
+    for a in shown:
+        assert a["charges"]["not_available"].startswith("Charges not available")
+        assert a["pop"]["value"] is None and a["pop"]["not_available"] is True, (a["id"], a["pop"])
+        assert a["pop"]["reason"].startswith("Charges not available"), a["pop"]
+    pop = next(c for c in body["criteria"] if c["id"] == "pop")
+    assert pop["leaders"] == []
+    assert all(v["text"] == "-" and v["unavailable_reason"].startswith("Charges not available")
+               for v in pop["values"].values())
 
 
 def test_ac7_seven_approaches_engine_time_at_most_one_second_and_no_order_path(monkeypatch):
@@ -344,3 +359,14 @@ def test_drawer_no_spot_means_no_approach_can_be_built_and_the_reason_says_so():
     body = post(client_for(load("ADJ-24b"), rates=RATES), body={"approaches": ["A-36"]}).json()
     assert [a["id"] for a in body["available"]] == list(APPROACH_IDS)
     assert all(not a["applicable"] and a["reason"].startswith("Not checked now") for a in body["available"])
+
+
+def test_spot_not_available_words_every_source_reason_never_a_raw_code():
+    b = post(client_for(load("ADJ-24b"))).json()
+    assert b["spot"]["text"] == ("Spot not available (live feed: the feed is not connected; REST quote: the quote "
+                                 "request failed; last close: no close is stored), so no After is computed.")
+    assert route._spot_why("feed", "not_finite") == "the feed's last price was not a number"
+    assert route._spot_why("rest_quote", "empty") == "the quote had no price"
+    assert route._spot_why("last_close", "not_finite") == "its last price was not a number"
+    assert route._spot_why("rest_quote", "absent") == "no quote was requested"
+    assert "not_finite" not in b["spot"]["text"] and "absent" not in b["spot"]["text"]

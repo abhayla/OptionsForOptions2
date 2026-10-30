@@ -2378,5 +2378,65 @@
   "labels:adjustment_approach_about": {
     "sha256": "be4ef2ab5361e935eadf5c4c576a962bae0b59f6ab8e4cd287f4153b32e8cdda",
     "reviewed": "pending owner read"
+  },
+  "explanation:adjust_spot_why_absent": {
+    "sha256": "da10d6800a3d3b1c2b5b9b017bdd8225b49bc9ddf6f5f97a4be76d1448bfb475",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_spot_why_feed_absent": {
+    "sha256": "cebe21f59ee07d1f4ac365762653c3f8f5c062bb66f7f9c05a8fc2b83b70c367",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_spot_why_rest_quote_absent": {
+    "sha256": "13fa5ff025bf0bc28a0563a7554bf425f422e25cb268d02da55732c5382fe6a6",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_spot_why_last_close_absent": {
+    "sha256": "db1410985350ca6be25dc410eb396c4dcb29ec6dd91f3004c0dd2780e4077180",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_spot_why_rest_quote_failed": {
+    "sha256": "dd54e4fd1a9ecf2725916dbe5835fde6717b32eb174c10df9c0cf28570776c3b",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_spot_why_rest_quote_empty": {
+    "sha256": "cb7d59f45f66b8f9346d112a40e7ab27592d94f4a9cba882bd44615fafa445e2",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_spot_why_feed_not_finite": {
+    "sha256": "92d626378f068245888b1a67c01ba651e8ebc951ddda1c5b93cf8c46c199a1e4",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_spot_why_no_price": {
+    "sha256": "519bcac62d80fc06ace71f422d44b63d3fb57822d4ea327a550f7ee354658f2f",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_spot_why_no_time": {
+    "sha256": "0fbc391e6e8adbbffbed0cc741c98aaa58ada91500892d456392d64ba0696911",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_spot_why_tick_in_future": {
+    "sha256": "bf20f207bd246c56db08186d12d704a4fbca465b52314d0bdd68cf3cae3840b8",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_spot_why_stale": {
+    "sha256": "56029c476a35d071ff2e65c08c6cda07ff53422ab19ad8a49638618c2dd620ff",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_spot_why_not_finite": {
+    "sha256": "d51c601d40a7f0703bc60fe07ceca7265bc5d5440147074cbcc23bf69d699f56",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_spot_why_not_found": {
+    "sha256": "6504dc907e01aa368c27e6bcf3a07ac2e4197d1e9fcf6c32ea1ba3b10e6703b1",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_spot_why_failed": {
+    "sha256": "a1c02d3cc2a7c35f34d3d9739948df399c2ed5955c4b27082ec30154c40f2dc0",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_spot_why_empty": {
+    "sha256": "cb7d59f45f66b8f9346d112a40e7ab27592d94f4a9cba882bd44615fafa445e2",
+    "reviewed": "pending owner read"
   }
 }

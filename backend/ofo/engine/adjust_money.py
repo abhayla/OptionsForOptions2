@@ -14,6 +14,8 @@ from __future__ import annotations
 from collections.abc import Iterable
 from decimal import Decimal
 
+from ofo.money import PAISE
+
 _SIGN = {"SELL": 1, "BUY": -1}
 
 
@@ -41,3 +43,15 @@ def margin_change(after: Decimal, before: Decimal) -> Decimal:
 def premium_left(legs: Iterable[tuple[str, Decimal, int]]) -> Decimal:
     """(side, current price, quantity) per open leg -> shorts' value minus longs' value."""
     return sum((price * quantity * _sign(side) for side, price, quantity in legs), Decimal(0))
+
+
+SELL_MARGIN_RATE = Decimal("0.12")  # TEST DATA ONLY: a stand-in rate, not Zerodha's SPAN
+
+
+def stand_in_basket_margin(legs: Iterable[tuple[str, Decimal, int]]) -> Decimal:
+    """TEST DATA, not Zerodha's SPAN (scenario mode only): (side, strike for a SELL / premium for a BUY, quantity) per
+    leg -> SELL strike x quantity x 0.12 minus BUY premium x quantity, floored at 0, to the paisa."""
+    total = Decimal(0)
+    for side, figure, quantity in legs:
+        total += figure * quantity * SELL_MARGIN_RATE if _sign(side) == 1 else -(figure * quantity)
+    return max(total, Decimal(0)).quantize(PAISE)

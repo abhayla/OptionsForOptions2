@@ -152,7 +152,7 @@ def _basket(*sides: str):
 
 def test_stated_margin_reads_through_fetch_basket_margin():
     got = _margin("ADJ-02").fetch_basket_margin(_basket("BUY", "SELL"))
-    assert got.top_up == 0 and got.required_total == Decimal("100000")
+    assert got.top_up == 0 and got.required_total == got.zerodha_total  # the stand-in figure (test data), no top-up
     assert [o.tradingsymbol for o in got.orders] == ["NIFTY26N0322400CE", "NIFTY26N0322600PE"]
 
 
@@ -367,3 +367,36 @@ def test_other_database_reads_no_twins(monkeypatch):
     monkeypatch.setattr(scenario_mode, "_database_name", lambda: "ofo_prod")
     monkeypatch.setattr(scenario_mode, "_read_twins", fail)
     assert scenario_mode.catalogue_twins(WANTED) == {}
+
+
+def test_scenario_basket_margin_depends_on_the_basket_test_data_formula():
+    """Contract row 15: the stand-in basket figure (test data, not SPAN) differs per basket: SELL strike x qty x 0.12
+    minus BUY premium x qty, floored at 0. SELL 22100CE x 75 x 0.12 = 198900.00; BUY 45.55 x 75 = 3416.25."""
+    from ofo_app.kite_margin import BasketOrder  # noqa: PLC0415
+
+    def basket(*legs):
+        return [BasketOrder("NFO", sym, side, "NRML", "LIMIT", 75, Decimal("45.55")) for sym, side in legs]
+
+    sell_a, sell_b = "NIFTY26N0922100CE", "NIFTY26N0922150PE"
+    one = _margin("ADJ-02").fetch_basket_margin(basket((sell_a, "SELL"), (sell_b, "BUY")))
+    two = _margin("ADJ-02").fetch_basket_margin(basket((sell_a, "SELL"), (sell_b, "SELL")))
+    only_buy = _margin("ADJ-02").fetch_basket_margin(basket((sell_b, "BUY")))
+    assert one.zerodha_total == Decimal("198900.00") - Decimal("3416.25") == one.initial_total
+    assert two.zerodha_total == Decimal("198900.00") + Decimal("22150") * 75 * Decimal("0.12")
+    assert one.zerodha_total != two.zerodha_total
+    assert only_buy.zerodha_total == Decimal("0.00")  # floored at 0
+
+
+async def test_adj20b_empty_margin_reaches_the_route_as_unreadable_with_its_reason():
+    """Item 3: the real KiteMargin + OutcomeMargin on ADJ-20b -> the route's margin block says unreadable, never 0."""
+    from ofo_app.outcome_margin import OutcomeMargin  # noqa: PLC0415
+    from ofo_app.routes.adjustment import margin_block  # noqa: PLC0415
+    scn = scenario_mode.load("ADJ-20b")
+
+    async def open_client() -> KiteMargin:
+        return KiteMargin(api_key="k", access_token="t", transport=scn.margin_transport)  # noqa: S106 - fake
+
+    source = OutcomeMargin(lambda: ("scenario", "ADJ-20b"), open_client, clock=scn.clock)
+    block = margin_block(await source.margin_for(("scenario", "ADJ-20b"), tuple(_basket("SELL"))))
+    assert block["state"] == "unreadable" and block["value"] is None
+    assert "could not be read just now" in block["reason"]
