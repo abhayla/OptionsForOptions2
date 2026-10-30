@@ -187,8 +187,6 @@ def margin_block(margin: Margin | None) -> dict:
         return {"state": "stated", "value": _money(margin.needed if margin.needed is not None
                                                      else margin.broker_needed),
                 "at": margin.checked_at, "reason": None}
-    if margin.no_figure:
-        return {"state": "empty", "value": None, "at": None, "reason": render_explanation("adjust_margin_empty")}
     return {"state": margin.state.lower(), "value": None, "at": None,
             "reason": render_explanation("adjust_margin_not_available", reason=margin.reason)}
 

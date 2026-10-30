@@ -45,15 +45,7 @@ from ofo.instruments.models import ZERODHA
 from ofo.instruments.parser import ZERODHA_EXCHANGE_TO_SEGMENT
 from ofo.execution.margin_gate import MARGIN_BUSY_CODE
 from ofo.marketdata.provider import MarketDataProvider
-from ofo.outcome.service import (
-    MARGIN,
-    Margin,
-    margin_busy,
-    margin_checked,
-    margin_empty,
-    margin_no_basket,
-    margin_unreadable,
-)
+from ofo.outcome.service import MARGIN, Margin, margin_busy, margin_checked, margin_no_basket, margin_unreadable
 from ofo.outcome.snapshot import contract_id
 
 from ofo_app.kite_margin import BasketOrder, KiteMargin, KiteMarginError
@@ -193,7 +185,9 @@ class OutcomeMargin:
                                                                        timeout)
         except KiteMarginError as exc:
             log.warning("outcome margin: Zerodha could not be read: %s", exc.code)
-            return _margin_of_error(exc.code), False
+            if exc.code == MARGIN_BUSY_CODE:
+                return margin_busy(), False
+            return (MARGIN if exc.code == "kite_margin_token" else margin_unreadable()), False
         except Exception as exc:  # noqa: BLE001 - a timeout, the token store, anything: "could not be read"
             log.warning("outcome margin: Zerodha could not be read: %s", type(exc).__name__)
             return margin_unreadable(), False
@@ -201,15 +195,6 @@ class OutcomeMargin:
             return margin_checked(needed, available, self._clock(), broker_needed, top_up), True
         except ValueError:
             return margin_unreadable(), False
-
-
-def _margin_of_error(code: str) -> Margin:
-    """Zerodha's refusal code -> the margin block: busy, answered-without-a-figure, token, or unreadable."""
-    if code == MARGIN_BUSY_CODE:
-        return margin_busy()
-    if code == "kite_margin_no_figure":
-        return margin_empty()
-    return MARGIN if code == "kite_margin_token" else margin_unreadable()
 
 
 def _known(session: Hashable) -> bool:

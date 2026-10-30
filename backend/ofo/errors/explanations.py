@@ -1233,8 +1233,6 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         {"broker_needed": Rupees, "top_up": Rupees, "needed": Rupees, "available": Rupees}),
     ExplanationTemplate("outcome_margin_unreadable", "values_seen",
                         "Margin from Zerodha could not be read just now, so no margin figure is shown."),
-    ExplanationTemplate("outcome_margin_empty", "values_seen",
-                        "Zerodha answered the margin request without a margin figure, so no margin figure is shown."),
     ExplanationTemplate("outcome_margin_busy", "values_seen", ZERODHA_BUSY_TEXT),  # REQ-118 AC-3
     ExplanationTemplate("outcome_margin_no_basket", "values_seen",
                         "Margin from Zerodha is shown when every leg is a listed Zerodha contract."),

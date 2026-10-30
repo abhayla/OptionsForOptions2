@@ -208,7 +208,6 @@ class Margin:
     checked_at: datetime.datetime | None = None
     shortfall: bool = False  # CHECKED only: Zerodha's available funds are below the amount needed (Decimal compare)
     shortfall_reason: ExplanationText | None = None  # REQ-055 AC-4: set only with ``shortfall`` (the one comparison)
-    no_figure: bool = False  # UNREADABLE only: answered without a figure
 
 
 @dataclass(frozen=True)
@@ -317,11 +316,6 @@ def margin_checked(needed: Decimal, available: Decimal, checked_at: datetime.dat
 def margin_unreadable() -> Margin:
     """ADR-099: Zerodha could not be read; no figure is made up."""
     return Margin(MARGIN_UNREADABLE, render_explanation("outcome_margin_unreadable"))
-
-
-def margin_empty() -> Margin:
-    """Zerodha answered the basket-margin request without a margin figure: no figure, said as "empty", never 0."""
-    return Margin(MARGIN_UNREADABLE, render_explanation("outcome_margin_empty"), no_figure=True)
 
 
 def margin_busy() -> Margin:
