@@ -161,6 +161,8 @@ requirements:
   REQ-161: S6.4
   REQ-162: S6.4
   REQ-163: S6.4
+  REQ-164: S6.7
+  REQ-165: S6.7
 
 decisions:
   ADR-001: all
