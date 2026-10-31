@@ -47,10 +47,10 @@ from ofo.engine.model import (
     SpotRefused,
     data_label,
     expiry_model,
+    greeks_unrounded,
     implied_vol,
     iv_price,
     join_labels,
-    leg_greeks_unrounded,
     market_closed_model,
     model_inputs,
 )
@@ -58,7 +58,7 @@ from ofo.errors.explanations import ExplanationText, join_explanations, render_e
 from ofo.instruments.models import ZERODHA
 from ofo.marketdata.forward import ForwardUnavailable, spot_fallback_forward
 from ofo.marketdata.quote import NormalizedQuote, is_live_price, planning_price_usable
-from ofo.marketdata.shared_compute import FeedScope
+from ofo.marketdata.shared_compute import FeedScope, call_shared
 from ofo.money import HUNDREDTH
 from ofo.outcome import money
 from ofo.outcome.snapshot import MarketSnapshot
@@ -512,30 +512,34 @@ def _refused(definition, reason: ExplanationText, legs, message=None) -> Outcome
                    reason, tuple(legs), MARGIN)
 
 
-def _leg_iv(em, leg, shared, where):
-    """One leg's implied volatility through the one engine; None when the engine has no answer for these inputs (a
-    deterministic answer, so it is shared too: only a raised error is never cached). With ``shared`` the figure is
-    computed once per (feed owner, underlying, expiry, quote instant, exact inputs). ``leg`` is
-    (kind, price, strike, forward)."""
-    kind, price, strike, fwd = leg
+def _solved_iv(em, kind, price, strike):
+    """One contract's implied volatility through the one engine; None when the engine has no answer for these inputs (a
+    deterministic answer, so it is shared too: only a raised error is never cached). The shared figure: its cache key
+    is built from exactly these arguments (``call_shared``, #519)."""
+    try:
+        return implied_vol(em, kind, price, strike).iv
+    except (ValueError, ArithmeticError):
+        return None
 
-    def compute():
-        try:
-            return implied_vol(em, kind, price, strike).iv
-        except (ValueError, ArithmeticError):
-            return None
 
-    if shared is None:
-        return compute()
-    inputs = (kind.value, strike, price, em.level, fwd.forward, fwd.implied_yield, fwd.years, fwd.rate,
-              fwd.days_in_year)
-    return shared.compute(where, inputs, compute)
+def _unit_greeks(em, kind, strike, iv):
+    """One option contract's per-unit unrounded Greeks through the engine's one function (the same one
+    ``leg_greeks_unrounded`` calls); the shared figure, keyed by exactly these arguments (#519)."""
+    return greeks_unrounded(em, kind, strike, iv)
+
+
+def _leg_iv(em, contract, shared, where):
+    """``_solved_iv`` of ``contract`` = (kind, price, strike); with ``shared`` computed once per (feed owner,
+    underlying, expiry, snapshot instant, contract id, every argument of the engine call). ``where`` is (underlying,
+    expiry, instant, instrument id)."""
+    kind, price, strike = contract
+    return call_shared(shared, where, _solved_iv, em, kind, price, strike)
 
 
 def _shared_leg_greeks(model, snapshot, shared):
     """REQ-050 AC-1: each option leg's per-unit unrounded Greeks, computed once per (feed owner, underlying, expiry,
-    snapshot instant, exact inputs) through the engine's one function; ``None`` for a futures leg or a leg with no IV
-    (nothing is computed or cached for it), and for every leg when there is no ``shared`` scope."""
+    snapshot instant, every argument of the engine call) through the engine's one function; ``None`` for a futures leg
+    or a leg with no IV (nothing is computed or cached for it), and for every leg when there is no ``shared`` scope."""
     if shared is None:
         return None
     out = []
@@ -543,12 +547,9 @@ def _shared_leg_greeks(model, snapshot, shared):
         if leg.instrument is Instrument.FUT or leg.iv is None:
             out.append(None)
             continue
-        em = model.expiry_model(leg.expiry)
-        f = em.forward
-        where = (snapshot.underlying, leg.expiry, snapshot.valuation, "leg_greeks", leg.contract)
-        inputs = (leg.instrument.value, leg.strike, leg.iv, em.level, f.forward, f.implied_yield, f.years, f.rate,
-                  f.days_in_year, em.dividend_yield)
-        out.append(shared.compute(where, inputs, lambda leg=leg: leg_greeks_unrounded(model, leg)))
+        where = (snapshot.underlying, leg.expiry, snapshot.valuation, leg.contract)
+        out.append(call_shared(shared, where, _unit_greeks, model.expiry_model(leg.expiry), leg.instrument, leg.strike,
+                               leg.iv))
     return out
 
 
@@ -580,8 +581,8 @@ def atm_iv(snapshot: MarketSnapshot, expiry: datetime.date, shared: FeedScope | 
         q = next((x for x in chain if x.strike == strike and x.instrument_type is kind), None)
         if not _usable(q):
             return None
-        where = (snapshot.underlying, expiry, snapshot.valuation, "leg_iv", q.instrument_id)
-        iv = (known or {}).get(q.instrument_id) or _leg_iv(em, (kind, iv_price(q), strike, fwd), shared, where)
+        where = (snapshot.underlying, expiry, snapshot.valuation, q.instrument_id)
+        iv = (known or {}).get(q.instrument_id) or _leg_iv(em, (kind, iv_price(q), strike), shared, where)
         if iv is None:
             return None
         ivs.append(iv)
@@ -857,8 +858,8 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
                 price = iv_price(q)
                 try:
                     em = expiry_model(spot_reading(snapshot.spot), fwd, underlying=definition.underlying)
-                    where = (snapshot.underlying, c.expiry, snapshot.valuation, "leg_iv", p.instrument_id)
-                    iv = _leg_iv(em, (kind, price, strike, fwd), shared, where)
+                    where = (snapshot.underlying, c.expiry, snapshot.valuation, p.instrument_id)
+                    iv = _leg_iv(em, (kind, price, strike), shared, where)
                 except (ValueError, ArithmeticError):
                     iv = None
                 if iv is None:

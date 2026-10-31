@@ -620,6 +620,10 @@ REFLECTION_ALLOWED: dict[str, tuple[frozenset[str], str]] = {
         "to refuse any caller outside REQUEST_LAYER"),
     "ofo/engine/black_scholes.py": (frozenset({'getattr'}),
         "reads its own declared field names (`getattr(self, name)` over a fixed tuple) to validate a frozen value"),
+    "ofo/marketdata/shared_compute.py": (frozenset({'getattr', 'FunctionType'}),
+        "the shared-cache key normaliser (#519) reads a dataclass argument's declared public fields "
+        "(`getattr(value, f.name)` over `dataclasses.fields`) and looks up a public `key_fields` method; "
+        "`types.FunctionType` only refuses a non-function as a cached computation; it only reads"),
     "ofo/engine/model.py": (frozenset({'__setattr__', 'getattr'}),
         "token-checked frozen value: `object.__setattr__(obj, name, fields[name])` over `__slots__`; repr reads the same slots"),
     "ofo/entitlements/ledger.py": (frozenset({'__setattr__'}),

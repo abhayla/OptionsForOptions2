@@ -290,14 +290,18 @@ def test_a_newer_frame_for_one_contract_is_a_new_instant_with_new_entries(feed, 
 def greek_calls(monkeypatch):
     """Counts every per-unit Greek computation by the engine, wherever it is called from (table model or service)."""
     calls: Counter = Counter()
-    real = table_model.leg_greeks_unrounded
+    real, real_unit = table_model.leg_greeks_unrounded, service.greeks_unrounded
 
     def counted(model, leg):
         calls[(leg.instrument.value, leg.strike)] += 1
         return real(model, leg)
 
+    def counted_unit(em, kind, strike, vol):
+        calls[(kind.value, strike)] += 1
+        return real_unit(em, kind, strike, vol)
+
     monkeypatch.setattr(table_model, "leg_greeks_unrounded", counted)
-    monkeypatch.setattr(service, "leg_greeks_unrounded", counted)
+    monkeypatch.setattr(service, "greeks_unrounded", counted_unit)
     return calls
 
 
@@ -308,7 +312,7 @@ def greek_cells(out):
 
 
 def greek_keys(cache):
-    return [k for k in cache._slots if k.figure == "leg_greeks"]  # the test reads what was cached
+    return [k for k in cache._slots if k.figure == "ofo.outcome.service._unit_greeks"]  # the test reads what was cached
 
 
 def test_core_the_second_reader_computes_no_greeks_through_the_real_outcome_path(feed, greek_calls):

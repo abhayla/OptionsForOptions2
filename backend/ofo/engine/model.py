@@ -97,6 +97,10 @@ class _Gated:
     def __repr__(self) -> str:
         return f"{type(self).__name__}({', '.join(f'{n}={getattr(self, n)!r}' for n in self.__slots__)})"
 
+    def key_fields(self) -> tuple[tuple[str, object], ...]:
+        """Every field by name: what a shared cache key is built from (REQ-050, #519), never a hand-picked part."""
+        return tuple((n, getattr(self, n)) for n in self.__slots__)
+
 
 class ExpiryModel(_Gated):
     """What the engine is given for one expiry: the level S (live spot), the yield q and their provenance.
@@ -242,10 +246,7 @@ def leg_greeks_unrounded(model: ModelInputs, leg: LegInput) -> Greeks:
     m = _require(model)
     if leg.iv is None:
         raise ValueError(f"leg {leg.contract} has no IV")
-    em = m.expiry_model(leg.expiry)
-    f = em.forward
-    return _bs.bs_greeks_unrounded(leg.instrument, em.level, leg.strike, f.years, f.rate, leg.iv,
-                                   days_in_year=f.days_in_year, dividend_yield=em.dividend_yield)
+    return greeks_unrounded(m.expiry_model(leg.expiry), leg.instrument, leg.strike, leg.iv)
 
 
 def leg_decay_unrounded(model: ModelInputs, leg: LegInput, until: datetime.datetime) -> Decimal:
@@ -280,7 +281,9 @@ def greeks(em: ExpiryModel, kind: Instrument, strike: Decimal, vol: Decimal, lev
 
 def greeks_unrounded(em: ExpiryModel, kind: Instrument, strike: Decimal, vol: Decimal) -> Greeks:
     """Per-unit UNROUNDED engine Greeks at the live spot with the expiry's q: for a display that must not read a real
-    ~0.00001 gamma as 0.0000 (the 4 dp of :func:`greeks` is a display step). Never aggregated, only shown."""
+    ~0.00001 gamma as 0.0000 (the 4 dp of :func:`greeks` is a display step), and the one per-unit Greeks of a leg
+    (:func:`leg_greeks_unrounded`). Reads only the contract (kind, strike), its IV and the expiry model, never a
+    strategy, so the outcome shares one result per contract across every holder (REQ-050 AC-1)."""
     e = _require_expiry(em)
     f = e.forward
     return _bs.bs_greeks_unrounded(kind, e.level, strike, f.years, f.rate, vol, days_in_year=f.days_in_year,
