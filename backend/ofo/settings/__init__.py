@@ -75,15 +75,39 @@ def _dec(raw: object, where: str) -> Decimal:
     return value
 
 
+ENTRY_FIELDS = frozenset(("key", "group", "label", "unit", "type", "min", "max", "default", "what_it_changes",
+                          "source"))
+FILE_FIELDS = frozenset(("schema", "settings"))
+
+
+def _no_duplicate_fields(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    """json's object_pairs_hook: a repeated field name in one object is refused (the stdlib keeps the last one)."""
+    seen: dict[str, object] = {}
+    for name, value in pairs:
+        if name in seen:
+            raise RegistryError(f"registry.json repeats the field {name!r} in one object (the last would win)")
+        seen[name] = value
+    return seen
+
+
+def _no_unknown_fields(obj: dict, allowed: frozenset[str], where: str) -> None:
+    extra = sorted(set(obj) - allowed)
+    if extra:
+        raise RegistryError(f"{where} has unknown field(s) {extra} (a misspelt field would be silently ignored)")
+
+
 def parse_registry(text: str) -> dict[str, Setting]:
-    """Parse and check the whole file; any defect refuses it (no partial registry)."""
-    data = json.loads(text, parse_float=_no_float, parse_constant=_no_float)
+    """Parse and check the whole file; any defect refuses it (no partial registry), including a repeated field name
+    and a field this loader does not read."""
+    data = json.loads(text, parse_float=_no_float, parse_constant=_no_float, object_pairs_hook=_no_duplicate_fields)
     if not isinstance(data, dict) or data.get("schema") != 1 or not isinstance(data.get("settings"), list):
         raise RegistryError("registry.json must be {\"schema\": 1, \"settings\": [...]}")
+    _no_unknown_fields(data, FILE_FIELDS, "registry.json")
     out: dict[str, Setting] = {}
     for row in data["settings"]:
         if not isinstance(row, dict):
             raise RegistryError("every registry entry is an object")
+        _no_unknown_fields(row, ENTRY_FIELDS, f"registry entry {row.get('key')!r}")
         key = row.get("key")
         if not isinstance(key, str) or not key or key in out:
             raise RegistryError(f"registry key missing or duplicated: {key!r}")

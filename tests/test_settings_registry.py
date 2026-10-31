@@ -90,3 +90,27 @@ def test_value_of_refuses_an_unknown_key_and_a_float():
         settings.value_of({}, "pricing.no_such")
     with pytest.raises(TypeError):
         settings.value_of({"pricing.risk_free_rate": 0.065}, "pricing.risk_free_rate")
+
+
+def test_a_repeated_field_in_one_object_is_refused():
+    text = '{"schema": 1, "settings": [' + json.dumps(ROW)[:-1] + ', "default": "0.07"}]}'
+    with pytest.raises(RegistryError, match="repeats the field 'default'"):
+        parse_registry(text)
+
+
+def test_a_repeated_field_at_the_file_level_is_refused():
+    with pytest.raises(RegistryError, match="repeats the field 'schema'"):
+        parse_registry('{"schema": 1, "schema": 1, "settings": []}')
+
+
+def test_a_misspelt_entry_field_is_refused():
+    row = {k: v for k, v in ROW.items() if k != "default"} | {"defualt": "0.065"}
+    with pytest.raises(RegistryError, match="unknown field"):
+        parse_registry(_text(row))
+
+
+def test_an_extra_field_beside_a_good_entry_and_at_the_file_level_is_refused():
+    with pytest.raises(RegistryError, match="unknown field"):
+        parse_registry(_text(ROW | {"note": "x"}))
+    with pytest.raises(RegistryError, match="unknown field"):
+        parse_registry(json.dumps({"schema": 1, "settings": [ROW], "extra": 1}))

@@ -39,6 +39,7 @@ from decimal import Decimal
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Query
+from ofo import settings as registry
 from ofo.engine.chain_values import ChainGreeks, chain_greeks
 from ofo.marketdata.forward import ExpiryForward, ForwardUnavailable, parity_forward
 from ofo.marketdata.provider import PACKET_WITHOUT_DAY_FIELDS, DayStatsAnswer, DayStatsReason, NotSupported
@@ -66,8 +67,20 @@ from ofo_app.live_push import LiveFeed
 from ofo_app.outcome_oi import oi_of, price_counts
 from ofo_app.routes import live
 from ofo_app.routes.broker import V1_OWNER_REF, current_user_ref
-from ofo_app.routes.outcome import AnswerClock, HealthCode, MarketContext, get_answer_clock, label_time, market_state
+from ofo_app.routes.outcome import (
+    AnswerClock,
+    HealthCode,
+    MarketContext,
+    get_answer_clock,
+    get_market_context,
+    label_time,
+    market_state,
+)
 from ofo_app.underlying import Underlying
+
+# only for a caller that passes no rate (a test, or a request with no live context, where nothing is priced); a route
+# with a live context passes the setting in force (finding 1, GC-SET round 2)
+DEFAULT_RATE = registry.defaults()[registry.RISK_FREE_RATE]
 
 STRIKES_PATH = "/api/leg-picker/strikes"
 FUTURES_PATH = "/api/leg-picker/futures"
@@ -386,11 +399,14 @@ def _held_quotes(feed: LiveFeed, key: tuple[str, str, datetime.date, int],
 
 
 def strikes_answer(feed: LiveFeed | None, underlying: str, expiry: datetime.date, width: int,  # noqa: PLR0913
-                   catalogue: ChainCatalogue, now: AnswerClock, viewer: str = V1_OWNER_REF) -> StrikesOut:
+                   catalogue: ChainCatalogue, now: AnswerClock, viewer: str = V1_OWNER_REF,
+                   rate: Decimal = DEFAULT_RATE) -> StrikesOut:
     """The strikes read. Every answer state: catalogue unreadable / empty / expiry unknown (no rows), no feed (strikes
     listed, every price '-', NOT_CONNECTED), no live spot (strikes listed around the last known spot or the middle
     strike, every price null, SPOT_MISSING, no ATM claimed), spot stale (rows, no price), a quote missing for some
-    contracts (those cells null), a contract the provider does not know (that cell unavailable), every cell priced."""
+    contracts (those cells null), a contract the provider does not know (that cell unavailable), every cell priced.
+    ``rate`` is the risk-free rate the Greeks are priced with: the route passes the setting in force (its
+    ``get_market_context`` dependency); only a direct caller (a test) takes the registry default."""
     ctx = None if feed is None else feed.ctx
     answered_at = now() if ctx is None else ctx.clock()
     mstate = market_state(ctx, answered_at)
@@ -414,7 +430,7 @@ def strikes_answer(feed: LiveFeed | None, underlying: str, expiry: datetime.date
     # banner (``market_closed``), never live; in hours a stale index gives no IV or delta (unchanged)
     engine_spot = (spot_quote if centre.kind == "LIVE_SPOT"
                    or (closed and planning_price_usable(spot_quote, market_closed=True)) else None)
-    greeks = {} if ctx is None or not usable else chain_greeks(usable, engine_spot, expiry, answered_at, ctx.rate)
+    greeks = {} if ctx is None or not usable else chain_greeks(usable, engine_spot, expiry, answered_at, rate)
     cell_of = {c.instrument_id: _cell(c, quotes.get(c.instrument_id), greeks.get(c.instrument_id), closed)
                for c in contracts}
     rows = []
@@ -489,15 +505,15 @@ def _future_ltp(ctx: MarketContext | None, underlying: str, contract: PickableCo
     return FutureOut(**head, ltp=quote.ltp.quantize(PAISE), health=quote.health.value, ltp_reason=None)
 
 
-def _forward(ctx: Any, underlying: str, expiry: datetime.date, spot_quote: NormalizedQuote | None,
-             valuation: datetime.datetime) -> ForwardOut:
+def _forward(ctx: Any, underlying: str, expiry: datetime.date, spot_quote: NormalizedQuote | None,  # noqa: PLR0913
+             valuation: datetime.datetime, rate: Decimal) -> ForwardOut:
     """The forward the engine prices ``expiry`` with: ADR-061's own function over this expiry's held quotes (with fewer
     than 3 usable strikes it answers the spot fallback and says so). Refused states carry a reason, never a number."""
     if ctx is None or spot_quote is None:
         return ForwardOut(expiry=expiry, forward=None, source=None, label=None, strikes_used=0, reason="SPOT_MISSING")
     try:
         fwd: ExpiryForward = parity_forward(ctx.provider.option_chain_snapshot(underlying, expiry), spot_quote, expiry,
-                                            valuation, ctx.rate)
+                                            valuation, rate)
     except ForwardUnavailable:
         return ForwardOut(expiry=expiry, forward=None, source=None, label=None, strikes_used=0,
                           reason="NOT_PRICEABLE")
@@ -544,7 +560,8 @@ def _forward_hold_ids(ctx: Any, underlying: str, expiries: tuple[datetime.date, 
 
 
 def futures_answer(feed: LiveFeed | None, underlying: str, catalogue: FuturesCatalogue, now: AnswerClock,
-                   viewer: str = V1_OWNER_REF) -> FuturesOut:
+                   viewer: str = V1_OWNER_REF, rate: Decimal = DEFAULT_RATE) -> FuturesOut:
+    """The futures read. ``rate``: as in :func:`strikes_answer` (the forwards are priced with it)."""
     ctx = None if feed is None else feed.ctx
     answered_at = now() if ctx is None else ctx.clock()
     streamed: frozenset[str] = frozenset()
@@ -575,7 +592,7 @@ def futures_answer(feed: LiveFeed | None, underlying: str, catalogue: FuturesCat
         state="NOT_LIVE" if ctx is None else "LIVE", reason=reason, underlying=underlying,
         spot=None if spot is None else spot.quantize(PAISE),
         futures=[_future_ltp(ctx, underlying, c, streamed) for c in catalogue.futures],
-        forwards=[_forward(ctx, underlying, e, spot_quote, answered_at) for e in catalogue.option_expiries],
+        forwards=[_forward(ctx, underlying, e, spot_quote, answered_at, rate=rate) for e in catalogue.option_expiries],
         answered_at=answered_at)
 
 
@@ -699,9 +716,11 @@ async def leg_picker_strikes(  # noqa: PLR0913 - one query parameter or seam eac
         now: Annotated[AnswerClock, Depends(get_answer_clock)],
         reader: Annotated[ChainReader, Depends(get_picker_reader)],
         viewer: Annotated[str, Depends(current_user_ref)],
+        ctx: Annotated[MarketContext | None, Depends(get_market_context)],
         width: Annotated[Width, Query(description="strikes either side of ATM: 10, 20, 30 or 40")] = DEFAULT_WIDTH,
 ) -> StrikesOut:
-    return strikes_answer(feed, underlying, expiry, width, await reader(underlying, expiry), now, viewer)
+    return strikes_answer(feed, underlying, expiry, width, await reader(underlying, expiry), now, viewer,
+                          rate=DEFAULT_RATE if ctx is None else ctx.rate)
 
 
 @router.get(FUTURES_PATH, response_model=FuturesOut)
@@ -711,8 +730,10 @@ async def leg_picker_futures(
         now: Annotated[AnswerClock, Depends(get_answer_clock)],
         reader: Annotated[FuturesReader, Depends(get_futures_reader)],
         viewer: Annotated[str, Depends(current_user_ref)],
+        ctx: Annotated[MarketContext | None, Depends(get_market_context)],
 ) -> FuturesOut:
-    return futures_answer(feed, underlying, await reader(underlying), now, viewer)
+    return futures_answer(feed, underlying, await reader(underlying), now, viewer,
+                          rate=DEFAULT_RATE if ctx is None else ctx.rate)
 
 
 @router.get(DEPTH_PATH, response_model=DepthOut)

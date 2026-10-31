@@ -213,3 +213,78 @@ def test_a_rate_replaced_copy_is_the_same_feed_for_the_streaming_rule(replayed):
     assert not same_feed(dataclasses.replace(live, feed_owner="other"), live)
     assert not same_feed(dataclasses.replace(live, clock=lambda: VALUATION), live)
     assert not same_feed(live, None)
+
+
+async def settings_add(session, value: str, correlation_id: str) -> None:
+    from ofo_app import settings_store  # noqa: PLC0415
+
+    await settings_store.add_setting(session, KEY, value, set_by="admin-test", correlation_id=correlation_id)
+
+
+async def test_the_leg_picker_strikes_and_futures_price_with_the_stored_rate(app_engine: AsyncEngine, monkeypatch):
+    """Finding 1 (Tier A review, MAJOR): ``/api/leg-picker/strikes`` (Greeks) and ``/futures`` (forward) price with the
+    setting in force, not the feed's registry default. Same app, no row -> figures A; a 0.07 row -> figures B != A."""
+    import test_leg_picker_routes as lp  # noqa: PLC0415
+    from ofo_app import live_market  # noqa: PLC0415
+    from ofo_app.routes import leg_picker, outcome  # noqa: PLC0415
+
+    _provider, feed = lp.priced_provider()
+    monkeypatch.setattr(live_market, "_current", types.SimpleNamespace(context=lambda: feed.ctx, feed=feed,
+                                                                    running=lambda: False))
+    conn = await app_engine.connect()
+    trans = await conn.begin()
+    try:
+        session = AsyncSession(bind=conn, join_transaction_mode="create_savepoint", expire_on_commit=False)
+        app = _app(session)
+
+        async def reader(_u, _e):
+            return lp.catalogue()
+
+        async def futures_reader(_u):
+            return lp.futures_catalogue()
+
+        app.dependency_overrides[leg_picker.get_feed] = lambda: feed
+        app.dependency_overrides[outcome.get_answer_clock] = lambda: (lambda: lp.T0)
+        app.dependency_overrides[leg_picker.get_picker_reader] = lambda: reader
+        app.dependency_overrides[leg_picker.get_futures_reader] = lambda: futures_reader
+        strikes_q = {"underlying": "NIFTY", "expiry": lp.EXPIRY.isoformat(), "width": 10}
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+            s1 = await ac.get("/api/leg-picker/strikes", params=strikes_q)
+            f1 = await ac.get("/api/leg-picker/futures", params={"underlying": "NIFTY"})
+            await settings_add(session, "0.07", "gcset-core-lp")
+            s2 = await ac.get("/api/leg-picker/strikes", params=strikes_q)
+            f2 = await ac.get("/api/leg-picker/futures", params={"underlying": "NIFTY"})
+        for resp in (s1, f1, s2, f2):
+            assert resp.status_code == HTTPStatus.OK, resp.text
+        assert s1.json()["rows"] != s2.json()["rows"], "strikes ignored the stored rate"
+        assert [f["forward"] for f in f1.json()["forwards"]] != [f["forward"] for f in f2.json()["forwards"]], \
+            "futures forward ignored the stored rate"
+    finally:
+        await trans.rollback()
+        await conn.close()
+
+
+async def test_the_production_reader_returns_a_stored_row_not_only_defaults(app_engine, monkeypatch):
+    """Finding 6: a reader that always answered the defaults would pass the empty-table test. Here a 0.07 row is added
+    on a rolled-back connection; the un-overridden reader (its sessionmaker bound to that connection) returns 0.07."""
+    from ofo_app import db  # noqa: PLC0415
+    from ofo_app.routes import outcome  # noqa: PLC0415
+
+    conn = await app_engine.connect()
+    trans = await conn.begin()
+    try:
+        def bound_maker():
+            return lambda: AsyncSession(bind=conn, join_transaction_mode="create_savepoint", expire_on_commit=False)
+
+        monkeypatch.undo()  # drop the conftest's "defaults, no database" patch
+        monkeypatch.setattr(db, "get_sessionmaker", bound_maker)
+        assert outcome.get_settings_reader() is outcome._settings_in_force_now
+        assert (await outcome._settings_in_force_now())[KEY] == Decimal("0.065")  # no row yet: the default
+        async with AsyncSession(bind=conn, join_transaction_mode="create_savepoint",
+                                expire_on_commit=False) as writer:
+            await settings_add(writer, "0.07", "gcset-core-reader")
+            await writer.commit()  # releases the savepoint into the test transaction (closing would roll it back)
+        assert (await outcome._settings_in_force_now())[KEY] == Decimal("0.07")
+    finally:
+        await trans.rollback()
+        await conn.close()

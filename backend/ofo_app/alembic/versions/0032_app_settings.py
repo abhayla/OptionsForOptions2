@@ -14,7 +14,10 @@ Changes (owner-run, one transaction):
   500), created_at DEFAULT clock_timestamp(). PRIMARY KEY (key, effective_from): two values never take effect for one
   key at the same instant.
 - Append-only guard (BEFORE INSERT OR UPDATE OR DELETE, SQLSTATE OF032, search_path pinned, md5-pinned in the
-  allow-list): every UPDATE and DELETE is refused; a correction or a reset is a new row.
+  allow-list): every UPDATE and DELETE is refused; a correction or a reset is a new row. The same function also
+  refuses an INSERT whose effective_from is more than 5 seconds in the past (a back-dated row; the grace covers the
+  store reading "now" one statement before its insert) and runs on a statement-level BEFORE TRUNCATE trigger
+  (app_settings_no_truncate), so even the table owner cannot truncate.
 - Grants: the application role gets SELECT and column INSERT on key, value, effective_from, set_by, note; no UPDATE,
   no DELETE, no TRUNCATE.
 - public.ofo_assert_app_role_allowlist: 0031's chain text plus block 24.
@@ -56,11 +59,13 @@ _BASE = _M31._BASE
 _INSERT_BEFORE = _M31._INSERT_BEFORE
 
 SEARCH_PATH = _M16.SEARCH_PATH
-SQLSTATE = "OF032"  # an update or a delete of a stored setting
+SQLSTATE = "OF032"  # an update, a delete, a truncate or a back-dated insert of a stored setting
+BACKDATE_GRACE_SECONDS = 5  # the store reads "now" one statement before its insert; a row older than this is back-dated
 
 TABLE = "public.app_settings"
 GUARD = "public.app_settings_guard"
 TRIGGER = "app_settings_guard"
+TRUNCATE_TRIGGER = "app_settings_no_truncate"
 LABEL = "app_settings"
 KEY_SHAPE = r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$"
 KEY_MAX = 80
@@ -82,6 +87,10 @@ def _guard_sql() -> str:
                 RAISE EXCEPTION 'app settings are insert-only: a change or a reset is a new dated row'
                     USING ERRCODE = '{SQLSTATE}';
             END IF;
+            IF NEW.effective_from < clock_timestamp() - interval '{BACKDATE_GRACE_SECONDS} seconds' THEN
+                RAISE EXCEPTION 'a setting takes effect now or later: a back-dated row would change figures already shown'
+                    USING ERRCODE = '{SQLSTATE}';
+            END IF;
             RETURN NEW;
         END
         $fn$
@@ -89,6 +98,28 @@ def _guard_sql() -> str:
 
 
 PIN = _M4._md5_body(_guard_sql())
+
+
+BEFORE_STATEMENT_TRUNCATE = 2 + 32  # pg_trigger.tgtype bits: BEFORE (2) + TRUNCATE (32), statement level (no ROW bit)
+
+
+def _trigger_checks() -> str:
+    """0008's shared check (guard trigger, pinned body, no rule) with the one extra trigger this table allows, and
+    the truncate trigger checked in its own right. Fails closed if the shared text changed shape."""
+    shared = _M16._M8._trigger_check(TABLE, TRIGGER, GUARD, PIN)
+    plain = f"AND tgname <> '{TRIGGER}')"
+    if shared.count(plain) != 1:
+        raise RuntimeError("the shared trigger check changed shape: cannot allow the truncate trigger safely")
+    shared = shared.replace(plain, f"AND tgname NOT IN ('{TRIGGER}', '{TRUNCATE_TRIGGER}'))")
+    row = f"FROM pg_trigger WHERE tgrelid = '{TABLE}'::regclass AND tgname = '{TRUNCATE_TRIGGER}'"
+    return shared + f"""
+            IF NOT EXISTS (SELECT 1 {row} AND tgenabled = 'O') THEN
+                problems := problems || 'trigger {TRUNCATE_TRIGGER} is missing or not enabled'::TEXT;
+            ELSIF (SELECT tgfoid {row}) IS DISTINCT FROM to_regprocedure('{GUARD}()')
+                  OR (SELECT tgtype::int {row}) IS DISTINCT FROM {BEFORE_STATEMENT_TRUNCATE}
+                  OR (SELECT tgqual IS NOT NULL OR tgattr::text <> '' OR tgnargs <> 0 {row}) THEN
+                problems := problems || 'trigger {TRUNCATE_TRIGGER} is not a plain BEFORE TRUNCATE statement trigger on {GUARD}'::TEXT;
+            END IF;"""
 
 
 def _block() -> str:
@@ -108,7 +139,7 @@ def _block() -> str:
 {_M16._M3._columns_exactly(TABLE, LABEL, "INSERT", INSERT_COLUMNS)}
 {_M16._M3._columns_exactly(TABLE, LABEL, "UPDATE", NO_UPDATE)}
 {_M16._M3._guard_function_checks(GUARD, security_definer=False)}
-{_M16._M8._trigger_check(TABLE, TRIGGER, GUARD, PIN)}
+{_trigger_checks()}
         END IF;
     END IF;
 """  # noqa: S608 - constant table and function names only
@@ -146,6 +177,8 @@ def upgrade() -> None:
     op.execute(_guard_sql())
     op.execute(f"CREATE TRIGGER {TRIGGER} BEFORE INSERT OR UPDATE OR DELETE ON {TABLE} "
                f"FOR EACH ROW EXECUTE FUNCTION {GUARD}()")
+    op.execute(f"CREATE TRIGGER {TRUNCATE_TRIGGER} BEFORE TRUNCATE ON {TABLE} FOR EACH STATEMENT "
+               f"EXECUTE FUNCTION {GUARD}()")
     op.execute(f"REVOKE ALL ON FUNCTION {GUARD}() FROM PUBLIC")
     op.execute(f'REVOKE ALL ON FUNCTION {GUARD}() FROM "{role}"')
     op.execute(f"REVOKE ALL ON TABLE {TABLE} FROM PUBLIC")

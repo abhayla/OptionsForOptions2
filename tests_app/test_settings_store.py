@@ -216,3 +216,53 @@ async def test_the_downgrade_refuses_while_rows_exist(admin_engine):
             async with conn.begin_nested():
                 await conn.execute(text(recorded[0]))
         assert getattr(info.value.orig, "sqlstate", None) == "OF032"
+
+
+async def test_a_failed_audit_append_leaves_no_setting_row(app_engine):
+    """Finding 3: under REPEATABLE READ the audit append refuses (AuditStoreError); the setting row must not survive
+    it (one savepoint holds both)."""
+    from ofo_app.audit_store import AuditStoreError  # noqa: PLC0415
+
+    conn = await app_engine.connect()
+    try:
+        await conn.execution_options(isolation_level="REPEATABLE READ")
+        trans = await conn.begin()
+        try:
+            with pytest.raises(AuditStoreError, match="READ COMMITTED"):
+                await _add(conn, "0.07", correlation_id="settings-audit-rr")
+            n = (await conn.execute(text("SELECT count(*) FROM public.app_settings"))).scalar_one()
+            assert n == 0, "the setting row survived a failed audit append"
+        finally:
+            await trans.rollback()
+    finally:
+        await conn.close()
+
+
+async def test_a_raw_back_dated_insert_is_refused_for_the_application_role(app_engine):
+    """Finding 2: the guard refuses an effective_from in the past (beyond the 5 s grace) even without the store."""
+    async with _Tx(app_engine) as conn:
+        back = await _now(conn) - datetime.timedelta(minutes=1)
+        with pytest.raises(DBAPIError, match="back-dated") as info:
+            await conn.execute(_RAW, {"k": KEY, "v": D("0.07"), "at": back})
+        assert getattr(info.value.orig, "sqlstate", None) == "OF032"
+
+
+async def test_the_guard_allows_now_and_a_few_seconds_of_clock_gap_but_not_ten(app_engine):
+    """Finding 2, both sides of the boundary: the store reads 'now' one statement before it inserts, so a time 1 s old
+    passes; 10 s old is back-dated."""
+    async with _Tx(app_engine) as conn:
+        now = await _now(conn)
+        await conn.execute(_RAW, {"k": KEY, "v": D("0.07"), "at": now})
+        await conn.execute(_RAW, {"k": KEY, "v": D("0.071"), "at": now - datetime.timedelta(seconds=1)})
+        with pytest.raises(DBAPIError, match="back-dated"):
+            async with conn.begin_nested():
+                await conn.execute(_RAW, {"k": KEY, "v": D("0.072"), "at": now - datetime.timedelta(seconds=10)})
+
+
+async def test_the_owner_cannot_truncate_the_settings_table(admin_engine):
+    """Finding 4: a statement-level BEFORE TRUNCATE trigger raises OF032, even for the table owner."""
+    async with _Tx(admin_engine) as conn:
+        await conn.execute(_RAW, {"k": KEY, "v": D("0.07"), "at": await _now(conn)})
+        with pytest.raises(DBAPIError, match="insert-only") as info:
+            await conn.execute(text("TRUNCATE public.app_settings"))
+        assert getattr(info.value.orig, "sqlstate", None) == "OF032"
