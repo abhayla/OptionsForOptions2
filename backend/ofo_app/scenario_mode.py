@@ -122,6 +122,16 @@ def _stand_in_margin(orders: Sequence[Mapping], strikes: Mapping[str, Decimal]) 
          else Decimal(str(o["price"])), o["quantity"]) for o in orders)
 
 
+def _empty_reply_for_basket(reply: Mapping, body: str | None) -> dict:
+    """The EMPTY basket answer in Kite's shape: ``initial`` and ``final`` present, one row per order sent (symbol and
+    exchange), and no total anywhere - what the real client reads as "no figure", not as an unreadable reply."""
+    orders = json.loads(body or "[]")
+    if not orders:  # a bare parser probe: the scenario's own empty reply stands
+        return dict(reply)
+    rows = [{"tradingsymbol": o["tradingsymbol"], "exchange": o["exchange"]} for o in orders]
+    return {**reply, "data": {"initial": {}, "final": {}, "orders": rows}}
+
+
 def _reply_for_basket(reply: Mapping, body: str | None, strikes: Mapping[str, Decimal] | None = None) -> dict:
     """Kite's basket-margin reply lists one row per order sent (symbol, exchange, option_premium, total); the
     scenario states only the basket figure, so the rows echo the request (an option BUY's premium row is the
@@ -266,12 +276,12 @@ class Scenario:
         """``KiteMargin``'s transport seam: the scenario's margin reply as Kite sends it."""
         margin = self.data["broker"]["margin"]
         state = margin.get("state")
-        if state == "stated" and method == "GET":  # the available-funds call (/user/margins)
+        if method == "GET":  # the available-funds call (/user/margins): answered normally in every state
             return 200, json.dumps(margin["funds_reply"])
         if state == "stated":
             return 200, json.dumps(_reply_for_basket(margin["reply"], body, self._strikes()))
-        if state == "empty":
-            return 200, json.dumps(margin["reply"])
+        if state == "empty":  # Zerodha answered in full and stated no figure: the rows echo the request, no total
+            return 200, json.dumps(_empty_reply_for_basket(margin["reply"], body))
         if state == "failed":
             return 504, json.dumps(margin["reply"])
         raise ScenarioRefused(f"unknown margin state {state!r}")

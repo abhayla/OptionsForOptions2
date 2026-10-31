@@ -66,13 +66,13 @@
             <div v-for="r in RANGES.filter((x) => facets.ranges[x.id])" :key="r.id" class="mt-2" :data-testid="`adjust-range-${r.id}`">
               <label class="flex flex-wrap items-center gap-2 text-xs">
                 <span class="font-semibold">{{ r.label }}</span>
-                <span class="text-ink-muted" :data-testid="`adjust-range-${r.id}-min`">{{ facets.ranges[r.id].min }}</span>
+                <span class="text-ink-muted" :data-testid="`adjust-range-${r.id}-min`">{{ rangeEndText(r, facets.ranges[r.id].min) }}</span>
                 <input
                   type="range" step="any" class="min-w-0 flex-1" :min="facets.ranges[r.id].min" :max="facets.ranges[r.id].max"
                   :value="filters.limits[r.id] ?? (r.at === 'most' ? facets.ranges[r.id].max : facets.ranges[r.id].min)" :data-testid="`adjust-range-${r.id}-input`"
                   @input="setLimit(r, $event.target.value)"
                 />
-                <span class="text-ink-muted" :data-testid="`adjust-range-${r.id}-max`">{{ facets.ranges[r.id].max }}</span>
+                <span class="text-ink-muted" :data-testid="`adjust-range-${r.id}-max`">{{ rangeEndText(r, facets.ranges[r.id].max) }}</span>
               </label>
             </div>
           </div>
@@ -151,7 +151,7 @@ import { readTracking } from '@/lib/tracking'
 import { stateRows } from '@/lib/adjustDrawer'
 import {
   EMPTY_FILTERS, GROUP_TITLES, KIND_TITLES, NO_CHANGE_ID, RANGES, SIDE_TITLES, UNAVAILABLE_FOR_FILTER, UNAVAILABLE_VALUE,
-  applyFilters, buildFacets, cmpDecimal, isNoChange, legsFromApproach, refusalText, refusedApproaches, showingText, tableApproaches,
+  applyFilters, buildFacets, cmpDecimal, isNoChange, legsFromApproach, rangeEndText, refusalText, refusedApproaches, showingText, tableApproaches,
 } from '@/lib/adjustCompare'
 
 const props = defineProps({

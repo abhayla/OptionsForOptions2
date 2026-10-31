@@ -47,6 +47,7 @@ from ofo.adjustment.compare import POP_TEXT, Column, Context, MarginRead, compar
 from ofo.charges import ChargeRates
 from ofo.charges.calculator import ChargeOrder, charges_for_orders
 from ofo.charges.round_trip import charge_segment, to_paise_up
+from ofo.engine import adjust_money
 from ofo.engine.black_scholes import Greeks
 from ofo.engine.legs import Action, Instrument, Leg
 from ofo.engine.metrics import UNLIMITED, MultiExpiryError
@@ -176,17 +177,23 @@ def pop_block(after: WholeTradeAfter, pop_on: bool, charges_known: bool) -> dict
 
 
 def margin_block(margin: Margin | None) -> dict:
-    """CHECKED with a figure -> stated; CHECKED without one -> empty (never 0); anything else -> not available."""
+    """CHECKED with a figure -> stated; Zerodha stating no figure (CHECKED without one, or an EMPTY reply) -> empty,
+    worded as the outcome page words it (never 0); anything else, an ambiguous reply included -> not available."""
+    empty = {"state": "empty", "value": None, "at": None,
+             "reason": render_explanation("adjust_margin_not_available",
+                                          reason=render_explanation("outcome_margin_empty"))}
     if margin is None:
         return {"state": "failed", "value": None, "at": None,
                 "reason": render_explanation("adjust_margin_not_available",
                                              reason=render_explanation("outcome_margin_unreadable"))}
     if margin.state == MARGIN_CHECKED:
         if margin.broker_needed is None or margin.checked_at is None:
-            return {"state": "empty", "value": None, "at": None, "reason": render_explanation("adjust_margin_empty")}
+            return empty
         return {"state": "stated", "value": _money(margin.needed if margin.needed is not None
                                                      else margin.broker_needed),
                 "at": margin.checked_at, "reason": None}
+    if margin.empty:  # Zerodha answered in full and stated no figure: the outcome page's own words, never 0
+        return {**empty, "reason": render_explanation("adjust_margin_not_available", reason=margin.reason)}
     return {"state": margin.state.lower(), "value": None, "at": None,
             "reason": render_explanation("adjust_margin_not_available", reason=margin.reason)}
 
@@ -222,8 +229,8 @@ def _charges(orders: Sequence[ChargeOrder], rates: ChargeRates) -> Decimal:
 
 
 def _closed_booked(built: ApproachLegs) -> Decimal:
-    """The booked P&L of the legs this approach closes, at the planned exit: (exit - entry) x signed quantity."""
-    return sum(((c.exit - c.entry) * c.quantity * (1 if c.side == "BUY" else -1) for c in built.closed), Decimal(0))
+    """The booked P&L of the legs this approach closes, at the planned exit: the engine's figure (ADR-008)."""
+    return adjust_money.closed_booked((c.side, c.entry, c.exit, c.quantity) for c in built.closed)
 
 
 @dataclasses.dataclass(frozen=True)

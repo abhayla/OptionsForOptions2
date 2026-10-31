@@ -168,10 +168,9 @@ def test_empty_margin_still_no_figure_through_fetch_basket_margin():
 
 def test_funds_call_is_served_per_state():
     assert _margin("ADJ-02").fetch_available_funds() == Decimal("10000000")
-    with pytest.raises(KiteMarginError, match="kite_margin_no_figure"):
-        _margin("ADJ-20b").fetch_available_funds()
-    with pytest.raises(KiteMarginError, match="kite_margin_unavailable"):
-        _margin("ADJ-20a").fetch_available_funds()
+    # only the BASKET reply is empty / failed in 20b / 20a: the funds read is answered normally in every state
+    assert _margin("ADJ-20b").fetch_available_funds() == Decimal("10000000")
+    assert _margin("ADJ-20a").fetch_available_funds() == Decimal("10000000")
 
 
 def test_exchange_token_start_is_above_every_twin():
@@ -387,8 +386,9 @@ def test_scenario_basket_margin_depends_on_the_basket_test_data_formula():
     assert only_buy.zerodha_total == Decimal("0.00")  # floored at 0
 
 
-async def test_adj20b_empty_margin_reaches_the_route_as_unreadable_with_its_reason():
-    """Item 3: the real KiteMargin + OutcomeMargin on ADJ-20b -> the route's margin block says unreadable, never 0."""
+async def test_adj20b_empty_margin_reaches_the_route_as_empty_with_its_reason():
+    """Item 3: the real KiteMargin + OutcomeMargin on ADJ-20b (Zerodha answers success with no figure) -> the route's
+    margin block says empty, worded "returned no margin figure", never 0 (GC-ADJ1 follow-up: empty vs ambiguous)."""
     from ofo_app.outcome_margin import OutcomeMargin  # noqa: PLC0415
     from ofo_app.routes.adjustment import margin_block  # noqa: PLC0415
     scn = scenario_mode.load("ADJ-20b")
@@ -398,5 +398,5 @@ async def test_adj20b_empty_margin_reaches_the_route_as_unreadable_with_its_reas
 
     source = OutcomeMargin(lambda: ("scenario", "ADJ-20b"), open_client, clock=scn.clock)
     block = margin_block(await source.margin_for(("scenario", "ADJ-20b"), tuple(_basket("SELL"))))
-    assert block["state"] == "unreadable" and block["value"] is None
-    assert "could not be read just now" in block["reason"]
+    assert block["state"] == "empty" and block["value"] is None
+    assert block["reason"] == "Margin not available: Zerodha returned no margin figure for this basket."

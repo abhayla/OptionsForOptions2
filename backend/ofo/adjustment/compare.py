@@ -30,7 +30,8 @@ Definitions (technical calls of the GC-ADJ1 contract, "Found during the run" row
 - POP: the whole-trade After's POP; held switch OFF or unavailable -> "-" with the reason (the route's POP words).
 - Greeks after: the After's open legs' per-unit engine Greeks (``leg_greeks``, by trading symbol) x signed quantity,
   summed unrounded then rounded once to 4 dp; theta per calendar day, vega per 1 vol point. A leg without Greeks ->
-  "-". Leader: |delta| lowest, |gamma| lowest, theta highest, |vega| lowest.
+  "-". No open leg (exit) -> "-" with "No position left after exit", never 0, so it cannot lead (ADR-215).
+  Leader: |delta| lowest, |gamma| lowest, theta highest, |vega| lowest.
 - Adjustments used: the position's count, +1 when this approach trades; no plan maximum exists yet (playbooks are
   GC-ADJ2), so the text says so; leader = fewest.
 - Strike liquidity: the widest (ask - bid) / mid in % among the contracts the approach OPENS; no new contract -> "-"
@@ -298,6 +299,8 @@ class _Rows:
         return Cell(render_explanation("adjust_cmp_percent", value=pct), self.col.whole.pop, None, pct)
 
     def greeks(self) -> Mapping[str, Cell] | Cell:
+        if not self.b.after:  # ADR-215: nothing stays open (exit) -> no Greeks after, never a 0 that could lead
+            return _dash(render_explanation("adjust_cmp_no_position_left"))
         total = {"delta": Decimal(0), "gamma": Decimal(0), "theta": Decimal(0), "vega": Decimal(0)}
         for x in self.b.after:
             g = self.ctx.leg_greeks.get(x.tradingsymbol)

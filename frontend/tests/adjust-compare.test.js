@@ -11,7 +11,7 @@ const drawn = vi.hoisted(() => [])
 vi.mock('chart.js/auto', () => ({ default: class { constructor(_ctx, config) { drawn.push(config) } destroy() {} } }))
 import AdjustCompare from '@/components/strategy/AdjustCompare.vue'
 import { cmpDecimal, NO_CHANGE_ID, spanOf } from '@/lib/adjustCompare'
-import { istTime } from '@/lib/displayFormat'
+import { istTime, percentFromFraction, rupeesText } from '@/lib/displayFormat'
 
 const ORDER = adj02.approaches.map((a) => a.id) // the server's order, No change first
 const OTHERS = ORDER.filter((id) => id !== NO_CHANGE_ID)
@@ -55,15 +55,18 @@ describe('REQ-156 compare display on the real reply', () => {
   })
 
   it('AC-1: a refused approach (the server\'s error parts) is listed with its reason, and is in no column, chart line or picker', async () => {
-    const { w } = await show(adj13)
-    for (const a of adj13.approaches.filter((x) => x.refusal)) {
+    // the recaptured ADJ-13 reply applies every approach, so A-01 is refused here in the server's error-parts shape
+    const r = clone(adj13)
+    r.approaches.find((a) => a.id === 'A-01').refusal = { what_happened: 'No 22,900.00 PE is listed for 03 Nov 2026, so leg 1 cannot move there.' }
+    const { w } = await show(r)
+    for (const a of r.approaches.filter((x) => x.refusal)) {
       expect(t(w, `adjust-refused-${a.id}`).text()).toContain(a.refusal.what_happened)
       expect(t(w, `adjust-col-${a.id}`).exists()).toBe(false)
       expect(lastLines()).not.toContain(a.id)
     }
-    expect(colIds(w)).toEqual(['A-36'])
-    expect(t(w, 'adjust-showing').text()).toBe('Showing 1 of 1 approaches')
-    expect(t(w, 'adjust-pick-empty').exists()).toBe(true)
+    expect(colIds(w)).not.toContain('A-01')
+    expect(colIds(w)[0]).toBe('A-36')
+    expect(t(w, 'adjust-showing').text()).toBe('Showing 6 of 6 approaches')
   })
 
   it('AC-2 / AC-3: every criterion row shows the server values and leader cells with the leader label; unavailable shows "-" and the reason', async () => {
@@ -143,6 +146,10 @@ describe('REQ-156 compare display on the real reply', () => {
     const { w } = await show(adj02)
     expect(t(w, 'adjust-table-scroll').classes()).toContain('overflow-x-auto')
     expect(w.find('section').classes()).toContain('min-w-0')
+    const box = t(w, 'adjust-table-scroll')
+    expect(box.classes()).toContain('min-w-0')
+    expect(box.find('table').exists()).toBe(true) // the table sits INSIDE its own scroll box, never directly in the section
+    expect(w.find('section').element.querySelector(':scope > table')).toBeNull()
   })
 })
 
@@ -156,11 +163,24 @@ describe('REQ-157 filters on the real reply', () => {
     expect(t(w, 'adjust-kind-close_part').text()).toBe('Close part (1)')
     expect(w.findAll('[data-testid^="adjust-side-"]').length).toBe(3)
     const span = spanOf(OTHERS.map((id) => lossOf(adj02.approaches.find((a) => a.id === id))).filter((v) => v !== 'UNLIMITED'))
-    expect(t(w, 'adjust-range-max_loss-min').text()).toBe(span.min)
-    expect(t(w, 'adjust-range-max_loss-max').text()).toBe(span.max)
+    const rupees = (x) => `₹${x.replace(/\B(?=(\d{2})+\d\.)/g, ',')}` // adj02 max losses are 5-digit: ₹xx,xxx.xx
+    expect(t(w, 'adjust-range-max_loss-min').text()).toBe(rupees(span.min))
+    expect(t(w, 'adjust-range-max_loss-max').text()).toBe(rupees(span.max))
     const pops = spanOf(OTHERS.map((id) => adj02.approaches.find((a) => a.id === id).pop.value))
-    expect(t(w, 'adjust-range-pop-min').text()).toBe(pops.min)
-    expect(t(w, 'adjust-range-pop-max').text()).toBe(pops.max)
+    expect(t(w, 'adjust-range-pop-min').text()).toBe(percentFromFraction(pops.min))
+    expect(t(w, 'adjust-range-pop-max').text()).toBe(percentFromFraction(pops.max))
+  })
+
+  it('ADJ-13 recaptured reply: POP range ends are percents, debit and charges ends are rupees with Indian grouping, no raw decimal', async () => {
+    const { w } = await show(adj13)
+    const txt = (id) => t(w, id).text()
+    expect([txt('adjust-range-pop-min'), txt('adjust-range-pop-max')]).toEqual(['0%', '68.61%'])
+    for (const id of ['debit', 'charges', 'max_loss']) {
+      for (const end of ['min', 'max']) expect(txt(`adjust-range-${id}-${end}`)).toMatch(/^₹\d{1,3}(,\d{2})*(,\d{3})?\.\d{2}$/)
+    }
+    expect(txt('adjust-range-debit-max')).toBe('₹7,156.50')
+    for (const id of ['pop', 'debit', 'max_loss', 'charges', 'orders']) expect(t(w, `adjust-range-${id}`).text()).not.toMatch(/\d\.\d{3,}/) // no raw 0.744067755-style text in any filter range
+    expect(t(w, 'adjust-range-pop-input').attributes('max')).toBe('0.686109001') // the slider itself keeps the reply's text
   })
 
   it('AC-3 / AC-5: filters hiding every other approach read "Showing 1 of 7"; No change stays in chart and table; the picker is empty and says why', async () => {
@@ -218,8 +238,11 @@ describe('GC-ADJ1 step 3: picks from the drawer and the hand-off', () => {
   })
 
   it('attack 4: a refused approach the user picked is listed with its reason; a refused one nobody picked is not mentioned', async () => {
-    const { w } = await show(adj13, { picked: ['A-36', 'A-01'] })
-    expect(t(w, 'adjust-refused-A-01').text()).toContain(adj13.approaches.find((a) => a.id === 'A-01').refusal.what_happened)
+    const r = clone(adj13)
+    r.approaches.find((a) => a.id === 'A-01').refusal = { what_happened: 'No 22,900.00 PE is listed for 03 Nov 2026, so leg 1 cannot move there.' }
+    r.approaches.find((a) => a.id === 'A-05').refusal = { what_happened: 'No listed strike for this move.' }
+    const { w } = await show(r, { picked: ['A-36', 'A-01'] })
+    expect(t(w, 'adjust-refused-A-01').text()).toContain(r.approaches.find((a) => a.id === 'A-01').refusal.what_happened)
     expect(t(w, 'adjust-refused-A-05').exists()).toBe(false)
   })
 
@@ -260,5 +283,24 @@ describe('cmpDecimal (string comparison, no arithmetic)', () => {
     expect(cmpDecimal('1,000.10', '1000.1')).toBe(0)
     expect(cmpDecimal('-0.0', '0')).toBe(0)
     expect(cmpDecimal('UNLIMITED', '1')).toBeNull()
+  })
+})
+
+describe('GC-ADJ1 follow-up: the display forms (text only)', () => {
+  it('rupeesText: Indian grouping, server minus sign, paise kept; not-a-decimal unchanged', () => {
+    expect(rupeesText('720252.00')).toBe('₹7,20,252.00')
+    expect(rupeesText('2515.50')).toBe('₹2,515.50')
+    expect(rupeesText('-181902.50')).toBe('−₹1,81,902.50')
+    expect(rupeesText('0.00')).toBe('₹0.00')
+    expect(rupeesText('UNLIMITED')).toBe('UNLIMITED')
+  })
+  it('percentFromFraction: two decimals half-up, exact zero is 0%, nothing is a float', () => {
+    expect(percentFromFraction('0.744067755')).toBe('74.41%')
+    expect(percentFromFraction('0.686109001')).toBe('68.61%')
+    expect(percentFromFraction('0.00005')).toBe('0.01%')
+    expect(percentFromFraction('0.1')).toBe('10.00%')
+    expect(percentFromFraction('1')).toBe('100.00%')
+    expect(percentFromFraction('0')).toBe('0%')
+    expect(percentFromFraction('n/a')).toBe('n/a')
   })
 })

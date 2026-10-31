@@ -260,7 +260,7 @@ ADJUSTMENT_APPROACH_ABOUT_TEXT: Mapping[str, str] = MappingProxyType({
 ADJUSTMENT_CRITERION_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
     "credit": "Credit (+) or debit (-)",
     "cost": "Charges plus bid-ask cost",
-    "margin_change": "Margin change",
+    "margin_change": "Margin change (negative = margin freed)",
     "max_loss": "Max loss",
     "move_m2": "P&L if spot falls 2%",
     "move_m1": "P&L if spot falls 1%",
@@ -282,7 +282,7 @@ ADJUSTMENT_CRITERION_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
 ADJUSTMENT_LEADER_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
     "credit": "Most credit",
     "cost": "Lowest cost",
-    "margin_change": "Smallest margin change",
+    "margin_change": "Lowest margin change",  # the lowest value = frees the most margin, not "smallest"
     "max_loss": "Smallest max loss",
     "move_m2": "Highest P&L at -2%",
     "move_m1": "Highest P&L at -1%",
@@ -1233,6 +1233,10 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         {"broker_needed": Rupees, "top_up": Rupees, "needed": Rupees, "available": Rupees}),
     ExplanationTemplate("outcome_margin_unreadable", "values_seen",
                         "Margin from Zerodha could not be read just now, so no margin figure is shown."),
+    ExplanationTemplate("outcome_margin_empty", "values_seen",  # an EMPTY answer: outcome page and adjustment route
+                        "Zerodha returned no margin figure for this basket."),
+    ExplanationTemplate("outcome_margin_empty_funds", "values_seen",  # the available-funds read stated no figure
+                        "Zerodha returned no available-funds figure for this account."),
     ExplanationTemplate("outcome_margin_busy", "values_seen", ZERODHA_BUSY_TEXT),  # REQ-118 AC-3
     ExplanationTemplate("outcome_margin_no_basket", "values_seen",
                         "Margin from Zerodha is shown when every leg is a listed Zerodha contract."),
@@ -1248,8 +1252,6 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         "POP not available: the spot is stale or missing."),
     ExplanationTemplate("adjust_margin_not_available", "values_seen", "Margin not available: {reason}",
                         {"reason": Explained}),
-    ExplanationTemplate("adjust_margin_empty", "values_seen",
-                        "Margin not available: Zerodha answered without a margin figure."),
     ExplanationTemplate("adjust_spot_from_feed", "values_seen", "Spot from the live feed"),
     ExplanationTemplate("adjust_spot_from_rest_quote", "values_seen", "Spot from a REST quote"),
     ExplanationTemplate("adjust_spot_from_last_close", "values_seen", "Spot from the last close"),
@@ -1506,6 +1508,8 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         {"leg": Recorded}),
     ExplanationTemplate("adjust_cmp_no_new_leg", "values_seen", "Not available: this approach opens no new leg."),
     ExplanationTemplate("adjust_cmp_nothing_open", "values_seen", "Not available: no leg stays open."),
+    # ADR-215: the Greeks-after rows of an approach that leaves no open leg (exit); shown, and it cannot lead them
+    ExplanationTemplate("adjust_cmp_no_position_left", "values_seen", "No position left after exit"),
     ExplanationTemplate("adjust_cmp_low_oi", "values_seen",
                         "{value}% (Zerodha may refuse fresh orders in {legs}: low open interest state not known)",
                         {"value": Recorded, "legs": Recorded}),

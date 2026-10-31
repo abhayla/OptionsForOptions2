@@ -1004,9 +1004,8 @@ FUNDS_AVAILABLE = 10_000_000.0  # synthetic funds, far above any scenario basket
 
 def funds_reply(margin: dict) -> dict:
     """Kite ``GET /user/margins`` reply shape (tests/fixtures/kite_margins/funds-*); the figure is synthetic."""
-    if margin["state"] == "stated":
-        return {"status": "success", "data": {"equity": {"net": FUNDS_AVAILABLE}}}
-    return margin_reply({"state": margin["state"]})
+    # every margin state: the funds read is answered normally, only the BASKET reply varies
+    return {"status": "success", "data": {"equity": {"net": FUNDS_AVAILABLE}}}
 
 
 def margin_reply(margin: dict) -> dict:

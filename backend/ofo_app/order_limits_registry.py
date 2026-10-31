@@ -128,6 +128,10 @@ NOT_A_ZERODHA_RULE: dict[str, str] = {
         ),
         "this product's own grammar for an input it validates (a pattern or a key list), not a limit Zerodha sets": (
             "ofo.broker.kite_http:QUOTE_INSTRUMENT", "ofo.broker.kite_http:_PLAIN_NETLOC",
+            # the quote door's index-name allow-list (F-76, REQ-155 AC-5): which names the product lets through; Kite's
+            # own rule (quote takes up to 500 instruments, QUOTE_LIMIT) is cited above
+            "ofo.broker.kite_http:QUOTE_INDEX_NAMES", "ofo.broker.kite_http:_QUOTE_INDEX_RAW",
+            "ofo.broker.kite_http:_QUOTE_ITEM",
             "ofo.broker.kite_http:_PLAIN_WS_NETLOC", "ofo.broker.kite_http:_QUOTE_TARGET",
             "ofo.broker.kite_flags:_ENTRY_KEYS", "ofo.execution.basket:_LEGACY_TAG_RE",
             "ofo.execution.basket:_STRATEGY_ID_RE", "ofo.execution.basket:_TAG_RE",

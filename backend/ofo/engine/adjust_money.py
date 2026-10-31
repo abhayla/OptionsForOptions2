@@ -7,6 +7,7 @@ Every input is exact Decimal; quantities are units (lots x lot size).
 - ``cost_with_spread``: this adjustment's own charges plus half the bid-ask spread of each traded contract times its
   quantity (the cost of trading at bid or ask rather than mid).
 - ``margin_change``: the After's basket margin minus the current legs'.
+- ``closed_booked``: the P&L booked by the legs an approach closes, at their planned exit prices.
 - ``premium_left``: short legs' current price x quantity minus long legs' (the premium still left to earn).
 """
 from __future__ import annotations
@@ -38,6 +39,12 @@ def cost_with_spread(charges: Decimal, quotes: Iterable[tuple[Decimal, Decimal, 
 
 def margin_change(after: Decimal, before: Decimal) -> Decimal:
     return after - before
+
+
+def closed_booked(legs: Iterable[tuple[str, Decimal, Decimal, int]]) -> Decimal:
+    """(side, entry, planned exit, quantity) per leg the approach closes -> the P&L it books: (exit - entry) x
+    quantity, + for a BUY leg, - for a SELL leg (nothing closed: 0)."""
+    return sum(((exit_ - entry) * quantity * -_sign(side) for side, entry, exit_, quantity in legs), Decimal(0))
 
 
 def premium_left(legs: Iterable[tuple[str, Decimal, int]]) -> Decimal:
