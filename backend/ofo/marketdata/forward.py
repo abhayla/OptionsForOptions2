@@ -64,8 +64,7 @@ class ForwardQuality:
     def __post_init__(self) -> None:
         if not isinstance(self.width, Decimal) or not self.width.is_finite() or self.width <= 0:
             raise ValueError(f"width must be a positive finite decimal.Decimal, got {self.width!r}")
-        for name in ("strikes_near", "min_strikes"):
-            v = getattr(self, name)
+        for name, v in (("strikes_near", self.strikes_near), ("min_strikes", self.min_strikes)):
             if isinstance(v, bool) or not isinstance(v, int) or v < 1:
                 raise ValueError(f"{name} must be a whole number of at least 1, got {v!r}")
 

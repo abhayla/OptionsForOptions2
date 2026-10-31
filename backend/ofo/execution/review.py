@@ -84,7 +84,7 @@ def _notes(seq: OrderSequence) -> tuple[str, ...]:
     return tuple(notes)
 
 
-def execution_review(plan: ExecutionPlan, planner: MarginPlanner | None,
+def execution_review(plan: ExecutionPlan, planner: MarginPlanner | None,  # noqa: PLR0913 - the settings value is a required parameter (GC-SET)
                      constraints: BrokerConstraints | None = None, *,
                      freeze_limits: Mapping[str, StoredFreeze] | None, today: date,
                      freeze_stale_days: int) -> ExecutionReview:

@@ -312,7 +312,7 @@ async def test_req050_the_tracking_read_shares_the_forward_with_the_outcome_rout
     calls: dict = {}
     real = snapshot_module.parity_forward
 
-    def counted(chain, spot, expiry, valuation, rate, quality):
+    def counted(chain, spot, expiry, valuation, rate, quality):  # noqa: PLR0913 - the settings value is a required parameter (GC-SET)
         calls[expiry] = calls.get(expiry, 0) + 1
         return real(chain, spot, expiry, valuation, rate, quality)
 
