@@ -1120,3 +1120,19 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   (`frontend/src/pages/OptionChainPage.vue:34` `UNDO_MS`) and 10000 ms for Clear all (`frontend/src/lib/legEdit.js:26`
   `CLEAR_UNDO_MS`), both typed in code. Bears on ADR-007, ADR-222. Status: **read from the code**; open for owner
   decision (which default the setting starts at).
+
+## F-80 - Every playbook check where the clock trigger T-10b fires answered 500
+- Measured 2026-11-01 (GC-SET step 7, DB route test on scenario ADJ-43, last day 15:00): `condition_line`
+  (`ofo_app/adjustment_check.py:222-234`) renders "15:00" into a number slot, the slot refuses it, and the fallback
+  retries with the same value, so the check route raises `ValueError: PlaybookField slot must match ... got '15:00'`.
+  T-10b is the only trigger with unit `time`; it fires on expiry day from 14:30, so every such check failed. Fixed on
+  build/gcset-t19 97303cff (ClockTime slot; last-resort line never raises); test 6 failed before, 32 passed after.
+  Class: `knowledge/findings/reply-type-refuses-real-value-shape.json`. Bears on REQ-159.
+
+## F-81 - Every playbook check in a stage whose name has a space answered 500
+- Measured 2026-11-01 (same run, after F-80's fix): the check reply's `stage.name` and the opportunities record's stage
+  are typed `Identifier` (no spaces), so "Last day" / "Last 2 days" fail reply validation (`String should match pattern
+  '^[A-Za-z0-9_\-.]{1,64}$' ... input_value='Last day'`): every check in the last stage (1 day weekly, 2 days monthly)
+  failed all day. Fix (decided, technical): the stage name is sent as catalogue text through the PlaybookName slot,
+  keeping the reply-type guard. Class: `knowledge/findings/reply-type-refuses-real-value-shape.json`. Bears on
+  REQ-159, REQ-160.
