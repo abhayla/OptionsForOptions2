@@ -3,7 +3,7 @@
   "settings": [
     {
       "key": "pricing.risk_free_rate",
-      "group": "Pricing & Greeks",
+      "group": "Pricing",
       "label": "Risk-free interest rate",
       "unit": "fraction",
       "type": "decimal",

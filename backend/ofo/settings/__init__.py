@@ -118,7 +118,8 @@ def defaults() -> dict[str, Decimal]:
     return {k: s.default for k, s in registry().items()}
 
 
-def _plain(value: Decimal) -> str:
+def plain(value: Decimal) -> str:
+    """A Decimal as plain text, no exponent and no trailing zeros (0.0650 -> 0.065)."""
     return format(value.normalize(), "f")
 
 
@@ -131,9 +132,9 @@ def check_value(s: Setting, value: Decimal) -> Decimal:
     if value < s.min or value > s.max:
         if s.unit == "fraction" and s.min <= value / _HUNDRED <= s.max:
             raise SettingRefused("setting_fraction_unit",
-                                 f"{s.label} is a fraction: enter {_plain(value / _HUNDRED)} for {_plain(value)}%.")
+                                 f"{s.label} is a fraction: enter {plain(value / _HUNDRED)} for {plain(value)}%.")
         raise SettingRefused("setting_out_of_range",
-                             f"{s.label} must be between {_plain(s.min)} and {_plain(s.max)} ({s.unit}).")
+                             f"{s.label} must be between {plain(s.min)} and {plain(s.max)} ({s.unit}).")
     return value
 
 
@@ -143,11 +144,11 @@ def validate(key: object, raw: object) -> Decimal:
     s = setting(key)
     if not isinstance(raw, str) or not raw.strip() or len(raw) > MAX_TEXT:
         raise SettingRefused("setting_not_a_number", f"{s.label} must be a number written as text, e.g. "
-                                                     f"{_plain(s.default)}.")
+                                                     f"{plain(s.default)}.")
     try:
         value = Decimal(raw.strip())
     except InvalidOperation:
-        raise SettingRefused("setting_not_a_number", f"{s.label} must be a number, e.g. {_plain(s.default)}.") from None
+        raise SettingRefused("setting_not_a_number", f"{s.label} must be a number, e.g. {plain(s.default)}.") from None
     return check_value(s, value)
 
 
