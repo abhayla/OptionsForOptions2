@@ -11,6 +11,7 @@ import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import { LEG_NOT_LIVE_LABEL, NOT_CONNECTED_LABEL, buildDraft } from '@/lib/legPicker'
 import { fetchSavedLegs, strategyLabel } from '@/lib/saveDraft'
 import { istTime, maxLine, nameFromPool } from '@/lib/displayFormat'
+import { RouterLink } from 'vue-router'
 import Chip from '@/components/common/Chip.vue'
 import { healthSentence } from '@/lib/dataHealthText'
 import { useStrategyLive } from '@/composables/useStrategyLive'
@@ -131,6 +132,8 @@ class="rounded border border-line bg-surface p-4" data-testid="live-strategy-car
     <header class="flex flex-wrap items-baseline gap-2">
       <h2 class="text-base font-semibold" data-testid="live-strategy-title">{{ strategyLabel(strategy, `Draft ${strategy.id}`) }}, {{ strategy.underlying }}</h2>
       <span class="rounded bg-gray-100 px-1.5 text-xs text-ink-muted" data-testid="live-strategy-status">{{ strategy.status }}</span>
+      <!-- GC-MU A3 (ADR-230 (2)): the server's words for the open adjustment records; none at 0 or when unread -->
+      <RouterLink v-if="strategy.open_opportunities_text" :to="{ path: '/positions/adjustment-opportunities', query: { strategy: String(strategy.id) } }" class="text-sm text-accent underline" data-testid="live-opportunity-mark">{{ strategy.open_opportunities_text }}</RouterLink>
       <span v-if="paused" class="text-sm" data-testid="live-paused-badge">⏸ Monitoring paused</span>
       <span v-if="paused" class="inline-flex items-center gap-1 text-sm text-ink-muted" data-testid="live-health-dot" data-health="unknown">
         <span class="inline-block h-2 w-2 rounded-full bg-gray-400" aria-hidden="true"></span>Health unknown

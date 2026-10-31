@@ -3,7 +3,7 @@
      source label, conditions and outcomes; the outcome counts; the empty text. Every word of a row is the server's; the
      browser counts and computes nothing. An open group links to the compare of its strategy (REQ-156). -->
 <template>
-  <section class="p-4" data-testid="opportunities-page">
+  <section ref="root" class="p-4" data-testid="opportunities-page">
     <h1 class="text-lg font-semibold">Adjustment opportunities</h1>
     <p v-if="state === 'loading'" class="mt-2 text-sm text-ink-muted" data-testid="opp-loading">Loading.</p>
     <ErrorMessage v-else-if="state === 'error'" :parts="errorParts" prefix="opp-error" data-testid="opp-error" />
@@ -25,7 +25,7 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="g in reply.groups" :key="g.group" class="border-b border-line align-top" data-testid="opp-row">
+            <tr v-for="g in reply.groups" :key="g.group" class="border-b border-line align-top" data-testid="opp-row" :data-strategy-id="g.strategy_id" :data-picked="picked === String(g.strategy_id) ? 'true' : 'false'">
               <td class="py-1.5 tabular-nums" data-testid="opp-time">{{ istTime(g.shown_at) }}</td>
               <td class="py-1.5" data-testid="opp-strategy">{{ plainName(g.strategy_name) }}</td>
               <td class="py-1.5" data-testid="opp-what">
@@ -51,8 +51,8 @@
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue'
-import { RouterLink } from 'vue-router'
+import { inject, nextTick, onMounted, ref } from 'vue'
+import { RouterLink, routeLocationKey } from 'vue-router'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import api, { NEUTRAL_PARTS } from '@/services/api'
 import { compareUrl } from '@/lib/adjustDrawer'
@@ -64,14 +64,19 @@ const props = defineProps({
 })
 const state = ref('loading') // loading | ready | error
 const reply = ref(null)
+const root = ref(null)
 const errorParts = ref(NEUTRAL_PARTS)
 
+// GC-MU A3: the Live Strategies card links here with ?strategy=<id>; that strategy's first row is scrolled into view
+const picked = inject(routeLocationKey, null)?.query?.strategy ?? null
 const linkOf = (g) => compareUrl(g.strategy_id, [], g.records.filter((r) => r.can_act).map((r) => r.id))
 
 onMounted(async () => {
   try {
     reply.value = (await props.client.get('/adjustment-opportunities')).data
     state.value = 'ready'
+    await nextTick()
+    root.value?.querySelector('[data-picked="true"]')?.scrollIntoView?.()
   } catch (e) {
     errorParts.value = e?.parts ?? NEUTRAL_PARTS
     state.value = 'error'

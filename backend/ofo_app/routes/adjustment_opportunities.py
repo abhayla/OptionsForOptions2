@@ -150,6 +150,23 @@ def inbox_body(rows: list[store.InboxRow]) -> dict:
                                 for r in store.DISMISS_REASONS]}
 
 
+def open_counts(rows: list[store.InboxRow]) -> dict[int, int]:
+    """GC-MU A3 (ADR-230 (2)): open records per strategy, by the inbox's own definition (outcome "open", as
+    `can_act` and the "open" count above); a strategy with none is absent. One definition, read from `store.inbox`."""
+    counts: dict[int, int] = {}
+    for row in rows:
+        if row.suggestion.outcome == "open":
+            counts[row.suggestion.strategy_id] = counts.get(row.suggestion.strategy_id, 0) + 1
+    return counts
+
+
+def open_mark(count: int) -> Any:
+    """The card's words for `count` open records, or None for none (no mark at 0)."""
+    if count < 1:
+        return None
+    return render_explanation("suggestion_open_count_one" if count == 1 else "suggestion_open_count", count=count)
+
+
 def _id(suggestion_id: int) -> int:
     if not 1 <= suggestion_id <= ID_MAX:
         raise StrategyStoreError(store.SUGGESTION_NOT_FOUND, f"suggestion {suggestion_id}")

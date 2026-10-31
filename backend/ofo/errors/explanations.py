@@ -1414,6 +1414,9 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("suggestion_group_count", "what_triggered", "{count} adjustment conditions triggered",
                         {"count": Count}),
     ExplanationTemplate("suggestion_inbox_empty", "values_seen", "No adjustment opportunities"),
+    # GC-MU A3 (ADR-230 (2)): the Live Strategies card mark, singular for one
+    ExplanationTemplate("suggestion_open_count_one", "values_seen", "1 adjustment opportunity"),
+    ExplanationTemplate("suggestion_open_count", "values_seen", "{count} adjustment opportunities", {"count": Count}),
     ExplanationTemplate("adjust_condition_line", "values_seen", "{label}: {value} {unit} (rule {threshold} {unit})",
                         {"label": PlaybookTriggerLabel, "value": PlaybookField, "unit": PlaybookUnit,
                          "threshold": PlaybookField}),

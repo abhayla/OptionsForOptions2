@@ -5,7 +5,7 @@
 // 0.5000 %, label "Adjustment opportunity detected", strategy name quoted by the API, shown plain). Every expected string is the answer's own.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
-import { routerKey } from 'vue-router'
+import { routerKey, routeLocationKey } from 'vue-router'
 import adj02current from './fixtures/adjust-current-adj02.json'
 import adj02approaches from './fixtures/adjust-approaches-adj02.json'
 
@@ -234,5 +234,23 @@ describe('the opp address part', () => {
     expect(opportunitiesFromQuery(undefined)).toEqual([])
     expect(compareUrl(72, ['A-01'], ['11', 'bad'])).toBe('/strategy/builder?adjust=72&pick=A-36,A-01&opp=11')
     expect(compareUrl(72, ['A-01'])).toBe('/strategy/builder?adjust=72&pick=A-36,A-01')
+  })
+})
+
+// GC-MU A3 (ADR-230 (2)): the card's link (?strategy=<id>) picks that strategy's row and scrolls it into view.
+describe('GC-MU A3: the page honours ?strategy=', () => {
+  it('marks and scrolls to the linked strategy row, and marks none without the query', async () => {
+    answers['GET /adjustment-opportunities'] = INBOX
+    const scroll = vi.fn()
+    Element.prototype.scrollIntoView = scroll
+    const withQuery = (query) => ({ global: { ...stub.global, provide: { [routeLocationKey]: { query } } } })
+    const w = keep(mount(AdjustmentOpportunitiesPage, withQuery({ strategy: '1' })))
+    await flushPromises()
+    expect(t(w, 'opp-row').attributes('data-picked')).toBe('true')
+    expect(scroll).toHaveBeenCalledTimes(1)
+    const other = keep(mount(AdjustmentOpportunitiesPage, withQuery({ strategy: '9' })))
+    await flushPromises()
+    expect(t(other, 'opp-row').attributes('data-picked')).toBe('false')
+    expect(scroll).toHaveBeenCalledTimes(1)
   })
 })
