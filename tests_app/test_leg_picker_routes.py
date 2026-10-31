@@ -32,6 +32,8 @@ from ofo.marketdata.provider import (
 )
 from ofo.marketdata.quote import NormalizedQuote, SourceMetadata
 from ofo.rules.inputs import DataHealth
+from ofo.settings import defaults as registry_defaults
+from ofo.settings.calc import chain_strikes_each_side
 from ofo_app import chain_push
 from ofo_app.catalogue_picker import PickableContract
 from ofo_app.chain_push import ChainCatalogue
@@ -823,7 +825,7 @@ def test_ac_7_the_picker_has_no_order_route_and_imports_nothing_that_places_an_o
 
 def test_the_picker_reuses_the_chain_catalogue_helpers_and_does_not_change_them():
     """AC-2: the helpers it reuses keep their signatures (the chain read and push are unchanged by this row)."""
-    assert max(leg_picker.WIDTHS) > chain_push.MAX_STRIKES_EACH_SIDE and leg_picker.WIDTHS == (10, 20, 30, 40)
+    assert max(leg_picker.WIDTHS) > chain_strikes_each_side(registry_defaults()) and leg_picker.WIDTHS == (10, 20, 30, 40)
 
 
 def test_core_the_real_router_over_http_on_a_real_kite_provider_replaying_the_recorded_nifty_session():

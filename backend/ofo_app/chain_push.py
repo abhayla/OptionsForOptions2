@@ -73,21 +73,21 @@ from ofo.instruments import eligibility as el
 from ofo.instruments.eligibility import EligibilityStatus
 from ofo.marketdata.quote import NormalizedQuote, is_live_price, planning_price_usable
 from ofo.money import PAISE  # money leaves the API as a 2-decimal string
+from ofo.settings.calc import chain_strikes_each_side
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, ValidationError
 from sqlalchemy.exc import SQLAlchemyError
 
 from ofo_app.api_models import ApiModel, CatalogueText, InstrumentId, Money
 from ofo_app.catalogue_picker import PickableContract
 from ofo_app.live_push import MIN_PUSH_INTERVAL, POLL_SECONDS, Channel, ChannelClosed, LiveFeed
-from ofo_app.routes.outcome import HealthCode, MarketContext, label_time, market_state
+from ofo_app.routes.outcome import HealthCode, MarketContext, SettingsReader, label_time, market_state
 from ofo_app.underlying import Underlying, refusal_of
 
 log = logging.getLogger(__name__)
 
-#: The most strikes either side of ATM a chain may ask for, and the default (design: "15 strikes either side at first
-#: open", docs/design/screens-research-2026-10-19.md). It bounds one socket's subscription to 62 contracts (31
-#: strikes, CE and PE) and the index.
-MAX_STRIKES_EACH_SIDE = 15
+#: The most strikes either side of ATM a chain may ask for, and the default, is the ``limits.chain_strikes_each_side``
+#: setting (REQ-167 AC-5; registry default 15, design: "15 strikes either side at first open"). Read per request
+#: through ``ofo.settings.calc.chain_strikes_each_side``; the number is written only in registry.json.
 #: REQ-029 AC-4 / Q46: "OI and IV update at a lower frequency" than LTP and bid/ask. Q46 names no number; 5 s is the
 #: orchestrator's technical decision (W-116 round 2). The same interval bounds how often the window re-centres.
 OI_REFRESH_SECONDS = 5.0
@@ -124,7 +124,7 @@ class ChainRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     underlying: Underlying
     expiry: datetime.date
-    strikes_each_side: StrictInt = Field(default=MAX_STRIKES_EACH_SIDE, ge=1, le=MAX_STRIKES_EACH_SIDE)
+    strikes_each_side: StrictInt = Field(ge=1)  # the upper bound is the setting, checked where the request is applied
     #: REQ-029 AC-9 display filters (row 33): None / False = off; a row stays when either side meets each
     min_oi: int | None = Field(default=None, ge=0)
     min_volume: int | None = Field(default=None, ge=0)
@@ -267,10 +267,11 @@ def atm_strike(grid: list[Decimal], spot: Decimal) -> Decimal:
     return min(grid, key=lambda s: (abs(s - spot), s))
 
 
-def strike_window(grid: list[Decimal], atm: Decimal, each_side: int) -> tuple[Decimal, ...]:
-    """``each_side`` grid strikes below and above ``atm`` (fewer at the grid's ends), with ``atm`` itself."""
-    if not 1 <= each_side <= MAX_STRIKES_EACH_SIDE:  # the request model caps it; a direct caller is refused too
-        raise ValueError(f"strikes_each_side must be 1..{MAX_STRIKES_EACH_SIDE}")
+def strike_window(grid: list[Decimal], atm: Decimal, each_side: int, max_each_side: int) -> tuple[Decimal, ...]:
+    """``each_side`` grid strikes below and above ``atm`` (fewer at the grid's ends), with ``atm`` itself.
+    ``max_each_side`` is the ``limits.chain_strikes_each_side`` setting in force (required, no default)."""
+    if not 1 <= each_side <= max_each_side:  # the caller checks it too; a direct caller is refused here
+        raise ValueError(f"strikes_each_side must be 1..{max_each_side}")
     i = grid.index(atm)
     return tuple(grid[max(0, i - each_side): i + each_side + 1])
 
@@ -293,13 +294,14 @@ def live_spot(ctx: MarketContext | None, underlying: str) -> Decimal | None:
     return quote.ltp if quote is not None and is_live_price(quote.ltp) else None
 
 
-def pick_window(ctx: MarketContext | None, req: ChainRequest, catalogue: ChainCatalogue) -> tuple[Decimal, ...] | None:
+def pick_window(ctx: MarketContext | None, req: ChainRequest, catalogue: ChainCatalogue,
+                max_each_side: int) -> tuple[Decimal, ...] | None:
     """The strikes to show around the ATM of the live spot; None when there is no live spot or no strike."""
     grid = strike_grid(catalogue)
     spot = live_spot(ctx, req.underlying)
     if spot is None or not grid:
         return None
-    return strike_window(grid, atm_strike(grid, spot), req.strikes_each_side)
+    return strike_window(grid, atm_strike(grid, spot), req.strikes_each_side, max_each_side)
 
 
 def window_ids(catalogue: ChainCatalogue, window: tuple[Decimal, ...] | None) -> list[str]:
@@ -490,14 +492,16 @@ def _ignore(_quote: Any) -> None:
 
 class ChainPush:
     def __init__(self, channel: Channel, feed: LiveFeed | None, *, monotonic: Callable[[], float],  # noqa: PLR0913
-                 now: Callable[[], datetime.datetime], reader: ChainReader = stored_chain,
-                 poll: float = POLL_SECONDS) -> None:
+                 now: Callable[[], datetime.datetime], read_settings: SettingsReader,
+                 reader: ChainReader = stored_chain, poll: float = POLL_SECONDS) -> None:
         self._channel = channel
         self._feed = feed
         self._monotonic = monotonic
         self._now = now
         self._reader = reader
         self._poll = poll
+        self._read_settings = read_settings
+        self._max_each = 0  # the setting in force when the current request was applied
         self._req: ChainRequest | None = None
         self._catalogue: ChainCatalogue | None = None
         self._window: tuple[Decimal, ...] | None = None
@@ -544,12 +548,15 @@ class ChainPush:
         try:  # extra="forbid": the REST read's ``fallback`` flag, or any unknown key, is refused here (#234)
             req = ChainRequest.model_validate(raw)
         except ValidationError as exc:
-            self._error_message = refusal_of(exc.errors()) or render("user_input_request_invalid")
-            if not self._error_due:
-                self._error_since = self._monotonic()
-            self._error_due = True  # answered through the one gate: 50 bad messages in a second get ONE reply
+            self._refuse(refusal_of(exc.errors()) or render("user_input_request_invalid"))
             return
         self._pending = req  # the latest wins; the current one again is a refresh (AC-16): re-read
+
+    def _refuse(self, message: UserFacingError) -> None:
+        self._error_message = message
+        if not self._error_due:
+            self._error_since = self._monotonic()
+        self._error_due = True  # answered through the one gate: 50 bad messages in a second get ONE reply
 
     def _may_take(self, interval: float) -> bool:
         since = self._since(self._last_take)
@@ -560,6 +567,16 @@ class ChainPush:
             return  # at most one subscription change (catalogue read, Kite subscribe) a second
         req, self._pending = self._pending, None
         self._last_take = self._monotonic()
+        try:
+            max_each = chain_strikes_each_side(await self._read_settings())  # read for THIS request (REQ-167 AC-4)
+        except Exception:  # the store cannot answer: fail closed, one fixed message, nothing is subscribed
+            log.warning("option chain: the settings could not be read")
+            self._refuse(render("user_input_request_invalid"))
+            return
+        if req.strikes_each_side > max_each:  # the same bound the REST read enforces
+            self._refuse(render("user_input_request_invalid"))
+            return
+        self._max_each = max_each
         catalogue = await self._reader(req.underlying, req.expiry)
         if req != self._req:
             self._unknown = set()
@@ -593,7 +610,7 @@ class ChainPush:
     def _take(self, req: ChainRequest, catalogue: ChainCatalogue) -> None:
         """Subscribe the request's window and index, THEN release what was held (a shared id is never dropped)."""
         self._last_take = self._monotonic()
-        window = pick_window(self._ctx, req, catalogue)
+        window = pick_window(self._ctx, req, catalogue, self._max_each)
         new_handle = None
         if self._feed is not None:
             index_id = index_id_of(self._feed.ctx, req.underlying)
@@ -607,7 +624,7 @@ class ChainPush:
         if self._req is None or self._catalogue is None or self._handle is None:
             return
         if self._window is None:
-            if self._may_take(MIN_PUSH_INTERVAL) and pick_window(self._ctx, self._req, self._catalogue) is not None:
+            if self._may_take(MIN_PUSH_INTERVAL) and pick_window(self._ctx, self._req, self._catalogue, self._max_each) is not None:
                 self._take(self._req, self._catalogue)
             return
         if not self._may_take(RECENTRE_SECONDS):

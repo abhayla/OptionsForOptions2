@@ -60,3 +60,11 @@ def scenario_fields(values: Mapping[str, Decimal], index: str) -> dict[str, Deci
         raise ValueError(f"no scenario settings are stated for {index!r}")
     v = values
     return {f: value_of(v, f"scenarios.{index.lower()}_{f}") for f in SCENARIO_FIELDS}
+
+
+CHAIN_STRIKES_EACH_SIDE = "limits.chain_strikes_each_side"
+
+
+def chain_strikes_each_side(values: Mapping[str, Decimal]) -> int:
+    """The most strikes either side of ATM the option chain shows and accepts (REQ-167 AC-5)."""
+    return int(value_of(values, CHAIN_STRIKES_EACH_SIDE))
