@@ -129,7 +129,7 @@ async def _sync_records(db: Any, user_ref: str, strategy_id: int, ev: pe.Evaluat
         if isinstance(r, pe.Flag):
             rec = await playbook_store.open_suggestion(
                 db, user_ref, strategy_id, r.rule_id, trigger_id=r.trigger_id, stage=r.stage_name,
-                value=_num(r.value), threshold=_num(r.threshold), group=group, source=source)
+                value=_num(r.value), threshold=_num(r.threshold), group=group, source=source, cmp=r.cmp)
             opened[r.rule_id] = rec.id
     cleared = set(ev.clear)
     for rec in await playbook_store.open_suggestions(db, user_ref, strategy_id):
