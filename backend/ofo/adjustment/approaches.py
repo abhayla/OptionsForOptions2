@@ -47,6 +47,7 @@ from pathlib import Path
 from typing import cast
 
 from ofo.adjustment import liquidity
+from ofo.engine import adjust_money
 from ofo.engine.legs import Action, Instrument, Leg
 from ofo.errors import LegValue, UserFacingError, render
 from ofo.errors.explanations import ADJUSTMENT_APPROACH_LABEL_TEXT
@@ -248,7 +249,7 @@ class _Builder:
         """ADR-230 (1): a roll whose net debit is above the playbook's limit is refused, with the reason."""
         if self.limits is None:
             return
-        debit = sum((t.price * t.quantity * (1 if t.action == "BUY" else -1) for t in trades), Decimal(0))
+        debit = -adjust_money.trade_credit((t.action, t.price, t.quantity) for t in trades)  # ADR-008: the engine's sum
         verdict = liquidity.check_roll_debit(self.limits, debit, self.max_profit)
         if verdict.reason == "unreadable":
             raise _refusal("adjust_roll_limit_unreadable", debit=debit)

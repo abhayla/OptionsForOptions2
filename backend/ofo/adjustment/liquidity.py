@@ -33,6 +33,8 @@ from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
+from ofo.engine import adjust_money
+
 OI_KEY = "hide_oi_below"
 SPREAD_KEY = "hide_spread_pct_of_mid_above"
 DEBIT_KEY = "roll_debit_limit"
@@ -164,7 +166,7 @@ def check_roll_debit(limits: Limits, debit: Decimal, max_profit: Decimal | None)
     allowed = limits.debit.rupees
     pct = limits.debit.pct_of_max_profit
     if pct is not None and max_profit is not None and max_profit > 0:
-        allowed = max(allowed, max_profit * pct / HUNDRED)
+        allowed = max(allowed, adjust_money.pct_of(max_profit, pct))
     if debit <= allowed:
         return DebitVerdict(True, "ok", debit, allowed)
     if pct is not None and (max_profit is None or max_profit <= 0):

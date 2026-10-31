@@ -33,7 +33,7 @@ def _scenario_orders(doc: dict) -> list[HistoryOrder]:
 
 def test_every_library_scenario_matches_the_generators_credit_and_premium_left():
     """tests/adjust_scenarios_gen.py: credit_received = the option legs' cash (open_cash + hist_cash, futures out);
-    premium_left = the open option legs' value, None for a debit (net long premium) book. 44 of 44 agree."""
+    premium_left = the open option legs' value, None for a debit (net long premium) book. 45 of 45 agree."""
     checked, bad, negative = 0, {}, []
     for path in sorted(FOLDER.glob("ADJ-*.json")):
         doc = json.loads(path.read_text(encoding="utf-8"), parse_float=Decimal)
@@ -50,5 +50,5 @@ def test_every_library_scenario_matches_the_generators_credit_and_premium_left()
         if t.credit != want_credit or t.premium_left != want_left:
             bad[doc["id"]] = (t.credit, want_credit, t.premium_left, want_left)
         checked += 1
-    assert (checked, bad) == (44, {})
+    assert (checked, bad) == (45, {})  # 45 with ADJ-50 (GC-MU A1)
     assert negative == [("ADJ-37", "net_long_premium"), ("ADJ-38", "net_long_premium")]
