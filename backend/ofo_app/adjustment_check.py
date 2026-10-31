@@ -147,21 +147,20 @@ def state_of(tracked: Tracked, market: MarketInputs, spot: SpotAnswer, margin: M
                    for x in position.legs if x.side == Action.SELL.value)
     qty = {x.tradingsymbol: x.lots * position.lot for x in position.legs}
     booked = tracked.booked
-    pnl = None if booked is None or not priced else booked + adjust_money.closed_booked(
-        (x.side, x.entry, ltp[x.tradingsymbol], qty[x.tradingsymbol]) for x in position.legs)
+    pnl = None if booked is None or not priced else adjust_money.pnl_now(
+        booked, ((x.side, x.entry, ltp[x.tradingsymbol], qty[x.tradingsymbol]) for x in position.legs))
     left = adjust_money.premium_left((x.side, ltp[x.tradingsymbol], qty[x.tradingsymbol])
                                      for x in position.legs) if priced else None
     spreads = [(getattr(rows.get(x.tradingsymbol), "bid", None), getattr(rows.get(x.tradingsymbol), "ask", None))
                for x in position.legs]
-    cost = None if any(b is None or a is None for b, a in spreads) else sum(
-        ((a - b) * qty[x.tradingsymbol] + COST_PER_LEG for x, (b, a) in zip(position.legs, spreads, strict=True)),
-        Decimal(0))
+    cost = None if any(b is None or a is None for b, a in spreads) else adjust_money.adjustment_cost(
+        ((b, a, qty[x.tradingsymbol]) for x, (b, a) in zip(position.legs, spreads, strict=True)), COST_PER_LEG)
     before = price_after(position.legs, position, booked, tracked.paid_charges, (), rates, market)
     gross = None if before.after is None else before.after.gross
     expiry_pnl = None
     if value is not None and booked is not None:
         from ofo.engine.strategy import Strategy  # noqa: PLC0415 - engine type only here
-        expiry_pnl = Strategy(_engine_legs(position)).expiry_pnl_at(value) + booked
+        expiry_pnl = adjust_money.with_booked(booked, Strategy(_engine_legs(position)).expiry_pnl_at(value))
     now = market.now.astimezone(IST)
     expiry = min(x.expiry for x in position.legs)
     hhmm = now.strftime("%H:%M")
