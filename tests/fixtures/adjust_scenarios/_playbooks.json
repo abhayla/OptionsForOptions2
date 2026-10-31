@@ -1,6 +1,6 @@
 {
  "source": "Published mockup screen 4 (claude.ai artifact RwzCxhDod7yVCk6TWrQc9e) and docs/research/adjustments-catalogue-2026-10-30.md Part 3 (incl. variants) and PB-04; ADR-214 (4a)-(4d)",
- "status": "DRAFT: playbook numbers await owner approval (catalogue Part 9b question 1)",
+ "status": "Iron condor (ic) APPROVED (ADR-216); every other family DRAFT: its numbers await owner approval (catalogue Part 9b question 1)",
  "stages": {
   "weekly": [
    {
@@ -473,6 +473,20 @@
   "T-19",
   "T-21"
  ],
+ "tightened_by_day_rule": [
+  "T-01",
+  "T-03",
+  "T-06",
+  "T-07",
+  "T-09",
+  "T-11",
+  "T-13",
+  "T-16",
+  "T-19"
+ ],
+ "crossing_triggers": [
+  "T-01"
+ ],
  "not_evaluated_in_library": {
   "T-14": "Loss-from-a-1%-move formula not settled; defined in the GC-ADJ1 build"
  },
@@ -823,6 +837,7 @@
      "reason": "Needs price history (not in V1)"
     }
    ],
+   "trigger_values": {},
    "approaches": {
     "applicable": [
      "A-01",
@@ -927,6 +942,7 @@
      "reason": "Needs price history (not in V1)"
     }
    ],
+   "trigger_values": {},
    "approaches": {
     "applicable": [
      "A-01",
@@ -1010,7 +1026,8 @@
   "ic": {
    "name": "Iron condor: system default",
    "system": true,
-   "status": "DRAFT",
+   "status": "APPROVED",
+   "approved_by": "ADR-216",
    "triggers_on": [
     "T-01",
     "T-02",
@@ -1037,6 +1054,20 @@
      "reason": "Needs price history (not in V1)"
     }
    ],
+   "trigger_values": {
+    "T-19": {
+     "weekly": [
+      "1",
+      "1",
+      "1"
+     ],
+     "monthly": [
+      "1",
+      "1",
+      "1"
+     ]
+    }
+   },
    "approaches": {
     "applicable": [
      "A-01",
@@ -1138,6 +1169,7 @@
      "reason": "Needs price history (not in V1)"
     }
    ],
+   "trigger_values": {},
    "approaches": {
     "applicable": [
      "A-01",
@@ -1252,6 +1284,7 @@
      "reason": "Needs a call side and a put side"
     }
    ],
+   "trigger_values": {},
    "approaches": {
     "applicable": [
      "A-02",
@@ -1379,6 +1412,7 @@
      "reason": "No premium to earn"
     }
    ],
+   "trigger_values": {},
    "approaches": {
     "applicable": [
      "A-05",
@@ -1541,6 +1575,7 @@
      "reason": "No premium to earn"
     }
    ],
+   "trigger_values": {},
    "approaches": {
     "applicable": [
      "A-06",
@@ -1700,6 +1735,7 @@
      "reason": "No premium to earn"
     }
    ],
+   "trigger_values": {},
    "approaches": {
     "applicable": [
      "A-06",
@@ -1838,6 +1874,7 @@
      "reason": "Needs a call side and a put side"
     }
    ],
+   "trigger_values": {},
    "approaches": {
     "applicable": [
      "A-02",
@@ -1958,6 +1995,7 @@
      "reason": "Needs a call side and a put side"
     }
    ],
+   "trigger_values": {},
    "approaches": {
     "applicable": [
      "A-02",
@@ -2088,6 +2126,7 @@
      "reason": "No premium to earn"
     }
    ],
+   "trigger_values": {},
    "approaches": {
     "applicable": [
      "A-05",
@@ -2223,6 +2262,7 @@
      "reason": "Needs a call side and a put side"
     }
    ],
+   "trigger_values": {},
    "approaches": {
     "applicable": [
      "A-02",

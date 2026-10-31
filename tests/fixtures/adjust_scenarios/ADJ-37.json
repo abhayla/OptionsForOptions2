@@ -1497,12 +1497,6 @@
   "adjustment_cost": "294.50",
   "triggers_fired": [
    {
-    "id": "T-01",
-    "value": "0.2602",
-    "limit": "0.3000",
-    "cmp": "le"
-   },
-   {
     "id": "T-03",
     "value": "0.6461",
     "limit": "0.4000",
@@ -1531,6 +1525,9 @@
     "id": "T-19",
     "reason": "no premium to earn (net long premium)"
    }
+  ],
+  "already_true_at_entry": [
+   "T-01"
   ],
   "day_rules": [],
   "tighten_percent": null,

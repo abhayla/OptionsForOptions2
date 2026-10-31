@@ -1148,7 +1148,66 @@ _ADJUSTMENT_TEMPLATES: tuple[MessageTemplate, ...] = (
           _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {"expiry": Date}),
 )
 
-_TEMPLATES = (_TEMPLATES + _GATE_TEMPLATES + _SEND_TEMPLATES + _RECONCILIATION_TEMPLATES + _PART4_TEMPLATES
+# GC-ADJ2 step 1B (REQ-159 AC-2, REQ-160 AC-3, F-71): why a playbook trigger was not checked, why no suggestion is
+# made, and the already-true state. Wording reuses the scenario library's reason sentences. Decision support only.
+_TRIG_NOT = "This rule is not checked now; it never counts as passed."
+_TRIG_BLOCKED = "This rule."
+_TRIG_NEXT = "Nothing to do; it is checked again at the next check."
+_TRIG_WITHHELD = "No rule of this playbook is checked until the data is back."
+
+
+def _trig(name: str, number: int, what: str, slots: Mapping[str, type[SlotType]] | None = None) -> MessageTemplate:
+    return _gate(f"adjust_trigger_{name}", _UI, number, what, _TRIG_NOT, _TRIG_BLOCKED, _TRIG_NEXT, slots)
+
+
+_TRIGGER_TEMPLATES: tuple[MessageTemplate, ...] = (
+    _trig("no_stage_value", 114, "No value in this stage."),
+    _trig("no_stage", 115, "No stage covers {days} days left.", {"days": Int}),
+    _trig("no_expiry_values", 116, "This trigger has no values for this expiry type."),
+    _trig("no_short_leg", 117, "No short leg."),
+    _trig("missing_spot", 118, "Spot not available."),
+    _trig("missing_short_delta", 119, "Delta of a short leg not available."),
+    _trig("missing_short_price", 120, "Price of a short leg not available."),
+    _trig("missing_pnl", 121, "P&L not available (a leg unpriced)."),
+    _trig("missing_expiry_pnl", 122, "Expiry P&L at spot not available (multi-expiry: no exact breakeven)."),
+    _trig("missing_max_loss", 123, "Max loss not available."),
+    _trig("missing_max_profit", 124, "Max profit not available."),
+    _trig("max_loss_not_finite", 125, "Max loss not finite (unlimited or multi-expiry)."),
+    _trig("max_profit_not_finite", 126, "Max profit not finite (unlimited or multi-expiry)."),
+    _trig("missing_margin", 127, "Margin not available."),
+    _trig("margin_not_positive", 128, "Margin not positive."),
+    _trig("missing_premium_left", 129, "Premium left not available (a leg unpriced)."),
+    _trig("net_long_premium", 130, "No premium to earn (net long premium)."),
+    _trig("missing_adjustment_cost", 131, "Adjustment cost not available."),
+    _trig("cost_not_positive", 132, "Adjustment cost not positive."),
+    _trig("missing_atm_iv", 133, "ATM IV not available."),
+    _trig("missing_entry_atm_iv", 134, "Entry ATM IV not available."),
+    _trig("missing_prev_close", 135, "Previous close not available."),
+    _trig("prev_close_not_positive", 136, "Previous close not positive."),
+    _trig("missing_day_open", 137, "Day open not available."),
+    _trig("gap_after_open", 138, "The gap at the open is checked only until 09:30."),
+    _trig("missing_clock", 139, "Clock time not available."),
+    _trig("missing_days_left", 140, "Days left not available."),
+    _trig("missing_adjustments_used", 141, "Adjustments used not available."),
+    _trig("missing_max_adjustments", 142, "Maximum adjustments not stated in the playbook."),
+    _trig("t14_pending", 143, "Loss-from-a-1%-move formula not settled; defined in the GC-ADJ1 build"),
+    _trig("switched_off", 144, "This trigger is switched off in this playbook."),
+    _trig("greyed", 145, "This trigger does not apply to this strategy type."),
+    _trig("data_unavailable", 146, "The data this trigger needs is not available."),
+    _trig("unknown", 147, "Unknown trigger: it is not checked."),
+    _trig("not_evaluated", 148, "This trigger is not checked in this version."),
+    _gate("adjust_trigger_withheld_stale", _UI, 149, "No suggestion: prices stale or missing.", _TRIG_WITHHELD,
+          "Every rule of this playbook.", "Wait for fresh prices.", {}),
+    _gate("adjust_trigger_withheld_fresh_unknown", _UI, 150, "No suggestion: price freshness not available.",
+          _TRIG_WITHHELD, "Every rule of this playbook.", "Wait for fresh prices.", {}),
+    _gate("adjust_trigger_withheld_no_spot", _UI, 151, "No suggestion: spot not available.", _TRIG_WITHHELD,
+          "Every rule of this playbook.", "Wait for the spot price to come back.", {}),
+    _gate("adjust_trigger_already_true", _UI, 152, "Already true when tracking started.",
+          "It is shown, not flagged, until a check finds it false.", "Nothing.",
+          "Watch it: it flags if it clears and then comes back.", {}),
+)
+
+_TEMPLATES = (_TEMPLATES + _TRIGGER_TEMPLATES + _GATE_TEMPLATES + _SEND_TEMPLATES + _RECONCILIATION_TEMPLATES + _PART4_TEMPLATES
               + _BOUNDARY_TEMPLATES + _BROKER_LOGIN_TEMPLATES + _STRATEGY_DRAFT_TEMPLATES + _FREEZE_TEMPLATES
               + _MARGIN_GATE_TEMPLATES + _ORDER_PATH_TEMPLATES + _READY_MADE_TEMPLATES + _LEG_EDIT_TEMPLATES
               + _ADJUSTMENT_TEMPLATES)
