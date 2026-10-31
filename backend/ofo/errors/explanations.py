@@ -14,11 +14,13 @@ from __future__ import annotations
 
 import datetime
 import functools
+import json
 import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from decimal import Decimal
 from enum import Enum
+from pathlib import Path
 from types import MappingProxyType
 
 from ofo import wording as _wording
@@ -855,20 +857,9 @@ COLUMN_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
 
 #: GC-ADJ2 1A (REQ-158 AC-1; docs/design/playbook-body-v1.md "Strategy types"): each playbook strategy type's shown
 #: name, by key, in the design note's order. ofo.adjustment.playbook_types holds the keys and reads the names here.
-PLAYBOOK_TYPE_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
-    "strangle": "Short strangle",
-    "straddle": "Short straddle",
-    "ic": "Iron condor",
-    "ifly": "Iron butterfly",
-    "credit": "Credit spreads",
-    "debit": "Debit spreads",
-    "longopt": "Single long option",
-    "longvol": "Long straddle / strangle",
-    "calendar": "Calendar / diagonal",
-    "ratio": "Ratio and back-spreads",
-    "dirfly": "Directional butterflies / condors",
-    "other": "Naked shorts / futures / others",
-})
+_PLAYBOOK_TYPE_LABELS_FILE = Path(__file__).resolve().parent.parent / "adjustment" / "playbook_type_labels.json"
+PLAYBOOK_TYPE_LABEL_TEXT: Mapping[str, str] = MappingProxyType(
+    json.loads(_PLAYBOOK_TYPE_LABELS_FILE.read_text(encoding="utf-8")))  # data, not code: no strategy name typed here
 
 #: Why a table cell has no value (the cell's `reason`), by key. Each is one reviewed template `table_reason_<key>`.
 TABLE_REASON_TEXT: Mapping[str, str] = MappingProxyType({

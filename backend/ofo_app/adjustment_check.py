@@ -45,7 +45,7 @@ from ofo.adjustment.strategy_type import strike_gap_of, type_of
 from ofo.engine import adjust_money
 from ofo.engine.legs import Action, Instrument, Leg
 from ofo.engine.metrics import UNLIMITED
-from ofo.marketdata.spot_source import SpotAnswer
+from ofo.marketdata.spot_source import SourceState, SpotAnswer
 from ofo.timeutil import IST
 
 from ofo_app import playbook_store
@@ -173,7 +173,8 @@ def state_of(tracked: Tracked, market: MarketInputs, spot: SpotAnswer, margin: M
         max_loss=None if gross is None else _limit_value(gross.max_loss),
         max_profit=None if gross is None else _limit_value(gross.max_profit),
         margin=stated_margin, premium_left=left, adjustment_cost=cost, atm_iv=market.vol,
-        prev_close=last.value if last is not None and last.value is not None and last.state.name == "STATED" else None,
+        prev_close=(last.value if last is not None and last.value is not None and last.state is SourceState.STATED
+                    else None),
         adjustments_used=tracked.adjustments_used, expiry_pnl_at_spot=expiry_pnl,
         tighten_percent=None if body is None else _tighten(body, now.date(), expiry, hhmm), prices_fresh=fresh)
 
