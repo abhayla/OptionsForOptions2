@@ -11,6 +11,7 @@ from ofo.outcome import OutcomeState, build_outcome, read_snapshot
 from ofo.outcome.serialize import outcome_to_dict
 from ofo.outcome.target import TargetAsk
 from ofo.rules.inputs import DataHealth
+from ofo.settings import defaults as _d
 from outcome.test_same_engine import RATE, VALUATION, definition
 
 EXPIRY = datetime.date(2026, 10, 13)
@@ -48,7 +49,7 @@ def _strings(node):
 def _answer(provider, closed):
     d, snap = _stale_snapshot(provider, closed=closed)
     target = TargetAsk(level=snap.spot.ltp + Decimal(100))
-    return build_outcome(d, snap, both_views=True, payoff_step=Decimal(50), target=target)
+    return build_outcome(d, snap, both_views=True, payoff_step=Decimal(50), target=target, settings=_d())
 
 
 def test_closed_market_has_no_stale_since_on_any_output(replayed):

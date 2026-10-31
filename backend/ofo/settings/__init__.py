@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Final
 
 DATA_FILE: Final = Path(__file__).with_name("registry.json")
-UNITS: Final = ("fraction", "percent", "rupees", "points", "seconds", "count", "time")
+UNITS: Final = ("fraction", "percent", "rupees", "points", "seconds", "count", "time", "days")
 TYPES: Final = ("decimal", "integer")
 MAX_TEXT: Final = 40  # the longest value text accepted from a form (a Decimal string)
 

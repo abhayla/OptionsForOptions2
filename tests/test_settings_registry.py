@@ -25,7 +25,7 @@ def test_the_checked_in_registry_loads_with_the_rate_at_its_default():
     s = settings.registry()["pricing.risk_free_rate"]
     assert s.default == Decimal("0.065") and isinstance(s.default, Decimal)
     assert (s.group, s.unit, s.min, s.max) == ("Pricing", "fraction", Decimal("0"), Decimal("0.5"))
-    assert settings.defaults() == {"pricing.risk_free_rate": Decimal("0.065")}
+    assert settings.defaults()["pricing.risk_free_rate"] == Decimal("0.065")
 
 
 def test_a_json_float_anywhere_is_refused():

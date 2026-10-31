@@ -25,6 +25,7 @@ from ofo.rules.inputs import DataHealth
 from ofo.scenario import levels as levels_module
 from ofo.scenario.config import ScenarioConfig
 from ofo.scenario.spot import spot_reading
+from ofo.settings import defaults as _d
 from ofo.timeutil import IST
 from outcome.test_from_entries import _spread, _stored
 from outcome.test_same_engine import CONDOR, CURRENT, RATE, VALUATION, outcome_of
@@ -106,7 +107,7 @@ def test_no_solved_iv_means_no_expected_move_and_todays_range(replayed, monkeypa
 
 def test_from_entries_never_carries_an_expected_move():
     """Attack 3: no live data, no IV -> the FROM_ENTRIES level set has no expected move."""
-    out = from_entries(_spread(), None, _stored(), VALUATION)
+    out = from_entries(_spread(), None, _stored(), VALUATION, settings=_d())
     assert out is not None and out.state is OutcomeState.FROM_ENTRIES
     assert out.level_set.expected_move_points is None
 
@@ -123,7 +124,7 @@ def _strategy(provider, legs):
 
 def _build(provider, definition, **kw):
     snap = read_snapshot(provider, "NIFTY", [p.instrument_id for p in definition.legs], VALUATION, RATE)
-    return build_outcome(definition, snap, VALUATION, **kw)
+    return build_outcome(definition, snap, VALUATION, **kw, settings=_d())
 
 
 ATM_PE = "NSE_FO:44615"  # 22550 PE, 13-Oct (CE is NSE_FO:44614): the strike nearest the 22,529.17 forward

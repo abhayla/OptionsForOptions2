@@ -7,14 +7,12 @@ import datetime
 from decimal import Decimal
 
 import pytest
-
+from _kite_fixture import all_instrument_ids, listed, new_provider, recorded_frames, replay
 from ofo.instruments.models import NSE_INDEX
 from ofo.marketdata.feed_health import FEED_STALE, RECONNECT_WINDOW
 from ofo.marketdata.forward import ForwardUnavailable, parity_forward
 from ofo.marketdata.kite_provider import IST, KiteProvider
 from ofo.rules.inputs import DataHealth
-
-from _kite_fixture import all_instrument_ids, listed, new_provider, recorded_frames, replay
 
 SEC = datetime.timedelta(seconds=1)
 RATE = Decimal("0.065")
@@ -83,12 +81,13 @@ def test_missing_index_value_refuses():
 
 # ---- the scenario never uses the index value silently (AC-2) and records it with its time (AC-3) ---------------
 from ofo.engine.inputs import LegInput, StrategyInput  # noqa: E402
-from ofo.engine.model import model_inputs  # noqa: E402
 from ofo.engine.legs import Action, Instrument  # noqa: E402
+from ofo.engine.model import model_inputs  # noqa: E402
 from ofo.scenario.config import ScenarioSettings  # noqa: E402
 from ofo.scenario.levels import build_level_set  # noqa: E402
 from ofo.scenario.spot import SpotRefused, spot_reading  # noqa: E402
 from ofo.scenario.views import View, scenario_values  # noqa: E402
+from ofo.settings import defaults as _d  # noqa: E402
 
 VALUATION = datetime.datetime(2026, 10, 8, 9, 20, 9, tzinfo=IST)
 
@@ -106,7 +105,7 @@ def _gated(inputs, provider):
 
 
 def _scenario(model):
-    ls = build_level_set(model, ScenarioSettings().for_index("NIFTY"))
+    ls = build_level_set(model, ScenarioSettings.from_values(_d()).for_index("NIFTY"))
     return ls, [scenario_values(ls, model, view) for view in (View.AT_EXPIRY, View.ESTIMATED_NOW)]
 
 

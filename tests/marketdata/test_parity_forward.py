@@ -9,21 +9,27 @@ import math
 from decimal import Decimal
 
 import pytest
-
+from _kite_fixture import all_instrument_ids, new_provider, replay
 from ofo.engine.black_scholes import implied_volatility, year_fraction
 from ofo.engine.inputs import LegInput, SpotReading, StrategyInput
 from ofo.engine.legs import Action, Instrument
-from ofo.marketdata.forward import (FALLBACK_LABEL, PARITY, SPOT_FALLBACK, ExpiryForward, ForwardUnavailable,
-                                    mid_price, parity_forward)
+from ofo.engine.model import estimate, expiry_model, greeks, implied_vol, model_inputs
+from ofo.marketdata.forward import (
+    FALLBACK_LABEL,
+    PARITY,
+    SPOT_FALLBACK,
+    ExpiryForward,
+    ForwardUnavailable,
+    mid_price,
+    parity_forward,
+)
 from ofo.marketdata.kite_provider import IST, SOURCE
 from ofo.marketdata.quote import NormalizedQuote
 from ofo.rules.inputs import DataHealth
 from ofo.scenario.config import ScenarioSettings
-from ofo.engine.model import estimate, expiry_model, greeks, implied_vol, model_inputs
 from ofo.scenario.levels import build_level_set
 from ofo.scenario.views import View, scenario_values
-
-from _kite_fixture import all_instrument_ids, new_provider, replay
+from ofo.settings import defaults as _d
 
 VALUATION = datetime.datetime(2026, 10, 8, 9, 20, 9, tzinfo=IST)
 RATE = Decimal("0.065")
@@ -307,7 +313,7 @@ def test_scenario_estimated_now_uses_the_forward_and_payoff_keeps_spot(replayed)
     on_fwd_model = model_inputs(inputs, {f.expiry: f})
     fallback = dataclasses.replace(f, source=SPOT_FALLBACK, implied_yield=Decimal(0), effective_spot=f.spot)
     on_spot_model = model_inputs(inputs, {f.expiry: fallback})
-    ls = build_level_set(on_fwd_model, ScenarioSettings().for_index("NIFTY"))
+    ls = build_level_set(on_fwd_model, ScenarioSettings.from_values(_d()).for_index("NIFTY"))
     assert ls.current == f.spot  # CURRENT column and the range stay on spot
     on_fwd = scenario_values(ls, on_fwd_model, View.ESTIMATED_NOW)
     on_spot = scenario_values(ls, on_spot_model, View.ESTIMATED_NOW)
@@ -320,7 +326,7 @@ def test_estimate_assumptions_state_the_yield_and_its_source(replayed):
     f = _forward(replayed, "NIFTY", D(2026, 10, 13))
     inputs = _one_call(f)
     model = model_inputs(inputs, {f.expiry: f})
-    ls = build_level_set(model, ScenarioSettings().for_index("NIFTY"))
+    ls = build_level_set(model, ScenarioSettings.from_values(_d()).for_index("NIFTY"))
     a = scenario_values(ls, model, View.ESTIMATED_NOW).assumptions
     assert a.dividend_yields == (f.implied_yield,) and a.yield_sources == ("parity",) and f.implied_yield > 0
     fallback = dataclasses.replace(f, source=SPOT_FALLBACK, implied_yield=Decimal(0), effective_spot=f.spot)

@@ -25,6 +25,7 @@ from ofo.engine.legs import Instrument
 from ofo.engine.model import iv_price
 from ofo.marketdata.quote import NormalizedQuote, SourceMetadata
 from ofo.rules.inputs import DataHealth
+from ofo.settings import defaults as _d
 
 D = Decimal
 IST = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
@@ -150,7 +151,7 @@ def _outcome_leg_iv(provider, instrument_id):
     from ofo.outcome import PlannedLeg, StrategyDefinition, build_outcome, read_snapshot
     snap = read_snapshot(provider, "NIFTY", [instrument_id], VALUATION, RATE)
     plan = StrategyDefinition("NIFTY", (PlannedLeg(instrument_id, Action.BUY, 1, D("10"), VALUATION),))
-    return build_outcome(plan, snap).legs[0].iv
+    return build_outcome(plan, snap, settings=_d()).legs[0].iv
 
 
 def test_core_picker_iv_equals_outcome_leg_iv_on_the_recorded_frames(recorded):

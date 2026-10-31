@@ -13,6 +13,7 @@ echo needs the stored strategy, so it runs on the database in CI (as ``test_exec
 from __future__ import annotations
 
 import pytest
+from ofo.settings import defaults as _d
 from test_execute_revision import _run
 from test_leg_edit_route import legs
 from test_leg_edit_route import post as leg_edit_post
@@ -246,7 +247,7 @@ def test_the_live_push_keeps_todays_keys_even_when_the_subscribe_carried_a_seq(r
     from ofo_app.errors import socket_body  # noqa: PLC0415
     from ofo_app.routes.outcome import OutcomeRequest, OutcomeResponse, outcome_response  # noqa: PLC0415
 
-    body = outcome_response(OutcomeRequest.model_validate({**_body(replayed), "seq": 9}), None)
+    body = outcome_response(OutcomeRequest.model_validate({**_body(replayed), "seq": 9}), None, settings=_d())
     assert "seq" not in body.model_fields_set
     frame = json.loads(bytes(socket_body(body, (OutcomeResponse,))).decode("utf-8"))  # the socket's own door
     assert "seq" not in frame and frame["state"] == body.state

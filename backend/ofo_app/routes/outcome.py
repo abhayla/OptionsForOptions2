@@ -21,6 +21,7 @@ from decimal import Decimal
 from typing import Annotated, Awaitable, Callable, Iterable, Literal, Mapping, Optional, Union
 
 from fastapi import APIRouter, Depends
+from fastapi.exceptions import RequestValidationError
 from ofo.charges import ChargeRates
 from ofo.engine.legs import Action
 from ofo.instruments.models import InstrumentId as ContractKey
@@ -43,12 +44,12 @@ from ofo.outcome import (
 from ofo.outcome.money import with_funds
 from ofo.outcome.price_text import price_text
 from ofo.outcome.serialize import outcome_to_dict
-from ofo.outcome.service import PAYOFF_TABLE_STEPS, Margin, waiting_first_price
+from ofo.outcome.service import Margin, waiting_first_price
 from ofo.outcome.target import TargetAsk
 from ofo.scenario.config import ScenarioConfig, ScenarioSettings
 from ofo.scenario.levels import RangeOverride, resolve_range
 from ofo.scenario.views import View
-from ofo.settings import RISK_FREE_RATE
+from ofo.settings import RISK_FREE_RATE, calc
 from ofo.settings import value_of as registry_value_of
 from ofo.timeutil import IST
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StrictBool, StrictInt, model_validator
@@ -224,6 +225,14 @@ async def with_rate_in_force(ctx: MarketContext, read_settings: SettingsReader) 
     return dataclasses.replace(ctx, rate=registry_value_of(await read_settings(), RISK_FREE_RATE))
 
 
+async def get_calc_settings(
+        read_settings: Annotated[SettingsReader, Depends(get_settings_reader)]) -> Mapping[str, Decimal]:
+    """REQ-167 AC-4: every setting in force NOW, read once per request, handed to the calculations that take their
+    numbers as parameters (scenario columns, payoff steps, SD horizon, what-if span, quick picks). A store that cannot
+    answer raises: the route answers the internal-error response, never a figure on a default."""
+    return await read_settings()
+
+
 async def get_market_context(
         read_settings: Annotated[SettingsReader, Depends(get_settings_reader)]) -> MarketContext | None:
     """The live context (W-065) when LIVE_MARKET is on and the owner has an active session, else None: the route
@@ -375,9 +384,8 @@ class OutcomeRequest(BaseModel):
     def _choice_is_allowed(self) -> OutcomeRequest:
         """REQ-034 AC-4: refuse a range off the allow-list (ofo.scenario.levels.resolve_range) before any
         computation; the error boundary answers 422 with the catalogue text and logs no value."""
-        self.scenario_choice()
-        if self.payoff_step is not None and Decimal(self.payoff_step) not in PAYOFF_TABLE_STEPS:
-            raise ValueError("payoff_step must be one of 10, 25, 50, 100")
+        # the range and the payoff step are checked against the settings in force when the answer is computed
+        # (:func:`checked_choice`), not here: the allowed values are settings (REQ-167 AC-4)
         return self
 
     def target_ask(self, booked: Booked | None = None) -> TargetAsk | None:
@@ -393,10 +401,10 @@ class OutcomeRequest(BaseModel):
         """REQ-137 AC-1: the payoff table's interval as index points (None: the underlying's strike step)."""
         return None if self.payoff_step is None else Decimal(self.payoff_step)
 
-    def scenario_choice(self) -> tuple[ScenarioConfig, RangeOverride | None]:
+    def scenario_choice(self, settings: Mapping[str, Decimal]) -> tuple[ScenarioConfig, RangeOverride | None]:
         """The ONE config (Admin step and anchor) and the range override this request asks for (None: the computed
         default range). The same pair is checked here and handed to build_outcome."""
-        base = ScenarioSettings().for_index(self.underlying)
+        base = ScenarioSettings.from_values(settings).for_index(self.underlying)
         pick = [None if v is None else Decimal(v) for v in (self.range_start, self.range_end)]
         return base, resolve_range(base, *pick)
 
@@ -925,11 +933,24 @@ def live_context() -> MarketContext | None:
     return _live_market().current_context()
 
 
+def checked_choice(req: OutcomeRequest, settings: Mapping[str, Decimal]) -> tuple[ScenarioConfig, RangeOverride | None]:
+    """The range and the payoff step this request asks for, checked against the settings in force (REQ-034 AC-4,
+    REQ-137 AC-1): a value off the allow-list is the same 422 the request validator gave."""
+    try:
+        if req.payoff_step is not None and Decimal(req.payoff_step) not in calc.payoff_steps(settings):
+            allowed = ", ".join(f"{s:f}" for s in calc.payoff_steps(settings))
+            raise ValueError(f"payoff_step must be one of {allowed}")
+        return req.scenario_choice(settings)
+    except ValueError as exc:
+        raise RequestValidationError([{"type": "value_error", "loc": ("body",), "msg": str(exc), "input": None}]) from exc
+
+
 def outcome_response(req: OutcomeRequest, ctx: MarketContext | None,  # noqa: PLR0913 - one shared computation; rates is the sixth input
                      streaming: Callable[[str], bool] | None = None, *, now: AnswerClock = server_now,
                      stored: Mapping[str, ListedContract] | None = None,
                      rates: ChargeRates | None = None, margin: Margin | None = None,
-                     seq: int | None = None, booked: Booked | None = None) -> OutcomeResponse:
+                     seq: int | None = None, booked: Booked | None = None,
+                     settings: Mapping[str, Decimal]) -> OutcomeResponse:
     """The one computation behind the REST route and the live push (W-065): both send exactly this. ``streaming``
     (REST only, issue #206): when the live market's inputs for this strategy are not all streaming, the answer is the
     not-live state (REQ-049 AC-5's message, no numbers shown as live; ADR-068 (2)), not a computation on missing or
@@ -940,10 +961,10 @@ def outcome_response(req: OutcomeRequest, ctx: MarketContext | None,  # noqa: PL
     used_quotes: list[NormalizedQuote | None] = []  # the quotes this answer used (ADR-200 (4): the closed label's time)
     if ctx is None:
         answered_at = now()
-        config, override = req.scenario_choice()
+        config, override = checked_choice(req, settings)
         out = (from_entries(definition, None, stored, answered_at, view=View(req.view), rates=rates, config=config,
                             override=override, both_views=req.both_views, payoff_step=req.table_step(),
-                            sd_bands=req.sd_bands, target=ask)  # REQ-077 AC-9: every leg priced -> At Expiry from the user's prices
+                            sd_bands=req.sd_bands, target=ask, settings=settings)  # REQ-077 AC-9: every leg priced -> At Expiry from the user's prices
                or not_connected(definition, None, stored))
     else:
         answered_at = ctx.clock()  # one clock reading: the push and the REST answer of one snapshot are equal
@@ -957,16 +978,16 @@ def outcome_response(req: OutcomeRequest, ctx: MarketContext | None,  # noqa: PL
         if not live_blocked and awaiting_first_price_for(ctx.provider, answered_at):
             out = waiting_first_price(definition, snapshot)  # REQ-133 AC-3: no number until the first price frame
         elif live_blocked:
-            config, override = req.scenario_choice()
+            config, override = checked_choice(req, settings)
             out = (from_entries(definition, snapshot, None, snapshot.valuation, view=View(req.view), rates=rates,
                                 config=config, override=override, both_views=req.both_views,
-                                payoff_step=req.table_step(), sd_bands=req.sd_bands, target=ask)
+                                payoff_step=req.table_step(), sd_bands=req.sd_bands, target=ask, settings=settings)
                    or not_live(definition, snapshot))
         else:
-            config, override = req.scenario_choice()
+            config, override = checked_choice(req, settings)
             out = build_outcome(definition, snapshot, snapshot.valuation, view=View(req.view), rates=rates,
                                 config=config, override=override, shared=shared, both_views=req.both_views,
-                                payoff_step=req.table_step(), sd_bands=req.sd_bands, target=ask)
+                                payoff_step=req.table_step(), sd_bands=req.sd_bands, target=ask, settings=settings)
     if ctx is not None and margin is not None:  # ADR-099: read by the caller (async, off the loop); no context = login
         out = dataclasses.replace(out, margin=margin, summary=with_funds(out.summary, margin))  # REQ-081 AC-9, AC-10
     body = outcome_to_dict(out, today=answered_at.astimezone(IST).date())  # REQ-135 AC-2
@@ -1018,9 +1039,11 @@ def strategy_outcome(req: OutcomeRequest,  # noqa: PLR0913 - FastAPI dependencie
                      stored: Mapping[str, ListedContract] | None = Depends(get_stored_legs),
                      rates: ChargeRates | None = Depends(load_charge_rates), *,
                      margin: Annotated[Margin | None, Depends(get_outcome_margin)] = None,
-                     booked: Annotated[Booked | None, Depends(get_booked)] = None) -> OutcomeResponse:
+                     booked: Annotated[Booked | None, Depends(get_booked)] = None,
+                     calc_settings: Annotated[Mapping[str, Decimal], Depends(get_calc_settings)]) -> OutcomeResponse:
     # a direct call (a test, another module) skips dependency resolution and leaves the Depends marker here: no rates
     return outcome_response(req, ctx, streaming, now=now, stored=stored,
                             rates=rates if isinstance(rates, ChargeRates) else None,
                             margin=margin if isinstance(margin, Margin) else None, seq=req.seq,
-                            booked=booked if isinstance(booked, Booked) else None)
+                            booked=booked if isinstance(booked, Booked) else None,
+                            settings=calc_settings)

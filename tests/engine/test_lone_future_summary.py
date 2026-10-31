@@ -9,10 +9,10 @@ from decimal import Decimal
 
 import pytest
 from marketdata._kite_fixture import all_instrument_ids, new_provider, new_provider_with_futures, replay
-
 from ofo.engine import UNLIMITED, Action, Instrument, Leg, Strategy, strategy_metrics
 from ofo.marketdata.kite_provider import IST
 from ofo.outcome import OutcomeState, PlannedLeg, StrategyDefinition, build_outcome, read_snapshot
+from ofo.settings import defaults as _d
 
 VALUATION = datetime.datetime(2026, 10, 8, 9, 20, 9, tzinfo=IST)
 RATE = Decimal("0.065")
@@ -36,7 +36,7 @@ def futures_provider():
 def summary_of(provider, legs):
     d = StrategyDefinition("NIFTY", tuple(PlannedLeg(iid, action, 1, entry, VALUATION) for iid, action, entry in legs))
     snap = read_snapshot(provider, "NIFTY", [p.instrument_id for p in d.legs], VALUATION, RATE)
-    out = build_outcome(d, snap, VALUATION)
+    out = build_outcome(d, snap, VALUATION, settings=_d())
     assert out.state is OutcomeState.COMPUTED, out.reason
     return out.summary
 

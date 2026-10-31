@@ -1,4 +1,3 @@
-# ruff: noqa: E501
 """GC-UI step 4 server round 3, item 1 (REQ-083 AC-5 / AC-6; D-B16, D-B17): an outcome call that asks for it
 (``open_interest``) carries each plotted strike's call OI and put OI for the strategy's expiry, with the time they were
 read, from the same feed the strike drawer reads, so the chart draws OI bars behind the curve; and says why when OI is
@@ -31,6 +30,7 @@ from ofo.errors.explanations import render_explanation  # noqa: E402
 from ofo.marketdata.fanout import FanOut  # noqa: E402
 from ofo.marketdata.kite_provider import IST  # noqa: E402
 from ofo.outcome.snapshot import contract_id  # noqa: E402
+from ofo.settings import defaults as _d  # noqa: E402
 from ofo_app.live_push import ChannelClosed, LiveFeed, StrategyPush  # noqa: E402
 from ofo_app.routes.outcome import MarketContext, OutcomeRequest, outcome_response  # noqa: E402
 from outcome._both_curves_cases import CALENDAR, S54  # noqa: E402
@@ -70,7 +70,7 @@ def _body(provider, legs, at=VALUATION, streaming=None, **extra) -> dict:
     ctx = MarketContext(provider, _Clock(at), RATE)
     if streaming is not None:
         streaming.ctx = ctx
-    return outcome_response(_req(provider, legs, **extra), ctx, streaming).model_dump(mode="json", exclude_unset=True)
+    return outcome_response(_req(provider, legs, **extra), ctx, streaming, settings=_d()).model_dump(mode="json", exclude_unset=True)  # noqa: E501
 
 
 def _chain_oi(provider, expiry=EXPIRY) -> dict[tuple[Decimal, str], int | None]:
@@ -123,7 +123,7 @@ def test_flag_off_has_no_open_interest_key(provider):
 
 
 def test_one_strike_without_a_usable_quote_is_null_with_a_dash_never_0(monkeypatch):
-    """REQ-083 AC-6 ("never draws zero-height bars as if OI were zero"), round 3's surviving mutant M2: inside the range,
+    """REQ-083 AC-6 ("never draws zero-height bars as if OI were zero"), round 3's surviving mutant M2: inside the range,  # noqa: E501
     22700 CE has NO quote and 22700 PE has a STALE one while every other strike is quoted. Those two sides are null
     with the dash; the neighbours keep their own real OI; the block stays available."""
     import dataclasses as _dc  # noqa: PLC0415
@@ -214,7 +214,7 @@ def test_no_live_data_says_why():
     req = OutcomeRequest.model_validate({"underlying": "NIFTY", "open_interest": True, "legs": [
         {"instrument_id": "NSE_FO:44616", "action": "BUY", "lots": 1, "planned_entry": "101.55",
          "captured_at": VALUATION.isoformat()}]})
-    oi = outcome_response(req, None).model_dump(mode="json", exclude_unset=True)["open_interest"]
+    oi = outcome_response(req, None, settings=_d()).model_dump(mode="json", exclude_unset=True)["open_interest"]
     assert oi["available"] is False and oi["rows"] == []
     assert oi["unavailable_reason"] == render_explanation("outcome_oi_not_connected")
 

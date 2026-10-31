@@ -36,6 +36,7 @@ from ofo_app.routes.outcome import (
     get_booked_reader,
     get_contract_lookup,
     get_margin_source,
+    get_settings_reader,
     load_charge_rates,
     margin_for_request,
     outcome_response,
@@ -199,7 +200,9 @@ class StrategyPush:
             margin = await margin_for_request(req, ctx, self._margin_source)  # same step as the REST route
             booked = await get_booked(req, self._booked_reader)  # same step as the REST route (nothing for a plan)
             # REQ-133 AC-2: the push echoes the version (seq) of the follow message it was computed for (echo_seq)
-            body = outcome_response(req, ctx, stored=stored, rates=rates, margin=margin, seq=req.seq, booked=booked)
+            settings = await get_settings_reader()()  # read at this tick (REQ-167 AC-4)
+            body = outcome_response(req, ctx, stored=stored, rates=rates, margin=margin, seq=req.seq, booked=booked,
+                                    settings=settings)
         except Exception:  # a path we did not expect: one fixed message, the exception is not shown
             await self._error()
             return
