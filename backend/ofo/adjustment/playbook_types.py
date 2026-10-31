@@ -1,5 +1,6 @@
-"""The twelve playbook strategy types (REQ-158 AC-1) and their shown names: the one table (docs/design/playbook-body-v1.md
-"Strategy types"). Read by the 0031 migration's CHECK, the playbook store, the body check and the error slots.
+"""The twelve playbook strategy types (REQ-158 AC-1) and their shown names: the one table
+(docs/design/playbook-body-v1.md "Strategy types"). Read by the 0031 migration's CHECK, the playbook store,
+the body check and the error slots.
 No imports: the error catalogue reads it lazily."""
 from __future__ import annotations
 

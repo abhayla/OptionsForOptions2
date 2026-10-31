@@ -423,7 +423,7 @@ class UnitsByContract(SlotType):
         return ", ".join(f"{contract}: {units}" for contract, units in value) if value else "none"
 
 
-_PLAYBOOK_FIELD = re.compile(r"[A-Za-z0-9_.\-\[\]]{1,80}")
+_PLAYBOOK_FIELD = re.compile(r"[A-Za-z0-9_.\-]{1,80}")
 _PLAYBOOK_NAME_MAX = 80  # = ofo.adjustment.playbook_types.NAME_MAX (a test pins it)
 
 
@@ -434,8 +434,7 @@ class PlaybookName(SlotType):
     @staticmethod
     def validate(value: object) -> None:
         _require_exact(value, str, "PlaybookName")
-        assert isinstance(value, str)
-        if not value or value != value.strip() or len(value) > _PLAYBOOK_NAME_MAX:
+        if not isinstance(value, str) or not value or value != value.strip() or len(value) > _PLAYBOOK_NAME_MAX:
             raise ValueError("PlaybookName slot needs a trimmed name of 1 to 80 characters")
 
     @staticmethod
@@ -448,7 +447,7 @@ class PlaybookTypeName(SlotType):
 
     @staticmethod
     def validate(value: object) -> None:
-        from ofo.adjustment.playbook_types import SHOWN_NAMES
+        from ofo.adjustment.playbook_types import SHOWN_NAMES  # noqa: PLC0415 - ofo.adjustment imports ofo.errors
         _require_exact(value, str, "PlaybookTypeName")
         if value not in SHOWN_NAMES.values():
             raise ValueError(f"PlaybookTypeName slot must be a shown type name, got {value!r:.40}")
@@ -459,7 +458,7 @@ class PlaybookTypeName(SlotType):
 
 
 class PlaybookField(SlotType):
-    """The path of a playbook body field (triggers.T-01.weekly[2]): a pattern, no free words."""
+    """The path of a playbook body field (triggers.T-01.weekly.2): a pattern, no free words."""
 
     @staticmethod
     def validate(value: object) -> None:

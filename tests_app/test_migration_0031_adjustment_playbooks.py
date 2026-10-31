@@ -69,7 +69,8 @@ async def test_upgrade_creates_and_seeds_downgrade_drops_and_upgrade_again_resto
             assert all(head[t] for t in TABLES)
             for sql in down:
                 await conn.execute(text(sql))
-            assert not any((await _state(conn))[t] for t in TABLES)
+            after = await _state(conn)
+            assert not any(after[t] for t in TABLES)
             for sql in up:
                 await conn.execute(text(sql))
             assert await _state(conn) == head

@@ -2446,5 +2446,29 @@
   "explanation:outcome_margin_empty_funds": {
     "sha256": "a4c9c0f8f7cf7e9b6b40f7843e88944003017d87dd706d3d97bd0961047c39b4",
     "reviewed": "pending owner read"
+  },
+  "playbook_name_taken": {
+    "sha256": "39a05e6cb525b7fba379a30fac08609b2527577e8b0c4431a4a5a34f824e10e2",
+    "reviewed": "pending owner read"
+  },
+  "system_playbook_save_in_place": {
+    "sha256": "5d396fe5e314589ef548e2d033e5b2cb86d1abf7117dda5b72fc6ad9eddafcfc",
+    "reviewed": "pending owner read"
+  },
+  "playbook_version_conflict": {
+    "sha256": "8e4d95f47919a427a9177c5b4e3ca00ca2d9180fa19ab901460be3f74e914948",
+    "reviewed": "pending owner read"
+  },
+  "playbook_not_found": {
+    "sha256": "0fe403452f88169c27755f6f944c73e25f03ef1beb035bad49c46481de5124b4",
+    "reviewed": "pending owner read"
+  },
+  "playbook_body_invalid": {
+    "sha256": "482b4c8189ccdd9a09c8e439465e8f71ba9411cdfe10617eaa5c98692278f8f5",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_system_active_again": {
+    "sha256": "b05d679bd3cad8ed24a09e7232020044fae2c27bb5f181e152afda16dfeab4a8",
+    "reviewed": "pending owner read"
   }
 }

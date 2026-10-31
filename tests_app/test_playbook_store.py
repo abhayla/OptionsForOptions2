@@ -46,9 +46,13 @@ async def _scalar(db, sql: str, **params):
 
 
 async def _refused(db, sql: str, match: str, **params) -> None:
-    with pytest.raises(DBAPIError, match=match):
+    """`match` is a SQLSTATE (OF031: asyncpg keeps it off the message) or a regex on the message."""
+    with pytest.raises(DBAPIError, match=None if match.startswith("OF0") else match) as refused:
         async with db.begin_nested():
             await db.execute(text(sql), params)
+    if match.startswith("OF0"):
+        orig = refused.value.orig
+        assert match in {getattr(orig, "sqlstate", None), getattr(orig.__cause__, "sqlstate", None)}
 
 
 # --- AC-1 / AC-2 / AC-7: the seeded system playbooks -------------------------------------------------------------
@@ -226,8 +230,8 @@ async def test_saving_a_system_playbook_in_place_is_refused_by_the_store(db):
 
 
 async def test_the_application_role_cannot_update_or_delete_a_system_row_in_raw_sql(db):
-    await _refused(db, "UPDATE public.adjustment_playbooks SET name = 'Hacked' WHERE is_system AND strategy_type = 'ic'",
-                   "OF031")
+    await _refused(db, "UPDATE public.adjustment_playbooks SET name = 'Hacked' "
+                       "WHERE is_system AND strategy_type = 'ic'", "OF031")
     await _refused(db, "UPDATE public.adjustment_playbooks SET body = body WHERE is_system", "OF031")
     await _refused(db, "DELETE FROM public.adjustment_playbooks WHERE is_system AND strategy_type = 'ic'", "OF031")
 
@@ -276,9 +280,9 @@ async def test_another_users_playbook_answers_not_found_everywhere(db):
     (lambda b: b.update(schema=2), "schema"),
     (lambda b: b.update(strategy_type="credit"), "strategy_type"),
     (lambda b: b["triggers"]["T-01"].update(weekly=["0.5"]), "triggers.T-01.weekly"),
-    (lambda b: b["triggers"]["T-01"].update(weekly=[0.5, ""]), "triggers.T-01.weekly[0]"),
-    (lambda b: b["triggers"]["T-01"].update(weekly=["half", ""]), "triggers.T-01.weekly[0]"),
-    (lambda b: b["rules"].append({"id": "R-2", "all_of": ["T-99"]}), "rules[1]"),
+    (lambda b: b["triggers"]["T-01"].update(weekly=[0.5, ""]), "triggers.T-01.weekly.0"),
+    (lambda b: b["triggers"]["T-01"].update(weekly=["half", ""]), "triggers.T-01.weekly.0"),
+    (lambda b: b["rules"].append({"id": "R-2", "all_of": ["T-99"]}), "rules.1"),
     (lambda b: b.pop("stages"), "stages"),
 ])
 async def test_an_invalid_body_is_refused_naming_the_field_and_nothing_is_written(db, mutate, field):
@@ -288,7 +292,8 @@ async def test_an_invalid_body_is_refused_naming_the_field_and_nothing_is_writte
     with pytest.raises(pb.PlaybookStoreError) as refused:
         await pb.create(db, user, "ic", "Bad", body)
     assert (refused.value.code, refused.value.slots["field"]) == (pb.BODY_INVALID, field)
-    assert render(refused.value.code, **refused.value.slots).what_happened == f"The playbook value {field} is not valid."
+    shown = render(refused.value.code, **refused.value.slots).what_happened
+    assert shown == f"The playbook value {field} is not valid."
     assert await _scalar(db, "SELECT count(*) FROM public.adjustment_playbooks WHERE user_ref = :u", u=user) == 0
 
 

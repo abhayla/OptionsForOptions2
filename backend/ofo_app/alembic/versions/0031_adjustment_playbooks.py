@@ -170,7 +170,7 @@ def _active_guard_sql() -> str:
                 {_raise('the active playbook is a system one or the user''s own')}
             END IF;
             NEW.updated_at := clock_timestamp();
-            RETURN NEW;""")
+            RETURN NEW;""")  # noqa: S608 constant names
 
 
 def _plans_guard_sql() -> str:
@@ -239,7 +239,7 @@ def _suggestions_guard_sql() -> str:
                    WHERE i <= jsonb_array_length(OLD.timeline)) IS DISTINCT FROM OLD.timeline THEN
                 {_raise('a suggestion timeline is append-only')}
             END IF;
-            RETURN NEW;""")
+            RETURN NEW;""")  # noqa: S608 constant names
 
 
 GUARDS = (
@@ -456,7 +456,7 @@ def downgrade() -> None:
                    + (SELECT count(*) FROM {PLANS}) + (SELECT count(*) FROM {RULE_STATE})
                    + (SELECT count(*) FROM {SUGGESTIONS}) INTO n;
             IF n > 0 THEN
-                RAISE EXCEPTION 'refusing downgrade: % user playbook, active, plan, rule state or suggestion rows exist',
+                RAISE EXCEPTION 'refusing downgrade: % user playbook, active, plan, rule state or suggestion rows',
                     n USING ERRCODE = '{SQLSTATE}';
             END IF;
         END

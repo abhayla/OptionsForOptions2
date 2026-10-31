@@ -107,11 +107,11 @@ _SELECT_ACTIVE = text(f"SELECT {', '.join('p.' + c for c in _PB_COLUMNS.split(',
                       "ON p.id = a.playbook_id WHERE a.user_ref = :user_ref AND a.strategy_type = :type")
 _NAME_USED = text("SELECT 1 FROM public.adjustment_playbooks WHERE user_ref = :user_ref AND strategy_type = :type "
                   "AND lower(name) = lower(:name) AND id IS DISTINCT FROM :id")
-_INSERT = text("INSERT INTO public.adjustment_playbooks (user_ref, strategy_type, name, body) "
+_INSERT = text("INSERT INTO public.adjustment_playbooks (user_ref, strategy_type, name, body) "  # noqa: S608
                f"VALUES (:user_ref, :type, :name, CAST(:body AS JSONB)) RETURNING {_PB_COLUMNS}")
-_RENAME = text("UPDATE public.adjustment_playbooks SET name = :name "
+_RENAME = text("UPDATE public.adjustment_playbooks SET name = :name "  # noqa: S608
                f"WHERE id = :id AND user_ref = :user_ref RETURNING {_PB_COLUMNS}")
-_SAVE = text("UPDATE public.adjustment_playbooks SET body = CAST(:body AS JSONB) "
+_SAVE = text("UPDATE public.adjustment_playbooks SET body = CAST(:body AS JSONB) "  # noqa: S608
              f"WHERE id = :id AND user_ref = :user_ref AND version = :version RETURNING {_PB_COLUMNS}")
 _IS_ACTIVE = text("SELECT strategy_type FROM public.adjustment_playbook_active "
                   "WHERE user_ref = :user_ref AND playbook_id = :id")
@@ -121,7 +121,7 @@ _MAKE_ACTIVE = text("INSERT INTO public.adjustment_playbook_active (user_ref, st
                     "VALUES (:user_ref, :type, :id) ON CONFLICT (user_ref, strategy_type) "
                     "DO UPDATE SET playbook_id = EXCLUDED.playbook_id")
 _PLAN_COLUMNS = "strategy_id, playbook_id, strategy_type, body::text, accepted_at"
-_UPSERT_PLAN = text("INSERT INTO public.strategy_adjustment_plans (strategy_id, playbook_id, strategy_type, body) "
+_UPSERT_PLAN = text("INSERT INTO public.strategy_adjustment_plans (strategy_id, playbook_id, strategy_type, body) "  # noqa: S608
                     "VALUES (:strategy_id, :playbook_id, :type, CAST(:body AS JSONB)) ON CONFLICT (strategy_id) "
                     "DO UPDATE SET playbook_id = EXCLUDED.playbook_id, body = EXCLUDED.body "
                     f"RETURNING {_PLAN_COLUMNS}")
@@ -139,14 +139,15 @@ _SG_COLUMNS = ("id, strategy_id, rule_id, trigger_id, stage, value, threshold, s
 _OPEN_FOR_RULE = text(f"SELECT {_SG_COLUMNS} FROM public.adjustment_suggestions "  # noqa: S608 constant columns
                       "WHERE strategy_id = :strategy_id AND rule_id = :rule_id AND outcome = 'open'")
 _INSERT_SUGGESTION = text(
-    "INSERT INTO public.adjustment_suggestions (strategy_id, rule_id, trigger_id, stage, value, threshold, timeline) "
+    "INSERT INTO public.adjustment_suggestions (strategy_id, rule_id, trigger_id, stage, value, threshold, timeline) "  # noqa: S608
     "VALUES (:strategy_id, :rule_id, :trigger_id, :stage, :value, :threshold, "
     "jsonb_build_array(jsonb_build_object('at', clock_timestamp(), 'outcome', 'open'))) "
     f"RETURNING {_SG_COLUMNS}")
 _CLOSE_SUGGESTION = text(
-    "UPDATE public.adjustment_suggestions AS g SET outcome = :outcome, dismiss_reason = :reason, "
-    "timeline = g.timeline || jsonb_build_array(jsonb_build_object('at', clock_timestamp(), 'outcome', :outcome, "
-    "'suggestion_id', g.id)) FROM public.strategies s WHERE g.id = :id AND s.id = g.strategy_id "
+    "UPDATE public.adjustment_suggestions AS g SET outcome = CAST(:outcome AS TEXT), "  # noqa: S608
+    "dismiss_reason = CAST(:reason AS TEXT), timeline = g.timeline || jsonb_build_array(jsonb_build_object("
+    "'at', clock_timestamp(), 'outcome', CAST(:outcome AS TEXT), 'suggestion_id', g.id)) "
+    "FROM public.strategies s WHERE g.id = :id AND s.id = g.strategy_id "
     "AND s.user_ref = :user_ref AND g.outcome = 'open' "
     f"RETURNING {', '.join('g.' + c for c in _SG_COLUMNS.split(', '))}")
 _LIST_SUGGESTIONS = text(f"SELECT {', '.join('g.' + c for c in _SG_COLUMNS.split(', '))} "  # noqa: S608 constant
@@ -173,7 +174,7 @@ def _stage_counts(stages: object) -> dict[str, int]:
         for i, row in enumerate(rows):
             if (not isinstance(row, dict) or not isinstance(row.get("name"), str) or not row["name"].strip()
                     or type(row.get("from")) is not int or not (row.get("to") is None or type(row["to"]) is int)):
-                raise _bad(f"stages.{kind}[{i}]")
+                raise _bad(f"stages.{kind}.{i}")
         counts[kind] = len(rows)
     return counts
 
@@ -187,8 +188,16 @@ def check_body(body: object, strategy_type: str) -> dict:
         raise _bad("schema")
     if body.get("strategy_type") != strategy_type:
         raise _bad("strategy_type")
-    counts = _stage_counts(body.get("stages"))
-    triggers = body.get("triggers")
+    triggers = _check_triggers(body.get("triggers"), _stage_counts(body.get("stages")))
+    _check_rules(body.get("rules"), triggers)
+    for key, kind in (("day_rules", (list, dict)), ("situations", (list, dict)), ("guards", dict),
+                      ("approaches", dict)):
+        if key in body and not isinstance(body[key], kind):
+            raise _bad(key)
+    return body
+
+
+def _check_triggers(triggers: object, counts: dict[str, int]) -> dict:
     if not isinstance(triggers, dict):
         raise _bad("triggers")
     for tid, trig in triggers.items():
@@ -202,8 +211,11 @@ def check_body(body: object, strategy_type: str) -> dict:
                 raise _bad(f"triggers.{tid}.{kind}")
             for i, v in enumerate(values):
                 if not isinstance(v, str) or (v != "" and not _DECIMAL.fullmatch(v)):
-                    raise _bad(f"triggers.{tid}.{kind}[{i}]")
-    rules = body.get("rules")
+                    raise _bad(f"triggers.{tid}.{kind}.{i}")
+    return triggers
+
+
+def _check_rules(rules: object, triggers: dict) -> None:
     if not isinstance(rules, list):
         raise _bad("rules")
     for i, rule in enumerate(rules):
@@ -211,12 +223,7 @@ def check_body(body: object, strategy_type: str) -> dict:
         if (not isinstance(rule, dict) or not isinstance(rule.get("id"), str) or not _ID.fullmatch(rule["id"])
                 or ("any_of" in rule) == ("all_of" in rule) or not isinstance(members, list) or not members
                 or any(m not in triggers for m in members)):
-            raise _bad(f"rules[{i}]")
-    for key, kind in (("day_rules", (list, dict)), ("situations", (list, dict)), ("guards", dict),
-                      ("approaches", dict)):
-        if key in body and not isinstance(body[key], kind):
-            raise _bad(key)
-    return body
+            raise _bad(f"rules.{i}")
 
 
 def _dump(body: dict) -> str:
