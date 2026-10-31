@@ -60,7 +60,7 @@ def market_of(sc: dict) -> route.MarketInputs:
             rows.append(ChainRow(D(r["strike"]), r["type"], datetime.date.fromisoformat(c["expiry"]),
                                  r["tradingsymbol"], None if gone else _d(r["ltp"]), None if gone else _d(r["bid"]),
                                  None if gone else _d(r["ask"]), _d(r["delta"]), r["listed"], r["tradable"],
-                                 r["low_oi"]["state"], r["low_oi"]["blocked"]))
+                                 r["low_oi"]["state"], r["low_oi"]["blocked"], r.get("oi")))
             ids[r["tradingsymbol"]] = f"NSE_FO:{r['tradingsymbol']}"
     now = datetime.datetime.fromisoformat(sc["clock"]["ist"])
     spot = D(sc["market"]["spot"])
@@ -78,7 +78,7 @@ class Calls:
 
 
 def client_for(sc: dict, *, booked="stated", margin=None, environ=None, rates=None,  # noqa: PLR0913 - one keyword per route seam
-               calls: Calls | None = None):
+               calls: Calls | None = None, guards=None):
     app = create_app()
     rest_ok = sc["data_state"].get("rest", "ok") == "ok" and sc["data_state"].get("spot_source") != "none"
     now = datetime.datetime.fromisoformat(sc["clock"]["ist"])
@@ -93,12 +93,16 @@ def client_for(sc: dict, *, booked="stated", margin=None, environ=None, rates=No
         return (SourceReading(SourceState.STATED, D(sc["market"]["spot"]), now) if rest_ok
                 else SourceReading(SourceState.FAILED))
 
+    async def read_guards(_sid, _position, _spot):
+        return guards  # None: the strategy has no playbook
+
     async def default_margin(legs):
         if calls is not None:
             calls.margin += 1
         return Margin(MARGIN_CHECKED, margin_unreadable().reason, D("100000"), D("100000"), D("500000"), now)
 
     app.dependency_overrides |= {
+        route.get_guards_reader: lambda: read_guards,
         route.get_tracked_reader: lambda: tracked, route.get_market_reader: lambda: market,
         route.get_rest_spot_reader: lambda: rest, route.get_approach_margin: lambda: margin or default_margin,
         route.get_held_environ: lambda: environ, outcome.load_charge_rates: lambda: rates,
@@ -397,3 +401,43 @@ def test_spot_not_available_words_every_source_reason_never_a_raw_code():
     assert route._spot_why("last_close", "not_finite") == "its last price was not a number"
     assert route._spot_why("rest_quote", "absent") == "no quote was requested"
     assert "not_finite" not in b["spot"]["text"] and "absent" not in b["spot"]["text"]
+
+
+# ---- GC-MU A1 round 2 (ADR-230 (1), F-78): the route resolves the strategy's playbook guards and applies them ----
+
+LIMITS = {"hide_oi_below": 10000, "hide_spread_pct_of_mid_above": "5", "roll_debit_limit": "Rs 500"}
+
+
+def _liquidity_text(reply: dict, approach: str) -> str:
+    row = next(r for r in reply["criteria"] if r["id"] == "liquidity")
+    return row["values"].get(approach, {}).get("text") or ""
+
+
+def test_a1_route_refuses_an_over_limit_roll_with_the_catalogue_reason():
+    reply = post(client_for(load("ADJ-50"), guards=LIMITS)).json()
+    refusal = next(a for a in reply["approaches"] if a["id"] == "A-05")["refusal"]
+    assert refusal["code"] == "USER_INPUT_173" and "more than the" in refusal["what_happened"]
+
+
+def test_a1_route_flags_the_strike_below_the_playbook_oi_limit_in_the_compare():
+    """ADJ-50 thin strike (23,100 CE) is opened by no approach: the strike A-05 opens is thinned in a copy."""
+    sc = load("ADJ-50")
+    guards = {"hide_oi_below": 10000}  # no debit limit: the rolls build, so their new strikes reach the Compare
+    first = post(client_for(sc, guards=guards)).json()
+    assert all("liquidity limit" not in _liquidity_text(first, a["id"]) for a in first["approaches"])  # all deep
+    opened = {t["tradingsymbol"] for t in next(a for a in first["approaches"] if a["id"] == "A-05")["trades"]
+              if t["action"] == "SELL" and t["strike"] == "23500"}
+    assert len(opened) == 1
+    for c in sc["market"]["chains"]:
+        for r in c["rows"]:
+            if r["tradingsymbol"] in opened:
+                r["oi"] = 500
+    reply = post(client_for(sc, guards=guards)).json()
+    assert f"(Below your liquidity limit: {next(iter(opened))})" in _liquidity_text(reply, "A-05")
+    assert "liquidity limit" not in _liquidity_text(reply, "A-01")  # the other approaches open other strikes
+
+
+def test_a1_route_with_no_playbook_applies_no_limits():
+    reply = post(client_for(load("ADJ-50"), guards=None)).json()
+    assert all("liquidity limit" not in _liquidity_text(reply, a["id"]) for a in reply["approaches"])
+    assert next(a for a in reply["approaches"] if a["id"] == "A-05")["refusal"] is None

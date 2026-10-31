@@ -112,6 +112,21 @@ async def read_tracked(strategy_id: int, rates: ChargeRates | None) -> Tracked |
                    adjustments_used=None)
 
 
+async def read_guards(strategy_id: int, position: Position, spot: Decimal | None) -> dict[str, Any] | None:
+    """The ``guards`` of the strategy playbook (its own plan, else the active playbook of its type; ADR-230 (1));
+    None when the shape matches no playbook. A failed read is logged and answers None: the approaches still show,
+    without limits applied (known gap: the reply does not say so yet)."""
+    from ofo_app import adjustment_check  # noqa: PLC0415 - it imports the route module's dataclasses
+    try:
+        async with get_sessionmaker()() as db:
+            stype = adjustment_check.strategy_type(position, spot, None)
+            resolved = await adjustment_check.resolve(db, current_user_ref(), strategy_id, stype)
+    except Exception:
+        log.exception("adjustment guards: strategy %s playbook unreadable", strategy_id)
+        return None
+    return None if resolved.body is None else dict(resolved.body.get("guards", {}))
+
+
 # ---- market -----------------------------------------------------------------------------------------------------
 
 def _scenario() -> Any:
