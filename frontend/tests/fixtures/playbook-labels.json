@@ -301,7 +301,7 @@
   },
   {
    "key": "plan_target",
-   "text": "target {target}% of max profit"
+   "text": "target {target} % of max profit"
   },
   {
    "key": "plan_stop",

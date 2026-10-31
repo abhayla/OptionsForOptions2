@@ -341,7 +341,7 @@ PLAYBOOK_SUMMARY_TEXT: Mapping[str, str] = MappingProxyType({
     "day_rule": "{{when}} at {{at}}: {{action}}",
     "days_none": "none",
     "plan": "Plan: {{clauses}}.",
-    "plan_target": "target {{target}}% of max profit",
+    "plan_target": "target {{target}} % of max profit",
     "plan_stop": "stop at {{stop_words}}",
     "plan_max": "at most {{max}} adjustments",
     "plan_joiner": ", ",

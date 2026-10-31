@@ -3104,7 +3104,7 @@
     "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"
   },
   "labels:playbook_summary": {
-    "sha256": "6b0d1920024d4f05f334fddead19b0529e4a6a0e327e6d13d82f558c9e952aa9",
+    "sha256": "dd464e4dd967d049db29923c0c1af4cace078ab86958845e1bec227adac74546",
     "reviewed": "owner read 2026-10-31 (decided in chat)"
   },
   "explanation:adjust_history_paper_fill": {
@@ -3196,7 +3196,7 @@
     "reviewed": "owner read 2026-10-31 (decided in chat)"
   },
   "explanation:playbook_summary_plan_target": {
-    "sha256": "6422c8ea0c1a4ba8d8330526cf24810d1dc1f507b7a3b73818c3a2da5037397a",
+    "sha256": "eac719d1ae6d37126c84baa3420a34773f994a36cf83c81407be92487bfb1653",
     "reviewed": "owner read 2026-10-31 (decided in chat)"
   },
   "explanation:playbook_summary_plan_stop": {

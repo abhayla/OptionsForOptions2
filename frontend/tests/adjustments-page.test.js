@@ -216,7 +216,7 @@ describe('playbook editor (REQ-160)', () => {
 
   it('the summary plan line reads the guards of the body', () => {
     const lines = summaryLines(BODY, 'Iron condor', 'monthly', labelMaps(LABELS))
-    expect(lines.find((l) => l.key === 'plan').text).toBe('Plan: target 50% of max profit, stop at 50 % of max loss, at most 2 adjustments.')
+    expect(lines.find((l) => l.key === 'plan').text).toBe('Plan: target 50 % of max profit, stop at 50 % of max loss, at most 2 adjustments.')
   })
 })
 
@@ -400,14 +400,14 @@ describe('summary plan line: stop words and missing values', () => {
   it('stop rule either: both numbers, whichever comes first', () => {
     const g = { profit_target_pct_of_max_profit: '50', stop_line_pct_of_max_loss: '50', stop_line_pct_of_margin: '20',
       stop_line_rule: 'whichever comes first', max_adjustments: 2 }
-    expect(plan(g).text).toBe('Plan: target 50% of max profit, stop at 50 % of max loss or 20 % of margin, whichever comes first, at most 2 adjustments.')
+    expect(plan(g).text).toBe('Plan: target 50 % of max profit, stop at 50 % of max loss or 20 % of margin, whichever comes first, at most 2 adjustments.')
   })
   it('both numbers without the either rule: the max-loss words only', () => {
     expect(plan({ stop_line_pct_of_max_loss: '50', stop_line_pct_of_margin: '20' }).text).toBe('Plan: stop at 50 % of max loss.')
   })
   it('no max adjustments: no brace, the other clauses stay', () => {
     const t = plan({ profit_target_pct_of_max_profit: '50', stop_line_pct_of_max_loss: '50' }).text
-    expect(t).toBe('Plan: target 50% of max profit, stop at 50 % of max loss.')
+    expect(t).toBe('Plan: target 50 % of max profit, stop at 50 % of max loss.')
     expect(t).not.toContain('{')
   })
   it('a zero value is a value, not a gap', () => {
