@@ -4,10 +4,9 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (213)
+## Decisions (214)
 
-- Older decisions: 173 rows, ADR-1..ADR-176 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
-- ADR-177 2026-10-23: The market-closed state reads "Market closed. [amends REQ-114, REQ-105]
+- Older decisions: 174 rows, ADR-1..ADR-177 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
 - ADR-178 2026-10-23: Adopted from the independent process audit of 2026-10-23 (docs/process/process-audit-2026-10-23.md). [amends ADR-176, ADR-168, ADR-106]
 - ADR-179 2026-10-23: Technical decision of the orchestrator (REQ-118 is a TECH row, master register MR-095, decided by t… [amends REQ-118]
 - ADR-180 2026-10-23: Owner-approved one-time exception to the CLAUDE.md hard rule "Merge only with merge.py": PR #525 (b… [applies ADR-115]
@@ -47,8 +46,9 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-215 2026-10-31: In the approach compare (REQ-156), the four "Greeks after" rows (net delta, gamma, theta, vega) des… [Extends REQ-156 AC-3 (one sentence added). Keeps…]
 - ADR-216 2026-10-31: The iron condor system playbook ships with the catalogue's PB-04 numbers, no longer labelled "Draft… [Narrows REQ-158 AC-2 (iron condor no longer Draft…]
 - ADR-217 2026-10-31: When the user dismisses an adjustment opportunity, the same rule on the same strategy opens no new… [Adds REQ-112 AC-7 (REQ-112 AC-2 defined "Dismisse…]
+- ADR-220 2026-10-31: (1) Server roles. [Adds REQ-166 (calculation speeds and the safety v…]
 
-## Requirements (156)
+## Requirements (157)
 
 - REQ-001 [Approved]: V1 scope: underlyings, leg types, broker
 - REQ-002 [Approved]: Account boundaries
@@ -206,6 +206,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - REQ-163 [Approved]: A strategy's adjustment history shows the entry, every adjustment and the whole-trade totals
 - REQ-164 [Approved]: The API runs as several copies; no request depends on the memory of one copy, and one copy stopping cuts no u…
 - REQ-165 [Approved]: Adjustment playbook triggers are checked by the background workers on fresh prices, at most once a second per…
+- REQ-166 [Approved]: Calculations run at four speeds held as admin settings, the background uses light sums, and a safety valve sl…
 
 ## Spec sections (245)
 

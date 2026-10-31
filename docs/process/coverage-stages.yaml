@@ -163,6 +163,7 @@ requirements:
   REQ-163: S6.4
   REQ-164: S6.7
   REQ-165: S6.7
+  REQ-166: S6.7
 
 decisions:
   ADR-001: all
@@ -381,6 +382,7 @@ decisions:
   ADR-215: S6.4         # adjustment compare: no Greeks after an exit-whole-strategy approach (GC-ADJ1 follow-up)
   ADR-216: S6.4         # iron condor playbook (PB-04) numbers approved as defaults (GC-ADJ2 seeds them)
   ADR-217: S6.4         # a dismissed adjustment opportunity stays dismissed until it clears (owner, 2026-10-31)
+  ADR-220: S6.7         # server roles, one machine first, calculation speeds, pricing model kept (owner, 2026-10-31)
 
 questions:
   Q210: 4a              # external: Zerodha's written answer; ADR-051 covers the owner's own account
