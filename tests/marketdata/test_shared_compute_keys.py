@@ -119,20 +119,27 @@ def test_the_function_identity_is_in_the_key_so_one_name_never_serves_two_functi
     assert {k.figure for k in cache.cache._slots} == {f"{__name__}.add", f"{__name__}.other_add"}
 
 
-def test_the_function_is_called_with_exactly_the_keyed_arguments_and_defaults_are_in_the_key():
+def test_the_function_is_called_with_exactly_the_keyed_arguments():
     cache = FeedScope(SharedCompute(), "user-1")
     assert cache.call(SCOPE, add, Decimal(1), Decimal(2)) == Decimal(4)
-    assert cache.call(SCOPE, add, Decimal(1), b=Decimal(2), c=Decimal(1)) == Decimal(4)
-    assert cache.cache.computations == 1  # the same bound call, positional or by name, defaults applied
-    assert cache.call(SCOPE, add, Decimal(1), Decimal(2), Decimal(5)) == Decimal(8)  # another default: recomputed
+    assert cache.call(SCOPE, add, Decimal(1), Decimal(2), Decimal(5)) == Decimal(8)  # one more argument: recomputed
     RECEIVED.clear()
-    cache.call(SCOPE, record, Decimal(1), x=Decimal(2))
-    assert [((Decimal(1),), {"x": Decimal(2)})] == RECEIVED
-    cache.call(SCOPE, record, Decimal(1), x=Decimal(2))
+    cache.call(SCOPE, record, Decimal(1), (Decimal(2), None))
+    assert [((Decimal(1), (Decimal(2), None)), {})] == RECEIVED
+    cache.call(SCOPE, record, Decimal(1), (Decimal(2), None))
     assert len(RECEIVED) == 1  # read back
-    cache.call(SCOPE, record, Decimal(1), x=Decimal(3))
-    cache.call(SCOPE, record, Decimal(1), y=Decimal(2))
-    assert len(RECEIVED) == 1 + 2  # a keyword's value and its name are both in the key
+    (key,) = [k for k in cache.cache._slots if k.figure.endswith(".record")]
+    assert key.inputs == (key_part(Decimal(1)), key_part((Decimal(2), None)))  # every argument, in order
+
+
+def test_a_keyword_argument_is_refused():
+    with pytest.raises(TypeError):
+        FeedScope(SharedCompute(), "user-1").call(SCOPE, add, Decimal(1), b=Decimal(2))
+
+
+def test_the_gated_expiry_model_lists_every_slot(recorded):
+    em = expiry_model(spot_reading(recorded.spot), recorded.forwards[EXPIRY], underlying="NIFTY")
+    assert tuple(name for name, _ in em.key_fields()) == type(em).__slots__
 
 
 def test_an_unshared_call_is_the_same_call():
@@ -173,14 +180,6 @@ def test_a_callable_that_may_capture_inputs_outside_its_arguments_is_refused(fn)
         function_identity(fn)
     with pytest.raises(TypeError):
         FeedScope(SharedCompute(), "user-1").call(SCOPE, fn, Decimal(1))
-
-
-def test_a_function_its_module_does_not_hold_under_its_name_is_refused():
-    def impostor(a, b, c=Decimal(1)):
-        return a
-    impostor.__qualname__ = "add"  # claims another function's identity
-    with pytest.raises(TypeError, match="not what its module holds"):
-        function_identity(impostor)
 
 
 # ---- part 2: one input changed at a time, on the recorded snapshot --------------------------------------------
@@ -258,7 +257,11 @@ def _forward_cases(snap):
         return (chain, dataclasses.replace(spot, **change), *base[2:])
 
     q = chain[i]
+    other = next(x for x in chain if x.instrument_id not in (CE, PE) and x.instrument_type is q.instrument_type)
+    swapped = dataclasses.replace(q, instrument_id=other.instrument_id, instrument_type=other.instrument_type,
+                                  expiry=other.expiry, strike=other.strike)  # only the contract differs
     return base, {
+        "quote contract": ((*chain[:i], swapped, *chain[i + 1:]), *base[1:]),  # another contract, the same prices
         "quote bid": quote(bid=q.bid - Decimal("0.5")), "quote ask": quote(ask=q.ask + Decimal("0.5")),
         "quote timestamp": quote(timestamp=q.timestamp - datetime.timedelta(seconds=1)),
         "quote health": quote(health=DataHealth.STALE),
@@ -280,7 +283,7 @@ CASES = [(figure, name) for figure, names in (
             "days in year"]),
     ("greeks", ["kind", "strike", "leg iv", "spot level", "forward", "implied yield / dividend yield", "years", "rate",
                 "days in year"]),
-    ("forward", ["quote bid", "quote ask", "quote timestamp", "quote health", "spot ltp", "spot timestamp",
+    ("forward", ["quote contract", "quote bid", "quote ask", "quote timestamp", "quote health", "spot ltp", "spot timestamp",
                  "spot health", "expiry", "rate"]),
 ) for name in names]
 

@@ -97,6 +97,10 @@ class _Gated:
     def __repr__(self) -> str:
         return f"{type(self).__name__}({', '.join(f'{n}={getattr(self, n)!r}' for n in self.__slots__)})"
 
+    def key_fields(self) -> tuple[tuple[str, object], ...]:
+        """Every field by name: what a shared cache key is built from (REQ-050, #519), never a hand-picked part."""
+        return tuple((n, getattr(self, n)) for n in self.__slots__)
+
 
 class ExpiryModel(_Gated):
     """What the engine is given for one expiry: the level S (live spot), the yield q and their provenance.
