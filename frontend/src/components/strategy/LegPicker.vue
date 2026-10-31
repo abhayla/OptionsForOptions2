@@ -158,7 +158,7 @@ const width = ref(null)
 const widthChoices = ref([]) // kept from the last answer, so the select does not empty while the next list loads
 const shownWidth = computed(() => width.value ?? strikesData.value?.default_width ?? '')
 function onWidth(event) {
-  width.value = Number(event.target.value)
+  width.value = widthChoices.value.find((w) => String(w) === event.target.value) ?? null // one of the served choices
 }
 const lotsMode = ref('lots') // 'lots' | 'quantity' (the per-user setting is REQ-138; here a local choice)
 const strikesData = ref(null)

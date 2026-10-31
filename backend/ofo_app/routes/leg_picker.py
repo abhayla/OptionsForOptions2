@@ -735,16 +735,17 @@ async def leg_picker_strikes(  # noqa: PLR0913 - one query parameter or seam eac
         now: Annotated[AnswerClock, Depends(get_answer_clock)],
         reader: Annotated[ChainReader, Depends(get_picker_reader)],
         viewer: Annotated[str, Depends(current_user_ref)],
-        ctx: Annotated[MarketContext | None, Depends(get_market_context)],
         calc_settings: Annotated[Mapping[str, Decimal], Depends(get_calc_settings)],
+        ctx: Annotated[MarketContext | None, Depends(get_market_context)],
         width: Annotated[int | None, Query(description="strikes either side of ATM: one of the answer's widths; none = "
                                                        "the first")] = None,
 ) -> StrikesOut:
     widths = calc.leg_picker_widths(calc_settings)  # REQ-167 AC-5: the settings in force now, read per request
     return strikes_answer(feed, underlying, expiry, width_in_force(width, widths),
-                          await reader(underlying, expiry), now, viewer, quality=DEFAULT_QUALITY if ctx is None else ctx.forward_quality,
-                          rate=DEFAULT_RATE if ctx is None else ctx.rate, widths=widths,
-                          quick_picks=calc.quick_pick_distances(calc_settings))
+                          await reader(underlying, expiry), now, viewer, widths=widths,
+                          quick_picks=calc.quick_pick_distances(calc_settings),
+                          quality=DEFAULT_QUALITY if ctx is None else ctx.forward_quality,
+                          rate=DEFAULT_RATE if ctx is None else ctx.rate)
 
 
 @router.get(FUTURES_PATH, response_model=FuturesOut)
