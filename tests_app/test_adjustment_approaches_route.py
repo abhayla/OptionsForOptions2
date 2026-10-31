@@ -46,7 +46,8 @@ def tracked_of(sc: dict, booked="stated") -> route.Tracked:
                              D(x["entry"]), x["tradingsymbol"]) for x in sc["position"]["legs"])
     today = datetime.date.fromisoformat(sc["clock"]["ist"][:10])
     pos = Position(sc["underlying"], sc["lot"], sc["expiry_kind"], today, legs)
-    return route.Tracked(pos, None if booked == "unknown" else D(sc["position"]["booked_pnl"]), D("0"))
+    return route.Tracked(pos, None if booked == "unknown" else D(sc["position"]["booked_pnl"]), D("0"),
+                         adjustments_used=sc["position"].get("adjustments_used"))
 
 
 def market_of(sc: dict) -> route.MarketInputs:
@@ -141,6 +142,21 @@ def test_ac2_adj13_booked_pnl_is_in_the_after():
     body = post(client_for(load("ADJ-13"))).json()
     a36 = next(a for a in body["approaches"] if a["id"] == "A-36")
     assert a36["after"]["booked_pnl"] == "962.00" and a36["after"]["gross"]["max_loss"] == "20858.50"
+
+
+def test_gcmu_a5_adj13_compare_adjustments_used_reads_the_history_count():
+    """REQ-156 AC-2 "adjustments used": ADJ-13 has one adjustment made; the cell reads 1 for no change and 2 for an
+    approach that trades, never "-"."""
+    sc = load("ADJ-13")
+    body = post(client_for(sc)).json()
+    row = next(c for c in body["criteria"] if c["id"] == "adjustments")
+    trades = {a["id"]: a for a in body["approaches"]}
+    assert row["values"], row
+    for aid, cell in row["values"].items():
+        assert cell["text"] != "-" and cell["unavailable_reason"] is None, (aid, cell)
+        assert D(cell["value"]) in (D(1), D(1) + 1), (aid, cell)
+    assert any(D(c["value"]) == 1 for c in row["values"].values()) and trades
+    assert any(D(c["value"]) == D(1) + 1 for c in row["values"].values())
 
 
 def test_ac4_adj23_pop_present_and_held_switch_off_gives_dash_with_reason():
