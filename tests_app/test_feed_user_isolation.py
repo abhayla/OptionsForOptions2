@@ -147,6 +147,8 @@ async def test_killing_one_users_socket_leaves_the_other_users_ticks_flowing(  #
             if message.kind == feed_bus.KIND_FRAME:
                 assert message.data in halves.a_only, "a frame that is not A's Kite's reached A's stream"
         assert (await user_status(bus, user_a))["connections"] == 1  # A's own count: its one connection, now gone
+        assert kite_b.tokens == ["TOK-user-b-not-a-real-token"], "B's Kite saw a token that is not B's"
+        assert kite_a.tokens and set(kite_a.tokens) == {"TOK-user-a-not-a-real-token"}, "A's Kite saw a foreign token"
     finally:
         for child in children.values():
             if child.poll() is None:
@@ -288,6 +290,7 @@ async def test_an_exception_in_one_users_frame_handling_never_touches_the_other(
     mark = (await rig.bus.xrevrange(feed_bus.ticks_key(user_b), count=1))[0][0].decode()
     await rig.until(lambda: _count_more(rig.bus, user_b, mark, 10), "user B's frames after A's exceptions")
     assert kite_b.accepted == 1, "user B's socket reconnected because of user A's exception"
+    assert kite_b.tokens == [token_b] and set(kite_a.tokens) == {token_a}, "a socket presented another user's token"
     assert (await rig.live(user_b)) is not None
     assert not rig.task.done()
     assert await rig.bus.xlen(feed_bus.ticks_key(user_a)) >= 1  # A's connected / dropped events still flow, no frame
@@ -535,21 +538,15 @@ class DbStore:
     each session from ONE ``access_session_for`` read on a fresh connection, exactly as ``feed_main._main`` does."""
 
     def __init__(self, engine, cipher: TokenCipher, users: tuple[str, ...]) -> None:
-        self.engine, self.cipher, self.users = engine, cipher, users
-        self.reads: Counter = Counter()
+        self.users, self.reads = users, Counter()
+        self._list, self._read = feed_main.store_readers(engine.connect, cipher, KEY)  # the real readers of _main
 
     async def list_users(self) -> list[str]:
-        async with self.engine.connect() as conn:
-            return [u for u in await store.active_user_refs(conn) if u in self.users]  # other tests' rows ignored
+        return [u for u in await self._list() if u in self.users]  # other tests' rows ignored
 
     async def read(self, user: str):
         self.reads[user] += 1
-        async with self.engine.connect() as conn:
-            found = await store.access_session_for(conn, user, self.cipher)
-        if found is None:
-            return None
-        token, expiry = found
-        return feed_main.StoredSession(KEY, token, live_market.token_fingerprint(token), expiry)
+        return await self._read(user)
 
 
 async def test_on_the_database_one_users_session_never_drives_the_other_users_socket(redis_url, app_engine):
@@ -583,6 +580,8 @@ async def test_on_the_database_one_users_session_never_drives_the_other_users_so
         await rig.until(lambda: _count_more(rig.bus, user_b, mark, 10), "user B's frames after A's session ended")
         assert kite_b.accepted == 1 and kite_b.active == 1, "A's session end reached B's socket"
         assert kite_a.accepted == 1 and (await rig.live(user_b)) is not None
+        assert kite_a.tokens == ["TOK-db-iso-a-secret"] and kite_b.tokens == ["TOK-db-iso-b-secret"], \
+            "a socket presented another user's token"
         for user, own in ((user_a, halves.a_only), (user_b, halves.b_only)):
             frames = [m.data for _i, m in await stream_entries(rig.bus, user) if m.kind == feed_bus.KIND_FRAME]
             assert frames and all(f in own for f in frames), f"a frame that is not {user}'s own Kite's reached it"
