@@ -1,15 +1,17 @@
 """Scenario -> the approaches route's inputs (Tracked, MarketInputs) for the T-19 cost tests (ADR-221).
 
-Shared by tests/adjustment/test_t19_cheapest_cost.py and the core proof. The charge rates are the scenario library's
+Shared by tests_app/test_t19_cheapest_cost.py and the core proof. The charge rates are the scenario library's
 stated rates (``adjust_scenarios_gen.CHARGE_RATES``: Zerodha's published F&O rates, ADR-082)."""
 from __future__ import annotations
 
 import datetime
 import json
+import sys
 from decimal import Decimal as D
 from pathlib import Path
 
-import adjust_scenarios_gen as gen
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tests"))  # the generator lives in tests/
+import adjust_scenarios_gen as gen  # noqa: E402
 from ofo.adjustment.approaches import APPROACH_IDS, ChainRow, Position, PositionLeg
 from ofo.adjustment.compare import Cheapest, Column, Context, MarginRead, compare
 from ofo.adjustment.playbook_eval import body_from_fixture
@@ -17,7 +19,7 @@ from ofo.charges import ChargeRates
 from ofo_app import adjustment_check as check
 from ofo_app.routes.adjustment import MarketInputs, Tracked, priced_approach
 
-FIX = Path(__file__).resolve().parent / "fixtures" / "adjust_scenarios"
+FIX = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "adjust_scenarios"
 PLAYBOOKS = json.loads((FIX / "_playbooks.json").read_text(encoding="utf-8"))
 RATES = ChargeRates(**{**gen.CHARGE_RATES, "read_on": datetime.date.fromisoformat(gen.CHARGE_RATES["read_on"])})
 

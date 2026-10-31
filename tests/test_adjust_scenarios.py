@@ -20,7 +20,6 @@ from pathlib import Path
 
 import adjust_scenarios_gen as gen
 import pytest
-import t19_support
 from ofo.engine import Action, Instrument, Leg, Strategy, strategy_metrics
 from ofo.engine.metrics import UNLIMITED, MultiExpiryError, breakevens_with_shift
 from ofo.money import HUNDREDTH
@@ -203,7 +202,9 @@ def recompute_fired(sc: dict) -> set[str]:  # noqa: C901, PLR0912 - one trigger 
     whole = exp["at_expiry_whole_trade"]
     options = [x for x in legs if x["type"] != "FUT"]
     left = sum(-sign[x["side"]] * x["quantity"] * D(_row(sc, x)["ltp"]) for x in options) if priced and options else None
-    cost = t19_support.cheapest(sc).cost  # ADR-221: the engine's cheapest offered approach (Compare cost)
+    # ADR-221: the generator's hand-computed cheapest offered approach cost; tests_app/test_t19_cheapest_cost.py holds
+    # the engine's figure equal to it, so the two paths check each other without this pure test importing ofo_app
+    cost = None if exp.get("adjustment_cost") is None else D(str(exp["adjustment_cost"]))
     margin = sc["broker"]["margin"]
     on = [t for t in PLAYBOOKS["families"][sc["family"]]["triggers_on"] if t in gen.EVALUATED]
     fired = set()

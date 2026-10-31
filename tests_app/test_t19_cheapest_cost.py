@@ -13,16 +13,22 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import sys
 from decimal import Decimal as D
+from pathlib import Path
 
 import pytest
-import t19_support as s
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # t19_support sits next to this file
+import t19_support as s  # noqa: E402
 from ofo.adjustment import compare as cmp
 from ofo.adjustment import playbook_eval as pe
 from ofo.adjustment.compare import Column, MarginRead, approach_cost, cheapest_approach, offered_approaches
 from ofo.engine import adjust_money
 from ofo_app import adjustment_check as check
 from ofo_app.routes.adjustment import priced_approach
+
+pytestmark = pytest.mark.repo_scan  # reads every scenario fixture file
 
 IDS = sorted(p.stem for p in s.FIX.glob("ADJ-*.json"))
 

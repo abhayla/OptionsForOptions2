@@ -515,6 +515,6 @@ def _curves(columns: Sequence[Column], ctx: Context, before: WholeTradeAfter | N
     return out
 
 
-__all__ = ["NO_APPROACH_OFFERED", "NO_APPROACH_PRICED", "POP_TEXT", "Cell", "Cheapest", "Column", "Comparison", "Context",
-           "CostAnswer", "Criterion", "MarginRead", "approach_cost", "cheapest_approach", "column_order", "compare",
-           "leaders", "offered_approaches"]
+__all__ = ["NO_APPROACH_OFFERED", "NO_APPROACH_PRICED", "POP_TEXT", "Cell", "Cheapest", "Column", "Comparison",
+           "Context", "CostAnswer", "Criterion", "MarginRead", "approach_cost", "cheapest_approach", "column_order",
+           "compare", "leaders", "offered_approaches"]
