@@ -637,6 +637,75 @@ def hand_approaches(u: str, lot: int, kind: str, today: datetime.date, spot: Dec
     return legs_out, after_out
 
 # ---------------------------------------------------------------------------------------------------------------------
+# Hand-derived compare cost figures (GC-MU A2, ADR-230 (3)): cost as % of premium left, change in max profit and the
+# charge components, in exact fractions from the published Zerodha F&O rates (spec/findings.md charges), no ofo import.
+# ---------------------------------------------------------------------------------------------------------------------
+HAND_RATES = {"brokerage": Fraction(20), "stt_sell": Fraction("0.0015"), "sebi": Fraction("0.000001"),
+              "stamp_buy": Fraction("0.00003"), "gst": Fraction("0.18"),
+              "transaction": {"NIFTY": Fraction("0.0003553"), "SENSEX": Fraction("0.000325")}}
+HAND_COMPONENTS = ("brokerage", "stt", "exchange", "gst", "stamp", "sebi")
+
+
+def hand_order_charges(u: str, side: str, quantity: int, price: Fraction) -> dict[str, Fraction]:
+    premium = price * quantity
+    exchange = premium * HAND_RATES["transaction"][u]
+    sebi = premium * HAND_RATES["sebi"]
+    return {"brokerage": HAND_RATES["brokerage"], "stt": premium * HAND_RATES["stt_sell"] if side == "SELL" else Fraction(0),
+            "exchange": exchange, "gst": (HAND_RATES["brokerage"] + sebi + exchange) * HAND_RATES["gst"],
+            "stamp": premium * HAND_RATES["stamp_buy"] if side == "BUY" else Fraction(0), "sebi": sebi}
+
+
+def hand_charge_sum(u: str, orders: list[tuple[str, int, Fraction]]) -> dict[str, Fraction]:
+    out = {k: Fraction(0) for k in HAND_COMPONENTS}
+    for side, quantity, price in orders:
+        for k, v in hand_order_charges(u, side, quantity, price).items():
+            out[k] += v
+    return out
+
+
+def paise(value: Fraction, rounding: str = ROUND_HALF_EVEN) -> str:
+    with localcontext() as ctx:
+        ctx.prec = 60
+        return format((D(value.numerator) / D(value.denominator)).quantize(D("0.01"), rounding=rounding), "f")
+
+
+def hand_compare_cost(u: str, lot: int, legs: list[dict], rows: list[dict], approach_legs: dict, approach_after: dict,
+                      before: dict) -> dict:
+    """Per built approach: the charge components (to the paisa), the charges total (rounded up once), the bid-ask cost,
+    the cost, the premium left of the After, the cost as % of it (0.01, half up) and the change in max profit after
+    charges (the stated paid charges cancel between After and Before)."""
+    by = {r["tradingsymbol"]: r for r in rows}
+    exit_before = sum(hand_charge_sum(u, [("SELL" if x["side"] == "BUY" else "BUY", x["quantity"], Fraction(x["entry"]))
+                                          for x in legs]).values(), Fraction(0))
+    out = {}
+    for a, built in approach_legs.items():
+        if "refused" in built:
+            continue
+        trades = [(t["action"], t["quantity"], Fraction(t["price"])) for t in built["trades"]]
+        parts = hand_charge_sum(u, trades) if trades else {k: Fraction(0) for k in HAND_COMPONENTS}
+        charges_total = Fraction(math.ceil(sum(parts.values(), Fraction(0)) * 100), 100)
+        spread = sum((Fraction(by[t["tradingsymbol"]]["ask"] - by[t["tradingsymbol"]]["bid"]) / 2 * t["quantity"]
+                      for t in built["trades"]), Fraction(0))
+        cost = charges_total + spread
+        left = sum((-sign(x["side"]) * x["quantity"] * Fraction(hand_price(by[x["tradingsymbol"]])) for x in built["after"]),
+                   Fraction(0))
+        exits_after = sum(hand_charge_sum(u, [("SELL" if x["side"] == "BUY" else "BUY", x["quantity"], Fraction(x["entry"])) for x in built["after"]]).values(), Fraction(0)) if built["after"] else Fraction(0)
+        exits_after = Fraction(math.ceil(exits_after * 100), 100)
+        after_mp, before_mp = approach_after[a]["max_profit"], before["max_profit"]
+        change = None
+        if after_mp != "UNLIMITED" and before_mp != "UNLIMITED":
+            change = (Fraction(D(after_mp)) - charges_total - exits_after) - (
+                Fraction(D(before_mp)) - Fraction(math.ceil(exit_before * 100), 100))
+        out[a] = {
+            "charges": {k: paise(v) for k, v in parts.items()}, "charges_total": paise(charges_total),
+            "bid_ask": paise(spread), "cost": paise(cost), "premium_left": paise(left),
+            "cost_pct": paise(cost / left * 100, ROUND_HALF_UP) if left > 0 else None,
+            "max_profit_change": None if change is None else paise(change),
+        }
+    return out
+
+
+# ---------------------------------------------------------------------------------------------------------------------
 # Scenario builder
 # ---------------------------------------------------------------------------------------------------------------------
 def dt(text: str) -> datetime.datetime:
@@ -1035,6 +1104,9 @@ def build(spec: dict, pb: dict) -> dict:  # noqa: C901, PLR0912, PLR0915 - one r
                    for c in chains if c["expiry"] == expiry for r in c["rows"]]
         out["expected"]["approach_legs"], out["expected"]["approach_after"] = hand_approaches(
             u, lot, kind, today, spot, legs, ic_rows, booked)
+    if family == "ic" and spec["id"] in ("ADJ-02", "ADJ-13"):  # GC-MU A2 (ADR-230 (3)): the compare's cost rows
+        out["expected"]["compare_cost"] = hand_compare_cost(u, lot, legs, ic_rows, out["expected"]["approach_legs"],
+                                                            out["expected"]["approach_after"], expiry_metrics)
     if "charges" in spec:
         out["expected"]["at_expiry_after_charges"] = hand_expiry(legs, booked, -Fraction(D(spec["charges"])))
     return out

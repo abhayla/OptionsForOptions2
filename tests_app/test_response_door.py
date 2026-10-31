@@ -337,6 +337,7 @@ APP_MODELS = (
     "ofo_app.api_models.AdjustApproachOut",
     "ofo_app.api_models.AdjustApproachesOut",
     "ofo_app.api_models.AdjustAvailableOut",
+    "ofo_app.api_models.AdjustBreakdownLineOut",
     "ofo_app.api_models.AdjustCellOut",
     "ofo_app.api_models.AdjustChargesOut",
     "ofo_app.api_models.AdjustClosedLegOut",

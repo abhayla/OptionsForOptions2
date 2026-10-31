@@ -2659,6 +2659,120 @@
     "breakevens": [],
     "booked_pnl": "-1612"
    }
+  },
+  "compare_cost": {
+   "A-36": {
+    "charges": {
+     "brokerage": "0.00",
+     "stt": "0.00",
+     "exchange": "0.00",
+     "gst": "0.00",
+     "stamp": "0.00",
+     "sebi": "0.00"
+    },
+    "charges_total": "0.00",
+    "bid_ask": "0.00",
+    "cost": "0.00",
+    "premium_left": "7338.50",
+    "cost_pct": "0.00",
+    "max_profit_change": "0.00"
+   },
+   "A-01": {
+    "charges": {
+     "brokerage": "80.00",
+     "stt": "9.94",
+     "exchange": "3.33",
+     "gst": "15.00",
+     "stamp": "0.08",
+     "sebi": "0.01"
+    },
+    "charges_total": "108.36",
+    "bid_ask": "65.00",
+    "cost": "173.36",
+    "premium_left": "11212.50",
+    "cost_pct": "1.55",
+    "max_profit_change": "3765.98"
+   },
+   "A-05": {
+    "charges": {
+     "brokerage": "80.00",
+     "stt": "15.76",
+     "exchange": "8.36",
+     "gst": "15.91",
+     "stamp": "0.39",
+     "sebi": "0.02"
+    },
+    "charges_total": "120.44",
+    "bid_ask": "130.00",
+    "cost": "250.44",
+    "premium_left": "4823.00",
+    "cost_pct": "5.19",
+    "max_profit_change": "-2635.99"
+   },
+   "A-29": {
+    "charges": {
+     "brokerage": "40.00",
+     "stt": "2.88",
+     "exchange": "2.62",
+     "gst": "7.67",
+     "stamp": "0.16",
+     "sebi": "0.01"
+    },
+    "charges_total": "53.35",
+    "bid_ask": "39.00",
+    "cost": "92.35",
+    "premium_left": "3789.50",
+    "cost_pct": "2.44",
+    "max_profit_change": "-3598.87"
+   },
+   "A-28": {
+    "charges": {
+     "brokerage": "40.00",
+     "stt": "5.75",
+     "exchange": "5.25",
+     "gst": "8.15",
+     "stamp": "0.33",
+     "sebi": "0.01"
+    },
+    "charges_total": "59.49",
+    "bid_ask": "78.00",
+    "cost": "137.49",
+    "premium_left": "240.50",
+    "cost_pct": "57.17",
+    "max_profit_change": "-7103.33"
+   },
+   "A-11": {
+    "charges": {
+     "brokerage": "160.00",
+     "stt": "50.60",
+     "exchange": "20.19",
+     "gst": "32.44",
+     "stamp": "0.69",
+     "sebi": "0.06"
+    },
+    "charges_total": "263.99",
+    "bid_ask": "312.00",
+    "cost": "575.99",
+    "premium_left": "17992.00",
+    "cost_pct": "3.20",
+    "max_profit_change": "10368.27"
+   },
+   "A-31": {
+    "charges": {
+     "brokerage": "80.00",
+     "stt": "5.92",
+     "exchange": "5.41",
+     "gst": "15.38",
+     "stamp": "0.34",
+     "sebi": "0.02"
+    },
+    "charges_total": "107.06",
+    "bid_ask": "91.00",
+    "cost": "198.06",
+    "premium_left": "0.00",
+    "cost_pct": null,
+    "max_profit_change": "-7336.32"
+   }
   }
  }
 }

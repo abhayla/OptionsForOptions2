@@ -45,6 +45,7 @@ from ofo.adjustment.approaches import (
 )
 from ofo.adjustment import liquidity
 from ofo.adjustment.compare import POP_TEXT, Column, Context, MarginRead, compare
+from ofo.adjustment.compare_cost_rows import breakdown_lines
 from ofo.charges import ChargeRates
 from ofo.charges.calculator import ChargeOrder, charges_for_orders
 from ofo.charges.round_trip import charge_segment, to_paise_up
@@ -447,7 +448,8 @@ def _compare_block(cmp: Any) -> dict:
     """REQ-156: criteria rows, leads per approach and the payoff curves, as the reply carries them."""
     criteria = [{"id": c.id, "group": c.group, "label": c.label, "leader_label": c.leader_label,
                  "leaders": list(c.leaders),
-                 "values": {a: {"text": v.text, "value": v.value, "unavailable_reason": v.unavailable_reason}
+                 "values": {a: {"text": v.text, "value": v.value, "unavailable_reason": v.unavailable_reason,
+                                **({"breakdown": breakdown_lines(v.breakdown)} if v.breakdown else {})}  # ADR-230 (3)
                             for a, v in c.values.items()}} for c in cmp.criteria]
     return {"criteria": criteria, "leads": {a: {"n": n, "m": m} for a, (n, m) in cmp.leads.items()},
             "curves": {k: [[level, pnl] for level, pnl in points] for k, points in cmp.curves.items()}}
