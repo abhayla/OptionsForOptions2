@@ -399,7 +399,7 @@
    "group": "greeks_after",
    "label": "Gamma",
    "hint": null,
-   "leader_label": "Lowest gamma",
+   "leader_label": "Gamma closest to zero",
    "leaders": [
     "A-36"
    ],
@@ -433,7 +433,7 @@
    "group": "greeks_after",
    "label": "Vega",
    "hint": null,
-   "leader_label": "Lowest vega",
+   "leader_label": "Vega closest to zero",
    "leaders": [
     "A-36"
    ],
@@ -945,34 +945,34 @@
   {
    "id": "A-01",
    "name": "Roll the untested spread toward spot",
-   "explanation": "Move the side spot is moving away from closer to spot, keeping its width.",
+   "explanation": "Move the side that spot is moving away from closer to spot, keeping its width.",
    "applicable": true,
    "reason": null
   },
   {
    "id": "A-05",
    "name": "Roll the tested spread out (same width)",
-   "explanation": "Move the side spot is pressing on further out, keeping its width.",
+   "explanation": "Move the side that spot is pressing on further out, keeping its width.",
    "applicable": true,
    "reason": null
   },
   {
    "id": "A-29",
    "name": "Reduce the tested side",
-   "explanation": "Close part of the side spot is pressing on and keep the rest.",
+   "explanation": "Close part of the side that spot is pressing on and keep the rest.",
    "applicable": true,
    "reason": null
   },
   {
    "id": "A-28",
    "name": "Close the tested spread",
-   "explanation": "Close the whole side spot is pressing on and keep the other side.",
+   "explanation": "Close the whole side that spot is pressing on and keep the other side.",
    "applicable": true,
    "reason": null
   },
   {
    "id": "A-11",
-   "name": "Re-centre both shorts at the money",
+   "name": "Convert to an iron butterfly: move both shorts to the money",
    "explanation": "Move both short strikes to the strike nearest spot, keeping each wing's distance.",
    "applicable": true,
    "reason": null

@@ -270,6 +270,20 @@ class _Ctx:
     stage_name: str | None
 
 
+_STAGE_NAME_MAX = 80  # the PlaybookName slot's bound
+_STAGE_FALLBACK = "current"
+
+
+def _stage_words(name: object) -> str:
+    """The stage's name for the refusal sentence; a missing or unusable name reads "current", never a gap or a brace."""
+    if not isinstance(name, str):
+        return _STAGE_FALLBACK
+    name = name.strip()
+    if not name or len(name) > _STAGE_NAME_MAX or '"' in name or "{" in name or "}" in name:
+        return _STAGE_FALLBACK
+    return name
+
+
 def _limit(c: _Ctx, tid: str) -> Decimal | str:
     """This stage's value of ``tid``, tightened by the due day rule when ``tid`` is a tightened trigger."""
     t = c.body["triggers"][tid]
@@ -282,7 +296,7 @@ def _limit(c: _Ctx, tid: str) -> Decimal | str:
         raise _Missing(f"{P}no_stage", days=c.state.days_left)
     raw = values[c.stage]
     if raw == "":
-        raise _Missing(f"{P}no_stage_value")
+        raise _Missing(f"{P}no_stage_value", stage=_stage_words(c.stage_name))
     if tid == "T-10b":
         return raw
     lim = Decimal(raw)

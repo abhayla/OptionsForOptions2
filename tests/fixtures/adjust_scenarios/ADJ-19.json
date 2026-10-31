@@ -1802,7 +1802,7 @@
    "refused": [],
    "greyed": [],
    "off_in_playbook": [],
-   "withheld": "No suggestion: prices stale (60 s)"
+   "withheld": "No adjustment opportunity checked: prices stale (60 s)"
   },
   "at_expiry_whole_trade": {
    "exact": true,

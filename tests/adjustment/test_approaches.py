@@ -176,8 +176,8 @@ def test_ac8_adj20e_low_oi_unknown_is_a_warning_not_a_refusal():
                  else r for r in chain]
     a05 = build_approach(position, row_moved, spot, "A-05", CFG)
     assert a05.refusal is None
-    assert a05.warnings == ("Zerodha may refuse fresh orders in Leg 4 (BUY NIFTY 23,700 CE, expiry 03 Nov 2026): its low open "
-                            "interest state is not known.",)
+    assert a05.warnings == ("Zerodha may refuse fresh orders in Leg 4 (BUY NIFTY 23,700 CE, expiry 03 Nov 2026) if its open "
+                            "interest is too low; this app could not check that.",)
     # closing a leg in an unknown-low-OI contract is not a fresh order: no warning, no refusal
     a28 = build_approach(position, chain, spot, "A-28", CFG)
     assert a28.refusal is None and a28.warnings == ()
@@ -243,7 +243,7 @@ def test_a29_one_lot_is_refused_and_two_lots_halve():
     position, chain, spot = inputs(load("ADJ-20a"))
     one = replace(position, legs=tuple(replace(x, lots=1) for x in position.legs))
     assert build_approach(one, chain, spot, "A-29", CFG).refusal == \
-        "Leg 3 (SELL NIFTY 23,450 CE, expiry 03 Nov 2026) holds 1 lot, so half of it is not a whole lot."
+        "Leg 3 (SELL NIFTY 23,450 CE, expiry 03 Nov 2026) or its wing holds only one lot, so it cannot be halved into whole lots."
     two = build_approach(position, chain, spot, "A-29", CFG)
     assert [(c.type, c.lots) for c in two.closed] == [("CE", 1), ("CE", 1)]
     assert sorted((x.type, x.lots) for x in two.after) == [("CE", 1), ("CE", 1), ("PE", 2), ("PE", 2)]

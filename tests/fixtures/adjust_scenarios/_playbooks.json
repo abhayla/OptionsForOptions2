@@ -488,7 +488,7 @@
   "T-01"
  ],
  "not_evaluated_in_library": {
-  "T-14": "Loss-from-a-1%-move formula not settled; defined in the GC-ADJ1 build"
+  "T-14": "The loss-from-a-1%-move rule is not checked yet in this version."
  },
  "approaches": {
   "A-01": {

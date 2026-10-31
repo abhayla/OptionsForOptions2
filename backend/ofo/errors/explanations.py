@@ -246,7 +246,7 @@ ADJUSTMENT_APPROACH_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
     "A-05": "Roll the tested spread out (same width)",
     "A-29": "Reduce the tested side",
     "A-28": "Close the tested spread",
-    "A-11": "Re-centre both shorts at the money",
+    "A-11": "Convert to an iron butterfly: move both shorts to the money",
     "A-31": "Exit the whole strategy",
 })
 #: GC-ADJ2 step 3 (REQ-159 AC-5, REQ-160 AC-1): the playbook editor's names of the approaches NOT in ADJUSTMENT_APPROACH_LABEL_TEXT (that table stays the one home of its ids; a test holds the two disjoint). Source: tests/fixtures/adjust_scenarios/_playbooks.json approaches.
@@ -257,15 +257,15 @@ PLAYBOOK_APPROACH_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
     "A-06": "Shift a leg by +/- N strikes",
     "A-07": "Re-centre / reset around spot",
     "A-08": "Straddle-ise (move the untested short to the tested strike)",
-    "A-09": "Add wings (cap the loss)",
-    "A-10": "Inverted strangle",
+    "A-09": "Add wings (buy far options on each side)",
+    "A-10": "Inverted strangle (short call strike below short put strike)",
     "A-12": "Convert to a (broken-wing) butterfly",
-    "A-13": "Add a lizard: sell a put and a call spread",  # fixture: "no risk on one side" (a promise word, Q226); a template name may not appear in code (AC-5)
+    "A-13": "Convert to a jade lizard: sell a put and a call spread",  # fixture: "no risk on one side" (a promise word, Q226); a template name may not appear in code (AC-5)
     "A-14": "Calendar / diagonal on the tested side",
     "A-15": "Ratio fix (buy back the extra short or add a far long)",
     "A-16": "Long option to debit spread",
     "A-17": "Roll a winning long up and take capital out",
-    "A-18": "Gamma scalp with futures",
+    "A-18": "Gamma scalp with futures (trade futures as spot moves to stay delta-neutral)",
     "A-19": "Add a second calendar at the new spot",
     "A-20": "Delta hedge with futures",
     "A-21": "Delta hedge with a synthetic future",
@@ -309,7 +309,7 @@ PLAYBOOK_DAY_RULE_ACTION_TEXT: Mapping[str, str] = MappingProxyType({
 })
 #: GC-ADJ2 step 3 (REQ-160 AC-1): each playbook guard key (body ``guards``) in words, shown on Limits and guards.
 PLAYBOOK_GUARD_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
-    "entry_guide": "Entry guide",
+    "entry_guide": "Entry this playbook assumes",
     "hide_oi_below": "Hide strikes with open interest below",
     "hide_spread_pct_of_mid_above": "Hide strikes whose bid-ask spread is above this % of the mid price",
     "max_adjustments": "Most adjustments for one strategy",
@@ -340,16 +340,24 @@ PLAYBOOK_SUMMARY_TEXT: Mapping[str, str] = MappingProxyType({
     "days_head": "Day rules:",
     "day_rule": "{{when}} at {{at}}: {{action}}",
     "days_none": "none",
-    "plan": "Plan: target {{target}}% of max profit, stop at {{stop}}% of max loss, at most {{max}} adjustments.",
+    "plan": "Plan: {{clauses}}.",
+    "plan_target": "target {{target}}% of max profit",
+    "plan_stop": "stop at {{stop_words}}",
+    "plan_max": "at most {{max}} adjustments",
+    "plan_joiner": ", ",
+    # the three stop words: the same words as the plan_stop_words_* explanations (a test holds them equal)
+    "stop_loss": "{{pct}} % of max loss",
+    "stop_margin": "{{margin}} % of margin",
+    "stop_either": "{{pct}} % of max loss or {{margin}} % of margin, whichever comes first",
 })
 #: GC-ADJ1 step 3 (REQ-046 AC-3, REQ-045 AC-5): one plain line per approach, shown in the Review adjustment drawer before
 #: any pick. No figure, no ranking word (ADR-003).
 ADJUSTMENT_APPROACH_ABOUT_TEXT: Mapping[str, str] = MappingProxyType({
     "A-36": "Keep every leg as it is. This is the baseline the others are compared with.",
-    "A-01": "Move the side spot is moving away from closer to spot, keeping its width.",
-    "A-05": "Move the side spot is pressing on further out, keeping its width.",
-    "A-29": "Close part of the side spot is pressing on and keep the rest.",
-    "A-28": "Close the whole side spot is pressing on and keep the other side.",
+    "A-01": "Move the side that spot is moving away from closer to spot, keeping its width.",
+    "A-05": "Move the side that spot is pressing on further out, keeping its width.",
+    "A-29": "Close part of the side that spot is pressing on and keep the rest.",
+    "A-28": "Close the whole side that spot is pressing on and keep the other side.",
     "A-11": "Move both short strikes to the strike nearest spot, keeping each wing's distance.",
     "A-31": "Close every open leg.",
 })
@@ -390,9 +398,9 @@ ADJUSTMENT_LEADER_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
     "premium_left": "Most premium left",
     "pop": "Highest POP",
     "delta": "Closest to delta-neutral",
-    "gamma": "Lowest gamma",
+    "gamma": "Gamma closest to zero",
     "theta": "Most theta",
-    "vega": "Lowest vega",
+    "vega": "Vega closest to zero",
     "adjustments": "Fewest adjustments",
     "liquidity": "Tightest spreads",
     "fresh": "Smallest fresh max loss",
@@ -1399,10 +1407,10 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         "{pct} % of max loss or {margin} % of margin, whichever comes first",
                         {"pct": PlaybookField, "margin": PlaybookField}),
     ExplanationTemplate("adjust_spot_from_feed", "values_seen", "Spot from the live feed"),
-    ExplanationTemplate("adjust_spot_from_rest_quote", "values_seen", "Spot from a REST quote"),
+    ExplanationTemplate("adjust_spot_from_rest_quote", "values_seen", "Spot from a one-time price request"),
     ExplanationTemplate("adjust_spot_from_last_close", "values_seen", "Spot from the last close"),
     ExplanationTemplate("adjust_spot_not_available", "values_seen",
-                        "Spot not available (live feed: {feed}; REST quote: {rest}; last close: {close}), so no "
+                        "Spot not available (live feed: {feed}; one-time price request: {rest}; last close: {close}), so no "
                         "After is computed.", {"feed": Explained, "rest": Explained, "close": Explained}),
     ExplanationTemplate("adjust_spot_why_absent", "values_seen", "nothing is held"),
     ExplanationTemplate("adjust_spot_why_feed_absent", "values_seen", "the feed is not connected"),
@@ -1657,7 +1665,7 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     # ADR-215: the Greeks-after rows of an approach that leaves no open leg (exit); shown, and it cannot lead them
     ExplanationTemplate("adjust_cmp_no_position_left", "values_seen", "No position left after exit"),
     ExplanationTemplate("adjust_cmp_low_oi", "values_seen",
-                        "{value}% (Zerodha may refuse fresh orders in {legs}: low open interest state not known)",
+                        "{value}% (Zerodha may refuse fresh orders in {legs} if its open interest is too low; this app could not check that)",
                         {"value": Recorded, "legs": Recorded}),
     ExplanationTemplate("adjust_cmp_adjustments_unknown", "values_seen",
                         "Not available: the paper book does not record adjustments yet."),
@@ -1705,7 +1713,7 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("adjust_history_no_plan_max", "values_seen", "No plan maximum is set for this strategy."),
     ExplanationTemplate("adjust_history_fill_confirmed", "values_seen", "Filled - confirmed by Zerodha"),
     ExplanationTemplate("adjust_history_fill_unconfirmed", "values_seen", "Not yet confirmed by Zerodha"),
-    ExplanationTemplate("adjust_history_fill_failed", "values_seen", "Zerodha's answer failed"),
+    ExplanationTemplate("adjust_history_fill_failed", "values_seen", "Could not read Zerodha's answer; check this order in Kite"),
     ExplanationTemplate("adjust_history_col_fill", "values_seen", "Zerodha"),
     ExplanationTemplate("adjust_history_no_option_leg", "values_seen", "No option leg is open, so no premium is left."),
 )

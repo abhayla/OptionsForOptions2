@@ -88,9 +88,30 @@ export function summaryLines(body, typeName, kind, labels) {
     ...(both.length ? [{ key: 'rules', text: t.rules_head, items: both }] : []),
     { key: 'shows', text: fill(t.shows, { count: String(body.approaches?.applicable?.length ?? 0) }) },
     { key: 'days', text: t.days_head, items: days.length ? days : [t.days_none] },
-    { key: 'plan', text: fill(t.plan, { target: g.profit_target_pct_of_max_profit, stop: g.stop_line_pct_of_max_loss,
-      max: g.max_adjustments === undefined ? undefined : String(g.max_adjustments) }) },
+    ...planLine(g, t),
   ]
+}
+
+const present = (v) => v !== undefined && v !== null && v !== ''
+const EITHER_RULE = 'whichever comes first'
+
+/** The plan line (REQ-160 AC-1): one clause per value the playbook holds; a clause whose value is missing is left out,
+ *  and no clause at all leaves out the line, so a brace never reaches the screen. The stop words follow the body's
+ *  stop_line_rule: the loss words, the margin words, or both when the rule says whichever comes first. */
+export function planLine(g, t) {
+  const clauses = []
+  if (present(g.profit_target_pct_of_max_profit)) clauses.push(fill(t.plan_target, { target: String(g.profit_target_pct_of_max_profit) }))
+  const loss = g.stop_line_pct_of_max_loss
+  const margin = g.stop_line_pct_of_margin
+  let words = null
+  if (present(loss) && present(margin) && g.stop_line_rule === EITHER_RULE) words = fill(t.stop_either, { pct: String(loss), margin: String(margin) })
+  else if (present(loss)) words = fill(t.stop_loss, { pct: String(loss) })
+  else if (present(margin)) words = fill(t.stop_margin, { margin: String(margin) })
+  if (words !== null) clauses.push(fill(t.plan_stop, { stop_words: words }))
+  if (present(g.max_adjustments)) clauses.push(fill(t.plan_max, { max: String(g.max_adjustments) }))
+  if (!clauses.length || !t.plan) return []
+  const text = fill(t.plan, { clauses: clauses.join(t.plan_joiner ?? ', ') })
+  return /\{\w+\}/.test(text) ? [] : [{ key: 'plan', text }]
 }
 
 /** A catalogue answer shown as text: a plain string, or a four-part message's first part. */

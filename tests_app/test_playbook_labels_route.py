@@ -36,7 +36,7 @@ async def test_labels_answer_names_actions_kinds_and_summary_sentences():
     names = {x["key"]: x["text"] for x in out["approaches"]}
     assert names["A-36"] == "No change"  # the compare's table
     assert names["A-01"] == "Roll the untested spread toward spot"
-    assert names["A-09"] == "Add wings (cap the loss)"
+    assert names["A-09"] == "Add wings (buy far options on each side)"
     actions = {x["key"]: x["text"] for x in out["day_actions"]}
     assert actions["0"] == "Run the carry check (overnight margin, gap loss)"
     assert actions["4"] == "Tighten every trigger by this %"
@@ -44,8 +44,9 @@ async def test_labels_answer_names_actions_kinds_and_summary_sentences():
     assert kinds["beforeWeekend"] == "The last session before a weekend"
     summary = {x["key"]: x["text"] for x in out["summary"]}
     assert summary["type_line"] == "{type}, {kind} expiry. Stages: {stages}."
-    assert summary["plan"] == ("Plan: target {target}% of max profit, stop at {stop}% of max loss, at most {max} "
-                               "adjustments.")
+    assert summary["plan"] == "Plan: {clauses}."
+    assert summary["plan_stop"] == "stop at {stop_words}"
+    assert summary["stop_either"] == "{pct} % of max loss or {margin} % of margin, whichever comes first"
 
 
 def test_the_two_approach_tables_are_disjoint():

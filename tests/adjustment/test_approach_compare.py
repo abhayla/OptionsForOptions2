@@ -312,8 +312,8 @@ def test_ac2_liquidity_cell_carries_the_low_oi_warning():
     plain = row(compare(cols, ctx), "liquidity").values["A-11"]
     warned = row(compare(cols, replace(ctx, chain=chain)), "liquidity").values["A-11"]
     assert warned.value == plain.value and warned.rank == plain.rank
-    assert warned.text == (f"{plain.value}% (Zerodha may refuse fresh orders in {new[0]}: "
-                           "low open interest state not known)")
+    assert warned.text == (f"{plain.value}% (Zerodha may refuse fresh orders in {new[0]} "
+                           "if its open interest is too low; this app could not check that)")
 
 
 def test_stand_in_basket_margin_formula_is_test_data():

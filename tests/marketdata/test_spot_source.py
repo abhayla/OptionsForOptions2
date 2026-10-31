@@ -124,7 +124,7 @@ def test_adj_24b_every_source_failed_spot_not_available() -> None:
     assert d["data_state"]["spot_source"] == "none" and a.value is None and SPOT_NOT_AVAILABLE == "spot_not_available"
     assert len(a.reasons) == len(SOURCE_ORDER)
     assert d["expected"]["suggest"] is False
-    assert d["expected"]["approaches"]["withheld"].lower() == "no suggestion: spot not available"
+    assert d["expected"]["approaches"]["withheld"].lower() == "no adjustment opportunity checked: spot not available"
 
 
 @pytest.mark.parametrize("bad", ["NaN", "sNaN", "Infinity", "-Infinity"])

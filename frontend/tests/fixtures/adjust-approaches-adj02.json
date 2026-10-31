@@ -785,7 +785,7 @@
   },
   {
    "id": "A-11",
-   "name": "Re-centre both shorts at the money",
+   "name": "Convert to an iron butterfly: move both shorts to the money",
    "kind": "convert",
    "side": "both",
    "step_basis": null,
@@ -1776,7 +1776,7 @@
    "group": "greeks_after",
    "label": "Gamma",
    "hint": null,
-   "leader_label": "Lowest gamma",
+   "leader_label": "Gamma closest to zero",
    "leaders": [
     "A-31"
    ],
@@ -1870,7 +1870,7 @@
    "group": "greeks_after",
    "label": "Vega",
    "hint": null,
-   "leader_label": "Lowest vega",
+   "leader_label": "Vega closest to zero",
    "leaders": [
     "A-31"
    ],

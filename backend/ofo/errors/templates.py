@@ -1129,7 +1129,7 @@ _ADJUSTMENT_TEMPLATES: tuple[MessageTemplate, ...] = (
     _gate("adjust_low_oi_blocked", _UI, 106, "Zerodha blocks fresh orders in {leg} because its open interest is low.",
           _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {"leg": LegRef}),
     _gate("adjust_low_oi_unknown", _UI, 107,
-          "Zerodha may refuse fresh orders in {leg}: its low open interest state is not known.",
+          "Zerodha may refuse fresh orders in {leg} if its open interest is too low; this app could not check that.",
           "The approach is still shown.", "Nothing yet; Zerodha decides when the order is placed.",
           "Check the open interest of this contract before you place the order.", {"leg": LegRef}),
     _gate("adjust_no_strike_at_delta", _UI, 108, "No strike in the chain brings {leg} to the target delta.",
@@ -1137,8 +1137,8 @@ _ADJUSTMENT_TEMPLATES: tuple[MessageTemplate, ...] = (
     _gate("adjust_roll_would_cross", _UI, 109,
           "Moving {leg} to {strikes} would cross the other short leg at {other}.",
           _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {"leg": LegRef, "strikes": Strikes, "other": Strikes}),
-    _gate("adjust_reduce_needs_two_lots", _UI, 110, "{leg} holds {lots} lot, so half of it is not a whole lot.",
-          _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {"leg": LegRef, "lots": Count}),
+    _gate("adjust_reduce_needs_two_lots", _UI, 110,
+          "{leg} or its wing holds only one lot, so it cannot be halved into whole lots.", _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {"leg": LegRef}),
     _gate("adjust_recentre_days_left", _UI, 111,
           "This approach needs at least {need} days left; days left now: {days}.",
           _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {"need": Count, "days": Count}),
@@ -1154,17 +1154,24 @@ _ADJUSTMENT_TEMPLATES: tuple[MessageTemplate, ...] = (
 _TRIG_NOT = "This rule is not checked now; it never counts as passed."
 _TRIG_BLOCKED = "This rule."
 _TRIG_NEXT = "Nothing to do; it is checked again at the next check."
+_TRIG_NEXT_OFF = "Switch it on in the playbook to have it checked."
+_TRIG_NEXT_NOT_FOR_THIS = "Nothing to do; this rule is not checked for this strategy."
 _TRIG_WITHHELD = "No rule of this playbook is checked until the data is back."
 
 
-def _trig(name: str, number: int, what: str, slots: Mapping[str, type[SlotType]] | None = None) -> MessageTemplate:
-    return _gate(f"adjust_trigger_{name}", _UI, number, what, _TRIG_NOT, _TRIG_BLOCKED, _TRIG_NEXT, slots)
+def _trig(name: str, number: int, what: str, slots: Mapping[str, type[SlotType]] | None = None,
+          next_: str = _TRIG_NEXT) -> MessageTemplate:
+    return _gate(f"adjust_trigger_{name}", _UI, number, what, _TRIG_NOT, _TRIG_BLOCKED, next_, slots)
 
 
 _TRIGGER_TEMPLATES: tuple[MessageTemplate, ...] = (
-    _trig("no_stage_value", 114, "No value in this stage."),
-    _trig("no_stage", 115, "No stage covers {days} days left.", {"days": Int}),
-    _trig("no_expiry_values", 116, "This trigger has no values for this expiry type."),
+    _gate("adjust_trigger_no_stage_value", _UI, 114, "No value is set for this rule in the {stage} stage.",
+          "This rule is not checked in this stage.", _TRIG_BLOCKED,
+          "To check it in this stage, enter a value in the playbook.", {"stage": PlaybookName}),
+    _trig("no_stage", 115, "No stage covers {days} days left.", {"days": Int},
+          "Add a stage that covers this point of the trade in the playbook."),
+    _trig("no_expiry_values", 116, "This trigger has no values for this expiry type.", None,
+          "Enter a value for expiry day in the playbook."),
     _trig("no_short_leg", 117, "No short leg."),
     _trig("missing_spot", 118, "Spot not available."),
     _trig("missing_short_delta", 119, "Delta of a short leg not available."),
@@ -1190,18 +1197,22 @@ _TRIGGER_TEMPLATES: tuple[MessageTemplate, ...] = (
     _trig("missing_clock", 139, "Clock time not available."),
     _trig("missing_days_left", 140, "Days left not available."),
     _trig("missing_adjustments_used", 141, "Adjustments used not available."),
-    _trig("missing_max_adjustments", 142, "Maximum adjustments not stated in the playbook."),
-    _trig("t14_pending", 143, "Loss-from-a-1%-move formula not settled; defined in the GC-ADJ1 build"),
-    _trig("switched_off", 144, "This trigger is switched off in this playbook."),
-    _trig("greyed", 145, "This trigger does not apply to this strategy type."),
+    _trig("missing_max_adjustments", 142, "Maximum adjustments not stated in the playbook.", None,
+          "Set a maximum number of adjustments in the playbook to have this rule checked."),
+    _trig("t14_pending", 143, "The loss-from-a-1%-move rule is not checked yet in this version."),
+    _trig("switched_off", 144, "This trigger is switched off in this playbook.", None, _TRIG_NEXT_OFF),
+    _trig("greyed", 145, "This trigger does not apply to this strategy type.", None, _TRIG_NEXT_NOT_FOR_THIS),
     _trig("data_unavailable", 146, "The data this trigger needs is not available."),
-    _trig("unknown", 147, "Unknown trigger: it is not checked."),
-    _trig("not_evaluated", 148, "This trigger is not checked in this version."),
-    _gate("adjust_trigger_withheld_stale", _UI, 149, "No suggestion: prices stale or missing.", _TRIG_WITHHELD,
+    _trig("unknown", 147, "Unknown trigger: it is not checked.", None, _TRIG_NEXT_NOT_FOR_THIS),
+    _trig("not_evaluated", 148, "This trigger is not checked in this version.", None, _TRIG_NEXT_NOT_FOR_THIS),
+    _gate("adjust_trigger_withheld_stale", _UI, 149,
+          "No adjustment opportunity checked: prices stale or missing.", _TRIG_WITHHELD,
           "Every rule of this playbook.", "Wait for fresh prices.", {}),
-    _gate("adjust_trigger_withheld_fresh_unknown", _UI, 150, "No suggestion: price freshness not available.",
+    _gate("adjust_trigger_withheld_fresh_unknown", _UI, 150,
+          "No adjustment opportunity checked: price freshness not available.",
           _TRIG_WITHHELD, "Every rule of this playbook.", "Wait for fresh prices.", {}),
-    _gate("adjust_trigger_withheld_no_spot", _UI, 151, "No suggestion: spot not available.", _TRIG_WITHHELD,
+    _gate("adjust_trigger_withheld_no_spot", _UI, 151,
+          "No adjustment opportunity checked: spot not available.", _TRIG_WITHHELD,
           "Every rule of this playbook.", "Wait for the spot price to come back.", {}),
     _gate("adjust_trigger_already_true", _UI, 152, "Already true when tracking started.",
           "It is shown, not flagged, until a check finds it false.", "Nothing.",

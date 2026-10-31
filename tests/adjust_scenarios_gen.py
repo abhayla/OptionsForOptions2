@@ -531,7 +531,7 @@ def hand_approaches(u: str, lot: int, kind: str, today: datetime.date, spot: Dec
                 if r["low_oi"]["state"] == "stated" and r["low_oi"]["blocked"]:
                     raise HandRefused(f"Zerodha blocks fresh orders in {name(new)} because its open interest is low.")
                 if r["low_oi"]["state"] != "stated":
-                    warnings.append(f"Zerodha may refuse fresh orders in {name(new)}: its low open interest state is not known.")
+                    warnings.append(f"Zerodha may refuse fresh orders in {name(new)} if its open interest is too low; this app could not check that.")
                 p = price(new)
                 new = {**new, "entry": p, "tradingsymbol": r["tradingsymbol"]}
                 trades += [t, {"action": x["side"], "type": x["type"], "strike": targets[i], "expiry": x["expiry"],
@@ -595,7 +595,7 @@ def hand_approaches(u: str, lot: int, kind: str, today: datetime.date, spot: Dec
                 cut = [pos[(tested, "short")], pos[(tested, "wing")]]
                 if min(legs[i]["lots"] for i in cut) < 2:
                     short = legs[pos[(tested, "short")]]
-                    raise HandRefused(f"{name(short)} holds {short['lots']} lot, so half of it is not a whole lot.")
+                    raise HandRefused(f"{name(short)} or its wing holds only one lot, so it cannot be halved into whole lots.")
                 after = []
                 for i, x in enumerate(legs):
                     if i in cut:
@@ -965,7 +965,7 @@ def build(spec: dict, pb: dict) -> dict:  # noqa: C901, PLR0912, PLR0915 - one r
                       "warnings": spec.get("warnings", [])}
     else:
         approaches = {"applicable": [], "refused": [], "greyed": [], "off_in_playbook": [],
-                      "withheld": "No suggestion: " + ("spot not available" if data_state["spot_source"] == "none"
+                      "withheld": "No adjustment opportunity checked: " + ("spot not available" if data_state["spot_source"] == "none"
                                                        else f"prices stale ({data_state['age_seconds']} s)")}
 
     # self-checks against the scenario's intent (generator refuses to write a scenario that does not hold)

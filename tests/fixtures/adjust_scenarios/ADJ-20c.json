@@ -1794,7 +1794,7 @@
   "triggers_not_evaluated": [
    {
     "id": "T-14",
-    "reason": "Loss-from-a-1%-move formula not settled; defined in the GC-ADJ1 build"
+    "reason": "The loss-from-a-1%-move rule is not checked yet in this version."
    },
    {
     "id": "T-06",

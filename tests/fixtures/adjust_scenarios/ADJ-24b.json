@@ -1801,7 +1801,7 @@
    "refused": [],
    "greyed": [],
    "off_in_playbook": [],
-   "withheld": "No suggestion: spot not available"
+   "withheld": "No adjustment opportunity checked: spot not available"
   },
   "at_expiry_whole_trade": {
    "exact": true,

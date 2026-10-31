@@ -155,7 +155,7 @@ def test_ac4_adj23_pop_present_and_held_switch_off_gives_dash_with_reason():
 
 def test_ac5_adj24a_spot_from_rest_quote_and_adj24b_no_after():
     a = post(client_for(load("ADJ-24a"))).json()
-    assert a["spot"]["source"] == "rest_quote" and a["spot"]["source_text"] == "Spot from a REST quote"
+    assert a["spot"]["source"] == "rest_quote" and a["spot"]["source_text"] == "Spot from a one-time price request"
     b = post(client_for(load("ADJ-24b"))).json()
     assert b["spot"]["value"] is None and b["spot"]["text"].startswith("Spot not available") and b["approaches"] == []
 
@@ -390,7 +390,7 @@ def test_drawer_no_spot_means_no_approach_can_be_built_and_the_reason_says_so():
 
 def test_spot_not_available_words_every_source_reason_never_a_raw_code():
     b = post(client_for(load("ADJ-24b"))).json()
-    assert b["spot"]["text"] == ("Spot not available (live feed: the feed is not connected; REST quote: the quote "
+    assert b["spot"]["text"] == ("Spot not available (live feed: the feed is not connected; one-time price request: the quote "
                                  "request failed; last close: no close is stored), so no After is computed.")
     assert route._spot_why("feed", "not_finite") == "the feed's last price was not a number"
     assert route._spot_why("rest_quote", "empty") == "the quote had no price"

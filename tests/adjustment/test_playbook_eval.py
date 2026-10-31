@@ -231,8 +231,8 @@ def test_no_spot_or_stale_prices_never_flag(sid):
     sc = load(sid)
     ev = evaluate(body_of(sc), state_of(sc), {}, None)
     assert not flags(ev) and not ev.clear
-    want = {"ADJ-24b": ("adjust_trigger_withheld_no_spot", "No suggestion: spot not available."),
-            "ADJ-19": ("adjust_trigger_withheld_stale", "No suggestion: prices stale or missing.")}[sid]
+    want = {"ADJ-24b": ("adjust_trigger_withheld_no_spot", "No adjustment opportunity checked: spot not available."),
+            "ADJ-19": ("adjust_trigger_withheld_stale", "No adjustment opportunity checked: prices stale or missing.")}[sid]
     assert (ev.withheld, reason_text(ev.withheld)) == want
     assert {r.rule_id for r in ev.results} == {r["id"] for r in body_of(sc)["rules"]}
 
@@ -289,8 +289,10 @@ def test_no_stage_covers_the_days_left():
 def test_no_value_in_the_stage_is_not_checked():
     sc = load("ADJ-01")  # Early: T-10b has ""
     ev = evaluate(body_of(sc), state_of(sc), {}, None)
-    assert NotChecked("T-10b", "T-10b", "adjust_trigger_no_stage_value") in ev.results
-    assert reason_text("adjust_trigger_no_stage_value") == "No value in this stage."
+    assert any(r.code == "adjust_trigger_no_stage_value" and r.trigger_id == "T-10b" for r in ev.results if isinstance(r, NotChecked))
+    nc = next(r for r in ev.results if r.code == "adjust_trigger_no_stage_value")
+    assert nc.slots == (("stage", "Early"),)
+    assert reason_text(nc.code, nc.slots) == "No value is set for this rule in the Early stage."
 
 
 def test_two_shorts_t01_uses_the_nearest_and_t03_the_largest_delta():

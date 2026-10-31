@@ -22,7 +22,7 @@
   },
   {
    "key": "A-11",
-   "text": "Re-centre both shorts at the money"
+   "text": "Convert to an iron butterfly: move both shorts to the money"
   },
   {
    "key": "A-31",
@@ -54,11 +54,11 @@
   },
   {
    "key": "A-09",
-   "text": "Add wings (cap the loss)"
+   "text": "Add wings (buy far options on each side)"
   },
   {
    "key": "A-10",
-   "text": "Inverted strangle"
+   "text": "Inverted strangle (short call strike below short put strike)"
   },
   {
    "key": "A-12",
@@ -66,7 +66,7 @@
   },
   {
    "key": "A-13",
-   "text": "Add a lizard: sell a put and a call spread"
+   "text": "Convert to a jade lizard: sell a put and a call spread"
   },
   {
    "key": "A-14",
@@ -86,7 +86,7 @@
   },
   {
    "key": "A-18",
-   "text": "Gamma scalp with futures"
+   "text": "Gamma scalp with futures (trade futures as spot moves to stay delta-neutral)"
   },
   {
    "key": "A-19",
@@ -297,13 +297,41 @@
   },
   {
    "key": "plan",
-   "text": "Plan: target {target}% of max profit, stop at {stop}% of max loss, at most {max} adjustments."
+   "text": "Plan: {clauses}."
+  },
+  {
+   "key": "plan_target",
+   "text": "target {target}% of max profit"
+  },
+  {
+   "key": "plan_stop",
+   "text": "stop at {stop_words}"
+  },
+  {
+   "key": "plan_max",
+   "text": "at most {max} adjustments"
+  },
+  {
+   "key": "plan_joiner",
+   "text": ", "
+  },
+  {
+   "key": "stop_loss",
+   "text": "{pct} % of max loss"
+  },
+  {
+   "key": "stop_margin",
+   "text": "{margin} % of margin"
+  },
+  {
+   "key": "stop_either",
+   "text": "{pct} % of max loss or {margin} % of margin, whichever comes first"
   }
  ],
  "guards": [
   {
    "key": "entry_guide",
-   "text": "Entry guide"
+   "text": "Entry this playbook assumes"
   },
   {
    "key": "hide_oi_below",
@@ -356,7 +384,7 @@
   "what_happened": "This trigger has no values for this expiry type.",
   "impact": "This rule is not checked now; it never counts as passed.",
   "what_is_blocked": "This rule.",
-  "next_action": "Nothing to do; it is checked again at the next check.",
+  "next_action": "Enter a value for expiry day in the playbook.",
   "external_text": null
  }
 }
