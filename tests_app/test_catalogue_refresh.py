@@ -22,7 +22,7 @@ import pytest
 from ofo_app import catalogue_load, catalogue_picker, catalogue_refresh, main
 from ofo_app.catalogue_refresh import BUSY, FAILED, LOADED, REFUSED, TIMED_OUT, RefreshScheduler
 from sqlalchemy import text
-from test_catalogue_load_command import AS_OF, TABLE, _count, _csv, _lines_where, _settings
+from test_catalogue_load_command import AS_OF, TABLE, _count, _csv, _lines_where, _set_percent
 
 IST = timezone(timedelta(hours=5, minutes=30))
 MONDAY = datetime.datetime(2026, 10, 19, 9, 0, tzinfo=IST)
@@ -42,7 +42,6 @@ TWO_RUNS, THREE_RUNS, FIVE_TICKS = 2, 3, 5
 #: The shared test catalogue may already hold a real list (#497), and loading the slice onto it delists most of it,
 #: which the 10% guard rightly refuses. A FIRST load in these tests lifts the guard (the work rolls back); every later
 #: load, and every refusal asserted, runs under the real 10%.
-_ONTO_ANY_CATALOGUE = _settings("100")
 
 
 FAIL_FAST_SECONDS = 10
@@ -193,7 +192,7 @@ async def test_a_hung_download_carries_a_socket_timeout_so_its_thread_ends_and_t
     monkeypatch.setattr(downloader, "open_url", hung_open)
 
     async def load() -> int:
-        return await catalogue_load.load_once(_settings("10"), io.StringIO())
+        return await catalogue_load.load_once(io.StringIO())
 
     sch = _scheduler(load, Clock(MONDAY), timeout=0.2)
     assert await sch.attempt() == TIMED_OUT
@@ -224,7 +223,7 @@ async def test_the_parse_of_a_full_list_runs_off_the_event_loop(monkeypatch):
             await asyncio.sleep(0)
         served.set()
 
-    code, _ = await asyncio.gather(catalogue_load.run(None, "x", _settings("10"), io.StringIO()),
+    code, _ = await asyncio.gather(catalogue_load.run(None, "x", io.StringIO()),
                                    request_served_meanwhile())
     assert code == 1  # the parse's refusal, nothing written
     assert len(ticks) == FIVE_TICKS and parse_saw_served == [True]  # served while the parse was still blocking
@@ -294,7 +293,8 @@ async def test_a_list_loaded_twice_in_a_day_offers_the_additions_with_no_duplica
         trans = await conn.begin()
         try:
             out = io.StringIO()
-            assert await catalogue_load.run(conn, first, _ONTO_ANY_CATALOGUE, out, as_of=AS_OF) == 0
+            await _set_percent(conn, "100")
+            assert await catalogue_load.run(conn, first, out, as_of=AS_OF) == 0
             before = await _count(conn)
             today = datetime.date(2026, 9, 28)
             offered = {c.strike for c in await catalogue_picker.pickable_contracts(
@@ -302,7 +302,8 @@ async def test_a_list_loaded_twice_in_a_day_offers_the_additions_with_no_duplica
             assert not strikes & offered  # held back: not offered yet
 
             out = io.StringIO()
-            assert await catalogue_load.run(conn, _csv(), _settings("10"), out, as_of=AS_OF + timedelta(hours=2)) == 0
+            await _set_percent(conn, "10")
+            assert await catalogue_load.run(conn, _csv(), out, as_of=AS_OF + timedelta(hours=2)) == 0
             assert "added=3 " in out.getvalue(), out.getvalue()
             assert await _count(conn) == before + 3
             offered = {c.strike for c in await catalogue_picker.pickable_contracts(
@@ -325,10 +326,12 @@ async def test_a_term_changed_on_the_second_load_is_one_revision_not_a_duplicate
     async with app_engine.connect() as conn:
         trans = await conn.begin()
         try:
-            assert await catalogue_load.run(conn, csv_text, _ONTO_ANY_CATALOGUE, io.StringIO(), as_of=AS_OF) == 0
+            await _set_percent(conn, "100")
+            assert await catalogue_load.run(conn, csv_text, io.StringIO(), as_of=AS_OF) == 0
             before = await _count(conn)
             out = io.StringIO()
-            assert await catalogue_load.run(conn, changed, _settings("10"), out, as_of=AS_OF + timedelta(hours=2)) == 0
+            await _set_percent(conn, "10")
+            assert await catalogue_load.run(conn, changed, out, as_of=AS_OF + timedelta(hours=2)) == 0
             assert "added=0 " in out.getvalue() and "revised=1 " in out.getvalue(), out.getvalue()
             assert await _count(conn) == before
         finally:
@@ -343,13 +346,15 @@ async def test_a_truncated_list_from_the_scheduler_path_is_refused_and_the_previ
     async with app_engine.connect() as conn:
         trans = await conn.begin()
         try:
-            assert await catalogue_load.run(conn, _csv(), _ONTO_ANY_CATALOGUE, io.StringIO(), as_of=AS_OF) == 0
+            await _set_percent(conn, "100")
+            assert await catalogue_load.run(conn, _csv(), io.StringIO(), as_of=AS_OF) == 0
             snapshot = tuple((await conn.execute(text(
                 f"SELECT count(*), count(*) FILTER (WHERE currently_listed), count(*) FILTER (WHERE delisted) "  # noqa: S608 constant table name
                 f"FROM {TABLE}"))).one())
 
             async def load() -> int:
-                return await catalogue_load.run(conn, truncated, _settings("10"), io.StringIO(), as_of=AS_OF)
+                await _set_percent(conn, "10")
+                return await catalogue_load.run(conn, truncated, io.StringIO(), as_of=AS_OF)
 
             with caplog.at_level(logging.ERROR):
                 assert await _scheduler(load, Clock(MONDAY)).attempt() == REFUSED
@@ -367,10 +372,12 @@ async def test_an_empty_list_is_refused_and_writes_nothing(app_engine):
     async with app_engine.connect() as conn:
         trans = await conn.begin()
         try:
-            assert await catalogue_load.run(conn, _csv(), _ONTO_ANY_CATALOGUE, io.StringIO(), as_of=AS_OF) == 0
+            await _set_percent(conn, "100")
+            assert await catalogue_load.run(conn, _csv(), io.StringIO(), as_of=AS_OF) == 0
             before = await _count(conn)
             out = io.StringIO()
-            assert await catalogue_load.run(conn, header, _settings("10"), out, as_of=AS_OF) == 1, out.getvalue()
+            await _set_percent(conn, "10")
+            assert await catalogue_load.run(conn, header, out, as_of=AS_OF) == 1, out.getvalue()
             assert await _count(conn) == before
             listed = (await conn.execute(text(
                 f"SELECT count(*) FROM {TABLE} WHERE currently_listed"))).scalar_one()  # noqa: S608 constant table name
@@ -385,7 +392,8 @@ async def test_an_old_list_loaded_today_offers_no_expired_contract(app_engine):
     async with app_engine.connect() as conn:
         trans = await conn.begin()
         try:
-            assert await catalogue_load.run(conn, _csv(), _ONTO_ANY_CATALOGUE, io.StringIO(), as_of=AS_OF) == 0
+            await _set_percent(conn, "100")
+            assert await catalogue_load.run(conn, _csv(), io.StringIO(), as_of=AS_OF) == 0
             today = await catalogue_picker.database_today(conn)
             future = list(await catalogue_picker.pickable_expiries(conn, "NIFTY", today))
             assert all(e >= today for e in future)

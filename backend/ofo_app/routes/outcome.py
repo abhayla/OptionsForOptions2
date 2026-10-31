@@ -18,7 +18,7 @@ import logging
 import time
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Annotated, Awaitable, Callable, Iterable, Literal, Mapping, Optional, Union
+from typing import Annotated, Awaitable, Callable, Iterable, Literal, Mapping, Union
 
 from fastapi import APIRouter, Depends
 from fastapi.exceptions import RequestValidationError
@@ -233,8 +233,24 @@ async def with_rate_in_force(ctx: MarketContext, read_settings: SettingsReader) 
                                forward_quality=calc.forward_quality(values))
 
 
+async def get_request_settings_reader(
+        read_settings: Annotated[SettingsReader, Depends(get_settings_reader)]) -> SettingsReader:
+    """The ONE settings read of a request (REQ-167 AC-4, step 3 review): FastAPI resolves this dependency once per
+    request, so :func:`get_calc_settings` and :func:`get_market_context` share the one store read (the first caller
+    reads, the other gets the same values), and one request can never mix two reads. A request that needs no settings
+    (no live context, no calculation) reads nothing."""
+    memo: list[Mapping[str, Decimal]] = []
+
+    async def once() -> Mapping[str, Decimal]:
+        if not memo:
+            memo.append(await read_settings())
+        return memo[0]
+
+    return once
+
+
 async def get_calc_settings(
-        read_settings: Annotated[SettingsReader, Depends(get_settings_reader)]) -> Mapping[str, Decimal]:
+        read_settings: Annotated[SettingsReader, Depends(get_request_settings_reader)]) -> Mapping[str, Decimal]:
     """REQ-167 AC-4: every setting in force NOW, read once per request, handed to the calculations that take their
     numbers as parameters (scenario columns, payoff steps, SD horizon, what-if span, quick picks). A store that cannot
     answer raises: the route answers the internal-error response, never a figure on a default."""
@@ -242,7 +258,7 @@ async def get_calc_settings(
 
 
 async def get_market_context(
-        read_settings: Annotated[SettingsReader, Depends(get_settings_reader)]) -> MarketContext | None:
+        read_settings: Annotated[SettingsReader, Depends(get_request_settings_reader)]) -> MarketContext | None:
     """The live context (W-065) when LIVE_MARKET is on and the owner has an active session, else None: the route
     answers "not connected". Tests, the replay mode and the scenario mode override this dependency.
 
@@ -412,9 +428,17 @@ class OutcomeRequest(BaseModel):
     def scenario_choice(self, settings: Mapping[str, Decimal]) -> tuple[ScenarioConfig, RangeOverride | None]:
         """The ONE config (Admin step and anchor) and the range override this request asks for (None: the computed
         default range). The same pair is checked here and handed to build_outcome."""
-        base = ScenarioSettings.from_values(settings).for_index(self.underlying)
+        base = self.scenario_base(settings)
+        return base, self.range_override(base)
+
+    def scenario_base(self, settings: Mapping[str, Decimal]) -> ScenarioConfig:
+        """The index's config from the settings in force. A stored combination the config refuses (step not a multiple
+        of the anchor) is a server fault, never the user's: it raises ValueError and is NOT turned into a 422."""
+        return ScenarioSettings.from_values(settings).for_index(self.underlying)
+
+    def range_override(self, base: ScenarioConfig) -> RangeOverride | None:
         pick = [None if v is None else Decimal(v) for v in (self.range_start, self.range_end)]
-        return base, resolve_range(base, *pick)
+        return resolve_range(base, *pick)
 
 
 async def stored_legs_for(req: OutcomeRequest, ctx: MarketContext | None,
@@ -944,11 +968,12 @@ def live_context() -> MarketContext | None:
 def checked_choice(req: OutcomeRequest, settings: Mapping[str, Decimal]) -> tuple[ScenarioConfig, RangeOverride | None]:
     """The range and the payoff step this request asks for, checked against the settings in force (REQ-034 AC-4,
     REQ-137 AC-1): a value off the allow-list is the same 422 the request validator gave."""
+    base = req.scenario_base(settings)  # outside the try: a bad stored combination is an internal error, not a 422
     try:
         if req.payoff_step is not None and Decimal(req.payoff_step) not in calc.payoff_steps(settings):
             allowed = ", ".join(f"{s:f}" for s in calc.payoff_steps(settings))
             raise ValueError(f"payoff_step must be one of {allowed}")
-        return req.scenario_choice(settings)
+        return base, req.range_override(base)
     except ValueError as exc:
         raise RequestValidationError([{"type": "value_error", "loc": ("body",), "msg": str(exc), "input": None}]) from exc
 
@@ -967,9 +992,9 @@ def outcome_response(req: OutcomeRequest, ctx: MarketContext | None,  # noqa: PL
     ask = req.target_ask(booked)  # ADR-209: the paper strategy's booked P&L rides on the what-if ask
     live_blocked = False
     used_quotes: list[NormalizedQuote | None] = []  # the quotes this answer used (ADR-200 (4): the closed label's time)
+    config, override = checked_choice(req, settings)  # before any branch: every answer state refuses a bad range
     if ctx is None:
         answered_at = now()
-        config, override = checked_choice(req, settings)
         out = (from_entries(definition, None, stored, answered_at, view=View(req.view), rates=rates, config=config,
                             override=override, both_views=req.both_views, payoff_step=req.table_step(),
                             sd_bands=req.sd_bands, target=ask, settings=settings)  # REQ-077 AC-9: every leg priced -> At Expiry from the user's prices
@@ -986,13 +1011,11 @@ def outcome_response(req: OutcomeRequest, ctx: MarketContext | None,  # noqa: PL
         if not live_blocked and awaiting_first_price_for(ctx.provider, answered_at):
             out = waiting_first_price(definition, snapshot)  # REQ-133 AC-3: no number until the first price frame
         elif live_blocked:
-            config, override = checked_choice(req, settings)
             out = (from_entries(definition, snapshot, None, snapshot.valuation, view=View(req.view), rates=rates,
                                 config=config, override=override, both_views=req.both_views,
                                 payoff_step=req.table_step(), sd_bands=req.sd_bands, target=ask, settings=settings)
                    or not_live(definition, snapshot))
         else:
-            config, override = checked_choice(req, settings)
             out = build_outcome(definition, snapshot, snapshot.valuation, view=View(req.view), rates=rates,
                                 config=config, override=override, shared=shared, both_views=req.both_views,
                                 payoff_step=req.table_step(), sd_bands=req.sd_bands, target=ask, settings=settings)

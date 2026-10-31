@@ -71,3 +71,34 @@ def forward_quality(values: Mapping[str, Decimal]) -> ForwardQuality:
     return ForwardQuality(width=value_of(values, FORWARD_QUALITY_WIDTH),
                           strikes_near=int(value_of(values, FORWARD_STRIKES_NEAR)),
                           min_strikes=int(value_of(values, FORWARD_MIN_STRIKES)))
+
+
+# ---- speeds, detection, billing, data (GC-SET batch 2) ---------------------------------------------------------
+OPEN_STRATEGY_SECONDS = "speeds.open_strategy_seconds"
+TRIAL_DAYS = "billing.trial_days"
+REFERRAL_DAYS = "billing.referral_days"
+FREEZE_STALE_DAYS = "data.freeze_file_stale_days"
+
+
+def open_strategy_seconds(values: Mapping[str, Decimal]) -> float:
+    """Seconds between two live pushes of one open strategy (a time gate, not money: a float is exact enough)."""
+    return float(value_of(values, OPEN_STRATEGY_SECONDS))
+
+
+def trial_days(values: Mapping[str, Decimal]) -> int:
+    return int(value_of(values, TRIAL_DAYS))
+
+
+def referral_days(values: Mapping[str, Decimal]) -> int:
+    return int(value_of(values, REFERRAL_DAYS))
+
+
+def freeze_stale_days(values: Mapping[str, Decimal]) -> int:
+    return int(value_of(values, FREEZE_STALE_DAYS))
+
+
+MAX_DELIST_PERCENT = "data.max_delist_percent"
+
+
+def max_delist_percent(values: Mapping[str, Decimal]) -> Decimal:
+    return value_of(values, MAX_DELIST_PERCENT)

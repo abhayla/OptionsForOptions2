@@ -86,7 +86,8 @@ def _notes(seq: OrderSequence) -> tuple[str, ...]:
 
 def execution_review(plan: ExecutionPlan, planner: MarginPlanner | None,
                      constraints: BrokerConstraints | None = None, *,
-                     freeze_limits: Mapping[str, StoredFreeze] | None, today: date) -> ExecutionReview:
+                     freeze_limits: Mapping[str, StoredFreeze] | None, today: date,
+                     freeze_stale_days: int) -> ExecutionReview:
     """AC-5: build the review from the engine, the margin planner and the sequence builder.
 
     W-076 (ADR-081): ``freeze_limits`` (broker trading symbol -> stored limit) decides which legs are blocked; a leg
@@ -114,7 +115,7 @@ def execution_review(plan: ExecutionPlan, planner: MarginPlanner | None,
     except Exception as exc:  # fail closed to "unknown": never a made-up figure
         unknown.append(("margin_required", render_explanation("review_unknown_margin")))  # the planner's own error is not shown
     seq = sequence_plan(plan, planner, constraints)
-    freeze = freeze_check(plan, freeze_limits, today=today)
+    freeze = freeze_check(plan, freeze_limits, today=today, stale_after_days=freeze_stale_days)
     return ExecutionReview(plan.strategy_id, margin, max_loss, max_profit, current, len(plan.legs), _lines(plan, seq),
                            BROKER, seq.margin_note, _notes(seq), tuple(unknown), freeze.blocks, freeze.warnings)
 

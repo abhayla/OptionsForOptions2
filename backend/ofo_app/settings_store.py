@@ -121,6 +121,23 @@ async def history(session: AsyncSession | AsyncConnection) -> dict[str, list[Sto
     return out
 
 
+async def _refuse_cross_field_break(session: AsyncSession | AsyncConnection, key: str, parsed: Decimal,
+                                    effective_from: datetime.datetime) -> None:
+    """A value that breaks a rule between settings (a scenario step that is not a multiple of its anchor) is refused at
+    SAVE time with the reason, checked against the other values in force at ``effective_from``; it never reaches a
+    user request as a 422 (step 3 review). Only the scenario keys carry such a rule today."""
+    if not key.startswith("scenarios."):
+        return
+    from ofo.scenario.config import ScenarioSettings  # noqa: PLC0415 - only the scenario keys need it
+
+    merged = await settings_in_force(session, effective_from)
+    merged[key] = parsed
+    try:
+        ScenarioSettings.from_values(merged)
+    except ValueError as exc:
+        raise SettingRefused("setting_cross_field", f"{registry_mod.registry()[key].label} = {registry_mod.plain(parsed)} does not fit the other scenario settings: {exc}") from None
+
+
 async def add_setting(session: AsyncSession | AsyncConnection, key: str, value: str, *,  # noqa: PLR0913
                       set_by: str, effective_from: datetime.datetime | None = None, note: str = "",
                       correlation_id: str) -> StoredSetting:
@@ -141,6 +158,7 @@ async def add_setting(session: AsyncSession | AsyncConnection, key: str, value: 
                              "A setting takes effect now or later; an earlier time would change figures already shown.")
     if not isinstance(correlation_id, str) or not correlation_id.strip():
         raise SettingRefused("setting_no_correlation", "A setting change needs the request's correlation id.")
+    await _refuse_cross_field_break(session, key, parsed, effective_from)
     label = registry_mod.registry()[key].label
     reason = f"{key} ({label}) = {registry_mod.plain(parsed)} from {effective_from.isoformat()}"
     if note:

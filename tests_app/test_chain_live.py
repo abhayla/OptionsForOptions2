@@ -24,6 +24,8 @@ from ofo.errors import render
 from ofo.marketdata.fanout import FanOut
 from ofo.marketdata.quote import NormalizedQuote, SourceMetadata
 from ofo.rules.inputs import DataHealth
+from ofo.settings import calc as _settings_calc
+from ofo.settings import defaults as _settings_defaults
 from ofo_app import chain_push
 from ofo_app.catalogue_picker import PickableContract
 from ofo_app.chain_push import (
@@ -36,9 +38,11 @@ from ofo_app.chain_push import (
     strike_window,
 )
 from ofo_app.errors import socket_body
-from ofo_app.live_push import MIN_PUSH_INTERVAL, ChannelClosed, LiveFeed
+from ofo_app.live_push import ChannelClosed, LiveFeed
 from ofo_app.routes.chain import chain_read
 from ofo_app.routes.outcome import MarketContext
+
+MIN_PUSH_INTERVAL = _settings_calc.open_strategy_seconds(_settings_defaults())  # the registry default
 
 IST = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
 T0 = datetime.datetime(2026, 10, 19, 9, 20, 0, tzinfo=IST)

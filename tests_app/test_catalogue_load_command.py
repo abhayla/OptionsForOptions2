@@ -19,8 +19,9 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from ofo_app import catalogue_load
-from ofo_app.config import Settings
+from ofo.settings import calc, defaults
+
+from ofo_app import catalogue_load, settings_store
 
 IST = timezone(timedelta(hours=5, minutes=30))
 AS_OF = datetime(2026, 9, 28, 10, 0, tzinfo=IST)
@@ -28,8 +29,10 @@ SLICE = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "instrument
 TABLE = "public.catalogue_contracts"
 
 
-def _settings(percent: str) -> Settings:
-    return Settings(DATABASE_URL="postgresql+asyncpg://unused", CATALOGUE_MAX_DELIST_PERCENT=Decimal(percent))
+async def _set_percent(conn, percent: str) -> None:
+    """Store ``data.max_delist_percent`` (the setting that replaced the env var) in the test's transaction."""
+    await settings_store.add_setting(conn, "data.max_delist_percent", percent, set_by="test",
+                                     correlation_id="delist-test")
 
 
 def _csv() -> str:
@@ -59,7 +62,7 @@ async def test_load_prints_the_counts_and_writes_the_slice(app_engine: AsyncEngi
         try:
             assert await _count(conn) == 0, "catalogue table must be empty (tests roll back)"
             out = io.StringIO()
-            assert await catalogue_load.run(conn, _csv(), _settings("10"), out, as_of=AS_OF) == 0
+            assert await catalogue_load.run(conn, _csv(), out, as_of=AS_OF) == 0
             stored = await _count(conn)
             assert stored > 1000
             assert out.getvalue().startswith(f"catalogue updated: added={stored} seen=0 ")
@@ -73,12 +76,13 @@ async def test_a_setting_of_zero_refuses_a_one_contract_delisting_and_writes_not
     async with app_engine.connect() as conn:
         trans = await conn.begin()
         try:
-            await catalogue_load.run(conn, _csv(), _settings("10"), io.StringIO(), as_of=AS_OF)
+            await catalogue_load.run(conn, _csv(), io.StringIO(), as_of=AS_OF)
             before = (await conn.execute(text(
                 f"SELECT count(*), count(*) FILTER (WHERE delisted), count(*) FILTER (WHERE currently_listed) "
                 f"FROM {TABLE}"))).one()
             out = io.StringIO()
-            code = await catalogue_load.run(conn, shorter, _settings("0"), out, as_of=AS_OF)
+            await _set_percent(conn, "0")
+            code = await catalogue_load.run(conn, shorter, out, as_of=AS_OF)
             assert code == 1 and "REFUSED, nothing written" in out.getvalue(), out.getvalue()
             after = (await conn.execute(text(
                 f"SELECT count(*), count(*) FILTER (WHERE delisted), count(*) FILTER (WHERE currently_listed) "
@@ -86,7 +90,8 @@ async def test_a_setting_of_zero_refuses_a_one_contract_delisting_and_writes_not
             assert tuple(after) == tuple(before) and before[1] == 0
             # the same list under the default setting (10%) is one delisting of ~290 NIFTY contracts: accepted
             out = io.StringIO()
-            assert await catalogue_load.run(conn, shorter, _settings("10"), out, as_of=AS_OF) == 0
+            await _set_percent(conn, "10")
+            assert await catalogue_load.run(conn, shorter, out, as_of=AS_OF) == 0
             assert "delisted=1" in out.getvalue(), out.getvalue()
         finally:
             await trans.rollback()
@@ -104,14 +109,15 @@ async def test_the_setting_reaches_apply_update(app_engine: AsyncEngine, monkeyp
     async with app_engine.connect() as conn:
         trans = await conn.begin()
         try:
-            await catalogue_load.run(conn, _csv(), _settings("25"), io.StringIO(), as_of=AS_OF)
+            await _set_percent(conn, "25")
+            await catalogue_load.run(conn, _csv(), io.StringIO(), as_of=AS_OF)
             assert seen["max_delist_percent"] == Decimal("25") and seen["as_of"] == AS_OF
         finally:
             await trans.rollback()
 
 
 def test_the_default_setting_is_the_adr_058_ten_percent() -> None:
-    assert Settings(DATABASE_URL="postgresql+asyncpg://unused").CATALOGUE_MAX_DELIST_PERCENT == Decimal("10")
+    assert calc.max_delist_percent(defaults()) == Decimal("10")  # exactly the old env default
 
 
 async def test_an_unparseable_row_stops_the_load_naming_it_and_writes_nothing(app_engine: AsyncEngine) -> None:
@@ -124,7 +130,7 @@ async def test_an_unparseable_row_stops_the_load_naming_it_and_writes_nothing(ap
         trans = await conn.begin()
         try:
             out = io.StringIO()
-            assert await catalogue_load.run(conn, "".join(lines), _settings("10"), out, as_of=AS_OF) == 1
+            assert await catalogue_load.run(conn, "".join(lines), out, as_of=AS_OF) == 1
             assert "REFUSED, nothing written" in out.getvalue() and fields[2] in out.getvalue()
             assert await _count(conn) == 0
         finally:

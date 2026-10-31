@@ -360,6 +360,66 @@
       "default": "7",
       "what_it_changes": "The number of calendar days the one and two standard deviation bands cover (the days to the nearest expiry when fewer).",
       "source": "D-B20; was ofo/outcome/service.py SD_HORIZON_DAYS"
+    },
+    {
+      "key": "speeds.open_strategy_seconds",
+      "group": "Speeds",
+      "label": "Open strategy push interval",
+      "unit": "seconds",
+      "type": "decimal",
+      "min": "0.2",
+      "max": "60",
+      "default": "1",
+      "what_it_changes": "The shortest time between two live updates of one strategy open on a screen (also the chain and indices screens). A larger number means fewer updates and less server work.",
+      "source": "ADR-068 (2), REQ-166 AC-1; was ofo_app/live_push.py MIN_PUSH_INTERVAL"
+    },
+    {
+      "key": "billing.trial_days",
+      "group": "Billing",
+      "label": "Free trial length",
+      "unit": "days",
+      "type": "integer",
+      "min": "1",
+      "max": "365",
+      "default": "7",
+      "what_it_changes": "Days of Pro given to a new registration.",
+      "source": "ADR-091 entitlements; was ofo/entitlements/engine.py TRIAL_DAYS_DEFAULT"
+    },
+    {
+      "key": "billing.referral_days",
+      "group": "Billing",
+      "label": "Referral reward length",
+      "unit": "days",
+      "type": "integer",
+      "min": "1",
+      "max": "365",
+      "default": "30",
+      "what_it_changes": "Days of Pro a referral grants.",
+      "source": "ADR-091 entitlements; was ofo/entitlements/engine.py REFERRAL_DAYS_DEFAULT"
+    },
+    {
+      "key": "data.freeze_file_stale_days",
+      "group": "Data",
+      "label": "Freeze-limit file stale after",
+      "unit": "days",
+      "type": "integer",
+      "min": "1",
+      "max": "60",
+      "default": "8",
+      "what_it_changes": "The review warns when the stored freeze-limit file is older than this many days.",
+      "source": "ADR-091, issue 257; was ofo/execution/freeze.py STALE_AFTER_DAYS"
+    },
+    {
+      "key": "data.max_delist_percent",
+      "group": "Data",
+      "label": "Largest allowed catalogue drop",
+      "unit": "percent",
+      "type": "decimal",
+      "min": "0",
+      "max": "100",
+      "default": "10",
+      "what_it_changes": "A contract-list update is refused if more than this percent of one index's live contracts would disappear at once.",
+      "source": "ADR-058; was env CATALOGUE_MAX_DELIST_PERCENT"
     }
   ]
 }

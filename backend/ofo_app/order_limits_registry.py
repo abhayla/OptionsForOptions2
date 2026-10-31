@@ -155,7 +155,7 @@ NOT_A_ZERODHA_RULE: dict[str, str] = {
             "ofo_app.kite_http:_MAX_NESTING", "ofo_app.kite_http:_TIMEOUT",
             "ofo.marketdata.reconnect_policy:BACKOFF_MAX", "ofo.marketdata.reconnect_policy:BACKOFF_START",
             "ofo_app.kite_ws:_POLL_SECONDS", "ofo.execution.partial:UNCONFIRMED_GRACE",
-            "ofo.execution.freeze:STALE_AFTER_DAYS", "ofo.broker.rate_limit:USER_MAX_WAIT_SECONDS",
+            "ofo.broker.rate_limit:USER_MAX_WAIT_SECONDS",
             "ofo.broker.rate_limit:BACKGROUND_MAX_WAIT_SECONDS", "ofo.broker.rate_limit:BACKGROUND_QUEUE_SECONDS",
             "ofo.broker.rate_limit:MAX_READ_RETRIES", "ofo.broker.rate_limit:ALERT_THRESHOLD",
             "ofo.broker.rate_limit:ALERT_WINDOW_SECONDS", "ofo.broker.rate_limit:_USER_REF_CHARS",
