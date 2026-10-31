@@ -39,7 +39,6 @@ from decimal import Decimal
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Query
-from ofo import settings as registry
 from ofo.engine.chain_values import ChainGreeks, chain_greeks
 from ofo.marketdata.forward import ExpiryForward, ForwardUnavailable, parity_forward
 from ofo.marketdata.provider import PACKET_WITHOUT_DAY_FIELDS, DayStatsAnswer, DayStatsReason, NotSupported
@@ -47,6 +46,7 @@ from ofo.marketdata.quote import NormalizedQuote, is_live_price, planning_price_
 from ofo.money import PAISE
 from ofo.outcome.snapshot import contract_id, forward_strike_ids
 from ofo.rules.inputs import DataHealth
+from ofo.settings import RISK_FREE_RATE, defaults
 from ofo.timeutil import IST
 from pydantic import AfterValidator
 from sqlalchemy.exc import SQLAlchemyError
@@ -80,7 +80,7 @@ from ofo_app.underlying import Underlying
 
 # only for a caller that passes no rate (a test, or a request with no live context, where nothing is priced); a route
 # with a live context passes the setting in force (finding 1, GC-SET round 2)
-DEFAULT_RATE = registry.defaults()[registry.RISK_FREE_RATE]
+DEFAULT_RATE = defaults()[RISK_FREE_RATE]
 
 STRIKES_PATH = "/api/leg-picker/strikes"
 FUTURES_PATH = "/api/leg-picker/futures"
@@ -559,7 +559,8 @@ def _forward_hold_ids(ctx: Any, underlying: str, expiries: tuple[datetime.date, 
     return ids
 
 
-def futures_answer(feed: LiveFeed | None, underlying: str, catalogue: FuturesCatalogue, now: AnswerClock,
+def futures_answer(feed: LiveFeed | None, underlying: str, catalogue: FuturesCatalogue,  # noqa: PLR0913
+                   now: AnswerClock,
                    viewer: str = V1_OWNER_REF, rate: Decimal = DEFAULT_RATE) -> FuturesOut:
     """The futures read. ``rate``: as in :func:`strikes_answer` (the forwards are priced with it)."""
     ctx = None if feed is None else feed.ctx
@@ -724,7 +725,7 @@ async def leg_picker_strikes(  # noqa: PLR0913 - one query parameter or seam eac
 
 
 @router.get(FUTURES_PATH, response_model=FuturesOut)
-async def leg_picker_futures(
+async def leg_picker_futures(  # noqa: PLR0913 - one dependency each
         underlying: Annotated[Underlying, Query()],
         feed: Annotated[LiveFeed | None, Depends(get_feed)],
         now: Annotated[AnswerClock, Depends(get_answer_clock)],

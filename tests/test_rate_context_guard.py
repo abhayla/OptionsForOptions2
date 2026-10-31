@@ -70,7 +70,7 @@ def _declared_dependency(fn: ast.FunctionDef | ast.AsyncFunctionDef, name: str) 
     return annotated or (default is not None and DEPENDENCY in ast.unparse(default))
 
 
-def scan_source(source: str, filename: str) -> list[str]:
+def scan_source(source: str, filename: str) -> list[str]:  # noqa: C901 - R1-R5 side by side in one AST pass
     """Violations (``file:line: why``) of R1-R5 in one source text."""
     tree = ast.parse(source, filename)
     found: list[str] = []

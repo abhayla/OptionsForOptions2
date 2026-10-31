@@ -97,7 +97,8 @@ async def rows_in_force(session: AsyncSession | AsyncConnection,
         try:
             registry_mod.check_value(known[r.key], r.value)
         except SettingRefused as exc:
-            raise SettingsError(f"stored setting {r.key} = {r.value} is refused by the registry: {exc.reason}") from None
+            raise SettingsError(
+                f"stored setting {r.key} = {r.value} is refused by the registry: {exc.reason}") from None
         out[r.key] = StoredSetting(r.key, r.value, r.effective_from, r.set_by)
     return out
 

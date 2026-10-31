@@ -88,7 +88,7 @@ def _guard_sql() -> str:
                     USING ERRCODE = '{SQLSTATE}';
             END IF;
             IF NEW.effective_from < clock_timestamp() - interval '{BACKDATE_GRACE_SECONDS} seconds' THEN
-                RAISE EXCEPTION 'a setting takes effect now or later: a back-dated row would change figures already shown'
+                RAISE EXCEPTION 'a setting takes effect now or later: a back-dated row is refused'
                     USING ERRCODE = '{SQLSTATE}';
             END IF;
             RETURN NEW;
@@ -118,8 +118,8 @@ def _trigger_checks() -> str:
             ELSIF (SELECT tgfoid {row}) IS DISTINCT FROM to_regprocedure('{GUARD}()')
                   OR (SELECT tgtype::int {row}) IS DISTINCT FROM {BEFORE_STATEMENT_TRUNCATE}
                   OR (SELECT tgqual IS NOT NULL OR tgattr::text <> '' OR tgnargs <> 0 {row}) THEN
-                problems := problems || 'trigger {TRUNCATE_TRIGGER} is not a plain BEFORE TRUNCATE statement trigger on {GUARD}'::TEXT;
-            END IF;"""
+                problems := problems || 'trigger {TRUNCATE_TRIGGER} is not a plain BEFORE TRUNCATE trigger'::TEXT;
+            END IF;"""  # noqa: S608 - constant names only
 
 
 def _block() -> str:
