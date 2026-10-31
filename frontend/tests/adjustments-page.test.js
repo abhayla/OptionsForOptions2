@@ -402,8 +402,9 @@ describe('summary plan line: stop words and missing values', () => {
       stop_line_rule: 'whichever comes first', max_adjustments: 2 }
     expect(plan(g).text).toBe('Plan: target 50 % of max profit, stop at 50 % of max loss or 20 % of margin, whichever comes first, at most 2 adjustments.')
   })
-  it('both numbers without the either rule: the max-loss words only', () => {
-    expect(plan({ stop_line_pct_of_max_loss: '50', stop_line_pct_of_margin: '20' }).text).toBe('Plan: stop at 50 % of max loss.')
+  it('both numbers, a different non-empty rule: the max-loss words only; no rule at all is the either words (ADR-230 (4))', () => {
+    expect(plan({ stop_line_pct_of_max_loss: '50', stop_line_pct_of_margin: '20', stop_line_rule: 'max loss only' }).text).toBe('Plan: stop at 50 % of max loss.')
+    expect(plan({ stop_line_pct_of_max_loss: '50', stop_line_pct_of_margin: '20' }).text).toBe('Plan: stop at 50 % of max loss or 20 % of margin, whichever comes first.')
   })
   it('no max adjustments: no brace, the other clauses stay', () => {
     const t = plan({ profit_target_pct_of_max_profit: '50', stop_line_pct_of_max_loss: '50' }).text
