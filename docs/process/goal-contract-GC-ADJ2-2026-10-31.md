@@ -74,6 +74,11 @@ Each step ends with one line here: `step N DONE <sha> <proof line>` or `PARKED (
   1338 passed); 1A merged a60d3bac (orchestrator re-run on a fresh DB: store + migration tests 33 passed; guards 2674
   passed; seed --check OK); ofo_dev 0030 -> 0031 -> 0030 -> 0031 each exit 0. Open: Tier A mutants (reviewer), 1C wiring
   + scenario-mode proof.
+- step 1 DONE 098393f5 (12:52): fresh-DB `tests_app/test_adjustment_check.py` 8 passed (ADJ-02 T-01/T-03/T-09, ADJ-01 none,
+  ADJ-42 already true then flag after a clear, ADJ-24b not checked, plan precedence, seed 12 rows); dev server ofo_dev
+  scenario mode port 8775: ADJ-02 flags T-01 0.3416<=0.5, T-03 0.4103>=0.35, T-09 2.7<=3 (system, approved, no Draft),
+  ADJ-01 0 flags (Early), ADJ-42 T-01 already true, 0 flags; Tier A: 6 review gaps fixed (11 failed before, 40 passed
+  after), mutants 5/5 killed; guards 3501 passed, repo_scan 1338 passed on the merged tree; ofo_dev at fixed 0031.
 
 ## Rules for the run
 
@@ -179,6 +184,8 @@ main and waits for the owner's explicit approval; it does not open it.
 | 9 | 1C: an iron condor's tracking view no longer carries the fixed 0.5% detection, so `TrackingPanel.vue` shows no alert for it until a screen calls GET /api/strategies/{id}/adjustment-check; no frontend/e2e test asserted it | step 1C -> step 5 | Step 5's brief makes the strategy card / tracking panel show the check route's flags (and the inbox); until then this is a known screen gap, never shipped alone (nothing leaves the feature branch). |
 | 10 | 1C: the check answer leaves out the playbook name (the user-text slot lives in the error templates, not the explanation catalogue), the trigger label/unit (read from the playbook body instead), and T-10b clock values | step 1C -> step 3 | Step 3's editor reads labels from the body; the name slot for explanations is added in step 2/3 when the screen needs it. |
 | 11 | Tier A review of 0031 (11:40-12:03): 6 attacks refused; 0 of 5 mutants run (budget: a fresh DB takes ~20 min here); 6 raw-SQL gaps (whitespace look-alike names, open->completed, dismiss reason on non-dismissed, outcome change without a timeline entry (REQ-112 AC-4), plan pointing at another user's playbook, raw DB error on wrong-type plan) | step 1A | One Tier A fix round on 0031 in place (unmerged), mutants run in the same single fresh DB; ofo_dev re-migrated after it lands. |
+| 12 | Dev-server proof: the check answer sends unrounded values (T-01 `0.341588385994876174...`, 60 digits) and `cmp` is null on already_true rows | step 1C -> step 5 | Step 5 rounds every value read to the fixture's 4 dp (half-up) in the route and fills cmp on already_true; the screen shows the server text. |
+| 13 | Port 8765 held by a uvicorn started 12:28 by another process (not this run's) | dev-server proof | Not stopped (only recorded PIDs are stopped); this run's API used port 8775, PIDs 18636, 20084, 21320 started and stopped by PID. |
 
 ## Parked
 
