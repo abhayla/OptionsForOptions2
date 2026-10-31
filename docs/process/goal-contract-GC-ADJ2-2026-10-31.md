@@ -93,6 +93,19 @@ Each step ends with one line here: `step N DONE <sha> <proof line>` or `PARKED (
   (T-02/T-18/T-20/T-20b/T-21) and leaves Test dead (no POST); guard keys raw; page unstyled -> fix round 3
   (browser-proof exception). Words: condition lines show trigger ids, inbox name quoted, plan target/stop bare
   numbers -> words fix dispatched.
+- step 3 DONE b9e06853 (16:45): owner's Chrome, scenario ADJ-02: the iron condor system playbook (no Draft; strangle shows
+  Draft) renders all 7 steps with no console error; T-01 Middle changed to 0.3 (unsaved, summary 0.75 / 0.3 / 0.3)
+  and Test lists Scenario ADJ-02 Middle: T-03 would flag 0.4103 vs 0.3500, T-09 2.7000 vs 3.0000, no T-01 (0.3416 >
+  0.3), not-checked rows with reasons; nothing saved. Direct POST /api/playbooks/test 200 in 18.4 s (~25 saved
+  strategies, 8 s per-strategy limit). Vitest 21 passed on the 12 real seeded bodies x 7 steps; DB tests
+  test_playbook_test_route 9 passed (hanging-strategy proof), test_playbook_labels_route 5 passed (builder).
+- step 4 DONE e06f454e: fresh-DB test_adjustment_plan 7 passed (orchestrator); Chrome: sheet prefilled (target 50, stop
+  50, max 2, time exit 14:30), Use playbook as is saved the plan, panel shows it with Edit plan.
+- step 5 DONE 9c07c32b+: fresh-DB test_adjustment_check 8 passed, test_adjustment_opportunities 11 passed (ADR-217
+  included, orchestrator); Chrome: panel 3 flags + Review adjustment, inbox one grouped row, Open: 3, Compare link.
+- step 6 DONE 3a55b0f5: Opus money review REVISE -> fixed (futures and debit premium; 44-scenario oracle sweep green);
+  fresh-DB test_adjustment_history 3 passed; Chrome: totals = ADJ-02 fixture (P&L -1,612.00, premium left 7,338.50,
+  credit 5,726.50, used 0 of 2), paper label.
 
 ## Rules for the run
 
