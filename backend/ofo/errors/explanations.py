@@ -1419,10 +1419,15 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         {"label": PlaybookTriggerLabel, "value": PlaybookField, "threshold": PlaybookField}),
     # ADR-221: the T-19 flag line names the cheapest approach the playbook offers and its Compare cost
     ExplanationTemplate("adjust_condition_line_t19", "values_seen",
-                        "{label}: {value} (rule {threshold}); cheapest adjustment offered now: {approach}, "
-                        "cost {cost} (as in Compare)",
+                        "{label}: {value} (rule {threshold}); cheapest adjustment that could be priced now: "
+                        "{approach}, cost {cost} (as in Compare)",
                         {"label": PlaybookTriggerLabel, "value": PlaybookField, "threshold": PlaybookField,
                          "approach": ApproachLabel, "cost": Rupees}),
+    ExplanationTemplate("adjust_condition_line_t19_unpriced", "values_seen",
+                        "{label}: {value} (rule {threshold}); cheapest adjustment that could be priced now: "
+                        "{approach}, cost {cost} (as in Compare) ({count} could not be priced)",
+                        {"label": PlaybookTriggerLabel, "value": PlaybookField, "threshold": PlaybookField,
+                         "approach": ApproachLabel, "cost": Rupees, "count": Count}),
     ExplanationTemplate("plan_target_words", "values_seen", "{pct} % of max profit", {"pct": PlaybookField}),
     ExplanationTemplate("plan_stop_words_loss", "values_seen", "{pct} % of max loss", {"pct": PlaybookField}),
     ExplanationTemplate("plan_stop_words_margin", "values_seen", "{margin} % of margin", {"margin": PlaybookField}),

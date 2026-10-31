@@ -229,6 +229,7 @@ class Cheapest:
     approach: str | None
     cost: Decimal | None
     reason: str | None = None
+    unpriced: int = 0  # offered approaches that were built but whose cost is "-" (left out, and said so)
 
 
 def offered_approaches(body: Mapping | None) -> tuple[str, ...]:
@@ -248,15 +249,20 @@ def cheapest_approach(offered: Sequence[str], columns: Mapping[str, Column], cha
     if not offered:
         return Cheapest(None, None, NO_APPROACH_OFFERED)
     rows = chain_index(chain)
-    best: Cheapest | None = None
+    best: tuple[str, Decimal] | None = None
+    unpriced = 0
     for a in offered:
         col = columns.get(a)
         if col is None or col.built.refusal is not None or not col.built.trades:
             continue
         answer = approach_cost(col, rows)
-        if answer.value is not None and (best is None or answer.value < best.cost):  # type: ignore[operator]
-            best = Cheapest(a, answer.value)
-    return best if best is not None else Cheapest(None, None, NO_APPROACH_PRICED)
+        if answer.value is None:
+            unpriced += 1
+        elif best is None or answer.value < best[1]:
+            best = (a, answer.value)
+    if best is None:
+        return Cheapest(None, None, NO_APPROACH_PRICED, unpriced)
+    return Cheapest(best[0], best[1], None, unpriced)
 
 
 # ---- engine reads ------------------------------------------------------------------------------------------------

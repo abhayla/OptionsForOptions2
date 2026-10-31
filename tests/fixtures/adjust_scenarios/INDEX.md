@@ -41,6 +41,7 @@ derived by hand-written code; the test cross-checks them with the engine.
 | ADJ-42 | IC weekly, NIFTY 2 lots | F-71: short CE 0.35% from spot at entry and now (Middle stage): already true, not flagged | Middle (weekly, 3 d) | none |
 | ADJ-43 | IC weekly, NIFTY 2 lots | Premium left below the cheapest adjustment's cost: T-19 fires (ADR-221) | Last day (weekly, 1 d) | T-07, T-09, T-19, T-10b |
 | ADJ-44 | IC weekly, NIFTY 2 lots | Premium left above the cheapest adjustment's cost: T-19 does not fire (ADR-221) | Last day (weekly, 1 d) | T-07, T-09, T-10b |
+| ADJ-45 | IC weekly, NIFTY 2 lots | Adjustment limit reached: T-19 prices only exit and reduce approaches (S-11, ADR-221) | Last day (weekly, 1 d) | T-07, T-09, T-18 |
 | ADJ-30 | Other strategy types | Short strangle, call side tested | Middle (weekly, 4 d) | T-01, T-03 |
 | ADJ-31 | Other strategy types | Short straddle needing a re-centre | Middle (weekly, 4 d) | T-03 |
 | ADJ-32 | Other strategy types | Iron butterfly, spot drifted toward the call wing | Middle (weekly, 4 d) | T-02, T-03 |

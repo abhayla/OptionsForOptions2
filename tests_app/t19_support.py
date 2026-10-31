@@ -11,7 +11,7 @@ from decimal import Decimal as D
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tests"))  # the generator lives in tests/
-import adjust_scenarios_gen as gen  # noqa: E402
+import adjust_scenarios_gen as gen
 from ofo.adjustment.approaches import APPROACH_IDS, ChainRow, Position, PositionLeg
 from ofo.adjustment.compare import Cheapest, Column, Context, MarginRead, compare
 from ofo.adjustment.playbook_eval import body_from_fixture

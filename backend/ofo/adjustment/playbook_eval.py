@@ -71,6 +71,7 @@ class StrategyState:
     adjustment_cost: Decimal | None = None  # ADR-221: the cheapest offered approach's Compare cost
     adjustment_approach: str | None = None  # that approach's id (A-xx), named on the T-19 flag
     adjustment_cost_reason: str | None = None  # why no cost: a catalogue reason code (``adjust_trigger_*``)
+    adjustment_unpriced: int = 0  # offered approaches left out because they could not be priced
     atm_iv: Decimal | None = None
     entry_atm_iv: Decimal | None = None
     day_open: Decimal | None = None

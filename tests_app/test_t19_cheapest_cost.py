@@ -20,10 +20,11 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # t19_support sits next to this file
-import t19_support as s  # noqa: E402
+import t19_support as s
 from ofo.adjustment import compare as cmp
 from ofo.adjustment import playbook_eval as pe
 from ofo.adjustment.compare import Column, MarginRead, approach_cost, cheapest_approach, offered_approaches
+from ofo.adjustment.offered import EXIT_REDUCE, offered_now
 from ofo.engine import adjust_money
 from ofo_app import adjustment_check as check
 from ofo_app.routes.adjustment import priced_approach
@@ -50,7 +51,7 @@ def test_t19_cost_equals_the_cheapest_compare_cell_for_every_scenario(sid):
     the paisa) and equals the generator's hand figure; no cell priced -> the not-checked reason."""
     sc = s.load(sid)
     tracked, market, spot = s.inputs(sc)
-    offered = offered_approaches(s.body_of(sc))
+    offered = offered_now(s.body_of(sc), sc["position"]["adjustments_used"])  # S-11 filter included
     _, cols, _ = _columns(sid)
     cells = {a: c for a, c in s.compare_costs(tracked, market, spot).items()
              if a in offered and c.value is not None and cols[a].built.trades}  # a no-trade column is not an adjustment
@@ -87,19 +88,22 @@ def test_some_unpriceable_takes_the_cheapest_of_the_priced():
     a29 = cols["A-29"]
     no_charges = dataclasses.replace(a29, charges_known=False)  # A-29's charges unknown -> "-" -> left out
     got = cheapest_approach(offered_approaches(s.body_of(sc)), {**cols, "A-29": no_charges}, market.chain)
-    assert got == cmp.Cheapest("A-28", D("137.49"))
+    assert got == cmp.Cheapest("A-28", D("137.49"), None, 1)  # A-29 left out, and counted
+    line = str(check.condition_line_t19("Premium left", "0.5000", "1.0000", got.approach, got.cost, got.unpriced))
+    assert line == ("Premium left: 0.5000 (rule 1.0000); cheapest adjustment that could be priced now: "
+                    "Close the tested spread, cost \u20b9137.49 (as in Compare) (1 could not be priced)")
     no_whole = dataclasses.replace(a29, whole=None)
     assert cheapest_approach(("A-29", "A-31"), {**cols, "A-29": no_whole}, market.chain) == \
-        cmp.Cheapest("A-31", D("198.06"))
+        cmp.Cheapest("A-31", D("198.06"), None, 1)
     no_quote = tuple(dataclasses.replace(r, bid=None) if r.tradingsymbol == a29.built.trades[0].tradingsymbol else r
                      for r in market.chain)
-    assert cheapest_approach(("A-29", "A-01"), cols, no_quote) == cmp.Cheapest("A-01", D("173.36"))
+    assert cheapest_approach(("A-29", "A-01"), cols, no_quote) == cmp.Cheapest("A-01", D("173.36"), None, 1)
 
 
 def test_none_priceable_is_not_checked_with_the_reason():
     sc = s.load("ADJ-14")
     got = s.cheapest(sc)
-    assert got == cmp.Cheapest(None, None, cmp.NO_APPROACH_PRICED)
+    assert (got.approach, got.cost, got.reason) == (None, None, cmp.NO_APPROACH_PRICED) and got.unpriced > 0
     ev = pe.evaluate(s.body_of(sc), pe.StrategyState("weekly", days_left=1, hhmm="15:00", spot=D("23020"),
                                                        premium_left=D("110.50"), adjustment_cost_reason=got.reason,
                                                        prices_fresh=True))
@@ -144,9 +148,9 @@ def test_t19_fires_below_and_not_above_the_cheapest_cost():
 def test_the_flag_line_names_the_approach_and_its_cost():
     line = check.condition_line_t19("Premium still left is below this x the adjustment cost", "0.3629", "1.0000",
                                     "A-28", D("53.73"))
-    text = str(line)
-    assert "Close the tested leg or spread" in text or "A-28" not in text
-    assert "53.73" in text and "0.3629" in text and "1.0000" in text
+    assert str(line) == ("Premium still left is below this x the adjustment cost: 0.3629 (rule 1.0000); cheapest "
+                         "adjustment that could be priced now: Close the tested spread, cost \u20b953.73 "
+                         "(as in Compare)")
     fallback = check.condition_line_t19("Premium still left", "0.3629", "1.0000", "A-99", D("53.73"))
     assert "53.73" not in str(fallback)  # an approach the slot refuses -> the plain line, never a guessed name
 
@@ -156,3 +160,26 @@ def test_the_old_per_leg_cost_is_gone_everywhere():
     assert not hasattr(check, "COST_PER_LEG")
     conv = json.loads((s.FIX / "_playbooks.json").read_text(encoding="utf-8"))["conventions"]["adjustment_cost"]
     assert "40" not in conv and "ADR-221" in conv
+
+
+def test_s11_at_the_limit_only_exit_and_reduce_are_priced():
+    """Review MINOR 3: at the adjustment limit (S-11) the T-19 pick reads only exit and reduce approaches, even when a
+    roll would be cheaper; below the limit the roll is picked."""
+    sc, cols, market = _columns("ADJ-02")
+    body = s.body_of(sc)
+    a01 = cols["A-01"]
+    cheap_roll = dataclasses.replace(a01, whole=dataclasses.replace(a01.whole, adjustment_charges=D(0)))
+    tilted = {**cols, "A-01": cheap_roll}
+    below = cheapest_approach(offered_now(body, 1), tilted, market.chain)
+    assert below.approach == "A-01" and below.cost < D("92.35")
+    at = offered_now(body, body["guards"]["max_adjustments"])
+    assert "A-01" not in at and set(at) <= EXIT_REDUCE and "A-29" in at
+    assert cheapest_approach(at, tilted, market.chain) == cmp.Cheapest("A-29", D("92.35"))
+    assert offered_now(body, None) == offered_approaches(body)  # an unread count filters nothing (T-18 says why)
+
+
+def test_s11_generator_case_adj45_picks_an_exit_or_reduce_approach():
+    sc = s.load("ADJ-45")
+    assert "S-11" in sc["expected"]["situations"]
+    got = s.cheapest(sc)
+    assert got.approach in EXIT_REDUCE and str(got.cost) == sc["expected"]["adjustment_cost"]

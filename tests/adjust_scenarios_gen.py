@@ -22,6 +22,10 @@ Conventions (also written into ``_playbooks.json`` -> ``conventions``):
 - Price = BS rounded to the 0.05 tick (minimum 0.05); bid/ask = mid -/+ max(0.05, 0.5% of mid) rounded up to the tick.
 - Days left = calendar days from the clock's date to the expiry date (0 on expiry day), as the mockup's stages use.
 - P&L now marks every open leg at its LTP and adds booked P&L of closed legs (whole trade, F-74).
+- T-19's adjustment cost (ADR-221) is derived here by hand (approach trades, half spread, cheapest, S-11 exit and
+  reduce only at the adjustment limit) with this file's own copy of the "offered now" rule. Known shared dependency:
+  the approach's charges come from the engine's ``ofo.charges.calculator.charges_for_orders`` (the charge calculator
+  has its own tests against Zerodha's published rates), so a charge-calculator defect would not show here.
 """
 from __future__ import annotations
 
@@ -882,6 +886,8 @@ def build(spec: dict, pb: dict) -> dict:  # noqa: C901, PLR0912, PLR0915 - one r
         hand_legs, hand_after = hand_approaches(u, lot, kind, today, spot, legs, near_rows, booked)
     offered = [a for a in dict.fromkeys(list(fpb["approaches"]["applicable"]) + [
         a for a in overrides.get("approaches_on", []) if a in fpb["approaches"]["off_in_playbook"]]) if a != "A-36"]
+    if adjustments_used >= overrides.get("max_adjustments", fpb.get("guards", {}).get("max_adjustments", GUARDS["max_adjustments"])):
+        offered = [a for a in offered if a in EXIT_REDUCE]  # S-11: only exit and reduce are offered (hand copy)
     cost_legs = hand_legs if hand_legs is not None else {"A-31": hand_exit(lot, legs, near_rows)}
     adj_approach, adj_cost = hand_cheapest(offered, cost_legs, u, near_rows)
     if priced and family in SHORTS and any(leg["type"] != "FUT" for leg in legs):
@@ -1344,6 +1350,13 @@ def scenarios() -> list[dict]:  # noqa: PLR0915 - a flat list of scenario specs
                            L("BUY", "CE", 23450, N3, 1)], must_not_fire=["T-19"],
                      check=lambda v: _assert(v["adj_cost"] is not None and v["premium_left"] > v["adj_cost"],
                                              "ADJ-44 wants left > cost")))
+
+    # S-11 + ADR-221: at the adjustment limit the T-19 cost is the cheapest exit or reduce approach
+    s.append(ic_spec("ADJ-45", "Adjustment limit reached: T-19 prices only exit and reduce approaches (S-11, ADR-221)",
+                     ["T-19", "T-18", "S-11", "ADR-221"], "2026-11-02T11:00:00", "23150", adjustments_used=2,
+                     must_situations=["S-11"],
+                     check=lambda v: _assert(v["adj_approach"] in EXIT_REDUCE and v["adj_cost"] is not None,
+                                             "ADJ-45 wants an exit or reduce approach priced")))
 
     # ---- other strategy types (NIFTY weekly unless stated) ----
     def o(sid, title, refs, family, clock, spot, legs, entry, **kw):

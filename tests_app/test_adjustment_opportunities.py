@@ -249,3 +249,18 @@ async def test_the_own_playbook_label(app_db_url, monkeypatch):
 async def test_an_impossible_id_is_not_found(app_db_url, bad):
     status, _ = await _call("POST", f"/api/adjustment-opportunities/{bad}/acted-on")
     assert status == NOT_FOUND
+
+
+async def test_t19_list_line_names_the_same_approach_and_cost_as_the_check(app_db_url, monkeypatch):
+    """ADR-221 (review MAJOR 1): the opportunities list draws a T-19 record with the approach, cost and unpriced count
+    stored when it opened, so the list line equals the check's flag line (the Compare's figure in both)."""
+    sid = await _clean(app_db_url, await _seeded(app_db_url, monkeypatch, "ADJ-43"))
+    first = await _check(sid)
+    flag = next(x for x in first["results"] if x["kind"] == "flag" and x["trigger_id"] == "T-19")
+    assert "cheapest adjustment that could be priced now: Close the tested spread, cost ₹" in flag["condition"]
+    rec = next(r for r in await _records(app_db_url, sid) if r.rule_id == "T-19")
+    assert rec.approach == "A-28" and rec.approach_cost is not None and rec.approach_cost > 0
+    assert f"₹{rec.approach_cost}" in flag["condition"]
+    g = _mine(await _inbox(), sid)[0]
+    listed = next(r for r in g["records"] if r["rule_id"] == "T-19")
+    assert listed["condition"] == flag["condition"]

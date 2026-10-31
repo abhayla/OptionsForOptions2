@@ -26,7 +26,7 @@ from ofo.strategy.stored_form import shown_name
 from pydantic import BaseModel, ConfigDict
 
 from ofo_app import playbook_store as store
-from ofo_app.adjustment_check import condition_line
+from ofo_app.adjustment_check import condition_line, condition_line_t19
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier, Money
 from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure
@@ -115,6 +115,9 @@ def _detail(s: store.Suggestion) -> Any:
 def _condition(s: store.Suggestion) -> Any:
     if s.cmp not in ("le", "ge", "lt") or s.trigger_id is None or s.value is None or s.threshold is None:
         return None
+    if s.trigger_id == "T-19" and s.approach is not None and s.approach_cost is not None:  # ADR-221: as the check
+        return condition_line_t19(s.label, format(s.value, "f"), format(s.threshold, "f"), s.approach,
+                                  s.approach_cost, s.unpriced)
     return condition_line(s.trigger_id, s.label, s.unit, format(s.value, "f"), format(s.threshold, "f"))
 
 

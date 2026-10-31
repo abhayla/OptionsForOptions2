@@ -44,7 +44,8 @@ from typing import Any, Final
 
 from ofo.adjustment import playbook_eval as pe
 from ofo.adjustment.approaches import Position
-from ofo.adjustment.compare import Cheapest, Column, MarginRead, cheapest_approach, offered_approaches
+from ofo.adjustment.compare import Cheapest, Column, MarginRead, cheapest_approach
+from ofo.adjustment.offered import offered_now
 from ofo.adjustment.strategy_type import strike_gap_of, type_of
 from ofo.engine import adjust_money
 from ofo.engine.legs import Action, Instrument, Leg
@@ -142,7 +143,7 @@ def _abs_delta(market: MarketInputs, symbol: str) -> Decimal | None:
 def cheapest_offered(body: Mapping | None, tracked: Tracked, market: MarketInputs, spot: Decimal | None,
                      rates: Any) -> Cheapest:
     """ADR-221: the cheapest approach ``body`` offers, every one built and priced by the Compare's own path."""
-    offered = offered_approaches(body)
+    offered = offered_now(body, tracked.adjustments_used)  # S-11: only exit and reduce at the limit
     if spot is None:  # nothing can be built without spot: none priceable (T-19 is withheld for no spot anyway)
         return cheapest_approach(offered, {}, market.chain)
     columns: dict[str, Column] = {}
@@ -187,7 +188,7 @@ def state_of(tracked: Tracked, market: MarketInputs, spot: SpotAnswer, margin: M
         max_loss=None if gross is None else _limit_value(gross.max_loss),
         max_profit=None if gross is None else _limit_value(gross.max_profit),
         margin=stated_margin, premium_left=left, adjustment_cost=cheap.cost, adjustment_approach=cheap.approach,
-        adjustment_cost_reason=cheap.reason, atm_iv=market.vol,
+        adjustment_cost_reason=cheap.reason, adjustment_unpriced=cheap.unpriced, atm_iv=market.vol,
         prev_close=(last.value if last is not None and last.value is not None and last.state is SourceState.STATED
                     else None),
         adjustments_used=tracked.adjustments_used, expiry_pnl_at_spot=expiry_pnl,
@@ -249,11 +250,16 @@ def condition_line(trigger_id: str, label: str | None, unit: str | None, value: 
         return line(trigger_id, None)
 
 
-def condition_line_t19(label: str | None, value: str, threshold: str, approach: str, cost: Decimal) -> Any:
-    """ADR-221: the T-19 line with the cheapest offered approach and its Compare cost; an approach or label the slot
-    refuses -> the plain condition line (fail visible, never a guessed name)."""
+def condition_line_t19(label: str | None, value: str, threshold: str, approach: str, cost: Decimal,  # noqa: PLR0913
+                       unpriced: int = 0) -> Any:
+    """ADR-221: the T-19 line with the cheapest approach that could be priced and its Compare cost, saying how many
+    offered approaches could not be priced (left out); an approach or label the slot refuses -> the plain condition
+    line (fail visible, never a guessed name). The check reply and the opportunities list both draw it here."""
+    slots = {"label": label if label is not None else "T-19", "value": value, "threshold": threshold,
+             "approach": approach, "cost": cost}
     try:
-        return render_explanation("adjust_condition_line_t19", label=label if label is not None else "T-19",
-                                  value=value, threshold=threshold, approach=approach, cost=cost)
+        if unpriced > 0:
+            return render_explanation("adjust_condition_line_t19_unpriced", **slots, count=unpriced)
+        return render_explanation("adjust_condition_line_t19", **slots)
     except (TypeError, ValueError):
         return condition_line("T-19", label, None, value, threshold)
