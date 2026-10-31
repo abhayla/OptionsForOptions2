@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "settings": [
+    {
+      "key": "pricing.risk_free_rate",
+      "group": "Pricing & Greeks",
+      "label": "Risk-free interest rate",
+      "unit": "fraction",
+      "type": "decimal",
+      "min": "0",
+      "max": "0.5",
+      "default": "0.065",
+      "what_it_changes": "The yearly interest rate used in option prices, Greeks, the forward and probability figures on every live screen (0.065 means 6.5%).",
+      "source": "ADR-056; was ofo_app/live_market.py LIVE_RATE"
+    }
+  ]
+}
