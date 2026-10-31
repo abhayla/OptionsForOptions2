@@ -1677,6 +1677,16 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
       for key, text in ADJUSTMENT_CRITERION_LABEL_TEXT.items()),
     *(ExplanationTemplate(f"adjust_cmp_lead_{key}", "values_seen", text)  # REQ-156 AC-3: each row's leader words
       for key, text in ADJUSTMENT_LEADER_LABEL_TEXT.items()),
+    # GC-ADJ2 step 6 (REQ-163 AC-1, AC-3, AC-2): the adjustment history's fixed words
+    ExplanationTemplate("adjust_history_paper_fill", "values_seen", "Paper - not sent to Zerodha"),
+    ExplanationTemplate("adjust_history_own_change", "values_seen", "Your own change"),
+    ExplanationTemplate("adjust_history_pending", "values_seen", "pending"),
+    ExplanationTemplate("adjust_history_no_plan_max", "values_seen", "No plan maximum is set for this strategy."),
+    ExplanationTemplate("adjust_history_fill_confirmed", "values_seen", "Filled - confirmed by Zerodha"),
+    ExplanationTemplate("adjust_history_fill_unconfirmed", "values_seen", "Not yet confirmed by Zerodha"),
+    ExplanationTemplate("adjust_history_fill_failed", "values_seen", "Zerodha's answer failed"),
+    ExplanationTemplate("adjust_history_col_fill", "values_seen", "Zerodha"),
+    ExplanationTemplate("adjust_history_no_option_leg", "values_seen", "No option leg is open, so no premium is left."),
 )
 
 EXPLANATIONS: Mapping[str, ExplanationTemplate] = MappingProxyType({t.id: t for t in _EXPLANATIONS})

@@ -36,6 +36,7 @@ from ofo_app.db import close_db, verify_pool_budget
 from ofo_app.routes import (
     adjustment,
     adjustment_check,
+    adjustment_history,
     adjustment_opportunities,
     adjustment_plan,
     broker,
@@ -107,6 +108,7 @@ def _mount_routes(app: FastAPI, config: BrokerConfig) -> None:
     app.include_router(adjustment.router)  # W-196: adjustment approaches (REQ-155)
     app.include_router(adjustment_plan.router)  # GC-ADJ2 4: the strategy plan sheet (REQ-161)
     app.include_router(adjustment_check.router)  # GC-ADJ2 1C: the playbook check (REQ-158 AC-5)
+    app.include_router(adjustment_history.router)  # GC-ADJ2 6: history + totals (REQ-163)
     app.include_router(adjustment_opportunities.router)  # GC-ADJ2 5: the opportunities inbox (REQ-162, REQ-112)
     app.include_router(playbooks.router)  # GC-ADJ2 2: playbooks (REQ-158)
     app.include_router(leg_edit.router)  # W-148: one leg edit, answered by the engine

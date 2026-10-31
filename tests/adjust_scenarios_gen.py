@@ -639,11 +639,15 @@ def day(text: str) -> datetime.date:
     return datetime.date.fromisoformat(text)
 
 
-def L(side: str, kind: str, strike: int | None, expiry: str, lots: int, entry: str | None = None) -> dict:
+def L(side: str, kind: str, strike: int | None, expiry: str, lots: int, entry: str | None = None,
+      opened_by: int | None = None) -> dict:
+    """``opened_by``: the adjustment number that opened this leg (REQ-163 history; absent = opened at entry)."""
     leg = {"side": side, "type": kind, "strike": None if strike is None else D(strike), "expiry": day(expiry),
            "lots": lots}
     if entry is not None:
         leg["entry"] = D(entry)
+    if opened_by is not None:
+        leg["opened_by"] = opened_by
     return leg
 
 
@@ -746,7 +750,8 @@ def build(spec: dict, pb: dict) -> dict:  # noqa: C901, PLR0912, PLR0915 - one r
         booked += b
         history.append({"adjustment": h["adjustment"], "side": h["side"], "type": h["type"], "strike": D(h["strike"]),
                         "expiry": day(h["expiry"]), "lots": h["lots"], "quantity": q, "entry": D(h["entry"]),
-                        "exit": D(h["exit"]), "booked": dec_text(b)})
+                        "exit": D(h["exit"]), "booked": dec_text(b),
+                        **({"opened_by": h["opened_by"]} if "opened_by" in h else {})})
     adjustments_used = spec.get("adjustments_used", len({h["adjustment"] for h in history}))
     open_cash = sum(-sign(leg["side"]) * leg["quantity"] * leg["entry"] for leg in legs if leg["type"] != "FUT")
     hist_cash = sum(-sign(h["side"]) * h["quantity"] * (h["entry"] - h["exit"]) for h in history)
@@ -985,8 +990,12 @@ def build(spec: dict, pb: dict) -> dict:  # noqa: C901, PLR0912, PLR0915 - one r
         "data_state": data_state,
         "position": {
             "entry": {"clock": entry_clock.isoformat(), "spot": entry_spot, "atm_iv": entry_atm},
-            "legs": [{k: leg[k] for k in ("side", "type", "strike", "expiry", "lots", "quantity", "entry", "tradingsymbol")}
+            "legs": [{k: leg[k] for k in ("side", "type", "strike", "expiry", "lots", "quantity", "entry", "tradingsymbol",
+                                          "opened_by") if k in leg}
                      for leg in legs],
+            # REQ-163: when each adjustment was placed (the seed places one batch per adjustment at this time)
+            **({"adjustment_times": {str(n): dt(t).isoformat() for n, t in spec["adjustment_times"].items()}}
+               if "adjustment_times" in spec else {}),
             "history": history, "booked_pnl": dec_text(booked), "adjustments_used": adjustments_used,
             "credit_received": credit_received,
             **({"charges_round_trip": spec["charges"]} if "charges" in spec else {}),
@@ -1129,21 +1138,25 @@ def scenarios() -> list[dict]:  # noqa: PLR0915 - a flat list of scenario specs
                      must_fire=["T-06"],
                      check=lambda v: _assert(Fraction(53, 100) <= -v["pnl_now"] / Fraction(D(v["expiry_metrics"]["max_loss"])) <= Fraction(57, 100),
                                              "ADJ-11 loss not ~55%")))
-    rolled = [L("BUY", "PE", 22800, N3, 2, "6.10"), L("SELL", "PE", 23000, N3, 2, "16.85"),
+    rolled = [L("BUY", "PE", 22800, N3, 2, "6.10", opened_by=2), L("SELL", "PE", 23000, N3, 2, "16.85", opened_by=2),
               L("SELL", "CE", 23450, N3, 2), L("BUY", "CE", 23650, N3, 2)]
     hist2 = [{"adjustment": 1, "side": "BUY", "type": "PE", "strike": 22400, "expiry": N3, "lots": 2, "entry": "10.45", "exit": "1.40"},
              {"adjustment": 1, "side": "SELL", "type": "PE", "strike": 22600, "expiry": N3, "lots": 2, "entry": "19.70", "exit": "3.25"},
-             {"adjustment": 2, "side": "BUY", "type": "PE", "strike": 22500, "expiry": N3, "lots": 2, "entry": "4.10", "exit": "0.60"},
-             {"adjustment": 2, "side": "SELL", "type": "PE", "strike": 22700, "expiry": N3, "lots": 2, "entry": "9.05", "exit": "1.15"}]
+             {"adjustment": 2, "side": "BUY", "type": "PE", "strike": 22500, "expiry": N3, "lots": 2, "entry": "4.10", "exit": "0.60",
+              "opened_by": 1},
+             {"adjustment": 2, "side": "SELL", "type": "PE", "strike": 22700, "expiry": N3, "lots": 2, "entry": "9.05", "exit": "1.15",
+              "opened_by": 1}]
     s.append(ic_spec("ADJ-12", "Two adjustments already used: only exit / reduce offered", ["S-11", "T-18", "P-03"],
                      "2026-11-02T10:30:00", "23300", legs=rolled, history=hist2, must_fire=["T-18"],
+                     adjustment_times={1: "2026-10-29T11:00:00", 2: "2026-10-30T11:00:00"},
                      must_situations=["S-11"]))
     hist1 = [{"adjustment": 1, "side": "BUY", "type": "PE", "strike": 22400, "expiry": N3, "lots": 2, "entry": "10.45", "exit": "1.40"},
              {"adjustment": 1, "side": "SELL", "type": "PE", "strike": 22600, "expiry": N3, "lots": 2, "entry": "19.70", "exit": "3.25"}]
-    rolled1 = [L("BUY", "PE", 22700, N3, 2, "6.10"), L("SELL", "PE", 22900, N3, 2, "16.85"),
+    rolled1 = [L("BUY", "PE", 22700, N3, 2, "6.10", opened_by=1), L("SELL", "PE", 22900, N3, 2, "16.85", opened_by=1),
                L("SELL", "CE", 23450, N3, 2), L("BUY", "CE", 23650, N3, 2)]
     s.append(ic_spec("ADJ-13", "After one adjustment with booked P&L: whole-trade numbers include it", ["F-74", "F-06"],
                      "2026-10-30T13:00:00", "23250", legs=rolled1, history=hist1,
+                     adjustment_times={1: "2026-10-29T11:00:00"},
                      notes=["Put spread rolled up 300 points on 29 Oct; booked P&L carries into max profit, max loss "
                             "and breakevens (F-74)."]))
     s.append(ic_spec("ADJ-14", "Premium left below 1 x adjustment cost (ADR-216)", ["T-19", "P-04"], "2026-11-02T15:00:00",

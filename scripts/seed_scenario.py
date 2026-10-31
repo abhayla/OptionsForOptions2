@@ -4,7 +4,8 @@ Run: ``python scripts/orchestrator/dev_run.py <worktree> python scripts/seed_sce
 DATABASE_URL to ofo_dev). Reads ``tests/fixtures/adjust_scenarios/<id>.json`` ``position`` and, through the app's own
 stores (``strategy_store.save_draft``, ``paper_store.place``; no raw write SQL), creates ONE paper strategy named
 "Scenario <id>" for the owner: the four current legs opened at the scenario's entry prices, and each history leg
-opened then exited at the scenario's entry / exit price, so the booked P&L equals ``position.booked_pnl``.
+opened and exited as the trade was placed (``placement_batches``: one entry batch, one batch per adjustment), so the
+booked P&L equals ``position.booked_pnl``.
 
 Refusals (nothing is read or written): APP_ENV set to anything but ``development`` / ``test`` (unset = the app's own
 default, development); a DATABASE_URL whose database is not exactly ``ofo_dev``; an id that is not a file in the
@@ -72,6 +73,32 @@ def booked(history: list[dict]) -> Decimal:
     return total
 
 
+def placement_batches(position: dict, clock: datetime.datetime) -> list[tuple[datetime.datetime, list[tuple]]]:
+    """The trade as it was placed: ONE entry batch at the entry clock (every leg with no ``opened_by``: history legs
+    and current legs never adjusted), then ONE batch per adjustment number at ``position.adjustment_times[n]``: that
+    adjustment's exits (history legs with ``adjustment`` n, at their exit price) then the legs it opened (history and
+    current legs with ``opened_by`` n, at their entry price). Each item is (side, leg, price, kind). A history whose
+    adjustment has no time, or times not after the entry clock and increasing, is refused."""
+    legs, history = position.get("legs") or [], position.get("history") or []
+    times = position.get("adjustment_times") or {}
+    numbers = sorted({int(h["adjustment"]) for h in history} | {int(x["opened_by"]) for x in legs + history
+                                                                  if "opened_by" in x})
+    at = {}
+    for n in numbers:
+        if str(n) not in times:
+            raise SeedRefused(f"REFUSED: adjustment {n} has no time in position.adjustment_times")
+        at[n] = datetime.datetime.fromisoformat(times[str(n)])
+    if [clock, *(at[n] for n in numbers)] != sorted({clock, *at.values()}):
+        raise SeedRefused("REFUSED: adjustment times must be after the entry clock and increasing")
+    opp = {"BUY": "SELL", "SELL": "BUY"}
+    batches = [(clock, [(x["side"], x, x["entry"], "open") for x in history + legs if "opened_by" not in x])]
+    for n in numbers:
+        exits = [(opp[h["side"]], h, h["exit"], "exit") for h in history if int(h["adjustment"]) == n]
+        opens = [(x["side"], x, x["entry"], "open") for x in history + legs if x.get("opened_by") == n]
+        batches.append((at[n], exits + opens))
+    return batches
+
+
 async def _contract_id(conn, leg: dict, underlying: str) -> int:
     from sqlalchemy import text  # noqa: PLC0415
     rows = (await conn.execute(
@@ -112,17 +139,12 @@ async def seed(scenario_id: str) -> int:
                        for leg in legs]
             stored = await strategy_store.save_draft(
                 db, OWNER_REF, await strategy_store.build_definition(db, underlying, choices), name)
-            hour = datetime.timedelta(hours=1)
             orders = []
-            for h in history:  # a closed leg: opened an hour before the entry clock, exited half an hour before it
-                cid = await _contract_id(db, h, underlying)
-                opp = "SELL" if h["side"] == "BUY" else "BUY"
-                orders.append(paper_store.NewOrder(cid, h["side"], int(h["quantity"]), Decimal(h["entry"]), "open",
-                                                   clock - 2 * hour))
-                orders.append(paper_store.NewOrder(cid, opp, int(h["quantity"]), Decimal(h["exit"]), "exit",
-                                                   clock - hour))
-            orders += [paper_store.NewOrder(c.contract_id, c.action.value, c.quantity, Decimal(leg["entry"]), "open",
-                                            clock) for c, leg in zip(choices, legs, strict=True)]
+            for at, batch in placement_batches(position, clock):  # one batch per real placement (REQ-163)
+                for side, leg, price, kind in batch:
+                    cid = (choices[legs.index(leg)].contract_id if leg in legs
+                           else await _contract_id(db, leg, underlying))
+                    orders.append(paper_store.NewOrder(cid, side, int(leg["quantity"]), Decimal(price), kind, at))
             await paper_store.place(db, OWNER_REF, stored.id, orders)
             await db.commit()
             return stored.id
