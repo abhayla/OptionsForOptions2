@@ -72,6 +72,8 @@ def _execute_route_edge(route: str, why: str) -> dict[tuple[str, str], str]:
 ROUTE_ORDER_EDGES: dict[str, dict[tuple[str, str], str]] = {
     # GC-ADJ2 1C: the playbook check reads plans and rule memory through playbook_store (its ownership check)
     "ofo_app.routes.adjustment_check": {**STRATEGY_STORE},
+    # GC-ADJ2 5: the opportunities inbox records outcomes through playbook_store (its strategy_store import)
+    "ofo_app.routes.adjustment_opportunities": {**STRATEGY_STORE},
     "ofo_app.routes.broker_status": _execute_route_edge(
         "broker_status", "the status route reuses the execute route's clock provider"),
     "ofo_app.routes.features": {**STRATEGY_STORE},

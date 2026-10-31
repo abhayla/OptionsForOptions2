@@ -1234,6 +1234,12 @@ _PLAYBOOK_TEMPLATES: tuple[MessageTemplate, ...] = (
     _gate("adjust_plan_no_playbook", _UI, 160, "No playbook matches this strategy's shape, so only the generic "
           "triggers and approaches apply.", "No plan was saved for this strategy.", "Saving a plan.",
           "Close this sheet; the generic triggers and approaches stay on."),
+    # GC-ADJ2 step 5 (REQ-112 AC-2/AC-4): a suggestion's outcome is written once; nothing is written on a refusal
+    _gate("suggestion_not_found", _UI, 170, "This adjustment opportunity was not found.",
+          "Nothing was changed.", "Recording what you did with it.", "Open Adjustment opportunities again."),
+    _gate("suggestion_not_open", _UI, 171, "This adjustment opportunity already has its outcome.",
+          "Nothing was changed; its outcome stays as it was.", "Recording another outcome for it.",
+          "Open Adjustment opportunities to see its outcome."),
 )
 
 _TEMPLATES = (_TEMPLATES + _TRIGGER_TEMPLATES + _GATE_TEMPLATES

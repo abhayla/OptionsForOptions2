@@ -82,8 +82,11 @@ async def test_adj02_flags_exactly_t01_t03_t09_with_the_system_wording(app_db_ur
                                                                        {"name": "Middle", "index": 1})
     assert body["playbook"]["source"] == "system" and body["playbook"]["status"] == "approved"
     flags = [x for x in body["results"] if x["kind"] == "flag"]
-    assert sorted((x["trigger_id"], x["value"][:6], x["threshold"], x["cmp"]) for x in flags) == [
-        ("T-01", "0.3415", "0.5", "le"), ("T-03", "0.4103", "0.35", "ge"), ("T-09", "2.7", "3", "le")]
+    # GC-ADJ2 step 5 item 1: rounded half-up to 4 places, as the fixture writes them (ADJ-02.json triggers_fired)
+    assert sorted((x["trigger_id"], x["value"], x["threshold"], x["cmp"]) for x in flags) == [
+        ("T-01", "0.3416", "0.5000", "le"), ("T-03", "0.4103", "0.3500", "ge"), ("T-09", "2.7000", "3.0000", "le")]
+    by_trigger = {x["trigger_id"]: x for x in flags}
+    assert by_trigger["T-01"]["condition"] == "T-01: 0.3416 at or below 0.5000"
     assert {x["wording"] for x in flags} == {"Adjustment opportunity detected"}
     assert all(x["reason"] for x in body["results"] if x["kind"] == "not_checked")
 
@@ -109,6 +112,7 @@ async def test_adj42_f71_already_true_at_entry_then_flags_after_a_clear_check(ap
     status, body = await _check("ADJ-42", sid)
     assert status == OK
     assert [x[0] for x in _by_kind(body, "already_true")] == ["T-01"] and _by_kind(body, "flag") == []
+    assert [x[3] for x in _by_kind(body, "already_true")] == ["le"]  # GC-ADJ2 step 5: cmp filled on already_true
     assert {x["wording"]["what_happened"] for x in body["results"] if x["kind"] == "already_true"} == {
         "Already true when tracking started."}
     async with app_db_url.begin() as conn:  # a later check found T-01 false (the memory the store writes, F-71)

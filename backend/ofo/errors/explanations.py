@@ -25,8 +25,8 @@ from types import MappingProxyType
 
 from ofo import wording as _wording
 
-from ofo.errors.gate_slots import PlaybookTypeName
-from ofo.errors.slots import SlotType, _require_exact
+from ofo.errors.gate_slots import PlaybookField, PlaybookTypeName
+from ofo.errors.slots import Count, SlotType, _require_exact
 from ofo.errors.templates import MARGIN_SHORTFALL_NEXT_ACTION, ZERODHA_BUSY_TEXT
 
 EXPLANATION_FIELDS: tuple[str, ...] = ("what_triggered", "values_seen", "rule")
@@ -1277,6 +1277,29 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("adjust_check_flag_system", "what_triggered", "Adjustment opportunity detected"),
     ExplanationTemplate("adjust_check_flag_user", "what_triggered", "Your rule was triggered"),
     ExplanationTemplate("adjust_check_type_name", "values_seen", "{name}", {"name": PlaybookTypeName}),
+    # GC-ADJ2 step 5 (REQ-112 AC-2/AC-6, REQ-162): suggestion outcomes, dismiss reasons and the inbox's fixed words
+    ExplanationTemplate("suggestion_outcome_open", "values_seen", "Open"),
+    ExplanationTemplate("suggestion_outcome_dismissed", "values_seen", "You dismissed this"),
+    ExplanationTemplate("suggestion_outcome_acted_on", "values_seen", "Acted on"),
+    ExplanationTemplate("suggestion_outcome_acted_on_paper", "values_seen", "Acted on - Paper - not sent to Zerodha"),
+    ExplanationTemplate("suggestion_outcome_completed", "values_seen", "Completed"),
+    ExplanationTemplate("suggestion_outcome_partly_completed", "values_seen", "Partly completed"),
+    ExplanationTemplate("suggestion_outcome_lapsed", "values_seen", "Lapsed"),
+    ExplanationTemplate("suggestion_lapsed_condition_stopped", "values_seen", "The condition stopped holding"),
+    ExplanationTemplate("suggestion_lapsed_strategy_closed", "values_seen", "The strategy closed"),
+    ExplanationTemplate("suggestion_dismiss_expected_within_plan", "values_seen", "Expected and within my plan"),
+    ExplanationTemplate("suggestion_dismiss_will_act_later", "values_seen", "I will act later"),
+    ExplanationTemplate("suggestion_dismiss_not_relevant", "values_seen", "Not relevant"),
+    ExplanationTemplate("suggestion_dismiss_other", "values_seen", "Other"),
+    ExplanationTemplate("suggestion_group_count", "what_triggered", "{count} adjustment conditions triggered",
+                        {"count": Count}),
+    ExplanationTemplate("suggestion_inbox_empty", "values_seen", "No adjustment opportunities"),
+    ExplanationTemplate("adjust_condition_line", "values_seen", "{trigger}: {value} {cmp} {threshold}",
+                        {"trigger": PlaybookField, "value": PlaybookField, "cmp": Explained,
+                         "threshold": PlaybookField}),
+    ExplanationTemplate("adjust_cmp_le", "values_seen", "at or below"),
+    ExplanationTemplate("adjust_cmp_ge", "values_seen", "at or above"),
+    ExplanationTemplate("adjust_cmp_lt", "values_seen", "below"),
     ExplanationTemplate("adjust_spot_from_feed", "values_seen", "Spot from the live feed"),
     ExplanationTemplate("adjust_spot_from_rest_quote", "values_seen", "Spot from a REST quote"),
     ExplanationTemplate("adjust_spot_from_last_close", "values_seen", "Spot from the last close"),

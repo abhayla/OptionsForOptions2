@@ -57,6 +57,10 @@ class TrackedUnreadable(Exception):
     """The strategy exists for this user but its open legs cannot be read as option legs (named, never guessed)."""
 
 
+class TrackedExited(TrackedUnreadable):
+    """Every leg of the strategy is exited (no open leg): the strategy closed (GC-ADJ2 step 5, REQ-112 AC-2 lapse)."""
+
+
 def index_name(underlying: str) -> str | None:
     """``NSE:NIFTY 50`` / ``BSE:SENSEX`` from the one home of the index rows; None for any other underlying."""
     for (segment, _token), (name, owner) in INDEX_ROWS.items():
@@ -92,7 +96,7 @@ async def read_tracked(strategy_id: int, rates: ChargeRates | None) -> Tracked |
         legs.append(PositionLeg("BUY" if p.net_quantity > 0 else "SELL", c.instrument_type, c.strike, c.expiry,
                                 abs(p.net_quantity) // c.lot_size, p.average, lc.broker_refs[0].broker_symbol))
     if not legs or underlying is None or lot is None:
-        raise TrackedUnreadable("no open option leg")
+        raise TrackedExited("no open option leg")
     paid: Decimal | None = None
     if rates is not None:
         fills = [PaperFill(o.order.kind, o.order.side, o.order.quantity, o.order.price, True) for o in orders]
