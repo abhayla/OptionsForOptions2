@@ -24,7 +24,8 @@ from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS
 
 from ofo.errors.gate_slots import (
     Clock, ContractSymbol, DataHealthState, DataInputName, Date, DisplayRupees, ExecutionStatusName, LegContract, LegRef, OrderRef,
-    RiskRows, Rupees, ShapeFamilies, Strikes, Symbol, UnitsByContract, VersionStateName, VersionStates, WorstCase,
+    PlaybookField, PlaybookName, PlaybookTypeName, RiskRows, Rupees, ShapeFamilies, Strikes, Symbol, UnitsByContract,
+    VersionStateName, VersionStates, WorstCase,
 )
 from ofo.errors.slots import Code, Count, ExternalText, Instrument, Int, Money, SlotType, Time, Underlying
 
@@ -1148,10 +1149,108 @@ _ADJUSTMENT_TEMPLATES: tuple[MessageTemplate, ...] = (
           _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {"expiry": Date}),
 )
 
-_TEMPLATES = (_TEMPLATES + _GATE_TEMPLATES + _SEND_TEMPLATES + _RECONCILIATION_TEMPLATES + _PART4_TEMPLATES
+# GC-ADJ2 step 1B (REQ-159 AC-2, REQ-160 AC-3, F-71): why a playbook trigger was not checked, why no suggestion is
+# made, and the already-true state. Wording reuses the scenario library's reason sentences. Decision support only.
+_TRIG_NOT = "This rule is not checked now; it never counts as passed."
+_TRIG_BLOCKED = "This rule."
+_TRIG_NEXT = "Nothing to do; it is checked again at the next check."
+_TRIG_WITHHELD = "No rule of this playbook is checked until the data is back."
+
+
+def _trig(name: str, number: int, what: str, slots: Mapping[str, type[SlotType]] | None = None) -> MessageTemplate:
+    return _gate(f"adjust_trigger_{name}", _UI, number, what, _TRIG_NOT, _TRIG_BLOCKED, _TRIG_NEXT, slots)
+
+
+_TRIGGER_TEMPLATES: tuple[MessageTemplate, ...] = (
+    _trig("no_stage_value", 114, "No value in this stage."),
+    _trig("no_stage", 115, "No stage covers {days} days left.", {"days": Int}),
+    _trig("no_expiry_values", 116, "This trigger has no values for this expiry type."),
+    _trig("no_short_leg", 117, "No short leg."),
+    _trig("missing_spot", 118, "Spot not available."),
+    _trig("missing_short_delta", 119, "Delta of a short leg not available."),
+    _trig("missing_short_price", 120, "Price of a short leg not available."),
+    _trig("missing_pnl", 121, "P&L not available (a leg unpriced)."),
+    _trig("missing_expiry_pnl", 122, "Expiry P&L at spot not available (multi-expiry: no exact breakeven)."),
+    _trig("missing_max_loss", 123, "Max loss not available."),
+    _trig("missing_max_profit", 124, "Max profit not available."),
+    _trig("max_loss_not_finite", 125, "Max loss not finite (unlimited or multi-expiry)."),
+    _trig("max_profit_not_finite", 126, "Max profit not finite (unlimited or multi-expiry)."),
+    _trig("missing_margin", 127, "Margin not available."),
+    _trig("margin_not_positive", 128, "Margin not positive."),
+    _trig("missing_premium_left", 129, "Premium left not available (a leg unpriced)."),
+    _trig("net_long_premium", 130, "No premium to earn (net long premium)."),
+    _trig("missing_adjustment_cost", 131, "Adjustment cost not available."),
+    _trig("cost_not_positive", 132, "Adjustment cost not positive."),
+    _trig("missing_atm_iv", 133, "ATM IV not available."),
+    _trig("missing_entry_atm_iv", 134, "Entry ATM IV not available."),
+    _trig("missing_prev_close", 135, "Previous close not available."),
+    _trig("prev_close_not_positive", 136, "Previous close not positive."),
+    _trig("missing_day_open", 137, "Day open not available."),
+    _trig("gap_after_open", 138, "The gap at the open is checked only until 09:30."),
+    _trig("missing_clock", 139, "Clock time not available."),
+    _trig("missing_days_left", 140, "Days left not available."),
+    _trig("missing_adjustments_used", 141, "Adjustments used not available."),
+    _trig("missing_max_adjustments", 142, "Maximum adjustments not stated in the playbook."),
+    _trig("t14_pending", 143, "Loss-from-a-1%-move formula not settled; defined in the GC-ADJ1 build"),
+    _trig("switched_off", 144, "This trigger is switched off in this playbook."),
+    _trig("greyed", 145, "This trigger does not apply to this strategy type."),
+    _trig("data_unavailable", 146, "The data this trigger needs is not available."),
+    _trig("unknown", 147, "Unknown trigger: it is not checked."),
+    _trig("not_evaluated", 148, "This trigger is not checked in this version."),
+    _gate("adjust_trigger_withheld_stale", _UI, 149, "No suggestion: prices stale or missing.", _TRIG_WITHHELD,
+          "Every rule of this playbook.", "Wait for fresh prices.", {}),
+    _gate("adjust_trigger_withheld_fresh_unknown", _UI, 150, "No suggestion: price freshness not available.",
+          _TRIG_WITHHELD, "Every rule of this playbook.", "Wait for fresh prices.", {}),
+    _gate("adjust_trigger_withheld_no_spot", _UI, 151, "No suggestion: spot not available.", _TRIG_WITHHELD,
+          "Every rule of this playbook.", "Wait for the spot price to come back.", {}),
+    _gate("adjust_trigger_already_true", _UI, 152, "Already true when tracking started.",
+          "It is shown, not flagged, until a check finds it false.", "Nothing.",
+          "Watch it: it flags if it clears and then comes back.", {}),
+)
+
+# GC-ADJ2 step 1A (REQ-158 AC-3, AC-6): the playbook store's refusals. Nothing is written on any of them.
+_PB_NOT_SAVED = "Nothing was saved; your playbooks are as they were."
+_PB_BLOCKED = "Saving this playbook."
+_PLAYBOOK_TEMPLATES: tuple[MessageTemplate, ...] = (
+    _gate("playbook_name_taken", _UI, 153, "A playbook named {name} already exists for {type}.",
+          _PB_NOT_SAVED, _PB_BLOCKED, "Type another name for this playbook.",
+          {"name": PlaybookName, "type": PlaybookTypeName}),
+    _gate("system_playbook_save_in_place", _UI, 154, "A system playbook can only be saved as a new playbook.",
+          _PB_NOT_SAVED, _PB_BLOCKED, "Save it as a new playbook with its own name."),
+    _gate("playbook_version_conflict", _UI, 155, "This playbook was changed since you opened it.",
+          _PB_NOT_SAVED, _PB_BLOCKED, "Open the playbook again, then make your change."),
+    _gate("playbook_not_found", _UI, 156, "This playbook was not found.",
+          "Nothing was changed.", "Opening or changing this playbook.", "Pick a playbook from your list."),
+    _gate("playbook_body_invalid", _UI, 157, "The playbook value {field} is not valid.",
+          _PB_NOT_SAVED, _PB_BLOCKED, "Correct that value, then save again.", {"field": PlaybookField}),
+    # GC-ADJ2 step 2 (REQ-159 AC-1): the stages of one expiry kind leave a gap or overlap; the days and stage names
+    _gate("playbook_stage_overlap", _UI, 158, "Days {from_day} to {to_day} are in both {first} and {second} "
+          "({expiry} expiries).", _PB_NOT_SAVED, _PB_BLOCKED, "Change the days so each day is in one stage only.",
+          {"from_day": Count, "to_day": Count, "first": PlaybookName, "second": PlaybookName,
+           "expiry": PlaybookField}),
+    _gate("playbook_stage_gap", _UI, 159, "Days {from_day} to {to_day} are in no stage ({expiry} expiries).",
+          _PB_NOT_SAVED, _PB_BLOCKED, "Add a stage for those days, or stretch a stage over them.",
+          {"from_day": Count, "to_day": Count, "expiry": PlaybookField}),
+    # GC-ADJ2 step 4 (REQ-161 AC-4): a shape that maps to no playbook gets the generic triggers and approaches only
+    _gate("adjust_plan_no_playbook", _UI, 160, "No playbook matches this strategy's shape, so only the generic "
+          "triggers and approaches apply.", "No plan was saved for this strategy.", "Saving a plan.",
+          "Close this sheet; the generic triggers and approaches stay on."),
+    # GC-ADJ2 step 5 (REQ-112 AC-2/AC-4): a suggestion's outcome is written once; nothing is written on a refusal
+    _gate("suggestion_not_found", _UI, 170, "This adjustment opportunity was not found.",
+          "Nothing was changed.", "Recording what you did with it.", "Open Adjustment opportunities again."),
+    _gate("suggestion_not_open", _UI, 171, "This adjustment opportunity already has its outcome.",
+          "Nothing was changed; its outcome stays as it was.", "Recording another outcome for it.",
+          "Open Adjustment opportunities to see its outcome."),
+    # GC-ADJ2 step 3 (REQ-160 AC-3): a strategy of the tested type whose prices did not arrive within the read limit
+    _gate("adjust_test_read_timed_out", _UI, 172, "Prices for this strategy did not arrive in time.",
+          _TRIG_NOT, _TRIG_BLOCKED, "Test again in a moment."),
+)
+
+_TEMPLATES = (_TEMPLATES + _TRIGGER_TEMPLATES + _GATE_TEMPLATES
+              + _SEND_TEMPLATES + _RECONCILIATION_TEMPLATES + _PART4_TEMPLATES
               + _BOUNDARY_TEMPLATES + _BROKER_LOGIN_TEMPLATES + _STRATEGY_DRAFT_TEMPLATES + _FREEZE_TEMPLATES
               + _MARGIN_GATE_TEMPLATES + _ORDER_PATH_TEMPLATES + _READY_MADE_TEMPLATES + _LEG_EDIT_TEMPLATES
-              + _ADJUSTMENT_TEMPLATES)
+              + _ADJUSTMENT_TEMPLATES + _PLAYBOOK_TEMPLATES)
 
 
 #: Read-only public view of the catalogue (for the CI scan and for callers listing templates).
@@ -1199,6 +1298,7 @@ def _make_render(token: object) -> Callable[..., UserFacingError]:
             raise ValueError(f"template {template_id!r} got unexpected slot(s): {sorted(extra)}")
 
         formatted: dict[str, str] = {}
+        user_text: list[str] = []
         for name, slot_type in slot_types:
             value = slots[name]
             slot_type.validate(value)
@@ -1206,6 +1306,8 @@ def _make_render(token: object) -> Callable[..., UserFacingError]:
             if type(text) is not str:
                 raise TypeError(f"slot {name!r} formatter returned {type(text).__name__}, not str")
             formatted[name] = text
+            if getattr(slot_type, "user_text", False) is True:  # the user's own words: masked for the scan only
+                user_text.append(value)  # type: ignore[arg-type] - validate() proved it a str
 
         parts = {name: text.format(**formatted) for name, text in zip(_PART_NAMES, part_texts)}
 
@@ -1216,7 +1318,8 @@ def _make_render(token: object) -> Callable[..., UserFacingError]:
         # The four-part, Latin-letter and ADR-003/Q226/Q230 wording checks run INSIDE the builder
         # (round 6, Q230), on the FINISHED text, so a slot value or formatter that combines with
         # fixed template text into advice wording is refused there, whatever route reached it.
-        return build(token, error_class=error_class, code=code, external=external, **parts)
+        return build(token, error_class=error_class, code=code, external=external, user_text=tuple(user_text),
+                     **parts)
 
     return render
 

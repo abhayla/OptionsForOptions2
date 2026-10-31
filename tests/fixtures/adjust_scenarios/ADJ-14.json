@@ -1,6 +1,6 @@
 {
  "id": "ADJ-14",
- "title": "Premium left below 2 x adjustment cost",
+ "title": "Premium left below 1 x adjustment cost (ADR-216)",
  "group": "IC weekly, NIFTY 2 lots",
  "refs": [
   "T-19",
@@ -1797,7 +1797,7 @@
    {
     "id": "T-19",
     "value": "0.5212",
-    "limit": "2.0000",
+    "limit": "1.0000",
     "cmp": "le"
    },
    {

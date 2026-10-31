@@ -1026,6 +1026,189 @@
         "title": "AdjustWholeOut",
         "type": "object"
       },
+      "AdjustmentCheckOut": {
+        "additionalProperties": false,
+        "properties": {
+          "playbook": {
+            "$ref": "#/components/schemas/CheckPlaybookOut"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/CheckResultOut"
+            },
+            "title": "Results",
+            "type": "array"
+          },
+          "stage": {
+            "$ref": "#/components/schemas/CheckStageOut"
+          },
+          "strategy_id": {
+            "title": "Strategy Id",
+            "type": "integer"
+          },
+          "strategy_type": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Strategy Type"
+          },
+          "type_name": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type Name"
+          },
+          "withheld": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Withheld"
+          }
+        },
+        "required": [
+          "strategy_id",
+          "strategy_type",
+          "type_name",
+          "playbook",
+          "stage",
+          "withheld",
+          "results"
+        ],
+        "title": "AdjustmentCheckOut",
+        "type": "object"
+      },
+      "AdjustmentHistoryOut": {
+        "additionalProperties": false,
+        "properties": {
+          "fill_column_text": {
+            "title": "Fill Column Text"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/HistoryRowOut"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "strategy_id": {
+            "title": "Strategy Id",
+            "type": "integer"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/HistoryTotalsOut"
+          }
+        },
+        "required": [
+          "strategy_id",
+          "fill_column_text",
+          "rows",
+          "totals"
+        ],
+        "title": "AdjustmentHistoryOut",
+        "type": "object"
+      },
+      "AdjustmentPlanOut": {
+        "additionalProperties": false,
+        "properties": {
+          "generic": {
+            "title": "Generic",
+            "type": "boolean"
+          },
+          "generic_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generic Text"
+          },
+          "labels": {
+            "patternProperties": {
+              "^[A-Za-z0-9_\\-.]{1,64}$": {}
+            },
+            "title": "Labels",
+            "type": "object"
+          },
+          "plan": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlanOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "playbooks": {
+            "items": {
+              "$ref": "#/components/schemas/PlanPlaybookOut"
+            },
+            "title": "Playbooks",
+            "type": "array"
+          },
+          "prefill": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PrefillOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "strategy_id": {
+            "title": "Strategy Id",
+            "type": "integer"
+          },
+          "type": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type"
+          },
+          "type_name": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type Name"
+          }
+        },
+        "required": [
+          "strategy_id",
+          "type",
+          "type_name",
+          "generic",
+          "generic_text",
+          "playbooks",
+          "plan",
+          "prefill",
+          "labels"
+        ],
+        "title": "AdjustmentPlanOut",
+        "type": "object"
+      },
       "AlertOut": {
         "additionalProperties": false,
         "properties": {
@@ -1967,6 +2150,233 @@
         "title": "ChargesBreakdownOut",
         "type": "object"
       },
+      "CheckPlaybookOut": {
+        "additionalProperties": false,
+        "properties": {
+          "draft": {
+            "title": "Draft",
+            "type": "boolean"
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "source": {
+            "enum": [
+              "plan",
+              "active",
+              "system",
+              "none"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "approved",
+                  "draft"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          }
+        },
+        "required": [
+          "source",
+          "id",
+          "status",
+          "draft"
+        ],
+        "title": "CheckPlaybookOut",
+        "type": "object"
+      },
+      "CheckResultOut": {
+        "additionalProperties": false,
+        "properties": {
+          "cmp": {
+            "anyOf": [
+              {
+                "enum": [
+                  "le",
+                  "ge",
+                  "lt"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cmp"
+          },
+          "condition": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Condition"
+          },
+          "kind": {
+            "enum": [
+              "flag",
+              "not_checked",
+              "already_true"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "rule_id": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Rule Id",
+            "type": "string"
+          },
+          "suggestion_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggestion Id"
+          },
+          "threshold": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Threshold"
+          },
+          "trigger_id": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Trigger Id",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          },
+          "wording": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wording"
+          }
+        },
+        "required": [
+          "kind",
+          "rule_id",
+          "trigger_id",
+          "cmp",
+          "value",
+          "threshold",
+          "reason",
+          "wording"
+        ],
+        "title": "CheckResultOut",
+        "type": "object"
+      },
+      "CheckStageOut": {
+        "additionalProperties": false,
+        "properties": {
+          "index": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Index"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          }
+        },
+        "required": [
+          "name",
+          "index"
+        ],
+        "title": "CheckStageOut",
+        "type": "object"
+      },
+      "ClockOut": {
+        "additionalProperties": false,
+        "properties": {
+          "hour": {
+            "title": "Hour",
+            "type": "integer"
+          },
+          "minute": {
+            "title": "Minute",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "hour",
+          "minute"
+        ],
+        "title": "ClockOut",
+        "type": "object"
+      },
       "ColumnOut": {
         "additionalProperties": false,
         "properties": {
@@ -2244,6 +2654,62 @@
         "title": "CostOut",
         "type": "object"
       },
+      "CountOut": {
+        "additionalProperties": false,
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "outcome": {
+            "enum": [
+              "open",
+              "dismissed",
+              "acted_on",
+              "completed",
+              "partly_completed",
+              "lapsed"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text"
+          }
+        },
+        "required": [
+          "outcome",
+          "text",
+          "count"
+        ],
+        "title": "CountOut",
+        "type": "object"
+      },
+      "CreateIn": {
+        "additionalProperties": false,
+        "properties": {
+          "body": {
+            "additionalProperties": true,
+            "title": "Body",
+            "type": "object"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "name",
+          "body"
+        ],
+        "title": "CreateIn",
+        "type": "object"
+      },
       "CurveOut": {
         "additionalProperties": false,
         "description": "REQ-083 AC-1/AC-3: one view's curve over the shared levels; unavailable -> no points and the reason.",
@@ -2377,25 +2843,6 @@
           "preferences"
         ],
         "title": "DefinitionOut",
-        "type": "object"
-      },
-      "DeletedOut": {
-        "additionalProperties": false,
-        "properties": {
-          "id": {
-            "title": "Id",
-            "type": "integer"
-          },
-          "revision": {
-            "title": "Revision",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "id",
-          "revision"
-        ],
-        "title": "DeletedOut",
         "type": "object"
       },
       "DepthLevelOut": {
@@ -2663,6 +3110,44 @@
           "disconnected"
         ],
         "title": "DisconnectOut",
+        "type": "object"
+      },
+      "DismissIn": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "expected_within_plan",
+                  "will_act_later",
+                  "not_relevant",
+                  "other"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "title": "DismissIn",
+        "type": "object"
+      },
+      "DuplicateIn": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "DuplicateIn",
         "type": "object"
       },
       "EditIn": {
@@ -3732,6 +4217,63 @@
         "title": "GreeksOut",
         "type": "object"
       },
+      "GroupOut": {
+        "additionalProperties": false,
+        "properties": {
+          "group": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Group",
+            "type": "string"
+          },
+          "has_open": {
+            "title": "Has Open",
+            "type": "boolean"
+          },
+          "label": {
+            "title": "Label"
+          },
+          "records": {
+            "items": {
+              "$ref": "#/components/schemas/OpportunityOut"
+            },
+            "title": "Records",
+            "type": "array"
+          },
+          "shown_at": {
+            "format": "date-time",
+            "title": "Shown At",
+            "type": "string"
+          },
+          "strategy_id": {
+            "title": "Strategy Id",
+            "type": "integer"
+          },
+          "strategy_name": {
+            "title": "Strategy Name"
+          },
+          "summary": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          }
+        },
+        "required": [
+          "group",
+          "strategy_id",
+          "strategy_name",
+          "shown_at",
+          "label",
+          "summary",
+          "has_open",
+          "records"
+        ],
+        "title": "GroupOut",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -3772,6 +4314,54 @@
         "title": "HealthOut",
         "type": "object"
       },
+      "HistoryOrderOut": {
+        "additionalProperties": false,
+        "properties": {
+          "contract_text": {
+            "title": "Contract Text"
+          },
+          "kind": {
+            "enum": [
+              "open",
+              "add",
+              "exit",
+              "settle",
+              "stop"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "price": {
+            "title": "Price",
+            "type": "string"
+          },
+          "price_text": {
+            "title": "Price Text"
+          },
+          "quantity": {
+            "title": "Quantity",
+            "type": "integer"
+          },
+          "side": {
+            "enum": [
+              "BUY",
+              "SELL"
+            ],
+            "title": "Side",
+            "type": "string"
+          }
+        },
+        "required": [
+          "side",
+          "contract_text",
+          "quantity",
+          "price",
+          "price_text",
+          "kind"
+        ],
+        "title": "HistoryOrderOut",
+        "type": "object"
+      },
       "HistoryOut": {
         "additionalProperties": false,
         "properties": {
@@ -3787,6 +4377,455 @@
           "entries"
         ],
         "title": "HistoryOut",
+        "type": "object"
+      },
+      "HistoryRowOut": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "booked": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked"
+          },
+          "booked_pending": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked Pending"
+          },
+          "booked_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked Text"
+          },
+          "cash": {
+            "title": "Cash",
+            "type": "string"
+          },
+          "cash_text": {
+            "title": "Cash Text"
+          },
+          "charges": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges"
+          },
+          "fill": {
+            "enum": [
+              "paper",
+              "confirmed",
+              "unconfirmed",
+              "failed"
+            ],
+            "title": "Fill",
+            "type": "string"
+          },
+          "fill_text": {
+            "title": "Fill Text"
+          },
+          "number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Number"
+          },
+          "orders": {
+            "items": {
+              "$ref": "#/components/schemas/HistoryOrderOut"
+            },
+            "title": "Orders",
+            "type": "array"
+          },
+          "rule_id": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rule Id"
+          },
+          "step": {
+            "enum": [
+              "entry",
+              "adjustment",
+              "settle",
+              "stop"
+            ],
+            "title": "Step",
+            "type": "string"
+          },
+          "why_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Why Text"
+          }
+        },
+        "required": [
+          "step",
+          "number",
+          "at",
+          "orders",
+          "cash",
+          "cash_text",
+          "booked",
+          "booked_text",
+          "booked_pending",
+          "charges",
+          "rule_id",
+          "why_text",
+          "fill",
+          "fill_text"
+        ],
+        "title": "HistoryRowOut",
+        "type": "object"
+      },
+      "HistoryTotalsOut": {
+        "additionalProperties": false,
+        "properties": {
+          "adjustments_max": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Adjustments Max"
+          },
+          "adjustments_used": {
+            "title": "Adjustments Used",
+            "type": "integer"
+          },
+          "booked": {
+            "title": "Booked",
+            "type": "string"
+          },
+          "booked_text": {
+            "title": "Booked Text"
+          },
+          "charges": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges"
+          },
+          "charges_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "rates_unavailable",
+                  "not_priced"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges Reason"
+          },
+          "charges_reason_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges Reason Text"
+          },
+          "charges_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges Text"
+          },
+          "credit": {
+            "title": "Credit",
+            "type": "string"
+          },
+          "credit_text": {
+            "title": "Credit Text"
+          },
+          "max_reason": {
+            "anyOf": [
+              {
+                "const": "no_plan_max",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Reason"
+          },
+          "max_reason_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Reason Text"
+          },
+          "open_pnl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Open Pnl"
+          },
+          "open_pnl_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Open Pnl Text"
+          },
+          "open_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "pending",
+                  "prices",
+                  "no_option_leg",
+                  "net_long_premium"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Open Reason"
+          },
+          "open_reason_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Open Reason Text"
+          },
+          "pnl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pnl"
+          },
+          "pnl_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pnl Text"
+          },
+          "premium_left": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Premium Left"
+          },
+          "premium_left_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Premium Left Text"
+          },
+          "premium_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "pending",
+                  "prices",
+                  "no_option_leg",
+                  "net_long_premium"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Premium Reason"
+          },
+          "premium_reason_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Premium Reason Text"
+          },
+          "prices_reason": {
+            "anyOf": [
+              {
+                "const": "prices_not_live",
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "contract_retired",
+                  "contract_delisted",
+                  "token_reassigned",
+                  "contract_missing"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prices Reason"
+          },
+          "prices_reason_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prices Reason Text"
+          }
+        },
+        "required": [
+          "pnl",
+          "pnl_text",
+          "booked",
+          "booked_text",
+          "open_pnl",
+          "open_pnl_text",
+          "credit",
+          "credit_text",
+          "premium_left",
+          "premium_left_text",
+          "prices_reason",
+          "prices_reason_text",
+          "open_reason",
+          "open_reason_text",
+          "premium_reason",
+          "premium_reason_text",
+          "adjustments_used",
+          "adjustments_max",
+          "max_reason",
+          "max_reason_text",
+          "charges",
+          "charges_text",
+          "charges_reason",
+          "charges_reason_text"
+        ],
+        "title": "HistoryTotalsOut",
+        "type": "object"
+      },
+      "InboxOut": {
+        "additionalProperties": false,
+        "properties": {
+          "counts": {
+            "items": {
+              "$ref": "#/components/schemas/CountOut"
+            },
+            "title": "Counts",
+            "type": "array"
+          },
+          "dismiss_reasons": {
+            "items": {
+              "$ref": "#/components/schemas/ReasonOut"
+            },
+            "title": "Dismiss Reasons",
+            "type": "array"
+          },
+          "empty_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Empty Text"
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/GroupOut"
+            },
+            "title": "Groups",
+            "type": "array"
+          }
+        },
+        "required": [
+          "groups",
+          "counts",
+          "empty_text",
+          "dismiss_reasons"
+        ],
+        "title": "InboxOut",
         "type": "object"
       },
       "IndexOut": {
@@ -3912,6 +4951,82 @@
           "last_price_at"
         ],
         "title": "IndicesOut",
+        "type": "object"
+      },
+      "LabelOut": {
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Key",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text"
+          }
+        },
+        "required": [
+          "key",
+          "text"
+        ],
+        "title": "LabelOut",
+        "type": "object"
+      },
+      "LabelsOut": {
+        "additionalProperties": false,
+        "properties": {
+          "approaches": {
+            "items": {
+              "$ref": "#/components/schemas/LabelOut"
+            },
+            "title": "Approaches",
+            "type": "array"
+          },
+          "day_actions": {
+            "items": {
+              "$ref": "#/components/schemas/LabelOut"
+            },
+            "title": "Day Actions",
+            "type": "array"
+          },
+          "day_kinds": {
+            "items": {
+              "$ref": "#/components/schemas/LabelOut"
+            },
+            "title": "Day Kinds",
+            "type": "array"
+          },
+          "guards": {
+            "items": {
+              "$ref": "#/components/schemas/LabelOut"
+            },
+            "title": "Guards",
+            "type": "array"
+          },
+          "no_values": {
+            "title": "No Values"
+          },
+          "past_note": {
+            "title": "Past Note"
+          },
+          "summary": {
+            "items": {
+              "$ref": "#/components/schemas/LabelOut"
+            },
+            "title": "Summary",
+            "type": "array"
+          }
+        },
+        "required": [
+          "approaches",
+          "day_kinds",
+          "day_actions",
+          "past_note",
+          "summary",
+          "guards",
+          "no_values"
+        ],
+        "title": "LabelsOut",
         "type": "object"
       },
       "LegEditIn": {
@@ -4466,6 +5581,124 @@
           "rows"
         ],
         "title": "OpenInterestOut",
+        "type": "object"
+      },
+      "OpportunityOut": {
+        "additionalProperties": false,
+        "properties": {
+          "can_act": {
+            "title": "Can Act",
+            "type": "boolean"
+          },
+          "condition": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Condition"
+          },
+          "detail": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "outcome": {
+            "enum": [
+              "open",
+              "dismissed",
+              "acted_on",
+              "completed",
+              "partly_completed",
+              "lapsed"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "outcome_text": {
+            "title": "Outcome Text"
+          },
+          "rule_id": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Rule Id",
+            "type": "string"
+          },
+          "shown_at": {
+            "format": "date-time",
+            "title": "Shown At",
+            "type": "string"
+          },
+          "stage": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stage"
+          },
+          "threshold": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Threshold"
+          },
+          "trigger_id": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trigger Id"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "id",
+          "rule_id",
+          "trigger_id",
+          "stage",
+          "value",
+          "threshold",
+          "condition",
+          "shown_at",
+          "outcome",
+          "outcome_text",
+          "detail",
+          "can_act"
+        ],
+        "title": "OpportunityOut",
         "type": "object"
       },
       "OutcomeRequest": {
@@ -6855,6 +8088,210 @@
         "title": "PlacedLegOut",
         "type": "object"
       },
+      "PlanIn": {
+        "additionalProperties": false,
+        "description": "Every sheet value arrives as the text typed (the browser forms no number, ADR-008): percents as decimal text,\nmax adjustments as digits, the time exit as ``HH:MM``; each is checked here and names its field when not valid.",
+        "properties": {
+          "max_adjustments": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Adjustments"
+          },
+          "playbook_id": {
+            "title": "Playbook Id",
+            "type": "integer"
+          },
+          "stop": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target"
+          },
+          "time_exit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Exit"
+          }
+        },
+        "required": [
+          "playbook_id"
+        ],
+        "title": "PlanIn",
+        "type": "object"
+      },
+      "PlanOut": {
+        "additionalProperties": false,
+        "properties": {
+          "accepted_at": {
+            "format": "date-time",
+            "title": "Accepted At",
+            "type": "string"
+          },
+          "max_adjustments": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Adjustments"
+          },
+          "playbook_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Playbook Id"
+          },
+          "playbook_name": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Playbook Name"
+          },
+          "stop": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop"
+          },
+          "stop_words": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop Words"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target"
+          },
+          "target_words": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Words"
+          },
+          "time_exit": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ClockOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "playbook_id",
+          "playbook_name",
+          "target",
+          "stop",
+          "max_adjustments",
+          "time_exit",
+          "accepted_at"
+        ],
+        "title": "PlanOut",
+        "type": "object"
+      },
+      "PlanPlaybookOut": {
+        "additionalProperties": false,
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "draft": {
+            "title": "Draft",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "is_system": {
+            "title": "Is System",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name"
+          },
+          "type": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Type",
+            "type": "string"
+          },
+          "type_name": {
+            "title": "Type Name"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "type",
+          "type_name",
+          "is_system",
+          "draft",
+          "active"
+        ],
+        "title": "PlanPlaybookOut",
+        "type": "object"
+      },
       "PlannedEntriesOut": {
         "additionalProperties": false,
         "properties": {
@@ -6997,6 +8434,169 @@
           "reason_code"
         ],
         "title": "PlannedEntryOut",
+        "type": "object"
+      },
+      "PlaybookFullOut": {
+        "additionalProperties": false,
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "body": {
+            "additionalProperties": true,
+            "title": "Body",
+            "type": "object"
+          },
+          "draft": {
+            "title": "Draft",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "is_system": {
+            "title": "Is System",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "approved",
+                  "draft"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "type": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Type",
+            "type": "string"
+          },
+          "type_name": {
+            "title": "Type Name"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "type",
+          "type_name",
+          "is_system",
+          "status",
+          "draft",
+          "active",
+          "version",
+          "updated_at",
+          "body"
+        ],
+        "title": "PlaybookFullOut",
+        "type": "object"
+      },
+      "PlaybookListOut": {
+        "additionalProperties": false,
+        "properties": {
+          "playbooks": {
+            "items": {
+              "$ref": "#/components/schemas/PlaybookOut"
+            },
+            "title": "Playbooks",
+            "type": "array"
+          }
+        },
+        "required": [
+          "playbooks"
+        ],
+        "title": "PlaybookListOut",
+        "type": "object"
+      },
+      "PlaybookOut": {
+        "additionalProperties": false,
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "draft": {
+            "title": "Draft",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "is_system": {
+            "title": "Is System",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "approved",
+                  "draft"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "type": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Type",
+            "type": "string"
+          },
+          "type_name": {
+            "title": "Type Name"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "type",
+          "type_name",
+          "is_system",
+          "status",
+          "draft",
+          "active",
+          "version",
+          "updated_at"
+        ],
+        "title": "PlaybookOut",
         "type": "object"
       },
       "PointOut": {
@@ -7152,6 +8752,85 @@
           }
         },
         "title": "PreferencesOut",
+        "type": "object"
+      },
+      "PrefillOut": {
+        "additionalProperties": false,
+        "properties": {
+          "max_adjustments": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Adjustments"
+          },
+          "playbook_id": {
+            "title": "Playbook Id",
+            "type": "integer"
+          },
+          "stop": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop"
+          },
+          "stop_words": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop Words"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target"
+          },
+          "target_words": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Words"
+          },
+          "time_exit": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ClockOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "playbook_id",
+          "target",
+          "stop",
+          "max_adjustments",
+          "time_exit"
+        ],
+        "title": "PrefillOut",
         "type": "object"
       },
       "PriceHistoryOut": {
@@ -7353,6 +9032,25 @@
           "legs"
         ],
         "title": "ReadyMadeOut",
+        "type": "object"
+      },
+      "ReasonOut": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Id",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text"
+          }
+        },
+        "required": [
+          "id",
+          "text"
+        ],
+        "title": "ReasonOut",
         "type": "object"
       },
       "RefusalOut": {
@@ -7722,6 +9420,26 @@
           "cells"
         ],
         "title": "RowOut",
+        "type": "object"
+      },
+      "SaveIn": {
+        "additionalProperties": false,
+        "properties": {
+          "body": {
+            "additionalProperties": true,
+            "title": "Body",
+            "type": "object"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "body",
+          "version"
+        ],
+        "title": "SaveIn",
         "type": "object"
       },
       "ScenarioOtherOut": {
@@ -8535,6 +10253,37 @@
         "title": "StrikesOut",
         "type": "object"
       },
+      "SuggestionOut": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "outcome": {
+            "enum": [
+              "open",
+              "dismissed",
+              "acted_on",
+              "completed",
+              "partly_completed",
+              "lapsed"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "outcome_text": {
+            "title": "Outcome Text"
+          }
+        },
+        "required": [
+          "id",
+          "outcome",
+          "outcome_text"
+        ],
+        "title": "SuggestionOut",
+        "type": "object"
+      },
       "TableOut": {
         "additionalProperties": false,
         "properties": {
@@ -9268,6 +11017,107 @@
           "templates"
         ],
         "title": "TemplatesOut",
+        "type": "object"
+      },
+      "TestIn": {
+        "additionalProperties": false,
+        "properties": {
+          "body": {
+            "additionalProperties": true,
+            "title": "Body",
+            "type": "object"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "body"
+        ],
+        "title": "TestIn",
+        "type": "object"
+      },
+      "TestOut": {
+        "additionalProperties": false,
+        "properties": {
+          "none_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "None Text"
+          },
+          "past_note": {
+            "title": "Past Note"
+          },
+          "strategies": {
+            "items": {
+              "$ref": "#/components/schemas/TestStrategyOut"
+            },
+            "title": "Strategies",
+            "type": "array"
+          },
+          "type": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Type",
+            "type": "string"
+          },
+          "type_name": {
+            "title": "Type Name"
+          }
+        },
+        "required": [
+          "type",
+          "type_name",
+          "none_text",
+          "past_note",
+          "strategies"
+        ],
+        "title": "TestOut",
+        "type": "object"
+      },
+      "TestStrategyOut": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "title": "Name"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/CheckResultOut"
+            },
+            "title": "Results",
+            "type": "array"
+          },
+          "stage": {
+            "$ref": "#/components/schemas/CheckStageOut"
+          },
+          "strategy_id": {
+            "title": "Strategy Id",
+            "type": "integer"
+          },
+          "withheld": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Withheld"
+          }
+        },
+        "required": [
+          "strategy_id",
+          "name",
+          "stage",
+          "withheld",
+          "results"
+        ],
+        "title": "TestStrategyOut",
         "type": "object"
       },
       "TrackedStrategyOut": {
@@ -10136,6 +11986,52 @@
         "title": "TriggersOut",
         "type": "object"
       },
+      "TypeOut": {
+        "additionalProperties": false,
+        "properties": {
+          "active_id": {
+            "title": "Active Id",
+            "type": "integer"
+          },
+          "has_system": {
+            "title": "Has System",
+            "type": "boolean"
+          },
+          "key": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Key",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name"
+          }
+        },
+        "required": [
+          "key",
+          "name",
+          "active_id",
+          "has_system"
+        ],
+        "title": "TypeOut",
+        "type": "object"
+      },
+      "TypesOut": {
+        "additionalProperties": false,
+        "properties": {
+          "types": {
+            "items": {
+              "$ref": "#/components/schemas/TypeOut"
+            },
+            "title": "Types",
+            "type": "array"
+          }
+        },
+        "required": [
+          "types"
+        ],
+        "title": "TypesOut",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "loc": {
@@ -10874,6 +12770,54 @@
         "title": "SummaryOut",
         "type": "object"
       },
+      "ofo_app__routes__playbooks__DeletedOut": {
+        "additionalProperties": false,
+        "properties": {
+          "active_now_system": {
+            "title": "Active Now System",
+            "type": "boolean"
+          },
+          "deleted": {
+            "title": "Deleted",
+            "type": "boolean"
+          },
+          "message": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          }
+        },
+        "required": [
+          "deleted",
+          "active_now_system",
+          "message"
+        ],
+        "title": "DeletedOut",
+        "type": "object"
+      },
+      "ofo_app__routes__strategies__DeletedOut": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "revision"
+        ],
+        "title": "DeletedOut",
+        "type": "object"
+      },
       "ofo_app__routes__strategies__LegIn": {
         "additionalProperties": false,
         "properties": {
@@ -11213,6 +13157,112 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/adjustment-opportunities": {
+      "get": {
+        "operationId": "adjustment_opportunities_api_adjustment_opportunities_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InboxOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Adjustment Opportunities"
+      }
+    },
+    "/api/adjustment-opportunities/{suggestion_id}/acted-on": {
+      "post": {
+        "operationId": "acted_on_opportunity_api_adjustment_opportunities__suggestion_id__acted_on_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "suggestion_id",
+            "required": true,
+            "schema": {
+              "title": "Suggestion Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuggestionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Acted On Opportunity"
+      }
+    },
+    "/api/adjustment-opportunities/{suggestion_id}/dismiss": {
+      "post": {
+        "operationId": "dismiss_opportunity_api_adjustment_opportunities__suggestion_id__dismiss_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "suggestion_id",
+            "required": true,
+            "schema": {
+              "title": "Suggestion Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DismissIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuggestionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Dismiss Opportunity"
+      }
+    },
     "/api/broker/account": {
       "get": {
         "operationId": "broker_account_api_broker_account_get",
@@ -11760,6 +13810,418 @@
         "summary": "Market Indices"
       }
     },
+    "/api/playbooks": {
+      "get": {
+        "description": "The type's system playbook first, then the user's own by name.",
+        "operationId": "list_playbooks_api_playbooks_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "type",
+            "required": true,
+            "schema": {
+              "title": "Type",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybookListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Playbooks"
+      },
+      "post": {
+        "description": "Create, or save as new: the body may be a system playbook's. The new one is the user's own (no Draft label).",
+        "operationId": "create_playbook_api_playbooks_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybookFullOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Playbook"
+      }
+    },
+    "/api/playbooks/labels": {
+      "get": {
+        "description": "GC-ADJ2 step 3 (REQ-159 AC-4/AC-5, REQ-160 AC-1): every word the editor shows that the body does not carry, all\nfrom the catalogue: approach names (the compare's table first, the editor's table for the rest), day rule kinds and\nactions, the summary's sentences. A read of fixed text: no user, no database. Declared before\n``/api/playbooks/{playbook_id}`` so \"labels\" is never read as an id.",
+        "operationId": "playbook_labels_api_playbooks_labels_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabelsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Playbook Labels"
+      }
+    },
+    "/api/playbooks/test": {
+      "post": {
+        "description": "REQ-160 AC-3: the unsaved body checked exactly as a save checks it (``_precheck``: body, keys, stage gap and\noverlap), then evaluated on each of the user's tracked strategies of the type. Nothing is written: empty rule\nmemory (a rule true now flags; the F-71 entry state is the scenario's stated entry only), no rule state, no\nsuggestion, no order; the transaction is rolled back. A not-checked rule is listed with its reason, never passed.",
+        "operationId": "test_playbook_api_playbooks_test_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TestOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Test Playbook"
+      }
+    },
+    "/api/playbooks/types": {
+      "get": {
+        "operationId": "playbook_types_api_playbooks_types_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TypesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Playbook Types"
+      }
+    },
+    "/api/playbooks/{playbook_id}": {
+      "delete": {
+        "operationId": "delete_playbook_api_playbooks__playbook_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "playbook_id",
+            "required": true,
+            "schema": {
+              "title": "Playbook Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ofo_app__routes__playbooks__DeletedOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Playbook"
+      },
+      "get": {
+        "operationId": "read_playbook_api_playbooks__playbook_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "playbook_id",
+            "required": true,
+            "schema": {
+              "title": "Playbook Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybookFullOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Playbook"
+      },
+      "patch": {
+        "operationId": "rename_playbook_api_playbooks__playbook_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "playbook_id",
+            "required": true,
+            "schema": {
+              "title": "Playbook Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DuplicateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybookFullOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Rename Playbook"
+      },
+      "put": {
+        "description": "Save in place: the user's own playbook only, at the version the caller read.",
+        "operationId": "save_playbook_api_playbooks__playbook_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "playbook_id",
+            "required": true,
+            "schema": {
+              "title": "Playbook Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybookFullOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Save Playbook"
+      }
+    },
+    "/api/playbooks/{playbook_id}/activate": {
+      "post": {
+        "operationId": "activate_playbook_api_playbooks__playbook_id__activate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "playbook_id",
+            "required": true,
+            "schema": {
+              "title": "Playbook Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybookFullOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Activate Playbook"
+      }
+    },
+    "/api/playbooks/{playbook_id}/duplicate": {
+      "post": {
+        "operationId": "duplicate_playbook_api_playbooks__playbook_id__duplicate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "playbook_id",
+            "required": true,
+            "schema": {
+              "title": "Playbook Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DuplicateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybookFullOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Duplicate Playbook"
+      }
+    },
     "/api/strategies/leg-edit": {
       "post": {
         "operationId": "leg_edit_api_strategies_leg_edit_post",
@@ -11997,6 +14459,237 @@
           }
         },
         "summary": "Adjustment Approaches"
+      }
+    },
+    "/api/strategies/{strategy_id}/adjustment-check": {
+      "get": {
+        "operationId": "adjustment_check_api_strategies__strategy_id__adjustment_check_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_id",
+            "required": true,
+            "schema": {
+              "title": "Strategy Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdjustmentCheckOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Adjustment Check"
+      }
+    },
+    "/api/strategies/{strategy_id}/adjustment-history": {
+      "get": {
+        "operationId": "adjustment_history_api_strategies__strategy_id__adjustment_history_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_id",
+            "required": true,
+            "schema": {
+              "title": "Strategy Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdjustmentHistoryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Adjustment History"
+      }
+    },
+    "/api/strategies/{strategy_id}/adjustment-plan": {
+      "get": {
+        "operationId": "read_plan_api_strategies__strategy_id__adjustment_plan_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_id",
+            "required": true,
+            "schema": {
+              "title": "Strategy Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "playbook_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 9223372036854775807,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Playbook Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdjustmentPlanOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Plan"
+      },
+      "post": {
+        "description": "REQ-161 AC-2: accept the sheet (one click when only ``playbook_id`` is sent).",
+        "operationId": "accept_plan_api_strategies__strategy_id__adjustment_plan_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_id",
+            "required": true,
+            "schema": {
+              "title": "Strategy Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlanIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdjustmentPlanOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Accept Plan"
+      },
+      "put": {
+        "description": "REQ-161 AC-3: edit the strategy's plan later (REQ-158 AC-5); 404 when it has none.",
+        "operationId": "edit_plan_api_strategies__strategy_id__adjustment_plan_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_id",
+            "required": true,
+            "schema": {
+              "title": "Strategy Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlanIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdjustmentPlanOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Edit Plan"
       }
     },
     "/api/strategy-templates": {
@@ -12528,7 +15221,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DeletedOut"
+                  "$ref": "#/components/schemas/ofo_app__routes__strategies__DeletedOut"
                 }
               }
             },

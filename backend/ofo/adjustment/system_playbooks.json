@@ -1,0 +1,8984 @@
+{
+ "playbooks": [
+  {
+   "body": {
+    "approaches": {
+     "applicable": [
+      "A-01",
+      "A-02",
+      "A-04",
+      "A-06",
+      "A-09",
+      "A-23",
+      "A-24",
+      "A-25",
+      "A-26",
+      "A-27",
+      "A-28",
+      "A-29",
+      "A-31",
+      "A-35",
+      "A-36",
+      "A-37",
+      "A-38"
+     ],
+     "greyed": [
+      {
+       "id": "A-05",
+       "reason": "No spread to roll"
+      },
+      {
+       "id": "A-11",
+       "reason": "Iron condors only"
+      },
+      {
+       "id": "A-12",
+       "reason": "Needs a credit spread"
+      },
+      {
+       "id": "A-13",
+       "reason": "Needs a short put"
+      },
+      {
+       "id": "A-15",
+       "reason": "Ratio spreads only"
+      },
+      {
+       "id": "A-16",
+       "reason": "Long options only"
+      },
+      {
+       "id": "A-17",
+       "reason": "Long options only"
+      },
+      {
+       "id": "A-18",
+       "reason": "Long volatility only"
+      },
+      {
+       "id": "A-19",
+       "reason": "Calendars only"
+      }
+     ],
+     "off_in_playbook": [
+      "A-03",
+      "A-07",
+      "A-08",
+      "A-10",
+      "A-14",
+      "A-20",
+      "A-21",
+      "A-22",
+      "A-32",
+      "A-33",
+      "A-34",
+      "A-30"
+     ]
+    },
+    "day_rules": [
+     {
+      "action": 0,
+      "at": "15:00",
+      "on": true,
+      "when": "beforeWeekend"
+     },
+     {
+      "action": 0,
+      "at": "15:00",
+      "on": true,
+      "when": "beforeHoliday"
+     },
+     {
+      "action": 4,
+      "at": "13:00",
+      "on": true,
+      "percent": "20",
+      "when": "expiry"
+     },
+     {
+      "action": 1,
+      "at": "14:30",
+      "from": "",
+      "on": false,
+      "to": "",
+      "when": "away"
+     },
+     {
+      "action": 1,
+      "at": "14:30",
+      "on": false,
+      "when": "event"
+     }
+    ],
+    "guards": {
+     "entry_guide": "shorts at 0.15 to 0.20 delta, wings 200 to 400 points out",
+     "hide_oi_below": 10000,
+     "hide_spread_pct_of_mid_above": "5",
+     "max_adjustments": 2,
+     "order_sequence": "buy legs first; buy back shorts before selling hedges",
+     "profit_target_pct_of_max_profit": "50",
+     "roll_debit_limit": "Rs 500 or 10% of max profit",
+     "stop_line_pct_of_max_loss": "50",
+     "warn_cost_pct_of_premium_left": "50"
+    },
+    "rules": [
+     {
+      "any_of": [
+       "T-01"
+      ],
+      "id": "T-01"
+     },
+     {
+      "any_of": [
+       "T-02"
+      ],
+      "id": "T-02"
+     },
+     {
+      "any_of": [
+       "T-13"
+      ],
+      "id": "T-13"
+     },
+     {
+      "any_of": [
+       "T-03"
+      ],
+      "id": "T-03"
+     },
+     {
+      "any_of": [
+       "T-14"
+      ],
+      "id": "T-14"
+     },
+     {
+      "any_of": [
+       "T-11"
+      ],
+      "id": "T-11"
+     },
+     {
+      "any_of": [
+       "T-06"
+      ],
+      "id": "T-06"
+     },
+     {
+      "any_of": [
+       "T-07"
+      ],
+      "id": "T-07"
+     },
+     {
+      "any_of": [
+       "T-09"
+      ],
+      "id": "T-09"
+     },
+     {
+      "any_of": [
+       "T-19"
+      ],
+      "id": "T-19"
+     },
+     {
+      "any_of": [
+       "T-16"
+      ],
+      "id": "T-16"
+     },
+     {
+      "any_of": [
+       "T-10b"
+      ],
+      "id": "T-10b"
+     },
+     {
+      "any_of": [
+       "T-18"
+      ],
+      "id": "T-18"
+     },
+     {
+      "any_of": [
+       "T-21"
+      ],
+      "id": "T-21"
+     }
+    ],
+    "schema": 1,
+    "situations": [
+     {
+      "id": "S-01",
+      "name": "Gap at the open",
+      "rule": "Wait until 09:30 before suggesting, unless a short opens in the money"
+     },
+     {
+      "id": "S-02",
+      "name": "Trending day",
+      "rule": "Show early rolls when net delta grows past 0.15 per lot"
+     },
+     {
+      "id": "S-03",
+      "name": "Range day",
+      "rule": "Show only the profit target; no adjustments"
+     },
+     {
+      "id": "S-04",
+      "name": "IV jumps without a big move",
+      "rule": "Show where the P&L came from; suggest No change unless an event is within 1 session"
+     },
+     {
+      "id": "S-05",
+      "name": "IV crush after an event",
+      "rule": "Show take-profit at 40% of max profit"
+     },
+     {
+      "id": "S-06",
+      "name": "Afternoon carry check",
+      "rule": "At 15:00: show overnight margin and the loss at +/-2% gap"
+     },
+     {
+      "id": "S-07",
+      "name": "Expiry day",
+      "rule": "From 13:00: buy back shorts below Rs 2; close a position whose short is within 0.3% by 14:30; warn about STT on in-the-money options"
+     },
+     {
+      "id": "S-10",
+      "name": "Broker or data outage",
+      "rule": "No suggestion; show the last good data and its age"
+     },
+     {
+      "id": "S-11",
+      "name": "Adjustment limit reached",
+      "rule": "Only exit and reduce are offered"
+     },
+     {
+      "id": "S-12",
+      "name": "Big win early",
+      "rule": "If profit reaches 40% of max profit on day 1, show take profit"
+     }
+    ],
+    "stages": {
+     "monthly": [
+      {
+       "from": 10,
+       "name": "Early",
+       "to": null
+      },
+      {
+       "from": 3,
+       "name": "Middle",
+       "to": 9
+      },
+      {
+       "from": 0,
+       "name": "Last 2 days",
+       "to": 2
+      }
+     ],
+     "weekly": [
+      {
+       "from": 5,
+       "name": "Early",
+       "to": null
+      },
+      {
+       "from": 2,
+       "name": "Middle",
+       "to": 4
+      },
+      {
+       "from": 0,
+       "name": "Last day",
+       "to": 1
+      }
+     ]
+    },
+    "status": "draft",
+    "strategy_type": "strangle",
+    "tightened": [
+     "T-01",
+     "T-03",
+     "T-06",
+     "T-07",
+     "T-09",
+     "T-11",
+     "T-13",
+     "T-16",
+     "T-19"
+    ],
+    "triggers": {
+     "T-01": {
+      "cmp": "le",
+      "data": "ok",
+      "label": "Spot within this % of a short strike",
+      "monthly": [
+       "1.5",
+       "1.0",
+       "0.5"
+      ],
+      "on": true,
+      "unit": "%",
+      "weekly": [
+       "0.75",
+       "0.5",
+       "0.3"
+      ]
+     },
+     "T-01b": {
+      "cmp": "le",
+      "data": "ok",
+      "label": "Spot within this many points of a short strike",
+      "monthly": [
+       "350",
+       "240",
+       "120"
+      ],
+      "on": false,
+      "unit": "pts",
+      "weekly": [
+       "180",
+       "120",
+       "70"
+      ]
+     },
+     "T-02": {
+      "cmp": "",
+      "data": "ok",
+      "label": "Spot crosses a breakeven",
+      "monthly": null,
+      "on": true,
+      "unit": "",
+      "weekly": null
+     },
+     "T-03": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Tested short's delta reaches",
+      "monthly": [
+       "0.25",
+       "0.30",
+       "0.35"
+      ],
+      "on": true,
+      "unit": "delta",
+      "weekly": [
+       "0.30",
+       "0.35",
+       "0.40"
+      ]
+     },
+     "T-04": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Net delta beyond +/- this per lot",
+      "monthly": [
+       "0.15",
+       "0.15",
+       "0.20"
+      ],
+      "on": false,
+      "unit": "delta/lot",
+      "weekly": [
+       "0.15",
+       "0.15",
+       "0.20"
+      ]
+     },
+     "T-05": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "One side's value is this many x the other side's",
+      "monthly": [
+       "3",
+       "3",
+       "4"
+      ],
+      "on": false,
+      "unit": "x",
+      "weekly": [
+       "3",
+       "3",
+       "4"
+      ]
+     },
+     "T-06": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Loss reaches this % of max loss",
+      "monthly": [
+       "50",
+       "50",
+       "40"
+      ],
+      "on": true,
+      "unit": "%",
+      "weekly": [
+       "50",
+       "50",
+       "40"
+      ]
+     },
+     "T-06b": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Loss reaches this many x the credit received",
+      "monthly": [
+       "1.5",
+       "1",
+       "0.75"
+      ],
+      "on": false,
+      "unit": "x",
+      "weekly": [
+       "1",
+       "1",
+       "0.75"
+      ]
+     },
+     "T-07": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Profit reaches this % of max profit",
+      "monthly": [
+       "50",
+       "50",
+       "75"
+      ],
+      "on": true,
+      "unit": "%",
+      "weekly": [
+       "50",
+       "50",
+       "80"
+      ]
+     },
+     "T-08": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "A leg's premium reaches this many x its entry (leg stop)",
+      "monthly": [
+       "2",
+       "2",
+       "2.5"
+      ],
+      "on": false,
+      "unit": "x",
+      "weekly": [
+       "2",
+       "2",
+       "2.5"
+      ]
+     },
+     "T-09": {
+      "cmp": "le",
+      "data": "ok",
+      "label": "A short leg's premium falls below Rs (close for pennies)",
+      "monthly": [
+       "3",
+       "3",
+       "2"
+      ],
+      "on": true,
+      "unit": "Rs",
+      "weekly": [
+       "3",
+       "3",
+       "2"
+      ]
+     },
+     "T-10b": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Clock time reached (checked in this stage)",
+      "monthly": [
+       "",
+       "",
+       "14:30"
+      ],
+      "on": true,
+      "unit": "time",
+      "weekly": [
+       "",
+       "",
+       "14:30"
+      ]
+     },
+     "T-11": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Options' IV changed this many points since entry",
+      "monthly": [
+       "3",
+       "3",
+       "4"
+      ],
+      "on": true,
+      "unit": "pts",
+      "weekly": [
+       "3",
+       "3",
+       "4"
+      ]
+     },
+     "T-11b": {
+      "cmp": "ge",
+      "data": "vix",
+      "label": "India VIX up this % today",
+      "monthly": [
+       "10",
+       "10",
+       "10"
+      ],
+      "on": false,
+      "unit": "%",
+      "weekly": [
+       "10",
+       "10",
+       "10"
+      ]
+     },
+     "T-11c": {
+      "cmp": "ge",
+      "data": "hist",
+      "greyed": "Needs price history (not in V1)",
+      "label": "IV percentile above",
+      "monthly": [
+       "80",
+       "80",
+       "80"
+      ],
+      "on": false,
+      "unit": "%",
+      "weekly": [
+       "80",
+       "80",
+       "80"
+      ]
+     },
+     "T-12": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Spot has moved this many expected moves (SD) since entry",
+      "monthly": [
+       "1",
+       "1",
+       "1"
+      ],
+      "on": false,
+      "unit": "SD",
+      "weekly": [
+       "1",
+       "1",
+       "1"
+      ]
+     },
+     "T-13": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Gap at the open of at least this %",
+      "monthly": [
+       "1",
+       "1",
+       "0.75"
+      ],
+      "on": true,
+      "unit": "%",
+      "weekly": [
+       "0.75",
+       "0.75",
+       "0.5"
+      ]
+     },
+     "T-14": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Loss from a 1% move (gamma) at least this % of margin",
+      "monthly": [
+       "4",
+       "3",
+       "2"
+      ],
+      "on": true,
+      "unit": "%",
+      "weekly": [
+       "3",
+       "3",
+       "2"
+      ]
+     },
+     "T-14t": {
+      "cmp": "le",
+      "data": "ok",
+      "label": "Theta per day falls below this % of premium left",
+      "monthly": [
+       "3",
+       "3",
+       "3"
+      ],
+      "on": false,
+      "unit": "%",
+      "weekly": [
+       "5",
+       "5",
+       "5"
+      ]
+     },
+     "T-14v": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Loss from +1 IV point (vega) at least this % of max profit",
+      "monthly": [
+       "15",
+       "15",
+       "10"
+      ],
+      "on": false,
+      "unit": "%",
+      "weekly": [
+       "10",
+       "10",
+       "10"
+      ]
+     },
+     "T-15": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Margin used reaches this % of available",
+      "monthly": [
+       "80",
+       "80",
+       "80"
+      ],
+      "on": false,
+      "unit": "%",
+      "weekly": [
+       "80",
+       "80",
+       "80"
+      ]
+     },
+     "T-16": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Loss reaches this % of the margin blocked",
+      "monthly": [
+       "4",
+       "4",
+       "3"
+      ],
+      "on": true,
+      "unit": "%",
+      "weekly": [
+       "4",
+       "4",
+       "3"
+      ]
+     },
+     "T-18": {
+      "cmp": "",
+      "data": "ok",
+      "label": "Adjustments used reach the plan's maximum",
+      "monthly": null,
+      "on": true,
+      "unit": "",
+      "weekly": null
+     },
+     "T-19": {
+      "cmp": "le",
+      "data": "ok",
+      "label": "Premium still left to earn is below this many x the adjustment's cost",
+      "monthly": [
+       "2",
+       "2",
+       "2"
+      ],
+      "on": true,
+      "unit": "x",
+      "weekly": [
+       "2",
+       "2",
+       "2"
+      ]
+     },
+     "T-20": {
+      "cmp": "",
+      "data": "user",
+      "label": "Spot crosses a level you set (support / resistance)",
+      "monthly": null,
+      "on": false,
+      "unit": "pts",
+      "weekly": null
+     },
+     "T-20b": {
+      "cmp": "",
+      "data": "hist",
+      "greyed": "Needs price history (not in V1)",
+      "label": "Market trending vs range-bound",
+      "monthly": null,
+      "on": false,
+      "unit": "",
+      "weekly": null
+     },
+     "T-21": {
+      "cmp": "",
+      "data": "ok",
+      "label": "Prices stale or missing (no suggestion is made)",
+      "monthly": null,
+      "on": true,
+      "unit": "",
+      "weekly": null
+     }
+    }
+   },
+   "name": "Short strangle: system default",
+   "status": "draft",
+   "strategy_type": "strangle"
+  },
+  {
+   "body": {
+    "approaches": {
+     "applicable": [
+      "A-01",
+      "A-02",
+      "A-04",
+      "A-06",
+      "A-09",
+      "A-23",
+      "A-24",
+      "A-25",
+      "A-26",
+      "A-27",
+      "A-28",
+      "A-29",
+      "A-31",
+      "A-35",
+      "A-36",
+      "A-37",
+      "A-38"
+     ],
+     "greyed": [
+      {
+       "id": "A-05",
+       "reason": "No spread to roll"
+      },
+      {
+       "id": "A-08",
+       "reason": "Strangles only"
+      },
+      {
+       "id": "A-10",
+       "reason": "Strangles only"
+      },
+      {
+       "id": "A-11",
+       "reason": "Iron condors only"
+      },
+      {
+       "id": "A-12",
+       "reason": "Needs a credit spread"
+      },
+      {
+       "id": "A-13",
+       "reason": "Needs a short put"
+      },
+      {
+       "id": "A-15",
+       "reason": "Ratio spreads only"
+      },
+      {
+       "id": "A-16",
+       "reason": "Long options only"
+      },
+      {
+       "id": "A-17",
+       "reason": "Long options only"
+      },
+      {
+       "id": "A-18",
+       "reason": "Long volatility only"
+      },
+      {
+       "id": "A-19",
+       "reason": "Calendars only"
+      }
+     ],
+     "off_in_playbook": [
+      "A-03",
+      "A-07",
+      "A-14",
+      "A-20",
+      "A-21",
+      "A-22",
+      "A-32",
+      "A-33",
+      "A-34",
+      "A-30"
+     ]
+    },
+    "day_rules": [
+     {
+      "action": 0,
+      "at": "15:00",
+      "on": true,
+      "when": "beforeWeekend"
+     },
+     {
+      "action": 0,
+      "at": "15:00",
+      "on": true,
+      "when": "beforeHoliday"
+     },
+     {
+      "action": 4,
+      "at": "13:00",
+      "on": true,
+      "percent": "20",
+      "when": "expiry"
+     },
+     {
+      "action": 1,
+      "at": "14:30",
+      "from": "",
+      "on": false,
+      "to": "",
+      "when": "away"
+     },
+     {
+      "action": 1,
+      "at": "14:30",
+      "on": false,
+      "when": "event"
+     }
+    ],
+    "guards": {
+     "entry_guide": "shorts at 0.15 to 0.20 delta, wings 200 to 400 points out",
+     "hide_oi_below": 10000,
+     "hide_spread_pct_of_mid_above": "5",
+     "max_adjustments": 2,
+     "order_sequence": "buy legs first; buy back shorts before selling hedges",
+     "profit_target_pct_of_max_profit": "50",
+     "roll_debit_limit": "Rs 500 or 10% of max profit",
+     "stop_line_pct_of_max_loss": "50",
+     "warn_cost_pct_of_premium_left": "50"
+    },
+    "rules": [
+     {
+      "any_of": [
+       "T-01"
+      ],
+      "id": "T-01"
+     },
+     {
+      "any_of": [
+       "T-02"
+      ],
+      "id": "T-02"
+     },
+     {
+      "any_of": [
+       "T-13"
+      ],
+      "id": "T-13"
+     },
+     {
+      "any_of": [
+       "T-03"
+      ],
+      "id": "T-03"
+     },
+     {
+      "any_of": [
+       "T-14"
+      ],
+      "id": "T-14"
+     },
+     {
+      "any_of": [
+       "T-11"
+      ],
+      "id": "T-11"
+     },
+     {
+      "any_of": [
+       "T-06"
+      ],
+      "id": "T-06"
+     },
+     {
+      "any_of": [
+       "T-07"
+      ],
+      "id": "T-07"
+     },
+     {
+      "any_of": [
+       "T-09"
+      ],
+      "id": "T-09"
+     },
+     {
+      "any_of": [
+       "T-19"
+      ],
+      "id": "T-19"
+     },
+     {
+      "any_of": [
+       "T-16"
+      ],
+      "id": "T-16"
+     },
+     {
+      "any_of": [
+       "T-10b"
+      ],
+      "id": "T-10b"
+     },
+     {
+      "any_of": [
+       "T-18"
+      ],
+      "id": "T-18"
+     },
+     {
+      "any_of": [
+       "T-21"
+      ],
+      "id": "T-21"
+     }
+    ],
+    "schema": 1,
+    "situations": [
+     {
+      "id": "S-01",
+      "name": "Gap at the open",
+      "rule": "Wait until 09:30 before suggesting, unless a short opens in the money"
+     },
+     {
+      "id": "S-02",
+      "name": "Trending day",
+      "rule": "Show early rolls when net delta grows past 0.15 per lot"
+     },
+     {
+      "id": "S-03",
+      "name": "Range day",
+      "rule": "Show only the profit target; no adjustments"
+     },
+     {
+      "id": "S-04",
+      "name": "IV jumps without a big move",
+      "rule": "Show where the P&L came from; suggest No change unless an event is within 1 session"
+     },
+     {
+      "id": "S-05",
+      "name": "IV crush after an event",
+      "rule": "Show take-profit at 40% of max profit"
+     },
+     {
+      "id": "S-06",
+      "name": "Afternoon carry check",
+      "rule": "At 15:00: show overnight margin and the loss at +/-2% gap"
+     },
+     {
+      "id": "S-07",
+      "name": "Expiry day",
+      "rule": "From 13:00: buy back shorts below Rs 2; close a position whose short is within 0.3% by 14:30; warn about STT on in-the-money options"
+     },
+     {
+      "id": "S-10",
+      "name": "Broker or data outage",
+      "rule": "No suggestion; show the last good data and its age"
+     },
+     {
+      "id": "S-11",
+      "name": "Adjustment limit reached",
+      "rule": "Only exit and reduce are offered"
+     },
+     {
+      "id": "S-12",
+      "name": "Big win early",
+      "rule": "If profit reaches 40% of max profit on day 1, show take profit"
+     }
+    ],
+    "stages": {
+     "monthly": [
+      {
+       "from": 10,
+       "name": "Early",
+       "to": null
+      },
+      {
+       "from": 3,
+       "name": "Middle",
+       "to": 9
+      },
+      {
+       "from": 0,
+       "name": "Last 2 days",
+       "to": 2
+      }
+     ],
+     "weekly": [
+      {
+       "from": 5,
+       "name": "Early",
+       "to": null
+      },
+      {
+       "from": 2,
+       "name": "Middle",
+       "to": 4
+      },
+      {
+       "from": 0,
+       "name": "Last day",
+       "to": 1
+      }
+     ]
+    },
+    "status": "draft",
+    "strategy_type": "straddle",
+    "tightened": [
+     "T-01",
+     "T-03",
+     "T-06",
+     "T-07",
+     "T-09",
+     "T-11",
+     "T-13",
+     "T-16",
+     "T-19"
+    ],
+    "triggers": {
+     "T-01": {
+      "cmp": "le",
+      "data": "ok",
+      "label": "Spot within this % of a short strike",
+      "monthly": [
+       "1.5",
+       "1.0",
+       "0.5"
+      ],
+      "on": true,
+      "unit": "%",
+      "weekly": [
+       "0.75",
+       "0.5",
+       "0.3"
+      ]
+     },
+     "T-01b": {
+      "cmp": "le",
+      "data": "ok",
+      "label": "Spot within this many points of a short strike",
+      "monthly": [
+       "350",
+       "240",
+       "120"
+      ],
+      "on": false,
+      "unit": "pts",
+      "weekly": [
+       "180",
+       "120",
+       "70"
+      ]
+     },
+     "T-02": {
+      "cmp": "",
+      "data": "ok",
+      "label": "Spot crosses a breakeven",
+      "monthly": null,
+      "on": true,
+      "unit": "",
+      "weekly": null
+     },
+     "T-03": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Tested short's delta reaches",
+      "monthly": [
+       "0.25",
+       "0.30",
+       "0.35"
+      ],
+      "on": true,
+      "unit": "delta",
+      "weekly": [
+       "0.30",
+       "0.35",
+       "0.40"
+      ]
+     },
+     "T-04": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Net delta beyond +/- this per lot",
+      "monthly": [
+       "0.15",
+       "0.15",
+       "0.20"
+      ],
+      "on": false,
+      "unit": "delta/lot",
+      "weekly": [
+       "0.15",
+       "0.15",
+       "0.20"
+      ]
+     },
+     "T-05": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "One side's value is this many x the other side's",
+      "monthly": [
+       "3",
+       "3",
+       "4"
+      ],
+      "on": false,
+      "unit": "x",
+      "weekly": [
+       "3",
+       "3",
+       "4"
+      ]
+     },
+     "T-06": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Loss reaches this % of max loss",
+      "monthly": [
+       "50",
+       "50",
+       "40"
+      ],
+      "on": true,
+      "unit": "%",
+      "weekly": [
+       "50",
+       "50",
+       "40"
+      ]
+     },
+     "T-06b": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Loss reaches this many x the credit received",
+      "monthly": [
+       "1.5",
+       "1",
+       "0.75"
+      ],
+      "on": false,
+      "unit": "x",
+      "weekly": [
+       "1",
+       "1",
+       "0.75"
+      ]
+     },
+     "T-07": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Profit reaches this % of max profit",
+      "monthly": [
+       "50",
+       "50",
+       "75"
+      ],
+      "on": true,
+      "unit": "%",
+      "weekly": [
+       "50",
+       "50",
+       "80"
+      ]
+     },
+     "T-08": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "A leg's premium reaches this many x its entry (leg stop)",
+      "monthly": [
+       "2",
+       "2",
+       "2.5"
+      ],
+      "on": false,
+      "unit": "x",
+      "weekly": [
+       "2",
+       "2",
+       "2.5"
+      ]
+     },
+     "T-09": {
+      "cmp": "le",
+      "data": "ok",
+      "label": "A short leg's premium falls below Rs (close for pennies)",
+      "monthly": [
+       "3",
+       "3",
+       "2"
+      ],
+      "on": true,
+      "unit": "Rs",
+      "weekly": [
+       "3",
+       "3",
+       "2"
+      ]
+     },
+     "T-10b": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Clock time reached (checked in this stage)",
+      "monthly": [
+       "",
+       "",
+       "14:30"
+      ],
+      "on": true,
+      "unit": "time",
+      "weekly": [
+       "",
+       "",
+       "14:30"
+      ]
+     },
+     "T-11": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Options' IV changed this many points since entry",
+      "monthly": [
+       "3",
+       "3",
+       "4"
+      ],
+      "on": true,
+      "unit": "pts",
+      "weekly": [
+       "3",
+       "3",
+       "4"
+      ]
+     },
+     "T-11b": {
+      "cmp": "ge",
+      "data": "vix",
+      "label": "India VIX up this % today",
+      "monthly": [
+       "10",
+       "10",
+       "10"
+      ],
+      "on": false,
+      "unit": "%",
+      "weekly": [
+       "10",
+       "10",
+       "10"
+      ]
+     },
+     "T-11c": {
+      "cmp": "ge",
+      "data": "hist",
+      "greyed": "Needs price history (not in V1)",
+      "label": "IV percentile above",
+      "monthly": [
+       "80",
+       "80",
+       "80"
+      ],
+      "on": false,
+      "unit": "%",
+      "weekly": [
+       "80",
+       "80",
+       "80"
+      ]
+     },
+     "T-12": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Spot has moved this many expected moves (SD) since entry",
+      "monthly": [
+       "1",
+       "1",
+       "1"
+      ],
+      "on": false,
+      "unit": "SD",
+      "weekly": [
+       "1",
+       "1",
+       "1"
+      ]
+     },
+     "T-13": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Gap at the open of at least this %",
+      "monthly": [
+       "1",
+       "1",
+       "0.75"
+      ],
+      "on": true,
+      "unit": "%",
+      "weekly": [
+       "0.75",
+       "0.75",
+       "0.5"
+      ]
+     },
+     "T-14": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Loss from a 1% move (gamma) at least this % of margin",
+      "monthly": [
+       "4",
+       "3",
+       "2"
+      ],
+      "on": true,
+      "unit": "%",
+      "weekly": [
+       "3",
+       "3",
+       "2"
+      ]
+     },
+     "T-14t": {
+      "cmp": "le",
+      "data": "ok",
+      "label": "Theta per day falls below this % of premium left",
+      "monthly": [
+       "3",
+       "3",
+       "3"
+      ],
+      "on": false,
+      "unit": "%",
+      "weekly": [
+       "5",
+       "5",
+       "5"
+      ]
+     },
+     "T-14v": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Loss from +1 IV point (vega) at least this % of max profit",
+      "monthly": [
+       "15",
+       "15",
+       "10"
+      ],
+      "on": false,
+      "unit": "%",
+      "weekly": [
+       "10",
+       "10",
+       "10"
+      ]
+     },
+     "T-15": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Margin used reaches this % of available",
+      "monthly": [
+       "80",
+       "80",
+       "80"
+      ],
+      "on": false,
+      "unit": "%",
+      "weekly": [
+       "80",
+       "80",
+       "80"
+      ]
+     },
+     "T-16": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Loss reaches this % of the margin blocked",
+      "monthly": [
+       "4",
+       "4",
+       "3"
+      ],
+      "on": true,
+      "unit": "%",
+      "weekly": [
+       "4",
+       "4",
+       "3"
+      ]
+     },
+     "T-18": {
+      "cmp": "",
+      "data": "ok",
+      "label": "Adjustments used reach the plan's maximum",
+      "monthly": null,
+      "on": true,
+      "unit": "",
+      "weekly": null
+     },
+     "T-19": {
+      "cmp": "le",
+      "data": "ok",
+      "label": "Premium still left to earn is below this many x the adjustment's cost",
+      "monthly": [
+       "2",
+       "2",
+       "2"
+      ],
+      "on": true,
+      "unit": "x",
+      "weekly": [
+       "2",
+       "2",
+       "2"
+      ]
+     },
+     "T-20": {
+      "cmp": "",
+      "data": "user",
+      "label": "Spot crosses a level you set (support / resistance)",
+      "monthly": null,
+      "on": false,
+      "unit": "pts",
+      "weekly": null
+     },
+     "T-20b": {
+      "cmp": "",
+      "data": "hist",
+      "greyed": "Needs price history (not in V1)",
+      "label": "Market trending vs range-bound",
+      "monthly": null,
+      "on": false,
+      "unit": "",
+      "weekly": null
+     },
+     "T-21": {
+      "cmp": "",
+      "data": "ok",
+      "label": "Prices stale or missing (no suggestion is made)",
+      "monthly": null,
+      "on": true,
+      "unit": "",
+      "weekly": null
+     }
+    }
+   },
+   "name": "Short straddle: system default",
+   "status": "draft",
+   "strategy_type": "straddle"
+  },
+  {
+   "body": {
+    "approaches": {
+     "applicable": [
+      "A-01",
+      "A-02",
+      "A-05",
+      "A-04",
+      "A-06",
+      "A-11",
+      "A-23",
+      "A-24",
+      "A-25",
+      "A-26",
+      "A-27",
+      "A-28",
+      "A-29",
+      "A-31",
+      "A-35",
+      "A-36",
+      "A-37",
+      "A-38"
+     ],
+     "greyed": [
+      {
+       "id": "A-08",
+       "reason": "Strangles only"
+      },
+      {
+       "id": "A-09",
+       "reason": "Loss already capped"
+      },
+      {
+       "id": "A-10",
+       "reason": "Strangles only"
+      },
+      {
+       "id": "A-15",
+       "reason": "Ratio spreads only"
+      },
+      {
+       "id": "A-16",
+       "reason": "Long options only"
+      },
+      {
+       "id": "A-17",
+       "reason": "Long options only"
+      },
+      {
+       "id": "A-18",
+       "reason": "Long volatility only"
+      },
+      {
+       "id": "A-19",
+       "reason": "Calendars only"
+      }
+     ],
+     "off_in_playbook": [
+      "A-03",
+      "A-07",
+      "A-12",
+      "A-13",
+      "A-14",
+      "A-20",
+      "A-21",
+      "A-22",
+      "A-32",
+      "A-33",
+      "A-34",
+      "A-30"
+     ]
+    },
+    "day_rules": [
+     {
+      "action": 0,
+      "at": "15:00",
+      "on": true,
+      "when": "beforeWeekend"
+     },
+     {
+      "action": 0,
+      "at": "15:00",
+      "on": true,
+      "when": "beforeHoliday"
+     },
+     {
+      "action": 4,
+      "at": "13:00",
+      "on": false,
+      "percent": "20",
+      "when": "expiry"
+     },
+     {
+      "action": 1,
+      "at": "14:30",
+      "from": "",
+      "on": false,
+      "to": "",
+      "when": "away"
+     },
+     {
+      "action": 1,
+      "at": "14:30",
+      "on": false,
+      "when": "event"
+     },
+     {
+      "action": 5,
+      "at": "14:30",
+      "close_if_short_within_pct": "0.3",
+      "on": true,
+      "when": "expiry"
+     }
+    ],
+    "guards": {
+     "entry_guide": "shorts at 0.15 to 0.20 delta, wings 200 to 400 points out",
+     "hide_oi_below": 10000,
+     "hide_spread_pct_of_mid_above": "5",
+     "max_adjustments": 2,
+     "order_sequence": "buy legs first; buy back shorts before selling hedges",
+     "profit_target_pct_of_max_profit": "50",
+     "roll_debit_limit": "Rs 500 or 10% of max profit",
+     "stop_line_pct_of_margin": "4",
+     "stop_line_pct_of_max_loss": "50",
+     "stop_line_rule": "whichever comes first",
+     "time_exit": "14:30",
+     "warn_cost_pct_of_premium_left": "50"
+    },
+    "rules": [
+     {
+      "any_of": [
+       "T-01"
+      ],
+      "id": "T-01"
+     },
+     {
+      "any_of": [
+       "T-02"
+      ],
+      "id": "T-02"
+     },
+     {
+      "any_of": [
+       "T-13"
+      ],
+      "id": "T-13"
+     },
+     {
+      "any_of": [
+       "T-03"
+      ],
+      "id": "T-03"
+     },
+     {
+      "any_of": [
+       "T-14"
+      ],
+      "id": "T-14"
+     },
+     {
+      "any_of": [
+       "T-11"
+      ],
+      "id": "T-11"
+     },
+     {
+      "any_of": [
+       "T-06"
+      ],
+      "id": "T-06"
+     },
+     {
+      "any_of": [
+       "T-07"
+      ],
+      "id": "T-07"
+     },
+     {
+      "any_of": [
+       "T-09"
+      ],
+      "id": "T-09"
+     },
+     {
+      "any_of": [
+       "T-19"
+      ],
+      "id": "T-19"
+     },
+     {
+      "any_of": [
+       "T-16"
+      ],
+      "id": "T-16"
+     },
+     {
+      "any_of": [
+       "T-10b"
+      ],
+      "id": "T-10b"
+     },
+     {
+      "any_of": [
+       "T-18"
+      ],
+      "id": "T-18"
+     },
+     {
+      "any_of": [
+       "T-21"
+      ],
+      "id": "T-21"
+     }
+    ],
+    "schema": 1,
+    "situations": [
+     {
+      "id": "S-01",
+      "name": "Gap at the open",
+      "rule": "Wait until 09:30 before suggesting, unless a short opens in the money"
+     },
+     {
+      "id": "S-02",
+      "name": "Trending day",
+      "rule": "Show early rolls when net delta grows past 0.15 per lot"
+     },
+     {
+      "id": "S-03",
+      "name": "Range day",
+      "rule": "Show only the profit target; no adjustments"
+     },
+     {
+      "id": "S-04",
+      "name": "IV jumps without a big move",
+      "rule": "Show where the P&L came from; suggest No change unless an event is within 1 session"
+     },
+     {
+      "id": "S-05",
+      "name": "IV crush after an event",
+      "rule": "Show take-profit at 40% of max profit"
+     },
+     {
+      "id": "S-06",
+      "name": "Afternoon carry check",
+      "rule": "At 15:00: show overnight margin and the loss at +/-2% gap"
+     },
+     {
+      "id": "S-07",
+      "name": "Expiry day",
+      "rule": "From 13:00: buy back shorts below Rs 2; close a position whose short is within 0.3% by 14:30; warn about STT on in-the-money options"
+     },
+     {
+      "id": "S-10",
+      "name": "Broker or data outage",
+      "rule": "No suggestion; show the last good data and its age"
+     },
+     {
+      "id": "S-11",
+      "name": "Adjustment limit reached",
+      "rule": "Only exit and reduce are offered"
+     },
+     {
+      "id": "S-12",
+      "name": "Big win early",
+      "rule": "If profit reaches 40% of max profit on day 1, show take profit"
+     }
+    ],
+    "stages": {
+     "monthly": [
+      {
+       "from": 10,
+       "name": "Early",
+       "to": null
+      },
+      {
+       "from": 3,
+       "name": "Middle",
+       "to": 9
+      },
+      {
+       "from": 0,
+       "name": "Last 2 days",
+       "to": 2
+      }
+     ],
+     "weekly": [
+      {
+       "from": 5,
+       "name": "Early",
+       "to": null
+      },
+      {
+       "from": 2,
+       "name": "Middle",
+       "to": 4
+      },
+      {
+       "from": 0,
+       "name": "Last day",
+       "to": 1
+      }
+     ]
+    },
+    "status": "approved",
+    "strategy_type": "ic",
+    "tightened": [
+     "T-01",
+     "T-03",
+     "T-06",
+     "T-07",
+     "T-09",
+     "T-11",
+     "T-13",
+     "T-16",
+     "T-19"
+    ],
+    "triggers": {
+     "T-01": {
+      "cmp": "le",
+      "data": "ok",
+      "label": "Spot within this % of a short strike",
+      "monthly": [
+       "1.5",
+       "1.0",
+       "0.5"
+      ],
+      "on": true,
+      "unit": "%",
+      "weekly": [
+       "0.75",
+       "0.5",
+       "0.3"
+      ]
+     },
+     "T-01b": {
+      "cmp": "le",
+      "data": "ok",
+      "label": "Spot within this many points of a short strike",
+      "monthly": [
+       "350",
+       "240",
+       "120"
+      ],
+      "on": false,
+      "unit": "pts",
+      "weekly": [
+       "180",
+       "120",
+       "70"
+      ]
+     },
+     "T-02": {
+      "cmp": "",
+      "data": "ok",
+      "label": "Spot crosses a breakeven",
+      "monthly": null,
+      "on": true,
+      "unit": "",
+      "weekly": null
+     },
+     "T-03": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Tested short's delta reaches",
+      "monthly": [
+       "0.25",
+       "0.30",
+       "0.35"
+      ],
+      "on": true,
+      "unit": "delta",
+      "weekly": [
+       "0.30",
+       "0.35",
+       "0.40"
+      ]
+     },
+     "T-04": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Net delta beyond +/- this per lot",
+      "monthly": [
+       "0.15",
+       "0.15",
+       "0.20"
+      ],
+      "on": false,
+      "unit": "delta/lot",
+      "weekly": [
+       "0.15",
+       "0.15",
+       "0.20"
+      ]
+     },
+     "T-05": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "One side's value is this many x the other side's",
+      "monthly": [
+       "3",
+       "3",
+       "4"
+      ],
+      "on": false,
+      "unit": "x",
+      "weekly": [
+       "3",
+       "3",
+       "4"
+      ]
+     },
+     "T-06": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Loss reaches this % of max loss",
+      "monthly": [
+       "50",
+       "50",
+       "40"
+      ],
+      "on": true,
+      "unit": "%",
+      "weekly": [
+       "50",
+       "50",
+       "40"
+      ]
+     },
+     "T-06b": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Loss reaches this many x the credit received",
+      "monthly": [
+       "1.5",
+       "1",
+       "0.75"
+      ],
+      "on": false,
+      "unit": "x",
+      "weekly": [
+       "1",
+       "1",
+       "0.75"
+      ]
+     },
+     "T-07": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Profit reaches this % of max profit",
+      "monthly": [
+       "50",
+       "50",
+       "75"
+      ],
+      "on": true,
+      "unit": "%",
+      "weekly": [
+       "50",
+       "50",
+       "80"
+      ]
+     },
+     "T-08": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "A leg's premium reaches this many x its entry (leg stop)",
+      "monthly": [
+       "2",
+       "2",
+       "2.5"
+      ],
+      "on": false,
+      "unit": "x",
+      "weekly": [
+       "2",
+       "2",
+       "2.5"
+      ]
+     },
+     "T-09": {
+      "cmp": "le",
+      "data": "ok",
+      "label": "A short leg's premium falls below Rs (close for pennies)",
+      "monthly": [
+       "3",
+       "3",
+       "2"
+      ],
+      "on": true,
+      "unit": "Rs",
+      "weekly": [
+       "3",
+       "3",
+       "2"
+      ]
+     },
+     "T-10b": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Clock time reached (checked in this stage)",
+      "monthly": [
+       "",
+       "",
+       "14:30"
+      ],
+      "on": true,
+      "unit": "time",
+      "weekly": [
+       "",
+       "",
+       "14:30"
+      ]
+     },
+     "T-11": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Options' IV changed this many points since entry",
+      "monthly": [
+       "3",
+       "3",
+       "4"
+      ],
+      "on": true,
+      "unit": "pts",
+      "weekly": [
+       "3",
+       "3",
+       "4"
+      ]
+     },
+     "T-11b": {
+      "cmp": "ge",
+      "data": "vix",
+      "label": "India VIX up this % today",
+      "monthly": [
+       "10",
+       "10",
+       "10"
+      ],
+      "on": false,
+      "unit": "%",
+      "weekly": [
+       "10",
+       "10",
+       "10"
+      ]
+     },
+     "T-11c": {
+      "cmp": "ge",
+      "data": "hist",
+      "greyed": "Needs price history (not in V1)",
+      "label": "IV percentile above",
+      "monthly": [
+       "80",
+       "80",
+       "80"
+      ],
+      "on": false,
+      "unit": "%",
+      "weekly": [
+       "80",
+       "80",
+       "80"
+      ]
+     },
+     "T-12": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Spot has moved this many expected moves (SD) since entry",
+      "monthly": [
+       "1",
+       "1",
+       "1"
+      ],
+      "on": false,
+      "unit": "SD",
+      "weekly": [
+       "1",
+       "1",
+       "1"
+      ]
+     },
+     "T-13": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Gap at the open of at least this %",
+      "monthly": [
+       "1",
+       "1",
+       "0.75"
+      ],
+      "on": true,
+      "unit": "%",
+      "weekly": [
+       "0.75",
+       "0.75",
+       "0.5"
+      ]
+     },
+     "T-14": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Loss from a 1% move (gamma) at least this % of margin",
+      "monthly": [
+       "4",
+       "3",
+       "2"
+      ],
+      "on": true,
+      "unit": "%",
+      "weekly": [
+       "3",
+       "3",
+       "2"
+      ]
+     },
+     "T-14t": {
+      "cmp": "le",
+      "data": "ok",
+      "label": "Theta per day falls below this % of premium left",
+      "monthly": [
+       "3",
+       "3",
+       "3"
+      ],
+      "on": false,
+      "unit": "%",
+      "weekly": [
+       "5",
+       "5",
+       "5"
+      ]
+     },
+     "T-14v": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Loss from +1 IV point (vega) at least this % of max profit",
+      "monthly": [
+       "15",
+       "15",
+       "10"
+      ],
+      "on": false,
+      "unit": "%",
+      "weekly": [
+       "10",
+       "10",
+       "10"
+      ]
+     },
+     "T-15": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Margin used reaches this % of available",
+      "monthly": [
+       "80",
+       "80",
+       "80"
+      ],
+      "on": false,
+      "unit": "%",
+      "weekly": [
+       "80",
+       "80",
+       "80"
+      ]
+     },
+     "T-16": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Loss reaches this % of the margin blocked",
+      "monthly": [
+       "4",
+       "4",
+       "3"
+      ],
+      "on": true,
+      "unit": "%",
+      "weekly": [
+       "4",
+       "4",
+       "3"
+      ]
+     },
+     "T-18": {
+      "cmp": "",
+      "data": "ok",
+      "label": "Adjustments used reach the plan's maximum",
+      "monthly": null,
+      "on": true,
+      "unit": "",
+      "weekly": null
+     },
+     "T-19": {
+      "cmp": "le",
+      "data": "ok",
+      "label": "Premium still left to earn is below this many x the adjustment's cost",
+      "monthly": [
+       "1",
+       "1",
+       "1"
+      ],
+      "on": true,
+      "unit": "x",
+      "weekly": [
+       "1",
+       "1",
+       "1"
+      ]
+     },
+     "T-20": {
+      "cmp": "",
+      "data": "user",
+      "label": "Spot crosses a level you set (support / resistance)",
+      "monthly": null,
+      "on": false,
+      "unit": "pts",
+      "weekly": null
+     },
+     "T-20b": {
+      "cmp": "",
+      "data": "hist",
+      "greyed": "Needs price history (not in V1)",
+      "label": "Market trending vs range-bound",
+      "monthly": null,
+      "on": false,
+      "unit": "",
+      "weekly": null
+     },
+     "T-21": {
+      "cmp": "",
+      "data": "ok",
+      "label": "Prices stale or missing (no suggestion is made)",
+      "monthly": null,
+      "on": true,
+      "unit": "",
+      "weekly": null
+     }
+    }
+   },
+   "name": "Iron condor: system default",
+   "status": "approved",
+   "strategy_type": "ic"
+  },
+  {
+   "body": {
+    "approaches": {
+     "applicable": [
+      "A-01",
+      "A-02",
+      "A-05",
+      "A-04",
+      "A-06",
+      "A-23",
+      "A-24",
+      "A-25",
+      "A-26",
+      "A-27",
+      "A-28",
+      "A-29",
+      "A-31",
+      "A-35",
+      "A-36",
+      "A-37",
+      "A-38"
+     ],
+     "greyed": [
+      {
+       "id": "A-08",
+       "reason": "Strangles only"
+      },
+      {
+       "id": "A-09",
+       "reason": "Loss already capped"
+      },
+      {
+       "id": "A-10",
+       "reason": "Strangles only"
+      },
+      {
+       "id": "A-11",
+       "reason": "Iron condors only"
+      },
+      {
+       "id": "A-12",
+       "reason": "Needs a credit spread"
+      },
+      {
+       "id": "A-13",
+       "reason": "Needs a short put"
+      },
+      {
+       "id": "A-15",
+       "reason": "Ratio spreads only"
+      },
+      {
+       "id": "A-16",
+       "reason": "Long options only"
+      },
+      {
+       "id": "A-17",
+       "reason": "Long options only"
+      },
+      {
+       "id": "A-18",
+       "reason": "Long volatility only"
+      },
+      {
+       "id": "A-19",
+       "reason": "Calendars only"
+      }
+     ],
+     "off_in_playbook": [
+      "A-03",
+      "A-07",
+      "A-14",
+      "A-20",
+      "A-21",
+      "A-22",
+      "A-32",
+      "A-33",
+      "A-34",
+      "A-30"
+     ]
+    },
+    "day_rules": [
+     {
+      "action": 0,
+      "at": "15:00",
+      "on": true,
+      "when": "beforeWeekend"
+     },
+     {
+      "action": 0,
+      "at": "15:00",
+      "on": true,
+      "when": "beforeHoliday"
+     },
+     {
+      "action": 4,
+      "at": "13:00",
+      "on": true,
+      "percent": "20",
+      "when": "expiry"
+     },
+     {
+      "action": 1,
+      "at": "14:30",
+      "from": "",
+      "on": false,
+      "to": "",
+      "when": "away"
+     },
+     {
+      "action": 1,
+      "at": "14:30",
+      "on": false,
+      "when": "event"
+     }
+    ],
+    "guards": {
+     "entry_guide": "shorts at 0.15 to 0.20 delta, wings 200 to 400 points out",
+     "hide_oi_below": 10000,
+     "hide_spread_pct_of_mid_above": "5",
+     "max_adjustments": 2,
+     "order_sequence": "buy legs first; buy back shorts before selling hedges",
+     "profit_target_pct_of_max_profit": "50",
+     "roll_debit_limit": "Rs 500 or 10% of max profit",
+     "stop_line_pct_of_max_loss": "50",
+     "warn_cost_pct_of_premium_left": "50"
+    },
+    "rules": [
+     {
+      "any_of": [
+       "T-01"
+      ],
+      "id": "T-01"
+     },
+     {
+      "any_of": [
+       "T-02"
+      ],
+      "id": "T-02"
+     },
+     {
+      "any_of": [
+       "T-13"
+      ],
+      "id": "T-13"
+     },
+     {
+      "any_of": [
+       "T-03"
+      ],
+      "id": "T-03"
+     },
+     {
+      "any_of": [
+       "T-14"
+      ],
+      "id": "T-14"
+     },
+     {
+      "any_of": [
+       "T-11"
+      ],
+      "id": "T-11"
+     },
+     {
+      "any_of": [
+       "T-06"
+      ],
+      "id": "T-06"
+     },
+     {
+      "any_of": [
+       "T-07"
+      ],
+      "id": "T-07"
+     },
+     {
+      "any_of": [
+       "T-09"
+      ],
+      "id": "T-09"
+     },
+     {
+      "any_of": [
+       "T-19"
+      ],
+      "id": "T-19"
+     },
+     {
+      "any_of": [
+       "T-16"
+      ],
+      "id": "T-16"
+     },
+     {
+      "any_of": [
+       "T-10b"
+      ],
+      "id": "T-10b"
+     },
+     {
+      "any_of": [
+       "T-18"
+      ],
+      "id": "T-18"
+     },
+     {
+      "any_of": [
+       "T-21"
+      ],
+      "id": "T-21"
+     }
+    ],
+    "schema": 1,
+    "situations": [
+     {
+      "id": "S-01",
+      "name": "Gap at the open",
+      "rule": "Wait until 09:30 before suggesting, unless a short opens in the money"
+     },
+     {
+      "id": "S-02",
+      "name": "Trending day",
+      "rule": "Show early rolls when net delta grows past 0.15 per lot"
+     },
+     {
+      "id": "S-03",
+      "name": "Range day",
+      "rule": "Show only the profit target; no adjustments"
+     },
+     {
+      "id": "S-04",
+      "name": "IV jumps without a big move",
+      "rule": "Show where the P&L came from; suggest No change unless an event is within 1 session"
+     },
+     {
+      "id": "S-05",
+      "name": "IV crush after an event",
+      "rule": "Show take-profit at 40% of max profit"
+     },
+     {
+      "id": "S-06",
+      "name": "Afternoon carry check",
+      "rule": "At 15:00: show overnight margin and the loss at +/-2% gap"
+     },
+     {
+      "id": "S-07",
+      "name": "Expiry day",
+      "rule": "From 13:00: buy back shorts below Rs 2; close a position whose short is within 0.3% by 14:30; warn about STT on in-the-money options"
+     },
+     {
+      "id": "S-10",
+      "name": "Broker or data outage",
+      "rule": "No suggestion; show the last good data and its age"
+     },
+     {
+      "id": "S-11",
+      "name": "Adjustment limit reached",
+      "rule": "Only exit and reduce are offered"
+     },
+     {
+      "id": "S-12",
+      "name": "Big win early",
+      "rule": "If profit reaches 40% of max profit on day 1, show take profit"
+     }
+    ],
+    "stages": {
+     "monthly": [
+      {
+       "from": 10,
+       "name": "Early",
+       "to": null
+      },
+      {
+       "from": 3,
+       "name": "Middle",
+       "to": 9
+      },
+      {
+       "from": 0,
+       "name": "Last 2 days",
+       "to": 2
+      }
+     ],
+     "weekly": [
+      {
+       "from": 5,
+       "name": "Early",
+       "to": null
+      },
+      {
+       "from": 2,
+       "name": "Middle",
+       "to": 4
+      },
+      {
+       "from": 0,
+       "name": "Last day",
+       "to": 1
+      }
+     ]
+    },
+    "status": "draft",
+    "strategy_type": "ifly",
+    "tightened": [
+     "T-01",
+     "T-03",
+     "T-06",
+     "T-07",
+     "T-09",
+     "T-11",
+     "T-13",
+     "T-16",
+     "T-19"
+    ],
+    "triggers": {
+     "T-01": {
+      "cmp": "le",
+      "data": "ok",
+      "label": "Spot within this % of a short strike",
+      "monthly": [
+       "1.5",
+       "1.0",
+       "0.5"
+      ],
+      "on": true,
+      "unit": "%",
+      "weekly": [
+       "0.75",
+       "0.5",
+       "0.3"
+      ]
+     },
+     "T-01b": {
+      "cmp": "le",
+      "data": "ok",
+      "label": "Spot within this many points of a short strike",
+      "monthly": [
+       "350",
+       "240",
+       "120"
+      ],
+      "on": false,
+      "unit": "pts",
+      "weekly": [
+       "180",
+       "120",
+       "70"
+      ]
+     },
+     "T-02": {
+      "cmp": "",
+      "data": "ok",
+      "label": "Spot crosses a breakeven",
+      "monthly": null,
+      "on": true,
+      "unit": "",
+      "weekly": null
+     },
+     "T-03": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Tested short's delta reaches",
+      "monthly": [
+       "0.25",
+       "0.30",
+       "0.35"
+      ],
+      "on": true,
+      "unit": "delta",
+      "weekly": [
+       "0.30",
+       "0.35",
+       "0.40"
+      ]
+     },
+     "T-04": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Net delta beyond +/- this per lot",
+      "monthly": [
+       "0.15",
+       "0.15",
+       "0.20"
+      ],
+      "on": false,
+      "unit": "delta/lot",
+      "weekly": [
+       "0.15",
+       "0.15",
+       "0.20"
+      ]
+     },
+     "T-05": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "One side's value is this many x the other side's",
+      "monthly": [
+       "3",
+       "3",
+       "4"
+      ],
+      "on": false,
+      "unit": "x",
+      "weekly": [
+       "3",
+       "3",
+       "4"
+      ]
+     },
+     "T-06": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Loss reaches this % of max loss",
+      "monthly": [
+       "50",
+       "50",
+       "40"
+      ],
+      "on": true,
+      "unit": "%",
+      "weekly": [
+       "50",
+       "50",
+       "40"
+      ]
+     },
+     "T-06b": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Loss reaches this many x the credit received",
+      "monthly": [
+       "1.5",
+       "1",
+       "0.75"
+      ],
+      "on": false,
+      "unit": "x",
+      "weekly": [
+       "1",
+       "1",
+       "0.75"
+      ]
+     },
+     "T-07": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Profit reaches this % of max profit",
+      "monthly": [
+       "50",
+       "50",
+       "75"
+      ],
+      "on": true,
+      "unit": "%",
+      "weekly": [
+       "50",
+       "50",
+       "80"
+      ]
+     },
+     "T-08": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "A leg's premium reaches this many x its entry (leg stop)",
+      "monthly": [
+       "2",
+       "2",
+       "2.5"
+      ],
+      "on": false,
+      "unit": "x",
+      "weekly": [
+       "2",
+       "2",
+       "2.5"
+      ]
+     },
+     "T-09": {
+      "cmp": "le",
+      "data": "ok",
+      "label": "A short leg's premium falls below Rs (close for pennies)",
+      "monthly": [
+       "3",
+       "3",
+       "2"
+      ],
+      "on": true,
+      "unit": "Rs",
+      "weekly": [
+       "3",
+       "3",
+       "2"
+      ]
+     },
+     "T-10b": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Clock time reached (checked in this stage)",
+      "monthly": [
+       "",
+       "",
+       "14:30"
+      ],
+      "on": true,
+      "unit": "time",
+      "weekly": [
+       "",
+       "",
+       "14:30"
+      ]
+     },
+     "T-11": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Options' IV changed this many points since entry",
+      "monthly": [
+       "3",
+       "3",
+       "4"
+      ],
+      "on": true,
+      "unit": "pts",
+      "weekly": [
+       "3",
+       "3",
+       "4"
+      ]
+     },
+     "T-11b": {
+      "cmp": "ge",
+      "data": "vix",
+      "label": "India VIX up this % today",
+      "monthly": [
+       "10",
+       "10",
+       "10"
+      ],
+      "on": false,
+      "unit": "%",
+      "weekly": [
+       "10",
+       "10",
+       "10"
+      ]
+     },
+     "T-11c": {
+      "cmp": "ge",
+      "data": "hist",
+      "greyed": "Needs price history (not in V1)",
+      "label": "IV percentile above",
+      "monthly": [
+       "80",
+       "80",
+       "80"
+      ],
+      "on": false,
+      "unit": "%",
+      "weekly": [
+       "80",
+       "80",
+       "80"
+      ]
+     },
+     "T-12": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Spot has moved this many expected moves (SD) since entry",
+      "monthly": [
+       "1",
+       "1",
+       "1"
+      ],
+      "on": false,
+      "unit": "SD",
+      "weekly": [
+       "1",
+       "1",
+       "1"
+      ]
+     },
+     "T-13": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Gap at the open of at least this %",
+      "monthly": [
+       "1",
+       "1",
+       "0.75"
+      ],
+      "on": true,
+      "unit": "%",
+      "weekly": [
+       "0.75",
+       "0.75",
+       "0.5"
+      ]
+     },
+     "T-14": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Loss from a 1% move (gamma) at least this % of margin",
+      "monthly": [
+       "4",
+       "3",
+       "2"
+      ],
+      "on": true,
+      "unit": "%",
+      "weekly": [
+       "3",
+       "3",
+       "2"
+      ]
+     },
+     "T-14t": {
+      "cmp": "le",
+      "data": "ok",
+      "label": "Theta per day falls below this % of premium left",
+      "monthly": [
+       "3",
+       "3",
+       "3"
+      ],
+      "on": false,
+      "unit": "%",
+      "weekly": [
+       "5",
+       "5",
+       "5"
+      ]
+     },
+     "T-14v": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Loss from +1 IV point (vega) at least this % of max profit",
+      "monthly": [
+       "15",
+       "15",
+       "10"
+      ],
+      "on": false,
+      "unit": "%",
+      "weekly": [
+       "10",
+       "10",
+       "10"
+      ]
+     },
+     "T-15": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Margin used reaches this % of available",
+      "monthly": [
+       "80",
+       "80",
+       "80"
+      ],
+      "on": false,
+      "unit": "%",
+      "weekly": [
+       "80",
+       "80",
+       "80"
+      ]
+     },
+     "T-16": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Loss reaches this % of the margin blocked",
+      "monthly": [
+       "4",
+       "4",
+       "3"
+      ],
+      "on": true,
+      "unit": "%",
+      "weekly": [
+       "4",
+       "4",
+       "3"
+      ]
+     },
+     "T-18": {
+      "cmp": "",
+      "data": "ok",
+      "label": "Adjustments used reach the plan's maximum",
+      "monthly": null,
+      "on": true,
+      "unit": "",
+      "weekly": null
+     },
+     "T-19": {
+      "cmp": "le",
+      "data": "ok",
+      "label": "Premium still left to earn is below this many x the adjustment's cost",
+      "monthly": [
+       "2",
+       "2",
+       "2"
+      ],
+      "on": true,
+      "unit": "x",
+      "weekly": [
+       "2",
+       "2",
+       "2"
+      ]
+     },
+     "T-20": {
+      "cmp": "",
+      "data": "user",
+      "label": "Spot crosses a level you set (support / resistance)",
+      "monthly": null,
+      "on": false,
+      "unit": "pts",
+      "weekly": null
+     },
+     "T-20b": {
+      "cmp": "",
+      "data": "hist",
+      "greyed": "Needs price history (not in V1)",
+      "label": "Market trending vs range-bound",
+      "monthly": null,
+      "on": false,
+      "unit": "",
+      "weekly": null
+     },
+     "T-21": {
+      "cmp": "",
+      "data": "ok",
+      "label": "Prices stale or missing (no suggestion is made)",
+      "monthly": null,
+      "on": true,
+      "unit": "",
+      "weekly": null
+     }
+    }
+   },
+   "name": "Iron butterfly: system default",
+   "status": "draft",
+   "strategy_type": "ifly"
+  },
+  {
+   "body": {
+    "approaches": {
+     "applicable": [
+      "A-02",
+      "A-05",
+      "A-04",
+      "A-06",
+      "A-23",
+      "A-24",
+      "A-25",
+      "A-27",
+      "A-28",
+      "A-29",
+      "A-31",
+      "A-35",
+      "A-36",
+      "A-37",
+      "A-38"
+     ],
+     "greyed": [
+      {
+       "id": "A-01",
+       "reason": "Needs two sides"
+      },
+      {
+       "id": "A-07",
+       "reason": "Not a range trade"
+      },
+      {
+       "id": "A-08",
+       "reason": "Strangles only"
+      },
+      {
+       "id": "A-09",
+       "reason": "Loss already capped"
+      },
+      {
+       "id": "A-10",
+       "reason": "Strangles only"
+      },
+      {
+       "id": "A-11",
+       "reason": "Iron condors only"
+      },
+      {
+       "id": "A-15",
+       "reason": "Ratio spreads only"
+      },
+      {
+       "id": "A-16",
+       "reason": "Long options only"
+      },
+      {
+       "id": "A-17",
+       "reason": "Long options only"
+      },
+      {
+       "id": "A-18",
+       "reason": "Long volatility only"
+      },
+      {
+       "id": "A-19",
+       "reason": "Calendars only"
+      },
+      {
+       "id": "A-26",
+       "reason": "Needs two sides"
+      }
+     ],
+     "off_in_playbook": [
+      "A-03",
+      "A-12",
+      "A-13",
+      "A-14",
+      "A-20",
+      "A-21",
+      "A-22",
+      "A-32",
+      "A-33",
+      "A-34",
+      "A-30"
+     ]
+    },
+    "day_rules": [
+     {
+      "action": 0,
+      "at": "15:00",
+      "on": true,
+      "when": "beforeWeekend"
+     },
+     {
+      "action": 0,
+      "at": "15:00",
+      "on": true,
+      "when": "beforeHoliday"
+     },
+     {
+      "action": 4,
+      "at": "13:00",
+      "on": true,
+      "percent": "20",
+      "when": "expiry"
+     },
+     {
+      "action": 1,
+      "at": "14:30",
+      "from": "",
+      "on": false,
+      "to": "",
+      "when": "away"
+     },
+     {
+      "action": 1,
+      "at": "14:30",
+      "on": false,
+      "when": "event"
+     }
+    ],
+    "guards": {
+     "entry_guide": "shorts at 0.15 to 0.20 delta, wings 200 to 400 points out",
+     "hide_oi_below": 10000,
+     "hide_spread_pct_of_mid_above": "5",
+     "max_adjustments": 2,
+     "order_sequence": "buy legs first; buy back shorts before selling hedges",
+     "profit_target_pct_of_max_profit": "50",
+     "roll_debit_limit": "Rs 500 or 10% of max profit",
+     "stop_line_pct_of_max_loss": "50",
+     "warn_cost_pct_of_premium_left": "50"
+    },
+    "rules": [
+     {
+      "any_of": [
+       "T-01"
+      ],
+      "id": "T-01"
+     },
+     {
+      "any_of": [
+       "T-02"
+      ],
+      "id": "T-02"
+     },
+     {
+      "any_of": [
+       "T-13"
+      ],
+      "id": "T-13"
+     },
+     {
+      "any_of": [
+       "T-03"
+      ],
+      "id": "T-03"
+     },
+     {
+      "any_of": [
+       "T-14"
+      ],
+      "id": "T-14"
+     },
+     {
+      "any_of": [
+       "T-11"
+      ],
+      "id": "T-11"
+     },
+     {
+      "any_of": [
+       "T-06"
+      ],
+      "id": "T-06"
+     },
+     {
+      "any_of": [
+       "T-07"
+      ],
+      "id": "T-07"
+     },
+     {
+      "any_of": [
+       "T-09"
+      ],
+      "id": "T-09"
+     },
+     {
+      "any_of": [
+       "T-19"
+      ],
+      "id": "T-19"
+     },
+     {
+      "any_of": [
+       "T-16"
+      ],
+      "id": "T-16"
+     },
+     {
+      "any_of": [
+       "T-10b"
+      ],
+      "id": "T-10b"
+     },
+     {
+      "any_of": [
+       "T-18"
+      ],
+      "id": "T-18"
+     },
+     {
+      "any_of": [
+       "T-21"
+      ],
+      "id": "T-21"
+     }
+    ],
+    "schema": 1,
+    "situations": [
+     {
+      "id": "S-01",
+      "name": "Gap at the open",
+      "rule": "Wait until 09:30 before suggesting, unless a short opens in the money"
+     },
+     {
+      "id": "S-02",
+      "name": "Trending day",
+      "rule": "Show early rolls when net delta grows past 0.15 per lot"
+     },
+     {
+      "id": "S-03",
+      "name": "Range day",
+      "rule": "Show only the profit target; no adjustments"
+     },
+     {
+      "id": "S-04",
+      "name": "IV jumps without a big move",
+      "rule": "Show where the P&L came from; suggest No change unless an event is within 1 session"
+     },
+     {
+      "id": "S-05",
+      "name": "IV crush after an event",
+      "rule": "Show take-profit at 40% of max profit"
+     },
+     {
+      "id": "S-06",
+      "name": "Afternoon carry check",
+      "rule": "At 15:00: show overnight margin and the loss at +/-2% gap"
+     },
+     {
+      "id": "S-07",
+      "name": "Expiry day",
+      "rule": "From 13:00: buy back shorts below Rs 2; close a position whose short is within 0.3% by 14:30; warn about STT on in-the-money options"
+     },
+     {
+      "id": "S-10",
+      "name": "Broker or data outage",
+      "rule": "No suggestion; show the last good data and its age"
+     },
+     {
+      "id": "S-11",
+      "name": "Adjustment limit reached",
+      "rule": "Only exit and reduce are offered"
+     },
+     {
+      "id": "S-12",
+      "name": "Big win early",
+      "rule": "If profit reaches 40% of max profit on day 1, show take profit"
+     }
+    ],
+    "stages": {
+     "monthly": [
+      {
+       "from": 10,
+       "name": "Early",
+       "to": null
+      },
+      {
+       "from": 3,
+       "name": "Middle",
+       "to": 9
+      },
+      {
+       "from": 0,
+       "name": "Last 2 days",
+       "to": 2
+      }
+     ],
+     "weekly": [
+      {
+       "from": 5,
+       "name": "Early",
+       "to": null
+      },
+      {
+       "from": 2,
+       "name": "Middle",
+       "to": 4
+      },
+      {
+       "from": 0,
+       "name": "Last day",
+       "to": 1
+      }
+     ]
+    },
+    "status": "draft",
+    "strategy_type": "credit",
+    "tightened": [
+     "T-01",
+     "T-03",
+     "T-06",
+     "T-07",
+     "T-09",
+     "T-11",
+     "T-13",
+     "T-16",
+     "T-19"
+    ],
+    "triggers": {
+     "T-01": {
+      "cmp": "le",
+      "data": "ok",
+      "label": "Spot within this % of a short strike",
+      "monthly": [
+       "1.5",
+       "1.0",
+       "0.5"
+      ],
+      "on": true,
+      "unit": "%",
+      "weekly": [
+       "0.75",
+       "0.5",
+       "0.3"
+      ]
+     },
+     "T-01b": {
+      "cmp": "le",
+      "data": "ok",
+      "label": "Spot within this many points of a short strike",
+      "monthly": [
+       "350",
+       "240",
+       "120"
+      ],
+      "on": false,
+      "unit": "pts",
+      "weekly": [
+       "180",
+       "120",
+       "70"
+      ]
+     },
+     "T-02": {
+      "cmp": "",
+      "data": "ok",
+      "label": "Spot crosses a breakeven",
+      "monthly": null,
+      "on": true,
+      "unit": "",
+      "weekly": null
+     },
+     "T-03": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Tested short's delta reaches",
+      "monthly": [
+       "0.25",
+       "0.30",
+       "0.35"
+      ],
+      "on": true,
+      "unit": "delta",
+      "weekly": [
+       "0.30",
+       "0.35",
+       "0.40"
+      ]
+     },
+     "T-04": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Net delta beyond +/- this per lot",
+      "monthly": [
+       "0.15",
+       "0.15",
+       "0.20"
+      ],
+      "on": false,
+      "unit": "delta/lot",
+      "weekly": [
+       "0.15",
+       "0.15",
+       "0.20"
+      ]
+     },
+     "T-05": {
+      "cmp": "ge",
+      "data": "ok",
+      "greyed": "Needs a call side and a put side",
+      "label": "One side's value is this many x the other side's",
+      "monthly": [
+       "3",
+       "3",
+       "4"
+      ],
+      "on": false,
+      "unit": "x",
+      "weekly": [
+       "3",
+       "3",
+       "4"
+      ]
+     },
+     "T-06": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Loss reaches this % of max loss",
+      "monthly": [
+       "50",
+       "50",
+       "40"
+      ],
+      "on": true,
+      "unit": "%",
+      "weekly": [
+       "50",
+       "50",
+       "40"
+      ]
+     },
+     "T-06b": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Loss reaches this many x the credit received",
+      "monthly": [
+       "1.5",
+       "1",
+       "0.75"
+      ],
+      "on": false,
+      "unit": "x",
+      "weekly": [
+       "1",
+       "1",
+       "0.75"
+      ]
+     },
+     "T-07": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Profit reaches this % of max profit",
+      "monthly": [
+       "50",
+       "50",
+       "75"
+      ],
+      "on": true,
+      "unit": "%",
+      "weekly": [
+       "50",
+       "50",
+       "80"
+      ]
+     },
+     "T-08": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "A leg's premium reaches this many x its entry (leg stop)",
+      "monthly": [
+       "2",
+       "2",
+       "2.5"
+      ],
+      "on": false,
+      "unit": "x",
+      "weekly": [
+       "2",
+       "2",
+       "2.5"
+      ]
+     },
+     "T-09": {
+      "cmp": "le",
+      "data": "ok",
+      "label": "A short leg's premium falls below Rs (close for pennies)",
+      "monthly": [
+       "3",
+       "3",
+       "2"
+      ],
+      "on": true,
+      "unit": "Rs",
+      "weekly": [
+       "3",
+       "3",
+       "2"
+      ]
+     },
+     "T-10b": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Clock time reached (checked in this stage)",
+      "monthly": [
+       "",
+       "",
+       "14:30"
+      ],
+      "on": true,
+      "unit": "time",
+      "weekly": [
+       "",
+       "",
+       "14:30"
+      ]
+     },
+     "T-11": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Options' IV changed this many points since entry",
+      "monthly": [
+       "3",
+       "3",
+       "4"
+      ],
+      "on": true,
+      "unit": "pts",
+      "weekly": [
+       "3",
+       "3",
+       "4"
+      ]
+     },
+     "T-11b": {
+      "cmp": "ge",
+      "data": "vix",
+      "label": "India VIX up this % today",
+      "monthly": [
+       "10",
+       "10",
+       "10"
+      ],
+      "on": false,
+      "unit": "%",
+      "weekly": [
+       "10",
+       "10",
+       "10"
+      ]
+     },
+     "T-11c": {
+      "cmp": "ge",
+      "data": "hist",
+      "greyed": "Needs price history (not in V1)",
+      "label": "IV percentile above",
+      "monthly": [
+       "80",
+       "80",
+       "80"
+      ],
+      "on": false,
+      "unit": "%",
+      "weekly": [
+       "80",
+       "80",
+       "80"
+      ]
+     },
+     "T-12": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Spot has moved this many expected moves (SD) since entry",
+      "monthly": [
+       "1",
+       "1",
+       "1"
+      ],
+      "on": false,
+      "unit": "SD",
+      "weekly": [
+       "1",
+       "1",
+       "1"
+      ]
+     },
+     "T-13": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Gap at the open of at least this %",
+      "monthly": [
+       "1",
+       "1",
+       "0.75"
+      ],
+      "on": true,
+      "unit": "%",
+      "weekly": [
+       "0.75",
+       "0.75",
+       "0.5"
+      ]
+     },
+     "T-14": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Loss from a 1% move (gamma) at least this % of margin",
+      "monthly": [
+       "4",
+       "3",
+       "2"
+      ],
+      "on": true,
+      "unit": "%",
+      "weekly": [
+       "3",
+       "3",
+       "2"
+      ]
+     },
+     "T-14t": {
+      "cmp": "le",
+      "data": "ok",
+      "label": "Theta per day falls below this % of premium left",
+      "monthly": [
+       "3",
+       "3",
+       "3"
+      ],
+      "on": false,
+      "unit": "%",
+      "weekly": [
+       "5",
+       "5",
+       "5"
+      ]
+     },
+     "T-14v": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Loss from +1 IV point (vega) at least this % of max profit",
+      "monthly": [
+       "15",
+       "15",
+       "10"
+      ],
+      "on": false,
+      "unit": "%",
+      "weekly": [
+       "10",
+       "10",
+       "10"
+      ]
+     },
+     "T-15": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Margin used reaches this % of available",
+      "monthly": [
+       "80",
+       "80",
+       "80"
+      ],
+      "on": false,
+      "unit": "%",
+      "weekly": [
+       "80",
+       "80",
+       "80"
+      ]
+     },
+     "T-16": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Loss reaches this % of the margin blocked",
+      "monthly": [
+       "4",
+       "4",
+       "3"
+      ],
+      "on": true,
+      "unit": "%",
+      "weekly": [
+       "4",
+       "4",
+       "3"
+      ]
+     },
+     "T-18": {
+      "cmp": "",
+      "data": "ok",
+      "label": "Adjustments used reach the plan's maximum",
+      "monthly": null,
+      "on": true,
+      "unit": "",
+      "weekly": null
+     },
+     "T-19": {
+      "cmp": "le",
+      "data": "ok",
+      "label": "Premium still left to earn is below this many x the adjustment's cost",
+      "monthly": [
+       "2",
+       "2",
+       "2"
+      ],
+      "on": true,
+      "unit": "x",
+      "weekly": [
+       "2",
+       "2",
+       "2"
+      ]
+     },
+     "T-20": {
+      "cmp": "",
+      "data": "user",
+      "label": "Spot crosses a level you set (support / resistance)",
+      "monthly": null,
+      "on": false,
+      "unit": "pts",
+      "weekly": null
+     },
+     "T-20b": {
+      "cmp": "",
+      "data": "hist",
+      "greyed": "Needs price history (not in V1)",
+      "label": "Market trending vs range-bound",
+      "monthly": null,
+      "on": false,
+      "unit": "",
+      "weekly": null
+     },
+     "T-21": {
+      "cmp": "",
+      "data": "ok",
+      "label": "Prices stale or missing (no suggestion is made)",
+      "monthly": null,
+      "on": true,
+      "unit": "",
+      "weekly": null
+     }
+    }
+   },
+   "name": "Credit spreads: system default",
+   "status": "draft",
+   "strategy_type": "credit"
+  },
+  {
+   "body": {
+    "approaches": {
+     "applicable": [
+      "A-05",
+      "A-06",
+      "A-23",
+      "A-24",
+      "A-25",
+      "A-28",
+      "A-29",
+      "A-31",
+      "A-35",
+      "A-36",
+      "A-37",
+      "A-38"
+     ],
+     "greyed": [
+      {
+       "id": "A-01",
+       "reason": "Needs two sides"
+      },
+      {
+       "id": "A-02",
+       "reason": "No short leg"
+      },
+      {
+       "id": "A-04",
+       "reason": "No short leg"
+      },
+      {
+       "id": "A-07",
+       "reason": "Not a range trade"
+      },
+      {
+       "id": "A-08",
+       "reason": "Strangles only"
+      },
+      {
+       "id": "A-09",
+       "reason": "Loss already capped"
+      },
+      {
+       "id": "A-10",
+       "reason": "Strangles only"
+      },
+      {
+       "id": "A-11",
+       "reason": "Iron condors only"
+      },
+      {
+       "id": "A-12",
+       "reason": "Needs a credit spread"
+      },
+      {
+       "id": "A-13",
+       "reason": "Needs a short put"
+      },
+      {
+       "id": "A-14",
+       "reason": "No short leg"
+      },
+      {
+       "id": "A-15",
+       "reason": "Ratio spreads only"
+      },
+      {
+       "id": "A-16",
+       "reason": "Long options only"
+      },
+      {
+       "id": "A-17",
+       "reason": "Long options only"
+      },
+      {
+       "id": "A-18",
+       "reason": "Long volatility only"
+      },
+      {
+       "id": "A-19",
+       "reason": "Calendars only"
+      },
+      {
+       "id": "A-22",
+       "reason": "No short side to protect"
+      },
+      {
+       "id": "A-26",
+       "reason": "Needs two sides"
+      },
+      {
+       "id": "A-27",
+       "reason": "No short leg"
+      }
+     ],
+     "off_in_playbook": [
+      "A-03",
+      "A-20",
+      "A-21",
+      "A-32",
+      "A-33",
+      "A-34",
+      "A-30"
+     ]
+    },
+    "day_rules": [
+     {
+      "action": 0,
+      "at": "15:00",
+      "on": true,
+      "when": "beforeWeekend"
+     },
+     {
+      "action": 0,
+      "at": "15:00",
+      "on": true,
+      "when": "beforeHoliday"
+     },
+     {
+      "action": 4,
+      "at": "13:00",
+      "on": true,
+      "percent": "20",
+      "when": "expiry"
+     },
+     {
+      "action": 1,
+      "at": "14:30",
+      "from": "",
+      "on": false,
+      "to": "",
+      "when": "away"
+     },
+     {
+      "action": 1,
+      "at": "14:30",
+      "on": false,
+      "when": "event"
+     }
+    ],
+    "guards": {
+     "entry_guide": "shorts at 0.15 to 0.20 delta, wings 200 to 400 points out",
+     "hide_oi_below": 10000,
+     "hide_spread_pct_of_mid_above": "5",
+     "max_adjustments": 2,
+     "order_sequence": "buy legs first; buy back shorts before selling hedges",
+     "profit_target_pct_of_max_profit": "50",
+     "roll_debit_limit": "Rs 500 or 10% of max profit",
+     "stop_line_pct_of_max_loss": "50",
+     "warn_cost_pct_of_premium_left": "50"
+    },
+    "rules": [
+     {
+      "any_of": [
+       "T-01"
+      ],
+      "id": "T-01"
+     },
+     {
+      "any_of": [
+       "T-02"
+      ],
+      "id": "T-02"
+     },
+     {
+      "any_of": [
+       "T-13"
+      ],
+      "id": "T-13"
+     },
+     {
+      "any_of": [
+       "T-03"
+      ],
+      "id": "T-03"
+     },
+     {
+      "any_of": [
+       "T-14"
+      ],
+      "id": "T-14"
+     },
+     {
+      "any_of": [
+       "T-11"
+      ],
+      "id": "T-11"
+     },
+     {
+      "any_of": [
+       "T-06"
+      ],
+      "id": "T-06"
+     },
+     {
+      "any_of": [
+       "T-07"
+      ],
+      "id": "T-07"
+     },
+     {
+      "any_of": [
+       "T-16"
+      ],
+      "id": "T-16"
+     },
+     {
+      "any_of": [
+       "T-10b"
+      ],
+      "id": "T-10b"
+     },
+     {
+      "any_of": [
+       "T-18"
+      ],
+      "id": "T-18"
+     },
+     {
+      "any_of": [
+       "T-21"
+      ],
+      "id": "T-21"
+     }
+    ],
+    "schema": 1,
+    "situations": [
+     {
+      "id": "S-01",
+      "name": "Gap at the open",
+      "rule": "Wait until 09:30 before suggesting, unless a short opens in the money"
+     },
+     {
+      "id": "S-02",
+      "name": "Trending day",
+      "rule": "Show early rolls when net delta grows past 0.15 per lot"
+     },
+     {
+      "id": "S-03",
+      "name": "Range day",
+      "rule": "Show only the profit target; no adjustments"
+     },
+     {
+      "id": "S-04",
+      "name": "IV jumps without a big move",
+      "rule": "Show where the P&L came from; suggest No change unless an event is within 1 session"
+     },
+     {
+      "id": "S-05",
+      "name": "IV crush after an event",
+      "rule": "Show take-profit at 40% of max profit"
+     },
+     {
+      "id": "S-06",
+      "name": "Afternoon carry check",
+      "rule": "At 15:00: show overnight margin and the loss at +/-2% gap"
+     },
+     {
+      "id": "S-07",
+      "name": "Expiry day",
+      "rule": "From 13:00: buy back shorts below Rs 2; close a position whose short is within 0.3% by 14:30; warn about STT on in-the-money options"
+     },
+     {
+      "id": "S-10",
+      "name": "Broker or data outage",
+      "rule": "No suggestion; show the last good data and its age"
+     },
+     {
+      "id": "S-11",
+      "name": "Adjustment limit reached",
+      "rule": "Only exit and reduce are offered"
+     },
+     {
+      "id": "S-12",
+      "name": "Big win early",
+      "rule": "If profit reaches 40% of max profit on day 1, show take profit"
+     }
+    ],
+    "stages": {
+     "monthly": [
+      {
+       "from": 10,
+       "name": "Early",
+       "to": null
+      },
+      {
+       "from": 3,
+       "name": "Middle",
+       "to": 9
+      },
+      {
+       "from": 0,
+       "name": "Last 2 days",
+       "to": 2
+      }
+     ],
+     "weekly": [
+      {
+       "from": 5,
+       "name": "Early",
+       "to": null
+      },
+      {
+       "from": 2,
+       "name": "Middle",
+       "to": 4
+      },
+      {
+       "from": 0,
+       "name": "Last day",
+       "to": 1
+      }
+     ]
+    },
+    "status": "draft",
+    "strategy_type": "debit",
+    "tightened": [
+     "T-01",
+     "T-03",
+     "T-06",
+     "T-07",
+     "T-09",
+     "T-11",
+     "T-13",
+     "T-16",
+     "T-19"
+    ],
+    "triggers": {
+     "T-01": {
+      "cmp": "le",
+      "data": "ok",
+      "label": "Spot within this % of a short strike",
+      "monthly": [
+       "1.5",
+       "1.0",
+       "0.5"
+      ],
+      "on": true,
+      "unit": "%",
+      "weekly": [
+       "0.75",
+       "0.5",
+       "0.3"
+      ]
+     },
+     "T-01b": {
+      "cmp": "le",
+      "data": "ok",
+      "label": "Spot within this many points of a short strike",
+      "monthly": [
+       "350",
+       "240",
+       "120"
+      ],
+      "on": false,
+      "unit": "pts",
+      "weekly": [
+       "180",
+       "120",
+       "70"
+      ]
+     },
+     "T-02": {
+      "cmp": "",
+      "data": "ok",
+      "label": "Spot crosses a breakeven",
+      "monthly": null,
+      "on": true,
+      "unit": "",
+      "weekly": null
+     },
+     "T-03": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Tested short's delta reaches",
+      "monthly": [
+       "0.25",
+       "0.30",
+       "0.35"
+      ],
+      "on": true,
+      "unit": "delta",
+      "weekly": [
+       "0.30",
+       "0.35",
+       "0.40"
+      ]
+     },
+     "T-04": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Net delta beyond +/- this per lot",
+      "monthly": [
+       "0.15",
+       "0.15",
+       "0.20"
+      ],
+      "on": false,
+      "unit": "delta/lot",
+      "weekly": [
+       "0.15",
+       "0.15",
+       "0.20"
+      ]
+     },
+     "T-05": {
+      "cmp": "ge",
+      "data": "ok",
+      "greyed": "Needs a call side and a put side",
+      "label": "One side's value is this many x the other side's",
+      "monthly": [
+       "3",
+       "3",
+       "4"
+      ],
+      "on": false,
+      "unit": "x",
+      "weekly": [
+       "3",
+       "3",
+       "4"
+      ]
+     },
+     "T-06": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Loss reaches this % of max loss",
+      "monthly": [
+       "50",
+       "50",
+       "40"
+      ],
+      "on": true,
+      "unit": "%",
+      "weekly": [
+       "50",
+       "50",
+       "40"
+      ]
+     },
+     "T-06b": {
+      "cmp": "ge",
+      "data": "ok",
+      "greyed": "No credit received",
+      "label": "Loss reaches this many x the credit received",
+      "monthly": [
+       "1.5",
+       "1",
+       "0.75"
+      ],
+      "on": false,
+      "unit": "x",
+      "weekly": [
+       "1",
+       "1",
+       "0.75"
+      ]
+     },
+     "T-07": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Profit reaches this % of max profit",
+      "monthly": [
+       "50",
+       "50",
+       "75"
+      ],
+      "on": true,
+      "unit": "%",
+      "weekly": [
+       "50",
+       "50",
+       "80"
+      ]
+     },
+     "T-08": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "A leg's premium reaches this many x its entry (leg stop)",
+      "monthly": [
+       "2",
+       "2",
+       "2.5"
+      ],
+      "on": false,
+      "unit": "x",
+      "weekly": [
+       "2",
+       "2",
+       "2.5"
+      ]
+     },
+     "T-09": {
+      "cmp": "le",
+      "data": "ok",
+      "greyed": "No short leg",
+      "label": "A short leg's premium falls below Rs (close for pennies)",
+      "monthly": [
+       "3",
+       "3",
+       "2"
+      ],
+      "on": false,
+      "unit": "Rs",
+      "weekly": [
+       "3",
+       "3",
+       "2"
+      ]
+     },
+     "T-10b": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Clock time reached (checked in this stage)",
+      "monthly": [
+       "",
+       "",
+       "14:30"
+      ],
+      "on": true,
+      "unit": "time",
+      "weekly": [
+       "",
+       "",
+       "14:30"
+      ]
+     },
+     "T-11": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Options' IV changed this many points since entry",
+      "monthly": [
+       "3",
+       "3",
+       "4"
+      ],
+      "on": true,
+      "unit": "pts",
+      "weekly": [
+       "3",
+       "3",
+       "4"
+      ]
+     },
+     "T-11b": {
+      "cmp": "ge",
+      "data": "vix",
+      "label": "India VIX up this % today",
+      "monthly": [
+       "10",
+       "10",
+       "10"
+      ],
+      "on": false,
+      "unit": "%",
+      "weekly": [
+       "10",
+       "10",
+       "10"
+      ]
+     },
+     "T-11c": {
+      "cmp": "ge",
+      "data": "hist",
+      "greyed": "Needs price history (not in V1)",
+      "label": "IV percentile above",
+      "monthly": [
+       "80",
+       "80",
+       "80"
+      ],
+      "on": false,
+      "unit": "%",
+      "weekly": [
+       "80",
+       "80",
+       "80"
+      ]
+     },
+     "T-12": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Spot has moved this many expected moves (SD) since entry",
+      "monthly": [
+       "1",
+       "1",
+       "1"
+      ],
+      "on": false,
+      "unit": "SD",
+      "weekly": [
+       "1",
+       "1",
+       "1"
+      ]
+     },
+     "T-13": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Gap at the open of at least this %",
+      "monthly": [
+       "1",
+       "1",
+       "0.75"
+      ],
+      "on": true,
+      "unit": "%",
+      "weekly": [
+       "0.75",
+       "0.75",
+       "0.5"
+      ]
+     },
+     "T-14": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Loss from a 1% move (gamma) at least this % of margin",
+      "monthly": [
+       "4",
+       "3",
+       "2"
+      ],
+      "on": true,
+      "unit": "%",
+      "weekly": [
+       "3",
+       "3",
+       "2"
+      ]
+     },
+     "T-14t": {
+      "cmp": "le",
+      "data": "ok",
+      "label": "Theta per day falls below this % of premium left",
+      "monthly": [
+       "3",
+       "3",
+       "3"
+      ],
+      "on": false,
+      "unit": "%",
+      "weekly": [
+       "5",
+       "5",
+       "5"
+      ]
+     },
+     "T-14v": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Loss from +1 IV point (vega) at least this % of max profit",
+      "monthly": [
+       "15",
+       "15",
+       "10"
+      ],
+      "on": false,
+      "unit": "%",
+      "weekly": [
+       "10",
+       "10",
+       "10"
+      ]
+     },
+     "T-15": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Margin used reaches this % of available",
+      "monthly": [
+       "80",
+       "80",
+       "80"
+      ],
+      "on": false,
+      "unit": "%",
+      "weekly": [
+       "80",
+       "80",
+       "80"
+      ]
+     },
+     "T-16": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Loss reaches this % of the margin blocked",
+      "monthly": [
+       "4",
+       "4",
+       "3"
+      ],
+      "on": true,
+      "unit": "%",
+      "weekly": [
+       "4",
+       "4",
+       "3"
+      ]
+     },
+     "T-18": {
+      "cmp": "",
+      "data": "ok",
+      "label": "Adjustments used reach the plan's maximum",
+      "monthly": null,
+      "on": true,
+      "unit": "",
+      "weekly": null
+     },
+     "T-19": {
+      "cmp": "le",
+      "data": "ok",
+      "greyed": "No premium to earn",
+      "label": "Premium still left to earn is below this many x the adjustment's cost",
+      "monthly": [
+       "2",
+       "2",
+       "2"
+      ],
+      "on": false,
+      "unit": "x",
+      "weekly": [
+       "2",
+       "2",
+       "2"
+      ]
+     },
+     "T-20": {
+      "cmp": "",
+      "data": "user",
+      "label": "Spot crosses a level you set (support / resistance)",
+      "monthly": null,
+      "on": false,
+      "unit": "pts",
+      "weekly": null
+     },
+     "T-20b": {
+      "cmp": "",
+      "data": "hist",
+      "greyed": "Needs price history (not in V1)",
+      "label": "Market trending vs range-bound",
+      "monthly": null,
+      "on": false,
+      "unit": "",
+      "weekly": null
+     },
+     "T-21": {
+      "cmp": "",
+      "data": "ok",
+      "label": "Prices stale or missing (no suggestion is made)",
+      "monthly": null,
+      "on": true,
+      "unit": "",
+      "weekly": null
+     }
+    }
+   },
+   "name": "Debit spreads: system default",
+   "status": "draft",
+   "strategy_type": "debit"
+  },
+  {
+   "body": {
+    "approaches": {
+     "applicable": [
+      "A-06",
+      "A-16",
+      "A-17",
+      "A-23",
+      "A-24",
+      "A-25",
+      "A-28",
+      "A-29",
+      "A-31",
+      "A-35",
+      "A-36",
+      "A-37",
+      "A-38"
+     ],
+     "greyed": [
+      {
+       "id": "A-01",
+       "reason": "Needs two sides"
+      },
+      {
+       "id": "A-02",
+       "reason": "No short leg"
+      },
+      {
+       "id": "A-05",
+       "reason": "No spread to roll"
+      },
+      {
+       "id": "A-04",
+       "reason": "No short leg"
+      },
+      {
+       "id": "A-07",
+       "reason": "Not a range trade"
+      },
+      {
+       "id": "A-08",
+       "reason": "Strangles only"
+      },
+      {
+       "id": "A-09",
+       "reason": "Loss already capped"
+      },
+      {
+       "id": "A-10",
+       "reason": "Strangles only"
+      },
+      {
+       "id": "A-11",
+       "reason": "Iron condors only"
+      },
+      {
+       "id": "A-12",
+       "reason": "Needs a credit spread"
+      },
+      {
+       "id": "A-13",
+       "reason": "Needs a short put"
+      },
+      {
+       "id": "A-14",
+       "reason": "No short leg"
+      },
+      {
+       "id": "A-15",
+       "reason": "Ratio spreads only"
+      },
+      {
+       "id": "A-18",
+       "reason": "Long volatility only"
+      },
+      {
+       "id": "A-19",
+       "reason": "Calendars only"
+      },
+      {
+       "id": "A-22",
+       "reason": "No short side to protect"
+      },
+      {
+       "id": "A-26",
+       "reason": "Needs two sides"
+      },
+      {
+       "id": "A-27",
+       "reason": "No short leg"
+      }
+     ],
+     "off_in_playbook": [
+      "A-03",
+      "A-20",
+      "A-21",
+      "A-32",
+      "A-33",
+      "A-34",
+      "A-30"
+     ]
+    },
+    "day_rules": [
+     {
+      "action": 0,
+      "at": "15:00",
+      "on": true,
+      "when": "beforeWeekend"
+     },
+     {
+      "action": 0,
+      "at": "15:00",
+      "on": true,
+      "when": "beforeHoliday"
+     },
+     {
+      "action": 4,
+      "at": "13:00",
+      "on": true,
+      "percent": "20",
+      "when": "expiry"
+     },
+     {
+      "action": 1,
+      "at": "14:30",
+      "from": "",
+      "on": false,
+      "to": "",
+      "when": "away"
+     },
+     {
+      "action": 1,
+      "at": "14:30",
+      "on": false,
+      "when": "event"
+     }
+    ],
+    "guards": {
+     "entry_guide": "shorts at 0.15 to 0.20 delta, wings 200 to 400 points out",
+     "hide_oi_below": 10000,
+     "hide_spread_pct_of_mid_above": "5",
+     "max_adjustments": 2,
+     "order_sequence": "buy legs first; buy back shorts before selling hedges",
+     "profit_target_pct_of_max_profit": "50",
+     "roll_debit_limit": "Rs 500 or 10% of max profit",
+     "stop_line_pct_of_max_loss": "50",
+     "warn_cost_pct_of_premium_left": "50"
+    },
+    "rules": [
+     {
+      "any_of": [
+       "T-02"
+      ],
+      "id": "T-02"
+     },
+     {
+      "any_of": [
+       "T-13"
+      ],
+      "id": "T-13"
+     },
+     {
+      "any_of": [
+       "T-14"
+      ],
+      "id": "T-14"
+     },
+     {
+      "any_of": [
+       "T-11"
+      ],
+      "id": "T-11"
+     },
+     {
+      "any_of": [
+       "T-06"
+      ],
+      "id": "T-06"
+     },
+     {
+      "any_of": [
+       "T-07"
+      ],
+      "id": "T-07"
+     },
+     {
+      "any_of": [
+       "T-16"
+      ],
+      "id": "T-16"
+     },
+     {
+      "any_of": [
+       "T-10b"
+      ],
+      "id": "T-10b"
+     },
+     {
+      "any_of": [
+       "T-18"
+      ],
+      "id": "T-18"
+     },
+     {
+      "any_of": [
+       "T-21"
+      ],
+      "id": "T-21"
+     }
+    ],
+    "schema": 1,
+    "situations": [
+     {
+      "id": "S-01",
+      "name": "Gap at the open",
+      "rule": "Wait until 09:30 before suggesting, unless a short opens in the money"
+     },
+     {
+      "id": "S-02",
+      "name": "Trending day",
+      "rule": "Show early rolls when net delta grows past 0.15 per lot"
+     },
+     {
+      "id": "S-03",
+      "name": "Range day",
+      "rule": "Show only the profit target; no adjustments"
+     },
+     {
+      "id": "S-04",
+      "name": "IV jumps without a big move",
+      "rule": "Show where the P&L came from; suggest No change unless an event is within 1 session"
+     },
+     {
+      "id": "S-05",
+      "name": "IV crush after an event",
+      "rule": "Show take-profit at 40% of max profit"
+     },
+     {
+      "id": "S-06",
+      "name": "Afternoon carry check",
+      "rule": "At 15:00: show overnight margin and the loss at +/-2% gap"
+     },
+     {
+      "id": "S-07",
+      "name": "Expiry day",
+      "rule": "From 13:00: buy back shorts below Rs 2; close a position whose short is within 0.3% by 14:30; warn about STT on in-the-money options"
+     },
+     {
+      "id": "S-10",
+      "name": "Broker or data outage",
+      "rule": "No suggestion; show the last good data and its age"
+     },
+     {
+      "id": "S-11",
+      "name": "Adjustment limit reached",
+      "rule": "Only exit and reduce are offered"
+     },
+     {
+      "id": "S-12",
+      "name": "Big win early",
+      "rule": "If profit reaches 40% of max profit on day 1, show take profit"
+     }
+    ],
+    "stages": {
+     "monthly": [
+      {
+       "from": 10,
+       "name": "Early",
+       "to": null
+      },
+      {
+       "from": 3,
+       "name": "Middle",
+       "to": 9
+      },
+      {
+       "from": 0,
+       "name": "Last 2 days",
+       "to": 2
+      }
+     ],
+     "weekly": [
+      {
+       "from": 5,
+       "name": "Early",
+       "to": null
+      },
+      {
+       "from": 2,
+       "name": "Middle",
+       "to": 4
+      },
+      {
+       "from": 0,
+       "name": "Last day",
+       "to": 1
+      }
+     ]
+    },
+    "status": "draft",
+    "strategy_type": "longopt",
+    "tightened": [
+     "T-01",
+     "T-03",
+     "T-06",
+     "T-07",
+     "T-09",
+     "T-11",
+     "T-13",
+     "T-16",
+     "T-19"
+    ],
+    "triggers": {
+     "T-01": {
+      "cmp": "le",
+      "data": "ok",
+      "greyed": "No short strike",
+      "label": "Spot within this % of a short strike",
+      "monthly": [
+       "1.5",
+       "1.0",
+       "0.5"
+      ],
+      "on": false,
+      "unit": "%",
+      "weekly": [
+       "0.75",
+       "0.5",
+       "0.3"
+      ]
+     },
+     "T-01b": {
+      "cmp": "le",
+      "data": "ok",
+      "greyed": "No short strike",
+      "label": "Spot within this many points of a short strike",
+      "monthly": [
+       "350",
+       "240",
+       "120"
+      ],
+      "on": false,
+      "unit": "pts",
+      "weekly": [
+       "180",
+       "120",
+       "70"
+      ]
+     },
+     "T-02": {
+      "cmp": "",
+      "data": "ok",
+      "label": "Spot crosses a breakeven",
+      "monthly": null,
+      "on": true,
+      "unit": "",
+      "weekly": null
+     },
+     "T-03": {
+      "cmp": "ge",
+      "data": "ok",
+      "greyed": "No short leg",
+      "label": "Tested short's delta reaches",
+      "monthly": [
+       "0.25",
+       "0.30",
+       "0.35"
+      ],
+      "on": false,
+      "unit": "delta",
+      "weekly": [
+       "0.30",
+       "0.35",
+       "0.40"
+      ]
+     },
+     "T-04": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Net delta beyond +/- this per lot",
+      "monthly": [
+       "0.15",
+       "0.15",
+       "0.20"
+      ],
+      "on": false,
+      "unit": "delta/lot",
+      "weekly": [
+       "0.15",
+       "0.15",
+       "0.20"
+      ]
+     },
+     "T-05": {
+      "cmp": "ge",
+      "data": "ok",
+      "greyed": "Needs a call side and a put side",
+      "label": "One side's value is this many x the other side's",
+      "monthly": [
+       "3",
+       "3",
+       "4"
+      ],
+      "on": false,
+      "unit": "x",
+      "weekly": [
+       "3",
+       "3",
+       "4"
+      ]
+     },
+     "T-06": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Loss reaches this % of max loss",
+      "monthly": [
+       "50",
+       "50",
+       "40"
+      ],
+      "on": true,
+      "unit": "%",
+      "weekly": [
+       "50",
+       "50",
+       "40"
+      ]
+     },
+     "T-06b": {
+      "cmp": "ge",
+      "data": "ok",
+      "greyed": "No credit received",
+      "label": "Loss reaches this many x the credit received",
+      "monthly": [
+       "1.5",
+       "1",
+       "0.75"
+      ],
+      "on": false,
+      "unit": "x",
+      "weekly": [
+       "1",
+       "1",
+       "0.75"
+      ]
+     },
+     "T-07": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Profit reaches this % of max profit",
+      "monthly": [
+       "50",
+       "50",
+       "75"
+      ],
+      "on": true,
+      "unit": "%",
+      "weekly": [
+       "50",
+       "50",
+       "80"
+      ]
+     },
+     "T-08": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "A leg's premium reaches this many x its entry (leg stop)",
+      "monthly": [
+       "2",
+       "2",
+       "2.5"
+      ],
+      "on": false,
+      "unit": "x",
+      "weekly": [
+       "2",
+       "2",
+       "2.5"
+      ]
+     },
+     "T-09": {
+      "cmp": "le",
+      "data": "ok",
+      "greyed": "No short leg",
+      "label": "A short leg's premium falls below Rs (close for pennies)",
+      "monthly": [
+       "3",
+       "3",
+       "2"
+      ],
+      "on": false,
+      "unit": "Rs",
+      "weekly": [
+       "3",
+       "3",
+       "2"
+      ]
+     },
+     "T-10b": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Clock time reached (checked in this stage)",
+      "monthly": [
+       "",
+       "",
+       "14:30"
+      ],
+      "on": true,
+      "unit": "time",
+      "weekly": [
+       "",
+       "",
+       "14:30"
+      ]
+     },
+     "T-11": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Options' IV changed this many points since entry",
+      "monthly": [
+       "3",
+       "3",
+       "4"
+      ],
+      "on": true,
+      "unit": "pts",
+      "weekly": [
+       "3",
+       "3",
+       "4"
+      ]
+     },
+     "T-11b": {
+      "cmp": "ge",
+      "data": "vix",
+      "label": "India VIX up this % today",
+      "monthly": [
+       "10",
+       "10",
+       "10"
+      ],
+      "on": false,
+      "unit": "%",
+      "weekly": [
+       "10",
+       "10",
+       "10"
+      ]
+     },
+     "T-11c": {
+      "cmp": "ge",
+      "data": "hist",
+      "greyed": "Needs price history (not in V1)",
+      "label": "IV percentile above",
+      "monthly": [
+       "80",
+       "80",
+       "80"
+      ],
+      "on": false,
+      "unit": "%",
+      "weekly": [
+       "80",
+       "80",
+       "80"
+      ]
+     },
+     "T-12": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Spot has moved this many expected moves (SD) since entry",
+      "monthly": [
+       "1",
+       "1",
+       "1"
+      ],
+      "on": false,
+      "unit": "SD",
+      "weekly": [
+       "1",
+       "1",
+       "1"
+      ]
+     },
+     "T-13": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Gap at the open of at least this %",
+      "monthly": [
+       "1",
+       "1",
+       "0.75"
+      ],
+      "on": true,
+      "unit": "%",
+      "weekly": [
+       "0.75",
+       "0.75",
+       "0.5"
+      ]
+     },
+     "T-14": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Loss from a 1% move (gamma) at least this % of margin",
+      "monthly": [
+       "4",
+       "3",
+       "2"
+      ],
+      "on": true,
+      "unit": "%",
+      "weekly": [
+       "3",
+       "3",
+       "2"
+      ]
+     },
+     "T-14t": {
+      "cmp": "le",
+      "data": "ok",
+      "greyed": "Long options pay theta",
+      "label": "Theta per day falls below this % of premium left",
+      "monthly": [
+       "3",
+       "3",
+       "3"
+      ],
+      "on": false,
+      "unit": "%",
+      "weekly": [
+       "5",
+       "5",
+       "5"
+      ]
+     },
+     "T-14v": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Loss from +1 IV point (vega) at least this % of max profit",
+      "monthly": [
+       "15",
+       "15",
+       "10"
+      ],
+      "on": false,
+      "unit": "%",
+      "weekly": [
+       "10",
+       "10",
+       "10"
+      ]
+     },
+     "T-15": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Margin used reaches this % of available",
+      "monthly": [
+       "80",
+       "80",
+       "80"
+      ],
+      "on": false,
+      "unit": "%",
+      "weekly": [
+       "80",
+       "80",
+       "80"
+      ]
+     },
+     "T-16": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Loss reaches this % of the margin blocked",
+      "monthly": [
+       "4",
+       "4",
+       "3"
+      ],
+      "on": true,
+      "unit": "%",
+      "weekly": [
+       "4",
+       "4",
+       "3"
+      ]
+     },
+     "T-18": {
+      "cmp": "",
+      "data": "ok",
+      "label": "Adjustments used reach the plan's maximum",
+      "monthly": null,
+      "on": true,
+      "unit": "",
+      "weekly": null
+     },
+     "T-19": {
+      "cmp": "le",
+      "data": "ok",
+      "greyed": "No premium to earn",
+      "label": "Premium still left to earn is below this many x the adjustment's cost",
+      "monthly": [
+       "2",
+       "2",
+       "2"
+      ],
+      "on": false,
+      "unit": "x",
+      "weekly": [
+       "2",
+       "2",
+       "2"
+      ]
+     },
+     "T-20": {
+      "cmp": "",
+      "data": "user",
+      "label": "Spot crosses a level you set (support / resistance)",
+      "monthly": null,
+      "on": false,
+      "unit": "pts",
+      "weekly": null
+     },
+     "T-20b": {
+      "cmp": "",
+      "data": "hist",
+      "greyed": "Needs price history (not in V1)",
+      "label": "Market trending vs range-bound",
+      "monthly": null,
+      "on": false,
+      "unit": "",
+      "weekly": null
+     },
+     "T-21": {
+      "cmp": "",
+      "data": "ok",
+      "label": "Prices stale or missing (no suggestion is made)",
+      "monthly": null,
+      "on": true,
+      "unit": "",
+      "weekly": null
+     }
+    }
+   },
+   "name": "Single long option: system default",
+   "status": "draft",
+   "strategy_type": "longopt"
+  },
+  {
+   "body": {
+    "approaches": {
+     "applicable": [
+      "A-06",
+      "A-18",
+      "A-23",
+      "A-24",
+      "A-25",
+      "A-28",
+      "A-29",
+      "A-31",
+      "A-35",
+      "A-36",
+      "A-37",
+      "A-38"
+     ],
+     "greyed": [
+      {
+       "id": "A-01",
+       "reason": "Needs two sides"
+      },
+      {
+       "id": "A-02",
+       "reason": "No short leg"
+      },
+      {
+       "id": "A-05",
+       "reason": "No spread to roll"
+      },
+      {
+       "id": "A-04",
+       "reason": "No short leg"
+      },
+      {
+       "id": "A-07",
+       "reason": "Not a range trade"
+      },
+      {
+       "id": "A-08",
+       "reason": "Strangles only"
+      },
+      {
+       "id": "A-09",
+       "reason": "Loss already capped"
+      },
+      {
+       "id": "A-10",
+       "reason": "Strangles only"
+      },
+      {
+       "id": "A-11",
+       "reason": "Iron condors only"
+      },
+      {
+       "id": "A-12",
+       "reason": "Needs a credit spread"
+      },
+      {
+       "id": "A-13",
+       "reason": "Needs a short put"
+      },
+      {
+       "id": "A-14",
+       "reason": "No short leg"
+      },
+      {
+       "id": "A-15",
+       "reason": "Ratio spreads only"
+      },
+      {
+       "id": "A-16",
+       "reason": "Long options only"
+      },
+      {
+       "id": "A-17",
+       "reason": "Long options only"
+      },
+      {
+       "id": "A-19",
+       "reason": "Calendars only"
+      },
+      {
+       "id": "A-22",
+       "reason": "No short side to protect"
+      },
+      {
+       "id": "A-26",
+       "reason": "Needs two sides"
+      },
+      {
+       "id": "A-27",
+       "reason": "No short leg"
+      }
+     ],
+     "off_in_playbook": [
+      "A-03",
+      "A-20",
+      "A-21",
+      "A-32",
+      "A-33",
+      "A-34",
+      "A-30"
+     ]
+    },
+    "day_rules": [
+     {
+      "action": 0,
+      "at": "15:00",
+      "on": true,
+      "when": "beforeWeekend"
+     },
+     {
+      "action": 0,
+      "at": "15:00",
+      "on": true,
+      "when": "beforeHoliday"
+     },
+     {
+      "action": 4,
+      "at": "13:00",
+      "on": true,
+      "percent": "20",
+      "when": "expiry"
+     },
+     {
+      "action": 1,
+      "at": "14:30",
+      "from": "",
+      "on": false,
+      "to": "",
+      "when": "away"
+     },
+     {
+      "action": 1,
+      "at": "14:30",
+      "on": false,
+      "when": "event"
+     }
+    ],
+    "guards": {
+     "entry_guide": "shorts at 0.15 to 0.20 delta, wings 200 to 400 points out",
+     "hide_oi_below": 10000,
+     "hide_spread_pct_of_mid_above": "5",
+     "max_adjustments": 2,
+     "order_sequence": "buy legs first; buy back shorts before selling hedges",
+     "profit_target_pct_of_max_profit": "50",
+     "roll_debit_limit": "Rs 500 or 10% of max profit",
+     "stop_line_pct_of_max_loss": "50",
+     "warn_cost_pct_of_premium_left": "50"
+    },
+    "rules": [
+     {
+      "any_of": [
+       "T-02"
+      ],
+      "id": "T-02"
+     },
+     {
+      "any_of": [
+       "T-13"
+      ],
+      "id": "T-13"
+     },
+     {
+      "any_of": [
+       "T-14"
+      ],
+      "id": "T-14"
+     },
+     {
+      "any_of": [
+       "T-11"
+      ],
+      "id": "T-11"
+     },
+     {
+      "any_of": [
+       "T-06"
+      ],
+      "id": "T-06"
+     },
+     {
+      "any_of": [
+       "T-07"
+      ],
+      "id": "T-07"
+     },
+     {
+      "any_of": [
+       "T-16"
+      ],
+      "id": "T-16"
+     },
+     {
+      "any_of": [
+       "T-10b"
+      ],
+      "id": "T-10b"
+     },
+     {
+      "any_of": [
+       "T-18"
+      ],
+      "id": "T-18"
+     },
+     {
+      "any_of": [
+       "T-21"
+      ],
+      "id": "T-21"
+     }
+    ],
+    "schema": 1,
+    "situations": [
+     {
+      "id": "S-01",
+      "name": "Gap at the open",
+      "rule": "Wait until 09:30 before suggesting, unless a short opens in the money"
+     },
+     {
+      "id": "S-02",
+      "name": "Trending day",
+      "rule": "Show early rolls when net delta grows past 0.15 per lot"
+     },
+     {
+      "id": "S-03",
+      "name": "Range day",
+      "rule": "Show only the profit target; no adjustments"
+     },
+     {
+      "id": "S-04",
+      "name": "IV jumps without a big move",
+      "rule": "Show where the P&L came from; suggest No change unless an event is within 1 session"
+     },
+     {
+      "id": "S-05",
+      "name": "IV crush after an event",
+      "rule": "Show take-profit at 40% of max profit"
+     },
+     {
+      "id": "S-06",
+      "name": "Afternoon carry check",
+      "rule": "At 15:00: show overnight margin and the loss at +/-2% gap"
+     },
+     {
+      "id": "S-07",
+      "name": "Expiry day",
+      "rule": "From 13:00: buy back shorts below Rs 2; close a position whose short is within 0.3% by 14:30; warn about STT on in-the-money options"
+     },
+     {
+      "id": "S-10",
+      "name": "Broker or data outage",
+      "rule": "No suggestion; show the last good data and its age"
+     },
+     {
+      "id": "S-11",
+      "name": "Adjustment limit reached",
+      "rule": "Only exit and reduce are offered"
+     },
+     {
+      "id": "S-12",
+      "name": "Big win early",
+      "rule": "If profit reaches 40% of max profit on day 1, show take profit"
+     }
+    ],
+    "stages": {
+     "monthly": [
+      {
+       "from": 10,
+       "name": "Early",
+       "to": null
+      },
+      {
+       "from": 3,
+       "name": "Middle",
+       "to": 9
+      },
+      {
+       "from": 0,
+       "name": "Last 2 days",
+       "to": 2
+      }
+     ],
+     "weekly": [
+      {
+       "from": 5,
+       "name": "Early",
+       "to": null
+      },
+      {
+       "from": 2,
+       "name": "Middle",
+       "to": 4
+      },
+      {
+       "from": 0,
+       "name": "Last day",
+       "to": 1
+      }
+     ]
+    },
+    "status": "draft",
+    "strategy_type": "longvol",
+    "tightened": [
+     "T-01",
+     "T-03",
+     "T-06",
+     "T-07",
+     "T-09",
+     "T-11",
+     "T-13",
+     "T-16",
+     "T-19"
+    ],
+    "triggers": {
+     "T-01": {
+      "cmp": "le",
+      "data": "ok",
+      "greyed": "No short strike",
+      "label": "Spot within this % of a short strike",
+      "monthly": [
+       "1.5",
+       "1.0",
+       "0.5"
+      ],
+      "on": false,
+      "unit": "%",
+      "weekly": [
+       "0.75",
+       "0.5",
+       "0.3"
+      ]
+     },
+     "T-01b": {
+      "cmp": "le",
+      "data": "ok",
+      "greyed": "No short strike",
+      "label": "Spot within this many points of a short strike",
+      "monthly": [
+       "350",
+       "240",
+       "120"
+      ],
+      "on": false,
+      "unit": "pts",
+      "weekly": [
+       "180",
+       "120",
+       "70"
+      ]
+     },
+     "T-02": {
+      "cmp": "",
+      "data": "ok",
+      "label": "Spot crosses a breakeven",
+      "monthly": null,
+      "on": true,
+      "unit": "",
+      "weekly": null
+     },
+     "T-03": {
+      "cmp": "ge",
+      "data": "ok",
+      "greyed": "No short leg",
+      "label": "Tested short's delta reaches",
+      "monthly": [
+       "0.25",
+       "0.30",
+       "0.35"
+      ],
+      "on": false,
+      "unit": "delta",
+      "weekly": [
+       "0.30",
+       "0.35",
+       "0.40"
+      ]
+     },
+     "T-04": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Net delta beyond +/- this per lot",
+      "monthly": [
+       "0.15",
+       "0.15",
+       "0.20"
+      ],
+      "on": false,
+      "unit": "delta/lot",
+      "weekly": [
+       "0.15",
+       "0.15",
+       "0.20"
+      ]
+     },
+     "T-05": {
+      "cmp": "ge",
+      "data": "ok",
+      "greyed": "Needs a call side and a put side",
+      "label": "One side's value is this many x the other side's",
+      "monthly": [
+       "3",
+       "3",
+       "4"
+      ],
+      "on": false,
+      "unit": "x",
+      "weekly": [
+       "3",
+       "3",
+       "4"
+      ]
+     },
+     "T-06": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Loss reaches this % of max loss",
+      "monthly": [
+       "50",
+       "50",
+       "40"
+      ],
+      "on": true,
+      "unit": "%",
+      "weekly": [
+       "50",
+       "50",
+       "40"
+      ]
+     },
+     "T-06b": {
+      "cmp": "ge",
+      "data": "ok",
+      "greyed": "No credit received",
+      "label": "Loss reaches this many x the credit received",
+      "monthly": [
+       "1.5",
+       "1",
+       "0.75"
+      ],
+      "on": false,
+      "unit": "x",
+      "weekly": [
+       "1",
+       "1",
+       "0.75"
+      ]
+     },
+     "T-07": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Profit reaches this % of max profit",
+      "monthly": [
+       "50",
+       "50",
+       "75"
+      ],
+      "on": true,
+      "unit": "%",
+      "weekly": [
+       "50",
+       "50",
+       "80"
+      ]
+     },
+     "T-08": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "A leg's premium reaches this many x its entry (leg stop)",
+      "monthly": [
+       "2",
+       "2",
+       "2.5"
+      ],
+      "on": false,
+      "unit": "x",
+      "weekly": [
+       "2",
+       "2",
+       "2.5"
+      ]
+     },
+     "T-09": {
+      "cmp": "le",
+      "data": "ok",
+      "greyed": "No short leg",
+      "label": "A short leg's premium falls below Rs (close for pennies)",
+      "monthly": [
+       "3",
+       "3",
+       "2"
+      ],
+      "on": false,
+      "unit": "Rs",
+      "weekly": [
+       "3",
+       "3",
+       "2"
+      ]
+     },
+     "T-10b": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Clock time reached (checked in this stage)",
+      "monthly": [
+       "",
+       "",
+       "14:30"
+      ],
+      "on": true,
+      "unit": "time",
+      "weekly": [
+       "",
+       "",
+       "14:30"
+      ]
+     },
+     "T-11": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Options' IV changed this many points since entry",
+      "monthly": [
+       "3",
+       "3",
+       "4"
+      ],
+      "on": true,
+      "unit": "pts",
+      "weekly": [
+       "3",
+       "3",
+       "4"
+      ]
+     },
+     "T-11b": {
+      "cmp": "ge",
+      "data": "vix",
+      "label": "India VIX up this % today",
+      "monthly": [
+       "10",
+       "10",
+       "10"
+      ],
+      "on": false,
+      "unit": "%",
+      "weekly": [
+       "10",
+       "10",
+       "10"
+      ]
+     },
+     "T-11c": {
+      "cmp": "ge",
+      "data": "hist",
+      "greyed": "Needs price history (not in V1)",
+      "label": "IV percentile above",
+      "monthly": [
+       "80",
+       "80",
+       "80"
+      ],
+      "on": false,
+      "unit": "%",
+      "weekly": [
+       "80",
+       "80",
+       "80"
+      ]
+     },
+     "T-12": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Spot has moved this many expected moves (SD) since entry",
+      "monthly": [
+       "1",
+       "1",
+       "1"
+      ],
+      "on": false,
+      "unit": "SD",
+      "weekly": [
+       "1",
+       "1",
+       "1"
+      ]
+     },
+     "T-13": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Gap at the open of at least this %",
+      "monthly": [
+       "1",
+       "1",
+       "0.75"
+      ],
+      "on": true,
+      "unit": "%",
+      "weekly": [
+       "0.75",
+       "0.75",
+       "0.5"
+      ]
+     },
+     "T-14": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Loss from a 1% move (gamma) at least this % of margin",
+      "monthly": [
+       "4",
+       "3",
+       "2"
+      ],
+      "on": true,
+      "unit": "%",
+      "weekly": [
+       "3",
+       "3",
+       "2"
+      ]
+     },
+     "T-14t": {
+      "cmp": "le",
+      "data": "ok",
+      "greyed": "Long options pay theta",
+      "label": "Theta per day falls below this % of premium left",
+      "monthly": [
+       "3",
+       "3",
+       "3"
+      ],
+      "on": false,
+      "unit": "%",
+      "weekly": [
+       "5",
+       "5",
+       "5"
+      ]
+     },
+     "T-14v": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Loss from +1 IV point (vega) at least this % of max profit",
+      "monthly": [
+       "15",
+       "15",
+       "10"
+      ],
+      "on": false,
+      "unit": "%",
+      "weekly": [
+       "10",
+       "10",
+       "10"
+      ]
+     },
+     "T-15": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Margin used reaches this % of available",
+      "monthly": [
+       "80",
+       "80",
+       "80"
+      ],
+      "on": false,
+      "unit": "%",
+      "weekly": [
+       "80",
+       "80",
+       "80"
+      ]
+     },
+     "T-16": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Loss reaches this % of the margin blocked",
+      "monthly": [
+       "4",
+       "4",
+       "3"
+      ],
+      "on": true,
+      "unit": "%",
+      "weekly": [
+       "4",
+       "4",
+       "3"
+      ]
+     },
+     "T-18": {
+      "cmp": "",
+      "data": "ok",
+      "label": "Adjustments used reach the plan's maximum",
+      "monthly": null,
+      "on": true,
+      "unit": "",
+      "weekly": null
+     },
+     "T-19": {
+      "cmp": "le",
+      "data": "ok",
+      "greyed": "No premium to earn",
+      "label": "Premium still left to earn is below this many x the adjustment's cost",
+      "monthly": [
+       "2",
+       "2",
+       "2"
+      ],
+      "on": false,
+      "unit": "x",
+      "weekly": [
+       "2",
+       "2",
+       "2"
+      ]
+     },
+     "T-20": {
+      "cmp": "",
+      "data": "user",
+      "label": "Spot crosses a level you set (support / resistance)",
+      "monthly": null,
+      "on": false,
+      "unit": "pts",
+      "weekly": null
+     },
+     "T-20b": {
+      "cmp": "",
+      "data": "hist",
+      "greyed": "Needs price history (not in V1)",
+      "label": "Market trending vs range-bound",
+      "monthly": null,
+      "on": false,
+      "unit": "",
+      "weekly": null
+     },
+     "T-21": {
+      "cmp": "",
+      "data": "ok",
+      "label": "Prices stale or missing (no suggestion is made)",
+      "monthly": null,
+      "on": true,
+      "unit": "",
+      "weekly": null
+     }
+    }
+   },
+   "name": "Long straddle / strangle: system default",
+   "status": "draft",
+   "strategy_type": "longvol"
+  },
+  {
+   "body": {
+    "approaches": {
+     "applicable": [
+      "A-02",
+      "A-04",
+      "A-06",
+      "A-19",
+      "A-23",
+      "A-24",
+      "A-25",
+      "A-27",
+      "A-28",
+      "A-29",
+      "A-31",
+      "A-35",
+      "A-36",
+      "A-37",
+      "A-38"
+     ],
+     "greyed": [
+      {
+       "id": "A-01",
+       "reason": "Needs two sides"
+      },
+      {
+       "id": "A-05",
+       "reason": "No spread to roll"
+      },
+      {
+       "id": "A-08",
+       "reason": "Strangles only"
+      },
+      {
+       "id": "A-09",
+       "reason": "Loss already capped"
+      },
+      {
+       "id": "A-10",
+       "reason": "Strangles only"
+      },
+      {
+       "id": "A-11",
+       "reason": "Iron condors only"
+      },
+      {
+       "id": "A-12",
+       "reason": "Needs a credit spread"
+      },
+      {
+       "id": "A-13",
+       "reason": "Needs a short put"
+      },
+      {
+       "id": "A-15",
+       "reason": "Ratio spreads only"
+      },
+      {
+       "id": "A-16",
+       "reason": "Long options only"
+      },
+      {
+       "id": "A-17",
+       "reason": "Long options only"
+      },
+      {
+       "id": "A-18",
+       "reason": "Long volatility only"
+      },
+      {
+       "id": "A-26",
+       "reason": "Needs two sides"
+      }
+     ],
+     "off_in_playbook": [
+      "A-03",
+      "A-07",
+      "A-14",
+      "A-20",
+      "A-21",
+      "A-22",
+      "A-32",
+      "A-33",
+      "A-34",
+      "A-30"
+     ]
+    },
+    "day_rules": [
+     {
+      "action": 0,
+      "at": "15:00",
+      "on": true,
+      "when": "beforeWeekend"
+     },
+     {
+      "action": 0,
+      "at": "15:00",
+      "on": true,
+      "when": "beforeHoliday"
+     },
+     {
+      "action": 4,
+      "at": "13:00",
+      "on": true,
+      "percent": "20",
+      "when": "expiry"
+     },
+     {
+      "action": 1,
+      "at": "14:30",
+      "from": "",
+      "on": false,
+      "to": "",
+      "when": "away"
+     },
+     {
+      "action": 1,
+      "at": "14:30",
+      "on": false,
+      "when": "event"
+     }
+    ],
+    "guards": {
+     "entry_guide": "shorts at 0.15 to 0.20 delta, wings 200 to 400 points out",
+     "hide_oi_below": 10000,
+     "hide_spread_pct_of_mid_above": "5",
+     "max_adjustments": 2,
+     "order_sequence": "buy legs first; buy back shorts before selling hedges",
+     "profit_target_pct_of_max_profit": "50",
+     "roll_debit_limit": "Rs 500 or 10% of max profit",
+     "stop_line_pct_of_max_loss": "50",
+     "warn_cost_pct_of_premium_left": "50"
+    },
+    "rules": [
+     {
+      "any_of": [
+       "T-01"
+      ],
+      "id": "T-01"
+     },
+     {
+      "any_of": [
+       "T-02"
+      ],
+      "id": "T-02"
+     },
+     {
+      "any_of": [
+       "T-13"
+      ],
+      "id": "T-13"
+     },
+     {
+      "any_of": [
+       "T-03"
+      ],
+      "id": "T-03"
+     },
+     {
+      "any_of": [
+       "T-14"
+      ],
+      "id": "T-14"
+     },
+     {
+      "any_of": [
+       "T-11"
+      ],
+      "id": "T-11"
+     },
+     {
+      "any_of": [
+       "T-06"
+      ],
+      "id": "T-06"
+     },
+     {
+      "any_of": [
+       "T-07"
+      ],
+      "id": "T-07"
+     },
+     {
+      "any_of": [
+       "T-09"
+      ],
+      "id": "T-09"
+     },
+     {
+      "any_of": [
+       "T-19"
+      ],
+      "id": "T-19"
+     },
+     {
+      "any_of": [
+       "T-16"
+      ],
+      "id": "T-16"
+     },
+     {
+      "any_of": [
+       "T-10b"
+      ],
+      "id": "T-10b"
+     },
+     {
+      "any_of": [
+       "T-18"
+      ],
+      "id": "T-18"
+     },
+     {
+      "any_of": [
+       "T-21"
+      ],
+      "id": "T-21"
+     }
+    ],
+    "schema": 1,
+    "situations": [
+     {
+      "id": "S-01",
+      "name": "Gap at the open",
+      "rule": "Wait until 09:30 before suggesting, unless a short opens in the money"
+     },
+     {
+      "id": "S-02",
+      "name": "Trending day",
+      "rule": "Show early rolls when net delta grows past 0.15 per lot"
+     },
+     {
+      "id": "S-03",
+      "name": "Range day",
+      "rule": "Show only the profit target; no adjustments"
+     },
+     {
+      "id": "S-04",
+      "name": "IV jumps without a big move",
+      "rule": "Show where the P&L came from; suggest No change unless an event is within 1 session"
+     },
+     {
+      "id": "S-05",
+      "name": "IV crush after an event",
+      "rule": "Show take-profit at 40% of max profit"
+     },
+     {
+      "id": "S-06",
+      "name": "Afternoon carry check",
+      "rule": "At 15:00: show overnight margin and the loss at +/-2% gap"
+     },
+     {
+      "id": "S-07",
+      "name": "Expiry day",
+      "rule": "From 13:00: buy back shorts below Rs 2; close a position whose short is within 0.3% by 14:30; warn about STT on in-the-money options"
+     },
+     {
+      "id": "S-10",
+      "name": "Broker or data outage",
+      "rule": "No suggestion; show the last good data and its age"
+     },
+     {
+      "id": "S-11",
+      "name": "Adjustment limit reached",
+      "rule": "Only exit and reduce are offered"
+     },
+     {
+      "id": "S-12",
+      "name": "Big win early",
+      "rule": "If profit reaches 40% of max profit on day 1, show take profit"
+     }
+    ],
+    "stages": {
+     "monthly": [
+      {
+       "from": 10,
+       "name": "Early",
+       "to": null
+      },
+      {
+       "from": 3,
+       "name": "Middle",
+       "to": 9
+      },
+      {
+       "from": 0,
+       "name": "Last 2 days",
+       "to": 2
+      }
+     ],
+     "weekly": [
+      {
+       "from": 5,
+       "name": "Early",
+       "to": null
+      },
+      {
+       "from": 2,
+       "name": "Middle",
+       "to": 4
+      },
+      {
+       "from": 0,
+       "name": "Last day",
+       "to": 1
+      }
+     ]
+    },
+    "status": "draft",
+    "strategy_type": "calendar",
+    "tightened": [
+     "T-01",
+     "T-03",
+     "T-06",
+     "T-07",
+     "T-09",
+     "T-11",
+     "T-13",
+     "T-16",
+     "T-19"
+    ],
+    "triggers": {
+     "T-01": {
+      "cmp": "le",
+      "data": "ok",
+      "label": "Spot within this % of a short strike",
+      "monthly": [
+       "1.5",
+       "1.0",
+       "0.5"
+      ],
+      "on": true,
+      "unit": "%",
+      "weekly": [
+       "0.75",
+       "0.5",
+       "0.3"
+      ]
+     },
+     "T-01b": {
+      "cmp": "le",
+      "data": "ok",
+      "label": "Spot within this many points of a short strike",
+      "monthly": [
+       "350",
+       "240",
+       "120"
+      ],
+      "on": false,
+      "unit": "pts",
+      "weekly": [
+       "180",
+       "120",
+       "70"
+      ]
+     },
+     "T-02": {
+      "cmp": "",
+      "data": "ok",
+      "label": "Spot crosses a breakeven",
+      "monthly": null,
+      "on": true,
+      "unit": "",
+      "weekly": null
+     },
+     "T-03": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Tested short's delta reaches",
+      "monthly": [
+       "0.25",
+       "0.30",
+       "0.35"
+      ],
+      "on": true,
+      "unit": "delta",
+      "weekly": [
+       "0.30",
+       "0.35",
+       "0.40"
+      ]
+     },
+     "T-04": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Net delta beyond +/- this per lot",
+      "monthly": [
+       "0.15",
+       "0.15",
+       "0.20"
+      ],
+      "on": false,
+      "unit": "delta/lot",
+      "weekly": [
+       "0.15",
+       "0.15",
+       "0.20"
+      ]
+     },
+     "T-05": {
+      "cmp": "ge",
+      "data": "ok",
+      "greyed": "Needs a call side and a put side",
+      "label": "One side's value is this many x the other side's",
+      "monthly": [
+       "3",
+       "3",
+       "4"
+      ],
+      "on": false,
+      "unit": "x",
+      "weekly": [
+       "3",
+       "3",
+       "4"
+      ]
+     },
+     "T-06": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Loss reaches this % of max loss",
+      "monthly": [
+       "50",
+       "50",
+       "40"
+      ],
+      "on": true,
+      "unit": "%",
+      "weekly": [
+       "50",
+       "50",
+       "40"
+      ]
+     },
+     "T-06b": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Loss reaches this many x the credit received",
+      "monthly": [
+       "1.5",
+       "1",
+       "0.75"
+      ],
+      "on": false,
+      "unit": "x",
+      "weekly": [
+       "1",
+       "1",
+       "0.75"
+      ]
+     },
+     "T-07": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Profit reaches this % of max profit",
+      "monthly": [
+       "50",
+       "50",
+       "75"
+      ],
+      "on": true,
+      "unit": "%",
+      "weekly": [
+       "50",
+       "50",
+       "80"
+      ]
+     },
+     "T-08": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "A leg's premium reaches this many x its entry (leg stop)",
+      "monthly": [
+       "2",
+       "2",
+       "2.5"
+      ],
+      "on": false,
+      "unit": "x",
+      "weekly": [
+       "2",
+       "2",
+       "2.5"
+      ]
+     },
+     "T-09": {
+      "cmp": "le",
+      "data": "ok",
+      "label": "A short leg's premium falls below Rs (close for pennies)",
+      "monthly": [
+       "3",
+       "3",
+       "2"
+      ],
+      "on": true,
+      "unit": "Rs",
+      "weekly": [
+       "3",
+       "3",
+       "2"
+      ]
+     },
+     "T-10b": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Clock time reached (checked in this stage)",
+      "monthly": [
+       "",
+       "",
+       "14:30"
+      ],
+      "on": true,
+      "unit": "time",
+      "weekly": [
+       "",
+       "",
+       "14:30"
+      ]
+     },
+     "T-11": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Options' IV changed this many points since entry",
+      "monthly": [
+       "3",
+       "3",
+       "4"
+      ],
+      "on": true,
+      "unit": "pts",
+      "weekly": [
+       "3",
+       "3",
+       "4"
+      ]
+     },
+     "T-11b": {
+      "cmp": "ge",
+      "data": "vix",
+      "label": "India VIX up this % today",
+      "monthly": [
+       "10",
+       "10",
+       "10"
+      ],
+      "on": false,
+      "unit": "%",
+      "weekly": [
+       "10",
+       "10",
+       "10"
+      ]
+     },
+     "T-11c": {
+      "cmp": "ge",
+      "data": "hist",
+      "greyed": "Needs price history (not in V1)",
+      "label": "IV percentile above",
+      "monthly": [
+       "80",
+       "80",
+       "80"
+      ],
+      "on": false,
+      "unit": "%",
+      "weekly": [
+       "80",
+       "80",
+       "80"
+      ]
+     },
+     "T-12": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Spot has moved this many expected moves (SD) since entry",
+      "monthly": [
+       "1",
+       "1",
+       "1"
+      ],
+      "on": false,
+      "unit": "SD",
+      "weekly": [
+       "1",
+       "1",
+       "1"
+      ]
+     },
+     "T-13": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Gap at the open of at least this %",
+      "monthly": [
+       "1",
+       "1",
+       "0.75"
+      ],
+      "on": true,
+      "unit": "%",
+      "weekly": [
+       "0.75",
+       "0.75",
+       "0.5"
+      ]
+     },
+     "T-14": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Loss from a 1% move (gamma) at least this % of margin",
+      "monthly": [
+       "4",
+       "3",
+       "2"
+      ],
+      "on": true,
+      "unit": "%",
+      "weekly": [
+       "3",
+       "3",
+       "2"
+      ]
+     },
+     "T-14t": {
+      "cmp": "le",
+      "data": "ok",
+      "label": "Theta per day falls below this % of premium left",
+      "monthly": [
+       "3",
+       "3",
+       "3"
+      ],
+      "on": false,
+      "unit": "%",
+      "weekly": [
+       "5",
+       "5",
+       "5"
+      ]
+     },
+     "T-14v": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Loss from +1 IV point (vega) at least this % of max profit",
+      "monthly": [
+       "15",
+       "15",
+       "10"
+      ],
+      "on": false,
+      "unit": "%",
+      "weekly": [
+       "10",
+       "10",
+       "10"
+      ]
+     },
+     "T-15": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Margin used reaches this % of available",
+      "monthly": [
+       "80",
+       "80",
+       "80"
+      ],
+      "on": false,
+      "unit": "%",
+      "weekly": [
+       "80",
+       "80",
+       "80"
+      ]
+     },
+     "T-16": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Loss reaches this % of the margin blocked",
+      "monthly": [
+       "4",
+       "4",
+       "3"
+      ],
+      "on": true,
+      "unit": "%",
+      "weekly": [
+       "4",
+       "4",
+       "3"
+      ]
+     },
+     "T-18": {
+      "cmp": "",
+      "data": "ok",
+      "label": "Adjustments used reach the plan's maximum",
+      "monthly": null,
+      "on": true,
+      "unit": "",
+      "weekly": null
+     },
+     "T-19": {
+      "cmp": "le",
+      "data": "ok",
+      "label": "Premium still left to earn is below this many x the adjustment's cost",
+      "monthly": [
+       "2",
+       "2",
+       "2"
+      ],
+      "on": true,
+      "unit": "x",
+      "weekly": [
+       "2",
+       "2",
+       "2"
+      ]
+     },
+     "T-20": {
+      "cmp": "",
+      "data": "user",
+      "label": "Spot crosses a level you set (support / resistance)",
+      "monthly": null,
+      "on": false,
+      "unit": "pts",
+      "weekly": null
+     },
+     "T-20b": {
+      "cmp": "",
+      "data": "hist",
+      "greyed": "Needs price history (not in V1)",
+      "label": "Market trending vs range-bound",
+      "monthly": null,
+      "on": false,
+      "unit": "",
+      "weekly": null
+     },
+     "T-21": {
+      "cmp": "",
+      "data": "ok",
+      "label": "Prices stale or missing (no suggestion is made)",
+      "monthly": null,
+      "on": true,
+      "unit": "",
+      "weekly": null
+     }
+    }
+   },
+   "name": "Calendar / diagonal: system default",
+   "status": "draft",
+   "strategy_type": "calendar"
+  },
+  {
+   "body": {
+    "approaches": {
+     "applicable": [
+      "A-02",
+      "A-04",
+      "A-06",
+      "A-09",
+      "A-15",
+      "A-23",
+      "A-24",
+      "A-25",
+      "A-27",
+      "A-28",
+      "A-29",
+      "A-31",
+      "A-35",
+      "A-36",
+      "A-37",
+      "A-38"
+     ],
+     "greyed": [
+      {
+       "id": "A-01",
+       "reason": "Needs two sides"
+      },
+      {
+       "id": "A-05",
+       "reason": "No spread to roll"
+      },
+      {
+       "id": "A-07",
+       "reason": "Not a range trade"
+      },
+      {
+       "id": "A-08",
+       "reason": "Strangles only"
+      },
+      {
+       "id": "A-10",
+       "reason": "Strangles only"
+      },
+      {
+       "id": "A-11",
+       "reason": "Iron condors only"
+      },
+      {
+       "id": "A-12",
+       "reason": "Needs a credit spread"
+      },
+      {
+       "id": "A-13",
+       "reason": "Needs a short put"
+      },
+      {
+       "id": "A-16",
+       "reason": "Long options only"
+      },
+      {
+       "id": "A-17",
+       "reason": "Long options only"
+      },
+      {
+       "id": "A-18",
+       "reason": "Long volatility only"
+      },
+      {
+       "id": "A-19",
+       "reason": "Calendars only"
+      },
+      {
+       "id": "A-26",
+       "reason": "Needs two sides"
+      }
+     ],
+     "off_in_playbook": [
+      "A-03",
+      "A-14",
+      "A-20",
+      "A-21",
+      "A-22",
+      "A-32",
+      "A-33",
+      "A-34",
+      "A-30"
+     ]
+    },
+    "day_rules": [
+     {
+      "action": 0,
+      "at": "15:00",
+      "on": true,
+      "when": "beforeWeekend"
+     },
+     {
+      "action": 0,
+      "at": "15:00",
+      "on": true,
+      "when": "beforeHoliday"
+     },
+     {
+      "action": 4,
+      "at": "13:00",
+      "on": true,
+      "percent": "20",
+      "when": "expiry"
+     },
+     {
+      "action": 1,
+      "at": "14:30",
+      "from": "",
+      "on": false,
+      "to": "",
+      "when": "away"
+     },
+     {
+      "action": 1,
+      "at": "14:30",
+      "on": false,
+      "when": "event"
+     }
+    ],
+    "guards": {
+     "entry_guide": "shorts at 0.15 to 0.20 delta, wings 200 to 400 points out",
+     "hide_oi_below": 10000,
+     "hide_spread_pct_of_mid_above": "5",
+     "max_adjustments": 2,
+     "order_sequence": "buy legs first; buy back shorts before selling hedges",
+     "profit_target_pct_of_max_profit": "50",
+     "roll_debit_limit": "Rs 500 or 10% of max profit",
+     "stop_line_pct_of_max_loss": "50",
+     "warn_cost_pct_of_premium_left": "50"
+    },
+    "rules": [
+     {
+      "any_of": [
+       "T-01"
+      ],
+      "id": "T-01"
+     },
+     {
+      "any_of": [
+       "T-02"
+      ],
+      "id": "T-02"
+     },
+     {
+      "any_of": [
+       "T-13"
+      ],
+      "id": "T-13"
+     },
+     {
+      "any_of": [
+       "T-03"
+      ],
+      "id": "T-03"
+     },
+     {
+      "any_of": [
+       "T-14"
+      ],
+      "id": "T-14"
+     },
+     {
+      "any_of": [
+       "T-11"
+      ],
+      "id": "T-11"
+     },
+     {
+      "any_of": [
+       "T-06"
+      ],
+      "id": "T-06"
+     },
+     {
+      "any_of": [
+       "T-07"
+      ],
+      "id": "T-07"
+     },
+     {
+      "any_of": [
+       "T-09"
+      ],
+      "id": "T-09"
+     },
+     {
+      "any_of": [
+       "T-19"
+      ],
+      "id": "T-19"
+     },
+     {
+      "any_of": [
+       "T-16"
+      ],
+      "id": "T-16"
+     },
+     {
+      "any_of": [
+       "T-10b"
+      ],
+      "id": "T-10b"
+     },
+     {
+      "any_of": [
+       "T-18"
+      ],
+      "id": "T-18"
+     },
+     {
+      "any_of": [
+       "T-21"
+      ],
+      "id": "T-21"
+     }
+    ],
+    "schema": 1,
+    "situations": [
+     {
+      "id": "S-01",
+      "name": "Gap at the open",
+      "rule": "Wait until 09:30 before suggesting, unless a short opens in the money"
+     },
+     {
+      "id": "S-02",
+      "name": "Trending day",
+      "rule": "Show early rolls when net delta grows past 0.15 per lot"
+     },
+     {
+      "id": "S-03",
+      "name": "Range day",
+      "rule": "Show only the profit target; no adjustments"
+     },
+     {
+      "id": "S-04",
+      "name": "IV jumps without a big move",
+      "rule": "Show where the P&L came from; suggest No change unless an event is within 1 session"
+     },
+     {
+      "id": "S-05",
+      "name": "IV crush after an event",
+      "rule": "Show take-profit at 40% of max profit"
+     },
+     {
+      "id": "S-06",
+      "name": "Afternoon carry check",
+      "rule": "At 15:00: show overnight margin and the loss at +/-2% gap"
+     },
+     {
+      "id": "S-07",
+      "name": "Expiry day",
+      "rule": "From 13:00: buy back shorts below Rs 2; close a position whose short is within 0.3% by 14:30; warn about STT on in-the-money options"
+     },
+     {
+      "id": "S-10",
+      "name": "Broker or data outage",
+      "rule": "No suggestion; show the last good data and its age"
+     },
+     {
+      "id": "S-11",
+      "name": "Adjustment limit reached",
+      "rule": "Only exit and reduce are offered"
+     },
+     {
+      "id": "S-12",
+      "name": "Big win early",
+      "rule": "If profit reaches 40% of max profit on day 1, show take profit"
+     }
+    ],
+    "stages": {
+     "monthly": [
+      {
+       "from": 10,
+       "name": "Early",
+       "to": null
+      },
+      {
+       "from": 3,
+       "name": "Middle",
+       "to": 9
+      },
+      {
+       "from": 0,
+       "name": "Last 2 days",
+       "to": 2
+      }
+     ],
+     "weekly": [
+      {
+       "from": 5,
+       "name": "Early",
+       "to": null
+      },
+      {
+       "from": 2,
+       "name": "Middle",
+       "to": 4
+      },
+      {
+       "from": 0,
+       "name": "Last day",
+       "to": 1
+      }
+     ]
+    },
+    "status": "draft",
+    "strategy_type": "ratio",
+    "tightened": [
+     "T-01",
+     "T-03",
+     "T-06",
+     "T-07",
+     "T-09",
+     "T-11",
+     "T-13",
+     "T-16",
+     "T-19"
+    ],
+    "triggers": {
+     "T-01": {
+      "cmp": "le",
+      "data": "ok",
+      "label": "Spot within this % of a short strike",
+      "monthly": [
+       "1.5",
+       "1.0",
+       "0.5"
+      ],
+      "on": true,
+      "unit": "%",
+      "weekly": [
+       "0.75",
+       "0.5",
+       "0.3"
+      ]
+     },
+     "T-01b": {
+      "cmp": "le",
+      "data": "ok",
+      "label": "Spot within this many points of a short strike",
+      "monthly": [
+       "350",
+       "240",
+       "120"
+      ],
+      "on": false,
+      "unit": "pts",
+      "weekly": [
+       "180",
+       "120",
+       "70"
+      ]
+     },
+     "T-02": {
+      "cmp": "",
+      "data": "ok",
+      "label": "Spot crosses a breakeven",
+      "monthly": null,
+      "on": true,
+      "unit": "",
+      "weekly": null
+     },
+     "T-03": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Tested short's delta reaches",
+      "monthly": [
+       "0.25",
+       "0.30",
+       "0.35"
+      ],
+      "on": true,
+      "unit": "delta",
+      "weekly": [
+       "0.30",
+       "0.35",
+       "0.40"
+      ]
+     },
+     "T-04": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Net delta beyond +/- this per lot",
+      "monthly": [
+       "0.15",
+       "0.15",
+       "0.20"
+      ],
+      "on": false,
+      "unit": "delta/lot",
+      "weekly": [
+       "0.15",
+       "0.15",
+       "0.20"
+      ]
+     },
+     "T-05": {
+      "cmp": "ge",
+      "data": "ok",
+      "greyed": "Needs a call side and a put side",
+      "label": "One side's value is this many x the other side's",
+      "monthly": [
+       "3",
+       "3",
+       "4"
+      ],
+      "on": false,
+      "unit": "x",
+      "weekly": [
+       "3",
+       "3",
+       "4"
+      ]
+     },
+     "T-06": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Loss reaches this % of max loss",
+      "monthly": [
+       "50",
+       "50",
+       "40"
+      ],
+      "on": true,
+      "unit": "%",
+      "weekly": [
+       "50",
+       "50",
+       "40"
+      ]
+     },
+     "T-06b": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Loss reaches this many x the credit received",
+      "monthly": [
+       "1.5",
+       "1",
+       "0.75"
+      ],
+      "on": false,
+      "unit": "x",
+      "weekly": [
+       "1",
+       "1",
+       "0.75"
+      ]
+     },
+     "T-07": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Profit reaches this % of max profit",
+      "monthly": [
+       "50",
+       "50",
+       "75"
+      ],
+      "on": true,
+      "unit": "%",
+      "weekly": [
+       "50",
+       "50",
+       "80"
+      ]
+     },
+     "T-08": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "A leg's premium reaches this many x its entry (leg stop)",
+      "monthly": [
+       "2",
+       "2",
+       "2.5"
+      ],
+      "on": false,
+      "unit": "x",
+      "weekly": [
+       "2",
+       "2",
+       "2.5"
+      ]
+     },
+     "T-09": {
+      "cmp": "le",
+      "data": "ok",
+      "label": "A short leg's premium falls below Rs (close for pennies)",
+      "monthly": [
+       "3",
+       "3",
+       "2"
+      ],
+      "on": true,
+      "unit": "Rs",
+      "weekly": [
+       "3",
+       "3",
+       "2"
+      ]
+     },
+     "T-10b": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Clock time reached (checked in this stage)",
+      "monthly": [
+       "",
+       "",
+       "14:30"
+      ],
+      "on": true,
+      "unit": "time",
+      "weekly": [
+       "",
+       "",
+       "14:30"
+      ]
+     },
+     "T-11": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Options' IV changed this many points since entry",
+      "monthly": [
+       "3",
+       "3",
+       "4"
+      ],
+      "on": true,
+      "unit": "pts",
+      "weekly": [
+       "3",
+       "3",
+       "4"
+      ]
+     },
+     "T-11b": {
+      "cmp": "ge",
+      "data": "vix",
+      "label": "India VIX up this % today",
+      "monthly": [
+       "10",
+       "10",
+       "10"
+      ],
+      "on": false,
+      "unit": "%",
+      "weekly": [
+       "10",
+       "10",
+       "10"
+      ]
+     },
+     "T-11c": {
+      "cmp": "ge",
+      "data": "hist",
+      "greyed": "Needs price history (not in V1)",
+      "label": "IV percentile above",
+      "monthly": [
+       "80",
+       "80",
+       "80"
+      ],
+      "on": false,
+      "unit": "%",
+      "weekly": [
+       "80",
+       "80",
+       "80"
+      ]
+     },
+     "T-12": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Spot has moved this many expected moves (SD) since entry",
+      "monthly": [
+       "1",
+       "1",
+       "1"
+      ],
+      "on": false,
+      "unit": "SD",
+      "weekly": [
+       "1",
+       "1",
+       "1"
+      ]
+     },
+     "T-13": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Gap at the open of at least this %",
+      "monthly": [
+       "1",
+       "1",
+       "0.75"
+      ],
+      "on": true,
+      "unit": "%",
+      "weekly": [
+       "0.75",
+       "0.75",
+       "0.5"
+      ]
+     },
+     "T-14": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Loss from a 1% move (gamma) at least this % of margin",
+      "monthly": [
+       "4",
+       "3",
+       "2"
+      ],
+      "on": true,
+      "unit": "%",
+      "weekly": [
+       "3",
+       "3",
+       "2"
+      ]
+     },
+     "T-14t": {
+      "cmp": "le",
+      "data": "ok",
+      "label": "Theta per day falls below this % of premium left",
+      "monthly": [
+       "3",
+       "3",
+       "3"
+      ],
+      "on": false,
+      "unit": "%",
+      "weekly": [
+       "5",
+       "5",
+       "5"
+      ]
+     },
+     "T-14v": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Loss from +1 IV point (vega) at least this % of max profit",
+      "monthly": [
+       "15",
+       "15",
+       "10"
+      ],
+      "on": false,
+      "unit": "%",
+      "weekly": [
+       "10",
+       "10",
+       "10"
+      ]
+     },
+     "T-15": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Margin used reaches this % of available",
+      "monthly": [
+       "80",
+       "80",
+       "80"
+      ],
+      "on": false,
+      "unit": "%",
+      "weekly": [
+       "80",
+       "80",
+       "80"
+      ]
+     },
+     "T-16": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Loss reaches this % of the margin blocked",
+      "monthly": [
+       "4",
+       "4",
+       "3"
+      ],
+      "on": true,
+      "unit": "%",
+      "weekly": [
+       "4",
+       "4",
+       "3"
+      ]
+     },
+     "T-18": {
+      "cmp": "",
+      "data": "ok",
+      "label": "Adjustments used reach the plan's maximum",
+      "monthly": null,
+      "on": true,
+      "unit": "",
+      "weekly": null
+     },
+     "T-19": {
+      "cmp": "le",
+      "data": "ok",
+      "label": "Premium still left to earn is below this many x the adjustment's cost",
+      "monthly": [
+       "2",
+       "2",
+       "2"
+      ],
+      "on": true,
+      "unit": "x",
+      "weekly": [
+       "2",
+       "2",
+       "2"
+      ]
+     },
+     "T-20": {
+      "cmp": "",
+      "data": "user",
+      "label": "Spot crosses a level you set (support / resistance)",
+      "monthly": null,
+      "on": false,
+      "unit": "pts",
+      "weekly": null
+     },
+     "T-20b": {
+      "cmp": "",
+      "data": "hist",
+      "greyed": "Needs price history (not in V1)",
+      "label": "Market trending vs range-bound",
+      "monthly": null,
+      "on": false,
+      "unit": "",
+      "weekly": null
+     },
+     "T-21": {
+      "cmp": "",
+      "data": "ok",
+      "label": "Prices stale or missing (no suggestion is made)",
+      "monthly": null,
+      "on": true,
+      "unit": "",
+      "weekly": null
+     }
+    }
+   },
+   "name": "Ratio and back-spreads: system default",
+   "status": "draft",
+   "strategy_type": "ratio"
+  },
+  {
+   "body": {
+    "approaches": {
+     "applicable": [
+      "A-05",
+      "A-06",
+      "A-23",
+      "A-24",
+      "A-25",
+      "A-28",
+      "A-29",
+      "A-31",
+      "A-35",
+      "A-36",
+      "A-37",
+      "A-38"
+     ],
+     "greyed": [
+      {
+       "id": "A-01",
+       "reason": "Needs two sides"
+      },
+      {
+       "id": "A-02",
+       "reason": "No short leg"
+      },
+      {
+       "id": "A-04",
+       "reason": "No short leg"
+      },
+      {
+       "id": "A-08",
+       "reason": "Strangles only"
+      },
+      {
+       "id": "A-09",
+       "reason": "Loss already capped"
+      },
+      {
+       "id": "A-10",
+       "reason": "Strangles only"
+      },
+      {
+       "id": "A-11",
+       "reason": "Iron condors only"
+      },
+      {
+       "id": "A-12",
+       "reason": "Needs a credit spread"
+      },
+      {
+       "id": "A-13",
+       "reason": "Needs a short put"
+      },
+      {
+       "id": "A-14",
+       "reason": "No short leg"
+      },
+      {
+       "id": "A-15",
+       "reason": "Ratio spreads only"
+      },
+      {
+       "id": "A-16",
+       "reason": "Long options only"
+      },
+      {
+       "id": "A-17",
+       "reason": "Long options only"
+      },
+      {
+       "id": "A-18",
+       "reason": "Long volatility only"
+      },
+      {
+       "id": "A-19",
+       "reason": "Calendars only"
+      },
+      {
+       "id": "A-22",
+       "reason": "No short side to protect"
+      },
+      {
+       "id": "A-26",
+       "reason": "Needs two sides"
+      },
+      {
+       "id": "A-27",
+       "reason": "No short leg"
+      }
+     ],
+     "off_in_playbook": [
+      "A-03",
+      "A-07",
+      "A-20",
+      "A-21",
+      "A-32",
+      "A-33",
+      "A-34",
+      "A-30"
+     ]
+    },
+    "day_rules": [
+     {
+      "action": 0,
+      "at": "15:00",
+      "on": true,
+      "when": "beforeWeekend"
+     },
+     {
+      "action": 0,
+      "at": "15:00",
+      "on": true,
+      "when": "beforeHoliday"
+     },
+     {
+      "action": 4,
+      "at": "13:00",
+      "on": true,
+      "percent": "20",
+      "when": "expiry"
+     },
+     {
+      "action": 1,
+      "at": "14:30",
+      "from": "",
+      "on": false,
+      "to": "",
+      "when": "away"
+     },
+     {
+      "action": 1,
+      "at": "14:30",
+      "on": false,
+      "when": "event"
+     }
+    ],
+    "guards": {
+     "entry_guide": "shorts at 0.15 to 0.20 delta, wings 200 to 400 points out",
+     "hide_oi_below": 10000,
+     "hide_spread_pct_of_mid_above": "5",
+     "max_adjustments": 2,
+     "order_sequence": "buy legs first; buy back shorts before selling hedges",
+     "profit_target_pct_of_max_profit": "50",
+     "roll_debit_limit": "Rs 500 or 10% of max profit",
+     "stop_line_pct_of_max_loss": "50",
+     "warn_cost_pct_of_premium_left": "50"
+    },
+    "rules": [
+     {
+      "any_of": [
+       "T-01"
+      ],
+      "id": "T-01"
+     },
+     {
+      "any_of": [
+       "T-02"
+      ],
+      "id": "T-02"
+     },
+     {
+      "any_of": [
+       "T-13"
+      ],
+      "id": "T-13"
+     },
+     {
+      "any_of": [
+       "T-03"
+      ],
+      "id": "T-03"
+     },
+     {
+      "any_of": [
+       "T-14"
+      ],
+      "id": "T-14"
+     },
+     {
+      "any_of": [
+       "T-11"
+      ],
+      "id": "T-11"
+     },
+     {
+      "any_of": [
+       "T-06"
+      ],
+      "id": "T-06"
+     },
+     {
+      "any_of": [
+       "T-07"
+      ],
+      "id": "T-07"
+     },
+     {
+      "any_of": [
+       "T-16"
+      ],
+      "id": "T-16"
+     },
+     {
+      "any_of": [
+       "T-10b"
+      ],
+      "id": "T-10b"
+     },
+     {
+      "any_of": [
+       "T-18"
+      ],
+      "id": "T-18"
+     },
+     {
+      "any_of": [
+       "T-21"
+      ],
+      "id": "T-21"
+     }
+    ],
+    "schema": 1,
+    "situations": [
+     {
+      "id": "S-01",
+      "name": "Gap at the open",
+      "rule": "Wait until 09:30 before suggesting, unless a short opens in the money"
+     },
+     {
+      "id": "S-02",
+      "name": "Trending day",
+      "rule": "Show early rolls when net delta grows past 0.15 per lot"
+     },
+     {
+      "id": "S-03",
+      "name": "Range day",
+      "rule": "Show only the profit target; no adjustments"
+     },
+     {
+      "id": "S-04",
+      "name": "IV jumps without a big move",
+      "rule": "Show where the P&L came from; suggest No change unless an event is within 1 session"
+     },
+     {
+      "id": "S-05",
+      "name": "IV crush after an event",
+      "rule": "Show take-profit at 40% of max profit"
+     },
+     {
+      "id": "S-06",
+      "name": "Afternoon carry check",
+      "rule": "At 15:00: show overnight margin and the loss at +/-2% gap"
+     },
+     {
+      "id": "S-07",
+      "name": "Expiry day",
+      "rule": "From 13:00: buy back shorts below Rs 2; close a position whose short is within 0.3% by 14:30; warn about STT on in-the-money options"
+     },
+     {
+      "id": "S-10",
+      "name": "Broker or data outage",
+      "rule": "No suggestion; show the last good data and its age"
+     },
+     {
+      "id": "S-11",
+      "name": "Adjustment limit reached",
+      "rule": "Only exit and reduce are offered"
+     },
+     {
+      "id": "S-12",
+      "name": "Big win early",
+      "rule": "If profit reaches 40% of max profit on day 1, show take profit"
+     }
+    ],
+    "stages": {
+     "monthly": [
+      {
+       "from": 10,
+       "name": "Early",
+       "to": null
+      },
+      {
+       "from": 3,
+       "name": "Middle",
+       "to": 9
+      },
+      {
+       "from": 0,
+       "name": "Last 2 days",
+       "to": 2
+      }
+     ],
+     "weekly": [
+      {
+       "from": 5,
+       "name": "Early",
+       "to": null
+      },
+      {
+       "from": 2,
+       "name": "Middle",
+       "to": 4
+      },
+      {
+       "from": 0,
+       "name": "Last day",
+       "to": 1
+      }
+     ]
+    },
+    "status": "draft",
+    "strategy_type": "dirfly",
+    "tightened": [
+     "T-01",
+     "T-03",
+     "T-06",
+     "T-07",
+     "T-09",
+     "T-11",
+     "T-13",
+     "T-16",
+     "T-19"
+    ],
+    "triggers": {
+     "T-01": {
+      "cmp": "le",
+      "data": "ok",
+      "label": "Spot within this % of a short strike",
+      "monthly": [
+       "1.5",
+       "1.0",
+       "0.5"
+      ],
+      "on": true,
+      "unit": "%",
+      "weekly": [
+       "0.75",
+       "0.5",
+       "0.3"
+      ]
+     },
+     "T-01b": {
+      "cmp": "le",
+      "data": "ok",
+      "label": "Spot within this many points of a short strike",
+      "monthly": [
+       "350",
+       "240",
+       "120"
+      ],
+      "on": false,
+      "unit": "pts",
+      "weekly": [
+       "180",
+       "120",
+       "70"
+      ]
+     },
+     "T-02": {
+      "cmp": "",
+      "data": "ok",
+      "label": "Spot crosses a breakeven",
+      "monthly": null,
+      "on": true,
+      "unit": "",
+      "weekly": null
+     },
+     "T-03": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Tested short's delta reaches",
+      "monthly": [
+       "0.25",
+       "0.30",
+       "0.35"
+      ],
+      "on": true,
+      "unit": "delta",
+      "weekly": [
+       "0.30",
+       "0.35",
+       "0.40"
+      ]
+     },
+     "T-04": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Net delta beyond +/- this per lot",
+      "monthly": [
+       "0.15",
+       "0.15",
+       "0.20"
+      ],
+      "on": false,
+      "unit": "delta/lot",
+      "weekly": [
+       "0.15",
+       "0.15",
+       "0.20"
+      ]
+     },
+     "T-05": {
+      "cmp": "ge",
+      "data": "ok",
+      "greyed": "Needs a call side and a put side",
+      "label": "One side's value is this many x the other side's",
+      "monthly": [
+       "3",
+       "3",
+       "4"
+      ],
+      "on": false,
+      "unit": "x",
+      "weekly": [
+       "3",
+       "3",
+       "4"
+      ]
+     },
+     "T-06": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Loss reaches this % of max loss",
+      "monthly": [
+       "50",
+       "50",
+       "40"
+      ],
+      "on": true,
+      "unit": "%",
+      "weekly": [
+       "50",
+       "50",
+       "40"
+      ]
+     },
+     "T-06b": {
+      "cmp": "ge",
+      "data": "ok",
+      "greyed": "No credit received",
+      "label": "Loss reaches this many x the credit received",
+      "monthly": [
+       "1.5",
+       "1",
+       "0.75"
+      ],
+      "on": false,
+      "unit": "x",
+      "weekly": [
+       "1",
+       "1",
+       "0.75"
+      ]
+     },
+     "T-07": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Profit reaches this % of max profit",
+      "monthly": [
+       "50",
+       "50",
+       "75"
+      ],
+      "on": true,
+      "unit": "%",
+      "weekly": [
+       "50",
+       "50",
+       "80"
+      ]
+     },
+     "T-08": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "A leg's premium reaches this many x its entry (leg stop)",
+      "monthly": [
+       "2",
+       "2",
+       "2.5"
+      ],
+      "on": false,
+      "unit": "x",
+      "weekly": [
+       "2",
+       "2",
+       "2.5"
+      ]
+     },
+     "T-09": {
+      "cmp": "le",
+      "data": "ok",
+      "greyed": "No short leg",
+      "label": "A short leg's premium falls below Rs (close for pennies)",
+      "monthly": [
+       "3",
+       "3",
+       "2"
+      ],
+      "on": false,
+      "unit": "Rs",
+      "weekly": [
+       "3",
+       "3",
+       "2"
+      ]
+     },
+     "T-10b": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Clock time reached (checked in this stage)",
+      "monthly": [
+       "",
+       "",
+       "14:30"
+      ],
+      "on": true,
+      "unit": "time",
+      "weekly": [
+       "",
+       "",
+       "14:30"
+      ]
+     },
+     "T-11": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Options' IV changed this many points since entry",
+      "monthly": [
+       "3",
+       "3",
+       "4"
+      ],
+      "on": true,
+      "unit": "pts",
+      "weekly": [
+       "3",
+       "3",
+       "4"
+      ]
+     },
+     "T-11b": {
+      "cmp": "ge",
+      "data": "vix",
+      "label": "India VIX up this % today",
+      "monthly": [
+       "10",
+       "10",
+       "10"
+      ],
+      "on": false,
+      "unit": "%",
+      "weekly": [
+       "10",
+       "10",
+       "10"
+      ]
+     },
+     "T-11c": {
+      "cmp": "ge",
+      "data": "hist",
+      "greyed": "Needs price history (not in V1)",
+      "label": "IV percentile above",
+      "monthly": [
+       "80",
+       "80",
+       "80"
+      ],
+      "on": false,
+      "unit": "%",
+      "weekly": [
+       "80",
+       "80",
+       "80"
+      ]
+     },
+     "T-12": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Spot has moved this many expected moves (SD) since entry",
+      "monthly": [
+       "1",
+       "1",
+       "1"
+      ],
+      "on": false,
+      "unit": "SD",
+      "weekly": [
+       "1",
+       "1",
+       "1"
+      ]
+     },
+     "T-13": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Gap at the open of at least this %",
+      "monthly": [
+       "1",
+       "1",
+       "0.75"
+      ],
+      "on": true,
+      "unit": "%",
+      "weekly": [
+       "0.75",
+       "0.75",
+       "0.5"
+      ]
+     },
+     "T-14": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Loss from a 1% move (gamma) at least this % of margin",
+      "monthly": [
+       "4",
+       "3",
+       "2"
+      ],
+      "on": true,
+      "unit": "%",
+      "weekly": [
+       "3",
+       "3",
+       "2"
+      ]
+     },
+     "T-14t": {
+      "cmp": "le",
+      "data": "ok",
+      "label": "Theta per day falls below this % of premium left",
+      "monthly": [
+       "3",
+       "3",
+       "3"
+      ],
+      "on": false,
+      "unit": "%",
+      "weekly": [
+       "5",
+       "5",
+       "5"
+      ]
+     },
+     "T-14v": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Loss from +1 IV point (vega) at least this % of max profit",
+      "monthly": [
+       "15",
+       "15",
+       "10"
+      ],
+      "on": false,
+      "unit": "%",
+      "weekly": [
+       "10",
+       "10",
+       "10"
+      ]
+     },
+     "T-15": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Margin used reaches this % of available",
+      "monthly": [
+       "80",
+       "80",
+       "80"
+      ],
+      "on": false,
+      "unit": "%",
+      "weekly": [
+       "80",
+       "80",
+       "80"
+      ]
+     },
+     "T-16": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Loss reaches this % of the margin blocked",
+      "monthly": [
+       "4",
+       "4",
+       "3"
+      ],
+      "on": true,
+      "unit": "%",
+      "weekly": [
+       "4",
+       "4",
+       "3"
+      ]
+     },
+     "T-18": {
+      "cmp": "",
+      "data": "ok",
+      "label": "Adjustments used reach the plan's maximum",
+      "monthly": null,
+      "on": true,
+      "unit": "",
+      "weekly": null
+     },
+     "T-19": {
+      "cmp": "le",
+      "data": "ok",
+      "greyed": "No premium to earn",
+      "label": "Premium still left to earn is below this many x the adjustment's cost",
+      "monthly": [
+       "2",
+       "2",
+       "2"
+      ],
+      "on": false,
+      "unit": "x",
+      "weekly": [
+       "2",
+       "2",
+       "2"
+      ]
+     },
+     "T-20": {
+      "cmp": "",
+      "data": "user",
+      "label": "Spot crosses a level you set (support / resistance)",
+      "monthly": null,
+      "on": false,
+      "unit": "pts",
+      "weekly": null
+     },
+     "T-20b": {
+      "cmp": "",
+      "data": "hist",
+      "greyed": "Needs price history (not in V1)",
+      "label": "Market trending vs range-bound",
+      "monthly": null,
+      "on": false,
+      "unit": "",
+      "weekly": null
+     },
+     "T-21": {
+      "cmp": "",
+      "data": "ok",
+      "label": "Prices stale or missing (no suggestion is made)",
+      "monthly": null,
+      "on": true,
+      "unit": "",
+      "weekly": null
+     }
+    }
+   },
+   "name": "Directional butterflies / condors: system default",
+   "status": "draft",
+   "strategy_type": "dirfly"
+  },
+  {
+   "body": {
+    "approaches": {
+     "applicable": [
+      "A-02",
+      "A-04",
+      "A-06",
+      "A-09",
+      "A-23",
+      "A-24",
+      "A-25",
+      "A-27",
+      "A-28",
+      "A-29",
+      "A-31",
+      "A-35",
+      "A-36",
+      "A-37",
+      "A-38"
+     ],
+     "greyed": [
+      {
+       "id": "A-01",
+       "reason": "Needs two sides"
+      },
+      {
+       "id": "A-05",
+       "reason": "No spread to roll"
+      },
+      {
+       "id": "A-07",
+       "reason": "Not a range trade"
+      },
+      {
+       "id": "A-08",
+       "reason": "Strangles only"
+      },
+      {
+       "id": "A-10",
+       "reason": "Strangles only"
+      },
+      {
+       "id": "A-11",
+       "reason": "Iron condors only"
+      },
+      {
+       "id": "A-12",
+       "reason": "Needs a credit spread"
+      },
+      {
+       "id": "A-15",
+       "reason": "Ratio spreads only"
+      },
+      {
+       "id": "A-16",
+       "reason": "Long options only"
+      },
+      {
+       "id": "A-17",
+       "reason": "Long options only"
+      },
+      {
+       "id": "A-18",
+       "reason": "Long volatility only"
+      },
+      {
+       "id": "A-19",
+       "reason": "Calendars only"
+      },
+      {
+       "id": "A-26",
+       "reason": "Needs two sides"
+      }
+     ],
+     "off_in_playbook": [
+      "A-03",
+      "A-13",
+      "A-14",
+      "A-20",
+      "A-21",
+      "A-22",
+      "A-32",
+      "A-33",
+      "A-34",
+      "A-30"
+     ]
+    },
+    "day_rules": [
+     {
+      "action": 0,
+      "at": "15:00",
+      "on": true,
+      "when": "beforeWeekend"
+     },
+     {
+      "action": 0,
+      "at": "15:00",
+      "on": true,
+      "when": "beforeHoliday"
+     },
+     {
+      "action": 4,
+      "at": "13:00",
+      "on": true,
+      "percent": "20",
+      "when": "expiry"
+     },
+     {
+      "action": 1,
+      "at": "14:30",
+      "from": "",
+      "on": false,
+      "to": "",
+      "when": "away"
+     },
+     {
+      "action": 1,
+      "at": "14:30",
+      "on": false,
+      "when": "event"
+     }
+    ],
+    "guards": {
+     "entry_guide": "shorts at 0.15 to 0.20 delta, wings 200 to 400 points out",
+     "hide_oi_below": 10000,
+     "hide_spread_pct_of_mid_above": "5",
+     "max_adjustments": 2,
+     "order_sequence": "buy legs first; buy back shorts before selling hedges",
+     "profit_target_pct_of_max_profit": "50",
+     "roll_debit_limit": "Rs 500 or 10% of max profit",
+     "stop_line_pct_of_max_loss": "50",
+     "warn_cost_pct_of_premium_left": "50"
+    },
+    "rules": [
+     {
+      "any_of": [
+       "T-01"
+      ],
+      "id": "T-01"
+     },
+     {
+      "any_of": [
+       "T-02"
+      ],
+      "id": "T-02"
+     },
+     {
+      "any_of": [
+       "T-13"
+      ],
+      "id": "T-13"
+     },
+     {
+      "any_of": [
+       "T-03"
+      ],
+      "id": "T-03"
+     },
+     {
+      "any_of": [
+       "T-14"
+      ],
+      "id": "T-14"
+     },
+     {
+      "any_of": [
+       "T-11"
+      ],
+      "id": "T-11"
+     },
+     {
+      "any_of": [
+       "T-06"
+      ],
+      "id": "T-06"
+     },
+     {
+      "any_of": [
+       "T-07"
+      ],
+      "id": "T-07"
+     },
+     {
+      "any_of": [
+       "T-09"
+      ],
+      "id": "T-09"
+     },
+     {
+      "any_of": [
+       "T-19"
+      ],
+      "id": "T-19"
+     },
+     {
+      "any_of": [
+       "T-16"
+      ],
+      "id": "T-16"
+     },
+     {
+      "any_of": [
+       "T-10b"
+      ],
+      "id": "T-10b"
+     },
+     {
+      "any_of": [
+       "T-18"
+      ],
+      "id": "T-18"
+     },
+     {
+      "any_of": [
+       "T-21"
+      ],
+      "id": "T-21"
+     }
+    ],
+    "schema": 1,
+    "situations": [
+     {
+      "id": "S-01",
+      "name": "Gap at the open",
+      "rule": "Wait until 09:30 before suggesting, unless a short opens in the money"
+     },
+     {
+      "id": "S-02",
+      "name": "Trending day",
+      "rule": "Show early rolls when net delta grows past 0.15 per lot"
+     },
+     {
+      "id": "S-03",
+      "name": "Range day",
+      "rule": "Show only the profit target; no adjustments"
+     },
+     {
+      "id": "S-04",
+      "name": "IV jumps without a big move",
+      "rule": "Show where the P&L came from; suggest No change unless an event is within 1 session"
+     },
+     {
+      "id": "S-05",
+      "name": "IV crush after an event",
+      "rule": "Show take-profit at 40% of max profit"
+     },
+     {
+      "id": "S-06",
+      "name": "Afternoon carry check",
+      "rule": "At 15:00: show overnight margin and the loss at +/-2% gap"
+     },
+     {
+      "id": "S-07",
+      "name": "Expiry day",
+      "rule": "From 13:00: buy back shorts below Rs 2; close a position whose short is within 0.3% by 14:30; warn about STT on in-the-money options"
+     },
+     {
+      "id": "S-10",
+      "name": "Broker or data outage",
+      "rule": "No suggestion; show the last good data and its age"
+     },
+     {
+      "id": "S-11",
+      "name": "Adjustment limit reached",
+      "rule": "Only exit and reduce are offered"
+     },
+     {
+      "id": "S-12",
+      "name": "Big win early",
+      "rule": "If profit reaches 40% of max profit on day 1, show take profit"
+     }
+    ],
+    "stages": {
+     "monthly": [
+      {
+       "from": 10,
+       "name": "Early",
+       "to": null
+      },
+      {
+       "from": 3,
+       "name": "Middle",
+       "to": 9
+      },
+      {
+       "from": 0,
+       "name": "Last 2 days",
+       "to": 2
+      }
+     ],
+     "weekly": [
+      {
+       "from": 5,
+       "name": "Early",
+       "to": null
+      },
+      {
+       "from": 2,
+       "name": "Middle",
+       "to": 4
+      },
+      {
+       "from": 0,
+       "name": "Last day",
+       "to": 1
+      }
+     ]
+    },
+    "status": "draft",
+    "strategy_type": "other",
+    "tightened": [
+     "T-01",
+     "T-03",
+     "T-06",
+     "T-07",
+     "T-09",
+     "T-11",
+     "T-13",
+     "T-16",
+     "T-19"
+    ],
+    "triggers": {
+     "T-01": {
+      "cmp": "le",
+      "data": "ok",
+      "label": "Spot within this % of a short strike",
+      "monthly": [
+       "1.5",
+       "1.0",
+       "0.5"
+      ],
+      "on": true,
+      "unit": "%",
+      "weekly": [
+       "0.75",
+       "0.5",
+       "0.3"
+      ]
+     },
+     "T-01b": {
+      "cmp": "le",
+      "data": "ok",
+      "label": "Spot within this many points of a short strike",
+      "monthly": [
+       "350",
+       "240",
+       "120"
+      ],
+      "on": false,
+      "unit": "pts",
+      "weekly": [
+       "180",
+       "120",
+       "70"
+      ]
+     },
+     "T-02": {
+      "cmp": "",
+      "data": "ok",
+      "label": "Spot crosses a breakeven",
+      "monthly": null,
+      "on": true,
+      "unit": "",
+      "weekly": null
+     },
+     "T-03": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Tested short's delta reaches",
+      "monthly": [
+       "0.25",
+       "0.30",
+       "0.35"
+      ],
+      "on": true,
+      "unit": "delta",
+      "weekly": [
+       "0.30",
+       "0.35",
+       "0.40"
+      ]
+     },
+     "T-04": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Net delta beyond +/- this per lot",
+      "monthly": [
+       "0.15",
+       "0.15",
+       "0.20"
+      ],
+      "on": false,
+      "unit": "delta/lot",
+      "weekly": [
+       "0.15",
+       "0.15",
+       "0.20"
+      ]
+     },
+     "T-05": {
+      "cmp": "ge",
+      "data": "ok",
+      "greyed": "Needs a call side and a put side",
+      "label": "One side's value is this many x the other side's",
+      "monthly": [
+       "3",
+       "3",
+       "4"
+      ],
+      "on": false,
+      "unit": "x",
+      "weekly": [
+       "3",
+       "3",
+       "4"
+      ]
+     },
+     "T-06": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Loss reaches this % of max loss",
+      "monthly": [
+       "50",
+       "50",
+       "40"
+      ],
+      "on": true,
+      "unit": "%",
+      "weekly": [
+       "50",
+       "50",
+       "40"
+      ]
+     },
+     "T-06b": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Loss reaches this many x the credit received",
+      "monthly": [
+       "1.5",
+       "1",
+       "0.75"
+      ],
+      "on": false,
+      "unit": "x",
+      "weekly": [
+       "1",
+       "1",
+       "0.75"
+      ]
+     },
+     "T-07": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Profit reaches this % of max profit",
+      "monthly": [
+       "50",
+       "50",
+       "75"
+      ],
+      "on": true,
+      "unit": "%",
+      "weekly": [
+       "50",
+       "50",
+       "80"
+      ]
+     },
+     "T-08": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "A leg's premium reaches this many x its entry (leg stop)",
+      "monthly": [
+       "2",
+       "2",
+       "2.5"
+      ],
+      "on": false,
+      "unit": "x",
+      "weekly": [
+       "2",
+       "2",
+       "2.5"
+      ]
+     },
+     "T-09": {
+      "cmp": "le",
+      "data": "ok",
+      "label": "A short leg's premium falls below Rs (close for pennies)",
+      "monthly": [
+       "3",
+       "3",
+       "2"
+      ],
+      "on": true,
+      "unit": "Rs",
+      "weekly": [
+       "3",
+       "3",
+       "2"
+      ]
+     },
+     "T-10b": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Clock time reached (checked in this stage)",
+      "monthly": [
+       "",
+       "",
+       "14:30"
+      ],
+      "on": true,
+      "unit": "time",
+      "weekly": [
+       "",
+       "",
+       "14:30"
+      ]
+     },
+     "T-11": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Options' IV changed this many points since entry",
+      "monthly": [
+       "3",
+       "3",
+       "4"
+      ],
+      "on": true,
+      "unit": "pts",
+      "weekly": [
+       "3",
+       "3",
+       "4"
+      ]
+     },
+     "T-11b": {
+      "cmp": "ge",
+      "data": "vix",
+      "label": "India VIX up this % today",
+      "monthly": [
+       "10",
+       "10",
+       "10"
+      ],
+      "on": false,
+      "unit": "%",
+      "weekly": [
+       "10",
+       "10",
+       "10"
+      ]
+     },
+     "T-11c": {
+      "cmp": "ge",
+      "data": "hist",
+      "greyed": "Needs price history (not in V1)",
+      "label": "IV percentile above",
+      "monthly": [
+       "80",
+       "80",
+       "80"
+      ],
+      "on": false,
+      "unit": "%",
+      "weekly": [
+       "80",
+       "80",
+       "80"
+      ]
+     },
+     "T-12": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Spot has moved this many expected moves (SD) since entry",
+      "monthly": [
+       "1",
+       "1",
+       "1"
+      ],
+      "on": false,
+      "unit": "SD",
+      "weekly": [
+       "1",
+       "1",
+       "1"
+      ]
+     },
+     "T-13": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Gap at the open of at least this %",
+      "monthly": [
+       "1",
+       "1",
+       "0.75"
+      ],
+      "on": true,
+      "unit": "%",
+      "weekly": [
+       "0.75",
+       "0.75",
+       "0.5"
+      ]
+     },
+     "T-14": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Loss from a 1% move (gamma) at least this % of margin",
+      "monthly": [
+       "4",
+       "3",
+       "2"
+      ],
+      "on": true,
+      "unit": "%",
+      "weekly": [
+       "3",
+       "3",
+       "2"
+      ]
+     },
+     "T-14t": {
+      "cmp": "le",
+      "data": "ok",
+      "label": "Theta per day falls below this % of premium left",
+      "monthly": [
+       "3",
+       "3",
+       "3"
+      ],
+      "on": false,
+      "unit": "%",
+      "weekly": [
+       "5",
+       "5",
+       "5"
+      ]
+     },
+     "T-14v": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Loss from +1 IV point (vega) at least this % of max profit",
+      "monthly": [
+       "15",
+       "15",
+       "10"
+      ],
+      "on": false,
+      "unit": "%",
+      "weekly": [
+       "10",
+       "10",
+       "10"
+      ]
+     },
+     "T-15": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Margin used reaches this % of available",
+      "monthly": [
+       "80",
+       "80",
+       "80"
+      ],
+      "on": false,
+      "unit": "%",
+      "weekly": [
+       "80",
+       "80",
+       "80"
+      ]
+     },
+     "T-16": {
+      "cmp": "ge",
+      "data": "ok",
+      "label": "Loss reaches this % of the margin blocked",
+      "monthly": [
+       "4",
+       "4",
+       "3"
+      ],
+      "on": true,
+      "unit": "%",
+      "weekly": [
+       "4",
+       "4",
+       "3"
+      ]
+     },
+     "T-18": {
+      "cmp": "",
+      "data": "ok",
+      "label": "Adjustments used reach the plan's maximum",
+      "monthly": null,
+      "on": true,
+      "unit": "",
+      "weekly": null
+     },
+     "T-19": {
+      "cmp": "le",
+      "data": "ok",
+      "label": "Premium still left to earn is below this many x the adjustment's cost",
+      "monthly": [
+       "2",
+       "2",
+       "2"
+      ],
+      "on": true,
+      "unit": "x",
+      "weekly": [
+       "2",
+       "2",
+       "2"
+      ]
+     },
+     "T-20": {
+      "cmp": "",
+      "data": "user",
+      "label": "Spot crosses a level you set (support / resistance)",
+      "monthly": null,
+      "on": false,
+      "unit": "pts",
+      "weekly": null
+     },
+     "T-20b": {
+      "cmp": "",
+      "data": "hist",
+      "greyed": "Needs price history (not in V1)",
+      "label": "Market trending vs range-bound",
+      "monthly": null,
+      "on": false,
+      "unit": "",
+      "weekly": null
+     },
+     "T-21": {
+      "cmp": "",
+      "data": "ok",
+      "label": "Prices stale or missing (no suggestion is made)",
+      "monthly": null,
+      "on": true,
+      "unit": "",
+      "weekly": null
+     }
+    }
+   },
+   "name": "Naked shorts / futures / others: system default",
+   "status": "draft",
+   "strategy_type": "other"
+  }
+ ],
+ "schema": 1,
+ "source": "scripts/build_system_playbooks.py from tests/fixtures/adjust_scenarios/_playbooks.json (do not edit by hand)"
+}

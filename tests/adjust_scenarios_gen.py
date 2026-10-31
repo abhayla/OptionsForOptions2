@@ -37,6 +37,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT / "backend") not in sys.path:  # run as a script
     sys.path.insert(0, str(ROOT / "backend"))
 
+from ofo.adjustment.playbook_eval import T14_PENDING, reason_text  # noqa: E402
 from ofo.engine.black_scholes import IST, bs_greeks_unrounded, bs_price, year_fraction  # noqa: E402
 from ofo.engine.legs import Instrument  # noqa: E402
 
@@ -100,8 +101,15 @@ TRIGGERS = [
 # Triggers this library evaluates. T-14 is on in the draft but its formula (loss from a 1% move) is not settled; the
 # GC-ADJ1 build defines it, so it is listed as not evaluated rather than guessed.
 EVALUATED = ["T-01", "T-02", "T-03", "T-06", "T-07", "T-09", "T-10b", "T-11", "T-13", "T-16", "T-18", "T-19", "T-21"]
-NOT_EVALUATED = {"T-14": "Loss-from-a-1%-move formula not settled; defined in the GC-ADJ1 build"}
+NOT_EVALUATED = {"T-14": reason_text(T14_PENDING)}  # the catalogue text of the evaluator's reason code
 TIGHTENED = ["T-01", "T-03", "T-06", "T-07", "T-09", "T-11", "T-13", "T-16", "T-19"]
+# Per-family values that differ from the catalogue (screen 4) values, and the families whose numbers the owner approved.
+# ADR-216 (owner 2026-10-31): the iron condor ships screen 4's per-stage values except T-19 = 1x the adjustment's cost.
+FAMILY_TRIGGER_VALUES = {"ic": {"T-19": {"weekly": ["1", "1", "1"], "monthly": ["1", "1", "1"]}}}
+APPROVED = {"ic": "ADR-216"}
+# F-71: distance triggers are judged on the crossing, not the level - one that already holds at entry is "already
+# true" until a check finds it false. Every library scenario is a first check, so held at entry and now = already true.
+CROSSING = ["T-01"]
 # id, label, on by default, note, fit
 APPROACHES = [
     ("A-01", "Roll the untested side toward spot", True, "", ("only", TWO_SIDED, "Needs two sides")),
@@ -161,6 +169,13 @@ SYSTEM_DAY_RULES = [
     {"on": False, "when": "away", "at": "14:30", "action": 1, "from": "", "to": ""},
     {"on": False, "when": "event", "at": "14:30", "action": 1},
 ]
+# ADR-216 (owner 2026-10-31), iron condor only: the stop line is a loss of 50% of max loss or 4% of margin, whichever
+# comes first; on expiry day close any spread whose short is within 0.3% of spot by 14:30 (action 5, "Prepare an exit
+# for review"). The mockup's 13:00 tighten-20% expiry rule stays for the other families and is OFF for the iron condor.
+FAMILY_GUARDS = {"ic": {"stop_line_pct_of_margin": "4", "stop_line_rule": "whichever comes first",
+                        "time_exit": "14:30"}}
+FAMILY_DAY_RULES = {"ic": [r if r["when"] != "expiry" else {**r, "on": False} for r in SYSTEM_DAY_RULES] + [
+    {"on": True, "when": "expiry", "at": "14:30", "action": 5, "close_if_short_within_pct": "0.3"}]}
 SITUATIONS = [
     ("S-01", "Gap at the open", "Wait until 09:30 before suggesting, unless a short opens in the money"),
     ("S-02", "Trending day", "Show early rolls when net delta grows past 0.15 per lot"),
@@ -232,17 +247,24 @@ def playbooks() -> dict:
                 applicable.append(aid)
             else:
                 off.append(aid)
-        fams[fam] = {"name": f"{name}: system default", "system": True, "status": "DRAFT",
+        fams[fam] = {"name": f"{name}: system default", "system": True,
+                     "status": "APPROVED" if fam in APPROVED else "DRAFT",
+                     **({"approved_by": APPROVED[fam]} if fam in APPROVED else {}),
                      "triggers_on": trig_on, "triggers_greyed": trig_greyed,
+                     "trigger_values": FAMILY_TRIGGER_VALUES.get(fam, {}),
+                     **({"guards": FAMILY_GUARDS[fam], "day_rules": FAMILY_DAY_RULES[fam]} if fam in FAMILY_GUARDS else {}),
                      "approaches": {"applicable": applicable, "off_in_playbook": off, "greyed": greyed}}
     return {
         "source": "Published mockup screen 4 (claude.ai artifact RwzCxhDod7yVCk6TWrQc9e) and "
                   "docs/research/adjustments-catalogue-2026-10-30.md Part 3 (incl. variants) and PB-04; ADR-214 (4a)-(4d)",
-        "status": "DRAFT: playbook numbers await owner approval (catalogue Part 9b question 1)",
+        "status": "Iron condor (ic) APPROVED (ADR-216); every other family DRAFT: its numbers await owner approval "
+                  "(catalogue Part 9b question 1)",
         "stages": STAGES,
         "triggers": {t[0]: {"label": t[1], "unit": t[2], "cmp": t[3], "weekly": t[4], "monthly": t[5],
                             "on_by_default": t[6], "data": t[7]} for t in TRIGGERS},
         "evaluated_in_library": EVALUATED,
+        "tightened_by_day_rule": TIGHTENED,
+        "crossing_triggers": CROSSING,
         "not_evaluated_in_library": NOT_EVALUATED,
         "approaches": {a[0]: {"label": a[1], "on_by_default": a[2], "note": a[3]} for a in APPROACHES},
         "exit_or_reduce_after_limit": EXIT_REDUCE,
@@ -625,11 +647,15 @@ def day(text: str) -> datetime.date:
     return datetime.date.fromisoformat(text)
 
 
-def L(side: str, kind: str, strike: int | None, expiry: str, lots: int, entry: str | None = None) -> dict:
+def L(side: str, kind: str, strike: int | None, expiry: str, lots: int, entry: str | None = None,
+      opened_by: int | None = None) -> dict:
+    """``opened_by``: the adjustment number that opened this leg (REQ-163 history; absent = opened at entry)."""
     leg = {"side": side, "type": kind, "strike": None if strike is None else D(strike), "expiry": day(expiry),
            "lots": lots}
     if entry is not None:
         leg["entry"] = D(entry)
+    if opened_by is not None:
+        leg["opened_by"] = opened_by
     return leg
 
 
@@ -652,8 +678,11 @@ def day_type(clock: datetime.datetime, expiry: datetime.date, events: list[dict]
     return kinds or ["normal"]
 
 
-def limit_for(pb: dict, tid: str, expiry_kind: str, stage_ix: int, overrides: dict) -> str:
-    vals = overrides.get("triggers", {}).get(tid, {}).get(expiry_kind) or pb["triggers"][tid][expiry_kind]
+def limit_for(pb: dict, tid: str, expiry_kind: str, stage_ix: int, overrides: dict, family: str) -> str:
+    """Precedence: the strategy's plan > the family's own value (ADR-216) > the catalogue (screen 4) value."""
+    vals = (overrides.get("triggers", {}).get(tid, {}).get(expiry_kind)
+            or pb["families"][family]["trigger_values"].get(tid, {}).get(expiry_kind)
+            or pb["triggers"][tid][expiry_kind])
     return vals[stage_ix]
 
 
@@ -729,7 +758,8 @@ def build(spec: dict, pb: dict) -> dict:  # noqa: C901, PLR0912, PLR0915 - one r
         booked += b
         history.append({"adjustment": h["adjustment"], "side": h["side"], "type": h["type"], "strike": D(h["strike"]),
                         "expiry": day(h["expiry"]), "lots": h["lots"], "quantity": q, "entry": D(h["entry"]),
-                        "exit": D(h["exit"]), "booked": dec_text(b)})
+                        "exit": D(h["exit"]), "booked": dec_text(b),
+                        **({"opened_by": h["opened_by"]} if "opened_by" in h else {})})
     adjustments_used = spec.get("adjustments_used", len({h["adjustment"] for h in history}))
     open_cash = sum(-sign(leg["side"]) * leg["quantity"] * leg["entry"] for leg in legs if leg["type"] != "FUT")
     hist_cash = sum(-sign(h["side"]) * h["quantity"] * (h["entry"] - h["exit"]) for h in history)
@@ -746,7 +776,7 @@ def build(spec: dict, pb: dict) -> dict:  # noqa: C901, PLR0912, PLR0915 - one r
     stage = STAGES[kind][stage_ix]["name"]
 
     # day rules (system rules + plan overrides; precedence strategy plan > playbook, ADR-214 (4b))
-    rules = [dict(r) for r in SYSTEM_DAY_RULES]
+    rules = [dict(r) for r in FAMILY_DAY_RULES.get(family, SYSTEM_DAY_RULES)]
     for r in overrides.get("day_rules", []):
         rules = [x for x in rules if x["when"] != r["when"]] + [r]
     today = clock.date()
@@ -788,7 +818,19 @@ def build(spec: dict, pb: dict) -> dict:  # noqa: C901, PLR0912, PLR0915 - one r
         adj_cost = sum((row_of(leg)["ask"] - row_of(leg)["bid"]) * leg["quantity"] + 40 for leg in legs if leg["type"] != "FUT")
 
     suggest = data_state["prices"] == "fresh" and data_state["spot_source"] != "none"
-    fired, near, skipped = [], [], []
+    fired, near, skipped, already = [], [], [], []
+    entry_days = (expiry - entry_clock.date()).days
+    entry_stage = next(i for i, s in enumerate(STAGES[kind]) if entry_days >= s["from"] and (s["to"] is None or entry_days <= s["to"]))
+
+    def held_at_entry(tid: str) -> bool:
+        """F-71: the crossing trigger evaluated on the entry spot with the entry stage's value (only T-01 here:
+        the scenario's entry carries a spot, not a full set of entry prices). The entry is never on expiry day after
+        the day rule's time in this library, so no tightening applies at entry."""
+        assert tid == "T-01" and entry_clock.date() != expiry, (spec["id"], tid)
+        raw = limit_for(pb, tid, kind, entry_stage, overrides, family)
+        if raw == "" or not shorts:
+            return False
+        return min(Fraction(abs(leg["strike"] - entry_spot)) / Fraction(entry_spot) * 100 for leg in shorts) <= Fraction(D(raw))
     if suggest:
         trig_on = [t for t in fpb["triggers_on"] if t in EVALUATED] + [
             t for t in overrides.get("triggers_on", []) if t not in fpb["triggers_on"]]
@@ -800,7 +842,7 @@ def build(spec: dict, pb: dict) -> dict:  # noqa: C901, PLR0912, PLR0915 - one r
             lim = None
             why = ""
             if tid in ("T-01", "T-03", "T-06", "T-07", "T-09", "T-11", "T-13", "T-16", "T-19", "T-10b"):
-                raw = limit_for(pb, tid, kind, stage_ix, overrides)
+                raw = limit_for(pb, tid, kind, stage_ix, overrides, family)
                 if raw == "":
                     skipped.append({"id": tid, "reason": f"no value in the {stage} stage"})
                     continue
@@ -875,7 +917,9 @@ def build(spec: dict, pb: dict) -> dict:  # noqa: C901, PLR0912, PLR0915 - one r
             fv, fl = Fraction(value), Fraction(lim)
             hit = fv <= fl if cmp == "le" else fv >= fl
             row = {"id": tid, "value": dec_text_round(fv), "limit": dec_text_round(fl), "cmp": cmp}
-            if hit:
+            if hit and tid in CROSSING and held_at_entry(tid):
+                already.append(tid)
+            elif hit:
                 fired.append(row)
             elif (cmp == "ge" and fv >= fl * Fraction(4, 5)) or (cmp == "le" and fv <= fl * Fraction(5, 4)):
                 near.append(row)
@@ -891,7 +935,7 @@ def build(spec: dict, pb: dict) -> dict:  # noqa: C901, PLR0912, PLR0915 - one r
     gap_hold = None
     if "day_open" in spec and clock.time().strftime("%H:%M") <= "09:30" and suggest:
         gap = abs(D(spec["day_open"]) - D(spec["prev_close"])) / D(spec["prev_close"]) * 100
-        if gap >= D(limit_for(pb, "T-13", kind, stage_ix, overrides)):
+        if gap >= D(limit_for(pb, "T-13", kind, stage_ix, overrides, family)):
             sits.append("S-01")
             itm = any((leg["type"] == "CE" and spot > leg["strike"]) or (leg["type"] == "PE" and spot < leg["strike"])
                       for leg in shorts)
@@ -954,8 +998,12 @@ def build(spec: dict, pb: dict) -> dict:  # noqa: C901, PLR0912, PLR0915 - one r
         "data_state": data_state,
         "position": {
             "entry": {"clock": entry_clock.isoformat(), "spot": entry_spot, "atm_iv": entry_atm},
-            "legs": [{k: leg[k] for k in ("side", "type", "strike", "expiry", "lots", "quantity", "entry", "tradingsymbol")}
+            "legs": [{k: leg[k] for k in ("side", "type", "strike", "expiry", "lots", "quantity", "entry", "tradingsymbol",
+                                          "opened_by") if k in leg}
                      for leg in legs],
+            # REQ-163: when each adjustment was placed (the seed places one batch per adjustment at this time)
+            **({"adjustment_times": {str(n): dt(t).isoformat() for n, t in spec["adjustment_times"].items()}}
+               if "adjustment_times" in spec else {}),
             "history": history, "booked_pnl": dec_text(booked), "adjustments_used": adjustments_used,
             "credit_received": credit_received,
             **({"charges_round_trip": spec["charges"]} if "charges" in spec else {}),
@@ -973,6 +1021,7 @@ def build(spec: dict, pb: dict) -> dict:  # noqa: C901, PLR0912, PLR0915 - one r
             "premium_left": None if premium_left is None else premium_left,
             "adjustment_cost": None if adj_cost is None else adj_cost,
             "triggers_fired": fired, "triggers_close": near, "triggers_not_evaluated": skipped,
+            **({"already_true_at_entry": already} if already else {}),
             "day_rules": applying, "tighten_percent": None if tighten_pct is None else tighten_pct,
             "situations": sits, "gap_hold": gap_hold,
             "approaches": approaches,
@@ -1097,24 +1146,28 @@ def scenarios() -> list[dict]:  # noqa: PLR0915 - a flat list of scenario specs
                      must_fire=["T-06"],
                      check=lambda v: _assert(Fraction(53, 100) <= -v["pnl_now"] / Fraction(D(v["expiry_metrics"]["max_loss"])) <= Fraction(57, 100),
                                              "ADJ-11 loss not ~55%")))
-    rolled = [L("BUY", "PE", 22800, N3, 2, "6.10"), L("SELL", "PE", 23000, N3, 2, "16.85"),
+    rolled = [L("BUY", "PE", 22800, N3, 2, "6.10", opened_by=2), L("SELL", "PE", 23000, N3, 2, "16.85", opened_by=2),
               L("SELL", "CE", 23450, N3, 2), L("BUY", "CE", 23650, N3, 2)]
     hist2 = [{"adjustment": 1, "side": "BUY", "type": "PE", "strike": 22400, "expiry": N3, "lots": 2, "entry": "10.45", "exit": "1.40"},
              {"adjustment": 1, "side": "SELL", "type": "PE", "strike": 22600, "expiry": N3, "lots": 2, "entry": "19.70", "exit": "3.25"},
-             {"adjustment": 2, "side": "BUY", "type": "PE", "strike": 22500, "expiry": N3, "lots": 2, "entry": "4.10", "exit": "0.60"},
-             {"adjustment": 2, "side": "SELL", "type": "PE", "strike": 22700, "expiry": N3, "lots": 2, "entry": "9.05", "exit": "1.15"}]
+             {"adjustment": 2, "side": "BUY", "type": "PE", "strike": 22500, "expiry": N3, "lots": 2, "entry": "4.10", "exit": "0.60",
+              "opened_by": 1},
+             {"adjustment": 2, "side": "SELL", "type": "PE", "strike": 22700, "expiry": N3, "lots": 2, "entry": "9.05", "exit": "1.15",
+              "opened_by": 1}]
     s.append(ic_spec("ADJ-12", "Two adjustments already used: only exit / reduce offered", ["S-11", "T-18", "P-03"],
                      "2026-11-02T10:30:00", "23300", legs=rolled, history=hist2, must_fire=["T-18"],
+                     adjustment_times={1: "2026-10-29T11:00:00", 2: "2026-10-30T11:00:00"},
                      must_situations=["S-11"]))
     hist1 = [{"adjustment": 1, "side": "BUY", "type": "PE", "strike": 22400, "expiry": N3, "lots": 2, "entry": "10.45", "exit": "1.40"},
              {"adjustment": 1, "side": "SELL", "type": "PE", "strike": 22600, "expiry": N3, "lots": 2, "entry": "19.70", "exit": "3.25"}]
-    rolled1 = [L("BUY", "PE", 22700, N3, 2, "6.10"), L("SELL", "PE", 22900, N3, 2, "16.85"),
+    rolled1 = [L("BUY", "PE", 22700, N3, 2, "6.10", opened_by=1), L("SELL", "PE", 22900, N3, 2, "16.85", opened_by=1),
                L("SELL", "CE", 23450, N3, 2), L("BUY", "CE", 23650, N3, 2)]
     s.append(ic_spec("ADJ-13", "After one adjustment with booked P&L: whole-trade numbers include it", ["F-74", "F-06"],
                      "2026-10-30T13:00:00", "23250", legs=rolled1, history=hist1,
+                     adjustment_times={1: "2026-10-29T11:00:00"},
                      notes=["Put spread rolled up 300 points on 29 Oct; booked P&L carries into max profit, max loss "
                             "and breakevens (F-74)."]))
-    s.append(ic_spec("ADJ-14", "Premium left below 2 x adjustment cost", ["T-19", "P-04"], "2026-11-02T15:00:00",
+    s.append(ic_spec("ADJ-14", "Premium left below 1 x adjustment cost (ADR-216)", ["T-19", "P-04"], "2026-11-02T15:00:00",
                      "23020", must_fire=["T-19"],
                      check=lambda v: _assert(v["premium_left"] > 0, "ADJ-14 wants premium left > 0")))
     s.append(ic_spec("ADJ-15", "Last session before a weekend, Friday 15:00: carry check", ["S-06", "S-09", "F-15"],
@@ -1195,6 +1248,17 @@ def scenarios() -> list[dict]:  # noqa: PLR0915 - a flat list of scenario specs
                      "2026-11-06T11:40:00", spot_for_delta("0.3500"), legs=IC9, entry=E9, must_fire=["T-03"]))
     s.append(ic_spec("ADJ-25b", "Boundary: tested short delta 0.01 below the limit (does not fire)", ["T-03"],
                      "2026-11-06T11:40:00", spot_for_delta("0.3400"), legs=IC9, entry=E9, must_not_fire=["T-03"]))
+    near_ic = [L("BUY", "PE", 22500, N9, 2), L("SELL", "PE", 22700, N9, 2), L("SELL", "CE", 23000, N9, 2), L("BUY", "CE", 23200, N9, 2)]
+    s.append(ic_spec("ADJ-42", "F-71: short CE 0.35% from spot at entry and now (Middle stage): already true, not flagged",
+                     ["F-71", "T-01", "REQ-045 AC-3"], "2026-11-06T11:00:00", "22920", legs=near_ic,
+                     entry={"clock": "2026-11-06T10:00:00", "spot": "22920", "atm_iv": "0.07"}, atm_iv="0.07",
+                     exact_fire=[],
+                     check=lambda v: _assert(v["already"] == ["T-01"], "ADJ-42 must hold T-01 at entry"),
+                     notes=["F-71 (live 30 Oct): a fresh iron condor's 1-step-OTM short sits inside T-01's Middle 0.5%. "
+                            "The rule held at entry and still holds, so it is 'Already true when tracking started', "
+                            "not a flag; it flags only after a check finds it clear and spot comes back.",
+                            "ATM IV 7% (synthetic) keeps the near short's delta below T-03's Middle 0.35, so T-01 is "
+                            "the only trigger that holds."]))
 
     # ---- other strategy types (NIFTY weekly unless stated) ----
     def o(sid, title, refs, family, clock, spot, legs, entry, **kw):
@@ -1304,7 +1368,8 @@ def dump(obj) -> str:
 def index(rows: list[dict]) -> str:
     lines = ["# Adjustment scenario library (generated: do not edit)", "",
              "Generated by `python tests/adjust_scenarios_gen.py`; checked by `tests/test_adjust_scenarios.py`.",
-             "Synthetic prices (repo Black-Scholes), DRAFT playbook values from `_playbooks.json`. Expected values are",
+             "Synthetic prices (repo Black-Scholes), playbook values from `_playbooks.json` (iron condor approved, ADR-216;",
+             "other families DRAFT). Expected values are",
              "derived by hand-written code; the test cross-checks them with the engine.", "",
              "| id | group | what it tests | stage | triggers fired |", "|---|---|---|---|---|"]
     for r in rows:

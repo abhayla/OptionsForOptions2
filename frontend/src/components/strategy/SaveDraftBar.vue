@@ -19,6 +19,7 @@ import { useHeldFeature } from '@/lib/heldFeatures'
 import DraftDelete from '@/components/strategy/DraftDelete.vue'
 import DraftDeleteStatus from '@/components/strategy/DraftDeleteStatus.vue'
 import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
+import AdjustPlanSheet from '@/components/strategy/AdjustPlanSheet.vue'
 import { contractName, istTime } from '@/lib/displayFormat'
 import { ADD_TO_PAPER_LABEL, PAPER_ADDED_TEXT, addToPaper } from '@/lib/tracking'
 import { CLEAR_UNDO_MS } from '@/lib/legEdit'
@@ -351,6 +352,7 @@ async function confirmPaper(orders) {
     paperRecorded.value = true
     paperOpen.value = false
     paperToast.value = paperTarget.value
+    planFor.value = paperTarget.value // GC-ADJ2 step 4 (REQ-161 AC-1): the strategy exists now, so its plan sheet opens
     clearTimeout(paperToastTimer)
     paperToastTimer = setTimeout(() => { paperToast.value = null }, PAPER_TOAST_MS)
     emit('paper-added', paperTarget.value)
@@ -360,6 +362,7 @@ async function confirmPaper(orders) {
     paperBusy.value = false
   }
 }
+const planFor = ref(null) // the strategy whose plan sheet is open (set only after the paper orders were recorded)
 function openInBuilder() {
   const id = paperToast.value
   paperToast.value = null
@@ -421,6 +424,7 @@ id="strategy-name" ref="nameInput" v-model="nameText" data-testid="name-input" t
       </template>
     </Modal>
     <PaperConfirmDialog :open="paperOpen" :orders="paperOrders" :busy="paperBusy" :error="paperError" @confirm="confirmPaper" @cancel="paperOpen = false" />
+    <AdjustPlanSheet :open="planFor !== null" :strategy-id="planFor" @close="planFor = null" />
     <!-- GC-TP step 3b2 (R-6): the toast is FIXED to the viewport (bottom centre), not inline under the action row. Inline it sat inside
          the left column's own scroll (sticky, overflow-y-auto at 1100 px and up; `contents` below), so after the save-first path
          it could be in the page but outside the visible area; its state lives here and survives the ?strategy=N route change

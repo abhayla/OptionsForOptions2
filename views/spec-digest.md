@@ -4,10 +4,9 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (212)
+## Decisions (213)
 
-- Older decisions: 172 rows, ADR-1..ADR-175 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
-- ADR-176 2026-10-23: Refines ADR-152 and ADR-173. [refines ADR-152, ADR-173]
+- Older decisions: 173 rows, ADR-1..ADR-176 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
 - ADR-177 2026-10-23: The market-closed state reads "Market closed. [amends REQ-114, REQ-105]
 - ADR-178 2026-10-23: Adopted from the independent process audit of 2026-10-23 (docs/process/process-audit-2026-10-23.md). [amends ADR-176, ADR-168, ADR-106]
 - ADR-179 2026-10-23: Technical decision of the orchestrator (REQ-118 is a TECH row, master register MR-095, decided by t… [amends REQ-118]
@@ -47,8 +46,9 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-214 2026-10-30: Where adjustments sit in the app. [Places REQ-045 AC-7/AC-9 and REQ-046 on named scr…]
 - ADR-215 2026-10-31: In the approach compare (REQ-156), the four "Greeks after" rows (net delta, gamma, theta, vega) des… [Extends REQ-156 AC-3 (one sentence added). Keeps…]
 - ADR-216 2026-10-31: The iron condor system playbook ships with the catalogue's PB-04 numbers, no longer labelled "Draft… [Narrows REQ-158 AC-2 (iron condor no longer Draft…]
+- ADR-217 2026-10-31: When the user dismisses an adjustment opportunity, the same rule on the same strategy opens no new… [Adds REQ-112 AC-7 (REQ-112 AC-2 defined "Dismisse…]
 
-## Requirements (154)
+## Requirements (156)
 
 - REQ-001 [Approved]: V1 scope: underlyings, leg types, broker
 - REQ-002 [Approved]: Account boundaries
@@ -165,7 +165,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - REQ-117 [Approved]: The broker adapter declares named capability flags, and features ask the flag, never the broker's name
 - REQ-118 [Approved]: Calls to Zerodha stay within Zerodha's stated rate limits, and a busy broker slows the platform down instead…
 - REQ-119 [Approved]: The builder drops late replies, so an older answer never draws over a newer edit
-- REQ-125 [Draft]: Every request acts for one signed-in user, and no user can read or act on another user's data
+- REQ-125 [Approved]: Every request acts for one signed-in user, and no user can read or act on another user's data
 - REQ-126 [Draft]: Production is watched, backed up and restorable, and staging never shares production's data or keys
 - REQ-127 [Draft]: Data-protection duties under the DPDP Rules - notice, consent, user rights and breach report
 - REQ-128 [Draft]: One retention schedule names how long each kind of data is kept, and a daily job enforces it
@@ -204,6 +204,8 @@ One line per decision, requirement and spec section. Read it before asking the o
 - REQ-161 [Approved]: Start tracking opens a strategy plan sheet pre-filled from the type's active playbook, accepted in one click
 - REQ-162 [Approved]: Positions > Adjustment opportunities lists every opportunity across strategies with its label and outcome
 - REQ-163 [Approved]: A strategy's adjustment history shows the entry, every adjustment and the whole-trade totals
+- REQ-164 [Approved]: The API runs as several copies; no request depends on the memory of one copy, and one copy stopping cuts no u…
+- REQ-165 [Approved]: Adjustment playbook triggers are checked by the background workers on fresh prices, at most once a second per…
 
 ## Spec sections (245)
 

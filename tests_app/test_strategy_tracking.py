@@ -126,9 +126,9 @@ async def test_ac1_ac2_core_proof_start_stores_entry_and_view_gives_paper_pnl_an
         view = (await c.get(f"/strategies/{stored.id}/tracking")).json()
     assert view["state"] == "LIVE" and view["paper_pnl"] == "195.00"
     assert view["breakevens"] == ["22326.85", "22873.15"]
-    assert [(d["kind"], d["condition"], d["level"], d["index_level"], d["distance_points"], d["distance_percent"],
-             d["threshold_percent"], d["price_health"]) for d in view["detections"]] == [
-        ("platform_detection", "near_short_strike", "22400.00", "22533.25", "133.25", "0.59", "0.6", "live")]
+    # F-71 (GC-ADJ2 1C): an iron condor is checked by its playbook (/adjustment-check); the fixed level rule, which
+    # fires at entry, is not shown for it. The detection numbers are proven on an untyped shape below.
+    assert view["detections"] == []
     async with _same(db) as conn:
         stored_prices = [r[0] for r in await conn.execute(text(
             "SELECT price FROM public.paper_orders WHERE strategy_id = :i AND kind = 'open' ORDER BY id"),
@@ -171,8 +171,23 @@ async def test_ac2_an_edit_after_the_start_changes_nothing_in_the_tracked_figure
         ("NSE_FO:44604", "SELL", 65, "82.75"), ("NSE_FO:44595", "BUY", 65, "35.80")]
     assert view["state"] == "LIVE" and view["paper_pnl"] == "195.00"
     assert view["breakevens"] == ["22326.85", "22873.15"]
-    assert [(d["level"], d["distance_points"], d["distance_percent"]) for d in view["detections"]] == [
-        ("22400.00", "133.25", "0.59")]
+    assert view["detections"] == []  # F-71: an iron condor's detections come from its playbook, not the level rule
+
+
+async def test_untyped_shape_keeps_the_platform_detection_with_its_numbers(db):
+    """REQ-045 AC-2 / F-71: a shape no playbook type maps (three legs: SELL 22800 CE, BUY 23000 CE, SELL 22400 PE, a
+    jade lizard, unmapped) keeps the platform detection. Threshold 0.6: 22400 vs 22533.25 = 133.25 points = 0.59%."""
+    app, stored, *_ = await _setup(db)
+    body = _paper_body(stored)
+    body["orders"] = body["orders"][:3]
+    async with _client(app) as c:
+        placed = await c.post(f"/paper/strategies/{stored.id}/orders", json=body)
+        assert placed.status_code == HTTPStatus.CREATED, placed.text
+        view = (await c.get(f"/strategies/{stored.id}/tracking")).json()
+    assert [(d["kind"], d["condition"], d["level"], d["index_level"], d["distance_points"], d["distance_percent"],
+             d["threshold_percent"], d["price_health"]) for d in view["detections"] if d["condition"] ==
+            "near_short_strike"] == [
+        ("platform_detection", "near_short_strike", "22400.00", "22533.25", "133.25", "0.59", "0.6", "live")]
 
 
 async def test_ac1_another_users_strategy_and_an_untracked_view_answer_not_found(db):

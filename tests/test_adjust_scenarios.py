@@ -59,6 +59,10 @@ ROW = {"strike", "type", "ltp", "bid", "ask", "iv", "oi", "delta", "gamma", "lis
 LEG = {"side", "type", "strike", "expiry", "lots", "quantity", "entry", "tradingsymbol"}
 EXPECTED = {"stage", "stage_index", "suggest", "pnl_now", "triggers_fired", "triggers_close", "triggers_not_evaluated",
             "day_rules", "situations", "approaches", "at_expiry_whole_trade", "notes"}
+# keys some scenarios carry; already_true_at_entry (F-71) is written only by the generator, for a crossing trigger
+# that held at entry and still holds on this first check
+EXPECTED_OPTIONAL = {"stage_count", "premium_left", "adjustment_cost", "tighten_percent", "gap_hold", "approach_legs",
+                     "approach_after", "at_expiry_after_charges", "already_true_at_entry"}
 
 
 @pytest.mark.parametrize("sid", IDS)
@@ -86,6 +90,8 @@ def test_schema(sid):
     assert {"state", "value", "reply"} <= set(sc["broker"]["margin"])
     assert sc["broker"]["quote"]["legs"]
     assert set(sc["expected"]) >= EXPECTED, EXPECTED - set(sc["expected"])
+    assert set(sc["expected"]) <= EXPECTED | EXPECTED_OPTIONAL, set(sc["expected"]) - EXPECTED - EXPECTED_OPTIONAL
+    assert sc["expected"].get("already_true_at_entry", ["T-01"]), "written only when not empty"
     approaches = sc["expected"]["approaches"]
     if sc["expected"]["suggest"]:
         assert "A-36" in approaches["applicable"], "No change is always an approach"
@@ -163,8 +169,10 @@ def _row(sc: dict, leg: dict) -> dict:
 
 
 def _limit(sc: dict, tid: str, stage: int, tighten: D | None) -> D | str:
-    over = sc["playbook_ref"]["plan_overrides"].get("triggers", {}).get(tid, {}).get(sc["expiry_kind"])
-    raw = (over or PLAYBOOKS["triggers"][tid][sc["expiry_kind"]])[stage]
+    kind = sc["expiry_kind"]
+    over = sc["playbook_ref"]["plan_overrides"].get("triggers", {}).get(tid, {}).get(kind)
+    family = PLAYBOOKS["families"][sc["family"]]["trigger_values"].get(tid, {}).get(kind)  # ADR-216 (ic T-19)
+    raw = (over or family or PLAYBOOKS["triggers"][tid][kind])[stage]
     if tid == "T-10b" or raw == "":
         return raw
     lim = D(raw)
@@ -180,8 +188,9 @@ def recompute_fired(sc: dict) -> set[str]:  # noqa: C901, PLR0912 - one trigger 
     assert stage == exp["stage_index"] and stages[stage]["name"] == exp["stage"]
     clock = datetime.datetime.fromisoformat(sc["clock"]["ist"])
     hhmm = clock.strftime("%H:%M")
-    rule = next(r for r in PLAYBOOKS["day_rules"] if r["when"] == "expiry")
-    tighten = D(rule["percent"]) if clock.date().isoformat() == sc["expiry"] and hhmm >= rule["at"] else None
+    rule = next((r for r in PLAYBOOKS["families"][sc["family"]].get("day_rules", PLAYBOOKS["day_rules"])
+                 if r["when"] == "expiry" and r["on"] and "percent" in r), None)  # the family's tighten rule, if on
+    tighten = D(rule["percent"]) if rule and clock.date().isoformat() == sc["expiry"] and hhmm >= rule["at"] else None
     spot = D(sc["market"]["spot"])
     legs = sc["position"]["legs"]
     unpriced = {q["tradingsymbol"] for q in sc["broker"]["quote"]["legs"] if q["state"] != "stated"}
@@ -243,4 +252,27 @@ def test_trigger_expectations_match_playbook_values(sid):
         assert not fired and "withheld" in exp["approaches"], "no suggestion on stale data or with no spot (S-10, T-21)"
         assert "S-10" in exp["situations"]
         return
-    assert recompute_fired(sc) == fired
+    already = set(exp.get("already_true_at_entry", []))
+    assert not fired & already
+    # the level recomputation sees both; F-71 moves a crossing trigger that held at entry out of the fired list
+    assert recompute_fired(sc) == fired | already
+    for tid in already:
+        assert tid in PLAYBOOKS["crossing_triggers"]
+        stages = PLAYBOOKS["stages"][sc["expiry_kind"]]
+        entry = datetime.datetime.fromisoformat(sc["position"]["entry"]["clock"]).date()
+        days = (datetime.date.fromisoformat(sc["expiry"]) - entry).days
+        stage = next(i for i, s in enumerate(stages) if days >= s["from"] and (s["to"] is None or days <= s["to"]))
+        spot = D(sc["position"]["entry"]["spot"])
+        shorts = [x for x in sc["position"]["legs"] if x["side"] == "SELL" and x["type"] != "FUT"]
+        assert min(abs(D(x["strike"]) - spot) / spot * 100 for x in shorts) <= _limit(sc, tid, stage, None)
+
+
+def test_iron_condor_playbook_is_approved_with_t19_at_1x():
+    """ADR-216: the ic family is approved and T-19 is 1x cost in every stage; every other family stays DRAFT at 2x."""
+    fams = PLAYBOOKS["families"]
+    assert fams["ic"]["status"] == "APPROVED" and fams["ic"]["approved_by"] == "ADR-216"
+    assert fams["ic"]["trigger_values"] == {"T-19": {"weekly": ["1", "1", "1"], "monthly": ["1", "1", "1"]}}
+    for fam, body in fams.items():
+        if fam != "ic":
+            assert body["status"] == "DRAFT" and body["trigger_values"] == {}, fam
+    assert PLAYBOOKS["triggers"]["T-19"]["weekly"] == ["2", "2", "2"]

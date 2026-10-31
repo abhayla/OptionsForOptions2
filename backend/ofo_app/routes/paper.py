@@ -885,3 +885,14 @@ async def read_paper_alerts(db: Annotated[Any, Depends(get_db)],
     await paper_trigger_store.mark_all_read(db, user_ref)
     await db.commit()
     return await _alerts_out(db, user_ref)
+
+
+# GC-ADJ2 step 6: the book's own readers under public names for the adjustment-history route (one reader, no copy;
+# no behaviour change)
+identity = _identity
+open_ids = _open_ids
+connected = _connected
+market_snapshot = _snapshot
+open_prices = _prices
+exact = _exact
+signed = _signed

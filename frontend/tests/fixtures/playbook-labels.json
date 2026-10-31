@@ -1,0 +1,362 @@
+{
+ "approaches": [
+  {
+   "key": "A-36",
+   "text": "No change"
+  },
+  {
+   "key": "A-01",
+   "text": "Roll the untested spread toward spot"
+  },
+  {
+   "key": "A-05",
+   "text": "Roll the tested spread out (same width)"
+  },
+  {
+   "key": "A-29",
+   "text": "Reduce the tested side"
+  },
+  {
+   "key": "A-28",
+   "text": "Close the tested spread"
+  },
+  {
+   "key": "A-11",
+   "text": "Re-centre both shorts at the money"
+  },
+  {
+   "key": "A-31",
+   "text": "Exit the whole strategy"
+  },
+  {
+   "key": "A-02",
+   "text": "Roll the tested short away"
+  },
+  {
+   "key": "A-03",
+   "text": "Roll out in time (same strikes, next expiry)"
+  },
+  {
+   "key": "A-04",
+   "text": "Roll up/down and out (diagonal roll)"
+  },
+  {
+   "key": "A-06",
+   "text": "Shift a leg by +/- N strikes"
+  },
+  {
+   "key": "A-07",
+   "text": "Re-centre / reset around spot"
+  },
+  {
+   "key": "A-08",
+   "text": "Straddle-ise (move the untested short to the tested strike)"
+  },
+  {
+   "key": "A-09",
+   "text": "Add wings (cap the loss)"
+  },
+  {
+   "key": "A-10",
+   "text": "Inverted strangle"
+  },
+  {
+   "key": "A-12",
+   "text": "Convert to a (broken-wing) butterfly"
+  },
+  {
+   "key": "A-13",
+   "text": "Add a lizard: sell a put and a call spread"
+  },
+  {
+   "key": "A-14",
+   "text": "Calendar / diagonal on the tested side"
+  },
+  {
+   "key": "A-15",
+   "text": "Ratio fix (buy back the extra short or add a far long)"
+  },
+  {
+   "key": "A-16",
+   "text": "Long option to debit spread"
+  },
+  {
+   "key": "A-17",
+   "text": "Roll a winning long up and take capital out"
+  },
+  {
+   "key": "A-18",
+   "text": "Gamma scalp with futures"
+  },
+  {
+   "key": "A-19",
+   "text": "Add a second calendar at the new spot"
+  },
+  {
+   "key": "A-20",
+   "text": "Delta hedge with futures"
+  },
+  {
+   "key": "A-21",
+   "text": "Delta hedge with a synthetic future"
+  },
+  {
+   "key": "A-22",
+   "text": "Debit spread in the direction of the breach"
+  },
+  {
+   "key": "A-23",
+   "text": "Delta-neutral helper (calculator)"
+  },
+  {
+   "key": "A-24",
+   "text": "Take profit, whole strategy"
+  },
+  {
+   "key": "A-25",
+   "text": "Take partial profit (close X%)"
+  },
+  {
+   "key": "A-26",
+   "text": "Close the untested side for profit"
+  },
+  {
+   "key": "A-27",
+   "text": "Buy back cheap shorts"
+  },
+  {
+   "key": "A-35",
+   "text": "Time exit"
+  },
+  {
+   "key": "A-32",
+   "text": "Stop-loss per leg"
+  },
+  {
+   "key": "A-33",
+   "text": "Move stop to cost after one stop"
+  },
+  {
+   "key": "A-34",
+   "text": "Re-enter after a stop"
+  },
+  {
+   "key": "A-30",
+   "text": "Add lots to the tested side"
+  },
+  {
+   "key": "A-37",
+   "text": "Alert only / watch a level"
+  },
+  {
+   "key": "A-38",
+   "text": "Pause monitoring until a time"
+  }
+ ],
+ "day_kinds": [
+  {
+   "key": "weekday",
+   "text": "Every week on"
+  },
+  {
+   "key": "beforeWeekend",
+   "text": "The last session before a weekend"
+  },
+  {
+   "key": "beforeHoliday",
+   "text": "The day before a market holiday"
+  },
+  {
+   "key": "afterBreak",
+   "text": "The first session after a weekend or holiday"
+  },
+  {
+   "key": "expiry",
+   "text": "Expiry day"
+  },
+  {
+   "key": "beforeExpiry",
+   "text": "The day before expiry"
+  },
+  {
+   "key": "monthlyWeek",
+   "text": "Monthly-expiry week"
+  },
+  {
+   "key": "dom",
+   "text": "Day of the month"
+  },
+  {
+   "key": "date",
+   "text": "A specific date"
+  },
+  {
+   "key": "event",
+   "text": "A known event day (needs the admin event list)"
+  },
+  {
+   "key": "away",
+   "text": "My unavailable days (fires the session before the first day)"
+  }
+ ],
+ "day_actions": [
+  {
+   "key": "0",
+   "text": "Run the carry check (overnight margin, gap loss)"
+  },
+  {
+   "key": "1",
+   "text": "Show reduce / partial profit / exit"
+  },
+  {
+   "key": "2",
+   "text": "Show add-hedge where it applies"
+  },
+  {
+   "key": "3",
+   "text": "Pause suggestions"
+  },
+  {
+   "key": "4",
+   "text": "Tighten every trigger by this %"
+  },
+  {
+   "key": "5",
+   "text": "Prepare an exit for review"
+  },
+  {
+   "key": "6",
+   "text": "Do not suggest rolls"
+  }
+ ],
+ "past_note": "Testing against past expiries is not in this version: it needs licensed historical option data.",
+ "summary": [
+  {
+   "key": "type_line",
+   "text": "{type}, {kind} expiry. Stages: {stages}."
+  },
+  {
+   "key": "kind_weekly",
+   "text": "weekly"
+  },
+  {
+   "key": "kind_monthly",
+   "text": "monthly"
+  },
+  {
+   "key": "stage_open",
+   "text": "{name} ({from}+ days left)"
+  },
+  {
+   "key": "stage_span",
+   "text": "{name} ({from}-{to} days left)"
+  },
+  {
+   "key": "stage_single",
+   "text": "{name} ({from} days left)"
+  },
+  {
+   "key": "looks_head",
+   "text": "Looks at an adjustment when (numbers per stage):"
+  },
+  {
+   "key": "trigger",
+   "text": "{label}: {values}"
+  },
+  {
+   "key": "trigger_unit",
+   "text": "{label}: {values} {unit}"
+  },
+  {
+   "key": "rules_head",
+   "text": "Combined rules:"
+  },
+  {
+   "key": "rule_all",
+   "text": "{id}: only when {members} all hold"
+  },
+  {
+   "key": "joiner_and",
+   "text": " and "
+  },
+  {
+   "key": "shows",
+   "text": "Shows {count} approaches."
+  },
+  {
+   "key": "days_head",
+   "text": "Day rules:"
+  },
+  {
+   "key": "day_rule",
+   "text": "{when} at {at}: {action}"
+  },
+  {
+   "key": "days_none",
+   "text": "none"
+  },
+  {
+   "key": "plan",
+   "text": "Plan: target {target}% of max profit, stop at {stop}% of max loss, at most {max} adjustments."
+  }
+ ],
+ "guards": [
+  {
+   "key": "entry_guide",
+   "text": "Entry guide"
+  },
+  {
+   "key": "hide_oi_below",
+   "text": "Hide strikes with open interest below"
+  },
+  {
+   "key": "hide_spread_pct_of_mid_above",
+   "text": "Hide strikes whose bid-ask spread is above this % of the mid price"
+  },
+  {
+   "key": "max_adjustments",
+   "text": "Most adjustments for one strategy"
+  },
+  {
+   "key": "order_sequence",
+   "text": "Order sequence"
+  },
+  {
+   "key": "profit_target_pct_of_max_profit",
+   "text": "Profit target (% of max profit)"
+  },
+  {
+   "key": "roll_debit_limit",
+   "text": "Most debit paid for one roll"
+  },
+  {
+   "key": "stop_line_pct_of_margin",
+   "text": "Stop line (% of margin)"
+  },
+  {
+   "key": "stop_line_pct_of_max_loss",
+   "text": "Stop line (% of max loss)"
+  },
+  {
+   "key": "stop_line_rule",
+   "text": "Stop line rule"
+  },
+  {
+   "key": "time_exit",
+   "text": "Time exit"
+  },
+  {
+   "key": "warn_cost_pct_of_premium_left",
+   "text": "Warn when an adjustment costs more than this % of the premium left"
+  }
+ ],
+ "no_values": {
+  "error_class": "USER_INPUT",
+  "code": "USER_INPUT_116",
+  "what_happened": "This trigger has no values for this expiry type.",
+  "impact": "This rule is not checked now; it never counts as passed.",
+  "what_is_blocked": "This rule.",
+  "next_action": "Nothing to do; it is checked again at the next check.",
+  "external_text": null
+ }
+}

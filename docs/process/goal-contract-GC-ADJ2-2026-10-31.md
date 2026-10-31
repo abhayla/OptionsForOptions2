@@ -64,6 +64,49 @@ read from the DB, flags the generator's expected rules with value read and thres
 
 Each step ends with one line here: `step N DONE <sha> <proof line>` or `PARKED (#issue)`.
 
+- step 0 DONE bc8baafc (2026-10-31 10:5x): loose grep `playbook|adjustment_plan|suggestion|opportunit|REQ-112` over backend,
+  frontend/src, tests, tests_app: NO playbook store, plan table, suggestion record or inbox page exists. Hits are text
+  only: `detection.py` (fixed 0.5% platform rule, kept for strategies with no playbook type), `routes/tracking.py`
+  l.107 `platform_detection`, `lib/tracking.js:40` label, `nav.js:32` inbox key (no page), `errors/explanations.py`
+  ADJUSTMENT_OPPORTUNITY label, generator `playbooks()` + `tests/test_adjust_scenarios.py` `recompute_fired` (the
+  engine-free reference the evaluator must match). Reuse: those two; retire: nothing.
+- step 1 progress (2026-10-31 11:35, clock): 1B merged 68fa55c7 (orchestrator re-run: guard set 2199 passed 0 failed; repo_scan
+  1338 passed); 1A merged a60d3bac (orchestrator re-run on a fresh DB: store + migration tests 33 passed; guards 2674
+  passed; seed --check OK); ofo_dev 0030 -> 0031 -> 0030 -> 0031 each exit 0. Open: Tier A mutants (reviewer), 1C wiring
+  + scenario-mode proof.
+- step 1 DONE 098393f5 (12:52): fresh-DB `tests_app/test_adjustment_check.py` 8 passed (ADJ-02 T-01/T-03/T-09, ADJ-01 none,
+  ADJ-42 already true then flag after a clear, ADJ-24b not checked, plan precedence, seed 12 rows); dev server ofo_dev
+  scenario mode port 8775: ADJ-02 flags T-01 0.3416<=0.5, T-03 0.4103>=0.35, T-09 2.7<=3 (system, approved, no Draft),
+  ADJ-01 0 flags (Early), ADJ-42 T-01 already true, 0 flags; Tier A: 6 review gaps fixed (11 failed before, 40 passed
+  after), mutants 5/5 killed; guards 3501 passed, repo_scan 1338 passed on the merged tree; ofo_dev at fixed 0031.
+- step 2 DONE d589a0a6 (13:17): fresh-DB `tests_app/test_playbook_routes.py` 18 passed (duplicate name 409 with the AC-3
+  text, system save-in-place refused, another user's id 404 on every route, gap/overlap refusals, delete active -> system
+  active again); domain guards 3521 passed; order-closure + API models 30 passed; repo_scan 1338 passed. Conventions
+  written into REQ-159 (fe0a0ad6).
+- browser walk (owner's Chrome, scenario ADJ-02, ofo_dev, API 8775 / Vite 5174, 2026-10-31 15:40-15:50 IST, head c8e43cc4):
+  step 4: plan sheet prefilled from the iron condor system playbook (target 50, stop 50, max 2, time exit 14:30);
+  Use playbook as is saved the plan; the panel shows it with Edit plan. Step 5: tracking panel shows 3 flags
+  'Adjustment opportunity detected' T-01 0.3416<=0.5000, T-03 0.4103>=0.3500, T-09 2.7000<=3.0000 + Review adjustment;
+  inbox one grouped row (3 conditions, Open x3, Compare approaches), counts Open: 3. Step 6: history totals
+  whole-trade P&L -1,612.00, premium left 7,338.50, credit 5,726.50, used 0 of 2, entry row Paper - not sent to
+  Zerodha (= ADJ-02 fixture). Step 3: FAILED in the browser - step 2 'When to look' throws on null value lists
+  (T-02/T-18/T-20/T-20b/T-21) and leaves Test dead (no POST); guard keys raw; page unstyled -> fix round 3
+  (browser-proof exception). Words: condition lines show trigger ids, inbox name quoted, plan target/stop bare
+  numbers -> words fix dispatched.
+- step 3 DONE b9e06853 (16:45): owner's Chrome, scenario ADJ-02: the iron condor system playbook (no Draft; strangle shows
+  Draft) renders all 7 steps with no console error; T-01 Middle changed to 0.3 (unsaved, summary 0.75 / 0.3 / 0.3)
+  and Test lists Scenario ADJ-02 Middle: T-03 would flag 0.4103 vs 0.3500, T-09 2.7000 vs 3.0000, no T-01 (0.3416 >
+  0.3), not-checked rows with reasons; nothing saved. Direct POST /api/playbooks/test 200 in 18.4 s (~25 saved
+  strategies, 8 s per-strategy limit). Vitest 21 passed on the 12 real seeded bodies x 7 steps; DB tests
+  test_playbook_test_route 9 passed (hanging-strategy proof), test_playbook_labels_route 5 passed (builder).
+- step 4 DONE e06f454e: fresh-DB test_adjustment_plan 7 passed (orchestrator); Chrome: sheet prefilled (target 50, stop
+  50, max 2, time exit 14:30), Use playbook as is saved the plan, panel shows it with Edit plan.
+- step 5 DONE 9c07c32b+: fresh-DB test_adjustment_check 8 passed, test_adjustment_opportunities 11 passed (ADR-217
+  included, orchestrator); Chrome: panel 3 flags + Review adjustment, inbox one grouped row, Open: 3, Compare link.
+- step 6 DONE 3a55b0f5: Opus money review REVISE -> fixed (futures and debit premium; 44-scenario oracle sweep green);
+  fresh-DB test_adjustment_history 3 passed; Chrome: totals = ADJ-02 fixture (P&L -1,612.00, premium left 7,338.50,
+  credit 5,726.50, used 0 of 2), paper label.
+
 ## Rules for the run
 
 - Prove the core first: step 1's proof must pass before steps 2-7 start. A failing core STOPS the run (report, park).
@@ -157,6 +200,28 @@ main and waits for the owner's explicit approval; it does not open it.
 
 | # | What | Where | Decision |
 |---|---|---|---|
+| 1 | Step 1 is too big for one builder | step 1 | Technical call: split into 1A store + migration 0031 + seed (Tier A), 1B pure evaluator + F-71 + generator (parallel), 1C wiring + dev-server proof. Shared body shape fixed first in `docs/design/playbook-body-v1.md` (bc8baafc). |
+| 2 | F-71 needs memory across checks; the contract's four tables have no home for it | step 1 | Technical call: a fifth table `adjustment_rule_state` (strategy, rule, held_at_entry, seen_clear). Held at entry is computed from the position's entry state (entry spot), not from the first check, so ADJ-02 (far at entry) still flags on its first check. |
+| 3 | Branch DB tests would move the shared ofo_test to an unmerged revision (finding branch-migration-tests-move-shared-db) | step 1A | DB tests run only through `db_run_fresh.py` (throwaway database); ofo_dev upgrade/downgrade by the orchestrator. |
+| 4 | Paper orders store no index level at entry, so F-71's entry state is unknown live | step 1C | Technical call: in scenario mode the scenario's `position.entry`; live, the first check after tracking starts (rule memory empty) is the entry state. The plan sheet (step 4) accepts the plan at the paper action, so the first check is at entry. |
+| 5 | The four open conventions | step 2 (done early) | Written into REQ-159's section text now (docs only): T-14, T-19, % of premium paid, tighten by X%. |
+| 6 | 1B round 1: 3 repo guards red (plain-text reasons, money ratios outside the engine, scan mark) | step 1B | Round 2: ratios move into the engine package (ADR-008 by structure, no allow-list widening); reasons become catalogue codes reusing the scenario library's sentences (owner wording review later); scenario folder read as test_adjust_scenarios does. |
+| 7 | 1A round 1: the AC-3 duplicate-name sentence fails the wording scan when the user's name holds a word like safe | step 1A | Technical call: the name is the user's own text, slotted as user text (shown verbatim, not judged); the template stays scanned; the AC-3 sentence is unchanged. No spec change. |
+| 8 | Regenerated library: ADJ-33, ADJ-37, ADJ-40 are real F-71 cases (22900 short 0.52% from entry spot 23020, inside Early 0.75%); T-01 moves from fired to already true at entry. ADJ-08 T-19 no longer fires at 1x (ratio 2.0236). F-71 scenario is ADJ-42 (ADJ-39 was taken) | step 1B | Expected values regenerated by the generator; recorded for the F-71 finding update. |
+| 9 | 1C: an iron condor's tracking view no longer carries the fixed 0.5% detection, so `TrackingPanel.vue` shows no alert for it until a screen calls GET /api/strategies/{id}/adjustment-check; no frontend/e2e test asserted it | step 1C -> step 5 | Step 5's brief makes the strategy card / tracking panel show the check route's flags (and the inbox); until then this is a known screen gap, never shipped alone (nothing leaves the feature branch). |
+| 10 | 1C: the check answer leaves out the playbook name (the user-text slot lives in the error templates, not the explanation catalogue), the trigger label/unit (read from the playbook body instead), and T-10b clock values | step 1C -> step 3 | Step 3's editor reads labels from the body; the name slot for explanations is added in step 2/3 when the screen needs it. |
+| 11 | Tier A review of 0031 (11:40-12:03): 6 attacks refused; 0 of 5 mutants run (budget: a fresh DB takes ~20 min here); 6 raw-SQL gaps (whitespace look-alike names, open->completed, dismiss reason on non-dismissed, outcome change without a timeline entry (REQ-112 AC-4), plan pointing at another user's playbook, raw DB error on wrong-type plan) | step 1A | One Tier A fix round on 0031 in place (unmerged), mutants run in the same single fresh DB; ofo_dev re-migrated after it lands. |
+| 12 | Dev-server proof: the check answer sends unrounded values (T-01 `0.341588385994876174...`, 60 digits) and `cmp` is null on already_true rows | step 1C -> step 5 | Step 5 rounds every value read to the fixture's 4 dp (half-up) in the route and fills cmp on already_true; the screen shows the server text. |
+| 13 | Port 8765 held by a uvicorn started 12:28 by another process (not this run's) | dev-server proof | Not stopped (only recorded PIDs are stopped); this run's API used port 8775, PIDs 18636, 20084, 21320 started and stopped by PID. |
+| 14 | Spec-conformance gap: the seeded iron condor system playbook lacks two ADR-216 guards (stop line also at 4% of margin; on expiry day close any spread whose short is within 0.3% of spot by 14:30) and carries the mockup's 13:00 tighten-20% rule instead; the plan sheet's time exit was empty because of it | seed / generator | Fix dispatched (generator ic family + seed regen + time exit 14:30 + a test pinning the ic seed to ADR-216). No owner question: ADR-216's own text, no new number. |
+| 15 | Step 6 Opus money review REVISE: futures counted as premium (ADJ-41 credit -15,05,725.00, right 0) and debit books showing a negative premium still left (ADJ-34 -9,993.75, right none); 3 minor | step 6 | One review-fix round with a 44-scenario oracle sweep test; step 6 not merged until it passes. |
+| 16 | Step 3 round 1: approach ids and day-rule keys shown raw, summary sentences typed in the browser, `docs/api/openapi.json` lacks the /api/playbooks* routes (the dev proxy needs it) | step 3 | Round 2: labels route + summary from the catalogue + ?playbook= link; openapi.json regenerated once by the orchestrator after the merges (generated file). |
+| 17 | Step 5 merge: step 3 made the check helpers public, step 5 changed them; step 5 had added 21 catalogue texts without pins | merge 6d7ec22f | Step 5's code kept under step 3's public names; the 21 missing pins added (pending owner read). |
+| 18 | A dismissed flag reappeared on the next check (seconds) while its condition held; the spec was silent | step 5 | Owner decision (question tool, ~15:30): stays dismissed until the condition clears and holds again -> ADR-217 + REQ-112 AC-7 (391885bd); code fix dispatched. |
+| 19 | `docs/api/openapi.json` could not be generated (step 2's PlaybookBody leaf had no pydantic schema, so /openapi.json would fail too) and the dev proxy did not reach the /api/playbooks* routes | merged tree | Fixed with a schema hook copied from BasketPost; openapi.json regenerated (14 adjustment routes). |
+| 20 | Rule-state rows can never be deleted (guard), so 0031 cannot be downgraded once a check has run; ofo_dev's system playbooks were refreshed as the owner from system_playbooks.json (12 rows) instead of a down/up | ofo_dev | By design (Tier A guard); dev-only refresh recorded here. |
+| 21 | Orchestrator error: merge 2f11be58 named a builder's ORIGINAL worktree branch, which another session had moved to main's PR #620 (multi-user docs: REQ-164/165, plan); it brought those 3 main commits (docs only) into build/gcadj2 and NOT the fix. Its message says 'Test route reads bounded' - wrong. | build/gcadj2 | Kept (main into the feature branch is safe: the commits are already on main; nothing went to main); `reset --hard` is owner-only. The fix merged as fd096ecf. Lesson: merge builder work by the sha the builder reports, never by the worktree branch name. |
+| 22 | Test route stalled on ofo_dev (~25 saved strategies read one by one, no time limit; the browser gave up) | step 3 | Each strategy's reads bounded at 8 s (three strategies at once measured ~2.7 s here), 4 at a time, a timed-out typed strategy listed not checked; hanging-strategy proof test green (9 passed). |
 
 ## Parked
 

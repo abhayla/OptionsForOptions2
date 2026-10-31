@@ -1364,7 +1364,8 @@
     "lots": 2,
     "quantity": 130,
     "entry": "6.10",
-    "tradingsymbol": "NIFTY26N0322700PE"
+    "tradingsymbol": "NIFTY26N0322700PE",
+    "opened_by": 1
    },
    {
     "side": "SELL",
@@ -1374,7 +1375,8 @@
     "lots": 2,
     "quantity": 130,
     "entry": "16.85",
-    "tradingsymbol": "NIFTY26N0322900PE"
+    "tradingsymbol": "NIFTY26N0322900PE",
+    "opened_by": 1
    },
    {
     "side": "SELL",
@@ -1397,6 +1399,9 @@
     "tradingsymbol": "NIFTY26N0323650CE"
    }
   ],
+  "adjustment_times": {
+   "1": "2026-10-29T11:00:00+05:30"
+  },
   "history": [
    {
     "adjustment": 1,

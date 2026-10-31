@@ -21,6 +21,7 @@ Done (7): REQ-020, REQ-032, REQ-033, REQ-040, REQ-057, REQ-059, REQ-072; Superse
 | REQ-002 | Account boundaries | foundation | normal | next |
 | REQ-003 | Public multi-user SaaS | foundation | normal | next |
 | REQ-012 | Registration and identity layers | foundation | normal | next |
+| REQ-125 | Every request acts for one signed-in user, and no user can read or act on another user's data | foundation | high | waiting: on REQ-012 |
 | REQ-034 | Outcome view and scenario levels | foundation | normal | next |
 | REQ-119 | The builder drops late replies, so an older answer never draws over a newer edit | foundation | high | waiting: on REQ-034 |
 | REQ-035 | Single strategy table | foundation | normal | next |
@@ -70,6 +71,7 @@ Done (7): REQ-020, REQ-032, REQ-033, REQ-040, REQ-057, REQ-059, REQ-072; Superse
 | REQ-114 | Every live-feed connection checks its health every 15 s, reconnects after 60 s of silence, and backs off with a cap and jitter | feature | high | blocked: behind REQ-048 (W-134 blocked: PARKED #517 after two failed Tier A rounds: AC-5 redesign as a reply-field inventory (structural), with a fresh independent designer first), REQ-050 (W-136 blocked: PARKED #519 after the final Tier A round: build each cache key from the engine call itself (structural), plus a one-input-at-a-time test; 30 of 40 key parts unguarded) |
 | REQ-115 | Background workers run monitoring, reconciliation, data finalising and alerts, recover after a restart, pause on stale data, and never place an order | feature | high | blocked: behind REQ-048 (W-134 blocked: PARKED #517 after two failed Tier A rounds: AC-5 redesign as a reply-field inventory (structural), with a fresh independent designer first), REQ-050 (W-136 blocked: PARKED #519 after the final Tier A round: build each cache key from the engine call itself (structural), plus a one-input-at-a-time test; 30 of 40 key parts unguarded) |
 | REQ-118 | Calls to Zerodha stay within Zerodha's stated rate limits, and a busy broker slows the platform down instead of failing users silently | feature | high | blocked: behind REQ-048 (W-134 blocked: PARKED #517 after two failed Tier A rounds: AC-5 redesign as a reply-field inventory (structural), with a fresh independent designer first), REQ-050 (W-136 blocked: PARKED #519 after the final Tier A round: build each cache key from the engine call itself (structural), plus a one-input-at-a-time test; 30 of 40 key parts unguarded) |
+| REQ-164 | The API runs as several copies; no request depends on the memory of one copy, and one copy stopping cuts no user | feature | high | blocked: behind REQ-048 (W-134 blocked: PARKED #517 after two failed Tier A rounds: AC-5 redesign as a reply-field inventory (structural), with a fresh independent designer first), REQ-050 (W-136 blocked: PARKED #519 after the final Tier A round: build each cache key from the engine call itself (structural), plus a one-input-at-a-time test; 30 of 40 key parts unguarded) |
 | REQ-051 | Historical storage tiers and simulation | feature | normal | next |
 | REQ-061 | Existing positions on connect | feature | normal | blocked: its own work item W-083 blocked: AC-2 is buildable: owner OQ-7 was answered by ADR-096 (2026-10-16, "Build it now"), so build the order-free adopt-into-existing path (F-52); AC-3 monitoring and the connect screen are later items; minors in #275. |
 | REQ-062 | Notifications | feature | normal | next |
@@ -124,6 +126,7 @@ Done (7): REQ-020, REQ-032, REQ-033, REQ-040, REQ-057, REQ-059, REQ-072; Superse
 | REQ-160 | Playbook editor is one step-by-step flow with a plain-words summary, and Test shows what the playbook would flag today | feature | normal | waiting: on REQ-159 |
 | REQ-161 | Start tracking opens a strategy plan sheet pre-filled from the type's active playbook, accepted in one click | feature | normal | waiting: on REQ-109, REQ-158 |
 | REQ-162 | Positions > Adjustment opportunities lists every opportunity across strategies with its label and outcome | feature | normal | waiting: on REQ-045, REQ-112, REQ-156 |
+| REQ-165 | Adjustment playbook triggers are checked by the background workers on fresh prices, at most once a second per strategy, with no screen open | feature | high | blocked: behind REQ-048 (W-134 blocked: PARKED #517 after two failed Tier A rounds: AC-5 redesign as a reply-field inventory (structural), with a fresh independent designer first), REQ-050 (W-136 blocked: PARKED #519 after the final Tier A round: build each cache key from the engine call itself (structural), plus a one-input-at-a-time test; 30 of 40 key parts unguarded) |
 | REQ-004 | Responsive web, desktop and mobile priorities | polish | normal | next |
 | REQ-011 | Learn section | polish | normal | next |
 | REQ-111 | The user can keep private notes on a strategy | polish | normal | waiting: on REQ-038 |
@@ -150,7 +153,6 @@ Draft or Specified requirements are recorded only: never next, never in the orde
 - REQ-100 (Draft): A strategy's stop-loss - price-level stops are held at Zerodha as a broker trigger, P&L stops are sent by the platform server, each after one user confirmation
 - REQ-101 (Draft): A broker-held stop-loss stays in step with the strategy, is shown with its read time, can be removed, and its firing is reconciled
 - REQ-102 (Draft): A strategy's entry may use intraday (MIS) or carry-forward (NRML), with Zerodha's auto square-off stated before Execute and recognised by reconciliation
-- REQ-125 (Draft): Every request acts for one signed-in user, and no user can read or act on another user's data
 - REQ-126 (Draft): Production is watched, backed up and restorable, and staging never shares production's data or keys
 - REQ-127 (Draft): Data-protection duties under the DPDP Rules - notice, consent, user rights and breach report
 - REQ-128 (Draft): One retention schedule names how long each kind of data is kept, and a daily job enforces it

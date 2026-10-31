@@ -14,16 +14,19 @@ from __future__ import annotations
 
 import datetime
 import functools
+import json
 import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from decimal import Decimal
 from enum import Enum
+from pathlib import Path
 from types import MappingProxyType
 
 from ofo import wording as _wording
 
-from ofo.errors.slots import SlotType, _require_exact
+from ofo.errors.gate_slots import PlaybookField, PlaybookTriggerLabel, PlaybookTypeName, PlaybookUnit
+from ofo.errors.slots import Count, SlotType, _require_exact
 from ofo.errors.templates import MARGIN_SHORTFALL_NEXT_ACTION, ZERODHA_BUSY_TEXT
 
 EXPLANATION_FIELDS: tuple[str, ...] = ("what_triggered", "values_seen", "rule")
@@ -128,6 +131,7 @@ _USER_WORDS_MINT = object()
 #: domain. Only code IN these modules can mint `UserWords`; each entry names the request field it parses.
 REQUEST_LAYER: Mapping[str, str] = MappingProxyType({
     "ofo.admin.client_id": "the Client ID an admin types (normalise_client_id)",
+    "ofo.adjustment.playbook_text": "a playbook's name the user typed (name_shown)",
     "ofo.rules.model": "a rule's name and description the user typed (Rule.shown_name)",
     "ofo.strategy.definition": "the strategy settings the user changed (rules_ref, risk_limits, preferences)",
     "ofo.strategy.stored_form": "a strategy's name the user typed (check_strategy_name)",
@@ -244,6 +248,99 @@ ADJUSTMENT_APPROACH_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
     "A-28": "Close the tested spread",
     "A-11": "Re-centre both shorts at the money",
     "A-31": "Exit the whole strategy",
+})
+#: GC-ADJ2 step 3 (REQ-159 AC-5, REQ-160 AC-1): the playbook editor's names of the approaches NOT in ADJUSTMENT_APPROACH_LABEL_TEXT (that table stays the one home of its ids; a test holds the two disjoint). Source: tests/fixtures/adjust_scenarios/_playbooks.json approaches.
+PLAYBOOK_APPROACH_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
+    "A-02": "Roll the tested short away",
+    "A-03": "Roll out in time (same strikes, next expiry)",
+    "A-04": "Roll up/down and out (diagonal roll)",
+    "A-06": "Shift a leg by +/- N strikes",
+    "A-07": "Re-centre / reset around spot",
+    "A-08": "Straddle-ise (move the untested short to the tested strike)",
+    "A-09": "Add wings (cap the loss)",
+    "A-10": "Inverted strangle",
+    "A-12": "Convert to a (broken-wing) butterfly",
+    "A-13": "Add a lizard: sell a put and a call spread",  # fixture: "no risk on one side" (a promise word, Q226); a template name may not appear in code (AC-5)
+    "A-14": "Calendar / diagonal on the tested side",
+    "A-15": "Ratio fix (buy back the extra short or add a far long)",
+    "A-16": "Long option to debit spread",
+    "A-17": "Roll a winning long up and take capital out",
+    "A-18": "Gamma scalp with futures",
+    "A-19": "Add a second calendar at the new spot",
+    "A-20": "Delta hedge with futures",
+    "A-21": "Delta hedge with a synthetic future",
+    "A-22": "Debit spread in the direction of the breach",
+    "A-23": "Delta-neutral helper (calculator)",
+    "A-24": "Take profit, whole strategy",
+    "A-25": "Take partial profit (close X%)",
+    "A-26": "Close the untested side for profit",
+    "A-27": "Buy back cheap shorts",
+    "A-35": "Time exit",
+    "A-32": "Stop-loss per leg",
+    "A-33": "Move stop to cost after one stop",
+    "A-34": "Re-enter after a stop",
+    "A-30": "Add lots to the tested side",
+    "A-37": "Alert only / watch a level",
+    "A-38": "Pause monitoring until a time",
+})
+#: GC-ADJ2 step 3 (REQ-159 AC-4): each day-and-date rule kind in words.
+PLAYBOOK_DAY_RULE_KIND_TEXT: Mapping[str, str] = MappingProxyType({
+    "weekday": "Every week on",
+    "beforeWeekend": "The last session before a weekend",
+    "beforeHoliday": "The day before a market holiday",
+    "afterBreak": "The first session after a weekend or holiday",
+    "expiry": "Expiry day",
+    "beforeExpiry": "The day before expiry",
+    "monthlyWeek": "Monthly-expiry week",
+    "dom": "Day of the month",
+    "date": "A specific date",
+    "event": "A known event day (needs the admin event list)",
+    "away": "My unavailable days (fires the session before the first day)",
+})
+#: GC-ADJ2 step 3 (REQ-159 AC-4): each day rule action (body ``action`` index) in words.
+PLAYBOOK_DAY_RULE_ACTION_TEXT: Mapping[str, str] = MappingProxyType({
+    "0": "Run the carry check (overnight margin, gap loss)",
+    "1": "Show reduce / partial profit / exit",
+    "2": "Show add-hedge where it applies",
+    "3": "Pause suggestions",
+    "4": "Tighten every trigger by this %",
+    "5": "Prepare an exit for review",
+    "6": "Do not suggest rolls",
+})
+#: GC-ADJ2 step 3 (REQ-160 AC-1): each playbook guard key (body ``guards``) in words, shown on Limits and guards.
+PLAYBOOK_GUARD_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
+    "entry_guide": "Entry guide",
+    "hide_oi_below": "Hide strikes with open interest below",
+    "hide_spread_pct_of_mid_above": "Hide strikes whose bid-ask spread is above this % of the mid price",
+    "max_adjustments": "Most adjustments for one strategy",
+    "order_sequence": "Order sequence",
+    "profit_target_pct_of_max_profit": "Profit target (% of max profit)",
+    "roll_debit_limit": "Most debit paid for one roll",
+    "stop_line_pct_of_margin": "Stop line (% of margin)",
+    "stop_line_pct_of_max_loss": "Stop line (% of max loss)",
+    "stop_line_rule": "Stop line rule",
+    "time_exit": "Time exit",
+    "warn_cost_pct_of_premium_left": "Warn when an adjustment costs more than this % of the premium left",
+})
+#: GC-ADJ2 step 3 (REQ-160 AC-1): the plain-words summary's sentences. A doubled brace is a slot the editor fills from the body ({name} after rendering); the words are the catalogue's.
+PLAYBOOK_SUMMARY_TEXT: Mapping[str, str] = MappingProxyType({
+    "type_line": "{{type}}, {{kind}} expiry. Stages: {{stages}}.",
+    "kind_weekly": "weekly",
+    "kind_monthly": "monthly",
+    "stage_open": "{{name}} ({{from}}+ days left)",
+    "stage_span": "{{name}} ({{from}}-{{to}} days left)",
+    "stage_single": "{{name}} ({{from}} days left)",
+    "looks_head": "Looks at an adjustment when (numbers per stage):",
+    "trigger": "{{label}}: {{values}}",
+    "trigger_unit": "{{label}}: {{values}} {{unit}}",
+    "rules_head": "Combined rules:",
+    "rule_all": "{{id}}: only when {{members}} all hold",
+    "joiner_and": " and ",
+    "shows": "Shows {{count}} approaches.",
+    "days_head": "Day rules:",
+    "day_rule": "{{when}} at {{at}}: {{action}}",
+    "days_none": "none",
+    "plan": "Plan: target {{target}}% of max profit, stop at {{stop}}% of max loss, at most {{max}} adjustments.",
 })
 #: GC-ADJ1 step 3 (REQ-046 AC-3, REQ-045 AC-5): one plain line per approach, shown in the Review adjustment drawer before
 #: any pick. No figure, no ranking word (ADR-003).
@@ -852,6 +949,21 @@ COLUMN_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
     "UPPER_BE": "Upper Breakeven", "STATUS": "Status",
 })
 
+#: GC-ADJ2 1A (REQ-158 AC-1; docs/design/playbook-body-v1.md "Strategy types"): each playbook strategy type's shown
+#: name, by key, in the design note's order. ofo.adjustment.playbook_types holds the keys and reads the names here.
+_PLAYBOOK_TYPE_LABELS_FILE = Path(__file__).resolve().parent.parent / "adjustment" / "playbook_type_labels.json"
+PLAYBOOK_TYPE_LABEL_TEXT: Mapping[str, str] = MappingProxyType(
+    json.loads(_PLAYBOOK_TYPE_LABELS_FILE.read_text(encoding="utf-8")))  # data, not code: no strategy name typed here
+
+#: GC-ADJ2 step 4 (REQ-161 AC-1, AC-2; mockup screen 4): the fixed words of the strategy plan sheet and the tracking
+#: panel's Plan entry, by key. Each is one reviewed template `plan_sheet_<key>`; the browser prints what the server sends.
+PLAN_SHEET_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
+    "title": "When tracking starts: this strategy's plan", "playbook": "Playbook", "target": "Target",
+    "stop": "Stop", "max_adjustments": "Max adjustments", "time_exit": "Time exit",
+    "customise": "Customise triggers", "use_as_is": "Use playbook as is", "save": "Save plan", "close": "Close",
+    "plan_entry": "Plan", "edit": "Edit plan", "no_plan": "No plan saved yet", "hour": "Hour", "minute": "Minute",
+})
+
 #: Why a table cell has no value (the cell's `reason`), by key. Each is one reviewed template `table_reason_<key>`.
 TABLE_REASON_TEXT: Mapping[str, str] = MappingProxyType({
     "not_applicable": "not applicable",
@@ -1165,6 +1277,8 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("change_restored", "values_seen", "restored entry {seq}", {"seq": Recorded}),
     # REQ-134 AC-1: a strategy's name as the API shows it - the user's own words, quoted word for word (ADR-003)
     ExplanationTemplate("strategy_name_shown", "values_seen", "{name}", {"name": UserText}),
+    # GC-ADJ2 step 2 (REQ-158 AC-3): a playbook's name as the API shows it - the user's own words (ADR-003)
+    ExplanationTemplate("playbook_name_shown", "values_seen", "{name}", {"name": UserText}),
     ExplanationTemplate("change_renamed", "values_seen", "Renamed from {old} to {new}",
                         {"old": UserText, "new": UserText}),
     ExplanationTemplate("rule_label_days_to_expiry_from", "rule", "{days} days to expiry or fewer, from {time} IST",
@@ -1252,6 +1366,38 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         "POP not available: the spot is stale or missing."),
     ExplanationTemplate("adjust_margin_not_available", "values_seen", "Margin not available: {reason}",
                         {"reason": Explained}),
+    # GC-ADJ2 1C (REQ-045 AC-1, Q252): the adjustment check's two flag labels and the playbook type's shown name
+    ExplanationTemplate("adjust_check_flag_system", "what_triggered", "Adjustment opportunity detected"),
+    ExplanationTemplate("adjust_check_flag_user", "what_triggered", "Your rule was triggered"),
+    ExplanationTemplate("adjust_check_type_name", "values_seen", "{name}", {"name": PlaybookTypeName}),
+    # GC-ADJ2 step 5 (REQ-112 AC-2/AC-6, REQ-162): suggestion outcomes, dismiss reasons and the inbox's fixed words
+    ExplanationTemplate("suggestion_outcome_open", "values_seen", "Open"),
+    ExplanationTemplate("suggestion_outcome_dismissed", "values_seen", "You dismissed this"),
+    ExplanationTemplate("suggestion_outcome_acted_on", "values_seen", "Acted on"),
+    ExplanationTemplate("suggestion_outcome_acted_on_paper", "values_seen", "Acted on - Paper - not sent to Zerodha"),
+    ExplanationTemplate("suggestion_outcome_completed", "values_seen", "Completed"),
+    ExplanationTemplate("suggestion_outcome_partly_completed", "values_seen", "Partly completed"),
+    ExplanationTemplate("suggestion_outcome_lapsed", "values_seen", "Lapsed"),
+    ExplanationTemplate("suggestion_lapsed_condition_stopped", "values_seen", "The condition stopped holding"),
+    ExplanationTemplate("suggestion_lapsed_strategy_closed", "values_seen", "The strategy closed"),
+    ExplanationTemplate("suggestion_dismiss_expected_within_plan", "values_seen", "Expected and within my plan"),
+    ExplanationTemplate("suggestion_dismiss_will_act_later", "values_seen", "I will act later"),
+    ExplanationTemplate("suggestion_dismiss_not_relevant", "values_seen", "Not relevant"),
+    ExplanationTemplate("suggestion_dismiss_other", "values_seen", "Other"),
+    ExplanationTemplate("suggestion_group_count", "what_triggered", "{count} adjustment conditions triggered",
+                        {"count": Count}),
+    ExplanationTemplate("suggestion_inbox_empty", "values_seen", "No adjustment opportunities"),
+    ExplanationTemplate("adjust_condition_line", "values_seen", "{label}: {value} {unit} (rule {threshold} {unit})",
+                        {"label": PlaybookTriggerLabel, "value": PlaybookField, "unit": PlaybookUnit,
+                         "threshold": PlaybookField}),
+    ExplanationTemplate("adjust_condition_line_plain", "values_seen", "{label}: {value} (rule {threshold})",
+                        {"label": PlaybookTriggerLabel, "value": PlaybookField, "threshold": PlaybookField}),
+    ExplanationTemplate("plan_target_words", "values_seen", "{pct} % of max profit", {"pct": PlaybookField}),
+    ExplanationTemplate("plan_stop_words_loss", "values_seen", "{pct} % of max loss", {"pct": PlaybookField}),
+    ExplanationTemplate("plan_stop_words_margin", "values_seen", "{margin} % of margin", {"margin": PlaybookField}),
+    ExplanationTemplate("plan_stop_words_either", "values_seen",
+                        "{pct} % of max loss or {margin} % of margin, whichever comes first",
+                        {"pct": PlaybookField, "margin": PlaybookField}),
     ExplanationTemplate("adjust_spot_from_feed", "values_seen", "Spot from the live feed"),
     ExplanationTemplate("adjust_spot_from_rest_quote", "values_seen", "Spot from a REST quote"),
     ExplanationTemplate("adjust_spot_from_last_close", "values_seen", "Spot from the last close"),
@@ -1523,17 +1669,45 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         "Breakeven is exact only for a single-expiry strategy"),
     ExplanationTemplate("paper_reason_exited", "values_seen", "Exited"),
     ExplanationTemplate("paper_extremes_unknown", "values_seen", "Profit left and Loss left are not worked out."),
+    # GC-ADJ2 step 1A (REQ-158 AC-4): deleting the active playbook says the system one is active again
+    ExplanationTemplate("playbook_system_active_again", "values_seen", "{type}: the system playbook is active again",
+                        {"type": PlaybookTypeName}),
+    # GC-ADJ2 step 3 (REQ-160 AC-3, AC-4): the playbook Test step's two fixed sentences
+    ExplanationTemplate("playbook_test_no_strategy", "values_seen", "No current {type} strategy to test against",
+                        {"type": PlaybookTypeName}),
+    ExplanationTemplate("playbook_test_past_out_of_v1", "values_seen",
+                        "Testing against past expiries is not in this version: it needs licensed historical option "
+                        "data."),
     ExplanationTemplate("catalogue_template_name", "values_seen", "{text}", {"text": TemplateText}),
     ExplanationTemplate("catalogue_template_description", "values_seen", "{text}", {"text": TemplateText}),
+    *(ExplanationTemplate(f"plan_sheet_{key}", "values_seen", text)  # REQ-161: the plan sheet's fixed words
+      for key, text in PLAN_SHEET_LABEL_TEXT.items()),
     *(ExplanationTemplate(f"table_reason_{key}", "values_seen", text) for key, text in TABLE_REASON_TEXT.items()),
     *(ExplanationTemplate(approach_name_id(key), "values_seen", text)  # REQ-155: each approach's shown name
       for key, text in ADJUSTMENT_APPROACH_LABEL_TEXT.items()),
     *(ExplanationTemplate(approach_about_id(key), "values_seen", text)  # REQ-046 AC-3: each approach's one-line text
       for key, text in ADJUSTMENT_APPROACH_ABOUT_TEXT.items()),
+    *(ExplanationTemplate(f"playbook_approach_{key.lower().replace('-', '_')}", "values_seen", text)
+      for key, text in PLAYBOOK_APPROACH_LABEL_TEXT.items()),  # GC-ADJ2 step 3: the editor's labels
+    *(ExplanationTemplate(f"playbook_day_kind_{key}", "values_seen", text) for key, text in PLAYBOOK_DAY_RULE_KIND_TEXT.items()),
+    *(ExplanationTemplate(f"playbook_day_action_{key}", "values_seen", text)
+      for key, text in PLAYBOOK_DAY_RULE_ACTION_TEXT.items()),
+    *(ExplanationTemplate(f"playbook_summary_{key}", "values_seen", text) for key, text in PLAYBOOK_SUMMARY_TEXT.items()),
+    *(ExplanationTemplate(f"playbook_guard_{key}", "values_seen", text) for key, text in PLAYBOOK_GUARD_LABEL_TEXT.items()),
     *(ExplanationTemplate(f"adjust_cmp_row_{key}", "values_seen", text)  # REQ-156: each criterion row's name
       for key, text in ADJUSTMENT_CRITERION_LABEL_TEXT.items()),
     *(ExplanationTemplate(f"adjust_cmp_lead_{key}", "values_seen", text)  # REQ-156 AC-3: each row's leader words
       for key, text in ADJUSTMENT_LEADER_LABEL_TEXT.items()),
+    # GC-ADJ2 step 6 (REQ-163 AC-1, AC-3, AC-2): the adjustment history's fixed words
+    ExplanationTemplate("adjust_history_paper_fill", "values_seen", "Paper - not sent to Zerodha"),
+    ExplanationTemplate("adjust_history_own_change", "values_seen", "Your own change"),
+    ExplanationTemplate("adjust_history_pending", "values_seen", "pending"),
+    ExplanationTemplate("adjust_history_no_plan_max", "values_seen", "No plan maximum is set for this strategy."),
+    ExplanationTemplate("adjust_history_fill_confirmed", "values_seen", "Filled - confirmed by Zerodha"),
+    ExplanationTemplate("adjust_history_fill_unconfirmed", "values_seen", "Not yet confirmed by Zerodha"),
+    ExplanationTemplate("adjust_history_fill_failed", "values_seen", "Zerodha's answer failed"),
+    ExplanationTemplate("adjust_history_col_fill", "values_seen", "Zerodha"),
+    ExplanationTemplate("adjust_history_no_option_leg", "values_seen", "No option leg is open, so no premium is left."),
 )
 
 EXPLANATIONS: Mapping[str, ExplanationTemplate] = MappingProxyType({t.id: t for t in _EXPLANATIONS})
@@ -1546,6 +1720,10 @@ LABEL_TABLES: Mapping[str, Mapping[str, str]] = MappingProxyType({
     "column": COLUMN_LABEL_TEXT, "table_reason": TABLE_REASON_TEXT, "level_region": LEVEL_REGION_TEXT,
     "adjustment_approach": ADJUSTMENT_APPROACH_LABEL_TEXT, "adjustment_approach_about": ADJUSTMENT_APPROACH_ABOUT_TEXT,
     "adjustment_criterion": ADJUSTMENT_CRITERION_LABEL_TEXT, "adjustment_leader": ADJUSTMENT_LEADER_LABEL_TEXT,
+    "playbook_type": PLAYBOOK_TYPE_LABEL_TEXT, "playbook_approach": PLAYBOOK_APPROACH_LABEL_TEXT,
+    "playbook_day_kind": PLAYBOOK_DAY_RULE_KIND_TEXT, "playbook_day_action": PLAYBOOK_DAY_RULE_ACTION_TEXT,
+    "playbook_summary": PLAYBOOK_SUMMARY_TEXT, "plan_sheet": PLAN_SHEET_LABEL_TEXT,
+    "playbook_guard": PLAYBOOK_GUARD_LABEL_TEXT,
 })
 
 

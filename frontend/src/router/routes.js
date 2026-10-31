@@ -10,6 +10,7 @@ const Placeholder = () => import('../pages/PlaceholderPage.vue')
 const REAL_PAGES = {
   'strategies-live-strategies': () => import('../pages/LiveStrategiesPage.vue'),
   'strategies-strategy-builder': () => import('../pages/StrategyBuilderPage.vue'), // GC-6 BUILDER-WIRE (F-49)
+  'strategies-adjustments': () => import('../pages/AdjustmentsPage.vue'), // GC-ADJ2 step 3: the playbook editor (REQ-160)
   'market-underlying-index-view': () => import('../pages/IndexViewPage.vue'),
   'home-overview': () => import('../pages/HomeOverviewPage.vue'), // W-115
   'market-market-context': () => import('../pages/MarketContextPage.vue'), // W-117
@@ -22,6 +23,7 @@ const REAL_PAGES = {
   'market-option-chain': () => import('../pages/OptionChainPage.vue'), // W-118
   // W-111: the two Positions pages that read Zerodha (REQ-044 AC-3 part 1); the other Positions items stay placeholders.
   'positions-current-positions': () => import('../pages/PositionsPage.vue'),
+  'positions-adjustment-opportunities': () => import('../pages/AdjustmentOpportunitiesPage.vue'), // GC-ADJ2 5 (REQ-162)
   'positions-strategy-linked-positions': () => import('../pages/PositionsPage.vue'),
   'strategies-create-strategy': () => import('../pages/CreateStrategyPage.vue'), // W-119
   'strategies-my-strategies': () => import('../pages/MyStrategiesPage.vue'), // W-109
