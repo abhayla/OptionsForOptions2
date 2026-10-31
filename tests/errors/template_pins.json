@@ -3278,5 +3278,9 @@
   "explanation:settings_refused_charges_date": {
     "sha256": "db56d8a7fa525f9aa4c72c6b96211a05459898e6cd9352d3210fcfdccf66e674",
     "reviewed": "pending owner read"
+  },
+  "explanation:settings_refused_charges_future": {
+    "sha256": "580ae3065fda8c21a6deed4610b285f15dd5e8d88086d00fec25ad16cbdd6370",
+    "reviewed": "pending owner read"
   }
 }

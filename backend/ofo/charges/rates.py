@@ -26,6 +26,7 @@ SEGMENTS = (NSE_FO, BSE_FO)
 #: GST (18%) is a fraction below 1. Brokerage is rupees and has no fraction cap. The DB CHECK carries the same caps.
 FRACTION_CAP = HUNDREDTH
 GST_CAP = Decimal("1")
+BROKERAGE_CAP = Decimal("1000")  # rupees per order; the real flat fee is 20
 #: Tighter per-component caps (W-074 verifier MINOR D1): stamp's cap is about 3.3x its real rate (0.00003), SEBI's is
 #: 10x its real rate (0.000001), so a percentage typed as a number (0.003 for stamp's 0.003%, 0.0001 for SEBI) is
 #: refused although it is under the 1% cap. The DB CHECK
@@ -57,7 +58,9 @@ class ChargeRates:
     source_url: str
 
     def __post_init__(self) -> None:
-        _rate("brokerage_per_order", self.brokerage_per_order)
+        if _rate("brokerage_per_order", self.brokerage_per_order) > BROKERAGE_CAP:
+            raise ValueError(
+                f"brokerage_per_order must be at most {BROKERAGE_CAP} rupees, got {self.brokerage_per_order}")
         for name, value, cap in (("stt_sell_rate", self.stt_sell_rate, FRACTION_CAP),
                                  ("stt_exercise_rate", self.stt_exercise_rate, FRACTION_CAP),
                                  ("sebi_rate", self.sebi_rate, SEBI_CAP),

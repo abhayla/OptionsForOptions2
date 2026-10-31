@@ -346,6 +346,9 @@ async def add_charge_rate_set(body: ChargesIn, db: Db, admin: Admin) -> object:
                          "reason": f"charge rates read on {read_on.isoformat()} from {url}"
                                    + (f"; note: {body.note}" if body.note else "")})
         await db.commit()
+    except charge_rates_store.ChargeRatesFutureDate:
+        await db.rollback()
+        return _refused(("settings_refused_charges_future", {"date": read_on}))
     except charge_rates_store.ChargeRatesError:
         await db.rollback()
         return _refused(("settings_refused_charges_date", {"date": read_on}))

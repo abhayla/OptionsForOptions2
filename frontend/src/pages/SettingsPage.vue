@@ -19,6 +19,7 @@ const CHARGE_FIELDS = [
   ['stamp_buy_rate', 'Stamp duty on buy premium (fraction)'],
   ['gst_rate', 'GST (fraction)'],
 ]
+const RATE_HINT = 'Rates are fractions: enter 0.001 for 0.1%. Brokerage is in rupees (for example 20).'
 const STATE_WORD = { in_force: 'In force', scheduled: 'Scheduled', earlier: 'Earlier' }
 
 const data = ref(null)
@@ -54,9 +55,12 @@ function replace(updated) {
   }
 }
 
-// the time the admin typed (a local date-time) as an instant with its zone; blank = now (the server's clock)
+// Only a time the admin chose in the FUTURE is sent (as an instant with its zone). Blank, or a time not after the browser's
+// clock, sends nothing: "now" is the server's clock, so a skewed or truncated browser time can never be refused as back-dated.
 function instant(local) {
-  return local ? new Date(local).toISOString() : undefined
+  if (!local) return undefined
+  const at = new Date(local)
+  return at.getTime() > Date.now() ? at.toISOString() : undefined
 }
 
 async function save(key) {
@@ -195,6 +199,7 @@ onMounted(load)
         <p v-else data-testid="charges-none">No charge rate set is stored yet.</p>
         <button type="button" class="mt-2 underline" data-testid="add-rate-set" @click="charges.open = !charges.open">Add rate set</button>
         <form v-if="charges.open" class="mt-2 flex flex-wrap items-end gap-2" data-testid="rate-set-form" @submit.prevent="addRateSet">
+          <p class="w-full text-sm text-ink-muted" data-testid="rate-hint">{{ RATE_HINT }}</p>
           <label v-for="[k, label] in CHARGE_FIELDS" :key="k">{{ label }}
             <input v-model="charges[k]" :data-testid="`rate-${k}`" class="block border px-1" inputmode="decimal" required />
           </label>

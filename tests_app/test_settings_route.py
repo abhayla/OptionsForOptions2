@@ -18,6 +18,7 @@ from http import HTTPStatus
 import pytest
 from fastapi import APIRouter, Depends
 from httpx import ASGITransport, AsyncClient
+from ofo_app.sql_time import IST_SQL_ZONE
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -34,7 +35,6 @@ TWO_ROWS = 2
 RATES = {"brokerage_per_order": "20", "stt_sell_rate": "0.001", "stt_exercise_rate": "0.00125",
          "transaction_rate_nse_fo": "0.0003503", "transaction_rate_bse_fo": "0.0000325", "sebi_rate": "0.000001",
          "stamp_buy_rate": "0.00003", "gst_rate": "0.18"}
-SET_DAY = "2099-01-01"
 
 
 class Env:
@@ -221,34 +221,62 @@ async def test_ac3_the_one_guard_decides_every_write_and_fails_closed_for_a_new_
     assert (await env.client.get("/api/settings")).status_code == HTTPStatus.OK  # reading is not guarded
 
 
+async def _today(env) -> datetime.date:
+    return (await env.conn.execute(text(f"SELECT (clock_timestamp() {IST_SQL_ZONE})::date"))).scalar_one()
+
+
 async def test_ac5_charges_group_shows_the_set_in_force_and_adds_a_new_set_with_its_source(env):
     got = (await env.client.get("/api/settings")).json()
     assert "charges" in got  # a set (name, read_on, source_url, rates) or null when none is stored yet
     before = await env.count(AUDIT_COUNT)
     url = "https://zerodha.example/charges"
+    day = (await _today(env)).isoformat()
     resp = await env.client.post("/api/settings/charges",
-                                 json={**RATES, "source_url": url, "read_on": SET_DAY, "note": "Oct update"})
+                                 json={**RATES, "source_url": url, "read_on": day, "note": "Oct update"})
     assert resp.status_code == HTTPStatus.OK, resp.text
     out = resp.json()
-    assert (out["name"], out["read_on"], out["source_url"]) == ("Charges", SET_DAY, url)
+    assert (out["name"], out["read_on"], out["source_url"]) == ("Charges", day, url)
     assert out["rates"]["gst_rate"] == "0.18" and out["rates"]["brokerage_per_order"] == "20"
     assert all(isinstance(v, str) for v in out["rates"].values())
     assert await env.count(AUDIT_COUNT) == before + 1
 
 
 async def test_ac5_charges_refusals_name_the_reason(env):
-    base = {**RATES, "source_url": "https://zerodha.example/c", "read_on": SET_DAY, "note": ""}
+    today = await _today(env)
+    day = today.isoformat()
+    base = {**RATES, "source_url": "https://zerodha.example/c", "read_on": day, "note": ""}
     assert (await env.client.post("/api/settings/charges", json=base)).status_code == HTTPStatus.OK
     again = await env.client.post("/api/settings/charges", json=base)
     assert again.status_code == HTTPStatus.UNPROCESSABLE_ENTITY and "already has a set" in again.json()["reason"]
-    older = await env.client.post("/api/settings/charges", json={**base, "read_on": "2098-01-01"})
+    older = await env.client.post("/api/settings/charges",
+                                  json={**base, "read_on": (today - datetime.timedelta(days=1)).isoformat()})
     assert older.status_code == HTTPStatus.UNPROCESSABLE_ENTITY and "older" in older.json()["reason"]
-    bad = await env.client.post("/api/settings/charges", json={**base, "read_on": "2099-02-01", "gst_rate": "abc"})
+    bad = await env.client.post("/api/settings/charges", json={**base, "gst_rate": "abc"})
     assert bad.status_code == HTTPStatus.UNPROCESSABLE_ENTITY and "gst_rate is not an allowed number" in bad.text
-    huge = await env.client.post("/api/settings/charges", json={**base, "read_on": "2099-02-01", "gst_rate": "5"})
-    assert huge.status_code == HTTPStatus.UNPROCESSABLE_ENTITY and "gst_rate" in huge.json()["reason"]
-    nosrc = await env.client.post("/api/settings/charges",
-                                  json={**base, "read_on": "2099-02-01", "source_url": "not a web address"})
+    nosrc = await env.client.post("/api/settings/charges", json={**base, "source_url": "not a web address"})
     assert nosrc.status_code == HTTPStatus.UNPROCESSABLE_ENTITY and "https://" in nosrc.json()["reason"]
-    floaty = await env.client.post("/api/settings/charges", json={**base, "read_on": "2099-02-01", "gst_rate": 0.18})
+    floaty = await env.client.post("/api/settings/charges", json={**base, "gst_rate": 0.18})
     assert floaty.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
+
+
+@pytest.mark.parametrize(("field", "value"), [
+    ("gst_rate", "5"), ("gst_rate", "-0.1"), ("stt_sell_rate", "1"), ("stt_sell_rate", "-0.001"),
+    ("brokerage_per_order", "-1"), ("brokerage_per_order", "100000"), ("sebi_rate", "0.5")])
+async def test_ac5_a_negative_or_absurdly_large_rate_is_refused_naming_the_field(env, field, value):
+    body = {**RATES, field: value, "source_url": "https://zerodha.example/c", "note": ""}
+    resp = await env.client.post("/api/settings/charges", json=body)
+    assert resp.status_code == HTTPStatus.UNPROCESSABLE_ENTITY and f"{field} is not an allowed number" in resp.text
+    assert await env.count(SETTING_COUNT) == 0
+
+
+async def test_ac5_a_read_date_after_today_is_refused_and_does_not_block_later_sets(env):
+    """A mistyped year must not be stored: the append-only table would then refuse every later set."""
+    today = await _today(env)
+    base = {**RATES, "source_url": "https://zerodha.example/c", "note": ""}
+    far = await env.client.post("/api/settings/charges", json={**base, "read_on": "2062-01-01"})
+    assert far.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
+    assert "has not come yet" in far.json()["reason"] and "2062-01-01" in far.json()["reason"]
+    tomorrow = (today + datetime.timedelta(days=1)).isoformat()
+    assert (await env.client.post("/api/settings/charges", json={**base, "read_on": tomorrow})).status_code == 422  # noqa: PLR2004
+    ok = await env.client.post("/api/settings/charges", json={**base, "read_on": today.isoformat()})
+    assert ok.status_code == HTTPStatus.OK, ok.text  # today is still accepted after the refusals

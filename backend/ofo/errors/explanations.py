@@ -1793,6 +1793,9 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         "{field} is not an allowed number. Write it as text, for example 0.001.", {"field": Recorded}),
     ExplanationTemplate("settings_refused_charges_source", "rule",
                         "The source must be the web address, starting with https://, where the rates were read."),
+    ExplanationTemplate("settings_refused_charges_future", "rule",
+                        "A charge rate set cannot be dated {date}: that day has not come yet. Use today's date or an "
+                        "earlier day.", {"date": Recorded}),
     ExplanationTemplate("settings_refused_charges_date", "rule",
                         "A charge rate set dated {date} cannot be added: that date already has a set, or it is older "
                         "than the newest set. Use a later date.", {"date": Recorded}),

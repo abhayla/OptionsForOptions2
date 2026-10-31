@@ -89,6 +89,30 @@ describe('Settings page', () => {
     expect(w.find('[data-testid="setting-value"]').text()).toBe('0.065')
   })
 
+  it('sends no effective time for "now" (blank or not after the browser clock); only a chosen future time is sent', async () => {
+    answers[`POST /settings/${KEY}`] = setting()
+    const w = await open()
+    const submit = async (time) => {
+      calls.length = 0
+      if (!w.find('[data-testid="input-value"]').exists()) await w.find(`[data-testid="edit-${KEY}"]`).trigger('click')
+      await w.find('[data-testid="input-value"]').setValue('0.07')
+      await w.find('[data-testid="input-note"]').setValue('n')
+      await w.find('[data-testid="input-time"]').setValue(time)
+      await w.find('form').trigger('submit')
+      await flushPromises()
+      return calls.find((c) => c[0] === 'POST')[2]
+    }
+    expect(await submit('')).not.toHaveProperty('effective_from')
+    expect(await submit('2020-01-01T10:00')).not.toHaveProperty('effective_from') // already past: the server's clock is "now"
+    expect(await submit('2099-01-01T10:00')).toHaveProperty('effective_from')
+  })
+
+  it('the rate set form carries the plain fraction hint', async () => {
+    const w = await open(page(setting(), CHARGES))
+    await w.find('[data-testid="add-rate-set"]').trigger('click')
+    expect(w.find('[data-testid="rate-hint"]').text()).toContain('enter 0.001 for 0.1%')
+  })
+
   it('Reset to default posts a reset (a new row) and shows its answer', async () => {
     answers[`POST /settings/${KEY}/reset`] = setting({ is_default: false, set_by: 'owner', effective_from: '2026-11-01T11:00:00+05:30' })
     const w = await open(page(setting({ value: '0.07', is_default: false })))
