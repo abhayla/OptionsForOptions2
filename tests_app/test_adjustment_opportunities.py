@@ -52,6 +52,8 @@ async def _clean(engine, sid: int) -> int:
     """Lapse what earlier tests left open on the strategy; later reads see only records above the mark."""
     async with engine.begin() as conn:
         await playbook_store.lapse_all(conn, "owner", sid, playbook_store.LAPSE_STRATEGY_CLOSED)
+        for held in (await playbook_store.dismissed_holding(conn, "owner", sid)).values():  # ADR-217: forget dismissals
+            await playbook_store.mark_cleared(conn, "owner", held.id)
         MARK[sid] = max((r.id for r in await playbook_store.suggestions(conn, "owner", sid)), default=0)
     return sid
 
@@ -166,7 +168,7 @@ async def test_a_cleared_rule_lapses_and_a_not_checked_rule_never_does(app_db_ur
     await _check(sid)
     not_checked = pe.Evaluation(None, None, (pe.NotChecked("T-01", "T-01", "withheld_no_spot"),), {}, ())
     async with app_db_url.begin() as conn:  # attack 2: no spot -> neither flagged nor cleared
-        assert await _sync_records(conn, "owner", sid, not_checked, "system") == {}
+        assert await _sync_records(conn, "owner", sid, not_checked, "system") == ({}, frozenset())
     assert {r.rule_id: r.outcome for r in await _records(app_db_url, sid)}["T-01"] == "open"
     cleared = pe.Evaluation(None, None, (), {}, ("T-01",))
     async with app_db_url.begin() as conn:
@@ -176,6 +178,46 @@ async def test_a_cleared_rule_lapses_and_a_not_checked_rule_never_does(app_db_ur
     assert (recs["T-03"].outcome, recs["T-09"].outcome) == ("open", "open")
     row = next(r for g in _mine(await _inbox(), sid) for r in g["records"] if r["id"] == recs["T-01"].id)
     assert (row["outcome_text"], row["detail"]) == ("Lapsed", "The condition stopped holding")
+
+
+async def test_dismissed_stays_dismissed_until_the_condition_clears_and_holds_again(app_db_url, monkeypatch):
+    """ADR-217 / REQ-112 AC-7: dismiss T-01, check again -> no new T-01 record (T-03 / T-09 untouched); a not-checked
+    check does not count as cleared; a check that finds it false then a check that finds it true -> exactly one."""
+    from ofo_app.routes.adjustment_check import _sync_records  # noqa: PLC0415 - the check route's own record step
+    sid = await _clean(app_db_url, await _seeded(app_db_url, monkeypatch, "ADJ-02"))
+    await _check(sid)
+    t01 = next(r for r in await _records(app_db_url, sid) if r.rule_id == "T-01")
+    status, _ = await _call("POST", f"/api/adjustment-opportunities/{t01.id}/dismiss", {"reason": "not_relevant"})
+    assert status == OK
+    for _ in range(2):  # attack 1: two checks while it keeps holding
+        answer = await _check(sid)
+        flag = next(x for x in answer["results"] if x["rule_id"] == "T-01")
+        assert (flag["kind"], flag["suggestion_id"], flag["note"]) == ("flag", None, "You dismissed this")
+        assert all(x["note"] is None and x["suggestion_id"] for x in answer["results"]
+                   if x["kind"] == "flag" and x["rule_id"] != "T-01")
+    recs = await _records(app_db_url, sid)
+    assert sorted((r.rule_id, r.outcome) for r in recs) == [
+        ("T-01", "dismissed"), ("T-03", "open"), ("T-09", "open")]  # attack 4: T-03 / T-09 unaffected
+    not_checked = pe.Evaluation(None, None, (pe.NotChecked("T-01", "T-01", "withheld_no_spot"),), {}, ())
+    async with app_db_url.begin() as conn:  # attack 2: no spot is not "cleared"
+        assert await _sync_records(conn, "owner", sid, not_checked, "system") == ({}, frozenset())
+    await _check(sid)
+    assert [r.rule_id for r in await _records(app_db_url, sid) if r.rule_id == "T-01"] == ["T-01"]
+    async with app_db_url.begin() as conn:  # attack 5: the hold is per strategy (the seed makes one ADJ-02 strategy)
+        assert list(await playbook_store.dismissed_holding(conn, "owner", sid)) == ["T-01"]
+        assert await playbook_store.dismissed_holding(conn, "owner", sid + 1000) == {}
+    cleared = pe.Evaluation(None, None, (), {}, ("T-01",))
+    async with app_db_url.begin() as conn:  # a check finds T-01 false
+        await _sync_records(conn, "owner", sid, cleared, "system")
+    async with app_db_url.begin() as conn:  # still no new record until a later check finds it true
+        assert await playbook_store.dismissed_holding(conn, "owner", sid) == {}
+    assert [r.rule_id for r in await _records(app_db_url, sid) if r.rule_id == "T-01"] == ["T-01"]
+    await _check(sid)  # attack 3: holding again -> exactly one new open T-01 record
+    await _check(sid)
+    t01s = [(r.id, r.outcome) for r in await _records(app_db_url, sid) if r.rule_id == "T-01"]
+    assert [o for _, o in t01s] == ["dismissed", "open"] and t01s[1][0] > t01.id
+    inbox_rows = [r for g in _mine(await _inbox(), sid) for r in g["records"] if r["rule_id"] == "T-01"]
+    assert sorted(r["outcome_text"] for r in inbox_rows) == ["Open", "You dismissed this"]  # the inbox keeps the row
 
 
 async def test_an_exited_strategy_lapses_every_open_record(app_db_url, monkeypatch):

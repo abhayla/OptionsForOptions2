@@ -72,6 +72,7 @@ class CheckResultOut(ApiModel):
     wording: CatalogueText | None
     condition: CatalogueText | None = None  # the condition in plain words ("T-01: 0.3416 at or below 0.5000")
     suggestion_id: int | None = None  # a flag's open REQ-112 record (Dismiss / acted on name it)
+    note: CatalogueText | None = None  # ADR-217: "You dismissed this" on a flag whose dismissed record still holds
 
 
 class AdjustmentCheckOut(ApiModel):
@@ -106,11 +107,13 @@ def _condition(r: pe.Flag | pe.AlreadyTrue) -> Any:
                               threshold=str(r.threshold) if threshold is None else str(threshold))
 
 
-def result_out(r: pe.Result, flag_wording: Any, opened: dict[str, int] | None = None) -> dict:
+def result_out(r: pe.Result, flag_wording: Any, opened: dict[str, int] | None = None,
+               dismissed: frozenset[str] = frozenset()) -> dict:
     if isinstance(r, pe.Flag):
         return {"kind": "flag", "rule_id": r.rule_id, "trigger_id": r.trigger_id, "cmp": r.cmp, "value": _num(r.value),
                 "threshold": _num(r.threshold), "reason": None, "wording": flag_wording,
-                "condition": _condition(r), "suggestion_id": (opened or {}).get(r.rule_id)}
+                "condition": _condition(r), "suggestion_id": (opened or {}).get(r.rule_id),
+                "note": render_explanation("suggestion_outcome_dismissed") if r.rule_id in dismissed else None}
     if isinstance(r, pe.AlreadyTrue):
         return {"kind": "already_true", "rule_id": r.rule_id, "trigger_id": r.trigger_id, "cmp": r.cmp,
                 "value": _num(r.value), "threshold": _num(r.threshold), "reason": None, "wording": render(r.code),
@@ -119,23 +122,31 @@ def result_out(r: pe.Result, flag_wording: Any, opened: dict[str, int] | None = 
             "threshold": None, "reason": render(r.code, **dict(r.slots)), "wording": None}
 
 
-async def _sync_records(db: Any, user_ref: str, strategy_id: int, ev: pe.Evaluation, source: str) -> dict[str, int]:
+async def _sync_records(db: Any, user_ref: str, strategy_id: int, ev: pe.Evaluation,
+                        source: str) -> tuple[dict[str, int], frozenset[str]]:
     """REQ-112 AC-1/AC-2, REQ-045 AC-8: one open record per flagged rule (a rule still open keeps its record), all
     opened at this check sharing one group; the open record of a rule this check found FALSE lapses (condition
-    stopped holding). A not-checked or already-true rule is neither flagged nor cleared: its record stays as it is."""
+    stopped holding). A not-checked or already-true rule is neither flagged nor cleared: its record stays as it is.
+    ADR-217: a flagged rule whose latest record is dismissed and not yet found false opens no record (its id is
+    returned as the second value, for the "You dismissed this" note); a check that finds it false marks the dismissed
+    record cleared (store.mark_cleared), so the next flag opens one new record."""
     group = uuid.uuid4().hex
     opened: dict[str, int] = {}
+    held = await playbook_store.dismissed_holding(db, user_ref, strategy_id)
     for r in ev.results:
-        if isinstance(r, pe.Flag):
+        if isinstance(r, pe.Flag) and r.rule_id not in held:
             rec = await playbook_store.open_suggestion(
                 db, user_ref, strategy_id, r.rule_id, trigger_id=r.trigger_id, stage=r.stage_name,
                 value=_num(r.value), threshold=_num(r.threshold), group=group, source=source, cmp=r.cmp)
             opened[r.rule_id] = rec.id
     cleared = set(ev.clear)
+    for rule_id, dismissed in held.items():
+        if rule_id in cleared:
+            await playbook_store.mark_cleared(db, user_ref, dismissed.id)
     for rec in await playbook_store.open_suggestions(db, user_ref, strategy_id):
         if rec.rule_id in cleared:
             await playbook_store.lapse(db, user_ref, rec.id, playbook_store.LAPSE_CONDITION_STOPPED)
-    return opened
+    return opened, frozenset(rid for rid in held if any(isinstance(r, pe.Flag) and r.rule_id == rid for r in ev.results))
 
 
 async def current_margin(margin_of: ApproachMargin, tracked: Any, market: Any) -> dict | None:
@@ -189,10 +200,10 @@ async def adjustment_check(  # noqa: PLR0913 - FastAPI dependencies, one per inp
     ev = await check.evaluate_and_remember(db, user_ref, strategy_id, resolved.body, state, scenario_mode.current(),
                                            tracked.position)
     source = playbook_store.SOURCE_SYSTEM if resolved.is_system else playbook_store.SOURCE_OWN
-    opened = await _sync_records(db, user_ref, strategy_id, ev, source)
+    opened, dismissed = await _sync_records(db, user_ref, strategy_id, ev, source)
     await db.commit()
     wording = render_explanation("adjust_check_flag_system" if resolved.is_system else "adjust_check_flag_user")
     reply |= {"stage": {"name": ev.stage_name, "index": ev.stage_index},
               "withheld": None if ev.withheld is None else render(ev.withheld),
-              "results": [result_out(r, wording, opened) for r in ev.results]}
+              "results": [result_out(r, wording, opened, dismissed) for r in ev.results]}
     return AdjustmentCheckOut.model_validate(reply)

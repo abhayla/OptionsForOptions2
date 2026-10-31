@@ -198,6 +198,21 @@ _OPEN_OF_STRATEGY = text(f"SELECT {', '.join('g.' + c for c in _SG_COLUMNS.split
                          "FROM public.adjustment_suggestions g JOIN public.strategies s ON s.id = g.strategy_id "
                          "WHERE g.strategy_id = :strategy_id AND s.user_ref = :user_ref AND g.outcome = 'open' "
                          "ORDER BY g.id")
+#: ADR-217 "cleared since dismissal" lives in the dismissed record's own timeline (migration 0031 allows an append
+#: without an outcome change): one entry {'at', 'event': 'condition_cleared'}, written by the first check that finds
+#: the rule false after the dismissal. The latest record of a rule that is dismissed and has no such entry is "held".
+_LATEST_DISMISSED = text(
+    f"SELECT {', '.join('g.' + c for c in _SG_COLUMNS.split(', '))} "  # noqa: S608 constant columns
+    "FROM public.adjustment_suggestions g JOIN public.strategies s ON s.id = g.strategy_id "
+    "WHERE g.strategy_id = :strategy_id AND s.user_ref = :user_ref AND g.outcome = 'dismissed' "
+    "AND g.id = (SELECT max(m.id) FROM public.adjustment_suggestions m "
+    "WHERE m.strategy_id = g.strategy_id AND m.rule_id = g.rule_id) "
+    "AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(g.timeline) e WHERE e ->> 'event' = 'condition_cleared')")
+_MARK_CLEARED = text(
+    "UPDATE public.adjustment_suggestions AS g SET timeline = g.timeline || jsonb_build_array(jsonb_build_object("
+    "'at', clock_timestamp(), 'event', 'condition_cleared')) "
+    "FROM public.strategies s WHERE g.id = :id AND s.id = g.strategy_id AND s.user_ref = :user_ref "
+    "AND g.outcome = 'dismissed'")
 _INBOX = text(f"SELECT {', '.join('g.' + c for c in _SG_COLUMNS.split(', '))}, s.name, "  # noqa: S608 constant
               "EXISTS (SELECT 1 FROM public.paper_orders o WHERE o.strategy_id = s.id) "
               "FROM public.adjustment_suggestions g JOIN public.strategies s ON s.id = g.strategy_id "
@@ -551,3 +566,15 @@ async def inbox(conn: Any, user_ref: str) -> list[InboxRow]:
 async def suggestions(conn: Any, user_ref: str, strategy_id: int) -> list[Suggestion]:
     rows = (await conn.execute(_LIST_SUGGESTIONS, {"strategy_id": strategy_id, "user_ref": user_ref})).all()
     return [_suggestion(r) for r in rows]
+
+
+async def dismissed_holding(conn: Any, user_ref: str, strategy_id: int) -> dict[str, Suggestion]:
+    """ADR-217: rule id -> its dismissed record, for each rule whose latest record is dismissed and which no check has
+    found false since (so a flag for it opens no new record)."""
+    rows = (await conn.execute(_LATEST_DISMISSED, {"strategy_id": strategy_id, "user_ref": user_ref})).all()
+    return {r[2]: _suggestion(r) for r in rows}
+
+
+async def mark_cleared(conn: Any, user_ref: str, suggestion_id: int) -> None:
+    """ADR-217: a check found the dismissed record's rule false; the next flag may open a new record."""
+    await conn.execute(_MARK_CLEARED, {"id": suggestion_id, "user_ref": user_ref})
