@@ -79,6 +79,10 @@ Each step ends with one line here: `step N DONE <sha> <proof line>` or `PARKED (
   scenario mode port 8775: ADJ-02 flags T-01 0.3416<=0.5, T-03 0.4103>=0.35, T-09 2.7<=3 (system, approved, no Draft),
   ADJ-01 0 flags (Early), ADJ-42 T-01 already true, 0 flags; Tier A: 6 review gaps fixed (11 failed before, 40 passed
   after), mutants 5/5 killed; guards 3501 passed, repo_scan 1338 passed on the merged tree; ofo_dev at fixed 0031.
+- step 2 DONE d589a0a6 (13:17): fresh-DB `tests_app/test_playbook_routes.py` 18 passed (duplicate name 409 with the AC-3
+  text, system save-in-place refused, another user's id 404 on every route, gap/overlap refusals, delete active -> system
+  active again); domain guards 3521 passed; order-closure + API models 30 passed; repo_scan 1338 passed. Conventions
+  written into REQ-159 (fe0a0ad6).
 
 ## Rules for the run
 
