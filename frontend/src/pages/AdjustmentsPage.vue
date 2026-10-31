@@ -78,7 +78,7 @@
                 <template v-if="valuesOf(t, kind)">
                   <td v-for="(s, i) in stages" :key="i"><input :value="t[kind][i] ?? ''" class="field w-20" :data-testid="`pb-value-${id}-${i}`" @input="t[kind][i] = $event.target.value"></td>
                 </template>
-                <td v-else :colspan="Math.max(stages.length, 1)" class="text-sm text-ink-muted" :data-testid="`pb-novalue-${id}`">{{ labels.noValues }}</td>
+                <td v-else :colspan="stages.length || 1" class="text-sm text-ink-muted" :data-testid="`pb-novalue-${id}`">{{ labels.noValues }}</td>
               </tr>
             </tbody>
           </table></div>

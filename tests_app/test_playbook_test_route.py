@@ -127,7 +127,8 @@ async def test_gap_and_overlap_get_the_save_refusal_text(app_db_url, monkeypatch
 
 
 # ---- bounded reads (GC-ADJ2 step 3: no stall) ----------------------------------------------------------------------
-LIMIT_FOR_TEST = 8.0  # the route constant: three strategies read at once took ~2.7 s on this host, so 8 s cuts only the hang
+#: the route constant: three strategies read at once took ~2.7 s on this host, so 8 s cuts only the hang
+LIMIT_FOR_TEST = 8.0
 MAX_SECONDS, THREE, TWO = 30, 3, 2
 TIMED_OUT = "Prices for this strategy did not arrive in time."
 

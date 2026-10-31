@@ -63,7 +63,12 @@ PINNED_SLOT_TYPES = frozenset({
         "DisplayRupees",
         # W-158 (row 30, REQ-078 AC-2): only family_plural labels the loaded catalogue holds; the row 30 Opus check's
         # mutant "slot accepts unknown labels" was killed (2026-10-25)
-        "ShapeFamilies")),
+        "ShapeFamilies",
+        # GC-ADJ2 (REQ-158..162, reviewed at the GC-ADJ2 close 2026-10-31): every one validates fail-closed by exact
+        # str type. PlaybookName / PlaybookTriggerLabel are the user's own words (trimmed, bounded, no double quote,
+        # user_text so the wording scan masks only that span); PlaybookUnit and PlaybookField are fullmatch patterns;
+        # PlaybookTypeName is closed to the twelve shown type names. None carries a number for maths (ADR-008).
+        "PlaybookName", "PlaybookTriggerLabel", "PlaybookUnit", "PlaybookTypeName", "PlaybookField")),
     *(f"ofo.errors.slots.{n}" for n in (
         "Money", "PnLMoney", "Int", "Count", "Time", "Instrument", "Code", "Underlying", "ExternalText")),
 })

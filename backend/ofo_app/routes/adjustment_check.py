@@ -107,8 +107,9 @@ def _condition(r: pe.Flag | pe.AlreadyTrue, body: Mapping | None) -> Any:
                                 str(r.threshold) if threshold is None else str(threshold))
 
 
-def result_out(r: pe.Result, flag_wording: Any, opened: dict[str, int] | None = None,
-                dismissed: frozenset[str] = frozenset(), body: Mapping | None = None) -> dict:
+def result_out(r: pe.Result, flag_wording: Any, opened: dict[str, int] | None = None, *,
+               dismissed: frozenset[str] = frozenset(), body: Mapping | None = None) -> dict:
+    # dismissed and body are keyword-only: a positional body once landed in dismissed (TypeError on a None body)
     if isinstance(r, pe.Flag):
         return {"kind": "flag", "rule_id": r.rule_id, "trigger_id": r.trigger_id, "cmp": r.cmp, "value": _num(r.value),
                 "threshold": _num(r.threshold), "reason": None, "wording": flag_wording,
@@ -207,5 +208,5 @@ async def adjustment_check(  # noqa: PLR0913 - FastAPI dependencies, one per inp
     wording = render_explanation("adjust_check_flag_system" if resolved.is_system else "adjust_check_flag_user")
     reply |= {"stage": {"name": ev.stage_name, "index": ev.stage_index},
               "withheld": None if ev.withheld is None else render(ev.withheld),
-              "results": [result_out(r, wording, opened, dismissed, resolved.body) for r in ev.results]}
+              "results": [result_out(r, wording, opened, dismissed=dismissed, body=resolved.body) for r in ev.results]}
     return AdjustmentCheckOut.model_validate(reply)

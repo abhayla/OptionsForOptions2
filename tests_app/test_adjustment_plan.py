@@ -118,7 +118,8 @@ async def test_get_without_a_plan_prefills_from_the_active_system_playbook_and_p
     assert status == OK and picked["prefill"] == {"playbook_id": own.id, "target": "70", "stop": "30",
                                                   "max_adjustments": 4, "time_exit": {"hour": 14, "minute": 45},
                                                   "target_words": "70 % of max profit",
-                                                  "stop_words": "30 % of max loss or 4 % of margin, whichever comes first"}
+                                                  "stop_words":
+                                                      "30 % of max loss or 4 % of margin, whichever comes first"}
     assert (await _call("GET", _plan_path(sid) + "?playbook_id=999999999"))[0] == UNPROCESSABLE
 
 

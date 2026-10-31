@@ -232,7 +232,13 @@ async def playbook_labels() -> LabelsOut:
     from the catalogue: approach names (the compare's table first, the editor's table for the rest), day rule kinds and
     actions, the summary's sentences. A read of fixed text: no user, no database. Declared before
     ``/api/playbooks/{playbook_id}`` so "labels" is never read as an id."""
-    return LabelsOut.model_validate({
+    return LabelsOut.model_validate(_labels_body())
+
+
+def _labels_body() -> dict[str, Any]:
+    """The labels answer. Only catalogue template ids are built here (``playbook_day_kind_<key>``); every shown text
+    is ``render``/``render_explanation`` output, so the route's return holds no string building (error boundary)."""
+    return {
         "approaches": _labels(ADJUSTMENT_APPROACH_LABEL_TEXT, approach_name_id)
         + _labels(PLAYBOOK_APPROACH_LABEL_TEXT, lambda k: "playbook_approach_" + k.lower().replace("-", "_")),
         "day_kinds": _labels(PLAYBOOK_DAY_RULE_KIND_TEXT, lambda k: f"playbook_day_kind_{k}"),
@@ -240,7 +246,7 @@ async def playbook_labels() -> LabelsOut:
         "past_note": render_explanation("playbook_test_past_out_of_v1"),
         "summary": _labels(PLAYBOOK_SUMMARY_TEXT, lambda k: f"playbook_summary_{k}"),
         "guards": _labels(PLAYBOOK_GUARD_LABEL_TEXT, lambda k: f"playbook_guard_{k}"),
-        "no_values": render("adjust_trigger_no_expiry_values")})
+        "no_values": render("adjust_trigger_no_expiry_values")}
 
 
 @router.get("/api/playbooks", response_model=PlaybookListOut)
