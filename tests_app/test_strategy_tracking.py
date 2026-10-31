@@ -312,9 +312,9 @@ async def test_req050_the_tracking_read_shares_the_forward_with_the_outcome_rout
     calls: dict = {}
     real = snapshot_module.parity_forward
 
-    def counted(chain, spot, expiry, valuation, rate):
+    def counted(chain, spot, expiry, valuation, rate, quality):
         calls[expiry] = calls.get(expiry, 0) + 1
-        return real(chain, spot, expiry, valuation, rate)
+        return real(chain, spot, expiry, valuation, rate, quality)
 
     monkeypatch.setattr(snapshot_module, "parity_forward", counted)
     app, stored, provider, _clock, last = await _setup(db, owner="user-1")
