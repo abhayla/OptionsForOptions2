@@ -881,6 +881,16 @@ def get_streaming() -> Callable[[str], bool] | None:
     return lambda instrument_id: feed.fanout.subscriber_count(instrument_id) > 0
 
 
+def same_feed(ctx: MarketContext, feed_ctx: MarketContext | None) -> bool:
+    """True when ``ctx`` is ``feed_ctx`` or the per-request copy ``get_market_context`` made of it with only the rate
+    replaced (GC-SET: the stored risk-free rate); an identity test alone would treat every live request as "another
+    context" and skip issue #206's streaming rule."""
+    if feed_ctx is None:
+        return False
+    return ctx is feed_ctx or (ctx.provider is feed_ctx.provider and ctx.clock is feed_ctx.clock
+                               and ctx.feed_owner == feed_ctx.feed_owner)
+
+
 def inputs_streaming(ctx: MarketContext, streaming: Callable[[str], bool] | None, ids: Iterable[str]) -> bool:
     """Issue #206's rule for any REST read of live inputs: True when every id is held by a socket on the shared feed.
     No predicate (no live feed: a test's own context) or a predicate of another context: the provider's quotes are used
@@ -888,7 +898,7 @@ def inputs_streaming(ctx: MarketContext, streaming: Callable[[str], bool] | None
     if streaming is None:
         return True
     owner = getattr(streaming, "ctx", None)  # the replay's predicate names its own context (ofo_app.replay_mode)
-    if ctx is not (owner if owner is not None else live_context()):
+    if not same_feed(ctx, owner if owner is not None else live_context()):
         return True
     return all(streaming(i) for i in ids)
 

@@ -175,3 +175,41 @@ async def test_a_store_that_cannot_answer_fails_closed(replayed, monkeypatch):
         assert resp.status_code == HTTPStatus.INTERNAL_SERVER_ERROR, resp.text
         assert "0.065" not in resp.text
     assert used == []  # nothing was priced
+
+
+async def test_the_production_reader_reads_the_store_through_the_app_database(app_engine, monkeypatch):
+    """The un-overridden reader opens the app's own session (``db.get_sessionmaker``) and answers the registry
+    defaults on an empty table (the conftest default patch is undone here)."""
+    import os  # noqa: PLC0415
+
+    from ofo_app import config, db  # noqa: PLC0415
+    from ofo_app.routes import outcome  # noqa: PLC0415
+
+    monkeypatch.undo()  # drop the conftest's "defaults, no database" patch for this test
+    monkeypatch.setenv("DATABASE_URL", os.environ["TEST_DATABASE_URL"])
+    for cached in (config.get_settings, db.get_engine, db.get_sessionmaker):
+        cached.cache_clear()
+    try:
+        assert outcome.get_settings_reader() is outcome._settings_in_force_now
+        assert (await outcome._settings_in_force_now())[KEY] == Decimal("0.065")
+    finally:
+        await db.get_engine().dispose()
+        for cached in (config.get_settings, db.get_engine, db.get_sessionmaker):
+            cached.cache_clear()
+
+
+def test_a_rate_replaced_copy_is_the_same_feed_for_the_streaming_rule(replayed):
+    """Issue #206's rule compares the request's context with the live feed's: the per-request copy with only the rate
+    replaced is the same feed; another clock or owner is not."""
+    import dataclasses  # noqa: PLC0415
+
+    from ofo_app.routes.outcome import MarketContext, same_feed  # noqa: PLC0415
+
+    def clock():
+        return VALUATION
+
+    live = MarketContext(replayed, clock, Decimal("0.065"), "owner")
+    assert same_feed(dataclasses.replace(live, rate=Decimal("0.07")), live)
+    assert not same_feed(dataclasses.replace(live, feed_owner="other"), live)
+    assert not same_feed(dataclasses.replace(live, clock=lambda: VALUATION), live)
+    assert not same_feed(live, None)
