@@ -127,7 +127,7 @@ async def test_gap_and_overlap_get_the_save_refusal_text(app_db_url, monkeypatch
 
 
 # ---- bounded reads (GC-ADJ2 step 3: no stall) ----------------------------------------------------------------------
-LIMIT_FOR_TEST = 2.0  # the route's one constant, patched small (real DB reads of the others take well under it)
+LIMIT_FOR_TEST = 8.0  # the route constant: three strategies read at once took ~2.7 s on this host, so 8 s cuts only the hang
 MAX_SECONDS, THREE, TWO = 30, 3, 2
 TIMED_OUT = "Prices for this strategy did not arrive in time."
 
@@ -163,8 +163,7 @@ async def _post_with_market(market_wrapper, body: dict) -> tuple[Any, float]:
     return r, took
 
 
-async def test_one_hanging_strategy_is_listed_not_checked_and_the_others_are_evaluated(app_db_url, monkeypatch, caplog):
-    caplog.set_level('DEBUG', logger='ofo_app.routes.playbooks')
+async def test_one_hanging_strategy_is_listed_not_checked_and_the_others_are_evaluated(app_db_url, monkeypatch):
     import asyncio  # noqa: PLC0415
 
     from ofo_app.routes import playbooks as route  # noqa: PLC0415
@@ -187,7 +186,7 @@ async def test_one_hanging_strategy_is_listed_not_checked_and_the_others_are_eva
     assert r.status_code == OK, r.text
     assert took < MAX_SECONDS  # a bounded answer (the hang alone would never return)
     by_id = {s["strategy_id"]: s for s in r.json()["strategies"] if s["strategy_id"] in ids}
-    assert sorted(by_id) == sorted(ids), (ids, caplog.text)
+    assert sorted(by_id) == sorted(ids), ids
     hung = [s for s in by_id.values() if s["stage"] == {"name": None, "index": None}]
     assert len(hung) == 1
     assert hung[0]["results"]
