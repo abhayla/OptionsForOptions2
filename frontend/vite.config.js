@@ -24,6 +24,12 @@ const proxy = {
 
 export default defineConfig({
   plugins: [vue(), tailwindcss()],
+  // #517 (REQ-048 AC-5): only VITE_-prefixed variables reach the bundle, and only the reviewed ones are read in src
+  // (tests/test_bundle_inputs.py); stated here so a changed Vite default cannot widen it.
+  envPrefix: 'VITE_',
+  // #517: the manifest maps each source module to its chunk, so the bundle scan pins the api_key exemption to
+  // the basket modules themselves, not to a chunk-name pattern (tests/test_bundle_secret_scan.py).
+  build: { manifest: true },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),

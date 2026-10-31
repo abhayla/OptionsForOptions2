@@ -333,8 +333,15 @@ jobs:
           npm run lint
           npm run test:run
 
+      # #517 (REQ-048 AC-5) value canaries: every backend credential variable (.env.example) is set to its canary for
+      # the build; the scan step below fails if any canary reaches frontend/dist. tests/test_bundle_secret_scan.py
+      # asserts this env equals canary_value() for every variable.
       - name: Build
         working-directory: frontend
+        env:
+          BROKER_TOKEN_KEY: 'ofocanaryexamplebrokertokenkey'
+          KITE_API_KEY: 'ofocanaryexamplekiteapikey'
+          KITE_API_SECRET: 'ofocanaryexamplekiteapisecret'
         run: npm run build
 
       # REQ-048 AC-5 (W-134): the bundle and reply scans on the REAL build output. pytest comes from the "Install
