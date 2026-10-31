@@ -3,14 +3,16 @@ and unit through the catalogue; never a trigger id with bare numbers."""
 from __future__ import annotations
 
 import copy
+import json
+import pathlib
 import re
 from decimal import Decimal as D
 
 import pytest
 from ofo.adjustment.playbook_eval import Flag, body_from_fixture
 from ofo_app.routes.adjustment_check import result_out
-from test_adjust_scenarios import PLAYBOOKS
 
+PLAYBOOKS = json.loads((pathlib.Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "adjust_scenarios" / "_playbooks.json").read_text(encoding="utf-8"))
 T01 = "Spot within this % of a short strike: 0.3416 % (rule 0.5000 %)"
 
 
