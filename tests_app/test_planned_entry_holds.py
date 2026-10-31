@@ -198,9 +198,9 @@ async def test_req050_planned_entry_shares_the_forward_with_the_outcome_route_on
     calls: dict = {}
     real = snapshot_module.parity_forward
 
-    def counted(chain, spot, expiry, valuation, rate):
+    def counted(chain, spot, expiry, valuation, rate, quality):
         calls[expiry] = calls.get(expiry, 0) + 1
-        return real(chain, spot, expiry, valuation, rate)
+        return real(chain, spot, expiry, valuation, rate, quality)
 
     monkeypatch.setattr(snapshot_module, "parity_forward", counted)
     rig = Rig(book=True, owner="user-1")

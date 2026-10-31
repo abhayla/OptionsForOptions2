@@ -25,6 +25,10 @@ from ofo.charges import ChargeRates
 from ofo.charges.round_trip import ChargesNotComputable, round_trip_charges, to_paise_up
 from ofo.engine.legs import Action, Instrument, Leg
 from ofo.errors.explanations import render_explanation
+from ofo.settings import calc as _fq_calc
+from ofo.settings import defaults as _fq_defaults
+
+_FQ = _fq_calc.forward_quality(_fq_defaults())
 
 ROOT = Path(__file__).resolve().parents[2]
 KITE_ORDERS = ROOT / "docs" / "research" / "kite-proof-2026-10-07" / "rest-2026-10-15" / "charges_orders.json"
@@ -162,7 +166,7 @@ def replayed():
 def outcome_of(provider, rates):
     d = StrategyDefinition("NIFTY", tuple(PlannedLeg(i, a, 1, provider.book.get(i, VALUATION).ltp, VALUATION)
                                           for i, a in REPLAY_CONDOR))
-    snap = read_snapshot(provider, "NIFTY", [p.instrument_id for p in d.legs], VALUATION, D("0.065"))
+    snap = read_snapshot(provider, "NIFTY", [p.instrument_id for p in d.legs], VALUATION, D("0.065"), quality=_FQ)
     return d, build_outcome(d, snap, VALUATION, rates=rates, settings=_d())
 
 
@@ -256,7 +260,7 @@ def test_guard_an_index_with_no_exchange_segment_falls_back(replayed, monkeypatc
 def test_guard_a_zero_planned_price_leg_falls_back(replayed):
     d = StrategyDefinition("NIFTY", tuple(PlannedLeg(i, a, 1, D("0") if n == 1 else replayed.book.get(i, VALUATION).ltp,
                                                      VALUATION) for n, (i, a) in enumerate(REPLAY_CONDOR)))
-    snap = read_snapshot(replayed, "NIFTY", [p.instrument_id for p in d.legs], VALUATION, D("0.065"))
+    snap = read_snapshot(replayed, "NIFTY", [p.instrument_id for p in d.legs], VALUATION, D("0.065"), quality=_FQ)
     out = build_outcome(d, snap, VALUATION, rates=RATES, settings=_d())
     assert out.state is OutcomeState.COMPUTED, out.reason
     assert out.summary.charges is None and out.summary.charges_unavailable
@@ -308,7 +312,7 @@ def test_table_has_no_charges_row_without_rates_and_in_estimated_now(replayed):
     assert CHARGES_ROW not in _rows(none_out)
     d = StrategyDefinition("NIFTY", tuple(PlannedLeg(i, a, 1, replayed.book.get(i, VALUATION).ltp, VALUATION)
                                           for i, a in REPLAY_CONDOR))
-    snap = read_snapshot(replayed, "NIFTY", [p.instrument_id for p in d.legs], VALUATION, D("0.065"))
+    snap = read_snapshot(replayed, "NIFTY", [p.instrument_id for p in d.legs], VALUATION, D("0.065"), quality=_FQ)
     est = build_outcome(d, snap, VALUATION, rates=RATES, view=View.ESTIMATED_NOW, settings=_d())
     assert CHARGES_ROW not in _rows(est)
 
@@ -322,7 +326,7 @@ EXERCISE_STT_LINE = (
 def _summary_of_legs(provider, picks, rates=RATES):
     d = StrategyDefinition("NIFTY", tuple(PlannedLeg(i, a, 1, provider.book.get(i, VALUATION).ltp, VALUATION)
                                           for i, a in picks))
-    snap = read_snapshot(provider, "NIFTY", [p.instrument_id for p in d.legs], VALUATION, D("0.065"))
+    snap = read_snapshot(provider, "NIFTY", [p.instrument_id for p in d.legs], VALUATION, D("0.065"), quality=_FQ)
     out = build_outcome(d, snap, VALUATION, rates=rates, settings=_d())
     assert out.state is OutcomeState.COMPUTED, out.reason
     return out.summary

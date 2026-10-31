@@ -98,7 +98,8 @@ def _can_price(ctx: MarketContext | None, at) -> bool:
 
 def _read(ctx: MarketContext, underlying: str, ids: list[str]):
     valuation = ctx.clock()
-    snapshot = read_snapshot(ctx.provider, underlying, ids, valuation, ctx.rate, feed_scope(ctx))
+    snapshot = read_snapshot(ctx.provider, underlying, ids, valuation, ctx.rate, feed_scope(ctx),
+                             quality=ctx.forward_quality)
     closed = market_state(ctx, valuation).closed  # the ONE market-state answer (ADR-119), at the read's instant
     priced = {i: _closed_label(planned_entry_of(snapshot.legs[i].quote, market_closed=closed), snapshot.legs[i].quote,
                                closed)

@@ -25,6 +25,8 @@ from ofo.errors.explanations import render_explanation
 from ofo.market_calendar import next_open
 from ofo.outcome import read_snapshot
 from ofo.scenario.spot import spot_reading
+from ofo.settings import calc as _fq_calc
+from ofo.settings import defaults as _fq_defaults
 from ofo_app import paper_store, paper_trigger_store
 from ofo_app import strategy_store as store
 from ofo_app.paper_reasons import reason_text
@@ -33,6 +35,8 @@ from sqlalchemy import text
 from test_paper_routes import AT, FIXTURE, MINUS
 from test_strategy_store import _client, _ids, _saved_in
 from test_strategy_tracking import _RETIRE, IDS, _frame, _setup
+
+_FQ = _fq_calc.forward_quality(_fq_defaults())
 
 D = Decimal
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -104,7 +108,7 @@ async def _list(app) -> dict:
 def _hand_decay(provider, last, held: dict[str, int]) -> Decimal:
     """Independent of the route: per contract, the engine's per-unit decay of a BOUGHT unit to the next open, times
     the signed net quantity summed by hand; rounded once to the paisa (the P&L table's TOTAL row rule)."""
-    snap = read_snapshot(provider, "NIFTY", list(held), last, D("0.065"), None)
+    snap = read_snapshot(provider, "NIFTY", list(held), last, D("0.065"), None, quality=_FQ)
     until = next_open(snap.valuation)
     total = D(0)
     for key, qty in held.items():

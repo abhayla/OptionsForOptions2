@@ -8,8 +8,12 @@ import dataclasses
 from marketdata._kite_fixture import all_instrument_ids, new_provider, replay
 from ofo.outcome import OutcomeState, build_outcome, read_snapshot
 from ofo.outcome.snapshot import LegMarket
+from ofo.settings import calc as _fq_calc
 from ofo.settings import defaults as _d
+from ofo.settings import defaults as _fq_defaults
 from outcome.test_same_engine import RATE, VALUATION, definition
+
+_FQ = _fq_calc.forward_quality(_fq_defaults())
 
 
 def _no_quote_outcome():
@@ -17,7 +21,7 @@ def _no_quote_outcome():
     provider.subscribe(all_instrument_ids(items))
     replay(provider, clock)
     d = definition(provider)
-    snap = read_snapshot(provider, "NIFTY", [p.instrument_id for p in d.legs], VALUATION, RATE)
+    snap = read_snapshot(provider, "NIFTY", [p.instrument_id for p in d.legs], VALUATION, RATE, quality=_FQ)
     first = d.legs[0].instrument_id
     snap = dataclasses.replace(snap, legs={**snap.legs, first: LegMarket(first, snap.legs[first].contract, None)})
     return build_outcome(d, snap, settings=_d())

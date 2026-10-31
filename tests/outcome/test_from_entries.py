@@ -24,8 +24,12 @@ from ofo.outcome import (
     read_snapshot,
 )
 from ofo.scenario.views import View
+from ofo.settings import calc as _fq_calc
 from ofo.settings import defaults as _d
+from ofo.settings import defaults as _fq_defaults
 from outcome.test_same_engine import RATE, VALUATION
+
+_FQ = _fq_calc.forward_quality(_fq_defaults())
 
 LOW, HIGH = "NSE_FO:44632", "NSE_FO:44650"  # 23000 CE, 23200 CE (13-Oct)
 LOT = 65
@@ -37,7 +41,7 @@ def _stored():
     provider, clock, items = new_provider()
     provider.subscribe(all_instrument_ids(items))
     replay(provider, clock)
-    snap = read_snapshot(provider, "NIFTY", [LOW, HIGH, *_EXTRA], VALUATION, RATE)
+    snap = read_snapshot(provider, "NIFTY", [LOW, HIGH, *_EXTRA], VALUATION, RATE, quality=_FQ)
     return {iid: snap.legs[iid].contract for iid in (LOW, HIGH, *_EXTRA)}
 
 
@@ -130,7 +134,7 @@ def _snapshot_after_drop():
     provider, clock, items = new_provider()
     provider.subscribe(all_instrument_ids(items))
     replay(provider, clock)
-    return read_snapshot(provider, "NIFTY", [LOW, HIGH], VALUATION, RATE)
+    return read_snapshot(provider, "NIFTY", [LOW, HIGH], VALUATION, RATE, quality=_FQ)
 
 
 def test_attack_6_dropped_feed_status_is_ac5_message_and_output_label_is_from_your_prices():
@@ -195,7 +199,7 @@ def test_never_held_status_is_from_your_prices_and_dropped_status_is_ac5_text():
     """No quote ever held: nothing dropped, so the status is the from-your-prices text, not the draft not-connected
     label. A quote held then lost: REQ-049 AC-5's message. The two must differ."""
     provider, _clock, _items = new_provider()
-    fresh = read_snapshot(provider, "NIFTY", [LOW, HIGH], VALUATION, RATE)
+    fresh = read_snapshot(provider, "NIFTY", [LOW, HIGH], VALUATION, RATE, quality=_FQ)
     never = from_entries(_spread(), fresh, _stored(), VALUATION, settings=_d())
     assert never.status_label == LABEL == FROM_ENTRIES_LABEL
     assert never.status_label != render_explanation("outcome_not_connected")
@@ -222,7 +226,7 @@ def test_an_ended_session_with_every_leg_priced_is_from_entries_never_not_connec
 def test_an_ended_session_that_never_held_a_quote_says_from_your_prices():
     provider, _clock, _items = new_provider()
     stored = _stored()
-    fresh = read_snapshot(provider, "NIFTY", [LOW, HIGH], VALUATION, RATE)
+    fresh = read_snapshot(provider, "NIFTY", [LOW, HIGH], VALUATION, RATE, quality=_FQ)
     ended = _ended(dataclasses.replace(fresh, legs={
         iid: dataclasses.replace(lm, contract=stored[iid]) for iid, lm in fresh.legs.items()}))
     out = build_outcome(_spread(), ended, VALUATION, settings=_d())

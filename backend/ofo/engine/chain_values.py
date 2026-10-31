@@ -32,7 +32,7 @@ from typing import Literal
 from ofo.engine.legs import Instrument
 from ofo.engine.model import data_label, expiry_model, greeks, greeks_unrounded, implied_vol, iv_price
 from ofo.errors.explanations import ExplanationText
-from ofo.marketdata.forward import PARITY, ForwardUnavailable, parity_forward
+from ofo.marketdata.forward import PARITY, ForwardQuality, ForwardUnavailable, parity_forward
 from ofo.marketdata.quote import NormalizedQuote, is_live_price
 from ofo.money import HUNDREDTH, PAISE
 from ofo.rules.inputs import DataHealth
@@ -129,7 +129,8 @@ class ChainModel:
 
 
 def chain_model(chain: Iterable[NormalizedQuote], spot_quote: NormalizedQuote | None, expiry: datetime.date,  # noqa: PLR0913
-                valuation: datetime.datetime, rate: Decimal, *, market_closed: bool = False) -> ChainModel:
+                valuation: datetime.datetime, rate: Decimal, quality: ForwardQuality, *,
+                market_closed: bool = False) -> ChainModel:
     """instrument_id -> engine Greeks for each option of the expiry whose price gives an implied volatility, with the
     forward's basis; no Greeks (and the reason) when the spot or the expiry's forward is refused. ``market_closed``
     (ADR-119 calendar): the held close is the answer (ADR-197, ADR-200 (2)), so no "stale since" label is made; the
@@ -142,7 +143,7 @@ def chain_model(chain: Iterable[NormalizedQuote], spot_quote: NormalizedQuote | 
     if reading.health in _SPOT_REFUSED_HEALTH:  # the forward's own spot gate, named as a spot problem
         return ChainModel({}, None, "SPOT_REFUSED")
     try:
-        fwd = parity_forward(quotes, spot_quote, expiry, valuation, rate)
+        fwd = parity_forward(quotes, spot_quote, expiry, valuation, rate, quality)
         em = expiry_model(reading, fwd)
     except (ForwardUnavailable, ValueError, ArithmeticError):
         return ChainModel({}, None, "FORWARD_UNAVAILABLE")
@@ -165,8 +166,8 @@ def chain_model(chain: Iterable[NormalizedQuote], spot_quote: NormalizedQuote | 
                       None if market_closed else data_label(reading))
 
 
-def chain_greeks(chain: Iterable[NormalizedQuote], spot_quote: NormalizedQuote | None, expiry: datetime.date,
-                 valuation: datetime.datetime, rate: Decimal) -> Mapping[str, ChainGreeks]:
+def chain_greeks(chain: Iterable[NormalizedQuote], spot_quote: NormalizedQuote | None, expiry: datetime.date,  # noqa: PLR0913
+                 valuation: datetime.datetime, rate: Decimal, quality: ForwardQuality) -> Mapping[str, ChainGreeks]:
     """instrument_id -> engine Greeks (the map of :func:`chain_model`). Empty when the spot or the expiry's forward is
     refused; a contract the model refuses is simply left out."""
-    return chain_model(chain, spot_quote, expiry, valuation, rate).greeks
+    return chain_model(chain, spot_quote, expiry, valuation, rate, quality).greeks

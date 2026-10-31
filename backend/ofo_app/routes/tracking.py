@@ -169,7 +169,8 @@ class TrackingListOut(ApiModel):
 async def _snapshot(ctx: MarketContext, feed: LiveFeed | None, underlying: str, ids: list[str]):
     """One market read for the legs and the index. With a live feed, legs nobody holds are held until their first live
     quote or the planned-entry wait passes (the same rule and helper as the planned-entry route)."""
-    snapshot = read_snapshot(ctx.provider, underlying, ids, ctx.clock(), ctx.rate, feed_scope(ctx))
+    snapshot = read_snapshot(ctx.provider, underlying, ids, ctx.clock(), ctx.rate, feed_scope(ctx),
+                             quality=ctx.forward_quality)
     unpriced = [i for i in ids if paper.leg_price(snapshot, i).state != paper.LIVE]
     if unpriced and feed is not None:
         _, snapshot, _ = await hold_until_priced(feed, ctx, underlying, ids, unpriced)

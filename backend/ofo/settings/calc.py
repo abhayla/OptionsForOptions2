@@ -14,6 +14,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from decimal import Decimal
 
+from ofo.marketdata.forward import ForwardQuality
 from ofo.settings import value_of
 
 SD_HORIZON_DAYS = "scenarios.sd_horizon_days"
@@ -25,6 +26,9 @@ QUICK_PICK_COUNT = 4
 QUICK_PICK_KEY = "scenarios.strangle_quick_pick_{}_{}"
 SCENARIO_FIELDS = ("step_points", "anchor_points", "half_width_points", "margin_steps", "max_columns")
 INDEXES = ("NIFTY", "SENSEX")
+FORWARD_QUALITY_WIDTH = "pricing.forward_quality_width"
+FORWARD_STRIKES_NEAR = "pricing.forward_strikes_near"
+FORWARD_MIN_STRIKES = "pricing.forward_min_strikes"
 
 
 def sd_horizon_days(values: Mapping[str, Decimal]) -> int:
@@ -60,3 +64,10 @@ def scenario_fields(values: Mapping[str, Decimal], index: str) -> dict[str, Deci
         raise ValueError(f"no scenario settings are stated for {index!r}")
     v = values
     return {f: value_of(v, f"scenarios.{index.lower()}_{f}") for f in SCENARIO_FIELDS}
+
+
+def forward_quality(values: Mapping[str, Decimal]) -> ForwardQuality:
+    """The three forward settings in force as the one parameter object ``parity_forward`` requires (REQ-167 AC-5)."""
+    return ForwardQuality(width=value_of(values, FORWARD_QUALITY_WIDTH),
+                          strikes_near=int(value_of(values, FORWARD_STRIKES_NEAR)),
+                          min_strikes=int(value_of(values, FORWARD_MIN_STRIKES)))
