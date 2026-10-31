@@ -48,7 +48,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-213 2026-10-30: SPEC CHANGE to ADR-077 / REQ-049 AC-5 for the NIFTY 50 and SENSEX index strip. [SPEC CHANGE to ADR-077 / REQ-049 AC-5 for the ind…]
 - ADR-214 2026-10-30: Where adjustments sit in the app. [Places REQ-045 AC-7/AC-9 and REQ-046 on named scr…]
 
-## Requirements (154)
+## Requirements (156)
 
 - REQ-001 [Approved]: V1 scope: underlyings, leg types, broker
 - REQ-002 [Approved]: Account boundaries
@@ -165,7 +165,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - REQ-117 [Approved]: The broker adapter declares named capability flags, and features ask the flag, never the broker's name
 - REQ-118 [Approved]: Calls to Zerodha stay within Zerodha's stated rate limits, and a busy broker slows the platform down instead…
 - REQ-119 [Approved]: The builder drops late replies, so an older answer never draws over a newer edit
-- REQ-125 [Draft]: Every request acts for one signed-in user, and no user can read or act on another user's data
+- REQ-125 [Approved]: Every request acts for one signed-in user, and no user can read or act on another user's data
 - REQ-126 [Draft]: Production is watched, backed up and restorable, and staging never shares production's data or keys
 - REQ-127 [Draft]: Data-protection duties under the DPDP Rules - notice, consent, user rights and breach report
 - REQ-128 [Draft]: One retention schedule names how long each kind of data is kept, and a daily job enforces it
@@ -204,6 +204,8 @@ One line per decision, requirement and spec section. Read it before asking the o
 - REQ-161 [Approved]: Start tracking opens a strategy plan sheet pre-filled from the type's active playbook, accepted in one click
 - REQ-162 [Approved]: Positions > Adjustment opportunities lists every opportunity across strategies with its label and outcome
 - REQ-163 [Approved]: A strategy's adjustment history shows the entry, every adjustment and the whole-trade totals
+- REQ-164 [Approved]: The API runs as several copies; no request depends on the memory of one copy, and one copy stopping cuts no u…
+- REQ-165 [Approved]: Adjustment playbook triggers are checked by the background workers on fresh prices, at most once a second per…
 
 ## Spec sections (245)
 

@@ -4,7 +4,7 @@
 
 Generated from `spec/requirements/REQ-*.md`, grouped by each requirement's `section`. Before writing a new requirement, find its section here and run `python tools/spec_similar.py . "<text>"`; extend or cite a match, never restate it.
 
-Requirements: 154; sections: 19
+Requirements: 156; sections: 20
 
 ## Accounts and identity (5)
 
@@ -14,9 +14,9 @@ Requirements: 154; sections: 19
 | REQ-012 | Registration and identity layers | foundation | Approved |
 | REQ-013 | Email change and account deletion | feature | Approved |
 | REQ-014 | Zerodha Client ID binding and anti-abuse | feature | Approved |
-| REQ-125 | Every request acts for one signed-in user, and no user can read or act on another user's data | foundation | Draft |
+| REQ-125 | Every request acts for one signed-in user, and no user can read or act on another user's data | foundation | Approved |
 
-## Adjustments (14)
+## Adjustments (15)
 
 | id | title | layer | status |
 |---|---|---|---|
@@ -34,6 +34,7 @@ Requirements: 154; sections: 19
 | REQ-161 | Start tracking opens a strategy plan sheet pre-filled from the type's active playbook, accepted in one click | feature | Approved |
 | REQ-162 | Positions > Adjustment opportunities lists every opportunity across strategies with its label and outcome | feature | Approved |
 | REQ-163 | A strategy's adjustment history shows the entry, every adjustment and the whole-trade totals | feature | Approved |
+| REQ-165 | Adjustment playbook triggers are checked by the background workers on fresh prices, at most once a second per strategy, with no screen open | feature | Approved |
 
 ## Broker and execution (17)
 
@@ -150,6 +151,12 @@ Requirements: 154; sections: 19
 | REQ-030 | Option Chain leg selection and import | feature | Approved |
 | REQ-031 | Option Chain live strategy preview | feature | Approved |
 | REQ-087 | Option Chain display options - per-lot prices, ITM shading, strikes around ATM, and intrinsic value, time value and breakeven % columns | feature | Approved |
+
+## Platform (1)
+
+| id | title | layer | status |
+|---|---|---|---|
+| REQ-164 | The API runs as several copies; no request depends on the memory of one copy, and one copy stopping cuts no user | feature | Approved |
 
 ## Product scope and platform (9)
 
