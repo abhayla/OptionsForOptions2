@@ -167,6 +167,8 @@ main and waits for the owner's explicit approval; it does not open it.
 | 1 | Step 1 is too big for one builder | step 1 | Technical call: split into 1A store + migration 0031 + seed (Tier A), 1B pure evaluator + F-71 + generator (parallel), 1C wiring + dev-server proof. Shared body shape fixed first in `docs/design/playbook-body-v1.md` (bc8baafc). |
 | 2 | F-71 needs memory across checks; the contract's four tables have no home for it | step 1 | Technical call: a fifth table `adjustment_rule_state` (strategy, rule, held_at_entry, seen_clear). Held at entry is computed from the position's entry state (entry spot), not from the first check, so ADJ-02 (far at entry) still flags on its first check. |
 | 3 | Branch DB tests would move the shared ofo_test to an unmerged revision (finding branch-migration-tests-move-shared-db) | step 1A | DB tests run only through `db_run_fresh.py` (throwaway database); ofo_dev upgrade/downgrade by the orchestrator. |
+| 4 | Paper orders store no index level at entry, so F-71's entry state is unknown live | step 1C | Technical call: in scenario mode the scenario's `position.entry`; live, the first check after tracking starts (rule memory empty) is the entry state. The plan sheet (step 4) accepts the plan at the paper action, so the first check is at entry. |
+| 5 | The four open conventions | step 2 (done early) | Written into REQ-159's section text now (docs only): T-14, T-19, % of premium paid, tighten by X%. |
 
 ## Parked
 
