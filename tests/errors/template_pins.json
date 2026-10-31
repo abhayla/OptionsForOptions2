@@ -2800,19 +2800,27 @@
     "reviewed": "pending owner read"
   },
   "explanation:adjust_condition_line": {
-    "sha256": "464f0b6f2a8261bc24c14a460164d1932f386db61b11697f9f33b14d427bdf02",
+    "sha256": "f8664b0e4ff9c137604daab8e6f3a764d6a858aa59646630f1d46ae8df31c0ce",
     "reviewed": "pending owner read"
   },
-  "explanation:adjust_cmp_le": {
-    "sha256": "2c3283e7db8a0d76c087e0fd13ff7a0360569c1175648a3b270d5339101f73f3",
+  "explanation:adjust_condition_line_plain": {
+    "sha256": "1184fe1a615bffeefe1063275c220e3fcda784c51ca3ff13ad10e645368cc042",
     "reviewed": "pending owner read"
   },
-  "explanation:adjust_cmp_ge": {
-    "sha256": "c007e5fca5c551dd052394f914d4f727d1ce399671e2b5d52012fe783beecea6",
+  "explanation:plan_stop_words_either": {
+    "sha256": "3050389b3a0b965ab7307f04bdc1468b2a9f2a5822b3d74bb32b8ac8fcf59490",
     "reviewed": "pending owner read"
   },
-  "explanation:adjust_cmp_lt": {
-    "sha256": "40dbecc9a88f193ab9f4d16c1864baeea31008b6f46145b0bbcd912be2466257",
+  "explanation:plan_stop_words_margin": {
+    "sha256": "d9d9d2d13804828027d360919ab0264d620a06f881a1f4e8d092b70169e7d5a7",
+    "reviewed": "pending owner read"
+  },
+  "explanation:plan_stop_words_loss": {
+    "sha256": "9d0c9c0256ef0c988b554d780030b0d7f3fd66f459e233fcf3dcf451c308b311",
+    "reviewed": "pending owner read"
+  },
+  "explanation:plan_target_words": {
+    "sha256": "23ee53dfec8e47e182d759e77680c786b358928ae42cefc25a8c003d851da024",
     "reviewed": "pending owner read"
   },
   "explanation:playbook_approach_a_02": {

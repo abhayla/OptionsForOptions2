@@ -26,6 +26,7 @@ from ofo.strategy.stored_form import shown_name
 from pydantic import BaseModel, ConfigDict
 
 from ofo_app import playbook_store as store
+from ofo_app.adjustment_check import condition_line
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier, Money
 from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure
@@ -114,8 +115,7 @@ def _detail(s: store.Suggestion) -> Any:
 def _condition(s: store.Suggestion) -> Any:
     if s.cmp not in ("le", "ge", "lt") or s.trigger_id is None or s.value is None or s.threshold is None:
         return None
-    return render_explanation("adjust_condition_line", trigger=s.trigger_id, value=format(s.value, "f"),
-                              cmp=render_explanation(f"adjust_cmp_{s.cmp}"), threshold=format(s.threshold, "f"))
+    return condition_line(s.trigger_id, s.label, s.unit, format(s.value, "f"), format(s.threshold, "f"))
 
 
 def _record(s: store.Suggestion, paper: bool) -> dict:

@@ -45,6 +45,7 @@ from ofo.adjustment.strategy_type import strike_gap_of, type_of
 from ofo.engine import adjust_money
 from ofo.engine.legs import Action, Instrument, Leg
 from ofo.engine.metrics import UNLIMITED
+from ofo.errors.explanations import render_explanation
 from ofo.marketdata.spot_source import SourceState, SpotAnswer
 from ofo.timeutil import IST
 
@@ -207,3 +208,27 @@ async def evaluate_and_remember(conn: Any, user_ref: str, strategy_id: int, body
             await playbook_store.put_rule_state(conn, user_ref, strategy_id, rid, held_at_entry=mem["held_at_entry"],
                                                 seen_clear=mem["seen_clear"])
     return ev
+
+
+def trigger_words(body: Mapping | None, trigger_id: str | None) -> tuple[str | None, str | None]:
+    """(label, unit) of a trigger as the evaluated body holds them; (None, None) for a body or trigger without them."""
+    trig = (body or {}).get("triggers", {}).get(trigger_id) if isinstance(body, Mapping) else None
+    if not isinstance(trig, Mapping):
+        return None, None
+    label, unit = trig.get("label"), trig.get("unit")
+    return (label if isinstance(label, str) else None), (unit if isinstance(unit, str) else None)
+
+
+def condition_line(trigger_id: str, label: str | None, unit: str | None, value: str, threshold: str) -> Any:
+    """GC-ADJ2 item 1: "Spot within this % of a short strike: 0.3416 % (rule 0.5000 %)" from the trigger's own label
+    and unit. A label the slot refuses or a body without one -> the trigger id (fail visible); a unit that is empty
+    or not a plain unit -> the line without it."""
+    def line(lab: str, un: str | None) -> Any:
+        if un:
+            return render_explanation("adjust_condition_line", label=lab, value=value, unit=un, threshold=threshold)
+        return render_explanation("adjust_condition_line_plain", label=lab, value=value, threshold=threshold)
+
+    try:
+        return line(label if label is not None else trigger_id, unit)
+    except (TypeError, ValueError):  # the slot refused the label or the unit: the id, with no unit (fail visible)
+        return line(trigger_id, None)

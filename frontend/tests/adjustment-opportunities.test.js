@@ -1,8 +1,8 @@
 // GC-ADJ2 step 5 (REQ-162 AC-1..AC-3, REQ-112 AC-2/AC-6, REQ-045 AC-1/AC-8, F-71): the Adjustment opportunities page, the
 // tracking panel's playbook flags for a typed strategy (the platform detection stays for an untyped one), the drawer's
 // Dismiss and the compare's acted-on call. The answers have the shapes the backend test tests_app/
-// test_adjustment_opportunities.py reads from the real routes on scenario ADJ-02 (its values: T-01 0.3416 at or below
-// 0.5000, label "Adjustment opportunity detected", strategy name quoted). Every expected string is the answer's own.
+// test_adjustment_opportunities.py reads from the real routes on scenario ADJ-02 (its values: T-01 0.3416 % against
+// 0.5000 %, label "Adjustment opportunity detected", strategy name quoted by the API, shown plain). Every expected string is the answer's own.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { routerKey } from 'vue-router'
@@ -35,15 +35,16 @@ const REASONS = [{ id: 'expected_within_plan', text: 'Expected and within my pla
   { id: 'not_relevant', text: 'Not relevant' }, { id: 'other', text: 'Other' }]
 const COUNTS = (open, dismissed = 0) => [['open', 'Open', open], ['dismissed', 'You dismissed this', dismissed], ['acted_on', 'Acted on', 0],
   ['completed', 'Completed', 0], ['partly_completed', 'Partly completed', 0], ['lapsed', 'Lapsed', 0]].map(([outcome, text, count]) => ({ outcome, text, count }))
-const record = (id, rule, value, cmpText, threshold, outcome = 'open', text = 'Open', detail = null) => ({
-  id, rule_id: rule, trigger_id: rule, stage: 'Middle', value, threshold, condition: `${rule}: ${value} ${cmpText} ${threshold}`,
+const WORDS = { 'T-01': "Spot within this % of a short strike: 0.3416 % (rule 0.5000 %)", 'T-03': "Tested short's delta reaches: 0.4103 delta (rule 0.3500 delta)", 'T-09': "A short leg's premium falls below Rs (close for pennies): 2.7000 Rs (rule 3.0000 Rs)" }
+const record = (id, rule, value, threshold, outcome = 'open', text = 'Open', detail = null) => ({
+  id, rule_id: rule, trigger_id: rule, stage: 'Middle', value, threshold, condition: WORDS[rule],
   shown_at: '2026-10-31T07:47:04.204218Z', outcome, outcome_text: text, detail, can_act: outcome === 'open' })
 const INBOX = {
   groups: [{
     group: '1-b8a0e8ec4c7c41549d41c1a6fc1b12ad', strategy_id: 1, strategy_name: '"Scenario ADJ-02"', shown_at: '2026-10-31T07:47:04.703460Z',
     label: LABEL, summary: '3 adjustment conditions triggered', has_open: true,
-    records: [record(1, 'T-01', '0.3416', 'at or below', '0.5000'), record(2, 'T-03', '0.4103', 'at or above', '0.3500'),
-      record(3, 'T-09', '2.7000', 'at or below', '3.0000', 'dismissed', 'You dismissed this', 'Not relevant')],
+    records: [record(1, 'T-01', '0.3416', '0.5000'), record(2, 'T-03', '0.4103', '0.3500'),
+      record(3, 'T-09', '2.7000', '3.0000', 'dismissed', 'You dismissed this', 'Not relevant')],
   }],
   counts: COUNTS(2, 1), empty_text: null, dismiss_reasons: REASONS,
 }
@@ -63,11 +64,11 @@ describe('REQ-162: the Adjustment opportunities page', () => {
     const w = keep(mount(AdjustmentOpportunitiesPage, stub))
     await flushPromises()
     expect(w.findAll('[data-testid="opp-row"]').length).toBe(1)
-    expect(t(w, 'opp-strategy').text()).toBe('"Scenario ADJ-02"')
+    expect(t(w, 'opp-strategy').text()).toBe('Scenario ADJ-02') // the name as the user typed it, no quote marks
     expect(t(w, 'opp-source').text()).toBe(LABEL)
     expect(t(w, 'opp-summary').text()).toBe('3 adjustment conditions triggered')
     expect(w.findAll('[data-testid="opp-condition"]').map((x) => x.text())).toEqual([
-      'T-01: 0.3416 at or below 0.5000', 'T-03: 0.4103 at or above 0.3500', 'T-09: 2.7000 at or below 3.0000'])
+      WORDS['T-01'], WORDS['T-03'], WORDS['T-09']])
     expect(w.findAll('[data-testid="opp-outcome"]').map((x) => x.findAll('span').map((s) => s.text()))).toEqual([
       ['Open'], ['Open'], ['You dismissed this', 'Not relevant']])
     expect(t(w, 'opp-count-open').text()).toBe('Open: 2')
@@ -110,11 +111,11 @@ const tracking = (detections) => ({ strategy_id: 72, state: 'LIVE', paper_pnl: '
   unbooked: '195.00', unbooked_text: '+195.00', as_of: null, legs: CONDOR, index: { underlying: 'NIFTY', level: '23420.00', state: 'live', at: null },
   breakevens: ['22655.95', '23544.05'], detections })
 const result = (kind, rule, extra = {}) => ({ kind, rule_id: rule, trigger_id: rule, cmp: 'le', value: '0.3416', threshold: '0.5000', reason: null,
-  wording: LABEL, condition: `${rule}: 0.3416 at or below 0.5000`, suggestion_id: null, ...extra })
+  wording: LABEL, condition: WORDS[rule] ?? `${rule}: 0.3416 % (rule 0.5000 %)`, suggestion_id: null, ...extra })
 const CHECK_TYPED = { strategy_id: 72, strategy_type: 'ic', type_name: 'Iron condor', playbook: { source: 'system', id: 1, status: 'approved', draft: false },
   stage: { name: 'Middle', index: 1 }, withheld: null,
-  results: [result('flag', 'T-01', { suggestion_id: 11 }), result('flag', 'T-03', { suggestion_id: 12, condition: 'T-03: 0.4103 at or above 0.3500' }),
-    result('already_true', 'T-05', { wording: { what_happened: 'Already true when tracking started.' }, condition: 'T-05: 1 at or below 2' }),
+  results: [result('flag', 'T-01', { suggestion_id: 11 }), result('flag', 'T-03', { suggestion_id: 12, condition: WORDS['T-03'] }),
+    result('already_true', 'T-05', { wording: { what_happened: 'Already true when tracking started.' }, condition: 'Wing balance: 1 x (rule 2 x)' }),
     result('not_checked', 'T-14', { wording: null, condition: null, reason: { what_happened: 'This trigger is not checked in this version.' } })] }
 const CHECK_UNTYPED = { ...CHECK_TYPED, strategy_type: null, type_name: null, playbook: { source: 'none', id: null, status: null, draft: false }, results: [] }
 
@@ -133,8 +134,8 @@ describe('REQ-045 AC-1 / F-71: the panel shows the playbook flags of a typed str
     const w = await panel([], CHECK_TYPED)
     expect(w.findAll('[data-testid="playbook-flag-label"]').map((x) => x.text())).toEqual([LABEL, LABEL])
     expect(w.findAll('[data-testid="playbook-flag-condition"]').map((x) => x.text())).toEqual([
-      'T-01: 0.3416 at or below 0.5000', 'T-03: 0.4103 at or above 0.3500'])
-    expect(t(w, 'playbook-already-true').text()).toBe('Already true when tracking started. T-05: 1 at or below 2')
+      WORDS['T-01'], WORDS['T-03']])
+    expect(t(w, 'playbook-already-true').text()).toBe('Already true when tracking started. Wing balance: 1 x (rule 2 x)')
     expect(t(w, 'review-adjustment').exists()).toBe(true)
     expect(w.findAll('[data-testid="detection"]').length).toBe(0)
   })
@@ -160,7 +161,7 @@ describe('REQ-045 AC-1 / F-71: the panel shows the playbook flags of a typed str
     await t(w, 'review-adjustment').trigger('click')
     await flushPromises()
     const why = [...document.body.querySelectorAll('[data-testid="drawer-why-line"]')].map((x) => x.textContent)
-    expect(why).toEqual([LABEL, 'T-01: 0.3416 at or below 0.5000', LABEL, 'T-03: 0.4103 at or above 0.3500'])
+    expect(why).toEqual([LABEL, WORDS['T-01'], LABEL, WORDS['T-03']])
     const select = document.body.querySelector('[data-testid="drawer-dismiss-reason"]')
     expect([...select.options].map((o) => o.textContent)).toEqual(['-', ...REASONS.map((r) => r.text)])
     select.value = 'will_act_later'

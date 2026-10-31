@@ -21,9 +21,11 @@
         <div class="mt-3 grid grid-cols-2 gap-3">
           <label class="block text-sm font-medium">{{ labels.target }}
             <input v-model="form.target" class="mt-1 h-10 w-full rounded border border-line px-2" inputmode="decimal" data-testid="plan-target" />
+            <span v-if="form.targetWords" class="mt-1 block text-xs font-normal text-ink-muted" data-testid="plan-target-words">{{ form.targetWords }}</span>
           </label>
           <label class="block text-sm font-medium">{{ labels.stop }}
             <input v-model="form.stop" class="mt-1 h-10 w-full rounded border border-line px-2" inputmode="decimal" data-testid="plan-stop" />
+            <span v-if="form.stopWords" class="mt-1 block text-xs font-normal text-ink-muted" data-testid="plan-stop-words">{{ form.stopWords }}</span>
           </label>
           <label class="block text-sm font-medium">{{ labels.max_adjustments }}
             <input v-model="form.maxAdjustments" class="mt-1 h-10 w-full rounded border border-line px-2" inputmode="numeric" data-testid="plan-max" />

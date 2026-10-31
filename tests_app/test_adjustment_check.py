@@ -86,7 +86,9 @@ async def test_adj02_flags_exactly_t01_t03_t09_with_the_system_wording(app_db_ur
     assert sorted((x["trigger_id"], x["value"], x["threshold"], x["cmp"]) for x in flags) == [
         ("T-01", "0.3416", "0.5000", "le"), ("T-03", "0.4103", "0.3500", "ge"), ("T-09", "2.7000", "3.0000", "le")]
     by_trigger = {x["trigger_id"]: x for x in flags}
-    assert by_trigger["T-01"]["condition"] == "T-01: 0.3416 at or below 0.5000"
+    assert by_trigger["T-01"]["condition"] == "Spot within this % of a short strike: 0.3416 % (rule 0.5000 %)"
+    assert by_trigger["T-03"]["condition"] == "Tested short's delta reaches: 0.4103 delta (rule 0.3500 delta)"
+    assert not any("T-0" in x["condition"] for x in flags)
     assert {x["wording"] for x in flags} == {"Adjustment opportunity detected"}
     assert all(x["reason"] for x in body["results"] if x["kind"] == "not_checked")
 

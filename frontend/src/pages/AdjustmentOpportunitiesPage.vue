@@ -27,7 +27,7 @@
           <tbody>
             <tr v-for="g in reply.groups" :key="g.group" class="border-b border-line align-top" data-testid="opp-row">
               <td class="py-1.5 tabular-nums" data-testid="opp-time">{{ istTime(g.shown_at) }}</td>
-              <td class="py-1.5" data-testid="opp-strategy">{{ g.strategy_name }}</td>
+              <td class="py-1.5" data-testid="opp-strategy">{{ plainName(g.strategy_name) }}</td>
               <td class="py-1.5" data-testid="opp-what">
                 <p v-if="g.summary" class="font-medium" data-testid="opp-summary">{{ g.summary }}</p>
                 <p v-for="r in g.records" :key="r.id" data-testid="opp-condition">{{ r.condition }}</p>
@@ -57,6 +57,7 @@ import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import api, { NEUTRAL_PARTS } from '@/services/api'
 import { compareUrl } from '@/lib/adjustDrawer'
 import { istTime } from '@/lib/displayFormat'
+import { plainName } from '@/lib/saveDraft'
 
 const props = defineProps({
   client: { type: Object, default: () => api }, // the api module; a test passes a stand-in

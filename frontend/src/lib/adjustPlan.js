@@ -17,6 +17,7 @@ export const formOf = (src) => ({
   playbookId: src?.playbook_id ?? null,
   target: decimal(src?.target), stop: decimal(src?.stop), maxAdjustments: count(src?.max_adjustments),
   timeExit: clockText(src?.time_exit),
+  targetWords: text(src?.target_words), stopWords: text(src?.stop_words), // what the numbers are, the server's words
 })
 
 /** The one reading of the answer: { kind: 'generic', text } | { kind: 'sheet', ... } | { kind: 'invalid' }. */
@@ -36,6 +37,7 @@ export function readPlan(body) {
       playbookId: body.plan.playbook_id ?? null,
       playbookName: text(body.plan.playbook_name),
       target: decimal(body.plan.target), stop: decimal(body.plan.stop),
+      targetWords: text(body.plan.target_words), stopWords: text(body.plan.stop_words),
       maxAdjustments: count(body.plan.max_adjustments), timeExit: clockText(body.plan.time_exit),
     } : null,
     prefill: formOf(body.prefill),

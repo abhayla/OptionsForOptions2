@@ -25,7 +25,7 @@ from types import MappingProxyType
 
 from ofo import wording as _wording
 
-from ofo.errors.gate_slots import PlaybookField, PlaybookTypeName
+from ofo.errors.gate_slots import PlaybookField, PlaybookTriggerLabel, PlaybookTypeName, PlaybookUnit
 from ofo.errors.slots import Count, SlotType, _require_exact
 from ofo.errors.templates import MARGIN_SHORTFALL_NEXT_ACTION, ZERODHA_BUSY_TEXT
 
@@ -1372,12 +1372,17 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("suggestion_group_count", "what_triggered", "{count} adjustment conditions triggered",
                         {"count": Count}),
     ExplanationTemplate("suggestion_inbox_empty", "values_seen", "No adjustment opportunities"),
-    ExplanationTemplate("adjust_condition_line", "values_seen", "{trigger}: {value} {cmp} {threshold}",
-                        {"trigger": PlaybookField, "value": PlaybookField, "cmp": Explained,
+    ExplanationTemplate("adjust_condition_line", "values_seen", "{label}: {value} {unit} (rule {threshold} {unit})",
+                        {"label": PlaybookTriggerLabel, "value": PlaybookField, "unit": PlaybookUnit,
                          "threshold": PlaybookField}),
-    ExplanationTemplate("adjust_cmp_le", "values_seen", "at or below"),
-    ExplanationTemplate("adjust_cmp_ge", "values_seen", "at or above"),
-    ExplanationTemplate("adjust_cmp_lt", "values_seen", "below"),
+    ExplanationTemplate("adjust_condition_line_plain", "values_seen", "{label}: {value} (rule {threshold})",
+                        {"label": PlaybookTriggerLabel, "value": PlaybookField, "threshold": PlaybookField}),
+    ExplanationTemplate("plan_target_words", "values_seen", "{pct} % of max profit", {"pct": PlaybookField}),
+    ExplanationTemplate("plan_stop_words_loss", "values_seen", "{pct} % of max loss", {"pct": PlaybookField}),
+    ExplanationTemplate("plan_stop_words_margin", "values_seen", "{margin} % of margin", {"margin": PlaybookField}),
+    ExplanationTemplate("plan_stop_words_either", "values_seen",
+                        "{pct} % of max loss or {margin} % of margin, whichever comes first",
+                        {"pct": PlaybookField, "margin": PlaybookField}),
     ExplanationTemplate("adjust_spot_from_feed", "values_seen", "Spot from the live feed"),
     ExplanationTemplate("adjust_spot_from_rest_quote", "values_seen", "Spot from a REST quote"),
     ExplanationTemplate("adjust_spot_from_last_close", "values_seen", "Spot from the last close"),

@@ -65,6 +65,9 @@ _COUNT = re.compile(r"[0-9]{1,3}")
 #: The sheet field -> the guard of the plan's copy that holds it (docs/design/playbook-body-v1.md "guards")
 TARGET_KEY = "profit_target_pct_of_max_profit"
 STOP_KEY = "stop_line_pct_of_max_loss"
+MARGIN_KEY = "stop_line_pct_of_margin"
+RULE_KEY = "stop_line_rule"
+EITHER_RULE = "whichever comes first"
 MAX_KEY = "max_adjustments"
 TIME_KEY = "time_exit"
 
@@ -102,6 +105,8 @@ class PrefillOut(ApiModel):
     playbook_id: int
     target: Money | None
     stop: Money | None
+    target_words: CatalogueText | None = None
+    stop_words: CatalogueText | None = None
     max_adjustments: int | None
     time_exit: ClockOut | None
 
@@ -111,6 +116,8 @@ class PlanOut(ApiModel):
     playbook_name: CatalogueText | None
     target: Money | None
     stop: Money | None
+    target_words: CatalogueText | None = None
+    stop_words: CatalogueText | None = None
     max_adjustments: int | None
     time_exit: ClockOut | None
     accepted_at: datetime.datetime
@@ -159,11 +166,30 @@ def _read_clock(guards: dict) -> ClockOut | None:
     return None if found is None else ClockOut.model_validate({"hour": int(found[1]), "minute": int(found[2])})
 
 
+def _words(guards: dict) -> tuple[Any, Any]:
+    """GC-ADJ2 item 3: what the target and the stop numbers ARE, in words from the catalogue (the number stays the
+    input). The two-part stop (loss or margin, "whichever comes first") only when the body says exactly that rule."""
+    target, loss = _read_percent(guards, TARGET_KEY), _read_percent(guards, STOP_KEY)
+    margin = _read_percent(guards, MARGIN_KEY)
+    t_words = None if target is None else render_explanation("plan_target_words", pct=format(target, "f"))
+    if loss is not None and margin is not None and guards.get(RULE_KEY) == EITHER_RULE:
+        s_words = render_explanation("plan_stop_words_either", pct=format(loss, "f"), margin=format(margin, "f"))
+    elif loss is not None:
+        s_words = render_explanation("plan_stop_words_loss", pct=format(loss, "f"))
+    elif margin is not None:
+        s_words = render_explanation("plan_stop_words_margin", margin=format(margin, "f"))
+    else:
+        s_words = None
+    return t_words, s_words
+
+
 def _values(body: dict) -> dict[str, Any]:
     found = body.get("guards")
     guards: dict = found if isinstance(found, dict) else {}
     mx = guards.get(MAX_KEY)
+    t_words, s_words = _words(guards)
     return {"target": _read_percent(guards, TARGET_KEY), "stop": _read_percent(guards, STOP_KEY),
+            "target_words": t_words, "stop_words": s_words,
             "max_adjustments": mx if type(mx) is int else None, "time_exit": _read_clock(guards)}
 
 
