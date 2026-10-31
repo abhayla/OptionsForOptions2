@@ -1030,8 +1030,11 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
 ## F-71 - The "near a short strike" adjustment detection fires at entry for a shape whose short strike is near spot by design
 - Same walk: right after tracking, "Adjustment opportunity detected: Index is near a short strike: 22900, 78.95 points
   (0.35%) away" on a fresh iron condor with spot 22,821 - where a 1-step-OTM short strike always sits. The threshold is
-  fixed, not relative to the position's distance at entry. Bears on REQ-045 AC-3. Status: **measured once, live;
-  deferred (outside ADR-207's eight parts)**.
+  fixed, not relative to the position's distance at entry. Bears on REQ-045 AC-3. Status: **FIXED 2026-10-31
+  (GC-ADJ2 step 1)**: a rule true at entry shows "Already true when tracking started" and opens nothing until it has
+  stopped holding and holds again (REQ-159 section text; class `knowledge/findings/level-trigger-true-at-entry-by-design.json`,
+  guarded). Proof: `tests_app/test_adjustment_check.py` 8 passed on a fresh database (ADJ-42: already true at entry,
+  then a flag after a clear check; ADJ-02 still flags T-01/T-03/T-09). Same class in the library: ADJ-33, ADJ-37, ADJ-40.
 
 ## F-72 - Kite's day candle for an index carries the exchange's official closing value (SENSEX 28 Oct: 73,246.03 on both)
 - Measured 2026-10-29 ~14:10 IST: `scripts/checks/index_close.py SENSEX 2026-10-28` (one allow-listed read-only GET
