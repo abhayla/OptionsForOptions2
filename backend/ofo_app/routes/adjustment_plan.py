@@ -38,7 +38,7 @@ from pydantic import BaseModel, ConfigDict
 
 from ofo_app import adjustment_check as check
 from ofo_app import playbook_store as store
-from ofo_app.api_models import ApiModel, CatalogueText, Identifier
+from ofo_app.api_models import ApiModel, CatalogueText, Identifier, Money
 from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure
 from ofo_app.routes.adjustment import (
@@ -61,6 +61,7 @@ ID_MAX = 9_223_372_036_854_775_807  # the id column is BIGSERIAL
 MAX_ADJUSTMENTS_LIMIT = 10
 _PERCENT = re.compile(r"[0-9]{1,3}(\.[0-9]{1,4})?")
 _CLOCK = re.compile(r"([01][0-9]|2[0-3]):([0-5][0-9])")
+_COUNT = re.compile(r"[0-9]{1,3}")
 #: The sheet field -> the guard of the plan's copy that holds it (docs/design/playbook-body-v1.md "guards")
 TARGET_KEY = "profit_target_pct_of_max_profit"
 STOP_KEY = "stop_line_pct_of_max_loss"
@@ -72,17 +73,14 @@ class _In(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
 
-class ClockIn(_In):
-    hour: int
-    minute: int
-
-
 class PlanIn(_In):
+    """Every sheet value arrives as the text typed (the browser forms no number, ADR-008): percents as decimal text,
+    max adjustments as digits, the time exit as ``HH:MM``; each is checked here and names its field when not valid."""
     playbook_id: int
     target: str | None = None
     stop: str | None = None
-    max_adjustments: int | None = None
-    time_exit: ClockIn | None = None
+    max_adjustments: str | None = None
+    time_exit: str | None = None
 
 
 class ClockOut(ApiModel):
@@ -102,8 +100,8 @@ class PlanPlaybookOut(ApiModel):
 
 class PrefillOut(ApiModel):
     playbook_id: int
-    target: Decimal | None
-    stop: Decimal | None
+    target: Money | None
+    stop: Money | None
     max_adjustments: int | None
     time_exit: ClockOut | None
 
@@ -111,8 +109,8 @@ class PrefillOut(ApiModel):
 class PlanOut(ApiModel):
     playbook_id: int | None
     playbook_name: CatalogueText | None
-    target: Decimal | None
-    stop: Decimal | None
+    target: Money | None
+    stop: Money | None
     max_adjustments: int | None
     time_exit: ClockOut | None
     accepted_at: datetime.datetime
@@ -162,7 +160,8 @@ def _read_clock(guards: dict) -> ClockOut | None:
 
 
 def _values(body: dict) -> dict[str, Any]:
-    guards = body.get("guards") if isinstance(body.get("guards"), dict) else {}
+    found = body.get("guards")
+    guards: dict = found if isinstance(found, dict) else {}
     mx = guards.get(MAX_KEY)
     return {"target": _read_percent(guards, TARGET_KEY), "stop": _read_percent(guards, STOP_KEY),
             "max_adjustments": mx if type(mx) is int else None, "time_exit": _read_clock(guards)}
@@ -177,13 +176,13 @@ def with_overrides(body: dict, data: PlanIn) -> dict:
     if data.stop is not None:
         guards[STOP_KEY] = _percent(data.stop, "stop")
     if data.max_adjustments is not None:
-        if not 0 <= data.max_adjustments <= MAX_ADJUSTMENTS_LIMIT:
+        if not _COUNT.fullmatch(data.max_adjustments) or int(data.max_adjustments) > MAX_ADJUSTMENTS_LIMIT:
             raise _bad(MAX_KEY)
-        guards[MAX_KEY] = data.max_adjustments
+        guards[MAX_KEY] = int(data.max_adjustments)
     if data.time_exit is not None:
-        if not (0 <= data.time_exit.hour <= 23 and 0 <= data.time_exit.minute <= 59):  # noqa: PLR2004 - a clock
+        if not _CLOCK.fullmatch(data.time_exit):
             raise _bad(TIME_KEY)
-        guards[TIME_KEY] = f"{data.time_exit.hour:02d}:{data.time_exit.minute:02d}"
+        guards[TIME_KEY] = data.time_exit
     return out
 
 

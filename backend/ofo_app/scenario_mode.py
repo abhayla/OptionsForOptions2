@@ -93,6 +93,8 @@ NON_ORDER_ROUTES: frozenset[tuple[str, str]] = frozenset({
     ("POST", "/api/strategies/leg-edit"),  # engine answer for one edited leg
     ("POST", "/api/strategies/outcome"),  # engine answer (a read)
     ("POST", "/api/strategies/{strategy_id}/adjustment-approaches"),  # REQ-155 engine answer, suggest-only (a read)
+    ("POST", "/api/strategies/{strategy_id}/adjustment-plan"),  # GC-ADJ2 4: accept a plan (data, no order)
+    ("PUT", "/api/strategies/{strategy_id}/adjustment-plan"),  # GC-ADJ2 4: edit the plan (data, no order)
     ("POST", "/paper/alerts/read"),  # marks alerts read
     ("POST", "/api/strategies/planned-entry"),  # captures planned prices
     ("POST", "/api/strategies/load-template"),  # a ready-made shape into the builder

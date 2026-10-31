@@ -40,6 +40,7 @@
       <!-- GC-ADJ1 step 3 (REQ-046 AC-1..AC-3): the drawer with layers 1-3; shown only while a detection is shown -->
       <button v-if="view.detections.length" ref="reviewBtn" type="button" class="mt-2 rounded border border-line bg-surface px-2 py-1 text-xs font-medium" data-testid="review-adjustment" @click="openDrawer">{{ REVIEW_BUTTON_TEXT }}</button>
     </div>
+    <PlanEntry v-if="status === 'tracked'" :strategy-id="savedId" />
     <AdjustDrawer
       :open="drawerOpen" :strategy-id="savedId" :lines="drawerLines" :detected="!!view?.detections?.length" :card-rows="cardRows(raw)"
       @close="closeDrawer" @compare="goCompare"
@@ -51,6 +52,7 @@
 import { inject, nextTick, ref, watch } from 'vue'
 import { routerKey } from 'vue-router'
 import AdjustDrawer from '@/components/strategy/AdjustDrawer.vue'
+import PlanEntry from '@/components/strategy/PlanEntry.vue'
 import { REVIEW_BUTTON_TEXT, cardRows } from '@/lib/adjustDrawer'
 import Chip from '@/components/common/Chip.vue'
 import FigureHint from '@/components/common/FigureHint.vue'
