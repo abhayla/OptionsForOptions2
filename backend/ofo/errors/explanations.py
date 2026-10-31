@@ -853,6 +853,23 @@ COLUMN_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
     "UPPER_BE": "Upper Breakeven", "STATUS": "Status",
 })
 
+#: GC-ADJ2 1A (REQ-158 AC-1; docs/design/playbook-body-v1.md "Strategy types"): each playbook strategy type's shown
+#: name, by key, in the design note's order. ofo.adjustment.playbook_types holds the keys and reads the names here.
+PLAYBOOK_TYPE_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
+    "strangle": "Short strangle",
+    "straddle": "Short straddle",
+    "ic": "Iron condor",
+    "ifly": "Iron butterfly",
+    "credit": "Credit spreads",
+    "debit": "Debit spreads",
+    "longopt": "Single long option",
+    "longvol": "Long straddle / strangle",
+    "calendar": "Calendar / diagonal",
+    "ratio": "Ratio and back-spreads",
+    "dirfly": "Directional butterflies / condors",
+    "other": "Naked shorts / futures / others",
+})
+
 #: Why a table cell has no value (the cell's `reason`), by key. Each is one reviewed template `table_reason_<key>`.
 TABLE_REASON_TEXT: Mapping[str, str] = MappingProxyType({
     "not_applicable": "not applicable",
@@ -1550,6 +1567,7 @@ LABEL_TABLES: Mapping[str, Mapping[str, str]] = MappingProxyType({
     "column": COLUMN_LABEL_TEXT, "table_reason": TABLE_REASON_TEXT, "level_region": LEVEL_REGION_TEXT,
     "adjustment_approach": ADJUSTMENT_APPROACH_LABEL_TEXT, "adjustment_approach_about": ADJUSTMENT_APPROACH_ABOUT_TEXT,
     "adjustment_criterion": ADJUSTMENT_CRITERION_LABEL_TEXT, "adjustment_leader": ADJUSTMENT_LEADER_LABEL_TEXT,
+    "playbook_type": PLAYBOOK_TYPE_LABEL_TEXT,
 })
 
 

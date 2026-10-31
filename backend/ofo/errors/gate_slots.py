@@ -428,18 +428,22 @@ _PLAYBOOK_NAME_MAX = 80  # = ofo.adjustment.playbook_types.NAME_MAX (a test pins
 
 
 class PlaybookName(SlotType):
-    """A playbook name the user typed (REQ-158 AC-3), trimmed, 1..80 characters, shown in quotes: the user's own
-    words, never ours."""
+    """A playbook name the user typed (REQ-158 AC-3), trimmed, 1..80 characters, shown as typed: the user's own
+    words, never ours. `user_text`: the builder masks exactly this span for the wording scan (the template
+    around it is still scanned)."""
+
+    user_text = True
 
     @staticmethod
     def validate(value: object) -> None:
         _require_exact(value, str, "PlaybookName")
-        if not isinstance(value, str) or not value or value != value.strip() or len(value) > _PLAYBOOK_NAME_MAX:
-            raise ValueError("PlaybookName slot needs a trimmed name of 1 to 80 characters")
+        if (not isinstance(value, str) or not value or value != value.strip() or len(value) > _PLAYBOOK_NAME_MAX
+                or '"' in value):
+            raise ValueError("PlaybookName slot needs a trimmed name of 1 to 80 characters, no double quote")
 
     @staticmethod
     def format(value: str) -> str:
-        return f'"{str.__str__(value)}"'
+        return str.__str__(value)
 
 
 class PlaybookTypeName(SlotType):
@@ -447,9 +451,9 @@ class PlaybookTypeName(SlotType):
 
     @staticmethod
     def validate(value: object) -> None:
-        from ofo.adjustment.playbook_types import SHOWN_NAMES  # noqa: PLC0415 - ofo.adjustment imports ofo.errors
+        from ofo.errors.explanations import PLAYBOOK_TYPE_LABEL_TEXT  # noqa: PLC0415 - explanations imports this
         _require_exact(value, str, "PlaybookTypeName")
-        if value not in SHOWN_NAMES.values():
+        if value not in PLAYBOOK_TYPE_LABEL_TEXT.values():
             raise ValueError(f"PlaybookTypeName slot must be a shown type name, got {value!r:.40}")
 
     @staticmethod

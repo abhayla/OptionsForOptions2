@@ -2470,5 +2470,9 @@
   "explanation:playbook_system_active_again": {
     "sha256": "b05d679bd3cad8ed24a09e7232020044fae2c27bb5f181e152afda16dfeab4a8",
     "reviewed": "pending owner read"
+  },
+  "labels:playbook_type": {
+    "sha256": "86aa465e822d4f75cb54465bb86ad47b811a7fae35be90bbabb83c6ceb7c80bf",
+    "reviewed": "pending owner read"
   }
 }

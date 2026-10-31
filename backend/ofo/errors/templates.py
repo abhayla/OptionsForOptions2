@@ -1216,6 +1216,7 @@ def _make_render(token: object) -> Callable[..., UserFacingError]:
             raise ValueError(f"template {template_id!r} got unexpected slot(s): {sorted(extra)}")
 
         formatted: dict[str, str] = {}
+        user_text: list[str] = []
         for name, slot_type in slot_types:
             value = slots[name]
             slot_type.validate(value)
@@ -1223,6 +1224,8 @@ def _make_render(token: object) -> Callable[..., UserFacingError]:
             if type(text) is not str:
                 raise TypeError(f"slot {name!r} formatter returned {type(text).__name__}, not str")
             formatted[name] = text
+            if getattr(slot_type, "user_text", False) is True:  # the user's own words: masked for the scan only
+                user_text.append(value)  # type: ignore[arg-type] - validate() proved it a str
 
         parts = {name: text.format(**formatted) for name, text in zip(_PART_NAMES, part_texts)}
 
@@ -1233,7 +1236,8 @@ def _make_render(token: object) -> Callable[..., UserFacingError]:
         # The four-part, Latin-letter and ADR-003/Q226/Q230 wording checks run INSIDE the builder
         # (round 6, Q230), on the FINISHED text, so a slot value or formatter that combines with
         # fixed template text into advice wording is refused there, whatever route reached it.
-        return build(token, error_class=error_class, code=code, external=external, **parts)
+        return build(token, error_class=error_class, code=code, external=external, user_text=tuple(user_text),
+                     **parts)
 
     return render
 

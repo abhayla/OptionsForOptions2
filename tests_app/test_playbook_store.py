@@ -98,7 +98,7 @@ async def test_a_duplicate_name_in_any_case_is_refused_with_the_exact_text(db):
         await pb.create(db, user, "ic", "iron condor safe", _body())
     assert refused.value.code == pb.NAME_TAKEN
     shown = render(refused.value.code, **refused.value.slots)
-    assert shown.what_happened == 'A playbook named "iron condor safe" already exists for Iron condor.'
+    assert shown.what_happened == 'A playbook named iron condor safe already exists for Iron condor.'
     assert await _scalar(db, "SELECT count(*) FROM public.adjustment_playbooks WHERE user_ref = :u", u=user) == 1
 
 
