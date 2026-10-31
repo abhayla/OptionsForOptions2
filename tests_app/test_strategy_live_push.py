@@ -353,7 +353,7 @@ async def test_the_live_context_runs_and_stops_with_the_socket():
         assert sock.stopped is True
     finally:
         live_market.set_current(None)
-    assert live_market.current_context() is None and get_market_context() is None
+    assert live_market.current_context() is None and await get_market_context(None) is None  # no context: no read
 
 
 async def test_a_socket_failure_is_logged_by_class_name_only(caplog):

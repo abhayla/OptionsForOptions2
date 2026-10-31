@@ -24,6 +24,7 @@ import os
 from decimal import Decimal
 from typing import Awaitable, Callable, Optional  # noqa: UP035
 
+from ofo import settings
 from ofo.broker.kite_endpoints import KITE_WS_HOST
 from ofo.broker.rate_limit import READ_PERIOD_SECONDS, READ_POSITIONS
 from ofo.engine.executable_price import Depth
@@ -33,7 +34,6 @@ from ofo.marketdata.feed_health import FEED_IDLE, FEED_WAITING, market_closed_fo
 from ofo.marketdata.kite_provider import IST, KiteProvider
 from ofo.marketdata.quote_stamp import quote_time
 from ofo.marketdata.spot_source import SourceReading, SourceState
-from ofo import settings
 from redis.exceptions import RedisError
 
 from ofo_app import feed_bus, feed_mode, kite_period_reads

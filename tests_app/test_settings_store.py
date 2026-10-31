@@ -71,7 +71,7 @@ async def test_a_row_in_force_is_its_value_and_a_reset_is_a_new_row(app_engine):
         assert (await settings_in_force(conn))[KEY] == D("0.07")
         await _add(conn, "0.065", note="reset to default")  # AC-2: reset is a new row
         assert (await settings_in_force(conn))[KEY] == DEFAULT
-        assert len((await history(conn))[KEY]) == 2
+        assert [r.value for r in (await history(conn))[KEY]] == [DEFAULT, D("0.07")]
 
 
 async def test_a_future_dated_row_is_not_in_force_until_its_time(app_engine):
@@ -179,7 +179,8 @@ async def test_a_refused_write_writes_no_audit_event(app_engine):
 
 
 async def test_the_application_role_cannot_update_or_delete(app_engine):
-    for sql in (f"UPDATE public.app_settings SET value = 0 WHERE key = '{KEY}'", "DELETE FROM public.app_settings"):
+    for sql in ("UPDATE public.app_settings SET value = 0 WHERE key = 'pricing.risk_free_rate'",
+                "DELETE FROM public.app_settings"):
         async with _Tx(app_engine) as conn:
             with pytest.raises(DBAPIError, match="permission denied"):
                 await conn.execute(text(sql))
@@ -187,8 +188,8 @@ async def test_the_application_role_cannot_update_or_delete(app_engine):
 
 async def test_the_guard_refuses_update_and_delete_even_for_the_owner(admin_engine):
     """Killing test for the trigger: with a row present, the owner's UPDATE and DELETE raise OF032."""
-    for sql in (f"UPDATE public.app_settings SET value = 0 WHERE key = '{KEY}'",
-                f"DELETE FROM public.app_settings WHERE key = '{KEY}'"):
+    for sql in ("UPDATE public.app_settings SET value = 0 WHERE key = 'pricing.risk_free_rate'",
+                "DELETE FROM public.app_settings WHERE key = 'pricing.risk_free_rate'"):
         async with _Tx(admin_engine) as conn:
             await conn.execute(_RAW, {"k": KEY, "v": D("0.07"), "at": await _now(conn)})
             with pytest.raises(DBAPIError, match="insert-only") as info:

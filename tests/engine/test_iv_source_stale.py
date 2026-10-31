@@ -28,7 +28,7 @@ from ofo.rules.inputs import DataHealth
 
 D = Decimal
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "ui_data_check" / "closed_s54"
-RATE = D("0.065")  # the server's rate (ofo_app.live_market.LIVE_RATE)
+RATE = D("0.065")  # the registry default of pricing.risk_free_rate (ofo.settings)
 
 
 def _reply():

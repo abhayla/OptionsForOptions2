@@ -17,6 +17,7 @@ import pathlib
 import sys
 import types
 from decimal import Decimal
+from http import HTTPStatus
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -26,7 +27,6 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 
 from marketdata._kite_fixture import all_instrument_ids, new_provider, replay  # noqa: E402
-
 from ofo.marketdata.kite_provider import IST  # noqa: E402
 
 VALUATION = datetime.datetime(2026, 10, 8, 9, 20, 9, tzinfo=IST)
@@ -102,11 +102,11 @@ async def test_core_a_stored_rate_changes_the_priced_answer_with_no_restart(app_
         app = _app(session)
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
             first = await ac.post("/api/strategies/outcome", json=_body(replayed))
-            assert first.status_code == 200, first.text
+            assert first.status_code == HTTPStatus.OK, first.text
             assert used == [Decimal("0.065")]
             await settings_store.add_setting(session, KEY, "0.07", set_by="admin-test", correlation_id="gcset-core-1")
             second = await ac.post("/api/strategies/outcome", json=_body(replayed))
-            assert second.status_code == 200, second.text
+            assert second.status_code == HTTPStatus.OK, second.text
         assert used == [Decimal("0.065"), Decimal("0.07")]
         a, b = _figures(first.json()), _figures(second.json())
         assert a != b, "the stored rate did not change any figure"
@@ -172,6 +172,6 @@ async def test_a_store_that_cannot_answer_fails_closed(replayed, monkeypatch):
         async with AsyncClient(transport=ASGITransport(app=app, raise_app_exceptions=False),
                                base_url="http://test") as ac:
             resp = await ac.post("/api/strategies/outcome", json=_body(replayed))
-        assert resp.status_code == 500, resp.text
+        assert resp.status_code == HTTPStatus.INTERNAL_SERVER_ERROR, resp.text
         assert "0.065" not in resp.text
     assert used == []  # nothing was priced

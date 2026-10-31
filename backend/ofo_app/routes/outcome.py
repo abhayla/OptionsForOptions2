@@ -46,10 +46,10 @@ from ofo.outcome.serialize import outcome_to_dict
 from ofo.outcome.service import PAYOFF_TABLE_STEPS, Margin, waiting_first_price
 from ofo.outcome.target import TargetAsk
 from ofo.scenario.config import ScenarioConfig, ScenarioSettings
-from ofo.settings import RISK_FREE_RATE
-from ofo.settings import value_of as registry_value_of
 from ofo.scenario.levels import RangeOverride, resolve_range
 from ofo.scenario.views import View
+from ofo.settings import RISK_FREE_RATE
+from ofo.settings import value_of as registry_value_of
 from ofo.timeutil import IST
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StrictBool, StrictInt, model_validator
 

@@ -111,7 +111,7 @@ def _block() -> str:
 {_M16._M8._trigger_check(TABLE, TRIGGER, GUARD, PIN)}
         END IF;
     END IF;
-"""
+"""  # noqa: S608 - constant table and function names only
 
 
 def previous_allowlist_sql() -> str:
