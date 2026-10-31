@@ -164,7 +164,9 @@ def open_mark(count: int) -> Any:
     """The card's words for `count` open records, or None for none (no mark at 0)."""
     if count < 1:
         return None
-    return render_explanation("suggestion_open_count_one" if count == 1 else "suggestion_open_count", count=count)
+    if count == 1:
+        return render_explanation("suggestion_open_count_one")
+    return render_explanation("suggestion_open_count", count=count)
 
 
 def _id(suggestion_id: int) -> int:
