@@ -2240,6 +2240,15 @@
             "title": "Kind",
             "type": "string"
           },
+          "note": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
           "reason": {
             "anyOf": [
               {},
@@ -4987,6 +4996,16 @@
             "title": "Day Kinds",
             "type": "array"
           },
+          "guards": {
+            "items": {
+              "$ref": "#/components/schemas/LabelOut"
+            },
+            "title": "Guards",
+            "type": "array"
+          },
+          "no_values": {
+            "title": "No Values"
+          },
           "past_note": {
             "title": "Past Note"
           },
@@ -5003,7 +5022,9 @@
           "day_kinds",
           "day_actions",
           "past_note",
-          "summary"
+          "summary",
+          "guards",
+          "no_values"
         ],
         "title": "LabelsOut",
         "type": "object"
@@ -8176,6 +8197,15 @@
             ],
             "title": "Stop"
           },
+          "stop_words": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop Words"
+          },
           "target": {
             "anyOf": [
               {
@@ -8186,6 +8216,15 @@
               }
             ],
             "title": "Target"
+          },
+          "target_words": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Words"
           },
           "time_exit": {
             "anyOf": [
@@ -8744,6 +8783,15 @@
             ],
             "title": "Stop"
           },
+          "stop_words": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop Words"
+          },
           "target": {
             "anyOf": [
               {
@@ -8754,6 +8802,15 @@
               }
             ],
             "title": "Target"
+          },
+          "target_words": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Words"
           },
           "time_exit": {
             "anyOf": [

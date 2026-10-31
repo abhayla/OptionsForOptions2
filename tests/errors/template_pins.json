@@ -2860,7 +2860,7 @@
     "reviewed": "pending owner read"
   },
   "explanation:playbook_approach_a_13": {
-    "sha256": "28e2fc667ca705d0c8e9e5367e29f8d67ffc9ae39a458508c4921b54148c34de",
+    "sha256": "734ee078c390446228d47e66f17043ef95de4144335371daeb1f420cf3717e9c",
     "reviewed": "pending owner read"
   },
   "explanation:playbook_approach_a_14": {
@@ -3088,7 +3088,7 @@
     "reviewed": "pending owner read"
   },
   "labels:playbook_approach": {
-    "sha256": "0634024a1f7381a4a1e6c8ccca4fcd545f49b2755b054668e07d74ab13ed7f21",
+    "sha256": "45786ac3055431c6bb9d2af8d693dfc6d62b8a531f781c9e48630816402bbf4c",
     "reviewed": "pending owner read"
   },
   "labels:playbook_day_kind": {

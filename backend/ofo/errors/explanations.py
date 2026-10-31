@@ -260,7 +260,7 @@ PLAYBOOK_APPROACH_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
     "A-09": "Add wings (cap the loss)",
     "A-10": "Inverted strangle",
     "A-12": "Convert to a (broken-wing) butterfly",
-    "A-13": "Add a jade lizard",  # the fixture says "no risk on one side": a promise word (Q226), not shown
+    "A-13": "Add a lizard: sell a put and a call spread",  # fixture: "no risk on one side" (a promise word, Q226); a template name may not appear in code (AC-5)
     "A-14": "Calendar / diagonal on the tested side",
     "A-15": "Ratio fix (buy back the extra short or add a far long)",
     "A-16": "Long option to debit spread",
