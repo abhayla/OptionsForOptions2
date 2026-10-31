@@ -10,7 +10,7 @@
       <template v-if="read.plan">
         <p data-testid="plan-entry-playbook">{{ read.labels.playbook }}: {{ read.plan.playbookName }}</p>
         <p data-testid="plan-entry-guards">
-          {{ read.labels.target }}: {{ read.plan.target }} / {{ read.labels.stop }}: {{ read.plan.stop }} /
+          {{ read.labels.target }}: {{ read.plan.target }}<template v-if="read.plan.targetWords"> ({{ read.plan.targetWords }})</template> / {{ read.labels.stop }}: {{ read.plan.stop }}<template v-if="read.plan.stopWords"> ({{ read.plan.stopWords }})</template> /
           {{ read.labels.max_adjustments }}: {{ read.plan.maxAdjustments }} / {{ read.labels.time_exit }}: {{ read.plan.timeExit }}
         </p>
       </template>

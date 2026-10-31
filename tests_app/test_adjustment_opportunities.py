@@ -94,7 +94,7 @@ async def test_adj02_first_check_opens_three_records_a_second_check_opens_none(a
         sid, f'"{seed_mod.strategy_name("ADJ-02")}"', SYSTEM_LABEL, "3 adjustment conditions triggered", True)
     assert [(r["rule_id"], r["outcome_text"], r["can_act"]) for r in g["records"]] == [
         ("T-01", "Open", True), ("T-03", "Open", True), ("T-09", "Open", True)]
-    assert g["records"][0]["condition"] == "T-01: 0.3416 at or below 0.5000"
+    assert g["records"][0]["condition"] == "Spot within this % of a short strike: 0.3416 % (rule 0.5000 %)"
     assert {c["outcome"]: c["count"] for c in inbox["counts"]}["open"] == ADJ02_FLAGS and inbox["empty_text"] is None
     assert all(r["outcome"] != "open" for x in inbox["groups"] if x is not g for r in x["records"])
 

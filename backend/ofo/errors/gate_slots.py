@@ -446,6 +446,43 @@ class PlaybookName(SlotType):
         return str.__str__(value)
 
 
+_TRIGGER_LABEL_MAX = 120
+_TRIGGER_UNIT = re.compile(r"[A-Za-z%/]{1,12}")
+
+
+class PlaybookTriggerLabel(SlotType):
+    """A trigger's label as its playbook body holds it ("Spot within this % of a short strike"; the user may edit it),
+    trimmed, 1..120 characters, no control character, no double quote, shown as it stands (GC-ADJ2 item 1: a condition
+    line names its trigger in words). `user_text`: the builder masks exactly this span for the wording scan."""
+
+    user_text = True
+
+    @staticmethod
+    def validate(value: object) -> None:
+        _require_exact(value, str, "PlaybookTriggerLabel")
+        if (not isinstance(value, str) or not value or value != value.strip() or len(value) > _TRIGGER_LABEL_MAX
+                or '"' in value or any(not c.isprintable() for c in value)):
+            raise ValueError("PlaybookTriggerLabel slot needs a trimmed printable label of 1 to 120 characters")
+
+    @staticmethod
+    def format(value: str) -> str:
+        return str.__str__(value)
+
+
+class PlaybookUnit(SlotType):
+    """A trigger's unit as its playbook body holds it (%, pts, x, Rs, SD, delta/lot): 1..12 letters, % or /."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        _require_exact(value, str, "PlaybookUnit")
+        if not isinstance(value, str) or not _TRIGGER_UNIT.fullmatch(value):
+            raise ValueError(f"PlaybookUnit slot must match {_TRIGGER_UNIT.pattern!r}, got {value!r:.20}")
+
+    @staticmethod
+    def format(value: str) -> str:
+        return str.__str__(value)
+
+
 class PlaybookTypeName(SlotType):
     """A playbook strategy type's shown name, closed to the twelve of ofo.adjustment.playbook_types (REQ-158 AC-1)."""
 

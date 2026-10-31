@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from collections.abc import Mapping
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Annotated, Any, Literal
 
@@ -70,7 +71,7 @@ class CheckResultOut(ApiModel):
     threshold: Money | None
     reason: CatalogueText | None
     wording: CatalogueText | None
-    condition: CatalogueText | None = None  # the condition in plain words ("T-01: 0.3416 at or below 0.5000")
+    condition: CatalogueText | None = None  # the condition in words, from the body's label and unit
     suggestion_id: int | None = None  # a flag's open REQ-112 record (Dismiss / acted on name it)
 
 
@@ -95,31 +96,32 @@ def _num(v: Decimal | str | None) -> Decimal | None:
     return v.quantize(SHOWN_PLACES, rounding=ROUND_HALF_UP)
 
 
-def _condition(r: pe.Flag | pe.AlreadyTrue) -> Any:
-    """The condition in plain words from the catalogue; None without a comparison."""
+def _condition(r: pe.Flag | pe.AlreadyTrue, body: Mapping | None) -> Any:
+    """The condition in words from the evaluated body's own label and unit; None without a comparison."""
     if r.cmp is None:
         return None
     value, threshold = _num(r.value), _num(r.threshold)
-    return render_explanation("adjust_condition_line", trigger=r.trigger_id,
-                              value=str(r.value) if value is None else str(value),
-                              cmp=render_explanation(f"adjust_cmp_{r.cmp}"),
-                              threshold=str(r.threshold) if threshold is None else str(threshold))
+    label, unit = check.trigger_words(body, r.trigger_id)
+    return check.condition_line(r.trigger_id, label, unit, str(r.value) if value is None else str(value),
+                                str(r.threshold) if threshold is None else str(threshold))
 
 
-def result_out(r: pe.Result, flag_wording: Any, opened: dict[str, int] | None = None) -> dict:
+def result_out(r: pe.Result, flag_wording: Any, opened: dict[str, int] | None = None,
+               body: Mapping | None = None) -> dict:
     if isinstance(r, pe.Flag):
         return {"kind": "flag", "rule_id": r.rule_id, "trigger_id": r.trigger_id, "cmp": r.cmp, "value": _num(r.value),
                 "threshold": _num(r.threshold), "reason": None, "wording": flag_wording,
-                "condition": _condition(r), "suggestion_id": (opened or {}).get(r.rule_id)}
+                "condition": _condition(r, body), "suggestion_id": (opened or {}).get(r.rule_id)}
     if isinstance(r, pe.AlreadyTrue):
         return {"kind": "already_true", "rule_id": r.rule_id, "trigger_id": r.trigger_id, "cmp": r.cmp,
                 "value": _num(r.value), "threshold": _num(r.threshold), "reason": None, "wording": render(r.code),
-                "condition": _condition(r)}
+                "condition": _condition(r, body)}
     return {"kind": "not_checked", "rule_id": r.rule_id, "trigger_id": r.trigger_id, "cmp": None, "value": None,
             "threshold": None, "reason": render(r.code, **dict(r.slots)), "wording": None}
 
 
-async def _sync_records(db: Any, user_ref: str, strategy_id: int, ev: pe.Evaluation, source: str) -> dict[str, int]:
+async def _sync_records(db: Any, user_ref: str, strategy_id: int, ev: pe.Evaluation, source: str,
+                        body: Mapping | None = None) -> dict[str, int]:
     """REQ-112 AC-1/AC-2, REQ-045 AC-8: one open record per flagged rule (a rule still open keeps its record), all
     opened at this check sharing one group; the open record of a rule this check found FALSE lapses (condition
     stopped holding). A not-checked or already-true rule is neither flagged nor cleared: its record stays as it is."""
@@ -129,7 +131,8 @@ async def _sync_records(db: Any, user_ref: str, strategy_id: int, ev: pe.Evaluat
         if isinstance(r, pe.Flag):
             rec = await playbook_store.open_suggestion(
                 db, user_ref, strategy_id, r.rule_id, trigger_id=r.trigger_id, stage=r.stage_name,
-                value=_num(r.value), threshold=_num(r.threshold), group=group, source=source, cmp=r.cmp)
+                value=_num(r.value), threshold=_num(r.threshold), group=group, source=source, cmp=r.cmp,
+                label=check.trigger_words(body, r.trigger_id)[0], unit=check.trigger_words(body, r.trigger_id)[1])
             opened[r.rule_id] = rec.id
     cleared = set(ev.clear)
     for rec in await playbook_store.open_suggestions(db, user_ref, strategy_id):
@@ -189,10 +192,10 @@ async def adjustment_check(  # noqa: PLR0913 - FastAPI dependencies, one per inp
     ev = await check.evaluate_and_remember(db, user_ref, strategy_id, resolved.body, state, scenario_mode.current(),
                                            tracked.position)
     source = playbook_store.SOURCE_SYSTEM if resolved.is_system else playbook_store.SOURCE_OWN
-    opened = await _sync_records(db, user_ref, strategy_id, ev, source)
+    opened = await _sync_records(db, user_ref, strategy_id, ev, source, resolved.body)
     await db.commit()
     wording = render_explanation("adjust_check_flag_system" if resolved.is_system else "adjust_check_flag_user")
     reply |= {"stage": {"name": ev.stage_name, "index": ev.stage_index},
               "withheld": None if ev.withheld is None else render(ev.withheld),
-              "results": [result_out(r, wording, opened) for r in ev.results]}
+              "results": [result_out(r, wording, opened, resolved.body) for r in ev.results]}
     return AdjustmentCheckOut.model_validate(reply)

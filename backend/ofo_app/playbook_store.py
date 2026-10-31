@@ -120,6 +120,16 @@ class Suggestion:
         return self.timeline[0].get("cmp") if self.timeline else None
 
     @property
+    def label(self) -> str | None:
+        """The trigger's label as the evaluated body held it when the flag was shown (None on an older record)."""
+        return self.timeline[0].get("label") if self.timeline else None
+
+    @property
+    def unit(self) -> str | None:
+        """The trigger's unit as the evaluated body held it when the flag was shown (None on an older record)."""
+        return self.timeline[0].get("unit") if self.timeline else None
+
+    @property
     def lapse_reason(self) -> str | None:
         """condition_stopped / strategy_closed on a lapsed record (its last timeline entry)."""
         return self.timeline[-1].get("reason") if self.outcome == "lapsed" and self.timeline else None
@@ -182,7 +192,8 @@ _INSERT_SUGGESTION = text(
     "INSERT INTO public.adjustment_suggestions (strategy_id, rule_id, trigger_id, stage, value, threshold, timeline) "  # noqa: S608
     "VALUES (:strategy_id, :rule_id, :trigger_id, :stage, :value, :threshold, "
     "jsonb_build_array(jsonb_build_object('at', clock_timestamp(), 'outcome', 'open', "
-    "'group', CAST(:group AS TEXT), 'source', CAST(:source AS TEXT), 'cmp', CAST(:cmp AS TEXT)))) "
+    "'group', CAST(:group AS TEXT), 'source', CAST(:source AS TEXT), 'cmp', CAST(:cmp AS TEXT), "
+    "'label', CAST(:label AS TEXT), 'unit', CAST(:unit AS TEXT)))) "
     f"RETURNING {_SG_COLUMNS}")
 _CLOSE_SUGGESTION = text(
     "UPDATE public.adjustment_suggestions AS g SET outcome = CAST(:outcome AS TEXT), "  # noqa: S608
@@ -489,7 +500,8 @@ def _suggestion(row: Any) -> Suggestion:
 async def open_suggestion(conn: Any, user_ref: str, strategy_id: int, rule_id: str, *,  # noqa: PLR0913
                           trigger_id: str | None, stage: str | None, value: Decimal | None,
                           threshold: Decimal | None, group: str | None = None,
-                          source: str | None = None, cmp: str | None = None) -> Suggestion:
+                          source: str | None = None, cmp: str | None = None, label: str | None = None,
+                          unit: str | None = None) -> Suggestion:
     """REQ-112 AC-1: one open record per (strategy, rule); a rule still open returns its existing record."""
     await _owned(conn, user_ref, strategy_id)
     params = {"strategy_id": strategy_id, "rule_id": rule_id}
@@ -498,7 +510,8 @@ async def open_suggestion(conn: Any, user_ref: str, strategy_id: int, rule_id: s
         return _suggestion(existing)
     row = (await conn.execute(_INSERT_SUGGESTION, {**params, "trigger_id": trigger_id, "stage": stage,
                                                    "value": value, "threshold": threshold, "group": group,
-                                                   "source": source, "cmp": cmp})).one()
+                                                   "source": source, "cmp": cmp, "label": label,
+                                                   "unit": unit})).one()
     return _suggestion(row)
 
 
