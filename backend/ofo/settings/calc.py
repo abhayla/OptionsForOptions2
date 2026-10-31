@@ -118,3 +118,29 @@ HISTORY_MAX_DAYS = "limits.history_max_days"
 def history_max_days(values: Mapping[str, Decimal]) -> int:
     """The most trading days of strategy price history one read returns (REQ-167 AC-5)."""
     return int(value_of(values, HISTORY_MAX_DAYS))
+
+
+LEG_PICKER_WIDTH_COUNT = 4
+LEG_PICKER_WIDTH_KEY = "limits.leg_picker_width_{}"
+
+
+def leg_picker_widths(values: Mapping[str, Decimal]) -> tuple[int, ...]:
+    """The strikes-each-side choices the leg picker offers and the server accepts, in the order set (REQ-167 AC-5;
+    REQ-080 AC-1). The first is the width shown before the user picks one."""
+    return tuple(int(value_of(values, LEG_PICKER_WIDTH_KEY.format(i))) for i in range(1, LEG_PICKER_WIDTH_COUNT + 1))
+
+
+RANGE_STEP = "limits.range_step"
+RANGE_CAP_KEY = "limits.range_cap_{}"
+
+
+def range_step(values: Mapping[str, Decimal]) -> int:
+    """The gap in points between two values of an expected-range pick list (REQ-026 AC-5, REQ-167 AC-5)."""
+    return int(value_of(values, RANGE_STEP))
+
+
+def range_cap(values: Mapping[str, Decimal], index: str) -> int:
+    """The furthest an expected-range pick list of ``index`` runs from the current level, in points."""
+    if index not in INDEXES:
+        raise ValueError(f"no range cap is stated for {index!r}")
+    return int(value_of(values, RANGE_CAP_KEY.format(index.lower())))

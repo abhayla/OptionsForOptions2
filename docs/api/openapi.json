@@ -10397,6 +10397,10 @@
             "title": "Centre",
             "type": "string"
           },
+          "default_width": {
+            "title": "Default Width",
+            "type": "integer"
+          },
           "expiry": {
             "format": "date",
             "title": "Expiry",
@@ -10417,6 +10421,13 @@
           "market_closed": {
             "title": "Market Closed",
             "type": "boolean"
+          },
+          "quick_pick_distances": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Quick Pick Distances",
+            "type": "array"
           },
           "reason": {
             "anyOf": [
@@ -10488,6 +10499,13 @@
           "width": {
             "title": "Width",
             "type": "integer"
+          },
+          "widths": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Widths",
+            "type": "array"
           }
         },
         "required": [
@@ -10496,6 +10514,9 @@
           "underlying",
           "expiry",
           "width",
+          "widths",
+          "default_width",
+          "quick_pick_distances",
           "spot",
           "spot_at",
           "centre",
@@ -13921,15 +13942,21 @@
             }
           },
           {
-            "description": "strikes either side of ATM: 10, 20, 30 or 40",
+            "description": "strikes either side of ATM: one of the answer's widths; none = the first",
             "in": "query",
             "name": "width",
             "required": false,
             "schema": {
-              "default": 10,
-              "description": "strikes either side of ATM: 10, 20, 30 or 40",
-              "title": "Width",
-              "type": "integer"
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "strikes either side of ATM: one of the answer's widths; none = the first",
+              "title": "Width"
             }
           }
         ],

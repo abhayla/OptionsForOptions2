@@ -33,12 +33,13 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import datetime
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Query
+from fastapi.exceptions import RequestValidationError
 from ofo.engine.chain_values import ChainGreeks, chain_greeks
 from ofo.marketdata.forward import ExpiryForward, ForwardQuality, ForwardUnavailable, parity_forward
 from ofo.marketdata.provider import PACKET_WITHOUT_DAY_FIELDS, DayStatsAnswer, DayStatsReason, NotSupported
@@ -48,7 +49,6 @@ from ofo.outcome.snapshot import contract_id, forward_strike_ids
 from ofo.rules.inputs import DataHealth
 from ofo.settings import RISK_FREE_RATE, calc, defaults
 from ofo.timeutil import IST
-from pydantic import AfterValidator
 from sqlalchemy.exc import SQLAlchemyError
 
 from ofo_app.api_models import ApiModel, CatalogueText, InstrumentId, Money
@@ -72,6 +72,7 @@ from ofo_app.routes.outcome import (
     HealthCode,
     MarketContext,
     get_answer_clock,
+    get_calc_settings,
     get_market_context,
     label_time,
     market_state,
@@ -86,8 +87,11 @@ DEFAULT_QUALITY = calc.forward_quality(defaults())  # the same, for the forward 
 STRIKES_PATH = "/api/leg-picker/strikes"
 FUTURES_PATH = "/api/leg-picker/futures"
 DEPTH_PATH = "/api/leg-picker/depth"
-WIDTHS = (10, 20, 30, 40)  # REQ-080 AC-1: strikes each side of ATM
-DEFAULT_WIDTH = 10
+#: REQ-080 AC-1 / REQ-167 AC-5: the widths offered are the ``limits.leg_picker_width_1..4`` settings in force (the route
+#: reads them per request and the answer carries them); this is only for a direct caller that passes none (a test)
+DEFAULT_WIDTHS = calc.leg_picker_widths(defaults())
+#: the same for the strangle quick-pick distances (``scenarios.strangle_quick_pick_<index>_N``, REQ-079 AC-7)
+DEFAULT_QUICK_PICKS = calc.quick_pick_distances(defaults())
 LEASE_SECONDS = 30.0  # the picker's window is held this long after its last read
 _SIDES = ("CE", "PE")
 _DELTA_STEP = Decimal("0.0001")
@@ -106,15 +110,15 @@ FutureReason = Literal["NOT_OFFERED", "NOT_STREAMABLE", "NO_QUOTE", "FEED_STALE"
 router = APIRouter(route_class=ClosedRoute)
 
 
-def _listed_width(value: int) -> int:
-    """An allow-list, not a range: only the picker's own widths (a query string gives an int, which ``Literal`` of
-    ints would refuse)."""
-    if value not in WIDTHS:
-        raise ValueError(f"width must be one of {WIDTHS}")
-    return value
-
-
-Width = Annotated[int, AfterValidator(_listed_width)]
+def width_in_force(asked: int | None, widths: tuple[int, ...]) -> int:
+    """The width the request gets: none asked = the first choice; an allow-list, not a range: only the widths the answer
+    offers (the settings in force). Anything else is the same 422 a malformed query gets."""
+    if asked is None:
+        return widths[0]
+    if asked not in widths:
+        raise RequestValidationError([{"type": "enum", "loc": ("query", "width"),
+                                       "msg": f"width must be one of {widths}", "input": asked}])
+    return asked
 
 
 # ---- response models ------------------------------------------------------------------------------------------------
@@ -143,6 +147,11 @@ class StrikesOut(ApiModel):
     underlying: Underlying
     expiry: datetime.date
     width: int
+    widths: list[int]  # the widths the picker offers and the server accepts (limits.leg_picker_width_1..4), in order
+    default_width: int  # the width read when none is asked (the first choice)
+    #: the strangle quick-pick distances (points) the server accepts for this underlying, in order: the Strangles tab
+    #: offers exactly these (scenarios.strangle_quick_pick_<index>_N, REQ-079 AC-7)
+    quick_pick_distances: list[int]
     spot: Money | None  # the live spot, or the last known one while the feed still holds it (``centre``)
     spot_at: datetime.datetime | None  # the time of ``spot`` (always set with it: a last known spot is dated)
     centre: Centre  # what the list is centred on; MIDDLE_STRIKE = "ATM unknown - no live price"
@@ -401,19 +410,24 @@ def _held_quotes(feed: LiveFeed, key: tuple[str, str, datetime.date, int],
 
 def strikes_answer(feed: LiveFeed | None, underlying: str, expiry: datetime.date, width: int,  # noqa: PLR0913
                    catalogue: ChainCatalogue, now: AnswerClock, viewer: str = V1_OWNER_REF,
-                   rate: Decimal = DEFAULT_RATE, quality: ForwardQuality = DEFAULT_QUALITY) -> StrikesOut:
+                   rate: Decimal = DEFAULT_RATE, quality: ForwardQuality = DEFAULT_QUALITY,
+                   widths: tuple[int, ...] = DEFAULT_WIDTHS,
+                   quick_picks: Mapping[str, tuple[int, ...]] = DEFAULT_QUICK_PICKS) -> StrikesOut:
     """The strikes read. Every answer state: catalogue unreadable / empty / expiry unknown (no rows), no feed (strikes
     listed, every price '-', NOT_CONNECTED), no live spot (strikes listed around the last known spot or the middle
     strike, every price null, SPOT_MISSING, no ATM claimed), spot stale (rows, no price), a quote missing for some
     contracts (those cells null), a contract the provider does not know (that cell unavailable), every cell priced.
     ``rate`` is the risk-free rate the Greeks are priced with: the route passes the setting in force (its
     ``get_market_context`` dependency); only a direct caller (a test) takes the registry default. ``quality``: the same
-    for the three forward settings (``ctx.forward_quality``)."""
+    for the three forward settings (``ctx.forward_quality``); ``widths``: the same for the picker's width choices, which
+    the answer carries, as does ``quick_picks`` (the distances the quick-pick route accepts, by underlying)."""
     ctx = None if feed is None else feed.ctx
     answered_at = now() if ctx is None else ctx.clock()
     mstate = market_state(ctx, answered_at)
     closed = mstate.closed
-    head = {"underlying": underlying, "expiry": expiry, "width": width, "answered_at": answered_at,
+    head = {"underlying": underlying, "expiry": expiry, "width": width, "widths": list(widths),
+            "default_width": widths[0],
+            "quick_pick_distances": list(quick_picks[underlying]), "answered_at": answered_at,
             "market_closed": closed}
     state: Literal["LIVE", "NOT_LIVE"] = "NOT_LIVE" if ctx is None else "LIVE"
     missing = _catalogue_reason(catalogue, expiry)
@@ -722,11 +736,15 @@ async def leg_picker_strikes(  # noqa: PLR0913 - one query parameter or seam eac
         reader: Annotated[ChainReader, Depends(get_picker_reader)],
         viewer: Annotated[str, Depends(current_user_ref)],
         ctx: Annotated[MarketContext | None, Depends(get_market_context)],
-        width: Annotated[Width, Query(description="strikes either side of ATM: 10, 20, 30 or 40")] = DEFAULT_WIDTH,
+        calc_settings: Annotated[Mapping[str, Decimal], Depends(get_calc_settings)],
+        width: Annotated[int | None, Query(description="strikes either side of ATM: one of the answer's widths; none = "
+                                                       "the first")] = None,
 ) -> StrikesOut:
-    return strikes_answer(feed, underlying, expiry, width, await reader(underlying, expiry), now, viewer,
-                          quality=DEFAULT_QUALITY if ctx is None else ctx.forward_quality,
-                          rate=DEFAULT_RATE if ctx is None else ctx.rate)
+    widths = calc.leg_picker_widths(calc_settings)  # REQ-167 AC-5: the settings in force now, read per request
+    return strikes_answer(feed, underlying, expiry, width_in_force(width, widths),
+                          await reader(underlying, expiry), now, viewer, quality=DEFAULT_QUALITY if ctx is None else ctx.forward_quality,
+                          rate=DEFAULT_RATE if ctx is None else ctx.rate, widths=widths,
+                          quick_picks=calc.quick_pick_distances(calc_settings))
 
 
 @router.get(FUTURES_PATH, response_model=FuturesOut)

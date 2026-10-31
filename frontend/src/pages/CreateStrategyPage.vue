@@ -11,8 +11,9 @@ import api, { NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import { UNDERLYINGS } from '@/lib/legPicker'
+import { useSettingsValues } from '@/stores/settingsValues'
 import {
-  CARDS_SHOWN, MARKET_VIEWS, OBJECTIVES, PATHS, RANGE_READINGS, expandTemplate, expiryLabels, matchTemplates, rangeLists, readingFromRange,
+  CARDS_SHOWN, MARKET_VIEWS, OBJECTIVES, PATHS, RANGE_READINGS, expandTemplate, expiryLabels, matchTemplates, RANGE_STEP_KEY, rangeCapKey, rangeLists, readingFromRange,
 } from '@/lib/guided'
 
 const TOTAL_STEPS = 4
@@ -23,6 +24,7 @@ const NOT_PRICED = 'Live data not connected — numbers not available'
 const RANGE_NOTE = 'Your expected range is an input, not a prediction.'
 
 const route = useRoute()
+const settingsValues = useSettingsValues()
 const router = useRouter()
 const path = ref(null) // null | 'guided'
 const step = ref(1)
@@ -47,7 +49,9 @@ const isKnow = computed(() => objective.value === 'know')
 const notSure = computed(() => viewKey.value === 'not-sure')
 const lists = computed(() => {
   if (current.value === null || !contracts.value.length) return null
-  try { return rangeLists(current.value, contracts.value, underlying.value) } catch { return null }
+  // the step and cap come from GET /api/settings (null until it answers: the lists are not shown, never a typed number)
+  const limit = { step: settingsValues.integer(RANGE_STEP_KEY), cap: settingsValues.integer(rangeCapKey(underlying.value)) }
+  try { return rangeLists(current.value, contracts.value, limit) } catch { return null }
 })
 const expiryLabel = computed(() => expiryLabels(expiries.value).find((e) => e.value === expiry.value)?.label ?? '')
 const derivedReading = computed(() => {
@@ -74,6 +78,7 @@ async function read(fn) {
 // waits for it instead of building cards from an empty list ("none listed" for good; main red 2026-10-21).
 let templatesLoad = Promise.resolve()
 onMounted(() => {
+  settingsValues.load() // the range pick-list step and caps (REQ-167 AC-5)
   templatesLoad = read(async () => (await api.get('/strategy-templates')).data?.templates)
     .then((list) => { if (Array.isArray(list)) templates.value = list })
 })

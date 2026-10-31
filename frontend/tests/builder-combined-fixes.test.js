@@ -150,7 +150,7 @@ describe('H (review 4) and K (review 7): opening the drawer', () => {
   it('H: the picker reads the open tab again when the drawer opens, not only on the 5 s tick', async () => {
     answers['GET /catalogue/NIFTY/expiries'] = { underlying: 'NIFTY', expiries: ['2026-10-13'] }
     answers['GET /catalogue/NIFTY/contracts?expiry=2026-10-13'] = CATALOGUE
-    answers['GET /leg-picker/strikes?underlying=NIFTY&expiry=2026-10-13&width=10'] = { state: 'LIVE', rows: [], underlying: 'NIFTY', expiry: '2026-10-13' }
+    answers['GET /leg-picker/strikes?underlying=NIFTY&expiry=2026-10-13'] = { state: 'LIVE', rows: [], underlying: 'NIFTY', expiry: '2026-10-13' }
     const w = mount(LegPicker, { props: { legs: [], active: false } })
     await flushPromises()
     await t(w, 'pick-expiry').setValue('2026-10-13')
