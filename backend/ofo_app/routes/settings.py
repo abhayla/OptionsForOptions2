@@ -230,7 +230,7 @@ _PLAIN_REFUSALS = {  # code -> (template, status): the refusals with no slot
 }
 
 
-def _refusal(key: str, exc: SettingRefused, raw: object) -> tuple[ExplanationText, int]:
+def refusal(key: str, exc: SettingRefused, raw: object) -> tuple[ExplanationText, int]:
     """The catalogue words for a registry refusal, with the slots read back from the registry (never the exception's
     own text). A code with no catalogue words (setting_no_admin, setting_no_correlation) is a bug: a 500."""
     s = registry_mod.registry().get(key)
@@ -241,6 +241,7 @@ def _refusal(key: str, exc: SettingRefused, raw: object) -> tuple[ExplanationTex
     slots: dict[str, dict[str, object]] = {
         "setting_not_a_number": {"label": s.label, "example": plain(s.default)},
         "setting_not_whole": {"label": s.label},
+        "setting_not_a_time": {"label": s.label},
         "setting_out_of_range": {"label": s.label, "low": plain(s.min), "high": plain(s.max), "unit": s.unit},
         "setting_note_too_long": {"max": settings_store.MAX_NOTE},
     }
@@ -261,7 +262,7 @@ async def _write(db: AsyncSession, key: str, raw: str, *, effective_from: dateti
         await db.commit()
     except SettingRefused as exc:
         await db.rollback()
-        reason, status = _refusal(key, exc, raw)
+        reason, status = refusal(key, exc, raw)
         return respond(RefusedOut(reason=reason), status)
     except Exception:
         await db.rollback()

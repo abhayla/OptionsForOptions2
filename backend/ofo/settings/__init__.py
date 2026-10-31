@@ -27,8 +27,9 @@ UNITS: Final = ("fraction", "percent", "rupees", "points", "seconds", "count", "
 TYPES: Final = ("decimal", "integer")
 MAX_TEXT: Final = 40  # the longest value text accepted from a form (a Decimal string)
 
-#: App-wide admin settings only (owner 2026-10-31): per-user adjustment preferences (near-level distance, cost per
-#: leg) are a separate per-user build on the Adjustments screen, never in this registry.
+#: App-wide admin settings, plus the "Adjustment defaults" group: the admin's STARTING value of each per-user adjustment
+#: preference (ADR-222 (7), REQ-168 AC-5). A user's own value lives in ``ofo_app.user_preferences_store``, never here.
+ADJUSTMENT_DEFAULTS_GROUP: Final = "Adjustment defaults"
 RISK_FREE_RATE: Final = "pricing.risk_free_rate"
 
 
@@ -155,6 +156,8 @@ def check_value(s: Setting, value: Decimal) -> Decimal:
         raise SettingRefused("setting_not_a_number", f"{s.label} must be a number.")
     if s.type == "integer" and value != value.to_integral_value():
         raise SettingRefused("setting_not_whole", f"{s.label} must be a whole number.")
+    if s.unit == "time" and (value != value.to_integral_value() or value % 100 >= 60):  # noqa: PLR2004 - minutes
+        raise SettingRefused("setting_not_a_time", f"{s.label} is a clock time written as HHMM, e.g. 930 for 09:30.")
     if value < s.min or value > s.max:
         as_fraction = value.scaleb(-2)  # exact percent -> fraction (no division: not money arithmetic)
         if s.unit == "fraction" and s.min <= as_fraction <= s.max:
@@ -177,6 +180,14 @@ def validate(key: object, raw: object) -> Decimal:
     except InvalidOperation:
         raise SettingRefused("setting_not_a_number", f"{s.label} must be a number, e.g. {plain(s.default)}.") from None
     return check_value(s, value)
+
+
+def hhmm_text(value: Decimal) -> str:
+    """A ``time`` setting (HHMM as a whole number, 930) as the clock text the playbook checks compare ("09:30")."""
+    whole = int(value)
+    if value != whole or not 0 <= whole <= 2359 or whole % 100 >= 60:  # noqa: PLR2004 - clock bounds
+        raise ValueError(f"not a clock time written as HHMM: {value}")
+    return f"{whole // 100:02d}:{whole % 100:02d}"
 
 
 def value_of(values: Mapping[str, Decimal], key: str) -> Decimal:

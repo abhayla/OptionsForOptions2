@@ -27,7 +27,7 @@ from decimal import Decimal
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends
-from ofo.adjustment.detection import NEAR_LEVEL_THRESHOLD_PERCENT, PLATFORM_DETECTION, check_threshold
+from ofo.adjustment.detection import PLATFORM_DETECTION, check_threshold
 from ofo.adjustment.strategy_type import strike_gap_of, type_of
 from ofo.engine.legs import Action, Instrument, Leg
 from ofo.engine.orderbook import BookView
@@ -49,6 +49,7 @@ from ofo_app.api_models import ApiModel, CatalogueText, InstrumentId, Money
 from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure
 from ofo_app.live_push import LiveFeed
+from ofo_app.routes.adjustment_preferences import UserPreferences
 from ofo_app.routes.broker import current_user_ref
 from ofo_app.routes.outcome import AnswerClock, MarketContext, feed_scope, get_answer_clock, get_market_context
 from ofo_app.routes.planned_entry import get_live_feed, hold_until_priced
@@ -60,9 +61,10 @@ router = APIRouter(route_class=ClosedRoute)
 PriceStateCode = paper.PriceState
 
 
-def get_near_level_threshold() -> Decimal:
-    """Q253 condition 1's threshold (an admin setting; the admin screen is Step 6). Tests override this dependency."""
-    return NEAR_LEVEL_THRESHOLD_PERCENT
+def get_near_level_threshold(prefs: UserPreferences) -> Decimal:
+    """Q253 condition 1's threshold: the signed-in user's ``adjustments.near_level_percent`` preference in force now
+    (REQ-168 AC-1, AC-4; else the admin default in force, AC-5), read once per request by ``get_user_preferences``."""
+    return prefs.near_level_percent
 
 
 class TrackingExitIn(BaseModel):
@@ -113,6 +115,7 @@ class DetectionOut(ApiModel):
     distance_points: Money
     distance_percent: Money
     threshold_percent: Money
+    line: CatalogueText  # REQ-168 AC-4: names the alert distance used
     at: datetime.datetime | None
     price_health: PriceStateCode
 
@@ -283,6 +286,17 @@ def _texts(figures: dict) -> dict:
             for k in ("total", "booked", "unbooked")}
 
 
+def _near_line(d: Any) -> Any:
+    """REQ-168 AC-4: the alert line names the alert distance it used (the user's preference at this check)."""
+    template = "adjust_near_short_strike_line" if d.condition == "near_short_strike" else "adjust_near_breakeven_line"
+    return render_explanation(template, index=_plain(d.index_level), threshold=_plain(d.threshold_percent),
+                              level=_plain(d.level), distance=_plain(d.distance_percent))
+
+
+def _plain(value: Decimal) -> str:
+    return format(value, "f")
+
+
 def _view(bk: _Book, legs: list[paper.TrackedLeg], underlying: str,  # noqa: PLR0913
           view: paper.TrackingView | None, answered_at: datetime.datetime,
           reasons: list[paper.ContractReason | None]) -> TrackingOut:
@@ -300,6 +314,7 @@ def _view(bk: _Book, legs: list[paper.TrackedLeg], underlying: str,  # noqa: PLR
     body["detections"] = [{"kind": PLATFORM_DETECTION, "condition": d.condition, "level": d.level,
                            "index_level": d.index_level, "distance_points": d.distance_points,
                            "distance_percent": d.distance_percent, "threshold_percent": d.threshold_percent,
+                           "line": _near_line(d),
                            "at": index.at, "price_health": index.state} for d in view.detections]
     return TrackingOut.model_validate(body)
 

@@ -475,9 +475,18 @@ def hand_expiry(legs: list[dict], booked: Fraction, shift: Fraction = Fraction(0
 # ---------------------------------------------------------------------------------------------------------------------
 # Hand-derived approach legs (REQ-155 AC-1, AC-8; GC-ADJ1 design decisions). Written independently of
 # backend/ofo/adjustment/approaches.py: the same stated rules over the plain scenario dicts, so the two paths check
-# each other. Only the admin config FILE is shared (data, not code).
+# each other. Only the settings registry FILE is shared (data, not code).
 # ---------------------------------------------------------------------------------------------------------------------
-APPROACH_CONFIG = json.loads((ROOT / "backend" / "ofo" / "adjustment" / "approach_config.json").read_text(encoding="utf-8"))
+_DEF = json.loads((ROOT / "backend" / "ofo" / "settings" / "registry.json").read_text(encoding="utf-8"))
+_DEF = {s["key"]: s["default"] for s in _DEF["settings"]}  # the registry DATA file (REQ-168 AC-1 defaults)
+APPROACH_CONFIG = {
+    "target_short_delta": {"weekly": _DEF["adjustments.short_delta_weekly"],
+                           "monthly": _DEF["adjustments.short_delta_monthly"]},
+    "roll_points_without_delta": {"NIFTY": _DEF["adjustments.roll_points_nifty"],
+                                  "SENSEX": _DEF["adjustments.roll_points_sensex"]},
+    "iron_fly_min_days_left": int(_DEF["adjustments.iron_fly_min_days"]),
+    "reduce_divisor": int(_DEF["adjustments.reduce_divisor"]),
+}
 IC_APPROACHES = ["A-36", "A-01", "A-05", "A-29", "A-28", "A-11", "A-31"]
 
 

@@ -114,6 +114,8 @@ NON_ORDER_ROUTES: frozenset[tuple[str, str]] = frozenset({
     ("POST", "/strategies/{strategy_id}/versions/{number}/confirm"),
     ("POST", "/api/settings/charges"),  # GC-SET 2: the admin sets the charge rates (app data in the dev DB, no order)
     ("POST", "/api/settings/{key}"),  # GC-SET 2: the admin sets one setting (app data, no order, no market data)
+    ("POST", "/api/adjustments/preferences/{key}"),  # REQ-168: the user sets a preference (app data, no order)
+    ("POST", "/api/adjustments/preferences/{key}/reset"),  # REQ-168: the user resets one (app data, no order)
     ("POST", "/api/settings/{key}/reset"),  # GC-SET 2: the admin resets one setting (app data, no order)
 })
 MUTATING_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})

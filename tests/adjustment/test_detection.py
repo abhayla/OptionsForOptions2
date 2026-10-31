@@ -9,8 +9,10 @@ from types import SimpleNamespace
 import pytest
 from ofo.adjustment import detection as d
 from ofo.engine.legs import Action, Instrument
+from ofo.settings import defaults as _registry_defaults
 
 D = Decimal
+DEFAULT = _registry_defaults()["adjustments.near_level_percent"]
 
 
 def _leg(action: Action, instrument: Instrument, strike: str | None):
@@ -22,7 +24,7 @@ def test_ac2_short_strike_24400_at_index_24350_fires_at_half_a_percent_and_not_a
     """AC-2: detection needs no user rule. 24,400 CE short, index 24,350: 50 points; 50 / 24,350 x 100 = 0.2053... ->
     0.21%. 0.2053 <= 0.5 fires; 0.2053 > 0.2 does not."""
     fired = d.detect_near_levels(short_strike_levels=[D("24400")], breakevens=[], index_level=D("24350"),
-                                 threshold_percent=d.NEAR_LEVEL_THRESHOLD_PERCENT)
+                                 threshold_percent=DEFAULT)
     assert fired == (d.Detection("near_short_strike", D("24400"), D("24350"), D("50"), D("0.21"), D("0.5")),)
     assert d.detect_near_levels(short_strike_levels=[D("24400")], breakevens=[], index_level=D("24350"),
                                 threshold_percent=D("0.2")) == ()
@@ -32,7 +34,8 @@ def test_ac1_platform_detections_carry_one_closed_code_and_the_default_threshold
     """AC-1: a platform detection is the closed code the screen labels 'Adjustment opportunity detected' (never
     a user-rule code); Q253's default threshold is 0.5%."""
     assert d.PLATFORM_DETECTION == "platform_detection"
-    assert D("0.5") == d.NEAR_LEVEL_THRESHOLD_PERCENT
+    assert D("0.5") == DEFAULT  # the registry's admin default (REQ-168 AC-1), the module holds none
+    assert not hasattr(d, "NEAR_LEVEL_THRESHOLD_PERCENT")
 
 
 def test_ac2_a_distance_exactly_at_the_threshold_fires_and_one_paisa_beyond_does_not():

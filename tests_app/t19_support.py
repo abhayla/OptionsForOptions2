@@ -15,9 +15,13 @@ import adjust_scenarios_gen as gen
 from ofo.adjustment.approaches import APPROACH_IDS, ChainRow, Position, PositionLeg
 from ofo.adjustment.compare import Cheapest, Column, Context, MarginRead, compare
 from ofo.adjustment.playbook_eval import body_from_fixture
+from ofo.adjustment.preferences import from_values
 from ofo.charges import ChargeRates
+from ofo.settings import defaults as registry_defaults
 from ofo_app import adjustment_check as check
 from ofo_app.routes.adjustment import MarketInputs, Tracked, priced_approach
+
+PREFS = from_values(registry_defaults())  # the registry defaults, passed explicitly (REQ-168 AC-1)
 
 FIX = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "adjust_scenarios"
 PLAYBOOKS = json.loads((FIX / "_playbooks.json").read_text(encoding="utf-8"))
@@ -61,10 +65,11 @@ def compare_costs(tracked: Tracked, market: MarketInputs, spot: D) -> dict[str, 
     """The Compare's "This adjustment" cell of every built approach: the route's build path, then ``compare``."""
     cols = []
     for a in APPROACH_IDS:
-        built, priced = priced_approach(a, tracked, market, spot, RATES)
+        built, priced = priced_approach(a, tracked, market, spot, RATES, PREFS.approach)
         if built is not None and priced is not None:
             cols.append(Column(built, priced.after, priced.reason, priced.charges_known, MarginRead(None)))
-    ctx = Context(tracked.position, spot, market.chain, RATES, False, MarginRead(None), {}, tracked.adjustments_used)
+    ctx = Context(tracked.position, spot, market.chain, RATES, False, MarginRead(None), {}, tracked.adjustments_used,
+                  PREFS.compare)
     cost = next(c for c in compare(cols, ctx).criteria if c.id == "cost")
     return dict(cost.values)
 
@@ -72,4 +77,4 @@ def compare_costs(tracked: Tracked, market: MarketInputs, spot: D) -> dict[str, 
 def cheapest(sc: dict) -> Cheapest:
     """The checker's T-19 cost of a scenario: ``adjustment_check.cheapest_offered`` on the scenario's own inputs."""
     tracked, market, spot = inputs(sc)
-    return check.cheapest_offered(body_of(sc), tracked, market, spot, RATES)
+    return check.cheapest_offered(body_of(sc), tracked, market, spot, RATES, PREFS.approach)

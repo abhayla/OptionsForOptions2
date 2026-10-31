@@ -2913,7 +2913,7 @@
             "type": "array"
           },
           "preferences": {
-            "$ref": "#/components/schemas/PreferencesOut"
+            "$ref": "#/components/schemas/ofo_app__routes__strategies__PreferencesOut"
           },
           "risk_limits": {
             "$ref": "#/components/schemas/RiskLimitsOut"
@@ -3179,6 +3179,9 @@
             "title": "Level",
             "type": "string"
           },
+          "line": {
+            "title": "Line"
+          },
           "price_health": {
             "enum": [
               "live",
@@ -3201,6 +3204,7 @@
           "distance_points",
           "distance_percent",
           "threshold_percent",
+          "line",
           "at",
           "price_health"
         ],
@@ -8760,83 +8764,116 @@
         "title": "PositionsOut",
         "type": "object"
       },
-      "PreferencesOut": {
+      "PreferenceHistoryOut": {
         "additionalProperties": false,
         "properties": {
-          "capital": {
-            "anyOf": [
-              {
-                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Capital"
+          "effective_from": {
+            "format": "date-time",
+            "title": "Effective From",
+            "type": "string"
           },
-          "expected_range_high": {
+          "value": {
             "anyOf": [
               {
-                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
                 "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Expected Range High"
-          },
-          "expected_range_low": {
-            "anyOf": [
-              {
-                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Expected Range Low"
-          },
-          "market_view": {
-            "anyOf": [
-              {
-                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Market View"
-          },
-          "objective": {
-            "anyOf": [
-              {
-                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Objective"
-          },
-          "risk_preference": {
-            "anyOf": [
-              {
-                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Risk Preference"
+            "title": "Value"
           }
         },
-        "title": "PreferencesOut",
+        "required": [
+          "value",
+          "effective_from"
+        ],
+        "title": "PreferenceHistoryOut",
+        "type": "object"
+      },
+      "PreferenceOut": {
+        "additionalProperties": false,
+        "properties": {
+          "admin_default": {
+            "title": "Admin Default",
+            "type": "string"
+          },
+          "history": {
+            "items": {
+              "$ref": "#/components/schemas/PreferenceHistoryOut"
+            },
+            "title": "History",
+            "type": "array"
+          },
+          "key": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label"
+          },
+          "max": {
+            "title": "Max",
+            "type": "string"
+          },
+          "min": {
+            "title": "Min",
+            "type": "string"
+          },
+          "since": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Since"
+          },
+          "source": {
+            "enum": [
+              "yours",
+              "default"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "type": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Type",
+            "type": "string"
+          },
+          "unit": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Unit",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          },
+          "what_it_changes": {
+            "title": "What It Changes"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "unit",
+          "type",
+          "what_it_changes",
+          "value",
+          "source",
+          "admin_default",
+          "min",
+          "max",
+          "since",
+          "history"
+        ],
+        "title": "PreferenceOut",
         "type": "object"
       },
       "PrefillOut": {
@@ -9185,18 +9222,6 @@
           "updated_at"
         ],
         "title": "RenamedOut",
-        "type": "object"
-      },
-      "ResetIn": {
-        "additionalProperties": false,
-        "properties": {
-          "note": {
-            "default": "",
-            "title": "Note",
-            "type": "string"
-          }
-        },
-        "title": "ResetIn",
         "type": "object"
       },
       "ReturnContractOut": {
@@ -9805,37 +9830,6 @@
           "upper_display"
         ],
         "title": "SdRowOut",
-        "type": "object"
-      },
-      "SetIn": {
-        "additionalProperties": false,
-        "properties": {
-          "effective_from": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Effective From"
-          },
-          "note": {
-            "default": "",
-            "title": "Note",
-            "type": "string"
-          },
-          "value": {
-            "title": "Value",
-            "type": "string"
-          }
-        },
-        "required": [
-          "value"
-        ],
-        "title": "SetIn",
         "type": "object"
       },
       "SettingOut": {
@@ -12467,6 +12461,54 @@
         "title": "GroupOut",
         "type": "object"
       },
+      "ofo_app__routes__adjustment_preferences__PreferencesOut": {
+        "additionalProperties": false,
+        "properties": {
+          "preferences": {
+            "items": {
+              "$ref": "#/components/schemas/PreferenceOut"
+            },
+            "title": "Preferences",
+            "type": "array"
+          }
+        },
+        "required": [
+          "preferences"
+        ],
+        "title": "PreferencesOut",
+        "type": "object"
+      },
+      "ofo_app__routes__adjustment_preferences__ResetIn": {
+        "additionalProperties": false,
+        "properties": {
+          "note": {
+            "default": "",
+            "title": "Note",
+            "type": "string"
+          }
+        },
+        "title": "ResetIn",
+        "type": "object"
+      },
+      "ofo_app__routes__adjustment_preferences__SetIn": {
+        "additionalProperties": false,
+        "properties": {
+          "note": {
+            "default": "",
+            "title": "Note",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value"
+        ],
+        "title": "SetIn",
+        "type": "object"
+      },
       "ofo_app__routes__outcome__LegIn": {
         "additionalProperties": false,
         "properties": {
@@ -13131,6 +13173,37 @@
         "title": "GroupOut",
         "type": "object"
       },
+      "ofo_app__routes__settings__SetIn": {
+        "additionalProperties": false,
+        "properties": {
+          "effective_from": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective From"
+          },
+          "note": {
+            "default": "",
+            "title": "Note",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value"
+        ],
+        "title": "SetIn",
+        "type": "object"
+      },
       "ofo_app__routes__strategies__DeletedOut": {
         "additionalProperties": false,
         "properties": {
@@ -13360,6 +13433,85 @@
           "quantity"
         ],
         "title": "LegOut",
+        "type": "object"
+      },
+      "ofo_app__routes__strategies__PreferencesOut": {
+        "additionalProperties": false,
+        "properties": {
+          "capital": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Capital"
+          },
+          "expected_range_high": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Range High"
+          },
+          "expected_range_low": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Range Low"
+          },
+          "market_view": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Market View"
+          },
+          "objective": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Objective"
+          },
+          "risk_preference": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Risk Preference"
+          }
+        },
+        "title": "PreferencesOut",
         "type": "object"
       },
       "ofo_app__routes__strategies__SummaryOut": {
@@ -13593,6 +13745,125 @@
           }
         },
         "summary": "Dismiss Opportunity"
+      }
+    },
+    "/api/adjustments/preferences": {
+      "get": {
+        "description": "The user's own preferences (never another user's: every query is keyed by ``require_user``'s answer).",
+        "operationId": "read_preferences_api_adjustments_preferences_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ofo_app__routes__adjustment_preferences__PreferencesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Read Preferences"
+      }
+    },
+    "/api/adjustments/preferences/{key}": {
+      "post": {
+        "description": "The user's own value from now (applies at the next check; saved plans are not changed, REQ-168 AC-4).",
+        "operationId": "set_preference_api_adjustments_preferences__key__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "title": "Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ofo_app__routes__adjustment_preferences__SetIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ofo_app__routes__adjustment_preferences__PreferencesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Preference"
+      }
+    },
+    "/api/adjustments/preferences/{key}/reset": {
+      "post": {
+        "description": "Follow the admin default again from now: a new row, never a delete (REQ-168 AC-2).",
+        "operationId": "reset_preference_api_adjustments_preferences__key__reset_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "title": "Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ofo_app__routes__adjustment_preferences__ResetIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ofo_app__routes__adjustment_preferences__PreferencesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reset Preference"
       }
     },
     "/api/broker/account": {
@@ -14636,7 +14907,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/SetIn"
+                "$ref": "#/components/schemas/ofo_app__routes__settings__SetIn"
               }
             }
           },
@@ -14686,7 +14957,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ResetIn"
+                "$ref": "#/components/schemas/ofo_app__routes__adjustment_preferences__ResetIn"
               }
             }
           },
