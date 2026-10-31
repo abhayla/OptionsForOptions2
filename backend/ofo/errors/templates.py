@@ -24,7 +24,7 @@ from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS
 
 from ofo.errors.gate_slots import (
     Clock, ContractSymbol, DataHealthState, DataInputName, Date, DisplayRupees, ExecutionStatusName, LegContract, LegRef, OrderRef,
-    RiskRows, Rupees, ShapeFamilies, Strikes, Symbol, UnitsByContract, VersionStateName, VersionStates, WorstCase,
+    PlaybookField, PlaybookName, PlaybookTypeName, RiskRows, Rupees, ShapeFamilies, Strikes, Symbol, UnitsByContract, VersionStateName, VersionStates, WorstCase,
 )
 from ofo.errors.slots import Code, Count, ExternalText, Instrument, Int, Money, SlotType, Time, Underlying
 
@@ -1207,10 +1207,28 @@ _TRIGGER_TEMPLATES: tuple[MessageTemplate, ...] = (
           "Watch it: it flags if it clears and then comes back.", {}),
 )
 
-_TEMPLATES = (_TEMPLATES + _TRIGGER_TEMPLATES + _GATE_TEMPLATES + _SEND_TEMPLATES + _RECONCILIATION_TEMPLATES + _PART4_TEMPLATES
+# GC-ADJ2 step 1A (REQ-158 AC-3, AC-6): the playbook store's refusals. Nothing is written on any of them.
+_PB_NOT_SAVED = "Nothing was saved; your playbooks are as they were."
+_PB_BLOCKED = "Saving this playbook."
+_PLAYBOOK_TEMPLATES: tuple[MessageTemplate, ...] = (
+    _gate("playbook_name_taken", _UI, 153, "A playbook named {name} already exists for {type}.",
+          _PB_NOT_SAVED, _PB_BLOCKED, "Type another name for this playbook.",
+          {"name": PlaybookName, "type": PlaybookTypeName}),
+    _gate("system_playbook_save_in_place", _UI, 154, "A system playbook can only be saved as a new playbook.",
+          _PB_NOT_SAVED, _PB_BLOCKED, "Save it as a new playbook with its own name."),
+    _gate("playbook_version_conflict", _UI, 155, "This playbook was changed since you opened it.",
+          _PB_NOT_SAVED, _PB_BLOCKED, "Open the playbook again, then make your change."),
+    _gate("playbook_not_found", _UI, 156, "This playbook was not found.",
+          "Nothing was changed.", "Opening or changing this playbook.", "Pick a playbook from your list."),
+    _gate("playbook_body_invalid", _UI, 157, "The playbook value {field} is not valid.",
+          _PB_NOT_SAVED, _PB_BLOCKED, "Correct that value, then save again.", {"field": PlaybookField}),
+)
+
+_TEMPLATES = (_TEMPLATES + _TRIGGER_TEMPLATES + _GATE_TEMPLATES
+              + _SEND_TEMPLATES + _RECONCILIATION_TEMPLATES + _PART4_TEMPLATES
               + _BOUNDARY_TEMPLATES + _BROKER_LOGIN_TEMPLATES + _STRATEGY_DRAFT_TEMPLATES + _FREEZE_TEMPLATES
               + _MARGIN_GATE_TEMPLATES + _ORDER_PATH_TEMPLATES + _READY_MADE_TEMPLATES + _LEG_EDIT_TEMPLATES
-              + _ADJUSTMENT_TEMPLATES)
+              + _ADJUSTMENT_TEMPLATES + _PLAYBOOK_TEMPLATES)
 
 
 #: Read-only public view of the catalogue (for the CI scan and for callers listing templates).
@@ -1258,6 +1276,7 @@ def _make_render(token: object) -> Callable[..., UserFacingError]:
             raise ValueError(f"template {template_id!r} got unexpected slot(s): {sorted(extra)}")
 
         formatted: dict[str, str] = {}
+        user_text: list[str] = []
         for name, slot_type in slot_types:
             value = slots[name]
             slot_type.validate(value)
@@ -1265,6 +1284,8 @@ def _make_render(token: object) -> Callable[..., UserFacingError]:
             if type(text) is not str:
                 raise TypeError(f"slot {name!r} formatter returned {type(text).__name__}, not str")
             formatted[name] = text
+            if getattr(slot_type, "user_text", False) is True:  # the user's own words: masked for the scan only
+                user_text.append(value)  # type: ignore[arg-type] - validate() proved it a str
 
         parts = {name: text.format(**formatted) for name, text in zip(_PART_NAMES, part_texts)}
 
@@ -1275,7 +1296,8 @@ def _make_render(token: object) -> Callable[..., UserFacingError]:
         # The four-part, Latin-letter and ADR-003/Q226/Q230 wording checks run INSIDE the builder
         # (round 6, Q230), on the FINISHED text, so a slot value or formatter that combines with
         # fixed template text into advice wording is refused there, whatever route reached it.
-        return build(token, error_class=error_class, code=code, external=external, **parts)
+        return build(token, error_class=error_class, code=code, external=external, user_text=tuple(user_text),
+                     **parts)
 
     return render
 
