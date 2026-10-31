@@ -157,3 +157,12 @@ def test_words_are_exact():
     assert render_explanation("adjust_history_paper_fill") == "Paper - not sent to Zerodha"
     assert render_explanation("adjust_history_own_change") == "Your own change"
     assert render_explanation("adjust_history_pending") == "pending"
+
+
+def test_seed_id_order_interleaves_times_and_still_groups_by_placed_at():
+    """Measured on the fresh DB: the seed stores open, exit, open, exit, then the four legs (ids in that order)."""
+    o = seeded_orders()
+    interleaved = [o[0], o[2], o[1], o[3], *o[4:]]
+    h = adjustment_history(interleaved, live_prices(), adjustments_max=2)
+    assert [r.step for r in h.rows] == ["entry", "adjustment", "adjustment"]
+    assert h.rows[1].booked == Decimal("962.00") and h.totals.credit == Decimal("5141.50")

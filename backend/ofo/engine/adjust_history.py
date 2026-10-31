@@ -9,7 +9,9 @@ REQ-109 AC-4 (the order book; the engine's average-price rule); REQ-112 AC-3 (fi
 Batch rule (measured, GC-ADJ2 step 6): one placement request stores every one of its orders with ONE ``placed_at``
 (``routes.paper.place_paper_orders`` sets ``placed_at = now()`` once per call; ``scripts/seed_scenario.py`` writes
 three times for ADJ-13: the history legs' opens at clock - 2 h, their exits at clock - 1 h, the four current legs at
-clock). So a step is a run of consecutive orders (in placement order) sharing one ``placed_at``. The first such step
+clock).
+So a step is every order sharing one ``placed_at`` (ids interleave across times in
+the seed), steps in time order. The first such step
 is the entry; each later one an adjustment. Inside a step, ``settle`` and ``stop`` orders form their own row,
 labelled by kind (server-written, not the user's change).
 
@@ -118,12 +120,10 @@ class History:
 def _steps(orders: Sequence[HistoryOrder]) -> list[list[int]]:
     """Order indexes per row: runs of one ``placed_at`` (the batch rule), each split into its non-settle/stop part,
     then its settle part, then its stop part (empty parts dropped)."""
-    batches: list[list[int]] = []
-    for i, o in enumerate(orders):
-        if batches and orders[batches[-1][0]].placed_at == o.placed_at:
-            batches[-1].append(i)
-        else:
-            batches.append([i])
+    by_time: dict[datetime.datetime, list[int]] = {}
+    for i, o in enumerate(orders):  # every order of one placed_at, wherever its id falls (measured: the seed
+        by_time.setdefault(o.placed_at, []).append(i)  # interleaves each history leg's open and exit ids)
+    batches = [by_time[t] for t in sorted(by_time)]
     return [part for batch in batches
             for part in ([i for i in batch if orders[i].kind not in OWN_KINDS],
                          *([i for i in batch if orders[i].kind == k] for k in ("settle", "stop"))) if part]
