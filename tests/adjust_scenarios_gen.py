@@ -37,7 +37,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT / "backend") not in sys.path:  # run as a script
     sys.path.insert(0, str(ROOT / "backend"))
 
-from ofo.adjustment.playbook_eval import T14_PENDING  # noqa: E402
+from ofo.adjustment.playbook_eval import T14_PENDING, reason_text  # noqa: E402
 from ofo.engine.black_scholes import IST, bs_greeks_unrounded, bs_price, year_fraction  # noqa: E402
 from ofo.engine.legs import Instrument  # noqa: E402
 
@@ -101,7 +101,7 @@ TRIGGERS = [
 # Triggers this library evaluates. T-14 is on in the draft but its formula (loss from a 1% move) is not settled; the
 # GC-ADJ1 build defines it, so it is listed as not evaluated rather than guessed.
 EVALUATED = ["T-01", "T-02", "T-03", "T-06", "T-07", "T-09", "T-10b", "T-11", "T-13", "T-16", "T-18", "T-19", "T-21"]
-NOT_EVALUATED = {"T-14": T14_PENDING}  # the evaluator's one home of the reason (a reason text, not a derived value)
+NOT_EVALUATED = {"T-14": reason_text(T14_PENDING)}  # the catalogue text of the evaluator's reason code
 TIGHTENED = ["T-01", "T-03", "T-06", "T-07", "T-09", "T-11", "T-13", "T-16", "T-19"]
 # Per-family values that differ from the catalogue (screen 4) values, and the families whose numbers the owner approved.
 # ADR-216 (owner 2026-10-31): the iron condor ships screen 4's per-stage values except T-19 = 1x the adjustment's cost.

@@ -25,11 +25,18 @@ from dataclasses import dataclass, field
 from decimal import Context, Decimal, DivisionByZero, Inexact, InvalidOperation, Overflow, localcontext
 from typing import Final, Literal
 
+from ofo.engine import adjust_ratios as ratios
+from ofo.errors import render
+
 ExpiryKind = Literal["weekly", "monthly"]
 Cmp = Literal["le", "ge", "lt"]
 UNLIMITED: Final = "UNLIMITED"
 #: T-14's formula (loss from a 1% move) is written in GC-ADJ2 step 2; until then it is never checked.
-T14_PENDING: Final = "Loss-from-a-1%-move formula not settled; defined in the GC-ADJ1 build"
+#: Reason codes: each is a catalogue template id (backend/ofo/errors/templates.py, ``adjust_trigger_*``). The
+#: evaluator returns the code and its slots; ``reason_text`` renders it through render(), the one route to a user.
+P: Final = "adjust_trigger_"
+T14_PENDING: Final = f"{P}t14_pending"
+ALREADY_TRUE: Final = f"{P}already_true"
 _HUNDRED: Final = Decimal(100)
 _GAP_UNTIL: Final = "09:30"
 #: every step of a comparison must be exact; a rounding there would be a wrong flag at the boundary
@@ -103,7 +110,8 @@ class NotChecked:
 
     rule_id: str
     trigger_id: str
-    reason: str
+    code: str
+    slots: tuple[tuple[str, object], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -114,6 +122,12 @@ class AlreadyTrue:
     trigger_id: str
     value: Decimal | str
     threshold: Decimal | str
+    code: str = ALREADY_TRUE
+
+
+def reason_text(code: str, slots: tuple[tuple[str, object], ...] = ()) -> str:
+    """The user text of a reason code (NotChecked, AlreadyTrue, withheld), from the catalogue."""
+    return render(code, **dict(slots)).what_happened
 
 
 Result = Flag | NotChecked | AlreadyTrue
@@ -233,12 +247,17 @@ def stage_of(body: Mapping, kind: ExpiryKind, days_left: int) -> int | None:
 
 # ---- one trigger -----------------------------------------------------------------------------------------------------
 class _Missing(Exception):
-    """An input a trigger needs is not available; the message is the NotChecked reason."""
+    """A trigger cannot be checked: ``code`` is the reason code, ``slots`` its values."""
+
+    def __init__(self, code: str, **slots: object) -> None:
+        super().__init__(code)
+        self.code = code
+        self.slots = tuple(sorted(slots.items()))
 
 
 def _need(value, what: str):
     if value is None:
-        raise _Missing(f"{what} not available")
+        raise _Missing(f"{P}missing_{what}")
     return value
 
 
@@ -255,13 +274,14 @@ def _limit(c: _Ctx, tid: str) -> Decimal | str:
     t = c.body["triggers"][tid]
     values = t.get(c.state.expiry_kind)
     if values is None:
-        raise _Missing(f"{tid} has no {c.state.expiry_kind} values")
+        raise _Missing(f"{P}no_expiry_values")
     if c.stage is None:
-        raise _Missing("days left not available" if c.state.days_left is None
-                       else f"no stage covers {c.state.days_left} days left")
+        if c.state.days_left is None:
+            raise _Missing(f"{P}missing_days_left")
+        raise _Missing(f"{P}no_stage", days=c.state.days_left)
     raw = values[c.stage]
     if raw == "":
-        raise _Missing(f"no value in the {c.stage_name} stage")
+        raise _Missing(f"{P}no_stage_value")
     if tid == "T-10b":
         return raw
     lim = Decimal(raw)
@@ -286,7 +306,7 @@ def _compare(c: _Ctx, tid: str, num: Decimal, den: Decimal = Decimal(1)) -> Hit:
 
 def _shorts(s: StrategyState) -> tuple[ShortLeg, ...]:
     if not s.shorts:
-        raise _Missing("No short leg")
+        raise _Missing(f"{P}no_short_leg")
     return s.shorts
 
 
@@ -302,87 +322,91 @@ def _t01b(c: _Ctx) -> Hit:
 
 
 def _t02(c: _Ctx) -> Hit:
-    pnl = _need(c.state.expiry_pnl_at_spot, "expiry P&L at spot (exact breakeven)")
+    pnl = _need(c.state.expiry_pnl_at_spot, "expiry_pnl")
     return Hit("T-02", pnl, Decimal(0), "lt", pnl < 0)
 
 
 def _t03(c: _Ctx) -> Hit:
     deltas = [x.abs_delta for x in _shorts(c.state)]
     if any(d is None for d in deltas):
-        raise _Missing("delta of a short leg not available")
+        raise _Missing(f"{P}missing_short_delta")
     return _compare(c, "T-03", max(deltas))  # ambiguous (two shorts): the largest absolute delta
 
 
 def _finite(value, what: str) -> Decimal:
     value = _need(value, what)
     if value in (UNLIMITED, 0):
-        raise _Missing(f"{what} not finite ({value})")
+        raise _Missing(f"{P}{what}_not_finite")
     return value
 
 
 def _t06(c: _Ctx) -> Hit:
-    pnl = _need(c.state.pnl, "P&L (a leg unpriced)")
-    return _compare(c, "T-06", max(-pnl, Decimal(0)) * _HUNDRED, _finite(c.state.max_loss, "max loss"))
+    pnl = _need(c.state.pnl, "pnl")
+    return _compare(c, "T-06", *ratios.loss_pct_of_max_loss(pnl, _finite(c.state.max_loss, "max_loss")))
 
 
 def _t07(c: _Ctx) -> Hit:
-    pnl = _need(c.state.pnl, "P&L (a leg unpriced)")
-    return _compare(c, "T-07", max(pnl, Decimal(0)) * _HUNDRED, _finite(c.state.max_profit, "max profit"))
+    pnl = _need(c.state.pnl, "pnl")
+    return _compare(c, "T-07", *ratios.profit_pct_of_max_profit(pnl, _finite(c.state.max_profit, "max_profit")))
 
 
 def _t09(c: _Ctx) -> Hit:
     prices = [x.ltp for x in _shorts(c.state)]
     if any(p is None for p in prices):
-        raise _Missing("price of a short leg not available")
+        raise _Missing(f"{P}missing_short_price")
     return _compare(c, "T-09", min(prices))
 
 
 def _t10b(c: _Ctx) -> Hit:
-    hhmm = _need(c.state.hhmm, "clock time")
+    hhmm = _need(c.state.hhmm, "clock")
     lim = _limit(c, "T-10b")
     return Hit("T-10b", hhmm, lim, "ge", hhmm >= lim)
 
 
 def _t11(c: _Ctx) -> Hit:
-    now = _need(c.state.atm_iv, "ATM IV")
-    then = _need(c.state.entry_atm_iv, "entry ATM IV")
+    now = _need(c.state.atm_iv, "atm_iv")
+    then = _need(c.state.entry_atm_iv, "entry_atm_iv")
     return _compare(c, "T-11", abs(now - then) * _HUNDRED)
 
 
 def _t13(c: _Ctx) -> Hit:
-    hhmm = _need(c.state.hhmm, "clock time")
+    hhmm = _need(c.state.hhmm, "clock")
     if hhmm > _GAP_UNTIL:
-        raise _Missing(f"the gap at the open is checked only until {_GAP_UNTIL}")
-    prev = _need(c.state.prev_close, "previous close")
+        raise _Missing(f"{P}gap_after_open")
+    prev = _need(c.state.prev_close, "prev_close")
     if prev <= 0:
-        raise _Missing("previous close not positive")
-    return _compare(c, "T-13", abs(_need(c.state.day_open, "day open") - prev) * _HUNDRED, prev)
+        raise _Missing(f"{P}prev_close_not_positive")
+    return _compare(c, "T-13", abs(_need(c.state.day_open, "day_open") - prev) * _HUNDRED, prev)
 
 
 def _t16(c: _Ctx) -> Hit:
     margin = _need(c.state.margin, "margin")
-    pnl = _need(c.state.pnl, "P&L (a leg unpriced)")
-    if margin <= 0:
-        raise _Missing("margin not positive")
-    return _compare(c, "T-16", max(-pnl, Decimal(0)) * _HUNDRED, margin)
+    pnl = _need(c.state.pnl, "pnl")
+    try:
+        pair = ratios.loss_pct_of_margin(pnl, margin)
+    except ValueError:
+        raise _Missing(f"{P}margin_not_positive") from None
+    return _compare(c, "T-16", *pair)
 
 
 def _t18(c: _Ctx) -> Hit:
-    used = _need(c.state.adjustments_used, "adjustments used")
+    used = _need(c.state.adjustments_used, "adjustments_used")
     mx = c.body.get("guards", {}).get("max_adjustments")
     if not isinstance(mx, int):
-        raise _Missing("maximum adjustments not stated in the playbook")
+        raise _Missing(f"{P}missing_max_adjustments")
     return Hit("T-18", Decimal(used), Decimal(mx), "ge", used >= mx)
 
 
 def _t19(c: _Ctx) -> Hit:
-    left = _need(c.state.premium_left, "premium left (a leg unpriced)")
+    left = _need(c.state.premium_left, "premium_left")
     if left < 0:
-        raise _Missing("no premium to earn (net long premium)")
-    cost = _need(c.state.adjustment_cost, "adjustment cost")
-    if cost <= 0:
-        raise _Missing("adjustment cost not positive")
-    return _compare(c, "T-19", left, cost)
+        raise _Missing(f"{P}net_long_premium")
+    cost = _need(c.state.adjustment_cost, "adjustment_cost")
+    try:
+        pair = ratios.premium_left_per_cost(left, cost)
+    except ValueError:
+        raise _Missing(f"{P}cost_not_positive") from None
+    return _compare(c, "T-19", *pair)
 
 
 def _t14(_c: _Ctx) -> Hit:
@@ -396,24 +420,24 @@ _EVALUATORS: Final[dict[str, Callable[[_Ctx], Hit]]] = {
 _T21: Final = "T-21"
 
 
-def _trigger(c: _Ctx, tid: str) -> Hit | str:  # noqa: PLR0911 - one answer per reason a trigger is not checked
+def _trigger(c: _Ctx, tid: str) -> Hit | _Missing:  # noqa: PLR0911 - one answer per reason a trigger is not checked
     """A Hit, or the reason it is not checked."""
     t = c.body["triggers"].get(tid)
     if t is None:
-        return f"unknown trigger {tid}"
+        return _Missing(f"{P}unknown")
     if t.get("greyed"):
-        return t["greyed"]
+        return _Missing(f"{P}greyed")
     if not t.get("on"):
-        return f"{tid} is switched off in this playbook"
+        return _Missing(f"{P}switched_off")
     if t.get("data", "ok") != "ok":
-        return f"data not available for {tid} ({t['data']})"
+        return _Missing(f"{P}data_unavailable")
     fn = _EVALUATORS.get(tid)
     if fn is None:
-        return f"unknown trigger {tid}: not evaluated in this version"
+        return _Missing(f"{P}not_evaluated")
     try:
         return fn(c)
     except _Missing as e:
-        return str(e)
+        return e
 
 
 # ---- rules -----------------------------------------------------------------------------------------------------------
@@ -422,7 +446,8 @@ class _Outcome:
     rule_id: str
     lead: str  # the trigger the result names
     hits: tuple[Hit, ...] = ()
-    reason: str | None = None  # NotChecked
+    reason: str | None = None  # NotChecked code
+    slots: tuple[tuple[str, object], ...] = ()
     fired: bool = False
 
 
@@ -430,18 +455,17 @@ def _rule(c: _Ctx, rule: Mapping) -> _Outcome:
     rid = rule["id"]
     members = rule.get("any_of") or rule["all_of"]
     answers = [(m, _trigger(c, m)) for m in members]
-    missing = [(m, a) for m, a in answers if isinstance(a, str)]
+    missing = [(m, a) for m, a in answers if isinstance(a, _Missing)]
     hits = tuple(a for _, a in answers if isinstance(a, Hit))
     if "all_of" in rule:
-        if missing:  # a NotChecked member makes an all_of rule NotChecked, never fired
-            return _Outcome(rid, missing[0][0], hits, f"{missing[0][0]}: {missing[0][1]}")
+        if missing:  # a NotChecked member makes an all_of rule NotChecked, never fired; it names that member
+            return _Outcome(rid, missing[0][0], hits, missing[0][1].code, missing[0][1].slots)
         return _Outcome(rid, members[0], hits, fired=all(h.fired for h in hits))
     fired = [h for h in hits if h.fired]
     if fired:
         return _Outcome(rid, fired[0].trigger_id, hits, fired=True)
     if missing:  # nothing fired, but a member could not be checked: not a pass
-        return _Outcome(rid, missing[0][0], hits, f"{missing[0][0]}: {missing[0][1]}" if len(members) > 1
-                        else missing[0][1])
+        return _Outcome(rid, missing[0][0], hits, missing[0][1].code, missing[0][1].slots)
     return _Outcome(rid, members[0], hits)
 
 
@@ -453,10 +477,9 @@ def _context(body: Mapping, state: StrategyState) -> _Ctx:
 
 def _withheld(state: StrategyState) -> str | None:
     if state.prices_fresh is not True:
-        return "No suggestion: prices stale or missing (T-21)" if state.prices_fresh is False \
-            else "No suggestion: price freshness not available (T-21)"
+        return f"{P}withheld_stale" if state.prices_fresh is False else f"{P}withheld_fresh_unknown"
     if state.spot is None:
-        return "No suggestion: spot not available"
+        return f"{P}withheld_no_spot"
     return None
 
 
@@ -491,7 +514,7 @@ def evaluate(body: Mapping, state: StrategyState, memory: Mapping[str, Mapping[s
             new[o.rule_id] = {"held_at_entry": bool(entry.get(o.rule_id, False)), "seen_clear": False}
         mem = new[o.rule_id]
         if o.reason is not None:
-            results.append(NotChecked(o.rule_id, o.lead, o.reason))
+            results.append(NotChecked(o.rule_id, o.lead, o.reason, o.slots))
         elif not o.fired:
             mem["seen_clear"] = True
             clear.append(o.rule_id)

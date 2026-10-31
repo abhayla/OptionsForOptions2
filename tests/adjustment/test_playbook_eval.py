@@ -9,12 +9,11 @@ from __future__ import annotations
 
 import copy
 import datetime
-import json
 from decimal import ROUND_HALF_EVEN, Decimal
-from pathlib import Path
 
 import pytest
 from ofo.adjustment.playbook_eval import (
+    ALREADY_TRUE,
     T14_PENDING,
     AlreadyTrue,
     Flag,
@@ -23,20 +22,15 @@ from ofo.adjustment.playbook_eval import (
     StrategyState,
     body_from_fixture,
     evaluate,
+    reason_text,
     validate_body,
 )
 from ofo.engine import Action, Instrument, Leg, Strategy
+from test_adjust_scenarios import IDS, PLAYBOOKS, load
 
 D = Decimal
-FIX = Path(__file__).resolve().parents[1] / "fixtures" / "adjust_scenarios"
-IDS = sorted(p.stem for p in FIX.glob("ADJ-*.json"))
-PLAYBOOKS = json.loads((FIX / "_playbooks.json").read_text(encoding="utf-8"))
 F71 = "ADJ-42"
 Q4 = D("0.0001")
-
-
-def load(sid: str) -> dict:
-    return json.loads((FIX / f"{sid}.json").read_text(encoding="utf-8"))
 
 
 def _row(sc: dict, leg: dict) -> dict:
@@ -167,7 +161,7 @@ def test_t14_is_not_checked_with_the_generator_reason():
     ev = evaluate(body_of(sc), state_of(sc), {}, None)
     t14 = [r for r in ev.results if r.trigger_id == "T-14"]
     assert t14 == [NotChecked("T-14", "T-14", T14_PENDING)]
-    assert {"id": "T-14", "reason": T14_PENDING} in sc["expected"]["triggers_not_evaluated"]
+    assert {"id": "T-14", "reason": reason_text(T14_PENDING)} in sc["expected"]["triggers_not_evaluated"]
 
 
 def test_iron_condor_body_is_approved_with_t19_at_1x_and_others_draft():
@@ -193,6 +187,7 @@ def test_f71_already_true_then_clear_then_flag():
     [held] = [r for r in first.results if isinstance(r, AlreadyTrue)]
     assert (held.rule_id, held.trigger_id, _shown(held.value), held.threshold) == ("T-01", "T-01", "0.3490", D("0.5"))
     assert first.memory["T-01"] == {"held_at_entry": True, "seen_clear": False}
+    assert held.code == ALREADY_TRUE and reason_text(held.code) == "Already true when tracking started."
     # spot moves 1.0% past the short CE (235 / 23235 = 1.011%; the 22700 put is farther still)
     second = evaluate(body, _moved(state, "23235"), first.memory, entry)
     assert "T-01" not in flags(second) and "T-01" in second.clear
@@ -233,16 +228,19 @@ def test_entry_without_a_computable_value_counts_as_not_held():
 def test_no_spot_or_stale_prices_never_flag(sid):
     sc = load(sid)
     ev = evaluate(body_of(sc), state_of(sc), {}, None)
-    assert not flags(ev) and ev.withheld and not ev.clear
+    assert not flags(ev) and not ev.clear
+    want = {"ADJ-24b": ("adjust_trigger_withheld_no_spot", "No suggestion: spot not available."),
+            "ADJ-19": ("adjust_trigger_withheld_stale", "No suggestion: prices stale or missing.")}[sid]
+    assert (ev.withheld, reason_text(ev.withheld)) == want
     assert {r.rule_id for r in ev.results} == {r["id"] for r in body_of(sc)["rules"]}
 
 
 def test_unpriced_leg_is_not_checked_never_flagged_or_counted_clear():
     sc = load("ADJ-20c")  # long put wing quote "not found"
     ev = evaluate(body_of(sc), state_of(sc), {}, None)
-    nc = {r.trigger_id: r.reason for r in ev.results if isinstance(r, NotChecked)}
+    nc = {r.trigger_id: r.code for r in ev.results if isinstance(r, NotChecked)}
     for tid in ("T-06", "T-07", "T-16", "T-19"):
-        assert tid in nc and "not available" in nc[tid], (tid, nc)
+        assert tid in nc and nc[tid].startswith("adjust_trigger_missing_"), (tid, nc)
         assert tid not in flags(ev) and tid not in ev.clear
 
 
@@ -251,32 +249,46 @@ def test_unpriced_short_is_not_checked_for_t09():
     s = state_of(sc)
     s = StrategyState(**{**s.__dict__, "shorts": (s.shorts[0], ShortLeg(s.shorts[1].strike, s.shorts[1].abs_delta, None))})
     ev = evaluate(body_of(sc), s, {}, None)
-    assert NotChecked("T-09", "T-09", "price of a short leg not available") in ev.results
+    assert NotChecked("T-09", "T-09", "adjust_trigger_missing_short_price") in ev.results
 
 
-@pytest.mark.parametrize(("field", "value", "tid", "reason"), [
-    ("margin", None, "T-16", "margin not available"),
-    ("atm_iv", None, "T-11", "ATM IV not available"),
-    ("adjustments_used", None, "T-18", "adjustments used not available"),
-    ("expiry_pnl_at_spot", None, "T-02", "expiry P&L at spot (exact breakeven) not available"),
-    ("max_loss", "UNLIMITED", "T-06", "max loss not finite (UNLIMITED)"),
-    ("shorts", (), "T-01", "No short leg"),
-    ("shorts", (), "T-03", "No short leg"),
-    ("hhmm", None, "T-10b", "clock time not available"),
-    ("days_left", None, "T-01", "days left not available"),
-    ("days_left", -1, "T-03", "no stage covers -1 days left"),
+@pytest.mark.parametrize(("field", "value", "tid", "code", "text"), [
+    ("margin", None, "T-16", "missing_margin", "Margin not available."),
+    ("margin", D(0), "T-16", "margin_not_positive", "Margin not positive."),
+    ("adjustment_cost", D(0), "T-19", "cost_not_positive", "Adjustment cost not positive."),
+    ("premium_left", D(-1), "T-19", "net_long_premium", "No premium to earn (net long premium)."),
+    ("atm_iv", None, "T-11", "missing_atm_iv", "ATM IV not available."),
+    ("adjustments_used", None, "T-18", "missing_adjustments_used", "Adjustments used not available."),
+    ("expiry_pnl_at_spot", None, "T-02", "missing_expiry_pnl", "Expiry P&L at spot not available (multi-expiry: no exact breakeven)."),
+    ("max_loss", "UNLIMITED", "T-06", "max_loss_not_finite", "Max loss not finite (unlimited or multi-expiry)."),
+    ("max_loss", D(0), "T-06", "max_loss_not_finite", "Max loss not finite (unlimited or multi-expiry)."),
+    ("pnl", None, "T-07", "missing_pnl", "P&L not available (a leg unpriced)."),
+    ("shorts", (), "T-01", "no_short_leg", "No short leg."),
+    ("shorts", (), "T-03", "no_short_leg", "No short leg."),
+    ("hhmm", None, "T-10b", "missing_clock", "Clock time not available."),
+    ("days_left", None, "T-01", "missing_days_left", "Days left not available."),
 ])
-def test_each_missing_input_is_not_checked_with_its_reason(field, value, tid, reason):
+def test_each_missing_input_is_not_checked_with_its_reason(field, value, tid, code, text):
     sc = load("ADJ-14")  # last day: T-10b has a value
     s = StrategyState(**{**state_of(sc).__dict__, field: value})
     ev = evaluate(body_of(sc), s, {}, None)
-    assert NotChecked(tid, tid, reason) in ev.results
+    assert NotChecked(tid, tid, "adjust_trigger_" + code) in ev.results
+    assert reason_text("adjust_trigger_" + code) == text
+
+
+def test_no_stage_covers_the_days_left():
+    sc = load("ADJ-14")
+    ev = evaluate(body_of(sc), StrategyState(**{**state_of(sc).__dict__, "days_left": -1}), {}, None)
+    nc = next(r for r in ev.results if r.trigger_id == "T-03")
+    assert (nc.code, nc.slots) == ("adjust_trigger_no_stage", (("days", -1),))
+    assert reason_text(nc.code, nc.slots) == "No stage covers -1 days left."
 
 
 def test_no_value_in_the_stage_is_not_checked():
     sc = load("ADJ-01")  # Early: T-10b has ""
     ev = evaluate(body_of(sc), state_of(sc), {}, None)
-    assert NotChecked("T-10b", "T-10b", "no value in the Early stage") in ev.results
+    assert NotChecked("T-10b", "T-10b", "adjust_trigger_no_stage_value") in ev.results
+    assert reason_text("adjust_trigger_no_stage_value") == "No value in this stage."
 
 
 def test_two_shorts_t01_uses_the_nearest_and_t03_the_largest_delta():
@@ -356,8 +368,10 @@ def test_unknown_trigger_is_not_checked_never_ignored():
     body["triggers"]["T-98"] = {"on": True, "cmp": "ge", "data": "ok", "weekly": ["1", "1", "1"], "monthly": None}
     body["rules"].append({"id": "R-8", "any_of": ["T-98"]})
     ev = evaluate(body, s, {}, None)
-    assert NotChecked("R-9", "T-99", "unknown trigger T-99") in ev.results
-    assert NotChecked("R-8", "T-98", "unknown trigger T-98: not evaluated in this version") in ev.results
+    assert NotChecked("R-9", "T-99", "adjust_trigger_unknown") in ev.results
+    assert NotChecked("R-8", "T-98", "adjust_trigger_not_evaluated") in ev.results
+    assert reason_text("adjust_trigger_unknown") == "Unknown trigger: it is not checked."
+    assert reason_text("adjust_trigger_not_evaluated") == "This trigger is not checked in this version."
 
 
 def test_tighten_applies_to_tightened_triggers_only():
