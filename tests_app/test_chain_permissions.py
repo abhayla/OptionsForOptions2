@@ -123,7 +123,8 @@ def _read(permissions, provider=None):
     streaming = lambda i: fanout.subscriber_count(i) > 0  # noqa: E731
     streaming.ctx = ctx
     req = ChainRequest(underlying="NIFTY", expiry=EXPIRY, strikes_each_side=2)
-    return chain_read(ctx, None, req, _catalogue(permissions), fallback=False, now=Clock(T0), max_each_side=15), streaming
+    body = chain_read(ctx, None, req, _catalogue(permissions), fallback=False, now=Clock(T0), max_each_side=15)
+    return body, streaming
 
 
 def test_the_fixture_is_the_recorded_replay():

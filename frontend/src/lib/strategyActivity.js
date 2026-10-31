@@ -2,7 +2,6 @@
 // ONE home for the history logic and wording. No number is computed here; every summary is the server's own catalogue text.
 import { reactive } from "vue";
 import { NEUTRAL_PARTS } from "@/services/api";
-import { CLEAR_UNDO_MS } from "@/lib/legEdit";
 import { draftFromReply } from "@/lib/saveDraft";
 
 /** REQ-070 AC-6: shown INSTEAD of Delete once a basket was sent (or when the server could not say). */
@@ -110,8 +109,10 @@ export function useDeleteFlow(client, hooks) {
         hooks.onRemoved(id);
         hooks.onDeleted?.(id);
         dropUndo();
+        const ms = await hooks.undoMs(); // the served Undo wait (REQ-167 AC-7); unknown = no Undo is offered, never a typed time
+        if (ms === null) return;
         state.undo = { id, revision };
-        timer = setTimeout(dropUndo, CLEAR_UNDO_MS);
+        timer = setTimeout(dropUndo, ms);
       } catch (e) {
         state.confirming = null;
         if (e?.status === 404)

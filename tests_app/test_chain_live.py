@@ -166,7 +166,7 @@ class Reader:
 
 
 def settings_with(each_side: int | None = None):
-    """A settings reader (outcome.SettingsReader) holding the registry defaults, with the chain strike limit replaced."""
+    """A settings reader (outcome.SettingsReader) of the registry defaults, the chain strike limit replaced."""
     values = dict(registry_defaults())
     if each_side is not None:
         values["limits.chain_strikes_each_side"] = Decimal(each_side)
@@ -522,7 +522,8 @@ def test_ac6_no_order_basket_margin_or_execute_reachable_from_the_chain_code():
                    "ofo.marketdata.quote", "ofo.money", "ofo_app.api_models", "ofo_app.catalogue_picker",
                    "ofo_app.live_push", "ofo_app.routes.outcome", "ofo_app", "ofo_app.db", "ofo_app.chain_push",
                    "ofo_app.errors", "ofo_app.routes", "ofo_app.underlying",
-                   "ofo.engine.chain_values", "ofo.settings.calc", "fastapi.exceptions"}  # row 33: the engine's IV/Greeks maths only
+                   "ofo.engine.chain_values",  # row 33: the engine's IV/Greeks maths only
+                   "ofo.settings.calc", "fastapi.exceptions"}
         assert set(imports) <= allowed, (path.name, set(imports) - allowed)
 
 

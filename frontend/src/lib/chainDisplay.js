@@ -17,9 +17,6 @@ export function fieldsFor(details) {
   return details ? [...DEFAULT_FIELDS, ...DETAIL_FIELDS] : [...DEFAULT_FIELDS]
 }
 
-/** REQ-029 AC-9 strike range: strikes either side of ATM the server is asked for (chain_push.MAX_STRIKES_EACH_SIDE). */
-export const STRIKE_RANGES = [5, 10, 15]
-
 /** The line naming what the engine's IV and Greeks rest on, or why there are none (ADR-061: never silent). */
 export const GREEKS_BASIS_LINES = {
   SPOT_FALLBACK: 'IV and Greeks: estimated from spot (the forward could not be derived from the chain).',

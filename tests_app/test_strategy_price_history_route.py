@@ -23,6 +23,7 @@ from http import HTTPStatus
 from pathlib import Path
 
 import pytest
+from ofo.settings import defaults as registry_defaults
 from ofo.timeutil import IST
 from ofo_app import broker_token_store as tokens
 from ofo_app import catalogue_store, held_switches, kite_history, tracked_contracts
@@ -33,6 +34,7 @@ from ofo_app.broker_crypto import TokenCipher
 from ofo_app.catalogue_store import apply_update, parse_rows_naming_the_row
 from ofo_app.kite_history import KiteHistory
 from ofo_app.live_market import OWNER_REF
+from ofo_app.routes import outcome
 from ofo_app.routes import strategies as strategy_routes
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -80,8 +82,16 @@ def _transport(by_token: dict[str, tuple[int, str]], default: tuple[int, str], s
     return fetch
 
 
-def _app_with(conn, user, *, transport=None, session=True, future=True):
+def _app_with(conn, user, *, transport=None, session=True, future=True, history_days=None):  # noqa: PLR0913
     app = _app(_ConnMaker(conn), user)
+    values = dict(registry_defaults())
+    if history_days is not None:
+        values["limits.history_max_days"] = Decimal(history_days)
+
+    async def read_settings():
+        return values
+
+    app.dependency_overrides[outcome.get_settings_reader] = lambda: read_settings
 
     async def opener(_db):
         if not session:
@@ -201,6 +211,21 @@ async def test_days_outside_1_to_15_is_refused(app_engine):
             _, stored = await _with_draft(conn, user := _user())
             for q in ("?days=0", "?days=16"):
                 assert (await _get(conn, user, stored.id, q, transport=_standard([]))).status_code >= 400  # noqa: PLR2004
+        finally:
+            await trans.rollback()
+
+
+async def test_the_most_days_is_the_history_days_setting(app_engine):
+    """REQ-167 AC-5: 16 days is refused at the default 15; with the setting at 5, 6 is refused and 5 is answered;
+    with it at 20, 16 is answered."""
+    async with app_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            _, stored = await _with_draft(conn, user := _user())
+            cases = ((16, None, True), (15, None, False), (6, 5, True), (5, 5, False), (16, 20, False))
+            for days, limit, refused in cases:
+                resp = await _get(conn, user, stored.id, f"?days={days}", transport=_standard([]), history_days=limit)
+                assert (resp.status_code >= 400) is refused, (days, limit, resp.status_code)  # noqa: PLR2004
         finally:
             await trans.rollback()
 

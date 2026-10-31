@@ -22,7 +22,8 @@ import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
 import AdjustPlanSheet from '@/components/strategy/AdjustPlanSheet.vue'
 import { contractName, istTime } from '@/lib/displayFormat'
 import { ADD_TO_PAPER_LABEL, PAPER_ADDED_TEXT, addToPaper } from '@/lib/tracking'
-import { CLEAR_UNDO_MS } from '@/lib/legEdit'
+import { CLEAR_UNDO_SECONDS_KEY } from '@/lib/legEdit'
+import { useSettingsValues } from '@/stores/settingsValues'
 import { newestEntry, newestSeq, restoreEntry, useDeleteFlow } from '@/lib/strategyActivity'
 import {
   STRATEGY_NAME_DEFAULT, STRATEGY_NAME_MAX, buildSaveBody, buildUpdateBody, canSaveLegs, fetchSavedDraft, legsLine, plainName, renameStrategy, saveAsName, strategyLabel, trackedText,
@@ -91,6 +92,7 @@ const menuDo = (fn) => {
 // REQ-070 AC-6: Delete with Undo, one flow shared with My Strategies. When the deleted strategy is the one open, the Builder is told.
 let deletedOpenId = null // the id of the OPEN strategy this bar deleted: its Undo re-opens it in the Builder (same id)
 const deleteFlow = useDeleteFlow(api, {
+  undoMs: () => useSettingsValues().waitMs(CLEAR_UNDO_SECONDS_KEY),
   onRemoved: (id) => { drafts.value = drafts.value.filter((d) => d.id !== id) },
   onDeleted: (id) => { if (props.current?.id === id) { deletedOpenId = id; emit('deleted', id) } },
   onBack: async (id, body) => {
@@ -104,7 +106,7 @@ const deleteFlow = useDeleteFlow(api, {
 })
 
 // REQ-070 AC-4: Undo after a meaningful save. The save of a saved strategy wrote one history entry holding the configuration it
-// replaced; that entry is offered back for CLEAR_UNDO_MS (the Clear-all window). A save that wrote no entry offers nothing.
+// replaced; that entry is offered back for the served Clear-all window. A save that wrote no entry offers nothing.
 const saveUndo = ref(null) // { id, seq, revision } or null
 let saveUndoTimer = null
 function dropSaveUndo() {
@@ -173,8 +175,10 @@ async function offerUndo(id, before, revision) {
   if (after === null || after.seq <= before) return // the save wrote no entry (nothing changed): nothing to undo
   if (after.restorable !== true) return // the server says this entry is not a restore target: no Undo (fail closed)
   dropSaveUndo()
+  const ms = await useSettingsValues().waitMs(CLEAR_UNDO_SECONDS_KEY)
+  if (ms === null) return // the wait could not be read: no Undo is offered
   saveUndo.value = { id, seq: after.seq, revision }
-  saveUndoTimer = setTimeout(dropSaveUndo, CLEAR_UNDO_MS)
+  saveUndoTimer = setTimeout(dropSaveUndo, ms)
 }
 
 async function undoSave() {

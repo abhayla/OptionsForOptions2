@@ -569,7 +569,7 @@ class ChainPush:
         self._last_take = self._monotonic()
         try:
             max_each = chain_strikes_each_side(await self._read_settings())  # read for THIS request (REQ-167 AC-4)
-        except Exception:  # the store cannot answer: fail closed, one fixed message, nothing is subscribed
+        except Exception:  # noqa: BLE001 - the store cannot answer: fail closed, one fixed message, nothing subscribed
             log.warning("option chain: the settings could not be read")
             self._refuse(render("user_input_request_invalid"))
             return
@@ -624,7 +624,8 @@ class ChainPush:
         if self._req is None or self._catalogue is None or self._handle is None:
             return
         if self._window is None:
-            if self._may_take(MIN_PUSH_INTERVAL) and pick_window(self._ctx, self._req, self._catalogue, self._max_each) is not None:
+            picked = pick_window(self._ctx, self._req, self._catalogue, self._max_each)
+            if self._may_take(MIN_PUSH_INTERVAL) and picked is not None:
                 self._take(self._req, self._catalogue)
             return
         if not self._may_take(RECENTRE_SECONDS):

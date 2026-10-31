@@ -18,6 +18,8 @@ import { istTime } from '@/lib/displayFormat'
 import { STRATEGY_NAME_MAX, legsLine, noMatchText, plainName, renameStrategy, searchStrategies, strategyLabel, trackedText } from '@/lib/saveDraft'
 import { useOrderPath } from '@/lib/orderPath'
 import { useDeleteFlow } from '@/lib/strategyActivity'
+import { CLEAR_UNDO_SECONDS_KEY } from '@/lib/legEdit'
+import { useSettingsValues } from '@/stores/settingsValues'
 
 const COMPLETED_STATUSES = []
 // Owner 2026-10-30 (Sensibull 117): one column grid shared by the header row and every strategy row, so columns line up
@@ -58,6 +60,7 @@ onMounted(loadList)
 
 // REQ-070 AC-6: Delete with Undo (one flow, shared with the Builder's saved list). Undo puts the row back from a fresh read.
 const deleteFlow = useDeleteFlow(api, {
+  undoMs: () => useSettingsValues().waitMs(CLEAR_UNDO_SECONDS_KEY),
   onRemoved: (id) => { rows.value = rows.value.filter((r) => r.id !== id) },
   onBack: loadList,
   reload: loadList,

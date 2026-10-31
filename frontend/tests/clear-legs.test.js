@@ -21,9 +21,14 @@ vi.mock('@/services/api', async (importActual) => {
 import StrategyBuilderPage from '@/pages/StrategyBuilderPage.vue'
 import SaveDraftBar from '@/components/strategy/SaveDraftBar.vue'
 import LegPicker from '@/components/strategy/LegPicker.vue'
-import { CLEAR_UNDO_MS, NO_LEGS_YET, removeAllPrompt } from '@/lib/legEdit'
+import { createPinia, setActivePinia } from 'pinia'
+import { NO_LEGS_YET, removeAllPrompt } from '@/lib/legEdit'
 import real from './fixtures/outcome-condor.json'
 
+// REQ-167 AC-7: the Undo wait is the served setting (10 s here), read before the timer starts
+const SERVED_CLEAR_SECONDS = 10
+const CLEAR_UNDO_MS = SERVED_CLEAR_SECONDS * 1000
+const servedSettings = { data: { groups: [{ name: 'Other', settings: [{ key: 'other.undo_clear_all_seconds', value: String(SERVED_CLEAR_SECONDS) }] }] } }
 const t = (w, id) => w.find(`[data-testid="${id}"]`)
 // leg 3 (index 2) has no planned entry and no capture time
 const DRAFT = { underlying: 'NIFTY', legs: real.legs.map((l, i) => ({ instrument_id: l.instrument_id, action: l.action, lots: l.lots,
@@ -36,7 +41,8 @@ const echoRead = (body) => Promise.resolve({ data: { legs: body.legs.map((l) => 
 
 beforeEach(() => {
   calls.length = 0
-  answers = { 'POST /strategies/outcome': real, 'POST /strategies/leg-edit': echoRead }
+  setActivePinia(createPinia())
+  answers = { 'GET /settings': servedSettings.data, 'POST /strategies/outcome': real, 'POST /strategies/leg-edit': echoRead }
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] }) // flushPromises needs the real microtask queue
 })
 afterEach(() => vi.useRealTimers())
@@ -104,7 +110,7 @@ describe('REQ-135 AC-1: confirm, cancel, expiry, supersede', () => {
   it('Undo is offered for exactly 10 seconds, then gone (and nothing comes back)', async () => {
     const w = await openPage()
     await clearAndConfirm(w)
-    expect(CLEAR_UNDO_MS).toBe(10000)
+    expect(calls.some((c) => c.url === '/settings')).toBe(true) // the wait was read from the server
     vi.advanceTimersByTime(CLEAR_UNDO_MS - 1)
     await flushPromises()
     expect(t(w, 'clear-undo').exists()).toBe(true)

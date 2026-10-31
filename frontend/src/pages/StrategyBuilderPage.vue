@@ -49,7 +49,7 @@ import ActivityPanel from '@/components/strategy/ActivityPanel.vue'
 import Drawer from '@/components/common/Drawer.vue'
 import SaveDraftBar from '@/components/strategy/SaveDraftBar.vue'
 import LegList from '@/components/strategy/LegList.vue'
-import { applyEditReply, buildEditRequest, controlsFrom, executeRefusal, CLEAR_UNDO_MS, EXECUTE_WAITS_FOR_LATEST, NO_CONTROLS } from '@/lib/legEdit'
+import { applyEditReply, buildEditRequest, controlsFrom, executeRefusal, CLEAR_UNDO_SECONDS_KEY, EXECUTE_WAITS_FOR_LATEST, NO_CONTROLS } from '@/lib/legEdit'
 import { createNewestWins, isSuperseded } from '@/lib/newestWins'
 import { NOT_CONNECTED_LABEL, buildDraft } from '@/lib/legPicker'
 import { matchesLegs } from '@/lib/liveMatch'
@@ -62,6 +62,7 @@ import { contractName, istClock, istTime, nameFromPool } from '@/lib/displayForm
 import { summaryFigure } from '@/lib/summaryFigures'
 import { ORDER_PATH_OFF_SENTENCE } from '@/lib/orderPath'
 import { useCapabilities } from '@/lib/brokerCapabilities'
+import { useSettingsValues } from '@/stores/settingsValues'
 import { useStrategyLive } from '@/composables/useStrategyLive'
 import { NOT_LIVE_LABEL as INDEX_NOT_LIVE, headerLevel, useIndexAnswer } from '@/composables/useIndexLive'
 import MarketClosedBanner from '@/components/states/MarketClosedBanner.vue'
@@ -497,7 +498,7 @@ function readShape() {
 }
 const removeLeg = (i) => setLegs(legs.value.filter((_, k) => k !== i))
 
-// REQ-135 AC-1: Clear all legs. The legs (and the saved strategy they belong to) are held for CLEAR_UNDO_MS; the clear is
+// REQ-135 AC-1: Clear all legs. The legs (and the saved strategy they belong to) are held for the served Clear-all window; the clear is
 // an ordinary edit (the saved copy changes only on Save), exactly as removing the last leg is. One timer, not a recurring one.
 const undoHeld = ref(null) // { legs, savedId, savedRevision, openStrategy } of the last clear, or null (expired, used, superseded, left)
 let undoTimer = null
@@ -505,13 +506,17 @@ function dropUndo() {
   clearTimeout(undoTimer)
   undoHeld.value = null
 }
-function clearAll() {
+async function clearAll() {
   if (!legs.value.length) return
   const held = { legs: legs.value, savedId: savedId.value, savedRevision: savedRevision.value, openStrategy: openStrategy.value } // taken BEFORE setLegs([]) nulls them
   setLegs([])
   openStrategy.value = null // a cleared screen is a new strategy: the next Save asks a name
+  const ms = await useSettingsValues().waitMs(CLEAR_UNDO_SECONDS_KEY) // the served wait (REQ-167 AC-7)
+  if (ms === null) return // not readable: no Undo is offered, never a typed time
+  if (legs.value.length) return // legs came back while the wait was read: an Undo would restore over them
   undoHeld.value = held
-  undoTimer = setTimeout(dropUndo, CLEAR_UNDO_MS)
+  clearTimeout(undoTimer)
+  undoTimer = setTimeout(dropUndo, ms)
 }
 function undoClear() {
   const held = undoHeld.value
