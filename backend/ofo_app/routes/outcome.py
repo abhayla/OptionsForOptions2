@@ -46,12 +46,14 @@ from ofo.outcome.serialize import outcome_to_dict
 from ofo.outcome.service import PAYOFF_TABLE_STEPS, Margin, waiting_first_price
 from ofo.outcome.target import TargetAsk
 from ofo.scenario.config import ScenarioConfig, ScenarioSettings
+from ofo.settings import RISK_FREE_RATE
+from ofo.settings import value_of as registry_value_of
 from ofo.scenario.levels import RangeOverride, resolve_range
 from ofo.scenario.views import View
 from ofo.timeutil import IST
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StrictBool, StrictInt, model_validator
 
-from ofo_app import charge_rates_store, db
+from ofo_app import charge_rates_store, db, settings_store
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier, InstrumentId, Money, echo_seq
 from ofo_app.errors import ClosedRoute
 from ofo_app.outcome_margin import OutcomeMargin, PlannedOrderIn, margin_answer
@@ -198,11 +200,49 @@ def feed_scope(ctx: MarketContext) -> FeedScope | None:
     return FeedScope(SHARED_COMPUTE, ctx.feed_owner) if ctx.feed_owner else None
 
 
-def get_market_context() -> MarketContext | None:
+SettingsReader = Callable[[], Awaitable[Mapping[str, Decimal]]]
+
+
+async def _settings_in_force_now() -> Mapping[str, Decimal]:
+    """Every registry setting in force NOW (the database clock, ADR-023), read in its own short session that is
+    closed before the route body runs. SettingsError (a stored value the registry refuses) and any database error
+    propagate: the caller fails closed."""
+    async with db.get_sessionmaker()() as session:
+        return await settings_store.settings_in_force(session)
+
+
+def get_settings_reader() -> SettingsReader:
+    """The settings read behind :func:`get_market_context`; the database tests override it to read through their
+    rolled-back connection."""
+    return _settings_in_force_now
+
+
+async def get_market_context(
+        read_settings: Annotated[SettingsReader, Depends(get_settings_reader)]) -> MarketContext | None:
     """The live context (W-065) when LIVE_MARKET is on and the owner has an active session, else None: the route
-    answers "not connected". Tests and the replay mode override this dependency."""
+    answers "not connected". Tests, the replay mode and the scenario mode override this dependency.
+
+    REQ-167 AC-1 / ADR-222 (1), (9): the risk-free rate is the ``pricing.risk_free_rate`` setting in force NOW, read on
+    every request that gets a context, so an admin change applies to the next request with no restart. Technical
+    decision (GC-SET core, 2026-10-31):
+    - The live feed's own context (``live_market.current_context()``) is built with the registry default; this
+      dependency returns ``dataclasses.replace(ctx, rate=<setting in force>)`` for the request, so every priced REST
+      route (outcome, chain, indices, leg picker, planned entry, tracking, paper, adjustment) reads the stored rate.
+      The paper monitor and the live sockets read ``feed.ctx`` directly and are wired separately (a later step).
+    - A context injected through ``app.dependency_overrides[get_market_context]`` keeps its own rate: unit tests, the
+      replay mode (``main.create_app``) AND the scenario mode (``scenario_mode.overrides`` installs a lambda; it does
+      NOT serve through ``live_market.current_context()``, verified 2026-10-31). Their rates are test data; the
+      scenario fixtures state 0.065, equal to the default.
+    - No context: no read (the "not connected" answer never waits on the database).
+    - The store cannot answer (``SettingsError``: a stored value the registry now refuses; or a database error): the
+      exception propagates and the route answers the internal-error response. Never a price with the default (fail
+      closed, no silent substitution, ADR-016..019 spirit)."""
     from ofo_app import live_market  # late: live_market imports MarketContext from this module
-    return live_market.current_context()
+    ctx = live_market.current_context()
+    if ctx is None:
+        return None
+    rate = registry_value_of(await read_settings(), RISK_FREE_RATE)
+    return dataclasses.replace(ctx, rate=rate)
 
 
 # ---- request --------------------------------------------------------------------------------------------------------
