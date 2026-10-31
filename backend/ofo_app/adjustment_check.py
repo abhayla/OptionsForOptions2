@@ -142,7 +142,7 @@ def _abs_delta(market: MarketInputs, symbol: str) -> Decimal | None:
     return None if g is None or g.delta is None else abs(g.delta)
 
 
-def cheapest_offered(body: Mapping | None, tracked: Tracked, market: MarketInputs, spot: Decimal | None,
+def cheapest_offered(body: Mapping | None, tracked: Tracked, market: MarketInputs, spot: Decimal | None,  # noqa: PLR0913 - the preferences value is a required parameter (GC-SET)
                      rates: Any, config: Config) -> Cheapest:
     """ADR-221: the cheapest approach ``body`` offers, every one built and priced by the Compare's own path."""
     offered = offered_now(body, tracked.adjustments_used)  # S-11: only exit and reduce at the limit

@@ -276,7 +276,7 @@ def as_of_market(tracked: Tracked, market: MarketInputs) -> Tracked:
         expiry_kind=market.expiry_kind or tracked.position.expiry_kind))
 
 
-def priced_approach(a: str, tracked: Tracked, market: MarketInputs, spot: Decimal,
+def priced_approach(a: str, tracked: Tracked, market: MarketInputs, spot: Decimal,  # noqa: PLR0913 - the preferences value is a required parameter (GC-SET)
                     rates: ChargeRates | None, config: Config) -> tuple[ApproachLegs | None, Priced | None]:
     """One approach as the approaches route and the Compare build and price it (the ONE build path; the playbook
     check's T-19 reads it too, ADR-221): an unknown id -> (None, None); refused -> (built, None); else the built legs
