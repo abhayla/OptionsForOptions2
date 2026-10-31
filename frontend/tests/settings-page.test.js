@@ -23,7 +23,7 @@ const KEY = 'pricing.risk_free_rate'
 const setting = (over = {}) => ({
   key: KEY, group: 'Pricing', label: 'Risk-free interest rate', unit: 'fraction', type: 'decimal', min: '0', max: '0.5',
   what_it_changes: 'The yearly interest rate used in option prices.', default: '0.065', value: '0.065', is_default: true,
-  effective_from: null, set_by: null, history: [], ...over,
+  effective_from: null, set_by: null, earlier_values: [], ...over,
 })
 const page = (s = setting(), charges = null) => ({ groups: [{ name: 'Pricing', settings: [s] }], charges })
 const CHARGES = { name: 'Charges', read_on: '2026-10-15', source_url: 'https://zerodha.com/charges',
@@ -65,7 +65,7 @@ describe('Settings page', () => {
 
   it('saves a change: the value goes as the typed string and the row shows the answer', async () => {
     answers[`POST /settings/${KEY}`] = setting({ value: '0.07', is_default: false, set_by: 'owner', effective_from: '2026-11-01T10:00:00+05:30',
-      history: [{ value: '0.07', effective_from: '2026-11-01T10:00:00+05:30', set_by: 'owner', state: 'in_force' }] })
+      earlier_values: [{ value: '0.07', effective_from: '2026-11-01T10:00:00+05:30', set_by: 'owner', state: 'in_force' }] })
     const w = await open()
     await w.find(`[data-testid="edit-${KEY}"]`).trigger('click')
     await w.find('[data-testid="input-value"]').setValue('0.07')
@@ -74,7 +74,7 @@ describe('Settings page', () => {
     await flushPromises()
     expect(calls.find((c) => c[0] === 'POST')).toEqual(['POST', `/settings/${KEY}`, { value: '0.07', note: 'RBI move' }])
     expect(w.find('[data-testid="setting-value"]').text()).toBe('0.07')
-    expect(w.find(`[data-testid="history-${KEY}"]`).text()).toContain('In force')
+    expect(w.find(`[data-testid="earlier-values-${KEY}"]`).text()).toContain('In force')
   })
 
   it('shows the server refusal reason inline and keeps the value in force', async () => {
@@ -123,11 +123,11 @@ describe('Settings page', () => {
     expect(w.find('[data-testid="setting-value"]').text()).toBe('0.065')
   })
 
-  it('lists the history, newest first, with scheduled rows marked', async () => {
-    const w = await open(page(setting({ history: [
+  it('lists the earlier values, newest first, with scheduled rows marked', async () => {
+    const w = await open(page(setting({ earlier_values: [
       { value: '0.08', effective_from: '2099-01-01T10:00:00+05:30', set_by: 'owner', state: 'scheduled' },
       { value: '0.07', effective_from: '2026-11-01T10:00:00+05:30', set_by: 'owner', state: 'in_force' }] })))
-    const rows = w.findAll('[data-testid="history-row"]')
+    const rows = w.findAll('[data-testid="earlier-value-row"]')
     expect(rows.map((r) => r.text().split(' - ')[0])).toEqual(['0.08', '0.07'])
     expect(rows[0].text()).toContain('Scheduled')
   })

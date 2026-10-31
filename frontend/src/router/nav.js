@@ -87,7 +87,7 @@ export const ACCOUNT_ITEMS = [
   ['preferences', 'Preferences'],
   ['strategy-preferences', 'Strategy Preferences'],
   ['broker-market-data', 'Broker & Market Data'],
-  ['app-settings', 'Settings'], // GC-SET (REQ-167): the admin's app-wide settings
+  ['app-settings', 'Settings'], // GC-SET (REQ-167): the app-wide settings page for the admin
 ]
 
 // ADR-193 / UI study UI-002: how the top bar presents each section. The labels above are untouched (REQ-009); this

@@ -26,6 +26,8 @@ import pathlib
 
 import pytest
 
+pytestmark = pytest.mark.repo_scan
+
 APP = pathlib.Path(__file__).resolve().parent.parent / "backend" / "ofo_app"
 SETTINGS_CALLS = {"outcome_response", "build_outcome", "from_entries"}
 PASS_THROUGH = {"outcome_response"}  # its own ``settings`` parameter is checked at ITS callers

@@ -2,14 +2,15 @@
 one over HTTP; the next calculation reads the new value (``settings_store``, no restart).
 
 Spec basis: REQ-167 AC-2 ("shows the settings by group with the value in force, the default, when it took effect and
-who set it, and the history of earlier values ... a value outside the allowed range or of the wrong unit is refused
+who set it, and the earlier values ... a value outside the allowed range or of the wrong unit is refused
 with the reason ... Reset to default is a new row, never a delete"); AC-3 ("Only the admin can change a setting;
 every change is written to
 the audit log ... every settings write passes one guard"); AC-5 (Charges: "shown from its existing dated
 table, a new rate set added from the page with its source URL"); ADR-008 (rates are exact decimals).
 
 - GET /api/settings: groups -> settings (key, label, unit, what it changes, min, max, default, value in force, since,
-  set by, history newest first, each row marked in_force / scheduled / earlier), plus the Charges rate set in force.
+  set by, earlier values, newest first, each row marked in_force / scheduled / earlier),
+  plus the Charges rate set in force.
 - POST /api/settings/{key}: change (value, effective_from, note); POST /api/settings/{key}/reset: a new row holding the
   registry default; POST /api/settings/charges: a new dated rate set with its source address.
 - Values go in and out as decimal STRINGS. A JSON number in a request is refused (422), never coerced.
@@ -21,8 +22,9 @@ table, a new rate set added from the page with its source URL"); ADR-008 (rates 
   pass
   the response door, which carries catalogue words only).
 
-``require_admin`` is the ONE guard every write route depends on (``unguarded_writes`` fails the suite for a write route
-without it). Known bypasses (out of the threat model today): until sign-in exists the admin is the one fixed owner
+``require_admin`` is the ONE guard every write route depends on (a test in ``tests_app/test_settings_route.py``
+fails the suite for a write route without it). Known bypasses (out of the threat model today): until sign-in exists
+the admin is the one fixed owner
 (``current_user_ref``), so ANY caller that can reach the API is the admin; a route added on ANOTHER router that writes
 ``app_settings`` or ``charge_rates`` is not seen by this module's check.
 """
@@ -70,18 +72,6 @@ def require_admin(user: Annotated[str, Depends(current_user_ref)]) -> str:
 Admin = Annotated[str, Depends(require_admin)]
 
 
-def unguarded_writes(api_router: APIRouter) -> list[str]:
-    """Every non-read route of ``api_router`` that does not depend on ``require_admin`` (empty = fail closed holds)."""
-    bad = []
-    for route in api_router.routes:
-        methods = getattr(route, "methods", None) or set()
-        if methods <= {"GET", "HEAD", "OPTIONS"}:
-            continue
-        if not any(dep.call is require_admin for dep in route.dependant.dependencies):
-            bad.append(f"{sorted(methods)} {route.path}")
-    return bad
-
-
 # ---- request bodies ------------------------------------------------------------------------------------------------
 
 class SetIn(BaseModel):
@@ -113,7 +103,7 @@ class ChargesIn(BaseModel):
 
 # ---- response bodies -----------------------------------------------------------------------------------------------
 
-class HistoryRowOut(ApiModel):
+class EarlierValueOut(ApiModel):
     value: Money
     effective_from: datetime.datetime
     set_by: Identifier
@@ -134,7 +124,7 @@ class SettingOut(ApiModel):
     is_default: bool
     effective_from: datetime.datetime | None
     set_by: Identifier | None
-    history: list[HistoryRowOut]
+    earlier_values: list[EarlierValueOut]
 
 
 class GroupOut(ApiModel):
@@ -172,7 +162,7 @@ def _words(value: str) -> ExplanationText:
 def _setting_out(key: str, in_force: settings_store.StoredSetting | None, rows: list[settings_store.StoredSetting],
                  now: datetime.datetime) -> SettingOut:
     s = registry_mod.registry()[key]
-    history = [HistoryRowOut(
+    earlier_values = [EarlierValueOut(
         value=_num(r.value), effective_from=r.effective_from, set_by=r.set_by,
         state=("scheduled" if r.effective_from > now else
                "in_force" if in_force is not None and r.effective_from == in_force.effective_from else "earlier"))
@@ -182,7 +172,7 @@ def _setting_out(key: str, in_force: settings_store.StoredSetting | None, rows: 
         what_it_changes=_words(s.what_it_changes), min=_num(s.min), max=_num(s.max), default=_num(s.default),
         value=_num(in_force.value if in_force else s.default), is_default=in_force is None,
         effective_from=in_force.effective_from if in_force else None,
-        set_by=in_force.set_by if in_force else None, history=history)
+        set_by=in_force.set_by if in_force else None, earlier_values=earlier_values)
 
 
 def _shown_url(source: str) -> ExplanationText | None:
@@ -288,8 +278,9 @@ Refusal = tuple[str, dict[str, object]]  # (explanation template, its slots)
 def _parse_rates(body: ChargesIn, read_on: datetime.date) -> ChargeRates | Refusal:
     """The typed rate set, or the refusal naming the field (a number written as text, within the ChargeRates caps)."""
     parsed: dict[str, Decimal] = {}
+    fields = body.model_dump()
     for name in charge_rates_store.COMPONENTS:
-        raw = getattr(body, name)
+        raw = fields[name]
         try:
             value = Decimal(raw.strip())
         except InvalidOperation:
