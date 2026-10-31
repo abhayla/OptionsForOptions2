@@ -52,6 +52,11 @@ iron condor.
 - `rules`: the default is one rule per ON trigger (`any_of` of one id), so rules combine as OR. A rule is either
   `{"id", "any_of": [ids]}` (fires when any member fires) or `{"id", "all_of": [ids]}` (fires when every member fires;
   REQ-159 AC-3, REQ-045 AC-3). A member that is NotChecked makes an `all_of` rule NotChecked, never fired.
+- `tightened` (step 1B addition): the trigger ids a "Tighten every trigger by X%" day rule changes (an `le` limit x
+  (1 + X/100), a `ge` limit x (1 - X/100)), copied from `_playbooks.json` `tightened_by_day_rule`.
+- `T-21` is a guard, not a flag: while prices are stale or missing, or spot is not available, every rule answers
+  NotChecked and the evaluation carries `withheld` (the reason); it never produces a Flag.
+- A float anywhere in a body, or a stage value list whose length is not the stage count, is refused (ValueError).
 - Iron condor (`ic`): status `approved`, T-19 is `["1", "1", "1"]` weekly and monthly (ADR-216, owner 2026-10-31);
   every other value as `_playbooks.json`. Every other type: status `draft`.
 
