@@ -15,9 +15,11 @@ rename, delete, make active, save as new and save in place, all through ``ofo_ap
 """
 from __future__ import annotations
 
+import asyncio
 import dataclasses
 import datetime
 import logging
+import time
 from collections.abc import Callable, Mapping
 from typing import Annotated, Any, Literal
 
@@ -356,38 +358,94 @@ class _Seams:
     rates: ChargeRates | None
 
 
-async def _tracked_of_type(db: Any, user_ref: str, strategy_type: str, seams: _Seams) -> list[tuple[Any, Any, Any]]:
-    """The user's tracked strategies whose shape is ``strategy_type`` -> (summary, tracked, (market, spot)). Read only:
-    the same readers and type rule as the check route (``ofo_app.adjustment_check``)."""
+#: REQ-160 AC-3: the whole outside read of ONE strategy (tracked legs, chain/market, REST spot, margin) is bounded by
+#: this many seconds; strategies are read TEST_READ_CONCURRENCY at a time, so N strategies take at most
+#: ceil(N / TEST_READ_CONCURRENCY) x this limit. A slow strategy is listed not checked, never a stalled answer.
+TEST_READ_LIMIT_SECONDS = 4.0
+TEST_READ_CONCURRENCY = 4
+TEST_TIMED_OUT_CODE = "adjust_test_read_timed_out"
+
+
+@dataclasses.dataclass
+class _Read:
+    """What one strategy's bounded read got to (kept on a timeout, so a known type can still be listed)."""
+    tracked: Any = None
+    market: Any = None
+    spot: Any = None
+    margin: dict | None = None
+    done: bool = False
+
+
+async def _read_one(row: Any, seams: _Seams, listed: Any, read: _Read) -> None:
     from ofo_app.adjustment_readers import TrackedUnreadable  # noqa: PLC0415 - it imports routes.adjustment
-    rows = await strategy_store.list_strategies(db, user_ref)
-    tracked_ids = await paper_store.tracked_ids(db, [r.id for r in rows])
-    out = []
-    for row in rows:
-        if row.id not in tracked_ids:
-            continue
+    try:
+        read.tracked = await seams.tracked_reader(row.id, seams.rates)
+    except TrackedUnreadable:  # legs not readable: its type is not known, so it is not "of that type"
+        read.tracked = None
+        return
+    if read.tracked is None:
+        return
+    market = await seams.market_reader(read.tracked, seams.ctx)
+    read.market = market
+    read.spot = resolve_spot(market.feed, await seams.rest_reader(read.tracked.position.underlying),
+                             market.last_close, now=market.now)
+    read.margin = await current_margin(seams.margin_of, read.tracked, market)
+    read.done = True
+
+
+def _not_checked(row: Any, body: dict[str, Any]) -> dict[str, Any]:
+    """A strategy of the type whose reads did not finish: every rule listed not checked, with the reason."""
+    results = [pe.NotChecked(rule["id"], (rule.get("any_of") or rule["all_of"])[0], TEST_TIMED_OUT_CODE)
+               for rule in body.get("rules", [])]
+    return {"strategy_id": row.id, "name": shown_name(row.name), "stage": {"name": None, "index": None},
+            "withheld": None, "results": [result_out(r, None) for r in results]}
+
+
+async def _read_bounded(row: Any, seams: _Seams, listed: Any, gate: asyncio.Semaphore, data: TestIn,
+                        ) -> tuple[Any, _Read] | dict[str, Any] | None:
+    """-> (row, read) when read in full and of the type; a not-checked entry when the type is known but the read timed
+    out or failed; None when not of the type (or its type is not known)."""
+    read = _Read()
+    async with gate:
+        started = time.monotonic()
         try:
-            tracked = await seams.tracked_reader(row.id, seams.rates)
-        except TrackedUnreadable:  # legs not readable: its type is not known, so it is not "of that type"
-            log.warning("playbook test: strategy %s unreadable", row.id)
-            continue
-        if tracked is None:
-            continue
-        market = await seams.market_reader(tracked, seams.ctx)
-        spot = resolve_spot(market.feed, await seams.rest_reader(tracked.position.underlying), market.last_close,
-                            now=market.now)
-        listed = None if seams.ctx is None else seams.ctx.provider.instrument_master()
-        if check.strategy_type(tracked.position, spot.value if spot.available else None, listed) != strategy_type:
-            continue
-        out.append((row, tracked, (market, spot)))
-    return out
+            await asyncio.wait_for(_read_one(row, seams, listed, read), TEST_READ_LIMIT_SECONDS)
+        except Exception as exc:  # noqa: BLE001 - one strategy's failed read is "not checked", never a 500
+            log.debug("playbook test: strategy %s read %s after %.2fs", row.id, type(exc).__name__,
+                      time.monotonic() - started)
+            if read.tracked is None:
+                return None  # not even its legs are read: its type is not known
+            known = check.strategy_type(read.tracked.position, None, listed)
+            return _not_checked(row, data.body) if known == data.type else None
+        log.debug("playbook test: strategy %s read in %.2fs", row.id, time.monotonic() - started)
+    if read.tracked is None:
+        return None
+    spot = read.spot
+    if check.strategy_type(read.tracked.position, spot.value if spot.available else None, listed) != data.type:
+        return None
+    return row, read
 
 
 async def _tested(db: Any, user_ref: str, data: TestIn, seams: _Seams) -> list[dict[str, Any]]:
+    """Read only. Cheap first: a strategy with no open paper leg is skipped before any outside read; the rest are read
+    TEST_READ_CONCURRENCY at a time, each under TEST_READ_LIMIT_SECONDS."""
+    rows = await strategy_store.list_strategies(db, user_ref)
+    tracked_ids = await paper_store.tracked_ids(db, [r.id for r in rows])
+    listed = None if seams.ctx is None else seams.ctx.provider.instrument_master()
+    gate = asyncio.Semaphore(TEST_READ_CONCURRENCY)
+    answers = await asyncio.gather(*(_read_bounded(r, seams, listed, gate, data)
+                                     for r in rows if r.id in tracked_ids))
     strategies = []
-    for row, tracked, (market, spot) in await _tracked_of_type(db, user_ref, data.type, seams):
-        margin = await current_margin(seams.margin_of, tracked, market)
-        state = check.state_of(tracked, market, spot, margin, seams.rates, check.prices_fresh(seams.ctx), data.body)
+    for answer in answers:
+        if answer is None:
+            continue
+        if isinstance(answer, dict):
+            strategies.append(answer)
+            continue
+        row, read = answer
+        tracked, market, spot = read.tracked, read.market, read.spot
+        state = check.state_of(tracked, market, spot, read.margin, seams.rates, check.prices_fresh(seams.ctx),
+                               data.body)
         entry = check.scenario_entry(scenario_mode.current(), state, tracked.position)
         if entry is not None:
             state = dataclasses.replace(state, entry_atm_iv=entry.atm_iv)

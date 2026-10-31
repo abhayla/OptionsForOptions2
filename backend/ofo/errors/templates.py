@@ -1240,6 +1240,9 @@ _PLAYBOOK_TEMPLATES: tuple[MessageTemplate, ...] = (
     _gate("suggestion_not_open", _UI, 171, "This adjustment opportunity already has its outcome.",
           "Nothing was changed; its outcome stays as it was.", "Recording another outcome for it.",
           "Open Adjustment opportunities to see its outcome."),
+    # GC-ADJ2 step 3 (REQ-160 AC-3): a strategy of the tested type whose prices did not arrive within the read limit
+    _gate("adjust_test_read_timed_out", _UI, 172, "Prices for this strategy did not arrive in time.",
+          _TRIG_NOT, _TRIG_BLOCKED, "Test again in a moment."),
 )
 
 _TEMPLATES = (_TEMPLATES + _TRIGGER_TEMPLATES + _GATE_TEMPLATES

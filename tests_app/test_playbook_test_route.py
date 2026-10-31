@@ -124,3 +124,126 @@ async def test_gap_and_overlap_get_the_save_refusal_text(app_db_url, monkeypatch
     assert o.status_code == g.status_code == UNPROCESSABLE
     assert o.json()["what_happened"] == "Days 2 to 4 are in both Last and Near (weekly expiries)."
     assert g.json()["what_happened"] == "Days 5 to 6 are in no stage (weekly expiries)."
+
+
+# ---- bounded reads (GC-ADJ2 step 3: no stall) ----------------------------------------------------------------------
+LIMIT_FOR_TEST = 2.0  # the route's one constant, patched small (real DB reads of the others take well under it)
+MAX_SECONDS, THREE, TWO = 30, 3, 2
+TIMED_OUT = "Prices for this strategy did not arrive in time."
+
+
+async def _three_seeded(app_db_url, monkeypatch) -> list[int]:
+    """The seeder is idempotent by name, so each seeded copy is renamed before the next seed makes a new strategy."""
+    ids = [await _seeded(app_db_url, monkeypatch, "ADJ-02")]
+    for n in (2, 3):
+        async with app_db_url.begin() as conn:
+            await conn.execute(text("UPDATE public.strategies SET name = name || :n WHERE id = :id"),
+                               {"n": f" copy {n}", "id": ids[-1]})
+        _reset_engine()
+        ids.append(await check_test.seed_mod.seed("ADJ-02"))
+    assert len(set(ids)) == THREE
+    return ids
+
+
+async def _post_with_market(market_wrapper, body: dict) -> tuple[Any, float]:
+    """POST the test with the market reader replaced by ``market_wrapper(real_reader)``; -> (response, seconds)."""
+    import time  # noqa: PLC0415
+
+    from ofo_app.main import create_app  # noqa: PLC0415
+    from ofo_app.routes import adjustment as adj  # noqa: PLC0415
+    _reset_engine()
+    app = create_app()
+    real = adj.get_market_reader()
+    app.dependency_overrides[adj.get_market_reader] = lambda: market_wrapper(real)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as ac:
+        started = time.monotonic()
+        r = await ac.post("/api/playbooks/test", json={"type": "ic", "body": body})
+        took = time.monotonic() - started
+    await app_db.close_db()
+    return r, took
+
+
+async def test_one_hanging_strategy_is_listed_not_checked_and_the_others_are_evaluated(app_db_url, monkeypatch, caplog):
+    caplog.set_level('DEBUG', logger='ofo_app.routes.playbooks')
+    import asyncio  # noqa: PLC0415
+
+    from ofo_app.routes import playbooks as route  # noqa: PLC0415
+    monkeypatch.setattr(route, "TEST_READ_LIMIT_SECONDS", LIMIT_FOR_TEST)
+    ids = await _three_seeded(app_db_url, monkeypatch)
+    body = await _system_ic_body(app_db_url)
+    calls = 0
+
+    def wrapper(real):
+        async def read(tracked, ctx):
+            nonlocal calls
+            calls += 1
+            if calls == 1:  # the first strategy to reach the market read never gets its answer
+                await asyncio.Event().wait()
+            return await real(tracked, ctx)
+        return read
+
+    before = await _counts(app_db_url)
+    r, took = await _post_with_market(wrapper, body)
+    assert r.status_code == OK, r.text
+    assert took < MAX_SECONDS  # a bounded answer (the hang alone would never return)
+    by_id = {s["strategy_id"]: s for s in r.json()["strategies"] if s["strategy_id"] in ids}
+    assert sorted(by_id) == sorted(ids), (ids, caplog.text)
+    hung = [s for s in by_id.values() if s["stage"] == {"name": None, "index": None}]
+    assert len(hung) == 1
+    assert hung[0]["results"]
+    assert all(x["kind"] == "not_checked" and x["reason"]["what_happened"] == TIMED_OUT and x["value"] is None
+               for x in hung[0]["results"])
+    others = [s for s in by_id.values() if s is not hung[0]]
+    assert len(others) == TWO and all(_rows(s, "flag") for s in others)  # evaluated: ADJ-02 flags T-01, T-03, T-09
+    assert await _counts(app_db_url) == before  # nothing written
+
+
+async def test_raising_market_read_on_an_iron_condor_is_listed_not_checked_never_flagged(app_db_url, monkeypatch):
+    sid = await _seeded(app_db_url, monkeypatch, "ADJ-02")
+    body = await _system_ic_body(app_db_url)
+
+    def wrapper(real):
+        async def read(tracked, ctx):
+            raise RuntimeError("feed down")
+        return read
+
+    r, _ = await _post_with_market(wrapper, body)
+    assert r.status_code == OK, r.text
+    (mine,) = [s for s in r.json()["strategies"] if s["strategy_id"] == sid]
+    assert len(mine["results"]) == len(body["rules"])
+    assert all(x["kind"] == "not_checked" and x["reason"]["what_happened"] == TIMED_OUT for x in mine["results"]), mine
+    assert _rows(mine, "flag") == []
+
+
+async def test_only_strategies_with_open_paper_legs_are_read_at_all(app_db_url, monkeypatch):
+    """The cheap skip: a strategy with no open paper leg never reaches the tracked reader."""
+    from ofo_app import paper_store, strategy_store  # noqa: PLC0415
+    from ofo_app.main import create_app  # noqa: PLC0415
+    from ofo_app.routes import adjustment as adj  # noqa: PLC0415
+    await _seeded(app_db_url, monkeypatch, "ADJ-02")
+    body = await _system_ic_body(app_db_url)
+    async with app_db_url.connect() as conn:
+        rows = await strategy_store.list_strategies(conn, "owner")
+        tracked = await paper_store.tracked_ids(conn, [x.id for x in rows])
+    seen: list[int] = []
+    real = adj.get_tracked_reader()
+
+    async def spy(strategy_id, rates):
+        seen.append(strategy_id)
+        return await real(strategy_id, rates)
+
+    _reset_engine()
+    app = create_app()
+    app.dependency_overrides[adj.get_tracked_reader] = lambda: spy
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as ac:
+        r = await ac.post("/api/playbooks/test", json={"type": "ic", "body": body})
+    await app_db.close_db()
+    assert r.status_code == OK, r.text
+    assert sorted(seen) == sorted(tracked)
+
+
+def test_the_limit_is_one_named_constant():
+    import pathlib  # noqa: PLC0415
+    src = (pathlib.Path(__file__).resolve().parent.parent / "backend/ofo_app/routes/playbooks.py").read_text("utf-8")
+    assert src.count("asyncio.wait_for(") == 1 and "seams, listed, read), TEST_READ_LIMIT_SECONDS)" in src
+    assert src.count("TEST_READ_LIMIT_SECONDS = ") == 1  # defined once; no second literal limit
