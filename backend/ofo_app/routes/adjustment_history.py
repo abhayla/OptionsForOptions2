@@ -5,7 +5,7 @@ reads, prices and words, and adds no arithmetic of its own.
 
 Inputs, each from the reader the paper book already uses (never a second reader of the same source):
 - orders: ``paper_book.load_owned`` (owner check in the query). None -> the adjustment-check route's not-found answer.
-- current prices: the paper book's market read (``routes.paper._snapshot`` / ``_prices``, ADR-212 display prices);
+- current prices: the paper book's market read (``routes.paper.market_snapshot`` / ``_prices``, ADR-212 display prices);
   stale or missing for any open contract -> open P&L, P&L and premium left None with ``prices_reason`` (booked and
   credit still shown, never 0).
 - charges: ``ofo.charges.paper_charges`` per order (the paper book's Charges figure, REQ-109 AC-10); rates unreadable
@@ -54,6 +54,9 @@ log = logging.getLogger(__name__)
 router = APIRouter(route_class=ClosedRoute)
 _NOT_AVAILABLE = "user_input_request_not_available"  # the adjustment-check route's not-found answer
 NO_PLAN_MAX = "no_plan_max"
+#: REQ-163 AC-1 / REQ-112 AC-3: the words of each fill state (a paper row: in place of a fill state)
+FILL_TEXT = {"paper": "adjust_history_paper_fill", "confirmed": "adjust_history_fill_confirmed",
+             "unconfirmed": "adjust_history_fill_unconfirmed", "failed": "adjust_history_fill_failed"}
 
 
 class HistoryOrderOut(ApiModel):
@@ -79,7 +82,7 @@ class HistoryRowOut(ApiModel):
     rule_id: Identifier | None
     why_text: CatalogueText | None  # set when rule_id is None
     fill: Literal["paper", "confirmed", "unconfirmed", "failed"]
-    fill_text: CatalogueText | None  # paper rows: in place of a fill state
+    fill_text: CatalogueText  # every state worded by the server (paper: in place of a fill state)
 
 
 class HistoryTotalsOut(ApiModel):
@@ -107,6 +110,7 @@ class HistoryTotalsOut(ApiModel):
 
 class AdjustmentHistoryOut(ApiModel):
     strategy_id: int
+    fill_column_text: CatalogueText  # the fill-state column's header (the broker's name comes from the server)
     rows: list[HistoryRowOut]
     totals: HistoryTotalsOut
 
@@ -116,7 +120,7 @@ def _per_order_charges(orders: Any, found: dict, underlying: str,
     if rates is None:
         return None, paper.RATES_UNAVAILABLE
     fills = [PaperFill(o.order.kind, o.order.side, o.order.quantity, o.order.price,
-                       paper._identity(found[o.order.contract_id])[1] is not Instrument.FUT) for o in orders]
+                       paper.identity(found[o.order.contract_id])[1] is not Instrument.FUT) for o in orders]
     try:
         return list(paper_charges(fills, underlying, rates).per_order), None
     except ChargesNotComputable:
@@ -143,21 +147,21 @@ async def _plan_max(db: Any, user_ref: str, strategy_id: int, reader: tuple[Trac
 
 
 def _money_text(value: Decimal | None) -> Any:
-    return paper._signed(value)
+    return paper.signed(value)
 
 
 def _row(r: ah.HistoryRow, found: dict) -> dict:
     return {"step": r.step, "number": r.number, "at": r.at,
             "orders": [{"side": o.side,
-                        "contract_text": describe_contract(paper._identity(found[int(o.instrument_id)])),
+                        "contract_text": describe_contract(paper.identity(found[int(o.instrument_id)])),
                         "quantity": o.quantity, "price": o.price, "price_text": price_text(o.price), "kind": o.kind}
                        for o in r.orders],
             "cash": r.cash, "cash_text": _money_text(r.cash),
-            "booked": paper._exact(r.booked), "booked_text": _money_text(r.booked),
+            "booked": paper.exact(r.booked), "booked_text": _money_text(r.booked),
             "booked_pending": render_explanation("adjust_history_pending") if r.booked is None else None,
-            "charges": paper._exact(r.charges), "rule_id": r.rule_id,
+            "charges": paper.exact(r.charges), "rule_id": r.rule_id,
             "why_text": render_explanation("adjust_history_own_change") if r.rule_id is None else None,
-            "fill": r.fill, "fill_text": render_explanation("adjust_history_paper_fill") if r.fill == "paper" else None}
+            "fill": r.fill, "fill_text": render_explanation(FILL_TEXT[r.fill])}
 
 
 @router.get("/api/strategies/{strategy_id}/adjustment-history", response_model=AdjustmentHistoryOut)
@@ -174,13 +178,13 @@ async def adjustment_history(  # noqa: PLR0913 - FastAPI dependencies, one per i
         raise StrategyRefused(_NOT_AVAILABLE, Failure.NOT_FOUND)
     found = {c.contract_id: c for c in await tracked_contracts.resolve(db, sorted({o.order.contract_id
                                                                                      for o in orders}))}
-    underlying = paper._identity(found[orders[0].order.contract_id])[0]
-    open_ids = paper._open_ids(orders)
+    underlying = paper.identity(found[orders[0].order.contract_id])[0]
+    open_ids = paper.open_ids(orders)
     snapshot = None
     keys = [k for k in (found[c].feed_key for c in open_ids) if k is not None]
-    if paper._connected(ctx) and keys:
-        snapshot = await paper._snapshot(ctx, feed, underlying, keys)  # type: ignore[arg-type]
-    prices = paper._prices(open_ids, found, snapshot)
+    if paper.connected(ctx) and keys:
+        snapshot = await paper.market_snapshot(ctx, feed, underlying, keys)  # type: ignore[arg-type]
+    prices = paper.open_prices(open_ids, found, snapshot)
     live = {str(cid): p.price for cid, p in prices.items() if paper_prices.is_live(p) and p.price is not None}
     per_order, charges_reason = _per_order_charges(orders, found, underlying, rates)
     plan_max = await _plan_max(db, user_ref, strategy_id, (tracked_reader, rates), ctx)
@@ -196,9 +200,9 @@ async def adjustment_history(  # noqa: PLR0913 - FastAPI dependencies, one per i
         prices_reason = next((found[c].state for c in prices if found[c].state != tracked_contracts.LIVE),
                              paper_prices.PRICES_NOT_LIVE)
     shown_charges = None if t.charges is None else to_paise_up(t.charges)
-    totals = {"pnl": paper._exact(t.pnl), "pnl_text": _money_text(t.pnl),
-              "booked": paper._exact(t.booked), "booked_text": _money_text(t.booked),
-              "open_pnl": paper._exact(t.open_pnl), "open_pnl_text": _money_text(t.open_pnl),
+    totals = {"pnl": paper.exact(t.pnl), "pnl_text": _money_text(t.pnl),
+              "booked": paper.exact(t.booked), "booked_text": _money_text(t.booked),
+              "open_pnl": paper.exact(t.open_pnl), "open_pnl_text": _money_text(t.open_pnl),
               "credit": t.credit, "credit_text": _money_text(t.credit),
               "premium_left": t.premium_left, "premium_left_text": _money_text(t.premium_left),
               "prices_reason": prices_reason, "prices_reason_text": reason_text(prices_reason),
@@ -206,10 +210,11 @@ async def adjustment_history(  # noqa: PLR0913 - FastAPI dependencies, one per i
               "max_reason": NO_PLAN_MAX if t.adjustments_max is None else None,
               "max_reason_text": (render_explanation("adjust_history_no_plan_max") if t.adjustments_max is None
                                   else None),
-              "charges": paper._exact(t.charges),
+              "charges": paper.exact(t.charges),
               "charges_text": None if shown_charges is None else render_explanation(paper.PAPER_CHARGES,
                                                                                    amount=shown_charges),
               "charges_reason": None if t.charges is not None else charges_reason,
               "charges_reason_text": None if t.charges is not None else reason_text(charges_reason)}
     return AdjustmentHistoryOut.model_validate({"strategy_id": strategy_id,
+                                                "fill_column_text": render_explanation("adjust_history_col_fill"),
                                                 "rows": [_row(r, found) for r in history.rows], "totals": totals})

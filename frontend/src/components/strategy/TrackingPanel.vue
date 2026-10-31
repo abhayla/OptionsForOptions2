@@ -41,7 +41,7 @@
       <button v-if="view.detections.length" ref="reviewBtn" type="button" class="mt-2 rounded border border-line bg-surface px-2 py-1 text-xs font-medium" data-testid="review-adjustment" @click="openDrawer">{{ REVIEW_BUTTON_TEXT }}</button>
     </div>
     <!-- GC-ADJ2 step 6 (REQ-163): the entry, every adjustment and the whole-trade totals; read when opened -->
-    <AdjustHistory :strategy-id="savedId" />
+    <AdjustSteps :strategy-id="savedId" />
     <AdjustDrawer
       :open="drawerOpen" :strategy-id="savedId" :lines="drawerLines" :detected="!!view?.detections?.length" :card-rows="cardRows(raw)"
       @close="closeDrawer" @compare="goCompare"
@@ -53,7 +53,7 @@
 import { inject, nextTick, ref, watch } from 'vue'
 import { routerKey } from 'vue-router'
 import AdjustDrawer from '@/components/strategy/AdjustDrawer.vue'
-import AdjustHistory from '@/components/strategy/AdjustHistory.vue'
+import AdjustSteps from '@/components/strategy/AdjustSteps.vue'
 import { REVIEW_BUTTON_TEXT, cardRows } from '@/lib/adjustDrawer'
 import Chip from '@/components/common/Chip.vue'
 import FigureHint from '@/components/common/FigureHint.vue'

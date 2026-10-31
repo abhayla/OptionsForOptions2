@@ -10,7 +10,7 @@ vi.mock('@/services/api', async (importActual) => {
   return { ...actual, default: { get: (url) => { calls.push(url); return reply() } } }
 })
 
-import AdjustHistory from '@/components/strategy/AdjustHistory.vue'
+import AdjustSteps from '@/components/strategy/AdjustSteps.vue'
 
 const order = (side, text, price) => ({ side, contract_text: text, quantity: 130, price, price_text: price, kind: 'open' })
 const row = (over) => ({
@@ -26,13 +26,13 @@ const totals = (over = {}) => ({
   charges_reason_text: null, ...over,
 })
 const body = (t = totals(), rows = [row(), row({ step: 'adjustment', number: 1, booked: '962.00', booked_text: '+962.00', cash_text: '-240.50' })]) =>
-  ({ strategy_id: 7, rows, totals: t })
+  ({ strategy_id: 7, fill_column_text: 'Zerodha', rows, totals: t })
 const tid = (w, id) => w.get(`[data-testid="${id}"]`)
 
 async function open(b) {
   reply = () => Promise.resolve({ data: b })
-  const w = mount(AdjustHistory, { props: { strategyId: 7 } })
-  const d = tid(w, 'adjust-history')
+  const w = mount(AdjustSteps, { props: { strategyId: 7 } })
+  const d = tid(w, 'adjust-steps')
   d.element.open = true
   await d.trigger('toggle')
   await flushPromises()
@@ -41,13 +41,13 @@ async function open(b) {
 
 beforeEach(() => { calls.length = 0 })
 
-describe('AdjustHistory', () => {
+describe('AdjustSteps', () => {
   it('reads nothing until opened, then once from the history route', async () => {
     reply = () => Promise.resolve({ data: body() })
-    const w = mount(AdjustHistory, { props: { strategyId: 7 } })
+    const w = mount(AdjustSteps, { props: { strategyId: 7 } })
     await flushPromises()
     expect(calls).toEqual([])
-    expect(tid(w, 'adjust-history').text()).toContain('Adjustment history')
+    expect(tid(w, 'adjust-steps').text()).toContain('Adjustment history')
     await open(body())
     expect(calls).toEqual(['/strategies/7/adjustment-history'])
   })
@@ -55,33 +55,33 @@ describe('AdjustHistory', () => {
   it('AC-1: rows with step, orders, cash, booked, why and the paper label, in the mockup columns', async () => {
     const w = await open(body())
     expect(w.findAll('th').map((x) => x.text())).toEqual(['When', 'Step', 'Orders', 'Cash', 'Booked', 'Why', 'Zerodha'])
-    const rows = w.findAll('[data-testid="history-row"]')
+    const rows = w.findAll('[data-testid="steps-row"]')
     expect(rows).toHaveLength(2)
-    expect(rows.map((r) => r.get('[data-testid="history-step"]').text())).toEqual(['Entry', 'Adjustment 1'])
-    expect(rows[1].get('[data-testid="history-booked"]').text()).toBe('+962.00')
-    expect(rows[1].get('[data-testid="history-cash"]').text()).toBe('-240.50')
-    expect(rows[0].get('[data-testid="history-order"]').text()).toBe('B NIFTY 22400 PE x 130 @ 10.45')
-    expect(rows.map((r) => r.get('[data-testid="history-why"]').text())).toEqual(['Your own change', 'Your own change'])
-    expect(rows.map((r) => r.get('[data-testid="history-fill"]').text())).toEqual(['Paper - not sent to Zerodha', 'Paper - not sent to Zerodha'])
+    expect(rows.map((r) => r.get('[data-testid="steps-step"]').text())).toEqual(['Entry', 'Adjustment 1'])
+    expect(rows[1].get('[data-testid="steps-booked"]').text()).toBe('+962.00')
+    expect(rows[1].get('[data-testid="steps-cash"]').text()).toBe('-240.50')
+    expect(rows[0].get('[data-testid="steps-order"]').text()).toBe('B NIFTY 22400 PE x 130 @ 10.45')
+    expect(rows.map((r) => r.get('[data-testid="steps-why"]').text())).toEqual(['Your own change', 'Your own change'])
+    expect(rows.map((r) => r.get('[data-testid="steps-fill"]').text())).toEqual(['Paper - not sent to Zerodha', 'Paper - not sent to Zerodha'])
   })
 
   it('AC-2: totals tiles are the server texts as given', async () => {
     const w = await open(body())
-    expect(tid(w, 'history-total-pnl').text()).toContain('-2,015.00')
-    expect(tid(w, 'history-total-booked').text()).toContain('+962.00')
-    expect(tid(w, 'history-total-open').text()).toContain('-2,977.00')
-    expect(tid(w, 'history-total-credit').text()).toContain('+5,141.50')
-    expect(tid(w, 'history-total-left').text()).toContain('+7,156.50')
-    expect(tid(w, 'history-total-used').text()).toContain('1 of 2')
-    expect(tid(w, 'history-total-charges').text()).toContain('Charges 80.00')
+    expect(tid(w, 'steps-total-pnl').text()).toContain('-2,015.00')
+    expect(tid(w, 'steps-total-booked').text()).toContain('+962.00')
+    expect(tid(w, 'steps-total-open').text()).toContain('-2,977.00')
+    expect(tid(w, 'steps-total-credit').text()).toContain('+5,141.50')
+    expect(tid(w, 'steps-total-left').text()).toContain('+7,156.50')
+    expect(tid(w, 'steps-total-used').text()).toContain('1 of 2')
+    expect(tid(w, 'steps-total-charges').text()).toContain('Charges 80.00')
   })
 
   it('AC-3: a pending row shows pending and its fill state', async () => {
-    const pending = row({ step: 'adjustment', number: 1, booked: null, booked_text: null, booked_pending: 'pending', fill: 'unconfirmed', fill_text: null })
+    const pending = row({ step: 'adjustment', number: 1, booked: null, booked_text: null, booked_pending: 'pending', fill: 'unconfirmed', fill_text: 'Not yet confirmed by Zerodha' })
     const w = await open(body(totals(), [row(), pending]))
-    const r = w.findAll('[data-testid="history-row"]')[1]
-    expect(r.get('[data-testid="history-booked"]').text()).toBe('pending')
-    expect(r.get('[data-testid="history-fill"]').text()).toBe('Not confirmed by Zerodha')
+    const r = w.findAll('[data-testid="steps-row"]')[1]
+    expect(r.get('[data-testid="steps-booked"]').text()).toBe('pending')
+    expect(r.get('[data-testid="steps-fill"]').text()).toBe('Not yet confirmed by Zerodha')
   })
 
   it('missing prices and no plan maximum: a dash with the server reason, booked still shown', async () => {
@@ -89,27 +89,27 @@ describe('AdjustHistory', () => {
       prices_reason: 'prices_not_live', prices_reason_text: 'Prices are not live.', adjustments_max: null,
       max_reason: 'no_plan_max', max_reason_text: 'No plan maximum is set for this strategy.' })
     const w = await open(body(t))
-    expect(tid(w, 'history-total-open').text()).toContain('-')
-    expect(tid(w, 'history-reason-open').text()).toBe('Prices are not live.')
-    expect(tid(w, 'history-reason-pnl').text()).toBe('Prices are not live.')
-    expect(tid(w, 'history-total-booked').text()).toContain('+962.00')
-    expect(tid(w, 'history-total-used').text()).toContain('1 of -')
-    expect(tid(w, 'history-reason-used').text()).toBe('No plan maximum is set for this strategy.')
+    expect(tid(w, 'steps-total-open').text()).toContain('-')
+    expect(tid(w, 'steps-reason-open').text()).toBe('Prices are not live.')
+    expect(tid(w, 'steps-reason-pnl').text()).toBe('Prices are not live.')
+    expect(tid(w, 'steps-total-booked').text()).toContain('+962.00')
+    expect(tid(w, 'steps-total-used').text()).toContain('1 of -')
+    expect(tid(w, 'steps-reason-used').text()).toBe('No plan maximum is set for this strategy.')
   })
 
   it('the table scrolls in its own container (phone width)', async () => {
     const w = await open(body())
-    expect(tid(w, 'history-scroll').classes()).toContain('overflow-x-auto')
+    expect(tid(w, 'steps-scroll').classes()).toContain('overflow-x-auto')
   })
 
   it('a failed read shows the reason and no figure', async () => {
     reply = () => Promise.reject({ parts: { what_happened: 'Not available.' } })
-    const w = mount(AdjustHistory, { props: { strategyId: 7 } })
-    const d = tid(w, 'adjust-history')
+    const w = mount(AdjustSteps, { props: { strategyId: 7 } })
+    const d = tid(w, 'adjust-steps')
     d.element.open = true
     await d.trigger('toggle')
     await flushPromises()
-    expect(tid(w, 'history-error').text()).toBe('Not available.')
-    expect(w.find('[data-testid="history-totals"]').exists()).toBe(false)
+    expect(tid(w, 'steps-error').text()).toBe('Not available.')
+    expect(w.find('[data-testid="steps-totals"]').exists()).toBe(false)
   })
 })

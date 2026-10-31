@@ -7,6 +7,7 @@ Expected figures are the scenario generator's engine-free values in tests/fixtur
 from __future__ import annotations
 
 import datetime
+import importlib.util
 import json
 import pathlib
 from decimal import Decimal
@@ -20,6 +21,11 @@ DOC = json.loads(FIXTURE.read_text(encoding="utf-8"), parse_float=Decimal)
 POS = DOC["position"]
 CLOCK = datetime.datetime.fromisoformat(POS["entry"]["clock"])
 HOUR = datetime.timedelta(hours=1)
+ADJ_1_AT = datetime.datetime.fromisoformat(POS["adjustment_times"]["1"])
+_spec = importlib.util.spec_from_file_location(
+    "seed_scenario", pathlib.Path(__file__).resolve().parents[2] / "scripts" / "seed_scenario.py")
+SEED = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(SEED)
 
 
 def _sym(leg: dict) -> str:
@@ -27,14 +33,9 @@ def _sym(leg: dict) -> str:
 
 
 def seeded_orders() -> list[HistoryOrder]:
-    """The seed's layout: each history leg opened at clock - 2 h and exited at clock - 1 h; the legs at clock."""
-    opens = [HistoryOrder(_sym(h), h["side"], h["quantity"], Decimal(h["entry"]), "open", CLOCK - 2 * HOUR)
-             for h in POS["history"]]
-    exits = [HistoryOrder(_sym(h), "SELL" if h["side"] == "BUY" else "BUY", h["quantity"], Decimal(h["exit"]),
-                          "exit", CLOCK - HOUR) for h in POS["history"]]
-    legs = [HistoryOrder(_sym(leg), leg["side"], leg["quantity"], Decimal(leg["entry"]), "open", CLOCK)
-            for leg in POS["legs"]]
-    return opens + exits + legs
+    """ADJ-13 placed by scripts/seed_scenario.py's own ``placement_batches``: entry batch, then adjustment 1."""
+    return [HistoryOrder(_sym(leg), side, leg["quantity"], Decimal(price), kind, at)
+            for at, batch in SEED.placement_batches(POS, CLOCK) for side, leg, price, kind in batch]
 
 
 def live_prices() -> dict[str, Decimal]:
@@ -45,39 +46,39 @@ def live_prices() -> dict[str, Decimal]:
 
 def test_adj13_rows_and_totals_to_the_paisa():  # AC-1, AC-2, attack 1 and 5
     h = adjustment_history(seeded_orders(), live_prices(), adjustments_max=2)
-    assert [r.step for r in h.rows] == ["entry", "adjustment", "adjustment"]
-    assert [r.at for r in h.rows] == [CLOCK - 2 * HOUR, CLOCK - HOUR, CLOCK]
-    entry, close, reopen = h.rows
+    assert [r.step for r in h.rows] == ["entry", "adjustment"]
+    assert [r.at for r in h.rows] == [CLOCK, ADJ_1_AT]
+    entry, adj = h.rows
     assert entry.booked == Decimal("0")
-    assert close.booked == Decimal("-1176.50") + Decimal("2138.50") == Decimal("962.00")
-    assert close.booked == Decimal(POS["booked_pnl"])
-    assert sum(Decimal(x["booked"]) for x in POS["history"]) == close.booked
-    assert reopen.booked == 0
-    assert entry.cash == Decimal("1202.50") and close.cash == Decimal("-240.50") and reopen.cash == Decimal("4179.50")
+    assert adj.booked == Decimal("-1176.50") + Decimal("2138.50") == Decimal("962.00") == Decimal(POS["booked_pnl"])
+    assert sum(Decimal(x["booked"]) for x in POS["history"]) == adj.booked
+    # entry: put spread 22400/22600 (+1202.50) and call spread 23450/23650 (+2782.00); adjustment: close the put
+    # spread (-240.50) and open 22700/22900 (+1397.50); engine-free arithmetic on the fixture's prices
+    assert entry.cash == Decimal("3984.50") and adj.cash == Decimal("1157.00")
     t = h.totals
     assert t.booked == sum(r.booked for r in h.rows) == Decimal("962.00")
     assert t.credit == sum(r.cash for r in h.rows) == Decimal(POS["credit_received"]) == Decimal("5141.50")
     assert t.premium_left == Decimal(DOC["expected"]["premium_left"]) == Decimal("7156.50")
     assert t.pnl == Decimal(DOC["expected"]["pnl_now"]) == Decimal("-2015")
     assert t.open_pnl == Decimal("-2977.00") and t.pnl == t.booked + t.open_pnl
-    assert (t.adjustments_used, t.adjustments_max) == (2, 2)
+    assert (t.adjustments_used, t.adjustments_max) == (POS["adjustments_used"], 2) == (1, 2)
     assert all(r.fill == "paper" and r.rule_id is None for r in h.rows)
     assert t.charges is None  # no per-order charges given
 
 
 def test_off_by_one_paisa_in_an_exit_fails_the_expected_booked():  # attack 1
     orders = seeded_orders()
-    orders[2] = HistoryOrder(orders[2].instrument_id, orders[2].side, orders[2].quantity,
-                             orders[2].price + Decimal("0.01"), "exit", orders[2].placed_at)
+    orders[4] = HistoryOrder(orders[4].instrument_id, orders[4].side, orders[4].quantity,
+                             orders[4].price + Decimal("0.01"), "exit", orders[4].placed_at)
     assert adjustment_history(orders, live_prices(), adjustments_max=2).totals.booked != Decimal("962.00")
 
 
 def test_no_history_is_an_entry_row_only():
     legs = [o for o in seeded_orders() if o.placed_at == CLOCK]
-    h = adjustment_history(legs, live_prices(), adjustments_max=None)
+    h = adjustment_history(legs, {}, adjustments_max=None)
     assert [r.step for r in h.rows] == ["entry"]
     assert h.totals.booked == 0 and h.totals.adjustments_used == 0 and h.totals.adjustments_max is None
-    assert h.totals.credit == Decimal("4179.50")
+    assert h.totals.credit == Decimal("3984.50")
 
 
 def test_settle_is_its_own_row_labelled_by_kind():
@@ -91,15 +92,13 @@ def test_settle_is_its_own_row_labelled_by_kind():
 
 
 def test_unconfirmed_adjustment_is_pending_and_out_of_the_totals():  # AC-3, attack 2
-    orders = seeded_orders()
     orders = [HistoryOrder(o.instrument_id, o.side, o.quantity, o.price, o.kind, o.placed_at,
-                           "unconfirmed" if o.placed_at == CLOCK - HOUR else "paper") for o in orders]
-    # the four current legs alone are a separate step; drop them so the open book is the history legs
-    orders = [o for o in orders if o.placed_at != CLOCK]
-    h = adjustment_history(orders, {"PE22400": Decimal("1.40"), "PE22600": Decimal("3.25")}, adjustments_max=2)
+                           "unconfirmed" if o.placed_at == ADJ_1_AT else "paper") for o in seeded_orders()]
+    h = adjustment_history(orders, {"PE22400": Decimal("1.40"), "PE22600": Decimal("3.25"),
+                                    "CE23450": Decimal("60.00"), "CE23650": Decimal("22.25")}, adjustments_max=2)
     pending = h.rows[1]
     assert pending.fill == "unconfirmed" and pending.booked is None
-    assert h.totals.booked == 0 and h.totals.credit == Decimal("1202.50") and h.totals.adjustments_used == 0
+    assert h.totals.booked == 0 and h.totals.credit == Decimal("3984.50") and h.totals.adjustments_used == 0
 
 
 def test_failed_beats_unconfirmed_in_one_row():
@@ -135,7 +134,7 @@ def test_a_float_live_price_or_charge_raises():  # attack 4
 def test_charges_total_is_the_sum_of_rows():
     per = [Decimal("1.25")] * 8
     h = adjustment_history(seeded_orders(), live_prices(), adjustments_max=2, per_order_charges=per)
-    assert [r.charges for r in h.rows] == [Decimal("2.50"), Decimal("2.50"), Decimal("5.00")]
+    assert [r.charges for r in h.rows] == [Decimal("5.00"), Decimal("5.00")]
     assert h.totals.charges == Decimal("10.00")
 
 
@@ -159,10 +158,10 @@ def test_words_are_exact():
     assert render_explanation("adjust_history_pending") == "pending"
 
 
-def test_seed_id_order_interleaves_times_and_still_groups_by_placed_at():
-    """Measured on the fresh DB: the seed stores open, exit, open, exit, then the four legs (ids in that order)."""
+def test_ids_out_of_time_order_still_group_by_placed_at():
+    """Batches are every order of one placed_at, whatever the id order (measured: an earlier seed interleaved them)."""
     o = seeded_orders()
-    interleaved = [o[0], o[2], o[1], o[3], *o[4:]]
+    interleaved = [o[0], o[4], o[1], o[5], o[2], o[6], o[3], o[7]]
     h = adjustment_history(interleaved, live_prices(), adjustments_max=2)
-    assert [r.step for r in h.rows] == ["entry", "adjustment", "adjustment"]
+    assert [r.step for r in h.rows] == ["entry", "adjustment"]
     assert h.rows[1].booked == Decimal("962.00") and h.totals.credit == Decimal("5141.50")

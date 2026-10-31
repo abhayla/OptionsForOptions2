@@ -2658,5 +2658,21 @@
   "explanation:adjust_history_no_plan_max": {
     "sha256": "7c1f019c44218093420445c551d9163d893ae275202ae611c6de0d82c14054d7",
     "reviewed": "pending owner read"
+  },
+  "explanation:adjust_history_fill_confirmed": {
+    "sha256": "a0cab6bf4307ef7422d0f0e99bbf48dfd6ee46bb6e5ba876b914310200fc3b1a",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_history_fill_unconfirmed": {
+    "sha256": "614645b3776a5db861da7f97e3edd6b0a596420519447a00539e04ac0b320c92",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_history_fill_failed": {
+    "sha256": "136742c8e313533bc566b9178896d988fa9ac5668ae85c120c83ed373603ffb7",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_history_col_fill": {
+    "sha256": "daa0bcf8c0174543e620496d6cc2e5364047a9278f914e63baf06c709df0bd0a",
+    "reviewed": "pending owner read"
   }
 }

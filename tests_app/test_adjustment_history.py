@@ -30,7 +30,6 @@ DOC = json.loads((ROOT / "tests" / "fixtures" / "adjust_scenarios" / "ADJ-13.jso
 POS = DOC["position"]
 OK, NOT_FOUND = 200, 404
 IC_MAX = 2  # system_playbooks.json iron condor guards.max_adjustments
-SEEDED_STEPS_AFTER_ENTRY = 2
 CATALOGUE_AS_OF = datetime.datetime(2026, 10, 31, 9, 0, tzinfo=IST)
 PAPER = "Paper - not sent to Zerodha"
 OWN = "Your own change"
@@ -80,25 +79,24 @@ async def _stored_orders(app_engine, strategy_id: int) -> list:
 async def test_adj13_history_rows_and_totals_equal_the_domain_and_the_generator(app_db_url, monkeypatch):
     sid = await _seeded(app_db_url, monkeypatch, "ADJ-13")
     stored = await _stored_orders(app_db_url, sid)
-    # the batch rule, measured on the seeded rows: three placed_at values, 2 + 2 + 4 orders
+    # the batch rule, measured on the seeded rows: two placed_at values (entry clock, adjustment 1), 4 + 4 orders
     clock = datetime.datetime.fromisoformat(POS["entry"]["clock"])
+    adj_at = datetime.datetime.fromisoformat(POS["adjustment_times"]["1"])
     times = [o.order.placed_at for o in stored]
-    assert sorted({t - clock for t in times}) == [datetime.timedelta(hours=-2), datetime.timedelta(hours=-1),
-                                                  datetime.timedelta(0)]
-    assert [sum(1 for t in times if t == u) for u in sorted(set(times))] == [2, 2, 4]
+    assert sorted(set(times)) == [clock, adj_at]
+    assert [sum(1 for t in times if t == u) for u in (clock, adj_at)] == [4, 4]
     status, body = await _history(sid)
     assert status == OK, body
     rows, t = body["rows"], body["totals"]
-    assert [r["step"] for r in rows] == ["entry", "adjustment", "adjustment"]
-    assert [Decimal(r["booked"]) for r in rows] == [Decimal(0), Decimal("962.00"), Decimal(0)]
+    assert [r["step"] for r in rows] == ["entry", "adjustment"]
+    assert [Decimal(r["booked"]) for r in rows] == [Decimal(0), Decimal("962.00")]
     assert Decimal(rows[1]["booked"]) == Decimal("-1176.50") + Decimal("2138.50")
-    assert [Decimal(r["cash"]) for r in rows] == [Decimal("1202.50"), Decimal("-240.50"), Decimal("4179.50")]
+    assert [Decimal(r["cash"]) for r in rows] == [Decimal("3984.50"), Decimal("1157.00")]
     assert {r["fill_text"] for r in rows} == {PAPER} and {r["why_text"] for r in rows} == {OWN}
     assert all(r["booked_pending"] is None for r in rows)
     assert Decimal(t["booked"]) == sum(Decimal(r["booked"]) for r in rows) == Decimal(POS["booked_pnl"])
     assert Decimal(t["credit"]) == sum(Decimal(r["cash"]) for r in rows) == Decimal(POS["credit_received"])
-    # the batch rule above: the seed places the roll's close and re-open 1 h apart
-    assert t["adjustments_used"] == SEEDED_STEPS_AFTER_ENTRY
+    assert t["adjustments_used"] == POS["adjustments_used"] == 1
     assert t["adjustments_max"] == IC_MAX and t["max_reason"] is None  # the system iron condor playbook's guard
     if t["open_pnl"] is not None:  # scenario prices live: the generator's figures to the paisa
         assert Decimal(t["pnl"]) == Decimal(DOC["expected"]["pnl_now"])
