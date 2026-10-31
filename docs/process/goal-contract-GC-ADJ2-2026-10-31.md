@@ -106,6 +106,10 @@ Each step ends with one line here: `step N DONE <sha> <proof line>` or `PARKED (
 - step 6 DONE 3a55b0f5: Opus money review REVISE -> fixed (futures and debit premium; 44-scenario oracle sweep green);
   fresh-DB test_adjustment_history 3 passed; Chrome: totals = ADJ-02 fixture (P&L -1,612.00, premium left 7,338.50,
   credit 5,726.50, used 0 of 2), paper label.
+- step 7 DONE (18:05): prepush --full TOTAL PASS on 6b2e2546 (marker .git/ofo-prepush/6b2e2546...json; ci_checks,
+  domain_tests, app_tests, ruff_ratchet, coverage, alembic_guard, frontend lint/unit/build all PASS); build/gcadj2
+  merged --no-ff into LOCAL feature/adjustments a27c373c; nothing pushed, no PR. Handover:
+  docs/process/session-handover-2026-10-31-gcadj2.md. The PR to main waits for the owner's explicit approval.
 
 ## Rules for the run
 
