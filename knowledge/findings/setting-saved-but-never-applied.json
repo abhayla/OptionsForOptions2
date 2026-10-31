@@ -1,0 +1,28 @@
+{
+  "id": "setting-saved-but-never-applied",
+  "scope": "generic",
+  "class": "A user-editable limit is stored and labelled in the UI, but no code reads it, so the user believes a protection is active that does nothing.",
+  "mechanism": "hide_oi_below, hide_spread_pct_of_mid_above and roll_debit_limit are in system_playbooks.json and the editor labels (explanations.py:317-322); a grep over backend and frontend finds no reader outside those two files.",
+  "first_seen": {
+    "date": "2026-10-31",
+    "where": "GC-ADJ3 gap check, read from the code (spec/findings.md F-78)",
+    "evidence": "no reader of hide_oi_below / hide_spread_pct_of_mid_above / roll_debit_limit"
+  },
+  "fix": "Open (GC-ADJ3): apply each limit, or mark it 'not applied yet' in the editor until it is.",
+  "detection": {
+    "status": "unguarded",
+    "checks": [],
+    "note": "Candidate check: every playbook guard key has a reader or a 'not applied yet' label (test)."
+  },
+  "spec_ref": [
+    "spec/requirements/REQ-159.md",
+    "spec/findings.md"
+  ],
+  "occurrences": [
+    {
+      "date": "2026-10-31",
+      "where": "playbook guards",
+      "evidence": "F-78"
+    }
+  ]
+}

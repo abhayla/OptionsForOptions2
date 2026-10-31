@@ -1094,3 +1094,22 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   Dependency found: the REST step reads the owner session only through the registered live market
   (`ofo_app/live_market.py` `owner_kite_reads`, l.432-434), so with `LIVE_MARKET` unset the REST step always reports
   `absent` and spot falls to the last close; every environment that should use REST spot must set `LIVE_MARKET`.
+
+## F-77 - The T-19 trigger compares premium left with a different "adjustment cost" than the spec and the Compare table
+- Read from the code 2026-10-31 (GC-ADJ3 gap check): REQ-159 ("How the open triggers are measured") says T-19 compares
+  premium still left with "the adjustment's own charges (the 'This adjustment' figure of the GC-ADJ1 compare)". The
+  checker instead uses `ofo/engine/adjust_money.py` `adjustment_cost`: the FULL bid-ask spread of every OPEN leg times
+  quantity plus a flat `COST_PER_LEG` = Rs 40 per leg (`ofo_app/adjustment_check.py:56`, `:157-158`), closer to the cost
+  of closing everything. The Compare's cost row is this adjustment's charges plus HALF the spread of each contract the
+  approach trades (`ofo/adjustment/compare.py:220-231`). Effect: the alert can fire, or stay quiet, on a cost the user
+  never sees on the Compare. Spec gap found with it: at check time no approach is picked, so "the adjustment's own
+  charges" does not say WHICH approach's cost counts. Bears on REQ-159, ADR-216, ADR-008. Status: **read from the code,
+  not yet measured on a scenario**; open for owner decision (GC-ADJ3).
+
+## F-78 - Three playbook limits are saved and shown in the editor but nothing applies them
+- Read from the code 2026-10-31: `hide_oi_below`, `hide_spread_pct_of_mid_above` and `roll_debit_limit` are stored in
+  `ofo/adjustment/system_playbooks.json` and labelled in the editor (`ofo/errors/explanations.py:317-322`), but no code
+  reads them: strikes are not hidden or flagged by these thresholds and a roll's debit is not checked. The Compare's
+  "Strike liquidity" row shows the widest spread with no threshold. A user who sets them is told nothing about this.
+  Separately, `low_oi_blocked` is set only by scenario mode (`ofo_app/scenario_mode.py:282`); no live source sets it.
+  Bears on REQ-159 AC-6, catalogue F-12. Status: **read from the code**; open for owner decision (GC-ADJ3).

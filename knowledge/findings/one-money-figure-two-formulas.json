@@ -1,0 +1,28 @@
+{
+  "id": "one-money-figure-two-formulas",
+  "scope": "generic",
+  "class": "A money figure the user reads under one name (an 'adjustment cost', a 'premium left') is computed by two different formulas in two places, so an alert or rule fires on a number the user never sees on the screen that shows that figure.",
+  "mechanism": "The T-19 checker (ofo_app/adjustment_check.py:157) uses adjust_money.adjustment_cost: full bid-ask spread of every open leg x quantity + a flat Rs 40 per leg; the Compare's cost row (ofo/adjustment/compare.py:220-231) is the approach's charges + half the spread of each contract it trades; REQ-159 names the Compare figure as T-19's input.",
+  "first_seen": {
+    "date": "2026-10-31",
+    "where": "GC-ADJ3 gap check, read from the code (spec/findings.md F-77)",
+    "evidence": "COST_PER_LEG = Decimal(40) at adjustment_check.py:56; compare.py:220-231 cost_with_spread"
+  },
+  "fix": "Open (GC-ADJ3): one engine function for the figure, used by both the trigger and the screen; owner decides which approach's cost a check uses.",
+  "detection": {
+    "status": "unguarded",
+    "checks": [],
+    "note": "No test holds the trigger's cost equal to a shown figure."
+  },
+  "spec_ref": [
+    "spec/requirements/REQ-159.md",
+    "spec/findings.md"
+  ],
+  "occurrences": [
+    {
+      "date": "2026-10-31",
+      "where": "T-19 vs Compare cost row",
+      "evidence": "F-77"
+    }
+  ]
+}
