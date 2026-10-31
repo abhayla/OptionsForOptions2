@@ -68,7 +68,10 @@ class StrategyState:
     max_profit: Decimal | str | None = None
     margin: Decimal | None = None  # None = the broker did not state it
     premium_left: Decimal | None = None
-    adjustment_cost: Decimal | None = None
+    adjustment_cost: Decimal | None = None  # ADR-221: the cheapest offered approach's Compare cost
+    adjustment_approach: str | None = None  # that approach's id (A-xx), named on the T-19 flag
+    adjustment_cost_reason: str | None = None  # why no cost: a catalogue reason code (``adjust_trigger_*``)
+    adjustment_unpriced: int = 0  # offered approaches left out because they could not be priced
     atm_iv: Decimal | None = None
     entry_atm_iv: Decimal | None = None
     day_open: Decimal | None = None
@@ -274,7 +277,7 @@ _STAGE_NAME_MAX = 80  # the PlaybookName slot's bound
 _STAGE_FALLBACK = "current"
 
 
-def _stage_words(name: object) -> str:
+def stage_words(name: object) -> str:
     """The stage's name for the refusal sentence; a missing or unusable name reads "current", never a gap or a brace."""
     if not isinstance(name, str):
         return _STAGE_FALLBACK
@@ -296,7 +299,7 @@ def _limit(c: _Ctx, tid: str) -> Decimal | str:
         raise _Missing(f"{P}no_stage", days=c.state.days_left)
     raw = values[c.stage]
     if raw == "":
-        raise _Missing(f"{P}no_stage_value", stage=_stage_words(c.stage_name))
+        raise _Missing(f"{P}no_stage_value", stage=stage_words(c.stage_name))
     if tid == "T-10b":
         return raw
     lim = Decimal(raw)
@@ -416,7 +419,9 @@ def _t19(c: _Ctx) -> Hit:
     left = _need(c.state.premium_left, "premium_left")
     if left < 0:
         raise _Missing(f"{P}net_long_premium")
-    cost = _need(c.state.adjustment_cost, "adjustment_cost")
+    cost = c.state.adjustment_cost
+    if cost is None:  # ADR-221: no approach offered / none priceable -> not checked, with that reason
+        raise _Missing(c.state.adjustment_cost_reason or f"{P}missing_adjustment_cost")
     try:
         pair = ratios.premium_left_per_cost(left, cost)
     except ValueError:

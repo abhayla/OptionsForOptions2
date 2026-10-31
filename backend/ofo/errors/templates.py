@@ -1215,6 +1215,11 @@ _TRIGGER_TEMPLATES: tuple[MessageTemplate, ...] = (
     _gate("adjust_trigger_withheld_no_spot", _UI, 151,
           "No adjustment opportunity checked: spot not available.", _TRIG_WITHHELD,
           "Every rule of this playbook.", "Wait for the spot price to come back.", {}),
+    # ADR-221: T-19 uses the cheapest approach the playbook offers; when none can be used it is not checked
+    _trig("no_approach_offered", 173, "This playbook offers no adjustment approach to price, so the premium left "
+          "cannot be compared with an adjustment's cost."),
+    _trig("no_approach_priced", 174, "No adjustment approach this playbook offers can be priced now (a contract "
+          "without a bid or an ask, charges not available, or no whole-trade figure)."),
     _gate("adjust_trigger_already_true", _UI, 152, "Already true when tracking started.",
           "It is shown, not flagged, until a check finds it false.", "Nothing.",
           "Watch it: it flags if it clears and then comes back.", {}),

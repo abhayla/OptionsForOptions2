@@ -15,12 +15,12 @@ derived by hand-written code; the test cross-checks them with the engine.
 | ADJ-06 | IC weekly, NIFTY 2 lots | IV +4 points with spot unchanged | Early (weekly, 5 d) | T-11 |
 | ADJ-07 | IC weekly, NIFTY 2 lots | IV crush after an event, profit at least 60% of max profit | Middle (weekly, 4 d) | T-11, T-07 |
 | ADJ-08 | IC weekly, NIFTY 2 lots | Expiry day 13:30: spot within 0.25% of a short, far short at Rs 1.5 or less | Last day (weekly, 0 d) | T-01, T-07, T-09 |
-| ADJ-09 | IC weekly, NIFTY 2 lots | Expiry day 14:45: time exit | Last day (weekly, 0 d) | T-07, T-09, T-19, T-10b |
+| ADJ-09 | IC weekly, NIFTY 2 lots | Expiry day 14:45: time exit | Last day (weekly, 0 d) | T-07, T-09, T-10b |
 | ADJ-10 | IC weekly, NIFTY 2 lots | Big win on day 1: profit 45% of max profit | Early (weekly, 6 d) | T-11 |
 | ADJ-11 | IC weekly, NIFTY 2 lots | Loss 55% of max loss: stop line | Middle (weekly, 4 d) | T-02, T-03, T-06, T-09, T-16 |
 | ADJ-12 | IC weekly, NIFTY 2 lots | Two adjustments already used: only exit / reduce offered | Last day (weekly, 1 d) | T-18 |
 | ADJ-13 | IC weekly, NIFTY 2 lots | After one adjustment with booked P&L: whole-trade numbers include it | Middle (weekly, 4 d) | none |
-| ADJ-14 | IC weekly, NIFTY 2 lots | Premium left below 1 x adjustment cost (ADR-216) | Last day (weekly, 1 d) | T-07, T-09, T-19, T-10b |
+| ADJ-14 | IC weekly, NIFTY 2 lots | T-19 not checked: no approach the playbook offers can be priced (ADR-221) | Last day (weekly, 1 d) | T-07, T-09, T-10b |
 | ADJ-15 | IC weekly, NIFTY 2 lots | Last session before a weekend, Friday 15:00: carry check | Middle (weekly, 4 d) | none |
 | ADJ-16 | IC weekly, NIFTY 2 lots | Day before a market holiday (Christmas, Fri 25 Dec 2026) | Middle (monthly, 5 d) | none |
 | ADJ-17 | IC weekly, NIFTY 2 lots | User unavailable the next two sessions: fires the session before | Middle (weekly, 4 d) | none |
@@ -39,6 +39,9 @@ derived by hand-written code; the test cross-checks them with the engine.
 | ADJ-25a | IC weekly, NIFTY 2 lots | Boundary: tested short delta exactly at the limit 0.35 (fires) | Middle (weekly, 3 d) | T-03 |
 | ADJ-25b | IC weekly, NIFTY 2 lots | Boundary: tested short delta 0.01 below the limit (does not fire) | Middle (weekly, 3 d) | none |
 | ADJ-42 | IC weekly, NIFTY 2 lots | F-71: short CE 0.35% from spot at entry and now (Middle stage): already true, not flagged | Middle (weekly, 3 d) | none |
+| ADJ-43 | IC weekly, NIFTY 2 lots | Premium left below the cheapest adjustment's cost: T-19 fires (ADR-221) | Last day (weekly, 1 d) | T-07, T-09, T-19, T-10b |
+| ADJ-44 | IC weekly, NIFTY 2 lots | Premium left above the cheapest adjustment's cost: T-19 does not fire (ADR-221) | Last day (weekly, 1 d) | T-07, T-09, T-10b |
+| ADJ-45 | IC weekly, NIFTY 2 lots | Adjustment limit reached: T-19 prices only exit and reduce approaches (S-11, ADR-221) | Last day (weekly, 1 d) | T-07, T-09, T-18 |
 | ADJ-30 | Other strategy types | Short strangle, call side tested | Middle (weekly, 4 d) | T-01, T-03 |
 | ADJ-31 | Other strategy types | Short straddle needing a re-centre | Middle (weekly, 4 d) | T-03 |
 | ADJ-32 | Other strategy types | Iron butterfly, spot drifted toward the call wing | Middle (weekly, 4 d) | T-02, T-03 |

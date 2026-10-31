@@ -25,7 +25,9 @@ from types import MappingProxyType
 
 from ofo import wording as _wording
 
-from ofo.errors.gate_slots import PlaybookField, PlaybookTriggerLabel, PlaybookTypeName, PlaybookUnit
+from ofo.errors.gate_slots import (
+    ClockTime, PlaybookField, PlaybookName, PlaybookTriggerLabel, PlaybookTypeName, PlaybookUnit,
+)
 from ofo.errors.slots import Count, SlotType, _require_exact
 from ofo.errors.templates import MARGIN_SHORTFALL_NEXT_ACTION, ZERODHA_BUSY_TEXT
 
@@ -561,6 +563,19 @@ class Rupees(SlotType):
     def format(value: Decimal) -> str:
         from ofo.engine.display import format_rupees  # late: display imports this module
         return format_rupees(value)
+
+
+class ApproachLabel(SlotType):
+    """ADR-221: an adjustment approach id the app builds (``ADJUSTMENT_APPROACH_LABEL_TEXT``), printed as its name."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        if not isinstance(value, str) or value not in ADJUSTMENT_APPROACH_LABEL_TEXT:
+            raise TypeError(f"ApproachLabel slot requires a built approach id, got {value!r}")
+
+    @staticmethod
+    def format(value: str) -> str:
+        return ADJUSTMENT_APPROACH_LABEL_TEXT[value]
 
 
 class WholeRupees(SlotType):
@@ -1428,6 +1443,8 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("adjust_check_flag_system", "what_triggered", "Adjustment opportunity detected"),
     ExplanationTemplate("adjust_check_flag_user", "what_triggered", "Your rule was triggered"),
     ExplanationTemplate("adjust_check_type_name", "values_seen", "{name}", {"name": PlaybookTypeName}),
+    # a playbook stage's name as the user typed it ("Last day"): it has spaces, so it is catalogue text, not an id
+    ExplanationTemplate("adjust_check_stage_name", "values_seen", "{name}", {"name": PlaybookName}),
     # GC-ADJ2 step 5 (REQ-112 AC-2/AC-6, REQ-162): suggestion outcomes, dismiss reasons and the inbox's fixed words
     ExplanationTemplate("suggestion_outcome_open", "values_seen", "Open"),
     ExplanationTemplate("suggestion_outcome_dismissed", "values_seen", "You dismissed this"),
@@ -1450,6 +1467,22 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                          "threshold": PlaybookField}),
     ExplanationTemplate("adjust_condition_line_plain", "values_seen", "{label}: {value} (rule {threshold})",
                         {"label": PlaybookTriggerLabel, "value": PlaybookField, "threshold": PlaybookField}),
+    # a clock trigger (unit "time", T-10b): its value and threshold are clock times, no unit word
+    ExplanationTemplate("adjust_condition_line_time", "values_seen", "{label}: {value} (rule {threshold})",
+                        {"label": PlaybookTriggerLabel, "value": ClockTime, "threshold": ClockTime}),
+    # last resort (fail visible): the trigger id alone when no line can carry its value
+    ExplanationTemplate("adjust_condition_line_id", "values_seen", "{label}", {"label": PlaybookTriggerLabel}),
+    # ADR-221: the T-19 flag line names the cheapest approach the playbook offers and its Compare cost
+    ExplanationTemplate("adjust_condition_line_t19", "values_seen",
+                        "{label}: {value} (rule {threshold}); cheapest adjustment that could be priced now: "
+                        "{approach}, cost {cost} (as in Compare)",
+                        {"label": PlaybookTriggerLabel, "value": PlaybookField, "threshold": PlaybookField,
+                         "approach": ApproachLabel, "cost": Rupees}),
+    ExplanationTemplate("adjust_condition_line_t19_unpriced", "values_seen",
+                        "{label}: {value} (rule {threshold}); cheapest adjustment that could be priced now: "
+                        "{approach}, cost {cost} (as in Compare) ({count} could not be priced)",
+                        {"label": PlaybookTriggerLabel, "value": PlaybookField, "threshold": PlaybookField,
+                         "approach": ApproachLabel, "cost": Rupees, "count": Count}),
     ExplanationTemplate("plan_target_words", "values_seen", "{pct} % of max profit", {"pct": PlaybookField}),
     ExplanationTemplate("plan_stop_words_loss", "values_seen", "{pct} % of max loss", {"pct": PlaybookField}),
     ExplanationTemplate("plan_stop_words_margin", "values_seen", "{margin} % of margin", {"margin": PlaybookField}),

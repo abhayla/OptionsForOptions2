@@ -2647,6 +2647,10 @@
     "sha256": "6812d4f9f2a54353f3930dcd5eac870ebb5e421e25baa6c61dd616426750e8d8",
     "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"
   },
+  "explanation:adjust_check_stage_name": {
+    "sha256": "6812d4f9f2a54353f3930dcd5eac870ebb5e421e25baa6c61dd616426750e8d8",
+    "reviewed": "pending owner read"
+  },
   "playbook_stage_overlap": {
     "sha256": "61f0c71a806739e26b0a3f1bcb34ed6d68dc69370b0fd5977109df2415e9137f",
     "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"
@@ -3281,6 +3285,30 @@
   },
   "explanation:settings_refused_charges_future": {
     "sha256": "580ae3065fda8c21a6deed4610b285f15dd5e8d88086d00fec25ad16cbdd6370",
+    "reviewed": "pending owner read"
+  },
+  "adjust_trigger_no_approach_offered": {
+    "sha256": "1f0009cdd5de54dd6a666576246f0f0859a85e99209bc224bc0cf05b4e0ecf38",
+    "reviewed": "pending owner read"
+  },
+  "adjust_trigger_no_approach_priced": {
+    "sha256": "ba21df149cf9a3e4cd49dc488f002475d06a203edde8045a6d1c70e7be5e553f",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_condition_line_t19": {
+    "sha256": "7368b88fda4e6c2aeff30fd8aee412481ff826e010847c731795e617e91225f4",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_condition_line_t19_unpriced": {
+    "sha256": "3531ab96451c521ba8ce50931ee0f407cf3609b012ab8f8d4be6cbab43e3bb08",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_condition_line_time": {
+    "sha256": "1184fe1a615bffeefe1063275c220e3fcda784c51ca3ff13ad10e645368cc042",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_condition_line_id": {
+    "sha256": "2abcad08224e0354c80431272edc995f149b964c92f1c0c4ab630c8ca59997b4",
     "reviewed": "pending owner read"
   }
 }

@@ -58,7 +58,7 @@ class CheckPlaybookOut(ApiModel):
 
 
 class CheckStageOut(ApiModel):
-    name: Identifier | None
+    name: CatalogueText | None  # the stage name as the user typed it (spaces allowed)
     index: int | None
 
 
@@ -97,34 +97,55 @@ def _num(v: Decimal | str | None) -> Decimal | None:
     return v.quantize(SHOWN_PLACES, rounding=ROUND_HALF_UP)
 
 
-def _condition(r: pe.Flag | pe.AlreadyTrue, body: Mapping | None) -> Any:
-    """The condition in words from the evaluated body's own label and unit; None without a comparison."""
+def _condition(r: pe.Flag | pe.AlreadyTrue, body: Mapping | None,
+               cheapest: tuple[str, Decimal, int] | None = None) -> Any:
+    """The condition in words from the evaluated body's own label and unit; None without a comparison. T-19 also names
+    the cheapest offered approach and its cost (``cheapest``, ADR-221)."""
     if r.cmp is None:
         return None
     value, threshold = _num(r.value), _num(r.threshold)
     label, unit = check.trigger_words(body, r.trigger_id)
-    return check.condition_line(r.trigger_id, label, unit, str(r.value) if value is None else str(value),
-                                str(r.threshold) if threshold is None else str(threshold))
+    shown = str(r.value) if value is None else str(value)
+    limit = str(r.threshold) if threshold is None else str(threshold)
+    if r.trigger_id == "T-19" and cheapest is not None:
+        return check.condition_line_t19(label, shown, limit, *cheapest)
+    return check.condition_line(r.trigger_id, label, unit, shown, limit)
 
 
-def result_out(r: pe.Result, flag_wording: Any, opened: dict[str, int] | None = None, *,
-               dismissed: frozenset[str] = frozenset(), body: Mapping | None = None) -> dict:
+def result_out(r: pe.Result, flag_wording: Any, opened: dict[str, int] | None = None, *,  # noqa: PLR0913
+               dismissed: frozenset[str] = frozenset(), body: Mapping | None = None,
+               cheapest: tuple[str, Decimal, int] | None = None) -> dict:
     # dismissed and body are keyword-only: a positional body once landed in dismissed (TypeError on a None body)
     if isinstance(r, pe.Flag):
         return {"kind": "flag", "rule_id": r.rule_id, "trigger_id": r.trigger_id, "cmp": r.cmp, "value": _num(r.value),
                 "threshold": _num(r.threshold), "reason": None, "wording": flag_wording,
-                "condition": _condition(r, body), "suggestion_id": (opened or {}).get(r.rule_id),
+                "condition": _condition(r, body, cheapest), "suggestion_id": (opened or {}).get(r.rule_id),
                 "note": render_explanation("suggestion_outcome_dismissed") if r.rule_id in dismissed else None}
     if isinstance(r, pe.AlreadyTrue):
         return {"kind": "already_true", "rule_id": r.rule_id, "trigger_id": r.trigger_id, "cmp": r.cmp,
                 "value": _num(r.value), "threshold": _num(r.threshold), "reason": None, "wording": render(r.code),
-                "condition": _condition(r, body)}
+                "condition": _condition(r, body, cheapest)}
     return {"kind": "not_checked", "rule_id": r.rule_id, "trigger_id": r.trigger_id, "cmp": None, "value": None,
             "threshold": None, "reason": render(r.code, **dict(r.slots)), "wording": None}
 
 
+def _t19_record(trigger_id: str, cheapest: tuple[str, Decimal, int] | None) -> dict:
+    """ADR-221: a T-19 record keeps the approach, cost and unpriced count it was shown with (the list draws them)."""
+    if trigger_id != "T-19" or cheapest is None:
+        return {}
+    return {"approach": cheapest[0], "approach_cost": cheapest[1], "unpriced": cheapest[2]}
+
+
+def _cheapest(state: pe.StrategyState) -> tuple[str, Decimal, int] | None:
+    """The T-19 approach, cost and unpriced count the check used (ADR-221); None when it had none."""
+    if state.adjustment_approach is None or state.adjustment_cost is None:
+        return None
+    return state.adjustment_approach, state.adjustment_cost, state.adjustment_unpriced
+
+
 async def _sync_records(db: Any, user_ref: str, strategy_id: int, ev: pe.Evaluation, source: str,  # noqa: PLR0913
-                        body: Mapping | None = None) -> tuple[dict[str, int], frozenset[str]]:
+                        body: Mapping | None = None,
+                        cheapest: tuple[str, Decimal, int] | None = None) -> tuple[dict[str, int], frozenset[str]]:
     """REQ-112 AC-1/AC-2, REQ-045 AC-8: one open record per flagged rule (a rule still open keeps its record), all
     opened at this check sharing one group; the open record of a rule this check found FALSE lapses (condition
     stopped holding). A not-checked or already-true rule is neither flagged nor cleared: its record stays as it is.
@@ -139,7 +160,8 @@ async def _sync_records(db: Any, user_ref: str, strategy_id: int, ev: pe.Evaluat
             rec = await playbook_store.open_suggestion(
                 db, user_ref, strategy_id, r.rule_id, trigger_id=r.trigger_id, stage=r.stage_name,
                 value=_num(r.value), threshold=_num(r.threshold), group=group, source=source, cmp=r.cmp,
-                label=check.trigger_words(body, r.trigger_id)[0], unit=check.trigger_words(body, r.trigger_id)[1])
+                label=check.trigger_words(body, r.trigger_id)[0], unit=check.trigger_words(body, r.trigger_id)[1],
+                **_t19_record(r.trigger_id, cheapest))
             opened[r.rule_id] = rec.id
     cleared = set(ev.clear)
     for rule_id, dismissed in held.items():
@@ -203,10 +225,11 @@ async def adjustment_check(  # noqa: PLR0913 - FastAPI dependencies, one per inp
     ev = await check.evaluate_and_remember(db, user_ref, strategy_id, resolved.body, state, scenario_mode.current(),
                                            tracked.position)
     source = playbook_store.SOURCE_SYSTEM if resolved.is_system else playbook_store.SOURCE_OWN
-    opened, dismissed = await _sync_records(db, user_ref, strategy_id, ev, source, resolved.body)
+    opened, dismissed = await _sync_records(db, user_ref, strategy_id, ev, source, resolved.body, _cheapest(state))
     await db.commit()
     wording = render_explanation("adjust_check_flag_system" if resolved.is_system else "adjust_check_flag_user")
-    reply |= {"stage": {"name": ev.stage_name, "index": ev.stage_index},
+    reply |= {"stage": check.stage_out(ev.stage_name, ev.stage_index),
               "withheld": None if ev.withheld is None else render(ev.withheld),
-              "results": [result_out(r, wording, opened, dismissed=dismissed, body=resolved.body) for r in ev.results]}
+              "results": [result_out(r, wording, opened, dismissed=dismissed, body=resolved.body,
+                                    cheapest=_cheapest(state)) for r in ev.results]}
     return AdjustmentCheckOut.model_validate(reply)

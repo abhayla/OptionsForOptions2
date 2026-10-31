@@ -267,6 +267,30 @@ def price_after(legs: Sequence[PositionLeg], position: Position, booked: Decimal
     return Priced(after, known)
 
 
+def as_of_market(tracked: Tracked, market: MarketInputs) -> Tracked:
+    """The position as the approach builder reads it: the market day and the listed expiry kind (the approaches
+    route and the playbook check's T-19 both build from this)."""
+    return dataclasses.replace(tracked, position=dataclasses.replace(
+        tracked.position, today=market.now.astimezone(IST).date(),
+        expiry_kind=market.expiry_kind or tracked.position.expiry_kind))
+
+
+def priced_approach(a: str, tracked: Tracked, market: MarketInputs, spot: Decimal,
+                    rates: ChargeRates | None) -> tuple[ApproachLegs | None, Priced | None]:
+    """One approach as the approaches route and the Compare build and price it (the ONE build path; the playbook
+    check's T-19 reads it too, ADR-221): an unknown id -> (None, None); refused -> (built, None); else the built legs
+    and the whole-trade After of its legs, with this approach's own charges."""
+    if a not in APPROACH_IDS:
+        return None, None
+    position = tracked.position
+    built = build_approach(position, market.chain, spot, a, _CONFIG)
+    if built.refusal is not None:
+        return built, None
+    booked = None if tracked.booked is None else tracked.booked + _closed_booked(built)
+    return built, price_after(built.after, position, booked, tracked.paid_charges,
+                              _trade_orders(built, position.underlying), rates, market)
+
+
 def _after_block(priced: Priced, pop_on: bool) -> dict:
     if priced.after is None:
         return {"after": None, "charges": None, "pop": None, "after_reason": priced.reason}
@@ -312,9 +336,7 @@ async def adjustment_approaches(  # noqa: PLR0913 - FastAPI dependencies, one pe
         raise StrategyRefused("user_input_request_not_available", Failure.NOT_FOUND)
     rates = rates if isinstance(rates, ChargeRates) else None
     market = await market_reader(tracked, ctx)
-    tracked = dataclasses.replace(tracked, position=dataclasses.replace(
-        tracked.position, today=market.now.astimezone(IST).date(),
-        expiry_kind=market.expiry_kind or tracked.position.expiry_kind))
+    tracked = as_of_market(tracked, market)
     spot = resolve_spot(market.feed, await rest_reader(tracked.position.underlying), market.last_close, now=market.now)
     pop_on = held_on(PROBABILITY_OF_PROFIT, held_environ)
     asked = list(dict.fromkeys(body.approaches)) if body.approaches is not None else list(APPROACH_IDS)
@@ -329,14 +351,9 @@ async def adjustment_approaches(  # noqa: PLR0913 - FastAPI dependencies, one pe
         t0 = time.perf_counter()
         before = price_after(position.legs, position, tracked.booked, tracked.paid_charges, (), rates, market)
         reply["before"] = _after_block(before, pop_on)
-        built_list = [(a, build_approach(position, market.chain, spot.value, a, _CONFIG)  # type: ignore[arg-type]
-                       if a in APPROACH_IDS else None) for a in asked]
-        priced: dict[str, Priced] = {}
-        for a, built in built_list:
-            if built is not None and built.refusal is None:
-                booked = None if tracked.booked is None else tracked.booked + _closed_booked(built)
-                priced[a] = price_after(built.after, position, booked, tracked.paid_charges,
-                                        _trade_orders(built, position.underlying), rates, market)
+        answers = [(a, priced_approach(a, tracked, market, spot.value, rates)) for a in asked]  # type: ignore[arg-type]
+        built_list = [(a, built) for a, (built, _) in answers]
+        priced: dict[str, Priced] = {a: p for a, (_, p) in answers if p is not None}
         engine = time.perf_counter() - t0
         out = []
         columns: list[Column] = []

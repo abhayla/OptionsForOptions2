@@ -773,6 +773,7 @@
   "pnl_now": "-4225.0000",
   "premium_left": null,
   "adjustment_cost": null,
+  "adjustment_approach": null,
   "triggers_fired": [
    {
     "id": "T-02",

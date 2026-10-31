@@ -2409,7 +2409,7 @@
   "pnl_now": "open legs marked at LTP plus booked P&L of closed legs (whole trade, F-74)",
   "max_profit_loss_breakevens": "whole trade at expiry: sum of side x qty x (intrinsic - entry) plus booked P&L; evaluated at 0 and every strike plus the upper-tail slope; a breakeven that does not terminate in decimal is rounded half-even to 0.01",
   "premium_left": "sum over open short legs of LTP x qty minus the same over open long legs",
-  "adjustment_cost": "sum over open legs of (ask - bid) x qty plus Rs 40 per open leg (close and reopen once)",
+  "adjustment_cost": "ADR-221: the cheapest approach the playbook offers (applicable, without A-36), each costed as the Compare's 'This adjustment': its own charges at CHARGE_RATES (rounded up to the paisa) plus (ask - bid) / 2 x qty of every traded contract, half-even to the paisa; a traded contract without bid or ask, or with bid 0, leaves that approach out; a tie keeps playbook order; none priced -> not checked",
   "tighten": "'Tighten every trigger by X%': an 'le' limit is multiplied by (1 + X/100), a 'ge' limit by (1 - X/100); applies to T-01, T-03, T-06, T-07, T-09, T-11, T-13, T-16, T-19",
   "close": "a trigger not fired is 'close' when value >= 0.8 x limit (ge) or value <= 1.25 x limit (le)",
   "margin": "synthetic broker answer (not a Zerodha SPAN figure); stated per scenario",
