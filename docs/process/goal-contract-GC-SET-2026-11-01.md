@@ -153,6 +153,41 @@ clock (`date`) in the same step, never typed from memory.
   forward quality width / strikes near / minimum strikes (4 production callers + the snapshot compute-cache key need
   the values; did not fit round 2). `frontend/src/lib/readyMade.js` quick picks -> step 4 (frontend via GET
   /api/settings). Tier B review running.
+- step 3 DONE 66f8738f (merge of 8ba4c72b). Tier B: no MAJOR; MINORs carried (round budget used): cross-field admin
+  value surfaced as a user 422, `checked_choice` skipped on one branch, two store reads per request -> step 4a; guard
+  gaps (aliases, module-level calls, reassignment) -> step 6.
+- step 2 DONE 1fbda68b (merge of 29ab23a7): round 2 fixed the future `read_on` lock (store refuses a date after today
+  IST), page sends no "now", fraction hint, brokerage cap Rs 1000 (input sanity, changes no figure). Re-run by me on
+  the merged head: `test_settings_route.py` 24 passed, openapi drift 1 passed, pins+guards 108 passed, ratchet OK.
+  REQ-009 AC-8 updated (d2d7235d). MY MISS: I merged without the full pure tree; the Rs 1000 cap broke
+  `test_charges_in_sentences.py` (5000 brokerage); fixed 889d37bf. From now on: full pure tree on the merged head
+  before the next merge. Browser proof for step 2 pending (needs the dev server, heavy slot).
+- step 7 round 2 (6887e46c, 97303cff) + two older defects found on the check path (F-80 clock-time line, F-81 stage
+  name with a space -> 500; class reply-type-refuses-real-value-shape, c9a295a6). Stage-name fix dispatched.
+- steps 4a, 4b, 3b: every Sonnet batch builder hit its budget at about half (measured: 4a, 4b, 3b, 3 round 1).
+  Round 2 sent to 4a and 4b; 3b committed by me 0bcf7a42 (core: 17 passed, cache-key test; guards 76 passed), Tier C
+  finisher runs its DB files. Briefs from step 5 on: one group per builder.
+- step 7 DONE db19f061 (merge of e78a65c5) ~04:10: stage name as catalogue text (F-81, 845f49db); real-data proof
+  re-run by me: `test_adjustment_opportunities.py` 12 passed (ADJ-43 check 200: T-10b clock line + T-19 line naming
+  A-28 and its cost; the list line equals the check), `test_adjustment_check.py` 8 passed, order closure 13 passed.
+  Cause of the "T-19 not checked" red: the test had no charge rates (conftest default = none -> rightly not checked);
+  the test now seeds the scenario library's rates. Pin conflict resolved as the union (828 pins, pin test 63 passed);
+  openapi regenerated, drift 1 passed. S-11 filter wired for T-19 + generator, NOT in the Compare (the approaches route
+  reads no playbook) -> recorded open.
+- MISS (mine, second of the class "merged without the full pure tree"): full `tests` run on the merged head showed 8
+  repo-guard failures from steps 1-3/7 (producer inventory, door names x2, history-not-shown on SettingsPage, repo_scan
+  marks, underlying-tables scanner). Rule from now: a merge into build/settings needs a full pure `tests` pass on the
+  candidate head first. Guard fixer dispatched (worktree gcset-guards at db19f061).
+- step 4b 40b5accc (2 rounds): wired chain strikes each side (server + browser store `settingsValues.js`), Undo one
+  leg 8 s, Undo Clear all 10 s (3 timers), history days 15; DB runs all green (price history 29, settings route 24,
+  drift 1, leg picker 51, order closure 13). NOT wired, keys removed: range caps/step, leg-picker widths, multiplier/
+  lot caps, strangle distances in readyMade.js -> item 4c. Decision for 4c: the server's own answer carries the
+  choices it offers (leg-picker widths in the strikes answer, quick-pick distances in the ready-made answer), the
+  browser shows what the server sent; range caps + lot caps via the settings store loaded in test setup.
+- step 4a b66780c5 (2 rounds): live push / chain / index push interval, billing trial/referral days, freeze stale
+  days, max delist percent (env var removed) wired; carried fixes a/b/c green (`test_settings_speeds_wiring.py` 10).
+  NOT wired: feed stale/reconnect windows -> item 4d. Literal default 10 for delist left in two direct-call paths ->
+  step 6's guard must catch it.
 
 ## Found during the run
 
