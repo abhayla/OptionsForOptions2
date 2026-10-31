@@ -128,21 +128,124 @@ def test_mutant_a_dropped_inventory_line_is_red() -> None:
 # ---- value canaries --------------------------------------------------------------------------------------------------
 
 @pytest.fixture
-def canary_in_the_token_store():
-    """The canary goes through the token cipher exactly as the store's write and read do (broker_token_store)."""
+def registry():
+    """The registry's slots, restored after the test (other tests' config values stay registered)."""
+    from ofo_app import secret_values  # noqa: PLC0415
+
+    before = dict(secret_values._BY_SLOT)
+    secret_values._BY_SLOT.clear()
+    yield secret_values
+    secret_values._BY_SLOT.clear()
+    secret_values._BY_SLOT.update(before)
+
+
+def _stored_blob(key: bytes, token: str, aad: bytes) -> bytes:
+    """A ciphertext as the store holds it (nonce + AES-GCM), made WITHOUT TokenCipher.encrypt: the state after a
+    restart, when this process never saw the token in plain text before reading it back."""
     import os  # noqa: PLC0415
 
-    from ofo_app import secret_values  # noqa: PLC0415
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM  # noqa: PLC0415
+    from ofo_app.broker_crypto import NONCE_BYTES  # noqa: PLC0415
+
+    nonce = os.urandom(NONCE_BYTES)
+    return nonce + AESGCM(key).encrypt(nonce, token.encode("utf-8"), aad)
+
+
+@pytest.fixture
+def canary_in_the_token_store(registry):
+    """The canary is READ from a stored blob through the token cipher (the store's read path), never encrypted here."""
+    import os  # noqa: PLC0415
+
     from ofo_app.broker_crypto import TokenCipher, associated_data  # noqa: PLC0415
 
-    before = set(secret_values._VALUES)
-    secret_values._VALUES.discard(CANARY.encode())
-    cipher = TokenCipher(os.urandom(32))
+    key = os.urandom(32)
     aad = associated_data("u-canary", "zerodha", 1)
-    assert cipher.decrypt(cipher.encrypt(CANARY, aad), aad) == CANARY
-    yield
-    secret_values._VALUES.clear()
-    secret_values._VALUES.update(before)
+    blob = _stored_blob(key, CANARY, aad)
+    assert CANARY.encode() not in registry.registered_values()
+    assert TokenCipher(key).decrypt(blob, aad) == CANARY
+    return registry
+
+
+def _route_reply(value: str):
+    """A real route of the real app whose reply puts ``value`` in a reviewed Identifier field, sent through the door."""
+    from fastapi.testclient import TestClient  # noqa: PLC0415
+
+    planted = type("TokenEchoOut", (ApiModel,),
+                   {"__annotations__": {"strategy_id": Identifier}, "__module__": "planted"})
+    app = create_app()
+
+    async def endpoint():
+        return planted(strategy_id=value)
+
+    app.router.routes.insert(0, app.router.route_class("/api/echo", endpoint, response_model=planted, methods=["GET"]))
+    return TestClient(app, raise_server_exceptions=False).get("/api/echo")
+
+
+def _assert_refused_without_the_value(response, value: str) -> None:
+    assert response.status_code == 500  # noqa: PLR2004 - the door's internal failure answer
+    assert value not in response.text and all(value not in v for v in response.headers.values())
+
+
+def test_a_token_read_from_the_store_after_a_restart_is_refused_in_a_route_reply(canary_in_the_token_store) -> None:
+    """Verifier round 1 MAJOR: no encrypt in this process; only the decrypt registers the token."""
+    _assert_refused_without_the_value(_route_reply(CANARY), CANARY)
+
+
+def test_a_token_stored_but_never_read_back_is_refused_in_a_route_reply(registry) -> None:
+    import os  # noqa: PLC0415
+
+    from ofo_app.broker_crypto import TokenCipher, associated_data  # noqa: PLC0415
+
+    TokenCipher(os.urandom(32)).encrypt(CANARY, associated_data("u-canary", "zerodha", 1))
+    _assert_refused_without_the_value(_route_reply(CANARY), CANARY)
+
+
+def test_an_unregistered_value_passes_the_same_route(registry) -> None:
+    assert _route_reply(CANARY).status_code == 200  # noqa: PLR2004 - the refusal above is the registry, not the route
+
+
+@pytest.mark.parametrize("name", ["KITE_API_SECRET", "BROKER_TOKEN_KEY"])
+def test_a_config_secret_is_registered_by_the_config_load_and_refused_in_a_route_reply(registry, monkeypatch,
+                                                                                         name) -> None:
+    from ofo_app.broker_config import load_broker_config  # noqa: PLC0415
+
+    value = {"KITE_API_SECRET": "cfg" + "S1" * 12, "BROKER_TOKEN_KEY": None}[name]
+    if value is None:  # a real 32-byte key in its urlsafe base64 text (44 characters; Identifier allows '-' and '_')
+        import base64  # noqa: PLC0415
+
+        value = base64.urlsafe_b64encode(bytes(range(1, 33))).decode("ascii").rstrip("=")
+        monkeypatch.setenv(name, value + "=")
+        value = value + "="
+    else:
+        monkeypatch.setenv(name, value)
+    load_broker_config()
+    assert registry.registered_values() >= {value.encode()}
+    if "=" not in value:  # an Identifier cannot carry '=', so only the secret can be planted in a reply field
+        _assert_refused_without_the_value(_route_reply(value), value)
+
+
+def test_the_public_api_key_is_not_registered(registry) -> None:
+    import os  # noqa: PLC0415
+
+    from ofo_app.broker_config import load_broker_config  # noqa: PLC0415
+
+    load_broker_config()
+    assert os.environ["KITE_API_KEY"].encode() not in registry.registered_values()
+
+
+def test_a_new_token_replaces_the_same_owners_old_one_so_the_registry_stays_bounded(registry) -> None:
+    import os  # noqa: PLC0415
+
+    from ofo_app.broker_crypto import TokenCipher, associated_data  # noqa: PLC0415
+
+    cipher = TokenCipher(os.urandom(32))
+    tokens = ["tok" + str(day) * 29 for day in range(1, 10)]
+    for session_id, token in enumerate(tokens, start=1):  # nine daily logins of one user
+        cipher.encrypt(token, associated_data("u-1", "zerodha", session_id))
+    cipher.encrypt("other" + "9" * 27, associated_data("u-2", "zerodha", 1))
+    assert registry.registered_values() == {tokens[-1].encode(), ("other" + "9" * 27).encode()}
+    assert not registry.contains_secret(tokens[0].encode())  # yesterday's token is gone, today's is held
+    assert registry.contains_secret(b"x" + tokens[-1].encode())
 
 
 def _reply_models() -> list[type]:
@@ -216,15 +319,3 @@ def test_mutant_without_the_canary_check_the_canary_leaks(canary_in_the_token_st
                         lambda tp, required_only=False: CANARY if tp == Identifier else real_sample(tp, required_only))
     model = next(m for m in _reply_models() if _has_identifier(m))
     assert CANARY.encode() in api_models.emit(door._build(model))
-
-
-def test_the_broker_config_registers_the_api_secret_and_the_token_key() -> None:
-    import os  # noqa: PLC0415
-
-    from ofo_app import secret_values  # noqa: PLC0415
-    from ofo_app.broker_config import load_broker_config  # noqa: PLC0415
-
-    load_broker_config()
-    for name in ("KITE_API_SECRET", "BROKER_TOKEN_KEY"):
-        assert os.environ[name].encode() in secret_values._VALUES, name
-    assert os.environ["KITE_API_KEY"].encode() not in secret_values._VALUES  # the PUBLIC key reaches the basket form

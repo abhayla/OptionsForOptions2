@@ -17,6 +17,7 @@ from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from ofo_app.secret_values import register as register_secret
+from ofo_app.secret_values import token_slot
 
 NONCE_BYTES = 12
 
@@ -42,7 +43,7 @@ class TokenCipher:
     def encrypt(self, token: str, aad: bytes) -> bytes:
         if not token:
             raise ValueError("an empty token is never stored")
-        register_secret(token)  # #517: the door refuses any reply holding it
+        register_secret(token, token_slot(aad))  # #517: the door refuses any reply holding it
         nonce = os.urandom(NONCE_BYTES)
         return nonce + self._aead.encrypt(nonce, token.encode("utf-8"), aad)
 
@@ -53,5 +54,5 @@ class TokenCipher:
             token = self._aead.decrypt(bytes(blob[:NONCE_BYTES]), bytes(blob[NONCE_BYTES:]), aad).decode("utf-8")
         except (InvalidTag, UnicodeDecodeError):
             raise TokenDecryptError("ciphertext does not decrypt for this row") from None
-        register_secret(token)  # #517: every plain-text token passes here; the door refuses any reply holding it
+        register_secret(token, token_slot(aad))  # #517: every plain-text token passes here
         return token

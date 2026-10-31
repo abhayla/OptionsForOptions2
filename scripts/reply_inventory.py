@@ -14,6 +14,11 @@ Reviewer notes: every string-capable leaf (Identifier, InstrumentId, CatalogueTe
 is owned by ``DeclaringModel.field``; each owner carries a note in ``NOTES``. A regeneration keeps existing notes and
 writes ``UNREVIEWED`` for a new owner, which the test refuses until a person writes the note.
 
+Known bypass (verifier round 1, minor 3): the tests prove a note was WRITTEN, not that a person REVIEWED the field.
+The first-round notes were written by rule (leaf kind and field-name family, seven template texts), so pasting one of
+those templates onto a new owner passes. The review is the diff of this file in the pull request; the value canary at
+the door (``ofo_app/secret_values.py``) is the guard that does not depend on a note being true.
+
 Usage: ``python scripts/reply_inventory.py`` (write) or ``python scripts/reply_inventory.py --check`` (exit 1 on drift).
 """
 from __future__ import annotations

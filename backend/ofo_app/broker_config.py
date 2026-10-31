@@ -112,8 +112,8 @@ def load_broker_config(settings: BrokerSettings | None = None) -> BrokerConfig:
     key = decode_token_key(s.BROKER_TOKEN_KEY.get_secret_value())
     if _derived_from(key, s.KITE_API_SECRET.get_secret_value()):
         raise BrokerConfigError("BROKER_TOKEN_KEY must be its own secret, not derived from KITE_API_SECRET")
-    register_secret(s.KITE_API_SECRET.get_secret_value())  # #517: the door refuses any reply holding either
-    register_secret(s.BROKER_TOKEN_KEY.get_secret_value())
+    register_secret(s.KITE_API_SECRET.get_secret_value(), "config:KITE_API_SECRET")  # #517: refused in replies
+    register_secret(s.BROKER_TOKEN_KEY.get_secret_value(), "config:BROKER_TOKEN_KEY")
     parts = urlsplit(s.KITE_REDIRECT_URL)
     if parts.scheme not in ("http", "https") or not parts.netloc or not parts.path.startswith("/") or parts.query:
         raise BrokerConfigError("KITE_REDIRECT_URL must be an absolute http(s) URL with a path and no query")
