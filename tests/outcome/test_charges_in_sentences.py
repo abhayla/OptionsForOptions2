@@ -226,7 +226,7 @@ def test_guard_no_rates_keeps_the_old_phrase_flags_it_and_never_shows_zero_charg
 
 
 def test_guard_charges_that_wipe_out_the_profit_read_cannot_make_money(replayed):
-    huge = ChargeRates(brokerage_per_order=D("5000"), stt_sell_rate=D("0.0015"), stt_exercise_rate=D("0.0015"),
+    huge = ChargeRates(brokerage_per_order=D("1000"), stt_sell_rate=D("0.0015"), stt_exercise_rate=D("0.0015"),
                        transaction_rates=RATES.transaction_rates, sebi_rate=D("0.000001"),
                        stamp_buy_rate=D("0.00003"), gst_rate=D("0.18"), read_on=date(2026, 10, 15),
                        source_url="https://zerodha.com/charges")
