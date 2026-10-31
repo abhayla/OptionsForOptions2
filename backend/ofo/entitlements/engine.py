@@ -263,14 +263,15 @@ def pro_end(ledger: EntitlementLedger, at: datetime) -> datetime | None:
 def trial_grant(
     entitlement_id: str, registered_at: datetime, reference: str, note: AuditNote, *, days: int
 ) -> NewGrant:
-    """The registration trial: ``days`` of Pro (the ``billing.trial_days`` setting in force, REQUIRED; 7 at the registry default, ADR-023 Q88) granted at registration.
+    """The registration trial: ``days`` of Pro (the ``billing.trial_days`` setting in force, REQUIRED; 7 at the
+    registry default, ADR-023 Q88) granted at registration.
 
     A new event: the ledger stamps when it is recorded, and ``registered_at`` must lie within its clock skew."""
     _require_days(days)
     return NewGrant(entitlement_id, Source.TRIAL, registered_at, timedelta(days=days), reference, note)
 
 
-def referral_grant(
+def referral_grant(  # noqa: PLR0913
     entitlement_id: str,
     granted_at: datetime,
     reference: str,

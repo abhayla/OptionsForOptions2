@@ -735,10 +735,10 @@ async def test_ac3_r2_the_threshold_is_a_setting_with_default_ten() -> None:
     """ADR-058 "the 10% is an admin setting": Settings defaults to 10; a lower setting refuses what 10 accepts; a value
     that is not a percentage is refused before anything is read."""
     from ofo_app.catalogue_store import DEFAULT_MAX_DELIST_PERCENT
-    from ofo_app.config import Settings
+    from ofo.settings import calc, defaults
 
     assert DEFAULT_MAX_DELIST_PERCENT == Decimal("10")
-    assert Settings(DATABASE_URL="postgresql://x").CATALOGUE_MAX_DELIST_PERCENT == Decimal("10")
+    assert calc.max_delist_percent(defaults()) == DEFAULT_MAX_DELIST_PERCENT  # the registry holds the same default
     live = _fillers(1830)
     conn = _FakeConn(_stored_all(live))
     with pytest.raises(ValueError, match=r"refused: would drop 92 of 1830 .*more than 5%"):

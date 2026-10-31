@@ -51,6 +51,10 @@ from ofo_app.audit_store import (
     load_log,
     read_anchor,
 )
+from ofo.settings import calc as _settings_calc
+from ofo.settings import defaults as _settings_defaults
+
+TRIAL_DAYS = _settings_calc.trial_days(_settings_defaults())  # the registry default, never a retyped number
 
 INSUFFICIENT_PRIVILEGE = "42501"
 CLOCK_SQLSTATE = "OF001"
@@ -971,7 +975,7 @@ async def test_chain_verifies_after_appends_from_the_order_routes_and_the_entitl
                                                  order_audit.order_correlation(order_row), order_row)
             user = f"test-clock-{uuid.uuid4().hex}"
             await entitlement_store.append(conn, user, trial_grant("trial", before, "registration",
-                                                                   AuditNote("system", "test"), days=7))
+                                                                   AuditNote("system", "test"), days=TRIAL_DAYS))
             await _subscription(conn)
             after = await _db_clock(conn)
             log, anchor = await load_log(conn)

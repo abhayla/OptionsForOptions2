@@ -25,6 +25,10 @@ from ofo.execution.review import execution_review
 from ofo.reconciliation.blocking import blocked_strategy_ids
 from plan_inputs import FakeMargin
 from test_freeze_review_block import REAL, SYMBOL, TODAY, plan_of
+from ofo.settings import calc as _settings_calc
+from ofo.settings import defaults as _settings_defaults
+
+FREEZE_STALE_DAYS = _settings_calc.freeze_stale_days(_settings_defaults())  # the registry default, never a retyped number  # noqa: E501
 
 DAY = datetime.date(2026, 10, 22)
 SOURCE = "tests/execution/test_flags_never_loosen_gates.py"
@@ -54,9 +58,9 @@ def _gate_signature(condor, catalogue, eligibility) -> dict[str, object]:
         verdict = check_margin(available, required)
         out[f"margin:{name}"] = (verdict.allowed, None if verdict.message is None else display_text(verdict.message))
     for units in (54 * 65, 55 * 65):
-        review = execution_review(plan_of(units), FakeMargin({}), freeze_limits={SYMBOL: REAL}, today=TODAY, freeze_stale_days=8)
+        review = execution_review(plan_of(units), FakeMargin({}), freeze_limits={SYMBOL: REAL}, today=TODAY, freeze_stale_days=FREEZE_STALE_DAYS)  # noqa: E501
         out[f"freeze:{units}"] = (review.can_execute, tuple(display_text(b.message) for b in review.blocked))
-        found = freeze_check(plan_of(units), {SYMBOL: REAL}, today=TODAY, stale_after_days=8)
+        found = freeze_check(plan_of(units), {SYMBOL: REAL}, today=TODAY, stale_after_days=FREEZE_STALE_DAYS)
         out[f"freeze_check:{units}"] = tuple(display_text(b.message) for b in found.blocks)
     out["reconciliation:none"] = blocked_strategy_ids(None, {})
     return out

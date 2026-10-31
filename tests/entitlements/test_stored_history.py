@@ -33,6 +33,11 @@ from ofo.entitlements.ledger import EntitlementLedger, StoredHistory, _restore
 
 from . import test_engine as rules
 from .helpers import TICK, StepClock, at, fixed_clock, ist, ledger_for, note, record, stamped
+from ofo.settings import calc as _settings_calc
+from ofo.settings import defaults as _settings_defaults
+
+REFERRAL_DAYS = _settings_calc.referral_days(_settings_defaults())  # the registry default, never a retyped number
+TRIAL_DAYS = _settings_calc.trial_days(_settings_defaults())  # the registry default, never a retyped number
 
 PRO = AccessLevel.PRO
 LIMITED = AccessLevel.LIMITED
@@ -65,9 +70,9 @@ def _seven_plus_thirty_plus_thirty() -> EntitlementLedger:
     + 30 queued referral days are unused, so 35 + 30 = 65 <= 90."""
     t0, t1, t2 = ist(2026, 9, 1), ist(2026, 9, 2), ist(2026, 9, 3)
     led = ledger_for("u", max_free_days=90)
-    led = record(led, trial_grant("t", t0, "reg", note(), days=7))
-    led = record(led, referral_grant("r1", t1, "ref-1", note(), days=30))
-    return record(led, referral_grant("r2", t2, "ref-2", note(), days=30))
+    led = record(led, trial_grant("t", t0, "reg", note(), days=TRIAL_DAYS))
+    led = record(led, referral_grant("r1", t1, "ref-1", note(), days=REFERRAL_DAYS))
+    return record(led, referral_grant("r2", t2, "ref-2", note(), days=REFERRAL_DAYS))
 
 
 # ---------------------------------------------------------------- defect 1: post-dated status changes
@@ -87,7 +92,7 @@ def test_post_dated_revoke_is_refused_so_a_real_revoke_still_lands():
 def test_end_trial_early_five_days_ahead_is_refused():
     """AC-4: ending a trial 5 days after the moment it is recorded is refused; ending it now is accepted."""
     t = ist(2026, 9, 1)
-    led = record(ledger_for("u"), trial_grant("t", t, "reg", note(), days=7))
+    led = record(ledger_for("u"), trial_grant("t", t, "reg", note(), days=TRIAL_DAYS))
     recorded = ist(2026, 9, 1, 1)
     with pytest.raises(ValueError, match="post-dated"):
         end_trial_early(at(led, recorded), "t", recorded + timedelta(days=5), note())
@@ -101,7 +106,7 @@ def test_end_trial_early_five_days_ahead_is_refused():
 def test_status_change_post_dating_boundary_is_exactly_the_skew(skew, status):
     """AC-4: effective_at == recorded_at + skew is accepted; one microsecond more is refused (revoke and early end)."""
     t = ist(2026, 9, 1)
-    led = record(ledger_for("u", clock_skew=skew), trial_grant("t", t, "reg", note(), days=7))
+    led = record(ledger_for("u", clock_skew=skew), trial_grant("t", t, "reg", note(), days=TRIAL_DAYS))
     recorded = ist(2026, 9, 2)
     with pytest.raises(ValueError, match="post-dated"):
         record(led, NewStatusChange("t", status, recorded + skew + TICK, note()), recorded)
@@ -136,7 +141,7 @@ def test_a_new_free_grant_on_the_loaded_history_meets_the_new_cap():
     loaded = _load(_seven_plus_thirty_plus_thirty().stored(), max_free_days=30)
     when = ist(2026, 9, 4)
     with pytest.raises(ValueError, match="maximum accumulated free days is 30: 64 unused"):
-        record(loaded, referral_grant("r3", when, "ref-3", note(), days=30))
+        record(loaded, referral_grant("r3", when, "ref-3", note(), days=REFERRAL_DAYS))
     assert record(loaded, _paid("p", when)).grant("p").source is Source.PAID_MONTHLY
 
 
@@ -217,7 +222,7 @@ def test_a_new_event_cannot_skip_the_policy_by_riding_on_stored_history():
     written = _seven_plus_thirty_plus_thirty()
     rec = ist(2026, 9, 4)
     post_dated = NewStatusChange("r1", Status.REVOKED, ist(2106, 1, 1), note())
-    over_cap = referral_grant("r3", rec, "ref-3", note(), days=30)
+    over_cap = referral_grant("r3", rec, "ref-3", note(), days=REFERRAL_DAYS)
     for smuggled, message in ((post_dated, "post-dated"), (over_cap, "maximum accumulated free days")):
         with pytest.raises(ValueError, match=message):
             record(_load(written.stored(), max_free_days=30), smuggled, rec)

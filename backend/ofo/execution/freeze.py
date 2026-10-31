@@ -13,14 +13,12 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date
-from typing import Final
 
 from ofo.errors import UserFacingError, render
 from ofo.execution.planned import ExecutionPlan
 from ofo.instruments.catalogue import Catalogue
 from ofo.instruments.freeze_limits import StoredFreeze, largest_allowed_units
 from ofo.instruments.models import ZERODHA, InstrumentId
-
 
 
 @dataclass(frozen=True)
@@ -56,7 +54,8 @@ def freeze_limits_for_plan(plan: ExecutionPlan, catalogue: Catalogue,
 def freeze_check(plan: ExecutionPlan, limits: Mapping[str, StoredFreeze] | None, *, today: date,
                  stale_after_days: int) -> FreezeCheck:
     """Block each leg whose units are not below its stored limit; warn for each leg with no stored limit, and for a
-    stored limit whose file date is more than ``stale_after_days`` (the ``data.freeze_file_stale_days`` setting in force, REQUIRED) before ``today`` (the stale limit still blocks).
+    stored limit whose file date is more than ``stale_after_days`` (the ``data.freeze_file_stale_days`` setting in
+    force, REQUIRED) before ``today`` (the stale limit still blocks).
     ``today`` is required (no default, so the age check cannot be skipped by omission)."""
     if not isinstance(plan, ExecutionPlan):
         raise ValueError(f"freeze_check needs an ExecutionPlan, got {plan!r}")

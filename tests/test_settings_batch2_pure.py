@@ -7,7 +7,6 @@ after). Defaults never change (the registry default is today's code value, exact
 from __future__ import annotations
 
 import inspect
-from decimal import Decimal
 
 import pytest
 from ofo.entitlements.engine import referral_grant, trial_grant
@@ -17,8 +16,6 @@ def test_the_registry_defaults_are_exactly_the_old_code_values():
     d = defaults()
     assert (calc.trial_days(d), calc.referral_days(d), calc.freeze_stale_days(d)) == (7, 30, 8)
     assert calc.open_strategy_seconds(d) == 1.0
-    assert (calc.feed_stale_seconds(d), calc.feed_reconnect_seconds(d)) == (3.0, 30.0)
-    assert calc.max_delist_percent(d) == Decimal("10")
 
 
 @pytest.mark.parametrize("fn", [trial_grant, referral_grant])

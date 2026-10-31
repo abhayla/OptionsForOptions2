@@ -14,7 +14,8 @@ stored catalogue (one short database read per applied request, never per push: f
 picks ``strikes_each_side`` catalogue strikes either side of the ATM strike from the LIVE spot (no spot: no strikes and
 no guessed ATM), subscribes those CE/PE contracts and the index on the shared ``FanOut`` and pushes :func:`chain_answer`
 - the same function the REST read returns - only when something the screen shows changed. EVERY outbound message (a
-push or the error reply to invalid client messages, coalesced into one) passes ONE gate of ``speeds.open_strategy_seconds`` (the setting in force)
+push or the error reply to invalid client messages, coalesced into one) passes ONE gate of
+``speeds.open_strategy_seconds`` (the setting in force)
 seconds, so the socket never sends more than one message a second for any reason; a pending push takes the gate before
 a pending error reply, and error replies go at most once every ``ERROR_REPLY_SECONDS`` (#439). Every subscription
 change (an applied request, latest wins; a re-pick once the spot arrives) happens at most once a second, so a client

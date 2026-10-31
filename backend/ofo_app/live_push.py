@@ -2,7 +2,8 @@
 
 One :class:`StrategyPush` serves one browser connection. The client sends an ``OutcomeRequest`` (the REST route's model);
 the push subscribes the legs' instruments and the underlying index on the shared fan-out, then at most once every
-``speeds.open_strategy_seconds`` seconds (the setting in force, read at each tick, REQ-166 AC-1), and only if a quote of an input instrument changed since the last push, it sends the
+``speeds.open_strategy_seconds`` seconds (the setting in force, read at each tick, REQ-166 AC-1), and only if a
+quote of an input instrument changed since the last push, it sends the
 outcome from :func:`ofo_app.routes.outcome.outcome_response` (the same function the REST route returns). A new client
 message with a CHANGED strategy replaces it (still at most one push a second);
 an identical one changes nothing. When the connection ends, everything it subscribed is released.
@@ -18,12 +19,12 @@ import contextlib
 from dataclasses import dataclass
 from typing import Any, Callable, Optional, Protocol
 
+from fastapi.exceptions import RequestValidationError
 from ofo.errors import UserFacingError, render
 from ofo.marketdata.fanout import FanOut
 from ofo.marketdata.quote import is_live_price
 from ofo.outcome.snapshot import forward_strike_ids
 from ofo.settings import calc
-from fastapi.exceptions import RequestValidationError
 from pydantic import ValidationError
 
 from ofo_app.errors import SocketClosed
@@ -34,11 +35,11 @@ from ofo_app.routes.outcome import (
     ContractLookup,
     MarketContext,
     OutcomeRequest,
+    checked_choice,
     get_booked,
     get_booked_reader,
     get_contract_lookup,
     get_margin_source,
-    checked_choice,
     get_settings_reader,
     load_charge_rates,
     margin_for_request,
@@ -57,7 +58,7 @@ class PushInterval:
 
     def __init__(self, monotonic: Callable[[], float]) -> None:
         self._monotonic = monotonic
-        self._value: Optional[float] = None
+        self._value: float | None = None
         self._read_at = 0.0
 
     async def current(self) -> float:
@@ -115,7 +116,7 @@ class StrategyPush:
         self._seen: dict[str, tuple] = {}
         self._dirty = False
         self._last_push: Optional[float] = None
-        self._interval: Optional[float] = None  # the setting read at the last tick; None until the first push
+        self._interval: float | None = None  # the setting read at the last tick; None until the first push
         self.pushes = 0
 
     # ---- the input listener (called by the fan-out pump) --------------------------------------------------
@@ -200,7 +201,7 @@ class StrategyPush:
         except RequestValidationError:
             await self._error()
             return
-        except Exception:  # the store cannot answer: one fixed message, the exception is not shown
+        except Exception:  # noqa: BLE001  # the store cannot answer: one fixed message, the exception is not shown
             await self._error()
             return
         new_handle = None

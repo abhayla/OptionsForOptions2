@@ -18,7 +18,7 @@ import logging
 import time
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Annotated, Awaitable, Callable, Iterable, Literal, Mapping, Optional, Union
+from typing import Annotated, Awaitable, Callable, Iterable, Literal, Mapping, Union
 
 from fastapi import APIRouter, Depends
 from fastapi.exceptions import RequestValidationError

@@ -63,10 +63,10 @@ from ofo.execution.freeze import freeze_check
 from ofo.execution.safety import check_pre_execution
 from ofo.instruments.models import ZERODHA, InstrumentId
 from ofo.limits import INTEGER_MAX
-from ofo.settings import calc
 from ofo.market_calendar import is_market_open as market_open  # the one shared market-hours check (ADR-119 calendar)
 from ofo.marketdata.health import HealthThresholds
 from ofo.money import PAISE
+from ofo.settings import calc
 from ofo.timeutil import IST
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -461,7 +461,8 @@ async def _basket(req: _Request, priced: ep.PricedPlan, catalogue: Any, plan_num
     try:
         basket = await asyncio.to_thread(checked_basket, priced.plan, catalogue, plan_number,
                                          margin_client=req.session.margin,
-                                         freeze_check=lambda p: freeze_check(p, limits, today=today, stale_after_days=stale_days))
+                                         freeze_check=lambda p: freeze_check(
+                                             p, limits, today=today, stale_after_days=stale_days))
     except BasketRefused as exc:
         raise _refuse_with(exc.user_message or render("gate_margin_unconfirmed")) from None
     if not is_checked_basket(basket):  # the one production path to a basket

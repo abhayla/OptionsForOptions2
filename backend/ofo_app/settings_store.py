@@ -135,7 +135,7 @@ async def _refuse_cross_field_break(session: AsyncSession | AsyncConnection, key
     try:
         ScenarioSettings.from_values(merged)
     except ValueError as exc:
-        raise SettingRefused("setting_cross_field", f"This value does not fit the other scenario settings: {exc}") from None
+        raise SettingRefused("setting_cross_field", f"{registry_mod.registry()[key].label} = {registry_mod.plain(parsed)} does not fit the other scenario settings: {exc}") from None
 
 
 async def add_setting(session: AsyncSession | AsyncConnection, key: str, value: str, *,  # noqa: PLR0913

@@ -338,30 +338,6 @@
       "source": "ADR-068 (2), REQ-166 AC-1; was ofo_app/live_push.py MIN_PUSH_INTERVAL"
     },
     {
-      "key": "detection.feed_stale_seconds",
-      "group": "Detection",
-      "label": "Live feed stale after",
-      "unit": "seconds",
-      "type": "decimal",
-      "min": "1",
-      "max": "60",
-      "default": "3",
-      "what_it_changes": "How long the live feed may send no price frame before every price is treated as stale.",
-      "source": "ADR-015, F-32; was ofo/marketdata/feed_health.py FEED_STALE"
-    },
-    {
-      "key": "detection.feed_reconnect_window_seconds",
-      "group": "Detection",
-      "label": "Feed reconnect window",
-      "unit": "seconds",
-      "type": "decimal",
-      "min": "5",
-      "max": "300",
-      "default": "30",
-      "what_it_changes": "How long a dropped feed may keep trying to reconnect before its quotes are unavailable.",
-      "source": "REQ-049; was ofo/marketdata/feed_health.py RECONNECT_WINDOW"
-    },
-    {
       "key": "billing.trial_days",
       "group": "Billing",
       "label": "Free trial length",
@@ -386,18 +362,6 @@
       "source": "ADR-091 entitlements; was ofo/entitlements/engine.py REFERRAL_DAYS_DEFAULT"
     },
     {
-      "key": "data.max_delist_percent",
-      "group": "Data",
-      "label": "Largest allowed catalogue drop",
-      "unit": "percent",
-      "type": "decimal",
-      "min": "0",
-      "max": "100",
-      "default": "10",
-      "what_it_changes": "A contract-list update is refused if more than this percent of one index's live contracts would disappear at once.",
-      "source": "ADR-058; was env CATALOGUE_MAX_DELIST_PERCENT"
-    },
-    {
       "key": "data.freeze_file_stale_days",
       "group": "Data",
       "label": "Freeze-limit file stale after",
@@ -408,6 +372,18 @@
       "default": "8",
       "what_it_changes": "The review warns when the stored freeze-limit file is older than this many days.",
       "source": "ADR-091, issue 257; was ofo/execution/freeze.py STALE_AFTER_DAYS"
+    },
+    {
+      "key": "data.max_delist_percent",
+      "group": "Data",
+      "label": "Largest allowed catalogue drop",
+      "unit": "percent",
+      "type": "decimal",
+      "min": "0",
+      "max": "100",
+      "default": "10",
+      "what_it_changes": "A contract-list update is refused if more than this percent of one index's live contracts would disappear at once.",
+      "source": "ADR-058; was env CATALOGUE_MAX_DELIST_PERCENT"
     }
   ]
 }

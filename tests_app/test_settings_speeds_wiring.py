@@ -1,4 +1,4 @@
-# ruff: noqa: PLC0415, E501, F811
+# ruff: noqa: PLC0415, PLC0414, PLR0402, PLR2004, RUF059, E501, F811
 """GC-SET batch 2 (REQ-166 AC-1, REQ-167 AC-4): ``speeds.open_strategy_seconds`` is read from the settings in force at
 each tick of the live push, and the three carried fixes of the step 3 review (one settings read per request; a bad
 cross-field admin value refused at SAVE time and never a user 422; a bad range refused on every answer branch and at

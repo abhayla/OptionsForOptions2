@@ -21,6 +21,10 @@ from ofo.instruments.models import NSE_FO, InstrumentId
 from ofo.instruments.parser import zerodha_listed
 from ofo_app import freeze_store
 from ofo_app.catalogue_store import apply_update
+from ofo.settings import calc as _settings_calc
+from ofo.settings import defaults as _settings_defaults
+
+FREEZE_STALE_DAYS = _settings_calc.freeze_stale_days(_settings_defaults())  # the registry default, never a retyped number  # noqa: E501
 
 IST = timezone(timedelta(hours=5, minutes=30))
 AS_OF = datetime(2026, 10, 15, 10, 0, tzinfo=IST)
@@ -180,6 +184,6 @@ async def test_store_to_adapter_to_review_on_the_real_rows(app_engine: AsyncEngi
             for units, can in ((55 * 65, False), (54 * 65, True)):
                 limits = await freeze_store.review_freeze_limits(conn, plan(units))
                 assert limits["NIFTY26O1923550CE"].limit == 3511 and limits["NIFTY26O1923550CE"].lot == 65
-                assert execution_review(plan(units), None, freeze_limits=limits, today=date(2026, 10, 16), freeze_stale_days=8).can_execute is can
+                assert execution_review(plan(units), None, freeze_limits=limits, today=date(2026, 10, 16), freeze_stale_days=FREEZE_STALE_DAYS).can_execute is can  # noqa: E501
         finally:
             await trans.rollback()

@@ -3,7 +3,8 @@ Framework-free.
 
 One :class:`IndexPush` serves one browser connection of the read-only index socket. On connect it subscribes the two
 index instruments (the catalogue's ``provider.index_id``) on the ONE shared fan-out (never a vendor connection per
-browser), then at most once every ``speeds.open_strategy_seconds`` seconds (the setting in force), and only when a row's value, time or health (or the
+browser), then at most once every ``speeds.open_strategy_seconds`` seconds (the setting in force), and only when a
+row's value, time or health (or the
 state) changed since the last push, it sends :func:`indices_answer` - the same function the REST read returns. The first
 push goes at once. When the connection ends, on every exit path, its subscription is released (``finally``).
 

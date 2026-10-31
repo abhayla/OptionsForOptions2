@@ -10,7 +10,7 @@ from ofo.settings import calc, defaults
 
 from .helpers import note
 
-NOW = datetime.datetime(2026, 10, 1, 9, 0, tzinfo=datetime.timezone.utc)
+NOW = datetime.datetime(2026, 10, 1, 9, 0, tzinfo=datetime.UTC)
 
 
 def test_the_trial_length_is_the_setting_in_force():
