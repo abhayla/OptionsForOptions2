@@ -22,7 +22,8 @@ def test_adj02_pnl_and_premium_left_are_the_scenarios_numbers():
 
 def test_cost_with_spread_is_charges_plus_half_the_spread_times_quantity():
     # 2.65/2.75 and 83.65/84.55 at 130: 0.05 x 130 + 0.45 x 130 = 65.00, plus Rs 27.35 of charges
-    assert adjust_money.cost_with_spread(D("27.35"), [(D("2.65"), D("2.75"), QTY), (D("83.65"), D("84.55"), QTY)])         == D("92.35")
+    assert adjust_money.cost_with_spread(D("27.35"), [(D("2.65"), D("2.75"), QTY), (D("83.65"), D("84.55"), QTY)]) \
+        == D("92.35")
 
 
 def test_the_old_per_leg_cost_helper_is_gone():

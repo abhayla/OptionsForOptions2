@@ -267,6 +267,14 @@ def price_after(legs: Sequence[PositionLeg], position: Position, booked: Decimal
     return Priced(after, known)
 
 
+def as_of_market(tracked: Tracked, market: MarketInputs) -> Tracked:
+    """The position as the approach builder reads it: the market day and the listed expiry kind (the approaches
+    route and the playbook check's T-19 both build from this)."""
+    return dataclasses.replace(tracked, position=dataclasses.replace(
+        tracked.position, today=market.now.astimezone(IST).date(),
+        expiry_kind=market.expiry_kind or tracked.position.expiry_kind))
+
+
 def priced_approach(a: str, tracked: Tracked, market: MarketInputs, spot: Decimal,
                     rates: ChargeRates | None) -> tuple[ApproachLegs | None, Priced | None]:
     """One approach as the approaches route and the Compare build and price it (the ONE build path; the playbook
@@ -328,9 +336,7 @@ async def adjustment_approaches(  # noqa: PLR0913 - FastAPI dependencies, one pe
         raise StrategyRefused("user_input_request_not_available", Failure.NOT_FOUND)
     rates = rates if isinstance(rates, ChargeRates) else None
     market = await market_reader(tracked, ctx)
-    tracked = dataclasses.replace(tracked, position=dataclasses.replace(
-        tracked.position, today=market.now.astimezone(IST).date(),
-        expiry_kind=market.expiry_kind or tracked.position.expiry_kind))
+    tracked = as_of_market(tracked, market)
     spot = resolve_spot(market.feed, await rest_reader(tracked.position.underlying), market.last_close, now=market.now)
     pop_on = held_on(PROBABILITY_OF_PROFIT, held_environ)
     asked = list(dict.fromkeys(body.approaches)) if body.approaches is not None else list(APPROACH_IDS)

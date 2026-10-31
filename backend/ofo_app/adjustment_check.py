@@ -54,7 +54,7 @@ from ofo.marketdata.spot_source import SourceState, SpotAnswer
 from ofo.timeutil import IST
 
 from ofo_app import playbook_store
-from ofo_app.routes.adjustment import MarketInputs, Tracked, price_after, priced_approach
+from ofo_app.routes.adjustment import MarketInputs, Tracked, as_of_market, price_after, priced_approach
 
 _HEALTH_FRESH: Final = "available"
 _HEALTH_STALE: Final = "stale"
@@ -146,6 +146,7 @@ def cheapest_offered(body: Mapping | None, tracked: Tracked, market: MarketInput
     if spot is None:  # nothing can be built without spot: none priceable (T-19 is withheld for no spot anyway)
         return cheapest_approach(offered, {}, market.chain)
     columns: dict[str, Column] = {}
+    tracked = as_of_market(tracked, market)  # as the approaches route builds (market day, listed expiry kind)
     for a in offered:
         built, priced = priced_approach(a, tracked, market, spot, rates)
         if built is not None and priced is not None:

@@ -115,7 +115,7 @@ def test_no_approach_offered_is_not_checked_with_the_reason():
 
 
 def test_a_tie_keeps_the_first_in_playbook_order():
-    sc, cols, market = _columns("ADJ-02")
+    _, cols, market = _columns("ADJ-02")
     a28 = cols["A-28"]
     whole = dataclasses.replace(a28.whole, adjustment_charges=a28.whole.adjustment_charges - D("45.14"))
     tied = {**cols, "A-28": dataclasses.replace(a28, whole=whole)}

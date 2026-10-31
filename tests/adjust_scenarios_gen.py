@@ -656,7 +656,7 @@ def is_condor(legs: list[dict]) -> bool:
     if len(pos) != 4:
         return False
     cs, cw, ps, pw = (pos[k]["strike"] for k in (("call", "short"), ("call", "wing"), ("put", "short"), ("put", "wing")))
-    return cw > cs and pw < ps and ps <= cs
+    return cw > cs and pw < ps <= cs
 
 
 def hand_exit(lot: int, legs: list[dict], rows: list[dict]) -> dict:

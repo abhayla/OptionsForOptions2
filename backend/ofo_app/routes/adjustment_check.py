@@ -105,7 +105,8 @@ def _condition(r: pe.Flag | pe.AlreadyTrue, body: Mapping | None,
         return None
     value, threshold = _num(r.value), _num(r.threshold)
     label, unit = check.trigger_words(body, r.trigger_id)
-    shown, limit = str(r.value) if value is None else str(value), str(r.threshold) if threshold is None else str(threshold)
+    shown = str(r.value) if value is None else str(value)
+    limit = str(r.threshold) if threshold is None else str(threshold)
     if r.trigger_id == "T-19" and cheapest is not None:
         return check.condition_line_t19(label, shown, limit, *cheapest)
     return check.condition_line(r.trigger_id, label, unit, shown, limit)
