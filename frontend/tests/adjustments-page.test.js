@@ -4,6 +4,9 @@
 // answer's own text; nothing here computes a figure.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
+import { routeLocationKey } from 'vue-router'
+// the REAL answer of GET /api/playbooks/labels (written from the route by its app test's module, round 2)
+import LABELS from './fixtures/playbook-labels.json'
 
 const answers = {}
 const calls = []
@@ -19,7 +22,7 @@ vi.mock('@/services/api', async (importActual) => {
   return { ...actual, default: { get: reply('GET'), post: reply('POST'), put: reply('PUT'), delete: reply('DELETE') } }
 })
 import AdjustmentsPage from '@/pages/AdjustmentsPage.vue'
-import { summaryLines } from '@/lib/playbookEditor'
+import { labelMaps, summaryLines } from '@/lib/playbookEditor'
 
 const BODY = {
   schema: 1, strategy_type: 'ic', status: 'approved',
@@ -44,12 +47,13 @@ const DRAFT_STRANGLE = row({ id: 2, name: 'Short strangle: system', type: 'stran
 const PAST = 'Testing against past expiries is not in this version: it needs licensed historical option data.'
 
 function setUp(list = [SYSTEM, OWN]) {
+  answers['GET /playbooks/labels'] = LABELS
   answers['GET /playbooks/types'] = { types: [{ key: 'ic', name: 'Iron condor', active_id: 1, has_system: true }] }
   answers['GET /playbooks'] = { playbooks: list }
   for (const p of list) answers[`GET /playbooks/${p.id}`] = { ...p, body: JSON.parse(JSON.stringify(BODY)) }
 }
-async function open(id = null) {
-  const w = mount(AdjustmentsPage)
+async function open(id = null, query = {}) {
+  const w = mount(AdjustmentsPage, { global: { provide: { [routeLocationKey]: { query } } } })
   await flushPromises()
   if (id != null) { await w.get('[data-testid=pb-pick]').setValue(id); await flushPromises() }
   return w
@@ -177,8 +181,39 @@ describe('playbook editor (REQ-160)', () => {
     expect(w.get('[data-testid=pb-notice]').text()).toBe('Iron condor: the system playbook is active again')
   })
 
+  it('round 2: approach names and day rule words come from the labels answer, not ids or numbers', async () => {
+    setUp()
+    const w = await open()
+    await w.get('[data-testid=pb-step-show]').trigger('click')
+    const shown = w.get('[data-testid=pb-body]').text()
+    expect(shown).toContain('Roll the untested spread toward spot')
+    expect(shown).toContain(LABELS.approaches.find((a) => a.key === 'A-09').text)
+    expect(shown).not.toMatch(/A-01|A-09/)
+    await w.get('[data-testid=pb-step-days]').trigger('click')
+    expect(w.get('[data-testid=pb-body]').text()).toContain('The last session before a weekend')
+    expect(w.get('[data-testid=pb-body]').text()).toContain('Run the carry check (overnight margin, gap loss)')
+    expect(w.get('[data-testid=pb-sum-days]').text()).toBe('Day rules:The last session before a weekend at 15:00: Run the carry check (overnight margin, gap loss)')
+    await w.get('[data-testid=pb-step-test]').trigger('click')
+    expect(w.get('[data-testid=pb-past-note]').text()).toBe(PAST)
+  })
+
+  it('round 2: no labels answer -> no summary sentence typed by the browser', async () => {
+    setUp()
+    answers['GET /playbooks/labels'] = { message: 'down', status: 503, parts: { what_happened: 'The labels could not be read.', impact: 'i', what_is_blocked: 'b', next_action: 'n' } }
+    const w = await open()
+    expect(w.find('[data-testid=pb-sum-type]').exists()).toBe(false)
+  })
+
+  it('round 2: ?playbook=<id> (the plan sheet link) opens that playbook', async () => {
+    setUp()
+    const w = await open(null, { playbook: '7' })
+    expect(calls.some(([m, u]) => m === 'GET' && u === '/playbooks/7')).toBe(true)
+    expect(w.get('[data-testid=pb-owner]').text()).toBe('Yours')
+    expect(w.get('[data-testid=pb-pick]').element.value).toBe('7')
+  })
+
   it('the summary plan line reads the guards of the body', () => {
-    const lines = summaryLines(BODY, 'Iron condor', 'monthly')
+    const lines = summaryLines(BODY, 'Iron condor', 'monthly', labelMaps(LABELS))
     expect(lines.find((l) => l.key === 'plan').text).toBe('Plan: target 50% of max profit, stop at 50% of max loss, at most 2 adjustments.')
   })
 })

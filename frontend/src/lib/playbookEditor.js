@@ -19,13 +19,6 @@ export const clone = (body) => JSON.parse(JSON.stringify(body))
 /** Unsaved changes: the working body differs from the body as read (or as last saved). */
 export const isDirty = (work, saved) => work != null && saved != null && JSON.stringify(work) !== JSON.stringify(saved)
 
-/** A stage's days as words: "5+ days left", "2-4 days left", "1 day left". The numbers are the body's own. */
-export function stageLabel(s) {
-  if (s.to === null || s.to === undefined) return `${s.from}+ days left`
-  if (s.from === s.to) return `${s.from} day${s.from === 1 ? '' : 's'} left`
-  return `${s.from}-${s.to} days left`
-}
-
 /** Add a stage at the end of one expiry kind: every trigger gets an empty value there (not checked in that stage),
  *  so each value list keeps the stage count (the body rule). */
 export function addStage(work, kind, name) {
@@ -39,26 +32,48 @@ export function removeStage(work, kind, index) {
   for (const t of Object.values(work.triggers)) if (Array.isArray(t[kind])) t[kind].splice(index, 1)
 }
 
-const unitText = (u) => (u && u !== 'time' ? ` ${u}` : '')
+/** Fill a catalogue sentence's {slot}s with the body's own strings (never a computed figure). A slot with no value
+ *  stays as written, so a missing value shows rather than vanishing. */
+export const fill = (template, slots) => (template ?? '').replace(/\{(\w+)\}/g, (m, k) => (slots[k] ?? m))
 
-/** The plain-words summary (REQ-160 AC-1): built from the body only, so it changes as the values change. */
-export function summaryLines(body, typeName, kind) {
-  if (!body) return []
+/** The labels answer (GET /playbooks/labels) as lookups: key -> text. */
+export function labelMaps(answer) {
+  const map = (list) => Object.fromEntries((list ?? []).map((x) => [x.key, said(x.text)]))
+  return { approaches: map(answer?.approaches), dayKinds: map(answer?.day_kinds), dayActions: map(answer?.day_actions),
+    summary: map(answer?.summary), pastNote: said(answer?.past_note) }
+}
+
+/** A stage's days in the catalogue's words. */
+export function stageText(s, t) {
+  const slots = { name: s.name, from: String(s.from), to: String(s.to) }
+  if (s.to === null || s.to === undefined) return fill(t.stage_open, slots)
+  return fill(s.from === s.to ? t.stage_single : t.stage_span, slots)
+}
+
+/** The plain-words summary (REQ-160 AC-1): the catalogue's sentences filled from the body, so it changes as the values
+ *  change. No labels yet -> no summary (the browser types no sentence of its own). */
+export function summaryLines(body, typeName, kind, labels) {
+  const t = labels?.summary ?? {}
+  if (!body || !t.type_line) return []
   const stages = body.stages?.[kind] ?? []
-  const looks = Object.entries(body.triggers ?? {})
-    .filter(([, t]) => t.on && !t.greyed && (t[kind] ?? []).some((v) => v !== ''))
-    .map(([id, t]) => ({ id, text: `${t.label}: ${(t[kind] ?? []).map((v) => (v === '' ? '-' : v)).join(' / ')}${unitText(t.unit)}` }))
-  const both = (body.rules ?? []).filter((r) => Array.isArray(r.all_of)).map((r) => `${r.id}: only when ${r.all_of.join(' and ')} all hold`)
-  const shown = body.approaches?.applicable?.length ?? 0
-  const days = (body.day_rules ?? []).filter((r) => r.on).map((r) => `${r.when}${r.date ? ' ' + r.date : ''} at ${r.at}`)
+  const looks = Object.values(body.triggers ?? {})
+    .filter((x) => x.on && !x.greyed && (x[kind] ?? []).some((v) => v !== ''))
+    .map((x) => {
+      const slots = { label: x.label, values: (x[kind] ?? []).map((v) => (v === '' ? '-' : v)).join(' / '), unit: x.unit }
+      return fill(x.unit && x.unit !== 'time' ? t.trigger_unit : t.trigger, slots)
+    })
+  const both = (body.rules ?? []).filter((r) => Array.isArray(r.all_of)).map((r) => fill(t.rule_all, { id: r.id, members: r.all_of.join(t.joiner_and) }))
+  const days = (body.day_rules ?? []).filter((r) => r.on).map((r) => fill(t.day_rule, {
+    when: `${labels.dayKinds?.[r.when] ?? r.when}${r.date ? ' ' + r.date : ''}`, at: r.at, action: labels.dayActions?.[String(r.action)] ?? String(r.action) }))
   const g = body.guards ?? {}
   return [
-    { key: 'type', text: `${typeName}, ${kind} expiry. Stages: ${stages.map((s) => `${s.name} (${stageLabel(s)})`).join(', ')}.` },
-    { key: 'looks', text: 'Looks at an adjustment when (numbers per stage):', items: looks.map((x) => x.text) },
-    ...(both.length ? [{ key: 'rules', text: 'Combined rules:', items: both }] : []),
-    { key: 'shows', text: `Shows ${shown} approaches.` },
-    { key: 'days', text: 'Day rules:', items: days.length ? days : ['none'] },
-    { key: 'plan', text: `Plan: target ${g.profit_target_pct_of_max_profit ?? '-'}% of max profit, stop at ${g.stop_line_pct_of_max_loss ?? '-'}% of max loss, at most ${g.max_adjustments ?? '-'} adjustments.` },
+    { key: 'type', text: fill(t.type_line, { type: typeName, kind: t[`kind_${kind}`], stages: stages.map((s) => stageText(s, t)).join(', ') }) },
+    { key: 'looks', text: t.looks_head, items: looks },
+    ...(both.length ? [{ key: 'rules', text: t.rules_head, items: both }] : []),
+    { key: 'shows', text: fill(t.shows, { count: String(body.approaches?.applicable?.length ?? 0) }) },
+    { key: 'days', text: t.days_head, items: days.length ? days : [t.days_none] },
+    { key: 'plan', text: fill(t.plan, { target: g.profit_target_pct_of_max_profit, stop: g.stop_line_pct_of_max_loss,
+      max: g.max_adjustments === undefined ? undefined : String(g.max_adjustments) }) },
   ]
 }
 
