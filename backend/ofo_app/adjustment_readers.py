@@ -31,6 +31,7 @@ from ofo.adjustment.approaches import ChainRow, Position, PositionLeg
 from ofo.charges import ChargeRates
 from ofo.charges.paper_charges import PaperFill, paper_charges
 from ofo.charges.round_trip import ChargesNotComputable
+from ofo.engine import adjust_history as ah
 from ofo.engine.black_scholes import Greeks, year_fraction
 from ofo.engine.chain_values import chain_model
 from ofo.engine.legs import Instrument
@@ -106,10 +107,27 @@ async def read_tracked(strategy_id: int, rates: ChargeRates | None) -> Tracked |
             paid = None
     booked = await read_booked(strategy_id)  # None: could not be read (never 0)
     # expiry kind and today are set by the route from the market reader (the calendar and clock live there)
-    # adjustments_used: the paper book records no adjustment history yet, so the count is not recorded (None ->
-    # the compare's "-" with that reason); counting closed-and-reopened legs would be a guess
+    # adjustments_used: the engine's adjustment history over the stored orders (the count the history page shows);
+    # None when the history cannot be read (the compare's "-" with that reason, never 0)
+    used = history_count(orders, lambda cid: found[cid].stored is not None
+                         and found[cid].stored.listed.contract.instrument_type in _OPTION_TYPES)
     return Tracked(Position(underlying, lot, "", datetime.date.min, tuple(legs)), booked, paid,
-                   adjustments_used=None)
+                   adjustments_used=used)
+
+
+def history_count(orders: Any, is_option: Any) -> int | None:
+    """``adjustment_history(...).totals.adjustments_used`` over the stored paper orders (REQ-156 AC-2; the one
+    counter the history page uses). No adjustment yet -> 0; the history cannot be read (a contract with no stored row,
+    an order the engine refuses) -> None, logged; closed-and-reopened legs are never counted by guess."""
+    try:
+        history = ah.adjustment_history(
+            [ah.HistoryOrder(str(o.order.contract_id), o.order.side, o.order.quantity, o.order.price,
+                             o.order.kind, o.order.placed_at, is_option=bool(is_option(o.order.contract_id)))
+             for o in orders], {}, adjustments_max=None)
+    except (ValueError, KeyError, AttributeError, TypeError):
+        log.exception("adjustment history unreadable: adjustments used not available")
+        return None
+    return history.totals.adjustments_used
 
 
 async def read_guards(strategy_id: int, position: Position, spot: Decimal | None) -> dict[str, Any] | None:
