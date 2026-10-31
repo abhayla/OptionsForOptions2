@@ -64,6 +64,13 @@ read from the DB, flags the generator's expected rules with value read and thres
 
 Each step ends with one line here: `step N DONE <sha> <proof line>` or `PARKED (#issue)`.
 
+- step 0 DONE bc8baafc (2026-10-31 10:5x): loose grep `playbook|adjustment_plan|suggestion|opportunit|REQ-112` over backend,
+  frontend/src, tests, tests_app: NO playbook store, plan table, suggestion record or inbox page exists. Hits are text
+  only: `detection.py` (fixed 0.5% platform rule, kept for strategies with no playbook type), `routes/tracking.py`
+  l.107 `platform_detection`, `lib/tracking.js:40` label, `nav.js:32` inbox key (no page), `errors/explanations.py`
+  ADJUSTMENT_OPPORTUNITY label, generator `playbooks()` + `tests/test_adjust_scenarios.py` `recompute_fired` (the
+  engine-free reference the evaluator must match). Reuse: those two; retire: nothing.
+
 ## Rules for the run
 
 - Prove the core first: step 1's proof must pass before steps 2-7 start. A failing core STOPS the run (report, park).
@@ -157,6 +164,9 @@ main and waits for the owner's explicit approval; it does not open it.
 
 | # | What | Where | Decision |
 |---|---|---|---|
+| 1 | Step 1 is too big for one builder | step 1 | Technical call: split into 1A store + migration 0031 + seed (Tier A), 1B pure evaluator + F-71 + generator (parallel), 1C wiring + dev-server proof. Shared body shape fixed first in `docs/design/playbook-body-v1.md` (bc8baafc). |
+| 2 | F-71 needs memory across checks; the contract's four tables have no home for it | step 1 | Technical call: a fifth table `adjustment_rule_state` (strategy, rule, held_at_entry, seen_clear). Held at entry is computed from the position's entry state (entry spot), not from the first check, so ADJ-02 (far at entry) still flags on its first check. |
+| 3 | Branch DB tests would move the shared ofo_test to an unmerged revision (finding branch-migration-tests-move-shared-db) | step 1A | DB tests run only through `db_run_fresh.py` (throwaway database); ofo_dev upgrade/downgrade by the orchestrator. |
 
 ## Parked
 
