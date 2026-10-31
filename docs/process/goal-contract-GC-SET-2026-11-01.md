@@ -130,6 +130,29 @@ clock (`date`) in the same step, never typed from memory.
   its Tier A review before merge.
 - cross-session: the kit `verifier_inflight_gate` is machine-wide; any session's verifier blocks every session's git
   writes (GC-MU logged class verifier-guard-watches-every-worktree). Handled by waiting for the snapshot folder.
+- decision (technical, 02:4x) wiring pattern for steps 3-5: registry.json holds every default (the only place the
+  number is written); a pure `ofo/` function takes the value as an explicit parameter (no literal default); the app
+  layer reads the settings once per request through `outcome.get_settings_reader` (background loops: at each tick)
+  and passes values down; a list value is one scalar key per element and a per-index value one key per index
+  (e.g. `scenarios.payoff_steps.1..4`, `scenarios.strangle_picks.nifty.1..4`), so the store stays scalar and each
+  change is audited on its own. Steps 2 and 3 dispatched 02:4x (worktrees gcset-page, gcset-batch1 at 8be1e3ca).
+- step 7 Tier A review: REVISE, 1 MAJOR (opportunities list draws a stored T-19 record without approach/cost, so
+  "alert and Compare show the same figure" fails there) + 4 MINOR. Decisions: wording "cheapest adjustment that could
+  be priced now (N could not be priced)" when an approach is unpriceable; one shared "offered now" filter (S-11);
+  stronger label assertion. Not changed: generator reuses the engine's `charges_for_orders` (own tests) - documented
+  as a shared dependency. Round 2 dispatched ~03:15.
+- step 2 built 37d5da55 (re-run by me: `test_settings_route.py` 16 passed, vitest nav-shell + settings-page 28
+  passed). Nav: "Settings" is an Account item at `/settings/app-settings` (the `/settings` path is the Account hub);
+  REQ-009 AC-8 needs the 11th item (written at merge). Tier B: REVISE, 1 MAJOR (charge rate set `read_on` without
+  upper bound: a mistyped future year would lock the append-only table) + MINORs (page sent the browser clock as
+  "now"; no fraction hint on Charges). Round 2 dispatched ~03:10.
+- step 3 built 8ba4c72b: 23 keys wired (SD horizon, payoff steps + default step, scenario columns per index, what-if
+  span, strangle quick picks); silent fallback to defaults removed (functions REQUIRE values); reader guard
+  `tests/test_settings_reader_guard.py`. Re-run by me: guard + wiring + registry 45 passed, ratchet OK; builder's DB
+  runs: leg_edit 73, ready-made 10, range params 16, live push 40, order closure 13, calc wiring 1. SPLIT OUT as 3b:
+  forward quality width / strikes near / minimum strikes (4 production callers + the snapshot compute-cache key need
+  the values; did not fit round 2). `frontend/src/lib/readyMade.js` quick picks -> step 4 (frontend via GET
+  /api/settings). Tier B review running.
 
 ## Found during the run
 
