@@ -169,6 +169,13 @@ SYSTEM_DAY_RULES = [
     {"on": False, "when": "away", "at": "14:30", "action": 1, "from": "", "to": ""},
     {"on": False, "when": "event", "at": "14:30", "action": 1},
 ]
+# ADR-216 (owner 2026-10-31), iron condor only: the stop line is a loss of 50% of max loss or 4% of margin, whichever
+# comes first; on expiry day close any spread whose short is within 0.3% of spot by 14:30 (action 5, "Prepare an exit
+# for review"). The mockup's 13:00 tighten-20% expiry rule stays for the other families and is OFF for the iron condor.
+FAMILY_GUARDS = {"ic": {"stop_line_pct_of_margin": "4", "stop_line_rule": "whichever comes first",
+                        "time_exit": "14:30"}}
+FAMILY_DAY_RULES = {"ic": [r if r["when"] != "expiry" else {**r, "on": False} for r in SYSTEM_DAY_RULES] + [
+    {"on": True, "when": "expiry", "at": "14:30", "action": 5, "close_if_short_within_pct": "0.3"}]}
 SITUATIONS = [
     ("S-01", "Gap at the open", "Wait until 09:30 before suggesting, unless a short opens in the money"),
     ("S-02", "Trending day", "Show early rolls when net delta grows past 0.15 per lot"),
@@ -245,6 +252,7 @@ def playbooks() -> dict:
                      **({"approved_by": APPROVED[fam]} if fam in APPROVED else {}),
                      "triggers_on": trig_on, "triggers_greyed": trig_greyed,
                      "trigger_values": FAMILY_TRIGGER_VALUES.get(fam, {}),
+                     **({"guards": FAMILY_GUARDS[fam], "day_rules": FAMILY_DAY_RULES[fam]} if fam in FAMILY_GUARDS else {}),
                      "approaches": {"applicable": applicable, "off_in_playbook": off, "greyed": greyed}}
     return {
         "source": "Published mockup screen 4 (claude.ai artifact RwzCxhDod7yVCk6TWrQc9e) and "
@@ -763,7 +771,7 @@ def build(spec: dict, pb: dict) -> dict:  # noqa: C901, PLR0912, PLR0915 - one r
     stage = STAGES[kind][stage_ix]["name"]
 
     # day rules (system rules + plan overrides; precedence strategy plan > playbook, ADR-214 (4b))
-    rules = [dict(r) for r in SYSTEM_DAY_RULES]
+    rules = [dict(r) for r in FAMILY_DAY_RULES.get(family, SYSTEM_DAY_RULES)]
     for r in overrides.get("day_rules", []):
         rules = [x for x in rules if x["when"] != r["when"]] + [r]
     today = clock.date()

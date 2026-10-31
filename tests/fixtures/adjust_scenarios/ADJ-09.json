@@ -1785,19 +1785,19 @@
    {
     "id": "T-07",
     "value": "100.0000",
-    "limit": "64.0000",
+    "limit": "80.0000",
     "cmp": "ge"
    },
    {
     "id": "T-09",
     "value": "0.0500",
-    "limit": "2.4000",
+    "limit": "2.0000",
     "cmp": "le"
    },
    {
     "id": "T-19",
     "value": "0.0000",
-    "limit": "1.2000",
+    "limit": "1.0000",
     "cmp": "le"
    },
    {
@@ -1817,13 +1817,12 @@
   "day_rules": [
    {
     "rule": "expiry",
-    "at": "13:00",
-    "action": "Tighten every trigger by this %",
-    "due": true,
-    "percent": "20"
+    "at": "14:30",
+    "action": "Prepare an exit for review",
+    "due": true
    }
   ],
-  "tighten_percent": "20",
+  "tighten_percent": null,
   "situations": [
    "S-07"
   ],

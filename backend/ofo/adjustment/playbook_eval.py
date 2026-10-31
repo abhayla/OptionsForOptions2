@@ -168,9 +168,9 @@ def body_from_fixture(playbooks: Mapping, family: str) -> dict:
         "triggers": triggers,
         "rules": [{"id": tid, "any_of": [tid]} for tid in fam["triggers_on"]],
         "tightened": list(playbooks["tightened_by_day_rule"]),
-        "day_rules": [dict(r) for r in playbooks["day_rules"]],
+        "day_rules": [dict(r) for r in fam.get("day_rules", playbooks["day_rules"])],
         "situations": [{"id": sid, **s} for sid, s in playbooks["situations"].items()],
-        "guards": dict(playbooks["guards"]),
+        "guards": {**playbooks["guards"], **fam.get("guards", {})},  # a family may state its own (ADR-216, ic)
         "approaches": {k: [dict(x) if isinstance(x, dict) else x for x in v] for k, v in fam["approaches"].items()},
     }
     validate_body(body)
