@@ -61,6 +61,8 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
 
+from fastapi import Depends
+
 from ofo.engine import adjust_money
 from ofo.instruments.models import BSE_FO, BSE_INDEX, INDEX_ROWS, NSE_FO, NSE_INDEX
 from ofo.instruments.parser import parse_instruments_rows
@@ -537,6 +539,14 @@ def overrides(scn: Scenario) -> dict[Any, Any]:
     from ofo_app.routes import chain, leg_picker, live, outcome, planned_entry  # noqa: PLC0415
 
     ctx = outcome.MarketContext(scn.provider, scn.clock, scn.rate)
+
+    async def scenario_context(read_settings=Depends(outcome.get_settings_reader)):  # noqa: B008 - FastAPI dependency
+        """The scenario stands in for live, so it prices with the ``pricing.risk_free_rate`` setting in force at each
+        request (the scenario's own rate is only the starting value); same helper as the live dependency. A store that
+        cannot answer fails closed. Replay mode and unit-test overrides keep their own rate. (No annotation on the
+        parameter: this module's postponed annotations cannot see the function-local ``outcome`` import.)"""
+        return await outcome.with_rate_in_force(ctx, read_settings)
+
     feed = LiveFeed(ctx, FanOut(scn.provider))
     contracts: list[Any] = []
     permissions: dict[str, str] = {}
@@ -571,7 +581,7 @@ def overrides(scn: Scenario) -> dict[Any, Any]:
     margin = OutcomeMargin(lambda: ("scenario", scn.scenario_id), open_client, clock=scn.clock)
     live.set_replay_feed(lambda: feed)
     return {
-        outcome.get_market_context: lambda: ctx,
+        outcome.get_market_context: scenario_context,
         outcome.get_answer_clock: lambda: scn.clock,
         outcome.get_streaming: lambda: None,
         outcome.get_margin_source: lambda: margin,

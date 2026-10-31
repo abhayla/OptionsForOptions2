@@ -217,6 +217,13 @@ def get_settings_reader() -> SettingsReader:
     return _settings_in_force_now
 
 
+async def with_rate_in_force(ctx: MarketContext, read_settings: SettingsReader) -> MarketContext:
+    """``ctx`` with its rate replaced by the ``pricing.risk_free_rate`` setting in force now (an exact Decimal). The one
+    rate-reading path: the live dependency and the scenario mode's dependency both use it. A store that cannot answer
+    raises (fail closed)."""
+    return dataclasses.replace(ctx, rate=registry_value_of(await read_settings(), RISK_FREE_RATE))
+
+
 async def get_market_context(
         read_settings: Annotated[SettingsReader, Depends(get_settings_reader)]) -> MarketContext | None:
     """The live context (W-065) when LIVE_MARKET is on and the owner has an active session, else None: the route
@@ -229,10 +236,10 @@ async def get_market_context(
       dependency returns ``dataclasses.replace(ctx, rate=<setting in force>)`` for the request, so every priced REST
       route (outcome, chain, indices, leg picker, planned entry, tracking, paper, adjustment) reads the stored rate.
       The paper monitor and the live sockets read ``feed.ctx`` directly and are wired separately (a later step).
-    - A context injected through ``app.dependency_overrides[get_market_context]`` keeps its own rate: unit tests, the
-      replay mode (``main.create_app``) AND the scenario mode (``scenario_mode.overrides`` installs a lambda; it does
-      NOT serve through ``live_market.current_context()``, verified 2026-10-31). Their rates are test data; the
-      scenario fixtures state 0.065, equal to the default.
+    - A context injected through ``app.dependency_overrides[get_market_context]`` keeps its own rate: unit tests and
+      the replay mode (``main.create_app``) pass test data. The scenario mode (a dev stand-in for live) does NOT:
+      ``scenario_mode.overrides`` installs an async dependency that calls :func:`with_rate_in_force` on the scenario
+      context, so it prices with the setting in force at each request like live (orchestrator decision, 2026-11-01).
     - No context: no read (the "not connected" answer never waits on the database).
     - The store cannot answer (``SettingsError``: a stored value the registry now refuses; or a database error): the
       exception propagates and the route answers the internal-error response. Never a price with the default (fail
@@ -241,8 +248,7 @@ async def get_market_context(
     ctx = live_market.current_context()
     if ctx is None:
         return None
-    rate = registry_value_of(await read_settings(), RISK_FREE_RATE)
-    return dataclasses.replace(ctx, rate=rate)
+    return await with_rate_in_force(ctx, read_settings)
 
 
 # ---- request --------------------------------------------------------------------------------------------------------
