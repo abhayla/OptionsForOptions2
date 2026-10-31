@@ -862,6 +862,15 @@ _PLAYBOOK_TYPE_LABELS_FILE = Path(__file__).resolve().parent.parent / "adjustmen
 PLAYBOOK_TYPE_LABEL_TEXT: Mapping[str, str] = MappingProxyType(
     json.loads(_PLAYBOOK_TYPE_LABELS_FILE.read_text(encoding="utf-8")))  # data, not code: no strategy name typed here
 
+#: GC-ADJ2 step 4 (REQ-161 AC-1, AC-2; mockup screen 4): the fixed words of the strategy plan sheet and the tracking
+#: panel's Plan entry, by key. Each is one reviewed template `plan_sheet_<key>`; the browser prints what the server sends.
+PLAN_SHEET_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
+    "title": "When tracking starts: this strategy's plan", "playbook": "Playbook", "target": "Target",
+    "stop": "Stop", "max_adjustments": "Max adjustments", "time_exit": "Time exit",
+    "customise": "Customise triggers", "use_as_is": "Use playbook as is", "save": "Save plan", "close": "Close",
+    "plan_entry": "Plan", "edit": "Edit plan", "no_plan": "No plan saved yet", "hour": "Hour", "minute": "Minute",
+})
+
 #: Why a table cell has no value (the cell's `reason`), by key. Each is one reviewed template `table_reason_<key>`.
 TABLE_REASON_TEXT: Mapping[str, str] = MappingProxyType({
     "not_applicable": "not applicable",
@@ -1544,6 +1553,8 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         {"type": PlaybookTypeName}),
     ExplanationTemplate("catalogue_template_name", "values_seen", "{text}", {"text": TemplateText}),
     ExplanationTemplate("catalogue_template_description", "values_seen", "{text}", {"text": TemplateText}),
+    *(ExplanationTemplate(f"plan_sheet_{key}", "values_seen", text)  # REQ-161: the plan sheet's fixed words
+      for key, text in PLAN_SHEET_LABEL_TEXT.items()),
     *(ExplanationTemplate(f"table_reason_{key}", "values_seen", text) for key, text in TABLE_REASON_TEXT.items()),
     *(ExplanationTemplate(approach_name_id(key), "values_seen", text)  # REQ-155: each approach's shown name
       for key, text in ADJUSTMENT_APPROACH_LABEL_TEXT.items()),
@@ -1565,7 +1576,7 @@ LABEL_TABLES: Mapping[str, Mapping[str, str]] = MappingProxyType({
     "column": COLUMN_LABEL_TEXT, "table_reason": TABLE_REASON_TEXT, "level_region": LEVEL_REGION_TEXT,
     "adjustment_approach": ADJUSTMENT_APPROACH_LABEL_TEXT, "adjustment_approach_about": ADJUSTMENT_APPROACH_ABOUT_TEXT,
     "adjustment_criterion": ADJUSTMENT_CRITERION_LABEL_TEXT, "adjustment_leader": ADJUSTMENT_LEADER_LABEL_TEXT,
-    "playbook_type": PLAYBOOK_TYPE_LABEL_TEXT,
+    "playbook_type": PLAYBOOK_TYPE_LABEL_TEXT, "plan_sheet": PLAN_SHEET_LABEL_TEXT,
 })
 
 

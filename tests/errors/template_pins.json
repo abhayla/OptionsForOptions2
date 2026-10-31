@@ -2654,5 +2654,73 @@
   "explanation:playbook_name_shown": {
     "sha256": "6812d4f9f2a54353f3930dcd5eac870ebb5e421e25baa6c61dd616426750e8d8",
     "reviewed": "pending owner read"
+  },
+  "adjust_plan_no_playbook": {
+    "sha256": "ad7d0b90051692bb6961786862db02cdb2be4a37d217bfc6efb54ca8b9455a07",
+    "reviewed": "pending owner read"
+  },
+  "explanation:plan_sheet_title": {
+    "sha256": "afe45ed23327360d8b1f6ded67b3d6c80fa7d9ee325baad2dcbe58f70600434a",
+    "reviewed": "pending owner read"
+  },
+  "explanation:plan_sheet_playbook": {
+    "sha256": "175b7406e07195348986896cf74aa9634c5f98de9f4cbe91c4253c64abe982e9",
+    "reviewed": "pending owner read"
+  },
+  "explanation:plan_sheet_target": {
+    "sha256": "9b3c38af158fe07fc56831e46d8bf190a017048efa437d126620b3b371fbda17",
+    "reviewed": "pending owner read"
+  },
+  "explanation:plan_sheet_stop": {
+    "sha256": "a4450901a96c79e28de050acfa2bd5778fdd7c36938f5579f469bc273b298769",
+    "reviewed": "pending owner read"
+  },
+  "explanation:plan_sheet_max_adjustments": {
+    "sha256": "1943d115a4841c691f3d94c86f3cc563bb38c55a15033def2a692364ebda174c",
+    "reviewed": "pending owner read"
+  },
+  "explanation:plan_sheet_time_exit": {
+    "sha256": "3da7b1b276527a6ece178561b4c942351b9a3bc4ed6888a4e4a2973029ce9cda",
+    "reviewed": "pending owner read"
+  },
+  "explanation:plan_sheet_customise": {
+    "sha256": "23c1249727362aeaf208ec8618b19276f64364e86a308d2a9b806c051a4ad978",
+    "reviewed": "pending owner read"
+  },
+  "explanation:plan_sheet_use_as_is": {
+    "sha256": "fab0d1ce7b2dea10a4679ba4dae2f01e42945a18bccf3de7a2705f6a6eb63418",
+    "reviewed": "pending owner read"
+  },
+  "explanation:plan_sheet_save": {
+    "sha256": "80dd821b200cbc5afa03b48447d4c4d4cbb32b0f352daf6d4736c4773a047152",
+    "reviewed": "pending owner read"
+  },
+  "explanation:plan_sheet_close": {
+    "sha256": "84189b5b9fcf89362a967818bd550f0e42d34eab173de9133ce30ccc37c9ce29",
+    "reviewed": "pending owner read"
+  },
+  "explanation:plan_sheet_plan_entry": {
+    "sha256": "94f3c815ddf4ccefbe1e4e8c5c53471c3d5243b30ce644ea8012b16393384e0c",
+    "reviewed": "pending owner read"
+  },
+  "explanation:plan_sheet_edit": {
+    "sha256": "65c6c7bdd10dab469c0ce923e0f39ccb4860a68f984a4b24ecbf8b9b3751ecad",
+    "reviewed": "pending owner read"
+  },
+  "explanation:plan_sheet_no_plan": {
+    "sha256": "47af597af302a866e22bb37b97bfb67ce6a42851e98852fd81b54d0ba3eb03fe",
+    "reviewed": "pending owner read"
+  },
+  "explanation:plan_sheet_hour": {
+    "sha256": "b6eefc6e750190f5fb6ce6eaa55cd1530fdc38f50a7cdb07787b94a73bcb2b4a",
+    "reviewed": "pending owner read"
+  },
+  "explanation:plan_sheet_minute": {
+    "sha256": "85c0f6d939e34ac1ef6cb8f4aeb21cc72fd8f06df663a340ee539edd1523166e",
+    "reviewed": "pending owner read"
+  },
+  "labels:plan_sheet": {
+    "sha256": "82d557c98a1e3b546679565d3792e1249baf82e22a43f3b134cf1298951ab638",
+    "reviewed": "pending owner read"
   }
 }
