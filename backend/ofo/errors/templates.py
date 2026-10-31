@@ -1230,6 +1230,10 @@ _PLAYBOOK_TEMPLATES: tuple[MessageTemplate, ...] = (
     _gate("playbook_stage_gap", _UI, 159, "Days {from_day} to {to_day} are in no stage ({expiry} expiries).",
           _PB_NOT_SAVED, _PB_BLOCKED, "Add a stage for those days, or stretch a stage over them.",
           {"from_day": Count, "to_day": Count, "expiry": PlaybookField}),
+    # GC-ADJ2 step 4 (REQ-161 AC-4): a shape that maps to no playbook gets the generic triggers and approaches only
+    _gate("adjust_plan_no_playbook", _UI, 160, "No playbook matches this strategy's shape, so only the generic "
+          "triggers and approaches apply.", "No plan was saved for this strategy.", "Saving a plan.",
+          "Close this sheet; the generic triggers and approaches stay on."),
 )
 
 _TEMPLATES = (_TEMPLATES + _TRIGGER_TEMPLATES + _GATE_TEMPLATES
