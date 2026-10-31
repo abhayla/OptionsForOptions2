@@ -68,3 +68,20 @@ async def test_every_id_kind_and_action_in_a_system_playbook_has_a_label():
     assert seen_ids and seen_ids <= names, sorted(seen_ids - names)
     assert seen_kinds <= kinds, sorted(seen_kinds - kinds)
     assert seen_actions <= actions, sorted(seen_actions - actions)
+
+
+async def test_every_guard_key_in_a_system_playbook_has_words_and_no_values_has_a_sentence():
+    """Limits and guards never shows a raw key; a trigger with no list for an expiry kind shows the catalogue's line."""
+    out = await _labels()
+    guards = {x["key"]: x["text"] for x in out["guards"]}
+    seen = set().union(*(set(e.get("body", e)["guards"]) for e in _bodies()))
+    assert seen and seen <= set(guards), sorted(seen - set(guards))
+    assert guards["stop_line_pct_of_max_loss"] == "Stop line (% of max loss)"
+    assert out["no_values"]["what_happened"] == "This trigger has no values for this expiry type."
+
+
+async def test_the_editor_test_fixture_is_this_route_answer():
+    """The page test's stand-in (frontend/tests/fixtures/playbook-labels.json) is the route's real answer, not a copy
+    that drifted (finding e2e-stand-in-drifts-from-server)."""
+    fixture = json.loads((ROOT / "frontend/tests/fixtures/playbook-labels.json").read_text(encoding="utf-8"))
+    assert fixture == await _labels()

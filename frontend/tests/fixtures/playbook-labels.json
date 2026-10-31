@@ -299,5 +299,64 @@
    "key": "plan",
    "text": "Plan: target {target}% of max profit, stop at {stop}% of max loss, at most {max} adjustments."
   }
- ]
+ ],
+ "guards": [
+  {
+   "key": "entry_guide",
+   "text": "Entry guide"
+  },
+  {
+   "key": "hide_oi_below",
+   "text": "Hide strikes with open interest below"
+  },
+  {
+   "key": "hide_spread_pct_of_mid_above",
+   "text": "Hide strikes whose bid-ask spread is above this % of the mid price"
+  },
+  {
+   "key": "max_adjustments",
+   "text": "Most adjustments for one strategy"
+  },
+  {
+   "key": "order_sequence",
+   "text": "Order sequence"
+  },
+  {
+   "key": "profit_target_pct_of_max_profit",
+   "text": "Profit target (% of max profit)"
+  },
+  {
+   "key": "roll_debit_limit",
+   "text": "Most debit paid for one roll"
+  },
+  {
+   "key": "stop_line_pct_of_margin",
+   "text": "Stop line (% of margin)"
+  },
+  {
+   "key": "stop_line_pct_of_max_loss",
+   "text": "Stop line (% of max loss)"
+  },
+  {
+   "key": "stop_line_rule",
+   "text": "Stop line rule"
+  },
+  {
+   "key": "time_exit",
+   "text": "Time exit"
+  },
+  {
+   "key": "warn_cost_pct_of_premium_left",
+   "text": "Warn when an adjustment costs more than this % of the premium left"
+  }
+ ],
+ "no_values": {
+  "error_class": "USER_INPUT",
+  "code": "USER_INPUT_116",
+  "what_happened": "This trigger has no values for this expiry type.",
+  "impact": "This rule is not checked now; it never counts as passed.",
+  "what_is_blocked": "This rule.",
+  "next_action": "Nothing to do; it is checked again at the next check.",
+  "external_text": null
+ }
 }

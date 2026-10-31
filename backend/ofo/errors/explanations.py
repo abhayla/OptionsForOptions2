@@ -307,6 +307,21 @@ PLAYBOOK_DAY_RULE_ACTION_TEXT: Mapping[str, str] = MappingProxyType({
     "5": "Prepare an exit for review",
     "6": "Do not suggest rolls",
 })
+#: GC-ADJ2 step 3 (REQ-160 AC-1): each playbook guard key (body ``guards``) in words, shown on Limits and guards.
+PLAYBOOK_GUARD_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
+    "entry_guide": "Entry guide",
+    "hide_oi_below": "Hide strikes with open interest below",
+    "hide_spread_pct_of_mid_above": "Hide strikes whose bid-ask spread is above this % of the mid price",
+    "max_adjustments": "Most adjustments for one strategy",
+    "order_sequence": "Order sequence",
+    "profit_target_pct_of_max_profit": "Profit target (% of max profit)",
+    "roll_debit_limit": "Most debit paid for one roll",
+    "stop_line_pct_of_margin": "Stop line (% of margin)",
+    "stop_line_pct_of_max_loss": "Stop line (% of max loss)",
+    "stop_line_rule": "Stop line rule",
+    "time_exit": "Time exit",
+    "warn_cost_pct_of_premium_left": "Warn when an adjustment costs more than this % of the premium left",
+})
 #: GC-ADJ2 step 3 (REQ-160 AC-1): the plain-words summary's sentences. A doubled brace is a slot the editor fills from the body ({name} after rendering); the words are the catalogue's.
 PLAYBOOK_SUMMARY_TEXT: Mapping[str, str] = MappingProxyType({
     "type_line": "{{type}}, {{kind}} expiry. Stages: {{stages}}.",
@@ -1673,6 +1688,7 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     *(ExplanationTemplate(f"playbook_day_action_{key}", "values_seen", text)
       for key, text in PLAYBOOK_DAY_RULE_ACTION_TEXT.items()),
     *(ExplanationTemplate(f"playbook_summary_{key}", "values_seen", text) for key, text in PLAYBOOK_SUMMARY_TEXT.items()),
+    *(ExplanationTemplate(f"playbook_guard_{key}", "values_seen", text) for key, text in PLAYBOOK_GUARD_LABEL_TEXT.items()),
     *(ExplanationTemplate(f"adjust_cmp_row_{key}", "values_seen", text)  # REQ-156: each criterion row's name
       for key, text in ADJUSTMENT_CRITERION_LABEL_TEXT.items()),
     *(ExplanationTemplate(f"adjust_cmp_lead_{key}", "values_seen", text)  # REQ-156 AC-3: each row's leader words
@@ -1702,6 +1718,7 @@ LABEL_TABLES: Mapping[str, Mapping[str, str]] = MappingProxyType({
     "playbook_type": PLAYBOOK_TYPE_LABEL_TEXT, "playbook_approach": PLAYBOOK_APPROACH_LABEL_TEXT,
     "playbook_day_kind": PLAYBOOK_DAY_RULE_KIND_TEXT, "playbook_day_action": PLAYBOOK_DAY_RULE_ACTION_TEXT,
     "playbook_summary": PLAYBOOK_SUMMARY_TEXT, "plan_sheet": PLAN_SHEET_LABEL_TEXT,
+    "playbook_guard": PLAYBOOK_GUARD_LABEL_TEXT,
 })
 
 

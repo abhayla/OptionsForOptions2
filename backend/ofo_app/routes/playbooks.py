@@ -33,6 +33,7 @@ from ofo.errors.explanations import (
     PLAYBOOK_APPROACH_LABEL_TEXT,
     PLAYBOOK_DAY_RULE_ACTION_TEXT,
     PLAYBOOK_DAY_RULE_KIND_TEXT,
+    PLAYBOOK_GUARD_LABEL_TEXT,
     PLAYBOOK_SUMMARY_TEXT,
     approach_name_id,
     render_explanation,
@@ -215,6 +216,8 @@ class LabelsOut(ApiModel):
     day_actions: list[LabelOut]
     past_note: CatalogueText  # REQ-160 AC-4, shown on the Test step before any run
     summary: list[LabelOut]  # sentence templates: "{slot}" is filled by the editor from the body's own strings
+    guards: list[LabelOut]  # each guard key in words (Limits and guards never shows a raw key)
+    no_values: CatalogueText  # a trigger with no value list for an expiry kind (null in the body)
 
 
 def _labels(table: Mapping[str, str], template_id: Callable[[str], str]) -> list[dict[str, Any]]:
@@ -233,7 +236,9 @@ async def playbook_labels() -> LabelsOut:
         "day_kinds": _labels(PLAYBOOK_DAY_RULE_KIND_TEXT, lambda k: f"playbook_day_kind_{k}"),
         "day_actions": _labels(PLAYBOOK_DAY_RULE_ACTION_TEXT, lambda k: f"playbook_day_action_{k}"),
         "past_note": render_explanation("playbook_test_past_out_of_v1"),
-        "summary": _labels(PLAYBOOK_SUMMARY_TEXT, lambda k: f"playbook_summary_{k}")})
+        "summary": _labels(PLAYBOOK_SUMMARY_TEXT, lambda k: f"playbook_summary_{k}"),
+        "guards": _labels(PLAYBOOK_GUARD_LABEL_TEXT, lambda k: f"playbook_guard_{k}"),
+        "no_values": render("adjust_trigger_no_expiry_values")})
 
 
 @router.get("/api/playbooks", response_model=PlaybookListOut)
