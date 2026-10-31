@@ -283,8 +283,8 @@ CASES = [(figure, name) for figure, names in (
             "days in year"]),
     ("greeks", ["kind", "strike", "leg iv", "spot level", "forward", "implied yield / dividend yield", "years", "rate",
                 "days in year"]),
-    ("forward", ["quote contract", "quote bid", "quote ask", "quote timestamp", "quote health", "spot ltp", "spot timestamp",
-                 "spot health", "expiry", "rate"]),
+    ("forward", ["quote contract", "quote bid", "quote ask", "quote timestamp", "quote health", "spot ltp",
+                 "spot timestamp", "spot health", "expiry", "rate"]),
 ) for name in names]
 
 
