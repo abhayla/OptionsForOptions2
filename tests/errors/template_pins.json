@@ -2803,6 +2803,14 @@
     "sha256": "9add056757b24a450219daad091f9690864a68aaa5488ad5e71fbc5e5f07efa6",
     "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"
   },
+  "explanation:suggestion_open_count_one": {
+    "sha256": "fb9cd758f1acfe61fdfd4aaaaac17c17f6d5426f20f7821a3b9b2aecd3db8b54",
+    "reviewed": "pending owner read"
+  },
+  "explanation:suggestion_open_count": {
+    "sha256": "602cb38f2a016974e07bc2ac160545fdacf29f3ba304a20e2d5ba15393adb1f9",
+    "reviewed": "pending owner read"
+  },
   "explanation:adjust_condition_line": {
     "sha256": "f8664b0e4ff9c137604daab8e6f3a764d6a858aa59646630f1d46ae8df31c0ce",
     "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"
