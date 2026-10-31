@@ -4,7 +4,7 @@
 
 Generated from `spec/requirements/REQ-*.md`, grouped by each requirement's `section`. Before writing a new requirement, find its section here and run `python tools/spec_similar.py . "<text>"`; extend or cite a match, never restate it.
 
-Requirements: 157; sections: 20
+Requirements: 158; sections: 20
 
 ## Accounts and identity (5)
 
@@ -152,12 +152,13 @@ Requirements: 157; sections: 20
 | REQ-031 | Option Chain live strategy preview | feature | Approved |
 | REQ-087 | Option Chain display options - per-lot prices, ITM shading, strikes around ATM, and intrinsic value, time value and breakeven % columns | feature | Approved |
 
-## Platform (2)
+## Platform (3)
 
 | id | title | layer | status |
 |---|---|---|---|
 | REQ-164 | The API runs as several copies; no request depends on the memory of one copy, and one copy stopping cuts no user | feature | Approved |
 | REQ-166 | Calculations run at four speeds held as admin settings, the background uses light sums, and a safety valve slows every screen together under load | feature | Approved |
+| REQ-167 | One admin Settings page holds every business number a calculation uses, each with a default, the date it took effect and who set it | platform | Approved |
 
 ## Product scope and platform (9)
 

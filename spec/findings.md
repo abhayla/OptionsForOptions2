@@ -1113,3 +1113,10 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   "Strike liquidity" row shows the widest spread with no threshold. A user who sets them is told nothing about this.
   Separately, `low_oi_blocked` is set only by scenario mode (`ofo_app/scenario_mode.py:282`); no live source sets it.
   Bears on REQ-159 AC-6, catalogue F-12. Status: **read from the code**; open for owner decision (GC-ADJ3).
+
+## F-79 - The Undo window in code is 8 s and 10 s; the spec says about 5 s, admin-configurable
+- Read from the code 2026-10-31 (settings scan, `docs/design/settings-scan-2026-10-31.md`): ADR-007 row Q56 says a
+  removed leg shows "a short Undo (duration: about 5 s, admin-configurable)"; the code uses 8000 ms on the option chain
+  (`frontend/src/pages/OptionChainPage.vue:34` `UNDO_MS`) and 10000 ms for Clear all (`frontend/src/lib/legEdit.js:26`
+  `CLEAR_UNDO_MS`), both typed in code. Bears on ADR-007, ADR-222. Status: **read from the code**; open for owner
+  decision (which default the setting starts at).

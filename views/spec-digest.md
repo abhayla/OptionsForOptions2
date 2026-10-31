@@ -48,7 +48,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-221 2026-10-31: The T-19 trigger ("premium still left to earn is below N x the adjustment's cost") uses, at each ch… [Settles the gap in REQ-159 "How the open triggers…]
 - ADR-222 2026-10-31: (1) No rupee amount, rate, percentage or threshold that changes a figure a user sees is typed in co… [Builds the "admin settings" ADR-082 (charge rates…]
 
-## Requirements (157)
+## Requirements (158)
 
 - REQ-001 [Approved]: V1 scope: underlyings, leg types, broker
 - REQ-002 [Approved]: Account boundaries
@@ -207,8 +207,9 @@ One line per decision, requirement and spec section. Read it before asking the o
 - REQ-164 [Approved]: The API runs as several copies; no request depends on the memory of one copy, and one copy stopping cuts no u…
 - REQ-165 [Approved]: Adjustment playbook triggers are checked by the background workers on fresh prices, at most once a second per…
 - REQ-166 [Approved]: Calculations run at four speeds held as admin settings, the background uses light sums, and a safety valve sl…
+- REQ-167 [Approved]: One admin Settings page holds every business number a calculation uses, each with a default, the date it took…
 
-## Spec sections (247)
+## Spec sections (248)
 
 ### spec/SPEC-DEVIATION.md
 
@@ -347,6 +348,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ## F-76 - The NIFTY spot cannot be read over Kite REST: the quote allow-…
 - ## F-77 - The T-19 trigger compares premium left with a different "adjus…
 - ## F-78 - Three playbook limits are saved and shown in the editor but no…
+- ## F-79 - The Undo window in code is 8 s and 10 s; the spec says about 5…
 
 ### spec/open-questions.md
 
