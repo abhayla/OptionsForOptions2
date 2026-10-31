@@ -85,7 +85,7 @@ def _num(v: Decimal | str | None) -> Decimal | None:
     return v if isinstance(v, Decimal) else None  # a clock value or UNLIMITED is not a number
 
 
-def _result(r: pe.Result, flag_wording: Any) -> dict:
+def result_out(r: pe.Result, flag_wording: Any) -> dict:
     if isinstance(r, pe.Flag):
         return {"kind": "flag", "rule_id": r.rule_id, "trigger_id": r.trigger_id, "cmp": r.cmp, "value": _num(r.value),
                 "threshold": _num(r.threshold), "reason": None, "wording": flag_wording}
@@ -96,7 +96,7 @@ def _result(r: pe.Result, flag_wording: Any) -> dict:
             "threshold": None, "reason": render(r.code, **dict(r.slots)), "wording": None}
 
 
-async def _current_margin(margin_of: ApproachMargin, tracked: Any, market: Any) -> dict | None:
+async def current_margin(margin_of: ApproachMargin, tracked: Any, market: Any) -> dict | None:
     try:
         legs = [PlannedOrderIn(market.instrument_ids[x.tradingsymbol], x.side, x.lots, x.entry)
                 for x in tracked.position.legs]
@@ -138,7 +138,7 @@ async def adjustment_check(  # noqa: PLR0913 - FastAPI dependencies, one per inp
         "stage": {"name": None, "index": None}, "withheld": None, "results": []}
     if resolved.body is None:
         return AdjustmentCheckOut.model_validate(reply)
-    margin = await _current_margin(margin_of, tracked, market)
+    margin = await current_margin(margin_of, tracked, market)
     state = check.state_of(tracked, market, spot, margin, rates, check.prices_fresh(ctx), resolved.body)
     ev = await check.evaluate_and_remember(db, user_ref, strategy_id, resolved.body, state, scenario_mode.current(),
                                            tracked.position)
@@ -146,5 +146,5 @@ async def adjustment_check(  # noqa: PLR0913 - FastAPI dependencies, one per inp
     wording = render_explanation("adjust_check_flag_system" if resolved.is_system else "adjust_check_flag_user")
     reply |= {"stage": {"name": ev.stage_name, "index": ev.stage_index},
               "withheld": None if ev.withheld is None else render(ev.withheld),
-              "results": [_result(r, wording) for r in ev.results]}
+              "results": [result_out(r, wording) for r in ev.results]}
     return AdjustmentCheckOut.model_validate(reply)

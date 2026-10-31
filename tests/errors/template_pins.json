@@ -2654,5 +2654,13 @@
   "explanation:playbook_name_shown": {
     "sha256": "6812d4f9f2a54353f3930dcd5eac870ebb5e421e25baa6c61dd616426750e8d8",
     "reviewed": "pending owner read"
+  },
+  "explanation:playbook_test_no_strategy": {
+    "sha256": "a83e6e666655fcf1e74989f7b4d9e7caf9efda46eb91f20ffb0361d11ed03384",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_test_past_out_of_v1": {
+    "sha256": "28d770f607a41074681e734df2c32e8dd290defaa8cc3d554b4aeded54d8f60a",
+    "reviewed": "pending owner read"
   }
 }

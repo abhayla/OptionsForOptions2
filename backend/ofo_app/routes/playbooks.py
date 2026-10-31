@@ -15,25 +15,46 @@ rename, delete, make active, save as new and save in place, all through ``ofo_ap
 """
 from __future__ import annotations
 
+import dataclasses
 import datetime
+import logging
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Query
+from ofo.adjustment import playbook_eval as pe
 from ofo.adjustment import playbook_stages as stages
 from ofo.adjustment.playbook_text import name_shown
 from ofo.adjustment.playbook_types import SHOWN_NAMES, TYPE_KEYS
+from ofo.charges import ChargeRates
 from ofo.errors import render
 from ofo.errors.explanations import render_explanation
+from ofo.marketdata.spot_source import resolve_spot
+from ofo.strategy.stored_form import shown_name
 from pydantic import BaseModel, ConfigDict
 
+from ofo_app import adjustment_check as check
+from ofo_app import paper_store, scenario_mode, strategy_store
 from ofo_app import playbook_store as store
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier
 from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure
 from ofo_app.playbook_body_out import PlaybookBody
+from ofo_app.routes.adjustment import (
+    ApproachMargin,
+    MarketReader,
+    RestSpotReader,
+    TrackedReader,
+    get_approach_margin,
+    get_market_reader,
+    get_rest_spot_reader,
+    get_tracked_reader,
+)
+from ofo_app.routes.adjustment_check import CheckResultOut, CheckStageOut, current_margin, result_out
 from ofo_app.routes.broker import current_user_ref
+from ofo_app.routes.outcome import MarketContext, get_market_context, load_charge_rates
 from ofo_app.strategy_refused import StrategyRefused
 
+log = logging.getLogger(__name__)
 router = APIRouter(route_class=ClosedRoute)
 ID_MAX = 9_223_372_036_854_775_807  # the id column is BIGSERIAL: a larger number is simply not there
 _STATUS = {
@@ -255,3 +276,108 @@ async def activate_playbook(playbook_id: int, db: Annotated[Any, Depends(get_db)
     async def work() -> PlaybookOut:
         return await _out(db, user_ref, await store.make_active(db, user_ref, _id(playbook_id)), full=True)
     return await _run(db, work)
+
+
+# ---- Test (GC-ADJ2 step 3; REQ-160 AC-3, AC-4) -----------------------------------------------------------------------
+class TestIn(_In):
+    type: str
+    body: dict[str, Any]
+
+
+class TestStrategyOut(ApiModel):
+    strategy_id: int
+    name: CatalogueText
+    stage: CheckStageOut
+    withheld: CatalogueText | None
+    results: list[CheckResultOut]
+
+
+class TestOut(ApiModel):
+    type: Identifier
+    type_name: CatalogueText
+    none_text: CatalogueText | None  # "No current <type> strategy to test against", or None when one was tested
+    past_note: CatalogueText  # REQ-160 AC-4: testing past expiries is out of V1
+    strategies: list[TestStrategyOut]
+
+
+@dataclasses.dataclass(frozen=True)
+class _Seams:
+    tracked_reader: TrackedReader
+    market_reader: MarketReader
+    rest_reader: RestSpotReader
+    margin_of: ApproachMargin
+    ctx: MarketContext | None
+    rates: ChargeRates | None
+
+
+async def _tracked_of_type(db: Any, user_ref: str, strategy_type: str, seams: _Seams) -> list[tuple[Any, Any, Any]]:
+    """The user's tracked strategies whose shape is ``strategy_type`` -> (summary, tracked, (market, spot)). Read only:
+    the same readers and type rule as the check route (``ofo_app.adjustment_check``)."""
+    from ofo_app.adjustment_readers import TrackedUnreadable  # noqa: PLC0415 - it imports routes.adjustment
+    rows = await strategy_store.list_strategies(db, user_ref)
+    tracked_ids = await paper_store.tracked_ids(db, [r.id for r in rows])
+    out = []
+    for row in rows:
+        if row.id not in tracked_ids:
+            continue
+        try:
+            tracked = await seams.tracked_reader(row.id, seams.rates)
+        except TrackedUnreadable:  # legs not readable: its type is not known, so it is not "of that type"
+            log.warning("playbook test: strategy %s unreadable", row.id)
+            continue
+        if tracked is None:
+            continue
+        market = await seams.market_reader(tracked, seams.ctx)
+        spot = resolve_spot(market.feed, await seams.rest_reader(tracked.position.underlying), market.last_close,
+                            now=market.now)
+        listed = None if seams.ctx is None else seams.ctx.provider.instrument_master()
+        if check.strategy_type(tracked.position, spot.value if spot.available else None, listed) != strategy_type:
+            continue
+        out.append((row, tracked, (market, spot)))
+    return out
+
+
+async def _tested(db: Any, user_ref: str, data: TestIn, seams: _Seams) -> list[dict[str, Any]]:
+    strategies = []
+    for row, tracked, (market, spot) in await _tracked_of_type(db, user_ref, data.type, seams):
+        margin = await current_margin(seams.margin_of, tracked, market)
+        state = check.state_of(tracked, market, spot, margin, seams.rates, check.prices_fresh(seams.ctx), data.body)
+        entry = check.scenario_entry(scenario_mode.current(), state, tracked.position)
+        if entry is not None:
+            state = dataclasses.replace(state, entry_atm_iv=entry.atm_iv)
+        ev = pe.evaluate(data.body, state, {}, entry)  # empty memory; the returned memory is dropped
+        strategies.append({"strategy_id": row.id, "name": shown_name(row.name),
+                           "stage": {"name": ev.stage_name, "index": ev.stage_index},
+                           "withheld": None if ev.withheld is None else render(ev.withheld),
+                           "results": [result_out(r, None) for r in ev.results]})
+    return strategies
+
+
+@router.post("/api/playbooks/test", response_model=TestOut)
+async def test_playbook(  # noqa: PLR0913 - FastAPI dependencies, one per input (as the check route)
+        data: TestIn, db: Annotated[Any, Depends(get_db)], user_ref: Annotated[str, Depends(current_user_ref)],
+        tracked_reader: Annotated[TrackedReader, Depends(get_tracked_reader)],
+        market_reader: Annotated[MarketReader, Depends(get_market_reader)],
+        rest_reader: Annotated[RestSpotReader, Depends(get_rest_spot_reader)],
+        margin_of: Annotated[ApproachMargin, Depends(get_approach_margin)],
+        ctx: Annotated[MarketContext | None, Depends(get_market_context)],
+        rates: Annotated[ChargeRates | None, Depends(load_charge_rates)]) -> TestOut:
+    """REQ-160 AC-3: the unsaved body checked exactly as a save checks it (``_precheck``: body, keys, stage gap and
+    overlap), then evaluated on each of the user's tracked strategies of the type. Nothing is written: empty rule
+    memory (a rule true now flags; the F-71 entry state is the scenario's stated entry only), no rule state, no
+    suggestion, no order; the transaction is rolled back. A not-checked rule is listed with its reason, never passed."""
+    seams = _Seams(tracked_reader, market_reader, rest_reader, margin_of, ctx,
+                   rates if isinstance(rates, ChargeRates) else None)
+    try:
+        _precheck(data.type, data.body)
+    except (store.PlaybookStoreError, stages.StageProblem) as exc:
+        raise _refused(exc) from None
+    try:
+        strategies = await _tested(db, user_ref, data, seams)
+    finally:
+        await db.rollback()  # read only: whatever a reader touched is never kept
+    type_name = SHOWN_NAMES[data.type]
+    return TestOut.model_validate({
+        "type": data.type, "type_name": render_explanation("adjust_check_type_name", name=type_name),
+        "none_text": None if strategies else render_explanation("playbook_test_no_strategy", type=type_name),
+        "past_note": render_explanation("playbook_test_past_out_of_v1"), "strategies": strategies})
