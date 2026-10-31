@@ -16,6 +16,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from ofo.adjustment.playbook_eval import validate_body
 from ofo.adjustment.playbook_types import TYPE_KEYS
+from ofo.timeutil import IST
 from ofo_app import adjustment_readers, catalogue_store, playbook_store, scenario_mode
 from ofo_app import db as app_db
 from ofo_app.config import get_settings
@@ -26,6 +27,8 @@ _spec = importlib.util.spec_from_file_location("seed_scenario", ROOT / "scripts"
 seed_mod = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(seed_mod)
 OK, NOT_FOUND = 200, 404
+#: one list date before every scenario's expiry, so a forced reload retires nothing (ADR-057)
+CATALOGUE_AS_OF = datetime.datetime(2026, 10, 31, 9, 0, tzinfo=IST)
 
 
 def _reset_engine() -> None:
@@ -51,7 +54,9 @@ async def _seeded(app_engine, monkeypatch, sid: str) -> int:
     scn = scenario_mode.load(sid)
     async with app_engine.begin() as conn:
         await catalogue_store.apply_update(conn, scn.provider.instrument_master(),
-                                           as_of=datetime.datetime.fromisoformat(scn.data["position"]["entry"]["clock"]))
+                                           as_of=CATALOGUE_AS_OF,
+                                           force=True, reason=f"test: scenario {sid} contracts", actor="test")
+        # forced: each scenario is its own instrument list, so the previous one's contracts leave (ADR-058 guard)
     return await seed_mod.seed(sid)
 
 
@@ -78,7 +83,7 @@ async def test_adj02_flags_exactly_t01_t03_t09_with_the_system_wording(app_db_ur
     assert body["playbook"]["source"] == "system" and body["playbook"]["status"] == "approved"
     flags = [x for x in body["results"] if x["kind"] == "flag"]
     assert sorted((x["trigger_id"], x["value"][:6], x["threshold"], x["cmp"]) for x in flags) == [
-        ("T-01", "0.3415", "0.5", "le"), ("T-03", "0.4103", "0.35", "ge"), ("T-09", "2.70", "3", "le")]
+        ("T-01", "0.3415", "0.5", "le"), ("T-03", "0.4103", "0.35", "ge"), ("T-09", "2.7", "3", "le")]
     assert {x["wording"] for x in flags} == {"Adjustment opportunity detected"}
     assert all(x["reason"] for x in body["results"] if x["kind"] == "not_checked")
 
@@ -89,12 +94,22 @@ async def test_adj01_no_flag(app_db_url, monkeypatch):
     assert status == OK and body["strategy_type"] == "ic" and _by_kind(body, "flag") == []
 
 
+async def test_user_active_playbook_is_read_when_the_strategy_has_no_plan(app_db_url, monkeypatch):
+    sid = await _seeded(app_db_url, monkeypatch, "ADJ-01")
+    async with app_db_url.begin() as conn:
+        system = await playbook_store.active_for(conn, "owner", "ic")
+        own = await playbook_store.duplicate(conn, "owner", system.id, "Mine")
+        await playbook_store.make_active(conn, "owner", own.id)
+    status, out = await _check("ADJ-01", sid)
+    assert status == OK and (out["playbook"]["source"], out["playbook"]["id"]) == ("active", own.id)
+
+
 async def test_adj42_f71_already_true_at_entry_then_flags_after_a_clear_check(app_db_url, monkeypatch):
     sid = await _seeded(app_db_url, monkeypatch, "ADJ-42")
     status, body = await _check("ADJ-42", sid)
     assert status == OK
     assert [x[0] for x in _by_kind(body, "already_true")] == ["T-01"] and _by_kind(body, "flag") == []
-    assert {x["wording"] for x in body["results"] if x["kind"] == "already_true"} == {
+    assert {x["wording"]["what_happened"] for x in body["results"] if x["kind"] == "already_true"} == {
         "Already true when tracking started."}
     async with app_db_url.begin() as conn:  # a later check found T-01 false (the memory the store writes, F-71)
         assert (await playbook_store.rule_state(conn, "owner", sid))["T-01"] == (True, False)
@@ -142,12 +157,9 @@ async def test_zz_plan_precedence_t01_middle_03_is_not_flagged_and_editing_the_p
         body = copy.deepcopy(system.body)
         body["triggers"]["T-01"]["weekly"][1] = "0.3"  # Middle stage: 0.3416 > 0.3, so T-01 must not flag
         await playbook_store.accept_plan(conn, "owner", sid, system.id, body)
-        own = await playbook_store.duplicate(conn, "owner", system.id, "Mine")
+        own = await playbook_store.duplicate(conn, "owner", system.id, "Mine 2")
         await playbook_store.make_active(conn, "owner", own.id)  # a later active playbook never overrides the plan
     status, out = await _check("ADJ-02", sid)
     assert status == OK and out["playbook"]["source"] == "plan"
     assert [x[0] for x in _by_kind(out, "flag")] == ["T-03", "T-09"]
     assert {x["wording"] for x in out["results"] if x["kind"] == "flag"} == {"Your rule was triggered"}
-    other = await _seeded(app_db_url, monkeypatch, "ADJ-01")  # no plan: the user's active playbook is read
-    status, out = await _check("ADJ-01", other)
-    assert status == OK and (out["playbook"]["source"], out["playbook"]["id"]) == ("active", own.id)
