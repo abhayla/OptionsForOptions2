@@ -25,7 +25,6 @@ from typing import Final
 DATA_FILE: Final = Path(__file__).with_name("registry.json")
 UNITS: Final = ("fraction", "percent", "rupees", "points", "seconds", "count", "time")
 TYPES: Final = ("decimal", "integer")
-_HUNDRED: Final = Decimal(100)
 MAX_TEXT: Final = 40  # the longest value text accepted from a form (a Decimal string)
 
 #: App-wide admin settings only (owner 2026-10-31): per-user adjustment preferences (near-level distance, cost per
@@ -133,9 +132,10 @@ def check_value(s: Setting, value: Decimal) -> Decimal:
     if s.type == "integer" and value != value.to_integral_value():
         raise SettingRefused("setting_not_whole", f"{s.label} must be a whole number.")
     if value < s.min or value > s.max:
-        if s.unit == "fraction" and s.min <= value / _HUNDRED <= s.max:
+        as_fraction = value.scaleb(-2)  # exact percent -> fraction (no division: not money arithmetic)
+        if s.unit == "fraction" and s.min <= as_fraction <= s.max:
             raise SettingRefused("setting_fraction_unit",
-                                 f"{s.label} is a fraction: enter {plain(value / _HUNDRED)} for {plain(value)}%.")
+                                 f"{s.label} is a fraction: enter {plain(as_fraction)} for {plain(value)}%.")
         raise SettingRefused("setting_out_of_range",
                              f"{s.label} must be between {plain(s.min)} and {plain(s.max)} ({s.unit}).")
     return value
