@@ -487,6 +487,14 @@ class AdjustTimingOut(ApiModel):
     approaches: int
 
 
+class AdjustBreakdownLineOut(ApiModel):
+    """One line of the cost cell's charge breakdown (ADR-230 (3)): the line's id, its catalogue label and amount."""
+
+    id: Identifier
+    label: CatalogueText
+    text: CatalogueText
+
+
 class AdjustCellOut(ApiModel):
     """One approach's value on one compare criterion (REQ-156 AC-3): ``text`` always shown; ``value`` the exact
     number when there is one; ``unavailable_reason`` beside a "-"."""
@@ -494,6 +502,7 @@ class AdjustCellOut(ApiModel):
     text: CatalogueText
     value: Money | None = None
     unavailable_reason: CatalogueText | None = None
+    breakdown: list[AdjustBreakdownLineOut] | None = None  # only the cost cell of a known cost with rates (ADR-230 (3))
 
 
 class AdjustCriterionOut(ApiModel):

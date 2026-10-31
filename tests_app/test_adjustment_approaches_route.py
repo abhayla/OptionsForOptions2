@@ -351,6 +351,22 @@ def test_req156_no_spot_no_criteria():
     assert body["approaches"] == [] and body["criteria"] == [] and body["leads"] == {} and body["curves"] == {}
 
 
+def test_adr230_3_known_cost_cell_carries_the_charge_breakdown_and_unknown_rates_carry_none():
+    """ADR-230 (3): a trading approach's cost cell lists its charge lines (reply model declares them); with no rates
+    there is no breakdown, and the reply still answers 200."""
+    known = post(client_for(load("ADJ-02"), rates=RATES))
+    assert known.is_success
+    cost = next(c for c in known.json()["criteria"] if c["id"] == "cost")["values"]
+    lines = cost["A-01"]["breakdown"]
+    assert [x["id"] for x in lines] == ["brokerage", "stt", "exchange", "gst", "stamp", "sebi", "charges_total",
+                                        "bid_ask"]
+    assert all(x["label"] and x["text"] for x in lines)
+    assert not cost["A-36"].get("breakdown")  # no trade, nothing itemised
+    unknown = post(client_for(load("ADJ-02"), rates=None))
+    assert unknown.is_success
+    assert all(not v.get("breakdown") for c in unknown.json()["criteria"] for v in c["values"].values())
+
+
 # ---- GC-ADJ1 step 3: the Review adjustment drawer's one read (REQ-046 AC-2 / AC-3, REQ-045 AC-5) -------------------
 
 def test_drawer_a36_only_builds_no_change_and_lists_every_generic_approach_without_a_figure():
