@@ -83,6 +83,16 @@ Each step ends with one line here: `step N DONE <sha> <proof line>` or `PARKED (
   text, system save-in-place refused, another user's id 404 on every route, gap/overlap refusals, delete active -> system
   active again); domain guards 3521 passed; order-closure + API models 30 passed; repo_scan 1338 passed. Conventions
   written into REQ-159 (fe0a0ad6).
+- browser walk (owner's Chrome, scenario ADJ-02, ofo_dev, API 8775 / Vite 5174, 2026-10-31 15:40-15:50 IST, head c8e43cc4):
+  step 4: plan sheet prefilled from the iron condor system playbook (target 50, stop 50, max 2, time exit 14:30);
+  Use playbook as is saved the plan; the panel shows it with Edit plan. Step 5: tracking panel shows 3 flags
+  'Adjustment opportunity detected' T-01 0.3416<=0.5000, T-03 0.4103>=0.3500, T-09 2.7000<=3.0000 + Review adjustment;
+  inbox one grouped row (3 conditions, Open x3, Compare approaches), counts Open: 3. Step 6: history totals
+  whole-trade P&L -1,612.00, premium left 7,338.50, credit 5,726.50, used 0 of 2, entry row Paper - not sent to
+  Zerodha (= ADJ-02 fixture). Step 3: FAILED in the browser - step 2 'When to look' throws on null value lists
+  (T-02/T-18/T-20/T-20b/T-21) and leaves Test dead (no POST); guard keys raw; page unstyled -> fix round 3
+  (browser-proof exception). Words: condition lines show trigger ids, inbox name quoted, plan target/stop bare
+  numbers -> words fix dispatched.
 
 ## Rules for the run
 
