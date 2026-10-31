@@ -63,3 +63,11 @@ Business call: what the user's stop means. Spec basis: REQ-159 AC-6; REQ-161 (pl
    both to count, and the triggers already behave that way (each fires on its own).
 2. The editor refuses to save two stop values without a rule ("Pick how the two stops combine").
 3. Keep today's display (max-loss stop only).
+
+### Q-SET-1: Undo window default (finding F-79)
+The spec (ADR-007, Q56) says a removed leg shows Undo for "about 5 s, admin-configurable". The code uses 8 s on the
+option chain and 10 s for Clear all. It becomes a setting either way (ADR-222); the question is the starting default.
+Business call: how long users get to undo. Spec basis: ADR-007 Q56; ADR-222; F-79.
+1. **8 s for one leg, 10 s for Clear all, as the code does now (recommended):** users have had these values in every
+   test since the builder rows; Clear all removes more, so a longer window fits. The spec line is updated to match.
+2. 5 s for both, as the spec says.

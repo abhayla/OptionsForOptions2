@@ -134,7 +134,9 @@ Done (7): REQ-020, REQ-032, REQ-033, REQ-040, REQ-057, REQ-059, REQ-072; Superse
 | REQ-149 | Phone layout of the builder at 390 px wide - tabs instead of a squeezed desktop page, compact legs, no sideways scroll | polish | normal | waiting: on REQ-004, REQ-009 |
 | REQ-151 | Strikes are shown without trailing zeros - 22300, not 22300.00 | polish | normal | waiting: on REQ-029, REQ-076, REQ-080 |
 | REQ-152 | Number format of builder figures - whole rupees, Indian grouping and signs on summary money, paise kept on per-unit prices | polish | normal | waiting: on REQ-081, REQ-142 |
-| REQ-167 | One admin Settings page holds every business number a calculation uses, each with a default, the date it took effect and who set it | platform | high | next |
+| REQ-167 | One admin Settings page holds every app-wide business number a calculation uses, each with a default, the date it took effect and who set it | platform | high | next |
+| REQ-169 | The admin edits a system playbook in the same playbook editor and saves it as a new version with history and audit | feature | high | waiting: on REQ-158, REQ-160, REQ-167 |
+| REQ-168 | Each user sets their own adjustment preferences on a Preferences tab of the Adjustments screen, starting from the admin's defaults | feature | normal | waiting: on REQ-158, REQ-167 |
 
 ## Recorded, not approved to build
 
