@@ -1551,6 +1551,12 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     # GC-ADJ2 step 1A (REQ-158 AC-4): deleting the active playbook says the system one is active again
     ExplanationTemplate("playbook_system_active_again", "values_seen", "{type}: the system playbook is active again",
                         {"type": PlaybookTypeName}),
+    # GC-ADJ2 step 3 (REQ-160 AC-3, AC-4): the playbook Test step's two fixed sentences
+    ExplanationTemplate("playbook_test_no_strategy", "values_seen", "No current {type} strategy to test against",
+                        {"type": PlaybookTypeName}),
+    ExplanationTemplate("playbook_test_past_out_of_v1", "values_seen",
+                        "Testing against past expiries is not in this version: it needs licensed historical option "
+                        "data."),
     ExplanationTemplate("catalogue_template_name", "values_seen", "{text}", {"text": TemplateText}),
     ExplanationTemplate("catalogue_template_description", "values_seen", "{text}", {"text": TemplateText}),
     *(ExplanationTemplate(f"plan_sheet_{key}", "values_seen", text)  # REQ-161: the plan sheet's fixed words

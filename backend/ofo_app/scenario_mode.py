@@ -90,6 +90,7 @@ NON_ORDER_ROUTES: frozenset[tuple[str, str]] = frozenset({
     ("PUT", "/api/playbooks/{playbook_id}"),
     ("DELETE", "/api/playbooks/{playbook_id}"),
     ("POST", "/api/playbooks/{playbook_id}/activate"),
+    ("POST", "/api/playbooks/test"),  # GC-ADJ2 3: Test an unsaved playbook (a read; writes nothing, no order)
     ("POST", "/api/strategies/leg-edit"),  # engine answer for one edited leg
     ("POST", "/api/strategies/outcome"),  # engine answer (a read)
     ("POST", "/api/strategies/{strategy_id}/adjustment-approaches"),  # REQ-155 engine answer, suggest-only (a read)
