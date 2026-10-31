@@ -1602,6 +1602,7 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("adjust_history_fill_unconfirmed", "values_seen", "Not yet confirmed by Zerodha"),
     ExplanationTemplate("adjust_history_fill_failed", "values_seen", "Zerodha's answer failed"),
     ExplanationTemplate("adjust_history_col_fill", "values_seen", "Zerodha"),
+    ExplanationTemplate("adjust_history_no_option_leg", "values_seen", "No option leg is open, so no premium is left."),
 )
 
 EXPLANATIONS: Mapping[str, ExplanationTemplate] = MappingProxyType({t.id: t for t in _EXPLANATIONS})

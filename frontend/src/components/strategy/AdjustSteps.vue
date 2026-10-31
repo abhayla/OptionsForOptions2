@@ -64,14 +64,13 @@ const stepText = (r) => (r.step === 'adjustment' ? `Adjustment ${r.number}` : ST
 const tiles = computed(() => {
   const t = data.value?.totals
   if (!t) return []
-  const priceReason = t.prices_reason_text?.what_happened ?? t.prices_reason_text
   const reasonOf = (v) => (v && typeof v === 'object' ? v.what_happened : v)
   return [
-    { id: 'pnl', label: 'Whole-trade P&L', value: t.pnl_text ?? DASH, reason: t.pnl_text ? null : reasonOf(priceReason) },
+    { id: 'pnl', label: 'Whole-trade P&L', value: t.pnl_text ?? DASH, reason: t.pnl_text ? null : reasonOf(t.open_reason_text) },
     { id: 'booked', label: 'Booked so far', value: t.booked_text },
-    { id: 'open', label: 'Open legs now', value: t.open_pnl_text ?? DASH, reason: t.open_pnl_text ? null : reasonOf(priceReason) },
+    { id: 'open', label: 'Open legs now', value: t.open_pnl_text ?? DASH, reason: t.open_pnl_text ? null : reasonOf(t.open_reason_text) },
     { id: 'credit', label: 'Total credit collected', value: t.credit_text },
-    { id: 'left', label: 'Premium still left to earn', value: t.premium_left_text ?? DASH, reason: t.premium_left_text ? null : reasonOf(priceReason) },
+    { id: 'left', label: 'Premium still left to earn', value: t.premium_left_text ?? DASH, reason: t.premium_left_text ? null : reasonOf(t.premium_reason_text) },
     { id: 'used', label: 'Adjustments used', value: `${t.adjustments_used} of ${t.adjustments_max ?? DASH}`, reason: reasonOf(t.max_reason_text) },
     { id: 'charges', label: 'Charges paid', value: t.charges_text ?? DASH, reason: t.charges_text ? null : reasonOf(t.charges_reason_text) },
   ]

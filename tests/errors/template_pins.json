@@ -2846,5 +2846,9 @@
   "explanation:adjust_history_col_fill": {
     "sha256": "daa0bcf8c0174543e620496d6cc2e5364047a9278f914e63baf06c709df0bd0a",
     "reviewed": "pending owner read"
+  },
+  "explanation:adjust_history_no_option_leg": {
+    "sha256": "ef60731935cc702ed2d66fe28f0f7b847a9480b2b6cacb1f90b636ca20a87d60",
+    "reviewed": "pending owner read"
   }
 }

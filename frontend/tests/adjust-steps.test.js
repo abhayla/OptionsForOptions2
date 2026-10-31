@@ -86,12 +86,14 @@ describe('AdjustSteps', () => {
 
   it('missing prices and no plan maximum: a dash with the server reason, booked still shown', async () => {
     const t = totals({ pnl: null, pnl_text: null, open_pnl: null, open_pnl_text: null, premium_left: null, premium_left_text: null,
-      prices_reason: 'prices_not_live', prices_reason_text: 'Prices are not live.', adjustments_max: null,
+      prices_reason: 'prices_not_live', prices_reason_text: 'Prices are not live.', open_reason: 'prices',
+      open_reason_text: 'Prices are not live.', premium_reason: 'net_long_premium', premium_reason_text: 'No premium to earn (net long premium).', adjustments_max: null,
       max_reason: 'no_plan_max', max_reason_text: 'No plan maximum is set for this strategy.' })
     const w = await open(body(t))
     expect(tid(w, 'steps-total-open').text()).toContain('-')
     expect(tid(w, 'steps-reason-open').text()).toBe('Prices are not live.')
     expect(tid(w, 'steps-reason-pnl').text()).toBe('Prices are not live.')
+    expect(tid(w, 'steps-reason-left').text()).toBe('No premium to earn (net long premium).')
     expect(tid(w, 'steps-total-booked').text()).toContain('+962.00')
     expect(tid(w, 'steps-total-used').text()).toContain('1 of -')
     expect(tid(w, 'steps-reason-used').text()).toBe('No plan maximum is set for this strategy.')

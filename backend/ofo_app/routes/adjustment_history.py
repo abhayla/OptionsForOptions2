@@ -6,7 +6,8 @@ reads, prices and words, and adds no arithmetic of its own.
 Inputs, each from the reader the paper book already uses (never a second reader of the same source):
 - orders: ``paper_book.load_owned`` (owner check in the query). None -> the adjustment-check route's not-found answer.
 - current prices: the paper book's market read (``routes.paper.market_snapshot`` / ``_prices``, ADR-212 display prices);
-  stale or missing for any open contract -> open P&L, P&L and premium left None with ``prices_reason`` (booked and
+  stale or missing for any open contract -> open P&L, P&L and premium left None with ``prices_reason`` and the
+  domain's ``open_reason`` / ``premium_reason`` (pending, prices, no option leg, net long premium) worded (booked and
   credit still shown, never 0).
 - charges: ``ofo.charges.paper_charges`` per order (the paper book's Charges figure, REQ-109 AC-10); rates unreadable
   or an order the rate table cannot price -> charges None with the paper book's reason.
@@ -32,6 +33,7 @@ from ofo.charges.paper_charges import PaperFill, paper_charges
 from ofo.charges.round_trip import ChargesNotComputable, to_paise_up
 from ofo.engine import adjust_history as ah
 from ofo.engine.legs import Instrument
+from ofo.errors import render
 from ofo.errors.explanations import render_explanation
 from ofo.outcome.price_text import price_text
 from ofo.strategy.definition import describe_contract
@@ -98,6 +100,10 @@ class HistoryTotalsOut(ApiModel):
     premium_left_text: CatalogueText | None
     prices_reason: paper_prices.PauseReason | None
     prices_reason_text: CatalogueText | None
+    open_reason: Literal["pending", "prices", "no_option_leg", "net_long_premium"] | None
+    open_reason_text: CatalogueText | None  # why open P&L and P&L are absent
+    premium_reason: Literal["pending", "prices", "no_option_leg", "net_long_premium"] | None
+    premium_reason_text: CatalogueText | None  # why premium left is absent
     adjustments_used: int
     adjustments_max: int | None
     max_reason: Literal["no_plan_max"] | None
@@ -146,6 +152,20 @@ async def _plan_max(db: Any, user_ref: str, strategy_id: int, reader: tuple[Trac
     return mx if type(mx) is int and mx >= 0 else None
 
 
+def _reason_text(reason: str | None, prices_reason: str | None) -> Any:
+    """The words of a domain reason: pending -> "pending"; prices -> the paper book's pause sentence; no option leg ->
+    its catalogue line; net long premium -> the playbook check's catalogue reason (step 1B)."""
+    if reason is None:
+        return None
+    if reason == "pending":
+        return render_explanation("adjust_history_pending")
+    if reason == "prices":
+        return reason_text(prices_reason)
+    if reason == "no_option_leg":
+        return render_explanation("adjust_history_no_option_leg")
+    return render("net_long_premium")
+
+
 def _money_text(value: Decimal | None) -> Any:
     return paper.signed(value)
 
@@ -190,11 +210,12 @@ async def adjustment_history(  # noqa: PLR0913 - FastAPI dependencies, one per i
     plan_max = await _plan_max(db, user_ref, strategy_id, (tracked_reader, rates), ctx)
     history = ah.adjustment_history(
         [ah.HistoryOrder(str(o.order.contract_id), o.order.side,  # type: ignore[arg-type]
-                         o.order.quantity, o.order.price, o.order.kind, o.order.placed_at)  # type: ignore[arg-type]
+                         o.order.quantity, o.order.price, o.order.kind, o.order.placed_at,  # type: ignore[arg-type]
+                         is_option=paper.identity(found[o.order.contract_id])[1] is not Instrument.FUT)
          for o in orders], live, adjustments_max=plan_max,
         per_order_charges=per_order)
     t = history.totals
-    paused = t.open_pnl is None
+    paused = "prices" in (t.open_reason, t.premium_reason)
     prices_reason = None
     if paused:
         prices_reason = next((found[c].state for c in prices if found[c].state != tracked_contracts.LIVE),
@@ -206,6 +227,9 @@ async def adjustment_history(  # noqa: PLR0913 - FastAPI dependencies, one per i
               "credit": t.credit, "credit_text": _money_text(t.credit),
               "premium_left": t.premium_left, "premium_left_text": _money_text(t.premium_left),
               "prices_reason": prices_reason, "prices_reason_text": reason_text(prices_reason),
+              "open_reason": t.open_reason, "open_reason_text": _reason_text(t.open_reason, prices_reason),
+              "premium_reason": t.premium_reason,
+              "premium_reason_text": _reason_text(t.premium_reason, prices_reason),
               "adjustments_used": t.adjustments_used, "adjustments_max": t.adjustments_max,
               "max_reason": NO_PLAN_MAX if t.adjustments_max is None else None,
               "max_reason_text": (render_explanation("adjust_history_no_plan_max") if t.adjustments_max is None

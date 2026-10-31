@@ -88,7 +88,8 @@ def test_settle_is_its_own_row_labelled_by_kind():
     h = adjustment_history(orders, {}, adjustments_max=2)
     assert [r.step for r in h.rows] == ["entry", "settle"]
     assert h.rows[1].booked == Decimal("2190.50")  # (16.85 - 0) x 130, engine-free
-    assert h.totals.adjustments_used == 0 and h.totals.open_pnl == 0 and h.totals.premium_left == 0
+    assert h.totals.adjustments_used == 0 and h.totals.open_pnl == 0
+    assert h.totals.premium_left is None and h.totals.premium_reason == "no_option_leg"
 
 
 def test_unconfirmed_adjustment_is_pending_and_out_of_the_totals():  # AC-3, attack 2
@@ -99,6 +100,8 @@ def test_unconfirmed_adjustment_is_pending_and_out_of_the_totals():  # AC-3, att
     pending = h.rows[1]
     assert pending.fill == "unconfirmed" and pending.booked is None
     assert h.totals.booked == 0 and h.totals.credit == Decimal("3984.50") and h.totals.adjustments_used == 0
+    assert (h.totals.open_pnl, h.totals.pnl, h.totals.premium_left) == (None, None, None)
+    assert (h.totals.open_reason, h.totals.premium_reason) == ("pending", "pending")
 
 
 def test_failed_beats_unconfirmed_in_one_row():
@@ -165,3 +168,96 @@ def test_ids_out_of_time_order_still_group_by_placed_at():
     h = adjustment_history(interleaved, live_prices(), adjustments_max=2)
     assert [r.step for r in h.rows] == ["entry", "adjustment"]
     assert h.rows[1].booked == Decimal("962.00") and h.totals.credit == Decimal("5141.50")
+
+
+# ---- review round (Opus money review): futures, debit books, pending, input refusals, batch order -------------------
+
+def _scenario_orders(doc: dict) -> list[HistoryOrder]:
+    pos = doc["position"]
+    clock = datetime.datetime.fromisoformat(pos["entry"]["clock"])
+    return [HistoryOrder(leg.get("tradingsymbol") or f"{leg['type']}{leg['strike']}{leg['expiry']}", side,
+                         int(leg["quantity"]), Decimal(price), kind, at,
+                         is_option=leg["type"] != "FUT")
+            for at, batch in SEED.placement_batches(pos, clock) for side, leg, price, kind in batch]
+
+
+def test_every_library_scenario_matches_the_generators_credit_and_premium_left():
+    """tests/adjust_scenarios_gen.py: credit_received = the option legs' cash (open_cash + hist_cash, futures out);
+    premium_left = the open option legs' value, None for a debit (net long premium) book. 44 of 44 agree."""
+    checked, bad, negative = 0, {}, []
+    for path in sorted(FIXTURE.parent.glob("ADJ-*.json")):
+        doc = json.loads(path.read_text(encoding="utf-8"), parse_float=Decimal)
+        quotes = {q["tradingsymbol"]: Decimal(str(q["last_price"])).quantize(Decimal("0.01"))
+                  for q in (doc.get("broker", {}).get("quote") or {}).get("legs", [])
+                  if q.get("last_price") is not None}
+        t = adjustment_history(_scenario_orders(doc), quotes, adjustments_max=None).totals
+        want_credit = Decimal(str(doc["position"]["credit_received"]))
+        left = doc["expected"].get("premium_left")
+        want_left = None if left is None else Decimal(str(left))
+        if want_left is not None and want_left < 0:  # the generator prints a negative figure for a short family
+            want_left = None  # whose options are net long (ADJ-37, ADJ-38); the product rule shows none (review 2)
+            negative.append((doc["id"], t.premium_reason))
+        if t.credit != want_credit or t.premium_left != want_left:
+            bad[doc["id"]] = (t.credit, want_credit, t.premium_left, want_left)
+        checked += 1
+    assert (checked, bad) == (44, {})
+    assert negative == [("ADJ-37", "net_long_premium"), ("ADJ-38", "net_long_premium")]
+
+
+def test_a_future_is_not_premium():
+    orders = [HistoryOrder("FUT", "BUY", 65, Decimal("23000.00"), "open", CLOCK, is_option=False),
+              HistoryOrder("CE23500", "SELL", 65, Decimal("120.00"), "open", CLOCK)]
+    t = adjustment_history(orders, {"FUT": Decimal("23050.00"), "CE23500": Decimal("100.00")},
+                           adjustments_max=None).totals
+    assert t.credit == Decimal("7800.00") and t.premium_left == Decimal("6500.00")  # 120 x 65, 100 x 65
+    assert t.open_pnl == Decimal("3250.00") + Decimal("1300.00")  # the future 50 x 65 + the short call 20 x 65
+
+
+def test_a_futures_only_book_has_no_premium():
+    orders = [HistoryOrder("FUT", "BUY", 65, Decimal("23000.00"), "open", CLOCK, is_option=False)]
+    t = adjustment_history(orders, {"FUT": Decimal("23050.00")}, adjustments_max=None).totals
+    assert t.credit == 0 and t.premium_left is None and t.premium_reason == "no_option_leg"
+
+
+def test_a_debit_book_has_no_premium_left_to_earn():
+    orders = [HistoryOrder("CE23000", "BUY", 65, Decimal("150.00"), "open", CLOCK)]
+    t = adjustment_history(orders, {"CE23000": Decimal("140.00")}, adjustments_max=None).totals
+    assert t.credit == Decimal("-9750.00") and t.premium_left is None and t.premium_reason == "net_long_premium"
+
+
+def test_a_confirmed_row_after_a_pending_row_on_the_same_contract_keeps_the_totals_pending():
+    orders = [HistoryOrder("PE1", "SELL", 65, Decimal("20.00"), "open", CLOCK, "confirmed"),
+              HistoryOrder("PE1", "BUY", 65, Decimal("10.00"), "exit", CLOCK + HOUR, "unconfirmed"),
+              HistoryOrder("PE1", "BUY", 65, Decimal("12.00"), "open", CLOCK + 2 * HOUR, "confirmed")]
+    t = adjustment_history(orders, {"PE1": Decimal("11.00")}, adjustments_max=None).totals
+    assert (t.open_pnl, t.pnl, t.premium_left) == (None, None, None)
+    assert (t.open_reason, t.premium_reason) == ("pending", "pending")
+
+
+def test_exits_apply_before_opens_inside_one_batch():
+    """The batch's add (listed first) does not change the average its exit books at: (20 - 10) x 65."""
+    t1 = CLOCK + HOUR
+    orders = [HistoryOrder("PE1", "SELL", 65, Decimal("20.00"), "open", CLOCK),
+              HistoryOrder("PE1", "SELL", 65, Decimal("30.00"), "add", t1),
+              HistoryOrder("PE1", "BUY", 65, Decimal("10.00"), "exit", t1)]
+    h = adjustment_history(orders, {"PE1": Decimal("10.00")}, adjustments_max=None)
+    assert h.rows[1].booked == Decimal("650.00")
+
+
+@pytest.mark.parametrize("placed_at", [None, "2026-10-28T10:00:00+05:30"])
+def test_placed_at_must_be_a_datetime(placed_at):
+    with pytest.raises(ValueError, match="placed_at"):
+        HistoryOrder("A", "BUY", 65, Decimal("1.00"), "open", placed_at)  # type: ignore[arg-type]
+
+
+def test_mixed_naive_and_aware_times_are_refused():
+    orders = [HistoryOrder("A", "BUY", 65, Decimal("1.00"), "open", CLOCK),
+              HistoryOrder("A", "SELL", 65, Decimal("1.00"), "exit", CLOCK.replace(tzinfo=None) + HOUR)]
+    with pytest.raises(ValueError, match="naive"):
+        adjustment_history(orders, {}, adjustments_max=None)
+
+
+@pytest.mark.parametrize("price", [None, Decimal("0"), Decimal("-1.00")])
+def test_a_live_price_none_or_not_above_zero_is_refused(price):
+    with pytest.raises(ValueError, match="live_prices"):
+        adjustment_history(seeded_orders(), {"PE22700": price}, adjustments_max=None)  # type: ignore[dict-item]
