@@ -111,7 +111,7 @@ async def test_invalid_body_and_unknown_type_are_refused_before_any_read(app_db_
                                   ("POST", "/api/playbooks/test", {"type": "nope", "body": body}))
     assert bad.status_code == UNPROCESSABLE and bad.json()["what_happened"].startswith("The playbook value ")
     assert unknown.status_code == UNPROCESSABLE
-    assert unknown.json()["what_happened"] == "The playbook value strategy type is not valid."
+    assert unknown.json()["what_happened"] == "The playbook value strategy_type is not valid."
 
 
 async def test_gap_and_overlap_get_the_save_refusal_text(app_db_url, monkeypatch):
