@@ -25,7 +25,6 @@ from typing import Final
 DATA_FILE: Final = Path(__file__).with_name("registry.json")
 UNITS: Final = ("fraction", "percent", "rupees", "points", "seconds", "count", "time")
 TYPES: Final = ("decimal", "integer")
-_HUNDRED: Final = Decimal(100)
 MAX_TEXT: Final = 40  # the longest value text accepted from a form (a Decimal string)
 
 #: App-wide admin settings only (owner 2026-10-31): per-user adjustment preferences (near-level distance, cost per
@@ -76,15 +75,39 @@ def _dec(raw: object, where: str) -> Decimal:
     return value
 
 
+ENTRY_FIELDS = frozenset(("key", "group", "label", "unit", "type", "min", "max", "default", "what_it_changes",
+                          "source"))
+FILE_FIELDS = frozenset(("schema", "settings"))
+
+
+def _no_duplicate_fields(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    """json's object_pairs_hook: a repeated field name in one object is refused (the stdlib keeps the last one)."""
+    seen: dict[str, object] = {}
+    for name, value in pairs:
+        if name in seen:
+            raise RegistryError(f"registry.json repeats the field {name!r} in one object (the last would win)")
+        seen[name] = value
+    return seen
+
+
+def _no_unknown_fields(obj: dict, allowed: frozenset[str], where: str) -> None:
+    extra = sorted(set(obj) - allowed)
+    if extra:
+        raise RegistryError(f"{where} has unknown field(s) {extra} (a misspelt field would be silently ignored)")
+
+
 def parse_registry(text: str) -> dict[str, Setting]:
-    """Parse and check the whole file; any defect refuses it (no partial registry)."""
-    data = json.loads(text, parse_float=_no_float, parse_constant=_no_float)
+    """Parse and check the whole file; any defect refuses it (no partial registry), including a repeated field name
+    and a field this loader does not read."""
+    data = json.loads(text, parse_float=_no_float, parse_constant=_no_float, object_pairs_hook=_no_duplicate_fields)
     if not isinstance(data, dict) or data.get("schema") != 1 or not isinstance(data.get("settings"), list):
         raise RegistryError("registry.json must be {\"schema\": 1, \"settings\": [...]}")
+    _no_unknown_fields(data, FILE_FIELDS, "registry.json")
     out: dict[str, Setting] = {}
     for row in data["settings"]:
         if not isinstance(row, dict):
             raise RegistryError("every registry entry is an object")
+        _no_unknown_fields(row, ENTRY_FIELDS, f"registry entry {row.get('key')!r}")
         key = row.get("key")
         if not isinstance(key, str) or not key or key in out:
             raise RegistryError(f"registry key missing or duplicated: {key!r}")
@@ -96,8 +119,11 @@ def parse_registry(text: str) -> dict[str, Setting]:
         low, high, default = (_dec(row.get(f), f"{key}.{f}") for f in ("min", "max", "default"))
         setting = Setting(key, texts["group"], texts["label"], texts["unit"], texts["type"], low, high, default,
                           texts["what_it_changes"], texts["source"])
-        if low > high or check_value(setting, default) != default:
-            raise RegistryError(f"{key}: the default {default} is outside [{low}, {high}] or not of its type")
+        try:
+            if low > high or check_value(setting, default) != default:
+                raise SettingRefused("setting_out_of_range", "bounds reversed")
+        except SettingRefused:
+            raise RegistryError(f"{key}: the default {default} is outside [{low}, {high}] or not of its type") from None
         out[key] = setting
     return out
 
@@ -130,9 +156,10 @@ def check_value(s: Setting, value: Decimal) -> Decimal:
     if s.type == "integer" and value != value.to_integral_value():
         raise SettingRefused("setting_not_whole", f"{s.label} must be a whole number.")
     if value < s.min or value > s.max:
-        if s.unit == "fraction" and s.min <= value / _HUNDRED <= s.max:
+        as_fraction = value.scaleb(-2)  # exact percent -> fraction (no division: not money arithmetic)
+        if s.unit == "fraction" and s.min <= as_fraction <= s.max:
             raise SettingRefused("setting_fraction_unit",
-                                 f"{s.label} is a fraction: enter {plain(value / _HUNDRED)} for {plain(value)}%.")
+                                 f"{s.label} is a fraction: enter {plain(as_fraction)} for {plain(value)}%.")
         raise SettingRefused("setting_out_of_range",
                              f"{s.label} must be between {plain(s.min)} and {plain(s.max)} ({s.unit}).")
     return value

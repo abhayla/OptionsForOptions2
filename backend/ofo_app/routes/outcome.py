@@ -48,10 +48,12 @@ from ofo.outcome.target import TargetAsk
 from ofo.scenario.config import ScenarioConfig, ScenarioSettings
 from ofo.scenario.levels import RangeOverride, resolve_range
 from ofo.scenario.views import View
+from ofo.settings import RISK_FREE_RATE
+from ofo.settings import value_of as registry_value_of
 from ofo.timeutil import IST
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StrictBool, StrictInt, model_validator
 
-from ofo_app import charge_rates_store, db
+from ofo_app import charge_rates_store, db, settings_store
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier, InstrumentId, Money, echo_seq
 from ofo_app.errors import ClosedRoute
 from ofo_app.outcome_margin import OutcomeMargin, PlannedOrderIn, margin_answer
@@ -198,11 +200,55 @@ def feed_scope(ctx: MarketContext) -> FeedScope | None:
     return FeedScope(SHARED_COMPUTE, ctx.feed_owner) if ctx.feed_owner else None
 
 
-def get_market_context() -> MarketContext | None:
+SettingsReader = Callable[[], Awaitable[Mapping[str, Decimal]]]
+
+
+async def _settings_in_force_now() -> Mapping[str, Decimal]:
+    """Every registry setting in force NOW (the database clock, ADR-023), read in its own short session that is
+    closed before the route body runs. SettingsError (a stored value the registry refuses) and any database error
+    propagate: the caller fails closed."""
+    async with db.get_sessionmaker()() as session:
+        return await settings_store.settings_in_force(session)
+
+
+def get_settings_reader() -> SettingsReader:
+    """The settings read behind :func:`get_market_context`; the database tests override it to read through their
+    rolled-back connection."""
+    return _settings_in_force_now
+
+
+async def with_rate_in_force(ctx: MarketContext, read_settings: SettingsReader) -> MarketContext:
+    """``ctx`` with its rate replaced by the ``pricing.risk_free_rate`` setting in force now (an exact Decimal). The one
+    rate-reading path: the live dependency and the scenario mode's dependency both use it. A store that cannot answer
+    raises (fail closed)."""
+    return dataclasses.replace(ctx, rate=registry_value_of(await read_settings(), RISK_FREE_RATE))
+
+
+async def get_market_context(
+        read_settings: Annotated[SettingsReader, Depends(get_settings_reader)]) -> MarketContext | None:
     """The live context (W-065) when LIVE_MARKET is on and the owner has an active session, else None: the route
-    answers "not connected". Tests and the replay mode override this dependency."""
+    answers "not connected". Tests, the replay mode and the scenario mode override this dependency.
+
+    REQ-167 AC-1 / ADR-222 (1), (9): the risk-free rate is the ``pricing.risk_free_rate`` setting in force NOW, read on
+    every request that gets a context, so an admin change applies to the next request with no restart. Technical
+    decision (GC-SET core, 2026-10-31):
+    - The live feed's own context (``live_market.current_context()``) is built with the registry default; this
+      dependency returns ``dataclasses.replace(ctx, rate=<setting in force>)`` for the request, so every priced REST
+      route (outcome, chain, indices, leg picker, planned entry, tracking, paper, adjustment) reads the stored rate.
+      The paper monitor and the live sockets read ``feed.ctx`` directly and are wired separately (a later step).
+    - A context injected through ``app.dependency_overrides[get_market_context]`` keeps its own rate: unit tests and
+      the replay mode (``main.create_app``) pass test data. The scenario mode (a dev stand-in for live) does NOT:
+      ``scenario_mode.overrides`` installs an async dependency that calls :func:`with_rate_in_force` on the scenario
+      context, so it prices with the setting in force at each request like live (orchestrator decision, 2026-11-01).
+    - No context: no read (the "not connected" answer never waits on the database).
+    - The store cannot answer (``SettingsError``: a stored value the registry now refuses; or a database error): the
+      exception propagates and the route answers the internal-error response. Never a price with the default (fail
+      closed, no silent substitution, ADR-016..019 spirit)."""
     from ofo_app import live_market  # late: live_market imports MarketContext from this module
-    return live_market.current_context()
+    ctx = live_market.current_context()
+    if ctx is None:
+        return None
+    return await with_rate_in_force(ctx, read_settings)
 
 
 # ---- request --------------------------------------------------------------------------------------------------------
@@ -841,6 +887,16 @@ def get_streaming() -> Callable[[str], bool] | None:
     return lambda instrument_id: feed.fanout.subscriber_count(instrument_id) > 0
 
 
+def same_feed(ctx: MarketContext, feed_ctx: MarketContext | None) -> bool:
+    """True when ``ctx`` is ``feed_ctx`` or the per-request copy ``get_market_context`` made of it with only the rate
+    replaced (GC-SET: the stored risk-free rate); an identity test alone would treat every live request as "another
+    context" and skip issue #206's streaming rule."""
+    if feed_ctx is None:
+        return False
+    return ctx is feed_ctx or (ctx.provider is feed_ctx.provider and ctx.clock is feed_ctx.clock
+                               and ctx.feed_owner == feed_ctx.feed_owner)
+
+
 def inputs_streaming(ctx: MarketContext, streaming: Callable[[str], bool] | None, ids: Iterable[str]) -> bool:
     """Issue #206's rule for any REST read of live inputs: True when every id is held by a socket on the shared feed.
     No predicate (no live feed: a test's own context) or a predicate of another context: the provider's quotes are used
@@ -848,7 +904,7 @@ def inputs_streaming(ctx: MarketContext, streaming: Callable[[str], bool] | None
     if streaming is None:
         return True
     owner = getattr(streaming, "ctx", None)  # the replay's predicate names its own context (ofo_app.replay_mode)
-    if ctx is not (owner if owner is not None else live_context()):
+    if not same_feed(ctx, owner if owner is not None else live_context()):
         return True
     return all(streaming(i) for i in ids)
 

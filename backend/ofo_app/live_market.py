@@ -24,6 +24,7 @@ import os
 from decimal import Decimal
 from typing import Awaitable, Callable, Optional  # noqa: UP035
 
+from ofo import settings
 from ofo.broker.kite_endpoints import KITE_WS_HOST
 from ofo.broker.rate_limit import READ_PERIOD_SECONDS, READ_POSITIONS
 from ofo.engine.executable_price import Depth
@@ -47,7 +48,6 @@ from ofo_app.routes.outcome import MarketContext, server_now
 log = logging.getLogger("ofo_app.live_market")
 
 OWNER_REF = "owner"  # ADR-051 V1 single user; the same ref the W-058 login stores the session under
-LIVE_RATE = Decimal("0.065")  # the risk-free rate the replay uses too; a rates source is a later item
 REAL_KITE_WS = f"wss://{KITE_WS_HOST}"
 
 NOT_STARTED, NOT_CONNECTED, LIVE, SESSION_ENDED = "off", "not_connected", "live", "session_ended"
@@ -100,7 +100,10 @@ class LiveMarket:
                fingerprint: bytes | None = None) -> None:
         """Wires an already built provider + socket (the real start and the tests share this). ``fingerprint`` is
         ``token_fingerprint`` of the token the socket was built with (#296), None when unknown."""
-        self.feed = LiveFeed(MarketContext(provider, clock, LIVE_RATE, OWNER_REF), FanOut(provider))
+        # the registry default (ADR-222 (1): no rate typed in code); priced REST reads replace it with the setting in
+        # force per request (outcome.get_market_context); the paper monitor and sockets still read this default
+        self.feed = LiveFeed(MarketContext(provider, clock, settings.defaults()[settings.RISK_FREE_RATE], OWNER_REF),
+                             FanOut(provider))
         self._socket = socket
         self._fingerprint = fingerprint
         self.state = LIVE
