@@ -538,6 +538,8 @@ issues:
   "#615": S6.4  # Strike picker first cold read says LIVE with no spot or prices (same class as #612)
   "#616": S6.4  # After the close: Paper has no market-closed banner and shows no-IV text; index read returns nulls
   "#623": S6.4  # Compare low-OI cell raises on 4+ new legs: symbols joined into one 64-char slot
+  "#624": S6.4  # A1 liquidity limits PARKED after 2 rounds: unreadable playbook skips limits silently; adjust drawer has no strike flags
+  "#625": S6.4  # Range-reading rule (REQ-026 AC-1) lives only in the browser; REQ-063 AC-2 wants it on the server (F-90)
 
 # Work items whose status is not done.
 work_items:
