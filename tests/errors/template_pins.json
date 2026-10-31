@@ -2328,12 +2328,12 @@
     "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"
   },
   "labels:adjustment_criterion": {
-    "sha256": "d71d166493b2c78762085b1d1c8debf39b6cabeec23c43a76f4a4eeeefc11576",
-    "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"
+    "sha256": "18d40a3500d29de6275cb42f1893c4d6f64eb6c7573d7ca96fa70de3d7e6f7ef",
+    "reviewed": "pending owner read"
   },
   "labels:adjustment_leader": {
-    "sha256": "37e6b42710a5dd8f67fff77c7c5bfee900d3a1774048e57dd5d7a84eef0ac56b",
-    "reviewed": "owner read 2026-10-31 (decided in chat)"
+    "sha256": "5dc4b89d6cef405eb73bfef8fc28479c4c89cb733a92a717a4d7e7a248d33b0e",
+    "reviewed": "pending owner read"
   },
   "explanation:adjust_cmp_low_oi": {
     "sha256": "a8acc192c5a098a31c3f1d8d9bd1467341c716446cf1e138d1166254443df77e",
@@ -3245,6 +3245,66 @@
   },
   "explanation:adjust_cmp_flagged_both": {
     "sha256": "0570c2c7c3580c1113aeebf21c84f7862bc08c0ad1bec43f3b78740cbd034c0d",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_no_premium_left": {
+    "sha256": "f684efc98b19f40df79d287d7766837107b92026e5d9959e8d66a92af8dc523f",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_max_profit_unlimited": {
+    "sha256": "053d40bfd1a4306d8b18cf97dd0e27592e3d0861631d636da8275d2be43c767f",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_before_max_profit_unknown": {
+    "sha256": "bccc10ba8414277d54e70f73705362ef49dc88f08ef88b4577e0632c30aa987a",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_charge_brokerage": {
+    "sha256": "dc7fed1503086a265a0a97aafd578c7b6f2d7c2ab93bfbb66aa1fbf47fe89908",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_charge_stt": {
+    "sha256": "b1b4c1e17f0eceba1d098c68bbc6fa458b68fb2d9576e2ddef3030522f1b625f",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_charge_exchange": {
+    "sha256": "56cabac8532a3af1c13d3e2474c1dcfd973619a7619e6ed30235e8cd2a02df5d",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_charge_gst": {
+    "sha256": "be068dbe313c8b80d9dbef932a83589b5db1e3121b93ea60376bcdbcd894cf58",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_charge_stamp": {
+    "sha256": "0274c2b9a7b6158f1b494ad39443a13380c46ded20adaeb87baa067232fc56ea",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_charge_sebi": {
+    "sha256": "7d38635167908faaba7bd47b8f05195d02d77617b2cacf002037beacf7e25e3b",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_charge_charges_total": {
+    "sha256": "4c2148050dc693b0d2ab2d2a3dbf619109333c610b85a9200832b91a50f95ea6",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_charge_bid_ask": {
+    "sha256": "cb3f27ba74437c38b87fa40510be001967d3dc8e8302659fc0beca4e36ba39a1",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_row_cost_pct": {
+    "sha256": "c92526d04a88784868b56719a692dcfe1ba24fd760e40bce5b416c35c2b14b98",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_row_max_profit_change": {
+    "sha256": "97d097539ff4bd1f92adab7ee43f450703023b66b6bfa4f15f40ef21a66ae761",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_lead_cost_pct": {
+    "sha256": "e0ade35db19e7c6f520c8c0ccdea0a645e071e9b81ea67667eb555176a92cefd",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_lead_max_profit_change": {
+    "sha256": "b142fd6dad910c3a187b2c5d39a9759d8a366b0588d1f0b8ac42f02aa5755874",
     "reviewed": "pending owner read"
   }
 }

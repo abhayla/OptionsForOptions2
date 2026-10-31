@@ -15,6 +15,8 @@ Definitions (technical calls of the GC-ADJ1 contract, "Found during the run" row
 - Credit or debit: the approach's own trades, SELL +, BUY -, at the planned prices (no trade: 0).
 - Charges plus bid-ask cost: this adjustment's own charges plus half the bid-ask spread of each traded contract times
   its quantity (the cost of trading at bid or ask rather than mid). A traded row without a bid or an ask -> "-".
+- Cost as % of premium left, change in max profit (ADR-230 (3)): see ``compare_cost_rows``; the cost row's breakdown
+  (brokerage, STT, exchange, GST, stamp, SEBI, bid-ask) rides on the cost cell.
 - Margin change: Zerodha's basket margin of the After minus that of the current legs; an After with no open leg needs
   0. Either side not stated -> "-" with that side's reason.
 - Max loss, max profit, breakevens: the whole-trade After AFTER charges; charges unknown -> "-" with that reason.
@@ -42,10 +44,10 @@ Definitions (technical calls of the GC-ADJ1 contract, "Found during the run" row
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import ROUND_HALF_EVEN, ROUND_HALF_UP, Decimal
 
-from ofo.adjustment import liquidity
+from ofo.adjustment import compare_cost_rows, liquidity
 from ofo.adjustment.approaches import (
     APPROACH_IDS,
     NO_CHANGE,
@@ -77,7 +79,8 @@ MONEY_NOW, RISK_AFTER, REWARD_AFTER, GREEKS_AFTER, PRACTICAL = (
 HIGH, LOW, LOW_ABS = "high", "low", "low_abs"
 #: (row id, group, leader direction), in REQ-156 AC-2's order; the shown words are the catalogue's
 ROWS: tuple[tuple[str, str, str], ...] = (
-    ("credit", MONEY_NOW, HIGH), ("cost", MONEY_NOW, LOW), ("margin_change", MONEY_NOW, LOW),
+    ("credit", MONEY_NOW, HIGH), ("cost", MONEY_NOW, LOW), ("cost_pct", MONEY_NOW, LOW),
+    ("max_profit_change", MONEY_NOW, HIGH), ("margin_change", MONEY_NOW, LOW),
     ("max_loss", RISK_AFTER, LOW), ("move_m2", RISK_AFTER, HIGH), ("move_m1", RISK_AFTER, HIGH),
     ("move_p1", RISK_AFTER, HIGH), ("move_p2", RISK_AFTER, HIGH), ("breakevens", RISK_AFTER, HIGH),
     ("max_profit", REWARD_AFTER, HIGH), ("premium_left", REWARD_AFTER, HIGH), ("pop", REWARD_AFTER, HIGH),
@@ -137,6 +140,7 @@ class Cell:
     value: Decimal | None = None
     unavailable_reason: ExplanationText | None = None
     rank: Decimal | None = None  # what the leader rule compares; None -> cannot lead
+    breakdown: tuple[tuple[str, Decimal], ...] | None = None  # the cost cell's charge lines (ADR-230 (3))
 
 
 @dataclass(frozen=True)
@@ -185,6 +189,10 @@ def _number(value: Decimal, rank: Decimal) -> Cell:
     return Cell(render_explanation("adjust_cmp_value", value=value), value, None, rank)
 
 
+def _from(f: compare_cost_rows.Figure) -> Cell:
+    return Cell(f.text, f.value, f.reason, f.rank)
+
+
 def leaders(cells: Mapping[str, Cell], direction: str) -> tuple[str, ...]:
     """REQ-156 AC-3: the column(s) whose rank is highest (HIGH) or lowest (LOW / LOW_ABS, the rank already absolute);
     a cell without a rank cannot lead; every tied column leads; no rankable cell -> no leader. Order = column order."""
@@ -214,8 +222,9 @@ def _move_level(spot: Decimal, percent: int) -> Decimal:
 class _Rows:
     """Every cell of one column."""
 
-    def __init__(self, col: Column, ctx: Context) -> None:
+    def __init__(self, col: Column, ctx: Context, before_top: object = None) -> None:
         self.col, self.ctx, self.b = col, ctx, col.built
+        self.before_top = before_top  # the current legs' max profit after charges; None: not worked out
         self.lot = ctx.position.lot
         self.rows = {(r.expiry, r.type, r.strike): r for r in ctx.chain}
 
@@ -244,7 +253,28 @@ class _Rows:
             if row is None or row.bid is None or row.ask is None or row.bid <= 0 or row.ask < row.bid:
                 return _dash(render_explanation("adjust_cmp_no_bid_ask", leg=t.tradingsymbol))
             quotes.append((row.bid, row.ask, t.quantity))
-        return _rupees(adjust_money.cost_with_spread(self.col.whole.adjustment_charges, quotes))
+        shown = _rupees(adjust_money.cost_with_spread(self.col.whole.adjustment_charges, quotes))
+        if self.ctx.rates is None:
+            return shown
+        try:
+            segment = charge_segment(self.ctx.position.underlying)
+            orders = [ChargeOrder(segment, t.action, t.quantity, t.price) for t in self.b.trades]
+        except ValueError:  # no known segment / a price the calculator refuses: the figure stays, no breakdown
+            return shown
+        lines = compare_cost_rows.charge_breakdown(orders, self.ctx.rates, self.col.whole.adjustment_charges,
+                                                   shown.value)  # type: ignore[arg-type]
+        return replace(shown, breakdown=lines)
+
+    def cost_pct(self) -> Cell:
+        # MERGE-SWAP(GC-SET): ADR-221 one cost function (replaces this compare's own cost cell as the numerator)
+        cost, left = self.cost(), self.premium_left()
+        return _from(compare_cost_rows.cost_pct_of_premium_left(cost.value, cost.unavailable_reason, left.value,
+                                                                left.unavailable_reason))
+
+    def max_profit_change(self) -> Cell:
+        after = None if self._after_reason() is not None else self.col.whole.after_charges.max_profit  # type: ignore[union-attr]
+        return _from(compare_cost_rows.max_profit_change(after, self.before_top, self._after_reason(),
+                                                         self.before_top is not None))
 
     def margin_change(self) -> Cell:
         before, after = self.ctx.before_margin, self.col.margin
@@ -449,8 +479,10 @@ def compare(columns: Sequence[Column], ctx: Context, before: WholeTradeAfter | N
     by_id = {c.built.id: c for c in columns}
     order = column_order(ids)
     cells: dict[str, dict[str, Cell]] = {r: {} for r, _, _ in ROWS}
+    before_top = before.after_charges.max_profit if before is not None and before_charges_known else None
     for a in order:
-        r = _Rows(by_id[a], ctx)
+        r = _Rows(by_id[a], ctx, before_top)
+        cells["cost_pct"][a], cells["max_profit_change"][a] = r.cost_pct(), r.max_profit_change()
         cells["credit"][a], cells["cost"][a], cells["margin_change"][a] = r.credit(), r.cost(), r.margin_change()
         cells["max_loss"][a] = r.max_loss()
         for row, p in MOVES.items():
