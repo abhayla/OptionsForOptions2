@@ -1,5 +1,5 @@
 // W-191 (ADR-193, UI study a.1 UI-001..UI-004) over REQ-009 AC-1..AC-8: the restyled top bar still lists the seven
-// sections and every item in the spec's words, opens them as menus, and the account menu keeps its ten items.
+// sections and every item in the spec's words, opens them as menus, and the account menu keeps its eleven items.
 // Expected strings are typed here from spec/requirements/REQ-009.md, never read from nav.js.
 import { describe, expect, it, vi, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
@@ -28,6 +28,7 @@ const ACCOUNT_ITEMS = [
   'Preferences',
   'Strategy Preferences',
   'Broker & Market Data',
+  'Settings', // GC-SET (REQ-167): the eleventh item; REQ-009 AC-8 lists ten and needs this line added
 ]
 
 async function mountAt(url, component = AppHeader) {
@@ -203,7 +204,7 @@ describe('active section, breadcrumb and page width (UI-001, UI-004)', () => {
 })
 
 describe('avatar menu (REQ-009 AC-8, UI-003)', () => {
-  it('opens Account & Settings with its ten items in order, then Log out', async () => {
+  it('opens Account & Settings with its eleven items in order, then Log out', async () => {
     const { w } = await mountAt('/home')
     await w.get('[data-testid="avatar-menu"]').trigger('click')
     expect(w.get('[data-testid="account-menu-title"]').text()).toBe('Account & Settings')

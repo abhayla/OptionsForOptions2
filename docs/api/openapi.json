@@ -1097,7 +1097,7 @@
           },
           "rows": {
             "items": {
-              "$ref": "#/components/schemas/HistoryRowOut"
+              "$ref": "#/components/schemas/ofo_app__routes__adjustment_history__HistoryRowOut"
             },
             "title": "Rows",
             "type": "array"
@@ -2148,6 +2148,118 @@
           "label"
         ],
         "title": "ChargesBreakdownOut",
+        "type": "object"
+      },
+      "ChargesIn": {
+        "additionalProperties": false,
+        "properties": {
+          "brokerage_per_order": {
+            "title": "Brokerage Per Order",
+            "type": "string"
+          },
+          "gst_rate": {
+            "title": "Gst Rate",
+            "type": "string"
+          },
+          "note": {
+            "default": "",
+            "title": "Note",
+            "type": "string"
+          },
+          "read_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Read On"
+          },
+          "sebi_rate": {
+            "title": "Sebi Rate",
+            "type": "string"
+          },
+          "source_url": {
+            "title": "Source Url",
+            "type": "string"
+          },
+          "stamp_buy_rate": {
+            "title": "Stamp Buy Rate",
+            "type": "string"
+          },
+          "stt_exercise_rate": {
+            "title": "Stt Exercise Rate",
+            "type": "string"
+          },
+          "stt_sell_rate": {
+            "title": "Stt Sell Rate",
+            "type": "string"
+          },
+          "transaction_rate_bse_fo": {
+            "title": "Transaction Rate Bse Fo",
+            "type": "string"
+          },
+          "transaction_rate_nse_fo": {
+            "title": "Transaction Rate Nse Fo",
+            "type": "string"
+          }
+        },
+        "required": [
+          "brokerage_per_order",
+          "stt_sell_rate",
+          "stt_exercise_rate",
+          "transaction_rate_nse_fo",
+          "transaction_rate_bse_fo",
+          "sebi_rate",
+          "stamp_buy_rate",
+          "gst_rate",
+          "source_url"
+        ],
+        "title": "ChargesIn",
+        "type": "object"
+      },
+      "ChargesOut": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Name",
+            "type": "string"
+          },
+          "rates": {
+            "patternProperties": {
+              "^[A-Za-z0-9_\\-.]{1,64}$": {
+                "type": "string"
+              }
+            },
+            "title": "Rates",
+            "type": "object"
+          },
+          "read_on": {
+            "format": "date",
+            "title": "Read On",
+            "type": "string"
+          },
+          "source_url": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Url"
+          }
+        },
+        "required": [
+          "name",
+          "read_on",
+          "source_url",
+          "rates"
+        ],
+        "title": "ChargesOut",
         "type": "object"
       },
       "CheckPlaybookOut": {
@@ -4217,63 +4329,6 @@
         "title": "GreeksOut",
         "type": "object"
       },
-      "GroupOut": {
-        "additionalProperties": false,
-        "properties": {
-          "group": {
-            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
-            "title": "Group",
-            "type": "string"
-          },
-          "has_open": {
-            "title": "Has Open",
-            "type": "boolean"
-          },
-          "label": {
-            "title": "Label"
-          },
-          "records": {
-            "items": {
-              "$ref": "#/components/schemas/OpportunityOut"
-            },
-            "title": "Records",
-            "type": "array"
-          },
-          "shown_at": {
-            "format": "date-time",
-            "title": "Shown At",
-            "type": "string"
-          },
-          "strategy_id": {
-            "title": "Strategy Id",
-            "type": "integer"
-          },
-          "strategy_name": {
-            "title": "Strategy Name"
-          },
-          "summary": {
-            "anyOf": [
-              {},
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Summary"
-          }
-        },
-        "required": [
-          "group",
-          "strategy_id",
-          "strategy_name",
-          "shown_at",
-          "label",
-          "summary",
-          "has_open",
-          "records"
-        ],
-        "title": "GroupOut",
-        "type": "object"
-      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -4377,143 +4432,6 @@
           "entries"
         ],
         "title": "HistoryOut",
-        "type": "object"
-      },
-      "HistoryRowOut": {
-        "additionalProperties": false,
-        "properties": {
-          "at": {
-            "format": "date-time",
-            "title": "At",
-            "type": "string"
-          },
-          "booked": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Booked"
-          },
-          "booked_pending": {
-            "anyOf": [
-              {},
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Booked Pending"
-          },
-          "booked_text": {
-            "anyOf": [
-              {},
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Booked Text"
-          },
-          "cash": {
-            "title": "Cash",
-            "type": "string"
-          },
-          "cash_text": {
-            "title": "Cash Text"
-          },
-          "charges": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Charges"
-          },
-          "fill": {
-            "enum": [
-              "paper",
-              "confirmed",
-              "unconfirmed",
-              "failed"
-            ],
-            "title": "Fill",
-            "type": "string"
-          },
-          "fill_text": {
-            "title": "Fill Text"
-          },
-          "number": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Number"
-          },
-          "orders": {
-            "items": {
-              "$ref": "#/components/schemas/HistoryOrderOut"
-            },
-            "title": "Orders",
-            "type": "array"
-          },
-          "rule_id": {
-            "anyOf": [
-              {
-                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Rule Id"
-          },
-          "step": {
-            "enum": [
-              "entry",
-              "adjustment",
-              "settle",
-              "stop"
-            ],
-            "title": "Step",
-            "type": "string"
-          },
-          "why_text": {
-            "anyOf": [
-              {},
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Why Text"
-          }
-        },
-        "required": [
-          "step",
-          "number",
-          "at",
-          "orders",
-          "cash",
-          "cash_text",
-          "booked",
-          "booked_text",
-          "booked_pending",
-          "charges",
-          "rule_id",
-          "why_text",
-          "fill",
-          "fill_text"
-        ],
-        "title": "HistoryRowOut",
         "type": "object"
       },
       "HistoryTotalsOut": {
@@ -4813,7 +4731,7 @@
           },
           "groups": {
             "items": {
-              "$ref": "#/components/schemas/GroupOut"
+              "$ref": "#/components/schemas/ofo_app__routes__adjustment_opportunities__GroupOut"
             },
             "title": "Groups",
             "type": "array"
@@ -9102,6 +9020,18 @@
         "title": "RenamedOut",
         "type": "object"
       },
+      "ResetIn": {
+        "additionalProperties": false,
+        "properties": {
+          "note": {
+            "default": "",
+            "title": "Note",
+            "type": "string"
+          }
+        },
+        "title": "ResetIn",
+        "type": "object"
+      },
       "ReturnContractOut": {
         "additionalProperties": false,
         "properties": {
@@ -9708,6 +9638,163 @@
           "upper_display"
         ],
         "title": "SdRowOut",
+        "type": "object"
+      },
+      "SetIn": {
+        "additionalProperties": false,
+        "properties": {
+          "effective_from": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective From"
+          },
+          "note": {
+            "default": "",
+            "title": "Note",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value"
+        ],
+        "title": "SetIn",
+        "type": "object"
+      },
+      "SettingOut": {
+        "additionalProperties": false,
+        "properties": {
+          "default": {
+            "title": "Default",
+            "type": "string"
+          },
+          "effective_from": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective From"
+          },
+          "group": {
+            "title": "Group"
+          },
+          "history": {
+            "items": {
+              "$ref": "#/components/schemas/ofo_app__routes__settings__HistoryRowOut"
+            },
+            "title": "History",
+            "type": "array"
+          },
+          "is_default": {
+            "title": "Is Default",
+            "type": "boolean"
+          },
+          "key": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label"
+          },
+          "max": {
+            "title": "Max",
+            "type": "string"
+          },
+          "min": {
+            "title": "Min",
+            "type": "string"
+          },
+          "set_by": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Set By"
+          },
+          "type": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Type",
+            "type": "string"
+          },
+          "unit": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Unit",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          },
+          "what_it_changes": {
+            "title": "What It Changes"
+          }
+        },
+        "required": [
+          "key",
+          "group",
+          "label",
+          "unit",
+          "type",
+          "what_it_changes",
+          "min",
+          "max",
+          "default",
+          "value",
+          "is_default",
+          "effective_from",
+          "set_by",
+          "history"
+        ],
+        "title": "SettingOut",
+        "type": "object"
+      },
+      "SettingsOut": {
+        "additionalProperties": false,
+        "properties": {
+          "charges": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChargesOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/ofo_app__routes__settings__GroupOut"
+            },
+            "title": "Groups",
+            "type": "array"
+          }
+        },
+        "required": [
+          "groups",
+          "charges"
+        ],
+        "title": "SettingsOut",
         "type": "object"
       },
       "StandardDeviationOut": {
@@ -12156,6 +12243,200 @@
         "title": "VersionOut",
         "type": "object"
       },
+      "ofo_app__routes__adjustment_history__HistoryRowOut": {
+        "additionalProperties": false,
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "booked": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked"
+          },
+          "booked_pending": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked Pending"
+          },
+          "booked_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked Text"
+          },
+          "cash": {
+            "title": "Cash",
+            "type": "string"
+          },
+          "cash_text": {
+            "title": "Cash Text"
+          },
+          "charges": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges"
+          },
+          "fill": {
+            "enum": [
+              "paper",
+              "confirmed",
+              "unconfirmed",
+              "failed"
+            ],
+            "title": "Fill",
+            "type": "string"
+          },
+          "fill_text": {
+            "title": "Fill Text"
+          },
+          "number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Number"
+          },
+          "orders": {
+            "items": {
+              "$ref": "#/components/schemas/HistoryOrderOut"
+            },
+            "title": "Orders",
+            "type": "array"
+          },
+          "rule_id": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rule Id"
+          },
+          "step": {
+            "enum": [
+              "entry",
+              "adjustment",
+              "settle",
+              "stop"
+            ],
+            "title": "Step",
+            "type": "string"
+          },
+          "why_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Why Text"
+          }
+        },
+        "required": [
+          "step",
+          "number",
+          "at",
+          "orders",
+          "cash",
+          "cash_text",
+          "booked",
+          "booked_text",
+          "booked_pending",
+          "charges",
+          "rule_id",
+          "why_text",
+          "fill",
+          "fill_text"
+        ],
+        "title": "HistoryRowOut",
+        "type": "object"
+      },
+      "ofo_app__routes__adjustment_opportunities__GroupOut": {
+        "additionalProperties": false,
+        "properties": {
+          "group": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Group",
+            "type": "string"
+          },
+          "has_open": {
+            "title": "Has Open",
+            "type": "boolean"
+          },
+          "label": {
+            "title": "Label"
+          },
+          "records": {
+            "items": {
+              "$ref": "#/components/schemas/OpportunityOut"
+            },
+            "title": "Records",
+            "type": "array"
+          },
+          "shown_at": {
+            "format": "date-time",
+            "title": "Shown At",
+            "type": "string"
+          },
+          "strategy_id": {
+            "title": "Strategy Id",
+            "type": "integer"
+          },
+          "strategy_name": {
+            "title": "Strategy Name"
+          },
+          "summary": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          }
+        },
+        "required": [
+          "group",
+          "strategy_id",
+          "strategy_name",
+          "shown_at",
+          "label",
+          "summary",
+          "has_open",
+          "records"
+        ],
+        "title": "GroupOut",
+        "type": "object"
+      },
       "ofo_app__routes__outcome__LegIn": {
         "additionalProperties": false,
         "properties": {
@@ -12797,6 +13078,63 @@
           "message"
         ],
         "title": "DeletedOut",
+        "type": "object"
+      },
+      "ofo_app__routes__settings__GroupOut": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "title": "Name"
+          },
+          "settings": {
+            "items": {
+              "$ref": "#/components/schemas/SettingOut"
+            },
+            "title": "Settings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "settings"
+        ],
+        "title": "GroupOut",
+        "type": "object"
+      },
+      "ofo_app__routes__settings__HistoryRowOut": {
+        "additionalProperties": false,
+        "properties": {
+          "effective_from": {
+            "format": "date-time",
+            "title": "Effective From",
+            "type": "string"
+          },
+          "set_by": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Set By",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "in_force",
+              "scheduled",
+              "earlier"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "effective_from",
+          "set_by",
+          "state"
+        ],
+        "title": "HistoryRowOut",
         "type": "object"
       },
       "ofo_app__routes__strategies__DeletedOut": {
@@ -14220,6 +14558,164 @@
           }
         },
         "summary": "Duplicate Playbook"
+      }
+    },
+    "/api/settings": {
+      "get": {
+        "description": "Every setting by group (registry order), then the Charges rate set in force. A store that cannot answer\n(SettingsError, a database error) is raised to the error boundary: a 500, never a default.",
+        "operationId": "read_settings_api_settings_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Read Settings"
+      }
+    },
+    "/api/settings/charges": {
+      "post": {
+        "description": "A new dated charge rate set (ADR-082): every component and the source address. The table is append-only.",
+        "operationId": "add_charge_rate_set_api_settings_charges_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChargesIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChargesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Charge Rate Set"
+      }
+    },
+    "/api/settings/{key}": {
+      "post": {
+        "description": "Change one setting from ``effective_from`` (default now); the registry refuses a wrong value with its reason.",
+        "operationId": "change_setting_api_settings__key__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "title": "Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Change Setting"
+      }
+    },
+    "/api/settings/{key}/reset": {
+      "post": {
+        "description": "Reset to default is a NEW row holding the registry default, effective now; nothing is deleted.",
+        "operationId": "reset_setting_api_settings__key__reset_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "title": "Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResetIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reset Setting"
       }
     },
     "/api/strategies/leg-edit": {

@@ -3222,5 +3222,65 @@
   "explanation:playbook_summary_stop_either": {
     "sha256": "987d1e5cf2fac30fba5e2c30ead4dcaef79a56cad3459e21683fb7db29168669",
     "reviewed": "owner read 2026-10-31 (decided in chat)"
+  },
+  "explanation:settings_registry_text": {
+    "sha256": "a528dd1d122ebb0c37e0e53f81aead1e586bb6fab3efbcafaa6357af9620b5c4",
+    "reviewed": "pending owner read"
+  },
+  "explanation:settings_source_url": {
+    "sha256": "eb5b9e603c44ec5758cc9813cb502649f906394a63654d98e1e2441c33b21a5b",
+    "reviewed": "pending owner read"
+  },
+  "explanation:settings_refused_unknown": {
+    "sha256": "3bcc5418d3e506c193335091d980dd7654cff2e62ec1c9459e711d8f4b9edd62",
+    "reviewed": "pending owner read"
+  },
+  "explanation:settings_refused_not_a_number": {
+    "sha256": "1c8fdeb4f3549d634f6595851a5a8fd0e19242d565429f6275fe8e4ebf56c565",
+    "reviewed": "pending owner read"
+  },
+  "explanation:settings_refused_not_whole": {
+    "sha256": "639e3583b651ad61c324c09bdbb40ce784a2b0aa7bfd9a77a664af7b78a8bfe4",
+    "reviewed": "pending owner read"
+  },
+  "explanation:settings_refused_fraction_unit": {
+    "sha256": "a783b1f3f8b1e95a9e0fcfb340ae845287fddce8d9e992537f17fa1a72449c7e",
+    "reviewed": "pending owner read"
+  },
+  "explanation:settings_refused_out_of_range": {
+    "sha256": "3db401b29847344a88539f20ce8f138ae9718307e7da75257b6f747ba7fb27cb",
+    "reviewed": "pending owner read"
+  },
+  "explanation:settings_refused_note_too_long": {
+    "sha256": "c0259c8046f1eb8a5dcd1795783ad7f1d8915f954b99581a880d4946d01604be",
+    "reviewed": "pending owner read"
+  },
+  "explanation:settings_refused_back_dated": {
+    "sha256": "921380fe706cbad13b1bd8a431f175fc76cc4b66fa7a3203ab98bb51fcc3718e",
+    "reviewed": "pending owner read"
+  },
+  "explanation:settings_refused_time_invalid": {
+    "sha256": "dd5dcaf0f95d5ab318cc82661a69f5da241c380c064028caf9312668546d7cc4",
+    "reviewed": "pending owner read"
+  },
+  "explanation:settings_refused_same_time": {
+    "sha256": "e7d63f65f8683db6d4b223612b4cb0e3e47124a5668835922dfb9e0b4e92ce27",
+    "reviewed": "pending owner read"
+  },
+  "explanation:settings_refused_charges_value": {
+    "sha256": "6dab05927bc42be5c06ce6cebbe0325024e2e54a5fb7db68acd7510b2d129e39",
+    "reviewed": "pending owner read"
+  },
+  "explanation:settings_refused_charges_source": {
+    "sha256": "7f7e2d9223972b620e58ca9bba852cb16cdacd129b1dcabafec08d5ffcc55ffd",
+    "reviewed": "pending owner read"
+  },
+  "explanation:settings_refused_charges_date": {
+    "sha256": "db56d8a7fa525f9aa4c72c6b96211a05459898e6cd9352d3210fcfdccf66e674",
+    "reviewed": "pending owner read"
+  },
+  "explanation:settings_refused_charges_future": {
+    "sha256": "580ae3065fda8c21a6deed4610b285f15dd5e8d88086d00fec25ad16cbdd6370",
+    "reviewed": "pending owner read"
   }
 }

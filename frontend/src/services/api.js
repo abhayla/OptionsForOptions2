@@ -12,6 +12,8 @@ export function mapError(error) {
   if (error?.code === 'ECONNABORTED') out.code = 'ECONNABORTED' // the client's own timeout: callers may word it
   const parts = catalogueParts(error?.response?.data)
   if (parts) out.parts = parts
+  const reason = error?.response?.data?.reason // GC-SET: a refused Settings change answers {reason}: the catalogue's own words
+  if (typeof reason === 'string' && reason) out.reason = reason
   const stamped = serverTime(error?.response?.headers?.date)
   if (stamped) out.answered_at = stamped
   return out
