@@ -1,6 +1,6 @@
-"""GC-SET core, scenario mode: the scenario (a dev stand-in for live) prices with the ``pricing.risk_free_rate`` setting in
-force at each request, like the live context (REQ-167 AC-1; ADR-222 (1), (9)). Replay mode and unit-test overrides keep
-their own rate (see ``test_settings_rate_wiring.py`` for the live context).
+"""GC-SET core, scenario mode: the scenario (a dev stand-in for live) prices with the ``pricing.risk_free_rate`` setting
+in force at each request, like the live context (REQ-167 AC-1; ADR-222 (1), (9)). Replay mode and unit-test overrides
+keep their own rate (see ``test_settings_rate_wiring.py`` for the live context).
 
 Spec basis: REQ-167 AC-1 "the value in force at a time is the newest row not after that time, else the default";
 ADR-222 (9) a change applies at the next check, no restart.
@@ -21,6 +21,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 KEY = "pricing.risk_free_rate"
+LEGS = 2  # one call and one put at the 23400 strike
 
 
 def _scenario_app(monkeypatch):
@@ -46,7 +47,7 @@ def _body():
             continue
         legs.append({"instrument_id": iid, "action": "SELL", "lots": 1, "planned_entry": f"{q.ltp:f}",
                      "captured_at": now.isoformat()})
-    assert len(legs) == 2, legs
+    assert len(legs) == LEGS, legs
     return {"underlying": scn.data["underlying"], "legs": legs}
 
 
@@ -136,7 +137,7 @@ async def test_scenario_context_with_the_rate_replaced_is_still_the_scenario_fee
 
     ctx = await dep(read)
     assert ctx.rate == Decimal("0.07")
-    base = await dep(lambda: _default_reader())
+    base = await dep(_default_reader)
     assert base is not ctx
     assert outcome.same_feed(ctx, base)
     assert not outcome.same_feed(ctx, None)
