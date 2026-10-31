@@ -23,6 +23,7 @@ from types import MappingProxyType
 
 from ofo import wording as _wording
 
+from ofo.errors.gate_slots import PlaybookTypeName
 from ofo.errors.slots import SlotType, _require_exact
 from ofo.errors.templates import MARGIN_SHORTFALL_NEXT_ACTION, ZERODHA_BUSY_TEXT
 
@@ -1523,6 +1524,9 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         "Breakeven is exact only for a single-expiry strategy"),
     ExplanationTemplate("paper_reason_exited", "values_seen", "Exited"),
     ExplanationTemplate("paper_extremes_unknown", "values_seen", "Profit left and Loss left are not worked out."),
+    # GC-ADJ2 step 1A (REQ-158 AC-4): deleting the active playbook says the system one is active again
+    ExplanationTemplate("playbook_system_active_again", "values_seen", "{type}: the system playbook is active again",
+                        {"type": PlaybookTypeName}),
     ExplanationTemplate("catalogue_template_name", "values_seen", "{text}", {"text": TemplateText}),
     ExplanationTemplate("catalogue_template_description", "values_seen", "{text}", {"text": TemplateText}),
     *(ExplanationTemplate(f"table_reason_{key}", "values_seen", text) for key, text in TABLE_REASON_TEXT.items()),

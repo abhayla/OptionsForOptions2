@@ -421,3 +421,52 @@ class UnitsByContract(SlotType):
     @staticmethod
     def format(value: tuple) -> str:
         return ", ".join(f"{contract}: {units}" for contract, units in value) if value else "none"
+
+
+_PLAYBOOK_FIELD = re.compile(r"[A-Za-z0-9_.\-\[\]]{1,80}")
+_PLAYBOOK_NAME_MAX = 80  # = ofo.adjustment.playbook_types.NAME_MAX (a test pins it)
+
+
+class PlaybookName(SlotType):
+    """A playbook name the user typed (REQ-158 AC-3), trimmed, 1..80 characters, shown in quotes: the user's own
+    words, never ours."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        _require_exact(value, str, "PlaybookName")
+        assert isinstance(value, str)
+        if not value or value != value.strip() or len(value) > _PLAYBOOK_NAME_MAX:
+            raise ValueError("PlaybookName slot needs a trimmed name of 1 to 80 characters")
+
+    @staticmethod
+    def format(value: str) -> str:
+        return f'"{str.__str__(value)}"'
+
+
+class PlaybookTypeName(SlotType):
+    """A playbook strategy type's shown name, closed to the twelve of ofo.adjustment.playbook_types (REQ-158 AC-1)."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        from ofo.adjustment.playbook_types import SHOWN_NAMES
+        _require_exact(value, str, "PlaybookTypeName")
+        if value not in SHOWN_NAMES.values():
+            raise ValueError(f"PlaybookTypeName slot must be a shown type name, got {value!r:.40}")
+
+    @staticmethod
+    def format(value: str) -> str:
+        return str.__str__(value)
+
+
+class PlaybookField(SlotType):
+    """The path of a playbook body field (triggers.T-01.weekly[2]): a pattern, no free words."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        _require_exact(value, str, "PlaybookField")
+        if not _PLAYBOOK_FIELD.fullmatch(value):  # type: ignore[arg-type]
+            raise ValueError(f"PlaybookField slot must match {_PLAYBOOK_FIELD.pattern!r}, got {value!r:.40}")
+
+    @staticmethod
+    def format(value: str) -> str:
+        return str.__str__(value)
