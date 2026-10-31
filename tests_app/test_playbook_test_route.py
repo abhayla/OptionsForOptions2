@@ -72,7 +72,7 @@ async def test_unsaved_t01_middle_03_drops_t01_keeps_t03_t09_and_writes_nothing(
                                                                                    PAST_NOTE)
     (mine,) = [s for s in out["strategies"] if s["strategy_id"] == sid]
     assert mine["name"].startswith('"') and mine["stage"] == {"name": "Middle", "index": 1}
-    assert _rows(mine, "flag") == [("T-03", "0.4103", "0.35", "ge"), ("T-09", "2.7", "3", "le")]
+    assert _rows(mine, "flag") == [("T-03", "0.4103", "0.3500", "ge"), ("T-09", "2.7000", "3.0000", "le")]
     not_checked = [x for x in mine["results"] if x["kind"] == "not_checked"]
     assert not_checked and all(x["reason"] and x["value"] is None for x in not_checked)  # never listed as passed
     assert "T-01" not in {x["trigger_id"] for x in mine["results"]}
@@ -86,8 +86,8 @@ async def test_unchanged_system_body_flags_t01_too(app_db_url, monkeypatch):
     (r,) = await _calls(("POST", "/api/playbooks/test", {"type": "ic", "body": body}))
     assert r.status_code == OK, r.text
     (mine,) = [s for s in r.json()["strategies"] if s["strategy_id"] == sid]
-    assert _rows(mine, "flag") == [("T-01", "0.3415", "0.5", "le"), ("T-03", "0.4103", "0.35", "ge"),
-                                   ("T-09", "2.7", "3", "le")]
+    assert _rows(mine, "flag") == [("T-01", "0.3416", "0.5000", "le"), ("T-03", "0.4103", "0.3500", "ge"),
+                                   ("T-09", "2.7000", "3.0000", "le")]  # 4 dp half-up (step 5, the fixture's form)
 
 
 async def test_no_strategy_of_the_type_says_so(app_db_url, monkeypatch):
