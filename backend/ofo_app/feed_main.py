@@ -16,7 +16,16 @@ old socket stops and one starts on the new session; the same session -> nothing.
 Part B: ``supervise_users`` holds ONE socket per user with an active stored session, each in its own task (one user's
 failure never reaches another's, AC-9); Zerodha's caps are refused and logged, never cut to fit (AC-6); a session that
 reaches its expiry is closed, announced as ended and not reconnected (AC-8). With no stored session the process idles
-instead of exiting. Not in this part: the order-update stream (C).
+instead of exiting. Not in this part: the order-update stream (C). The expiry of a RUNNING socket is checked before
+the store is read (it needs only the in-memory expiry), so a database outage at 06:00 cannot keep the socket open; a
+user in ``expired`` whose store then answers no session (the real store ends a past session) keeps the ``ended``
+status (#520 items 1, 2). Started as the ``liveprices`` role: ``python -m ofo_app.liveprices`` (ADR-220 (1)).
+
+Known bypasses: (a) a box started AFTER the expiry with the real store sees no session at all (the store ends it on
+that first read), so the status is ``stopped``, not ``ended``; only a session this process saw expire stays ended.
+(b) An expired user who then disconnects without logging in again stays ``ended`` (no fingerprint to tell them
+apart) until a new login; ``expired`` holds one entry per such user for the life of the process. (c) An unreadable
+store with no running socket changes nothing, so the last published status stands until its TTL.
 """
 from __future__ import annotations
 
@@ -233,22 +242,31 @@ class _Hub:
 
     async def _one(self, user: str) -> None:
         run = self.running.get(user)
+        if run is not None and self._past(run.expires_at):  # AC-8: the session's day is over. BEFORE the store read:
+            await self._end_by_expiry(user, run)  # it needs only the in-memory expiry, so an outage cannot keep it open
+            return
         try:
             session = await self.read_session(user)
         except Exception as exc:  # noqa: BLE001 - unreadable: keep what runs; never the message (could hold a token)
             log.warning("stored session unreadable: %s", type(exc).__name__)
             return
-        if run is not None and self._past(run.expires_at):  # AC-8: the session's day is over
-            await self._end_by_expiry(user, run)
-            return
         if session is None:
-            self.expired.pop(user, None)
-            if run is not None:
-                await run.halt()
-                self.running.pop(user, None)
-                log.info("no stored session: the Kite socket was stopped")
-            await self._safely("stopped status", feed_bus.publish_stopped(self.client, user, self.clock))
+            await self._no_session(user, run)
             return
+        await self._with_session(user, run, session)
+
+    async def _no_session(self, user: str, run: _Running | None) -> None:
+        if user in self.expired:  # the real store ends a past session and answers none: the status stays "ended" for
+            await self._safely("ended status",  # a later reader, never "stopped" (#520 item 1)
+                               feed_bus.publish_ended(self.client, user, self.clock, event=False))
+            return
+        if run is not None:
+            await run.halt()
+            self.running.pop(user, None)
+            log.info("no stored session: the Kite socket was stopped")
+        await self._safely("stopped status", feed_bus.publish_stopped(self.client, user, self.clock))
+
+    async def _with_session(self, user: str, run: _Running | None, session: StoredSession) -> None:
         if self.expired.get(user) == session.fingerprint:  # ended by expiry: no reconnect, the status stays "ended"
             await self._safely("ended status", feed_bus.publish_ended(self.client, user, self.clock, event=False))
             return

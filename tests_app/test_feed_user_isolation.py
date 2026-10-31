@@ -5,7 +5,8 @@ Core (step 1): killing user A's Kite socket leaves user B's ticks flowing and no
 user B each have a stored session (files, the stand-in of the token store, as in part A) and their own looping fake
 Kite on loopback replaying the REAL recorded frames (``frames-2026-10-08-092000-10s.bin.gz``); the REAL
 ``feed_main.supervise_users`` runs as an OS process through the test-only launcher. The in-process tests below run the
-same function with an injected clock.
+same function with an injected clock. The same isolation on the production store (the throwaway database, real
+encrypted session rows) is ``test_on_the_database_one_users_session_never_drives_the_other_users_socket`` (#520 item 3).
 
 Answer states listed (standing item d). Token store, per user: session present -> run | none -> stop, status
 ``stopped`` | past its expiry -> see test_feed_session_expiry | undecryptable -> the store answers none (see
@@ -183,6 +184,7 @@ class MemoryStore:
         self.sessions: dict[str, tuple[str, datetime.datetime | None]] = {}
         self.failing: set[str] = set()
         self.reads: Counter = Counter()
+        self.ends_at_expiry: FakeClock | None = None  # set: the production shape (a past session is ended -> None)
 
     def set(self, user: str, token: str, expires_at: datetime.datetime | None = None) -> None:
         self.sessions[user] = (token, expires_at)
@@ -198,6 +200,9 @@ class MemoryStore:
         if found is None:
             return None
         token, expires_at = found
+        if self.ends_at_expiry is not None and expires_at is not None and self.ends_at_expiry() >= expires_at:
+            del self.sessions[user]  # broker_token_store._read_active: a past session is ended and answers no session
+            return None
         return feed_main.StoredSession(KEY, token, live_market.token_fingerprint(token), expires_at)
 
 
@@ -523,6 +528,69 @@ async def test_active_user_refs_is_an_allow_list_of_one_column(app_engine):
     assert live_a in refs and live_b in refs and gone not in refs
     assert not any(s in " ".join(refs) for s in secrets.values())
     assert expiry is not None and none is None
+
+
+class DbStore:
+    """The production token store on the throwaway database (``db_run_fresh.py``): users from ``active_user_refs``,
+    each session from ONE ``access_session_for`` read on a fresh connection, exactly as ``feed_main._main`` does."""
+
+    def __init__(self, engine, cipher: TokenCipher, users: tuple[str, ...]) -> None:
+        self.engine, self.cipher, self.users = engine, cipher, users
+        self.reads: Counter = Counter()
+
+    async def list_users(self) -> list[str]:
+        async with self.engine.connect() as conn:
+            return [u for u in await store.active_user_refs(conn) if u in self.users]  # other tests' rows ignored
+
+    async def read(self, user: str):
+        self.reads[user] += 1
+        async with self.engine.connect() as conn:
+            found = await store.access_session_for(conn, user, self.cipher)
+        if found is None:
+            return None
+        token, expiry = found
+        return feed_main.StoredSession(KEY, token, live_market.token_fingerprint(token), expiry)
+
+
+async def test_on_the_database_one_users_session_never_drives_the_other_users_socket(redis_url, app_engine):
+    """#520 item 3 (AC-9 on the production store, not session files): A and B log in (real encrypted rows on the
+    throwaway database), each with a fake Kite sending byte-disjoint halves of the recorded frames. Both go live; A's
+    session is then ended IN THE DATABASE (a disconnect). A's socket stops and its status says stopped; B's socket is
+    never reconnected and keeps flowing, and each stream holds only its own Kite's frames."""
+    cipher = TokenCipher(os.urandom(32))
+    maker = async_sessionmaker(app_engine, class_=AsyncSession, expire_on_commit=False)
+    user_a, user_b = f"test-ua{uuid.uuid4().hex[:10]}", f"test-ub{uuid.uuid4().hex[:10]}"
+    async with maker() as session:
+        await store.store_session(session, user_a, "TOK-db-iso-a-secret", cipher)
+        await store.store_session(session, user_b, "TOK-db-iso-b-secret", cipher)
+        await session.commit()
+    halves = TwoKites()
+    rig = Rig(redis_url)
+    rig.store = DbStore(app_engine, cipher, (user_a, user_b))  # type: ignore[assignment]
+    try:
+        kite_a = await rig.kite(user_a, kite_with(halves.a_frames))
+        kite_b = await rig.kite(user_b, kite_with(halves.b_frames))
+        rig.start()
+        await rig.until(lambda: _both_live(rig, user_a, user_b), "both users live from the database sessions")
+        await rig.until(lambda: _count_at_least(rig.bus, user_b, 10), "user B's frames")
+        await rig.until(lambda: _count_at_least(rig.bus, user_a, 10), "user A's frames")
+        async with maker() as session:
+            assert await store.end_session(session, user_a, store.EndReason.DISCONNECTED) is not None
+            await session.commit()
+        await rig.until(lambda: _phase(rig, user_a, "stopped"), "A stopped after its database session ended")
+        await rig.until(lambda: _is_true(kite_a.active == 0), "A's socket closed at its fake Kite")
+        mark = (await rig.bus.xrevrange(feed_bus.ticks_key(user_b), count=1))[0][0].decode()
+        await rig.until(lambda: _count_more(rig.bus, user_b, mark, 10), "user B's frames after A's session ended")
+        assert kite_b.accepted == 1 and kite_b.active == 1, "A's session end reached B's socket"
+        assert kite_a.accepted == 1 and (await rig.live(user_b)) is not None
+        for user, own in ((user_a, halves.a_only), (user_b, halves.b_only)):
+            frames = [m.data for _i, m in await stream_entries(rig.bus, user) if m.kind == feed_bus.KIND_FRAME]
+            assert frames and all(f in own for f in frames), f"a frame that is not {user}'s own Kite's reached it"
+    finally:
+        await rig.close()
+        async with maker() as session:
+            await store.end_session(session, user_b, store.EndReason.DISCONNECTED)
+            await session.commit()
 
 
 async def test_the_hub_lists_users_through_the_allow_list_only():
