@@ -23,7 +23,6 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from decimal import Decimal
 
-from ofo.engine.black_scholes import DAYS_IN_YEAR
 from ofo.engine.legs import Instrument
 from ofo.errors.explanations import ExplanationText, render_explanation
 from ofo.instruments.models import Contract, ListedContract
@@ -31,7 +30,7 @@ from ofo.marketdata.feed_health import market_closed_for
 from ofo.marketdata.forward import ExpiryForward, ForwardUnavailable, parity_forward
 from ofo.marketdata.provider import MarketDataProvider, NotSupported, ProviderStatus
 from ofo.marketdata.quote import NormalizedQuote
-from ofo.marketdata.shared_compute import FeedScope
+from ofo.marketdata.shared_compute import FeedScope, call_shared
 from ofo.timeutil import EXPIRY_CLOSE
 
 
@@ -72,19 +71,21 @@ class MarketSnapshot:
 _LEG_TYPES = frozenset(i.value for i in Instrument)
 
 
+def _parity_forward(chain, spot, expiry, valuation, rate):
+    """The shared figure: the engine's parity forward, keyed by exactly these arguments (every quote of ``chain`` in
+    full, the spot quote, the expiry, the instant and the rate; #519)."""
+    return parity_forward(chain, spot, expiry, valuation, rate)
+
+
 def _forward(chain, spot, expiry, at, where):
-    """One expiry's forward; with ``shared`` computed once per (feed owner, underlying, expiry, snapshot instant, the
-    exact quotes it reads, the expiry close and the days-per-year convention). A refused forward raises and is never
-    cached (the next reader tries again). The quote set is sorted, so the order a chain is read in never splits it."""
+    """One expiry's forward; with ``shared`` computed once per (feed owner, underlying, expiry, snapshot instant, every
+    argument of the engine call). A refused forward raises and is never cached (the next reader tries again). The chain
+    is ordered by instrument id, so the order a chain is read in never splits the entry."""
     shared, underlying = where
     instant, rate = at
-    if shared is None:
-        return parity_forward(chain, spot, expiry, instant, rate)
-    quotes = tuple(sorted((q.instrument_id, q.bid, q.ask, q.timestamp, q.health.value) for q in chain))
-    spot_part = (None,) if spot is None else (spot.ltp, spot.timestamp, spot.health.value)
-    inputs = (rate, EXPIRY_CLOSE, DAYS_IN_YEAR, *spot_part, quotes)
-    scope = (underlying, expiry, instant, "forward", None)
-    return shared.compute(scope, inputs, lambda: parity_forward(chain, spot, expiry, instant, rate))
+    quotes = tuple(sorted(chain, key=lambda q: q.instrument_id))
+    scope = (underlying, expiry, instant, None)
+    return call_shared(shared, scope, _parity_forward, quotes, spot, expiry, instant, rate)
 
 
 #: D-C33 (GC-UI checker 2026-10-28): the strikes nearest the money held per leg expiry, CE and PE each, so the chain an

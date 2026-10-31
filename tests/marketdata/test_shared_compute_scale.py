@@ -39,7 +39,7 @@ def strategies():
 def engine_calls(monkeypatch):
     """Counting wrappers on the engine functions the outcome path calls; key = (function, contract)."""
     calls: Counter = Counter()
-    real_iv, real_fwd, real_gk = service.implied_vol, snapshot_module.parity_forward, service.leg_greeks_unrounded
+    real_iv, real_fwd, real_gk = service.implied_vol, snapshot_module.parity_forward, service.greeks_unrounded
 
     def iv(em, kind, price, strike):
         calls[("iv", kind.value, strike)] += 1
@@ -49,13 +49,13 @@ def engine_calls(monkeypatch):
         calls[("forward", expiry)] += 1
         return real_fwd(chain, spot, expiry, valuation, rate)
 
-    def gk(model, leg):
-        calls[("greeks", leg.instrument.value, leg.strike)] += 1
-        return real_gk(model, leg)
+    def gk(em, kind, strike, vol):
+        calls[("greeks", kind.value, strike)] += 1
+        return real_gk(em, kind, strike, vol)
 
     monkeypatch.setattr(service, "implied_vol", iv)
     monkeypatch.setattr(snapshot_module, "parity_forward", fwd)
-    monkeypatch.setattr(service, "leg_greeks_unrounded", gk)
+    monkeypatch.setattr(service, "greeks_unrounded", gk)
     return calls
 
 
