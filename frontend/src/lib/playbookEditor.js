@@ -19,17 +19,32 @@ export const clone = (body) => JSON.parse(JSON.stringify(body))
 /** Unsaved changes: the working body differs from the body as read (or as last saved). */
 export const isDirty = (work, saved) => work != null && saved != null && JSON.stringify(work) !== JSON.stringify(saved)
 
+// Round 3 (owner's browser): every read of a body list goes through these, so each answer state renders. A body list
+// can be stated (a non-empty list), null (all 12 system bodies: T-02, T-18, T-20, T-20b, T-21), missing, or empty.
+/** One expiry kind's stages: the body's list, or [] when it is null, missing or not a list. */
+export const stagesOf = (body, kind) => (Array.isArray(body?.stages?.[kind]) ? body.stages[kind] : [])
+/** One trigger's values for an expiry kind: the body's list, or null when it has none (null, missing, empty). The
+ *  editor then shows the no-values line and no inputs, and never creates a list the body did not have. */
+export const valuesOf = (trigger, kind) => (Array.isArray(trigger?.[kind]) && trigger[kind].length ? trigger[kind] : null)
+/** A rule's members and joiner: any_of (OR) or all_of (AND); a rule with neither has no members. */
+export function ruleMembers(r) {
+  if (Array.isArray(r?.all_of)) return { members: r.all_of, all: true }
+  return { members: Array.isArray(r?.any_of) ? r.any_of : [], all: false }
+}
+
 /** Add a stage at the end of one expiry kind: every trigger gets an empty value there (not checked in that stage),
- *  so each value list keeps the stage count (the body rule). */
+ *  so each value list keeps the stage count (the body rule). A trigger with no list for that kind keeps none. */
 export function addStage(work, kind, name) {
+  if (!Array.isArray(work?.stages?.[kind])) return
   work.stages[kind].push({ name, from: 0, to: 0 })
-  for (const t of Object.values(work.triggers)) if (Array.isArray(t[kind])) t[kind].push('')
+  for (const t of Object.values(work.triggers ?? {})) if (Array.isArray(t[kind])) t[kind].push('')
 }
 
 /** Remove stage ``index`` of one expiry kind, and its value from every trigger. */
 export function removeStage(work, kind, index) {
+  if (!Array.isArray(work?.stages?.[kind])) return
   work.stages[kind].splice(index, 1)
-  for (const t of Object.values(work.triggers)) if (Array.isArray(t[kind])) t[kind].splice(index, 1)
+  for (const t of Object.values(work.triggers ?? {})) if (Array.isArray(t[kind])) t[kind].splice(index, 1)
 }
 
 /** Fill a catalogue sentence's {slot}s with the body's own strings (never a computed figure). A slot with no value
@@ -40,7 +55,8 @@ export const fill = (template, slots) => (template ?? '').replace(/\{(\w+)\}/g, 
 export function labelMaps(answer) {
   const map = (list) => Object.fromEntries((list ?? []).map((x) => [x.key, said(x.text)]))
   return { approaches: map(answer?.approaches), dayKinds: map(answer?.day_kinds), dayActions: map(answer?.day_actions),
-    summary: map(answer?.summary), pastNote: said(answer?.past_note) }
+    summary: map(answer?.summary), guards: map(answer?.guards), pastNote: said(answer?.past_note),
+    noValues: said(answer?.no_values) }
 }
 
 /** A stage's days in the catalogue's words. */
@@ -55,14 +71,14 @@ export function stageText(s, t) {
 export function summaryLines(body, typeName, kind, labels) {
   const t = labels?.summary ?? {}
   if (!body || !t.type_line) return []
-  const stages = body.stages?.[kind] ?? []
+  const stages = stagesOf(body, kind)
   const looks = Object.values(body.triggers ?? {})
-    .filter((x) => x.on && !x.greyed && (x[kind] ?? []).some((v) => v !== ''))
+    .filter((x) => x.on && !x.greyed && (valuesOf(x, kind) ?? []).some((v) => v !== ''))
     .map((x) => {
-      const slots = { label: x.label, values: (x[kind] ?? []).map((v) => (v === '' ? '-' : v)).join(' / '), unit: x.unit }
+      const slots = { label: x.label, values: valuesOf(x, kind).map((v) => (v === '' || v == null ? '-' : v)).join(' / '), unit: x.unit }
       return fill(x.unit && x.unit !== 'time' ? t.trigger_unit : t.trigger, slots)
     })
-  const both = (body.rules ?? []).filter((r) => Array.isArray(r.all_of)).map((r) => fill(t.rule_all, { id: r.id, members: r.all_of.join(t.joiner_and) }))
+  const both = (body.rules ?? []).filter((r) => ruleMembers(r).all).map((r) => fill(t.rule_all, { id: r.id, members: r.all_of.join(t.joiner_and) }))
   const days = (body.day_rules ?? []).filter((r) => r.on).map((r) => fill(t.day_rule, {
     when: `${labels.dayKinds?.[r.when] ?? r.when}${r.date ? ' ' + r.date : ''}`, at: r.at, action: labels.dayActions?.[String(r.action)] ?? String(r.action) }))
   const g = body.guards ?? {}

@@ -3138,5 +3138,57 @@
   "explanation:adjust_history_no_option_leg": {
     "sha256": "ef60731935cc702ed2d66fe28f0f7b847a9480b2b6cacb1f90b636ca20a87d60",
     "reviewed": "pending owner read"
+  },
+  "explanation:playbook_guard_entry_guide": {
+    "sha256": "ea23327047a6f4be2ce7e29a5744677e61d644661f186072af190f67f251704a",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_guard_hide_oi_below": {
+    "sha256": "4145c99939546375110dcaf2daad23caea3782bd87ba2718cc7a476e44e867bb",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_guard_hide_spread_pct_of_mid_above": {
+    "sha256": "1cfc4a75dce149f8231da5c566d26cab850874151df0ba362c3d08c38725ecf6",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_guard_max_adjustments": {
+    "sha256": "ed4dcdb9b9dada0cff17276f345f4eb678a0225028fb7332461b18bedfdf0156",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_guard_order_sequence": {
+    "sha256": "6261cd611c8625daad68dc6cdfc071308951566b5d3c1c987e9c932af2137911",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_guard_profit_target_pct_of_max_profit": {
+    "sha256": "8b4a71672a128ca53c2545a1169d7952552f8d3e001f6f0904abb6a8de3d76df",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_guard_roll_debit_limit": {
+    "sha256": "a82ac41203847cb78662e169fbd75de5dfcc1939b9288be83507958b86b6bbce",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_guard_stop_line_pct_of_margin": {
+    "sha256": "9f334f9a852f83a00f44017de7e1d849457f3374969ecec666ccd1738a42ed1e",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_guard_stop_line_pct_of_max_loss": {
+    "sha256": "4db770a926171fa8f93ce2cda774e93c6d4ce739578cf4359dfd804bf2adb6cc",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_guard_stop_line_rule": {
+    "sha256": "a98d257c572f7260f1793ae29af4150f9fbe827a5fae2e04e9534af97412adb1",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_guard_time_exit": {
+    "sha256": "3da7b1b276527a6ece178561b4c942351b9a3bc4ed6888a4e4a2973029ce9cda",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_guard_warn_cost_pct_of_premium_left": {
+    "sha256": "4c0313242d60ce91a2ad2437be7ec13fa0ac4413a5b1f92aba29ff378d164b36",
+    "reviewed": "pending owner read"
+  },
+  "labels:playbook_guard": {
+    "sha256": "48c36c81d937fa9670a4c5fa0d0684f2f7734a2e8134bd201dc07f113788b794",
+    "reviewed": "pending owner read"
   }
 }
