@@ -60,9 +60,14 @@ None.
 
 ## NEXT
 
-1. Build the texts review page (owner 2026-10-31: "Review page later"): one private page listing the 115 pinned texts
-   by screen, each with "OK" / "change to..."; apply the answers in one batch. Then the ADR-215 code change.
-   Owner: approve the iron condor playbook numbers before GC-ADJ2.
+1. UPDATE 2026-10-31 09:57: follow-ups merged into LOCAL feature/adjustments (767eb04d) after prepush --full TOTAL PASS
+   on build/gcadj1 b5ad5fe5 (10/10, 1047 s): ADR-215 Exit Greeks code, closed_booked in the engine, empty vs ambiguous
+   margin, wording, number formats, F-76 live spot proof (needs LIVE_MARKET registered), prepush fixes. Nothing
+   pushed; main dd5f55ac untouched. Three earlier runs were killed by the low-memory reaper at 3.3-3.7 GB free; after
+   a PC restart (7.9 GB free, lowest 6.4 GB during the run) it finished.
+   Texts review page is live (164 texts): https://claude.ai/artifact/WbovsVYLUjdF5xWszjnDxQ - read the `reviews`
+   collection when the owner says done, apply in one batch.
+   Owner: approve the iron condor playbook numbers before GC-ADJ2; delete D:\tmp_a.log.
 2. GC-ADJ2 (playbooks, plan sheet, inbox, history; REQ-158..163), outline at the end of the GC-ADJ1 contract.
 3. GC-ADJ3+ (owner 2026-10-30: outline for approval) - catalogue features in no contract yet:
 
