@@ -194,6 +194,9 @@ main and waits for the owner's explicit approval; it does not open it.
 | 15 | Step 6 Opus money review REVISE: futures counted as premium (ADJ-41 credit -15,05,725.00, right 0) and debit books showing a negative premium still left (ADJ-34 -9,993.75, right none); 3 minor | step 6 | One review-fix round with a 44-scenario oracle sweep test; step 6 not merged until it passes. |
 | 16 | Step 3 round 1: approach ids and day-rule keys shown raw, summary sentences typed in the browser, `docs/api/openapi.json` lacks the /api/playbooks* routes (the dev proxy needs it) | step 3 | Round 2: labels route + summary from the catalogue + ?playbook= link; openapi.json regenerated once by the orchestrator after the merges (generated file). |
 | 17 | Step 5 merge: step 3 made the check helpers public, step 5 changed them; step 5 had added 21 catalogue texts without pins | merge 6d7ec22f | Step 5's code kept under step 3's public names; the 21 missing pins added (pending owner read). |
+| 18 | A dismissed flag reappeared on the next check (seconds) while its condition held; the spec was silent | step 5 | Owner decision (question tool, ~15:30): stays dismissed until the condition clears and holds again -> ADR-217 + REQ-112 AC-7 (391885bd); code fix dispatched. |
+| 19 | `docs/api/openapi.json` could not be generated (step 2's PlaybookBody leaf had no pydantic schema, so /openapi.json would fail too) and the dev proxy did not reach the /api/playbooks* routes | merged tree | Fixed with a schema hook copied from BasketPost; openapi.json regenerated (14 adjustment routes). |
+| 20 | Rule-state rows can never be deleted (guard), so 0031 cannot be downgraded once a check has run; ofo_dev's system playbooks were refreshed as the owner from system_playbooks.json (12 rows) instead of a down/up | ofo_dev | By design (Tier A guard); dev-only refresh recorded here. |
 
 ## Parked
 

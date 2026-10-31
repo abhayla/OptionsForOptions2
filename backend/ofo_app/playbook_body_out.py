@@ -32,3 +32,14 @@ class PlaybookBody:
 
     def as_json(self) -> dict[str, Any]:
         return copy.deepcopy(self._data)
+
+    @classmethod
+    def __get_pydantic_core_schema__(cls, source: object, handler: object) -> object:
+        """As BasketPost: validation accepts only an existing PlaybookBody (no request data is parsed into one); the
+        documented shape is a JSON object (docs/design/playbook-body-v1.md); it is written as its own deep copy."""
+        from pydantic_core import core_schema  # noqa: PLC0415
+
+        return core_schema.json_or_python_schema(
+            json_schema=core_schema.dict_schema(core_schema.str_schema(), core_schema.any_schema()),
+            python_schema=core_schema.is_instance_schema(cls),
+            serialization=core_schema.plain_serializer_function_ser_schema(lambda v: v.as_json()))
