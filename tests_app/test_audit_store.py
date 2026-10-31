@@ -971,7 +971,7 @@ async def test_chain_verifies_after_appends_from_the_order_routes_and_the_entitl
                                                  order_audit.order_correlation(order_row), order_row)
             user = f"test-clock-{uuid.uuid4().hex}"
             await entitlement_store.append(conn, user, trial_grant("trial", before, "registration",
-                                                                   AuditNote("system", "test")))
+                                                                   AuditNote("system", "test"), days=7))
             await _subscription(conn)
             after = await _db_clock(conn)
             log, anchor = await load_log(conn)

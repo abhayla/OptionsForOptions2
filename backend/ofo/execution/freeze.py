@@ -21,7 +21,6 @@ from ofo.instruments.catalogue import Catalogue
 from ofo.instruments.freeze_limits import StoredFreeze, largest_allowed_units
 from ofo.instruments.models import ZERODHA, InstrumentId
 
-STALE_AFTER_DAYS: Final = 8  # issue 257, ADR-091: the review warns when the file date is MORE than 8 days before it
 
 
 @dataclass(frozen=True)
@@ -54,9 +53,10 @@ def freeze_limits_for_plan(plan: ExecutionPlan, catalogue: Catalogue,
     return out
 
 
-def freeze_check(plan: ExecutionPlan, limits: Mapping[str, StoredFreeze] | None, *, today: date) -> FreezeCheck:
+def freeze_check(plan: ExecutionPlan, limits: Mapping[str, StoredFreeze] | None, *, today: date,
+                 stale_after_days: int) -> FreezeCheck:
     """Block each leg whose units are not below its stored limit; warn for each leg with no stored limit, and for a
-    stored limit whose file date is more than ``STALE_AFTER_DAYS`` before ``today`` (the stale limit still blocks).
+    stored limit whose file date is more than ``stale_after_days`` (the ``data.freeze_file_stale_days`` setting in force, REQUIRED) before ``today`` (the stale limit still blocks).
     ``today`` is required (no default, so the age check cannot be skipped by omission)."""
     if not isinstance(plan, ExecutionPlan):
         raise ValueError(f"freeze_check needs an ExecutionPlan, got {plan!r}")
@@ -78,10 +78,10 @@ def freeze_check(plan: ExecutionPlan, limits: Mapping[str, StoredFreeze] | None,
                 "freeze_limit_exceeded", contract=planned.contract, units=units, lots=units // stored.lot,
                 max_units=top, max_lots=top // stored.lot, limit=stored.limit)))
         age = (today - stored.file_date).days
-        if age > STALE_AFTER_DAYS:
+        if age > stale_after_days:
             warnings.append(FreezeFinding(planned.leg_ref, planned.contract, render(
                 "freeze_limit_stale", contract=planned.contract, file_date=stored.file_date, days=age)))
     return FreezeCheck(tuple(blocks), tuple(warnings))
 
 
-__all__ = ["STALE_AFTER_DAYS", "FreezeCheck", "FreezeFinding", "StoredFreeze", "freeze_check", "freeze_limits_for_plan", "largest_allowed_units"]
+__all__ = ["FreezeCheck", "FreezeFinding", "StoredFreeze", "freeze_check", "freeze_limits_for_plan", "largest_allowed_units"]

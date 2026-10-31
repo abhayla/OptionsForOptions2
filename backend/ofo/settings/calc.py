@@ -60,3 +60,42 @@ def scenario_fields(values: Mapping[str, Decimal], index: str) -> dict[str, Deci
         raise ValueError(f"no scenario settings are stated for {index!r}")
     v = values
     return {f: value_of(v, f"scenarios.{index.lower()}_{f}") for f in SCENARIO_FIELDS}
+
+
+# ---- speeds, detection, billing, data (GC-SET batch 2) ---------------------------------------------------------
+OPEN_STRATEGY_SECONDS = "speeds.open_strategy_seconds"
+FEED_STALE_SECONDS = "detection.feed_stale_seconds"
+FEED_RECONNECT_SECONDS = "detection.feed_reconnect_window_seconds"
+TRIAL_DAYS = "billing.trial_days"
+REFERRAL_DAYS = "billing.referral_days"
+MAX_DELIST_PERCENT = "data.max_delist_percent"
+FREEZE_STALE_DAYS = "data.freeze_file_stale_days"
+
+
+def open_strategy_seconds(values: Mapping[str, Decimal]) -> float:
+    """Seconds between two live pushes of one open strategy (a time gate, not money: a float is exact enough)."""
+    return float(value_of(values, OPEN_STRATEGY_SECONDS))
+
+
+def feed_stale_seconds(values: Mapping[str, Decimal]) -> float:
+    return float(value_of(values, FEED_STALE_SECONDS))
+
+
+def feed_reconnect_seconds(values: Mapping[str, Decimal]) -> float:
+    return float(value_of(values, FEED_RECONNECT_SECONDS))
+
+
+def trial_days(values: Mapping[str, Decimal]) -> int:
+    return int(value_of(values, TRIAL_DAYS))
+
+
+def referral_days(values: Mapping[str, Decimal]) -> int:
+    return int(value_of(values, REFERRAL_DAYS))
+
+
+def max_delist_percent(values: Mapping[str, Decimal]) -> Decimal:
+    return value_of(values, MAX_DELIST_PERCENT)
+
+
+def freeze_stale_days(values: Mapping[str, Decimal]) -> int:
+    return int(value_of(values, FREEZE_STALE_DAYS))

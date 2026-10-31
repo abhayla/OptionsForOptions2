@@ -540,7 +540,7 @@ def overrides(scn: Scenario) -> dict[Any, Any]:
 
     ctx = outcome.MarketContext(scn.provider, scn.clock, scn.rate)
 
-    async def scenario_context(read_settings=Depends(outcome.get_settings_reader)):  # noqa: B008 - FastAPI dependency
+    async def scenario_context(read_settings=Depends(outcome.get_request_settings_reader)):  # noqa: B008 - FastAPI dependency
         """The scenario stands in for live, so it prices with the ``pricing.risk_free_rate`` setting in force at each
         request (the scenario's own rate is only the starting value); same helper as the live dependency. A store that
         cannot answer fails closed. Replay mode and unit-test overrides keep their own rate. (No annotation on the

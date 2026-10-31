@@ -89,7 +89,7 @@ def test_req_scenarios_pro_disconnected_limited_with_active_strategy_reconciliat
     pro_user = record(
         ledger_for("u-pro"), NewGrant("paid-1", Source.PAID_MONTHLY, ist(2026, 9, 1), timedelta(days=30), "pay", note())
     )
-    trial_user = record(ledger_for("u-trial"), trial_grant("t", registered, "reg", note()))
+    trial_user = record(ledger_for("u-trial"), trial_grant("t", registered, "reg", note(), days=7))
 
     # "A Pro user can be disconnected from Zerodha" and "a strategy can be Reconciliation Required while the
     # subscription is active": the Pro user's ledger holds no session or strategy, and stays Pro.

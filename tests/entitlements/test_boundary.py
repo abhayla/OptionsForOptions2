@@ -48,9 +48,9 @@ def _resolved(led: EntitlementLedger, entitlement_id: str):
 
 def test_second_grant_with_same_source_and_reference_is_refused():
     """AC-4: the same referral (source + reference) applied twice would give 60 days; the second is refused."""
-    led = record(ledger_for("u"), referral_grant("ref-1", NOW, "referred:alice", note()))
+    led = record(ledger_for("u"), referral_grant("ref-1", NOW, "referred:alice", note(), days=30))
     with pytest.raises(ValueError, match="already recorded"):
-        record(led, referral_grant("ref-2", NOW, "referred:alice", note()))
+        record(led, referral_grant("ref-2", NOW, "referred:alice", note(), days=30))
     assert pro_end(led, NOW) == NOW + timedelta(days=30)
     # Same reference under a DIFFERENT source is a different fact and is accepted.
     record(led, _paid("paid-1", NOW, "referred:alice"))
@@ -58,16 +58,16 @@ def test_second_grant_with_same_source_and_reference_is_refused():
 
 def test_second_trial_in_one_ledger_is_refused():
     """AC-4: one trial per Client ID (ADR-022): a second trial grant is refused, whatever its reference."""
-    led = record(ledger_for("u"), trial_grant("trial-1", NOW, "registration", note()))
+    led = record(ledger_for("u"), trial_grant("trial-1", NOW, "registration", note(), days=7))
     with pytest.raises(ValueError, match="already has a trial"):
-        record(led, trial_grant("trial-2", NOW, "registration-again", note()))
+        record(led, trial_grant("trial-2", NOW, "registration-again", note(), days=7))
 
 
 def test_duplicate_entitlement_id_is_refused():
     """AC-4: two grants with one entitlement_id would make revocation ambiguous; the second is refused."""
     led = record(ledger_for("u"), _paid("e-1", NOW, "pay_1"))
     with pytest.raises(ValueError, match="already granted"):
-        record(led, referral_grant("e-1", NOW, "row-9", note()))
+        record(led, referral_grant("e-1", NOW, "row-9", note(), days=30))
 
 
 # ---------------------------------------------------------------- finding 2: absurd durations
@@ -130,7 +130,7 @@ def test_backdated_revocation_is_refused():
     """AC-4: direct revoked on day 100 effective day 5 would re-lay the banked referral into the past; refused."""
     day0 = ist(2026, 9, 1)
     led = record(ledger_for("u"), _direct(day0))
-    led = record(led, referral_grant("ref-1", day0 + timedelta(days=10), "row-1", note()))
+    led = record(led, referral_grant("ref-1", day0 + timedelta(days=10), "row-1", note(), days=30))
     assert banked_days(led) == 30
     with pytest.raises(ValueError, match="backdated"):
         revoke(at(led, day0 + timedelta(days=100)), "direct-1", day0 + timedelta(days=5), note("deactivated"))
@@ -146,7 +146,7 @@ def test_backdated_revocation_is_refused():
 def test_revoking_a_banked_referral_cancels_its_saved_days():
     """AC-4: a revoked referral that is banked behind direct Pro no longer shows 30 days saved."""
     led = record(ledger_for("u"), _direct(NOW))
-    led = record(led, referral_grant("ref-1", NOW, "row-1", note()))
+    led = record(led, referral_grant("ref-1", NOW, "row-1", note(), days=30))
     assert banked_days(led) == 30
     led = revoke(at(led, NOW + timedelta(hours=1)), "ref-1", NOW + timedelta(hours=1), note("attribution reversed"))
     assert banked_days(led) == 0
@@ -201,7 +201,7 @@ def test_status_is_evaluated_at_the_query_time():
     assert paid.status_at(revoked_at) is Status.REVOKED
     assert paid.status_at(NOW + timedelta(days=60)) is Status.REVOKED
 
-    trial_led = record(ledger_for("u2"), trial_grant("t", NOW, "reg", note()))
+    trial_led = record(ledger_for("u2"), trial_grant("t", NOW, "reg", note(), days=7))
     ended_at = NOW + timedelta(days=1)
     trial_led = end_trial_early(at(trial_led, ended_at), "t", ended_at, note("ADR-039"))
     assert _resolved(trial_led, "t").status_at(ended_at) is Status.ENDED
@@ -209,7 +209,7 @@ def test_status_is_evaluated_at_the_query_time():
 
 def test_banked_entitlement_is_not_expired_while_days_are_saved():
     """AC-3: a referral banked behind direct Pro is still ACTIVE (owed), not EXPIRED."""
-    led = record(record(ledger_for("u"), _direct(NOW)), referral_grant("ref-1", NOW, "row-1", note()))
+    led = record(record(ledger_for("u"), _direct(NOW)), referral_grant("ref-1", NOW, "row-1", note(), days=30))
     assert _resolved(led, "ref-1").status_at(NOW + timedelta(days=400)) is Status.ACTIVE
 
 
@@ -219,7 +219,7 @@ def test_banked_entitlement_is_not_expired_while_days_are_saved():
 def test_ending_a_banked_trial_cancels_its_remaining_days():
     """AC-4: ADR-039 on a trial paused behind direct Pro: ending it cancels the banked trial days (no second trial)."""
     registered = ist(2026, 9, 29)
-    led = record(ledger_for("u"), trial_grant("trial-1", registered, "reg", note()))
+    led = record(ledger_for("u"), trial_grant("trial-1", registered, "reg", note(), days=7))
     led = record(led, _direct(ist(2026, 10, 1)))
     assert banked_days(led) == 5
 
@@ -239,7 +239,7 @@ OCT_1 = ist(2026, 10, 1)
 
 def test_backdated_open_ended_grant_is_refused():
     """AC-4 (round 4, MAJOR A): a DIRECT grant recorded 31 Oct dated 30 Sep would re-credit the trial days; refused."""
-    led = record(ledger_for("u"), trial_grant("trial-1", OCT_1, "registration", note()))
+    led = record(ledger_for("u"), trial_grant("trial-1", OCT_1, "registration", note(), days=7))
     backdated = NewGrant(
         "direct-1", Source.DIRECT_ZERODHA_CUSTOMER, ist(2026, 9, 30), None, "eligibility:row-42", note()
     )
@@ -305,9 +305,9 @@ def test_default_clock_is_the_real_utc_now():
 @pytest.mark.parametrize("variant", ["alice ", "ALICE", "  Alice	"])
 def test_references_are_normalised_before_the_duplicate_check(variant):
     """AC-4 (round 4, MINOR 1): "alice", "alice " and "ALICE" are one referral; the variant is refused."""
-    led = record(ledger_for("u"), referral_grant("ref-1", NOW, "alice", note()))
+    led = record(ledger_for("u"), referral_grant("ref-1", NOW, "alice", note(), days=30))
     with pytest.raises(ValueError, match="already recorded"):
-        record(led, referral_grant("ref-2", NOW, variant, note()))
+        record(led, referral_grant("ref-2", NOW, variant, note(), days=30))
 
 
 def test_one_payment_reference_grants_once_across_monthly_and_annual():
@@ -317,7 +317,7 @@ def test_one_payment_reference_grants_once_across_monthly_and_annual():
     with pytest.raises(ValueError, match="already recorded"):
         record(led, annual)
     # A referral and a payment that happen to share a reference are different facts: both stand.
-    both = record(record(ledger_for("u"), referral_grant("r", NOW, "alice", note())), _paid("p", NOW, "alice"))
+    both = record(record(ledger_for("u"), referral_grant("r", NOW, "alice", note(), days=30)), _paid("p", NOW, "alice"))
     assert len(both.grants()) == 2
 
 
@@ -327,24 +327,24 @@ def test_maximum_accumulated_free_days_cap_of_90():
     start = ist(2026, 10, 1)
     led = ledger_for("u", max_free_days=90)
     for n in range(3):
-        led = record(led, referral_grant(f"r{n}", start, f"row-{n}", note()))
+        led = record(led, referral_grant(f"r{n}", start, f"row-{n}", note(), days=30))
     with pytest.raises(ValueError, match="maximum accumulated free days"):
-        record(led, referral_grant("r3", start, "row-3", note()))
+        record(led, referral_grant("r3", start, "row-3", note(), days=30))
     led = record(led, _paid("p1", start, "pay_1"))  # paid days are not free days
     later = ist(2026, 10, 31)  # 30 free days used by now: 60 unused + 30 new = 90
-    led = record(led, referral_grant("r4", later, "row-4", note()))
+    led = record(led, referral_grant("r4", later, "row-4", note(), days=30))
     assert len(led.grants()) == 5
 
 
 def test_free_day_cap_counts_trial_days_and_defaults_to_no_cap():
     """AC-4 (round 4, MINOR 2): trial days count toward the cap; the default (owner has not set one) is no cap."""
     start = ist(2026, 10, 1)
-    capped = record(ledger_for("u", max_free_days=30), trial_grant("t", start, "reg", note()))
+    capped = record(ledger_for("u", max_free_days=30), trial_grant("t", start, "reg", note(), days=7))
     with pytest.raises(ValueError, match="maximum accumulated free days"):
-        record(capped, referral_grant("r0", start, "row-0", note()))
+        record(capped, referral_grant("r0", start, "row-0", note(), days=30))
     uncapped = ledger_for("u")
     for n in range(20):
-        uncapped = record(uncapped, referral_grant(f"r{n}", start, f"row-{n}", note()))
+        uncapped = record(uncapped, referral_grant(f"r{n}", start, f"row-{n}", note(), days=30))
     assert len(uncapped.grants()) == 20
     for bad in (0, -1, 30.0, True):
         with pytest.raises(ValueError, match="max_free_days"):

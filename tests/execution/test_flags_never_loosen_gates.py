@@ -54,9 +54,9 @@ def _gate_signature(condor, catalogue, eligibility) -> dict[str, object]:
         verdict = check_margin(available, required)
         out[f"margin:{name}"] = (verdict.allowed, None if verdict.message is None else display_text(verdict.message))
     for units in (54 * 65, 55 * 65):
-        review = execution_review(plan_of(units), FakeMargin({}), freeze_limits={SYMBOL: REAL}, today=TODAY)
+        review = execution_review(plan_of(units), FakeMargin({}), freeze_limits={SYMBOL: REAL}, today=TODAY, freeze_stale_days=8)
         out[f"freeze:{units}"] = (review.can_execute, tuple(display_text(b.message) for b in review.blocked))
-        found = freeze_check(plan_of(units), {SYMBOL: REAL}, today=TODAY)
+        found = freeze_check(plan_of(units), {SYMBOL: REAL}, today=TODAY, stale_after_days=8)
         out[f"freeze_check:{units}"] = tuple(display_text(b.message) for b in found.blocks)
     out["reconciliation:none"] = blocked_strategy_ids(None, {})
     return out

@@ -63,6 +63,7 @@ from ofo.execution.freeze import freeze_check
 from ofo.execution.safety import check_pre_execution
 from ofo.instruments.models import ZERODHA, InstrumentId
 from ofo.limits import INTEGER_MAX
+from ofo.settings import calc
 from ofo.market_calendar import is_market_open as market_open  # the one shared market-hours check (ADR-119 calendar)
 from ofo.marketdata.health import HealthThresholds
 from ofo.money import PAISE
@@ -90,7 +91,7 @@ from ofo_app.kite_replies import ContractIndex, KiteReplyError, PositionsRead, l
 from ofo_app.order_path_switch import require_order_path
 from ofo_app.return_book import read_book
 from ofo_app.routes.broker import current_user_ref
-from ofo_app.routes.outcome import RequestSeq, load_charge_rates
+from ofo_app.routes.outcome import RequestSeq, get_settings_reader, load_charge_rates
 from ofo_app.routes.strategies import StrategyRefused
 
 router = APIRouter(route_class=ClosedRoute, dependencies=[Depends(require_order_path)])  # W-121: runs first
@@ -453,13 +454,14 @@ async def _gate(req: _Request, priced: ep.PricedPlan, context: ExecutionContext,
 async def _basket(req: _Request, priced: ep.PricedPlan, catalogue: Any, plan_number: int) -> Any:
     limits = await review_freeze_limits(req.db, priced.plan)
     today = req.now.astimezone(IST).date()
-    frozen = freeze_check(priced.plan, limits, today=today)
+    stale_days = calc.freeze_stale_days(await get_settings_reader()())  # REQ-167 AC-4: the value in force now
+    frozen = freeze_check(priced.plan, limits, today=today, stale_after_days=stale_days)
     if frozen.blocks:
         raise _refuse_with(frozen.blocks[0].message)
     try:
         basket = await asyncio.to_thread(checked_basket, priced.plan, catalogue, plan_number,
                                          margin_client=req.session.margin,
-                                         freeze_check=lambda p: freeze_check(p, limits, today=today))
+                                         freeze_check=lambda p: freeze_check(p, limits, today=today, stale_after_days=stale_days))
     except BasketRefused as exc:
         raise _refuse_with(exc.user_message or render("gate_margin_unconfirmed")) from None
     if not is_checked_basket(basket):  # the one production path to a basket

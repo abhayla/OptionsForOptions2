@@ -14,7 +14,7 @@ stored catalogue (one short database read per applied request, never per push: f
 picks ``strikes_each_side`` catalogue strikes either side of the ATM strike from the LIVE spot (no spot: no strikes and
 no guessed ATM), subscribes those CE/PE contracts and the index on the shared ``FanOut`` and pushes :func:`chain_answer`
 - the same function the REST read returns - only when something the screen shows changed. EVERY outbound message (a
-push or the error reply to invalid client messages, coalesced into one) passes ONE gate of ``MIN_PUSH_INTERVAL``
+push or the error reply to invalid client messages, coalesced into one) passes ONE gate of ``speeds.open_strategy_seconds`` (the setting in force)
 seconds, so the socket never sends more than one message a second for any reason; a pending push takes the gate before
 a pending error reply, and error replies go at most once every ``ERROR_REPLY_SECONDS`` (#439). Every subscription
 change (an applied request, latest wins; a re-pick once the spot arrives) happens at most once a second, so a client
@@ -78,7 +78,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from ofo_app.api_models import ApiModel, CatalogueText, InstrumentId, Money
 from ofo_app.catalogue_picker import PickableContract
-from ofo_app.live_push import MIN_PUSH_INTERVAL, POLL_SECONDS, Channel, ChannelClosed, LiveFeed
+from ofo_app.live_push import POLL_SECONDS, Channel, ChannelClosed, LiveFeed, PushInterval
 from ofo_app.routes.outcome import HealthCode, MarketContext, label_time, market_state
 from ofo_app.underlying import Underlying, refusal_of
 
@@ -505,6 +505,8 @@ class ChainPush:
         self._pending: ChainRequest | None = None
         self._last_take: float | None = None  # every subscription change: an applied request, a re-pick, a re-centre
         self._shown: tuple | None = None
+        self._push_interval = PushInterval(monotonic)
+        self._interval = 0.0  # replaced by the setting at the first loop tick, before any gate is read
         self._last_send: float | None = None  # EVERY outbound message: a push or an error reply
         self._error_message: UserFacingError | None = None  # the catalogue message the pending error reply carries
         self._error_due = False  # invalid client messages since the last error reply: answered with ONE error, gated
@@ -534,7 +536,7 @@ class ChainPush:
     def _gate_open(self) -> bool:
         """ONE gate for every outbound message (a push, an error reply): at most one a second, whatever the reason."""
         since = self._since(self._last_send)
-        return since is None or since >= MIN_PUSH_INTERVAL
+        return since is None or since >= self._interval
 
     async def _emit(self, message: Any) -> None:
         await self._channel.send(message)
@@ -556,7 +558,7 @@ class ChainPush:
         return since is None or since >= interval
 
     async def _maybe_apply(self) -> None:
-        if self._pending is None or not self._may_take(MIN_PUSH_INTERVAL):
+        if self._pending is None or not self._may_take(self._interval):
             return  # at most one subscription change (catalogue read, Kite subscribe) a second
         req, self._pending = self._pending, None
         self._last_take = self._monotonic()
@@ -607,7 +609,7 @@ class ChainPush:
         if self._req is None or self._catalogue is None or self._handle is None:
             return
         if self._window is None:
-            if self._may_take(MIN_PUSH_INTERVAL) and pick_window(self._ctx, self._req, self._catalogue) is not None:
+            if self._may_take(self._interval) and pick_window(self._ctx, self._req, self._catalogue) is not None:
                 self._take(self._req, self._catalogue)
             return
         if not self._may_take(RECENTRE_SECONDS):
@@ -684,6 +686,7 @@ class ChainPush:
             while True:
                 if recv is None:
                     recv = asyncio.ensure_future(self._channel.receive())
+                self._interval = await self._push_interval.current()  # the setting in force, no restart
                 done, _ = await asyncio.wait({recv}, timeout=self._poll)
                 if done:
                     task, recv = recv, None
