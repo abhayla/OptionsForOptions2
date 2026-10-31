@@ -190,6 +190,9 @@ const notice = ref(null)
 const answer = ref(null)
 const testRefusal = ref(null)
 const testing = ref(false)
+// GC-ADJ2 finding 22: the server bounds each strategy's reads at 8 s, 4 at a time (measured 18.4 s for ~25 saved
+// strategies on ofo_dev), longer than the client's 10 s default; as StrategyPriceChart's history read does
+const PLAYBOOK_TEST_TIMEOUT_MS = 60000
 const pastNote = ref(null)
 let readSeq = 0 // newest read wins: an answer for an earlier pick is dropped (state read after await)
 let testSeq = 0
@@ -287,7 +290,7 @@ async function runTest() {
   testRefusal.value = null
   answer.value = null
   try {
-    const res = await api.post('/playbooks/test', { type: typeKey.value, body: work.value })
+    const res = await api.post('/playbooks/test', { type: typeKey.value, body: work.value }, { timeout: PLAYBOOK_TEST_TIMEOUT_MS })
     if (seq !== testSeq) return
     answer.value = res.data
     pastNote.value = said(res.data.past_note)
