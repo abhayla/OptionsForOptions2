@@ -838,12 +838,6 @@
   "adjustment_cost": "144.00",
   "triggers_fired": [
    {
-    "id": "T-01",
-    "value": "0.4739",
-    "limit": "0.5000",
-    "cmp": "le"
-   },
-   {
     "id": "T-03",
     "value": "0.3500",
     "limit": "0.3500",
@@ -860,6 +854,9 @@
     "id": "T-10b",
     "reason": "no value in the Middle stage"
    }
+  ],
+  "already_true_at_entry": [
+   "T-01"
   ],
   "day_rules": [
    {

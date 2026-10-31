@@ -1800,12 +1800,6 @@
     "value": "0.0500",
     "limit": "2.4000",
     "cmp": "le"
-   },
-   {
-    "id": "T-19",
-    "value": "2.0236",
-    "limit": "2.4000",
-    "cmp": "le"
    }
   ],
   "triggers_close": [],
