@@ -47,7 +47,8 @@ def test_adj02_iron_condor_is_ic():
     assert st.type_of(_legs("ADJ-02"), D("23420"), D("50")) == "ic"
 
 
-@pytest.mark.parametrize(("spot", "gap"), [(None, D("50")), (D("23420"), None), (D("0"), D("50")), (D("23420"), D("0"))])
+@pytest.mark.parametrize(("spot", "gap"),
+                         [(None, D("50")), (D("23420"), None), (D("0"), D("50")), (D("23420"), D("0"))])
 def test_missing_spot_or_gap_is_generic(spot, gap):
     assert st.type_of(_legs("ADJ-02"), spot, gap) is None
 

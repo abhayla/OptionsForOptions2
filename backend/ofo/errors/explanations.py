@@ -1270,6 +1270,10 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         "POP not available: the spot is stale or missing."),
     ExplanationTemplate("adjust_margin_not_available", "values_seen", "Margin not available: {reason}",
                         {"reason": Explained}),
+    # GC-ADJ2 1C (REQ-045 AC-1, Q252): the adjustment check's two flag labels and the playbook type's shown name
+    ExplanationTemplate("adjust_check_flag_system", "what_triggered", "Adjustment opportunity detected"),
+    ExplanationTemplate("adjust_check_flag_user", "what_triggered", "Your rule was triggered"),
+    ExplanationTemplate("adjust_check_type_name", "values_seen", "{name}", {"name": PlaybookTypeName}),
     ExplanationTemplate("adjust_spot_from_feed", "values_seen", "Spot from the live feed"),
     ExplanationTemplate("adjust_spot_from_rest_quote", "values_seen", "Spot from a REST quote"),
     ExplanationTemplate("adjust_spot_from_last_close", "values_seen", "Spot from the last close"),

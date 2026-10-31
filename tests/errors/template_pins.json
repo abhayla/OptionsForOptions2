@@ -2630,5 +2630,17 @@
   "labels:playbook_type": {
     "sha256": "86aa465e822d4f75cb54465bb86ad47b811a7fae35be90bbabb83c6ceb7c80bf",
     "reviewed": "pending owner read"
+  },
+  "explanation:adjust_check_flag_system": {
+    "sha256": "4eb361b62a2bd01c4c307dbd6ea29685f6f5cb4f60013d4b96043dd1ebc9cd0c",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_check_flag_user": {
+    "sha256": "58e65ddd74766fc5c7b13ce4ca24d6db669f4c686e56cca0d2d3cc7a7584c546",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_check_type_name": {
+    "sha256": "6812d4f9f2a54353f3930dcd5eac870ebb5e421e25baa6c61dd616426750e8d8",
+    "reviewed": "pending owner read"
   }
 }
