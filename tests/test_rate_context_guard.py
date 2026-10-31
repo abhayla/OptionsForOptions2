@@ -32,6 +32,8 @@ import shutil
 
 import pytest
 
+pytestmark = pytest.mark.repo_scan
+
 ROUTES = pathlib.Path(__file__).resolve().parent.parent / "backend" / "ofo_app" / "routes"
 DEPENDENCY = "Depends(get_market_context)"
 

@@ -126,8 +126,8 @@ def test_every_per_underlying_table_has_exactly_the_homes_names() -> None:
 def test_the_scan_finds_the_known_tables() -> None:
     """Guards the scan itself: if it stops seeing the tables it was written for, it proves nothing."""
     seen = {f for f, _, _ in all_tables()}
-    for expected in ("backend/ofo/instruments/catalogue.py", "backend/ofo/strategy/placement.py",
-                     "backend/ofo/range/pick_lists.py", "backend/ofo/scenario/config.py",
+    for expected in ("backend/ofo/instruments/catalogue.py", "backend/ofo/settings/calc.py",
+                     "backend/ofo/range/pick_lists.py",  # scenario/config.py tables moved to settings (GC-SET)
                      "frontend/src/lib/guided.js", "frontend/src/lib/readyMade.js",
                      "frontend/src/composables/useIndexLive.js", "frontend/src/lib/underlyings.js"):
         assert expected in seen, expected

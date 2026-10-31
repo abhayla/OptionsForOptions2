@@ -1,5 +1,5 @@
 <!-- App settings (GC-SET step 2; REQ-167 AC-2, AC-3, AC-5): every app-wide number a calculation uses, by group, with the
-     value in force, its default, when it took effect and who set it, and the history. The admin changes a value from a
+     value in force, its default, when it took effect and who set it, and the earlier values. The admin changes a value from a
      stated time (now by default), resets it to the default (a new row, never a delete), and adds a charge rate set with
      its source address. Every number is shown exactly as the server sent it (a decimal string: never parsed to a float
      here). A refused change shows the server's reason inline. States of the page: loading, ready, unavailable. -->
@@ -122,7 +122,7 @@ onMounted(load)
     <PageHeader title="Settings" />
     <p class="mb-4 text-sm text-ink-muted">
       App-wide numbers that every screen uses. A change takes effect from the time you choose (now by default) and the earlier values
-      stay in the history.
+      stay in the earlier values.
     </p>
     <p v-if="state === 'loading'" data-testid="settings-loading">Loading settings…</p>
     <div v-else-if="state === 'unavailable'" data-testid="settings-unavailable">
@@ -171,12 +171,12 @@ onMounted(load)
                   <p v-if="formFor(s.key).reason" role="alert" class="mt-1 text-error" data-testid="refusal">{{ formFor(s.key).reason }}</p>
                 </td>
               </tr>
-              <tr v-if="s.history.length" :data-testid="`history-${s.key}`">
+              <tr v-if="s.earlier_values.length" :data-testid="`earlier-values-${s.key}`">
                 <td colspan="8" class="pb-2">
                   <details>
-                    <summary>History ({{ s.history.length }})</summary>
+                    <summary>Earlier values ({{ s.earlier_values.length }})</summary>
                     <ul>
-                      <li v-for="(h, i) in s.history" :key="i" data-testid="history-row">
+                      <li v-for="(h, i) in s.earlier_values" :key="i" data-testid="earlier-value-row">
                         {{ h.value }} - {{ STATE_WORD[h.state] }} from {{ when(h.effective_from) }}, set by {{ h.set_by }}
                       </li>
                     </ul>

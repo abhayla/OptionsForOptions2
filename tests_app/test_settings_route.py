@@ -85,14 +85,14 @@ async def test_core_admin_changes_the_rate_and_the_next_priced_request_uses_it(e
     used = _live(replayed, monkeypatch)
     first = (await env.client.get("/api/settings")).json()
     row = _setting(first)
-    assert (row["value"], row["default"], row["is_default"], row["set_by"], row["history"]) == (
+    assert (row["value"], row["default"], row["is_default"], row["set_by"], row["earlier_values"]) == (
         "0.065", "0.065", True, None, [])
     assert (await env.client.post("/api/strategies/outcome", json=_body(replayed))).status_code == HTTPStatus.OK
     posted = await env.client.post(URL, json={"value": "0.07", "note": "RBI move"})
     assert posted.status_code == HTTPStatus.OK, posted.text
     after = _setting((await env.client.get("/api/settings")).json())
     assert (after["value"], after["is_default"], after["set_by"]) == ("0.07", False, "owner")
-    assert [(h["value"], h["state"]) for h in after["history"]] == [("0.07", "in_force")]
+    assert [(h["value"], h["state"]) for h in after["earlier_values"]] == [("0.07", "in_force")]
     refused = await env.client.post(URL, json={"value": "6.5", "note": ""})
     assert refused.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
     assert "Enter 0.065 for 6.5%" in refused.json()["reason"], refused.text
@@ -109,9 +109,9 @@ async def test_ac2_page_shape_groups_default_since_who_history_newest_first(env)
     assert (row["min"], row["max"], row["unit"]) == ("0", "0.5", "fraction")
     for raw in ("0.07", "0.071"):
         assert (await env.client.post(URL, json={"value": raw, "note": ""})).status_code == HTTPStatus.OK
-    history = _setting((await env.client.get("/api/settings")).json())["history"]
-    assert [h["value"] for h in history] == ["0.071", "0.07"]  # newest first
-    assert [h["state"] for h in history] == ["in_force", "earlier"]
+    earlier_values = _setting((await env.client.get("/api/settings")).json())["earlier_values"]
+    assert [h["value"] for h in earlier_values] == ["0.071", "0.07"]  # newest first
+    assert [h["state"] for h in earlier_values] == ["in_force", "earlier"]
 
 
 async def test_state_future_row_is_scheduled_not_in_force(env):
@@ -120,7 +120,7 @@ async def test_state_future_row_is_scheduled_not_in_force(env):
     assert posted.status_code == HTTPStatus.OK, posted.text
     row = _setting((await env.client.get("/api/settings")).json())
     assert (row["value"], row["is_default"]) == ("0.065", True)
-    assert [(h["value"], h["state"]) for h in row["history"]] == [("0.07", "scheduled")]
+    assert [(h["value"], h["state"]) for h in row["earlier_values"]] == [("0.07", "scheduled")]
 
 
 async def test_state_reset_is_a_new_row_never_a_delete(env):
@@ -129,7 +129,7 @@ async def test_state_reset_is_a_new_row_never_a_delete(env):
     assert reset.status_code == HTTPStatus.OK, reset.text
     row = reset.json()
     assert row["value"] == "0.065" and row["is_default"] is False
-    assert [h["value"] for h in row["history"]] == ["0.065", "0.07"]
+    assert [h["value"] for h in row["earlier_values"]] == ["0.065", "0.07"]
     assert await env.count(SETTING_COUNT) == TWO_ROWS
 
 
@@ -198,16 +198,30 @@ async def test_ac3_every_change_is_in_the_audit_log_and_reset_too(env):
     assert KEY in reason and "0.07" in reason and "why" in reason
 
 
+def _unguarded_writes(api_router: APIRouter) -> list[str]:
+    """Every non-read route of ``api_router`` that does not depend on ``require_admin`` (empty = fail closed holds)."""
+    from ofo_app.routes import settings as route  # noqa: PLC0415
+
+    bad = []
+    for r in api_router.routes:
+        methods = getattr(r, "methods", None) or set()
+        if methods <= {"GET", "HEAD", "OPTIONS"}:
+            continue
+        if not any(dep.call is route.require_admin for dep in r.dependant.dependencies):
+            bad.append(f"{sorted(methods)} {r.path}")
+    return bad
+
+
 async def test_ac3_the_one_guard_decides_every_write_and_fails_closed_for_a_new_write_route(env):
     from fastapi import HTTPException  # noqa: PLC0415
     from ofo_app.routes import settings as route  # noqa: PLC0415
 
-    assert route.unguarded_writes(route.router) == []
+    assert _unguarded_writes(route.router) == []
     probe = APIRouter()
     probe.add_api_route("/x", lambda: None, methods=["POST"])
     probe.add_api_route("/y", lambda: None, methods=["DELETE"], dependencies=[Depends(route.require_admin)])
     probe.add_api_route("/z", lambda: None, methods=["GET"])
-    assert route.unguarded_writes(probe) == ["['POST'] /x"]  # a new write route without the guard is named
+    assert _unguarded_writes(probe) == ["['POST'] /x"]  # a new write route without the guard is named
 
     def deny():
         raise HTTPException(status_code=403)

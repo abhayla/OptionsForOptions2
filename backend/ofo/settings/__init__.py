@@ -107,7 +107,7 @@ def parse_registry(text: str) -> dict[str, Setting]:
     for row in data["settings"]:
         if not isinstance(row, dict):
             raise RegistryError("every registry entry is an object")
-        _no_unknown_fields(row, ENTRY_FIELDS, f"registry entry {row.get('key')!r}")
+        _no_unknown_fields(row, ENTRY_FIELDS, f"entry[{row.get('key')!r}]")
         key = row.get("key")
         if not isinstance(key, str) or not key or key in out:
             raise RegistryError(f"registry key missing or duplicated: {key!r}")
