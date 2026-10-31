@@ -4,10 +4,9 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (215)
+## Decisions (216)
 
-- Older decisions: 175 rows, ADR-1..ADR-178 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
-- ADR-179 2026-10-23: Technical decision of the orchestrator (REQ-118 is a TECH row, master register MR-095, decided by t… [amends REQ-118]
+- Older decisions: 176 rows, ADR-1..ADR-179 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
 - ADR-180 2026-10-23: Owner-approved one-time exception to the CLAUDE.md hard rule "Merge only with merge.py": PR #525 (b… [applies ADR-115]
 - ADR-181 2026-10-24: Owner-approved amendment of ADR-178's process-tool freeze ("at most one item per chunk on Sonnet"):… [extends ADR-178]
 - ADR-182 2026-10-25: When price protection (ADR-095) is wired into Execute, each leg's allowance and its protected LIMIT… [extends ADR-095]
@@ -47,6 +46,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-217 2026-10-31: When the user dismisses an adjustment opportunity, the same rule on the same strategy opens no new… [Adds REQ-112 AC-7 (REQ-112 AC-2 defined "Dismisse…]
 - ADR-220 2026-10-31: (1) Server roles. [Adds REQ-166 (calculation speeds and the safety v…]
 - ADR-221 2026-10-31: The T-19 trigger ("premium still left to earn is below N x the adjustment's cost") uses, at each ch… [Settles the gap in REQ-159 "How the open triggers…]
+- ADR-222 2026-10-31: (1) No rupee amount, rate, percentage or threshold that changes a figure a user sees is typed in co… [Builds the "admin settings" ADR-082 (charge rates…]
 
 ## Requirements (157)
 
