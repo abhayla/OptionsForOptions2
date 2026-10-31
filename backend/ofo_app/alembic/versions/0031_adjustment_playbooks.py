@@ -13,8 +13,10 @@ Changes (owner-run, one transaction, the API stopped):
 - public.adjustment_playbooks: id, user_ref (NULL = system), strategy_type (the 12 keys), name (trimmed, 1..80),
   is_system (= user_ref IS NULL), status draft|approved (DEFAULT draft; only the seed sets approved), body JSONB (an
   object, schema 1, its strategy_type = the row's), version >= 1, created_at / updated_at from the database clock.
-  UNIQUE (coalesce(user_ref, ''), strategy_type, lower(name)) - user_ref is never '' (CHECK), so '' marks the system
-  rows; UNIQUE (strategy_type) WHERE is_system; UNIQUE (id, strategy_type) for the active row's composite key.
+  The name CHECK (adjustment_playbooks_name_shape) refuses any whitespace run other than one inner
+  space (tab, newline, double space, no-break space, the Unicode spaces) and leading / trailing space;
+  UNIQUE (coalesce(user_ref, ''), strategy_type, lower(normalised name)) - user_ref is never '' (CHECK), so ''
+  marks the system rows; UNIQUE (strategy_type) WHERE is_system; UNIQUE (id, strategy_type) for the active row's composite key.
   Guard (SQLSTATE OF031): a system row is never inserted, updated or deleted by a role that is not a member of the
   table owner (the application role); id, user_ref, is_system, strategy_type, created_at never change; every UPDATE
   sets version = old + 1 and updated_at from the clock (the store's optimistic check reads version).
@@ -24,14 +26,17 @@ Changes (owner-run, one transaction, the API stopped):
   type's system playbook is active.
 - public.strategy_adjustment_plans: strategy_id PK -> strategies, playbook_id -> adjustment_playbooks ON DELETE SET
   NULL (only the pointer), strategy_type, body (same CHECKs), accepted_at. A COPY: no trigger on the playbook table
-  writes here. Guard: no DELETE; strategy_id and strategy_type never change; a body change stamps accepted_at.
+  writes here. Guard: no DELETE; strategy_id and strategy_type never change; a body change stamps accepted_at; a
+  set / changed playbook_id must be a system playbook or the strategy owner's own, of the plan's strategy_type.
 - public.adjustment_rule_state: PK (strategy_id, rule_id), held_at_entry (never changes), seen_clear (false -> true
   only), updated_at. Guard: no DELETE.
 - public.adjustment_suggestions: id, strategy_id, rule_id, trigger_id, stage, value, threshold, shown_at, outcome
   (open|dismissed|acted_on|lapsed|completed|partly_completed, starts open), dismiss_reason, timeline (JSONB array).
   UNIQUE (strategy_id, rule_id) WHERE outcome = 'open'. Guard: no DELETE; only outcome, dismiss_reason, timeline
-  change; outcome leaves open once (then only acted_on -> completed | partly_completed, REQ-112 AC-2); dismiss_reason
-  is written once; the timeline only grows and its earlier entries never change.
+  change; outcome moves only open -> dismissed | acted_on | lapsed, then acted_on -> completed | partly_completed
+  (REQ-112 AC-2/AC-3: never open -> completed); dismiss_reason is written only with open -> dismissed; every outcome
+  change appends exactly one timeline entry (its outcome and suggestion_id) in the same UPDATE (REQ-112 AC-4); the
+  timeline only grows and its earlier entries never change (an append without an outcome change stays allowed).
 - Seed: the 12 system playbooks from backend/ofo/adjustment/system_playbooks.json (read at upgrade; refused unless it
   holds each of the 12 types exactly once and no float).
 - Grants: the application role gets SELECT and column-limited INSERT / UPDATE; DELETE on adjustment_playbooks and
@@ -40,8 +45,12 @@ Changes (owner-run, one transaction, the API stopped):
 - downgrade: refuses (SQLSTATE OF031, counted) while a user playbook, an active row, a plan, a rule state or a
   suggestion exists; otherwise drops the five tables and restores the predecessor's allow-list.
 
-Known bypasses (not chased): the table owner or a superuser can edit any row (out of the threat model); the plan's
-body is a copy, so a playbook fix never reaches a strategy already tracking - by design (REQ-158 AC-5).
+Known bypasses (not chased): the table owner or a superuser can edit any row or drop a guard (out of the threat
+model); the plan's body is a copy, so a playbook fix never reaches a strategy already tracking - by design (REQ-158
+AC-5); the guards do not check a timeline entry's other keys ('at'), nor that "completed" rests on a confirmed
+Zerodha fill (REQ-112 AC-3 stays the caller's job: the table holds no fill link); a whitespace character outside
+NAME_SPACE (zero-width space U+200B, U+FEFF) stays part of the name; a plan's owner check reads strategies.user_ref
+at write time only.
 
 Revision ID: 0031_adjustment_playbooks
 Revises: 0030_paper_settle_zero
@@ -94,6 +103,11 @@ SUGGESTIONS = "public.adjustment_suggestions"
 PLAYBOOKS_SEQUENCE = "public.adjustment_playbooks_id_seq"
 SUGGESTIONS_SEQUENCE = "public.adjustment_suggestions_id_seq"
 NAME_INDEX = "adjustment_playbooks_name"
+NAME_SHAPE = "adjustment_playbooks_name_shape"
+# the whitespace the store folds (a subset of Python's str.split() whitespace, so a store-normalised name always
+# passes): the ASCII space class, NEL, no-break space, the Unicode spaces and separators
+NAME_SPACE = r"[\s\u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+"
+NAME_NORMAL = f"btrim(regexp_replace(name, '{NAME_SPACE}', ' ', 'g'), ' ')"
 SYSTEM_INDEX = "adjustment_playbooks_one_system"
 OPEN_INDEX = "adjustment_suggestions_one_open"
 
@@ -178,6 +192,13 @@ def _plans_guard_sql() -> str:
             IF TG_OP = 'DELETE' THEN
                 {_raise('a strategy plan is never deleted')}
             END IF;
+            IF NEW.playbook_id IS NOT NULL
+               AND (TG_OP = 'INSERT' OR NEW.playbook_id IS DISTINCT FROM OLD.playbook_id)
+               AND NOT EXISTS (SELECT 1 FROM {PLAYBOOKS} p JOIN public.strategies s ON s.id = NEW.strategy_id
+                               WHERE p.id = NEW.playbook_id AND p.strategy_type = NEW.strategy_type
+                               AND (p.user_ref IS NULL OR p.user_ref = s.user_ref)) THEN
+                {_raise('a plan comes from a system playbook or the strategy owner''s own, of the plan''s type')}
+            END IF;
             IF TG_OP = 'INSERT' THEN
                 RETURN NEW;
             END IF;
@@ -189,7 +210,7 @@ def _plans_guard_sql() -> str:
             ELSE
                 NEW.accepted_at := OLD.accepted_at;
             END IF;
-            RETURN NEW;""")
+            RETURN NEW;""")  # noqa: S608 constant names
 
 
 def _state_guard_sql() -> str:
@@ -226,12 +247,20 @@ def _suggestions_guard_sql() -> str:
                                  OLD.threshold, OLD.shown_at) THEN
                 {_raise('only the outcome, dismiss reason and timeline of a suggestion change')}
             END IF;
-            IF NEW.outcome IS DISTINCT FROM OLD.outcome AND NOT (OLD.outcome = 'open'
+            IF NEW.outcome IS DISTINCT FROM OLD.outcome AND NOT (
+               (OLD.outcome = 'open' AND NEW.outcome IN ('dismissed', 'acted_on', 'lapsed'))
                OR (OLD.outcome = 'acted_on' AND NEW.outcome IN ('completed', 'partly_completed'))) THEN
                 {_raise('a suggestion has at most one final outcome')}
             END IF;
-            IF OLD.dismiss_reason IS NOT NULL AND NEW.dismiss_reason IS DISTINCT FROM OLD.dismiss_reason THEN
-                {_raise('a dismiss reason is written once')}
+            IF NEW.dismiss_reason IS DISTINCT FROM OLD.dismiss_reason
+               AND NOT (OLD.outcome = 'open' AND NEW.outcome = 'dismissed') THEN
+                {_raise('a dismiss reason is written once, with the dismissal')}
+            END IF;
+            IF NEW.outcome IS DISTINCT FROM OLD.outcome AND (
+               jsonb_array_length(NEW.timeline) <> jsonb_array_length(OLD.timeline) + 1
+               OR (NEW.timeline -> -1 ->> 'outcome') IS DISTINCT FROM NEW.outcome
+               OR (NEW.timeline -> -1 ->> 'suggestion_id') IS DISTINCT FROM NEW.id::text) THEN
+                {_raise('an outcome change appends exactly one timeline entry naming it and the suggestion')}
             END IF;
             IF jsonb_array_length(NEW.timeline) < jsonb_array_length(OLD.timeline)
                OR (SELECT coalesce(jsonb_agg(e ORDER BY i), '[]'::jsonb)
@@ -349,7 +378,8 @@ def _create_tables() -> None:
             id            BIGSERIAL   PRIMARY KEY,
             user_ref      TEXT        NULL CHECK (user_ref IS NULL OR ({user_ref})),
             strategy_type TEXT        NOT NULL CHECK (strategy_type IN ({types})),
-            name          TEXT        NOT NULL CHECK (name = btrim(name) AND length(name) BETWEEN 1 AND {NAME_MAX}),
+            name          TEXT        NOT NULL CONSTRAINT {NAME_SHAPE}
+                                      CHECK (name = {NAME_NORMAL} AND length(name) BETWEEN 1 AND {NAME_MAX}),
             is_system     BOOLEAN     NOT NULL DEFAULT false,
             status        TEXT        NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'approved')),
             body          JSONB       NOT NULL {_body_checks()},
@@ -360,7 +390,8 @@ def _create_tables() -> None:
             UNIQUE (id, strategy_type)
         )
         """)
-    op.execute(f"CREATE UNIQUE INDEX {NAME_INDEX} ON {PLAYBOOKS} (coalesce(user_ref, ''), strategy_type, lower(name))")
+    op.execute(f"CREATE UNIQUE INDEX {NAME_INDEX} ON {PLAYBOOKS} "
+               f"(coalesce(user_ref, ''), strategy_type, lower({NAME_NORMAL}))")
     op.execute(f"CREATE UNIQUE INDEX {SYSTEM_INDEX} ON {PLAYBOOKS} (strategy_type) WHERE is_system")
     op.execute(f"""
         CREATE TABLE {ACTIVE} (
