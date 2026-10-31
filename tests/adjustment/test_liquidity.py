@@ -1,4 +1,4 @@
-# ruff: noqa: PLR2004, E501 - strikes, limits and counts of the scenario case; catalogue texts quoted whole
+# ruff: noqa: PLR2004, E501, PLR0913 - strikes, limits and counts of the scenario case; catalogue texts quoted whole
 """GC-MU A1 (ADR-230 (1); REQ-159 AC-6; F-78): the three saved playbook liquidity limits are read and applied.
 
 Core: ``ofo.adjustment.liquidity`` on the generated scenario ADJ-50 (one thin strike) flags exactly that strike and

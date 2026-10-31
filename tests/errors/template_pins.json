@@ -3238,5 +3238,13 @@
   "explanation:adjust_flag_oi_unknown": {
     "sha256": "838d62cd8cc5ef3785ba7d671864959d50e084628fe301eebe56877c847ded60",
     "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_flagged": {
+    "sha256": "3a41aae87703e6c77fbfe72a2e63717bf71a8b01ba3a7af6973c17cb73d85671",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_flagged_both": {
+    "sha256": "0570c2c7c3580c1113aeebf21c84f7862bc08c0ad1bec43f3b78740cbd034c0d",
+    "reviewed": "pending owner read"
   }
 }

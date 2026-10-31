@@ -26,10 +26,12 @@ by hand to a readable but absurd value (out of scope); (3) limits GC-SET owns (a
 """
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
+from pathlib import Path
 
 OI_KEY = "hide_oi_below"
 SPREAD_KEY = "hide_spread_pct_of_mid_above"
@@ -117,7 +119,8 @@ class StrikeLiquidity:
         return tuple(out)
 
 
-def evaluate_strike(limits: Limits, oi: Decimal | int | None, bid: Decimal | None, ask: Decimal | None) -> StrikeLiquidity:
+def evaluate_strike(limits: Limits, oi: Decimal | int | None, bid: Decimal | None,
+                    ask: Decimal | None) -> StrikeLiquidity:
     """One strike against the playbook's limits. ``oi`` None = no source gave it."""
     if limits.oi_state != SET:
         oi_state = limits.oi_state
@@ -171,21 +174,9 @@ def check_roll_debit(limits: Limits, debit: Decimal, max_profit: Decimal | None)
 
 # ---- the class guard: every playbook guard key has a reader --------------------------------------------------------
 
-#: guard key -> repo path whose source reads it (the test opens the file and finds the key there).
-GUARD_READERS: Mapping[str, str] = {
-    OI_KEY: "backend/ofo/adjustment/liquidity.py",
-    SPREAD_KEY: "backend/ofo/adjustment/liquidity.py",
-    DEBIT_KEY: "backend/ofo/adjustment/liquidity.py",
-    "max_adjustments": "backend/ofo/adjustment/playbook_eval.py",
-    "profit_target_pct_of_max_profit": "backend/ofo_app/routes/adjustment_plan.py",
-    "stop_line_pct_of_max_loss": "backend/ofo_app/routes/adjustment_plan.py",
-    "stop_line_pct_of_margin": "backend/ofo_app/routes/adjustment_plan.py",
-    "stop_line_rule": "backend/ofo_app/routes/adjustment_plan.py",
-    "time_exit": "backend/ofo_app/routes/adjustment_plan.py",
-}
+_READERS = json.loads(Path(__file__).with_name("guard_readers.json").read_text(encoding="utf-8"))
+#: guard key -> repo path whose source reads it (guard_readers.json; the test opens the file and finds the key there).
+GUARD_READERS: Mapping[str, str] = _READERS["readers"]
 #: guard key -> why nothing reads it today (found by the class guard, 2026-11-01; reported, not fixed here).
-KNOWN_UNREAD: Mapping[str, str] = {
-    "entry_guide": "words describing the entry the playbook assumes; shown in the editor, nothing to apply",
-    "order_sequence": "words describing the order sequence; the 'buy legs first' order is fixed in approaches._ordered",
-    "warn_cost_pct_of_premium_left": "no reader: the Compare cost rows (ADR-230 (3)) are the place to apply it",
-}
+KNOWN_UNREAD: Mapping[str, str] = _READERS["known_unread"]
+

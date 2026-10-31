@@ -232,8 +232,9 @@ def tested_side(position: Position, spot: Decimal) -> str | None:
 
 
 class _Builder:
-    def __init__(self, position: Position, chain: Sequence[ChainRow], spot: Decimal, config: Config,
-                 listing: Listing | None) -> None:
+    def __init__(self, position: Position, chain: Sequence[ChainRow], spot: Decimal, config: Config,  # noqa: PLR0913
+                 listing: Listing | None, limits: liquidity.Limits | None = None,
+                 max_profit: Decimal | None = None) -> None:
         self.p, self.spot, self.cfg = position, spot, config
         self.rows = {(r.expiry, r.type, r.strike): r for r in chain}
         self.chain = chain
@@ -241,8 +242,7 @@ class _Builder:
         self.warnings: list[str] = []
         self.warning_messages: list[UserFacingError] = []  # the same warnings as catalogue messages (API door)
         self.basis: tuple[str, Decimal] | None = None
-        self.limits: liquidity.Limits | None = None  # the playbook's saved liquidity limits (ADR-230 (1))
-        self.max_profit: Decimal | None = None
+        self.limits, self.max_profit = limits, max_profit  # the playbook's saved liquidity limits (ADR-230 (1))
 
     def guard_debit(self, trades: Sequence[Trade]) -> None:
         """ADR-230 (1): a roll whose net debit is above the playbook's limit is refused, with the reason."""
@@ -365,8 +365,7 @@ def build_approach(position: Position, chain: Sequence[ChainRow], spot: Decimal,
     "% of max profit" part of the roll debit limit."""
     if approach_id not in NAMES:
         raise ValueError(f"unknown approach {approach_id!r}")
-    b = _Builder(position, chain, spot, config, listing)
-    b.limits, b.max_profit = limits, max_profit
+    b = _Builder(position, chain, spot, config, listing, limits, max_profit)
     legs = list(position.legs)
     found = _condor(legs)
     tested = tested_side(position, spot)
