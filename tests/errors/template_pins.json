@@ -2642,5 +2642,21 @@
   "explanation:adjust_check_type_name": {
     "sha256": "6812d4f9f2a54353f3930dcd5eac870ebb5e421e25baa6c61dd616426750e8d8",
     "reviewed": "pending owner read"
+  },
+  "explanation:adjust_history_paper_fill": {
+    "sha256": "62620e0c11f5c9ec28d1ef7d1e8609e4f952073671de2ff07e599ab5254afc4f",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_history_own_change": {
+    "sha256": "6e34eb4c5ce9a0a21c37304968d35447c72dad82fc9492bffa232fc0544f8ac3",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_history_pending": {
+    "sha256": "a19960799acc162a1518083b005ef87a8d4fabee317b83d0cf94a887892808fa",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_history_no_plan_max": {
+    "sha256": "7c1f019c44218093420445c551d9163d893ae275202ae611c6de0d82c14054d7",
+    "reviewed": "pending owner read"
   }
 }

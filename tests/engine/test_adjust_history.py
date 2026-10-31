@@ -12,12 +12,8 @@ import pathlib
 from decimal import Decimal
 
 import pytest
-from ofo.engine.adjust_history import (
-    OWN_CHANGE_TEXT,
-    PAPER_FILL_TEXT,
-    HistoryOrder,
-    adjustment_history,
-)
+from ofo.engine.adjust_history import HistoryOrder, adjustment_history
+from ofo.errors.explanations import render_explanation
 
 FIXTURE = pathlib.Path(__file__).resolve().parents[1] / "fixtures" / "adjust_scenarios" / "ADJ-13.json"
 DOC = json.loads(FIXTURE.read_text(encoding="utf-8"), parse_float=Decimal)
@@ -158,5 +154,6 @@ def test_no_orders_raises():
 
 
 def test_words_are_exact():
-    assert PAPER_FILL_TEXT == "Paper - not sent to Zerodha"
-    assert OWN_CHANGE_TEXT == "Your own change"
+    assert render_explanation("adjust_history_paper_fill") == "Paper - not sent to Zerodha"
+    assert render_explanation("adjust_history_own_change") == "Your own change"
+    assert render_explanation("adjust_history_pending") == "pending"

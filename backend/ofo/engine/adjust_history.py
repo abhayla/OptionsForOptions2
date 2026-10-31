@@ -52,10 +52,8 @@ PENDING_FILLS: Final = frozenset({"unconfirmed", "failed"})
 Step = Literal["entry", "adjustment", "settle", "stop"]
 OWN_KINDS: Final = frozenset({"settle", "stop"})  # each is its own row, labelled by kind
 
-#: REQ-163 AC-1 words (exact). Catalogue entries owed: the explanations table is another builder's file this round.
-PAPER_FILL_TEXT: Final = "Paper - not sent to Zerodha"
-OWN_CHANGE_TEXT: Final = "Your own change"
-PENDING_TEXT: Final = "pending"
+#: The words shown (paper fill, "Your own change", "pending") are catalogue texts (``adjust_history_*``), worded by
+#: the route; nothing here is shown text.
 
 
 class HistoryMismatch(ValueError):

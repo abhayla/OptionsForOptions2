@@ -36,6 +36,7 @@ from ofo_app.db import close_db, verify_pool_budget
 from ofo_app.routes import (
     adjustment,
     adjustment_check,
+    adjustment_history,
     broker,
     broker_capabilities,
     broker_status,
@@ -103,6 +104,7 @@ def _mount_routes(app: FastAPI, config: BrokerConfig) -> None:
     app.include_router(chain.router)  # W-116: the chain's first paint and socket-down fallback
     app.include_router(adjustment.router)  # W-196: adjustment approaches (REQ-155)
     app.include_router(adjustment_check.router)  # GC-ADJ2 1C: the playbook check (REQ-158 AC-5)
+    app.include_router(adjustment_history.router)  # GC-ADJ2 6: history + totals (REQ-163)
     app.include_router(leg_edit.router)  # W-148: one leg edit, answered by the engine
     app.include_router(leg_picker.router)  # W-147: the leg picker's strikes, futures and depth reads (REQ-080)
     errors.add_socket_route(app, indices.socket_route())  # W-114: the read-only index push, a door socket
