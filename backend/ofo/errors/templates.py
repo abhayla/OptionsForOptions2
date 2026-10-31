@@ -1256,6 +1256,14 @@ _PLAYBOOK_TEMPLATES: tuple[MessageTemplate, ...] = (
     # GC-ADJ2 step 3 (REQ-160 AC-3): a strategy of the tested type whose prices did not arrive within the read limit
     _gate("adjust_test_read_timed_out", _UI, 172, "Prices for this strategy did not arrive in time.",
           _TRIG_NOT, _TRIG_BLOCKED, "Test again in a moment."),
+    # GC-MU A1 (ADR-230 (1), REQ-159 AC-6): a roll whose debit is above the playbook's limit, or whose limit cannot be read
+    _gate("adjust_roll_debit_over_limit", _UI, 173,
+          "This roll costs {debit} net, which is more than the {limit} your playbook allows for one roll.",
+          _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {"debit": Money, "limit": Money}),
+    _gate("adjust_roll_limit_unreadable", _UI, 174,
+          "The roll limit saved in your playbook could not be read, so this roll costing {debit} net was not built.",
+          _ADJ_REFUSED, _ADJ_BLOCKED, "Fix the roll limit in the playbook, or compare the other approaches.",
+          {"debit": Money}),
 )
 
 _TEMPLATES = (_TEMPLATES + _TRIGGER_TEMPLATES + _GATE_TEMPLATES

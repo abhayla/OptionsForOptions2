@@ -32,6 +32,11 @@ def trade_credit(trades: Iterable[tuple[str, Decimal, int]]) -> Decimal:
     return sum((price * quantity * _sign(action) for action, price, quantity in trades), Decimal(0))
 
 
+def pct_of(amount: Decimal, pct: Decimal) -> Decimal:
+    """``pct`` percent of ``amount`` (the "% of max profit" part of a playbook's roll debit limit, ADR-230 (1))."""
+    return amount * pct / 100
+
+
 def cost_with_spread(charges: Decimal, quotes: Iterable[tuple[Decimal, Decimal, int]]) -> Decimal:
     """``charges`` plus (ask - bid) / 2 x quantity for each (bid, ask, quantity) traded."""
     return charges + sum(((ask - bid) / 2 * quantity for bid, ask, quantity in quotes), Decimal(0))
