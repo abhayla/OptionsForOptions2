@@ -288,3 +288,33 @@ async def test_the_production_reader_returns_a_stored_row_not_only_defaults(app_
     finally:
         await trans.rollback()
         await conn.close()
+
+
+async def test_the_context_carries_the_stored_forward_quality_width(app_engine: AsyncEngine, replayed, monkeypatch):
+    """REQ-167 AC-5: ``get_market_context`` hands the request a ``forward_quality`` whose width is the
+    ``pricing.forward_quality_width`` setting in force: the default 0.05 with no row, the stored 0.08 after a row."""
+    from ofo import settings  # noqa: PLC0415
+    from ofo_app import settings_store  # noqa: PLC0415
+    from ofo_app.routes.outcome import get_market_context  # noqa: PLC0415
+
+    _live(replayed, monkeypatch)
+    width_key = "pricing.forward_quality_width"
+    conn = await app_engine.connect()
+    trans = await conn.begin()
+    try:
+        session = AsyncSession(bind=conn, join_transaction_mode="create_savepoint", expire_on_commit=False)
+
+        async def read():
+            return await settings_store.settings_in_force(session)
+
+        before = await get_market_context(read)
+        assert before is not None
+        assert before.forward_quality.width == settings.registry()[width_key].default == Decimal("0.05")
+        await settings_store.add_setting(session, width_key, "0.08", set_by="admin-test",
+                                         correlation_id="gcset-fwd-width")
+        after = await get_market_context(read)
+        assert after is not None
+        assert after.forward_quality.width == Decimal("0.08")
+    finally:
+        await trans.rollback()
+        await conn.close()
