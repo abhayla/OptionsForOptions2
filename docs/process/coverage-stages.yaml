@@ -163,6 +163,7 @@ requirements:
   REQ-163: S6.4
   REQ-164: S6.7
   REQ-165: S6.7
+  REQ-166: S6.7
 
 decisions:
   ADR-001: all
@@ -378,6 +379,7 @@ decisions:
   ADR-212: S6.1         # paper positions after hours show the last close (owner, 2026-10-30)
   ADR-213: S6.4         # index strip socket drop keeps fresh values under the not-live message (owner, 2026-10-30)
   ADR-214: S6.4         # where adjustments live: drawer, adjust mode, compare, filters, playbooks (owner, 2026-10-30)
+  ADR-220: S6.7         # server roles, one machine first, calculation speeds, pricing model kept (owner, 2026-10-31)
 
 questions:
   Q210: 4a              # external: Zerodha's written answer; ADR-051 covers the owner's own account
