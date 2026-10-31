@@ -90,8 +90,8 @@
         <template v-else-if="step === 'show'">
           <h2>Approaches to show</h2>
           <ul>
-            <li v-for="id in allApproaches" :key="id"><label><input type="checkbox" :checked="work.approaches.applicable.includes(id)" @change="flipApproach(id)"> {{ id }}</label></li>
-            <li v-for="g in work.approaches.greyed" :key="g.id" class="greyed">{{ g.id }} <small class="why">{{ g.reason }}</small></li>
+            <li v-for="id in allApproaches" :key="id"><label><input type="checkbox" :checked="work.approaches.applicable.includes(id)" @change="flipApproach(id)"> {{ labels.approaches[id] ?? id }}</label></li>
+            <li v-for="g in work.approaches.greyed" :key="g.id" class="greyed">{{ labels.approaches[g.id] ?? g.id }} <small class="why">{{ g.reason }}</small></li>
           </ul>
         </template>
 
@@ -101,8 +101,8 @@
             <thead><tr><th>On</th><th>When</th><th>Time</th><th>Action</th><th>%</th></tr></thead>
             <tbody>
               <tr v-for="(r, i) in work.day_rules" :key="i">
-                <td><input v-model="r.on" type="checkbox"></td><td>{{ r.when }}<span v-if="r.date"> {{ r.date }}</span></td>
-                <td><input v-model="r.at" size="5"></td><td>{{ r.action }}</td>
+                <td><input v-model="r.on" type="checkbox"></td><td>{{ labels.dayKinds[r.when] ?? r.when }}<span v-if="r.date"> {{ r.date }}</span></td>
+                <td><input v-model="r.at" size="5"></td><td>{{ labels.dayActions[String(r.action)] ?? r.action }}</td>
                 <td><input v-if="r.percent !== undefined" v-model="r.percent" size="4"></td>
               </tr>
             </tbody>
@@ -124,7 +124,7 @@
 
         <template v-else>
           <h2>Test on my strategies</h2>
-          <p class="note" data-testid="pb-past-note">{{ pastNote || 'Testing against past expiries is not in this version.' }}</p>
+          <p class="note" data-testid="pb-past-note">{{ pastNote || labels.pastNote }}</p>
           <button type="button" data-testid="pb-run-test" :disabled="testing" @click="runTest">Test {{ dirty ? 'unsaved changes' : 'this playbook' }}</button>
           <p v-if="testRefusal" role="alert" data-testid="pb-test-refusal">{{ testRefusal }}</p>
           <p v-if="answer && answer.none_text" data-testid="pb-test-none">{{ said(answer.none_text) }}</p>
@@ -159,10 +159,13 @@
 
 <script setup>
 import { computed, onMounted, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import api from '@/services/api'
-import { STEPS, EXPIRY_KINDS, addStage, clone, isDirty, refusalText, removeStage, said, summaryLines, testRow } from '@/lib/playbookEditor'
+import { STEPS, EXPIRY_KINDS, addStage, clone, isDirty, labelMaps, refusalText, removeStage, said, summaryLines, testRow } from '@/lib/playbookEditor'
 
+const route = useRoute()
 const types = ref([])
+const labels = ref(labelMaps(null)) // every word the body does not carry (GET /playbooks/labels)
 const typeKey = ref(null)
 const playbooks = ref([])
 const listEmpty = ref(false)
@@ -184,7 +187,7 @@ let testSeq = 0
 
 const dirty = computed(() => isDirty(work.value, saved.value))
 const typeName = computed(() => said(types.value.find((t) => t.key === typeKey.value)?.name) || typeKey.value)
-const summary = computed(() => summaryLines(work.value, typeName.value, kind.value))
+const summary = computed(() => summaryLines(work.value, typeName.value, kind.value, labels.value))
 const triggerRows = computed(() => Object.entries(work.value?.triggers ?? {}))
 const allApproaches = computed(() => [...(work.value?.approaches.applicable ?? []), ...(work.value?.approaches.off_in_playbook ?? [])].sort())
 const fail = (err) => { refusal.value = refusalText(err) ?? err?.message ?? null }
@@ -277,7 +280,31 @@ async function runTest() {
   }
 }
 
-onMounted(loadTypes)
+async function loadLabels() {
+  try { labels.value = labelMaps((await api.get('/playbooks/labels')).data) } catch (err) { fail(err) }
+}
+
+/** ?playbook=<id> (the plan sheet's Customise triggers link): open that playbook, on its own type's list. */
+async function openFromLink(id) {
+  const seq = ++readSeq
+  try {
+    const res = await api.get(`/playbooks/${id}`)
+    if (seq !== readSeq) return
+    typeKey.value = res.data.type
+    await loadList(res.data.id)
+  } catch (err) {
+    if (seq === readSeq) fail(err) // the editor stays closed; the server's sentence says why
+  }
+}
+
+onMounted(async () => {
+  await loadLabels()
+  const linked = route?.query?.playbook
+  if (typeof linked === 'string' && /^[0-9]+$/.test(linked)) {
+    try { types.value = (await api.get('/playbooks/types')).data.types } catch (err) { fail(err); return }
+    await openFromLink(linked)
+  } else await loadTypes()
+})
 </script>
 
 <style scoped>

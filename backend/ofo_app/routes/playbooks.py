@@ -18,6 +18,7 @@ from __future__ import annotations
 import dataclasses
 import datetime
 import logging
+from collections.abc import Callable, Mapping
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Query
@@ -27,7 +28,15 @@ from ofo.adjustment.playbook_text import name_shown
 from ofo.adjustment.playbook_types import SHOWN_NAMES, TYPE_KEYS
 from ofo.charges import ChargeRates
 from ofo.errors import render
-from ofo.errors.explanations import render_explanation
+from ofo.errors.explanations import (
+    ADJUSTMENT_APPROACH_LABEL_TEXT,
+    PLAYBOOK_APPROACH_LABEL_TEXT,
+    PLAYBOOK_DAY_RULE_ACTION_TEXT,
+    PLAYBOOK_DAY_RULE_KIND_TEXT,
+    PLAYBOOK_SUMMARY_TEXT,
+    approach_name_id,
+    render_explanation,
+)
 from ofo.marketdata.spot_source import resolve_spot
 from ofo.strategy.stored_form import shown_name
 from pydantic import BaseModel, ConfigDict
@@ -193,6 +202,38 @@ async def playbook_types(db: Annotated[Any, Depends(get_db)],
                         "active_id": active.id, "has_system": any(p.is_system for p in listed)})
         return TypesOut.model_validate({"types": out})
     return await _run(db, work)
+
+
+class LabelOut(ApiModel):
+    key: Identifier
+    text: CatalogueText
+
+
+class LabelsOut(ApiModel):
+    approaches: list[LabelOut]
+    day_kinds: list[LabelOut]
+    day_actions: list[LabelOut]
+    past_note: CatalogueText  # REQ-160 AC-4, shown on the Test step before any run
+    summary: list[LabelOut]  # sentence templates: "{slot}" is filled by the editor from the body's own strings
+
+
+def _labels(table: Mapping[str, str], template_id: Callable[[str], str]) -> list[dict[str, Any]]:
+    return [{"key": key, "text": render_explanation(template_id(key))} for key in table]
+
+
+@router.get("/api/playbooks/labels", response_model=LabelsOut)
+async def playbook_labels() -> LabelsOut:
+    """GC-ADJ2 step 3 (REQ-159 AC-4/AC-5, REQ-160 AC-1): every word the editor shows that the body does not carry, all
+    from the catalogue: approach names (the compare's table first, the editor's table for the rest), day rule kinds and
+    actions, the summary's sentences. A read of fixed text: no user, no database. Declared before
+    ``/api/playbooks/{playbook_id}`` so "labels" is never read as an id."""
+    return LabelsOut.model_validate({
+        "approaches": _labels(ADJUSTMENT_APPROACH_LABEL_TEXT, approach_name_id)
+        + _labels(PLAYBOOK_APPROACH_LABEL_TEXT, lambda k: "playbook_approach_" + k.lower().replace("-", "_")),
+        "day_kinds": _labels(PLAYBOOK_DAY_RULE_KIND_TEXT, lambda k: f"playbook_day_kind_{k}"),
+        "day_actions": _labels(PLAYBOOK_DAY_RULE_ACTION_TEXT, lambda k: f"playbook_day_action_{k}"),
+        "past_note": render_explanation("playbook_test_past_out_of_v1"),
+        "summary": _labels(PLAYBOOK_SUMMARY_TEXT, lambda k: f"playbook_summary_{k}")})
 
 
 @router.get("/api/playbooks", response_model=PlaybookListOut)

@@ -249,6 +249,84 @@ ADJUSTMENT_APPROACH_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
     "A-11": "Re-centre both shorts at the money",
     "A-31": "Exit the whole strategy",
 })
+#: GC-ADJ2 step 3 (REQ-159 AC-5, REQ-160 AC-1): the playbook editor's names of the approaches NOT in ADJUSTMENT_APPROACH_LABEL_TEXT (that table stays the one home of its ids; a test holds the two disjoint). Source: tests/fixtures/adjust_scenarios/_playbooks.json approaches.
+PLAYBOOK_APPROACH_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
+    "A-02": "Roll the tested short away",
+    "A-03": "Roll out in time (same strikes, next expiry)",
+    "A-04": "Roll up/down and out (diagonal roll)",
+    "A-06": "Shift a leg by +/- N strikes",
+    "A-07": "Re-centre / reset around spot",
+    "A-08": "Straddle-ise (move the untested short to the tested strike)",
+    "A-09": "Add wings (cap the loss)",
+    "A-10": "Inverted strangle",
+    "A-12": "Convert to a (broken-wing) butterfly",
+    "A-13": "Add a jade lizard",  # the fixture says "no risk on one side": a promise word (Q226), not shown
+    "A-14": "Calendar / diagonal on the tested side",
+    "A-15": "Ratio fix (buy back the extra short or add a far long)",
+    "A-16": "Long option to debit spread",
+    "A-17": "Roll a winning long up and take capital out",
+    "A-18": "Gamma scalp with futures",
+    "A-19": "Add a second calendar at the new spot",
+    "A-20": "Delta hedge with futures",
+    "A-21": "Delta hedge with a synthetic future",
+    "A-22": "Debit spread in the direction of the breach",
+    "A-23": "Delta-neutral helper (calculator)",
+    "A-24": "Take profit, whole strategy",
+    "A-25": "Take partial profit (close X%)",
+    "A-26": "Close the untested side for profit",
+    "A-27": "Buy back cheap shorts",
+    "A-35": "Time exit",
+    "A-32": "Stop-loss per leg",
+    "A-33": "Move stop to cost after one stop",
+    "A-34": "Re-enter after a stop",
+    "A-30": "Add lots to the tested side",
+    "A-37": "Alert only / watch a level",
+    "A-38": "Pause monitoring until a time",
+})
+#: GC-ADJ2 step 3 (REQ-159 AC-4): each day-and-date rule kind in words.
+PLAYBOOK_DAY_RULE_KIND_TEXT: Mapping[str, str] = MappingProxyType({
+    "weekday": "Every week on",
+    "beforeWeekend": "The last session before a weekend",
+    "beforeHoliday": "The day before a market holiday",
+    "afterBreak": "The first session after a weekend or holiday",
+    "expiry": "Expiry day",
+    "beforeExpiry": "The day before expiry",
+    "monthlyWeek": "Monthly-expiry week",
+    "dom": "Day of the month",
+    "date": "A specific date",
+    "event": "A known event day (needs the admin event list)",
+    "away": "My unavailable days (fires the session before the first day)",
+})
+#: GC-ADJ2 step 3 (REQ-159 AC-4): each day rule action (body ``action`` index) in words.
+PLAYBOOK_DAY_RULE_ACTION_TEXT: Mapping[str, str] = MappingProxyType({
+    "0": "Run the carry check (overnight margin, gap loss)",
+    "1": "Show reduce / partial profit / exit",
+    "2": "Show add-hedge where it applies",
+    "3": "Pause suggestions",
+    "4": "Tighten every trigger by this %",
+    "5": "Prepare an exit for review",
+    "6": "Do not suggest rolls",
+})
+#: GC-ADJ2 step 3 (REQ-160 AC-1): the plain-words summary's sentences. A doubled brace is a slot the editor fills from the body ({name} after rendering); the words are the catalogue's.
+PLAYBOOK_SUMMARY_TEXT: Mapping[str, str] = MappingProxyType({
+    "type_line": "{{type}}, {{kind}} expiry. Stages: {{stages}}.",
+    "kind_weekly": "weekly",
+    "kind_monthly": "monthly",
+    "stage_open": "{{name}} ({{from}}+ days left)",
+    "stage_span": "{{name}} ({{from}}-{{to}} days left)",
+    "stage_single": "{{name}} ({{from}} days left)",
+    "looks_head": "Looks at an adjustment when (numbers per stage):",
+    "trigger": "{{label}}: {{values}}",
+    "trigger_unit": "{{label}}: {{values}} {{unit}}",
+    "rules_head": "Combined rules:",
+    "rule_all": "{{id}}: only when {{members}} all hold",
+    "joiner_and": " and ",
+    "shows": "Shows {{count}} approaches.",
+    "days_head": "Day rules:",
+    "day_rule": "{{when}} at {{at}}: {{action}}",
+    "days_none": "none",
+    "plan": "Plan: target {{target}}% of max profit, stop at {{stop}}% of max loss, at most {{max}} adjustments.",
+})
 #: GC-ADJ1 step 3 (REQ-046 AC-3, REQ-045 AC-5): one plain line per approach, shown in the Review adjustment drawer before
 #: any pick. No figure, no ranking word (ADR-003).
 ADJUSTMENT_APPROACH_ABOUT_TEXT: Mapping[str, str] = MappingProxyType({
@@ -1589,6 +1667,12 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
       for key, text in ADJUSTMENT_APPROACH_LABEL_TEXT.items()),
     *(ExplanationTemplate(approach_about_id(key), "values_seen", text)  # REQ-046 AC-3: each approach's one-line text
       for key, text in ADJUSTMENT_APPROACH_ABOUT_TEXT.items()),
+    *(ExplanationTemplate(f"playbook_approach_{key.lower().replace('-', '_')}", "values_seen", text)
+      for key, text in PLAYBOOK_APPROACH_LABEL_TEXT.items()),  # GC-ADJ2 step 3: the editor's labels
+    *(ExplanationTemplate(f"playbook_day_kind_{key}", "values_seen", text) for key, text in PLAYBOOK_DAY_RULE_KIND_TEXT.items()),
+    *(ExplanationTemplate(f"playbook_day_action_{key}", "values_seen", text)
+      for key, text in PLAYBOOK_DAY_RULE_ACTION_TEXT.items()),
+    *(ExplanationTemplate(f"playbook_summary_{key}", "values_seen", text) for key, text in PLAYBOOK_SUMMARY_TEXT.items()),
     *(ExplanationTemplate(f"adjust_cmp_row_{key}", "values_seen", text)  # REQ-156: each criterion row's name
       for key, text in ADJUSTMENT_CRITERION_LABEL_TEXT.items()),
     *(ExplanationTemplate(f"adjust_cmp_lead_{key}", "values_seen", text)  # REQ-156 AC-3: each row's leader words
@@ -1605,7 +1689,9 @@ LABEL_TABLES: Mapping[str, Mapping[str, str]] = MappingProxyType({
     "column": COLUMN_LABEL_TEXT, "table_reason": TABLE_REASON_TEXT, "level_region": LEVEL_REGION_TEXT,
     "adjustment_approach": ADJUSTMENT_APPROACH_LABEL_TEXT, "adjustment_approach_about": ADJUSTMENT_APPROACH_ABOUT_TEXT,
     "adjustment_criterion": ADJUSTMENT_CRITERION_LABEL_TEXT, "adjustment_leader": ADJUSTMENT_LEADER_LABEL_TEXT,
-    "playbook_type": PLAYBOOK_TYPE_LABEL_TEXT, "plan_sheet": PLAN_SHEET_LABEL_TEXT,
+    "playbook_type": PLAYBOOK_TYPE_LABEL_TEXT, "playbook_approach": PLAYBOOK_APPROACH_LABEL_TEXT,
+    "playbook_day_kind": PLAYBOOK_DAY_RULE_KIND_TEXT, "playbook_day_action": PLAYBOOK_DAY_RULE_ACTION_TEXT,
+    "playbook_summary": PLAYBOOK_SUMMARY_TEXT, "plan_sheet": PLAN_SHEET_LABEL_TEXT,
 })
 
 

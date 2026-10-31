@@ -2814,5 +2814,285 @@
   "explanation:adjust_cmp_lt": {
     "sha256": "40dbecc9a88f193ab9f4d16c1864baeea31008b6f46145b0bbcd912be2466257",
     "reviewed": "pending owner read"
+  },
+  "explanation:playbook_approach_a_02": {
+    "sha256": "f79740f70fcad87e7ad48ca386d6a0670a87b3c15e7e5e4e13ff23e84c68b84c",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_approach_a_03": {
+    "sha256": "7536f2e49e7d146011d9916816ccf876761f5f91a9acf73a4f4cbab0d48066f9",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_approach_a_04": {
+    "sha256": "7ecfbcaf6e104343d5fa4354d50017496f19ce02c85c57df81812f0fc2288914",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_approach_a_06": {
+    "sha256": "0314a2f56e9488d40d4728971a7a468d2d2b4d5bc7dd0ed5e81e56f78faf35bb",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_approach_a_07": {
+    "sha256": "af587b90b21d4a16be4954697624f9bf350fdb08b94d5ad47f225637445bcaac",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_approach_a_08": {
+    "sha256": "6bd09bcbd2535a663eae48e74a91b857314bab8d456f8e71ad62d122d75d2720",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_approach_a_09": {
+    "sha256": "36376c3af8455653c4544ae2dd9d1271f1ef92c2633a76fb344b79ccce0a9b42",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_approach_a_10": {
+    "sha256": "deb06fdea00c460c1a8abe4184a8b01404b0152689c07ef7b8e4452f22e83777",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_approach_a_12": {
+    "sha256": "d9b9e1de1ff03e96aa474396011a15fea5367f3f01d0e0f023803e08e5ad6abc",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_approach_a_13": {
+    "sha256": "28e2fc667ca705d0c8e9e5367e29f8d67ffc9ae39a458508c4921b54148c34de",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_approach_a_14": {
+    "sha256": "1865610f78bc4b193bca20cf2b48eead39f570704c6d14f0fd88f64c1c34f7e6",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_approach_a_15": {
+    "sha256": "e34a4c3bf372a160fb4861b832d26338717dc46f2b4b26a6e00a7590a1e522b4",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_approach_a_16": {
+    "sha256": "522fa1db219f92b2b5de75986a3783eb610071041b4a234bde0caba702f7e6ba",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_approach_a_17": {
+    "sha256": "56238060edeceeed5aa5d19011d160ec0722ecbce045c8f7fde3308b7ed5a919",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_approach_a_18": {
+    "sha256": "b435231a5eb992ac5e6ad6bbd399d4a375a2cdc1377c90b345a76cce7b84e4ed",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_approach_a_19": {
+    "sha256": "a27067431917f12eb0ef2330c9bcbf2be7303cfed8194996c824b62779c16296",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_approach_a_20": {
+    "sha256": "f6fb3c39d77ec8d23fc9c47e8a1b9c6fbab00fd87c0ddc7a91407d7b7f5a26c0",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_approach_a_21": {
+    "sha256": "42089c09d27697101b7a1afe9207dca840feabd0b804509dd38d849179e6074c",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_approach_a_22": {
+    "sha256": "096749930c34e7f0cdeafc488cc77122449b175e1796aa0b74d974147739f6e1",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_approach_a_23": {
+    "sha256": "2ff265c64b98079f9f5e3bc494c34cd90835cd949a89d14b992bf73701263917",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_approach_a_24": {
+    "sha256": "47209d17fb155bc3857beda8ae94889261439aeaf60eee98f615cdb71932daa5",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_approach_a_25": {
+    "sha256": "74a415248f5b5600a99e10f51514a1beadb3f969820508bd463629ba3d867afe",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_approach_a_26": {
+    "sha256": "031fdf8ca7740096ccc8ef4bc83e7a9c9d55b6e25faa80b65c47ee4e4ca2b462",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_approach_a_27": {
+    "sha256": "300e08e145064f92d7f369d836d3ca1e990f0818b5fe03db2a212554e0756973",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_approach_a_35": {
+    "sha256": "3da7b1b276527a6ece178561b4c942351b9a3bc4ed6888a4e4a2973029ce9cda",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_approach_a_32": {
+    "sha256": "588eda80259958480105197a8ecfb7bc2e85502e1c11366e68e359c94c693109",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_approach_a_33": {
+    "sha256": "0dd5abaca1f1da8da2ebe21508ad87b201cb53107b282f97c5ca3e745dd35a65",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_approach_a_34": {
+    "sha256": "3cf60e12e3d77dea0bc7ca54154cafb40e0c9d2d9494760b2e55242c9ec8e6ef",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_approach_a_30": {
+    "sha256": "28b7f86ea252d4f97d5ba5dc1e907eee5558db7e5a380b5806c1ebda961b5e36",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_approach_a_37": {
+    "sha256": "26ec18c623343fca4fb3e8713b9b2fb52f59145de656ae395c78155a5691c999",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_approach_a_38": {
+    "sha256": "d2cabcf704d7110e8aa2d1f3c6b834feeccf20892fe308486edf0bbd2ddfdaec",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_day_kind_weekday": {
+    "sha256": "be8c11e2f31693edf782542f6dc2572f9afcd86f0dd77f713a77f2a3dd37c0b6",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_day_kind_beforeWeekend": {
+    "sha256": "bb4681ee8a43a2b4a6ec8536f8401dffc62d0acae8a5d06b8987a6f585c2f5df",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_day_kind_beforeHoliday": {
+    "sha256": "dc0afec57da710f7332b490aaef947c94409488f7b86f14f1ed3b0b92b837089",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_day_kind_afterBreak": {
+    "sha256": "deda2b00b5b1ad71a45072efee60fdace05bca082593c801ef47f141bb9c757e",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_day_kind_expiry": {
+    "sha256": "854e98154cf1762261abd649567d2963492e03af75f661e6ae1230c4bb9a1202",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_day_kind_beforeExpiry": {
+    "sha256": "d53cee927162aca0aebbb5197dfffcefbd70d6715bef618b7ca91d38f79ff47f",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_day_kind_monthlyWeek": {
+    "sha256": "09173d29a71d9bbca28dec496efb51ca90c164a3b6e44a2545aad4cde8617f43",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_day_kind_dom": {
+    "sha256": "80f37e67ac2dec26ac34a13d67ddf8e46ed0057c9295771e52376a4f1de3b83b",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_day_kind_date": {
+    "sha256": "d193d9f16dbab39f81d481888dd1771d6cc532b7a9ed0ee6c0952319124f0db3",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_day_kind_event": {
+    "sha256": "c9f87af853e6ba80fada7da62ab69652fd53ba0d7f14217746775bcd65d96812",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_day_kind_away": {
+    "sha256": "80c91d8cc63bc71c1ef8bf00193d7623384e2bb4ddc1bff776a7794aee3e2eae",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_day_action_0": {
+    "sha256": "0a325626fd6dad164efddfdfd55434e7c166c4db8aa544a770f25ef12afddc4d",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_day_action_1": {
+    "sha256": "4c23201bdd22af0719e0424ace5608e0c265b841959be5f9a9ce893dc58a801e",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_day_action_2": {
+    "sha256": "5833d5e565506b46368fcf5fc6476a13954a5ef59d57d8cc086f871084cddf92",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_day_action_3": {
+    "sha256": "150ec77f03c5cd6f521d0df793fc107edb8660ae19e309d1f3a12d8d40a80c14",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_day_action_4": {
+    "sha256": "90e042c952823aa0fb1c9a13e467abe76636c628b3153e771a8ad46fdea3c7a4",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_day_action_5": {
+    "sha256": "926b838efc78b4a1675f19397ebd566c2563dca4972e4e2a24d0de1372759147",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_day_action_6": {
+    "sha256": "efc8bba7c33cc16984935f96d1085b08c477068d0a987b5b0a6106d728ecf4c7",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_summary_type_line": {
+    "sha256": "2a2b222b4936b27d4f15894a8f35600d3a180f0c6fe09cbcc3cea834a03e81a9",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_summary_kind_weekly": {
+    "sha256": "cd3880b26fd66b366738ae91626e477021616cfd74b57014e8c1168d3ac81516",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_summary_kind_monthly": {
+    "sha256": "c67246620a32c190d81b3120be36c30601e64be7600a52c8d5c0a16e77f7ce91",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_summary_stage_open": {
+    "sha256": "620d51176b97dd8df101c228871aab7f7e618e45f20da87757a1060cf0dc49f9",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_summary_stage_span": {
+    "sha256": "4f5103926fae0d9edb7c2b35fa7bfab9595185c50952a3c23c3c8e7599effdf3",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_summary_stage_single": {
+    "sha256": "da3fcacc1864dfd9c3a438530a2605e3a4674bb22298b9e6c124b0ed114cdf07",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_summary_looks_head": {
+    "sha256": "c0de0fc36d8595751964714d466f236059ff5e486a489cc4d8e5c8a23c83dd2c",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_summary_trigger": {
+    "sha256": "55b963789382d7cbb43208ae6884ed672d42cee11a2914b45a9abc2754812d89",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_summary_trigger_unit": {
+    "sha256": "0c89715329675e3972724a04774a2bd6af4362128cea807759d40a999e90389a",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_summary_rules_head": {
+    "sha256": "b5190ffda2557413795f0a10f37c534265405135f079959d0e495ebf7f04b755",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_summary_rule_all": {
+    "sha256": "076b0a7e5a2b941e8b43667dea4679fdb162a4c7a7f39dbd7fe36a468e482ca7",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_summary_joiner_and": {
+    "sha256": "011a6132780a44bd4c497231e334944e1095da1335c9632db497b6f42b08bea8",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_summary_shows": {
+    "sha256": "e6ce3d1b754446ac7e60522210cba584a1dacf4172b8a9d88b2d2e50f640ee78",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_summary_days_head": {
+    "sha256": "e46f876666146033c9bece2d2dcb05e7f3454bc9b06ef85b7d1f942dc3130406",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_summary_day_rule": {
+    "sha256": "8f66494e5139f4de59c44a56b33006e2e1ed63a4d831050a566fad8e4ee3dc50",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_summary_days_none": {
+    "sha256": "0990c0781ccbb8b5479866d883ab7dfd606d6aa69f82904a8bc68c8e15b115eb",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_summary_plan": {
+    "sha256": "acf786873cc8003b204c0a9d96034a0ebfed1e744ba5016f4bebe0786e96ecbe",
+    "reviewed": "pending owner read"
+  },
+  "labels:playbook_approach": {
+    "sha256": "0634024a1f7381a4a1e6c8ccca4fcd545f49b2755b054668e07d74ab13ed7f21",
+    "reviewed": "pending owner read"
+  },
+  "labels:playbook_day_kind": {
+    "sha256": "408ce98fe7eef4af1baa92cb0ae308ba1c1a7459f73709cc011e300b0d8b81bc",
+    "reviewed": "pending owner read"
+  },
+  "labels:playbook_day_action": {
+    "sha256": "8c84623976392e43d813884281a7a361f05346ecdf26796f2e6847c6f7317728",
+    "reviewed": "pending owner read"
+  },
+  "labels:playbook_summary": {
+    "sha256": "1ca007adf4dbd7fdca1f084b6c5f41537240fe27d178ddec8980606713546301",
+    "reviewed": "pending owner read"
   }
 }
