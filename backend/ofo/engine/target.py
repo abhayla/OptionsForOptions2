@@ -6,20 +6,17 @@ from __future__ import annotations
 import datetime
 from collections.abc import Sequence
 from decimal import ROUND_CEILING, ROUND_FLOOR, ROUND_HALF_EVEN, Decimal
-from typing import Final
 
 from ofo.engine.black_scholes import Greeks
 from ofo.engine.model import ModelInputs, estimate
 from ofo.money import PAISE
 
-#: REQ-084 AC-1: the target level's span either side of spot (10%), snapped inward to the strike step.
-TARGET_SPAN: Final = Decimal("0.10")
 
-
-def target_level_limits(spot: Decimal, step: Decimal) -> tuple[Decimal, Decimal]:
-    """Spot -10% .. +10%, each end snapped inward to a multiple of ``step`` (REQ-084 AC-1)."""
-    low = (spot * (1 - TARGET_SPAN) / step).to_integral_value(rounding=ROUND_CEILING) * step
-    high = (spot * (1 + TARGET_SPAN) / step).to_integral_value(rounding=ROUND_FLOOR) * step
+def target_level_limits(spot: Decimal, step: Decimal, span: Decimal) -> tuple[Decimal, Decimal]:
+    """Spot -span .. +span, each end snapped inward to a multiple of ``step`` (REQ-084 AC-1). ``span`` is the
+    ``scenarios.target_span`` setting in force (default in registry.json)."""
+    low = (spot * (1 - span) / step).to_integral_value(rounding=ROUND_CEILING) * step
+    high = (spot * (1 + span) / step).to_integral_value(rounding=ROUND_FLOOR) * step
     return low, high
 
 

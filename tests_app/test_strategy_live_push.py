@@ -21,12 +21,12 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 
 from marketdata._kite_fixture import all_instrument_ids, new_provider, replay  # noqa: E402
-
 from ofo.errors import render  # noqa: E402
 from ofo.marketdata.fanout import FanOut  # noqa: E402
 from ofo.marketdata.feed_health import FEED_STALE  # noqa: E402
 from ofo.marketdata.kite_provider import IST  # noqa: E402
 from ofo.outcome.snapshot import forward_strike_ids  # noqa: E402
+from ofo.settings import defaults as _d  # noqa: E402
 from ofo_app import live_market  # noqa: E402
 from ofo_app.config import Settings  # noqa: E402
 from ofo_app.live_push import ChannelClosed, LiveFeed, StrategyPush  # noqa: E402
@@ -652,7 +652,7 @@ async def test_206_rest_answers_not_live_while_the_inputs_are_not_streaming(live
     try:
         streamed = await _post(body)
         assert streamed["state"] == "COMPUTED"
-        assert streamed == outcome_response(OutcomeRequest.model_validate(body), feed.ctx).model_dump(
+        assert streamed == outcome_response(OutcomeRequest.model_validate(body), feed.ctx, settings=_d()).model_dump(
             mode="json", exclude_unset=True)
     finally:
         feed.fanout.unsubscribe(handle)
@@ -868,15 +868,15 @@ def test_ac5_a_leg_without_an_entry_the_fallback_is_not_connected(monkeypatch, l
 
 
 def test_ac5_fallback_without_a_market_context_is_the_draft_answer_not_numbers():
-    from ofo_app.routes.outcome import OutcomeRequest, outcome_response
-
     import datetime
 
+    from ofo_app.routes.outcome import OutcomeRequest, outcome_response
+
     fixed = lambda: datetime.datetime(2026, 10, 16, 3, 50, 5, tzinfo=datetime.timezone.utc)  # noqa: E731 - the answer clock
-    plain = outcome_response(OutcomeRequest.model_validate(_spread_request()), None, now=fixed).model_dump(
+    plain = outcome_response(OutcomeRequest.model_validate(_spread_request()), None, now=fixed, settings=_d()).model_dump(  # noqa: E501
         mode="json", exclude_unset=True)
     flagged = outcome_response(OutcomeRequest.model_validate({**_spread_request(), "fallback": True}), None,
-                               now=fixed).model_dump(mode="json", exclude_unset=True)
+                               now=fixed, settings=_d()).model_dump(mode="json", exclude_unset=True)
     assert flagged == plain and flagged["state"] != "COMPUTED"
 
 
@@ -892,7 +892,7 @@ async def test_an_ended_session_answers_from_entries_on_the_rest_route_and_the_p
     body = request(provider)
     out = await _post(body)
     _assert_from_entries_after_drop(out)
-    pushed = outcome_response(OutcomeRequest.model_validate(body), feed.ctx).model_dump(
+    pushed = outcome_response(OutcomeRequest.model_validate(body), feed.ctx, settings=_d()).model_dump(
         mode="json", exclude_unset=True)
     assert pushed["state"] == "FROM_ENTRIES" and pushed["output_label"] == FROM_YOUR_PRICES
     assert pushed["summary"] == out["summary"] and pushed["status_label"] == out["status_label"]
@@ -934,7 +934,7 @@ def _feed_rig():
 
 
 def _answer(provider, ctx) -> dict:
-    return outcome_response(OutcomeRequest.model_validate(request(provider)), ctx).model_dump(
+    return outcome_response(OutcomeRequest.model_validate(request(provider)), ctx, settings=_d()).model_dump(
         mode="json", exclude_unset=True)
 
 

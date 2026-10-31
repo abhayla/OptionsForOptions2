@@ -21,6 +21,7 @@ from ofo.outcome import OutcomeState, PlannedLeg, StrategyDefinition, build_outc
 from ofo.outcome.serialize import outcome_to_dict
 from ofo.scenario.levels import RangeOverride
 from ofo.scenario.views import View
+from ofo.settings import defaults as _d
 from ofo.table import TOTAL_ROW_ID
 from outcome.test_same_engine import RATE, VALUATION
 
@@ -59,7 +60,7 @@ def _condor_legs():
 def _outcome(provider, legs, **kw):
     d = _definition(legs)
     snap = read_snapshot(provider, "NIFTY", [p.instrument_id for p in d.legs], VALUATION, RATE)
-    out = build_outcome(d, snap, VALUATION, **kw)
+    out = build_outcome(d, snap, VALUATION, **kw, settings=_d())
     assert out.state is OutcomeState.COMPUTED, out.reason
     return out
 
@@ -182,11 +183,11 @@ def test_from_your_prices_graph_has_the_strikes_too(market):
     d = _definition(_condor_legs())
     snap = read_snapshot(provider, "NIFTY", [p.instrument_id for p in d.legs], VALUATION, RATE)
     stored = {p.instrument_id: snap.legs[p.instrument_id].contract for p in d.legs}
-    out = from_entries(d, None, stored, VALUATION)
+    out = from_entries(d, None, stored, VALUATION, settings=_d())
     assert out is not None
     points = dict(out.payoff_points)
     for strike, value in STRIKE_VALUES.items():
         assert points[strike] == value
     assert Decimal("22650") not in out.level_set.levels
     # Estimated Now from your prices: unavailable, no points
-    assert from_entries(d, None, stored, VALUATION, view=View.ESTIMATED_NOW).payoff_points == ()
+    assert from_entries(d, None, stored, VALUATION, view=View.ESTIMATED_NOW, settings=_d()).payoff_points == ()

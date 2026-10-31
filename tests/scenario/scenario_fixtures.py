@@ -10,14 +10,14 @@ from decimal import Decimal as D
 from pathlib import Path
 
 import pytest
-
 from ofo.engine.black_scholes import IST
 from ofo.engine.inputs import LegInput, SpotReading, StrategyInput
-from ofo.rules.inputs import DataHealth
 from ofo.engine.legs import Action, Instrument
 from ofo.instruments.catalogue import Catalogue, ContractKind
 from ofo.instruments.parser import parse_instruments_csv
+from ofo.rules.inputs import DataHealth
 from ofo.scenario.config import ScenarioSettings
+from ofo.settings import defaults as _d
 
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "instruments" / "instruments_slice.csv"
 
@@ -83,7 +83,7 @@ def golden():
 
 @pytest.fixture
 def settings() -> ScenarioSettings:
-    return ScenarioSettings()
+    return ScenarioSettings.from_values(_d())
 
 
 @pytest.fixture(scope="session")

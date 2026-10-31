@@ -3,11 +3,10 @@ inside each breakeven, never by one sample at the midpoint (a zero plateau betwe
 from decimal import Decimal
 
 import pytest
-
+from marketdata._kite_fixture import all_instrument_ids, new_provider, replay
 from ofo.engine.legs import Action
 from ofo.outcome import OutcomeState, PlannedLeg, StrategyDefinition, build_outcome, read_snapshot
-
-from marketdata._kite_fixture import all_instrument_ids, new_provider, replay
+from ofo.settings import defaults as _d
 from outcome.test_same_engine import CONDOR, RATE, VALUATION, entries
 
 OUTSIDE = "If NIFTY ends below 22,400 or above 22,800 at expiry."
@@ -26,7 +25,7 @@ def _start(provider, legs):
     d = StrategyDefinition("NIFTY", tuple(PlannedLeg(iid, action, lots, entry, VALUATION)
                                           for iid, action, entry, lots in legs))
     snap = read_snapshot(provider, "NIFTY", [leg[0] for leg in legs], VALUATION, RATE)
-    out = build_outcome(d, snap, VALUATION)
+    out = build_outcome(d, snap, VALUATION, settings=_d())
     assert out.state is OutcomeState.COMPUTED
     return str(out.summary.where_do_i_start_losing)
 

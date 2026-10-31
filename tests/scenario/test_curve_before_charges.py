@@ -23,6 +23,7 @@ from ofo.marketdata.kite_provider import IST
 from ofo.outcome import OutcomeState, PlannedLeg, StrategyDefinition, build_outcome, read_snapshot
 from ofo.scenario.levels import build_level_set
 from ofo.scenario.views import View, scenario_values
+from ofo.settings import defaults as _d
 from test_expiry_values_with_charges import RATES
 
 VALUATION = datetime.datetime(2026, 10, 8, 9, 20, 9, tzinfo=IST)
@@ -45,7 +46,7 @@ def outcome_of(provider, rates, view=View.AT_EXPIRY):
     d = StrategyDefinition("NIFTY", tuple(PlannedLeg(i, a, 1, provider.book.get(i, VALUATION).ltp, VALUATION)
                                           for i, a in REPLAY_CONDOR))
     snap = read_snapshot(provider, "NIFTY", [p.instrument_id for p in d.legs], VALUATION, D("0.065"))
-    out = build_outcome(d, snap, VALUATION, rates=rates, view=view)
+    out = build_outcome(d, snap, VALUATION, rates=rates, view=view, settings=_d())
     assert out.state is OutcomeState.COMPUTED, out.reason
     return out
 

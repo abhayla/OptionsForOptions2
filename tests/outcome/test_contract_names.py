@@ -3,10 +3,10 @@ instrument, strike, expiry) from the same snapshot lookup the COMPUTED answer us
 know keeps None, so the page's fixed wording stays. Real 2026-10-08 replay."""
 import dataclasses
 
+from marketdata._kite_fixture import all_instrument_ids, new_provider, replay
 from ofo.outcome import OutcomeState, build_outcome, not_connected, not_live, read_snapshot
 from ofo.outcome.snapshot import LegMarket
-
-from marketdata._kite_fixture import all_instrument_ids, new_provider, replay
+from ofo.settings import defaults as _d
 from outcome.test_same_engine import RATE, VALUATION, definition
 
 FIELDS = ("symbol", "instrument", "strike", "expiry")
@@ -32,7 +32,7 @@ def _names(out):
 
 def test_not_live_names_every_known_contract_like_the_computed_answer():
     d, snap = _setup()
-    computed = build_outcome(d, snap)
+    computed = build_outcome(d, snap, settings=_d())
     assert computed.state is OutcomeState.COMPUTED
     out = not_live(d, snap)
     assert _names(out) == _names(computed)
@@ -53,7 +53,7 @@ def test_not_connected_after_a_session_ended_names_known_contracts_and_not_unkno
     d, snap = _setup()
     first, snap = _unknown_first(snap, d)
     ended = dataclasses.replace(snap, status=dataclasses.replace(snap.status, session_ended=True))
-    out = build_outcome(d, ended)
+    out = build_outcome(d, ended, settings=_d())
     assert out.state is OutcomeState.NOT_CONNECTED
     assert _names(out)[0] == (None, None, None, None)
     assert all(None not in (n[0], n[1], n[3]) for n in _names(out)[1:])
@@ -70,9 +70,9 @@ def test_each_leg_keeps_its_own_contract_when_the_snapshot_is_built_in_another_o
     d, snap = _setup()
     reversed_snap = dataclasses.replace(snap, legs=dict(reversed(list(snap.legs.items()))))
     assert list(reversed_snap.legs) != list(snap.legs)
-    computed = build_outcome(d, snap)
+    computed = build_outcome(d, snap, settings=_d())
     for out in (not_live(d, reversed_snap), build_outcome(d, dataclasses.replace(
-            reversed_snap, status=dataclasses.replace(reversed_snap.status, session_ended=True)))):
+            reversed_snap, status=dataclasses.replace(reversed_snap.status, session_ended=True)), settings=_d())):
         assert [leg.instrument_id for leg in out.legs] == [p.instrument_id for p in d.legs]
         assert _names(out) == _names(computed)
     assert len({n[0] for n in _names(not_live(d, reversed_snap))}) == len(d.legs)  # four different symbols

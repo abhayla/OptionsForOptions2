@@ -22,9 +22,8 @@ from enum import Enum
 from ofo.engine.legs import Action, Instrument
 from ofo.strategy.model import EXPIRY_SLOTS, Template, resolve_template
 
-#: REQ-079 AC-7 defaults: quick-pick distances in index points per underlying (admin-changeable later; each a
-#: multiple of the strike step, checked on use).
-QUICK_PICK_DISTANCES: Mapping[str, tuple[int, ...]] = {"NIFTY": (50, 100, 150, 200), "SENSEX": (100, 200, 300, 400)}
+#: REQ-079 AC-7: the quick-pick distances per underlying are the ``scenarios.strangle_quick_pick_<index>_N`` settings
+#: (``ofo.settings.calc.quick_pick_distances``; each a multiple of the strike step, checked on use).
 #: The entry price handed to ``resolve_template`` (placement places strikes and prices nothing).
 _UNPRICED = Decimal("1")
 
@@ -117,16 +116,18 @@ def place_template(template: Template, expiries: Mapping[str, datetime.date | No
     return placed
 
 
-def place_quick_pick(pick: QuickPick, market: Market, listed_strikes: Collection[Decimal]) -> tuple[PlacedLeg, ...]:
+def place_quick_pick(pick: QuickPick, market: Market, listed_strikes: Collection[Decimal],
+                     distances: Mapping[str, tuple[int, ...]]) -> tuple[PlacedLeg, ...]:
     """A straddle (both legs at ATM) or a strangle (PE at ATM - distance, CE at ATM + distance), both legs on the side.
 
     A strangle's distance must be one of the underlying's offered distances and a multiple of the strike step. The user
-    picks the side and the lots; the platform never does (AC-7).
+    picks the side and the lots; the platform never does (AC-7). ``distances``: the offered distances per underlying
+    (the settings in force).
     """
     if pick.kind not in ("straddle", "strangle"):
         raise ValueError(f"quick pick kind must be 'straddle' or 'strangle', got {pick.kind!r}")
     live_spot = _usable_spot(market)
-    if pick.kind == "strangle" and (pick.distance not in QUICK_PICK_DISTANCES.get(pick.underlying, ())
+    if pick.kind == "strangle" and (pick.distance not in distances.get(pick.underlying, ())
                                     or Decimal(pick.distance) % market.strike_gap != 0):
         raise PlacementRefused(Refusal.DISTANCE_NOT_OFFERED)
     atm = listed_atm(live_spot, listed_strikes)

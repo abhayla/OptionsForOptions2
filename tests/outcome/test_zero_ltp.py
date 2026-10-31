@@ -13,6 +13,7 @@ from ofo.marketdata.quote import is_live_price
 from ofo.outcome import OutcomeState, build_outcome, read_snapshot
 from ofo.outcome.planned_entry import planned_entry_of
 from ofo.rules.inputs import DataHealth
+from ofo.settings import defaults as _d
 from ofo.table import TOTAL_ROW_ID, ColumnId
 from outcome.test_same_engine import RATE, VALUATION, definition
 
@@ -43,7 +44,7 @@ def _leg(out):
 
 def test_zero_ltp_leg_is_no_live_price_not_a_value(replayed):
     d, snap = _snap(replayed, Decimal("0"))
-    out = build_outcome(d, snap)
+    out = build_outcome(d, snap, settings=_d())
     leg = _leg(out)
     assert (leg.label, leg.ltp, leg.iv) == ("no live quote", None, None)
     total = next(r for r in out.table.rows if r.row_id == TOTAL_ROW_ID)
@@ -52,7 +53,7 @@ def test_zero_ltp_leg_is_no_live_price_not_a_value(replayed):
 
 def test_one_tick_ltp_is_a_valid_price(replayed):
     d, snap = _snap(replayed, Decimal("0.05"))
-    leg = _leg(build_outcome(d, snap))
+    leg = _leg(build_outcome(d, snap, settings=_d()))
     assert leg.ltp == Decimal("0.05") and leg.label != "no live quote"
 
 
@@ -64,7 +65,8 @@ def test_one_shared_rule_for_planned_entry_and_outcome(replayed):
 
 def test_zero_spot_is_refused(replayed):
     d, snap = _snap(replayed, Decimal("1"))
-    out = build_outcome(d, dataclasses.replace(snap, spot=dataclasses.replace(snap.spot, ltp=Decimal("0"))))
+    out = build_outcome(d, dataclasses.replace(snap, spot=dataclasses.replace(snap.spot, ltp=Decimal("0"))),
+        settings=_d())
     assert out.state is OutcomeState.REFUSED
     assert out.reason == render_explanation("outcome_spot_missing", underlying="NIFTY")  # not "unusable, AVAILABLE"
 

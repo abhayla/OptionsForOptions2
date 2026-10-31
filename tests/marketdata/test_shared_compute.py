@@ -18,6 +18,7 @@ from ofo.marketdata.forward import mid_price
 from ofo.marketdata.shared_compute import FeedScope, SharedCompute, SharedKey
 from ofo.outcome import PlannedLeg, StrategyDefinition, build_outcome, read_snapshot, service
 from ofo.scenario.spot import spot_reading
+from ofo.settings import defaults as _d
 from ofo.table.model import CellKind
 
 RATE = Decimal("0.065")
@@ -63,7 +64,7 @@ def read(provider, at, ids, cache=None, owner=None):
 
 
 def outcome(snap, ids, cache=None, owner=None):
-    return build_outcome(definition(ids), snap, valuation=snap.valuation, shared=scope(cache, owner))
+    return build_outcome(definition(ids), snap, valuation=snap.valuation, shared=scope(cache, owner), settings=_d())
 
 
 def test_core_two_readers_of_one_feed_snapshot_compute_once(feed, iv_calls):
@@ -281,7 +282,7 @@ def test_a_newer_frame_for_one_contract_is_a_new_instant_with_new_entries(feed, 
     quote = legs[STRADDLE[0]].quote
     legs[STRADDLE[0]] = dataclasses.replace(legs[STRADDLE[0]], quote=dataclasses.replace(quote, timestamp=newer))
     moved = dataclasses.replace(snap, legs=legs, valuation=newer)
-    build_outcome(definition(STRADDLE), moved, valuation=newer, shared=FeedScope(cache, "user-1"))
+    build_outcome(definition(STRADDLE), moved, valuation=newer, shared=FeedScope(cache, "user-1"), settings=_d())
     assert sum(iv_calls.values()) == before + CONTRACTS  # every figure of the new instant is computed afresh
 
 

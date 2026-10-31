@@ -15,6 +15,7 @@ from decimal import Decimal
 from typing import Final, Iterable, Mapping
 
 from ofo.instruments.catalogue import Catalogue
+from ofo.settings.calc import INDEXES, scenario_fields
 
 MAX_STEP_POINTS: Final = Decimal("10000")
 MAX_HALF_WIDTH_POINTS: Final = Decimal("50000")
@@ -117,17 +118,26 @@ class ScenarioConfig:
         return gap
 
 
-# Admin defaults (ADR-042). SENSEX is ~3x NIFTY's level, so its widths scale by 3 like its step.
-DEFAULT_CONFIGS: Final = (
-    ScenarioConfig("NIFTY", Decimal("100"), Decimal("100"), Decimal("1000"), 2, 200),
-    ScenarioConfig("SENSEX", Decimal("300"), Decimal("300"), Decimal("3000"), 2, 200),
-)
+def configs_from_values(values: Mapping[str, Decimal]) -> tuple[ScenarioConfig, ...]:
+    """The per-index configs of the ``scenarios.<index>_*`` settings in force (required, ADR-042).
+    The numbers are written only in registry.json (ADR-222 (1))."""
+    out = []
+    for index in INDEXES:
+        f = scenario_fields(values, index)
+        out.append(ScenarioConfig(index, f["step_points"], f["anchor_points"], f["half_width_points"],
+                                  int(f["margin_steps"]), int(f["max_columns"])))
+    return tuple(out)
 
 
 class ScenarioSettings:
     """The Admin set of per-index configs. One config per index; a duplicate index is refused."""
 
-    def __init__(self, configs: Iterable[ScenarioConfig] = DEFAULT_CONFIGS) -> None:
+    @classmethod
+    def from_values(cls, values: Mapping[str, Decimal]) -> ScenarioSettings:
+        """The settings built from the values in force (required)."""
+        return cls(configs_from_values(values))
+
+    def __init__(self, configs: Iterable[ScenarioConfig]) -> None:
         self._by_index: dict[str, ScenarioConfig] = {}
         for config in configs:
             if not isinstance(config, ScenarioConfig):
