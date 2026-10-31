@@ -23,6 +23,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
+from ofo.adjustment.playbook_eval import validate_body
 from ofo.adjustment.playbook_types import BODY_SCHEMA, NAME_MAX, SHOWN_NAMES
 from ofo.errors.explanations import render_explanation
 from sqlalchemy import text
@@ -39,6 +40,7 @@ NAME_INDEX = "adjustment_playbooks_name"
 SUGGESTION_FINAL = ("dismissed", "acted_on", "lapsed")
 _DECIMAL = re.compile(r"-?[0-9]+(\.[0-9]+)?")
 _ID = re.compile(r"[A-Za-z0-9_.\-]{1,40}")
+_CLOCK = re.compile(r"([01][0-9]|2[0-3]):[0-5][0-9]")
 
 
 class PlaybookStoreError(ValueError):
@@ -194,6 +196,10 @@ def check_body(body: object, strategy_type: str) -> dict:
                       ("approaches", dict)):
         if key in body and not isinstance(body[key], kind):
             raise _bad(key)
+    try:  # second layer: the evaluator's own validator (step 1B) must accept what is stored
+        validate_body(body)
+    except ValueError:
+        raise _bad("body") from None
     return body
 
 
@@ -207,10 +213,13 @@ def _check_triggers(triggers: object, counts: dict[str, int]) -> dict:
             raise _bad(f"triggers.{tid}.on")
         for kind, count in counts.items():
             values = trig.get(kind)
+            if values is None and kind in trig:  # no values for this expiry kind (1B: adjust_trigger_no_expiry_values)
+                continue
             if not isinstance(values, list) or len(values) != count:
                 raise _bad(f"triggers.{tid}.{kind}")
+            shape = _CLOCK if trig.get("unit") == "time" else _DECIMAL  # a clock trigger holds HH:MM (T-10b)
             for i, v in enumerate(values):
-                if not isinstance(v, str) or (v != "" and not _DECIMAL.fullmatch(v)):
+                if not isinstance(v, str) or (v != "" and not shape.fullmatch(v)):
                     raise _bad(f"triggers.{tid}.{kind}.{i}")
     return triggers
 
