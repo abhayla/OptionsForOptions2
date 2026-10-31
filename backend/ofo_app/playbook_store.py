@@ -254,9 +254,12 @@ def _type(strategy_type: str) -> str:
 
 
 def _name(name: object) -> str:
-    if not isinstance(name, str) or not name.strip() or len(name.strip()) > NAME_MAX:
+    """Trimmed, every inner whitespace run (tab, newline, no-break space, ...) folded to one space - the shape the
+    database CHECK adjustment_playbooks_name_shape holds, so 'IC  Safe' and 'IC Safe' are one name."""
+    folded = " ".join(name.split()) if isinstance(name, str) else ""
+    if not folded or len(folded) > NAME_MAX:
         raise PlaybookStoreError(BODY_INVALID, "playbook name", field="name")
-    return name.strip()
+    return folded
 
 
 def _playbook(row: Any) -> Playbook:
@@ -392,6 +395,10 @@ async def accept_plan(conn: Any, user_ref: str, strategy_id: int, playbook_id: i
     type); accepting again replaces the strategy's own plan."""
     await strategy_store.lock_strategy(conn, user_ref, strategy_id)  # not_found for a missing / another user's
     source = await get(conn, user_ref, playbook_id)
+    current = await plan_for(conn, user_ref, strategy_id)
+    if current is not None and current.strategy_type != source.strategy_type:  # a plan keeps its type (guard OF031)
+        raise PlaybookStoreError(BODY_INVALID, f"plan of strategy {strategy_id} is {current.strategy_type}, "
+                                 f"playbook {source.id} is {source.strategy_type}", field="strategy_type")
     copy = check_body(source.body if body is None else body, source.strategy_type)
     row = (await conn.execute(_UPSERT_PLAN, {"strategy_id": strategy_id, "playbook_id": source.id,
                                              "type": source.strategy_type, "body": _dump(copy)})).one()
