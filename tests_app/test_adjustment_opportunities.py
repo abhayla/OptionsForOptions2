@@ -253,7 +253,14 @@ async def test_an_impossible_id_is_not_found(app_db_url, bad):
 
 async def test_t19_list_line_names_the_same_approach_and_cost_as_the_check(app_db_url, monkeypatch):
     """ADR-221 (review MAJOR 1): the opportunities list draws a T-19 record with the approach, cost and unpriced count
-    stored when it opened, so the list line equals the check's flag line (the Compare's figure in both)."""
+    stored when it opened, so the list line equals the check's flag line (the Compare's figure in both). The charge
+    rates are the scenario library's stated rates (Zerodha's published F&O rates): with none (the conftest default)
+    no approach can be priced and T-19 is rightly not checked."""
+    import math  # noqa: PLC0415
+
+    import t19_support  # noqa: PLC0415 - sits next to this file
+    from ofo_app.routes import outcome  # noqa: PLC0415
+    monkeypatch.setattr(outcome, "_rates_cache", {"until": math.inf, "value": t19_support.RATES})
     sid = await _clean(app_db_url, await _seeded(app_db_url, monkeypatch, "ADJ-43"))
     first = await _check(sid)  # last day 15:00: the clock trigger T-10b fires too (was a 500 before its line fix)
     clock = next(x for x in first["results"] if x["kind"] == "flag" and x["trigger_id"] == "T-10b")
