@@ -70,7 +70,7 @@ Each step ends with one line here: `step N DONE <sha> <proof line>` or `PARKED (
   l.107 `platform_detection`, `lib/tracking.js:40` label, `nav.js:32` inbox key (no page), `errors/explanations.py`
   ADJUSTMENT_OPPORTUNITY label, generator `playbooks()` + `tests/test_adjust_scenarios.py` `recompute_fired` (the
   engine-free reference the evaluator must match). Reuse: those two; retire: nothing.
-- step 1 progress (2026-10-31 ~12:45): 1B merged 68fa55c7 (orchestrator re-run: guard set 2199 passed 0 failed; repo_scan
+- step 1 progress (2026-10-31 11:35, clock): 1B merged 68fa55c7 (orchestrator re-run: guard set 2199 passed 0 failed; repo_scan
   1338 passed); 1A merged a60d3bac (orchestrator re-run on a fresh DB: store + migration tests 33 passed; guards 2674
   passed; seed --check OK); ofo_dev 0030 -> 0031 -> 0030 -> 0031 each exit 0. Open: Tier A mutants (reviewer), 1C wiring
   + scenario-mode proof.
