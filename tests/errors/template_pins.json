@@ -2642,5 +2642,17 @@
   "explanation:adjust_check_type_name": {
     "sha256": "6812d4f9f2a54353f3930dcd5eac870ebb5e421e25baa6c61dd616426750e8d8",
     "reviewed": "pending owner read"
+  },
+  "playbook_stage_overlap": {
+    "sha256": "61f0c71a806739e26b0a3f1bcb34ed6d68dc69370b0fd5977109df2415e9137f",
+    "reviewed": "pending owner read"
+  },
+  "playbook_stage_gap": {
+    "sha256": "019dcbe8d488e3c5a75148bb14be6c73ab5dda3458d047bb86390b28c06270f0",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_name_shown": {
+    "sha256": "6812d4f9f2a54353f3930dcd5eac870ebb5e421e25baa6c61dd616426750e8d8",
+    "reviewed": "pending owner read"
   }
 }

@@ -131,6 +131,7 @@ _USER_WORDS_MINT = object()
 #: domain. Only code IN these modules can mint `UserWords`; each entry names the request field it parses.
 REQUEST_LAYER: Mapping[str, str] = MappingProxyType({
     "ofo.admin.client_id": "the Client ID an admin types (normalise_client_id)",
+    "ofo.adjustment.playbook_text": "a playbook's name the user typed (name_shown)",
     "ofo.rules.model": "a rule's name and description the user typed (Rule.shown_name)",
     "ofo.strategy.definition": "the strategy settings the user changed (rules_ref, risk_limits, preferences)",
     "ofo.strategy.stored_form": "a strategy's name the user typed (check_strategy_name)",
@@ -1174,6 +1175,8 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("change_restored", "values_seen", "restored entry {seq}", {"seq": Recorded}),
     # REQ-134 AC-1: a strategy's name as the API shows it - the user's own words, quoted word for word (ADR-003)
     ExplanationTemplate("strategy_name_shown", "values_seen", "{name}", {"name": UserText}),
+    # GC-ADJ2 step 2 (REQ-158 AC-3): a playbook's name as the API shows it - the user's own words (ADR-003)
+    ExplanationTemplate("playbook_name_shown", "values_seen", "{name}", {"name": UserText}),
     ExplanationTemplate("change_renamed", "values_seen", "Renamed from {old} to {new}",
                         {"old": UserText, "new": UserText}),
     ExplanationTemplate("rule_label_days_to_expiry_from", "rule", "{days} days to expiry or fewer, from {time} IST",

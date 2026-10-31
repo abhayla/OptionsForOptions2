@@ -84,6 +84,12 @@ ORDER_ROUTES: frozenset[tuple[str, str]] = frozenset({
 #: Every other mutating route, each one checked: none of them prepares, places, modifies or cancels an order.
 NON_ORDER_ROUTES: frozenset[tuple[str, str]] = frozenset({
     ("POST", "/api/broker/disconnect"),  # ends the broker session
+    ("POST", "/api/playbooks"),  # GC-ADJ2 2: create / save as new (a playbook is data, no order)
+    ("POST", "/api/playbooks/{playbook_id}/duplicate"),
+    ("PATCH", "/api/playbooks/{playbook_id}"),
+    ("PUT", "/api/playbooks/{playbook_id}"),
+    ("DELETE", "/api/playbooks/{playbook_id}"),
+    ("POST", "/api/playbooks/{playbook_id}/activate"),
     ("POST", "/api/strategies/leg-edit"),  # engine answer for one edited leg
     ("POST", "/api/strategies/outcome"),  # engine answer (a read)
     ("POST", "/api/strategies/{strategy_id}/adjustment-approaches"),  # REQ-155 engine answer, suggest-only (a read)
