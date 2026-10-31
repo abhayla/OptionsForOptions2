@@ -123,6 +123,7 @@ class AlreadyTrue:
     value: Decimal | str
     threshold: Decimal | str
     code: str = ALREADY_TRUE
+    cmp: Cmp | None = None  # GC-ADJ2 step 5: the lead trigger's comparison, as a Flag carries it
 
 
 def reason_text(code: str, slots: tuple[tuple[str, object], ...] = ()) -> str:
@@ -521,7 +522,7 @@ def evaluate(body: Mapping, state: StrategyState, memory: Mapping[str, Mapping[s
         else:
             lead = next((h for h in o.hits if h.trigger_id == o.lead), o.hits[0])
             if mem["held_at_entry"] and not mem["seen_clear"]:
-                results.append(AlreadyTrue(o.rule_id, lead.trigger_id, lead.value, lead.threshold))
+                results.append(AlreadyTrue(o.rule_id, lead.trigger_id, lead.value, lead.threshold, cmp=lead.cmp))
             else:
                 results.append(Flag(o.rule_id, lead.trigger_id, c.stage_name, lead.value, lead.threshold, lead.cmp,
                                     o.hits))

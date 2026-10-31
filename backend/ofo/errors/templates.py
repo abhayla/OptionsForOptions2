@@ -1230,6 +1230,12 @@ _PLAYBOOK_TEMPLATES: tuple[MessageTemplate, ...] = (
     _gate("playbook_stage_gap", _UI, 159, "Days {from_day} to {to_day} are in no stage ({expiry} expiries).",
           _PB_NOT_SAVED, _PB_BLOCKED, "Add a stage for those days, or stretch a stage over them.",
           {"from_day": Count, "to_day": Count, "expiry": PlaybookField}),
+    # GC-ADJ2 step 5 (REQ-112 AC-2/AC-4): a suggestion's outcome is written once; nothing is written on a refusal
+    _gate("suggestion_not_found", _UI, 170, "This adjustment opportunity was not found.",
+          "Nothing was changed.", "Recording what you did with it.", "Open Adjustment opportunities again."),
+    _gate("suggestion_not_open", _UI, 171, "This adjustment opportunity already has its outcome.",
+          "Nothing was changed; its outcome stays as it was.", "Recording another outcome for it.",
+          "Open Adjustment opportunities to see its outcome."),
 )
 
 _TEMPLATES = (_TEMPLATES + _TRIGGER_TEMPLATES + _GATE_TEMPLATES

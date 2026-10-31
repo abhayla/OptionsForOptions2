@@ -11,7 +11,8 @@ rule was triggered" (REQ-045 AC-1, Q252); a rule true at entry is "Already true 
 from __future__ import annotations
 
 import logging
-from decimal import Decimal
+import uuid
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends
@@ -23,7 +24,7 @@ from ofo.errors.explanations import render_explanation
 from ofo.marketdata.spot_source import resolve_spot
 
 from ofo_app import adjustment_check as check
-from ofo_app import scenario_mode
+from ofo_app import playbook_store, scenario_mode
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier, Money
 from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure
@@ -69,6 +70,8 @@ class CheckResultOut(ApiModel):
     threshold: Money | None
     reason: CatalogueText | None
     wording: CatalogueText | None
+    condition: CatalogueText | None = None  # the condition in plain words ("T-01: 0.3416 at or below 0.5000")
+    suggestion_id: int | None = None  # a flag's open REQ-112 record (Dismiss / acted on name it)
 
 
 class AdjustmentCheckOut(ApiModel):
@@ -81,19 +84,58 @@ class AdjustmentCheckOut(ApiModel):
     results: list[CheckResultOut]
 
 
+#: the shown scale of a check value and threshold (the scenario fixtures' "0.3416" / "0.5000"); the evaluator keeps
+#: the exact values, only the answer is rounded (half-up, GC-ADJ2 step 5 item 1)
+SHOWN_PLACES = Decimal("0.0001")
+
+
 def _num(v: Decimal | str | None) -> Decimal | None:
-    return v if isinstance(v, Decimal) else None  # a clock value or UNLIMITED is not a number
+    if not isinstance(v, Decimal):  # a clock value or UNLIMITED is not a number
+        return None
+    return v.quantize(SHOWN_PLACES, rounding=ROUND_HALF_UP)
 
 
-def _result(r: pe.Result, flag_wording: Any) -> dict:
+def _condition(r: pe.Flag | pe.AlreadyTrue) -> Any:
+    """The condition in plain words from the catalogue; None without a comparison."""
+    if r.cmp is None:
+        return None
+    value, threshold = _num(r.value), _num(r.threshold)
+    return render_explanation("adjust_condition_line", trigger=r.trigger_id,
+                              value=str(r.value) if value is None else str(value),
+                              cmp=render_explanation(f"adjust_cmp_{r.cmp}"),
+                              threshold=str(r.threshold) if threshold is None else str(threshold))
+
+
+def _result(r: pe.Result, flag_wording: Any, opened: dict[str, int] | None = None) -> dict:
     if isinstance(r, pe.Flag):
         return {"kind": "flag", "rule_id": r.rule_id, "trigger_id": r.trigger_id, "cmp": r.cmp, "value": _num(r.value),
-                "threshold": _num(r.threshold), "reason": None, "wording": flag_wording}
+                "threshold": _num(r.threshold), "reason": None, "wording": flag_wording,
+                "condition": _condition(r), "suggestion_id": (opened or {}).get(r.rule_id)}
     if isinstance(r, pe.AlreadyTrue):
-        return {"kind": "already_true", "rule_id": r.rule_id, "trigger_id": r.trigger_id, "cmp": None,
-                "value": _num(r.value), "threshold": _num(r.threshold), "reason": None, "wording": render(r.code)}
+        return {"kind": "already_true", "rule_id": r.rule_id, "trigger_id": r.trigger_id, "cmp": r.cmp,
+                "value": _num(r.value), "threshold": _num(r.threshold), "reason": None, "wording": render(r.code),
+                "condition": _condition(r)}
     return {"kind": "not_checked", "rule_id": r.rule_id, "trigger_id": r.trigger_id, "cmp": None, "value": None,
             "threshold": None, "reason": render(r.code, **dict(r.slots)), "wording": None}
+
+
+async def _sync_records(db: Any, user_ref: str, strategy_id: int, ev: pe.Evaluation, source: str) -> dict[str, int]:
+    """REQ-112 AC-1/AC-2, REQ-045 AC-8: one open record per flagged rule (a rule still open keeps its record), all
+    opened at this check sharing one group; the open record of a rule this check found FALSE lapses (condition
+    stopped holding). A not-checked or already-true rule is neither flagged nor cleared: its record stays as it is."""
+    group = uuid.uuid4().hex
+    opened: dict[str, int] = {}
+    for r in ev.results:
+        if isinstance(r, pe.Flag):
+            rec = await playbook_store.open_suggestion(
+                db, user_ref, strategy_id, r.rule_id, trigger_id=r.trigger_id, stage=r.stage_name,
+                value=_num(r.value), threshold=_num(r.threshold), group=group, source=source)
+            opened[r.rule_id] = rec.id
+    cleared = set(ev.clear)
+    for rec in await playbook_store.open_suggestions(db, user_ref, strategy_id):
+        if rec.rule_id in cleared:
+            await playbook_store.lapse(db, user_ref, rec.id, playbook_store.LAPSE_CONDITION_STOPPED)
+    return opened
 
 
 async def _current_margin(margin_of: ApproachMargin, tracked: Any, market: Any) -> dict | None:
@@ -116,10 +158,14 @@ async def adjustment_check(  # noqa: PLR0913 - FastAPI dependencies, one per inp
         margin_of: Annotated[ApproachMargin, Depends(get_approach_margin)],
         ctx: Annotated[MarketContext | None, Depends(get_market_context)],
         rates: Annotated[ChargeRates | None, Depends(load_charge_rates)]) -> AdjustmentCheckOut:
-    from ofo_app.adjustment_readers import TrackedUnreadable  # noqa: PLC0415 - it imports routes.adjustment
+    from ofo_app.adjustment_readers import TrackedExited, TrackedUnreadable  # noqa: PLC0415 - imports routes.adjustment
     rates = rates if isinstance(rates, ChargeRates) else None
     try:
         tracked = await tracked_reader(strategy_id, rates)
+    except TrackedExited:  # every leg exited: the strategy closed, so its open records lapse (REQ-112 AC-2)
+        await playbook_store.lapse_all(db, user_ref, strategy_id, playbook_store.LAPSE_STRATEGY_CLOSED)
+        await db.commit()
+        raise StrategyRefused(_NOT_AVAILABLE, Failure.CONFLICT) from None
     except TrackedUnreadable as exc:
         log.warning("adjustment check: strategy %s unreadable: %s", strategy_id, exc)
         raise StrategyRefused(_NOT_AVAILABLE, Failure.CONFLICT) from None
@@ -142,9 +188,11 @@ async def adjustment_check(  # noqa: PLR0913 - FastAPI dependencies, one per inp
     state = check.state_of(tracked, market, spot, margin, rates, check.prices_fresh(ctx), resolved.body)
     ev = await check.evaluate_and_remember(db, user_ref, strategy_id, resolved.body, state, scenario_mode.current(),
                                            tracked.position)
+    source = playbook_store.SOURCE_SYSTEM if resolved.is_system else playbook_store.SOURCE_OWN
+    opened = await _sync_records(db, user_ref, strategy_id, ev, source)
     await db.commit()
     wording = render_explanation("adjust_check_flag_system" if resolved.is_system else "adjust_check_flag_user")
     reply |= {"stage": {"name": ev.stage_name, "index": ev.stage_index},
               "withheld": None if ev.withheld is None else render(ev.withheld),
-              "results": [_result(r, wording) for r in ev.results]}
+              "results": [_result(r, wording, opened) for r in ev.results]}
     return AdjustmentCheckOut.model_validate(reply)

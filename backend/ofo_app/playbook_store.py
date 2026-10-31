@@ -38,6 +38,15 @@ NOT_FOUND = "playbook_not_found"
 BODY_INVALID = "playbook_body_invalid"
 NAME_INDEX = "adjustment_playbooks_name"
 SUGGESTION_FINAL = ("dismissed", "acted_on", "lapsed")
+SUGGESTION_NOT_FOUND = "suggestion_not_found"
+SUGGESTION_NOT_OPEN = "suggestion_not_open"
+#: REQ-112 AC-2: the Dismiss reasons, a short closed list (the shown words live in the catalogue)
+DISMISS_REASONS = ("expected_within_plan", "will_act_later", "not_relevant", "other")
+#: why a record lapsed (REQ-112 AC-2), written into its timeline entry (the dismiss reason column is Dismiss's only)
+LAPSE_CONDITION_STOPPED = "condition_stopped"
+LAPSE_STRATEGY_CLOSED = "strategy_closed"
+SOURCE_SYSTEM = "system"  # "Adjustment opportunity detected" (a system playbook's flag)
+SOURCE_OWN = "own"  # "Your rule was triggered" (the user's own playbook or the strategy's plan)
 _DECIMAL = re.compile(r"-?[0-9]+(\.[0-9]+)?")
 _ID = re.compile(r"[A-Za-z0-9_.\-]{1,40}")
 _CLOCK = re.compile(r"([01][0-9]|2[0-3]):[0-5][0-9]")
@@ -95,6 +104,25 @@ class Suggestion:
     dismiss_reason: str | None
     timeline: list
 
+    @property
+    def group(self) -> str | None:
+        """REQ-045 AC-8: the check that opened it; records of one strategy at one check share it."""
+        return self.timeline[0].get("group") if self.timeline else None
+
+    @property
+    def source(self) -> str | None:
+        """system / own: which label the flag carried when it was shown (REQ-045 AC-1)."""
+        return self.timeline[0].get("source") if self.timeline else None
+
+
+@dataclass(frozen=True)
+class InboxRow:
+    """One suggestion of the user's strategies for the inbox (REQ-162), with its strategy's saved name."""
+
+    suggestion: Suggestion
+    strategy_name: str
+    paper: bool  # the strategy has paper orders: an acted-on basket is not sent to Zerodha (ADR-135)
+
 
 _PB_COLUMNS = "id, user_ref, strategy_type, name, is_system, status, body::text, version, created_at, updated_at"
 _VISIBLE = "(user_ref IS NULL OR user_ref = :user_ref)"
@@ -143,15 +171,27 @@ _OPEN_FOR_RULE = text(f"SELECT {_SG_COLUMNS} FROM public.adjustment_suggestions 
 _INSERT_SUGGESTION = text(
     "INSERT INTO public.adjustment_suggestions (strategy_id, rule_id, trigger_id, stage, value, threshold, timeline) "  # noqa: S608
     "VALUES (:strategy_id, :rule_id, :trigger_id, :stage, :value, :threshold, "
-    "jsonb_build_array(jsonb_build_object('at', clock_timestamp(), 'outcome', 'open'))) "
+    "jsonb_build_array(jsonb_build_object('at', clock_timestamp(), 'outcome', 'open', "
+    "'group', CAST(:group AS TEXT), 'source', CAST(:source AS TEXT)))) "
     f"RETURNING {_SG_COLUMNS}")
 _CLOSE_SUGGESTION = text(
     "UPDATE public.adjustment_suggestions AS g SET outcome = CAST(:outcome AS TEXT), "  # noqa: S608
     "dismiss_reason = CAST(:reason AS TEXT), timeline = g.timeline || jsonb_build_array(jsonb_build_object("
-    "'at', clock_timestamp(), 'outcome', CAST(:outcome AS TEXT), 'suggestion_id', g.id)) "
+    "'at', clock_timestamp(), 'outcome', CAST(:outcome AS TEXT), 'suggestion_id', g.id, "
+    "'reason', CAST(:note AS TEXT))) "
     "FROM public.strategies s WHERE g.id = :id AND s.id = g.strategy_id "
     "AND s.user_ref = :user_ref AND g.outcome = 'open' "
     f"RETURNING {', '.join('g.' + c for c in _SG_COLUMNS.split(', '))}")
+_SUGGESTION_OUTCOME = text("SELECT g.outcome FROM public.adjustment_suggestions g JOIN public.strategies s "
+                           "ON s.id = g.strategy_id WHERE g.id = :id AND s.user_ref = :user_ref")
+_OPEN_OF_STRATEGY = text(f"SELECT {', '.join('g.' + c for c in _SG_COLUMNS.split(', '))} "  # noqa: S608 constant
+                         "FROM public.adjustment_suggestions g JOIN public.strategies s ON s.id = g.strategy_id "
+                         "WHERE g.strategy_id = :strategy_id AND s.user_ref = :user_ref AND g.outcome = 'open' "
+                         "ORDER BY g.id")
+_INBOX = text(f"SELECT {', '.join('g.' + c for c in _SG_COLUMNS.split(', '))}, s.name, "  # noqa: S608 constant
+              "EXISTS (SELECT 1 FROM public.paper_orders o WHERE o.strategy_id = s.id) "
+              "FROM public.adjustment_suggestions g JOIN public.strategies s ON s.id = g.strategy_id "
+              "WHERE s.user_ref = :user_ref ORDER BY g.shown_at DESC, g.id DESC")
 _LIST_SUGGESTIONS = text(f"SELECT {', '.join('g.' + c for c in _SG_COLUMNS.split(', '))} "  # noqa: S608 constant
                          "FROM public.adjustment_suggestions g JOIN public.strategies s ON s.id = g.strategy_id "
                          "WHERE g.strategy_id = :strategy_id AND s.user_ref = :user_ref ORDER BY g.id")
@@ -438,7 +478,8 @@ def _suggestion(row: Any) -> Suggestion:
 
 async def open_suggestion(conn: Any, user_ref: str, strategy_id: int, rule_id: str, *,  # noqa: PLR0913
                           trigger_id: str | None, stage: str | None, value: Decimal | None,
-                          threshold: Decimal | None) -> Suggestion:
+                          threshold: Decimal | None, group: str | None = None,
+                          source: str | None = None) -> Suggestion:
     """REQ-112 AC-1: one open record per (strategy, rule); a rule still open returns its existing record."""
     await _owned(conn, user_ref, strategy_id)
     params = {"strategy_id": strategy_id, "rule_id": rule_id}
@@ -446,17 +487,24 @@ async def open_suggestion(conn: Any, user_ref: str, strategy_id: int, rule_id: s
     if existing is not None:
         return _suggestion(existing)
     row = (await conn.execute(_INSERT_SUGGESTION, {**params, "trigger_id": trigger_id, "stage": stage,
-                                                   "value": value, "threshold": threshold})).one()
+                                                   "value": value, "threshold": threshold, "group": group,
+                                                   "source": source})).one()
     return _suggestion(row)
 
 
-async def _close(conn: Any, user_ref: str, suggestion_id: int, outcome: str, reason: str | None) -> Suggestion:
+async def _close(conn: Any, user_ref: str, suggestion_id: int, outcome: str, reason: str | None,  # noqa: PLR0913
+                 note: str | None = None) -> Suggestion:
     if outcome not in SUGGESTION_FINAL:
         raise ValueError(f"unknown suggestion outcome {outcome!r}")
+    if type(suggestion_id) is not int:
+        raise strategy_store.StrategyStoreError(SUGGESTION_NOT_FOUND, f"suggestion {suggestion_id}")
     row = (await conn.execute(_CLOSE_SUGGESTION, {"id": suggestion_id, "user_ref": user_ref, "outcome": outcome,
-                                                  "reason": reason})).one_or_none()
-    if row is None:  # missing, another user's, or no longer open: the outcome is never written twice
-        raise strategy_store.StrategyStoreError(strategy_store.NOT_FOUND, f"open suggestion {suggestion_id}")
+                                                  "reason": reason, "note": note})).one_or_none()
+    if row is None:  # the outcome is never written twice: missing / another user's, or already final
+        found = (await conn.execute(_SUGGESTION_OUTCOME, {"id": suggestion_id, "user_ref": user_ref})).first()
+        if found is None:
+            raise strategy_store.StrategyStoreError(SUGGESTION_NOT_FOUND, f"suggestion {suggestion_id}")
+        raise strategy_store.StrategyStoreError(SUGGESTION_NOT_OPEN, f"suggestion {suggestion_id} is {found[0]}")
     return _suggestion(row)
 
 
@@ -468,8 +516,26 @@ async def act_on(conn: Any, user_ref: str, suggestion_id: int) -> Suggestion:
     return await _close(conn, user_ref, suggestion_id, "acted_on", None)
 
 
-async def lapse(conn: Any, user_ref: str, suggestion_id: int) -> Suggestion:
-    return await _close(conn, user_ref, suggestion_id, "lapsed", None)
+async def lapse(conn: Any, user_ref: str, suggestion_id: int, reason: str = LAPSE_CONDITION_STOPPED) -> Suggestion:
+    if reason not in (LAPSE_CONDITION_STOPPED, LAPSE_STRATEGY_CLOSED):
+        raise ValueError(f"unknown lapse reason {reason!r}")
+    return await _close(conn, user_ref, suggestion_id, "lapsed", None, reason)
+
+
+async def open_suggestions(conn: Any, user_ref: str, strategy_id: int) -> list[Suggestion]:
+    rows = (await conn.execute(_OPEN_OF_STRATEGY, {"strategy_id": strategy_id, "user_ref": user_ref})).all()
+    return [_suggestion(r) for r in rows]
+
+
+async def lapse_all(conn: Any, user_ref: str, strategy_id: int, reason: str) -> list[Suggestion]:
+    """Every open record of the strategy lapses (REQ-112 AC-2: the strategy closed)."""
+    return [await lapse(conn, user_ref, s.id, reason) for s in await open_suggestions(conn, user_ref, strategy_id)]
+
+
+async def inbox(conn: Any, user_ref: str) -> list[InboxRow]:
+    """REQ-162 AC-1: every record of the user's strategies, newest first."""
+    rows = (await conn.execute(_INBOX, {"user_ref": user_ref})).all()
+    return [InboxRow(_suggestion(r), r[11], r[12] is True) for r in rows]
 
 
 async def suggestions(conn: Any, user_ref: str, strategy_id: int) -> list[Suggestion]:
