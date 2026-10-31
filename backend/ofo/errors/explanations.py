@@ -239,6 +239,10 @@ BUILDER_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
     "RESTORE": "User restored an earlier configuration",
     "UNDO": "User undid the last change",
 })
+#: Owner wording 2026-10-31: approach names that contain a strategy shape's name are data, not code (REQ-028 AC-5:
+#: no backend module names a template); read from ofo/adjustment/approach_names_with_shape_words.json.
+_APPROACH_NAMES_FILE = Path(__file__).resolve().parent.parent / "adjustment" / "approach_names_with_shape_words.json"
+_SHAPE_WORD_NAMES: Mapping[str, str] = MappingProxyType(json.loads(_APPROACH_NAMES_FILE.read_text(encoding="utf-8")))
 #: W-196 (REQ-155, ADR-214): the names of the iron condor adjustment approaches, by catalogue A-id (decision support).
 ADJUSTMENT_APPROACH_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
     "A-36": "No change",
@@ -246,7 +250,7 @@ ADJUSTMENT_APPROACH_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
     "A-05": "Roll the tested spread out (same width)",
     "A-29": "Reduce the tested side",
     "A-28": "Close the tested spread",
-    "A-11": "Convert to an iron butterfly: move both shorts to the money",
+    "A-11": _SHAPE_WORD_NAMES["A-11"],
     "A-31": "Exit the whole strategy",
 })
 #: GC-ADJ2 step 3 (REQ-159 AC-5, REQ-160 AC-1): the playbook editor's names of the approaches NOT in ADJUSTMENT_APPROACH_LABEL_TEXT (that table stays the one home of its ids; a test holds the two disjoint). Source: tests/fixtures/adjust_scenarios/_playbooks.json approaches.
@@ -258,9 +262,9 @@ PLAYBOOK_APPROACH_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
     "A-07": "Re-centre / reset around spot",
     "A-08": "Straddle-ise (move the untested short to the tested strike)",
     "A-09": "Add wings (buy far options on each side)",
-    "A-10": "Inverted strangle (short call strike below short put strike)",
+    "A-10": _SHAPE_WORD_NAMES["A-10"],
     "A-12": "Convert to a (broken-wing) butterfly",
-    "A-13": "Convert to a jade lizard: sell a put and a call spread",  # fixture: "no risk on one side" (a promise word, Q226); a template name may not appear in code (AC-5)
+    "A-13": _SHAPE_WORD_NAMES["A-13"],
     "A-14": "Calendar / diagonal on the tested side",
     "A-15": "Ratio fix (buy back the extra short or add a far long)",
     "A-16": "Long option to debit spread",

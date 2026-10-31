@@ -390,8 +390,8 @@ def test_drawer_no_spot_means_no_approach_can_be_built_and_the_reason_says_so():
 
 def test_spot_not_available_words_every_source_reason_never_a_raw_code():
     b = post(client_for(load("ADJ-24b"))).json()
-    assert b["spot"]["text"] == ("Spot not available (live feed: the feed is not connected; one-time price request: the quote "
-                                 "request failed; last close: no close is stored), so no After is computed.")
+    assert b["spot"]["text"] == ("Spot not available (live feed: the feed is not connected; one-time price request: "
+                                 "the quote request failed; last close: no close is stored), so no After is computed.")
     assert route._spot_why("feed", "not_finite") == "the feed's last price was not a number"
     assert route._spot_why("rest_quote", "empty") == "the quote had no price"
     assert route._spot_why("last_close", "not_finite") == "its last price was not a number"
