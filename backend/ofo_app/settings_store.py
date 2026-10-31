@@ -13,7 +13,13 @@ Answer states of a read (each has a test in tests_app/test_settings_store.py):
 
 Writes take effect now (the database clock) or at a later stated time; a back-dated write is refused, because figures
 already shown were computed with the value then in force. The audit row uses the existing ADMIN_CHANGE_RECORDED event
-(fields ``action`` and ``reason``; no audit migration). Transaction control stays with the caller.
+(fields ``action`` and ``reason``; no audit migration). Transaction control stays with the caller (READ COMMITTED, the
+audit store refuses anything else); the insert runs in a savepoint so a same-instant duplicate leaves the caller's
+transaction usable.
+
+Known bypasses (out of the threat model, not chased): a database superuser or the table owner can
+``ALTER TABLE public.app_settings DISABLE TRIGGER app_settings_guard`` (or drop it) and then edit or delete rows; the
+start-up allow-list check (migration 0032 block 24) reports a disabled or re-bodied guard but cannot stop the owner.
 """
 
 from __future__ import annotations
@@ -132,9 +138,12 @@ async def add_setting(session: AsyncSession | AsyncConnection, key: str, value: 
     elif effective_from < now:
         raise SettingRefused("setting_back_dated",
                              "A setting takes effect now or later; an earlier time would change figures already shown.")
+    if not isinstance(correlation_id, str) or not correlation_id.strip():
+        raise SettingRefused("setting_no_correlation", "A setting change needs the request's correlation id.")
     try:
-        await session.execute(_INSERT, {"key": key, "value": parsed, "effective_from": effective_from,
-                                        "set_by": set_by, "note": note})
+        async with session.begin_nested():  # a duplicate time aborts only this savepoint, not the caller's transaction
+            await session.execute(_INSERT, {"key": key, "value": parsed, "effective_from": effective_from,
+                                            "set_by": set_by, "note": note})
     except IntegrityError:
         raise SettingRefused("setting_same_time",
                              "Another value already takes effect at exactly that time; pick another time.") from None

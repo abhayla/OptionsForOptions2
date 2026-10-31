@@ -96,8 +96,11 @@ def parse_registry(text: str) -> dict[str, Setting]:
         low, high, default = (_dec(row.get(f), f"{key}.{f}") for f in ("min", "max", "default"))
         setting = Setting(key, texts["group"], texts["label"], texts["unit"], texts["type"], low, high, default,
                           texts["what_it_changes"], texts["source"])
-        if low > high or check_value(setting, default) != default:
-            raise RegistryError(f"{key}: the default {default} is outside [{low}, {high}] or not of its type")
+        try:
+            if low > high or check_value(setting, default) != default:
+                raise SettingRefused("setting_out_of_range", "bounds reversed")
+        except SettingRefused:
+            raise RegistryError(f"{key}: the default {default} is outside [{low}, {high}] or not of its type") from None
         out[key] = setting
     return out
 

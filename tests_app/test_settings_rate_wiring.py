@@ -129,7 +129,7 @@ async def test_the_live_feed_context_starts_at_the_registry_default(replayed):
         async def run(self):
             await asyncio.Event().wait()
 
-        async def stop(self):
+        def stop(self):  # LiveMarket._halt calls it without awaiting
             return None
 
     market = live_market.LiveMarket()
