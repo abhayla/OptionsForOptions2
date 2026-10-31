@@ -58,7 +58,7 @@ class CheckPlaybookOut(ApiModel):
 
 
 class CheckStageOut(ApiModel):
-    name: Identifier | None
+    name: CatalogueText | None  # the stage name as the user typed it (spaces allowed)
     index: int | None
 
 
@@ -228,7 +228,7 @@ async def adjustment_check(  # noqa: PLR0913 - FastAPI dependencies, one per inp
     opened, dismissed = await _sync_records(db, user_ref, strategy_id, ev, source, resolved.body, _cheapest(state))
     await db.commit()
     wording = render_explanation("adjust_check_flag_system" if resolved.is_system else "adjust_check_flag_user")
-    reply |= {"stage": {"name": ev.stage_name, "index": ev.stage_index},
+    reply |= {"stage": check.stage_out(ev.stage_name, ev.stage_index),
               "withheld": None if ev.withheld is None else render(ev.withheld),
               "results": [result_out(r, wording, opened, dismissed=dismissed, body=resolved.body,
                                     cheapest=_cheapest(state)) for r in ev.results]}

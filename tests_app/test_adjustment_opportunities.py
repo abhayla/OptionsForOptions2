@@ -258,7 +258,8 @@ async def test_t19_list_line_names_the_same_approach_and_cost_as_the_check(app_d
     first = await _check(sid)  # last day 15:00: the clock trigger T-10b fires too (was a 500 before its line fix)
     clock = next(x for x in first["results"] if x["kind"] == "flag" and x["trigger_id"] == "T-10b")
     assert clock["condition"] == "Clock time reached (checked in this stage): 15:00 (rule 14:30)"
-    flag = next(x for x in first["results"] if x["kind"] == "flag" and x["trigger_id"] == "T-19")
+    flag = next((x for x in first["results"] if x["kind"] == "flag" and x["trigger_id"] == "T-19"), None)
+    assert flag is not None, [(x["kind"], str(x["reason"])[:400]) for x in first["results"] if x["trigger_id"] == "T-19"]
     assert "cheapest adjustment that could be priced now: Close the tested spread, cost ₹" in flag["condition"]
     rec = next(r for r in await _records(app_db_url, sid) if r.rule_id == "T-19")
     assert rec.approach == "A-28" and rec.approach_cost is not None and rec.approach_cost > 0

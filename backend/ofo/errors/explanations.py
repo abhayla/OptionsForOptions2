@@ -25,7 +25,9 @@ from types import MappingProxyType
 
 from ofo import wording as _wording
 
-from ofo.errors.gate_slots import ClockTime, PlaybookField, PlaybookTriggerLabel, PlaybookTypeName, PlaybookUnit
+from ofo.errors.gate_slots import (
+    ClockTime, PlaybookField, PlaybookName, PlaybookTriggerLabel, PlaybookTypeName, PlaybookUnit,
+)
 from ofo.errors.slots import Count, SlotType, _require_exact
 from ofo.errors.templates import MARGIN_SHORTFALL_NEXT_ACTION, ZERODHA_BUSY_TEXT
 
@@ -1395,6 +1397,8 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("adjust_check_flag_system", "what_triggered", "Adjustment opportunity detected"),
     ExplanationTemplate("adjust_check_flag_user", "what_triggered", "Your rule was triggered"),
     ExplanationTemplate("adjust_check_type_name", "values_seen", "{name}", {"name": PlaybookTypeName}),
+    # a playbook stage's name as the user typed it ("Last day"): it has spaces, so it is catalogue text, not an id
+    ExplanationTemplate("adjust_check_stage_name", "values_seen", "{name}", {"name": PlaybookName}),
     # GC-ADJ2 step 5 (REQ-112 AC-2/AC-6, REQ-162): suggestion outcomes, dismiss reasons and the inbox's fixed words
     ExplanationTemplate("suggestion_outcome_open", "values_seen", "Open"),
     ExplanationTemplate("suggestion_outcome_dismissed", "values_seen", "You dismissed this"),

@@ -26,7 +26,7 @@ from ofo.strategy.stored_form import shown_name
 from pydantic import BaseModel, ConfigDict
 
 from ofo_app import playbook_store as store
-from ofo_app.adjustment_check import condition_line, condition_line_t19
+from ofo_app.adjustment_check import condition_line, condition_line_t19, stage_name_text
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier, Money
 from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure
@@ -52,7 +52,7 @@ class OpportunityOut(ApiModel):
     id: int
     rule_id: Identifier
     trigger_id: Identifier | None
-    stage: Identifier | None
+    stage: CatalogueText | None
     value: Money | None
     threshold: Money | None
     condition: CatalogueText | None
@@ -122,8 +122,9 @@ def _condition(s: store.Suggestion) -> Any:
 
 
 def _record(s: store.Suggestion, paper: bool) -> dict:
-    return {"id": s.id, "rule_id": s.rule_id, "trigger_id": s.trigger_id, "stage": s.stage, "value": s.value,
-            "threshold": s.threshold, "condition": _condition(s), "shown_at": s.shown_at, "outcome": s.outcome,
+    return {"id": s.id, "rule_id": s.rule_id, "trigger_id": s.trigger_id,
+            "stage": stage_name_text(s.stage), "value": s.value, "threshold": s.threshold,
+            "condition": _condition(s), "shown_at": s.shown_at, "outcome": s.outcome,
             "outcome_text": outcome_text(s, paper), "detail": _detail(s), "can_act": s.outcome == "open"}
 
 

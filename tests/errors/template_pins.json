@@ -2647,6 +2647,10 @@
     "sha256": "6812d4f9f2a54353f3930dcd5eac870ebb5e421e25baa6c61dd616426750e8d8",
     "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"
   },
+  "explanation:adjust_check_stage_name": {
+    "sha256": "6812d4f9f2a54353f3930dcd5eac870ebb5e421e25baa6c61dd616426750e8d8",
+    "reviewed": "pending owner read"
+  },
   "playbook_stage_overlap": {
     "sha256": "61f0c71a806739e26b0a3f1bcb34ed6d68dc69370b0fd5977109df2415e9137f",
     "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"

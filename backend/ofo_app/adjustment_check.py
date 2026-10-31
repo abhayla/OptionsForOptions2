@@ -228,6 +228,17 @@ async def evaluate_and_remember(conn: Any, user_ref: str, strategy_id: int, body
     return ev
 
 
+def stage_name_text(name: str | None) -> Any:
+    """A playbook stage's name as catalogue text ("Last day" has a space, so it can never be an Identifier); None
+    for no stage. A name the slot refuses reads "current" (``stage_words``), never a 500."""
+    return None if name is None else render_explanation("adjust_check_stage_name", name=pe.stage_words(name))
+
+
+def stage_out(name: str | None, index: int | None) -> dict[str, Any]:
+    """The reply's stage object, shared by every route that echoes the evaluated stage."""
+    return {"name": stage_name_text(name), "index": index}
+
+
 def trigger_words(body: Mapping | None, trigger_id: str | None) -> tuple[str | None, str | None]:
     """(label, unit) of a trigger as the evaluated body holds them; (None, None) for a body or trigger without them."""
     trig = (body or {}).get("triggers", {}).get(trigger_id) if isinstance(body, Mapping) else None
