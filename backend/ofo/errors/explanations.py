@@ -25,8 +25,8 @@ from types import MappingProxyType
 
 from ofo import wording as _wording
 
-from ofo.errors.gate_slots import PlaybookTypeName
-from ofo.errors.slots import SlotType, _require_exact
+from ofo.errors.gate_slots import PlaybookField, PlaybookTypeName
+from ofo.errors.slots import Count, SlotType, _require_exact
 from ofo.errors.templates import MARGIN_SHORTFALL_NEXT_ACTION, ZERODHA_BUSY_TEXT
 
 EXPLANATION_FIELDS: tuple[str, ...] = ("what_triggered", "values_seen", "rule")
@@ -131,6 +131,7 @@ _USER_WORDS_MINT = object()
 #: domain. Only code IN these modules can mint `UserWords`; each entry names the request field it parses.
 REQUEST_LAYER: Mapping[str, str] = MappingProxyType({
     "ofo.admin.client_id": "the Client ID an admin types (normalise_client_id)",
+    "ofo.adjustment.playbook_text": "a playbook's name the user typed (name_shown)",
     "ofo.rules.model": "a rule's name and description the user typed (Rule.shown_name)",
     "ofo.strategy.definition": "the strategy settings the user changed (rules_ref, risk_limits, preferences)",
     "ofo.strategy.stored_form": "a strategy's name the user typed (check_strategy_name)",
@@ -861,6 +862,15 @@ _PLAYBOOK_TYPE_LABELS_FILE = Path(__file__).resolve().parent.parent / "adjustmen
 PLAYBOOK_TYPE_LABEL_TEXT: Mapping[str, str] = MappingProxyType(
     json.loads(_PLAYBOOK_TYPE_LABELS_FILE.read_text(encoding="utf-8")))  # data, not code: no strategy name typed here
 
+#: GC-ADJ2 step 4 (REQ-161 AC-1, AC-2; mockup screen 4): the fixed words of the strategy plan sheet and the tracking
+#: panel's Plan entry, by key. Each is one reviewed template `plan_sheet_<key>`; the browser prints what the server sends.
+PLAN_SHEET_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
+    "title": "When tracking starts: this strategy's plan", "playbook": "Playbook", "target": "Target",
+    "stop": "Stop", "max_adjustments": "Max adjustments", "time_exit": "Time exit",
+    "customise": "Customise triggers", "use_as_is": "Use playbook as is", "save": "Save plan", "close": "Close",
+    "plan_entry": "Plan", "edit": "Edit plan", "no_plan": "No plan saved yet", "hour": "Hour", "minute": "Minute",
+})
+
 #: Why a table cell has no value (the cell's `reason`), by key. Each is one reviewed template `table_reason_<key>`.
 TABLE_REASON_TEXT: Mapping[str, str] = MappingProxyType({
     "not_applicable": "not applicable",
@@ -1174,6 +1184,8 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("change_restored", "values_seen", "restored entry {seq}", {"seq": Recorded}),
     # REQ-134 AC-1: a strategy's name as the API shows it - the user's own words, quoted word for word (ADR-003)
     ExplanationTemplate("strategy_name_shown", "values_seen", "{name}", {"name": UserText}),
+    # GC-ADJ2 step 2 (REQ-158 AC-3): a playbook's name as the API shows it - the user's own words (ADR-003)
+    ExplanationTemplate("playbook_name_shown", "values_seen", "{name}", {"name": UserText}),
     ExplanationTemplate("change_renamed", "values_seen", "Renamed from {old} to {new}",
                         {"old": UserText, "new": UserText}),
     ExplanationTemplate("rule_label_days_to_expiry_from", "rule", "{days} days to expiry or fewer, from {time} IST",
@@ -1265,6 +1277,29 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("adjust_check_flag_system", "what_triggered", "Adjustment opportunity detected"),
     ExplanationTemplate("adjust_check_flag_user", "what_triggered", "Your rule was triggered"),
     ExplanationTemplate("adjust_check_type_name", "values_seen", "{name}", {"name": PlaybookTypeName}),
+    # GC-ADJ2 step 5 (REQ-112 AC-2/AC-6, REQ-162): suggestion outcomes, dismiss reasons and the inbox's fixed words
+    ExplanationTemplate("suggestion_outcome_open", "values_seen", "Open"),
+    ExplanationTemplate("suggestion_outcome_dismissed", "values_seen", "You dismissed this"),
+    ExplanationTemplate("suggestion_outcome_acted_on", "values_seen", "Acted on"),
+    ExplanationTemplate("suggestion_outcome_acted_on_paper", "values_seen", "Acted on - Paper - not sent to Zerodha"),
+    ExplanationTemplate("suggestion_outcome_completed", "values_seen", "Completed"),
+    ExplanationTemplate("suggestion_outcome_partly_completed", "values_seen", "Partly completed"),
+    ExplanationTemplate("suggestion_outcome_lapsed", "values_seen", "Lapsed"),
+    ExplanationTemplate("suggestion_lapsed_condition_stopped", "values_seen", "The condition stopped holding"),
+    ExplanationTemplate("suggestion_lapsed_strategy_closed", "values_seen", "The strategy closed"),
+    ExplanationTemplate("suggestion_dismiss_expected_within_plan", "values_seen", "Expected and within my plan"),
+    ExplanationTemplate("suggestion_dismiss_will_act_later", "values_seen", "I will act later"),
+    ExplanationTemplate("suggestion_dismiss_not_relevant", "values_seen", "Not relevant"),
+    ExplanationTemplate("suggestion_dismiss_other", "values_seen", "Other"),
+    ExplanationTemplate("suggestion_group_count", "what_triggered", "{count} adjustment conditions triggered",
+                        {"count": Count}),
+    ExplanationTemplate("suggestion_inbox_empty", "values_seen", "No adjustment opportunities"),
+    ExplanationTemplate("adjust_condition_line", "values_seen", "{trigger}: {value} {cmp} {threshold}",
+                        {"trigger": PlaybookField, "value": PlaybookField, "cmp": Explained,
+                         "threshold": PlaybookField}),
+    ExplanationTemplate("adjust_cmp_le", "values_seen", "at or below"),
+    ExplanationTemplate("adjust_cmp_ge", "values_seen", "at or above"),
+    ExplanationTemplate("adjust_cmp_lt", "values_seen", "below"),
     ExplanationTemplate("adjust_spot_from_feed", "values_seen", "Spot from the live feed"),
     ExplanationTemplate("adjust_spot_from_rest_quote", "values_seen", "Spot from a REST quote"),
     ExplanationTemplate("adjust_spot_from_last_close", "values_seen", "Spot from the last close"),
@@ -1539,8 +1574,16 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     # GC-ADJ2 step 1A (REQ-158 AC-4): deleting the active playbook says the system one is active again
     ExplanationTemplate("playbook_system_active_again", "values_seen", "{type}: the system playbook is active again",
                         {"type": PlaybookTypeName}),
+    # GC-ADJ2 step 3 (REQ-160 AC-3, AC-4): the playbook Test step's two fixed sentences
+    ExplanationTemplate("playbook_test_no_strategy", "values_seen", "No current {type} strategy to test against",
+                        {"type": PlaybookTypeName}),
+    ExplanationTemplate("playbook_test_past_out_of_v1", "values_seen",
+                        "Testing against past expiries is not in this version: it needs licensed historical option "
+                        "data."),
     ExplanationTemplate("catalogue_template_name", "values_seen", "{text}", {"text": TemplateText}),
     ExplanationTemplate("catalogue_template_description", "values_seen", "{text}", {"text": TemplateText}),
+    *(ExplanationTemplate(f"plan_sheet_{key}", "values_seen", text)  # REQ-161: the plan sheet's fixed words
+      for key, text in PLAN_SHEET_LABEL_TEXT.items()),
     *(ExplanationTemplate(f"table_reason_{key}", "values_seen", text) for key, text in TABLE_REASON_TEXT.items()),
     *(ExplanationTemplate(approach_name_id(key), "values_seen", text)  # REQ-155: each approach's shown name
       for key, text in ADJUSTMENT_APPROACH_LABEL_TEXT.items()),
@@ -1571,7 +1614,7 @@ LABEL_TABLES: Mapping[str, Mapping[str, str]] = MappingProxyType({
     "column": COLUMN_LABEL_TEXT, "table_reason": TABLE_REASON_TEXT, "level_region": LEVEL_REGION_TEXT,
     "adjustment_approach": ADJUSTMENT_APPROACH_LABEL_TEXT, "adjustment_approach_about": ADJUSTMENT_APPROACH_ABOUT_TEXT,
     "adjustment_criterion": ADJUSTMENT_CRITERION_LABEL_TEXT, "adjustment_leader": ADJUSTMENT_LEADER_LABEL_TEXT,
-    "playbook_type": PLAYBOOK_TYPE_LABEL_TEXT,
+    "playbook_type": PLAYBOOK_TYPE_LABEL_TEXT, "plan_sheet": PLAN_SHEET_LABEL_TEXT,
 })
 
 

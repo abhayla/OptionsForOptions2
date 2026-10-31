@@ -1222,6 +1222,24 @@ _PLAYBOOK_TEMPLATES: tuple[MessageTemplate, ...] = (
           "Nothing was changed.", "Opening or changing this playbook.", "Pick a playbook from your list."),
     _gate("playbook_body_invalid", _UI, 157, "The playbook value {field} is not valid.",
           _PB_NOT_SAVED, _PB_BLOCKED, "Correct that value, then save again.", {"field": PlaybookField}),
+    # GC-ADJ2 step 2 (REQ-159 AC-1): the stages of one expiry kind leave a gap or overlap; the days and stage names
+    _gate("playbook_stage_overlap", _UI, 158, "Days {from_day} to {to_day} are in both {first} and {second} "
+          "({expiry} expiries).", _PB_NOT_SAVED, _PB_BLOCKED, "Change the days so each day is in one stage only.",
+          {"from_day": Count, "to_day": Count, "first": PlaybookName, "second": PlaybookName,
+           "expiry": PlaybookField}),
+    _gate("playbook_stage_gap", _UI, 159, "Days {from_day} to {to_day} are in no stage ({expiry} expiries).",
+          _PB_NOT_SAVED, _PB_BLOCKED, "Add a stage for those days, or stretch a stage over them.",
+          {"from_day": Count, "to_day": Count, "expiry": PlaybookField}),
+    # GC-ADJ2 step 4 (REQ-161 AC-4): a shape that maps to no playbook gets the generic triggers and approaches only
+    _gate("adjust_plan_no_playbook", _UI, 160, "No playbook matches this strategy's shape, so only the generic "
+          "triggers and approaches apply.", "No plan was saved for this strategy.", "Saving a plan.",
+          "Close this sheet; the generic triggers and approaches stay on."),
+    # GC-ADJ2 step 5 (REQ-112 AC-2/AC-4): a suggestion's outcome is written once; nothing is written on a refusal
+    _gate("suggestion_not_found", _UI, 170, "This adjustment opportunity was not found.",
+          "Nothing was changed.", "Recording what you did with it.", "Open Adjustment opportunities again."),
+    _gate("suggestion_not_open", _UI, 171, "This adjustment opportunity already has its outcome.",
+          "Nothing was changed; its outcome stays as it was.", "Recording another outcome for it.",
+          "Open Adjustment opportunities to see its outcome."),
 )
 
 _TEMPLATES = (_TEMPLATES + _TRIGGER_TEMPLATES + _GATE_TEMPLATES

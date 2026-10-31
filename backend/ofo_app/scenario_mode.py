@@ -84,9 +84,21 @@ ORDER_ROUTES: frozenset[tuple[str, str]] = frozenset({
 #: Every other mutating route, each one checked: none of them prepares, places, modifies or cancels an order.
 NON_ORDER_ROUTES: frozenset[tuple[str, str]] = frozenset({
     ("POST", "/api/broker/disconnect"),  # ends the broker session
+    ("POST", "/api/playbooks"),  # GC-ADJ2 2: create / save as new (a playbook is data, no order)
+    ("POST", "/api/playbooks/{playbook_id}/duplicate"),
+    ("PATCH", "/api/playbooks/{playbook_id}"),
+    ("PUT", "/api/playbooks/{playbook_id}"),
+    ("DELETE", "/api/playbooks/{playbook_id}"),
+    ("POST", "/api/playbooks/{playbook_id}/activate"),
+    ("POST", "/api/playbooks/test"),  # GC-ADJ2 3: Test an unsaved playbook (a read; writes nothing, no order)
+    # GC-ADJ2 5: a suggestion's outcome (REQ-112) is a record, no order
+    ("POST", "/api/adjustment-opportunities/{suggestion_id}/dismiss"),
+    ("POST", "/api/adjustment-opportunities/{suggestion_id}/acted-on"),
     ("POST", "/api/strategies/leg-edit"),  # engine answer for one edited leg
     ("POST", "/api/strategies/outcome"),  # engine answer (a read)
     ("POST", "/api/strategies/{strategy_id}/adjustment-approaches"),  # REQ-155 engine answer, suggest-only (a read)
+    ("POST", "/api/strategies/{strategy_id}/adjustment-plan"),  # GC-ADJ2 4: accept a plan (data, no order)
+    ("PUT", "/api/strategies/{strategy_id}/adjustment-plan"),  # GC-ADJ2 4: edit the plan (data, no order)
     ("POST", "/paper/alerts/read"),  # marks alerts read
     ("POST", "/api/strategies/planned-entry"),  # captures planned prices
     ("POST", "/api/strategies/load-template"),  # a ready-made shape into the builder

@@ -2643,6 +2643,178 @@
     "sha256": "6812d4f9f2a54353f3930dcd5eac870ebb5e421e25baa6c61dd616426750e8d8",
     "reviewed": "pending owner read"
   },
+  "playbook_stage_overlap": {
+    "sha256": "61f0c71a806739e26b0a3f1bcb34ed6d68dc69370b0fd5977109df2415e9137f",
+    "reviewed": "pending owner read"
+  },
+  "playbook_stage_gap": {
+    "sha256": "019dcbe8d488e3c5a75148bb14be6c73ab5dda3458d047bb86390b28c06270f0",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_name_shown": {
+    "sha256": "6812d4f9f2a54353f3930dcd5eac870ebb5e421e25baa6c61dd616426750e8d8",
+    "reviewed": "pending owner read"
+  },
+  "adjust_plan_no_playbook": {
+    "sha256": "ad7d0b90051692bb6961786862db02cdb2be4a37d217bfc6efb54ca8b9455a07",
+    "reviewed": "pending owner read"
+  },
+  "explanation:plan_sheet_title": {
+    "sha256": "afe45ed23327360d8b1f6ded67b3d6c80fa7d9ee325baad2dcbe58f70600434a",
+    "reviewed": "pending owner read"
+  },
+  "explanation:plan_sheet_playbook": {
+    "sha256": "175b7406e07195348986896cf74aa9634c5f98de9f4cbe91c4253c64abe982e9",
+    "reviewed": "pending owner read"
+  },
+  "explanation:plan_sheet_target": {
+    "sha256": "9b3c38af158fe07fc56831e46d8bf190a017048efa437d126620b3b371fbda17",
+    "reviewed": "pending owner read"
+  },
+  "explanation:plan_sheet_stop": {
+    "sha256": "a4450901a96c79e28de050acfa2bd5778fdd7c36938f5579f469bc273b298769",
+    "reviewed": "pending owner read"
+  },
+  "explanation:plan_sheet_max_adjustments": {
+    "sha256": "1943d115a4841c691f3d94c86f3cc563bb38c55a15033def2a692364ebda174c",
+    "reviewed": "pending owner read"
+  },
+  "explanation:plan_sheet_time_exit": {
+    "sha256": "3da7b1b276527a6ece178561b4c942351b9a3bc4ed6888a4e4a2973029ce9cda",
+    "reviewed": "pending owner read"
+  },
+  "explanation:plan_sheet_customise": {
+    "sha256": "23c1249727362aeaf208ec8618b19276f64364e86a308d2a9b806c051a4ad978",
+    "reviewed": "pending owner read"
+  },
+  "explanation:plan_sheet_use_as_is": {
+    "sha256": "fab0d1ce7b2dea10a4679ba4dae2f01e42945a18bccf3de7a2705f6a6eb63418",
+    "reviewed": "pending owner read"
+  },
+  "explanation:plan_sheet_save": {
+    "sha256": "80dd821b200cbc5afa03b48447d4c4d4cbb32b0f352daf6d4736c4773a047152",
+    "reviewed": "pending owner read"
+  },
+  "explanation:plan_sheet_close": {
+    "sha256": "84189b5b9fcf89362a967818bd550f0e42d34eab173de9133ce30ccc37c9ce29",
+    "reviewed": "pending owner read"
+  },
+  "explanation:plan_sheet_plan_entry": {
+    "sha256": "94f3c815ddf4ccefbe1e4e8c5c53471c3d5243b30ce644ea8012b16393384e0c",
+    "reviewed": "pending owner read"
+  },
+  "explanation:plan_sheet_edit": {
+    "sha256": "65c6c7bdd10dab469c0ce923e0f39ccb4860a68f984a4b24ecbf8b9b3751ecad",
+    "reviewed": "pending owner read"
+  },
+  "explanation:plan_sheet_no_plan": {
+    "sha256": "47af597af302a866e22bb37b97bfb67ce6a42851e98852fd81b54d0ba3eb03fe",
+    "reviewed": "pending owner read"
+  },
+  "explanation:plan_sheet_hour": {
+    "sha256": "b6eefc6e750190f5fb6ce6eaa55cd1530fdc38f50a7cdb07787b94a73bcb2b4a",
+    "reviewed": "pending owner read"
+  },
+  "explanation:plan_sheet_minute": {
+    "sha256": "85c0f6d939e34ac1ef6cb8f4aeb21cc72fd8f06df663a340ee539edd1523166e",
+    "reviewed": "pending owner read"
+  },
+  "labels:plan_sheet": {
+    "sha256": "82d557c98a1e3b546679565d3792e1249baf82e22a43f3b134cf1298951ab638",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_test_no_strategy": {
+    "sha256": "a83e6e666655fcf1e74989f7b4d9e7caf9efda46eb91f20ffb0361d11ed03384",
+    "reviewed": "pending owner read"
+  },
+  "explanation:playbook_test_past_out_of_v1": {
+    "sha256": "28d770f607a41074681e734df2c32e8dd290defaa8cc3d554b4aeded54d8f60a",
+    "reviewed": "pending owner read"
+  },
+  "suggestion_not_found": {
+    "sha256": "dc02c3e5e086d57a4a6e3633f24d75d665b5933537aa407242c8a74f9784b81d",
+    "reviewed": "pending owner read"
+  },
+  "suggestion_not_open": {
+    "sha256": "1b60a5eb518c13a7bc05e461d1e9be49c0f125827e84400d6c8d7f8b4ecf7319",
+    "reviewed": "pending owner read"
+  },
+  "explanation:suggestion_outcome_open": {
+    "sha256": "9a44b61780da8a5989119473842759c3e97c9197d2139b47fce1c8499c98cef7",
+    "reviewed": "pending owner read"
+  },
+  "explanation:suggestion_outcome_dismissed": {
+    "sha256": "351a8ee35b91bc779101ea0ae4fe4b41d50b01fccb04421d21288b8fffb37ba8",
+    "reviewed": "pending owner read"
+  },
+  "explanation:suggestion_outcome_acted_on": {
+    "sha256": "fbc61339b4ecea6066073f09300cb43acedec6f7ab098efb87e32ca52a1111f7",
+    "reviewed": "pending owner read"
+  },
+  "explanation:suggestion_outcome_acted_on_paper": {
+    "sha256": "8d5f1a693eb765daee4b9d8b0b106df8d775d2d75916cd7d360135463e7cdd17",
+    "reviewed": "pending owner read"
+  },
+  "explanation:suggestion_outcome_completed": {
+    "sha256": "32e07e69b3f6642ed6c207c70ea9b226dc18671f92a1912eb643cd3282063e4d",
+    "reviewed": "pending owner read"
+  },
+  "explanation:suggestion_outcome_partly_completed": {
+    "sha256": "9af10153e7575dc184e99b9569625299af946882d11a38b9ceaedce76db7d4fd",
+    "reviewed": "pending owner read"
+  },
+  "explanation:suggestion_outcome_lapsed": {
+    "sha256": "ae6a351d1a34c77c133d65f51c11f1f6a3885426e107b352ab6723acf52ea72d",
+    "reviewed": "pending owner read"
+  },
+  "explanation:suggestion_lapsed_condition_stopped": {
+    "sha256": "9bf1795bfe371c4b143f1dfb880e183d5751c72dedcb606c11ec3579540f4068",
+    "reviewed": "pending owner read"
+  },
+  "explanation:suggestion_lapsed_strategy_closed": {
+    "sha256": "825f2040232c023be7bfd5c2f396181340479b10a27876cb7849dc647cfd91cb",
+    "reviewed": "pending owner read"
+  },
+  "explanation:suggestion_dismiss_expected_within_plan": {
+    "sha256": "a8862efd41c0f59240744e7c95504dda585ee3b15f07098e43a79e814f67aa08",
+    "reviewed": "pending owner read"
+  },
+  "explanation:suggestion_dismiss_will_act_later": {
+    "sha256": "89bdd939cbbcd630c218ade50da404c534446e5acafc02e9ceb5f3e13aaca5d0",
+    "reviewed": "pending owner read"
+  },
+  "explanation:suggestion_dismiss_not_relevant": {
+    "sha256": "83441aad737253fcb0e5661f3e3e7c446dd6a190ad7bf84614b6bb517b8777cb",
+    "reviewed": "pending owner read"
+  },
+  "explanation:suggestion_dismiss_other": {
+    "sha256": "02cd547cd974bd0ed9d32e8e61c4d554aa7f81634e92fa957cfbcc670c33cb68",
+    "reviewed": "pending owner read"
+  },
+  "explanation:suggestion_group_count": {
+    "sha256": "ccfc3737bd33a02f90b3b10bfba9de63c617dbcde732c13f15dfb1deb1fe1ee1",
+    "reviewed": "pending owner read"
+  },
+  "explanation:suggestion_inbox_empty": {
+    "sha256": "9add056757b24a450219daad091f9690864a68aaa5488ad5e71fbc5e5f07efa6",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_condition_line": {
+    "sha256": "464f0b6f2a8261bc24c14a460164d1932f386db61b11697f9f33b14d427bdf02",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_le": {
+    "sha256": "2c3283e7db8a0d76c087e0fd13ff7a0360569c1175648a3b270d5339101f73f3",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_ge": {
+    "sha256": "c007e5fca5c551dd052394f914d4f727d1ce399671e2b5d52012fe783beecea6",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_lt": {
+    "sha256": "40dbecc9a88f193ab9f4d16c1864baeea31008b6f46145b0bbcd912be2466257",
+    "reviewed": "pending owner read"
+  },
   "explanation:adjust_history_paper_fill": {
     "sha256": "62620e0c11f5c9ec28d1ef7d1e8609e4f952073671de2ff07e599ab5254afc4f",
     "reviewed": "pending owner read"
