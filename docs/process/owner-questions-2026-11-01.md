@@ -22,3 +22,23 @@ unlimited or not known, A1 refuses any debit above Rs 500 as "cannot confirm" (f
 
 Status: built as A on build/gcmu (A1, 17d98038); changing to B is one line in `backend/ofo/adjustment/liquidity.py`.
 The answer goes into the spec as a decision row (GC-MU ADR range 231-239).
+
+## Q-MU-2: Does the Live Strategies card count opportunities or inbox rows?
+
+Business call: it is the number a user reads on the card, and it can differ from what the inbox shows.
+
+Spec basis: ADR-230 (2) "The card shows "N adjustment opportunities", linking to that strategy's row in Positions >
+Adjustment opportunities; dismissing the row there clears the mark", with the count "from the existing suggestion
+records (REQ-112, REQ-162)". It does not say whether N counts records or inbox rows (the inbox groups a strategy's
+records into one row, "N conditions triggered").
+
+Real case: scenario ADJ-02's first check opens 3 records for one strategy.
+
+| Option | The card reads | The inbox shows |
+|---|---|---|
+| A. Count records (built this way, GC-MU A3, d9ba48fd) | 3 adjustment opportunities | 1 row, "3 conditions triggered" |
+| B. Count inbox rows | 1 adjustment opportunity | 1 row, "3 conditions triggered" |
+
+Recommendation: A. Reason: each record is a separate condition the user may act on or dismiss on its own, so 3 tells
+them how much is waiting; the link lands on the one row that lists all 3. B is one line in `open_counts`
+(`backend/ofo_app/routes/adjustment_opportunities.py`) if you prefer it.
