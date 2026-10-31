@@ -3222,5 +3222,17 @@
   "explanation:playbook_summary_stop_either": {
     "sha256": "987d1e5cf2fac30fba5e2c30ead4dcaef79a56cad3459e21683fb7db29168669",
     "reviewed": "owner read 2026-10-31 (decided in chat)"
+  },
+  "adjust_trigger_no_approach_offered": {
+    "sha256": "1f0009cdd5de54dd6a666576246f0f0859a85e99209bc224bc0cf05b4e0ecf38",
+    "reviewed": "pending owner read"
+  },
+  "adjust_trigger_no_approach_priced": {
+    "sha256": "ba21df149cf9a3e4cd49dc488f002475d06a203edde8045a6d1c70e7be5e553f",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_condition_line_t19": {
+    "sha256": "697595e7405ff5c1e0d739683ed2457c27faeafbdfbeb9f36f62b2a45c7cf988",
+    "reviewed": "pending owner read"
   }
 }

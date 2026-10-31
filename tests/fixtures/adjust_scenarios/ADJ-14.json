@@ -1,6 +1,6 @@
 {
  "id": "ADJ-14",
- "title": "Premium left below 1 x adjustment cost (ADR-216)",
+ "title": "T-19 not checked: no approach the playbook offers can be priced (ADR-221)",
  "group": "IC weekly, NIFTY 2 lots",
  "refs": [
   "T-19",
@@ -1780,7 +1780,8 @@
   "suggest": true,
   "pnl_now": "5109.0000",
   "premium_left": "110.50",
-  "adjustment_cost": "212.00",
+  "adjustment_cost": null,
+  "adjustment_approach": null,
   "triggers_fired": [
    {
     "id": "T-07",
@@ -1795,12 +1796,6 @@
     "cmp": "le"
    },
    {
-    "id": "T-19",
-    "value": "0.5212",
-    "limit": "1.0000",
-    "cmp": "le"
-   },
-   {
     "id": "T-10b",
     "value": "15:00",
     "limit": "14:30",
@@ -1812,6 +1807,10 @@
    {
     "id": "T-14",
     "reason": "The loss-from-a-1%-move rule is not checked yet in this version."
+   },
+   {
+    "id": "T-19",
+    "reason": "No adjustment approach this playbook offers can be priced now (a contract without a bid or an ask, charges not available, or no whole-trade figure)."
    }
   ],
   "day_rules": [],
@@ -1903,7 +1902,9 @@
     "23490.15"
    ]
   },
-  "notes": [],
+  "notes": [
+   "Last day 15:00: every offered approach trades a contract quoted at 0.05 with bid 0, so none has a Compare cost; T-19 is not checked, with the reason (ADR-221)."
+  ],
   "approach_legs": {
    "A-36": {
     "side": "none",

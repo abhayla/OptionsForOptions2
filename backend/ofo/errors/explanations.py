@@ -563,6 +563,19 @@ class Rupees(SlotType):
         return format_rupees(value)
 
 
+class ApproachLabel(SlotType):
+    """ADR-221: an adjustment approach id the app builds (``ADJUSTMENT_APPROACH_LABEL_TEXT``), printed as its name."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        if not isinstance(value, str) or value not in ADJUSTMENT_APPROACH_LABEL_TEXT:
+            raise TypeError(f"ApproachLabel slot requires a built approach id, got {value!r}")
+
+    @staticmethod
+    def format(value: str) -> str:
+        return ADJUSTMENT_APPROACH_LABEL_TEXT[value]
+
+
 class WholeRupees(SlotType):
     """REQ-152: a summary money figure in whole rupees, Indian grouping, no sign (net premium, margin figures)."""
 
@@ -1404,6 +1417,12 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                          "threshold": PlaybookField}),
     ExplanationTemplate("adjust_condition_line_plain", "values_seen", "{label}: {value} (rule {threshold})",
                         {"label": PlaybookTriggerLabel, "value": PlaybookField, "threshold": PlaybookField}),
+    # ADR-221: the T-19 flag line names the cheapest approach the playbook offers and its Compare cost
+    ExplanationTemplate("adjust_condition_line_t19", "values_seen",
+                        "{label}: {value} (rule {threshold}); cheapest adjustment offered now: {approach}, "
+                        "cost {cost} (as in Compare)",
+                        {"label": PlaybookTriggerLabel, "value": PlaybookField, "threshold": PlaybookField,
+                         "approach": ApproachLabel, "cost": Rupees}),
     ExplanationTemplate("plan_target_words", "values_seen", "{pct} % of max profit", {"pct": PlaybookField}),
     ExplanationTemplate("plan_stop_words_loss", "values_seen", "{pct} % of max loss", {"pct": PlaybookField}),
     ExplanationTemplate("plan_stop_words_margin", "values_seen", "{margin} % of margin", {"margin": PlaybookField}),

@@ -11,12 +11,13 @@ from pathlib import Path
 
 import adjust_scenarios_gen as gen
 from ofo.adjustment.approaches import APPROACH_IDS, ChainRow, Position, PositionLeg
-from ofo.adjustment.compare import Column, Context, MarginRead, compare
+from ofo.adjustment.compare import Cheapest, Column, Context, MarginRead, compare
 from ofo.adjustment.playbook_eval import body_from_fixture
 from ofo.charges import ChargeRates
+from ofo_app import adjustment_check as check
 from ofo_app.routes.adjustment import MarketInputs, Tracked, priced_approach
 
-FIX = Path(__file__).resolve().parents[1] / "fixtures" / "adjust_scenarios"
+FIX = Path(__file__).resolve().parent / "fixtures" / "adjust_scenarios"
 PLAYBOOKS = json.loads((FIX / "_playbooks.json").read_text(encoding="utf-8"))
 RATES = ChargeRates(**{**gen.CHARGE_RATES, "read_on": datetime.date.fromisoformat(gen.CHARGE_RATES["read_on"])})
 
@@ -64,3 +65,9 @@ def compare_costs(tracked: Tracked, market: MarketInputs, spot: D) -> dict[str, 
     ctx = Context(tracked.position, spot, market.chain, RATES, False, MarginRead(None), {}, tracked.adjustments_used)
     cost = next(c for c in compare(cols, ctx).criteria if c.id == "cost")
     return dict(cost.values)
+
+
+def cheapest(sc: dict) -> Cheapest:
+    """The checker's T-19 cost of a scenario: ``adjustment_check.cheapest_offered`` on the scenario's own inputs."""
+    tracked, market, spot = inputs(sc)
+    return check.cheapest_offered(body_of(sc), tracked, market, spot, RATES)

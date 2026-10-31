@@ -97,30 +97,42 @@ def _num(v: Decimal | str | None) -> Decimal | None:
     return v.quantize(SHOWN_PLACES, rounding=ROUND_HALF_UP)
 
 
-def _condition(r: pe.Flag | pe.AlreadyTrue, body: Mapping | None) -> Any:
-    """The condition in words from the evaluated body's own label and unit; None without a comparison."""
+def _condition(r: pe.Flag | pe.AlreadyTrue, body: Mapping | None,
+               cheapest: tuple[str, Decimal] | None = None) -> Any:
+    """The condition in words from the evaluated body's own label and unit; None without a comparison. T-19 also names
+    the cheapest offered approach and its cost (``cheapest``, ADR-221)."""
     if r.cmp is None:
         return None
     value, threshold = _num(r.value), _num(r.threshold)
     label, unit = check.trigger_words(body, r.trigger_id)
-    return check.condition_line(r.trigger_id, label, unit, str(r.value) if value is None else str(value),
-                                str(r.threshold) if threshold is None else str(threshold))
+    shown, limit = str(r.value) if value is None else str(value), str(r.threshold) if threshold is None else str(threshold)
+    if r.trigger_id == "T-19" and cheapest is not None:
+        return check.condition_line_t19(label, shown, limit, *cheapest)
+    return check.condition_line(r.trigger_id, label, unit, shown, limit)
 
 
-def result_out(r: pe.Result, flag_wording: Any, opened: dict[str, int] | None = None, *,
-               dismissed: frozenset[str] = frozenset(), body: Mapping | None = None) -> dict:
+def result_out(r: pe.Result, flag_wording: Any, opened: dict[str, int] | None = None, *,  # noqa: PLR0913
+               dismissed: frozenset[str] = frozenset(), body: Mapping | None = None,
+               cheapest: tuple[str, Decimal] | None = None) -> dict:
     # dismissed and body are keyword-only: a positional body once landed in dismissed (TypeError on a None body)
     if isinstance(r, pe.Flag):
         return {"kind": "flag", "rule_id": r.rule_id, "trigger_id": r.trigger_id, "cmp": r.cmp, "value": _num(r.value),
                 "threshold": _num(r.threshold), "reason": None, "wording": flag_wording,
-                "condition": _condition(r, body), "suggestion_id": (opened or {}).get(r.rule_id),
+                "condition": _condition(r, body, cheapest), "suggestion_id": (opened or {}).get(r.rule_id),
                 "note": render_explanation("suggestion_outcome_dismissed") if r.rule_id in dismissed else None}
     if isinstance(r, pe.AlreadyTrue):
         return {"kind": "already_true", "rule_id": r.rule_id, "trigger_id": r.trigger_id, "cmp": r.cmp,
                 "value": _num(r.value), "threshold": _num(r.threshold), "reason": None, "wording": render(r.code),
-                "condition": _condition(r, body)}
+                "condition": _condition(r, body, cheapest)}
     return {"kind": "not_checked", "rule_id": r.rule_id, "trigger_id": r.trigger_id, "cmp": None, "value": None,
             "threshold": None, "reason": render(r.code, **dict(r.slots)), "wording": None}
+
+
+def _cheapest(state: pe.StrategyState) -> tuple[str, Decimal] | None:
+    """The T-19 approach and cost the check used (ADR-221); None when it had none."""
+    if state.adjustment_approach is None or state.adjustment_cost is None:
+        return None
+    return state.adjustment_approach, state.adjustment_cost
 
 
 async def _sync_records(db: Any, user_ref: str, strategy_id: int, ev: pe.Evaluation, source: str,  # noqa: PLR0913
@@ -208,5 +220,6 @@ async def adjustment_check(  # noqa: PLR0913 - FastAPI dependencies, one per inp
     wording = render_explanation("adjust_check_flag_system" if resolved.is_system else "adjust_check_flag_user")
     reply |= {"stage": {"name": ev.stage_name, "index": ev.stage_index},
               "withheld": None if ev.withheld is None else render(ev.withheld),
-              "results": [result_out(r, wording, opened, dismissed=dismissed, body=resolved.body) for r in ev.results]}
+              "results": [result_out(r, wording, opened, dismissed=dismissed, body=resolved.body,
+                                    cheapest=_cheapest(state)) for r in ev.results]}
     return AdjustmentCheckOut.model_validate(reply)

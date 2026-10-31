@@ -1,4 +1,7 @@
-"""ofo.engine.adjust_money pnl_now and adjustment_cost: exact values, the ADJ-02 numbers, empty legs."""
+"""ofo.engine.adjust_money pnl_now, premium_left and cost_with_spread: exact values, the ADJ-02 numbers, empty legs.
+
+The old ``adjustment_cost`` (full spread of every open leg + Rs 40 a leg) is deleted (ADR-221, ADR-222 (8)); an
+approach's cost is ``compare.approach_cost`` over ``cost_with_spread``."""
 from __future__ import annotations
 
 from decimal import Decimal as D
@@ -11,11 +14,19 @@ ADJ02 = [("BUY", "21.75", "0.85", "0.80", "0.90"), ("SELL", "41.80", "2.70", "2.
 QTY = 130
 
 
-def test_adj02_pnl_premium_left_and_cost_are_the_scenarios_numbers():
+def test_adj02_pnl_and_premium_left_are_the_scenarios_numbers():
     pnl = adjust_money.pnl_now(D(0), [(s, D(e), D(ltp), QTY) for s, e, ltp, _, _ in ADJ02])
     left = adjust_money.premium_left([(s, D(ltp), QTY) for s, _, ltp, _, _ in ADJ02])
-    cost = adjust_money.adjustment_cost([(D(b), D(a), QTY) for *_, b, a in ADJ02], D(40))
-    assert (pnl, left, cost) == (D("-1612.00"), D("7338.50"), D("342.00"))
+    assert (pnl, left) == (D("-1612.00"), D("7338.50"))
+
+
+def test_cost_with_spread_is_charges_plus_half_the_spread_times_quantity():
+    # 2.65/2.75 and 83.65/84.55 at 130: 0.05 x 130 + 0.45 x 130 = 65.00, plus Rs 27.35 of charges
+    assert adjust_money.cost_with_spread(D("27.35"), [(D("2.65"), D("2.75"), QTY), (D("83.65"), D("84.55"), QTY)])         == D("92.35")
+
+
+def test_the_old_per_leg_cost_helper_is_gone():
+    assert not hasattr(adjust_money, "adjustment_cost")
 
 
 def test_pnl_now_adds_booked():
@@ -25,7 +36,7 @@ def test_pnl_now_adds_booked():
 
 def test_empty_legs():
     assert adjust_money.pnl_now(D("7"), []) == D("7")
-    assert adjust_money.adjustment_cost([], D(40)) == D(0)
+    assert adjust_money.cost_with_spread(D(0), []) == D(0)
 
 
 def test_with_booked():

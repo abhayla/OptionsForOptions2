@@ -246,3 +246,13 @@ def condition_line(trigger_id: str, label: str | None, unit: str | None, value: 
         return line(label if label is not None else trigger_id, unit)
     except (TypeError, ValueError):  # the slot refused the label or the unit: the id, with no unit (fail visible)
         return line(trigger_id, None)
+
+
+def condition_line_t19(label: str | None, value: str, threshold: str, approach: str, cost: Decimal) -> Any:
+    """ADR-221: the T-19 line with the cheapest offered approach and its Compare cost; an approach or label the slot
+    refuses -> the plain condition line (fail visible, never a guessed name)."""
+    try:
+        return render_explanation("adjust_condition_line_t19", label=label if label is not None else "T-19",
+                                  value=value, threshold=threshold, approach=approach, cost=cost)
+    except (TypeError, ValueError):
+        return condition_line("T-19", label, None, value, threshold)

@@ -20,6 +20,7 @@ from pathlib import Path
 
 import adjust_scenarios_gen as gen
 import pytest
+import t19_support
 from ofo.engine import Action, Instrument, Leg, Strategy, strategy_metrics
 from ofo.engine.metrics import UNLIMITED, MultiExpiryError, breakevens_with_shift
 from ofo.money import HUNDREDTH
@@ -61,7 +62,7 @@ EXPECTED = {"stage", "stage_index", "suggest", "pnl_now", "triggers_fired", "tri
             "day_rules", "situations", "approaches", "at_expiry_whole_trade", "notes"}
 # keys some scenarios carry; already_true_at_entry (F-71) is written only by the generator, for a crossing trigger
 # that held at entry and still holds on this first check
-EXPECTED_OPTIONAL = {"stage_count", "premium_left", "adjustment_cost", "tighten_percent", "gap_hold", "approach_legs",
+EXPECTED_OPTIONAL = {"stage_count", "premium_left", "adjustment_cost", "adjustment_approach","tighten_percent", "gap_hold", "approach_legs",
                      "approach_after", "at_expiry_after_charges", "already_true_at_entry"}
 
 
@@ -202,7 +203,7 @@ def recompute_fired(sc: dict) -> set[str]:  # noqa: C901, PLR0912 - one trigger 
     whole = exp["at_expiry_whole_trade"]
     options = [x for x in legs if x["type"] != "FUT"]
     left = sum(-sign[x["side"]] * x["quantity"] * D(_row(sc, x)["ltp"]) for x in options) if priced and options else None
-    cost = sum((D(_row(sc, x)["ask"]) - D(_row(sc, x)["bid"])) * x["quantity"] + 40 for x in options)
+    cost = t19_support.cheapest(sc).cost  # ADR-221: the engine's cheapest offered approach (Compare cost)
     margin = sc["broker"]["margin"]
     on = [t for t in PLAYBOOKS["families"][sc["family"]]["triggers_on"] if t in gen.EVALUATED]
     fired = set()
@@ -234,7 +235,7 @@ def recompute_fired(sc: dict) -> set[str]:  # noqa: C901, PLR0912 - one trigger 
             mx = sc["playbook_ref"]["plan_overrides"].get("max_adjustments", PLAYBOOKS["guards"]["max_adjustments"])
             if sc["position"]["adjustments_used"] >= mx:
                 fired.add(tid)
-        elif tid == "T-19" and left is not None and left >= 0:
+        elif tid == "T-19" and left is not None and left >= 0 and cost is not None:
             value = left / cost
         if value is not None and lim not in (None, ""):
             cmp = PLAYBOOKS["triggers"][tid]["cmp"]
