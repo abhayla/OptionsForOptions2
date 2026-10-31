@@ -74,6 +74,8 @@ ROUTE_ORDER_EDGES: dict[str, dict[tuple[str, str], str]] = {
     "ofo_app.routes.adjustment_check": {**STRATEGY_STORE},
     # GC-ADJ2 5: the opportunities inbox records outcomes through playbook_store (its strategy_store import)
     "ofo_app.routes.adjustment_opportunities": {**STRATEGY_STORE},
+    # GC-ADJ2 4: the plan sheet accepts a plan through playbook_store (its strategy_store import)
+    "ofo_app.routes.adjustment_plan": {**STRATEGY_STORE},
     "ofo_app.routes.broker_status": _execute_route_edge(
         "broker_status", "the status route reuses the execute route's clock provider"),
     "ofo_app.routes.features": {**STRATEGY_STORE},
@@ -90,7 +92,7 @@ ROUTE_ORDER_EDGES: dict[str, dict[tuple[str, str], str]] = {
         "zerodha_account", "the account route reuses the execute route's Kite session provider"),
 }
 #: One constant, so a new edge is a reviewed diff and never a silent pass.
-PINNED_EDGE_COUNT = 25
+PINNED_EDGE_COUNT = 29  # GC-ADJ2 5: +2 adjustment_opportunities, +2 adjustment_plan (both via playbook_store)
 
 
 def route_modules(backend: pathlib.Path) -> list[str]:
