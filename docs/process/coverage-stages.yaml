@@ -537,6 +537,7 @@ issues:
   "#614": S6.4  # Leg-stop alert says 'exited 1 legs' (GC-LIVE2 M3)
   "#615": S6.4  # Strike picker first cold read says LIVE with no spot or prices (same class as #612)
   "#616": S6.4  # After the close: Paper has no market-closed banner and shows no-IV text; index read returns nulls
+  "#623": S6.4  # Compare low-OI cell raises on 4+ new legs: symbols joined into one 64-char slot
 
 # Work items whose status is not done.
 work_items:
