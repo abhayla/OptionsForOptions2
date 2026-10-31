@@ -239,9 +239,13 @@ async def save_playbook(playbook_id: int, data: SaveIn, db: Annotated[Any, Depen
 async def delete_playbook(playbook_id: int, db: Annotated[Any, Depends(get_db)],
                           user_ref: Annotated[str, Depends(current_user_ref)]) -> DeletedOut:
     async def work() -> DeletedOut:
-        answer = await store.delete(db, user_ref, _id(playbook_id))
+        current = await store.get(db, user_ref, _id(playbook_id))  # not found for another user's, before any write
+        answer = await store.delete(db, user_ref, playbook_id)
+        # the store returns plain text; the door takes only a catalogue result: render the same entry
+        message = (render_explanation("playbook_system_active_again", type=SHOWN_NAMES[current.strategy_type])
+                   if answer.active_now_system else None)
         return DeletedOut.model_validate({"deleted": True, "active_now_system": answer.active_now_system,
-                                          "message": answer.message})
+                                          "message": message})
     return await _run(db, work)
 
 

@@ -65,6 +65,12 @@ async def api(db_session: AsyncSession) -> AsyncIterator[Api]:
     app.dependency_overrides.clear()
 
 
+def unquoted(shown: str) -> str:
+    """A name is shown as the user's own words in double quotes (REQ-134 AC-4 convention): strip them to compare."""
+    assert shown[0] == shown[-1] == '"'
+    return shown[1:-1]
+
+
 def _text(response: Any) -> str:
     return response.json()["what_happened"]
 
@@ -95,7 +101,7 @@ async def test_list_puts_the_system_playbook_first_then_own_by_name(api):
     rows = (await api.call("GET", "/api/playbooks?type=ic")).json()["playbooks"]
     assert rows[0]["is_system"] is True and rows[0]["status"] == "approved" and rows[0]["draft"] is False
     assert rows[0]["active"] is True
-    names = [r["name"] for r in rows[1:]]
+    names = [unquoted(r["name"]) for r in rows[1:]]
     assert names == sorted(names, key=str.lower)
     assert {"List alpha", "List zeta"} <= set(names)
     assert set(rows[0]) == {"id", "name", "type", "type_name", "is_system", "status", "draft", "active", "version",
@@ -127,7 +133,7 @@ async def test_read_one_returns_the_body(api):
 
 async def test_same_name_in_another_case_and_with_spaces_is_refused_with_the_exact_text(api):
     first = await api.make("IC Safe")
-    assert first["name"] == "IC Safe" and first["draft"] is False and first["status"] is None
+    assert first["name"] == '"IC Safe"' and first["draft"] is False and first["status"] is None
     body = first["body"]
     for typed in ("ic safe", "  IC SAFE  "):
         response = await api.call("POST", "/api/playbooks", json={"type": "ic", "name": typed, "body": body})
@@ -145,7 +151,7 @@ async def test_duplicate_and_rename_refuse_a_taken_name(api):
     ren = await api.call("PATCH", f"/api/playbooks/{two['id']}", json={"name": "DUP ONE"})
     assert ren.status_code == CONFLICT and _text(ren) == "A playbook named DUP ONE already exists for Iron condor."
     fresh = await api.call("PATCH", f"/api/playbooks/{two['id']}", json={"name": "Dup renamed"})
-    assert fresh.status_code == OK and fresh.json()["name"] == "Dup renamed"
+    assert fresh.status_code == OK and fresh.json()["name"] == '"Dup renamed"'
     same = await api.call("PATCH", f"/api/playbooks/{two['id']}", json={"name": "dup RENAMED"})
     assert same.status_code == OK  # its own name in another case is not a clash
 
@@ -221,7 +227,7 @@ async def test_another_users_playbook_is_not_found_on_every_route_and_nothing_is
         assert response.status_code == NOT_FOUND, (method, url)
         assert _text(response) == NOT_FOUND_TEXT
     still = await api.call("GET", path)
-    assert still.json()["name"] == "Private mine" and still.json()["version"] == mine["version"]
+    assert still.json()["name"] == '"Private mine"' and still.json()["version"] == mine["version"]
     assert [r["name"] for r in (await api.call("GET", "/api/playbooks?type=ic", OTHER)).json()["playbooks"]
             if not r["is_system"]] == []
     active = await api.call("GET", "/api/playbooks/types", OTHER)
@@ -251,7 +257,7 @@ async def test_create_and_save_refuse_an_overlap_and_a_gap_naming_the_days(api):
     after = await api.call("GET", f"/api/playbooks/{mine['id']}")
     assert after.json()["version"] == mine["version"] and after.json()["body"] == mine["body"]
     listed = (await api.call("GET", "/api/playbooks?type=ic")).json()["playbooks"]
-    assert not [r for r in listed if r["name"].startswith("Stage ")]
+    assert not [r for r in listed if unquoted(r["name"]).startswith("Stage ")]
 
 
 # --- answer states of the body and the request ------------------------------------------------------------------------
@@ -272,7 +278,7 @@ async def test_a_body_that_is_empty_not_an_object_or_has_an_unknown_field_is_ref
     not_object = await api.call("POST", "/api/playbooks", json={"type": "ic", "name": "Bad body", "body": [1]})
     assert not_object.status_code == UNPROCESSABLE
     assert not [r for r in (await api.call("GET", "/api/playbooks?type=ic")).json()["playbooks"]
-                if r["name"] == "Bad body"]
+                if unquoted(r["name"]) == "Bad body"]
 
 
 async def test_an_unknown_type_an_unknown_request_field_and_a_bad_name_are_refused(api):
@@ -305,4 +311,4 @@ async def test_a_store_failure_is_never_a_200_and_nothing_is_written(api, monkey
     assert "what_happened" in response.json() and "database went away" not in response.text
     monkeypatch.undo()
     assert not [r for r in (await api.call("GET", "/api/playbooks?type=ic")).json()["playbooks"]
-                if r["name"] == "Never saved"]
+                if unquoted(r["name"]) == "Never saved"]
