@@ -68,7 +68,9 @@ class StrategyState:
     max_profit: Decimal | str | None = None
     margin: Decimal | None = None  # None = the broker did not state it
     premium_left: Decimal | None = None
-    adjustment_cost: Decimal | None = None
+    adjustment_cost: Decimal | None = None  # ADR-221: the cheapest offered approach's Compare cost
+    adjustment_approach: str | None = None  # that approach's id (A-xx), named on the T-19 flag
+    adjustment_cost_reason: str | None = None  # why no cost: a catalogue reason code (``adjust_trigger_*``)
     atm_iv: Decimal | None = None
     entry_atm_iv: Decimal | None = None
     day_open: Decimal | None = None
@@ -416,7 +418,9 @@ def _t19(c: _Ctx) -> Hit:
     left = _need(c.state.premium_left, "premium_left")
     if left < 0:
         raise _Missing(f"{P}net_long_premium")
-    cost = _need(c.state.adjustment_cost, "adjustment_cost")
+    cost = c.state.adjustment_cost
+    if cost is None:  # ADR-221: no approach offered / none priceable -> not checked, with that reason
+        raise _Missing(c.state.adjustment_cost_reason or f"{P}missing_adjustment_cost")
     try:
         pair = ratios.premium_left_per_cost(left, cost)
     except ValueError:

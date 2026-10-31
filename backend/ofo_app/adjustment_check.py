@@ -13,8 +13,11 @@ ambiguous -> None, so the evaluator answers NotChecked with its catalogue reason
   engine, as the approaches route computes them); booked unreadable or several expiries -> None.
 - expiry P&L at spot (T-02): the open legs' ``Strategy.expiry_pnl_at(spot)`` plus booked; no spot / booked -> None.
 - premium_left: ``adjust_money.premium_left`` over the open option legs at LTP; any leg unpriced -> None.
-- adjustment_cost: the fixture convention ((ask - bid) x quantity + Rs 40 per open leg; no helper for the compare's
-  "This adjustment" charges of closing and reopening the open legs exists yet); a leg without bid or ask -> None.
+- adjustment_cost (T-19, ADR-221): the cost of the CHEAPEST approach the playbook offers
+  (``compare.offered_approaches``: ``approaches.applicable`` without "No change"), each built and priced by the
+  approaches route's own path (``routes.adjustment.priced_approach``) and costed by ``compare.approach_cost``, the
+  Compare's "This adjustment" cell (charges + half the bid-ask spread of each traded contract). Ties keep playbook
+  order. Nothing offered / nothing priceable / no spot -> None with ``compare.NO_APPROACH_*`` as the reason code.
 - margin: Zerodha's stated figure for the current legs through the approaches route's margin seam; only a CHECKED
   figure (``margin_block`` state ``stated``) counts; every other state -> None (``missing_margin``).
 - days_left / hhmm: the answer clock (``MarketInputs.now``) in IST against the nearest leg expiry.
@@ -41,6 +44,7 @@ from typing import Any, Final
 
 from ofo.adjustment import playbook_eval as pe
 from ofo.adjustment.approaches import Position
+from ofo.adjustment.compare import Cheapest, Column, MarginRead, cheapest_approach, offered_approaches
 from ofo.adjustment.strategy_type import strike_gap_of, type_of
 from ofo.engine import adjust_money
 from ofo.engine.legs import Action, Instrument, Leg
@@ -50,10 +54,8 @@ from ofo.marketdata.spot_source import SourceState, SpotAnswer
 from ofo.timeutil import IST
 
 from ofo_app import playbook_store
-from ofo_app.routes.adjustment import MarketInputs, Tracked, price_after
+from ofo_app.routes.adjustment import MarketInputs, Tracked, price_after, priced_approach
 
-#: The scenario library's adjustment-cost convention (tests/adjust_scenarios_gen.py): Rs 40 a leg on top of the spread.
-COST_PER_LEG: Final = Decimal(40)
 _HEALTH_FRESH: Final = "available"
 _HEALTH_STALE: Final = "stale"
 
@@ -137,6 +139,20 @@ def _abs_delta(market: MarketInputs, symbol: str) -> Decimal | None:
     return None if g is None or g.delta is None else abs(g.delta)
 
 
+def cheapest_offered(body: Mapping | None, tracked: Tracked, market: MarketInputs, spot: Decimal | None,
+                     rates: Any) -> Cheapest:
+    """ADR-221: the cheapest approach ``body`` offers, every one built and priced by the Compare's own path."""
+    offered = offered_approaches(body)
+    if spot is None:  # nothing can be built without spot: none priceable (T-19 is withheld for no spot anyway)
+        return cheapest_approach(offered, {}, market.chain)
+    columns: dict[str, Column] = {}
+    for a in offered:
+        built, priced = priced_approach(a, tracked, market, spot, rates)
+        if built is not None and priced is not None:
+            columns[a] = Column(built, priced.after, priced.reason, priced.charges_known, MarginRead(None))
+    return cheapest_approach(offered, columns, market.chain)
+
+
 def state_of(tracked: Tracked, market: MarketInputs, spot: SpotAnswer, margin: Mapping | None,  # noqa: PLR0913
              rates: Any, fresh: bool | None, body: Mapping | None = None) -> pe.StrategyState:
     position = tracked.position
@@ -152,10 +168,7 @@ def state_of(tracked: Tracked, market: MarketInputs, spot: SpotAnswer, margin: M
         booked, ((x.side, x.entry, ltp[x.tradingsymbol], qty[x.tradingsymbol]) for x in position.legs))
     left = adjust_money.premium_left((x.side, ltp[x.tradingsymbol], qty[x.tradingsymbol])
                                      for x in position.legs) if priced else None
-    spreads = [(getattr(rows.get(x.tradingsymbol), "bid", None), getattr(rows.get(x.tradingsymbol), "ask", None))
-               for x in position.legs]
-    cost = None if any(b is None or a is None for b, a in spreads) else adjust_money.adjustment_cost(
-        ((b, a, qty[x.tradingsymbol]) for x, (b, a) in zip(position.legs, spreads, strict=True)), COST_PER_LEG)
+    cheap = cheapest_offered(body, tracked, market, value, rates)
     before = price_after(position.legs, position, booked, tracked.paid_charges, (), rates, market)
     gross = None if before.after is None else before.after.gross
     expiry_pnl = None
@@ -172,7 +185,8 @@ def state_of(tracked: Tracked, market: MarketInputs, spot: SpotAnswer, margin: M
         days_left=(expiry - now.date()).days, hhmm=hhmm, spot=value, shorts=shorts, pnl=pnl,
         max_loss=None if gross is None else _limit_value(gross.max_loss),
         max_profit=None if gross is None else _limit_value(gross.max_profit),
-        margin=stated_margin, premium_left=left, adjustment_cost=cost, atm_iv=market.vol,
+        margin=stated_margin, premium_left=left, adjustment_cost=cheap.cost, adjustment_approach=cheap.approach,
+        adjustment_cost_reason=cheap.reason, atm_iv=market.vol,
         prev_close=(last.value if last is not None and last.value is not None and last.state is SourceState.STATED
                     else None),
         adjustments_used=tracked.adjustments_used, expiry_pnl_at_spot=expiry_pnl,

@@ -51,6 +51,12 @@ UNDERLYINGS = {
     "SENSEX": {"lot": 20, "step": 100, "exchange": "BFO", "atm_iv": "0.14", "weekly_weekday": 3},
 }
 MONTH_CODE = "123456789OND"
+#: The library's charge rates: Zerodha's published F&O rates (ADR-082; the same set tests/charges/test_rate_caps.py
+#: holds). An approach's "This adjustment" cost = its own charges at these rates + half the bid-ask spread (ADR-221).
+CHARGE_RATES = {"brokerage_per_order": D("20"), "stt_sell_rate": D("0.0015"), "stt_exercise_rate": D("0.0015"),
+                "transaction_rates": {"NSE_FO": D("0.0003553"), "BSE_FO": D("0.000325")}, "sebi_rate": D("0.000001"),
+                "stamp_buy_rate": D("0.00003"), "gst_rate": D("0.18"), "read_on": "2026-10-15",
+                "source_url": "https://zerodha.com/charges"}
 
 # ---------------------------------------------------------------------------------------------------------------------
 # The DRAFT system playbooks, copied from the published mockup screen 4 (ADR-214 (4a)-(4d), catalogue Part 3 incl.
