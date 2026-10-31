@@ -70,6 +70,8 @@ def _execute_route_edge(route: str, why: str) -> dict[tuple[str, str], str]:
 
 #: route module -> {(importer, order module): reason}. Every route not listed has no crossing beyond the shared paths.
 ROUTE_ORDER_EDGES: dict[str, dict[tuple[str, str], str]] = {
+    # GC-ADJ2 1C: the playbook check reads plans and rule memory through playbook_store (its ownership check)
+    "ofo_app.routes.adjustment_check": {**STRATEGY_STORE},
     "ofo_app.routes.broker_status": _execute_route_edge(
         "broker_status", "the status route reuses the execute route's clock provider"),
     "ofo_app.routes.features": {**STRATEGY_STORE},
@@ -84,7 +86,7 @@ ROUTE_ORDER_EDGES: dict[str, dict[tuple[str, str], str]] = {
         "zerodha_account", "the account route reuses the execute route's Kite session provider"),
 }
 #: One constant, so a new edge is a reviewed diff and never a silent pass.
-PINNED_EDGE_COUNT = 21
+PINNED_EDGE_COUNT = 23
 
 
 def route_modules(backend: pathlib.Path) -> list[str]:

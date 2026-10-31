@@ -19,6 +19,7 @@ The user comes from the session (``current_user_ref``), never from the request.
 """
 from __future__ import annotations
 
+import dataclasses
 import datetime
 from collections.abc import Coroutine, Sequence
 from dataclasses import dataclass
@@ -27,7 +28,8 @@ from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends
 from ofo.adjustment.detection import NEAR_LEVEL_THRESHOLD_PERCENT, PLATFORM_DETECTION, check_threshold
-from ofo.engine.legs import Action, Instrument
+from ofo.adjustment.strategy_type import strike_gap_of, type_of
+from ofo.engine.legs import Action, Instrument, Leg
 from ofo.engine.orderbook import BookView
 from ofo.errors.explanations import render_explanation
 from ofo.instruments.models import FUTURE_TYPE
@@ -340,7 +342,23 @@ async def _answer(db: Any, stored, bk: _Book, ctx: MarketContext | None,  # noqa
         return _view(bk, legs, underlying, None, answered_at, reasons)
     snapshot = await _snapshot(ctx, feed, underlying, _open_keys(bk, legs, reasons))
     view = paper.tracking_view(snapshot, legs, check_threshold(threshold), reasons, exits)
+    if view.detections and _playbook_type(ctx, underlying, legs, bk, view) is not None:
+        # F-71 / GC-ADJ2 1C: a strategy whose shape is a playbook type is checked by its playbook
+        # (GET /api/strategies/{id}/adjustment-check); the fixed 0.5% level rule fires at entry for an iron condor
+        view = dataclasses.replace(view, detections=())
     return _view(bk, legs, underlying, view, answered_at, reasons)
+
+
+def _playbook_type(ctx: MarketContext | None, underlying: str, legs: list[paper.TrackedLeg], bk: _Book,
+                   view: paper.TrackingView) -> str | None:
+    """The open legs' playbook type at the live index (``strategy_type.type_of``); None (generic, the platform
+    detection stays) for a Custom or unmapped shape, no index, or a strike gap that cannot be derived."""
+    open_legs = tuple(Leg(leg.action, leg.instrument, leg.strike, leg.expiry, leg.quantity, leg.entry_price)
+                      for leg, held in zip(legs, bk.legs, strict=True) if not held.exited)
+    if ctx is None or view.index is None or view.index.price is None or not open_legs:
+        return None
+    gap = strike_gap_of(ctx.provider.instrument_master(), underlying, {x.expiry for x in open_legs})
+    return type_of(open_legs, view.index.price, gap)
 
 
 def _open_keys(bk: _Book, legs: list[paper.TrackedLeg], reasons: list[paper.ContractReason | None]) -> list[str]:
