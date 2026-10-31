@@ -45,6 +45,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from decimal import ROUND_HALF_EVEN, ROUND_HALF_UP, Decimal
 
+from ofo.adjustment import liquidity
 from ofo.adjustment.approaches import (
     APPROACH_IDS,
     NO_CHANGE,
@@ -127,6 +128,7 @@ class Context:
     before_margin: MarginRead
     leg_greeks: Mapping[str, Greeks]  # trading symbol -> per-unit engine Greeks
     adjustments_used: int | None  # None: could not be read
+    limits: liquidity.Limits | None = None  # the playbook's saved liquidity limits (ADR-230 (1)); None: not applied
 
 
 @dataclass(frozen=True)
@@ -152,6 +154,20 @@ class Comparison:
     criteria: tuple[Criterion, ...]
     leads: Mapping[str, tuple[int, int]]  # approach id -> (rows it leads, rows with a leader)
     curves: Mapping[str, tuple[tuple[Decimal, Decimal], ...]]  # "before" / approach id -> (level, P&L after charges)
+
+
+def _symbols_token(symbols: Sequence[str], limit: int = 64) -> str:
+    """Trading symbols as one slot token (a Recorded slot takes at most 64 characters, no spaces): as many as fit,
+    then ``+Nmore`` for the rest, so a long list never fails the render."""
+    shown: list[str] = []
+    for i, s in enumerate(symbols):
+        rest = len(symbols) - i - 1
+        tail = f",+{rest}more" if rest else ""
+        if len(",".join([*shown, s])) + len(tail) > limit:
+            break
+        shown.append(s)
+    left = len(symbols) - len(shown)
+    return ",".join(shown) + (f",+{left}more" if left else "")
 
 
 # ---- cells -------------------------------------------------------------------------------------------------------
@@ -339,9 +355,31 @@ class _Rows:
             mid = (row.bid + row.ask) / 2
             widest = max(widest, (row.ask - row.bid) / mid * 100)
         pct = widest.quantize(HUNDREDTH, rounding=ROUND_HALF_UP)
+        if self.ctx.limits is not None:  # ADR-230 (1): flag beside the strike, never hide it
+            flagged = self._flagged(new, pct)
+            if flagged is not None:
+                return Cell(flagged, pct, None, pct)
         text = render_explanation("adjust_cmp_low_oi", value=pct, legs=",".join(unknown_oi)) if unknown_oi else \
             render_explanation("adjust_cmp_percent", value=pct)
         return Cell(text, pct, None, pct)
+
+    def _flagged(self, new: Sequence[PositionLeg], pct: Decimal) -> ExplanationText | None:
+        """The cell text when a new contract breaks a saved liquidity limit or has no known open interest, else None."""
+        by_flag: dict[str, list[str]] = {liquidity.FLAG_BELOW: [], liquidity.FLAG_OI_UNKNOWN: []}
+        for x in new:
+            row = self._row(x)
+            state = liquidity.evaluate_strike(self.ctx.limits, getattr(row, "oi", None), getattr(row, "bid", None),  # type: ignore[arg-type]
+                                              getattr(row, "ask", None))
+            for flag in state.flags:
+                by_flag[flag].append(x.tradingsymbol)
+        hit = [(f, _symbols_token(legs)) for f, legs in by_flag.items() if legs]
+        if not hit:
+            return None
+        first = render_explanation(hit[0][0])
+        if len(hit) == 1:
+            return render_explanation("adjust_cmp_flagged", value=pct, flag=first, legs=hit[0][1])
+        return render_explanation("adjust_cmp_flagged_both", value=pct, flag=first, legs=hit[0][1],
+                                  flag2=render_explanation(hit[1][0]), legs2=hit[1][1])
 
     def fresh(self) -> Cell:
         legs = self.b.after

@@ -1219,6 +1219,11 @@ def scenarios() -> list[dict]:  # noqa: PLR0915 - a flat list of scenario specs
                      chain_changes=[{"expiry": N3, "strike": "23650", "type": "CE", "low_oi": {"state": "unknown", "blocked": None}}],
                      warnings=["Low-OI state unknown for NIFTY 3 Nov 23,650 CE: Zerodha may block a fresh order in it "
                                "(M-15); exits are always allowed"]))
+    s.append(ic_spec("ADJ-50", "Liquidity limits (ADR-230 (1), F-78): one thin strike, the 23,100 CE with open interest 500",
+                     ["F-78", "REQ-159 AC-6", "ADR-230"], "2026-10-28T14:00:00", "23050", exact_fire=[],
+                     chain_changes=[{"expiry": N3, "strike": "23100", "type": "CE", "oi": 500}],
+                     notes=["Every other strike carries the generator's open interest (far above the playbook's "
+                            "10,000); only 23,100 CE is below hide_oi_below, so exactly that strike is flagged."]))
     sx_ic = [L("BUY", "PE", 71000, "2026-11-26", 2), L("SELL", "PE", 72000, "2026-11-26", 2),
              L("SELL", "CE", 77500, "2026-11-26", 2), L("BUY", "CE", 78500, "2026-11-26", 2)]
     sx_entry = {"clock": "2026-11-02T10:00:00", "spot": "74800"}
