@@ -50,6 +50,17 @@
       </div>
       <footer class="sticky bottom-0 border-t border-line bg-surface p-3">
         <button type="button" class="h-10 w-full rounded-lg bg-accent px-3 font-medium text-white" data-testid="drawer-compare" @click="compare">Compare</button>
+        <!-- GC-ADJ2 step 5 (REQ-112 AC-2): Dismiss the open records with an optional reason from the server's closed list -->
+        <div v-if="suggestionIds.length" class="mt-2 flex flex-wrap items-center gap-2" data-testid="drawer-dismiss-box">
+          <label class="text-sm">Reason
+            <select v-model="reason" class="ml-1 rounded border border-line px-1 py-0.5 text-sm" data-testid="drawer-dismiss-reason">
+              <option value="">-</option>
+              <option v-for="r in reasons" :key="r.id" :value="r.id">{{ r.text }}</option>
+            </select>
+          </label>
+          <button type="button" class="h-9 rounded-lg border border-line px-3 text-sm font-medium" :disabled="dismissing" data-testid="drawer-dismiss" @click="dismiss">Dismiss</button>
+          <ErrorMessage v-if="dismissParts" :parts="dismissParts" compact prefix="drawer-dismiss-error" data-testid="drawer-dismiss-error" />
+        </div>
       </footer>
     </aside>
   </div>
@@ -69,8 +80,9 @@ const props = defineProps({
   detected: { type: Boolean, default: true }, // false when the detection lapsed while the drawer was open
   cardRows: { type: Array, default: () => [] }, // layer 2, the part the card has: [{id, label, value}]
   client: { type: Object, default: () => api }, // the api module; a test passes a stand-in
+  suggestionIds: { type: Array, default: () => [] }, // GC-ADJ2 5: the open records shown (the check answer's suggestion_id)
 })
-const emit = defineEmits(['close', 'compare']) // compare: { ids, url }
+const emit = defineEmits(['close', 'compare', 'dismissed']) // compare: { ids, url }; dismissed: { ids }
 
 const closeBtn = ref(null)
 const ticked = ref([NO_CHANGE_ID])
@@ -95,8 +107,39 @@ async function load() {
     state.value = 'error'
   }
 }
+const reasons = ref([]) // the server's closed Dismiss list (GET /adjustment-opportunities dismiss_reasons)
+const reason = ref('')
+const dismissing = ref(false)
+const dismissParts = ref(null)
+async function loadReasons() {
+  if (!props.suggestionIds.length) return
+  try {
+    reasons.value = (await props.client.get('/adjustment-opportunities')).data.dismiss_reasons ?? []
+  } catch {
+    reasons.value = [] // Dismiss still works without a reason
+  }
+}
+async function dismiss() {
+  dismissing.value = true
+  dismissParts.value = null
+  const body = reason.value ? { reason: reason.value } : {}
+  const done = []
+  for (const id of props.suggestionIds) {
+    try {
+      await props.client.post(`/adjustment-opportunities/${id}/dismiss`, body)
+      done.push(id)
+    } catch (e) {
+      dismissParts.value = e?.parts ?? NEUTRAL_PARTS // the server's refusal text, shown as it came
+    }
+  }
+  dismissing.value = false
+  if (done.length) emit('dismissed', { ids: done })
+}
 watch(() => props.open, async (now) => {
   if (!now) return
+  reason.value = ''
+  dismissParts.value = null
+  loadReasons()
   const reading = load()
   await nextTick()
   closeBtn.value?.focus()
@@ -105,6 +148,6 @@ watch(() => props.open, async (now) => {
 const close = () => emit('close')
 function compare() {
   const ids = [NO_CHANGE_ID, ...ticked.value.filter((x) => x !== NO_CHANGE_ID)]
-  emit('compare', { ids, url: compareUrl(props.strategyId, ids) })
+  emit('compare', { ids, url: compareUrl(props.strategyId, ids, props.suggestionIds) })
 }
 </script>
