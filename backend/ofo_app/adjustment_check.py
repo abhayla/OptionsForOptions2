@@ -57,6 +57,8 @@ from ofo.timeutil import IST
 from ofo_app import playbook_store
 from ofo_app.routes.adjustment import MarketInputs, Tracked, as_of_market, price_after, priced_approach
 
+#: a clock trigger's unit in the playbook body (T-10b): its value and threshold are HH:MM
+CLOCK_UNIT: Final = "time"
 _HEALTH_FRESH: Final = "available"
 _HEALTH_STALE: Final = "stale"
 
@@ -240,6 +242,8 @@ def condition_line(trigger_id: str, label: str | None, unit: str | None, value: 
     and unit. A label the slot refuses or a body without one -> the trigger id (fail visible); a unit that is empty
     or not a plain unit -> the line without it."""
     def line(lab: str, un: str | None) -> Any:
+        if un == CLOCK_UNIT:  # a clock trigger: HH:MM value and threshold, no unit word
+            return render_explanation("adjust_condition_line_time", label=lab, value=value, threshold=threshold)
         if un:
             return render_explanation("adjust_condition_line", label=lab, value=value, unit=un, threshold=threshold)
         return render_explanation("adjust_condition_line_plain", label=lab, value=value, threshold=threshold)
@@ -247,7 +251,11 @@ def condition_line(trigger_id: str, label: str | None, unit: str | None, value: 
     try:
         return line(label if label is not None else trigger_id, unit)
     except (TypeError, ValueError):  # the slot refused the label or the unit: the id, with no unit (fail visible)
+        pass
+    try:
         return line(trigger_id, None)
+    except (TypeError, ValueError):  # the value itself is refused: the trigger id alone, never a 500
+        return render_explanation("adjust_condition_line_id", label=trigger_id)
 
 
 def condition_line_t19(label: str | None, value: str, threshold: str, approach: str, cost: Decimal,  # noqa: PLR0913

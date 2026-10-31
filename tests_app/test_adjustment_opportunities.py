@@ -255,7 +255,9 @@ async def test_t19_list_line_names_the_same_approach_and_cost_as_the_check(app_d
     """ADR-221 (review MAJOR 1): the opportunities list draws a T-19 record with the approach, cost and unpriced count
     stored when it opened, so the list line equals the check's flag line (the Compare's figure in both)."""
     sid = await _clean(app_db_url, await _seeded(app_db_url, monkeypatch, "ADJ-43"))
-    first = await _check(sid)
+    first = await _check(sid)  # last day 15:00: the clock trigger T-10b fires too (was a 500 before its line fix)
+    clock = next(x for x in first["results"] if x["kind"] == "flag" and x["trigger_id"] == "T-10b")
+    assert clock["condition"] == "Clock time reached (checked in this stage): 15:00 (rule 14:30)"
     flag = next(x for x in first["results"] if x["kind"] == "flag" and x["trigger_id"] == "T-19")
     assert "cheapest adjustment that could be priced now: Close the tested spread, cost ₹" in flag["condition"]
     rec = next(r for r in await _records(app_db_url, sid) if r.rule_id == "T-19")

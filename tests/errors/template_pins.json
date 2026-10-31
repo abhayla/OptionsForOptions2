@@ -3238,5 +3238,13 @@
   "explanation:adjust_condition_line_t19_unpriced": {
     "sha256": "3531ab96451c521ba8ce50931ee0f407cf3609b012ab8f8d4be6cbab43e3bb08",
     "reviewed": "pending owner read"
+  },
+  "explanation:adjust_condition_line_time": {
+    "sha256": "1184fe1a615bffeefe1063275c220e3fcda784c51ca3ff13ad10e645368cc042",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_condition_line_id": {
+    "sha256": "2abcad08224e0354c80431272edc995f149b964c92f1c0c4ab630c8ca59997b4",
+    "reviewed": "pending owner read"
   }
 }

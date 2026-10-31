@@ -25,7 +25,7 @@ from types import MappingProxyType
 
 from ofo import wording as _wording
 
-from ofo.errors.gate_slots import PlaybookField, PlaybookTriggerLabel, PlaybookTypeName, PlaybookUnit
+from ofo.errors.gate_slots import ClockTime, PlaybookField, PlaybookTriggerLabel, PlaybookTypeName, PlaybookUnit
 from ofo.errors.slots import Count, SlotType, _require_exact
 from ofo.errors.templates import MARGIN_SHORTFALL_NEXT_ACTION, ZERODHA_BUSY_TEXT
 
@@ -1417,6 +1417,11 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                          "threshold": PlaybookField}),
     ExplanationTemplate("adjust_condition_line_plain", "values_seen", "{label}: {value} (rule {threshold})",
                         {"label": PlaybookTriggerLabel, "value": PlaybookField, "threshold": PlaybookField}),
+    # a clock trigger (unit "time", T-10b): its value and threshold are clock times, no unit word
+    ExplanationTemplate("adjust_condition_line_time", "values_seen", "{label}: {value} (rule {threshold})",
+                        {"label": PlaybookTriggerLabel, "value": ClockTime, "threshold": ClockTime}),
+    # last resort (fail visible): the trigger id alone when no line can carry its value
+    ExplanationTemplate("adjust_condition_line_id", "values_seen", "{label}", {"label": PlaybookTriggerLabel}),
     # ADR-221: the T-19 flag line names the cheapest approach the playbook offers and its Compare cost
     ExplanationTemplate("adjust_condition_line_t19", "values_seen",
                         "{label}: {value} (rule {threshold}); cheapest adjustment that could be priced now: "
