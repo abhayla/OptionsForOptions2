@@ -47,6 +47,22 @@ def closed_booked(legs: Iterable[tuple[str, Decimal, Decimal, int]]) -> Decimal:
     return sum(((exit_ - entry) * quantity * -_sign(side) for side, entry, exit_, quantity in legs), Decimal(0))
 
 
+def with_booked(booked: Decimal, figure: Decimal) -> Decimal:
+    """A P&L figure of the open legs plus the P&L already booked."""
+    return booked + figure
+
+
+def pnl_now(booked: Decimal, legs: Iterable[tuple[str, Decimal, Decimal, int]]) -> Decimal:
+    """Booked P&L plus the open legs marked at their current price: ``booked`` + ``closed_booked(legs)`` over
+    (side, entry, current price, quantity). A missing booked figure or price is the caller's to refuse."""
+    return with_booked(booked, closed_booked(legs))
+
+
+def adjustment_cost(spreads: Iterable[tuple[Decimal, Decimal, int]], per_leg_charge: Decimal) -> Decimal:
+    """(bid, ask, quantity) per open leg -> sum of (ask - bid) x quantity + ``per_leg_charge`` for each leg."""
+    return sum(((ask - bid) * quantity + per_leg_charge for bid, ask, quantity in spreads), Decimal(0))
+
+
 def premium_left(legs: Iterable[tuple[str, Decimal, int]]) -> Decimal:
     """(side, current price, quantity) per open leg -> shorts' value minus longs' value."""
     return sum((price * quantity * _sign(side) for side, price, quantity in legs), Decimal(0))

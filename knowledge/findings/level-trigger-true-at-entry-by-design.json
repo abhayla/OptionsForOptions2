@@ -1,0 +1,38 @@
+{
+  "id": "level-trigger-true-at-entry-by-design",
+  "scope": "generic",
+  "class": "A level trigger (spot within N% of a short strike, a delta or loss at or past a limit) checked as a level, not as a crossing, fires the moment tracking starts for any shape whose short sits inside the threshold by design (an iron condor or strangle opened one step out of the money). The alert says nothing new: the condition was already true when the trade was opened, so the user learns to ignore the alert.",
+  "mechanism": "ofo.adjustment.detection used a fixed 0.5% distance to any short strike with no memory of the entry state; a fresh iron condor with spot 22,821 and a 22,900 CE short (0.35% away) showed 'Adjustment opportunity detected' right after tracking started. In the scenario library the same class appears in ADJ-33, ADJ-37 and ADJ-40 (22,900 short 0.52% from entry spot 23,020, inside the Early 0.75% limit).",
+  "first_seen": {
+    "date": "2026-10-30",
+    "where": "live walk, Live Strategies (spec/findings.md F-71)",
+    "evidence": "'Index is near a short strike: 22900, 78.95 points (0.35%) away' on a fresh iron condor, spot 22,821."
+  },
+  "fix": "Crossing, not level (GC-ADJ2 step 1, docs/design/playbook-body-v1.md F-71 rule): per strategy and rule the memory held_at_entry / seen_clear (table adjustment_rule_state); a rule true at entry answers 'Already true when tracking started' and opens nothing until a check finds it false, then flags like any other rule. The fixed 0.5% platform detection now runs only for a strategy whose shape maps to no playbook type.",
+  "detection": {
+    "status": "guarded",
+    "checks": [
+      "tests/adjustment/test_playbook_eval.py (ADJ-42 entry -> cleared -> back inside; every scenario's already_true_at_entry)",
+      "tests_app/test_adjustment_check.py::test_adj42_f71_already_true_at_entry_then_flags_after_a_clear_check",
+      "tests_app/test_strategy_tracking.py (typed strategy: no fixed detection; untyped keeps it)"
+    ],
+    "note": "Live, paper orders store no index level at entry, so the first check after tracking starts stands for the entry state (GC-ADJ2 contract decision 4)."
+  },
+  "spec_ref": [
+    "spec/requirements/REQ-159.md",
+    "spec/requirements/REQ-045.md",
+    "spec/findings.md"
+  ],
+  "occurrences": [
+    {
+      "date": "2026-10-30",
+      "where": "live walk, fresh iron condor",
+      "evidence": "0.35% from the 22,900 CE at entry"
+    },
+    {
+      "date": "2026-10-31",
+      "where": "scenario library regeneration (GC-ADJ2 step 1B)",
+      "evidence": "ADJ-33, ADJ-37, ADJ-40 T-01 moved from fired to already true at entry"
+    }
+  ]
+}

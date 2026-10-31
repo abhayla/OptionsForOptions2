@@ -343,3 +343,108 @@ async def test_a_suggestion_timeline_is_append_only(db):
                              WHERE id = :id"""), {"id": opened.id})
     await _refused(db, "DELETE FROM public.adjustment_suggestions WHERE id = :id", "permission denied", id=opened.id)
     assert len((await pb.suggestions(db, user, stored.id))[0].timeline) == 2  # noqa: PLR2004
+
+
+# --- Tier A review fixes (GC-ADJ2 step 1A): each guard holds on raw SQL as the application role -------------------
+
+_RAW_PLAYBOOK = ("INSERT INTO public.adjustment_playbooks (user_ref, strategy_type, name, body) "
+                 "VALUES (:u, 'ic', :n, CAST(:b AS JSONB))")
+_STEP = "timeline || jsonb_build_array(jsonb_build_object('outcome', CAST(:o AS TEXT), 'suggestion_id', id))"
+_SET_OUTCOME = (f"UPDATE public.adjustment_suggestions SET outcome = CAST(:o AS TEXT), "  # noqa: S608 constant
+                f"timeline = {_STEP} WHERE id = :id")
+_RAW_PLAN = ("INSERT INTO public.strategy_adjustment_plans (strategy_id, playbook_id, strategy_type, body) "
+             "VALUES (:s, :p, :t, CAST(:b AS JSONB))")
+
+
+@pytest.mark.parametrize("variant", ["ic  safe", "IC Safe\t", "IC Safe\u00a0", "\nIC Safe", "IC\u00a0Safe",
+                                     "IC\u2003Safe"])
+async def test_a_whitespace_variant_of_a_name_written_past_the_store_is_refused(db, variant):
+    user = _user()
+    await pb.create(db, user, "ic", "IC Safe", _body())
+    await _refused(db, _RAW_PLAYBOOK, "adjustment_playbooks_name_shape", u=user, n=variant, b=pb._dump(_body()))
+    with pytest.raises(pb.PlaybookStoreError) as taken:  # the store folds the same whitespace and keeps its text
+        await pb.create(db, user, "ic", variant, _body())
+    assert taken.value.code == pb.NAME_TAKEN
+    folded = "ic safe" if variant == "ic  safe" else "IC Safe"
+    assert render(taken.value.code, **taken.value.slots).what_happened == (
+        f"A playbook named {folded} already exists for Iron condor.")
+    assert await _scalar(db, "SELECT count(*) FROM public.adjustment_playbooks WHERE user_ref = :u", u=user) == 1
+
+
+async def _open(db, user):
+    _, stored = await _with_draft(db, user)
+    return await pb.open_suggestion(db, user, stored.id, "T-01", trigger_id="T-01", stage="Early",
+                                    value=Decimal("0.42"), threshold=Decimal("0.5"))
+
+
+async def test_open_to_completed_is_refused_and_acted_on_then_completed_is_allowed(db):
+    user = _user()
+    opened = await _open(db, user)
+    for final in ("completed", "partly_completed"):  # REQ-112 AC-3: only after acted_on (a confirmed fill)
+        await _refused(db, _SET_OUTCOME, "OF031", o=final, id=opened.id)
+    await pb.act_on(db, user, opened.id)
+    await db.execute(text(_SET_OUTCOME), {"o": "completed", "id": opened.id})
+    await _refused(db, _SET_OUTCOME, "OF031", o="partly_completed", id=opened.id)
+    done = (await pb.suggestions(db, user, opened.strategy_id))[0]
+    assert done.outcome == "completed"
+    assert [e["outcome"] for e in done.timeline] == ["open", "acted_on", "completed"]
+    assert done.timeline[-1]["suggestion_id"] == opened.id
+
+
+async def test_a_dismiss_reason_is_written_only_with_the_dismissal(db):
+    user = _user()
+    opened = await _open(db, user)
+    await _refused(db, "UPDATE public.adjustment_suggestions SET dismiss_reason = 'x' WHERE id = :id", "OF031",
+                   id=opened.id)
+    await _refused(db, f"UPDATE public.adjustment_suggestions SET outcome = 'lapsed', dismiss_reason = 'x', "  # noqa: S608
+                       f"timeline = {_STEP} WHERE id = :id", "OF031", o="lapsed", id=opened.id)
+    await pb.act_on(db, user, opened.id)
+    await _refused(db, "UPDATE public.adjustment_suggestions SET dismiss_reason = 'late' WHERE id = :id", "OF031",
+                   id=opened.id)
+    other = await pb.open_suggestion(db, user, opened.strategy_id, "T-02", trigger_id=None, stage=None, value=None,
+                                     threshold=None)
+    assert (await pb.dismiss(db, user, other.id, "Already hedged")).dismiss_reason == "Already hedged"
+
+
+async def test_an_outcome_change_must_append_exactly_one_timeline_entry(db):
+    user = _user()
+    opened = await _open(db, user)
+    await _refused(db, "UPDATE public.adjustment_suggestions SET outcome = 'lapsed' WHERE id = :id", "OF031",
+                   id=opened.id)  # the timeline unchanged
+    await _refused(db, f"UPDATE public.adjustment_suggestions SET outcome = 'lapsed', timeline = {_STEP} || "  # noqa: S608
+                       "jsonb_build_array(jsonb_build_object('outcome', 'lapsed', 'suggestion_id', id)) "
+                       "WHERE id = :id", "OF031", o="lapsed", id=opened.id)  # two entries
+    await _refused(db, f"UPDATE public.adjustment_suggestions SET outcome = 'lapsed', timeline = {_STEP} "  # noqa: S608
+                       "WHERE id = :id", "OF031", o="dismissed", id=opened.id)  # the entry names another outcome
+    await _refused(db, "UPDATE public.adjustment_suggestions SET outcome = 'lapsed', timeline = timeline || "
+                       "'[{\"outcome\": \"lapsed\"}]'::jsonb WHERE id = :id", "OF031", id=opened.id)  # no id link
+    await db.execute(text(_SET_OUTCOME), {"o": "lapsed", "id": opened.id})
+    timeline = (await pb.suggestions(db, user, opened.strategy_id))[0].timeline
+    assert [e["outcome"] for e in timeline] == ["open", "lapsed"]
+
+
+async def test_a_plan_row_pointing_at_another_users_or_another_types_playbook_is_refused(db):
+    user, other = _user(), _user()
+    _, stored = await _with_draft(db, user)
+    theirs = await pb.create(db, other, "ic", "Theirs", _body())
+    credit = await pb.create(db, user, "credit", "Credit", _body("credit"))
+    await _refused(db, _RAW_PLAN, "OF031", s=stored.id, p=theirs.id, t="ic", b=pb._dump(_body()))
+    await _refused(db, _RAW_PLAN, "OF031", s=stored.id, p=credit.id, t="ic", b=pb._dump(_body()))
+    own = await pb.create(db, user, "ic", "Mine", _body())
+    await db.execute(text(_RAW_PLAN), {"s": stored.id, "p": own.id, "t": "ic", "b": pb._dump(_body())})
+    await _refused(db, "UPDATE public.strategy_adjustment_plans SET playbook_id = :p WHERE strategy_id = :s", "OF031",
+                   s=stored.id, p=theirs.id)
+    assert (await pb.plan_for(db, user, stored.id)).playbook_id == own.id
+
+
+async def test_accepting_an_own_playbook_of_another_type_answers_a_named_refusal(db):
+    user = _user()
+    _, stored = await _with_draft(db, user)
+    first = await pb.accept_plan(db, user, stored.id, (await pb.active_for(db, user, "ic")).id)
+    credit = await pb.create(db, user, "credit", "Credit", _body("credit"))
+    with pytest.raises(pb.PlaybookStoreError) as refused:
+        await pb.accept_plan(db, user, stored.id, credit.id)
+    assert (refused.value.code, refused.value.slots["field"]) == (pb.BODY_INVALID, "strategy_type")
+    assert render(refused.value.code, **refused.value.slots).what_happened == (
+        "The playbook value strategy_type is not valid.")
+    assert await pb.plan_for(db, user, stored.id) == first
