@@ -1042,6 +1042,52 @@ class TemplateText(SlotType):
         return str(value)
 
 
+
+@functools.lru_cache(maxsize=1)
+def _registry_texts() -> frozenset[str]:
+    from ofo import settings as registry_mod
+
+    return frozenset(text for s in registry_mod.registry().values() for text in (s.label, s.what_it_changes, s.group))
+
+
+_RISK_FREE_RATE_TERM = re.compile(r"risk-free (?:interest )?rate", re.IGNORECASE)
+
+
+class RegistryText(SlotType):
+    """A group name, label or "what it changes" line of the settings registry (REQ-167 AC-1; ``registry.json`` is
+    code-reviewed data). Any string the registry does not hold is refused, and a held one is re-checked against the
+    wording rules, so a route cannot pass its own sentence."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        if type(value) is not str or value not in _registry_texts():
+            raise TypeError("RegistryText slot takes a group, label or what-it-changes text held by the settings registry")
+        # "risk-free" is on the advice list ("a risk-free trade"); here it is the finance term "risk-free interest rate"
+        # (ADR-056), the one use allowed, so only that phrase is set aside before the check
+        check_explanation_wording(_RISK_FREE_RATE_TERM.sub("interest rate", value), "settings registry text")
+
+    @staticmethod
+    def format(value: object) -> str:
+        return str(value)
+
+
+_SOURCE_URL = re.compile(r"https?://[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=%-]{1,290}")
+
+
+class SourceUrl(SlotType):
+    """The web address a charge rate set was read from, printed as stored: one token, http(s), URL characters only (no
+    space, so it can never carry a sentence), at most 300 characters."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        if type(value) is not str or _SOURCE_URL.fullmatch(value) is None:
+            raise TypeError("SourceUrl slot takes one http(s) address of URL characters, at most 300 long")
+
+    @staticmethod
+    def format(value: object) -> str:
+        return str(value)
+
+
 # --- the catalogue ------------------------------------------------------------------------------------------------
 
 class Values(SlotType):
@@ -1720,6 +1766,36 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("adjust_history_fill_failed", "values_seen", "Could not read Zerodha's answer; check this order in Kite"),
     ExplanationTemplate("adjust_history_col_fill", "values_seen", "Zerodha"),
     ExplanationTemplate("adjust_history_no_option_leg", "values_seen", "No option leg is open, so no premium is left."),
+    # GC-SET step 2 (REQ-167 AC-2, AC-5): the Settings page's registry words and its refusal reasons
+    ExplanationTemplate("settings_registry_text", "values_seen", "{text}", {"text": RegistryText}),
+    ExplanationTemplate("settings_source_url", "values_seen", "{url}", {"url": SourceUrl}),
+    ExplanationTemplate("settings_refused_unknown", "rule", "There is no setting with that name."),
+    ExplanationTemplate("settings_refused_not_a_number", "rule",
+                        "{label} must be a number written as text, for example {example}.",
+                        {"label": RegistryText, "example": Recorded}),
+    ExplanationTemplate("settings_refused_not_whole", "rule", "{label} must be a whole number.",
+                        {"label": RegistryText}),
+    ExplanationTemplate("settings_refused_fraction_unit", "rule",
+                        "{label} is a fraction. Enter {suggested} for {entered}%.",
+                        {"label": RegistryText, "suggested": Recorded, "entered": Recorded}),
+    ExplanationTemplate("settings_refused_out_of_range", "rule",
+                        "{label} must be between {low} and {high} ({unit}).",
+                        {"label": RegistryText, "low": Recorded, "high": Recorded, "unit": Recorded}),
+    ExplanationTemplate("settings_refused_note_too_long", "rule", "The note must be at most {max} characters.",
+                        {"max": Count}),
+    ExplanationTemplate("settings_refused_back_dated", "rule",
+                        "A setting takes effect now or later; an earlier time would change figures already shown."),
+    ExplanationTemplate("settings_refused_time_invalid", "rule",
+                        "The effective time needs a date, a time and a time zone."),
+    ExplanationTemplate("settings_refused_same_time", "rule",
+                        "Another value already takes effect at exactly that time; pick another time."),
+    ExplanationTemplate("settings_refused_charges_value", "rule",
+                        "{field} is not an allowed number. Write it as text, for example 0.001.", {"field": Recorded}),
+    ExplanationTemplate("settings_refused_charges_source", "rule",
+                        "The source must be the web address, starting with https://, where the rates were read."),
+    ExplanationTemplate("settings_refused_charges_date", "rule",
+                        "A charge rate set dated {date} cannot be added: that date already has a set, or it is older "
+                        "than the newest set. Use a later date.", {"date": Recorded}),
 )
 
 EXPLANATIONS: Mapping[str, ExplanationTemplate] = MappingProxyType({t.id: t for t in _EXPLANATIONS})

@@ -40,6 +40,7 @@ const SETTINGS_PAGES = {
   'free-eligibility': billingShell,
   referrals: billingShell,
   'broker-market-data': () => import('../pages/BrokerSettingsPage.vue'),
+  'app-settings': () => import('../pages/SettingsPage.vue'), // GC-SET (REQ-167)
 }
 
 const sectionRoutes = SECTIONS.flatMap((s) => [
