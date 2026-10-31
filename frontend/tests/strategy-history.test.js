@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import ActivityPanel from '@/components/strategy/ActivityPanel.vue'
 import SaveDraftBar from '@/components/strategy/SaveDraftBar.vue'
-import { CLEAR_UNDO_MS } from '@/lib/legEdit'
+import { createPinia, setActivePinia } from 'pinia'
 import { DELETE_REFUSED_TEXT, NO_EARLIER_TEXT } from '@/lib/strategyActivity'
 
 const calls = []
@@ -32,9 +32,12 @@ vi.mock('@/services/api', async (importActual) => {
     },
   }
 })
+// REQ-167 AC-7: the Undo wait is the served setting (10 s here), read before the timer starts
+const CLEAR_UNDO_MS = 10000
 beforeEach(() => {
   calls.length = 0
-  answers = {}
+  setActivePinia(createPinia())
+  answers = { 'GET /settings': { groups: [{ name: 'Other', settings: [{ key: 'other.undo_clear_all_seconds', value: '10' }] }] } }
 })
 afterEach(() => vi.useRealTimers())
 

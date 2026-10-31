@@ -420,6 +420,54 @@
       "default": "10",
       "what_it_changes": "A contract-list update is refused if more than this percent of one index's live contracts would disappear at once.",
       "source": "ADR-058; was env CATALOGUE_MAX_DELIST_PERCENT"
+    },
+    {
+      "key": "limits.chain_strikes_each_side",
+      "group": "Limits",
+      "label": "Option chain strikes each side",
+      "unit": "count",
+      "type": "integer",
+      "min": "1",
+      "max": "50",
+      "default": "15",
+      "what_it_changes": "The most strikes either side of the at-the-money strike the option chain shows and the server accepts.",
+      "source": "REQ-167 AC-5; was ofo_app/chain_push.py MAX_STRIKES_EACH_SIDE"
+    },
+    {
+      "key": "limits.history_max_days",
+      "group": "Limits",
+      "label": "Longest price history",
+      "unit": "days",
+      "type": "integer",
+      "min": "1",
+      "max": "365",
+      "default": "15",
+      "what_it_changes": "The most days of strategy price history one read returns.",
+      "source": "REQ-167 AC-5; was ofo_app/strategy_price_history.py MAX_DAYS"
+    },
+    {
+      "key": "other.undo_one_leg_seconds",
+      "group": "Other",
+      "label": "Undo window, one leg",
+      "unit": "seconds",
+      "type": "integer",
+      "min": "1",
+      "max": "120",
+      "default": "8",
+      "what_it_changes": "How long Undo stays after one leg is removed.",
+      "source": "REQ-167 AC-7; F-79; Q-SET-1 default waiting on the owner; was OptionChainPage.vue UNDO_MS"
+    },
+    {
+      "key": "other.undo_clear_all_seconds",
+      "group": "Other",
+      "label": "Undo window, Clear all",
+      "unit": "seconds",
+      "type": "integer",
+      "min": "1",
+      "max": "120",
+      "default": "10",
+      "what_it_changes": "How long Undo stays after Clear all.",
+      "source": "REQ-167 AC-7; F-79; Q-SET-1 default waiting on the owner; was legEdit.js CLEAR_UNDO_MS"
     }
   ]
 }

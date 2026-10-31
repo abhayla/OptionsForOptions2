@@ -26,6 +26,7 @@ from ofo.marketdata.quote import NormalizedQuote, SourceMetadata
 from ofo.rules.inputs import DataHealth
 from ofo.settings import calc as _settings_calc
 from ofo.settings import defaults as _settings_defaults
+from ofo.settings import defaults as registry_defaults
 from ofo_app import chain_push
 from ofo_app.catalogue_picker import PickableContract
 from ofo_app.chain_push import (
@@ -168,12 +169,25 @@ class Reader:
         return ChainCatalogue(expiries=tuple(sorted(self.by_expiry)), contracts=self.by_expiry.get(expiry, ()))
 
 
-def make_rig(reader: Reader | None = None, provider: FakeProvider | None = None, fanout: FanOut | None = None):
+def settings_with(each_side: int | None = None):
+    """A settings reader (outcome.SettingsReader) of the registry defaults, the chain strike limit replaced."""
+    values = dict(registry_defaults())
+    if each_side is not None:
+        values["limits.chain_strikes_each_side"] = Decimal(each_side)
+
+    async def read():
+        return values
+    return read
+
+
+def make_rig(reader: Reader | None = None, provider: FakeProvider | None = None, fanout: FanOut | None = None,
+             settings=None):
     provider = provider or FakeProvider()
     wall = Clock(T0)
     feed = LiveFeed(MarketContext(provider, wall, Decimal("0.065")), fanout or FanOut(provider))
     channel, mono = FakeChannel(), Clock(1000.0)
-    push = ChainPush(channel, feed, monotonic=mono, now=wall, reader=reader or Reader(), poll=0.005)
+    push = ChainPush(channel, feed, monotonic=mono, now=wall, reader=reader or Reader(), poll=0.005,
+                     read_settings=settings or settings_with())
     return provider, feed, channel, mono, push
 
 
@@ -309,10 +323,10 @@ def test_ac8_pure_atm_and_window_on_the_grid():
     """AC-8: the helpers on the grid itself; a window outside 1..15 is refused."""
     assert atm_strike(GRID, Decimal("25124.99")) == Decimal("25100")
     assert atm_strike(GRID, Decimal("25125")) == Decimal("25100")
-    assert list(strike_window(GRID, Decimal("25000"), 1)) == [Decimal("25000"), Decimal("25050")]
+    assert list(strike_window(GRID, Decimal("25000"), 1, 15)) == [Decimal("25000"), Decimal("25050")]
     for bad in (0, 16):
         with pytest.raises(ValueError):
-            strike_window(GRID, Decimal("25000"), bad)
+            strike_window(GRID, Decimal("25000"), bad, 15)
 
 
 @pytest.mark.parametrize("health", list(DataHealth))
@@ -451,7 +465,8 @@ async def test_catalogue_answer_states(reader, missing):
 async def test_no_feed_answers_not_connected_with_no_number():
     """Answer state NOT_CONNECTED (no feed): no rows, no spot, no ATM."""
     channel = FakeChannel()
-    push = ChainPush(channel, None, monotonic=Clock(1000.0), now=Clock(T0), reader=Reader(), poll=0.005)
+    push = ChainPush(channel, None, monotonic=Clock(1000.0), now=Clock(T0), reader=Reader(), poll=0.005,
+                     read_settings=settings_with())
     task = await start(push, channel)
     await close(channel, task)
     assert len(channel.sent) == ONE
@@ -477,8 +492,8 @@ async def test_two_holders_and_fallback_answer_not_connected():
     streaming = lambda i: fanout.subscriber_count(i) > 0  # noqa: E731 - outcome.get_streaming's predicate
     streaming.ctx = feed.ctx
     req = ChainRequest.model_validate(request())
-    down = chain_read(feed.ctx, streaming, req, _catalogue(), fallback=True, now=Clock(T0))
-    up = chain_read(feed.ctx, streaming, req, _catalogue(), fallback=False, now=Clock(T0))
+    down = chain_read(feed.ctx, streaming, req, _catalogue(), fallback=True, now=Clock(T0), max_each_side=15)
+    up = chain_read(feed.ctx, streaming, req, _catalogue(), fallback=False, now=Clock(T0), max_each_side=15)
     await close(channel_a, task_a)
     await close(channel_b, task_b)
     assert (down.state, down.rows, down.spot, down.atm_strike) == ("NOT_CONNECTED", [], None, None)
@@ -495,7 +510,7 @@ def test_rest_read_without_a_holder_is_not_live():
     streaming = lambda i: fanout.subscriber_count(i) > 0  # noqa: E731
     streaming.ctx = ctx
     body = chain_read(ctx, streaming, ChainRequest.model_validate(request()), _catalogue(), fallback=False,
-                      now=Clock(T0))
+                      now=Clock(T0), max_each_side=15)
     assert body.state == "NOT_CONNECTED"
 
 
@@ -511,11 +526,12 @@ def test_ac6_no_order_basket_margin_or_execute_reachable_from_the_chain_code():
                    "ofo.marketdata.quote", "ofo.money", "ofo_app.api_models", "ofo_app.catalogue_picker",
                    "ofo_app.live_push", "ofo_app.routes.outcome", "ofo_app", "ofo_app.db", "ofo_app.chain_push",
                    "ofo_app.errors", "ofo_app.routes", "ofo_app.underlying",
-                   "ofo.engine.chain_values"}  # row 33: the engine's IV/Greeks maths only
+                   "ofo.engine.chain_values",  # row 33: the engine's IV/Greeks maths only
+                   "ofo.settings.calc", "fastapi.exceptions"}
         assert set(imports) <= allowed, (path.name, set(imports) - allowed)
 
 
-def _app_client(ctx: MarketContext | None, reader: Reader):
+def _app_client(ctx: MarketContext | None, reader: Reader, settings=None):
     from ofo_app.main import create_app  # noqa: PLC0415 - the app is built per test, with no lifespan (no database)
     from ofo_app.routes import chain, outcome  # noqa: PLC0415
     from starlette.testclient import TestClient  # noqa: PLC0415
@@ -525,6 +541,7 @@ def _app_client(ctx: MarketContext | None, reader: Reader):
     app.dependency_overrides[outcome.get_streaming] = lambda: None
     app.dependency_overrides[outcome.get_answer_clock] = lambda: Clock(T0)
     app.dependency_overrides[chain.get_chain_reader] = lambda: reader
+    app.dependency_overrides[outcome.get_settings_reader] = lambda: settings or settings_with()
     return TestClient(app)
 
 
@@ -882,7 +899,7 @@ async def test_standing_d_no_live_feed_and_spot_missing_carry_no_greeks_and_no_b
     body = channel.sent[0]
     assert (body["rows"], body["rows_missing"], body["greeks_basis"], body["greeks_missing"]) == (
         [], "SPOT_MISSING", None, None)
-    out = chain_push.chain_answer(None, ChainRequest(underlying="NIFTY", expiry=EXPIRY),
+    out = chain_push.chain_answer(None, ChainRequest(underlying="NIFTY", expiry=EXPIRY, strikes_each_side=2),
                                   ChainCatalogue(expiries=(EXPIRY,), contracts=CONTRACTS), None, live=False,
                                   now=Clock(T0))
     assert (out.state, out.greeks_basis, out.greeks_missing, out.rows) == ("NOT_CONNECTED", None, None, [])
@@ -1065,3 +1082,51 @@ def test_r2_gamma_shown_pure():
     assert text(Decimal("0.0123")) == "0.0123"
     assert text(zero, Decimal("0.0000114")) == "0.000011"
     assert text(zero) == "0.0000"
+
+
+# ---- REQ-167 AC-5: the chain strike limit is the limits.chain_strikes_each_side setting, read per request ----------
+
+def test_the_registry_default_of_the_chain_strike_limit_is_unchanged():
+    """Defaults never change (REQ-167): the chain's limit, with no row stored, is the design's 15 either side."""
+    assert registry_defaults()["limits.chain_strikes_each_side"] == Decimal(15)
+
+
+@pytest.mark.parametrize(("limit", "asked", "refused"), [(10, 11, True), (10, 10, False), (20, 16, False),
+                                                         (20, 21, True), (15, 15, False), (15, 16, True)])
+async def test_socket_maximum_follows_the_setting(limit, asked, refused):
+    """The socket refuses (one input message, nothing read or subscribed) a count above the setting in force, and
+    accepts the count the old typed 15 refused when the setting is 20."""
+    reader = Reader()
+    provider, _feed, channel, _mono, push = make_rig(reader, settings=settings_with(limit))
+    provider.tick(index_quote("25162.30"))
+    tick_window(provider)
+    task = await start(push, channel, request(asked))
+    await close(channel, task)
+    if refused:
+        assert channel.sent == [ERROR] and reader.calls == [] and provider.subscribe_calls == []
+    else:
+        assert reader.calls and ERROR not in channel.sent
+
+
+def test_rest_maximum_follows_the_setting_and_the_default_comes_from_it():
+    """GET /api/market/chain: 12 is refused (422) at a setting of 10 and answered at 20; with no count asked the
+    window is the setting's (a setting of 1 gives 3 rows)."""
+    provider = FakeProvider()
+    provider.tick(index_quote("25162.30"))
+    tick_window(provider)
+    ctx = MarketContext(provider, Clock(T0), Decimal("0.065"))
+    query = {"underlying": "NIFTY", "expiry": EXPIRY.isoformat()}
+    ten = _app_client(ctx, Reader(), settings_with(10))
+    assert ten.get("/api/market/chain", params={**query, "strikes_each_side": 12}).status_code == HTTP_UNPROCESSABLE
+    assert ten.get("/api/market/chain", params={**query, "strikes_each_side": 10}).status_code == HTTP_OK
+    twenty = _app_client(ctx, Reader(), settings_with(20))
+    assert twenty.get("/api/market/chain", params={**query, "strikes_each_side": 12}).status_code == HTTP_OK
+    one = _app_client(ctx, Reader(), settings_with(1)).get("/api/market/chain", params=query)
+    assert one.status_code == HTTP_OK and len(one.json()["rows"]) == THREE
+
+
+def test_no_literal_fifteen_is_left_in_the_chain_modules():
+    root = pathlib.Path(chain_push.__file__).parent
+    for path in (root / "chain_push.py", root / "routes" / "chain.py"):
+        code = re.sub(r"#.*|\"\"\"[\s\S]*?\"\"\"", "", path.read_text(encoding="utf-8"))
+        assert not re.search(r"(?<![\w.])15(?![\w.])", code), path.name

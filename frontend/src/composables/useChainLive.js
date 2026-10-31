@@ -10,7 +10,6 @@ import { createLiveSocket, useReconnecting, useReconnectingText } from './useStr
 
 export const CHAIN_LIVE_PATH = '/api/market/chain/live'
 export const CHAIN_REST_PATH = '/market/chain' // relative to the api base (/api)
-export const STRIKES_EACH_SIDE = 15 // the server's own maximum and default (chain_push.MAX_STRIKES_EACH_SIDE)
 export const NOT_LIVE_LABEL = 'Option chain unavailable: not connected to live data.'
 export const VALUE_UNAVAILABLE = '-'
 
@@ -25,9 +24,10 @@ export function isChainAnswer(msg) {
 }
 
 /** The request body for the socket and the REST read. */
-export function chainRequest(underlying, expiry, strikesEachSide = STRIKES_EACH_SIDE, filters = {}) {
+export function chainRequest(underlying, expiry, strikesEachSide, maxEachSide, filters = {}) {
   // row 33: the REQ-029 AC-9 filter fields (min_oi, min_volume, min_ltp, bid_and_ask) ride along, applied by the server
-  const n = strikesEachSide > STRIKES_EACH_SIDE ? STRIKES_EACH_SIDE : strikesEachSide
+  // maxEachSide is the served limits.chain_strikes_each_side (REQ-167 AC-5): the server refuses more, so none is asked
+  const n = strikesEachSide > maxEachSide ? maxEachSide : strikesEachSide
   return { underlying, expiry, strikes_each_side: n, ...filters }
 }
 

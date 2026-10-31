@@ -102,3 +102,19 @@ MAX_DELIST_PERCENT = "data.max_delist_percent"
 
 def max_delist_percent(values: Mapping[str, Decimal]) -> Decimal:
     return value_of(values, MAX_DELIST_PERCENT)
+
+
+CHAIN_STRIKES_EACH_SIDE = "limits.chain_strikes_each_side"
+
+
+def chain_strikes_each_side(values: Mapping[str, Decimal]) -> int:
+    """The most strikes either side of ATM the option chain shows and accepts (REQ-167 AC-5)."""
+    return int(value_of(values, CHAIN_STRIKES_EACH_SIDE))
+
+
+HISTORY_MAX_DAYS = "limits.history_max_days"
+
+
+def history_max_days(values: Mapping[str, Decimal]) -> int:
+    """The most trading days of strategy price history one read returns (REQ-167 AC-5)."""
+    return int(value_of(values, HISTORY_MAX_DAYS))
