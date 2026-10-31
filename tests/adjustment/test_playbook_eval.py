@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import copy
 import datetime
+from dataclasses import replace
 from decimal import ROUND_HALF_EVEN, Decimal
 
 import pytest
@@ -67,8 +68,9 @@ def state_of(sc: dict) -> StrategyState:
     """A StrategyState from the scenario's own numbers (the same reads as tests/test_adjust_scenarios.py)."""
     clock = datetime.datetime.fromisoformat(sc["clock"]["ist"])
     hhmm = clock.strftime("%H:%M")
-    rule = next(r for r in PLAYBOOKS["day_rules"] if r["when"] == "expiry")
-    tighten = D(rule["percent"]) if clock.date().isoformat() == sc["expiry"] and hhmm >= rule["at"] else None
+    rule = next((r for r in PLAYBOOKS["families"][sc["family"]].get("day_rules", PLAYBOOKS["day_rules"])
+                 if r["when"] == "expiry" and r["on"] and "percent" in r), None)  # the family's tighten rule, if on
+    tighten = D(rule["percent"]) if rule and clock.date().isoformat() == sc["expiry"] and hhmm >= rule["at"] else None
     legs = sc["position"]["legs"]
     unpriced = {q["tradingsymbol"] for q in sc["broker"]["quote"]["legs"] if q["state"] != "stated"}
     sign = {"BUY": 1, "SELL": -1}
@@ -375,8 +377,9 @@ def test_unknown_trigger_is_not_checked_never_ignored():
 
 
 def test_tighten_applies_to_tightened_triggers_only():
-    sc = load("ADJ-08")  # expiry day 13:30, 20% tighten
-    ev = evaluate(body_of(sc), state_of(sc), {}, None)
+    sc = load("ADJ-08")  # expiry day 13:30; the iron condor has no tighten rule on (ADR-216), so state the 20% itself
+    assert state_of(sc).tighten_percent is None
+    ev = evaluate(body_of(sc), replace(state_of(sc), tighten_percent=D(20)), {}, None)
     assert flags(ev)["T-01"].threshold == D("0.36")  # 0.3 x 1.2
     assert flags(ev)["T-09"].threshold == D("2.4")
 

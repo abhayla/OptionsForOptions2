@@ -188,8 +188,9 @@ def recompute_fired(sc: dict) -> set[str]:  # noqa: C901, PLR0912 - one trigger 
     assert stage == exp["stage_index"] and stages[stage]["name"] == exp["stage"]
     clock = datetime.datetime.fromisoformat(sc["clock"]["ist"])
     hhmm = clock.strftime("%H:%M")
-    rule = next(r for r in PLAYBOOKS["day_rules"] if r["when"] == "expiry")
-    tighten = D(rule["percent"]) if clock.date().isoformat() == sc["expiry"] and hhmm >= rule["at"] else None
+    rule = next((r for r in PLAYBOOKS["families"][sc["family"]].get("day_rules", PLAYBOOKS["day_rules"])
+                 if r["when"] == "expiry" and r["on"] and "percent" in r), None)  # the family's tighten rule, if on
+    tighten = D(rule["percent"]) if rule and clock.date().isoformat() == sc["expiry"] and hhmm >= rule["at"] else None
     spot = D(sc["market"]["spot"])
     legs = sc["position"]["legs"]
     unpriced = {q["tradingsymbol"] for q in sc["broker"]["quote"]["legs"] if q["state"] != "stated"}
