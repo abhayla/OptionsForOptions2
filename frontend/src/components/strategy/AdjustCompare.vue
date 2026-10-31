@@ -133,6 +133,7 @@
           </select>
         </label>
         <button type="button" class="h-9 rounded-lg bg-accent px-3 font-medium text-white disabled:opacity-50" :disabled="!pick" data-testid="adjust-open" @click="openInBuilder">Open in builder and prepare basket</button>
+        <ErrorMessage v-if="actedRefusal" :parts="actedRefusal" compact prefix="adjust-acted" data-testid="adjust-acted-refusal" />
         <span v-if="!pickable.length" class="text-sm text-ink-muted" data-testid="adjust-pick-empty">{{ NONE_TO_PREPARE }}</span>
         <ErrorMessage v-if="prepareError" :parts="prepareError" compact prefix="adjust-prepare-error" data-testid="adjust-prepare-error" />
       </div>
@@ -158,6 +159,7 @@ const props = defineProps({
   strategyId: { type: [String, Number], required: true },
   client: { type: Object, default: () => api }, // the api module; a test passes a stand-in
   picked: { type: Array, default: () => [] }, // the approach ids ticked in the drawer (`pick` in the address); none = all
+  opportunities: { type: Array, default: () => [] }, // GC-ADJ2 5: the open suggestion records this compare answers (`opp`)
 })
 const emit = defineEmits(['prepare']) // { legs, underlying }: the chosen approach's legs as builder legs (no order is placed)
 
@@ -272,6 +274,21 @@ function setLimit(r, v) {
 }
 const clearFilters = () => { filters.value = EMPTY_FILTERS() }
 
+// GC-ADJ2 step 5 (REQ-112 AC-2): preparing a basket from the compare is "Acted on" for each record it answers, each
+// its own outcome (REQ-112 AC-4). A record already final answers its refusal; that never stops the basket (the outcome
+// is a record, not the order path), and the refusal text is shown under the button.
+const actedRefusal = ref(null)
+async function markActedOn() {
+  actedRefusal.value = null
+  for (const id of props.opportunities) {
+    try {
+      await props.client.post(`/adjustment-opportunities/${id}/acted-on`)
+    } catch (e) {
+      actedRefusal.value = e?.parts ?? NEUTRAL_PARTS
+    }
+  }
+}
+
 async function openInBuilder() {
   prepareError.value = null
   const a = all.value.find((x) => x.id === pick.value && x.id !== NO_CHANGE_ID)
@@ -282,6 +299,7 @@ async function openInBuilder() {
     for (const e of expiries) contracts.push(...(await props.client.get(`/catalogue/${underlying.value}/contracts?expiry=${e}`)).data.contracts)
     const legs = legsFromApproach(underlying.value, a, contracts, reply.value.spot?.at ?? null)
     if (!legs) { prepareError.value = NEUTRAL_PARTS; return }
+    await markActedOn()
     emit('prepare', { legs, underlying: underlying.value })
   } catch (e) {
     prepareError.value = e?.parts ?? NEUTRAL_PARTS

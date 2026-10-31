@@ -57,9 +57,21 @@ export const stateRows = (body, reply) => [...cardRows(body), ...replyRows(reply
 export const availableOf = (reply) => (Array.isArray(reply?.available) ? reply.available : [])
 
 /** The compare address for a strategy and the ids picked in the drawer; No change is always among them. */
-export function compareUrl(strategyId, ids) {
+const OPP_ID = /^[1-9]\d{0,17}$/ // a suggestion record id (BIGSERIAL)
+
+export function compareUrl(strategyId, ids, opportunities = []) {
   const picks = [...new Set([NO_CHANGE_ID, ...ids])]
-  return `/strategy/builder?adjust=${encodeURIComponent(String(strategyId))}&pick=${picks.map(encodeURIComponent).join(',')}`
+  const opp = [...new Set(opportunities.map(String).filter((x) => OPP_ID.test(x)))]
+  // GC-ADJ2 step 5: the open suggestion records this compare answers (REQ-162 AC-3); its prepare marks them acted on
+  const tail = opp.length ? `&opp=${opp.join(',')}` : ''
+  return `/strategy/builder?adjust=${encodeURIComponent(String(strategyId))}&pick=${picks.map(encodeURIComponent).join(',')}${tail}`
+}
+
+// GC-ADJ2 step 5: the `opp` address part back to suggestion ids (whole positive numbers only; anything else dropped)
+export function opportunitiesFromQuery(value) {
+  const raw = Array.isArray(value) ? value[0] : value
+  if (typeof raw !== 'string' || raw === '') return []
+  return [...new Set(raw.split(',').filter((x) => OPP_ID.test(x)))] // ids stay strings: nothing is computed on them
 }
 
 /** The ids in a `pick` query value; an unknown or empty value is no pick (the compare then shows everything). */
