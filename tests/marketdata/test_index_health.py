@@ -13,6 +13,10 @@ from ofo.marketdata.feed_health import FEED_STALE, RECONNECT_WINDOW
 from ofo.marketdata.forward import ForwardUnavailable, parity_forward
 from ofo.marketdata.kite_provider import IST, KiteProvider
 from ofo.rules.inputs import DataHealth
+from ofo.settings import calc as _fq_calc
+from ofo.settings import defaults as _fq_defaults
+
+_FQ = _fq_calc.forward_quality(_fq_defaults())
 
 SEC = datetime.timedelta(seconds=1)
 RATE = Decimal("0.065")
@@ -27,7 +31,7 @@ def _live():
 
 def _forward(provider, at):
     return parity_forward(provider.option_chain_snapshot("NIFTY", EXPIRY), provider.underlying_quote("NIFTY"),
-                          EXPIRY, at, RATE)
+                          EXPIRY, at, RATE, _FQ)
 
 
 def test_live_index_values_are_available_and_from_the_index_segments():
@@ -76,7 +80,7 @@ def test_missing_index_value_refuses():
     assert provider.underlying_quote("NIFTY") is None
     with pytest.raises(ForwardUnavailable, match="missing"):
         parity_forward([], provider.underlying_quote("NIFTY"), EXPIRY,
-                       datetime.datetime(2026, 10, 8, 9, 20, 9, tzinfo=IST), RATE)
+                       datetime.datetime(2026, 10, 8, 9, 20, 9, tzinfo=IST), RATE, _FQ)
 
 
 # ---- the scenario never uses the index value silently (AC-2) and records it with its time (AC-3) ---------------
@@ -100,7 +104,7 @@ def _inputs(reading):
 
 def _gated(inputs, provider):
     fwd = parity_forward(provider.option_chain_snapshot("NIFTY", EXPIRY), provider.underlying_quote("NIFTY"), EXPIRY,
-                         VALUATION, RATE)
+                         VALUATION, RATE, _FQ)
     return model_inputs(inputs, {EXPIRY: fwd})
 
 

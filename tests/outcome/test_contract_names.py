@@ -6,8 +6,12 @@ import dataclasses
 from marketdata._kite_fixture import all_instrument_ids, new_provider, replay
 from ofo.outcome import OutcomeState, build_outcome, not_connected, not_live, read_snapshot
 from ofo.outcome.snapshot import LegMarket
+from ofo.settings import calc as _fq_calc
 from ofo.settings import defaults as _d
+from ofo.settings import defaults as _fq_defaults
 from outcome.test_same_engine import RATE, VALUATION, definition
+
+_FQ = _fq_calc.forward_quality(_fq_defaults())
 
 FIELDS = ("symbol", "instrument", "strike", "expiry")
 
@@ -17,7 +21,7 @@ def _setup():
     provider.subscribe(all_instrument_ids(items))
     replay(provider, clock)
     d = definition(provider)
-    snap = read_snapshot(provider, "NIFTY", [p.instrument_id for p in d.legs], VALUATION, RATE)
+    snap = read_snapshot(provider, "NIFTY", [p.instrument_id for p in d.legs], VALUATION, RATE, quality=_FQ)
     return d, snap
 
 

@@ -10,8 +10,12 @@ from marketdata._kite_fixture import all_instrument_ids, new_provider, replay
 from ofo.errors.explanations import render_explanation
 from ofo.outcome import NOT_CONNECTED_LABEL, OutcomeState, build_outcome, not_live, read_snapshot
 from ofo.rules.inputs import DataHealth
+from ofo.settings import calc as _fq_calc
 from ofo.settings import defaults as _d
+from ofo.settings import defaults as _fq_defaults
 from outcome.test_same_engine import RATE, VALUATION, definition
+
+_FQ = _fq_calc.forward_quality(_fq_defaults())
 
 
 def _snap():
@@ -19,7 +23,7 @@ def _snap():
     provider.subscribe(all_instrument_ids(items))
     replay(provider, clock)
     d = definition(provider)
-    return d, read_snapshot(provider, "NIFTY", [p.instrument_id for p in d.legs], VALUATION, RATE)
+    return d, read_snapshot(provider, "NIFTY", [p.instrument_id for p in d.legs], VALUATION, RATE, quality=_FQ)
 
 
 def _never_held(snap):

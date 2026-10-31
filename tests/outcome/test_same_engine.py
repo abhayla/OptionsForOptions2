@@ -12,8 +12,12 @@ from marketdata._kite_fixture import all_instrument_ids, new_provider, replay
 from ofo.engine.legs import Action
 from ofo.marketdata.kite_provider import IST
 from ofo.outcome import OutcomeState, PlannedLeg, StrategyDefinition, build_outcome, read_snapshot
+from ofo.settings import calc as _fq_calc
 from ofo.settings import defaults as _d
+from ofo.settings import defaults as _fq_defaults
 from ofo.table import TOTAL_ROW_ID
+
+_FQ = _fq_calc.forward_quality(_fq_defaults())
 
 VALUATION = datetime.datetime(2026, 10, 8, 9, 20, 9, tzinfo=IST)
 RATE = Decimal("0.065")
@@ -53,7 +57,7 @@ def definition(provider):
 
 def outcome_of(provider, **kw):
     d = definition(provider)
-    snap = read_snapshot(provider, "NIFTY", [p.instrument_id for p in d.legs], VALUATION, RATE)
+    snap = read_snapshot(provider, "NIFTY", [p.instrument_id for p in d.legs], VALUATION, RATE, quality=_FQ)
     return build_outcome(d, snap, VALUATION, **kw, settings=_d())
 
 
@@ -114,7 +118,7 @@ def test_expiry_scenarios_use_planned_entry_not_current_ltp(replayed):
     d = definition(replayed)
     bumped = StrategyDefinition("NIFTY", (PlannedLeg(d.legs[0].instrument_id, Action.SELL, 1,
                                                      d.legs[0].planned_entry + Decimal("10"), VALUATION),) + d.legs[1:])
-    snap = read_snapshot(replayed, "NIFTY", [p.instrument_id for p in bumped.legs], VALUATION, RATE)
+    snap = read_snapshot(replayed, "NIFTY", [p.instrument_id for p in bumped.legs], VALUATION, RATE, quality=_FQ)
     out = build_outcome(bumped, snap, VALUATION, settings=_d())
     a, b = dict(base.payoff_points), dict(out.payoff_points)
     common = [lvl for lvl in a if lvl in b]  # breakeven columns move with the entry; the grid levels are shared

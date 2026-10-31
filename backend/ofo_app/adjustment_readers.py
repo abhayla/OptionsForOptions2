@@ -135,7 +135,7 @@ async def read_market(tracked: Tracked, ctx: Any) -> MarketInputs:
     quotes = {q.instrument_id: q for q in provider.option_chain_snapshot(underlying, expiry)}
     spot_q = provider.underlying_quote(underlying)
     closed = market_state(ctx, now).closed
-    model = chain_model(list(quotes.values()), spot_q, expiry, now, ctx.rate, market_closed=closed)
+    model = chain_model(list(quotes.values()), spot_q, expiry, now, ctx.rate, ctx.forward_quality, market_closed=closed)
     rows: list[ChainRow] = []
     ids: dict[str, str] = {}
     leg_greeks: dict[str, Greeks] = {}
@@ -162,7 +162,7 @@ async def read_market(tracked: Tracked, ctx: Any) -> MarketInputs:
                                         g.vega)
     forward = None
     try:
-        forward = parity_forward(list(quotes.values()), spot_q, expiry, now, ctx.rate).forward
+        forward = parity_forward(list(quotes.values()), spot_q, expiry, now, ctx.rate, ctx.forward_quality).forward
     except (ForwardUnavailable, ValueError, ArithmeticError):
         forward = None
     try:

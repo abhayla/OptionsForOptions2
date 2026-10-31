@@ -27,6 +27,7 @@ from ofo.engine.legs import Action
 from ofo.instruments.models import InstrumentId as ContractKey
 from ofo.instruments.models import ListedContract
 from ofo.limits import INTEGER_MAX
+from ofo.marketdata.forward import ForwardQuality
 from ofo.marketdata.feed_health import awaiting_first_price_for, market_closed_for
 from ofo.marketdata.provider import MarketDataProvider
 from ofo.marketdata.quote import NormalizedQuote
@@ -50,6 +51,7 @@ from ofo.scenario.config import ScenarioConfig, ScenarioSettings
 from ofo.scenario.levels import RangeOverride, resolve_range
 from ofo.scenario.views import View
 from ofo.settings import RISK_FREE_RATE, calc
+from ofo.settings import defaults as settings_defaults
 from ofo.settings import value_of as registry_value_of
 from ofo.timeutil import IST
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StrictBool, StrictInt, model_validator
@@ -162,6 +164,10 @@ class MarketContext:
     #: whose Zerodha feed this is (ADR-053): part of every shared-cache key, so two users' feeds never share. None (a
     #: test or replay context with no owner) means nothing is shared: every reader computes for itself.
     feed_owner: str | None = None
+    #: REQ-167 AC-5: the three forward settings in force (``get_market_context`` replaces this per request, like the
+    #: rate). The default is the registry's, for the live feed's own context and tests, never for a priced route.
+    forward_quality: ForwardQuality = dataclasses.field(
+        default_factory=lambda: calc.forward_quality(settings_defaults()))
 
 
 @dataclass(frozen=True)
@@ -221,8 +227,10 @@ def get_settings_reader() -> SettingsReader:
 async def with_rate_in_force(ctx: MarketContext, read_settings: SettingsReader) -> MarketContext:
     """``ctx`` with its rate replaced by the ``pricing.risk_free_rate`` setting in force now (an exact Decimal). The one
     rate-reading path: the live dependency and the scenario mode's dependency both use it. A store that cannot answer
-    raises (fail closed)."""
-    return dataclasses.replace(ctx, rate=registry_value_of(await read_settings(), RISK_FREE_RATE))
+    raises (fail closed). The three forward settings (REQ-167 AC-5) are replaced from the same single read."""
+    values = await read_settings()
+    return dataclasses.replace(ctx, rate=registry_value_of(values, RISK_FREE_RATE),
+                               forward_quality=calc.forward_quality(values))
 
 
 async def get_calc_settings(
@@ -970,7 +978,7 @@ def outcome_response(req: OutcomeRequest, ctx: MarketContext | None,  # noqa: PL
         answered_at = ctx.clock()  # one clock reading: the push and the REST answer of one snapshot are equal
         shared = feed_scope(ctx)
         snapshot = read_snapshot(ctx.provider, req.underlying, [leg.instrument_id for leg in definition.legs],
-                                 answered_at, ctx.rate, shared)
+                                 answered_at, ctx.rate, shared, quality=ctx.forward_quality)
         used_quotes = [snapshot.spot, *(leg.quote for leg in snapshot.legs.values())]
         # ADR-077: the not-live answer follows the browser's OWN socket. A fallback request says this page's socket is
         # down, so it is not live even if another socket still holds every contract (shared fan-out count > 0).

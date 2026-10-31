@@ -404,7 +404,8 @@ def model_of(ctx: MarketContext, req: ChainRequest, valuation: datetime.datetime
     closed = market_state(ctx, valuation).closed
     usable = [q for q in ctx.provider.option_chain_snapshot(req.underlying, req.expiry)
               if planning_price_usable(q, market_closed=closed) and is_live_price(q.ltp)]
-    return chain_model(usable, _spot_quote(ctx, req.underlying), req.expiry, valuation, ctx.rate, market_closed=closed)
+    return chain_model(usable, _spot_quote(ctx, req.underlying), req.expiry, valuation, ctx.rate, ctx.forward_quality,
+                       market_closed=closed)
 
 
 def _rows(ctx: MarketContext, req: ChainRequest, catalogue: ChainCatalogue,  # noqa: PLR0913

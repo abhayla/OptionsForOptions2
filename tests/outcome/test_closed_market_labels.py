@@ -11,8 +11,12 @@ from ofo.outcome import OutcomeState, build_outcome, read_snapshot
 from ofo.outcome.serialize import outcome_to_dict
 from ofo.outcome.target import TargetAsk
 from ofo.rules.inputs import DataHealth
+from ofo.settings import calc as _fq_calc
 from ofo.settings import defaults as _d
+from ofo.settings import defaults as _fq_defaults
 from outcome.test_same_engine import RATE, VALUATION, definition
+
+_FQ = _fq_calc.forward_quality(_fq_defaults())
 
 EXPIRY = datetime.date(2026, 10, 13)
 STALE = "stale since"
@@ -28,7 +32,7 @@ def replayed():
 
 def _stale_snapshot(provider, *, closed):
     d = definition(provider)
-    snap = read_snapshot(provider, "NIFTY", [p.instrument_id for p in d.legs], VALUATION, RATE)
+    snap = read_snapshot(provider, "NIFTY", [p.instrument_id for p in d.legs], VALUATION, RATE, quality=_FQ)
     spot = dataclasses.replace(snap.spot, health=DataHealth.STALE)
     fwd = spot_fallback_forward(EXPIRY, spot.ltp, spot.timestamp, VALUATION, RATE, spot_health=DataHealth.STALE)
     return d, dataclasses.replace(snap, spot=spot, forwards={EXPIRY: fwd}, market_closed=closed)

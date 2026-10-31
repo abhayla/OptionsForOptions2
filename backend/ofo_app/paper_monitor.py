@@ -65,7 +65,8 @@ Sessions = Callable[[], Any]  # an async_sessionmaker: ``async with sessions() a
 def provider_prices(feed: LiveFeed, underlying: str, keys: Sequence[str]) -> Mapping[str, paper.Price]:
     """The routes' price rule: one snapshot of the provider, each key's live-P&L price answer (paper.leg_price)."""
     ctx = feed.ctx
-    snapshot = read_snapshot(ctx.provider, underlying, list(keys), ctx.clock(), ctx.rate, feed_scope(ctx))
+    snapshot = read_snapshot(ctx.provider, underlying, list(keys), ctx.clock(), ctx.rate, feed_scope(ctx),
+                         quality=ctx.forward_quality)
     return {k: paper.leg_price(snapshot, k) for k in keys}
 
 

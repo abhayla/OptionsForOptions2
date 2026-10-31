@@ -11,9 +11,13 @@ from ofo.marketdata.forward import FALLBACK_LABEL, spot_fallback_forward
 from ofo.marketdata.kite_provider import IST
 from ofo.outcome import NOT_CONNECTED_LABEL, OutcomeState, build_outcome, read_snapshot
 from ofo.rules.inputs import DataHealth
+from ofo.settings import calc as _fq_calc
 from ofo.settings import defaults as _d
+from ofo.settings import defaults as _fq_defaults
 from ofo.table import TOTAL_ROW_ID, ColumnId
 from outcome.test_same_engine import RATE, VALUATION, definition, formula_pnl
+
+_FQ = _fq_calc.forward_quality(_fq_defaults())
 
 STALE_LEG = "NSE_FO:44632"
 
@@ -28,7 +32,7 @@ def replayed():
 
 def _snap(provider, valuation=VALUATION):
     d = definition(provider)
-    return d, read_snapshot(provider, "NIFTY", [p.instrument_id for p in d.legs], valuation, RATE)
+    return d, read_snapshot(provider, "NIFTY", [p.instrument_id for p in d.legs], valuation, RATE, quality=_FQ)
 
 
 def _with_leg(snap, iid, quote):

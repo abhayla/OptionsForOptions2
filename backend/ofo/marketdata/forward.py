@@ -1,6 +1,7 @@
 """Each expiry's put-call-parity forward and implied dividend yield (ADR-061, REQ-072 AC-3, F-32).
 
-Method (ADR-061): take the 21 strikes nearest spot (the at-the-money strike and 10 either side, over the strikes the
+Method (ADR-061): take the strikes nearest spot (21 by default: the at-the-money strike and 10 either side, over
+the strikes the
 chain lists); keep a strike only when its call AND its put both have a bid and an ask; per kept strike
 ``K + e^(rT)(C_mid - P_mid)``; the forward F is the MEDIAN of those values; the implied continuous dividend yield is
 ``q = r - ln(F/S)/T``. The engine is given spot S and q (ADR-063) and owns every Greek; ``effective_spot``
@@ -8,8 +9,8 @@ chain lists); keep a strike only when its call AND its put both have a bid and a
 
 Answer states (run-discipline B4 (d)), each a distinct outcome:
 
-- 3 or more usable strikes: ``source == "parity"``.
-- fewer than 3: ``source == "spot fallback"``, q = 0, the effective spot is spot itself, and ``label`` is
+- the minimum number of usable strikes (3 by default) or more: ``source == "parity"``.
+- fewer than that: ``source == "spot fallback"``, q = 0, the effective spot is spot itself, and ``label`` is
   "estimated from spot" so every IV and Greek built on it carries that label - never silent.
 - spot missing, UNHEALTHY or UNAVAILABLE: :class:`ForwardUnavailable` (refused).
 - spot STALE or DELAYED: computed from the option quotes of the same snapshot (each quote must itself be AVAILABLE,
@@ -20,7 +21,8 @@ Answer states (run-discipline B4 (d)), each a distinct outcome:
 - a strike with ask below bid on either leg: skipped and counted in ``crossed_skipped``.
 
 ``quality_spread`` (W-060 "Measured robustness") is max - min of the per-strike forwards over the strikes whose two
-quotes are each no wider than 5% of their own mid; it is stored only as a quality figure and never changes F.
+quotes are each no wider than the width setting (5% by default) of their own mid; it is stored only as a quality
+figure and never changes F.
 
 Standard library only; Decimal at every boundary, floats only inside the formulas.
 """
@@ -43,10 +45,29 @@ from ofo.money import HUNDREDTH as _POINT
 PARITY: Final = "parity"
 SPOT_FALLBACK: Final = "spot fallback"
 FALLBACK_LABEL: Final = render_explanation("label_estimated_from_spot")
-STRIKES_NEAR: Final = 21
-MIN_STRIKES: Final = 3
-QUALITY_WIDTH: Final = Decimal("0.05")
 _YIELD_STEP: Final = Decimal("0.0000000001")
+
+
+@dataclass(frozen=True)
+class ForwardQuality:
+    """The three forward settings (REQ-167 AC-5 Pricing group), one required parameter object of
+    :func:`parity_forward`: ``width`` (a strike's quotes count toward ``quality_spread`` when each is no wider than this
+    fraction of its own mid), ``strikes_near`` (the strikes nearest spot read, the at-the-money one and half the rest
+    either side) and ``min_strikes`` (fewest usable strikes for ``source == "parity"``). Frozen and hashable, so it is
+    part of the shared compute-cache key: a changed setting can never be served from an entry computed with the old
+    one. There is no default here: the number is written only in ``ofo/settings/registry.json``."""
+
+    width: Decimal
+    strikes_near: int
+    min_strikes: int
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.width, Decimal) or not self.width.is_finite() or self.width <= 0:
+            raise ValueError(f"width must be a positive finite decimal.Decimal, got {self.width!r}")
+        for name in ("strikes_near", "min_strikes"):
+            v = getattr(self, name)
+            if isinstance(v, bool) or not isinstance(v, int) or v < 1:
+                raise ValueError(f"{name} must be a whole number of at least 1, got {v!r}")
 
 
 class ForwardUnavailable(ValueError):
@@ -103,13 +124,17 @@ def mid_price(bid: Decimal, ask: Decimal) -> Decimal:
     return ((bid + ask) / 2).quantize(_POINT, rounding=ROUND_HALF_EVEN)
 
 
-def _narrow(q: NormalizedQuote, mid: Decimal) -> bool:
-    return (q.ask - q.bid) <= QUALITY_WIDTH * mid  # type: ignore[operator]
+def _narrow(q: NormalizedQuote, mid: Decimal, width: Decimal) -> bool:
+    return (q.ask - q.bid) <= width * mid  # type: ignore[operator]
 
 
-def parity_forward(chain: Iterable[NormalizedQuote], spot: NormalizedQuote | None, expiry: datetime.date,
-                   valuation: datetime.datetime, rate: Decimal) -> ExpiryForward:
-    """The ADR-061 forward of one expiry from its chain snapshot, the index spot quote and the valuation time."""
+def parity_forward(  # noqa: PLR0913
+        chain: Iterable[NormalizedQuote], spot: NormalizedQuote | None, expiry: datetime.date,
+        valuation: datetime.datetime, rate: Decimal, quality: ForwardQuality) -> ExpiryForward:
+    """The ADR-061 forward of one expiry from its chain snapshot, the index spot quote and the valuation time;
+    ``quality`` (required, no fallback) carries the three settings in force."""
+    if not isinstance(quality, ForwardQuality):
+        raise ValueError(f"quality must be a ForwardQuality, got {quality!r}")
     if not isinstance(rate, Decimal) or not rate.is_finite():
         raise ValueError(f"rate must be a finite decimal.Decimal, got {rate!r}")
     if spot is None or not is_live_price(spot.ltp):
@@ -130,7 +155,7 @@ def parity_forward(chain: Iterable[NormalizedQuote], spot: NormalizedQuote | Non
     if strikes:
         atm = min(strikes, key=lambda k: abs(k - spot.ltp))
         i = strikes.index(atm)
-        half = STRIKES_NEAR // 2
+        half = quality.strikes_near // 2
         near = strikes[max(0, i - half): i + half + 1]
     growth = math.exp(r * t)
     values: list[float] = []
@@ -147,12 +172,12 @@ def parity_forward(chain: Iterable[NormalizedQuote], spot: NormalizedQuote | Non
             continue
         value = float(k) + growth * (float(c_mid) - float(p_mid))
         values.append(value)
-        if _narrow(cq, c_mid) and _narrow(pq, p_mid):  # type: ignore[arg-type]
+        if _narrow(cq, c_mid, quality.width) and _narrow(pq, p_mid, quality.width):  # type: ignore[arg-type]
             narrow.append(value)
-    quality = _q2(max(narrow) - min(narrow)) if narrow else None
-    if len(values) < MIN_STRIKES:
+    spread = _q2(max(narrow) - min(narrow)) if narrow else None
+    if len(values) < quality.min_strikes:
         return ExpiryForward(expiry=expiry, forward=_q2(s * growth), implied_yield=Decimal(0),
-                             effective_spot=spot.ltp, strikes_used=len(values), quality_spread=quality,
+                             effective_spot=spot.ltp, strikes_used=len(values), quality_spread=spread,
                              source=SPOT_FALLBACK, spot=spot.ltp, spot_timestamp=spot.timestamp, years=years,
                              rate=rate, valuation_time=valuation, strikes_considered=len(near),
                              crossed_skipped=crossed, spot_health=spot.health)
@@ -162,7 +187,7 @@ def parity_forward(chain: Iterable[NormalizedQuote], spot: NormalizedQuote | Non
     q = r - math.log(f / s) / t
     return ExpiryForward(expiry=expiry, forward=_q2(f),
                          implied_yield=Decimal(repr(q)).quantize(_YIELD_STEP, rounding=ROUND_HALF_EVEN),
-                         effective_spot=_q2(f * math.exp(-r * t)), strikes_used=len(values), quality_spread=quality,
+                         effective_spot=_q2(f * math.exp(-r * t)), strikes_used=len(values), quality_spread=spread,
                          source=PARITY, spot=spot.ltp, spot_timestamp=spot.timestamp, years=years, rate=rate,
                          valuation_time=valuation, strikes_considered=len(near), crossed_skipped=crossed,
                          spot_health=spot.health)

@@ -6,8 +6,12 @@ import pytest
 from marketdata._kite_fixture import all_instrument_ids, new_provider, replay
 from ofo.engine.legs import Action
 from ofo.outcome import OutcomeState, PlannedLeg, StrategyDefinition, build_outcome, read_snapshot
+from ofo.settings import calc as _fq_calc
 from ofo.settings import defaults as _d
+from ofo.settings import defaults as _fq_defaults
 from outcome.test_same_engine import CONDOR, RATE, VALUATION, entries
+
+_FQ = _fq_calc.forward_quality(_fq_defaults())
 
 OUTSIDE = "If NIFTY ends below 22,400 or above 22,800 at expiry."
 
@@ -24,7 +28,7 @@ def _start(provider, legs):
     legs = [(leg + (1,))[:4] for leg in legs]  # (id, action, entry[, lots])
     d = StrategyDefinition("NIFTY", tuple(PlannedLeg(iid, action, lots, entry, VALUATION)
                                           for iid, action, entry, lots in legs))
-    snap = read_snapshot(provider, "NIFTY", [leg[0] for leg in legs], VALUATION, RATE)
+    snap = read_snapshot(provider, "NIFTY", [leg[0] for leg in legs], VALUATION, RATE, quality=_FQ)
     out = build_outcome(d, snap, VALUATION, settings=_d())
     assert out.state is OutcomeState.COMPUTED
     return str(out.summary.where_do_i_start_losing)

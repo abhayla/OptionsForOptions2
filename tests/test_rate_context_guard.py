@@ -145,7 +145,8 @@ def _mutated(tmp_path: pathlib.Path, old: str, new: str) -> pathlib.Path:
 
 def test_mutation_the_original_leg_picker_bypass_is_red(tmp_path):
     """Re-introduce the bypass as it was: Greeks priced with the feed context's rate through a local ``ctx``."""
-    copy = _mutated(tmp_path, "answered_at, rate)\n    cell_of", "answered_at, ctx.rate)\n    cell_of")
+    copy = _mutated(tmp_path, "answered_at, rate, quality)\n    cell_of",
+                    "answered_at, ctx.rate, quality)\n    cell_of")
     problems = scan_dir(copy)
     assert any(p.startswith("leg_picker.py") and "ctx.rate" in p and "R3" in p for p in problems) or any(
         p.startswith("leg_picker.py") and "R2" in p for p in problems), problems
@@ -158,8 +159,9 @@ def test_mutation_a_feed_chain_read_is_red(tmp_path):
 
 
 def test_mutation_a_dropped_rate_keyword_is_red(tmp_path):
-    copy = _mutated(tmp_path, "viewer,\n                          rate=DEFAULT_RATE if ctx is None else ctx.rate)",
-                    "viewer)")
+    keep = "ctx.forward_quality"
+    copy = _mutated(tmp_path, keep + ",\n                          rate=DEFAULT_RATE if ctx is None else ctx.rate)",
+                    keep + ")")
     assert any("R5" in p and "strikes_answer" in p for p in scan_dir(copy)), scan_dir(copy)
 
 

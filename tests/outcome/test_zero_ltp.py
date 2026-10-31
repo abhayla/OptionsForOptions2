@@ -13,9 +13,13 @@ from ofo.marketdata.quote import is_live_price
 from ofo.outcome import OutcomeState, build_outcome, read_snapshot
 from ofo.outcome.planned_entry import planned_entry_of
 from ofo.rules.inputs import DataHealth
+from ofo.settings import calc as _fq_calc
 from ofo.settings import defaults as _d
+from ofo.settings import defaults as _fq_defaults
 from ofo.table import TOTAL_ROW_ID, ColumnId
 from outcome.test_same_engine import RATE, VALUATION, definition
+
+_FQ = _fq_calc.forward_quality(_fq_defaults())
 
 LEG = "NSE_FO:44632"
 
@@ -30,7 +34,7 @@ def replayed():
 
 def _snap(provider, leg_ltp):
     d = definition(provider)
-    snap = read_snapshot(provider, "NIFTY", [p.instrument_id for p in d.legs], VALUATION, RATE)
+    snap = read_snapshot(provider, "NIFTY", [p.instrument_id for p in d.legs], VALUATION, RATE, quality=_FQ)
     legs = dict(snap.legs)
     q = legs[LEG].quote
     assert q.health is DataHealth.AVAILABLE
@@ -75,7 +79,7 @@ def test_zero_spot_refuses_the_forward(replayed):
     _, snap = _snap(replayed, Decimal("1"))
     zero = dataclasses.replace(snap.spot, ltp=Decimal("0"))
     with pytest.raises(ForwardUnavailable):
-        parity_forward([], zero, datetime.date(2026, 10, 13), VALUATION, RATE)
+        parity_forward([], zero, datetime.date(2026, 10, 13), VALUATION, RATE, _FQ)
 
 
 def test_negative_price_is_not_live():

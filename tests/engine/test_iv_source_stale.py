@@ -25,6 +25,10 @@ from ofo.engine.legs import Instrument
 from ofo.engine.model import iv_price
 from ofo.marketdata.quote import NormalizedQuote, SourceMetadata
 from ofo.rules.inputs import DataHealth
+from ofo.settings import calc as _fq_calc
+from ofo.settings import defaults as _fq_defaults
+
+_FQ = _fq_calc.forward_quality(_fq_defaults())
 
 D = Decimal
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "ui_data_check" / "closed_s54"
@@ -51,7 +55,7 @@ def _leg_quote(symbol: str) -> tuple[NormalizedQuote, NormalizedQuote, dict, dat
 
 
 def _engine_iv(q: NormalizedQuote, spot: NormalizedQuote, valuation: datetime.datetime) -> Decimal | None:
-    g = chain_greeks([q], spot, q.expiry, valuation, RATE).get(q.instrument_id)
+    g = chain_greeks([q], spot, q.expiry, valuation, RATE, _FQ).get(q.instrument_id)
     return None if g is None else g.iv
 
 

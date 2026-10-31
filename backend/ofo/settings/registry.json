@@ -14,6 +14,42 @@
       "source": "ADR-056; was ofo_app/live_market.py LIVE_RATE"
     },
     {
+      "key": "pricing.forward_quality_width",
+      "group": "Pricing",
+      "label": "Forward quality width",
+      "unit": "fraction",
+      "type": "decimal",
+      "min": "0.001",
+      "max": "0.5",
+      "default": "0.05",
+      "what_it_changes": "How wide a strike's bid-ask gap may be, as a fraction of its own mid price, for that strike to count in the forward quality figure (0.05 means 5%). It never changes the forward itself.",
+      "source": "ADR-061, W-060; was ofo/marketdata/forward.py QUALITY_WIDTH"
+    },
+    {
+      "key": "pricing.forward_strikes_near",
+      "group": "Pricing",
+      "label": "Strikes used for the forward",
+      "unit": "count",
+      "type": "integer",
+      "min": "3",
+      "max": "101",
+      "default": "21",
+      "what_it_changes": "How many strikes nearest the current index level are read to work out each expiry's forward (the at-the-money strike and an equal number either side).",
+      "source": "ADR-061; was ofo/marketdata/forward.py STRIKES_NEAR"
+    },
+    {
+      "key": "pricing.forward_min_strikes",
+      "group": "Pricing",
+      "label": "Fewest strikes for the forward",
+      "unit": "count",
+      "type": "integer",
+      "min": "1",
+      "max": "21",
+      "default": "3",
+      "what_it_changes": "The fewest strikes with a live buy and sell price on both the call and the put that an expiry's forward needs; with fewer, the forward is estimated from the index level and labelled so.",
+      "source": "ADR-061; was ofo/marketdata/forward.py MIN_STRIKES"
+    },
+    {
       "key": "scenarios.nifty_step_points",
       "group": "Scenarios and payoff",
       "label": "NIFTY scenario column step",

@@ -25,10 +25,14 @@ from ofo.rules.inputs import DataHealth
 from ofo.scenario import levels as levels_module
 from ofo.scenario.config import ScenarioConfig
 from ofo.scenario.spot import spot_reading
+from ofo.settings import calc as _fq_calc
 from ofo.settings import defaults as _d
+from ofo.settings import defaults as _fq_defaults
 from ofo.timeutil import IST
 from outcome.test_from_entries import _spread, _stored
 from outcome.test_same_engine import CONDOR, CURRENT, RATE, VALUATION, outcome_of
+
+_FQ = _fq_calc.forward_quality(_fq_defaults())
 
 NEAREST = "NSE_FO:44604"  # 22400 PE, the condor leg nearest the 22,533.25 spot
 FARTHEST = "NSE_FO:44632"  # 23000 CE
@@ -55,7 +59,7 @@ def _iv(out, iid):
 def _atm_by_hand(provider, expiry, fwd=None):
     """REQ-106 AC-1 written out: the strike of the expiry's chain nearest its parity forward (ties: the lower), the CE
     and the PE IV solved by the engine from mid (sound bid/ask) else LTP, and their mean."""
-    snap = read_snapshot(provider, "NIFTY", [iid for iid, *_ in CONDOR], VALUATION, RATE)
+    snap = read_snapshot(provider, "NIFTY", [iid for iid, *_ in CONDOR], VALUATION, RATE, quality=_FQ)
     fwd = fwd or snap.forwards[expiry]
     chain = [q for q in provider.option_chain_snapshot("NIFTY", expiry)
              if q.instrument_type in (Instrument.CE, Instrument.PE) and q.strike is not None]
@@ -123,7 +127,7 @@ def _strategy(provider, legs):
 
 
 def _build(provider, definition, **kw):
-    snap = read_snapshot(provider, "NIFTY", [p.instrument_id for p in definition.legs], VALUATION, RATE)
+    snap = read_snapshot(provider, "NIFTY", [p.instrument_id for p in definition.legs], VALUATION, RATE, quality=_FQ)
     return build_outcome(definition, snap, VALUATION, **kw, settings=_d())
 
 
@@ -146,7 +150,7 @@ def test_strangle_far_from_atm_gets_the_atm_move_not_its_wing_iv(replayed):
 def test_atm_strike_is_nearest_the_forward_not_the_spot(replayed):
     """REQ-106 AC-1: with the forward at 22,510 the ATM strike is 22,500 although the spot (22,533.25) is nearest
     22,550 - the forward decides."""
-    snap = read_snapshot(replayed, "NIFTY", [iid for iid, *_ in CONDOR], VALUATION, RATE)
+    snap = read_snapshot(replayed, "NIFTY", [iid for iid, *_ in CONDOR], VALUATION, RATE, quality=_FQ)
     fwd = dataclasses.replace(snap.forwards[NEAR], forward=Decimal("22510"))
     _, strike, ce_iv, pe_iv, mean = _atm_by_hand(replayed, NEAR, fwd)
     assert strike == Decimal("22500")
@@ -170,7 +174,7 @@ def _edit(q, **kw):
 ], ids=["control", "pe_missing", "pe_zero", "pe_unhealthy", "pe_unsolvable", "no_chain"])
 def test_one_atm_side_unusable_means_no_move(replayed, change):
     """Attack 3: either ATM IV missing / unusable / unsolved, or no chain -> no move (the range is then today's)."""
-    snap = read_snapshot(replayed, "NIFTY", [iid for iid, *_ in CONDOR], VALUATION, RATE)
+    snap = read_snapshot(replayed, "NIFTY", [iid for iid, *_ in CONDOR], VALUATION, RATE, quality=_FQ)
     chains = {e: tuple(x for x in (change(q) for q in c) if x is not None) for e, c in snap.chains.items()}
     move = service_module._expected_move([_leg(Instrument.CE, "22800", NEAR)],
                                          dataclasses.replace(snap, chains=chains), VALUATION)
@@ -182,7 +186,7 @@ def test_one_atm_side_unusable_means_no_move(replayed, change):
 
 def test_refused_forward_means_no_move(replayed):
     """Attack 3: no forward for the nearest expiry -> no move (build_outcome itself refuses such an answer)."""
-    snap = read_snapshot(replayed, "NIFTY", [iid for iid, *_ in CONDOR], VALUATION, RATE)
+    snap = read_snapshot(replayed, "NIFTY", [iid for iid, *_ in CONDOR], VALUATION, RATE, quality=_FQ)
     assert service_module._expected_move([_leg(Instrument.CE, "22800", NEAR)],
                                          dataclasses.replace(snap, forwards={}), VALUATION) is None
     assert service_module._expected_move([], snap, VALUATION) is None

@@ -18,8 +18,12 @@ from ofo.marketdata.forward import mid_price
 from ofo.marketdata.shared_compute import FeedScope, SharedCompute, SharedKey
 from ofo.outcome import PlannedLeg, StrategyDefinition, build_outcome, read_snapshot, service
 from ofo.scenario.spot import spot_reading
+from ofo.settings import calc as _fq_calc
 from ofo.settings import defaults as _d
+from ofo.settings import defaults as _fq_defaults
 from ofo.table.model import CellKind
+
+_FQ = _fq_calc.forward_quality(_fq_defaults())
 
 RATE = Decimal("0.065")
 STRADDLE = ("NSE_FO:44614", "NSE_FO:44615")  # the 22550 CE and PE of the 2026-10-13 expiry
@@ -60,7 +64,7 @@ def scope(cache, owner):
 
 
 def read(provider, at, ids, cache=None, owner=None):
-    return read_snapshot(provider, "NIFTY", list(ids), at, RATE, scope(cache, owner))
+    return read_snapshot(provider, "NIFTY", list(ids), at, RATE, scope(cache, owner), quality=_FQ)
 
 
 def outcome(snap, ids, cache=None, owner=None):
@@ -129,9 +133,9 @@ def test_a_forward_is_computed_once_per_feed_snapshot_and_equals_the_unshared_on
     calls: Counter = Counter()
     real = snapshot_module.parity_forward
 
-    def counted(chain, spot, expiry, valuation, rate):
+    def counted(chain, spot, expiry, valuation, rate, quality):  # noqa: PLR0913
         calls[expiry] += 1
-        return real(chain, spot, expiry, valuation, rate)
+        return real(chain, spot, expiry, valuation, rate, quality)
 
     monkeypatch.setattr(snapshot_module, "parity_forward", counted)
     plain = read(provider, at, STRADDLE)
@@ -215,7 +219,7 @@ def test_a_changed_chain_at_the_same_instant_never_reads_the_old_forward(feed, m
     """The quotes the forward reads are in its key: other quotes at the same valuation instant are another entry."""
     provider, at = feed
     cache = FeedScope(SharedCompute(), "user-1")
-    before = read_snapshot(provider, "NIFTY", list(STRADDLE), at, RATE, cache)
+    before = read_snapshot(provider, "NIFTY", list(STRADDLE), at, RATE, cache, quality=_FQ)
     real = provider.option_chain_snapshot
 
     def shifted(underlying, expiry):
@@ -223,7 +227,7 @@ def test_a_changed_chain_at_the_same_instant_never_reads_the_old_forward(feed, m
                 if q.instrument_type.value == "CE" and q.bid and q.ask else q for q in real(underlying, expiry)]
 
     monkeypatch.setattr(provider, "option_chain_snapshot", shifted)
-    after = read_snapshot(provider, "NIFTY", list(STRADDLE), at, RATE, cache)
+    after = read_snapshot(provider, "NIFTY", list(STRADDLE), at, RATE, cache, quality=_FQ)
     assert after.forwards != before.forwards
 
 
@@ -233,16 +237,16 @@ def test_a_changed_chain_in_another_order_shares_and_other_quotes_do_not(feed, m
     calls: Counter = Counter()
     real = snapshot_module.parity_forward
 
-    def counted(chain, spot, expiry, valuation, rate):
+    def counted(chain, spot, expiry, valuation, rate, quality):  # noqa: PLR0913
         calls[expiry] += 1
-        return real(chain, spot, expiry, valuation, rate)
+        return real(chain, spot, expiry, valuation, rate, quality)
 
     monkeypatch.setattr(snapshot_module, "parity_forward", counted)
     cache = FeedScope(SharedCompute(), "user-1")
-    read_snapshot(provider, "NIFTY", list(STRADDLE), at, RATE, cache)
+    read_snapshot(provider, "NIFTY", list(STRADDLE), at, RATE, cache, quality=_FQ)
     chain = provider.option_chain_snapshot
     monkeypatch.setattr(provider, "option_chain_snapshot", lambda u, e: list(reversed(chain(u, e))))
-    read_snapshot(provider, "NIFTY", list(STRADDLE), at, RATE, cache)
+    read_snapshot(provider, "NIFTY", list(STRADDLE), at, RATE, cache, quality=_FQ)
     assert set(calls.values()) == {1}  # the reversed chain read the same entry
 
 
@@ -253,9 +257,9 @@ def test_core_a_second_reader_a_second_later_on_the_clock_computes_nothing(feed,
     forwards: Counter = Counter()
     real = snapshot_module.parity_forward
 
-    def counted(chain, spot, expiry, valuation, rate):
+    def counted(chain, spot, expiry, valuation, rate, quality):  # noqa: PLR0913
         forwards[expiry] += 1
-        return real(chain, spot, expiry, valuation, rate)
+        return real(chain, spot, expiry, valuation, rate, quality)
 
     monkeypatch.setattr(snapshot_module, "parity_forward", counted)
     cache = FeedScope(SharedCompute(), "user-1")
@@ -364,9 +368,9 @@ def test_a_spot_only_change_at_one_instant_recomputes_the_forward(feed, monkeypa
     calls: Counter = Counter()
     real = snapshot_module.parity_forward
 
-    def counted(chain, spot, expiry, valuation, rate):
+    def counted(chain, spot, expiry, valuation, rate, quality):  # noqa: PLR0913
         calls[expiry] += 1
-        return real(chain, spot, expiry, valuation, rate)
+        return real(chain, spot, expiry, valuation, rate, quality)
 
     monkeypatch.setattr(snapshot_module, "parity_forward", counted)
     cache = SharedCompute()

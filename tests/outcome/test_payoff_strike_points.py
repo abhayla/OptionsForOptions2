@@ -21,9 +21,13 @@ from ofo.outcome import OutcomeState, PlannedLeg, StrategyDefinition, build_outc
 from ofo.outcome.serialize import outcome_to_dict
 from ofo.scenario.levels import RangeOverride
 from ofo.scenario.views import View
+from ofo.settings import calc as _fq_calc
 from ofo.settings import defaults as _d
+from ofo.settings import defaults as _fq_defaults
 from ofo.table import TOTAL_ROW_ID
 from outcome.test_same_engine import RATE, VALUATION
+
+_FQ = _fq_calc.forward_quality(_fq_defaults())
 
 LOT = 65
 # (instrument id, action, strike, kind, entry) - NIFTY 13-Oct, from the recorded catalogue
@@ -59,7 +63,7 @@ def _condor_legs():
 
 def _outcome(provider, legs, **kw):
     d = _definition(legs)
-    snap = read_snapshot(provider, "NIFTY", [p.instrument_id for p in d.legs], VALUATION, RATE)
+    snap = read_snapshot(provider, "NIFTY", [p.instrument_id for p in d.legs], VALUATION, RATE, quality=_FQ)
     out = build_outcome(d, snap, VALUATION, **kw, settings=_d())
     assert out.state is OutcomeState.COMPUTED, out.reason
     return out
@@ -181,7 +185,7 @@ def test_a_user_range_keeps_only_the_strikes_inside_it(market):
 def test_from_your_prices_graph_has_the_strikes_too(market):
     provider, _ = market
     d = _definition(_condor_legs())
-    snap = read_snapshot(provider, "NIFTY", [p.instrument_id for p in d.legs], VALUATION, RATE)
+    snap = read_snapshot(provider, "NIFTY", [p.instrument_id for p in d.legs], VALUATION, RATE, quality=_FQ)
     stored = {p.instrument_id: snap.legs[p.instrument_id].contract for p in d.legs}
     out = from_entries(d, None, stored, VALUATION, settings=_d())
     assert out is not None

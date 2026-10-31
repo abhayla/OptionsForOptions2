@@ -13,6 +13,10 @@ from decimal import Decimal
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from ofo.settings import calc as _fq_calc
+from ofo.settings import defaults as _fq_defaults
+
+_FQ = _fq_calc.forward_quality(_fq_defaults())
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
@@ -210,7 +214,7 @@ def provider_for_catalogue():
 
 async def _post_stored(body, provider=None):
     """Like _post, with the stored catalogue answering for the legs (the database read replaced by the replay's)."""
-    snap = read_snapshot(provider_for_catalogue(), "NIFTY", [iid for iid, *_ in SPREAD], VALUATION, RATE)
+    snap = read_snapshot(provider_for_catalogue(), "NIFTY", [iid for iid, *_ in SPREAD], VALUATION, RATE, quality=_FQ)
     found = {iid: snap.legs[iid].contract for iid, *_ in SPREAD}
 
     async def lookup(ids):
