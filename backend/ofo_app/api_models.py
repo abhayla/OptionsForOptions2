@@ -72,6 +72,9 @@ _INSTRUMENT_ID = re.compile(r"[A-Z][A-Z_]{0,15}:[0-9]{1,12}")  # InstrumentId's 
 _FIELD_NAME = re.compile(r"[a-z][a-z0-9_]{0,63}")  # a declared field name is the only key a body may carry
 
 _LEAVES: tuple[type, ...] = (bool, int, Decimal, datetime.datetime, datetime.date, BasketPost, PlaybookBody)
+#: The sealed leaves and their one writer: BasketPost (W-095) is the exact Kite form text, only from the sealed basket
+#: (basket_post.py); PlaybookBody (GC-ADJ2 step 2) is a store-checked playbook body (playbook_body_out.py).
+_SEALED_LEAVES: dict[type, Any] = {BasketPost: BasketPost.as_form, PlaybookBody: PlaybookBody.as_json}
 
 
 def _closed_literal(tp: Any) -> bool:
@@ -255,14 +258,10 @@ def _walk(value: object, tp: Any, path: str, exclude_unset: bool) -> object:
         if type(value) is Decimal and value.is_finite():
             return format(value, "f")
         raise _refuse(path, value, "Money")
-    if tp is BasketPost:  # W-095: the exact Kite form text, only from the sealed basket (basket_post.py)
-        if type(value) is BasketPost:
-            return value.as_form()
-        raise _refuse(path, value, "BasketPost")
-    if tp is PlaybookBody:  # GC-ADJ2 step 2: a store-checked playbook body (playbook_body_out.py)
-        if type(value) is PlaybookBody:
-            return value.as_json()
-        raise _refuse(path, value, "PlaybookBody")
+    if isinstance(tp, type) and tp in _SEALED_LEAVES:  # a sealed leaf is written only from its own exact type
+        if type(value) is tp:
+            return _SEALED_LEAVES[tp](value)
+        raise _refuse(path, value, tp.__name__)
     origin = typing.get_origin(tp)
     if origin is Literal:
         if any(type(a) is type(value) and a == value for a in typing.get_args(tp)) and (

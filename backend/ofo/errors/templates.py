@@ -24,7 +24,8 @@ from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS
 
 from ofo.errors.gate_slots import (
     Clock, ContractSymbol, DataHealthState, DataInputName, Date, DisplayRupees, ExecutionStatusName, LegContract, LegRef, OrderRef,
-    PlaybookField, PlaybookName, PlaybookTypeName, RiskRows, Rupees, ShapeFamilies, Strikes, Symbol, UnitsByContract, VersionStateName, VersionStates, WorstCase,
+    PlaybookField, PlaybookName, PlaybookTypeName, RiskRows, Rupees, ShapeFamilies, Strikes, Symbol, UnitsByContract,
+    VersionStateName, VersionStates, WorstCase,
 )
 from ofo.errors.slots import Code, Count, ExternalText, Instrument, Int, Money, SlotType, Time, Underlying
 

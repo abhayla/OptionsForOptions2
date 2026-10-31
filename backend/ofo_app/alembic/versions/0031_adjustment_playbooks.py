@@ -16,7 +16,8 @@ Changes (owner-run, one transaction, the API stopped):
   The name CHECK (adjustment_playbooks_name_shape) refuses any whitespace run other than one inner
   space (tab, newline, double space, no-break space, the Unicode spaces) and leading / trailing space;
   UNIQUE (coalesce(user_ref, ''), strategy_type, lower(normalised name)) - user_ref is never '' (CHECK), so ''
-  marks the system rows; UNIQUE (strategy_type) WHERE is_system; UNIQUE (id, strategy_type) for the active row's composite key.
+  marks the system rows; UNIQUE (strategy_type) WHERE is_system; UNIQUE (id, strategy_type) for the active row's
+  composite key.
   Guard (SQLSTATE OF031): a system row is never inserted, updated or deleted by a role that is not a member of the
   table owner (the application role); id, user_ref, is_system, strategy_type, created_at never change; every UPDATE
   sets version = old + 1 and updated_at from the clock (the store's optimistic check reads version).

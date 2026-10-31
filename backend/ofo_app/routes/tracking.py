@@ -43,6 +43,7 @@ from ofo.tracking.orderbook import PaperOrder, net_positions
 from pydantic import BaseModel, ConfigDict, Field
 
 from ofo_app import paper_store, tracked_contracts
+from ofo_app import scenario_mode  # dev/test scenario guard; the module reaches no Execute code
 from ofo_app import strategy_store as store
 from ofo_app.api_models import ApiModel, CatalogueText, InstrumentId, Money
 from ofo_app.db import get_db
@@ -52,7 +53,6 @@ from ofo_app.routes.broker import current_user_ref
 from ofo_app.routes.outcome import AnswerClock, MarketContext, feed_scope, get_answer_clock, get_market_context
 from ofo_app.routes.planned_entry import get_live_feed, hold_until_priced
 from ofo_app.routes.strategies import StrategyRefused, refused_answer
-from ofo_app.scenario_mode import refuse_orders
 from ofo_app.underlying import Underlying
 
 router = APIRouter(route_class=ClosedRoute)
@@ -407,7 +407,7 @@ async def get_tracking(strategy_id: int,  # noqa: PLR0913 - FastAPI dependencies
 
 
 @router.post("/strategies/{strategy_id}/tracking/exit", response_model=TrackingOut,
-             dependencies=[Depends(refuse_orders)])  # GC-ADJ1 1b: places paper exit orders: refused in scenario mode
+             dependencies=[Depends(scenario_mode.refuse_orders)])  # GC-ADJ1 1b: no paper exit in scenario mode
 async def exit_tracking(strategy_id: int, body: TrackingExitIn,  # noqa: PLR0913 - FastAPI dependencies
                         db: Annotated[Any, Depends(get_db)], user_ref: Annotated[str, Depends(current_user_ref)],
                         ctx: Annotated[MarketContext | None, Depends(get_market_context)],

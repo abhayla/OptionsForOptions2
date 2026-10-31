@@ -70,7 +70,7 @@ PR241_SELECTION = {
     "tests_app/test_stored_chain_real.py",  # PR #580 (I-4): calls the real catalogue_picker readers and catalogue routes
     "tests_app/test_strategy_tracking_imports.py",  # issue #500: its scan names ofo_app.catalogue_picker as a source
     "tests_app/test_ready_made_route.py",  # W-125: raises StrategyRefused and posts to /api/strategies/... routes
-    "tests_app/test_playbook_labels_route.py",  # GC-ADJ2 step 3: imports ofo.errors.explanations, which this diff changes
+    "tests_app/test_playbook_labels_route.py",  # GC-ADJ2 step 3: imports ofo.errors.explanations (changed here)
     "tests_app/test_order_closure_all_routes.py",  # W-121: names ofo_app.routes.strategies in its edge table
     # builder sequence rows 1-10 (2026-10-22/23) added app tests that import the same modules or call the same routes:
     "tests_app/test_underlying_refusal.py",  # row 1

@@ -11,8 +11,10 @@ from decimal import Decimal as D
 import pytest
 from ofo.adjustment.playbook_eval import Flag, body_from_fixture
 from ofo_app.routes.adjustment_check import result_out
+from ofo_app.routes.adjustment_plan import _values
 
-PLAYBOOKS = json.loads((pathlib.Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "adjust_scenarios" / "_playbooks.json").read_text(encoding="utf-8"))
+FIXTURES = pathlib.Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "adjust_scenarios"
+PLAYBOOKS = json.loads((FIXTURES / "_playbooks.json").read_text(encoding="utf-8"))
 T01 = "Spot within this % of a short strike: 0.3416 % (rule 0.5000 %)"
 
 
@@ -21,7 +23,7 @@ def _flag(tid: str, value: str, threshold: str, cmp: str) -> Flag:
 
 
 def _condition(body, flag):
-    return result_out(flag, "w", None, body)["condition"]
+    return result_out(flag, "w", None, body=body)["condition"]
 
 
 def test_adj02_conditions_read_in_words_with_units_and_no_trigger_id():
@@ -50,7 +52,6 @@ def test_a_trigger_without_a_usable_label_shows_its_id(label):
 
 
 def test_plan_target_and_stop_say_what_the_numbers_are():
-    from ofo_app.routes.adjustment_plan import _values
     ic = _values(body_from_fixture(PLAYBOOKS, "ic"))
     assert ic["target_words"] == "50 % of max profit"
     assert ic["stop_words"] == "50 % of max loss or 4 % of margin, whichever comes first"
