@@ -193,8 +193,8 @@ async def test_a_session_past_its_expiry_reads_disconnected_through_the_route(ap
         session_id = await store.store_session(conn, user, ACCESS_TOKEN, TokenCipher(os.urandom(32)))
     async with admin_engine.begin() as conn:
         await conn.execute(text("ALTER TABLE public.broker_sessions DISABLE TRIGGER broker_sessions_guard"))
-        await conn.execute(text("UPDATE public.broker_sessions SET expected_expiry = clock_timestamp() "
-                                "- interval '1 hour' WHERE id = :i"), {"i": session_id})
+        await conn.execute(text("UPDATE public.broker_sessions SET started_at = clock_timestamp() - interval '3 days' "
+                                "WHERE id = :i"), {"i": session_id})
         await conn.execute(text("ALTER TABLE public.broker_sessions ENABLE TRIGGER broker_sessions_guard"))
     async with _client(app) as ac:
         body = (await ac.get("/api/broker/status")).json()

@@ -226,7 +226,7 @@ describe('ADR-008: no client maths on the outcome response (second layer)', () =
   // show the API strings); PnLCell parses the API value for a colour intensity only (its text is the API's display);
   // lib/oiBars.js scales the strike drawer's OI bars (GC-UI 6c, D-C26): OI counts, not money, a CSS width only.
   const ALLOWED = new Set([path.join('components', 'strategy', 'PayoffChart.vue'), path.join('components', 'strategy', 'PnLCell.vue'),
-    path.join('lib', 'oiBars.js')])
+    path.join('lib', 'oiBars.js'), path.join('lib', 'settingsValues.js')])
   const walk = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(path.join(dir, e.name)) : [path.join(dir, e.name)]))
   const files = walk(SRC).filter((f) => /\.(vue|js)$/.test(f) && !ALLOWED.has(path.relative(SRC, f)))
   const BANNED = [/parseFloat\s*\(/, /\bNumber\s*\(/, /parseInt\s*\(/, /\bMath\.(round|floor|ceil|max|min|abs)\s*\(/, /\.toFixed\s*\(/, /\.reduce\s*\(/]
@@ -299,6 +299,14 @@ describe('ADR-008: no client maths on the outcome response (second layer)', () =
         'largest OI on screen: the bar scale only'),
       L('return n === null || n <= 0 || !(max > 0) ? null : `${Math.round((n / max) * 100)}%`',
         'OI bar CSS width percent, not money'),
+    ],
+    // GC-SET (REQ-167 AC-5): whole-number setting COUNTS served by the server (strikes each side), never money
+    [path.join('lib', 'settingsValues.js')]: [
+      L("if (typeof text !== 'string' || !/^(0|[1-9][0-9]{0,8})$/.test(text)) return null",
+        'the strict digits-only check itself (the dash is a regex range, not a subtraction)'),
+      L('return Number(text)', 'a whole-number setting count after a strict digits-only check, not money'),
+      L('return [...new Set([1, 2, 3].map((k) => Math.max(1, Math.round((max * k) / 3))))]',
+        'strike-range picker choices from the served strike count, not money'),
     ],
   }
   // A small lexer, not a regex pair: comments are removed only OUTSIDE strings; a quote-delimited string is blanked, except the
@@ -443,9 +451,10 @@ describe('ADR-008: no client maths on the outcome response (second layer)', () =
     expect(scanAllowedFile(text.replace('const v = Number(props.value)', ''), NAMED_USES[rel]).length).toBeGreaterThan(0)
     expect(scanAllowedFile(text + '\nconst v = Number(props.value)', NAMED_USES[rel]).length).toBeGreaterThan(0)
   })
-  it('only the three named files may parse an API number, and they exist', () => {
+  it('only the four named files may parse an API number, and they exist', () => {
     expect([...ALLOWED].sort()).toEqual([path.join('components', 'strategy', 'PayoffChart.vue'),
-      path.join('components', 'strategy', 'PnLCell.vue'), path.join('lib', 'oiBars.js')].sort())
+      path.join('components', 'strategy', 'PnLCell.vue'), path.join('lib', 'oiBars.js'),
+      path.join('lib', 'settingsValues.js')].sort())
     for (const f of ALLOWED) expect(fs.existsSync(path.join(SRC, f))).toBe(true)
   })
 })

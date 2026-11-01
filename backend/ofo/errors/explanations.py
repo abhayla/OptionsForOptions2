@@ -1808,9 +1808,20 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         {"label": RegistryText, "example": Recorded}),
     ExplanationTemplate("settings_refused_not_whole", "rule", "{label} must be a whole number.",
                         {"label": RegistryText}),
+    ExplanationTemplate("settings_refused_not_a_time", "rule",
+                        "{label} is a time of day written as HHMM, for example {example} for {shown}.",
+                        {"label": RegistryText, "example": Recorded, "shown": Recorded}),
     ExplanationTemplate("settings_refused_fraction_unit", "rule",
                         "{label} is a fraction. Enter {suggested} for {entered}%.",
                         {"label": RegistryText, "suggested": Recorded, "entered": Recorded}),
+    # REQ-168 AC-4: every near-level alert line names the alert distance it used (the user's preference)
+    ExplanationTemplate("adjust_near_short_strike_line", "values_seen",
+                        "Index {index} is within {threshold}% of the short strike {level} ({distance}% away).",
+                        {"index": Recorded, "threshold": Recorded, "level": Recorded, "distance": Recorded}),
+    ExplanationTemplate("adjust_near_breakeven_line", "values_seen",
+                        "Index {index} is within {threshold}% of the breakeven {level} ({distance}% away).",
+                        {"index": Recorded, "threshold": Recorded, "level": Recorded, "distance": Recorded}),
+    ExplanationTemplate("adjust_preference_refused_unknown", "rule", "There is no adjustment preference with that name."),
     ExplanationTemplate("settings_refused_out_of_range", "rule",
                         "{label} must be between {low} and {high} ({unit}).",
                         {"label": RegistryText, "low": Recorded, "high": Recorded, "unit": Recorded}),
@@ -1832,6 +1843,16 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("settings_refused_charges_date", "rule",
                         "A charge rate set dated {date} cannot be added: that date already has a set, or it is older "
                         "than the newest set. Use a later date.", {"date": Recorded}),
+    # REQ-169 (ADR-222 (10)): the admin's system playbook versions refused (pending owner read)
+    ExplanationTemplate("system_playbook_refused_reason", "rule",
+                        "A new system playbook version needs a reason: say why the numbers change."),
+    ExplanationTemplate("system_playbook_refused_stale", "rule",
+                        "Another change was saved first: this system playbook is now at version {version}. Reload "
+                        "it, then save again.", {"version": Recorded}),
+    ExplanationTemplate("system_playbook_refused_version", "rule",
+                        "Version {version} of this system playbook is not stored.", {"version": Recorded}),
+    ExplanationTemplate("system_playbook_refused_approved", "rule",
+                        "This system playbook is already approved."),
 )
 
 EXPLANATIONS: Mapping[str, ExplanationTemplate] = MappingProxyType({t.id: t for t in _EXPLANATIONS})

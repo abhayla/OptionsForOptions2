@@ -79,6 +79,40 @@ def _settings_defaults_by_default(monkeypatch):
     monkeypatch.setattr(outcome, "_settings_in_force_now", defaults)
 
 
+@pytest.fixture(autouse=True)
+def _preferences_defaults_by_default(request, monkeypatch):
+    """GC-SET step 8 (REQ-168 AC-2): the adjustment routes read the user's preferences once per request through
+    ``get_db`` and ``user_preferences_store.values_for``. Tests that do not care get the admin/registry defaults
+    (never a connection attempt, no configuration needed); the real-path tests (test_user_preferences.py) carry
+    ``pytestmark = pytest.mark.real_preferences``, which keeps the true database read, and so does any test that
+    asks for the ``app_engine`` fixture (it points the app at a real database). The route is not weakened:
+    only the two seams under it (the session factory and the value read) are replaced."""
+    if request.node.get_closest_marker("real_preferences") or "app_engine" in request.fixturenames:
+        return
+    from ofo import settings  # noqa: PLC0415
+    from ofo_app import db, user_preferences_store  # noqa: PLC0415
+
+    class _NoSession:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+        async def close(self):
+            return None
+
+    async def defaults(session, user_ref, at=None):
+        values = settings.defaults()
+        return {k: values[k] for k in user_preferences_store.preference_keys()}
+
+    def sessionmaker():
+        return _NoSession
+
+    monkeypatch.setattr(db, "get_sessionmaker", sessionmaker)
+    monkeypatch.setattr(user_preferences_store, "values_for", defaults)
+
+
 # W-058: create_app refuses to build without a broker configuration. Tests get placeholders and a key generated for
 # this run (never a real secret); a value already in the environment (CI) is kept.
 os.environ.setdefault("KITE_API_KEY", "test_placeholder_key")

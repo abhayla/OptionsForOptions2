@@ -24,8 +24,8 @@ from enum import Enum
 from ofo.timeutil import IST
 
 #: India Standard Time: a fixed +05:30 offset, no daylight saving.
-#: The time of day Kite's access tokens are expected to stop working (Kite docs: valid "till 6 AM on the next day").
-KITE_EXPIRY_TIME_IST = time(6, 0)
+# The time of day Kite's access tokens are expected to stop working is the setting ``facts.kite_session_expiry``
+# (default 06:00; Kite docs: valid "till 6 AM on the next day"). It is a required parameter below, never a constant.
 BROKER_ZERODHA = "zerodha"
 
 
@@ -72,27 +72,28 @@ def _aware(at: datetime, name: str) -> datetime:
     return at
 
 
-def expected_expiry(login_at: datetime) -> datetime:
-    """The next 06:00 IST strictly after ``login_at``.
+def expected_expiry(login_at: datetime, expiry_time: time) -> datetime:
+    """The next ``expiry_time`` (IST; the setting ``facts.kite_session_expiry``, default 06:00) strictly after
+    ``login_at``.
 
     This is an EXPECTATION, to be confirmed by the 2026-10-09 morning token-expiry measurement (F-32). Kite's own
     TokenException always wins: a session is EXPIRED as soon as Kite refuses its token, whatever this time says.
     The same rule holds every day of the week (a Saturday login expires on Sunday at 06:00 IST).
     """
     local = _aware(login_at, "login_at").astimezone(IST)
-    candidate = datetime.combine(local.date(), KITE_EXPIRY_TIME_IST, tzinfo=IST)
+    candidate = datetime.combine(local.date(), expiry_time, tzinfo=IST)
     if candidate <= local:
         candidate = candidate + timedelta(days=1)
     return candidate
 
 
-def start(user_ref: str, login_at: datetime, broker: str = BROKER_ZERODHA) -> BrokerSession:
+def start(user_ref: str, login_at: datetime, expiry_time: time, broker: str = BROKER_ZERODHA) -> BrokerSession:
     if not user_ref:
         raise ValueError("user_ref is required")
     if broker != BROKER_ZERODHA:
         raise ValueError(f"unsupported broker {broker!r}")
     return BrokerSession(user_ref=user_ref, broker=broker, started_at=_aware(login_at, "login_at"),
-                         expected_expiry=expected_expiry(login_at))
+                         expected_expiry=expected_expiry(login_at, expiry_time))
 
 
 def _end(session: BrokerSession, reason: EndReason, at: datetime) -> BrokerSession:

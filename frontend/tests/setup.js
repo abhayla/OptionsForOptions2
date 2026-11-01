@@ -2,6 +2,7 @@
 // Changed: the import.meta.env stub is dropped (no env-based API URL); the WebSocket stub is an inert socket (W-065).
 import { vi, beforeEach } from 'vitest'
 import { config } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
 
 // Mock localStorage, so a test can prove the app never writes a token to it.
 const localStorageMock = {
@@ -20,6 +21,7 @@ const localStorageMock = {
 global.localStorage = localStorageMock
 
 beforeEach(() => {
+  setActivePinia(createPinia()) // a page that reads the served settings store needs one, like the app's main.js
   localStorageMock.store = {}
   localStorageMock.getItem.mockClear()
   localStorageMock.setItem.mockClear()

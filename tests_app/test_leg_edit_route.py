@@ -20,6 +20,7 @@ from ofo.instruments import Catalogue, parse_instruments_csv
 from ofo.instruments.models import ZERODHA, InstrumentId
 from ofo.outcome.planned_entry import PlannedEntry
 from ofo.rules.inputs import DataHealth
+from ofo.settings import defaults as settings_defaults
 from ofo.strategy import stored_form
 from ofo.strategy.definition import DefinitionLeg, StrategyDefinition
 from ofo_app.main import create_app
@@ -38,6 +39,7 @@ from ofo_app.routes.outcome import (
     get_answer_clock,
     get_margin_source,
     get_market_context,
+    get_settings_reader,
     load_charge_rates,
 )
 from ofo_app.routes.planned_entry import get_live_feed
@@ -106,6 +108,12 @@ def post(body: dict, cat=CAT, limits=None, today=TODAY, capture=fake_capture, **
     app.dependency_overrides[get_contract_ids] = lambda: seams.get("stored", fake_contract_ids)
     app.dependency_overrides[load_charge_rates] = lambda: None
     app.dependency_overrides[get_answer_clock] = lambda: lambda: TYPED_STAMP
+    if "max_lots" in seams:  # GC-SET lots: the limits.max_lots value in force at this request
+        in_force = {**settings_defaults(), "limits.max_lots": Decimal(seams["max_lots"])}
+
+        async def read_settings():
+            return in_force
+        app.dependency_overrides[get_settings_reader] = lambda: read_settings
 
     async def go():
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as client:
@@ -970,3 +978,17 @@ def test_g065_a_single_expiry_condor_keeps_its_width_and_hedge():
     """The same condor on one expiry: Width and Hedge stay on (the mixed-expiry rule does not reach it)."""
     status, reply = post({"legs": mixed_legs(later=frozenset()), "edit": {"control": "read"}}, today=MIXED_TODAY)
     assert status == HTTP_OK and reply["controls"] == {"shift": True, "width": True, "hedge": True}
+
+
+def test_gcset_lots_the_leg_edit_route_refuses_lots_above_the_max_lots_setting_with_a_reason():
+    """REQ-167 AC-5: the leg-edit route passes the same shared check as the outcome route. Default 10000 accepts a
+    10000-lot leg; a 500 setting refuses 600 lots, and a 600 base, with the reason (422), and accepts 500."""
+    edit = {"control": "step", "index": 2, "direction": 1}
+    status, _ = post({"legs": legs(lots=10000), "edit": edit})
+    assert status == HTTP_OK
+    status, reply = post({"legs": legs(lots=600), "edit": edit}, max_lots=500)
+    assert status == HTTP_UNPROCESSABLE and "at most 500 lots; this leg has 600" in str(reply) and "legs" not in reply
+    status, reply = post({"legs": legs(lots=1, base_lots=600), "edit": edit}, max_lots=500)
+    assert status == HTTP_UNPROCESSABLE and "at most 500 lots; this leg has 600" in str(reply)
+    status, _ = post({"legs": legs(lots=500), "edit": edit}, max_lots=500)
+    assert status == HTTP_OK

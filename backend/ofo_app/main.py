@@ -39,6 +39,7 @@ from ofo_app.routes import (
     adjustment_history,
     adjustment_opportunities,
     adjustment_plan,
+    adjustment_preferences,
     broker,
     broker_capabilities,
     broker_status,
@@ -61,6 +62,7 @@ from ofo_app.routes import (
     settings,
     strategies,
     strategy_templates,
+    system_playbooks,
     tracking,
     zerodha_account,
 )
@@ -113,6 +115,8 @@ def _mount_routes(app: FastAPI, config: BrokerConfig) -> None:
     app.include_router(adjustment_opportunities.router)  # GC-ADJ2 5: the opportunities inbox (REQ-162, REQ-112)
     app.include_router(playbooks.router)  # GC-ADJ2 2: playbooks (REQ-158)
     app.include_router(settings.router)  # GC-SET 2: the admin Settings page (REQ-167)
+    app.include_router(system_playbooks.router)  # REQ-169: the admin's system playbook versions
+    app.include_router(adjustment_preferences.router)  # REQ-168: per-user adjustment preferences
     app.include_router(leg_edit.router)  # W-148: one leg edit, answered by the engine
     app.include_router(leg_picker.router)  # W-147: the leg picker's strikes, futures and depth reads (REQ-080)
     errors.add_socket_route(app, indices.socket_route())  # W-114: the read-only index push, a door socket

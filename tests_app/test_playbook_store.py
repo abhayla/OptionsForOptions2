@@ -75,16 +75,19 @@ async def test_a_new_user_sees_only_the_system_playbook_and_it_is_active(db):
 
 
 async def test_playbook_values_are_stored_data_a_changed_row_is_read_back_without_a_release(admin_engine):
-    async with admin_engine.connect() as conn:  # the owner (a migration) edits a system row; the store reads it
+    """REQ-169: a system playbook's numbers are its newest stored version (migration 0034), no longer the 0031 row's
+    body; a new version row is read back at the next read, without a release."""
+    async with admin_engine.connect() as conn:  # a new system version row; the store reads it
         trans = await conn.begin()
         try:
             system = await pb.active_for(conn, _user(), "credit")
             changed = _body("credit", "0.9")
-            await conn.execute(text("UPDATE public.adjustment_playbooks SET body = CAST(:b AS JSONB) WHERE id = :id"),
-                               {"b": pb._dump(changed), "id": system.id})
+            await conn.execute(text("INSERT INTO public.system_playbook_versions (strategy_type, version, status, "
+                                    "body, reason, saved_by) VALUES ('credit', :v, 'draft', CAST(:b AS JSONB), "
+                                    "'test', 'owner')"), {"b": pb._dump(changed), "v": system.version + 1})
             again = await pb.active_for(conn, _user(), "credit")
             assert again.body["triggers"]["T-01"]["weekly"] == ["0.9", ""]
-            assert again.version == system.version + 1  # the guard bumps the version on every update
+            assert again.version == system.version + 1  # the current version is the newest stored one
         finally:
             await trans.rollback()
 

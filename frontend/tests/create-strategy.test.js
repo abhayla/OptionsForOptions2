@@ -3,6 +3,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
+import { createPinia } from 'pinia'
 import { expandTemplate, expiryLabels, matchTemplates, rangeLists, readingFromRange, viewFromRange, FORBIDDEN_WORDS } from '@/lib/guided'
 
 const posts = []
@@ -26,10 +27,16 @@ const CONTRACTS = [ct(1, 'PE', '22600.00'), ct(2, 'PE', '22700.00'), ct(3, 'CE',
 const SUMMARY = { what_can_i_lose: 'L', what_can_i_make: 'M', where_do_i_start_losing: 'S', max_profit: '6175.00', max_loss: '-6825.00', max_profit_display: '+6,175', max_loss_display: '−6,825', breakevens_display: ['22,905 (+0.2%)'],
   max_profit_unlimited: false, max_loss_unlimited: false, breakevens: ['22905.00'], lower_be: null, upper_be: '22905.00', risk_boundaries: [] }
 
+// REQ-167 AC-5: the range pick-list step and caps are served by GET /api/settings (the registry defaults here)
+const SERVED = { 'limits.range_step': '100', 'limits.range_cap_nifty': '3000', 'limits.range_cap_sensex': '9000' }
+const LIMITS = { step: 100, cap: 3000 }
+let settingsReply = null
+
 vi.mock('@/services/api', async (importActual) => {
   const actual = await importActual()
   return { ...actual, default: {
     get: (url) => {
+      if (url === '/settings') return settingsReply ?? Promise.resolve({ data: { groups: [{ name: 'Limits', settings: Object.entries(SERVED).map(([key, value]) => ({ key, value })) }], charges: null } })
       if (url === '/strategy-templates') return templatesReply ?? Promise.resolve({ data: TEMPLATES })
       if (url === '/catalogue/NIFTY/expiries') return Promise.resolve({ data: { underlying: 'NIFTY', expiries: ['2026-10-13', '2026-10-20', '2026-10-27'] } })
       if (url.startsWith('/catalogue/NIFTY/contracts')) return Promise.resolve({ data: { underlying: 'NIFTY', contracts: contractsNow ?? CONTRACTS } })
@@ -53,7 +60,7 @@ async function mountPage() {
   router.push('/strategies/create-strategy')
   await router.isReady()
   const App = { template: '<router-view />' }
-  const w = mount(App, { global: { plugins: [router] } })
+  const w = mount(App, { global: { plugins: [router, createPinia()] } })
   await flushPromises()
   return { w, router }
 }
@@ -68,7 +75,7 @@ async function toResults(w, objective, view) {
   await flushPromises()
 }
 
-beforeEach(() => { posts.length = 0; plannedPrice = '120.50'; level = '22812.40'; contractsNow = null; templatesReply = null })
+beforeEach(() => { posts.length = 0; plannedPrice = '120.50'; level = '22812.40'; contractsNow = null; templatesReply = null; settingsReply = null })
 
 // Main red 2026-10-21 (CI run 39652948521): the templates route answered 220-1010 ms after mount, the e2e clicked Show
 // strategies before that, and the page built its cards from the still-empty template list: "No strategy in the library
@@ -184,6 +191,18 @@ describe('Create Strategy page', () => {
     const draft = JSON.parse(target.query.draft)
     expect(draft.underlying).toBe('NIFTY')
     expect(draft.legs.map((l) => [l.instrument_id, l.action, l.lots, l.planned_entry])).toEqual([['NSE_FO:1', 'SELL', 1, '120.50']])
+  })
+
+  it('REQ-167 AC-5: the page reads the step from GET /settings; a changed served step changes the offered lists', async () => {
+    settingsReply = Promise.resolve({ data: { groups: [{ name: 'Limits', settings: [
+      { key: 'limits.range_step', value: '200' }, { key: 'limits.range_cap_nifty', value: '3000' }, { key: 'limits.range_cap_sensex', value: '9000' }] }], charges: null } })
+    const { w } = await mountPage()
+    await w.find('[data-testid="path-guided"]').trigger('click')
+    await pick(w, 'objective', 'earn-premium')
+    await pick(w, 'market-view', 'not-sure')
+    await w.find('[data-testid="pick-expiry"]').setValue('2026-10-13')
+    await flushPromises()
+    expect(w.find('[data-testid="pick-lower"]').findAll('option').map((o) => o.element.value)).toEqual(['22812.40', '22800', '22600'])
   })
 
   it('REQ-026 AC-1/AC-4/AC-7: Not sure -> range pick lists, results line names the range and expiry (provisional wording)', async () => {
@@ -310,17 +329,27 @@ describe('guided helpers', () => {
   })
 
   it('REQ-026 AC-3/AC-5/AC-6: lists start at the current level, 100-point listed strikes only, lower below / upper above', () => {
-    const l = rangeLists('22812.40', CONTRACTS, 'NIFTY')
+    const l = rangeLists('22812.40', CONTRACTS, LIMITS)
     expect(l.lower).toEqual(['22812.40', '22800', '22700', '22600', '22500'])
     expect(l.upper).toEqual(['22812.40', '22900', '23000', '23100'])
-    expect(() => rangeLists(null, CONTRACTS, 'NIFTY')).toThrow()
+    expect(() => rangeLists(null, CONTRACTS, LIMITS)).toThrow()
     expect(() => viewFromRange('22812.40', '22900', '23000')).toThrow() // lower above the current level is refused
   })
 
   it('REQ-026 AC-5: the per-index cap bounds the list (NIFTY 3,000 points)', () => {
     const far = [...CONTRACTS, ct(9, 'PE', '19700.00'), ct(10, 'PE', '19900.00')]
-    expect(rangeLists('22812.40', far, 'NIFTY').lower).toContain('19900')
-    expect(rangeLists('22812.40', far, 'NIFTY').lower).not.toContain('19700')
+    expect(rangeLists('22812.40', far, LIMITS).lower).toContain('19900')
+    expect(rangeLists('22812.40', far, LIMITS).lower).not.toContain('19700')
+  })
+
+  it('REQ-167 AC-5: the pick-list step and cap are the served limits; without them the lists fail closed', () => {
+    const far = [...CONTRACTS, ct(9, 'PE', '19700.00'), ct(10, 'PE', '19900.00')]
+    expect(rangeLists('22812.40', far, { step: 100, cap: 3200 }).lower).toContain('19700') // a changed cap
+    expect(rangeLists('22812.40', far, { step: 100, cap: 2900 }).lower).not.toContain('19900')
+    expect(rangeLists('22812.40', CONTRACTS, { step: 200, cap: 3000 }).lower).toEqual(['22812.40', '22800', '22600'])
+    for (const bad of [undefined, null, { step: null, cap: 3000 }, { step: 100, cap: null }, { step: 0, cap: 3000 }]) {
+      expect(() => rangeLists('22812.40', CONTRACTS, bad)).toThrow()
+    }
   })
 
   it('REQ-068 AC-4: when nothing matches both, the view-only list is returned and flagged', () => {

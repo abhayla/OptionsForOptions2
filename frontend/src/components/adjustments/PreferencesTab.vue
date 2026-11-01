@@ -1,0 +1,148 @@
+<!-- GC-SET (REQ-168 AC-2, ADR-222 (6)): the Preferences tab of the Adjustments screen. Each of the user's adjustment
+     preferences from GET /api/adjustments/preferences: its value, "Your value" or "Default", the admin default and the
+     allowed range. The user changes one (POST .../{key}) or resets it to follow the default (POST .../{key}/reset); the
+     server answers with the whole list, which replaces the shown one. A refused value shows the server's reason from the
+     422 body, verbatim. Every number is shown exactly as the server sent it (a decimal string, never parsed to a float
+     here); a "time" preference travels as the whole number HHMM and is shown and typed as HH:MM. No browser clock is sent.
+     A change applies at the next check; a saved plan is not changed. Decision support only. States: loading, ready,
+     unavailable. -->
+<script setup>
+import { onMounted, reactive, ref } from 'vue'
+import api from '@/services/api'
+import ErrorMessage from '@/components/common/ErrorMessage.vue'
+
+const prefs = ref([])
+const state = ref('loading') // loading | ready | unavailable
+const error = ref(null)
+const forms = reactive({}) // key -> { value, note, busy, reason, open }
+
+// The answer's one list per preference (the user's own earlier rows) is the only array in it; read it as `earlier`.
+const withEarlier = (p) => ({ ...p, earlier: Object.values(p).find(Array.isArray) ?? [] })
+const isTime = (p) => p.unit === 'time'
+function clock(hhmm) {
+  const n = String(hhmm).padStart(4, '0')
+  return `${n.slice(0, 2)}:${n.slice(2)}`
+}
+function shown(p, v) {
+  return isTime(p) && /^\d{1,4}$/.test(String(v)) ? clock(v) : v
+}
+const TIME_HINT = 'Enter a time as HH:MM, for example 09:30.'
+function toHhmm(typed) {
+  const m = /^([01]?\d|2[0-3]):([0-5]\d)$/.exec(String(typed).trim())
+  if (!m) return null
+  return (m[1] + m[2]).replace(/^0+(?=\d)/, '') // "09:30" -> "930": text only, no arithmetic
+}
+function formFor(key) {
+  if (!forms[key]) forms[key] = { value: '', note: '', busy: false, reason: '', open: false }
+  return forms[key]
+}
+function when(iso) {
+  return iso ? new Date(iso).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', dateStyle: 'medium', timeStyle: 'short' }) + ' IST' : ''
+}
+
+async function load() {
+  state.value = 'loading'
+  try {
+    prefs.value = (await api.get('/adjustments/preferences')).data.preferences.map(withEarlier)
+    state.value = 'ready'
+  } catch (e) {
+    error.value = e
+    state.value = 'unavailable'
+  }
+}
+
+async function save(p) {
+  const f = formFor(p.key)
+  f.busy = true
+  f.reason = ''
+  try {
+    let value = f.value
+    if (isTime(p)) {
+      value = toHhmm(f.value)
+      if (value === null) {
+        f.reason = TIME_HINT
+        return
+      }
+    }
+    await api.post(`/adjustments/preferences/${p.key}`, { value, note: f.note })
+    f.value = ''
+    f.note = ''
+    f.open = false
+    await load() // read again: the shown list is always the server's
+  } catch (e) {
+    f.reason = e.reason || 'The change was not saved. Try again.'
+  } finally {
+    f.busy = false
+  }
+}
+
+async function reset(p) {
+  const f = formFor(p.key)
+  f.busy = true
+  f.reason = ''
+  try {
+    await api.post(`/adjustments/preferences/${p.key}/reset`, { note: f.note })
+    f.note = ''
+    await load()
+  } catch (e) {
+    f.reason = e.reason || 'The reset was not saved. Try again.'
+  } finally {
+    f.busy = false
+  }
+}
+
+onMounted(load)
+</script>
+
+<template>
+  <section data-testid="prefs-tab">
+    <p class="mb-3 text-sm text-ink-muted">
+      Your own starting values for the adjustment checks. A change applies at the next check; a saved plan is not changed.
+      Reset makes a preference follow the admin default again.
+    </p>
+    <p v-if="state === 'loading'" data-testid="prefs-loading">Loading preferences…</p>
+    <div v-else-if="state === 'unavailable'" data-testid="prefs-unavailable">
+      <ErrorMessage v-if="error?.parts" :parts="error.parts" />
+      <p v-else>The preferences could not be read, so no value is shown.</p>
+      <button type="button" class="mt-2 underline" data-testid="prefs-retry" @click="load">Try again</button>
+    </div>
+    <ul v-else class="divide-y divide-line">
+      <li v-for="p in prefs" :key="p.key" class="py-3" :data-testid="`pref-${p.key}`">
+        <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+          <h3 class="font-semibold">{{ p.label }}</h3>
+          <span data-testid="pref-value">{{ shown(p, p.value) }}</span>
+          <span class="chip border-line bg-surface-muted text-xs text-ink-muted" data-testid="pref-source">{{ p.source === 'yours' ? 'Your value' : 'Default' }}</span>
+          <span class="text-sm text-ink-muted">Unit: {{ isTime(p) ? 'time (IST)' : p.unit }}</span>
+          <span class="text-sm text-ink-muted" data-testid="pref-admin-default">Admin default: {{ shown(p, p.admin_default) }}</span>
+          <span class="text-sm text-ink-muted" data-testid="pref-range">Allowed: {{ shown(p, p.min) }} to {{ shown(p, p.max) }}</span>
+          <button type="button" class="underline" data-testid="pref-edit" @click="formFor(p.key).open = !formFor(p.key).open">Change</button>
+        </div>
+        <p class="text-sm text-ink-muted">{{ p.what_it_changes }}</p>
+        <div v-if="formFor(p.key).open" :data-testid="`pref-form-${p.key}`" class="mt-2">
+          <form class="flex flex-wrap items-end gap-2" @submit.prevent="save(p)">
+            <label v-if="isTime(p)">New time (IST, HH:MM, from {{ shown(p, p.min) }} to {{ shown(p, p.max) }})
+              <input v-model="formFor(p.key).value" data-testid="pref-input" class="block border px-1" type="time" required />
+            </label>
+            <label v-else>New value (from {{ p.min }} to {{ p.max }})
+              <input v-model="formFor(p.key).value" data-testid="pref-input" class="block border px-1" inputmode="decimal" required />
+            </label>
+            <label>Note (optional)
+              <input v-model="formFor(p.key).note" data-testid="pref-note" class="block border px-1" maxlength="500" />
+            </label>
+            <button type="submit" :disabled="formFor(p.key).busy" data-testid="pref-save">Save</button>
+            <button type="button" :disabled="formFor(p.key).busy" data-testid="pref-reset" @click="reset(p)">Reset to default</button>
+          </form>
+        </div>
+        <p v-if="formFor(p.key).reason" role="alert" class="mt-1 text-error" data-testid="pref-refusal">{{ formFor(p.key).reason }}</p>
+        <details v-if="p.earlier.length" :data-testid="`pref-earlier-${p.key}`" class="mt-1 text-sm">
+          <summary>Earlier values ({{ p.earlier.length }})</summary>
+          <ul>
+            <li v-for="(h, i) in p.earlier" :key="i" data-testid="pref-earlier-row">
+              {{ h.value === null ? 'Reset to the admin default' : shown(p, h.value) }} from {{ when(h.effective_from) }}
+            </li>
+          </ul>
+        </details>
+      </li>
+    </ul>
+  </section>
+</template>

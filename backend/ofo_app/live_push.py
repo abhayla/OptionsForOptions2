@@ -36,6 +36,7 @@ from ofo_app.routes.outcome import (
     MarketContext,
     OutcomeRequest,
     checked_choice,
+    ctx_in_force,
     get_booked,
     get_booked_reader,
     get_contract_lookup,
@@ -225,12 +226,13 @@ class StrategyPush:
         req = self._req  # the one follow message this push is computed for, read once
         try:
             rates = await load_charge_rates()
-            ctx = None if self._feed is None else self._feed.ctx
+            settings = await get_settings_reader()()  # read at this tick (REQ-167 AC-4)
+            # GC-SET 5a: the rate and forward settings in force at THIS tick, never the feed's start context
+            ctx = None if self._feed is None else ctx_in_force(self._feed.ctx, settings)
             stored = await stored_legs_for(req, ctx, self._lookup)  # same helper as the REST route
             margin = await margin_for_request(req, ctx, self._margin_source)  # same step as the REST route
             booked = await get_booked(req, self._booked_reader)  # same step as the REST route (nothing for a plan)
             # REQ-133 AC-2: the push echoes the version (seq) of the follow message it was computed for (echo_seq)
-            settings = await get_settings_reader()()  # read at this tick (REQ-167 AC-4)
             interval = calc.open_strategy_seconds(settings)  # the gate for the NEXT push: the value in force now
             body = outcome_response(req, ctx, stored=stored, rates=rates, margin=margin, seq=req.seq, booked=booked,
                                     settings=settings)

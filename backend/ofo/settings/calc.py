@@ -11,11 +11,12 @@ Standard library only.
 """
 from __future__ import annotations
 
+import datetime
 from collections.abc import Mapping
 from decimal import Decimal
 
 from ofo.marketdata.forward import ForwardQuality
-from ofo.settings import value_of
+from ofo.settings import time_of, value_of
 
 SD_HORIZON_DAYS = "scenarios.sd_horizon_days"
 TARGET_SPAN = "scenarios.target_span"
@@ -118,3 +119,66 @@ HISTORY_MAX_DAYS = "limits.history_max_days"
 def history_max_days(values: Mapping[str, Decimal]) -> int:
     """The most trading days of strategy price history one read returns (REQ-167 AC-5)."""
     return int(value_of(values, HISTORY_MAX_DAYS))
+
+
+LEG_PICKER_WIDTH_COUNT = 4
+LEG_PICKER_WIDTH_KEY = "limits.leg_picker_width_{}"
+
+
+def leg_picker_widths(values: Mapping[str, Decimal]) -> tuple[int, ...]:
+    """The strikes-each-side choices the leg picker offers and the server accepts, in the order set (REQ-167 AC-5;
+    REQ-080 AC-1). The first is the width shown before the user picks one."""
+    return tuple(int(value_of(values, LEG_PICKER_WIDTH_KEY.format(i))) for i in range(1, LEG_PICKER_WIDTH_COUNT + 1))
+
+
+RANGE_STEP = "limits.range_step"
+RANGE_CAP_KEY = "limits.range_cap_{}"
+
+
+def range_step(values: Mapping[str, Decimal]) -> int:
+    """The gap in points between two values of an expected-range pick list (REQ-026 AC-5, REQ-167 AC-5)."""
+    return int(value_of(values, RANGE_STEP))
+
+
+def range_cap(values: Mapping[str, Decimal], index: str) -> int:
+    """The furthest an expected-range pick list of ``index`` runs from the current level, in points."""
+    if index not in INDEXES:
+        raise ValueError(f"no range cap is stated for {index!r}")
+    return int(value_of(values, RANGE_CAP_KEY.format(index.lower())))
+
+
+MAX_LOTS = "limits.max_lots"
+
+
+def max_lots(values: Mapping[str, Decimal]) -> int:
+    """The most lots one leg may hold; the one number every lots-accepting route checks (REQ-167 AC-5)."""
+    return int(value_of(values, MAX_LOTS))
+
+
+# ---- exchange and broker facts (GC-SET step 5a): IST wall-clock times stored HHMM --------------------------------
+PAPER_SETTLE_FROM = "facts.paper_settle_from"
+PAPER_RETRY_UNTIL = "facts.paper_retry_until"
+
+
+def paper_settle_from(values: Mapping[str, Decimal]) -> datetime.time:
+    """From this IST time on expiry day the paper settlement reads the index close (REQ-167 AC-5)."""
+    return time_of(value_of(values, PAPER_SETTLE_FROM))
+
+
+def paper_retry_until(values: Mapping[str, Decimal]) -> datetime.time:
+    """While a group had no close, the settlement job retries until this IST time (REQ-167 AC-5)."""
+    return time_of(value_of(values, PAPER_RETRY_UNTIL))
+
+
+CONTRACT_LIST_PUBLISH_TIME = "facts.contract_list_publish_time"
+KITE_SESSION_EXPIRY = "facts.kite_session_expiry"
+
+
+def contract_list_publish_time(values: Mapping[str, Decimal]) -> datetime.time:
+    """From this IST time each trading day the broker's contract list counts as published (REQ-167 AC-5)."""
+    return time_of(value_of(values, CONTRACT_LIST_PUBLISH_TIME))
+
+
+def kite_session_expiry(values: Mapping[str, Decimal]) -> datetime.time:
+    """The IST time of day a Zerodha login is expected to lapse (REQ-167 AC-5)."""
+    return time_of(value_of(values, KITE_SESSION_EXPIRY))

@@ -328,8 +328,8 @@ async def test_s5_1_real_token_read_and_real_future_pick_answer_available(app_en
 async def _past_expiry(admin_engine, session_id):
     async with admin_engine.connect() as conn, conn.begin():
         await conn.execute(text("SET LOCAL session_replication_role = replica"))
-        await conn.execute(text("UPDATE public.broker_sessions SET expected_expiry = clock_timestamp() - "
-                                "interval '1 minute' WHERE id = :id"), {"id": session_id})
+        await conn.execute(text("UPDATE public.broker_sessions SET started_at = clock_timestamp() - interval '3 days' "
+                                "WHERE id = :id"), {"id": session_id})
 
 
 def _no_session_answer(resp) -> None:

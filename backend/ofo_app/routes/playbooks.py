@@ -28,6 +28,7 @@ from ofo.adjustment import playbook_eval as pe
 from ofo.adjustment import playbook_stages as stages
 from ofo.adjustment.playbook_text import name_shown
 from ofo.adjustment.playbook_types import SHOWN_NAMES, TYPE_KEYS
+from ofo.adjustment.preferences import Preferences
 from ofo.charges import ChargeRates
 from ofo.errors import render
 from ofo.errors.explanations import (
@@ -62,6 +63,7 @@ from ofo_app.routes.adjustment import (
     get_tracked_reader,
 )
 from ofo_app.routes.adjustment_check import CheckResultOut, CheckStageOut, current_margin, result_out
+from ofo_app.routes.adjustment_preferences import UserPreferences
 from ofo_app.routes.broker import current_user_ref
 from ofo_app.routes.outcome import MarketContext, get_market_context, load_charge_rates
 from ofo_app.strategy_refused import StrategyRefused
@@ -141,6 +143,11 @@ def _refused(exc: store.PlaybookStoreError | stages.StageProblem) -> StrategyRef
     return StrategyRefused(exc.code, _STATUS[exc.code], message=render(exc.code, **exc.slots))
 
 
+#: Public name for the editor's refusal, shared with the system playbook routes (GC-SET step 9): the admin's
+#: system editor refuses a body with exactly the user editor's words.
+refused = _refused
+
+
 def _id(playbook_id: int) -> int:
     if not 1 <= playbook_id <= ID_MAX:
         raise store.PlaybookStoreError(store.NOT_FOUND, f"playbook {playbook_id}")
@@ -161,6 +168,10 @@ def _precheck(strategy_type: str, body: object) -> None:
     checked = store.check_body(body, strategy_type)  # a dict, or it raised
     stages.check_keys(checked)
     stages.check_stages(checked)
+
+
+#: REQ-169 AC-1: the admin's system playbook save runs exactly this check (one validator, never a second one)
+precheck = _precheck
 
 
 def _row(pb: store.Playbook, active_id: int) -> dict[str, Any]:
@@ -362,6 +373,7 @@ class _Seams:
     margin_of: ApproachMargin
     ctx: MarketContext | None
     rates: ChargeRates | None
+    prefs: Preferences  # the user's adjustment preferences (REQ-168), read once per request
 
 
 #: REQ-160 AC-3: the whole outside read of ONE strategy (tracked legs, chain/market, REST spot, margin) is bounded by
@@ -451,11 +463,11 @@ async def _tested(db: Any, user_ref: str, data: TestIn, seams: _Seams) -> list[d
         row, read = answer
         tracked, market, spot = read.tracked, read.market, read.spot
         state = check.state_of(tracked, market, spot, read.margin, seams.rates, check.prices_fresh(seams.ctx),
-                               data.body)
+                               data.body, config=seams.prefs.approach)
         entry = check.scenario_entry(scenario_mode.current(), state, tracked.position)
         if entry is not None:
             state = dataclasses.replace(state, entry_atm_iv=entry.atm_iv)
-        ev = pe.evaluate(data.body, state, {}, entry)  # empty memory; the returned memory is dropped
+        ev = pe.evaluate(data.body, state, {}, entry, gap_until=seams.prefs.gap_until)  # empty memory; the returned memory is dropped
         strategies.append({"strategy_id": row.id, "name": shown_name(row.name),
                            "stage": check.stage_out(ev.stage_name, ev.stage_index),
                            "withheld": None if ev.withheld is None else render(ev.withheld),
@@ -471,13 +483,14 @@ async def test_playbook(  # noqa: PLR0913 - FastAPI dependencies, one per input 
         rest_reader: Annotated[RestSpotReader, Depends(get_rest_spot_reader)],
         margin_of: Annotated[ApproachMargin, Depends(get_approach_margin)],
         ctx: Annotated[MarketContext | None, Depends(get_market_context)],
-        rates: Annotated[ChargeRates | None, Depends(load_charge_rates)]) -> TestOut:
+        rates: Annotated[ChargeRates | None, Depends(load_charge_rates)],
+        prefs: UserPreferences) -> TestOut:
     """REQ-160 AC-3: the unsaved body checked exactly as a save checks it (``_precheck``: body, keys, stage gap and
     overlap), then evaluated on each of the user's tracked strategies of the type. Nothing is written: empty rule
     memory (a rule true now flags; the F-71 entry state is the scenario's stated entry only), no rule state, no
     suggestion, no order; the transaction is rolled back. A not-checked rule is listed with its reason, never passed."""
     seams = _Seams(tracked_reader, market_reader, rest_reader, margin_of, ctx,
-                   rates if isinstance(rates, ChargeRates) else None)
+                   rates if isinstance(rates, ChargeRates) else None, prefs)
     try:
         _precheck(data.type, data.body)
     except (store.PlaybookStoreError, stages.StageProblem) as exc:

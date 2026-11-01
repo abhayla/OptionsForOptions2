@@ -85,10 +85,9 @@ RULES: tuple[ZerodhaRule, ...] = (
                 "longest tag of the legacy grammar (the API-order tag cap of 20), decode only",
                 "Kite orders docs: 'alphanumeric, max 20 chars' https://kite.trade/docs/connect/v3/orders/ "
                 "(fetched 2026-10-22)", "2026-10-22", True),
-    ZerodhaRule("ofo.broker.session:KITE_EXPIRY_TIME_IST",
-                "the daily Kite session lapses at 06:00 IST the next day",
-                "Kite Connect login-flow docs https://kite.trade/docs/connect/v3/user/ - not fetched on 2026-10-22 "
-                "(follow-up REQ-056 AC-10)", "2026-10-22", False),
+    # The daily Kite session expiry (06:00 IST) and the contract-list publish time (08:30 IST) are no longer code
+    # constants: they are the settings `facts.kite_session_expiry` and `facts.contract_list_publish_time` (default
+    # 06:00 / 08:30), each with its Kite docs source in backend/ofo/settings/registry.json (REQ-167 AC-5).
 )
 
 

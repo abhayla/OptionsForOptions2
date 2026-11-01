@@ -14,6 +14,7 @@ the file is refused at load. Standard library and Decimal only; no clock is read
 """
 from __future__ import annotations
 
+import datetime
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -26,9 +27,14 @@ DATA_FILE: Final = Path(__file__).with_name("registry.json")
 UNITS: Final = ("fraction", "percent", "rupees", "points", "seconds", "count", "time", "days")
 TYPES: Final = ("decimal", "integer")
 MAX_TEXT: Final = 40  # the longest value text accepted from a form (a Decimal string)
+#: A setting of unit "time" is an IST wall-clock time of day stored as the whole number HHMM (15:45 -> 1545), so the
+#: store, the history and the audit text keep one exact Decimal column; :func:`time_of` turns it into a time.
+TIME_UNIT: Final = "time"
+_HHMM: Final = 100
 
-#: App-wide admin settings only (owner 2026-10-31): per-user adjustment preferences (near-level distance, cost per
-#: leg) are a separate per-user build on the Adjustments screen, never in this registry.
+#: App-wide admin settings, plus the adjustment-defaults group (registry keys under ``adjustments.``): the admin's
+#: STARTING value of each per-user adjustment preference (ADR-222 (7), REQ-168 AC-5). A user's own value lives in
+#: ``ofo_app.user_preferences_store``, never here.
 RISK_FREE_RATE: Final = "pricing.risk_free_rate"
 
 
@@ -116,6 +122,8 @@ def parse_registry(text: str) -> dict[str, Setting]:
             raise RegistryError(f"{key}: group, label, unit, type, what_it_changes and source are required text")
         if texts["unit"] not in UNITS or texts["type"] not in TYPES:
             raise RegistryError(f"{key}: unknown unit {texts['unit']!r} or type {texts['type']!r}")
+        if texts["unit"] == TIME_UNIT and texts["type"] != "integer":
+            raise RegistryError(f"{key}: a time of day is an integer HHMM (type integer)")
         low, high, default = (_dec(row.get(f), f"{key}.{f}") for f in ("min", "max", "default"))
         setting = Setting(key, texts["group"], texts["label"], texts["unit"], texts["type"], low, high, default,
                           texts["what_it_changes"], texts["source"])
@@ -162,7 +170,26 @@ def check_value(s: Setting, value: Decimal) -> Decimal:
                                  f"{s.label} is a fraction: enter {plain(as_fraction)} for {plain(value)}%.")
         raise SettingRefused("setting_out_of_range",
                              f"{s.label} must be between {plain(s.min)} and {plain(s.max)} ({s.unit}).")
+    if s.unit == TIME_UNIT and not _is_hhmm(value):
+        raise SettingRefused("setting_not_a_time",
+                             f"{s.label} is a time of day written HHMM, for example {plain(s.default)}.")
     return value
+
+
+def _is_hhmm(value: Decimal) -> bool:
+    if value != value.to_integral_value() or value < 0:
+        return False
+    hours, minutes = divmod(int(value), _HHMM)
+    return hours < 24 and minutes < 60  # noqa: PLR2004 - the clock's own hours and minutes
+
+
+def time_of(value: Decimal) -> datetime.time:
+    """A "time" setting's HHMM value as an IST wall-clock time (naive). A value that is not a time of day raises
+    ValueError (fail closed: the store and the write both refuse such a value, so reaching here is a defect)."""
+    if not isinstance(value, Decimal) or not value.is_finite() or not _is_hhmm(value):
+        raise ValueError(f"not a time of day written HHMM: {value!r}")
+    hours, minutes = divmod(int(value), _HHMM)
+    return datetime.time(hours, minutes)
 
 
 def validate(key: object, raw: object) -> Decimal:
@@ -177,6 +204,12 @@ def validate(key: object, raw: object) -> Decimal:
     except InvalidOperation:
         raise SettingRefused("setting_not_a_number", f"{s.label} must be a number, e.g. {plain(s.default)}.") from None
     return check_value(s, value)
+
+
+def hhmm_text(value: Decimal) -> str:
+    """A ``time`` setting (HHMM as a whole number, 930) as the clock text the playbook checks compare ("09:30");
+    one conversion with ``time_of`` (a value that is not a time of day raises ValueError)."""
+    return time_of(value).strftime("%H:%M")
 
 
 def value_of(values: Mapping[str, Decimal], key: str) -> Decimal:

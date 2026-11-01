@@ -41,6 +41,7 @@ from ofo_app.routes.adjustment import (
     get_tracked_reader,
     margin_block,
 )
+from ofo_app.routes.adjustment_preferences import UserPreferences
 from ofo_app.routes.broker import current_user_ref
 from ofo_app.routes.outcome import MarketContext, get_market_context, load_charge_rates
 from ofo_app.strategy_refused import StrategyRefused
@@ -193,7 +194,8 @@ async def adjustment_check(  # noqa: PLR0913 - FastAPI dependencies, one per inp
         rest_reader: Annotated[RestSpotReader, Depends(get_rest_spot_reader)],
         margin_of: Annotated[ApproachMargin, Depends(get_approach_margin)],
         ctx: Annotated[MarketContext | None, Depends(get_market_context)],
-        rates: Annotated[ChargeRates | None, Depends(load_charge_rates)]) -> AdjustmentCheckOut:
+        rates: Annotated[ChargeRates | None, Depends(load_charge_rates)],
+        prefs: UserPreferences) -> AdjustmentCheckOut:
     from ofo_app.adjustment_readers import TrackedExited, TrackedUnreadable  # noqa: PLC0415 - imports routes.adjustment
     rates = rates if isinstance(rates, ChargeRates) else None
     try:
@@ -221,9 +223,10 @@ async def adjustment_check(  # noqa: PLR0913 - FastAPI dependencies, one per inp
     if resolved.body is None:
         return AdjustmentCheckOut.model_validate(reply)
     margin = await current_margin(margin_of, tracked, market)
-    state = check.state_of(tracked, market, spot, margin, rates, check.prices_fresh(ctx), resolved.body)
+    state = check.state_of(tracked, market, spot, margin, rates, check.prices_fresh(ctx), resolved.body,
+                           config=prefs.approach)
     ev = await check.evaluate_and_remember(db, user_ref, strategy_id, resolved.body, state, scenario_mode.current(),
-                                           tracked.position)
+                                           tracked.position, gap_until=prefs.gap_until)
     source = playbook_store.SOURCE_SYSTEM if resolved.is_system else playbook_store.SOURCE_OWN
     opened, dismissed = await _sync_records(db, user_ref, strategy_id, ev, source, resolved.body, _cheapest(state))
     await db.commit()

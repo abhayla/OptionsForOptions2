@@ -39,6 +39,11 @@ def _list_loaded(monkeypatch):
 
     monkeypatch.setattr(elig, "list_loaded_at", _loaded_at)
 
+    async def _publish(conn):  # the fake request has no database: the registry default 08:30 is in force
+        return datetime.time(8, 30)
+
+    monkeypatch.setattr(route, "publish_time", _publish)
+
 
 def _req(spot_at: datetime.datetime | None, check_at: datetime.datetime) -> SimpleNamespace:
     quote = None if spot_at is None else (D("23131.85"), spot_at)

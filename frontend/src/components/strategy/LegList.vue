@@ -17,7 +17,7 @@ import { useOutsideClose } from '@/composables/useOutsideClose'
 import { capturedCaption, contractName, expiryWithDays, istTime, strikeLabel } from '@/lib/displayFormat'
 import { NOT_CONNECTED_LABEL, REPRICE_PROMPT } from '@/lib/legPicker'
 import {
-  CUSTOM_STRATEGY, LEFT_OUT_LABEL, LEGS_CLEARED, LEG_CARD_PADDING_PX, LEG_ROW_COLUMNS, MULTIPLIER_CHOICES, MULTIPLIER_MAX, MULTIPLIER_MIN,
+  CUSTOM_STRATEGY, LEFT_OUT_LABEL, LEGS_CLEARED, LEG_CARD_PADDING_PX, LEG_ROW_COLUMNS, MULTIPLIER_MIN, multiplierChoices,
   NO_CONTROLS, NO_LEGS_YET, PLANNED_ENTRY_LABEL, YOUR_PRICE_LABEL,
   anyUnticked, canStep, controlsForSelection, movedMarker, priceReasonText, removeAllPrompt, replacedPriceNote, showsControls,
 } from '@/lib/legEdit'
@@ -26,6 +26,7 @@ import { PAPER_AVERAGE_LABEL, paperFillKey } from '@/lib/paperDrafts'
 
 const props = defineProps({
   legs: { type: Array, required: true },
+  multiplierMax: { type: Number, default: null }, // the page passes the served limits.multiplier_max; null = not read yet (no choices)
   shapeName: { type: String, default: null }, // the server's name; null = no reply yet (nothing is invented here)
   hasReply: { type: Boolean, default: false }, // a reply named the shape (a null name then means Custom Strategy)
   updating: { type: Boolean, default: false },
@@ -122,8 +123,10 @@ function resetPrices() {
   typedText.value = {}
   emit('edit', { control: 'reset_prices' })
 }
+const multiplierMax = computed(() => props.multiplierMax) // REQ-167 AC-5: the served limits.multiplier_max; null until read
+const multiplierList = computed(() => multiplierChoices(multiplierMax.value))
 function setMultiplier(index) {
-  const choice = MULTIPLIER_CHOICES[index] // chosen from the fixed list: nothing is parsed from text
+  const choice = multiplierList.value[index] // chosen from the fixed list: nothing is parsed from text
   if (choice !== undefined) emit('edit', { control: 'multiplier', multiplier: choice })
 }
 </script>
@@ -256,9 +259,9 @@ function setMultiplier(index) {
         <StrategyControls :controls="shownControls" @edit="(e) => emit('edit', e)" />
       </div>
       <div class="flex min-h-10 items-center justify-between gap-3 border-t border-line py-2" :style="cardPadding" data-testid="money-row">
-        <label class="flex items-center gap-2" :title="`Strategy multiplier (${MULTIPLIER_MIN} to ${MULTIPLIER_MAX})`">Multiplier
+        <label class="flex items-center gap-2" :title="`Strategy multiplier (${MULTIPLIER_MIN} to ${multiplierMax ?? '...'})`">Multiplier
           <select v-model="multiplier" class="rounded border border-line px-1" data-testid="multiplier" @change="setMultiplier($event.target.selectedIndex)">
-            <option v-for="n in MULTIPLIER_CHOICES" :key="n" :value="n">{{ n }}</option>
+            <option v-for="n in multiplierList" :key="n" :value="n">{{ n }}</option>
           </select>
         </label>
         <div class="min-w-0"><slot name="money" /></div>

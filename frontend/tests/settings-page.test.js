@@ -171,4 +171,44 @@ describe('Settings page', () => {
     expect(out.reason).toBe('Enter 0.065 for 6.5%.')
     expect(JSON.stringify(out)).not.toContain('secret')
   })
+
+  describe('a time setting (unit "time", sent as HHMM)', () => {
+    const TKEY = 'facts.contract_list_publish_time'
+    const timeSetting = (over = {}) => setting({ key: TKEY, group: 'Exchange and broker facts', label: 'Contract list is published at (IST, HHMM)',
+      unit: 'time', type: 'integer', min: '0', max: '2359', default: '830', value: '830', ...over })
+    const timePage = (s = timeSetting()) => ({ groups: [{ name: 'Exchange and broker facts', settings: [s] }], charges: null })
+
+    it('shows value, default and earlier values as HH:MM, not as the HHMM number', async () => {
+      const w = await open(timePage(timeSetting({ value: '1545', is_default: false, set_by: 'owner', effective_from: '2026-11-01T10:00:00+05:30',
+        earlier_values: [{ value: '900', effective_from: '2026-11-01T10:00:00+05:30', set_by: 'owner', state: 'earlier' }] })))
+      const row = w.find(`[data-testid="setting-${TKEY}"]`)
+      expect(row.find('[data-testid="setting-value"]').text()).toBe('15:45')
+      expect(row.find('[data-testid="setting-default"]').text()).toBe('08:30')
+      expect(w.find('[data-testid="earlier-value-row"]').text()).toContain('09:00')
+    })
+
+    it('takes HH:MM and sends the HHMM whole number', async () => {
+      answers[`POST /settings/${TKEY}`] = timeSetting({ value: '900', is_default: false, set_by: 'owner', effective_from: '2026-11-01T10:00:00+05:30' })
+      const w = await open(timePage())
+      await w.find(`[data-testid="edit-${TKEY}"]`).trigger('click')
+      expect(w.find('[data-testid="input-value"]').attributes('type')).toBe('time')
+      await w.find('[data-testid="input-value"]').setValue('09:00')
+      await w.find('[data-testid="input-note"]').setValue('Kite moved it')
+      await w.find('form').trigger('submit')
+      await flushPromises()
+      expect(calls.find((c) => c[0] === 'POST')).toEqual(['POST', `/settings/${TKEY}`, { value: '900', note: 'Kite moved it' }])
+      expect(w.find(`[data-testid="setting-${TKEY}"] [data-testid="setting-value"]`).text()).toBe('09:00')
+    })
+
+    it('refuses text that is not a time of day, without sending anything', async () => {
+      const w = await open(timePage())
+      await w.find(`[data-testid="edit-${TKEY}"]`).trigger('click')
+      await w.find('[data-testid="input-value"]').setValue('25:70')
+      await w.find('[data-testid="input-note"]').setValue('x')
+      await w.find('form').trigger('submit')
+      await flushPromises()
+      expect(calls.some((c) => c[0] === 'POST')).toBe(false)
+      expect(w.find('[data-testid="refusal"]').text()).toBe('Enter a time as HH:MM, for example 09:30.')
+    })
+  })
 })

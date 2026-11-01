@@ -39,7 +39,7 @@ def _columns(sid: str) -> tuple[dict, dict[str, Column], object]:
     tracked, market, spot = s.inputs(sc)
     cols = {}
     for a in offered_approaches(s.body_of(sc)):
-        built, priced = priced_approach(a, tracked, market, spot, s.RATES)
+        built, priced = priced_approach(a, tracked, market, spot, s.RATES, s.PREFS.approach)
         if built is not None and priced is not None:
             cols[a] = Column(built, priced.after, priced.reason, priced.charges_known, MarginRead(None))
     return sc, cols, market
@@ -106,7 +106,7 @@ def test_none_priceable_is_not_checked_with_the_reason():
     assert (got.approach, got.cost, got.reason) == (None, None, cmp.NO_APPROACH_PRICED) and got.unpriced > 0
     ev = pe.evaluate(s.body_of(sc), pe.StrategyState("weekly", days_left=1, hhmm="15:00", spot=D("23020"),
                                                        premium_left=D("110.50"), adjustment_cost_reason=got.reason,
-                                                       prices_fresh=True))
+                                                       prices_fresh=True), gap_until=s.PREFS.gap_until)
     t19 = next(r for r in ev.results if r.trigger_id == "T-19")
     assert isinstance(t19, pe.NotChecked) and t19.code == cmp.NO_APPROACH_PRICED
     assert pe.reason_text(t19.code).startswith("No adjustment approach this playbook offers can be priced now")
@@ -119,7 +119,7 @@ def test_no_approach_offered_is_not_checked_with_the_reason():
     assert offered_approaches(body) == ()
     assert cheapest_approach((), cols, market.chain) == cmp.Cheapest(None, None, cmp.NO_APPROACH_OFFERED)
     tracked, market, spot = s.inputs(sc)
-    got = check.cheapest_offered(body, tracked, market, spot, s.RATES)
+    got = check.cheapest_offered(body, tracked, market, spot, s.RATES, s.PREFS.approach)
     assert got.reason == cmp.NO_APPROACH_OFFERED
     assert pe.reason_text(got.reason).startswith("This playbook offers no adjustment approach to price")
 

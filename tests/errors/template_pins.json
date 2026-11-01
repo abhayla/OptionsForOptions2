@@ -1807,6 +1807,10 @@
     "sha256": "1500d2520c2e72efd128f0092aae83f3fb50800909cd9560138d5fcffe4672d6",
     "reviewed": "pending owner read"
   },
+  "leg_lots_above_limit": {
+    "sha256": "398d9d44b9fcd43ad9e31d3963d3aa81f9ad1cf599f8179f05dcc320350cc8e7",
+    "reviewed": "pending owner read"
+  },
   "paper_price_invalid": {
     "sha256": "fe202aee8570667847f1b1199b109c546a8c1865b328482b0da68d64ff74a00e",
     "reviewed": "pending owner read"
@@ -3247,6 +3251,10 @@
     "sha256": "639e3583b651ad61c324c09bdbb40ce784a2b0aa7bfd9a77a664af7b78a8bfe4",
     "reviewed": "pending owner read"
   },
+  "explanation:settings_refused_not_a_time": {
+    "sha256": "cdd2ea044d07983e17fb171fd298efd42b32a2b1701d75adc92f64c9e8ef86a7",
+    "reviewed": "pending owner read"
+  },
   "explanation:settings_refused_fraction_unit": {
     "sha256": "a783b1f3f8b1e95a9e0fcfb340ae845287fddce8d9e992537f17fa1a72449c7e",
     "reviewed": "pending owner read"
@@ -3309,6 +3317,34 @@
   },
   "explanation:adjust_condition_line_id": {
     "sha256": "2abcad08224e0354c80431272edc995f149b964c92f1c0c4ab630c8ca59997b4",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_near_short_strike_line": {
+    "sha256": "b8164086ad0d641d1a660c4f711145cdb736b1c8391dd59e3264f38073d7f047",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_near_breakeven_line": {
+    "sha256": "0cc9f1ee90dee63f7a5f554e74f19d5a80f949853b4e7175ed280fb130b19b28",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_preference_refused_unknown": {
+    "sha256": "9a49080710bf4750cf2ee15a8c43c51229e5e914959c6e54b6e2d6675cf2bbbc",
+    "reviewed": "pending owner read"
+  },
+  "explanation:system_playbook_refused_reason": {
+    "sha256": "beeb26cd2068918ec2392c1f25b3f31872eb4cf618ca250c47b8683e9b7f94e4",
+    "reviewed": "pending owner read"
+  },
+  "explanation:system_playbook_refused_stale": {
+    "sha256": "28a9bd5131589a18edccd6f57cb86f4a63f02f02c2fe416b719b9f3c8f33924f",
+    "reviewed": "pending owner read"
+  },
+  "explanation:system_playbook_refused_version": {
+    "sha256": "cfcd0e67e3dec2ab9defb9092d268d4fcffa58175721dc4c2e3f3f10f14a46a7",
+    "reviewed": "pending owner read"
+  },
+  "explanation:system_playbook_refused_approved": {
+    "sha256": "3d8659ca9008d275bb952f2e3bca39c9a015e00a052f92f607e0af6d86443363",
     "reviewed": "pending owner read"
   }
 }

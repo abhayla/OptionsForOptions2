@@ -41,9 +41,6 @@ export const READY_MADE_HINT = 'Please click on a ready-made strategy to load it
 export const LEARN_LINK_TEXT = 'Learn Options Strategies'
 export const LEARN_PATH = '/learn/strategy-education'
 
-/** Quick-pick distances shown per underlying (REQ-079 AC-7 defaults; the server refuses any other distance). */
-export const QUICK_PICK_DISTANCES = { NIFTY: [50, 100, 150, 200], SENSEX: [100, 200, 300, 400] }
-
 /** REQ-079 AC-5, verbatim shape: "Replace the 2 legs in the builder?" */
 export function replacePrompt(count) {
   return `Replace the ${count} ${count === 1 ? 'leg' : 'legs'} in the builder?`

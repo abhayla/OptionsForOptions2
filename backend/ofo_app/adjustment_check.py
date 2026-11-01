@@ -43,7 +43,7 @@ from decimal import Decimal
 from typing import Any, Final
 
 from ofo.adjustment import playbook_eval as pe
-from ofo.adjustment.approaches import Position
+from ofo.adjustment.approaches import Config, Position
 from ofo.adjustment.compare import Cheapest, Column, MarginRead, cheapest_approach
 from ofo.adjustment.offered import offered_now
 from ofo.adjustment.strategy_type import strike_gap_of, type_of
@@ -142,8 +142,8 @@ def _abs_delta(market: MarketInputs, symbol: str) -> Decimal | None:
     return None if g is None or g.delta is None else abs(g.delta)
 
 
-def cheapest_offered(body: Mapping | None, tracked: Tracked, market: MarketInputs, spot: Decimal | None,
-                     rates: Any) -> Cheapest:
+def cheapest_offered(body: Mapping | None, tracked: Tracked, market: MarketInputs, spot: Decimal | None,  # noqa: PLR0913 - the preferences value is a required parameter (GC-SET)
+                     rates: Any, config: Config) -> Cheapest:
     """ADR-221: the cheapest approach ``body`` offers, every one built and priced by the Compare's own path."""
     offered = offered_now(body, tracked.adjustments_used)  # S-11: only exit and reduce at the limit
     if spot is None:  # nothing can be built without spot: none priceable (T-19 is withheld for no spot anyway)
@@ -151,14 +151,15 @@ def cheapest_offered(body: Mapping | None, tracked: Tracked, market: MarketInput
     columns: dict[str, Column] = {}
     tracked = as_of_market(tracked, market)  # as the approaches route builds (market day, listed expiry kind)
     for a in offered:
-        built, priced = priced_approach(a, tracked, market, spot, rates)
+        built, priced = priced_approach(a, tracked, market, spot, rates, config)
         if built is not None and priced is not None:
             columns[a] = Column(built, priced.after, priced.reason, priced.charges_known, MarginRead(None))
     return cheapest_approach(offered, columns, market.chain)
 
 
 def state_of(tracked: Tracked, market: MarketInputs, spot: SpotAnswer, margin: Mapping | None,  # noqa: PLR0913
-             rates: Any, fresh: bool | None, body: Mapping | None = None) -> pe.StrategyState:
+             rates: Any, fresh: bool | None, body: Mapping | None = None, *,
+             config: Config) -> pe.StrategyState:
     position = tracked.position
     rows = {r.tradingsymbol: r for r in market.chain}
     ltp = {x.tradingsymbol: getattr(rows.get(x.tradingsymbol), "ltp", None) for x in position.legs}
@@ -172,7 +173,7 @@ def state_of(tracked: Tracked, market: MarketInputs, spot: SpotAnswer, margin: M
         booked, ((x.side, x.entry, ltp[x.tradingsymbol], qty[x.tradingsymbol]) for x in position.legs))
     left = adjust_money.premium_left((x.side, ltp[x.tradingsymbol], qty[x.tradingsymbol])
                                      for x in position.legs) if priced else None
-    cheap = cheapest_offered(body, tracked, market, value, rates)
+    cheap = cheapest_offered(body, tracked, market, value, rates, config)
     before = price_after(position.legs, position, booked, tracked.paid_charges, (), rates, market)
     gross = None if before.after is None else before.after.gross
     expiry_pnl = None
@@ -212,7 +213,8 @@ def scenario_entry(scn: Any, state: pe.StrategyState, position: Position) -> pe.
 
 
 async def evaluate_and_remember(conn: Any, user_ref: str, strategy_id: int, body: Mapping,  # noqa: PLR0913
-                                state: pe.StrategyState, scn: Any, position: Position) -> pe.Evaluation:
+                                state: pe.StrategyState, scn: Any, position: Position, *,
+                                gap_until: str) -> pe.Evaluation:
     stored = await playbook_store.rule_state(conn, user_ref, strategy_id)
     memory = {k: {"held_at_entry": h, "seen_clear": s} for k, (h, s) in stored.items()}
     entry = scenario_entry(scn, state, position)
@@ -220,7 +222,7 @@ async def evaluate_and_remember(conn: Any, user_ref: str, strategy_id: int, body
         state = dataclasses.replace(state, entry_atm_iv=entry.atm_iv)
     elif not memory:
         entry = state  # tracking just started: this first check is the entry state
-    ev = pe.evaluate(body, state, memory, entry)
+    ev = pe.evaluate(body, state, memory, entry, gap_until=gap_until)
     for rid, mem in ev.memory.items():
         if memory.get(rid) != mem:
             await playbook_store.put_rule_state(conn, user_ref, strategy_id, rid, held_at_entry=mem["held_at_entry"],

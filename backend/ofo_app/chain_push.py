@@ -81,7 +81,14 @@ from sqlalchemy.exc import SQLAlchemyError
 from ofo_app.api_models import ApiModel, CatalogueText, InstrumentId, Money
 from ofo_app.catalogue_picker import PickableContract
 from ofo_app.live_push import POLL_SECONDS, Channel, ChannelClosed, LiveFeed, PushInterval
-from ofo_app.routes.outcome import HealthCode, MarketContext, SettingsReader, label_time, market_state
+from ofo_app.routes.outcome import (
+    HealthCode,
+    MarketContext,
+    SettingsReader,
+    ctx_in_force,
+    label_time,
+    market_state,
+)
 from ofo_app.underlying import Underlying, refusal_of
 
 log = logging.getLogger(__name__)
@@ -512,6 +519,9 @@ class ChainPush:
         self._last_take: float | None = None  # every subscription change: an applied request, a re-pick, a re-centre
         self._shown: tuple | None = None
         self._push_interval = PushInterval(monotonic)
+        # GC-SET 5a: (the feed context it was built from, that context with the settings in force at the last Greeks
+        # refresh); None after a failed read: the socket then answers not-live, never priced on a held/default rate
+        self._priced: tuple[MarketContext, MarketContext] | None = None
         self._interval = 0.0  # replaced by the setting at the first loop tick, before any gate is read
         self._last_send: float | None = None  # EVERY outbound message: a push or an error reply
         self._error_message: UserFacingError | None = None  # the catalogue message the pending error reply carries
@@ -638,7 +648,7 @@ class ChainPush:
         if spot is not None and grid and atm_strike(grid, spot) not in self._window:
             self._take(self._req, self._catalogue)
 
-    def _slow_values(self) -> SlowValues:
+    async def _slow_values(self) -> SlowValues:
         """OI and OI change as last shown, refreshed from the quotes at most every OI_REFRESH_SECONDS; a contract not
         shown yet takes its quote's value at once."""
         ctx, req = self._ctx, self._req
@@ -658,8 +668,17 @@ class ChainPush:
         spot_now = (*_spot_state(ctx, req.underlying), closed)
         # a contract new to the window, or a change of the spot's health: at once (never a 5 s-old Greek off a spot that
         # has since gone unhealthy, ``forward.py``: an unhealthy spot is never used in a calculation)
-        if due or self._model is None or not priced_ids <= self._model_ids or spot_now != self._model_spot:
-            self._model = model_of(ctx, req, ctx.clock())
+        if due or self._model is None or not priced_ids <= self._model_ids or spot_now != self._model_spot \
+                or self._priced is None or self._priced[0] is not ctx:
+            try:  # GC-SET 5a (REQ-167 AC-4): the rate and forward settings in force at THIS refresh, never the
+                # feed's start context; a store that cannot answer shows no Greeks (fail closed), never a held rate
+                priced_ctx = ctx_in_force(ctx, await self._read_settings())
+            except Exception:  # noqa: BLE001 - logged by type; the next refresh reads again
+                log.warning("option chain: the settings could not be read for the Greeks")
+                self._model, self._priced = None, None
+                return self._slow
+            self._priced = (ctx, priced_ctx)
+            self._model = model_of(priced_ctx, req, ctx.clock())
             self._model_ids = priced_ids
             self._model_spot = spot_now
             self.model_runs += 1
@@ -683,8 +702,10 @@ class ChainPush:
             return
         if self._req is not None and self._catalogue is not None:
             live = self._handle is not None
-            slow = self._slow_values() if live else None
-            body = chain_answer(self._ctx, self._req, self._catalogue, self._window, live=live, now=self._now,
+            slow = await self._slow_values() if live else None
+            priced = self._priced[1] if live and self._priced is not None and self._priced[0] is self._ctx else None
+            live = live and priced is not None  # no settings in force for this context: not live, no number shown
+            body = chain_answer(priced or self._ctx, self._req, self._catalogue, self._window, live=live, now=self._now,
                                 slow=slow, unknown=frozenset(self._unknown), model=self._model if live else None)
             shown = _shown_state(body)
             if shown != self._shown:  # something the screen shows changed: the push wins the slot
