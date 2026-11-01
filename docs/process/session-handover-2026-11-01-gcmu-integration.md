@@ -56,6 +56,17 @@ clean tree from start to end).
 - **Checks before the gate:** collect-only over tests_app 5325 tests, 0 errors; non-DB overlap set 2920 passed;
   non-DB overlap app files 445 passed, 1 skipped; DB overlap files (fresh DB each): adjustment_opportunities 14, adjustment_check 8, adjustment_plan 7, background_worker 2 passed.
 
+- **Gate run 1 on f04783b8 (20:25-21:00, 2109 s): red on 2 steps, neither a code defect of the merge.**
+  - `domain_tests`, 1 of 8830: the bundle secret scan read a STALE `frontend/dist` (built 17:57 by GC-SET's gate with
+    GC-SET's Vite config, no manifest); GC-MU's scan (#517) allows the Kite basket `api_key` only through the manifest
+    and fails closed without one. prepush runs the domain tests BEFORE its own frontend build. On the fresh build (21:00,
+    with `.vite/manifest.json`) the same file: 70 passed. Fix for the rerun: build first.
+  - `frontend_unit`, 2 of 1850 (`option-chain.test.js` row 33, attack 6): failed once under the full parallel run, passed
+    in 7 reruns (alone, under CPU load, full suite). Not reproduced, so the root cause is unproven; the shared
+    `mountPage` now waits (bounded) for the settings answer the strike options come from.
+  - Mechanism for both classes: `scripts/orchestrator/merge_preflight.py` (branch build/merge-preflight, owner ask
+    2026-11-01 evening), checked in BEFORE the long gate.
+
 ## PENDING
 - Close: merge `--no-ff` build/gcmu into local feature/adjustments, `prepush.py --full` on that head (heavy slot),
   push fast-forward. Result: coord log + memory note.
