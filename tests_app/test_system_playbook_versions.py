@@ -102,7 +102,7 @@ async def test_core_proof_new_version_reaches_the_next_check_copies_and_plans_un
     assert _t06((await pbs.get(db, user, copy_before.id)).body) == "50"
     plan = await check.resolve(db, user, planned.id, "ic")
     assert (plan.source, _t06(plan.body)) == ("plan", "50")
-    assert (await pbs.get(db, user, system.id)).version == 2  # the system playbook reads as its current version
+    assert (await pbs.get(db, user, system.id)).version == saved.version  # reads as its current version
 
     restored = await sys_store.restore(db, ADMIN, "ic", 1, "back to the approved numbers", 2)
     assert (restored.version, restored.restored_from, _t06(restored.body)) == (3, 1, "50")
@@ -254,7 +254,7 @@ async def test_a_non_admin_is_refused_on_every_route_and_nothing_is_written(env)
     from ofo_app.routes.settings import require_admin  # noqa: PLC0415
 
     def deny():
-        raise HTTPException(status_code=403)  # noqa: PLR2004 - the door takes a plain int status
+        raise HTTPException(status_code=403)  # the door takes a plain int status
 
     body = await _ic_body(env)
     env.app.dependency_overrides[require_admin] = deny

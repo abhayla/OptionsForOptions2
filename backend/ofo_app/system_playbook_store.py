@@ -42,7 +42,7 @@ _HISTORY = text(f"SELECT {_COLUMNS} FROM public.system_playbook_versions "  # no
 _ONE = text(f"SELECT {_COLUMNS} FROM public.system_playbook_versions "  # noqa: S608 - constant columns
             "WHERE strategy_type = :type AND version = :version")
 _LOCK = text("SELECT pg_advisory_xact_lock(hashtext('system_playbook_versions:' || :type))")
-_INSERT = text("INSERT INTO public.system_playbook_versions (strategy_type, version, status, body, reason, saved_by, "
+_INSERT = text("INSERT INTO public.system_playbook_versions (strategy_type, version, status, body, reason, saved_by, "  # noqa: S608 - constant columns
                "restored_from) VALUES (:type, :version, :status, CAST(:body AS JSONB), :reason, :saved_by, "
                f":restored_from) RETURNING {_COLUMNS}")
 
@@ -60,7 +60,7 @@ class SystemVersion:
 
 
 def _version(row: Any) -> SystemVersion:
-    return SystemVersion(strategy_type=row[0], version=row[1], status=row[2], body=pbs._load(row[3]),  # noqa: SLF001 - the store's own float-refusing reader
+    return SystemVersion(strategy_type=row[0], version=row[1], status=row[2], body=pbs._load(row[3]),
                          reason=row[4], saved_by=row[5], restored_from=row[6], saved_at=row[7])
 
 
@@ -107,7 +107,7 @@ async def _append(conn: Any, admin: str, base: SystemVersion, *, status: str, bo
     try:
         async with conn.begin_nested():
             row = (await conn.execute(_INSERT, {
-                "type": base.strategy_type, "version": base.version + 1, "status": status, "body": pbs._dump(body),  # noqa: SLF001 - the store's one JSON writer
+                "type": base.strategy_type, "version": base.version + 1, "status": status, "body": pbs._dump(body),
                 "reason": reason, "saved_by": admin, "restored_from": restored_from})).one()
             await audit_store.append(conn, EventType.ADMIN_CHANGE_RECORDED, actor=admin,
                                      correlation_id=f"sysplay-{uuid.uuid4().hex}",

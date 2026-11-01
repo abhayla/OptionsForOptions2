@@ -10553,6 +10553,140 @@
         "title": "SuggestionOut",
         "type": "object"
       },
+      "SystemHistoryOut": {
+        "additionalProperties": false,
+        "properties": {
+          "versions": {
+            "items": {
+              "$ref": "#/components/schemas/SystemVersionOut"
+            },
+            "title": "Versions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "versions"
+        ],
+        "title": "SystemHistoryOut",
+        "type": "object"
+      },
+      "SystemReasonIn": {
+        "additionalProperties": false,
+        "properties": {
+          "base_version": {
+            "title": "Base Version",
+            "type": "integer"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason",
+          "base_version"
+        ],
+        "title": "SystemReasonIn",
+        "type": "object"
+      },
+      "SystemSaveIn": {
+        "additionalProperties": false,
+        "properties": {
+          "base_version": {
+            "title": "Base Version",
+            "type": "integer"
+          },
+          "body": {
+            "additionalProperties": true,
+            "title": "Body",
+            "type": "object"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "body",
+          "reason",
+          "base_version"
+        ],
+        "title": "SystemSaveIn",
+        "type": "object"
+      },
+      "SystemVersionOut": {
+        "additionalProperties": false,
+        "properties": {
+          "body": {
+            "additionalProperties": true,
+            "title": "Body",
+            "type": "object"
+          },
+          "current": {
+            "title": "Current",
+            "type": "boolean"
+          },
+          "draft": {
+            "title": "Draft",
+            "type": "boolean"
+          },
+          "restored_from": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Restored From"
+          },
+          "saved_at": {
+            "format": "date-time",
+            "title": "Saved At",
+            "type": "string"
+          },
+          "saved_by": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Saved By",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "approved",
+              "draft"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "type": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Type",
+            "type": "string"
+          },
+          "type_name": {
+            "title": "Type Name"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "type",
+          "type_name",
+          "version",
+          "status",
+          "draft",
+          "current",
+          "restored_from",
+          "saved_by",
+          "saved_at",
+          "body"
+        ],
+        "title": "SystemVersionOut",
+        "type": "object"
+      },
       "TableOut": {
         "additionalProperties": false,
         "properties": {
@@ -15501,6 +15635,202 @@
           }
         },
         "summary": "Strategy Templates"
+      }
+    },
+    "/api/system-playbooks/{strategy_type}/approve": {
+      "post": {
+        "description": "AC-3: a Draft system playbook marked approved (a new version, same numbers). The decision row is the recording\nsession's (REQ-169 AC-3), not this route's.",
+        "operationId": "approve_system_playbook_api_system_playbooks__strategy_type__approve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_type",
+            "required": true,
+            "schema": {
+              "title": "Strategy Type",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SystemReasonIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemVersionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Approve System Playbook"
+      }
+    },
+    "/api/system-playbooks/{strategy_type}/versions": {
+      "get": {
+        "operationId": "system_playbook_history_api_system_playbooks__strategy_type__versions_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_type",
+            "required": true,
+            "schema": {
+              "title": "Strategy Type",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemHistoryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "System Playbook History"
+      },
+      "post": {
+        "description": "AC-1/AC-2: the editor's whole pre-save check, then the next version with the admin, time and reason.",
+        "operationId": "save_system_playbook_api_system_playbooks__strategy_type__versions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_type",
+            "required": true,
+            "schema": {
+              "title": "Strategy Type",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SystemSaveIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemVersionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Save System Playbook"
+      }
+    },
+    "/api/system-playbooks/{strategy_type}/versions/{version}/restore": {
+      "post": {
+        "description": "AC-2 \"Restore this version\": an earlier version's body becomes current as a NEW version.",
+        "operationId": "restore_system_playbook_api_system_playbooks__strategy_type__versions__version__restore_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_type",
+            "required": true,
+            "schema": {
+              "title": "Strategy Type",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "title": "Version",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SystemReasonIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemVersionOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Restore System Playbook"
       }
     },
     "/broker/zerodha/login": {

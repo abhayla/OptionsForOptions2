@@ -50,18 +50,18 @@ class _In(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
 
-class SaveIn(_In):
+class SystemSaveIn(_In):
     body: dict[str, Any]
     reason: StrictStr
     base_version: StrictInt
 
 
-class ReasonIn(_In):
+class SystemReasonIn(_In):
     reason: StrictStr
     base_version: StrictInt
 
 
-class VersionOut(ApiModel):
+class SystemVersionOut(ApiModel):
     type: Identifier
     type_name: CatalogueText
     version: int
@@ -74,12 +74,12 @@ class VersionOut(ApiModel):
     body: PlaybookBody
 
 
-class HistoryOut(ApiModel):
-    versions: list[VersionOut]  # newest (current) first
+class SystemHistoryOut(ApiModel):
+    versions: list[SystemVersionOut]  # newest (current) first
 
 
-def _out(v: store.SystemVersion, current: int) -> VersionOut:
-    return VersionOut.model_validate({
+def _out(v: store.SystemVersion, current: int) -> SystemVersionOut:
+    return SystemVersionOut.model_validate({
         "type": v.strategy_type,
         "type_name": render_explanation("adjust_check_type_name", name=SHOWN_NAMES[v.strategy_type]),
         "version": v.version, "status": v.status, "draft": v.status == "draft", "current": v.version == current,
@@ -115,28 +115,29 @@ def _type(strategy_type: str) -> str:
     return strategy_type
 
 
-@router.get(f"{BASE}/versions", response_model=HistoryOut)
+@router.get(f"{BASE}/versions", response_model=SystemHistoryOut)
 async def system_playbook_history(strategy_type: str, db: Db) -> object:
-    async def work() -> HistoryOut:
+    async def work() -> SystemHistoryOut:
         rows = await store.history(db, _type(strategy_type))
-        return HistoryOut.model_validate({"versions": [_out(v, rows[0].version) for v in rows]})
+        return SystemHistoryOut.model_validate({"versions": [_out(v, rows[0].version) for v in rows]})
     return await _run(db, work)
 
 
-@router.post(f"{BASE}/versions", status_code=201, response_model=VersionOut)
-async def save_system_playbook(strategy_type: str, data: SaveIn, db: Db, admin: Admin) -> object:
+@router.post(f"{BASE}/versions", status_code=201, response_model=SystemVersionOut)
+async def save_system_playbook(strategy_type: str, data: SystemSaveIn, db: Db, admin: Admin) -> object:
     """AC-1/AC-2: the editor's whole pre-save check, then the next version with the admin, time and reason."""
-    async def work() -> VersionOut:
+    async def work() -> SystemVersionOut:
         precheck(_type(strategy_type), data.body)
         saved = await store.save(db, admin, strategy_type, data.body, data.reason, data.base_version)
         return _out(saved, saved.version)
     return await _run(db, work)
 
 
-@router.post(f"{BASE}/versions/{{version}}/restore", status_code=201, response_model=VersionOut)
-async def restore_system_playbook(strategy_type: str, version: int, data: ReasonIn, db: Db, admin: Admin) -> object:
+@router.post(f"{BASE}/versions/{{version}}/restore", status_code=201, response_model=SystemVersionOut)
+async def restore_system_playbook(strategy_type: str, version: int, data: SystemReasonIn, db: Db,
+                                  admin: Admin) -> object:
     """AC-2 "Restore this version": an earlier version's body becomes current as a NEW version."""
-    async def work() -> VersionOut:
+    async def work() -> SystemVersionOut:
         earlier = await store.version(db, _type(strategy_type), version)
         precheck(strategy_type, earlier.body)
         saved = await store.restore(db, admin, strategy_type, version, data.reason, data.base_version)
@@ -144,11 +145,11 @@ async def restore_system_playbook(strategy_type: str, version: int, data: Reason
     return await _run(db, work)
 
 
-@router.post(f"{BASE}/approve", status_code=201, response_model=VersionOut)
-async def approve_system_playbook(strategy_type: str, data: ReasonIn, db: Db, admin: Admin) -> object:
+@router.post(f"{BASE}/approve", status_code=201, response_model=SystemVersionOut)
+async def approve_system_playbook(strategy_type: str, data: SystemReasonIn, db: Db, admin: Admin) -> object:
     """AC-3: a Draft system playbook marked approved (a new version, same numbers). The decision row is the recording
     session's (REQ-169 AC-3), not this route's."""
-    async def work() -> VersionOut:
+    async def work() -> SystemVersionOut:
         saved = await store.approve(db, admin, _type(strategy_type), data.reason, data.base_version)
         return _out(saved, saved.version)
     return await _run(db, work)
