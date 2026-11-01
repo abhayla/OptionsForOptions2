@@ -57,6 +57,7 @@ RATE = D("0.065")
 GRID = [D(s) for s in (22450, 22500, 22550, 22600)]
 HTTP_OK, HTTP_UNPROCESSABLE, TWO_LEASES = 200, 422, 2
 WIDTH_10_ROWS = 21  # 10 strikes each side + the ATM
+DEFAULT_WIDTH_VALUE = 10  # REQ-080 AC-1: the first choice
 LEVELS, WIDTH_20, WIDTH_40_ROWS, WINDOW_IDS = 5, 20, 81, 9  # depth levels; a width; 2 x 40 + 1; 4 strikes' ids + index
 NO_QUOTE_CELLS, TOLERANCE, PARITY_STRIKES = 6, 0.01, 3  # 8 cells less the 2 priced; forward tolerance; AC-6
 PRICES = {("22500", "CE"): ("151.30", 3218475), ("22550", "PE"): ("145.10", 4022200)}
@@ -760,6 +761,10 @@ def test_ac_8_when_depth_cannot_be_read_it_says_so_with_the_reason_and_never_an_
 
 # ---- the app's door -------------------------------------------------------------------------------------------------
 
+async def _defaults_in_force():
+    return registry_defaults()
+
+
 def _app_client(feed, cat: ChainCatalogue, fut: FuturesCatalogue):
     from ofo_app.main import create_app  # noqa: PLC0415 - built per test, no lifespan (no database)
     from ofo_app.routes import outcome  # noqa: PLC0415
@@ -776,6 +781,7 @@ def _app_client(feed, cat: ChainCatalogue, fut: FuturesCatalogue):
     app.dependency_overrides[outcome.get_answer_clock] = lambda: (lambda: T0)
     app.dependency_overrides[leg_picker.get_picker_reader] = lambda: reader
     app.dependency_overrides[leg_picker.get_futures_reader] = lambda: futures_reader
+    app.dependency_overrides[outcome.get_settings_reader] = lambda: _defaults_in_force  # no store
     return TestClient(app)
 
 
@@ -787,7 +793,7 @@ def test_the_three_routes_answer_through_the_door_and_refuse_bad_input():
     query = {"underlying": "NIFTY", "expiry": EXPIRY.isoformat()}
     ok = client.get("/api/leg-picker/strikes", params=query)
     assert ok.status_code == HTTP_OK, ok.text
-    assert ok.json()["atm_strike"] == "22550.00" and ok.json()["width"] == leg_picker.DEFAULT_WIDTH
+    assert ok.json()["atm_strike"] == "22550.00" and ok.json()["width"] == DEFAULT_WIDTH_VALUE
     assert client.get("/api/leg-picker/strikes", params={**query, "width": "20"}).json()["width"] == WIDTH_20
     for bad in ("15", "0", "x", "50", "-10"):
         assert client.get("/api/leg-picker/strikes", params={**query, "width": bad}).status_code == HTTP_UNPROCESSABLE
@@ -809,7 +815,7 @@ def test_ac_7_the_picker_has_no_order_route_and_imports_nothing_that_places_an_o
     imported = {n.module or "" for n in ast.walk(tree) if isinstance(n, ast.ImportFrom)}
     imported |= {a.name for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names}
     allowed = {"__future__", "asyncio", "contextlib",
-               "datetime", "collections.abc", "dataclasses", "decimal", "typing", "fastapi",
+               "datetime", "collections.abc", "dataclasses", "decimal", "typing", "fastapi", "fastapi.exceptions",
                "pydantic", "sqlalchemy.exc", "ofo.engine.chain_values", "ofo.marketdata.forward",
                "ofo.timeutil", "ofo.settings", "ofo.marketdata.provider", "ofo.marketdata.quote", "ofo.money",
                    "ofo.outcome.snapshot",
@@ -824,8 +830,8 @@ def test_ac_7_the_picker_has_no_order_route_and_imports_nothing_that_places_an_o
 
 def test_the_picker_reuses_the_chain_catalogue_helpers_and_does_not_change_them():
     """AC-2: the helpers it reuses keep their signatures (the chain read and push are unchanged by this row)."""
-    assert max(leg_picker.WIDTHS) > chain_strikes_each_side(registry_defaults())
-    assert leg_picker.WIDTHS == (10, 20, 30, 40)
+    assert max(leg_picker.DEFAULT_WIDTHS) > chain_strikes_each_side(registry_defaults())
+    assert leg_picker.DEFAULT_WIDTHS == (10, 20, 30, 40)  # the registry defaults, REQ-080 AC-1: they never change
 
 
 def test_core_the_real_router_over_http_on_a_real_kite_provider_replaying_the_recorded_nifty_session():
@@ -865,6 +871,7 @@ def test_core_the_real_router_over_http_on_a_real_kite_provider_replaying_the_re
     app.dependency_overrides[outcome.get_answer_clock] = lambda: clock
     app.dependency_overrides[leg_picker.get_picker_reader] = lambda: reader
     app.dependency_overrides[leg_picker.get_futures_reader] = lambda: futures_reader
+    app.dependency_overrides[outcome.get_settings_reader] = lambda: _defaults_in_force  # no store
     client = TestClient(app)
     query = {"underlying": "NIFTY", "expiry": EXPIRY.isoformat()}
     client.get(leg_picker.STRIKES_PATH, params=query)  # the first read takes the lease, before the ticks arrive
@@ -877,7 +884,7 @@ def test_core_the_real_router_over_http_on_a_real_kite_provider_replaying_the_re
     response = client.get(leg_picker.STRIKES_PATH, params=query)
     assert response.status_code == HTTP_OK, response.text
     out = response.json()
-    assert out["state"] == "LIVE" and out["width"] == leg_picker.DEFAULT_WIDTH
+    assert out["state"] == "LIVE" and out["width"] == DEFAULT_WIDTH_VALUE
     assert len(out["rows"]) == WIDTH_10_ROWS and sum(r["is_atm"] for r in out["rows"]) == 1
     assert out["atm_strike"] is not None and [r["strike"] for r in out["rows"] if r["is_atm"]] == [out["atm_strike"]]
     priced = [c for r in out["rows"] for c in (r["ce"], r["pe"]) if c and c["ltp"] is not None]

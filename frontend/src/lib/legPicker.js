@@ -74,9 +74,8 @@ export function buildDraft(legs) {
 // ---- REQ-080 (W-147): the Strikes and Futures tabs, multi-select and the depth popup. Display only: every price, IV,
 // delta, forward and depth level is the string the server sent; a null shows '-' with the server's reason. ----
 
-/** REQ-080 AC-1: strikes each side of ATM the user can choose (the backend's WIDTHS); 10 is the default. */
-export const STRIKE_WIDTHS = Object.freeze([10, 20, 30, 40])
-export const DEFAULT_STRIKE_WIDTH = 10
+// REQ-080 AC-1 / REQ-167 AC-5: the strikes-each-side choices are the server's (the strikes answer's `widths` and
+// `default_width`); the browser keeps no copy.
 /** How many lots (or lot-size multiples) a cell's selector lists. */
 export const LOT_CHOICES = 10
 /** The picker refreshes the open list this often (the server reads the feed at most once a second, ADR-012). */

@@ -13,17 +13,14 @@ import DepthPopup from '@/components/strategy/DepthPopup.vue'
 import MarketClosedBanner from '@/components/states/MarketClosedBanner.vue'
 import { capturedCaption, contractName, daysByExpiry, expiryText, expiryWithDays, istTime, strikeLabel } from '@/lib/displayFormat'
 import { marketClosedText } from '@/lib/sharedStateText'
-import { QUICK_PICK_DISTANCES } from '@/lib/readyMade'
 import { healthSentence } from '@/lib/dataHealthText'
 import { oiBarMax, oiBarWidth as barWidthOf } from '@/lib/oiBars'
 import {
-  DEFAULT_STRIKE_WIDTH,
   FORWARD_LABEL,
   LEG_NOT_LIVE_LABEL,
   NOT_CONNECTED_LABEL,
   PICKER_REFRESH_MS,
   REPRICE_PROMPT,
-  STRIKE_WIDTHS,
   UNDERLYINGS,
   centreText,
   contractByInstrumentId,
@@ -155,7 +152,14 @@ function onType(value) {
 // ---- REQ-080: Strikes / Futures tabs, multi-select and Done (W-147). Every figure is what the server sent; a read that
 // fails or is superseded leaves NO old list on screen. ----
 const tab = ref('strikes')
-const width = ref(DEFAULT_STRIKE_WIDTH)
+// REQ-167 AC-5: the width choices and the one shown first are the server's (the strikes answer carries them); the
+// browser keeps no number. null = none picked: the first read asks for none and the server answers its first choice.
+const width = ref(null)
+const widthChoices = ref([]) // kept from the last answer, so the select does not empty while the next list loads
+const shownWidth = computed(() => width.value ?? strikesData.value?.default_width ?? '')
+function onWidth(event) {
+  width.value = widthChoices.value.find((w) => String(w) === event.target.value) ?? null // one of the served choices
+}
 const lotsMode = ref('lots') // 'lots' | 'quantity' (the per-user setting is REQ-138; here a local choice)
 const strikesData = ref(null)
 const strikesFailed = ref(false)
@@ -193,9 +197,11 @@ async function loadStrikes() {
   if (!expiry.value) return
   const mine = ++stSeq
   try {
-    const res = await api.get(`/leg-picker/strikes?underlying=${underlying.value}&expiry=${expiry.value}&width=${width.value}`)
+    const widthPart = width.value === null ? '' : `&width=${width.value}`
+    const res = await api.get(`/leg-picker/strikes?underlying=${underlying.value}&expiry=${expiry.value}${widthPart}`)
     if (mine !== stSeq) return
     strikesData.value = res.data
+    widthChoices.value = res.data.widths ?? []
     strikesFailed.value = false
   } catch {
     if (mine !== stSeq) return
@@ -315,7 +321,8 @@ function setTypeSide(side) {
   const ids = Object.keys(picked.value)
   if (ids.length) picked.value = Object.fromEntries(ids.map((id) => [id, side]))
 }
-const quickDistances = computed(() => QUICK_PICK_DISTANCES[underlying.value] ?? [])
+// REQ-167 / REQ-079 AC-7: the distances are the ones the strikes answer carries (the server accepts only these)
+const quickDistances = computed(() => strikesData.value?.quick_pick_distances ?? [])
 /** D-C08 / D-C24: Quick Select asks the EXISTING quick-pick call (POST /strategies/quick-pick) which strikes make the
  *  strangle; its legs become the selection, so Done prices and adds them like any pick. A failed or empty answer picks nothing. */
 async function quickSelect(distance) {
@@ -643,8 +650,8 @@ defineExpose({ startEdit, showStrikes })
         <button type="button" class="h-8 rounded border border-line px-2" aria-haspopup="dialog" :aria-expanded="settingsOpen ? 'true' : 'false'" data-testid="picker-settings" @click="settingsOpen = !settingsOpen">Settings</button>
         <span v-show="settingsOpen" role="dialog" aria-label="Picker settings" class="absolute right-0 top-full z-10 mt-1 flex w-[240px] flex-col gap-2 rounded-lg border border-line bg-surface p-3 shadow-menu" data-testid="picker-settings-popover">
           <label class="flex items-center justify-between gap-2">Strikes each side
-            <select v-model.number="width" class="rounded border border-line px-1" data-testid="pick-width">
-              <option v-for="w in STRIKE_WIDTHS" :key="w" :value="w">{{ w }}</option>
+            <select :value="shownWidth" class="rounded border border-line px-1" data-testid="pick-width" :disabled="!widthChoices.length" @change="onWidth">
+              <option v-for="w in widthChoices" :key="w" :value="w">{{ w }}</option>
             </select>
           </label>
           <label class="flex items-center justify-between gap-2">Size in

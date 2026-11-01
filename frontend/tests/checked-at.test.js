@@ -100,7 +100,7 @@ describe('Checked at on the four non-normal states', () => {
     }
     const w = await open()
     const cellOf = { instrument_id: 'NSE_FO:44624', lot_size: 65, ltp: null, oi: null, iv_percent: null, delta: null, health: 'unavailable', at: null }
-    answers['GET /leg-picker/strikes?underlying=NIFTY&expiry=2026-10-13&width=10'] = {
+    answers['GET /leg-picker/strikes?underlying=NIFTY&expiry=2026-10-13'] = {
       state: 'LIVE', reason: null, underlying: 'NIFTY', expiry: '2026-10-13', width: 10, spot: '22533.25', spot_at: STAMP, centre: 'LIVE_SPOT',
       atm_strike: '22800.00', answered_at: STAMP, market_closed: false, rows: [{ strike: '22800.00', is_atm: true, ce: cellOf, pe: null }],
     }
