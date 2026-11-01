@@ -585,3 +585,10 @@ async def test_a_check_that_raises_after_active_leaves_the_strategy_paused_not_a
     assert w.status[FIRST_ID] is background.MonitoringStatus.PAUSED
     assert w.paused_reason[FIRST_ID] is background.PriceState.CHECK_FAILED
     assert w.errors == [(FIRST_ID, "RuntimeError")]
+
+
+def test_recent_checks_and_errors_are_bounded():
+    kept: list = []
+    for i in range(background.RECENT_KEPT + 500):
+        background._keep_recent(kept, i)
+    assert len(kept) == background.RECENT_KEPT and kept[0] == 500 and kept[-1] == background.RECENT_KEPT + 499  # noqa: PLR2004 - the 500 overflow

@@ -77,6 +77,9 @@ from ofo_app.routes.adjustment import MarketInputs
 log = logging.getLogger("ofo_app.background")
 
 DEFAULT_MAX_PER_CYCLE: Final = 200  # strategies checked in one cycle; the rest roll to the next (B4 (a))
+#: the recent checks and errors kept in memory for tests and status (a long-running process must not grow without end:
+#: 1,000 strategies checked each second would add ~21.6 million entries in one market day)
+RECENT_KEPT: Final = 1000
 REBUILD_SECONDS: Final = 30  # the monitor set is re-read this often, so a newly tracked strategy joins (AC-3: 60 s)
 _MICROS: Final = 1_000_000
 
@@ -306,7 +309,7 @@ class Worker:
             await self.rebuild()
         except Exception as exc:  # contained to this step: the previous list stays
             log.exception("background: re-reading the strategy list failed; keeping the last list")
-            self.errors.append((0, type(exc).__name__))
+            _keep_recent(self.errors, (0, type(exc).__name__))
 
     def background_seconds(self) -> Decimal:
         return self.valve.slowed(calc_speeds.read_speeds().background)
@@ -317,7 +320,7 @@ class Worker:
             self._speed = self.background_seconds()
         except Exception as exc:  # contained to this step
             log.exception("background: reading the background speed failed")
-            self.errors.append((0, type(exc).__name__))
+            _keep_recent(self.errors, (0, type(exc).__name__))
         return self._speed
 
     async def _check_one(self, w: Watched, now: datetime.datetime, every: Decimal) -> bool:
@@ -340,7 +343,7 @@ class Worker:
         await self._recorder(w, state)
         self._signature[w.strategy_id] = sig
         self._last_check[w.strategy_id] = now
-        self.checks.append((w.strategy_id, now))
+        _keep_recent(self.checks, (w.strategy_id, now))
         return True
 
     async def cycle(self) -> None:
@@ -361,7 +364,7 @@ class Worker:
                 ran += await self._check_one(w, now, every)
             except Exception as exc:  # REQ-115 AC-9: one strategy's failure never stops the others
                 log.exception("background: strategy %s check failed", w.strategy_id)
-                self.errors.append((w.strategy_id, type(exc).__name__))
+                _keep_recent(self.errors, (w.strategy_id, type(exc).__name__))
                 self.status[w.strategy_id] = MonitoringStatus.PAUSED  # not checked: never shown as active
                 self.paused_reason[w.strategy_id] = PriceState.CHECK_FAILED
                 self._signature.pop(w.strategy_id, None)
@@ -378,9 +381,16 @@ class Worker:
                 await self.cycle()
             except Exception as exc:  # one cycle's failure never ends the role (CancelledError is not an Exception)
                 log.exception("background: a cycle failed; the next cycle runs")
-                self.errors.append((0, type(exc).__name__))
+                _keep_recent(self.errors, (0, type(exc).__name__))
             wait = self._speed_safely() or Decimal(1)  # read again for the sleep; no good speed yet -> 1 s
             await self._sleep(float(wait))  # float-ok: asyncio.sleep takes seconds as float
+
+
+def _keep_recent(kept: list, item: object) -> None:
+    """Append ``item`` and drop the oldest entries beyond ``RECENT_KEPT``."""
+    kept.append(item)
+    if len(kept) > RECENT_KEPT:
+        del kept[:-RECENT_KEPT]
 
 
 async def owner_lister(provider: Any) -> list[Watched]:
