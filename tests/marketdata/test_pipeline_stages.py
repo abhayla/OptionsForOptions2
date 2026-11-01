@@ -44,6 +44,8 @@ MAY_IMPORT_FEED_HEALTH = {
     "ofo_app.routes.outcome": "market_closed_for only: the market-state answer the outcome carries (REQ-114 AC-7)",
     "ofo.outcome.snapshot": "market_closed_for only: the snapshot market_closed every outcome path reads (ADR-200)",
     "ofo.marketdata.spot_source": "FEED_STALE only: the one freshness number the spot resolver reuses (REQ-155)",
+    "ofo_app.background": "market_closed_for only: the one market-state answer that skips a closed-market cycle "
+                          "(ADR-220 (1) background role, REQ-165)",
 }
 
 

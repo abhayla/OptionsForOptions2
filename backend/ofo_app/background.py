@@ -505,7 +505,10 @@ async def owner_lister(provider: Any) -> list[Watched]:
 
 
 async def _serve() -> int:  # pragma: no cover - the process wiring; each part is tested on its own
-    from ofo_app import catalogue_store, feed_mode  # noqa: PLC0415
+    from ofo_app import feed_mode  # noqa: PLC0415
+    # live rows by key only (the provider's instrument list); each leg's stored id reached its terms through
+    # tracked_contracts.resolve in read_tracked, never through the catalogue store here
+    from ofo_app.catalogue_store import load_catalogue  # noqa: PLC0415
     from ofo_app.db import get_engine  # noqa: PLC0415
     from ofo_app.feed_bus import BusSocket  # noqa: PLC0415
     from ofo_app.live_market import (  # noqa: PLC0415
@@ -515,7 +518,7 @@ async def _serve() -> int:  # pragma: no cover - the process wiring; each part i
         listed_for_kite,
     )
     async with get_engine().connect() as conn:
-        catalogue = await catalogue_store.load_catalogue(conn)
+        catalogue = await load_catalogue(conn)
 
     def clock() -> datetime.datetime:
         return datetime.datetime.now(IST)

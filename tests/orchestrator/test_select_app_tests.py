@@ -96,6 +96,7 @@ PR241_SELECTION = {
     "tests_app/test_outcome_target_badge.py", "tests_app/test_outcome_target_booked.py",
     "tests_app/test_paper_list_figures.py", "tests_app/test_paper_reason_texts.py", "tests_app/test_paper_routes.py",
     "tests_app/test_paper_totals.py", "tests_app/test_paper_triggers_routes.py",
+    "tests_app/test_adjustment_opportunities.py",  # GC-MU A3: its card-mark tests call GET /strategies (a diff route)
 }
 
 

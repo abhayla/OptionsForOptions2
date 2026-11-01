@@ -15,7 +15,8 @@ BACKEND = pathlib.Path(roles.__file__).resolve().parents[1]
 def test_the_five_roles_of_adr_220_are_named_with_their_start_modules():
     assert [r.name for r in roles.ROLES] == ["api", "maths", "user orders", "liveprices", "background"]
     assert {r.name: r.start_module for r in roles.ROLES} == {
-        "api": None, "maths": None, "user orders": None, "liveprices": "ofo_app.liveprices", "background": None}
+        "api": None, "maths": None, "user orders": None, "liveprices": "ofo_app.liveprices",
+        "background": "ofo_app.background"}  # GC-MU step 4: the background role ships (REQ-165)
 
 
 def test_python_m_ofo_app_liveprices_help_exits_0_without_starting_the_feed():
