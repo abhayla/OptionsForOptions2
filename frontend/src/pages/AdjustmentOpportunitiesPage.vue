@@ -12,7 +12,7 @@
         <li v-for="c in reply.counts" :key="c.outcome" class="rounded border border-line px-2 py-0.5 text-xs" :data-testid="`opp-count-${c.outcome}`">{{ c.text }}: {{ c.count }}</li>
       </ul>
       <p v-if="reply.empty_text" class="mt-4 text-sm" data-testid="opp-empty">{{ reply.empty_text }}</p>
-      <div v-else class="mt-3 max-w-full overflow-x-auto" data-testid="opp-scroll">
+      <div v-else class="relative mt-3 max-w-full overflow-x-auto" data-testid="opp-scroll">
         <table class="w-full min-w-[640px] text-sm">
           <thead>
             <tr class="border-b border-line text-ink-muted">

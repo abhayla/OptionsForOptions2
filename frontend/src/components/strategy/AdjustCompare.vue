@@ -12,8 +12,8 @@
 
     <template v-else-if="reply">
       <div v-if="picked.length" class="flex flex-wrap items-center gap-2 text-sm" data-testid="adjust-scope">
-        <label class="flex items-center gap-2">Approaches in the compare
-          <select v-model="scope" class="h-9 rounded border border-line px-2" data-testid="adjust-scope-select">
+        <label class="flex min-w-0 max-w-full flex-wrap items-center gap-2">Approaches in the compare
+          <select v-model="scope" class="h-9 max-w-full rounded border border-line px-2" data-testid="adjust-scope-select">
             <option value="all">All {{ allCount }} that apply</option>
             <option value="picked">Only the ones picked in the drawer</option>
           </select>
@@ -141,8 +141,8 @@
       </div>
 
       <div class="flex flex-wrap items-center gap-2 rounded-lg border border-line bg-surface p-3" data-testid="adjust-prepare">
-        <label class="flex items-center gap-2 text-sm">Approach to prepare
-          <select v-model="pick" class="h-9 rounded border border-line px-2" :disabled="!pickable.length" data-testid="adjust-pick">
+        <label class="flex min-w-0 max-w-full flex-wrap items-center gap-2 text-sm">Approach to prepare
+          <select v-model="pick" class="h-9 max-w-full rounded border border-line px-2" :disabled="!pickable.length" data-testid="adjust-pick">
             <option v-for="x in pickable" :key="x.a.id" :value="x.a.id">{{ x.a.name ?? x.a.id }}</option>
           </select>
         </label>

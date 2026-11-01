@@ -12,8 +12,8 @@
           <option v-for="t in types" :key="t.key" :value="t.key">{{ t.name }}</option>
         </select>
       </label>
-      <label class="flex flex-col gap-1 text-xs font-medium text-ink-muted">Playbook
-        <select :value="pickedId" class="h-9 min-w-64 rounded-lg border border-line bg-surface px-2 text-sm text-ink" data-testid="pb-pick" @change="pickPlaybook($event.target.value)">
+      <label class="flex min-w-0 max-w-full flex-col gap-1 text-xs font-medium text-ink-muted">Playbook
+        <select :value="pickedId" class="h-9 min-w-64 max-w-full rounded-lg border border-line bg-surface px-2 text-sm text-ink" data-testid="pb-pick" @change="pickPlaybook($event.target.value)">
           <option v-for="p in playbooks" :key="p.id" :value="p.id">{{ p.name }}{{ p.draft ? ' (Draft)' : '' }}{{ p.active ? ' - active' : '' }}</option>
         </select>
       </label>
