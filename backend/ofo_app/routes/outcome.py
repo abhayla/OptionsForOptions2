@@ -21,7 +21,6 @@ from decimal import Decimal
 from typing import Annotated, Awaitable, Callable, Iterable, Literal, Mapping, Union
 
 from fastapi import APIRouter, Depends
-from fastapi.exceptions import RequestValidationError
 from ofo.charges import ChargeRates
 from ofo.errors import render
 from ofo.errors.slots import INT_ABS_MAX
@@ -60,7 +59,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StrictBool, St
 
 from ofo_app import charge_rates_store, db, settings_store
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier, InstrumentId, Money, echo_seq
-from ofo_app.errors import ClosedRoute
+from ofo_app.errors import ClosedRoute, refuse_request
 from ofo_app.outcome_margin import OutcomeMargin, PlannedOrderIn, margin_answer
 from ofo_app.strategy_refused import StrategyRefused
 from ofo_app.underlying import Underlying
@@ -1003,11 +1002,10 @@ def checked_choice(req: OutcomeRequest, settings: Mapping[str, Decimal]) -> tupl
     base = req.scenario_base(settings)  # outside the try: a bad stored combination is an internal error, not a 422
     try:
         if req.payoff_step is not None and Decimal(req.payoff_step) not in calc.payoff_steps(settings):
-            allowed = ", ".join(f"{s:f}" for s in calc.payoff_steps(settings))
-            raise ValueError(f"payoff_step must be one of {allowed}")
+            raise ValueError("payoff_step")  # off the allow-list: the same 422 as a range the override refuses
         return base, req.range_override(base)
-    except ValueError as exc:
-        raise RequestValidationError([{"type": "value_error", "loc": ("body",), "msg": str(exc), "input": None}]) from exc
+    except ValueError:
+        refuse_request(("body",), "value_error")  # the ValueError's text is never shown (the 422 shows no msg)
 
 
 def outcome_response(req: OutcomeRequest, ctx: MarketContext | None,  # noqa: PLR0913 - one shared computation; rates is the sixth input

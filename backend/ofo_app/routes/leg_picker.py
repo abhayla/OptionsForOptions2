@@ -39,7 +39,6 @@ from decimal import Decimal
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Query
-from fastapi.exceptions import RequestValidationError
 from ofo.engine.chain_values import ChainGreeks, chain_greeks
 from ofo.marketdata.forward import ExpiryForward, ForwardQuality, ForwardUnavailable, parity_forward
 from ofo.marketdata.provider import PACKET_WITHOUT_DAY_FIELDS, DayStatsAnswer, DayStatsReason, NotSupported
@@ -62,7 +61,7 @@ from ofo_app.chain_push import (
     stored_chain,
     strike_grid,
 )
-from ofo_app.errors import ClosedRoute
+from ofo_app.errors import ClosedRoute, refuse_request
 from ofo_app.live_push import LiveFeed
 from ofo_app.outcome_oi import oi_of, price_counts
 from ofo_app.routes import live
@@ -116,8 +115,7 @@ def width_in_force(asked: int | None, widths: tuple[int, ...]) -> int:
     if asked is None:
         return widths[0]
     if asked not in widths:
-        raise RequestValidationError([{"type": "enum", "loc": ("query", "width"),
-                                       "msg": f"width must be one of {widths}", "input": asked}])
+        refuse_request(("query", "width"), "enum", asked)
     return asked
 
 

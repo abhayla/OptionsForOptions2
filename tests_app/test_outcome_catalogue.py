@@ -22,6 +22,7 @@ from marketdata._kite_fixture import all_instrument_ids, new_provider, replay  #
 
 from ofo.errors.explanations import ExplanationText  # noqa: E402
 from ofo.marketdata.kite_provider import IST  # noqa: E402
+from ofo.settings import defaults as settings_defaults  # noqa: E402
 
 VALUATION = datetime.datetime(2026, 10, 8, 9, 20, 9, tzinfo=IST)
 RATE = Decimal("0.065")
@@ -58,7 +59,7 @@ def _response(provider, with_provider=True):
     from ofo_app.routes.outcome import MarketContext, server_now, strategy_outcome
 
     ctx = MarketContext(provider, lambda: VALUATION, RATE) if with_provider else None
-    return strategy_outcome(_request(provider), ctx, now=server_now, stored=None)
+    return strategy_outcome(_request(provider), ctx, now=server_now, stored=None, calc_settings=settings_defaults())
 
 
 def _leaf(path, name, value):

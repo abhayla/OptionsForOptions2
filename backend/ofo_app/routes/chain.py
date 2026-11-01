@@ -22,7 +22,6 @@ from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
-from fastapi.exceptions import RequestValidationError
 from ofo.settings.calc import chain_strikes_each_side
 
 from ofo_app.chain_push import (
@@ -37,7 +36,7 @@ from ofo_app.chain_push import (
     stored_chain,
     window_ids,
 )
-from ofo_app.errors import ClosedRoute, ClosedSocket, ClosedWebSocketRoute
+from ofo_app.errors import ClosedRoute, ClosedSocket, ClosedWebSocketRoute, refuse_request
 from ofo_app.routes import live, outcome
 from ofo_app.routes.outcome import (
     AnswerClock,
@@ -92,8 +91,7 @@ async def market_chain(  # noqa: PLR0913 - one query parameter or seam each
 ) -> ChainOut:
     max_each = chain_strikes_each_side(await read_settings())  # the setting in force now; a store error fails closed
     if strikes_each_side is not None and strikes_each_side > max_each:  # same bound as the socket (REQ-167 AC-5)
-        raise RequestValidationError([{"type": "less_than_equal", "loc": ("query", "strikes_each_side"),
-                                       "msg": "too many strikes", "input": strikes_each_side}])
+        refuse_request(("query", "strikes_each_side"), "less_than_equal", strikes_each_side)
     req = ChainRequest(underlying=underlying, expiry=expiry, strikes_each_side=strikes_each_side or max_each,
                        min_oi=min_oi,
                        min_volume=min_volume, min_ltp=min_ltp, bid_and_ask=bid_and_ask)
