@@ -223,6 +223,22 @@ async def test_speed_change_from_1s_to_3s_takes_effect_without_restart(scn, monk
     assert [int((b - a).total_seconds()) for a, b in itertools.pairwise(times)] == [1, 1, 3, 3]
 
 
+async def test_each_cycle_reads_the_speed_itself_not_only_the_sleep(scn, monkeypatch):
+    """The cycle's own "at most once per speed" gate reads the speed on every cycle: cycles driven every 1 s (not by
+    ``run``'s sleep) with a price change each time check every 1 s, then every 3 s once the setting is 3 s."""
+    monkeypatch.setitem(calc_speeds._STAND_IN, calc_speeds.KEY_BACKGROUND, Decimal(1))
+    prov, now, calls = Prov(scn), [scn.clock_at], Calls()
+    w = _worker(prov, _watched(scn), now, calls)
+    for tick in range(CYCLES):
+        if tick == SLOW_CYCLES:
+            calc_speeds._STAND_IN[calc_speeds.KEY_BACKGROUND] = Decimal(3)  # the admin changes the setting
+        await w.cycle()
+        now[0] += datetime.timedelta(seconds=1)
+        prov.move_spot(prov.spot.ltp + 1, now[0])
+    times = [t for _, t in w.checks]
+    assert [int((b - a).total_seconds()) for a, b in itertools.pairwise(times)] == [1, 3, 3]
+
+
 # ---- REQ-166 AC-3: safety valve -------------------------------------------------------------------------------
 async def test_valve_steps_1_2_5_under_a_slow_maths_step_and_back_to_1_when_calm(scn):
     prov, now = Prov(scn), [scn.clock_at]
