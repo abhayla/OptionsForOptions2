@@ -506,6 +506,7 @@ async def owner_lister(provider: Any) -> list[Watched]:
 
 async def _serve() -> int:  # pragma: no cover - the process wiring; each part is tested on its own
     from ofo_app import feed_mode  # noqa: PLC0415
+
     # live rows by key only (the provider's instrument list); each leg's stored id reached its terms through
     # tracked_contracts.resolve in read_tracked, never through the catalogue store here
     from ofo_app.catalogue_store import load_catalogue  # noqa: PLC0415
