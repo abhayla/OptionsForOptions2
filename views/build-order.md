@@ -17,6 +17,7 @@ Done (7): REQ-020, REQ-032, REQ-033, REQ-040, REQ-057, REQ-059, REQ-072; Superse
 | REQ-053 | Broker authority and contract eligibility | core | normal | next |
 | REQ-054 | Broker adapter | core | normal | next |
 | REQ-073 | Orders reach Zerodha as a read-only basket the user places on Kite's own page | core | normal | next |
+| REQ-167 | One admin Settings page holds every app-wide business number a calculation uses, each with a default, the date it took effect and who set it | foundation | high | next |
 | REQ-001 | V1 scope: underlyings, leg types, broker | foundation | normal | next |
 | REQ-002 | Account boundaries | foundation | normal | next |
 | REQ-003 | Public multi-user SaaS | foundation | normal | next |
@@ -124,19 +125,18 @@ Done (7): REQ-020, REQ-032, REQ-033, REQ-040, REQ-057, REQ-059, REQ-072; Superse
 | REQ-158 | Adjustment playbooks - one read-only system playbook per strategy type, any number of named user playbooks, one active | feature | normal | waiting: on REQ-045 |
 | REQ-159 | What a playbook holds - user-defined stages, triggers per stage, day-and-date rules, situations, limits and guards | feature | normal | waiting: on REQ-047, REQ-158 |
 | REQ-160 | Playbook editor is one step-by-step flow with a plain-words summary, and Test shows what the playbook would flag today | feature | normal | waiting: on REQ-159 |
+| REQ-169 | The admin edits a system playbook in the same playbook editor and saves it as a new version with history and audit | feature | high | waiting: on REQ-158, REQ-160, REQ-167 |
 | REQ-161 | Start tracking opens a strategy plan sheet pre-filled from the type's active playbook, accepted in one click | feature | normal | waiting: on REQ-109, REQ-158 |
 | REQ-162 | Positions > Adjustment opportunities lists every opportunity across strategies with its label and outcome | feature | normal | waiting: on REQ-045, REQ-112, REQ-156 |
 | REQ-165 | Adjustment playbook triggers are checked by the background workers on fresh prices, at most once a second per strategy, with no screen open | feature | high | blocked: behind REQ-048 (W-134 blocked: PARKED #517 after two failed Tier A rounds: AC-5 redesign as a reply-field inventory (structural), with a fresh independent designer first), REQ-050 (W-136 blocked: PARKED #519 after the final Tier A round: build each cache key from the engine call itself (structural), plus a one-input-at-a-time test; 30 of 40 key parts unguarded) |
 | REQ-166 | Calculations run at four speeds held as admin settings, the background uses light sums, and a safety valve slows every screen together under load | feature | high | blocked: behind REQ-048 (W-134 blocked: PARKED #517 after two failed Tier A rounds: AC-5 redesign as a reply-field inventory (structural), with a fresh independent designer first), REQ-050 (W-136 blocked: PARKED #519 after the final Tier A round: build each cache key from the engine call itself (structural), plus a one-input-at-a-time test; 30 of 40 key parts unguarded) |
+| REQ-168 | Each user sets their own adjustment preferences on a Preferences tab of the Adjustments screen, starting from the admin's defaults | feature | normal | waiting: on REQ-158, REQ-167 |
 | REQ-004 | Responsive web, desktop and mobile priorities | polish | normal | next |
 | REQ-011 | Learn section | polish | normal | next |
 | REQ-111 | The user can keep private notes on a strategy | polish | normal | waiting: on REQ-038 |
 | REQ-149 | Phone layout of the builder at 390 px wide - tabs instead of a squeezed desktop page, compact legs, no sideways scroll | polish | normal | waiting: on REQ-004, REQ-009 |
 | REQ-151 | Strikes are shown without trailing zeros - 22300, not 22300.00 | polish | normal | waiting: on REQ-029, REQ-076, REQ-080 |
 | REQ-152 | Number format of builder figures - whole rupees, Indian grouping and signs on summary money, paise kept on per-unit prices | polish | normal | waiting: on REQ-081, REQ-142 |
-| REQ-167 | One admin Settings page holds every app-wide business number a calculation uses, each with a default, the date it took effect and who set it | platform | high | next |
-| REQ-169 | The admin edits a system playbook in the same playbook editor and saves it as a new version with history and audit | feature | high | waiting: on REQ-158, REQ-160, REQ-167 |
-| REQ-168 | Each user sets their own adjustment preferences on a Preferences tab of the Adjustments screen, starting from the admin's defaults | feature | normal | waiting: on REQ-158, REQ-167 |
 
 ## Recorded, not approved to build
 

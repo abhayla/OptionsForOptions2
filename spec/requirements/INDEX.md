@@ -160,7 +160,7 @@ Requirements: 160; sections: 20
 |---|---|---|---|
 | REQ-164 | The API runs as several copies; no request depends on the memory of one copy, and one copy stopping cuts no user | feature | Approved |
 | REQ-166 | Calculations run at four speeds held as admin settings, the background uses light sums, and a safety valve slows every screen together under load | feature | Approved |
-| REQ-167 | One admin Settings page holds every app-wide business number a calculation uses, each with a default, the date it took effect and who set it | platform | Approved |
+| REQ-167 | One admin Settings page holds every app-wide business number a calculation uses, each with a default, the date it took effect and who set it | foundation | Approved |
 
 ## Product scope and platform (9)
 
