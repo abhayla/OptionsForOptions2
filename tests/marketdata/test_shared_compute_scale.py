@@ -14,6 +14,8 @@ from _kite_fixture import all_instrument_ids, new_provider, recorded_frames
 from ofo.engine.legs import Action
 from ofo.marketdata.shared_compute import FeedScope, SharedCompute
 from ofo.outcome import PlannedLeg, StrategyDefinition, build_outcome, read_snapshot, service
+from ofo.settings import calc as settings_calc
+from ofo.settings import defaults as settings_defaults
 
 RATE = Decimal("0.065")
 CE, PE = "NSE_FO:44614", "NSE_FO:44615"  # the 22550 CE and PE of the 2026-10-13 expiry
@@ -22,6 +24,8 @@ UPDATES = 3
 IST = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
 T0 = datetime.datetime(2026, 10, 8, 9, 20, tzinfo=IST)
 
+
+QUALITY = settings_calc.forward_quality(settings_defaults())  # the registry's forward settings, passed explicitly
 
 def strategies():
     """1,000 different strategies, every one holding the 22550 PE: straddles and single legs, both sides, 1-5 lots,
@@ -45,9 +49,9 @@ def engine_calls(monkeypatch):
         calls[("iv", kind.value, strike)] += 1
         return real_iv(em, kind, price, strike)
 
-    def fwd(chain, spot, expiry, valuation, rate):
+    def fwd(chain, spot, expiry, valuation, rate, quality):  # noqa: PLR0913 - the engine's own arguments
         calls[("forward", expiry)] += 1
-        return real_fwd(chain, spot, expiry, valuation, rate)
+        return real_fwd(chain, spot, expiry, valuation, rate, quality)
 
     def gk(em, kind, strike, vol):
         calls[("greeks", kind.value, strike)] += 1
@@ -77,8 +81,8 @@ def test_core_1000_strategies_on_one_strike_compute_each_figure_once_per_price_u
         snap = None
         for definition in defs:
             snap = read_snapshot(provider, "NIFTY", [leg.instrument_id for leg in definition.legs], clock.now, RATE,
-                                 scope)
-            out = build_outcome(definition, snap, valuation=snap.valuation, shared=scope)
+                                 scope, quality=QUALITY)
+            out = build_outcome(definition, snap, valuation=snap.valuation, shared=scope, settings=settings_defaults())
             ivs.add(next(leg.iv for leg in out.legs if leg.instrument_id == PE))
         instants.append(snap.valuation)
         # every engine function ran once per contract in this update, whatever the number of strategies

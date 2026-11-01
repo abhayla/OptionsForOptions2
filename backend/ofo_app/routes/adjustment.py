@@ -32,20 +32,21 @@ from decimal import Decimal
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends
+from ofo.adjustment import liquidity
 from ofo.adjustment.approaches import (
     APPROACH_IDS,
     NO_CHANGE,
     ApproachLegs,
     ChainRow,
+    Config,
     Position,
     PositionLeg,
     build_approach,
     is_no_change,
-    load_config,
 )
-from ofo.adjustment import liquidity
 from ofo.adjustment.compare import POP_TEXT, Column, Context, MarginRead, compare
 from ofo.adjustment.compare_cost_rows import breakdown_lines
+from ofo.adjustment.preferences import Preferences
 from ofo.charges import ChargeRates
 from ofo.charges.calculator import ChargeOrder, charges_for_orders
 from ofo.charges.round_trip import charge_segment, to_paise_up
@@ -68,12 +69,18 @@ from ofo_app.config import app_env
 from ofo_app.errors import ClosedRoute, Failure
 from ofo_app.held_switches import PROBABILITY_OF_PROFIT, held_on
 from ofo_app.outcome_margin import OutcomeMargin, PlannedOrderIn, margin_answer
-from ofo_app.routes.outcome import MarketContext, get_margin_source, get_market_context, load_charge_rates
+from ofo_app.routes.adjustment_preferences import UserPreferences
+from ofo_app.routes.outcome import (
+    MarketContext,
+    feed_windows_of,
+    get_margin_source,
+    get_market_context,
+    load_charge_rates,
+)
 from ofo_app.strategy_refused import StrategyRefused
 
 log = logging.getLogger(__name__)
 router = APIRouter(route_class=ClosedRoute)
-_CONFIG = load_config()
 _DEV_TIMING = frozenset({"development", "test"})
 
 
@@ -283,6 +290,32 @@ def price_after(legs: Sequence[PositionLeg], position: Position, booked: Decimal
     return Priced(after, known)
 
 
+def as_of_market(tracked: Tracked, market: MarketInputs) -> Tracked:
+    """The position as the approach builder reads it: the market day and the listed expiry kind (the approaches
+    route and the playbook check's T-19 both build from this)."""
+    return dataclasses.replace(tracked, position=dataclasses.replace(
+        tracked.position, today=market.now.astimezone(IST).date(),
+        expiry_kind=market.expiry_kind or tracked.position.expiry_kind))
+
+
+def priced_approach(a: str, tracked: Tracked, market: MarketInputs, spot: Decimal,  # noqa: PLR0913 - the preferences value is a required parameter (GC-SET)
+                    rates: ChargeRates | None, config: Config, *, limits: liquidity.Limits | None = None,
+                    max_profit: Decimal | None = None) -> tuple[ApproachLegs | None, Priced | None]:
+    """One approach as the approaches route and the Compare build and price it (the ONE build path; the playbook
+    check's T-19 reads it too, ADR-221): an unknown id -> (None, None); refused -> (built, None); else the built legs
+    and the whole-trade After of its legs, with this approach's own charges. ``limits`` / ``max_profit``: the
+    playbook's liquidity limits and the Before's max profit (ADR-230 (1)); None: not applied."""
+    if a not in APPROACH_IDS:
+        return None, None
+    position = tracked.position
+    built = build_approach(position, market.chain, spot, a, config, None, limits, max_profit)
+    if built.refusal is not None:
+        return built, None
+    booked = None if tracked.booked is None else tracked.booked + _closed_booked(built)
+    return built, price_after(built.after, position, booked, tracked.paid_charges,
+                              _trade_orders(built, position.underlying), rates, market)
+
+
 def _after_block(priced: Priced, pop_on: bool) -> dict:
     if priced.after is None:
         return {"after": None, "charges": None, "pop": None, "after_reason": priced.reason}
@@ -317,7 +350,8 @@ async def adjustment_approaches(  # noqa: PLR0913 - FastAPI dependencies, one pe
         ctx: Annotated[MarketContext | None, Depends(get_market_context)],
         rates: Annotated[ChargeRates | None, Depends(load_charge_rates)],
         held_environ: Annotated[Mapping[str, str] | None, Depends(get_held_environ)],
-        guards_of: Annotated[GuardsReader, Depends(get_guards_reader)]) -> AdjustApproachesOut:
+        guards_of: Annotated[GuardsReader, Depends(get_guards_reader)],
+        prefs: UserPreferences) -> AdjustApproachesOut:
     started = time.perf_counter()
     from ofo_app.adjustment_readers import TrackedUnreadable  # noqa: PLC0415 - as above
     try:
@@ -329,10 +363,9 @@ async def adjustment_approaches(  # noqa: PLR0913 - FastAPI dependencies, one pe
         raise StrategyRefused("user_input_request_not_available", Failure.NOT_FOUND)
     rates = rates if isinstance(rates, ChargeRates) else None
     market = await market_reader(tracked, ctx)
-    tracked = dataclasses.replace(tracked, position=dataclasses.replace(
-        tracked.position, today=market.now.astimezone(IST).date(),
-        expiry_kind=market.expiry_kind or tracked.position.expiry_kind))
-    spot = resolve_spot(market.feed, await rest_reader(tracked.position.underlying), market.last_close, now=market.now)
+    tracked = as_of_market(tracked, market)
+    spot = resolve_spot(market.feed, await rest_reader(tracked.position.underlying), market.last_close, now=market.now,
+                        windows=feed_windows_of(ctx))
     pop_on = held_on(PROBABILITY_OF_PROFIT, held_environ)
     asked = list(dict.fromkeys(body.approaches)) if body.approaches is not None else list(APPROACH_IDS)
     reply: dict[str, Any] = {"strategy_id": strategy_id, "view": body.view, "spot": _spot_block(spot),
@@ -349,14 +382,10 @@ async def adjustment_approaches(  # noqa: PLR0913 - FastAPI dependencies, one pe
         guards = await guards_of(strategy_id, position, spot.value)
         limits = None if guards is None else liquidity.limits_from_guards(guards)  # no playbook, no limits
         max_profit = _before_max_profit(before)
-        built_list = [(a, build_approach(position, market.chain, spot.value, a, _CONFIG, None, limits, max_profit)  # type: ignore[arg-type]
-                       if a in APPROACH_IDS else None) for a in asked]
-        priced: dict[str, Priced] = {}
-        for a, built in built_list:
-            if built is not None and built.refusal is None:
-                booked = None if tracked.booked is None else tracked.booked + _closed_booked(built)
-                priced[a] = price_after(built.after, position, booked, tracked.paid_charges,
-                                        _trade_orders(built, position.underlying), rates, market)
+        answers = [(a, priced_approach(a, tracked, market, spot.value, rates, prefs.approach,  # type: ignore[arg-type]
+                                       limits=limits, max_profit=max_profit)) for a in asked]
+        built_list = [(a, built) for a, (built, _) in answers]
+        priced: dict[str, Priced] = {a: p for a, (_, p) in answers if p is not None}
         engine = time.perf_counter() - t0
         out = []
         columns: list[Column] = []
@@ -368,8 +397,9 @@ async def adjustment_approaches(  # noqa: PLR0913 - FastAPI dependencies, one pe
             out.append(item)
         reply["approaches"] = out
         reply |= await _compare_reply(columns, tracked, spot.value, market, rates, pop_on, before,  # type: ignore[arg-type]
-                                      margin_of, limits)
-    reply["available"] = _available(position, market.chain, spot.value if spot.available else None, dict(built_list))
+                                      margin_of, prefs, limits)
+    reply["available"] = _available(position, market.chain, spot.value if spot.available else None, dict(built_list),
+                                    prefs.approach)
     reply["days_to_expiry"] = _days_to_expiry(position)
     total = time.perf_counter() - started
     log.info("adjustment approaches strategy=%s approaches=%s engine_s=%.4f total_s=%.4f",
@@ -381,7 +411,7 @@ async def adjustment_approaches(  # noqa: PLR0913 - FastAPI dependencies, one pe
 
 
 def _available(position: Position, chain: Sequence[ChainRow], spot: Decimal | None,
-               built: Mapping[str, ApproachLegs | None]) -> list[dict[str, Any]]:
+               built: Mapping[str, ApproachLegs | None], config: Config) -> list[dict[str, Any]]:
     """REQ-046 AC-3 / REQ-045 AC-5: every generic approach with its one-line text and whether it can be built for this
     position now (else the refusal's own reason). No figure; nothing is priced here. No spot -> none can be built."""
     out: list[dict[str, Any]] = []
@@ -391,7 +421,7 @@ def _available(position: Position, chain: Sequence[ChainRow], spot: Decimal | No
         if spot is None:
             out.append(item | {"applicable": False, "reason": render_explanation("adjust_available_spot_missing")})
             continue
-        b = built.get(a) or build_approach(position, chain, spot, a, _CONFIG)
+        b = built.get(a) or build_approach(position, chain, spot, a, config)
         out.append(item | {"applicable": b.refusal_message is None, "reason": b.refusal_message})
     return out
 
@@ -422,16 +452,17 @@ async def _approach_item(a: str, built: ApproachLegs | None, priced: Mapping[str
 
 async def _compare_reply(columns: list[Column], tracked: Tracked, spot: Decimal, market: MarketInputs,  # noqa: PLR0913
                          rates: ChargeRates | None, pop_on: bool, before: Priced,
-                         margin_of: ApproachMargin, limits: liquidity.Limits | None = None) -> dict[str, Any]:
+                         margin_of: ApproachMargin, prefs: Preferences,
+                         limits: liquidity.Limits | None = None) -> dict[str, Any]:
     """REQ-156: the compare over the built approaches; the current legs' margin is "No change"'s (read once more
     only when A-36 was not asked)."""
     position = tracked.position
     before_margin = next((c.margin for c in columns if is_no_change(c.built)), None)
     if before_margin is None:
-        unchanged = build_approach(position, market.chain, spot, NO_CHANGE, _CONFIG)
+        unchanged = build_approach(position, market.chain, spot, NO_CHANGE, prefs.approach)
         before_margin = _margin_read(await _margin(margin_of, unchanged, market))
     ctx = Context(position, spot, market.chain, rates, pop_on, before_margin, market.leg_greeks,
-                  tracked.adjustments_used, limits)
+                  tracked.adjustments_used, prefs.compare, limits)
     return _compare_block(compare(columns, ctx, before.after, before.charges_known))
 
 

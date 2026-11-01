@@ -57,7 +57,7 @@ async def seed(conn: Any, settings: Any, app_env: str) -> int:
     held = (await conn.execute(text("SELECT count(*) FROM public.catalogue_contracts"))).scalar_one()
     if held:
         raise SeedRefused(f"the catalogue already holds {held} contracts; seed only a fresh throwaway database")
-    return await run(conn, FIXTURE.read_text(encoding="utf-8"), settings, as_of=as_of)
+    return await run(conn, FIXTURE.read_text(encoding="utf-8"), as_of=as_of)
 
 
 async def main() -> int:

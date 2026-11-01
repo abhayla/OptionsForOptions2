@@ -19,7 +19,7 @@ from ofo.engine.metrics import UNLIMITED
 from ofo.engine.strategy import Strategy
 from ofo.engine.whole_trade import whole_trade_after
 from ofo.errors.explanations import ADJUSTMENT_CHARGE_LABEL_TEXT, render_explanation
-from test_approach_compare import CFG, PAID, greeks_of, inputs, load, row
+from test_approach_compare import CFG, PAID, PREFS, greeks_of, inputs, load, row
 
 RATES = ChargeRates(
     brokerage_per_order=D("20"), stt_sell_rate=D("0.0015"), stt_exercise_rate=D("0.0015"),
@@ -60,7 +60,7 @@ def build(sid: str):
                                paid_charges=PAID, adjustment_charges=D(0),
                                open_exit_charges=_exit_charges(position.legs, position.lot, segment))
     ctx = Context(position, spot, chain, RATES, False, MarginRead(D("100000")), greeks_of(sc),
-                  sc["position"]["adjustments_used"])
+                  sc["position"]["adjustments_used"], PREFS.compare)
     return sc, cols, ctx, before
 
 

@@ -14,11 +14,13 @@ import pathlib
 import time
 
 import pytest
+from ofo.adjustment.preferences import from_values
+from ofo.settings import calc as settings_calc
+from ofo.settings import defaults as registry_defaults
 from ofo.timeutil import IST
 from ofo_app import background, catalogue_store, playbook_store, scenario_mode
 from ofo_app import db as app_db
 from ofo_app.config import get_settings
-from ofo_app.live_market import LIVE_RATE
 from sqlalchemy import text
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -26,6 +28,7 @@ _spec = importlib.util.spec_from_file_location("seed_scenario", ROOT / "scripts"
 seed_mod = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(seed_mod)
 CATALOGUE_AS_OF = datetime.datetime(2026, 10, 31, 9, 0, tzinfo=IST)
+MAX_DELIST = settings_calc.max_delist_percent(registry_defaults())  # the registry default, passed explicitly
 BEFORE_CROSS_SPOT = "23000"  # 2.1 % below the 23500 CE short and 1.3 % above the 22700 PE short: T-01 (0.5 %) false
 ONE_SECOND = datetime.timedelta(seconds=1)
 REBUILD_LIMIT_S = 60
@@ -52,7 +55,8 @@ async def _seeded(app_engine, monkeypatch) -> tuple[int, scenario_mode.Scenario]
     scn = scenario_mode.load("ADJ-02")
     async with app_engine.begin() as conn:
         await catalogue_store.apply_update(conn, scn.provider.instrument_master(), as_of=CATALOGUE_AS_OF, force=True,
-                                           reason="test: scenario ADJ-02 contracts", actor="test")
+                                           reason="test: scenario ADJ-02 contracts", actor="test",
+                                           max_delist_percent=MAX_DELIST)
     return await seed_mod.seed("ADJ-02"), scn
 
 
@@ -84,8 +88,14 @@ async def _t01_total(engine, sid: int) -> int:
 
 
 def _worker(scn: scenario_mode.Scenario, clock) -> background.Worker:
+    async def settings():
+        return registry_defaults()  # the settings in force: the registry defaults, passed explicitly
+
+    async def preferences(_user_ref):
+        return from_values(registry_defaults())  # the owner's preferences: the registry defaults (REQ-168 AC-1)
     return background.Worker(provider_for=lambda _owner: scn.provider,
-                             lister=lambda: background.owner_lister(scn.provider), clock=clock, rate=LIVE_RATE)
+                             lister=lambda: background.owner_lister(scn.provider), clock=clock, settings=settings,
+                             preferences=preferences)
 
 
 async def test_core_adj02_crossing_t01_opens_one_record_within_one_second_with_no_client(app_db_url, monkeypatch):

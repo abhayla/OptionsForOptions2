@@ -64,6 +64,7 @@ PR241_SELECTION = {
     "tests_app/test_strategy_delete_app.py",
     "tests_app/test_strategy_planned_entry.py", "tests_app/test_strategy_store.py",
     "tests_app/test_exit_adopted_313b.py",  # imports StrategyRefused from ofo_app.routes.strategies
+    "tests_app/test_times_settings.py",  # GC-SET 5a2: calls catalogue_picker.publish_time / loaded_before
     "tests_app/test_pinned_clock.py",  # calls the /api/catalogue/{underlying}/... routes
     "tests_app/test_strategy_tracking.py",  # W-122: GET /strategies/{strategy_id}
     "tests_app/test_stored_contract_feed_keys.py",  # issue #500: GET /strategies/{id} and /history, StrategyRefused
@@ -97,6 +98,12 @@ PR241_SELECTION = {
     "tests_app/test_paper_list_figures.py", "tests_app/test_paper_reason_texts.py", "tests_app/test_paper_routes.py",
     "tests_app/test_paper_totals.py", "tests_app/test_paper_triggers_routes.py",
     "tests_app/test_adjustment_opportunities.py",  # GC-MU A3: its card-mark tests call GET /strategies (a diff route)
+    # GC-SET step 7 (F-81): names ofo.errors.explanations (the PlaybookName stage-name slot) in its reply-model check
+    "tests_app/test_stage_name_replies.py",
+    # GC-SET step 8 (REQ-168): names ofo.errors.explanations (the preference refusal reason text) in its route checks
+    "tests_app/test_user_preferences.py",
+    # GC-SET step 9 (REQ-169): names ofo.errors.explanations (the system playbook refusal texts) in its route checks
+    "tests_app/test_system_playbook_versions.py",
 }
 
 

@@ -62,6 +62,7 @@ from ofo.marketdata.shared_compute import FeedScope, call_shared
 from ofo.money import HUNDREDTH
 from ofo.outcome import money
 from ofo.outcome.snapshot import MarketSnapshot
+from ofo.outcome.target import Target, TargetAsk, TargetOffer, entries_target, live_target, target_offer, yields_of
 from ofo.rules.inputs import DataHealth
 from ofo.scenario.config import ScenarioConfig, ScenarioSettings
 from ofo.scenario.levels import (
@@ -75,8 +76,8 @@ from ofo.scenario.levels import (
     graph_level_set,
 )
 from ofo.scenario.spot import spot_reading
-from ofo.outcome.target import Target, TargetAsk, TargetOffer, entries_target, live_target, target_offer, yields_of
 from ofo.scenario.views import DEFAULT_VIEW, LABELS, ScenarioValues, View, on_levels, scenario_values
+from ofo.settings import calc
 from ofo.table import ColumnSpec, Table, build_table, visible_columns
 from ofo.timeutil import IST
 
@@ -92,14 +93,11 @@ MARGIN_CHECKED: Final = "CHECKED"
 MARGIN_UNREADABLE: Final = "UNREADABLE"
 MARGIN_NO_BASKET: Final = "NO_BASKET"
 _UNUSABLE: Final = (DataHealth.UNHEALTHY, DataHealth.UNAVAILABLE)
-#: REQ-137 AC-1 / D-B24: the payoff table's intervals a user may pick, in index points
-PAYOFF_TABLE_STEPS: Final = (Decimal(10), Decimal(25), Decimal(50), Decimal(100))
-#: REQ-137 AC-1: with no interval picked, "default the underlying's strike step: NIFTY 50, SENSEX 100". This is NOT
-#: the scenario grid's Admin step (ADR-042: NIFTY 100, SENSEX 300), which the per-leg table keeps.
-PAYOFF_TABLE_DEFAULT_STEPS: Final = {"NIFTY": Decimal(50), "SENSEX": Decimal(100)}
+#: REQ-137 AC-1: the payoff table's intervals a user may pick and the default interval per index (NOT the scenario
+#: grid's Admin step) are the settings ``scenarios.payoff_step_N`` / ``scenarios.payoff_default_step_<index>``; the SD
+#: block's horizon (D-B20) is ``scenarios.sd_horizon_days``. All read through ``ofo.settings.calc``; the numbers live
+#: only in registry.json.
 MAX_PAYOFF_TABLE_ROWS: Final = 1000
-#: D-B20 (Fixed SD): the SD block's horizon in calendar days; the days to the nearest expiry when fewer
-SD_HORIZON_DAYS: Final = 7
 _TENTH: Final = Decimal("0.1")
 
 
@@ -648,26 +646,24 @@ def standard_deviation(spot: Decimal | None, move: ExpectedMove | None) -> Stand
     return StandardDeviation(True, None, move.days, move.iv, spot, rows)
 
 
-def payoff_table_default_step(index: str) -> Decimal:
+def payoff_table_default_step(index: str, settings: Mapping[str, Decimal]) -> Decimal:
     """REQ-137 AC-1: the payoff table's interval when none is picked (the underlying's strike step). An index with no
-    stated strike step is refused, never given another index's step."""
-    try:
-        return PAYOFF_TABLE_DEFAULT_STEPS[index]
-    except KeyError:
-        raise ValueError(f"no payoff table strike step is stated for {index!r} (REQ-137 AC-1)") from None
+    stated strike step is refused, never given another index's step. ``settings``: the values in force (required)."""
+    return calc.payoff_default_step(settings, index)
 
 
 def payoff_table(level_set: LevelSet, model: ModelInputs, step: Decimal | None, *,  # noqa: PLR0913
                  config: ScenarioConfig, rates: ChargeRates | None, spot: Decimal | None,
-                 no_estimate: ExplanationText | None = None) -> PayoffTable:
+                 no_estimate: ExplanationText | None = None,
+                 settings: Mapping[str, Decimal]) -> PayoffTable:
     """REQ-137 AC-1: rows from the first multiple of ``step`` at or above the range start to the range end; each view
     from :func:`scenario_values` on those levels (the one engine). ``step`` None: the underlying's strike step
     (REQ-137 AC-1, :func:`payoff_table_default_step`), never the grid's Admin step.
     ``no_estimate``: Estimated Now cannot be computed (no live prices) and carries this reason."""
     if step is None:
-        step = payoff_table_default_step(config.index)
-    elif step not in PAYOFF_TABLE_STEPS or not isinstance(step, Decimal):
-        raise ValueError(f"payoff table step must be one of {PAYOFF_TABLE_STEPS}, got {step!r}")
+        step = payoff_table_default_step(config.index, settings)
+    elif not isinstance(step, Decimal) or step not in calc.payoff_steps(settings):
+        raise ValueError(f"payoff table step must be one of {calc.payoff_steps(settings)}, got {step!r}")
     first = first_multiple_at_or_above(level_set.start, step)
     count = 0 if first > level_set.end else int((level_set.end - first) / step) + 1
     if count > MAX_PAYOFF_TABLE_ROWS:
@@ -713,7 +709,8 @@ def from_entries(definition: StrategyDefinition, snapshot: MarketSnapshot | None
                  valuation: datetime.datetime, *, view: View = DEFAULT_VIEW, config: ScenarioConfig | None = None,
                  rates: ChargeRates | None = None, override: RangeOverride | None = None,
                  both_views: bool = False, payoff_step: Decimal | None = None,
-                 sd_bands: bool = False, target: TargetAsk | None = None) -> Outcome | None:
+                 sd_bands: bool = False, target: TargetAsk | None = None,
+                 settings: Mapping[str, Decimal]) -> Outcome | None:
     """REQ-077 AC-9: with no live data, a strategy whose EVERY leg has a planned entry shows its At Expiry numbers
     from the one engine at those prices, labelled "From your prices - no live data". Returns None (the caller keeps
     today's not-connected / not-live answer, ADR-085) when any leg has no entry, a contract is unknown, the legs are
@@ -737,7 +734,7 @@ def from_entries(definition: StrategyDefinition, snapshot: MarketSnapshot | None
                                p.planned_entry, p.captured_at, None, None, None, None))
         inputs.append(LegInput(definition.underlying, symbol or p.instrument_id, p.action, kind, strike, c.expiry,
                                quantity, p.planned_entry))
-    config = config or ScenarioSettings().for_index(definition.underlying)
+    config = config or ScenarioSettings.from_values(settings).for_index(definition.underlying)
     strikes = [leg.strike for leg in inputs if leg.strike is not None]
     if not strikes:
         return None
@@ -771,6 +768,7 @@ def from_entries(definition: StrategyDefinition, snapshot: MarketSnapshot | None
     table_p = None
     if both_views or payoff_step is not None:
         table_p = payoff_table(level_set, model, payoff_step, config=config, rates=None if charges is None else rates,
+                               settings=settings,
                                spot=None, no_estimate=render_explanation("outcome_from_entries_no_estimate"))
     table = dataclasses.replace(build_table(model, level_set=level_set, scenario=shown), spot_level=None, spot_at=None,
                                 output_label=FROM_ENTRIES_LABEL)
@@ -787,9 +785,11 @@ def from_entries(definition: StrategyDefinition, snapshot: MarketSnapshot | None
         charges_breakdown=breakdown, centre_label=render_explanation("outcome_from_entries_centre", level=centre),
         curves=curves, other_view=other, payoff_table=table_p,
         standard_deviation=standard_deviation(None, None) if sd_bands else None,
-        target=(entries_target(target, model, payoff_table_default_step(definition.underlying))
+        target=(entries_target(target, model, payoff_table_default_step(definition.underlying, settings),
+                                calc.target_span(settings))
                 if target is not None and target.asked
-                else target_offer(model, payoff_table_default_step(definition.underlying), live=False)))
+                else target_offer(model, payoff_table_default_step(definition.underlying, settings),
+                                    calc.target_span(settings), live=False)))
 
 
 def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | None,
@@ -798,7 +798,8 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
                   rates: ChargeRates | None = None,
                   override: RangeOverride | None = None, shared: FeedScope | None = None,
                   both_views: bool = False, payoff_step: Decimal | None = None,
-                  sd_bands: bool = False, target: TargetAsk | None = None) -> Outcome:
+                  sd_bands: bool = False, target: TargetAsk | None = None,
+                  settings: Mapping[str, Decimal]) -> Outcome:
     """The outcome of ``definition`` on ``snapshot``; ``valuation`` defaults to the snapshot's valuation time.
 
     ``shared`` (REQ-050 AC-1/AC-3, ADR-053): a :class:`FeedScope` (the cache plus the feed's owner). Each leg's
@@ -817,7 +818,7 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
     if snapshot.status.session_ended:  # REQ-077 AC-9 "with no live data" includes an ended session
         return (from_entries(definition, snapshot, None, snapshot.valuation, view=view, rates=rates, config=config,
                              override=override, both_views=both_views, payoff_step=payoff_step,
-                             sd_bands=sd_bands, target=target)
+                             sd_bands=sd_bands, target=target, settings=settings)
                 or not_connected(definition, snapshot))
     if snapshot.underlying != definition.underlying:
         raise ValueError("the snapshot was read for another underlying")
@@ -905,7 +906,7 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
     except ForwardUnavailable:
         return _refused(definition, render_explanation("outcome_forward_refused"), legs, message)
 
-    config = config or ScenarioSettings().for_index(definition.underlying)
+    config = config or ScenarioSettings.from_values(settings).for_index(definition.underlying)
     solved = {x.instrument_id: x.iv for x in legs if x.iv is not None}
     move = _expected_move(inputs, snapshot, valuation, shared, solved)
     level_set = build_level_set(model, config, expected_move=move, override=override)
@@ -922,11 +923,12 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
     table_p = None
     if both_views or payoff_step is not None:
         table_p = payoff_table(level_set, model, payoff_step, config=config, rates=None if charges is None else rates,
+                               settings=settings,
                                spot=model.spot_level)
     sd = None
     if sd_bands:  # the same expected move as the range, on the fixed horizon (D-B20)
         sd = standard_deviation(model.spot_level, _expected_move(inputs, snapshot, valuation, shared, solved,
-                                                                 horizon=SD_HORIZON_DAYS))
+                                                                 horizon=calc.sd_horizon_days(settings)))
     table = build_table(model, level_set=level_set, scenario=values,
                         leg_greeks=_shared_leg_greeks(model, snapshot, shared))
     points = _graph_points(graph)
@@ -943,6 +945,8 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
                          spot=model.spot_level),
         charges_breakdown=breakdown, curves=curves, other_view=other, payoff_table=table_p,
         standard_deviation=sd, dividend_yields=yields_of(model),
-        target=(live_target(target, model, graph_levels, payoff_table_default_step(definition.underlying))
+        target=(live_target(target, model, graph_levels, payoff_table_default_step(definition.underlying, settings),
+                             calc.target_span(settings))
                 if target is not None and target.asked
-                else target_offer(model, payoff_table_default_step(definition.underlying), live=True)))
+                else target_offer(model, payoff_table_default_step(definition.underlying, settings),
+                                    calc.target_span(settings), live=True)))

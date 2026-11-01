@@ -21,6 +21,8 @@ from ofo.marketdata.shared_compute import FeedScope, SharedCompute, call_shared,
 from ofo.outcome import read_snapshot, service
 from ofo.rules.inputs import DataHealth
 from ofo.scenario.spot import spot_reading
+from ofo.settings import calc as settings_calc
+from ofo.settings import defaults as settings_defaults
 
 RATE = Decimal("0.065")
 CE, PE = "NSE_FO:44614", "NSE_FO:44615"  # the 22550 CE and PE of the 2026-10-13 expiry
@@ -35,6 +37,8 @@ class Point:
     x: Decimal
     hidden: Decimal = dataclasses.field(default=Decimal(0), compare=False)
 
+
+QUALITY = settings_calc.forward_quality(settings_defaults())  # the registry's forward settings, passed explicitly
 
 def add(a, b, c=Decimal(1)):
     return a + b + c
@@ -189,7 +193,7 @@ def recorded():
     provider, clock, items = new_provider()
     provider.subscribe(all_instrument_ids(items))
     at = replay(provider, clock)
-    return read_snapshot(provider, "NIFTY", [CE, PE], at, RATE)
+    return read_snapshot(provider, "NIFTY", [CE, PE], at, RATE, quality=QUALITY)
 
 
 def _em(reading, fwd):
@@ -247,7 +251,7 @@ def _greek_cases(snap):
 def _forward_cases(snap):
     chain = tuple(sorted(snap.chains[EXPIRY], key=lambda q: q.instrument_id))
     spot = snap.spot
-    base = (chain, spot, EXPIRY, snap.valuation, RATE)
+    base = (chain, spot, EXPIRY, snap.valuation, RATE, QUALITY)
     i = next(n for n, q in enumerate(chain) if q.instrument_id == CE)  # a quote the forward reads (nearest the money)
 
     def quote(**change):
@@ -269,7 +273,9 @@ def _forward_cases(snap):
         "spot timestamp": with_spot(timestamp=spot.timestamp - datetime.timedelta(seconds=1)),
         "spot health": with_spot(health=DataHealth.UNHEALTHY),
         "expiry": (chain, spot, datetime.date(2026, 10, 20), *base[3:]),
-        "rate": (*base[:4], Decimal("0.07")),
+        "rate": (*base[:4], Decimal("0.07"), QUALITY),
+        # REQ-167 AC-5: a changed forward setting is a new key, never served from the entry of the old one
+        "forward quality": (*base[:5], dataclasses.replace(QUALITY, strikes_near=QUALITY.strikes_near + 2)),
     }
 
 

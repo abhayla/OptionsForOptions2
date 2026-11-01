@@ -17,18 +17,22 @@ from decimal import Decimal
 import pytest
 from ofo.adjustment import playbook_eval as pe
 from ofo.adjustment.approaches import Position, PositionLeg
+from ofo.adjustment.preferences import from_values
 from ofo.marketdata.shared_compute import FeedScope
 from ofo.marketdata.spot_source import resolve_spot
 from ofo.outcome import service as outcome_service
 from ofo.rules.inputs import DataHealth
 from ofo.scenario import levels as scenario_levels
 from ofo.scenario import views as scenario_views
+from ofo.settings import defaults as registry_defaults
 from ofo.table import model as table_model
 from ofo_app import adjustment_check, adjustment_readers, background, calc_speeds, db, scenario_mode, strategy_store
 from ofo_app.routes.adjustment import Tracked
-from ofo_app.routes.outcome import MarketContext
+from ofo_app.routes.outcome import MarketContext, ctx_in_force
 
-RATE = Decimal("0.065")
+RATE = Decimal("0.065")  # the registry default of pricing.risk_free_rate (the screen side of the comparisons)
+DEFAULTS = registry_defaults()  # the settings in force for the worker: the registry defaults, passed explicitly
+PREFS = from_values(DEFAULTS)  # the owner's preferences: the registry defaults (REQ-168 AC-1)
 FIRST_ID = 100  # the first watched strategy id
 MANY = 1000
 CHECKS_AFTER_CHANGE = 3
@@ -98,7 +102,7 @@ def _tracked(scn) -> Tracked:
 
 def _watched(scn, n: int = 1) -> list[background.Watched]:
     t = _tracked(scn)
-    return [background.Watched("owner", FIRST_ID + i, t, {}, True, "owner", "weekly") for i in range(n)]
+    return [background.Watched("owner", FIRST_ID + i, t, {}, True, "owner") for i in range(n)]
 
 
 class Calls:
@@ -106,17 +110,30 @@ class Calls:
         self.states: list[tuple[int, object]] = []
         self._clock, self.slow = clock, slow
 
-    async def __call__(self, w, state):
+    async def __call__(self, w, state, _prefs=None):
         self.states.append((w.strategy_id, state))
         if self.slow is not None:
             self._clock[0] += self.slow  # an injected slow maths step
 
 
-def _worker(prov, watched, now, recorder, **kw) -> background.Worker:
+def _settings(values=None):
+    """The worker's settings seam: ``values`` (a dict a test may change between cycles), else the registry defaults."""
+    held = DEFAULTS if values is None else values
+
+    async def read():
+        return held
+    return read
+
+
+async def _prefs(_user_ref):
+    return PREFS
+
+
+def _worker(prov, watched, now, recorder, settings=None, **kw) -> background.Worker:
     async def lister():
         return watched
-    return background.Worker(provider_for=lambda _o: prov, lister=lister, clock=lambda: now[0], rate=RATE,
-                             recorder=recorder, **kw)
+    return background.Worker(provider_for=lambda _o: prov, lister=lister, clock=lambda: now[0],
+                             settings=settings or _settings(), preferences=_prefs, recorder=recorder, **kw)
 
 
 # ---- answer states of the price read ---------------------------------------------------------------------------
@@ -203,15 +220,15 @@ async def test_no_price_change_no_check_and_at_most_once_per_speed(scn):
 
 # ---- REQ-166 AC-1: speed read on every cycle ------------------------------------------------------------------
 async def test_speed_change_from_1s_to_3s_takes_effect_without_restart(scn, monkeypatch):
-    monkeypatch.setitem(calc_speeds._STAND_IN, calc_speeds.KEY_BACKGROUND, Decimal(1))
+    values = {**DEFAULTS, calc_speeds.KEY_BACKGROUND: Decimal(1)}
     prov, now = Prov(scn), [scn.clock_at]
     calls = Calls()
     w = None
 
-    async def recorder(wd, state):
-        await calls(wd, state)
+    async def recorder(wd, state, prefs):
+        await calls(wd, state, prefs)
         if len(calls.states) == CHECKS_AFTER_CHANGE:
-            calc_speeds._STAND_IN[calc_speeds.KEY_BACKGROUND] = Decimal(3)  # the admin changes the setting
+            values[calc_speeds.KEY_BACKGROUND] = Decimal(3)  # the admin changes the setting
         if len(calls.states) == STOP_AFTER:
             w.stop()
 
@@ -219,7 +236,7 @@ async def test_speed_change_from_1s_to_3s_takes_effect_without_restart(scn, monk
         now[0] += datetime.timedelta(seconds=seconds)
         prov.move_spot(prov.spot.ltp + 1, now[0])  # a price changes every tick
 
-    w = _worker(prov, _watched(scn), now, recorder, sleep=sleep)
+    w = _worker(prov, _watched(scn), now, recorder, settings=_settings(values), sleep=sleep)
     await w.run()
     times = [t for _, t in w.checks]
     assert [int((b - a).total_seconds()) for a, b in itertools.pairwise(times)] == [1, 1, 3, 3]
@@ -228,12 +245,12 @@ async def test_speed_change_from_1s_to_3s_takes_effect_without_restart(scn, monk
 async def test_each_cycle_reads_the_speed_itself_not_only_the_sleep(scn, monkeypatch):
     """The cycle's own "at most once per speed" gate reads the speed on every cycle: cycles driven every 1 s (not by
     ``run``'s sleep) with a price change each time check every 1 s, then every 3 s once the setting is 3 s."""
-    monkeypatch.setitem(calc_speeds._STAND_IN, calc_speeds.KEY_BACKGROUND, Decimal(1))
+    values = {**DEFAULTS, calc_speeds.KEY_BACKGROUND: Decimal(1)}
     prov, now, calls = Prov(scn), [scn.clock_at], Calls()
-    w = _worker(prov, _watched(scn), now, calls)
+    w = _worker(prov, _watched(scn), now, calls, settings=_settings(values))
     for tick in range(CYCLES):
         if tick == SLOW_CYCLES:
-            calc_speeds._STAND_IN[calc_speeds.KEY_BACKGROUND] = Decimal(3)  # the admin changes the setting
+            values[calc_speeds.KEY_BACKGROUND] = Decimal(3)  # the admin changes the setting
         await w.cycle()
         now[0] += datetime.timedelta(seconds=1)
         prov.move_spot(prov.spot.ltp + 1, now[0])
@@ -263,14 +280,52 @@ async def test_valve_steps_1_2_5_under_a_slow_maths_step_and_back_to_1_when_calm
 def test_valve_steps_on_backlog_too():
     v = calc_speeds.Valve()
     at = datetime.datetime(2026, 11, 6, 11, 40, tzinfo=datetime.UTC)
-    v.observe(at, Decimal(0), calc_speeds.VALVE_BACKLOG_LIMIT + 1)
-    assert v.step == 1 and "backlog" in v.log[0][2] and v.slowed(Decimal(1)) == Decimal(2)
+    steps = calc_speeds.valve_steps(DEFAULTS)
+    v.observe(at, Decimal(0), calc_speeds.VALVE_BACKLOG_LIMIT + 1, steps)
+    assert v.step == 1 and "backlog" in v.log[0][2] and v.slowed(Decimal(1), steps) == Decimal(2)
 
 
-def test_a_missing_speed_setting_fails_closed(monkeypatch):
-    monkeypatch.setitem(calc_speeds._STAND_IN, calc_speeds.KEY_BACKGROUND, Decimal(0))
+def test_the_valve_steps_are_the_settings_in_force():
+    """REQ-166 AC-3 with the steps as settings (REQ-167): a changed step 2 is the slowed speed at step 2."""
+    v = calc_speeds.Valve()
+    at = datetime.datetime(2026, 11, 6, 11, 40, tzinfo=datetime.UTC)
+    steps = calc_speeds.valve_steps({**DEFAULTS, calc_speeds.VALVE_STEP_KEYS[1]: Decimal(4)})
+    v.observe(at, Decimal(0), calc_speeds.VALVE_BACKLOG_LIMIT + 1, steps)
+    assert steps == (Decimal(1), Decimal(4), Decimal(5)) and v.slowed(Decimal(1), steps) == Decimal(4)
+
+
+def test_a_missing_speed_setting_fails_closed():
     with pytest.raises(calc_speeds.SpeedSettingRefused):
-        calc_speeds.read_speeds()
+        calc_speeds.read_speeds({**DEFAULTS, calc_speeds.KEY_BACKGROUND: Decimal(0)})
+    with pytest.raises(calc_speeds.SpeedSettingRefused):  # a key the read did not hold: never a guessed speed
+        calc_speeds.read_speeds({k: v for k, v in DEFAULTS.items() if k != calc_speeds.KEY_PER_OPTION})
+
+
+async def test_a_failing_settings_read_keeps_the_last_good_read(scn):
+    """REQ-115 AC-9 for the one settings read per cycle: a failed read keeps the last good values (speed 3 s here);
+    with no good read yet the cycle checks nothing."""
+    values, fail = {**DEFAULTS, calc_speeds.KEY_BACKGROUND: Decimal(3)}, [True]
+
+    async def read():
+        if fail[0]:
+            raise ConnectionError("database blip")
+        return values
+    prov, now, calls = Prov(scn), [scn.clock_at], Calls()
+    w = _worker(prov, _watched(scn), now, calls, settings=read)
+    await w.cycle()
+    assert calls.states == [] and w.errors  # no good read yet: nothing checked on a guessed setting
+    fail[0] = False
+    await w.cycle()
+    assert len(calls.states) == 1
+    fail[0] = True
+    now[0] += datetime.timedelta(seconds=1)
+    prov.move_spot(prov.spot.ltp + 1, now[0])
+    await w.cycle()  # the read fails; the last good 3 s still gates: 1 s after the last check, so no new check
+    assert len(calls.states) == 1
+    now[0] += datetime.timedelta(seconds=3)
+    prov.move_spot(prov.spot.ltp + 1, now[0])
+    await w.cycle()
+    assert len(calls.states) == SECOND
 
 
 # ---- B4 (a): per-cycle cap, the rest roll on ------------------------------------------------------------------
@@ -286,7 +341,7 @@ async def test_one_strategy_failing_does_not_stop_the_others(scn):
     prov, now = Prov(scn), [scn.clock_at]
     seen = []
 
-    async def recorder(wd, _state):
+    async def recorder(wd, _state, _prefs):
         if wd.strategy_id == FIRST_ID:
             raise RuntimeError("boom")
         seen.append(wd.strategy_id)
@@ -351,16 +406,18 @@ def _price_time(prov) -> datetime.datetime:
 async def _screen_state(prov, tracked, at, body) -> pe.StrategyState:
     """The screen's state for the same prices: its own reader (``read_market``), spot answer and ``state_of``, with a
     margin read that failed (the background has none)."""
-    ctx = MarketContext(prov, lambda: at, RATE)
+    ctx = ctx_in_force(MarketContext(prov, lambda: at, RATE), DEFAULTS)  # the same settings read as the worker's
     market = await adjustment_readers.read_market(tracked, ctx)
-    spot = resolve_spot(market.feed, None, market.last_close, now=market.now)
-    return adjustment_check.state_of(tracked, market, spot, None, None, adjustment_check.prices_fresh(ctx), body)
+    spot = resolve_spot(market.feed, None, market.last_close, now=market.now, windows=ctx.feed_windows)
+    return adjustment_check.state_of(tracked, market, spot, None, None, adjustment_check.prices_fresh(ctx), body,
+                                     config=PREFS.approach)
 
 
 def _background_state(prov, watched, at) -> pe.StrategyState:
     read = background.read_prices(prov, watched, at)
     assert read.state is background.PriceState.FRESH
-    return background.background_state(watched, read, FeedScope(background.SharedCompute(), "owner"), at, RATE)
+    return background.background_state(watched, read, FeedScope(background.SharedCompute(), "owner"), at, DEFAULTS,
+                                       PREFS)
 
 
 def _system_body(stype: str) -> dict:
@@ -373,7 +430,7 @@ async def _both(scn) -> tuple[dict, pe.StrategyState, pe.StrategyState]:
     prov = Prov(scn)
     at = _price_time(prov)  # the screen's clock reads the price's own time
     body = _system_body("ic")
-    w = dataclasses.replace(_watched(scn)[0], body=body, expiry_kind=None)
+    w = dataclasses.replace(_watched(scn)[0], body=body)
     return body, await _screen_state(prov, w.tracked, at, body), _background_state(prov, w, at)
 
 
@@ -394,7 +451,8 @@ def _with(body: dict, trigger: str, cmp: str) -> dict:
 
 
 def _verdict(body: dict, state: pe.StrategyState, trigger: str):
-    ev = pe.evaluate(body, state, None, None)  # no entry state: a true rule fires (not "already true at entry")
+    # no entry state: a true rule fires (not "already true at entry")
+    ev = pe.evaluate(body, state, None, None, gap_until=PREFS.gap_until)
     return next((r for r in ev.results if r.trigger_id == trigger), None)  # None: evaluated false (no result)
 
 
@@ -447,7 +505,7 @@ def test_state_of_prices_only_the_strategys_own_legs_and_is_light(scn, scenario_
     monkeypatch.setattr(adjustment_check, "price_after", counted)
     started = time.perf_counter()
     for _ in range(TIMED_CALLS):
-        background.background_state(w, read, shared, at, RATE)
+        background.background_state(w, read, shared, at, DEFAULTS, PREFS)
     each = (time.perf_counter() - started) / TIMED_CALLS
     print(f"STATE-OF-TIMING calls={TIMED_CALLS} each_ms={each * 1000:.2f} computations={shared.cache.computations}")
     assert len(priced) == TIMED_CALLS  # one own-legs pricing per check (work counted, never wall time)
@@ -483,8 +541,8 @@ async def test_a_failing_list_reread_keeps_the_last_good_list_and_still_checks(s
         if len(reads) == SECOND:
             raise ConnectionError("database blip")
         return good
-    w = background.Worker(provider_for=lambda _o: prov, lister=lister, clock=lambda: now[0], rate=RATE,
-                          recorder=calls)
+    w = background.Worker(provider_for=lambda _o: prov, lister=lister, clock=lambda: now[0], settings=_settings(),
+                          preferences=_prefs, recorder=calls)
     await w.cycle()
     now[0] += datetime.timedelta(seconds=background.REBUILD_SECONDS)  # the re-read is due, and it fails
     prov.move_spot(prov.spot.ltp + 1, now[0])
@@ -517,12 +575,12 @@ async def test_owner_lister_skips_a_strategy_whose_instrument_list_raises(scn, m
 
 
 async def test_a_failing_speed_read_keeps_the_last_good_speed(scn, monkeypatch):
-    monkeypatch.setitem(calc_speeds._STAND_IN, calc_speeds.KEY_BACKGROUND, Decimal(3))
     prov, now, calls = Prov(scn), [scn.clock_at], Calls()
-    w = _worker(prov, _watched(scn), now, calls)
+    three = _settings({**DEFAULTS, calc_speeds.KEY_BACKGROUND: Decimal(3)})
+    w = _worker(prov, _watched(scn), now, calls, settings=three)
     await w.cycle()
 
-    def refuse():
+    def refuse(_values):
         raise ValueError("setting refused")
     monkeypatch.setattr(calc_speeds, "read_speeds", refuse)
     now[0] += datetime.timedelta(seconds=1)
@@ -536,7 +594,7 @@ async def test_a_failing_speed_read_keeps_the_last_good_speed(scn, monkeypatch):
 
 
 async def test_a_failing_speed_read_with_no_good_speed_skips_the_cycle_and_logs(scn, monkeypatch, caplog):
-    def refuse():
+    def refuse(_values):
         raise ValueError("setting refused")
     monkeypatch.setattr(calc_speeds, "read_speeds", refuse)
     prov, now, calls = Prov(scn), [scn.clock_at], Calls()
@@ -578,7 +636,7 @@ async def test_run_does_not_swallow_cancellation(scn):
 async def test_a_check_that_raises_after_active_leaves_the_strategy_paused_not_active(scn):
     prov, now = Prov(scn), [scn.clock_at]
 
-    async def recorder(_w, _state):
+    async def recorder(_w, _state, _prefs):
         raise RuntimeError("boom")
     w = _worker(prov, _watched(scn), now, recorder)
     await w.cycle()

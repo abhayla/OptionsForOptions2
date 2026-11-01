@@ -43,6 +43,9 @@ from test_strategy_store import (
     _user,
     _with_draft,
 )
+from ofo.settings import calc as _calc, defaults as _defaults
+
+_MAX_DELIST = _calc.max_delist_percent(_defaults())
 
 HTTP_OK, HTTP_CREATED, HTTP_FORBIDDEN = 200, 201, 403
 SECOND_REVISION, THREE_STATEMENTS = 2, 3
@@ -62,7 +65,7 @@ def _on(app, day: datetime.date):
 
 
 async def _seeded(conn) -> dict[str, int]:
-    await apply_update(conn, _fixture_rows(), as_of=AS_OF)
+    await apply_update(conn, _fixture_rows(), as_of=AS_OF, max_delist_percent=_MAX_DELIST)
     return await _ids(conn)
 
 
@@ -275,16 +278,19 @@ def _next_weekday_after(day: datetime.date) -> datetime.date:
 WEEKEND_FIRST = 5  # datetime.weekday(): Saturday
 
 
+PUBLISH = datetime.time(8, 30)  # the registry default of facts.contract_list_publish_time, passed explicitly
+
+
 def _ist(day: int, hour: int, minute: int) -> datetime.datetime:
     return datetime.datetime(2026, 10, day, hour, minute, tzinfo=_IST)
 
 
 def test_ac3_a_friday_load_is_current_on_saturday_and_early_monday_but_not_monday_after_publish():
     """Core proof + attack 1: loaded Friday 09:00, current Saturday 11:00 and Monday 08:00; unconfirmed Monday 09:00."""
-    assert not picker.loaded_before(FRIDAY_LOAD, _ist(24, 11, 0))
-    assert not picker.loaded_before(FRIDAY_LOAD, _ist(26, 8, 0))
-    assert picker.loaded_before(FRIDAY_LOAD, _ist(26, 9, 0))
-    assert picker.loaded_before(None, _ist(24, 11, 0))
+    assert not picker.loaded_before(FRIDAY_LOAD, _ist(24, 11, 0), PUBLISH)
+    assert not picker.loaded_before(FRIDAY_LOAD, _ist(26, 8, 0), PUBLISH)
+    assert picker.loaded_before(FRIDAY_LOAD, _ist(26, 9, 0), PUBLISH)
+    assert picker.loaded_before(None, _ist(24, 11, 0), PUBLISH)
 
 
 @pytest.mark.parametrize("load_day", [19, 20, 21, 22, 23, 24, 25])  # Mon..Sun
@@ -293,14 +299,15 @@ def test_ac3_the_next_session_day_is_a_later_session_on_every_weekday(load_day):
     day = _next_weekday_after(datetime.date(2026, 10, load_day))
     assert day.weekday() < WEEKEND_FIRST and day > datetime.date(2026, 10, load_day)
     judged = datetime.datetime.combine(day, datetime.time(12, 0), tzinfo=_IST)
-    assert picker.loaded_before(_ist(load_day, 14, 0), judged)
+    assert picker.loaded_before(_ist(load_day, 14, 0), judged, PUBLISH)
 
 
 def test_ac3_a_load_before_the_publish_time_is_unconfirmed_after_it():
     """Attack 2: loaded 08:29 on a weekday, checked 09:00 the same day -> unconfirmed; loaded 08:30 -> current."""
-    assert picker.loaded_before(_ist(22, 8, 29), _ist(22, 9, 0))
-    assert not picker.loaded_before(_ist(22, 8, 30), _ist(22, 9, 0))
-    assert picker.session_start(_ist(22, 8, 29)) == _ist(21, 8, 30)  # before publish: the previous weekday's session
+    assert picker.loaded_before(_ist(22, 8, 29), _ist(22, 9, 0), PUBLISH)
+    assert not picker.loaded_before(_ist(22, 8, 30), _ist(22, 9, 0), PUBLISH)
+    # before publish: the previous weekday's session
+    assert picker.session_start(_ist(22, 8, 29), PUBLISH) == _ist(21, 8, 30)
 
 
 async def test_ac3_a_list_last_loaded_yesterday_answers_unconfirmed_and_stores_nothing(app_engine):

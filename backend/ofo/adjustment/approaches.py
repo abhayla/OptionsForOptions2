@@ -39,11 +39,9 @@ Rules (each one decided here and stated, catalogue Part 2 followed where the con
 from __future__ import annotations
 
 import datetime
-import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from decimal import ROUND_HALF_UP, Decimal
-from pathlib import Path
 from typing import cast
 
 from ofo.adjustment import liquidity
@@ -57,7 +55,6 @@ from ofo.money import PAISE
 from ofo.strategy import leg_edit
 from ofo.strategy.leg_edit import EditLeg, LegEditRefused, Listing
 
-CONFIG_FILE = Path(__file__).with_name("approach_config.json")
 APPROACH_IDS = ("A-36", "A-01", "A-05", "A-29", "A-28", "A-11", "A-31")
 NO_CHANGE = APPROACH_IDS[0]  # A-36 "No change": always compared, always the first column (REQ-156 AC-1, AC-4)
 NAMES = ADJUSTMENT_APPROACH_LABEL_TEXT
@@ -69,17 +66,12 @@ _OPPOSITE = {"BUY": "SELL", "SELL": "BUY"}
 
 @dataclass(frozen=True)
 class Config:
+    """A user's approach preferences (REQ-168 AC-1), built by ``ofo.adjustment.preferences.from_values``."""
+
     target_short_delta: Mapping[str, Decimal]
     roll_points_without_delta: Mapping[str, Decimal]
     iron_fly_min_days_left: int
     reduce_divisor: int
-
-
-def load_config(path: Path = CONFIG_FILE) -> Config:
-    raw = json.loads(path.read_text(encoding="utf-8"))
-    return Config({k: Decimal(v) for k, v in raw["target_short_delta"].items()},
-                  {k: Decimal(v) for k, v in raw["roll_points_without_delta"].items()},
-                  int(raw["iron_fly_min_days_left"]), int(raw["reduce_divisor"]))
 
 
 @dataclass(frozen=True)

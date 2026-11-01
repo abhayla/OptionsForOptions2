@@ -8,6 +8,10 @@ Body shape: docs/design/playbook-body-v1.md.
   refuses any UPDATE or DELETE of it by the application role (SQLSTATE OF031) whatever this module does.
 - Names are unique per user and type, case-insensitive (`playbook_name_taken`, carrying the name and the type's shown
   name). Every body is checked before any write (`playbook_body_invalid`, naming the field).
+- A system playbook's numbers are its CURRENT version (REQ-169, migration 0034: the newest row of
+  system_playbook_versions): get / list_for_type / active_for answer that version's body, status, number and time,
+  so a strategy tracked on the system playbook gets an admin's new version at its next check, and a copy or a plan
+  made earlier keeps the body it copied (ADR-222 (9)).
 - active_for: the user's active row, else the type's system playbook (no row = system). Deleting the active playbook
   removes its active row (FK cascade) and the answer says the system playbook is active again (REQ-158 AC-4).
 - accept_plan COPIES the body into the strategy's plan; a later edit or delete of the playbook never changes it
@@ -16,6 +20,7 @@ The caller commits.
 """
 from __future__ import annotations
 
+import dataclasses
 import json
 import re
 from dataclasses import dataclass
@@ -125,6 +130,23 @@ class Suggestion:
         return self.timeline[0].get("label") if self.timeline else None
 
     @property
+    def approach(self) -> str | None:
+        """ADR-221: the T-19 record's cheapest priced approach when it was shown (None: not T-19, or older)."""
+        return self.timeline[0].get("approach") if self.timeline else None
+
+    @property
+    def approach_cost(self) -> Decimal | None:
+        """That approach's Compare cost when the record opened (stored as exact text)."""
+        raw = self.timeline[0].get("approach_cost") if self.timeline else None
+        return None if raw is None else Decimal(raw)
+
+    @property
+    def unpriced(self) -> int:
+        """How many offered approaches could not be priced at that check (left out of the pick)."""
+        raw = self.timeline[0].get("unpriced") if self.timeline else None
+        return raw if isinstance(raw, int) else 0
+
+    @property
     def unit(self) -> str | None:
         """The trigger's unit as the evaluated body held it when the flag was shown (None on an older record)."""
         return self.timeline[0].get("unit") if self.timeline else None
@@ -155,6 +177,9 @@ _SELECT_SYSTEM = text(f"SELECT {_PB_COLUMNS} FROM public.adjustment_playbooks " 
 _SELECT_ACTIVE = text(f"SELECT {', '.join('p.' + c for c in _PB_COLUMNS.split(', '))} "  # noqa: S608 constant columns
                       "FROM public.adjustment_playbook_active a JOIN public.adjustment_playbooks p "
                       "ON p.id = a.playbook_id WHERE a.user_ref = :user_ref AND a.strategy_type = :type")
+#: REQ-169: a system playbook's current version is the newest stored one (never the first, never the 0031 row's body)
+_SYSTEM_CURRENT = text("SELECT version, status, body::text, saved_at FROM public.system_playbook_versions "
+                       "WHERE strategy_type = :type ORDER BY version DESC LIMIT 1")
 _NAME_USED = text("SELECT 1 FROM public.adjustment_playbooks WHERE user_ref = :user_ref AND strategy_type = :type "
                   "AND lower(name) = lower(:name) AND id IS DISTINCT FROM :id")
 _INSERT = text("INSERT INTO public.adjustment_playbooks (user_ref, strategy_type, name, body) "  # noqa: S608
@@ -193,7 +218,8 @@ _INSERT_SUGGESTION = text(
     "VALUES (:strategy_id, :rule_id, :trigger_id, :stage, :value, :threshold, "
     "jsonb_build_array(jsonb_build_object('at', clock_timestamp(), 'outcome', 'open', "
     "'group', CAST(:group AS TEXT), 'source', CAST(:source AS TEXT), 'cmp', CAST(:cmp AS TEXT), "
-    "'label', CAST(:label AS TEXT), 'unit', CAST(:unit AS TEXT)))) "
+    "'label', CAST(:label AS TEXT), 'unit', CAST(:unit AS TEXT), 'approach', CAST(:approach AS TEXT), "
+    "'approach_cost', CAST(:approach_cost AS TEXT), 'unpriced', CAST(:unpriced AS INTEGER)))) "
     f"RETURNING {_SG_COLUMNS}")
 _CLOSE_SUGGESTION = text(
     "UPDATE public.adjustment_suggestions AS g SET outcome = CAST(:outcome AS TEXT), "  # noqa: S608
@@ -323,6 +349,12 @@ def _load(raw: str) -> Any:
     return json.loads(raw, parse_float=_no_float)
 
 
+#: Public names for the body codec, shared with the system playbook version store (GC-SET step 9): one codec for
+#: every stored playbook body (sorted keys; a float in a stored body is refused).
+dump_body = _dump
+load_body = _load
+
+
 def _type(strategy_type: str) -> str:
     if strategy_type not in SHOWN_NAMES:
         raise PlaybookStoreError(BODY_INVALID, f"strategy type {strategy_type!r}", field="strategy_type")
@@ -341,6 +373,17 @@ def _name(name: object) -> str:
 def _playbook(row: Any) -> Playbook:
     return Playbook(id=row[0], user_ref=row[1], strategy_type=row[2], name=row[3], is_system=row[4], status=row[5],
                     body=_load(row[6]), version=row[7], created_at=row[8], updated_at=row[9])
+
+
+async def _current(conn: Any, pb: Playbook) -> Playbook:
+    """A system playbook as its current version (REQ-169); a user's own playbook unchanged. A system playbook with
+    no stored version is a broken database (0034 seeds all 12): fails closed, never the 0031 row's body."""
+    if not pb.is_system:
+        return pb
+    row = (await conn.execute(_SYSTEM_CURRENT, {"type": pb.strategy_type})).one_or_none()
+    if row is None:
+        raise RuntimeError(f"no stored version of the system playbook for {pb.strategy_type}")
+    return dataclasses.replace(pb, version=row[0], status=row[1], body=_load(row[2]), updated_at=row[3])
 
 
 def _not_found(playbook_id: object) -> PlaybookStoreError:
@@ -363,13 +406,13 @@ async def get(conn: Any, user_ref: str, playbook_id: int) -> Playbook:
     row = (await conn.execute(_SELECT_ONE, {"id": playbook_id, "user_ref": user_ref})).one_or_none()
     if row is None:
         raise _not_found(playbook_id)
-    return _playbook(row)
+    return await _current(conn, _playbook(row))
 
 
 async def list_for_type(conn: Any, user_ref: str, strategy_type: str) -> list[Playbook]:
     """The type's system playbook first, then the user's own by name."""
     rows = (await conn.execute(_SELECT_TYPE, {"type": _type(strategy_type), "user_ref": user_ref})).all()
-    return [_playbook(r) for r in rows]
+    return [await _current(conn, _playbook(r)) for r in rows]
 
 
 async def _write_named(conn: Any, statement: Any, params: dict, name: str, strategy_type: str) -> Any:
@@ -453,7 +496,7 @@ async def active_for(conn: Any, user_ref: str, strategy_type: str) -> Playbook:
         row = (await conn.execute(_SELECT_SYSTEM, {"type": strategy_type})).one_or_none()
     if row is None:  # the migration seeds all 12: a missing one is a broken database, never a silent default
         raise RuntimeError(f"no system playbook for {strategy_type}")
-    return _playbook(row)
+    return await _current(conn, _playbook(row))
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -516,7 +559,8 @@ async def open_suggestion(conn: Any, user_ref: str, strategy_id: int, rule_id: s
                           trigger_id: str | None, stage: str | None, value: Decimal | None,
                           threshold: Decimal | None, group: str | None = None,
                           source: str | None = None, cmp: str | None = None, label: str | None = None,
-                          unit: str | None = None) -> Suggestion:
+                          unit: str | None = None, approach: str | None = None,
+                          approach_cost: Decimal | None = None, unpriced: int | None = None) -> Suggestion:
     """REQ-112 AC-1: one open record per (strategy, rule); a rule still open returns its existing record."""
     await _owned(conn, user_ref, strategy_id)
     params = {"strategy_id": strategy_id, "rule_id": rule_id}
@@ -526,7 +570,9 @@ async def open_suggestion(conn: Any, user_ref: str, strategy_id: int, rule_id: s
     row = (await conn.execute(_INSERT_SUGGESTION, {**params, "trigger_id": trigger_id, "stage": stage,
                                                    "value": value, "threshold": threshold, "group": group,
                                                    "source": source, "cmp": cmp, "label": label,
-                                                   "unit": unit})).one()
+                                                   "unit": unit, "approach": approach, "unpriced": unpriced,
+                                                   "approach_cost": None if approach_cost is None
+                                                   else format(approach_cost, "f")})).one()
     return _suggestion(row)
 
 

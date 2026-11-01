@@ -14,9 +14,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from marketdata._kite_fixture import Clock, new_provider, replay
-from ofo.marketdata.forward import FALLBACK_LABEL, MIN_STRIKES, PARITY, SPOT_FALLBACK
+from ofo.marketdata.forward import FALLBACK_LABEL, PARITY, SPOT_FALLBACK
 from ofo.marketdata.kite_provider import IST
 from ofo.outcome.snapshot import FORWARD_STRIKES, forward_strike_ids, read_snapshot
+from ofo.settings import calc as _fq_calc
+from ofo.settings import defaults as _fq_defaults
+
+_FQ = _fq_calc.forward_quality(_fq_defaults())
 
 VALUATION = datetime.datetime(2026, 10, 8, 9, 20, 9, tzinfo=IST)
 RATE = Decimal("0.065")
@@ -29,7 +33,7 @@ def _snapshot(extra: list[str]):
     provider.subscribe(held)
     provider.drain_subscription_changes()
     replay(provider, Clock(VALUATION))
-    return provider, read_snapshot(provider, "NIFTY", LEGS, VALUATION, RATE)
+    return provider, read_snapshot(provider, "NIFTY", LEGS, VALUATION, RATE, quality=_FQ)
 
 
 def _only(snap):
@@ -49,7 +53,7 @@ def test_holding_the_forward_strikes_prices_the_expiry_on_parity():
     assert 0 < len(ids) <= 2 * FORWARD_STRIKES and not set(ids) & set(LEGS)
     _p, snap = _snapshot(ids)
     fwd = _only(snap)
-    assert fwd.source == PARITY and fwd.label is None and fwd.strikes_used >= MIN_STRIKES, fwd
+    assert fwd.source == PARITY and fwd.label is None and fwd.strikes_used >= _FQ.min_strikes, fwd
 
 
 def test_no_spot_centres_on_the_middle_leg_strike():
@@ -63,7 +67,7 @@ def test_fewer_than_three_two_sided_strikes_keeps_the_fallback_and_its_label():
     ids = forward_strike_ids(provider.instrument_master(), "NIFTY", LEGS, provider.underlying_quote("NIFTY").ltp, n=1)
     _p, snap = _snapshot(ids)  # 1 strike nearest the money + the legs' strikes: under 3 two-sided pairs
     fwd = _only(snap)
-    assert fwd.strikes_used < MIN_STRIKES and fwd.source == SPOT_FALLBACK and fwd.label == FALLBACK_LABEL
+    assert fwd.strikes_used < _FQ.min_strikes and fwd.source == SPOT_FALLBACK and fwd.label == FALLBACK_LABEL
 
 
 def test_unknown_and_future_legs_add_nothing():

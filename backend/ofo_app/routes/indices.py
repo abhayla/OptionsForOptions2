@@ -56,7 +56,7 @@ def held_by_a_socket(ctx: MarketContext, streaming: Callable[[str], bool] | None
     if streaming is None:
         return True
     owner = getattr(streaming, "ctx", None)  # the replay's predicate names its own context (ofo_app.replay_mode)
-    if ctx is not (owner if owner is not None else outcome.live_context()):
+    if not outcome.same_feed(ctx, owner if owner is not None else outcome.live_context()):
         return True
     return all(streaming(i) for i in index_ids(ctx).values() if i is not None)
 

@@ -13,8 +13,11 @@ ambiguous -> None, so the evaluator answers NotChecked with its catalogue reason
   engine, as the approaches route computes them); booked unreadable or several expiries -> None.
 - expiry P&L at spot (T-02): the open legs' ``Strategy.expiry_pnl_at(spot)`` plus booked; no spot / booked -> None.
 - premium_left: ``adjust_money.premium_left`` over the open option legs at LTP; any leg unpriced -> None.
-- adjustment_cost: the fixture convention ((ask - bid) x quantity + Rs 40 per open leg; no helper for the compare's
-  "This adjustment" charges of closing and reopening the open legs exists yet); a leg without bid or ask -> None.
+- adjustment_cost (T-19, ADR-221): the cost of the CHEAPEST approach the playbook offers
+  (``compare.offered_approaches``: ``approaches.applicable`` without "No change"), each built and priced by the
+  approaches route's own path (``routes.adjustment.priced_approach``) and costed by ``compare.approach_cost``, the
+  Compare's "This adjustment" cell (charges + half the bid-ask spread of each traded contract). Ties keep playbook
+  order. Nothing offered / nothing priceable / no spot -> None with ``compare.NO_APPROACH_*`` as the reason code.
 - margin: Zerodha's stated figure for the current legs through the approaches route's margin seam; only a CHECKED
   figure (``margin_block`` state ``stated``) counts; every other state -> None (``missing_margin``).
 - days_left / hhmm: the answer clock (``MarketInputs.now``) in IST against the nearest leg expiry.
@@ -40,7 +43,9 @@ from decimal import Decimal
 from typing import Any, Final
 
 from ofo.adjustment import playbook_eval as pe
-from ofo.adjustment.approaches import Position
+from ofo.adjustment.approaches import Config, Position
+from ofo.adjustment.compare import Cheapest, Column, MarginRead, cheapest_approach
+from ofo.adjustment.offered import offered_now
 from ofo.adjustment.strategy_type import strike_gap_of, type_of
 from ofo.engine import adjust_money
 from ofo.engine.legs import Action, Instrument, Leg
@@ -50,10 +55,10 @@ from ofo.marketdata.spot_source import SourceState, SpotAnswer
 from ofo.timeutil import IST
 
 from ofo_app import playbook_store
-from ofo_app.routes.adjustment import MarketInputs, Tracked, price_after
+from ofo_app.routes.adjustment import MarketInputs, Tracked, as_of_market, price_after, priced_approach
 
-#: The scenario library's adjustment-cost convention (tests/adjust_scenarios_gen.py): Rs 40 a leg on top of the spread.
-COST_PER_LEG: Final = Decimal(40)
+#: a clock trigger's unit in the playbook body (T-10b): its value and threshold are HH:MM
+CLOCK_UNIT: Final = "time"
 _HEALTH_FRESH: Final = "available"
 _HEALTH_STALE: Final = "stale"
 
@@ -137,8 +142,24 @@ def _abs_delta(market: MarketInputs, symbol: str) -> Decimal | None:
     return None if g is None or g.delta is None else abs(g.delta)
 
 
+def cheapest_offered(body: Mapping | None, tracked: Tracked, market: MarketInputs, spot: Decimal | None,  # noqa: PLR0913 - the preferences value is a required parameter (GC-SET)
+                     rates: Any, config: Config) -> Cheapest:
+    """ADR-221: the cheapest approach ``body`` offers, every one built and priced by the Compare's own path."""
+    offered = offered_now(body, tracked.adjustments_used)  # S-11: only exit and reduce at the limit
+    if spot is None:  # nothing can be built without spot: none priceable (T-19 is withheld for no spot anyway)
+        return cheapest_approach(offered, {}, market.chain)
+    columns: dict[str, Column] = {}
+    tracked = as_of_market(tracked, market)  # as the approaches route builds (market day, listed expiry kind)
+    for a in offered:
+        built, priced = priced_approach(a, tracked, market, spot, rates, config)
+        if built is not None and priced is not None:
+            columns[a] = Column(built, priced.after, priced.reason, priced.charges_known, MarginRead(None))
+    return cheapest_approach(offered, columns, market.chain)
+
+
 def state_of(tracked: Tracked, market: MarketInputs, spot: SpotAnswer, margin: Mapping | None,  # noqa: PLR0913
-             rates: Any, fresh: bool | None, body: Mapping | None = None) -> pe.StrategyState:
+             rates: Any, fresh: bool | None, body: Mapping | None = None, *,
+             config: Config) -> pe.StrategyState:
     position = tracked.position
     rows = {r.tradingsymbol: r for r in market.chain}
     ltp = {x.tradingsymbol: getattr(rows.get(x.tradingsymbol), "ltp", None) for x in position.legs}
@@ -152,10 +173,7 @@ def state_of(tracked: Tracked, market: MarketInputs, spot: SpotAnswer, margin: M
         booked, ((x.side, x.entry, ltp[x.tradingsymbol], qty[x.tradingsymbol]) for x in position.legs))
     left = adjust_money.premium_left((x.side, ltp[x.tradingsymbol], qty[x.tradingsymbol])
                                      for x in position.legs) if priced else None
-    spreads = [(getattr(rows.get(x.tradingsymbol), "bid", None), getattr(rows.get(x.tradingsymbol), "ask", None))
-               for x in position.legs]
-    cost = None if any(b is None or a is None for b, a in spreads) else adjust_money.adjustment_cost(
-        ((b, a, qty[x.tradingsymbol]) for x, (b, a) in zip(position.legs, spreads, strict=True)), COST_PER_LEG)
+    cheap = cheapest_offered(body, tracked, market, value, rates, config)
     before = price_after(position.legs, position, booked, tracked.paid_charges, (), rates, market)
     gross = None if before.after is None else before.after.gross
     expiry_pnl = None
@@ -172,7 +190,8 @@ def state_of(tracked: Tracked, market: MarketInputs, spot: SpotAnswer, margin: M
         days_left=(expiry - now.date()).days, hhmm=hhmm, spot=value, shorts=shorts, pnl=pnl,
         max_loss=None if gross is None else _limit_value(gross.max_loss),
         max_profit=None if gross is None else _limit_value(gross.max_profit),
-        margin=stated_margin, premium_left=left, adjustment_cost=cost, atm_iv=market.vol,
+        margin=stated_margin, premium_left=left, adjustment_cost=cheap.cost, adjustment_approach=cheap.approach,
+        adjustment_cost_reason=cheap.reason, adjustment_unpriced=cheap.unpriced, atm_iv=market.vol,
         prev_close=(last.value if last is not None and last.value is not None and last.state is SourceState.STATED
                     else None),
         adjustments_used=tracked.adjustments_used, expiry_pnl_at_spot=expiry_pnl,
@@ -194,7 +213,8 @@ def scenario_entry(scn: Any, state: pe.StrategyState, position: Position) -> pe.
 
 
 async def evaluate_and_remember(conn: Any, user_ref: str, strategy_id: int, body: Mapping,  # noqa: PLR0913
-                                state: pe.StrategyState, scn: Any, position: Position) -> pe.Evaluation:
+                                state: pe.StrategyState, scn: Any, position: Position, *,
+                                gap_until: str) -> pe.Evaluation:
     stored = await playbook_store.rule_state(conn, user_ref, strategy_id)
     memory = {k: {"held_at_entry": h, "seen_clear": s} for k, (h, s) in stored.items()}
     entry = scenario_entry(scn, state, position)
@@ -202,12 +222,23 @@ async def evaluate_and_remember(conn: Any, user_ref: str, strategy_id: int, body
         state = dataclasses.replace(state, entry_atm_iv=entry.atm_iv)
     elif not memory:
         entry = state  # tracking just started: this first check is the entry state
-    ev = pe.evaluate(body, state, memory, entry)
+    ev = pe.evaluate(body, state, memory, entry, gap_until=gap_until)
     for rid, mem in ev.memory.items():
         if memory.get(rid) != mem:
             await playbook_store.put_rule_state(conn, user_ref, strategy_id, rid, held_at_entry=mem["held_at_entry"],
                                                 seen_clear=mem["seen_clear"])
     return ev
+
+
+def stage_name_text(name: str | None) -> Any:
+    """A playbook stage's name as catalogue text ("Last day" has a space, so it can never be an Identifier); None
+    for no stage. A name the slot refuses reads "current" (``stage_words``), never a 500."""
+    return None if name is None else render_explanation("adjust_check_stage_name", name=pe.stage_words(name))
+
+
+def stage_out(name: str | None, index: int | None) -> dict[str, Any]:
+    """The reply's stage object, shared by every route that echoes the evaluated stage."""
+    return {"name": stage_name_text(name), "index": index}
 
 
 def trigger_words(body: Mapping | None, trigger_id: str | None) -> tuple[str | None, str | None]:
@@ -224,6 +255,8 @@ def condition_line(trigger_id: str, label: str | None, unit: str | None, value: 
     and unit. A label the slot refuses or a body without one -> the trigger id (fail visible); a unit that is empty
     or not a plain unit -> the line without it."""
     def line(lab: str, un: str | None) -> Any:
+        if un == CLOCK_UNIT:  # a clock trigger: HH:MM value and threshold, no unit word
+            return render_explanation("adjust_condition_line_time", label=lab, value=value, threshold=threshold)
         if un:
             return render_explanation("adjust_condition_line", label=lab, value=value, unit=un, threshold=threshold)
         return render_explanation("adjust_condition_line_plain", label=lab, value=value, threshold=threshold)
@@ -231,4 +264,23 @@ def condition_line(trigger_id: str, label: str | None, unit: str | None, value: 
     try:
         return line(label if label is not None else trigger_id, unit)
     except (TypeError, ValueError):  # the slot refused the label or the unit: the id, with no unit (fail visible)
+        pass
+    try:
         return line(trigger_id, None)
+    except (TypeError, ValueError):  # the value itself is refused: the trigger id alone, never a 500
+        return render_explanation("adjust_condition_line_id", label=trigger_id)
+
+
+def condition_line_t19(label: str | None, value: str, threshold: str, approach: str, cost: Decimal,  # noqa: PLR0913
+                       unpriced: int = 0) -> Any:
+    """ADR-221: the T-19 line with the cheapest approach that could be priced and its Compare cost, saying how many
+    offered approaches could not be priced (left out); an approach or label the slot refuses -> the plain condition
+    line (fail visible, never a guessed name). The check reply and the opportunities list both draw it here."""
+    slots = {"label": label if label is not None else "T-19", "value": value, "threshold": threshold,
+             "approach": approach, "cost": cost}
+    try:
+        if unpriced > 0:
+            return render_explanation("adjust_condition_line_t19_unpriced", **slots, count=unpriced)
+        return render_explanation("adjust_condition_line_t19", **slots)
+    except (TypeError, ValueError):
+        return condition_line("T-19", label, None, value, threshold)

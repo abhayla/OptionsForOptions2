@@ -3,10 +3,10 @@ import datetime
 from decimal import Decimal as D
 
 import pytest
-
 from ofo.engine.legs import Action, Instrument
-from ofo.scenario.config import DEFAULT_CONFIGS, ScenarioConfig, ScenarioSettings
+from ofo.scenario.config import ScenarioConfig, ScenarioSettings, configs_from_values
 from ofo.scenario.levels import RangeOverride, build_level_set
+from ofo.settings import defaults
 from scenario_fixtures import nifty_input, nifty_leg
 
 NIFTY_NEAR = datetime.date(2026, 9, 29)
@@ -20,6 +20,8 @@ VALID = {
     "margin_steps": 2,
     "max_columns": 200,
 }
+
+DEFAULT_CONFIGS = configs_from_values(defaults())  # the registry defaults
 
 
 def test_ac4_defaults_are_config_objects_nifty_100_sensex_300(settings):

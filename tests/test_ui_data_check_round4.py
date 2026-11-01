@@ -25,6 +25,7 @@ _spec.loader.exec_module(u)
 
 from ofo.outcome import build_outcome  # noqa: E402
 from ofo.outcome.serialize import outcome_to_dict  # noqa: E402
+from ofo.settings import defaults as _d  # noqa: E402
 from outcome._both_curves_cases import S54, as_json, definition, market, snapshot  # noqa: E402
 from outcome.test_same_engine import VALUATION  # noqa: E402
 
@@ -37,7 +38,7 @@ def real():
     provider = market()
     d = definition(provider, S54)
     snap = snapshot(provider, d)
-    return as_json(outcome_to_dict(build_outcome(d, snap, VALUATION))), snap
+    return as_json(outcome_to_dict(build_outcome(d, snap, VALUATION, settings=_d()))), snap
 
 
 def _verdicts(rep, part):

@@ -25,7 +25,9 @@ from types import MappingProxyType
 
 from ofo import wording as _wording
 
-from ofo.errors.gate_slots import PlaybookField, PlaybookTriggerLabel, PlaybookTypeName, PlaybookUnit
+from ofo.errors.gate_slots import (
+    ClockTime, PlaybookField, PlaybookName, PlaybookTriggerLabel, PlaybookTypeName, PlaybookUnit,
+)
 from ofo.errors.slots import Count, SlotType, _require_exact
 from ofo.errors.templates import MARGIN_SHORTFALL_NEXT_ACTION, ZERODHA_BUSY_TEXT
 
@@ -578,6 +580,19 @@ class Rupees(SlotType):
         return format_rupees(value)
 
 
+class ApproachLabel(SlotType):
+    """ADR-221: an adjustment approach id the app builds (``ADJUSTMENT_APPROACH_LABEL_TEXT``), printed as its name."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        if not isinstance(value, str) or value not in ADJUSTMENT_APPROACH_LABEL_TEXT:
+            raise TypeError(f"ApproachLabel slot requires a built approach id, got {value!r}")
+
+    @staticmethod
+    def format(value: str) -> str:
+        return ADJUSTMENT_APPROACH_LABEL_TEXT[value]
+
+
 class WholeRupees(SlotType):
     """REQ-152: a summary money figure in whole rupees, Indian grouping, no sign (net premium, margin figures)."""
 
@@ -1057,6 +1072,52 @@ class TemplateText(SlotType):
         return str(value)
 
 
+
+@functools.lru_cache(maxsize=1)
+def _registry_texts() -> frozenset[str]:
+    from ofo import settings as registry_mod
+
+    return frozenset(text for s in registry_mod.registry().values() for text in (s.label, s.what_it_changes, s.group))
+
+
+_RISK_FREE_RATE_TERM = re.compile(r"risk-free (?:interest )?rate", re.IGNORECASE)
+
+
+class RegistryText(SlotType):
+    """A group name, label or "what it changes" line of the settings registry (REQ-167 AC-1; ``registry.json`` is
+    code-reviewed data). Any string the registry does not hold is refused, and a held one is re-checked against the
+    wording rules, so a route cannot pass its own sentence."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        if type(value) is not str or value not in _registry_texts():
+            raise TypeError("RegistryText slot takes a group, label or what-it-changes text held by the settings registry")
+        # "risk-free" is on the advice list ("a risk-free trade"); here it is the finance term "risk-free interest rate"
+        # (ADR-056), the one use allowed, so only that phrase is set aside before the check
+        check_explanation_wording(_RISK_FREE_RATE_TERM.sub("interest rate", value), "settings registry text")
+
+    @staticmethod
+    def format(value: object) -> str:
+        return str(value)
+
+
+_SOURCE_URL = re.compile(r"https?://[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=%-]{1,290}")
+
+
+class SourceUrl(SlotType):
+    """The web address a charge rate set was read from, printed as stored: one token, http(s), URL characters only (no
+    space, so it can never carry a sentence), at most 300 characters."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        if type(value) is not str or _SOURCE_URL.fullmatch(value) is None:
+            raise TypeError("SourceUrl slot takes one http(s) address of URL characters, at most 300 long")
+
+    @staticmethod
+    def format(value: object) -> str:
+        return str(value)
+
+
 # --- the catalogue ------------------------------------------------------------------------------------------------
 
 class Values(SlotType):
@@ -1397,6 +1458,8 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("adjust_check_flag_system", "what_triggered", "Adjustment opportunity detected"),
     ExplanationTemplate("adjust_check_flag_user", "what_triggered", "Your rule was triggered"),
     ExplanationTemplate("adjust_check_type_name", "values_seen", "{name}", {"name": PlaybookTypeName}),
+    # a playbook stage's name as the user typed it ("Last day"): it has spaces, so it is catalogue text, not an id
+    ExplanationTemplate("adjust_check_stage_name", "values_seen", "{name}", {"name": PlaybookName}),
     # GC-ADJ2 step 5 (REQ-112 AC-2/AC-6, REQ-162): suggestion outcomes, dismiss reasons and the inbox's fixed words
     ExplanationTemplate("suggestion_outcome_open", "values_seen", "Open"),
     ExplanationTemplate("suggestion_outcome_dismissed", "values_seen", "You dismissed this"),
@@ -1422,6 +1485,22 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                          "threshold": PlaybookField}),
     ExplanationTemplate("adjust_condition_line_plain", "values_seen", "{label}: {value} (rule {threshold})",
                         {"label": PlaybookTriggerLabel, "value": PlaybookField, "threshold": PlaybookField}),
+    # a clock trigger (unit "time", T-10b): its value and threshold are clock times, no unit word
+    ExplanationTemplate("adjust_condition_line_time", "values_seen", "{label}: {value} (rule {threshold})",
+                        {"label": PlaybookTriggerLabel, "value": ClockTime, "threshold": ClockTime}),
+    # last resort (fail visible): the trigger id alone when no line can carry its value
+    ExplanationTemplate("adjust_condition_line_id", "values_seen", "{label}", {"label": PlaybookTriggerLabel}),
+    # ADR-221: the T-19 flag line names the cheapest approach the playbook offers and its Compare cost
+    ExplanationTemplate("adjust_condition_line_t19", "values_seen",
+                        "{label}: {value} (rule {threshold}); cheapest adjustment that could be priced now: "
+                        "{approach}, cost {cost} (as in Compare)",
+                        {"label": PlaybookTriggerLabel, "value": PlaybookField, "threshold": PlaybookField,
+                         "approach": ApproachLabel, "cost": Rupees}),
+    ExplanationTemplate("adjust_condition_line_t19_unpriced", "values_seen",
+                        "{label}: {value} (rule {threshold}); cheapest adjustment that could be priced now: "
+                        "{approach}, cost {cost} (as in Compare) ({count} could not be priced)",
+                        {"label": PlaybookTriggerLabel, "value": PlaybookField, "threshold": PlaybookField,
+                         "approach": ApproachLabel, "cost": Rupees, "count": Count}),
     ExplanationTemplate("plan_target_words", "values_seen", "{pct} % of max profit", {"pct": PlaybookField}),
     ExplanationTemplate("plan_stop_words_loss", "values_seen", "{pct} % of max loss", {"pct": PlaybookField}),
     ExplanationTemplate("plan_stop_words_margin", "values_seen", "{margin} % of margin", {"margin": PlaybookField}),
@@ -1754,6 +1833,60 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("adjust_history_fill_failed", "values_seen", "Could not read Zerodha's answer; check this order in Kite"),
     ExplanationTemplate("adjust_history_col_fill", "values_seen", "Zerodha"),
     ExplanationTemplate("adjust_history_no_option_leg", "values_seen", "No option leg is open, so no premium is left."),
+    # GC-SET step 2 (REQ-167 AC-2, AC-5): the Settings page's registry words and its refusal reasons
+    ExplanationTemplate("settings_registry_text", "values_seen", "{text}", {"text": RegistryText}),
+    ExplanationTemplate("settings_source_url", "values_seen", "{url}", {"url": SourceUrl}),
+    ExplanationTemplate("settings_refused_unknown", "rule", "There is no setting with that name."),
+    ExplanationTemplate("settings_refused_not_a_number", "rule",
+                        "{label} must be a number written as text, for example {example}.",
+                        {"label": RegistryText, "example": Recorded}),
+    ExplanationTemplate("settings_refused_not_whole", "rule", "{label} must be a whole number.",
+                        {"label": RegistryText}),
+    ExplanationTemplate("settings_refused_not_a_time", "rule",
+                        "{label} is a time of day written as HHMM, for example {example} for {shown}.",
+                        {"label": RegistryText, "example": Recorded, "shown": Recorded}),
+    ExplanationTemplate("settings_refused_fraction_unit", "rule",
+                        "{label} is a fraction. Enter {suggested} for {entered}%.",
+                        {"label": RegistryText, "suggested": Recorded, "entered": Recorded}),
+    # REQ-168 AC-4: every near-level alert line names the alert distance it used (the user's preference)
+    ExplanationTemplate("adjust_near_short_strike_line", "values_seen",
+                        "Index {index} is within {threshold}% of the short strike {level} ({distance}% away).",
+                        {"index": Recorded, "threshold": Recorded, "level": Recorded, "distance": Recorded}),
+    ExplanationTemplate("adjust_near_breakeven_line", "values_seen",
+                        "Index {index} is within {threshold}% of the breakeven {level} ({distance}% away).",
+                        {"index": Recorded, "threshold": Recorded, "level": Recorded, "distance": Recorded}),
+    ExplanationTemplate("adjust_preference_refused_unknown", "rule", "There is no adjustment preference with that name."),
+    ExplanationTemplate("settings_refused_out_of_range", "rule",
+                        "{label} must be between {low} and {high} ({unit}).",
+                        {"label": RegistryText, "low": Recorded, "high": Recorded, "unit": Recorded}),
+    ExplanationTemplate("settings_refused_note_too_long", "rule", "The note must be at most {max} characters.",
+                        {"max": Count}),
+    ExplanationTemplate("settings_refused_back_dated", "rule",
+                        "A setting takes effect now or later; an earlier time would change figures already shown."),
+    ExplanationTemplate("settings_refused_time_invalid", "rule",
+                        "The effective time needs a date, a time and a time zone."),
+    ExplanationTemplate("settings_refused_same_time", "rule",
+                        "Another value already takes effect at exactly that time; pick another time."),
+    ExplanationTemplate("settings_refused_charges_value", "rule",
+                        "{field} is not an allowed number. Write it as text, for example 0.001.", {"field": Recorded}),
+    ExplanationTemplate("settings_refused_charges_source", "rule",
+                        "The source must be the web address, starting with https://, where the rates were read."),
+    ExplanationTemplate("settings_refused_charges_future", "rule",
+                        "A charge rate set cannot be dated {date}: that day has not come yet. Use today's date or an "
+                        "earlier day.", {"date": Recorded}),
+    ExplanationTemplate("settings_refused_charges_date", "rule",
+                        "A charge rate set dated {date} cannot be added: that date already has a set, or it is older "
+                        "than the newest set. Use a later date.", {"date": Recorded}),
+    # REQ-169 (ADR-222 (10)): the admin's system playbook versions refused (pending owner read)
+    ExplanationTemplate("system_playbook_refused_reason", "rule",
+                        "A new system playbook version needs a reason: say why the numbers change."),
+    ExplanationTemplate("system_playbook_refused_stale", "rule",
+                        "Another change was saved first: this system playbook is now at version {version}. Reload "
+                        "it, then save again.", {"version": Recorded}),
+    ExplanationTemplate("system_playbook_refused_version", "rule",
+                        "Version {version} of this system playbook is not stored.", {"version": Recorded}),
+    ExplanationTemplate("system_playbook_refused_approved", "rule",
+                        "This system playbook is already approved."),
 )
 
 EXPLANATIONS: Mapping[str, ExplanationTemplate] = MappingProxyType({t.id: t for t in _EXPLANATIONS})

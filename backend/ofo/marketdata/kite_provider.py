@@ -28,6 +28,8 @@ from ofo.marketdata.provider import (
     QuoteListener,
 )
 from ofo.marketdata.quote import NormalizedQuote, SourceMetadata
+from ofo.settings import calc
+from ofo.settings import defaults as settings_defaults
 from ofo.rules.inputs import DataHealth
 from ofo.timeutil import IST_UNNAMED as IST
 
@@ -64,7 +66,8 @@ class KiteProvider(MarketDataProvider):
         self._future_id: dict[tuple[str, datetime.date], str] = {
             (lc.contract.name, lc.contract.expiry): self._contract_id(lc)
             for lc in self._master if lc.contract.instrument_type == "FUT"}
-        self.feed = feed or FeedState()
+        # the registry's windows until the first request or tick applies the ones in force (``FeedState.apply_windows``)
+        self.feed = feed or FeedState(windows=calc.feed_windows(settings_defaults()))
         self.book = QuoteBook(self.feed)
         self._listener: QuoteListener | None = None
         self._wanted: set[int] = set()

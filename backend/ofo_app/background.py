@@ -67,7 +67,8 @@ from decimal import Decimal
 from typing import Any, Final
 
 from ofo.adjustment import playbook_eval as pe
-from ofo.adjustment.approaches import ChainRow
+from ofo.adjustment.preferences import Preferences
+from ofo.adjustment.preferences import from_values as prefs_from_values
 from ofo.engine.black_scholes import Greeks, year_fraction
 from ofo.engine.legs import Instrument
 from ofo.engine.model import expiry_model, greeks, iv_price
@@ -81,6 +82,8 @@ from ofo.marketdata.spot_source import SourceReading, SourceState, resolve_spot
 from ofo.outcome.service import solved_iv, unit_greeks
 from ofo.rules.inputs import DataHealth
 from ofo.scenario.spot import spot_reading
+from ofo.settings import RISK_FREE_RATE, value_of
+from ofo.settings import calc as settings_calc
 from ofo.timeutil import IST
 
 from ofo_app import adjustment_check as check
@@ -112,6 +115,8 @@ class PriceRead:
     spot: Any = None  # NormalizedQuote of the underlying
     legs: Mapping[int, Any] = field(default_factory=dict)  # position leg index -> NormalizedQuote
     chains: Mapping[datetime.date, tuple] = field(default_factory=dict)  # each leg expiry's chain snapshot
+    listed: tuple = ()  # every listed option of the underlying (``adjustment_readers.listed_options``)
+    futures: frozenset = frozenset()  # the underlying's future expiries (``adjustment_readers.future_expiries``)
 
     def signature(self, now: datetime.datetime) -> tuple:
         """What a check depends on: every leg's and the spot's price and time, and the IST minute (clock rules)."""
@@ -131,7 +136,6 @@ class Watched:
     body: Mapping
     is_system: bool
     feed_owner: str
-    expiry_kind: str | None = None
 
 
 def _seconds(delta: datetime.timedelta) -> Decimal:
@@ -146,8 +150,11 @@ def _leg_quote(chain: Iterable[Any], leg: Any) -> Any:
     return None
 
 
-def read_prices(provider: Any, watched: Watched, now: datetime.datetime) -> PriceRead:
-    """The price read of one strategy, one answer state each (module docstring, step 2)."""
+def read_prices(provider: Any, watched: Watched, now: datetime.datetime,
+                known: tuple[tuple, frozenset] | None = None) -> PriceRead:
+    """The price read of one strategy, one answer state each (module docstring, step 2). ``known``: (the provider's
+    listed options, the future expiries) of the underlying when the caller already holds them (the worker keeps them
+    per provider and underlying); None reads them from the provider."""
     if market_closed_for(provider, now):
         return PriceRead(PriceState.MARKET_CLOSED)
     health = provider.status().health
@@ -165,7 +172,15 @@ def read_prices(provider: Any, watched: Watched, now: datetime.datetime) -> Pric
     needed = {"spot": spot, **{str(i): q for i, q in legs.items()}}
     if strategy_monitoring_status(needed) is MonitoringStatus.PAUSED:
         return PriceRead(PriceState.STALE)
-    return PriceRead(PriceState.FRESH, spot, legs, chains)
+    if known is None:
+        known = catalogue_of(provider, position.underlying)
+    return PriceRead(PriceState.FRESH, spot, legs, chains, *known)
+
+
+def catalogue_of(provider: Any, underlying: str) -> tuple[tuple, frozenset]:
+    """(listed options, future expiries) of ``underlying``: the screen's own two listings (``adjustment_readers``)."""
+    from ofo_app.adjustment_readers import future_expiries, listed_options  # noqa: PLC0415 - the screen's listings
+    return tuple(listed_options(provider, underlying)), future_expiries(provider, underlying)
 
 
 def _snapshot_instant(read: PriceRead, expiry: datetime.date) -> datetime.datetime:
@@ -202,7 +217,7 @@ def _figures(shared: FeedScope, at: tuple, quote: Any, em: Any) -> tuple[Decimal
 
 
 def market_inputs(watched: Watched, read: PriceRead, shared: FeedScope, now: datetime.datetime,
-                  rate: Decimal) -> MarketInputs:
+                  values: Mapping[str, Decimal]) -> MarketInputs:
     """The screen's ``MarketInputs`` (``adjustment_readers.read_market``) from a fresh price read, every per-option
     figure from the shared cache instead of a whole-chain model: the first leg's expiry, the legs' rows, the same ATM
     IV rule (the IV of the call nearest the forward that the model prices), the same last close. Valued at the
@@ -210,32 +225,30 @@ def market_inputs(watched: Watched, read: PriceRead, shared: FeedScope, now: dat
     so the two agree exactly when the clock reads the price's time (named in the module docstring).
     Not available -> None, as on the screen: no forward (spot or chain refused) -> no Greeks, no ATM IV, no forward."""
     from ofo_app import scenario_mode  # noqa: PLC0415 - read at check time (the screen's own scenario switch)
-    from ofo_app.adjustment_readers import read_last_close  # noqa: PLC0415 - the screen's last-close reader
+    from ofo_app.adjustment_readers import (  # noqa: PLC0415 - the screen's own row builder, kind and last close
+        chain_rows,
+        expiry_kind_of,
+        read_last_close,
+    )
     position = watched.tracked.position
     expiry = position.legs[0].expiry
     chain = tuple(sorted(read.chains[expiry], key=lambda q: q.instrument_id))
     instant = _snapshot_instant(read, expiry)
     em = fwd = None
+    rate, quality = value_of(values, RISK_FREE_RATE), settings_calc.forward_quality(values)  # the settings in force
     try:
         fwd = shared.call((read.spot.underlying, expiry, instant, None), parity_forward, chain, read.spot, expiry,
-                          instant, rate)
+                          instant, rate, quality)
         em = expiry_model(spot_reading(read.spot), fwd)
     except (ValueError, ArithmeticError):  # ForwardUnavailable / SpotRefused are ValueErrors: no model figures
         em = fwd = None
     at = (read.spot.underlying, expiry, instant)
-    rows: list[ChainRow] = []
-    ids: dict[str, str] = {}
-    leg_greeks: dict[str, Greeks] = {}
-    for i, x in enumerate(position.legs):
-        if x.expiry != expiry:
-            continue  # the screen reads the first leg's expiry only (read_market)
-        q = read.legs[i]
-        g = None if em is None else _figures(shared, at, q, em)[1]
-        rows.append(ChainRow(x.strike, x.type, expiry, x.tradingsymbol, q.ltp, q.bid, q.ask,
-                             None if g is None else g.delta, True, True, "unknown", None))
-        ids[x.tradingsymbol] = q.instrument_id
-        if g is not None:
-            leg_greeks[x.tradingsymbol] = g
+
+    def shared_greeks(_iid: str, q: Any) -> Greeks | None:  # the shared per-option figures (REQ-166 AC-2)
+        return None if em is None or q is None else _figures(shared, at, q, em)[1]
+    # the screen's own row builder over every listed contract of the expiry (the screen reads the first leg's expiry)
+    rows, ids, leg_greeks = chain_rows(read.listed, expiry, {q.instrument_id: q for q in chain}, shared_greeks,
+                                       scenario_mode.current())
     vol = None
     if em is not None and fwd is not None:
         calls = sorted((q for q in chain if q.instrument_type is Instrument.CE and q.strike is not None),
@@ -252,28 +265,32 @@ def market_inputs(watched: Watched, read: PriceRead, shared: FeedScope, now: dat
     feed = SourceReading(SourceState.STATED, read.spot.ltp, read.spot.timestamp)
     last = read_last_close(read.spot, False, scenario_mode.current(), now)  # a check runs only with the market open
     return MarketInputs(tuple(rows), ids, None if fwd is None else fwd.forward, years, vol, feed, last, now,
-                        watched.expiry_kind, leg_greeks)
+                        expiry_kind_of(expiry, read.listed, read.futures, scenario_mode.current()), leg_greeks)
 
 
-def background_state(watched: Watched, read: PriceRead, shared: FeedScope, now: datetime.datetime,
-                     rate: Decimal) -> pe.StrategyState:
+def background_state(watched: Watched, read: PriceRead, shared: FeedScope, now: datetime.datetime,  # noqa: PLR0913
+                     values: Mapping[str, Decimal], prefs: Preferences) -> pe.StrategyState:
     """The check's state through the SCREEN's own builder (``adjustment_check.state_of``), never a copy of it. Margin:
     the background has no margin read, so None (as a screen whose margin read failed: ``missing_margin``). Charge
     rates: None (``state_of`` reads only the gross figures, which carry no charges). The REST spot is not read (a
-    check runs only on a fresh feed)."""
-    market = market_inputs(watched, read, shared, now, rate)
-    spot = resolve_spot(market.feed, None, market.last_close, now=now)
-    return check.state_of(watched.tracked, market, spot, None, None, fresh=True, body=watched.body)
+    check runs only on a fresh feed). ``values``: the settings in force this cycle (rate, forward settings, feed
+    windows, REQ-167); ``prefs``: the strategy owner's preferences (the approach config, REQ-168), as the screen
+    passes them."""
+    market = market_inputs(watched, read, shared, now, values)
+    spot = resolve_spot(market.feed, None, market.last_close, now=now, windows=settings_calc.feed_windows(values))
+    return check.state_of(watched.tracked, market, spot, None, None, fresh=True, body=watched.body,
+                          config=prefs.approach)
 
 
-async def record_check(watched: Watched, state: pe.StrategyState, scn: Any = None) -> pe.Evaluation:
+async def record_check(watched: Watched, state: pe.StrategyState, prefs: Preferences,
+                       scn: Any = None) -> pe.Evaluation:
     """The check and its records in one transaction, through the screen's own functions (REQ-165 AC-5)."""
     from ofo_app import playbook_store  # noqa: PLC0415 - the database layer only when a check runs
     from ofo_app.db import get_sessionmaker  # noqa: PLC0415
     from ofo_app.routes.adjustment_check import sync_records  # noqa: PLC0415
     async with get_sessionmaker()() as db:
         ev = await check.evaluate_and_remember(db, watched.user_ref, watched.strategy_id, watched.body, state, scn,
-                                               watched.tracked.position)
+                                               watched.tracked.position, gap_until=prefs.gap_until)
         source = playbook_store.SOURCE_SYSTEM if watched.is_system else playbook_store.SOURCE_OWN
         await sync_records(db, watched.user_ref, watched.strategy_id, ev, source, watched.body)
         await db.commit()
@@ -281,19 +298,24 @@ async def record_check(watched: Watched, state: pe.StrategyState, scn: Any = Non
 
 
 Lister = Callable[[], Awaitable[list[Watched]]]
-Recorder = Callable[[Watched, pe.StrategyState], Awaitable[Any]]
+Recorder = Callable[[Watched, pe.StrategyState, Preferences], Awaitable[Any]]
+SettingsRead = Callable[[], Awaitable[Mapping[str, Decimal]]]  # every registry setting in force now (REQ-167)
+PreferencesRead = Callable[[str], Awaitable[Preferences]]  # one user's preferences in force now (REQ-168)
 
 
 class Worker:
     """The background role's monitors and their cycle. Every seam is injected; ``main`` wires the real ones."""
 
     def __init__(self, *, provider_for: Callable[[str], Any], lister: Lister,  # noqa: PLR0913
-                 clock: Callable[[], datetime.datetime], rate: Decimal, recorder: Recorder = record_check,
+                 clock: Callable[[], datetime.datetime], settings: SettingsRead, preferences: PreferencesRead,
+                 recorder: Recorder = record_check,
                  cache: SharedCompute | None = None, max_per_cycle: int = DEFAULT_MAX_PER_CYCLE,
                  sleep: Callable[[float], Awaitable[None]] = asyncio.sleep, want_client: Any = None) -> None:
         if max_per_cycle < 1:
             raise ValueError("max_per_cycle must be at least 1")
-        self._provider_for, self._lister, self._clock, self._rate = provider_for, lister, clock, rate
+        self._provider_for, self._lister, self._clock = provider_for, lister, clock
+        self._settings, self._preferences = settings, preferences
+        self._values: Mapping[str, Decimal] | None = None  # the last good settings read (a failed read keeps it)
         self._recorder, self._max, self._sleep = recorder, max_per_cycle, sleep
         self.cache = cache if cache is not None else SharedCompute()
         self.valve = calc_speeds.Valve()
@@ -308,7 +330,9 @@ class Worker:
         self._rebuilt_at: datetime.datetime | None = None
         self._stop = False
         self._speed: Decimal | None = None  # the last good background speed (a failed read keeps it)
+        self._steps: tuple[Decimal, ...] | None = None  # the last good safety-valve steps
         self._want_client = want_client  # a Redis client (the feed bus); None = no wanted-set write
+        self._listed: dict[tuple[int, str], tuple] = {}  # (id(provider), underlying) -> (provider, known listings)
         self._token_maps: dict[int, tuple] = {}  # id(provider) -> (provider, option tokens, id -> token)
         self._wants_written: dict[str, tuple[list[int], datetime.datetime]] = {}  # owner -> (tokens, when)
 
@@ -327,8 +351,24 @@ class Worker:
             log.exception("background: re-reading the strategy list failed; keeping the last list")
             _keep_recent(self.errors, (0, type(exc).__name__))
 
+    async def _settings_safely(self) -> Mapping[str, Decimal] | None:
+        """The settings in force, read ONCE per cycle (REQ-166 AC-1, REQ-167 AC-4: no restart for a change); a failed
+        read keeps the last good one, None when there is none yet (REQ-115 AC-9)."""
+        try:
+            self._values = await self._settings()
+        except Exception as exc:  # contained to this step
+            log.exception("background: reading the settings in force failed; keeping the last good read")
+            _keep_recent(self.errors, (0, type(exc).__name__))
+        return self._values
+
     def background_seconds(self) -> Decimal:
-        return self.valve.slowed(calc_speeds.read_speeds().background)
+        """The background speed with the valve applied, from the last good settings read."""
+        if self._values is None:
+            raise calc_speeds.SpeedSettingRefused("no settings have been read yet")
+        steps = calc_speeds.valve_steps(self._values)
+        speed = self.valve.slowed(calc_speeds.read_speeds(self._values).background, steps)
+        self._steps = steps
+        return speed
 
     def _speed_safely(self) -> Decimal | None:
         """The speed now; a failed read keeps the last good one, None when there is none yet (REQ-115 AC-9)."""
@@ -338,6 +378,16 @@ class Worker:
             log.exception("background: reading the background speed failed")
             _keep_recent(self.errors, (0, type(exc).__name__))
         return self._speed
+
+    def _known_of(self, provider: Any, underlying: str) -> tuple[tuple, frozenset]:
+        """(listed options, future expiries) of ``underlying``, read once per provider and underlying (as
+        ``_tokens_of``)."""
+        key = (id(provider), underlying)
+        kept = self._listed.get(key)
+        if kept is None or kept[0] is not provider:
+            kept = (provider, catalogue_of(provider, underlying))
+            self._listed[key] = kept
+        return kept[1]
 
     def _tokens_of(self, provider: Any) -> tuple[dict, dict]:
         """(option key -> token, instrument id -> token) from the provider's instrument master, built once per provider
@@ -407,7 +457,8 @@ class Worker:
 
     async def _check_one(self, w: Watched, now: datetime.datetime, every: Decimal) -> bool:
         """True when a check ran (counted against the cycle's cap)."""
-        read = read_prices(self._provider_for(w.feed_owner), w, now)
+        provider = self._provider_for(w.feed_owner)
+        read = read_prices(provider, w, now, self._known_of(provider, w.tracked.position.underlying))
         if read.state is PriceState.MARKET_CLOSED:
             return False  # nothing is recomputed while the market is closed
         if read.state is not PriceState.FRESH:
@@ -421,8 +472,11 @@ class Worker:
         last = self._last_check.get(w.strategy_id)
         if sig == self._signature.get(w.strategy_id) or (last is not None and _seconds(now - last) < every):
             return False
-        state = background_state(w, read, FeedScope(self.cache, w.feed_owner), now, self._rate)
-        await self._recorder(w, state)
+        if self._values is None:
+            return False  # no settings read yet: nothing is checked on a guessed setting
+        prefs = await self._preferences(w.user_ref)  # the owner's preferences now (a failure pauses this one strategy)
+        state = background_state(w, read, FeedScope(self.cache, w.feed_owner), now, self._values, prefs)
+        await self._recorder(w, state, prefs)
         self._signature[w.strategy_id] = sig
         self._last_check[w.strategy_id] = now
         _keep_recent(self.checks, (w.strategy_id, now))
@@ -433,6 +487,7 @@ class Worker:
         if self._rebuilt_at is None or _seconds(now - self._rebuilt_at) >= REBUILD_SECONDS:
             await self._rebuild_safely()
         await self._write_wants(now)  # not behind the speed: the feed is wanted whatever the checks do
+        await self._settings_safely()  # ONE settings read per cycle: speeds, valve steps, rate, forward, windows
         every = self._speed_safely()  # read on EVERY cycle (REQ-166 AC-1)
         if every is None:
             log.error("background: no background speed has been read yet; this cycle is skipped")
@@ -453,7 +508,8 @@ class Worker:
                 self._signature.pop(w.strategy_id, None)
             slowest = max(slowest, _seconds(self._clock() - started))
         self._cursor = (self._cursor + visited) % n if n else 0
-        self.valve.observe(self._clock(), slowest, n - visited)
+        if self._steps is not None:
+            self.valve.observe(self._clock(), slowest, n - visited, self._steps)
 
     def stop(self) -> None:
         self._stop = True
@@ -505,19 +561,15 @@ async def owner_lister(provider: Any) -> list[Watched]:
 
 
 async def _serve() -> int:  # pragma: no cover - the process wiring; each part is tested on its own
-    from ofo_app import feed_mode  # noqa: PLC0415
+    from ofo_app import feed_mode, user_preferences_store  # noqa: PLC0415
 
     # live rows by key only (the provider's instrument list); each leg's stored id reached its terms through
     # tracked_contracts.resolve in read_tracked, never through the catalogue store here
     from ofo_app.catalogue_store import load_catalogue  # noqa: PLC0415
-    from ofo_app.db import get_engine  # noqa: PLC0415
+    from ofo_app.db import get_engine, get_sessionmaker  # noqa: PLC0415
     from ofo_app.feed_bus import BusSocket  # noqa: PLC0415
-    from ofo_app.live_market import (  # noqa: PLC0415
-        LIVE_RATE,
-        OWNER_REF,
-        KiteProvider,
-        listed_for_kite,
-    )
+    from ofo_app.live_market import OWNER_REF, KiteProvider, listed_for_kite  # noqa: PLC0415
+    from ofo_app.routes.outcome import get_settings_reader  # noqa: PLC0415
     async with get_engine().connect() as conn:
         catalogue = await load_catalogue(conn)
 
@@ -527,8 +579,12 @@ async def _serve() -> int:  # pragma: no cover - the process wiring; each part i
     provider = KiteProvider(listed_for_kite(catalogue.all_entries()), clock=clock)
     socket = BusSocket(provider, user_ref=OWNER_REF, clock=clock, redis_url=feed_mode.redis_url())
     bus = feed_bus.new_client(feed_mode.redis_url())
+    async def preferences(user_ref: str) -> Preferences:
+        async with get_sessionmaker()() as db:
+            return prefs_from_values(await user_preferences_store.values_for(db, user_ref))
+
     worker = Worker(provider_for=lambda _owner: provider, lister=functools.partial(owner_lister, provider),
-                    clock=clock, rate=LIVE_RATE, want_client=bus)
+                    clock=clock, settings=get_settings_reader(), preferences=preferences, want_client=bus)
     feed = asyncio.create_task(socket.run(), name="background-feed")
     try:
         await worker.run()

@@ -24,7 +24,12 @@ from ofo.outcome import (
     read_snapshot,
 )
 from ofo.scenario.views import View
+from ofo.settings import calc as _fq_calc
+from ofo.settings import defaults as _d
+from ofo.settings import defaults as _fq_defaults
 from outcome.test_same_engine import RATE, VALUATION
+
+_FQ = _fq_calc.forward_quality(_fq_defaults())
 
 LOW, HIGH = "NSE_FO:44632", "NSE_FO:44650"  # 23000 CE, 23200 CE (13-Oct)
 LOT = 65
@@ -36,7 +41,7 @@ def _stored():
     provider, clock, items = new_provider()
     provider.subscribe(all_instrument_ids(items))
     replay(provider, clock)
-    snap = read_snapshot(provider, "NIFTY", [LOW, HIGH, *_EXTRA], VALUATION, RATE)
+    snap = read_snapshot(provider, "NIFTY", [LOW, HIGH, *_EXTRA], VALUATION, RATE, quality=_FQ)
     return {iid: snap.legs[iid].contract for iid in (LOW, HIGH, *_EXTRA)}
 
 
@@ -54,7 +59,7 @@ def _pnl(level):
 
 
 def test_core_bull_call_spread_from_your_prices_with_no_live_data():
-    out = from_entries(_spread(), None, _stored(), VALUATION)
+    out = from_entries(_spread(), None, _stored(), VALUATION, settings=_d())
     assert out is not None and out.state is OutcomeState.FROM_ENTRIES
     assert out.status_label == LABEL == FROM_ENTRIES_LABEL and out.output_label == LABEL
     assert out.summary.max_loss == Decimal("3334.50")  # (81.30 - 30.00) x 65, the net debit
@@ -67,7 +72,7 @@ def test_core_bull_call_spread_from_your_prices_with_no_live_data():
 
 
 def test_attack_1_nothing_is_a_live_price():
-    out = from_entries(_spread(), None, _stored(), VALUATION)
+    out = from_entries(_spread(), None, _stored(), VALUATION, settings=_d())
     assert out.spot_level is None and out.spot_at is None
     assert out.table.spot_level is None and out.table.spot_at is None and out.table.output_label == LABEL
     assert all(leg.ltp is None and leg.iv is None and leg.health is None for leg in out.legs)
@@ -83,17 +88,17 @@ def test_attack_1_nothing_is_a_live_price():
 
 def test_attack_2_a_leg_without_an_entry_keeps_todays_answer():
     d = _spread(entry_high=None)
-    assert from_entries(d, None, _stored(), VALUATION) is None
+    assert from_entries(d, None, _stored(), VALUATION, settings=_d()) is None
     today = not_connected(d, None, _stored())
     assert today.state is OutcomeState.NOT_CONNECTED and today.table is None and today.summary is None
 
 
 def test_attack_2b_an_unknown_contract_keeps_todays_answer():
-    assert from_entries(_spread(), None, {}, VALUATION) is None
+    assert from_entries(_spread(), None, {}, VALUATION, settings=_d()) is None
 
 
 def test_attack_3_estimated_now_is_unavailable_with_its_reason():
-    out = from_entries(_spread(), None, _stored(), VALUATION, view=View.ESTIMATED_NOW)
+    out = from_entries(_spread(), None, _stored(), VALUATION, view=View.ESTIMATED_NOW, settings=_d())
     assert out.state is OutcomeState.FROM_ENTRIES
     assert out.scenario.view is View.ESTIMATED_NOW and out.scenario.available is False
     assert out.scenario.totals is None and out.payoff_points == ()
@@ -102,7 +107,7 @@ def test_attack_3_estimated_now_is_unavailable_with_its_reason():
 
 
 def test_attack_4_the_grid_centres_on_the_middle_strike_and_says_so():
-    out = from_entries(_spread(), None, _stored(), VALUATION)
+    out = from_entries(_spread(), None, _stored(), VALUATION, settings=_d())
     assert out.centre_label == render_explanation("outcome_from_entries_centre", level=Decimal(23000))
     assert "23,000" in out.centre_label
     assert out.level_set.start < Decimal(23000) and out.level_set.end > Decimal(23200)
@@ -115,7 +120,7 @@ def test_attack_5_sensex_uses_its_own_lot_size_and_step():
                                         strike=c.contract.strike + (Decimal(55000) if iid == LOW else Decimal(55100))))
               for iid, c in _stored().items()}  # SENSEX 78000 / 78300 strikes, lot 20 from the data
     d = StrategyDefinition("SENSEX", _spread().legs)
-    out = from_entries(d, None, stored, VALUATION)
+    out = from_entries(d, None, stored, VALUATION, settings=_d())
     assert out is not None and out.state is OutcomeState.FROM_ENTRIES
     assert [leg.lot_size for leg in out.legs] == [20, 20]
     width = stored[HIGH].contract.strike - stored[LOW].contract.strike
@@ -129,14 +134,14 @@ def _snapshot_after_drop():
     provider, clock, items = new_provider()
     provider.subscribe(all_instrument_ids(items))
     replay(provider, clock)
-    return read_snapshot(provider, "NIFTY", [LOW, HIGH], VALUATION, RATE)
+    return read_snapshot(provider, "NIFTY", [LOW, HIGH], VALUATION, RATE, quality=_FQ)
 
 
 def test_attack_6_dropped_feed_status_is_ac5_message_and_output_label_is_from_your_prices():
     """REQ-049 AC-5 and REQ-077 AC-9 both hold: a snapshot that held quotes gives status_label = AC-5's message with the
     newest time held; output_label stays the from-your-prices label; still no live value."""
     snap = _snapshot_after_drop()
-    out = from_entries(_spread(), snap, None, VALUATION)
+    out = from_entries(_spread(), snap, None, VALUATION, settings=_d())
     assert out is not None and out.state is OutcomeState.FROM_ENTRIES
     assert out.status_label.startswith("Live market data disconnected. Last updated: ")
     assert out.status_label.endswith(". Live strategy monitoring is paused.")
@@ -147,7 +152,7 @@ def test_attack_6_dropped_feed_status_is_ac5_message_and_output_label_is_from_yo
 
 def test_attack_6b_a_leg_without_an_entry_keeps_not_live_exactly_with_a_dropped_snapshot():
     snap = _snapshot_after_drop()
-    assert from_entries(_spread(entry_high=None), snap, None, VALUATION) is None
+    assert from_entries(_spread(entry_high=None), snap, None, VALUATION, settings=_d()) is None
 
 
 def _legs(*specs):
@@ -156,7 +161,7 @@ def _legs(*specs):
 
 
 def _centre(definition):
-    out = from_entries(definition, None, _stored(), VALUATION)
+    out = from_entries(definition, None, _stored(), VALUATION, settings=_d())
     assert out is not None and out.state is OutcomeState.FROM_ENTRIES
     return out
 
@@ -194,11 +199,11 @@ def test_never_held_status_is_from_your_prices_and_dropped_status_is_ac5_text():
     """No quote ever held: nothing dropped, so the status is the from-your-prices text, not the draft not-connected
     label. A quote held then lost: REQ-049 AC-5's message. The two must differ."""
     provider, _clock, _items = new_provider()
-    fresh = read_snapshot(provider, "NIFTY", [LOW, HIGH], VALUATION, RATE)
-    never = from_entries(_spread(), fresh, _stored(), VALUATION)
+    fresh = read_snapshot(provider, "NIFTY", [LOW, HIGH], VALUATION, RATE, quality=_FQ)
+    never = from_entries(_spread(), fresh, _stored(), VALUATION, settings=_d())
     assert never.status_label == LABEL == FROM_ENTRIES_LABEL
     assert never.status_label != render_explanation("outcome_not_connected")
-    dropped = from_entries(_spread(), _snapshot_after_drop(), None, VALUATION)
+    dropped = from_entries(_spread(), _snapshot_after_drop(), None, VALUATION, settings=_d())
     assert dropped.status_label.startswith("Live market data disconnected. Last updated: ")
     assert dropped.status_label != never.status_label and dropped.output_label == never.output_label == LABEL
 
@@ -210,7 +215,7 @@ def _ended(snap):
 def test_an_ended_session_with_every_leg_priced_is_from_entries_never_not_connected():
     """REQ-077 AC-9 "with no live data" includes a Kite session that ended while the provider is up: the same answer as
     a dropped feed (AC-5's message, from-your-prices output label), the engine's numbers, no live value."""
-    out = build_outcome(_spread(), _ended(_snapshot_after_drop()), VALUATION)
+    out = build_outcome(_spread(), _ended(_snapshot_after_drop()), VALUATION, settings=_d())
     assert out.state is OutcomeState.FROM_ENTRIES
     assert out.status_label.startswith("Live market data disconnected. Last updated: ")
     assert out.output_label == out.table.output_label == LABEL
@@ -221,13 +226,13 @@ def test_an_ended_session_with_every_leg_priced_is_from_entries_never_not_connec
 def test_an_ended_session_that_never_held_a_quote_says_from_your_prices():
     provider, _clock, _items = new_provider()
     stored = _stored()
-    fresh = read_snapshot(provider, "NIFTY", [LOW, HIGH], VALUATION, RATE)
+    fresh = read_snapshot(provider, "NIFTY", [LOW, HIGH], VALUATION, RATE, quality=_FQ)
     ended = _ended(dataclasses.replace(fresh, legs={
         iid: dataclasses.replace(lm, contract=stored[iid]) for iid, lm in fresh.legs.items()}))
-    out = build_outcome(_spread(), ended, VALUATION)
+    out = build_outcome(_spread(), ended, VALUATION, settings=_d())
     assert out.state is OutcomeState.FROM_ENTRIES and out.status_label == LABEL == out.output_label
 
 
 def test_an_ended_session_with_a_leg_without_an_entry_keeps_not_connected():
-    out = build_outcome(_spread(entry_high=None), _ended(_snapshot_after_drop()), VALUATION)
+    out = build_outcome(_spread(entry_high=None), _ended(_snapshot_after_drop()), VALUATION, settings=_d())
     assert out.state is OutcomeState.NOT_CONNECTED and out.table is None and out.summary is None

@@ -1,0 +1,34 @@
+{
+ "id": "one-shot-feed-loses-quote-on-shared-unsubscribe",
+ "scope": "generic",
+ "class": "Any quote source that sends its prices once (a scenario snapshot, a fixture frame) behind a SHARED subscription counter loses a contract's price for good as soon as the last counted holder lets go: the counter unsubscribes, the quote is parked, the next sync drops it, and nothing ever re-sends it. A live vendor hides the class because it re-sends a full quote on every re-subscribe.",
+ "mechanism": "scenario_mode.load subscribes every scenario contract directly on the provider, outside the fan-out's per-instrument holder count; the fan-out built in scenario_mode.overrides therefore counts only socket holders, and when a socket (builder strategy, OI bars, forward strikes) releases, the count reaches zero and FanOut.unsubscribe calls provider.unsubscribe (book.park). feed_bus's drain_subscription_changes then releases the parked quotes for good.",
+ "first_seen": {
+  "date": "2026-11-01",
+  "where": "build/settings (GC-SET step 2 browser proof): backend/ofo_app/scenario_mode.py overrides (FanOut built without a scenario hold); backend/ofo/marketdata/fanout.py unsubscribe; backend/ofo/marketdata/kite_provider.py unsubscribe/drain_subscription_changes",
+  "evidence": "Dev API on ADJ-02: fresh server, strategy 72 Compare costs A-29 92.35 / A-01 173.36 (7 approaches); minutes after a builder socket closed, every approach but A-36 refused USER_INPUT_105 'Leg 3 (SELL NIFTY 23,500.00 CE ...) has no price' and the Paper view read 'prices not live' until a restart. New test tests_app/test_scenario_mode.py::test_a_socket_release_never_drops_a_scenario_quote: without the fix '82 of 82 scenario contracts lost their price'; with the fix the file is 61 passed."
+ },
+ "fix": "Structural: scenario_mode.overrides holds every scenario contract on the fan-out for the app's life (one no_listener handle, max_queue 1), so no socket release can bring a contract's holder count to zero. Population before: 82 of 82 ADJ-02 contracts lost after one release + drain; after: 0. Replay mode builds a fresh provider per socket and live re-receives on subscribe, so neither is in the class (checked 2026-11-01).",
+ "detection": {
+  "status": "guarded",
+  "checks": [
+   "tests_app/test_scenario_mode.py::test_a_socket_release_never_drops_a_scenario_quote"
+  ],
+  "note": "The test asserts the scenario's own hold (holder count >= 1 for every contract) AND the symptom (no contract unpriced after a socket hold/release and a drain); the symptom assertion alone fails red without the fix (82 of 82)."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-214.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-11-01",
+   "where": "dev API scenario ADJ-02, server started 14:05 IST",
+   "evidence": "Compare 'All 1 that apply', 'NIFTY26N0922500PE has no current price'"
+  },
+  {
+   "date": "2026-11-01",
+   "where": "dev API scenario ADJ-02, server restarted 14:20 IST",
+   "evidence": "fine at 14:23, every approach USER_INPUT_105 at ~14:27 after the builder socket closed"
+  }
+ ]
+}

@@ -510,3 +510,21 @@ class PlaybookField(SlotType):
     @staticmethod
     def format(value: str) -> str:
         return str.__str__(value)
+
+
+_CLOCK_TIME = re.compile(r"(?:[01][0-9]|2[0-3]):[0-5][0-9]")
+
+
+class ClockTime(SlotType):
+    """A clock time HH:MM (IST), as a clock trigger's value and threshold hold it (T-10b "Clock time reached")."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        _require_exact(value, str, "ClockTime")
+        if not _CLOCK_TIME.fullmatch(value):  # type: ignore[arg-type]
+            raise ValueError(f"ClockTime slot must be HH:MM, got {value!r:.40}")
+
+    @staticmethod
+    def format(value: str) -> str:
+        return str.__str__(value)
+

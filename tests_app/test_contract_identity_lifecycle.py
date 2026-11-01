@@ -49,6 +49,9 @@ from ofo_app.catalogue_store import (
     load_catalogue,
     load_contract,
 )
+from ofo.settings import calc as _calc, defaults as _defaults
+
+_MAX_DELIST = _calc.max_delist_percent(_defaults())
 
 IST = timezone(timedelta(hours=5, minutes=30))
 CATALOGUE_SQLSTATE = "OF006"
@@ -154,7 +157,7 @@ async def test_ac3_plan_retires_the_expired_holder_before_inserting_the_token_re
     retires stored contract 7 FIRST (so the live-token key is free), then inserts the new contract and its Zerodha row;
     nothing is revised."""
     conn = _FakeConn([_stored(R67245_OLD, 7)])
-    result = await apply_update(conn, [R67245_NEW], as_of=_as_of(date(2026, 9, 30)))
+    result = await apply_update(conn, [R67245_NEW], as_of=_as_of(date(2026, 9, 30)), max_delist_percent=_MAX_DELIST)
     assert (result.added, result.seen, result.revised, result.retired, result.newly_unlisted) == (1, 0, 0, 1, 1)
     kinds = [(kind, "SET retired = TRUE" in sql) for kind, sql, _ in conn.writes]
     assert kinds == [("UPDATE", True), ("INSERT", False), ("INSERT", False)]
@@ -167,7 +170,8 @@ async def test_ac3_plan_keeps_a_live_contract_whose_expiry_or_strike_moves() -> 
     """AC-3: 62964 live with expiry 2026-03-26, listed on 2025-09-01 with 2026-03-31; 79199 live with strike 410,
     listed on 2026-08-14 with 390.75: both are revisions of the stored contract (no insert, no retire)."""
     conn = _FakeConn([_stored(R62964_A, 1), _stored(R79199_A, 2)])
-    result = await apply_update(conn, [R62964_B, R79199_B], as_of=_as_of(date(2025, 9, 1)))
+    result = await apply_update(conn, [R62964_B, R79199_B], as_of=_as_of(date(2025, 9, 1)),
+        max_delist_percent=_MAX_DELIST)
     assert (result.added, result.seen, result.revised, result.retired) == (0, 2, 2, 0)
     revise = [(kind, p) for kind, sql, p in conn.writes if kind == "UPDATE" and "SET expiry" in sql]
     assert len(revise) == 1
@@ -179,7 +183,7 @@ async def test_ac3_plan_keeps_a_live_contract_whose_expiry_or_strike_moves() -> 
 async def test_ac3_a_live_token_on_its_expiry_day_is_not_retired() -> None:
     """AC-3 boundary: on 2026-08-25 (the expiry day of 67245's contract) the contract is still live."""
     conn = _FakeConn([_stored(R67245_OLD, 7)])
-    result = await apply_update(conn, [R67245_OLD], as_of=_as_of(date(2026, 8, 25)))
+    result = await apply_update(conn, [R67245_OLD], as_of=_as_of(date(2026, 8, 25)), max_delist_percent=_MAX_DELIST)
     assert (result.added, result.seen, result.retired) == (0, 1, 0)
     assert not any("SET retired = TRUE" in sql for _, sql, _ in conn.writes)
 
@@ -219,7 +223,7 @@ async def test_ac3_fix1_adr059_classifies_a_changed_row_on_a_live_token(other: L
     guards and stays under them (1 of 12 = 8.3%; 1 of 3 of the expiry)."""
     others = _fillers(9) + _fillers(2, first_token=600001, expiry=date(2026, 3, 26))
     conn = _FakeConn(_stored_all(others) + [_stored(R62964_A, 50)])
-    result = await apply_update(conn, others + [other], as_of=_as_of(date(2025, 9, 1)))
+    result = await apply_update(conn, others + [other], as_of=_as_of(date(2025, 9, 1)), max_delist_percent=_MAX_DELIST)
     if kind == "revision":
         assert (result.added, result.delisted, result.seen) == (0, 0, 12)
         assert _kinds(conn) == ["revise", "see", "listed"]
@@ -238,10 +242,12 @@ async def test_ac3_fix2r_a_list_reassigning_most_tokens_of_an_index_is_refused()
     moved = [_row(r.contract.exchange_token, date(2026, 11, 24), "20550", "CE", "MOVED") for r in live]
     conn = _FakeConn(_stored_all(live))
     with pytest.raises(ValueError, match="refused: would drop 15 of 20 live NIFTY contracts"):
-        await apply_update(conn, moved[:15] + live[15:], as_of=_as_of(date(2026, 10, 7)))
+        await apply_update(conn, moved[:15] + live[15:], as_of=_as_of(date(2026, 10, 7)),
+            max_delist_percent=_MAX_DELIST)
     assert conn.writes == []
     ok = _FakeConn(_stored_all(live))
-    result = await apply_update(ok, moved[:2] + live[2:], as_of=_as_of(date(2026, 10, 7)))
+    result = await apply_update(ok, moved[:2] + live[2:], as_of=_as_of(date(2026, 10, 7)),
+        max_delist_percent=_MAX_DELIST)
     assert (result.delisted, result.added) == (2, 2)
 
 
@@ -252,17 +258,18 @@ async def test_ac3_fix2r_reused_tokens_count_in_the_half_expiry_guard() -> None:
     moved = [_row(r.contract.exchange_token, date(2027, 1, 26), "30000", "PE", "MOVED") for r in weekly]
     conn = _FakeConn(_stored_all(big + weekly))
     with pytest.raises(ValueError, match="would drop 6 of 10 live NIFTY contracts of expiry 2026-10-13"):
-        await apply_update(conn, big + moved[:6] + weekly[6:], as_of=_as_of(date(2026, 10, 7)))
+        await apply_update(conn, big + moved[:6] + weekly[6:], as_of=_as_of(date(2026, 10, 7)),
+            max_delist_percent=_MAX_DELIST)
     assert conn.writes == []
     result = await apply_update(_FakeConn(_stored_all(big + weekly)), big + moved[:5] + weekly[5:],
-                                as_of=_as_of(date(2026, 10, 7)))
+                                as_of=_as_of(date(2026, 10, 7)), max_delist_percent=_MAX_DELIST)
     assert result.delisted == 5
 
 
 async def test_ac3_fix1_61746_minus_3_days_is_a_revision() -> None:
     """AC-3 / ADR-059 real case: 61746 NIFTY 23000 CE 2029-12-27 -> 2029-12-24 (3 days, same strike) is a revision."""
     conn = _FakeConn([_stored(R61746_A, 61)])
-    result = await apply_update(conn, [R61746_B], as_of=_as_of(date(2025, 9, 1)))
+    result = await apply_update(conn, [R61746_B], as_of=_as_of(date(2025, 9, 1)), max_delist_percent=_MAX_DELIST)
     assert (result.added, result.delisted, result.revised) == (0, 0, 1)
     assert _kinds(conn) == ["revise", "see", "listed"]
 
@@ -282,7 +289,8 @@ async def test_ac3_two_rows_with_one_token_in_one_list_refuse_the_whole_list(sec
     even when Zerodha gives them different instrument tokens); nothing is written, including the unrelated row 61746."""
     conn = _FakeConn()
     with pytest.raises(CatalogueStoreError, match="token NSE_FO:67245 twice"):
-        await apply_update(conn, [R61746_B, R67245_OLD, second], as_of=_as_of(date(2026, 8, 3)))
+        await apply_update(conn, [R61746_B, R67245_OLD, second], as_of=_as_of(date(2026, 8, 3)),
+            max_delist_percent=_MAX_DELIST)
     assert conn.writes == []
 
 
@@ -294,7 +302,7 @@ async def test_ac3_a_row_with_no_expiry_is_refused_fail_closed() -> None:
                                broker_refs=R62964_A.broker_refs)
     conn = _FakeConn()
     with pytest.raises(CatalogueStoreError, match="no expiry"):
-        await apply_update(conn, [no_expiry], as_of=_as_of(date(2025, 6, 27)))
+        await apply_update(conn, [no_expiry], as_of=_as_of(date(2025, 6, 27)), max_delist_percent=_MAX_DELIST)
     assert conn.writes == []
 
 
@@ -302,7 +310,7 @@ async def test_ac3_a_naive_as_of_is_refused() -> None:
     """AC-3 fail closed: the retirement date needs a timezone-aware as_of."""
     conn = _FakeConn([_stored(R67245_OLD, 7)])
     with pytest.raises(ValueError, match="timezone-aware as_of \\(the retirement date"):
-        await apply_update(conn, [R67245_NEW], as_of=datetime(2026, 9, 30, 10, 0))
+        await apply_update(conn, [R67245_NEW], as_of=datetime(2026, 9, 30, 10, 0), max_delist_percent=_MAX_DELIST)
     assert conn.writes == []
 
 
@@ -312,7 +320,7 @@ async def test_ac3_a_stored_live_contract_with_no_expiry_stops_the_load() -> Non
     stored.expiry = None
     conn = _FakeConn([stored])
     with pytest.raises(CatalogueStoreError, match="id=7 .* has no expiry"):
-        await apply_update(conn, [R61746_B], as_of=_as_of(date(2026, 9, 30)))
+        await apply_update(conn, [R61746_B], as_of=_as_of(date(2026, 9, 30)), max_delist_percent=_MAX_DELIST)
     assert conn.writes == []
 
 
@@ -353,7 +361,7 @@ async def test_ac3_the_real_out_of_scope_rows_are_skipped() -> None:
             _row(62964, date(2025, 2, 27), "7300", "CE", "ABB25FEB7300CE", name="ABB")]
     for row in real:
         conn = _FakeConn()
-        result = await apply_update(conn, [row], as_of=_as_of(date(2025, 1, 1)))
+        result = await apply_update(conn, [row], as_of=_as_of(date(2025, 1, 1)), max_delist_percent=_MAX_DELIST)
         assert (result.added, result.seen, result.retired) == (0, 0, 0) and conn.writes == []
 
 
@@ -377,7 +385,7 @@ async def _history(conn: AsyncConnection) -> list[tuple]:
 async def _load_days(conn: AsyncConnection, days) -> dict[date, object]:
     results = {}
     for day, rows in days:
-        results[day] = await apply_update(conn, rows, as_of=_as_of(day))
+        results[day] = await apply_update(conn, rows, as_of=_as_of(day), max_delist_percent=_MAX_DELIST)
     return results
 
 
@@ -448,7 +456,8 @@ async def test_ac3_fix1_a_token_reused_in_the_same_list_never_repoints_the_old_c
             await _load_days(conn, [(date(2025, 9, 1), others + [R61746_B])])
             old_id = await live_contract_id(conn, InstrumentId("NSE_FO", 61746))
             reuse = _row(61746, date(2026, 11, 24), "20550", "CE", "NIFTY26NOV20550CE")
-            result = await apply_update(conn, others + [reuse], as_of=_as_of(date(2025, 9, 2)))
+            result = await apply_update(conn, others + [reuse], as_of=_as_of(date(2025, 9, 2)),
+                max_delist_percent=_MAX_DELIST)
             assert (result.added, result.delisted, result.revised) == (1, 1, 0)
             new_id = await live_contract_id(conn, InstrumentId("NSE_FO", 61746))
             assert new_id is not None and new_id != old_id
@@ -479,16 +488,19 @@ async def test_ac3_attack_7_token_61746_reused_after_expiry_the_retired_row_neve
             expired = _row(61746, date(2026, 8, 25), "20550", "CE", "NIFTY26AUG20550CE")
             # the shared test catalogue may hold a real list (#497): the first load is forced (rolled back)
             await apply_update(conn, [*others, expired], as_of=_as_of(date(2026, 8, 20)),
-                               force=True, reason="test: replace a shared real list", actor="test")
+                               force=True, reason="test: replace a shared real list", actor="test",
+                                   max_delist_percent=_MAX_DELIST)
             old_id = await live_contract_id(conn, InstrumentId("NSE_FO", 61746))
             assert old_id is not None
-            first = await apply_update(conn, [*others, R61746_B], as_of=_as_of(date(2026, 9, 30)))
+            first = await apply_update(conn, [*others, R61746_B], as_of=_as_of(date(2026, 9, 30)),
+                max_delist_percent=_MAX_DELIST)
             assert (first.added, first.retired) == (1, 1)
             token = InstrumentId("NSE_FO", 61746)
             new_id = await live_contract_id(conn, token)
             assert new_id is not None and new_id != old_id
 
-            again = await apply_update(conn, [*others, R61746_B], as_of=_as_of(date(2026, 9, 30)) + timedelta(hours=2))
+            again = await apply_update(conn, [*others, R61746_B], as_of=_as_of(date(2026, 9, 30)) + timedelta(hours=2),
+                max_delist_percent=_MAX_DELIST)
             assert (again.added, again.retired, again.delisted, again.revised) == (0, 0, 0, 0)
             assert await live_contract_id(conn, token) == new_id  # the reload does not move the live pointer
             rows = {r[0]: r for r in await _contracts(conn, 61746)}
@@ -675,7 +687,8 @@ async def test_ac3_r2_a_small_cleanup_is_accepted_and_delists_the_missing() -> N
     live = _fillers(1832)
     conn = _FakeConn(_stored_all(live))
     missing = {r.id for r in live[100:114]}
-    result = await apply_update(conn, [r for r in live if r.id not in missing], as_of=_as_of(date(2026, 10, 7)))
+    result = await apply_update(conn, [r for r in live if r.id not in missing], as_of=_as_of(date(2026, 10, 7)),
+        max_delist_percent=_MAX_DELIST)
     assert (result.added, result.seen, result.delisted, result.retired, result.newly_unlisted) == (0, 1818, 14, 0, 14)
     assert _delist_writes(conn) == [{"ids": list(range(101, 115))}]
     assert conn.writes[0][0] == "UPDATE" and "SET delisted = TRUE" in conn.writes[0][1]
@@ -690,7 +703,7 @@ async def test_adr058_the_store_result_feeds_the_book_block_end_to_end() -> None
     blocked and the one holding another contract is not. (No recorded held case exists: the book is built by hand.)"""
     others = [*_fillers(10), *_fillers(2, first_token=200001, expiry=date(2029, 12, 24))]
     result = await apply_update(_FakeConn([*_stored_all(others), _stored(R61746_B, 61)]), others,
-                                as_of=_as_of(date(2026, 8, 26)))
+                                as_of=_as_of(date(2026, 8, 26)), max_delist_percent=_MAX_DELIST)
     at = datetime(2026, 8, 26, 10, 0, tzinfo=UTC)
     book = OrderBook(clock=lambda: at)
     for strategy in ("STRAT-1", "STRAT-2"):
@@ -713,7 +726,7 @@ async def test_ac3_r2_a_truncated_list_is_refused_with_nothing_written() -> None
     live = _fillers(1832)
     conn = _FakeConn(_stored_all(live))
     with pytest.raises(ValueError, match=r"refused: would drop 733 of 1832 live NIFTY contracts"):
-        await apply_update(conn, live[733:], as_of=_as_of(date(2026, 10, 7)))
+        await apply_update(conn, live[733:], as_of=_as_of(date(2026, 10, 7)), max_delist_percent=_MAX_DELIST)
     assert conn.writes == []
 
 
@@ -724,21 +737,22 @@ async def test_ac3_r2_the_boundary_is_more_than_ten_percent(missing: int, refuse
     conn = _FakeConn(_stored_all(live))
     if refused:
         with pytest.raises(ValueError, match="refused: would drop 184 of 1830"):
-            await apply_update(conn, live[missing:], as_of=_as_of(date(2026, 10, 7)))
+            await apply_update(conn, live[missing:], as_of=_as_of(date(2026, 10, 7)), max_delist_percent=_MAX_DELIST)
         assert conn.writes == []
     else:
-        result = await apply_update(conn, live[missing:], as_of=_as_of(date(2026, 10, 7)))
+        result = await apply_update(conn, live[missing:], as_of=_as_of(date(2026, 10, 7)),
+            max_delist_percent=_MAX_DELIST)
         assert result.delisted == 183
 
 
 async def test_ac3_r2_the_threshold_is_a_setting_with_default_ten() -> None:
     """ADR-058 "the 10% is an admin setting": Settings defaults to 10; a lower setting refuses what 10 accepts; a value
     that is not a percentage is refused before anything is read."""
-    from ofo_app.catalogue_store import DEFAULT_MAX_DELIST_PERCENT
-    from ofo_app.config import Settings
+    from ofo.settings import calc, defaults
 
-    assert DEFAULT_MAX_DELIST_PERCENT == Decimal("10")
-    assert Settings(DATABASE_URL="postgresql://x").CATALOGUE_MAX_DELIST_PERCENT == Decimal("10")
+    assert calc.max_delist_percent(defaults()) == Decimal("10")  # the registry's default
+    with pytest.raises(TypeError, match="max_delist_percent"):  # no default in the function (ADR-222 (1))
+        await apply_update(_FakeConn(), [], as_of=_as_of(date(2026, 10, 7)))
     live = _fillers(1830)
     conn = _FakeConn(_stored_all(live))
     with pytest.raises(ValueError, match=r"refused: would drop 92 of 1830 .*more than 5%"):
@@ -758,9 +772,10 @@ async def test_ac3_r2_each_index_is_counted_on_its_own() -> None:
     stored = _stored_all(nifty + sensex)
     conn = _FakeConn(stored)
     with pytest.raises(ValueError, match="refused: would drop 3 of 10 live SENSEX contracts"):
-        await apply_update(conn, nifty + sensex[3:], as_of=_as_of(date(2026, 10, 7)))
+        await apply_update(conn, nifty + sensex[3:], as_of=_as_of(date(2026, 10, 7)), max_delist_percent=_MAX_DELIST)
     assert conn.writes == []
-    result = await apply_update(_FakeConn(stored), nifty + sensex[1:], as_of=_as_of(date(2026, 10, 7)))
+    result = await apply_update(_FakeConn(stored), nifty + sensex[1:], as_of=_as_of(date(2026, 10, 7)),
+        max_delist_percent=_MAX_DELIST)
     assert result.delisted == 1
 
 
@@ -770,14 +785,14 @@ async def test_ac3_r2_plan_for_61746_delists_then_a_reuse_is_a_new_contract() ->
     a list giving 61746 to a NIFTY Nov-2026 future (models WIPRO Nov-2026 futures) inserts a new contract."""
     others = _fillers(10) + _fillers(2, first_token=200001, expiry=date(2029, 12, 24))
     conn = _FakeConn(_stored_all(others) + [_stored(R61746_B, 61)])
-    result = await apply_update(conn, others, as_of=_as_of(date(2026, 8, 26)))
+    result = await apply_update(conn, others, as_of=_as_of(date(2026, 8, 26)), max_delist_percent=_MAX_DELIST)
     assert (result.delisted, result.retired, result.added) == (1, 0, 0)
     assert _delist_writes(conn) == [{"ids": [61]}]
     # ADR-058: the result names WHICH contract was delisted (identity + Zerodha symbol), not only how many
     assert result.delisted_contracts == (DelistedContract(InstrumentId("NSE_FO", 61746), ("NIFTY29DEC23000CE",)),)
     reuse = _row(61746, date(2026, 11, 24), "0", "FUT", "NIFTY26NOVFUT")
     after = _FakeConn(_stored_all(others))
-    result = await apply_update(after, others + [reuse], as_of=_as_of(date(2026, 9, 1)))
+    result = await apply_update(after, others + [reuse], as_of=_as_of(date(2026, 9, 1)), max_delist_percent=_MAX_DELIST)
     inserted = [p for kind, sql, p in after.writes if sql.startswith("INSERT INTO public.catalogue_contracts")]
     assert result.added == 1 and [p["exchange_token"] for p in inserted[0]] == [61746]
 
@@ -796,11 +811,12 @@ async def test_ac3_r2_61746_delisted_before_expiry_then_reused(app_engine: Async
                      ).scalar_one()
             await _load_days(conn, [(date(2025, 1, 1), early + [R61746_A]), (date(2025, 9, 1), others + [R61746_B])])
             old_id = await live_contract_id(conn, InstrumentId("NSE_FO", 61746))
-            result = await apply_update(conn, others, as_of=_as_of(date(2026, 8, 26)))
+            result = await apply_update(conn, others, as_of=_as_of(date(2026, 8, 26)), max_delist_percent=_MAX_DELIST)
             assert (result.delisted, result.retired) == (1, 0)
             assert await live_contract_id(conn, InstrumentId("NSE_FO", 61746)) is None
             reuse = _row(61746, date(2026, 11, 24), "0", "FUT", "NIFTY26NOVFUT")
-            result = await apply_update(conn, others + [reuse], as_of=_as_of(date(2026, 9, 1)))
+            result = await apply_update(conn, others + [reuse], as_of=_as_of(date(2026, 9, 1)),
+                max_delist_percent=_MAX_DELIST)
             assert result.added == 1
             new_id = await live_contract_id(conn, InstrumentId("NSE_FO", 61746))
             assert new_id is not None and new_id != old_id
@@ -861,12 +877,12 @@ async def test_ac3_fix2_an_identical_delisted_contract_returning_is_reinstated()
     """AC-3 / ADR-059: 61746 (NIFTY 23000 CE 2029-12-24, Zerodha token 15807234) was delisted as id 61; a list carrying
     the identical row reinstates id 61 (no insert); a delisted row with another strike is not reinstated."""
     conn = _FakeConn([], delisted=[_delisted_row(R61746_B, 61)])
-    result = await apply_update(conn, [R61746_B], as_of=_as_of(date(2026, 8, 27)))
+    result = await apply_update(conn, [R61746_B], as_of=_as_of(date(2026, 8, 27)), max_delist_percent=_MAX_DELIST)
     assert (result.added, result.reinstated, result.seen) == (0, 1, 0)
     assert _kinds(conn) == ["reinstate", "see", "listed"]
     assert conn.writes[0][2] == {"ids": [61]}
     other = _FakeConn([], delisted=[_delisted_row(_row(61746, date(2029, 12, 24), "23050", "CE", "X"), 61)])
-    result = await apply_update(other, [R61746_B], as_of=_as_of(date(2026, 8, 27)))
+    result = await apply_update(other, [R61746_B], as_of=_as_of(date(2026, 8, 27)), max_delist_percent=_MAX_DELIST)
     assert (result.added, result.reinstated) == (1, 0) and _kinds(other) == ["insert", "insert-broker"]
 
 
@@ -874,7 +890,7 @@ async def test_ac3_fix2_two_identical_delisted_candidates_refuse_the_list() -> N
     """Fail closed: two delisted contracts identical to one row cannot both be the returning contract."""
     conn = _FakeConn([], delisted=[_delisted_row(R61746_B, 61), _delisted_row(R61746_B, 62)])
     with pytest.raises(CatalogueStoreError, match="2 delisted contracts"):
-        await apply_update(conn, [R61746_B], as_of=_as_of(date(2026, 8, 27)))
+        await apply_update(conn, [R61746_B], as_of=_as_of(date(2026, 8, 27)), max_delist_percent=_MAX_DELIST)
     assert conn.writes == []
 
 
@@ -887,11 +903,12 @@ async def test_ac3_fix2_a_partial_list_heals_on_the_next_full_list(app_engine: A
     async with app_engine.connect() as conn:
         trans = await conn.begin()
         try:
-            await apply_update(conn, full, as_of=_as_of(date(2025, 9, 1)))
+            await apply_update(conn, full, as_of=_as_of(date(2025, 9, 1)), max_delist_percent=_MAX_DELIST)
             ids_a = {r.contract.exchange_token: await live_contract_id(conn, r.id) for r in full}
-            result = await apply_update(conn, _fillers(20) + weekly[2:], as_of=_as_of(date(2025, 9, 2)))
+            result = await apply_update(conn, _fillers(20) + weekly[2:], as_of=_as_of(date(2025, 9, 2)),
+                max_delist_percent=_MAX_DELIST)
             assert result.delisted == 2
-            result = await apply_update(conn, full, as_of=_as_of(date(2025, 9, 3)))
+            result = await apply_update(conn, full, as_of=_as_of(date(2025, 9, 3)), max_delist_percent=_MAX_DELIST)
             assert (result.reinstated, result.added) == (2, 0)
             ids_c = {r.contract.exchange_token: await live_contract_id(conn, r.id) for r in full}
             assert ids_c == ids_a
@@ -916,10 +933,12 @@ async def test_ac3_fix3_one_expiry_losing_more_than_half_is_refused(missing: int
     conn = _FakeConn(_stored_all(big + weekly))
     if refused:
         with pytest.raises(ValueError, match="would drop 6 of 10 live NIFTY contracts of expiry 2026-10-13"):
-            await apply_update(conn, big + weekly[missing:], as_of=_as_of(date(2026, 10, 7)))
+            await apply_update(conn, big + weekly[missing:], as_of=_as_of(date(2026, 10, 7)),
+                max_delist_percent=_MAX_DELIST)
         assert conn.writes == []
     else:
-        result = await apply_update(conn, big + weekly[missing:], as_of=_as_of(date(2026, 10, 7)))
+        result = await apply_update(conn, big + weekly[missing:], as_of=_as_of(date(2026, 10, 7)),
+            max_delist_percent=_MAX_DELIST)
         assert result.delisted == 5
 
 
@@ -927,7 +946,7 @@ async def test_ac3_fix4_a_stale_row_never_creates_a_live_contract() -> None:
     """ADR-059: a list row whose expiry (2026-10-06) is before the load date (2026-10-07) is skipped, never loaded."""
     stale = _row(500001, date(2026, 10, 6), "25000", "CE", "NIFTY26O0625000CE")
     conn = _FakeConn()
-    result = await apply_update(conn, [stale], as_of=_as_of(date(2026, 10, 7)))
+    result = await apply_update(conn, [stale], as_of=_as_of(date(2026, 10, 7)), max_delist_percent=_MAX_DELIST)
     assert (result.added, result.domain.skipped_expired) == (0, 1) and conn.writes == []
 
 
@@ -961,11 +980,11 @@ async def test_ac3_fix2r_the_stored_forced_audit_payload_names_every_delisted_co
         trans = await conn.begin()
         try:
             now = (await conn.execute(text("SELECT clock_timestamp()"))).scalar_one()
-            await apply_update(conn, [held, R61746_B], as_of=now)
+            await apply_update(conn, [held, R61746_B], as_of=now, max_delist_percent=_MAX_DELIST)
             reuse = _row(67245, date(2028, 1, 25), "20550", "CE", "NIFTY28JAN20550CE")
             now = (await conn.execute(text("SELECT clock_timestamp()"))).scalar_one()
             await apply_update(conn, [reuse], as_of=now, force=True, reason="exchange reused the token",
-                               actor="admin-1")
+                               actor="admin-1", max_delist_percent=_MAX_DELIST)
             log, _ = await load_log(conn)
             payload = log.events[-1].payload
             assert sorted(map(tuple, payload["dropped_instrument_tokens"])) == [("NSE_FO", 61746), ("NSE_FO", 67245)]

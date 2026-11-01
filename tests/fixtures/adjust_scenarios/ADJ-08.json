@@ -1781,7 +1781,8 @@
   "suggest": true,
   "pnl_now": "4790.5000",
   "premium_left": "429.00",
-  "adjustment_cost": "212.00",
+  "adjustment_cost": null,
+  "adjustment_approach": null,
   "triggers_fired": [
    {
     "id": "T-01",
@@ -1807,6 +1808,10 @@
    {
     "id": "T-14",
     "reason": "The loss-from-a-1%-move rule is not checked yet in this version."
+   },
+   {
+    "id": "T-19",
+    "reason": "No adjustment approach this playbook offers can be priced now (a contract without a bid or an ask, charges not available, or no whole-trade figure)."
    }
   ],
   "day_rules": [

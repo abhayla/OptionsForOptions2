@@ -13,14 +13,18 @@ from decimal import Decimal
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from ofo.settings import calc as _fq_calc
+from ofo.settings import defaults as _fq_defaults
+
+_FQ = _fq_calc.forward_quality(_fq_defaults())
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 
 from marketdata._kite_fixture import all_instrument_ids, new_provider, new_provider_with_futures, replay  # noqa: E402
-
 from ofo.marketdata.kite_provider import IST  # noqa: E402
 from ofo.outcome import read_snapshot  # noqa: E402
+from ofo.settings import defaults as _d  # noqa: E402
 
 VALUATION = datetime.datetime(2026, 10, 8, 9, 20, 9, tzinfo=IST)
 RATE = Decimal("0.065")
@@ -138,7 +142,6 @@ async def test_float_planned_entry_is_refused(replayed):
 
 def test_committed_openapi_schema_matches_the_route():
     from fastapi import FastAPI
-
     from ofo_app.routes import outcome
 
     app = FastAPI(title="OptionsForOptions2 API - outcome", version="0.1.0")
@@ -211,7 +214,7 @@ def provider_for_catalogue():
 
 async def _post_stored(body, provider=None):
     """Like _post, with the stored catalogue answering for the legs (the database read replaced by the replay's)."""
-    snap = read_snapshot(provider_for_catalogue(), "NIFTY", [iid for iid, *_ in SPREAD], VALUATION, RATE)
+    snap = read_snapshot(provider_for_catalogue(), "NIFTY", [iid for iid, *_ in SPREAD], VALUATION, RATE, quality=_FQ)
     found = {iid: snap.legs[iid].contract for iid, *_ in SPREAD}
 
     async def lookup(ids):
@@ -334,7 +337,7 @@ async def test_the_day_count_follows_the_answers_ist_date_not_the_utc_date(repla
 
     utc_instant = datetime.datetime(2026, 10, 12, 19, 0, tzinfo=datetime.UTC)
     req = OutcomeRequest.model_validate(_body(replayed))
-    legs = outcome_response(req, MarketContext(replayed, lambda: utc_instant, RATE)).model_dump(mode="json")["legs"]
+    legs = outcome_response(req, MarketContext(replayed, lambda: utc_instant, RATE), settings=_d()).model_dump(mode="json")["legs"]  # noqa: E501
     assert [leg["expiry"] for leg in legs] == ["2026-10-13"] * 4
     assert [leg["days_to_expiry"] for leg in legs] == [0] * 4
 
@@ -350,11 +353,11 @@ async def test_last_price_at_is_null_before_the_first_frame_and_an_aware_time_af
     stamp = datetime.datetime.fromisoformat(after["last_price_at"])
     assert stamp.utcoffset() is not None
     req = OutcomeRequest.model_validate(_body(replayed))
-    push = outcome_response(req, MarketContext(replayed, lambda: VALUATION, RATE)).model_dump(mode="json")
+    push = outcome_response(req, MarketContext(replayed, lambda: VALUATION, RATE), settings=_d()).model_dump(mode="json")  # noqa: E501
     assert datetime.datetime.fromisoformat(push["last_price_at"]) == stamp
 
     fresh, _clock, _items = new_provider()  # connected to nothing: no frame has arrived
-    before = outcome_response(req, MarketContext(fresh, lambda: VALUATION, RATE)).model_dump(mode="json")
+    before = outcome_response(req, MarketContext(fresh, lambda: VALUATION, RATE), settings=_d()).model_dump(mode="json")
     assert before["last_price_at"] is None
 
 

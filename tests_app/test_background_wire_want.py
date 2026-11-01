@@ -12,7 +12,7 @@ from ofo.instruments.models import ZERODHA
 from ofo_app import background, feed_bus, scenario_mode
 from redis.exceptions import ConnectionError as RedisConnectionError
 
-from tests_app.test_background_cycle import RATE, Calls, Prov, _watched
+from tests_app.test_background_cycle import Calls, Prov, _prefs, _settings, _watched
 
 OWNER = "owner"
 LEGS_AND_INDEX = 5
@@ -63,14 +63,14 @@ def _unlisted(w):
     legs = list(w.tracked.position.legs)
     legs[0] = dataclasses.replace(legs[0], strike=legs[0].strike + 1)
     pos = dataclasses.replace(w.tracked.position, legs=tuple(legs))
-    return background.Watched(OWNER, 999, dataclasses.replace(w.tracked, position=pos), {}, True, OWNER, "weekly")
+    return background.Watched(OWNER, 999, dataclasses.replace(w.tracked, position=pos), {}, True, OWNER)
 
 
 def _worker(prov, watched, now, client):
     async def lister():
         return watched
-    return background.Worker(provider_for=lambda _o: prov, lister=lister, clock=lambda: now[0], rate=RATE,
-                             recorder=Calls(), want_client=client)
+    return background.Worker(provider_for=lambda _o: prov, lister=lister, clock=lambda: now[0], settings=_settings(),
+                             preferences=_prefs, recorder=Calls(), want_client=client)
 
 
 async def _relay_wants(client) -> list[int]:

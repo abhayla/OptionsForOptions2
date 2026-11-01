@@ -39,6 +39,7 @@ from fastapi import APIRouter, Depends, Query
 from ofo.engine.legs import Action
 from ofo.engine.legs import Leg as EngineLeg
 from ofo.errors import LegValue, render
+from ofo.settings.calc import history_max_days
 from ofo.strategy import stored_form as sf
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -47,9 +48,10 @@ from ofo_app import paper_store, playbook_store, tracked_contracts
 from ofo_app import strategy_store as store
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier, Money
 from ofo_app.db import get_db
-from ofo_app.errors import ClosedRoute, Failure
+from ofo_app.errors import ClosedRoute, Failure, refuse_request
 from ofo_app.routes import adjustment_opportunities as opportunities
 from ofo_app.routes.broker import current_user_ref
+from ofo_app.routes.outcome import get_settings_reader
 from ofo_app.strategy_refused import StrategyRefused
 from ofo_app.tracked_contracts import ContractState
 from ofo_app.underlying import Underlying
@@ -605,7 +607,8 @@ async def strategy_price_history(  # noqa: PLR0913 - one query parameter or seam
         strategy_id: int, db: Annotated[Any, Depends(get_db)], user_ref: Annotated[str, Depends(current_user_ref)],
         opener: Annotated[Any, Depends(get_history_opener)], finder: Annotated[Any, Depends(get_future_finder)],
         now: Annotated[datetime.datetime, Depends(get_history_now)],
-        invert: Annotated[bool, Query()] = False, days: Annotated[int, Query(ge=1, le=15)] = 10) -> PriceHistoryOut:
+        read_settings: Annotated[Any, Depends(get_settings_reader)],
+        invert: Annotated[bool, Query()] = False, days: Annotated[int, Query(ge=1)] = 10) -> PriceHistoryOut:
     """The strategy's combined net price per unit per minute beside the index future (REQ-091 AC-2..AC-5). Another
     user's strategy answers exactly as a missing one (store.load is owner-scoped). Prices only, no P&L (AC-6)."""
     from ofo.errors.explanations import render_explanation  # noqa: PLC0415
@@ -637,6 +640,9 @@ async def strategy_price_history(  # noqa: PLR0913 - one query parameter or seam
                                                                                 leg=sph.label(lc)))
             legs.append(sph.ChartLeg(leg.action, lots))
         return await sph.prepare(db, legs, listed, definition.underlying, reader=reader, finder=finder)
+    # REQ-167 AC-5: the most days is the setting in force now, read before any database or Kite work
+    if days > history_max_days(await read_settings()):
+        refuse_request(("query", "days"), "less_than_equal", days)
     # F1: every DB read above ran in ONE short block; _run commits it, which hands the pooled connection back BEFORE
     # any Kite call. The Kite phase below gets no database handle (pool: 2 connections shared with orders).
     plan = await _run(db, work, form_status=409)

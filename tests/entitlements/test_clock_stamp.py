@@ -30,6 +30,11 @@ from ofo.entitlements.events import (
 from ofo.entitlements.ledger import EntitlementLedger
 
 from .helpers import TICK, at, fixed_clock, ist, ledger_for, note, record, stamped
+from ofo.settings import calc as _settings_calc
+from ofo.settings import defaults as _settings_defaults
+
+REFERRAL_DAYS = _settings_calc.referral_days(_settings_defaults())  # the registry default, never a retyped number
+TRIAL_DAYS = _settings_calc.trial_days(_settings_defaults())  # the registry default, never a retyped number
 
 PRO = AccessLevel.PRO
 LIMITED = AccessLevel.LIMITED
@@ -85,7 +90,7 @@ def test_attack_3_backdated_direct_cannot_give_back_used_trial_days():
     """AC-4: trial registered 27 Sep 00:00; on 3 Oct 10:00 a DIRECT grant dated 2 Sep is refused (round 5 banked
     the whole trial behind it and, after the 3 Oct revoke, gave Pro to 10 Oct). The real DIRECT at 3 Oct 10:00
     banks only the 14 unused hours (168 h - 154 h used), so after a revoke at 12:00 the trial ends 4 Oct 02:00."""
-    led = record(ledger_for("u"), trial_grant("t", ist(2026, 9, 27), "registration", note()))
+    led = record(ledger_for("u"), trial_grant("t", ist(2026, 9, 27), "registration", note(), days=TRIAL_DAYS))
     with pytest.raises(ValueError, match="backdated"):
         record(led, _direct(ist(2026, 9, 2)), OCT_3)
     forged = EntitlementGrant(
@@ -175,7 +180,7 @@ def test_effective_time_boundaries_are_exactly_plus_and_minus_the_skew(skew, sta
         (STAMP - skew, True, None), (STAMP + skew, True, None),
         (STAMP - skew - TICK, False, "backdated"), (STAMP + skew + TICK, False, "post-dated"),
     ):
-        led = record(ledger_for("u", clock_skew=skew), trial_grant("t", registered, "reg", note()))
+        led = record(ledger_for("u", clock_skew=skew), trial_grant("t", registered, "reg", note(), days=TRIAL_DAYS))
         change = NewStatusChange("t", status, effective, note())
         if ok:
             assert record(led, change, STAMP).status_change("t").effective_at == effective
@@ -202,13 +207,13 @@ def test_adr023_examples_replay_with_the_clock_at_each_events_time():
     10 Oct - 9 Nov; paid revoked 25 Sep -> referral 25 Sep - 25 Oct; trial ends 5 Oct, subscribe 2 Oct ->
     paid 5 Oct - 4 Nov. Every stamp is the clock reading at that step."""
     led = record(ledger_for("u"), _paid("paid-1", ist(2026, 9, 10)))  # 10 Sep + 30 days = 10 Oct
-    led = record(led, referral_grant("ref-1", ist(2026, 9, 20, 14), "row-7", note()))
+    led = record(led, referral_grant("ref-1", ist(2026, 9, 20, 14), "row-7", note(), days=REFERRAL_DAYS))
     assert [(r.start, r.expiry) for r in resolve(led)][1] == (ist(2026, 10, 10), ist(2026, 11, 9))
     revoked = revoke(at(led, ist(2026, 9, 25)), "paid-1", ist(2026, 9, 25), note("refund"))
     assert [(r.start, r.expiry) for r in resolve(revoked)][1] == (ist(2026, 9, 25), ist(2026, 10, 25))
     assert [e.audit.recorded_at for e in revoked.events] == [ist(2026, 9, 10), ist(2026, 9, 20, 14), ist(2026, 9, 25)]
 
-    trial = record(ledger_for("u2"), trial_grant("t", ist(2026, 9, 28), "reg", note()))  # ends 5 Oct
+    trial = record(ledger_for("u2"), trial_grant("t", ist(2026, 9, 28), "reg", note(), days=TRIAL_DAYS))  # ends 5 Oct
     trial = record(trial, _paid("paid-2", ist(2026, 10, 2)))
     assert [(r.start, r.expiry) for r in resolve(trial)] == [
         (ist(2026, 9, 28), ist(2026, 10, 5)), (ist(2026, 10, 5), ist(2026, 11, 4)),

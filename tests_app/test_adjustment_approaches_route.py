@@ -448,7 +448,7 @@ def _liquidity_text(reply: dict, approach: str) -> str:
 def test_a1_route_refuses_an_over_limit_roll_with_the_catalogue_reason():
     reply = post(client_for(load("ADJ-50"), guards=LIMITS)).json()
     refusal = next(a for a in reply["approaches"] if a["id"] == "A-05")["refusal"]
-    assert refusal["code"] == "USER_INPUT_173" and "more than the" in refusal["what_happened"]
+    assert refusal["code"] == "USER_INPUT_176" and "more than the" in refusal["what_happened"]
 
 
 def test_a1_route_flags_the_strike_below_the_playbook_oi_limit_in_the_compare():

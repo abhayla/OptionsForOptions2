@@ -1746,7 +1746,8 @@
   "suggest": true,
   "pnl_now": "-1612.0000",
   "premium_left": "7338.50",
-  "adjustment_cost": "342.00",
+  "adjustment_cost": "92.35",
+  "adjustment_approach": "A-29",
   "triggers_fired": [
    {
     "id": "T-01",

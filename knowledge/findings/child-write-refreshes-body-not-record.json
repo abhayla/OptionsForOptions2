@@ -1,0 +1,29 @@
+{
+ "id": "child-write-refreshes-body-not-record",
+ "scope": "generic",
+ "class": "Any page where a child control writes a new version of a record and hands back only part of it (the body) keeps showing the record's OLD status, version and labels (Draft, active, version N) until a reload, because the parent copies the part it was given and never re-reads the record or the list that names it.",
+ "mechanism": "AdjustmentsPage.onSystemApplied (the @applied handler of SystemPlaybookAdmin) copied the new body into saved/work only; current (status, draft, version) and the playbooks list (the dropdown text 'Name (Draft) - active') kept the values read before the approve/save/restore.",
+ "first_seen": {
+  "date": "2026-11-01",
+  "where": "build/settings: frontend/src/pages/AdjustmentsPage.vue onSystemApplied; frontend/src/components/adjustments/SystemPlaybookAdmin.vue (emits applied with the body)",
+  "evidence": "GC-SET step 9 browser proof: Approve on 'Short strangle: system default' answered version 2 approved (GET /api/playbooks/1 status approved), but the Draft chip and '(Draft)' in the picker stayed until a page reload. Extended vitest tests/system-playbook-admin.test.js AC-3: red 'expected true to be false' on the Draft chip; green after the fix; the 4 test files that mount AdjustmentsPage: 46 passed."
+ },
+ "fix": "onSystemApplied re-reads the list and the record for the same playbook id (loadList(current.id)) after every applied system version (save, restore, approve). Population: the 3 system-version actions of REQ-169 (all go through the one @applied handler); the user-playbook actions (activate, save in place, save as new, remove) already re-read the list.",
+ "detection": {
+  "status": "guarded",
+  "checks": [
+   "frontend/tests/system-playbook-admin.test.js 'AC-3: a Draft shows Approve, which posts with a reason' (asserts the Draft chip and '(Draft)' are gone after Approve)"
+  ],
+  "note": "Save and restore keep status approved, so only the version number would be stale there; the same handler covers them."
+ },
+ "spec_ref": [
+  "spec/requirements/REQ-169.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-11-01",
+   "where": "Adjustments > Playbooks, system playbook Approve",
+   "evidence": "Draft label stayed after approve until reload"
+  }
+ ]
+}

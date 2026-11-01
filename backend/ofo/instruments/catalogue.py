@@ -53,8 +53,7 @@ SUPPORTED_UNDERLYINGS: dict[str, str] = {
 # The update date is the calendar date in India (the exchanges' timezone), ADR-007.
 
 #: ADR-058: an update is refused if MORE than this percentage of one index's live contracts would disappear at once
-#: (an admin setting; ofo_app.config.Settings.CATALOGUE_MAX_DELIST_PERCENT holds the same default).
-DEFAULT_MAX_DELIST_PERCENT = Decimal("10")
+#: (the admin setting data.max_delist_percent; every caller passes it, there is no default here, ADR-222 (1)).
 #: ADR-059: ... or if any one unexpired expiry of an index would lose MORE than half of its live contracts at once.
 MAX_EXPIRY_LOSS_FRACTION = Decimal("0.5")
 #: ADR-059 (a): "the strike is unchanged and the expiry moved by at most 6 calendar days" (62964: 5 days, 61746: 3
@@ -190,7 +189,7 @@ class Catalogue:
         reason: str | None = None,
         actor: str | None = None,
         audit_log: AuditLog | None = None,
-        max_delist_percent: object = DEFAULT_MAX_DELIST_PERCENT,
+        max_delist_percent: object,
     ) -> "CatalogueUpdateResult":
         """Refresh from a newer instrument list.
 
@@ -199,11 +198,12 @@ class Catalogue:
         `currently_listed = False` — they are never removed (AC-2).
 
         Refuses (raises `ValueError`, changes nothing) when the list looks truncated (ADR-058, ADR-059, replacing the
-        old Q244 "refuse any unexpired drop"): MORE than `max_delist_percent` (default 10) of one index's live
-        contracts would disappear at once, or any one unexpired expiry of an index would lose MORE than half of its
-        live contracts. Live = listed and not expired on the update date, judged against `as_of` (timezone-aware,
-        never a hidden clock) converted to its India (IST) calendar date: a contract expiring ON that date has not yet
-        passed. Contracts of an already-passed expiry may roll off; a list row whose expiry has passed is skipped.
+        old Q244 "refuse any unexpired drop"): MORE than `max_delist_percent` (required; the settings value) of one
+        index's live contracts would disappear at once, or any one unexpired expiry of an index would lose MORE
+        than half of its live contracts. Live = listed and not expired on the update date, judged against `as_of`
+        (timezone-aware, never a hidden clock) converted to its India (IST) calendar date: a contract expiring ON
+        that date has not yet passed. Contracts of an already-passed expiry may roll off; a list row whose expiry has
+        passed is skipped.
         A row on an existing token that is not a revision (`is_revision`, ADR-059) replaces the entry: a new contract.
 
         `force=True` overrides the guards (a real broker delisting) but ONLY with a non-empty

@@ -7,17 +7,17 @@ independent Black-Scholes implementation written in THIS file (``math.erf``, no 
 against a hard-coded number that came from the table module itself.
 """
 import math
-from decimal import ROUND_HALF_EVEN, Decimal as D
+from decimal import ROUND_HALF_EVEN
+from decimal import Decimal as D
 
 import pytest
-
+from conftest import GOLDEN_LEGS, GOLDEN_SPOT, NIFTY_EXPIRY, RATE, VALUATION, nifty_input, nifty_leg
+from ofo.engine.black_scholes import Greeks
 from ofo.engine.inputs import LegInput
 from ofo.engine.legs import Action, Instrument
-from ofo.engine.black_scholes import Greeks
+from ofo.settings import defaults as _d
 from ofo.table.columns import ColumnId
-from ofo.table.model import CellKind, LegStatus, StrategyHealth, TOTAL_ROW_ID, build_table
-
-from conftest import GOLDEN_LEGS, GOLDEN_SPOT, NIFTY_EXPIRY, RATE, VALUATION, nifty_input, nifty_leg
+from ofo.table.model import TOTAL_ROW_ID, CellKind, LegStatus, StrategyHealth, build_table
 
 FIXED_ORDER = [
     ColumnId.LEG, ColumnId.ACTION, ColumnId.INSTRUMENT, ColumnId.EXPIRY, ColumnId.STRIKE, ColumnId.QUANTITY,
@@ -346,6 +346,7 @@ def _stale_model():
     """The reviewer's repro: a stale spot with a parity forward (implied yield 0.0776) on the golden legs."""
     import dataclasses
     import datetime
+
     from ofo.engine.inputs import SpotReading, StrategyInput
     from ofo.engine.model import model_inputs
     from ofo.marketdata.forward import PARITY, spot_fallback_forward
@@ -363,7 +364,7 @@ def test_round4_stale_scenario_under_a_live_table_is_refused(golden):
     from ofo.scenario.levels import build_level_set
     from ofo.scenario.views import View, scenario_values
     ms = _stale_model()
-    ls = build_level_set(ms, ScenarioSettings().for_index("NIFTY"))
+    ls = build_level_set(ms, ScenarioSettings.from_values(_d()).for_index("NIFTY"))
     sv = scenario_values(ls, ms, View.ESTIMATED_NOW)
     build_table(ms, level_set=ls, scenario=sv)  # the stale table with its own stale scenario is fine
     with pytest.raises(ValueError):
@@ -375,7 +376,7 @@ def test_round4_level_set_from_another_spot_is_refused(golden):
     from ofo.scenario.levels import build_level_set
     from ofo.scenario.views import scenario_values
     other = nifty_input((nifty_leg(*row) for row in GOLDEN_LEGS), spot=D("23500"))
-    ls = build_level_set(other, ScenarioSettings().for_index("NIFTY"))
+    ls = build_level_set(other, ScenarioSettings.from_values(_d()).for_index("NIFTY"))
     with pytest.raises(ValueError):
         build_table(golden, level_set=ls, scenario=scenario_values(ls, other))
 
@@ -387,6 +388,6 @@ def test_round4_stale_scenario_is_refused_even_with_a_matching_level_set(golden,
     from ofo.scenario.views import View, scenario_values
     level_set, _values = golden_scenario
     ms = _stale_model()
-    stale_sv = scenario_values(build_level_set(ms, ScenarioSettings().for_index("NIFTY")), ms, View.ESTIMATED_NOW)
+    stale_sv = scenario_values(build_level_set(ms, ScenarioSettings.from_values(_d()).for_index("NIFTY")), ms, View.ESTIMATED_NOW)  # noqa: E501
     with pytest.raises(ValueError):
         build_table(golden, level_set=level_set, scenario=stale_sv)

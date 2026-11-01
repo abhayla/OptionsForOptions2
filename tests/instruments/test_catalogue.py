@@ -18,6 +18,9 @@ from ofo.instruments.catalogue import Catalogue, ContractKind
 from execution.execution_inputs import refuse, zerodha_eligibility
 from ofo.instruments.models import Contract
 from ofo.instruments.parser import parse_instruments_csv
+from ofo.settings import calc as _calc, defaults as _defaults
+
+_MAX_DELIST = _calc.max_delist_percent(_defaults())
 
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "instruments" / "instruments_slice.csv"
 
@@ -37,6 +40,12 @@ def catalogue(contracts: list[Contract]) -> Catalogue:
     cat = Catalogue()
     cat.load(contracts)
     return cat
+
+
+def test_the_max_delist_percent_has_no_default_in_the_domain_update(catalogue: Catalogue) -> None:
+    """ADR-222 (1): the percent is a required argument; a caller that forgets it fails, never gets a typed 10."""
+    with pytest.raises(TypeError, match="max_delist_percent"):
+        catalogue.update([], as_of=ON_EXPIRY_DAY)  # type: ignore[call-arg]
 
 
 def test_core_nifty_strike_gap_and_lot_size(catalogue: Catalogue) -> None:
@@ -148,7 +157,7 @@ def test_update_refuses_the_verifier_75_percent_truncation(catalogue: Catalogue,
     truncated = [c for c in contracts if c.contract.name != "NIFTY" or c.id in kept_nifty]
     before = _snapshot(catalogue)
     with pytest.raises(ValueError, match="refused"):
-        catalogue.update(truncated, as_of=ON_EXPIRY_DAY)
+        catalogue.update(truncated, as_of=ON_EXPIRY_DAY, max_delist_percent=_MAX_DELIST)
     assert _snapshot(catalogue) == before
 
 
@@ -160,7 +169,8 @@ def test_update_accepts_roll_off_of_an_expired_expiry_never_deletes(
     expired = {c.id for c in contracts if c.contract.expiry == NIFTY_NEAR_EXPIRY}
     assert expired
     before_count = len(catalogue.all_entries())
-    result = catalogue.update([c for c in contracts if c.id not in expired], as_of=DAY_AFTER_EXPIRY)
+    result = catalogue.update([c for c in contracts if c.id not in expired], as_of=DAY_AFTER_EXPIRY,
+        max_delist_percent=_MAX_DELIST)
     assert len(catalogue.all_entries()) == before_count
     in_scope_expired = {t for t in expired if t in _snapshot(catalogue)}
     assert result.newly_unlisted == len(in_scope_expired) > 0
@@ -174,7 +184,7 @@ def test_update_refuses_roll_off_on_the_expiry_day_itself(catalogue: Catalogue, 
     expired = {c.id for c in contracts if c.contract.expiry == NIFTY_NEAR_EXPIRY}
     late = datetime(2026, 9, 29, 23, 59, tzinfo=IST)
     with pytest.raises(ValueError):
-        catalogue.update([c for c in contracts if c.id not in expired], as_of=late)
+        catalogue.update([c for c in contracts if c.id not in expired], as_of=late, max_delist_percent=_MAX_DELIST)
 
 
 def test_update_date_is_judged_in_ist_not_utc(catalogue: Catalogue, contracts: list[Contract]) -> None:
@@ -182,13 +192,13 @@ def test_update_date_is_judged_in_ist_not_utc(catalogue: Catalogue, contracts: l
     passed and may roll off; the same instant read as a UTC date would refuse it."""
     expired = {c.id for c in contracts if c.contract.expiry == NIFTY_NEAR_EXPIRY}
     as_of = datetime(2026, 9, 29, 20, 0, tzinfo=timezone.utc)
-    catalogue.update([c for c in contracts if c.id not in expired], as_of=as_of)
+    catalogue.update([c for c in contracts if c.id not in expired], as_of=as_of, max_delist_percent=_MAX_DELIST)
 
 
 def test_update_rejects_a_naive_as_of(catalogue: Catalogue, contracts: list[Contract]) -> None:
     """AC-2: a timezone-naive update time is rejected, not guessed."""
     with pytest.raises(ValueError, match="timezone-aware"):
-        catalogue.update(contracts, as_of=datetime(2026, 9, 30, 9, 0))
+        catalogue.update(contracts, as_of=datetime(2026, 9, 30, 9, 0), max_delist_percent=_MAX_DELIST)
 
 
 def test_update_treats_a_contract_with_no_expiry_as_unexpired(contracts: list[Contract]) -> None:
@@ -199,14 +209,14 @@ def test_update_treats_a_contract_with_no_expiry_as_unexpired(contracts: list[Co
     cat = Catalogue()
     cat.load([odd])
     with pytest.raises(ValueError, match="refused"):
-        cat.update([], as_of=DAY_AFTER_EXPIRY)
+        cat.update([], as_of=DAY_AFTER_EXPIRY, max_delist_percent=_MAX_DELIST)
 
 
 def test_update_refuses_empty_list_while_unexpired_contracts_are_listed(catalogue: Catalogue) -> None:
     """AC-2: an empty list would drop every live contract; refused, catalogue unchanged."""
     before = _snapshot(catalogue)
     with pytest.raises(ValueError):
-        catalogue.update([], as_of=ON_EXPIRY_DAY)
+        catalogue.update([], as_of=ON_EXPIRY_DAY, max_delist_percent=_MAX_DELIST)
     assert _snapshot(catalogue) == before
 
 
@@ -214,7 +224,7 @@ def test_update_accepts_new_expiries_being_added(catalogue: Catalogue, contracts
     """AC-2: additions never trip the guard: load only the far expiries, then update with all."""
     cat = Catalogue()
     cat.load([c for c in contracts if c.contract.expiry != NIFTY_FAR_EXPIRY])
-    result = cat.update(contracts, as_of=ON_EXPIRY_DAY)
+    result = cat.update(contracts, as_of=ON_EXPIRY_DAY, max_delist_percent=_MAX_DELIST)
     assert result.added > 0 and result.newly_unlisted == 0
 
 
@@ -222,7 +232,8 @@ def test_update_force_overrides_the_guard(catalogue: Catalogue, contracts: list[
     """AC-2: force=True, reason="test delisting", actor="test-admin", audit_log=AuditLog() lets a real broker delisting through and marks (never deletes) the rows."""
     victim = next(c for c in contracts if c.contract.name == "NIFTY" and c.contract.expiry == NIFTY_FAR_EXPIRY)
     result = catalogue.update(
-        [c for c in contracts if c.id != victim.id], as_of=ON_EXPIRY_DAY, force=True, reason="test delisting", actor="test-admin", audit_log=AuditLog()
+        [c for c in contracts if c.id != victim.id], as_of=ON_EXPIRY_DAY, force=True, reason="test delisting", actor="test-admin", audit_log=AuditLog(),
+            max_delist_percent=_MAX_DELIST
     )
     assert result.newly_unlisted == 1
     assert _entry(catalogue, victim.id).currently_listed is False
@@ -231,15 +242,16 @@ def test_update_force_overrides_the_guard(catalogue: Catalogue, contracts: list[
 def test_update_relists_a_contract_that_reappears(catalogue: Catalogue, contracts: list[Contract]) -> None:
     """AC-2: a force-delisted contract that reappears in a later list is relisted."""
     token = next(c for c in contracts if c.contract.name == "NIFTY" and c.contract.expiry == NIFTY_NEAR_EXPIRY).id
-    catalogue.update([c for c in contracts if c.id != token], as_of=ON_EXPIRY_DAY, force=True, reason="test delisting", actor="test-admin", audit_log=AuditLog())
+    catalogue.update([c for c in contracts if c.id != token], as_of=ON_EXPIRY_DAY, force=True, reason="test delisting", actor="test-admin", audit_log=AuditLog(),
+        max_delist_percent=_MAX_DELIST)
     assert _entry(catalogue, token).currently_listed is False
-    catalogue.update(contracts, as_of=ON_EXPIRY_DAY)
+    catalogue.update(contracts, as_of=ON_EXPIRY_DAY, max_delist_percent=_MAX_DELIST)
     assert _entry(catalogue, token).currently_listed is True
 
 
 def test_update_normal_refresh_still_works(catalogue: Catalogue, contracts: list[Contract]) -> None:
     """AC-2: an identical list is accepted with nothing added or unlisted."""
-    result = catalogue.update(contracts, as_of=ON_EXPIRY_DAY)
+    result = catalogue.update(contracts, as_of=ON_EXPIRY_DAY, max_delist_percent=_MAX_DELIST)
     assert result.newly_unlisted == 0
     assert result.added == 0
 
@@ -305,6 +317,7 @@ def test_force_without_reason_is_refused_and_changes_nothing(
         catalogue.update(
             _without(contracts, victim.id),
             as_of=ON_EXPIRY_DAY, force=True, reason=reason, actor="ops-admin", audit_log=log,
+                max_delist_percent=_MAX_DELIST
         )
     assert log.events == ()
     assert _entry(catalogue, victim.id).currently_listed is True
@@ -314,15 +327,17 @@ def test_force_without_actor_or_audit_log_is_refused(catalogue: Catalogue, contr
     """AC-2: force needs a who and an explicit audit sink (no hidden global)."""
     rest = _without(contracts, _live_victim(contracts).id)
     with pytest.raises(ValueError, match="actor"):
-        catalogue.update(rest, as_of=ON_EXPIRY_DAY, force=True, reason="delisted", audit_log=AuditLog())
+        catalogue.update(rest, as_of=ON_EXPIRY_DAY, force=True, reason="delisted", audit_log=AuditLog(),
+            max_delist_percent=_MAX_DELIST)
     with pytest.raises(ValueError, match="audit_log"):
-        catalogue.update(rest, as_of=ON_EXPIRY_DAY, force=True, reason="delisted", actor="ops-admin")
+        catalogue.update(rest, as_of=ON_EXPIRY_DAY, force=True, reason="delisted", actor="ops-admin",
+            max_delist_percent=_MAX_DELIST)
 
 
 def test_reason_args_without_force_are_refused(catalogue: Catalogue, contracts: list[Contract]) -> None:
     """AC-2: reason/actor/audit_log without force is a caller mistake, not silently ignored."""
     with pytest.raises(ValueError, match="only valid with force"):
-        catalogue.update(contracts, as_of=ON_EXPIRY_DAY, reason="x")
+        catalogue.update(contracts, as_of=ON_EXPIRY_DAY, reason="x", max_delist_percent=_MAX_DELIST)
 
 
 def test_force_with_reason_is_audited_with_exact_dropped_contracts(
@@ -334,6 +349,7 @@ def test_force_with_reason_is_audited_with_exact_dropped_contracts(
     result = catalogue.update(
         _without(contracts, victim.id),
         as_of=ON_EXPIRY_DAY, force=True, reason="NSE delisted it (circular 123)", actor="ops-admin", audit_log=log,
+            max_delist_percent=_MAX_DELIST
     )
     assert result.newly_unlisted == 1
     (event,) = log.events
@@ -350,4 +366,5 @@ def test_force_with_reason_is_audited_with_exact_dropped_contracts(
 def test_unforced_refusal_writes_no_audit_entry(catalogue: Catalogue, contracts: list[Contract]) -> None:
     """AC-2: the guard's normal refusal still refuses without force (a whole NIFTY expiry missing, ADR-059)."""
     with pytest.raises(ValueError, match="refused"):
-        catalogue.update([c for c in contracts if c.contract.expiry != NIFTY_FAR_EXPIRY], as_of=ON_EXPIRY_DAY)
+        catalogue.update([c for c in contracts if c.contract.expiry != NIFTY_FAR_EXPIRY], as_of=ON_EXPIRY_DAY,
+            max_delist_percent=_MAX_DELIST)

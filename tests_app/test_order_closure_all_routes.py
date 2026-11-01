@@ -94,6 +94,9 @@ ROUTE_ORDER_EDGES: dict[str, dict[tuple[str, str], str]] = {
         **STRATEGY_STORE, **KITE_REPLIES, **RECONCILE_ATTRIBUTION},
     "ofo_app.routes.ready_made": {**STRATEGY_STORE},
     "ofo_app.routes.strategies": {**STRATEGY_STORE},
+    # GC-SET step 9 (REQ-169): the admin's system playbook versions are read and validated through playbook_store (its
+    # strategy_store import); the route writes playbook versions only, it never prepares or posts an order
+    "ofo_app.routes.system_playbooks": {**STRATEGY_STORE},
     "ofo_app.routes.tracking": {**STRATEGY_STORE},
     "ofo_app.routes.zerodha_account": _execute_route_edge(
         "zerodha_account", "the account route reuses the execute route's Kite session provider"),
@@ -101,7 +104,8 @@ ROUTE_ORDER_EDGES: dict[str, dict[tuple[str, str], str]] = {
 #: One constant, so a new edge is a reviewed diff and never a silent pass.
 #: GC-ADJ2 5: +2 adjustment_opportunities, +2 adjustment_plan; 6: +2 adjustment_history (all via playbook_store)
 #: GC-MU A1: +2 adjustment (read_guards via adjustment_check -> playbook_store)
-PINNED_EDGE_COUNT = 33
+#: GC-SET step 9: +2 system_playbooks (via playbook_store)
+PINNED_EDGE_COUNT = 35
 
 
 def route_modules(backend: pathlib.Path) -> list[str]:

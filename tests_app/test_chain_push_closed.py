@@ -14,7 +14,11 @@ from ofo.engine.chain_values import chain_model
 from ofo.engine.legs import Instrument
 from ofo.marketdata.quote import NormalizedQuote, SourceMetadata
 from ofo.rules.inputs import DataHealth
+from ofo.settings import calc as _fq_calc
+from ofo.settings import defaults as _fq_defaults
 from ofo_app.chain_push import _greek_fields
+
+_FQ = _fq_calc.forward_quality(_fq_defaults())
 
 D = Decimal
 IST = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
@@ -35,7 +39,7 @@ def _quote(instrument_id: str, kind: Instrument | None, strike: str | None, ltp:
 def test_u18_a_cell_shows_iv_from_a_sound_stale_close_only_when_closed():
     spot = _quote("NSE_INDEX:256265", None, None, "22533.25", DataHealth.STALE)
     stale_ce = _quote(CE_ID, Instrument.CE, "22500", "151.30", DataHealth.STALE)
-    model = chain_model([stale_ce], spot, EXPIRY, VALUATION, RATE, market_closed=True)
+    model = chain_model([stale_ce], spot, EXPIRY, VALUATION, RATE, _FQ, market_closed=True)
     assert _greek_fields(stale_ce, model, CE_ID, market_closed=True)["iv"] is not None
     assert _greek_fields(stale_ce, model, CE_ID, market_closed=False)["iv"] is None  # in hours a STALE price is old
     unhealthy = _quote(CE_ID, Instrument.CE, "22500", "151.30", DataHealth.UNHEALTHY)

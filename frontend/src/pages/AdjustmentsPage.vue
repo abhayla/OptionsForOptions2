@@ -6,6 +6,11 @@
      Draft and active come from the server's answer (is_system, draft, active), never inferred here. -->
 <template>
   <section class="pb mx-auto max-w-[1400px] p-4 text-ink" data-testid="adjustments-page">
+    <Tabs v-model="screenTab" :tabs="SCREEN_TABS" label="Adjustments" id-prefix="adj" class="mb-3" />
+    <div v-if="screenTab === 'preferences'" id="adj-panel-preferences" role="tabpanel" aria-labelledby="adj-tab-preferences" data-testid="adj-panel-preferences">
+      <PreferencesTab />
+    </div>
+    <div v-show="screenTab === 'playbooks'" id="adj-panel-playbooks" role="tabpanel" aria-labelledby="adj-tab-playbooks">
     <header class="flex flex-wrap items-end gap-3 rounded-lg border border-line bg-surface p-3">
       <label class="flex flex-col gap-1 text-xs font-medium text-ink-muted">Strategy type
         <select :value="typeKey" class="h-9 min-w-48 rounded-lg border border-line bg-surface px-2 text-sm text-ink" data-testid="pb-type" @change="pickType($event.target.value)">
@@ -37,6 +42,8 @@
       <button type="button" class="btn btn-primary" data-testid="pb-save-as" :disabled="!newName" @click="saveAsNew">Save as new playbook</button>
       <span v-if="current.is_system && dirty" class="text-sm text-warn" data-testid="pb-system-hint">You changed a system playbook. Save it as a new playbook to keep the changes.</span>
     </div>
+
+    <SystemPlaybookAdmin v-if="current && work && current.is_system" :strategy-type="typeKey" :work="work" @applied="onSystemApplied" />
 
     <div v-if="current && work" class="pbgrid mt-3">
       <nav class="pbsteps rounded-lg border border-line bg-surface p-2" aria-label="Playbook sections" data-testid="pb-steps">
@@ -162,6 +169,7 @@
         </div>
       </aside>
     </div>
+    </div>
   </section>
 </template>
 
@@ -169,10 +177,15 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import api from '@/services/api'
+import Tabs from '@/components/common/Tabs.vue'
+import PreferencesTab from '@/components/adjustments/PreferencesTab.vue'
+import SystemPlaybookAdmin from '@/components/adjustments/SystemPlaybookAdmin.vue'
 import { STEPS, EXPIRY_KINDS, addStage, clone, isDirty, labelMaps, refusalText, removeStage, ruleMembers, said, stagesOf, summaryLines,
   testRow, valuesOf } from '@/lib/playbookEditor'
 
 const route = useRoute()
+const SCREEN_TABS = [{ key: 'playbooks', label: 'Playbooks' }, { key: 'preferences', label: 'Preferences' }]
+const screenTab = ref('playbooks')
 const types = ref([])
 const labels = ref(labelMaps(null)) // every word the body does not carry (GET /playbooks/labels)
 const typeKey = ref(null)
@@ -256,6 +269,14 @@ function show(pb) {
   work.value = clone(body)
   answer.value = null
   testRefusal.value = null
+}
+
+/** The admin saved, restored or approved a system playbook version: its body is now the one shown (REQ-169), and the
+ *  list and the playbook's own record are read again, so its Draft label and version come from the server's new answer
+ *  (an approve left "Draft" on screen until a reload, GC-SET 2026-11-01). */
+async function onSystemApplied(body) {
+  saved.value = clone(body); work.value = clone(body)
+  if (current.value) await loadList(current.value.id)
 }
 
 async function openPicked() {

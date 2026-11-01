@@ -8,7 +8,8 @@ is usable there is NO value, and ``reasons`` holds one code per source (the scre
 a default spot is never made up.
 
 Rules:
-- the feed counts only while its tick is no older than ``FEED_STALE`` (the feed-health rule, not a new number); a tick
+- the feed counts only while its tick is no older than ``windows.stale`` (the feed-health window in force,
+  ``detection.feed_stale_seconds``); a tick
   dated in the future is not fresh either (fail closed);
 - a REST answer or a last close counts only when stated with a price above 0 (``is_live_price``): a 200 with no
   ``last_price`` is EMPTY, never 0;
@@ -26,7 +27,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Final
 
-from ofo.marketdata.feed_health import FEED_STALE
+from ofo.marketdata.feed_health import FeedWindows
 from ofo.marketdata.quote import is_live_price
 
 SOURCE_FEED: Final = "feed"
@@ -75,13 +76,13 @@ class SpotAnswer:
         return self.value is not None
 
 
-def _why_not(name: str, reading: SourceReading | None, now: datetime.datetime) -> str | None:
+def _why_not(name: str, reading: SourceReading | None, now: datetime.datetime, windows: FeedWindows) -> str | None:
     """None when ``reading`` is usable, else the reason in plain words."""
     if reading is None or reading.state is SourceState.ABSENT:
         return REASON_ABSENT
     if reading.state is not SourceState.STATED:
         return reading.state.name.lower()
-    return _price_problem(reading.value) or _time_problem(name, reading.at, now)
+    return _price_problem(reading.value) or _time_problem(name, reading.at, now, windows)
 
 
 def _price_problem(value: object) -> str | None:
@@ -93,31 +94,32 @@ def _price_problem(value: object) -> str | None:
     return None if is_live_price(value) else REASON_NO_PRICE
 
 
-def _time_problem(name: str, at: datetime.datetime | None, now: datetime.datetime) -> str | None:
+def _time_problem(name: str, at: datetime.datetime | None, now: datetime.datetime,
+                  windows: FeedWindows) -> str | None:
     """None when a STATED reading's time is aware, not in the future and (for the feed) fresh, else the reason."""
     if at is None or at.tzinfo is None:
         return REASON_NO_TIME
     if at > now:
         return REASON_FUTURE
-    return _feed_age_problem(now - at) if name == SOURCE_FEED else None
+    return _feed_age_problem(now - at, windows) if name == SOURCE_FEED else None
 
 
-def _feed_age_problem(age: datetime.timedelta) -> str | None:
+def _feed_age_problem(age: datetime.timedelta, windows: FeedWindows) -> str | None:
     if age < datetime.timedelta(0):
         return REASON_FUTURE
-    if age > FEED_STALE:
+    if age > windows.stale:
         return REASON_STALE
     return None
 
 
 def resolve_spot(feed: SourceReading | None, rest: SourceReading | None, last_close: SourceReading | None, *,
-                 now: datetime.datetime) -> SpotAnswer:
+                 now: datetime.datetime, windows: FeedWindows) -> SpotAnswer:
     """Feed -> REST quote -> last close; the first usable one is returned, labelled with its source and time."""
     if now.tzinfo is None:
         raise ValueError("now must be timezone-aware")
     reasons: list[tuple[str, str]] = []
     for name, reading in zip(SOURCE_ORDER, (feed, rest, last_close), strict=True):
-        why = _why_not(name, reading, now)
+        why = _why_not(name, reading, now, windows)
         if why is None:
             assert reading is not None and reading.at is not None  # noqa: S101 - narrowed by _why_not
             return SpotAnswer(reading.value, name, reading.at, tuple(reasons))

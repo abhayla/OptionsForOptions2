@@ -5,10 +5,14 @@ current contract stale while the feed is live, because Kite sends only changes (
 import datetime
 
 from _kite_fixture import all_instrument_ids, new_provider, recorded_frames, replay
-from ofo.marketdata.feed_health import FEED_HEALTHY, FEED_STALE, FEED_WAITING, RECONNECT_WINDOW
+from ofo.marketdata.feed_health import FEED_HEALTHY, FEED_WAITING
 from ofo.marketdata.health import build_quote
 from ofo.marketdata.kite_frames import parse_frame
 from ofo.rules.inputs import DataHealth
+from ofo.settings import calc, defaults
+
+WINDOWS = calc.feed_windows(defaults())  # the registry's windows, passed explicitly (REQ-167 AC-4)
+FEED_STALE, RECONNECT_WINDOW = WINDOWS.stale, WINDOWS.reconnect
 
 SEC = datetime.timedelta(seconds=1)
 

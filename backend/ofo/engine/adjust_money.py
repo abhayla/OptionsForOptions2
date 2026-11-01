@@ -5,7 +5,8 @@ Every input is exact Decimal; quantities are units (lots x lot size).
 
 - ``trade_credit``: the approach's own trades at their planned prices, SELL +, BUY - (no trade: 0).
 - ``cost_with_spread``: this adjustment's own charges plus half the bid-ask spread of each traded contract times its
-  quantity (the cost of trading at bid or ask rather than mid).
+  quantity (the cost of trading at bid or ask rather than mid). The one arithmetic of an approach's cost:
+  ``ofo.adjustment.compare.approach_cost`` (the Compare cell and the T-19 trigger, ADR-221) calls it.
 - ``margin_change``: the After's basket margin minus the current legs'.
 - ``closed_booked``: the P&L booked by the legs an approach closes, at their planned exit prices.
 - ``premium_left``: short legs' current price x quantity minus long legs' (the premium still left to earn).
@@ -63,11 +64,6 @@ def pnl_now(booked: Decimal, legs: Iterable[tuple[str, Decimal, Decimal, int]]) 
     """Booked P&L plus the open legs marked at their current price: ``booked`` + ``closed_booked(legs)`` over
     (side, entry, current price, quantity). A missing booked figure or price is the caller's to refuse."""
     return with_booked(booked, closed_booked(legs))
-
-
-def adjustment_cost(spreads: Iterable[tuple[Decimal, Decimal, int]], per_leg_charge: Decimal) -> Decimal:
-    """(bid, ask, quantity) per open leg -> sum of (ask - bid) x quantity + ``per_leg_charge`` for each leg."""
-    return sum(((ask - bid) * quantity + per_leg_charge for bid, ask, quantity in spreads), Decimal(0))
 
 
 def premium_left(legs: Iterable[tuple[str, Decimal, int]]) -> Decimal:

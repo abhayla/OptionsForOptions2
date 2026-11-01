@@ -19,9 +19,8 @@ from pathlib import Path
 
 import adjust_scenarios_gen as gen
 import pytest
-from ofo.adjustment.approaches import APPROACH_IDS, ChainRow, Position, PositionLeg, build_approach, load_config
+from ofo.adjustment.approaches import APPROACH_IDS, ChainRow, Position, PositionLeg, build_approach
 from ofo.adjustment.compare import (
-    MOVES,
     Cell,
     Column,
     Context,
@@ -30,6 +29,7 @@ from ofo.adjustment.compare import (
     compare,
     leaders,
 )
+from ofo.adjustment.preferences import from_values as _prefs_from
 from ofo.engine.adjust_money import closed_booked, stand_in_basket_margin
 from ofo.engine.black_scholes import Greeks
 from ofo.engine.legs import Action, Instrument, Leg
@@ -40,9 +40,12 @@ from ofo.errors.explanations import (
     ADJUSTMENT_LEADER_LABEL_TEXT,
     render_explanation,
 )
+from ofo.settings import defaults as _registry_defaults
 
 FIX = Path(__file__).resolve().parents[1] / "fixtures" / "adjust_scenarios"
-CFG = load_config()
+PREFS = _prefs_from(_registry_defaults())  # the registry defaults, passed explicitly
+CFG = PREFS.approach
+MOVES = PREFS.compare.moves()
 PAID, ADJ, EXIT = D("150.25"), D("92.40"), D("60.10")  # stated charge lines (each subtracted once)
 FORBIDDEN = re.compile(r"\b(best|winner|rank\w*|score\w*|better)\b", re.IGNORECASE)
 
@@ -91,7 +94,7 @@ def build_columns(sid: str, margins: dict[str, D] | None = None, pop_on: bool = 
         empty = render_explanation("adjust_margin_not_available", reason=render_explanation("outcome_margin_empty"))
         cols.append(Column(built, whole, None, True, MarginRead(value, None if value is not None else empty)))
     ctx = Context(position, spot, chain, None, pop_on, MarginRead(D("100000")), greeks_of(sc),
-                  sc["position"]["adjustments_used"])
+                  sc["position"]["adjustments_used"], PREFS.compare)
     return sc, cols, ctx
 
 
@@ -142,7 +145,7 @@ def test_core_every_criterion_has_a_value_or_reason_and_money_equals_the_hand_va
         hand["premium_left"][a] = sum((-gen.sign(x["side"]) * x["quantity"] * D(rows[x["tradingsymbol"]]["ltp"])
                                        for x in legs[a]["after"]), D(0))
         for rid, p in MOVES.items():
-            level = spot * (100 + p) / 100
+            level = spot * (100 + Fraction(p)) / 100
             pnl = gen.hand_pnl_at(legs[a]["after"], Fraction(after[a]["booked_pnl"]), level)
             hand[rid][a] = D(pnl.numerator) / D(pnl.denominator) - total(sc, a)
     for rid, values in hand.items():

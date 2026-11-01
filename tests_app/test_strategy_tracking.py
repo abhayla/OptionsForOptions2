@@ -20,9 +20,10 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 
-from marketdata._kite_fixture import all_instrument_ids, new_provider, replay  # noqa: E402
 import ofo.outcome.snapshot as snapshot_module  # noqa: E402
+from marketdata._kite_fixture import all_instrument_ids, new_provider, replay  # noqa: E402
 from ofo.marketdata.shared_compute import SharedCompute  # noqa: E402
+from ofo.settings import defaults as _d  # noqa: E402
 from ofo_app import tracked_contracts  # noqa: E402
 from ofo_app.routes import outcome as outcome_route  # noqa: E402
 from ofo_app.routes import tracking as tracking_routes  # noqa: E402
@@ -311,9 +312,9 @@ async def test_req050_the_tracking_read_shares_the_forward_with_the_outcome_rout
     calls: dict = {}
     real = snapshot_module.parity_forward
 
-    def counted(chain, spot, expiry, valuation, rate):
+    def counted(chain, spot, expiry, valuation, rate, quality):  # noqa: PLR0913 - the settings value is a required parameter (GC-SET)
         calls[expiry] = calls.get(expiry, 0) + 1
-        return real(chain, spot, expiry, valuation, rate)
+        return real(chain, spot, expiry, valuation, rate, quality)
 
     monkeypatch.setattr(snapshot_module, "parity_forward", counted)
     app, stored, provider, _clock, last = await _setup(db, owner="user-1")
@@ -325,5 +326,5 @@ async def test_req050_the_tracking_read_shares_the_forward_with_the_outcome_rout
     assert set(calls.values()) == {1} and cache.computations == len(calls)  # the reads computed nothing
     req = OutcomeRequest(underlying="NIFTY", legs=[{"instrument_id": i, "action": "SELL", "lots": 1,
                                                     "planned_entry": "10.00", "captured_at": ANSWERED} for i in IDS])
-    outcome_route.outcome_response(req, MarketContext(provider, lambda: last, D("0.065"), "user-1"))
+    outcome_route.outcome_response(req, MarketContext(provider, lambda: last, D("0.065"), "user-1"), settings=_d())
     assert set(calls.values()) == {1}  # the outcome route read the tracking route's forward

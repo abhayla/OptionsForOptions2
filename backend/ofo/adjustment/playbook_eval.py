@@ -20,6 +20,8 @@ finds it false; from then on it flags like any other rule. ``evaluate`` takes th
 """
 from __future__ import annotations
 
+import dataclasses
+import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from decimal import Context, Decimal, DivisionByZero, Inexact, InvalidOperation, Overflow, localcontext
@@ -38,7 +40,6 @@ P: Final = "adjust_trigger_"
 T14_PENDING: Final = f"{P}t14_pending"
 ALREADY_TRUE: Final = f"{P}already_true"
 _HUNDRED: Final = Decimal(100)
-_GAP_UNTIL: Final = "09:30"
 #: every step of a comparison must be exact; a rounding there would be a wrong flag at the boundary
 _EXACT: Final = Context(prec=200, traps=[Inexact, InvalidOperation, DivisionByZero, Overflow])
 _SHOW: Final = Context(prec=60)
@@ -68,7 +69,10 @@ class StrategyState:
     max_profit: Decimal | str | None = None
     margin: Decimal | None = None  # None = the broker did not state it
     premium_left: Decimal | None = None
-    adjustment_cost: Decimal | None = None
+    adjustment_cost: Decimal | None = None  # ADR-221: the cheapest offered approach's Compare cost
+    adjustment_approach: str | None = None  # that approach's id (A-xx), named on the T-19 flag
+    adjustment_cost_reason: str | None = None  # why no cost: a catalogue reason code (``adjust_trigger_*``)
+    adjustment_unpriced: int = 0  # offered approaches left out because they could not be priced
     atm_iv: Decimal | None = None
     entry_atm_iv: Decimal | None = None
     day_open: Decimal | None = None
@@ -268,13 +272,14 @@ class _Ctx:
     state: StrategyState
     stage: int | None
     stage_name: str | None
+    gap_until: str = ""  # set by _outcomes from evaluate's required gap_until (never read before)
 
 
 _STAGE_NAME_MAX = 80  # the PlaybookName slot's bound
 _STAGE_FALLBACK = "current"
 
 
-def _stage_words(name: object) -> str:
+def stage_words(name: object) -> str:
     """The stage's name for the refusal sentence; a missing or unusable name reads "current", never a gap or a brace."""
     if not isinstance(name, str):
         return _STAGE_FALLBACK
@@ -296,7 +301,7 @@ def _limit(c: _Ctx, tid: str) -> Decimal | str:
         raise _Missing(f"{P}no_stage", days=c.state.days_left)
     raw = values[c.stage]
     if raw == "":
-        raise _Missing(f"{P}no_stage_value", stage=_stage_words(c.stage_name))
+        raise _Missing(f"{P}no_stage_value", stage=stage_words(c.stage_name))
     if tid == "T-10b":
         return raw
     lim = Decimal(raw)
@@ -386,7 +391,7 @@ def _t11(c: _Ctx) -> Hit:
 
 def _t13(c: _Ctx) -> Hit:
     hhmm = _need(c.state.hhmm, "clock")
-    if hhmm > _GAP_UNTIL:
+    if hhmm > c.gap_until:
         raise _Missing(f"{P}gap_after_open")
     prev = _need(c.state.prev_close, "prev_close")
     if prev <= 0:
@@ -416,7 +421,9 @@ def _t19(c: _Ctx) -> Hit:
     left = _need(c.state.premium_left, "premium_left")
     if left < 0:
         raise _Missing(f"{P}net_long_premium")
-    cost = _need(c.state.adjustment_cost, "adjustment_cost")
+    cost = c.state.adjustment_cost
+    if cost is None:  # ADR-221: no approach offered / none priceable -> not checked, with that reason
+        raise _Missing(c.state.adjustment_cost_reason or f"{P}missing_adjustment_cost")
     try:
         pair = ratios.premium_left_per_cost(left, cost)
     except ValueError:
@@ -498,8 +505,8 @@ def _withheld(state: StrategyState) -> str | None:
     return None
 
 
-def _outcomes(body: Mapping, state: StrategyState) -> tuple[_Ctx, str | None, list[_Outcome]]:
-    c = _context(body, state)
+def _outcomes(body: Mapping, state: StrategyState, gap_until: str) -> tuple[_Ctx, str | None, list[_Outcome]]:
+    c = dataclasses.replace(_context(body, state), gap_until=gap_until)
     why = _withheld(state)
     out = []
     for rule in body.get("rules", []):
@@ -514,10 +521,13 @@ def _outcomes(body: Mapping, state: StrategyState) -> tuple[_Ctx, str | None, li
 
 
 def evaluate(body: Mapping, state: StrategyState, memory: Mapping[str, Mapping[str, bool]] | None = None,
-             entry_state: StrategyState | None = None) -> Evaluation:
-    """Evaluate every rule of ``body`` on ``state``; pure (takes the F-71 memory, returns the new one)."""
+             entry_state: StrategyState | None = None, *, gap_until: str) -> Evaluation:
+    """Evaluate every rule of ``body`` on ``state``; pure (takes the F-71 memory, returns the new one). ``gap_until``
+    is the user's gap-at-open window end "HH:MM" (REQ-168 AC-1; required, never defaulted)."""
     validate_body(body)
-    c, why, outcomes = _outcomes(body, state)
+    if not isinstance(gap_until, str) or not re.fullmatch(r"[0-2][0-9]:[0-5][0-9]", gap_until):
+        raise ValueError(f"gap_until must be HH:MM, got {gap_until!r}")
+    c, why, outcomes = _outcomes(body, state, gap_until)
     entry = None
     new = {k: dict(v) for k, v in (memory or {}).items()}
     results: list[Result] = []
@@ -525,7 +535,8 @@ def evaluate(body: Mapping, state: StrategyState, memory: Mapping[str, Mapping[s
     for o in outcomes:
         if o.rule_id not in new:
             if entry is None:
-                entry = {} if entry_state is None else {x.rule_id: x.fired for x in _outcomes(body, entry_state)[2]}
+                entry = ({} if entry_state is None else
+                         {x.rule_id: x.fired for x in _outcomes(body, entry_state, gap_until)[2]})
             new[o.rule_id] = {"held_at_entry": bool(entry.get(o.rule_id, False)), "seen_clear": False}
         mem = new[o.rule_id]
         if o.reason is not None:

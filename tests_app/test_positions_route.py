@@ -32,6 +32,9 @@ from pathlib import Path
 
 import pytest
 from ofo_app.routes.positions import PositionsOut, StrategyContractOut, StrategyPositionsOut
+from ofo.settings import calc as _calc, defaults as _defaults
+
+_MAX_DELIST = _calc.max_delist_percent(_defaults())
 
 ROOT = Path(__file__).resolve().parent.parent
 REPLIES = ROOT / "tests" / "fixtures" / "kite_replies"
@@ -185,7 +188,8 @@ async def _second_contract(conn) -> None:
         instrument_token=token, exchange_token=token >> 8, tradingsymbol=SECOND_SYMBOL, name=terms.name,
         expiry=terms.expiry, strike=terms.strike + 50, tick_size=terms.tick_size, lot_size=terms.lot_size,
         instrument_type=terms.instrument_type, segment=ref.broker_segment, exchange="NFO")
-    await apply_update(conn, [real, second], as_of=datetime.datetime(2026, 10, 16, 9, 1, tzinfo=AT.tzinfo))
+    await apply_update(conn, [real, second], as_of=datetime.datetime(2026, 10, 16, 9, 1, tzinfo=AT.tzinfo),
+        max_delist_percent=_MAX_DELIST)
 
 
 async def _second_strategy(conn, user: str) -> int:

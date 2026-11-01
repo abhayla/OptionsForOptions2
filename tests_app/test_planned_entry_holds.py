@@ -29,14 +29,15 @@ from httpx import ASGITransport, AsyncClient
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 
+import ofo.outcome.snapshot as snapshot_module  # noqa: E402
 from marketdata._kite_fixture import all_instrument_ids, new_provider, replay  # noqa: E402
 from ofo.marketdata.fanout import FanOut  # noqa: E402
 from ofo.marketdata.shared_compute import SharedCompute  # noqa: E402
-import ofo.outcome.snapshot as snapshot_module  # noqa: E402
+from ofo.settings import defaults as _d  # noqa: E402
 from ofo_app.live_push import LiveFeed  # noqa: E402
 from ofo_app.main import create_app  # noqa: E402
-from ofo_app.routes import planned_entry as route  # noqa: E402
 from ofo_app.routes import outcome as outcome_route  # noqa: E402
+from ofo_app.routes import planned_entry as route  # noqa: E402
 from ofo_app.routes.outcome import MarketContext, OutcomeRequest, get_answer_clock, get_market_context  # noqa: E402
 
 HTTP_OK = 200
@@ -197,9 +198,9 @@ async def test_req050_planned_entry_shares_the_forward_with_the_outcome_route_on
     calls: dict = {}
     real = snapshot_module.parity_forward
 
-    def counted(chain, spot, expiry, valuation, rate):
+    def counted(chain, spot, expiry, valuation, rate, quality):  # noqa: PLR0913 - the settings value is a required parameter (GC-SET)
         calls[expiry] = calls.get(expiry, 0) + 1
-        return real(chain, spot, expiry, valuation, rate)
+        return real(chain, spot, expiry, valuation, rate, quality)
 
     monkeypatch.setattr(snapshot_module, "parity_forward", counted)
     rig = Rig(book=True, owner="user-1")
@@ -209,7 +210,7 @@ async def test_req050_planned_entry_shares_the_forward_with_the_outcome_route_on
     assert set(calls.values()) == {1} and cache.computations == len(calls)  # the second request computed nothing
     req = OutcomeRequest(underlying="NIFTY", legs=[{"instrument_id": i, "action": "SELL", "lots": 1,
                                                     "planned_entry": "10.00", "captured_at": ANSWER} for i in LEGS])
-    outcome_route.outcome_response(req, rig.ctx)  # the real outcome path, same feed, same snapshot
+    outcome_route.outcome_response(req, rig.ctx, settings=_d())  # the real outcome path, same feed, same snapshot
     assert set(calls.values()) == {1}  # the outcome route read the planned-entry route's forward
     other = Rig(book=True, owner="user-2")
     await other.post()

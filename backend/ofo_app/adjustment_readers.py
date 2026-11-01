@@ -24,6 +24,7 @@ from __future__ import annotations
 import datetime
 import json
 import logging
+from collections.abc import Callable, Iterable, Mapping
 from decimal import Decimal
 from typing import Any
 
@@ -151,24 +152,23 @@ def _scenario() -> Any:
     return scenario_mode.current()
 
 
-async def read_market(tracked: Tracked, ctx: Any) -> MarketInputs:
-    if ctx is None:  # not connected: no chain, no feed spot (the REST reader and the reasons still answer)
-        now = server_now()
-        return MarketInputs((), {}, None, None, None, SourceReading(SourceState.ABSENT),
-                            SourceReading(SourceState.ABSENT), now)
-    now = ctx.clock()
-    position = tracked.position
-    underlying, expiry = position.underlying, position.legs[0].expiry
-    provider = ctx.provider
-    listed = [lc for lc in provider.instrument_master()
-              if lc.contract.name == underlying and lc.contract.expiry is not None
-              and lc.contract.instrument_type in _OPTION_TYPES]
-    scn = _scenario()
-    expiry_kind = _expiry_kind(provider, underlying, expiry, listed, scn)
-    quotes = {q.instrument_id: q for q in provider.option_chain_snapshot(underlying, expiry)}
-    spot_q = provider.underlying_quote(underlying)
-    closed = market_state(ctx, now).closed
-    model = chain_model(list(quotes.values()), spot_q, expiry, now, ctx.rate, market_closed=closed)
+def listed_options(provider: Any, underlying: str) -> list:
+    """Every listed CE / PE contract of ``underlying`` with an expiry, from the provider's instrument master (the one
+    listing the screen and the background build the adjustment chain rows from)."""
+    return [lc for lc in provider.instrument_master()
+            if lc.contract.name == underlying and lc.contract.expiry is not None
+            and lc.contract.instrument_type in _OPTION_TYPES]
+
+
+def chain_rows(listed: Iterable[Any], expiry: datetime.date, quotes: Mapping[str, Any],
+               greeks_of: Callable[[str, Any], Greeks | None],
+               scn: Any) -> tuple[tuple[ChainRow, ...], dict[str, str], dict[str, Greeks]]:
+    """THE one builder of the adjustment chain rows of one expiry: a row for EVERY listed contract of it (quoted or
+    not), so an approach (T-19, the Compare) sees every strike it may trade. The screen's ``read_market`` and the
+    background's ``market_inputs`` both call it; only the Greeks source differs (``greeks_of(instrument id, quote or
+    None)``: the chain model on the screen, the shared per-option figures in the background). Scenario mode adds each
+    row's tradable / low-OI state. Returns (rows, trading symbol -> instrument id, trading symbol -> per-unit
+    Greeks)."""
     rows: list[ChainRow] = []
     ids: dict[str, str] = {}
     leg_greeks: dict[str, Greeks] = {}
@@ -179,7 +179,7 @@ async def read_market(tracked: Tracked, ctx: Any) -> MarketInputs:
         iid = f"{c.exchange_segment}:{c.exchange_token}"
         symbol = lc.broker_refs[0].broker_symbol
         q = quotes.get(iid)
-        g = model.greeks.get(iid)
+        g = greeks_of(iid, q)
         tradable, low_oi, blocked = True, "unknown", None
         if scn is not None:
             row = scn.rows_by_id.get(iid) or {}
@@ -190,12 +190,36 @@ async def read_market(tracked: Tracked, ctx: Any) -> MarketInputs:
                              None if q is None else q.bid, None if q is None else q.ask,
                              None if g is None else g.delta, True, tradable, low_oi, blocked))
         ids[symbol] = iid
-        if g is not None:  # the chain's engine Greeks per unit (chain_model, as the chain and outcome show them)
-            leg_greeks[symbol] = Greeks(g.delta, g.gamma if g.gamma_exact is None else g.gamma_exact, g.theta,
-                                        g.vega)
+        if g is not None:
+            leg_greeks[symbol] = g
+    return tuple(rows), ids, leg_greeks
+
+
+async def read_market(tracked: Tracked, ctx: Any) -> MarketInputs:
+    if ctx is None:  # not connected: no chain, no feed spot (the REST reader and the reasons still answer)
+        now = server_now()
+        return MarketInputs((), {}, None, None, None, SourceReading(SourceState.ABSENT),
+                            SourceReading(SourceState.ABSENT), now)
+    now = ctx.clock()
+    position = tracked.position
+    underlying, expiry = position.underlying, position.legs[0].expiry
+    provider = ctx.provider
+    listed = listed_options(provider, underlying)
+    scn = _scenario()
+    expiry_kind = _expiry_kind(provider, underlying, expiry, listed, scn)
+    quotes = {q.instrument_id: q for q in provider.option_chain_snapshot(underlying, expiry)}
+    spot_q = provider.underlying_quote(underlying)
+    closed = market_state(ctx, now).closed
+    model = chain_model(list(quotes.values()), spot_q, expiry, now, ctx.rate, ctx.forward_quality, market_closed=closed)
+
+    def model_greeks(iid: str, _q: Any) -> Greeks | None:  # the chain's engine Greeks per unit (chain_model)
+        g = model.greeks.get(iid)
+        return None if g is None else Greeks(g.delta, g.gamma if g.gamma_exact is None else g.gamma_exact, g.theta,
+                                             g.vega)
+    rows, ids, leg_greeks = chain_rows(listed, expiry, quotes, model_greeks, scn)
     forward = None
     try:
-        forward = parity_forward(list(quotes.values()), spot_q, expiry, now, ctx.rate).forward
+        forward = parity_forward(list(quotes.values()), spot_q, expiry, now, ctx.rate, ctx.forward_quality).forward
     except (ForwardUnavailable, ValueError, ArithmeticError):
         forward = None
     try:
@@ -226,14 +250,23 @@ def read_last_close(spot_q: Any, market_closed: bool, scn: Any, now: datetime.da
     return SourceReading(SourceState.STATED, spot_q.ltp, spot_q.timestamp)
 
 
+def future_expiries(provider: Any, underlying: str) -> frozenset[datetime.date]:
+    """The expiries of every listed non-option contract (the index futures) of ``underlying``."""
+    return frozenset(lc.contract.expiry for lc in provider.instrument_master()
+                     if lc.contract.name == underlying and lc.contract.instrument_type not in _OPTION_TYPES
+                     and lc.contract.expiry is not None)
+
+
 def _expiry_kind(provider: Any, underlying: str, expiry: datetime.date, listed: list, scn: Any) -> str:
-    """Monthly = the expiry a FUTURE of the underlying also expires on (index futures are monthly only); with no
+    return expiry_kind_of(expiry, listed, future_expiries(provider, underlying), scn)
+
+
+def expiry_kind_of(expiry: datetime.date, listed: Iterable[Any], futures: frozenset[datetime.date], scn: Any) -> str:
+    """THE one expiry-kind rule (the screen's ``read_market`` and the background's ``market_inputs`` both call it).
+    Monthly = the expiry a FUTURE of the underlying also expires on (index futures are monthly only); with no
     future listed, the last listed option expiry of its month. Scenario mode: the scenario's own stated kind."""
     if scn is not None and scn.data.get("expiry_kind") in ("weekly", "monthly"):
         return str(scn.data["expiry_kind"])
-    futures = {lc.contract.expiry for lc in provider.instrument_master()
-               if lc.contract.name == underlying and lc.contract.instrument_type not in _OPTION_TYPES
-               and lc.contract.expiry is not None}
     if futures:
         return "monthly" if expiry in futures else "weekly"
     same_month = sorted({lc.contract.expiry for lc in listed

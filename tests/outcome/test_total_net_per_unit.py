@@ -15,6 +15,7 @@ import pytest
 from ofo.errors.explanations import render_explanation
 from ofo.outcome import build_outcome
 from ofo.outcome.serialize import outcome_to_dict
+from ofo.settings import defaults as _d
 from outcome._both_curves_cases import S54, as_json, definition, market, snapshot
 from outcome.test_same_engine import VALUATION
 
@@ -42,7 +43,7 @@ def _expected_cell(net: Decimal) -> tuple[str, str | None, str]:
 @pytest.mark.parametrize("column", ["entry_price", "ltp"])
 def test_total_row_net_per_unit_is_the_signed_sum_of_the_legs_per_unit_prices(provider, column):
     d = definition(provider, S54)
-    rows = _rows(build_outcome(d, snapshot(provider, d), VALUATION))
+    rows = _rows(build_outcome(d, snapshot(provider, d), VALUATION, settings=_d()))
     legs = [cells for rid, cells in rows.items() if rid != "TOTAL"]
     net = sum((_signed(c, column) for c in legs), Decimal(0))
     total = rows["TOTAL"][column]
@@ -53,7 +54,7 @@ def test_total_row_net_per_unit_is_the_signed_sum_of_the_legs_per_unit_prices(pr
 
 def test_total_entry_matches_the_summarys_per_unit_net_premium(provider):
     d = definition(provider, S54)
-    body = as_json(outcome_to_dict(build_outcome(d, snapshot(provider, d), VALUATION)))
+    body = as_json(outcome_to_dict(build_outcome(d, snapshot(provider, d), VALUATION, settings=_d())))
     total = {r["row_id"]: r for r in body["table"]["rows"]}["TOTAL"]["cells"]["entry_price"]
     assert total["value"] == body["summary"]["net_premium"]["per_unit"]  # one basis: "62.40 per unit"
 
@@ -64,7 +65,7 @@ def test_a_leg_with_no_ltp_leaves_the_total_ltp_absent_with_the_existing_reason(
     legs = dict(snap.legs)
     leg = S54[1][0]
     legs[leg] = dataclasses.replace(legs[leg], quote=dataclasses.replace(legs[leg].quote, ltp=Decimal("0")))
-    rows = _rows(build_outcome(d, dataclasses.replace(snap, legs=legs), VALUATION))
+    rows = _rows(build_outcome(d, dataclasses.replace(snap, legs=legs), VALUATION, settings=_d()))
     total = rows["TOTAL"]
     assert total["ltp"]["value"] is None and total["ltp"]["reason"] == render_explanation("table_reason_not_all_ltp")
     assert total["ltp"]["display"] == render_explanation("cell_dash")
@@ -74,7 +75,7 @@ def test_a_leg_with_no_ltp_leaves_the_total_ltp_absent_with_the_existing_reason(
 def test_unequal_quantities_have_no_per_unit_net_and_say_why(provider):
     d = definition(provider, S54)
     d = dataclasses.replace(d, legs=(dataclasses.replace(d.legs[0], lots=2), d.legs[1]))
-    rows = _rows(build_outcome(d, snapshot(provider, d), VALUATION))
+    rows = _rows(build_outcome(d, snapshot(provider, d), VALUATION, settings=_d()))
     for column in ("entry_price", "ltp"):
         cell = rows["TOTAL"][column]
         assert cell["value"] is None and cell["reason"] == render_explanation("table_reason_not_same_quantity")

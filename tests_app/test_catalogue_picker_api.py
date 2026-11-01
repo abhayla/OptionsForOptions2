@@ -25,6 +25,9 @@ from ofo.execution.context import DataHealth
 from ofo.marketdata.provider import ProviderStatus
 from ofo_app.catalogue_picker import database_today, pickable_contracts, pickable_expiries
 from ofo_app.catalogue_store import apply_update, parse_rows_naming_the_row
+from ofo.settings import calc as _calc, defaults as _defaults
+
+_MAX_DELIST = _calc.max_delist_percent(_defaults())
 
 IST = timezone(timedelta(hours=5, minutes=30))
 ROOT = Path(__file__).resolve().parents[1]
@@ -49,11 +52,11 @@ async def _load_two_days(conn):
     """The slice loaded on 2026-09-28, then again on 2026-09-30 without one live SENSEX 2026-10-08 call (delisted).
     Returns the instrument id of the dropped contract."""
     rows = _slice()
-    await apply_update(conn, rows, as_of=FIRST_LOAD)
+    await apply_update(conn, rows, as_of=FIRST_LOAD, max_delist_percent=_MAX_DELIST)
     dropped = min((r for r in rows if r.contract.name == "SENSEX" and r.contract.expiry == date(2026, 10, 8)
                    and r.contract.instrument_type == "CE"), key=lambda r: r.contract.exchange_token)
     kept = [r for r in rows if r is not dropped]
-    result = await apply_update(conn, kept, as_of=SECOND_LOAD)
+    result = await apply_update(conn, kept, as_of=SECOND_LOAD, max_delist_percent=_MAX_DELIST)
     assert result.delisted == 1 and result.retired > 0
     return f"{dropped.contract.exchange_segment}:{dropped.contract.exchange_token}"
 
@@ -114,7 +117,7 @@ async def test_a_live_contract_not_currently_listed_is_not_offered(app_engine: A
         try:
             assert await _count(conn) == 0, "catalogue table must be empty (tests roll back)"
             rows = _slice()
-            await apply_update(conn, rows, as_of=FIRST_LOAD)
+            await apply_update(conn, rows, as_of=FIRST_LOAD, max_delist_percent=_MAX_DELIST)
             target = min((r for r in rows if r.contract.name == "SENSEX" and r.contract.expiry == date(2026, 10, 8)
                           and r.contract.instrument_type == "CE"), key=lambda r: r.contract.exchange_token)
             tid = f"{target.contract.exchange_segment}:{target.contract.exchange_token}"
@@ -138,7 +141,7 @@ async def test_a_contract_expiring_today_is_offered_and_one_expired_yesterday_is
         trans = await conn.begin()
         try:
             assert await _count(conn) == 0, "catalogue table must be empty (tests roll back)"
-            await apply_update(conn, _slice(), as_of=FIRST_LOAD)
+            await apply_update(conn, _slice(), as_of=FIRST_LOAD, max_delist_percent=_MAX_DELIST)
             expiry = date(2026, 10, 8)
             assert expiry in await pickable_expiries(conn, "SENSEX", expiry)
             assert len(await pickable_contracts(conn, "SENSEX", expiry, expiry)) == 2 * 148
@@ -158,7 +161,7 @@ async def test_real_list_gives_nifty_expiries_with_ce_and_pe_strikes(app_engine:
         try:
             assert await _count(conn) == 0, "catalogue table must be empty (tests roll back)"
             as_of = (await conn.execute(text("SELECT clock_timestamp()"))).scalar_one()
-            await apply_update(conn, rows, as_of=as_of)
+            await apply_update(conn, rows, as_of=as_of, max_delist_percent=_MAX_DELIST)
             today = await database_today(conn)
             expiries = await pickable_expiries(conn, "NIFTY", today)
             assert expiries and all(e >= today for e in expiries)

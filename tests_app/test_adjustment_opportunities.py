@@ -289,3 +289,28 @@ async def test_card_mark_ignores_acted_on_and_a_read_failure_gives_no_mark_but_t
     monkeypatch.setattr(playbook_store, "inbox", broken)
     card = await _card(sid)  # the list still answers; unread is None, never 0
     assert (card["open_opportunities"], card["open_opportunities_text"]) == (None, None)
+
+
+async def test_t19_list_line_names_the_same_approach_and_cost_as_the_check(app_db_url, monkeypatch):
+    """ADR-221 (review MAJOR 1): the opportunities list draws a T-19 record with the approach, cost and unpriced count
+    stored when it opened, so the list line equals the check's flag line (the Compare's figure in both). The charge
+    rates are the scenario library's stated rates (Zerodha's published F&O rates): with none (the conftest default)
+    no approach can be priced and T-19 is rightly not checked."""
+    import math  # noqa: PLC0415
+
+    import t19_support  # noqa: PLC0415 - sits next to this file
+    from ofo_app.routes import outcome  # noqa: PLC0415
+    monkeypatch.setattr(outcome, "_rates_cache", {"until": math.inf, "value": t19_support.RATES})
+    sid = await _clean(app_db_url, await _seeded(app_db_url, monkeypatch, "ADJ-43"))
+    first = await _check(sid)  # last day 15:00: the clock trigger T-10b fires too (was a 500 before its line fix)
+    clock = next(x for x in first["results"] if x["kind"] == "flag" and x["trigger_id"] == "T-10b")
+    assert clock["condition"] == "Clock time reached (checked in this stage): 15:00 (rule 14:30)"
+    flag = next((x for x in first["results"] if x["kind"] == "flag" and x["trigger_id"] == "T-19"), None)
+    assert flag is not None, [(x["kind"], str(x["reason"])[:400]) for x in first["results"] if x["trigger_id"] == "T-19"]
+    assert "cheapest adjustment that could be priced now: Close the tested spread, cost ₹" in flag["condition"]
+    rec = next(r for r in await _records(app_db_url, sid) if r.rule_id == "T-19")
+    assert rec.approach == "A-28" and rec.approach_cost is not None and rec.approach_cost > 0
+    assert f"₹{rec.approach_cost}" in flag["condition"]
+    g = _mine(await _inbox(), sid)[0]
+    listed = next(r for r in g["records"] if r["rule_id"] == "T-19")
+    assert listed["condition"] == flag["condition"]
