@@ -3399,7 +3399,7 @@
           },
           "base_lots": {
             "exclusiveMinimum": 0.0,
-            "maximum": 10000.0,
+            "maximum": 1000000000.0,
             "title": "Base Lots",
             "type": "integer"
           },
@@ -3442,7 +3442,7 @@
           },
           "lots": {
             "exclusiveMinimum": 0.0,
-            "maximum": 10000.0,
+            "maximum": 1000000000.0,
             "title": "Lots",
             "type": "integer"
           },
@@ -12515,7 +12515,7 @@
           },
           "lots": {
             "exclusiveMinimum": 0.0,
-            "maximum": 10000.0,
+            "maximum": 1000000000.0,
             "title": "Lots",
             "type": "integer"
           },

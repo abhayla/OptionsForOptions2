@@ -42,6 +42,8 @@ import {
 } from '@/lib/legPicker'
 
 const props = defineProps({
+  maxLots: { type: Number, default: null }, // the served limits.max_lots
+  lotChoiceCount: { type: Number, default: null }, // the served limits.lot_choices
   // the Strategy Builder draws the ONE leg list (LegList.vue), so it passes false
   showLegList: { type: Boolean, default: true },
   legs: { type: Array, default: () => [] },
@@ -80,7 +82,10 @@ const serverDefault = ref('') // ADR-199 (4): the expiries reply's default_expir
 const types = computed(() => offeredTypes(contracts.value))
 const strikes = computed(() => offeredStrikes(contracts.value, type.value))
 const contract = computed(() => selectedContract(contracts.value, type.value, strike.value))
-const lotsOk = computed(() => typeof lots.value === 'number' && lotsValid(String(lots.value)))
+// REQ-167 AC-5: the lot cap and the number of lot choices are the served settings the page passes (null until read)
+const maxLots = computed(() => props.maxLots)
+const lotChoiceCount = computed(() => props.lotChoiceCount)
+const lotsOk = computed(() => typeof lots.value === 'number' && lotsValid(String(lots.value), maxLots.value))
 const canSave = computed(() => !busy.value && lotsOk.value && (contract.value !== null || (editing.value !== null && !type.value && underlying.value === editing.value.underlying)))
 
 /** G-070 (REQ-150 AC-4, S-032): the drawer opens on the strategy's own expiry if its legs carry one the list offers, else
@@ -449,7 +454,7 @@ const selection = computed(() => Object.keys(picked.value).map((id) => {
   const name = c ? contractName({ underlying: underlying.value, expiry: c.expiry, instrument_type: c.instrument_type, strike: c.strike }) : id
   return { id, name, action: picked.value[id], lots: lotsOf(id) }
 }))
-const choicesFor = (cell) => lotChoices(lotsMode.value, cell?.lot_size)
+const choicesFor = (cell) => lotChoices(lotsMode.value, cell?.lot_size, lotChoiceCount.value)
 /** The select's text maps back to one of the offered choices (never parsed): an unknown text changes nothing. */
 function setLots(cell, text) {
   const choice = choicesFor(cell).find((o) => String(o.value) === text)
@@ -544,7 +549,7 @@ async function done() {
   const ids = Object.keys(picked.value)
   if (busy.value || !ids.length) return
   const chosen = ids.map((id) => ({ id, c: contractOfPick(id), action: picked.value[id], lots: lotsOf(id) }))
-  if (chosen.some((x) => !x.c || !lotsValid(String(x.lots)))) {
+  if (chosen.some((x) => !x.c || !lotsValid(String(x.lots), maxLots.value))) {
     doneError.value = 'Contract details are not available for every selected contract, so nothing was added.'
     return
   }

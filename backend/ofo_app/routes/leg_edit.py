@@ -37,6 +37,7 @@ from ofo.charges import ChargeRates
 from ofo.engine.legs import Action, Instrument, Leg
 from ofo.errors import LegValue
 from ofo.errors.explanations import render_explanation
+from ofo.errors.slots import INT_ABS_MAX
 from ofo.instruments.catalogue import Catalogue, ContractKind
 from ofo.instruments.freeze_limits import StoredFreeze
 from ofo.instruments.models import InstrumentId as ContractKey
@@ -73,6 +74,7 @@ from ofo_app.routes.outcome import (
     OutcomeRequest,
     OutcomeResponse,
     RequestSeq,
+    check_lots,
     get_answer_clock,
     get_calc_settings,
     get_margin_source,
@@ -191,7 +193,7 @@ class EditLegIn(LegIn):
     planned_entry: str | None = Field(default=None, pattern=r"^\d+(\.\d{1,2})?$")  # type: ignore[assignment]
     captured_at: AwareDatetime | None = None  # type: ignore[assignment]
     close_at: AwareDatetime | None = None  # ADR-197: the close time a capture after hours answered (sent back as is)
-    base_lots: StrictInt = Field(gt=0, le=10000)  # strict like the shared leg's lots: true, 1.0, "2" refused
+    base_lots: StrictInt = Field(gt=0, le=INT_ABS_MAX)  # cap: limits.max_lots (check_lots); strict: true, 1.0, "2" refused
     included: StrictBool = True
     typed: StrictBool = False
 
@@ -534,6 +536,7 @@ async def leg_edit(req: LegEditIn,  # noqa: PLR0913 - FastAPI dependencies, one 
                    rates: Annotated[ChargeRates | None, Depends(load_charge_rates)],
                    margin_source: Annotated[OutcomeMargin | None, Depends(get_margin_source)],
                    calc_settings: Annotated[Mapping[str, Decimal], Depends(get_calc_settings)]) -> LegEditOut:
+    check_lots([n for x in req.legs for n in (x.lots, x.base_lots)], calc_settings)  # limits.max_lots, before any work
     legs = _legs_of(cat, req, today)
     new_legs, moved = apply_edit(cat, req, legs, today, _move_gate(cat, req, ctx, legs, list_current))
     entries_of = [_entry_of(cat, req.underlying, new_legs, i) for i in range(len(new_legs))]

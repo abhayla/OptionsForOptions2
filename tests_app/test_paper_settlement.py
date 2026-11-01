@@ -15,6 +15,7 @@ Every test rolls back.
 """
 from __future__ import annotations
 
+import asyncio
 import datetime
 import io
 import json
@@ -22,12 +23,14 @@ import pathlib
 from decimal import Decimal
 
 import pytest
+from ofo import settings
 from ofo.engine.legs import Action
+from ofo.settings import calc
 from ofo.strategy import stored_form as sf
 from ofo.timeutil import IST
 from ofo.tracking.orderbook import net_positions
 from ofo_app import paper_settlement as ps
-from ofo_app import paper_store
+from ofo_app import paper_store, settings_store
 from ofo_app import strategy_store as store
 from ofo_app.catalogue_store import apply_update, parse_rows_naming_the_row
 from sqlalchemy import text
@@ -232,7 +235,92 @@ async def test_a_zero_price_is_refused_by_the_database_for_every_kind_but_settle
 ])
 def test_next_run_is_1545_on_trading_days_with_15_minute_retries_until_1800(now, retry, expected):
     holidays = {2026: frozenset()}
-    assert ps.next_run(now, retry, holidays) == expected  # Fri 30 Oct 16:00 -> Mon 2 Nov (weekend skipped)
+    values = settings.defaults()  # the registry defaults, passed explicitly (no silent fallback in the job)
+    assert ps.next_run(now, retry, holidays, settle_from=calc.paper_settle_from(values),
+                       retry_until=calc.paper_retry_until(values)) == expected  # Fri 30 Oct 16:00 -> Mon 2 Nov
+
+
+# ---- GC-SET step 5a (REQ-167 AC-4, AC-5): the settlement window is the setting in force at each run -------------
+_RAW_SETTING = text("INSERT INTO public.app_settings (key, value, effective_from, set_by) "
+                    "VALUES (:k, :v, clock_timestamp(), 'raw-test')")
+
+
+def test_the_settlement_window_defaults_are_exactly_the_old_1545_and_1800():
+    values = settings.defaults()
+    assert calc.paper_settle_from(values) == datetime.time(15, 45)
+    assert calc.paper_retry_until(values) == datetime.time(18, 0)
+
+
+@pytest.mark.parametrize(("hour", "minute", "settles"), [(15, 47, False), (15, 51, True)])
+async def test_a_changed_settle_from_moves_when_a_paper_settlement_runs(db, hour, minute, settles):
+    """facts.paper_settle_from = 15:50 (saved through the admin write, in force now): a run at 15:47 on expiry day
+    settles nothing (the default 15:45 would have settled), a run at 15:51 settles."""
+    ids = await _catalogue(db)
+    sid = await _real(db, ids, 60)
+    await settings_store.add_setting(db, calc.PAPER_SETTLE_FROM, "1550", set_by="admin-test", correlation_id="t")
+    await ps.settle_expired(db, datetime.datetime(2026, 10, 29, hour, minute, tzinfo=IST), _close_of())
+    assert len(await _settles(db, sid)) == (2 if settles else 0)
+
+
+async def test_at_1547_the_default_window_settles(db):
+    """The control for the test above: with no stored row the default 15:45 is in force and 15:47 settles."""
+    ids = await _catalogue(db)
+    sid = await _real(db, ids, 60)
+    await ps.settle_expired(db, datetime.datetime(2026, 10, 29, 15, 47, tzinfo=IST), _close_of())
+    assert len(await _settles(db, sid)) == 2  # noqa: PLR2004
+
+
+def test_next_run_follows_changed_settle_from_and_retry_until():
+    holidays = {2026: frozenset()}
+    at = datetime.datetime(2026, 10, 29, 16, 30, tzinfo=IST)
+    wake = ps.next_run(at, True, holidays, settle_from=datetime.time(16, 45), retry_until=datetime.time(16, 0))
+    assert wake == datetime.datetime(2026, 10, 29, 16, 45, tzinfo=IST)  # retries stopped at 16:00; the run is 16:45
+
+
+async def test_a_malformed_stored_settle_time_fails_closed_and_settles_nothing(db):
+    """A stored 1575 (no 75th minute) written past the admin write: the run raises, nothing is settled on a guess."""
+    ids = await _catalogue(db)
+    sid = await _real(db, ids, 60)
+    await db.execute(_RAW_SETTING, {"k": calc.PAPER_SETTLE_FROM, "v": D("1575")})
+    with pytest.raises(settings_store.SettingsError, match=r"facts.paper_settle_from"):
+        await ps.settle_expired(db, NEXT_DAY, _close_of())
+    assert await _settles(db, sid) == []
+
+
+async def test_run_forever_schedules_from_the_settings_read_after_each_run(monkeypatch):
+    """The job reads the two times at each wake-up (no restart): a changed settle_from moves the next sleep."""
+    stored = iter([D("1700"), D("1600")])  # the admin changes the setting between the two wake-ups
+    reads: list[int] = []
+
+    async def in_force(_conn):
+        reads.append(1)
+        return {**settings.defaults(), calc.PAPER_SETTLE_FROM: next(stored)}
+
+    async def no_run(_connect, _factory, _now):
+        return ps.SettleRun((), (), ())
+
+    class _Conn:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_a):
+            return False
+
+    slept: list[float] = []
+
+    async def sleep(seconds):
+        slept.append(seconds)
+        if len(slept) == 2:  # noqa: PLR2004
+            raise asyncio.CancelledError
+
+    monkeypatch.setattr(ps, "run_once", no_run)
+    monkeypatch.setattr(ps.settings_store, "settings_in_force", in_force)
+    ten = datetime.datetime(2026, 10, 29, 10, 0, tzinfo=IST)
+    with pytest.raises(asyncio.CancelledError):
+        await ps.run_forever(_Conn, None, clock=lambda: ten, sleep=sleep,  # type: ignore[arg-type]
+                             holidays={2026: frozenset()})
+    assert slept == [7 * 3600, 6 * 3600]  # 10:00 -> 17:00, then -> 16:00: each wake-up uses the value in force then
+    assert len(reads) == 2  # noqa: PLR2004 - one read per wake-up, never one at start held for the life of the job
 
 
 @pytest.mark.parametrize(("instrument", "strike", "close", "price"), [

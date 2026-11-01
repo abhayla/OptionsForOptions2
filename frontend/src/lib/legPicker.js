@@ -21,9 +21,17 @@ export function instrumentId(exchangeSegment, exchangeToken) {
   return `${exchangeSegment}:${exchangeToken}`
 }
 
-/** A whole number of lots from 1 to 10000, typed as digits (no sign, no decimal point, no leading zero). */
-export function lotsValid(text) {
-  return /^([1-9]\d{0,3}|10000)$/.test(String(text ?? ''))
+/** REQ-167 AC-5: the served settings the lot boxes follow (the browser keeps no copy of either number). */
+export const MAX_LOTS_KEY = 'limits.max_lots'
+export const LOT_CHOICES_KEY = 'limits.lot_choices'
+
+/** A whole number of lots from 1 to `max` (the served limits.max_lots), typed as digits (no sign, no decimal point, no
+ *  leading zero). With no `max` yet (settings not read) nothing is valid. */
+export function lotsValid(text, max) {
+  // digit strings with no leading zero compare by length, then by character: no number is parsed from text (ADR-008)
+  if (!Number.isInteger(max) || max < 1 || typeof text !== 'string' || !/^[1-9]\d{0,8}$/.test(text)) return false
+  const top = String(max)
+  return text.length < top.length || (text.length === top.length && text <= top)
 }
 
 /** The contract types the API offered for the chosen expiry, in the fixed display order. */
@@ -76,8 +84,6 @@ export function buildDraft(legs) {
 
 // REQ-080 AC-1 / REQ-167 AC-5: the strikes-each-side choices are the server's (the strikes answer's `widths` and
 // `default_width`); the browser keeps no copy.
-/** How many lots (or lot-size multiples) a cell's selector lists. */
-export const LOT_CHOICES = 10
 /** The picker refreshes the open list this often (the server reads the feed at most once a second, ADR-012). */
 export const PICKER_REFRESH_MS = 5000
 /** The depth popup refreshes this often while open: at most once a second (REQ-080 AC-7). */
@@ -182,10 +188,10 @@ export function oiCompact(count) {
 
 /** The lots selector's choices. Lots mode lists 1, 2, 3 ...; quantity mode lists multiples of the lot size the server
  *  sent for that contract (REQ-080 AC-4), none when it sent no usable lot size. `value` is always a whole number of lots. */
-export function lotChoices(mode, lotSize) {
+export function lotChoices(mode, lotSize, count) {
   const size = Number.isInteger(lotSize) && lotSize > 0 ? lotSize : null
-  if (mode === 'quantity' && size === null) return []
-  return Array.from({ length: LOT_CHOICES }, (_, i) => ({
+  if ((mode === 'quantity' && size === null) || !Number.isInteger(count) || count < 1) return [] // count = limits.lot_choices, null until read
+  return Array.from({ length: count }, (_, i) => ({
     value: i + 1,
     label: mode === 'quantity' ? String((i + 1) * size) : String(i + 1),
   }))

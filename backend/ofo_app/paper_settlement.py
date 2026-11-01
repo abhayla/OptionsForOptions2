@@ -43,11 +43,12 @@ from typing import Any, Final
 from ofo import market_calendar
 from ofo.engine.legs import Instrument
 from ofo.instruments.models import INDEX_ROWS, ZERODHA
+from ofo.settings import calc
 from ofo.timeutil import IST, SESSION_CLOSE
 from ofo.tracking.orderbook import net_positions
 from sqlalchemy import text
 
-from ofo_app import paper_store
+from ofo_app import paper_store, settings_store
 from ofo_app import strategy_store as store
 
 log = logging.getLogger(__name__)
@@ -55,11 +56,10 @@ log = logging.getLogger(__name__)
 SETTLE: Final = "settle"
 SETTLE_REASON: Final = "Paper - settled at expiry"
 SKIP_REASON: Final = "settlement price not available"
-#: The close is read from 15:45 IST (the exchange publishes the closing value after its 15:30 close).
-SETTLE_FROM: Final = datetime.time(15, 45)
-#: While a group had no close, the job retries every RETRY_MINUTES until RETRY_UNTIL IST.
+#: The close is read from the ``facts.paper_settle_from`` setting in force (default 15:45 IST: the exchange publishes
+#: the closing value after its 15:30 close). While a group had no close, the job retries every RETRY_MINUTES until the
+#: ``facts.paper_retry_until`` setting (default 18:00 IST). Both are read at each run (REQ-167 AC-4), never held.
 RETRY_MINUTES: Final = 15
-RETRY_UNTIL: Final = datetime.time(18, 0)
 _ZERO: Final = Decimal(0)
 _MIDDAY: Final = datetime.time(12, 0)
 
@@ -113,10 +113,11 @@ class SettleRun:
     failed: tuple[int, ...]  # strategy ids whose write rolled back (retried next run)
 
 
-def last_due_day(now: datetime.datetime) -> datetime.date:
-    """The latest expiry date that settles at ``now``: today from 15:45 IST, else yesterday."""
+def last_due_day(now: datetime.datetime, settle_from: datetime.time) -> datetime.date:
+    """The latest expiry date that settles at ``now``: today from ``settle_from`` IST (the setting in force), else
+    yesterday."""
     local = now.astimezone(IST)
-    return local.date() if local.time() >= SETTLE_FROM else local.date() - datetime.timedelta(days=1)
+    return local.date() if local.time() >= settle_from else local.date() - datetime.timedelta(days=1)
 
 
 def settle_price(instrument: Instrument, strike: Decimal, close: Decimal) -> Decimal:
@@ -134,7 +135,10 @@ def settle_time(expiry: datetime.date) -> datetime.datetime:
 
 
 async def due_contracts(conn: Any, now: datetime.datetime) -> list[DueContract]:
-    rows = (await conn.execute(_OPEN, {"last_day": last_due_day(now)})).all()
+    """The open paper contracts due at ``now``; the settle-from time is the setting in force NOW (the database clock),
+    read in this call. A stored value the registry refuses raises (fail closed: nothing is settled on a guess)."""
+    settle_from = calc.paper_settle_from(await settings_store.settings_in_force(conn))
+    rows = (await conn.execute(_OPEN, {"last_day": last_due_day(now, settle_from)})).all()
     return [DueContract(int(r.strategy_id), r.user_ref, int(r.contract_id), r.name, Instrument(r.instrument_type),
                         Decimal(r.strike), r.expiry) for r in rows]
 
@@ -208,16 +212,16 @@ def is_trading_day(day: datetime.date, holidays: market_calendar.Holidays | None
     return market_calendar.is_market_open(datetime.datetime.combine(day, _MIDDAY, IST), holidays)
 
 
-def next_run(now: datetime.datetime, retry: bool, holidays: market_calendar.Holidays | None = None,
-             ) -> datetime.datetime:
-    """When the job runs next: in RETRY_MINUTES while a group had no close and it is before 18:00 IST; else the next
-    trading day's 15:45 IST (today's when it is still ahead)."""
+def next_run(now: datetime.datetime, retry: bool, holidays: market_calendar.Holidays | None = None, *,
+             settle_from: datetime.time, retry_until: datetime.time) -> datetime.datetime:
+    """When the job runs next: in RETRY_MINUTES while a group had no close and it is before ``retry_until`` IST; else
+    the next trading day's ``settle_from`` IST (today's when it is still ahead). Both are the settings in force."""
     local = now.astimezone(IST)
-    if retry and local.time() < RETRY_UNTIL:
+    if retry and local.time() < retry_until:
         return now + datetime.timedelta(minutes=RETRY_MINUTES)
     day = local.date()
     for _ in range(15):  # longer than any real run of closed days (market_calendar's look-ahead is 14)
-        at = datetime.datetime.combine(day, SETTLE_FROM, IST)
+        at = datetime.datetime.combine(day, settle_from, IST)
         if at > local and is_trading_day(day, holidays):
             return at
         day += datetime.timedelta(days=1)
@@ -257,7 +261,17 @@ async def run_forever(connect: Connect, close_factory: CloseFactory, *,
             log.error("paper settlement run failed: %s", type(exc).__name__)
             retry = True
         now = now_of()
-        await sleep(max(0.0, (next_run(now, retry, holidays) - now).total_seconds()))
+        try:
+            async with connect() as conn:
+                values = await settings_store.settings_in_force(conn)  # the times in force NOW (REQ-167 AC-4)
+            wake = next_run(now, retry, holidays, settle_from=calc.paper_settle_from(values),
+                            retry_until=calc.paper_retry_until(values))
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - no times could be read: look again later, never schedule on a guess
+            log.error("paper settlement: the settings could not be read: %s", type(exc).__name__)
+            wake = now + datetime.timedelta(minutes=RETRY_MINUTES)
+        await sleep(max(0.0, (wake - now).total_seconds()))
 
 
 _INDEX_KEY: Final = {underlying: key for key, (_, underlying) in INDEX_ROWS.items()}

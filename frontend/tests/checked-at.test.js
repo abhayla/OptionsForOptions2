@@ -2,7 +2,7 @@
 // "Checked at <server answer time in IST>". Expected text is hand-computed: 03:50:05 UTC + 5:30 = 09:20:05 IST.
 // The time is the SERVER's (answered_at, or the failed answer's Date header), never the browser's clock.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { mount, flushPromises } from '@vue/test-utils'
+import { mount as mountRaw, flushPromises } from '@vue/test-utils'
 import { createRouter, createMemoryHistory } from 'vue-router'
 
 const calls = []
@@ -12,6 +12,7 @@ vi.mock('@/services/api', async (importActual) => {
   const respond = (method, url, body) => {
     calls.push({ method, url, body })
     const a = answers[`${method} ${url}`]
+    if (a === undefined && method === 'GET' && url === '/settings') return Promise.resolve({ data: settingsData() }) // the served lot caps
     if (a === undefined) return Promise.reject(new Error(`unmocked ${method} ${url}`))
     return a instanceof Error || a?.__reject ? Promise.reject(a) : Promise.resolve({ data: a })
   }
@@ -19,6 +20,12 @@ vi.mock('@/services/api', async (importActual) => {
 })
 import StrategyBuilderPage from '@/pages/StrategyBuilderPage.vue'
 import { mapError } from '@/services/api'
+
+import { settingsData } from './helpers/servedLots'
+
+// the page passes the served caps down (REQ-167 AC-5); a component mounted alone gets them as props
+const mount = (C, o = {}) => mountRaw(C, C?.__name === 'LegPicker' ? { ...o, props: { maxLots: 10000, lotChoiceCount: 10, ...o.props } }
+  : C?.__name === 'LegList' ? { ...o, props: { multiplierMax: 50, ...o.props } } : o)
 
 const STAMP = '2026-10-16T03:50:05Z'
 const LINE = 'Checked at 16 Oct 2026, 09:20:05 IST'

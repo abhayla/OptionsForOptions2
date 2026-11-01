@@ -1807,6 +1807,10 @@
     "sha256": "1500d2520c2e72efd128f0092aae83f3fb50800909cd9560138d5fcffe4672d6",
     "reviewed": "pending owner read"
   },
+  "leg_lots_above_limit": {
+    "sha256": "398d9d44b9fcd43ad9e31d3963d3aa81f9ad1cf599f8179f05dcc320350cc8e7",
+    "reviewed": "pending owner read"
+  },
   "paper_price_invalid": {
     "sha256": "fe202aee8570667847f1b1199b109c546a8c1865b328482b0da68d64ff74a00e",
     "reviewed": "pending owner read"
@@ -3245,6 +3249,10 @@
   },
   "explanation:settings_refused_not_whole": {
     "sha256": "639e3583b651ad61c324c09bdbb40ce784a2b0aa7bfd9a77a664af7b78a8bfe4",
+    "reviewed": "pending owner read"
+  },
+  "explanation:settings_refused_not_a_time": {
+    "sha256": "cdd2ea044d07983e17fb171fd298efd42b32a2b1701d75adc92f64c9e8ef86a7",
     "reviewed": "pending owner read"
   },
   "explanation:settings_refused_fraction_unit": {
