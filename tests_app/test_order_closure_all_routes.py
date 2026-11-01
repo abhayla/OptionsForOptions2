@@ -70,6 +70,10 @@ def _execute_route_edge(route: str, why: str) -> dict[tuple[str, str], str]:
 
 #: route module -> {(importer, order module): reason}. Every route not listed has no crossing beyond the shared paths.
 ROUTE_ORDER_EDGES: dict[str, dict[tuple[str, str], str]] = {
+    # GC-MU A1: the approaches' guards (adjustment_readers.read_guards) resolve the strategy's playbook through
+    # adjustment_check.resolve -> playbook_store (its strategy_store import); a read, never an order. Not broken by a
+    # copy of the plan query: a second resolution path could drift from ADR-230 (1)
+    "ofo_app.routes.adjustment": {**STRATEGY_STORE},
     # GC-ADJ2 1C: the playbook check reads plans and rule memory through playbook_store (its ownership check)
     "ofo_app.routes.adjustment_check": {**STRATEGY_STORE},
     # GC-ADJ2 6: the adjustment history reads the strategy's plan and records through playbook_store (its
@@ -96,7 +100,8 @@ ROUTE_ORDER_EDGES: dict[str, dict[tuple[str, str], str]] = {
 }
 #: One constant, so a new edge is a reviewed diff and never a silent pass.
 #: GC-ADJ2 5: +2 adjustment_opportunities, +2 adjustment_plan; 6: +2 adjustment_history (all via playbook_store)
-PINNED_EDGE_COUNT = 31
+#: GC-MU A1: +2 adjustment (read_guards via adjustment_check -> playbook_store)
+PINNED_EDGE_COUNT = 33
 
 
 def route_modules(backend: pathlib.Path) -> list[str]:
@@ -202,6 +207,20 @@ def test_ac6_mutation_health_importing_execute_plan_is_refused_with_its_chain():
                           encoding="utf-8")
         problems, _ = route_closure_problems(root, ROUTE_ORDER_EDGES)
     assert problems == ["order module reached outside the allow-list: ofo_app.routes.health -> ofo_app.execute_plan"]
+
+
+@pytest.mark.repo_scan
+def test_ac6_mutation_the_adjustment_pin_does_not_let_its_reader_import_an_order_module_directly():
+    """GC-MU A1 pin is narrow (real copy): adjustment_readers gaining an import of ofo_app.execute_plan is red, though
+    the route's strategy_store edges are pinned (an edge covers its importer only)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = _real_copy(tmp)
+        readers = root / "ofo_app" / "adjustment_readers.py"
+        readers.write_text(readers.read_text(encoding="utf-8") + "\nfrom ofo_app import execute_plan  # noqa: F401\n",
+                           encoding="utf-8")
+        problems, _ = route_closure_problems(root, ROUTE_ORDER_EDGES)
+    assert ("order module reached outside the allow-list: ofo_app.routes.adjustment -> ofo_app.adjustment_readers"
+            " -> ofo_app.execute_plan") in problems, problems
 
 
 @pytest.mark.repo_scan
