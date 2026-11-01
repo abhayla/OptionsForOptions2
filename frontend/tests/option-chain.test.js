@@ -13,6 +13,7 @@ vi.mock('@/services/api', async (importActual) => {
 })
 import { createPinia, setActivePinia } from 'pinia'
 import OptionChainPage from '@/pages/OptionChainPage.vue'
+import { useSettingsValues } from '@/stores/settingsValues'
 import { NOT_LIVE_LABEL, daysLeft } from '@/composables/useChainLive'
 import { healthSentence } from '@/lib/dataHealthText'
 
@@ -57,9 +58,16 @@ function script({ chain } = {}) {
   }
 }
 
+// The strike-range options and the first request's strike count come from GET /api/settings; a test that picks a range
+// before that answer lands picks an option that is not there yet. Flush until the settings store has answered, at most
+// SETTLE_ROUNDS times (a test whose settings read fails on purpose stops after them, never hangs). 2026-11-01: rows 33
+// and attack 6 failed once under the full parallel gate run (sent 15 instead of 5; no request) and passed in 7 reruns.
+const SETTLE_ROUNDS = 10
 async function mountPage() {
   const w = mount(OptionChainPage)
   await flushPromises()
+  const settings = useSettingsValues()
+  for (let round = 0; round < SETTLE_ROUNDS && settings.values === null; round += 1) await flushPromises()
   return w
 }
 const sock = () => FakeSocket.all.at(-1)
