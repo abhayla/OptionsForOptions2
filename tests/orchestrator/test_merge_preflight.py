@@ -64,25 +64,19 @@ def repo(tmp_path):
     return r
 
 
-def test_changed_files_are_committed_dirty_and_untracked_python_under_the_roots(repo):
-    (repo / "backend" / "pkg" / "a.py").write_text("x = 2\n", encoding="utf-8")
-    git(repo, "commit", "-qam", "change a")
-    (repo / "backend" / "pkg" / "b.py").write_text("y = 2\n", encoding="utf-8")  # uncommitted
+def test_every_python_file_under_the_roots_is_checked_tracked_or_untracked(repo):
+    """Round 2 (2026-11-01): the interface layer checks EVERY file, not a changed-files guess."""
     (repo / "tests").mkdir()
     (repo / "tests" / "test_new.py").write_text("", encoding="utf-8")  # untracked
     (repo / "docs" / "note.py").write_text("", encoding="utf-8")  # outside the roots
     (repo / "backend" / "pkg" / "data.json").write_text("{}", encoding="utf-8")  # not Python
-    assert mp.changed_python(str(repo), "main") == ["backend/pkg/a.py", "backend/pkg/b.py", "tests/test_new.py"]
+    assert mp.every_python(str(repo)) == ["backend/pkg/a.py", "backend/pkg/b.py", "tests/test_new.py"]
 
 
-def test_a_deleted_file_is_not_checked(repo):
+def test_a_deleted_file_is_not_listed(repo):
     git(repo, "rm", "-q", "backend/pkg/b.py")
     git(repo, "commit", "-qm", "drop b")
-    assert mp.changed_python(str(repo), "main") == []
-
-
-def test_an_unreadable_base_fails_closed_to_none(repo):
-    assert mp.changed_python(str(repo), "no-such-branch") is None
+    assert mp.every_python(str(repo)) == ["backend/pkg/a.py"]
 
 
 def test_the_first_red_layer_stops_the_run(monkeypatch, tmp_path, capsys):
@@ -96,7 +90,7 @@ def test_the_first_red_layer_stops_the_run(monkeypatch, tmp_path, capsys):
     monkeypatch.setattr(mp, "layer_interface", layer("interface", 1))
     monkeypatch.setattr(mp, "layer_collect", layer("collect", 0))
     monkeypatch.setattr(mp, "layer_scans", layer("scans", 0))
-    assert mp.run(str(tmp_path), "main", str(tmp_path)) == 1
+    assert mp.run(str(tmp_path), str(tmp_path)) == 1
     out = capsys.readouterr().out
     assert ran == ["interface"] and "FAIL preflight-interface" in out and "PREFLIGHT FAIL at interface" in out
 
@@ -104,14 +98,14 @@ def test_the_first_red_layer_stops_the_run(monkeypatch, tmp_path, capsys):
 def test_all_layers_green_is_a_pass(monkeypatch, tmp_path, capsys):
     for name in ("layer_interface", "layer_collect", "layer_scans"):
         monkeypatch.setattr(mp, name, lambda *_a: (0, "ok"))
-    assert mp.run(str(tmp_path), "main", str(tmp_path)) == 0
+    assert mp.run(str(tmp_path), str(tmp_path)) == 0
     assert "PREFLIGHT PASS" in capsys.readouterr().out
 
 
 def test_a_missing_mypy_fails_the_interface_layer_closed(monkeypatch, repo, tmp_path):
     (repo / "backend" / "pkg" / "a.py").write_text("x = 3\n", encoding="utf-8")
     monkeypatch.setitem(sys.modules, "mypy", None)  # import mypy -> ImportError
-    rc, note = mp.layer_interface(str(repo), "main", str(tmp_path / "log"))
+    rc, note = mp.layer_interface(str(repo), str(tmp_path / "log"))
     assert rc == 1 and "mypy is not installed" in note
 
 
@@ -167,7 +161,7 @@ def test_the_build_check_runs_first_and_its_red_stops_the_run(monkeypatch, tmp_p
     for name in ("layer_interface", "layer_collect", "layer_scans"):
         monkeypatch.setattr(mp, name, lambda *_a, n=name: ran.append(n) or (0, "ok"))
     monkeypatch.setattr(mp, "layer_build", lambda *_a: (1, "stale"))
-    assert mp.run(str(tmp_path), "main", str(tmp_path)) == 1
+    assert mp.run(str(tmp_path), str(tmp_path)) == 1
     assert ran == [] and "PREFLIGHT FAIL at build" in capsys.readouterr().out
 
 
@@ -216,12 +210,12 @@ def test_minor6_a_malformed_known_list_fails_closed_with_its_name(tmp_path, monk
     known = tmp_path / mp.KNOWN_FILE
     known.parent.mkdir(parents=True)
     known.write_text('{"known": [{"file": "a", "message": "b", "count": 0}]}', encoding="utf-8")
-    rc, note = mp.layer_interface(str(tmp_path), "main", str(tmp_path / "log"))
+    rc, note = mp.layer_interface(str(tmp_path), str(tmp_path / "log"))
     assert rc == 1 and "merge_preflight_known.json is unreadable" in note
 
 
 def test_minor5_a_folder_that_is_not_a_git_checkout_fails_closed(tmp_path):
-    rc, note = mp.layer_interface(str(tmp_path), "main", str(tmp_path / "log"))
+    rc, note = mp.layer_interface(str(tmp_path), str(tmp_path / "log"))
     assert rc == 1 and "cannot read the repository" in note
 
 
@@ -233,15 +227,9 @@ def test_minor7_domain_scans_on_runs_the_tests_repo_scan(monkeypatch, tmp_path):
     assert any(c.endswith("-m repo_scan tests") for c in calls)
 
 
-def test_module_of_maps_backend_files_and_packages():
-    assert mp.module_of("backend/ofo/a/b.py") == "ofo.a.b"
-    assert mp.module_of("backend/ofo/a/__init__.py") == "ofo.a"
-    assert mp.module_of("tests/test_x.py") is None
-
-
 def test_major1_a_caller_added_on_main_is_checked_after_merging_main_in(tmp_path):
     """MAJOR 1, the reviewer's own attack: main adds a caller f(1) while the branch changes f(a) to f(a, b); after
-    `git merge main` the diff lists only the callee, so the caller must come in as an importer and mypy must flag it."""
+    `git merge main` the diff lists only the callee; the whole-tree check sees the caller and mypy flags it."""
     r = tmp_path / "r"
     pkg = r / "backend" / "pkg"
     pkg.mkdir(parents=True)
@@ -261,8 +249,35 @@ def test_major1_a_caller_added_on_main_is_checked_after_merging_main_in(tmp_path
     git(r, "commit", "-qm", "caller on main")
     git(r, "checkout", "-q", "work")
     git(r, "merge", "-q", "--no-edit", "main")
-    assert mp.changed_python(str(r), "main") == ["backend/pkg/callee.py"]  # the diff alone misses the caller
-    assert mp.importers_of(str(r), ["backend/pkg/callee.py"]) == ["backend/pkg/caller.py"]
-    rc, note = mp.layer_interface(str(r), "main", str(tmp_path / "log"))
+    rc, note = mp.layer_interface(str(r), str(tmp_path / "log"))
     assert rc == 1, note
     assert 'Missing positional argument "b"' in (tmp_path / "log").read_text(encoding="utf-8")
+
+
+def test_round2_callers_through_a_re_export_and_a_relative_import_are_flagged(tmp_path):
+    """Round 2 F1: the importer guess missed a package re-export (`from pkg import f`, __init__ re-exports f) and a
+    relative import (`from .callee import f`); the whole-tree check sees both."""
+    r = tmp_path / "r"
+    pkg = r / "backend" / "pkg"
+    pkg.mkdir(parents=True)
+    git(r, "init", "-q", "-b", "main")
+    (pkg / "__init__.py").write_text("from pkg.callee import f\n", encoding="utf-8")
+    (pkg / "callee.py").write_text("def f(a: int, b: int) -> int:\n    return a + b\n", encoding="utf-8")
+    (pkg / "via_reexport.py").write_text("from pkg import f\n\n\ndef g() -> int:\n    return f(1)\n",
+                                          encoding="utf-8")
+    (pkg / "via_relative.py").write_text("from .callee import f\n\n\ndef h() -> int:\n    return f(2)\n",
+                                          encoding="utf-8")
+    git(r, "add", ".")
+    rc, _note = mp.layer_interface(str(r), str(tmp_path / "log"))
+    log = (tmp_path / "log").read_text(encoding="utf-8")
+    assert rc == 1 and "via_reexport.py" in log and "via_relative.py" in log
+
+
+def test_round2_a_commented_out_manifest_line_does_not_require_a_manifest(tmp_path):
+    """Round 2 F3: `// build: { manifest: true }` configures nothing."""
+    fe = _frontend(tmp_path, manifest=False, config_manifest=False)
+    (fe / "vite.config.js").write_text("// build: { manifest: true }\nexport default {}\n", encoding="utf-8")
+    _age(fe / "vite.config.js", 120)
+    _age(fe / "src" / "a.js", 60)
+    assert mp.manifest_expected(str(tmp_path)) is False
+    assert mp.layer_build(str(tmp_path), str(tmp_path / "log"))[0] == 0

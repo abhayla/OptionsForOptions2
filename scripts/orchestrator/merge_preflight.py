@@ -1,4 +1,4 @@
-"""merge_preflight.py [repo] [--base REF]: the fast checks that catch a broken merge in minutes, before the long gate.
+"""merge_preflight.py [repo] [--log-dir DIR] [--no-domain-scans]: catch a broken merge in minutes, before the gate.
 
 Why (measured, 2026-11-01 GC-MU integration and GC-MU close): the full gate (``prepush.py --full``, ~25 min) was the
 first thing to see three classes of break, and each one cost a whole gate run:
@@ -10,29 +10,32 @@ first thing to see three classes of break, and each one cost a whole gate run:
   inventory): 8 findings on one gate run, 3 more on the next.
 
 Four layers, cheapest first; the first red layer stops the run (its log names every finding):
-0. build: a frontend/dist that exists must carry its manifest and be newer than every frontend input (the bundle secret
-   scan reads it; a build left from before the merge failed that scan on 2026-11-01). No dist: pass (the scan skips).
-1. interface: mypy over every changed Python file under backend/, tests/ and tests_app/, reporting ONLY the codes
+0. build: a frontend/dist that exists must be newer than every frontend input, and carry its manifest when this tree's
+   Vite config writes one (the bundle secret scan reads it; a build left from before the merge failed that scan on
+   2026-11-01). No dist: pass (the scan skips).
+1. interface: mypy over EVERY Python file under backend/, tests/ and tests_app/, reporting ONLY the codes
    that mean "this call no longer matches its definition" (``call-arg``, ``name-defined``, and ``attr-defined`` on a
    module: ``Module "x" has no attribute "y"``). The rest of mypy's output is old noise in this repo and is ignored;
-   reviewed false positives of those codes are listed in ``merge_preflight_known.json`` (file + message, with a
-   reason) and only a finding NOT on that list fails. Measured 2026-11-01: on the raw textual merge the layer flags
-   every break the gate found one at a time; on the fixed tree it flags none.
+   reviewed false positives of those codes are listed in ``merge_preflight_known.json`` (file + message + count, with
+   a reason; whole classes in ``KNOWN_PATTERNS``) and only a finding beyond that list fails. Measured 2026-11-01: on
+   the raw textual merge the layer flags every break the gate found one at a time; on the fixed tree it flags none.
 2. collect: ``pytest --collect-only`` over tests/ and tests_app/ (pytest-app.ini); any collection error fails.
 3. repo scans: the ruff ratchet, the coverage stage check, the migration guard, every generated view in ``--check``
    mode, the reply inventory ``--check``, and the ``repo_scan``-marked tests plus the generated-file guard tests,
    with the database variables removed (database tests skip, as in prepush).
 
-Files checked = ``git diff --name-only <merge-base(base, HEAD)>...HEAD`` plus uncommitted and untracked files, plus
-every file that imports a changed backend module (after ``git merge origin/main`` the diff lists only this branch's
-files; main's new caller of a changed function comes in as an importer: review 2026-11-01 MAJOR 1).
-Known limits (review 2026-11-01): an import of a DELETED module is invisible to mypy here (``--ignore-missing-imports``;
-the collect layer catches it only where a test imports it), and a CHECKS script missing from the tree is skipped with
-a note (two of them do not exist on main yet). Fail closed: an unreadable diff checks every
-Python file; a missing tool (mypy) fails the layer with the reason, never a skip.
+Why every file, not the changed ones (independent review, two rounds, 2026-11-01): a changed-files list misses the
+caller on the other side of a merge, and adding "importers of a changed module" still missed package re-exports,
+relative imports, test helpers and multi-module import lines while widening into false reds. One whole-tree mypy run
+(~25 s warm for ~840 files) is the structural guarantee.
+Known limits: an import of a DELETED module is invisible to mypy here (``--ignore-missing-imports``; the collect layer
+catches it only where a test imports it); a CHECKS script missing from the tree is skipped with a note (two of them do
+not exist on main yet); a known false positive that disappears while a real copy with the same message appears in the
+same file is masked (file + message keys). Fail closed: git that cannot list files fails the layer; a missing tool
+(mypy) or an unreadable known list fails it with the reason, never a skip.
 
 Exit 0 = every layer passed; 1 = a layer failed (named on the last line); 2 = bad usage.
-Usage: python scripts/orchestrator/merge_preflight.py [repo] [--base origin/main]
+Usage: python scripts/orchestrator/merge_preflight.py [repo] [--log-dir DIR] [--no-domain-scans]
 """
 from __future__ import annotations
 
@@ -60,6 +63,8 @@ MODULE_ATTR = re.compile(r'Module "[^"]+" has no attribute ')
 KNOWN_PATTERNS = (
     (re.compile(r'Unexpected keyword argument "_env_file" for "Settings"'),
      "pydantic-settings accepts Settings(_env_file=...) at run time; mypy runs without the pydantic plugin here"),
+    (re.compile(r'Unexpected keyword argument "made_by" for "__init_subclass__"'),
+     "class keyword made_by= is taken by SealedTuple.__init_subclass__ (ofo/sealed.py); mypy does not follow it"),
 )
 #: guard tests over generated files that are not marked repo_scan (run when present)
 GUARD_FILES = ("tests_app/test_openapi_drift.py", "tests_app/test_reply_inventory.py",
@@ -76,61 +81,13 @@ def _git(repo: str, *args: str) -> tuple[int, str]:
     return r.returncode, r.stdout
 
 
-def changed_python(repo: str, base: str) -> list[str] | None:
-    """Changed .py files under PY_ROOTS that exist now, or None when the diff cannot be read (fail closed)."""
-    rc, mb = _git(repo, "merge-base", base, "HEAD")
-    if rc != 0 or not mb.strip():
-        return None
-    rc1, committed = _git(repo, "diff", "--name-only", f"{mb.strip()}...HEAD")
-    rc2, dirty = _git(repo, "diff", "--name-only", "HEAD")
-    rc3, untracked = _git(repo, "ls-files", "--others", "--exclude-standard")
-    if rc1 or rc2 or rc3:
-        return None
-    names = {n.strip().replace("\\", "/") for n in (committed + dirty + untracked).splitlines() if n.strip()}
-    return sorted(n for n in names if n.endswith(".py") and n.startswith(PY_ROOTS)
-                  and os.path.isfile(os.path.join(repo, n)))
-
-
 def every_python(repo: str) -> list[str]:
-    rc, out = _git(repo, "ls-files", "*.py")
-    return sorted(n for n in out.splitlines() if n.startswith(PY_ROOTS)) if rc == 0 else []
-
-
-def module_of(rel: str) -> str | None:
-    """Dotted module of a backend file (``backend/ofo/a/b.py`` -> ``ofo.a.b``; a package ``__init__`` -> the
-    package), None outside backend/."""
-    if not rel.startswith("backend/") or not rel.endswith(".py"):
-        return None
-    parts = rel[len("backend/"):-3].split("/")
-    if parts[-1] == "__init__":
-        parts = parts[:-1]
-    return ".".join(parts) or None
-
-
-def importers_of(repo: str, changed: list[str]) -> list[str]:
-    """Every Python file under PY_ROOTS that imports a changed backend module (``import m`` / ``from m import`` / ``from
-    parent import leaf``), so a caller on the OTHER side of a merge is checked too (review 2026-11-01 MAJOR 1: after
-    ``git merge origin/main`` the diff lists only this branch's files, and main's new caller of a changed function was
-    never given to mypy)."""
-    mods = sorted({m for m in (module_of(f) for f in changed) if m})
-    if not mods:
+    """Every tracked or untracked (not ignored) .py file under PY_ROOTS that exists now; [] when git cannot answer."""
+    rc, out = _git(repo, "ls-files", "--cached", "--others", "--exclude-standard", "*.py")
+    if rc != 0:
         return []
-    alts = []
-    for m in mods:
-        alts.append(rf"^\s*(?:from\s+{re.escape(m)}\s+import\b|import\s+{re.escape(m)}\b)")
-        if "." in m:
-            parent, leaf = m.rsplit(".", 1)
-            alts.append(rf"^\s*from\s+{re.escape(parent)}\s+import\s+\(?[^)]*?\b{re.escape(leaf)}\b")
-    pattern = re.compile("|".join(alts), re.MULTILINE)
-    out = []
-    for rel in every_python(repo):
-        try:
-            with open(os.path.join(repo, rel), encoding="utf-8", errors="replace") as handle:
-                if pattern.search(handle.read()):
-                    out.append(rel)
-        except OSError:
-            continue
-    return out
+    return sorted({n.replace("\\", "/") for n in out.splitlines()
+                   if n.startswith(PY_ROOTS) and os.path.isfile(os.path.join(repo, n))})
 
 
 def interface_findings(mypy_output: str) -> list[str]:
@@ -165,20 +122,19 @@ def _run(cmd: list[str], repo: str, log: str, env: dict | None = None, extra_env
                               check=False).returncode
 
 
-def scope_files(repo: str, base: str) -> tuple[list[str], str] | str:
-    """(files to check, scope label), or the fail-closed reason: the changed files plus every importer of a changed
-    module; every Python file when the diff cannot be read; a reason when git cannot be read at all."""
-    files = changed_python(repo, base)
-    if files is None:
-        files = every_python(repo)
-        if not files:  # not a readable git checkout: never "nothing changed" (review MINOR 5)
-            return "cannot read the repository (git diff and git ls-files both failed): fail closed"
-        return files, "every (the diff could not be read)"
-    return sorted(set(files) | set(importers_of(repo, files))), "changed or importing a changed module"
+def scope_files(repo: str) -> tuple[list[str], str] | str:
+    """(files to check, scope label), or the fail-closed reason. EVERY Python file under PY_ROOTS, on every run (review
+    round 2, 2026-11-01): guessing which files a merge can break (the diff, then the diff plus importers) missed callers
+    through package re-exports, relative imports, test helpers and multi-module import lines, and widened into false
+    reds; one whole-tree run (~25 s warm for ~840 files) is the structural guarantee."""
+    files = every_python(repo)
+    if not files:  # not a readable git checkout: never "nothing changed" (review MINOR 5)
+        return "cannot read the repository (git ls-files failed or found no Python file): fail closed"
+    return files, "every"
 
 
-def layer_interface(repo: str, base: str, log: str) -> tuple[int, str]:
-    scoped = scope_files(repo, base)
+def layer_interface(repo: str, log: str) -> tuple[int, str]:
+    scoped = scope_files(repo)
     if isinstance(scoped, str):
         return 1, scoped
     files, scope = scoped
@@ -296,9 +252,12 @@ def manifest_expected(repo: str) -> bool:
     every main-based push that touches frontend/)."""
     try:
         with open(os.path.join(repo, "frontend", "vite.config.js"), encoding="utf-8") as handle:
-            return re.search(r"\bmanifest\s*:\s*true\b", handle.read()) is not None
+            text = handle.read()
     except OSError:
         return False
+    # comments do not configure anything (round-2 MINOR F3: a commented-out line demanded a manifest no build writes)
+    code = re.sub(r"/\*.*?\*/", "", re.sub(r"//[^\n]*", "", text), flags=re.DOTALL)
+    return re.search(r"\bmanifest\s*:\s*true\b", code) is not None
 
 
 def layer_build(repo: str, log: str) -> tuple[int, str]:
@@ -349,10 +308,10 @@ def layer_scans(repo: str, log: str, domain_scans: bool = True) -> tuple[int, st
     return (1 if failed else 0), note
 
 
-def run(repo: str, base: str, log_dir: str, domain_scans: bool = True) -> int:
+def run(repo: str, log_dir: str, domain_scans: bool = True) -> int:
     # cheapest first: the build check takes milliseconds, the interface check ~20-120 s, collect ~20 s, scans minutes
     layers = (("build", lambda log: layer_build(repo, log)),
-              ("interface", lambda log: layer_interface(repo, base, log)),
+              ("interface", lambda log: layer_interface(repo, log)),
               ("collect", lambda log: layer_collect(repo, log)),
               ("scans", lambda log: layer_scans(repo, log, domain_scans)))
     for name, layer in layers:
@@ -371,7 +330,6 @@ def run(repo: str, base: str, log_dir: str, domain_scans: bool = True) -> int:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("repo", nargs="?", default=ROOT)
-    ap.add_argument("--base", default="origin/main", help="the branch the change will land on (merge-base side)")
     ap.add_argument("--log-dir", default=None)
     ap.add_argument("--no-domain-scans", action="store_true",
                     help="skip the tests/ repo_scan subset (prepush runs all of tests/ right after)")
@@ -381,7 +339,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     log_dir = a.log_dir or tempfile.mkdtemp(prefix="preflight-")
     os.makedirs(log_dir, exist_ok=True)
-    return run(os.path.abspath(a.repo), a.base, log_dir, domain_scans=not a.no_domain_scans)
+    return run(os.path.abspath(a.repo), log_dir, domain_scans=not a.no_domain_scans)
 
 
 if __name__ == "__main__":
