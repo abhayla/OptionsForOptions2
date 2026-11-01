@@ -39,6 +39,18 @@ Not built here (named, not hidden): the Notifier alert of REQ-115 AC-6 (no heart
 GET reading the worker's latest result (REQ-165 AC-6); per-user feeds beyond the single owner (ADR-051 V1); ``_serve``
 does not yet write the monitored legs into the bus's wanted set itself (it prices only what the api role holds on
 the feed), so a leg no screen ever opened reads as "no price for one leg" (paused, never a guess).
+
+Wanted tokens (GC-MU step 4c): each cycle, when a Redis client is given (``want_client``), ``_write_wants`` writes ONE
+snapshot per feed owner with ``feed_bus.write_background_want``: the tokens of its monitored strategies' legs plus
+each underlying's index token, so with no screen open the feed still subscribes them. Written when the set changed
+and at least every ``feed_bus.WANT_REFRESH_S`` (the snapshot expires after ``WANT_TTL_MS``). Answer states:
+- no monitored strategy: an EMPTY snapshot is written for an owner written before, so its stale wishes lapse within
+  one cycle instead of up to ``WANT_TTL_MS``; an owner never written gets nothing (an absent key already wants nothing);
+- a leg (or the underlying's index) with no token: that strategy is PAUSED with ``PriceState.LEG_MISSING`` and none of
+  its tokens are written; the other strategies are written;
+- Redis not answering (any exception): logged, counted in ``errors``, the cycle goes on; retried next cycle;
+- more than ``feed_bus.MAX_WANTED_TOKENS``: not written (the relay would refuse it whole), logged and counted in
+  ``errors``; never cut silently.
 """
 from __future__ import annotations
 
@@ -59,6 +71,7 @@ from ofo.adjustment.approaches import ChainRow
 from ofo.engine.black_scholes import Greeks, year_fraction
 from ofo.engine.legs import Instrument
 from ofo.engine.model import expiry_model, greeks, iv_price
+from ofo.instruments.models import ZERODHA
 from ofo.marketdata.availability import MonitoringStatus, strategy_monitoring_status
 from ofo.marketdata.feed_health import market_closed_for
 from ofo.marketdata.forward import parity_forward
@@ -71,7 +84,7 @@ from ofo.scenario.spot import spot_reading
 from ofo.timeutil import IST
 
 from ofo_app import adjustment_check as check
-from ofo_app import calc_speeds, roles
+from ofo_app import calc_speeds, feed_bus, roles
 from ofo_app.routes.adjustment import MarketInputs
 
 log = logging.getLogger("ofo_app.background")
@@ -277,7 +290,7 @@ class Worker:
     def __init__(self, *, provider_for: Callable[[str], Any], lister: Lister,  # noqa: PLR0913
                  clock: Callable[[], datetime.datetime], rate: Decimal, recorder: Recorder = record_check,
                  cache: SharedCompute | None = None, max_per_cycle: int = DEFAULT_MAX_PER_CYCLE,
-                 sleep: Callable[[float], Awaitable[None]] = asyncio.sleep) -> None:
+                 sleep: Callable[[float], Awaitable[None]] = asyncio.sleep, want_client: Any = None) -> None:
         if max_per_cycle < 1:
             raise ValueError("max_per_cycle must be at least 1")
         self._provider_for, self._lister, self._clock, self._rate = provider_for, lister, clock, rate
@@ -295,6 +308,9 @@ class Worker:
         self._rebuilt_at: datetime.datetime | None = None
         self._stop = False
         self._speed: Decimal | None = None  # the last good background speed (a failed read keeps it)
+        self._want_client = want_client  # a Redis client (the feed bus); None = no wanted-set write
+        self._token_maps: dict[int, tuple] = {}  # id(provider) -> (provider, option tokens, id -> token)
+        self._wants_written: dict[str, tuple[list[int], datetime.datetime]] = {}  # owner -> (tokens, when)
 
     async def rebuild(self) -> None:
         """REQ-115 AC-3: the monitors from the database (the lister); a strategy's memory stays in the store."""
@@ -323,6 +339,72 @@ class Worker:
             _keep_recent(self.errors, (0, type(exc).__name__))
         return self._speed
 
+    def _tokens_of(self, provider: Any) -> tuple[dict, dict]:
+        """(option key -> token, instrument id -> token) from the provider's instrument master, built once per provider
+        (the one list the API side maps from; no second lookup table)."""
+        kept = self._token_maps.get(id(provider))
+        if kept is None or kept[0] is not provider:
+            options: dict[tuple, int] = {}
+            by_id: dict[str, int] = {}
+            for lc in provider.instrument_master():
+                c = lc.contract
+                token = int(lc.ref(ZERODHA).broker_token)
+                by_id[f"{c.exchange_segment}:{c.exchange_token}"] = token
+                options[(c.name, c.expiry, c.strike, c.instrument_type)] = token
+            kept = (provider, options, by_id)
+            self._token_maps[id(provider)] = kept
+        return kept[1], kept[2]
+
+    def _strategy_tokens(self, w: Watched) -> set[int] | None:
+        """The tokens one strategy needs (every leg and the underlying index); None when any has no token."""
+        provider = self._provider_for(w.feed_owner)
+        options, by_id = self._tokens_of(provider)
+        position = w.tracked.position
+        tokens = {options.get((position.underlying, x.expiry, x.strike, x.type)) for x in position.legs}
+        index_id = provider.index_id(position.underlying)
+        tokens.add(None if index_id is None else by_id.get(index_id))
+        return None if None in tokens else tokens
+
+    async def _write_wants(self, now: datetime.datetime) -> None:
+        """Step 4c: one snapshot per feed owner (module docstring); never raises."""
+        if self._want_client is None:
+            return
+        wanted: dict[str, set[int]] = {}
+        for w in self.monitors:
+            try:
+                tokens = self._strategy_tokens(w)
+            except Exception as exc:  # contained: this strategy is paused, the others are written
+                log.exception("background: finding the tokens of strategy %s failed", w.strategy_id)
+                _keep_recent(self.errors, (w.strategy_id, type(exc).__name__))
+                tokens = None
+            if tokens is None:
+                self.status[w.strategy_id] = MonitoringStatus.PAUSED
+                self.paused_reason[w.strategy_id] = PriceState.LEG_MISSING
+                self._signature.pop(w.strategy_id, None)
+                wanted.setdefault(w.feed_owner, set())
+                continue
+            wanted.setdefault(w.feed_owner, set()).update(tokens)
+        for owner in self._wants_written.keys() - wanted.keys():
+            wanted[owner] = set()  # no monitored strategy left for this owner: an empty snapshot
+        for owner, tokens in wanted.items():
+            listed = sorted(tokens)
+            before = self._wants_written.get(owner)
+            if before is not None and before[0] == listed \
+                    and _seconds(now - before[1]) < Decimal(str(feed_bus.WANT_REFRESH_S)):
+                continue
+            if len(listed) > feed_bus.MAX_WANTED_TOKENS:
+                log.error("background: %s wanted tokens for %s exceed the cap of %s; not written", len(listed),
+                          owner, feed_bus.MAX_WANTED_TOKENS)
+                _keep_recent(self.errors, (0, "WantTooLarge"))
+                continue
+            try:
+                await feed_bus.write_background_want(self._want_client, owner, listed)
+            except Exception as exc:  # Redis not answering: the cycle goes on, retried next cycle
+                log.exception("background: writing the wanted tokens for %s failed", owner)
+                _keep_recent(self.errors, (0, type(exc).__name__))
+                continue
+            self._wants_written[owner] = (listed, now)
+
     async def _check_one(self, w: Watched, now: datetime.datetime, every: Decimal) -> bool:
         """True when a check ran (counted against the cycle's cap)."""
         read = read_prices(self._provider_for(w.feed_owner), w, now)
@@ -350,6 +432,7 @@ class Worker:
         now = self._clock()
         if self._rebuilt_at is None or _seconds(now - self._rebuilt_at) >= REBUILD_SECONDS:
             await self._rebuild_safely()
+        await self._write_wants(now)  # not behind the speed: the feed is wanted whatever the checks do
         every = self._speed_safely()  # read on EVERY cycle (REQ-166 AC-1)
         if every is None:
             log.error("background: no background speed has been read yet; this cycle is skipped")
@@ -439,14 +522,16 @@ async def _serve() -> int:  # pragma: no cover - the process wiring; each part i
 
     provider = KiteProvider(listed_for_kite(catalogue.all_entries()), clock=clock)
     socket = BusSocket(provider, user_ref=OWNER_REF, clock=clock, redis_url=feed_mode.redis_url())
+    bus = feed_bus.new_client(feed_mode.redis_url())
     worker = Worker(provider_for=lambda _owner: provider, lister=functools.partial(owner_lister, provider),
-                    clock=clock, rate=LIVE_RATE)
+                    clock=clock, rate=LIVE_RATE, want_client=bus)
     feed = asyncio.create_task(socket.run(), name="background-feed")
     try:
         await worker.run()
     finally:
         socket.stop()
         feed.cancel()
+        await bus.aclose()
     return 0
 
 
