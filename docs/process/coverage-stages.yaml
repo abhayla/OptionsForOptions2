@@ -388,6 +388,9 @@ decisions:
   ADR-221: S6.4         # T-19 uses the cheapest adjustment's cost (owner, 2026-10-31)
   ADR-222: S6.4         # calculation numbers are admin settings on one Settings page (owner, 2026-10-31)
   ADR-220: S6.7         # server roles, one machine first, calculation speeds, pricing model kept (owner, 2026-10-31)
+  ADR-230: S6.4         # GC-ADJ3 product answers: liquidity limits, card mark, Compare cost rows, two stops (GC-MU)
+  ADR-231: S6.4         # roll debit limit is the higher of Rs 500 and 10% of max profit (owner, GC-MU)
+  ADR-232: S6.4         # the Live Strategies card counts open conditions, not inbox rows (owner, GC-MU)
 
 questions:
   Q210: 4a              # external: Zerodha's written answer; ADR-051 covers the owner's own account
@@ -741,6 +744,10 @@ findings:
   F-74: S6.4      # After omits booked P&L and the adjustment trade charges
   F-75: S6.4      # POP fails on an after-charges breakeven finer than paise
   F-76: S6.4      # NIFTY spot unreadable over REST (allow-list has no space)
+  F-77: S6.4      # T-19 compares premium left with a different adjustment cost than the spec and Compare
+  F-78: S6.4      # three playbook limits saved and shown but nothing applies them
+  F-79: S6.4      # Undo window in code 8 s and 10 s; spec about 5 s, admin-configurable
+  F-90: S6.4      # range-reading rule (REQ-026 AC-1) only in the browser; no server copy
 
 hypotheses:
   H1: done
