@@ -1,8 +1,6 @@
 // Leg picker helpers (W-068; REQ-035 AC-8, ADR-068, ADR-008). Pure functions; no price or P&L is ever computed here.
 // Strings only: a strike and a planned entry stay exactly the strings the API sent.
 
-import { strictInt } from '@/lib/settingsValues'
-
 export { UNDERLYINGS } from '@/lib/underlyings'
 
 /** The one wording for a draft that has no live data (the backend constant NOT_CONNECTED_LABEL, ADR-020 Q185). */
@@ -30,8 +28,10 @@ export const LOT_CHOICES_KEY = 'limits.lot_choices'
 /** A whole number of lots from 1 to `max` (the served limits.max_lots), typed as digits (no sign, no decimal point, no
  *  leading zero). With no `max` yet (settings not read) nothing is valid. */
 export function lotsValid(text, max) {
-  const n = strictInt(typeof text === 'string' ? text : null)
-  return Number.isInteger(max) && n !== null && n >= 1 && n <= max
+  // digit strings with no leading zero compare by length, then by character: no number is parsed from text (ADR-008)
+  if (!Number.isInteger(max) || max < 1 || typeof text !== 'string' || !/^[1-9]\d{0,8}$/.test(text)) return false
+  const top = String(max)
+  return text.length < top.length || (text.length === top.length && text <= top)
 }
 
 /** The contract types the API offered for the chosen expiry, in the fixed display order. */

@@ -26,7 +26,6 @@ export function contractOf(underlying, expiry, strike, type, cell) {
 
 export const useChainSelection = defineStore('chainSelection', () => {
   const settings = useSettingsValues() // REQ-167 AC-5: the lot cap is the served limits.max_lots, never typed here
-  settings.load()
   const entries = ref([]) // { id, ...contract, action: 'BUY' | 'SELL' | null, lots }
   const removed = ref(null) // the last removed entry and its place, for the short Undo (AC-15)
   // The latest server answer per contract (instrument_id -> true | false), kept apart from the entries so a removed or

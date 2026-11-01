@@ -18,6 +18,7 @@ vi.mock('@/services/api', async (importActual) => {
 import OptionChainPage from '@/pages/OptionChainPage.vue'
 import { contractOf, useChainSelection } from '@/stores/chainSelection'
 import { settingsData } from './helpers/servedLots'
+import { useSettingsValues } from '@/stores/settingsValues'
 
 class FakeSocket {
   static all = []
@@ -381,7 +382,7 @@ describe('chainSelection store', () => {
     expect(s.maxLots).toBeNull()
     s.setLots(id, 2) // not read yet: no cap to check against, fail closed
     expect(s.entries[0].lots).toBe(1)
-    await flushPromises()
+    await useSettingsValues().load() // the Option Chain page reads the settings on mount; here the test does
     expect(s.maxLots).toBe(10000)
     for (const bad of [0, -1, 1.5, '2', '1e2', 10001, '', null, 'abc', NaN]) {
       s.setLots(id, bad)
