@@ -289,3 +289,57 @@ async def test_the_one_read_answers_absent_as_none_and_never_pairs_a_missing_exp
     conn = _OneReadConn([None])
     assert await access_session_for(conn, "u1", TokenCipher(os.urandom(32))) is None
     assert conn.reads == 1
+
+
+async def _true_or_none(v):
+    return v or None
+
+
+# Pins the EXPIRY_SKEW_S window (300 s) at both edges: a session the store drops 301 s before its expiry was STOPPED,
+# one dropped 299 s before was ended BY the expiry; at and past the expiry it is ended. Without these, any window from
+# about 2 s to 7199 s passed the tests above (GC-MU step 3 Tier A re-verify, MINOR).
+@pytest.mark.parametrize("before_s, want", [(301, "stopped"), (299, "ended"), (0, "ended"), (-3600, "ended")])
+async def test_skew_window_edges(rig, before_s, want):
+    rig.store.ends_at_expiry = rig.clock
+    user = new_ref("ua")
+    kite = await rig.kite(user)
+    rig.store.set(user, "TOK-edge", T0 + datetime.timedelta(seconds=max(before_s, 1)))
+    rig.start()
+    await rig.until(lambda: rig.live(user), "live")
+    if before_s <= 0:
+        rig.clock.advance(seconds=1 - before_s)  # at / past the expiry; the store answers none
+    else:
+        del rig.store.sessions[user]
+
+    async def settled():
+        st = await user_status(rig.bus, user)
+        done = st and kite.active == 0 and not st["connected"] and (st["phase"] == "stopped" or st["ended"])
+        return st if done else None
+
+    st = await rig.until(settled, "settled")
+    ended = [m for _i, m in await stream_entries(rig.bus, user) if m.kind == feed_bus.KIND_ENDED]
+    if want == "stopped":
+        assert st["phase"] == "stopped" and not st["ended"] and not ended
+    else:
+        assert st["ended"] and len(ended) == 1 and kite.accepted == 1
+
+
+SECOND_SOCKET = 2  # the old session's socket, then the new one
+
+
+async def test_session_replaced_inside_window_is_not_ended(rig):
+    rig.store.ends_at_expiry = rig.clock
+    user = new_ref("ua")
+    kite = await rig.kite(user)
+    rig.store.set(user, "TOK-old", T0 + datetime.timedelta(seconds=120))
+    rig.start()
+    await rig.until(lambda: rig.live(user), "live")
+    rig.store.set(user, "TOK-new", T0 + datetime.timedelta(days=1))
+    restarted = lambda: _true_or_none(kite.accepted >= SECOND_SOCKET and kite.active == 1)  # noqa: E731
+    await rig.until(restarted, "restart on the new session")
+    rig.clock.advance(seconds=180)
+    reads = rig.store.reads[user]
+    await rig.until(lambda r=reads: _reads_since(rig, user, r, 3), "re-checks past the old expiry")
+    st = await user_status(rig.bus, user)
+    ended = [m for _i, m in await stream_entries(rig.bus, user) if m.kind == feed_bus.KIND_ENDED]
+    assert kite.tokens[-1] == "TOK-new" and not st["ended"] and not ended and kite.active == 1
