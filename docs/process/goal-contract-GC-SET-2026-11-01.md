@@ -233,7 +233,7 @@ clock (`date`) in the same step, never typed from memory.
   failed), checker reads version 1 KILLED (2), restore without a new version KILLED (2); trigger first branch off =
   23 passed - EQUIVALENT (the same trigger's next check still refuses UPDATE/DELETE with OF034); the owner test checks
   the code, not which rule fired (noted, not chased). Editor buttons (Edit / Restore / Approve) = step 9 UI, next.
-- BATCH 2 LANDED f2510f25 (~10:30, merge of int2 48f15858): 4c, 4e, 5a, 5a-2, step 6, step 8 (backend + Preferences
+- BATCH 2 LANDED f2510f25 (10:02 IST from the commit time, merge of int2 48f15858): 4c, 4e, 5a, 5a-2, step 6, step 8 (backend + Preferences
   tab 3781782c), step 9 (backend + editor UI e87fdeab). Gate, run by me on the int2 head (owner: "Restart the gate",
   then "GC-MU finishes, then GC-SET"; the reaper killed 4 runs/waits before): DB one file at a time - user prefs 18,
   scenario mode 60, settings route 25, speeds 10, paper settlement 28 (one tunnel drop, re-run), chain live 83, leg
@@ -242,7 +242,7 @@ clock (`date`) in the same step, never typed from memory.
   tree in chunks: 1804+2323+3599+860+64 passed after 2 fixes (step 9 used private names `_refused/_load/_dump` ->
   public `refused/load_body/dump_body`; system playbook test on the selection pin); full vitest 751+1077 passed after
   3 fixes (2 chain-page mocks did not answer GET /settings - from 4b; `settingsValues.js` added to the named-uses list
-  with a reason per line). Heavy slot released ~10:15; owner rule ~10:15: GC-MU has priority on the PC.
+  with a reason per line). Heavy slot released before the merge; owner rule (same morning): GC-MU has priority on the PC. Leftovers 8fc06cbc (dead range/pick_lists.py deleted, max_delist_percent required; 2 KNOWN_LEFTOVERS rows closed; tests_app call sites compile-checked only - DB run in the batch 3 gate). 4d dispatched 10:1x (pure tests only).
 
 ## Found during the run
 
