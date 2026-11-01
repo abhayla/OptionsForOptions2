@@ -4,12 +4,9 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (216)
+## Decisions (219)
 
-- Older decisions: 176 rows, ADR-1..ADR-179 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
-- ADR-180 2026-10-23: Owner-approved one-time exception to the CLAUDE.md hard rule "Merge only with merge.py": PR #525 (b… [applies ADR-115]
-- ADR-181 2026-10-24: Owner-approved amendment of ADR-178's process-tool freeze ("at most one item per chunk on Sonnet"):… [extends ADR-178]
-- ADR-182 2026-10-25: When price protection (ADR-095) is wired into Execute, each leg's allowance and its protected LIMIT… [extends ADR-095]
+- Older decisions: 179 rows, ADR-1..ADR-182 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
 - ADR-183 2026-10-25: A strategy name the user types (first save, Save As, rename) is 1 to 20 characters after trimming s… [amends REQ-134]
 - ADR-184 2026-10-25: (1) A rename (REQ-134 AC-3) appears in the strategy's history as its own entry ("Renamed from X to… [extends ADR-118; refines REQ-070; refines ADR-181]
 - ADR-186 2026-10-25: (1) Hedge +1 / -1 (REQ-078 AC-5) works as in Sensibull. [amends REQ-078; refines REQ-076]
@@ -47,6 +44,9 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-220 2026-10-31: (1) Server roles. [Adds REQ-166 (calculation speeds and the safety v…]
 - ADR-221 2026-10-31: The T-19 trigger ("premium still left to earn is below N x the adjustment's cost") uses, at each ch… [Settles the gap in REQ-159 "How the open triggers…]
 - ADR-222 2026-10-31: (1) No rupee amount, rate, percentage or threshold that changes a figure a user sees is typed in co… [Builds the "admin settings" ADR-082 (charge rates…]
+- ADR-230 2026-10-31: (1) Playbook liquidity limits (REQ-159 AC-6; finding F-78). [Answers Q-ADJ3-2..5 (docs/process/owner-questions…]
+- ADR-231 2026-11-01: A playbook's "Most debit paid for one roll" written as "Rs 500 or 10% of max profit" allows a roll… [Answers Q-MU-1 (docs/process/owner-questions-2026…]
+- ADR-232 2026-11-01: The Live Strategies card's "N adjustment opportunities" (ADR-230 (2)) counts the strategy's OPEN su… [Answers Q-MU-2 (docs/process/owner-questions-2026…]
 
 ## Requirements (160)
 
@@ -211,7 +211,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - REQ-168 [Approved]: Each user sets their own adjustment preferences on a Preferences tab of the Adjustments screen, starting from…
 - REQ-169 [Approved]: The admin edits a system playbook in the same playbook editor and saves it as a new version with history and…
 
-## Spec sections (248)
+## Spec sections (249)
 
 ### spec/SPEC-DEVIATION.md
 
@@ -351,6 +351,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ## F-77 - The T-19 trigger compares premium left with a different "adjus…
 - ## F-78 - Three playbook limits are saved and shown in the editor but no…
 - ## F-79 - The Undo window in code is 8 s and 10 s; the spec says about 5…
+- ## F-90 - The range-reading rule (REQ-026 AC-1) lives only in the browse…
 
 ### spec/open-questions.md
 
