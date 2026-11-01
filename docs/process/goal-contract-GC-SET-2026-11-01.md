@@ -301,6 +301,14 @@ clock (`date`) in the same step, never typed from memory.
   started on 0cbe90fe was stopped by PID before any step finished (it could not give the pushed head a marker, and a
   second full run doubles the memory risk; 5.3 GB free).
 
+- close gate round 1 (15:1x IST) on merge b4541259: `prepush.py --full` TOTAL FAIL (app_tests, coverage); every
+  other step PASS (domain_tests 465 s, frontend_unit 79 s). Causes: (1) `tests_app/test_strategy_live_push.py` still
+  imported `feed_health.FEED_STALE`, removed in step 4d (now the registry window); 9 app files import helpers from it,
+  so collection broke. Class: a test module importing a moved constant; whole population checked by collecting all
+  5215 app tests (0 errors after the fix); the 10 files 156 passed. (2) findings F-77..F-83 and parked issue #624 had
+  no stage rows; added (S6.4), `coverage.py --check` OK. Detection: the full prepush caught both; the step 4d gate ran
+  targeted DB files only, so a collection-wide check was missing from that gate.
+
 ## Found during the run
 
 | # | Finding | Where | What was done |
