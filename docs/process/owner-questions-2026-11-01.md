@@ -45,3 +45,25 @@ Owner asked (~12:45): check why the VPS is slow and fix what we cause. Read-only
   journals, caches); I have not deleted anything on it.
 - Not a cause: the `claude.exe` process on the VPS has run since 2026-10-09 with ~4.5 CPU-hours in total.
 Answer: (pending)
+
+## Q-GCSET-4 (17:2x IST, written while the owner is away): should a rate change visibly move the builder's Greeks?
+
+SPEC CHANGE question. The goal prompt (item 3) said: if the builder's Greeks do not move at the stored rate 0.07, treat
+it as a defect, fix the class and add a test. Measured (F-82): they move only at the third decimal (per-unit Theta
+15.988 -> 15.987; IV 13.10% at both rates), because the engine reads the forward from put-call parity, so a higher rate
+is absorbed by a higher implied dividend yield (q for 9 Nov -0.0000115 -> 0.0050063). The rate does reach the builder:
+`tests_app/test_scenario_rate_wiring.py` core test passes ("figures changed by the rate: dividend_yields, legs, table").
+Making the Greeks visibly move needs q held fixed, which changes the pricing model.
+
+Spec basis: ADR-220 ("pricing model kept"); ADR-061 and ADR-063 (forward from parity; the engine owns q); REQ-167 AC-1
+(the registry's "what it changes" line for `pricing.risk_free_rate`).
+
+Options:
+1. **Keep the model; reword the Settings line (recommended).** Say the rate sets the forward and, on a liquid chain,
+   mostly shifts the implied dividend yield, so prices and Greeks move very little. No pricing change, no risk.
+2. Keep the model and the current wording (the line over-states the visible effect).
+3. SPEC CHANGE: change the pricing model so the rate moves IV and Greeks directly (reverses ADR-220's "pricing model
+   kept"; Tier A; its own contract).
+
+Answer (owner, 2026-11-01, question box): "(a) Fix the text only (Recommended)"; then "assume a role of expert option
+trader ... take a decision ... proceed with your recommendation". Recorded as ADR-222 (12); registry line reworded.

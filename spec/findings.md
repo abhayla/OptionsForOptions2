@@ -1156,7 +1156,7 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   right); the effect is just small where parity holds. Only the spot-fallback path (fewer than 3 usable strikes,
   q = 0) shows the rate in prices and Greeks directly. Bears on REQ-167 AC-1 (the registry's "what it changes" line
   for `pricing.risk_free_rate` says "option prices, Greeks, the forward and probability figures", which over-states
-  the visible effect on a parity chain). Status: **measured**; open for owner decision (whether that line is reworded,
+  the visible effect on a parity chain). Status: **measured; owner decided 2026-11-01 (ADR-222 (12)): model kept, line reworded** (was: open for owner decision on whether that line is reworded,
   e.g. "the yearly interest rate the forward is read with; on a liquid chain it mostly shifts the implied dividend
   yield, so prices and Greeks move very little"). Not a defect: no failure class registered.
 
