@@ -541,6 +541,7 @@ issues:
   "#624": S6.4  # A1 liquidity limits PARKED after 2 rounds: unreadable playbook skips limits silently; adjust drawer has no strike flags
   "#625": S6.4  # Range-reading rule (REQ-026 AC-1) lives only in the browser; REQ-063 AC-2 wants it on the server (F-90)
   "#626": S6.4  # GC-MU step 2 D3: no Content-Security-Policy connect-src 'self' (structural layer behind the bundle scan)
+  "#627": S6.4  # GC-MU step 4 remainder: background margin (T-16), T-13 open price, restart + heartbeat, screen reads worker result
 
 # Work items whose status is not done.
 work_items:
