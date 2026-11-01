@@ -22,11 +22,13 @@ import logging
 from collections.abc import Awaitable, Callable
 from typing import Any, TypeVar
 
-from ofo.broker.session import BROKER_ZERODHA, EndReason
+from ofo.broker.session import BROKER_ZERODHA, EndReason, expected_expiry
+from ofo.settings import calc
 from sqlalchemy import text
 
 from ofo_app.broker_crypto import TokenCipher, TokenDecryptError, associated_data
 from ofo_app.kite_client import KiteTokenException
+from ofo_app.settings_store import settings_in_force
 
 log = logging.getLogger(__name__)
 T = TypeVar("T")
@@ -44,7 +46,7 @@ _SET_TOKEN = text(
     "UPDATE public.broker_sessions SET token_ciphertext = :ciphertext "
     "WHERE id = :id AND ended_at IS NULL AND token_ciphertext IS NULL RETURNING id")
 _ACTIVE = text(
-    "SELECT id, key_id, token_ciphertext, expected_expiry <= clock_timestamp() AS past, expected_expiry "
+    "SELECT id, key_id, token_ciphertext, started_at, clock_timestamp() AS now "
     "FROM public.broker_sessions "
     "WHERE user_ref = :user_ref AND broker = :broker AND ended_at IS NULL")
 
@@ -105,13 +107,20 @@ async def access_session_for(conn: Any, user_ref: str, cipher: TokenCipher, *,
     return None if found is None else (found[1], found[2])
 
 
+async def _expiry_of(conn: Any, started_at: Any) -> Any:
+    """The session's expected expiry from the setting ``facts.kite_session_expiry`` in force now, read at each call
+    (REQ-167 AC-4). The column the guard stamps at login is the 06:00 default and is no longer judged."""
+    return expected_expiry(started_at, calc.kite_session_expiry(await settings_in_force(conn)))
+
+
 async def _read_active(conn: Any, user_ref: str, cipher: TokenCipher, *, broker: str) -> tuple[int, str, Any] | None:
     """(session id, decrypted token, expected expiry) of the active session, or None."""
     row = (await conn.execute(_ACTIVE, {"user_ref": user_ref, "broker": broker})).one_or_none()
     if row is None:
         return None
-    session_id, key_id, blob, past, expiry = row
-    if past:
+    session_id, key_id, blob, started_at, now = row
+    expiry = await _expiry_of(conn, started_at)
+    if expiry <= now:
         await _end_committed(conn, session_id, user_ref, EndReason.EXPIRED, broker)
         log.info("broker session %s passed its expected expiry; ended", session_id)
         return None
@@ -126,7 +135,7 @@ async def _read_active(conn: Any, user_ref: str, cipher: TokenCipher, *, broker:
 
 
 _STATUS_ROW = text(
-    "SELECT started_at, expected_expiry <= clock_timestamp() AS past FROM public.broker_sessions "
+    "SELECT started_at, clock_timestamp() AS now FROM public.broker_sessions "
     "WHERE user_ref = :user_ref AND broker = :broker AND ended_at IS NULL")
 
 
@@ -134,7 +143,7 @@ async def active_session_status(conn: Any, user_ref: str, broker: str = BROKER_Z
     """Read-only: the owner's active session as (started_at, past expected expiry), the database clock deciding; None
     without one. Moved here from the status route so feature code never names the broker."""
     row = (await conn.execute(_STATUS_ROW, {"user_ref": user_ref, "broker": broker})).one_or_none()
-    return None if row is None else (row[0], bool(row[1]))
+    return None if row is None else (row[0], await _expiry_of(conn, row[0]) <= row[1])
 
 
 _ACTIVE_REFS = text("SELECT user_ref FROM public.broker_sessions WHERE broker = :broker AND ended_at IS NULL "

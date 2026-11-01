@@ -18,12 +18,13 @@ import logging
 import os
 import re
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, time
 from urllib.parse import parse_qs, urlsplit
 
 import httpx
 import pytest
 from httpx import ASGITransport, AsyncClient
+from ofo import settings
 from ofo.broker.session import EndReason, expected_expiry
 from ofo_app import broker_token_store as store
 from ofo_app.broker_config import BrokerSettings, load_broker_config
@@ -42,7 +43,21 @@ API_SECRET = "kite_fake_secret_value"  # noqa: S105
 FRONTEND = os.environ["FRONTEND_ORIGIN"]  # set once in conftest: every app in a run shares one origin
 REQUEST_TOKEN = "RQtok_fake_31b7c9d2e4f6a8b0"  # noqa: S105
 ACCESS_TOKEN = "ACtok_fake_7a1c3e5b9d2f4a6c"  # noqa: S105
-EXPIRY = datetime(2026, 10, 23, 1, 0, tzinfo=UTC)  # the 5th column of the one-read session query (REQ-113 AC-8)
+# the last two columns of the one-read session query (REQ-113 AC-8): started_at, the database clock now. The expiry is
+# worked out from the setting facts.kite_session_expiry (default 06:00 IST): next 06:00 IST after 15:30 IST on the 22nd
+# is 00:30 UTC on the 23rd.
+FRESH = (datetime(2026, 10, 22, 10, 0, tzinfo=UTC), datetime(2026, 10, 22, 11, 0, tzinfo=UTC))
+PAST = (datetime(2026, 10, 22, 10, 0, tzinfo=UTC), datetime(2026, 10, 23, 2, 0, tzinfo=UTC))
+
+
+@pytest.fixture(autouse=True)
+def _default_settings(monkeypatch):
+    """The fake connection cannot answer the settings read; the registry defaults are in force."""
+    async def defaults(_conn):
+        return settings.defaults()
+
+    monkeypatch.setattr(store, "settings_in_force", defaults)
+
 CHECKSUM = hashlib.sha256((API_KEY + REQUEST_TOKEN + API_SECRET).encode()).hexdigest()
 SECRETS = (ACCESS_TOKEN, REQUEST_TOKEN, CHECKSUM)
 
@@ -156,7 +171,7 @@ def test_each_encryption_uses_a_fresh_nonce():
 async def test_access_token_for_decrypts_the_active_row():
     cipher = _cipher()
     blob = cipher.encrypt(ACCESS_TOKEN, associated_data("u-1", "zerodha", 7))
-    conn = FakeConn(active_row=(7, cipher.key_id, blob, False, EXPIRY))
+    conn = FakeConn(active_row=(7, cipher.key_id, blob, *FRESH))
     assert await store.access_token_for(conn, "u-1", cipher) == ACCESS_TOKEN
 
 
@@ -167,10 +182,10 @@ async def test_an_unreadable_row_is_treated_as_no_session(case, caplog):
     blob = cipher.encrypt(ACCESS_TOKEN, associated_data("u-1", "zerodha", 7))
     rows = {
         "no_row": None,
-        "other_key": (7, _cipher().key_id, blob, False, EXPIRY),
-        "copied_row": (8, cipher.key_id, blob, False, EXPIRY),
-        "tampered": (7, cipher.key_id, blob[:-1] + bytes([blob[-1] ^ 1]), False, EXPIRY),
-        "no_ciphertext": (7, cipher.key_id, None, False, EXPIRY),
+        "other_key": (7, _cipher().key_id, blob, *FRESH),
+        "copied_row": (8, cipher.key_id, blob, *FRESH),
+        "tampered": (7, cipher.key_id, blob[:-1] + bytes([blob[-1] ^ 1]), *FRESH),
+        "no_ciphertext": (7, cipher.key_id, None, *FRESH),
     }
     assert await store.access_token_for(FakeConn(active_row=rows[case]), "u-1", cipher) is None
     assert all(ACCESS_TOKEN not in r.getMessage() for r in caplog.records)
@@ -179,7 +194,7 @@ async def test_an_unreadable_row_is_treated_as_no_session(case, caplog):
 async def test_a_kite_token_exception_marks_the_session_expired():
     cipher = _cipher()
     blob = cipher.encrypt(ACCESS_TOKEN, associated_data("u-1", "zerodha", 7))
-    conn = FakeConn(active_row=(7, cipher.key_id, blob, False, EXPIRY))
+    conn = FakeConn(active_row=(7, cipher.key_id, blob, *FRESH))
     seen = []
 
     async def call(token):
@@ -200,7 +215,7 @@ async def test_a_kite_token_exception_marks_the_session_expired():
 async def test_a_session_past_its_expected_expiry_is_ended_and_not_returned():
     cipher = _cipher()
     blob = cipher.encrypt(ACCESS_TOKEN, associated_data("u-1", "zerodha", 7))
-    conn = FakeConn(active_row=(7, cipher.key_id, blob, True, EXPIRY))
+    conn = FakeConn(active_row=(7, cipher.key_id, blob, *PAST))
     assert await store.access_token_for(conn, "u-1", cipher) is None
     assert "clock_timestamp()" in conn.calls[0][0]  # the database clock decides, not the caller's
     ((sql, params),) = [c for c in conn.calls if c[0].startswith("UPDATE")]
@@ -214,7 +229,7 @@ async def test_a_connection_already_in_a_transaction_is_refused_before_anything_
     """GC-6 MAJOR-1: the token end commits, so it would commit the caller's own earlier writes: refused up front."""
     cipher = _cipher()
     blob = cipher.encrypt(ACCESS_TOKEN, associated_data("u-1", "zerodha", 7))
-    conn = FakeConn(active_row=(7, cipher.key_id, blob, True, EXPIRY))
+    conn = FakeConn(active_row=(7, cipher.key_id, blob, *PAST))
     conn.in_tx = True
 
     async def call(token):
@@ -260,7 +275,7 @@ async def test_one_token_read_never_holds_a_second_connection():
     cipher = _cipher()
     blob = cipher.encrypt(ACCESS_TOKEN, associated_data("u-1", "zerodha", 7))
     for past in (False, True):
-        engine = _CountingEngine((7, cipher.key_id, blob, past, EXPIRY))
+        engine = _CountingEngine((7, cipher.key_id, blob, *(PAST if past else FRESH)))
 
         async def one(engine=engine):
             async with engine.connect() as conn:
@@ -392,7 +407,7 @@ async def test_core_proof_callback_stores_only_ciphertext_and_the_adapter_reads_
     async with maker() as session:
         assert await store.access_token_for(session, user, app.state.broker.cipher) == ACCESS_TOKEN
     # the database's expected expiry agrees with the domain rule
-    assert row["expected_expiry"] == expected_expiry(row["started_at"])
+    assert row["expected_expiry"] == expected_expiry(row["started_at"], time(6, 0))  # the guard stamps the 06:00 default
 
 
 async def test_a_second_login_replaces_the_first_and_destroys_its_token(app_engine, admin_engine):
@@ -578,8 +593,8 @@ async def test_the_expiry_path_ends_only_the_row_it_read(app_engine, admin_engin
     # this one statement inside the owner's transaction and enabled again before the transaction ends
     async with admin_engine.begin() as conn:
         await conn.execute(text("ALTER TABLE public.broker_sessions DISABLE TRIGGER broker_sessions_guard"))
-        await conn.execute(text("UPDATE public.broker_sessions SET expected_expiry = clock_timestamp() "
-                                "- interval '1 hour' WHERE id = :i"), {"i": session_id})
+        await conn.execute(text("UPDATE public.broker_sessions SET started_at = clock_timestamp() - interval '3 days' "
+                                "WHERE id = :i"), {"i": session_id})
         await conn.execute(text("ALTER TABLE public.broker_sessions ENABLE TRIGGER broker_sessions_guard"))
     async with app_engine.connect() as real:
         racing = RacingConn(real, app_engine, user, cipher)

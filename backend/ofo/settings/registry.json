@@ -756,6 +756,30 @@
       "default": "2",
       "what_it_changes": "The starting size, in percent, of the larger index move the Compare table shows P&L at, up and down; each user can set their own.",
       "source": "ADR-222 (7), REQ-168 AC-1, AC-5; was ofo/adjustment/compare.py MOVES"
+    },
+    {
+      "key": "facts.contract_list_publish_time",
+      "group": "Exchange and broker facts",
+      "label": "Contract list is published at (IST, HHMM)",
+      "unit": "time",
+      "type": "integer",
+      "min": "0",
+      "max": "2359",
+      "default": "830",
+      "what_it_changes": "From what time each trading day the broker's contract list counts as published; a list loaded before it is treated as not yet current, and orders on it are refused as unconfirmed.",
+      "source": "Kite Connect docs: fetch the instrument list \"once a day (ideally at around 08:30 AM)\" (F-56); was catalogue_picker.py _PUBLISH_TIME"
+    },
+    {
+      "key": "facts.kite_session_expiry",
+      "group": "Exchange and broker facts",
+      "label": "Kite login expires at (IST, HHMM)",
+      "unit": "time",
+      "type": "integer",
+      "min": "0",
+      "max": "2359",
+      "default": "600",
+      "what_it_changes": "The time of day a Zerodha login is expected to lapse; a session is treated as expired from the next such time after its login (Kite's own refusal always wins).",
+      "source": "Kite Connect login-flow docs https://kite.trade/docs/connect/v3/user/ (tokens are invalidated daily around 06:00); not yet re-fetched, REQ-056 AC-10; was broker/session.py KITE_EXPIRY_TIME_IST"
     }
   ]
 }

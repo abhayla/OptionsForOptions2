@@ -168,3 +168,17 @@ def paper_settle_from(values: Mapping[str, Decimal]) -> datetime.time:
 def paper_retry_until(values: Mapping[str, Decimal]) -> datetime.time:
     """While a group had no close, the settlement job retries until this IST time (REQ-167 AC-5)."""
     return time_of(value_of(values, PAPER_RETRY_UNTIL))
+
+
+CONTRACT_LIST_PUBLISH_TIME = "facts.contract_list_publish_time"
+KITE_SESSION_EXPIRY = "facts.kite_session_expiry"
+
+
+def contract_list_publish_time(values: Mapping[str, Decimal]) -> datetime.time:
+    """From this IST time each trading day the broker's contract list counts as published (REQ-167 AC-5)."""
+    return time_of(value_of(values, CONTRACT_LIST_PUBLISH_TIME))
+
+
+def kite_session_expiry(values: Mapping[str, Decimal]) -> datetime.time:
+    """The IST time of day a Zerodha login is expected to lapse (REQ-167 AC-5)."""
+    return time_of(value_of(values, KITE_SESSION_EXPIRY))
