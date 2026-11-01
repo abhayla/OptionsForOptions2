@@ -3247,6 +3247,10 @@
     "sha256": "639e3583b651ad61c324c09bdbb40ce784a2b0aa7bfd9a77a664af7b78a8bfe4",
     "reviewed": "pending owner read"
   },
+  "explanation:settings_refused_not_a_time": {
+    "sha256": "cdd2ea044d07983e17fb171fd298efd42b32a2b1701d75adc92f64c9e8ef86a7",
+    "reviewed": "pending owner read"
+  },
   "explanation:settings_refused_fraction_unit": {
     "sha256": "a783b1f3f8b1e95a9e0fcfb340ae845287fddce8d9e992537f17fa1a72449c7e",
     "reviewed": "pending owner read"

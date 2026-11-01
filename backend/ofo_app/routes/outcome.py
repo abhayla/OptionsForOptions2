@@ -228,7 +228,12 @@ async def with_rate_in_force(ctx: MarketContext, read_settings: SettingsReader) 
     """``ctx`` with its rate replaced by the ``pricing.risk_free_rate`` setting in force now (an exact Decimal). The one
     rate-reading path: the live dependency and the scenario mode's dependency both use it. A store that cannot answer
     raises (fail closed). The three forward settings (REQ-167 AC-5) are replaced from the same single read."""
-    values = await read_settings()
+    return ctx_in_force(ctx, await read_settings())
+
+
+def ctx_in_force(ctx: MarketContext, values: Mapping[str, Decimal]) -> MarketContext:
+    """``ctx`` with the rate and the three forward settings taken from ``values`` (one settings read the caller already
+    holds): a socket tick that read the settings for its push prices with the SAME read (REQ-167 AC-4, GC-SET 5a)."""
     return dataclasses.replace(ctx, rate=registry_value_of(values, RISK_FREE_RATE),
                                forward_quality=calc.forward_quality(values))
 

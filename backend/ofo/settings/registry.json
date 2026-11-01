@@ -468,6 +468,30 @@
       "default": "10",
       "what_it_changes": "How long Undo stays after Clear all.",
       "source": "REQ-167 AC-7; F-79; Q-SET-1 default waiting on the owner; was legEdit.js CLEAR_UNDO_MS"
+    },
+    {
+      "key": "facts.paper_settle_from",
+      "group": "Exchange and broker facts",
+      "label": "Paper settlement starts at (IST, HHMM)",
+      "unit": "time",
+      "type": "integer",
+      "min": "0",
+      "max": "2359",
+      "default": "1545",
+      "what_it_changes": "From what time on expiry day open paper legs are settled at the index close, and when the settlement job runs each trading day.",
+      "source": "NSE/BSE publish the index closing value after the 15:30 close; was paper_settlement.py SETTLE_FROM (GC-TP 5b)"
+    },
+    {
+      "key": "facts.paper_retry_until",
+      "group": "Exchange and broker facts",
+      "label": "Paper settlement retries until (IST, HHMM)",
+      "unit": "time",
+      "type": "integer",
+      "min": "0",
+      "max": "2359",
+      "default": "1800",
+      "what_it_changes": "Until what time the settlement job keeps retrying when the index close is not yet available.",
+      "source": "GC-TP 5b retry window for a late exchange close; was paper_settlement.py RETRY_UNTIL"
     }
   ]
 }

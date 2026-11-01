@@ -11,11 +11,12 @@ Standard library only.
 """
 from __future__ import annotations
 
+import datetime
 from collections.abc import Mapping
 from decimal import Decimal
 
 from ofo.marketdata.forward import ForwardQuality
-from ofo.settings import value_of
+from ofo.settings import time_of, value_of
 
 SD_HORIZON_DAYS = "scenarios.sd_horizon_days"
 TARGET_SPAN = "scenarios.target_span"
@@ -118,3 +119,18 @@ HISTORY_MAX_DAYS = "limits.history_max_days"
 def history_max_days(values: Mapping[str, Decimal]) -> int:
     """The most trading days of strategy price history one read returns (REQ-167 AC-5)."""
     return int(value_of(values, HISTORY_MAX_DAYS))
+
+
+# ---- exchange and broker facts (GC-SET step 5a): IST wall-clock times stored HHMM --------------------------------
+PAPER_SETTLE_FROM = "facts.paper_settle_from"
+PAPER_RETRY_UNTIL = "facts.paper_retry_until"
+
+
+def paper_settle_from(values: Mapping[str, Decimal]) -> datetime.time:
+    """From this IST time on expiry day the paper settlement reads the index close (REQ-167 AC-5)."""
+    return time_of(value_of(values, PAPER_SETTLE_FROM))
+
+
+def paper_retry_until(values: Mapping[str, Decimal]) -> datetime.time:
+    """While a group had no close, the settlement job retries until this IST time (REQ-167 AC-5)."""
+    return time_of(value_of(values, PAPER_RETRY_UNTIL))

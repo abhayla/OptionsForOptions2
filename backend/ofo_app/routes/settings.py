@@ -241,6 +241,8 @@ def _refusal(key: str, exc: SettingRefused, raw: object) -> tuple[ExplanationTex
     slots: dict[str, dict[str, object]] = {
         "setting_not_a_number": {"label": s.label, "example": plain(s.default)},
         "setting_not_whole": {"label": s.label},
+        "setting_not_a_time": {"label": s.label, "example": plain(s.default),
+                               "shown": registry_mod.time_of(s.default).strftime("%H:%M")},
         "setting_out_of_range": {"label": s.label, "low": plain(s.min), "high": plain(s.max), "unit": s.unit},
         "setting_note_too_long": {"max": settings_store.MAX_NOTE},
     }

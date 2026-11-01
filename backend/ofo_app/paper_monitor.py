@@ -49,7 +49,7 @@ from ofo.tracking.orderbook import net_positions
 from ofo_app import paper_store, tracked_contracts
 from ofo_app import paper_trigger_store as triggers
 from ofo_app.live_push import LiveFeed
-from ofo_app.routes.outcome import feed_scope
+from ofo_app.routes.outcome import SettingsReader, feed_scope, with_rate_in_force
 
 log = logging.getLogger(__name__)
 
@@ -90,9 +90,13 @@ def _contract_text(found: tracked_contracts.TrackedContract) -> ExplanationText:
 
 class PaperMonitor:
     def __init__(self, sessions: Sessions, feed: Callable[[], LiveFeed | None], *,  # noqa: PLR0913 - seams
+                 read_settings: SettingsReader,
                  leg_prices: LegPrices = provider_prices, holidays: market_calendar.Holidays | None = None,
                  reload_seconds: float = RELOAD_SECONDS, monotonic: Callable[[], float] | None = None) -> None:
         self._sessions = sessions
+        # REQ-167 AC-4 (GC-SET step 5a): the risk-free rate and forward settings are read at each fire, never the
+        # live feed's context captured when the socket started (which holds the registry default)
+        self._read_settings = read_settings
         self._feed_source = feed
         self._leg_prices = leg_prices
         self._holidays = holidays
@@ -204,6 +208,9 @@ class PaperMonitor:
         feed = self._feed
         if feed is None:
             return None
+        # the settings in force at THIS tick (one read; a store that cannot answer raises: the fire is not recorded
+        # and the next crossing tick retries, never priced on a held or default rate)
+        feed = LiveFeed(await with_rate_in_force(feed.ctx, self._read_settings), feed.fanout)
         async with self._sessions() as session, session.begin():
             book = await paper_store.load(session, t.strategy_id)
             open_net = {int(p.instrument_id): p.net_quantity
@@ -295,9 +302,10 @@ def start() -> asyncio.Task[None]:
     """The lifespan's entry: the real session maker and the live market's current feed, as one task."""
     from ofo_app import live_market  # noqa: PLC0415 - late: live_market imports the routes
     from ofo_app.db import get_sessionmaker  # noqa: PLC0415
+    from ofo_app.routes.outcome import get_settings_reader  # noqa: PLC0415
 
     global _current  # noqa: PLW0603
-    _current = PaperMonitor(get_sessionmaker(), live_market.current_feed)
+    _current = PaperMonitor(get_sessionmaker(), live_market.current_feed, read_settings=get_settings_reader())
     return asyncio.get_running_loop().create_task(_current.run_forever(), name="paper-monitor")
 
 
