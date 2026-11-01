@@ -23,8 +23,12 @@ Four layers, cheapest first; the first red layer stops the run (its log names ev
    mode, the reply inventory ``--check``, and the ``repo_scan``-marked tests plus the generated-file guard tests,
    with the database variables removed (database tests skip, as in prepush).
 
-Changed files = ``git diff --name-only <merge-base(base, HEAD)>...HEAD`` plus uncommitted and untracked files; for a
-merge commit HEAD that is everything either side changed since the base. Fail closed: an unreadable diff checks every
+Files checked = ``git diff --name-only <merge-base(base, HEAD)>...HEAD`` plus uncommitted and untracked files, plus
+every file that imports a changed backend module (after ``git merge origin/main`` the diff lists only this branch's
+files; main's new caller of a changed function comes in as an importer: review 2026-11-01 MAJOR 1).
+Known limits (review 2026-11-01): an import of a DELETED module is invisible to mypy here (``--ignore-missing-imports``;
+the collect layer catches it only where a test imports it), and a CHECKS script missing from the tree is skipped with
+a note (two of them do not exist on main yet). Fail closed: an unreadable diff checks every
 Python file; a missing tool (mypy) fails the layer with the reason, never a skip.
 
 Exit 0 = every layer passed; 1 = a layer failed (named on the last line); 2 = bad usage.
@@ -40,15 +44,23 @@ import subprocess
 import sys
 import tempfile
 import time
+from collections import Counter
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 PY_ROOTS = ("backend/", "tests/", "tests_app/")
-FRONTEND_INPUTS = ("frontend/src", "frontend/vite.config.js", "frontend/package-lock.json", "frontend/index.html")
+FRONTEND_INPUTS = ("frontend/src", "frontend/vite.config.js", "frontend/package.json", "frontend/package-lock.json",
+                   "frontend/index.html", "frontend/public")
 KNOWN_FILE = "scripts/orchestrator/merge_preflight_known.json"  # reviewed mypy false positives (file + message)
 DB_ENV = ("TEST_DATABASE_URL", "TEST_ADMIN_DATABASE_URL", "ALEMBIC_DATABASE_URL")
 #: mypy findings that mean a call no longer matches its definition (the merge-break class); everything else is noise
 INTERFACE_CODES = ("[call-arg]", "[name-defined]")
 MODULE_ATTR = re.compile(r'Module "[^"]+" has no attribute ')
+#: whole classes of mypy false positive, matched by message in any file (each with its reason); an entry per file would
+#: grow with every new test that uses the same library feature (measured 2026-11-01: 12 more copies in 4 more files)
+KNOWN_PATTERNS = (
+    (re.compile(r'Unexpected keyword argument "_env_file" for "Settings"'),
+     "pydantic-settings accepts Settings(_env_file=...) at run time; mypy runs without the pydantic plugin here"),
+)
 #: guard tests over generated files that are not marked repo_scan (run when present)
 GUARD_FILES = ("tests_app/test_openapi_drift.py", "tests_app/test_reply_inventory.py",
                "tests_app/test_order_closure_all_routes.py")
@@ -84,13 +96,53 @@ def every_python(repo: str) -> list[str]:
     return sorted(n for n in out.splitlines() if n.startswith(PY_ROOTS)) if rc == 0 else []
 
 
+def module_of(rel: str) -> str | None:
+    """Dotted module of a backend file (``backend/ofo/a/b.py`` -> ``ofo.a.b``; a package ``__init__`` -> the
+    package), None outside backend/."""
+    if not rel.startswith("backend/") or not rel.endswith(".py"):
+        return None
+    parts = rel[len("backend/"):-3].split("/")
+    if parts[-1] == "__init__":
+        parts = parts[:-1]
+    return ".".join(parts) or None
+
+
+def importers_of(repo: str, changed: list[str]) -> list[str]:
+    """Every Python file under PY_ROOTS that imports a changed backend module (``import m`` / ``from m import`` / ``from
+    parent import leaf``), so a caller on the OTHER side of a merge is checked too (review 2026-11-01 MAJOR 1: after
+    ``git merge origin/main`` the diff lists only this branch's files, and main's new caller of a changed function was
+    never given to mypy)."""
+    mods = sorted({m for m in (module_of(f) for f in changed) if m})
+    if not mods:
+        return []
+    alts = []
+    for m in mods:
+        alts.append(rf"^\s*(?:from\s+{re.escape(m)}\s+import\b|import\s+{re.escape(m)}\b)")
+        if "." in m:
+            parent, leaf = m.rsplit(".", 1)
+            alts.append(rf"^\s*from\s+{re.escape(parent)}\s+import\s+\(?[^)]*?\b{re.escape(leaf)}\b")
+    pattern = re.compile("|".join(alts), re.MULTILINE)
+    out = []
+    for rel in every_python(repo):
+        try:
+            with open(os.path.join(repo, rel), encoding="utf-8", errors="replace") as handle:
+                if pattern.search(handle.read()):
+                    out.append(rel)
+        except OSError:
+            continue
+    return out
+
+
 def interface_findings(mypy_output: str) -> list[str]:
-    """The mypy lines of the merge-break class (``INTERFACE_CODES`` or a missing module attribute)."""
+    """The mypy lines of the merge-break class (``INTERFACE_CODES`` or a missing module attribute), minus the
+    ``KNOWN_PATTERNS`` classes of false positive."""
     out = []
     for line in mypy_output.splitlines():
         if ": error:" not in line:
             continue
-        if any(code in line for code in INTERFACE_CODES) or ("[attr-defined]" in line and MODULE_ATTR.search(line)):
+        in_class = any(code in line for code in INTERFACE_CODES) or ("[attr-defined]" in line
+                                                                     and MODULE_ATTR.search(line) is not None)
+        if in_class and not any(pattern.search(line) for pattern, _reason in KNOWN_PATTERNS):
             out.append(line.strip())
     return out
 
@@ -113,13 +165,29 @@ def _run(cmd: list[str], repo: str, log: str, env: dict | None = None, extra_env
                               check=False).returncode
 
 
-def layer_interface(repo: str, base: str, log: str) -> tuple[int, str]:
+def scope_files(repo: str, base: str) -> tuple[list[str], str] | str:
+    """(files to check, scope label), or the fail-closed reason: the changed files plus every importer of a changed
+    module; every Python file when the diff cannot be read; a reason when git cannot be read at all."""
     files = changed_python(repo, base)
-    scope = "changed"
     if files is None:
-        files, scope = every_python(repo), "every (the diff could not be read)"
+        files = every_python(repo)
+        if not files:  # not a readable git checkout: never "nothing changed" (review MINOR 5)
+            return "cannot read the repository (git diff and git ls-files both failed): fail closed"
+        return files, "every (the diff could not be read)"
+    return sorted(set(files) | set(importers_of(repo, files))), "changed or importing a changed module"
+
+
+def layer_interface(repo: str, base: str, log: str) -> tuple[int, str]:
+    scoped = scope_files(repo, base)
+    if isinstance(scoped, str):
+        return 1, scoped
+    files, scope = scoped
     if not files:
         return 0, "no changed Python files"
+    try:
+        known = load_known(repo)
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        return 1, f"{KNOWN_FILE} is unreadable ({type(exc).__name__}: {exc}): fail closed"
     try:
         import mypy  # noqa: F401, PLC0415 - presence check only
     except ImportError:
@@ -145,9 +213,9 @@ def layer_interface(repo: str, base: str, log: str) -> tuple[int, str]:
                 handle.write(r.stdout + r.stderr)
             return 1, f"mypy could not run on {root} (rc {r.returncode}); see the log"
         found += [f"{root}{line}" if in_backend else line for line in interface_findings(r.stdout)]
-    known = load_known(repo)
-    new = [f for f in found if finding_key(f) not in known]
-    gone = sorted(known - {finding_key(f) for f in found} - {k for k in known if k[0] not in files})
+    new = new_findings(found, known)
+    seen = Counter(finding_key(f) for f in found)
+    gone = sorted(k for k in known if k[0] in files and seen[k] < known[k])
     with open(log, "a", encoding="utf-8") as handle:
         handle.write(f"{scope} files: {len(files)}; findings {len(found)}, known {len(found) - len(new)}, "
                      f"NEW {len(new)}\n" + "\n".join(new) + "\n")
@@ -165,17 +233,38 @@ def finding_key(line: str) -> tuple[str, str]:
     return path.replace("\\", "/"), re.sub(r"^\s*\d+:\s*error:\s*", "", rest).strip()
 
 
-def load_known(repo: str) -> set[tuple[str, str]]:
-    """The reviewed false positives (``KNOWN_FILE``); none when the file is absent. A malformed file raises (an
-    unreadable list must never turn into "nothing is known" silently passing, nor into "everything is known")."""
+def load_known(repo: str) -> Counter:
+    """The reviewed false positives (``KNOWN_FILE``) as {(file, message): how many copies are known}; empty when the
+    file is absent. A malformed file raises (an unreadable list must never turn into "nothing is known" silently
+    passing, nor into "everything is known"); the caller names it."""
     path = os.path.join(repo, KNOWN_FILE)
     if not os.path.isfile(path):  # a checkout older than the list: the list that ships with this script
         path = os.path.join(ROOT, KNOWN_FILE)
     if not os.path.isfile(path):
-        return set()
+        return Counter()
     with open(path, encoding="utf-8") as handle:
         doc = json.load(handle)
-    return {(e["file"], e["message"]) for e in doc["known"]}
+    out: Counter = Counter()
+    for e in doc["known"]:
+        count = e.get("count", 1)
+        if not isinstance(count, int) or isinstance(count, bool) or count < 1:
+            raise ValueError(f"entry {e.get('file')!r} has a count that is not a positive whole number")
+        out[(e["file"], e["message"])] += count
+    return out
+
+
+def new_findings(found: list[str], known: Counter) -> list[str]:
+    """The findings beyond what the known list allows: a key's copies past its known count are new (review MAJOR 2: one
+    reviewed entry must not hide a second, real copy of the same message in that file)."""
+    allowed = Counter(known)
+    out = []
+    for line in found:
+        key = finding_key(line)
+        if allowed[key] > 0:
+            allowed[key] -= 1
+        else:
+            out.append(line)
+    return out
 
 
 def layer_collect(repo: str, log: str) -> tuple[int, str]:
@@ -201,6 +290,17 @@ def newest_input(repo: str) -> tuple[float, str] | None:
     return newest
 
 
+def manifest_expected(repo: str) -> bool:
+    """True when this tree's Vite config turns the build manifest on (``manifest: true``). A tree whose config does
+    not write one is judged by dist/index.html instead (review MAJOR 3: demanding a manifest there was a false red on
+    every main-based push that touches frontend/)."""
+    try:
+        with open(os.path.join(repo, "frontend", "vite.config.js"), encoding="utf-8") as handle:
+            return re.search(r"\bmanifest\s*:\s*true\b", handle.read()) is not None
+    except OSError:
+        return False
+
+
 def layer_build(repo: str, log: str) -> tuple[int, str]:
     """The bundle the secret scan reads is a build of THIS tree (2026-11-01: a build made before the merge, with the old
     config and no manifest, failed the scan on code that was right). No build at all: the scan skips locally, so
@@ -210,11 +310,13 @@ def layer_build(repo: str, log: str) -> tuple[int, str]:
         return 0, "no frontend/dist: the bundle scan skips locally (CI builds first)"
     manifest = os.path.join(dist, ".vite", "manifest.json")
     fix = "run `npm run build` in frontend/ (the bundle scan reads frontend/dist)"
-    if not os.path.isfile(manifest):
-        note = f"frontend/dist has no .vite/manifest.json (a build from another config): {fix}"
+    stamp = manifest if manifest_expected(repo) else os.path.join(dist, "index.html")
+    if not os.path.isfile(stamp):
+        what = ".vite/manifest.json (this tree's Vite config writes one)" if stamp == manifest else "index.html"
+        note = f"frontend/dist has no {what}: a build from another config or an interrupted one: {fix}"
     else:
         newest = newest_input(repo)
-        if newest is None or newest[0] <= os.path.getmtime(manifest):
+        if newest is None or newest[0] <= os.path.getmtime(stamp):
             return 0, "frontend build is newer than every input"
         note = f"frontend/dist is older than {newest[1]}: {fix}"
     with open(log, "a", encoding="utf-8") as handle:
@@ -230,7 +332,7 @@ def layer_scans(repo: str, log: str, domain_scans: bool = True) -> tuple[int, st
             continue
         if _run([sys.executable, script, *args], repo, log) != 0:
             failed.append(script)
-    # prepush runs all of tests/ as its next step, so it passes --no-domain-scans (measured: this part alone 385 s)
+    # prepush --full runs all of tests/ as its next step, so it passes --no-domain-scans (this part alone: 385 s)
     if domain_scans and _run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "-m", "repo_scan",
                               "tests"], repo, log) not in (0, 5):
         failed.append("tests -m repo_scan")

@@ -491,3 +491,14 @@ def test_linked_worktree_marker_lives_in_the_common_git_dir(tmp_path):
     assert prepush.run_all(str(wt), runner=Runner(), log_dir=str(tmp_path / "l")) == 0
     assert prepush.has_marker(str(repo), sha)
     assert prepush.has_marker(str(wt), sha)
+
+
+@pytest.mark.parametrize(("full", "skips"), [(True, True), (False, False)])
+def test_the_preflight_skips_its_tests_repo_scan_only_when_all_of_tests_runs_next(tmp_path, full, skips):
+    """Review 2026-11-01 MINOR 7: a selection run (no --full) does not run every repo_scan test, so it keeps the
+    preflight's own repo_scan of tests/."""
+    repo = make_repo(tmp_path)
+    runner = Runner()
+    prepush.run_all(str(repo), full=full, runner=runner, log_dir=str(tmp_path / "l"))
+    preflight = next(c[0] for c in runner.calls if "merge_preflight.py" in " ".join(c[0]))
+    assert ("--no-domain-scans" in preflight) is skips

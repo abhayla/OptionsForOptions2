@@ -1,65 +1,83 @@
 {
-  "_about": "merge_preflight.py known interface findings: mypy false positives (each test passes) measured on the 2026-11-01 integration tree. A finding NOT listed here fails the interface layer. Keyed by file + message (no line number). Remove an entry when its finding is gone.",
+  "_about": "merge_preflight.py known interface findings: mypy false positives (each test passes) measured on the 2026-11-01 integration tree (changed files and their importers). A finding NOT listed here fails the interface layer. Keyed by file + message (no line number) with the number of copies known; a copy beyond that count fails. Remove an entry when its finding is gone.",
   "known": [
     {
       "file": "tests/instruments/test_catalogue.py",
       "message": "Unexpected keyword argument \"contract\" for \"replace\" of \"Contract\"  [call-arg]",
-      "reason": "the test asserts replace() with an unknown field raises"
+      "reason": "the test asserts replace() with an unknown field raises",
+      "count": 1
     },
     {
       "file": "tests/test_chain_model.py",
       "message": "Too many arguments for \"NormalizedQuote\"  [call-arg]",
-      "reason": "NormalizedQuote built positionally with its trailing fields in a test; passes at run time"
+      "reason": "NormalizedQuote built positionally with its trailing fields in a test; passes at run time",
+      "count": 1
     },
     {
       "file": "tests/engine/test_iv_source_stale.py",
       "message": "Too many arguments for \"NormalizedQuote\"  [call-arg]",
-      "reason": "NormalizedQuote built positionally with its trailing fields in a test; passes at run time"
+      "reason": "NormalizedQuote built positionally with its trailing fields in a test; passes at run time",
+      "count": 2
     },
     {
       "file": "tests/marketdata/test_shared_compute_keys.py",
       "message": "Unexpected keyword argument \"b\" for \"call\" of \"FeedScope\"  [call-arg]",
-      "reason": "FeedScope.call takes *args by design; the test passes a keyword on purpose"
+      "reason": "FeedScope.call takes *args by design; the test passes a keyword on purpose",
+      "count": 1
     },
     {
       "file": "tests/engine/test_chain_values.py",
       "message": "Too many arguments for \"NormalizedQuote\"  [call-arg]",
-      "reason": "NormalizedQuote built positionally with its trailing fields in a test; passes at run time"
+      "reason": "NormalizedQuote built positionally with its trailing fields in a test; passes at run time",
+      "count": 1
     },
     {
       "file": "tests_app/test_contract_identity_lifecycle.py",
       "message": "Missing named argument \"max_delist_percent\" for \"apply_update\"  [call-arg]",
-      "reason": "the test asserts the missing argument raises TypeError (ADR-222 (1))"
+      "reason": "the test asserts the missing argument raises TypeError (ADR-222 (1))",
+      "count": 1
     },
     {
       "file": "tests_app/test_chain_push_closed.py",
       "message": "Too many arguments for \"NormalizedQuote\"  [call-arg]",
-      "reason": "NormalizedQuote built positionally with its trailing fields in a test; passes at run time"
-    },
-    {
-      "file": "tests_app/test_strategy_live_push.py",
-      "message": "Unexpected keyword argument \"_env_file\" for \"Settings\"  [call-arg]",
-      "reason": "pydantic-settings Settings(_env_file=...) is accepted at run time; mypy runs without the pydantic plugin"
-    },
-    {
-      "file": "tests_app/test_scenario_mode.py",
-      "message": "Unexpected keyword argument \"_env_file\" for \"Settings\"  [call-arg]",
-      "reason": "pydantic-settings Settings(_env_file=...) is accepted at run time; mypy runs without the pydantic plugin"
+      "reason": "NormalizedQuote built positionally with its trailing fields in a test; passes at run time",
+      "count": 1
     },
     {
       "file": "tests_app/test_response_door.py",
       "message": "Unexpected keyword argument \"note\" for \"Hostile\"  [call-arg]",
-      "reason": "test double built with an extra keyword on purpose (response-door hostile reply)"
+      "reason": "test double built with an extra keyword on purpose (response-door hostile reply)",
+      "count": 1
     },
     {
       "file": "tests_app/test_response_door.py",
       "message": "Unexpected keyword argument \"note\" for \"Loose\"  [call-arg]",
-      "reason": "test double built with an extra keyword on purpose (response-door loose reply)"
+      "reason": "test double built with an extra keyword on purpose (response-door loose reply)",
+      "count": 1
     },
     {
       "file": "tests_app/test_leg_picker_routes.py",
       "message": "Too many arguments for \"NormalizedQuote\"  [call-arg]",
-      "reason": "NormalizedQuote built positionally with its trailing fields in a test; passes at run time"
+      "reason": "NormalizedQuote built positionally with its trailing fields in a test; passes at run time",
+      "count": 1
+    },
+    {
+      "file": "backend/ofo/execution/basket.py",
+      "message": "Unexpected keyword argument \"made_by\" for \"__init_subclass__\" of \"object\"  [call-arg]",
+      "reason": "class keyword made_by= is taken by SealedTuple.__init_subclass__; mypy does not follow it",
+      "count": 1
+    },
+    {
+      "file": "tests_app/test_egress_gate_doors.py",
+      "message": "Unexpected keyword argument \"auth\" for \"get\" of \"KiteClient\"  [call-arg]",
+      "reason": "the test asserts the door API refuses auth= (pytest.raises(TypeError), W-080 r9)",
+      "count": 1
+    },
+    {
+      "file": "tests_app/test_egress_gate_doors.py",
+      "message": "Unexpected keyword argument \"extensions\" for \"get\" of \"KiteClient\"  [call-arg]",
+      "reason": "the test asserts the door API refuses extensions= (pytest.raises(TypeError))",
+      "count": 1
     }
   ]
 }

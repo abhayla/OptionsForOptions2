@@ -1,6 +1,9 @@
 """prepush.py [--full] [--repo PATH]: the whole pre-push list on one commit, and the marker that lets it be pushed.
 
-Runs, in order, every step even when an earlier one fails (so one run shows everything that is red):
+Runs, in order, every step even when an earlier one fails (so one run shows everything that is red), with ONE
+exception: a red preflight stops the run (merge_preflight.py, 2026-11-01: a broken merge is caught in minutes, and the
+long steps would only repeat it). Order: frontend_build first when frontend/ runs (the domain tests' bundle secret scan
+reads frontend/dist), preflight (--no-domain-scans with --full, since all of tests/ runs next),
   ci_checks (ci_local on a copy of ci.yml without its pytest steps, --no-tests), domain_tests (the tests/ files the
   kit's own selection picks; --full or an unreadable diff = all of tests/), app_tests (the tests_app files
   select_app_tests picks; DB tests are CI's; cannot select = FAIL), ruff_ratchet, coverage --check, alembic guard
@@ -8,10 +11,10 @@ Runs, in order, every step even when an earlier one fails (so one run shows ever
 local-ci-mirror-runs-a-subset). Why the split: kit defect Startup-Factory #186, any changed non-.py file makes
 ci_local run the full suite incl. tests_app (egress allow-list leak, DB tests that must not run on this host).
 When the change since the merge base with origin/main touches frontend/ (or that diff cannot be read: fail closed),
-three more steps run in frontend/, as app-tests.yml does in CI: frontend_lint (npm run lint), frontend_unit (npx vitest
-related --run <changed src/tests files>; every test file with --full or when a deletion / non-src file changed) and
-frontend_build (npm run build). A missing frontend/node_modules or tool is a FAIL with the reason, never a skip
-(orchestrator finding 1, 2026-10-27: a marker was written over 37 red vitest tests).
+the frontend steps run in frontend/, as app-tests.yml does in CI: frontend_build (npm run build, FIRST, see above),
+then after the rest frontend_lint (npm run lint) and frontend_unit (npx vitest related --run <changed src/tests files>;
+every test file with --full or when a deletion / non-src file changed). A missing frontend/node_modules or tool is a
+FAIL with the reason, never a skip (orchestrator finding 1, 2026-10-27: a marker was written over 37 red vitest tests).
 Each step's output goes to a log file outside the repo; one line per step. A step that times out
 (STEP_TIMEOUT_S) or cannot start is a FAIL. The child environment never carries TEST_DATABASE_URL,
 TEST_ADMIN_DATABASE_URL or ALEMBIC_DATABASE_URL (this host's PostgreSQL serves production; DB tests are CI's).
@@ -200,10 +203,11 @@ class Plan:
         # the build goes FIRST: the domain tests' bundle secret scan reads frontend/dist, and a build left from before a
         # merge (another config, no manifest) failed that scan on right code (2026-11-01, one ~35 min gate run lost)
         steps = [("frontend_build", lambda log: self.front("npm", ["run", "build"], log))] if front else []
-        # then the minutes-long checks of a broken merge; a red one stops the run (run_all). tests/ runs in full next,
-        # so its repo_scan subset is skipped there (--no-domain-scans)
+        # then the minutes-long checks of a broken merge; a red one stops the run (run_all). With --full all of tests/
+        # runs next, so the preflight skips its tests/ repo_scan subset; a selection run keeps it (review MINOR 7)
+        skip = ["--no-domain-scans"] if self.full else []
         steps += [("preflight", lambda log: self.run(py, "scripts/orchestrator/merge_preflight.py", ".", "--log-dir",
-                                                     self.log_dir, "--no-domain-scans", log=log)),
+                                                     self.log_dir, *skip, log=log)),
                   ("ci_checks", self.ci_checks), ("domain_tests", self.domain_tests), ("app_tests", self.app_tests),
                   ("ruff_ratchet", lambda log: self.run(py, "scripts/ruff_ratchet.py", log=log)),
                   ("coverage", lambda log: self.run(py, "scripts/orchestrator/coverage.py", ".", "--check", log=log)),
