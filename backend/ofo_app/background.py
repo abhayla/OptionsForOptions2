@@ -16,13 +16,19 @@ One cycle (``Worker.cycle``), each step with its answer state:
      reads) changed since its last check, and at most once per background speed (REQ-165 AC-2).
    A paused strategy's state is ``MonitoringStatus.PAUSED`` (shown as "Monitoring paused"); the first check after it
    reads only the fresh snapshot (no crossing during the gap is claimed: nothing from the gap is kept).
-3. A fresh check builds ``StrategyState`` as LIGHT sums of its own legs (``light_state``): spot, each short's LTP and
-   delta, P&L, premium left, the adjustment cost and the expiry P&L at spot. The delta is the SHARED per-option
-   figure (``FeedScope.call`` over the outcome service's own ``_solved_iv`` / ``_unit_greeks``, REQ-050 AC-3), once
-   per option per price update for every holder. The full scenario table (``routes.adjustment.price_after``) is never
-   called, so max profit / max loss and margin are None and their triggers answer NotChecked with their reason.
+3. A fresh check builds ``StrategyState`` through the SCREEN's own builder, ``adjustment_check.state_of``
+   (``background_state``; never a copy of it), so a rule on max profit, max loss, ATM IV or the previous close answers
+   the same here as on the screen. Its ``MarketInputs`` (``market_inputs``) is the screen reader's shape built from the
+   price read: each option's IV and Greeks are the SHARED per-option figures (``FeedScope.call`` over the outcome
+   service's public ``solved_iv`` and the chain values' rounded engine Greeks, REQ-050 AC-3), once per option per
+   price update for every holder, never a whole-chain model. They are valued at the snapshot instant (the price's own
+   time); the screen values at its clock, so the two are equal when the clock reads the price's time and otherwise
+   differ only by the time decay of that gap. ``state_of`` -> ``price_after`` prices the strategy's own legs (payoff
+   kinks, breakevens, POP); the full scenario table (``ofo.scenario.views.scenario_values``) is never called
+   (REQ-166 AC-2). Margin is None: the background has no margin read (as a screen whose margin read failed,
+   ``missing_margin``).
 4. ``adjustment_check.evaluate_and_remember`` (rule memory, F-71) then the screen's own record sync
-   (``routes.adjustment_check._sync_records``: one open record per flagged rule, REQ-112), so the single-outcome rule
+   (``routes.adjustment_check.sync_records``: one open record per flagged rule, REQ-112), so the single-outcome rule
    holds the same here as on the screen. One strategy's error is logged with its id and does not stop the others
    (REQ-115 AC-9).
 
@@ -49,21 +55,24 @@ from decimal import Decimal
 from typing import Any, Final
 
 from ofo.adjustment import playbook_eval as pe
-from ofo.engine import adjust_money
-from ofo.engine.legs import Action, Instrument
-from ofo.engine.model import expiry_model, iv_price
+from ofo.adjustment.approaches import ChainRow
+from ofo.engine.black_scholes import Greeks, year_fraction
+from ofo.engine.legs import Instrument
+from ofo.engine.model import expiry_model, greeks, iv_price
 from ofo.marketdata.availability import MonitoringStatus, strategy_monitoring_status
 from ofo.marketdata.feed_health import market_closed_for
 from ofo.marketdata.forward import parity_forward
+from ofo.marketdata.quote import is_live_price
 from ofo.marketdata.shared_compute import FeedScope, SharedCompute
-from ofo.outcome.service import _solved_iv, _unit_greeks
+from ofo.marketdata.spot_source import SourceReading, SourceState, resolve_spot
+from ofo.outcome.service import solved_iv, unit_greeks
 from ofo.rules.inputs import DataHealth
 from ofo.scenario.spot import spot_reading
 from ofo.timeutil import IST
 
 from ofo_app import adjustment_check as check
 from ofo_app import calc_speeds, roles
-from ofo_app.adjustment_check import _engine_legs, _tighten
+from ofo_app.routes.adjustment import MarketInputs
 
 log = logging.getLogger("ofo_app.background")
 
@@ -146,71 +155,110 @@ def _snapshot_instant(read: PriceRead, expiry: datetime.date) -> datetime.dateti
     return max([read.spot.timestamp, *(q.timestamp for q in read.chains[expiry])])
 
 
-def short_delta(shared: FeedScope, read: PriceRead, leg: Any, quote: Any, rate: Decimal) -> Decimal | None:
-    """|delta| of one option through the SHARED per-option figures (REQ-050 AC-3): the expiry's parity forward, the
-    option's IV and its Greeks, each computed once per (feed owner, expiry, snapshot instant, exact inputs)."""
-    instant = _snapshot_instant(read, leg.expiry)
-    chain = tuple(sorted(read.chains[leg.expiry], key=lambda q: q.instrument_id))
-    underlying = read.spot.underlying
+def _option_greeks(em: Any, kind: Instrument, strike: Decimal, iv: Decimal) -> Greeks | None:
+    """One option's per-unit Greeks exactly as the screen's chain values make them (``chain_values.chain_model``: the
+    engine's rounded ``greeks``; a zero gamma replaced by the exact one); None when the engine refuses the inputs."""
     try:
-        fwd = shared.call((underlying, leg.expiry, instant, None), parity_forward, chain, read.spot, leg.expiry,
+        g = greeks(em, kind, strike, iv).greeks
+        exact = unit_greeks(em, kind, strike, iv).gamma if g.gamma == 0 else None
+    except (ValueError, ArithmeticError):
+        return None
+    return Greeks(g.delta, g.gamma if exact is None or exact <= 0 else exact, g.theta, g.vega)
+
+
+def _figures(shared: FeedScope, at: tuple, quote: Any, em: Any) -> tuple[Decimal | None, Greeks | None]:
+    """(IV, Greeks) of one option through the SHARED per-option figures (REQ-050 AC-3, REQ-166 AC-2): each computed
+    once per (feed owner, underlying, expiry, snapshot instant, instrument id, exact inputs) for every holder. The
+    quote refusals are the chain values' own (no live price, no IV price -> no figure). ``at`` = (underlying, expiry,
+    snapshot instant)."""
+    if quote.instrument_type not in (Instrument.CE, Instrument.PE) or quote.strike is None \
+            or not is_live_price(quote.ltp):
+        return None, None
+    price = iv_price(quote)
+    if price is None:
+        return None, None
+    where = (*at, quote.instrument_id)
+    iv = shared.call(where, solved_iv, em, quote.instrument_type, price, quote.strike)
+    if iv is None:
+        return None, None
+    return iv, shared.call(where, _option_greeks, em, quote.instrument_type, quote.strike, iv)
+
+
+def market_inputs(watched: Watched, read: PriceRead, shared: FeedScope, now: datetime.datetime,
+                  rate: Decimal) -> MarketInputs:
+    """The screen's ``MarketInputs`` (``adjustment_readers.read_market``) from a fresh price read, every per-option
+    figure from the shared cache instead of a whole-chain model: the first leg's expiry, the legs' rows, the same ATM
+    IV rule (the IV of the call nearest the forward that the model prices), the same last close. Valued at the
+    snapshot instant (the price's own time), so a figure is shared per price update; the screen values at its clock,
+    so the two agree exactly when the clock reads the price's time (named in the module docstring).
+    Not available -> None, as on the screen: no forward (spot or chain refused) -> no Greeks, no ATM IV, no forward."""
+    from ofo_app import scenario_mode  # noqa: PLC0415 - read at check time (the screen's own scenario switch)
+    from ofo_app.adjustment_readers import read_last_close  # noqa: PLC0415 - the screen's last-close reader
+    position = watched.tracked.position
+    expiry = position.legs[0].expiry
+    chain = tuple(sorted(read.chains[expiry], key=lambda q: q.instrument_id))
+    instant = _snapshot_instant(read, expiry)
+    em = fwd = None
+    try:
+        fwd = shared.call((read.spot.underlying, expiry, instant, None), parity_forward, chain, read.spot, expiry,
                           instant, rate)
         em = expiry_model(spot_reading(read.spot), fwd)
-    except (ValueError, ArithmeticError):  # ForwardUnavailable / SpotRefused are ValueErrors: delta not available
-        return None
-    price, kind = iv_price(quote), Instrument(leg.type)
-    if price is None:
-        return None
-    where = (underlying, leg.expiry, instant, quote.instrument_id)
-    iv = shared.call(where, _solved_iv, em, kind, price, leg.strike)
-    if iv is None:
-        return None
-    greeks = shared.call(where, _unit_greeks, em, kind, leg.strike, iv)
-    return None if greeks.delta is None else abs(greeks.delta)
+    except (ValueError, ArithmeticError):  # ForwardUnavailable / SpotRefused are ValueErrors: no model figures
+        em = fwd = None
+    at = (read.spot.underlying, expiry, instant)
+    rows: list[ChainRow] = []
+    ids: dict[str, str] = {}
+    leg_greeks: dict[str, Greeks] = {}
+    for i, x in enumerate(position.legs):
+        if x.expiry != expiry:
+            continue  # the screen reads the first leg's expiry only (read_market)
+        q = read.legs[i]
+        g = None if em is None else _figures(shared, at, q, em)[1]
+        rows.append(ChainRow(x.strike, x.type, expiry, x.tradingsymbol, q.ltp, q.bid, q.ask,
+                             None if g is None else g.delta, True, True, "unknown", None))
+        ids[x.tradingsymbol] = q.instrument_id
+        if g is not None:
+            leg_greeks[x.tradingsymbol] = g
+    vol = None
+    if em is not None and fwd is not None:
+        calls = sorted((q for q in chain if q.instrument_type is Instrument.CE and q.strike is not None),
+                       key=lambda q: (abs(q.strike - fwd.forward), -q.strike))
+        for q in calls:  # read_market's _atm_vol: the call nearest the forward among those the model prices
+            iv, g = _figures(shared, at, q, em)
+            if iv is not None and g is not None:
+                vol = iv
+                break
+    try:
+        years = year_fraction(instant, expiry)
+    except ValueError:
+        years = None
+    feed = SourceReading(SourceState.STATED, read.spot.ltp, read.spot.timestamp)
+    last = read_last_close(read.spot, False, scenario_mode.current(), now)  # a check runs only with the market open
+    return MarketInputs(tuple(rows), ids, None if fwd is None else fwd.forward, years, vol, feed, last, now,
+                        watched.expiry_kind, leg_greeks)
 
 
-def light_state(watched: Watched, read: PriceRead, shared: FeedScope, now: datetime.datetime,
-                rate: Decimal) -> pe.StrategyState:
-    """The check's state as light sums of the strategy's own legs (never the full table; REQ-166 AC-2)."""
-    tracked = watched.tracked
-    position = tracked.position
-    qty = [x.lots * position.lot for x in position.legs]
-    ltp = [read.legs[i].ltp for i in range(len(position.legs))]
-    shorts = tuple(pe.ShortLeg(x.strike, short_delta(shared, read, x, read.legs[i], rate), ltp[i])
-                   for i, x in enumerate(position.legs) if x.side == Action.SELL.value)
-    booked = tracked.booked
-    pnl = None if booked is None else adjust_money.pnl_now(
-        booked, ((x.side, x.entry, ltp[i], qty[i]) for i, x in enumerate(position.legs)))
-    left = adjust_money.premium_left((x.side, ltp[i], qty[i]) for i, x in enumerate(position.legs))
-    spreads = [(read.legs[i].bid, read.legs[i].ask) for i in range(len(position.legs))]
-    cost = None if any(b is None or a is None for b, a in spreads) else adjust_money.adjustment_cost(
-        ((b, a, qty[i]) for i, (b, a) in enumerate(spreads)), check.COST_PER_LEG)
-    spot = read.spot.ltp
-    expiry_pnl = None
-    if booked is not None:
-        from ofo.engine.strategy import Strategy  # noqa: PLC0415 - engine type only here (as adjustment_check)
-        expiry_pnl = adjust_money.with_booked(booked, Strategy(_engine_legs(position)).expiry_pnl_at(spot))
-    at = now.astimezone(IST)
-    expiry = min(x.expiry for x in position.legs)
-    hhmm = at.strftime("%H:%M")
-    return pe.StrategyState(
-        expiry_kind=watched.expiry_kind or position.expiry_kind or "weekly",  # type: ignore[arg-type]
-        days_left=(expiry - at.date()).days, hhmm=hhmm, spot=spot, shorts=shorts, pnl=pnl,
-        max_loss=None, max_profit=None, margin=None, premium_left=left, adjustment_cost=cost,
-        adjustments_used=tracked.adjustments_used, expiry_pnl_at_spot=expiry_pnl,
-        tighten_percent=_tighten(watched.body, at.date(), expiry, hhmm), prices_fresh=True)
+def background_state(watched: Watched, read: PriceRead, shared: FeedScope, now: datetime.datetime,
+                     rate: Decimal) -> pe.StrategyState:
+    """The check's state through the SCREEN's own builder (``adjustment_check.state_of``), never a copy of it. Margin:
+    the background has no margin read, so None (as a screen whose margin read failed: ``missing_margin``). Charge
+    rates: None (``state_of`` reads only the gross figures, which carry no charges). The REST spot is not read (a
+    check runs only on a fresh feed)."""
+    market = market_inputs(watched, read, shared, now, rate)
+    spot = resolve_spot(market.feed, None, market.last_close, now=now)
+    return check.state_of(watched.tracked, market, spot, None, None, fresh=True, body=watched.body)
 
 
 async def record_check(watched: Watched, state: pe.StrategyState, scn: Any = None) -> pe.Evaluation:
     """The check and its records in one transaction, through the screen's own functions (REQ-165 AC-5)."""
     from ofo_app import playbook_store  # noqa: PLC0415 - the database layer only when a check runs
     from ofo_app.db import get_sessionmaker  # noqa: PLC0415
-    from ofo_app.routes.adjustment_check import _sync_records  # noqa: PLC0415
+    from ofo_app.routes.adjustment_check import sync_records  # noqa: PLC0415
     async with get_sessionmaker()() as db:
         ev = await check.evaluate_and_remember(db, watched.user_ref, watched.strategy_id, watched.body, state, scn,
                                                watched.tracked.position)
         source = playbook_store.SOURCE_SYSTEM if watched.is_system else playbook_store.SOURCE_OWN
-        await _sync_records(db, watched.user_ref, watched.strategy_id, ev, source, watched.body)
+        await sync_records(db, watched.user_ref, watched.strategy_id, ev, source, watched.body)
         await db.commit()
     return ev
 
@@ -268,7 +316,7 @@ class Worker:
         last = self._last_check.get(w.strategy_id)
         if sig == self._signature.get(w.strategy_id) or (last is not None and _seconds(now - last) < every):
             return False
-        state = light_state(w, read, FeedScope(self.cache, w.feed_owner), now, self._rate)
+        state = background_state(w, read, FeedScope(self.cache, w.feed_owner), now, self._rate)
         await self._recorder(w, state)
         self._signature[w.strategy_id] = sig
         self._last_check[w.strategy_id] = now

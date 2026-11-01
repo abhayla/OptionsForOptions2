@@ -528,6 +528,12 @@ def _unit_greeks(em, kind, strike, iv):
     return greeks_unrounded(em, kind, strike, iv)
 
 
+#: GC-MU step 4: the public names of the two shared per-option figures (the background role calls them). The same
+#: function objects, so a shared-cache key (built from the function's own name) is the same for every caller.
+solved_iv = _solved_iv
+unit_greeks = _unit_greeks
+
+
 def _leg_iv(em, contract, shared, where):
     """``_solved_iv`` of ``contract`` = (kind, price, strike); with ``shared`` computed once per (feed owner,
     underlying, expiry, snapshot instant, contract id, every argument of the engine call). ``where`` is (underlying,

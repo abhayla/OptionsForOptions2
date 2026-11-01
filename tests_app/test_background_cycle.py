@@ -8,14 +8,24 @@ from __future__ import annotations
 import dataclasses
 import datetime
 import itertools
+import json
+import pathlib
+import time
 from decimal import Decimal
 
 import pytest
+from ofo.adjustment import playbook_eval as pe
 from ofo.adjustment.approaches import Position, PositionLeg
+from ofo.marketdata.shared_compute import FeedScope
+from ofo.marketdata.spot_source import resolve_spot
+from ofo.outcome import service as outcome_service
 from ofo.rules.inputs import DataHealth
-from ofo_app import adjustment_check, background, calc_speeds, scenario_mode
-from ofo_app.routes import adjustment as adjustment_route
+from ofo.scenario import levels as scenario_levels
+from ofo.scenario import views as scenario_views
+from ofo.table import model as table_model
+from ofo_app import adjustment_check, adjustment_readers, background, calc_speeds, scenario_mode
 from ofo_app.routes.adjustment import Tracked
+from ofo_app.routes.outcome import MarketContext
 
 RATE = Decimal("0.065")
 FIRST_ID = 100  # the first watched strategy id
@@ -24,6 +34,13 @@ CHECKS_AFTER_CHANGE = 3
 STOP_AFTER = 5
 CYCLES = 10
 SLOW_CYCLES = 2
+TIMED_CALLS = 100
+IV_STEP = Decimal("0.05")  # 5 IV points as a fraction
+#: REQ-166 AC-2: what "the full table" is (ADR-220: the scenario table of the one engine); each one is refused
+FULL_TABLE = ((scenario_views, "scenario_values"), (outcome_service, "scenario_values"),
+              (scenario_levels, "build_level_set"), (outcome_service, "build_level_set"),
+              (table_model, "build_table"), (outcome_service, "build_table"), (outcome_service, "build_outcome"),
+              (outcome_service, "payoff_table"))
 
 
 class Prov:
@@ -101,13 +118,14 @@ def _worker(prov, watched, now, recorder, **kw) -> background.Worker:
 
 
 # ---- answer states of the price read ---------------------------------------------------------------------------
-async def test_fresh_price_runs_one_check_on_light_sums(scn):
+async def test_fresh_price_runs_one_check_through_the_screens_builder(scn):
     prov, now, calls = Prov(scn), [scn.clock_at], Calls()
     w = _worker(prov, _watched(scn), now, calls)
     await w.cycle()
     assert [s for s, _ in calls.states] == [100] and w.status[100] is background.MonitoringStatus.ACTIVE
     state = calls.states[0][1]
-    assert state.spot == Decimal("23420") and state.max_loss is None and state.margin is None
+    assert state.spot == Decimal("23420") and state.margin is None  # no margin read in the background
+    assert isinstance(state.max_loss, Decimal) and isinstance(state.max_profit, Decimal)  # the screen's own figures
     assert {s.strike: s.ltp for s in state.shorts}[Decimal("23500")] is not None
     assert all(isinstance(s.abs_delta, Decimal) for s in state.shorts)  # the shared per-option delta, exact Decimal
     ce = {s.strike: s.abs_delta for s in state.shorts}[Decimal("23500")]
@@ -263,16 +281,22 @@ async def test_one_strategy_failing_does_not_stop_the_others(scn):
 async def test_1000_strategies_make_no_full_table_call_and_share_each_option_figure(scn, monkeypatch):
     def refused(*_a, **_k):
         raise AssertionError("the full table was called from a background check")
-    monkeypatch.setattr(adjustment_route, "price_after", refused)
-    monkeypatch.setattr(adjustment_check, "price_after", refused)
-    monkeypatch.setattr(adjustment_check, "state_of", refused)
+    for module, name in FULL_TABLE:  # the scenario table, its levels, the chain table and the whole outcome
+        monkeypatch.setattr(module, name, refused)
+    priced = []
+    real_price_after = adjustment_check.price_after
+
+    def counted(*a, **k):
+        priced.append(1)
+        return real_price_after(*a, **k)
+    monkeypatch.setattr(adjustment_check, "price_after", counted)  # the strategy's own legs: allowed, counted
     prov, now = Prov(scn), [scn.clock_at]
     one = _worker(prov, _watched(scn), now, Calls())
     await one.cycle()
     many_calls = Calls()
     many = _worker(prov, _watched(scn, MANY), now, many_calls, max_per_cycle=MANY)
     await many.cycle()
-    assert len(many_calls.states) == MANY and many.errors == []
+    assert len(many_calls.states) == MANY and many.errors == [] and len(priced) == 1 + MANY
     assert many.cache.computations == one.cache.computations > 0  # once per option, not once per strategy
     now[0] += datetime.timedelta(seconds=1)
     iid = prov.leg_id("23500", "CE")
@@ -291,3 +315,114 @@ def test_the_role_names_its_start_module_and_help_starts_nothing(capsys):
     with pytest.raises(SystemExit) as stop:
         background.main(["--help"])
     assert stop.value.code == 0 and "background" in capsys.readouterr().out
+
+
+# ---- CORE (round 2): one state builder for the screen and the background ---------------------------------------
+@pytest.fixture
+def scenario_on(monkeypatch):
+    """The screen's reader and the background read the same scenario switch (prev close, expiry kind)."""
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setenv("OFO_SCENARIO", "ADJ-02")
+
+
+def _price_time(prov) -> datetime.datetime:
+    chain = prov.option_chain_snapshot("NIFTY", datetime.date(2026, 11, 9))
+    return max([prov.underlying_quote("NIFTY").timestamp, *(q.timestamp for q in chain)])
+
+
+async def _screen_state(prov, tracked, at, body) -> pe.StrategyState:
+    """The screen's state for the same prices: its own reader (``read_market``), spot answer and ``state_of``, with a
+    margin read that failed (the background has none)."""
+    ctx = MarketContext(prov, lambda: at, RATE)
+    market = await adjustment_readers.read_market(tracked, ctx)
+    spot = resolve_spot(market.feed, None, market.last_close, now=market.now)
+    return adjustment_check.state_of(tracked, market, spot, None, None, adjustment_check.prices_fresh(ctx), body)
+
+
+def _background_state(prov, watched, at) -> pe.StrategyState:
+    read = background.read_prices(prov, watched, at)
+    assert read.state is background.PriceState.FRESH
+    return background.background_state(watched, read, FeedScope(background.SharedCompute(), "owner"), at, RATE)
+
+
+def _system_body(stype: str) -> dict:
+    path = pathlib.Path(pe.__file__).with_name("system_playbooks.json")
+    return next(pb["body"] for pb in json.loads(path.read_text(encoding="utf-8"))["playbooks"]
+                if pb["strategy_type"] == stype)
+
+
+async def _both(scn) -> tuple[dict, pe.StrategyState, pe.StrategyState]:
+    prov = Prov(scn)
+    at = _price_time(prov)  # the screen's clock reads the price's own time
+    body = _system_body("ic")
+    w = dataclasses.replace(_watched(scn)[0], body=body, expiry_kind=None)
+    return body, await _screen_state(prov, w.tracked, at, body), _background_state(prov, w, at)
+
+
+async def test_core_background_state_equals_the_screens_state_field_by_field(scn, scenario_on):
+    _body, screen, bg = await _both(scn)
+    assert bg == screen  # the whole dataclass, every field
+    for name in ("max_loss", "max_profit", "atm_iv", "expiry_pnl_at_spot", "pnl", "spot"):
+        assert getattr(screen, name) is not None, name  # a real figure on both sides, never two Nones agreeing
+    assert all(s.abs_delta is not None for s in screen.shorts)
+    assert screen.margin is None
+
+
+def _with(body: dict, trigger: str, cmp: str) -> dict:
+    out = {**body, "triggers": {**body["triggers"]}}
+    out["triggers"][trigger] = {**body["triggers"][trigger], "cmp": cmp, "weekly": ["0", "0", "0"],
+                                "monthly": ["0", "0", "0"]}
+    return out
+
+
+def _verdict(body: dict, state: pe.StrategyState, trigger: str):
+    ev = pe.evaluate(body, state, None, None)  # no entry state: a true rule fires (not "already true at entry")
+    return next((r for r in ev.results if r.trigger_id == trigger), None)  # None: evaluated false (no result)
+
+
+@pytest.mark.parametrize(("trigger", "field_name"), [("T-06", "max_loss"), ("T-07", "max_profit"),
+                                                     ("T-11", "atm_iv")])
+async def test_a_trigger_on_a_formerly_dropped_field_fires_in_the_background_as_on_the_screen(
+        scn, scenario_on, trigger, field_name):
+    base, screen, bg = await _both(scn)
+    if trigger == "T-11":  # an entry IV 5 points below today's on both sides
+        screen = dataclasses.replace(screen, entry_atm_iv=screen.atm_iv - IV_STEP)
+        bg = dataclasses.replace(bg, entry_atm_iv=None if bg.atm_iv is None else bg.atm_iv - IV_STEP)
+    fired = [(cmp, _verdict(_with(base, trigger, cmp), screen, trigger)) for cmp in ("ge", "le")]
+    cmp, on_screen = next((c, r) for c, r in fired if isinstance(r, pe.Flag))  # it fires on the screen
+    assert getattr(screen, field_name) is not None
+    assert _verdict(_with(base, trigger, cmp), bg, trigger) == on_screen  # and fires the same in the background
+
+
+async def test_margin_and_prev_close_rules_answer_the_same_not_checked_as_the_screen(scn, scenario_on, monkeypatch):
+    """T-16 reads the margin, which the background never reads (as a screen whose margin read failed); T-13 reads the
+    previous close with the day open, which no reader gives yet. Both answer the same NotChecked on both sides. ADJ-02
+    states no previous close, so the running scenario is given one (both readers read the same scenario)."""
+    monkeypatch.setitem(scenario_mode.current().data["market"], "prev_close", "23300")
+    base, screen, bg = await _both(scn)
+    assert bg == screen
+    assert screen.prev_close == Decimal("23300")
+    for trigger in ("T-16", "T-13"):
+        verdict = _verdict(base, bg, trigger)
+        assert isinstance(verdict, pe.NotChecked), trigger
+        assert verdict == _verdict(base, screen, trigger), trigger
+
+
+def test_state_of_prices_only_the_strategys_own_legs_and_is_light(scn, scenario_on, monkeypatch):
+    """REQ-166 AC-2 measurement: ``state_of`` -> ``price_after`` on ADJ-02 never reaches the full table; 100 calls are
+    timed (printed for the report)."""
+    def refused(*_a, **_k):
+        raise AssertionError("the full table was called")
+    for module, name in FULL_TABLE:
+        monkeypatch.setattr(module, name, refused)
+    prov = Prov(scn)
+    at = _price_time(prov)
+    w = _watched(scn)[0]
+    read = background.read_prices(prov, w, at)
+    shared = FeedScope(background.SharedCompute(), "owner")
+    started = time.perf_counter()
+    for _ in range(TIMED_CALLS):
+        background.background_state(w, read, shared, at, RATE)
+    each = (time.perf_counter() - started) / TIMED_CALLS
+    print(f"STATE-OF-TIMING calls={TIMED_CALLS} each_ms={each * 1000:.2f}")
+    assert each < 1  # seconds
