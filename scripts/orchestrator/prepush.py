@@ -196,14 +196,21 @@ class Plan:
 
     def steps(self):
         py = sys.executable
-        steps = [("ci_checks", self.ci_checks), ("domain_tests", self.domain_tests), ("app_tests", self.app_tests),
-                 ("ruff_ratchet", lambda log: self.run(py, "scripts/ruff_ratchet.py", log=log)),
-                 ("coverage", lambda log: self.run(py, "scripts/orchestrator/coverage.py", ".", "--check", log=log)),
-                 ("alembic_guard", lambda log: self.run(py, "scripts/alembic_migration_guard.py", log=log))]
-        if self.frontend != []:  # None (diff unreadable) runs them too: fail closed
+        front = self.frontend != []  # None (diff unreadable) runs them too: fail closed
+        # the build goes FIRST: the domain tests' bundle secret scan reads frontend/dist, and a build left from before a
+        # merge (another config, no manifest) failed that scan on right code (2026-11-01, one ~35 min gate run lost)
+        steps = [("frontend_build", lambda log: self.front("npm", ["run", "build"], log))] if front else []
+        # then the minutes-long checks of a broken merge; a red one stops the run (run_all). tests/ runs in full next,
+        # so its repo_scan subset is skipped there (--no-domain-scans)
+        steps += [("preflight", lambda log: self.run(py, "scripts/orchestrator/merge_preflight.py", ".", "--log-dir",
+                                                     self.log_dir, "--no-domain-scans", log=log)),
+                  ("ci_checks", self.ci_checks), ("domain_tests", self.domain_tests), ("app_tests", self.app_tests),
+                  ("ruff_ratchet", lambda log: self.run(py, "scripts/ruff_ratchet.py", log=log)),
+                  ("coverage", lambda log: self.run(py, "scripts/orchestrator/coverage.py", ".", "--check", log=log)),
+                  ("alembic_guard", lambda log: self.run(py, "scripts/alembic_migration_guard.py", log=log))]
+        if front:
             steps += [("frontend_lint", lambda log: self.front("npm", ["run", "lint"], log)),
-                      ("frontend_unit", self.frontend_unit),
-                      ("frontend_build", lambda log: self.front("npm", ["run", "build"], log))]
+                      ("frontend_unit", self.frontend_unit)]
         return steps
 
 
@@ -299,6 +306,23 @@ def write_marker(repo, sha, results) -> str:
     return path
 
 
+def _run_steps(plan: Plan, log_dir: str, clock) -> list:
+    """Every step in order, one PASS/FAIL line each; a red preflight stops the run (a broken merge is caught in
+    minutes, and the long steps would only repeat it)."""
+    results = []
+    for name, step in plan.steps():
+        log_path = os.path.join(log_dir, f"{name}.log")
+        t0 = clock()
+        rc = step(log_path)
+        seconds = round(clock() - t0, 1)
+        results.append((name, rc, seconds, log_path))
+        print(f"{'PASS' if rc == 0 else 'FAIL'} {name} {seconds}s {log_path}")
+        if name == "preflight" and rc != 0:
+            print("STOP: preflight failed; the long steps were not run (fix it, commit, run again)")
+            break
+    return results
+
+
 def run_all(repo, full=False, runner=real_runner, log_dir=None, clock=time.monotonic,  # noqa: PLR0913
             select_domain=None, select_app=None, select_frontend=None, which=shutil.which) -> int:
     select_domain = select_domain or select_domain_tests
@@ -313,14 +337,7 @@ def run_all(repo, full=False, runner=real_runner, log_dir=None, clock=time.monot
         frontend = select_frontend(repo)
     except Exception:  # noqa: BLE001 - cannot tell: fail closed, run every frontend step
         frontend = None
-    results = []
-    for name, step in Plan(repo, full, runner, log_dir, select_domain, select_app, frontend, which).steps():
-        log_path = os.path.join(log_dir, f"{name}.log")
-        t0 = clock()
-        rc = step(log_path)
-        seconds = round(clock() - t0, 1)
-        results.append((name, rc, seconds, log_path))
-        print(f"{'PASS' if rc == 0 else 'FAIL'} {name} {seconds}s {log_path}")
+    results = _run_steps(Plan(repo, full, runner, log_dir, select_domain, select_app, frontend, which), log_dir, clock)
     ok = all(rc == 0 for _, rc, _, _ in results)
     note = "marker not written"
     untracked = untracked_source(repo) if ok else []

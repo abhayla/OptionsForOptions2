@@ -11,7 +11,7 @@ import yaml
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts" / "orchestrator"))
 import prepush
 
-NAMES = ["ci_checks", "domain_tests", "app_tests", "ruff_ratchet", "coverage", "alembic_guard"]
+NAMES = ["preflight", "ci_checks", "domain_tests", "app_tests", "ruff_ratchet", "coverage", "alembic_guard"]
 FRONT = ["frontend_lint", "frontend_unit", "frontend_build"]
 REAL_FRONTEND_CHANGES = prepush.frontend_changes
 CI_YML = """name: ci
@@ -84,17 +84,31 @@ def test_steps_run_in_order_in_the_repo_with_logs_outside_it(tmp_path, capsys):
     rc = prepush.run_all(str(repo), runner=runner, log_dir=str(tmp_path / "logs"))
     assert rc == 0
     tails = [" ".join(c[0][1:]).replace("\\", "/") for c in runner.calls]
-    assert tails[0].startswith("tools/ci_local.py --workflow ")
-    assert tails[0].endswith("ci-no-pytest.yml --no-tests")
-    assert tails[1:] == ["-m pytest -q -p no:cacheprovider tests/test_a.py",
+    assert tails[0].startswith("scripts/orchestrator/merge_preflight.py . --log-dir ")  # first: the fast checks
+    assert tails[1].startswith("tools/ci_local.py --workflow ")
+    assert tails[1].endswith("ci-no-pytest.yml --no-tests")
+    assert tails[2:] == ["-m pytest -q -p no:cacheprovider tests/test_a.py",
                          "-m pytest -c pytest-app.ini -q -p no:cacheprovider tests_app/test_b.py",
                          "scripts/ruff_ratchet.py", "scripts/orchestrator/coverage.py . --check",
                          "scripts/alembic_migration_guard.py"]
     assert all(Path(c[1]) == repo for c in runner.calls)
     assert all(repo not in Path(c[2]).parents for c in runner.calls)
     out = capsys.readouterr().out
-    assert out.count("PASS ") == len(NAMES) + 1  # six steps + TOTAL PASS
+    assert out.count("PASS ") == len(NAMES) + 1  # seven steps + TOTAL PASS
     assert "TOTAL PASS" in out
+
+
+def test_a_red_preflight_stops_the_run_before_the_long_steps_and_writes_no_marker(tmp_path, capsys):
+    """2026-11-01: a broken merge used to cost a whole ~25 min gate; the preflight catches it in minutes and the long
+    steps are not started (they could only repeat the same red)."""
+    repo = make_repo(tmp_path)
+    runner = Runner(fail={"preflight"})
+    rc = prepush.run_all(str(repo), runner=runner, log_dir=str(tmp_path / "l"))
+    assert rc == 1
+    assert len(runner.calls) == 1  # only the preflight ran
+    out = capsys.readouterr().out
+    assert "FAIL preflight" in out and "STOP: preflight failed" in out and "failed: preflight" in out
+    assert not prepush.has_marker(str(repo), sha_of(repo))
 
 
 def test_the_workflow_copy_drops_pytest_steps_keeps_the_rest_outside_the_repo(tmp_path, capsys):
@@ -113,7 +127,7 @@ def test_no_tests_flag_is_passed_to_ci_local(tmp_path):
     repo = make_repo(tmp_path)
     runner = Runner()
     prepush.run_all(str(repo), runner=runner, log_dir=str(tmp_path / "l"))
-    assert runner.calls[0][0][-1] == "--no-tests"
+    assert runner.calls[1][0][-1] == "--no-tests"
 
 
 def test_a_none_selection_runs_all_of_tests(tmp_path, monkeypatch):
@@ -121,8 +135,8 @@ def test_a_none_selection_runs_all_of_tests(tmp_path, monkeypatch):
     repo = make_repo(tmp_path)
     runner = Runner()
     prepush.run_all(str(repo), runner=runner, log_dir=str(tmp_path / "l"))
-    assert runner.calls[1][0][-1] == "tests/"
-    assert runner.calls[1][0][1:3] == ["-m", "pytest"]
+    assert runner.calls[2][0][-1] == "tests/"
+    assert runner.calls[2][0][1:3] == ["-m", "pytest"]
 
 
 def test_full_runs_all_of_tests_without_asking_the_selector(tmp_path, monkeypatch):
@@ -133,7 +147,7 @@ def test_full_runs_all_of_tests_without_asking_the_selector(tmp_path, monkeypatc
     repo = make_repo(tmp_path)
     runner = Runner()
     assert prepush.run_all(str(repo), full=True, runner=runner, log_dir=str(tmp_path / "l")) == 0
-    assert runner.calls[1][0][-1] == "tests/"
+    assert runner.calls[2][0][-1] == "tests/"
 
 
 def test_an_empty_selection_skips_the_domain_step_as_pass(tmp_path, monkeypatch, capsys):
@@ -346,17 +360,18 @@ def test_a_frontend_change_runs_lint_related_vitest_and_build_in_frontend(tmp_pa
     repo = frontend_repo(tmp_path)
     runner = Runner()
     assert run_front(repo, tmp_path, ["src/components/LegPicker.vue", "tests/leg-picker.test.js"], runner) == 0
-    front = runner.calls[len(NAMES):]
+    # the build runs FIRST (the domain tests' bundle scan reads frontend/dist); lint and vitest run after the rest
+    front = [runner.calls[0], *runner.calls[len(NAMES) + 1:]]
     assert [c[0] for c in front] == [
+        ["/fake/bin/npm", "run", "build"],
         ["/fake/bin/npm", "run", "lint"],
-        ["/fake/bin/npx", "vitest", "related", "--run", "src/components/LegPicker.vue", "tests/leg-picker.test.js"],
-        ["/fake/bin/npm", "run", "build"]]
+        ["/fake/bin/npx", "vitest", "related", "--run", "src/components/LegPicker.vue", "tests/leg-picker.test.js"]]
     assert all(Path(c[1]) == repo / "frontend" for c in front)
     out = capsys.readouterr().out
     assert all(f"PASS {n} " in out for n in FRONT)
     assert prepush.has_marker(str(repo), sha_of(repo))
     body = json.loads(Path(prepush.marker_path(str(repo), sha_of(repo))).read_text(encoding="utf-8"))
-    assert [s["name"] for s in body["steps"]] == NAMES + FRONT
+    assert [s["name"] for s in body["steps"]] == ["frontend_build", *NAMES, "frontend_lint", "frontend_unit"]
 
 
 @pytest.mark.parametrize("failing", FRONT)
@@ -375,7 +390,7 @@ def test_every_vitest_file_runs_on_full_a_wide_change_or_an_unreadable_diff(tmp_
     repo = frontend_repo(tmp_path)
     runner = Runner()
     assert run_front(repo, tmp_path, changes, runner, full=full) == 0
-    assert runner.calls[len(NAMES) + 1][0] == ["/fake/bin/npx", "vitest", "run"]
+    assert runner.calls[len(NAMES) + 2][0] == ["/fake/bin/npx", "vitest", "run"]  # build first, lint, then vitest
     assert len(runner.calls) == len(NAMES) + len(FRONT)
 
 
@@ -415,7 +430,7 @@ def test_a_frontend_selector_error_fails_closed_into_running_every_step(tmp_path
     repo = frontend_repo(tmp_path)
     runner = Runner()
     prepush.run_all(str(repo), runner=runner, log_dir=str(tmp_path / "l"), select_frontend=broken, which=which)
-    assert runner.calls[len(NAMES) + 1][0] == ["/fake/bin/npx", "vitest", "run"]
+    assert runner.calls[len(NAMES) + 2][0] == ["/fake/bin/npx", "vitest", "run"]  # build first, lint, then vitest
 
 
 def commit_file(repo, rel, text="x"):
