@@ -45,17 +45,19 @@ from decimal import Decimal
 from pathlib import Path
 
 import pytest
-
-from ofo.instruments.parser import zerodha_listed
 from ofo.instruments.catalogue import Catalogue
 from ofo.instruments.models import Contract
-from ofo.instruments.parser import parse_instruments_csv
+from ofo.instruments.parser import parse_instruments_csv, zerodha_listed
 from ofo.range.pick_lists import (
     ExpectedRange,
     RangeCaps,
     build_pick_list,
     choose_range,
 )
+from ofo.settings import defaults
+from ofo.settings.calc import range_step
+
+STEP = Decimal(range_step(defaults()))  # from the registry, never retyped
 
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "instruments" / "instruments_slice.csv"
 
@@ -79,7 +81,7 @@ def catalogue() -> Catalogue:
 
 @pytest.fixture()
 def caps() -> RangeCaps:
-    return RangeCaps.defaults()
+    return RangeCaps.from_settings(defaults())
 
 
 def _synthetic_catalogue_with_offgrid_furthest_strike() -> Catalogue:
@@ -117,7 +119,7 @@ def _synthetic_catalogue_with_offgrid_furthest_strike() -> Catalogue:
 def test_core_nifty_lower_list_snapped_to_real_strikes(catalogue: Catalogue, caps: RangeCaps) -> None:
     """AC-5 (core proof, fix round 1): NIFTY 2026-09-29 lower list values are snapped to the
     current level's 100-grid and stop at the last REAL strike before the sparse far-OTM gap."""
-    lower = build_pick_list(catalogue, "NIFTY", NIFTY_NEAR_EXPIRY, NIFTY_CURRENT, caps, direction="lower")
+    lower = build_pick_list(catalogue, "NIFTY", NIFTY_NEAR_EXPIRY, NIFTY_CURRENT, caps, step=STEP, direction="lower")
     assert lower[0] == NIFTY_CURRENT
     assert lower[1] == Decimal("23200")
     assert lower[-1] == Decimal("20800")
@@ -128,7 +130,7 @@ def test_core_nifty_lower_list_snapped_to_real_strikes(catalogue: Catalogue, cap
 def test_core_nifty_upper_list_snapped_to_real_strikes(catalogue: Catalogue, caps: RangeCaps) -> None:
     """AC-5 (core proof): NIFTY 2026-09-29 upper list mirrors the lower list upward (dense listing,
     no gaps in this direction)."""
-    upper = build_pick_list(catalogue, "NIFTY", NIFTY_NEAR_EXPIRY, NIFTY_CURRENT, caps, direction="upper")
+    upper = build_pick_list(catalogue, "NIFTY", NIFTY_NEAR_EXPIRY, NIFTY_CURRENT, caps, step=STEP, direction="upper")
     assert upper[0] == NIFTY_CURRENT
     assert upper[1] == Decimal("23300")
     assert upper[-1] == Decimal("26200")
@@ -147,6 +149,7 @@ def test_core_nifty_lower_value_above_current_is_refused(catalogue: Catalogue, c
             caps,
             lower_choice=NIFTY_CURRENT + Decimal("100"),
             upper_choice=NIFTY_CURRENT,
+            step=STEP,
         )
 
 
@@ -158,7 +161,7 @@ def test_verifier_case_sensex_81422_lower_list_is_on_the_strike_grid(
 ) -> None:
     """AC-5 (verifier finding): SENSEX current 81,422 must give 81422, 81400, 81300, ... — real
     listed strikes — never the old code's off-grid 81,322/81,222."""
-    lower = build_pick_list(catalogue, "SENSEX", SENSEX_NEAR_EXPIRY, SENSEX_CURRENT, caps, direction="lower")
+    lower = build_pick_list(catalogue, "SENSEX", SENSEX_NEAR_EXPIRY, SENSEX_CURRENT, caps, step=STEP, direction="lower")
     assert lower[0] == Decimal("81422")
     assert lower[1] == Decimal("81400")
     assert lower[2] == Decimal("81300")
@@ -173,7 +176,7 @@ def test_verifier_case_nifty_far_expiry_lower_list_ends_at_furthest_strike(
 ) -> None:
     """AC-5 (verifier finding): NIFTY 2026-10-06 lower list must end exactly at the furthest
     listed strike, 20,800 — never the old code's overshoot-by-formula value of 20,837."""
-    lower = build_pick_list(catalogue, "NIFTY", NIFTY_FAR_EXPIRY, NIFTY_CURRENT, caps, direction="lower")
+    lower = build_pick_list(catalogue, "NIFTY", NIFTY_FAR_EXPIRY, NIFTY_CURRENT, caps, step=STEP, direction="lower")
     assert lower[-1] == Decimal("20800")
     assert Decimal("20837") not in lower
     assert len(lower) == 26
@@ -185,8 +188,8 @@ def test_verifier_case_nifty_far_expiry_lower_list_ends_at_furthest_strike(
 def test_nifty_far_expiry_strike_bound_limits_both_directions(catalogue: Catalogue, caps: RangeCaps) -> None:
     """AC-5: NIFTY 2026-10-06 strikes (20800..25800) run out before the 3,000-point cap in both
     directions, so the FURTHEST LISTED STRIKE binds, and the list reaches it exactly."""
-    lower = build_pick_list(catalogue, "NIFTY", NIFTY_FAR_EXPIRY, NIFTY_CURRENT, caps, direction="lower")
-    upper = build_pick_list(catalogue, "NIFTY", NIFTY_FAR_EXPIRY, NIFTY_CURRENT, caps, direction="upper")
+    lower = build_pick_list(catalogue, "NIFTY", NIFTY_FAR_EXPIRY, NIFTY_CURRENT, caps, step=STEP, direction="lower")
+    upper = build_pick_list(catalogue, "NIFTY", NIFTY_FAR_EXPIRY, NIFTY_CURRENT, caps, step=STEP, direction="upper")
     assert lower[-1] == Decimal("20800")
     assert len(lower) == 26
     assert upper[-1] == Decimal("25800")
@@ -198,8 +201,8 @@ def test_sensex_near_expiry_upper_is_strike_bound_lower_is_cap_bound(
 ) -> None:
     """AC-5: SENSEX 2026-10-01 — lower list is cap-bound (dense strikes extend past the 9,000-point
     cap), upper list is strike-bound and reaches the furthest strike, 83,100, exactly."""
-    lower = build_pick_list(catalogue, "SENSEX", SENSEX_NEAR_EXPIRY, SENSEX_CURRENT, caps, direction="lower")
-    upper = build_pick_list(catalogue, "SENSEX", SENSEX_NEAR_EXPIRY, SENSEX_CURRENT, caps, direction="upper")
+    lower = build_pick_list(catalogue, "SENSEX", SENSEX_NEAR_EXPIRY, SENSEX_CURRENT, caps, step=STEP, direction="lower")
+    upper = build_pick_list(catalogue, "SENSEX", SENSEX_NEAR_EXPIRY, SENSEX_CURRENT, caps, step=STEP, direction="upper")
     assert lower[0] == SENSEX_CURRENT
     assert lower[-1] == Decimal("72500")
     assert len(lower) == 91
@@ -211,8 +214,8 @@ def test_sensex_near_expiry_upper_is_strike_bound_lower_is_cap_bound(
 def test_sensex_far_expiry_both_bounds_hold(catalogue: Catalogue, caps: RangeCaps) -> None:
     """AC-5: SENSEX 2026-10-08 — same cap-bound lower list as the near expiry; strike-bound upper
     list reaching a different furthest strike (82,700 vs 83,100), exactly."""
-    lower = build_pick_list(catalogue, "SENSEX", SENSEX_FAR_EXPIRY, SENSEX_CURRENT, caps, direction="lower")
-    upper = build_pick_list(catalogue, "SENSEX", SENSEX_FAR_EXPIRY, SENSEX_CURRENT, caps, direction="upper")
+    lower = build_pick_list(catalogue, "SENSEX", SENSEX_FAR_EXPIRY, SENSEX_CURRENT, caps, step=STEP, direction="lower")
+    upper = build_pick_list(catalogue, "SENSEX", SENSEX_FAR_EXPIRY, SENSEX_CURRENT, caps, step=STEP, direction="upper")
     assert lower[-1] == Decimal("72500")
     assert len(lower) == 91
     assert upper[-1] == Decimal("82700")
@@ -230,7 +233,7 @@ def test_furthest_strike_not_a_100_multiple_is_still_the_final_value() -> None:
     cat, expiry = _synthetic_catalogue_with_offgrid_furthest_strike()
     caps = RangeCaps({"NIFTY": Decimal("1000")})
     current = Decimal("21237")
-    lower = build_pick_list(cat, "NIFTY", expiry, current, caps, direction="lower")
+    lower = build_pick_list(cat, "NIFTY", expiry, current, caps, step=STEP, direction="lower")
     # current-cap floor = 20237; furthest listed strike = 20850 > 20237, so the strike binds.
     assert lower == [
         Decimal("21237"),
@@ -252,10 +255,10 @@ def test_current_level_on_a_round_hundred_is_still_the_first_value_once(
     """AC-3: when the current level happens to be a multiple of 100, it is still the first list
     value exactly once (not skipped, not duplicated by the first grid step)."""
     lower = build_pick_list(
-        catalogue, "NIFTY", NIFTY_NEAR_EXPIRY, NIFTY_CURRENT_ROUND, caps, direction="lower"
+        catalogue, "NIFTY", NIFTY_NEAR_EXPIRY, NIFTY_CURRENT_ROUND, caps, step=STEP, direction="lower"
     )
     upper = build_pick_list(
-        catalogue, "NIFTY", NIFTY_NEAR_EXPIRY, NIFTY_CURRENT_ROUND, caps, direction="upper"
+        catalogue, "NIFTY", NIFTY_NEAR_EXPIRY, NIFTY_CURRENT_ROUND, caps, step=STEP, direction="upper"
     )
     assert lower[0] == NIFTY_CURRENT_ROUND
     assert lower[1] == Decimal("23100")
@@ -271,8 +274,8 @@ def test_current_level_on_a_round_hundred_is_still_the_first_value_once(
 def test_platform_never_prefills_an_assumed_range(catalogue: Catalogue, caps: RangeCaps) -> None:
     """AC-3: the pick lists are pure functions of (current level, expiry, caps) — no default lower
     or upper value is baked in; both lists start exactly at current_level regardless of index."""
-    lower = build_pick_list(catalogue, "SENSEX", SENSEX_NEAR_EXPIRY, SENSEX_CURRENT, caps, direction="lower")
-    upper = build_pick_list(catalogue, "SENSEX", SENSEX_NEAR_EXPIRY, SENSEX_CURRENT, caps, direction="upper")
+    lower = build_pick_list(catalogue, "SENSEX", SENSEX_NEAR_EXPIRY, SENSEX_CURRENT, caps, step=STEP, direction="lower")
+    upper = build_pick_list(catalogue, "SENSEX", SENSEX_NEAR_EXPIRY, SENSEX_CURRENT, caps, step=STEP, direction="upper")
     assert lower[0] == upper[0] == SENSEX_CURRENT
 
 
@@ -281,14 +284,14 @@ def test_platform_never_prefills_an_assumed_range(catalogue: Catalogue, caps: Ra
 
 def test_lower_list_never_exceeds_current_level(catalogue: Catalogue, caps: RangeCaps) -> None:
     """AC-6: every value in the lower list is <= current_level."""
-    lower = build_pick_list(catalogue, "NIFTY", NIFTY_NEAR_EXPIRY, NIFTY_CURRENT, caps, direction="lower")
+    lower = build_pick_list(catalogue, "NIFTY", NIFTY_NEAR_EXPIRY, NIFTY_CURRENT, caps, step=STEP, direction="lower")
     assert max(lower) == NIFTY_CURRENT
     assert all(v <= NIFTY_CURRENT for v in lower)
 
 
 def test_upper_list_never_below_current_level(catalogue: Catalogue, caps: RangeCaps) -> None:
     """AC-6: every value in the upper list is >= current_level."""
-    upper = build_pick_list(catalogue, "NIFTY", NIFTY_NEAR_EXPIRY, NIFTY_CURRENT, caps, direction="upper")
+    upper = build_pick_list(catalogue, "NIFTY", NIFTY_NEAR_EXPIRY, NIFTY_CURRENT, caps, step=STEP, direction="upper")
     assert min(upper) == NIFTY_CURRENT
     assert all(v >= NIFTY_CURRENT for v in upper)
 
@@ -304,6 +307,7 @@ def test_upper_value_below_current_is_refused(catalogue: Catalogue, caps: RangeC
             caps,
             lower_choice=NIFTY_CURRENT,
             upper_choice=NIFTY_CURRENT - Decimal("100"),
+            step=STEP,
         )
 
 
@@ -320,6 +324,7 @@ def test_expected_range_is_labelled_user_input(catalogue: Catalogue, caps: Range
         caps,
         lower_choice=Decimal("23100"),
         upper_choice=Decimal("23300"),
+        step=STEP,
     )
     assert chosen.label == "user input"
     assert chosen.lower == Decimal("23100")
@@ -336,6 +341,7 @@ def test_expected_range_is_immutable(catalogue: Catalogue, caps: RangeCaps) -> N
         caps,
         lower_choice=NIFTY_CURRENT,
         upper_choice=NIFTY_CURRENT,
+        step=STEP,
     )
     with pytest.raises(Exception):  # dataclasses.FrozenInstanceError, a subclass of AttributeError
         chosen.lower = Decimal("0")  # type: ignore[misc]
@@ -380,13 +386,16 @@ def test_typed_value_not_on_the_pick_list_is_refused(catalogue: Catalogue, caps:
             caps,
             lower_choice=Decimal("23150"),  # not a value this list offers
             upper_choice=NIFTY_CURRENT,
+            step=STEP,
         )
 
 
 def test_float_current_level_is_refused(catalogue: Catalogue, caps: RangeCaps) -> None:
     """Money/levels are Decimal end to end; a float current level fails closed."""
     with pytest.raises(ValueError, match="Decimal"):
-        build_pick_list(catalogue, "NIFTY", NIFTY_NEAR_EXPIRY, 23237.0, caps, direction="lower")  # type: ignore[arg-type]
+        build_pick_list(  # type: ignore[arg-type]
+            catalogue, "NIFTY", NIFTY_NEAR_EXPIRY, 23237.0, caps, step=STEP, direction="lower"
+        )
 
 
 def test_float_choice_is_refused(catalogue: Catalogue, caps: RangeCaps) -> None:
@@ -400,25 +409,26 @@ def test_float_choice_is_refused(catalogue: Catalogue, caps: RangeCaps) -> None:
             caps,
             lower_choice=23237.0,  # type: ignore[arg-type]
             upper_choice=NIFTY_CURRENT,
+            step=STEP,
         )
 
 
 def test_unknown_expiry_is_refused(catalogue: Catalogue, caps: RangeCaps) -> None:
     """An expiry with no listed option contracts (unknown or not yet listed) fails closed."""
     with pytest.raises(ValueError, match="no option contracts found"):
-        build_pick_list(catalogue, "NIFTY", date(2099, 1, 1), NIFTY_CURRENT, caps, direction="lower")
+        build_pick_list(catalogue, "NIFTY", date(2099, 1, 1), NIFTY_CURRENT, caps, step=STEP, direction="lower")
 
 
 def test_unknown_underlying_is_refused(catalogue: Catalogue, caps: RangeCaps) -> None:
     """An underlying with no configured Admin cap fails closed rather than defaulting."""
     with pytest.raises(ValueError, match="no configured range cap"):
-        build_pick_list(catalogue, "BANKNIFTY", NIFTY_NEAR_EXPIRY, NIFTY_CURRENT, caps, direction="lower")
+        build_pick_list(catalogue, "BANKNIFTY", NIFTY_NEAR_EXPIRY, NIFTY_CURRENT, caps, step=STEP, direction="lower")
 
 
 def test_invalid_direction_is_refused(catalogue: Catalogue, caps: RangeCaps) -> None:
     """Only 'lower' and 'upper' are valid directions — fail closed on anything else."""
     with pytest.raises(ValueError, match="direction"):
-        build_pick_list(catalogue, "NIFTY", NIFTY_NEAR_EXPIRY, NIFTY_CURRENT, caps, direction="sideways")
+        build_pick_list(catalogue, "NIFTY", NIFTY_NEAR_EXPIRY, NIFTY_CURRENT, caps, step=STEP, direction="sideways")
 
 
 def test_every_value_after_the_first_is_a_listed_strike(catalogue: Catalogue, caps: RangeCaps) -> None:
@@ -437,7 +447,7 @@ def test_every_value_after_the_first_is_a_listed_strike(catalogue: Catalogue, ca
             for c in catalogue.contracts_for(name, expiry, instrument_types=frozenset({"CE", "PE"}))
         }
         for direction in ("lower", "upper"):
-            values = build_pick_list(catalogue, name, expiry, current, caps, direction=direction)
+            values = build_pick_list(catalogue, name, expiry, current, caps, step=STEP, direction=direction)
             for v in values[1:]:
                 assert v in listed, f"{name} {expiry} {direction}: {v} is not a listed strike"
 
@@ -452,7 +462,7 @@ def test_mutation_cap_must_bind_even_though_strikes_extend_further(
     past the 3,000-point cap floor of 20,237 (down toward 15,000). If the cap term were dropped
     from build_pick_list, the lower list would run much further than 20,800. This test's exact
     length/last-value assertions go red under that mutation."""
-    lower = build_pick_list(catalogue, "NIFTY", NIFTY_NEAR_EXPIRY, NIFTY_CURRENT, caps, direction="lower")
+    lower = build_pick_list(catalogue, "NIFTY", NIFTY_NEAR_EXPIRY, NIFTY_CURRENT, caps, step=STEP, direction="lower")
     assert lower[-1] == Decimal("20800")
     assert len(lower) == 26
     # Precondition: the cap floor (20237) is below the actual last value (20800), proving the cap
@@ -468,7 +478,7 @@ def test_mutation_strike_limit_must_bind_even_though_cap_allows_more(
     were dropped, the lower list would extend past 20,800 toward 20,237. This test's exact
     length/last-value assertions go red under that mutation."""
     cap_floor = NIFTY_CURRENT - caps.for_index("NIFTY")
-    lower = build_pick_list(catalogue, "NIFTY", NIFTY_FAR_EXPIRY, NIFTY_CURRENT, caps, direction="lower")
+    lower = build_pick_list(catalogue, "NIFTY", NIFTY_FAR_EXPIRY, NIFTY_CURRENT, caps, step=STEP, direction="lower")
     assert lower[-1] != cap_floor
     assert lower[-1] == Decimal("20800")
     assert len(lower) == 26
@@ -482,7 +492,7 @@ def test_mutation_snap_must_land_on_real_strikes_not_raw_offsets(
     """Mutation-style (discriminates a dropped snap): SENSEX current 81,422 is off-grid; without
     snapping to 100-multiples, an offset-from-current scheme would produce 81,322 and 81,222,
     neither of which is a listed strike. The snapped list must never contain them."""
-    lower = build_pick_list(catalogue, "SENSEX", SENSEX_NEAR_EXPIRY, SENSEX_CURRENT, caps, direction="lower")
+    lower = build_pick_list(catalogue, "SENSEX", SENSEX_NEAR_EXPIRY, SENSEX_CURRENT, caps, step=STEP, direction="lower")
     assert Decimal("81322") not in lower
     assert Decimal("81222") not in lower
     assert lower[1] == Decimal("81400")
@@ -498,7 +508,7 @@ def test_mutation_final_furthest_strike_value_must_be_present(
     additionally pins the real-fixture strike-bound endpoint so any regression that removes the
     bound entirely (reverting to plain cap-based stepping) is caught by the mismatch with the cap
     floor 26,237."""
-    upper = build_pick_list(catalogue, "NIFTY", NIFTY_FAR_EXPIRY, NIFTY_CURRENT, caps, direction="upper")
+    upper = build_pick_list(catalogue, "NIFTY", NIFTY_FAR_EXPIRY, NIFTY_CURRENT, caps, step=STEP, direction="upper")
     assert upper[-1] == Decimal("25800")
     assert upper[-1] != NIFTY_CURRENT + caps.for_index("NIFTY")
 
@@ -511,7 +521,7 @@ def test_mutation_offgrid_final_value_must_be_appended() -> None:
     goes red under that mutation."""
     cat, expiry = _synthetic_catalogue_with_offgrid_furthest_strike()
     caps = RangeCaps({"NIFTY": Decimal("1000")})
-    lower = build_pick_list(cat, "NIFTY", expiry, Decimal("21237"), caps, direction="lower")
+    lower = build_pick_list(cat, "NIFTY", expiry, Decimal("21237"), caps, step=STEP, direction="lower")
     assert lower[-1] == Decimal("20850")
     assert lower[-1] != Decimal("20900")
 
@@ -533,6 +543,7 @@ def test_mutation_lower_choice_above_current_must_never_be_constructible(
             caps,
             lower_choice=NIFTY_CURRENT + Decimal("500"),
             upper_choice=NIFTY_CURRENT,
+            step=STEP,
         )
 
 
@@ -546,8 +557,8 @@ def test_current_level_beyond_every_strike_nifty_gives_current_only(
     strike in BOTH directions — the reported bug appended a furthest strike from the wrong side
     into the upper list ([100000, 21000]); both lists must now be just [current]."""
     current = Decimal("100000")
-    lower = build_pick_list(catalogue, "NIFTY", NIFTY_NEAR_EXPIRY, current, caps, direction="lower")
-    upper = build_pick_list(catalogue, "NIFTY", NIFTY_NEAR_EXPIRY, current, caps, direction="upper")
+    lower = build_pick_list(catalogue, "NIFTY", NIFTY_NEAR_EXPIRY, current, caps, step=STEP, direction="lower")
+    upper = build_pick_list(catalogue, "NIFTY", NIFTY_NEAR_EXPIRY, current, caps, step=STEP, direction="upper")
     assert lower == [current]
     assert upper == [current]
 
@@ -558,8 +569,8 @@ def test_current_level_beyond_every_strike_sensex_gives_current_only(
     """AC-5/AC-6 (fix round 2 verifier finding), second index: SENSEX current level far beyond
     every listed strike — both lists must be just [current]."""
     current = Decimal("200000")
-    lower = build_pick_list(catalogue, "SENSEX", SENSEX_NEAR_EXPIRY, current, caps, direction="lower")
-    upper = build_pick_list(catalogue, "SENSEX", SENSEX_NEAR_EXPIRY, current, caps, direction="upper")
+    lower = build_pick_list(catalogue, "SENSEX", SENSEX_NEAR_EXPIRY, current, caps, step=STEP, direction="lower")
+    upper = build_pick_list(catalogue, "SENSEX", SENSEX_NEAR_EXPIRY, current, caps, step=STEP, direction="upper")
     assert lower == [current]
     assert upper == [current]
 
@@ -587,7 +598,9 @@ def test_reviewer_repro_synthetic_upper_list_never_appends_the_wrong_side_strike
     ]
     cat = Catalogue()
     cat.load(contracts)
-    upper = build_pick_list(cat, "NIFTY", expiry, Decimal("100000"), RangeCaps.defaults(), direction="upper")
+    upper = build_pick_list(
+        cat, "NIFTY", expiry, Decimal("100000"), RangeCaps.from_settings(defaults()), step=STEP, direction="upper"
+    )
     assert upper == [Decimal("100000")]
     assert Decimal("21000") not in upper
 
@@ -597,10 +610,10 @@ def test_current_level_exactly_at_the_furthest_strike(catalogue: Catalogue, caps
     direction, there is nothing beyond it to offer in that direction — the bound is not "strictly
     beyond current", so no final value is appended; the list is just [current]."""
     upper_at_max = build_pick_list(
-        catalogue, "NIFTY", NIFTY_NEAR_EXPIRY, Decimal("34500"), caps, direction="upper"
+        catalogue, "NIFTY", NIFTY_NEAR_EXPIRY, Decimal("34500"), caps, step=STEP, direction="upper"
     )
     lower_at_min = build_pick_list(
-        catalogue, "NIFTY", NIFTY_NEAR_EXPIRY, Decimal("15000"), caps, direction="lower"
+        catalogue, "NIFTY", NIFTY_NEAR_EXPIRY, Decimal("15000"), caps, step=STEP, direction="lower"
     )
     assert upper_at_max == [Decimal("34500")]
     assert lower_at_min == [Decimal("15000")]
@@ -624,7 +637,9 @@ def test_property_every_current_level_across_and_beyond_the_fixture_range(
     checked = 0
     while current <= stop:
         for direction in ("lower", "upper"):
-            values = build_pick_list(catalogue, "NIFTY", NIFTY_NEAR_EXPIRY, current, caps, direction=direction)
+            values = build_pick_list(
+                catalogue, "NIFTY", NIFTY_NEAR_EXPIRY, current, caps, step=STEP, direction=direction
+            )
             assert values[0] == current
             assert len(values) == len(set(values)), f"duplicates in {values!r}"
             for prev, nxt in zip(values, values[1:]):
@@ -664,7 +679,9 @@ def test_mutation_side_check_must_reject_a_wrong_side_bound() -> None:
     ]
     cat = Catalogue()
     cat.load(contracts)
-    upper = build_pick_list(cat, "NIFTY", expiry, Decimal("100000"), RangeCaps.defaults(), direction="upper")
+    upper = build_pick_list(
+        cat, "NIFTY", expiry, Decimal("100000"), RangeCaps.from_settings(defaults()), step=STEP, direction="upper"
+    )
     assert upper == [Decimal("100000")]
 
 

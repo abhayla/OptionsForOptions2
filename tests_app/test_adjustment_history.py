@@ -20,6 +20,9 @@ from ofo.timeutil import IST
 from ofo_app import catalogue_store, paper_book, scenario_mode
 from ofo_app import db as app_db
 from ofo_app.config import get_settings
+from ofo.settings import calc as _calc, defaults as _defaults
+
+_MAX_DELIST = _calc.max_delist_percent(_defaults())
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 _spec = importlib.util.spec_from_file_location("seed_scenario", ROOT / "scripts" / "seed_scenario.py")
@@ -56,7 +59,8 @@ async def _seeded(app_engine, monkeypatch, sid: str) -> int:
     scn = scenario_mode.load(sid)
     async with app_engine.begin() as conn:
         await catalogue_store.apply_update(conn, scn.provider.instrument_master(), as_of=CATALOGUE_AS_OF,
-                                           force=True, reason=f"test: scenario {sid} contracts", actor="test")
+                                           force=True, reason=f"test: scenario {sid} contracts", actor="test",
+                                               max_delist_percent=_MAX_DELIST)
     return await seed_mod.seed(sid)
 
 

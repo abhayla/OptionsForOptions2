@@ -30,7 +30,7 @@ from ofo.instruments.models import InstrumentId as ContractKey
 from ofo.instruments.models import ListedContract
 from ofo.limits import INTEGER_MAX
 from ofo.marketdata.forward import ForwardQuality
-from ofo.marketdata.feed_health import awaiting_first_price_for, market_closed_for
+from ofo.marketdata.feed_health import FeedWindows, awaiting_first_price_for, market_closed_for
 from ofo.marketdata.provider import MarketDataProvider
 from ofo.marketdata.quote import NormalizedQuote
 from ofo.marketdata.shared_compute import FeedScope, SharedCompute
@@ -171,6 +171,10 @@ class MarketContext:
     #: rate). The default is the registry's, for the live feed's own context and tests, never for a priced route.
     forward_quality: ForwardQuality = dataclasses.field(
         default_factory=lambda: calc.forward_quality(settings_defaults()))
+    #: REQ-167 AC-5: the feed stale and reconnect windows in force, replaced with the same single read; the feed itself
+    #: is told the same windows (``ctx_in_force``). The default is the registry's, as for ``forward_quality``.
+    feed_windows: FeedWindows = dataclasses.field(
+        default_factory=lambda: calc.feed_windows(settings_defaults()))
 
 
 @dataclass(frozen=True)
@@ -237,8 +241,17 @@ async def with_rate_in_force(ctx: MarketContext, read_settings: SettingsReader) 
 def ctx_in_force(ctx: MarketContext, values: Mapping[str, Decimal]) -> MarketContext:
     """``ctx`` with the rate and the three forward settings taken from ``values`` (one settings read the caller already
     holds): a socket tick that read the settings for its push prices with the SAME read (REQ-167 AC-4, GC-SET 5a)."""
+    windows = calc.feed_windows(values)
+    feed = getattr(ctx.provider, "feed", None)
+    if feed is not None and hasattr(feed, "apply_windows"):
+        feed.apply_windows(windows)  # the feed's next verdict (quote health, phase) uses the windows in force
     return dataclasses.replace(ctx, rate=registry_value_of(values, RISK_FREE_RATE),
-                               forward_quality=calc.forward_quality(values))
+                               forward_quality=calc.forward_quality(values), feed_windows=windows)
+
+
+def feed_windows_of(ctx: MarketContext | None) -> FeedWindows:
+    """The feed windows in force for a route with the per-request context (None: no live context, the registry's)."""
+    return calc.feed_windows(settings_defaults()) if ctx is None else ctx.feed_windows
 
 
 async def get_request_settings_reader(

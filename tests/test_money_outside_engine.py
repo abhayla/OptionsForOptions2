@@ -109,9 +109,9 @@ NOT_MONEY_ON_MAIN: dict[str, tuple[str, ...]] = {
         'kept = sum(1 for b in self._bars.values() if b.minute.date() == day and b.source is BarSource.LIVE)',
     ),
     "backend/ofo/range/pick_lists.py": (
-        'return (value // STEP) * STEP',
-        'value -= STEP',
-        'value += STEP',
+        'return (value // step) * step',
+        'value -= step',
+        'value += step',
     ),
     "backend/ofo/reconciliation/compare.py": (
         'expected[contract] = expected.get(contract, 0) + value',

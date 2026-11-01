@@ -43,7 +43,7 @@ from ofo_app.routes.adjustment import (
 )
 from ofo_app.routes.adjustment_preferences import UserPreferences
 from ofo_app.routes.broker import current_user_ref
-from ofo_app.routes.outcome import MarketContext, get_market_context, load_charge_rates
+from ofo_app.routes.outcome import MarketContext, feed_windows_of, get_market_context, load_charge_rates
 from ofo_app.strategy_refused import StrategyRefused
 
 log = logging.getLogger(__name__)
@@ -210,7 +210,8 @@ async def adjustment_check(  # noqa: PLR0913 - FastAPI dependencies, one per inp
     if tracked is None:
         raise StrategyRefused(_NOT_AVAILABLE, Failure.NOT_FOUND)
     market = await market_reader(tracked, ctx)
-    spot = resolve_spot(market.feed, await rest_reader(tracked.position.underlying), market.last_close, now=market.now)
+    spot = resolve_spot(market.feed, await rest_reader(tracked.position.underlying), market.last_close, now=market.now,
+                        windows=feed_windows_of(ctx))
     listed = None if ctx is None else ctx.provider.instrument_master()
     stype = check.strategy_type(tracked.position, spot.value if spot.available else None, listed)
     resolved = await check.resolve(db, user_ref, strategy_id, stype)

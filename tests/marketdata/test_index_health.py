@@ -9,12 +9,14 @@ from decimal import Decimal
 import pytest
 from _kite_fixture import all_instrument_ids, listed, new_provider, recorded_frames, replay
 from ofo.instruments.models import NSE_INDEX
-from ofo.marketdata.feed_health import FEED_STALE, RECONNECT_WINDOW
 from ofo.marketdata.forward import ForwardUnavailable, parity_forward
 from ofo.marketdata.kite_provider import IST, KiteProvider
 from ofo.rules.inputs import DataHealth
 from ofo.settings import calc as _fq_calc
 from ofo.settings import defaults as _fq_defaults
+
+FEED_STALE = _fq_calc.feed_windows(_fq_defaults()).stale  # the registry's windows, passed explicitly
+RECONNECT_WINDOW = _fq_calc.feed_windows(_fq_defaults()).reconnect
 
 _FQ = _fq_calc.forward_quality(_fq_defaults())
 

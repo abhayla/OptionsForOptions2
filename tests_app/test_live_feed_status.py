@@ -14,10 +14,13 @@ import pathlib
 
 import pytest
 from ofo.instruments.parser import parse_instruments_csv
-from ofo.marketdata.feed_health import FEED_CAPPED, FEED_RECONNECTING, FEED_STALE
+from ofo.marketdata.feed_health import FEED_CAPPED, FEED_RECONNECTING
 from ofo.marketdata.kite_provider import IST, KiteProvider
+from ofo.settings import calc, defaults
 from ofo_app import broker_sync, live_market
 from ofo_app.routes.broker_status import broker_status, build_status
+
+FEED_STALE = calc.feed_windows(defaults()).stale  # the registry's window, passed explicitly (REQ-167 AC-4)
 
 FIXTURES = pathlib.Path(__file__).resolve().parent.parent / "tests" / "fixtures" / "kite_ws"
 INSTRUMENT_ID = "NSE_FO:47189"
@@ -182,12 +185,24 @@ def test_no_market_is_off(clock):
 
 
 class _Db:
-    """The route's database: one active, unexpired session row."""
+    """The route's database: one active, unexpired session row. Since GC-SET 5a-2 the session status also reads the
+    settings in force (the Kite session expiry setting): the database clock answers T0 and no setting row is stored,
+    so every setting is its registry default."""
 
-    async def execute(self, _stmt, _params):
+    async def execute(self, stmt, _params=None):
+        sql = str(stmt)
+
         class _R:
             def one_or_none(self):
-                return (T0, False)
+                return (T0, T0)  # (started_at, database now): started at T0, read at T0 -> before its expiry
+
+            def scalar_one(self):
+                assert "clock_timestamp" in sql, sql  # only the settings store's "now" asks for one scalar
+                return T0
+
+            def all(self):
+                assert "app_settings" in sql, sql  # only the settings store asks for all rows
+                return []
         return _R()
 
 

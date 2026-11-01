@@ -362,6 +362,30 @@
       "source": "D-B20; was ofo/outcome/service.py SD_HORIZON_DAYS"
     },
     {
+      "key": "detection.feed_stale_seconds",
+      "group": "Detection",
+      "label": "Feed silent for (stale)",
+      "unit": "seconds",
+      "type": "decimal",
+      "min": "1",
+      "max": "30",
+      "default": "3",
+      "what_it_changes": "How long the live price feed may send no price before every quote on it reads stale (and a spot from the feed is no longer used). A smaller number flags a quiet feed sooner and may warn more often.",
+      "source": "ADR-222, REQ-167 AC-5, F-32; was ofo/marketdata/feed_health.py FEED_STALE"
+    },
+    {
+      "key": "detection.feed_reconnect_window_seconds",
+      "group": "Detection",
+      "label": "Feed reconnect window",
+      "unit": "seconds",
+      "type": "decimal",
+      "min": "5",
+      "max": "300",
+      "default": "30",
+      "what_it_changes": "How long a dropped price-feed connection may keep trying to reconnect before its quotes read unavailable instead of stale.",
+      "source": "ADR-222, REQ-167 AC-5; was ofo/marketdata/feed_health.py RECONNECT_WINDOW"
+    },
+    {
       "key": "speeds.open_strategy_seconds",
       "group": "Speeds",
       "label": "Open strategy push interval",
