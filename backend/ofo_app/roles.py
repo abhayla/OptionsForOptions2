@@ -19,6 +19,6 @@ API = Role("api", None)  # today the FastAPI app served by uvicorn; its own star
 MATHS = Role("maths", None)
 USER_ORDERS = Role("user orders", None)
 LIVEPRICES = Role("liveprices", "ofo_app.liveprices")  # REQ-113: the only Kite live connections
-BACKGROUND = Role("background", None)  # GC-MU step 4
+BACKGROUND = Role("background", "ofo_app.background")  # REQ-165: playbook checks with no screen open
 
 ROLES: tuple[Role, ...] = (API, MATHS, USER_ORDERS, LIVEPRICES, BACKGROUND)
