@@ -244,6 +244,22 @@ clock (`date`) in the same step, never typed from memory.
   3 fixes (2 chain-page mocks did not answer GET /settings - from 4b; `settingsValues.js` added to the named-uses list
   with a reason per line). Heavy slot released before the merge; owner rule (same morning): GC-MU has priority on the PC. Leftovers 8fc06cbc (dead range/pick_lists.py deleted, max_delist_percent required; 2 KNOWN_LEFTOVERS rows closed; tests_app call sites compile-checked only - DB run in the batch 3 gate). 4d dispatched 10:1x (pure tests only).
 
+- step 2 browser proof, Greeks check (2026-11-01 14:11 IST, new session): dev API PID 20988 + vite 5173 on ADJ-02,
+  stored rate 0.07 in force (GET /api/settings: value 0.07, effective 08:12:11Z, set_by owner). Fresh page load shows
+  Delta 0.45 / Theta 15.99 / IV 13.10% as at 0.065. NOT a defect (F-82): in-process outcome at 0.065 vs 0.07 moves
+  `dividend_yields` 9 Nov -0.0000115 -> 0.0050063 and per-unit Theta 15.988 -> 15.987 only; the parity forward absorbs
+  the rate into q (ADR-063). Live server proof: reset to default 14:12 -> q -0.0000115; 0.07 set again 14:14 -> q
+  0.0050063 (3 of 3 fresh requests, no restart); reset 14:15 -> q -0.0000115 (4 rows kept, none deleted). An earlier
+  0.0048023 page capture did not reproduce (unexplained, noted in F-82). No code change. Screenshot
+  `C:\Users\itsab\AppData\Local\Temp\claude-chrome-screenshots-0Oemv3\screenshot-1793522547938-3.jpg` (reset row).
+
+- step 2 browser proof, Compare (14:2x-14:4x IST): defect found and fixed (F-83, class
+  one-shot-feed-loses-quote-on-shared-unsubscribe, guarded): scenario mode dropped every contract's price after a
+  builder socket released (fan-out unsubscribed under the scenario; one-shot frame never re-sent). Fix in
+  `scenario_mode.overrides` (scenario hold on the fan-out); new test red "82 of 82 scenario contracts lost their price"
+  -> green, `test_scenario_mode.py` 61 passed (db_run_fresh), ruff ratchet OK. DB tunnel dropped once at ~14:32 and was
+  back (ssh PID 18168, not started by this session) before the run.
+
 ## Found during the run
 
 | # | Finding | Where | What was done |

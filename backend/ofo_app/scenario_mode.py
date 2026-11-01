@@ -542,7 +542,7 @@ def overrides(scn: Scenario) -> dict[Any, Any]:
     from ofo_app.catalogue_picker import PickableContract  # noqa: PLC0415
     from ofo_app.chain_push import ChainCatalogue  # noqa: PLC0415
     from ofo_app.kite_margin import KiteMargin  # noqa: PLC0415
-    from ofo_app.live_push import LiveFeed  # noqa: PLC0415
+    from ofo_app.live_push import LiveFeed, no_listener  # noqa: PLC0415
     from ofo_app.outcome_margin import OutcomeMargin  # noqa: PLC0415
     from ofo_app.routes import chain, leg_picker, live, outcome, planned_entry  # noqa: PLC0415
 
@@ -556,6 +556,11 @@ def overrides(scn: Scenario) -> dict[Any, Any]:
         return await outcome.with_rate_in_force(ctx, read_settings)
 
     feed = LiveFeed(ctx, FanOut(scn.provider))
+    # The scenario sends its one frame once (``load``), so it holds every contract it subscribed on the fan-out for
+    # the app's life: a socket letting go never brings a contract's subscriber count to zero, so the fan-out never
+    # unsubscribes it under the scenario (that parked its quote and the feed bus's drain dropped it for good: every
+    # Compare approach then answered "has no price" until a restart, GC-SET 2026-11-01).
+    feed.fanout.subscribe(no_listener, [instrument_id(lc) for lc in scn.provider.instrument_master()], max_queue=1)
     contracts: list[Any] = []
     permissions: dict[str, str] = {}
     for lc in scn.provider.instrument_master():
