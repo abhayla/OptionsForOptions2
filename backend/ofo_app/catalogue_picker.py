@@ -50,7 +50,8 @@ async def publish_time(conn: Any) -> datetime.time:
 
 def session_start(now: datetime.datetime, publish: datetime.time) -> datetime.datetime:
     """The publish time (IST) of the most recent trading-session day at ``now``: today when today is a weekday and the
-    time is at or past ``publish``, otherwise the previous weekday. There is no exchange holiday calendar in this project yet, so a weekday
+    time is at or past ``publish``, otherwise the previous weekday. There is no exchange holiday calendar in this
+    project yet, so a weekday
     holiday counts as a session day (the list is then the same as the previous one, which is harmless)."""
     local = now.astimezone(IST)
     day = local.date() if local.time() >= publish else local.date() - datetime.timedelta(days=1)

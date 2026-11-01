@@ -407,7 +407,8 @@ async def test_core_proof_callback_stores_only_ciphertext_and_the_adapter_reads_
     async with maker() as session:
         assert await store.access_token_for(session, user, app.state.broker.cipher) == ACCESS_TOKEN
     # the database's expected expiry agrees with the domain rule
-    assert row["expected_expiry"] == expected_expiry(row["started_at"], time(6, 0))  # the guard stamps the 06:00 default
+    # the guard stamps the 06:00 default
+    assert row["expected_expiry"] == expected_expiry(row["started_at"], time(6, 0))
 
 
 async def test_a_second_login_replaces_the_first_and_destroys_its_token(app_engine, admin_engine):

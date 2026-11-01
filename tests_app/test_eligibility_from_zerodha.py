@@ -303,7 +303,8 @@ def test_ac3_a_load_before_the_publish_time_is_unconfirmed_after_it():
     """Attack 2: loaded 08:29 on a weekday, checked 09:00 the same day -> unconfirmed; loaded 08:30 -> current."""
     assert picker.loaded_before(_ist(22, 8, 29), _ist(22, 9, 0), PUBLISH)
     assert not picker.loaded_before(_ist(22, 8, 30), _ist(22, 9, 0), PUBLISH)
-    assert picker.session_start(_ist(22, 8, 29), PUBLISH) == _ist(21, 8, 30)  # before publish: the previous weekday's session
+    # before publish: the previous weekday's session
+    assert picker.session_start(_ist(22, 8, 29), PUBLISH) == _ist(21, 8, 30)
 
 
 async def test_ac3_a_list_last_loaded_yesterday_answers_unconfirmed_and_stores_nothing(app_engine):
