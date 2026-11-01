@@ -544,6 +544,8 @@ issues:
   "#627": S6.4  # GC-MU step 4 remainder: background margin (T-16), T-13 open price, restart + heartbeat, screen reads worker result
   "#628": S6.4  # seed_scenario.py batches a scenario's trade wrongly: ADJ-13 seeds 2 adjustments where the scenario has 1
   "#629": S6.4  # Owner sign-off for 461 pending catalogue texts: independent wording check, then owner reads the flags
+  "#630": S6.4  # Compare intermittently shows 'no current price' for a current leg in scenario mode (seen once, not reproduced)
+  "#631": S6.4  # DB pool has no pre-ping: a dropped pooled connection turns the next request into a 500
 
 # Work items whose status is not done.
 work_items:

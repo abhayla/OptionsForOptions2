@@ -20,7 +20,7 @@ Final head and gate: see "Close" at the end.
 | Step 4b: background wanted-token key unioned by the feed | 0bcd8700 | 9 new tests + 8 feed test files green | orchestrator |
 | A1: liquidity limits (ADR-230 (1)) | 5f9da8b5 | remainder parked #624 | Tier B |
 | A2: Compare cost rows + charge breakdown | b6c1957f | API on ADJ-13: "Cost as % of premium left" 2.28 % / 3.53 % / 1.72 %, "Change in max profit", per-charge breakdown (brokerage, STT, exchange ...) on the cost cell | Tier B |
-| A3: card mark "N adjustment opportunities" | 431f56a0 | API on ADJ-02: card 72 reads "3 adjustment opportunities" -> 2 after one dismiss -> no mark after all three | Tier B |
+| A3: card mark "N adjustment opportunities" (+ round 2: Dismiss on the inbox row, c4869ef6) | 431f56a0 | API on ADJ-02: card 72 reads "3 adjustment opportunities" -> 2 after one dismiss -> no mark after all three | Tier B |
 | A4: two stops = whichever comes first | 4e25e9cf | plan sheet + summary tests | Tier B |
 | A5: "Adjustments used" from the history count | a2d8cefc | API on ADJ-13 reads "2 used" - correct for the stored orders, which hold 2 adjustments because the SEED is wrong (#628) | Tier C |
 
@@ -34,16 +34,28 @@ Every shared-file change has a line in `coord/overlaps/GC-MU.md`.
   `_serve` Redis wiring is `pragma: no cover`, not run against a real Redis - first real proof is with the feed on a
   market day, together with T3).
 
+## Screen proofs (owner's Chrome, 2026-11-01 08:13-08:50 IST, after the owner connected Chrome)
+
+- **A2:** ADJ-13, `/strategy/builder?adjust=73`. "Cost as % of premium left" reads 2.28 / 3.53 / 1.72 / 5.10 / 3.34 %,
+  and Exit reads "-" with "no premium is left to earn". "Change in max profit" renders. The charge breakdown opens on
+  tap and adds up: for the roll toward spot, Rs 114.35 in charges + Rs 91.00 bid-ask = Rs 205.35.
+- **A5:** the "Adjustments used" row renders "2 used" / "3 used". That count is the stored orders' count, which is
+  wrong because of the seed (#628).
+- **A1:** the liquidity row renders, with "Tightest spreads" marked as the leader.
+- **A3:** ADJ-03, strategy 76. The card read "3 adjustment opportunities" and linked to `?strategy=76`. The inbox had
+  no Dismiss, which is a gap against ADR-230 (2), so A3 round 2 added Dismiss to the inbox row (merge c4869ef6). One
+  click then dismissed all 3, and the card mark was gone.
+- **390 px** (a 390 px frame, because the window was maximized): the Compare scrolled 159 px sideways, the editor
+  27 px and the inbox 300 px. All three were fixed in 44cbcb25. After the fix, all four page states measure 372 = 372
+  with no sideways scroll. The screenshots are local, in the Chrome screenshot temp folder (`claude-chrome-screenshots-*`).
+- **Found during the proofs:** #630 (a "no current price" dash, seen once, not reproduced); #631 (a dropped DB
+  connection gives a 500); old inbox rows stored before 10-31 still show raw trigger codes ("T-01: 0.3416").
+- **No detection change** for the 390 px class: jsdom has no layout, so the guard is a real-browser check at 390 px
+  (an e2e step).
+
 ## BLOCKED
 
-- **Screen proofs for A2, A3, A5 and the 390 px screenshots** (Compare, editor, inbox). These need the owner's
-  visible Chrome, and no Claude-in-Chrome browser was connected (`list_connected_browsers` -> `[]`). Headless is
-  forbidden. The server side of each is proven through the same Vite proxy the screens use (rows above). To unblock:
-  connect the extension; then start the API (`APP_ENV=development OFO_SCENARIO=ADJ-13 python
-  scripts/orchestrator/dev_run.py <tree> python -m uvicorn ofo_app.main:create_app --factory --loop
-  ofo_app.event_loop:selector_loop --port 8100`) and Vite (`OFO_API_TARGET=http://127.0.0.1:8100 npx vite --port 5273
-  --strictPort`). Strategies: 73 = ADJ-13, 72 = ADJ-02. The three ADJ-02 records were dismissed during the API proof,
-  so re-run the check (`GET /api/strategies/72/adjustment-check`) before the A3 screen proof.
+- Nothing.
 
 ## PARKED / DEFERRED (issues)
 
@@ -59,6 +71,8 @@ Every shared-file change has a line in `coord/overlaps/GC-MU.md`.
 - #625 deferred: F-90, the range-reading rule lives only in the browser.
 - #626 deferred: no Content-Security-Policy `connect-src 'self'` (step 2 D3).
 - #628 deferred: `seed_scenario.py` batches a scenario's trade wrongly (ADJ-13 seeds 2 adjustments, the scenario has 1).
+- #630 deferred: the Compare showed "no current price" for a current leg once in scenario mode; not reproduced.
+- #631 deferred: the DB pool has no pre-ping, so a dropped connection turns the next request into a 500.
 - Step 3 MINOR (not filed separately): after expiry the status reads `phase: live` with `ended: True`.
 
 ## Owner answers (owner back 2026-11-01 ~08:00 IST)
@@ -112,7 +126,6 @@ Every shared-file change has a line in `coord/overlaps/GC-MU.md`.
    `--no-ff build/gcmu` into local `feature/adjustments` and push it as backup. No PR; nothing to main without the
    owner's explicit OK.
 2. **T3,** at the first market session with the owner present (Mon 2026-11-03 09:15 IST earliest).
-3. **The BLOCKED screen proofs** above, once Chrome is connected.
 4. **#628** before any further screen proof on ADJ-13.
 5. **Foundation steps 5-7** after sign-in.
 6. **#629:** the wording check of the 461 pending texts, then the owner reads the flags (after the integration, so the texts are final).
@@ -125,5 +138,5 @@ Every shared-file change has a line in `coord/overlaps/GC-MU.md`.
 - On TOTAL PASS, `build/gcmu` is pushed to origin as backup only. No PR; `feature/adjustments` and `main` are not
   touched.
 - The worktrees whose use ended are removed with `wt-rm.ps1` after the push, with counts printed: gcmu-key, gcmu-liq,
-  gcmu-feed, gcmu-door, gcmu-stops, gcmu-t1, gcmu-cmp, gcmu-mark, gcmu-used, gcmu-bg, gcmu-want, gcmu-wire. The run tree
+  gcmu-feed, gcmu-door, gcmu-stops, gcmu-t1, gcmu-cmp, gcmu-mark, gcmu-used, gcmu-bg, gcmu-want, gcmu-wire, gcmu-inbox, gcmu-docs. The run tree
   `OptionsForOptions2-gcmu` stays, for the integration.
