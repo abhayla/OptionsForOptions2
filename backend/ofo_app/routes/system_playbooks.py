@@ -28,7 +28,7 @@ from ofo_app.api_models import ApiModel, CatalogueText, Identifier
 from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, respond
 from ofo_app.playbook_body_out import PlaybookBody
-from ofo_app.routes.playbooks import _refused as editor_refused
+from ofo_app.routes.playbooks import refused as editor_refused
 from ofo_app.routes.playbooks import precheck
 from ofo_app.routes.settings import RefusedOut, require_admin
 

@@ -60,7 +60,7 @@ class SystemVersion:
 
 
 def _version(row: Any) -> SystemVersion:
-    return SystemVersion(strategy_type=row[0], version=row[1], status=row[2], body=pbs._load(row[3]),
+    return SystemVersion(strategy_type=row[0], version=row[1], status=row[2], body=pbs.load_body(row[3]),
                          reason=row[4], saved_by=row[5], restored_from=row[6], saved_at=row[7])
 
 
@@ -107,7 +107,7 @@ async def _append(conn: Any, admin: str, base: SystemVersion, *, status: str, bo
     try:
         async with conn.begin_nested():
             row = (await conn.execute(_INSERT, {
-                "type": base.strategy_type, "version": base.version + 1, "status": status, "body": pbs._dump(body),
+                "type": base.strategy_type, "version": base.version + 1, "status": status, "body": pbs.dump_body(body),
                 "reason": reason, "saved_by": admin, "restored_from": restored_from})).one()
             await audit_store.append(conn, EventType.ADMIN_CHANGE_RECORDED, actor=admin,
                                      correlation_id=f"sysplay-{uuid.uuid4().hex}",

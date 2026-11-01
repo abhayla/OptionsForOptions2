@@ -101,6 +101,8 @@ PR241_SELECTION = {
     "tests_app/test_stage_name_replies.py",
     # GC-SET step 8 (REQ-168): names ofo.errors.explanations (the preference refusal reason text) in its route checks
     "tests_app/test_user_preferences.py",
+    # GC-SET step 9 (REQ-169): names ofo.errors.explanations (the system playbook refusal texts) in its route checks
+    "tests_app/test_system_playbook_versions.py",
 }
 
 

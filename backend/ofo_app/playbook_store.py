@@ -349,6 +349,12 @@ def _load(raw: str) -> Any:
     return json.loads(raw, parse_float=_no_float)
 
 
+#: Public names for the body codec, shared with the system playbook version store (GC-SET step 9): one codec for
+#: every stored playbook body (sorted keys; a float in a stored body is refused).
+dump_body = _dump
+load_body = _load
+
+
 def _type(strategy_type: str) -> str:
     if strategy_type not in SHOWN_NAMES:
         raise PlaybookStoreError(BODY_INVALID, f"strategy type {strategy_type!r}", field="strategy_type")

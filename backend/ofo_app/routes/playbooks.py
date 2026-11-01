@@ -143,6 +143,11 @@ def _refused(exc: store.PlaybookStoreError | stages.StageProblem) -> StrategyRef
     return StrategyRefused(exc.code, _STATUS[exc.code], message=render(exc.code, **exc.slots))
 
 
+#: Public name for the editor's refusal, shared with the system playbook routes (GC-SET step 9): the admin's
+#: system editor refuses a body with exactly the user editor's words.
+refused = _refused
+
+
 def _id(playbook_id: int) -> int:
     if not 1 <= playbook_id <= ID_MAX:
         raise store.PlaybookStoreError(store.NOT_FOUND, f"playbook {playbook_id}")
