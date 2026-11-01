@@ -6,6 +6,11 @@
      Draft and active come from the server's answer (is_system, draft, active), never inferred here. -->
 <template>
   <section class="pb mx-auto max-w-[1400px] p-4 text-ink" data-testid="adjustments-page">
+    <Tabs v-model="screenTab" :tabs="SCREEN_TABS" label="Adjustments" id-prefix="adj" class="mb-3" />
+    <div v-if="screenTab === 'preferences'" id="adj-panel-preferences" role="tabpanel" aria-labelledby="adj-tab-preferences" data-testid="adj-panel-preferences">
+      <PreferencesTab />
+    </div>
+    <div v-show="screenTab === 'playbooks'" id="adj-panel-playbooks" role="tabpanel" aria-labelledby="adj-tab-playbooks">
     <header class="flex flex-wrap items-end gap-3 rounded-lg border border-line bg-surface p-3">
       <label class="flex flex-col gap-1 text-xs font-medium text-ink-muted">Strategy type
         <select :value="typeKey" class="h-9 min-w-48 rounded-lg border border-line bg-surface px-2 text-sm text-ink" data-testid="pb-type" @change="pickType($event.target.value)">
@@ -162,6 +167,7 @@
         </div>
       </aside>
     </div>
+    </div>
   </section>
 </template>
 
@@ -169,10 +175,14 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import api from '@/services/api'
+import Tabs from '@/components/common/Tabs.vue'
+import PreferencesTab from '@/components/adjustments/PreferencesTab.vue'
 import { STEPS, EXPIRY_KINDS, addStage, clone, isDirty, labelMaps, refusalText, removeStage, ruleMembers, said, stagesOf, summaryLines,
   testRow, valuesOf } from '@/lib/playbookEditor'
 
 const route = useRoute()
+const SCREEN_TABS = [{ key: 'playbooks', label: 'Playbooks' }, { key: 'preferences', label: 'Preferences' }]
+const screenTab = ref('playbooks')
 const types = ref([])
 const labels = ref(labelMaps(null)) // every word the body does not carry (GET /playbooks/labels)
 const typeKey = ref(null)
