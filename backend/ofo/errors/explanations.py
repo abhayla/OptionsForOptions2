@@ -1843,6 +1843,16 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("settings_refused_charges_date", "rule",
                         "A charge rate set dated {date} cannot be added: that date already has a set, or it is older "
                         "than the newest set. Use a later date.", {"date": Recorded}),
+    # REQ-169 (ADR-222 (10)): the admin's system playbook versions refused (pending owner read)
+    ExplanationTemplate("system_playbook_refused_reason", "rule",
+                        "A new system playbook version needs a reason: say why the numbers change."),
+    ExplanationTemplate("system_playbook_refused_stale", "rule",
+                        "Another change was saved first: this system playbook is now at version {version}. Reload "
+                        "it, then save again.", {"version": Recorded}),
+    ExplanationTemplate("system_playbook_refused_version", "rule",
+                        "Version {version} of this system playbook is not stored.", {"version": Recorded}),
+    ExplanationTemplate("system_playbook_refused_approved", "rule",
+                        "This system playbook is already approved."),
 )
 
 EXPLANATIONS: Mapping[str, ExplanationTemplate] = MappingProxyType({t.id: t for t in _EXPLANATIONS})

@@ -165,6 +165,10 @@ def _precheck(strategy_type: str, body: object) -> None:
     stages.check_stages(checked)
 
 
+#: REQ-169 AC-1: the admin's system playbook save runs exactly this check (one validator, never a second one)
+precheck = _precheck
+
+
 def _row(pb: store.Playbook, active_id: int) -> dict[str, Any]:
     return {"id": pb.id, "name": name_shown(pb.name), "type": pb.strategy_type,
             "type_name": render_explanation("adjust_check_type_name", name=SHOWN_NAMES[pb.strategy_type]),
