@@ -185,12 +185,24 @@ def test_no_market_is_off(clock):
 
 
 class _Db:
-    """The route's database: one active, unexpired session row."""
+    """The route's database: one active, unexpired session row. Since GC-SET 5a-2 the session status also reads the
+    settings in force (the Kite session expiry setting): the database clock answers T0 and no setting row is stored,
+    so every setting is its registry default."""
 
-    async def execute(self, _stmt, _params):
+    async def execute(self, stmt, _params=None):
+        sql = str(stmt)
+
         class _R:
             def one_or_none(self):
-                return (T0, False)
+                return (T0, T0)  # (started_at, database now): started at T0, read at T0 -> before its expiry
+
+            def scalar_one(self):
+                assert "clock_timestamp" in sql, sql  # only the settings store's "now" asks for one scalar
+                return T0
+
+            def all(self):
+                assert "app_settings" in sql, sql  # only the settings store asks for all rows
+                return []
         return _R()
 
 

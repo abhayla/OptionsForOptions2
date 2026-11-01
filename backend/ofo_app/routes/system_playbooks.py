@@ -35,7 +35,6 @@ from ofo_app.routes.settings import RefusedOut, require_admin
 router = APIRouter(route_class=ClosedRoute, dependencies=[Depends(require_admin)])
 Admin = Annotated[str, Depends(require_admin)]
 Db = Annotated[Any, Depends(get_db)]
-BASE = "/api/system-playbooks/{strategy_type}"
 
 #: this API's own refusals -> (catalogue explanation, HTTP status); every other store refusal is the editor's
 _OWN = {
@@ -115,7 +114,7 @@ def _type(strategy_type: str) -> str:
     return strategy_type
 
 
-@router.get(f"{BASE}/versions", response_model=SystemHistoryOut)
+@router.get("/api/system-playbooks/{strategy_type}/versions", response_model=SystemHistoryOut)
 async def system_playbook_history(strategy_type: str, db: Db) -> object:
     async def work() -> SystemHistoryOut:
         rows = await store.history(db, _type(strategy_type))
@@ -123,7 +122,7 @@ async def system_playbook_history(strategy_type: str, db: Db) -> object:
     return await _run(db, work)
 
 
-@router.post(f"{BASE}/versions", status_code=201, response_model=SystemVersionOut)
+@router.post("/api/system-playbooks/{strategy_type}/versions", status_code=201, response_model=SystemVersionOut)
 async def save_system_playbook(strategy_type: str, data: SystemSaveIn, db: Db, admin: Admin) -> object:
     """AC-1/AC-2: the editor's whole pre-save check, then the next version with the admin, time and reason."""
     async def work() -> SystemVersionOut:
@@ -133,7 +132,8 @@ async def save_system_playbook(strategy_type: str, data: SystemSaveIn, db: Db, a
     return await _run(db, work)
 
 
-@router.post(f"{BASE}/versions/{{version}}/restore", status_code=201, response_model=SystemVersionOut)
+@router.post("/api/system-playbooks/{strategy_type}/versions/{version}/restore", status_code=201,
+             response_model=SystemVersionOut)
 async def restore_system_playbook(strategy_type: str, version: int, data: SystemReasonIn, db: Db,
                                   admin: Admin) -> object:
     """AC-2 "Restore this version": an earlier version's body becomes current as a NEW version."""
@@ -145,7 +145,7 @@ async def restore_system_playbook(strategy_type: str, version: int, data: System
     return await _run(db, work)
 
 
-@router.post(f"{BASE}/approve", status_code=201, response_model=SystemVersionOut)
+@router.post("/api/system-playbooks/{strategy_type}/approve", status_code=201, response_model=SystemVersionOut)
 async def approve_system_playbook(strategy_type: str, data: SystemReasonIn, db: Db, admin: Admin) -> object:
     """AC-3: a Draft system playbook marked approved (a new version, same numbers). The decision row is the recording
     session's (REQ-169 AC-3), not this route's."""
