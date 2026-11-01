@@ -294,6 +294,13 @@ clock (`date`) in the same step, never typed from memory.
   `...-1793524982285-9.jpg` (v2), `...-1793525013822-10.jpg` (v3 restored), `...-1793525037520-11.jpg` (stale Draft),
   `...-1793525061917-12.jpg` (label gone after reload).
 
+- PARKED (#632) 14:58 IST: market hours + step 5b (order and limit facts), owner option A; issue labelled `parked`,
+  staged S6.4 in coverage-stages.yaml; follow-up contract draft `goal-contract-GC-SET2-DRAFT.md`.
+- close (14:59 IST): order corrected so the full prepush runs ONCE on the final head: docs commit -> merge --no-ff into
+  local feature/adjustments -> `prepush.py --full` on the merge commit -> push feature/adjustments. A first full run
+  started on 0cbe90fe was stopped by PID before any step finished (it could not give the pushed head a marker, and a
+  second full run doubles the memory risk; 5.3 GB free).
+
 ## Found during the run
 
 | # | Finding | Where | What was done |
@@ -308,6 +315,7 @@ clock (`date`) in the same step, never typed from memory.
     Tier A);
   - step 5b, order and limit facts: freeze units and batch, Zerodha rate and feed limits, quote limit, tick, stamp
     and SEBI caps incl. the migration-0014 DB caps (Tier A).
+  Filed as #632 (label `parked`, stage S6.4) on 2026-11-01 14:58 IST.
   The DoD box "Every scan row in group B is a setting" stays OPEN and is reported as parked; 4 of the group B facts
   (paper settlement window, contract-list publish time, Kite session expiry, plus the per-tick rate re-read) are done.
 
