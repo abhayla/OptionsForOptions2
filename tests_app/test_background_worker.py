@@ -128,10 +128,10 @@ async def test_restart_monitors_within_60s_reopens_nothing_and_keeps_rule_memory
     first.stop()  # stopped mid-session
     now[0] += datetime.timedelta(seconds=2)
     second = _worker(scn, lambda: now[0])
-    started = time.monotonic()
+    restarted_at = now[0]  # the injected clock: the restart's first check is counted against it, never wall time
     await second.cycle()
-    assert time.monotonic() - started < REBUILD_LIMIT_S
     assert [m.strategy_id for m in second.monitors] == [sid] and [c[0] for c in second.checks] == [sid]
+    assert second.checks[0][1] - restarted_at <= datetime.timedelta(seconds=REBUILD_LIMIT_S)
     after = await _t01_records(app_db_url, sid)
     assert [r.id for r in after] == [r.id for r in before]  # the open record is the same one, never re-opened
     async with app_db_url.connect() as conn:

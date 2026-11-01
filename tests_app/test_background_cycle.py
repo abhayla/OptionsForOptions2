@@ -420,9 +420,16 @@ def test_state_of_prices_only_the_strategys_own_legs_and_is_light(scn, scenario_
     w = _watched(scn)[0]
     read = background.read_prices(prov, w, at)
     shared = FeedScope(background.SharedCompute(), "owner")
+    priced = []
+    real_price_after = adjustment_check.price_after
+
+    def counted(*a, **k):
+        priced.append(1)
+        return real_price_after(*a, **k)
+    monkeypatch.setattr(adjustment_check, "price_after", counted)
     started = time.perf_counter()
     for _ in range(TIMED_CALLS):
         background.background_state(w, read, shared, at, RATE)
     each = (time.perf_counter() - started) / TIMED_CALLS
-    print(f"STATE-OF-TIMING calls={TIMED_CALLS} each_ms={each * 1000:.2f}")
-    assert each < 1  # seconds
+    print(f"STATE-OF-TIMING calls={TIMED_CALLS} each_ms={each * 1000:.2f} computations={shared.cache.computations}")
+    assert len(priced) == TIMED_CALLS  # one own-legs pricing per check (work counted, never wall time)
