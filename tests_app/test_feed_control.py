@@ -21,6 +21,7 @@ import logging
 import os
 import pathlib
 import types
+import urllib.parse
 
 import pytest
 import redis.asyncio as aioredis
@@ -42,8 +43,11 @@ class CountingKite(LoopingKite):
     def __init__(self) -> None:
         super().__init__()
         self.active = 0
+        self.tokens: list[str] = []  # the access_token each connection presented (round-2 MAJOR 2: whose token)
 
     async def handler(self, ws) -> None:
+        query = urllib.parse.parse_qs(urllib.parse.urlsplit(ws.request.path).query)
+        self.tokens.append((query.get("access_token") or [""])[0])
         self.active += 1
         try:
             await super().handler(ws)
