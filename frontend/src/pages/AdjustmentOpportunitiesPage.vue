@@ -41,6 +41,17 @@
               </td>
               <td class="py-1.5">
                 <RouterLink v-if="g.has_open" :to="linkOf(g)" class="text-accent underline" data-testid="opp-compare">Compare approaches</RouterLink>
+                <!-- GC-MU A3 r2 (ADR-230 (2)): Dismiss the group's open records, optional reason from the server's closed list -->
+                <div v-if="openIds(g).length" class="mt-1 flex flex-wrap items-center gap-2" data-testid="opp-dismiss-box">
+                  <label class="text-sm">Reason
+                    <select v-model="reasonOf[g.group]" class="ml-1 rounded border border-line px-1 py-0.5 text-sm" data-testid="opp-dismiss-reason">
+                      <option value="">-</option>
+                      <option v-for="r in reply.dismiss_reasons ?? []" :key="r.id" :value="r.id">{{ r.text }}</option>
+                    </select>
+                  </label>
+                  <button type="button" class="h-9 rounded-lg border border-line px-3 text-sm font-medium" :disabled="busy[g.group]" data-testid="opp-dismiss" @click="dismiss(g)">Dismiss</button>
+                  <ErrorMessage v-if="errorOf[g.group]" :parts="errorOf[g.group]" compact prefix="opp-dismiss-error" data-testid="opp-dismiss-error" />
+                </div>
               </td>
             </tr>
           </tbody>
@@ -51,7 +62,7 @@
 </template>
 
 <script setup>
-import { inject, nextTick, onMounted, ref } from 'vue'
+import { inject, nextTick, onMounted, reactive, ref } from 'vue'
 import { RouterLink, routeLocationKey } from 'vue-router'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import api, { NEUTRAL_PARTS } from '@/services/api'
@@ -71,15 +82,42 @@ const errorParts = ref(NEUTRAL_PARTS)
 const picked = inject(routeLocationKey, null)?.query?.strategy ?? null
 const linkOf = (g) => compareUrl(g.strategy_id, [], g.records.filter((r) => r.can_act).map((r) => r.id))
 
-onMounted(async () => {
+async function load() {
   try {
     reply.value = (await props.client.get('/adjustment-opportunities')).data
     state.value = 'ready'
-    await nextTick()
-    root.value?.querySelector('[data-picked="true"]')?.scrollIntoView?.()
+    return true
   } catch (e) {
     errorParts.value = e?.parts ?? NEUTRAL_PARTS
     state.value = 'error'
+    return false
   }
+}
+onMounted(async () => {
+  if (!(await load())) return
+  await nextTick()
+  root.value?.querySelector('[data-picked="true"]')?.scrollIntoView?.()
 })
+
+// GC-MU A3 r2: per-group Dismiss, the drawer's way (AdjustDrawer.vue): one post per open record, the server's refusal shown as it came
+const reasonOf = reactive({})
+const busy = reactive({})
+const errorOf = reactive({})
+const openIds = (g) => g.records.filter((r) => r.can_act).map((r) => r.id)
+async function dismiss(g) {
+  busy[g.group] = true
+  errorOf[g.group] = null
+  const body = reasonOf[g.group] ? { reason: reasonOf[g.group] } : {}
+  let done = 0
+  for (const id of openIds(g)) {
+    try {
+      await props.client.post(`/adjustment-opportunities/${id}/dismiss`, body)
+      done += 1
+    } catch (e) {
+      errorOf[g.group] = e?.parts ?? NEUTRAL_PARTS
+    }
+  }
+  busy[g.group] = false
+  if (done) await load() // the list shows the truth: dismissed rows read "You dismissed this"
+}
 </script>
