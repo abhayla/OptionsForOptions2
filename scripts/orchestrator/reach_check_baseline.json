@@ -96,6 +96,26 @@
    "issue": "#532"
   },
   {
+   "key": "UNREACHED REQ-026 W-025 AC-3",
+   "reason": "unreached: ofo.range.pick_lists imported by no app entry point - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNREACHED REQ-026 W-025 AC-5",
+   "reason": "unreached: ofo.range.pick_lists imported by no app entry point - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNREACHED REQ-026 W-025 AC-6",
+   "reason": "unreached: ofo.range.pick_lists imported by no app entry point - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNREACHED REQ-026 W-025 AC-7",
+   "reason": "unreached: ofo.range.pick_lists imported by no app entry point - #532",
+   "issue": "#532"
+  },
+  {
    "key": "UNRESOLVED REQ-028 W-143 AC-4",
    "reason": "unresolved: evidence names no python test - #532",
    "issue": "#532"

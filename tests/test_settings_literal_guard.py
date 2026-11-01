@@ -237,6 +237,17 @@ def test_every_registry_key_has_a_reader():
     assert keys_without_reader([s["key"] for s in _load_keys()], corpus, patterns) == []
 
 
+def test_range_keys_are_read_by_the_browser_and_the_pick_list_module():
+    """limits.range_step / range_cap_* have two readers: the browser (lib/guided.js) and ofo/range/pick_lists.py,
+    which takes them from settings (no typed default, so no KNOWN_LEFTOVERS row for it)."""
+    guided = (FRONTEND / "lib" / "guided.js").read_text(encoding="utf-8")
+    assert "'limits.range_step'" in guided and "limits.range_cap_${" in guided
+    module = (BACKEND / "ofo" / "range" / "pick_lists.py").read_text(encoding="utf-8")
+    assert "range_cap(" in module and "from ofo.settings.calc import" in module
+    assert not any(v[0].endswith("pick_lists.py") for v in KNOWN_LEFTOVERS.values())
+    assert not _py_module_names(module) & {"STEP", "DEFAULT_CAPS"}
+
+
 def test_no_old_literal_is_back_in_its_old_home():
     settings = _load_keys()
     defaults = {s["key"]: s["default"] for s in settings}
