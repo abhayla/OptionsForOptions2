@@ -64,10 +64,10 @@ from ofo.outcome.service import MARGIN_CHECKED, Margin
 from ofo.timeutil import IST
 from pydantic import BaseModel, ConfigDict, Field
 
+from ofo_app import held_switches
 from ofo_app.api_models import AdjustApproachesOut
 from ofo_app.config import app_env
 from ofo_app.errors import ClosedRoute, Failure
-from ofo_app.held_switches import PROBABILITY_OF_PROFIT, held_on
 from ofo_app.outcome_margin import OutcomeMargin, PlannedOrderIn, margin_answer
 from ofo_app.routes.adjustment_preferences import UserPreferences
 from ofo_app.routes.outcome import (
@@ -366,7 +366,7 @@ async def adjustment_approaches(  # noqa: PLR0913 - FastAPI dependencies, one pe
     tracked = as_of_market(tracked, market)
     spot = resolve_spot(market.feed, await rest_reader(tracked.position.underlying), market.last_close, now=market.now,
                         windows=feed_windows_of(ctx))
-    pop_on = held_on(PROBABILITY_OF_PROFIT, held_environ)
+    pop_on = held_switches.held_on(held_switches.PROBABILITY_OF_PROFIT, held_environ)
     asked = list(dict.fromkeys(body.approaches)) if body.approaches is not None else list(APPROACH_IDS)
     reply: dict[str, Any] = {"strategy_id": strategy_id, "view": body.view, "spot": _spot_block(spot),
                              "pop_switch_on": pop_on}
