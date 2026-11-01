@@ -32,8 +32,9 @@ MAX_TEXT: Final = 40  # the longest value text accepted from a form (a Decimal s
 TIME_UNIT: Final = "time"
 _HHMM: Final = 100
 
-#: App-wide admin settings only (owner 2026-10-31): per-user adjustment preferences (near-level distance, cost per
-#: leg) are a separate per-user build on the Adjustments screen, never in this registry.
+#: App-wide admin settings, plus the adjustment-defaults group (registry keys under ``adjustments.``): the admin's
+#: STARTING value of each per-user adjustment preference (ADR-222 (7), REQ-168 AC-5). A user's own value lives in
+#: ``ofo_app.user_preferences_store``, never here.
 RISK_FREE_RATE: Final = "pricing.risk_free_rate"
 
 
@@ -203,6 +204,12 @@ def validate(key: object, raw: object) -> Decimal:
     except InvalidOperation:
         raise SettingRefused("setting_not_a_number", f"{s.label} must be a number, e.g. {plain(s.default)}.") from None
     return check_value(s, value)
+
+
+def hhmm_text(value: Decimal) -> str:
+    """A ``time`` setting (HHMM as a whole number, 930) as the clock text the playbook checks compare ("09:30");
+    one conversion with ``time_of`` (a value that is not a time of day raises ValueError)."""
+    return time_of(value).strftime("%H:%M")
 
 
 def value_of(values: Mapping[str, Decimal], key: str) -> Decimal:

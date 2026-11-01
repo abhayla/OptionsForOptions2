@@ -3318,5 +3318,17 @@
   "explanation:adjust_condition_line_id": {
     "sha256": "2abcad08224e0354c80431272edc995f149b964c92f1c0c4ab630c8ca59997b4",
     "reviewed": "pending owner read"
+  },
+  "explanation:adjust_near_short_strike_line": {
+    "sha256": "b8164086ad0d641d1a660c4f711145cdb736b1c8391dd59e3264f38073d7f047",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_near_breakeven_line": {
+    "sha256": "0cc9f1ee90dee63f7a5f554e74f19d5a80f949853b4e7175ed280fb130b19b28",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_preference_refused_unknown": {
+    "sha256": "9a49080710bf4750cf2ee15a8c43c51229e5e914959c6e54b6e2d6675cf2bbbc",
+    "reviewed": "pending owner read"
   }
 }

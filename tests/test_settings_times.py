@@ -70,7 +70,12 @@ def test_each_time_key_default_is_exactly_the_old_literal():
     assert calc.paper_retry_until(values) == datetime.time(18, 0)  # was paper_settlement.RETRY_UNTIL
 
 
-def test_every_time_setting_is_an_exchange_or_broker_fact_naming_its_source():
+def test_every_time_setting_names_its_source_and_facts_sit_in_their_group():
+    """REQ-167 AC-5: an exchange/broker time fact sits in "Exchange and broker facts" with its source; a time that is
+    an adjustment starting value (the gap-at-open window, REQ-168) sits in the adjustment defaults and names its source
+    too."""
     times = [s for s in settings.registry().values() if s.unit == "time"]
     assert times
-    assert all(s.group == "Exchange and broker facts" and s.source.strip() for s in times)
+    assert all(s.source.strip() for s in times)
+    facts = [s for s in times if s.key.startswith("facts.")]
+    assert facts and all(s.group == "Exchange and broker facts" for s in facts)
