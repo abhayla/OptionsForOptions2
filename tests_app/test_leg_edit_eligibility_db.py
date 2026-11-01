@@ -19,6 +19,9 @@ from ofo_app.routes import leg_edit as route
 from sqlalchemy import text
 from test_strategy_followups import _ConnMaker
 from test_strategy_store import AS_OF, _fixture_rows, _ids
+from ofo.settings import calc as _calc, defaults as _defaults
+
+_MAX_DELIST = _calc.max_delist_percent(_defaults())
 
 LIST_DAY = AS_OF.date()  # 2026-10-08, the recorded list's day
 DB_TODAY = text("SELECT (now() AT TIME ZONE 'Asia/Kolkata')::date")
@@ -48,7 +51,7 @@ async def test_the_real_eligibility_check_allows_tradable_refuses_not_tradable_a
     async with app_engine.connect() as conn:
         trans = await conn.begin()
         try:
-            await apply_update(conn, _fixture_rows(), as_of=AS_OF)
+            await apply_update(conn, _fixture_rows(), as_of=AS_OF, max_delist_percent=_MAX_DELIST)
             ids = list(dict.fromkeys((await _ids(conn)).values()))
             first, second = ids[0], ids[1]
             await conn.execute(LISTED_OFF, {"id": first})  # left the latest list: not tradable
@@ -66,7 +69,7 @@ async def test_the_real_eligibility_check_refuses_every_contract_when_no_list_wa
     async with app_engine.connect() as conn:
         trans = await conn.begin()
         try:
-            await apply_update(conn, _fixture_rows(), as_of=AS_OF)
+            await apply_update(conn, _fixture_rows(), as_of=AS_OF, max_delist_percent=_MAX_DELIST)
             ids = list(dict.fromkeys((await _ids(conn)).values()))[:2]
             await trans.rollback()  # the same database with nothing loaded: contracts that exist elsewhere are unknown
             trans = await conn.begin()
@@ -86,7 +89,7 @@ async def test_the_real_list_check_is_current_on_the_loaded_day_and_not_the_day_
             db_today = (await conn.execute(DB_TODAY)).scalar_one()
             _wired(monkeypatch, conn, db_today)
             assert await route.get_list_current() is False  # nothing loaded in this database
-            await apply_update(conn, _fixture_rows(), as_of=AS_OF)
+            await apply_update(conn, _fixture_rows(), as_of=AS_OF, max_delist_percent=_MAX_DELIST)
             assert await route.get_list_current() is True  # loaded now, judged today
             next_session_day = db_today + datetime.timedelta(days=1)
             while next_session_day.weekday() >= SATURDAY:  # a weekend judges as Friday 08:30, so judge on a weekday

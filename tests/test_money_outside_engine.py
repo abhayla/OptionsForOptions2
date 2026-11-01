@@ -91,7 +91,6 @@ KNOWN_ON_MAIN: dict[str, tuple[str, ...]] = {
 NOT_MONEY_ON_MAIN_WHY: dict[str, str] = {
     "backend/ofo/errors/explanations.py": 'len(value) - 1: an index into a string, not money',
     "backend/ofo/history/store.py": 'counts bars (sum of 1s over self._bars.values()), not money',
-    "backend/ofo/range/pick_lists.py": 'snaps a strike or index level to a step; points, not rupees',
     "backend/ofo/reconciliation/compare.py": 'adds a contract quantity (units), not money',
     "backend/ofo/strategy/guard.py": 'sign of a number (-1/0/1)',
     "backend/ofo/strategy/leg_edit.py": 'strike width and index-to-strike distance (REQ-078 AC-4); points, not rupees',
@@ -107,11 +106,6 @@ NOT_MONEY_ON_MAIN: dict[str, tuple[str, ...]] = {
     ),
     "backend/ofo/history/store.py": (
         'kept = sum(1 for b in self._bars.values() if b.minute.date() == day and b.source is BarSource.LIVE)',
-    ),
-    "backend/ofo/range/pick_lists.py": (
-        'return (value // STEP) * STEP',
-        'value -= STEP',
-        'value += STEP',
     ),
     "backend/ofo/reconciliation/compare.py": (
         'expected[contract] = expected.get(contract, 0) + value',

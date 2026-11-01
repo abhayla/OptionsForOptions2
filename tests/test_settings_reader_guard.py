@@ -222,3 +222,37 @@ def test_every_app_caller_of_a_forward_calculation_passes_the_quality_in_force()
         problems += [p for p in quality_violations(text, path.name) if p not in known_feed_default_reads(text, path.name)]
     assert found >= 6, "the scan found almost no forward callers: the guard is not looking at the app"
     assert not problems, problems
+
+
+# ---- feed windows (REQ-167 AC-5 "Detection (feed stale and reconnect windows)") ---------------------------------
+def feed_windows_violations(source: str, where: str = "") -> list[str]:
+    """Every ``resolve_spot`` call must pass ``windows=feed_windows_of(<ctx>)`` (the per-request context's windows, or
+    the registry's when the route has no live context); a missing argument, a literal or any other shape fails."""
+    bad: list[str] = []
+    for call in (n for n in ast.walk(ast.parse(source)) if isinstance(n, ast.Call) and _name(n) == "resolve_spot"):
+        value = {k.arg: k.value for k in call.keywords}.get("windows")
+        ok = (isinstance(value, ast.Call) and _name(value) == "feed_windows_of" and len(value.args) == 1
+              and isinstance(value.args[0], (ast.Name, ast.Attribute)))
+        if not ok:
+            bad.append(f"{where}:{call.lineno} resolve_spot() windows is not feed_windows_of(ctx)")
+    return bad
+
+
+@pytest.mark.parametrize("body", [
+    "x = resolve_spot(a, b, c, now=n)\n",
+    "x = resolve_spot(a, b, c, now=n, windows=DEFAULT)\n",
+    "x = resolve_spot(a, b, c, now=n, windows=calc.feed_windows(defaults()))\n",
+])
+def test_the_feed_windows_guard_refuses_other_shapes(body):
+    assert feed_windows_violations(body), body
+
+
+def test_every_app_caller_of_resolve_spot_passes_the_windows_in_force():
+    found = 0
+    problems: list[str] = []
+    for path in sorted(APP.rglob("*.py")):
+        text = path.read_text(encoding="utf-8")
+        found += text.count("resolve_spot(") - text.count("def resolve_spot(")
+        problems += feed_windows_violations(text, path.name)
+    assert found >= 4  # the four routes: a scan that sees none proves nothing
+    assert not problems, problems

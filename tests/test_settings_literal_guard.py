@@ -50,6 +50,8 @@ OLD_HOMES: dict[str, list[tuple[str, str]]] = {
                                ("PAYOFF_TABLE_DEFAULT_STEPS", "scenarios.payoff_default_step_nifty"),
                                ("SD_HORIZON_DAYS", "scenarios.sd_horizon_days")],
     "ofo_app/live_push.py": [("MIN_PUSH_INTERVAL", "speeds.open_strategy_seconds")],
+    "ofo/marketdata/feed_health.py": [("FEED_STALE", "detection.feed_stale_seconds"),
+                                      ("RECONNECT_WINDOW", "detection.feed_reconnect_window_seconds")],
     "ofo/entitlements/engine.py": [("TRIAL_DAYS_DEFAULT", "billing.trial_days"),
                                    ("REFERRAL_DAYS_DEFAULT", "billing.referral_days")],
     "ofo/execution/freeze.py": [("STALE_AFTER_DAYS", "data.freeze_file_stale_days")],
@@ -81,16 +83,6 @@ SECOND_HOMES = {"ofo_app/routes/outcome.py": "limits.max_lots"}  # LegIn.lots le
 
 # Gaps the scan found and this round does not fix. {id: (file, marker text still present, reason, follow-up)}
 KNOWN_LEFTOVERS: dict[str, tuple[str, str, str, str]] = {
-    "pick_lists_dead_code": (
-        "ofo/range/pick_lists.py", "DEFAULT_CAPS",
-        "unused by the app (no importer in backend/ or frontend/; reach_check_baseline lists it unreached, #532) but "
-        "deleting it also edits its test, test_producer_inventory, test_money_outside_engine, test_underlying_tables "
-        "and the reach baseline, which this round may not run",
-        "follow-up: delete module + test + 4 registry rows in one cleanup item (then drop this row)"),
-    "delist_default_direct_calls": (
-        "ofo/instruments/catalogue.py", "DEFAULT_MAX_DELIST_PERCENT",
-        "default 10 stays for the direct Catalogue.update / catalogue_store.apply_update call paths; the app route reads data.max_delist_percent",
-        "follow-up: make the argument required at both direct-call paths"),
     "broker_session_trigger_0600": (
         "ofo_app/alembic/versions/0007_broker_sessions.py", "06:00",
         "the broker_sessions DB trigger stamps expected_expiry at 06:00 IST (a migration; settings cannot reach it)",
@@ -99,10 +91,6 @@ KNOWN_LEFTOVERS: dict[str, tuple[str, str, str, str]] = {
         "ofo/timeutil.py", "SESSION_OPEN",
         "market hours and expiry close are typed in timeutil and not yet wired to settings",
         "follow-up: wire to a facts.* group"),
-    "feed_windows_feed_health": (
-        "ofo/marketdata/feed_health.py", "RECONNECT_WINDOW",
-        "feed stale (3 s) and reconnect (30 s) windows typed in feed_health, not yet wired",
-        "follow-up: wire to a speeds.* group"),
 }
 
 

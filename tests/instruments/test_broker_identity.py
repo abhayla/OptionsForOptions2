@@ -27,6 +27,9 @@ from ofo.instruments import (
     MissingBrokerRef,
 )
 from ofo.instruments.parser import parse_instruments_csv, parse_instruments_rows
+from ofo.settings import calc as _calc, defaults as _defaults
+
+_MAX_DELIST = _calc.max_delist_percent(_defaults())
 
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "instruments" / "instruments_slice.csv"
 IST = timezone(timedelta(hours=5, minutes=30))
@@ -99,7 +102,7 @@ def test_a_newer_list_replaces_zerodha_row_with_its_new_date_and_lot(rows: list[
     revised = [dataclasses.replace(r, broker_refs=tuple(dataclasses.replace(b, lot_size=75, seen_on=date(2026, 9, 30))
                                                          for b in r.broker_refs))
                if r.id == NIFTY_23150_CE else r for r in rows]
-    cat.update(revised, as_of=datetime(2026, 9, 29, 10, 0, tzinfo=IST))
+    cat.update(revised, as_of=datetime(2026, 9, 29, 10, 0, tzinfo=IST), max_delist_percent=_MAX_DELIST)
     ref = cat.get(NIFTY_23150_CE).ref("zerodha")
     assert (ref.lot_size, ref.seen_on) == (75, date(2026, 9, 30))
 
@@ -139,5 +142,5 @@ def test_a_newer_list_without_a_freeze_limit_keeps_the_stored_one(rows: list[Lis
     cat = Catalogue()
     cat.load([dataclasses.replace(r, broker_refs=tuple(dataclasses.replace(b, freeze_limit=1800) for b in r.broker_refs))
               if r.id == NIFTY_23150_CE else r for r in rows])
-    cat.update(rows, as_of=datetime(2026, 9, 29, 10, 0, tzinfo=IST))
+    cat.update(rows, as_of=datetime(2026, 9, 29, 10, 0, tzinfo=IST), max_delist_percent=_MAX_DELIST)
     assert cat.get(NIFTY_23150_CE).ref("zerodha").freeze_limit == 1800

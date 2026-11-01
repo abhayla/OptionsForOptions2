@@ -14,10 +14,13 @@ import pathlib
 
 import pytest
 from ofo.instruments.parser import parse_instruments_csv
-from ofo.marketdata.feed_health import FEED_CAPPED, FEED_RECONNECTING, FEED_STALE
+from ofo.marketdata.feed_health import FEED_CAPPED, FEED_RECONNECTING
 from ofo.marketdata.kite_provider import IST, KiteProvider
+from ofo.settings import calc, defaults
 from ofo_app import broker_sync, live_market
 from ofo_app.routes.broker_status import broker_status, build_status
+
+FEED_STALE = calc.feed_windows(defaults()).stale  # the registry's window, passed explicitly (REQ-167 AC-4)
 
 FIXTURES = pathlib.Path(__file__).resolve().parent.parent / "tests" / "fixtures" / "kite_ws"
 INSTRUMENT_ID = "NSE_FO:47189"

@@ -36,6 +36,9 @@ from ofo_app.catalogue_store import apply_update, parse_rows_naming_the_row
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from test_strategy_store import AS_OF, FIXTURE, _fixture_rows, _user
+from ofo.settings import calc as _calc, defaults as _defaults
+
+_MAX_DELIST = _calc.max_delist_percent(_defaults())
 
 D = Decimal
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -88,7 +91,7 @@ async def _catalogue(db) -> dict[int, int]:
     extra = _rows()
     assert len(extra) == 6, "every SENSEX 2026-10-29 row (5 options, 1 future) must parse"  # noqa: PLR2004
     assert FIXTURE.exists()
-    await apply_update(db, [*_fixture_rows(), *extra], as_of=AS_OF)
+    await apply_update(db, [*_fixture_rows(), *extra], as_of=AS_OF, max_delist_percent=_MAX_DELIST)
     rows = await db.execute(text("SELECT exchange_token, id FROM public.catalogue_contracts WHERE expiry = :e "
                                  "AND name = 'SENSEX'"), {"e": EXPIRY})
     return {int(r[0]): int(r[1]) for r in rows}

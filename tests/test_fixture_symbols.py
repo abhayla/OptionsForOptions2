@@ -133,12 +133,6 @@ HEAD_ONLY_RE = re.compile(rf"(?:NIFTY|BANKNIFTY|FINNIFTY|SENSEX)[0-9]{{2}}{MONTH
 #: chosen for the scenario (a current level far beyond every strike), so the strikes
 #: are deliberately not the real slice's. Their assertions read the synthetic Catalogue, never the CSV.
 SYNTHETIC_CATALOGUE_ALLOWLIST: dict[tuple[str, str], str] = {
-    ("range/test_pick_lists.py", "test_reviewer_repro_synthetic_upper_list_never_appends_the_wrong_side_strike"):
-        "exact verifier reproduction: synthetic Catalogue with strikes 20000..21000 and current 100,000; the "
-        "meaning (every listed strike far below the current level) does not exist in the real slice.",
-    ("range/test_pick_lists.py", "test_mutation_side_check_must_reject_a_wrong_side_bound"):
-        "same verifier reproduction (strikes 20000..21000, current 100,000) used as a mutation probe of the "
-        "side check; synthetic Catalogue by design.",
 }
 
 

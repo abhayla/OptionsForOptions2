@@ -34,6 +34,9 @@ from ofo_app import strategy_store as store
 from ofo_app.catalogue_store import apply_update, load_catalogue, parse_rows_naming_the_row
 from sqlalchemy import event, text
 from sqlalchemy.exc import DBAPIError
+from ofo.settings import calc as _calc, defaults as _defaults
+
+_MAX_DELIST = _calc.max_delist_percent(_defaults())
 
 IST = timezone(timedelta(hours=5, minutes=30))
 AS_OF = datetime(2026, 10, 8, 9, 0, tzinfo=IST)
@@ -73,7 +76,7 @@ async def _new_strategy(conn, user: str, *, catalogue: bool = True) -> int:
     with FIXTURE.open(encoding="utf-8", newline="") as stream:
         rows = [r for r in parse_rows_naming_the_row(stream) if r.ref("zerodha").broker_symbol in SYMBOLS]
     if catalogue:
-        await apply_update(conn, rows, as_of=AS_OF)
+        await apply_update(conn, rows, as_of=AS_OF, max_delist_percent=_MAX_DELIST)
     found = (await conn.execute(text(
         "SELECT b.broker_symbol, c.id FROM public.broker_instruments b JOIN public.catalogue_contracts c "
         "ON c.id = b.contract_id WHERE b.broker = 'zerodha' AND b.broker_symbol = ANY(:s) "
