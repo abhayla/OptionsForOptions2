@@ -188,6 +188,34 @@ clock (`date`) in the same step, never typed from memory.
   days, max delist percent (env var removed) wired; carried fixes a/b/c green (`test_settings_speeds_wiring.py` 10).
   NOT wired: feed stale/reconnect windows -> item 4d. Literal default 10 for delist left in two direct-call paths ->
   step 6's guard must catch it.
+- integration DONE 4c029a29 (~04:50; build/settings fast-forwarded): 3b + 4a + 4b + guard fixes (99fc26dd: 9 repo
+  guards incl. a selection pin, settings write routes classified in scenario mode - start in scenario mode had been
+  refused since step 2 - and `history` -> `earlier_values`). Gate run by me on the candidate head 3c4b9233: full pure
+  `tests` 8618 passed / 2 failed (forward.py getattr; settings count maths not on the non-money allow-list) -> fixed,
+  affected files re-run 322 passed, ratchet OK (3728); DB: adjustment_check 8, scenario_mode 60, settings_route 24,
+  settings_speeds_wiring 10, order closure 13 - all passed. The last small edits were NOT covered by a full-tree run
+  (affected files only) - the close step's prepush --full covers them.
+- dispatched ~04:55: step 8 backend (Opus, Tier A, from 3c4b9233, migration 0033), 4c (server-carried choices +
+  range/lot caps), 5a (timing facts + paper monitor re-read per tick, Opus Tier A). Every brief now ends with a full
+  pure `tests` run before the last commit. Still to dispatch: 4d (feed health windows), 5b (order/limit facts incl.
+  migration-0014 caps), step 6 (AC-6 guard), step 8 UI, step 9, browser proofs 2/8/9, close.
+- integration 2 (worktree gcset-int2, head 85fd0fa8, ~06:30) = 4c 5f3ca38e + 4e 524bc7b5 (incl. 5a c5210d3e) + step 8
+  bc8869af + 5a-2 02071c13. Merge decisions: registry rebuilt as a keyed union each time (65 keys, no key differed);
+  5a and step 8 had each built an HHMM time check -> ONE kept (5a's `time_of`, check, template, pin), step 8's copy
+  removed, `hhmm_text` now calls `time_of`; 5a's "every time setting is a broker fact" test narrowed (gap-at-open is
+  an adjustment default). Bug found by 5a-2: refusing ANY non-time setting answered 500 (the refusal eagerly built a
+  time example) -> slots built only for a time key, regression test.
+- step 8 backend: mutants a-e all KILLED by me on a scratch copy (guard removed 2 failed; user ref dropped 3; fallback
+  to registry 1; reset as DELETE 1 (refused by the DB); trigger removed 3). Round 2: approaches route test had no DB
+  (64 x 500) -> conftest default preferences reader; real-path tests marked `real_preferences`.
+- 5a: wired paper settlement window + paper monitor / strategy / chain sockets re-read settings per tick; time unit
+  HHMM. 5a-2: contract-list publish time, Kite session expiry (app computes expiry from started_at + setting; the DB
+  trigger on broker_sessions still stamps 06:00 and that column is no longer judged -> a literal left in a migration,
+  for step 6's guard / follow-up). NOT wired yet: market hours + expiry close (~14 modules incl. time-to-expiry
+  maths) - the largest remaining item of group B.
+- 4c: leg-picker widths + quick-pick distances carried in the strikes answer; range caps via the settings store.
+  4e: one shared `check_lots` (outcome, live push, leg edit), schema keeps a type sanity bound; browser caps from the
+  settings store. Open: 2 chain-page vitest files fail (mocks do not answer /settings) - the gate's vitest run checks.
 
 ## Found during the run
 
