@@ -133,7 +133,9 @@ async def test_scenario_context_with_the_rate_replaced_is_still_the_scenario_fee
     dep = app.dependency_overrides[outcome.get_market_context]
 
     async def read():
-        return {KEY: Decimal("0.07")}
+        from ofo import settings  # noqa: PLC0415
+
+        return {**settings.defaults(), KEY: Decimal("0.07")}  # every setting in force; only the rate changed
 
     ctx = await dep(read)
     assert ctx.rate == Decimal("0.07")
@@ -156,7 +158,9 @@ async def test_replace_keeps_provider_and_clock(monkeypatch, rate):
     ctx = outcome.MarketContext(object(), lambda: None, Decimal("0.065"))
 
     async def read():
-        return {KEY: Decimal(rate)}
+        from ofo import settings  # noqa: PLC0415
+
+        return {**settings.defaults(), KEY: Decimal(rate)}  # every setting in force; only the rate changed
 
     out = await outcome.with_rate_in_force(ctx, read)
     assert out.rate == Decimal(rate) and out.provider is ctx.provider and out.clock is ctx.clock

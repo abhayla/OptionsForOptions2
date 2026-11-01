@@ -736,10 +736,19 @@ async def test_a_list_loaded_today_by_the_database_clock_is_healthy_while_the_ro
         return loaded
 
     monkeypatch.setattr(elig, "list_loaded_at", _loaded_at)
+    from ofo import settings  # noqa: PLC0415
+    from ofo.settings import calc as settings_calc  # noqa: PLC0415
+
+    publish = settings_calc.contract_list_publish_time(settings.defaults())  # the registry default, never retyped
+
+    async def _publish(conn):  # the fake request has no database: the registry default is in force
+        return publish
+
+    monkeypatch.setattr(route, "publish_time", _publish)
     req = SimpleNamespace(db=None, now=AT, clock=lambda: AT, quotes=SimpleNamespace(underlying_price=lambda u: None))
     health = await route._data_health(req, SimpleNamespace(quote_times=()), "NIFTY", DB_NOW)
     assert health[DataInput.INSTRUMENT_LIST] is DataHealth.HEALTHY
     # W-133 session rule (F-56): a list loaded before the current session's 08:30 IST publish is stale; DB_NOW is a
     # Saturday, so the session is Friday's and a Thursday load is stale (was: "a list from another calendar day").
-    assert route._list_health(DB_NOW - datetime.timedelta(days=2), DB_NOW) is DataHealth.STALE
-    assert route._list_health(None, DB_NOW) is DataHealth.UNAVAILABLE
+    assert route._list_health(DB_NOW - datetime.timedelta(days=2), DB_NOW, publish) is DataHealth.STALE
+    assert route._list_health(None, DB_NOW, publish) is DataHealth.UNAVAILABLE

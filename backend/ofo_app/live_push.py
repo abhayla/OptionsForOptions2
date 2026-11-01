@@ -19,7 +19,6 @@ import contextlib
 from dataclasses import dataclass
 from typing import Any, Callable, Optional, Protocol
 
-from fastapi.exceptions import RequestValidationError
 from ofo.errors import UserFacingError, render
 from ofo.marketdata.fanout import FanOut
 from ofo.marketdata.quote import is_live_price
@@ -27,7 +26,7 @@ from ofo.outcome.snapshot import forward_strike_ids
 from ofo.settings import calc
 from pydantic import ValidationError
 
-from ofo_app.errors import SocketClosed
+from ofo_app.errors import RequestUnreadable, SocketClosed
 from ofo_app.outcome_margin import OutcomeMargin
 from ofo_app.outcome_oi import hold_ids as oi_hold_ids
 from ofo_app.routes.outcome import (
@@ -199,7 +198,7 @@ class StrategyPush:
             return
         try:  # a range or payoff step the settings in force refuse is refused HERE, once, not as an error at every tick
             checked_choice(req, await get_settings_reader()())
-        except RequestValidationError:
+        except RequestUnreadable:
             await self._error()
             return
         except Exception:  # noqa: BLE001  # the store cannot answer: one fixed message, the exception is not shown

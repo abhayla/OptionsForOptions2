@@ -309,6 +309,16 @@ clock (`date`) in the same step, never typed from memory.
   no stage rows; added (S6.4), `coverage.py --check` OK. Detection: the full prepush caught both; the step 4d gate ran
   targeted DB files only, so a collection-wide check was missing from that gate.
 
+- close gate round 2 on merge bd020a25: TOTAL FAIL, only app_tests (21 failed / 3744 passed), all hidden in round 1 by the
+  collection error. Classes: test callers missing `calc_settings` (11); settings mappings missing the 4d key (3); 12
+  new response models not in APP_MODELS; 5 routes importing fastapi.exceptions against the W-024 boundary guard
+  (production fixed: `errors.refuse_request`, same loc/type 422, the body never showed msg); 4 new slots unpinned in
+  the slot test; 2 fakes missing the new settings read. Builder (Opus) f1a43b04, merged into build/settings by sha.
+  Re-run by me: the 9 files pass (catalogue 20, split_loss 5, scenario_rate 4+1s, after_hours 31, boundary_scan 10,
+  execute_route 27+4s, session_expiry 5, slots 13, response_door 214); DB files one at a time: execute_route 31,
+  scenario_rate_wiring 5, settings_speeds_wiring 10, settings_calc_wiring 1. Detection gap: the step gates ran
+  targeted DB files and the pure tree, never the non-DB tests_app set; the full prepush is the first place it ran.
+
 ## Found during the run
 
 | # | Finding | Where | What was done |

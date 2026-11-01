@@ -35,7 +35,6 @@ from types import MappingProxyType
 from typing import Annotated, Any, Literal, Optional
 
 from fastapi import APIRouter, Depends, Query
-from fastapi.exceptions import RequestValidationError
 from ofo.settings.calc import history_max_days
 from ofo.engine.legs import Action
 from ofo.engine.legs import Leg as EngineLeg
@@ -48,7 +47,7 @@ from ofo_app import paper_store, tracked_contracts
 from ofo_app import strategy_store as store
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier, Money
 from ofo_app.db import get_db
-from ofo_app.errors import ClosedRoute, Failure
+from ofo_app.errors import ClosedRoute, Failure, refuse_request
 from ofo_app.routes.broker import current_user_ref
 from ofo_app.routes.outcome import get_settings_reader
 from ofo_app.strategy_refused import StrategyRefused
@@ -623,8 +622,7 @@ async def strategy_price_history(  # noqa: PLR0913 - one query parameter or seam
         return await sph.prepare(db, legs, listed, definition.underlying, reader=reader, finder=finder)
     # REQ-167 AC-5: the most days is the setting in force now, read before any database or Kite work
     if days > history_max_days(await read_settings()):
-        raise RequestValidationError([{"type": "less_than_equal", "loc": ("query", "days"), "msg": "too many days",
-                                       "input": days}])
+        refuse_request(("query", "days"), "less_than_equal", days)
     # F1: every DB read above ran in ONE short block; _run commits it, which hands the pooled connection back BEFORE
     # any Kite call. The Kite phase below gets no database handle (pool: 2 connections shared with orders).
     plan = await _run(db, work, form_status=409)

@@ -12,6 +12,7 @@ from __future__ import annotations
 import datetime
 
 import pytest
+from ofo import settings
 from ofo_app import feed_bus
 from test_feed_user_isolation import T0, FakeClock, Rig, new_ref, stream_entries, user_status
 
@@ -104,6 +105,18 @@ async def test_an_expiry_in_the_future_changes_nothing(rig):
     assert all(m.kind != feed_bus.KIND_ENDED for _i, m in await stream_entries(rig.bus, user))
 
 
+@pytest.fixture(autouse=True)
+def _default_settings(monkeypatch):
+    """The fake connection answers only the session read; the registry defaults are the settings in force (the same
+    seam as test_broker_token_store.py), so ``conn.reads`` counts the session reads alone."""
+    from ofo_app import broker_token_store as store  # noqa: PLC0415
+
+    async def defaults(_conn):
+        return settings.defaults()
+
+    monkeypatch.setattr(store, "settings_in_force", defaults)
+
+
 class _Result:
     def __init__(self, row) -> None:
         self._row = row
@@ -138,16 +151,25 @@ async def test_one_read_decides_so_a_login_between_two_reads_cannot_end_the_new_
     token with the new expiry or the new token with the old expiry, and exactly one read happened."""
     import os  # noqa: PLC0415
 
+    from ofo.broker.session import expected_expiry  # noqa: PLC0415
+    from ofo.settings import calc  # noqa: PLC0415
     from ofo_app.broker_crypto import TokenCipher, associated_data  # noqa: PLC0415
     from ofo_app.broker_token_store import access_session_for  # noqa: PLC0415
 
     cipher = TokenCipher(os.urandom(32))
-    old_expiry, new_expiry = T0 + datetime.timedelta(hours=1), T0 + datetime.timedelta(hours=20)
+    # GC-SET 5a2 (c3e31292): the row is (id, key id, ciphertext, started_at, database now) and the expiry is derived
+    # from started_at and the setting in force (registry default here). The old login expires at the next morning's
+    # expiry time, the replacing login (a day later) one day after that: two different expiries.
+    in_force = calc.kite_session_expiry(settings.defaults())
+    old_start, new_start = T0 - datetime.timedelta(minutes=30), T0 + datetime.timedelta(hours=21)
+    old_expiry, new_expiry = expected_expiry(old_start, in_force), expected_expiry(new_start, in_force)
+    assert old_expiry != new_expiry
 
-    def row(sid, token, expiry):
-        return (sid, cipher.key_id, cipher.encrypt(token, associated_data("u1", "zerodha", sid)), False, expiry)
+    def row(sid, token, started_at):
+        blob = cipher.encrypt(token, associated_data("u1", "zerodha", sid))
+        return (sid, cipher.key_id, blob, started_at, started_at)  # database now = the login time
 
-    conn = _OneReadConn([row(1, "TOK-old", old_expiry), row(2, "TOK-new", new_expiry)])
+    conn = _OneReadConn([row(1, "TOK-old", old_start), row(2, "TOK-new", new_start)])
     assert await access_session_for(conn, "u1", cipher) == ("TOK-old", old_expiry)
     assert conn.reads == 1, "the token and the expiry must come from one read"
 
