@@ -43,5 +43,8 @@ export default defineConfig({
     environment: 'happy-dom',
     include: ['tests/**/*.{test,spec}.{js,ts}'],
     setupFiles: ['tests/setup.js'],
+    // 2026-11-01: the gate runs vitest after ~45 min of Python suites on a loaded laptop; a 2.9 s test (12 playbook
+    // bodies x every step) hit the 5 s default at 5.08 s. 15 s keeps a hung test failing while giving load headroom.
+    testTimeout: 15000,
   },
 })
