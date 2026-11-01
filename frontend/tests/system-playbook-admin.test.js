@@ -101,9 +101,16 @@ describe('system playbook admin controls (REQ-169)', () => {
     answers['POST /system-playbooks/ic/approve'] = ver(2, { current: true })
     const w = await open()
     await w.get('[data-testid=sys-reason]').setValue('Checked against the spec')
+    expect(w.find('[data-testid=pb-draft]').exists()).toBe(true)
+    // the server now answers the approved playbook (GC-SET browser proof 2026-11-01: the label stayed until a reload)
+    answers['GET /playbooks'] = { playbooks: [{ ...ROW, version: 2 }] }
+    answers['GET /playbooks/1'] = { ...ROW, version: 2, body: copy(BODY) }
+    answers['GET /system-playbooks/ic/versions'] = { versions: [ver(2, { current: true }), ver(1, { status: 'draft', draft: true })] }
     await w.get('[data-testid=sys-approve]').trigger('click')
     await flushPromises()
     expect(posts()[0]).toEqual(['POST', '/system-playbooks/ic/approve', { reason: 'Checked against the spec', base_version: 1 }])
+    expect(w.find('[data-testid=pb-draft]').exists()).toBe(false)
+    expect(w.get('[data-testid=pb-pick]').text()).not.toContain('(Draft)')
   })
 
   it('shows the server sentence when a save is refused', async () => {

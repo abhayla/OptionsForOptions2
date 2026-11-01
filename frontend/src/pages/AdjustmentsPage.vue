@@ -271,8 +271,13 @@ function show(pb) {
   testRefusal.value = null
 }
 
-/** The admin saved, restored or approved a system playbook version: its body is now the one shown (REQ-169). */
-function onSystemApplied(body) { saved.value = clone(body); work.value = clone(body) }
+/** The admin saved, restored or approved a system playbook version: its body is now the one shown (REQ-169), and the
+ *  list and the playbook's own record are read again, so its Draft label and version come from the server's new answer
+ *  (an approve left "Draft" on screen until a reload, GC-SET 2026-11-01). */
+async function onSystemApplied(body) {
+  saved.value = clone(body); work.value = clone(body)
+  if (current.value) await loadList(current.value.id)
+}
 
 async function openPicked() {
   const id = pickedId.value

@@ -260,6 +260,40 @@ clock (`date`) in the same step, never typed from memory.
   -> green, `test_scenario_mode.py` 61 passed (db_run_fresh), ruff ratchet OK. DB tunnel dropped once at ~14:32 and was
   back (ssh PID 18168, not started by this session) before the run.
 
+- step 2 browser proof DONE-PARTIAL (14:4x IST, API restarted on cf108877): brokerage set 20 -> 25 read on 2026-11-01
+  (Settings page, audit seq 16) -> Compare on ADJ-02 (strategy 72) moved exactly orders x Rs 5.90: A-29 92.35 -> 104.15,
+  A-01 173.36 -> 196.96, A-05 250.44 -> 274.04, A-28 137.49 -> 149.29, A-11 575.99 -> 623.19, A-31 198.06 -> 221.66.
+  "Add 20 back" the same day is refused by the store's one-set-per-day rule ("A charge rate set dated 2026-11-01 cannot
+  be added: that date already has a set ... Use a later date."), so ofo_dev keeps brokerage 25 until a 20 set dated
+  2026-11-02 is added (handover item). Audit seq 12-16 show the 5 writes with actor owner and note; the refused set
+  wrote none. Contract wording "the builder's Greeks move" is NOT literally met: F-82 (parity forward absorbs the rate;
+  the proof is the reply's dividend yield). Screenshots: `...-1793522547938-3.jpg` (rate reset), `...-1793524300887-5.jpg`
+  (Compare at 25), `...-1793524333359-6.jpg` (same-day refusal), folder
+  `C:\Users\itsab\AppData\Local\Temp\claude-chrome-screenshots-0Oemv3\`.
+
+- step 8 browser proof DONE (14:4x-14:50 IST, ADJ-02, owner's Chrome): the near-level alert applies only to a shape
+  with no playbook type (`routes/tracking.py:361`; ADJ-02's iron condor is checked by PB-04), and scenario mode refuses
+  paper orders, so a generic paper strategy was seeded in ofo_dev through seed_scenario's store path (scratch script, not
+  committed): id 77 "GC-SET near-level", SELL 9 Nov 23600 CE + BUY 22500 PE (Risk Reversal, type None), short 0.77% and
+  breakeven 23650.45 0.98% from spot 23420 (the contract's "a short 0.7% away" = this real 0.77% case). At 0.5 (default):
+  0 detections. Preferences 1.0 -> next check 2 detections, lines "Index 23420 is within 1.0% of the short strike
+  23600.00 (0.77% away)" / "... breakeven 23650.45 (0.98% away)"; on screen the builder's tracking panel shows both
+  lines, hint "Threshold: 1.0%". Reset -> value 0.5 source default, 0 detections. Admin default 0.6 (Settings page) ->
+  the reset user reads 0.6 source default (history keeps 1 and the reset); 0 detections (0.77 > 0.6). Saved plans
+  unchanged: GET adjustment-plan for 72 and 77 identical before/after (len 1146 / 847, same hash). Admin default reset
+  to 0.5 (new row 14:49). Screenshots `...-1793524549632-7.jpg`, `...-1793524644168-8.jpg` (threshold 1.0% hint).
+
+- step 9 browser proof DONE (14:5x IST, owner's Chrome): user copy "My IC copy" (id 13) saved from the IC system
+  playbook (stop 50); admin Edit system playbook -> Limits and guards "Stop line (% of max loss)" 50 -> 45, Test unsaved
+  changes (results for strategies 72, 75, 76), reason, Save -> "Saved as version 2" (v2 approved current stop 45 by
+  owner, v1 kept 50); copy 13 still 50; Restore version 1 with reason -> v3 current stop 50 "restored from version 1";
+  copy 13 still 50; Approve the Short strangle Draft with reason -> v2 approved (GET /api/playbooks/1 status approved).
+  Defect found and fixed: the Draft chip and "(Draft)" stayed on screen until a reload (class
+  child-write-refreshes-body-not-record, guarded): onSystemApplied now re-reads the list and record; vitest AC-3 red ->
+  green, 4 files that mount AdjustmentsPage 46 passed; after reload the label is gone (screenshot). Screenshots
+  `...-1793524982285-9.jpg` (v2), `...-1793525013822-10.jpg` (v3 restored), `...-1793525037520-11.jpg` (stale Draft),
+  `...-1793525061917-12.jpg` (label gone after reload).
+
 ## Found during the run
 
 | # | Finding | Where | What was done |
