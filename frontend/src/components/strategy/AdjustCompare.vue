@@ -12,8 +12,8 @@
 
     <template v-else-if="reply">
       <div v-if="picked.length" class="flex flex-wrap items-center gap-2 text-sm" data-testid="adjust-scope">
-        <label class="flex items-center gap-2">Approaches in the compare
-          <select v-model="scope" class="h-9 rounded border border-line px-2" data-testid="adjust-scope-select">
+        <label class="flex min-w-0 max-w-full flex-wrap items-center gap-2">Approaches in the compare
+          <select v-model="scope" class="h-9 max-w-full rounded border border-line px-2" data-testid="adjust-scope-select">
             <option value="all">All {{ allCount }} that apply</option>
             <option value="picked">Only the ones picked in the drawer</option>
           </select>
@@ -93,10 +93,15 @@
           <tbody>
             <template v-for="g in groups" :key="g.id">
               <tr class="bg-surface-muted"><th :colspan="kept.length + 1" scope="colgroup" class="p-2 text-left text-xs font-semibold" :data-testid="`adjust-group-${g.id}`">{{ GROUP_TITLES[g.id] ?? g.id }}</th></tr>
-              <tr v-for="c in g.rows" :key="c.id" :data-testid="`adjust-row-${c.id}`">
+              <template v-for="c in g.rows" :key="c.id">
+              <tr :data-testid="`adjust-row-${c.id}`">
                 <th scope="row" class="p-2 text-left font-normal">
                   <div>{{ c.label }}</div>
                   <div v-if="c.hint" class="text-xs text-ink-muted">{{ c.hint }}</div>
+                  <button
+                    v-if="c.id === 'cost' && hasBreakdown(c)" type="button" class="mt-1 rounded border border-line px-2 py-0.5 text-xs"
+                    :aria-expanded="showBreakdown ? 'true' : 'false'" aria-controls="adjust-cost-breakdown" data-testid="adjust-cost-toggle" @click="showBreakdown = !showBreakdown"
+                  >{{ showBreakdown ? BREAKDOWN_HIDE : BREAKDOWN_SHOW }}</button>
                 </th>
                 <td v-for="x in kept" :key="x.a.id" class="p-2 align-top" :class="isLeader(c, x.a.id) ? 'bg-profit-soft' : ''" :data-leader="isLeader(c, x.a.id) ? 'true' : 'false'" :data-testid="`adjust-cell-${c.id}-${x.a.id}`">
                   <template v-if="cellOf(c, x.a.id)?.text != null && cellOf(c, x.a.id)?.unavailable_reason == null">
@@ -109,6 +114,15 @@
                   </template>
                 </td>
               </tr>
+              <tr v-if="c.id === 'cost' && showBreakdown && hasBreakdown(c)" id="adjust-cost-breakdown" data-testid="adjust-cost-breakdown">
+                <th scope="row" class="p-2 text-left text-xs font-normal text-ink-muted">{{ BREAKDOWN_NOTE }}</th>
+                <td v-for="x in kept" :key="x.a.id" class="p-2 align-top text-xs" :data-testid="`adjust-breakdown-${x.a.id}`">
+                  <dl v-if="cellOf(c, x.a.id)?.breakdown" class="grid grid-cols-[1fr_auto] gap-x-2 gap-y-0.5">
+                    <template v-for="l in cellOf(c, x.a.id).breakdown" :key="l.id"><dt class="text-ink-muted">{{ l.label }}</dt><dd class="tabular-nums" :data-testid="`adjust-breakdown-${x.a.id}-${l.id}`">{{ l.text }}</dd></template>
+                  </dl>
+                </td>
+              </tr>
+              </template>
             </template>
             <tr class="bg-surface-muted"><th :colspan="kept.length + 1" scope="colgroup" class="p-2 text-left text-xs font-semibold" data-testid="adjust-group-summary">Summary</th></tr>
             <tr data-testid="adjust-row-leads">
@@ -127,8 +141,8 @@
       </div>
 
       <div class="flex flex-wrap items-center gap-2 rounded-lg border border-line bg-surface p-3" data-testid="adjust-prepare">
-        <label class="flex items-center gap-2 text-sm">Approach to prepare
-          <select v-model="pick" class="h-9 rounded border border-line px-2" :disabled="!pickable.length" data-testid="adjust-pick">
+        <label class="flex min-w-0 max-w-full flex-wrap items-center gap-2 text-sm">Approach to prepare
+          <select v-model="pick" class="h-9 max-w-full rounded border border-line px-2" :disabled="!pickable.length" data-testid="adjust-pick">
             <option v-for="x in pickable" :key="x.a.id" :value="x.a.id">{{ x.a.name ?? x.a.id }}</option>
           </select>
         </label>
@@ -167,6 +181,12 @@ const INTRO = 'Each approach is shown as the whole trade, including P&L already 
 const FILTER_NOTE = 'The choices and ranges come from this strategy\'s approaches right now, so they change as the market moves. "No change" stays in the table as the baseline.'
 const NONE_TO_PREPARE = 'No approach is left to prepare: the filters keep only "No change". Clear the filters to choose one.'
 const PALETTE = ['#2563eb', '#16a34a', '#d97706', '#9333ea', '#0891b2', '#db2777', '#65a30d', '#ea580c']
+
+const BREAKDOWN_SHOW = 'Show the charges breakdown'
+const BREAKDOWN_HIDE = 'Hide the charges breakdown'
+const BREAKDOWN_NOTE = 'Charges are approximate; the lines add up to the cost above.' // ADR-230 (3)
+const showBreakdown = ref(false)
+const hasBreakdown = (c) => Object.values(c.values ?? {}).some((v) => v?.breakdown?.length)
 
 const state = ref('loading') // loading | ready | error
 const reply = ref(null)

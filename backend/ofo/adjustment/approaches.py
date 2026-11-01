@@ -44,6 +44,8 @@ from dataclasses import dataclass, replace
 from decimal import ROUND_HALF_UP, Decimal
 from typing import cast
 
+from ofo.adjustment import liquidity
+from ofo.engine import adjust_money
 from ofo.engine.legs import Action, Instrument, Leg
 from ofo.errors import LegValue, UserFacingError, render
 from ofo.errors.explanations import ADJUSTMENT_APPROACH_LABEL_TEXT
@@ -86,6 +88,7 @@ class ChainRow:
     tradable: bool = True
     low_oi_state: str = "stated"  # stated / unknown
     low_oi_blocked: bool | None = False
+    oi: int | None = None  # open interest; None = no source gave it (F-78), read by liquidity.evaluate_strike
 
 
 @dataclass(frozen=True)
@@ -222,8 +225,9 @@ def tested_side(position: Position, spot: Decimal) -> str | None:
 
 
 class _Builder:
-    def __init__(self, position: Position, chain: Sequence[ChainRow], spot: Decimal, config: Config,
-                 listing: Listing | None) -> None:
+    def __init__(self, position: Position, chain: Sequence[ChainRow], spot: Decimal, config: Config,  # noqa: PLR0913
+                 listing: Listing | None, limits: liquidity.Limits | None = None,
+                 max_profit: Decimal | None = None) -> None:
         self.p, self.spot, self.cfg = position, spot, config
         self.rows = {(r.expiry, r.type, r.strike): r for r in chain}
         self.chain = chain
@@ -231,6 +235,18 @@ class _Builder:
         self.warnings: list[str] = []
         self.warning_messages: list[UserFacingError] = []  # the same warnings as catalogue messages (API door)
         self.basis: tuple[str, Decimal] | None = None
+        self.limits, self.max_profit = limits, max_profit  # the playbook's saved liquidity limits (ADR-230 (1))
+
+    def guard_debit(self, trades: Sequence[Trade]) -> None:
+        """ADR-230 (1): a roll whose net debit is above the playbook's limit is refused, with the reason."""
+        if self.limits is None:
+            return
+        debit = -adjust_money.trade_credit((t.action, t.price, t.quantity) for t in trades)  # ADR-008: the engine's sum
+        verdict = liquidity.check_roll_debit(self.limits, debit, self.max_profit)
+        if verdict.reason == "unreadable":
+            raise _refusal("adjust_roll_limit_unreadable", debit=debit)
+        if not verdict.allowed:
+            raise _refusal("adjust_roll_debit_over_limit", debit=debit, limit=verdict.limit)
 
     def ref(self, leg: PositionLeg) -> LegValue:
         """The leg as a message names it: its number in the position, side, contract and expiry."""
@@ -312,7 +328,9 @@ class _Builder:
             new = landed[si]
             if (side == PUT and new > other) or (side == CALL and new < other):
                 raise _refusal("adjust_roll_would_cross", leg=self.ref(short), strikes=(new,), other=(other,))
-        return self.replace(landed)
+        rolled = self.replace(landed)
+        self.guard_debit(rolled[0])
+        return rolled
 
     def replace(self, landed: Mapping[int, Decimal]) -> tuple[list[Trade], list[PositionLeg], list[ClosedLeg]]:
         trades, after, closed = [], [], []
@@ -333,11 +351,14 @@ def _ordered(trades: Sequence[Trade]) -> tuple[Trade, ...]:
 
 
 def build_approach(position: Position, chain: Sequence[ChainRow], spot: Decimal, approach_id: str,  # noqa: C901, PLR0912, PLR0913, PLR0915 - one branch per approach
-                   config: Config, listing: Listing | None = None) -> ApproachLegs:
-    """The exact trades, After legs and closed legs of one approach, or its refusal naming the leg (AC-1, AC-8)."""
+                   config: Config, listing: Listing | None = None, limits: liquidity.Limits | None = None,
+                   max_profit: Decimal | None = None) -> ApproachLegs:
+    """The exact trades, After legs and closed legs of one approach, or its refusal naming the leg (AC-1, AC-8).
+    ``limits`` = the playbook's saved liquidity limits (None: not applied); ``max_profit`` = the engine's, for the
+    "% of max profit" part of the roll debit limit."""
     if approach_id not in NAMES:
         raise ValueError(f"unknown approach {approach_id!r}")
-    b = _Builder(position, chain, spot, config, listing)
+    b = _Builder(position, chain, spot, config, listing, limits, max_profit)
     legs = list(position.legs)
     found = _condor(legs)
     tested = tested_side(position, spot)

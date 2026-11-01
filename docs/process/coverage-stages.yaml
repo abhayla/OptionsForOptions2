@@ -388,6 +388,9 @@ decisions:
   ADR-221: S6.4         # T-19 uses the cheapest adjustment's cost (owner, 2026-10-31)
   ADR-222: S6.4         # calculation numbers are admin settings on one Settings page (owner, 2026-10-31)
   ADR-220: S6.7         # server roles, one machine first, calculation speeds, pricing model kept (owner, 2026-10-31)
+  ADR-230: S6.4         # GC-ADJ3 product answers: liquidity limits, card mark, Compare cost rows, two stops (GC-MU)
+  ADR-231: S6.4         # roll debit limit is the higher of Rs 500 and 10% of max profit (owner, GC-MU)
+  ADR-232: S6.4         # the Live Strategies card counts open conditions, not inbox rows (owner, GC-MU)
 
 questions:
   Q210: 4a              # external: Zerodha's written answer; ADR-051 covers the owner's own account
@@ -537,8 +540,17 @@ issues:
   "#614": S6.4  # Leg-stop alert says 'exited 1 legs' (GC-LIVE2 M3)
   "#615": S6.4  # Strike picker first cold read says LIVE with no spot or prices (same class as #612)
   "#616": S6.4  # After the close: Paper has no market-closed banner and shows no-IV text; index read returns nulls
-  "#624": S6.4  # A1 liquidity limits PARKED after 2 rounds (GC-ADJ2)
+  "#623": S6.4  # Compare low-OI cell raises on 4+ new legs: symbols joined into one 64-char slot
+  "#624": S6.4  # A1 liquidity limits PARKED after 2 rounds: unreadable playbook skips limits silently; adjust drawer has no strike flags
+  "#625": S6.4  # Range-reading rule (REQ-026 AC-1) lives only in the browser; REQ-063 AC-2 wants it on the server (F-90)
+  "#626": S6.4  # GC-MU step 2 D3: no Content-Security-Policy connect-src 'self' (structural layer behind the bundle scan)
+  "#627": S6.4  # GC-MU step 4 remainder: background margin (T-16), T-13 open price, restart + heartbeat, screen reads worker result
+  "#628": S6.4  # seed_scenario.py batches a scenario's trade wrongly: ADJ-13 seeds 2 adjustments where the scenario has 1
+  "#629": S6.4  # Owner sign-off for 461 pending catalogue texts: independent wording check, then owner reads the flags
+  "#630": S6.4  # Compare intermittently shows 'no current price' for a current leg in scenario mode (seen once, not reproduced)
+  "#631": S6.4  # DB pool has no pre-ping: a dropped pooled connection turns the next request into a 500
   "#632": S6.4  # GC-SET2: market hours and order/limit facts as settings (parked from GC-SET)
+  "#633": S6.4  # T-19 builds approaches without the playbook liquidity limits the Compare applies
 
 # Work items whose status is not done.
 work_items:
@@ -741,6 +753,7 @@ findings:
   F-81: S6.4      # playbook check 500 in a stage whose name has a space (fixed)
   F-82: S6.4      # risk-free rate moves the implied yield, not the visible Greeks (open for owner)
   F-83: S6.4      # scenario mode lost every price after a socket release (fixed)
+  F-90: S6.4      # range-reading rule (REQ-026 AC-1) only in the browser; no server copy
 
 hypotheses:
   H1: done

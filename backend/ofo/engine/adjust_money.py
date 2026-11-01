@@ -10,13 +10,15 @@ Every input is exact Decimal; quantities are units (lots x lot size).
 - ``margin_change``: the After's basket margin minus the current legs'.
 - ``closed_booked``: the P&L booked by the legs an approach closes, at their planned exit prices.
 - ``premium_left``: short legs' current price x quantity minus long legs' (the premium still left to earn).
+- ``cost_pct_of_premium_left`` and ``max_profit_change``: ADR-230 (3), the compare's two cost-side rows.
+- ``sum_amounts``: a sum of exact amounts (the charge components of the cost breakdown).
 """
 from __future__ import annotations
 
 from collections.abc import Iterable
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
-from ofo.money import PAISE
+from ofo.money import HUNDREDTH, PAISE
 
 _SIGN = {"SELL": 1, "BUY": -1}
 
@@ -31,6 +33,11 @@ def _sign(side: str) -> int:
 def trade_credit(trades: Iterable[tuple[str, Decimal, int]]) -> Decimal:
     """(action, price, quantity) per trade -> net credit (+) or debit (-)."""
     return sum((price * quantity * _sign(action) for action, price, quantity in trades), Decimal(0))
+
+
+def pct_of(amount: Decimal, pct: Decimal) -> Decimal:
+    """``pct`` percent of ``amount`` (the "% of max profit" part of a playbook's roll debit limit, ADR-230 (1))."""
+    return amount * pct / 100
 
 
 def cost_with_spread(charges: Decimal, quotes: Iterable[tuple[Decimal, Decimal, int]]) -> Decimal:
@@ -74,3 +81,20 @@ def stand_in_basket_margin(legs: Iterable[tuple[str, Decimal, int]]) -> Decimal:
     for side, figure, quantity in legs:
         total += figure * quantity * SELL_MARGIN_RATE if _sign(side) == 1 else -(figure * quantity)
     return max(total, Decimal(0)).quantize(PAISE)
+
+
+def cost_pct_of_premium_left(cost: Decimal, premium_left: Decimal) -> Decimal | None:
+    """ADR-230 (3): ``cost`` / ``premium_left`` x 100, to 0.01 (half up, as the compare's other percent cells). Nothing
+    left to earn (premium left zero or below) -> None: no ratio exists, never a division error."""
+    if premium_left <= 0:
+        return None
+    return (cost / premium_left * 100).quantize(HUNDREDTH, rounding=ROUND_HALF_UP)
+
+
+def max_profit_change(after: Decimal, before: Decimal) -> Decimal:
+    """ADR-230 (3): the After's max profit minus the Before's (both after charges), to the paisa."""
+    return (after - before).quantize(PAISE)
+
+
+def sum_amounts(amounts: Iterable[Decimal]) -> Decimal:
+    return sum(amounts, Decimal(0))

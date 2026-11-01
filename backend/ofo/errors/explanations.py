@@ -371,6 +371,8 @@ ADJUSTMENT_APPROACH_ABOUT_TEXT: Mapping[str, str] = MappingProxyType({
 ADJUSTMENT_CRITERION_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
     "credit": "Credit (+) or debit (-)",
     "cost": "Charges plus bid-ask cost",
+    "cost_pct": "Cost as % of premium left",  # ADR-230 (3)
+    "max_profit_change": "Change in max profit",  # ADR-230 (3)
     "margin_change": "Margin change (negative = margin freed)",
     "max_loss": "Max loss",
     "move_m2": "P&L if spot falls 2%",
@@ -393,6 +395,8 @@ ADJUSTMENT_CRITERION_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
 ADJUSTMENT_LEADER_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
     "credit": "Most credit",
     "cost": "Lowest cost",
+    "cost_pct": "Lowest cost for the premium left",
+    "max_profit_change": "Largest rise in max profit",
     "margin_change": "Lowest margin change",  # the lowest value = frees the most margin, not "smallest"
     "max_loss": "Smallest max loss",
     "move_m2": "Highest P&L at -2%",
@@ -410,6 +414,17 @@ ADJUSTMENT_LEADER_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
     "adjustments": "Fewest adjustments",
     "liquidity": "Tightest spreads",
     "fresh": "Smallest fresh max loss",
+})
+#: ADR-230 (3): the lines of the cost breakdown opened under the compare's cost row (approximate, Sensibull's panel order)
+ADJUSTMENT_CHARGE_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
+    "brokerage": "Brokerage charges",
+    "stt": "STT",
+    "exchange": "Exchange transaction charges",
+    "gst": "GST",
+    "stamp": "Stamp duty",
+    "sebi": "SEBI turnover fee",
+    "charges_total": "Total charges (approximate)",
+    "bid_ask": "Bid-ask cost",
 })
 SCENARIO_VIEW_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
     "AT_EXPIRY": "At Expiry",
@@ -1462,6 +1477,9 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("suggestion_group_count", "what_triggered", "{count} adjustment conditions triggered",
                         {"count": Count}),
     ExplanationTemplate("suggestion_inbox_empty", "values_seen", "No adjustment opportunities"),
+    # GC-MU A3 (ADR-230 (2)): the Live Strategies card mark, singular for one
+    ExplanationTemplate("suggestion_open_count_one", "values_seen", "1 adjustment opportunity"),
+    ExplanationTemplate("suggestion_open_count", "values_seen", "{count} adjustment opportunities", {"count": Count}),
     ExplanationTemplate("adjust_condition_line", "values_seen", "{label}: {value} {unit} (rule {threshold} {unit})",
                         {"label": PlaybookTriggerLabel, "value": PlaybookField, "unit": PlaybookUnit,
                          "threshold": PlaybookField}),
@@ -1750,6 +1768,22 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("adjust_cmp_low_oi", "values_seen",
                         "{value}% (Zerodha may refuse fresh orders in {legs} if its open interest is too low; this app could not check that)",
                         {"value": Recorded, "legs": Recorded}),
+    # GC-MU A1 (ADR-230 (1)): flags beside a strike that breaks a saved liquidity limit, or whose open interest is unknown
+    ExplanationTemplate("adjust_flag_below_liquidity", "values_seen", "Below your liquidity limit"),
+    ExplanationTemplate("adjust_flag_oi_unknown", "values_seen", "OI not known"),
+    ExplanationTemplate("adjust_cmp_flagged", "values_seen", "{value}% ({flag}: {legs})",
+                        {"value": Recorded, "flag": Explained, "legs": Recorded}),
+    ExplanationTemplate("adjust_cmp_flagged_both", "values_seen", "{value}% ({flag}: {legs}; {flag2}: {legs2})",
+                        {"value": Recorded, "flag": Explained, "legs": Recorded, "flag2": Explained,
+                         "legs2": Recorded}),
+    # GC-MU A2 (ADR-230 (3)): the reasons beside the two new cost rows, and the cost breakdown's line names
+    ExplanationTemplate("adjust_cmp_no_premium_left", "values_seen", "Not available: no premium is left to earn."),
+    ExplanationTemplate("adjust_cmp_max_profit_unlimited", "values_seen",
+                        "Not available: max profit is unlimited before or after."),
+    ExplanationTemplate("adjust_cmp_before_max_profit_unknown", "values_seen",
+                        "Not available: the max profit of the current legs is not worked out."),
+    *(ExplanationTemplate(f"adjust_cmp_charge_{key}", "values_seen", text)
+      for key, text in ADJUSTMENT_CHARGE_LABEL_TEXT.items()),
     ExplanationTemplate("adjust_cmp_adjustments_unknown", "values_seen",
                         "Not available: the paper book does not record adjustments yet."),
     ExplanationTemplate("adjust_cmp_margin_before_unknown", "values_seen",

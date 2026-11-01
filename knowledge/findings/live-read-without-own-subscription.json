@@ -12,7 +12,7 @@
  "detection": {
   "status": "unguarded",
   "checks": [],
-  "note": "No test runs these routes with no other holder on the fan-out; the route tests override the reader or seed the provider directly (compare finding route-tests-always-override-the-real-reader). Discrimination of the proposed check is unmeasured until it is built."
+  "note": "No test runs these routes with no other holder on the fan-out; the route tests override the reader or seed the provider directly (compare finding route-tests-always-override-the-real-reader). Discrimination of the proposed check is unmeasured until it is built. 2nd occurrence 2026-11-01: the background instance is guarded by tests_app/test_feed_background_want.py and tests_app/test_background_wire_want.py; the class stays unguarded app-wide (no scan finds a live read without its own subscription)."
  },
  "spec_ref": [
   "spec/decisions/ADR-077.md",
@@ -24,6 +24,11 @@
    "date": "2026-10-27",
    "where": "Live builder walkthrough I-1, I-6 (issue #583)",
    "evidence": "As first_seen. Also 2026-10-26 evening (market closed): the same items were first logged as I-1 and I-6 without the cause."
+  },
+  {
+   "date": "2026-11-01",
+   "where": "GC-MU step 4 background role (REQ-165)",
+   "evidence": "the feed subscribes only the API's one wanted key per user (feed_bus.py:7-8, refresh_want), so a strategy with no open screen got no price; the round-1 core test fed prices directly and passed. Fixed by 4b (1d9992c0: background wanted key unioned in refresh_want) and 4c (41d7fb28: the worker writes its legs' tokens)."
   }
  ]
 }

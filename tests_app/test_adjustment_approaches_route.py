@@ -46,7 +46,8 @@ def tracked_of(sc: dict, booked="stated") -> route.Tracked:
                              D(x["entry"]), x["tradingsymbol"]) for x in sc["position"]["legs"])
     today = datetime.date.fromisoformat(sc["clock"]["ist"][:10])
     pos = Position(sc["underlying"], sc["lot"], sc["expiry_kind"], today, legs)
-    return route.Tracked(pos, None if booked == "unknown" else D(sc["position"]["booked_pnl"]), D("0"))
+    return route.Tracked(pos, None if booked == "unknown" else D(sc["position"]["booked_pnl"]), D("0"),
+                         adjustments_used=sc["position"].get("adjustments_used"))
 
 
 def market_of(sc: dict) -> route.MarketInputs:
@@ -60,7 +61,7 @@ def market_of(sc: dict) -> route.MarketInputs:
             rows.append(ChainRow(D(r["strike"]), r["type"], datetime.date.fromisoformat(c["expiry"]),
                                  r["tradingsymbol"], None if gone else _d(r["ltp"]), None if gone else _d(r["bid"]),
                                  None if gone else _d(r["ask"]), _d(r["delta"]), r["listed"], r["tradable"],
-                                 r["low_oi"]["state"], r["low_oi"]["blocked"]))
+                                 r["low_oi"]["state"], r["low_oi"]["blocked"], r.get("oi")))
             ids[r["tradingsymbol"]] = f"NSE_FO:{r['tradingsymbol']}"
     now = datetime.datetime.fromisoformat(sc["clock"]["ist"])
     spot = D(sc["market"]["spot"])
@@ -78,7 +79,7 @@ class Calls:
 
 
 def client_for(sc: dict, *, booked="stated", margin=None, environ=None, rates=None,  # noqa: PLR0913 - one keyword per route seam
-               calls: Calls | None = None):
+               calls: Calls | None = None, guards=None):
     app = create_app()
     rest_ok = sc["data_state"].get("rest", "ok") == "ok" and sc["data_state"].get("spot_source") != "none"
     now = datetime.datetime.fromisoformat(sc["clock"]["ist"])
@@ -93,12 +94,16 @@ def client_for(sc: dict, *, booked="stated", margin=None, environ=None, rates=No
         return (SourceReading(SourceState.STATED, D(sc["market"]["spot"]), now) if rest_ok
                 else SourceReading(SourceState.FAILED))
 
+    async def read_guards(_sid, _position, _spot):
+        return guards  # None: the strategy has no playbook
+
     async def default_margin(legs):
         if calls is not None:
             calls.margin += 1
         return Margin(MARGIN_CHECKED, margin_unreadable().reason, D("100000"), D("100000"), D("500000"), now)
 
     app.dependency_overrides |= {
+        route.get_guards_reader: lambda: read_guards,
         route.get_tracked_reader: lambda: tracked, route.get_market_reader: lambda: market,
         route.get_rest_spot_reader: lambda: rest, route.get_approach_margin: lambda: margin or default_margin,
         route.get_held_environ: lambda: environ, outcome.load_charge_rates: lambda: rates,
@@ -137,6 +142,21 @@ def test_ac2_adj13_booked_pnl_is_in_the_after():
     body = post(client_for(load("ADJ-13"))).json()
     a36 = next(a for a in body["approaches"] if a["id"] == "A-36")
     assert a36["after"]["booked_pnl"] == "962.00" and a36["after"]["gross"]["max_loss"] == "20858.50"
+
+
+def test_gcmu_a5_adj13_compare_adjustments_used_reads_the_history_count():
+    """REQ-156 AC-2 "adjustments used": ADJ-13 has one adjustment made; the cell reads 1 for no change and 2 for an
+    approach that trades, never "-"."""
+    sc = load("ADJ-13")
+    body = post(client_for(sc)).json()
+    row = next(c for c in body["criteria"] if c["id"] == "adjustments")
+    trades = {a["id"]: a for a in body["approaches"]}
+    assert row["values"], row
+    for aid, cell in row["values"].items():
+        assert cell["text"] != "-" and cell["unavailable_reason"] is None, (aid, cell)
+        assert D(cell["value"]) in (D(1), D(1) + 1), (aid, cell)
+    assert any(D(c["value"]) == 1 for c in row["values"].values()) and trades
+    assert any(D(c["value"]) == D(1) + 1 for c in row["values"].values())
 
 
 def test_ac4_adj23_pop_present_and_held_switch_off_gives_dash_with_reason():
@@ -347,6 +367,22 @@ def test_req156_no_spot_no_criteria():
     assert body["approaches"] == [] and body["criteria"] == [] and body["leads"] == {} and body["curves"] == {}
 
 
+def test_adr230_3_known_cost_cell_carries_the_charge_breakdown_and_unknown_rates_carry_none():
+    """ADR-230 (3): a trading approach's cost cell lists its charge lines (reply model declares them); with no rates
+    there is no breakdown, and the reply still answers 200."""
+    known = post(client_for(load("ADJ-02"), rates=RATES))
+    assert known.is_success
+    cost = next(c for c in known.json()["criteria"] if c["id"] == "cost")["values"]
+    lines = cost["A-01"]["breakdown"]
+    assert [x["id"] for x in lines] == ["brokerage", "stt", "exchange", "gst", "stamp", "sebi", "charges_total",
+                                        "bid_ask"]
+    assert all(x["label"] and x["text"] for x in lines)
+    assert not cost["A-36"].get("breakdown")  # no trade, nothing itemised
+    unknown = post(client_for(load("ADJ-02"), rates=None))
+    assert unknown.is_success
+    assert all(not v.get("breakdown") for c in unknown.json()["criteria"] for v in c["values"].values())
+
+
 # ---- GC-ADJ1 step 3: the Review adjustment drawer's one read (REQ-046 AC-2 / AC-3, REQ-045 AC-5) -------------------
 
 def test_drawer_a36_only_builds_no_change_and_lists_every_generic_approach_without_a_figure():
@@ -397,3 +433,43 @@ def test_spot_not_available_words_every_source_reason_never_a_raw_code():
     assert route._spot_why("last_close", "not_finite") == "its last price was not a number"
     assert route._spot_why("rest_quote", "absent") == "no quote was requested"
     assert "not_finite" not in b["spot"]["text"] and "absent" not in b["spot"]["text"]
+
+
+# ---- GC-MU A1 round 2 (ADR-230 (1), F-78): the route resolves the strategy's playbook guards and applies them ----
+
+LIMITS = {"hide_oi_below": 10000, "hide_spread_pct_of_mid_above": "5", "roll_debit_limit": "Rs 500"}
+
+
+def _liquidity_text(reply: dict, approach: str) -> str:
+    row = next(r for r in reply["criteria"] if r["id"] == "liquidity")
+    return row["values"].get(approach, {}).get("text") or ""
+
+
+def test_a1_route_refuses_an_over_limit_roll_with_the_catalogue_reason():
+    reply = post(client_for(load("ADJ-50"), guards=LIMITS)).json()
+    refusal = next(a for a in reply["approaches"] if a["id"] == "A-05")["refusal"]
+    assert refusal["code"] == "USER_INPUT_176" and "more than the" in refusal["what_happened"]
+
+
+def test_a1_route_flags_the_strike_below_the_playbook_oi_limit_in_the_compare():
+    """ADJ-50 thin strike (23,100 CE) is opened by no approach: the strike A-05 opens is thinned in a copy."""
+    sc = load("ADJ-50")
+    guards = {"hide_oi_below": 10000}  # no debit limit: the rolls build, so their new strikes reach the Compare
+    first = post(client_for(sc, guards=guards)).json()
+    assert all("liquidity limit" not in _liquidity_text(first, a["id"]) for a in first["approaches"])  # all deep
+    opened = {t["tradingsymbol"] for t in next(a for a in first["approaches"] if a["id"] == "A-05")["trades"]
+              if t["action"] == "SELL" and t["strike"] == "23500"}
+    assert len(opened) == 1
+    for c in sc["market"]["chains"]:
+        for r in c["rows"]:
+            if r["tradingsymbol"] in opened:
+                r["oi"] = 500
+    reply = post(client_for(sc, guards=guards)).json()
+    assert f"(Below your liquidity limit: {next(iter(opened))})" in _liquidity_text(reply, "A-05")
+    assert "liquidity limit" not in _liquidity_text(reply, "A-01")  # the other approaches open other strikes
+
+
+def test_a1_route_with_no_playbook_applies_no_limits():
+    reply = post(client_for(load("ADJ-50"), guards=None)).json()
+    assert all("liquidity limit" not in _liquidity_text(reply, a["id"]) for a in reply["approaches"])
+    assert next(a for a in reply["approaches"] if a["id"] == "A-05")["refusal"] is None

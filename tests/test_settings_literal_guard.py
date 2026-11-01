@@ -50,6 +50,7 @@ OLD_HOMES: dict[str, list[tuple[str, str]]] = {
                                ("PAYOFF_TABLE_DEFAULT_STEPS", "scenarios.payoff_default_step_nifty"),
                                ("SD_HORIZON_DAYS", "scenarios.sd_horizon_days")],
     "ofo_app/live_push.py": [("MIN_PUSH_INTERVAL", "speeds.open_strategy_seconds")],
+    "ofo_app/calc_speeds.py": [("_STAND_IN", "speeds.per_option_seconds")],  # GC-MU stand-in, swapped at the integration
     "ofo/marketdata/feed_health.py": [("FEED_STALE", "detection.feed_stale_seconds"),
                                       ("RECONNECT_WINDOW", "detection.feed_reconnect_window_seconds")],
     "ofo/entitlements/engine.py": [("TRIAL_DAYS_DEFAULT", "billing.trial_days"),

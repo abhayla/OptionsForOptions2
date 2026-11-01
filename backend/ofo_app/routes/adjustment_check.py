@@ -175,6 +175,10 @@ async def _sync_records(db: Any, user_ref: str, strategy_id: int, ev: pe.Evaluat
     return opened, frozenset(rid for rid in held if rid in flagged)
 
 
+#: GC-MU step 4: the public name of the check's record step (the background role calls it); the same function.
+sync_records = _sync_records
+
+
 async def current_margin(margin_of: ApproachMargin, tracked: Any, market: Any) -> dict | None:
     try:
         legs = [PlannedOrderIn(market.instrument_ids[x.tradingsymbol], x.side, x.lots, x.entry)

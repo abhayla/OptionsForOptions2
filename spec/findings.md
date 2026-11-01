@@ -1171,3 +1171,15 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   fan-out (structural), file 61 passed. Class: `knowledge/findings/one-shot-feed-loses-quote-on-shared-unsubscribe.json`
   (guarded). Bears on ADR-214 (the scenario library as the proof surface).
 
+## F-90 - The range-reading rule (REQ-026 AC-1) lives only in the browser; the server has no copy
+- Read from the code 2026-11-01 (GC-MU step 1 T2): `readingFromRange` in `frontend/src/lib/guided.js:87-95` reads a
+  chosen range as "up" when the distance to the upper value is more than twice the distance to the lower, "down" the
+  other way, else "balanced" (REQ-026 AC-1), and refuses a range that does not hold the current level (AC-6). Its only
+  caller is `frontend/src/pages/CreateStrategyPage.vue:55`, where it picks the view tag that filters the template list.
+  A grep of `backend/` finds no server copy (searched: balanced, reading_from_range, from_range, the 2x comparison).
+- Bears on REQ-063 AC-2 ("Business rules live in backend/domain services, not only in UI code"), REQ-048 AC-5 and
+  ADR-012. The rule is a product rule (REQ-026 AC-1) held only in UI code, so it breaks REQ-063 AC-2 as written. Its
+  reach today is small (it only filters which templates are listed; it sets no price, P&L, order or eligibility, and
+  the server re-validates every leg the user then builds). Fix, per the spec: the server computes the reading and the
+  browser shows it (deferred issue #625). Status: **read from the code**; not guarded - no test fails
+  when a product rule exists only under frontend/src.

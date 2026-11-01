@@ -97,6 +97,7 @@ PR241_SELECTION = {
     "tests_app/test_outcome_target_badge.py", "tests_app/test_outcome_target_booked.py",
     "tests_app/test_paper_list_figures.py", "tests_app/test_paper_reason_texts.py", "tests_app/test_paper_routes.py",
     "tests_app/test_paper_totals.py", "tests_app/test_paper_triggers_routes.py",
+    "tests_app/test_adjustment_opportunities.py",  # GC-MU A3: its card-mark tests call GET /strategies (a diff route)
     # GC-SET step 7 (F-81): names ofo.errors.explanations (the PlaybookName stage-name slot) in its reply-model check
     "tests_app/test_stage_name_replies.py",
     # GC-SET step 8 (REQ-168): names ofo.errors.explanations (the preference refusal reason text) in its route checks

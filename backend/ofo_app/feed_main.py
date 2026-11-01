@@ -16,7 +16,16 @@ old socket stops and one starts on the new session; the same session -> nothing.
 Part B: ``supervise_users`` holds ONE socket per user with an active stored session, each in its own task (one user's
 failure never reaches another's, AC-9); Zerodha's caps are refused and logged, never cut to fit (AC-6); a session that
 reaches its expiry is closed, announced as ended and not reconnected (AC-8). With no stored session the process idles
-instead of exiting. Not in this part: the order-update stream (C).
+instead of exiting. Not in this part: the order-update stream (C). The expiry of a RUNNING socket is checked before
+the store is read (it needs only the in-memory expiry), so a database outage at 06:00 cannot keep the socket open; a
+user in ``expired`` whose store then answers no session (the real store ends a past session) keeps the ``ended``
+status (#520 items 1, 2). Started as the ``liveprices`` role: ``python -m ofo_app.liveprices`` (ADR-220 (1)).
+
+Known bypasses: (a) a box started AFTER the expiry with the real store sees no session at all (the store ends it on
+that first read), so the status is ``stopped``, not ``ended``; only a session this process saw expire stays ended.
+(b) An expired user who then disconnects without logging in again stays ``ended`` (no fingerprint to tell them
+apart) until a new login; ``expired`` holds one entry per such user for the life of the process. (c) An unreadable
+store with no running socket changes nothing, so the last published status stands until its TTL.
 """
 from __future__ import annotations
 
@@ -42,6 +51,11 @@ RECHECK_S = 5.0  # the store is re-read at least this often, whatever the contro
 STOP_GRACE_S = 3.0  # a stopped socket is awaited this long (a backoff sleep cannot be interrupted), then cancelled
 IDLE_WAIT_S = 0.2  # a failing control read waits this long before the next try
 SESSION_ENDED_WORD = "session ended"  # what KiteSocket.run returns when Kite refuses the session
+# A running socket whose store answers "no session" within this many seconds before its in-memory expiry was ended BY
+# the expiry (the database clock leads ours, or the expiry fell between our check and the read): "ended", not
+# "stopped". Chosen over an end reason from the store: in-memory only, no extra query, no store API change. Cost: a
+# real disconnect in the last 5 minutes before 06:00 reads "ended" (the session ends then anyway).
+EXPIRY_SKEW_S = 300.0
 
 
 @dataclass(frozen=True)
@@ -233,22 +247,35 @@ class _Hub:
 
     async def _one(self, user: str) -> None:
         run = self.running.get(user)
+        if run is not None and self._past(run.expires_at):  # AC-8: the session's day is over. BEFORE the store read:
+            await self._end_by_expiry(user, run)  # it needs only the in-memory expiry, so an outage cannot keep it open
+            return
         try:
             session = await self.read_session(user)
         except Exception as exc:  # noqa: BLE001 - unreadable: keep what runs; never the message (could hold a token)
             log.warning("stored session unreadable: %s", type(exc).__name__)
             return
-        if run is not None and self._past(run.expires_at):  # AC-8: the session's day is over
-            await self._end_by_expiry(user, run)
-            return
         if session is None:
-            self.expired.pop(user, None)
-            if run is not None:
-                await run.halt()
-                self.running.pop(user, None)
-                log.info("no stored session: the Kite socket was stopped")
-            await self._safely("stopped status", feed_bus.publish_stopped(self.client, user, self.clock))
+            await self._no_session(user, run)
             return
+        await self._with_session(user, run, session)
+
+    async def _no_session(self, user: str, run: _Running | None) -> None:
+        if user in self.expired:  # the real store ends a past session and answers none: the status stays "ended" for
+            await self._safely("ended status",  # a later reader, never "stopped" (#520 item 1)
+                               feed_bus.publish_ended(self.client, user, self.clock, event=False))
+            return
+        if run is not None and run.expires_at is not None and \
+                self.clock() >= run.expires_at - datetime.timedelta(seconds=EXPIRY_SKEW_S):
+            await self._end_by_expiry(user, run)  # the store ended it at its expiry a moment before our own check
+            return
+        if run is not None:
+            await run.halt()
+            self.running.pop(user, None)
+            log.info("no stored session: the Kite socket was stopped")
+        await self._safely("stopped status", feed_bus.publish_stopped(self.client, user, self.clock))
+
+    async def _with_session(self, user: str, run: _Running | None, session: StoredSession) -> None:
         if self.expired.get(user) == session.fingerprint:  # ended by expiry: no reconnect, the status stays "ended"
             await self._safely("ended status", feed_bus.publish_ended(self.client, user, self.clock, event=False))
             return
@@ -350,11 +377,31 @@ def _start(session: StoredSession, user_ref: str, client: Any, ws_url: str,  # n
     return _Running(session, task, stop)
 
 
+def store_readers(connect: Callable[[], Any], cipher: Any, api_key: str) -> tuple[ListUsers, ReadUserSession]:
+    """The production store reads ``_main`` hands to ``supervise_users``: active user refs (allow-list read), and each
+    user's session from ONE ``access_session_for`` read on a fresh connection (``connect()`` gives one)."""
+    from ofo_app import live_market  # noqa: PLC0415
+    from ofo_app.broker_token_store import access_session_for, active_user_refs  # noqa: PLC0415
+
+    async def list_users() -> list[str]:
+        async with connect() as conn:
+            return await active_user_refs(conn)
+
+    async def read_session(user: str) -> StoredSession | None:
+        async with connect() as conn:  # ONE read: the token and the expiry are the same session's
+            found = await access_session_for(conn, user, cipher)
+        if found is None:
+            return None
+        stored, expiry = found
+        return StoredSession(api_key, stored, live_market.token_fingerprint(stored), expiry)
+
+    return list_users, read_session
+
+
 async def _main() -> int:
     from ofo_app import live_market  # noqa: PLC0415
     from ofo_app.broker_config import load_broker_config  # noqa: PLC0415
     from ofo_app.broker_crypto import TokenCipher  # noqa: PLC0415
-    from ofo_app.broker_token_store import access_session_for, active_user_refs  # noqa: PLC0415
     from ofo_app.config import app_env  # noqa: PLC0415
     from ofo_app.db import close_db, get_engine, verify_pool_budget  # noqa: PLC0415
 
@@ -367,18 +414,7 @@ async def _main() -> int:
     await verify_pool_budget()
     cipher = TokenCipher(config.token_key)
 
-    async def list_users() -> list[str]:
-        async with get_engine().connect() as conn:
-            return await active_user_refs(conn)
-
-    async def read_session(user: str) -> StoredSession | None:
-        async with get_engine().connect() as conn:  # ONE read: the token and the expiry are the same session's
-            found = await access_session_for(conn, user, cipher)
-        if found is None:
-            return None
-        stored, expiry = found
-        return StoredSession(config.api_key, stored, live_market.token_fingerprint(stored), expiry)
-
+    list_users, read_session = store_readers(lambda: get_engine().connect(), cipher, config.api_key)
     try:
         # No stored session is a state, not an error: the process idles (egress gate already installed), waits for a
         # login message or the timed re-check, and a process manager never restarts it in a loop (row 9 part B, item 4).

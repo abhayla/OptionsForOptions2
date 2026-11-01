@@ -5,7 +5,7 @@
 // 0.5000 %, label "Adjustment opportunity detected", strategy name quoted by the API, shown plain). Every expected string is the answer's own.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
-import { routerKey } from 'vue-router'
+import { routerKey, routeLocationKey } from 'vue-router'
 import adj02current from './fixtures/adjust-current-adj02.json'
 import adj02approaches from './fixtures/adjust-approaches-adj02.json'
 
@@ -234,5 +234,96 @@ describe('the opp address part', () => {
     expect(opportunitiesFromQuery(undefined)).toEqual([])
     expect(compareUrl(72, ['A-01'], ['11', 'bad'])).toBe('/strategy/builder?adjust=72&pick=A-36,A-01&opp=11')
     expect(compareUrl(72, ['A-01'])).toBe('/strategy/builder?adjust=72&pick=A-36,A-01')
+  })
+})
+
+// GC-MU A3 (ADR-230 (2)): the card's link (?strategy=<id>) picks that strategy's row and scrolls it into view.
+describe('GC-MU A3: the page honours ?strategy=', () => {
+  it('marks and scrolls to the linked strategy row, and marks none without the query', async () => {
+    answers['GET /adjustment-opportunities'] = INBOX
+    const scroll = vi.fn()
+    Element.prototype.scrollIntoView = scroll
+    const withQuery = (query) => ({ global: { ...stub.global, provide: { [routeLocationKey]: { query } } } })
+    const w = keep(mount(AdjustmentOpportunitiesPage, withQuery({ strategy: '1' })))
+    await flushPromises()
+    expect(t(w, 'opp-row').attributes('data-picked')).toBe('true')
+    expect(scroll).toHaveBeenCalledTimes(1)
+    const other = keep(mount(AdjustmentOpportunitiesPage, withQuery({ strategy: '9' })))
+    await flushPromises()
+    expect(t(other, 'opp-row').attributes('data-picked')).toBe('false')
+    expect(scroll).toHaveBeenCalledTimes(1)
+  })
+})
+
+// GC-MU A3 round 2 (ADR-230 (2)): the inbox row itself offers Dismiss for the group's open records.
+describe('GC-MU A3 r2: Dismiss on the inbox row', () => {
+  const openGroup = (ids) => ({ ...INBOX.groups[0], has_open: true,
+    records: ids.map((id) => record(id, 'T-01', '0.3416', '0.5000')) })
+  const inbox = (groups) => ({ ...INBOX, groups })
+  const dismissPosts = () => calls.filter(([m, u]) => m === 'POST' && u.includes('/dismiss'))
+  const listReads = () => calls.filter(([m, u]) => m === 'GET' && u === '/adjustment-opportunities').length
+  const okDismiss = (id) => { answers[`POST /adjustment-opportunities/${id}/dismiss`] = { id, outcome: 'dismissed', outcome_text: 'You dismissed this' } }
+
+  it('an open group shows Dismiss; with a reason it posts each open record once, then reloads the list', async () => {
+    answers['GET /adjustment-opportunities'] = inbox([openGroup([4, 5, 6])])
+    ;[4, 5, 6].forEach(okDismiss)
+    const w = keep(mount(AdjustmentOpportunitiesPage, stub))
+    await flushPromises()
+    expect([...t(w, 'opp-dismiss-reason').element.options].map((o) => o.textContent)).toEqual(['-', ...REASONS.map((r) => r.text)])
+    await t(w, 'opp-dismiss-reason').setValue('not_relevant')
+    answers['GET /adjustment-opportunities'] = inbox([{ ...openGroup([4, 5, 6]), has_open: false,
+      records: [4, 5, 6].map((id) => record(id, 'T-01', '0.3416', '0.5000', 'dismissed', 'You dismissed this', 'Not relevant')) }])
+    await t(w, 'opp-dismiss').trigger('click')
+    await flushPromises()
+    expect(dismissPosts()).toEqual([4, 5, 6].map((id) => ['POST', `/adjustment-opportunities/${id}/dismiss`, { reason: 'not_relevant' }]))
+    expect(listReads()).toBe(2)
+    expect(w.findAll('[data-testid="opp-outcome"]').map((x) => x.find('span').text())).toEqual(Array(3).fill('You dismissed this'))
+    expect(t(w, 'opp-dismiss').exists()).toBe(false)
+  })
+
+  it('a group with no open record shows no Dismiss', async () => {
+    const g = { ...openGroup([4]), has_open: false, records: [record(4, 'T-01', '0.3416', '0.5000', 'dismissed', 'You dismissed this')] }
+    answers['GET /adjustment-opportunities'] = inbox([g])
+    const w = keep(mount(AdjustmentOpportunitiesPage, stub))
+    await flushPromises()
+    expect(t(w, 'opp-dismiss').exists()).toBe(false)
+  })
+
+  it('a missing reasons list: no reason offered, Dismiss still posts with an empty body', async () => {
+    const { dismiss_reasons: _drop, ...noReasons } = inbox([openGroup([4])])
+    answers['GET /adjustment-opportunities'] = noReasons
+    okDismiss(4)
+    const w = keep(mount(AdjustmentOpportunitiesPage, stub))
+    await flushPromises()
+    expect(t(w, 'opp-dismiss-reason').element.options.length).toBe(1)
+    await t(w, 'opp-dismiss').trigger('click')
+    await flushPromises()
+    expect(dismissPosts()).toEqual([['POST', '/adjustment-opportunities/4/dismiss', {}]])
+  })
+
+  it('a refused dismiss shows the server\'s refusal text and leaves the row as it was', async () => {
+    answers['GET /adjustment-opportunities'] = inbox([openGroup([4])])
+    answers['POST /adjustment-opportunities/4/dismiss'] = Object.assign(new Error('x'), {
+      status: 409, parts: { what_happened: 'This adjustment opportunity already has its outcome.' } })
+    const w = keep(mount(AdjustmentOpportunitiesPage, stub))
+    await flushPromises()
+    await t(w, 'opp-dismiss').trigger('click')
+    await flushPromises()
+    expect(t(w, 'opp-dismiss-error').text()).toContain('This adjustment opportunity already has its outcome.')
+    expect(listReads()).toBe(1)
+    expect(t(w, 'opp-dismiss').exists()).toBe(true)
+  })
+
+  it('one of three posts fails: the others stay dismissed, the error is shown and the list is reloaded', async () => {
+    answers['GET /adjustment-opportunities'] = inbox([openGroup([4, 5, 6])])
+    okDismiss(4); okDismiss(6)
+    answers['POST /adjustment-opportunities/5/dismiss'] = Object.assign(new Error('x'), { status: 409, parts: { what_happened: 'Refused five.' } })
+    const w = keep(mount(AdjustmentOpportunitiesPage, stub))
+    await flushPromises()
+    await t(w, 'opp-dismiss').trigger('click')
+    await flushPromises()
+    expect(dismissPosts().map(([, u]) => u)).toEqual([4, 5, 6].map((id) => `/adjustment-opportunities/${id}/dismiss`))
+    expect(t(w, 'opp-dismiss-error').text()).toContain('Refused five.')
+    expect(listReads()).toBe(2)
   })
 })

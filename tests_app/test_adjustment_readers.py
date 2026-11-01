@@ -91,3 +91,28 @@ def test_last_close_live_held_quote_is_stated_with_its_time(monkeypatch):
     assert r.state is SourceState.STATED and r.value == D("23420.5") and r.at == now
     monkeypatch.setattr(readers, "planning_price_usable", lambda quote, *, market_closed: False)
     assert readers.read_last_close(q, True, None, now).state is SourceState.ABSENT
+
+
+# ---- GC-MU A5: adjustments used from the engine's adjustment history -----------------------------------------------
+
+def _stored(cid, side, qty, price, kind, at):  # noqa: PLR0913 - one field each
+    import types  # noqa: PLC0415
+    return types.SimpleNamespace(order=types.SimpleNamespace(contract_id=cid, side=side, quantity=qty, price=D(price),
+                                                             kind=kind, placed_at=at))
+
+
+def test_history_count_gives_the_number_zero_and_none():
+    import datetime  # noqa: PLC0415
+    t0 = datetime.datetime(2026, 10, 28, 10, 0, tzinfo=datetime.UTC)
+    t1 = t0 + datetime.timedelta(days=1)
+    entry = [_stored(1, "SELL", 130, "20", "open", t0), _stored(2, "BUY", 130, "5", "open", t0)]
+    always = lambda _cid: True  # noqa: E731
+    # no adjustment yet -> 0
+    assert readers.history_count(entry, always) == 0
+    # one adjustment (an exit and a new open at a later time) -> 1
+    adjusted = [*entry, _stored(1, "BUY", 130, "10", "exit", t1), _stored(3, "SELL", 130, "18", "open", t1)]
+    assert readers.history_count(adjusted, always) == 1
+    # the history cannot be read (no orders; a bad value) -> None, never 0
+    assert readers.history_count([], always) is None
+    bad = [*entry, _stored(1, "BUY", 130, "-1", "exit", t1)]
+    assert readers.history_count(bad, always) is None

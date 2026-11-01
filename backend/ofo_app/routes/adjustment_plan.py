@@ -172,7 +172,9 @@ def _words(guards: dict) -> tuple[Any, Any]:
     target, loss = _read_percent(guards, TARGET_KEY), _read_percent(guards, STOP_KEY)
     margin = _read_percent(guards, MARGIN_KEY)
     t_words = None if target is None else render_explanation("plan_target_words", pct=format(target, "f"))
-    if loss is not None and margin is not None and guards.get(RULE_KEY) == EITHER_RULE:
+    rule = guards.get(RULE_KEY)
+    # ADR-230 (4): two stops with no combining rule mean "whichever comes first"
+    if loss is not None and margin is not None and (rule in (None, "") or rule == EITHER_RULE):
         s_words = render_explanation("plan_stop_words_either", pct=format(loss, "f"), margin=format(margin, "f"))
     elif loss is not None:
         s_words = render_explanation("plan_stop_words_loss", pct=format(loss, "f"))

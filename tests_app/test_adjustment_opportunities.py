@@ -251,6 +251,46 @@ async def test_an_impossible_id_is_not_found(app_db_url, bad):
     assert status == NOT_FOUND
 
 
+async def _card(sid: int) -> dict:
+    status, body = await _call("GET", "/strategies")
+    assert status == OK, body
+    return next(s for s in body["strategies"] if s["id"] == sid)
+
+
+async def test_card_mark_counts_open_records_and_goes_when_the_last_is_dismissed(app_db_url, monkeypatch):
+    """GC-MU A3 (ADR-230 (2)): the Live Strategies list carries the open count; dismissing clears the mark."""
+    sid = await _clean(app_db_url, await _seeded(app_db_url, monkeypatch, "ADJ-02"))
+    assert (await _card(sid))["open_opportunities_text"] is None  # nothing recorded: no mark
+    await _check(sid)
+    card = await _card(sid)
+    assert (card["open_opportunities"], card["open_opportunities_text"]) == (ADJ02_FLAGS, "3 adjustment opportunities")
+    records = await _records(app_db_url, sid)
+    for r in records[:-1]:
+        status, _ = await _call("POST", f"/api/adjustment-opportunities/{r.id}/dismiss", {"reason": "other"})
+        assert status == OK
+    card = await _card(sid)
+    assert (card["open_opportunities"], card["open_opportunities_text"]) == (1, "1 adjustment opportunity")
+    status, _ = await _call("POST", f"/api/adjustment-opportunities/{records[-1].id}/dismiss", {"reason": "other"})
+    assert status == OK
+    card = await _card(sid)
+    assert (card["open_opportunities"], card["open_opportunities_text"]) == (0, None)
+
+
+async def test_card_mark_ignores_acted_on_and_a_read_failure_gives_no_mark_but_the_list(app_db_url, monkeypatch):
+    sid = await _clean(app_db_url, await _seeded(app_db_url, monkeypatch, "ADJ-02"))
+    await _check(sid)
+    first = (await _records(app_db_url, sid))[0]
+    status, _ = await _call("POST", f"/api/adjustment-opportunities/{first.id}/acted-on")
+    assert status == OK
+    assert (await _card(sid))["open_opportunities"] == ADJ02_FLAGS - 1  # acted on is not open
+
+    async def broken(*_a, **_k):
+        raise RuntimeError("inbox unreadable")
+    monkeypatch.setattr(playbook_store, "inbox", broken)
+    card = await _card(sid)  # the list still answers; unread is None, never 0
+    assert (card["open_opportunities"], card["open_opportunities_text"]) == (None, None)
+
+
 async def test_t19_list_line_names_the_same_approach_and_cost_as_the_check(app_db_url, monkeypatch):
     """ADR-221 (review MAJOR 1): the opportunities list draws a T-19 record with the approach, cost and unpriced count
     stored when it opened, so the list line equals the check's flag line (the Compare's figure in both). The charge

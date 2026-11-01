@@ -227,12 +227,17 @@ def test_every_app_caller_of_a_forward_calculation_passes_the_quality_in_force()
 # ---- feed windows (REQ-167 AC-5 "Detection (feed stale and reconnect windows)") ---------------------------------
 def feed_windows_violations(source: str, where: str = "") -> list[str]:
     """Every ``resolve_spot`` call must pass ``windows=feed_windows_of(<ctx>)`` (the per-request context's windows, or
-    the registry's when the route has no live context); a missing argument, a literal or any other shape fails."""
+    the registry's when the route has no live context), or ``windows=<calc>.feed_windows(<values>)`` where ``values``
+    is a plain name: the settings-in-force mapping the caller read (the background role's one read per cycle, which
+    has no request context; GC-MU integration). A missing argument, a literal, ``feed_windows(defaults())`` or any
+    other shape fails."""
     bad: list[str] = []
     for call in (n for n in ast.walk(ast.parse(source)) if isinstance(n, ast.Call) and _name(n) == "resolve_spot"):
         value = {k.arg: k.value for k in call.keywords}.get("windows")
-        ok = (isinstance(value, ast.Call) and _name(value) == "feed_windows_of" and len(value.args) == 1
-              and isinstance(value.args[0], (ast.Name, ast.Attribute)))
+        one_arg = isinstance(value, ast.Call) and len(value.args) == 1 and not value.keywords
+        ok = one_arg and (
+            (_name(value) == "feed_windows_of" and isinstance(value.args[0], (ast.Name, ast.Attribute)))
+            or (_name(value) == "feed_windows" and isinstance(value.args[0], ast.Name)))
         if not ok:
             bad.append(f"{where}:{call.lineno} resolve_spot() windows is not feed_windows_of(ctx)")
     return bad
@@ -242,9 +247,18 @@ def feed_windows_violations(source: str, where: str = "") -> list[str]:
     "x = resolve_spot(a, b, c, now=n)\n",
     "x = resolve_spot(a, b, c, now=n, windows=DEFAULT)\n",
     "x = resolve_spot(a, b, c, now=n, windows=calc.feed_windows(defaults()))\n",
+    "x = resolve_spot(a, b, c, now=n, windows=calc.feed_windows(self.defaults))\n",
 ])
 def test_the_feed_windows_guard_refuses_other_shapes(body):
     assert feed_windows_violations(body), body
+
+
+@pytest.mark.parametrize("body", [
+    "x = resolve_spot(a, b, c, now=n, windows=feed_windows_of(ctx))\n",
+    "x = resolve_spot(a, b, c, now=n, windows=settings_calc.feed_windows(values))\n",
+])
+def test_the_feed_windows_guard_accepts_the_two_in_force_shapes(body):
+    assert not feed_windows_violations(body), body
 
 
 def test_every_app_caller_of_resolve_spot_passes_the_windows_in_force():

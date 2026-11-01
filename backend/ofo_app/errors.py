@@ -49,6 +49,7 @@ from ofo.errors import CATALOGUE, ErrorClass, UserFacingError, render, user_mess
 from ofo_app.api_models import ApiModel, DoorRefused, Emitted, emit, emit_message
 from ofo_app.broker_config import validate_frontend_origin
 from ofo_app.redaction import install_redaction, keep_public_codes
+from ofo_app.secret_values import contains_secret
 from ofo_app.underlying import refusal_of
 
 keep_public_codes(frozenset(t.code for t in CATALOGUE.values()))  # codes are public: never redacted as a token shape
@@ -145,6 +146,8 @@ def _mint_headers(*, body_length: int, content_type: bool, status: int, retry_af
             headers.append((b"location", location.encode("ascii")))
         except ValueError:
             raise DoorRefused("a door Location is a site path from the allow-list or the Zerodha login URL") from None
+    if any(contains_secret(value) for _, value in headers):  # #517: no registered credential value in any header
+        raise DoorRefused("a door header holds a registered credential value")
     return headers
 
 

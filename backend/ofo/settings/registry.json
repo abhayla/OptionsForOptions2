@@ -398,6 +398,66 @@
       "source": "ADR-068 (2), REQ-166 AC-1; was ofo_app/live_push.py MIN_PUSH_INTERVAL"
     },
     {
+      "key": "speeds.per_option_seconds",
+      "group": "Speeds",
+      "label": "Per-option figures interval",
+      "unit": "seconds",
+      "type": "decimal",
+      "min": "0.2",
+      "max": "60",
+      "default": "1",
+      "what_it_changes": "The shortest time between two recalculations of one option's shared figures (implied volatility and Greeks). A larger number means fewer recalculations and less server work.",
+      "source": "ADR-220 (3), REQ-166 AC-1; was ofo_app/calc_speeds.py _STAND_IN"
+    },
+    {
+      "key": "speeds.background_check_seconds",
+      "group": "Speeds",
+      "label": "Background check interval",
+      "unit": "seconds",
+      "type": "decimal",
+      "min": "0.2",
+      "max": "60",
+      "default": "1",
+      "what_it_changes": "The shortest time between two background playbook checks of one strategy that no screen has open. A larger number means fewer checks and less server work.",
+      "source": "ADR-220 (3), REQ-166 AC-1; was ofo_app/calc_speeds.py _STAND_IN"
+    },
+    {
+      "key": "speeds.valve_step_seconds.1",
+      "group": "Speeds",
+      "label": "Safety valve step 1",
+      "unit": "seconds",
+      "type": "decimal",
+      "min": "0.2",
+      "max": "60",
+      "default": "1",
+      "what_it_changes": "The open-screen and background interval while the maths work keeps up (the safety valve's first step).",
+      "source": "ADR-220 (3), REQ-166 AC-3; was ofo_app/calc_speeds.py _STAND_IN"
+    },
+    {
+      "key": "speeds.valve_step_seconds.2",
+      "group": "Speeds",
+      "label": "Safety valve step 2",
+      "unit": "seconds",
+      "type": "decimal",
+      "min": "0.2",
+      "max": "60",
+      "default": "2",
+      "what_it_changes": "The open-screen and background interval after the maths work first falls behind (the safety valve's second step).",
+      "source": "ADR-220 (3), REQ-166 AC-3; was ofo_app/calc_speeds.py _STAND_IN"
+    },
+    {
+      "key": "speeds.valve_step_seconds.3",
+      "group": "Speeds",
+      "label": "Safety valve step 3",
+      "unit": "seconds",
+      "type": "decimal",
+      "min": "0.2",
+      "max": "60",
+      "default": "5",
+      "what_it_changes": "The open-screen and background interval while the maths work stays behind (the safety valve's last step).",
+      "source": "ADR-220 (3), REQ-166 AC-3; was ofo_app/calc_speeds.py _STAND_IN"
+    },
+    {
       "key": "billing.trial_days",
       "group": "Billing",
       "label": "Free trial length",

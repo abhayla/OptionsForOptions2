@@ -418,6 +418,20 @@ def test_guard_flags_planted_money_arithmetic_browser():
     assert js_money_arithmetic(_vue_code(clean)) == []
 
 
+@pytest.mark.parametrize("shape", [
+    "const t = a.pnl + b.pnl",
+    "const t = x.price * q",
+    "const d = Number(r.ltp) - Number(r.close)",
+    "sum += leg.pnl",
+    "const t = legs.reduce((s, l) => s + l.pnl, 0)",
+])
+def test_browser_scan_flags_money_shape(shape):
+    """GC-MU T1 (ADR-008): each browser money-arithmetic shape is flagged; red if the matcher misses it.
+
+    Known bypasses: computed property names and helper functions (see module docstring)."""
+    assert js_money_arithmetic(shape) == [1]
+
+
 def test_money_arithmetic_only_in_allowed_homes():
     """AC-3: every file outside the engine's allowed homes is scanned; none computes money beyond the baseline."""
     py = python_files()

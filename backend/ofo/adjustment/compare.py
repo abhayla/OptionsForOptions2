@@ -15,6 +15,8 @@ Definitions (technical calls of the GC-ADJ1 contract, "Found during the run" row
 - Credit or debit: the approach's own trades, SELL +, BUY -, at the planned prices (no trade: 0).
 - Charges plus bid-ask cost: this adjustment's own charges plus half the bid-ask spread of each traded contract times
   its quantity (the cost of trading at bid or ask rather than mid). A traded row without a bid or an ask -> "-".
+- Cost as % of premium left, change in max profit (ADR-230 (3)): see ``compare_cost_rows``; the cost row's breakdown
+  (brokerage, STT, exchange, GST, stamp, SEBI, bid-ask) rides on the cost cell.
 - Margin change: Zerodha's basket margin of the After minus that of the current legs; an After with no open leg needs
   0. Either side not stated -> "-" with that side's reason.
 - Max loss, max profit, breakevens: the whole-trade After AFTER charges; charges unknown -> "-" with that reason.
@@ -42,9 +44,10 @@ Definitions (technical calls of the GC-ADJ1 contract, "Found during the run" row
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import ROUND_HALF_EVEN, ROUND_HALF_UP, Decimal
 
+from ofo.adjustment import compare_cost_rows, liquidity
 from ofo.adjustment.approaches import (
     APPROACH_IDS,
     NO_CHANGE,
@@ -77,7 +80,8 @@ MONEY_NOW, RISK_AFTER, REWARD_AFTER, GREEKS_AFTER, PRACTICAL = (
 HIGH, LOW, LOW_ABS = "high", "low", "low_abs"
 #: (row id, group, leader direction), in REQ-156 AC-2's order; the shown words are the catalogue's
 ROWS: tuple[tuple[str, str, str], ...] = (
-    ("credit", MONEY_NOW, HIGH), ("cost", MONEY_NOW, LOW), ("margin_change", MONEY_NOW, LOW),
+    ("credit", MONEY_NOW, HIGH), ("cost", MONEY_NOW, LOW), ("cost_pct", MONEY_NOW, LOW),
+    ("max_profit_change", MONEY_NOW, HIGH), ("margin_change", MONEY_NOW, LOW),
     ("max_loss", RISK_AFTER, LOW), ("move_m2", RISK_AFTER, HIGH), ("move_m1", RISK_AFTER, HIGH),
     ("move_p1", RISK_AFTER, HIGH), ("move_p2", RISK_AFTER, HIGH), ("breakevens", RISK_AFTER, HIGH),
     ("max_profit", REWARD_AFTER, HIGH), ("premium_left", REWARD_AFTER, HIGH), ("pop", REWARD_AFTER, HIGH),
@@ -127,6 +131,7 @@ class Context:
     leg_greeks: Mapping[str, Greeks]  # trading symbol -> per-unit engine Greeks
     adjustments_used: int | None  # None: could not be read
     view: CompareView  # the user's Compare range, steps and move columns (REQ-168 AC-1; required)
+    limits: liquidity.Limits | None = None  # the playbook's saved liquidity limits (ADR-230 (1)); None: not applied
 
 
 @dataclass(frozen=True)
@@ -135,6 +140,7 @@ class Cell:
     value: Decimal | None = None
     unavailable_reason: ExplanationText | None = None
     rank: Decimal | None = None  # what the leader rule compares; None -> cannot lead
+    breakdown: tuple[tuple[str, Decimal], ...] | None = None  # the cost cell's charge lines (ADR-230 (3))
 
 
 @dataclass(frozen=True)
@@ -154,6 +160,20 @@ class Comparison:
     curves: Mapping[str, tuple[tuple[Decimal, Decimal], ...]]  # "before" / approach id -> (level, P&L after charges)
 
 
+def _symbols_token(symbols: Sequence[str], limit: int = 64) -> str:
+    """Trading symbols as one slot token (a Recorded slot takes at most 64 characters, no spaces): as many as fit,
+    then ``+Nmore`` for the rest, so a long list never fails the render."""
+    shown: list[str] = []
+    for i, s in enumerate(symbols):
+        rest = len(symbols) - i - 1
+        tail = f",+{rest}more" if rest else ""
+        if len(",".join([*shown, s])) + len(tail) > limit:
+            break
+        shown.append(s)
+    left = len(symbols) - len(shown)
+    return ",".join(shown) + (f",+{left}more" if left else "")
+
+
 # ---- cells -------------------------------------------------------------------------------------------------------
 
 def _dash(reason: ExplanationText | None) -> Cell:
@@ -167,6 +187,10 @@ def _rupees(value: Decimal, rank: Decimal | None = None) -> Cell:
 
 def _number(value: Decimal, rank: Decimal) -> Cell:
     return Cell(render_explanation("adjust_cmp_value", value=value), value, None, rank)
+
+
+def _from(f: compare_cost_rows.Figure) -> Cell:
+    return Cell(f.text, f.value, f.reason, f.rank)
 
 
 def leaders(cells: Mapping[str, Cell], direction: str) -> tuple[str, ...]:
@@ -284,8 +308,9 @@ def _move_level(spot: Decimal, percent: Decimal) -> Decimal:
 class _Rows:
     """Every cell of one column."""
 
-    def __init__(self, col: Column, ctx: Context) -> None:
+    def __init__(self, col: Column, ctx: Context, before_top: object = None) -> None:
         self.col, self.ctx, self.b = col, ctx, col.built
+        self.before_top = before_top  # the current legs' max profit after charges; None: not worked out
         self.lot = ctx.position.lot
         self.rows = {(r.expiry, r.type, r.strike): r for r in ctx.chain}
 
@@ -304,8 +329,31 @@ class _Rows:
         return _rupees(adjust_money.trade_credit((t.action, t.price, t.quantity) for t in self.b.trades))
 
     def cost(self) -> Cell:
-        answer = approach_cost(self.col, self.rows)
-        return _dash(answer.reason) if answer.value is None else _rupees(answer.value)
+        answer = approach_cost(self.col, self.rows)  # ADR-221: the one cost function (T-19 reads it too)
+        if answer.value is None:
+            return _dash(answer.reason)
+        shown = _rupees(answer.value)
+        if not self.b.trades or self.ctx.rates is None:
+            return shown
+        try:
+            segment = charge_segment(self.ctx.position.underlying)
+            orders = [ChargeOrder(segment, t.action, t.quantity, t.price) for t in self.b.trades]
+        except ValueError:  # no known segment / a price the calculator refuses: the figure stays, no breakdown
+            return shown
+        lines = compare_cost_rows.charge_breakdown(orders, self.ctx.rates, self.col.whole.adjustment_charges,  # type: ignore[union-attr]
+                                                   shown.value)  # type: ignore[arg-type]
+        return replace(shown, breakdown=lines)
+
+    def cost_pct(self) -> Cell:
+        # the numerator is the cost cell, i.e. ADR-221's one cost function (approach_cost)
+        cost, left = self.cost(), self.premium_left()
+        return _from(compare_cost_rows.cost_pct_of_premium_left(cost.value, cost.unavailable_reason, left.value,
+                                                                left.unavailable_reason))
+
+    def max_profit_change(self) -> Cell:
+        after = None if self._after_reason() is not None else self.col.whole.after_charges.max_profit  # type: ignore[union-attr]
+        return _from(compare_cost_rows.max_profit_change(after, self.before_top, self._after_reason(),
+                                                         self.before_top is not None))
 
     def margin_change(self) -> Cell:
         before, after = self.ctx.before_margin, self.col.margin
@@ -416,9 +464,31 @@ class _Rows:
             mid = (row.bid + row.ask) / 2
             widest = max(widest, (row.ask - row.bid) / mid * 100)
         pct = widest.quantize(HUNDREDTH, rounding=ROUND_HALF_UP)
+        if self.ctx.limits is not None:  # ADR-230 (1): flag beside the strike, never hide it
+            flagged = self._flagged(new, pct)
+            if flagged is not None:
+                return Cell(flagged, pct, None, pct)
         text = render_explanation("adjust_cmp_low_oi", value=pct, legs=",".join(unknown_oi)) if unknown_oi else \
             render_explanation("adjust_cmp_percent", value=pct)
         return Cell(text, pct, None, pct)
+
+    def _flagged(self, new: Sequence[PositionLeg], pct: Decimal) -> ExplanationText | None:
+        """The cell text when a new contract breaks a saved liquidity limit or has no known open interest, else None."""
+        by_flag: dict[str, list[str]] = {liquidity.FLAG_BELOW: [], liquidity.FLAG_OI_UNKNOWN: []}
+        for x in new:
+            row = self._row(x)
+            state = liquidity.evaluate_strike(self.ctx.limits, getattr(row, "oi", None), getattr(row, "bid", None),  # type: ignore[arg-type]
+                                              getattr(row, "ask", None))
+            for flag in state.flags:
+                by_flag[flag].append(x.tradingsymbol)
+        hit = [(f, _symbols_token(legs)) for f, legs in by_flag.items() if legs]
+        if not hit:
+            return None
+        first = render_explanation(hit[0][0])
+        if len(hit) == 1:
+            return render_explanation("adjust_cmp_flagged", value=pct, flag=first, legs=hit[0][1])
+        return render_explanation("adjust_cmp_flagged_both", value=pct, flag=first, legs=hit[0][1],
+                                  flag2=render_explanation(hit[1][0]), legs2=hit[1][1])
 
     def fresh(self) -> Cell:
         legs = self.b.after
@@ -490,8 +560,10 @@ def compare(columns: Sequence[Column], ctx: Context, before: WholeTradeAfter | N
     by_id = {c.built.id: c for c in columns}
     order = column_order(ids)
     cells: dict[str, dict[str, Cell]] = {r: {} for r, _, _ in ROWS}
+    before_top = before.after_charges.max_profit if before is not None and before_charges_known else None
     for a in order:
-        r = _Rows(by_id[a], ctx)
+        r = _Rows(by_id[a], ctx, before_top)
+        cells["cost_pct"][a], cells["max_profit_change"][a] = r.cost_pct(), r.max_profit_change()
         cells["credit"][a], cells["cost"][a], cells["margin_change"][a] = r.credit(), r.cost(), r.margin_change()
         cells["max_loss"][a] = r.max_loss()
         for row, p in ctx.view.moves().items():

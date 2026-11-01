@@ -1,0 +1,28 @@
+{
+ "id": "nowrap-label-around-intrinsic-width-select",
+ "scope": "generic",
+ "class": "A label laid out as a non-wrapping flex row around a select whose width comes from its longest option pushes the page wider than a phone screen once an option is long; the page then scrolls sideways or cuts the option text off.",
+ "mechanism": "At 390 px: the Compare's 'Approach to prepare' and 'Approaches in the compare' labels (flex items-center, no wrap, select without max width) made the page 531 px; the editor's Playbook select (min-w-64, no max) made it 399 px.",
+ "first_seen": {
+  "date": "2026-11-01",
+  "where": "GC-MU A5 390 px check in the owner's Chrome",
+  "evidence": "in-frame: compare docScrollW 531 / scrollX 159, editor 399 / 27; hiding adjust-prepare dropped the page to 372"
+ },
+ "fix": "44cbcb25: labels `flex-wrap min-w-0 max-w-full`, selects `max-w-full`; after: all four page states 372 = 372.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "Needs a real-browser 390 px check (e2e); jsdom cannot measure it."
+ },
+ "spec_ref": [
+  "spec/requirements/REQ-004.md",
+  "spec/requirements/REQ-149.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-11-01",
+   "where": "AdjustCompare.vue, AdjustmentsPage.vue",
+   "evidence": "3 labels"
+  }
+ ]
+}

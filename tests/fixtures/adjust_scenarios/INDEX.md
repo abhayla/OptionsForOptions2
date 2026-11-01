@@ -31,6 +31,7 @@ derived by hand-written code; the test cross-checks them with the engine.
 | ADJ-20c | IC weekly, broker answer states | Broker: one leg unpriced (long put wing) | Last day (weekly, 1 d) | T-01, T-09 |
 | ADJ-20d | IC weekly, broker answer states | Broker: landing strike not listed (that approach refused, others shown) | Last day (weekly, 1 d) | T-01, T-09 |
 | ADJ-20e | IC weekly, broker answer states | Broker: low-OI state unknown (warning, not refusal) | Last day (weekly, 1 d) | T-01, T-09 |
+| ADJ-50 | IC weekly, NIFTY 2 lots | Liquidity limits (ADR-230 (1), F-78): one thin strike, the 23,100 CE with open interest 500 | Early (weekly, 6 d) | none |
 | ADJ-21 | IC monthly, SENSEX 2 lots | SENSEX monthly, 20 days, calm | Early (monthly, 20 d) | none |
 | ADJ-22 | IC monthly, SENSEX 2 lots | SENSEX monthly, last 2 days stage | Last 2 days (monthly, 1 d) | T-01, T-09 |
 | ADJ-23 | IC weekly, NIFTY 2 lots | POP rounding: after-charges breakevens carry 3 decimals (F-75 regression) | Middle (weekly, 4 d) | T-07 |

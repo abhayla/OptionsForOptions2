@@ -39,6 +39,7 @@ from ofo.errors.explanations import ExplanationText
 from ofo_app.basket_post import BasketPost
 from ofo_app.playbook_body_out import PlaybookBody
 from ofo_app.closed_namespace import own_names
+from ofo_app.secret_values import contains_secret
 
 log = logging.getLogger("ofo_app.main")
 
@@ -340,8 +341,10 @@ def _model_tree(model: ApiModel, exclude_unset: bool, path: str) -> dict[str, ob
 
 
 def _encode(tree: object) -> Emitted:
-    return Emitted(json.dumps(tree, ensure_ascii=False, allow_nan=False, separators=(",", ":")).encode("utf-8"),
-                   _token=_TOKEN)
+    data = json.dumps(tree, ensure_ascii=False, allow_nan=False, separators=(",", ":")).encode("utf-8")
+    if contains_secret(data):  # #517: a registered credential VALUE in any reviewed field refuses the whole body
+        raise DoorRefused("the body holds a registered credential value")
+    return Emitted(data, _token=_TOKEN)
 
 
 def emit(model: ApiModel, exclude_unset: bool = False) -> Emitted:
@@ -487,6 +490,14 @@ class AdjustTimingOut(ApiModel):
     approaches: int
 
 
+class AdjustBreakdownLineOut(ApiModel):
+    """One line of the cost cell's charge breakdown (ADR-230 (3)): the line's id, its catalogue label and amount."""
+
+    id: Identifier
+    label: CatalogueText
+    text: CatalogueText
+
+
 class AdjustCellOut(ApiModel):
     """One approach's value on one compare criterion (REQ-156 AC-3): ``text`` always shown; ``value`` the exact
     number when there is one; ``unavailable_reason`` beside a "-"."""
@@ -494,6 +505,7 @@ class AdjustCellOut(ApiModel):
     text: CatalogueText
     value: Money | None = None
     unavailable_reason: CatalogueText | None = None
+    breakdown: list[AdjustBreakdownLineOut] | None = None  # only the cost cell of a known cost with rates (ADR-230 (3))
 
 
 class AdjustCriterionOut(ApiModel):

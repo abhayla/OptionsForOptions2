@@ -1,0 +1,15 @@
+{
+  "either": "50 % of max loss or 20 % of margin, whichever comes first",
+  "loss": "50 % of max loss",
+  "margin": "20 % of margin",
+  "cases": [
+    {"name": "both values, rule absent: either-words", "guards": {"stop_line_pct_of_max_loss": "50", "stop_line_pct_of_margin": "20"}, "expect": "either"},
+    {"name": "both values, rule empty: either-words", "guards": {"stop_line_pct_of_max_loss": "50", "stop_line_pct_of_margin": "20", "stop_line_rule": ""}, "expect": "either"},
+    {"name": "both values, rule null: either-words", "guards": {"stop_line_pct_of_max_loss": "50", "stop_line_pct_of_margin": "20", "stop_line_rule": null}, "expect": "either"},
+    {"name": "both values, rule is the either text: either-words", "guards": {"stop_line_pct_of_max_loss": "50", "stop_line_pct_of_margin": "20", "stop_line_rule": "whichever comes first"}, "expect": "either"},
+    {"name": "both values, a DIFFERENT non-empty rule: unchanged, loss words only", "guards": {"stop_line_pct_of_max_loss": "50", "stop_line_pct_of_margin": "20", "stop_line_rule": "max loss only"}, "expect": "loss"},
+    {"name": "loss only: loss words", "guards": {"stop_line_pct_of_max_loss": "50"}, "expect": "loss"},
+    {"name": "margin only: margin words", "guards": {"stop_line_pct_of_margin": "20"}, "expect": "margin"},
+    {"name": "neither value: no stop words", "guards": {}, "expect": null}
+  ]
+}

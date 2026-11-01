@@ -359,10 +359,48 @@
         "title": "AdjustAvailableOut",
         "type": "object"
       },
+      "AdjustBreakdownLineOut": {
+        "additionalProperties": false,
+        "description": "One line of the cost cell's charge breakdown (ADR-230 (3)): the line's id, its catalogue label and amount.",
+        "properties": {
+          "id": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label"
+          },
+          "text": {
+            "title": "Text"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "text"
+        ],
+        "title": "AdjustBreakdownLineOut",
+        "type": "object"
+      },
       "AdjustCellOut": {
         "additionalProperties": false,
         "description": "One approach's value on one compare criterion (REQ-156 AC-3): ``text`` always shown; ``value`` the exact\nnumber when there is one; ``unavailable_reason`` beside a \"-\".",
         "properties": {
+          "breakdown": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/AdjustBreakdownLineOut"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Breakdown"
+          },
           "text": {
             "title": "Text"
           },
@@ -13695,6 +13733,26 @@
           "name": {
             "title": "Name"
           },
+          "open_opportunities": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Open Opportunities"
+          },
+          "open_opportunities_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Open Opportunities Text"
+          },
           "status": {
             "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
             "title": "Status",
@@ -13735,7 +13793,9 @@
           "leg_count",
           "first_leg",
           "tracked",
-          "can_delete"
+          "can_delete",
+          "open_opportunities",
+          "open_opportunities_text"
         ],
         "title": "SummaryOut",
         "type": "object"

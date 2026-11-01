@@ -28,6 +28,7 @@ STORED definition no longer reads (unknown schema version, contract id gone, ter
 from __future__ import annotations
 
 import datetime
+import logging
 from collections import Counter
 from collections.abc import Callable, Mapping
 from decimal import Decimal
@@ -35,25 +36,27 @@ from types import MappingProxyType
 from typing import Annotated, Any, Literal, Optional
 
 from fastapi import APIRouter, Depends, Query
-from ofo.settings.calc import history_max_days
 from ofo.engine.legs import Action
 from ofo.engine.legs import Leg as EngineLeg
 from ofo.errors import LegValue, render
+from ofo.settings.calc import history_max_days
 from ofo.strategy import stored_form as sf
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ofo_app import eligibility_from_zerodha as elig
-from ofo_app import paper_store, tracked_contracts
+from ofo_app import paper_store, playbook_store, tracked_contracts
 from ofo_app import strategy_store as store
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier, Money
 from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure, refuse_request
+from ofo_app.routes import adjustment_opportunities as opportunities
 from ofo_app.routes.broker import current_user_ref
 from ofo_app.routes.outcome import get_settings_reader
 from ofo_app.strategy_refused import StrategyRefused
 from ofo_app.tracked_contracts import ContractState
 from ofo_app.underlying import Underlying
 
+log = logging.getLogger(__name__)
 router = APIRouter(route_class=ClosedRoute)
 
 def _refuse_live_state(data: Any) -> Any:
@@ -205,6 +208,8 @@ class SummaryOut(ApiModel):
     first_leg: FirstLegOut
     tracked: Optional[bool]  # noqa: UP045 - True/False from the tracking store; None = could not be read (never "no")
     can_delete: bool  # REQ-070 AC-6: False once a basket was sent (or when that could not be read)
+    open_opportunities: Optional[int]  # noqa: UP045 - GC-MU A3: open adjustment records; None = could not be read
+    open_opportunities_text: Optional[CatalogueText]  # noqa: UP045 - "N adjustment opportunities"; None at 0 or unread
 
 
 class RenamedOut(ApiModel):
@@ -415,13 +420,28 @@ async def list_strategies(db: Any = Depends(get_db), user_ref: str = Depends(cur
     async def work():
         rows = await store.list_strategies(db, user_ref)
         tracked = await _tracked_ids(db, [r.id for r in rows])
+        opened = await _open_opportunities(db, user_ref)
         return StrategyListOut.model_validate({"strategies": [
             {"id": r.id, "underlying": r.underlying, "status": r.status, "created_at": r.created_at,
              "updated_at": r.updated_at, "name": sf.shown_name(r.name), "leg_count": r.leg_count,
              "first_leg": {"instrument": r.first_leg.instrument, "strike": r.first_leg.strike,
                            "expiry": r.first_leg.expiry},
-             "tracked": None if tracked is None else r.id in tracked, "can_delete": r.can_delete} for r in rows]})
+             "tracked": None if tracked is None else r.id in tracked, "can_delete": r.can_delete,
+             "open_opportunities": None if opened is None else opened.get(r.id, 0),
+             "open_opportunities_text": None if opened is None else opportunities.open_mark(opened.get(r.id, 0))}
+            for r in rows]})
     return await _run(db, work, form_status=409)
+
+
+async def _open_opportunities(db: Any, user_ref: str) -> dict[int, int] | None:
+    """GC-MU A3 (ADR-230 (2)): open adjustment records per strategy, by the inbox's own definition. A failed read
+    returns None (the card shows no mark, the list still answers) and is logged, in its own savepoint."""
+    try:
+        async with db.begin_nested():
+            return opportunities.open_counts(await playbook_store.inbox(db, user_ref))
+    except Exception:  # noqa: BLE001 - any read failure only costs the mark
+        log.warning("open adjustment opportunities could not be read", exc_info=True)
+        return None
 
 
 async def _tracked_ids(db: Any, ids: list[int]) -> set[int] | None:

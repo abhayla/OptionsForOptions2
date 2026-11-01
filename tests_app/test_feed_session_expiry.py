@@ -105,6 +105,133 @@ async def test_an_expiry_in_the_future_changes_nothing(rig):
     assert all(m.kind != feed_bus.KIND_ENDED for _i, m in await stream_entries(rig.bus, user))
 
 
+async def _stopped(rig, user):
+    status = await user_status(rig.bus, user)
+    return status if status and status["phase"] == "stopped" and not status["ended"] else None
+
+
+async def test_an_unreadable_store_at_the_expiry_still_closes_the_socket_and_publishes_ended(rig):
+    """#520 item 2, store answer "read failed" at the expiry: the database is unreachable at 06:00 (every read of A
+    raises). The expiry needs only the in-memory expiry of the running socket, so A's Kite connection still closes,
+    exactly one ``ended`` event is published and nothing reconnects; B is untouched."""
+    user_a, user_b = new_ref("ua"), new_ref("ub")
+    kite_a, kite_b = await rig.kite(user_a), await rig.kite(user_b)
+    rig.store.set(user_a, "TOK-A-outage", T0 + datetime.timedelta(hours=1))
+    rig.store.set(user_b, "TOK-B-outage", T0 + datetime.timedelta(hours=24))
+    rig.start()
+
+    async def both_live():
+        return ((await rig.live(user_a)) and (await rig.live(user_b))) or None
+
+    await rig.until(both_live, "both live before the expiry")
+    rig.store.failing.add(user_a)  # the database goes away for A's reads
+    rig.clock.advance(hours=1, seconds=1)
+
+    async def a_closed_and_ended():
+        status = await _ended(rig, user_a)
+        return status if status and kite_a.active == 0 else None
+
+    await rig.until(a_closed_and_ended, "A's socket closed at the expiry although the store read raises")
+    reads = rig.store.reads[user_a]
+    await rig.until(lambda: _reads_since(rig, user_a, reads, 3), "three failing re-checks after the end")
+    events = [m.kind for _i, m in await stream_entries(rig.bus, user_a) if m.kind == feed_bus.KIND_ENDED]
+    assert events == [feed_bus.KIND_ENDED] and kite_a.accepted == 1
+    assert kite_b.accepted == 1 and kite_b.active == 1 and (await rig.live(user_b)) is not None
+
+
+async def test_with_the_production_store_an_expired_session_stays_ended_for_a_later_reader(rig):
+    """#520 item 1, store answer "expired fingerprint, then no session" (the production shape: the real store ends a
+    past session and answers none, and the active-users list drops it). A's socket closes at the expiry; for 5 fake
+    minutes of re-checks the status a later reader sees stays ``ended``, never ``stopped``, with exactly one ended event
+    and no reconnect. A new login afterwards starts a new socket; a disconnect after that new socket says
+    ``stopped``."""
+    rig.store.ends_at_expiry = rig.clock
+    user = new_ref("ua")
+    kite = await rig.kite(user)
+    rig.store.set(user, "TOK-prod-shape", T0 + datetime.timedelta(hours=1))
+    rig.start()
+    await rig.until(lambda: rig.live(user), "live before the expiry")
+    rig.clock.advance(hours=1, seconds=1)
+
+    async def closed_and_ended():
+        status = await _ended(rig, user)
+        return status if status and kite.active == 0 else None
+
+    await rig.until(closed_and_ended, "the socket closed and the status ended")
+    for _minute in range(5):
+        rig.clock.advance(minutes=1)
+        reads = rig.store.reads[user]
+        await rig.until(lambda r=reads: _reads_since(rig, user, r, 2), "two re-checks in this fake minute")
+        assert (await _ended(rig, user)) is not None, "a later reader saw the ended session as stopped"
+    assert user not in rig.store.sessions, "the test store did not answer in the production shape"
+    events = [m.kind for _i, m in await stream_entries(rig.bus, user) if m.kind == feed_bus.KIND_ENDED]
+    assert events == [feed_bus.KIND_ENDED] and kite.accepted == 1
+    accepted = kite.accepted
+    rig.store.set(user, "TOK-prod-shape-new-login", rig.clock.now + datetime.timedelta(hours=20))
+    await rig.until(lambda: rig.live(user), "the new login's socket")
+    assert kite.accepted == accepted + 1
+    del rig.store.sessions[user]  # a disconnect of the NEW session is a plain stop, not the old "ended"
+    await rig.until(lambda: _stopped(rig, user), "stopped after the new session's disconnect")
+
+
+class _Ahead:
+    """The store's (database's) clock, ``seconds`` ahead of the feed process's clock."""
+
+    def __init__(self, clock, seconds: float) -> None:
+        self.clock, self.seconds = clock, seconds
+
+    def __call__(self) -> datetime.datetime:
+        return self.clock() + datetime.timedelta(seconds=self.seconds)
+
+
+async def test_a_store_clock_ahead_of_the_feed_still_reports_the_end_as_session_ended(rig):
+    """Round-2 MAJOR 1, store answer "no session" for a running socket just BEFORE its in-memory expiry (the database
+    clock 2 s ahead, or the expiry falling between the in-memory check and the read): the real store has ended the
+    session, so this is the expiry, not a disconnect. Status ``ended`` (first and later), exactly one ended event, no
+    reconnect. Feed clock 1 s before the expiry; store clock 1 s past it."""
+    rig.store.ends_at_expiry = _Ahead(rig.clock, 2)
+    user = new_ref("ua")
+    kite = await rig.kite(user)
+    rig.store.set(user, "TOK-skew", T0 + datetime.timedelta(hours=1))
+    rig.start()
+    await rig.until(lambda: rig.live(user), "live before the expiry")
+    rig.clock.advance(hours=1, seconds=-1)
+
+    async def closed():
+        status = await user_status(rig.bus, user)
+        return status if status and kite.active == 0 and not status["connected"] else None
+
+    first = await rig.until(closed, "the socket closed")
+    assert first["ended"], f"store clock ahead: the end was shown as {first['phase']}, not session ended"
+    for _minute in range(3):
+        rig.clock.advance(minutes=1)
+        reads = rig.store.reads[user]
+        await rig.until(lambda r=reads: _reads_since(rig, user, r, 2), "two re-checks in this fake minute")
+    later = await user_status(rig.bus, user)
+    ended = [m.kind for _i, m in await stream_entries(rig.bus, user) if m.kind == feed_bus.KIND_ENDED]
+    assert first["ended"] and later["ended"], f"store clock ahead: shown as {first['phase']}/{later['phase']}"
+    assert ended == [feed_bus.KIND_ENDED] and kite.accepted == 1
+
+
+async def test_a_disconnect_long_before_the_expiry_is_still_a_plain_stop(rig):
+    """Round-2 MAJOR 1, the negative: "no session" for a running socket an hour before its expiry is a disconnect,
+    status ``stopped`` with no ended event (the skew window is narrow)."""
+    rig.store.ends_at_expiry = rig.clock
+    user = new_ref("ua")
+    kite = await rig.kite(user)
+    rig.store.set(user, "TOK-disconnect", T0 + datetime.timedelta(hours=2))
+    rig.start()
+    await rig.until(lambda: rig.live(user), "live")
+    del rig.store.sessions[user]
+    await rig.until(lambda: _stopped(rig, user), "stopped after the disconnect")
+    async def closed():
+        return kite.active == 0 or None
+
+    await rig.until(closed, "the socket closed at the fake Kite")
+    assert (await _stopped(rig, user)) is not None
+    assert all(m.kind != feed_bus.KIND_ENDED for _i, m in await stream_entries(rig.bus, user))
+
+
 @pytest.fixture(autouse=True)
 def _default_settings(monkeypatch):
     """The fake connection answers only the session read; the registry defaults are the settings in force (the same
@@ -184,3 +311,57 @@ async def test_the_one_read_answers_absent_as_none_and_never_pairs_a_missing_exp
     conn = _OneReadConn([None])
     assert await access_session_for(conn, "u1", TokenCipher(os.urandom(32))) is None
     assert conn.reads == 1
+
+
+async def _true_or_none(v):
+    return v or None
+
+
+# Pins the EXPIRY_SKEW_S window (300 s) at both edges: a session the store drops 301 s before its expiry was STOPPED,
+# one dropped 299 s before was ended BY the expiry; at and past the expiry it is ended. Without these, any window from
+# about 2 s to 7199 s passed the tests above (GC-MU step 3 Tier A re-verify, MINOR).
+@pytest.mark.parametrize("before_s, want", [(301, "stopped"), (299, "ended"), (0, "ended"), (-3600, "ended")])
+async def test_skew_window_edges(rig, before_s, want):
+    rig.store.ends_at_expiry = rig.clock
+    user = new_ref("ua")
+    kite = await rig.kite(user)
+    rig.store.set(user, "TOK-edge", T0 + datetime.timedelta(seconds=max(before_s, 1)))
+    rig.start()
+    await rig.until(lambda: rig.live(user), "live")
+    if before_s <= 0:
+        rig.clock.advance(seconds=1 - before_s)  # at / past the expiry; the store answers none
+    else:
+        del rig.store.sessions[user]
+
+    async def settled():
+        st = await user_status(rig.bus, user)
+        done = st and kite.active == 0 and not st["connected"] and (st["phase"] == "stopped" or st["ended"])
+        return st if done else None
+
+    st = await rig.until(settled, "settled")
+    ended = [m for _i, m in await stream_entries(rig.bus, user) if m.kind == feed_bus.KIND_ENDED]
+    if want == "stopped":
+        assert st["phase"] == "stopped" and not st["ended"] and not ended
+    else:
+        assert st["ended"] and len(ended) == 1 and kite.accepted == 1
+
+
+SECOND_SOCKET = 2  # the old session's socket, then the new one
+
+
+async def test_session_replaced_inside_window_is_not_ended(rig):
+    rig.store.ends_at_expiry = rig.clock
+    user = new_ref("ua")
+    kite = await rig.kite(user)
+    rig.store.set(user, "TOK-old", T0 + datetime.timedelta(seconds=120))
+    rig.start()
+    await rig.until(lambda: rig.live(user), "live")
+    rig.store.set(user, "TOK-new", T0 + datetime.timedelta(days=1))
+    restarted = lambda: _true_or_none(kite.accepted >= SECOND_SOCKET and kite.active == 1)  # noqa: E731
+    await rig.until(restarted, "restart on the new session")
+    rig.clock.advance(seconds=180)
+    reads = rig.store.reads[user]
+    await rig.until(lambda r=reads: _reads_since(rig, user, r, 3), "re-checks past the old expiry")
+    st = await user_status(rig.bus, user)
+    ended = [m for _i, m in await stream_entries(rig.bus, user) if m.kind == feed_bus.KIND_ENDED]
+    assert kite.tokens[-1] == "TOK-new" and not st["ended"] and not ended and kite.active == 1
