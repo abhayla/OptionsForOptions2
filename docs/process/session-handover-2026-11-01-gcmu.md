@@ -61,13 +61,18 @@ Every shared-file change has a line in `coord/overlaps/GC-MU.md`.
 - #628 deferred: `seed_scenario.py` batches a scenario's trade wrongly (ADJ-13 seeds 2 adjustments, the scenario has 1).
 - Step 3 MINOR (not filed separately): after expiry the status reads `phase: live` with `ended: True`.
 
-## Owner questions (owner away; built on the recommendation)
+## Owner answers (owner back 2026-11-01 ~08:00 IST)
 
-`docs/process/owner-questions-2026-11-01.md`:
-- **Q-MU-1:** the roll debit limit is the higher of Rs 500 and 10 %.
-- **Q-MU-2:** the card counts records, not inbox rows.
-
-New user-facing texts are pinned "pending owner read": A1 6, A2 15, A3 2.
+- Q-MU-1 -> ADR-231: the roll debit limit is the HIGHER of Rs 500 and 10% of max profit (as built in A1).
+- Q-MU-2 -> ADR-232: the card counts open conditions, not inbox rows (as built in A3).
+- The 25 GC-MU texts (A1 6, A2 15 + 2 label lists, A3 2): approved as recommended, so the pins are marked owner read
+  (3a8073c1).
+- The other 461 pending catalogue texts: an independent wording check runs first, then the owner reads only the
+  flags (#629). This is a separate task after GC-MU.
+- Kite: the owner logs in on Mon 2026-11-03 at 09:15 IST or later for T3. A login today does not help, because the
+  market is closed and the token expires at 06:00.
+- These records are on `build/gcmu-docs` (9890e0f0, 3a8073c1, plus this file), merged into `build/gcmu` after the backup
+  push.
 
 ## MERGE-SWAPs left for the integration (GC-SET stand-ins)
 
@@ -110,6 +115,7 @@ New user-facing texts are pinned "pending owner read": A1 6, A2 15, A3 2.
 3. **The BLOCKED screen proofs** above, once Chrome is connected.
 4. **#628** before any further screen proof on ADJ-13.
 5. **Foundation steps 5-7** after sign-in.
+6. **#629:** the wording check of the 461 pending texts, then the owner reads the flags (after the integration, so the texts are final).
 
 ## Close (step 9, GC-SET not merged branch)
 

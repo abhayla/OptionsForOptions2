@@ -543,6 +543,7 @@ issues:
   "#626": S6.4  # GC-MU step 2 D3: no Content-Security-Policy connect-src 'self' (structural layer behind the bundle scan)
   "#627": S6.4  # GC-MU step 4 remainder: background margin (T-16), T-13 open price, restart + heartbeat, screen reads worker result
   "#628": S6.4  # seed_scenario.py batches a scenario's trade wrongly: ADJ-13 seeds 2 adjustments where the scenario has 1
+  "#629": S6.4  # Owner sign-off for 461 pending catalogue texts: independent wording check, then owner reads the flags
 
 # Work items whose status is not done.
 work_items:
