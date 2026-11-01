@@ -44,6 +44,8 @@ beforeEach(() => {
   answers = {
     'GET /catalogue/NIFTY/expiries': { underlying: 'NIFTY', expiries: ['2026-10-27'] },
     'GET /catalogue/SENSEX/expiries': { underlying: 'SENSEX', expiries: [] },
+    // REQ-167: the screens read their limits from GET /api/settings (the registry defaults here)
+    'GET /settings': { groups: [{ name: 'Limits', settings: [{ key: 'limits.chain_strikes_each_side', value: '15' }, { key: 'other.undo_one_leg_seconds', value: '8' }, { key: 'limits.max_lots', value: '10000' }, { key: 'limits.multiplier_max', value: '50' }, { key: 'limits.lot_choices', value: '10' }] }], charges: null },
     'GET /catalogue/NIFTY/contracts': { underlying: 'NIFTY', contracts: [{ exchange_segment: 'NSE_FO', exchange_token: 44624, instrument_type: 'CE', expiry: '2026-10-27', strike: '22800.00', lot_size: 65, symbol: 'NIFTY26O2722800CE' }] },
   }
 })
