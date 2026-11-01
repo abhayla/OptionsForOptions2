@@ -117,6 +117,9 @@ NON_ORDER_ROUTES: frozenset[tuple[str, str]] = frozenset({
     ("POST", "/api/adjustments/preferences/{key}"),  # REQ-168: the user sets a preference (app data, no order)
     ("POST", "/api/adjustments/preferences/{key}/reset"),  # REQ-168: the user resets one (app data, no order)
     ("POST", "/api/settings/{key}/reset"),  # GC-SET 2: the admin resets one setting (app data, no order)
+    ("POST", "/api/system-playbooks/{strategy_type}/versions"),  # REQ-169: the admin saves a system playbook version
+    ("POST", "/api/system-playbooks/{strategy_type}/versions/{version}/restore"),  # REQ-169: restore = a new version
+    ("POST", "/api/system-playbooks/{strategy_type}/approve"),  # REQ-169: approve a Draft (app data, no order)
 })
 MUTATING_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 

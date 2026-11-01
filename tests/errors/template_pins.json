@@ -3330,5 +3330,21 @@
   "explanation:adjust_preference_refused_unknown": {
     "sha256": "9a49080710bf4750cf2ee15a8c43c51229e5e914959c6e54b6e2d6675cf2bbbc",
     "reviewed": "pending owner read"
+  },
+  "explanation:system_playbook_refused_reason": {
+    "sha256": "beeb26cd2068918ec2392c1f25b3f31872eb4cf618ca250c47b8683e9b7f94e4",
+    "reviewed": "pending owner read"
+  },
+  "explanation:system_playbook_refused_stale": {
+    "sha256": "28a9bd5131589a18edccd6f57cb86f4a63f02f02c2fe416b719b9f3c8f33924f",
+    "reviewed": "pending owner read"
+  },
+  "explanation:system_playbook_refused_version": {
+    "sha256": "cfcd0e67e3dec2ab9defb9092d268d4fcffa58175721dc4c2e3f3f10f14a46a7",
+    "reviewed": "pending owner read"
+  },
+  "explanation:system_playbook_refused_approved": {
+    "sha256": "3d8659ca9008d275bb952f2e3bca39c9a015e00a052f92f607e0af6d86443363",
+    "reviewed": "pending owner read"
   }
 }
