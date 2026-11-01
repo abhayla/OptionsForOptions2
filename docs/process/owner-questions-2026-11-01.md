@@ -1,6 +1,6 @@
 # Owner questions, 2026-11-01 (GC-MU run; written while the owner is away, run continues)
 
-## Q-MU-1: What does the roll debit limit "Rs 500 or 10% of max profit" mean?
+## Q-MU-1 (ANSWERED 2026-11-01 08:03 IST: higher of the two -> ADR-231): What does the roll debit limit "Rs 500 or 10% of max profit" mean?
 
 Business call: it decides which rolls a user is refused, and the words are the owner's playbook text.
 
@@ -23,7 +23,7 @@ unlimited or not known, A1 refuses any debit above Rs 500 as "cannot confirm" (f
 Status: built as A on build/gcmu (A1, 17d98038); changing to B is one line in `backend/ofo/adjustment/liquidity.py`.
 The answer goes into the spec as a decision row (GC-MU ADR range 231-239).
 
-## Q-MU-2: Does the Live Strategies card count opportunities or inbox rows?
+## Q-MU-2 (ANSWERED 2026-11-01 ~08:05 IST: count conditions -> ADR-232): Does the Live Strategies card count opportunities or inbox rows?
 
 Business call: it is the number a user reads on the card, and it can differ from what the inbox shows.
 
