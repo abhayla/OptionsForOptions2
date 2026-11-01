@@ -9,6 +9,7 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 vi.mock('@/services/api', async (importActual) => {
   const actual = await importActual()
   const get = (url) => {
+    if (url === '/settings') return Promise.resolve({ data: settingsData() })
     if (url.startsWith('/catalogue/')) return Promise.resolve({ data: { expiries: ['2026-10-27', '2026-11-03'] } })
     return Promise.reject(new Error('down'))
   }
@@ -16,6 +17,7 @@ vi.mock('@/services/api', async (importActual) => {
 })
 import OptionChainPage from '@/pages/OptionChainPage.vue'
 import { contractOf, useChainSelection } from '@/stores/chainSelection'
+import { settingsData } from './helpers/servedLots'
 
 class FakeSocket {
   static all = []
@@ -372,10 +374,15 @@ describe('chainSelection store', () => {
     expect(s.entries).toEqual([])
   })
 
-  it('AC-7: lots accept a whole number 1..10000 only', () => {
+  it('AC-7: lots accept a whole number 1..served limits.max_lots only; before the setting is read nothing is accepted', async () => {
     const s = useChainSelection()
     s.chooseAction(c('1'), 'BUY')
     const id = s.entries[0].id
+    expect(s.maxLots).toBeNull()
+    s.setLots(id, 2) // not read yet: no cap to check against, fail closed
+    expect(s.entries[0].lots).toBe(1)
+    await flushPromises()
+    expect(s.maxLots).toBe(10000)
     for (const bad of [0, -1, 1.5, '2', '1e2', 10001, '', null, 'abc', NaN]) {
       s.setLots(id, bad)
       expect(s.entries[0].lots).toBe(1)

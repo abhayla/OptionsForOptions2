@@ -1,6 +1,8 @@
 // Leg picker helpers (W-068; REQ-035 AC-8, ADR-068, ADR-008). Pure functions; no price or P&L is ever computed here.
 // Strings only: a strike and a planned entry stay exactly the strings the API sent.
 
+import { strictInt } from '@/lib/settingsValues'
+
 export { UNDERLYINGS } from '@/lib/underlyings'
 
 /** The one wording for a draft that has no live data (the backend constant NOT_CONNECTED_LABEL, ADR-020 Q185). */
@@ -21,9 +23,15 @@ export function instrumentId(exchangeSegment, exchangeToken) {
   return `${exchangeSegment}:${exchangeToken}`
 }
 
-/** A whole number of lots from 1 to 10000, typed as digits (no sign, no decimal point, no leading zero). */
-export function lotsValid(text) {
-  return /^([1-9]\d{0,3}|10000)$/.test(String(text ?? ''))
+/** REQ-167 AC-5: the served settings the lot boxes follow (the browser keeps no copy of either number). */
+export const MAX_LOTS_KEY = 'limits.max_lots'
+export const LOT_CHOICES_KEY = 'limits.lot_choices'
+
+/** A whole number of lots from 1 to `max` (the served limits.max_lots), typed as digits (no sign, no decimal point, no
+ *  leading zero). With no `max` yet (settings not read) nothing is valid. */
+export function lotsValid(text, max) {
+  const n = strictInt(typeof text === 'string' ? text : null)
+  return Number.isInteger(max) && n !== null && n >= 1 && n <= max
 }
 
 /** The contract types the API offered for the chosen expiry, in the fixed display order. */
@@ -77,8 +85,6 @@ export function buildDraft(legs) {
 /** REQ-080 AC-1: strikes each side of ATM the user can choose (the backend's WIDTHS); 10 is the default. */
 export const STRIKE_WIDTHS = Object.freeze([10, 20, 30, 40])
 export const DEFAULT_STRIKE_WIDTH = 10
-/** How many lots (or lot-size multiples) a cell's selector lists. */
-export const LOT_CHOICES = 10
 /** The picker refreshes the open list this often (the server reads the feed at most once a second, ADR-012). */
 export const PICKER_REFRESH_MS = 5000
 /** The depth popup refreshes this often while open: at most once a second (REQ-080 AC-7). */
@@ -183,10 +189,10 @@ export function oiCompact(count) {
 
 /** The lots selector's choices. Lots mode lists 1, 2, 3 ...; quantity mode lists multiples of the lot size the server
  *  sent for that contract (REQ-080 AC-4), none when it sent no usable lot size. `value` is always a whole number of lots. */
-export function lotChoices(mode, lotSize) {
+export function lotChoices(mode, lotSize, count) {
   const size = Number.isInteger(lotSize) && lotSize > 0 ? lotSize : null
-  if (mode === 'quantity' && size === null) return []
-  return Array.from({ length: LOT_CHOICES }, (_, i) => ({
+  if ((mode === 'quantity' && size === null) || !Number.isInteger(count) || count < 1) return [] // count = limits.lot_choices, null until read
+  return Array.from({ length: count }, (_, i) => ({
     value: i + 1,
     label: mode === 'quantity' ? String((i + 1) * size) : String(i + 1),
   }))

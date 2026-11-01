@@ -5,7 +5,7 @@
 // + source, or null + reason_code). Tokens and symbols are the recorded NIFTY 13-Oct-2026 contracts of the outcome fixture
 // (44595/44604/44624/44632) and the instruments slice (FUT 48704). No price here is computed or defaulted by the page.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
+import { mount as mountRaw, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import { createRouter, createMemoryHistory } from 'vue-router'
 
 const calls = []
@@ -23,7 +23,11 @@ vi.mock('@/services/api', async (importActual) => {
 })
 import LegPicker from '@/components/strategy/LegPicker.vue'
 import StrategyBuilderPage from '@/pages/StrategyBuilderPage.vue'
-import { NOT_CONNECTED_LABEL, REPRICE_PROMPT, lotsValid, instrumentId, buildDraft, oiCompact } from '@/lib/legPicker'
+import { settingsData } from './helpers/servedLots'
+
+// the page passes the served lot caps down (REQ-167 AC-5); a picker mounted alone gets them as props
+const mount = (C, o = {}) => mountRaw(C, C === LegPicker ? { ...o, props: { maxLots: 10000, lotChoiceCount: 10, ...o.props } } : o)
+import { NOT_CONNECTED_LABEL, REPRICE_PROMPT, lotsValid, lotChoices, instrumentId, buildDraft, oiCompact } from '@/lib/legPicker'
 
 const AT = '2026-10-08T09:20:09+05:30'
 const c = (token, type, strike, symbol, expiry = '2026-10-13') => ({
@@ -61,6 +65,7 @@ afterEach(() => {
 beforeEach(() => {
   calls.length = 0
   answers = {
+    'GET /settings': settingsData(),
     'GET /catalogue/NIFTY/expiries': { underlying: 'NIFTY', expiries: ['2026-10-13', '2026-10-27'] },
     'GET /catalogue/SENSEX/expiries': { underlying: 'SENSEX', expiries: ['2026-10-15'] },
     'GET /catalogue/NIFTY/contracts?expiry=2026-10-13': NIFTY_13,
@@ -177,9 +182,17 @@ describe('FUT has no strike', () => {
 })
 
 describe('lots validation', () => {
-  it('accepts whole numbers 1 to 10000 only', () => {
-    for (const ok of ['1', '7', '10', '9999', '10000']) expect(lotsValid(ok)).toBe(true)
-    for (const bad of ['', '0', '-1', '1.5', '10001', '01', ' 1', '1e2', 'abc', null, undefined]) expect(lotsValid(bad)).toBe(false)
+  it('accepts whole numbers 1 to the served max only; with no served max nothing is valid', () => {
+    for (const ok of ['1', '7', '10', '9999', '10000']) expect(lotsValid(ok, 10000)).toBe(true)
+    for (const bad of ['', '0', '-1', '1.5', '10001', '01', ' 1', '1e2', 'abc', null, undefined]) expect(lotsValid(bad, 10000)).toBe(false)
+    expect(lotsValid('600', 500)).toBe(false) // the cap follows the setting
+    expect(lotsValid('500', 500)).toBe(true)
+    expect(lotsValid('1', null)).toBe(false)
+  })
+  it('the lot choices are the served limits.lot_choices (none until it is read)', () => {
+    expect(lotChoices('lots', 65, null)).toEqual([])
+    expect(lotChoices('lots', 65, 3).map((x) => x.value)).toEqual([1, 2, 3])
+    expect(lotChoices('quantity', 65, 2).map((x) => x.label)).toEqual(['65', '130'])
   })
 
   it('the Save leg button (Edit) stays disabled for bad lots and nothing is sent', async () => {

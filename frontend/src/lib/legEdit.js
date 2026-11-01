@@ -9,7 +9,8 @@ import { listReasonText } from '@/lib/legPicker'
 import { istTime } from '@/lib/displayFormat'
 
 export const MULTIPLIER_MIN = 1
-export const MULTIPLIER_MAX = 50
+/** REQ-167 AC-5: the highest multiplier is the served setting; the browser keeps no copy of it. */
+export const MULTIPLIER_MAX_KEY = 'limits.multiplier_max'
 /** REQ-076 AC-9: the name shown when the server matched no shape. */
 export const CUSTOM_STRATEGY = 'Custom Strategy'
 /** REQ-076 AC-6: the label on an unticked leg. */
@@ -28,7 +29,8 @@ export const CLEAR_UNDO_SECONDS_KEY = 'other.undo_clear_all_seconds'
 
 /** The multiplier is CHOSEN from this fixed list (REQ-076 AC-4), never parsed from text: the server still refuses any
  *  other value. A fixed list, so the page converts no text to a number (ADR-008). */
-export const MULTIPLIER_CHOICES = Object.freeze([...Array(MULTIPLIER_MAX + 1).keys()].slice(MULTIPLIER_MIN))
+export const multiplierChoices = (max) => Object.freeze(Number.isInteger(max) && max >= MULTIPLIER_MIN
+  ? [...Array(max + 1).keys()].slice(MULTIPLIER_MIN) : [])
 
 const CONTROL_FIELDS = {
   step: ['index', 'direction'],
