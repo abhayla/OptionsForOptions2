@@ -65,4 +65,5 @@ Options:
 3. SPEC CHANGE: change the pricing model so the rate moves IV and Greeks directly (reverses ADR-220's "pricing model
    kept"; Tier A; its own contract).
 
-Answer: (pending)
+Answer (owner, 2026-11-01, question box): "(a) Fix the text only (Recommended)"; then "assume a role of expert option
+trader ... take a decision ... proceed with your recommendation". Recorded as ADR-222 (12); registry line reworded.

@@ -319,6 +319,11 @@ clock (`date`) in the same step, never typed from memory.
   scenario_rate_wiring 5, settings_speeds_wiring 10, settings_calc_wiring 1. Detection gap: the step gates ran
   targeted DB files and the pure tree, never the non-DB tests_app set; the full prepush is the first place it ran.
 
+- rate check closed (owner answer Q-GCSET-4 = "(a) Fix the text only", ADR-222 (12)): pricing model kept; the
+  `pricing.risk_free_rate` "what it changes" line reworded (forward read with the rate; on a liquid chain a change
+  mostly shifts the implied dividend yield; matters more for long expiries and a spot-estimated forward); F-82 marked
+  decided. Tests: registry/wording/errors 1887 passed; settings_route DB file 25 passed.
+
 ## Found during the run
 
 | # | Finding | Where | What was done |

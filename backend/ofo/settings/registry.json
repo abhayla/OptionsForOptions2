@@ -10,7 +10,7 @@
       "min": "0",
       "max": "0.5",
       "default": "0.065",
-      "what_it_changes": "The yearly interest rate used in option prices, Greeks, the forward and probability figures on every live screen (0.065 means 6.5%).",
+      "what_it_changes": "The yearly interest rate the pricing reads each expiry's forward with (0.065 means 6.5%). Where the forward comes from live call and put prices, a change mostly shifts the implied dividend yield, so option prices and Greeks move very little; it matters more for long expiries and where the forward is estimated from the index level.",
       "source": "ADR-056; was ofo_app/live_market.py LIVE_RATE"
     },
     {
