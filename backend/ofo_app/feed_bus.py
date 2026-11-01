@@ -166,6 +166,16 @@ def valid_control(user_ref: str, fields: dict) -> bool:
     return stamp is not None and stamp.isascii() and stamp.isdigit() and len(stamp) <= MAX_STAMP_DIGITS
 
 
+def background_want_key(user_ref: str) -> str:
+    """The background role's own wanted snapshot: a second key, so the API's snapshot is never overwritten."""
+    return want_key(user_ref) + ":bg"
+
+
+async def write_background_want(client: Any, user_ref: str, tokens: list[int]) -> None:
+    """Write the background role's FULL wanted set (same snapshot and expiry rule as the API's)."""
+    await client.set(background_want_key(user_ref), encode_want(user_ref, tokens), px=WANT_TTL_MS)
+
+
 def encode_want(user_ref: str, tokens: list[int]) -> str:
     return json.dumps({"u": valid_user_ref(user_ref), "tokens": sorted(set(tokens))}, separators=(",", ":"))
 
@@ -461,22 +471,32 @@ class FeedRelay:
         self._wake.set()
 
     # ---- the three jobs the market-data process runs ----------------------------------------------------------
-    def apply_want(self, raw: Any) -> None:
-        """An absent or expired key means nothing is wanted; a malformed or foreign snapshot also (fail closed)."""
-        tokens = set() if raw is None else decode_want(self._user, raw)
-        if tokens is None:
+    def apply_want(self, *raws: Any) -> None:
+        """The UNION of the given snapshots. An absent or expired one adds nothing; a malformed or foreign one also
+        adds nothing (counted) and never drops a good one. A union above the cap is refused whole (fail closed)."""
+        tokens: set[int] = set()
+        for raw in raws:
+            if raw is None:
+                continue
+            one = decode_want(self._user, raw)
+            if one is None:
+                self.counters["bus_malformed"] += 1
+                continue
+            tokens |= one
+        if len(tokens) > MAX_WANTED_TOKENS:
             self.counters["bus_malformed"] += 1
             tokens = set()
         self._wanted = tokens
 
     async def refresh_want(self, client: Any) -> None:
-        """One read of the wanted snapshot. A Redis that does not answer leaves the last wishes as they were."""
+        """One read (both keys, one round trip) of the wanted snapshots. A Redis that does not answer leaves the
+        last wishes as they were."""
         try:
-            raw = await client.get(want_key(self._user))
+            api_raw, background_raw = await client.mget(want_key(self._user), background_want_key(self._user))
         except (RedisError, OSError, TimeoutError):
             self.counters["redis_failed"] += 1
             return
-        self.apply_want(raw)
+        self.apply_want(api_raw, background_raw)
 
     def status(self) -> dict[str, Any]:
         last = self.last_frame_at
