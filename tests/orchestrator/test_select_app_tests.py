@@ -98,6 +98,8 @@ PR241_SELECTION = {
     "tests_app/test_paper_totals.py", "tests_app/test_paper_triggers_routes.py",
     # GC-SET step 7 (F-81): names ofo.errors.explanations (the PlaybookName stage-name slot) in its reply-model check
     "tests_app/test_stage_name_replies.py",
+    # GC-SET step 8 (REQ-168): names ofo.errors.explanations (the preference refusal reason text) in its route checks
+    "tests_app/test_user_preferences.py",
 }
 
 

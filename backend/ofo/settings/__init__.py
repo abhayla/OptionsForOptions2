@@ -27,9 +27,8 @@ UNITS: Final = ("fraction", "percent", "rupees", "points", "seconds", "count", "
 TYPES: Final = ("decimal", "integer")
 MAX_TEXT: Final = 40  # the longest value text accepted from a form (a Decimal string)
 
-#: App-wide admin settings, plus the "Adjustment defaults" group: the admin's STARTING value of each per-user adjustment
-#: preference (ADR-222 (7), REQ-168 AC-5). A user's own value lives in ``ofo_app.user_preferences_store``, never here.
-ADJUSTMENT_DEFAULTS_GROUP: Final = "Adjustment defaults"
+#: App-wide admin settings, plus the adjustment-defaults group (registry keys under ``adjustments.``): the admin's
+#: STARTING value of each per-user adjustment preference (ADR-222 (7), REQ-168 AC-5). A user's own value lives in ``ofo_app.user_preferences_store``, never here.
 RISK_FREE_RATE: Final = "pricing.risk_free_rate"
 
 

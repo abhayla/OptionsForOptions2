@@ -37,6 +37,8 @@ from test_strategy_store import _client  # noqa: E402
 from test_strategy_tracking import _paper_body, _setup  # noqa: E402
 
 D = Decimal
+pytestmark = pytest.mark.real_preferences
+
 KEY = "adjustments.near_level_percent"
 PREFS = "/api/adjustments/preferences"
 

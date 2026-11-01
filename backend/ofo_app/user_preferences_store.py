@@ -79,8 +79,9 @@ class Answer:
 
 
 def preference_keys() -> tuple[str, ...]:
-    """The closed list: the registry's "Adjustment defaults" group (it must equal the pure layer's KEYS)."""
-    keys = tuple(k for k, s in registry_mod.registry().items() if s.group == registry_mod.ADJUSTMENT_DEFAULTS_GROUP)
+    """The closed list: the registry keys under the adjustments prefix (the admin's "Adjustment defaults" group; the
+    list must equal the pure layer's KEYS)."""
+    keys = tuple(k for k in registry_mod.registry() if k.startswith(prefs_mod.PREFIX))
     if set(keys) != set(prefs_mod.KEYS):
         raise PreferencesError(f"the registry's adjustment defaults {sorted(keys)} differ from the preferences "
                                f"{sorted(prefs_mod.KEYS)}")
