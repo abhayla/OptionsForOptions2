@@ -109,9 +109,9 @@ NOT_MONEY_ON_MAIN: dict[str, tuple[str, ...]] = {
         'kept = sum(1 for b in self._bars.values() if b.minute.date() == day and b.source is BarSource.LIVE)',
     ),
     "backend/ofo/range/pick_lists.py": (
-        'return (value // STEP) * STEP',
-        'value -= STEP',
-        'value += STEP',
+        'return (value // step) * step',
+        'value -= step',
+        'value += step',
     ),
     "backend/ofo/reconciliation/compare.py": (
         'expected[contract] = expected.get(contract, 0) + value',
@@ -143,6 +143,7 @@ NOT_MONEY_FRONTEND_WHY: dict[str, str] = {
     "frontend/src/lib/guided.js": 'index levels and listed strikes (points) parsed for selection; no rupee value',
     "frontend/src/pages/CreateStrategyPage.vue": 'the wizard step counter (`step.value`), a page number',
     "frontend/src/lib/oiBars.js": 'open-interest COUNTS (contracts, not rupees) scaled to a CSS bar width',
+    "frontend/src/lib/settingsValues.js": 'whole-number setting COUNTS (strikes each side) parsed and split for a picker',
 }
 NOT_MONEY_FRONTEND: dict[str, tuple[str, ...]] = {
     "frontend/src/lib/guided.js": (
@@ -162,6 +163,10 @@ NOT_MONEY_FRONTEND: dict[str, tuple[str, ...]] = {
     "frontend/src/lib/oiBars.js": (
         "const oiCount = (v) => (v === null || v === undefined || v === '' || !Number.isFinite(Number(v)) ? null "
         ": Number(v))",
+    ),
+    "frontend/src/lib/settingsValues.js": (
+        'return Number(text)',
+        'return [...new Set([1, 2, 3].map((k) => Math.max(1, Math.round((max * k) / 3))))]',
     ),
 }
 

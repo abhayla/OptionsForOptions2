@@ -28,9 +28,10 @@ export const MARKET_VIEWS = Object.freeze([
 ])
 
 export const LEVEL_ORDER = ['Beginner', 'Intermediate', 'Advanced']
-/** REQ-026 AC-5: list step and the Admin-setting defaults (NIFTY 3,000 / SENSEX 9,000 points; no Admin screen yet). */
-export const RANGE_STEP = 100
-export const RANGE_CAP = Object.freeze({ NIFTY: 3000, SENSEX: 9000 })
+/** REQ-026 AC-5 / REQ-167 AC-5: the list step and the per-index cap are settings the server serves (GET /api/settings,
+ *  read through the settings store); the browser keeps no number. These are the keys. */
+export const RANGE_STEP_KEY = 'limits.range_step'
+export const rangeCapKey = (underlying) => `limits.range_cap_${String(underlying).toLowerCase()}`
 /** How many cards show before 'See more' (REQ-024 AC-8: 2-4). */
 export const CARDS_SHOWN = 4
 
@@ -61,12 +62,15 @@ export function listedStrikes(contracts) {
 }
 
 /** REQ-026 AC-3/AC-5/AC-6: the lower list holds the current level and every listed 100-point strike below it, the upper
- *  list the current level and every one above, out to the furthest listed strike, capped per index. Values are strings. */
-export function rangeLists(currentText, contracts, underlying) {
+ *  list the current level and every one above, out to the furthest listed strike, capped per index. Values are strings.
+ *  `limits` = { step, cap }: the served settings in force (whole numbers); without both the list fails closed. */
+export function rangeLists(currentText, contracts, limits) {
   const current = Number(currentText)
-  const cap = RANGE_CAP[underlying]
-  if (currentText === null || !Number.isFinite(current) || cap === undefined) throw new Error('no current level') // fail closed
-  const grid = listedStrikes(contracts).filter((s) => s % RANGE_STEP === 0 && Math.abs(s - current) <= cap)
+  const { step, cap } = limits ?? {}
+  if (currentText === null || !Number.isFinite(current) || !Number.isInteger(step) || step <= 0 || !Number.isInteger(cap)) {
+    throw new Error('no current level or no served limits') // fail closed
+  }
+  const grid = listedStrikes(contracts).filter((s) => s % step === 0 && Math.abs(s - current) <= cap)
   return {
     lower: [currentText, ...grid.filter((s) => s < current).reverse().map(String)],
     upper: [currentText, ...grid.filter((s) => s > current).map(String)],

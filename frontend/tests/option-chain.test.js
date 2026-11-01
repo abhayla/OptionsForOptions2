@@ -43,8 +43,14 @@ const answer = (ltpCe = '120.50', over = {}) => ({
 const notConnected = (over = {}) => ({ state: 'NOT_CONNECTED', underlying: 'NIFTY', expiry: EXPIRY, spot: null, spot_at: '2026-10-19T10:00:00+05:30',
   spot_health: null, atm_strike: null, rows_missing: null, rows: [], answered_at: '2026-10-19T10:00:05+05:30', ...over })
 
+// What GET /api/settings serves (REQ-167): the registry defaults unless a test says otherwise
+const SERVED = { 'limits.chain_strikes_each_side': '15', 'other.undo_one_leg_seconds': '8' }
+let served = { ...SERVED }
+const settingsAnswer = () => ({ data: { groups: [{ name: 'Limits', settings: Object.entries(served).map(([key, value]) => ({ key, value })) }], charges: null } })
+
 function script({ chain } = {}) {
   restAnswer = (url, params) => {
+    if (url === '/settings') return Promise.resolve(settingsAnswer())
     if (url.startsWith('/catalogue/')) return Promise.resolve({ data: { underlying: url.split('/')[2], expiries: [EXPIRY, '2026-10-20'] } })
     if (url === '/market/chain') return chain ? chain(params) : Promise.reject(new Error('down'))
     return Promise.reject(new Error('unexpected ' + url))
@@ -61,6 +67,7 @@ const cellsOf = (w, testid) => w.findAll(`[data-testid="${testid}"]`).map((c) =>
 
 beforeEach(() => {
   setActivePinia(createPinia())
+  served = { ...SERVED }
   FakeSocket.all = []
   reads.length = 0
   vi.stubGlobal('WebSocket', FakeSocket)
@@ -272,6 +279,7 @@ describe('Option Chain screen', () => {
   it('switching to SENSEX with a slow catalogue shows no NIFTY number and ignores a late NIFTY push', async () => {
     let releaseSensex
     restAnswer = (url) => {
+      if (url === '/settings') return Promise.resolve(settingsAnswer())
       if (url === '/catalogue/NIFTY/expiries') return Promise.resolve({ data: { expiries: ['2026-10-20'] } })
       if (url === '/catalogue/SENSEX/expiries') return new Promise((r) => { releaseSensex = r })
       return Promise.reject(new Error('down'))
@@ -293,7 +301,7 @@ describe('Option Chain screen', () => {
   })
 
   it('switching to SENSEX when the catalogue fails shows the error and no NIFTY rows', async () => {
-    restAnswer = (url) => (url === '/catalogue/NIFTY/expiries' ? Promise.resolve({ data: { expiries: ['2026-10-20'] } }) : Promise.reject(new Error('down')))
+    restAnswer = (url) => (url === '/settings' ? Promise.resolve(settingsAnswer()) : url === '/catalogue/NIFTY/expiries' ? Promise.resolve({ data: { expiries: ['2026-10-20'] } }) : Promise.reject(new Error('down')))
     const { w } = await liveNifty()
     await w.find('[data-testid="underlying-select"]').setValue('SENSEX')
     await flushPromises()
@@ -453,5 +461,40 @@ describe('Option Chain screen', () => {
     expect(w.text()).not.toContain('Stale:')
     expect(w.text()).not.toContain('stale since')
     expect(cellsOf(w, 'ce-iv')).toEqual(['12.34', '12.34', '12.34']) // IV from the close is shown as the server sent it
+  })
+})
+
+
+describe('Option Chain limits come from GET /api/settings (REQ-167 AC-5)', () => {
+  it('asks for the served strike limit: 10 served gives 10, 20 served gives 20, and the picker offers up to it', async () => {
+    for (const [limit, options] of [['10', ['3', '7', '10']], ['20', ['7', '13', '20']]]) {
+      setActivePinia(createPinia())
+      FakeSocket.all = []
+      served = { ...SERVED, 'limits.chain_strikes_each_side': limit }
+      script({ chain: () => Promise.resolve({ data: notConnected() }) })
+      const w = await mountPage()
+      sock().serverOpen()
+      await flushPromises()
+      expect(JSON.parse(sock().sent[0]).strikes_each_side).toBe(Number(limit))
+      expect(w.findAll('[data-testid="filter-strike-range"] option').map((o) => o.text())).toEqual(options)
+      w.unmount()
+    }
+  })
+
+  it('shows its loading state and asks for nothing while the settings have not been read', async () => {
+    script({ chain: () => Promise.resolve({ data: notConnected() }) })
+    const base = restAnswer
+    restAnswer = (url, params) => (url === '/settings' ? Promise.reject(new Error('down')) : base(url, params))
+    const w = await mountPage()
+    expect(FakeSocket.all.every((x) => x.sent.length === 0)).toBe(true)
+    expect(w.findAll('[data-testid="filter-strike-range"] option')).toHaveLength(0)
+    w.unmount()
+  })
+
+  it('the source has no typed strike limit or undo time left', () => {
+    for (const f of ['../src/composables/useChainLive.js', '../src/pages/OptionChainPage.vue', '../src/lib/chainDisplay.js']) {
+      const code = readFileSync(resolve(__dirname, f), 'utf8').replace(/\/\/.*$/gm, '')
+      expect(code).not.toMatch(/\b15\b|\b8000\b/)
+    }
   })
 })

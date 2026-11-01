@@ -19,12 +19,13 @@ from ofo.adjustment.approaches import (
     PositionLeg,
     applicable_approaches,
     build_approach,
-    load_config,
 )
 from ofo.adjustment.approaches import tested_side as side_under_test  # a bare test_* name would be collected
+from ofo.adjustment.preferences import from_values as _prefs_from
+from ofo.settings import defaults as _registry_defaults
 
 FIX = Path(__file__).resolve().parents[1] / "fixtures" / "adjust_scenarios"
-CFG = load_config()
+CFG = _prefs_from(_registry_defaults()).approach  # the registry defaults, explicitly
 IC_IDS = sorted(s["id"] for s in gen.scenarios() if s["family"] == "ic")  # the generator's own list, not a file scan
 
 

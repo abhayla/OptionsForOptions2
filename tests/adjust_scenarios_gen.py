@@ -22,6 +22,10 @@ Conventions (also written into ``_playbooks.json`` -> ``conventions``):
 - Price = BS rounded to the 0.05 tick (minimum 0.05); bid/ask = mid -/+ max(0.05, 0.5% of mid) rounded up to the tick.
 - Days left = calendar days from the clock's date to the expiry date (0 on expiry day), as the mockup's stages use.
 - P&L now marks every open leg at its LTP and adds booked P&L of closed legs (whole trade, F-74).
+- T-19's adjustment cost (ADR-221) is derived here by hand (approach trades, half spread, cheapest, S-11 exit and
+  reduce only at the adjustment limit) with this file's own copy of the "offered now" rule. Known shared dependency:
+  the approach's charges come from the engine's ``ofo.charges.calculator.charges_for_orders`` (the charge calculator
+  has its own tests against Zerodha's published rates), so a charge-calculator defect would not show here.
 """
 from __future__ import annotations
 
@@ -38,6 +42,9 @@ if str(ROOT / "backend") not in sys.path:  # run as a script
     sys.path.insert(0, str(ROOT / "backend"))
 
 from ofo.adjustment.playbook_eval import T14_PENDING, reason_text  # noqa: E402
+from ofo.charges import ChargeRates  # noqa: E402
+from ofo.charges.calculator import ChargeOrder, charges_for_orders  # noqa: E402
+from ofo.charges.round_trip import charge_segment, to_paise_up  # noqa: E402
 from ofo.engine.black_scholes import IST, bs_greeks_unrounded, bs_price, year_fraction  # noqa: E402
 from ofo.engine.legs import Instrument  # noqa: E402
 
@@ -51,6 +58,12 @@ UNDERLYINGS = {
     "SENSEX": {"lot": 20, "step": 100, "exchange": "BFO", "atm_iv": "0.14", "weekly_weekday": 3},
 }
 MONTH_CODE = "123456789OND"
+#: The library's charge rates: Zerodha's published F&O rates (ADR-082; the same set tests/charges/test_rate_caps.py
+#: holds). An approach's "This adjustment" cost = its own charges at these rates + half the bid-ask spread (ADR-221).
+CHARGE_RATES = {"brokerage_per_order": D("20"), "stt_sell_rate": D("0.0015"), "stt_exercise_rate": D("0.0015"),
+                "transaction_rates": {"NSE_FO": D("0.0003553"), "BSE_FO": D("0.000325")}, "sebi_rate": D("0.000001"),
+                "stamp_buy_rate": D("0.00003"), "gst_rate": D("0.18"), "read_on": "2026-10-15",
+                "source_url": "https://zerodha.com/charges"}
 
 # ---------------------------------------------------------------------------------------------------------------------
 # The DRAFT system playbooks, copied from the published mockup screen 4 (ADR-214 (4a)-(4d), catalogue Part 3 incl.
@@ -210,7 +223,7 @@ CONVENTIONS = {
                                   "evaluated at 0 and every strike plus the upper-tail slope; a breakeven that does not "
                                   "terminate in decimal is rounded half-even to 0.01",
     "premium_left": "sum over open short legs of LTP x qty minus the same over open long legs",
-    "adjustment_cost": "sum over open legs of (ask - bid) x qty plus Rs 40 per open leg (close and reopen once)",
+    "adjustment_cost": "ADR-221: the cheapest approach the playbook offers (applicable, without A-36), each costed as the Compare's 'This adjustment': its own charges at CHARGE_RATES (rounded up to the paisa) plus (ask - bid) / 2 x qty of every traded contract, half-even to the paisa; a traded contract without bid or ask, or with bid 0, leaves that approach out; a tie keeps playbook order; none priced -> not checked",
     "tighten": "'Tighten every trigger by X%': an 'le' limit is multiplied by (1 + X/100), a 'ge' limit by (1 - X/100); "
                "applies to " + ", ".join(TIGHTENED),
     "close": "a trigger not fired is 'close' when value >= 0.8 x limit (ge) or value <= 1.25 x limit (le)",
@@ -462,9 +475,18 @@ def hand_expiry(legs: list[dict], booked: Fraction, shift: Fraction = Fraction(0
 # ---------------------------------------------------------------------------------------------------------------------
 # Hand-derived approach legs (REQ-155 AC-1, AC-8; GC-ADJ1 design decisions). Written independently of
 # backend/ofo/adjustment/approaches.py: the same stated rules over the plain scenario dicts, so the two paths check
-# each other. Only the admin config FILE is shared (data, not code).
+# each other. Only the settings registry FILE is shared (data, not code).
 # ---------------------------------------------------------------------------------------------------------------------
-APPROACH_CONFIG = json.loads((ROOT / "backend" / "ofo" / "adjustment" / "approach_config.json").read_text(encoding="utf-8"))
+_DEF = json.loads((ROOT / "backend" / "ofo" / "settings" / "registry.json").read_text(encoding="utf-8"))
+_DEF = {s["key"]: s["default"] for s in _DEF["settings"]}  # the registry DATA file (REQ-168 AC-1 defaults)
+APPROACH_CONFIG = {
+    "target_short_delta": {"weekly": _DEF["adjustments.short_delta_weekly"],
+                           "monthly": _DEF["adjustments.short_delta_monthly"]},
+    "roll_points_without_delta": {"NIFTY": _DEF["adjustments.roll_points_nifty"],
+                                  "SENSEX": _DEF["adjustments.roll_points_sensex"]},
+    "iron_fly_min_days_left": int(_DEF["adjustments.iron_fly_min_days"]),
+    "reduce_divisor": int(_DEF["adjustments.reduce_divisor"]),
+}
 IC_APPROACHES = ["A-36", "A-01", "A-05", "A-29", "A-28", "A-11", "A-31"]
 
 
@@ -635,6 +657,59 @@ def hand_approaches(u: str, lot: int, kind: str, today: datetime.date, spot: Dec
             after_out[aid] = {"exact": True, "max_profit": dec_text(total), "max_loss": dec_text(-total) if total < 0 else "0",
                               "breakevens": [], "booked_pnl": dec_text(total)}
     return legs_out, after_out
+
+RATES = ChargeRates(**{**CHARGE_RATES, "read_on": datetime.date.fromisoformat(CHARGE_RATES["read_on"])})
+
+
+def is_condor(legs: list[dict]) -> bool:
+    """4 option legs of one expiry: a put wing below a put short, at or below a call short, below a call wing."""
+    if len(legs) != 4 or len({x["expiry"] for x in legs}) != 1 or any(x["type"] == "FUT" for x in legs):
+        return False
+    pos = {("call" if x["type"] == "CE" else "put", "short" if x["side"] == "SELL" else "wing"): x for x in legs}
+    if len(pos) != 4:
+        return False
+    cs, cw, ps, pw = (pos[k]["strike"] for k in (("call", "short"), ("call", "wing"), ("put", "short"), ("put", "wing")))
+    return cw > cs and pw < ps <= cs
+
+
+def hand_exit(lot: int, legs: list[dict], rows: list[dict]) -> dict:
+    """A-31 (exit) of any position whose every leg is an option of the chain's expiry: close each leg at its price."""
+    by = {(r["type"], r["strike"]): r for r in rows}
+    trades = []
+    for x in legs:
+        p = hand_price(by.get((x["type"], x["strike"]))) if x["type"] != "FUT" and x["expiry"] == legs[0]["expiry"] else None
+        if p is None:
+            return {"refused": "a leg cannot be closed from this chain"}
+        trades.append({"action": "BUY" if x["side"] == "SELL" else "SELL", "type": x["type"], "strike": x["strike"],
+                       "quantity": x["lots"] * lot, "price": p})
+    return {"trades": trades}
+
+
+def hand_cost(u: str, trades: list[dict], rows: list[dict]) -> Decimal | None:
+    """ADR-221 / REQ-156 AC-2: the approach's own charges (rounded up to the paisa) + (ask - bid) / 2 x qty per traded
+    contract, half-even to the paisa; a traded contract without a usable bid and ask -> None (the Compare's "-")."""
+    by = {(r["type"], r["strike"]): r for r in rows}
+    half = D(0)
+    for t in trades:
+        r = by.get((t["type"], t["strike"]))
+        if r is None or r["bid"] is None or r["ask"] is None or r["bid"] <= 0 or r["ask"] < r["bid"]:
+            return None
+        half += (r["ask"] - r["bid"]) / 2 * t["quantity"]
+    orders = [ChargeOrder(charge_segment(u), t["action"], t["quantity"], t["price"]) for t in trades]
+    return (to_paise_up(charges_for_orders(orders, RATES).total) + half).quantize(D("0.01"), rounding=ROUND_HALF_EVEN)
+
+
+def hand_cheapest(offered: list[str], approach_legs: dict, u: str, rows: list[dict]) -> tuple[str | None, Decimal | None]:
+    """The first offered approach (playbook order) with the lowest priced cost; (None, None) when none is priced."""
+    best: tuple[str | None, Decimal | None] = (None, None)
+    for a in offered:
+        legs = approach_legs.get(a)
+        if not legs or "refused" in legs or not legs["trades"]:
+            continue
+        cost = hand_cost(u, legs["trades"], rows)
+        if cost is not None and (best[1] is None or cost < best[1]):
+            best = (a, cost)
+    return best
 
 # ---------------------------------------------------------------------------------------------------------------------
 # Scenario builder
@@ -812,10 +887,20 @@ def build(spec: dict, pb: dict) -> dict:  # noqa: C901, PLR0912, PLR0915 - one r
     expiry_metrics = hand_expiry(legs, booked)
     shorts = [leg for leg in legs if leg["side"] == "SELL" and leg["type"] != "FUT"]
     premium_left = None
-    adj_cost = None
+    # the unpriced leg's quote answered "not found": its row has no price for the approach builder either
+    near_rows = [{**r, "ltp": None, "bid": None, "ask": None} if r["tradingsymbol"] == unpriced else r
+                 for c in chains if c["expiry"] == expiry for r in c["rows"]]
+    hand_legs = hand_after = None
+    if family == "ic" or is_condor(legs):  # the approach builder builds every approach for a condor shape
+        hand_legs, hand_after = hand_approaches(u, lot, kind, today, spot, legs, near_rows, booked)
+    offered = [a for a in dict.fromkeys(list(fpb["approaches"]["applicable"]) + [
+        a for a in overrides.get("approaches_on", []) if a in fpb["approaches"]["off_in_playbook"]]) if a != "A-36"]
+    if adjustments_used >= overrides.get("max_adjustments", fpb.get("guards", {}).get("max_adjustments", GUARDS["max_adjustments"])):
+        offered = [a for a in offered if a in EXIT_REDUCE]  # S-11: only exit and reduce are offered (hand copy)
+    cost_legs = hand_legs if hand_legs is not None else {"A-31": hand_exit(lot, legs, near_rows)}
+    adj_approach, adj_cost = hand_cheapest(offered, cost_legs, u, near_rows)
     if priced and family in SHORTS and any(leg["type"] != "FUT" for leg in legs):
         premium_left = sum(-sign(leg["side"]) * leg["quantity"] * ltp(leg) for leg in legs if leg["type"] != "FUT")
-        adj_cost = sum((row_of(leg)["ask"] - row_of(leg)["bid"]) * leg["quantity"] + 40 for leg in legs if leg["type"] != "FUT")
 
     suggest = data_state["prices"] == "fresh" and data_state["spot_source"] != "none"
     fired, near, skipped, already = [], [], [], []
@@ -905,6 +990,8 @@ def build(spec: dict, pb: dict) -> dict:  # noqa: C901, PLR0912, PLR0915 - one r
             elif tid == "T-19":
                 if premium_left is None or premium_left < 0:
                     why = "leg unpriced" if not priced else "no premium to earn (net long premium)"
+                elif adj_cost is None:
+                    why = reason_text("adjust_trigger_no_approach_priced")
                 else:
                     value = Fraction(premium_left) / Fraction(adj_cost)
             elif tid == "T-21":
@@ -1019,7 +1106,7 @@ def build(spec: dict, pb: dict) -> dict:  # noqa: C901, PLR0912, PLR0915 - one r
             "stage": stage, "stage_index": stage_ix, "stage_count": stage_count, "suggest": suggest,
             "pnl_now": None if pnl_now is None else dec_text_round(pnl_now),
             "premium_left": None if premium_left is None else premium_left,
-            "adjustment_cost": None if adj_cost is None else adj_cost,
+            "adjustment_cost": adj_cost, "adjustment_approach": adj_approach,
             "triggers_fired": fired, "triggers_close": near, "triggers_not_evaluated": skipped,
             **({"already_true_at_entry": already} if already else {}),
             "day_rules": applying, "tighten_percent": None if tighten_pct is None else tighten_pct,
@@ -1030,11 +1117,7 @@ def build(spec: dict, pb: dict) -> dict:  # noqa: C901, PLR0912, PLR0915 - one r
         },
     }
     if family == "ic":
-        # the unpriced leg's quote answered "not found": its row has no price for the approach builder either
-        ic_rows = [{**r, "ltp": None, "bid": None, "ask": None} if r["tradingsymbol"] == unpriced else r
-                   for c in chains if c["expiry"] == expiry for r in c["rows"]]
-        out["expected"]["approach_legs"], out["expected"]["approach_after"] = hand_approaches(
-            u, lot, kind, today, spot, legs, ic_rows, booked)
+        out["expected"]["approach_legs"], out["expected"]["approach_after"] = hand_legs, hand_after
     if "charges" in spec:
         out["expected"]["at_expiry_after_charges"] = hand_expiry(legs, booked, -Fraction(D(spec["charges"])))
     return out
@@ -1167,9 +1250,13 @@ def scenarios() -> list[dict]:  # noqa: PLR0915 - a flat list of scenario specs
                      adjustment_times={1: "2026-10-29T11:00:00"},
                      notes=["Put spread rolled up 300 points on 29 Oct; booked P&L carries into max profit, max loss "
                             "and breakevens (F-74)."]))
-    s.append(ic_spec("ADJ-14", "Premium left below 1 x adjustment cost (ADR-216)", ["T-19", "P-04"], "2026-11-02T15:00:00",
-                     "23020", must_fire=["T-19"],
-                     check=lambda v: _assert(v["premium_left"] > 0, "ADJ-14 wants premium left > 0")))
+    s.append(ic_spec("ADJ-14", "T-19 not checked: no approach the playbook offers can be priced (ADR-221)",
+                     ["T-19", "P-04"], "2026-11-02T15:00:00", "23020", must_not_fire=["T-19"],
+                     check=lambda v: _assert(v["premium_left"] > 0 and v["adj_cost"] is None
+                                             and any(x["id"] == "T-19" for x in v["skipped"]),
+                                             "ADJ-14 wants premium left > 0 and T-19 not checked"),
+                     notes=["Last day 15:00: every offered approach trades a contract quoted at 0.05 with bid 0, so "
+                            "none has a Compare cost; T-19 is not checked, with the reason (ADR-221)."]))
     s.append(ic_spec("ADJ-15", "Last session before a weekend, Friday 15:00: carry check", ["S-06", "S-09", "F-15"],
                      "2026-10-30T15:00:00", "23100", situations=["S-06", "S-09"],
                      check=lambda v: _assert(any(r["rule"] == "beforeWeekend" and r["due"] for r in v["applying"]), "ADJ-15")))
@@ -1259,6 +1346,26 @@ def scenarios() -> list[dict]:  # noqa: PLR0915 - a flat list of scenario specs
                             "not a flag; it flags only after a check finds it clear and spot comes back.",
                             "ATM IV 7% (synthetic) keeps the near short's delta below T-03's Middle 0.35, so T-01 is "
                             "the only trigger that holds."]))
+
+    # ADR-221: T-19 against the cheapest offered approach's Compare cost (1 lot, narrow wings, last day 15:00)
+    s.append(ic_spec("ADJ-43", "Premium left below the cheapest adjustment's cost: T-19 fires (ADR-221)",
+                     ["T-19", "P-04", "ADR-221"], "2026-11-02T15:00:00", "23020",
+                     legs=[L("BUY", "PE", 22500, N3, 1), L("SELL", "PE", 22550, N3, 1), L("SELL", "CE", 23450, N3, 1),
+                           L("BUY", "CE", 23500, N3, 1)], must_fire=["T-19"],
+                     check=lambda v: _assert(0 < v["premium_left"] < v["adj_cost"], "ADJ-43 wants 0 < left < cost")))
+    s.append(ic_spec("ADJ-44", "Premium left above the cheapest adjustment's cost: T-19 does not fire (ADR-221)",
+                     ["T-19", "P-04", "ADR-221"], "2026-11-02T15:00:00", "23020",
+                     legs=[L("BUY", "PE", 22550, N3, 1), L("SELL", "PE", 22650, N3, 1), L("SELL", "CE", 23400, N3, 1),
+                           L("BUY", "CE", 23450, N3, 1)], must_not_fire=["T-19"],
+                     check=lambda v: _assert(v["adj_cost"] is not None and v["premium_left"] > v["adj_cost"],
+                                             "ADJ-44 wants left > cost")))
+
+    # S-11 + ADR-221: at the adjustment limit the T-19 cost is the cheapest exit or reduce approach
+    s.append(ic_spec("ADJ-45", "Adjustment limit reached: T-19 prices only exit and reduce approaches (S-11, ADR-221)",
+                     ["T-19", "T-18", "S-11", "ADR-221"], "2026-11-02T11:00:00", "23150", adjustments_used=2,
+                     must_situations=["S-11"],
+                     check=lambda v: _assert(v["adj_approach"] in EXIT_REDUCE and v["adj_cost"] is not None,
+                                             "ADJ-45 wants an exit or reduce approach priced")))
 
     # ---- other strategy types (NIFTY weekly unless stated) ----
     def o(sid, title, refs, family, clock, spot, legs, entry, **kw):

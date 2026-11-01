@@ -7,7 +7,7 @@
 // The replies are the real route shapes (backend/ofo_app/routes/leg_picker.py StrikesOut / DepthOut, index_push.IndicesOut,
 // planned_entry.PlannedEntryOut).
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
+import { mount as mountRaw, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import { createRouter, createMemoryHistory } from 'vue-router'
 import { createPinia, setActivePinia } from 'pinia'
 
@@ -33,6 +33,10 @@ import DepthPopup from '@/components/strategy/DepthPopup.vue'
 import StrategyBuilderPage from '@/pages/StrategyBuilderPage.vue'
 import { marketClosedText } from '@/lib/sharedStateText'
 import { capturedCaption } from '@/lib/displayFormat'
+
+// the page passes the served caps down (REQ-167 AC-5); a component mounted alone gets them as props
+const mount = (C, o = {}) => mountRaw(C, C?.__name === 'LegPicker' ? { ...o, props: { maxLots: 10000, lotChoiceCount: 10, ...o.props } }
+  : C?.__name === 'LegList' ? { ...o, props: { multiplierMax: 50, ...o.props } } : o)
 
 const QUOTE_AT = '2026-10-08T15:29:58+05:30' // the quotes' own last-price time (the close)
 const AFTER_CLOSE = '2026-10-08T18:00:00+05:30'

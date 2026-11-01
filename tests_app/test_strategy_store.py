@@ -41,6 +41,9 @@ from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
+from ofo.settings import calc as _calc, defaults as _defaults
+
+_MAX_DELIST = _calc.max_delist_percent(_defaults())
 
 IST = timezone(timedelta(hours=5, minutes=30))
 AS_OF = datetime(2026, 10, 8, 9, 0, tzinfo=IST)
@@ -184,7 +187,7 @@ async def test_core_proof_iron_condor_saves_and_loads_back_exactly_through_a_new
     try:
         async with app_engine.connect() as conn:
             async with conn.begin():
-                result = await apply_update(conn, _fixture_rows(SYMBOLS), as_of=AS_OF)
+                result = await apply_update(conn, _fixture_rows(SYMBOLS), as_of=AS_OF, max_delist_percent=_MAX_DELIST)
             ids = await _ids(conn)
             assert result.added == 5
             strike_text = dict((await conn.execute(text(
@@ -293,7 +296,7 @@ async def _saved_in(conn, user: str, ids: dict[str, int], wing: str = "NIFTY26O1
 
 
 async def _with_draft(conn, user: str):
-    await apply_update(conn, _fixture_rows(), as_of=AS_OF)
+    await apply_update(conn, _fixture_rows(), as_of=AS_OF, max_delist_percent=_MAX_DELIST)
     ids = await _ids(conn)
     stored = await store.save_draft(conn, user, await _saved_in(conn, user, ids))
     return ids, stored
@@ -648,7 +651,7 @@ async def test_ac5_filled_limits_and_preferences_round_trip_through_history_and_
     async with app_engine.connect() as conn:
         trans = await conn.begin()
         try:
-            await apply_update(conn, _fixture_rows(), as_of=AS_OF)
+            await apply_update(conn, _fixture_rows(), as_of=AS_OF, max_delist_percent=_MAX_DELIST)
             ids = await _ids(conn)
             user = _user()
             legs = [sf.LegChoice(ids[s], Action(side), LOT) for s, side, *_ in IRON_CONDOR]
@@ -696,7 +699,7 @@ async def test_req134_save_draft_stores_the_name_and_rename_changes_only_it(app_
         trans = await conn.begin()
         try:
             user = _user()
-            await apply_update(conn, _fixture_rows(), as_of=AS_OF)
+            await apply_update(conn, _fixture_rows(), as_of=AS_OF, max_delist_percent=_MAX_DELIST)
             ids = await _ids(conn)
             stored = await store.save_draft(conn, user, await _saved_in(conn, user, ids), "  NIFTY Oct condor ")
             assert (stored.name, stored.revision) == ("NIFTY Oct condor", 1)

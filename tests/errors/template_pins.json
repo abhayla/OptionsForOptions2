@@ -1807,6 +1807,10 @@
     "sha256": "1500d2520c2e72efd128f0092aae83f3fb50800909cd9560138d5fcffe4672d6",
     "reviewed": "pending owner read"
   },
+  "leg_lots_above_limit": {
+    "sha256": "398d9d44b9fcd43ad9e31d3963d3aa81f9ad1cf599f8179f05dcc320350cc8e7",
+    "reviewed": "pending owner read"
+  },
   "paper_price_invalid": {
     "sha256": "fe202aee8570667847f1b1199b109c546a8c1865b328482b0da68d64ff74a00e",
     "reviewed": "pending owner read"
@@ -2647,6 +2651,10 @@
     "sha256": "6812d4f9f2a54353f3930dcd5eac870ebb5e421e25baa6c61dd616426750e8d8",
     "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"
   },
+  "explanation:adjust_check_stage_name": {
+    "sha256": "6812d4f9f2a54353f3930dcd5eac870ebb5e421e25baa6c61dd616426750e8d8",
+    "reviewed": "pending owner read"
+  },
   "playbook_stage_overlap": {
     "sha256": "61f0c71a806739e26b0a3f1bcb34ed6d68dc69370b0fd5977109df2415e9137f",
     "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"
@@ -3222,5 +3230,121 @@
   "explanation:playbook_summary_stop_either": {
     "sha256": "987d1e5cf2fac30fba5e2c30ead4dcaef79a56cad3459e21683fb7db29168669",
     "reviewed": "owner read 2026-10-31 (decided in chat)"
+  },
+  "explanation:settings_registry_text": {
+    "sha256": "a528dd1d122ebb0c37e0e53f81aead1e586bb6fab3efbcafaa6357af9620b5c4",
+    "reviewed": "pending owner read"
+  },
+  "explanation:settings_source_url": {
+    "sha256": "eb5b9e603c44ec5758cc9813cb502649f906394a63654d98e1e2441c33b21a5b",
+    "reviewed": "pending owner read"
+  },
+  "explanation:settings_refused_unknown": {
+    "sha256": "3bcc5418d3e506c193335091d980dd7654cff2e62ec1c9459e711d8f4b9edd62",
+    "reviewed": "pending owner read"
+  },
+  "explanation:settings_refused_not_a_number": {
+    "sha256": "1c8fdeb4f3549d634f6595851a5a8fd0e19242d565429f6275fe8e4ebf56c565",
+    "reviewed": "pending owner read"
+  },
+  "explanation:settings_refused_not_whole": {
+    "sha256": "639e3583b651ad61c324c09bdbb40ce784a2b0aa7bfd9a77a664af7b78a8bfe4",
+    "reviewed": "pending owner read"
+  },
+  "explanation:settings_refused_not_a_time": {
+    "sha256": "cdd2ea044d07983e17fb171fd298efd42b32a2b1701d75adc92f64c9e8ef86a7",
+    "reviewed": "pending owner read"
+  },
+  "explanation:settings_refused_fraction_unit": {
+    "sha256": "a783b1f3f8b1e95a9e0fcfb340ae845287fddce8d9e992537f17fa1a72449c7e",
+    "reviewed": "pending owner read"
+  },
+  "explanation:settings_refused_out_of_range": {
+    "sha256": "3db401b29847344a88539f20ce8f138ae9718307e7da75257b6f747ba7fb27cb",
+    "reviewed": "pending owner read"
+  },
+  "explanation:settings_refused_note_too_long": {
+    "sha256": "c0259c8046f1eb8a5dcd1795783ad7f1d8915f954b99581a880d4946d01604be",
+    "reviewed": "pending owner read"
+  },
+  "explanation:settings_refused_back_dated": {
+    "sha256": "921380fe706cbad13b1bd8a431f175fc76cc4b66fa7a3203ab98bb51fcc3718e",
+    "reviewed": "pending owner read"
+  },
+  "explanation:settings_refused_time_invalid": {
+    "sha256": "dd5dcaf0f95d5ab318cc82661a69f5da241c380c064028caf9312668546d7cc4",
+    "reviewed": "pending owner read"
+  },
+  "explanation:settings_refused_same_time": {
+    "sha256": "e7d63f65f8683db6d4b223612b4cb0e3e47124a5668835922dfb9e0b4e92ce27",
+    "reviewed": "pending owner read"
+  },
+  "explanation:settings_refused_charges_value": {
+    "sha256": "6dab05927bc42be5c06ce6cebbe0325024e2e54a5fb7db68acd7510b2d129e39",
+    "reviewed": "pending owner read"
+  },
+  "explanation:settings_refused_charges_source": {
+    "sha256": "7f7e2d9223972b620e58ca9bba852cb16cdacd129b1dcabafec08d5ffcc55ffd",
+    "reviewed": "pending owner read"
+  },
+  "explanation:settings_refused_charges_date": {
+    "sha256": "db56d8a7fa525f9aa4c72c6b96211a05459898e6cd9352d3210fcfdccf66e674",
+    "reviewed": "pending owner read"
+  },
+  "explanation:settings_refused_charges_future": {
+    "sha256": "580ae3065fda8c21a6deed4610b285f15dd5e8d88086d00fec25ad16cbdd6370",
+    "reviewed": "pending owner read"
+  },
+  "adjust_trigger_no_approach_offered": {
+    "sha256": "1f0009cdd5de54dd6a666576246f0f0859a85e99209bc224bc0cf05b4e0ecf38",
+    "reviewed": "pending owner read"
+  },
+  "adjust_trigger_no_approach_priced": {
+    "sha256": "ba21df149cf9a3e4cd49dc488f002475d06a203edde8045a6d1c70e7be5e553f",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_condition_line_t19": {
+    "sha256": "7368b88fda4e6c2aeff30fd8aee412481ff826e010847c731795e617e91225f4",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_condition_line_t19_unpriced": {
+    "sha256": "3531ab96451c521ba8ce50931ee0f407cf3609b012ab8f8d4be6cbab43e3bb08",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_condition_line_time": {
+    "sha256": "1184fe1a615bffeefe1063275c220e3fcda784c51ca3ff13ad10e645368cc042",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_condition_line_id": {
+    "sha256": "2abcad08224e0354c80431272edc995f149b964c92f1c0c4ab630c8ca59997b4",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_near_short_strike_line": {
+    "sha256": "b8164086ad0d641d1a660c4f711145cdb736b1c8391dd59e3264f38073d7f047",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_near_breakeven_line": {
+    "sha256": "0cc9f1ee90dee63f7a5f554e74f19d5a80f949853b4e7175ed280fb130b19b28",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_preference_refused_unknown": {
+    "sha256": "9a49080710bf4750cf2ee15a8c43c51229e5e914959c6e54b6e2d6675cf2bbbc",
+    "reviewed": "pending owner read"
+  },
+  "explanation:system_playbook_refused_reason": {
+    "sha256": "beeb26cd2068918ec2392c1f25b3f31872eb4cf618ca250c47b8683e9b7f94e4",
+    "reviewed": "pending owner read"
+  },
+  "explanation:system_playbook_refused_stale": {
+    "sha256": "28a9bd5131589a18edccd6f57cb86f4a63f02f02c2fe416b719b9f3c8f33924f",
+    "reviewed": "pending owner read"
+  },
+  "explanation:system_playbook_refused_version": {
+    "sha256": "cfcd0e67e3dec2ab9defb9092d268d4fcffa58175721dc4c2e3f3f10f14a46a7",
+    "reviewed": "pending owner read"
+  },
+  "explanation:system_playbook_refused_approved": {
+    "sha256": "3d8659ca9008d275bb952f2e3bca39c9a015e00a052f92f607e0af6d86443363",
+    "reviewed": "pending owner read"
   }
 }

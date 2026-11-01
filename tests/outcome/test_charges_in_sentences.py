@@ -25,6 +25,10 @@ from ofo.charges import ChargeRates
 from ofo.charges.round_trip import ChargesNotComputable, round_trip_charges, to_paise_up
 from ofo.engine.legs import Action, Instrument, Leg
 from ofo.errors.explanations import render_explanation
+from ofo.settings import calc as _fq_calc
+from ofo.settings import defaults as _fq_defaults
+
+_FQ = _fq_calc.forward_quality(_fq_defaults())
 
 ROOT = Path(__file__).resolve().parents[2]
 KITE_ORDERS = ROOT / "docs" / "research" / "kite-proof-2026-10-07" / "rest-2026-10-15" / "charges_orders.json"
@@ -142,6 +146,7 @@ from ofo.marketdata.kite_provider import IST  # noqa: E402
 from ofo.outcome import OutcomeState, PlannedLeg, StrategyDefinition, build_outcome, read_snapshot  # noqa: E402
 from ofo.outcome.service import exercise_stt_line  # noqa: E402
 from ofo.scenario.views import View  # noqa: E402
+from ofo.settings import defaults as _d  # noqa: E402
 
 VALUATION = datetime.datetime(2026, 10, 8, 9, 20, 9, tzinfo=IST)
 REPLAY_CONDOR = (
@@ -161,8 +166,8 @@ def replayed():
 def outcome_of(provider, rates):
     d = StrategyDefinition("NIFTY", tuple(PlannedLeg(i, a, 1, provider.book.get(i, VALUATION).ltp, VALUATION)
                                           for i, a in REPLAY_CONDOR))
-    snap = read_snapshot(provider, "NIFTY", [p.instrument_id for p in d.legs], VALUATION, D("0.065"))
-    return d, build_outcome(d, snap, VALUATION, rates=rates)
+    snap = read_snapshot(provider, "NIFTY", [p.instrument_id for p in d.legs], VALUATION, D("0.065"), quality=_FQ)
+    return d, build_outcome(d, snap, VALUATION, rates=rates, settings=_d())
 
 
 def test_summary_includes_the_hand_computed_round_trip(replayed):
@@ -225,7 +230,7 @@ def test_guard_no_rates_keeps_the_old_phrase_flags_it_and_never_shows_zero_charg
 
 
 def test_guard_charges_that_wipe_out_the_profit_read_cannot_make_money(replayed):
-    huge = ChargeRates(brokerage_per_order=D("5000"), stt_sell_rate=D("0.0015"), stt_exercise_rate=D("0.0015"),
+    huge = ChargeRates(brokerage_per_order=D("1000"), stt_sell_rate=D("0.0015"), stt_exercise_rate=D("0.0015"),
                        transaction_rates=RATES.transaction_rates, sebi_rate=D("0.000001"),
                        stamp_buy_rate=D("0.00003"), gst_rate=D("0.18"), read_on=date(2026, 10, 15),
                        source_url="https://zerodha.com/charges")
@@ -255,8 +260,8 @@ def test_guard_an_index_with_no_exchange_segment_falls_back(replayed, monkeypatc
 def test_guard_a_zero_planned_price_leg_falls_back(replayed):
     d = StrategyDefinition("NIFTY", tuple(PlannedLeg(i, a, 1, D("0") if n == 1 else replayed.book.get(i, VALUATION).ltp,
                                                      VALUATION) for n, (i, a) in enumerate(REPLAY_CONDOR)))
-    snap = read_snapshot(replayed, "NIFTY", [p.instrument_id for p in d.legs], VALUATION, D("0.065"))
-    out = build_outcome(d, snap, VALUATION, rates=RATES)
+    snap = read_snapshot(replayed, "NIFTY", [p.instrument_id for p in d.legs], VALUATION, D("0.065"), quality=_FQ)
+    out = build_outcome(d, snap, VALUATION, rates=RATES, settings=_d())
     assert out.state is OutcomeState.COMPUTED, out.reason
     assert out.summary.charges is None and out.summary.charges_unavailable
     assert "about ₹" not in out.summary.what_can_i_lose + out.summary.what_can_i_make
@@ -307,8 +312,8 @@ def test_table_has_no_charges_row_without_rates_and_in_estimated_now(replayed):
     assert CHARGES_ROW not in _rows(none_out)
     d = StrategyDefinition("NIFTY", tuple(PlannedLeg(i, a, 1, replayed.book.get(i, VALUATION).ltp, VALUATION)
                                           for i, a in REPLAY_CONDOR))
-    snap = read_snapshot(replayed, "NIFTY", [p.instrument_id for p in d.legs], VALUATION, D("0.065"))
-    est = build_outcome(d, snap, VALUATION, rates=RATES, view=View.ESTIMATED_NOW)
+    snap = read_snapshot(replayed, "NIFTY", [p.instrument_id for p in d.legs], VALUATION, D("0.065"), quality=_FQ)
+    est = build_outcome(d, snap, VALUATION, rates=RATES, view=View.ESTIMATED_NOW, settings=_d())
     assert CHARGES_ROW not in _rows(est)
 
 
@@ -321,8 +326,8 @@ EXERCISE_STT_LINE = (
 def _summary_of_legs(provider, picks, rates=RATES):
     d = StrategyDefinition("NIFTY", tuple(PlannedLeg(i, a, 1, provider.book.get(i, VALUATION).ltp, VALUATION)
                                           for i, a in picks))
-    snap = read_snapshot(provider, "NIFTY", [p.instrument_id for p in d.legs], VALUATION, D("0.065"))
-    out = build_outcome(d, snap, VALUATION, rates=rates)
+    snap = read_snapshot(provider, "NIFTY", [p.instrument_id for p in d.legs], VALUATION, D("0.065"), quality=_FQ)
+    out = build_outcome(d, snap, VALUATION, rates=rates, settings=_d())
     assert out.state is OutcomeState.COMPUTED, out.reason
     return out.summary
 

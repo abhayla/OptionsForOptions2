@@ -5,6 +5,7 @@ import { resolve } from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
+import { createPinia, setActivePinia } from 'pinia'
 import { INVALID_LINK_PARTS, canonicalLeg, canonicalLegs } from '@/lib/draftLink'
 import StrategyBuilderPage from '@/pages/StrategyBuilderPage.vue'
 import real from './fixtures/outcome-condor.json'
@@ -199,6 +200,8 @@ describe('REQ-134 AC-2 core on the page: Save, edit a leg, Save again is ONE str
     w.unmount()
   })
   it('Clear all leaves the saved strategy: the next Save asks a name (a new strategy); Undo gives the saved strategy back', async () => {
+    setActivePinia(createPinia()) // the settings store: the Undo wait is the served setting (REQ-167 AC-7)
+    answers['GET /settings'] = { groups: [{ name: 'Other', settings: [{ key: 'other.undo_clear_all_seconds', value: '10' }] }] }
     answers['PUT /strategies/7'] = OUT(7, 4)
     const { w } = await openBuilder({ strategy: '7' })
     await t(w, 'clear-all-legs').trigger('click')

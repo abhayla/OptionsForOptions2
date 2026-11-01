@@ -54,6 +54,7 @@ from ofo.adjustment.approaches import (
     PositionLeg,
     planned_price,
 )
+from ofo.adjustment.preferences import CompareView
 from ofo.charges import ChargeRates
 from ofo.charges.calculator import ChargeOrder, charges_for_orders
 from ofo.charges.round_trip import charge_segment, to_paise_up
@@ -84,9 +85,7 @@ ROWS: tuple[tuple[str, str, str], ...] = (
     ("vega", GREEKS_AFTER, LOW_ABS),
     ("adjustments", PRACTICAL, LOW), ("liquidity", PRACTICAL, LOW), ("fresh", PRACTICAL, LOW),
 )
-MOVES: Mapping[str, int] = {"move_m2": -2, "move_m1": -1, "move_p1": 1, "move_p2": 2}  # spot moves, in percent
-CURVE_RANGE = Decimal("0.06")  # the payoff curves span spot -6 % .. +6 %
-CURVE_STEPS = 48  # the fixed step of the curve grid = the range / 48, plus every strike inside it
+#: The move rows' percents, the curve range and its steps are the user's preferences (REQ-168 AC-1), ``Context.view``.
 INFINITE = Decimal("Infinity")  # the rank of an unlimited figure in a "highest" row
 
 #: POP's named reasons -> the catalogue's words (shared with the route, one home)
@@ -127,6 +126,7 @@ class Context:
     before_margin: MarginRead
     leg_greeks: Mapping[str, Greeks]  # trading symbol -> per-unit engine Greeks
     adjustments_used: int | None  # None: could not be read
+    view: CompareView  # the user's Compare range, steps and move columns (REQ-168 AC-1; required)
 
 
 @dataclass(frozen=True)
@@ -179,6 +179,92 @@ def leaders(cells: Mapping[str, Cell], direction: str) -> tuple[str, ...]:
     return tuple(k for k in cells if k in ranked and ranked[k] == target)
 
 
+# ---- this adjustment's cost: the ONE function (ADR-008, ADR-221) ---------------------------------------------------
+
+@dataclass(frozen=True)
+class CostAnswer:
+    """An approach's "This adjustment" cost: ``value`` to the paisa, or ``reason`` (an ExplanationText) why none."""
+
+    value: Decimal | None
+    reason: ExplanationText | None = None
+
+
+def chain_index(chain: Sequence[ChainRow]) -> dict[tuple, ChainRow]:
+    return {(r.expiry, r.type, r.strike): r for r in chain}
+
+
+def approach_cost(col: Column, rows: Mapping[tuple, ChainRow]) -> CostAnswer:
+    """The Compare's "This adjustment" cost of one built column (REQ-156 AC-2, ADR-221): the approach's own charges
+    (the whole-trade After's ``adjustment_charges``) plus half the bid-ask spread of each traded contract times its
+    quantity (``adjust_money.cost_with_spread``), rounded half-even to the paisa as the cell shows it. No trade -> 0.
+    No whole trade or charges unknown -> that reason; a traded contract without a usable bid and ask -> named.
+
+    The Compare's cost cell and the T-19 trigger (``cheapest_approach``) both read this; no second formula exists."""
+    trades = col.built.trades
+    if not trades:
+        return CostAnswer(Decimal(0).quantize(PAISE))
+    if col.whole is None:
+        return CostAnswer(None, col.no_whole_reason)
+    if not col.charges_known:
+        return CostAnswer(None, render_explanation("adjust_charges_unknown"))
+    quotes = []
+    for t in trades:
+        row = rows.get((t.expiry, t.type, t.strike))
+        if row is None or row.bid is None or row.ask is None or row.bid <= 0 or row.ask < row.bid:
+            return CostAnswer(None, render_explanation("adjust_cmp_no_bid_ask", leg=t.tradingsymbol))
+        quotes.append((row.bid, row.ask, t.quantity))
+    value = adjust_money.cost_with_spread(col.whole.adjustment_charges, quotes)
+    return CostAnswer(value.quantize(PAISE, rounding=ROUND_HALF_EVEN))
+
+
+#: T-19's not-checked reason codes (catalogue templates ``adjust_trigger_*``, backend/ofo/errors/templates.py)
+NO_APPROACH_OFFERED = "adjust_trigger_no_approach_offered"
+NO_APPROACH_PRICED = "adjust_trigger_no_approach_priced"
+
+
+@dataclass(frozen=True)
+class Cheapest:
+    """The cheapest approach the playbook offers now: ``approach`` and ``cost``, or ``reason`` (a reason code)."""
+
+    approach: str | None
+    cost: Decimal | None
+    reason: str | None = None
+    unpriced: int = 0  # offered approaches that were built but whose cost is "-" (left out, and said so)
+
+
+def offered_approaches(body: Mapping | None) -> tuple[str, ...]:
+    """The adjustment approaches a playbook body offers, in the playbook's order: its ``approaches.applicable`` list
+    without "No change" (A-36 trades nothing, so its cost is 0 and would make T-19 meaningless)."""
+    approaches = (body or {}).get("approaches") if isinstance(body, Mapping) else None
+    listed = approaches.get("applicable") if isinstance(approaches, Mapping) else None
+    if not isinstance(listed, list):
+        return ()
+    return tuple(dict.fromkeys(a for a in listed if isinstance(a, str) and a != NO_CHANGE))
+
+
+def cheapest_approach(offered: Sequence[str], columns: Mapping[str, Column], chain: Sequence[ChainRow]) -> Cheapest:
+    """ADR-221: the cheapest ``approach_cost`` among the ``offered`` approaches (playbook order) that were built and
+    priced. An offered approach this app cannot build, that was refused, or whose cost is "-" is left out. A tie keeps
+    the first in playbook order. Nothing offered -> NO_APPROACH_OFFERED; nothing priced -> NO_APPROACH_PRICED."""
+    if not offered:
+        return Cheapest(None, None, NO_APPROACH_OFFERED)
+    rows = chain_index(chain)
+    best: tuple[str, Decimal] | None = None
+    unpriced = 0
+    for a in offered:
+        col = columns.get(a)
+        if col is None or col.built.refusal is not None or not col.built.trades:
+            continue
+        answer = approach_cost(col, rows)
+        if answer.value is None:
+            unpriced += 1
+        elif best is None or answer.value < best[1]:
+            best = (a, answer.value)
+    if best is None:
+        return Cheapest(None, None, NO_APPROACH_PRICED, unpriced)
+    return Cheapest(best[0], best[1], None, unpriced)
+
+
 # ---- engine reads ------------------------------------------------------------------------------------------------
 
 def _strategy(legs: Sequence[PositionLeg], lot: int, price: Callable[[PositionLeg], Decimal] | None = None) -> Strategy:
@@ -191,7 +277,7 @@ def _pnl_at(legs: Sequence[PositionLeg], lot: int, whole: WholeTradeAfter, level
     return whole_pnl_at(_strategy(legs, lot) if legs else None, whole, level)
 
 
-def _move_level(spot: Decimal, percent: int) -> Decimal:
+def _move_level(spot: Decimal, percent: Decimal) -> Decimal:
     return (spot * (100 + percent) / 100).quantize(PAISE, rounding=ROUND_HALF_EVEN)
 
 
@@ -218,17 +304,8 @@ class _Rows:
         return _rupees(adjust_money.trade_credit((t.action, t.price, t.quantity) for t in self.b.trades))
 
     def cost(self) -> Cell:
-        if not self.b.trades:
-            return _rupees(Decimal(0))
-        if self.col.whole is None or not self.col.charges_known:
-            return _dash(self._after_reason())
-        quotes = []
-        for t in self.b.trades:
-            row = self._row(t)
-            if row is None or row.bid is None or row.ask is None or row.bid <= 0 or row.ask < row.bid:
-                return _dash(render_explanation("adjust_cmp_no_bid_ask", leg=t.tradingsymbol))
-            quotes.append((row.bid, row.ask, t.quantity))
-        return _rupees(adjust_money.cost_with_spread(self.col.whole.adjustment_charges, quotes))
+        answer = approach_cost(self.col, self.rows)
+        return _dash(answer.reason) if answer.value is None else _rupees(answer.value)
 
     def margin_change(self) -> Cell:
         before, after = self.ctx.before_margin, self.col.margin
@@ -247,7 +324,7 @@ class _Rows:
             return Cell(render_explanation("adjust_cmp_unlimited"))  # shown, cannot lead (AC-3, attack 4)
         return _rupees(loss)  # type: ignore[arg-type]
 
-    def move(self, p: int) -> Cell:
+    def move(self, p: Decimal) -> Cell:
         reason = self._after_reason()
         if reason is not None:
             return _dash(reason)
@@ -391,10 +468,12 @@ def column_order(ids: Sequence[str]) -> list[str]:
 
 
 def _curve_levels(ctx: Context, cols: Sequence[Column]) -> list[Decimal]:
-    lo = (ctx.spot * (1 - CURVE_RANGE)).quantize(PAISE, rounding=ROUND_HALF_EVEN)
-    hi = (ctx.spot * (1 + CURVE_RANGE)).quantize(PAISE, rounding=ROUND_HALF_EVEN)
-    step = (hi - lo) / CURVE_STEPS
-    grid = {(lo + step * k).quantize(PAISE, rounding=ROUND_HALF_EVEN) for k in range(CURVE_STEPS)} | {lo, hi}
+    span = ctx.view.range_percent.scaleb(-2)  # exact percent -> fraction
+    steps = ctx.view.steps
+    lo = (ctx.spot * (1 - span)).quantize(PAISE, rounding=ROUND_HALF_EVEN)
+    hi = (ctx.spot * (1 + span)).quantize(PAISE, rounding=ROUND_HALF_EVEN)
+    step = (hi - lo) / steps
+    grid = {(lo + step * k).quantize(PAISE, rounding=ROUND_HALF_EVEN) for k in range(steps)} | {lo, hi}
     strikes = {x.strike for x in ctx.position.legs} | {x.strike for c in cols for x in c.built.after}
     return sorted(grid | {k for k in strikes if lo <= k <= hi})
 
@@ -415,7 +494,7 @@ def compare(columns: Sequence[Column], ctx: Context, before: WholeTradeAfter | N
         r = _Rows(by_id[a], ctx)
         cells["credit"][a], cells["cost"][a], cells["margin_change"][a] = r.credit(), r.cost(), r.margin_change()
         cells["max_loss"][a] = r.max_loss()
-        for row, p in MOVES.items():
+        for row, p in ctx.view.moves().items():
             cells[row][a] = r.move(p)
         cells["breakevens"][a], cells["max_profit"][a] = r.breakevens(), r.max_profit()
         cells["premium_left"][a], cells["pop"][a] = r.premium_left(), r.pop()
@@ -444,5 +523,6 @@ def _curves(columns: Sequence[Column], ctx: Context, before: WholeTradeAfter | N
     return out
 
 
-__all__ = ["POP_TEXT", "Cell", "Column", "Comparison", "Context", "Criterion", "MarginRead", "column_order", "compare",
-           "leaders"]
+__all__ = ["NO_APPROACH_OFFERED", "NO_APPROACH_PRICED", "POP_TEXT", "Cell", "Cheapest", "Column", "Comparison",
+           "Context", "CostAnswer", "Criterion", "MarginRead", "approach_cost", "cheapest_approach", "column_order",
+           "compare", "leaders", "offered_approaches"]

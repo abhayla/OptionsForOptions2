@@ -7,16 +7,14 @@ import datetime
 from decimal import Decimal as D
 
 import pytest
-
-from ofo.engine.inputs import SpotReading
-from ofo.rules.inputs import DataHealth
-
 from ofo.engine.black_scholes import IST
-from ofo.engine.inputs import LegInput, StrategyInput
+from ofo.engine.inputs import LegInput, SpotReading, StrategyInput
 from ofo.engine.legs import Action, Instrument
+from ofo.rules.inputs import DataHealth
 from ofo.scenario.config import ScenarioSettings
 from ofo.scenario.levels import build_level_set
 from ofo.scenario.views import scenario_values
+from ofo.settings import defaults as _d
 
 NIFTY_EXPIRY = datetime.date(2026, 10, 27)
 VALUATION = datetime.datetime(2026, 10, 17, 15, 30, tzinfo=IST)
@@ -71,7 +69,7 @@ def golden():
 
 @pytest.fixture
 def settings() -> ScenarioSettings:
-    return ScenarioSettings()
+    return ScenarioSettings.from_values(_d())
 
 
 @pytest.fixture

@@ -31,6 +31,9 @@ from ofo.execution import (
 from ofo.instruments.models import ListedContract
 from ofo.instruments import Catalogue, ZerodhaEligibility, parse_instruments_csv
 from execution_inputs import FIXTURE, refuse, zerodha_eligibility
+from ofo.settings import calc as _calc, defaults as _defaults
+
+_MAX_DELIST = _calc.max_delist_percent(_defaults())
 
 Inputs = tuple[Strategy, ExecutionContext, Catalogue, ZerodhaEligibility]
 
@@ -50,7 +53,8 @@ def _strike_off_ladder(s: Strategy, c: Catalogue, e: ZerodhaEligibility) -> Inpu
 
 def _unlisted(s: Strategy, c: Catalogue, e: ZerodhaEligibility) -> Inputs:
     token = find_token(c, "PE", "23000")
-    c.update([x for x in parse_instruments_csv(FIXTURE) if x.id != token], as_of=AS_OF, force=True, reason="test delisting", actor="test-admin", audit_log=AuditLog())
+    c.update([x for x in parse_instruments_csv(FIXTURE) if x.id != token], as_of=AS_OF, force=True, reason="test delisting", actor="test-admin", audit_log=AuditLog(),
+        max_delist_percent=_MAX_DELIST)
     return s, all_true_context(), c, e
 
 

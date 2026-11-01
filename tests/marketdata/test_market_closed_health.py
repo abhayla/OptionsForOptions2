@@ -16,6 +16,8 @@ from ofo.market_calendar import Holidays, is_market_open
 from ofo.marketdata.feed_health import FEED_HEALTHY, FEED_MARKET_CLOSED, FeedState, market_closed_for
 from ofo.marketdata.kite_provider import IST, KiteProvider
 from ofo.rules.inputs import DataHealth
+from ofo.settings import calc, defaults
+WINDOWS = calc.feed_windows(defaults())  # the registry's windows, passed explicitly (REQ-167 AC-4)
 
 FIX = Path(__file__).resolve().parents[1] / "fixtures" / "kite_ws"
 FRAME = (FIX / "full-frame-12080386-150720.bin").read_bytes()
@@ -81,7 +83,7 @@ def test_wednesday_with_the_same_frames_stays_available():
 def test_every_closed_state_of_the_calendar_reads_market_closed(when):
     """AC-7 (standing item d): holiday, a date past the calendar (fail closed), pre-open and after hours: closed."""
     assert is_market_open(when) is False  # the calendar's own answer, independent of the feed
-    feed = FeedState()
+    feed = FeedState(windows=WINDOWS)
     feed.on_connected(when)
     feed.on_data(when)
     assert feed.market_closed(when) is True
@@ -92,7 +94,7 @@ def test_every_closed_state_of_the_calendar_reads_market_closed(when):
 def test_a_calendar_that_cannot_answer_reads_closed():
     """AC-7: an empty holiday table (unreadable data file) answers NO_CALENDAR for every date: closed (fail closed)."""
     empty: Holidays = {}
-    feed = FeedState(market_open=lambda now: is_market_open(now, empty))
+    feed = FeedState(windows=WINDOWS, market_open=lambda now: is_market_open(now, empty))
     feed.on_connected(WEDNESDAY)
     feed.on_data(WEDNESDAY)
     assert feed.health(WEDNESDAY) is DataHealth.STALE
@@ -101,7 +103,7 @@ def test_a_calendar_that_cannot_answer_reads_closed():
 
 def test_the_injected_calendar_is_the_one_read_and_open_keeps_the_feed_phases():
     """AC-7: the feed reads its injected calendar; open -> healthy on a fresh price frame."""
-    feed = FeedState(market_open=lambda _now: True)
+    feed = FeedState(windows=WINDOWS, market_open=lambda _now: True)
     feed.on_connected(SATURDAY)
     feed.on_data(SATURDAY)
     assert feed.health(SATURDAY) is DataHealth.AVAILABLE
@@ -116,5 +118,5 @@ def test_a_provider_without_a_feed_gets_the_calendar_answer():
     assert market_closed_for(NoFeed(), SATURDAY) is True
     assert market_closed_for(NoFeed(), WEDNESDAY) is False
     assert market_closed_for(None, PAST_CALENDAR) is True
-    open_feed = type("P", (), {"feed": FeedState(market_open=lambda _now: True)})()
+    open_feed = type("P", (), {"feed": FeedState(windows=WINDOWS, market_open=lambda _now: True)})()
     assert market_closed_for(open_feed, SATURDAY) is False

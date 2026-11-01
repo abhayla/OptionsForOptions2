@@ -49,7 +49,7 @@ import ActivityPanel from '@/components/strategy/ActivityPanel.vue'
 import Drawer from '@/components/common/Drawer.vue'
 import SaveDraftBar from '@/components/strategy/SaveDraftBar.vue'
 import LegList from '@/components/strategy/LegList.vue'
-import { applyEditReply, buildEditRequest, controlsFrom, executeRefusal, CLEAR_UNDO_MS, EXECUTE_WAITS_FOR_LATEST, NO_CONTROLS } from '@/lib/legEdit'
+import { applyEditReply, buildEditRequest, controlsFrom, executeRefusal, CLEAR_UNDO_SECONDS_KEY, MULTIPLIER_MAX_KEY, EXECUTE_WAITS_FOR_LATEST, NO_CONTROLS } from '@/lib/legEdit'
 import { createNewestWins, isSuperseded } from '@/lib/newestWins'
 import { NOT_CONNECTED_LABEL, buildDraft } from '@/lib/legPicker'
 import { matchesLegs } from '@/lib/liveMatch'
@@ -62,12 +62,16 @@ import { contractName, istClock, istTime, nameFromPool } from '@/lib/displayForm
 import { summaryFigure } from '@/lib/summaryFigures'
 import { ORDER_PATH_OFF_SENTENCE } from '@/lib/orderPath'
 import { useCapabilities } from '@/lib/brokerCapabilities'
+import { useSettingsValues } from '@/stores/settingsValues'
+import { LOT_CHOICES_KEY, MAX_LOTS_KEY } from '@/lib/legPicker'
 import { useStrategyLive } from '@/composables/useStrategyLive'
 import { NOT_LIVE_LABEL as INDEX_NOT_LIVE, headerLevel, useIndexAnswer } from '@/composables/useIndexLive'
 import MarketClosedBanner from '@/components/states/MarketClosedBanner.vue'
 
 const route = useRoute()
 const router = useRouter()
+const served = useSettingsValues() // REQ-167 AC-5: the lot caps and the multiplier cap are served, never typed
+served.load()
 const capabilities = useCapabilities() // REQ-117: the named broker flags; null until read, {} after a failure (all off)
 const state = ref('loading') // loading | computed | stale | not-connected | unpriced | refused | error | no-draft
 const data = ref(null)
@@ -497,7 +501,7 @@ function readShape() {
 }
 const removeLeg = (i) => setLegs(legs.value.filter((_, k) => k !== i))
 
-// REQ-135 AC-1: Clear all legs. The legs (and the saved strategy they belong to) are held for CLEAR_UNDO_MS; the clear is
+// REQ-135 AC-1: Clear all legs. The legs (and the saved strategy they belong to) are held for the served Clear-all window; the clear is
 // an ordinary edit (the saved copy changes only on Save), exactly as removing the last leg is. One timer, not a recurring one.
 const undoHeld = ref(null) // { legs, savedId, savedRevision, openStrategy } of the last clear, or null (expired, used, superseded, left)
 let undoTimer = null
@@ -505,13 +509,17 @@ function dropUndo() {
   clearTimeout(undoTimer)
   undoHeld.value = null
 }
-function clearAll() {
+async function clearAll() {
   if (!legs.value.length) return
   const held = { legs: legs.value, savedId: savedId.value, savedRevision: savedRevision.value, openStrategy: openStrategy.value } // taken BEFORE setLegs([]) nulls them
   setLegs([])
   openStrategy.value = null // a cleared screen is a new strategy: the next Save asks a name
+  const ms = await useSettingsValues().waitMs(CLEAR_UNDO_SECONDS_KEY) // the served wait (REQ-167 AC-7)
+  if (ms === null) return // not readable: no Undo is offered, never a typed time
+  if (legs.value.length) return // legs came back while the wait was read: an Undo would restore over them
   undoHeld.value = held
-  undoTimer = setTimeout(dropUndo, CLEAR_UNDO_MS)
+  clearTimeout(undoTimer)
+  undoTimer = setTimeout(dropUndo, ms)
 }
 function undoClear() {
   const held = undoHeld.value
@@ -767,7 +775,7 @@ const pricesStamp = computed(() => {
         <div :class="paper ? 'rounded-lg border-2 border-dashed border-warn p-2' : 'contents'" data-testid="legs-frame" :data-paper-mode="paper ? 'true' : 'false'">
         <p v-if="paper" class="mb-2 text-xs font-semibold text-warn" data-testid="paper-mode-label">{{ PAPER_MODE_LABEL }}</p>
         <LegList
-          :legs="legs" :paper-fills="paperFills" :shape-name="shapeName" :has-reply="hasReply" :controls="controls" :updating="updating" :error-parts="editError" :error-index="editErrorIndex" :ltp-by-id="ltpById" :price-text-by-id="priceTextById"
+          :multiplier-max="served.integer(MULTIPLIER_MAX_KEY)" :legs="legs" :paper-fills="paperFills" :shape-name="shapeName" :has-reply="hasReply" :controls="controls" :updating="updating" :error-parts="editError" :error-index="editErrorIndex" :ltp-by-id="ltpById" :price-text-by-id="priceTextById"
           :undo-offered="undoHeld !== null" :leg-unit="legUnit" :strategy-name="openStrategy?.name ?? null"
           @edit="editLeg" @edit-leg="openInPicker" @include-all="includeAll" @remove="removeLeg" @add-leg="focusPicker" @pick-chain="pickFromChain" @clear-all="clearAll" @undo-clear="undoClear"
         >
@@ -801,7 +809,7 @@ const pricesStamp = computed(() => {
              strike grid keeps the 470 px D-C27 fits in. D-C35: the "Show Editor" edge tab folds the drawer away to see the
              builder; the "Show Strikes" tab at the page edge brings it back with the picks kept (the picker stays mounted). -->
         <Drawer :open="pickerOpen" title="Add or edit legs" side="left" width="520px" persist bare @close="pickerOpen = false; pickerFolded = false">
-          <div class="h-full" data-testid="leg-picker-panel"><LegPicker ref="picker" :legs="legs" :show-leg-list="false" :active="pickerOpen" :page-underlying="headerUnderlying || pickUnderlying" :last-close="closedBanner ? indexLevel : null" :closed-at="closedBanner?.at ?? null" @update:legs="setLegs" @done="pickerOpen = false; pickerFolded = false" /></div>
+          <div class="h-full" data-testid="leg-picker-panel"><LegPicker ref="picker" :max-lots="served.integer(MAX_LOTS_KEY)" :lot-choice-count="served.integer(LOT_CHOICES_KEY)" :legs="legs" :show-leg-list="false" :active="pickerOpen" :page-underlying="headerUnderlying || pickUnderlying" :last-close="closedBanner ? indexLevel : null" :closed-at="closedBanner?.at ?? null" @update:legs="setLegs" @done="pickerOpen = false; pickerFolded = false" /></div>
           <template #edge>
             <button type="button" class="rounded-r-md bg-warn-soft px-1 py-3 text-xs font-semibold text-ink shadow-menu [writing-mode:vertical-rl]" data-testid="show-editor" @click="pickerOpen = false; pickerFolded = true">Show Editor &gt;&gt;</button>
           </template>

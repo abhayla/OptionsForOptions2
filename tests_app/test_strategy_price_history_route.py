@@ -23,6 +23,7 @@ from http import HTTPStatus
 from pathlib import Path
 
 import pytest
+from ofo.settings import defaults as registry_defaults
 from ofo.timeutil import IST
 from ofo_app import broker_token_store as tokens
 from ofo_app import catalogue_store, held_switches, kite_history, tracked_contracts
@@ -33,6 +34,7 @@ from ofo_app.broker_crypto import TokenCipher
 from ofo_app.catalogue_store import apply_update, parse_rows_naming_the_row
 from ofo_app.kite_history import KiteHistory
 from ofo_app.live_market import OWNER_REF
+from ofo_app.routes import outcome
 from ofo_app.routes import strategies as strategy_routes
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -49,6 +51,9 @@ from test_strategy_store import (
     _with_draft,
 )
 from test_strategy_tracking import _DELIST, _RETIRE, _REUSE
+from ofo.settings import calc as _calc, defaults as _defaults
+
+_MAX_DELIST = _calc.max_delist_percent(_defaults())
 
 FIX = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "kite_history"
 LEG_BODY = (FIX / "minute-NIFTY26N0325000CE-2026-10-14.json").read_text(encoding="utf-8")
@@ -80,8 +85,16 @@ def _transport(by_token: dict[str, tuple[int, str]], default: tuple[int, str], s
     return fetch
 
 
-def _app_with(conn, user, *, transport=None, session=True, future=True):
+def _app_with(conn, user, *, transport=None, session=True, future=True, history_days=None):  # noqa: PLR0913
     app = _app(_ConnMaker(conn), user)
+    values = dict(registry_defaults())
+    if history_days is not None:
+        values["limits.history_max_days"] = Decimal(history_days)
+
+    async def read_settings():
+        return values
+
+    app.dependency_overrides[outcome.get_settings_reader] = lambda: read_settings
 
     async def opener(_db):
         if not session:
@@ -205,6 +218,21 @@ async def test_days_outside_1_to_15_is_refused(app_engine):
             await trans.rollback()
 
 
+async def test_the_most_days_is_the_history_days_setting(app_engine):
+    """REQ-167 AC-5: 16 days is refused at the default 15; with the setting at 5, 6 is refused and 5 is answered;
+    with it at 20, 16 is answered."""
+    async with app_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            _, stored = await _with_draft(conn, user := _user())
+            cases = ((16, None, True), (15, None, False), (6, 5, True), (5, 5, False), (16, 20, False))
+            for days, limit, refused in cases:
+                resp = await _get(conn, user, stored.id, f"?days={days}", transport=_standard([]), history_days=limit)
+                assert (resp.status_code >= 400) is refused, (days, limit, resp.status_code)  # noqa: PLR2004
+        finally:
+            await trans.rollback()
+
+
 # ---- S5-1: the production seams run for real (no opener / finder fake; only Kite's HTTP transport is faked) ----
 # The route runs as in production: a real AsyncSession per request (a fresh connection, as ``get_db`` gives), the
 # owner's session stored ENCRYPTED by the store's own write, the real token read and the real catalogue FUT pick. The
@@ -230,7 +258,7 @@ async def _committed_seed(app_engine, user: str, *, session: str | None):
         before = {r[0] for r in await conn.execute(text("SELECT id FROM public.catalogue_contracts"))}
         await conn.rollback()  # end the read's autobegun transaction; the seed commits in its own
         async with conn.begin():
-            await apply_update(conn, _fixture_rows() + _nov_future(), as_of=AS_OF)
+            await apply_update(conn, _fixture_rows() + _nov_future(), as_of=AS_OF, max_delist_percent=_MAX_DELIST)
             stored = await store.save_draft(conn, user, await _saved_in(conn, user, await _ids(conn)))
             session_id = None
             if session is not None:
@@ -303,8 +331,8 @@ async def test_s5_1_real_token_read_and_real_future_pick_answer_available(app_en
 async def _past_expiry(admin_engine, session_id):
     async with admin_engine.connect() as conn, conn.begin():
         await conn.execute(text("SET LOCAL session_replication_role = replica"))
-        await conn.execute(text("UPDATE public.broker_sessions SET expected_expiry = clock_timestamp() - "
-                                "interval '1 minute' WHERE id = :id"), {"id": session_id})
+        await conn.execute(text("UPDATE public.broker_sessions SET started_at = clock_timestamp() - interval '3 days' "
+                                "WHERE id = :id"), {"id": session_id})
 
 
 def _no_session_answer(resp) -> None:

@@ -7,11 +7,12 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { isPermitted } from '@/lib/chainUnavailable'
+import { MAX_LOTS_KEY } from '@/lib/legPicker'
+import { useSettingsValues } from '@/stores/settingsValues'
 
 export const ACTIONS = Object.freeze(['BUY', 'SELL'])
 export const DEFAULT_LOTS = 1
 const MIN_LOTS = 1
-const MAX_LOTS = 10000
 
 const legId = (instrumentId, action) => `${instrumentId}|${action ?? ''}`
 
@@ -24,6 +25,7 @@ export function contractOf(underlying, expiry, strike, type, cell) {
 }
 
 export const useChainSelection = defineStore('chainSelection', () => {
+  const settings = useSettingsValues() // REQ-167 AC-5: the lot cap is the served limits.max_lots, never typed here
   const entries = ref([]) // { id, ...contract, action: 'BUY' | 'SELL' | null, lots }
   const removed = ref(null) // the last removed entry and its place, for the short Undo (AC-15)
   // The latest server answer per contract (instrument_id -> true | false), kept apart from the entries so a removed or
@@ -61,10 +63,12 @@ export const useChainSelection = defineStore('chainSelection', () => {
     } else add(contract, action)
   }
 
-  /** AC-7: a whole number of lots from 1 to 10000 (a count, not money); anything else is refused and the lots stay. */
+  /** AC-7: a whole number of lots from 1 to the served limits.max_lots (a count, not money); anything else is refused and
+   *  the lots stay. Until the setting is read there is no cap to check against, so nothing is accepted (fail closed). */
   function setLots(id, lots) {
     const leg = entries.value.find((e) => e.id === id)
-    if (leg && Number.isInteger(lots) && lots >= MIN_LOTS && lots <= MAX_LOTS) leg.lots = lots
+    const max = settings.integer(MAX_LOTS_KEY)
+    if (leg && Number.isInteger(lots) && lots >= MIN_LOTS && max !== null && lots <= max) leg.lots = lots
   }
   const stepLots = (id, by) => {
     const leg = entries.value.find((e) => e.id === id)
@@ -123,6 +127,6 @@ export const useChainSelection = defineStore('chainSelection', () => {
     }
   }
 
-  return { entries, removed, answers, toggleContract, chooseAction, setLots, stepLots, remove, undo, dismissUndo, clear,
+  return { maxLots: computed(() => settings.integer(MAX_LOTS_KEY)), entries, removed, answers, toggleContract, chooseAction, setLots, stepLots, remove, undo, dismissUndo, clear,
     syncPermissions, forUnderlying, legsOf, pendingOf, unavailableOf, expiriesOf, draftOf, count: computed(() => entries.value.length) }
 })

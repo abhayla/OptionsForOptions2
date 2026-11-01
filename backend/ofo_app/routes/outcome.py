@@ -18,15 +18,19 @@ import logging
 import time
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Annotated, Awaitable, Callable, Iterable, Literal, Mapping, Optional, Union
+from typing import Annotated, Awaitable, Callable, Iterable, Literal, Mapping, Union
 
 from fastapi import APIRouter, Depends
+from fastapi.exceptions import RequestValidationError
 from ofo.charges import ChargeRates
+from ofo.errors import render
+from ofo.errors.slots import INT_ABS_MAX
 from ofo.engine.legs import Action
 from ofo.instruments.models import InstrumentId as ContractKey
 from ofo.instruments.models import ListedContract
 from ofo.limits import INTEGER_MAX
-from ofo.marketdata.feed_health import awaiting_first_price_for, market_closed_for
+from ofo.marketdata.forward import ForwardQuality
+from ofo.marketdata.feed_health import FeedWindows, awaiting_first_price_for, market_closed_for
 from ofo.marketdata.provider import MarketDataProvider
 from ofo.marketdata.quote import NormalizedQuote
 from ofo.marketdata.shared_compute import FeedScope, SharedCompute
@@ -43,18 +47,22 @@ from ofo.outcome import (
 from ofo.outcome.money import with_funds
 from ofo.outcome.price_text import price_text
 from ofo.outcome.serialize import outcome_to_dict
-from ofo.outcome.service import PAYOFF_TABLE_STEPS, Margin, waiting_first_price
+from ofo.outcome.service import Margin, waiting_first_price
 from ofo.outcome.target import TargetAsk
 from ofo.scenario.config import ScenarioConfig, ScenarioSettings
 from ofo.scenario.levels import RangeOverride, resolve_range
 from ofo.scenario.views import View
+from ofo.settings import RISK_FREE_RATE, calc
+from ofo.settings import defaults as settings_defaults
+from ofo.settings import value_of as registry_value_of
 from ofo.timeutil import IST
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StrictBool, StrictInt, model_validator
 
-from ofo_app import charge_rates_store, db
+from ofo_app import charge_rates_store, db, settings_store
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier, InstrumentId, Money, echo_seq
 from ofo_app.errors import ClosedRoute
 from ofo_app.outcome_margin import OutcomeMargin, PlannedOrderIn, margin_answer
+from ofo_app.strategy_refused import StrategyRefused
 from ofo_app.underlying import Underlying
 
 router = APIRouter(route_class=ClosedRoute)
@@ -159,6 +167,14 @@ class MarketContext:
     #: whose Zerodha feed this is (ADR-053): part of every shared-cache key, so two users' feeds never share. None (a
     #: test or replay context with no owner) means nothing is shared: every reader computes for itself.
     feed_owner: str | None = None
+    #: REQ-167 AC-5: the three forward settings in force (``get_market_context`` replaces this per request, like the
+    #: rate). The default is the registry's, for the live feed's own context and tests, never for a priced route.
+    forward_quality: ForwardQuality = dataclasses.field(
+        default_factory=lambda: calc.forward_quality(settings_defaults()))
+    #: REQ-167 AC-5: the feed stale and reconnect windows in force, replaced with the same single read; the feed itself
+    #: is told the same windows (``ctx_in_force``). The default is the registry's, as for ``forward_quality``.
+    feed_windows: FeedWindows = dataclasses.field(
+        default_factory=lambda: calc.feed_windows(settings_defaults()))
 
 
 @dataclass(frozen=True)
@@ -198,11 +214,95 @@ def feed_scope(ctx: MarketContext) -> FeedScope | None:
     return FeedScope(SHARED_COMPUTE, ctx.feed_owner) if ctx.feed_owner else None
 
 
-def get_market_context() -> MarketContext | None:
+SettingsReader = Callable[[], Awaitable[Mapping[str, Decimal]]]
+
+
+async def _settings_in_force_now() -> Mapping[str, Decimal]:
+    """Every registry setting in force NOW (the database clock, ADR-023), read in its own short session that is
+    closed before the route body runs. SettingsError (a stored value the registry refuses) and any database error
+    propagate: the caller fails closed."""
+    async with db.get_sessionmaker()() as session:
+        return await settings_store.settings_in_force(session)
+
+
+def get_settings_reader() -> SettingsReader:
+    """The settings read behind :func:`get_market_context`; the database tests override it to read through their
+    rolled-back connection."""
+    return _settings_in_force_now
+
+
+async def with_rate_in_force(ctx: MarketContext, read_settings: SettingsReader) -> MarketContext:
+    """``ctx`` with its rate replaced by the ``pricing.risk_free_rate`` setting in force now (an exact Decimal). The one
+    rate-reading path: the live dependency and the scenario mode's dependency both use it. A store that cannot answer
+    raises (fail closed). The three forward settings (REQ-167 AC-5) are replaced from the same single read."""
+    return ctx_in_force(ctx, await read_settings())
+
+
+def ctx_in_force(ctx: MarketContext, values: Mapping[str, Decimal]) -> MarketContext:
+    """``ctx`` with the rate and the three forward settings taken from ``values`` (one settings read the caller already
+    holds): a socket tick that read the settings for its push prices with the SAME read (REQ-167 AC-4, GC-SET 5a)."""
+    windows = calc.feed_windows(values)
+    feed = getattr(ctx.provider, "feed", None)
+    if feed is not None and hasattr(feed, "apply_windows"):
+        feed.apply_windows(windows)  # the feed's next verdict (quote health, phase) uses the windows in force
+    return dataclasses.replace(ctx, rate=registry_value_of(values, RISK_FREE_RATE),
+                               forward_quality=calc.forward_quality(values), feed_windows=windows)
+
+
+def feed_windows_of(ctx: MarketContext | None) -> FeedWindows:
+    """The feed windows in force for a route with the per-request context (None: no live context, the registry's)."""
+    return calc.feed_windows(settings_defaults()) if ctx is None else ctx.feed_windows
+
+
+async def get_request_settings_reader(
+        read_settings: Annotated[SettingsReader, Depends(get_settings_reader)]) -> SettingsReader:
+    """The ONE settings read of a request (REQ-167 AC-4, step 3 review): FastAPI resolves this dependency once per
+    request, so :func:`get_calc_settings` and :func:`get_market_context` share the one store read (the first caller
+    reads, the other gets the same values), and one request can never mix two reads. A request that needs no settings
+    (no live context, no calculation) reads nothing."""
+    memo: list[Mapping[str, Decimal]] = []
+
+    async def once() -> Mapping[str, Decimal]:
+        if not memo:
+            memo.append(await read_settings())
+        return memo[0]
+
+    return once
+
+
+async def get_calc_settings(
+        read_settings: Annotated[SettingsReader, Depends(get_request_settings_reader)]) -> Mapping[str, Decimal]:
+    """REQ-167 AC-4: every setting in force NOW, read once per request, handed to the calculations that take their
+    numbers as parameters (scenario columns, payoff steps, SD horizon, what-if span, quick picks). A store that cannot
+    answer raises: the route answers the internal-error response, never a figure on a default."""
+    return await read_settings()
+
+
+async def get_market_context(
+        read_settings: Annotated[SettingsReader, Depends(get_request_settings_reader)]) -> MarketContext | None:
     """The live context (W-065) when LIVE_MARKET is on and the owner has an active session, else None: the route
-    answers "not connected". Tests and the replay mode override this dependency."""
+    answers "not connected". Tests, the replay mode and the scenario mode override this dependency.
+
+    REQ-167 AC-1 / ADR-222 (1), (9): the risk-free rate is the ``pricing.risk_free_rate`` setting in force NOW, read on
+    every request that gets a context, so an admin change applies to the next request with no restart. Technical
+    decision (GC-SET core, 2026-10-31):
+    - The live feed's own context (``live_market.current_context()``) is built with the registry default; this
+      dependency returns ``dataclasses.replace(ctx, rate=<setting in force>)`` for the request, so every priced REST
+      route (outcome, chain, indices, leg picker, planned entry, tracking, paper, adjustment) reads the stored rate.
+      The paper monitor and the live sockets read ``feed.ctx`` directly and are wired separately (a later step).
+    - A context injected through ``app.dependency_overrides[get_market_context]`` keeps its own rate: unit tests and
+      the replay mode (``main.create_app``) pass test data. The scenario mode (a dev stand-in for live) does NOT:
+      ``scenario_mode.overrides`` installs an async dependency that calls :func:`with_rate_in_force` on the scenario
+      context, so it prices with the setting in force at each request like live (orchestrator decision, 2026-11-01).
+    - No context: no read (the "not connected" answer never waits on the database).
+    - The store cannot answer (``SettingsError``: a stored value the registry now refuses; or a database error): the
+      exception propagates and the route answers the internal-error response. Never a price with the default (fail
+      closed, no silent substitution, ADR-016..019 spirit)."""
     from ofo_app import live_market  # late: live_market imports MarketContext from this module
-    return live_market.current_context()
+    ctx = live_market.current_context()
+    if ctx is None:
+        return None
+    return await with_rate_in_force(ctx, read_settings)
 
 
 # ---- request --------------------------------------------------------------------------------------------------------
@@ -211,7 +311,8 @@ class LegIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     instrument_id: InstrumentId = Field(examples=["NSE_FO:44624"])
     action: Literal["BUY", "SELL"]
-    lots: int = Field(strict=True, gt=0, le=10000)  # true, 1.0 and "2" are a malformed request, never coerced
+    # the business cap is the limits.max_lots setting, checked by check_lots; le= is only the type sanity bound
+    lots: int = Field(strict=True, gt=0, le=INT_ABS_MAX)  # true, 1.0 and "2" are a malformed request, never coerced
     planned_entry: str = Field(pattern=r"^\d+(\.\d{1,2})?$", examples=["104.65"],
                                description="the planned entry price, a decimal string (never a float)")
     captured_at: AwareDatetime = Field(description="when the planned entry was captured (ADR-068)")
@@ -329,9 +430,8 @@ class OutcomeRequest(BaseModel):
     def _choice_is_allowed(self) -> OutcomeRequest:
         """REQ-034 AC-4: refuse a range off the allow-list (ofo.scenario.levels.resolve_range) before any
         computation; the error boundary answers 422 with the catalogue text and logs no value."""
-        self.scenario_choice()
-        if self.payoff_step is not None and Decimal(self.payoff_step) not in PAYOFF_TABLE_STEPS:
-            raise ValueError("payoff_step must be one of 10, 25, 50, 100")
+        # the range and the payoff step are checked against the settings in force when the answer is computed
+        # (:func:`checked_choice`), not here: the allowed values are settings (REQ-167 AC-4)
         return self
 
     def target_ask(self, booked: Booked | None = None) -> TargetAsk | None:
@@ -347,12 +447,20 @@ class OutcomeRequest(BaseModel):
         """REQ-137 AC-1: the payoff table's interval as index points (None: the underlying's strike step)."""
         return None if self.payoff_step is None else Decimal(self.payoff_step)
 
-    def scenario_choice(self) -> tuple[ScenarioConfig, RangeOverride | None]:
+    def scenario_choice(self, settings: Mapping[str, Decimal]) -> tuple[ScenarioConfig, RangeOverride | None]:
         """The ONE config (Admin step and anchor) and the range override this request asks for (None: the computed
         default range). The same pair is checked here and handed to build_outcome."""
-        base = ScenarioSettings().for_index(self.underlying)
+        base = self.scenario_base(settings)
+        return base, self.range_override(base)
+
+    def scenario_base(self, settings: Mapping[str, Decimal]) -> ScenarioConfig:
+        """The index's config from the settings in force. A stored combination the config refuses (step not a multiple
+        of the anchor) is a server fault, never the user's: it raises ValueError and is NOT turned into a 422."""
+        return ScenarioSettings.from_values(settings).for_index(self.underlying)
+
+    def range_override(self, base: ScenarioConfig) -> RangeOverride | None:
         pick = [None if v is None else Decimal(v) for v in (self.range_start, self.range_end)]
-        return base, resolve_range(base, *pick)
+        return resolve_range(base, *pick)
 
 
 async def stored_legs_for(req: OutcomeRequest, ctx: MarketContext | None,
@@ -841,6 +949,16 @@ def get_streaming() -> Callable[[str], bool] | None:
     return lambda instrument_id: feed.fanout.subscriber_count(instrument_id) > 0
 
 
+def same_feed(ctx: MarketContext, feed_ctx: MarketContext | None) -> bool:
+    """True when ``ctx`` is ``feed_ctx`` or the per-request copy ``get_market_context`` made of it with only the rate
+    replaced (GC-SET: the stored risk-free rate); an identity test alone would treat every live request as "another
+    context" and skip issue #206's streaming rule."""
+    if feed_ctx is None:
+        return False
+    return ctx is feed_ctx or (ctx.provider is feed_ctx.provider and ctx.clock is feed_ctx.clock
+                               and ctx.feed_owner == feed_ctx.feed_owner)
+
+
 def inputs_streaming(ctx: MarketContext, streaming: Callable[[str], bool] | None, ids: Iterable[str]) -> bool:
     """Issue #206's rule for any REST read of live inputs: True when every id is held by a socket on the shared feed.
     No predicate (no live feed: a test's own context) or a predicate of another context: the provider's quotes are used
@@ -848,7 +966,7 @@ def inputs_streaming(ctx: MarketContext, streaming: Callable[[str], bool] | None
     if streaming is None:
         return True
     owner = getattr(streaming, "ctx", None)  # the replay's predicate names its own context (ofo_app.replay_mode)
-    if ctx is not (owner if owner is not None else live_context()):
+    if not same_feed(ctx, owner if owner is not None else live_context()):
         return True
     return all(streaming(i) for i in ids)
 
@@ -869,11 +987,35 @@ def live_context() -> MarketContext | None:
     return _live_market().current_context()
 
 
+def check_lots(lots: Iterable[int], settings: Mapping[str, Decimal]) -> None:
+    """REQ-167 AC-5: the one check every lots-accepting route passes. A leg above the ``limits.max_lots`` setting in
+    force (read for THIS request) is a 422 with the reason; the schema's own bound is only a type sanity limit."""
+    top = calc.max_lots(settings)
+    for n in lots:
+        if n > top:
+            raise StrategyRefused("leg_lots_above_limit", message=render("leg_lots_above_limit", lots=n, max_lots=top))
+
+
+def checked_choice(req: OutcomeRequest, settings: Mapping[str, Decimal]) -> tuple[ScenarioConfig, RangeOverride | None]:
+    """The range and the payoff step this request asks for, checked against the settings in force (REQ-034 AC-4,
+    REQ-137 AC-1): a value off the allow-list is the same 422 the request validator gave. Also the lots cap."""
+    check_lots((leg.lots for leg in req.legs), settings)  # limits.max_lots, before any answer state
+    base = req.scenario_base(settings)  # outside the try: a bad stored combination is an internal error, not a 422
+    try:
+        if req.payoff_step is not None and Decimal(req.payoff_step) not in calc.payoff_steps(settings):
+            allowed = ", ".join(f"{s:f}" for s in calc.payoff_steps(settings))
+            raise ValueError(f"payoff_step must be one of {allowed}")
+        return base, req.range_override(base)
+    except ValueError as exc:
+        raise RequestValidationError([{"type": "value_error", "loc": ("body",), "msg": str(exc), "input": None}]) from exc
+
+
 def outcome_response(req: OutcomeRequest, ctx: MarketContext | None,  # noqa: PLR0913 - one shared computation; rates is the sixth input
                      streaming: Callable[[str], bool] | None = None, *, now: AnswerClock = server_now,
                      stored: Mapping[str, ListedContract] | None = None,
                      rates: ChargeRates | None = None, margin: Margin | None = None,
-                     seq: int | None = None, booked: Booked | None = None) -> OutcomeResponse:
+                     seq: int | None = None, booked: Booked | None = None,
+                     settings: Mapping[str, Decimal]) -> OutcomeResponse:
     """The one computation behind the REST route and the live push (W-065): both send exactly this. ``streaming``
     (REST only, issue #206): when the live market's inputs for this strategy are not all streaming, the answer is the
     not-live state (REQ-049 AC-5's message, no numbers shown as live; ADR-068 (2)), not a computation on missing or
@@ -882,18 +1024,18 @@ def outcome_response(req: OutcomeRequest, ctx: MarketContext | None,  # noqa: PL
     ask = req.target_ask(booked)  # ADR-209: the paper strategy's booked P&L rides on the what-if ask
     live_blocked = False
     used_quotes: list[NormalizedQuote | None] = []  # the quotes this answer used (ADR-200 (4): the closed label's time)
+    config, override = checked_choice(req, settings)  # before any branch: every answer state refuses a bad range
     if ctx is None:
         answered_at = now()
-        config, override = req.scenario_choice()
         out = (from_entries(definition, None, stored, answered_at, view=View(req.view), rates=rates, config=config,
                             override=override, both_views=req.both_views, payoff_step=req.table_step(),
-                            sd_bands=req.sd_bands, target=ask)  # REQ-077 AC-9: every leg priced -> At Expiry from the user's prices
+                            sd_bands=req.sd_bands, target=ask, settings=settings)  # REQ-077 AC-9: every leg priced -> At Expiry from the user's prices
                or not_connected(definition, None, stored))
     else:
         answered_at = ctx.clock()  # one clock reading: the push and the REST answer of one snapshot are equal
         shared = feed_scope(ctx)
         snapshot = read_snapshot(ctx.provider, req.underlying, [leg.instrument_id for leg in definition.legs],
-                                 answered_at, ctx.rate, shared)
+                                 answered_at, ctx.rate, shared, quality=ctx.forward_quality)
         used_quotes = [snapshot.spot, *(leg.quote for leg in snapshot.legs.values())]
         # ADR-077: the not-live answer follows the browser's OWN socket. A fallback request says this page's socket is
         # down, so it is not live even if another socket still holds every contract (shared fan-out count > 0).
@@ -901,16 +1043,14 @@ def outcome_response(req: OutcomeRequest, ctx: MarketContext | None,  # noqa: PL
         if not live_blocked and awaiting_first_price_for(ctx.provider, answered_at):
             out = waiting_first_price(definition, snapshot)  # REQ-133 AC-3: no number until the first price frame
         elif live_blocked:
-            config, override = req.scenario_choice()
             out = (from_entries(definition, snapshot, None, snapshot.valuation, view=View(req.view), rates=rates,
                                 config=config, override=override, both_views=req.both_views,
-                                payoff_step=req.table_step(), sd_bands=req.sd_bands, target=ask)
+                                payoff_step=req.table_step(), sd_bands=req.sd_bands, target=ask, settings=settings)
                    or not_live(definition, snapshot))
         else:
-            config, override = req.scenario_choice()
             out = build_outcome(definition, snapshot, snapshot.valuation, view=View(req.view), rates=rates,
                                 config=config, override=override, shared=shared, both_views=req.both_views,
-                                payoff_step=req.table_step(), sd_bands=req.sd_bands, target=ask)
+                                payoff_step=req.table_step(), sd_bands=req.sd_bands, target=ask, settings=settings)
     if ctx is not None and margin is not None:  # ADR-099: read by the caller (async, off the loop); no context = login
         out = dataclasses.replace(out, margin=margin, summary=with_funds(out.summary, margin))  # REQ-081 AC-9, AC-10
     body = outcome_to_dict(out, today=answered_at.astimezone(IST).date())  # REQ-135 AC-2
@@ -962,9 +1102,11 @@ def strategy_outcome(req: OutcomeRequest,  # noqa: PLR0913 - FastAPI dependencie
                      stored: Mapping[str, ListedContract] | None = Depends(get_stored_legs),
                      rates: ChargeRates | None = Depends(load_charge_rates), *,
                      margin: Annotated[Margin | None, Depends(get_outcome_margin)] = None,
-                     booked: Annotated[Booked | None, Depends(get_booked)] = None) -> OutcomeResponse:
+                     booked: Annotated[Booked | None, Depends(get_booked)] = None,
+                     calc_settings: Annotated[Mapping[str, Decimal], Depends(get_calc_settings)]) -> OutcomeResponse:
     # a direct call (a test, another module) skips dependency resolution and leaves the Depends marker here: no rates
     return outcome_response(req, ctx, streaming, now=now, stored=stored,
                             rates=rates if isinstance(rates, ChargeRates) else None,
                             margin=margin if isinstance(margin, Margin) else None, seq=req.seq,
-                            booked=booked if isinstance(booked, Booked) else None)
+                            booked=booked if isinstance(booked, Booked) else None,
+                            settings=calc_settings)

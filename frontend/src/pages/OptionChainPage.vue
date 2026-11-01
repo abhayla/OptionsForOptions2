@@ -22,8 +22,10 @@ import api from '@/services/api'
 import { healthSentence, missingCode, missingReason, shownHealth } from '@/lib/dataHealthText'
 import { strikeLabel } from '@/lib/displayFormat'
 import MarketClosedBanner from '@/components/states/MarketClosedBanner.vue'
-import { NOT_LIVE_LABEL, STRIKES_EACH_SIDE, VALUE_UNAVAILABLE, chainRequest, daysLeft, useChainAnswer } from '@/composables/useChainLive'
-import { GREEKS_BASIS_LINES, GREEKS_MISSING_LINES, MONEYNESS, NO_FILTERS, STRIKE_RANGES, anyServerFilter, fieldsFor, filterParams, filterRows, greeksStaleLabel } from '@/lib/chainDisplay'
+import { useSettingsValues } from '@/stores/settingsValues'
+import { strikeRangesOf } from '@/lib/settingsValues'
+import { NOT_LIVE_LABEL, VALUE_UNAVAILABLE, chainRequest, daysLeft, useChainAnswer } from '@/composables/useChainLive'
+import { GREEKS_BASIS_LINES, GREEKS_MISSING_LINES, MONEYNESS, NO_FILTERS, anyServerFilter, fieldsFor, filterParams, filterRows, greeksStaleLabel } from '@/lib/chainDisplay'
 const ROWS_MISSING_LABELS = {
   SPOT_MISSING: 'The underlying price is missing, so no strikes can be chosen yet.',
   EXPIRY_UNKNOWN: 'This expiry is not in the catalogue.',
@@ -31,7 +33,8 @@ const ROWS_MISSING_LABELS = {
   CATALOGUE_UNREADABLE: 'The catalogue could not be read.',
 }
 
-const UNDO_MS = 8000 // how long the short Undo (REQ-030 AC-15) stays offered
+const UNDO_SECONDS_KEY = 'other.undo_one_leg_seconds' // how long the short Undo (REQ-030 AC-15) stays offered (REQ-167 AC-7)
+const STRIKES_KEY = 'limits.chain_strikes_each_side'
 const BUILDER_ROUTE = 'strategies-strategy-builder'
 const ACTION_LABELS = { BUY: 'Buy', SELL: 'Sell' }
 
@@ -44,7 +47,12 @@ let expirySeq = 0 // the newest expiry read wins
 
 const { answer, status, reconnecting, reconnectingText, request, follow, clear, refresh, shown, notLive } = useChainAnswer()
 const details = ref(false) // REQ-029 AC-3: off = AC-2's default columns
-const strikesEachSide = ref(STRIKES_EACH_SIDE)
+const limits = useSettingsValues()
+const maxEachSide = computed(() => limits.integer(STRIKES_KEY)) // null until GET /api/settings answers: the loading state
+const strikesEachSide = ref(null) // starts at the served limit (the design's default), never a typed number
+const strikeRanges = computed(() => (maxEachSide.value === null ? [] : strikeRangesOf(maxEachSide.value)))
+watch(maxEachSide, (max) => { if (max !== null && strikesEachSide.value === null) strikesEachSide.value = max }, { immediate: true })
+const ask = (exp) => follow(chainRequest(underlying.value, exp, strikesEachSide.value, maxEachSide.value, filterParams(filters.value)))
 const filters = ref({ ...NO_FILTERS })
 const SIDE_FIELDS = computed(() => fieldsFor(details.value))
 
@@ -64,7 +72,7 @@ async function loadExpiries() {
   }
 }
 
-onMounted(loadExpiries)
+onMounted(() => { limits.load(); loadExpiries() })
 // A changed choice clears the old answer at once (sync flush), before the expiries load: no number from one choice is
 // ever shown under another (REQ-049 AC-4).
 watch(underlying, () => {
@@ -72,13 +80,13 @@ watch(underlying, () => {
   loadExpiries()
 }, { flush: 'sync' })
 watch(expiry, (value) => {
-  if (value) follow(chainRequest(underlying.value, value, strikesEachSide.value, filterParams(filters.value)))
+  if (value) { if (strikesEachSide.value !== null) ask(value) } // not loaded yet: the range watch below asks once it is
   else clear()
 }, { flush: 'sync' })
 // The strike range and the numeric filters are request fields (the server applies them, ADR-008): a change re-asks.
 const serverKey = computed(() => JSON.stringify([strikesEachSide.value, filterParams(filters.value)]))
 watch(serverKey, () => {
-  if (expiry.value) follow(chainRequest(underlying.value, expiry.value, strikesEachSide.value, filterParams(filters.value)))
+  if (expiry.value && strikesEachSide.value !== null) ask(expiry.value)
 })
 
 const router = useRouter()
@@ -113,10 +121,13 @@ function reviewSelection() {
   askExpiries.value = false
   summary.value?.scrollIntoView?.({ block: 'nearest' })
 }
-function removeLeg(id) {
+async function removeLeg(id) {
   selection.remove(id)
   clearTimeout(undoTimer)
-  undoTimer = setTimeout(() => selection.dismissUndo(), UNDO_MS)
+  await limits.load()
+  const ms = limits.millis(UNDO_SECONDS_KEY)
+  if (ms === null) selection.dismissUndo() // the wait could not be read: no Undo is offered, never a typed time
+  else undoTimer = setTimeout(() => selection.dismissUndo(), ms)
 }
 watch(() => legs.value.map((e) => e.expiry).join(), () => (askExpiries.value = false))
 onBeforeUnmount(() => clearTimeout(undoTimer))
@@ -185,7 +196,7 @@ const resetFilters = () => (filters.value = { ...NO_FILTERS })
       <label>
         Strikes each side
         <select v-model.number="strikesEachSide" class="field ml-1" data-testid="filter-strike-range">
-          <option v-for="n in STRIKE_RANGES" :key="n" :value="n">{{ n }}</option>
+          <option v-for="n in strikeRanges" :key="n" :value="n">{{ n }}</option>
         </select>
       </label>
       <label>

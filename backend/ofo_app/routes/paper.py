@@ -316,7 +316,8 @@ async def _hold_until_ready(feed: LiveFeed, ctx: MarketContext, underlying: str,
         deadline = loop.time() + FORWARD_WAIT_S
         while True:
             await asyncio.sleep(POLL_SECONDS)
-            snapshot = read_snapshot(provider, underlying, ids, ctx.clock(), ctx.rate, feed_scope(ctx))
+            snapshot = read_snapshot(provider, underlying, ids, ctx.clock(), ctx.rate, feed_scope(ctx),
+                                     quality=ctx.forward_quality)
             if _read_ready(snapshot, ids) or not provider.status().connected or loop.time() >= deadline:
                 return snapshot
     finally:
@@ -327,7 +328,8 @@ async def _hold_until_ready(feed: LiveFeed, ctx: MarketContext, underlying: str,
 async def _snapshot(ctx: MarketContext, feed: LiveFeed | None, underlying: str, ids: list[str]):
     """One market read (the tracking routes' rule): with a live feed, a read that is not ready (a contract unpriced, or
     no IV inputs) holds what it needs in one hold until it is, or the wait passes (GC-LIVE F-1, F-3)."""
-    snapshot = read_snapshot(ctx.provider, underlying, ids, ctx.clock(), ctx.rate, feed_scope(ctx))
+    snapshot = read_snapshot(ctx.provider, underlying, ids, ctx.clock(), ctx.rate, feed_scope(ctx),
+                             quality=ctx.forward_quality)
     if feed is not None and ids and not _read_ready(snapshot, ids):
         snapshot = await _hold_until_ready(feed, ctx, underlying, ids, snapshot)
     return snapshot

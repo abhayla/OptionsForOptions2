@@ -36,10 +36,13 @@ CACHE_MAX_ENTRIES = 256
 FETCH_DEADLINE_SECONDS = 45.0
 #: F1: at most this many minute-candle calls in flight at once in this process, whatever the number of chart requests
 MAX_CONCURRENT_FETCHES = 2
-MAX_DAYS = 15
-#: calendar days fetched for N trading days: weekends plus room for exchange holidays (one call: Kite's minute limit is
-#: 60 days per call, F-64)
-_CALENDAR_SPAN = {n: n * 7 // 5 + 7 for n in range(1, MAX_DAYS + 1)}
+
+
+def calendar_span(days: int) -> int:
+    """Calendar days fetched for N trading days: weekends plus room for exchange holidays (one call: Kite's minute limit
+    is 60 days per call, F-64). The most N is the ``limits.history_max_days`` setting, checked by the route."""
+    return days * 7 // 5 + 7
+
 
 Fetcher = Callable[[str, datetime.datetime, datetime.datetime], list[MinuteBar]]
 #: (listed contracts) -> the minute-candle fetch for exactly those contracts
@@ -210,7 +213,7 @@ async def fetch(plan: Plan, *, days: int, invert: bool, now: datetime.datetime,
     """The Kite phase: NO database handle here. The whole phase ends by ``FETCH_DEADLINE_SECONDS``."""
     get = plan.reader([*plan.listed, plan.future])
     end = now.astimezone(IST)
-    start = datetime.datetime.combine(end.date() - datetime.timedelta(days=_CALENDAR_SPAN[days]), datetime.time(9),
+    start = datetime.datetime.combine(end.date() - datetime.timedelta(days=calendar_span(days)), datetime.time(9),
                                       tzinfo=IST)
     ids = [instrument_id(lc) for lc in plan.listed] + [instrument_id(plan.future)]
     try:

@@ -1,0 +1,33 @@
+{
+ "id": "reply-type-refuses-real-value-shape",
+ "scope": "generic",
+ "class": "Any reply field or rendered-text slot whose type accepts only a narrower shape than the real values that reach it (a clock time in a number slot, a name with spaces in an identifier field) fails the WHOLE reply: the route answers 500 for every request where that value appears, while tests built only from sample values that happen to fit stay green.",
+ "mechanism": "Reply models and explanation slots are deliberately strict (a reply string must be catalogue text, an identifier, an instrument id or money), but the values fed to them come from data (trigger units, playbook stage names) whose shapes were never enumerated against the type; a refused value raises inside reply construction, and a fallback that retries with the same value raises again.",
+ "first_seen": {
+  "date": "2026-11-01",
+  "where": "build/gcset-t19 (from feature/adjustments 554035b5): backend/ofo_app/adjustment_check.py:222-234 condition_line; backend/ofo_app/routes/adjustment_check.py CheckStageOut.name (Identifier), opportunities record stage field",
+  "evidence": "DB route test on scenario ADJ-43 (last day, 15:00): first `ValueError: PlaybookField slot must match ... got '15:00'` from condition_line (T-10b fires from 14:30 on expiry day; the fallback retried with the same value); after that fix `ValidationError stage.name String should match pattern '^[A-Za-z0-9_\\-.]{1,64}$' ... input_value='Last day'` (every check in a 'Last day'/'Last 2 days' stage). New tests_app/test_condition_line_units.py: 6 failed before the fix, 32 passed after (commit 97303cff)."
+ },
+ "fix": "Clock-time values get their own ClockTime slot and template; the condition line's last resort renders the trigger id only (never raises); stage names are sent as CatalogueText through the PlaybookName slot (guard kept). Stage-name fix in progress on build/gcset-t19 (GC-SET step 7).",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "Candidate checks being added with the fix: a pure test rendering a condition line for EVERY trigger in the scenario library's trigger table with a value of its unit (tests_app/test_condition_line_units.py), and a pure test building every stage-name-carrying reply model with every stage name in the scenario playbooks and system_playbooks.json. Status moves to guarded when both are merged."
+ },
+ "spec_ref": [
+  "spec/requirements/REQ-159.md",
+  "spec/requirements/REQ-160.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-11-01",
+   "where": "condition_line, trigger T-10b (unit time)",
+   "evidence": "500 on every playbook check where T-10b fires (expiry day from 14:30)"
+  },
+  {
+   "date": "2026-11-01",
+   "where": "check reply stage.name, opportunities stage",
+   "evidence": "500 on every check in a stage whose name has a space (last 1 day weekly, last 2 days monthly)"
+  }
+ ]
+}

@@ -34,30 +34,25 @@ Orchestrator defaults (not settled by the spec text; decided here in this module
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 
 from ofo.instruments.catalogue import Catalogue
-
-STEP = Decimal("100")
-
-# ADR-042 / REQ-026 AC-5 defaults. Admin-configurable; no Admin UI is built in this item.
-DEFAULT_CAPS: dict[str, Decimal] = {
-    "NIFTY": Decimal("3000"),
-    "SENSEX": Decimal("9000"),
-}
+from ofo.settings.calc import INDEXES, range_cap
 
 
 @dataclass(frozen=True)
 class RangeCaps:
-    """Per-index range extent caps (ADR-042). A stand-in for the Admin setting; no UI here."""
+    """Per-index range extent caps (ADR-042). No default: the values come from the settings registry
+    (`limits.range_cap_*`) through `from_settings`."""
 
-    caps: dict[str, Decimal] = field(default_factory=lambda: dict(DEFAULT_CAPS))
+    caps: dict[str, Decimal]
 
     @classmethod
-    def defaults(cls) -> "RangeCaps":
-        return cls(dict(DEFAULT_CAPS))
+    def from_settings(cls, values: Mapping[str, Decimal]) -> "RangeCaps":
+        return cls({name: Decimal(range_cap(values, name)) for name in INDEXES})
 
     def for_index(self, name: str) -> Decimal:
         try:
@@ -90,15 +85,15 @@ def _listed_strikes(catalogue: Catalogue, name: str, expiry: date) -> set[Decima
     return {c.strike for c in options}
 
 
-def _snap_floor_100(value: Decimal) -> Decimal:
+def _snap_floor_100(value: Decimal, step: Decimal) -> Decimal:
     """The largest 100-multiple <= value."""
-    return (value // STEP) * STEP
+    return (value // step) * step
 
 
-def _snap_ceil_100(value: Decimal) -> Decimal:
+def _snap_ceil_100(value: Decimal, step: Decimal) -> Decimal:
     """The smallest 100-multiple >= value."""
-    floor = _snap_floor_100(value)
-    return floor if floor == value else floor + STEP
+    floor = _snap_floor_100(value, step)
+    return floor if floor == value else floor + step
 
 
 def build_pick_list(
@@ -108,6 +103,7 @@ def build_pick_list(
     current_level: Decimal,
     caps: RangeCaps,
     *,
+    step: Decimal,
     direction: str,
 ) -> list[Decimal]:
     """Build one pick list ("lower" or "upper") starting at `current_level`.
@@ -132,6 +128,9 @@ def build_pick_list(
     a silently wrong list.
     """
     current_level = _require_decimal(current_level, "current_level")
+    step = _require_decimal(step, "step")
+    if step <= 0:
+        raise ValueError(f"step must be positive, got {step}")
     if direction not in ("lower", "upper"):
         raise ValueError(f"direction must be 'lower' or 'upper', got {direction!r}")
     if not name or not name.strip():
@@ -149,28 +148,28 @@ def build_pick_list(
         bound = max(min_strike, current_level - cap)
         strike_bound = bound == min_strike
         bound_beyond_current = bound < current_level
-        start = _snap_floor_100(current_level)
+        start = _snap_floor_100(current_level, step)
         if start == current_level:
-            start -= STEP
+            start -= step
         value = start
         while value >= bound:
             if value in listed_strikes:
                 values.append(value)
             # else: this 100-multiple is not a strike the catalogue lists for this expiry (a real
             # gap in a far-OTM chain) — skip it rather than offer an unreal value.
-            value -= STEP
+            value -= step
     else:
         bound = min(max_strike, current_level + cap)
         strike_bound = bound == max_strike
         bound_beyond_current = bound > current_level
-        start = _snap_ceil_100(current_level)
+        start = _snap_ceil_100(current_level, step)
         if start == current_level:
-            start += STEP
+            start += step
         value = start
         while value <= bound:
             if value in listed_strikes:
                 values.append(value)
-            value += STEP
+            value += step
 
     # Fix round 2: only append the binding bound as a final value when it genuinely lies beyond
     # current_level in THIS direction — a furthest listed strike that happens to sit on the wrong
@@ -227,14 +226,16 @@ def choose_range(
     caps: RangeCaps,
     lower_choice: Decimal,
     upper_choice: Decimal,
+    *,
+    step: Decimal,
 ) -> ExpectedRange:
     """Validate a user's picks against the built pick lists and return an immutable ExpectedRange.
 
     AC-6: a `lower_choice` above the current level (or an `upper_choice` below it) can never be a
     member of the corresponding list, so it is refused here as "not offered".
     """
-    lower_list = build_pick_list(catalogue, name, expiry, current_level, caps, direction="lower")
-    upper_list = build_pick_list(catalogue, name, expiry, current_level, caps, direction="upper")
+    lower_list = build_pick_list(catalogue, name, expiry, current_level, caps, step=step, direction="lower")
+    upper_list = build_pick_list(catalogue, name, expiry, current_level, caps, step=step, direction="upper")
 
     lower_choice = _require_decimal(lower_choice, "lower_choice")
     upper_choice = _require_decimal(upper_choice, "upper_choice")

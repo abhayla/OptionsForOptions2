@@ -202,6 +202,24 @@ def test_clock_is_the_scenario_clock():
     assert scenario_mode.load("ADJ-02").clock() == datetime.datetime.fromisoformat("2026-11-06T11:40:00+05:30")
 
 
+def test_a_socket_release_never_drops_a_scenario_quote():
+    """GC-SET 2026-11-01 (browser proof): a builder socket took ADJ-02's contracts on the shared fan-out and let go;
+    the fan-out then unsubscribed them under the scenario, the feed bus drained the change and every Compare approach
+    answered "has no price" until a restart. The scenario sends its one frame once, so it must never lose a contract:
+    it holds every one on the fan-out for the app's life (no subscriber count can reach zero)."""
+    from ofo_app.routes import leg_picker  # noqa: PLC0415
+
+    scn = scenario_mode.load("ADJ-02")
+    feed = scenario_mode.overrides(scn)[leg_picker.get_feed]()
+    ids = list(scn.rows_by_id)
+    assert all(feed.fanout.subscriber_count(i) >= 1 for i in ids)  # the scenario's own hold
+    handle = feed.fanout.subscribe(lambda _q: None, ids)  # a socket takes them all ...
+    feed.fanout.unsubscribe(handle)  # ... and lets go
+    scn.provider.drain_subscription_changes()  # the feed bus syncs: anything released now is gone for good
+    unpriced = [i for i in ids if scn.provider.book.get(i, scn.clock()) is None]
+    assert unpriced == [], f"{len(unpriced)} of {len(ids)} scenario contracts lost their price"
+
+
 # ---- no order path ---------------------------------------------------------------------------------------------------
 @pytest.mark.parametrize("method,path", sorted(scenario_mode.ORDER_ROUTES))
 async def test_every_order_route_refused(monkeypatch, method, path):

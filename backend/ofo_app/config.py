@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-from decimal import Decimal
 from functools import lru_cache
 from urllib.parse import urlsplit
 
@@ -27,9 +26,6 @@ class Settings(BaseSettings):
 
     DATABASE_URL: str
     APP_ENV: str = "development"
-    #: ADR-058 admin setting: refuse a catalogue update that would drop MORE than this percentage of an index's live
-    #: contracts at once (catalogue_store.DEFAULT_MAX_DELIST_PERCENT; a test asserts both are 10).
-    CATALOGUE_MAX_DELIST_PERCENT: Decimal = Decimal("10")
     #: W-064: TEST-ONLY. Serves the outcome route from the recorded 2026-10-08 frames (ofo_app.replay_mode). Refused at
     #: start-up unless APP_ENV is exactly "test", so production settings cannot enable it.
     OUTCOME_REPLAY: bool = False

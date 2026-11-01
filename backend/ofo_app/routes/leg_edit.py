@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import datetime
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from decimal import Decimal
 from typing import Annotated, Literal
 
@@ -37,6 +37,7 @@ from ofo.charges import ChargeRates
 from ofo.engine.legs import Action, Instrument, Leg
 from ofo.errors import LegValue
 from ofo.errors.explanations import render_explanation
+from ofo.errors.slots import INT_ABS_MAX
 from ofo.instruments.catalogue import Catalogue, ContractKind
 from ofo.instruments.freeze_limits import StoredFreeze
 from ofo.instruments.models import InstrumentId as ContractKey
@@ -73,7 +74,9 @@ from ofo_app.routes.outcome import (
     OutcomeRequest,
     OutcomeResponse,
     RequestSeq,
+    check_lots,
     get_answer_clock,
+    get_calc_settings,
     get_margin_source,
     get_market_context,
     get_streaming,
@@ -190,7 +193,7 @@ class EditLegIn(LegIn):
     planned_entry: str | None = Field(default=None, pattern=r"^\d+(\.\d{1,2})?$")  # type: ignore[assignment]
     captured_at: AwareDatetime | None = None  # type: ignore[assignment]
     close_at: AwareDatetime | None = None  # ADR-197: the close time a capture after hours answered (sent back as is)
-    base_lots: StrictInt = Field(gt=0, le=10000)  # strict like the shared leg's lots: true, 1.0, "2" refused
+    base_lots: StrictInt = Field(gt=0, le=INT_ABS_MAX)  # cap: limits.max_lots (check_lots); strict: true, 1.0, "2" refused
     included: StrictBool = True
     typed: StrictBool = False
 
@@ -531,7 +534,9 @@ async def leg_edit(req: LegEditIn,  # noqa: PLR0913 - FastAPI dependencies, one 
                    now: Annotated[AnswerClock, Depends(get_answer_clock)],
                    streaming: Annotated[Callable[[str], bool] | None, Depends(get_streaming)],
                    rates: Annotated[ChargeRates | None, Depends(load_charge_rates)],
-                   margin_source: Annotated[OutcomeMargin | None, Depends(get_margin_source)]) -> LegEditOut:
+                   margin_source: Annotated[OutcomeMargin | None, Depends(get_margin_source)],
+                   calc_settings: Annotated[Mapping[str, Decimal], Depends(get_calc_settings)]) -> LegEditOut:
+    check_lots([n for x in req.legs for n in (x.lots, x.base_lots)], calc_settings)  # limits.max_lots, before any work
     legs = _legs_of(cat, req, today)
     new_legs, moved = apply_edit(cat, req, legs, today, _move_gate(cat, req, ctx, legs, list_current))
     entries_of = [_entry_of(cat, req.underlying, new_legs, i) for i in range(len(new_legs))]
@@ -592,7 +597,8 @@ async def leg_edit(req: LegEditIn,  # noqa: PLR0913 - FastAPI dependencies, one 
                    "planned_entry": f"{new_legs[i].leg.entry_price:f}", "captured_at": stamps[i] or now()}
                   for i in shown])
         margin: Margin = await margin_for_request(outcome_req, ctx, margin_source)
-        outcome = outcome_response(outcome_req, ctx, streaming, now=now, rates=rates, margin=margin)
+        outcome = outcome_response(outcome_req, ctx, streaming, now=now, rates=rates, margin=margin,
+                                   settings=calc_settings)
     name = None if template is None else render_explanation("catalogue_template_name", text=template.name)
     reply = {"legs": out_legs, "controls": {name: why is None for name, why in off_now.items()},
              "control_reasons": {name: None if why is None else render_reason(why) for name, why in off_now.items()},

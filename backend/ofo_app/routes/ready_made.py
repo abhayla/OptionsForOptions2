@@ -12,6 +12,7 @@ import asyncio
 import datetime
 import itertools
 import time
+from collections.abc import Mapping
 from decimal import Decimal
 from typing import Annotated, Literal
 
@@ -21,6 +22,7 @@ from ofo.errors import render
 from ofo.errors.explanations import render_explanation
 from ofo.money import PAISE
 from ofo.rules.inputs import DataHealth
+from ofo.settings.calc import quick_pick_distances
 from ofo.strategy.loader import load_templates
 from ofo.strategy.placement import (
     Market,
@@ -42,7 +44,7 @@ from ofo_app.live_push import LiveFeed
 from ofo_app.routes.broker import current_user_ref
 from ofo_app.routes.chain import get_chain_reader
 from ofo_app.routes.leg_picker import WindowLease, get_feed
-from ofo_app.routes.outcome import MarketContext, get_market_context
+from ofo_app.routes.outcome import MarketContext, get_calc_settings, get_market_context
 from ofo_app.routes.strategies import StrategyRefused
 from ofo_app.underlying import Underlying
 
@@ -199,12 +201,13 @@ async def load_template(
 
 
 @router.post(QUICK_PICK_PATH, response_model=ReadyMadeOut)
-async def quick_pick(
+async def quick_pick(  # noqa: PLR0913 - FastAPI dependencies, one per input
         body: QuickPickIn,
         ctx: Annotated[MarketContext | None, Depends(get_market_context)],
         reader: Annotated[ChainReader, Depends(get_chain_reader)],
         feed: Annotated[LiveFeed | None, Depends(get_feed)],
         viewer: Annotated[str, Depends(current_user_ref)],
+        calc_settings: Annotated[Mapping[str, Decimal], Depends(get_calc_settings)],
 ) -> ReadyMadeOut:
     try:
         spot, fresh = await _hold_and_read(feed, ctx, body.underlying, viewer)
@@ -213,7 +216,8 @@ async def quick_pick(
             raise PlacementRefused(Refusal.EXPIRY_MISSING)
         strikes = _strikes(catalogue)
         pick = QuickPick(body.kind, body.underlying, body.distance, Action(body.side), body.expiry)
-        placed = place_quick_pick(pick, Market(spot, fresh, _gap(strikes)), strikes)
+        placed = place_quick_pick(pick, Market(spot, fresh, _gap(strikes)), strikes,
+                                  quick_pick_distances(calc_settings))
         return _out(body.underlying, placed, {body.expiry: catalogue})
     except PlacementRefused as refusal:
         raise _refused(body.underlying, refusal) from None

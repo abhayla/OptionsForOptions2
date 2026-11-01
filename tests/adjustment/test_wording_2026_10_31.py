@@ -5,7 +5,7 @@ Expected strings are typed here from the owner's decision list, not read back fr
 from __future__ import annotations
 
 import pytest
-from ofo.adjustment.playbook_eval import _stage_words
+from ofo.adjustment.playbook_eval import stage_words
 from ofo.errors import CATALOGUE, render
 from ofo.errors.explanations import (
     EXPLANATIONS,
@@ -25,7 +25,7 @@ def test_no_stage_value_names_the_stage_and_says_how_to_fix_it():
 
 @pytest.mark.parametrize("bad", [None, "", "   ", 5, 'say "x"', "{stage}", "x" * 81])
 def test_missing_or_unusable_stage_name_never_shows_a_brace_or_a_gap(bad):
-    word = _stage_words(bad)
+    word = stage_words(bad)
     assert word == "current"
     text = render("adjust_trigger_no_stage_value", stage=word).what_happened
     assert text == "No value is set for this rule in the current stage."
@@ -33,7 +33,7 @@ def test_missing_or_unusable_stage_name_never_shows_a_brace_or_a_gap(bad):
 
 
 def test_a_real_stage_name_is_kept_trimmed():
-    assert _stage_words(" Late ") == "Late"
+    assert stage_words(" Late ") == "Late"
 
 
 def test_no_stage_and_no_expiry_values_tell_the_user_what_to_enter():

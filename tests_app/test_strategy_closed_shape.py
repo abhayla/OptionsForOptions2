@@ -26,6 +26,9 @@ from ofo_app import strategy_store as store
 from ofo_app.catalogue_store import apply_update
 from test_strategy_store import (AS_OF, CHECK_VIOLATION, IRON_CONDOR, LOT, _app, _client, _expect_refused,
                                  _fixture_rows, _ids, _user, _with_draft)
+from ofo.settings import calc as _calc, defaults as _defaults
+
+_MAX_DELIST = _calc.max_delist_percent(_defaults())
 
 SENTENCE = "LTP is 22950.35 buy now"
 INSERT_DEFINITION = ("INSERT INTO public.strategies (user_ref, underlying, definition, definition_schema_version) "
@@ -145,7 +148,7 @@ async def test_ac5_save_draft_refuses_a_sentence_preference_value(app_engine):
     async with app_engine.connect() as conn:
         trans = await conn.begin()
         try:
-            await apply_update(conn, _fixture_rows(), as_of=AS_OF)
+            await apply_update(conn, _fixture_rows(), as_of=AS_OF, max_delist_percent=_MAX_DELIST)
             ids = await _ids(conn)
             user = _user()
             with pytest.raises(sf.StoredFormError) as err:

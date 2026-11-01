@@ -28,8 +28,8 @@ from typing import Final, Literal
 from ofo.engine.legs import Action, Instrument
 from ofo.money import HUNDREDTH
 
-#: Q253 condition 1's default, the one home of the number (an admin setting overrides it; the admin screen is Step 6).
-NEAR_LEVEL_THRESHOLD_PERCENT: Final = Decimal("0.5")
+#: Q253 condition 1's threshold is the user's ``adjustments.near_level_percent`` preference (REQ-168 AC-1), passed in by
+#: the caller; this module holds no default.
 #: The closed code of every platform detection; the screen shows REQ-045 AC-1's label for it.
 PLATFORM_DETECTION: Final = "platform_detection"
 NEAR_SHORT_STRIKE: Final = "near_short_strike"

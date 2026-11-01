@@ -25,6 +25,10 @@ from ofo.engine.chain_values import ChainModel, chain_greeks, chain_model, money
 from ofo.engine.legs import Instrument
 from ofo.marketdata.quote import NormalizedQuote, SourceMetadata
 from ofo.rules.inputs import DataHealth
+from ofo.settings import calc as _fq_calc
+from ofo.settings import defaults as _fq_defaults
+
+_FQ = _fq_calc.forward_quality(_fq_defaults())
 
 D = Decimal
 IST = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
@@ -55,7 +59,7 @@ REAL = [_quote(CE_ID, Instrument.CE, "22500", "151.30"), _quote(PE_ID, Instrumen
 
 
 def _model(chain=REAL, spot=_spot(), valuation=VALUATION) -> ChainModel:  # noqa: B008 - fixed test inputs
-    return chain_model(chain, spot, EXPIRY, valuation, RATE)
+    return chain_model(chain, spot, EXPIRY, valuation, RATE, _FQ)
 
 
 def test_proof_real_nifty_cell_iv_and_every_greek_equal_the_hand_check():
@@ -70,7 +74,7 @@ def test_proof_real_nifty_cell_iv_and_every_greek_equal_the_hand_check():
     assert abs(pe.gamma - D("0.001080")) <= TIGHT
     assert abs(pe.theta - D("-12.005448")) <= LOOSE and abs(pe.vega - D("10.786069")) <= LOOSE
     assert (model.basis, model.missing) == ("SPOT_FALLBACK", None)
-    assert chain_greeks(REAL, _spot(), EXPIRY, VALUATION, RATE) == model.greeks  # one calculator, two readers
+    assert chain_greeks(REAL, _spot(), EXPIRY, VALUATION, RATE, _FQ) == model.greeks  # one calculator, two readers
 
 
 @pytest.mark.parametrize(("state", "cell"), [
@@ -158,9 +162,9 @@ def test_u18_closed_market_computes_iv_from_the_held_close_and_makes_no_stale_la
     In market hours the same STALE spot keeps its label (hours unchanged)."""
     stale_chain = [_quote(CE_ID, Instrument.CE, "22500", "151.30", health=DataHealth.STALE),
                    _quote(PE_ID, Instrument.PE, "22550", "145.10", health=DataHealth.STALE)]
-    closed = chain_model(stale_chain, _spot(health=DataHealth.STALE), EXPIRY, VALUATION, RATE, market_closed=True)
+    closed = chain_model(stale_chain, _spot(health=DataHealth.STALE), EXPIRY, VALUATION, RATE, _FQ, market_closed=True)
     assert set(closed.greeks) == {CE_ID, PE_ID}
     assert closed.label is None
     assert abs(closed.greeks[CE_ID].iv - D("0.113440")) < TIGHT  # the same hand-checked IV as the live proof
-    hours = chain_model(stale_chain, _spot(health=DataHealth.STALE), EXPIRY, VALUATION, RATE)
+    hours = chain_model(stale_chain, _spot(health=DataHealth.STALE), EXPIRY, VALUATION, RATE, _FQ)
     assert str(hours.label) == "stale since 09:20 IST"

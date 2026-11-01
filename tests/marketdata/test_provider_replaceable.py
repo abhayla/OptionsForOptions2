@@ -13,6 +13,8 @@ from ofo.marketdata.feed_health import FeedState, QuoteBook
 from ofo.marketdata.provider import MarketDataProvider, NotSupported, ProviderStatus
 from ofo.marketdata.quote import NormalizedQuote, SourceMetadata
 from ofo.rules.inputs import DataHealth
+from ofo.settings import calc, defaults
+WINDOWS = calc.feed_windows(defaults())  # the registry's windows, passed explicitly (REQ-167 AC-4)
 
 pytestmark = pytest.mark.repo_scan
 
@@ -25,7 +27,7 @@ class FakeProvider(MarketDataProvider):
     def __init__(self):
         self.listener = None
         self.subscribed = []
-        self.feed = FeedState()
+        self.feed = FeedState(windows=WINDOWS)
         self.book = QuoteBook(self.feed)
 
     def subscribe(self, instrument_ids):

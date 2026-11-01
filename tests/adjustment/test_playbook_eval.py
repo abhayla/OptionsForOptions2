@@ -22,9 +22,11 @@ from ofo.adjustment.playbook_eval import (
     ShortLeg,
     StrategyState,
     body_from_fixture,
-    evaluate,
     reason_text,
     validate_body,
+)
+from ofo.adjustment.playbook_eval import (
+    evaluate as _evaluate,
 )
 from ofo.engine import Action, Instrument, Leg, Strategy
 from test_adjust_scenarios import IDS, PLAYBOOKS, load
@@ -32,6 +34,16 @@ from test_adjust_scenarios import IDS, PLAYBOOKS, load
 D = Decimal
 F71 = "ADJ-42"
 Q4 = D("0.0001")
+from ofo.settings import defaults as _registry_defaults  # noqa: E402
+from ofo.settings import hhmm_text  # noqa: E402
+
+GAP_UNTIL = hhmm_text(_registry_defaults()["adjustments.gap_at_open_until"])  # 09:30, passed explicitly
+
+
+def evaluate(*args, **kw):
+    """playbook_eval.evaluate with the registry default gap window passed explicitly (REQ-168 AC-1)."""
+    kw.setdefault("gap_until", GAP_UNTIL)
+    return _evaluate(*args, **kw)
 
 
 def _row(sc: dict, leg: dict) -> dict:
@@ -84,7 +96,10 @@ def state_of(sc: dict) -> StrategyState:
     pnl = booked + sum(sign[x["side"]] * x["quantity"] * (ltp(x) - D(x["entry"])) for x in legs) if priced else None
     options = [x for x in legs if x["type"] != "FUT"]
     left = sum(-sign[x["side"]] * x["quantity"] * ltp(x) for x in options) if priced and options else None
-    cost = sum((D(_row(sc, x)["ask"]) - D(_row(sc, x)["bid"])) * x["quantity"] + 40 for x in options) if options else None
+    # ADR-221: the cheapest offered approach's Compare cost, as the generator's hand path states it
+    cost = _dec(sc["expected"]["adjustment_cost"])
+    approach = sc["expected"].get("adjustment_approach")
+    no_cost = None if cost is not None else "adjust_trigger_no_approach_priced"
     whole = sc["expected"]["at_expiry_whole_trade"]
     spot = None if sc["data_state"]["spot_source"] == "none" else D(sc["market"]["spot"])
     expiry_pnl = None
@@ -98,6 +113,7 @@ def state_of(sc: dict) -> StrategyState:
         max_loss=(whole["max_loss"] if whole["max_loss"] == "UNLIMITED" else D(whole["max_loss"])) if whole["exact"] else None,
         max_profit=(whole["max_profit"] if whole["max_profit"] == "UNLIMITED" else D(whole["max_profit"])) if whole["exact"] else None,
         margin=D(margin["value"]) if margin["state"] == "stated" else None, premium_left=left, adjustment_cost=cost,
+        adjustment_approach=approach, adjustment_cost_reason=no_cost,
         atm_iv=D(sc["market"]["atm_iv"]), entry_atm_iv=D(sc["position"]["entry"]["atm_iv"]),
         day_open=_dec(sc["market"]["day_open"]), prev_close=_dec(sc["market"]["prev_close"]),
         adjustments_used=sc["position"]["adjustments_used"], expiry_pnl_at_spot=expiry_pnl, tighten_percent=tighten,

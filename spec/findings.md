@@ -1105,6 +1105,9 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   never sees on the Compare. Spec gap found with it: at check time no approach is picked, so "the adjustment's own
   charges" does not say WHICH approach's cost counts. Bears on REQ-159, ADR-216, ADR-008. Status: **read from the code,
   not yet measured on a scenario**; open for owner decision (GC-ADJ3).
+- **FIXED 2026-11-01** (GC-SET step 7, ADR-221 + ADR-222 (8), build/settings db19f061): one engine function prices the
+  Compare cell and T-19 (cheapest approach that could be priced now); COST_PER_LEG deleted. Proof: ADJ-02 T-19 = A-29
+  Rs 92.35 = the cheapest Compare cell (old formula Rs 342.00); `test_t19_cost_equals_the_cheapest_compare_cell_for_every_scenario`.
 
 ## F-78 - Three playbook limits are saved and shown in the editor but nothing applies them
 - Read from the code 2026-10-31: `hide_oi_below`, `hide_spread_pct_of_mid_above` and `roll_debit_limit` are stored in
@@ -1113,6 +1116,8 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   "Strike liquidity" row shows the widest spread with no threshold. A user who sets them is told nothing about this.
   Separately, `low_oi_blocked` is set only by scenario mode (`ofo_app/scenario_mode.py:282`); no live source sets it.
   Bears on REQ-159 AC-6, catalogue F-12. Status: **read from the code**; open for owner decision (GC-ADJ3).
+- 2026-11-01: still OPEN - no GC-SET step fixes it (not in the contract's steps); the settings reader guard covers app
+  settings only.
 
 ## F-79 - The Undo window in code is 8 s and 10 s; the spec says about 5 s, admin-configurable
 - Read from the code 2026-10-31 (settings scan, `docs/design/settings-scan-2026-10-31.md`): ADR-007 row Q56 says a
@@ -1120,3 +1125,49 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   (`frontend/src/pages/OptionChainPage.vue:34` `UNDO_MS`) and 10000 ms for Clear all (`frontend/src/lib/legEdit.js:26`
   `CLEAR_UNDO_MS`), both typed in code. Bears on ADR-007, ADR-222. Status: **read from the code**; open for owner
   decision (which default the setting starts at).
+
+## F-80 - Every playbook check where the clock trigger T-10b fires answered 500
+- Measured 2026-11-01 (GC-SET step 7, DB route test on scenario ADJ-43, last day 15:00): `condition_line`
+  (`ofo_app/adjustment_check.py:222-234`) renders "15:00" into a number slot, the slot refuses it, and the fallback
+  retries with the same value, so the check route raises `ValueError: PlaybookField slot must match ... got '15:00'`.
+  T-10b is the only trigger with unit `time`; it fires on expiry day from 14:30, so every such check failed. Fixed on
+  build/gcset-t19 97303cff (ClockTime slot; last-resort line never raises); test 6 failed before, 32 passed after.
+  Class: `knowledge/findings/reply-type-refuses-real-value-shape.json`. Bears on REQ-159.
+
+## F-81 - Every playbook check in a stage whose name has a space answered 500
+- Measured 2026-11-01 (same run, after F-80's fix): the check reply's `stage.name` and the opportunities record's stage
+  are typed `Identifier` (no spaces), so "Last day" / "Last 2 days" fail reply validation (`String should match pattern
+  '^[A-Za-z0-9_\-.]{1,64}$' ... input_value='Last day'`): every check in the last stage (1 day weekly, 2 days monthly)
+  failed all day. Fix (decided, technical): the stage name is sent as catalogue text through the PlaybookName slot,
+  keeping the reply-type guard. Class: `knowledge/findings/reply-type-refuses-real-value-shape.json`. Bears on
+  REQ-159, REQ-160.
+
+## F-82 - On a chain with a parity forward, the risk-free rate moves the implied yield, not the Greeks a user reads
+- Measured 2026-11-01 14:1x IST (GC-SET step 2 browser proof, scenario ADJ-02, Sell Put NIFTY 9 Nov 23400 PE, spot
+  23420, planned entry 98.00): the same outcome request priced in-process at rate 0.065 and 0.07 gives IV 13.10% at
+  both, Delta 29.34 -> 29.33, Theta 1039.25 -> 1039.19, Vega -560.84 -> -560.82 per position (per unit Theta 15.988 ->
+  15.987: the page's 2-decimal display does not move), while the reply's `dividend_yields` for 9 Nov moves
+  -0.0000115 -> 0.0050063; the live dev server gave the same two values on fresh requests (3 of 3 at 0.07 set
+  14:14 IST, 1 at 0.065 after each reset). One earlier reading of 0.0048023 at 0.07 (a reply captured from the page
+  at ~14:06) did not reproduce and is unexplained. Mechanism: the engine reads S and the forward
+  from put-call parity (ADR-061, ADR-063, ADR-220 "pricing model kept"); F = S e^((r-q)T) is fixed by the market, so a
+  higher r is absorbed by a higher q and the option price, IV and Greeks stay put. A model that held q fixed would
+  re-imply IV 13.10% -> 13.16% and move Theta to about 15.92 per unit. The rate DOES reach the engine (the wiring is
+  right); the effect is just small where parity holds. Only the spot-fallback path (fewer than 3 usable strikes,
+  q = 0) shows the rate in prices and Greeks directly. Bears on REQ-167 AC-1 (the registry's "what it changes" line
+  for `pricing.risk_free_rate` says "option prices, Greeks, the forward and probability figures", which over-states
+  the visible effect on a parity chain). Status: **measured**; open for owner decision (whether that line is reworded,
+  e.g. "the yearly interest rate the forward is read with; on a liquid chain it mostly shifts the implied dividend
+  yield, so prices and Greeks move very little"). Not a defect: no failure class registered.
+
+## F-83 - Scenario mode lost every contract's price once a builder socket let go
+- Measured 2026-11-01 (GC-SET step 2 browser proof, dev API on ADJ-02, strategy 72): on a fresh server the Compare
+  priced all 7 approaches (A-29 Rs 92.35, A-01 Rs 173.36); a few minutes after a Strategy Builder socket closed, every
+  approach but "no change" refused with "Leg 3 (SELL NIFTY 23,500.00 CE ...) has no price" and the Paper view read
+  "prices not live", until a restart. Cause: `scenario_mode.load` subscribes its contracts on the provider, outside the
+  shared fan-out's holder count, so the socket's release brought the count to zero, the fan-out unsubscribed them, and
+  the feed bus's sync dropped the parked quotes for good (the scenario sends its frame once; live Kite re-sends on
+  subscribe). New test: without the fix "82 of 82 scenario contracts lost their price"; fixed by a scenario hold on the
+  fan-out (structural), file 61 passed. Class: `knowledge/findings/one-shot-feed-loses-quote-on-shared-unsubscribe.json`
+  (guarded). Bears on ADR-214 (the scenario library as the proof surface).
+

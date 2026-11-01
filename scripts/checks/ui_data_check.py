@@ -11,7 +11,8 @@ round-trip charges), ADR-172 (IV from the bid-ask mid when two-sided, else the L
 
 Independence: this file imports nothing from `ofo` or `ofo_app` (a test parses it and fails on such an import). Its
 inputs are DATA only: the reply itself, the option chain (bid/ask) captured around it, the risk-free rate (the
-configured value 0.065 read from backend/ofo_app/live_market.py LIVE_RATE, passed in as a number) and the published
+configured value 0.065, the default of pricing.risk_free_rate in backend/ofo/settings/registry.json, passed in as a
+number) and the published
 charge-rate table (the 2026-10-15 seed rows of migration 0012, copied here as data).
 
 Known bypasses (not chased; the threat model is "one altered figure in the reply"):
@@ -54,7 +55,7 @@ from fractions import Fraction
 from pathlib import Path
 
 IST = dt.timezone(dt.timedelta(hours=5, minutes=30))
-RISK_FREE_RATE = 0.065  # configured input: backend/ofo_app/live_market.py LIVE_RATE (read, not imported)
+RISK_FREE_RATE = 0.065  # configured input: registry.json pricing.risk_free_rate default (a stored setting overrides it)
 PAISA = Decimal("0.01")
 # Published Zerodha F&O options rates, seed of migration 0012 (read on 2026-10-15; F-35). Data, not engine code.
 CHARGE_RATES = {

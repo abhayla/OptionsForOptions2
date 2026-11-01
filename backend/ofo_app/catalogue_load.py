@@ -4,8 +4,9 @@
 
 Spec basis: REQ-053 AC-2 and ADR-058/059 (the guarded update): the command only DOWNLOADS, PARSES and calls the existing
 ``apply_update`` unchanged, so every guard (truncated-list refusal per index and per expiry, retirement, identity
-rules) applies exactly as for any other caller. The ADR-058 admin setting ``CATALOGUE_MAX_DELIST_PERCENT`` is read from
-``ofo_app.config.Settings`` and passed explicitly. This command covers only "read the setting" of issue #126; the
+rules) applies exactly as for any other caller. The ADR-058 admin setting ``data.max_delist_percent`` is read from
+the settings store at run time (REQ-167 AC-4; the env var is gone) and passed explicitly. This command covers only
+"read the setting" of issue #126; the
 Notifier alert and audit record for a refusal are not built here.
 
 ``as_of`` is the DATABASE clock (``clock_timestamp()``), never the application's. On success it commits and prints the
@@ -21,8 +22,10 @@ import sys
 from datetime import datetime
 from typing import Any, TextIO
 
+from ofo.settings import calc
 from sqlalchemy import text
 
+from ofo_app import settings_store
 from ofo_app.catalogue_store import StoreUpdateResult, apply_update, parse_rows_naming_the_row
 
 _NOW = text("SELECT clock_timestamp()")
@@ -34,7 +37,7 @@ def format_counts(result: StoreUpdateResult) -> str:
             f"reinstated={result.reinstated}")
 
 
-async def run(conn: Any, csv_text: str, settings: Any, out: TextIO | None = None, *,
+async def run(conn: Any, csv_text: str, out: TextIO | None = None, *,
               as_of: datetime | None = None) -> int:
     """Apply one downloaded list on ``conn``; returns the exit code. Never commits. A refusal (a guard, an unparseable
     row, a value the store cannot hold) is printed and returns 1 with nothing written (the work runs in a savepoint).
@@ -46,8 +49,9 @@ async def run(conn: Any, csv_text: str, settings: Any, out: TextIO | None = None
         if as_of is None:
             as_of = (await conn.execute(_NOW)).scalar_one()
         async with conn.begin_nested():
-            result = await apply_update(conn, rows, as_of=as_of,
-                                        max_delist_percent=settings.CATALOGUE_MAX_DELIST_PERCENT)
+            # the setting in force NOW, read at each run; a store that cannot answer raises (fail closed)
+            percent = calc.max_delist_percent(await settings_store.settings_in_force(conn))
+            result = await apply_update(conn, rows, as_of=as_of, max_delist_percent=percent)
     except ValueError as exc:  # CatalogueStoreError is a ValueError; so are the domain's truncation guards
         print(f"catalogue update REFUSED, nothing written: {exc}", file=out)
         return 1
@@ -55,7 +59,7 @@ async def run(conn: Any, csv_text: str, settings: Any, out: TextIO | None = None
     return 0
 
 
-async def load_once(settings: Any, out: TextIO | None = None) -> int:
+async def load_once(out: TextIO | None = None) -> int:
     """Download today's list and apply it through ``run`` in one transaction (commit on 0, roll back otherwise). The
     shared body of the command and the scheduler (``ofo_app.catalogue_refresh``); the download goes through the Kite
     door (``ofo.broker.kite_http.open_url``, checked against ALLOWED_CALLS and the egress gate). A download failure
@@ -66,7 +70,7 @@ async def load_once(settings: Any, out: TextIO | None = None) -> int:
     csv_text = await asyncio.to_thread(download_instruments_csv)
     async with get_engine().connect() as conn:
         trans = await conn.begin()
-        code = await run(conn, csv_text, settings, out)
+        code = await run(conn, csv_text, out)
         if code == 0:
             await trans.commit()
         else:
@@ -75,12 +79,10 @@ async def load_once(settings: Any, out: TextIO | None = None) -> int:
 
 
 async def main() -> int:
-    from ofo_app.config import get_settings  # noqa: PLC0415 - kept off the import path
     from ofo_app.db import close_db  # noqa: PLC0415
 
-    settings = get_settings()
     try:
-        return await load_once(settings)
+        return await load_once()
     finally:
         await close_db()
 

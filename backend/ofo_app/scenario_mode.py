@@ -61,6 +61,8 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
 
+from fastapi import Depends
+
 from ofo.engine import adjust_money
 from ofo.instruments.models import BSE_FO, BSE_INDEX, INDEX_ROWS, NSE_FO, NSE_INDEX
 from ofo.instruments.parser import parse_instruments_rows
@@ -110,6 +112,14 @@ NON_ORDER_ROUTES: frozenset[tuple[str, str]] = frozenset({
     ("PUT", "/strategies/{strategy_id}"),
     ("POST", "/strategies/{strategy_id}/restore/{seq}"),
     ("POST", "/strategies/{strategy_id}/versions/{number}/confirm"),
+    ("POST", "/api/settings/charges"),  # GC-SET 2: the admin sets the charge rates (app data in the dev DB, no order)
+    ("POST", "/api/settings/{key}"),  # GC-SET 2: the admin sets one setting (app data, no order, no market data)
+    ("POST", "/api/adjustments/preferences/{key}"),  # REQ-168: the user sets a preference (app data, no order)
+    ("POST", "/api/adjustments/preferences/{key}/reset"),  # REQ-168: the user resets one (app data, no order)
+    ("POST", "/api/settings/{key}/reset"),  # GC-SET 2: the admin resets one setting (app data, no order)
+    ("POST", "/api/system-playbooks/{strategy_type}/versions"),  # REQ-169: the admin saves a system playbook version
+    ("POST", "/api/system-playbooks/{strategy_type}/versions/{version}/restore"),  # REQ-169: restore = a new version
+    ("POST", "/api/system-playbooks/{strategy_type}/approve"),  # REQ-169: approve a Draft (app data, no order)
 })
 MUTATING_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 
@@ -532,12 +542,25 @@ def overrides(scn: Scenario) -> dict[Any, Any]:
     from ofo_app.catalogue_picker import PickableContract  # noqa: PLC0415
     from ofo_app.chain_push import ChainCatalogue  # noqa: PLC0415
     from ofo_app.kite_margin import KiteMargin  # noqa: PLC0415
-    from ofo_app.live_push import LiveFeed  # noqa: PLC0415
+    from ofo_app.live_push import LiveFeed, no_listener  # noqa: PLC0415
     from ofo_app.outcome_margin import OutcomeMargin  # noqa: PLC0415
     from ofo_app.routes import chain, leg_picker, live, outcome, planned_entry  # noqa: PLC0415
 
     ctx = outcome.MarketContext(scn.provider, scn.clock, scn.rate)
+
+    async def scenario_context(read_settings=Depends(outcome.get_request_settings_reader)):  # noqa: B008 - FastAPI dependency
+        """The scenario stands in for live, so it prices with the ``pricing.risk_free_rate`` setting in force at each
+        request (the scenario's own rate is only the starting value); same helper as the live dependency. A store that
+        cannot answer fails closed. Replay mode and unit-test overrides keep their own rate. (No annotation on the
+        parameter: this module's postponed annotations cannot see the function-local ``outcome`` import.)"""
+        return await outcome.with_rate_in_force(ctx, read_settings)
+
     feed = LiveFeed(ctx, FanOut(scn.provider))
+    # The scenario sends its one frame once (``load``), so it holds every contract it subscribed on the fan-out for
+    # the app's life: a socket letting go never brings a contract's subscriber count to zero, so the fan-out never
+    # unsubscribes it under the scenario (that parked its quote and the feed bus's drain dropped it for good: every
+    # Compare approach then answered "has no price" until a restart, GC-SET 2026-11-01).
+    feed.fanout.subscribe(no_listener, [instrument_id(lc) for lc in scn.provider.instrument_master()], max_queue=1)
     contracts: list[Any] = []
     permissions: dict[str, str] = {}
     for lc in scn.provider.instrument_master():
@@ -571,7 +594,7 @@ def overrides(scn: Scenario) -> dict[Any, Any]:
     margin = OutcomeMargin(lambda: ("scenario", scn.scenario_id), open_client, clock=scn.clock)
     live.set_replay_feed(lambda: feed)
     return {
-        outcome.get_market_context: lambda: ctx,
+        outcome.get_market_context: scenario_context,
         outcome.get_answer_clock: lambda: scn.clock,
         outcome.get_streaming: lambda: None,
         outcome.get_margin_source: lambda: margin,

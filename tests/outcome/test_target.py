@@ -8,18 +8,21 @@ from ofo.engine.model import estimate
 from ofo.outcome.target import TargetAsk, clamp_at, first_close, live_target, target_limits
 from ofo.scenario.config import ScenarioSettings
 from ofo.scenario.levels import build_level_set
+from ofo.settings import defaults
+from ofo.settings import defaults as _d
 
 from tests.engine.test_estimate_at import CLOSE, NOW, SPOT, SPREAD, _model, later_leg
 
 STEP = D(50)
+SPAN = defaults()["scenarios.target_span"]  # the registry default (REQ-167)
 
 
 def _levels(m):
-    return build_level_set(m, ScenarioSettings().for_index("NIFTY"))
+    return build_level_set(m, ScenarioSettings.from_values(_d()).for_index("NIFTY"))
 
 
 def test_limits_are_spot_ten_percent_snapped_inward_to_the_step():
-    lim = target_limits(SPOT, STEP)  # 22,976.85: 20,679.165 .. 25,274.535
+    lim = target_limits(SPOT, STEP, SPAN)  # 22,976.85: 20,679.165 .. 25,274.535
     assert (lim.min, lim.max, lim.step) == (D(20700), D(25250), STEP)
 
 
@@ -40,7 +43,7 @@ def test_first_close_is_the_earliest_expiry_at_1530_ist():
 def test_no_iv_gives_at_expiry_pnl_and_refuses_the_time():
     no_iv = dataclasses.replace(SPREAD[0], iv=None)
     m = _model((no_iv, SPREAD[1]))
-    t = live_target(TargetAsk(D(23000), NOW + datetime.timedelta(days=1)), m, _levels(m), STEP)
+    t = live_target(TargetAsk(D(23000), NOW + datetime.timedelta(days=1)), m, _levels(m), STEP, SPAN)
     assert t.kind == "exact" and t.at is None and t.at_refused_reason is not None
     assert t.pnl == D("6750.00")  # (200 - 220) x 75 + (110 - 0) x 75, the At Expiry payoff
     assert t.curve is None and t.greeks is None and t.breakevens is None
@@ -49,7 +52,7 @@ def test_no_iv_gives_at_expiry_pnl_and_refuses_the_time():
 def test_breakevens_at_target_are_zero_crossings_of_the_engine_estimate():
     m = _model(SPREAD)
     at = NOW + datetime.timedelta(days=2)
-    t = live_target(TargetAsk(D(23000), at), m, _levels(m), STEP)
+    t = live_target(TargetAsk(D(23000), at), m, _levels(m), STEP, SPAN)
     assert len(t.breakevens) == 1
     be = t.breakevens[0]
     # marks are whole paise, so the estimate is flat in tiny steps: it is at its nearest to zero at the breakeven and
@@ -62,8 +65,8 @@ def test_breakevens_at_target_are_zero_crossings_of_the_engine_estimate():
 
 def test_level_outside_limits_is_clamped_and_inside_is_kept():
     m = _model(SPREAD)
-    assert live_target(TargetAsk(D(30000)), m, _levels(m), STEP).level == D(25250)
-    inside = live_target(TargetAsk(D(23100)), m, _levels(m), STEP)
+    assert live_target(TargetAsk(D(30000)), m, _levels(m), STEP, SPAN).level == D(25250)
+    inside = live_target(TargetAsk(D(23100)), m, _levels(m), STEP, SPAN)
     assert inside.level == D(23100) and inside.level_clamped is False
 
 
@@ -75,35 +78,35 @@ NO_GREEKS = "No Greeks at expiry: the options have no time left."
 
 def test_every_target_figure_carries_the_estimate_label_not_estimated_now():
     m = _model(SPREAD)
-    t = live_target(TargetAsk(D(23000), NOW + datetime.timedelta(days=1)), m, _levels(m), STEP)
+    t = live_target(TargetAsk(D(23000), NOW + datetime.timedelta(days=1)), m, _levels(m), STEP, SPAN)
     assert t.output_label == ESTIMATE_LABEL
     assert t.curve is not None and t.curve.output_label == ESTIMATE_LABEL
 
 
 def test_a_clamped_level_or_date_says_the_nearest_allowed_value():
     m = _model(SPREAD)
-    high = live_target(TargetAsk(D(30000)), m, _levels(m), STEP)
+    high = live_target(TargetAsk(D(30000)), m, _levels(m), STEP, SPAN)
     assert high.level_clamp_text == "Target moved to the nearest allowed value: 25,250.00."
-    late = live_target(TargetAsk(at=CLOSE + datetime.timedelta(days=2)), m, _levels(m), STEP)
+    late = live_target(TargetAsk(at=CLOSE + datetime.timedelta(days=2)), m, _levels(m), STEP, SPAN)
     assert late.clamp == "after_first_expiry"
     assert late.at_clamp_text == "Target moved to the nearest allowed value: 3 Nov, 15:30 IST."
-    inside = live_target(TargetAsk(D(23100), NOW + datetime.timedelta(hours=1)), m, _levels(m), STEP)
+    inside = live_target(TargetAsk(D(23100), NOW + datetime.timedelta(hours=1)), m, _levels(m), STEP, SPAN)
     assert inside.level_clamp_text is None and inside.at_clamp_text is None
 
 
 def test_no_time_left_greeks_carry_the_sentence_and_live_greeks_do_not():
     m = _model(SPREAD)
-    at_close = live_target(TargetAsk(D(23000), CLOSE), m, _levels(m), STEP)
+    at_close = live_target(TargetAsk(D(23000), CLOSE), m, _levels(m), STEP, SPAN)
     assert at_close.greeks is not None and at_close.greeks.unavailable == "no_time_left"
     assert at_close.greeks.unavailable_text == NO_GREEKS
-    now = live_target(TargetAsk(D(23000)), m, _levels(m), STEP)
+    now = live_target(TargetAsk(D(23000)), m, _levels(m), STEP, SPAN)
     assert now.greeks is not None and now.greeks.unavailable_text is None
 
 
 def test_target_greeks_echo_the_q_each_option_expiry_was_priced_with():
     """GC-LIVE: the checker re-prices with the q the server used (ADR-008), never one it re-solves."""
     m = _model(SPREAD)
-    g = live_target(TargetAsk(D(23000)), m, _levels(m), STEP).greeks
+    g = live_target(TargetAsk(D(23000)), m, _levels(m), STEP, SPAN).greeks
     expiries = {leg.expiry for leg in m.legs if leg.instrument is not Instrument.FUT}
     assert g is not None and expiries and {e for e, _q in g.dividend_yields} == expiries
     for e, q in g.dividend_yields:

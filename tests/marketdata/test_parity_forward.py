@@ -9,21 +9,31 @@ import math
 from decimal import Decimal
 
 import pytest
-
+from _kite_fixture import all_instrument_ids, new_provider, replay
 from ofo.engine.black_scholes import implied_volatility, year_fraction
 from ofo.engine.inputs import LegInput, SpotReading, StrategyInput
 from ofo.engine.legs import Action, Instrument
-from ofo.marketdata.forward import (FALLBACK_LABEL, PARITY, SPOT_FALLBACK, ExpiryForward, ForwardUnavailable,
-                                    mid_price, parity_forward)
+from ofo.engine.model import estimate, expiry_model, greeks, implied_vol, model_inputs
+from ofo.marketdata.forward import (
+    FALLBACK_LABEL,
+    PARITY,
+    SPOT_FALLBACK,
+    ExpiryForward,
+    ForwardUnavailable,
+    mid_price,
+    parity_forward,
+)
 from ofo.marketdata.kite_provider import IST, SOURCE
 from ofo.marketdata.quote import NormalizedQuote
 from ofo.rules.inputs import DataHealth
 from ofo.scenario.config import ScenarioSettings
-from ofo.engine.model import estimate, expiry_model, greeks, implied_vol, model_inputs
 from ofo.scenario.levels import build_level_set
 from ofo.scenario.views import View, scenario_values
+from ofo.settings import calc as _fq_calc
+from ofo.settings import defaults as _d
+from ofo.settings import defaults as _fq_defaults
 
-from _kite_fixture import all_instrument_ids, new_provider, replay
+_FQ = _fq_calc.forward_quality(_fq_defaults())
 
 VALUATION = datetime.datetime(2026, 10, 8, 9, 20, 9, tzinfo=IST)
 RATE = Decimal("0.065")
@@ -66,7 +76,7 @@ def replayed():
 
 def _forward(provider, name, expiry):
     spot = provider.underlying_quote(name)
-    return parity_forward(provider.option_chain_snapshot(name, expiry), spot, expiry, VALUATION, RATE)
+    return parity_forward(provider.option_chain_snapshot(name, expiry), spot, expiry, VALUATION, RATE, _FQ)
 
 
 @pytest.mark.parametrize("key", list(EXPECTED))
@@ -152,7 +162,7 @@ def _chain(strikes=(21900, 21950, 22000, 22050, 22100)):
 
 
 def test_state_enough_strikes_recovers_the_known_forward():
-    f = parity_forward(_chain(), _spot(), E, VALUATION, RATE)
+    f = parity_forward(_chain(), _spot(), E, VALUATION, RATE, _FQ)
     assert f.source == PARITY and f.strikes_used == 5 and f.label is None
     assert abs(f.forward - Decimal("22050.00")) <= TOL
     q = 0.065 - math.log(F_TRUE / 22000.0) / T  # q = r - ln(F/S)/T
@@ -161,7 +171,7 @@ def test_state_enough_strikes_recovers_the_known_forward():
 
 
 def test_state_fewer_than_three_strikes_falls_back_with_the_label():
-    f = parity_forward(_chain((22000, 22050)), _spot(), E, VALUATION, RATE)
+    f = parity_forward(_chain((22000, 22050)), _spot(), E, VALUATION, RATE, _FQ)
     assert f.source == SPOT_FALLBACK and f.strikes_used == 2
     assert f.label == FALLBACK_LABEL == "estimated from spot"
     assert f.effective_spot == S and f.implied_yield == 0
@@ -172,25 +182,25 @@ def test_state_fewer_than_three_strikes_falls_back_with_the_label():
 def test_state_spot_missing_or_not_available_refuses(spot):
     quote = None if spot is None else _spot(health=DataHealth(spot))
     with pytest.raises(ForwardUnavailable):
-        parity_forward(_chain(), quote, E, VALUATION, RATE)
+        parity_forward(_chain(), quote, E, VALUATION, RATE, _FQ)
 
 
 def test_state_expired_refuses():
     after_close = datetime.datetime(2026, 10, 13, 15, 30, tzinfo=IST)
     with pytest.raises(ForwardUnavailable, match="expired"):
-        parity_forward(_chain(), _spot(), E, after_close, RATE)
+        parity_forward(_chain(), _spot(), E, after_close, RATE, _FQ)
 
 
 def test_state_crossed_strike_is_skipped_and_counted():
     chain = _chain()
     chain[0] = _q(Instrument.CE, "21900", "160.00", "150.00")  # ask below bid
-    f = parity_forward(chain, _spot(), E, VALUATION, RATE)
+    f = parity_forward(chain, _spot(), E, VALUATION, RATE, _FQ)
     assert f.crossed_skipped == 1 and f.strikes_used == 4 and f.source == PARITY
 
 
 def test_stale_option_quotes_are_not_used():
     chain = [dataclasses.replace(q, health=DataHealth.STALE) if q.strike != Decimal("22000") else q for q in _chain()]
-    assert parity_forward(chain, _spot(), E, VALUATION, RATE).source == SPOT_FALLBACK
+    assert parity_forward(chain, _spot(), E, VALUATION, RATE, _FQ).source == SPOT_FALLBACK
 
 
 # ---- IV / Greeks / Estimated Now on the forward, against Hull's formulas for an index paying yield q -------------
@@ -265,7 +275,7 @@ def test_a_non_positive_median_forward_refuses_not_a_math_error():
     for k in (100, 110, 120):
         chain += [_q(Instrument.CE, str(k), "1.00", "1.10"), _q(Instrument.PE, str(k), "5000.00", "5000.10")]
     with pytest.raises(ForwardUnavailable, match="median"):
-        parity_forward(chain, _spot(Decimal("110.00")), E, VALUATION, RATE)
+        parity_forward(chain, _spot(Decimal("110.00")), E, VALUATION, RATE, _FQ)
 
 
 def test_delta_on_the_real_nifty_forward_follows_hull(replayed):
@@ -307,7 +317,7 @@ def test_scenario_estimated_now_uses_the_forward_and_payoff_keeps_spot(replayed)
     on_fwd_model = model_inputs(inputs, {f.expiry: f})
     fallback = dataclasses.replace(f, source=SPOT_FALLBACK, implied_yield=Decimal(0), effective_spot=f.spot)
     on_spot_model = model_inputs(inputs, {f.expiry: fallback})
-    ls = build_level_set(on_fwd_model, ScenarioSettings().for_index("NIFTY"))
+    ls = build_level_set(on_fwd_model, ScenarioSettings.from_values(_d()).for_index("NIFTY"))
     assert ls.current == f.spot  # CURRENT column and the range stay on spot
     on_fwd = scenario_values(ls, on_fwd_model, View.ESTIMATED_NOW)
     on_spot = scenario_values(ls, on_spot_model, View.ESTIMATED_NOW)
@@ -320,7 +330,7 @@ def test_estimate_assumptions_state_the_yield_and_its_source(replayed):
     f = _forward(replayed, "NIFTY", D(2026, 10, 13))
     inputs = _one_call(f)
     model = model_inputs(inputs, {f.expiry: f})
-    ls = build_level_set(model, ScenarioSettings().for_index("NIFTY"))
+    ls = build_level_set(model, ScenarioSettings.from_values(_d()).for_index("NIFTY"))
     a = scenario_values(ls, model, View.ESTIMATED_NOW).assumptions
     assert a.dividend_yields == (f.implied_yield,) and a.yield_sources == ("parity",) and f.implied_yield > 0
     fallback = dataclasses.replace(f, source=SPOT_FALLBACK, implied_yield=Decimal(0), effective_spot=f.spot)

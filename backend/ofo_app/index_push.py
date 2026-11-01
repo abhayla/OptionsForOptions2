@@ -3,7 +3,8 @@ Framework-free.
 
 One :class:`IndexPush` serves one browser connection of the read-only index socket. On connect it subscribes the two
 index instruments (the catalogue's ``provider.index_id``) on the ONE shared fan-out (never a vendor connection per
-browser), then at most once every ``MIN_PUSH_INTERVAL`` seconds, and only when a row's value, time or health (or the
+browser), then at most once every ``speeds.open_strategy_seconds`` seconds (the setting in force), and only when a
+row's value, time or health (or the
 state) changed since the last push, it sends :func:`indices_answer` - the same function the REST read returns. The first
 push goes at once. When the connection ends, on every exit path, its subscription is released (``finally``).
 
@@ -28,7 +29,7 @@ from ofo.marketdata.quote import is_live_price
 from ofo.money import PAISE  # money leaves the API as a 2-decimal string
 
 from ofo_app.api_models import ApiModel, InstrumentId, Money
-from ofo_app.live_push import MIN_PUSH_INTERVAL, POLL_SECONDS, Channel, ChannelClosed, LiveFeed
+from ofo_app.live_push import POLL_SECONDS, Channel, ChannelClosed, LiveFeed, PushInterval
 from ofo_app.routes.outcome import HealthCode, MarketContext, label_time, market_state
 from ofo_app.underlying import Underlying
 
@@ -126,6 +127,7 @@ class IndexPush:
         self._monotonic = monotonic
         self._now = now
         self._poll = poll
+        self._push_interval = PushInterval(monotonic)
         self._handle: int | None = None
         self._live = False
         self._shown: tuple | None = None
@@ -156,7 +158,7 @@ class IndexPush:
         return indices_answer(ctx, live=self._live, now=self._now)
 
     async def _maybe_push(self) -> None:
-        if self._last_push is not None and self._monotonic() - self._last_push < MIN_PUSH_INTERVAL:
+        if self._last_push is not None and self._monotonic() - self._last_push < await self._push_interval.current():
             return
         body = self._answer()
         shown = _shown_state(body)

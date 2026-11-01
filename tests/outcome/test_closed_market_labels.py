@@ -11,7 +11,12 @@ from ofo.outcome import OutcomeState, build_outcome, read_snapshot
 from ofo.outcome.serialize import outcome_to_dict
 from ofo.outcome.target import TargetAsk
 from ofo.rules.inputs import DataHealth
+from ofo.settings import calc as _fq_calc
+from ofo.settings import defaults as _d
+from ofo.settings import defaults as _fq_defaults
 from outcome.test_same_engine import RATE, VALUATION, definition
+
+_FQ = _fq_calc.forward_quality(_fq_defaults())
 
 EXPIRY = datetime.date(2026, 10, 13)
 STALE = "stale since"
@@ -27,7 +32,7 @@ def replayed():
 
 def _stale_snapshot(provider, *, closed):
     d = definition(provider)
-    snap = read_snapshot(provider, "NIFTY", [p.instrument_id for p in d.legs], VALUATION, RATE)
+    snap = read_snapshot(provider, "NIFTY", [p.instrument_id for p in d.legs], VALUATION, RATE, quality=_FQ)
     spot = dataclasses.replace(snap.spot, health=DataHealth.STALE)
     fwd = spot_fallback_forward(EXPIRY, spot.ltp, spot.timestamp, VALUATION, RATE, spot_health=DataHealth.STALE)
     return d, dataclasses.replace(snap, spot=spot, forwards={EXPIRY: fwd}, market_closed=closed)
@@ -48,7 +53,7 @@ def _strings(node):
 def _answer(provider, closed):
     d, snap = _stale_snapshot(provider, closed=closed)
     target = TargetAsk(level=snap.spot.ltp + Decimal(100))
-    return build_outcome(d, snap, both_views=True, payoff_step=Decimal(50), target=target)
+    return build_outcome(d, snap, both_views=True, payoff_step=Decimal(50), target=target, settings=_d())
 
 
 def test_closed_market_has_no_stale_since_on_any_output(replayed):

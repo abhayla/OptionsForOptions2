@@ -1115,6 +1115,11 @@ _LEG_EDIT_TEMPLATES: tuple[MessageTemplate, ...] = (
     _gate("leg_edit_width_hedge_one_expiry", _UI, 25, "Width and Hedge need one expiry.",
           "The move was refused and no leg changed.", "This move.",
           "Use Shift, or put every leg on one expiry.", {}),
+    # GC-SET lots (REQ-167 AC-5): a leg above the limits.max_lots setting in force. Pending owner read.
+    _gate("leg_lots_above_limit", _UI, 175,
+          "A leg can hold at most {max_lots} lots; this leg has {lots}.",
+          "The strategy was not checked and nothing changed.", "This strategy, until the leg is within the limit.",
+          "Reduce the lots on this leg to {max_lots} or fewer.", {"lots": Count, "max_lots": Count}),
 )
 
 # W-196 (REQ-155 AC-1, AC-8; ADR-214): the adjustment approach builder. A refusal leaves that one approach out and every
@@ -1215,6 +1220,11 @@ _TRIGGER_TEMPLATES: tuple[MessageTemplate, ...] = (
     _gate("adjust_trigger_withheld_no_spot", _UI, 151,
           "No adjustment opportunity checked: spot not available.", _TRIG_WITHHELD,
           "Every rule of this playbook.", "Wait for the spot price to come back.", {}),
+    # ADR-221: T-19 uses the cheapest approach the playbook offers; when none can be used it is not checked
+    _trig("no_approach_offered", 173, "This playbook offers no adjustment approach to price, so the premium left "
+          "cannot be compared with an adjustment's cost."),
+    _trig("no_approach_priced", 174, "No adjustment approach this playbook offers can be priced now (a contract "
+          "without a bid or an ask, charges not available, or no whole-trade figure)."),
     _gate("adjust_trigger_already_true", _UI, 152, "Already true when tracking started.",
           "It is shown, not flagged, until a check finds it false.", "Nothing.",
           "Watch it: it flags if it clears and then comes back.", {}),

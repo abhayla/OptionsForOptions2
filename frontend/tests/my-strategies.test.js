@@ -3,6 +3,7 @@
 import { beforeEach, describe, it, expect, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createRouter, createMemoryHistory } from 'vue-router'
+import { createPinia, setActivePinia } from 'pinia'
 
 let answer = () => Promise.reject(new Error('no answer set'))
 let patchAnswer = () => Promise.reject(new Error('no patch answer set'))
@@ -281,8 +282,10 @@ describe('Delete with Undo', () => {
   })
 
   it('confirm removes the row, shows Undo, and Undo puts the row back from a fresh read', async () => {
+    setActivePinia(createPinia()) // the settings store (REQ-167 AC-7)
     let list = [withDelete(7, true)]
-    answer = (url) => Promise.resolve({ data: url === '/strategies/7' ? { revision: 2 } : { strategies: list } })
+    const served = { groups: [{ name: 'Other', settings: [{ key: 'other.undo_clear_all_seconds', value: '10' }] }] } // REQ-167 AC-7
+    answer = (url) => Promise.resolve({ data: url === '/settings' ? served : url === '/strategies/7' ? { revision: 2 } : { strategies: list } })
     const w = await open()
     await w.get('[data-testid="delete-7"]').trigger('click')
     list = []

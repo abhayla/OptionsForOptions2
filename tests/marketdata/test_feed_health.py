@@ -12,6 +12,8 @@ from ofo.market_calendar import is_market_open
 from ofo.marketdata.disconnect import market_closed_message
 from ofo.marketdata.feed_health import FEED_HEALTHY, FEED_MARKET_CLOSED, FEED_WAITING, FeedState
 from ofo.marketdata.reconnect_policy import CLOSED_RETRY_EVERY, reconnect_wait
+from ofo.settings import calc, defaults
+WINDOWS = calc.feed_windows(defaults())  # the registry's windows, passed explicitly (REQ-167 AC-4)
 
 IST = datetime.timezone(datetime.timedelta(hours=5, minutes=30), "IST")
 OPEN_THURSDAY = datetime.datetime(2026, 10, 8, 10, 0, tzinfo=IST)
@@ -39,7 +41,7 @@ def test_an_open_market_keeps_the_short_backoff():
 
 
 def _feed_with_a_price_at(when: datetime.datetime) -> FeedState:
-    feed = FeedState()
+    feed = FeedState(windows=WINDOWS)
     feed.on_connected(when)
     feed.on_data(when)
     return feed
