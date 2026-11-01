@@ -47,7 +47,7 @@ ROOT = Path(__file__).resolve().parents[2]
 PRODUCT_ROOTS = ("ofo", "ofo_app")
 #: App entry modules: the FastAPI app, and the processes started by name (`python -m ...`: feed, nightly jobs).
 ENTRY_MODULES = ("ofo_app.main", "ofo_app.feed_main", "ofo_app.liveprices", "ofo_app.catalogue_load",
-                 "ofo_app.history_finalize")
+                 "ofo_app.history_finalize", "ofo_app.background")
 #: Modules with a `__main__` guard that are test/dev seeding, not the product (allow-list: any other guarded module
 #: not in ENTRY_MODULES is refused, so a new job cannot hide from the check).
 NON_PRODUCT_RUNNERS = ("ofo_app.seed_execute_replay", "ofo_app.seed_test_catalogue")
