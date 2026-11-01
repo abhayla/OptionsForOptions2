@@ -1,4 +1,4 @@
-# ruff: noqa: PLC0414, PLC0415, RUF007
+# ruff: noqa: PLC0414, PLC0415
 """GC-SET lots (REQ-167 AC-5, "Limits"): the most lots one leg may hold is the ``limits.max_lots`` setting, checked by the
 ONE shared check (``check_lots``) every lots-accepting route passes, read at each request with no restart.
 
