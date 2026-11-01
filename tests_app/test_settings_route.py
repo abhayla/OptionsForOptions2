@@ -141,6 +141,14 @@ async def test_state_refused_value_422_with_reason_and_nothing_written(env, valu
     assert await env.count(SETTING_COUNT) == 0
 
 
+async def test_refusing_a_non_time_setting_is_a_422_with_its_reason_never_a_500(env):
+    """Regression: the refusal slots once called time_of(default) for EVERY key, so 6.5 for the (non-time) risk-free
+    rate crashed on 0.065 and answered 500. The time slot is now built only for a time key."""
+    resp = await env.client.post(URL, json={"value": "6.5", "note": ""})
+    assert resp.status_code == HTTPStatus.UNPROCESSABLE_ENTITY, resp.text
+    assert "Enter 0.065 for 6.5%" in resp.json()["reason"]
+
+
 async def test_values_are_decimal_strings_a_json_number_is_refused(env):
     for bad in (0.07, 7, None, True):
         resp = await env.client.post(URL, json={"value": bad, "note": ""})

@@ -241,11 +241,12 @@ def _refusal(key: str, exc: SettingRefused, raw: object) -> tuple[ExplanationTex
     slots: dict[str, dict[str, object]] = {
         "setting_not_a_number": {"label": s.label, "example": plain(s.default)},
         "setting_not_whole": {"label": s.label},
-        "setting_not_a_time": {"label": s.label, "example": plain(s.default),
-                               "shown": registry_mod.time_of(s.default).strftime("%H:%M")},
         "setting_out_of_range": {"label": s.label, "low": plain(s.min), "high": plain(s.max), "unit": s.unit},
         "setting_note_too_long": {"max": settings_store.MAX_NOTE},
     }
+    if exc.code == "setting_not_a_time":  # worked out only for a time key: another key's default is no time of day
+        slots[exc.code] = {"label": s.label, "example": plain(s.default),
+                           "shown": registry_mod.time_of(s.default).strftime("%H:%M")}
     if exc.code == "setting_fraction_unit":
         entered = Decimal(str(raw).strip())
         slots[exc.code] = {"label": s.label, "suggested": plain(entered.scaleb(-2)), "entered": plain(entered)}

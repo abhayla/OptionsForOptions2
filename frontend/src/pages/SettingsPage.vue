@@ -40,9 +40,9 @@ function shown(s, v) {
 }
 const TIME_HINT = 'Enter a time as HH:MM, for example 09:30.'
 function toHhmm(typed) {
-  const m = /^(\d{1,2}):(\d{2})$/.exec(String(typed).trim())
-  if (!m || Number(m[1]) > 23 || Number(m[2]) > 59) return null
-  return String(Number(m[1]) * 100 + Number(m[2]))
+  const m = /^([01]?\d|2[0-3]):([0-5]\d)$/.exec(String(typed).trim())
+  if (!m) return null
+  return (m[1] + m[2]).replace(/^0+(?=\d)/, '') // "08:30" -> "830", "00:00" -> "0": text only, no arithmetic
 }
 
 function formFor(key) {
