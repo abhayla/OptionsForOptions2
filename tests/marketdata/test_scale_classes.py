@@ -29,6 +29,8 @@ ALLOWED = {
     "backend/ofo/outcome/snapshot.py": "each expiry's forward (market-wide)",
     "backend/ofo/outcome/service.py": "each leg's implied volatility (market-wide; strategy maths stays per strategy)",
     "backend/ofo_app/routes/outcome.py": "owns the one process cache and the feed owner it passes",
+    "backend/ofo_app/background.py": "reads each option's IV and Greeks once per price update through FeedScope "
+                                     "(ADR-220 (1) background role, REQ-050 AC-3; market-wide, never per strategy)",
 }
 
 #: Per-strategy code: never allowed to touch the cache (this list documents intent; the allow-list is what enforces).
