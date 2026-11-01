@@ -86,7 +86,8 @@ async def test_core_no_snapshot_the_relay_wants_exactly_the_legs_and_the_index(s
     await _worker(prov, watched, now, client).cycle()
     assert feed_bus.want_key(OWNER) not in client.data
     got = await _relay_wants(client)
-    assert got == sorted(_expected(prov, watched[0].tracked)) and len(got) == LEGS_AND_INDEX  # 4 legs + the index (ADJ-02)
+    # 4 legs + the index (ADJ-02)
+    assert got == sorted(_expected(prov, watched[0].tracked)) and len(got) == LEGS_AND_INDEX
 
 
 async def test_no_monitored_strategy_writes_an_empty_snapshot_only_for_a_written_owner(scn):
