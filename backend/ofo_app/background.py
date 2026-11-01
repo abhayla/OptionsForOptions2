@@ -87,6 +87,7 @@ class PriceState(enum.Enum):
     DISCONNECTED = "disconnected"
     LEG_MISSING = "leg_missing"
     MARKET_CLOSED = "market_closed"
+    CHECK_FAILED = "check_failed"
 
 
 @dataclass(frozen=True)
@@ -290,15 +291,34 @@ class Worker:
         self._cursor = 0
         self._rebuilt_at: datetime.datetime | None = None
         self._stop = False
+        self._speed: Decimal | None = None  # the last good background speed (a failed read keeps it)
 
     async def rebuild(self) -> None:
         """REQ-115 AC-3: the monitors from the database (the lister); a strategy's memory stays in the store."""
-        self.monitors = await self._lister()
+        monitors = await self._lister()
+        self.monitors = monitors
         self._rebuilt_at = self._clock()
-        log.info("background: %s strategies monitored", len(self.monitors))
+        log.info("background: %s strategies monitored", len(monitors))
+
+    async def _rebuild_safely(self) -> None:
+        """A failed re-read keeps the last good list and is retried next cycle (REQ-115 AC-9)."""
+        try:
+            await self.rebuild()
+        except Exception as exc:  # contained to this step: the previous list stays
+            log.exception("background: re-reading the strategy list failed; keeping the last list")
+            self.errors.append((0, type(exc).__name__))
 
     def background_seconds(self) -> Decimal:
         return self.valve.slowed(calc_speeds.read_speeds().background)
+
+    def _speed_safely(self) -> Decimal | None:
+        """The speed now; a failed read keeps the last good one, None when there is none yet (REQ-115 AC-9)."""
+        try:
+            self._speed = self.background_seconds()
+        except Exception as exc:  # contained to this step
+            log.exception("background: reading the background speed failed")
+            self.errors.append((0, type(exc).__name__))
+        return self._speed
 
     async def _check_one(self, w: Watched, now: datetime.datetime, every: Decimal) -> bool:
         """True when a check ran (counted against the cycle's cap)."""
@@ -326,8 +346,11 @@ class Worker:
     async def cycle(self) -> None:
         now = self._clock()
         if self._rebuilt_at is None or _seconds(now - self._rebuilt_at) >= REBUILD_SECONDS:
-            await self.rebuild()
-        every = self.background_seconds()  # read on EVERY cycle (REQ-166 AC-1)
+            await self._rebuild_safely()
+        every = self._speed_safely()  # read on EVERY cycle (REQ-166 AC-1)
+        if every is None:
+            log.error("background: no background speed has been read yet; this cycle is skipped")
+            return
         n = len(self.monitors)
         ran, slowest, visited = 0, Decimal(0), 0
         while visited < n and ran < self._max:
@@ -339,6 +362,9 @@ class Worker:
             except Exception as exc:  # REQ-115 AC-9: one strategy's failure never stops the others
                 log.exception("background: strategy %s check failed", w.strategy_id)
                 self.errors.append((w.strategy_id, type(exc).__name__))
+                self.status[w.strategy_id] = MonitoringStatus.PAUSED  # not checked: never shown as active
+                self.paused_reason[w.strategy_id] = PriceState.CHECK_FAILED
+                self._signature.pop(w.strategy_id, None)
             slowest = max(slowest, _seconds(self._clock() - started))
         self._cursor = (self._cursor + visited) % n if n else 0
         self.valve.observe(self._clock(), slowest, n - visited)
@@ -348,8 +374,13 @@ class Worker:
 
     async def run(self) -> None:
         while not self._stop:
-            await self.cycle()
-            await self._sleep(float(self.background_seconds()))  # float-ok: asyncio.sleep takes seconds as float
+            try:
+                await self.cycle()
+            except Exception as exc:  # one cycle's failure never ends the role (CancelledError is not an Exception)
+                log.exception("background: a cycle failed; the next cycle runs")
+                self.errors.append((0, type(exc).__name__))
+            wait = self._speed_safely() or Decimal(1)  # read again for the sleep; no good speed yet -> 1 s
+            await self._sleep(float(wait))  # float-ok: asyncio.sleep takes seconds as float
 
 
 async def owner_lister(provider: Any) -> list[Watched]:
@@ -364,14 +395,17 @@ async def owner_lister(provider: Any) -> list[Watched]:
         for s in await strategy_store.list_strategies(db, OWNER_REF):
             try:
                 tracked = await read_tracked(s.id, None)
+                if tracked is None:
+                    continue
+                spot = provider.underlying_quote(tracked.position.underlying)
+                stype = check.strategy_type(tracked.position, None if spot is None else spot.ltp,
+                                            provider.instrument_master())
+                resolved = await check.resolve(db, OWNER_REF, s.id, stype)
             except (TrackedExited, TrackedUnreadable):
                 continue
-            if tracked is None:
+            except Exception:  # REQ-115 AC-9: one strategy's lookup failing never drops the others from the list
+                log.exception("background: listing strategy %s failed; it is skipped", s.id)
                 continue
-            spot = provider.underlying_quote(tracked.position.underlying)
-            stype = check.strategy_type(tracked.position, None if spot is None else spot.ltp,
-                                        provider.instrument_master())
-            resolved = await check.resolve(db, OWNER_REF, s.id, stype)
             if resolved.body is not None:
                 out.append(Watched(OWNER_REF, s.id, tracked, resolved.body, resolved.is_system, OWNER_REF))
     return out

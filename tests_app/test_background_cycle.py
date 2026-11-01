@@ -5,6 +5,7 @@ Clocks are injected; nothing sleeps for real.
 """
 from __future__ import annotations
 
+import asyncio
 import dataclasses
 import datetime
 import itertools
@@ -449,3 +450,138 @@ def test_state_of_prices_only_the_strategys_own_legs_and_is_light(scn, scenario_
     each = (time.perf_counter() - started) / TIMED_CALLS
     print(f"STATE-OF-TIMING calls={TIMED_CALLS} each_ms={each * 1000:.2f} computations={shared.cache.computations}")
     assert len(priced) == TIMED_CALLS  # one own-legs pricing per check (work counted, never wall time)
+
+
+# ---- REQ-115 AC-9 / AC-4: no exception outside one check stops the role -------------------------------------------
+class _Session:
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *_a):
+        return False
+
+
+def _patch_store(monkeypatch, scn, ids) -> None:
+    from ofo_app import db, strategy_store
+    monkeypatch.setattr(db, "get_sessionmaker", lambda: _Session)
+
+    async def list_strategies(_db, _owner):
+        return [type("S", (), {"id": i})() for i in ids]
+
+    async def read_tracked(_sid, _x):
+        return _tracked(scn)
+    monkeypatch.setattr(strategy_store, "list_strategies", list_strategies)
+    monkeypatch.setattr(adjustment_readers, "read_tracked", read_tracked)
+
+
+async def test_a_failing_list_reread_keeps_the_last_good_list_and_still_checks(scn):
+    prov, now, calls = Prov(scn), [scn.clock_at], Calls()
+    good, reads = _watched(scn, 2), []
+
+    async def lister():
+        reads.append(1)
+        if len(reads) == 2:
+            raise ConnectionError("database blip")
+        return good
+    w = background.Worker(provider_for=lambda _o: prov, lister=lister, clock=lambda: now[0], rate=RATE,
+                          recorder=calls)
+    await w.cycle()
+    now[0] += datetime.timedelta(seconds=background.REBUILD_SECONDS)  # the re-read is due, and it fails
+    prov.move_spot(prov.spot.ltp + 1, now[0])
+    await w.cycle()
+    assert len(reads) == 2 and w.monitors == good
+    assert [s for s, _ in calls.states] == [100, 101, 100, 101]  # both strategies checked again
+    assert w.errors  # counted, not hidden
+
+
+async def test_owner_lister_skips_the_one_strategy_whose_playbook_lookup_raises(scn, monkeypatch):
+    _patch_store(monkeypatch, scn, [FIRST_ID, FIRST_ID + 1])
+
+    async def resolve(_db, _owner, sid, _stype):
+        if sid == FIRST_ID:
+            raise RuntimeError("playbook lookup failed")
+        return type("R", (), {"body": {}, "is_system": True})()
+    monkeypatch.setattr(adjustment_check, "resolve", resolve)
+    out = await background.owner_lister(Prov(scn))
+    assert [x.strategy_id for x in out] == [FIRST_ID + 1]
+
+
+async def test_owner_lister_skips_a_strategy_whose_instrument_list_raises(scn, monkeypatch):
+    _patch_store(monkeypatch, scn, [FIRST_ID])
+    prov = Prov(scn)
+
+    def refuse():
+        raise RuntimeError("no instrument list")
+    prov.instrument_master = refuse
+    assert await background.owner_lister(prov) == []
+
+
+async def test_a_failing_speed_read_keeps_the_last_good_speed(scn, monkeypatch):
+    monkeypatch.setitem(calc_speeds._STAND_IN, calc_speeds.KEY_BACKGROUND, Decimal(3))
+    prov, now, calls = Prov(scn), [scn.clock_at], Calls()
+    w = _worker(prov, _watched(scn), now, calls)
+    await w.cycle()
+
+    def refuse():
+        raise ValueError("setting refused")
+    monkeypatch.setattr(calc_speeds, "read_speeds", refuse)
+    now[0] += datetime.timedelta(seconds=1)
+    prov.move_spot(prov.spot.ltp + 1, now[0])
+    await w.cycle()  # no crash; the last good 3 s still gates: 1 s after the last check, so no new check
+    assert len(calls.states) == 1
+    now[0] += datetime.timedelta(seconds=3)
+    prov.move_spot(prov.spot.ltp + 1, now[0])
+    await w.cycle()
+    assert len(calls.states) == 2
+
+
+async def test_a_failing_speed_read_with_no_good_speed_skips_the_cycle_and_logs(scn, monkeypatch, caplog):
+    def refuse():
+        raise ValueError("setting refused")
+    monkeypatch.setattr(calc_speeds, "read_speeds", refuse)
+    prov, now, calls = Prov(scn), [scn.clock_at], Calls()
+    w = _worker(prov, _watched(scn), now, calls)
+    await w.cycle()
+    assert calls.states == [] and "speed" in caplog.text
+
+
+async def test_run_keeps_looping_after_a_cycle_raises_once(scn):
+    prov, now, calls = Prov(scn), [scn.clock_at], Calls()
+
+    async def sleep(seconds):
+        now[0] += datetime.timedelta(seconds=seconds)
+    w = _worker(prov, _watched(scn), now, calls, sleep=sleep)
+    real, runs = w.cycle, []
+
+    async def flaky():
+        runs.append(1)
+        if len(runs) == 1:
+            raise RuntimeError("cycle blew up")
+        await real()
+        w.stop()
+    w.cycle = flaky
+    await w.run()
+    assert len(runs) == 2 and len(calls.states) == 1 and w.errors
+
+
+async def test_run_does_not_swallow_cancellation(scn):
+    prov, now, calls = Prov(scn), [scn.clock_at], Calls()
+    w = _worker(prov, _watched(scn), now, calls)
+
+    async def cancelled():
+        raise asyncio.CancelledError
+    w.cycle = cancelled
+    with pytest.raises(asyncio.CancelledError):
+        await w.run()
+
+
+async def test_a_check_that_raises_after_active_leaves_the_strategy_paused_not_active(scn):
+    prov, now = Prov(scn), [scn.clock_at]
+
+    async def recorder(_w, _state):
+        raise RuntimeError("boom")
+    w = _worker(prov, _watched(scn), now, recorder)
+    await w.cycle()
+    assert w.status[FIRST_ID] is background.MonitoringStatus.PAUSED
+    assert w.paused_reason[FIRST_ID] is background.PriceState.CHECK_FAILED
+    assert w.errors == [(FIRST_ID, "RuntimeError")]
