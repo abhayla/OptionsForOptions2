@@ -446,6 +446,42 @@
       "source": "REQ-167 AC-5; was ofo_app/strategy_price_history.py MAX_DAYS"
     },
     {
+      "key": "limits.max_lots",
+      "group": "Limits",
+      "label": "Most lots in one leg",
+      "unit": "count",
+      "type": "integer",
+      "min": "1",
+      "max": "100000",
+      "default": "10000",
+      "what_it_changes": "The most lots one leg of a strategy may hold; a larger leg is refused and the screen's lot box stops there.",
+      "source": "REQ-167 AC-5; was ofo_app/routes/outcome.py LegIn.lots le=10000 and chainSelection.js MAX_LOTS"
+    },
+    {
+      "key": "limits.multiplier_max",
+      "group": "Limits",
+      "label": "Highest leg multiplier",
+      "unit": "count",
+      "type": "integer",
+      "min": "1",
+      "max": "1000",
+      "default": "50",
+      "what_it_changes": "The highest multiplier the leg editor accepts for a leg's base lots.",
+      "source": "REQ-167 AC-5; was frontend/src/lib/legEdit.js MULTIPLIER_MAX"
+    },
+    {
+      "key": "limits.lot_choices",
+      "group": "Limits",
+      "label": "Lot choices in the leg picker",
+      "unit": "count",
+      "type": "integer",
+      "min": "1",
+      "max": "100",
+      "default": "10",
+      "what_it_changes": "How many quick lot choices (1, 2, 3 and so on) the leg picker offers.",
+      "source": "REQ-167 AC-5; was frontend/src/lib/legPicker.js LOT_CHOICES"
+    },
+    {
       "key": "other.undo_one_leg_seconds",
       "group": "Other",
       "label": "Undo window, one leg",

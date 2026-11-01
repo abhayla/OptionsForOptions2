@@ -121,6 +121,14 @@ def history_max_days(values: Mapping[str, Decimal]) -> int:
     return int(value_of(values, HISTORY_MAX_DAYS))
 
 
+MAX_LOTS = "limits.max_lots"
+
+
+def max_lots(values: Mapping[str, Decimal]) -> int:
+    """The most lots one leg may hold; the one number every lots-accepting route checks (REQ-167 AC-5)."""
+    return int(value_of(values, MAX_LOTS))
+
+
 # ---- exchange and broker facts (GC-SET step 5a): IST wall-clock times stored HHMM --------------------------------
 PAPER_SETTLE_FROM = "facts.paper_settle_from"
 PAPER_RETRY_UNTIL = "facts.paper_retry_until"

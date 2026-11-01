@@ -23,6 +23,8 @@ from typing import Annotated, Awaitable, Callable, Iterable, Literal, Mapping, U
 from fastapi import APIRouter, Depends
 from fastapi.exceptions import RequestValidationError
 from ofo.charges import ChargeRates
+from ofo.errors import render
+from ofo.errors.slots import INT_ABS_MAX
 from ofo.engine.legs import Action
 from ofo.instruments.models import InstrumentId as ContractKey
 from ofo.instruments.models import ListedContract
@@ -60,6 +62,7 @@ from ofo_app import charge_rates_store, db, settings_store
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier, InstrumentId, Money, echo_seq
 from ofo_app.errors import ClosedRoute
 from ofo_app.outcome_margin import OutcomeMargin, PlannedOrderIn, margin_answer
+from ofo_app.strategy_refused import StrategyRefused
 from ofo_app.underlying import Underlying
 
 router = APIRouter(route_class=ClosedRoute)
@@ -295,7 +298,8 @@ class LegIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     instrument_id: InstrumentId = Field(examples=["NSE_FO:44624"])
     action: Literal["BUY", "SELL"]
-    lots: int = Field(strict=True, gt=0, le=10000)  # true, 1.0 and "2" are a malformed request, never coerced
+    # the business cap is the limits.max_lots setting, checked by check_lots; le= is only the type sanity bound
+    lots: int = Field(strict=True, gt=0, le=INT_ABS_MAX)  # true, 1.0 and "2" are a malformed request, never coerced
     planned_entry: str = Field(pattern=r"^\d+(\.\d{1,2})?$", examples=["104.65"],
                                description="the planned entry price, a decimal string (never a float)")
     captured_at: AwareDatetime = Field(description="when the planned entry was captured (ADR-068)")
@@ -970,9 +974,19 @@ def live_context() -> MarketContext | None:
     return _live_market().current_context()
 
 
+def check_lots(lots: Iterable[int], settings: Mapping[str, Decimal]) -> None:
+    """REQ-167 AC-5: the one check every lots-accepting route passes. A leg above the ``limits.max_lots`` setting in
+    force (read for THIS request) is a 422 with the reason; the schema's own bound is only a type sanity limit."""
+    top = calc.max_lots(settings)
+    for n in lots:
+        if n > top:
+            raise StrategyRefused("leg_lots_above_limit", message=render("leg_lots_above_limit", lots=n, max_lots=top))
+
+
 def checked_choice(req: OutcomeRequest, settings: Mapping[str, Decimal]) -> tuple[ScenarioConfig, RangeOverride | None]:
     """The range and the payoff step this request asks for, checked against the settings in force (REQ-034 AC-4,
-    REQ-137 AC-1): a value off the allow-list is the same 422 the request validator gave."""
+    REQ-137 AC-1): a value off the allow-list is the same 422 the request validator gave. Also the lots cap."""
+    check_lots((leg.lots for leg in req.legs), settings)  # limits.max_lots, before any answer state
     base = req.scenario_base(settings)  # outside the try: a bad stored combination is an internal error, not a 422
     try:
         if req.payoff_step is not None and Decimal(req.payoff_step) not in calc.payoff_steps(settings):

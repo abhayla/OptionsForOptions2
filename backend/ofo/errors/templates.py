@@ -1115,6 +1115,11 @@ _LEG_EDIT_TEMPLATES: tuple[MessageTemplate, ...] = (
     _gate("leg_edit_width_hedge_one_expiry", _UI, 25, "Width and Hedge need one expiry.",
           "The move was refused and no leg changed.", "This move.",
           "Use Shift, or put every leg on one expiry.", {}),
+    # GC-SET lots (REQ-167 AC-5): a leg above the limits.max_lots setting in force. Pending owner read.
+    _gate("leg_lots_above_limit", _UI, 175,
+          "A leg can hold at most {max_lots} lots; this leg has {lots}.",
+          "The strategy was not checked and nothing changed.", "This strategy, until the leg is within the limit.",
+          "Reduce the lots on this leg to {max_lots} or fewer.", {"lots": Count, "max_lots": Count}),
 )
 
 # W-196 (REQ-155 AC-1, AC-8; ADR-214): the adjustment approach builder. A refusal leaves that one approach out and every
