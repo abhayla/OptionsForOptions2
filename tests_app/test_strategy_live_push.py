@@ -23,9 +23,9 @@ sys.path.insert(0, str(ROOT / "tests"))
 from marketdata._kite_fixture import all_instrument_ids, new_provider, replay  # noqa: E402
 from ofo.errors import render  # noqa: E402
 from ofo.marketdata.fanout import FanOut  # noqa: E402
-from ofo.marketdata.feed_health import FEED_STALE  # noqa: E402
 from ofo.marketdata.kite_provider import IST  # noqa: E402
 from ofo.outcome.snapshot import forward_strike_ids  # noqa: E402
+from ofo.settings import calc as _calc  # noqa: E402
 from ofo.settings import defaults as _d  # noqa: E402
 from ofo_app import live_market  # noqa: E402
 from ofo_app.config import Settings  # noqa: E402
@@ -42,6 +42,7 @@ from starlette.testclient import TestClient as StarletteClient  # noqa: E402
 
 VALUATION = datetime.datetime(2026, 10, 8, 9, 20, 9, tzinfo=IST)
 RATE = Decimal("0.065")
+FEED_STALE = _calc.feed_windows(_d()).stale  # the registry's window (was feed_health.FEED_STALE before GC-SET 4d)
 SELL_CE, BUY_CE, SELL_PE, BUY_PE = "NSE_FO:44624", "NSE_FO:44632", "NSE_FO:44604", "NSE_FO:44595"
 DB = "postgresql+asyncpg://example@127.0.0.1:5432/x"
 ERROR = render("user_input_request_invalid").as_dict()

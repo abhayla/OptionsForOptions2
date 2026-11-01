@@ -537,6 +537,7 @@ issues:
   "#614": S6.4  # Leg-stop alert says 'exited 1 legs' (GC-LIVE2 M3)
   "#615": S6.4  # Strike picker first cold read says LIVE with no spot or prices (same class as #612)
   "#616": S6.4  # After the close: Paper has no market-closed banner and shows no-IV text; index read returns nulls
+  "#624": S6.4  # A1 liquidity limits PARKED after 2 rounds (GC-ADJ2)
   "#632": S6.4  # GC-SET2: market hours and order/limit facts as settings (parked from GC-SET)
 
 # Work items whose status is not done.
@@ -733,6 +734,13 @@ findings:
   F-74: S6.4      # After omits booked P&L and the adjustment trade charges
   F-75: S6.4      # POP fails on an after-charges breakeven finer than paise
   F-76: S6.4      # NIFTY spot unreadable over REST (allow-list has no space)
+  F-77: S6.4      # T-19 compared premium left with a different adjustment cost (FIXED, GC-SET step 7)
+  F-78: S6.4      # three playbook limits saved and shown but not applied
+  F-79: S6.4      # Undo windows 8 s / 10 s in code vs about 5 s in the spec
+  F-80: S6.4      # playbook check 500 when the clock trigger T-10b fires (fixed)
+  F-81: S6.4      # playbook check 500 in a stage whose name has a space (fixed)
+  F-82: S6.4      # risk-free rate moves the implied yield, not the visible Greeks (open for owner)
+  F-83: S6.4      # scenario mode lost every price after a socket release (fixed)
 
 hypotheses:
   H1: done
