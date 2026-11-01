@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import dataclasses
 import datetime
+import itertools
 from decimal import Decimal
 
 import pytest
@@ -17,7 +18,12 @@ from ofo_app.routes import adjustment as adjustment_route
 from ofo_app.routes.adjustment import Tracked
 
 RATE = Decimal("0.065")
-SHORT_CE = "NIFTY26N0923500CE"
+FIRST_ID = 100  # the first watched strategy id
+MANY = 1000
+CHECKS_AFTER_CHANGE = 3
+STOP_AFTER = 5
+CYCLES = 10
+SLOW_CYCLES = 2
 
 
 class Prov:
@@ -73,7 +79,7 @@ def _tracked(scn) -> Tracked:
 
 def _watched(scn, n: int = 1) -> list[background.Watched]:
     t = _tracked(scn)
-    return [background.Watched("owner", 100 + i, t, {}, True, "owner", "weekly") for i in range(n)]
+    return [background.Watched("owner", FIRST_ID + i, t, {}, True, "owner", "weekly") for i in range(n)]
 
 
 class Calls:
@@ -142,7 +148,7 @@ async def test_market_closed_recomputes_nothing(scn):
     prov.closed = True
     w = _worker(prov, _watched(scn), now, calls)
     await w.cycle()
-    assert calls.states == [] and 100 not in w.status and w.cache.computations == 0
+    assert calls.states == [] and FIRST_ID not in w.status and w.cache.computations == 0
 
 
 async def test_first_check_after_a_gap_reads_only_the_fresh_snapshot(scn):
@@ -171,7 +177,8 @@ async def test_no_price_change_no_check_and_at_most_once_per_speed(scn):
     await w.cycle()  # changed, but 0.3 s after the last check: not yet
     now[0] += datetime.timedelta(milliseconds=700)
     await w.cycle()
-    assert len(calls.states) == 2  # REQ-165 AC-2: on change, never more than once per background speed
+    # REQ-165 AC-2: on a change only, never more than once per background speed
+    assert [st.spot for _, st in calls.states] == [Decimal("23420"), Decimal("23421")]
 
 
 # ---- REQ-166 AC-1: speed read on every cycle ------------------------------------------------------------------
@@ -183,9 +190,9 @@ async def test_speed_change_from_1s_to_3s_takes_effect_without_restart(scn, monk
 
     async def recorder(wd, state):
         await calls(wd, state)
-        if len(calls.states) == 3:
+        if len(calls.states) == CHECKS_AFTER_CHANGE:
             calc_speeds._STAND_IN[calc_speeds.KEY_BACKGROUND] = Decimal(3)  # the admin changes the setting
-        if len(calls.states) == 5:
+        if len(calls.states) == STOP_AFTER:
             w.stop()
 
     async def sleep(seconds):
@@ -195,7 +202,7 @@ async def test_speed_change_from_1s_to_3s_takes_effect_without_restart(scn, monk
     w = _worker(prov, _watched(scn), now, recorder, sleep=sleep)
     await w.run()
     times = [t for _, t in w.checks]
-    assert [int((b - a).total_seconds()) for a, b in zip(times, times[1:], strict=False)] == [1, 1, 3, 3]
+    assert [int((b - a).total_seconds()) for a, b in itertools.pairwise(times)] == [1, 1, 3, 3]
 
 
 # ---- REQ-166 AC-3: safety valve -------------------------------------------------------------------------------
@@ -204,8 +211,8 @@ async def test_valve_steps_1_2_5_under_a_slow_maths_step_and_back_to_1_when_calm
     calls = Calls(now, slow=datetime.timedelta(milliseconds=600))
     w = _worker(prov, _watched(scn), now, calls)
     seen = []
-    for i in range(10):
-        if i == 2:
+    for i in range(CYCLES):
+        if i == SLOW_CYCLES:
             calls.slow = None  # the load drops
         now[0] += datetime.timedelta(seconds=6)
         prov.move_spot(Decimal(23420 + i), now[0])
@@ -214,7 +221,7 @@ async def test_valve_steps_1_2_5_under_a_slow_maths_step_and_back_to_1_when_calm
     assert seen[:2] == [Decimal(2), Decimal(5)] and seen[-1] == Decimal(1)
     assert [step for _, step, _ in w.valve.log] == [1, 2, 0]
     assert all("maths reply" in r for _, _, r in w.valve.log[:2]) and "under its limits" in w.valve.log[2][2]
-    assert len(calls.states) == 10
+    assert len(calls.states) == CYCLES
 
 
 def test_valve_steps_on_backlog_too():
@@ -244,12 +251,12 @@ async def test_one_strategy_failing_does_not_stop_the_others(scn):
     seen = []
 
     async def recorder(wd, _state):
-        if wd.strategy_id == 100:
+        if wd.strategy_id == FIRST_ID:
             raise RuntimeError("boom")
         seen.append(wd.strategy_id)
     w = _worker(prov, _watched(scn, 2), now, recorder)
     await w.cycle()
-    assert seen == [101] and w.errors == [(100, "RuntimeError")]
+    assert seen == [FIRST_ID + 1] and w.errors == [(FIRST_ID, "RuntimeError")]
 
 
 # ---- REQ-166 AC-2 / REQ-165 AC-3: no full table, per-option figures once for every holder --------------------
@@ -263,9 +270,9 @@ async def test_1000_strategies_make_no_full_table_call_and_share_each_option_fig
     one = _worker(prov, _watched(scn), now, Calls())
     await one.cycle()
     many_calls = Calls()
-    many = _worker(prov, _watched(scn, 1000), now, many_calls, max_per_cycle=1000)
+    many = _worker(prov, _watched(scn, MANY), now, many_calls, max_per_cycle=MANY)
     await many.cycle()
-    assert len(many_calls.states) == 1000 and many.errors == []
+    assert len(many_calls.states) == MANY and many.errors == []
     assert many.cache.computations == one.cache.computations > 0  # once per option, not once per strategy
     now[0] += datetime.timedelta(seconds=1)
     iid = prov.leg_id("23500", "CE")

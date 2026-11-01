@@ -124,7 +124,7 @@ async def test_restart_monitors_within_60s_reopens_nothing_and_keeps_rule_memory
     async with app_db_url.connect() as conn:
         memory = await playbook_store.rule_state(conn, "owner", sid)
     assert len(before) == 1 and memory["T-01"][0] is False  # T-01 false at entry: not held at entry
-    total_before = await _t01_total(app_db_url, sid)  # the seed reuses one strategy per scenario: earlier history counts
+    total_before = await _t01_total(app_db_url, sid)  # the seed reuses one strategy per scenario: history counts
     first.stop()  # stopped mid-session
     now[0] += datetime.timedelta(seconds=2)
     second = _worker(scn, lambda: now[0])

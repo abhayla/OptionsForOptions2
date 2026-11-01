@@ -130,7 +130,8 @@ def read_prices(provider: Any, watched: Watched, now: datetime.datetime) -> Pric
     if health is not DataHealth.AVAILABLE:
         return PriceRead(PriceState.DISCONNECTED)
     position = watched.tracked.position
-    chains = {e: tuple(provider.option_chain_snapshot(position.underlying, e)) for e in {x.expiry for x in position.legs}}
+    expiries = {x.expiry for x in position.legs}
+    chains = {e: tuple(provider.option_chain_snapshot(position.underlying, e)) for e in expiries}
     spot = provider.underlying_quote(position.underlying)
     legs = {i: _leg_quote(chains[x.expiry], x) for i, x in enumerate(position.legs)}
     if spot is None or spot.ltp is None or any(q is None or q.ltp is None for q in legs.values()):
@@ -168,7 +169,7 @@ def short_delta(shared: FeedScope, read: PriceRead, leg: Any, quote: Any, rate: 
     return None if greeks.delta is None else abs(greeks.delta)
 
 
-def light_state(watched: Watched, read: PriceRead, shared: FeedScope, now: datetime.datetime,  # noqa: PLR0913
+def light_state(watched: Watched, read: PriceRead, shared: FeedScope, now: datetime.datetime,
                 rate: Decimal) -> pe.StrategyState:
     """The check's state as light sums of the strategy's own legs (never the full table; REQ-166 AC-2)."""
     tracked = watched.tracked
@@ -287,7 +288,7 @@ class Worker:
             started = self._clock()
             try:
                 ran += await self._check_one(w, now, every)
-            except Exception as exc:  # noqa: BLE001 - REQ-115 AC-9: one strategy's failure never stops the others
+            except Exception as exc:  # REQ-115 AC-9: one strategy's failure never stops the others
                 log.exception("background: strategy %s check failed", w.strategy_id)
                 self.errors.append((w.strategy_id, type(exc).__name__))
             slowest = max(slowest, _seconds(self._clock() - started))
@@ -332,7 +333,12 @@ async def _serve() -> int:  # pragma: no cover - the process wiring; each part i
     from ofo_app import catalogue_store, feed_mode  # noqa: PLC0415
     from ofo_app.db import get_engine  # noqa: PLC0415
     from ofo_app.feed_bus import BusSocket  # noqa: PLC0415
-    from ofo_app.live_market import LIVE_RATE, OWNER_REF, KiteProvider, listed_for_kite  # noqa: PLC0415
+    from ofo_app.live_market import (  # noqa: PLC0415
+        LIVE_RATE,
+        OWNER_REF,
+        KiteProvider,
+        listed_for_kite,
+    )
     async with get_engine().connect() as conn:
         catalogue = await catalogue_store.load_catalogue(conn)
 
@@ -341,7 +347,8 @@ async def _serve() -> int:  # pragma: no cover - the process wiring; each part i
 
     provider = KiteProvider(listed_for_kite(catalogue.all_entries()), clock=clock)
     socket = BusSocket(provider, user_ref=OWNER_REF, clock=clock, redis_url=feed_mode.redis_url())
-    worker = Worker(provider_for=lambda _owner: provider, lister=functools.partial(owner_lister, provider), clock=clock, rate=LIVE_RATE)
+    worker = Worker(provider_for=lambda _owner: provider, lister=functools.partial(owner_lister, provider),
+                    clock=clock, rate=LIVE_RATE)
     feed = asyncio.create_task(socket.run(), name="background-feed")
     try:
         await worker.run()
