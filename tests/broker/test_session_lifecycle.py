@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import ast
 import inspect
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, time, timedelta, timezone
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
@@ -27,10 +27,20 @@ from ofo.broker.session import (
 
 LOGIN = datetime(2026, 10, 7, 10, 15, tzinfo=IST)  # a Wednesday morning
 LATER = LOGIN + timedelta(hours=2)
+SIX = time(6, 0)  # the registry default of facts.kite_session_expiry, passed explicitly (pure code has no fallback)
+
+
+def test_the_expiry_time_is_a_required_parameter_that_moves_the_expiry():
+    """Core: the expiry time given (the setting facts.kite_session_expiry) is what the expected expiry follows."""
+    assert expected_expiry(LOGIN, SIX) == datetime(2026, 10, 8, 6, 0, tzinfo=IST)
+    assert expected_expiry(LOGIN, time(9, 0)) == datetime(2026, 10, 8, 9, 0, tzinfo=IST)
+    assert expected_expiry(LOGIN, time(11, 0)) == datetime(2026, 10, 7, 11, 0, tzinfo=IST)  # still ahead today
+    with pytest.raises(TypeError):
+        expected_expiry(LOGIN)  # type: ignore[call-arg]
 
 
 def test_start_is_connected_with_the_next_morning_expiry():
-    s = start("u-1", LOGIN)
+    s = start("u-1", LOGIN, SIX)
     assert s.state is SessionState.CONNECTED and s.active
     assert s.broker == "zerodha"
     assert s.expected_expiry == datetime(2026, 10, 8, 6, 0, tzinfo=IST)
@@ -46,18 +56,18 @@ def test_start_is_connected_with_the_next_morning_expiry():
     ],
 )
 def test_each_end_transition(end, reason, state):
-    s = end(start("u-1", LOGIN), LATER)
+    s = end(start("u-1", LOGIN, SIX), LATER)
     assert (s.state, s.end_reason, s.ended_at, s.active) == (state, reason, LATER, False)
 
 
 def test_token_exception_wins_before_the_expected_expiry():
-    s = expire_on_token_exception(start("u-1", LOGIN), LATER)
+    s = expire_on_token_exception(start("u-1", LOGIN, SIX), LATER)
     assert LATER < s.expected_expiry
     assert s.state is SessionState.EXPIRED
 
 
 def test_clock_expiry_only_at_or_after_the_expected_expiry():
-    s = start("u-1", LOGIN)
+    s = start("u-1", LOGIN, SIX)
     before = datetime(2026, 10, 8, 5, 59, 59, tzinfo=IST)
     at = datetime(2026, 10, 8, 6, 0, tzinfo=IST)
     assert expire_on_clock(s, before) is s
@@ -68,14 +78,14 @@ def test_clock_expiry_only_at_or_after_the_expected_expiry():
 @pytest.mark.parametrize("first", [expire_on_token_exception, disconnect, replace])
 @pytest.mark.parametrize("second", [expire_on_token_exception, disconnect, replace])
 def test_end_states_are_terminal_and_the_first_reason_wins(first, second):
-    ended = first(start("u-1", LOGIN), LATER)
+    ended = first(start("u-1", LOGIN, SIX), LATER)
     again = second(ended, LATER + timedelta(minutes=5))
     assert again == ended
     assert expire_on_clock(ended, LATER + timedelta(days=3)) == ended
 
 
 def test_ending_does_not_change_the_session_identity():
-    s = start("u-1", LOGIN)
+    s = start("u-1", LOGIN, SIX)
     ended = disconnect(s, LATER)
     assert (ended.user_ref, ended.broker, ended.started_at, ended.expected_expiry) == (
         s.user_ref, s.broker, s.started_at, s.expected_expiry)
@@ -105,21 +115,21 @@ def test_ending_does_not_change_the_session_identity():
     ],
 )
 def test_expected_expiry(login, expiry):
-    assert expected_expiry(login) == expiry
+    assert expected_expiry(login, SIX) == expiry
 
 
 def test_naive_times_are_refused():
     with pytest.raises(ValueError):
-        expected_expiry(datetime(2026, 10, 7, 10, 0))
+        expected_expiry(datetime(2026, 10, 7, 10, 0), SIX)
     with pytest.raises(ValueError):
-        disconnect(start("u-1", LOGIN), datetime(2026, 10, 7, 11, 0))
+        disconnect(start("u-1", LOGIN, SIX), datetime(2026, 10, 7, 11, 0))
 
 
 def test_only_zerodha_and_a_user_ref():
     with pytest.raises(ValueError):
-        start("u-1", LOGIN, broker="upstox")
+        start("u-1", LOGIN, SIX, broker="upstox")
     with pytest.raises(ValueError):
-        start("", LOGIN)
+        start("", LOGIN, SIX)
 
 
 # ---- expiry never produces a call into any other store ----

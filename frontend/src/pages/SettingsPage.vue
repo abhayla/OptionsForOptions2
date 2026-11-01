@@ -28,6 +28,23 @@ const error = ref(null)
 const forms = reactive({}) // key -> { value, effective_from, note, busy, reason, open }
 const charges = reactive({ open: false, busy: false, reason: '', source_url: '', read_on: '', note: '', ...Object.fromEntries(CHARGE_FIELDS.map(([k]) => [k, ''])) })
 
+// A "time" setting travels as the whole number HHMM (1545 = 15:45, 830 = 08:30); the admin sees and types HH:MM. The API
+// keeps HHMM (one exact number in the store and the history); this page converts at the edges only.
+const isTime = (s) => s.unit === 'time'
+function clock(hhmm) {
+  const n = String(hhmm).padStart(4, '0')
+  return `${n.slice(0, 2)}:${n.slice(2)}`
+}
+function shown(s, v) {
+  return isTime(s) && /^\d{1,4}$/.test(String(v)) ? clock(v) : v
+}
+const TIME_HINT = 'Enter a time as HH:MM, for example 09:30.'
+function toHhmm(typed) {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(String(typed).trim())
+  if (!m || Number(m[1]) > 23 || Number(m[2]) > 59) return null
+  return String(Number(m[1]) * 100 + Number(m[2]))
+}
+
 function formFor(key) {
   if (!forms[key]) forms[key] = { value: '', effective_from: '', note: '', busy: false, reason: '', open: false }
   return forms[key]
@@ -68,7 +85,16 @@ async function save(key) {
   f.busy = true
   f.reason = ''
   try {
-    const body = { value: f.value, note: f.note }
+    const setting = data.value.groups.flatMap((g) => g.settings).find((x) => x.key === key)
+    let value = f.value
+    if (setting && isTime(setting)) {
+      value = toHhmm(f.value)
+      if (value === null) {
+        f.reason = TIME_HINT
+        return
+      }
+    }
+    const body = { value, note: f.note }
     const at = instant(f.effective_from)
     if (at) body.effective_from = at
     replace((await api.post(`/settings/${key}`, body)).data)
@@ -143,9 +169,9 @@ onMounted(load)
             <template v-for="s in g.settings" :key="s.key">
               <tr :data-testid="`setting-${s.key}`" class="border-t align-top">
                 <td>{{ s.label }}</td>
-                <td data-testid="setting-value">{{ s.value }}</td>
-                <td>{{ s.unit }}</td>
-                <td data-testid="setting-default">{{ s.default }}</td>
+                <td data-testid="setting-value">{{ shown(s, s.value) }}</td>
+                <td>{{ isTime(s) ? 'time (IST)' : s.unit }}</td>
+                <td data-testid="setting-default">{{ shown(s, s.default) }}</td>
                 <td>{{ s.is_default ? 'Default' : when(s.effective_from) }}</td>
                 <td>{{ s.set_by || '' }}</td>
                 <td>{{ s.what_it_changes }}</td>
@@ -156,7 +182,10 @@ onMounted(load)
               <tr v-if="formFor(s.key).open" :data-testid="`form-${s.key}`">
                 <td colspan="8" class="pb-3">
                   <form class="flex flex-wrap items-end gap-2" @submit.prevent="save(s.key)">
-                    <label>New value ({{ s.unit }}, from {{ s.min }} to {{ s.max }})
+                    <label v-if="isTime(s)">New time (IST, HH:MM, from {{ shown(s, s.min) }} to {{ shown(s, s.max) }})
+                      <input v-model="formFor(s.key).value" data-testid="input-value" class="block border px-1" type="time" required />
+                    </label>
+                    <label v-else>New value ({{ s.unit }}, from {{ s.min }} to {{ s.max }})
                       <input v-model="formFor(s.key).value" data-testid="input-value" class="block border px-1" inputmode="decimal" required />
                     </label>
                     <label>Takes effect (blank = now)
@@ -177,7 +206,7 @@ onMounted(load)
                     <summary>Earlier values ({{ s.earlier_values.length }})</summary>
                     <ul>
                       <li v-for="(h, i) in s.earlier_values" :key="i" data-testid="earlier-value-row">
-                        {{ h.value }} - {{ STATE_WORD[h.state] }} from {{ when(h.effective_from) }}, set by {{ h.set_by }}
+                        {{ shown(s, h.value) }} - {{ STATE_WORD[h.state] }} from {{ when(h.effective_from) }}, set by {{ h.set_by }}
                       </li>
                     </ul>
                   </details>

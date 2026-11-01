@@ -78,7 +78,7 @@ from ofo_app import order_book_store as books
 from ofo_app import strategy_store as store
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier, Money, echo_seq
 from ofo_app.basket_post import BasketPost
-from ofo_app.catalogue_picker import loaded_before
+from ofo_app.catalogue_picker import loaded_before, publish_time
 from ofo_app.catalogue_store import load_catalogue
 from ofo_app.checked_basket import checked_basket, is_checked_basket
 from ofo_app.db import get_db
@@ -575,19 +575,19 @@ async def _pro_entitled(req: _Request, db_now: datetime.datetime) -> bool | None
     return access_at(ledger, db_now).level is AccessLevel.PRO
 
 
-def _list_health(loaded: datetime.datetime | None, db_now: datetime.datetime) -> DataHealth:
+def _list_health(loaded: datetime.datetime | None, db_now: datetime.datetime, publish: datetime.time) -> DataHealth:
     """Instrument-list freshness on the database clock: healthy when the latest load is at or after the current
     session's publish time (W-133: the same rule as the add-time check), stale before it. ``last_seen_at`` is stamped by
     ``clock_timestamp()``, so both sides of the comparison come from the same clock."""
     if loaded is None:
         return DataHealth.UNAVAILABLE
-    return DataHealth.STALE if loaded_before(loaded, db_now) else DataHealth.HEALTHY
+    return DataHealth.STALE if loaded_before(loaded, db_now, publish) else DataHealth.HEALTHY
 
 
 async def _data_health(req: _Request, priced: ep.PricedPlan, underlying: str,
                        db_now: datetime.datetime) -> dict[DataInput, DataHealth]:
     spot = req.quotes.underlying_price(underlying)
-    listing = _list_health(await elig.list_loaded_at(req.db), db_now)
+    listing = _list_health(await elig.list_loaded_at(req.db), db_now, await publish_time(req.db))
     checked_at = req.clock()  # read after every quote (legs priced earlier, the index just now): the judging clock
     return {DataInput.LEG_PRICES: _health(priced.quote_times, checked_at),
             DataInput.UNDERLYING_PRICE: DataHealth.UNAVAILABLE if spot is None else _health((spot[1],), checked_at),
