@@ -5,7 +5,8 @@ Contract: `docs/process/goal-contract-GC-MU-2026-11-01.md`. Branch: `build/gcmu`
 `D:\Abhay\Ventures\OptionsForOptions2-coord\PROTOCOL.md`. Nothing went to main, no PR was opened, no order was placed,
 nothing was deployed. GC-SET had NOT merged into `feature/adjustments` at close, so `feature/adjustments` was not touched.
 
-Final head and gate: see "Close" at the end.
+Final head and gate: see "Close" at the end (code gated TOTAL PASS at f65eb034; this file and the findings registry
+entries were added on top and gated again).
 
 ## DONE (merged into build/gcmu)
 
@@ -103,6 +104,9 @@ Every shared-file change has a line in `coord/overlaps/GC-MU.md`.
   T-10b.
 - Each verifier start, because a verifier blocks git writes in every worktree.
 - #626 filed.
+- The memory plan and the owner's priority rule (GC-MU first on the heavy slot until close).
+- REQ-167 / REQ-168 lint values (GC-SET's values win at the integration if they differ).
+- The close: the gate passed, the backup was pushed, the slot was freed, and the integration is NEXT.
 
 ## Lessons (process)
 
@@ -117,6 +121,11 @@ Every shared-file change has a line in `coord/overlaps/GC-MU.md`.
 - **Proving on the real seeded data found #628** (A5 count) that every fixture test passed.
 - **An unbounded in-memory list in a long-running role** (step 4 `checks` / `errors`) got past every review; it was
   capped at close.
+- **Per-item builders never run the repo-wide scans** (import-graph allow-lists, OpenAPI, coverage, artifact lint). The
+  first full gate found 8 such problems and the second found 3 more. A mid-run full gate after each merge batch would
+  have caught them hours earlier.
+- **`ci_local.py --regen` is a heavy job in this repo:** it regenerates and then runs the suite. To regenerate one view,
+  use its own tool (`tools/build_spec_digest.py`, `build_order.py`, `build_spec_index.py`).
 
 ## NEXT
 
@@ -126,17 +135,52 @@ Every shared-file change has a line in `coord/overlaps/GC-MU.md`.
    `--no-ff build/gcmu` into local `feature/adjustments` and push it as backup. No PR; nothing to main without the
    owner's explicit OK.
 2. **T3,** at the first market session with the owner present (Mon 2026-11-03 09:15 IST earliest).
-4. **#628** before any further screen proof on ADJ-13.
-5. **Foundation steps 5-7** after sign-in.
-6. **#629:** the wording check of the 461 pending texts, then the owner reads the flags (after the integration, so the texts are final).
+3. **#628** before any further screen proof on ADJ-13.
+4. **Foundation steps 5-7** after sign-in.
+5. **#629:** the wording check of the 461 pending texts, then the owner reads the flags (after the integration, so the texts are final).
 
-## Close (step 9, GC-SET not merged branch)
+## Close (step 9, GC-SET not merged: PROTOCOL P9 (3))
 
-- The commit that adds this file is the final head of `build/gcmu`. `python scripts/orchestrator/prepush.py --full`
-  runs on it under the heavy slot, and its marker is in `<git-common-dir>/ofo-prepush/<sha>.json`. The pass or fail
-  line and the sha are in the run's final report and in the memory note `gcmu-contract-2026-11-01.md`.
-- On TOTAL PASS, `build/gcmu` is pushed to origin as backup only. No PR; `feature/adjustments` and `main` are not
-  touched.
-- The worktrees whose use ended are removed with `wt-rm.ps1` after the push, with counts printed: gcmu-key, gcmu-liq,
-  gcmu-feed, gcmu-door, gcmu-stops, gcmu-t1, gcmu-cmp, gcmu-mark, gcmu-used, gcmu-bg, gcmu-want, gcmu-wire, gcmu-inbox, gcmu-docs. The run tree
-  `OptionsForOptions2-gcmu` stays, for the integration.
+- **Gate history on the final branch:**
+
+  | Run | Result |
+  |---|---|
+  | 1 and 2 | killed by Claude Code's low-memory reaper (it stops background jobs only while the session is idle) |
+  | 3, on 4d57ac29 | red, 8 repo-wide findings, fixed in merge 4e0ec736 (see below) |
+  | 4, on 4e0ec736 | red: an I001 import sort and 2 stale generated views, fixed in f65eb034 |
+  | 5, on f65eb034 | TOTAL PASS (all 9 steps, 1514 s) |
+
+  The 8 findings in run 3:
+  - The order closure: `routes.adjustment` reached `execute_plan` through A1's `read_guards`. It is pinned like the
+    other 4 adjustment routes, with a new narrow-pin mutation test.
+  - `background` was missing from 2 allow-lists. It is added, with reasons.
+  - A stored contract reached a feed key without `resolve`. It now goes through `load_catalogue`.
+  - The roles pin.
+  - The app-test selection for #241.
+  - The OpenAPI file was stale.
+  - 7 coverage rows were not staged.
+  - REQ-167 and REQ-168 had values the lint refuses. Fixed and GC-SET told.
+- **How to run the gate on this PC:** start `run_gate.py`, a wrapper that writes a log and a done-marker, as a Bash
+  background job, then keep the session busy with foreground waits of 9.5 min or less. A detached process is blocked
+  by the project hook `gate.py`.
+- **Backup:** `build/gcmu` was pushed to `origin/build/gcmu` at f65eb034. No PR; `feature/adjustments` and `main` were
+  not touched.
+- **Worktrees:** all 15 used trees were removed with `wt-rm.ps1` through its detached-HEAD path (each tip is on
+  `origin/build/gcmu`), and each run printed "main checkout proof: before == after" (3305 tracked, 256 package dirs).
+  gcmu-liq's 45 changed files were line endings only (an empty diff ignoring CR) and were reverted first. The stale
+  locked agent entry was pruned after a dry run showed only it. The run tree `OptionsForOptions2-gcmu` stays, for the
+  integration.
+- **Findings registry:** this run's defect classes are in `knowledge/findings/`:
+  - `second-state-builder-drops-fields`
+  - `one-failure-stops-every-item-in-a-long-loop`
+  - `unbounded-recent-list-in-long-running-process`
+  - `absolute-child-escapes-unpositioned-scroll-box`
+  - `nowrap-label-around-intrinsic-width-select`
+  - `seed-checks-only-a-sum-not-the-history-shape`
+  - `db-pool-without-pre-ping`
+  - `live-read-without-own-subscription`: its 2nd occurrence was added to the existing entry.
+
+  #630 is not registered: it was seen once and not reproduced, so it is a question, not a finding.
+- **Heavy-slot breach (mine, once):** `python tools/ci_local.py --regen` also runs the test suite, and it ran about
+  6 min without the slot. Its leftover processes were stopped by PID.
+- **The owner gave GC-MU priority over GC-SET** for the heavy slot until close (2026-11-01 ~10:10). GC-SET was told.

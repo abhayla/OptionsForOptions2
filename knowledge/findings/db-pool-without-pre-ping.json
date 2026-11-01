@@ -1,0 +1,27 @@
+{
+ "id": "db-pool-without-pre-ping",
+ "scope": "generic",
+ "class": "A database pool that hands out a pooled connection without testing it turns any connection the network or the server dropped into a failed request (a 500) for the next user, until the pool happens to replace it.",
+ "mechanism": "backend/ofo_app/db.py get_engine: create_async_engine without pool_pre_ping or pool_recycle (since 66fcea59, 2026-10-19).",
+ "first_seen": {
+  "date": "2026-11-01",
+  "where": "GC-MU screen proofs, dev API on ofo_dev through the tunnel",
+  "evidence": "12 Compare calls 30 s apart: 2 answered 500 (ERR-050A78CF, ERR-90B771BD), asyncpg InterfaceError 'connection is closed'"
+ },
+ "fix": "Not fixed (#631): pool_pre_ping=True (or a pool_recycle shorter than the drop interval) plus a test that kills the pooled connection and asserts the next request succeeds.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "Issue #631."
+ },
+ "spec_ref": [
+  "spec/requirements/REQ-065.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-11-01",
+   "where": "dev API",
+   "evidence": "2 of 12 calls"
+  }
+ ]
+}

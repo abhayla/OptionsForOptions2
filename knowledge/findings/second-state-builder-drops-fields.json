@@ -1,0 +1,29 @@
+{
+ "id": "second-state-builder-drops-fields",
+ "scope": "generic",
+ "class": "When a second code path (a background worker, a batch job, an export) rebuilds the state that an existing function already builds, instead of calling that function, the copy silently drops or defaults fields the original fills; every rule that reads a dropped field then gives a different verdict on the second path than on the first, with no error.",
+ "mechanism": "GC-MU step 4 round 1: backend/ofo_app/background.py light_state (90bbcead) copied adjustment_check.state_of and set max_loss, max_profit, margin, atm_iv and prev_close to None, so a playbook trigger on max profit or max loss could fire on the screen and never in the background.",
+ "first_seen": {
+  "date": "2026-11-01",
+  "where": "GC-MU step 4 round 1 (build/gcmu-bg 90bbcead), found by the orchestrator reading the private-name guard failure",
+  "evidence": "sed of background.py:172-201 vs adjustment_check.py:140-180; test_no_order_placement flagged 5 private-name imports from the copy"
+ },
+ "fix": "Round 2 (98b54260): light_state deleted; the background builds MarketInputs from the shared figures and calls the public state_of; a field-by-field equality test on ADJ-02 plus a mutant (max_profit set None) that turns it red.",
+ "detection": {
+  "status": "guarded",
+  "checks": [
+   "tests_app/test_background_cycle.py::test_core_background_state_equals_the_screens_state_field_by_field"
+  ],
+  "note": "Guards this instance; the generic class (any second path) is caught only by the private-name guard when the copy imports private helpers."
+ },
+ "spec_ref": [
+  "spec/requirements/REQ-165.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-11-01",
+   "where": "GC-MU step 4",
+   "evidence": "light_state dropped 5 fields"
+  }
+ ]
+}

@@ -1,0 +1,27 @@
+{
+ "id": "unbounded-recent-list-in-long-running-process",
+ "scope": "generic",
+ "class": "A long-running process that appends every event to an in-memory list kept for tests or status (checks run, errors) grows without end: at production rates it exhausts memory in hours, and no short test shows it.",
+ "mechanism": "GC-MU step 4: Worker.checks and Worker.errors were plain lists appended on every check; 1,000 strategies checked each second add about 21.6 million entries in one 6-hour market day.",
+ "first_seen": {
+  "date": "2026-11-01",
+  "where": "GC-MU step 4 round 3, found by the orchestrator reading the merged diff",
+  "evidence": "background.py:287-288 list() with appends at 309/320/343/364/381"
+ },
+ "fix": "b5264ccc: _keep_recent keeps the last RECENT_KEPT = 1000 entries; test_recent_checks_and_errors_are_bounded.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "The instance is tested; no scan finds other unbounded in-memory lists in long-running roles."
+ },
+ "spec_ref": [
+  "spec/requirements/REQ-166.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-11-01",
+   "where": "GC-MU step 4",
+   "evidence": "two unbounded lists"
+  }
+ ]
+}

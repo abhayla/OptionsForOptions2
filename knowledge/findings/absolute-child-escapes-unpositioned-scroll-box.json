@@ -1,0 +1,28 @@
+{
+ "id": "absolute-child-escapes-unpositioned-scroll-box",
+ "scope": "generic",
+ "class": "An absolutely positioned element (a screen-reader-only label, a tooltip) inside a horizontal scroll box whose box is not positioned is not clipped by that box: it widens the whole page, so a page that looks contained scrolls sideways on a phone.",
+ "mechanism": "Adjustment opportunities inbox at 390 px: an sr-only span in the table's last column (position absolute) sat inside div.overflow-x-auto (position static), so the document measured 672 px in a 372 px view.",
+ "first_seen": {
+  "date": "2026-11-01",
+  "where": "GC-MU A5 390 px check in the owner's Chrome",
+  "evidence": "in-frame measurement: docScrollW 672, clientW 372, scrollX 300; the only absolute element right of the view was span.sr-only; wrapper position static"
+ },
+ "fix": "44cbcb25: the scroll box gets `relative`; after: 372 = 372, scrollX 0.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "jsdom has no layout; only a real browser at 390 px (an e2e step) can guard it."
+ },
+ "spec_ref": [
+  "spec/requirements/REQ-004.md",
+  "spec/requirements/REQ-149.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-11-01",
+   "where": "AdjustmentOpportunitiesPage.vue",
+   "evidence": "672 px page"
+  }
+ ]
+}
