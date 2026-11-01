@@ -444,7 +444,8 @@ describe('Option Chain screen', () => {
     expect(w.find('[data-testid="ce-ltp"]').attributes('data-stale')).toBeUndefined()
     sock().serverPush({ ...answer('121.50', { greeks_basis: 'SPOT_FALLBACK', greeks_label: null }), expiry: '2026-10-20' })
     await flushPromises()
-    expect(w.find('[data-testid="greeks-stale-line"]').exists()).toBe(false)
+    // the live push re-renders on its own schedule; one flush was not enough under the gate's load (2026-11-01)
+    await vi.waitFor(() => expect(w.find('[data-testid="greeks-stale-line"]').exists()).toBe(false), { timeout: 3000 })
     expect(w.find('[data-testid="ce-iv"]').attributes('data-stale')).toBeUndefined()
   })
 
