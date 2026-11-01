@@ -1105,6 +1105,9 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   never sees on the Compare. Spec gap found with it: at check time no approach is picked, so "the adjustment's own
   charges" does not say WHICH approach's cost counts. Bears on REQ-159, ADR-216, ADR-008. Status: **read from the code,
   not yet measured on a scenario**; open for owner decision (GC-ADJ3).
+- **FIXED 2026-11-01** (GC-SET step 7, ADR-221 + ADR-222 (8), build/settings db19f061): one engine function prices the
+  Compare cell and T-19 (cheapest approach that could be priced now); COST_PER_LEG deleted. Proof: ADJ-02 T-19 = A-29
+  Rs 92.35 = the cheapest Compare cell (old formula Rs 342.00); `test_t19_cost_equals_the_cheapest_compare_cell_for_every_scenario`.
 
 ## F-78 - Three playbook limits are saved and shown in the editor but nothing applies them
 - Read from the code 2026-10-31: `hide_oi_below`, `hide_spread_pct_of_mid_above` and `roll_debit_limit` are stored in
@@ -1113,6 +1116,8 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   "Strike liquidity" row shows the widest spread with no threshold. A user who sets them is told nothing about this.
   Separately, `low_oi_blocked` is set only by scenario mode (`ofo_app/scenario_mode.py:282`); no live source sets it.
   Bears on REQ-159 AC-6, catalogue F-12. Status: **read from the code**; open for owner decision (GC-ADJ3).
+- 2026-11-01: still OPEN - no GC-SET step fixes it (not in the contract's steps); the settings reader guard covers app
+  settings only.
 
 ## F-79 - The Undo window in code is 8 s and 10 s; the spec says about 5 s, admin-configurable
 - Read from the code 2026-10-31 (settings scan, `docs/design/settings-scan-2026-10-31.md`): ADR-007 row Q56 says a

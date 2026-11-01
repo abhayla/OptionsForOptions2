@@ -22,4 +22,10 @@ Options:
 2. Wait for GC-MU to report no builders running, then restart.
 3. Do not restart; build/settings stays at 4c029a29 (steps 1-3, 3b, 4a, 4b, 7, all gated).
 
-Answer: (pending)
+Answer (owner, 2026-11-01 ~07:50 IST, chat): "Restart the gate" -> option 1, one file at a time.
+
+## Q-GCSET-2 (09:13 IST): how should the PC be shared between GC-SET and GC-MU heavy jobs?
+
+The memory reaper killed GC-SET's runs and waits 4 times since 06:45 and GC-MU's prepush once.
+Answer (owner, 2026-11-01 ~09:15 IST, question tool): "GC-MU finishes, then GC-SET" - wait for GC-MU's heavy slot,
+then run the remaining gate runs in the foreground in short chunks.

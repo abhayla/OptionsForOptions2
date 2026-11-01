@@ -216,6 +216,23 @@ clock (`date`) in the same step, never typed from memory.
 - 4c: leg-picker widths + quick-pick distances carried in the strikes answer; range caps via the settings store.
   4e: one shared `check_lots` (outcome, live push, leg edit), schema keeps a type sanity bound; browser caps from the
   settings store. Open: 2 chain-page vitest files fail (mocks do not answer /settings) - the gate's vitest run checks.
+- ~06:45 the integration-2 gate (9 DB files + full vitest) was KILLED by Claude Code for critically low memory (GC-MU
+  builders run on the same PC). Claude Code's rule: restart only when the owner asks -> Q-GCSET-1 parked in
+  `owner-questions-2026-11-01.md` (night guard blocks question boxes). Done before the kill on 85fd0fa8: full pure
+  `tests` 8640 passed / 0 failed; drift x2; DB approaches route 64, check 8, opportunities 12. The run continued with
+  light items only, one builder at a time, no DB suites in parallel.
+- step 6 3ae95d06 (merged into int2): `tests/test_settings_literal_guard.py` (reader + literal checks, fails closed,
+  self-tests; red on a re-added `LIVE_RATE = Decimal("0.065")` naming the file and line). KNOWN_LEFTOVERS listed and
+  re-checked: unused `ofo/range/pick_lists.py`, delist default 10 in catalogue direct calls, 06:00 in the broker
+  session trigger (migration 0007), market hours in `timeutil.py`, feed windows in `feed_health.py`.
+- E501 rise from 5a-2 wrapped (ad01dee8). step 8 UI 3781782c (Preferences tab; re-run by me: vitest 36 passed).
+- step 9 backend 4eec3818 (merged into int2): migration 0034 append-only versions, admin-only routes reusing the user
+  editor's validation, Test before Save = the existing Test route, restore/approve as new versions, the checker reads
+  the current version through one `playbook_store._current`. Builder's DB runs: new file 23, playbook store 40,
+  adjustment check 8, scenario mode 60, drift 1. Mutants by me on a fresh scratch copy: guard removed KILLED (2
+  failed), checker reads version 1 KILLED (2), restore without a new version KILLED (2); trigger first branch off =
+  23 passed - EQUIVALENT (the same trigger's next check still refuses UPDATE/DELETE with OF034); the owner test checks
+  the code, not which rule fired (noted, not chased). Editor buttons (Edit / Restore / Approve) = step 9 UI, next.
 
 ## Found during the run
 
@@ -224,7 +241,15 @@ clock (`date`) in the same step, never typed from memory.
 
 ## Parked
 
-None yet.
+- Owner decision 2026-11-01 ~08:05 IST (chat: "Go with your recommended option A"): this run finishes the gate, step 9
+  UI, 4d feed-health windows, the guard's leftovers, the three browser proofs, F-77/F-78 marking and the close; it
+  PARKS to a follow-up contract (issue at close, label `parked`):
+  - market hours and expiry close (`ofo/timeutil.py`, about 14 modules incl. time-to-expiry in the pricing maths;
+    Tier A);
+  - step 5b, order and limit facts: freeze units and batch, Zerodha rate and feed limits, quote limit, tick, stamp
+    and SEBI caps incl. the migration-0014 DB caps (Tier A).
+  The DoD box "Every scan row in group B is a setting" stays OPEN and is reported as parked; 4 of the group B facts
+  (paper settlement window, contract-list publish time, Kite session expiry, plus the per-tick rate re-read) are done.
 
 ## Steps
 
