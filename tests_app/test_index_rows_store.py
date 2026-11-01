@@ -30,6 +30,9 @@ from ofo.instruments import InstrumentId
 from ofo.instruments.models import INDEX_ROWS
 from ofo.instruments.parser import parse_instruments_rows
 from ofo_app.catalogue_store import apply_update, load_catalogue
+from ofo.settings import calc as _calc, defaults as _defaults
+
+_MAX_DELIST = _calc.max_delist_percent(_defaults())
 
 IST = timezone(timedelta(hours=5, minutes=30))
 AS_OF = datetime(2026, 10, 2, 10, 0, tzinfo=IST)
@@ -119,7 +122,7 @@ async def test_index_rows_are_stored_and_read_back(app_engine: AsyncEngine) -> N
     async with app_engine.connect() as conn:
         trans = await conn.begin()
         try:
-            result = await apply_update(conn, _all_rows(), as_of=AS_OF)
+            result = await apply_update(conn, _all_rows(), as_of=AS_OF, max_delist_percent=_MAX_DELIST)
             assert result.added == 22 + 2
             raw = (await conn.execute(text(
                 f"SELECT c.exchange_segment, c.exchange_token, c.name, c.instrument_type, c.expiry, b.broker_token, "
@@ -142,7 +145,7 @@ async def test_the_nse_cash_row_sharing_token_1001_is_not_nifty_50(app_engine: A
     async with app_engine.connect() as conn:
         trans = await conn.begin()
         try:
-            await apply_update(conn, _all_rows(), as_of=AS_OF)
+            await apply_update(conn, _all_rows(), as_of=AS_OF, max_delist_percent=_MAX_DELIST)
             rows = (await conn.execute(text(f"SELECT exchange_segment, name FROM {TABLE} WHERE exchange_token = 1001"))).all()
             assert [tuple(r) for r in rows] == [("NSE_INDEX", "NIFTY 50")]  # the cash row was never stored
             catalogue = await load_catalogue(conn)
@@ -247,7 +250,7 @@ async def test_planning_stores_index_rows_without_an_expiry_and_never_retires_th
     from tests_app.test_catalogue_store import _FakeConn
 
     conn = _FakeConn()
-    result = await apply_update(conn, _all_rows(), as_of=AS_OF)
+    result = await apply_update(conn, _all_rows(), as_of=AS_OF, max_delist_percent=_MAX_DELIST)
     assert (result.added, result.retired) == (24, 0)
     contracts, brokers = conn.writes[0][1], conn.writes[1][1]
     assert sorted((p["exchange_segment"], p["exchange_token"], p["expiry"]) for p in contracts

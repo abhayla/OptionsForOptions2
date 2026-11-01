@@ -36,6 +36,9 @@ from ofo_app.execute_replay_switch import ENV_NAME, ExecuteReplayRefused, replay
 from ofo_app.kite_margin import KiteMargin
 from ofo_app.kite_reads import KiteReads
 from ofo_app.routes import execute
+from ofo.settings import calc as _calc, defaults as _defaults
+
+_MAX_DELIST = _calc.max_delist_percent(_defaults())
 
 _ROOT = pathlib.Path(__file__).resolve().parent.parent.parent / "tests" / "fixtures"
 REPLIES = _ROOT / "kite_replies"
@@ -270,7 +273,8 @@ async def store_strategy_one(conn: Any, user: str, app_role: str, units: int = 6
     from ofo_app.catalogue_store import apply_update  # noqa: PLC0415
     from ofo_app.strategy_store import build_definition, save_draft  # noqa: PLC0415
 
-    await apply_update(conn, [listed_contract()], as_of=datetime.datetime(2026, 10, 16, 9, 0, tzinfo=AT.tzinfo))
+    await apply_update(conn, [listed_contract()], as_of=datetime.datetime(2026, 10, 16, 9, 0, tzinfo=AT.tzinfo),
+        max_delist_percent=_MAX_DELIST)
     cid = (await conn.execute(text("SELECT c.id FROM public.catalogue_contracts c JOIN public.broker_instruments b "
                                    "ON b.contract_id = c.id WHERE b.broker_symbol = :s AND NOT c.retired"),
                               {"s": real_order()["tradingsymbol"]})).scalar_one()

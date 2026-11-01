@@ -43,6 +43,9 @@ from test_strategy_store import (
     _user,
     _with_draft,
 )
+from ofo.settings import calc as _calc, defaults as _defaults
+
+_MAX_DELIST = _calc.max_delist_percent(_defaults())
 
 HTTP_OK, HTTP_CREATED, HTTP_FORBIDDEN = 200, 201, 403
 SECOND_REVISION, THREE_STATEMENTS = 2, 3
@@ -62,7 +65,7 @@ def _on(app, day: datetime.date):
 
 
 async def _seeded(conn) -> dict[str, int]:
-    await apply_update(conn, _fixture_rows(), as_of=AS_OF)
+    await apply_update(conn, _fixture_rows(), as_of=AS_OF, max_delist_percent=_MAX_DELIST)
     return await _ids(conn)
 
 

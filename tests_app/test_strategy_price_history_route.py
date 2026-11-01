@@ -51,6 +51,9 @@ from test_strategy_store import (
     _with_draft,
 )
 from test_strategy_tracking import _DELIST, _RETIRE, _REUSE
+from ofo.settings import calc as _calc, defaults as _defaults
+
+_MAX_DELIST = _calc.max_delist_percent(_defaults())
 
 FIX = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "kite_history"
 LEG_BODY = (FIX / "minute-NIFTY26N0325000CE-2026-10-14.json").read_text(encoding="utf-8")
@@ -255,7 +258,7 @@ async def _committed_seed(app_engine, user: str, *, session: str | None):
         before = {r[0] for r in await conn.execute(text("SELECT id FROM public.catalogue_contracts"))}
         await conn.rollback()  # end the read's autobegun transaction; the seed commits in its own
         async with conn.begin():
-            await apply_update(conn, _fixture_rows() + _nov_future(), as_of=AS_OF)
+            await apply_update(conn, _fixture_rows() + _nov_future(), as_of=AS_OF, max_delist_percent=_MAX_DELIST)
             stored = await store.save_draft(conn, user, await _saved_in(conn, user, await _ids(conn)))
             session_id = None
             if session is not None:

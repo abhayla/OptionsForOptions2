@@ -26,6 +26,9 @@ from test_catalogue_store import _fixture as _futures_fixture
 from test_catalogue_store import _sym
 from test_strategy_followups import _ConnMaker
 from test_strategy_store import AS_OF, EXPIRY, _fixture_rows
+from ofo.settings import calc as _calc, defaults as _defaults
+
+_MAX_DELIST = _calc.max_delist_percent(_defaults())
 
 LIST_DAY = AS_OF.date()
 CLOCK = datetime.datetime(2026, 10, 8, 9, 20, tzinfo=datetime.timezone(datetime.timedelta(hours=5, minutes=30)))
@@ -49,7 +52,7 @@ async def test_the_real_reader_returns_a_readable_catalogue_with_permissions(app
     async with app_engine.connect() as conn:
         trans = await conn.begin()
         try:
-            await apply_update(conn, _fixture_rows(), as_of=AS_OF)
+            await apply_update(conn, _fixture_rows(), as_of=AS_OF, max_delist_percent=_MAX_DELIST)
             _wired(monkeypatch, conn)
             catalogue = await stored_chain("NIFTY", EXPIRY)
             assert catalogue.unreadable is False
@@ -74,7 +77,7 @@ async def test_the_real_futures_reader_lists_the_stored_future(app_engine, monke
     async with app_engine.connect() as conn:
         trans = await conn.begin()
         try:
-            await apply_update(conn, _rows_with_a_future(), as_of=AS_OF)
+            await apply_update(conn, _rows_with_a_future(), as_of=AS_OF, max_delist_percent=_MAX_DELIST)
             _wired(monkeypatch, conn)
             catalogue = await leg_picker.stored_futures("NIFTY")
             assert catalogue.unreadable is False
@@ -100,7 +103,7 @@ async def test_the_strikes_route_lists_strikes_through_the_real_reader(app_engin
     async with app_engine.connect() as conn:
         trans = await conn.begin()
         try:
-            await apply_update(conn, _fixture_rows(), as_of=AS_OF)
+            await apply_update(conn, _fixture_rows(), as_of=AS_OF, max_delist_percent=_MAX_DELIST)
             _wired(monkeypatch, conn)
             app = create_app()
             app.dependency_overrides[leg_picker.get_feed] = lambda: None  # NOT get_picker_reader: the reader is real
@@ -121,7 +124,7 @@ async def test_the_futures_route_lists_the_future_through_the_real_reader(app_en
     async with app_engine.connect() as conn:
         trans = await conn.begin()
         try:
-            await apply_update(conn, _rows_with_a_future(), as_of=AS_OF)
+            await apply_update(conn, _rows_with_a_future(), as_of=AS_OF, max_delist_percent=_MAX_DELIST)
             _wired(monkeypatch, conn)
             app = create_app()
             app.dependency_overrides[leg_picker.get_feed] = lambda: None  # NOT get_futures_reader: the reader is real

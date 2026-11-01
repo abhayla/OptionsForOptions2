@@ -74,7 +74,6 @@ PENDING: dict[str, dict[str, int]] = {
     'marketdata/health.py': {'evaluate_health': 1},
     'marketdata/quote.py': {'__post_init__': 3},
     'orders/model.py': {'<module>': 1},
-    'range/pick_lists.py': {'<module>': 1, '__post_init__': 1},
     'reconciliation/compare.py': {'<module>': 9, '__post_init__': 7, '_check_breakdown': 1, '_check_contract_pairs': 1, 'compare': 3, 'describe': 2, 'require_id': 1, 'unexplained_changes': 3},
     'reconciliation/resolution.py': {'<module>': 7, 'record_report': 1},
     'reconciliation/triggers.py': {'<module>': 8},

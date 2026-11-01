@@ -30,7 +30,7 @@ load_catalogue(conn) -> Catalogue: every stored contract (listed or not) with it
 (CatalogueStoreError naming the row) on a strike or tick that is not a finite Decimal, a contract with no Zerodha row,
 or a row outside the catalogue's scope.
 
-apply_update(conn, rows, *, as_of, force=False, reason=None, actor=None, max_delist_percent=10):
+apply_update(conn, rows, *, as_of, force=False, reason=None, actor=None, max_delist_percent=<required>):
 1. ``pg_advisory_xact_lock(CATALOGUE_UPDATE_LOCK_KEY)`` serialises updates until the caller's transaction ends.
 2. Loads the LIVE contracts; those whose expiry is before the load date are retired (ADR-057).
 3. Validates every in-scope row BEFORE anything is written: strike and tick fit their columns exactly, every row has
@@ -70,7 +70,6 @@ from typing import Any, Iterable, TextIO
 from sqlalchemy import text
 
 from ofo.instruments.catalogue import (
-    DEFAULT_MAX_DELIST_PERCENT,
     IST,
     Catalogue,
     CatalogueUpdateResult,
@@ -537,7 +536,7 @@ async def apply_update(
     force: bool = False,
     reason: str | None = None,
     actor: str | None = None,
-    max_delist_percent: Any = DEFAULT_MAX_DELIST_PERCENT,
+    max_delist_percent: Any,
 ) -> StoreUpdateResult:
     """Apply a newer instrument list to the stored catalogue (see the module docstring). Refusals raise before any
     write: ValueError from the domain (the ADR-058/059 truncation guards; force without reason/actor),

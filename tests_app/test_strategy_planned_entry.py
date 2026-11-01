@@ -34,6 +34,9 @@ from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 from test_strategy_store import AS_OF, IRON_CONDOR, LOT, _fixture_rows, _ids, fixture_today  # the same real rows
+from ofo.settings import calc as _calc, defaults as _defaults
+
+_MAX_DELIST = _calc.max_delist_percent(_defaults())
 
 IST = timezone(timedelta(hours=5, minutes=30))
 CAPTURED = "2026-10-15T09:20:05+05:30"
@@ -94,7 +97,7 @@ async def _catalogue(conn) -> list[tuple[int, str, int]]:
     from its own nearest live NIFTY expiry: the two middle-strike calls and puts."""
     savepoint = await conn.begin_nested()
     try:
-        await apply_update(conn, _fixture_rows(), as_of=AS_OF)
+        await apply_update(conn, _fixture_rows(), as_of=AS_OF, max_delist_percent=_MAX_DELIST)
     except ValueError:
         await savepoint.rollback()
         rows = (await conn.execute(_LIVE_CONDOR)).all()

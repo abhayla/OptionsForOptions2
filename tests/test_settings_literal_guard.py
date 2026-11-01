@@ -81,16 +81,6 @@ SECOND_HOMES = {"ofo_app/routes/outcome.py": "limits.max_lots"}  # LegIn.lots le
 
 # Gaps the scan found and this round does not fix. {id: (file, marker text still present, reason, follow-up)}
 KNOWN_LEFTOVERS: dict[str, tuple[str, str, str, str]] = {
-    "pick_lists_dead_code": (
-        "ofo/range/pick_lists.py", "DEFAULT_CAPS",
-        "unused by the app (no importer in backend/ or frontend/; reach_check_baseline lists it unreached, #532) but "
-        "deleting it also edits its test, test_producer_inventory, test_money_outside_engine, test_underlying_tables "
-        "and the reach baseline, which this round may not run",
-        "follow-up: delete module + test + 4 registry rows in one cleanup item (then drop this row)"),
-    "delist_default_direct_calls": (
-        "ofo/instruments/catalogue.py", "DEFAULT_MAX_DELIST_PERCENT",
-        "default 10 stays for the direct Catalogue.update / catalogue_store.apply_update call paths; the app route reads data.max_delist_percent",
-        "follow-up: make the argument required at both direct-call paths"),
     "broker_session_trigger_0600": (
         "ofo_app/alembic/versions/0007_broker_sessions.py", "06:00",
         "the broker_sessions DB trigger stamps expected_expiry at 06:00 IST (a migration; settings cannot reach it)",
