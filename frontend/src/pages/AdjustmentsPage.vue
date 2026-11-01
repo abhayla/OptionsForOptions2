@@ -43,6 +43,8 @@
       <span v-if="current.is_system && dirty" class="text-sm text-warn" data-testid="pb-system-hint">You changed a system playbook. Save it as a new playbook to keep the changes.</span>
     </div>
 
+    <SystemPlaybookAdmin v-if="current && work && current.is_system" :strategy-type="typeKey" :work="work" @applied="onSystemApplied" />
+
     <div v-if="current && work" class="pbgrid mt-3">
       <nav class="pbsteps rounded-lg border border-line bg-surface p-2" aria-label="Playbook sections" data-testid="pb-steps">
         <button v-for="([key, name], i) in STEPS" :key="key" type="button" class="step" :aria-current="key === step ? 'true' : 'false'" :data-testid="`pb-step-${key}`" @click="step = key">
@@ -177,6 +179,7 @@ import { useRoute } from 'vue-router'
 import api from '@/services/api'
 import Tabs from '@/components/common/Tabs.vue'
 import PreferencesTab from '@/components/adjustments/PreferencesTab.vue'
+import SystemPlaybookAdmin from '@/components/adjustments/SystemPlaybookAdmin.vue'
 import { STEPS, EXPIRY_KINDS, addStage, clone, isDirty, labelMaps, refusalText, removeStage, ruleMembers, said, stagesOf, summaryLines,
   testRow, valuesOf } from '@/lib/playbookEditor'
 
@@ -267,6 +270,9 @@ function show(pb) {
   answer.value = null
   testRefusal.value = null
 }
+
+/** The admin saved, restored or approved a system playbook version: its body is now the one shown (REQ-169). */
+function onSystemApplied(body) { saved.value = clone(body); work.value = clone(body) }
 
 async function openPicked() {
   const id = pickedId.value

@@ -5,6 +5,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { routeLocationKey } from 'vue-router'
+import { createPinia, setActivePinia } from 'pinia'
 // the REAL answer of GET /api/playbooks/labels (written from the route by its app test's module, round 2)
 import LABELS from './fixtures/playbook-labels.json'
 
@@ -61,7 +62,7 @@ async function open(id = null, query = {}) {
   return w
 }
 
-beforeEach(() => { for (const k of Object.keys(answers)) delete answers[k]; calls.length = 0 })
+beforeEach(() => { setActivePinia(createPinia()); for (const k of Object.keys(answers)) delete answers[k]; calls.length = 0 })
 
 describe('playbook editor (REQ-160)', () => {
   it('AC-1: seven steps in order, and a summary beside them', async () => {
