@@ -24,7 +24,7 @@ from ofo.rules.inputs import DataHealth
 from ofo.scenario import levels as scenario_levels
 from ofo.scenario import views as scenario_views
 from ofo.table import model as table_model
-from ofo_app import adjustment_check, adjustment_readers, background, calc_speeds, scenario_mode
+from ofo_app import adjustment_check, adjustment_readers, background, calc_speeds, db, scenario_mode, strategy_store
 from ofo_app.routes.adjustment import Tracked
 from ofo_app.routes.outcome import MarketContext
 
@@ -34,6 +34,7 @@ MANY = 1000
 CHECKS_AFTER_CHANGE = 3
 STOP_AFTER = 5
 CYCLES = 10
+SECOND = 2  # the second read / check / cycle of a test
 SLOW_CYCLES = 2
 TIMED_CALLS = 100
 IV_STEP = Decimal("0.05")  # 5 IV points as a fraction
@@ -462,7 +463,6 @@ class _Session:
 
 
 def _patch_store(monkeypatch, scn, ids) -> None:
-    from ofo_app import db, strategy_store
     monkeypatch.setattr(db, "get_sessionmaker", lambda: _Session)
 
     async def list_strategies(_db, _owner):
@@ -480,7 +480,7 @@ async def test_a_failing_list_reread_keeps_the_last_good_list_and_still_checks(s
 
     async def lister():
         reads.append(1)
-        if len(reads) == 2:
+        if len(reads) == SECOND:
             raise ConnectionError("database blip")
         return good
     w = background.Worker(provider_for=lambda _o: prov, lister=lister, clock=lambda: now[0], rate=RATE,
@@ -489,7 +489,7 @@ async def test_a_failing_list_reread_keeps_the_last_good_list_and_still_checks(s
     now[0] += datetime.timedelta(seconds=background.REBUILD_SECONDS)  # the re-read is due, and it fails
     prov.move_spot(prov.spot.ltp + 1, now[0])
     await w.cycle()
-    assert len(reads) == 2 and w.monitors == good
+    assert len(reads) == SECOND and w.monitors == good
     assert [s for s, _ in calls.states] == [100, 101, 100, 101]  # both strategies checked again
     assert w.errors  # counted, not hidden
 
@@ -532,7 +532,7 @@ async def test_a_failing_speed_read_keeps_the_last_good_speed(scn, monkeypatch):
     now[0] += datetime.timedelta(seconds=3)
     prov.move_spot(prov.spot.ltp + 1, now[0])
     await w.cycle()
-    assert len(calls.states) == 2
+    assert len(calls.states) == SECOND
 
 
 async def test_a_failing_speed_read_with_no_good_speed_skips_the_cycle_and_logs(scn, monkeypatch, caplog):
@@ -561,7 +561,7 @@ async def test_run_keeps_looping_after_a_cycle_raises_once(scn):
         w.stop()
     w.cycle = flaky
     await w.run()
-    assert len(runs) == 2 and len(calls.states) == 1 and w.errors
+    assert len(runs) == SECOND and len(calls.states) == 1 and w.errors
 
 
 async def test_run_does_not_swallow_cancellation(scn):
