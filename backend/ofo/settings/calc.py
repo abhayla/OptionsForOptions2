@@ -15,6 +15,7 @@ import datetime
 from collections.abc import Mapping
 from decimal import Decimal
 
+from ofo.marketdata.feed_health import FeedWindows
 from ofo.marketdata.forward import ForwardQuality
 from ofo.settings import time_of, value_of
 
@@ -182,3 +183,13 @@ def contract_list_publish_time(values: Mapping[str, Decimal]) -> datetime.time:
 def kite_session_expiry(values: Mapping[str, Decimal]) -> datetime.time:
     """The IST time of day a Zerodha login is expected to lapse (REQ-167 AC-5)."""
     return time_of(value_of(values, KITE_SESSION_EXPIRY))
+
+
+FEED_STALE_SECONDS = "detection.feed_stale_seconds"
+FEED_RECONNECT_SECONDS = "detection.feed_reconnect_window_seconds"
+
+
+def feed_windows(values: Mapping[str, Decimal]) -> FeedWindows:
+    """The two feed-health windows in force as the one parameter object feed health requires (REQ-167 AC-5)."""
+    return FeedWindows(stale=datetime.timedelta(seconds=float(value_of(values, FEED_STALE_SECONDS))),
+                       reconnect=datetime.timedelta(seconds=float(value_of(values, FEED_RECONNECT_SECONDS))))

@@ -50,6 +50,8 @@ OLD_HOMES: dict[str, list[tuple[str, str]]] = {
                                ("PAYOFF_TABLE_DEFAULT_STEPS", "scenarios.payoff_default_step_nifty"),
                                ("SD_HORIZON_DAYS", "scenarios.sd_horizon_days")],
     "ofo_app/live_push.py": [("MIN_PUSH_INTERVAL", "speeds.open_strategy_seconds")],
+    "ofo/marketdata/feed_health.py": [("FEED_STALE", "detection.feed_stale_seconds"),
+                                      ("RECONNECT_WINDOW", "detection.feed_reconnect_window_seconds")],
     "ofo/entitlements/engine.py": [("TRIAL_DAYS_DEFAULT", "billing.trial_days"),
                                    ("REFERRAL_DAYS_DEFAULT", "billing.referral_days")],
     "ofo/execution/freeze.py": [("STALE_AFTER_DAYS", "data.freeze_file_stale_days")],
@@ -89,10 +91,6 @@ KNOWN_LEFTOVERS: dict[str, tuple[str, str, str, str]] = {
         "ofo/timeutil.py", "SESSION_OPEN",
         "market hours and expiry close are typed in timeutil and not yet wired to settings",
         "follow-up: wire to a facts.* group"),
-    "feed_windows_feed_health": (
-        "ofo/marketdata/feed_health.py", "RECONNECT_WINDOW",
-        "feed stale (3 s) and reconnect (30 s) windows typed in feed_health, not yet wired",
-        "follow-up: wire to a speeds.* group"),
 }
 
 

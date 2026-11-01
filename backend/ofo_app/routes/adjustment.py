@@ -68,7 +68,13 @@ from ofo_app.errors import ClosedRoute, Failure
 from ofo_app.held_switches import PROBABILITY_OF_PROFIT, held_on
 from ofo_app.outcome_margin import OutcomeMargin, PlannedOrderIn, margin_answer
 from ofo_app.routes.adjustment_preferences import UserPreferences
-from ofo_app.routes.outcome import MarketContext, get_margin_source, get_market_context, load_charge_rates
+from ofo_app.routes.outcome import (
+    MarketContext,
+    feed_windows_of,
+    get_margin_source,
+    get_market_context,
+    load_charge_rates,
+)
 from ofo_app.strategy_refused import StrategyRefused
 
 log = logging.getLogger(__name__)
@@ -339,7 +345,8 @@ async def adjustment_approaches(  # noqa: PLR0913 - FastAPI dependencies, one pe
     rates = rates if isinstance(rates, ChargeRates) else None
     market = await market_reader(tracked, ctx)
     tracked = as_of_market(tracked, market)
-    spot = resolve_spot(market.feed, await rest_reader(tracked.position.underlying), market.last_close, now=market.now)
+    spot = resolve_spot(market.feed, await rest_reader(tracked.position.underlying), market.last_close, now=market.now,
+                        windows=feed_windows_of(ctx))
     pop_on = held_on(PROBABILITY_OF_PROFIT, held_environ)
     asked = list(dict.fromkeys(body.approaches)) if body.approaches is not None else list(APPROACH_IDS)
     reply: dict[str, Any] = {"strategy_id": strategy_id, "view": body.view, "spot": _spot_block(spot),

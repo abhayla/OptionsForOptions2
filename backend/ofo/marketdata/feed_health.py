@@ -35,10 +35,20 @@ from ofo.marketdata.provider import (
 from ofo.marketdata.quote import NormalizedQuote
 from ofo.rules.inputs import DataHealth
 
-#: about 6x the longest market-hours gap measured on the feed (0.51 s, F-32). orchestrator default, not a spec number.
-FEED_STALE = datetime.timedelta(seconds=3)
-#: how long a dropped connection may be trying to reconnect before its quotes are unavailable (backoff caps at 30 s).
-RECONNECT_WINDOW = datetime.timedelta(seconds=30)
+
+
+@dataclass(frozen=True)
+class FeedWindows:
+    """The two feed-health windows in force (REQ-167 AC-5 "Detection (feed stale and reconnect windows)"): ``stale`` =
+    how long a feed may be silent before its quotes read STALE (``detection.feed_stale_seconds``, about 6x the longest
+    market-hours gap measured, F-32); ``reconnect`` = how long a dropped connection may be trying to reconnect before
+    its quotes are UNAVAILABLE (``detection.feed_reconnect_window_seconds``). The numbers are written only in
+    ``registry.json``; ``ofo.settings.calc.feed_windows`` builds this from the settings read."""
+
+    stale: datetime.timedelta
+    reconnect: datetime.timedelta
+
+
 #: most instruments whose last quote TIME is kept after unsubscribe (oldest removal evicted first). A time is a few
 #: dozen bytes; one day's NIFTY+SENSEX chains are about 1-2 thousand contracts, so 20,000 covers many days of churn.
 MAX_KEPT_TIMES = 20_000
@@ -62,12 +72,10 @@ class FeedState:
     """Connection and activity of ONE feed. Times are passed in (no clock here). ``market_open`` is the ADR-119
     calendar's answer for a time (tests inject one; production reads ``market_calendar.is_market_open``)."""
 
-    def __init__(self, *, feed_stale: datetime.timedelta = FEED_STALE,
-                 reconnect_window: datetime.timedelta = RECONNECT_WINDOW,
+    def __init__(self, *, windows: FeedWindows,
                  market_open: Callable[[datetime.datetime], bool] = is_market_open) -> None:
-        self.feed_stale = feed_stale
+        self.windows = windows
         self._market_open = market_open
-        self.reconnect_window = reconnect_window
         self.connected = False
         self.session_ended = False
         self.capped = False
@@ -76,6 +84,20 @@ class FeedState:
         self._disconnected_at: datetime.datetime | None = None
         self._awaiting_data = False  # connected again but no data frame yet: old quotes are not current
         self._connected_at: datetime.datetime | None = None  # when the current connection opened (REQ-133 AC-3)
+
+    def apply_windows(self, windows: FeedWindows) -> None:
+        """The windows in force NOW (REQ-167 AC-4): every judgement below reads ``self.windows`` when it runs, so a
+        changed setting changes the next verdict with no restart. Called with each settings read of a request or tick
+        (``outcome.ctx_in_force``)."""
+        self.windows = windows
+
+    @property
+    def feed_stale(self) -> datetime.timedelta:
+        return self.windows.stale
+
+    @property
+    def reconnect_window(self) -> datetime.timedelta:
+        return self.windows.reconnect
 
     def on_connected(self, now: datetime.datetime) -> None:
         self.connected = True
