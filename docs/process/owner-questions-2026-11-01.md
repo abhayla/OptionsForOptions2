@@ -29,3 +29,19 @@ Answer (owner, 2026-11-01 ~07:50 IST, chat): "Restart the gate" -> option 1, one
 The memory reaper killed GC-SET's runs and waits 4 times since 06:45 and GC-MU's prepush once.
 Answer (owner, 2026-11-01 ~09:15 IST, question tool): "GC-MU finishes, then GC-SET" - wait for GC-MU's heavy slot,
 then run the remaining gate runs in the foreground in short chunks.
+
+## Q-GCSET-3 (13:07 IST, information + one decision): why the VPS DB runs were slow
+
+Owner asked (~12:45): check why the VPS is slow and fix what we cause. Read-only findings (Windows VPS 103.118.16.189):
+- CPU 1% at the check, one active DB connection: nothing stuck now. The slow DB test runs (1-11 min a file) came
+  mainly from our own load: every `db_run_fresh` run creates a fresh database and runs all 34 migrations, and GC-MU
+  and GC-SET ran such files at the same time; GC-MU is done now.
+- FIXED: 39 leftover throwaway test databases `ofo_test_tmp_*` (0.43 GB, some from 2026-10-23, left when a run's drop
+  step failed, e.g. on a tunnel drop) dropped with the tool's own `db_run_fresh.py --sweep` (older than 24 h only).
+- MY MISTAKE, fixed: a recursive disk-size scan I started ran ~8 min on the production box (PID 14808); killed by
+  PID. No further scans.
+- NOT mine, owner's decision: disk C: is 88% used (13 GB free of 110), over the 80% rule; the databases are ~1.2 GB of
+  it. Recommendation: run (or check the last run of) the weekly VPS disk-hygiene job for that box (old releases,
+  journals, caches); I have not deleted anything on it.
+- Not a cause: the `claude.exe` process on the VPS has run since 2026-10-09 with ~4.5 CPU-hours in total.
+Answer: (pending)
