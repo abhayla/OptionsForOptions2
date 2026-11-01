@@ -248,6 +248,23 @@ def test_a_new_token_replaces_the_same_owners_old_one_so_the_registry_stays_boun
     assert registry.contains_secret(b"x" + tokens[-1].encode())
 
 
+
+def test_tokens_read_back_after_a_restart_keep_one_value_per_owner(registry) -> None:
+    """The decrypt side keys the same owner slot as the encrypt side (the session id dropped): nine sessions of one
+    user read back from the store after a restart leave ONE registered value, not nine (verifier mutant 1b2)."""
+    import os  # noqa: PLC0415
+
+    from ofo_app.broker_crypto import TokenCipher, associated_data  # noqa: PLC0415
+
+    cipher = TokenCipher(os.urandom(32))
+    tokens = ["tok" + str(day) * 29 for day in range(1, 10)]
+    stored = [(cipher.encrypt(t, associated_data("u-1", "zerodha", sid)), associated_data("u-1", "zerodha", sid))
+              for sid, t in enumerate(tokens, start=1)]
+    registry._BY_SLOT.clear()  # a restart: nothing registered until the store is read
+    for blob, aad in stored:
+        cipher.decrypt(blob, aad)
+    assert registry.registered_values() == {tokens[-1].encode()}
+
 def _reply_models() -> list[type]:
     _, roots = ri._route_roots(create_app())
     return sorted(set(roots), key=lambda c: c.__name__)
