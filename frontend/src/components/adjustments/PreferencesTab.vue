@@ -97,7 +97,19 @@ async function reset(p) {
 const ALERT_KEY = /^alerts\.(intraday|weekly|monthly)\./
 const general = computed(() => prefs.value.filter((p) => !ALERT_KEY.test(p.key)))
 const head = (label) => String(label).split(': ')[0]
-const rowLabel = (p) => String(p.label).split(': ').slice(1).join(': ') || p.label
+const rowLabel = (p) => {
+  const name = String(p.label).split(': ').slice(1).join(': ') || String(p.label)
+  return name.charAt(0).toUpperCase() + name.slice(1)
+}
+// The one place a registry `unit` becomes the short word shown after a style-table value; a time carries none (HH:MM).
+const UNIT_WORD = { minutes: 'min', percent: '%' }
+const withUnit = (p, v) => {
+  const val = shown(p, v)
+  if (p.key.endsWith('.daily_cap')) return `${val} a day`
+  const word = UNIT_WORD[p.unit]
+  if (!word) return val
+  return word === '%' ? `${val}%` : `${val} ${word}`
+}
 const styleTables = computed(() => ['intraday', 'weekly', 'monthly']
   .map((style) => ({ style, rows: prefs.value.filter((p) => ALERT_KEY.exec(p.key)?.[1] === style) }))
   .filter((t) => t.rows.length)
@@ -172,10 +184,10 @@ onMounted(load)
             <tr class="border-t border-line align-top" :data-testid="`pref-${p.key}`">
               <td class="break-words py-1 pr-2" data-testid="pref-name">{{ rowLabel(p) }}</td>
               <td class="py-1 pr-2">
-                <span data-testid="pref-value">{{ shown(p, p.value) }}</span>
+                <span data-testid="pref-value">{{ withUnit(p, p.value) }}</span>
                 <span class="chip ml-1 border-line bg-surface-muted text-xs text-ink-muted" data-testid="pref-source">{{ p.source === 'yours' ? 'Your value' : 'Default' }}</span>
               </td>
-              <td class="py-1 pr-2" data-testid="pref-admin-default">{{ shown(p, p.admin_default) }}</td>
+              <td class="py-1 pr-2" data-testid="pref-admin-default">{{ withUnit(p, p.admin_default) }}</td>
               <td class="py-1"><button type="button" class="underline" data-testid="pref-edit" @click="formFor(p.key).open = !formFor(p.key).open">Change</button></td>
             </tr>
             <tr v-if="formFor(p.key).open || formFor(p.key).reason">
