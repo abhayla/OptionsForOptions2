@@ -132,3 +132,64 @@ describe('Preferences tab (REQ-168 AC-2)', () => {
     expect(w.findAll('[data-testid^="pref-adjustments"]').length).toBe(2)
   })
 })
+
+// GC-ALERT1 item 6 (REQ-170 Q-AD-1, AC-6): the alert values per trading style; labels are the registry's own words
+// (backend/ofo/settings/registry.json "Alert discipline" group), values as the server sends them.
+const alertPref = (style, field, label, unit, value, source, admin, min, max) => ({
+  key: `alerts.${style}.${field}`, label, unit, type: 'integer', what_it_changes: 'x', value, source, admin_default: admin,
+  min, max, since: null, history: [],
+})
+const ALERTS = () => [
+  alertPref('weekly', 'confirm_candle_minutes', 'Weekly expiry: confirm on candle close', 'minutes', '5', 'default', '5', '1', '60'),
+  alertPref('weekly', 'cooldown_minutes', 'Weekly expiry: cool-down, same rule', 'minutes', '45', 'yours', '30', '1', '375'),
+  alertPref('weekly', 'quiet_until', 'Weekly expiry: quiet time until', 'time', '930', 'default', '930', '915', '1530'),
+  alertPref('weekly', 'daily_cap', 'Weekly expiry: daily limit per strategy', 'count', '4', 'default', '4', '1', '20'),
+  alertPref('monthly', 'daily_cap', 'Monthly expiry: daily limit per strategy', 'count', '3', 'default', '3', '1', '20'),
+]
+
+describe('Alert values per trading style (REQ-170 AC-6)', () => {
+  it('one table per style: setting, value, Your value / Default and the admin value; quiet time as HH:MM', async () => {
+    answers[GET] = { preferences: [...LIST().preferences, ...ALERTS()] }
+    const w = await open()
+    expect(w.findAll('section[data-testid^="prefs-alerts-"]').map((s) => s.attributes('data-testid')))
+      .toEqual(['prefs-alerts-weekly', 'prefs-alerts-monthly'])
+    const weekly = w.get('[data-testid=prefs-alerts-weekly]')
+    expect(weekly.get('[data-testid=prefs-alerts-title]').text()).toBe('Weekly expiry')
+    const rows = weekly.findAll('tbody tr').map((r) => [r.get('[data-testid=pref-name]').text(), r.get('[data-testid=pref-value]').text(),
+      r.get('[data-testid=pref-source]').text(), r.get('[data-testid=pref-admin-default]').text()])
+    expect(rows).toEqual([
+      ['confirm on candle close', '5', 'Default', '5'], ['cool-down, same rule', '45', 'Your value', '30'],
+      ['quiet time until', '09:30', 'Default', '09:30'], ['daily limit per strategy', '4', 'Default', '4'],
+    ])
+    expect(w.findAll('li[data-testid^="pref-alerts."]').length).toBe(0) // not repeated in the general list
+  })
+
+  it('a change posts the string; a cap above the admin limit shows the refusal; Reset posts reset', async () => {
+    const reason = 'Weekly expiry: daily limit per strategy can be at most 4, the limit your administrator set. Enter 4 or less.'
+    answers[GET] = { preferences: ALERTS() }
+    answers['POST /adjustments/preferences/alerts.weekly.daily_cap'] = { reason }
+    answers['POST /adjustments/preferences/alerts.weekly.daily_cap/reset'] = { preferences: ALERTS() }
+    const w = await open()
+    await w.get('[data-testid="pref-alerts.weekly.daily_cap"] [data-testid=pref-edit]').trigger('click')
+    await w.get('[data-testid="pref-form-alerts.weekly.daily_cap"] [data-testid=pref-input]').setValue('9')
+    await w.get('[data-testid="pref-form-alerts.weekly.daily_cap"]').trigger('submit')
+    await flushPromises()
+    expect(calls.filter((c) => c[0] === 'POST')).toEqual([['POST', '/adjustments/preferences/alerts.weekly.daily_cap', { value: '9', note: '' }]])
+    expect(w.get('[data-testid=prefs-alerts-weekly] [data-testid=pref-refusal]').text()).toBe(reason)
+    await w.get('[data-testid="pref-form-alerts.weekly.daily_cap"] [data-testid=pref-reset]').trigger('click')
+    await flushPromises()
+    expect(calls.filter((c) => c[0] === 'POST').at(-1)).toEqual(['POST', '/adjustments/preferences/alerts.weekly.daily_cap/reset', { note: '' }])
+  })
+
+  it('390 px: no fixed width wider than the phone, the tables take the full width', async () => {
+    answers[GET] = { preferences: [...LIST().preferences, ...ALERTS()] }
+    const w = await open()
+    const widths = w.findAll('*').flatMap((el) => el.classes().map((c) => /^(?:min-)?w-\[(\d+)px\]$/.exec(c)?.[1])
+      .filter(Boolean).map(Number))
+    expect(widths.filter((px) => px > 390)).toEqual([])
+    expect(w.findAll('[style*="width"]').length).toBe(0)
+    const tables = w.findAll('table')
+    expect(tables.length).toBe(2)
+    for (const t of tables) expect(t.classes()).toContain('w-full')
+  })
+})

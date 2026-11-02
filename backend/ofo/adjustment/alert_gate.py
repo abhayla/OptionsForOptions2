@@ -25,6 +25,14 @@ WORSE_THAN_LAST = "Worse than the last one"
 WORSE_THAN_DISMISSED = "Worse than the one you dismissed"
 HELD_DAILY_LIMIT = "daily_limit"
 HELD_QUIET_TIME = "quiet_time"
+#: The catalogue is the one home of the shown words (ofo.errors.explanations); the two record texts above are tested
+#: equal to their catalogue entries (tests/adjustment/test_alert_texts.py), the held reasons render through these ids.
+TEXT_IDS: Mapping[str, str] = {
+    WORSE_THAN_LAST: "alert_record_worse_than_last",
+    WORSE_THAN_DISMISSED: "alert_record_worse_than_dismissed",
+    HELD_DAILY_LIMIT: "alert_held_daily_limit",
+    HELD_QUIET_TIME: "alert_held_quiet_time",
+}
 
 Cmp = Literal["ge", "le", "bool"]
 Value = Union[Decimal, bool]  # noqa: UP007

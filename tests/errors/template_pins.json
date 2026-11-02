@@ -3466,5 +3466,57 @@
   "explanation:adjust_preference_refused_above_cap": {
     "sha256": "6db54d8fd6f6b028eb752b982792f37ac221a179b03f5ceb4585cec39029b208",
     "reviewed": "pending owner read"
+  },
+  "explanation:alert_record_worse_than_last": {
+    "sha256": "6055feb682513321d49e033e998503cf503eda0ed206ff848690da3171511344",
+    "reviewed": "pending owner read"
+  },
+  "explanation:alert_record_worse_than_dismissed": {
+    "sha256": "6e68a71c34a4f224715eca91f87d263891e9097a56ecce7dbfa36201daeea00e",
+    "reviewed": "pending owner read"
+  },
+  "explanation:alert_held_daily_limit": {
+    "sha256": "428200c5feb1dfbe4c74ed7e3919e0095b349d89cd263d3cfb9dd405a5ea52a2",
+    "reviewed": "pending owner read"
+  },
+  "explanation:alert_held_quiet_time": {
+    "sha256": "d5b063284904ddc4f66520e9b65d8dc3ec700b67b23e3423dcb60c12c2d27d7d",
+    "reviewed": "pending owner read"
+  },
+  "explanation:alert_style_label": {
+    "sha256": "f516889db5563a0ef8a9f2d35a91f7d715619fdf84a1fd8dcccc84915ee5e9a3",
+    "reviewed": "pending owner read"
+  },
+  "explanation:alert_style_name_intraday": {
+    "sha256": "4d50d5ca61631cb07e94e2f5c0b127d5ce903d3ee4981ac4e072522157209548",
+    "reviewed": "pending owner read"
+  },
+  "explanation:alert_style_name_weekly": {
+    "sha256": "e122be7e054adbd61e889575c4c005c7720670f51f423342fee2a106aad0abc8",
+    "reviewed": "pending owner read"
+  },
+  "explanation:alert_style_name_monthly": {
+    "sha256": "7fabebfb4c2b5e710e19da06ad39c9b3a88ba33c4e92754782bcef1b584e871d",
+    "reviewed": "pending owner read"
+  },
+  "explanation:alert_style_automatic_now": {
+    "sha256": "8399044cef7d6cebf9c5f94c3f4eaed10a50282ea31c9dd4ca2b3d36fc2e1df5",
+    "reviewed": "pending owner read"
+  },
+  "explanation:alert_style_automatic_unknown": {
+    "sha256": "589cfda5294f08c4c0667f6d577fbe473d86ac5c231c4c592796598a705c455b",
+    "reviewed": "pending owner read"
+  },
+  "explanation:alert_style_several_expiries": {
+    "sha256": "701e0efc698042adbaeb837ebe22565cb3f029ae0cd3f1bd871ed252ddb1422c",
+    "reviewed": "pending owner read"
+  },
+  "explanation:alert_style_expiry_unknown": {
+    "sha256": "f51138e9b6d6ad59a714ee5016cd2518d17049066bacce4b680a0f360540e689",
+    "reviewed": "pending owner read"
+  },
+  "explanation:alert_style_refused_unknown": {
+    "sha256": "2311d3ba09eec3bb5dda17c62faca6882f71c7bf919dda69b8c10698cb7d5431",
+    "reviewed": "pending owner read"
   }
 }

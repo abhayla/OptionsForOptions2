@@ -1874,6 +1874,27 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("adjust_preference_refused_above_cap", "rule",
                         "{label} can be at most {limit}, the limit your administrator set. Enter {limit} or less.",
                         {"label": RegistryText, "limit": Recorded}),
+    # GC-ALERT1 (REQ-170 AC-4, ADR-236 (2)): an alert record's words and a held alert's reason (pending owner read);
+    # the alert gate's constants are tested equal to these texts (tests/strategy/test_alert_texts.py)
+    ExplanationTemplate("alert_record_worse_than_last", "what_triggered", "Worse than the last one"),
+    ExplanationTemplate("alert_record_worse_than_dismissed", "what_triggered", "Worse than the one you dismissed"),
+    ExplanationTemplate("alert_held_daily_limit", "rule", "held: daily limit"),
+    ExplanationTemplate("alert_held_quiet_time", "rule", "held: quiet time"),
+    # GC-ALERT1 (REQ-170 Q-AD-2): the strategy's alert style, automatic or pinned by the user (pending owner read)
+    ExplanationTemplate("alert_style_label", "rule", "Alert style"),
+    ExplanationTemplate("alert_style_name_intraday", "rule", "Intraday"),
+    ExplanationTemplate("alert_style_name_weekly", "rule", "Weekly"),
+    ExplanationTemplate("alert_style_name_monthly", "rule", "Monthly"),
+    ExplanationTemplate("alert_style_automatic_now", "rule", "Automatic (now {style})", {"style": Explained}),
+    ExplanationTemplate("alert_style_automatic_unknown", "rule", "Automatic (not known yet)"),
+    ExplanationTemplate("alert_style_several_expiries", "rule",
+                        "This strategy has legs on more than one expiry, so its alert style cannot be picked by "
+                        "itself. Pin a style."),
+    ExplanationTemplate("alert_style_expiry_unknown", "rule",
+                        "This strategy's expiry type or days to expiry could not be read, so its alert style cannot "
+                        "be picked by itself. Pin a style."),
+    ExplanationTemplate("alert_style_refused_unknown", "rule",
+                        "That is not an alert style. Pick Automatic, Intraday, Weekly or Monthly."),
     ExplanationTemplate("settings_refused_out_of_range", "rule",
                         "{label} must be between {low} and {high} ({unit}).",
                         {"label": RegistryText, "low": Recorded, "high": Recorded, "unit": Recorded}),
