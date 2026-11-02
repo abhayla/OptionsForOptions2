@@ -47,6 +47,14 @@ GC-LIVE4 in market hours; then #638 diagnosis, #636 round 5, #639.
 - Run 2 on 0b9f3a86 (02:58-03:26): ran to the end, TOTAL FAIL on 4 of 9 steps, every red a guard catching new code (selector pin, the word 'intraday' in PreferencesTab.vue, private T-19 helpers used by the worker, a time-zone literal, alert_style route edges, 3 unregistered reply models, one long line, ADR-236/237 stage rows). Fixed: 6d4e1f39 (merged 208c1baf) + c2ad7028 (one stale private call in a test). Frontend test 10 passed, eslint clean after the merge.
 - Run 3 on c2ad7028 (03:43-03:55): killed by the same reap, no output. Stopped there (the reap note: restart only when the owner asks).
 - Measured: the only run that survived had a monitor printing every minute; run 1 had no monitor and run 3 a silent one (it would have printed below 2.5 GB free and never did, so run 3 was killed with more than 2.5 GB free at every 30 s sample; run 1 unmeasured). The reap fires on low memory WHILE THE SESSION IS IDLE, so a chatty monitor (or starting Claude Code with CLAUDE_CODE_DISABLE_BG_SHELL_PRESSURE_REAP=1) is the likely way to get one run through.
+- Update 05:08: run 4 on 474dabd6 (03:56-04:10) TOTAL FAIL app_tests only (collection error: tests_app/worker_records.py
+  still imported the renamed _t19_record; fixed 689a9bec). Run 5 on 689a9bec (04:12-04:40) 8/9 PASS; app_tests 1 failed,
+  3986 passed: tests_app/test_feed_control.py::test_no_token_or_fingerprint_is_on_the_bus_or_in_any_log_line ("the login
+  and the Disconnect were not published"); that file alone on a fresh DB: 16 passed; no feed/bus file changed since
+  6e94f46d -> a load flake. Run 6 on 689a9bec (04:42-05:06) KILLED by the reap again, although a monitor printed every
+  minute and read 4.5 GB free at 05:06. The chatty-monitor theory above is WRONG. Stopped; not pushed. Reliable options:
+  the owner runs `python scripts/orchestrator/prepush.py --full` in their own terminal, or restarts the app with the
+  reap switched off (env CLAUDE_CODE_DISABLE_BG_SHELL_PRESSURE_REAP=1); on TOTAL PASS push.
 - NOT DONE: gate TOTAL PASS on the final head; push of feature/adjustments (66 local commits ahead of origin). Nothing on main.
 - NEXT for the owner: say 'run the gate' (one run, chatty monitor) -> on TOTAL PASS push feature/adjustments as its own command; then approve GC-LIVE4.
 
