@@ -226,8 +226,10 @@ class BusSocket:
     def __init__(self, provider: Any, *, user_ref: str, clock: Callable[[], datetime.datetime],  # noqa: PLR0913
                  redis_url: str | None = None, client_factory: Callable[[], Any] | None = None,
                  sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
-                 on_reconnect: Callable[[], Awaitable[None]] | None = None) -> None:
+                 on_reconnect: Callable[[], Awaitable[None]] | None = None,
+                 publish_want: bool = True) -> None:
         self._provider = provider
+        self._publish_want_on = publish_want  # False: the background role, which writes its own ``:bg`` key
         self._on_reconnect = on_reconnect  # REQ-015 AC-5: one REST positions read per reconnect event
         self._reconnect_tasks: set[asyncio.Task] = set()
         self._last_reconnect_at: datetime.datetime | None = None
@@ -375,6 +377,8 @@ class BusSocket:
         """Write the FULL wanted set (a snapshot with an expiry) when it changed, and refresh it once a second."""
         tokens = self._provider.subscribed_tokens()
         self._provider.drain_subscription_changes()  # the feed is told below: nothing is left pending on this side
+        if not self._publish_want_on:
+            return  # never the API's key: this process's wants are written elsewhere
         now = time.monotonic()
         if tokens == self._last_want and now - self._last_want_at < WANT_REFRESH_S:
             return

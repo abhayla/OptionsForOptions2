@@ -337,7 +337,9 @@ class Worker:
         self._listed: dict[tuple[int, str], tuple] = {}  # (id(provider), underlying) -> (provider, known listings)
         self._token_maps: dict[int, tuple] = {}  # id(provider) -> (provider, option tokens, id -> token)
         self._wants_written: dict[str, tuple[list[int], datetime.datetime]] = {}  # owner -> (tokens, when)
+        self._held: dict[int, tuple[Any, set[str]]] = {}  # id(provider) -> (provider, instrument ids it holds)
         self._minute: str | None = None  # the IST wall-clock minute (YYYY-MM-DD HH:MM) the counters below belong to
+        self._read_states: dict[str, int] = {}  # price-read answer state -> count this minute (why nothing was checked)
         self._cycles = 0  # cycles run in that minute
         self._recomputes: dict[int, int] = {}  # strategy id -> state builds (real recomputes) in that minute
         self._legs: dict[int, int] = {}  # strategy id -> its leg count, so per-option = recomputes x legs
@@ -422,6 +424,31 @@ class Worker:
         tokens.add(None if index_id is None else by_id.get(index_id))
         return None if None in tokens else tokens
 
+    def _hold(self, wanted: dict[str, set[int]]) -> None:
+        """The provider holds exactly the wanted tokens (its own subscription, as the API's provider does): only a
+        held token counts as data for the feed's health, so without this every frame is a bare heartbeat and every
+        read answers STALE. Tokens no longer wanted are released. Never raises (a failure is kept in ``errors``)."""
+        per_provider: dict[int, tuple[Any, set[int]]] = {}
+        for owner, tokens in wanted.items():
+            provider = self._provider_for(owner)
+            per_provider.setdefault(id(provider), (provider, set()))[1].update(tokens)
+        for key in self._held.keys() - per_provider.keys():
+            per_provider[key] = (self._held[key][0], set())  # no owner left on that provider: release all it holds
+        for key, (provider, tokens) in per_provider.items():
+            try:
+                _options, by_id = self._tokens_of(provider)
+                id_of = {token: iid for iid, token in by_id.items()}
+                want = {id_of[t] for t in tokens if t in id_of}
+                have = self._held.get(key, (provider, set()))[1]
+                if want - have:
+                    provider.subscribe(sorted(want - have))
+                if have - want:
+                    provider.unsubscribe(sorted(have - want))
+                self._held[key] = (provider, want)
+            except Exception as exc:  # contained: the other providers are held, the next cycle retries
+                log.exception("background: holding the wanted tokens failed")
+                _keep_recent(self.errors, (0, type(exc).__name__))
+
     async def _write_wants(self, now: datetime.datetime) -> None:
         """Step 4c: one snapshot per feed owner (module docstring); never raises."""
         if self._want_client is None:
@@ -441,6 +468,7 @@ class Worker:
                 wanted.setdefault(w.feed_owner, set())
                 continue
             wanted.setdefault(w.feed_owner, set()).update(tokens)
+        self._hold(wanted)
         for owner in self._wants_written.keys() - wanted.keys():
             wanted[owner] = set()  # no monitored strategy left for this owner: an empty snapshot
         for owner, tokens in wanted.items():
@@ -466,6 +494,7 @@ class Worker:
         """True when a check ran (counted against the cycle's cap)."""
         provider = self._provider_for(w.feed_owner)
         read = read_prices(provider, w, now, self._known_of(provider, w.tracked.position.underlying))
+        self._read_states[read.state.name] = self._read_states.get(read.state.name, 0) + 1  # the minute line's reads
         if read.state is PriceState.MARKET_CLOSED:
             return False  # nothing is recomputed while the market is closed
         if read.state is not PriceState.FRESH:
@@ -520,11 +549,12 @@ class Worker:
         """Write the summary of the minute counted so far (also called when the role stops) and reset the counters."""
         if self._minute is None:
             return
-        log.info("background: minute %s cycles=%s checks=%s recomputes %s legs %s valve_step=%s speed=%ss",
+        log.info("background: minute %s cycles=%s checks=%s recomputes %s legs %s valve_step=%s speed=%ss reads %s",
                  self._minute[-5:], self._cycles, sum(self._recomputes.values()),
                  dict(sorted(self._recomputes.items())),
-                 {k: self._legs[k] for k in sorted(self._recomputes)}, self.valve.step + 1, self._speed)
-        self._cycles, self._recomputes, self._legs = 0, {}, {}
+                 {k: self._legs[k] for k in sorted(self._recomputes)}, self.valve.step + 1, self._speed,
+                 dict(sorted(self._read_states.items())))
+        self._cycles, self._recomputes, self._legs, self._read_states = 0, {}, {}, {}
 
     async def cycle(self) -> None:
         now = self._clock()
@@ -624,7 +654,10 @@ async def _serve() -> int:  # pragma: no cover - the process wiring; each part i
         return datetime.datetime.now(IST)
 
     provider = KiteProvider(listed_for_kite(catalogue.all_entries()), clock=clock)
-    socket = BusSocket(provider, user_ref=OWNER_REF, clock=clock, redis_url=feed_mode.redis_url())
+    # publish_want=False: the Worker is the one writer of this role's want key (the ``:bg`` one); the socket would
+    # otherwise write the API's own key from the provider's held set
+    socket = BusSocket(provider, user_ref=OWNER_REF, clock=clock, redis_url=feed_mode.redis_url(),
+                       publish_want=False)
     bus = feed_bus.new_client(feed_mode.redis_url())
     async def preferences(user_ref: str) -> Preferences:
         async with get_sessionmaker()() as db:

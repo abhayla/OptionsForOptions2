@@ -724,3 +724,89 @@ def test_main_configures_info_logging_before_the_loop_starts(monkeypatch):
     monkeypatch.setattr(background.asyncio, "run", fake_run)
     assert background.main([]) == 0
     assert order == ["basicConfig {'level': 20}", "run"]
+
+
+# ---- GC-LIVE3 D3: the role holds the tokens it monitors in its own provider ----------------------------------------
+THREE_HELD = 3
+
+
+class _Redis:
+    """The bus client of the worker, recording every key written."""
+
+    def __init__(self) -> None:
+        self.keys: list[str] = []
+
+    async def set(self, key, _value, **_kw):
+        self.keys.append(key)
+
+
+async def _hold_cycle(worker, at) -> None:
+    await worker._rebuild_safely()  # the monitored list, as each cycle's rebuild
+    await worker._write_wants(at)
+
+
+def _real_provider():
+    import sys  # noqa: PLC0415
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / "tests"))
+    from marketdata import _kite_fixture as kf  # noqa: PLC0415
+    return kf
+
+
+def _straddle(*, strikes=("22550",)) -> list[background.Watched]:
+    legs = tuple(PositionLeg("SELL", kind, Decimal(k), datetime.date(2026, 10, 13), 1, Decimal("100"), "x")
+                 for k in strikes for kind in ("CE", "PE"))
+    t = Tracked(Position("NIFTY", 65, "weekly", datetime.date.min, legs), Decimal(0), None, adjustments_used=0)
+    return [background.Watched("owner", FIRST_ID, t, {}, True, "owner")]
+
+
+async def test_a_frame_for_a_monitored_leg_reads_available_and_fresh_with_no_screen(scn):
+    kf = _real_provider()
+    provider, clock, _items = kf.new_provider()
+    frames = kf.recorded_frames()
+    now = [frames[0][0]]
+    redis = _Redis()
+    worker = _worker(provider, _straddle(), now, Calls(), want_client=redis)
+    await _hold_cycle(worker, now[0])  # the cycle holds the monitored strategy's tokens in the provider
+    provider.on_connected(frames[0][0])
+    for at, frame in frames:
+        clock.now = now[0] = at
+        provider.on_frame(frame, at)
+    assert provider.status().health is DataHealth.AVAILABLE  # before the fix: STALE (heartbeat only, nothing held)
+    read = background.read_prices(provider, _straddle()[0], now[0])
+    assert read.state is background.PriceState.FRESH
+
+
+async def test_without_the_hold_every_frame_is_a_heartbeat_and_the_read_is_stale(scn):
+    kf = _real_provider()
+    provider, clock, _items = kf.new_provider()
+    frames = kf.recorded_frames()
+    provider.on_connected(frames[0][0])
+    for at, frame in frames:
+        clock.now = at
+        provider.on_frame(frame, at)
+    assert provider.status().health is DataHealth.STALE
+    assert background.read_prices(provider, _straddle()[0], frames[-1][0]).state is background.PriceState.STALE
+
+
+async def test_a_token_no_longer_wanted_is_released(scn):
+    kf = _real_provider()
+    provider, _clock, _items = kf.new_provider()
+    now = [kf.recorded_frames()[0][0]]
+    watched = _straddle()
+    worker = _worker(provider, watched, now, Calls(), want_client=_Redis())
+    await _hold_cycle(worker, now[0])
+    assert len(provider.subscribed_tokens()) == THREE_HELD  # the two legs and the index
+    watched.clear()  # the strategy is gone
+    await _hold_cycle(worker, now[0])
+    assert provider.subscribed_tokens() == []
+
+
+async def test_the_worker_writes_only_the_background_want_key(scn):
+    kf = _real_provider()
+    provider, _clock, _items = kf.new_provider()
+    now = [kf.recorded_frames()[0][0]]
+    redis = _Redis()
+    worker = _worker(provider, _straddle(), now, Calls(), want_client=redis)
+    await _hold_cycle(worker, now[0])
+    from ofo_app import feed_bus  # noqa: PLC0415
+    assert redis.keys == [feed_bus.background_want_key("owner")]
