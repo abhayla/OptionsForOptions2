@@ -341,3 +341,20 @@ def restore(rows: GateRows, today: date, specs: Mapping[str, RuleSpec]) -> GateS
                       dismissed=row.dismissed, final=not row.open)
         state = state.with_rule(row.rule_id, _Rule(record=rec))
     return state
+
+
+def restore_held(state: GateState, rule_id: str, reason: str, threshold: Decimal | None,
+                 spec: RuleSpec | None) -> GateState:
+    """GC-ALERT1 wire-b item 5: a crossing held today (a stored held row newer than the rule's last record) is
+    restored as the rule's held episode, so a restarted worker writes no second Held row for the same episode. The
+    episode ends as any hold does (cleared by the band, one level worse, the quiet time over)."""
+    if reason not in (HELD_DAILY_LIMIT, HELD_QUIET_TIME):
+        raise ValueError(f"unknown held reason {reason!r}")
+    level = max(_restored_level(spec, threshold), 0)
+    return state.with_rule(rule_id, replace(state.rule(rule_id), hold=_Hold(reason, level, threshold)))
+
+
+def is_dismissed(state: GateState, rule_id: str) -> bool | None:
+    """Whether the rule's last record in the gate is dismissed; None when the gate holds no record for it."""
+    rec = state.rule(rule_id).record
+    return None if rec is None else rec.dismissed

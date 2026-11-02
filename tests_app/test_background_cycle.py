@@ -15,6 +15,7 @@ import time
 from decimal import Decimal
 
 import pytest
+from ofo.adjustment import alert_gate
 from ofo.adjustment import playbook_eval as pe
 from ofo.adjustment.approaches import Position, PositionLeg
 from ofo.adjustment.preferences import from_values
@@ -132,10 +133,29 @@ class Calls:
         self.writes.append((w.strategy_id, state))
 
 
+def _all_styles(seconds):
+    """ADR-235 (1): the same interval for every trading style (ADJ-02 is weekly, so its own key gates it)."""
+    return dict.fromkeys(calc_speeds.BACKGROUND_KEYS.values(), seconds)
+
+
+class FakeGate:
+    """The worker's gate store seam with no database: no stored record, no pin; every applied event is kept."""
+
+    def __init__(self) -> None:
+        self.events: list[tuple[int, object]] = []
+
+    async def load(self, _w, _today):
+        return background.GateLoad(alert_gate.GateRows((), 0))
+
+    async def apply(self, w, events, _ctx):
+        self.events.extend((w.strategy_id, e) for e in events)
+        return {}
+
+
 def _settings(values=None):
     """The worker's settings seam: ``values`` (a dict a test may change between cycles), else the registry defaults."""
     # tests written for a 1 s check speed pin it here; the registry default (30 s, ADR-233) has its own tests below
-    held = {**DEFAULTS, calc_speeds.KEY_BACKGROUND: Decimal(1)} if values is None else values
+    held = {**DEFAULTS, **_all_styles(Decimal(1))} if values is None else values
 
     async def read():
         return held
@@ -151,6 +171,7 @@ def _worker(prov, watched, now, recorder, settings=None, **kw) -> background.Wor
         return watched
     if isinstance(recorder, Calls):
         kw.setdefault("observe", recorder.seen)
+    kw.setdefault("gate_store", FakeGate())
     return background.Worker(provider_for=lambda _o: prov, lister=lister, clock=lambda: now[0],
                              settings=settings or _settings(), preferences=_prefs, recorder=recorder, **kw)
 
@@ -239,7 +260,7 @@ async def test_no_price_change_no_check_and_at_most_once_per_speed(scn):
 
 # ---- REQ-166 AC-1: speed read on every cycle ------------------------------------------------------------------
 async def test_speed_change_from_1s_to_3s_takes_effect_without_restart(scn, monkeypatch):
-    values = {**DEFAULTS, calc_speeds.KEY_BACKGROUND: Decimal(1)}
+    values = {**DEFAULTS, **_all_styles(Decimal(1))}
     prov, now = Prov(scn), [scn.clock_at]
     calls = Calls()
     w = None
@@ -247,7 +268,7 @@ async def test_speed_change_from_1s_to_3s_takes_effect_without_restart(scn, monk
     def observe(wd, state):
         calls.seen(wd, state)
         if len(calls.states) == CHECKS_AFTER_CHANGE:
-            values[calc_speeds.KEY_BACKGROUND] = Decimal(3)  # the admin changes the setting
+            values.update(_all_styles(Decimal(3)))  # the admin changes the setting
         if len(calls.states) == STOP_AFTER:
             w.stop()
 
@@ -264,12 +285,12 @@ async def test_speed_change_from_1s_to_3s_takes_effect_without_restart(scn, monk
 async def test_each_cycle_reads_the_speed_itself_not_only_the_sleep(scn, monkeypatch):
     """The cycle's own "at most once per speed" gate reads the speed on every cycle: cycles driven every 1 s (not by
     ``run``'s sleep) with a price change each time check every 1 s, then every 3 s once the setting is 3 s."""
-    values = {**DEFAULTS, calc_speeds.KEY_BACKGROUND: Decimal(1)}
+    values = {**DEFAULTS, **_all_styles(Decimal(1))}
     prov, now, calls = Prov(scn), [scn.clock_at], Calls()
     w = _worker(prov, _watched(scn), now, calls, settings=_settings(values))
     for tick in range(CYCLES):
         if tick == SLOW_CYCLES:
-            values[calc_speeds.KEY_BACKGROUND] = Decimal(3)  # the admin changes the setting
+            values.update(_all_styles(Decimal(3)))  # the admin changes the setting
         await w.cycle()
         now[0] += datetime.timedelta(seconds=1)
         prov.move_spot(prov.spot.ltp + 1, now[0])
@@ -289,7 +310,7 @@ async def test_valve_steps_1_2_5_under_a_slow_maths_step_and_back_to_1_when_calm
         now[0] += datetime.timedelta(seconds=6)
         prov.move_spot(Decimal(23420 + i), now[0])
         await w.cycle()
-        seen.append(w.background_seconds())
+        seen.append(w.background_seconds()["weekly"])
     assert seen[:2] == [Decimal(2), Decimal(5)] and seen[-1] == Decimal(1)
     assert [step for _, step, _ in w.valve.log] == [1, 2, 0]
     assert all("maths reply" in r for _, _, r in w.valve.log[:2]) and "under its limits" in w.valve.log[2][2]
@@ -315,7 +336,7 @@ def test_the_valve_steps_are_the_settings_in_force():
 
 def test_a_missing_speed_setting_fails_closed():
     with pytest.raises(calc_speeds.SpeedSettingRefused):
-        calc_speeds.read_speeds({**DEFAULTS, calc_speeds.KEY_BACKGROUND: Decimal(0)})
+        calc_speeds.read_speeds({**DEFAULTS, **_all_styles(Decimal(0))})
     with pytest.raises(calc_speeds.SpeedSettingRefused):  # a key the read did not hold: never a guessed speed
         calc_speeds.read_speeds({k: v for k, v in DEFAULTS.items() if k != calc_speeds.KEY_PER_OPTION})
 
@@ -323,7 +344,7 @@ def test_a_missing_speed_setting_fails_closed():
 async def test_a_failing_settings_read_keeps_the_last_good_read(scn):
     """REQ-115 AC-9 for the one settings read per cycle: a failed read keeps the last good values (speed 3 s here);
     with no good read yet the cycle checks nothing."""
-    values, fail = {**DEFAULTS, calc_speeds.KEY_BACKGROUND: Decimal(3)}, [True]
+    values, fail = {**DEFAULTS, **_all_styles(Decimal(3))}, [True]
 
     async def read():
         if fail[0]:
@@ -561,7 +582,7 @@ async def test_a_failing_list_reread_keeps_the_last_good_list_and_still_checks(s
             raise ConnectionError("database blip")
         return good
     w = background.Worker(provider_for=lambda _o: prov, lister=lister, clock=lambda: now[0], settings=_settings(),
-                          preferences=_prefs, recorder=calls, observe=calls.seen)
+                          preferences=_prefs, recorder=calls, observe=calls.seen, gate_store=FakeGate())
     await w.cycle()
     now[0] += datetime.timedelta(seconds=background.REBUILD_SECONDS)
     prov.move_spot(prov.spot.ltp + 1, now[0])
@@ -596,7 +617,7 @@ async def test_owner_lister_skips_a_strategy_whose_instrument_list_raises(scn, m
 
 async def test_a_failing_speed_read_keeps_the_last_good_speed(scn, monkeypatch):
     prov, now, calls = Prov(scn), [scn.clock_at], Calls()
-    three = _settings({**DEFAULTS, calc_speeds.KEY_BACKGROUND: Decimal(3)})
+    three = _settings({**DEFAULTS, **_all_styles(Decimal(3))})
     w = _worker(prov, _watched(scn), now, calls, settings=three)
     await w.cycle()
 
@@ -863,7 +884,7 @@ async def test_a_cycle_makes_no_lister_or_preferences_call(scn):
         prefs.append(user_ref)
         return PREFS
     w = background.Worker(provider_for=lambda _o: prov, lister=lister, clock=lambda: now[0], settings=_settings(),
-                          preferences=preferences, recorder=calls, observe=calls.seen)
+                          preferences=preferences, recorder=calls, observe=calls.seen, gate_store=FakeGate())
     await w._rebuild_safely()
     assert (len(lists), prefs) == (1, ["owner"])  # three strategies, one user: one preferences read
     for _ in range(3):
@@ -1070,12 +1091,12 @@ WAKE_SECONDS = 1.0
 
 
 def test_the_registry_default_of_the_background_check_is_30_seconds():
-    assert DEFAULTS[calc_speeds.KEY_BACKGROUND] == BACKGROUND_DEFAULT
+    assert DEFAULTS[calc_speeds.BACKGROUND_KEYS["weekly"]] == BACKGROUND_DEFAULT
 
 
 async def test_run_wakes_every_second_when_the_setting_is_30(scn):
     prov, now, calls, slept = Prov(scn), [scn.clock_at], Calls(), []
-    values = {**DEFAULTS, calc_speeds.KEY_BACKGROUND: BACKGROUND_DEFAULT}
+    values = {**DEFAULTS, **_all_styles(BACKGROUND_DEFAULT)}
 
     async def sleep(seconds):
         slept.append(seconds)
@@ -1089,7 +1110,7 @@ async def test_run_wakes_every_second_when_the_setting_is_30(scn):
 
 async def test_a_strategy_is_rechecked_only_after_30_seconds_and_only_when_a_price_changed(scn):
     prov, now, calls = Prov(scn), [scn.clock_at], Calls()
-    values = {**DEFAULTS, calc_speeds.KEY_BACKGROUND: BACKGROUND_DEFAULT}
+    values = {**DEFAULTS, **_all_styles(BACKGROUND_DEFAULT)}
     w = _worker(prov, _watched(scn), now, calls, settings=_settings(values))
     await w.cycle()  # checked at t
     start = now[0]
