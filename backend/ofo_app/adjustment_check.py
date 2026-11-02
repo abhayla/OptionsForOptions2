@@ -55,7 +55,14 @@ from ofo.marketdata.spot_source import SourceState, SpotAnswer
 from ofo.timeutil import IST
 
 from ofo_app import playbook_store
-from ofo_app.routes.adjustment import MarketInputs, Tracked, as_of_market, price_after, priced_approach
+from ofo_app.routes.adjustment import (
+    MarketInputs,
+    Tracked,
+    as_of_market,
+    liquidity_inputs,
+    price_after,
+    priced_approach,
+)
 
 #: a clock trigger's unit in the playbook body (T-10b): its value and threshold are HH:MM
 CLOCK_UNIT: Final = "time"
@@ -142,6 +149,12 @@ def _abs_delta(market: MarketInputs, symbol: str) -> Decimal | None:
     return None if g is None or g.delta is None else abs(g.delta)
 
 
+def guards_of_body(body: Mapping | None) -> dict[str, Any] | None:
+    """The ``guards`` of a resolved playbook body (ADR-230 (1)); None when there is no body. The route's reader
+    (``adjustment_readers.read_guards``) and T-19 both read guards through this."""
+    return None if body is None else dict(body.get("guards", {}))
+
+
 def cheapest_offered(body: Mapping | None, tracked: Tracked, market: MarketInputs, spot: Decimal | None,  # noqa: PLR0913 - the preferences value is a required parameter (GC-SET)
                      rates: Any, config: Config) -> Cheapest:
     """ADR-221: the cheapest approach ``body`` offers, every one built and priced by the Compare's own path."""
@@ -150,8 +163,11 @@ def cheapest_offered(body: Mapping | None, tracked: Tracked, market: MarketInput
         return cheapest_approach(offered, {}, market.chain)
     columns: dict[str, Column] = {}
     tracked = as_of_market(tracked, market)  # as the approaches route builds (market day, listed expiry kind)
+    position = tracked.position  # the route's Before and guards, through the same helpers (#633, ADR-230 (1))
+    before = price_after(position.legs, position, tracked.booked, tracked.paid_charges, (), rates, market)
+    limits, max_profit = liquidity_inputs(guards_of_body(body), before)
     for a in offered:
-        built, priced = priced_approach(a, tracked, market, spot, rates, config)
+        built, priced = priced_approach(a, tracked, market, spot, rates, config, limits=limits, max_profit=max_profit)
         if built is not None and priced is not None:
             columns[a] = Column(built, priced.after, priced.reason, priced.charges_known, MarginRead(None))
     return cheapest_approach(offered, columns, market.chain)
