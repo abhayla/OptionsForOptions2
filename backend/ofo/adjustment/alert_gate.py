@@ -119,6 +119,7 @@ class _Record:
     at: datetime
     dismissed: bool = False
     final: bool = False  # lapsed / acted on / dismissed: no Lapsed event any more
+    unleveled: bool = False  # restored with a stored threshold but no real ladder yet: levelled at the first real close
 
 
 @dataclass(frozen=True)
@@ -126,6 +127,7 @@ class _Hold:
     reason: str
     level: int
     threshold: Decimal | None
+    unleveled: bool = False  # as _Record.unleveled
 
 
 @dataclass(frozen=True)
@@ -217,12 +219,31 @@ def _refresh(rule_id: str, rule: _Rule, pend: _Pending, level: int, preset: Pres
     return rule, events
 
 
+def _unleveled(spec: RuleSpec | None, threshold: Decimal | None) -> bool:
+    """A stored threshold with no real ladder to level it against (no spec, or the yes/no placeholder of a rule not
+    checked at the restoring check): its level is not known yet (review #2 of 0036)."""
+    return threshold is not None and (spec is None or spec.cmp == "bool")
+
+
+def _leveled(rule: _Rule, spec: RuleSpec) -> _Rule:
+    """Level a restored record / hold against the first real (ge / le) ladder a close carries; the stored THRESHOLD
+    is kept, never replaced by the placeholder's. A yes/no close leaves it unlevelled (it cannot escalate a number)."""
+    if spec.cmp == "bool":
+        return rule
+    rec, hold = rule.record, rule.hold
+    if rec is not None and rec.unleveled:
+        rule = replace(rule, record=replace(rec, level=_restored_level(spec, rec.threshold), unleveled=False))
+    if hold is not None and hold.unleveled:
+        rule = replace(rule, hold=replace(hold, level=max(_restored_level(spec, hold.threshold), 0), unleveled=False))
+    return rule
+
+
 def _close(state: GateState, rule_id: str, pend: _Pending, preset: Preset) -> tuple[GateState, list[Event]]:
     t, value, spec = pend.end, pend.value, pend.spec
     if state.day != t.date():
         state = replace(state, day=t.date(), opened_today=0)
     level = _level(spec, value)
-    rule, lapsed = _refresh(rule_id, replace(state.rule(rule_id), pending=None), pend, level, preset)
+    rule, lapsed = _refresh(rule_id, _leveled(replace(state.rule(rule_id), pending=None), spec), pend, level, preset)
     state = state.with_rule(rule_id, rule)
     state, events = _decide(state, rule_id, rule, pend, level, preset)
     return state, lapsed + events
@@ -337,7 +358,26 @@ def restore(rows: GateRows, today: date, specs: Mapping[str, RuleSpec]) -> GateS
         raise ValueError("opened_today cannot be negative")
     state = replace(GateState(), day=today, opened_today=rows.opened_today)
     for row in rows.last:
-        rec = _Record(_restored_level(specs.get(row.rule_id), row.threshold), row.threshold, _ist(row.at),
-                      dismissed=row.dismissed, final=not row.open)
+        spec = specs.get(row.rule_id)
+        rec = _Record(_restored_level(spec, row.threshold), row.threshold, _ist(row.at),
+                      dismissed=row.dismissed, final=not row.open, unleveled=_unleveled(spec, row.threshold))
         state = state.with_rule(row.rule_id, _Rule(record=rec))
     return state
+
+
+def restore_held(state: GateState, rule_id: str, reason: str, threshold: Decimal | None,
+                 spec: RuleSpec | None) -> GateState:
+    """GC-ALERT1 wire-b item 5: a crossing held today (a stored held row newer than the rule's last record) is
+    restored as the rule's held episode, so a restarted worker writes no second Held row for the same episode. The
+    episode ends as any hold does (cleared by the band, one level worse, the quiet time over)."""
+    if reason not in (HELD_DAILY_LIMIT, HELD_QUIET_TIME):
+        raise ValueError(f"unknown held reason {reason!r}")
+    level = max(_restored_level(spec, threshold), 0)
+    hold = _Hold(reason, level, threshold, unleveled=_unleveled(spec, threshold))
+    return state.with_rule(rule_id, replace(state.rule(rule_id), hold=hold))
+
+
+def is_dismissed(state: GateState, rule_id: str) -> bool | None:
+    """Whether the rule's last record in the gate is dismissed; None when the gate holds no record for it."""
+    rec = state.rule(rule_id).record
+    return None if rec is None else rec.dismissed

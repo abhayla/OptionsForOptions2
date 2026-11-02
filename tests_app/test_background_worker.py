@@ -12,13 +12,15 @@ import datetime
 import importlib.util
 import pathlib
 import time
+from decimal import Decimal as D
 
 import pytest
+from ofo.adjustment import alert_gate
 from ofo.adjustment.preferences import from_values
 from ofo.settings import calc as settings_calc
 from ofo.settings import defaults as registry_defaults
 from ofo.timeutil import IST
-from ofo_app import background, catalogue_store, playbook_store, scenario_mode
+from ofo_app import background, catalogue_store, playbook_store, scenario_mode, strategy_alert_style_store
 from ofo_app import db as app_db
 from ofo_app.config import get_settings
 from sqlalchemy import text
@@ -32,6 +34,15 @@ MAX_DELIST = settings_calc.max_delist_percent(registry_defaults())  # the regist
 BEFORE_CROSS_SPOT = "23000"  # 2.1 % below the 23500 CE short and 1.3 % above the 22700 PE short: T-01 (0.5 %) false
 ONE_SECOND = datetime.timedelta(seconds=1)
 REBUILD_LIMIT_S = 60
+CROSS_SPOT = "23420"  # the scenario's spot: 80 points under the 23500 CE short, 0.34 %: T-01 (0.5 %) true
+INSIDE_BAND_SPOT = "23375"  # 125 points, 0.53 %: T-01 false but inside the intraday 10 % band (re-arms at 0.55 %)
+WOBBLE_EVERY_S = 18  # 20 moves in 6 minutes = 10 crossings and 10 re-crossings, each after a full 10 s interval
+
+
+async def _held_total(engine, sid: int) -> int:
+    async with engine.connect() as conn:
+        return (await conn.execute(text("SELECT count(*) FROM public.adjustment_held_crossings "
+                                        "WHERE strategy_id = :s"), {"s": sid})).scalar_one()
 
 
 def _reset_engine() -> None:
@@ -93,43 +104,113 @@ def _worker(scn: scenario_mode.Scenario, clock) -> background.Worker:
 
     async def preferences(_user_ref):
         return from_values(registry_defaults())  # the owner's preferences: the registry defaults (REQ-168 AC-1)
+
+    async def user_values(_user_ref):
+        return registry_defaults()  # the owner's alert values in force: the admin defaults (REQ-170 AC-6)
     return background.Worker(provider_for=lambda _owner: scn.provider,
                              lister=lambda: background.owner_lister(scn.provider), clock=clock, settings=settings,
-                             preferences=preferences)
+                             preferences=preferences, user_values=user_values)
 
 
-async def test_core_adj02_crossing_t01_opens_one_record_within_one_second_with_no_client(app_db_url, monkeypatch):
+async def _pin_intraday(engine, sid: int) -> None:
+    """The user pins the intraday style (REQ-170 Q-AD-2): 1-minute candles, 10 s checks, 10 % band."""
+    async with engine.connect() as conn:
+        if (await strategy_alert_style_store.pin_of(conn, "owner", sid)).style != "intraday":
+            await strategy_alert_style_store.set_pin(conn, "owner", sid, "intraday")
+            await conn.commit()
+
+
+async def _t01_ids(engine, sid: int) -> list[tuple[int, str]]:
+    async with engine.connect() as conn:
+        rows = (await conn.execute(text("SELECT id, outcome FROM public.adjustment_suggestions "
+                                        "WHERE strategy_id = :s AND rule_id = 'T-01' ORDER BY id"), {"s": sid})).all()
+    return [(r[0], r[1]) for r in rows]
+
+
+async def _settle_clear(worker, scn, now, start) -> datetime.datetime:
+    """Spot 23000 (T-01 1.3 %, clear by the band) until two 1-minute closes pass: any record a previous test of
+    this file left open lapses and the rule is armed (the seed reuses one strategy per scenario)."""
+    _push_spot(scn, BEFORE_CROSS_SPOT, start)
+    for s in range(121):
+        now[0] = start + datetime.timedelta(seconds=s)
+        await worker.cycle()
+    return now[0]
+
+
+async def test_core_wobble_10_crossings_in_6_minutes_opens_one_record_at_a_candle_close(app_db_url, monkeypatch):
+    """GC-ALERT1 core (REQ-170 AC-1/AC-2, ADR-237 (2)-(4)): T-01 crosses its 0.5 % line and comes back inside the
+    10 % band (0.50-0.55 %) ten times in six minutes, one check each 18 s. ONE record opens, at the first 1-minute
+    candle close after the crossing (plus at most one 10 s interval); no Lapsed until a close clears the band."""
     sid, scn = await _seeded(app_db_url, monkeypatch)
+    await _pin_intraday(app_db_url, sid)
     now = [scn.clock_at]
     worker = _worker(scn, lambda: now[0])
-    _push_spot(scn, BEFORE_CROSS_SPOT, scn.clock_at)
-    await worker.cycle()
-    assert [m.strategy_id for m in worker.monitors] == [sid] and worker.errors == []
-    assert [c[0] for c in worker.checks] == [sid] and await _t01_records(app_db_url, sid) == []
-    now[0] = scn.clock_at + datetime.timedelta(seconds=5)  # 11:40:05: the price that crosses T-01
-    price_at = await _db_now(app_db_url)
-    _push_spot(scn, scn.data["market"]["spot"], now[0])
-    started = time.monotonic()
-    await worker.cycle()
-    took = time.monotonic() - started
-    records = await _t01_records(app_db_url, sid)
-    assert len(records) == 1, records
-    found_at = datetime.datetime.fromisoformat(records[0].timeline[0]["at"])
-    assert datetime.timedelta(0) <= found_at - price_at <= ONE_SECOND, (price_at, found_at, took)
-    assert worker.status[sid] is background.MonitoringStatus.ACTIVE and worker.errors == []
-    print(f"CORE-PROOF price_at={price_at.isoformat()} found_at={found_at.isoformat()} "
-          f"gap={(found_at - price_at).total_seconds():.3f}s cycle={took:.3f}s record={records[0].id}")
+    start = await _settle_clear(worker, scn, now, scn.clock_at)
+    assert worker.errors == [] and worker.status[sid] is background.MonitoringStatus.ACTIVE
+    before = await _t01_ids(app_db_url, sid)
+    assert all(o != "open" for _i, o in before), before
+    opened_at = None
+    for s in range(1, 361):
+        now[0] = start + datetime.timedelta(seconds=s)
+        if s % WOBBLE_EVERY_S == 0:
+            _push_spot(scn, CROSS_SPOT if (s // WOBBLE_EVERY_S) % 2 else INSIDE_BAND_SPOT, now[0])
+        await worker.cycle()
+        if opened_at is None and len(await _t01_ids(app_db_url, sid)) > len(before):
+            opened_at = now[0]
+    new = (await _t01_ids(app_db_url, sid))[len(before):]
+    assert len(new) == 1 and new[0][1] == "open", new  # one record, still open (inside the band: no Lapsed)
+    first_cross = start + datetime.timedelta(seconds=WOBBLE_EVERY_S)
+    close = first_cross.replace(second=0, microsecond=0) + datetime.timedelta(minutes=1)
+    assert close <= opened_at <= close + datetime.timedelta(seconds=10), (first_cross, close, opened_at)
+    for s in range(361, 361 + 75):
+        now[0] = start + datetime.timedelta(seconds=s)
+        if s == 361:  # noqa: PLR2004 - a frame strictly newer than the last one: clears the band, the episode ends at the next close
+            _push_spot(scn, BEFORE_CROSS_SPOT, now[0])
+        await worker.cycle()
+    after = (await _t01_ids(app_db_url, sid))[len(before):]
+    assert after == [(new[0][0], "lapsed")] and worker.errors == [], (after, worker.errors)
+    print(f"CORE-PROOF crossings=10 records={len(new)} first_cross={first_cross.time()} close={close.time()} "
+          f"opened_at={opened_at.time()} record={new[0][0]} lapsed_after_band_cleared=yes")
 
 
-async def test_restart_monitors_within_60s_reopens_nothing_and_keeps_rule_memory(app_db_url, monkeypatch):
+async def test_crossing_opens_one_record_at_the_confirming_candle_close_not_at_the_crossing(app_db_url, monkeypatch):
+    """Was ..._within_one_second (red on base 85dbd6f9): under ADR-237 (3) the record opens at the close of the
+    1-minute candle that confirms the crossing, at most one check interval after it, never at the crossing price."""
     sid, scn = await _seeded(app_db_url, monkeypatch)
+    await _pin_intraday(app_db_url, sid)
+    now = [scn.clock_at]
+    worker = _worker(scn, lambda: now[0])
+    start = await _settle_clear(worker, scn, now, scn.clock_at)
+    before = await _t01_ids(app_db_url, sid)
+    now[0] = start + datetime.timedelta(seconds=5)
+    _push_spot(scn, CROSS_SPOT, now[0])
+    await worker.cycle()
+    assert await _t01_ids(app_db_url, sid) == before  # the crossing itself opens nothing
+    close = now[0].replace(second=0, microsecond=0) + datetime.timedelta(minutes=1)
+    while now[0] < close:
+        now[0] += ONE_SECOND
+        started = time.monotonic()
+        await worker.cycle()
+    took = time.monotonic() - started
+    new = (await _t01_ids(app_db_url, sid))[len(before):]
+    assert len(new) == 1 and new[0][1] == "open", new
+    assert worker.status[sid] is background.MonitoringStatus.ACTIVE and worker.errors == []
+    print(f"CLOSE-PROOF close={close.time()} opened_at={now[0].time()} cycle={took:.3f}s record={new[0][0]}")
+
+
+async def test_restart_reopens_nothing_writes_no_second_held_and_keeps_rule_memory(app_db_url, monkeypatch):
+    """Was test_restart_monitors_within_60s_... (red on base): a restarted worker restores the gate from the stored
+    records (ADR-237 (5)), monitors within 60 s, opens no second record and writes no Held row."""
+    sid, scn = await _seeded(app_db_url, monkeypatch)
+    await _pin_intraday(app_db_url, sid)
     now = [scn.clock_at]
     first = _worker(scn, lambda: now[0])
-    _push_spot(scn, BEFORE_CROSS_SPOT, scn.clock_at)
-    await first.cycle()
-    now[0] = scn.clock_at + datetime.timedelta(seconds=5)
-    _push_spot(scn, scn.data["market"]["spot"], now[0])
-    await first.cycle()
+    start = await _settle_clear(first, scn, now, scn.clock_at)
+    now[0] = start + datetime.timedelta(seconds=5)
+    _push_spot(scn, CROSS_SPOT, now[0])
+    for _ in range(70):
+        now[0] += ONE_SECOND
+        await first.cycle()
     before = await _t01_records(app_db_url, sid)
     async with app_db_url.connect() as conn:
         memory = await playbook_store.rule_state(conn, "owner", sid)
@@ -139,11 +220,73 @@ async def test_restart_monitors_within_60s_reopens_nothing_and_keeps_rule_memory
     now[0] += datetime.timedelta(seconds=2)
     second = _worker(scn, lambda: now[0])
     restarted_at = now[0]  # the injected clock: the restart's first check is counted against it, never wall time
+    held_before = await _held_total(app_db_url, sid)
     await second.cycle()
     assert [m.strategy_id for m in second.monitors] == [sid] and [c[0] for c in second.checks] == [sid]
     assert second.checks[0][1] - restarted_at <= datetime.timedelta(seconds=REBUILD_LIMIT_S)
+    for _ in range(70):  # still beyond the line through the next closes: quiet (not cleared since the record)
+        now[0] += ONE_SECOND
+        await second.cycle()
+    assert second.errors == [] and await _held_total(app_db_url, sid) == held_before
     after = await _t01_records(app_db_url, sid)
     assert [r.id for r in after] == [r.id for r in before]  # the open record is the same one, never re-opened
     async with app_db_url.connect() as conn:
         assert await playbook_store.rule_state(conn, "owner", sid) == memory
     assert await _t01_total(app_db_url, sid) == total_before  # no record of any outcome written by the restart
+
+
+async def _watched_and_fresh_t03(app_engine, monkeypatch) -> tuple[background.Watched, int]:
+    """The seeded strategy as the worker lists it, with every earlier open record lapsed and one T-03 record open."""
+    sid, scn = await _seeded(app_engine, monkeypatch)
+    w = next(x for x in await background.owner_lister(scn.provider) if x.strategy_id == sid)
+    async with app_engine.begin() as conn:
+        await playbook_store.lapse_all(conn, "owner", sid, playbook_store.LAPSE_CONDITION_STOPPED)
+        rec = await playbook_store.open_suggestion(conn, "owner", sid, "T-03", trigger_id="T-03", stage="Middle",
+                                                   value=D("0.36"), threshold=D("0.35"))
+    return w, rec.id
+
+
+async def _t03_rows(engine, sid: int, since: int) -> list[tuple]:
+    async with engine.connect() as conn:
+        rows = (await conn.execute(text("SELECT id, outcome, worse, threshold FROM public.adjustment_suggestions "
+                                        "WHERE strategy_id = :s AND rule_id = 'T-03' AND id >= :i ORDER BY id"),
+                                   {"s": sid, "i": since})).all()
+    return [tuple(r) for r in rows]
+
+
+async def test_an_escalation_of_an_open_record_lapses_it_and_opens_the_worse_one_in_one_transaction(app_db_url,
+                                                                                                  monkeypatch):
+    """Review #1 of 0036 (REQ-112: one open record per rule): Opened(worse="last") while the rule's record is open ->
+    the old one lapsed and the worse one opened, both or neither (a failing insert leaves the old record open)."""
+    w, old = await _watched_and_fresh_t03(app_db_url, monkeypatch)
+    at = await _db_now(app_db_url)
+    worse = alert_gate.Opened("T-03", at, 2, D("0.40"), D("0.41"), "last")
+
+    async def refused(*_a, **_k):
+        raise RuntimeError("insert refused")
+    with monkeypatch.context() as m:
+        m.setattr(playbook_store, "open_suggestion", refused)
+        with pytest.raises(RuntimeError, match="insert refused"):
+            await background.DbGateStore().apply(w, [worse], None)
+    assert await _t03_rows(app_db_url, w.strategy_id, old) == [(old, "open", None, D("0.35"))]  # rolled back
+    opened = await background.DbGateStore().apply(w, [worse], None)
+    rows = await _t03_rows(app_db_url, w.strategy_id, old)
+    assert rows == [(old, "lapsed", None, D("0.35")), (opened["T-03"], "open", "last", D("0.40"))], rows
+
+
+async def test_a_record_acted_on_mid_session_makes_no_lapse_call_when_the_band_clears(app_db_url, monkeypatch):
+    """Review #4 of 0036: the user acted on the record (the gate does not know); the band clears -> the gate's Lapsed
+    finds no open record: no lapse call, no OF031 error, the record stays acted on."""
+    w, old = await _watched_and_fresh_t03(app_db_url, monkeypatch)
+    async with app_db_url.begin() as conn:
+        await playbook_store.act_on(conn, "owner", old)
+    calls = []
+    real = playbook_store.lapse
+
+    async def counted(*a, **k):
+        calls.append(a)
+        return await real(*a, **k)
+    monkeypatch.setattr(playbook_store, "lapse", counted)
+    at = await _db_now(app_db_url)
+    assert await background.DbGateStore().apply(w, [alert_gate.Lapsed("T-03", at, D("0.20"))], None) == {}
+    assert calls == [] and await _t03_rows(app_db_url, w.strategy_id, old) == [(old, "acted_on", None, D("0.35"))]

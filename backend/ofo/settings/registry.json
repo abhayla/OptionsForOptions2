@@ -410,18 +410,6 @@
       "source": "ADR-220 (3), REQ-166 AC-1; was ofo_app/calc_speeds.py _STAND_IN"
     },
     {
-      "key": "speeds.background_check_seconds",
-      "group": "Speeds",
-      "label": "Background check interval",
-      "unit": "seconds",
-      "type": "decimal",
-      "min": "0.2",
-      "max": "60",
-      "default": "30",
-      "what_it_changes": "The shortest time between two background playbook checks of one strategy that no screen has open. A larger number means fewer checks and less server work.",
-      "source": "ADR-220 (3), ADR-233, REQ-166 AC-1; was ofo_app/calc_speeds.py _STAND_IN"
-    },
-    {
       "key": "speeds.valve_step_seconds.1",
       "group": "Speeds",
       "label": "Safety valve step 1",

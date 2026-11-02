@@ -10,6 +10,7 @@ import datetime
 import importlib.util
 import pathlib
 from decimal import Decimal
+from types import SimpleNamespace
 
 import pytest
 from ofo.adjustment import alert_gate as ag
@@ -215,6 +216,49 @@ async def test_allowlist_drift_fails_the_post_check(admin, mutation):
     with pytest.raises(DBAPIError):
         async with admin.begin_nested():
             await admin.execute(text("SELECT public.ofo_assert_app_role_allowlist('ofo_app', 'post')"))
+
+
+# ---- review #3: the downgrade ---------------------------------------------------------------------------------------
+
+def _recorded_downgrade() -> list[str]:
+    recorded: list[str] = []
+    m = _migration()
+    m.op = SimpleNamespace(execute=lambda sql, *a, **k: recorded.append(str(sql)))
+    m._BASE._app_role = lambda: "ofo_app"
+    m.downgrade()
+    return recorded
+
+
+@pytest.mark.parametrize("kind", ["held", "worse"])
+async def test_the_downgrade_refuses_while_held_rows_or_worse_marks_exist(admin, kind):
+    user, sid = await _strategy(admin)
+    if kind == "held":
+        await pb.record_held(admin, user, sid, "T-03", trigger_id="T-03", stage="Middle", value=D("0.36"),
+                             threshold=MIDDLE_T03, reason=ag.HELD_DAILY_LIMIT)
+    else:
+        await _open(admin, user, sid, worse="last")
+    with pytest.raises(DBAPIError, match="refusing to downgrade 0036_alert_gate_storage") as info:
+        async with admin.begin_nested():
+            await admin.execute(text(_recorded_downgrade()[0]))
+    assert _sqlstate(info) == _migration().SQLSTATE
+
+
+async def test_the_downgrade_restores_the_0031_guard_and_the_0035_allowlist_chain(admin):
+    """On a database with no held row and no worse mark the whole downgrade runs (rolled back after): the held table
+    and the worse column are gone, the suggestion guard is 0031's again and the allowlist post check (0035's chain,
+    the downgrade's own last statement) passes."""
+    for sql in _recorded_downgrade():
+        await admin.execute(text(sql))
+    names = (await admin.execute(text("SELECT to_regclass(:t), (SELECT count(*) FROM information_schema.columns "
+                                      "WHERE table_schema = 'public' AND table_name = 'adjustment_suggestions' "
+                                      "AND column_name = 'worse')"), {"t": HELD})).one()
+    assert tuple(names) == (None, 0)
+    guard = (await admin.execute(text("SELECT pg_get_functiondef(p.oid) FROM pg_trigger t JOIN pg_proc p "
+                                      "ON p.oid = t.tgfoid WHERE t.tgrelid = CAST(:s AS regclass) "
+                                      "AND NOT t.tgisinternal AND p.proname LIKE '%guard%'"),
+                                 {"s": SUGG})).scalars().all()
+    assert guard and all("worse" not in g for g in guard), guard
+    await admin.execute(text("SELECT public.ofo_assert_app_role_allowlist('ofo_app', 'post')"))
 
 
 # ---- gate rows (restore input) --------------------------------------------------------------------------------------

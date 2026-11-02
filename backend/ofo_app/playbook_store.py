@@ -702,3 +702,25 @@ async def gate_rows(conn: Any, user_ref: str, strategy_id: int, today: date) -> 
     count = (await conn.execute(_GATE_TODAY, {**params, "today": today})).scalar_one()
     rows = tuple(GateRow(r[0], r[1], r[2], dismissed=r[3] == "dismissed", open=r[3] == "open") for r in last)
     return GateRows(rows, int(count))
+
+
+_HELD_TODAY = text(
+    "SELECT h.rule_id, h.reason, h.threshold, h.held_at FROM public.adjustment_held_crossings h "
+    "JOIN public.strategies s ON s.id = h.strategy_id WHERE h.strategy_id = :strategy_id AND s.user_ref = :user_ref "
+    "AND (h.held_at AT TIME ZONE 'Asia/Kolkata')::date = :today ORDER BY h.id")
+
+
+@dataclass(frozen=True)
+class HeldToday:
+    rule_id: str
+    reason: str
+    threshold: Decimal | None
+    held_at: datetime
+
+
+async def held_today(conn: Any, user_ref: str, strategy_id: int, today: date) -> tuple[HeldToday, ...]:
+    """GC-ALERT1 wire-b item 5: the crossings held on ``today`` (IST), oldest first, so a restarted worker restores
+    the held episode instead of writing a second Held row. Read only; a store error raises."""
+    await _owned(conn, user_ref, strategy_id)
+    rows = (await conn.execute(_HELD_TODAY, {"strategy_id": strategy_id, "user_ref": user_ref, "today": today})).all()
+    return tuple(HeldToday(r[0], r[1], r[2], r[3]) for r in rows)
