@@ -592,3 +592,21 @@ async def test_one_exited_strategys_failing_lapse_never_drops_the_others_or_thei
     assert [w.strategy_id for w in worker.monitors] == [sid]
     assert list(worker._gate_load) == [sid]
     assert {exited: 2} == background.LISTER_LAPSE_FAILURES  # counted each time, logged once
+
+
+async def test_an_escalation_lapses_the_old_record_as_superseded_by_worse_and_a_cleared_one_as_condition_stopped(
+        app_db_url, monkeypatch):
+    """Review round 2, finding 5: the record an escalation closes lapsed because a worse one replaced it, not because
+    the condition stopped; its own reason, shown through the catalogue (the inbox and opportunities words)."""
+    from ofo.errors.explanations import render_explanation  # noqa: PLC0415
+    w, old = await _watched_and_fresh_t03(app_db_url, monkeypatch)
+    at = await _db_now(app_db_url)
+    opened = await background.DbGateStore().apply(w, [alert_gate.Opened("T-03", at, 2, D("0.40"), D("0.41"), "last")],
+                                                  None)
+    await background.DbGateStore().apply(w, [alert_gate.Lapsed("T-03", at, D("0.20"))], None)
+    async with app_db_url.connect() as conn:
+        recs = {s.id: s for s in await playbook_store.suggestions(conn, "owner", w.strategy_id)}
+    assert (recs[old].outcome, recs[old].lapse_reason) == ("lapsed", "superseded_by_worse")
+    assert (recs[opened["T-03"]].outcome, recs[opened["T-03"]].lapse_reason) == ("lapsed", "condition_stopped")
+    shown = render_explanation("suggestion_lapsed_" + recs[old].lapse_reason)
+    assert str(shown) == "A worse reading of the same rule replaced it"

@@ -1470,6 +1470,7 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("suggestion_outcome_lapsed", "values_seen", "Lapsed"),
     ExplanationTemplate("suggestion_lapsed_condition_stopped", "values_seen", "The condition stopped holding"),
     ExplanationTemplate("suggestion_lapsed_strategy_closed", "values_seen", "The strategy closed"),
+    ExplanationTemplate("suggestion_lapsed_superseded_by_worse", "values_seen", "A worse reading of the same rule replaced it"),
     ExplanationTemplate("suggestion_dismiss_expected_within_plan", "values_seen", "Expected and within my plan"),
     ExplanationTemplate("suggestion_dismiss_will_act_later", "values_seen", "I will act later"),
     ExplanationTemplate("suggestion_dismiss_not_relevant", "values_seen", "Not relevant"),

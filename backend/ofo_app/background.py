@@ -387,11 +387,11 @@ def gate_group(strategy_id: int, at: datetime.datetime) -> str:
     return f"{strategy_id}-{at.astimezone(IST):%Y%m%dT%H%M%S%f}"
 
 
-async def _lapse_open_of(db: Any, w: Watched, rule_id: str) -> None:
+async def _lapse_open_of(db: Any, w: Watched, rule_id: str, reason: str) -> None:
     from ofo_app import playbook_store  # noqa: PLC0415 - database layer at run time
     for rec in await playbook_store.open_suggestions(db, w.user_ref, w.strategy_id):
         if rec.rule_id == rule_id:
-            await playbook_store.lapse(db, w.user_ref, rec.id, playbook_store.LAPSE_CONDITION_STOPPED)
+            await playbook_store.lapse(db, w.user_ref, rec.id, reason)
 
 
 class DbGateStore:
@@ -420,7 +420,7 @@ class DbGateStore:
         async with get_sessionmaker()() as db:
             for e in events:
                 if isinstance(e, alert_gate.Lapsed):
-                    await _lapse_open_of(db, w, e.rule_id)
+                    await _lapse_open_of(db, w, e.rule_id, playbook_store.LAPSE_CONDITION_STOPPED)
                     continue
                 rv = values.get(e.rule_id)
                 trigger = None if rv is None else rv.trigger_id
@@ -435,7 +435,7 @@ class DbGateStore:
                                                      stage=stage, value=value, threshold=threshold, reason=e.reason)
                     continue
                 if e.worse is not None:
-                    await _lapse_open_of(db, w, e.rule_id)
+                    await _lapse_open_of(db, w, e.rule_id, playbook_store.LAPSE_SUPERSEDED_BY_WORSE)  # finding 5
                 flag = flags.get(e.rule_id)
                 label, unit = check.trigger_words(w.body, trigger)
                 t19 = {} if ctx is None else _t19_record(trigger or "", _cheapest(ctx.state))
