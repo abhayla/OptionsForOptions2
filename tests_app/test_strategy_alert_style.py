@@ -8,14 +8,23 @@ test runs in a rolled-back transaction: the pin table is insert-only, a committe
 """
 from __future__ import annotations
 
+import datetime
 import importlib.util
 import pathlib
+from types import SimpleNamespace
 
 import pytest
+from httpx import ASGITransport, AsyncClient
 from ofo.adjustment import alert_presets
+from ofo.errors.explanations import render_explanation
+from ofo.timeutil import IST
+from ofo_app import db as app_db
 from ofo_app import strategy_alert_style_store as store
+from ofo_app.routes import alert_style as route
+from ofo_app.routes.broker import current_user_ref
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
+from test_adjustment_plan import _reset_engine, _seeded
 from test_strategy_store import _user, _with_draft
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -149,3 +158,130 @@ def test_the_allowlist_chain_gains_exactly_block_27():
 async def test_the_post_allowlist_check_passes_on_the_migrated_database(admin_engine):
     async with admin_engine.connect() as conn:
         await conn.execute(text("SELECT public.ofo_assert_app_role_allowlist('ofo_app', 'post')"))
+
+
+# ---- the route (GET / PUT /api/strategies/{id}/alert-style) on the ADJ-02 scenario ------------------------------
+# ADJ-02: a weekly NIFTY iron condor, clock 2026-11-06 11:40 IST, expiry 2026-11-09 (3 days): automatic = weekly.
+
+OK, NOT_FOUND, UNPROCESSABLE = 200, 404, 422
+WEEKLY_AUTO = "Automatic (now Weekly)"
+CHOICES = [[None, WEEKLY_AUTO], ["intraday", "Intraday"], ["weekly", "Weekly"], ["monthly", "Monthly"]]
+
+
+async def _call(method: str, path: str, user: str | None = None, **kw) -> tuple[int, dict]:
+    from ofo_app.main import create_app  # noqa: PLC0415 - the env must be set first
+    _reset_engine()
+    app = create_app()
+    if user is not None:
+        app.dependency_overrides[current_user_ref] = lambda: user
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as ac:
+        r = await ac.request(method, path, **kw)
+    await app_db.close_db()
+    return r.status_code, r.json()
+
+
+@pytest.fixture
+async def app_db_url(app_engine, monkeypatch):
+    """The app's own engine on the fresh database (test_adjustment_plan's harness)."""
+    monkeypatch.setenv("DATABASE_URL", app_engine.url.render_as_string(hide_password=False))
+    monkeypatch.setenv("APP_ENV", "test")
+    _reset_engine()
+    yield app_engine
+    await app_db.close_db()
+    _reset_engine()
+
+
+def _path(sid: int) -> str:
+    return f"/api/strategies/{sid}/alert-style"
+
+
+def _shape(body: dict) -> tuple:
+    return (body["pinned"], body["automatic"], body["in_force"], body["reason_text"],
+            [[c["value"], c["label"]] for c in body["choices"]])
+
+
+async def test_route_core_automatic_then_pin_monthly_then_automatic_again(app_db_url, monkeypatch):
+    sid = await _seeded(app_db_url, monkeypatch, "ADJ-02")
+    status, body = await _call("GET", _path(sid))
+    assert status == OK, body
+    assert body["label"] == "Alert style"
+    assert _shape(body) == (None, "weekly", "weekly", None, CHOICES)
+    status, body = await _call("PUT", _path(sid), json={"style": "monthly"})
+    assert status == OK, body
+    assert _shape(body) == ("monthly", "weekly", "monthly", None, CHOICES)
+    assert _shape((await _call("GET", _path(sid)))[1]) == ("monthly", "weekly", "monthly", None, CHOICES)
+    status, body = await _call("PUT", _path(sid), json={"style": None})
+    assert status == OK, body
+    assert _shape(body) == (None, "weekly", "weekly", None, CHOICES)
+
+
+async def test_route_refuses_a_style_outside_the_list_and_writes_nothing(app_db_url, monkeypatch):
+    sid = await _seeded(app_db_url, monkeypatch, "ADJ-02")
+    before = (await _call("GET", _path(sid)))[1]
+    status, body = await _call("PUT", _path(sid), json={"style": "yearly"})
+    assert (status, body) == (UNPROCESSABLE, {"reason": "That is not an alert style. Pick Automatic, Intraday, "
+                                                        "Weekly or Monthly."})
+    assert (await _call("GET", _path(sid)))[1] == before
+
+
+async def test_route_another_users_or_a_missing_strategy_is_not_found(app_db_url, monkeypatch):
+    sid = await _seeded(app_db_url, monkeypatch, "ADJ-02")
+    before = (await _call("GET", _path(sid)))[1]
+    for method, kw in (("GET", {}), ("PUT", {"json": {"style": "intraday"}})):
+        assert (await _call(method, _path(sid), user="someone-else", **kw))[0] == NOT_FOUND, method
+        assert (await _call(method, _path(987654321), **kw))[0] == NOT_FOUND, method
+    assert (await _call("GET", _path(sid)))[1] == before
+
+
+# ---- automatic_style's refusals (no guessed style), on fake readers -----------------------------------------------
+
+def _tracked(*expiries: datetime.date):
+    legs = tuple(SimpleNamespace(expiry=e) for e in expiries)
+    return SimpleNamespace(position=SimpleNamespace(legs=legs))
+
+
+def _market(kind: str | None, now: datetime.datetime):
+    return SimpleNamespace(expiry_kind=kind, now=now)
+
+
+NOW = datetime.datetime(2026, 11, 6, 11, 40, tzinfo=IST)
+
+
+@pytest.mark.parametrize(("expiries", "kind", "want"), [
+    ((datetime.date(2026, 11, 9),), "weekly", ("weekly", None)),
+    ((datetime.date(2026, 11, 7),), "weekly", ("intraday", None)),  # 1 day to expiry: intraday rules
+    ((datetime.date(2026, 11, 26),), "monthly", ("monthly", None)),
+    ((datetime.date(2026, 11, 9), datetime.date(2026, 11, 26)), "weekly", (None, route.SEVERAL)),
+    ((datetime.date(2026, 11, 9),), None, (None, route.UNKNOWN)),  # kind not read
+    ((datetime.date(2026, 11, 9),), "quarterly", (None, route.UNKNOWN)),
+    ((datetime.date(2026, 11, 5),), "weekly", (None, route.UNKNOWN)),  # expiry already past
+])
+async def test_automatic_style_answers_or_names_why_not(expiries, kind, want):
+    async def tracked_reader(_sid, _rates):
+        return _tracked(*expiries)
+
+    async def market_reader(_tracked, _ctx):
+        return _market(kind, NOW)
+    assert await route.automatic_style(1, tracked_reader, market_reader, None) == want
+
+
+async def test_automatic_style_on_a_failed_market_read_or_no_open_leg_is_unknown():
+    from ofo_app.adjustment_readers import TrackedExited  # noqa: PLC0415
+
+    async def tracked_ok(_sid, _rates):
+        return _tracked(datetime.date(2026, 11, 9))
+
+    async def market_fails(_tracked, _ctx):
+        raise ValueError("chain refused")
+
+    async def exited(_sid, _rates):
+        raise TrackedExited("no open option leg")
+    assert await route.automatic_style(1, tracked_ok, market_fails, None) == (None, route.UNKNOWN)
+    assert await route.automatic_style(1, exited, market_fails, None) == (None, route.UNKNOWN)
+
+
+def test_the_refusal_texts_read_as_the_catalogue_says():
+    assert render_explanation(route.SEVERAL) == ("This strategy has legs on more than one expiry, so its alert style "
+                                                 "cannot be picked by itself. Pin a style.")
+    assert render_explanation(route.UNKNOWN) == ("This strategy's expiry type or days to expiry could not be read, so "
+                                                 "its alert style cannot be picked by itself. Pin a style.")
