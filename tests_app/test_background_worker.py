@@ -555,3 +555,40 @@ async def test_a_candle_that_saw_a_pause_has_no_close_and_the_next_full_candle_o
     next_close = close + datetime.timedelta(minutes=1)
     assert next_close <= opened_at <= next_close + datetime.timedelta(seconds=10), (opened_at, next_close)
     assert len(await _t01_rows(app_db_url, sid, base)) == 1 and worker.errors == []
+
+
+async def test_one_exited_strategys_failing_lapse_never_drops_the_others_or_their_gate_read(app_db_url, monkeypatch):
+    """Review round 2, finding 4: strategy 987654 has every leg exited and its ``lapse_all`` raises
+    SUGGESTION_NOT_OPEN (a record closed meanwhile). Before the fix the error escaped the lister: the old list was kept
+    and ``_load_gates`` skipped (at start-up 0 strategies monitored). Now it is contained, counted and logged once."""
+    from ofo_app import adjustment_readers, strategy_store  # noqa: PLC0415
+    sid, _scn, _now, worker = await _ready(app_db_url, monkeypatch)
+    exited = 987654
+    real_list, real_read, real_open = (strategy_store.list_strategies, adjustment_readers.read_tracked,
+                                       playbook_store.open_suggestions)
+
+    async def listed(conn, user_ref):
+        rows = await real_list(conn, user_ref)
+        return [dataclasses.replace(rows[0], id=exited), *rows]
+
+    async def read(strategy_id, ctx):
+        if strategy_id == exited:
+            raise adjustment_readers.TrackedExited("every leg exited")
+        return await real_read(strategy_id, ctx)
+
+    async def open_of(conn, user_ref, strategy_id):
+        return ["one open record"] if strategy_id == exited else await real_open(conn, user_ref, strategy_id)
+
+    async def refused(*_a, **_k):
+        raise strategy_store.StrategyStoreError(playbook_store.SUGGESTION_NOT_OPEN, "suggestion 1 is lapsed")
+    monkeypatch.setattr(strategy_store, "list_strategies", listed)
+    monkeypatch.setattr(adjustment_readers, "read_tracked", read)
+    monkeypatch.setattr(playbook_store, "open_suggestions", open_of)
+    monkeypatch.setattr(playbook_store, "lapse_all", refused)
+    monkeypatch.setattr(background, "LISTER_LAPSE_FAILURES", {})
+    worker.monitors, worker._gate_load = [], {}  # as at start-up: nothing listed, no gate read yet
+    for _ in range(2):
+        await worker.rebuild()
+    assert [w.strategy_id for w in worker.monitors] == [sid]
+    assert list(worker._gate_load) == [sid]
+    assert {exited: 2} == background.LISTER_LAPSE_FAILURES  # counted each time, logged once
