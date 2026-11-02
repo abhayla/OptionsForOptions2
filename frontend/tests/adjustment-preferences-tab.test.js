@@ -158,8 +158,8 @@ describe('Alert values per trading style (REQ-170 AC-6)', () => {
     const rows = weekly.findAll('tbody tr').map((r) => [r.get('[data-testid=pref-name]').text(), r.get('[data-testid=pref-value]').text(),
       r.get('[data-testid=pref-source]').text(), r.get('[data-testid=pref-admin-default]').text()])
     expect(rows).toEqual([
-      ['confirm on candle close', '5', 'Default', '5'], ['cool-down, same rule', '45', 'Your value', '30'],
-      ['quiet time until', '09:30', 'Default', '09:30'], ['daily limit per strategy', '4', 'Default', '4'],
+      ['Confirm on candle close', '5 min', 'Default', '5 min'], ['Cool-down, same rule', '45 min', 'Your value', '30 min'],
+      ['Quiet time until', '09:30', 'Default', '09:30'], ['Daily limit per strategy', '4 a day', 'Default', '4 a day'],
     ])
     expect(w.findAll('li[data-testid^="pref-alerts."]').length).toBe(0) // not repeated in the general list
   })
