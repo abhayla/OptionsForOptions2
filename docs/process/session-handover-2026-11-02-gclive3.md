@@ -32,11 +32,14 @@ Written 13:15 IST, completed at C2 15:3x IST; the C3 result is added in C4.
 | E4 close 15:29-15:32 | Option chain: 1 banner "Market closed. Prices are from 2 Nov 2026, 15:30:00 IST" PASS. Paper tab: no banner, "no implied volatility for this leg", Total P&L still moving after 15:30 (+20,404.40 -> +20,846.40) FAIL; GET /api/market/indices: market_closed true, values null FAIL -> #616 unchanged | run log |
 
 ## PENDING
-- C3 BLOCKED: prepush --full on 828bd537 was stopped by the low-memory reaper at ~15:58 after ~21 min (3rd reaper kill of
-  the gate in 3 days: 11-01, 11-02 08:34, 11-02 15:58). Owner chose to run it from the prompt:
-  `! cd D:/Abhay/Ventures/OptionsForOptions2-OptionsForOptions2-settings && python scripts/orchestrator/prepush.py --full`
-  Nothing pushed: ~30 commits are local only. FIRST STEP of the next session if not done tonight: run that command,
-  push `feature/adjustments` on TOTAL PASS, then C4 clean-up (heavy slot release, -fix633 / -fix628 worktrees via wt-rm.ps1).
+- C3 DONE: gate 1 on 828bd537 stopped by the reaper 15:58; gate 2 (owner-typed) on b06f8d48 ran to the end 16:15-16:40:
+  TOTAL FAIL, 5 of 9 steps (35 domain + 6 app test failures, 14 missing stage rows, stale generated files, 1 long line),
+  every one caused by today's commits; fixed in 2ccdc511, d6d4f3e9, 1ee45a0d, 45c678b5 (the C1 live-run record moved out
+  of evidence/ instead of carrying a false verifier footer). Gate 3 on 45c678b5: TOTAL PASS 1911.5 s (17:24), marker
+  written. PUSHED `feature/adjustments` d27db73c..45c678b5 (nothing to main).
+- C4: heavy slot released; issue comments posted (#615, #583, #560, #606, #616, #633, #628); memory + coord notes written.
+  Worktrees -fix633 / -fix628 NOT removed: clean and fully contained in origin/feature/adjustments, but wt-rm.ps1 only
+  accepts a merged sha on origin/main; remove them after feature/adjustments reaches main.
 - #616 (Paper after close, indices null): not fixed; reproduced 2026-11-02.
 
 ## PARKED
@@ -49,7 +52,6 @@ Written 13:15 IST, completed at C2 15:3x IST; the C3 result is added in C4.
   paper_alert_body_one_named).
 
 ## NEXT
-- FIRST: the C3 gate + push above.
 - Owner approval of `docs/process/goal-contract-GC-ALERT1-DRAFT.md` (reviewed, FIX FIRST applied; one open owner question inside).
 - Build REQ-170 (alert discipline) + ADR-235 (speed per style): goal contract first, core proof = strategy 66-style flapping on the saved scenario/live paper data gives 1 record, not 30.
 - #636 round 4 per the reviewed design (merge base branch first, guard tests, record merge commit in #636).
