@@ -72,7 +72,13 @@ DATES: every time written in a record comes from `date` in the same step. NIFTY 
 ## Progress (the run updates this table; a DONE row is not redone)
 | Step | State | Evidence |
 |---|---|---|
-| 0-8, S1-S4 | not started | - |
+| 0 | DONE 21:00 | 7018098e: Kite 1-min candles WERE available (F-33); T-07 = 100 x (spread - debit)/(200 - debit), every live value back-solves to a 0.05 tick; fixture tests/fixtures/alert_discipline/gclive3_2026-11-02_t07.json; expected 1/1/1 per preset for 66 and 67 (live 30 / 23) |
+| 1 | DONE 21:10 | merge 2c27ee7c (builder 17ab5350): backend/ofo/adjustment/alert_gate.py; tests/adjustment/test_alert_gate.py 31 passed (re-run by orchestrator), replay 1/1/1, red first (ImportError); note: replay feeds a close at its end time, so record times are one minute late in that test (counts unaffected) |
+| 2 | DONE 21:04 | e4f0ccb1: ADR-237 (band base, candle close, record timing, lapse at the band, storage migration, one writer, cap/quiet); REQ-112/165/170, ADR-235 text; owner info item docs/process/owner-questions-2026-11-02.md |
+| S2 | DONE | #633 closed: T-19 A-29 Rs 85.04 = Compare cheapest A-29 85.04 (strategy 81, ADJ-50) |
+| S3 | DONE | #628 closed: strategy 80 history entry 4 legs + 1 adjustment; Compare A-36 "1 of 2" |
+| S4 | DONE | #637 filed (deferred, S6.7), 0712a94e |
+| 3-8, S1 | not started | - |
 
 ## Definition of Done
 - [ ] Step 0 data + hand-derived counts, then the core proof (step 1), before any other code.
