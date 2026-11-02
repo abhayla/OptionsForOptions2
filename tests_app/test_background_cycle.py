@@ -525,8 +525,8 @@ def test_state_of_prices_only_the_strategys_own_legs_and_is_light(scn, scenario_
     started = time.perf_counter()
     for _ in range(TIMED_CALLS):
         background.background_state(w, read, shared, at, DEFAULTS, PREFS)
-    each = (time.perf_counter() - started) / TIMED_CALLS
-    print(f"STATE-OF-TIMING calls={TIMED_CALLS} each_ms={each * 1000:.2f} computations={shared.cache.computations}")
+    per_call = (time.perf_counter() - started) / TIMED_CALLS
+    print(f"STATE-OF-TIMING calls={TIMED_CALLS} each_ms={per_call * 1000:.2f} computations={shared.cache.computations}")
     assert len(priced) == TIMED_CALLS  # one own-legs pricing per check (work counted, never wall time)
 
 

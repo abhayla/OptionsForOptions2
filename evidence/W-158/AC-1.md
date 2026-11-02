@@ -23,3 +23,5 @@ attack: n/a (live core proof)
 notes:
 - the dev API's every database round trip costs about 0.7 s from this PC (GET /health = one SELECT 1: 0.51-1.37 s on 10/10 calls; ping to the DB host 12 ms; a no-DB route 12 ms), measured 10:07-10:10 the same day; the leg-edit reply waits on it. Same class as #636 (knowledge/findings/check-latency-bound-by-db-round-trips.json). Not re-planned today.
 - the paper book shows max profit / max loss without charges (strategy 78: 3,458 / 3,042) while the builder, Compare and Live Strategies show them with charges (3,168.79 / 3,331.21): one strategy, two unlabelled figures (GC-LIVE3 D5).
+
+Recorded by the orchestrator from the verifier's returned block.

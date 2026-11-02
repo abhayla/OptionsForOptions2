@@ -380,6 +380,7 @@ class Worker:
         self._minute: str | None = None  # the IST wall-clock minute (YYYY-MM-DD HH:MM) the counters below belong to
         self._read_states: dict[str, int] = {}  # price-read answer state -> count this minute (why nothing was checked)
         self._cycles = 0  # cycles run in that minute
+        self._rebuilds = 0  # state builds in that minute, all strategies (the sum of the per-strategy counts)
         self._recomputes: dict[int, int] = {}  # strategy id -> state builds (real recomputes) in that minute
         self._legs: dict[int, int] = {}  # strategy id -> its leg count, so per-option = recomputes x legs
         self._logged_records: set[tuple[int, str, int]] = set()  # (strategy, rule, record id) already logged
@@ -666,6 +667,7 @@ class Worker:
             return False
         state = background_state(w, read, FeedScope(self.cache, w.feed_owner), now, self._values, prefs)
         self._recomputes[sid] = self._recomputes.get(sid, 0) + 1  # a real recompute (REQ-166)
+        self._rebuilds += 1
         self._legs[sid] = len(w.tracked.position.legs)
         if self._observe is not None:
             self._observe(w, state)
@@ -738,11 +740,12 @@ class Worker:
         if self._minute is None:
             return
         log.info("background: minute %s cycles=%s checks=%s recomputes %s legs %s valve_step=%s speed=%ss reads %s "
-                 "outcomes %s", self._minute[-5:], self._cycles, sum(self._recomputes.values()),
+                 "outcomes %s", self._minute[-5:], self._cycles, self._rebuilds,
                  dict(sorted(self._recomputes.items())),
                  {k: self._legs[k] for k in sorted(self._recomputes)}, self.valve.step + 1, self._speed,
                  dict(sorted(self._read_states.items())), dict(sorted(self._outcomes.items())))
-        self._cycles, self._recomputes, self._legs, self._read_states, self._outcomes = 0, {}, {}, {}, {}
+        self._cycles, self._rebuilds = 0, 0
+        self._recomputes, self._legs, self._read_states, self._outcomes = {}, {}, {}, {}
 
     async def cycle(self) -> None:
         now = self._clock()
