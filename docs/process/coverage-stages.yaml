@@ -557,6 +557,7 @@ issues:
   "#633": S6.4  # T-19 builds approaches without the playbook liquidity limits the Compare applies
   "#636": S6.7  # Background role: opportunity within 1.0 s of the crossing tick not met (DB round trips on the check path) - GC-LIVE3 D3
   "#634": S6.7  # merge_preflight PR to main: owner decision after two review rounds (parked)
+  "#637": S6.7  # spec_basis_gate refuses owner questions citing ids that exist only in another worktree's spec
 
 # Work items whose status is not done.
 work_items:
