@@ -94,7 +94,7 @@ async function reset(p) {
 // GC-ALERT1 item 6 (REQ-170 Q-AD-1, AC-6): the alert values a user may change come as one small table per trading style.
 // A key alerts.<style>.<field> belongs to that style's table; the table title and row names are the server's label split
 // at its first ': ' ("Weekly expiry: cool-down, same rule"), the words themselves untouched.
-const ALERT_KEY = /^alerts\.(intraday|weekly|monthly)\./
+const ALERT_KEY = /^alerts\.([a-z_]+)\./
 const general = computed(() => prefs.value.filter((p) => !ALERT_KEY.test(p.key)))
 const head = (label) => String(label).split(': ')[0]
 const rowLabel = (p) => {
@@ -110,10 +110,16 @@ const withUnit = (p, v) => {
   if (!word) return val
   return word === '%' ? `${val}%` : `${val} ${word}`
 }
-const styleTables = computed(() => ['intraday', 'weekly', 'monthly']
-  .map((style) => ({ style, rows: prefs.value.filter((p) => ALERT_KEY.exec(p.key)?.[1] === style) }))
-  .filter((t) => t.rows.length)
-  .map((t) => ({ ...t, title: head(t.rows[0].label) })))
+// The styles are whatever the server sent (alerts.<style>.<field>), in the order it sent them; no style word is written here.
+const styleTables = computed(() => {
+  const order = []
+  for (const p of prefs.value) {
+    const style = ALERT_KEY.exec(p.key)?.[1]
+    if (style && !order.includes(style)) order.push(style)
+  }
+  return order.map((style) => ({ style, rows: prefs.value.filter((p) => ALERT_KEY.exec(p.key)?.[1] === style) }))
+    .map((t) => ({ ...t, title: head(t.rows[0].label) }))
+})
 
 onMounted(load)
 </script>

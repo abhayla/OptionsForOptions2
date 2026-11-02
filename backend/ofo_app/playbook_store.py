@@ -36,6 +36,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
 from ofo_app import strategy_store
+from ofo_app.sql_time import IST_SQL_ZONE
 
 NAME_TAKEN = "playbook_name_taken"
 SYSTEM_SAVE_IN_PLACE = "system_playbook_save_in_place"
@@ -661,9 +662,9 @@ _GATE_LAST = text(
     "FROM public.adjustment_suggestions g JOIN public.strategies s ON s.id = g.strategy_id "
     "WHERE g.strategy_id = :strategy_id AND s.user_ref = :user_ref ORDER BY g.rule_id, g.id DESC")
 _GATE_TODAY = text(
-    "SELECT count(*) FROM public.adjustment_suggestions g JOIN public.strategies s ON s.id = g.strategy_id "
+    "SELECT count(*) FROM public.adjustment_suggestions g JOIN public.strategies s ON s.id = g.strategy_id "  # noqa: S608 constant zone fragment
     "WHERE g.strategy_id = :strategy_id AND s.user_ref = :user_ref "
-    "AND (g.shown_at AT TIME ZONE 'Asia/Kolkata')::date = :today")
+    f"AND (g.shown_at {IST_SQL_ZONE})::date = :today")
 
 
 @dataclass(frozen=True)
@@ -708,9 +709,9 @@ async def gate_rows(conn: Any, user_ref: str, strategy_id: int, today: date) -> 
 
 
 _HELD_TODAY = text(
-    "SELECT h.rule_id, h.reason, h.threshold, h.held_at FROM public.adjustment_held_crossings h "
+    "SELECT h.rule_id, h.reason, h.threshold, h.held_at FROM public.adjustment_held_crossings h "  # noqa: S608 constant zone fragment
     "JOIN public.strategies s ON s.id = h.strategy_id WHERE h.strategy_id = :strategy_id AND s.user_ref = :user_ref "
-    "AND (h.held_at AT TIME ZONE 'Asia/Kolkata')::date = :today ORDER BY h.id")
+    f"AND (h.held_at {IST_SQL_ZONE})::date = :today ORDER BY h.id")
 
 
 @dataclass(frozen=True)

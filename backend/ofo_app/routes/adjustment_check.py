@@ -133,14 +133,14 @@ def result_out(r: pe.Result, flag_wording: Any, opened: dict[str, int] | None = 
             "threshold": None, "reason": render(r.code, **dict(r.slots)), "wording": None}
 
 
-def _t19_record(trigger_id: str, cheapest: tuple[str, Decimal, int] | None) -> dict:
+def t19_record(trigger_id: str, cheapest: tuple[str, Decimal, int] | None) -> dict:
     """ADR-221: a T-19 record keeps the approach, cost and unpriced count it was shown with (the list draws them)."""
     if trigger_id != "T-19" or cheapest is None:
         return {}
     return {"approach": cheapest[0], "approach_cost": cheapest[1], "unpriced": cheapest[2]}
 
 
-def _cheapest(state: pe.StrategyState) -> tuple[str, Decimal, int] | None:
+def cheapest(state: pe.StrategyState) -> tuple[str, Decimal, int] | None:
     """The T-19 approach, cost and unpriced count the check used (ADR-221); None when it had none."""
     if state.adjustment_approach is None or state.adjustment_cost is None:
         return None
@@ -223,5 +223,5 @@ async def adjustment_check(  # noqa: PLR0913 - FastAPI dependencies, one per inp
     reply |= {"stage": check.stage_out(ev.stage_name, ev.stage_index),
               "withheld": None if ev.withheld is None else render(ev.withheld),
               "results": [result_out(r, wording, opened, dismissed=dismissed, body=resolved.body,
-                                    cheapest=_cheapest(state)) for r in ev.results]}
+                                    cheapest=cheapest(state)) for r in ev.results]}
     return AdjustmentCheckOut.model_validate(reply)

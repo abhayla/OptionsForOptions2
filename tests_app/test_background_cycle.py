@@ -473,7 +473,8 @@ def test_a_quiet_but_live_spot_is_read_never_withheld(scn):
     assert pe.evaluate(w.body, state, {}, state, gap_until="09:30").withheld is None
     read = background.read_prices(prov, w, at)
     assert background.feed_spot(read, at).at == at  # a FRESH read is current now; its last change is information
-    future = dataclasses.replace(read, spot=dataclasses.replace(read.spot, timestamp=at + datetime.timedelta(seconds=1)))
+    later = at + datetime.timedelta(seconds=1)
+    future = dataclasses.replace(read, spot=dataclasses.replace(read.spot, timestamp=later))
     assert background.feed_spot(future, at).at > at  # a future time is kept, so resolve_spot still refuses it
     with pytest.raises(ValueError, match="fresh read"):
         background.feed_spot(background.PriceRead(background.PriceState.STALE), at)
