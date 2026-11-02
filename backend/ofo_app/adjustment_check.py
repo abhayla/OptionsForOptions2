@@ -162,15 +162,19 @@ def guards_of_body(body: Mapping | None) -> dict[str, Any] | None:
 
 
 def cheapest_offered(body: Mapping | None, tracked: Tracked, market: MarketInputs, spot: Decimal | None,  # noqa: PLR0913 - the preferences value is a required parameter (GC-SET)
-                     rates: Any, config: Config) -> Cheapest:
-    """ADR-221: the cheapest approach ``body`` offers, every one built and priced by the Compare's own path."""
+                     rates: Any, config: Config, *, before: Any = None) -> Cheapest:
+    """ADR-221: the cheapest approach ``body`` offers, every one built and priced by the Compare's own path.
+    ``before``: the Before already priced by the caller (``price_after`` of the current legs: it reads only the legs,
+    the underlying and the lot, which ``as_of_market`` leaves unchanged), so the own legs are priced once per check;
+    None prices it here."""
     offered = offered_now(body, tracked.adjustments_used)  # S-11: only exit and reduce at the limit
     if spot is None:  # nothing can be built without spot: none priceable (T-19 is withheld for no spot anyway)
         return cheapest_approach(offered, {}, market.chain)
     columns: dict[str, Column] = {}
     tracked = as_of_market(tracked, market)  # as the approaches route builds (market day, listed expiry kind)
     position = tracked.position  # the route's Before and guards, through the same helpers (#633, ADR-230 (1))
-    before = price_after(position.legs, position, tracked.booked, tracked.paid_charges, (), rates, market)
+    if before is None:
+        before = price_after(position.legs, position, tracked.booked, tracked.paid_charges, (), rates, market)
     limits, max_profit = liquidity_inputs(guards_of_body(body), before)
     for a in offered:
         built, priced = priced_approach(a, tracked, market, spot, rates, config, limits=limits, max_profit=max_profit)
@@ -195,8 +199,8 @@ def state_of(tracked: Tracked, market: MarketInputs, spot: SpotAnswer, margin: M
         booked, ((x.side, x.entry, ltp[x.tradingsymbol], qty[x.tradingsymbol]) for x in position.legs))
     left = adjust_money.premium_left((x.side, ltp[x.tradingsymbol], qty[x.tradingsymbol])
                                      for x in position.legs) if priced else None
-    cheap = cheapest_offered(body, tracked, market, value, rates, config)
-    before = price_after(position.legs, position, booked, tracked.paid_charges, (), rates, market)
+    before = price_after(position.legs, position, booked, tracked.paid_charges, (), rates, market)  # once per check
+    cheap = cheapest_offered(body, tracked, market, value, rates, config, before=before)
     gross = None if before.after is None else before.after.gross
     expiry_pnl = None
     if value is not None and booked is not None:
