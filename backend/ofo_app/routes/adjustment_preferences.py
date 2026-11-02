@@ -126,9 +126,13 @@ async def _read(db: AsyncSession, user: str) -> PreferencesOut:
     return PreferencesOut(preferences=[_out(found[k], hist[k]) for k in store.preference_keys()])
 
 
-def _refused(key: str, exc: SettingRefused, raw: object) -> object:
+def _refused(key: str, exc: SettingRefused, raw: object, ceiling: Decimal | None = None) -> object:
     if exc.code == "setting_unknown":
         return respond(RefusedOut(reason=render_explanation("adjust_preference_refused_unknown")), 404)
+    if exc.code == store.CAP_ABOVE_ADMIN and ceiling is not None:  # the limit read back, never the exception's text
+        label = registry_mod.registry()[key].label
+        return respond(RefusedOut(reason=render_explanation("adjust_preference_refused_above_cap", label=label,
+                                                            limit=registry_mod.plain(ceiling))), 422)
     reason, status = settings_refusal(key, exc, raw)
     return respond(RefusedOut(reason=reason), status)
 
@@ -148,7 +152,8 @@ async def _write(db: AsyncSession, user: str, key: str, raw: str | None, note: s
         await db.commit()
     except SettingRefused as exc:
         await db.rollback()
-        return _refused(key, exc, raw)
+        ceiling = await store.cap_ceiling(db, key) if exc.code == store.CAP_ABOVE_ADMIN else None
+        return _refused(key, exc, raw, ceiling)
     except Exception:
         await db.rollback()
         raise

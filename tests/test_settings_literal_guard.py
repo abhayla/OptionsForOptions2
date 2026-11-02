@@ -80,10 +80,17 @@ RETIRED_HOMES = {"ofo/adjustment/approach_config.json": "adjustments.short_delta
 RETIRED_ENV = {"CATALOGUE_MAX_DELIST_PERCENT": "data.max_delist_percent"}
 # Registry sources whose "was <file>" token is in none of the above only because the file is a second home of the
 # same value as another row (listed so the cross-check is explicit, not silent).
-SECOND_HOMES = {"ofo_app/routes/outcome.py": "limits.max_lots"}  # LegIn.lots le=10000, not a constant
+SECOND_HOMES = {"ofo_app/routes/outcome.py": "limits.max_lots",  # LegIn.lots le=10000, not a constant
+                # REQ-170 table presets: the reference ofo/adjustment/alert_presets.preset_for is tested equal to
+                "ofo/adjustment/alert_gate.py": "alerts.intraday.daily_cap"}
 
 # Gaps the scan found and this round does not fix. {id: (file, marker text still present, reason, follow-up)}
 KNOWN_LEFTOVERS: dict[str, tuple[str, str, str, str]] = {
+    "alert_gate_presets": (
+        "ofo/adjustment/alert_gate.py", "INTRADAY = Preset(",
+        "the gate's INTRADAY / WEEKLY / MONTHLY stay as the REQ-170 table the settings resolver is tested equal to; "
+        "no caller may build a Preset other than alert_presets.preset_for",
+        "follow-up: GC-ALERT1 worker step reads preset_for; then move the presets into the gate's tests"),
     "broker_session_trigger_0600": (
         "ofo_app/alembic/versions/0007_broker_sessions.py", "06:00",
         "the broker_sessions DB trigger stamps expected_expiry at 06:00 IST (a migration; settings cannot reach it)",
