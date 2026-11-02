@@ -140,6 +140,15 @@ def _before_max_profit(before: Any) -> Decimal | None:
     return top if isinstance(top, Decimal) else None
 
 
+def liquidity_inputs(guards: Mapping[str, Any] | None,
+                     before: Any) -> tuple[liquidity.Limits | None, Decimal | None]:
+    """The two liquidity inputs of ``priced_approach`` from the playbook guards and the Before (ADR-230 (1)): the
+    Compare route and the playbook check's T-19 both call this. No guards (no playbook, or unreadable) -> no limits; max
+    profit unlimited or not priced -> None."""
+    limits = None if guards is None else liquidity.limits_from_guards(guards)
+    return limits, _before_max_profit(before)
+
+
 def get_market_reader() -> MarketReader:
     """The market reader over the outcome's market context (``adjustment_readers.read_market``)."""
     from ofo_app.adjustment_readers import read_market  # noqa: PLC0415 - as above
@@ -380,8 +389,7 @@ async def adjustment_approaches(  # noqa: PLR0913 - FastAPI dependencies, one pe
         before = price_after(position.legs, position, tracked.booked, tracked.paid_charges, (), rates, market)
         reply["before"] = _after_block(before, pop_on)
         guards = await guards_of(strategy_id, position, spot.value)
-        limits = None if guards is None else liquidity.limits_from_guards(guards)  # no playbook, no limits
-        max_profit = _before_max_profit(before)
+        limits, max_profit = liquidity_inputs(guards, before)  # no playbook, no limits
         answers = [(a, priced_approach(a, tracked, market, spot.value, rates, prefs.approach,  # type: ignore[arg-type]
                                        limits=limits, max_profit=max_profit)) for a in asked]
         built_list = [(a, built) for a, (built, _) in answers]

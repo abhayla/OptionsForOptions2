@@ -143,7 +143,7 @@ async def read_guards(strategy_id: int, position: Position, spot: Decimal | None
     except Exception:
         log.exception("adjustment guards: strategy %s playbook unreadable", strategy_id)
         return None
-    return None if resolved.body is None else dict(resolved.body.get("guards", {}))
+    return adjustment_check.guards_of_body(resolved.body)
 
 
 # ---- market -----------------------------------------------------------------------------------------------------

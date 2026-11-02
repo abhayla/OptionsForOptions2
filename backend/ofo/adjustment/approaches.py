@@ -244,9 +244,10 @@ class _Builder:
         debit = -adjust_money.trade_credit((t.action, t.price, t.quantity) for t in trades)  # ADR-008: the engine's sum
         verdict = liquidity.check_roll_debit(self.limits, debit, self.max_profit)
         if verdict.reason == "unreadable":
-            raise _refusal("adjust_roll_limit_unreadable", debit=debit)
-        if not verdict.allowed:
-            raise _refusal("adjust_roll_debit_over_limit", debit=debit, limit=verdict.limit)
+            raise _refusal("adjust_roll_limit_unreadable", debit=debit.quantize(PAISE, rounding=ROUND_HALF_UP))
+        if not verdict.allowed:  # the verdict used the exact figures; the message's Money slots take whole paise
+            raise _refusal("adjust_roll_debit_over_limit", debit=debit.quantize(PAISE, rounding=ROUND_HALF_UP),
+                           limit=verdict.limit.quantize(PAISE, rounding=ROUND_HALF_UP))
 
     def ref(self, leg: PositionLeg) -> LegValue:
         """The leg as a message names it: its number in the position, side, contract and expiry."""
