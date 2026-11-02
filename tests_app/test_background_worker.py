@@ -516,3 +516,42 @@ async def test_a_close_is_processed_with_no_check_that_wake(app_db_url, monkeypa
             break
     assert opened_at == close, (opened_at, close)
     assert worker.errors == []
+
+
+async def test_a_candle_that_saw_a_pause_has_no_close_and_the_next_full_candle_opens(app_db_url, monkeypatch):
+    """Review round 2, finding 2 (ADR-237 (2)): T-01 crosses at second 20 of the candle (pending), the feed goes stale
+    at second 25 (PAUSED, "Monitoring paused") and comes back at second 35 with the crossing still there. The close of
+    that candle must open NOTHING (it was not fully watched); the next, fully watched candle opens one record."""
+    from ofo.marketdata.provider import DataHealth  # noqa: PLC0415
+    sid, scn, now, worker = await _ready(app_db_url, monkeypatch)
+    base = await _last_id(app_db_url, sid)
+    close = now[0].replace(second=0, microsecond=0) + datetime.timedelta(minutes=1)
+    real_status, stale = scn.provider.status, [False]
+    monkeypatch.setattr(scn.provider, "status",
+                        lambda: dataclasses.replace(real_status(), health=DataHealth.STALE)
+                        if stale[0] else real_status())
+    now[0] = close - datetime.timedelta(seconds=40)
+    _push_spot(scn, CROSS_SPOT, now[0])
+    await worker.cycle()  # the crossing is read: the candle has a pending close beyond the line
+    assert worker.status[sid] is background.MonitoringStatus.ACTIVE
+    stale[0] = True
+    now[0] = close - datetime.timedelta(seconds=35)
+    await worker.cycle()
+    assert worker.status[sid] is background.MonitoringStatus.PAUSED
+    assert worker.paused_reason[sid] is background.PriceState.STALE
+    await _advance(worker, now, 9)
+    stale[0] = False  # the feed is back inside the same candle, the crossing still there
+    await _advance(worker, now, 1)
+    assert worker.status[sid] is background.MonitoringStatus.ACTIVE
+    while now[0] < close + datetime.timedelta(seconds=2):
+        await _advance(worker, now, 1)
+    assert await _t01_rows(app_db_url, sid, base) == []  # the paused candle's close opened nothing
+    opened_at = None
+    for _ in range(70):
+        await _advance(worker, now, 1)
+        if await _t01_rows(app_db_url, sid, base):
+            opened_at = now[0]
+            break
+    next_close = close + datetime.timedelta(minutes=1)
+    assert next_close <= opened_at <= next_close + datetime.timedelta(seconds=10), (opened_at, next_close)
+    assert len(await _t01_rows(app_db_url, sid, base)) == 1 and worker.errors == []

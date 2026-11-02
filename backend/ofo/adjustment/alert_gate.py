@@ -140,6 +140,7 @@ class GateState:
     rules: tuple[tuple[str, _Rule], ...] = ()
     day: date | None = None
     opened_today: int = 0
+    paused_at: datetime | None = None  # the latest pause seen: no candle containing it has a close (pause())
 
     def rule(self, rule_id: str) -> _Rule:
         return dict(self.rules).get(rule_id, _Rule())
@@ -292,6 +293,8 @@ def step(
         state, evs = _close(state, rule_id, state.rule(rule_id).pending, preset)
         events.extend(evs)
     end = _candle_end(now, preset.candle)
+    if state.paused_at is not None and state.paused_at >= end - preset.candle:
+        return state, events  # this candle saw a pause: no sample, so it has no close (pause())
     for rule_id in sorted(readings):
         spec, value = readings[rule_id]
         if value is None:
@@ -299,6 +302,19 @@ def step(
         rule = state.rule(rule_id)
         state = state.with_rule(rule_id, replace(rule, pending=_Pending(end, value, spec)))
     return state, events
+
+
+def pause(state: GateState, at: datetime) -> GateState:
+    """GC-ALERT1 step 5 review round 2, finding 2: the strategy was paused (stale feed, missing leg, a failed read)
+    at `at`. A candle that saw a pause was not fully watched, so it has no close, as a candle with no readable value
+    has none (ADR-237 (2)): every pending candle still running at `at` is dropped (it neither opens, holds nor lapses),
+    and `step` takes no sample in a candle that contains the latest pause. A pending candle that ended at or before
+    `at` was fully watched and keeps its close. Pure; the caller passes `at`."""
+    at = _ist(at)
+    rules = tuple((rid, replace(rule, pending=None) if rule.pending is not None and rule.pending.end > at else rule)
+                  for rid, rule in state.rules)
+    latest = at if state.paused_at is None else max(state.paused_at, at)
+    return replace(state, rules=rules, paused_at=latest)
 
 
 def dismiss(state: GateState, rule_id: str) -> GateState:

@@ -272,3 +272,48 @@ def test_gate_module_makes_no_io():
     assert not mods & {"ofo_app", "sqlalchemy", "redis", "asyncio", "time", "os", "socket", "pathlib", "io"}
     for banned in (".now(", ".today(", ".utcnow(", "open("):
         assert banned not in src
+
+
+# GC-ALERT1 step 5 review round 2, finding 2: a candle that saw a pause has no close
+def test_pause_drops_the_pending_candle_so_its_close_opens_nothing():
+    state, ev = feed([("10:00:20", D("82"))])
+    state = ag.pause(state, at("10:00:25"))
+    assert state.rule("T-07").pending is None
+    state, ev2 = flush(state, "10:01:00")
+    assert ev + ev2 == []
+
+
+def test_a_sample_after_the_pause_in_the_same_candle_gives_no_close():
+    state, _ = feed([("10:00:20", D("82"))])
+    state = ag.pause(state, at("10:00:25"))
+    state, ev = feed([("10:00:40", D("85"))], state=state)  # the feed came back inside the paused candle
+    assert state.rule("T-07").pending is None
+    state, ev2 = flush(state, "10:01:05")
+    assert ev + ev2 == []
+    state, ev3 = feed([("10:01:30", D("85"))], state=state)  # the next candle was fully watched: it opens
+    state, ev4 = flush(state, "10:02:00")
+    assert [(e.rule_id, e.at) for e in opened(ev3 + ev4)] == [("T-07", at("10:02:00"))]
+
+
+def test_a_pause_never_lapses_an_open_record():
+    state, ev = feed([("10:00:30", D("82"))])
+    state, ev2 = flush(state, "10:01:00")
+    assert len(opened(ev + ev2)) == 1
+    state, _ = feed([("10:01:10", D("60"))], state=state)  # would clear by the band at the 10:02 close
+    state = ag.pause(state, at("10:01:20"))
+    state, ev3 = flush(state, "10:02:00")
+    assert ev3 == [] and state.rule("T-07").record.final is False
+
+
+def test_a_pause_keeps_the_close_of_a_candle_that_ended_before_it():
+    state, _ = feed([("10:00:30", D("82"))])
+    state = ag.pause(state, at("10:01:02"))  # the 10:00 candle ended at 10:01:00, fully watched; not yet closed
+    state, ev = flush(state, "10:01:03")
+    assert [(e.rule_id, e.at) for e in opened(ev)] == [("T-07", at("10:01:00"))]
+
+
+def test_pause_keeps_the_latest_instant_and_needs_an_aware_time():
+    state = ag.pause(ag.pause(ag.initial_state(), at("10:00:40")), at("10:00:10"))
+    assert state.paused_at == at("10:00:40")
+    with pytest.raises(ValueError, match="timezone-aware"):
+        ag.pause(state, datetime(2026, 11, 2, 10, 0))  # noqa: DTZ001 - the naive time the gate must refuse
