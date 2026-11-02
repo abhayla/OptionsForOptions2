@@ -1230,3 +1230,14 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   the middle strike (22150-23150 while spot was 23267.70, so ATM was outside the list); 9 s later 8-9 of 21; cold again
   within ~30 s (API wanted tokens 43 -> 0). GET /api/strategies/78/adjustment-check 3 times 3 s apart: every rule
   "spot not available" (the route takes no lease). #615 class. Status: **measured live, repeatedly**.
+
+## F-98 - Our theta splits call and put by a carry term that drifts; the reference states one theta per strike (T3)
+- Measured 2026-11-02 (GC-LIVE3 B1), NIFTY 9 Nov, ATM 23300 +/- 10 strikes, 3 rounds: ours from GET /api/market/chain
+  (LIVE, basis PARITY, answered 12:33:52 / 12:35:06 / 12:35:48) vs the reference product's chain page (Greeks view,
+  per lot / 65, read 12:33:48 / 12:35:02 / 12:35:44; logged out, refreshes in steps of about 30 s). Theta gap above
+  Rs 5 per lot per day on 42 of 42 pairs each round; worst Rs 172.84 / 178.52 / 209.16. Delta agrees within about
+  0.01-0.016. The reference shows the same theta for CE and PE at each strike (23300: -13.60 both); ours splits them
+  (23300: CE -14.95, PE -12.36) and the split drifts (23200: -2.57 -> -3.10 -> -3.58 per unit in 2 minutes); our CE/PE
+  average at the money is within Rs 3.6-5.0 per lot of the reference. Bears on ADR-220 (4), RD-080, F-82.
+  Status: **measured live; owner decided 2026-11-02 (ADR-234): state theta on the forward, like the reference; not
+  built yet**. Files: D:\Abhay\scratch\gclive3\t3-r1.txt, t3-r2.txt, t3-r3.txt.
