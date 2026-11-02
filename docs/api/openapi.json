@@ -107,6 +107,12 @@
             ],
             "title": "Kind"
           },
+          "liquidity_flags": {
+            "default": [],
+            "items": {},
+            "title": "Liquidity Flags",
+            "type": "array"
+          },
           "margin": {
             "anyOf": [
               {
@@ -280,6 +286,15 @@
             "title": "Leads",
             "type": "object"
           },
+          "limits_reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Limits Reason"
+          },
           "pop_switch_on": {
             "title": "Pop Switch On",
             "type": "boolean"
@@ -336,6 +351,12 @@
             "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
             "title": "Id",
             "type": "string"
+          },
+          "liquidity_flags": {
+            "default": [],
+            "items": {},
+            "title": "Liquidity Flags",
+            "type": "array"
           },
           "name": {
             "title": "Name"
