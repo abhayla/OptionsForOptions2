@@ -47,15 +47,12 @@ YEARS = 10 / 365  # VALUATION -> NIFTY_EXPIRY is exactly 10 calendar days at the
 def _independent_bs_greeks(is_call: bool, s: float, k: float, t: float, r: float, v: float) -> dict:
     """A from-scratch Black-Scholes Greeks implementation (Hull), independent of ofo.engine.black_scholes."""
     d1 = (math.log(s / k) + (r + 0.5 * v * v) * t) / (v * math.sqrt(t))
-    d2 = d1 - v * math.sqrt(t)
     pdf = math.exp(-0.5 * d1 * d1) / math.sqrt(2.0 * math.pi)
     cdf = lambda x: 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))  # noqa: E731
     delta = cdf(d1) if is_call else cdf(d1) - 1.0
     gamma = pdf / (s * v * math.sqrt(t))
     vega = s * pdf * math.sqrt(t) / 100.0
-    decay = -s * pdf * v / (2.0 * math.sqrt(t))
-    carry = r * k * math.exp(-r * t)
-    theta_year = decay - carry * cdf(d2) if is_call else decay + carry * cdf(-d2)
+    theta_year = -s * pdf * v / (2.0 * math.sqrt(t))  # ADR-234: theta on the forward, no carry term, CE == PE
     return {"delta": delta, "gamma": gamma, "theta": theta_year / DAYS_IN_YEAR, "vega": vega}
 
 

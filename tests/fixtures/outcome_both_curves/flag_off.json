@@ -976,13 +976,13 @@
        "vendor": null
       },
       "theta": {
-       "display": "786.89",
+       "display": "809.21",
        "kind": "greek",
-       "per_unit": "12.1060",
-       "per_unit_display": "12.11",
+       "per_unit": "12.4494",
+       "per_unit_display": "12.45",
        "reason": null,
        "side": null,
-       "value": "786.8880",
+       "value": "809.2129",
        "vendor": null
       },
       "unrealized_pnl": {
@@ -1411,13 +1411,13 @@
        "vendor": null
       },
       "theta": {
-       "display": "-626.06",
+       "display": "-578.31",
        "kind": "greek",
-       "per_unit": "-9.6318",
-       "per_unit_display": "-9.63",
+       "per_unit": "-8.8971",
+       "per_unit_display": "-8.90",
        "reason": null,
        "side": null,
-       "value": "-626.0639",
+       "value": "-578.3147",
        "vendor": null
       },
       "unrealized_pnl": {
@@ -1846,13 +1846,13 @@
        "vendor": null
       },
       "theta": {
-       "display": "160.82",
+       "display": "230.90",
        "kind": "greek",
-       "per_unit": "2.4742",
-       "per_unit_display": "2.47",
+       "per_unit": "3.5523",
+       "per_unit_display": "3.55",
        "reason": null,
        "side": null,
-       "value": "160.8242",
+       "value": "230.8982",
        "vendor": null
       },
       "unrealized_pnl": {
@@ -3035,13 +3035,13 @@
        "vendor": null
       },
       "theta": {
-       "display": "786.89",
+       "display": "809.21",
        "kind": "greek",
-       "per_unit": "12.1060",
-       "per_unit_display": "12.11",
+       "per_unit": "12.4494",
+       "per_unit_display": "12.45",
        "reason": null,
        "side": null,
-       "value": "786.8880",
+       "value": "809.2129",
        "vendor": null
       },
       "unrealized_pnl": {
@@ -3470,13 +3470,13 @@
        "vendor": null
       },
       "theta": {
-       "display": "-626.06",
+       "display": "-578.31",
        "kind": "greek",
-       "per_unit": "-9.6318",
-       "per_unit_display": "-9.63",
+       "per_unit": "-8.8971",
+       "per_unit_display": "-8.90",
        "reason": null,
        "side": null,
-       "value": "-626.0639",
+       "value": "-578.3147",
        "vendor": null
       },
       "unrealized_pnl": {
@@ -3905,13 +3905,13 @@
        "vendor": null
       },
       "theta": {
-       "display": "160.82",
+       "display": "230.90",
        "kind": "greek",
-       "per_unit": "2.4742",
-       "per_unit_display": "2.47",
+       "per_unit": "3.5523",
+       "per_unit_display": "3.55",
        "reason": null,
        "side": null,
-       "value": "160.8242",
+       "value": "230.8982",
        "vendor": null
       },
       "unrealized_pnl": {
@@ -5130,13 +5130,13 @@
        "vendor": null
       },
       "theta": {
-       "display": "-786.89",
+       "display": "-809.21",
        "kind": "greek",
-       "per_unit": "-12.1060",
-       "per_unit_display": "-12.11",
+       "per_unit": "-12.4494",
+       "per_unit_display": "-12.45",
        "reason": null,
        "side": null,
-       "value": "-786.8880",
+       "value": "-809.2129",
        "vendor": null
       },
       "unrealized_pnl": {
@@ -5575,13 +5575,13 @@
        "vendor": null
       },
       "theta": {
-       "display": "578.30",
+       "display": "589.34",
        "kind": "greek",
-       "per_unit": "8.8969",
-       "per_unit_display": "8.90",
+       "per_unit": "9.0668",
+       "per_unit_display": "9.07",
        "reason": null,
        "side": null,
-       "value": "578.2960",
+       "value": "589.3445",
        "vendor": null
       },
       "unrealized_pnl": {
@@ -6020,13 +6020,13 @@
        "vendor": null
       },
       "theta": {
-       "display": "-208.59",
+       "display": "-219.87",
        "kind": "greek",
-       "per_unit": "-3.2091",
-       "per_unit_display": "-3.21",
+       "per_unit": "-3.3826",
+       "per_unit_display": "-3.38",
        "reason": null,
        "side": null,
-       "value": "-208.5921",
+       "value": "-219.8684",
        "vendor": null
       },
       "unrealized_pnl": {
@@ -7245,13 +7245,13 @@
        "vendor": null
       },
       "theta": {
-       "display": "-786.89",
+       "display": "-809.21",
        "kind": "greek",
-       "per_unit": "-12.1060",
-       "per_unit_display": "-12.11",
+       "per_unit": "-12.4494",
+       "per_unit_display": "-12.45",
        "reason": null,
        "side": null,
-       "value": "-786.8880",
+       "value": "-809.2129",
        "vendor": null
       },
       "unrealized_pnl": {
@@ -7690,13 +7690,13 @@
        "vendor": null
       },
       "theta": {
-       "display": "578.30",
+       "display": "589.34",
        "kind": "greek",
-       "per_unit": "8.8969",
-       "per_unit_display": "8.90",
+       "per_unit": "9.0668",
+       "per_unit_display": "9.07",
        "reason": null,
        "side": null,
-       "value": "578.2960",
+       "value": "589.3445",
        "vendor": null
       },
       "unrealized_pnl": {
@@ -8135,13 +8135,13 @@
        "vendor": null
       },
       "theta": {
-       "display": "-208.59",
+       "display": "-219.87",
        "kind": "greek",
-       "per_unit": "-3.2091",
-       "per_unit_display": "-3.21",
+       "per_unit": "-3.3826",
+       "per_unit_display": "-3.38",
        "reason": null,
        "side": null,
-       "value": "-208.5921",
+       "value": "-219.8684",
        "vendor": null
       },
       "unrealized_pnl": {

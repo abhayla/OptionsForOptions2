@@ -209,7 +209,8 @@ def _ncdf(x):
 
 
 def _hull(s, k, t, r, q, v, put=False):
-    """Hull ch. 17-19, European option on an asset paying a continuous yield q; theta per calendar day (365)."""
+    """Hull ch. 17-19, European option on an asset paying a continuous yield q; theta per calendar day (365), stated
+    on the forward (ADR-234): -S e^(-qT) n(d1) v / (2 sqrt T), no carry term, the same for the call and the put."""
     d1 = (math.log(s / k) + (r - q + v * v / 2) * t) / (v * math.sqrt(t))
     d2 = d1 - v * math.sqrt(t)
     pdf = math.exp(-d1 * d1 / 2) / math.sqrt(2 * math.pi)
@@ -217,10 +218,10 @@ def _hull(s, k, t, r, q, v, put=False):
     decay = -sq * pdf * v / (2 * math.sqrt(t))
     if put:
         return {"price": kr * _ncdf(-d2) - sq * _ncdf(-d1), "delta": math.exp(-q * t) * (_ncdf(d1) - 1),
-                "theta": (decay + r * kr * _ncdf(-d2) - q * sq * _ncdf(-d1)) / 365,
+                "theta": decay / 365,
                 "gamma": math.exp(-q * t) * pdf / (s * v * math.sqrt(t)), "vega": sq * pdf * math.sqrt(t) / 100}
     return {"price": sq * _ncdf(d1) - kr * _ncdf(d2), "delta": math.exp(-q * t) * _ncdf(d1),
-            "theta": (decay - r * kr * _ncdf(d2) + q * sq * _ncdf(d1)) / 365,
+            "theta": decay / 365,
             "gamma": math.exp(-q * t) * pdf / (s * v * math.sqrt(t)), "vega": sq * pdf * math.sqrt(t) / 100}
 
 
@@ -243,18 +244,25 @@ def test_every_greek_follows_hull_for_a_dividend_yield(kind):
         assert abs(float(getattr(g, name)) - h[name]) <= 1e-4, (name, getattr(g, name), h[name])
 
 
-# The review's (ADR-063) theta values were computed with the yield read from UNROUNDED mids (q below); the forward
-# here uses paise-rounded mids (work/W-060.md proof), which moves SENSEX 08-Oct q to 1.25071 and theta to -111.05.
-# So the review's numbers are pinned at the review's inputs, and the live forward is checked against Hull separately.
-@pytest.mark.parametrize("key, strike, vol, q, theta", [
-    (("SENSEX", D(2026, 10, 8)), "72400", "0.15", "1.2505103235", Decimal("-111.07")),  # code was -229.44
-    (("NIFTY", D(2026, 10, 13)), "22550", "0.12", "0.0775980093", Decimal("-11.89")),  # code was -14.17
+# The review's (ADR-063) yields were read from UNROUNDED mids (q below); the forward here uses paise-rounded mids
+# (work/W-060.md proof). ADR-234 states theta on the forward, so the review's pinned call thetas (-111.07, -11.89, which
+# carried the call's carry term) no longer apply: theta at the review's q is checked against Hull on the forward, for
+# both kinds, and must move with q (a missing yield factor would leave it at the q = 0 value).
+@pytest.mark.parametrize("key, strike, vol, q", [
+    (("SENSEX", D(2026, 10, 8)), "72400", "0.15", "1.2505103235"),
+    (("NIFTY", D(2026, 10, 13)), "22550", "0.12", "0.0775980093"),
 ])
-def test_theta_carries_the_yield_term(replayed, key, strike, vol, q, theta):
+def test_theta_reads_the_yield_through_the_forward(replayed, key, strike, vol, q):
     live = _forward(replayed, *key)
     review = dataclasses.replace(live, implied_yield=Decimal(q))
-    g = greeks_on_forward(Instrument.CE, Decimal(strike), Decimal(vol), review).greeks
-    assert abs(g.theta - theta) <= Decimal("0.005"), g.theta
+    for kind in (Instrument.CE, Instrument.PE):
+        g = greeks_on_forward(kind, Decimal(strike), Decimal(vol), review).greeks
+        h = _hull(float(live.spot), float(strike), float(live.years), 0.065, float(q), float(vol),
+                  put=kind is Instrument.PE)
+        assert abs(float(g.theta) - h["theta"]) <= 1e-4, (kind, g.theta, h["theta"])  # noqa: PLR2004
+    no_yield = dataclasses.replace(live, implied_yield=Decimal(0))
+    assert (greeks_on_forward(Instrument.CE, Decimal(strike), Decimal(vol), no_yield).greeks.theta
+            != greeks_on_forward(Instrument.CE, Decimal(strike), Decimal(vol), review).greeks.theta)
     g_live = greeks_on_forward(Instrument.CE, Decimal(strike), Decimal(vol), live).greeks
     h = _hull(float(live.spot), float(strike), float(live.years), 0.065, float(live.implied_yield), float(vol))
     assert abs(float(g_live.theta) - h["theta"]) <= 1e-4

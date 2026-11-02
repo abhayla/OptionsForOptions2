@@ -9,11 +9,14 @@ cannot make a parity forward: ADR-061's spot fallback), T = seconds from 09:20:0
 (365 x 86400) = 0.0144023021...:
 
   d1 = (ln(S/K) + (r + v^2/2) T) / (v sqrt T),  d2 = d1 - v sqrt T
-  22500 CE: IV 0.113440, delta  0.573009, gamma 0.001279, theta -13.717193 / day, vega 10.607058 / vol point
-  22550 PE: IV 0.136520, delta -0.492031, gamma 0.001080, theta -12.005448 / day, vega 10.786069 / vol point
+  22500 CE: IV 0.113440, delta  0.573009, gamma 0.001279, theta -11.444751 / day, vega 10.607058 / vol point
+  22550 PE: IV 0.136520, delta -0.492031, gamma 0.001080, theta -14.005696 / day, vega 10.786069 / vol point
+
+Theta is stated on the forward (ADR-234): -S e^(-qT) n(d1) v / (2 sqrt T) / 365, no carry term (it was -13.717193
+and -12.005448 with the call / put carry split).
 
 The engine rounds every figure to 4 places, so IV and delta are compared within 0.00006, theta and vega within 0.0006
-(a 4-place theta of -13.7172 sits 0.000007 from the hand figure; the slack covers the day-count rounding only).
+(a 4-place theta of -11.4448 sits 0.00005 from the hand figure; the slack covers the day-count rounding only).
 """
 from __future__ import annotations
 
@@ -69,10 +72,10 @@ def test_proof_real_nifty_cell_iv_and_every_greek_equal_the_hand_check():
     ce, pe = model.greeks[CE_ID], model.greeks[PE_ID]
     assert abs(ce.iv - D("0.113440")) <= TIGHT and abs(ce.delta - D("0.573009")) <= TIGHT
     assert abs(ce.gamma - D("0.001279")) <= TIGHT
-    assert abs(ce.theta - D("-13.717193")) <= LOOSE and abs(ce.vega - D("10.607058")) <= LOOSE
+    assert abs(ce.theta - D("-11.444751")) <= LOOSE and abs(ce.vega - D("10.607058")) <= LOOSE
     assert abs(pe.iv - D("0.136520")) <= TIGHT and abs(pe.delta - D("-0.492031")) <= TIGHT
     assert abs(pe.gamma - D("0.001080")) <= TIGHT
-    assert abs(pe.theta - D("-12.005448")) <= LOOSE and abs(pe.vega - D("10.786069")) <= LOOSE
+    assert abs(pe.theta - D("-14.005696")) <= LOOSE and abs(pe.vega - D("10.786069")) <= LOOSE
     assert (model.basis, model.missing) == ("SPOT_FALLBACK", None)
     assert chain_greeks(REAL, _spot(), EXPIRY, VALUATION, RATE, _FQ) == model.greeks  # one calculator, two readers
 

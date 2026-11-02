@@ -85,7 +85,7 @@ def _undiscounted_black76(f: float, k: float, t: float, v: float, call: bool) ->
     return f * _ncdf(d1) - k * _ncdf(d2) if call else k * _ncdf(-d2) - f * _ncdf(-d1)
 
 
-def _theta_on_forward_fd(s: float, k: float, t: float, r: float, q: float, v: float, call: bool) -> float:
+def _theta_on_forward_fd(s: float, k: float, t: float, r: float, q: float, v: float, call: bool) -> float:  # noqa: PLR0913
     """Independent: -e^(-rT) dU/dT at a FIXED forward F = S e^((r-q)T), U the Black-76 undiscounted price; per day."""
     f, h = s * math.exp((r - q) * t), 1e-7
     du = (_undiscounted_black76(f, k, t + h, v, call) - _undiscounted_black76(f, k, t - h, v, call)) / (2 * h)
@@ -104,7 +104,7 @@ THETA_CASES = [
 
 
 @pytest.mark.parametrize("s, k, t, r, q, v", THETA_CASES)
-def test_call_theta_equals_put_theta_at_the_same_strike_expiry_and_vol(s, k, t, r, q, v):
+def test_call_theta_equals_put_theta_at_the_same_strike_expiry_and_vol(s, k, t, r, q, v):  # noqa: PLR0913
     """ADR-234 (2): one theta per strike; no carry term splits the call from the put (F-98: it drifted 2.57 -> 3.58)."""
     common = (D(s), D(k), D(t), D(r), D(v))
     call = bs_greeks_unrounded(CE, *common, dividend_yield=D(q))
@@ -114,7 +114,7 @@ def test_call_theta_equals_put_theta_at_the_same_strike_expiry_and_vol(s, k, t, 
 
 
 @pytest.mark.parametrize("s, k, t, r, q, v", THETA_CASES)
-def test_theta_is_the_decay_on_the_forward(s, k, t, r, q, v):
+def test_theta_is_the_decay_on_the_forward(s, k, t, r, q, v):  # noqa: PLR0913
     """ADR-234 (2): theta = the time decay of the option on its forward (Black-76 form), against an independent
     finite difference with the forward held fixed; both kinds."""
     for kind, call in ((CE, True), (PE, False)):
@@ -131,14 +131,17 @@ def test_theta_stays_per_calendar_day():
     assert abs(day * 365 - year) <= D("1e-9")
 
 
-REAL_0911 = dict(spot=D("23292.25"), strike=D("23300"), years=D("0.01951315956367326230339928970"), rate=D("0.065"))
+REAL_0911 = {"spot": D("23292.25"), "strike": D("23300"), "years": D("0.01951315956367326230339928970"),
+             "rate": D("0.065")}
+HAND_TOLERANCE = 0.00006  # 4 dp rounding of the engine figure
 REAL_Q = D("0.0250901872")
 
 
 def test_price_iv_delta_gamma_vega_unchanged_on_the_real_case():
     """ADR-234 (1): only theta moves. Real NIFTY 9 Nov 23300 CE, 2 Nov 12:33:52 IST (D:\\Abhay\\scratch\\gclive3
     ours-2026-11-09-r1.json, the engine's reply BEFORE ADR-234): mid 200.18 on bid 199.85 / ask 200.50, parity q
-    0.0250901872, IV shown 15.03 %, delta 0.5124, gamma 0.0008, vega 12.9674; theta was -14.9512 (CE) / -12.3623 (PE)."""
+    0.0250901872, IV shown 15.03 %, delta 0.5124, gamma 0.0008, vega 12.9674; theta was -14.9512 (CE) / -12.3623 (PE).
+    """
     iv = implied_volatility(CE, D("200.18"), **REAL_0911, dividend_yield=REAL_Q)
     assert round(iv * 100, 2) == D("15.03")
     assert bs_price(CE, vol=iv, **REAL_0911, dividend_yield=REAL_Q) == D("200.18")
@@ -148,7 +151,7 @@ def test_price_iv_delta_gamma_vega_unchanged_on_the_real_case():
     s, k, t, r, q, v = 23292.25, 23300.0, float(REAL_0911["years"]), 0.065, float(REAL_Q), float(iv)
     d1 = (math.log(s / k) + (r - q + v * v / 2) * t) / (v * math.sqrt(t))
     hand = -s * math.exp(-q * t) * math.exp(-d1 * d1 / 2) / math.sqrt(2 * math.pi) * v / (2 * math.sqrt(t)) / 365
-    assert abs(float(g.theta) - hand) <= 0.00006
+    assert abs(float(g.theta) - hand) <= HAND_TOLERANCE
     assert D("-14.9512") < g.theta < D("-12.3623")  # between the old split call and put figures
 
 
