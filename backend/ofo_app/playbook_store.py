@@ -28,7 +28,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
-from ofo.adjustment.alert_gate import GateRow, GateRows
+from ofo.adjustment.gate_rows import GateRow, GateRows
 from ofo.adjustment.playbook_eval import validate_body
 from ofo.adjustment.playbook_types import BODY_SCHEMA, NAME_MAX, SHOWN_NAMES
 from ofo.errors.explanations import render_explanation
