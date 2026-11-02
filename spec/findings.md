@@ -1241,3 +1241,9 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   average at the money is within Rs 3.6-5.0 per lot of the reference. Bears on ADR-220 (4), RD-080, F-82.
   Status: **measured live; owner decided 2026-11-02 (ADR-234): state theta on the forward, like the reference; not
   built yet**. Files: D:\Abhay\scratch\gclive3\t3-r1.txt, t3-r2.txt, t3-r3.txt.
+- Same day, NIFTY 3 Nov (1 day left), 3 rounds 12:50:04/12:50:07, 12:50:38/12:50:42, 12:50:51/12:50:55 (reference read /
+  ours answered): round 1 worst gap Rs 377.51 per lot per day, 41 of 42 pairs over Rs 5. At 23300 the reference shows
+  -38.55 / -38.71 / -38.71 for CE and PE alike; ours CE/PE -36.40/-41.65, -38.22/-39.68, -37.40/-40.63 (split +5.25,
+  +1.46, +3.23 per unit, the opposite sign to 9 Nov); our CE/PE average is Rs 31 / 16 / 20 per lot more negative than
+  the reference, so near expiry a gap remains even after ADR-234 (likely the time-of-day convention for T): the
+  ADR-234 re-run of T3 must include a 0-1 day expiry. File: D:\Abhay\scratch\gclive3\t3-1103-r1.txt.
