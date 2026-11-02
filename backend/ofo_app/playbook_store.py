@@ -24,10 +24,11 @@ import dataclasses
 import json
 import re
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
+from ofo.adjustment.alert_gate import GateRow, GateRows
 from ofo.adjustment.playbook_eval import validate_body
 from ofo.adjustment.playbook_types import BODY_SCHEMA, NAME_MAX, SHOWN_NAMES
 from ofo.errors.explanations import render_explanation
@@ -50,6 +51,8 @@ DISMISS_REASONS = ("expected_within_plan", "will_act_later", "not_relevant", "ot
 #: why a record lapsed (REQ-112 AC-2), written into its timeline entry (the dismiss reason column is Dismiss's only)
 LAPSE_CONDITION_STOPPED = "condition_stopped"
 LAPSE_STRATEGY_CLOSED = "strategy_closed"
+WORSE_MARKS = (None, "last", "dismissed")  # = migration 0036 WORSE plus none (a test asserts it)
+HELD_REASONS = ("daily_limit", "quiet_time")  # = alert_gate.HELD_DAILY_LIMIT / HELD_QUIET_TIME
 SOURCE_SYSTEM = "system"  # "Adjustment opportunity detected" (a system playbook's flag)
 SOURCE_OWN = "own"  # "Your rule was triggered" (the user's own playbook or the strategy's plan)
 _DECIMAL = re.compile(r"-?[0-9]+(\.[0-9]+)?")
@@ -214,8 +217,8 @@ _SG_COLUMNS = ("id, strategy_id, rule_id, trigger_id, stage, value, threshold, s
 _OPEN_FOR_RULE = text(f"SELECT {_SG_COLUMNS} FROM public.adjustment_suggestions "  # noqa: S608 constant columns
                       "WHERE strategy_id = :strategy_id AND rule_id = :rule_id AND outcome = 'open'")
 _INSERT_SUGGESTION = text(
-    "INSERT INTO public.adjustment_suggestions (strategy_id, rule_id, trigger_id, stage, value, threshold, timeline) "  # noqa: S608
-    "VALUES (:strategy_id, :rule_id, :trigger_id, :stage, :value, :threshold, "
+    "INSERT INTO public.adjustment_suggestions (strategy_id, rule_id, trigger_id, stage, value, threshold, worse, "  # noqa: S608
+    "timeline) VALUES (:strategy_id, :rule_id, :trigger_id, :stage, :value, :threshold, CAST(:worse AS TEXT), "
     "jsonb_build_array(jsonb_build_object('at', clock_timestamp(), 'outcome', 'open', "
     "'group', CAST(:group AS TEXT), 'source', CAST(:source AS TEXT), 'cmp', CAST(:cmp AS TEXT), "
     "'label', CAST(:label AS TEXT), 'unit', CAST(:unit AS TEXT), 'approach', CAST(:approach AS TEXT), "
@@ -560,8 +563,12 @@ async def open_suggestion(conn: Any, user_ref: str, strategy_id: int, rule_id: s
                           threshold: Decimal | None, group: str | None = None,
                           source: str | None = None, cmp: str | None = None, label: str | None = None,
                           unit: str | None = None, approach: str | None = None,
-                          approach_cost: Decimal | None = None, unpriced: int | None = None) -> Suggestion:
-    """REQ-112 AC-1: one open record per (strategy, rule); a rule still open returns its existing record."""
+                          approach_cost: Decimal | None = None, unpriced: int | None = None,
+                          worse: str | None = None) -> Suggestion:
+    """REQ-112 AC-1: one open record per (strategy, rule); a rule still open returns its existing record.
+    ``worse``: None / 'last' / 'dismissed' (REQ-170 AC-3, ADR-237 (5)), written once at insert."""
+    if worse not in WORSE_MARKS:
+        raise ValueError(f"unknown worse marker {worse!r}")
     await _owned(conn, user_ref, strategy_id)
     params = {"strategy_id": strategy_id, "rule_id": rule_id}
     existing = (await conn.execute(_OPEN_FOR_RULE, params)).one_or_none()
@@ -571,6 +578,7 @@ async def open_suggestion(conn: Any, user_ref: str, strategy_id: int, rule_id: s
                                                    "value": value, "threshold": threshold, "group": group,
                                                    "source": source, "cmp": cmp, "label": label,
                                                    "unit": unit, "approach": approach, "unpriced": unpriced,
+                                                   "worse": worse,
                                                    "approach_cost": None if approach_cost is None
                                                    else format(approach_cost, "f")})).one()
     return _suggestion(row)
@@ -637,3 +645,60 @@ async def dismissed_holding(conn: Any, user_ref: str, strategy_id: int) -> dict[
 async def mark_cleared(conn: Any, user_ref: str, suggestion_id: int) -> None:
     """ADR-217: a check found the dismissed record's rule false; the next flag may open a new record."""
     await conn.execute(_MARK_CLEARED, {"id": suggestion_id, "user_ref": user_ref})
+
+
+# ---- alert gate storage (migration 0036; ADR-237 (5); REQ-170 AC-4) ----------------------------------------------
+_INSERT_HELD = text(
+    "INSERT INTO public.adjustment_held_crossings (strategy_id, rule_id, trigger_id, stage, value, threshold, reason) "
+    "VALUES (:strategy_id, :rule_id, :trigger_id, :stage, :value, :threshold, :reason) "
+    "RETURNING id, strategy_id, rule_id, trigger_id, stage, value, threshold, reason, held_at")
+#: the last record per rule (by id) and the count of records shown on `today` in IST (the cap counts every record)
+_GATE_LAST = text(
+    "SELECT DISTINCT ON (g.rule_id) g.rule_id, g.shown_at, g.threshold, g.outcome "
+    "FROM public.adjustment_suggestions g JOIN public.strategies s ON s.id = g.strategy_id "
+    "WHERE g.strategy_id = :strategy_id AND s.user_ref = :user_ref ORDER BY g.rule_id, g.id DESC")
+_GATE_TODAY = text(
+    "SELECT count(*) FROM public.adjustment_suggestions g JOIN public.strategies s ON s.id = g.strategy_id "
+    "WHERE g.strategy_id = :strategy_id AND s.user_ref = :user_ref "
+    "AND (g.shown_at AT TIME ZONE 'Asia/Kolkata')::date = :today")
+
+
+@dataclass(frozen=True)
+class HeldCrossing:
+    id: int
+    strategy_id: int
+    rule_id: str
+    trigger_id: str | None
+    stage: str | None
+    value: Decimal | None
+    threshold: Decimal | None
+    reason: str
+    held_at: datetime
+
+
+async def record_held(conn: Any, user_ref: str, strategy_id: int, rule_id: str, *,  # noqa: PLR0913
+                      trigger_id: str | None, stage: str | None, value: Decimal | None,
+                      threshold: Decimal | None, reason: str) -> HeldCrossing:
+    """REQ-170 AC-4: a capped or quiet-time crossing is a stored row ("held: daily limit / quiet time"), never
+    dropped. A yes/no rule's value and threshold are None. held_at is the database clock (the guard sets it)."""
+    if reason not in HELD_REASONS:
+        raise ValueError(f"unknown held reason {reason!r}")
+    if isinstance(value, bool):
+        raise ValueError("a yes/no rule's held value is stored as None, not a bool")
+    await _owned(conn, user_ref, strategy_id)
+    row = (await conn.execute(_INSERT_HELD, {"strategy_id": strategy_id, "rule_id": rule_id, "trigger_id": trigger_id,
+                                             "stage": stage, "value": value, "threshold": threshold,
+                                             "reason": reason})).one()
+    return HeldCrossing(*row)
+
+
+async def gate_rows(conn: Any, user_ref: str, strategy_id: int, today: date) -> GateRows:
+    """ADR-237 (5): what ``alert_gate.restore`` needs - the last record per rule (time, threshold, dismissed, still
+    open) and today's (IST) record count. No record -> empty, 0. Another user's or a missing strategy -> not found;
+    a store error raises (never an empty default)."""
+    await _owned(conn, user_ref, strategy_id)
+    params = {"strategy_id": strategy_id, "user_ref": user_ref}
+    last = (await conn.execute(_GATE_LAST, params)).all()
+    count = (await conn.execute(_GATE_TODAY, {**params, "today": today})).scalar_one()
+    rows = tuple(GateRow(r[0], r[1], r[2], dismissed=r[3] == "dismissed", open=r[3] == "open") for r in last)
+    return GateRows(rows, int(count))
