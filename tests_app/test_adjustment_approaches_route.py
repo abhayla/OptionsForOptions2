@@ -94,7 +94,7 @@ def client_for(sc: dict, *, booked="stated", margin=None, environ=None, rates=No
         return (SourceReading(SourceState.STATED, D(sc["market"]["spot"]), now) if rest_ok
                 else SourceReading(SourceState.FAILED))
 
-    async def read_guards(_sid, _position, _spot):
+    async def read_guards(_sid, _position, _spot, _listed):
         return guards  # None: the strategy has no playbook
 
     async def default_margin(legs):

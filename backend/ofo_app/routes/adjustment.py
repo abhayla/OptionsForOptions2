@@ -119,7 +119,7 @@ MarketReader = Callable[[Tracked, MarketContext | None], Awaitable[MarketInputs]
 RestSpotReader = Callable[[str], Awaitable[SourceReading]]
 ApproachMargin = Callable[[list[PlannedOrderIn]], Awaitable[Margin]]
 #: strategy id, position, spot -> the guards of the strategy's playbook (None: no playbook, so no limits)
-GuardsReader = Callable[[int, Position, Decimal | None], Awaitable[Mapping[str, Any] | None]]
+GuardsReader = Callable[[int, Position, Decimal | None, list | None], Awaitable[Mapping[str, Any] | None]]
 
 
 def get_tracked_reader() -> TrackedReader:
@@ -362,6 +362,7 @@ async def adjustment_approaches(  # noqa: PLR0913 - FastAPI dependencies, one pe
         guards_of: Annotated[GuardsReader, Depends(get_guards_reader)],
         prefs: UserPreferences) -> AdjustApproachesOut:
     started = time.perf_counter()
+    from ofo_app import adjustment_check as check  # noqa: PLC0415 - it imports this module's dataclasses
     from ofo_app.adjustment_readers import TrackedUnreadable  # noqa: PLC0415 - as above
     try:
         tracked = await tracked_reader(strategy_id, rates if isinstance(rates, ChargeRates) else None)
@@ -388,7 +389,7 @@ async def adjustment_approaches(  # noqa: PLR0913 - FastAPI dependencies, one pe
         t0 = time.perf_counter()
         before = price_after(position.legs, position, tracked.booked, tracked.paid_charges, (), rates, market)
         reply["before"] = _after_block(before, pop_on)
-        guards = await guards_of(strategy_id, position, spot.value)
+        guards = await guards_of(strategy_id, position, spot.value, check.listed_of(ctx))
         limits, max_profit = liquidity_inputs(guards, before)  # no playbook, no limits
         answers = [(a, priced_approach(a, tracked, market, spot.value, rates, prefs.approach,  # type: ignore[arg-type]
                                        limits=limits, max_profit=max_profit)) for a in asked]
