@@ -54,8 +54,8 @@ def scn():
 
 
 def _window(prov, tracked) -> set[int]:
-    """The chain screen's strike window around the spot (``limits.chain_strikes_each_side`` each side) of the first leg's
-    expiry: the worker holds it too (finding 2), worked out here from the master, not from the worker."""
+    """The chain screen's strike window around the spot (``limits.chain_strikes_each_side`` each side) of the first
+    leg's expiry: the worker holds it too (finding 2), worked out here from the master, not from the worker."""
     first = tracked.position.legs[0]
     master = [lc for lc in prov.instrument_master()
               if lc.contract.name == tracked.position.underlying and lc.contract.expiry == first.expiry

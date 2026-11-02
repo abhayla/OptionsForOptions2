@@ -18,7 +18,7 @@ Written 13:15 IST, completed at C2 15:3x IST; the C3 result is added in C4.
 | D4 | At most 14 recomputes per strategy per minute (limit 60); the valve flaps on DB wait | run log D4 |
 | D5 | Compare on 78: no approach offered (F-92, both feed modes), "no plan maximum set" (F-93), paper book vs other screens max profit/loss (F-94, ADR-082 defect) | F-92..F-94 |
 | B1/B2 | T3 NIFTY 9 Nov, 3 rounds: theta gap up to Rs 209 per lot per day (CE/PE split by a drifting carry term). Owner decided ADR-234: state theta like the reference. T3 3 Nov also measured | F-98, ADR-234 |
-| C1 | REQ-078 AC-1: strikes 3/3 and base max loss to the paisa pass; p95 4,783 ms FAIL | `evidence/W-158/AC-1.md` |
+| C1 | REQ-078 AC-1: strikes 3/3 and base max loss to the paisa pass; p95 4,783 ms FAIL | `docs/process/live-run-W-158-AC-1-2026-11-02.md` (orchestrator live run, not verifier evidence) |
 | E1 | #583 I-1 futures shapes (716c6e75) and I-12 futures leg false "disconnected" (893b659b) fixed, proven live | F-95, F-96 |
 | E2 | F-65, F-66, F-67, F-69 still fixed live; F-68 not testable (no expiry) | run log E2 |
 | E3 | Live paper leg stop fired correctly; #614 "1 legs" still present | run log E3 |

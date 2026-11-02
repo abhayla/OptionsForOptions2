@@ -171,7 +171,8 @@ FUT_NEAR, FUT_NEXT = datetime.date(2026, 10, 27), datetime.date(2026, 11, 24)
 
 
 def _fut(token, expiry):
-    return PickableContract(token, f"NSE_FO:{token}", "NSE_FO", token, "FUT", expiry, None, 75, f"NIFTY{expiry:%y%b}FUT")
+    return PickableContract(token, f"NSE_FO:{token}", "NSE_FO", token, "FUT", expiry, None, 75,
+                            f"NIFTY{expiry:%y%b}FUT")
 
 
 class FuturesFake:

@@ -85,7 +85,8 @@ def _undiscounted_black76(f: float, k: float, t: float, v: float, call: bool) ->
     return f * _ncdf(d1) - k * _ncdf(d2) if call else k * _ncdf(-d2) - f * _ncdf(-d1)
 
 
-def _theta_on_forward_fd(s: float, k: float, t: float, r: float, q: float, v: float, call: bool) -> float:  # noqa: PLR0913
+def _theta_on_forward_fd(  # noqa: PLR0913
+        s: float, k: float, t: float, r: float, q: float, v: float, call: bool) -> float:
     """Independent: -e^(-rT) dU/dT at a FIXED forward F = S e^((r-q)T), U the Black-76 undiscounted price; per day."""
     f, h = s * math.exp((r - q) * t), 1e-7
     du = (_undiscounted_black76(f, k, t + h, v, call) - _undiscounted_black76(f, k, t - h, v, call)) / (2 * h)
