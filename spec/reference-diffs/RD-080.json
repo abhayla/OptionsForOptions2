@@ -3,10 +3,12 @@
   "kind": "DIFFERENT-BY-DECISION",
   "title": "Pricing model: the reference product's Black 76 against ours with an implied dividend yield (G-13-4)",
   "reference_behaviour": "Greeks come from a modified Black 76 model in which theta, vega and gamma are the same for a call and a put (bundle-findings 2.5 and 7.1).",
-  "reference_screens": ["catalogue 124"],
-  "ours": "Black-Scholes-Merton with each expiry's implied dividend yield; call and put theta differ by a carry term (a few rupees per day, unmeasured). Decided by ADR-063.",
+  "reference_screens": [
+    "catalogue 124"
+  ],
+  "ours": "Black-Scholes-Merton with each expiry's implied dividend yield (ADR-063) for prices, IV, delta, gamma and vega. Theta: was split between call and put by a carry term; measured 2026-11-02 (F-98) the split drifted -2.57 -> -3.58 per unit in 2 minutes and gave gaps up to Rs 209 per lot per day against the reference; owner decided (ADR-234) to state theta on the forward, the same for a call and a put, like the reference.",
   "req": "REQ-032",
-  "adr": "ADR-063",
+  "adr": "ADR-234",
   "row": 13,
   "status": "decided",
   "spec_change": false,
