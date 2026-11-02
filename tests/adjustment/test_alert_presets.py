@@ -1,3 +1,4 @@
+# ruff: noqa: PLR2004 - exact expected values from the REQ-170 table are the assertion (tests rule: assert exact values)
 """REQ-170 AC-6 / AC-7, Q-AD-2: the alert presets resolve from the REAL registry plus a user's values (GC-ALERT1).
 
 Core proof: with no user values the three presets built from backend/ofo/settings/registry.json are exactly the gate's
@@ -40,8 +41,10 @@ def test_user_keys_are_exactly_the_four_user_values() -> None:
 
 
 def test_user_values_are_used() -> None:
-    mine = _admin() | {"alerts.intraday.daily_cap": Decimal(3), "alerts.intraday.cooldown_minutes": Decimal(7),
-                       "alerts.intraday.quiet_until": Decimal(925), "alerts.intraday.confirm_candle_minutes": Decimal(2)}
+    mine = _admin() | {"alerts.intraday.daily_cap": Decimal(3),
+                       "alerts.intraday.cooldown_minutes": Decimal(7),
+                       "alerts.intraday.quiet_until": Decimal(925),
+                       "alerts.intraday.confirm_candle_minutes": Decimal(2)}
     p = alert_presets.preset_for("intraday", mine, _admin())
     assert p.daily_cap == 3 and p.cooldown.total_seconds() == 420 and p.quiet_until.strftime("%H:%M") == "09:25"
     assert p.candle.total_seconds() == 120

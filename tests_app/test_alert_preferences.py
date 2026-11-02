@@ -1,3 +1,4 @@
+# ruff: noqa: PLR2004 - exact expected values from the REQ-170 table are the assertion (tests rule: assert exact values)
 """REQ-170 AC-6 / AC-7: the user-changeable alert-discipline values on the Preferences closed list (GC-ALERT1).
 
 Spec basis: REQ-170 AC-6 "the re-arm margin and the daily cap are admin settings (the user may lower the cap, never
