@@ -247,6 +247,23 @@ def _figures(shared: FeedScope, at: tuple, quote: Any, em: Any) -> tuple[Decimal
     return iv, shared.call(where, _option_greeks, em, quote.instrument_type, quote.strike, iv)
 
 
+def feed_spot(read: PriceRead, now: datetime.datetime) -> SourceReading:
+    """The feed spot of a FRESH read stamped ``now`` (finding staleness-by-last-change-age).
+
+    ``read_prices`` already judged freshness by the provider's connection-aware health; the quote's own timestamp is
+    its LAST CHANGE, and Kite sends a packet only on a change, so a quiet but live index is current. Stamping its last
+    change instead made ``resolve_spot``'s feed-age window (3 s) answer "no spot" for every check more than 3 s after
+    the last tick, the evaluation was withheld, and a rule whose value cleared its band was never read (round 2 RCA:
+    the 23000 frame arrived inside the 10 s check interval and was 9 s old at the next check). A timestamp in the
+    future, or none, is kept so ``resolve_spot`` still refuses it (fail closed); a read that is not FRESH raises."""
+    if read.state is not PriceState.FRESH or read.spot is None:
+        raise ValueError(f"feed_spot needs a fresh read, got {read.state}")
+    at = read.spot.timestamp
+    if at is not None and at.tzinfo is not None and at <= now:
+        at = now
+    return SourceReading(SourceState.STATED, read.spot.ltp, at)
+
+
 def market_inputs(watched: Watched, read: PriceRead, shared: FeedScope, now: datetime.datetime,
                   values: Mapping[str, Decimal]) -> MarketInputs:
     """The screen's ``MarketInputs`` (``adjustment_readers.read_market``) from a fresh price read, every per-option
@@ -293,7 +310,7 @@ def market_inputs(watched: Watched, read: PriceRead, shared: FeedScope, now: dat
         years = year_fraction(instant, expiry)
     except ValueError:
         years = None
-    feed = SourceReading(SourceState.STATED, read.spot.ltp, read.spot.timestamp)
+    feed = feed_spot(read, now)
     last = read_last_close(read.spot, False, scenario_mode.current(), now)  # a check runs only with the market open
     return MarketInputs(tuple(rows), ids, None if fwd is None else fwd.forward, years, vol, feed, last, now,
                         expiry_kind_of(expiry, read.listed, read.futures, scenario_mode.current()), leg_greeks)

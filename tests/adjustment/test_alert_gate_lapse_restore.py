@@ -141,3 +141,38 @@ def test_restore_refuses_a_negative_count_and_a_naive_time():
     naive = ag.GateRow("T-07", at("10:41").replace(tzinfo=None), D("80"), dismissed=False, open=True)
     with pytest.raises(ValueError, match="timezone"):
         ag.restore(_rows(naive), DAY, {"T-07": T07})
+
+
+# ---- review #2 of 0036: restore with the yes/no placeholder keeps the stored threshold, levels it lazily ----------
+
+PLACEHOLDER = ag.RuleSpec("T-03", "bool", ())  # gate_readings' spec for a rule not checked at the restoring check
+
+
+def _restored_with_placeholder(threshold):
+    rows = ag.GateRows((ag.GateRow("T-03", at("10:00"), threshold, dismissed=False, open=True),), 1)
+    return ag.restore(rows, DAY, {"T-03": PLACEHOLDER})
+
+
+def test_restore_with_the_placeholder_never_escalates_a_close_at_the_stored_level():
+    # the stored record opened at 0.35 (level 1 of 0.30/0.35/0.40); a 0.36 close is the same level: no Opened
+    state = _restored_with_placeholder(D("0.35"))
+    _, events = steps(state, ag.WEEKLY, [(at("10:41"), D("0.36")), (at("10:46"), D("0.36"))], T03)
+    assert opened(events) == [] and lapsed(events) == []
+
+
+def test_restore_with_the_placeholder_still_escalates_one_level_worse_than_the_stored_threshold():
+    state = _restored_with_placeholder(D("0.35"))
+    _, events = steps(state, ag.WEEKLY, [(at("10:41"), D("0.41")), (at("10:46"), D("0.41"))], T03)
+    assert [(e.level, e.threshold, e.worse) for e in opened(events)] == [(2, D("0.40"), "last")]
+
+
+def test_a_yes_no_close_leaves_a_placeholder_restore_unlevelled_and_a_held_restore_keeps_its_threshold():
+    state = _restored_with_placeholder(D("0.35"))
+    state, _ = steps(state, ag.WEEKLY, [(at("10:41"), True), (at("10:46"), True)], PLACEHOLDER)
+    assert state.rule("T-03").record.unleveled and state.rule("T-03").record.threshold == D("0.35")
+    capped = ag.restore(ag.GateRows((), ag.WEEKLY.daily_cap), DAY, {})  # the day's cap already reached
+    held = ag.restore_held(capped, "T-03", ag.HELD_DAILY_LIMIT, D("0.35"), PLACEHOLDER)
+    assert held.rule("T-03").hold.unleveled and held.rule("T-03").hold.threshold == D("0.35")
+    held, events = steps(held, ag.WEEKLY, [(at("10:41"), D("0.36")), (at("10:46"), D("0.36"))], T03)
+    assert events == []  # the same held episode at the same level: no second Held row
+    assert held.rule("T-03").hold.level == 1 and not held.rule("T-03").hold.unleveled

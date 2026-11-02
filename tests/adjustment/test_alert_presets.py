@@ -30,7 +30,7 @@ def test_every_style_key_is_in_the_registry() -> None:
         for key in alert_presets.style_keys(style):
             assert key in reg, key
         assert alert_presets.speed_key(style) in reg
-    assert "speeds.background_check_seconds" in reg  # the worker still reads the old key until a later step
+    assert "speeds.background_check_seconds" not in reg  # wire-b: the worker reads the per-style keys only
 
 
 def test_user_keys_are_exactly_the_four_user_values() -> None:

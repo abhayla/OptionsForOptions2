@@ -460,6 +460,25 @@ def _background_state(prov, watched, at) -> pe.StrategyState:
                                        PREFS)
 
 
+def test_a_quiet_but_live_spot_is_read_never_withheld(scn):
+    """GC-ALERT1 wire-b round 2 RCA (finding staleness-by-last-change-age): the spot's last tick is 9 s old (Kite sends
+    only changes; the 3 s feed-age window called it "no spot") while the feed is live. The check reads it: the state
+    has the spot and the evaluation is not withheld (a withheld check gives the gate None for every rule, so a record
+    whose value cleared the band never lapsed)."""
+    prov = Prov(scn)
+    at = _price_time(prov) + datetime.timedelta(seconds=9)
+    w = dataclasses.replace(_watched(scn)[0], body=_system_body("ic"))
+    state = _background_state(prov, w, at)
+    assert state.spot == prov.spot.ltp
+    assert pe.evaluate(w.body, state, {}, state, gap_until="09:30").withheld is None
+    read = background.read_prices(prov, w, at)
+    assert background.feed_spot(read, at).at == at  # a FRESH read is current now; its last change is information
+    future = dataclasses.replace(read, spot=dataclasses.replace(read.spot, timestamp=at + datetime.timedelta(seconds=1)))
+    assert background.feed_spot(future, at).at > at  # a future time is kept, so resolve_spot still refuses it
+    with pytest.raises(ValueError, match="fresh read"):
+        background.feed_spot(background.PriceRead(background.PriceState.STALE), at)
+
+
 def _system_body(stype: str) -> dict:
     path = pathlib.Path(pe.__file__).with_name("system_playbooks.json")
     return next(pb["body"] for pb in json.loads(path.read_text(encoding="utf-8"))["playbooks"]
@@ -720,7 +739,8 @@ async def test_one_summary_line_per_wall_clock_minute_counts_only_real_recompute
     assert len(lines) == SECOND
     assert lines[0].startswith(f"background: minute {first_minute} cycles=3 checks=4 ")
     assert "recomputes {100: 2, 101: 2}" in lines[0] and "legs {100: 4, 101: 4}" in lines[0]
-    assert "valve_step=1 speed=1" in lines[0]
+    assert ("valve_step=1 speed={'intraday': Decimal('1'), 'weekly': Decimal('1'), 'monthly': Decimal('1')}s "
+            in lines[0])  # ADR-235 (1): the per-style speed map in force (this worker's settings: 1 s each)
     assert " cycles=1 checks=2 " in lines[1] and "recomputes {100: 1, 101: 1}" in lines[1]
 
 
