@@ -12,8 +12,9 @@ strategy"; REQ-168 AC-3 (keyed by the user). Finding engine-input-chosen-per-cal
 - PUT {style: null | intraday | weekly | monthly}: the pin from now (null = automatic again), then the GET reply.
 - Answer states: pinned / automatic (no row or a NULL row); legs on several expiries -> automatic null with
   ``alert_style_several_expiries``; an expiry kind or days the resolver refuses, no open leg, or a market read that
-  fails -> automatic null with ``alert_style_expiry_unknown`` (never a guessed style); another user's or a missing
-  strategy -> 404; a style outside the list -> 422 with ``alert_style_refused_unknown``; the same instant twice -> 409.
+  fails -> automatic null with ``alert_style_expiry_unknown`` (never a guessed style); a strategy with no paper
+  order yet (a saved draft) is that same unknown; another user's or a missing strategy -> 404; a style outside
+  the list -> 422 with ``alert_style_refused_unknown``; the same instant twice -> 409.
 """
 from __future__ import annotations
 
@@ -82,8 +83,8 @@ async def automatic_style(strategy_id: int, tracked_reader: TrackedReader, marke
     except TrackedUnreadable as exc:
         log.warning("alert style: strategy %s unreadable: %s", strategy_id, exc)
         return None, UNKNOWN
-    if tracked is None:
-        raise StrategyRefused(_NOT_AVAILABLE, Failure.NOT_FOUND)
+    if tracked is None:  # a saved draft with no paper order yet: the position cannot be read, so it is unknown
+        return None, UNKNOWN
     expiries = {leg.expiry for leg in tracked.position.legs}
     if len(expiries) != 1:
         return None, SEVERAL
@@ -99,20 +100,28 @@ async def automatic_style(strategy_id: int, tracked_reader: TrackedReader, marke
         return None, UNKNOWN
 
 
-async def _reply(db: AsyncSession, user: str, strategy_id: int, tracked_reader: TrackedReader,  # noqa: PLR0913
-                 market_reader: MarketReader, ctx: MarketContext | None) -> AlertStyleOut:
-    try:
-        pin = await store.pin_of(db, user, strategy_id)
-    except store.StyleNotFound:
-        raise StrategyRefused(_NOT_AVAILABLE, Failure.NOT_FOUND) from None
-    auto, reason = await automatic_style(strategy_id, tracked_reader, market_reader, ctx)
+def _compose(strategy_id: int, pinned: alert_presets.Style | None, auto: alert_presets.Style | None,
+             reason: str | None) -> AlertStyleOut:
     auto_label = (render_explanation("alert_style_automatic_unknown") if auto is None
                   else render_explanation("alert_style_automatic_now", style=style_name(auto)))
     choices = [ChoiceOut(value=None, label=auto_label)]
     choices += [ChoiceOut(value=s, label=style_name(s)) for s in alert_presets.STYLES]
-    return AlertStyleOut(strategy_id=strategy_id, label=render_explanation("alert_style_label"), pinned=pin.style,
-                         automatic=auto, in_force=pin.style if pin.style is not None else auto,
+    return AlertStyleOut(strategy_id=strategy_id, label=render_explanation("alert_style_label"), pinned=pinned,
+                         automatic=auto, in_force=pinned if pinned is not None else auto,
                          reason_text=None if reason is None else render_explanation(reason), choices=choices)
+
+
+async def _reply(db: AsyncSession, user: str, strategy_id: int, tracked_reader: TrackedReader,  # noqa: PLR0913
+                 market_reader: MarketReader, ctx: MarketContext | None) -> Any:
+    try:
+        pin = await store.pin_of(db, user, strategy_id)
+    except store.StyleNotFound:
+        raise StrategyRefused(_NOT_AVAILABLE, Failure.NOT_FOUND) from None
+    except store.AlertStyleError:  # a stored style that is no longer one of the styles: fail closed, never automatic
+        log.warning("alert style: strategy %s holds a style that is not valid", strategy_id)
+        return respond(RefusedOut(reason=render_explanation("alert_style_refused_unknown")), 422)
+    auto, reason = await automatic_style(strategy_id, tracked_reader, market_reader, ctx)
+    return _compose(strategy_id, pin.style, auto, reason)
 
 
 @router.get("/api/strategies/{strategy_id}/alert-style", response_model=AlertStyleOut)
@@ -120,7 +129,7 @@ async def read_alert_style(  # noqa: PLR0913 - FastAPI dependencies, one per inp
         strategy_id: int, db: Db, user: Annotated[str, Depends(current_user_ref)],
         tracked_reader: Annotated[TrackedReader, Depends(get_tracked_reader)],
         market_reader: Annotated[MarketReader, Depends(get_market_reader)],
-        ctx: Annotated[MarketContext | None, Depends(get_market_context)]) -> AlertStyleOut:
+        ctx: Annotated[MarketContext | None, Depends(get_market_context)]) -> Any:
     return await _reply(db, user, strategy_id, tracked_reader, market_reader, ctx)
 
 
@@ -130,12 +139,17 @@ async def pin_alert_style(  # noqa: PLR0913 - FastAPI dependencies, one per inpu
         tracked_reader: Annotated[TrackedReader, Depends(get_tracked_reader)],
         market_reader: Annotated[MarketReader, Depends(get_market_reader)],
         ctx: Annotated[MarketContext | None, Depends(get_market_context)]) -> Any:
-    try:
-        await store.set_pin(db, user, strategy_id, body.style)
-        await db.commit()
+    try:  # everything that can refuse runs BEFORE the write: after it nothing may refuse this same request
+        store.require_style(body.style)
+        await store.require_owned(db, user, strategy_id)
     except store.StyleNotFound:
-        await db.rollback()
         raise StrategyRefused(_NOT_AVAILABLE, Failure.NOT_FOUND) from None
+    except store.AlertStyleError:
+        return respond(RefusedOut(reason=render_explanation("alert_style_refused_unknown")), 422)
+    auto, reason = await automatic_style(strategy_id, tracked_reader, market_reader, ctx)
+    try:
+        pin = await store.set_pin(db, user, strategy_id, body.style)
+        await db.commit()
     except store.StyleSameTime:
         await db.rollback()
         return respond(RefusedOut(reason=render_explanation("settings_refused_same_time")), 409)
@@ -145,4 +159,4 @@ async def pin_alert_style(  # noqa: PLR0913 - FastAPI dependencies, one per inpu
     except Exception:
         await db.rollback()
         raise
-    return await _reply(db, user, strategy_id, tracked_reader, market_reader, ctx)
+    return _compose(strategy_id, pin.style, auto, reason)

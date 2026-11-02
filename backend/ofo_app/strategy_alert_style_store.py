@@ -78,6 +78,16 @@ async def _owned(session: Session, user: str, strategy_id: int) -> None:
         raise StyleNotFound(f"strategy {strategy_id} is not this user's")
 
 
+async def require_owned(session: Session, user_ref: str, strategy_id: int) -> None:
+    """StyleNotFound unless the strategy is this user's: the check a caller makes BEFORE it writes."""
+    await _owned(session, _user(user_ref), strategy_id)
+
+
+def require_style(style: object) -> None:
+    """AlertStyleError unless ``style`` is None or one of the styles: the check a caller makes BEFORE it writes."""
+    _checked(style)
+
+
 async def pin_of(session: Session, user_ref: str, strategy_id: int, at: datetime.datetime | None = None) -> StoredPin:
     """The pin of ``user_ref`` on ``strategy_id`` in force at ``at`` (default: the database clock)."""
     user = _user(user_ref)
