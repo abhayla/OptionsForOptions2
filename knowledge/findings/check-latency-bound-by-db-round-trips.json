@@ -1,0 +1,21 @@
+{
+ "id": "check-latency-bound-by-db-round-trips",
+ "scope": "project",
+ "class": "A real-time rule ('record within 1.0 s of the crossing tick') cannot hold while the check path makes database round trips: the cycle length becomes (round trips per cycle) x (round-trip time), and a speed valve that times wall clock per check reads that DB wait as slow maths and adds its own pause. The rule must be met with zero DB calls on the check path.",
+ "mechanism": "From this PC every DB round trip costs ~0.7 s (GET /health = one SELECT 1: 0.51-1.37 s on 10/10 calls; ping to the DB host 12 ms; a no-DB route 12 ms). The background cycle still reads settings from the DB every cycle (REQ-166 AC-1 'read at run time') and writes each changed record; calc_speeds valve counts that wait ('maths reply 1.16 s over the 0.5 s limit') and holds step 3 (5 s pause).",
+ "first_seen": {
+  "date": "2026-11-02",
+  "where": "feature/adjustments @ ba6f43dd then f7d2088b, live NIFTY, 17-21 monitored strategies",
+  "evidence": "cycles/min: 1-2 (7c804264), 3 (ba6f43dd), 7-14 (f7d2088b). Timed T-01 crossings on strategy 78 (T_tick = Redis stream id of the crossing index tick, T_row = shown_at by DB clock_timestamp; DB clock is +0.029..+0.567 s ahead of the PC): #81 0.115 s measured (true 0..0.086 s) PASS; #93 1.602 s measured (true 1.035..1.573 s) over the rule; #84 not clean (old threshold)."
+ },
+ "fix": "Open (parked). Proposed round 4: evaluate on the tick in memory with no DB read on the check path; settings kept in memory and refreshed on a change signal; record writes off the check path; the valve times maths only.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "The minute line shows cycles/min and the valve step; no test asserts the check path makes zero DB calls."
+ },
+ "spec_ref": ["REQ-165", "REQ-166", "ADR-220"],
+ "occurrences": [
+  {"date": "2026-11-02", "where": "GC-LIVE3 D3", "evidence": "1 of 2 clean crossings over 1.0 s"}
+ ]
+}

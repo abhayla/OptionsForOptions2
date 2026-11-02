@@ -551,6 +551,7 @@ issues:
   "#631": S6.4  # DB pool has no pre-ping: a dropped pooled connection turns the next request into a 500
   "#632": S6.4  # GC-SET2: market hours and order/limit facts as settings (parked from GC-SET)
   "#633": S6.4  # T-19 builds approaches without the playbook liquidity limits the Compare applies
+  "#636": S6.7  # Background role: opportunity within 1.0 s of the crossing tick not met (DB round trips on the check path) - GC-LIVE3 D3
 
 # Work items whose status is not done.
 work_items:
