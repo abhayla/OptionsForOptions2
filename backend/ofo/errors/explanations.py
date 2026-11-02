@@ -1785,6 +1785,8 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     # GC-MU A1 (ADR-230 (1)): flags beside a strike that breaks a saved liquidity limit, or whose open interest is unknown
     ExplanationTemplate("adjust_flag_below_liquidity", "values_seen", "Below your liquidity limit"),
     ExplanationTemplate("adjust_flag_oi_unknown", "values_seen", "OI not known"),
+    # #624 item 1: the playbook's limits could not be read, so none was applied (said in the reply, never a silent skip)
+    ExplanationTemplate("adjust_limits_not_applied", "values_seen", "limits not applied: playbook unreadable"),
     ExplanationTemplate("adjust_cmp_flagged", "values_seen", "{value}% ({flag}: {legs})",
                         {"value": Recorded, "flag": Explained, "legs": Recorded}),
     ExplanationTemplate("adjust_cmp_flagged_both", "values_seen", "{value}% ({flag}: {legs}; {flag2}: {legs2})",

@@ -119,7 +119,8 @@ MarketReader = Callable[[Tracked, MarketContext | None], Awaitable[MarketInputs]
 RestSpotReader = Callable[[str], Awaitable[SourceReading]]
 ApproachMargin = Callable[[list[PlannedOrderIn]], Awaitable[Margin]]
 #: strategy id, position, spot -> the guards of the strategy's playbook (None: no playbook, so no limits)
-GuardsReader = Callable[[int, Position, Decimal | None, list | None], Awaitable[Mapping[str, Any] | None]]
+#: ``GUARDS_UNREADABLE`` (adjustment_readers): the playbook could not be read, so the reply says no limit was applied
+GuardsReader = Callable[[int, Position, Decimal | None, list | None], Awaitable[Any]]
 
 
 def get_tracked_reader() -> TrackedReader:
@@ -147,6 +148,20 @@ def liquidity_inputs(guards: Mapping[str, Any] | None,
     profit unlimited or not priced -> None."""
     limits = None if guards is None else liquidity.limits_from_guards(guards)
     return limits, _before_max_profit(before)
+
+
+def strike_flags(built: ApproachLegs | None, position: Position, chain: Sequence[ChainRow],
+                 limits: liquidity.Limits | None) -> list[Any]:
+    """ADR-230 (1): the liquidity flags (catalogue texts) of the strikes ``built`` would open, from the same limits the
+    Compare used (``liquidity.evaluate_rows``); the strikes stay visible. No limits or nothing new -> no flag."""
+    if limits is None or built is None or built.refusal_message is not None:
+        return []
+    before = {(x.type, x.strike, x.expiry, x.side) for x in position.legs}
+    by_key = {(r.expiry, r.type, r.strike): r for r in chain}
+    rows = [by_key[k] for x in built.after if (x.type, x.strike, x.expiry, x.side) not in before
+            if (k := (x.expiry, x.type, x.strike)) in by_key]
+    found = {f for state in liquidity.evaluate_rows(limits, rows).values() for f in state.flags}
+    return [render_explanation(f) for f in (liquidity.FLAG_BELOW, liquidity.FLAG_OI_UNKNOWN) if f in found]
 
 
 def plan_max(guards: Mapping[str, Any] | None) -> int | None:
@@ -389,6 +404,8 @@ async def adjustment_approaches(  # noqa: PLR0913 - FastAPI dependencies, one pe
                              "pop_switch_on": pop_on}
     position = tracked.position
     engine = 0.0
+    limits: liquidity.Limits | None = None
+    max_profit: Decimal | None = None
     if not spot.available:  # AC-5: no After at all
         reply |= {"before": None, "approaches": []}
         built_list: list[tuple[str, ApproachLegs | None]] = []
@@ -397,6 +414,7 @@ async def adjustment_approaches(  # noqa: PLR0913 - FastAPI dependencies, one pe
         before = price_after(position.legs, position, tracked.booked, tracked.paid_charges, (), rates, market)
         reply["before"] = _after_block(before, pop_on)
         guards = await guards_of(strategy_id, position, spot.value, check.listed_of(ctx))
+        guards = _guards_or_reason(guards, reply)
         limits, max_profit = liquidity_inputs(guards, before)  # no playbook, no limits
         answers = [(a, priced_approach(a, tracked, market, spot.value, rates, prefs.approach,  # type: ignore[arg-type]
                                        limits=limits, max_profit=max_profit)) for a in asked]
@@ -407,6 +425,7 @@ async def adjustment_approaches(  # noqa: PLR0913 - FastAPI dependencies, one pe
         columns: list[Column] = []
         for a, built in built_list:
             item = await _approach_item(a, built, priced, pop_on, margin_of, market)
+            item["liquidity_flags"] = strike_flags(built, position, market.chain, limits)
             if built is not None and built.refusal_message is None:
                 columns.append(Column(built, priced[a].after, priced[a].reason, priced[a].charges_known,
                                       _margin_read(item["margin"])))
@@ -415,7 +434,7 @@ async def adjustment_approaches(  # noqa: PLR0913 - FastAPI dependencies, one pe
         reply |= await _compare_reply(columns, tracked, spot.value, market, rates, pop_on, before,  # type: ignore[arg-type]
                                       margin_of, prefs, limits, guards)
     reply["available"] = _available(position, market.chain, spot.value if spot.available else None, dict(built_list),
-                                    prefs.approach)
+                                    prefs.approach, limits, max_profit)
     reply["days_to_expiry"] = _days_to_expiry(position)
     total = time.perf_counter() - started
     log.info("adjustment approaches strategy=%s approaches=%s engine_s=%.4f total_s=%.4f",
@@ -426,8 +445,19 @@ async def adjustment_approaches(  # noqa: PLR0913 - FastAPI dependencies, one pe
     return AdjustApproachesOut.model_validate(reply)
 
 
+def _guards_or_reason(guards: Any, reply: dict[str, Any]) -> Mapping[str, Any] | None:
+    """#624 item 1: an unreadable playbook applies no limit and the reply SAYS so (``limits_reason``); a mapping or
+    None (no playbook matches: no reason) pass through."""
+    from ofo_app.adjustment_readers import GUARDS_UNREADABLE  # noqa: PLC0415 - as above
+    if guards is GUARDS_UNREADABLE:
+        reply["limits_reason"] = render_explanation("adjust_limits_not_applied")
+        return None
+    return guards  # type: ignore[no-any-return]
+
+
 def _available(position: Position, chain: Sequence[ChainRow], spot: Decimal | None,
-               built: Mapping[str, ApproachLegs | None], config: Config) -> list[dict[str, Any]]:
+               built: Mapping[str, ApproachLegs | None], config: Config, limits: liquidity.Limits | None = None,
+               max_profit: Decimal | None = None) -> list[dict[str, Any]]:
     """REQ-046 AC-3 / REQ-045 AC-5: every generic approach with its one-line text and whether it can be built for this
     position now (else the refusal's own reason). No figure; nothing is priced here. No spot -> none can be built."""
     out: list[dict[str, Any]] = []
@@ -437,8 +467,9 @@ def _available(position: Position, chain: Sequence[ChainRow], spot: Decimal | No
         if spot is None:
             out.append(item | {"applicable": False, "reason": render_explanation("adjust_available_spot_missing")})
             continue
-        b = built.get(a) or build_approach(position, chain, spot, a, config)
-        out.append(item | {"applicable": b.refusal_message is None, "reason": b.refusal_message})
+        b = built.get(a) or build_approach(position, chain, spot, a, config, None, limits, max_profit)
+        out.append(item | {"applicable": b.refusal_message is None, "reason": b.refusal_message,
+                           "liquidity_flags": strike_flags(b, position, chain, limits)})
     return out
 
 

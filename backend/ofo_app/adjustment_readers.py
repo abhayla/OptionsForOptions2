@@ -134,20 +134,31 @@ def history_count(orders: Any, is_option: Any) -> int | None:
     return history.totals.adjustments_used
 
 
+class _GuardsUnreadable:
+    """The answer of ``read_guards`` when the playbook could not be read (store error, malformed body): distinct from
+    None (no playbook matches the shape) so the reply can say the limits were not applied."""
+
+    def __repr__(self) -> str:
+        return "GUARDS_UNREADABLE"
+
+
+GUARDS_UNREADABLE = _GuardsUnreadable()
+
+
 async def read_guards(strategy_id: int, position: Position, spot: Decimal | None,
-                      listed: list | None) -> dict[str, Any] | None:
-    """The ``guards`` of the strategy playbook (its own plan, else the active playbook of its type; ADR-230 (1));
-    None when the shape matches no playbook. A failed read is logged and answers None: the approaches still show,
-    without limits applied (known gap: the reply does not say so yet)."""
+                      listed: list | None) -> dict[str, Any] | None | _GuardsUnreadable:
+    """The ``guards`` of the strategy playbook (its own plan, else the active playbook of its type; ADR-230 (1)).
+    Answer states: a mapping (limits; empty = none set), None (the shape matches no playbook), ``GUARDS_UNREADABLE``
+    (store error or malformed body: logged by its class only; the route says the limits were not applied)."""
     from ofo_app import adjustment_check  # noqa: PLC0415 - it imports the route module's dataclasses
     try:
         async with get_sessionmaker()() as db:
             stype = adjustment_check.strategy_type(position, spot, listed)
             resolved = await adjustment_check.resolve(db, current_user_ref(), strategy_id, stype)
-    except Exception:
-        log.exception("adjustment guards: strategy %s playbook unreadable", strategy_id)
-        return None
-    return adjustment_check.guards_of_body(resolved.body)
+        return adjustment_check.guards_of_body(resolved.body)
+    except Exception as exc:  # noqa: BLE001 - any failure of the read is "unreadable", never a silent skip
+        log.warning("adjustment guards: strategy %s playbook unreadable (%s)", strategy_id, type(exc).__name__)
+        return GUARDS_UNREADABLE
 
 
 # ---- market -----------------------------------------------------------------------------------------------------

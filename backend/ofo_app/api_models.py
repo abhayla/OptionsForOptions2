@@ -482,6 +482,7 @@ class AdjustApproachOut(ApiModel):
     pop: AdjustPopOut | None = None
     after_reason: CatalogueText | None = None
     margin: AdjustMarginOut | None = None
+    liquidity_flags: list[CatalogueText] = []  # ADR-230 (1): the flags of its new strikes (same limits as the Compare)
 
 
 class AdjustTimingOut(ApiModel):
@@ -532,6 +533,7 @@ class AdjustAvailableOut(ApiModel):
     explanation: CatalogueText
     applicable: bool
     reason: CatalogueText | None = None
+    liquidity_flags: list[CatalogueText] = []  # ADR-230 (1): flags of the new strikes it would open
 
 
 class AdjustApproachesOut(ApiModel):
@@ -541,6 +543,7 @@ class AdjustApproachesOut(ApiModel):
     pop_switch_on: bool
     before: AdjustWholeOut | None
     approaches: list[AdjustApproachOut]
+    limits_reason: CatalogueText | None = None  # #624: "limits not applied: playbook unreadable"; None otherwise
     criteria: list[AdjustCriterionOut] = []  # REQ-156 AC-2/AC-3; refused approaches take no part
     leads: dict[Identifier, AdjustLeadsOut] = {}  # REQ-156 AC-4 "Leads on N of M"
     curves: dict[Identifier, list[list[Money]]] = {}  # "before" / approach id -> [[level, P&L after charges], ...]

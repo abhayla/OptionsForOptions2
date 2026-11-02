@@ -41,6 +41,7 @@
                 <span>
                   <span class="block text-sm font-medium">{{ a.name }}</span>
                   <span class="block text-xs text-ink-muted">{{ a.explanation }}</span>
+                  <span v-for="f in (a.liquidity_flags ?? [])" :key="f" class="block text-xs text-ink-muted" :data-testid="`drawer-flag-${a.id}`">{{ f }}</span>
                   <span v-if="!a.applicable" class="block text-xs text-ink-muted" :data-testid="`drawer-reason-${a.id}`">{{ refusalText({ refusal: a.reason }) }}</span>
                 </span>
               </label>

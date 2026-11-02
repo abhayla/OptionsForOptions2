@@ -3251,6 +3251,10 @@
     "sha256": "cb85fee996135ce884c51c256e83e5f6dd28be8ccf7a721b1de5e23df660e447",
     "reviewed": "owner read 2026-11-01 (GC-MU texts approved as recommended, in chat; not read line by line)"
   },
+  "explanation:adjust_limits_not_applied": {
+    "sha256": "02e6e0a19cb83ef61ad7e68cee0db5725cfb575a48600aa8a614e0e22a478dad",
+    "reviewed": "pending owner read"
+  },
   "explanation:adjust_flag_oi_unknown": {
     "sha256": "838d62cd8cc5ef3785ba7d671864959d50e084628fe301eebe56877c847ded60",
     "reviewed": "owner read 2026-11-01 (GC-MU texts approved as recommended, in chat; not read line by line)"
