@@ -137,9 +137,18 @@ def _settings(values=None):
     # tests written for a 1 s check speed pin it here; the registry default (30 s, ADR-233) has its own tests below
     held = {**DEFAULTS, calc_speeds.KEY_BACKGROUND: Decimal(1)} if values is None else values
 
-    async def read():
+    def read(_at):  # #636 r4: the worker resolves its settings from memory at its clock (settings_cache.at)
         return held
     return read
+
+
+class Draining(background.Worker):
+    """The real Worker with its writer task's work done at the end of each cycle (#636 r4: writes leave the check path
+    through one writer queue; a test that calls ``cycle`` directly has no writer task running)."""
+
+    async def cycle(self) -> None:
+        await super().cycle()
+        await self.drain_writes()
 
 
 async def _prefs(_user_ref):
@@ -151,8 +160,8 @@ def _worker(prov, watched, now, recorder, settings=None, **kw) -> background.Wor
         return watched
     if isinstance(recorder, Calls):
         kw.setdefault("observe", recorder.seen)
-    return background.Worker(provider_for=lambda _o: prov, lister=lister, clock=lambda: now[0],
-                             settings=settings or _settings(), preferences=_prefs, recorder=recorder, **kw)
+    return Draining(provider_for=lambda _o: prov, lister=lister, clock=lambda: now[0],
+                    settings=settings or _settings(), preferences=_prefs, recorder=recorder, **kw)
 
 
 # ---- answer states of the price read ---------------------------------------------------------------------------
@@ -325,7 +334,7 @@ async def test_a_failing_settings_read_keeps_the_last_good_read(scn):
     with no good read yet the cycle checks nothing."""
     values, fail = {**DEFAULTS, calc_speeds.KEY_BACKGROUND: Decimal(3)}, [True]
 
-    async def read():
+    def read(_at):
         if fail[0]:
             raise ConnectionError("database blip")
         return values
@@ -560,7 +569,7 @@ async def test_a_failing_list_reread_keeps_the_last_good_list_and_still_checks(s
         if len(reads) == SECOND:
             raise ConnectionError("database blip")
         return good
-    w = background.Worker(provider_for=lambda _o: prov, lister=lister, clock=lambda: now[0], settings=_settings(),
+    w = Draining(provider_for=lambda _o: prov, lister=lister, clock=lambda: now[0], settings=_settings(),
                           preferences=_prefs, recorder=calls, observe=calls.seen)
     await w.cycle()
     now[0] += datetime.timedelta(seconds=background.REBUILD_SECONDS)
@@ -839,11 +848,11 @@ async def test_each_check_reads_its_own_clock_so_a_tick_during_the_cycle_is_not_
     prov, now = Prov(scn), [scn.clock_at]
     seen = []
 
-    async def recorder(wd, state, _prefs=None):
+    def observe(wd, state):  # on the check path (#636 r4: the recorder is off it, on the writer task)
         seen.append((wd.strategy_id, state.spot))
         now[0] += datetime.timedelta(seconds=5)  # this check took 5 s ...
         prov.move_spot(prov.spot.ltp + 1, now[0])  # ... and the spot ticked meanwhile
-    w = _worker(prov, _watched(scn, 2), now, recorder)
+    w = _worker(prov, _watched(scn, 2), now, Calls(), observe=observe)
     await w.cycle()
     assert [s for s, _ in seen] == [FIRST_ID, FIRST_ID + 1]
     assert seen[1][1] == Decimal("23421")  # before: None (tick_in_future -> withheld_no_spot)
@@ -862,7 +871,7 @@ async def test_a_cycle_makes_no_lister_or_preferences_call(scn):
     async def preferences(user_ref):
         prefs.append(user_ref)
         return PREFS
-    w = background.Worker(provider_for=lambda _o: prov, lister=lister, clock=lambda: now[0], settings=_settings(),
+    w = Draining(provider_for=lambda _o: prov, lister=lister, clock=lambda: now[0], settings=_settings(),
                           preferences=preferences, recorder=calls, observe=calls.seen)
     await w._rebuild_safely()
     assert (len(lists), prefs) == (1, ["owner"])  # three strategies, one user: one preferences read
@@ -1026,7 +1035,7 @@ async def test_the_background_holds_the_screens_atm_window_of_the_first_expiry(s
     frames = kf.recorded_frames()
     now = [frames[0][0]]
     worker = _worker(provider, _straddle(), now, Calls(), want_client=_Redis())
-    await worker._settings_safely()
+    worker._settings_safely(now[0])
     await _hold_cycle(worker, now[0])
     provider.on_connected(frames[0][0])
     for at, frame in frames:

@@ -87,13 +87,21 @@ async def _t01_total(engine, sid: int) -> int:
                                         "WHERE strategy_id = :s AND rule_id = 'T-01'"), {"s": sid})).scalar_one()
 
 
+class _Draining(background.Worker):
+    """The real Worker with its writer queue written at the end of each cycle (#636 r4; no writer task here)."""
+
+    async def cycle(self) -> None:
+        await super().cycle()
+        await self.drain_writes()
+
+
 def _worker(scn: scenario_mode.Scenario, clock) -> background.Worker:
-    async def settings():
+    def settings(_at):
         return registry_defaults()  # the settings in force: the registry defaults, passed explicitly
 
     async def preferences(_user_ref):
         return from_values(registry_defaults())  # the owner's preferences: the registry defaults (REQ-168 AC-1)
-    return background.Worker(provider_for=lambda _owner: scn.provider,
+    return _Draining(provider_for=lambda _owner: scn.provider,
                              lister=lambda: background.owner_lister(scn.provider), clock=clock, settings=settings,
                              preferences=preferences)
 
