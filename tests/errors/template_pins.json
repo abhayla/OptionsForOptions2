@@ -3446,5 +3446,21 @@
   "explanation:system_playbook_refused_approved": {
     "sha256": "3d8659ca9008d275bb952f2e3bca39c9a015e00a052f92f607e0af6d86443363",
     "reviewed": "pending owner read"
+  },
+  "explanation:paper_extremes_with_charges": {
+    "sha256": "59969616d60a3e9d633d6d851bad1213bf4ca3eddd477fcc79aa6cbcf2b2cad9",
+    "reviewed": "pending owner read"
+  },
+  "explanation:paper_extremes_before_charges": {
+    "sha256": "f856c2c08b83aeb6e145ca0daf87568619798d39e41fe9289041006dc84256c6",
+    "reviewed": "pending owner read"
+  },
+  "explanation:paper_alert_body_one": {
+    "sha256": "a86cc60dab51c807df30ef6265163fe0c3232ae4e0f1801125bb34dc83f33817",
+    "reviewed": "pending owner read"
+  },
+  "explanation:paper_alert_body_one_named": {
+    "sha256": "88b1df733c2ae13c8da96ab7179b22c4e4b1e776d19bf1ff9b64869c3694c95b",
+    "reviewed": "pending owner read"
   }
 }
