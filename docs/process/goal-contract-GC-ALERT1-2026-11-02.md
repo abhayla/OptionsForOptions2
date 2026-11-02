@@ -79,8 +79,11 @@ DATES: every time written in a record comes from `date` in the same step. NIFTY 
 | S3 | DONE | #628 closed: strategy 80 history entry 4 legs + 1 adjustment; Compare A-36 "1 of 2" |
 | S4 | DONE | #637 filed (deferred, S6.7), 0712a94e |
 | 3 | PARTIAL | items 1-3 merged 73854700 (builder 1eb28da3): registry keys per style incl. speeds.background_check_seconds.<style> (step 6 settings half), alert_presets.preset_for/style_for, user cap ceiling; tests_app/test_alert_preferences.py 10 passed on a throwaway DB (db_run_fresh.py; shared ofo_test is at 0030), domain 173 passed; items 4-7 merged 9bf0f0c1 (builder 99d9e7a9): migration 0035 strategy_alert_style + store + GET/PUT alert-style, plan-sheet picker, Preferences tables per style, 13 texts pinned pending owner read; re-run on merged head: domain 557 passed, vitest 28 passed; Tier A review running; Chrome check after review + ofo_dev migration |
-| 4 | BUILT, checking | build/gcalert1-636r4 5bf1db31: 0 DB calls per check (was 100 per 50 cycles); fresh-DB runs: settings_cache 15, speeds 10, calc 1 passed; test_background_worker 2 failed = pre-existing on base 85dbd6f9 (moved into step 5's done list); Opus check running |
-| 5-8, S1 | not started | S1 brief ready, waits for a builder slot |
+| 4 | PARKED (#636) | build/gcalert1-636r4 5bf1db31 NOT merged: 0 DB calls per check proven, but Opus check FIX FIRST (one bad replaced settings row stops every check after a restart; stale writes for exited strategies; writer can die silently). Findings + next round on #636; steps 5-6 wire on the old path |
+| S1 | DONE (review owed at close) | merge of 6ed5eb6c + fd60a14b (openapi, reply inventory): unreadable playbook -> limits_reason, drawer liquidity_flags; approaches route 75 passed, 218 neighbours, domain 544, vitest 29, drift 25 (fresh DB) |
+| 3 review | FIX FIRST -> fixing | Opus review of 0035: draft with no orders answers 404 and PUT stores a pin anyway; builder build/gcalert1-pinfix round 2/2 |
+| 5 | RUNNING (5a) | build/gcalert1-wire-a: gate readings for false rules, Lapsed at band, restore after restart, migration 0036 (held table + worse column); 5b = worker wiring next |
+| 6-8 | not started | step 6 settings half done in step 3; worker half in 5b |
 
 ## Definition of Done
 - [ ] Step 0 data + hand-derived counts, then the core proof (step 1), before any other code.
