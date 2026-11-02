@@ -4,7 +4,7 @@
 
 Generated from `spec/requirements/REQ-*.md`, grouped by each requirement's `section`. Before writing a new requirement, find its section here and run `python tools/spec_similar.py . "<text>"`; extend or cite a match, never restate it.
 
-Requirements: 160; sections: 20
+Requirements: 161; sections: 20
 
 ## Accounts and identity (5)
 
@@ -16,7 +16,7 @@ Requirements: 160; sections: 20
 | REQ-014 | Zerodha Client ID binding and anti-abuse | feature | Approved |
 | REQ-125 | Every request acts for one signed-in user, and no user can read or act on another user's data | foundation | Approved |
 
-## Adjustments (17)
+## Adjustments (18)
 
 | id | title | layer | status |
 |---|---|---|---|
@@ -34,9 +34,10 @@ Requirements: 160; sections: 20
 | REQ-161 | Start tracking opens a strategy plan sheet pre-filled from the type's active playbook, accepted in one click | feature | Approved |
 | REQ-162 | Positions > Adjustment opportunities lists every opportunity across strategies with its label and outcome | feature | Approved |
 | REQ-163 | A strategy's adjustment history shows the entry, every adjustment and the whole-trade totals | feature | Approved |
-| REQ-165 | Adjustment playbook triggers are checked by the background workers on fresh prices, at most once a second per strategy, with no screen open | feature | Approved |
+| REQ-165 | Adjustment playbook triggers are checked by the background workers on fresh prices, at most once per the strategy style's check interval (intraday 10 s, weekly 30 s, monthly 2 min; ADR-235), with no screen open | feature | Approved |
 | REQ-168 | Each user sets their own adjustment preferences on a Preferences tab of the Adjustments screen, starting from the admin's defaults | feature | Approved |
 | REQ-169 | The admin edits a system playbook in the same playbook editor and saves it as a new version with history and audit | feature | Approved |
+| REQ-170 | An adjustment suggestion is raised once per crossing, confirmed on a candle close, then held quiet until it re-arms or gets worse | feature | Approved |
 
 ## Broker and execution (17)
 

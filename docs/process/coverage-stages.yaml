@@ -167,6 +167,7 @@ requirements:
   REQ-167: S6.7
   REQ-168: S6.4
   REQ-169: S6.4
+  REQ-170: S6.7
 
 decisions:
   ADR-001: all
@@ -391,6 +392,9 @@ decisions:
   ADR-230: S6.4         # GC-ADJ3 product answers: liquidity limits, card mark, Compare cost rows, two stops (GC-MU)
   ADR-231: S6.4         # roll debit limit is the higher of Rs 500 and 10% of max profit (owner, GC-MU)
   ADR-232: S6.4         # the Live Strategies card counts open conditions, not inbox rows (owner, GC-MU)
+  ADR-233: S6.7         # background checks every 30 s by default (owner, 2026-11-02)
+  ADR-234: S6.4         # theta stated on the forward like the reference (owner, 2026-11-02)
+  ADR-235: S6.7         # background check speed per trading style 10 / 30 / 120 s (owner, 2026-11-02)
 
 questions:
   Q210: 4a              # external: Zerodha's written answer; ADR-051 covers the owner's own account
@@ -552,6 +556,7 @@ issues:
   "#632": S6.4  # GC-SET2: market hours and order/limit facts as settings (parked from GC-SET)
   "#633": S6.4  # T-19 builds approaches without the playbook liquidity limits the Compare applies
   "#636": S6.7  # Background role: opportunity within 1.0 s of the crossing tick not met (DB round trips on the check path) - GC-LIVE3 D3
+  "#634": S6.7  # merge_preflight PR to main: owner decision after two review rounds (parked)
 
 # Work items whose status is not done.
 work_items:
@@ -755,6 +760,16 @@ findings:
   F-82: S6.4      # risk-free rate moves the implied yield, not the visible Greeks (open for owner)
   F-83: S6.4      # scenario mode lost every price after a socket release (fixed)
   F-90: S6.4      # range-reading rule (REQ-026 AC-1) only in the browser; no server copy
+  F-91: S6.7      # background role records with no screen, not within 1 s (DB round trips; #636)
+  F-92: S6.4      # Compare could not price a leg the paper book priced (fixed)
+  F-93: S6.4      # Compare said no plan maximum while the plan set 2 (fixed)
+  F-94: S6.4      # paper max profit / loss without charges vs other screens (fixed)
+  F-95: S6.4      # futures ready-made shapes refused (fixed)
+  F-96: S6.4      # a futures leg showed live data disconnected (fixed)
+  F-97: S6.7      # no-screen reads answer LIVE before any price (#615)
+  F-98: S6.4      # theta call/put carry split vs the reference (ADR-234)
+  F-99: S6.7      # stopping a second feed process blanks the API chain for a minute
+  F-100: S6.4      # no feed supplies IV or Greeks; every app computes its own
 
 hypotheses:
   H1: done
