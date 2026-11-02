@@ -585,7 +585,7 @@ async def test_one_exited_strategys_failing_lapse_never_drops_the_others_or_thei
     monkeypatch.setattr(adjustment_readers, "read_tracked", read)
     monkeypatch.setattr(playbook_store, "open_suggestions", open_of)
     monkeypatch.setattr(playbook_store, "lapse_all", refused)
-    monkeypatch.setattr(background, "LISTER_LAPSE_FAILURES", {})
+    monkeypatch.setattr(background, "LISTER_LAPSE_FAILURES", {}, raising=False)
     worker.monitors, worker._gate_load = [], {}  # as at start-up: nothing listed, no gate read yet
     for _ in range(2):
         await worker.rebuild()
