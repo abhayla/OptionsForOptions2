@@ -935,16 +935,67 @@ async def test_an_unchanged_clear_check_makes_no_recorder_call(scn):
     assert len(calls.states) == SECOND and len(calls.writes) == 1
 
 
-async def test_a_flagging_check_writes_every_time(scn, monkeypatch):
-    flag = pe.Evaluation(None, None, (pe.Flag("R-1", "T-01", None, Decimal(1), Decimal(1), "ge"),), {})
-    monkeypatch.setattr(background.pe, "evaluate", lambda *_a, **_k: flag)
+def _flag(*rule_ids: str) -> pe.Evaluation:
+    flags = tuple(pe.Flag(r, "T-01", None, Decimal(1), Decimal(1), "ge") for r in rule_ids)
+    return pe.Evaluation(None, None, flags, {})
+
+
+async def _checks(w, prov, now, n: int) -> None:
+    for i in range(n):
+        if i:
+            now[0] += datetime.timedelta(seconds=2)
+            prov.move_spot(Decimal(23421 + i), now[0])
+        await w.cycle()
+
+
+async def test_the_same_flag_on_three_checks_makes_one_recorder_call(scn, monkeypatch):
+    """Round 3 (D3 speed): a flag already flagged and stored is not written again."""
+    monkeypatch.setattr(background.pe, "evaluate", lambda *_a, **_k: _flag("R-1"))
     prov, now, calls = Prov(scn), [scn.clock_at], Calls()
     w = _worker(prov, _watched(scn), now, calls)
-    await w.cycle()
-    now[0] += datetime.timedelta(seconds=2)
-    prov.move_spot(Decimal("23421"), now[0])
-    await w.cycle()
-    assert len(calls.writes) == SECOND
+    await _checks(w, prov, now, 3)
+    assert len(calls.states) == len(calls.writes) + 2 and len(calls.writes) == 1
+
+
+async def test_flag_then_clear_writes_twice(scn, monkeypatch):
+    seq = iter([_flag("R-1"), _flag("R-1"), pe.Evaluation(None, None, (), {}, clear=("R-1",))])
+    monkeypatch.setattr(background.pe, "evaluate", lambda *_a, **_k: next(seq))
+    prov, now, calls = Prov(scn), [scn.clock_at], Calls()
+    w = _worker(prov, _watched(scn), now, calls)
+    await _checks(w, prov, now, 3)
+    assert len(calls.writes) == SECOND  # the first check, then the clear closing the record
+
+
+async def test_a_new_second_flag_beside_an_open_one_writes(scn, monkeypatch):
+    seq = iter([_flag("R-1"), _flag("R-1"), _flag("R-1", "R-2"), _flag("R-1", "R-2")])
+    monkeypatch.setattr(background.pe, "evaluate", lambda *_a, **_k: next(seq))
+    prov, now, calls = Prov(scn), [scn.clock_at], Calls()
+    w = _worker(prov, _watched(scn), now, calls)
+    await _checks(w, prov, now, 4)
+    assert len(calls.writes) == SECOND  # the first check, then R-2 appearing
+
+
+async def test_the_first_check_after_process_start_writes_even_if_a_flag_is_open(scn, monkeypatch):
+    monkeypatch.setattr(background.pe, "evaluate", lambda *_a, **_k: _flag("R-1"))
+    for _ in range(2):  # a new Worker is a new process: nothing known about the stored state
+        prov, now, calls = Prov(scn), [scn.clock_at], Calls()
+        w = _worker(prov, _watched(scn), now, calls)
+        await _checks(w, prov, now, 2)
+        assert len(calls.writes) == 1
+
+
+async def test_a_recorder_that_raised_is_retried_on_the_next_check_with_the_same_flag(scn, monkeypatch):
+    monkeypatch.setattr(background.pe, "evaluate", lambda *_a, **_k: _flag("R-1"))
+    prov, now, calls, boom = Prov(scn), [scn.clock_at], Calls(), [True]
+
+    async def recorder(wd, state, prefs=None):
+        if boom[0]:
+            boom[0] = False
+            raise RuntimeError("db down")
+        await calls(wd, state, prefs)
+    w = _worker(prov, _watched(scn), now, recorder)
+    await _checks(w, prov, now, 3)
+    assert len(calls.writes) == 1  # check 1 raised (fail closed), check 2 wrote, check 3 unchanged
 
 
 async def test_the_minute_line_counts_withheld_and_not_checked_reasons(scn, monkeypatch, caplog):

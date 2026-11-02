@@ -38,9 +38,10 @@ One cycle (``Worker.cycle``), each step with its answer state:
 4. The playbook is evaluated (``playbook_eval.evaluate``, the rule memory last written for the strategy) and the
    database is written (``record_check``: ``adjustment_check.evaluate_and_remember`` then the screen's own record
    sync ``routes.adjustment_check.sync_records``, one open record per flagged rule, REQ-112) ONLY when it is needed:
-   the first check of the process (the stored memory is not known yet), any check that flags, or a check whose rule
-   memory, flagged rules or clear rules (a clear rule lapses its open record) differ from the last write. An unchanged
-   clear check writes nothing. Not covered (named): a record opened by a screen for a rule this process has seen as
+   the first check of the process (the stored memory is not known yet), or a check whose rule memory, flagged rules
+   or clear rules (a clear rule lapses its open record) differ from the last write. An unchanged check, flagged or
+   clear, writes nothing; after a recorder that raised, the next check writes.
+   Not covered (named): a record opened by a screen for a rule this process has seen as
    clear since its last write is lapsed at the next write, not at once.
    One strategy's error is logged with its id and does not stop the others
    (REQ-115 AC-9).
@@ -676,15 +677,19 @@ class Worker:
 
     async def _evaluate_and_write(self, w: Watched, state: pe.StrategyState, prefs: Preferences) -> None:
         """Module docstring, step 4: evaluated here with the last written memory (the entry state is this check's
-        when the memory is empty, as ``evaluate_and_remember`` with no scenario); written only when needed."""
+        when the memory is empty, as ``evaluate_and_remember`` with no scenario); written only when the write key
+        (rule memory, flagged rule ids, clear rule ids) changed from this process's last successful write; a repeated
+        identical flag makes no call (round 3). The memory holds only two booleans per rule (``held_at_entry``,
+        ``seen_clear``), no timestamp, so it is stable between checks."""
         sid = w.strategy_id
         memory = self._memory.get(sid)
         known = memory or {}
         ev = pe.evaluate(w.body, state, known, None if known else state, gap_until=prefs.gap_until)
         self._count_outcomes(ev)
-        flagged = any(isinstance(r, pe.Flag) for r in ev.results)
-        if memory is not None and not flagged and _write_key(ev) == self._written.get(sid):
-            return  # an unchanged clear check: nothing to write
+        if memory is not None and _write_key(ev) == self._written.get(sid):
+            return  # nothing a write would change (rule memory, flagged ids, clear ids): no DB call, flagged or not
+        self._memory.pop(sid, None)  # fail closed: until this write succeeds the stored state is unknown, so the
+        self._written.pop(sid, None)  # next check writes (a raising recorder leaves both empty)
         recorded = await self._recorder(w, state, prefs)
         if isinstance(recorded, Recorded):
             opened, ev = recorded.opened, recorded.evaluation
