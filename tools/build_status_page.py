@@ -42,6 +42,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import delivery_metrics  # noqa: E402  (delivery numbers from the repository host, computed only under --fetch)
+import generated_files  # noqa: E402  (one write helper: an unchanged file is left alone, REQ-064)
 import factory_lint  # noqa: E402  (frontmatter parser and the owner-question schema live there)
 import spec_dupes  # noqa: E402  (`cites` is the one definition of "a requirement cites a decision")
 import spec_text  # noqa: E402  (OD rows and decision records are read by the same parser the spec checks use)
@@ -3879,20 +3880,31 @@ def main(argv=None) -> int:
     ap.add_argument("--now", help="generation stamp text (default: the system clock)")
     ap.add_argument("--sha", help="git sha text (default: git rev-parse --short HEAD)")
     ap.add_argument("--fetch", action="store_true", help="run the gh commands for --issues and --runs first")
+    ap.add_argument("--code-root", help="the checkout whose code state, gh data and project name the page shows "
+                    "(default: root); root then only supplies the records, e.g. an archive of a commit")
     a = ap.parse_args(argv)
     root = Path(a.root)
+    code_root = Path(a.code_root) if a.code_root else root
     prs = None
     delivery = None
+    code_state = None
+    title = a.title
+    if a.code_root:
+        code_state = read_code_state(code_root)
+        main_co = code_state.get("main_checkout")
+        project = Path(main_co).name if isinstance(main_co, str) and not is_unm(main_co) else code_root.resolve().name
+        title = title or f"{project} Status"
     if a.fetch:
-        issues, runs = fetch_gh_inputs(root)
-        prs = read_prs(root)
-        delivery = delivery_metrics.collect(str(root), today=datetime.date.today())
+        issues, runs = fetch_gh_inputs(code_root)
+        prs = read_prs(code_root)
+        delivery = delivery_metrics.collect(str(code_root), today=datetime.date.today())
     else:
         issues, runs = _load_json(a.issues), _load_json(a.runs)
-    page, s = render(root, issues, runs, now=a.now, sha=a.sha, title=a.title, prs=prs, delivery=delivery)
+    page, s = render(root, issues, runs, now=a.now, sha=a.sha, title=title, prs=prs, delivery=delivery,
+                     code_state=code_state)
     out = Path(a.out)
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(page, encoding="utf-8", newline="\n")
+    generated_files.write_if_changed(out, page)
     issue_txt = "issues unmeasured" if s["issues"] is None else f"{s['issues']} issues ({s['unmapped_issues']} unmapped)"
     print(f"wrote {out}: {s['requirements']} requirements ({s['verified']} verified), {issue_txt}, "
           f"{s['findings']} findings ({s['unguarded']} unguarded), {s['needs_you']} need you, "

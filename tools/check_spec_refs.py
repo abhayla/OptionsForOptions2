@@ -33,6 +33,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import kit_paths  # noqa: E402  (the one zero-records line, REQ-066 AC-5)
 from pathsafe import contained  # noqa: E402
 
 HEADING_LEVEL_RE = re.compile(r"^(#{1,6})\s+(.*)$")
@@ -104,6 +105,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     root = Path(args.root)
+    kit_paths.note_zero_records(root)
     findings_dir = root / "knowledge" / "findings"
 
     paths = sorted(glob.glob(str(findings_dir / "*.json")))

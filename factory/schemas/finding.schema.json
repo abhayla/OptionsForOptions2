@@ -37,6 +37,11 @@
       "type": "string",
       "minLength": 1
     },
+    "applies_to": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "description": "Optional. Paths, globs (tools/*.py) or record kinds (work-item, requirement) this finding applies to; graph.py brief lists the finding for a work item whose affected files or kind match."
+    },
     "detection": {
       "type": "object",
       "required": ["status", "checks"],

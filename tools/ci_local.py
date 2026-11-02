@@ -20,7 +20,7 @@ Options:
                    be read, the base is unknown, or a conftest, pytest config or requirements file changed.
                    A non-pull_request --event always runs the full suite.
     --repo         repository root; default: current directory
-    --workflow     workflow file; default: <repo>/.github/workflows/ci.yml
+    --workflow     workflow file; default: the kit workflow the lock records, else <repo>/.github/workflows/ci.yml
     --event        event to mirror (github.event_name); default: pull_request
     --base         base ref for `git merge-base <base> HEAD` (the PR base sha); default: origin/main,
                    then main when origin/main does not exist
@@ -73,6 +73,12 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import yaml
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+try:
+    import kit_paths  # noqa: E402  (where the lock put the kit workflow, REQ-066 AC-3)
+finally:
+    sys.path.pop(0)
 
 TAIL_LINES = 30
 EVENT_COND = re.compile(r"^github\.event_name\s*(==|!=)\s*'([^']*)'$")
@@ -643,7 +649,7 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Run every CI step locally (REQ-046).")
     ap.add_argument("--list", action="store_true", help="print the plan; run nothing")
     ap.add_argument("--repo", default=".", help="repository root (default: cwd)")
-    ap.add_argument("--workflow", help="workflow file (default: <repo>/.github/workflows/ci.yml)")
+    ap.add_argument("--workflow", help="workflow file (default: the lock's kit workflow, else <repo>/.github/workflows/ci.yml)")
     ap.add_argument("--event", default="pull_request", help="event to mirror (default: pull_request)")
     ap.add_argument("--base", default="origin/main", help="base ref for the merge-base (default: origin/main)")
     ap.add_argument("--pr-body", help="file holding the PR description")
@@ -655,7 +661,7 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
 
     repo = Path(args.repo).resolve()
-    wf_path = Path(args.workflow) if args.workflow else repo / ".github" / "workflows" / "ci.yml"
+    wf_path = Path(args.workflow) if args.workflow else kit_paths.kit_workflow_file(repo)[0]
     try:
         workflow = yaml.safe_load(wf_path.read_text(encoding="utf-8"))
     except (OSError, yaml.YAMLError) as exc:

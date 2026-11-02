@@ -13,6 +13,7 @@ Class: <fixes only: the population the defect is a sample of, as a data filter, 
 Round: <n>/2
 Findings checked: <ids from the findings registry>
 Spec quote: <the exact spec line this work implements, with its id>
+Graph brief: <paste the output of `python tools/graph.py brief <W-id>` (at most 60 lines: ids and paths with a reason; open a file only when needed)>
 Threat model: <Tier A guards only: what it must stop, and what it need not>
 ```
 

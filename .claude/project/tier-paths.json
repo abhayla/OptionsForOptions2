@@ -1,0 +1,11 @@
+[
+  "backend/ofo/broker/**",
+  "backend/ofo/execution/**",
+  "backend/ofo/orders/**",
+  "backend/ofo/money.py",
+  "backend/ofo/engine/executable_price.py",
+  "backend/ofo_app/broker_*.py",
+  "backend/ofo_app/eligibility_from_zerodha.py",
+  "backend/ofo_app/routes/execut*.py",
+  "backend/ofo_app/routes/broker*.py"
+]

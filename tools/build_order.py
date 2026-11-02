@@ -39,7 +39,9 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import kit_paths  # noqa: E402  (the one zero-records line, REQ-066 AC-5)
 from factory_lint import parse_frontmatter  # noqa: E402  (one frontmatter parser for every tool)
+import generated_files  # noqa: E402  (one write helper: an unchanged file is left alone, REQ-064)
 
 VIEW_REL = Path("views") / "build-order.md"
 DONE_STATUSES = ("Verified", "Reviewed", "Released", "Delivered-before-trace")  # REQ-014 AC-4
@@ -350,6 +352,7 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument("--may-start", metavar="REQ_ID", help="exit 0 only if REQ_ID may start now")
     args = ap.parse_args(argv)
     root = Path(args.root)
+    kit_paths.note_zero_records(root)
 
     if args.may_start:
         rc = may_start(root, args.may_start)
@@ -374,7 +377,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"build_order: {view} is current")
         return 0
     view.parent.mkdir(parents=True, exist_ok=True)
-    view.write_text(expected, encoding="utf-8", newline="\n")
+    generated_files.write_if_changed(view, expected)
     print(f"build_order: wrote {view}")
     return 0
 

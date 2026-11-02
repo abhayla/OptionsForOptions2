@@ -38,6 +38,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import kit_settings  # noqa: E402  (the one place the settings file is built)
+import kit_paths  # noqa: E402  (where the lock put the kit workflow, REQ-066 AC-3)
 
 _CLAUDE_DIR_NAME = "." + "claude"
 _OPTOUTS_REL = f"{_CLAUDE_DIR_NAME}/project/optouts.json"
@@ -289,6 +290,14 @@ def check_session_entry_point(root: Path, failures: list[str]) -> None:
     else:
         print("ok: (f) session entry point present")
         claude_md = (root / _CLAUDE_MD_REL).read_text(encoding="utf-8", errors="replace")
+        # an adopted project's CLAUDE.md imports the kit's lines with `@path`; the pointer may sit in that file
+        for ln in claude_md.splitlines():
+            imp = ln.strip()
+            if imp.startswith("@") and len(imp) > 1 and not imp.startswith("@/") and ".." not in imp:
+                try:
+                    claude_md += "\n" + (root / imp[1:]).read_text(encoding="utf-8", errors="replace")
+                except OSError:
+                    pass
         if _GUIDE_REL not in claude_md:
             _fail(f"(f) {_CLAUDE_MD_REL} has no pointer to the kit guide `{_GUIDE_REL}` "
                   "(add one line telling a session to read it before pushing)", failures)
@@ -298,9 +307,35 @@ def check_session_entry_point(root: Path, failures: list[str]) -> None:
             print("ok: (f) CLAUDE.md points to the kit guide")
 
 
+def check_kit_workflow(root: Path, failures: list[str]) -> None:
+    """(g) The kit workflow exists where the lock put it (kit-ci.yml in an adopted project). No lock: nothing to check."""
+    rel, reason = kit_paths.kit_workflow_path(root)
+    if reason != "lock":
+        return                                  # no lock (or none usable): nothing to check, nothing printed
+    if not (root / rel).is_file():
+        _fail(f"(g) the kit workflow the lock records is missing: {rel}", failures)
+    else:
+        print(f"ok: (g) kit workflow present at {rel}")
+
+
+def check_graph_lint(root: Path, failures: list[str]) -> None:
+    """(h) `graph.py lint .` runs. It is warn-only (exit 0 with WARN lines), so only a crash or a non-zero exit fails."""
+    script = root / "tools" / "graph.py"
+    if not script.is_file():
+        return                                  # a project without the graph tool: nothing to check
+    cp = subprocess.run([sys.executable, str(script), "lint", "."], cwd=str(root), capture_output=True, text=True,
+                        encoding="utf-8", errors="replace")
+    last = (cp.stdout.strip().splitlines() or [""])[-1]
+    if cp.returncode != 0 or not last.startswith("graph lint:"):
+        _fail(f"(h) graph.py lint failed (exit {cp.returncode}): {last or cp.stderr.strip()[-200:]}", failures)
+    else:
+        print(f"ok: (h) {last}")
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     root = Path(argv[0]) if argv else Path(".")
+    kit_paths.note_zero_records(root)
 
     failures: list[str] = []
     check_wired_scripts_exist(root, failures)
@@ -309,6 +344,8 @@ def main(argv: list[str] | None = None) -> int:
     check_guards_block(root, failures)
     check_changelog(root, failures)
     check_session_entry_point(root, failures)
+    check_kit_workflow(root, failures)
+    check_graph_lint(root, failures)
 
     if failures:
         print(f"kit_selftest: {len(failures)} check(s) failed")

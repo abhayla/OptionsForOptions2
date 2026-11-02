@@ -30,6 +30,10 @@ CLAUDE_PROJECT_DIR, and every linked worktree of each.
                finishing). A missing agent_id deletes nothing; an unreadable or non-object snapshot, or
                one without an agent_id, is left for the 24 h prune. The main session's Stop is not judged.
 
+A judged root whose folder is gone at Post is one stderr line "worktree removed during the call: <root>",
+not a refusal, unless it is the call's own checkout (recorded in the snapshot as `own_roots`) or the
+snapshot has no `own_roots` (old snapshot): then it is refused as deleted files.
+
 Links and junctions are never walked or followed: each is one opaque entry.
 
 Fail safe (REQ-015 AC-3): no snapshot, or an unreadable one -> refuse and LIST what git sees as
@@ -114,8 +118,9 @@ def _worktrees(root: str) -> list[str]:
     return out
 
 
-def judged_roots(data: dict) -> list[str]:
-    """Top level of cwd and of CLAUDE_PROJECT_DIR, plus every worktree of each. Order kept."""
+def judged_roots(data: dict, own: list[str] | None = None) -> list[str]:
+    """Top level of cwd and of CLAUDE_PROJECT_DIR, plus every worktree of each. Order kept. When
+    `own` is given, the call's own checkouts (those top levels) are appended to it."""
     roots: list[str] = []
     seen: set[str] = set()
 
@@ -129,6 +134,8 @@ def judged_roots(data: dict) -> list[str]:
             continue
         top = _git_toplevel(cand)
         add(top or os.path.abspath(cand))
+        if own is not None:
+            own.append(top or os.path.abspath(cand))
         if top:
             for wt in _worktrees(top):
                 add(wt)
@@ -264,11 +271,18 @@ def new_report() -> dict:
     return {"created": [], "changed": [], "deleted": []}
 
 
-def judge(roots_before: list[dict], report: dict) -> None:
+def judge(roots_before: list[dict], report: dict, own_roots=None, notes: list[str] | None = None) -> None:
     """Compare each root's snapshot with disk now and list every created, changed or deleted entry.
-    Nothing on disk is touched."""
+    Nothing on disk is touched. A root whose folder is gone is one note (not a refusal) when the Pre
+    snapshot recorded the call's own checkouts (`own_roots`, a list) and this root is not one of them;
+    with no such record (an old snapshot) or for an own checkout, every file of it is reported deleted."""
+    own = {_norm(p) for p in own_roots if isinstance(p, str)} if isinstance(own_roots, list) else None
     for entry in roots_before:
         root = entry["root"]
+        if own is not None and not os.path.isdir(root) and _norm(root) not in own:
+            if notes is not None:
+                notes.append("worktree removed during the call: %s" % root)
+            continue
         before = entry.get("files", {})
         now, _dirs = scan(root)
         report["created"] += [(root, r) for r in sorted(set(now) - set(before))]
@@ -318,7 +332,9 @@ def on_pre(data: dict, agent: str, roots: list[str]) -> None:
     notes: list[str] = []
     try:
         _prune_old_state()
-        manifest = {"roots": [],
+        own: list[str] = []
+        judged_roots(data, own)
+        manifest = {"roots": [], "own_roots": own,
                     "agent_id": data.get("agent_id") if isinstance(data.get("agent_id"), str) else None,
                     "session_id": data.get("session_id") if isinstance(data.get("session_id"), str) else None}
         for root in roots:
@@ -362,13 +378,16 @@ def on_post(data: dict, agent: str, roots: list[str]) -> None:
                "or modified under evidence/, work/, spec/ (the orchestrator must check each): %s. Quote "
                "this refusal in your final reply." % (why, agent, "; ".join(lines) if lines else "none"))
     report = new_report()
-    judge(manifest["roots"], report)
+    notes: list[str] = []
+    judge(manifest["roots"], report, manifest.get("own_roots"), notes)
     try:
         os.remove(sp)
     except OSError:
         pass
     if report["created"] or report["changed"] or report["deleted"]:
         refuse(refusal_text(report))
+    for n in notes:
+        sys.stderr.write("verifier-write-guard: %s\n" % n)
     sys.exit(0)
 
 

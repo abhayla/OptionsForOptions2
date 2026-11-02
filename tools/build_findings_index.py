@@ -44,6 +44,10 @@ from pathlib import Path
 
 from jsonschema import Draft7Validator
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import kit_paths  # noqa: E402  (the one zero-records line, REQ-066 AC-5)
+import generated_files  # noqa: E402  (one write helper: an unchanged file is left alone, REQ-064)
+
 SCHEMA_PATH = (
     Path(__file__).resolve().parent.parent / "factory" / "schemas" / "finding.schema.json"
 )
@@ -188,6 +192,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     root = Path(args.root)
+    kit_paths.note_zero_records(root)
     findings_dir = root / "knowledge" / "findings"
     index_path = findings_dir / "INDEX.md"
 
@@ -214,7 +219,7 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         return 0
 
-    index_path.write_text(generated, encoding="utf-8")
+    generated_files.write_if_changed(index_path, generated)
     print(f"wrote {index_path} ({len(findings)} finding(s))")
     return 1 if errors else 0
 

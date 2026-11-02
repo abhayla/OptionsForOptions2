@@ -11,6 +11,7 @@ when views/trace.md exists). Stdlib only; copied byte-identically into every pro
 """
 from __future__ import annotations
 
+from pathlib import Path
 from typing import NamedTuple
 
 
@@ -46,3 +47,22 @@ def row_for(path: str) -> Generated | None:
         if g.path == path:
             return g
     return None
+
+
+def write_if_changed(path, text: str) -> bool:
+    """Write `text` to `path` as UTF-8 with LF only, unless the file already holds the same text (REQ-064 AC-2).
+
+    Compared with "\r\n" turned into "\n" on both sides, so a CRLF checkout (core.autocrlf) of the same text is left
+    untouched (no write, mtime and bytes unchanged) and False is returned. Existing file absent, unreadable or not
+    UTF-8: it counts as different and is written. Different text: written, True. Parent folders are not created.
+    """
+    path = Path(path)
+    try:
+        current = path.read_bytes().decode("utf-8").replace("\r\n", "\n")
+    except (OSError, UnicodeDecodeError):
+        current = None
+    if current is not None and current == text.replace("\r\n", "\n"):
+        return False
+    with open(path, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(text)
+    return True

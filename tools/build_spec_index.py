@@ -16,7 +16,9 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import kit_paths  # noqa: E402  (the one zero-records line, REQ-066 AC-5)
 from factory_lint import parse_frontmatter  # noqa: E402  (one frontmatter parser for every tool)
+import generated_files  # noqa: E402  (one write helper: an unchanged file is left alone, REQ-064)
 
 INDEX_REL = Path("spec") / "requirements" / "INDEX.md"
 NO_SECTION = "(no section)"
@@ -68,6 +70,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--check", action="store_true", help="exit 1 if spec/requirements/INDEX.md is missing or stale")
     args = ap.parse_args(argv)
     root = Path(args.root)
+    kit_paths.note_zero_records(root)
     expected = render(root)
     index = root / INDEX_REL
     if args.check:
@@ -80,7 +83,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"build_spec_index: {index} is current")
         return 0
     index.parent.mkdir(parents=True, exist_ok=True)
-    index.write_text(expected, encoding="utf-8", newline="\n")
+    generated_files.write_if_changed(index, expected)
     print(f"build_spec_index: wrote {index}")
     return 0
 
