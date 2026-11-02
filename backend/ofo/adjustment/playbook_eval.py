@@ -139,6 +139,25 @@ Result = Flag | NotChecked | AlreadyTrue
 
 
 @dataclass(frozen=True)
+class RuleValue:
+    """One checked rule's value at this check, true AND false (GC-ALERT1: the alert gate reads values, not flags).
+
+    Given for a Flag and for a rule evaluated false (``clear``) whose lead trigger has a value; never for NotChecked
+    or AlreadyTrue (F-71: a condition true at entry is not a crossing). ``later`` = the lead trigger's limits at the
+    later stages of this expiry kind, tightened as the current one is (a stage with no value is left out).
+    """
+
+    rule_id: str
+    trigger_id: str
+    value: Decimal | str
+    threshold: Decimal | str
+    cmp: Cmp
+    fired: bool
+    members: int = 1  # how many triggers the rule combines
+    later: tuple[Decimal | str, ...] = ()
+
+
+@dataclass(frozen=True)
 class Evaluation:
     stage_name: str | None
     stage_index: int | None
@@ -147,6 +166,7 @@ class Evaluation:
     clear: tuple[str, ...] = ()  # rule ids evaluated false at this check
     withheld: str | None = None  # T-21: why no suggestion is made
     notes: tuple[str, ...] = field(default=())
+    values: tuple[RuleValue, ...] = ()  # every checked rule's value, true and false (additive, GC-ALERT1)
 
 
 # ---- body ------------------------------------------------------------------------------------------------------------
@@ -505,6 +525,28 @@ def _withheld(state: StrategyState) -> str | None:
     return None
 
 
+def _later(c: _Ctx, tid: str) -> tuple[Decimal | str, ...]:
+    """The limits of ``tid`` at the stages after this one (same tightening); a stage without a value is skipped."""
+    if c.stage is None:
+        return ()
+    out = []
+    for i in range(c.stage + 1, len(c.body["stages"][c.state.expiry_kind])):
+        try:
+            out.append(_limit(dataclasses.replace(c, stage=i), tid))
+        except _Missing:
+            continue
+    return tuple(out)
+
+
+def _value_of(c: _Ctx, rule: Mapping | None, o: _Outcome) -> RuleValue | None:
+    lead = next((h for h in o.hits if h.trigger_id == o.lead), None)
+    if lead is None:
+        return None
+    members = len((rule or {}).get("any_of") or (rule or {}).get("all_of") or [o.lead])
+    return RuleValue(o.rule_id, lead.trigger_id, lead.value, lead.threshold, lead.cmp, o.fired, members,
+                     _later(c, lead.trigger_id))
+
+
 def _outcomes(body: Mapping, state: StrategyState, gap_until: str) -> tuple[_Ctx, str | None, list[_Outcome]]:
     c = dataclasses.replace(_context(body, state), gap_until=gap_until)
     why = _withheld(state)
@@ -532,6 +574,8 @@ def evaluate(body: Mapping, state: StrategyState, memory: Mapping[str, Mapping[s
     new = {k: dict(v) for k, v in (memory or {}).items()}
     results: list[Result] = []
     clear = []
+    values: list[RuleValue] = []
+    rules = {r["id"]: r for r in body.get("rules", [])}
     for o in outcomes:
         if o.rule_id not in new:
             if entry is None:
@@ -544,6 +588,9 @@ def evaluate(body: Mapping, state: StrategyState, memory: Mapping[str, Mapping[s
         elif not o.fired:
             mem["seen_clear"] = True
             clear.append(o.rule_id)
+            rv = _value_of(c, rules.get(o.rule_id), o)
+            if rv is not None:
+                values.append(rv)
         else:
             lead = next((h for h in o.hits if h.trigger_id == o.lead), o.hits[0])
             if mem["held_at_entry"] and not mem["seen_clear"]:
@@ -551,4 +598,7 @@ def evaluate(body: Mapping, state: StrategyState, memory: Mapping[str, Mapping[s
             else:
                 results.append(Flag(o.rule_id, lead.trigger_id, c.stage_name, lead.value, lead.threshold, lead.cmp,
                                     o.hits))
-    return Evaluation(c.stage_name, c.stage, tuple(results), new, tuple(clear), why)
+                rv = _value_of(c, rules.get(o.rule_id), o)
+                if rv is not None:
+                    values.append(rv)
+    return Evaluation(c.stage_name, c.stage, tuple(results), new, tuple(clear), why, values=tuple(values))
