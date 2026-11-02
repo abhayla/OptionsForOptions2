@@ -1870,6 +1870,10 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         "Index {index} is within {threshold}% of the breakeven {level} ({distance}% away).",
                         {"index": Recorded, "threshold": Recorded, "level": Recorded, "distance": Recorded}),
     ExplanationTemplate("adjust_preference_refused_unknown", "rule", "There is no adjustment preference with that name."),
+    # GC-ALERT1 (REQ-170 AC-6): a user may lower an alert daily limit, never raise it above the admin's
+    ExplanationTemplate("adjust_preference_refused_above_cap", "rule",
+                        "{label} can be at most {limit}, the limit your administrator set. Enter {limit} or less.",
+                        {"label": RegistryText, "limit": Recorded}),
     ExplanationTemplate("settings_refused_out_of_range", "rule",
                         "{label} must be between {low} and {high} ({unit}).",
                         {"label": RegistryText, "low": Recorded, "high": Recorded, "unit": Recorded}),

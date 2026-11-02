@@ -3462,5 +3462,9 @@
   "explanation:paper_alert_body_one_named": {
     "sha256": "88b1df733c2ae13c8da96ab7179b22c4e4b1e776d19bf1ff9b64869c3694c95b",
     "reviewed": "pending owner read"
+  },
+  "explanation:adjust_preference_refused_above_cap": {
+    "sha256": "6db54d8fd6f6b028eb752b982792f37ac221a179b03f5ceb4585cec39029b208",
+    "reviewed": "pending owner read"
   }
 }
