@@ -516,3 +516,97 @@ async def test_a_close_is_processed_with_no_check_that_wake(app_db_url, monkeypa
             break
     assert opened_at == close, (opened_at, close)
     assert worker.errors == []
+
+
+async def test_a_candle_that_saw_a_pause_has_no_close_and_the_next_full_candle_opens(app_db_url, monkeypatch):
+    """Review round 2, finding 2 (ADR-237 (2)): T-01 crosses at second 20 of the candle (pending), the feed goes stale
+    at second 25 (PAUSED, "Monitoring paused") and comes back at second 35 with the crossing still there. The close of
+    that candle must open NOTHING (it was not fully watched); the next, fully watched candle opens one record."""
+    from ofo.marketdata.provider import DataHealth  # noqa: PLC0415
+    sid, scn, now, worker = await _ready(app_db_url, monkeypatch)
+    base = await _last_id(app_db_url, sid)
+    close = now[0].replace(second=0, microsecond=0) + datetime.timedelta(minutes=1)
+    real_status, stale = scn.provider.status, [False]
+    monkeypatch.setattr(scn.provider, "status",
+                        lambda: dataclasses.replace(real_status(), health=DataHealth.STALE)
+                        if stale[0] else real_status())
+    now[0] = close - datetime.timedelta(seconds=40)
+    _push_spot(scn, CROSS_SPOT, now[0])
+    await worker.cycle()  # the crossing is read: the candle has a pending close beyond the line
+    assert worker.status[sid] is background.MonitoringStatus.ACTIVE
+    stale[0] = True
+    now[0] = close - datetime.timedelta(seconds=35)
+    await worker.cycle()
+    assert worker.status[sid] is background.MonitoringStatus.PAUSED
+    assert worker.paused_reason[sid] is background.PriceState.STALE
+    await _advance(worker, now, 9)
+    stale[0] = False  # the feed is back inside the same candle, the crossing still there
+    await _advance(worker, now, 1)
+    assert worker.status[sid] is background.MonitoringStatus.ACTIVE
+    while now[0] < close + datetime.timedelta(seconds=2):
+        await _advance(worker, now, 1)
+    assert await _t01_rows(app_db_url, sid, base) == []  # the paused candle's close opened nothing
+    opened_at = None
+    for _ in range(70):
+        await _advance(worker, now, 1)
+        if await _t01_rows(app_db_url, sid, base):
+            opened_at = now[0]
+            break
+    next_close = close + datetime.timedelta(minutes=1)
+    assert next_close <= opened_at <= next_close + datetime.timedelta(seconds=10), (opened_at, next_close)
+    assert len(await _t01_rows(app_db_url, sid, base)) == 1 and worker.errors == []
+
+
+async def test_one_exited_strategys_failing_lapse_never_drops_the_others_or_their_gate_read(app_db_url, monkeypatch):
+    """Review round 2, finding 4: strategy 987654 has every leg exited and its ``lapse_all`` raises
+    SUGGESTION_NOT_OPEN (a record closed meanwhile). Before the fix the error escaped the lister: the old list was kept
+    and ``_load_gates`` skipped (at start-up 0 strategies monitored). Now it is contained, counted and logged once."""
+    from ofo_app import adjustment_readers, strategy_store  # noqa: PLC0415
+    sid, _scn, _now, worker = await _ready(app_db_url, monkeypatch)
+    exited = 987654
+    real_list, real_read, real_open = (strategy_store.list_strategies, adjustment_readers.read_tracked,
+                                       playbook_store.open_suggestions)
+
+    async def listed(conn, user_ref):
+        rows = await real_list(conn, user_ref)
+        return [dataclasses.replace(rows[0], id=exited), *rows]
+
+    async def read(strategy_id, ctx):
+        if strategy_id == exited:
+            raise adjustment_readers.TrackedExited("every leg exited")
+        return await real_read(strategy_id, ctx)
+
+    async def open_of(conn, user_ref, strategy_id):
+        return ["one open record"] if strategy_id == exited else await real_open(conn, user_ref, strategy_id)
+
+    async def refused(*_a, **_k):
+        raise strategy_store.StrategyStoreError(playbook_store.SUGGESTION_NOT_OPEN, "suggestion 1 is lapsed")
+    monkeypatch.setattr(strategy_store, "list_strategies", listed)
+    monkeypatch.setattr(adjustment_readers, "read_tracked", read)
+    monkeypatch.setattr(playbook_store, "open_suggestions", open_of)
+    monkeypatch.setattr(playbook_store, "lapse_all", refused)
+    monkeypatch.setattr(background, "LISTER_LAPSE_FAILURES", {}, raising=False)
+    worker.monitors, worker._gate_load = [], {}  # as at start-up: nothing listed, no gate read yet
+    for _ in range(2):
+        await worker.rebuild()
+    assert [w.strategy_id for w in worker.monitors] == [sid]
+    assert list(worker._gate_load) == [sid]
+    assert {exited: 2} == background.LISTER_LAPSE_FAILURES  # counted each time, logged once
+
+
+async def test_an_escalation_lapses_the_old_record_as_superseded_by_worse_and_a_cleared_one_as_condition_stopped(
+        app_db_url, monkeypatch):
+    """Review round 2, finding 5: the record an escalation closes lapsed because a worse one replaced it, not because
+    the condition stopped; its own reason, shown through the catalogue (the inbox and opportunities words)."""
+    from ofo.errors.explanations import render_explanation  # noqa: PLC0415
+    w, old = await _watched_and_fresh_t03(app_db_url, monkeypatch)
+    at = await _db_now(app_db_url)
+    opened = await background.DbGateStore().apply(w, [alert_gate.Opened("T-03", at, 2, D("0.40"), D("0.41"), "last")],
+                                                  None)
+    await background.DbGateStore().apply(w, [alert_gate.Lapsed("T-03", at, D("0.20"))], None)
+    async with app_db_url.connect() as conn:
+        recs = {s.id: s for s in await playbook_store.suggestions(conn, "owner", w.strategy_id)}
+    assert (recs[old].outcome, recs[old].lapse_reason) == ("lapsed", "superseded_by_worse")
+    assert (recs[opened["T-03"]].outcome, recs[opened["T-03"]].lapse_reason) == ("lapsed", "condition_stopped")
+    shown = render_explanation("suggestion_lapsed_" + recs[old].lapse_reason)
+    assert str(shown) == "A worse reading of the same rule replaced it"

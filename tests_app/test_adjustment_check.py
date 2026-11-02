@@ -161,6 +161,31 @@ async def test_user_active_playbook_is_read_when_the_strategy_has_no_plan(app_db
     assert status == OK and (out["playbook"]["source"], out["playbook"]["id"]) == ("active", own.id)
 
 
+_STATE_ROWS = text("SELECT 'memory', rule_id, held_at_entry::text, seen_clear::text "
+                   "FROM public.adjustment_rule_state WHERE strategy_id = :s "
+                   "UNION ALL SELECT 'record', rule_id, outcome, id::text "
+                   "FROM public.adjustment_suggestions WHERE strategy_id = :s UNION ALL "
+                   "SELECT 'held', rule_id, reason, held_at::text FROM public.adjustment_held_crossings "
+                   "WHERE strategy_id = :s ORDER BY 1, 2, 3, 4")
+
+
+async def test_two_screen_checks_write_no_adjustment_state_at_all(app_db_url, monkeypatch):
+    """Runs BEFORE the ADJ-42 F-71 test (the seed reuses one strategy per scenario, so the rule memory is still
+    empty here: exactly the case the old route wrote). Review round 2, finding 3 (ADR-237 (6)): the screen check
+    evaluates against the stored memory read-only; the worker is the one writer. ADJ-42's T-01 is true at entry:
+    before the fix the first screen check wrote the rule memory (T-01 held at entry), which the worker had cached
+    differently."""
+    sid = await _seeded(app_db_url, monkeypatch, "ADJ-42")
+    async with app_db_url.connect() as conn:
+        before = (await conn.execute(_STATE_ROWS, {"s": sid})).all()
+    for _ in range(2):
+        status, body = await _check("ADJ-42", sid)
+        assert status == OK and [x[0] for x in _by_kind(body, "already_true")] == ["T-01"]
+    async with app_db_url.connect() as conn:
+        after = (await conn.execute(_STATE_ROWS, {"s": sid})).all()
+    assert after == before == []
+
+
 async def test_adj42_f71_already_true_at_entry_then_flags_after_a_clear_check(app_db_url, monkeypatch):
     sid = await _seeded(app_db_url, monkeypatch, "ADJ-42")
     status, body = await _check("ADJ-42", sid)
@@ -169,8 +194,8 @@ async def test_adj42_f71_already_true_at_entry_then_flags_after_a_clear_check(ap
     assert [x[3] for x in _by_kind(body, "already_true")] == ["le"]  # GC-ADJ2 step 5: cmp filled on already_true
     assert {x["wording"]["what_happened"] for x in body["results"] if x["kind"] == "already_true"} == {
         "Already true when tracking started."}
-    async with app_db_url.begin() as conn:  # a later check found T-01 false (the memory the store writes, F-71)
-        assert (await playbook_store.rule_state(conn, "owner", sid))["T-01"] == (True, False)
+    async with app_db_url.begin() as conn:  # the screen wrote no memory (finding 3); the worker writes it (F-71)
+        assert await playbook_store.rule_state(conn, "owner", sid) == {}
         await playbook_store.put_rule_state(conn, "owner", sid, "T-01", held_at_entry=True, seen_clear=True)
     status, body = await _check("ADJ-42", sid)
     assert status == OK and [x[0] for x in _by_kind(body, "flag")] == ["T-01"]

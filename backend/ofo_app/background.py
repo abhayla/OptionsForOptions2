@@ -387,11 +387,11 @@ def gate_group(strategy_id: int, at: datetime.datetime) -> str:
     return f"{strategy_id}-{at.astimezone(IST):%Y%m%dT%H%M%S%f}"
 
 
-async def _lapse_open_of(db: Any, w: Watched, rule_id: str) -> None:
+async def _lapse_open_of(db: Any, w: Watched, rule_id: str, reason: str) -> None:
     from ofo_app import playbook_store  # noqa: PLC0415 - database layer at run time
     for rec in await playbook_store.open_suggestions(db, w.user_ref, w.strategy_id):
         if rec.rule_id == rule_id:
-            await playbook_store.lapse(db, w.user_ref, rec.id, playbook_store.LAPSE_CONDITION_STOPPED)
+            await playbook_store.lapse(db, w.user_ref, rec.id, reason)
 
 
 class DbGateStore:
@@ -420,7 +420,7 @@ class DbGateStore:
         async with get_sessionmaker()() as db:
             for e in events:
                 if isinstance(e, alert_gate.Lapsed):
-                    await _lapse_open_of(db, w, e.rule_id)
+                    await _lapse_open_of(db, w, e.rule_id, playbook_store.LAPSE_CONDITION_STOPPED)
                     continue
                 rv = values.get(e.rule_id)
                 trigger = None if rv is None else rv.trigger_id
@@ -435,7 +435,7 @@ class DbGateStore:
                                                      stage=stage, value=value, threshold=threshold, reason=e.reason)
                     continue
                 if e.worse is not None:
-                    await _lapse_open_of(db, w, e.rule_id)
+                    await _lapse_open_of(db, w, e.rule_id, playbook_store.LAPSE_SUPERSEDED_BY_WORSE)  # finding 5
                 flag = flags.get(e.rule_id)
                 label, unit = check.trigger_words(w.body, trigger)
                 t19 = {} if ctx is None else _t19_record(trigger or "", _cheapest(ctx.state))
@@ -460,7 +460,7 @@ UserValuesRead = Callable[[str], Awaitable[Mapping[str, Decimal]]]  # one user's
 class Worker:
     """The background role's monitors and their cycle. Every seam is injected; ``main`` wires the real ones."""
 
-    def __init__(self, *, provider_for: Callable[[str], Any], lister: Lister,  # noqa: PLR0913
+    def __init__(self, *, provider_for: Callable[[str], Any], lister: Lister,  # noqa: PLR0913, PLR0915
                  clock: Callable[[], datetime.datetime], settings: SettingsRead, preferences: PreferencesRead,
                  recorder: Recorder = record_check,
                  cache: SharedCompute | None = None, max_per_cycle: int = DEFAULT_MAX_PER_CYCLE,
@@ -518,6 +518,8 @@ class Worker:
         self._gate_body: dict[int, Mapping] = {}  # strategy -> the body its gate state was restored against
         self._gate_ctx: dict[int, GateContext] = {}  # strategy -> its last check's evaluation and state
         self._preset: dict[int, alert_gate.Preset] = {}  # strategy -> the preset of its last check
+        # strategy -> its latest pause not yet given to its gate (applied at the next gate step, ``_gate_step``)
+        self._paused_at: dict[int, datetime.datetime] = {}
         self._style: dict[int, str] = {}  # strategy -> the trading style of its last check (its check interval)
 
     async def rebuild(self) -> None:
@@ -544,7 +546,8 @@ class Worker:
         today = self._clock().astimezone(IST).date()
         ids = {w.strategy_id for w in monitors}
         for sid in [k for k in self._gate_load if k not in ids]:
-            for kept in (self._gate, self._gate_load, self._gate_body, self._gate_ctx, self._preset, self._style):
+            for kept in (self._gate, self._gate_load, self._gate_body, self._gate_ctx, self._preset, self._style,
+                         self._paused_at):
                 kept.pop(sid, None)
         for w in monitors:
             sid = w.strategy_id
@@ -736,9 +739,7 @@ class Worker:
                 _keep_recent(self.errors, (w.strategy_id, type(exc).__name__))
                 tokens = None
             if tokens is None:
-                self.status[w.strategy_id] = MonitoringStatus.PAUSED
-                self.paused_reason[w.strategy_id] = PriceState.LEG_MISSING
-                self._signature.pop(w.strategy_id, None)
+                self._pause(w.strategy_id, PriceState.LEG_MISSING, now)
                 wanted.setdefault(w.feed_owner, set())
                 continue
             wanted.setdefault(w.feed_owner, set()).update(tokens)
@@ -780,11 +781,15 @@ class Worker:
         return (tuple((q.instrument_id, q.ltp, q.bid, q.ask, q.timestamp, getattr(q, "health", None))
                       for q in quotes), now.astimezone(IST).strftime("%Y-%m-%d %H:%M"))
 
-    def _pause(self, sid: int, reason: PriceState) -> None:
+    def _pause(self, sid: int, reason: PriceState, now: datetime.datetime) -> None:
+        """Every pause goes through here (review round 2, finding 2): the candle running at ``now`` was not fully
+        watched, so the gate gets ``alert_gate.pause`` at its next step and that candle has no close."""
         self.status[sid] = MonitoringStatus.PAUSED
         self.paused_reason[sid] = reason
         self._signature.pop(sid, None)  # the first check after the gap reads the fresh snapshot
         self._tick.pop(sid, None)
+        kept = self._paused_at.get(sid)
+        self._paused_at[sid] = now if kept is None else max(kept, now)
 
     async def _check_one(self, w: Watched, speeds: Mapping[str, Decimal]) -> bool:  # noqa: PLR0911, C901
         """True when a check ran (counted against the cycle's cap)."""
@@ -804,7 +809,7 @@ class Worker:
         if read.state is PriceState.MARKET_CLOSED:
             return False  # nothing is recomputed while the market is closed
         if read.state is not PriceState.FRESH:
-            self._pause(sid, read.state)
+            self._pause(sid, read.state, now)
             return False
         self.status[sid] = MonitoringStatus.ACTIVE
         self.paused_reason.pop(sid, None)
@@ -823,12 +828,12 @@ class Worker:
             return False  # no settings read yet: nothing is checked on a guessed setting
         prefs = self._prefs_of.get(w.user_ref)
         if prefs is None:  # no preferences read for this user yet: paused, never checked on a guess
-            self._pause(sid, PriceState.CHECK_FAILED)
+            self._pause(sid, PriceState.CHECK_FAILED, now)
             return False
         load = self._gate_load.get(sid)
         user_values = self._values if self._user_values_read is None else self._user_values.get(w.user_ref)
         if load is None or user_values is None:  # no gate read / no alert values: paused, never a default preset
-            self._pause(sid, PriceState.CHECK_FAILED)
+            self._pause(sid, PriceState.CHECK_FAILED, now)
             return False
         state = background_state(w, read, FeedScope(self.cache, w.feed_owner), now, self._values, prefs)
         self._recomputes[sid] = self._recomputes.get(sid, 0) + 1  # a real recompute (REQ-166)
@@ -880,7 +885,7 @@ class Worker:
             preset = alert_presets.preset_for(style, user_values, self._values or {})
         except (ValueError, KeyError) as exc:  # StyleRefused is a ValueError: paused, never a guessed preset
             log.warning("background: strategy %s has no alert preset: %s", sid, exc)
-            self._pause(sid, PriceState.CHECK_FAILED)
+            self._pause(sid, PriceState.CHECK_FAILED, now)
             return False
         ev = await self._evaluate_and_write(w, state, prefs)
         self._style[sid], self._preset[sid] = style, preset
@@ -899,6 +904,10 @@ class Worker:
                 return  # not restored yet: restored at the first check (its readings carry the ladders)
             state = self._restored(sid, now, readings)
             self._gate_body[sid] = w.body
+        paused = self._paused_at.pop(sid, None)
+        if paused is not None:  # a pause since the last step: the candle it fell in has no close (finding 2)
+            state = alert_gate.pause(state, paused)
+            self._gate[sid] = state  # kept even when the step below fails to write
         new, events = alert_gate.step(state, now=now, preset=preset, readings=readings)
         if events:
             self._log_opportunities(w, await self._gate_store.apply(w, events, self._gate_ctx.get(sid)))
@@ -1004,9 +1013,7 @@ class Worker:
             except Exception as exc:  # REQ-115 AC-9: one strategy's failure never stops the others
                 log.exception("background: strategy %s check failed", w.strategy_id)
                 _keep_recent(self.errors, (w.strategy_id, type(exc).__name__))
-                self.status[w.strategy_id] = MonitoringStatus.PAUSED  # not checked: never shown as active
-                self.paused_reason[w.strategy_id] = PriceState.CHECK_FAILED
-                self._signature.pop(w.strategy_id, None)
+                self._pause(w.strategy_id, PriceState.CHECK_FAILED, self._clock())  # never shown as active
             slowest = max(slowest, _seconds(self._clock() - started))
         self._cursor = (self._cursor + visited) % n if n else 0
         await self._close_pass(checked)
@@ -1044,10 +1051,30 @@ def _keep_recent(kept: list, item: object) -> None:
         del kept[:-RECENT_KEPT]
 
 
+#: Review round 2, finding 4: how many exited strategies' lapse writes failed in this process (each logged once).
+LISTER_LAPSE_FAILURES: dict[int, int] = {}
+
+
+async def _lapse_exited(db: Any, user_ref: str, sid: int) -> None:
+    """Lapse an exited strategy's open records, contained to that strategy: a failing write (a record no longer open,
+    the database refusing) is rolled back, counted and logged once per strategy, and never drops the other strategies
+    from the list or skips their gate read (the whole lister failing kept the old list; at start-up 0 monitored)."""
+    from ofo_app import playbook_store  # noqa: PLC0415 - database layer at run time only
+    try:
+        if await playbook_store.open_suggestions(db, user_ref, sid):
+            await playbook_store.lapse_all(db, user_ref, sid, playbook_store.LAPSE_STRATEGY_CLOSED)
+            await db.commit()
+    except Exception:  # contained per strategy; retried at the next re-list
+        await db.rollback()
+        LISTER_LAPSE_FAILURES[sid] = LISTER_LAPSE_FAILURES.get(sid, 0) + 1
+        if LISTER_LAPSE_FAILURES[sid] == 1:
+            log.exception("background: lapsing the records of exited strategy %s failed; the others are listed", sid)
+
+
 async def owner_lister(provider: Any) -> list[Watched]:
     """Every strategy of the V1 owner (ADR-051) that is tracked (open paper legs) and has a playbook; its type is read
     against the provider's instrument list and spot (as the screen's check)."""
-    from ofo_app import playbook_store, strategy_store  # noqa: PLC0415 - database layer at run time only
+    from ofo_app import strategy_store  # noqa: PLC0415 - database layer at run time only
     from ofo_app.adjustment_readers import TrackedExited, TrackedUnreadable, read_tracked  # noqa: PLC0415
     from ofo_app.db import get_sessionmaker  # noqa: PLC0415
     from ofo_app.live_market import OWNER_REF  # noqa: PLC0415
@@ -1063,9 +1090,7 @@ async def owner_lister(provider: Any) -> list[Watched]:
                                             provider.instrument_master())
                 resolved = await check.resolve(db, OWNER_REF, s.id, stype)
             except TrackedExited:  # every leg exited: its open records lapse (REQ-112 AC-2; one writer, ADR-237 (6))
-                if await playbook_store.open_suggestions(db, OWNER_REF, s.id):
-                    await playbook_store.lapse_all(db, OWNER_REF, s.id, playbook_store.LAPSE_STRATEGY_CLOSED)
-                    await db.commit()
+                await _lapse_exited(db, OWNER_REF, s.id)
                 continue
             except TrackedUnreadable:
                 continue

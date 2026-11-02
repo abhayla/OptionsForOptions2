@@ -5,10 +5,11 @@ strategy, market, REST spot, margin, charge rates); the logic is ``ofo_app.adjus
 Answer states: strategy not found / another user's -> the approaches route's not-found answer; legs unreadable
 (TrackedUnreadable) -> its refusal; type None -> playbook source ``none`` and no results; not connected or no spot ->
 every rule ``not_checked`` with its reason (never a 500, never a flag); the records' store unreadable -> a refusal
-(503), never an empty list. ADR-237 (6): this check writes NO suggestion record and lapses none (only the background
-worker does, through the alert gate); it shows the current condition and the stored records. Suggest-only (ADR-003):
-nothing here places an order. Wording: a system playbook's flag is "Adjustment opportunity detected", the user's own
-playbook or plan's "Your rule was triggered" (REQ-045 AC-1, Q252); a rule true at entry is "Already true when tracking started" (F-71).
+(503), never an empty list. ADR-237 (6): this check writes NOTHING (no record, no lapse, no rule memory: only the
+background worker writes, through the alert gate); it shows the current condition and the stored records.
+Suggest-only (ADR-003): nothing here places an order. Wording: a system playbook's flag is "Adjustment opportunity
+detected", the user's own playbook or plan's "Your rule was triggered" (REQ-045 AC-1, Q252); a rule true at entry is
+"Already true when tracking started" (F-71).
 """
 from __future__ import annotations
 
@@ -213,9 +214,10 @@ async def adjustment_check(  # noqa: PLR0913 - FastAPI dependencies, one per inp
     margin = await current_margin(margin_of, tracked, market)
     state = check.state_of(tracked, market, spot, margin, rates, check.prices_fresh(ctx), resolved.body,
                            config=prefs.approach)
-    ev = await check.evaluate_and_remember(db, user_ref, strategy_id, resolved.body, state, scenario_mode.current(),
-                                           tracked.position, gap_until=prefs.gap_until)
-    await db.commit()  # the rule memory only (F-71 entry state); no suggestion record is written here (ADR-237 (6))
+    # read-only (review round 2, finding 3): evaluated against the stored rule memory, NOTHING written; the background
+    # worker is the one writer of rule memory and records (ADR-237 (6)), so the two never disagree about a dip
+    ev, _memory = await check.evaluate_stored(db, user_ref, strategy_id, resolved.body, state, scenario_mode.current(),
+                                              tracked.position, gap_until=prefs.gap_until)
     opened, dismissed = await stored_records(db, user_ref, strategy_id, ev)
     wording = render_explanation("adjust_check_flag_system" if resolved.is_system else "adjust_check_flag_user")
     reply |= {"stage": check.stage_out(ev.stage_name, ev.stage_index),

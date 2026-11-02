@@ -51,6 +51,9 @@ DISMISS_REASONS = ("expected_within_plan", "will_act_later", "not_relevant", "ot
 #: why a record lapsed (REQ-112 AC-2), written into its timeline entry (the dismiss reason column is Dismiss's only)
 LAPSE_CONDITION_STOPPED = "condition_stopped"
 LAPSE_STRATEGY_CLOSED = "strategy_closed"
+#: Review round 2, finding 5: an escalation closed the record because a worse one of the same rule opened.
+LAPSE_SUPERSEDED_BY_WORSE = "superseded_by_worse"
+LAPSE_REASONS = (LAPSE_CONDITION_STOPPED, LAPSE_STRATEGY_CLOSED, LAPSE_SUPERSEDED_BY_WORSE)
 WORSE_MARKS = (None, "last", "dismissed")  # = migration 0036 WORSE plus none (a test asserts it)
 HELD_REASONS = ("daily_limit", "quiet_time")  # = alert_gate.HELD_DAILY_LIMIT / HELD_QUIET_TIME
 SOURCE_SYSTEM = "system"  # "Adjustment opportunity detected" (a system playbook's flag)
@@ -156,7 +159,7 @@ class Suggestion:
 
     @property
     def lapse_reason(self) -> str | None:
-        """condition_stopped / strategy_closed on a lapsed record (its last timeline entry)."""
+        """condition_stopped / strategy_closed / superseded_by_worse on a lapsed record (its last timeline entry)."""
         return self.timeline[-1].get("reason") if self.outcome == "lapsed" and self.timeline else None
 
 
@@ -609,7 +612,7 @@ async def act_on(conn: Any, user_ref: str, suggestion_id: int) -> Suggestion:
 
 
 async def lapse(conn: Any, user_ref: str, suggestion_id: int, reason: str = LAPSE_CONDITION_STOPPED) -> Suggestion:
-    if reason not in (LAPSE_CONDITION_STOPPED, LAPSE_STRATEGY_CLOSED):
+    if reason not in LAPSE_REASONS:
         raise ValueError(f"unknown lapse reason {reason!r}")
     return await _close(conn, user_ref, suggestion_id, "lapsed", None, reason)
 

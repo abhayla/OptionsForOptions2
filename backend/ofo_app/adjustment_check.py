@@ -238,9 +238,12 @@ def scenario_entry(scn: Any, state: pe.StrategyState, position: Position) -> pe.
                             prices_fresh=True)
 
 
-async def evaluate_and_remember(conn: Any, user_ref: str, strategy_id: int, body: Mapping,  # noqa: PLR0913
-                                state: pe.StrategyState, scn: Any, position: Position, *,
-                                gap_until: str) -> pe.Evaluation:
+async def evaluate_stored(conn: Any, user_ref: str, strategy_id: int, body: Mapping,  # noqa: PLR0913
+                          state: pe.StrategyState, scn: Any, position: Position, *,
+                          gap_until: str) -> tuple[pe.Evaluation, dict]:
+    """The playbook evaluated against the STORED rule memory, writing nothing (the screen check's path; review round
+    2, finding 3: the background worker is the one writer of adjustment state, ADR-237 (6)).
+    Returns (evaluation, memory read)."""
     stored = await playbook_store.rule_state(conn, user_ref, strategy_id)
     memory = {k: {"held_at_entry": h, "seen_clear": s} for k, (h, s) in stored.items()}
     entry = scenario_entry(scn, state, position)
@@ -248,7 +251,14 @@ async def evaluate_and_remember(conn: Any, user_ref: str, strategy_id: int, body
         state = dataclasses.replace(state, entry_atm_iv=entry.atm_iv)
     elif not memory:
         entry = state  # tracking just started: this first check is the entry state
-    ev = pe.evaluate(body, state, memory, entry, gap_until=gap_until)
+    return pe.evaluate(body, state, memory, entry, gap_until=gap_until), memory
+
+
+async def evaluate_and_remember(conn: Any, user_ref: str, strategy_id: int, body: Mapping,  # noqa: PLR0913
+                                state: pe.StrategyState, scn: Any, position: Position, *,
+                                gap_until: str) -> pe.Evaluation:
+    """``evaluate_stored``, then the changed rule memory written (the background worker only, ADR-237 (6))."""
+    ev, memory = await evaluate_stored(conn, user_ref, strategy_id, body, state, scn, position, gap_until=gap_until)
     for rid, mem in ev.memory.items():
         if memory.get(rid) != mem:
             await playbook_store.put_rule_state(conn, user_ref, strategy_id, rid, held_at_entry=mem["held_at_entry"],
