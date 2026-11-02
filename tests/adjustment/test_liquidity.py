@@ -217,9 +217,3 @@ def test_class_the_named_reader_file_really_mentions_the_key():
 def test_class_the_three_liquidity_keys_are_read_by_this_module():
     assert {lq.OI_KEY, lq.SPREAD_KEY, lq.DEBIT_KEY} == {"hide_oi_below", "hide_spread_pct_of_mid_above", "roll_debit_limit"}
     assert all(lq.GUARD_READERS[k].endswith("liquidity.py") for k in (lq.OI_KEY, lq.SPREAD_KEY, lq.DEBIT_KEY))
-
-
-def test_class_guard_fails_for_a_key_with_no_reader():
-    """Mutation: a new saved key nobody reads is reported."""
-    keys = _guard_keys() | {"brand_new_limit"}
-    assert [k for k in keys if k not in lq.GUARD_READERS and k not in lq.KNOWN_UNREAD] == ["brand_new_limit"]

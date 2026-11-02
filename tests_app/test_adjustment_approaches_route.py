@@ -5,6 +5,7 @@ Kite): every iron condor scenario's approaches equal ``expected.approach_after``
 """
 from __future__ import annotations
 
+import asyncio
 import datetime
 import json
 import re
@@ -21,7 +22,8 @@ from ofo.charges import ChargeRates
 from ofo.engine.black_scholes import year_fraction
 from ofo.marketdata.spot_source import SourceReading, SourceState
 from ofo.outcome.service import MARGIN_CHECKED, Margin, margin_empty, margin_unreadable
-from ofo_app import paper_store
+from ofo_app import adjustment_check, paper_store
+from ofo_app import adjustment_readers as readers
 from ofo_app.main import create_app
 from ofo_app.routes import adjustment as route
 from ofo_app.routes import outcome
@@ -79,7 +81,7 @@ class Calls:
 
 
 def client_for(sc: dict, *, booked="stated", margin=None, environ=None, rates=None,  # noqa: PLR0913 - one keyword per route seam
-               calls: Calls | None = None, guards=None):
+               calls: Calls | None = None, guards=None, real_guards=False):
     app = create_app()
     rest_ok = sc["data_state"].get("rest", "ok") == "ok" and sc["data_state"].get("spot_source") != "none"
     now = datetime.datetime.fromisoformat(sc["clock"]["ist"])
@@ -103,11 +105,12 @@ def client_for(sc: dict, *, booked="stated", margin=None, environ=None, rates=No
         return Margin(MARGIN_CHECKED, margin_unreadable().reason, D("100000"), D("100000"), D("500000"), now)
 
     app.dependency_overrides |= {
-        route.get_guards_reader: lambda: read_guards,
         route.get_tracked_reader: lambda: tracked, route.get_market_reader: lambda: market,
         route.get_rest_spot_reader: lambda: rest, route.get_approach_margin: lambda: margin or default_margin,
         route.get_held_environ: lambda: environ, outcome.load_charge_rates: lambda: rates,
         outcome.get_market_context: lambda: None}
+    if not real_guards:  # real_guards: the route's own reader (adjustment_readers.read_guards) runs
+        app.dependency_overrides[route.get_guards_reader] = lambda: read_guards
     return TestClient(app)
 
 
@@ -407,7 +410,7 @@ def test_drawer_a36_only_builds_no_change_and_lists_every_generic_approach_witho
     assert [a["id"] for a in body["approaches"]] == ["A-36"]
     assert [a["id"] for a in body["available"]] == list(APPROACH_IDS)
     for a in body["available"]:
-        assert set(a) == {"id", "name", "explanation", "applicable", "reason"}
+        assert set(a) == {"id", "name", "explanation", "applicable", "reason", "liquidity_flags"}
         assert a["name"] and a["explanation"] and not re.search(r"\d", a["explanation"]), a  # REQ-045 AC-5: no figure
     assert body["available"][0]["name"] == "No change" and all(a["applicable"] for a in body["available"])
 
@@ -489,3 +492,77 @@ def test_a1_route_with_no_playbook_applies_no_limits():
     reply = post(client_for(load("ADJ-50"), guards=None)).json()
     assert all("liquidity limit" not in _liquidity_text(reply, a["id"]) for a in reply["approaches"])
     assert next(a for a in reply["approaches"] if a["id"] == "A-05")["refusal"] is None
+
+
+# ---- #624 round 3 (ADR-230 (1)): an unreadable playbook says so; "no playbook" does not -----------------------------
+
+UNREADABLE_WORDS = "limits not applied: playbook unreadable"
+
+
+def _break_playbook_read(monkeypatch):
+    async def boom(*_a, **_k):
+        raise RuntimeError("store down")
+    monkeypatch.setattr(adjustment_check, "resolve", boom)
+
+
+def test_624_1_unreadable_playbook_reply_says_limits_not_applied_and_a_limit_roll_is_not_refused(monkeypatch):
+    _break_playbook_read(monkeypatch)
+    reply = post(client_for(load("ADJ-50"), real_guards=True)).json()
+    assert reply["limits_reason"] == UNREADABLE_WORDS
+    assert next(a for a in reply["approaches"] if a["id"] == "A-05")["refusal"] is None  # no limit applied, said so
+
+
+def test_624_1_no_playbook_and_empty_guards_carry_no_reason():
+    for guards in (None, {}):
+        reply = post(client_for(load("ADJ-50"), guards=guards)).json()
+        assert reply["limits_reason"] is None, guards
+
+
+def test_624_1_read_guards_answer_states(monkeypatch):
+    sc = load("ADJ-50")
+    tracked, market = tracked_of(sc), market_of(sc)
+
+    class Resolved:
+        def __init__(self, body):
+            self.body = body
+
+    async def run(body=None, *, raises=False):
+        async def resolve(*_a, **_k):
+            if raises:
+                raise RuntimeError("store down")
+            return Resolved(body)
+        class Session:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_a):
+                return False
+        monkeypatch.setattr(readers, "get_sessionmaker", lambda: Session)
+        monkeypatch.setattr(readers, "current_user_ref", lambda: "u")
+        monkeypatch.setattr(adjustment_check, "resolve", resolve)
+        monkeypatch.setattr(adjustment_check, "strategy_type", lambda *_a: "x")
+        return await readers.read_guards(72, tracked.position, market.forward, None)
+    assert asyncio.run(run(raises=True)) is readers.GUARDS_UNREADABLE
+    assert asyncio.run(run({"guards": LIMITS})) == LIMITS
+    assert asyncio.run(run({"guards": {}})) == {}
+
+
+def test_624_2_each_approach_and_available_row_carries_the_new_strike_flag_the_compare_shows():
+    """ADJ-50, A-05's new strike thinned: the approach and its `available` row carry the Compare's flag."""
+    sc = load("ADJ-50")
+    guards = {"hide_oi_below": 10000}
+    first = post(client_for(sc, guards=guards)).json()
+    opened = {t["tradingsymbol"] for t in next(a for a in first["approaches"] if a["id"] == "A-05")["trades"]
+              if t["action"] == "SELL" and t["strike"] == "23500"}
+    for c in sc["market"]["chains"]:
+        for r in c["rows"]:
+            if r["tradingsymbol"] in opened:
+                r["oi"] = 500
+    reply = post(client_for(sc, guards=guards)).json()
+    by_id = {a["id"]: a for a in reply["approaches"]}
+    assert by_id["A-05"]["liquidity_flags"] == ["Below your liquidity limit"]
+    assert "liquidity limit" in _liquidity_text(reply, "A-05")  # the Compare cell flags the same approach
+    assert next(a for a in reply["available"] if a["id"] == "A-05")["liquidity_flags"] == ["Below your liquidity limit"]
+    assert by_id["A-01"]["liquidity_flags"] == []
+    none = post(client_for(sc, guards=None)).json()
+    assert all(a["liquidity_flags"] == [] for a in none["approaches"] + none["available"])
