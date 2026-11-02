@@ -224,7 +224,8 @@ async def test_a_dismissed_flag_shows_the_note_and_the_screen_check_writes_nothi
     answer = await _check(sid)
     flag = next(x for x in answer["results"] if x["rule_id"] == "T-01")
     assert (flag["suggestion_id"], flag["note"]) == (new["T-01"], None)
-    inbox_rows = [r for g in _mine(await _inbox(), sid) for r in g["records"] if r["rule_id"] == "T-01"]
+    inbox_rows = [r for g in _mine(await _inbox(), sid) for r in g["records"]
+                  if r["rule_id"] == "T-01" and r["id"] > MARK[sid]]  # this test's records only
     assert sorted(r["outcome_text"] for r in inbox_rows) == ["Open", "You dismissed this"]  # the inbox keeps the row
 
 
