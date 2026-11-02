@@ -3,7 +3,10 @@ screen open (REQ-165, REQ-115 AC-1..AC-5, REQ-166 AC-1..AC-3). Suggest-only (ADR
 reaches an order door (``tests_app/test_paper_order_door.py`` walks this module's imports).
 
 One cycle (``Worker.cycle``), each step with its answer state:
-1. The settings and speeds are read NOW (``calc_speeds.read_speeds``, every cycle) and the safety valve applied. The
+1. The settings and speeds are resolved NOW from memory (``settings_cache.SettingsCache.at`` at the worker clock, every
+   cycle; no database call: #636 r4; the cache polls ``count(*)`` of ``app_settings`` every
+   ``settings_cache.POLL_SECONDS`` on its own task, so a stored change is used within ``settings_cache.LAG_SECONDS``;
+   ``calc_speeds.read_speeds``) and the safety valve applied. The
    strategy list and each user's preferences are NOT read by a cycle: ``rebuild`` reads them on its own task every
    ``REBUILD_SECONDS`` (preferences once per user per rebuild); a cycle uses the last good list.
 2. Each monitored strategy, in rotation, at most ``max_per_cycle`` per cycle (the rest roll to the next cycle; B4 (a)),
@@ -40,7 +43,9 @@ One cycle (``Worker.cycle``), each step with its answer state:
    sync ``routes.adjustment_check.sync_records``, one open record per flagged rule, REQ-112) ONLY when it is needed:
    the first check of the process (the stored memory is not known yet), or a check whose rule memory, flagged rules
    or clear rules (a clear rule lapses its open record) differ from the last write. An unchanged check, flagged or
-   clear, writes nothing; after a recorder that raised, the next check writes.
+   clear, writes nothing; after a recorder that raised, the next check writes. The write itself leaves the check
+   path (#636 r4): the check queues the latest state per strategy (a newer one replaces it: coalesced) and ONE writer
+   task writes it under the role's one database gate; rule memory is set only after the write succeeded.
    Not covered (named): a record opened by a screen for a rule this process has seen as
    clear since its last write is lapsed at the next write, not at once.
    One strategy's error is logged with its id and does not stop the others
@@ -75,7 +80,7 @@ import enum
 import functools
 import logging
 import sys
-from collections.abc import Awaitable, Callable, Iterable, Mapping
+from collections.abc import Awaitable, Callable, Coroutine, Iterable, Mapping
 from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any, Final
@@ -354,7 +359,7 @@ class Worker:
                  observe: Observer | None = None,
                  rebuild_sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
                  db_gate: asyncio.Lock | None = None,
-                 side_tasks: tuple[Callable[[], Awaitable[None]], ...] = ()) -> None:
+                 side_tasks: tuple[Callable[[], Coroutine[Any, Any, None]], ...] = ()) -> None:
         if max_per_cycle < 1:
             raise ValueError("max_per_cycle must be at least 1")
         self._provider_for, self._lister, self._clock = provider_for, lister, clock
