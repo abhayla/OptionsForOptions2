@@ -35,6 +35,7 @@ from ofo.charges.paper_charges import PaperFill, charges_sum, paper_charges
 from ofo.charges.round_trip import ChargesNotComputable
 from ofo.engine.book_totals import book_totals
 from ofo.engine.extremes import UNLIMITED, ContractTerms, ExtremesReason, book_breakevens, book_extremes
+from ofo.engine.extremes_charges import open_round_trip_charges, with_charges
 from ofo.engine.legs import Instrument
 from ofo.errors.explanations import render_explanation, restore_explanation
 from ofo.instruments.models import FUTURE_TYPE
@@ -182,6 +183,9 @@ class PaperExtremes(ApiModel):
     max_loss_text: CatalogueText | None
     extremes_reason: FigureReason | None
     extremes_reason_text: CatalogueText | None = None
+    # F-94 (ADR-082 (2)): the round-trip charges inside Max Profit / Max Loss, and the sentence that says so
+    extremes_charges: Money | None = None
+    extremes_charges_text: CatalogueText | None = None
 
 
 class PaperBreakevens(ApiModel):
@@ -442,19 +446,27 @@ def _extreme(value: Any) -> tuple[Decimal | str | None, Any]:
 
 
 def _extremes(orders: Sequence[paper_store.StoredOrder], found: dict[int, tracked_contracts.TrackedContract],
-              prices: dict[int, paper.Price]) -> dict:
+              prices: dict[int, paper.Price], underlying: str = "", rates: ChargeRates | None = None) -> dict:
     """Profit left / Loss left and the original Max Profit / Max Loss from the one engine (ofo.engine.extremes)."""
     live = {str(cid): p.price for cid, p in prices.items() if paper.is_live(p) and p.price is not None}
     terms = {}
     for cid in {o.order.contract_id for o in orders}:
         _, instrument, strike, expiry = _identity(found[cid])
         terms[str(cid)] = ContractTerms(instrument, strike, expiry)
-    got = book_extremes(net_positions(_paper(orders), live), terms, live)
+    view = net_positions(_paper(orders), live)
+    got = book_extremes(view, terms, live)
+    charges = open_round_trip_charges(view, terms, underlying, rates)  # F-94: one charges function, as the builder
+    got = with_charges(got, charges)
     figures = {"profit_left": got.profit_left, "loss_left": got.loss_left, "max_profit": got.max_profit,
                "max_loss": got.max_loss}
     out: dict[str, Any] = {"extremes_reason": got.reason, "extremes_reason_text": extremes_reason_text(got.reason)}
     for name, value in figures.items():
         out[name], out[f"{name}_text"] = _extreme(value)
+    is_open = got.max_profit is not None and any(p.net_quantity for p in view.positions)
+    out["extremes_charges"] = charges if is_open else None
+    out["extremes_charges_text"] = (
+        None if not is_open else render_explanation("paper_extremes_before_charges") if charges is None else
+        render_explanation("paper_extremes_with_charges", charges=charges))
     return out
 
 
@@ -514,6 +526,7 @@ def _spot(snapshot: Any) -> Decimal | None:
 _ABSENT = {"profit_left": None, "loss_left": None, "max_profit": None, "max_loss": None, "profit_left_text": None,
            "loss_left_text": None, "max_profit_text": None, "max_loss_text": None, "extremes_reason": EXITED,
            "extremes_reason_text": extremes_reason_text(EXITED),
+           "extremes_charges": None, "extremes_charges_text": None,
            "breakevens": None, "breakevens_display": None, "breakevens_reason": EXITED,
            "breakevens_reason_text": breakevens_reason_text(EXITED), "greeks": None,
            "greeks_reason": EXITED, "greeks_reason_text": greeks_reason_text(EXITED)}
@@ -522,14 +535,14 @@ _ABSENT = {"profit_left": None, "loss_left": None, "max_profit": None, "max_loss
 def _summary(orders: Sequence[paper_store.StoredOrder],  # noqa: PLR0913
              found: dict[int, tracked_contracts.TrackedContract],
              prices: dict[int, paper.Price], figures: dict, snapshot: Any, underlying: str, *,
-             exited_absent: bool) -> dict:
+             exited_absent: bool, rates: ChargeRates | None = None) -> dict:
     """Max Profit / Max Loss (and Profit / Loss left), Breakeven and net Greeks of one book: ONE function behind both
     the list and the single-strategy reply, so the two can never differ. ``exited_absent`` (the list): a fully exited
     strategy has every one of them absent with the reason ``exited`` (never 0)."""
     if exited_absent and figures["state"] == "EXITED":
         return dict(_ABSENT)
     spot = _spot(snapshot) if figures["state"] == "LIVE" else None  # no percent from a spot that is not live
-    return (_extremes(orders, found, prices) | _breakevens(orders, found, spot)
+    return (_extremes(orders, found, prices, underlying, rates) | _breakevens(orders, found, spot)
             | _greeks(figures, found, snapshot, underlying))
 
 
@@ -581,7 +594,7 @@ async def _book(db: Any, stored: Any, orders: Sequence[paper_store.StoredOrder],
         snapshot = await _snapshot(ctx, feed, underlying, keys)  # type: ignore[arg-type]
     prices = _prices(open_ids, found, snapshot)
     base = _figures(orders, found, prices, connected)
-    figures = (base | _summary(orders, found, prices, base, snapshot, underlying, exited_absent=False)
+    figures = (base | _summary(orders, found, prices, base, snapshot, underlying, exited_absent=False, rates=rates)
                | _charges(orders, found, underlying, rates))
     return PaperBookOut.model_validate(figures | {
         "strategy_id": stored.id, "name": sf.shown_name(stored.name), "underlying": underlying,
@@ -630,7 +643,7 @@ async def list_paper_strategies(db: Annotated[Any, Depends(get_db)],  # noqa: PL
         snapshot = snapshots.get(b.underlying)
         prices = _prices(_open_ids(b.orders), found, snapshot)
         figures = _figures(b.orders, found, prices, connected)
-        summary = _summary(b.orders, found, prices, figures, snapshot, b.underlying, exited_absent=True)
+        summary = _summary(b.orders, found, prices, figures, snapshot, b.underlying, exited_absent=True, rates=rates)
         decays.append(_decay(figures, found, snapshot, b.underlying))
         held = sum(1 for p in figures["positions"] if p["net_quantity"] != 0)
         figures |= _charges(b.orders, found, b.underlying, rates) | summary
