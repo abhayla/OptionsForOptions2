@@ -216,7 +216,7 @@ async def adjustment_check(  # noqa: PLR0913 - FastAPI dependencies, one per inp
     market = await market_reader(tracked, ctx)
     spot = resolve_spot(market.feed, await rest_reader(tracked.position.underlying), market.last_close, now=market.now,
                         windows=feed_windows_of(ctx))
-    listed = None if ctx is None else ctx.provider.instrument_master()
+    listed = check.listed_of(ctx)
     stype = check.strategy_type(tracked.position, spot.value if spot.available else None, listed)
     resolved = await check.resolve(db, user_ref, strategy_id, stype)
     reply: dict[str, Any] = {

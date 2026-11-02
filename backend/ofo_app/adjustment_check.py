@@ -102,6 +102,12 @@ def reference_spot(position: Position, spot: Decimal | None, gap: Decimal | None
     return (((min(strikes) + max(strikes)) / 2) / gap).quantize(Decimal(1)) * gap
 
 
+def listed_of(ctx: Any) -> list | None:
+    """The instrument listing the strike gap (and so the strategy type) is read from: the market context's, None
+    without one. Every route that resolves a playbook through ``strategy_type`` takes it from here (#633)."""
+    return None if ctx is None else ctx.provider.instrument_master()
+
+
 def strategy_type(position: Position, spot: Decimal | None, listed: list | None) -> str | None:
     gap = None if listed is None else strike_gap_of(listed, position.underlying, {x.expiry for x in position.legs})
     ref = reference_spot(position, spot, gap)

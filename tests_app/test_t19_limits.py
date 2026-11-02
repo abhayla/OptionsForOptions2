@@ -96,6 +96,6 @@ def test_unreadable_guard_value_is_fail_closed_like_the_route():
     sc = s.load("ADJ-50")
     guards = {**s.body_of(sc)["guards"], "roll_debit_limit": "garbage"}
     want, _ = _route_cheapest(sc, guards)
-    got = check.cheapest_offered({**s.body_of(sc), "guards": guards}, *s.inputs(sc)[:1], s.inputs(sc)[1],
-                                 s.inputs(sc)[2], s.RATES, s.PREFS.approach)
+    tracked, market, spot = s.inputs(sc)
+    got = check.cheapest_offered({**s.body_of(sc), "guards": guards}, tracked, market, spot, s.RATES, s.PREFS.approach)
     assert (got.approach, got.cost) == (want.approach, want.cost)
