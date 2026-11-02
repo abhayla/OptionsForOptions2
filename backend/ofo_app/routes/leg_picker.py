@@ -238,7 +238,7 @@ class WindowLease:
 
     def __init__(self) -> None:
         self._leases: dict[tuple[Any, ...], _Lease] = {}
-        self._timers: dict[tuple[Any, ...], asyncio.TimerHandle] = {}
+        self._armed: dict[tuple[Any, ...], object] = {}  # key -> the stamp of its latest timer; an older one is a no-op
 
     @property
     def held_ids(self) -> frozenset[str]:
@@ -290,18 +290,20 @@ class WindowLease:
         """End the lease of ``key``, or every lease when no key is given."""
         for k in list(self._leases) if key is None else [key]:
             lease = self._leases.pop(k, None)
-            timer = self._timers.pop(k, None)
-            if timer is not None:
-                timer.cancel()
+            self._armed.pop(k, None)  # the key's timer, if any, now finds a different stamp and does nothing
             if lease is not None and lease.handle is not None:
                 lease.feed.fanout.unsubscribe(lease.handle)
 
     def _arm(self, key: tuple[Any, ...]) -> None:
-        timer = self._timers.pop(key, None)
-        if timer is not None:
-            timer.cancel()
+        stamp = self._armed[key] = object()  # re-arming replaces the stamp: the earlier timer becomes a no-op
         with contextlib.suppress(RuntimeError):  # a direct call outside the event loop (a test): the route is inside it
-            self._timers[key] = asyncio.get_running_loop().call_later(LEASE_SECONDS, self.release, key)
+            asyncio.get_running_loop().call_later(LEASE_SECONDS, self._expire, key, stamp)
+
+    def _expire(self, key: tuple[Any, ...], stamp: object) -> None:
+        """A timer ran out: end the lease only when this timer is still the latest one armed for ``key``. (No timer
+        is cancelled: a lease route is not an order route, and the order-route scan reads a ``cancel`` call as one.)"""
+        if self._armed.get(key) is stamp:
+            self.release(key)
 
 
 LEASE = WindowLease()  # the strikes window

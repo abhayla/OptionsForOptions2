@@ -6412,6 +6412,26 @@
             ],
             "title": "Charges Text"
           },
+          "extremes_charges": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extremes Charges"
+          },
+          "extremes_charges_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extremes Charges Text"
+          },
           "extremes_reason": {
             "anyOf": [
               {
@@ -7294,6 +7314,26 @@
               }
             ],
             "title": "Charges Text"
+          },
+          "extremes_charges": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extremes Charges"
+          },
+          "extremes_charges_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extremes Charges Text"
           },
           "extremes_reason": {
             "anyOf": [
@@ -8180,7 +8220,8 @@
           "instrument": {
             "enum": [
               "CE",
-              "PE"
+              "PE",
+              "FUT"
             ],
             "title": "Instrument",
             "type": "string"
@@ -8194,8 +8235,15 @@
             "title": "Label"
           },
           "strike": {
-            "title": "Strike",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Strike"
           },
           "symbol": {
             "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",

@@ -9,13 +9,14 @@ import logging
 
 import pytest
 from ofo.instruments.models import ZERODHA
-from ofo_app import background, feed_bus, scenario_mode
+from ofo.settings import calc as settings_calc
+from ofo_app import background, chain_push, feed_bus, scenario_mode
 from redis.exceptions import ConnectionError as RedisConnectionError
 
-from tests_app.test_background_cycle import Calls, Prov, _prefs, _settings, _watched
+from tests_app.test_background_cycle import DEFAULTS, Calls, Prov, _prefs, _settings, _watched
 
 OWNER = "owner"
-LEGS_AND_INDEX = 5
+LEGS_INDEX_AND_WINDOW = 62  # 4 legs + the index + the chain screen's window (15 strikes each side, CE and PE)
 REFRESHED = 2
 T0 = datetime.datetime(2026, 11, 2, 9, 30, tzinfo=datetime.UTC)
 
@@ -40,10 +41,29 @@ class IndexedProv(Prov):
     def index_id(self, underlying):
         return self.real.index_id(underlying)
 
+    def subscribe(self, instrument_ids):
+        """The worker's own hold (ADR-233 round 1): the real provider takes the instrument ids."""
+
+    def unsubscribe(self, instrument_ids):
+        pass
+
 
 @pytest.fixture(scope="module")
 def scn():
     return scenario_mode.load("ADJ-02")
+
+
+def _window(prov, tracked) -> set[int]:
+    """The chain screen's strike window around the spot (``limits.chain_strikes_each_side`` each side) of the first leg's
+    expiry: the worker holds it too (finding 2), worked out here from the master, not from the worker."""
+    first = tracked.position.legs[0]
+    master = [lc for lc in prov.instrument_master()
+              if lc.contract.name == tracked.position.underlying and lc.contract.expiry == first.expiry
+              and lc.contract.strike is not None]
+    grid = sorted({lc.contract.strike for lc in master})
+    each = settings_calc.chain_strikes_each_side(DEFAULTS)
+    win = set(chain_push.strike_window(grid, chain_push.atm_strike(grid, prov.spot.ltp), each, each))
+    return {int(lc.ref(ZERODHA).broker_token) for lc in master if lc.contract.strike in win}
 
 
 def _expected(prov, tracked) -> set[int]:
@@ -55,7 +75,7 @@ def _expected(prov, tracked) -> set[int]:
     index = prov.real.index_id("NIFTY")
     out |= {int(lc.ref(ZERODHA).broker_token) for lc in prov.instrument_master()
             if f"{lc.contract.exchange_segment}:{lc.contract.exchange_token}" == index}
-    return out
+    return out | _window(prov, tracked)
 
 
 def _unlisted(w):
@@ -86,8 +106,8 @@ async def test_core_no_snapshot_the_relay_wants_exactly_the_legs_and_the_index(s
     await _worker(prov, watched, now, client).cycle()
     assert feed_bus.want_key(OWNER) not in client.data
     got = await _relay_wants(client)
-    # 4 legs + the index (ADJ-02)
-    assert got == sorted(_expected(prov, watched[0].tracked)) and len(got) == LEGS_AND_INDEX
+    # ADJ-02: 4 legs, the index and the strike window the worker holds for the chain screen
+    assert got == sorted(_expected(prov, watched[0].tracked)) and len(got) == LEGS_INDEX_AND_WINDOW
 
 
 async def test_no_monitored_strategy_writes_an_empty_snapshot_only_for_a_written_owner(scn):
