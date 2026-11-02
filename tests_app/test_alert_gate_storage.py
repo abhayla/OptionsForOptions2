@@ -62,7 +62,7 @@ async def _strategy(conn) -> tuple[str, int]:
 MIDDLE_T03 = D("0.35")
 
 
-async def _open(conn, user, sid, rule="T-03", worse=None, threshold=MIDDLE_T03):
+async def _open(conn, user, sid, rule="T-03", worse=None, threshold=MIDDLE_T03):  # noqa: PLR0913 - one record's fields
     return await pb.open_suggestion(conn, user, sid, rule, trigger_id=rule, stage="Middle", value=D("0.36"),
                                     threshold=threshold, worse=worse)
 
@@ -151,7 +151,7 @@ async def test_record_held_refuses_an_unknown_reason_a_bool_value_and_another_us
 
 
 async def test_a_back_dated_raw_held_at_is_overwritten_by_the_clock(admin):
-    user, sid = await _strategy(admin)
+    _, sid = await _strategy(admin)
     got = (await admin.execute(text(f"INSERT INTO {HELD} (strategy_id, rule_id, reason, held_at) "  # noqa: S608
                                     "VALUES (:s, 'T-07', 'daily_limit', '2020-01-01') RETURNING held_at"),
                                {"s": sid})).scalar_one()
