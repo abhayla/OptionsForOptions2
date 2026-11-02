@@ -1258,3 +1258,15 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   the chain stayed NOT_CONNECTED on both expiries until the API was restarted 12:32. Mechanism not yet read from code
   (a second socket on the same Kite session, closed abruptly). Production runs one feed owner, so the reach is the dev
   set-up and mode switches; the status/chain disagreement is the user-visible part. Status: **reproduced once live**.
+
+## F-100 - No feed we use supplies IV or Greeks; every app studied computes its own, and "one IV per strike" is a modelling choice
+- Read 2026-11-02 (owner asked "Normally data provider also provides IV for each option"): Zerodha staff on the Kite
+  Connect forum: "We don't provide IV in kiteconnect APIs. You need to calculate this on your end"
+  (https://kite.trade/forum/discussion/12291/need-implied-volatility-values-for-options); Greeks are not provided either
+  (https://kite.trade/forum/discussion/8173/how-do-i-get-option-greeks-data-like-delta-theta-of-a-particular-strike-price).
+  Zerodha's Kite app shows Greeks and ATM IV in its own chain only. Our study of three apps
+  (D:\Abhay\Ventures\competitors\multi-broker-architecture\2026-10-21\ARCHITECTURE.md:280-286): Sensibull, OpenAlgo and
+  OpenBull all compute IV and Greeks on their servers with Black-76 on a forward at 0% interest; Sensibull states
+  "an improvised Black 76 model, in which Theta, Vega, and Gamma for Call and Put Options are the same" (bundle-findings
+  2.5) and its chain shows one IV column per strike. Paid exchange-registered vendors were not checked. Bears on
+  ADR-220 (5) (no vendor IV planned), RD-080, F-98. Status: **read from sources; confirms ADR-220 (5)**.
