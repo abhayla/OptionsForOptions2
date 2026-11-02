@@ -283,8 +283,10 @@ def background_state(watched: Watched, read: PriceRead, shared: FeedScope, now: 
 
 
 async def record_check(watched: Watched, state: pe.StrategyState, prefs: Preferences,
-                       scn: Any = None) -> pe.Evaluation:
-    """The check and its records in one transaction, through the screen's own functions (REQ-165 AC-5)."""
+                       scn: Any = None) -> dict[str, int]:
+    """The check and its records in one transaction, through the screen's own functions (REQ-165 AC-5). Returns the
+    rule id -> open record id of each rule this check flagged (``sync_records``' first value; a rule already open
+    returns its existing record), so the worker can log it."""
     from ofo_app import playbook_store  # noqa: PLC0415 - the database layer only when a check runs
     from ofo_app.db import get_sessionmaker  # noqa: PLC0415
     from ofo_app.routes.adjustment_check import sync_records  # noqa: PLC0415
@@ -292,9 +294,9 @@ async def record_check(watched: Watched, state: pe.StrategyState, prefs: Prefere
         ev = await check.evaluate_and_remember(db, watched.user_ref, watched.strategy_id, watched.body, state, scn,
                                                watched.tracked.position, gap_until=prefs.gap_until)
         source = playbook_store.SOURCE_SYSTEM if watched.is_system else playbook_store.SOURCE_OWN
-        await sync_records(db, watched.user_ref, watched.strategy_id, ev, source, watched.body)
+        opened, _held = await sync_records(db, watched.user_ref, watched.strategy_id, ev, source, watched.body)
         await db.commit()
-    return ev
+    return opened
 
 
 Lister = Callable[[], Awaitable[list[Watched]]]
@@ -335,6 +337,11 @@ class Worker:
         self._listed: dict[tuple[int, str], tuple] = {}  # (id(provider), underlying) -> (provider, known listings)
         self._token_maps: dict[int, tuple] = {}  # id(provider) -> (provider, option tokens, id -> token)
         self._wants_written: dict[str, tuple[list[int], datetime.datetime]] = {}  # owner -> (tokens, when)
+        self._minute: str | None = None  # the IST wall-clock minute (YYYY-MM-DD HH:MM) the counters below belong to
+        self._cycles = 0  # cycles run in that minute
+        self._recomputes: dict[int, int] = {}  # strategy id -> state builds (real recomputes) in that minute
+        self._legs: dict[int, int] = {}  # strategy id -> its leg count, so per-option = recomputes x legs
+        self._logged_records: set[tuple[int, str, int]] = set()  # (strategy, rule, record id) already logged
 
     async def rebuild(self) -> None:
         """REQ-115 AC-3: the monitors from the database (the lister); a strategy's memory stays in the store."""
@@ -476,14 +483,53 @@ class Worker:
             return False  # no settings read yet: nothing is checked on a guessed setting
         prefs = await self._preferences(w.user_ref)  # the owner's preferences now (a failure pauses this one strategy)
         state = background_state(w, read, FeedScope(self.cache, w.feed_owner), now, self._values, prefs)
-        await self._recorder(w, state, prefs)
+        self._recomputes[w.strategy_id] = self._recomputes.get(w.strategy_id, 0) + 1  # a real recompute (REQ-166)
+        self._legs[w.strategy_id] = len(w.tracked.position.legs)
+        recorded = await self._recorder(w, state, prefs)
+        self._log_opportunities(w, recorded)
         self._signature[w.strategy_id] = sig
         self._last_check[w.strategy_id] = now
         _keep_recent(self.checks, (w.strategy_id, now))
         return True
 
+    def _log_opportunities(self, w: Watched, recorded: Any) -> None:
+        """One INFO line the first time this process sees an open opportunity record of a rule (``record_check``
+        returns rule id -> record id; a record still open on later checks is not logged again). ``written_at`` is the
+        worker's clock when the record's transaction had committed; a record already open before a restart is logged
+        once as first seen, not as newly written (the store's return does not say which)."""
+        if not isinstance(recorded, Mapping):
+            return
+        for rule_id, record_id in recorded.items():
+            key = (w.strategy_id, rule_id, record_id)
+            if key in self._logged_records:
+                continue
+            self._logged_records.add(key)
+            # "written <date> <time>" with a space, never "written_at=2026-11-06T11:..": the log redactor blanks a
+            # 20+ character run holding letters and numbers (ofo_app.redaction), which that form is
+            log.info("background: opportunity strategy=%s rule=%s record=%s written %s", w.strategy_id, rule_id,
+                     record_id, self._clock().astimezone(IST).isoformat(sep=" ", timespec="seconds"))
+
+    def _roll_minute(self, now: datetime.datetime) -> None:
+        """ONE summary line per wall-clock minute (not per cycle), written when the next minute's first cycle starts."""
+        minute = now.astimezone(IST).strftime("%Y-%m-%d %H:%M")
+        if minute != self._minute:
+            self.flush_minute()
+            self._minute = minute
+
+    def flush_minute(self) -> None:
+        """Write the summary of the minute counted so far (also called when the role stops) and reset the counters."""
+        if self._minute is None:
+            return
+        log.info("background: minute %s cycles=%s checks=%s recomputes %s legs %s valve_step=%s speed=%ss",
+                 self._minute[-5:], self._cycles, sum(self._recomputes.values()),
+                 dict(sorted(self._recomputes.items())),
+                 {k: self._legs[k] for k in sorted(self._recomputes)}, self.valve.step + 1, self._speed)
+        self._cycles, self._recomputes, self._legs = 0, {}, {}
+
     async def cycle(self) -> None:
         now = self._clock()
+        self._roll_minute(now)
+        self._cycles += 1
         if self._rebuilt_at is None or _seconds(now - self._rebuilt_at) >= REBUILD_SECONDS:
             await self._rebuild_safely()
         await self._write_wants(now)  # not behind the speed: the feed is wanted whatever the checks do
@@ -523,6 +569,7 @@ class Worker:
                 _keep_recent(self.errors, (0, type(exc).__name__))
             wait = self._speed_safely() or Decimal(1)  # read again for the sleep; no good speed yet -> 1 s
             await self._sleep(float(wait))  # float-ok: asyncio.sleep takes seconds as float
+        self.flush_minute()
 
 
 def _keep_recent(kept: list, item: object) -> None:
@@ -600,6 +647,7 @@ def main(argv: list[str] | None = None) -> int:
         prog=f"python -m {roles.BACKGROUND.start_module}",
         description=f"Start the {roles.BACKGROUND.name} role (REQ-165 playbook checks with no screen open).")
     parser.parse_args(sys.argv[1:] if argv is None else argv)
+    logging.basicConfig(level=logging.INFO)  # as feed_main: without it the INFO lines below never reach the log
     return asyncio.run(_serve())
 
 

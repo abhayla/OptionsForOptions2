@@ -650,3 +650,77 @@ def test_recent_checks_and_errors_are_bounded():
     for i in range(background.RECENT_KEPT + 500):
         background._keep_recent(kept, i)
     assert len(kept) == background.RECENT_KEPT and kept[0] == 500 and kept[-1] == background.RECENT_KEPT + 499  # noqa: PLR2004 - the 500 overflow
+
+
+# ---- GC-LIVE3 D3/D4: the role's log shows its checks, the speed counters and each recorded opportunity ----------
+def _summaries(caplog) -> list[str]:
+    return [r.getMessage() for r in caplog.records if r.getMessage().startswith("background: minute ")]
+
+
+async def test_one_summary_line_per_wall_clock_minute_counts_only_real_recomputes(scn, caplog):
+    caplog.set_level("INFO", logger="ofo_app.background")
+    prov, now, calls = Prov(scn), [scn.clock_at.replace(second=5, microsecond=0)], Calls()
+    w = _worker(prov, _watched(scn, 2), now, calls)
+    first_minute = now[0].astimezone(background.IST).strftime("%H:%M")
+    await w.cycle()  # minute 1, cycle 1: both strategies recomputed
+    now[0] += datetime.timedelta(seconds=10)
+    await w.cycle()  # same prices: unchanged signature, nothing recomputed, still a cycle
+    now[0] += datetime.timedelta(seconds=10)
+    prov.move_spot(Decimal("23421"), now[0])
+    await w.cycle()  # price moved: both recomputed again
+    assert _summaries(caplog) == []  # still inside the first minute
+    now[0] += datetime.timedelta(seconds=40)  # minute 2
+    prov.move_spot(Decimal("23422"), now[0])
+    await w.cycle()
+    now[0] += datetime.timedelta(seconds=60)  # minute 3 flushes minute 2
+    prov.move_spot(Decimal("23423"), now[0])
+    await w.cycle()
+    lines = _summaries(caplog)
+    assert len(lines) == SECOND
+    assert lines[0].startswith(f"background: minute {first_minute} cycles=3 checks=4 ")
+    assert "recomputes {100: 2, 101: 2}" in lines[0] and "legs {100: 4, 101: 4}" in lines[0]
+    assert "valve_step=1 speed=1" in lines[0]
+    assert " cycles=1 checks=2 " in lines[1] and "recomputes {100: 1, 101: 1}" in lines[1]
+
+
+async def test_a_market_closed_minute_logs_zero_recomputes(scn, caplog):
+    caplog.set_level("INFO", logger="ofo_app.background")
+    prov, now, calls = Prov(scn), [scn.clock_at.replace(second=5, microsecond=0)], Calls()
+    prov.closed = True
+    w = _worker(prov, _watched(scn), now, calls)
+    await w.cycle()
+    now[0] += datetime.timedelta(seconds=60)
+    await w.cycle()
+    [line] = _summaries(caplog)
+    assert " cycles=1 checks=0 recomputes {} " in line and calls.states == []
+
+
+async def test_an_opportunity_record_is_logged_once_with_strategy_rule_and_time(scn, caplog):
+    caplog.set_level("INFO", logger="ofo_app.background")
+    prov, now = Prov(scn), [scn.clock_at]
+
+    async def recorder(_w, _state, _prefs=None):
+        return {"T-01": 7}  # what record_check returns: rule id -> the open record's id
+    w = _worker(prov, _watched(scn), now, recorder)
+    await w.cycle()
+    now[0] += datetime.timedelta(seconds=2)
+    prov.move_spot(Decimal("23421"), now[0])
+    await w.cycle()  # the same record is still open: not logged again
+    lines = [r.getMessage() for r in caplog.records if r.getMessage().startswith("background: opportunity ")]
+    assert len(lines) == 1
+    assert "strategy=100" in lines[0] and "rule=T-01" in lines[0] and "record=7" in lines[0]
+    stamp = scn.clock_at.astimezone(background.IST).isoformat(sep=" ", timespec="seconds")
+    assert lines[0].endswith(" written " + stamp)  # a form the log redactor leaves alone (letters + numbers run)
+
+
+def test_main_configures_info_logging_before_the_loop_starts(monkeypatch):
+    order: list[str] = []
+    monkeypatch.setattr(background.logging, "basicConfig", lambda **kw: order.append(f"basicConfig {kw}"))
+
+    def fake_run(coro):
+        coro.close()
+        order.append("run")
+        return 0
+    monkeypatch.setattr(background.asyncio, "run", fake_run)
+    assert background.main([]) == 0
+    assert order == ["basicConfig {'level': 20}", "run"]
