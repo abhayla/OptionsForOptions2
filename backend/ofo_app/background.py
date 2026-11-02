@@ -380,6 +380,13 @@ def _quantized(v: object) -> Decimal | None:
     return v.quantize(SHOWN_PLACES) if isinstance(v, Decimal) else None
 
 
+def gate_group(strategy_id: int, at: datetime.datetime) -> str:
+    """The record group of one candle close: every record opened at that close shares it. Letters and digits only
+    (the inbox keys a group as ``<strategy>-<group>`` in an ``Identifier``, ``^[A-Za-z0-9_\\-.]{1,64}$``): the close
+    in IST to the microsecond, e.g. ``7-20261102T100000000000``; never an isoformat (':' and '+' made the inbox 500)."""
+    return f"{strategy_id}-{at.astimezone(IST):%Y%m%dT%H%M%S%f}"
+
+
 async def _lapse_open_of(db: Any, w: Watched, rule_id: str) -> None:
     from ofo_app import playbook_store  # noqa: PLC0415 - database layer at run time
     for rec in await playbook_store.open_suggestions(db, w.user_ref, w.strategy_id):
@@ -435,7 +442,7 @@ class DbGateStore:
                 rec = await playbook_store.open_suggestion(
                     db, w.user_ref, w.strategy_id, e.rule_id, trigger_id=trigger,
                     stage=flag.stage_name if flag is not None else stage, value=value, threshold=threshold,
-                    group=f"{w.strategy_id}:{e.at.isoformat()}", source=source,
+                    group=gate_group(w.strategy_id, e.at), source=source,
                     cmp=None if rv is None else rv.cmp, label=label, unit=unit, worse=e.worse, **t19)
                 opened[e.rule_id] = rec.id
             await db.commit()
