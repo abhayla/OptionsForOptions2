@@ -97,6 +97,54 @@ async def test_adj02_flags_exactly_t01_t03_t09_with_the_system_wording(app_db_ur
     assert all(x["reason"] for x in body["results"] if x["kind"] == "not_checked")
 
 
+async def _record_rows(app_engine, sid: int) -> list[tuple]:
+    async with app_engine.connect() as conn:
+        return [tuple(r) for r in (await conn.execute(text(
+            "SELECT id, rule_id, outcome FROM public.adjustment_suggestions WHERE strategy_id = :s ORDER BY id"),
+            {"s": sid})).all()]
+
+
+async def test_adr237_6_the_screen_check_writes_no_record_and_shows_the_stored_one(app_db_url, monkeypatch):
+    """ADR-237 (6): only the worker opens and lapses records; the screen's check shows the condition and the stored
+    records. Two checks with T-01 true leave the record table unchanged; a record the worker's store function opened
+    is named by the T-01 flag (suggestion_id), and a dismissed one gives the "You dismissed this" note."""
+    sid = await _seeded(app_db_url, monkeypatch, "ADJ-02")
+    assert await _record_rows(app_db_url, sid) == []
+    for _ in range(2):
+        status, body = await _check("ADJ-02", sid)
+        assert status == OK, body
+        t01 = next(x for x in body["results"] if x["trigger_id"] == "T-01")
+        assert (t01["kind"], t01["value"], t01["suggestion_id"], t01["note"]) == ("flag", "0.3416", None, None)
+    assert await _record_rows(app_db_url, sid) == []  # before ADR-237 (6) the first check opened three
+    async with app_db_url.begin() as conn:  # the worker's store path (background.DbGateStore.apply)
+        rec = await playbook_store.open_suggestion(conn, "owner", sid, "T-01", trigger_id="T-01", stage="Middle",
+                                                   value=None, threshold=None, source="system")
+    status, body = await _check("ADJ-02", sid)
+    t01 = next(x for x in body["results"] if x["trigger_id"] == "T-01")
+    assert status == OK and (t01["suggestion_id"], t01["note"]) == (rec.id, None)
+    others = [x for x in body["results"] if x["kind"] == "flag" and x["trigger_id"] != "T-01"]
+    assert others and all(x["suggestion_id"] is None for x in others)
+    assert await _record_rows(app_db_url, sid) == [(rec.id, "T-01", "open")]
+    async with app_db_url.begin() as conn:
+        await playbook_store.dismiss(conn, "owner", rec.id)
+    status, body = await _check("ADJ-02", sid)
+    t01 = next(x for x in body["results"] if x["trigger_id"] == "T-01")
+    assert status == OK and (t01["suggestion_id"], t01["note"]) == (None, "You dismissed this")
+    assert await _record_rows(app_db_url, sid) == [(rec.id, "T-01", "dismissed")]
+
+
+async def test_a_records_store_read_failure_is_a_refusal_never_an_empty_answer(app_db_url, monkeypatch):
+    from sqlalchemy.exc import OperationalError  # noqa: PLC0415
+
+    sid = await _seeded(app_db_url, monkeypatch, "ADJ-02")
+
+    async def broken(*_a, **_k):
+        raise OperationalError("SELECT", {}, Exception("connection lost"))
+    monkeypatch.setattr(playbook_store, "open_suggestions", broken)
+    status, body = await _check("ADJ-02", sid)
+    assert status == 503 and "results" not in body, body  # noqa: PLR2004 - Failure.UPSTREAM_BUSY
+
+
 async def test_adj01_no_flag(app_db_url, monkeypatch):
     sid = await _seeded(app_db_url, monkeypatch, "ADJ-01")
     status, body = await _check("ADJ-01", sid)

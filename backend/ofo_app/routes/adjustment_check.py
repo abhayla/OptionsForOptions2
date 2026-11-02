@@ -4,14 +4,15 @@ strategy, market, REST spot, margin, charge rates); the logic is ``ofo_app.adjus
 
 Answer states: strategy not found / another user's -> the approaches route's not-found answer; legs unreadable
 (TrackedUnreadable) -> its refusal; type None -> playbook source ``none`` and no results; not connected or no spot ->
-every rule ``not_checked`` with its reason (never a 500, never a flag). Suggest-only (ADR-003): nothing here places an
-order. Wording: a system playbook's flag is "Adjustment opportunity detected", the user's own playbook or plan's "Your
-rule was triggered" (REQ-045 AC-1, Q252); a rule true at entry is "Already true when tracking started" (F-71).
+every rule ``not_checked`` with its reason (never a 500, never a flag); the records' store unreadable -> a refusal
+(503), never an empty list. ADR-237 (6): this check writes NO suggestion record and lapses none (only the background
+worker does, through the alert gate); it shows the current condition and the stored records. Suggest-only (ADR-003):
+nothing here places an order. Wording: a system playbook's flag is "Adjustment opportunity detected", the user's own
+playbook or plan's "Your rule was triggered" (REQ-045 AC-1, Q252); a rule true at entry is "Already true when tracking started" (F-71).
 """
 from __future__ import annotations
 
 import logging
-import uuid
 from collections.abc import Mapping
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Annotated, Any, Literal
@@ -23,6 +24,7 @@ from ofo.charges import ChargeRates
 from ofo.errors import render
 from ofo.errors.explanations import render_explanation
 from ofo.marketdata.spot_source import resolve_spot
+from sqlalchemy.exc import SQLAlchemyError
 
 from ofo_app import adjustment_check as check
 from ofo_app import playbook_store, scenario_mode
@@ -144,39 +146,22 @@ def _cheapest(state: pe.StrategyState) -> tuple[str, Decimal, int] | None:
     return state.adjustment_approach, state.adjustment_cost, state.adjustment_unpriced
 
 
-async def _sync_records(db: Any, user_ref: str, strategy_id: int, ev: pe.Evaluation, source: str,  # noqa: PLR0913
-                        body: Mapping | None = None,
-                        cheapest: tuple[str, Decimal, int] | None = None) -> tuple[dict[str, int], frozenset[str]]:
-    """REQ-112 AC-1/AC-2, REQ-045 AC-8: one open record per flagged rule (a rule still open keeps its record), all
-    opened at this check sharing one group; the open record of a rule this check found FALSE lapses (condition
-    stopped holding). A not-checked or already-true rule is neither flagged nor cleared: its record stays as it is.
-    ADR-217: a flagged rule whose latest record is dismissed and not yet found false opens no record (its id is
-    returned as the second value, for the "You dismissed this" note); a check that finds it false marks the dismissed
-    record cleared (store.mark_cleared), so the next flag opens one new record."""
-    group = uuid.uuid4().hex
-    opened: dict[str, int] = {}
-    held = await playbook_store.dismissed_holding(db, user_ref, strategy_id)
-    for r in ev.results:
-        if isinstance(r, pe.Flag) and r.rule_id not in held:
-            rec = await playbook_store.open_suggestion(
-                db, user_ref, strategy_id, r.rule_id, trigger_id=r.trigger_id, stage=r.stage_name,
-                value=_num(r.value), threshold=_num(r.threshold), group=group, source=source, cmp=r.cmp,
-                label=check.trigger_words(body, r.trigger_id)[0], unit=check.trigger_words(body, r.trigger_id)[1],
-                **_t19_record(r.trigger_id, cheapest))
-            opened[r.rule_id] = rec.id
-    cleared = set(ev.clear)
-    for rule_id, dismissed in held.items():
-        if rule_id in cleared:
-            await playbook_store.mark_cleared(db, user_ref, dismissed.id)
-    for rec in await playbook_store.open_suggestions(db, user_ref, strategy_id):
-        if rec.rule_id in cleared:
-            await playbook_store.lapse(db, user_ref, rec.id, playbook_store.LAPSE_CONDITION_STOPPED)
+async def stored_records(db: Any, user_ref: str, strategy_id: int,
+                         ev: pe.Evaluation) -> tuple[dict[str, int], frozenset[str]]:
+    """ADR-237 (6): the screen READS the records; only the background worker opens and lapses them, through the one
+    gate (``ofo.adjustment.alert_gate``, stored by ``background.DbGateStore``). Returns (rule id -> id of its open
+    record, for each flagged rule that has one; the flagged rules whose latest record is dismissed and none is open,
+    for the ADR-217 "You dismissed this" note). Writes nothing. A store read that fails raises
+    ``StrategyRefused`` (never an empty answer that would read as "nothing is open")."""
     flagged = {r.rule_id for r in ev.results if isinstance(r, pe.Flag)}
-    return opened, frozenset(rid for rid in held if rid in flagged)
-
-
-#: GC-MU step 4: the public name of the check's record step (the background role calls it); the same function.
-sync_records = _sync_records
+    try:
+        open_now = {rec.rule_id: rec.id for rec in await playbook_store.open_suggestions(db, user_ref, strategy_id)}
+        held = await playbook_store.dismissed_holding(db, user_ref, strategy_id)
+    except SQLAlchemyError as exc:
+        log.warning("adjustment check: records of strategy %s unreadable: %s", strategy_id, type(exc).__name__)
+        raise StrategyRefused(_NOT_AVAILABLE, Failure.UPSTREAM_BUSY) from None
+    opened = {rid: sid for rid, sid in open_now.items() if rid in flagged}
+    return opened, frozenset(rid for rid in held if rid in flagged and rid not in opened)
 
 
 async def current_margin(margin_of: ApproachMargin, tracked: Any, market: Any) -> dict | None:
@@ -204,9 +189,7 @@ async def adjustment_check(  # noqa: PLR0913 - FastAPI dependencies, one per inp
     rates = rates if isinstance(rates, ChargeRates) else None
     try:
         tracked = await tracked_reader(strategy_id, rates)
-    except TrackedExited:  # every leg exited: the strategy closed, so its open records lapse (REQ-112 AC-2)
-        await playbook_store.lapse_all(db, user_ref, strategy_id, playbook_store.LAPSE_STRATEGY_CLOSED)
-        await db.commit()
+    except TrackedExited:  # every leg exited: the worker lapses its open records (REQ-112 AC-2; ADR-237 (6))
         raise StrategyRefused(_NOT_AVAILABLE, Failure.CONFLICT) from None
     except TrackedUnreadable as exc:
         log.warning("adjustment check: strategy %s unreadable: %s", strategy_id, exc)
@@ -232,9 +215,8 @@ async def adjustment_check(  # noqa: PLR0913 - FastAPI dependencies, one per inp
                            config=prefs.approach)
     ev = await check.evaluate_and_remember(db, user_ref, strategy_id, resolved.body, state, scenario_mode.current(),
                                            tracked.position, gap_until=prefs.gap_until)
-    source = playbook_store.SOURCE_SYSTEM if resolved.is_system else playbook_store.SOURCE_OWN
-    opened, dismissed = await _sync_records(db, user_ref, strategy_id, ev, source, resolved.body, _cheapest(state))
-    await db.commit()
+    await db.commit()  # the rule memory only (F-71 entry state); no suggestion record is written here (ADR-237 (6))
+    opened, dismissed = await stored_records(db, user_ref, strategy_id, ev)
     wording = render_explanation("adjust_check_flag_system" if resolved.is_system else "adjust_check_flag_user")
     reply |= {"stage": check.stage_out(ev.stage_name, ev.stage_index),
               "withheld": None if ev.withheld is None else render(ev.withheld),
