@@ -1662,6 +1662,13 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         "{what}; exited {count} legs at {prices}. A paper exit only: no order "
                         "was sent to Zerodha.",
                         {"what": Explained, "count": Recorded, "prices": Explained}),
+    # #614: exactly one exited leg is never "1 legs"; a leg stop's reason already names the contract
+    ExplanationTemplate("paper_alert_body_one", "what_triggered",
+                        "{what}; exited at {price}. A paper exit only: no order was sent to Zerodha.",
+                        {"what": Explained, "price": Explained}),
+    ExplanationTemplate("paper_alert_body_one_named", "what_triggered",
+                        "{what}; exited {leg}. A paper exit only: no order was sent to Zerodha.",
+                        {"what": Explained, "leg": Explained}),
     ExplanationTemplate("summary_breakeven_level", "values_seen", "{level}", {"level": WholePoints}),
     ExplanationTemplate("summary_breakeven_percent", "values_seen", "{level} ({percent}%)",
                         {"level": WholePoints, "percent": SignedPercent}),
@@ -1753,8 +1760,6 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("adjust_cmp_unlimited", "values_seen", "Unlimited"),
     ExplanationTemplate("adjust_cmp_dash", "values_seen", "-"),
     ExplanationTemplate("adjust_cmp_breakevens", "values_seen", "{levels} (profit range {width} points)",
-    ExplanationTemplate("adjust_cmp_adjustments_of", "values_seen", "{used} of {max}",
-                        {"used": Recorded, "max": Recorded}),
                         {"levels": Recorded, "width": Points}),
     ExplanationTemplate("adjust_cmp_no_breakeven_loss", "values_seen", "No breakeven: a loss at every level"),
     ExplanationTemplate("adjust_cmp_no_breakeven_profit", "values_seen", "No breakeven: a profit at every level"),

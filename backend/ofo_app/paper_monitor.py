@@ -40,11 +40,11 @@ from ofo.errors.explanations import ExplanationText, render_explanation
 from ofo.instruments.models import FUTURE_TYPE
 from ofo.marketdata.quote import NormalizedQuote
 from ofo.outcome import read_snapshot
-from ofo.outcome.price_text import price_text
 from ofo.strategy import stored_form as sf
 from ofo.strategy.definition import display_contract
 from ofo.tracking import paper, stops
 from ofo.tracking.orderbook import net_positions
+from ofo.tracking.paper_alert import alert_body
 
 from ofo_app import paper_store, tracked_contracts
 from ofo_app import paper_trigger_store as triggers
@@ -231,16 +231,11 @@ class PaperMonitor:
             await paper_store.place(session, a.user_ref, t.strategy_id, [
                 paper_store.NewOrder(c, "SELL" if open_net[c] > 0 else "BUY", abs(open_net[c]), prices[c], "stop",
                                      now, str(reason), t.id) for c in targets])
-            legs = [render_explanation("paper_alert_leg", contract=texts[c], price=price_text(prices[c]))
-                    for c in targets]
-            joined = legs[0]
-            for leg in legs[1:]:
-                joined = render_explanation("paper_alert_legs", rest=joined, leg=leg)
+            body = alert_body(reason, [(texts[c], prices[c]) for c in targets], names_contract=t.kind == "leg_stop")
             name = sf.shown_name(a.name) if a.name else render_explanation("cell_dash")
             await triggers.add_alert(session, t.strategy_id, t.id, str(render_explanation("paper_alert_title",
                                                                                           name=name)),
-                                     str(render_explanation("paper_alert_body", what=reason,
-                                                            count=len(targets), prices=joined)))
+                                     str(body))
         self.fires += 1
         return {"fired": {t.id}, "cancelled": set()}
 
