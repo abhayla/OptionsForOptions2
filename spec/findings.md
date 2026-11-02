@@ -1198,8 +1198,10 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
 - Measured 2026-11-02 11:06-11:10 (GC-LIVE3 D5), bus mode, strategy 78 (NIFTY 9 Nov IC), from the inbox link
   "Compare approaches": "All 1 that apply" (only No change); cost %, premium left, Greeks, POP all "Not available:
   NIFTY26N0922900PE has no current price", unchanged after 10 s, while GET /paper/strategies/78 read that leg at
-  LTP 63.65 (OI 1.9M). Bears on REQ-155, REQ-156, REQ-162. Status: **measured once, live (bus mode only; not yet
-  re-run inprocess)**.
+  LTP 63.65 (OI 1.9M). Re-run in the default inprocess mode 12:51:47 (inbox link opp=7): the same text for the same leg
+  (only that leg, the bought 22900 PE), only No change offered, while GET /paper/strategies/78 at 12:52:07 read it at
+  67.1 (and 23000 PE 88.05, 23500 CE 109.9, 23600 CE 77.95). Bears on REQ-155, REQ-156, REQ-162. Status: **measured
+  live in both feed modes**.
 
 ## F-93 - Compare says "no plan maximum set" for a strategy whose plan sets 2 adjustments
 - Same walk: "Adjustments used: 0 used; no plan maximum set" for strategy 78, whose accepted plan (from playbook 13)
