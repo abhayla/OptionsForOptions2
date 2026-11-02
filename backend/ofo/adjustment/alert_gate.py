@@ -18,7 +18,7 @@ from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from typing import Literal, Union
 
-from ofo.adjustment.gate_rows import GateRow, GateRows  # noqa: F401 - GateRow re-exported for callers
+from ofo.adjustment.gate_rows import GateRow, GateRows, Preset  # noqa: F401 - re-exported for callers
 from ofo.timeutil import IST
 from ofo.timeutil import SESSION_OPEN as MARKET_OPEN
 
@@ -35,15 +35,6 @@ HELD_TEXT_IDS: Mapping[str, str] = {
 
 Cmp = Literal["ge", "le", "bool"]
 Value = Union[Decimal, bool]  # noqa: UP007
-
-
-@dataclass(frozen=True)
-class Preset:
-    candle: timedelta
-    cooldown: timedelta
-    rearm_fraction: Decimal
-    daily_cap: int
-    quiet_until: time
 
 
 INTRADAY = Preset(timedelta(minutes=1), timedelta(minutes=5), Decimal("0.10"), 6, time(9, 20))

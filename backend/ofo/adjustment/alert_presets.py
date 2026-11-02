@@ -20,7 +20,7 @@ from datetime import timedelta
 from decimal import Decimal
 from typing import Final, Literal
 
-from ofo.adjustment import alert_gate
+from ofo.adjustment.gate_rows import Preset
 from ofo.settings import time_of, value_of
 
 Style = Literal["intraday", "weekly", "monthly"]
@@ -85,12 +85,12 @@ def _whole(value: Decimal, setting: str) -> int:
     return int(value)
 
 
-def preset_for(style: str, values: Mapping[str, Decimal], admin: Mapping[str, Decimal]) -> alert_gate.Preset:
+def preset_for(style: str, values: Mapping[str, Decimal], admin: Mapping[str, Decimal]) -> Preset:
     """The gate preset of ``style`` from the user's values in force and the admin settings in force."""
     s = _style(style)
     user_cap = _whole(value_of(values, key(s, CAP)), key(s, CAP))
     admin_cap = _whole(value_of(admin, key(s, CAP)), key(s, CAP))
-    return alert_gate.Preset(
+    return Preset(
         candle=timedelta(minutes=_whole(value_of(values, key(s, CANDLE)), key(s, CANDLE))),
         cooldown=timedelta(minutes=_whole(value_of(values, key(s, COOLDOWN)), key(s, COOLDOWN))),
         rearm_fraction=value_of(admin, key(s, REARM)).scaleb(-2),  # exact percent -> fraction
