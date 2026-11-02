@@ -99,6 +99,23 @@ def placement_batches(position: dict, clock: datetime.datetime) -> list[tuple[da
     return batches
 
 
+def adjustments_used(position: dict, clock: datetime.datetime) -> int:
+    """The engine's adjustments_used over the orders the seed would store (pure, no DB)."""
+    from ofo.engine.adjust_history import HistoryOrder, adjustment_history  # noqa: PLC0415
+    orders = [HistoryOrder(f"{leg['type']}{leg['strike']}{leg['expiry']}", side, int(leg["quantity"]),
+                           Decimal(price), kind, at, is_option=leg["type"] != "FUT")
+              for at, batch in placement_batches(position, clock) for side, leg, price, kind in batch]
+    return adjustment_history(orders, {}, adjustments_max=None).totals.adjustments_used
+
+
+def check_adjustments_used(position: dict, clock: datetime.datetime) -> None:
+    """Refuse a seed whose orders would show a different adjustments_used than the scenario states (#628)."""
+    stored, stated = adjustments_used(position, clock), int(position.get("adjustments_used") or 0)
+    if stored != stated:
+        raise SeedRefused(f"REFUSED: the orders would show adjustments_used {stored}, "
+                          f"position.adjustments_used is {stated}")
+
+
 async def _contract_id(conn, leg: dict, underlying: str) -> int:
     from sqlalchemy import text  # noqa: PLC0415
     rows = (await conn.execute(
@@ -123,6 +140,7 @@ async def seed(scenario_id: str) -> int:
                           f"position.booked_pnl is {position.get('booked_pnl')}")
     clock = datetime.datetime.fromisoformat(doc["position"]["entry"]["clock"])
     underlying = doc.get("underlying", "NIFTY")
+    check_adjustments_used(position, clock)  # before anything is read or written
 
     from ofo.engine.legs import Action  # noqa: PLC0415
     from ofo.strategy import stored_form as sf  # noqa: PLC0415
