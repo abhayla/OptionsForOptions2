@@ -67,6 +67,8 @@ from ofo_app.api_models import ApiModel, CatalogueText, Identifier, InstrumentId
 from ofo_app.errors import ClosedRoute
 from ofo_app.live_push import LiveFeed
 from ofo_app.outcome_margin import OutcomeMargin
+from ofo_app.routes.broker import current_user_ref
+from ofo_app.routes.leg_picker import WindowLease
 from ofo_app.routes.outcome import (
     AnswerClock,
     LegIn,
@@ -88,6 +90,26 @@ from ofo_app.routes.planned_entry import Reason, capture_entries, get_live_feed
 from ofo_app.underlying import Underlying
 
 router = APIRouter(route_class=ClosedRoute)
+
+#: #583 I-12: the REST read's own hold on the futures legs it prices. Issue #206's streaming rule asks "does a socket
+#: hold every leg?"; a FUT leg typed or loaded by a request that no strategy socket carries yet had no holder, so the
+#: whole read fell to FROM_ENTRIES under the feed-dropped label although the feed was up. Same ONE shared fan-out.
+FUTURES_LEASE = WindowLease()
+
+
+def hold_future_legs(feed: LiveFeed | None, viewer: str, underlying: str, future_ids: list[str]) -> None:
+    """Hold the request's futures legs (only those: option legs follow the strategy socket, ADR-077) for ``viewer``.
+    Answer states for the futures quote afterwards: quoted -> a live number; held, no tick yet -> that leg's own
+    no-quote label and no number from it; not listed -> the provider refuses, nothing is held and the leg is named
+    unknown; stale -> that leg's stale label; feed really down (``feed`` None / session ended) -> the feed label.
+    No feed: nothing to hold."""
+    if feed is None:
+        return
+    key = (viewer, underlying, "leg-edit-futures")
+    if future_ids:
+        FUTURES_LEASE.hold(feed, key, future_ids)
+    else:
+        FUTURES_LEASE.release(key)
 
 MIN_SHAPE_LEGS = 2  # a shape needs at least 2 legs
 MAX_HEDGE_LEGS = edit.MAX_HEDGE_LEGS
@@ -533,6 +555,7 @@ async def leg_edit(req: LegEditIn,  # noqa: PLR0913 - FastAPI dependencies, one 
                    tradable: Annotated[Tradable, Depends(get_move_eligibility)],
                    now: Annotated[AnswerClock, Depends(get_answer_clock)],
                    streaming: Annotated[Callable[[str], bool] | None, Depends(get_streaming)],
+                   viewer: Annotated[str, Depends(current_user_ref)],
                    rates: Annotated[ChargeRates | None, Depends(load_charge_rates)],
                    margin_source: Annotated[OutcomeMargin | None, Depends(get_margin_source)],
                    calc_settings: Annotated[Mapping[str, Decimal], Depends(get_calc_settings)]) -> LegEditOut:
@@ -596,6 +619,8 @@ async def leg_edit(req: LegEditIn,  # noqa: PLR0913 - FastAPI dependencies, one 
             legs=[{"instrument_id": ids[i], "action": new_legs[i].leg.action.value, "lots": new_legs[i].lots,
                    "planned_entry": f"{new_legs[i].leg.entry_price:f}", "captured_at": stamps[i] or now()}
                   for i in shown])
+        hold_future_legs(feed, viewer, req.underlying,
+                         [ids[i] for i in shown if new_legs[i].leg.instrument is Instrument.FUT])
         margin: Margin = await margin_for_request(outcome_req, ctx, margin_source)
         outcome = outcome_response(outcome_req, ctx, streaming, now=now, rates=rates, margin=margin,
                                    settings=calc_settings)
