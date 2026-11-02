@@ -1201,19 +1201,22 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   LTP 63.65 (OI 1.9M). Re-run in the default inprocess mode 12:51:47 (inbox link opp=7): the same text for the same leg
   (only that leg, the bought 22900 PE), only No change offered, while GET /paper/strategies/78 at 12:52:07 read it at
   67.1 (and 23000 PE 88.05, 23500 CE 109.9, 23600 CE 77.95). Bears on REQ-155, REQ-156, REQ-162. Status: **measured
-  live in both feed modes**.
+  live in both feed modes**. **FIXED, proven live 2026-11-02 15:04:51** (366c6c35): Compare on 78 priced every leg,
+  Greeks and POP shown, 5 approaches offered.
 
 ## F-93 - Compare says "no plan maximum set" for a strategy whose plan sets 2 adjustments
 - Same walk: "Adjustments used: 0 used; no plan maximum set" for strategy 78, whose accepted plan (from playbook 13)
   carries max_adjustments 2 (POST /api/strategies/78/adjustment-plan answer, 11:01). Bears on REQ-161, REQ-155.
-  Status: **measured once, live**.
+  Status: **measured once, live**. **FIXED, proven live 2026-11-02 15:04:51** (d45e9968): "0 of 2".
 
 ## F-94 - One strategy shows two different max profit / max loss figures on different screens, without saying which includes charges
 - Measured 2026-11-02: strategy 78 paper book 3,458 / -3,042 (gross); Live Strategies card and Compare
   3,168.79 / -3,331.21. C1 hand check: the engine's figures are the gross ones net of charges (base IC 2,918.50 +
   charges 291.14 = 3,209.64 to the paisa). Decided by ADR-082 (2): every max profit / max loss includes round-trip
   charges and says so, so the paper book's gross figures are the defect (also ADR-008, one engine, one number). Status:
-  **measured live; defect against ADR-082 (2)** (no owner decision needed).
+  **measured live; defect against ADR-082 (2)** (no owner decision needed). **FIXED, proven live 2026-11-02 15:04:40**
+  (1f20bc4a): paper 78 max profit 3,168.80 / max loss -3,331.20 "include about Rs 289.20 of charges and taxes"; Compare
+  shows 3,168.79 / 3,331.21, a 1 paisa rounding difference left between the two screens.
 
 ## F-95 - Every ready-made shape with a futures leg is refused, with a message about a strike
 - Measured 2026-11-02 09:44-10:04: load-template answers 422 "A strike this shape needs is not listed" for
