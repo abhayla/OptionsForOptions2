@@ -1249,3 +1249,12 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   +1.46, +3.23 per unit, the opposite sign to 9 Nov); our CE/PE average is Rs 31 / 16 / 20 per lot more negative than
   the reference, so near expiry a gap remains even after ADR-234 (likely the time-of-day convention for T): the
   ADR-234 re-run of T3 must include a 0-1 day expiry. File: D:\Abhay\scratch\gclive3\t3-1103-r1.txt.
+
+## F-99 - Stopping a second Kite feed process blanks the API's chain for about a minute while broker status still says connected
+- Measured 2026-11-02 12:52-12:56 (inprocess API, chain tab open on NIFTY 9 Nov): GET /api/market/chain LIVE 31 rows
+  before and while `ofo_app.feed_main` ran beside it (its own Kite socket connected 12:52:53); feed stopped by PID
+  12:54:11; LIVE until 12:54:48, then NOT_CONNECTED with 0 rows 12:55:00-12:55:48, LIVE again 12:56:01. During the gap
+  GET /api/broker/status read live_market_data "connected". Earlier the same day (feed and background stopped 12:15)
+  the chain stayed NOT_CONNECTED on both expiries until the API was restarted 12:32. Mechanism not yet read from code
+  (a second socket on the same Kite session, closed abruptly). Production runs one feed owner, so the reach is the dev
+  set-up and mode switches; the status/chain disagreement is the user-visible part. Status: **reproduced once live**.
