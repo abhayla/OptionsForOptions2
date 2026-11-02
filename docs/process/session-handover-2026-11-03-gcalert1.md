@@ -42,4 +42,11 @@ as the full gate passes.
 
 ## NEXT
 GC-LIVE4 in market hours; then #638 diagnosis, #636 round 5, #639.
-(Gate and push lines are added below at the close.)
+## Close state (written 2026-11-03 03:55 IST)
+- Full gate run 1 on 0b9f3a86 (02:47): killed by Claude Code's low-memory reap, no output.
+- Run 2 on 0b9f3a86 (02:58-03:26): ran to the end, TOTAL FAIL on 4 of 9 steps, every red a guard catching new code (selector pin, the word 'intraday' in PreferencesTab.vue, private T-19 helpers used by the worker, a time-zone literal, alert_style route edges, 3 unregistered reply models, one long line, ADR-236/237 stage rows). Fixed: 6d4e1f39 (merged 208c1baf) + c2ad7028 (one stale private call in a test). Frontend test 10 passed, eslint clean after the merge.
+- Run 3 on c2ad7028 (03:43-03:55): killed by the same reap, no output. Stopped there (the reap note: restart only when the owner asks).
+- Measured: the only run that survived had a monitor printing every minute; run 1 had no monitor and run 3 a silent one (it would have printed below 2.5 GB free and never did, so run 3 was killed with more than 2.5 GB free at every 30 s sample; run 1 unmeasured). The reap fires on low memory WHILE THE SESSION IS IDLE, so a chatty monitor (or starting Claude Code with CLAUDE_CODE_DISABLE_BG_SHELL_PRESSURE_REAP=1) is the likely way to get one run through.
+- NOT DONE: gate TOTAL PASS on the final head; push of feature/adjustments (66 local commits ahead of origin). Nothing on main.
+- NEXT for the owner: say 'run the gate' (one run, chatty monitor) -> on TOTAL PASS push feature/adjustments as its own command; then approve GC-LIVE4.
+
