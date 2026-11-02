@@ -559,6 +559,7 @@ issues:
   "#634": S6.7  # merge_preflight PR to main: owner decision after two review rounds (parked)
   "#637": S6.7  # spec_basis_gate refuses owner questions citing ids that exist only in another worktree's spec
   "#638": S6.7  # GC-ALERT1 step 5: 3 worker-level tests red (per-style interval gaps 30/60, plan change, day rollover)
+  "#639": S6.7  # Alert worker follow-ups: screen vs worker spot freshness, dismiss by rule, interval after style change
 
 # Work items whose status is not done.
 work_items:
