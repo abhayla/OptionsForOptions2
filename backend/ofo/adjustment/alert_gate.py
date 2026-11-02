@@ -18,33 +18,23 @@ from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from typing import Literal, Union
 
+from ofo.adjustment.gate_rows import GateRow, GateRows, Preset  # noqa: F401 - re-exported for callers
 from ofo.timeutil import IST
 from ofo.timeutil import SESSION_OPEN as MARKET_OPEN
 
-WORSE_THAN_LAST = "Worse than the last one"
-WORSE_THAN_DISMISSED = "Worse than the one you dismissed"
+#: Catalogue ids (ofo.errors.explanations is the one home of the shown words); the gate holds no English.
+WORSE_THAN_LAST = "alert_record_worse_than_last"
+WORSE_THAN_DISMISSED = "alert_record_worse_than_dismissed"
 HELD_DAILY_LIMIT = "daily_limit"
 HELD_QUIET_TIME = "quiet_time"
-#: The catalogue is the one home of the shown words (ofo.errors.explanations); the two record texts above are tested
-#: equal to their catalogue entries (tests/adjustment/test_alert_texts.py), the held reasons render through these ids.
-TEXT_IDS: Mapping[str, str] = {
-    WORSE_THAN_LAST: "alert_record_worse_than_last",
-    WORSE_THAN_DISMISSED: "alert_record_worse_than_dismissed",
+#: The held reasons (stored values) -> the catalogue ids that render them.
+HELD_TEXT_IDS: Mapping[str, str] = {
     HELD_DAILY_LIMIT: "alert_held_daily_limit",
     HELD_QUIET_TIME: "alert_held_quiet_time",
 }
 
 Cmp = Literal["ge", "le", "bool"]
 Value = Union[Decimal, bool]  # noqa: UP007
-
-
-@dataclass(frozen=True)
-class Preset:
-    candle: timedelta
-    cooldown: timedelta
-    rearm_fraction: Decimal
-    daily_cap: int
-    quiet_until: time
 
 
 INTRADAY = Preset(timedelta(minutes=1), timedelta(minutes=5), Decimal("0.10"), 6, time(9, 20))
@@ -317,25 +307,6 @@ def dismiss(state: GateState, rule_id: str) -> GateState:
     if rule.record is None:
         return state
     return state.with_rule(rule_id, replace(rule, record=replace(rule.record, dismissed=True)))
-
-
-@dataclass(frozen=True)
-class GateRow:
-    """The last stored record of one rule (ADR-237 (5)): when it opened, its threshold, and its outcome."""
-
-    rule_id: str
-    at: datetime
-    threshold: Decimal | None
-    dismissed: bool
-    open: bool
-
-
-@dataclass(frozen=True)
-class GateRows:
-    """What `restore` needs: the last record per rule and the count of records opened on `today` (IST)."""
-
-    last: tuple[GateRow, ...]
-    opened_today: int
 
 
 def _restored_level(spec: RuleSpec | None, threshold: Decimal | None) -> int:

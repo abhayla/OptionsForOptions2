@@ -8,8 +8,11 @@ price reached the provider (read from the same database clock). A restarted work
 """
 from __future__ import annotations
 
+import copy
+import dataclasses
 import datetime
 import importlib.util
+import itertools
 import pathlib
 import time
 from decimal import Decimal as D
@@ -98,7 +101,9 @@ async def _t01_total(engine, sid: int) -> int:
                                         "WHERE strategy_id = :s AND rule_id = 'T-01'"), {"s": sid})).scalar_one()
 
 
-def _worker(scn: scenario_mode.Scenario, clock) -> background.Worker:
+def _worker(scn: scenario_mode.Scenario, clock, *, overrides: dict | None = None, lister=None) -> background.Worker:
+    """The real Worker. ``overrides`` = alert values that differ from the registry defaults (a lower daily cap, a
+    later quiet time); ``lister`` = another way to list the watched strategies (a changed plan)."""
     async def settings():
         return registry_defaults()  # the settings in force: the registry defaults, passed explicitly
 
@@ -106,10 +111,10 @@ def _worker(scn: scenario_mode.Scenario, clock) -> background.Worker:
         return from_values(registry_defaults())  # the owner's preferences: the registry defaults (REQ-168 AC-1)
 
     async def user_values(_user_ref):
-        return registry_defaults()  # the owner's alert values in force: the admin defaults (REQ-170 AC-6)
+        return {**registry_defaults(), **(overrides or {})}  # the owner's alert values in force (REQ-170 AC-6)
     return background.Worker(provider_for=lambda _owner: scn.provider,
-                             lister=lambda: background.owner_lister(scn.provider), clock=clock, settings=settings,
-                             preferences=preferences, user_values=user_values)
+                             lister=lister or (lambda: background.owner_lister(scn.provider)), clock=clock,
+                             settings=settings, preferences=preferences, user_values=user_values)
 
 
 async def _pin_intraday(engine, sid: int) -> None:
@@ -144,7 +149,7 @@ async def test_core_wobble_10_crossings_in_6_minutes_opens_one_record_at_a_candl
     sid, scn = await _seeded(app_db_url, monkeypatch)
     await _pin_intraday(app_db_url, sid)
     now = [scn.clock_at]
-    worker = _worker(scn, lambda: now[0])
+    worker = _worker(scn, lambda now=now: now[0])
     start = await _settle_clear(worker, scn, now, scn.clock_at)
     assert worker.errors == [] and worker.status[sid] is background.MonitoringStatus.ACTIVE
     before = await _t01_ids(app_db_url, sid)
@@ -179,7 +184,7 @@ async def test_crossing_opens_one_record_at_the_confirming_candle_close_not_at_t
     sid, scn = await _seeded(app_db_url, monkeypatch)
     await _pin_intraday(app_db_url, sid)
     now = [scn.clock_at]
-    worker = _worker(scn, lambda: now[0])
+    worker = _worker(scn, lambda now=now: now[0])
     start = await _settle_clear(worker, scn, now, scn.clock_at)
     before = await _t01_ids(app_db_url, sid)
     now[0] = start + datetime.timedelta(seconds=5)
@@ -290,3 +295,224 @@ async def test_a_record_acted_on_mid_session_makes_no_lapse_call_when_the_band_c
     at = await _db_now(app_db_url)
     assert await background.DbGateStore().apply(w, [alert_gate.Lapsed("T-03", at, D("0.20"))], None) == {}
     assert calls == [] and await _t03_rows(app_db_url, w.strategy_id, old) == [(old, "acted_on", None, D("0.35"))]
+
+
+# ---- GC-ALERT1 step 5: the gate as the REAL Worker drives it (REQ-170 AC-1..AC-4, ADR-236, ADR-237) ---------------
+LEVEL_ONE_SPOT = "23440"  # 60 points = 0.256 %: beyond the second rung (0.3 %) of the T-01 ladder (0.5, 0.3)
+LEVEL_ONE_NEW_PLAN_SPOT = "23460"  # 40 points = 0.17 %: beyond 0.2 %, the new plan's second rung
+NEW_RUNG = "0.2"
+QUIET_UNTIL_1150 = D("1150")  # the owner's intraday quiet time: 11:50 (the scenario clock reads 11:40)
+CAP_ONE = {"alerts.intraday.daily_cap": D("1")}
+
+
+async def _ready(app_db_url, monkeypatch, overrides: dict | None = None, lister=None):
+    """A seeded, intraday-pinned strategy, a real Worker and a clock settled clear (two closes at 23000)."""
+    sid, scn = await _seeded(app_db_url, monkeypatch)
+    await _pin_intraday(app_db_url, sid)
+    now = [scn.clock_at]
+    worker = _worker(scn, lambda: now[0], overrides=overrides, lister=lister)
+    await _settle_clear(worker, scn, now, scn.clock_at)
+    assert worker.errors == [] and worker.status[sid] is background.MonitoringStatus.ACTIVE
+    return sid, scn, now, worker
+
+
+async def _advance(worker, now, seconds: int, step: int = 1) -> None:
+    for _ in range(0, seconds, step):
+        now[0] += datetime.timedelta(seconds=step)
+        await worker.cycle()
+
+
+async def _t01_rows(engine, sid: int, since: int) -> list[tuple]:
+    """(id, outcome, worse) of the T-01 records newer than ``since``."""
+    async with engine.connect() as conn:
+        rows = (await conn.execute(text("SELECT id, outcome, worse FROM public.adjustment_suggestions "
+                                        "WHERE strategy_id = :s AND rule_id = 'T-01' AND id > :i ORDER BY id"),
+                                   {"s": sid, "i": since})).all()
+    return [tuple(r) for r in rows]
+
+
+async def _last_id(engine, sid: int) -> int:
+    async with engine.connect() as conn:
+        return (await conn.execute(text("SELECT coalesce(max(id), 0) FROM public.adjustment_suggestions "
+                                        "WHERE strategy_id = :s"), {"s": sid})).scalar_one()
+
+
+async def _held_reasons(engine, sid: int) -> list[str]:
+    async with engine.connect() as conn:
+        rows = (await conn.execute(text("SELECT reason FROM public.adjustment_held_crossings "
+                                        "WHERE strategy_id = :s AND rule_id = 'T-01' ORDER BY held_at, reason"),
+                                   {"s": sid})).all()
+    return [r[0] for r in rows]
+
+
+async def _cross(engine, worker, scn, now, spot: str, sid: int, base: int, wait: int = 130) -> int:  # noqa: PLR0913
+    """Push ``spot`` and run one-second cycles until a T-01 record newer than ``base`` exists; its id."""
+    now[0] += datetime.timedelta(seconds=5)
+    _push_spot(scn, spot, now[0])
+    for _ in range(wait):
+        await worker.cycle()
+        rows = await _t01_rows(engine, sid, base)
+        if rows:
+            return rows[-1][0]
+        now[0] += ONE_SECOND
+    raise AssertionError(f"no T-01 record within {wait} s of the crossing at {spot}")
+
+
+async def _open_one(engine, worker, scn, now, sid) -> tuple[int, int]:
+    base = await _last_id(engine, sid)
+    return base, await _cross(engine, worker, scn, now, CROSS_SPOT, sid, base)
+
+
+async def _dismiss_and_reload(engine, worker, rec: int) -> None:
+    async with engine.begin() as conn:
+        await playbook_store.dismiss(conn, "owner", rec)
+    await worker.rebuild()  # the rebuild task reads the dismissed row into the gate (ADR-236)
+
+
+async def test_a_dismissed_record_stays_quiet_at_the_same_level(app_db_url, monkeypatch):
+    sid, scn, now, worker = await _ready(app_db_url, monkeypatch)
+    base, rec = await _open_one(app_db_url, worker, scn, now, sid)
+    await _dismiss_and_reload(app_db_url, worker, rec)
+    held = await _held_reasons(app_db_url, sid)
+    await _advance(worker, now, 300, step=5)  # five more closes, still beyond the line
+    assert await _t01_rows(app_db_url, sid, base) == [(rec, "dismissed", None)]
+    assert await _held_reasons(app_db_url, sid) == held and worker.errors == []
+
+
+async def test_dismiss_then_the_next_ladder_level_opens_a_record_worse_than_dismissed(app_db_url, monkeypatch):
+    sid, scn, now, worker = await _ready(app_db_url, monkeypatch)
+    base, rec = await _open_one(app_db_url, worker, scn, now, sid)
+    await _dismiss_and_reload(app_db_url, worker, rec)
+    worse = await _cross(app_db_url, worker, scn, now, LEVEL_ONE_SPOT, sid, rec)
+    assert await _t01_rows(app_db_url, sid, base) == [(rec, "dismissed", None), (worse, "open", "dismissed")]
+    assert worker.errors == []
+
+
+@pytest.mark.xfail(strict=True, reason="parked #638: not diagnosed (GC-ALERT1 step 5, 2 rounds used)")
+async def test_a_plan_change_restores_the_gate_against_the_new_ladder(app_db_url, monkeypatch):
+    """The first record opens at the SECOND rung of the old ladder (0.5, 0.3). The plan then moves that rung to 0.2:
+    the stored threshold 0.3 is the first rung of the new ladder (0.5, 0.2), so 0.17 % is one level worse -> a
+    record worse than the last. With the old level kept (1) it would stay quiet."""
+    changed = [False]
+    new_body: list = []
+
+    async def lister():
+        watched = await background.owner_lister(scn.provider)
+        if not changed[0]:
+            return watched
+        if not new_body:
+            body = copy.deepcopy(dict(watched[0].body))
+            for kind, values in body["triggers"]["T-01"].items():
+                if isinstance(values, list):
+                    body["triggers"]["T-01"][kind] = [v if v == "" or D(v) >= D("0.5") else NEW_RUNG for v in values]
+            new_body.append(body)
+        return [dataclasses.replace(w, body=new_body[0]) for w in watched]
+    sid, scn, now, worker = await _ready(app_db_url, monkeypatch, lister=lister)
+    base = await _last_id(app_db_url, sid)
+    first = await _cross(app_db_url, worker, scn, now, LEVEL_ONE_SPOT, sid, base)
+    assert await _t01_rows(app_db_url, sid, base) == [(first, "open", None)]
+    changed[0] = True
+    await worker.rebuild()
+    assert sid not in worker._gate  # dropped: restored at the next check against the new ladder
+    second = await _cross(app_db_url, worker, scn, now, LEVEL_ONE_NEW_PLAN_SPOT, sid, first)
+    assert await _t01_rows(app_db_url, sid, base) == [(first, "lapsed", None), (second, "open", "last")]
+    assert worker._gate_body[sid] == new_body[0] and worker.errors == []
+
+
+async def test_cap_reached_writes_exactly_one_held_row_for_the_episode(app_db_url, monkeypatch):
+    sid, scn, now, worker = await _ready(app_db_url, monkeypatch, overrides=CAP_ONE)
+    base, rec = await _open_one(app_db_url, worker, scn, now, sid)  # the day's one record
+    held = await _held_reasons(app_db_url, sid)
+    now[0] += ONE_SECOND
+    _push_spot(scn, LEVEL_ONE_SPOT, now[0])  # one level worse, but the cap is used
+    await _advance(worker, now, 300, step=5)
+    assert await _held_reasons(app_db_url, sid) == [*held, "daily_limit"]
+    assert await _t01_rows(app_db_url, sid, base) == [(rec, "open", None)] and worker.errors == []
+
+
+@pytest.mark.xfail(strict=True, reason="parked #638: not diagnosed (GC-ALERT1 step 5, 2 rounds used)")
+async def test_the_ist_day_rollover_resets_the_cap(app_db_url, monkeypatch):
+    sid, scn, now, worker = await _ready(app_db_url, monkeypatch, overrides=CAP_ONE)
+    base, rec = await _open_one(app_db_url, worker, scn, now, sid)
+    now[0] += ONE_SECOND
+    _push_spot(scn, LEVEL_ONE_SPOT, now[0])
+    await _advance(worker, now, 120, step=5)
+    assert await _t01_rows(app_db_url, sid, base) == [(rec, "open", None)]  # held today
+    held = await _held_reasons(app_db_url, sid)
+    now[0] += datetime.timedelta(days=3)  # the next trading day (the scenario day is a Friday), same clock time
+    _push_spot(scn, LEVEL_ONE_SPOT, now[0])
+    for _ in range(130):
+        await worker.cycle()
+        now[0] += ONE_SECOND
+    assert worker.status[sid] is background.MonitoringStatus.ACTIVE, worker.paused_reason
+    rows = await _t01_rows(app_db_url, sid, base)
+    assert [(r[1], r[2]) for r in rows] == [("lapsed", None), ("open", "last")], rows  # the cap no longer holds it
+    assert await _held_reasons(app_db_url, sid) == held
+
+
+async def test_quiet_time_holds_once_then_opens_at_the_first_close_after(app_db_url, monkeypatch):
+    sid, scn, now, worker = await _ready(app_db_url, monkeypatch,
+                                         overrides={"alerts.intraday.quiet_until": QUIET_UNTIL_1150})
+    base = await _last_id(app_db_url, sid)
+    held = await _held_reasons(app_db_url, sid)
+    now[0] += ONE_SECOND
+    _push_spot(scn, CROSS_SPOT, now[0])
+    opened_at = None
+    while now[0] < scn.clock_at.replace(hour=11, minute=52):
+        await worker.cycle()
+        if opened_at is None and await _t01_rows(app_db_url, sid, base):
+            opened_at = now[0]
+        now[0] += datetime.timedelta(seconds=2)
+    assert await _held_reasons(app_db_url, sid) == [*held, "quiet_time"]  # one row for all the quiet closes
+    assert opened_at is not None
+    close = scn.clock_at.replace(hour=11, minute=51, second=0)  # 11:50:00 is still quiet: the first close after
+    assert close <= opened_at <= close + datetime.timedelta(seconds=12), opened_at
+    assert [(r[1], r[2]) for r in await _t01_rows(app_db_url, sid, base)] == [("open", None)]
+
+
+@pytest.mark.xfail(strict=True, reason="parked #638: not diagnosed (GC-ALERT1 step 5, 2 rounds used)")
+async def test_each_style_is_checked_at_its_own_interval(app_db_url, monkeypatch):
+    """ADR-235 (1): intraday 10 s, weekly 30 s, monthly 120 s; the price changes every second so only the interval
+    decides how often the Worker recomputes."""
+    sid, scn = await _seeded(app_db_url, monkeypatch)
+    try:
+        for style, every, run_s in (("intraday", 10, 60), ("weekly", 30, 100), ("monthly", 120, 250)):
+            async with app_db_url.connect() as conn:
+                await strategy_alert_style_store.set_pin(conn, "owner", sid, style)
+                await conn.commit()
+            now = [scn.clock_at]
+            worker = _worker(scn, lambda now=now: now[0])
+            at: list[datetime.datetime] = []
+            for s in range(run_s):
+                now[0] = scn.clock_at + datetime.timedelta(seconds=s)
+                _push_spot(scn, "23000" if s % 2 else "23001", now[0])
+                before = worker._recomputes.get(sid, 0)
+                await worker.cycle()
+                if worker._recomputes.get(sid, 0) > before:
+                    at.append(now[0])
+            gaps = {int((b - a).total_seconds()) for a, b in itertools.pairwise(at)}
+            assert len(at) >= 3 and gaps == {every}, (style, at, gaps)  # noqa: PLR2004
+    finally:
+        await _pin_intraday(app_db_url, sid)
+
+
+async def test_a_close_is_processed_with_no_check_that_wake(app_db_url, monkeypatch):
+    """Mutation guard (ADR-237 (2)): the crossing is checked 4 s before the 1-minute close, so the check at the close
+    is 'too soon' (10 s interval) and does not run. The record must still open AT the close, from the empty-readings
+    close pass; without that pass it opens a check later (6 s on)."""
+    sid, scn, now, worker = await _ready(app_db_url, monkeypatch)
+    base = await _last_id(app_db_url, sid)
+    close = now[0].replace(second=0) + datetime.timedelta(minutes=1)
+    now[0] = close - datetime.timedelta(seconds=4)
+    _push_spot(scn, CROSS_SPOT, now[0])
+    await worker.cycle()  # the crossing's one check
+    assert await _t01_rows(app_db_url, sid, base) == []
+    opened_at = None
+    for _ in range(12):
+        now[0] += ONE_SECOND
+        await worker.cycle()
+        if await _t01_rows(app_db_url, sid, base):
+            opened_at = now[0]
+            break
+    assert opened_at == close, (opened_at, close)
+    assert worker.errors == []

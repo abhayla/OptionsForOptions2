@@ -11,21 +11,19 @@ from ofo.errors.explanations import EXPLANATIONS, render_explanation
 
 
 def test_each_gate_text_id_names_a_catalogue_entry():
-    assert [i for i in alert_gate.TEXT_IDS.values() if i not in EXPLANATIONS] == []
-    assert len(alert_gate.TEXT_IDS) == 4  # noqa: PLR2004 - the two record texts and the two held reasons
+    ids = [alert_gate.WORSE_THAN_LAST, alert_gate.WORSE_THAN_DISMISSED, *alert_gate.HELD_TEXT_IDS.values()]
+    assert [i for i in ids if i not in EXPLANATIONS] == []
+    assert len(ids) == 4  # noqa: PLR2004 - the two record texts and the two held reasons
 
 
-def test_the_record_constants_equal_their_catalogue_text():
-    assert render_explanation(alert_gate.TEXT_IDS[alert_gate.WORSE_THAN_LAST]) == "Worse than the last one"
-    assert render_explanation(alert_gate.TEXT_IDS[alert_gate.WORSE_THAN_DISMISSED]) == \
-        "Worse than the one you dismissed"
-    for constant in (alert_gate.WORSE_THAN_LAST, alert_gate.WORSE_THAN_DISMISSED):
-        assert render_explanation(alert_gate.TEXT_IDS[constant]) == constant
+def test_the_record_ids_render_their_catalogue_text():
+    assert render_explanation(alert_gate.WORSE_THAN_LAST) == "Worse than the last one"
+    assert render_explanation(alert_gate.WORSE_THAN_DISMISSED) == "Worse than the one you dismissed"
 
 
 def test_the_held_reasons_read_exactly():
-    assert render_explanation(alert_gate.TEXT_IDS[alert_gate.HELD_DAILY_LIMIT]) == "held: daily limit"
-    assert render_explanation(alert_gate.TEXT_IDS[alert_gate.HELD_QUIET_TIME]) == "held: quiet time"
+    assert render_explanation(alert_gate.HELD_TEXT_IDS[alert_gate.HELD_DAILY_LIMIT]) == "held: daily limit"
+    assert render_explanation(alert_gate.HELD_TEXT_IDS[alert_gate.HELD_QUIET_TIME]) == "held: quiet time"
 
 
 def test_the_style_names_cover_every_resolver_style():

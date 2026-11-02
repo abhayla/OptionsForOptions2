@@ -20,7 +20,7 @@ from datetime import timedelta
 from decimal import Decimal
 from typing import Final, Literal
 
-from ofo.adjustment import alert_gate
+from ofo.adjustment.gate_rows import Preset
 from ofo.settings import time_of, value_of
 
 Style = Literal["intraday", "weekly", "monthly"]
@@ -79,20 +79,20 @@ def _style(style: object) -> Style:
     raise StyleRefused(f"not a trading style: {style!r}")
 
 
-def _whole(value: Decimal, name: str) -> int:
+def _whole(value: Decimal, setting: str) -> int:
     if value != value.to_integral_value():
-        raise ValueError(f"{name} must be whole, got {value}")
+        raise ValueError(f"setting {setting} must be whole, got {value}")
     return int(value)
 
 
-def preset_for(style: str, values: Mapping[str, Decimal], admin: Mapping[str, Decimal]) -> alert_gate.Preset:
+def preset_for(style: str, values: Mapping[str, Decimal], admin: Mapping[str, Decimal]) -> Preset:
     """The gate preset of ``style`` from the user's values in force and the admin settings in force."""
     s = _style(style)
-    user_cap = _whole(value_of(values, key(s, CAP)), "daily cap")
-    admin_cap = _whole(value_of(admin, key(s, CAP)), "daily cap")
-    return alert_gate.Preset(
-        candle=timedelta(minutes=_whole(value_of(values, key(s, CANDLE)), "candle")),
-        cooldown=timedelta(minutes=_whole(value_of(values, key(s, COOLDOWN)), "cool-down")),
+    user_cap = _whole(value_of(values, key(s, CAP)), key(s, CAP))
+    admin_cap = _whole(value_of(admin, key(s, CAP)), key(s, CAP))
+    return Preset(
+        candle=timedelta(minutes=_whole(value_of(values, key(s, CANDLE)), key(s, CANDLE))),
+        cooldown=timedelta(minutes=_whole(value_of(values, key(s, COOLDOWN)), key(s, COOLDOWN))),
         rearm_fraction=value_of(admin, key(s, REARM)).scaleb(-2),  # exact percent -> fraction
         daily_cap=min(user_cap, admin_cap),
         quiet_until=time_of(value_of(values, key(s, QUIET))),

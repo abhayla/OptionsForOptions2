@@ -128,8 +128,8 @@ def test_dismiss_then_clear_and_recross_before_cooldown_stays_quiet():
 def test_dismiss_then_next_level_opens_worse_than_dismissed():
     _, ev = feed([("10:41:30", D("91")), ("10:42:05", D("91"))], state=_opened_then_dismissed())
     assert [(e.level, e.threshold, e.worse, e.at.time()) for e in ev] == [(1, D("90"), "dismissed", time(10, 42))]
-    assert ag.WORSE_THAN_DISMISSED == "Worse than the one you dismissed"
-    assert ag.WORSE_THAN_LAST == "Worse than the last one"
+    assert ag.WORSE_THAN_DISMISSED == "alert_record_worse_than_dismissed"
+    assert ag.WORSE_THAN_LAST == "alert_record_worse_than_last"
 
 
 def test_dismiss_then_next_level_over_cap_is_held_not_dropped():
