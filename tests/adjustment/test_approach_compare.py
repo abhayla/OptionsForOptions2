@@ -197,6 +197,18 @@ def test_ac2_breakevens_and_margin_change_and_adjustments_rows():
     assert adj.leaders == ("A-36",)
 
 
+def test_f93_adjustments_row_shows_the_plan_maximum_as_used_of_max():
+    """F-93: a plan that sets a maximum shows "0 of 2" (+1 when the approach trades); 0 shows "0 of 0";
+    no maximum keeps the "no plan maximum set" words; the leader is still the fewest used."""
+    _, cols, ctx = build_columns("ADJ-02")
+    for mx, first, trading in ((2, "0 of 2", "1 of 2"), (0, "0 of 0", "1 of 0")):
+        adj = row(compare(cols, replace(ctx, adjustments_max=mx)), "adjustments")
+        assert adj.values["A-36"].text == first and adj.values["A-05"].text == trading, mx
+        assert adj.values["A-05"].value == 1 and adj.leaders == ("A-36",)
+    none = row(compare(cols, replace(ctx, adjustments_max=None)), "adjustments")
+    assert none.values["A-36"].text == "0 used; no plan maximum set"
+
+
 def test_ac3_pop_held_every_value_dash_no_leader():
     """AC-3 / attack 2: POP held (switch off) -> every POP value "-" with the held reason, no leader."""
     _, cols, ctx = build_columns("ADJ-02", pop_on=False)

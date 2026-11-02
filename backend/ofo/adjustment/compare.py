@@ -34,8 +34,8 @@ Definitions (technical calls of the GC-ADJ1 contract, "Found during the run" row
   summed unrounded then rounded once to 4 dp; theta per calendar day, vega per 1 vol point. A leg without Greeks ->
   "-". No open leg (exit) -> "-" with "No position left after exit", never 0, so it cannot lead (ADR-215).
   Leader: |delta| lowest, |gamma| lowest, theta highest, |vega| lowest.
-- Adjustments used: the position's count, +1 when this approach trades; no plan maximum exists yet (playbooks are
-  GC-ADJ2), so the text says so; leader = fewest.
+- Adjustments used: the position's count, +1 when this approach trades, shown "used of max" when the accepted plan
+  sets ``max_adjustments`` (F-93), else "used; no plan maximum set"; leader = fewest.
 - Strike liquidity: the widest (ask - bid) / mid in % among the contracts the approach OPENS; no new contract -> "-"
   (nothing to measure); a new contract without a bid or an ask -> "-". The low-OI warnings stay on the approach.
 - Would you open this fresh: the After's open legs as a new trade at current prices (round-trip charges, no booked
@@ -132,6 +132,7 @@ class Context:
     adjustments_used: int | None  # None: could not be read
     view: CompareView  # the user's Compare range, steps and move columns (REQ-168 AC-1; required)
     limits: liquidity.Limits | None = None  # the playbook's saved liquidity limits (ADR-230 (1)); None: not applied
+    adjustments_max: int | None = None  # the plan's guards.max_adjustments (F-93); None: the plan sets none
 
 
 @dataclass(frozen=True)
@@ -446,7 +447,10 @@ class _Rows:
         if self.ctx.adjustments_used is None:
             return _dash(render_explanation("adjust_cmp_adjustments_unknown"))
         used = self.ctx.adjustments_used + (1 if self.b.trades else 0)
-        return Cell(render_explanation("adjust_cmp_adjustments", used=used), Decimal(used), None, Decimal(used))
+        mx = self.ctx.adjustments_max  # F-93: the accepted plan's maximum, shown as "used of max"
+        text = (render_explanation("adjust_cmp_adjustments", used=used) if mx is None
+                else render_explanation("adjust_cmp_adjustments_of", used=used, max=mx))
+        return Cell(text, Decimal(used), None, Decimal(used))
 
     def liquidity(self) -> Cell:
         before = {(x.type, x.strike, x.expiry, x.side) for x in self.ctx.position.legs}

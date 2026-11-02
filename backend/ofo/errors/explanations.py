@@ -1753,6 +1753,8 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("adjust_cmp_unlimited", "values_seen", "Unlimited"),
     ExplanationTemplate("adjust_cmp_dash", "values_seen", "-"),
     ExplanationTemplate("adjust_cmp_breakevens", "values_seen", "{levels} (profit range {width} points)",
+    ExplanationTemplate("adjust_cmp_adjustments_of", "values_seen", "{used} of {max}",
+                        {"used": Recorded, "max": Recorded}),
                         {"levels": Recorded, "width": Points}),
     ExplanationTemplate("adjust_cmp_no_breakeven_loss", "values_seen", "No breakeven: a loss at every level"),
     ExplanationTemplate("adjust_cmp_no_breakeven_profit", "values_seen", "No breakeven: a profit at every level"),

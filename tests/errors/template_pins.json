@@ -2147,6 +2147,10 @@
     "sha256": "ad831196794998f193a4413821d5f7b2af5e4a4f737735836a2908d5e1d501b1",
     "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"
   },
+  "explanation:adjust_cmp_adjustments_of": {
+    "sha256": "4966e2c2999b56aec324d95639d288b2b36d5fff1efeb30bd12ca2a7c2a93044",
+    "reviewed": "pending owner read"
+  },
   "explanation:adjust_cmp_fresh": {
     "sha256": "be32d09d887e832a0a255ae96b1c7c7be7570f42fcb7e703ee2f24325c266ef4",
     "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"

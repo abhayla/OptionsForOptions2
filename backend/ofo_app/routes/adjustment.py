@@ -149,6 +149,13 @@ def liquidity_inputs(guards: Mapping[str, Any] | None,
     return limits, _before_max_profit(before)
 
 
+def plan_max(guards: Mapping[str, Any] | None) -> int | None:
+    """F-93: the plan's ``guards.max_adjustments`` for the Compare's "used of max" (the same reading as the history
+    page's ``_plan_max``): a whole number >= 0, else None (no guards, no key, not a whole number: "no plan maximum")."""
+    mx = None if guards is None else guards.get("max_adjustments")
+    return mx if type(mx) is int and mx >= 0 else None
+
+
 def get_market_reader() -> MarketReader:
     """The market reader over the outcome's market context (``adjustment_readers.read_market``)."""
     from ofo_app.adjustment_readers import read_market  # noqa: PLC0415 - as above
@@ -406,7 +413,7 @@ async def adjustment_approaches(  # noqa: PLR0913 - FastAPI dependencies, one pe
             out.append(item)
         reply["approaches"] = out
         reply |= await _compare_reply(columns, tracked, spot.value, market, rates, pop_on, before,  # type: ignore[arg-type]
-                                      margin_of, prefs, limits)
+                                      margin_of, prefs, limits, guards)
     reply["available"] = _available(position, market.chain, spot.value if spot.available else None, dict(built_list),
                                     prefs.approach)
     reply["days_to_expiry"] = _days_to_expiry(position)
@@ -462,7 +469,8 @@ async def _approach_item(a: str, built: ApproachLegs | None, priced: Mapping[str
 async def _compare_reply(columns: list[Column], tracked: Tracked, spot: Decimal, market: MarketInputs,  # noqa: PLR0913
                          rates: ChargeRates | None, pop_on: bool, before: Priced,
                          margin_of: ApproachMargin, prefs: Preferences,
-                         limits: liquidity.Limits | None = None) -> dict[str, Any]:
+                         limits: liquidity.Limits | None = None,
+                         guards: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """REQ-156: the compare over the built approaches; the current legs' margin is "No change"'s (read once more
     only when A-36 was not asked)."""
     position = tracked.position
@@ -471,7 +479,7 @@ async def _compare_reply(columns: list[Column], tracked: Tracked, spot: Decimal,
         unchanged = build_approach(position, market.chain, spot, NO_CHANGE, prefs.approach)
         before_margin = _margin_read(await _margin(margin_of, unchanged, market))
     ctx = Context(position, spot, market.chain, rates, pop_on, before_margin, market.leg_greeks,
-                  tracked.adjustments_used, prefs.compare, limits)
+                  tracked.adjustments_used, prefs.compare, limits, plan_max(guards))
     return _compare_block(compare(columns, ctx, before.after, before.charges_known))
 
 

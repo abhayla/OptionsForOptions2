@@ -159,6 +159,22 @@ def test_gcmu_a5_adj13_compare_adjustments_used_reads_the_history_count():
     assert any(D(c["value"]) == D(1) + 1 for c in row["values"].values())
 
 
+def test_f93_compare_shows_the_accepted_plans_maximum_as_used_of_max():
+    """F-93: the plan's guards.max_adjustments 2 reads "1 of 2" for no change (ADJ-13 has made one) and "2 of 2" for an
+    approach that trades; no guards, no key or a non-number keeps "no plan maximum set" (fail closed)."""
+    sc = load("ADJ-13")
+
+    def texts(guards):
+        body = post(client_for(sc, guards=guards)).json()
+        row = next(c for c in body["criteria"] if c["id"] == "adjustments")
+        return {a: c["text"] for a, c in row["values"].items()}
+
+    shown = texts({"max_adjustments": 2})
+    assert shown["A-36"] == "1 of 2" and "2 of 2" in shown.values() and not any("no plan" in t for t in shown.values())
+    for guards in (None, {}, {"max_adjustments": "2"}, {"max_adjustments": True}, {"max_adjustments": -1}):
+        assert texts(guards)["A-36"] == "1 used; no plan maximum set", guards
+
+
 def test_ac4_adj23_pop_present_and_held_switch_off_gives_dash_with_reason():
     sc = load("ADJ-23")
     # held_switches: ON in development and test
