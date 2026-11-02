@@ -32,7 +32,11 @@ Written 13:15 IST, completed at C2 15:3x IST; the C3 result is added in C4.
 | E4 close 15:29-15:32 | Option chain: 1 banner "Market closed. Prices are from 2 Nov 2026, 15:30:00 IST" PASS. Paper tab: no banner, "no implied volatility for this leg", Total P&L still moving after 15:30 (+20,404.40 -> +20,846.40) FAIL; GET /api/market/indices: market_closed true, values null FAIL -> #616 unchanged | run log |
 
 ## PENDING
-- C3 RUNNING: prepush --full on the final head, then push if TOTAL PASS (result added in C4).
+- C3 BLOCKED: prepush --full on 828bd537 was stopped by the low-memory reaper at ~15:58 after ~21 min (3rd reaper kill of
+  the gate in 3 days: 11-01, 11-02 08:34, 11-02 15:58). Owner chose to run it from the prompt:
+  `! cd D:/Abhay/Ventures/OptionsForOptions2-OptionsForOptions2-settings && python scripts/orchestrator/prepush.py --full`
+  Nothing pushed: ~30 commits are local only. FIRST STEP of the next session if not done tonight: run that command,
+  push `feature/adjustments` on TOTAL PASS, then C4 clean-up (heavy slot release, -fix633 / -fix628 worktrees via wt-rm.ps1).
 - #616 (Paper after close, indices null): not fixed; reproduced 2026-11-02.
 
 ## PARKED
@@ -45,6 +49,8 @@ Written 13:15 IST, completed at C2 15:3x IST; the C3 result is added in C4.
   paper_alert_body_one_named).
 
 ## NEXT
+- FIRST: the C3 gate + push above.
+- Owner approval of `docs/process/goal-contract-GC-ALERT1-DRAFT.md` (reviewed, FIX FIRST applied; one open owner question inside).
 - Build REQ-170 (alert discipline) + ADR-235 (speed per style): goal contract first, core proof = strategy 66-style flapping on the saved scenario/live paper data gives 1 record, not 30.
 - #636 round 4 per the reviewed design (merge base branch first, guard tests, record merge commit in #636).
 - T3 re-run with the reference logged in (ADR-234 (6)), 9 Nov + an expiry-day chain; then the one-IV-per-strike decision.
