@@ -13,7 +13,7 @@ from ofo.settings import calc as settings_calc
 from ofo_app import background, chain_push, feed_bus, scenario_mode
 from redis.exceptions import ConnectionError as RedisConnectionError
 
-from tests_app.test_background_cycle import DEFAULTS, Calls, Prov, _prefs, _settings, _watched
+from tests_app.test_background_cycle import DEFAULTS, Calls, FakeGate, Prov, _prefs, _settings, _watched
 
 OWNER = "owner"
 LEGS_INDEX_AND_WINDOW = 62  # 4 legs + the index + the chain screen's window (15 strikes each side, CE and PE)
@@ -90,7 +90,7 @@ def _worker(prov, watched, now, client):
     async def lister():
         return watched
     return background.Worker(provider_for=lambda _o: prov, lister=lister, clock=lambda: now[0], settings=_settings(),
-                             preferences=_prefs, recorder=Calls(), want_client=client)
+                             preferences=_prefs, recorder=Calls(), want_client=client, gate_store=FakeGate())
 
 
 async def _relay_wants(client) -> list[int]:

@@ -12,8 +12,10 @@ import datetime
 import importlib.util
 import pathlib
 import time
+from decimal import Decimal as D
 
 import pytest
+from ofo.adjustment import alert_gate
 from ofo.adjustment.preferences import from_values
 from ofo.settings import calc as settings_calc
 from ofo.settings import defaults as registry_defaults
@@ -231,3 +233,60 @@ async def test_restart_reopens_nothing_writes_no_second_held_and_keeps_rule_memo
     async with app_db_url.connect() as conn:
         assert await playbook_store.rule_state(conn, "owner", sid) == memory
     assert await _t01_total(app_db_url, sid) == total_before  # no record of any outcome written by the restart
+
+
+async def _watched_and_fresh_t03(app_engine, monkeypatch) -> tuple[background.Watched, int]:
+    """The seeded strategy as the worker lists it, with every earlier open record lapsed and one T-03 record open."""
+    sid, scn = await _seeded(app_engine, monkeypatch)
+    w = next(x for x in await background.owner_lister(scn.provider) if x.strategy_id == sid)
+    async with app_engine.begin() as conn:
+        await playbook_store.lapse_all(conn, "owner", sid, playbook_store.LAPSE_CONDITION_STOPPED)
+        rec = await playbook_store.open_suggestion(conn, "owner", sid, "T-03", trigger_id="T-03", stage="Middle",
+                                                   value=D("0.36"), threshold=D("0.35"))
+    return w, rec.id
+
+
+async def _t03_rows(engine, sid: int, since: int) -> list[tuple]:
+    async with engine.connect() as conn:
+        rows = (await conn.execute(text("SELECT id, outcome, worse, threshold FROM public.adjustment_suggestions "
+                                        "WHERE strategy_id = :s AND rule_id = 'T-03' AND id >= :i ORDER BY id"),
+                                   {"s": sid, "i": since})).all()
+    return [tuple(r) for r in rows]
+
+
+async def test_an_escalation_of_an_open_record_lapses_it_and_opens_the_worse_one_in_one_transaction(app_db_url,
+                                                                                                  monkeypatch):
+    """Review #1 of 0036 (REQ-112: one open record per rule): Opened(worse="last") while the rule's record is open ->
+    the old one lapsed and the worse one opened, both or neither (a failing insert leaves the old record open)."""
+    w, old = await _watched_and_fresh_t03(app_db_url, monkeypatch)
+    at = await _db_now(app_db_url)
+    worse = alert_gate.Opened("T-03", at, 2, D("0.40"), D("0.41"), "last")
+
+    async def refused(*_a, **_k):
+        raise RuntimeError("insert refused")
+    with monkeypatch.context() as m:
+        m.setattr(playbook_store, "open_suggestion", refused)
+        with pytest.raises(RuntimeError, match="insert refused"):
+            await background.DbGateStore().apply(w, [worse], None)
+    assert await _t03_rows(app_db_url, w.strategy_id, old) == [(old, "open", None, D("0.35"))]  # rolled back
+    opened = await background.DbGateStore().apply(w, [worse], None)
+    rows = await _t03_rows(app_db_url, w.strategy_id, old)
+    assert rows == [(old, "lapsed", None, D("0.35")), (opened["T-03"], "open", "last", D("0.40"))], rows
+
+
+async def test_a_record_acted_on_mid_session_makes_no_lapse_call_when_the_band_clears(app_db_url, monkeypatch):
+    """Review #4 of 0036: the user acted on the record (the gate does not know); the band clears -> the gate's Lapsed
+    finds no open record: no lapse call, no OF031 error, the record stays acted on."""
+    w, old = await _watched_and_fresh_t03(app_db_url, monkeypatch)
+    async with app_db_url.begin() as conn:
+        await playbook_store.act_on(conn, "owner", old)
+    calls = []
+    real = playbook_store.lapse
+
+    async def counted(*a, **k):
+        calls.append(a)
+        return await real(*a, **k)
+    monkeypatch.setattr(playbook_store, "lapse", counted)
+    at = await _db_now(app_db_url)
+    assert await background.DbGateStore().apply(w, [alert_gate.Lapsed("T-03", at, D("0.20"))], None) == {}
+    assert calls == [] and await _t03_rows(app_db_url, w.strategy_id, old) == [(old, "acted_on", None, D("0.35"))]
