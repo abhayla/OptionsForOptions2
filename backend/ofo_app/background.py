@@ -110,7 +110,8 @@ DEFAULT_MAX_PER_CYCLE: Final = 200  # strategies checked in one cycle; the rest 
 #: the recent checks and errors kept in memory for tests and status (a long-running process must not grow without end:
 #: 1,000 strategies checked each second would add ~21.6 million entries in one market day)
 RECENT_KEPT: Final = 1000
-REBUILD_SECONDS: Final = 30  # the monitor set is re-read this often, so a newly tracked strategy joins (AC-3: 60 s)
+WAKE_SECONDS: Final = Decimal(1)  # ADR-233 (6): the longest the worker sleeps between cycles
+REBUILD_SECONDS: Final = 30 # the monitor set is re-read this often, so a newly tracked strategy joins (AC-3: 60 s)
 _MICROS: Final = 1_000_000
 
 
@@ -788,7 +789,9 @@ class Worker:
                 except Exception as exc:  # one cycle's failure never ends the role (CancelledError is not one)
                     log.exception("background: a cycle failed; the next cycle runs")
                     _keep_recent(self.errors, (0, type(exc).__name__))
-                wait = self._speed_safely() or Decimal(1)  # read again for the sleep; no good speed yet -> 1 s
+                # ADR-233 (6): wake about once a second whatever the setting; ``_check_one`` keeps each strategy to
+                # one check per setting interval. No good speed yet -> 1 s.
+                wait = min(self._speed_safely() or Decimal(1), WAKE_SECONDS)
                 await self._sleep(float(wait))  # float-ok: asyncio.sleep takes seconds as float
         finally:
             rebuilder.cancel()

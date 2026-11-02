@@ -134,7 +134,8 @@ class Calls:
 
 def _settings(values=None):
     """The worker's settings seam: ``values`` (a dict a test may change between cycles), else the registry defaults."""
-    held = DEFAULTS if values is None else values
+    # tests written for a 1 s check speed pin it here; the registry default (30 s, ADR-233) has its own tests below
+    held = {**DEFAULTS, calc_speeds.KEY_BACKGROUND: Decimal(1)} if values is None else values
 
     async def read():
         return held
@@ -1061,3 +1062,43 @@ async def test_a_recorded_write_is_logged_and_its_stored_memory_is_the_next_chec
     prov.move_spot(Decimal("23421"), now[0])
     await w.cycle()
     assert len(seen) == 1 and len(w.checks) == SECOND
+
+
+# ---- ADR-233: 30 s default per strategy, the worker still wakes about once a second -----------------------------
+BACKGROUND_DEFAULT = Decimal(30)
+WAKE_SECONDS = 1.0
+
+
+def test_the_registry_default_of_the_background_check_is_30_seconds():
+    assert DEFAULTS[calc_speeds.KEY_BACKGROUND] == BACKGROUND_DEFAULT
+
+
+async def test_run_wakes_every_second_when_the_setting_is_30(scn):
+    prov, now, calls, slept = Prov(scn), [scn.clock_at], Calls(), []
+    values = {**DEFAULTS, calc_speeds.KEY_BACKGROUND: BACKGROUND_DEFAULT}
+
+    async def sleep(seconds):
+        slept.append(seconds)
+        now[0] += datetime.timedelta(seconds=seconds)
+        if len(slept) == THREE_HELD:
+            w.stop()
+    w = _worker(prov, _watched(scn), now, calls, settings=_settings(values), sleep=sleep)
+    await w.run()
+    assert slept == [WAKE_SECONDS] * THREE_HELD
+
+
+async def test_a_strategy_is_rechecked_only_after_30_seconds_and_only_when_a_price_changed(scn):
+    prov, now, calls = Prov(scn), [scn.clock_at], Calls()
+    values = {**DEFAULTS, calc_speeds.KEY_BACKGROUND: BACKGROUND_DEFAULT}
+    w = _worker(prov, _watched(scn), now, calls, settings=_settings(values))
+    await w.cycle()  # checked at t
+    start = now[0]
+    for _ in range(int(BACKGROUND_DEFAULT) - 1):  # t+1 .. t+29: prices change every second, no recheck
+        now[0] += datetime.timedelta(seconds=1)
+        prov.move_spot(prov.spot.ltp + 1, now[0])
+        await w.cycle()
+    assert len(w.checks) == 1
+    now[0] = start + datetime.timedelta(seconds=int(BACKGROUND_DEFAULT) + 1)
+    prov.move_spot(prov.spot.ltp + 1, now[0])
+    await w.cycle()  # past t+30 and the price changed since the check: rechecked
+    assert len(w.checks) == SECOND

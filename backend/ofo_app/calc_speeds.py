@@ -3,7 +3,8 @@
 Speeds (``read_speeds``, called on EVERY cycle so a changed setting takes effect with no restart):
 (a) per-option figures at most once per ``speeds.per_option_seconds`` per option (default 1 s);
 (b) a strategy open on a screen at most once per ``speeds.open_strategy_seconds`` (GC-SET's key, only read here);
-(c) background checks of a strategy with no screen open at most once per ``speeds.background_check_seconds`` (1 s);
+(c) background checks of a strategy with no screen open at most once per ``speeds.background_check_seconds``
+    (30 s by default, ADR-233);
 (d) a saved draft no screen has open: only when opened (a behaviour, not a key: ``draft_on_open`` is always True).
 
 Safety valve (``Valve``): when the maths step's backlog or reply time crosses its limit, the open-screen and
