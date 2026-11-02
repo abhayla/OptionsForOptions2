@@ -11,11 +11,20 @@
  "fix": "ba6f43dd: each check reads its own clock (test: fake clock advancing 5 s per check, the 2nd strategy still flags). Live after the fix: background wrote records by itself from 10:38:32 (strategy 67 T-03 #30, T-07 #31; 70 T-07 #32; 78 T-06 #37, #39).",
  "detection": {
   "status": "guarded",
-  "checks": ["tests_app/test_background_cycle.py (per-check clock test, added ba6f43dd)"],
+  "checks": [
+   "tests_app/test_background_cycle.py (per-check clock test, added ba6f43dd)"
+  ],
   "note": "The minute line now counts withheld / not_checked reasons (outcomes {...}); a count like withheld_no_spot = all checks shows this class at once."
  },
- "spec_ref": ["REQ-165", "ADR-220"],
+ "spec_ref": [
+  "spec/requirements/REQ-165.md",
+  "spec/decisions/ADR-220.md"
+ ],
  "occurrences": [
-  {"date": "2026-11-02", "where": "background role, GC-LIVE3 D3", "evidence": "0 of 17 strategies flagged 09:48-10:37"}
+  {
+   "date": "2026-11-02",
+   "where": "background role, GC-LIVE3 D3",
+   "evidence": "0 of 17 strategies flagged 09:48-10:37"
+  }
  ]
 }

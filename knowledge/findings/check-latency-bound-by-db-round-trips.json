@@ -14,8 +14,16 @@
   "checks": [],
   "note": "The minute line shows cycles/min and the valve step; no test asserts the check path makes zero DB calls."
  },
- "spec_ref": ["REQ-165", "REQ-166", "ADR-220"],
+ "spec_ref": [
+  "spec/requirements/REQ-165.md",
+  "spec/requirements/REQ-166.md",
+  "spec/decisions/ADR-220.md"
+ ],
  "occurrences": [
-  {"date": "2026-11-02", "where": "GC-LIVE3 D3", "evidence": "1 of 2 clean crossings over 1.0 s"}
+  {
+   "date": "2026-11-02",
+   "where": "GC-LIVE3 D3",
+   "evidence": "1 of 2 clean crossings over 1.0 s"
+  }
  ]
 }

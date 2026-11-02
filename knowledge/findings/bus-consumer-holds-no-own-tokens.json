@@ -11,11 +11,21 @@
  "fix": "7c804264: Worker._hold subscribes the provider to exactly the tokens it wants (releases the rest); BusSocket(publish_want=False) in the background. Live after: reads FRESH 17/17 (09:48), api want no longer wiped (api 0 / bg 33 at 09:50). ba6f43dd widened the hold to the screen's chain window (forward/ATM IV parity with the screen).",
  "detection": {
   "status": "guarded",
-  "checks": ["tests_app/test_background_cycle.py (frame for a monitored leg -> AVAILABLE and FRESH)", "tests_app/test_bus_socket.py (background socket never writes the API want key; API socket still does)"],
+  "checks": [
+   "tests_app/test_background_cycle.py (frame for a monitored leg -> AVAILABLE and FRESH)",
+   "tests_app/test_bus_socket.py (background socket never writes the API want key; API socket still does)"
+  ],
   "note": "Correction recorded: the cold REST reads of #615 are NOT caused by this (measured with the background stopped 09:41-09:42: API wants fell 43 -> 0 within 30 s on their own)."
  },
- "spec_ref": ["REQ-165", "ADR-220"],
+ "spec_ref": [
+  "spec/requirements/REQ-165.md",
+  "spec/decisions/ADR-220.md"
+ ],
  "occurrences": [
-  {"date": "2026-11-02", "where": "background role first live run", "evidence": "STALE 21/21, checks=0"}
+  {
+   "date": "2026-11-02",
+   "where": "background role first live run",
+   "evidence": "STALE 21/21, checks=0"
+  }
  ]
 }
