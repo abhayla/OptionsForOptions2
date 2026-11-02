@@ -78,7 +78,9 @@ DATES: every time written in a record comes from `date` in the same step. NIFTY 
 | S2 | DONE | #633 closed: T-19 A-29 Rs 85.04 = Compare cheapest A-29 85.04 (strategy 81, ADJ-50) |
 | S3 | DONE | #628 closed: strategy 80 history entry 4 legs + 1 adjustment; Compare A-36 "1 of 2" |
 | S4 | DONE | #637 filed (deferred, S6.7), 0712a94e |
-| 3-8, S1 | not started | - |
+| 3 | PARTIAL | items 1-3 merged 73854700 (builder 1eb28da3): registry keys per style incl. speeds.background_check_seconds.<style> (step 6 settings half), alert_presets.preset_for/style_for, user cap ceiling; tests_app/test_alert_preferences.py 10 passed on a throwaway DB (db_run_fresh.py; shared ofo_test is at 0030), domain 173 passed; items 4-7 (pin migration 0035 + routes, plan-sheet control, Preferences tables, texts) dispatched as build/gcalert1-settings2 |
+| 4 | RUNNING | build/gcalert1-636r4 from e311049b; #636 comment records the base |
+| 5-8, S1 | not started | S1 brief ready, waits for a builder slot |
 
 ## Definition of Done
 - [ ] Step 0 data + hand-derived counts, then the core proof (step 1), before any other code.
