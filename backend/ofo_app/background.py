@@ -3,8 +3,16 @@ screen open (REQ-165, REQ-115 AC-1..AC-5, REQ-166 AC-1..AC-3). Suggest-only (ADR
 reaches an order door (``tests_app/test_paper_order_door.py`` walks this module's imports).
 
 One cycle (``Worker.cycle``), each step with its answer state:
-1. The speeds are read NOW (``calc_speeds.read_speeds``, every cycle) and the safety valve applied.
-2. Each monitored strategy, in rotation, at most ``max_per_cycle`` per cycle (the rest roll to the next cycle; B4 (a)):
+1. The settings and speeds are read NOW (``calc_speeds.read_speeds``, every cycle) and the safety valve applied. The
+   strategy list and each user's preferences are NOT read by a cycle: ``rebuild`` reads them on its own task every
+   ``REBUILD_SECONDS`` (preferences once per user per rebuild); a cycle uses the last good list.
+2. Each monitored strategy, in rotation, at most ``max_per_cycle`` per cycle (the rest roll to the next cycle; B4 (a)),
+   each check on ITS OWN clock read (a tick that landed while earlier checks ran is never "in the future"):
+   - the feed's own answer first (``feed_state``: closed / stale / disconnected), then the tick test
+     (``Worker._tick_key``, one held-quote read per leg and the spot, no chain copy): ticked (a leg's or the spot's
+     price, time or health changed, or the IST minute did) -> read; not ticked -> not read (counted ``NOT_TICKED``);
+     no previous fresh read, legs changed, a quote not held, or a provider with no ``held_quote`` -> read (the full
+     read answers, fail closed; a token missing is ``LEG_MISSING``, paused);
    its prices are read from the provider the feed bus feeds (``read_prices``):
    - market closed (``feed_health.market_closed_for``, the one market-state answer) -> nothing recomputed;
    - feed disconnected (provider health not available and not stale) -> paused, no check;
@@ -27,9 +35,14 @@ One cycle (``Worker.cycle``), each step with its answer state:
    kinks, breakevens, POP); the full scenario table (``ofo.scenario.views.scenario_values``) is never called
    (REQ-166 AC-2). Margin is None: the background has no margin read (as a screen whose margin read failed,
    ``missing_margin``).
-4. ``adjustment_check.evaluate_and_remember`` (rule memory, F-71) then the screen's own record sync
-   (``routes.adjustment_check.sync_records``: one open record per flagged rule, REQ-112), so the single-outcome rule
-   holds the same here as on the screen. One strategy's error is logged with its id and does not stop the others
+4. The playbook is evaluated (``playbook_eval.evaluate``, the rule memory last written for the strategy) and the
+   database is written (``record_check``: ``adjustment_check.evaluate_and_remember`` then the screen's own record
+   sync ``routes.adjustment_check.sync_records``, one open record per flagged rule, REQ-112) ONLY when it is needed:
+   the first check of the process (the stored memory is not known yet), any check that flags, or a check whose rule
+   memory, flagged rules or clear rules (a clear rule lapses its open record) differ from the last write. An unchanged
+   clear check writes nothing. Not covered (named): a record opened by a screen for a rule this process has seen as
+   clear since its last write is lapsed at the next write, not at once.
+   One strategy's error is logged with its id and does not stop the others
    (REQ-115 AC-9).
 
 Restart (REQ-115 AC-3, REQ-165 AC-5): the monitors are rebuilt from the database on start (``rebuild``); rule memory
@@ -150,18 +163,24 @@ def _leg_quote(chain: Iterable[Any], leg: Any) -> Any:
     return None
 
 
+def feed_state(provider: Any, now: datetime.datetime) -> PriceState | None:
+    """The feed's own answer before any price is read: market closed / stale / disconnected; None = available."""
+    if market_closed_for(provider, now):
+        return PriceState.MARKET_CLOSED
+    health = provider.status().health
+    if health is DataHealth.STALE:
+        return PriceState.STALE
+    return None if health is DataHealth.AVAILABLE else PriceState.DISCONNECTED
+
+
 def read_prices(provider: Any, watched: Watched, now: datetime.datetime,
                 known: tuple[tuple, frozenset] | None = None) -> PriceRead:
     """The price read of one strategy, one answer state each (module docstring, step 2). ``known``: (the provider's
     listed options, the future expiries) of the underlying when the caller already holds them (the worker keeps them
     per provider and underlying); None reads them from the provider."""
-    if market_closed_for(provider, now):
-        return PriceRead(PriceState.MARKET_CLOSED)
-    health = provider.status().health
-    if health is DataHealth.STALE:
-        return PriceRead(PriceState.STALE)
-    if health is not DataHealth.AVAILABLE:
-        return PriceRead(PriceState.DISCONNECTED)
+    state = feed_state(provider, now)
+    if state is not None:
+        return PriceRead(state)
     position = watched.tracked.position
     expiries = {x.expiry for x in position.legs}
     chains = {e: tuple(provider.option_chain_snapshot(position.underlying, e)) for e in expiries}
@@ -282,11 +301,26 @@ def background_state(watched: Watched, read: PriceRead, shared: FeedScope, now: 
                           config=prefs.approach)
 
 
+@dataclass(frozen=True)
+class Recorded:
+    """What ``record_check`` wrote: rule id -> open record id of each flagged rule, and the evaluation it stored (its
+    memory is the worker's rule memory until the next write)."""
+
+    opened: Mapping[str, int]
+    evaluation: pe.Evaluation
+
+
+def _write_key(ev: pe.Evaluation) -> tuple:
+    """What a write changes: the rule memory, the flagged rules and the clear rules (a clear rule lapses its record)."""
+    memory = tuple(sorted((rid, tuple(sorted(m.items()))) for rid, m in ev.memory.items()))
+    return memory, frozenset(r.rule_id for r in ev.results if isinstance(r, pe.Flag)), frozenset(ev.clear)
+
+
 async def record_check(watched: Watched, state: pe.StrategyState, prefs: Preferences,
-                       scn: Any = None) -> dict[str, int]:
+                       scn: Any = None) -> Recorded:
     """The check and its records in one transaction, through the screen's own functions (REQ-165 AC-5). Returns the
     rule id -> open record id of each rule this check flagged (``sync_records``' first value; a rule already open
-    returns its existing record), so the worker can log it."""
+    returns its existing record), so the worker can log it, and the evaluation stored."""
     from ofo_app import playbook_store  # noqa: PLC0415 - the database layer only when a check runs
     from ofo_app.db import get_sessionmaker  # noqa: PLC0415
     from ofo_app.routes.adjustment_check import sync_records  # noqa: PLC0415
@@ -296,13 +330,14 @@ async def record_check(watched: Watched, state: pe.StrategyState, prefs: Prefere
         source = playbook_store.SOURCE_SYSTEM if watched.is_system else playbook_store.SOURCE_OWN
         opened, _held = await sync_records(db, watched.user_ref, watched.strategy_id, ev, source, watched.body)
         await db.commit()
-    return opened
+    return Recorded(opened, ev)
 
 
 Lister = Callable[[], Awaitable[list[Watched]]]
 Recorder = Callable[[Watched, pe.StrategyState, Preferences], Awaitable[Any]]
 SettingsRead = Callable[[], Awaitable[Mapping[str, Decimal]]]  # every registry setting in force now (REQ-167)
 PreferencesRead = Callable[[str], Awaitable[Preferences]]  # one user's preferences in force now (REQ-168)
+Observer = Callable[[Watched, pe.StrategyState], None]  # every state a check built (tests and status)
 
 
 class Worker:
@@ -312,7 +347,9 @@ class Worker:
                  clock: Callable[[], datetime.datetime], settings: SettingsRead, preferences: PreferencesRead,
                  recorder: Recorder = record_check,
                  cache: SharedCompute | None = None, max_per_cycle: int = DEFAULT_MAX_PER_CYCLE,
-                 sleep: Callable[[float], Awaitable[None]] = asyncio.sleep, want_client: Any = None) -> None:
+                 sleep: Callable[[float], Awaitable[None]] = asyncio.sleep, want_client: Any = None,
+                 observe: Observer | None = None,
+                 rebuild_sleep: Callable[[float], Awaitable[None]] = asyncio.sleep) -> None:
         if max_per_cycle < 1:
             raise ValueError("max_per_cycle must be at least 1")
         self._provider_for, self._lister, self._clock = provider_for, lister, clock
@@ -344,16 +381,38 @@ class Worker:
         self._recomputes: dict[int, int] = {}  # strategy id -> state builds (real recomputes) in that minute
         self._legs: dict[int, int] = {}  # strategy id -> its leg count, so per-option = recomputes x legs
         self._logged_records: set[tuple[int, str, int]] = set()  # (strategy, rule, record id) already logged
+        self._observe, self._rebuild_sleep = observe, rebuild_sleep
+        self._rebuild_tried = False  # the first rebuild runs in the first cycle (or ``run``); later ones on a task
+        self._prefs_of: dict[str, Preferences] = {}  # user -> preferences, read once per rebuild (last good kept)
+        self._leg_ids: dict[int, tuple[tuple, tuple[str, ...]]] = {}  # strategy -> (its legs, spot + leg ids read)
+        self._tick: dict[int, tuple | None] = {}  # strategy -> tick key at its last check (``_tick_key``)
+        self._memory: dict[int, dict] = {}  # strategy -> rule memory of its last write
+        self._written: dict[int, tuple] = {}  # strategy -> ``_write_key`` of its last write
+        self._grids: dict[tuple, tuple] = {}  # (id(provider), underlying, expiry) -> (provider, strike grid)
+        self._outcomes: dict[str, int] = {}  # evaluation outcome (withheld / not checked reason) -> count this minute
 
     async def rebuild(self) -> None:
         """REQ-115 AC-3: the monitors from the database (the lister); a strategy's memory stays in the store."""
         monitors = await self._lister()
         self.monitors = monitors
         self._rebuilt_at = self._clock()
+        for user in dict.fromkeys(w.user_ref for w in monitors):  # once per user, never per check (finding 3)
+            try:
+                self._prefs_of[user] = await self._preferences(user)
+            except Exception as exc:  # the last good read stays; none yet -> that user's strategies are paused
+                log.exception("background: reading the preferences of %s failed; keeping the last good read", user)
+                _keep_recent(self.errors, (0, type(exc).__name__))
         log.info("background: %s strategies monitored", len(monitors))
 
+    async def _rebuild_loop(self) -> None:
+        """The re-read on its own task, off the checks' path (finding 3): every ``REBUILD_SECONDS``."""
+        while not self._stop:
+            await self._rebuild_sleep(REBUILD_SECONDS)
+            await self._rebuild_safely()
+
     async def _rebuild_safely(self) -> None:
-        """A failed re-read keeps the last good list and is retried next cycle (REQ-115 AC-9)."""
+        """A failed re-read keeps the last good list and is retried at the next re-read (REQ-115 AC-9)."""
+        self._rebuild_tried = True
         try:
             await self.rebuild()
         except Exception as exc:  # contained to this step: the previous list stays
@@ -424,6 +483,47 @@ class Worker:
         tokens.add(None if index_id is None else by_id.get(index_id))
         return None if None in tokens else tokens
 
+    def _grid_of(self, provider: Any, options: Mapping, underlying: str, expiry: datetime.date) -> list[Decimal]:
+        key = (id(provider), underlying, expiry)
+        kept = self._grids.get(key)
+        if kept is None or kept[0] is not provider:
+            grid = sorted({k[2] for k in options if k[0] == underlying and k[1] == expiry and k[2] is not None})
+            kept = (provider, grid)
+            self._grids[key] = kept
+        return kept[1]
+
+    def _window_tokens(self, w: Watched) -> set[int]:
+        """Never raises: a window that cannot be read is no window (logged, counted); the legs are held anyway."""
+        try:
+            return self._window_tokens_of(w)
+        except Exception as exc:  # contained: legs and index only for this strategy
+            log.exception("background: reading the strike window of strategy %s failed", w.strategy_id)
+            _keep_recent(self.errors, (w.strategy_id, type(exc).__name__))
+            return set()
+
+    def _window_tokens_of(self, w: Watched) -> set[int]:
+        """The calls and puts of the SCREEN's strike window of the strategy's first leg expiry (the expiry the
+        forward and ATM IV are read from, ``adjustment_readers.read_market``): ``chain_push.strike_window`` around
+        ``chain_push.atm_strike`` of the live spot, ``limits.chain_strikes_each_side`` (the chain screen's default)
+        each side (finding 2). Empty when not known: no settings read yet, no live spot, the expiry not listed."""
+        from ofo_app.chain_push import atm_strike, strike_window  # noqa: PLC0415 - the screen's own window
+        if self._values is None:
+            return set()
+        provider = self._provider_for(w.feed_owner)
+        options, _by_id = self._tokens_of(provider)
+        position = w.tracked.position
+        expiry = position.legs[0].expiry
+        spot = provider.underlying_quote(position.underlying)
+        if spot is None or not is_live_price(spot.ltp):
+            return set()
+        grid = self._grid_of(provider, options, position.underlying, expiry)
+        if not grid:
+            return set()
+        each = settings_calc.chain_strikes_each_side(self._values)
+        window = strike_window(grid, atm_strike(grid, spot.ltp), each, each)
+        return {t for k in window for side in ("CE", "PE")
+                if (t := options.get((position.underlying, expiry, k, side))) is not None}
+
     def _hold(self, wanted: dict[str, set[int]]) -> None:
         """The provider holds exactly the wanted tokens (its own subscription, as the API's provider does): only a
         held token counts as data for the feed's health, so without this every frame is a bare heartbeat and every
@@ -449,11 +549,23 @@ class Worker:
                 log.exception("background: holding the wanted tokens failed")
                 _keep_recent(self.errors, (0, type(exc).__name__))
 
+    def _merge_windows(self, wanted: dict[str, set[int]], windows: dict[str, set[int]]) -> None:
+        """B4: an owner's strike windows join its wanted set only when the whole set stays within the cap (the relay
+        refuses an over-cap snapshot whole), so a window never pushes the legs and the index out."""
+        for owner, extra in windows.items():
+            if len(wanted.get(owner, set()) | extra) <= feed_bus.MAX_WANTED_TOKENS:
+                wanted.setdefault(owner, set()).update(extra)
+            else:
+                log.error("background: the strike windows of %s exceed the cap of %s; legs and index only", owner,
+                          feed_bus.MAX_WANTED_TOKENS)
+                _keep_recent(self.errors, (0, "WindowTooLarge"))
+
     async def _write_wants(self, now: datetime.datetime) -> None:
         """Step 4c: one snapshot per feed owner (module docstring); never raises."""
         if self._want_client is None:
             return
         wanted: dict[str, set[int]] = {}
+        windows: dict[str, set[int]] = {}
         for w in self.monitors:
             try:
                 tokens = self._strategy_tokens(w)
@@ -468,6 +580,8 @@ class Worker:
                 wanted.setdefault(w.feed_owner, set())
                 continue
             wanted.setdefault(w.feed_owner, set()).update(tokens)
+            windows.setdefault(w.feed_owner, set()).update(self._window_tokens(w))
+        self._merge_windows(wanted, windows)
         self._hold(wanted)
         for owner in self._wants_written.keys() - wanted.keys():
             wanted[owner] = set()  # no monitored strategy left for this owner: an empty snapshot
@@ -490,43 +604,111 @@ class Worker:
                 continue
             self._wants_written[owner] = (listed, now)
 
-    async def _check_one(self, w: Watched, now: datetime.datetime, every: Decimal) -> bool:
+    def _tick_key(self, provider: Any, w: Watched, now: datetime.datetime) -> tuple | None:
+        """What a tick changes, read cheaply (one held quote per leg and the spot, no chain copy): each quote's id,
+        price, time and health, and the IST minute (clock rules). None = cannot say (no previous fresh read, the legs
+        changed, a quote not held, a provider with no ``held_quote``): the caller reads in full (fail closed)."""
+        held = getattr(provider, "held_quote", None)
+        kept = self._leg_ids.get(w.strategy_id)
+        if held is None or kept is None or kept[0] != w.tracked.position.legs:
+            return None
+        quotes = [held(i, now) for i in kept[1]]
+        if any(q is None for q in quotes):
+            return None
+        return (tuple((q.instrument_id, q.ltp, q.bid, q.ask, q.timestamp, getattr(q, "health", None))
+                      for q in quotes), now.astimezone(IST).strftime("%Y-%m-%d %H:%M"))
+
+    def _pause(self, sid: int, reason: PriceState) -> None:
+        self.status[sid] = MonitoringStatus.PAUSED
+        self.paused_reason[sid] = reason
+        self._signature.pop(sid, None)  # the first check after the gap reads the fresh snapshot
+        self._tick.pop(sid, None)
+
+    async def _check_one(self, w: Watched, every: Decimal) -> bool:  # noqa: PLR0911 - one return per answer state
         """True when a check ran (counted against the cycle's cap)."""
+        now = self._clock()  # finding 1: THIS check's clock, never the cycle's start
+        sid = w.strategy_id
         provider = self._provider_for(w.feed_owner)
-        read = read_prices(provider, w, now, self._known_of(provider, w.tracked.position.underlying))
+        early = feed_state(provider, now)
+        if early is None:
+            tick = self._tick_key(provider, w, now)
+            if tick is not None and tick == self._tick.get(sid):
+                self._read_states["NOT_TICKED"] = self._read_states.get("NOT_TICKED", 0) + 1
+                return False  # nothing it depends on ticked: no read, no check (item c)
+            read = read_prices(provider, w, now, self._known_of(provider, w.tracked.position.underlying))
+        else:
+            read = PriceRead(early)
         self._read_states[read.state.name] = self._read_states.get(read.state.name, 0) + 1  # the minute line's reads
         if read.state is PriceState.MARKET_CLOSED:
             return False  # nothing is recomputed while the market is closed
         if read.state is not PriceState.FRESH:
-            self.status[w.strategy_id] = MonitoringStatus.PAUSED
-            self.paused_reason[w.strategy_id] = read.state
-            self._signature.pop(w.strategy_id, None)  # the first check after the gap reads the fresh snapshot
+            self._pause(sid, read.state)
             return False
-        self.status[w.strategy_id] = MonitoringStatus.ACTIVE
-        self.paused_reason.pop(w.strategy_id, None)
+        self.status[sid] = MonitoringStatus.ACTIVE
+        self.paused_reason.pop(sid, None)
+        self._leg_ids[sid] = (w.tracked.position.legs,
+                              (read.spot.instrument_id, *(read.legs[i].instrument_id for i in sorted(read.legs))))
+        tick = self._tick_key(provider, w, now)  # read with the prices, before any await (a later tick is new)
         sig = read.signature(now)
-        last = self._last_check.get(w.strategy_id)
-        if sig == self._signature.get(w.strategy_id) or (last is not None and _seconds(now - last) < every):
+        if sig == self._signature.get(sid):
+            self._tick[sid] = tick
             return False
+        last = self._last_check.get(sid)
+        if last is not None and _seconds(now - last) < every:
+            return False  # changed, but too soon: the tick key stays old, so it is read again next cycle
         if self._values is None:
             return False  # no settings read yet: nothing is checked on a guessed setting
-        prefs = await self._preferences(w.user_ref)  # the owner's preferences now (a failure pauses this one strategy)
+        prefs = self._prefs_of.get(w.user_ref)
+        if prefs is None:  # no preferences read for this user yet: paused, never checked on a guess
+            self._pause(sid, PriceState.CHECK_FAILED)
+            return False
         state = background_state(w, read, FeedScope(self.cache, w.feed_owner), now, self._values, prefs)
-        self._recomputes[w.strategy_id] = self._recomputes.get(w.strategy_id, 0) + 1  # a real recompute (REQ-166)
-        self._legs[w.strategy_id] = len(w.tracked.position.legs)
-        recorded = await self._recorder(w, state, prefs)
-        self._log_opportunities(w, recorded)
-        self._signature[w.strategy_id] = sig
-        self._last_check[w.strategy_id] = now
-        _keep_recent(self.checks, (w.strategy_id, now))
+        self._recomputes[sid] = self._recomputes.get(sid, 0) + 1  # a real recompute (REQ-166)
+        self._legs[sid] = len(w.tracked.position.legs)
+        if self._observe is not None:
+            self._observe(w, state)
+        await self._evaluate_and_write(w, state, prefs)
+        self._signature[sid] = sig
+        self._tick[sid] = tick
+        self._last_check[sid] = now
+        _keep_recent(self.checks, (sid, now))
         return True
+
+    async def _evaluate_and_write(self, w: Watched, state: pe.StrategyState, prefs: Preferences) -> None:
+        """Module docstring, step 4: evaluated here with the last written memory (the entry state is this check's
+        when the memory is empty, as ``evaluate_and_remember`` with no scenario); written only when needed."""
+        sid = w.strategy_id
+        memory = self._memory.get(sid)
+        known = memory or {}
+        ev = pe.evaluate(w.body, state, known, None if known else state, gap_until=prefs.gap_until)
+        self._count_outcomes(ev)
+        flagged = any(isinstance(r, pe.Flag) for r in ev.results)
+        if memory is not None and not flagged and _write_key(ev) == self._written.get(sid):
+            return  # an unchanged clear check: nothing to write
+        recorded = await self._recorder(w, state, prefs)
+        if isinstance(recorded, Recorded):
+            opened, ev = recorded.opened, recorded.evaluation
+        else:
+            opened = recorded
+        self._log_opportunities(w, opened)
+        self._memory[sid] = dict(ev.memory)
+        self._written[sid] = _write_key(ev)
+
+    def _count_outcomes(self, ev: pe.Evaluation) -> None:
+        """Item g: why rules gave no flag this minute (withheld / not checked with the reason code), and flags."""
+        names = [f"not_checked {r.code}" if isinstance(r, pe.NotChecked) else
+                 "flag" if isinstance(r, pe.Flag) else "already_true" for r in ev.results]
+        if ev.withheld is not None:
+            names.append(f"withheld {ev.withheld}")
+        for name in names:
+            self._outcomes[name] = self._outcomes.get(name, 0) + 1
 
     def _log_opportunities(self, w: Watched, recorded: Any) -> None:
         """One INFO line the first time this process sees an open opportunity record of a rule (``record_check``
         returns rule id -> record id; a record still open on later checks is not logged again). ``written_at`` is the
         worker's clock when the record's transaction had committed; a record already open before a restart is logged
         once as first seen, not as newly written (the store's return does not say which)."""
-        if not isinstance(recorded, Mapping):
+        if not isinstance(recorded, Mapping):  # a recorder that returns nothing logs nothing
             return
         for rule_id, record_id in recorded.items():
             key = (w.strategy_id, rule_id, record_id)
@@ -549,21 +731,21 @@ class Worker:
         """Write the summary of the minute counted so far (also called when the role stops) and reset the counters."""
         if self._minute is None:
             return
-        log.info("background: minute %s cycles=%s checks=%s recomputes %s legs %s valve_step=%s speed=%ss reads %s",
-                 self._minute[-5:], self._cycles, sum(self._recomputes.values()),
+        log.info("background: minute %s cycles=%s checks=%s recomputes %s legs %s valve_step=%s speed=%ss reads %s "
+                 "outcomes %s", self._minute[-5:], self._cycles, sum(self._recomputes.values()),
                  dict(sorted(self._recomputes.items())),
                  {k: self._legs[k] for k in sorted(self._recomputes)}, self.valve.step + 1, self._speed,
-                 dict(sorted(self._read_states.items())))
-        self._cycles, self._recomputes, self._legs, self._read_states = 0, {}, {}, {}
+                 dict(sorted(self._read_states.items())), dict(sorted(self._outcomes.items())))
+        self._cycles, self._recomputes, self._legs, self._read_states, self._outcomes = 0, {}, {}, {}, {}
 
     async def cycle(self) -> None:
         now = self._clock()
         self._roll_minute(now)
         self._cycles += 1
-        if self._rebuilt_at is None or _seconds(now - self._rebuilt_at) >= REBUILD_SECONDS:
+        if not self._rebuild_tried:  # the first list only; every later re-read runs on its own task (``run``)
             await self._rebuild_safely()
-        await self._write_wants(now)  # not behind the speed: the feed is wanted whatever the checks do
         await self._settings_safely()  # ONE settings read per cycle: speeds, valve steps, rate, forward, windows
+        await self._write_wants(now)  # not behind the speed: the feed is wanted whatever the checks do
         every = self._speed_safely()  # read on EVERY cycle (REQ-166 AC-1)
         if every is None:
             log.error("background: no background speed has been read yet; this cycle is skipped")
@@ -575,7 +757,7 @@ class Worker:
             visited += 1
             started = self._clock()
             try:
-                ran += await self._check_one(w, now, every)
+                ran += await self._check_one(w, every)
             except Exception as exc:  # REQ-115 AC-9: one strategy's failure never stops the others
                 log.exception("background: strategy %s check failed", w.strategy_id)
                 _keep_recent(self.errors, (w.strategy_id, type(exc).__name__))
@@ -591,14 +773,20 @@ class Worker:
         self._stop = True
 
     async def run(self) -> None:
-        while not self._stop:
-            try:
-                await self.cycle()
-            except Exception as exc:  # one cycle's failure never ends the role (CancelledError is not an Exception)
-                log.exception("background: a cycle failed; the next cycle runs")
-                _keep_recent(self.errors, (0, type(exc).__name__))
-            wait = self._speed_safely() or Decimal(1)  # read again for the sleep; no good speed yet -> 1 s
-            await self._sleep(float(wait))  # float-ok: asyncio.sleep takes seconds as float
+        if not self._rebuild_tried:
+            await self._rebuild_safely()
+        rebuilder = asyncio.create_task(self._rebuild_loop(), name="background-rebuild")
+        try:
+            while not self._stop:
+                try:
+                    await self.cycle()
+                except Exception as exc:  # one cycle's failure never ends the role (CancelledError is not one)
+                    log.exception("background: a cycle failed; the next cycle runs")
+                    _keep_recent(self.errors, (0, type(exc).__name__))
+                wait = self._speed_safely() or Decimal(1)  # read again for the sleep; no good speed yet -> 1 s
+                await self._sleep(float(wait))  # float-ok: asyncio.sleep takes seconds as float
+        finally:
+            rebuilder.cancel()
         self.flush_minute()
 
 

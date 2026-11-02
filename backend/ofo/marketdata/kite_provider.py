@@ -146,6 +146,11 @@ class KiteProvider(MarketDataProvider):
         quote = self.book.get(instrument_id, self._now() if now is None else now)
         return None if quote is None else quote.price_at
 
+    def held_quote(self, instrument_id: str, now: datetime.datetime | None = None) -> NormalizedQuote | None:
+        """The held quote of ONE instrument with its health (the book's own read, no chain copy): the background
+        role's cheap "did this leg tick?" test. None when nothing is held for it."""
+        return self.book.get(instrument_id, self._now() if now is None else now)
+
     def depth_after_close(self, instrument_id: str, now: datetime.datetime | None = None):
         """READ-ONLY popup (REQ-080 AC-7, ADR-200 (1)): see ``QuoteBook.depth_after_close``; never an order input."""
         return self.book.depth_after_close(instrument_id, self._now() if now is None else now)

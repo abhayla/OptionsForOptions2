@@ -42,6 +42,8 @@ SECOND = 2  # the second read / check / cycle of a test
 SLOW_CYCLES = 2
 TIMED_CALLS = 100
 IV_STEP = Decimal("0.05")  # 5 IV points as a fraction
+#: a playbook body with no rule (the evaluator refuses ``{}``: a body always has a schema and both stage lists)
+NO_RULES = {"schema": 1, "stages": {k: [{"name": "all", "from": 0, "to": None}] for k in ("weekly", "monthly")}}
 #: REQ-166 AC-2: what "the full table" is (ADR-220: the scenario table of the one engine); each one is refused
 FULL_TABLE = ((scenario_views, "scenario_values"), (outcome_service, "scenario_values"),
               (scenario_levels, "build_level_set"), (outcome_service, "build_level_set"),
@@ -82,6 +84,13 @@ class Prov:
         return next(q.instrument_id for q in self.real.option_chain_snapshot("NIFTY", datetime.date(2026, 11, 9))
                     if q.strike == Decimal(strike) and q.instrument_type.value == kind)
 
+    def held_quote(self, iid: str, _now=None):
+        """One instrument's held quote (the cheap tick test): the spot or the chain row with that id."""
+        if self.spot is not None and self.spot.instrument_id == iid:
+            return self.spot
+        return next((q for e in {datetime.date(2026, 11, 9)} for q in self.option_chain_snapshot("NIFTY", e)
+                     if q.instrument_id == iid), None)
+
     def move_leg(self, iid: str, ltp: Decimal, at: datetime.datetime) -> None:
         q = next(q for q in self.real.option_chain_snapshot("NIFTY", datetime.date(2026, 11, 9))
                  if q.instrument_id == iid)
@@ -102,18 +111,25 @@ def _tracked(scn) -> Tracked:
 
 def _watched(scn, n: int = 1) -> list[background.Watched]:
     t = _tracked(scn)
-    return [background.Watched("owner", FIRST_ID + i, t, {}, True, "owner") for i in range(n)]
+    return [background.Watched("owner", FIRST_ID + i, t, NO_RULES, True, "owner") for i in range(n)]
 
 
 class Calls:
+    """``states``: every state a check built (the worker's ``observe`` seam); ``writes``: every recorder call (a DB
+    write in the real role, made only when the evaluation flags or its memory changed)."""
+
     def __init__(self, clock=None, slow: datetime.timedelta | None = None) -> None:
         self.states: list[tuple[int, object]] = []
+        self.writes: list[tuple[int, object]] = []
         self._clock, self.slow = clock, slow
 
-    async def __call__(self, w, state, _prefs=None):
+    def seen(self, w, state) -> None:
         self.states.append((w.strategy_id, state))
         if self.slow is not None:
             self._clock[0] += self.slow  # an injected slow maths step
+
+    async def __call__(self, w, state, _prefs=None):
+        self.writes.append((w.strategy_id, state))
 
 
 def _settings(values=None):
@@ -132,6 +148,8 @@ async def _prefs(_user_ref):
 def _worker(prov, watched, now, recorder, settings=None, **kw) -> background.Worker:
     async def lister():
         return watched
+    if isinstance(recorder, Calls):
+        kw.setdefault("observe", recorder.seen)
     return background.Worker(provider_for=lambda _o: prov, lister=lister, clock=lambda: now[0],
                              settings=settings or _settings(), preferences=_prefs, recorder=recorder, **kw)
 
@@ -225,8 +243,8 @@ async def test_speed_change_from_1s_to_3s_takes_effect_without_restart(scn, monk
     calls = Calls()
     w = None
 
-    async def recorder(wd, state, prefs):
-        await calls(wd, state, prefs)
+    def observe(wd, state):
+        calls.seen(wd, state)
         if len(calls.states) == CHECKS_AFTER_CHANGE:
             values[calc_speeds.KEY_BACKGROUND] = Decimal(3)  # the admin changes the setting
         if len(calls.states) == STOP_AFTER:
@@ -236,7 +254,7 @@ async def test_speed_change_from_1s_to_3s_takes_effect_without_restart(scn, monk
         now[0] += datetime.timedelta(seconds=seconds)
         prov.move_spot(prov.spot.ltp + 1, now[0])  # a price changes every tick
 
-    w = _worker(prov, _watched(scn), now, recorder, settings=_settings(values), sleep=sleep)
+    w = _worker(prov, _watched(scn), now, calls, settings=_settings(values), sleep=sleep, observe=observe)
     await w.run()
     times = [t for _, t in w.checks]
     assert [int((b - a).total_seconds()) for a, b in itertools.pairwise(times)] == [1, 1, 3, 3]
@@ -542,10 +560,11 @@ async def test_a_failing_list_reread_keeps_the_last_good_list_and_still_checks(s
             raise ConnectionError("database blip")
         return good
     w = background.Worker(provider_for=lambda _o: prov, lister=lister, clock=lambda: now[0], settings=_settings(),
-                          preferences=_prefs, recorder=calls)
+                          preferences=_prefs, recorder=calls, observe=calls.seen)
     await w.cycle()
-    now[0] += datetime.timedelta(seconds=background.REBUILD_SECONDS)  # the re-read is due, and it fails
+    now[0] += datetime.timedelta(seconds=background.REBUILD_SECONDS)
     prov.move_spot(prov.spot.ltp + 1, now[0])
+    await w._rebuild_safely()  # the re-read (its own task in ``run``), and it fails
     await w.cycle()
     assert len(reads) == SECOND and w.monitors == good
     assert [s for s, _ in calls.states] == [100, 101, 100, 101]  # both strategies checked again
@@ -756,7 +775,7 @@ def _straddle(*, strikes=("22550",)) -> list[background.Watched]:
     legs = tuple(PositionLeg("SELL", kind, Decimal(k), datetime.date(2026, 10, 13), 1, Decimal("100"), "x")
                  for k in strikes for kind in ("CE", "PE"))
     t = Tracked(Position("NIFTY", 65, "weekly", datetime.date.min, legs), Decimal(0), None, adjustments_used=0)
-    return [background.Watched("owner", FIRST_ID, t, {}, True, "owner")]
+    return [background.Watched("owner", FIRST_ID, t, NO_RULES, True, "owner")]
 
 
 async def test_a_frame_for_a_monitored_leg_reads_available_and_fresh_with_no_screen(scn):
@@ -810,3 +829,184 @@ async def test_the_worker_writes_only_the_background_want_key(scn):
     await _hold_cycle(worker, now[0])
     from ofo_app import feed_bus  # noqa: PLC0415
     assert redis.keys == [feed_bus.background_want_key("owner")]
+
+
+# ---- GC-LIVE3 D3 round 2 (after the independent review) ------------------------------------------------------------
+async def test_each_check_reads_its_own_clock_so_a_tick_during_the_cycle_is_not_in_the_future(scn):
+    """Finding 1: one ``now`` per cycle made every tick that arrived during the cycle "in the future" (spot refused,
+    every rule withheld_no_spot). A check that takes 5 s while the spot ticks: the second strategy still has a spot."""
+    prov, now = Prov(scn), [scn.clock_at]
+    seen = []
+
+    async def recorder(wd, state, _prefs=None):
+        seen.append((wd.strategy_id, state.spot))
+        now[0] += datetime.timedelta(seconds=5)  # this check took 5 s ...
+        prov.move_spot(prov.spot.ltp + 1, now[0])  # ... and the spot ticked meanwhile
+    w = _worker(prov, _watched(scn, 2), now, recorder)
+    await w.cycle()
+    assert [s for s, _ in seen] == [FIRST_ID, FIRST_ID + 1]
+    assert seen[1][1] == Decimal("23421")  # before: None (tick_in_future -> withheld_no_spot)
+
+
+async def test_a_cycle_makes_no_lister_or_preferences_call(scn):
+    """Finding 3: the strategy list and each user's preferences are read by the rebuild (its own task), never by a
+    cycle; preferences once per rebuild per user."""
+    prov, now, calls = Prov(scn), [scn.clock_at], Calls()
+    lists, prefs = [], []
+
+    async def lister():
+        lists.append(1)
+        return _watched(scn, 3)
+
+    async def preferences(user_ref):
+        prefs.append(user_ref)
+        return PREFS
+    w = background.Worker(provider_for=lambda _o: prov, lister=lister, clock=lambda: now[0], settings=_settings(),
+                          preferences=preferences, recorder=calls, observe=calls.seen)
+    await w._rebuild_safely()
+    assert (len(lists), prefs) == (1, ["owner"])  # three strategies, one user: one preferences read
+    for _ in range(3):
+        now[0] += datetime.timedelta(seconds=1)
+        prov.move_spot(prov.spot.ltp + 1, now[0])
+        await w.cycle()
+    assert (len(lists), prefs) == (1, ["owner"]) and len(calls.states) == 3 * 3  # 3 cycles x 3
+
+
+async def test_a_user_with_no_preferences_read_is_paused_not_checked_on_a_guess(scn):
+    prov, now, calls = Prov(scn), [scn.clock_at], Calls()
+
+    async def refuse(_user_ref):
+        raise ConnectionError("database blip")
+    w = _worker(prov, _watched(scn), now, calls)
+    w._preferences = refuse
+    await w.cycle()
+    assert calls.states == [] and w.paused_reason[FIRST_ID] is background.PriceState.CHECK_FAILED
+
+
+def _two_strategies(scn) -> tuple[list[background.Watched], tuple[str, str]]:
+    """Strategy 100 holds every ADJ-02 leg; 101 all but the last. Returns them and the last leg's strike and type."""
+    full = _tracked(scn)
+    part = dataclasses.replace(full, position=dataclasses.replace(full.position, legs=full.position.legs[:-1]))
+    last = full.position.legs[-1]
+    return [background.Watched("owner", FIRST_ID, full, NO_RULES, True, "owner"),
+            background.Watched("owner", FIRST_ID + 1, part, NO_RULES, True, "owner")], (str(last.strike), last.type)
+
+
+async def test_only_a_strategy_whose_tokens_ticked_is_read_and_checked(scn, monkeypatch):
+    """Item c, every answer state of the tick test: no previous price -> read; not ticked -> not read; ticked -> read;
+    a quote whose health changed with no tick -> read (and paused)."""
+    reads = []
+    real = background.read_prices
+
+    def counted(provider, watched, *a, **k):
+        reads.append(watched.strategy_id)
+        return real(provider, watched, *a, **k)
+    monkeypatch.setattr(background, "read_prices", counted)
+    prov, now, calls = Prov(scn), [scn.clock_at.replace(second=5, microsecond=0)], Calls()
+    watched, (strike, kind) = _two_strategies(scn)
+    w = _worker(prov, watched, now, calls)
+    await w.cycle()
+    assert reads == [FIRST_ID, FIRST_ID + 1]  # no previous price: both read
+    now[0] += datetime.timedelta(seconds=2)
+    await w.cycle()
+    assert reads == [FIRST_ID, FIRST_ID + 1]  # nothing ticked: nothing read
+    prov.move_leg(prov.leg_id(strike, kind), Decimal("80.00"), now[0])  # only strategy 100 holds this leg
+    now[0] += datetime.timedelta(seconds=2)
+    await w.cycle()
+    assert reads[2:] == [FIRST_ID] and [s for s, _ in calls.states] == [FIRST_ID, FIRST_ID + 1, FIRST_ID]
+    other = watched[1].tracked.position.legs[0]
+    oid = prov.leg_id(str(other.strike), other.type)
+    q = next(q for q in prov.option_chain_snapshot("NIFTY", other.expiry) if q.instrument_id == oid)
+    prov.moved[oid] = dataclasses.replace(q, health=DataHealth.STALE)  # no new tick, the quote went stale
+    now[0] += datetime.timedelta(seconds=2)
+    await w.cycle()
+    assert w.paused_reason[FIRST_ID + 1] is background.PriceState.STALE
+
+
+async def test_an_unchanged_clear_check_makes_no_recorder_call(scn):
+    """Item d: the first check writes (the stored memory is not known yet); a later check whose evaluation flags
+    nothing and leaves memory, flagged and clear rules as they were writes nothing."""
+    prov, now, calls = Prov(scn), [scn.clock_at], Calls()
+    w = _worker(prov, _watched(scn), now, calls)
+    await w.cycle()
+    now[0] += datetime.timedelta(seconds=2)
+    prov.move_spot(Decimal("23421"), now[0])
+    await w.cycle()
+    assert len(calls.states) == SECOND and len(calls.writes) == 1
+
+
+async def test_a_flagging_check_writes_every_time(scn, monkeypatch):
+    flag = pe.Evaluation(None, None, (pe.Flag("R-1", "T-01", None, Decimal(1), Decimal(1), "ge"),), {})
+    monkeypatch.setattr(background.pe, "evaluate", lambda *_a, **_k: flag)
+    prov, now, calls = Prov(scn), [scn.clock_at], Calls()
+    w = _worker(prov, _watched(scn), now, calls)
+    await w.cycle()
+    now[0] += datetime.timedelta(seconds=2)
+    prov.move_spot(Decimal("23421"), now[0])
+    await w.cycle()
+    assert len(calls.writes) == SECOND
+
+
+async def test_the_minute_line_counts_withheld_and_not_checked_reasons(scn, monkeypatch, caplog):
+    """Item g (the detection upgrade): a minute where every rule is withheld for no spot says so in the line."""
+    caplog.set_level("INFO", logger="ofo_app.background")
+    ev = pe.Evaluation(None, None, (pe.NotChecked("R-1", "T-01", "adjust_trigger_withheld_no_spot"),), {},
+                       withheld="adjust_trigger_withheld_no_spot")
+    monkeypatch.setattr(background.pe, "evaluate", lambda *_a, **_k: ev)
+    prov, now, calls = Prov(scn), [scn.clock_at.replace(second=5, microsecond=0)], Calls()
+    w = _worker(prov, _watched(scn), now, calls)
+    await w.cycle()
+    now[0] += datetime.timedelta(seconds=60)
+    await w.cycle()
+    [line] = _summaries(caplog)
+    assert "outcomes {'not_checked adjust_trigger_withheld_no_spot': 1, " \
+           "'withheld adjust_trigger_withheld_no_spot': 1}" in line, line
+
+
+async def test_the_background_holds_the_screens_atm_window_of_the_first_expiry(scn):
+    """Item e (finding 2): beside the legs and the index, the role holds the calls and puts of the screen's strike
+    window (``chain_push.strike_window`` around ``atm_strike`` of the live spot, ``limits.chain_strikes_each_side``
+    each side), so the forward and the ATM IV read the same book as the screen."""
+    from ofo.settings import calc as settings_calc  # noqa: PLC0415
+    from ofo_app import chain_push  # noqa: PLC0415
+    kf = _real_provider()
+    provider, clock, _items = kf.new_provider()
+    frames = kf.recorded_frames()
+    now = [frames[0][0]]
+    worker = _worker(provider, _straddle(), now, Calls(), want_client=_Redis())
+    await worker._settings_safely()
+    await _hold_cycle(worker, now[0])
+    provider.on_connected(frames[0][0])
+    for at, frame in frames:
+        clock.now = now[0] = at
+        provider.on_frame(frame, at)
+    await _hold_cycle(worker, now[0])  # the live spot is known now: the window is held
+    options, _by_id = worker._tokens_of(provider)
+    expiry = datetime.date(2026, 10, 13)
+    grid = sorted({k[2] for k in options if k[0] == "NIFTY" and k[1] == expiry and k[2] is not None})
+    each = settings_calc.chain_strikes_each_side(DEFAULTS)
+    window = chain_push.strike_window(grid, chain_push.atm_strike(grid, provider.underlying_quote("NIFTY").ltp),
+                                      each, each)
+    want = {options[("NIFTY", expiry, k, side)] for k in window for side in ("CE", "PE")}
+    assert len(window) > 1 and want <= set(provider.subscribed_tokens())
+
+
+async def test_a_recorded_write_is_logged_and_its_stored_memory_is_the_next_checks_memory(scn, caplog):
+    """``record_check`` returns ``Recorded``: its open records are logged, and the memory it STORED (which can differ
+    from this process's guess, e.g. after a restart) is what the next check evaluates against: evaluated with it, an
+    unchanged clear check writes nothing (evaluated with ``{}`` instead, the memory would differ and it would write)."""
+    caplog.set_level("INFO", logger="ofo_app.background")
+    stored = pe.Evaluation(None, None, (), {"R-1": {"held_at_entry": True, "seen_clear": False}})
+    prov, now, seen = Prov(scn), [scn.clock_at], []
+
+    async def recorder(_w, _state, _prefs=None):
+        seen.append(1)
+        return background.Recorded({"T-01": 7}, stored)
+    w = _worker(prov, _watched(scn), now, recorder)
+    await w.cycle()
+    assert w._memory[FIRST_ID] == stored.memory
+    assert any("record=7" in r.getMessage() for r in caplog.records)
+    now[0] += datetime.timedelta(seconds=2)
+    prov.move_spot(Decimal("23421"), now[0])
+    await w.cycle()
+    assert len(seen) == 1 and len(w.checks) == SECOND
