@@ -14,18 +14,23 @@ import pathlib
 from types import SimpleNamespace
 
 import pytest
+from _migration_replay import round_trip_sql
 from httpx import ASGITransport, AsyncClient
 from ofo.adjustment import alert_presets
 from ofo.errors.explanations import render_explanation
 from ofo.timeutil import IST
 from ofo_app import db as app_db
+from ofo_app import settings_store
 from ofo_app import strategy_alert_style_store as store
+from ofo_app import strategy_store as store_strategies
+from ofo_app.catalogue_store import apply_update
 from ofo_app.routes import alert_style as route
+from ofo_app.routes.adjustment import get_market_reader, get_tracked_reader
 from ofo_app.routes.broker import current_user_ref
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from test_adjustment_plan import _reset_engine, _seeded
-from test_strategy_store import _user, _with_draft
+from test_strategy_store import _MAX_DELIST, AS_OF, _fixture_rows, _ids, _saved_in, _user, _with_draft
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 TABLE = "public.strategy_alert_style"
@@ -163,17 +168,19 @@ async def test_the_post_allowlist_check_passes_on_the_migrated_database(admin_en
 # ---- the route (GET / PUT /api/strategies/{id}/alert-style) on the ADJ-02 scenario ------------------------------
 # ADJ-02: a weekly NIFTY iron condor, clock 2026-11-06 11:40 IST, expiry 2026-11-09 (3 days): automatic = weekly.
 
-OK, NOT_FOUND, UNPROCESSABLE = 200, 404, 422
+OK, NOT_FOUND, UNPROCESSABLE, CONFLICT = 200, 404, 422, 409
 WEEKLY_AUTO = "Automatic (now Weekly)"
 CHOICES = [[None, WEEKLY_AUTO], ["intraday", "Intraday"], ["weekly", "Weekly"], ["monthly", "Monthly"]]
 
 
-async def _call(method: str, path: str, user: str | None = None, **kw) -> tuple[int, dict]:
+async def _call(method: str, path: str, user: str | None = None, overrides: dict | None = None,
+                **kw) -> tuple[int, dict]:
     from ofo_app.main import create_app  # noqa: PLC0415 - the env must be set first
     _reset_engine()
     app = create_app()
     if user is not None:
         app.dependency_overrides[current_user_ref] = lambda: user
+    app.dependency_overrides.update(overrides or {})
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as ac:
         r = await ac.request(method, path, **kw)
     await app_db.close_db()
@@ -285,3 +292,135 @@ def test_the_refusal_texts_read_as_the_catalogue_says():
                                                  "cannot be picked by itself. Pin a style.")
     assert render_explanation(route.UNKNOWN) == ("This strategy's expiry type or days to expiry could not be read, so "
                                                  "its alert style cannot be picked by itself. Pin a style.")
+
+
+# ---- GC-ALERT1 round 2: a saved draft with no paper order (the review's MUST), refusals before the write ----------
+
+UNKNOWN_TEXT = ("This strategy's expiry type or days to expiry could not be read, so its alert style cannot be "
+                "picked by itself. Pin a style.")
+SEVERAL_TEXT = ("This strategy has legs on more than one expiry, so its alert style cannot be picked by itself. "
+                "Pin a style.")
+UNKNOWN_CHOICES = [[None, "Automatic (not known yet)"], ["intraday", "Intraday"], ["weekly", "Weekly"],
+                   ["monthly", "Monthly"]]
+D1, D2 = datetime.date(2026, 11, 9), datetime.date(2026, 11, 26)
+
+
+async def _draft_in(conn, user: str) -> int:
+    """A saved draft with NO paper order on ``conn``; the force update copes with rows an earlier test committed."""
+    await apply_update(conn, _fixture_rows(), as_of=AS_OF, max_delist_percent=_MAX_DELIST, force=True,
+                       reason="test: the draft fixture contracts", actor="test")
+    return (await store_strategies.save_draft(conn, user, await _saved_in(conn, user, await _ids(conn)))).id
+
+
+async def _committed_draft(app_engine) -> tuple[str, int]:
+    """The same, committed (the route opens its own connection); the database is throwaway."""
+    user = _user()
+    async with app_engine.begin() as conn:
+        return user, await _draft_in(conn, user)
+
+
+async def _rows(app_engine, user: str) -> list:
+    async with app_engine.connect() as conn:
+        found = await conn.execute(text(f"SELECT style FROM {TABLE} WHERE user_ref = :u ORDER BY effective_from"),  # noqa: S608
+                                   {"u": user})
+        return list(found.scalars().all())
+
+
+def _readers(kind: str):
+    """(overrides, why) for each way the position cannot be told; ``no orders`` keeps the real reader."""
+    from ofo_app.adjustment_readers import TrackedExited  # noqa: PLC0415
+
+    async def exited(_sid, _rates):
+        raise TrackedExited("no open option leg")
+
+    async def several(_sid, _rates):
+        return _tracked(D1, D2)
+
+    async def one(_sid, _rates):
+        return _tracked(D1)
+
+    async def kind_unknown(_tracked_, _ctx):
+        return _market(None, NOW)
+    return {
+        "no orders": ({}, UNKNOWN_TEXT),
+        "all legs exited": ({get_tracked_reader: lambda: exited}, UNKNOWN_TEXT),
+        "several expiries": ({get_tracked_reader: lambda: several}, SEVERAL_TEXT),
+        "unknown expiry kind": ({get_tracked_reader: lambda: one, get_market_reader: lambda: kind_unknown},
+                                UNKNOWN_TEXT),
+    }[kind]
+
+
+@pytest.mark.parametrize("kind", ["no orders", "all legs exited", "several expiries", "unknown expiry kind"])
+async def test_route_a_strategy_whose_position_cannot_be_told_answers_200_and_one_row_per_put(app_db_url, kind):
+    user, sid = await _committed_draft(app_db_url)
+    overrides, why = _readers(kind)
+    status, body = await _call("GET", _path(sid), user=user, overrides=overrides)
+    assert status == OK, body
+    assert _shape(body) == (None, None, None, why, UNKNOWN_CHOICES)
+    status, body = await _call("PUT", _path(sid), user=user, overrides=overrides, json={"style": "monthly"})
+    assert status == OK, body
+    assert _shape(body) == ("monthly", None, "monthly", why, UNKNOWN_CHOICES)
+    assert await _rows(app_db_url, user) == ["monthly"]  # exactly one stored row
+    status, body = await _call("PUT", _path(sid), user=user, overrides=overrides, json={"style": None})
+    assert status == OK and body["pinned"] is None and body["in_force"] is None
+    assert await _rows(app_db_url, user) == ["monthly", None]
+
+
+async def test_route_a_refused_put_stores_nothing(app_db_url):
+    user, sid = await _committed_draft(app_db_url)
+    assert (await _call("PUT", _path(sid), user=user, json={"style": "yearly"}))[0] == UNPROCESSABLE
+    assert (await _call("PUT", _path(sid), user="someone-else", json={"style": "weekly"}))[0] == NOT_FOUND
+    assert await _rows(app_db_url, user) == [] and await _rows(app_db_url, "someone-else") == []
+
+
+async def test_route_a_stored_style_that_is_no_longer_valid_is_a_catalogue_refusal_not_a_500(app_db_url, monkeypatch):
+    user, sid = await _committed_draft(app_db_url)
+
+    async def retired(*_a, **_k):
+        raise store.AlertStyleError("not a trading style: 'yearly'")
+    monkeypatch.setattr(store, "pin_of", retired)
+    status, body = await _call("GET", _path(sid), user=user)
+    assert status == UNPROCESSABLE, body
+    assert body == {"reason": render_explanation("alert_style_refused_unknown")}  # fail closed, never "automatic"
+
+
+async def test_route_two_puts_at_the_same_instant_second_gets_409_and_the_first_is_stored(app_db_url, monkeypatch):
+    user, sid = await _committed_draft(app_db_url)
+    async with app_db_url.connect() as conn:
+        now = await settings_store.database_now(conn) + datetime.timedelta(minutes=1)  # not back-dated (5 s grace)
+
+    async def fixed(_session):
+        return now
+    monkeypatch.setattr(settings_store, "database_now", fixed)
+    assert (await _call("PUT", _path(sid), user=user, json={"style": "weekly"}))[0] == OK
+    status, body = await _call("PUT", _path(sid), user=user, json={"style": "monthly"})
+    assert status == CONFLICT and body["reason"] == render_explanation("settings_refused_same_time")
+    assert await _rows(app_db_url, user) == ["weekly"]
+
+
+async def test_the_post_allowlist_check_fails_when_the_app_role_may_update_style(admin_engine, app_engine):
+    role = app_engine.url.username
+    async with admin_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            await conn.execute(text(f'GRANT UPDATE (style) ON {TABLE} TO "{role}"'))
+            with pytest.raises(DBAPIError, match=r"strategy_alert_style"):
+                async with conn.begin_nested():
+                    await conn.execute(text(f"SELECT public.ofo_assert_app_role_allowlist('{role}', 'post')"))
+        finally:
+            await trans.rollback()
+
+
+async def test_downgrade_is_refused_while_rows_exist(admin_engine):
+    own_down, _, _, _ = round_trip_sql("0035_strategy_alert_style.py")
+    async with admin_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            user = _user()
+            sid = await _draft_in(conn, user)
+            await store.set_pin(conn, user, sid, "weekly")
+            with pytest.raises(DBAPIError, match=r"stored alert-style rows"):
+                async with conn.begin_nested():
+                    await conn.execute(text(own_down[0]))
+        finally:
+            await trans.rollback()
