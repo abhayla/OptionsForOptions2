@@ -70,6 +70,8 @@ def ladder_for(cmp: Cmp, current: Decimal | None, later: tuple[Decimal, ...] | l
     """The escalation ladder: current, then each later threshold strictly more severe than the last kept one."""
     if cmp == "bool":
         return ()
+    if cmp not in ("ge", "le"):
+        raise ValueError(f"the alert gate does not know the cmp {cmp!r}")
     if current is None:
         raise ValueError("a ge/le rule needs a current threshold")
     kept = [current]
@@ -98,7 +100,16 @@ class Held:
     level: int
 
 
-Event = Union[Opened, Held]  # noqa: UP007
+@dataclass(frozen=True)
+class Lapsed:
+    """ADR-237 (4): an open record's episode ended (a close cleared its line by the re-arm band). Once per record."""
+
+    rule_id: str
+    at: datetime
+    value: Value
+
+
+Event = Union[Opened, Held, Lapsed]  # noqa: UP007
 
 
 @dataclass(frozen=True)
@@ -107,6 +118,7 @@ class _Record:
     threshold: Decimal | None
     at: datetime
     dismissed: bool = False
+    final: bool = False  # lapsed / acted on / dismissed: no Lapsed event any more
 
 
 @dataclass(frozen=True)
@@ -162,6 +174,11 @@ def _candle_end(now: datetime, candle: timedelta) -> datetime:
     return anchor + candle * (index + 1)
 
 
+def level_of(spec: RuleSpec, value: Value) -> int:
+    """The ladder level `value` reaches (-1 = not beyond the current line)."""
+    return _level(spec, value)
+
+
 def _level(spec: RuleSpec, value: Value) -> int:
     if spec.cmp == "bool":
         return 0 if value is True else -1
@@ -182,18 +199,22 @@ def _safe_by_band(spec: RuleSpec, value: Value, threshold: Decimal | None, prese
     return value <= threshold - band if spec.cmp == "ge" else value >= threshold + band
 
 
-def _refresh(rule: _Rule, pend: _Pending, level: int, preset: Preset) -> _Rule:
-    """Apply a close to the clear mark and the held episode before deciding."""
+def _refresh(rule_id: str, rule: _Rule, pend: _Pending, level: int, preset: Preset) -> tuple[_Rule, list[Event]]:
+    """Apply a close to the clear mark, the record's lapse and the held episode before deciding."""
     rec, hold = rule.record, rule.hold
+    events: list[Event] = []
     if rec is not None and not rule.cleared and _safe_by_band(pend.spec, pend.value, rec.threshold, preset):
         rule = replace(rule, cleared=True)
+        if not (rec.dismissed or rec.final):
+            rule = replace(rule, record=replace(rec, final=True))
+            events.append(Lapsed(rule_id, pend.end, pend.value))
     if hold is not None and (
         _safe_by_band(pend.spec, pend.value, hold.threshold, preset)
         or level > hold.level
         or (hold.reason == HELD_QUIET_TIME and pend.end.time() > preset.quiet_until)
     ):
         rule = replace(rule, hold=None)
-    return rule
+    return rule, events
 
 
 def _close(state: GateState, rule_id: str, pend: _Pending, preset: Preset) -> tuple[GateState, list[Event]]:
@@ -201,7 +222,16 @@ def _close(state: GateState, rule_id: str, pend: _Pending, preset: Preset) -> tu
     if state.day != t.date():
         state = replace(state, day=t.date(), opened_today=0)
     level = _level(spec, value)
-    rule = _refresh(replace(state.rule(rule_id), pending=None), pend, level, preset)
+    rule, lapsed = _refresh(rule_id, replace(state.rule(rule_id), pending=None), pend, level, preset)
+    state = state.with_rule(rule_id, rule)
+    state, events = _decide(state, rule_id, rule, pend, level, preset)
+    return state, lapsed + events
+
+
+def _decide(  # noqa: PLR0913 - one close's inputs
+    state: GateState, rule_id: str, rule: _Rule, pend: _Pending, level: int, preset: Preset,
+) -> tuple[GateState, list[Event]]:
+    t, value, spec = pend.end, pend.value, pend.spec
     rec, hold = rule.record, rule.hold
     if level < 0:
         return state.with_rule(rule_id, rule), []
@@ -266,3 +296,48 @@ def dismiss(state: GateState, rule_id: str) -> GateState:
     if rule.record is None:
         return state
     return state.with_rule(rule_id, replace(rule, record=replace(rule.record, dismissed=True)))
+
+
+@dataclass(frozen=True)
+class GateRow:
+    """The last stored record of one rule (ADR-237 (5)): when it opened, its threshold, and its outcome."""
+
+    rule_id: str
+    at: datetime
+    threshold: Decimal | None
+    dismissed: bool
+    open: bool
+
+
+@dataclass(frozen=True)
+class GateRows:
+    """What `restore` needs: the last record per rule and the count of records opened on `today` (IST)."""
+
+    last: tuple[GateRow, ...]
+    opened_today: int
+
+
+def _restored_level(spec: RuleSpec | None, threshold: Decimal | None) -> int:
+    """The current ladder's level of a stored threshold: the most severe rung the stored one reaches; -1 when it is
+    less severe than the current line (the stage moved on: a close beyond the current line is then worse)."""
+    if spec is None or spec.cmp == "bool" or threshold is None:
+        return 0
+    level = -1
+    for i, thr in enumerate(spec.ladder):
+        if thr == threshold or _more_severe(spec.cmp, threshold, thr):
+            level = i
+    return level
+
+
+def restore(rows: GateRows, today: date, specs: Mapping[str, RuleSpec]) -> GateState:
+    """ADR-237 (5): the gate state on worker start. Cleared is not stored, so every rule counts as not cleared (quiet
+    at the same level; an escalation still opens, worded by the dismissed flag); the day's count keeps the cap.
+    `specs` = each rule's current RuleSpec (from the first readings); a rule without one restores at level 0."""
+    if rows.opened_today < 0:
+        raise ValueError("opened_today cannot be negative")
+    state = replace(GateState(), day=today, opened_today=rows.opened_today)
+    for row in rows.last:
+        rec = _Record(_restored_level(specs.get(row.rule_id), row.threshold), row.threshold, _ist(row.at),
+                      dismissed=row.dismissed, final=not row.open)
+        state = state.with_rule(row.rule_id, _Rule(record=rec))
+    return state
