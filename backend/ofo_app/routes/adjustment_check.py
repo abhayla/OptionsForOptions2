@@ -6,9 +6,9 @@ Answer states: strategy not found / another user's -> the approaches route's not
 (TrackedUnreadable) -> its refusal; type None -> playbook source ``none`` and no results; not connected or no spot ->
 every rule ``not_checked`` with its reason (never a 500, never a flag); the records' store unreadable -> a refusal
 (503), never an empty list. ADR-237 (6): this check writes NO suggestion record and lapses none (only the background
-worker does, through the alert gate); it shows the current condition and the stored records. Suggest-only (ADR-003): nothing here places an
-order. Wording: a system playbook's flag is "Adjustment opportunity detected", the user's own playbook or plan's "Your
-rule was triggered" (REQ-045 AC-1, Q252); a rule true at entry is "Already true when tracking started" (F-71).
+worker does, through the alert gate); it shows the current condition and the stored records. Suggest-only (ADR-003):
+nothing here places an order. Wording: a system playbook's flag is "Adjustment opportunity detected", the user's own
+playbook or plan's "Your rule was triggered" (REQ-045 AC-1, Q252); a rule true at entry is "Already true when tracking started" (F-71).
 """
 from __future__ import annotations
 

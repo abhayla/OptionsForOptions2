@@ -133,6 +133,18 @@ async def test_adr237_6_the_screen_check_writes_no_record_and_shows_the_stored_o
     assert await _record_rows(app_db_url, sid) == [(rec.id, "T-01", "dismissed")]
 
 
+async def test_a_records_store_read_failure_is_a_refusal_never_an_empty_answer(app_db_url, monkeypatch):
+    from sqlalchemy.exc import OperationalError  # noqa: PLC0415
+
+    sid = await _seeded(app_db_url, monkeypatch, "ADJ-02")
+
+    async def broken(*_a, **_k):
+        raise OperationalError("SELECT", {}, Exception("connection lost"))
+    monkeypatch.setattr(playbook_store, "open_suggestions", broken)
+    status, body = await _check("ADJ-02", sid)
+    assert status == 503 and "results" not in body, body  # noqa: PLR2004 - Failure.UPSTREAM_BUSY
+
+
 async def test_adj01_no_flag(app_db_url, monkeypatch):
     sid = await _seeded(app_db_url, monkeypatch, "ADJ-01")
     status, body = await _check("ADJ-01", sid)
