@@ -3,7 +3,7 @@
 The screen's adjustment check writes no suggestion record any more; tests that need records open them through the
 worker's own store path: ``playbook_store.open_suggestion`` with the fields ``background.DbGateStore.apply`` writes
 (trigger, stage, 4-place value and threshold, comparison, the trigger's label and unit from the evaluated body, the
-T-19 approach / cost / unpriced count through the route's ``_t19_record``), and lapses through
+T-19 approach / cost / unpriced count through the route's ``t19_record``), and lapses through
 ``background.DbGateStore.apply`` itself with the gate's ``Lapsed`` event. One call is one gate step (one group).
 The group key here is ``<strategy>-<UTC stamp>``: the worker's own ``<strategy>:<isoformat>`` fails the inbox reply's
 Identifier pattern (GC-ALERT1 step 5 finding, proven red by test_worker_group_key.py), so it is not copied.
@@ -19,7 +19,7 @@ from ofo.adjustment import alert_gate
 from ofo_app import adjustment_check as check
 from ofo_app import playbook_store
 from ofo_app.background import DbGateStore, Watched
-from ofo_app.routes.adjustment_check import _t19_record
+from ofo_app.routes.adjustment_check import t19_record
 
 AT = datetime.datetime(2026, 11, 2, 10, 0, tzinfo=datetime.UTC)
 
@@ -44,7 +44,7 @@ async def open_flags(engine: Any, sid: int, reply: Mapping, body: Mapping | None
             rec = await playbook_store.open_suggestion(
                 conn, user_ref, sid, x["rule_id"], trigger_id=x["trigger_id"], stage=stage, value=_dec(x["value"]),
                 threshold=_dec(x["threshold"]), group=f"{sid}-{at:%Y%m%dT%H%M%S}", source=source, cmp=x["cmp"],
-                label=label, unit=unit, **_t19_record(x["trigger_id"], cheapest))
+                label=label, unit=unit, **t19_record(x["trigger_id"], cheapest))
             opened[x["rule_id"]] = rec.id
     return opened
 
