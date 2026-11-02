@@ -21,6 +21,8 @@
 """
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import datetime
 import json
 import logging
@@ -45,6 +47,7 @@ from ofo.tracking.orderbook import net_positions
 
 from ofo_app import live_market, paper_book, scenario_mode, tracked_contracts
 from ofo_app.db import get_sessionmaker
+from ofo_app.live_push import no_listener
 from ofo_app.routes.adjustment import MarketInputs, Tracked
 from ofo_app.routes.broker import current_user_ref
 from ofo_app.routes.outcome import market_state, read_booked, server_now
@@ -196,6 +199,49 @@ def chain_rows(listed: Iterable[Any], expiry: datetime.date, quotes: Mapping[str
     return tuple(rows), ids, leg_greeks
 
 
+#: F-92: the longest the Compare waits for the first live quote of a leg of the position that nobody else holds
+#: (the paper book's own wait, ``routes.paper.FORWARD_WAIT_S``)
+LEG_WAIT_S = 3.0
+LEG_POLL_S = 0.05
+
+
+async def chain_quotes(provider: Any, underlying: str, expiry: datetime.date, leg_ids: list[str],
+                       feed: Any) -> dict[str, Any]:
+    """The held quotes of one expiry, plus the position's OWN legs (F-92). The feed's book lists only contracts somebody
+    holds, so a leg nobody else holds (the far hedge: 400 points from spot) was absent although the paper book, which
+    holds its legs for the read (``routes.paper._hold_until_ready``), priced it. A leg missing from the book is held on
+    the shared fan-out until its first quote arrives or ``LEG_WAIT_S`` passes, and the hold is ALWAYS released (timeout,
+    error, cancel). Answer states of a leg: quoted (read as is, no hold) / not held yet (held, then quoted) / no quote
+    after the wait or no token or no feed or provider disconnected (stays absent: the row is unpriced, never 0) /
+    stale and market closed (the quote the book holds, judged by the same planning rule as before)."""
+    quotes = {q.instrument_id: q for q in provider.option_chain_snapshot(underlying, expiry)}
+    missing = [i for i in dict.fromkeys(leg_ids) if i not in quotes]
+    if not missing or feed is None:
+        return quotes
+    try:
+        handle = feed.fanout.subscribe(no_listener, missing, max_queue=1)
+    except KeyError:  # a contract the provider has no token for: nothing was subscribed, the unpriced answer stands
+        return quotes
+    try:
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + LEG_WAIT_S
+        while True:
+            await asyncio.sleep(LEG_POLL_S)
+            quotes = {q.instrument_id: q for q in provider.option_chain_snapshot(underlying, expiry)}
+            if all(i in quotes for i in missing) or not provider.status().connected or loop.time() >= deadline:
+                return quotes
+    finally:
+        with contextlib.suppress(Exception):
+            feed.fanout.unsubscribe(handle)
+
+
+def own_leg_ids(position: Position, listed: Iterable[Any]) -> list[str]:
+    """The instrument ids of the position's legs (by trading symbol, the key the chain rows and the margin use)."""
+    wanted = {x.tradingsymbol for x in position.legs}
+    return [f"{lc.contract.exchange_segment}:{lc.contract.exchange_token}" for lc in listed
+            if lc.broker_refs[0].broker_symbol in wanted]
+
+
 async def read_market(tracked: Tracked, ctx: Any) -> MarketInputs:
     if ctx is None:  # not connected: no chain, no feed spot (the REST reader and the reasons still answer)
         now = server_now()
@@ -208,7 +254,8 @@ async def read_market(tracked: Tracked, ctx: Any) -> MarketInputs:
     listed = listed_options(provider, underlying)
     scn = _scenario()
     expiry_kind = _expiry_kind(provider, underlying, expiry, listed, scn)
-    quotes = {q.instrument_id: q for q in provider.option_chain_snapshot(underlying, expiry)}
+    live = live_market.current_feed()  # F-92: the position's own legs are held for the read, like the paper book's
+    quotes = await chain_quotes(provider, underlying, expiry, own_leg_ids(position, listed), live)
     spot_q = provider.underlying_quote(underlying)
     closed = market_state(ctx, now).closed
     model = chain_model(list(quotes.values()), spot_q, expiry, now, ctx.rate, ctx.forward_quality, market_closed=closed)

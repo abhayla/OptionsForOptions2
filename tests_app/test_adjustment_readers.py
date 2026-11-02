@@ -3,6 +3,7 @@ source state from the SAME provider / client path the live app uses, and never a
 from __future__ import annotations
 
 import asyncio
+import types
 from decimal import Decimal as D
 
 import pytest
@@ -116,3 +117,92 @@ def test_history_count_gives_the_number_zero_and_none():
     assert readers.history_count([], always) is None
     bad = [*entry, _stored(1, "BUY", 130, "-1", "exit", t1)]
     assert readers.history_count(bad, always) is None
+
+
+# ---- F-92: the Compare prices every leg the paper book prices (holds the position's own unheld legs) ----------
+
+class _HidingProvider:
+    """The scenario provider, except the chain snapshot omits ``hidden`` ids until a hold on them exists, as the live
+    book omits a contract nobody holds (``QuoteBook.quotes`` lists held entries only)."""
+
+    def __init__(self, inner, hidden: set[str], held: set[str]) -> None:
+        self._inner, self.hidden, self.held = inner, hidden, held
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+    def option_chain_snapshot(self, underlying, expiry):
+        return [q for q in self._inner.option_chain_snapshot(underlying, expiry)
+                if q.instrument_id not in self.hidden or q.instrument_id in self.held]
+
+
+class _FakeFanout:
+    def __init__(self, provider, *, unknown: bool = False, gives_quote: bool = True) -> None:
+        self.provider, self.unknown, self.gives_quote = provider, unknown, gives_quote
+        self.subscribed: list[list[str]] = []
+        self.released = 0
+
+    def subscribe(self, _listener, ids, **_kw):
+        if self.unknown:
+            raise KeyError(ids)
+        self.subscribed.append(list(ids))
+        if self.gives_quote:
+            self.provider.held |= set(ids)
+        return len(self.subscribed)
+
+    def unsubscribe(self, _handle):
+        self.released += 1
+
+
+def _hedge_case(monkeypatch, **fan):
+    sc = load("ADJ-02")
+    scn, _ = _scn(monkeypatch, "ADJ-02")
+    hedge = next(x for x in sc["position"]["legs"] if x["side"] == "BUY" and x["type"] == "PE")
+    iid = next(f"{lc.contract.exchange_segment}:{lc.contract.exchange_token}" for lc in scn.provider.instrument_master()
+               if lc.broker_refs[0].broker_symbol == hedge["tradingsymbol"])
+    provider = _HidingProvider(scn.provider, {iid}, set())
+    feed = _FakeFanout(provider, **fan)
+    monkeypatch.setattr(readers.live_market, "current_feed", lambda: types.SimpleNamespace(fanout=feed))
+    monkeypatch.setattr(readers, "LEG_WAIT_S", 0.3)
+    ctx = outcome.MarketContext(provider, scn.clock, scn.rate)
+    return sc, hedge, iid, feed, ctx
+
+
+def _row(m, symbol):
+    return next(r for r in m.chain if r.tradingsymbol == symbol)
+
+
+def test_f92_unheld_hedge_leg_is_held_and_priced_then_released(monkeypatch):
+    """Answer state 'not held yet': the leg nobody holds is held for the read, gets its price, the hold is released."""
+    sc, hedge, iid, feed, ctx = _hedge_case(monkeypatch)
+    m = asyncio.run(readers.read_market(tracked_of(sc), ctx))
+    assert _row(m, hedge["tradingsymbol"]).ltp is not None and m.instrument_ids[hedge["tradingsymbol"]] == iid
+    assert feed.subscribed == [[iid]] and feed.released == 1  # only the missing leg, released exactly once
+
+
+def test_f92_leg_that_never_ticks_stays_unpriced_never_zero(monkeypatch):
+    """Answer states 'no price' / 'market closed' (a hold that brings no quote): the row stays None, hold released."""
+    sc, hedge, _iid, feed, ctx = _hedge_case(monkeypatch, gives_quote=False)
+    m = asyncio.run(readers.read_market(tracked_of(sc), ctx))
+    assert _row(m, hedge["tradingsymbol"]).ltp is None and _row(m, hedge["tradingsymbol"]).bid is None
+    assert feed.released == 1
+
+
+def test_f92_leg_the_feed_has_no_token_for_stays_unpriced(monkeypatch):
+    sc, hedge, _iid, feed, ctx = _hedge_case(monkeypatch, unknown=True)
+    m = asyncio.run(readers.read_market(tracked_of(sc), ctx))
+    assert _row(m, hedge["tradingsymbol"]).ltp is None and feed.released == 0
+
+
+def test_f92_no_live_feed_reads_the_book_as_it_is(monkeypatch):
+    sc, hedge, _iid, feed, ctx = _hedge_case(monkeypatch)
+    monkeypatch.setattr(readers.live_market, "current_feed", lambda: None)
+    m = asyncio.run(readers.read_market(tracked_of(sc), ctx))
+    assert _row(m, hedge["tradingsymbol"]).ltp is None and feed.subscribed == []
+
+
+def test_f92_legs_already_held_take_no_hold(monkeypatch):
+    sc, _hedge, iid, feed, ctx = _hedge_case(monkeypatch)
+    ctx.provider.held.add(iid)
+    asyncio.run(readers.read_market(tracked_of(sc), ctx))
+    assert feed.subscribed == [] and feed.released == 0
