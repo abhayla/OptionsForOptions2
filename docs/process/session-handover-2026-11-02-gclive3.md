@@ -52,7 +52,7 @@ Written 13:15 IST, completed at C2 15:3x IST; the C3 result is added in C4.
   paper_alert_body_one_named).
 
 ## NEXT
-- Owner approval of `docs/process/goal-contract-GC-ALERT1-DRAFT.md` (reviewed, FIX FIRST applied; one open owner question inside).
+- Owner approval of `docs/process/goal-contract-GC-ALERT1-DRAFT.md` (approved 2026-11-02 20:4x as `goal-contract-GC-ALERT1-2026-11-02.md`) (reviewed, FIX FIRST applied; one open owner question inside).
 - Build REQ-170 (alert discipline) + ADR-235 (speed per style): goal contract first, core proof = strategy 66-style flapping on the saved scenario/live paper data gives 1 record, not 30.
 - #636 round 4 per the reviewed design (merge base branch first, guard tests, record merge commit in #636).
 - T3 re-run with the reference logged in (ADR-234 (6)), 9 Nov + an expiry-day chain; then the one-IV-per-strike decision.

@@ -4,10 +4,9 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (222)
+## Decisions (223)
 
-- Older decisions: 182 rows, ADR-1..ADR-186 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
-- ADR-187 2026-10-25: (1) The project takes Startup-Factory kit 1.12.0 (from 1.10.1) through PR #546, merged 74230ef6 on… [amends ADR-180; applies ADR-115]
+- Older decisions: 183 rows, ADR-1..ADR-187 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
 - ADR-188 2026-10-25: (1) Owner-approved exception to ADR-178's "at most one item per chunk": chunk 4 carries a second pr… [extends ADR-178; extends ADR-181]
 - ADR-189 2026-10-26: (1) CLAUDE.md holds only pointers and the hard product rules, so CLAUDE.md plus the always-loaded r… [amends ADR-178; amends ADR-181; amends ADR-171; a…]
 - ADR-190 2026-10-26: (1) The project takes Startup-Factory kit 1.15.0 (from 1.14.0) through PR #564, opened by tools/kit… [applies ADR-189; applies ADR-115]
@@ -47,6 +46,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-233 2026-11-02: (1) The default of the admin setting for background playbook checks (REQ-166 AC-1, "background chec… [Amends REQ-165 (statement, AC-1) and REQ-166 (AC-…]
 - ADR-234 2026-11-02: (1) The pricing model stays (ADR-220 (4): Black-Scholes-Merton on each expiry's put-call-parity for… [Applies ADR-220 (4) ("only how a Greek is stated…]
 - ADR-235 2026-11-02: (1) The background playbook check speed (REQ-166 AC-1 "background checks") is three admin settings,… [Amends ADR-233 (1)-(2) (single 30 s default) and…]
+- ADR-236 2026-11-02: (1) After the user dismisses an adjustment suggestion, the same rule on the same strategy stays qui… [Amends ADR-217 (a dismiss no longer silences a wo…]
 
 ## Requirements (161)
 
