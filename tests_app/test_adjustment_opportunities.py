@@ -326,7 +326,7 @@ async def test_t19_list_line_names_the_same_approach_and_cost_as_the_check(app_d
     first = await _check(sid)  # last day 15:00: the clock trigger T-10b fires too (was a 500 before its line fix)
     async with app_db_url.connect() as conn:
         body = (await chk.resolve(conn, "owner", sid, first["strategy_type"])).body
-    await open_flags(app_db_url, sid, first, body, cheapest=route._cheapest(states[-1]))
+    await open_flags(app_db_url, sid, first, body, cheapest=route.cheapest(states[-1]))
     clock = next(x for x in first["results"] if x["kind"] == "flag" and x["trigger_id"] == "T-10b")
     assert clock["condition"] == "Clock time reached (checked in this stage): 15:00 (rule 14:30)"
     flag = next((x for x in first["results"] if x["kind"] == "flag" and x["trigger_id"] == "T-19"), None)
