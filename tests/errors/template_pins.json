@@ -1479,6 +1479,10 @@
     "sha256": "cb4fc667e89cfcda27f4154a7024a0da2cd0ab06ac24ac4167cb2ef208d642f0",
     "reviewed": "pending owner read"
   },
+  "ready_made_future_not_listed": {
+    "sha256": "2f0f534d0248bda75c96a875324d14f3ddf488ae915f93f22d311298f025f6c6",
+    "reviewed": "pending owner read"
+  },
   "ready_made_distance_invalid": {
     "sha256": "f269f9e0952dc83aed2e72a8c62764b5ef53eca9eae01523346adc74849df6c3",
     "reviewed": "pending owner read"

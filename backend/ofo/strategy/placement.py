@@ -33,6 +33,7 @@ class Refusal(Enum):
     SPOT_STALE = "spot_stale"
     EXPIRY_MISSING = "expiry_missing"
     STRIKE_NOT_LISTED = "strike_not_listed"
+    FUTURE_NOT_LISTED = "future_not_listed"  # a futures leg and no listed future on or after its expiry (#583 I-1)
     DISTANCE_NOT_OFFERED = "distance_not_offered"
 
 
