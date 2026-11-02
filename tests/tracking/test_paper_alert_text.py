@@ -6,10 +6,11 @@ from __future__ import annotations
 import datetime
 from decimal import Decimal
 
+import pytest
 from ofo.engine.legs import Instrument
 from ofo.errors.explanations import render_explanation
 from ofo.strategy.definition import display_contract
-from ofo.tracking.paper_alert import alert_body
+from ofo.tracking.paper_alert import alert_body, restore_alert_body
 
 SAFETY = "A paper exit only: no order was sent to Zerodha."
 NOV5, NOV3 = datetime.date(2026, 11, 5), datetime.date(2026, 11, 3)
@@ -45,3 +46,36 @@ def test_two_legs_keep_the_count_and_each_contract_with_its_price() -> None:
                       names_contract=False)
     assert str(body) == ("Conditional exit: NIFTY crossed below 22,850.00; exited 2 legs at NIFTY 3 Nov 22700 PE "
                          "at 41.00, NIFTY 3 Nov 23000 CE at 12.50. " + SAFETY)
+
+
+# GET /paper/alerts read every stored body through one template and answered 500 for the new one-leg wording
+# (regression from 7babdba9). Every stored form must read back.
+_WHAT = render_explanation("paper_stop_reason_index", underlying="NIFTY", direction="below", level=Decimal("22850"))
+OLD_FORM = ("Stop-loss: SENSEX 5 Nov 74400 PE crossed below 170.90; exited 1 legs at SENSEX 5 Nov 74400 PE at 170.00. "
+            + SAFETY)
+
+
+def test_restore_reads_an_old_form_row_written_before_the_one_leg_wording() -> None:
+    assert str(restore_alert_body(OLD_FORM)) == OLD_FORM
+
+
+def test_restore_reads_a_new_one_leg_row() -> None:
+    what = render_explanation("paper_stop_reason_leg", contract=LEG, direction="above", level=Decimal("679.95"))
+    stored = str(alert_body(what, [(LEG, Decimal("683.00"))], names_contract=True))
+    assert str(restore_alert_body(stored)) == stored
+
+
+def test_restore_reads_a_one_leg_named_index_exit_row() -> None:
+    stored = str(alert_body(_WHAT, [(PE, Decimal("41.00"))], names_contract=False))
+    assert str(restore_alert_body(stored)) == stored
+
+
+def test_restore_reads_a_two_leg_row() -> None:
+    stored = str(alert_body(_WHAT, [(PE, Decimal("41.00")), (CE, Decimal("12.50"))], names_contract=False))
+    assert str(restore_alert_body(stored)) == stored
+
+
+@pytest.mark.parametrize("bad", ["hand written", "", OLD_FORM.replace(SAFETY, "Buy now."), "x; exited at 1. A paper"])
+def test_restore_refuses_text_that_fits_no_alert_template(bad: str) -> None:
+    with pytest.raises(ValueError):
+        restore_alert_body(bad)

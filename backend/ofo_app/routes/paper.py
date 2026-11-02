@@ -25,6 +25,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import datetime
+import logging
 from collections.abc import Sequence
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Annotated, Any, Literal, get_args
@@ -50,6 +51,7 @@ from ofo.strategy.definition import describe_contract
 from ofo.table.model import display_number
 from ofo.tracking import paper, paper_decay, paper_greeks
 from ofo.tracking.orderbook import NetPosition, PaperOrder, is_typed_price, net_positions
+from ofo.tracking.paper_alert import restore_alert_body
 from pydantic import BaseModel, ConfigDict, Field
 
 from ofo_app import paper_monitor, paper_store, paper_trigger_store, tracked_contracts
@@ -72,6 +74,8 @@ from ofo_app.routes.planned_entry import get_live_feed
 from ofo_app.routes.strategies import StrategyRefused, refused_answer
 from ofo_app.scenario_mode import refuse_orders
 from ofo_app.underlying import Underlying
+
+_LOG = logging.getLogger(__name__)
 
 router = APIRouter(route_class=ClosedRoute)
 
@@ -881,11 +885,18 @@ async def cancel_paper_trigger(strategy_id: int, trigger_id: int, db: Annotated[
 
 async def _alerts_out(db: Any, user_ref: str) -> AlertsOut:
     rows, unread = await paper_trigger_store.alerts(db, user_ref)
-    return AlertsOut.model_validate({"unread": unread, "alerts": [{
-        "id": a.id, "strategy_id": a.strategy_id, "strategy_name": sf.shown_name(a.strategy_name),
-        "trigger_id": a.trigger_id, "created_at": a.created_at,
-        "title": restore_explanation("paper_alert_title", a.title),
-        "body": restore_explanation("paper_alert_body", a.body), "read": a.read_at is not None} for a in rows]})
+    shown: list[dict[str, Any]] = []
+    for a in rows:
+        try:  # one unreadable row is left out of the list (and logged), never a 500 for every alert
+            title = restore_explanation("paper_alert_title", a.title)
+            body = restore_alert_body(a.body)
+        except ValueError:
+            _LOG.warning("paper alert %s left out: stored text fits no alert template", a.id)
+            continue
+        shown.append({"id": a.id, "strategy_id": a.strategy_id, "strategy_name": sf.shown_name(a.strategy_name),
+                      "trigger_id": a.trigger_id, "created_at": a.created_at, "title": title, "body": body,
+                      "read": a.read_at is not None})
+    return AlertsOut.model_validate({"unread": unread, "alerts": shown})
 
 
 @router.get("/paper/alerts", response_model=AlertsOut)

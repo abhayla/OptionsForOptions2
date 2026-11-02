@@ -9,10 +9,25 @@ from __future__ import annotations
 from collections.abc import Sequence
 from decimal import Decimal
 
-from ofo.errors.explanations import ExplanationText, render_explanation
+from ofo.errors.explanations import ExplanationText, render_explanation, restore_explanation
 from ofo.outcome.price_text import price_text
 
-__all__ = ["alert_body"]
+__all__ = ["alert_body", "restore_alert_body"]
+
+# Every wording a stored alert body can have. The store keeps the text only, not the template id, so a read tries each
+# one; rows written before #614 (7babdba9) only ever fit the multi-leg form ("exited 1 legs at ..."). Stored text is
+# never rewritten.
+ALERT_BODY_TEMPLATES = ("paper_alert_body_one", "paper_alert_body_one_named", "paper_alert_body")
+
+
+def restore_alert_body(stored: str) -> ExplanationText:
+    """A stored alert body read back through whichever alert template it fits; ValueError if it fits none."""
+    for template_id in ALERT_BODY_TEMPLATES:
+        try:
+            return restore_explanation(template_id, stored)
+        except ValueError:
+            continue
+    raise ValueError("stored alert body fits no paper alert template")
 
 
 def alert_body(what: ExplanationText | str, exits: Sequence[tuple[ExplanationText | str, Decimal]], *,
