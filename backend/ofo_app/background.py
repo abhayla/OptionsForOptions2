@@ -411,7 +411,7 @@ class DbGateStore:
         previous record of the rule is still open lapses that one first (REQ-112: one open record per rule)."""
         from ofo_app import playbook_store  # noqa: PLC0415 - database layer at run time
         from ofo_app.db import get_sessionmaker  # noqa: PLC0415
-        from ofo_app.routes.adjustment_check import _cheapest, _t19_record  # noqa: PLC0415 - the screen's T-19 words
+        from ofo_app.routes.adjustment_check import cheapest, t19_record  # noqa: PLC0415 - the screen's T-19 words
         values = {} if ctx is None else {v.rule_id: v for v in ctx.evaluation.values}
         flags = {} if ctx is None else {r.rule_id: r for r in ctx.evaluation.results if isinstance(r, pe.Flag)}
         stage = None if ctx is None else ctx.evaluation.stage_name
@@ -438,7 +438,7 @@ class DbGateStore:
                     await _lapse_open_of(db, w, e.rule_id, playbook_store.LAPSE_SUPERSEDED_BY_WORSE)  # finding 5
                 flag = flags.get(e.rule_id)
                 label, unit = check.trigger_words(w.body, trigger)
-                t19 = {} if ctx is None else _t19_record(trigger or "", _cheapest(ctx.state))
+                t19 = {} if ctx is None else t19_record(trigger or "", cheapest(ctx.state))
                 rec = await playbook_store.open_suggestion(
                     db, w.user_ref, w.strategy_id, e.rule_id, trigger_id=trigger,
                     stage=flag.stage_name if flag is not None else stage, value=value, threshold=threshold,
