@@ -1183,3 +1183,50 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   the server re-validates every leg the user then builds). Fix, per the spec: the server computes the reading and the
   browser shows it (deferred issue #625). Status: **read from the code**; not guarded - no test fails
   when a product rule exists only under frontend/src.
+
+## F-91 - The background role records opportunities with no screen open, but not within 1 s: its check path waits on the database
+- Measured 2026-11-02 (GC-LIVE3 D3), live NIFTY, FEED_MODE=bus, no app tab. After three fixes on feature/adjustments
+  (7c804264, ba6f43dd, f7d2088b) the role writes records by itself (strategy 67 T-03 #30 10:38:32; 78 T-01 #81, #93).
+  Timed T-01 crossings on strategy 78 (tick = Redis stream id, row = shown_at by the DB clock, which runs +0.029 to
+  +0.567 s ahead of the PC): #81 0 to 0.086 s; #93 1.035 to 1.573 s. Cycles 7-14 per minute. Cause: every DB round trip
+  from this PC costs ~0.7 s (SELECT 1 via /health 0.51-1.37 s; ping 12 ms) and the check path still reads settings
+  every cycle and writes changed records; the speed valve counts that wait as maths. Bears on REQ-165, REQ-166,
+  ADR-220 (3). Status: **measured live; parked #636**; classes `check-clock-read-once-per-batch`,
+  `bus-consumer-holds-no-own-tokens` (fixed, guarded), `check-latency-bound-by-db-round-trips` (open).
+
+## F-92 - Compare cannot price a leg that the paper book prices at the same moment, so it offers no approach
+- Measured 2026-11-02 11:06-11:10 (GC-LIVE3 D5), bus mode, strategy 78 (NIFTY 9 Nov IC), from the inbox link
+  "Compare approaches": "All 1 that apply" (only No change); cost %, premium left, Greeks, POP all "Not available:
+  NIFTY26N0922900PE has no current price", unchanged after 10 s, while GET /paper/strategies/78 read that leg at
+  LTP 63.65 (OI 1.9M). Bears on REQ-155, REQ-156, REQ-162. Status: **measured once, live (bus mode only; not yet
+  re-run inprocess)**.
+
+## F-93 - Compare says "no plan maximum set" for a strategy whose plan sets 2 adjustments
+- Same walk: "Adjustments used: 0 used; no plan maximum set" for strategy 78, whose accepted plan (from playbook 13)
+  carries max_adjustments 2 (POST /api/strategies/78/adjustment-plan answer, 11:01). Bears on REQ-161, REQ-155.
+  Status: **measured once, live**.
+
+## F-94 - One strategy shows two different max profit / max loss figures on different screens, without saying which includes charges
+- Measured 2026-11-02: strategy 78 paper book 3,458 / -3,042 (gross); Live Strategies card and Compare
+  3,168.79 / -3,331.21. C1 hand check: the engine's figures are the gross ones net of charges (base IC 2,918.50 +
+  charges 291.14 = 3,209.64 to the paisa). Decided by ADR-082 (2): every max profit / max loss includes round-trip
+  charges and says so, so the paper book's gross figures are the defect (also ADR-008, one engine, one number). Status:
+  **measured live; defect against ADR-082 (2)** (no owner decision needed).
+
+## F-95 - Every ready-made shape with a futures leg is refused, with a message about a strike
+- Measured 2026-11-02 09:44-10:04: load-template answers 422 "A strike this shape needs is not listed" for
+  covered_call, buy_future, sell_future on NIFTY 3 Nov, 9 Nov, 23 Nov (future listed) and 29 Dec; 38 of 41 shapes load.
+  Cause: `routes/ready_made.py:160-161` refuses any leg without a strike. Contradicts RD-090 (COPY, verified: the
+  reference's Buy / Sell Future, preset matrix rows 26 / 37 "B1 FUT" / "S1 FUT"). #583 I-1. Status: **measured live;
+  builder round dispatched 2026-11-02**.
+
+## F-96 - Adding a futures leg turns live numbers into "Live market data disconnected" while the feed is connected
+- Measured 2026-11-02 10:05: leg-edit read of a priced NIFTY 9 Nov iron condor -> COMPUTED; the same + BUY
+  NIFTY26NOVFUT -> FROM_ENTRIES, "Live market data disconnected. Last updated: 10:05:38 AM. Live strategy monitoring is
+  paused." #583 I-12. Status: **measured live; builder round dispatched 2026-11-02**.
+
+## F-97 - A request with no screen open answers LIVE before any price arrives, and the playbook check never warms in bus mode
+- Measured 2026-11-02, no app tab: leg-picker NIFTY 9 Nov 09:22:04 "LIVE / SPOT_MISSING", 0 of 21 priced, centred on
+  the middle strike (22150-23150 while spot was 23267.70, so ATM was outside the list); 9 s later 8-9 of 21; cold again
+  within ~30 s (API wanted tokens 43 -> 0). GET /api/strategies/78/adjustment-check 3 times 3 s apart: every rule
+  "spot not available" (the route takes no lease). #615 class. Status: **measured live, repeatedly**.
