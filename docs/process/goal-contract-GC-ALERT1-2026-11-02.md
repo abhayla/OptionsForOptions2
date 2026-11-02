@@ -49,7 +49,7 @@ DATES: every time written in a record comes from `date` in the same step. NIFTY 
 | 5 | Wire the gate into the worker (after 4, same file, one after the other); risk exits never call the gate (AC-5 test); the screen check and the background check use the same gate | worker tests incl. restart, dismissed record, dismiss then worse stage, plan change, day rollover | 45 min, 60 calls |
 | 6 | ADR-235: three check-speed settings per style; the worker uses the strategy's style interval | tests: 0-1 day 10 s, weekly 30 s, monthly 120 s | 30 min, 40 calls |
 | 7 | LIVE (needs a market day, earliest Tue 2026-11-03): owner Kite login (private window); portable Redis 5 on 6380; three fresh paper strategies (intraday / weekly / monthly); owner's visible Chrome; background on, no app tab; count records per strategy per hour; dismiss one and watch it stay quiet | counts vs 2026-11-02 baseline (103 records 09:30-11:50, 75 lapsed); written into REQ-170 | market hours |
-| 8 | Close: `coord.py take-heavy`; no tracked-file edit while prepush runs (run it in the background with a Monitor on its step lines); generated files via `regen.py` only; one `prepush.py --full` TOTAL PASS on the final head; push `feature/adjustments` to origin (backup, after market hours); handover `docs/process/session-handover-<date>-gcalert1.md`; memory | TOTAL PASS line + push line; nothing on main | 60 min |
+| 8 | Close: `coord.py take-heavy`; no tracked-file edit while prepush runs (run it in the background with a Monitor on its step lines); generated files via `regen.py` only; one `prepush.py --full` TOTAL PASS on the final head; push `feature/adjustments` to origin (backup, as soon as TOTAL PASS: amendment 2026-11-03); handover `docs/process/session-handover-<date>-gcalert1.md`; memory | TOTAL PASS line + push line; nothing on main | 60 min |
 
 ## Side tasks (small, technical; run beside steps 3-6, at most 2 builders at once, never in the same files as 4-5)
 | # | What | Done when | Budget |
@@ -85,6 +85,12 @@ DATES: every time written in a record comes from `date` in the same step. NIFTY 
 | 3 screens | PARTIAL | ofo_dev migrated 0034 -> 0036 (owner role, scratch wrapper). Owner's Chrome desktop 1366: Preferences tab shows the 3 style tables with the REQ-170 defaults; live POST daily_cap 8 -> 422 "can be at most 6, the limit your administrator set" (AC-6); pin on 81: Automatic (now Weekly) -> PUT monthly 200 (in force monthly) -> reset 200 (weekly). NOT seen: 390 px (window would not resize, innerWidth stayed 1536) and the plan-sheet picker (screenshots timed out twice); flaws seen: style tables show no units, lowercase labels |
 | 5 | RUNNING (5a) | build/gcalert1-wire-a: gate readings for false rules, Lapsed at band, restore after restart, migration 0036 (held table + worse column); 5b = worker wiring next |
 | 6-8 | not started | step 6 settings half done in step 3; worker half in 5b |
+
+## Amendment 2026-11-03 00:39 IST (owner, chat)
+Owner: "finish everything as soon as possible, obviously test it. But for market hour testing, create a separate contract, separate goal contract, and we will run it during that market hours. Maybe we will combine other live market hours testing along with this one ... At least the building part should be completed."
+- Step 7 (LIVE) MOVES to its own goal contract, `docs/process/goal-contract-GC-LIVE4-2026-11-03-DRAFT.md`, run in market hours with any other live checks ready by then. GC-ALERT1 no longer waits for a market day.
+- Step 8: push `feature/adjustments` as soon as the full gate is TOTAL PASS (no longer "after market hours"); nothing on main.
+- Definition of Done line 2: "live counts recorded, or step 7 PARKED" is replaced by "step 7 handed to GC-LIVE4 (draft written)".
 
 ## Definition of Done
 - [ ] Step 0 data + hand-derived counts, then the core proof (step 1), before any other code.
