@@ -107,10 +107,10 @@ def test_ac1_ledger_disagreeing_with_broker_is_not_an_exception_but_a_block() ->
 
 
 def test_ac2_choices_in_spec_order_only_in_the_exception() -> None:
-    """AC-2: Complete Strategy, Retry Failed Leg, Review Manually, Close Partial Strategy -- in that order, with the
+    """AC-2: Complete Strategy, Retry Failed Leg, Review Manually, Exit Partial Strategy -- in that order, with the
     spec's words; offered only in the exception state (not when complete)."""
     assert [c.value for c in CHOICE_ORDER] == [
-        "Complete Strategy", "Retry Failed Leg", "Review Manually", "Close Partial Strategy"]
+        "Complete Strategy", "Retry Failed Leg", "Review Manually", "Exit Partial Strategy"]
     a = assess(plan(), three_positions(), statuses(), book_with_three_filled(), FakePlanner(), read_at=READ_AT)
     assert a.choices == CHOICE_ORDER
     assert review_manually(a).orders == ()
@@ -119,7 +119,7 @@ def test_ac2_choices_in_spec_order_only_in_the_exception() -> None:
 
 def test_ac3_filled_legs_never_unwound_automatically(catalogue, eligibility) -> None:  # noqa: ANN001
     """AC-3: assessing, completing, retrying and reviewing never prepare an order in a filled leg's contract; only the
-    user's own Close Partial Strategy prepares exits -- reduce-only, exactly the three filled legs, through the gate."""
+    user's own Exit Partial Strategy prepares exits -- reduce-only, exactly the three filled legs, through the gate."""
     filled = set(CONTRACTS[:3])
     a = assess(plan(), three_positions(), statuses(), book_with_three_filled(), FakePlanner(), read_at=READ_AT)
     preps = [

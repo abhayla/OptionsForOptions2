@@ -5,6 +5,7 @@ Kite): every iron condor scenario's approaches equal ``expected.approach_after``
 """
 from __future__ import annotations
 
+import asyncio
 import datetime
 import json
 import re
@@ -15,13 +16,15 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from ofo.adjustment import playbook_eval as pe
 from ofo.adjustment.approaches import APPROACH_IDS, ChainRow, Position, PositionLeg
 from ofo.adjustment.compare import ROWS
 from ofo.charges import ChargeRates
 from ofo.engine.black_scholes import year_fraction
 from ofo.marketdata.spot_source import SourceReading, SourceState
 from ofo.outcome.service import MARGIN_CHECKED, Margin, margin_empty, margin_unreadable
-from ofo_app import paper_store
+from ofo_app import adjustment_check, paper_store
+from ofo_app import adjustment_readers as readers
 from ofo_app.main import create_app
 from ofo_app.routes import adjustment as route
 from ofo_app.routes import outcome
@@ -53,8 +56,9 @@ def tracked_of(sc: dict, booked="stated") -> route.Tracked:
 def market_of(sc: dict) -> route.MarketInputs:
     unpriced = {q["tradingsymbol"] for q in sc["broker"]["quote"]["legs"] if q["state"] != "stated"}
     rows, ids = [], {}
+    later = sorted(c["expiry"] for c in sc["market"]["chains"] if c["expiry"] > sc["expiry"])
     for c in sc["market"]["chains"]:
-        if c["expiry"] != sc["expiry"]:
+        if c["expiry"] not in {sc["expiry"], *later[:1]}:  # its expiry + the next, as read_market (A-04, ADR-239)
             continue
         for r in c["rows"]:
             gone = r["tradingsymbol"] in unpriced
@@ -79,7 +83,7 @@ class Calls:
 
 
 def client_for(sc: dict, *, booked="stated", margin=None, environ=None, rates=None,  # noqa: PLR0913 - one keyword per route seam
-               calls: Calls | None = None, guards=None):
+               calls: Calls | None = None, guards=None, real_guards=False):
     app = create_app()
     rest_ok = sc["data_state"].get("rest", "ok") == "ok" and sc["data_state"].get("spot_source") != "none"
     now = datetime.datetime.fromisoformat(sc["clock"]["ist"])
@@ -103,11 +107,12 @@ def client_for(sc: dict, *, booked="stated", margin=None, environ=None, rates=No
         return Margin(MARGIN_CHECKED, margin_unreadable().reason, D("100000"), D("100000"), D("500000"), now)
 
     app.dependency_overrides |= {
-        route.get_guards_reader: lambda: read_guards,
         route.get_tracked_reader: lambda: tracked, route.get_market_reader: lambda: market,
         route.get_rest_spot_reader: lambda: rest, route.get_approach_margin: lambda: margin or default_margin,
         route.get_held_environ: lambda: environ, outcome.load_charge_rates: lambda: rates,
         outcome.get_market_context: lambda: None}
+    if not real_guards:  # real_guards: the route's own reader (adjustment_readers.read_guards) runs
+        app.dependency_overrides[route.get_guards_reader] = lambda: read_guards
     return TestClient(app)
 
 
@@ -131,8 +136,18 @@ def test_ac2_every_scenario_approach_gross_equals_the_hand_values(sid):
         got = by_id[a]
         if got["refusal"] is not None or not h.get("exact", True):
             continue
+        if h.get("multi_expiry"):  # A-04 spans two expiries: no whole-trade After by design (ADR-239)
+            assert got["after"] is None or got["after"]["gross"] is None, (sid, a, got["after"])
+            want = (sc["expected"].get("approach_legs") or {}).get(a)  # figure-less: compared on its trades
+            assert want is not None and got["trades"], (sid, a)
+            keys = ("action", "type", "strike", "expiry", "lots", "price")
+            assert [{k: str(t[k]) for k in keys} for t in got["trades"]] ==                 [{k: str(t[k]) for k in keys} for t in want["trades"]], (sid, a)  # noqa: E501
+            continue
         g = got["after"]["gross"]
-        assert D(g["max_profit"]) == D(h["max_profit"]), (sid, a, g, h)
+        if str(h["max_profit"]).upper() == "UNLIMITED":  # a text answer, not a number (A-26 leaves only the long wing)
+            assert str(g["max_profit"]).upper() == "UNLIMITED", (sid, a, g, h)
+        else:
+            assert D(g["max_profit"]) == D(h["max_profit"]), (sid, a, g, h)
         assert D(g["max_loss"]) == D(h["max_loss"]), (sid, a, g, h)
         assert [D(b) for b in g["breakevens"]] == [D(b).quantize(D("0.01")) for b in h["breakevens"]], (sid, a)
         assert D(got["after"]["booked_pnl"]) == D(h["booked_pnl"]), (sid, a)
@@ -346,13 +361,16 @@ def test_req156_ac2_adj02_reply_carries_every_criterion_for_every_approach_and_t
     rows = {c["id"]: c for c in body["criteria"]}
     legs, after = sc["expected"]["approach_legs"], sc["expected"]["approach_after"]
     for a in built:
+        if after[a].get("multi_expiry"):  # A-04: two expiries, no whole-trade figure by design: a dash with its reason
+            assert rows["max_loss"]["values"][a]["value"] is None and rows["move_m2"]["values"][a]["value"] is None, a
+            continue
         ch = next(x for x in body["approaches"] if x["id"] == a)["charges"]
         lines = D(ch["this_adjustment"]) + D(ch["paid_so_far"]) + D(ch["open_exit"])
         assert D(rows["max_loss"]["values"][a]["value"]) == D(after[a]["max_loss"]) + lines, a
         level = Fraction(sc["market"]["spot"]) * Fraction(98, 100)
         h = gen.hand_pnl_at(legs[a]["after"], Fraction(after[a]["booked_pnl"]), level)
         assert D(rows["move_m2"]["values"][a]["value"]) == D(h.numerator) / D(h.denominator) - lines, a
-    assert set(body["curves"]) == {"before", *built}
+    assert set(body["curves"]) == {"before", *(a for a in built if not after[a].get("multi_expiry"))}  # A-04: no curve
     assert all(len(p) == 2 for pts in body["curves"].values() for p in pts)  # noqa: PLR2004 - [level, P&L]
     m = sum(1 for c in body["criteria"] if c["leaders"])
     assert list(body["leads"]) == built and all(v["m"] == m for v in body["leads"].values())
@@ -407,9 +425,13 @@ def test_drawer_a36_only_builds_no_change_and_lists_every_generic_approach_witho
     assert [a["id"] for a in body["approaches"]] == ["A-36"]
     assert [a["id"] for a in body["available"]] == list(APPROACH_IDS)
     for a in body["available"]:
-        assert set(a) == {"id", "name", "explanation", "applicable", "reason"}
+        assert set(a) == {"id", "name", "explanation", "applicable", "reason", "liquidity_flags"}
         assert a["name"] and a["explanation"] and not re.search(r"\d", a["explanation"]), a  # REQ-045 AC-5: no figure
-    assert body["available"][0]["name"] == "No change" and all(a["applicable"] for a in body["available"])
+    # the generator's hand path says which approaches ADJ-02 cannot build (the rest are applicable)
+    cannot = {a for a, v in load("ADJ-02")["expected"]["approach_legs"].items() if "refused" in v}
+    assert body["available"][0]["name"] == "No change"
+    assert {a["id"] for a in body["available"] if not a["applicable"]} == cannot, [
+        (a["id"], a["reason"]) for a in body["available"] if not a["applicable"]]
 
 
 def test_drawer_layer2_current_state_comes_from_the_a36_column_and_days_to_expiry_from_the_legs():
@@ -489,3 +511,169 @@ def test_a1_route_with_no_playbook_applies_no_limits():
     reply = post(client_for(load("ADJ-50"), guards=None)).json()
     assert all("liquidity limit" not in _liquidity_text(reply, a["id"]) for a in reply["approaches"])
     assert next(a for a in reply["approaches"] if a["id"] == "A-05")["refusal"] is None
+
+
+# ---- #624 round 3 (ADR-230 (1)): an unreadable playbook says so; "no playbook" does not -----------------------------
+
+UNREADABLE_WORDS = "limits not applied: playbook unreadable"
+
+
+def _break_playbook_read(monkeypatch):
+    async def boom(*_a, **_k):
+        raise RuntimeError("store down")
+    monkeypatch.setattr(adjustment_check, "resolve", boom)
+
+
+def test_624_1_unreadable_playbook_reply_says_limits_not_applied_and_a_limit_roll_is_not_refused(monkeypatch):
+    _break_playbook_read(monkeypatch)
+    reply = post(client_for(load("ADJ-50"), real_guards=True)).json()
+    assert reply["limits_reason"] == UNREADABLE_WORDS
+    assert next(a for a in reply["approaches"] if a["id"] == "A-05")["refusal"] is None  # no limit applied, said so
+
+
+def test_624_1_no_playbook_and_empty_guards_carry_no_reason():
+    for guards in (None, {}):
+        reply = post(client_for(load("ADJ-50"), guards=guards)).json()
+        assert reply["limits_reason"] is None, guards
+
+
+def test_624_1_read_guards_answer_states(monkeypatch):
+    sc = load("ADJ-50")
+    tracked, market = tracked_of(sc), market_of(sc)
+
+    class Resolved:
+        def __init__(self, body):
+            self.body = body
+
+    async def run(body=None, *, raises=False):
+        async def resolve(*_a, **_k):
+            if raises:
+                raise RuntimeError("store down")
+            return Resolved(body)
+        class Session:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_a):
+                return False
+        monkeypatch.setattr(readers, "get_sessionmaker", lambda: Session)
+        monkeypatch.setattr(readers, "current_user_ref", lambda: "u")
+        monkeypatch.setattr(adjustment_check, "resolve", resolve)
+        monkeypatch.setattr(adjustment_check, "strategy_type", lambda *_a: "x")
+        return await readers.read_guards(72, tracked.position, market.forward, None)
+    assert asyncio.run(run(raises=True)) is readers.GUARDS_UNREADABLE
+    assert asyncio.run(run({"guards": LIMITS})) == LIMITS
+    assert asyncio.run(run({"guards": {}})) == {}
+
+
+def test_624_2_each_approach_and_available_row_carries_the_new_strike_flag_the_compare_shows():
+    """ADJ-50, A-05's new strike thinned: the approach and its `available` row carry the Compare's flag."""
+    sc = load("ADJ-50")
+    guards = {"hide_oi_below": 10000}
+    first = post(client_for(sc, guards=guards)).json()
+    opened = {t["tradingsymbol"] for t in next(a for a in first["approaches"] if a["id"] == "A-05")["trades"]
+              if t["action"] == "SELL" and t["strike"] == "23500"}
+    for c in sc["market"]["chains"]:
+        for r in c["rows"]:
+            if r["tradingsymbol"] in opened:
+                r["oi"] = 500
+    reply = post(client_for(sc, guards=guards)).json()
+    by_id = {a["id"]: a for a in reply["approaches"]}
+    assert by_id["A-05"]["liquidity_flags"] == ["Below your liquidity limit"]
+    assert "liquidity limit" in _liquidity_text(reply, "A-05")  # the Compare cell flags the same approach
+    assert next(a for a in reply["available"] if a["id"] == "A-05")["liquidity_flags"] == ["Below your liquidity limit"]
+    assert by_id["A-01"]["liquidity_flags"] == []
+    none = post(client_for(sc, guards=None)).json()
+    assert all(a["liquidity_flags"] == [] for a in none["approaches"] + none["available"])
+
+
+# ---- GC-IC1 round 3: the landing strikes nobody held get ONE second pass --------------------------------------------
+
+def test_gcic1_r3_second_pass_is_asked_once_with_the_unpriced_landing_strikes():
+    """The first read has no engine Greeks for any landing strike (the fake market carries none): the route asks the
+    second-pass reader exactly ONCE with those ids, rebuilds from its answer, and never asks again although the
+    answer is still missing them (bounded: at most one more wait)."""
+    sc = load("ADJ-02")
+    c = client_for(sc)
+    asked: list[list[str]] = []
+
+    async def more(_t, _ctx, ids):
+        asked.append(list(ids))
+        return market_of(sc)
+    c.app.dependency_overrides[route.get_more_market_reader] = lambda: more
+    r = post(c)
+    assert r.status_code == 200, r.text  # noqa: PLR2004 - HTTP OK
+    assert len(asked) == 1 and asked[0] and len(asked[0]) == len(set(asked[0]))
+    a05 = next(a for a in r.json()["approaches"] if a["id"] == "A-05")
+    ids = market_of(sc).instrument_ids
+    assert {ids[x["tradingsymbol"]] for x in a05["after_legs"]} <= set(asked[0])
+
+
+def test_gcic1_r3_unpriced_ids_lists_builder_gaps_and_after_legs_without_greeks():
+    import dataclasses  # noqa: PLC0415
+    sc = load("ADJ-02")
+    market = market_of(sc)
+    position = tracked_of(sc).position
+    spot = D(sc["market"]["spot"])
+    from ofo.adjustment.preferences import from_values  # noqa: PLC0415
+    from ofo.settings import defaults  # noqa: PLC0415
+    cfg = from_values(defaults()).approach
+    built = route.build_approach(position, market.chain, spot, "A-05", cfg)
+    every = route.unpriced_ids([built, None], market)
+    assert every == list(dict.fromkeys(market.instrument_ids[x.tradingsymbol] for x in built.after))
+    greeks = {x.tradingsymbol: object() for x in built.after}
+    assert route.unpriced_ids([built], dataclasses.replace(market, leg_greeks=greeks)) == []
+
+
+def test_adr238_the_five_exit_and_reduce_approaches_come_back_as_columns():
+    """GC-IC1 step 2 (ADR-238, REQ-155 AC-1): with the iron condor playbook read through the route's guards seam, ADJ-02
+    returns A-24, A-25, A-26, A-27 and A-35; each built one's trades and After equal the generator's (A-27 with the
+    playbook's T-09 of the stage), A-35 says its time, and every built one is a compare column."""
+
+    sc = load("ADJ-02")
+    body = pe.body_from_fixture(json.loads((FIX / "_playbooks.json").read_text(encoding="utf-8")), "ic")
+    guards = adjustment_check.guards_of_body(body)
+    guards.pop("roll_debit_limit", None)  # the liquidity limits are another test's; this one reads T-09 and the time
+    reply = post(client_for(sc, guards=guards)).json()
+    by_id = {a["id"]: a for a in reply["approaches"]}
+    assert list(by_id) == list(APPROACH_IDS) and list(APPROACH_IDS)[-8:-3] == ["A-24", "A-25", "A-26", "A-27", "A-35"]
+    hand = {**sc["expected"]["approach_legs"], **sc["expected"]["playbook_exits"]["approach_legs"]}
+
+    def norm(rows, keys):
+        return [{k: str(r[k]) for k in keys} for r in rows]
+    for a in ("A-24", "A-25"):  # ADR-238 (6): ADJ-02's whole trade is at a loss, so take profit is refused
+        assert by_id[a]["refusal"]["what_happened"] == hand[a]["refused"], a
+    for a in ("A-26", "A-27"):
+        got, want = by_id[a], hand[a]
+        assert got["refusal"] is None, (a, got["refusal"])
+        keys = ("action", "type", "strike", "lots", "quantity", "price", "tradingsymbol")
+        assert norm(got["trades"], keys) == norm(want["trades"], keys), a
+        assert norm(got["after_legs"], ("side", "strike", "lots")) == norm(want["after"], ("side", "strike", "lots")), a
+    assert by_id["A-35"]["refusal"]["what_happened"] == hand["A-35"]["refused"]
+    columns = next(c for c in reply["criteria"] if c["id"] == "cost")["values"]
+    assert {"A-26", "A-27"} <= set(columns) and not {"A-24", "A-25", "A-35"} & set(columns)
+
+
+def test_adr239_the_three_roll_approaches_come_back_as_columns():
+    """GC-IC1 step 3 (ADR-239, REQ-155 AC-1): ADJ-02 through the route returns A-02, A-04 and A-06 built; each one's
+    trades and After equal the generator's engine-free copy (A-04 on the 17 Nov chain the route read in its one hold),
+    each is a compare column with a cost, and A-04's After (two expiries) is a dash with the engine's reason."""
+    sc = load("ADJ-02")
+    reply = post(client_for(sc, rates=RATES)).json()
+    by_id = {a["id"]: a for a in reply["approaches"]}
+    assert list(by_id) == list(APPROACH_IDS) and list(APPROACH_IDS)[-3:] == ["A-02", "A-04", "A-06"]
+    hand = sc["expected"]["approach_legs"]
+
+    def norm(rows, keys):
+        return [{k: str(r[k]) for k in keys} for r in rows]
+    for a in ("A-02", "A-04", "A-06"):
+        got, want = by_id[a], hand[a]
+        assert got["refusal"] is None, (a, got["refusal"])
+        keys = ("action", "type", "strike", "expiry", "lots", "quantity", "price", "tradingsymbol")
+        assert norm(got["trades"], keys) == norm(want["trades"], keys), a
+        assert norm(got["after_legs"], ("side", "strike", "expiry", "lots")) == norm(
+            want["after"], ("side", "strike", "expiry", "lots")), a
+    rows = {c["id"]: c["values"] for c in reply["criteria"]}
+    assert {"A-02", "A-04", "A-06"} <= set(rows["cost"])
+    assert all(rows["cost"][a]["value"] is not None for a in ("A-02", "A-04", "A-06"))
+    assert rows["max_profit"]["A-04"]["value"] is None

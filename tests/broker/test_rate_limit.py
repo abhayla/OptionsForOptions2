@@ -84,7 +84,7 @@ def test_a_user_action_that_would_wait_over_five_seconds_is_refused_at_once_with
     limiter.note_429(OTHER, KEY, "u1")
     with pytest.raises(rl.KiteBusy) as busy:
         limiter.acquire(OTHER, KEY)
-    assert str(busy.value) == "Zerodha is busy - try again in a moment" == ZERODHA_BUSY_TEXT
+    assert str(busy.value) == "Zerodha is busy. Try again in a moment." == ZERODHA_BUSY_TEXT
     assert busy.value.reason == "wait" and pacer.now() == 0.0
 
 

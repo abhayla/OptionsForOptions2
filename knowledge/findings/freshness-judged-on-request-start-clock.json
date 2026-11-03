@@ -12,9 +12,10 @@
  "detection": {
   "status": "guarded",
   "checks": [
-   "tests_app/test_execute_health_clock.py"
+   "tests_app/test_execute_health_clock.py",
+   "tests/marketdata/test_spot_source.py"
   ],
-  "note": "PR #427 tests the gate with a clock that advances while the slow reads run. Not covered: other routes that read a request clock before slow calls; a pinned-clock replay test still cannot see this class by itself."
+  "note": "2026-11-03: the rule now also lives in the shared spot reader (spot_source, one constant health.CLOCK_SKEW_TOLERANCE, 2 s) so every resolve_spot caller gets it. PR #427 tests the gate with a clock that advances while the slow reads run. Not covered: other routes that read a request clock before slow calls; a pinned-clock replay test still cannot see this class by itself."
  },
  "spec_ref": [
   "spec/requirements/REQ-049.md"
@@ -24,6 +25,11 @@
    "date": "2026-10-19",
    "where": "GC-3L live Execute prepare, strategy 11",
    "evidence": "5 prepares blocked with DATA_UNHEALTHY / MARKET_DATA_103 while spot_at <= 1 s old"
+  },
+  {
+   "date": "2026-11-03",
+   "where": "GC-IC1 POST /api/strategies/82/adjustment-approaches (2nd occurrence): spot_source refused any reading stamped after the caller's clock",
+   "evidence": "10:57 three calls in a row answered spot None with reasons absent / tick_in_future / absent while GET /api/market/indices served NIFTY 23,658.75 at 10:57:56"
   }
  ]
 }

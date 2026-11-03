@@ -23,7 +23,7 @@ from ofo.errors.model import UserFacingError, _build, _claim_render_token
 from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS
 
 from ofo.errors.gate_slots import (
-    Clock, ContractSymbol, DataHealthState, DataInputName, Date, DisplayRupees, ExecutionStatusName, LegContract, LegRef, OrderRef,
+    Clock, ClockTime, ContractSymbol, DataHealthState, DataInputName, Date, DisplayRupees, ExecutionStatusName, LegContract, LegRef, OrderRef,
     PlaybookField, PlaybookName, PlaybookTypeName, RiskRows, Rupees, ShapeFamilies, Strikes, Symbol, UnitsByContract,
     VersionStateName, VersionStates, WorstCase,
 )
@@ -92,7 +92,7 @@ _TEMPLATES: tuple[MessageTemplate, ...] = (
         what_happened="No option chain data has arrived for {symbol} in the last {minutes} minutes.",
         impact="Prices and Greeks on screen are stale and may not match the live market.",
         what_is_blocked="New order preparation for this instrument.",
-        next_action="Wait for the data feed to reconnect, or refresh the page in a few minutes.",
+        next_action="Wait for live market data to reconnect, or refresh the page in a few minutes.",
         slots={"symbol": Underlying, "minutes": Count},
     ),
     MessageTemplate(
@@ -204,7 +204,7 @@ CONNECT_PROMPT = ("Connect your Zerodha account to continue. We'll use your Zero
 _RECONNECT = "Reconnect your Zerodha account from the account page, then try again."
 #: REQ-118 AC-3: what a user sees when the Kite rate limiter refuses a request at once (its one home;
 #: `ofo.broker.rate_limit.KiteBusy` raises it).
-ZERODHA_BUSY_TEXT: str = "Zerodha is busy - try again in a moment"
+ZERODHA_BUSY_TEXT: str = "Zerodha is busy. Try again in a moment."
 # REQ-055 AC-4: the ways forward when funds are below the margin; one home for the Execute gate and the Builder.
 MARGIN_SHORTFALL_NEXT_ACTION: str = (
     "Reduce the quantity, review the strategy, or add funds in Zerodha, then check again."
@@ -227,13 +227,15 @@ def _gate(id: str, error_class: ErrorClass, number: int, what: str, impact: str,
     )
 
 
-def _contract_pair(id: str, error_class: ErrorClass, number: int, problem: str) -> tuple[MessageTemplate, ...]:
+def _contract_pair(id: str, error_class: ErrorClass, number: int, problem: str,
+                   next_actions: tuple[str, str] = (_REPLACE_OR_REMOVE, _PICK_OR_REMOVE),
+                   ) -> tuple[MessageTemplate, ...]:
     """A contract problem in its two forms: no alternative strike to offer, and one or two offered (never applied)."""
     return (
         _gate(id, error_class, number, "{leg} " + problem + _NO_ALTERNATIVE, _NOT_TRADABLE, _EXEC,
-              _REPLACE_OR_REMOVE, {"leg": LegRef}),
+              next_actions[0], {"leg": LegRef}),
         _gate(id + "_alternatives", error_class, number + 1, "{leg} " + problem + _ALTERNATIVES, _NOT_TRADABLE, _EXEC,
-              _PICK_OR_REMOVE, {"leg": LegRef, "strikes": Strikes}),
+              next_actions[1], {"leg": LegRef, "strikes": Strikes}),
     )
 
 
@@ -275,7 +277,7 @@ _GATE_TEMPLATES: tuple[MessageTemplate, ...] = (
           "Orders could be placed without the orders they rely on.", _EXEC,
           "Check the strategy's open orders, then try again."),
     _gate("gate_dependencies_unsatisfied", _SV, 105,
-          "An order this execution depends on is not in place yet (for example a protective leg).",
+          "An order this execution depends on is not in place yet (for example a bought option leg).",
           "Orders could be placed without the order they rely on.", _EXEC,
           "Place the order this execution depends on first, then try again."),
     _gate("gate_duplicate_leg", _SV, 106,
@@ -327,7 +329,7 @@ _GATE_TEMPLATES: tuple[MessageTemplate, ...] = (
           "Prices, margin and checks could rest on data that does not match the market.", _EXEC,
           "Wait for the data to update, then try again.", {"data_input": DataInputName, "state": DataHealthState}),
     _gate("gate_expiry_passed", _MD, 104, "Leg {leg} ({contract}) expired on {date}.",
-          "This strategy cannot be executed as planned.", "Execute", "Replace or remove this leg.",
+          "This strategy cannot be executed as planned.", "Execution of this strategy.", "Replace or remove this leg.",
           {"leg": Count, "contract": LegContract, "date": Date}),
     _gate("gate_contract_ambiguous", _MD, 105, "{leg} matches more than one contract in the instrument list.",
           _NOT_TRADABLE, _EXEC, "Refresh the instrument list, then check again.", {"leg": LegRef}),
@@ -336,9 +338,13 @@ _GATE_TEMPLATES: tuple[MessageTemplate, ...] = (
                     "has no Zerodha instrument record, so it cannot be traded at Zerodha."),
     *_contract_pair("gate_contract_not_listed", _MD, 110, "is no longer listed by Zerodha."),
     *_contract_pair("gate_contract_unconfirmed", _BE, 101,
-                    "has not been confirmed as available on Zerodha yet. Refresh availability to continue."),
+                    "has not been confirmed as available on Zerodha yet. Refresh availability to continue.",
+                    ("Refresh availability, then check again. If it still cannot be confirmed, replace or remove "
+                     "this leg.",
+                     "Refresh availability, then check again. If it still cannot be confirmed, pick one of the "
+                     "strikes shown for this leg yourself, or remove the leg.")),
     *_contract_pair("gate_contract_unavailable", _BE, 103,
-                    "is currently unavailable on Zerodha. Zerodha isn't accepting fresh orders for this contract "
+                    "is currently unavailable on Zerodha. Zerodha is not accepting new orders for this contract "
                     "right now."),
     _gate("gate_broker_unconfirmed", _BA, 101, "We could not confirm your Zerodha connection. Reconnect to continue.",
           "Orders cannot be sent to Zerodha.", _EXEC, _RECONNECT),
@@ -369,16 +375,15 @@ _GATE_TEMPLATES: tuple[MessageTemplate, ...] = (
           "of an active strategy, stays available on every plan.",
           _PRO_IMPACT, _PRO_BLOCKED, _PRO_NEXT),
     _gate("gate_entitlement_worse_worst_case", _EA, 103,
-          "This adjustment makes the strategy's worst case at expiry larger (option premiums excluded): from "
-          "{before} to {after}. Adjustments that add risk need Pro. Exiting, or closing or reducing legs without a "
-          "larger worst case, stays available on every plan.",
+          "This adjustment raises the maximum loss at expiry from {before} to {after} (option premiums "
+          "excluded). Adjustments that add risk need Pro. Exiting or reducing legs stays available on every plan.",
           _PRO_IMPACT, _PRO_BLOCKED, _PRO_NEXT, {"before": WorstCase, "after": WorstCase}),
     _gate("gate_entitlement_futures_entry_unknown", _EA, 104,
           "Entry price of a futures leg is not known yet — adjustment needs Pro until it is.",
           _PRO_IMPACT, _PRO_BLOCKED, _PRO_NEXT),
     _gate("gate_entitlement_multi_expiry", _EA, 105,
-          "This strategy has legs on more than one expiry. Without Pro it can be exited, reduced by the same share "
-          "on every leg, or have only its sold options closed; other adjustments may add risk and need Pro.",
+          "This strategy has legs on more than one expiry. Without Pro you can exit, reduce every leg by the "
+          "same share, or close only the sold options. Other adjustments may add risk and need Pro.",
           _PRO_IMPACT, _PRO_BLOCKED, _PRO_NEXT),
     _gate("gate_reconciliation_unknown", _RM, 101,
           "Reconciliation status unknown. Execution is blocked until your Zerodha positions have been reconciled.",
@@ -402,11 +407,11 @@ _GATE_TEMPLATES: tuple[MessageTemplate, ...] = (
           "The platform could not finish checking this strategy before execution.", _EXEC,
           "Try again in a few minutes; contact support if this keeps happening."),
     # Strategy template catalogue (ofo.strategy.loader): the user sees this; the developer detail stays on the error.
-    _gate("strategy_catalogue_unreadable", _IS, 102, "The strategy template list could not be read.",
+    _gate("strategy_catalogue_unreadable", _IS, 102, "The list of ready-made shapes could not be read.",
           "Strategy templates cannot be offered right now.", "Choosing a strategy from a template.",
           "Build the strategy leg by leg for now; contact support if this keeps happening."),
     _gate("strategy_catalogue_invalid", _IS, 103,
-          "The strategy template list has {count} problem(s) and could not be loaded.",
+          "The list of ready-made shapes has {count} problem(s) and could not be loaded.",
           "Strategy templates cannot be offered right now.", "Choosing a strategy from a template.",
           "Build the strategy leg by leg for now; contact support if this keeps happening.", {"count": Count}),
     # Partial execution (ofo.execution.partial, REQ-058): each what-happened keeps the sentence shown before round 9,
@@ -415,8 +420,11 @@ _GATE_TEMPLATES: tuple[MessageTemplate, ...] = (
           "We could not re-read your Zerodha positions and orders. No order has been prepared.",
           "The platform does not know this strategy's current state at Zerodha.", _PARTIAL_BLOCKED,
           "Try again in a moment; check the positions in Zerodha if this keeps happening."),
-    _gate("partial_nothing_prepared", _PE, 102, "Nothing prepared.", "No order is waiting for your confirmation.",
-          _PARTIAL_BLOCKED, "Check the strategy's state, then choose again."),
+    _gate("partial_nothing_prepared", _PE, 102, "No orders were prepared for this strategy.",
+          "No order is waiting for your confirmation.",
+          _PARTIAL_BLOCKED,
+          "Open the strategy, read its status, then choose Complete Strategy, Retry Failed Leg or Exit "
+          "Partial Strategy again."),
     _gate("partial_status_not_partial", _PE, 103, "Nothing prepared: the strategy is {status}.",
           "Completing, retrying or closing applies only to a partly executed strategy.", _PARTIAL_BLOCKED,
           "Check the strategy's state, then choose again.", {"status": ExecutionStatusName}),
@@ -431,8 +439,8 @@ _GATE_TEMPLATES: tuple[MessageTemplate, ...] = (
           "New orders now could duplicate the ones Zerodha is still handling.", _PARTIAL_BLOCKED,
           "Wait for Zerodha to confirm the open orders, then check again."),
     _gate("partial_needs_fresh_read", _PE, 106,
-          "You chose Close Partial Strategy. Completing or retrying needs a fresh read of your Zerodha positions "
-          "taken after that choice. No order has been prepared.",
+          "You chose Exit Partial Strategy. Completing or retrying needs the latest positions from Zerodha, "
+          "loaded after that choice. No order has been prepared.",
           "Orders based on the earlier read could add to positions you chose to close.", "Completing or retrying.",
           "Refresh the strategy's positions from Zerodha, then choose again."),
     _gate("partial_gate_blocked", _PE, 107, "The safety checks blocked this. No order has been prepared.",
@@ -452,7 +460,7 @@ _GATE_TEMPLATES: tuple[MessageTemplate, ...] = (
     _gate("partial_review_manually", _PE, 111,
           "Review the filled and failed legs below. No order has been prepared.",
           "The strategy stays partly executed until you choose an action.", "Automatic completion of this strategy.",
-          "Choose Complete Strategy, Retry Failed Leg or Close Partial Strategy when ready."),
+          "Choose Complete Strategy, Retry Failed Leg or Exit Partial Strategy when ready."),
     _gate("partial_no_price", _PE, 112,
           "Zerodha did not give a current price for every filled leg. No order has been prepared.",
           "Exit orders cannot be priced without a current price.", "Closing this strategy.",
@@ -486,13 +494,14 @@ _VERSION_NOTE = "The orders would not match the version of the strategy this act
 _WRONG_SIDE = " A wrong side could add to a position instead of completing or closing it."
 
 _SEND_TEMPLATES: tuple[MessageTemplate, ...] = (
-    _gate("send_request_not_from_sink", _IS, 201, "A broker request was built outside the broker sink.",
+    _gate("send_request_not_from_sink", _IS, 201, "An order request was not created by the platform's normal "
+                                                  "order step, so it was not sent.",
           _SEND_IMPACT, _SEND_BLOCKED, _SEND_SUPPORT),
     _gate("send_version_not_live", _SV, 201,
           "Version v{version} is neither the active nor the pending version of this strategy.",
           _SEND_IMPACT + " " + _VERSION_NOTE, _SEND_BLOCKED, _SEND_REPREPARE, {"version": Count}),
     _gate("send_choice_unknown", _IS, 202, "The chosen action sends no orders.", _SEND_IMPACT, _SEND_BLOCKED,
-          "Choose Complete Strategy, Retry Failed Leg or Close Partial Strategy, then try again."),
+          "Choose Complete Strategy, Retry Failed Leg or Exit Partial Strategy, then try again."),
     _gate("send_order_wrong_version", _SV, 202, "An order does not belong to this strategy version.",
           _SEND_IMPACT + " " + _VERSION_NOTE, _SEND_BLOCKED, _SEND_REPREPARE),
     _gate("send_contract_not_a_leg", _SV, 203, "An order names a contract that is not a leg of version v{version}.",
@@ -504,7 +513,7 @@ _SEND_TEMPLATES: tuple[MessageTemplate, ...] = (
           _SEND_IMPACT + " A larger quantity could take the position past the strategy's plan.", _SEND_BLOCKED,
           _SEND_REPREPARE, {"units": Count, "room": Count}),
     _gate("send_catalogue_not_one", _MD, 201,
-          "The instrument catalogue has {count} instruments for a leg of this strategy; exactly one is needed.",
+          "We found {count} Zerodha instruments for this leg; exactly 1 is needed.",
           _SEND_IMPACT + " No trading symbol can be chosen for that leg.", _SEND_BLOCKED,
           "Refresh the instrument list, then prepare the orders again.", {"count": Count}),
     _gate("send_no_zerodha_record", _MD, 202,
@@ -512,7 +521,7 @@ _SEND_TEMPLATES: tuple[MessageTemplate, ...] = (
           _SEND_IMPACT + " No symbol is guessed.", _SEND_BLOCKED,
           "Refresh the instrument list, then replace or remove this leg."),
     _gate("send_catalogue_missing", _IS, 203,
-          "The broker sink needs the instrument catalogue to derive trading symbols.",
+          "The instrument list needed to find trading symbols is not available.",
           _SEND_IMPACT, _SEND_BLOCKED, _SEND_SUPPORT),
     _gate("send_order_other_strategy", _SV, 206, "An order does not belong to this strategy.",
           _SEND_IMPACT, _SEND_BLOCKED, _SEND_REPREPARE),
@@ -520,15 +529,16 @@ _SEND_TEMPLATES: tuple[MessageTemplate, ...] = (
           _SEND_IMPACT + " " + _VERSION_NOTE, _SEND_BLOCKED, _SEND_REPREPARE),
     _gate("send_leg_not_in_version", _SV, 208, "An order names a leg that is not part of version v{version}.",
           _SEND_IMPACT, _SEND_BLOCKED, _SEND_REPREPARE, {"version": Count}),
-    _gate("send_symbol_mismatch", _SV, 209, "An order's contract is not the catalogue symbol of its leg.",
-          _SEND_IMPACT + " The symbol is always taken from the catalogue, never from the order.", _SEND_BLOCKED,
+    _gate("send_symbol_mismatch", _SV, 209, "An order's contract does not match the Zerodha instrument for its leg.",
+          _SEND_IMPACT + " The symbol is always taken from the instrument list, never from the order.", _SEND_BLOCKED,
           _SEND_REPREPARE),
     _gate("send_side_not_leg_side", _SV, 210, "An order's side is not the side of its leg.",
           _SEND_IMPACT + _WRONG_SIDE, _SEND_BLOCKED, _SEND_REPREPARE),
-    _gate("send_client_tag_missing", _IS, 204, "The platform's client tag is missing from an order.",
+    _gate("send_client_tag_missing", _IS, 204, "An order is missing the identifying tag the platform adds, so it "
+                                               "was not sent.",
           _SEND_IMPACT, _SEND_BLOCKED, _SEND_SUPPORT),
     _gate("send_request_not_resolved", _IS, 205,
-          "The broker sink did not resolve this request, or it was already sent.",
+          "This order request could not be matched to a Zerodha order, or it was already sent.",
           _SEND_IMPACT + " Each request is sent once at most.", _SEND_BLOCKED,
           "Check the strategy's orders in Zerodha before preparing anything again."),
     _gate("send_entry_product_not_nrml", _SV, 211,
@@ -545,8 +555,8 @@ _REC_IMPACT = "P&L, Greeks and rule checks for this strategy cannot be trusted u
 _REC_BLOCKED = "New orders and automatic rule triggers for the strategies this mismatch names."
 _REC_NONE_BLOCKED = "Nothing: no strategy is blocked by this mismatch."
 _REC_RECONCILE = (
-    "Reconcile this strategy: adopt the broker position, prepare a closing or restoring order, or mark as requiring "
-    "attention."
+    "Reconcile this strategy: accept Zerodha's position, prepare an order that closes or restores it, or flag "
+    "the strategy for attention."
 )
 _REC_SLOT = {"contracts": Count}
 
@@ -554,13 +564,13 @@ _RECONCILIATION_TEMPLATES: tuple[MessageTemplate, ...] = (
     _gate("recon_missing_platform_position", _RM, 201,
           "Zerodha shows none of the position this strategy holds on {contracts} contract(s).",
           _REC_IMPACT, _REC_BLOCKED,
-          "Reconcile this strategy: adopt the broker position, prepare a closing or restoring order, mark as "
-          "requiring attention, or (if the broker is flat) mark the strategy exited.", _REC_SLOT),
+          "Choose one: accept Zerodha's position, prepare an order that closes or restores it, flag the strategy "
+          "for attention, or (if Zerodha shows no position) mark the strategy exited.", _REC_SLOT),
     _gate("recon_unexpected_broker_position", _RM, 202,
           "Zerodha shows a position on {contracts} contract(s) that no strategy or recorded standalone position holds.",
           "The platform's record does not include this position.", _REC_NONE_BLOCKED,
-          "Choose how to group it: add to an existing strategy, create a new strategy, or leave it standalone. "
-          "No strategy is blocked.", _REC_SLOT),
+          "Choose how to group it: add to an existing strategy, create a new strategy, or leave it "
+          "standalone.", _REC_SLOT),
     _gate("recon_quantity_mismatch", _RM, 203,
           "Zerodha's quantity on {contracts} contract(s) differs from the platform's record for this strategy.",
           _REC_IMPACT, _REC_BLOCKED, _REC_RECONCILE, _REC_SLOT),
@@ -576,22 +586,22 @@ _RECONCILIATION_TEMPLATES: tuple[MessageTemplate, ...] = (
     _gate("recon_external_modification", _RM, 207,
           "A change on {contracts} contract(s) was made outside the platform; no platform order or fill explains it.",
           _REC_IMPACT, _REC_BLOCKED,
-          "Review the change made outside the platform, then reconcile: adopt the broker position, prepare a "
-          "closing or restoring order, or mark as requiring attention.", _REC_SLOT),
+          "Review the change made outside the platform, then reconcile: accept Zerodha's position, prepare an "
+          "order that closes or restores it, or flag the strategy for attention.", _REC_SLOT),
     _gate("recon_partial_execution", _RM, 208,
           "This strategy is partly executed on {contracts} contract(s): Zerodha shows part of the planned quantity.",
           _REC_IMPACT, _REC_BLOCKED,
-          "Partially executed: Complete Strategy, Retry Failed Leg, Review Manually or Close Partial Strategy.",
+          "Choose Complete Strategy, Retry Failed Leg, Review Manually or Exit Partial Strategy.",
           _REC_SLOT),
     _gate("recon_standalone_changed", _RM, 209,
           "A recorded standalone position changed on {contracts} contract(s).",
           "The recorded standalone quantity no longer matches Zerodha.", _REC_NONE_BLOCKED,
-          "Review the standalone position and update its recorded quantity. No strategy is blocked.", _REC_SLOT),
+          "Review the standalone position and update its recorded quantity.", _REC_SLOT),
     # W-083 (REQ-061, ADR-084): grouping the positions already open at Zerodha. All pending owner read.
     _gate("grouping_unknown_contract", _RM, 210,
-          "Zerodha shows a position on {contracts} contract(s) that are not in this platform's contract list.",
+          "Zerodha shows a position on {contracts} contract(s) that are not in this platform's instrument list.",
           "This position cannot be grouped or added to a strategy.", "Adding this position to a strategy.",
-          "It stays visible here. Refresh the contract list and connect again to try once more.", _REC_SLOT),
+          "It stays visible here. Refresh the instrument list and connect again to try once more.", _REC_SLOT),
     _gate("grouping_not_lot_multiple", _RM, 211,
           "Zerodha shows a quantity on {contracts} contract(s) that is not a whole number of lots.",
           "This position cannot be added to a strategy, because a strategy leg is a whole number of lots.",
@@ -602,7 +612,7 @@ _RECONCILIATION_TEMPLATES: tuple[MessageTemplate, ...] = (
           "Choose a group or strategy on the same underlying, or leave the position standalone."),
     _gate("grouping_choice_unavailable", _RM, 213,
           "That choice is not available: the position, group or strategy is not in the list of open positions, "
-          "or the group was already adopted.",
+          "or the group was already added to a strategy.",
           "Nothing was changed.", "This choice only.", "Reload your open positions and choose again."),
     _gate("grouping_entry_price_invalid", _RM, 214,
           "The entry price is not valid: it must be above zero with at most two decimal places.",
@@ -646,12 +656,12 @@ _RECONCILIATION_TEMPLATES: tuple[MessageTemplate, ...] = (
           "{contracts} expired contract(s) held here are not at Zerodha and have no settlement price yet.",
           "The strategy's P&L for the expired leg is not final until its settlement price arrives.",
           _REC_NONE_BLOCKED,
-          "Wait for the exchange settlement price; the leg is then closed in the platform. No strategy is blocked.",
+          "Wait for the exchange settlement price; the leg is then closed in the platform.",
           _REC_SLOT),
     _gate("recon_expired_still_at_broker", _RM, 220,
           "Zerodha still lists {contracts} expired contract(s) that the platform has already settled.",
           "None: the platform closed the expired leg at its settlement price.", _REC_NONE_BLOCKED,
-          "Zerodha may remove the expired position the next morning; check again then. No strategy is blocked.",
+          "Zerodha may remove the expired position the next morning; check again then.",
           _REC_SLOT),
     # Issue #279 items 2 and 3 (numbers follow W-085's 219-220).
     _gate("recon_expired_standalone_retired", _RM, 221,
@@ -710,12 +720,12 @@ _PART4_TEMPLATES: tuple[MessageTemplate, ...] = (
           "size is unknown.", "Order sizes cannot be checked against the exchange lot size.", _PARTIAL_BLOCKED,
           "Refresh the instrument list, then choose again.", {"count": Count, "contract": ContractSymbol}),
     _gate("partial_slice_freeze_unusable", _PE, 120,
-          "Nothing prepared: the freeze quantity for {contract} is not a positive integer.",
+          "Nothing prepared: the freeze quantity for {contract} is missing or not a whole number above 0.",
           "Orders for this contract cannot be split without a usable freeze quantity.",
           _PARTIAL_BLOCKED, _SLICE_NEXT, {"contract": ContractSymbol}),
     _gate("partial_read_stale", _PE, 119,
-          "Nothing prepared: the stale broker read could not be used; it became too old while the orders were "
-          "being prepared.", "Orders based on an old read could add to positions that have since changed.",
+          "Nothing prepared: the positions loaded from Zerodha became too old while the orders were being "
+          "prepared.", "Orders based on an old read could add to positions that have since changed.",
           _PARTIAL_BLOCKED, "Refresh the strategy's positions from Zerodha, then choose again."),
     _gate("partial_mismatch_unknown_order", _RM, 301,
           "Zerodha shows order {order} that the platform has no record of.",
@@ -748,7 +758,8 @@ _PART4_TEMPLATES: tuple[MessageTemplate, ...] = (
           "{contract}: Zerodha shows this contract in more than one product and the platform's own orders do not "
           "say which one belongs to this strategy.",
           "The platform cannot tell which position this strategy would reduce.", _MISMATCH_BLOCKED,
-          "Exit the position in Zerodha yourself, then refresh this strategy from Zerodha and choose again.",
+          "Check in Zerodha which product holds this strategy's position, then refresh this strategy from "
+          "Zerodha and choose again.",
           _PCONTRACT),
     _gate("partial_mismatch_other_product_only", _RM, 310,
           "{contract}: the strategy's own position (the product its fills carry) is not open at Zerodha; Zerodha "
@@ -828,13 +839,15 @@ _BROKER_LOGIN_TEMPLATES: tuple[MessageTemplate, ...] = (
 # --- W-061 (REQ-038 AC-5): Save Draft refusals (backend/ofo_app/routes/strategies.py). New: awaiting the owner's read.
 _STRATEGY_DRAFT_TEMPLATES: tuple[MessageTemplate, ...] = (
     _gate("strategy_contract_not_in_catalogue", _SV, 401,
-          "A contract in this strategy is not in the contract catalogue.",
-          "The draft was not saved or changed.", "Saving this strategy.", "Pick the contract again from the catalogue."),
+          "A contract in this strategy is not in the instrument list.",
+          "The draft was not saved or changed.", "Saving this strategy.", "Pick the contract again from the "
+                                                                          "instrument list."),
     _gate("strategy_contract_terms_changed", _SV, 402,
-          "The catalogue now describes one of this strategy's contracts differently from the strategy.",
-          "The draft was not saved or changed.", "Using this strategy until its contracts are chosen again.", "Pick the contracts again from the catalogue; nothing is replaced for you."),
+          "The instrument list now describes one of this strategy's contracts differently from the strategy.",
+          "The draft was not saved or changed.", "Using this strategy until its contracts are chosen again.",
+          "Pick the contracts again from the instrument list; nothing is replaced for you."),
     _gate("strategy_contract_not_live", _SV, 403,
-          "A contract in this strategy is no longer live in the catalogue.",
+          "A contract in this strategy is no longer live in the instrument list.",
           "The draft was not saved or changed.", "Saving this strategy.", "Replace that leg with a live contract."),
     _gate("strategy_quantity_not_lot_multiple", _SV, 404,
           "A leg's quantity is not a whole number of lots.",
@@ -891,21 +904,22 @@ _STRATEGY_DRAFT_TEMPLATES: tuple[MessageTemplate, ...] = (
     _gate("strategy_version_pending", _SV, 417,
           "This strategy has an execution or a proposed version still waiting for its result.",
           "Nothing was changed; the active version stays as it is.", "Changing or confirming the strategy now.",
-          "Wait for the result, or return from Zerodha to read it, then try again."),
+          "Wait for the result, or open Zerodha to see the outcome of the order, then try again."),
     _gate("strategy_reconciliation_required", _SV, 418,
-          "Zerodha's position for this strategy differs from its active version, or could not be told apart.",
+          "Zerodha's position for this strategy differs from its active version, or the platform could not "
+          "compare them.",
           "Nothing was changed; the strategy stays blocked until the difference is resolved.",
           "Changing or confirming the strategy.",
           "Open the strategy's reconciliation and record how the difference was resolved."),
     # W-151 (REQ-119 AC-5): Execute names the saved revision its review was built from; another saved version since.
     _gate("execute_plan_changed", _SV, 419,
-          "Your plan changed - review it again.",
+          "Your plan changed after you reviewed it.",
           "No order was prepared and nothing was stored; orders are only prepared from the plan you reviewed.",
           "Preparing orders from an older version of this strategy.",
           "Review the current plan, then prepare the orders again."),
     # W-157 (REQ-134 AC-1): the name a user gives a saved strategy.
     _gate("strategy_name_empty", _SV, 430,
-          "Give the strategy a name",
+          "The strategy has no name.",
           "The strategy was not saved or renamed.", "Saving or renaming this strategy.",
           "Type a name of 1 to 20 characters, then save again."),
     _gate("strategy_name_invalid", _SV, 431,
@@ -914,9 +928,9 @@ _STRATEGY_DRAFT_TEMPLATES: tuple[MessageTemplate, ...] = (
           "Shorten the name or remove line breaks and control characters, then save again."),
     # W-156 (REQ-070 AC-6, ADR-118): a strategy that sent a basket is never deleted.
     _gate("strategy_delete_after_basket", _SV, 432,
-          "Can't delete: orders were sent",
+          "Orders were already sent for this strategy, so it cannot be deleted.",
           "The strategy and its history were not changed.", "Deleting this strategy.",
-          "Keep the strategy; its history stays readable."),
+          "Its history stays readable."),
     # GC-BP step 5 (REQ-109 AC-4, AC-5): paper exit of tracked legs.
     _gate("tracking_exit_prices_not_live", _SV, 433,
           "Prices are not live; try again when they update.",
@@ -976,8 +990,8 @@ _STRATEGY_DRAFT_TEMPLATES: tuple[MessageTemplate, ...] = (
 # owner's read. The review block never splits a leg; the warning is shown while no limit is stored.
 _FREEZE_TEMPLATES: tuple[MessageTemplate, ...] = (
     _gate("freeze_limit_exceeded", _SV, 501,
-          "{contract}: {units} units ({lots} lots) is not below the exchange freeze limit of {limit} units; the "
-          "largest single order allowed is {max_units} units ({max_lots} lots).",
+          "{contract}: {units} units ({lots} lots) is at or above the exchange freeze limit of {limit} units; "
+          "the largest single order allowed is {max_units} units ({max_lots} lots).",
           "The exchange rejects an order at or above its freeze limit, so this leg cannot be sent as one order.",
           "Execution of this strategy, until this leg is within the limit.",
           "Reduce this leg to {max_lots} lots or fewer, then review the strategy again.",
@@ -1004,7 +1018,7 @@ _FREEZE_TEMPLATES: tuple[MessageTemplate, ...] = (
 # awaiting the owner's read.
 _MARGIN_GATE_TEMPLATES: tuple[MessageTemplate, ...] = (
     _gate("margin_basket_insufficient", _MG, 201,
-          "This strategy needs {required} of margin with the premium up to your limit prices (an estimate); "
+          "This strategy needs about {required} of margin, counting the premium at your limit prices; "
           "{available} is available in your account.",
           MARGIN_SHORTFALL_IMPACT,
           "Building the Zerodha basket for this strategy.",
@@ -1018,7 +1032,7 @@ _ORDER_PATH_TEMPLATES: tuple[MessageTemplate, ...] = (
     _gate("order_path_off", _UI, 4,
           "Placing orders from this app is switched off for now.",
           "No order was prepared and nothing was sent to Zerodha.", "Preparing and checking orders.",
-          "You can build, save and track strategies."),
+          "You can still build, save and track strategies."),
     # GC-ADJ1 step 1b: dev/test scenario mode (ofo_app.scenario_mode) serves test data; every order route refuses.
     _gate("scenario_no_orders", _UI, 26,
           "Scenario mode: no orders. This app is showing scenario test data, not the market.",
@@ -1054,7 +1068,7 @@ _READY_MADE_TEMPLATES: tuple[MessageTemplate, ...] = (
           "The {underlying} index value is missing or out of date.",
           "Strikes are never placed from an old value, so none were placed.",
           "Loading a ready-made shape or a quick pick.",
-          "Wait for the live data to return, then try again.", {"underlying": Underlying}),
+          "Wait for live market data to return, then try again.", {"underlying": Underlying}),
     # GC-UI step 5 (REQ-091 AC-1, ADR-203): the Strategy Chart's data route while its held flag is off
     _gate("price_history_held", _UI, 104,
           "The strategy chart is not available.",
@@ -1066,7 +1080,7 @@ _READY_MADE_TEMPLATES: tuple[MessageTemplate, ...] = (
 # changes; each text names the leg. Adapted from branch build/W-126-a1-leg-rows (REQ-076 texts only). New: awaiting the
 # owner's read.
 _LEG_EDIT_TEMPLATES: tuple[MessageTemplate, ...] = (
-    _gate("leg_edit_strike_not_listed", _UI, 9, "{leg} is not listed in the instrument file.",
+    _gate("leg_edit_strike_not_listed", _UI, 9, "{leg} is not listed in the instrument list.",
           "The edit was refused and no leg changed.", "This edit.", "Pick a listed strike, or change a different leg.",
           {"leg": LegRef}),
     _gate("leg_edit_no_further_strike", _UI, 10, "{leg} has no further listed strike in that direction.",
@@ -1074,7 +1088,7 @@ _LEG_EDIT_TEMPLATES: tuple[MessageTemplate, ...] = (
           {"leg": LegRef}),
     _gate("leg_edit_futures_no_stepper", _UI, 11, "{leg} is a futures leg and has no strike to step.",
           "The edit was refused and no leg changed.", "This edit.", "Change the lots instead.", {"leg": LegRef}),
-    _gate("leg_edit_unknown_contract", _UI, 12, "Leg {number} is not a contract in the instrument file.",
+    _gate("leg_edit_unknown_contract", _UI, 12, "Leg {number} is not a contract in the instrument list.",
           "The edit was refused and no leg changed.", "This edit.", "Pick the leg again from the picker.",
           {"number": Count}),
     _gate("leg_edit_price_not_tick", _UI, 13, "{leg}: the price must be a positive multiple of {tick}.",
@@ -1225,10 +1239,26 @@ _TRIGGER_TEMPLATES: tuple[MessageTemplate, ...] = (
           "No adjustment opportunity checked: spot not available.", _TRIG_WITHHELD,
           "Every rule of this playbook.", "Wait for the spot price to come back.", {}),
     # ADR-221: T-19 uses the cheapest approach the playbook offers; when none can be used it is not checked
-    _trig("no_approach_offered", 173, "This playbook offers no adjustment approach to price, so the premium left "
-          "cannot be compared with an adjustment's cost."),
-    _trig("no_approach_priced", 174, "No adjustment approach this playbook offers can be priced now (a contract "
-          "without a bid or an ask, charges not available, or no whole-trade figure)."),
+    _trig("no_approach_offered", 173, "This playbook lists no adjustment we can price, so the premium left "
+                                      "cannot be compared with an adjustment's cost."),
+    _trig("no_approach_priced", 174, "No adjustment this playbook lists can be priced now. The cause may be a "
+                                     "contract without a bid or an ask, charges not available, or no total cost "
+                                     "for the whole trade."),
+    # GC-IC1 1a: a switched-on expiry close day rule without a valid time, distance % or Rs limit is never checked
+    _trig("day_rule_incomplete", 504, "This day rule is missing its time or its distance from spot, or has a value "
+          "that is not a number.", None, "Fix this day rule in the playbook to have it checked."),
+    # GC-IC1 1b: a carry check (before a weekend or a holiday) when the NSE holiday list has no year it needs
+    _trig("holiday_list_unknown", 505, "The market holiday list is not known for these days, so it cannot be "
+          "told whether tonight is before a weekend or a holiday.", None,
+          "This rule is checked again once the holiday list for that year is added."),
+    # GC-IC1 1b: the carry check's 2% gap figures need the spot and every option leg's implied volatility
+    _trig("carry_gap_unknown", 506, "The profit or loss if the market opens 2% higher or lower cannot be estimated: "
+          "the spot or a leg's implied volatility is not available."),
+    # GC-IC1 6a (ADR-240 (3)): S-02 needs every open leg's delta; S-12 needs the day the strategy was entered
+    _trig("missing_leg_delta", 507, "A leg's delta is not available, so the position's net delta per lot cannot be "
+          "worked out."),
+    _trig("missing_entry_day", 508, "The day this strategy was entered is not known, so the big win on the first "
+          "day cannot be checked."),
     _gate("adjust_trigger_already_true", _UI, 152, "Already true when tracking started.",
           "It is shown, not flagged, until a check finds it false.", "Nothing.",
           "Watch it: it flags if it clears and then comes back.", {}),
@@ -1279,6 +1309,49 @@ _PLAYBOOK_TEMPLATES: tuple[MessageTemplate, ...] = (
           "The roll limit saved in your playbook could not be read, so this roll costing {debit} net was not built.",
           _ADJ_REFUSED, _ADJ_BLOCKED, "Fix the roll limit in the playbook, or compare the other approaches.",
           {"debit": Money}),
+    # ADR-238 (GC-IC1 step 2): the exit and reduce approaches' refusals (REQ-155 AC-8)
+    _gate("adjust_partial_not_whole_lots", _UI, 179,
+          "{leg} holds {lots} lots, and {percent}% of them is not a whole number of lots.",
+          _ADJ_REFUSED, _ADJ_BLOCKED, "Change the partial close percent in your preferences, or compare the other "
+          "approaches.", {"leg": LegRef, "lots": Count, "percent": Count}),
+    _gate("adjust_untested_not_decayed", _UI, 180,
+          "{leg} has fallen from {entry} to {now}; this approach waits until it has fallen by {percent}% or more.",
+          _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {"leg": LegRef, "entry": Money, "now": Money,
+                                                        "percent": Count}),
+    _gate("adjust_untested_no_entry", _UI, 181,
+          "{leg} has no entry price above zero, so how far its price has fallen cannot be worked out.",
+          _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {"leg": LegRef}),
+    _gate("adjust_buyback_no_limit", _UI, 182,
+          "Your playbook sets no buy-back price for short legs at this stage, so this approach is not built.",
+          _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {}),
+    _gate("adjust_buyback_none_at_limit", _UI, 183,
+          "No short leg is priced within the buy-back limit of {limit} your playbook sets for this stage.",
+          _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {"limit": Money}),
+    _gate("adjust_time_exit_not_set", _UI, 184,
+          "Your playbook sets no time exit, so this approach is not built.",
+          _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {}),
+    _gate("adjust_time_exit_not_yet", _UI, 185, "The time exit is offered on expiry day from {time}.",
+          _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {"time": ClockTime}),
+    # ADR-239 (GC-IC1 step 3): the roll approaches A-02 and A-04
+    _gate("adjust_roll_short_past_wing", _UI, 186,
+          "Moving {leg} to {strikes} would put it at or beyond its wing at {wing}, so the wing would no longer "
+          "protect it.",
+          _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {"leg": LegRef, "strikes": Strikes, "wing": Strikes}),
+    _gate("adjust_roll_out_no_next_expiry", _UI, 187,
+          "No expiry after {expiry} is listed in the chain read, so this approach is not built.",
+          _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {"expiry": Date}),
+    _gate("adjust_roll_out_no_prices", _UI, 188,
+          "The {expiry} expiry has no prices in the chain read, so this approach is not built.",
+          _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {"expiry": Date}),
+    # ADR-238 (6): take profit only when the whole trade is in profit
+    _gate("adjust_take_profit_not_in_profit", _UI, 189,
+          "The whole trade is not in profit with every open leg closed at its planned price, so this approach is "
+          "not built.",
+          _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {}),
+    _gate("adjust_take_profit_booked_unknown", _UI, 190,
+          "The profit or loss booked so far is not known, so whether the whole trade is in profit cannot be worked "
+          "out and this approach is not built.",
+          _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {}),
 )
 
 _TEMPLATES = (_TEMPLATES + _TRIGGER_TEMPLATES + _GATE_TEMPLATES

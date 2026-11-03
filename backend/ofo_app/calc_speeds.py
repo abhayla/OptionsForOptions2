@@ -3,8 +3,8 @@
 Speeds (``read_speeds``, called on EVERY cycle so a changed setting takes effect with no restart):
 (a) per-option figures at most once per ``speeds.per_option_seconds`` per option (default 1 s);
 (b) a strategy open on a screen at most once per ``speeds.open_strategy_seconds`` (GC-SET's key, only read here);
-(c) background checks of a strategy with no screen open at most once per ``speeds.background_check_seconds``
-    (30 s by default, ADR-233);
+(c) background checks of a strategy with no screen open at most once per the interval of its trading style,
+    ``speeds.background_check_seconds.<style>`` (intraday 10 s, weekly 30 s, monthly 120 s by default, ADR-235 (1));
 (d) a saved draft no screen has open: only when opened (a behaviour, not a key: ``draft_on_open`` is always True).
 
 Safety valve (``Valve``): when the maths step's backlog or reply time crosses its limit, the open-screen and
@@ -26,11 +26,14 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Final
 
+from ofo.adjustment import alert_presets
+
 log = logging.getLogger("ofo_app.calc_speeds")
 
 KEY_PER_OPTION: Final = "speeds.per_option_seconds"
 KEY_OPEN_SCREEN: Final = "speeds.open_strategy_seconds"  # GC-SET's key; read only, never redefined here
-KEY_BACKGROUND: Final = "speeds.background_check_seconds"
+#: ADR-235 (1): one admin interval per trading style (the one key text lives in ``alert_presets.KEYS``)
+BACKGROUND_KEYS: Final[Mapping[str, str]] = {s: alert_presets.speed_key(s) for s in alert_presets.STYLES}
 VALVE_STEP_KEYS: Final = ("speeds.valve_step_seconds.1", "speeds.valve_step_seconds.2", "speeds.valve_step_seconds.3")
 
 # The valve's load limits are not user-visible figures (ADR-222 (1)); REQ-166 AC-3 names them only as "a set limit".
@@ -56,7 +59,7 @@ def setting_seconds(values: Mapping[str, Decimal], key: str) -> Decimal:
 class Speeds:
     per_option: Decimal
     open_screen: Decimal
-    background: Decimal
+    background: Mapping[str, Decimal]  # trading style -> its background check interval (ADR-235 (1))
     draft_on_open: bool = True  # (d): a saved draft is computed only when opened, never in the background
 
 
@@ -64,7 +67,7 @@ def read_speeds(values: Mapping[str, Decimal]) -> Speeds:
     """THE one reader of the four speeds; called on every cycle with that cycle's settings read (REQ-166 AC-1: no
     restart for a change)."""
     return Speeds(setting_seconds(values, KEY_PER_OPTION), setting_seconds(values, KEY_OPEN_SCREEN),
-                  setting_seconds(values, KEY_BACKGROUND))
+                  {s: setting_seconds(values, k) for s, k in BACKGROUND_KEYS.items()})
 
 
 def valve_steps(values: Mapping[str, Decimal]) -> tuple[Decimal, ...]:

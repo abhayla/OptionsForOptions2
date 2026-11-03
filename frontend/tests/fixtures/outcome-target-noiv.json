@@ -1,9 +1,9 @@
 {
  "state": "FROM_ENTRIES",
  "underlying": "NIFTY",
- "status_label": "From your prices - no live data",
+ "status_label": "From your prices — no live data",
  "reason": null,
- "output_label": "From your prices - no live data",
+ "output_label": "From your prices — no live data",
  "valuation": "2026-10-08T09:20:09+05:30",
  "answered_at": "2026-10-08T09:20:09+05:30",
  "market_closed": false,
@@ -54,7 +54,7 @@
  ],
  "margin": {
   "state": "NOT_AVAILABLE_YET",
-  "reason": "Margin from Zerodha is not shown yet; it needs your Kite login.",
+  "reason": "Margin from Zerodha is not shown yet; it needs your Zerodha login.",
   "needed": null,
   "broker_needed": null,
   "available": null,
@@ -69,7 +69,7 @@
   "underlying": "NIFTY",
   "spot_level": null,
   "spot_at": null,
-  "output_label": "From your prices - no live data",
+  "output_label": "From your prices — no live data",
   "scenario_heading": [
    "NIFTY at expiry",
    "You make/lose"
@@ -157,7 +157,7 @@
    },
    {
     "id": "unrealized_pnl",
-    "label": "Unrealized P&L",
+    "label": "Unrealised P&L",
     "kind": "money",
     "is_scenario_level": false,
     "markers": [],
@@ -850,7 +850,7 @@
       "value": null,
       "display": "—",
       "kind": "text",
-      "reason": "no status was given for this leg",
+      "reason": "no status is available for this leg",
       "side": null,
       "per_unit": null,
       "per_unit_display": null,
@@ -1285,7 +1285,7 @@
       "value": null,
       "display": "—",
       "kind": "text",
-      "reason": "no status was given for this leg",
+      "reason": "no status is available for this leg",
       "side": null,
       "per_unit": null,
       "per_unit_display": null,
@@ -1358,7 +1358,7 @@
      },
      "entry_price": {
       "value": "51.30",
-      "display": "₹51.30 Dr",
+      "display": "₹51.30 debit",
       "kind": "money",
       "reason": null,
       "side": "Dr",
@@ -1378,7 +1378,7 @@
      },
      "entry_value": {
       "value": "3334.50",
-      "display": "₹3,334.50 Dr",
+      "display": "₹3,334.50 debit",
       "kind": "money",
       "reason": null,
       "side": "Dr",
@@ -1879,7 +1879,7 @@
   "customised": false,
   "other": {
    "view": "estimated_now",
-   "label": "Estimated Now (estimate)",
+   "label": "Estimated Now",
    "kind": "estimate",
    "available": false,
    "unavailable_reason": "Estimated Now needs live prices, which are not available. At Expiry is shown from your prices.",
@@ -2170,7 +2170,7 @@
   },
   "estimated_now": {
    "view": "estimated_now",
-   "label": "Estimated Now (estimate)",
+   "label": "Estimated Now",
    "kind": "estimate",
    "available": false,
    "unavailable_reason": "Estimated Now needs live prices, which are not available. At Expiry is shown from your prices.",
@@ -2185,7 +2185,7 @@
   "columns": [
    {
     "view": "estimated_now",
-    "label": "Estimated Now (estimate)",
+    "label": "Estimated Now",
     "kind": "estimate",
     "available": false,
     "unavailable_reason": "Estimated Now needs live prices, which are not available. At Expiry is shown from your prices."
@@ -2729,7 +2729,7 @@
   "days_to_expiry_display": "5D to expiry",
   "badge": {
    "state": "unavailable",
-   "label": "Projected figure not available",
+   "label": "Estimate not available",
    "reason": "Estimated Now needs live prices, which are not available. At Expiry is shown from your prices.",
    "amount": null,
    "amount_display": null,

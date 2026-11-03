@@ -104,6 +104,9 @@ PR241_SELECTION = {
     "tests_app/test_user_preferences.py",
     # GC-SET step 9 (REQ-169): names ofo.errors.explanations (the system playbook refusal texts) in its route checks
     "tests_app/test_system_playbook_versions.py",
+    # GC-ALERT1 (REQ-170, ADR-236/237): names ofo.errors.explanations (the alert-style refusal / lapse texts) and the
+    # strategy routes/store the #241 diff changes, in its route and worker checks
+    "tests_app/test_strategy_alert_style.py", "tests_app/test_background_worker.py",
 }
 
 

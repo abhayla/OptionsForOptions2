@@ -35,7 +35,7 @@ def test_one_leg_stop_names_the_contract_once_and_is_not_plural() -> None:
 def test_one_open_leg_index_exit_names_the_contract_because_the_reason_does_not() -> None:
     what = render_explanation("paper_stop_reason_index", underlying="NIFTY", direction="below", level=Decimal("22845"))
     body = alert_body(what, [(PE, Decimal("41.00"))], names_contract=False)
-    assert str(body) == ("Conditional exit: NIFTY crossed below 22,845.00; exited NIFTY 3 Nov 22700 PE at 41.00. "
+    assert str(body) == ("Stop-loss on the index: NIFTY crossed below 22,845.00; exited NIFTY 3 Nov 22700 PE at 41.00. "
                          + SAFETY)
     assert "1 legs" not in str(body)
 
@@ -44,7 +44,7 @@ def test_two_legs_keep_the_count_and_each_contract_with_its_price() -> None:
     what = render_explanation("paper_stop_reason_index", underlying="NIFTY", direction="below", level=Decimal("22850"))
     body = alert_body(what, [(PE, Decimal("41.00")), (CE, Decimal("12.50"))],
                       names_contract=False)
-    assert str(body) == ("Conditional exit: NIFTY crossed below 22,850.00; exited 2 legs at NIFTY 3 Nov 22700 PE "
+    assert str(body) == ("Stop-loss on the index: NIFTY crossed below 22,850.00; exited 2 legs at NIFTY 3 Nov 22700 PE "
                          "at 41.00, NIFTY 3 Nov 23000 CE at 12.50. " + SAFETY)
 
 

@@ -570,7 +570,7 @@ def test_ac4_the_door_socket_mints_only_its_models_or_a_catalogue_message():
         ClosedWebSocketRoute("/x", lambda s: None, message_models=(dict,))
 
 
-FROM_YOUR_PRICES = "From your prices - no live data"  # REQ-077 AC-9's label (catalogue outcome_from_entries)
+FROM_YOUR_PRICES = "From your prices — no live data"  # REQ-077 AC-9's label (catalogue outcome_from_entries)
 
 
 def _assert_from_entries_after_drop(out: dict, status: str | None = None) -> None:

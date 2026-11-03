@@ -47,6 +47,7 @@ const GENERIC = sheetAnswer({
     impact: 'No plan was saved for this strategy.', what_is_blocked: 'Saving a plan.', next_action: 'Close this sheet; the generic triggers and approaches stay on.' },
 })
 const PATH = '/strategies/70/adjustment-plan'
+const ALERT_STYLE = '/strategies/70/alert-style'
 
 const t = (w, id) => w.find(`[data-testid="${id}"]`)
 const mounted = []
@@ -65,7 +66,8 @@ describe('REQ-161 AC-1: the sheet is pre-filled from the server', () => {
   it('shows the server labels and the prefill of the active playbook: playbook, target, stop, max adjustments, time exit, Customise triggers', async () => {
     answers[`GET ${PATH}`] = sheetAnswer()
     const w = await sheet()
-    expect(calls).toEqual([{ method: 'GET', url: PATH, body: undefined }])
+    // the plan, then the alert-style control's own read (GC-ALERT1 item 5, tests/alert-style-picker.test.js)
+    expect(calls).toEqual([{ method: 'GET', url: PATH, body: undefined }, { method: 'GET', url: ALERT_STYLE, body: undefined }])
     expect(inputs(w)).toEqual({ playbook: '9', target: '50', stop: '50', max: '2', time: '' })
     expect(w.find('[data-testid="plan-target-words"]').text()).toBe('50 % of max profit')
     expect(w.find('[data-testid="plan-stop-words"]').text()).toBe('50 % of max loss or 4 % of margin, whichever comes first')
@@ -101,7 +103,7 @@ describe('REQ-161 AC-2: one click accepts; another playbook refills every field'
     const w = await sheet()
     await t(w, 'plan-playbook').setValue('1')
     await flushPromises()
-    expect(calls.map((c) => c.url)).toEqual([PATH, `${PATH}?playbook_id=1`])
+    expect(calls.map((c) => c.url)).toEqual([PATH, ALERT_STYLE, `${PATH}?playbook_id=1`])
     expect(inputs(w)).toEqual({ playbook: '1', target: '70', stop: '30', max: '4', time: '09:05' })
   })
 

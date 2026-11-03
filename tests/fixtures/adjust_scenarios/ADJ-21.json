@@ -4410,6 +4410,458 @@
      }
     ],
     "warnings": []
+   },
+   "A-24": {
+    "side": "both",
+    "step_basis": null,
+    "step_value": null,
+    "trades": [
+     {
+      "action": "BUY",
+      "type": "PE",
+      "strike": "72000",
+      "expiry": "2026-11-26",
+      "lots": 2,
+      "quantity": 40,
+      "price": "277.00",
+      "tradingsymbol": "SENSEX26NOV72000PE"
+     },
+     {
+      "action": "BUY",
+      "type": "CE",
+      "strike": "77500",
+      "expiry": "2026-11-26",
+      "lots": 2,
+      "quantity": 40,
+      "price": "306.25",
+      "tradingsymbol": "SENSEX26NOV77500CE"
+     },
+     {
+      "action": "SELL",
+      "type": "PE",
+      "strike": "71000",
+      "expiry": "2026-11-26",
+      "lots": 2,
+      "quantity": 40,
+      "price": "195.10",
+      "tradingsymbol": "SENSEX26NOV71000PE"
+     },
+     {
+      "action": "SELL",
+      "type": "CE",
+      "strike": "78500",
+      "expiry": "2026-11-26",
+      "lots": 2,
+      "quantity": 40,
+      "price": "175.15",
+      "tradingsymbol": "SENSEX26NOV78500CE"
+     }
+    ],
+    "after": [],
+    "closed": [
+     {
+      "side": "BUY",
+      "type": "PE",
+      "strike": "71000",
+      "expiry": "2026-11-26",
+      "lots": 2,
+      "quantity": 40,
+      "entry": "263.45",
+      "exit": "195.10",
+      "tradingsymbol": "SENSEX26NOV71000PE"
+     },
+     {
+      "side": "SELL",
+      "type": "PE",
+      "strike": "72000",
+      "expiry": "2026-11-26",
+      "lots": 2,
+      "quantity": 40,
+      "entry": "355.85",
+      "exit": "277.00",
+      "tradingsymbol": "SENSEX26NOV72000PE"
+     },
+     {
+      "side": "SELL",
+      "type": "CE",
+      "strike": "77500",
+      "expiry": "2026-11-26",
+      "lots": 2,
+      "quantity": 40,
+      "entry": "374.30",
+      "exit": "306.25",
+      "tradingsymbol": "SENSEX26NOV77500CE"
+     },
+     {
+      "side": "BUY",
+      "type": "CE",
+      "strike": "78500",
+      "expiry": "2026-11-26",
+      "lots": 2,
+      "quantity": 40,
+      "entry": "230.05",
+      "exit": "175.15",
+      "tradingsymbol": "SENSEX26NOV78500CE"
+     }
+    ],
+    "warnings": []
+   },
+   "A-25": {
+    "side": "both",
+    "step_basis": null,
+    "step_value": null,
+    "trades": [
+     {
+      "action": "BUY",
+      "type": "PE",
+      "strike": "72000",
+      "expiry": "2026-11-26",
+      "lots": 1,
+      "quantity": 20,
+      "price": "277.00",
+      "tradingsymbol": "SENSEX26NOV72000PE"
+     },
+     {
+      "action": "BUY",
+      "type": "CE",
+      "strike": "77500",
+      "expiry": "2026-11-26",
+      "lots": 1,
+      "quantity": 20,
+      "price": "306.25",
+      "tradingsymbol": "SENSEX26NOV77500CE"
+     },
+     {
+      "action": "SELL",
+      "type": "PE",
+      "strike": "71000",
+      "expiry": "2026-11-26",
+      "lots": 1,
+      "quantity": 20,
+      "price": "195.10",
+      "tradingsymbol": "SENSEX26NOV71000PE"
+     },
+     {
+      "action": "SELL",
+      "type": "CE",
+      "strike": "78500",
+      "expiry": "2026-11-26",
+      "lots": 1,
+      "quantity": 20,
+      "price": "175.15",
+      "tradingsymbol": "SENSEX26NOV78500CE"
+     }
+    ],
+    "after": [
+     {
+      "side": "BUY",
+      "type": "PE",
+      "strike": "71000",
+      "expiry": "2026-11-26",
+      "lots": 1,
+      "quantity": 20,
+      "entry": "263.45",
+      "tradingsymbol": "SENSEX26NOV71000PE"
+     },
+     {
+      "side": "SELL",
+      "type": "PE",
+      "strike": "72000",
+      "expiry": "2026-11-26",
+      "lots": 1,
+      "quantity": 20,
+      "entry": "355.85",
+      "tradingsymbol": "SENSEX26NOV72000PE"
+     },
+     {
+      "side": "SELL",
+      "type": "CE",
+      "strike": "77500",
+      "expiry": "2026-11-26",
+      "lots": 1,
+      "quantity": 20,
+      "entry": "374.30",
+      "tradingsymbol": "SENSEX26NOV77500CE"
+     },
+     {
+      "side": "BUY",
+      "type": "CE",
+      "strike": "78500",
+      "expiry": "2026-11-26",
+      "lots": 1,
+      "quantity": 20,
+      "entry": "230.05",
+      "tradingsymbol": "SENSEX26NOV78500CE"
+     }
+    ],
+    "closed": [
+     {
+      "side": "BUY",
+      "type": "PE",
+      "strike": "71000",
+      "expiry": "2026-11-26",
+      "lots": 1,
+      "quantity": 20,
+      "entry": "263.45",
+      "exit": "195.10",
+      "tradingsymbol": "SENSEX26NOV71000PE"
+     },
+     {
+      "side": "SELL",
+      "type": "PE",
+      "strike": "72000",
+      "expiry": "2026-11-26",
+      "lots": 1,
+      "quantity": 20,
+      "entry": "355.85",
+      "exit": "277.00",
+      "tradingsymbol": "SENSEX26NOV72000PE"
+     },
+     {
+      "side": "SELL",
+      "type": "CE",
+      "strike": "77500",
+      "expiry": "2026-11-26",
+      "lots": 1,
+      "quantity": 20,
+      "entry": "374.30",
+      "exit": "306.25",
+      "tradingsymbol": "SENSEX26NOV77500CE"
+     },
+     {
+      "side": "BUY",
+      "type": "CE",
+      "strike": "78500",
+      "expiry": "2026-11-26",
+      "lots": 1,
+      "quantity": 20,
+      "entry": "230.05",
+      "exit": "175.15",
+      "tradingsymbol": "SENSEX26NOV78500CE"
+     }
+    ],
+    "warnings": []
+   },
+   "A-26": {
+    "side": "put",
+    "refused": "Leg 2 (SELL SENSEX 72,000 PE, expiry 26 Nov 2026) has fallen from \u20b9355.85 to \u20b9277; this approach waits until it has fallen by 80% or more.",
+    "step_basis": null,
+    "step_value": null
+   },
+   "A-27": {
+    "side": "both",
+    "refused": "Your playbook sets no buy-back price for short legs at this stage, so this approach is not built.",
+    "step_basis": null,
+    "step_value": null
+   },
+   "A-35": {
+    "side": "both",
+    "refused": "Your playbook sets no time exit, so this approach is not built.",
+    "step_basis": null,
+    "step_value": null
+   },
+   "A-02": {
+    "side": "call",
+    "step_basis": "delta",
+    "step_value": "0.25",
+    "trades": [
+     {
+      "action": "BUY",
+      "type": "CE",
+      "strike": "77500",
+      "expiry": "2026-11-26",
+      "lots": 2,
+      "quantity": 40,
+      "price": "306.25",
+      "tradingsymbol": "SENSEX26NOV77500CE"
+     },
+     {
+      "action": "SELL",
+      "type": "CE",
+      "strike": "77600",
+      "expiry": "2026-11-26",
+      "lots": 2,
+      "quantity": 40,
+      "price": "289.75",
+      "tradingsymbol": "SENSEX26NOV77600CE"
+     }
+    ],
+    "after": [
+     {
+      "side": "BUY",
+      "type": "PE",
+      "strike": "71000",
+      "expiry": "2026-11-26",
+      "lots": 2,
+      "quantity": 40,
+      "entry": "263.45",
+      "tradingsymbol": "SENSEX26NOV71000PE"
+     },
+     {
+      "side": "SELL",
+      "type": "PE",
+      "strike": "72000",
+      "expiry": "2026-11-26",
+      "lots": 2,
+      "quantity": 40,
+      "entry": "355.85",
+      "tradingsymbol": "SENSEX26NOV72000PE"
+     },
+     {
+      "side": "SELL",
+      "type": "CE",
+      "strike": "77600",
+      "expiry": "2026-11-26",
+      "lots": 2,
+      "quantity": 40,
+      "entry": "289.75",
+      "tradingsymbol": "SENSEX26NOV77600CE"
+     },
+     {
+      "side": "BUY",
+      "type": "CE",
+      "strike": "78500",
+      "expiry": "2026-11-26",
+      "lots": 2,
+      "quantity": 40,
+      "entry": "230.05",
+      "tradingsymbol": "SENSEX26NOV78500CE"
+     }
+    ],
+    "closed": [
+     {
+      "side": "SELL",
+      "type": "CE",
+      "strike": "77500",
+      "expiry": "2026-11-26",
+      "lots": 2,
+      "quantity": 40,
+      "entry": "374.30",
+      "exit": "306.25",
+      "tradingsymbol": "SENSEX26NOV77500CE"
+     }
+    ],
+    "warnings": []
+   },
+   "A-04": {
+    "side": "call",
+    "refused": "No expiry after 26 Nov 2026 is listed in the chain read, so this approach is not built.",
+    "step_basis": null,
+    "step_value": null
+   },
+   "A-06": {
+    "side": "call",
+    "step_basis": null,
+    "step_value": null,
+    "trades": [
+     {
+      "action": "BUY",
+      "type": "CE",
+      "strike": "77500",
+      "expiry": "2026-11-26",
+      "lots": 2,
+      "quantity": 40,
+      "price": "306.25",
+      "tradingsymbol": "SENSEX26NOV77500CE"
+     },
+     {
+      "action": "BUY",
+      "type": "CE",
+      "strike": "78600",
+      "expiry": "2026-11-26",
+      "lots": 2,
+      "quantity": 40,
+      "price": "165.70",
+      "tradingsymbol": "SENSEX26NOV78600CE"
+     },
+     {
+      "action": "SELL",
+      "type": "CE",
+      "strike": "77600",
+      "expiry": "2026-11-26",
+      "lots": 2,
+      "quantity": 40,
+      "price": "289.75",
+      "tradingsymbol": "SENSEX26NOV77600CE"
+     },
+     {
+      "action": "SELL",
+      "type": "CE",
+      "strike": "78500",
+      "expiry": "2026-11-26",
+      "lots": 2,
+      "quantity": 40,
+      "price": "175.15",
+      "tradingsymbol": "SENSEX26NOV78500CE"
+     }
+    ],
+    "after": [
+     {
+      "side": "BUY",
+      "type": "PE",
+      "strike": "71000",
+      "expiry": "2026-11-26",
+      "lots": 2,
+      "quantity": 40,
+      "entry": "263.45",
+      "tradingsymbol": "SENSEX26NOV71000PE"
+     },
+     {
+      "side": "SELL",
+      "type": "PE",
+      "strike": "72000",
+      "expiry": "2026-11-26",
+      "lots": 2,
+      "quantity": 40,
+      "entry": "355.85",
+      "tradingsymbol": "SENSEX26NOV72000PE"
+     },
+     {
+      "side": "SELL",
+      "type": "CE",
+      "strike": "77600",
+      "expiry": "2026-11-26",
+      "lots": 2,
+      "quantity": 40,
+      "entry": "289.75",
+      "tradingsymbol": "SENSEX26NOV77600CE"
+     },
+     {
+      "side": "BUY",
+      "type": "CE",
+      "strike": "78600",
+      "expiry": "2026-11-26",
+      "lots": 2,
+      "quantity": 40,
+      "entry": "165.70",
+      "tradingsymbol": "SENSEX26NOV78600CE"
+     }
+    ],
+    "closed": [
+     {
+      "side": "SELL",
+      "type": "CE",
+      "strike": "77500",
+      "expiry": "2026-11-26",
+      "lots": 2,
+      "quantity": 40,
+      "entry": "374.30",
+      "exit": "306.25",
+      "tradingsymbol": "SENSEX26NOV77500CE"
+     },
+     {
+      "side": "BUY",
+      "type": "CE",
+      "strike": "78500",
+      "expiry": "2026-11-26",
+      "lots": 2,
+      "quantity": 40,
+      "entry": "230.05",
+      "exit": "175.15",
+      "tradingsymbol": "SENSEX26NOV78500CE"
+     }
+    ],
+    "warnings": []
    }
   },
   "approach_after": {
@@ -4478,6 +4930,43 @@
     "max_loss": "0",
     "breakevens": [],
     "booked_pnl": "946"
+   },
+   "A-24": {
+    "exact": true,
+    "max_profit": "946",
+    "max_loss": "0",
+    "breakevens": [],
+    "booked_pnl": "946"
+   },
+   "A-25": {
+    "exact": true,
+    "max_profit": "5206",
+    "max_loss": "14794",
+    "breakevens": [
+     "71739.7",
+     "77760.3"
+    ],
+    "booked_pnl": "473"
+   },
+   "A-02": {
+    "exact": true,
+    "max_profit": "8806",
+    "max_loss": "31194",
+    "breakevens": [
+     "71779.85",
+     "77820.15"
+    ],
+    "booked_pnl": "2722"
+   },
+   "A-06": {
+    "exact": true,
+    "max_profit": "9184",
+    "max_loss": "30816",
+    "breakevens": [
+     "71770.4",
+     "77829.6"
+    ],
+    "booked_pnl": "526"
    }
   }
  }

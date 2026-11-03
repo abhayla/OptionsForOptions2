@@ -222,14 +222,14 @@ describe('REQ-134 AC-3 (attack 5): rename in the list changes only the name', ()
   })
   it('an empty name is refused by the API; its message is shown and the row keeps its old name', async () => {
     serve()
-    const EMPTY = { what_happened: 'Give the strategy a name', impact: 'The strategy was not saved or renamed.', what_is_blocked: 'Saving or renaming this strategy.', next_action: 'Type a name of 1 to 20 characters, then save again.' }
+    const EMPTY = { what_happened: 'The strategy has no name.', impact: 'The strategy was not saved or renamed.', what_is_blocked: 'Saving or renaming this strategy.', next_action: 'Type a name of 1 to 20 characters, then save again.' }
     patchAnswer = () => Promise.reject({ status: 422, parts: EMPTY })
     const w = await open()
     await w.get('[data-testid="rename-7"]').trigger('click')
     await w.get('[data-testid="rename-input"]').setValue('')
     await w.get('[data-testid="rename-form"]').trigger('submit')
     await flushPromises()
-    expect(w.get('[data-testid="rename-error-what"]').text()).toBe('Give the strategy a name')
+    expect(w.get('[data-testid="rename-error-what"]').text()).toBe('The strategy has no name.')
     expect(names(w)).toEqual(['NIFTY Oct condor'])
   })
   it('a read without a revision sends no PATCH (fail closed) and shows the neutral message', async () => {
@@ -268,7 +268,7 @@ describe('Delete with Undo', () => {
     for (const id of [8, 9]) {
       const r = w.get(`[data-strategy-id="${id}"]`)
       expect(r.find(`[data-testid="delete-${id}"]`).exists()).toBe(false)
-      expect(r.get('[data-testid="delete-refused"]').text()).toBe("Can't delete: orders were sent")
+      expect(r.get('[data-testid="delete-refused"]').text()).toBe("Orders were already sent for this strategy, so it cannot be deleted.")
     }
   })
 

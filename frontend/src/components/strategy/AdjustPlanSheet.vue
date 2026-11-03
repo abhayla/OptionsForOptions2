@@ -36,6 +36,7 @@
         </div>
         <button type="button" class="mt-3 text-sm font-semibold text-accent underline" data-testid="plan-customise" :disabled="busy" @click="customise">{{ labels.customise }}</button>
       </template>
+      <AlertStylePicker v-if="open && sheet" :strategy-id="strategyId" />
       <ErrorMessage v-if="errorParts" class="mt-3" :parts="errorParts" compact prefix="plan-error" data-testid="plan-error" />
     </div>
     <template #actions>
@@ -53,6 +54,7 @@ import { computed, inject, ref, watch } from 'vue'
 import { routerKey } from 'vue-router'
 import Modal from '@/components/common/Modal.vue'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
+import AlertStylePicker from '@/components/strategy/AlertStylePicker.vue'
 import api, { NEUTRAL_PARTS } from '@/services/api'
 import { asIsBody, customiseUrl, fetchPlan, formOf, saveBody, sendPlan } from '@/lib/adjustPlan'
 

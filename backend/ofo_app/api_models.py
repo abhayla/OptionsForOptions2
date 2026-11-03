@@ -482,6 +482,7 @@ class AdjustApproachOut(ApiModel):
     pop: AdjustPopOut | None = None
     after_reason: CatalogueText | None = None
     margin: AdjustMarginOut | None = None
+    liquidity_flags: list[CatalogueText] = []  # ADR-230 (1): the flags of its new strikes (same limits as the Compare)
 
 
 class AdjustTimingOut(ApiModel):
@@ -532,6 +533,24 @@ class AdjustAvailableOut(ApiModel):
     explanation: CatalogueText
     applicable: bool
     reason: CatalogueText | None = None
+    liquidity_flags: list[CatalogueText] = []  # ADR-230 (1): flags of the new strikes it would open
+
+
+class AdjustDeltaNeutralOut(ApiModel):
+    """A-23 (GC-IC1 4a): figures only, no trade, no After (``ofo.adjustment.delta_neutral``). Lots are signed: + long,
+    - short. ``known`` False -> every figure None and ``missing_leg`` names the leg with no delta."""
+
+    label: CatalogueText
+    known: bool
+    reason: CatalogueText | None = None
+    missing_leg: Identifier | None = None  # the trading symbol of the leg with no delta
+    net_delta: Money | None = None
+    option_type: Literal["CE", "PE"] | None = None
+    option_strike: Money | None = None
+    option_lots: int | None = None
+    option_remaining: Money | None = None
+    future_lots: int | None = None
+    future_remaining: Money | None = None
 
 
 class AdjustApproachesOut(ApiModel):
@@ -541,9 +560,11 @@ class AdjustApproachesOut(ApiModel):
     pop_switch_on: bool
     before: AdjustWholeOut | None
     approaches: list[AdjustApproachOut]
+    limits_reason: CatalogueText | None = None  # #624: "limits not applied: playbook unreadable"; None otherwise
     criteria: list[AdjustCriterionOut] = []  # REQ-156 AC-2/AC-3; refused approaches take no part
     leads: dict[Identifier, AdjustLeadsOut] = {}  # REQ-156 AC-4 "Leads on N of M"
     curves: dict[Identifier, list[list[Money]]] = {}  # "before" / approach id -> [[level, P&L after charges], ...]
     timing: AdjustTimingOut | None = None
     available: list[AdjustAvailableOut] = []  # every generic approach, whatever was asked (no figures)
     days_to_expiry: int | None = None  # whole days from the reply's own market day to the nearest open leg's expiry
+    delta_neutral: AdjustDeltaNeutralOut | None = None  # A-23 figures; None when there is no spot

@@ -1,7 +1,10 @@
-"""GC-ADJ2 step 5 (REQ-112 AC-1/AC-2/AC-4/AC-6, REQ-162 AC-1..AC-3, REQ-045 AC-8): the check opens one suggestion
-record per flagged rule, the inbox lists them grouped with their label and outcome, Dismiss / acted on write one final
-outcome each, a cleared rule or a closed strategy lapses its records, and a not-checked rule never does.
-Strategies come from the scenario library (seed_scenario), the check from GET /api/strategies/{id}/adjustment-check."""
+"""GC-ADJ2 step 5 (REQ-112 AC-1/AC-2/AC-4/AC-6, REQ-162 AC-1..AC-3, REQ-045 AC-8): one suggestion record per flagged
+rule, the inbox lists them grouped with their label and outcome, Dismiss / acted on write one final outcome each, a
+lapsed record reads "Lapsed". ADR-237 (6): only the background worker opens and lapses records, so the records here are
+opened through the worker's store path (``worker_records``: ``playbook_store.open_suggestion`` with the fields
+``background.DbGateStore.apply`` writes; lapses through ``DbGateStore.apply`` itself), from the flags of a real screen
+check; the screen's check (GET /api/strategies/{id}/adjustment-check) only names them and never writes one.
+Strategies come from the scenario library (seed_scenario)."""
 from __future__ import annotations
 
 from decimal import Decimal
@@ -10,11 +13,12 @@ from typing import Any
 import pytest
 import test_adjustment_check as check_test
 from httpx import ASGITransport, AsyncClient
-from ofo.adjustment import playbook_eval as pe
+from ofo_app import adjustment_check as chk
 from ofo_app import db as app_db
 from ofo_app import playbook_store
 from ofo_app.adjustment_readers import TrackedExited
 from test_adjustment_check import _reset_engine, _seeded, seed_mod
+from worker_records import lapse_through_worker, open_flags
 
 app_db_url = check_test.app_db_url  # the fresh-database fixture of the check test
 
@@ -43,6 +47,15 @@ async def _check(sid: int) -> dict:
     status, body = await _call("GET", f"/api/strategies/{sid}/adjustment-check")
     assert status == OK, body
     return body
+
+
+async def _opened(engine, sid: int) -> dict:
+    """A real screen check, then the worker opens a record for each of its flags (ADR-237 (6)); the check's reply."""
+    reply = await _check(sid)
+    async with engine.connect() as conn:
+        body = (await chk.resolve(conn, "owner", sid, reply["strategy_type"])).body
+    await open_flags(engine, sid, reply, body)
+    return reply
 
 
 MARK: dict[int, int] = {}
@@ -75,8 +88,11 @@ async def _inbox(**kw) -> dict:
     return body
 
 
-async def test_adj02_first_check_opens_three_records_a_second_check_opens_none(app_db_url, monkeypatch):
+async def test_adj02_worker_opens_three_records_the_screen_check_names_them_and_opens_none(app_db_url, monkeypatch):
     sid = await _clean(app_db_url, await _seeded(app_db_url, monkeypatch, "ADJ-02"))
+    await _check(sid)
+    assert await _records(app_db_url, sid) == []  # ADR-237 (6): the screen's check opens none
+    await _opened(app_db_url, sid)
     first = await _check(sid)
     recs = await _records(app_db_url, sid)
     assert sorted((r.rule_id, r.outcome) for r in recs) == [("T-01", "open"), ("T-03", "open"), ("T-09", "open")]
@@ -86,7 +102,7 @@ async def test_adj02_first_check_opens_three_records_a_second_check_opens_none(a
         (Decimal("0.3416"), Decimal("0.5000"))]
     flag_ids = {x["rule_id"]: x["suggestion_id"] for x in first["results"] if x["kind"] == "flag"}
     assert flag_ids == {r.rule_id: r.id for r in recs}
-    await _check(sid)  # attack 1: two checks in a row -> still exactly 3 records, not 6
+    await _check(sid)  # attack 1: more checks -> still exactly 3 records, not 6
     again = await _records(app_db_url, sid)
     assert [r.id for r in again] == [r.id for r in recs] and len(again) == ADJ02_FLAGS
     inbox = await _inbox()
@@ -114,7 +130,7 @@ async def test_adj01_opens_none_and_the_inbox_says_so(app_db_url, monkeypatch):
 
 async def test_dismiss_writes_one_timeline_entry_and_a_final_record_is_refused(app_db_url, monkeypatch):
     sid = await _clean(app_db_url, await _seeded(app_db_url, monkeypatch, "ADJ-02"))
-    await _check(sid)
+    await _opened(app_db_url, sid)
     t01 = next(r for r in await _records(app_db_url, sid) if r.rule_id == "T-01")
     status, out = await _call("POST", f"/api/adjustment-opportunities/{t01.id}/dismiss", {"reason": "not_relevant"})
     assert (status, out["outcome"], out["outcome_text"]) == (OK, "dismissed", "You dismissed this")
@@ -136,7 +152,7 @@ async def test_dismiss_writes_one_timeline_entry_and_a_final_record_is_refused(a
 
 async def test_acted_on_and_the_paper_wording(app_db_url, monkeypatch):
     sid = await _clean(app_db_url, await _seeded(app_db_url, monkeypatch, "ADJ-02"))
-    await _check(sid)
+    await _opened(app_db_url, sid)
     t03 = next(r for r in await _records(app_db_url, sid) if r.rule_id == "T-03")
     status, out = await _call("POST", f"/api/adjustment-opportunities/{t03.id}/acted-on")
     assert (status, out["outcome"]) == (OK, "acted_on")
@@ -144,14 +160,15 @@ async def test_acted_on_and_the_paper_wording(app_db_url, monkeypatch):
     assert rows[t03.id]["outcome_text"] == "Acted on - Paper - not sent to Zerodha"
     counts = {c["outcome"]: c["count"] for c in (await _inbox())["counts"]}
     assert counts["open"] == ADJ02_FLAGS - 1 and counts["acted_on"] >= 1
-    await _check(sid)  # T-03 still flagged, its record is final: a new open record for the next occurrence
+    answer = await _check(sid)  # T-03 still flagged, its record final: the screen opens no new one (ADR-237 (6))
+    assert {x["rule_id"]: x["suggestion_id"] for x in answer["results"] if x["kind"] == "flag"}["T-03"] is None
     assert sorted((r.rule_id, r.outcome) for r in await _records(app_db_url, sid)) == [
-        ("T-01", "open"), ("T-03", "acted_on"), ("T-03", "open"), ("T-09", "open")]
+        ("T-01", "open"), ("T-03", "acted_on"), ("T-09", "open")]
 
 
 async def test_another_users_record_is_not_found_and_nothing_is_written(app_db_url, monkeypatch):
     sid = await _clean(app_db_url, await _seeded(app_db_url, monkeypatch, "ADJ-02"))
-    await _check(sid)
+    await _opened(app_db_url, sid)
     t09 = next(r for r in await _records(app_db_url, sid) if r.rule_id == "T-09")
     for path, body in (("dismiss", {"reason": "other"}), ("acted-on", None)):  # attack 4
         status, out = await _call("POST", f"/api/adjustment-opportunities/{t09.id}/{path}", body, user="someone-else")
@@ -162,30 +179,30 @@ async def test_another_users_record_is_not_found_and_nothing_is_written(app_db_u
     assert (await _inbox(user="someone-else"))["groups"] == []
 
 
-async def test_a_cleared_rule_lapses_and_a_not_checked_rule_never_does(app_db_url, monkeypatch):
-    from ofo_app.routes.adjustment_check import _sync_records  # noqa: PLC0415 - the check route's own record step
+async def test_a_worker_lapse_reads_lapsed_and_a_screen_check_never_lapses(app_db_url, monkeypatch):
+    """REQ-112 AC-2 through the worker's store (DbGateStore.apply, the gate's Lapsed event); a screen check lapses
+    nothing and opens nothing, even with the rule still true (ADR-237 (6))."""
     sid = await _clean(app_db_url, await _seeded(app_db_url, monkeypatch, "ADJ-02"))
+    await _opened(app_db_url, sid)
     await _check(sid)
-    not_checked = pe.Evaluation(None, None, (pe.NotChecked("T-01", "T-01", "withheld_no_spot"),), {}, ())
-    async with app_db_url.begin() as conn:  # attack 2: no spot -> neither flagged nor cleared
-        assert await _sync_records(conn, "owner", sid, not_checked, "system") == ({}, frozenset())
-    assert {r.rule_id: r.outcome for r in await _records(app_db_url, sid)}["T-01"] == "open"
-    cleared = pe.Evaluation(None, None, (), {}, ("T-01",))
-    async with app_db_url.begin() as conn:
-        await _sync_records(conn, "owner", sid, cleared, "system")
+    assert {r.outcome for r in await _records(app_db_url, sid)} == {"open"}
+    await lapse_through_worker(sid, "T-01")
     recs = {r.rule_id: r for r in await _records(app_db_url, sid)}
     assert (recs["T-01"].outcome, recs["T-01"].lapse_reason) == ("lapsed", "condition_stopped")
     assert (recs["T-03"].outcome, recs["T-09"].outcome) == ("open", "open")
     row = next(r for g in _mine(await _inbox(), sid) for r in g["records"] if r["id"] == recs["T-01"].id)
     assert (row["outcome_text"], row["detail"]) == ("Lapsed", "The condition stopped holding")
+    answer = await _check(sid)  # T-01 still true on screen: a flag, no record opened, none named
+    t01 = next(x for x in answer["results"] if x["rule_id"] == "T-01")
+    assert (t01["kind"], t01["suggestion_id"], t01["note"]) == ("flag", None, None)
+    assert len(await _records(app_db_url, sid)) == ADJ02_FLAGS
 
 
-async def test_dismissed_stays_dismissed_until_the_condition_clears_and_holds_again(app_db_url, monkeypatch):
-    """ADR-217 / REQ-112 AC-7: dismiss T-01, check again -> no new T-01 record (T-03 / T-09 untouched); a not-checked
-    check does not count as cleared; a check that finds it false then a check that finds it true -> exactly one."""
-    from ofo_app.routes.adjustment_check import _sync_records  # noqa: PLC0415 - the check route's own record step
+async def test_a_dismissed_flag_shows_the_note_and_the_screen_check_writes_nothing(app_db_url, monkeypatch):
+    """ADR-217 on the screen: a flagged rule whose latest record is dismissed (none open) carries "You dismissed this"
+    and no suggestion id; the other flags name their open records; checks write nothing (ADR-237 (6))."""
     sid = await _clean(app_db_url, await _seeded(app_db_url, monkeypatch, "ADJ-02"))
-    await _check(sid)
+    await _opened(app_db_url, sid)
     t01 = next(r for r in await _records(app_db_url, sid) if r.rule_id == "T-01")
     status, _ = await _call("POST", f"/api/adjustment-opportunities/{t01.id}/dismiss", {"reason": "not_relevant"})
     assert status == OK
@@ -198,41 +215,35 @@ async def test_dismissed_stays_dismissed_until_the_condition_clears_and_holds_ag
     recs = await _records(app_db_url, sid)
     assert sorted((r.rule_id, r.outcome) for r in recs) == [
         ("T-01", "dismissed"), ("T-03", "open"), ("T-09", "open")]  # attack 4: T-03 / T-09 unaffected
-    not_checked = pe.Evaluation(None, None, (pe.NotChecked("T-01", "T-01", "withheld_no_spot"),), {}, ())
-    async with app_db_url.begin() as conn:  # attack 2: no spot is not "cleared"
-        assert await _sync_records(conn, "owner", sid, not_checked, "system") == ({}, frozenset())
-    await _check(sid)
-    assert [r.rule_id for r in await _records(app_db_url, sid) if r.rule_id == "T-01"] == ["T-01"]
     async with app_db_url.begin() as conn:  # attack 5: the hold is per strategy (the seed makes one ADJ-02 strategy)
         assert list(await playbook_store.dismissed_holding(conn, "owner", sid)) == ["T-01"]
         assert await playbook_store.dismissed_holding(conn, "owner", sid + 1000) == {}
-    cleared = pe.Evaluation(None, None, (), {}, ("T-01",))
-    async with app_db_url.begin() as conn:  # a check finds T-01 false
-        await _sync_records(conn, "owner", sid, cleared, "system")
-    async with app_db_url.begin() as conn:  # still no new record until a later check finds it true
-        assert await playbook_store.dismissed_holding(conn, "owner", sid) == {}
-    assert [r.rule_id for r in await _records(app_db_url, sid) if r.rule_id == "T-01"] == ["T-01"]
-    await _check(sid)  # attack 3: holding again -> exactly one new open T-01 record
-    await _check(sid)
-    t01s = [(r.id, r.outcome) for r in await _records(app_db_url, sid) if r.rule_id == "T-01"]
-    assert [o for _, o in t01s] == ["dismissed", "open"] and t01s[1][0] > t01.id
-    inbox_rows = [r for g in _mine(await _inbox(), sid) for r in g["records"] if r["rule_id"] == "T-01"]
+    async with app_db_url.connect() as conn:  # the worker opens a new T-01 record: the screen names it, no note
+        body = (await chk.resolve(conn, "owner", sid, "ic")).body
+    new = await open_flags(app_db_url, sid, await _check(sid), body, rules={"T-01"})
+    answer = await _check(sid)
+    flag = next(x for x in answer["results"] if x["rule_id"] == "T-01")
+    assert (flag["suggestion_id"], flag["note"]) == (new["T-01"], None)
+    inbox_rows = [r for g in _mine(await _inbox(), sid) for r in g["records"]
+                  if r["rule_id"] == "T-01" and r["id"] > MARK[sid]]  # this test's records only
     assert sorted(r["outcome_text"] for r in inbox_rows) == ["Open", "You dismissed this"]  # the inbox keeps the row
 
 
-async def test_an_exited_strategy_lapses_every_open_record(app_db_url, monkeypatch):
+async def test_an_exited_strategy_is_refused_and_the_screen_lapses_nothing(app_db_url, monkeypatch):
+    """ADR-237 (6): the worker lapses an exited strategy's records (background: TrackedExited -> lapse_all); the
+    screen refuses (409) and writes nothing."""
     from ofo_app.routes.adjustment import get_tracked_reader  # noqa: PLC0415
 
     async def exited(_strategy_id, _rates):
         raise TrackedExited("no open option leg")
 
     sid = await _clean(app_db_url, await _seeded(app_db_url, monkeypatch, "ADJ-02"))
-    await _check(sid)
+    await _opened(app_db_url, sid)
     status, _ = await _call("GET", f"/api/strategies/{sid}/adjustment-check",
                             overrides={get_tracked_reader: lambda: exited})
     assert status == CONFLICT
     recs = await _records(app_db_url, sid)
-    assert {(r.outcome, r.lapse_reason) for r in recs} == {("lapsed", "strategy_closed")} and len(recs) == ADJ02_FLAGS
+    assert {(r.outcome, r.lapse_reason) for r in recs} == {("open", None)} and len(recs) == ADJ02_FLAGS
 
 
 async def test_the_own_playbook_label(app_db_url, monkeypatch):
@@ -241,7 +252,7 @@ async def test_the_own_playbook_label(app_db_url, monkeypatch):
         system = await playbook_store.active_for(conn, "owner", "ic")
         own = await playbook_store.duplicate(conn, "owner", system.id, "Mine")
         await playbook_store.make_active(conn, "owner", own.id)
-    await _check(sid)
+    await _opened(app_db_url, sid)
     assert [g["label"] for g in _mine(await _inbox(), sid)] == [OWN_LABEL]
 
 
@@ -262,6 +273,8 @@ async def test_card_mark_counts_open_records_and_goes_when_the_last_is_dismissed
     sid = await _clean(app_db_url, await _seeded(app_db_url, monkeypatch, "ADJ-02"))
     assert (await _card(sid))["open_opportunities_text"] is None  # nothing recorded: no mark
     await _check(sid)
+    assert (await _card(sid))["open_opportunities_text"] is None  # the screen's check records nothing
+    await _opened(app_db_url, sid)
     card = await _card(sid)
     assert (card["open_opportunities"], card["open_opportunities_text"]) == (ADJ02_FLAGS, "3 adjustment opportunities")
     records = await _records(app_db_url, sid)
@@ -278,7 +291,7 @@ async def test_card_mark_counts_open_records_and_goes_when_the_last_is_dismissed
 
 async def test_card_mark_ignores_acted_on_and_a_read_failure_gives_no_mark_but_the_list(app_db_url, monkeypatch):
     sid = await _clean(app_db_url, await _seeded(app_db_url, monkeypatch, "ADJ-02"))
-    await _check(sid)
+    await _opened(app_db_url, sid)
     first = (await _records(app_db_url, sid))[0]
     status, _ = await _call("POST", f"/api/adjustment-opportunities/{first.id}/acted-on")
     assert status == OK
@@ -302,7 +315,18 @@ async def test_t19_list_line_names_the_same_approach_and_cost_as_the_check(app_d
     from ofo_app.routes import outcome  # noqa: PLC0415
     monkeypatch.setattr(outcome, "_rates_cache", {"until": math.inf, "value": t19_support.RATES})
     sid = await _clean(app_db_url, await _seeded(app_db_url, monkeypatch, "ADJ-43"))
+    from ofo_app.routes import adjustment_check as route  # noqa: PLC0415
+    states: list = []
+    real_state_of = chk.state_of
+
+    def spy(*a, **k):  # the state the check built: its T-19 approach and cost are what the worker stores (ADR-221)
+        states.append(real_state_of(*a, **k))
+        return states[-1]
+    monkeypatch.setattr(chk, "state_of", spy)
     first = await _check(sid)  # last day 15:00: the clock trigger T-10b fires too (was a 500 before its line fix)
+    async with app_db_url.connect() as conn:
+        body = (await chk.resolve(conn, "owner", sid, first["strategy_type"])).body
+    await open_flags(app_db_url, sid, first, body, cheapest=route.cheapest(states[-1]))
     clock = next(x for x in first["results"] if x["kind"] == "flag" and x["trigger_id"] == "T-10b")
     assert clock["condition"] == "Clock time reached (checked in this stage): 15:00 (rule 14:30)"
     flag = next((x for x in first["results"] if x["kind"] == "flag" and x["trigger_id"] == "T-19"), None)

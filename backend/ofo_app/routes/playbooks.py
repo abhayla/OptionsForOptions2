@@ -127,8 +127,32 @@ class PlaybookListOut(ApiModel):
     playbooks: list[PlaybookOut]
 
 
+class SituationKindOut(ApiModel):
+    """One situation of the body: ``kind`` "rule" or "guidance" (ADR-240 (1)), from one server constant
+    (``pe.GUIDANCE_SITUATIONS``); ``label`` is the catalogue's "Guidance" for guidance, None for a rule.
+    Not a body key."""
+
+    id: Identifier
+    kind: Literal["rule", "guidance"]
+    label: CatalogueText | None
+
+
+def situation_kinds(body: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """Every listed situation of ``body`` with its kind (a body without a ``situations`` list: none)."""
+    listed = body.get("situations")
+    out: list[dict[str, Any]] = []
+    for x in listed if isinstance(listed, list) else []:
+        sid = x.get("id") if isinstance(x, Mapping) else None
+        if isinstance(sid, str):
+            kind = pe.situation_kind(sid)
+            out.append({"id": sid, "kind": kind,
+                        "label": render_explanation("playbook_situation_guidance") if kind == "guidance" else None})
+    return out
+
+
 class PlaybookFullOut(PlaybookOut):
     body: PlaybookBody
+    situation_kinds: list[SituationKindOut]
 
 
 class DeletedOut(ApiModel):
@@ -186,7 +210,8 @@ async def _out(db: Any, user_ref: str, pb: store.Playbook, *, full: bool = False
     active = await store.active_for(db, user_ref, pb.strategy_type)
     row = _row(pb, active.id)
     if full:
-        return PlaybookFullOut.model_validate(row | {"body": PlaybookBody.of(pb.body)})
+        extra = {"body": PlaybookBody.of(pb.body), "situation_kinds": situation_kinds(pb.body)}
+        return PlaybookFullOut.model_validate(row | extra)
     return PlaybookOut.model_validate(row)
 
 

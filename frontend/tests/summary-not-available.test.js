@@ -6,7 +6,7 @@ import { mount } from '@vue/test-utils'
 import SummaryCards from '@/components/strategy/SummaryCards.vue'
 import { maxLine, MAX_NOT_AVAILABLE } from '@/lib/displayFormat'
 
-const WORST = "Worst case: the loss for this strategy can't be estimated."
+const WORST = "Maximum loss: the loss for this strategy cannot be estimated."
 const MIXED = {
   max_loss: null, max_profit: null, max_loss_unlimited: false, max_profit_unlimited: false, breakevens: [],
   what_can_i_lose: WORST,

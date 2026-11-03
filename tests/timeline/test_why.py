@@ -47,7 +47,7 @@ def test_core_max_loss_trigger_answer_quotes_the_recorded_values():
     assert lines[0] == 'Your rule was triggered: "Max loss 3000" (exit rule ml-3000).'
     assert lines[1] == "Condition met: live P&L (Rs) was -3450.00, at or below the threshold -3000."
     assert f"Checked at: {CHECKED_AT.isoformat()}." in lines
-    assert f'Market data: source "{SOURCE}", health available.' in lines
+    assert f'Market data: source "{SOURCE}", status available.' in lines
     assert "Active strategy version: 1." in lines
     assert "The rule's chosen action: alert and prepare orders for your review." in lines
     # No follow-up recorded yet: said so, never assumed.
@@ -93,7 +93,7 @@ def test_answer_has_no_advice_words():
     # checker is live: main's phrase list first, then the shared Q226/Q230 checker's extra label (W-024 round 6)
     assert advice_words_in("You should exit now, it is the best trade") == ["best", "you should", "should"]
     assert "Alert generated: yes." in text and "Executed: no." in text
-    assert 'Broker reported: "no order placed".' in text and "Reconciliation succeeded: yes." in text
+    assert 'Zerodha reported: "no order placed".' in text and "Reconciliation succeeded: yes." in text
 
 
 def test_answer_reports_missing_inputs_and_unhealthy_data_honestly():
@@ -107,7 +107,7 @@ def test_answer_reports_missing_inputs_and_unhealthy_data_honestly():
     assert evaluation.outcome is Outcome.TRIGGERED
     record = RuleTriggerRecord.from_evaluation(rule, evaluation, strategy=executed_record())
     text = why_did_this_trigger(record)
-    assert 'Market data: source "zerodha-kite-quote", health stale.' in text
+    assert 'Market data: source "zerodha-kite-quote", status stale.' in text
     assert "Active strategy version: 1." in text
     assert "Condition met: this rule has no market condition; it applies as soon as it is checked." in text
 
@@ -145,5 +145,5 @@ def test_platform_wording_is_checked_at_runtime_but_recorded_text_is_quoted_not_
         check_explanation_wording("Condition met: at or below, you should exit at.", "test")
     timeline.record_follow_up(FollowUp(FollowUpKind.BROKER_REPORTED, seq, CHECKED_AT, "best price filled"))
     text = timeline.why(seq)
-    assert 'Broker reported: "best price filled".' in text
+    assert 'Zerodha reported: "best price filled".' in text
     assert text.splitlines()[0] == 'Your rule was triggered: "Max loss 3000" (exit rule ml-3000).'

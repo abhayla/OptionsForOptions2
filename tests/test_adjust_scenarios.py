@@ -61,9 +61,9 @@ EXPECTED = {"stage", "stage_index", "suggest", "pnl_now", "triggers_fired", "tri
             "day_rules", "situations", "approaches", "at_expiry_whole_trade", "notes"}
 # keys some scenarios carry; already_true_at_entry (F-71) is written only by the generator, for a crossing trigger
 # that held at entry and still holds on this first check
-EXPECTED_OPTIONAL = {"compare_cost", "stage_count", "premium_left", "adjustment_cost", "adjustment_approach",
+EXPECTED_OPTIONAL = {"compare_cost", "playbook_exits", "stage_count", "premium_left", "adjustment_cost", "adjustment_approach",
                      "tighten_percent", "gap_hold", "approach_legs", "approach_after", "at_expiry_after_charges",
-                     "already_true_at_entry"}
+                     "already_true_at_entry", "day_close", "carry", "situation_rules"}  # day_close: GC-IC1 1a; carry: 1b; situation_rules: 6a
 
 
 @pytest.mark.parametrize("sid", IDS)

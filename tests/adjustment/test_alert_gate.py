@@ -128,8 +128,8 @@ def test_dismiss_then_clear_and_recross_before_cooldown_stays_quiet():
 def test_dismiss_then_next_level_opens_worse_than_dismissed():
     _, ev = feed([("10:41:30", D("91")), ("10:42:05", D("91"))], state=_opened_then_dismissed())
     assert [(e.level, e.threshold, e.worse, e.at.time()) for e in ev] == [(1, D("90"), "dismissed", time(10, 42))]
-    assert ag.WORSE_THAN_DISMISSED == "Worse than the one you dismissed"
-    assert ag.WORSE_THAN_LAST == "Worse than the last one"
+    assert ag.WORSE_THAN_DISMISSED == "alert_record_worse_than_dismissed"
+    assert ag.WORSE_THAN_LAST == "alert_record_worse_than_last"
 
 
 def test_dismiss_then_next_level_over_cap_is_held_not_dropped():
@@ -272,3 +272,104 @@ def test_gate_module_makes_no_io():
     assert not mods & {"ofo_app", "sqlalchemy", "redis", "asyncio", "time", "os", "socket", "pathlib", "io"}
     for banned in (".now(", ".today(", ".utcnow(", "open("):
         assert banned not in src
+
+
+# GC-ALERT1 step 5 review round 2, finding 2: a candle that saw a pause has no close
+def test_pause_drops_the_pending_candle_so_its_close_opens_nothing():
+    state, ev = feed([("10:00:20", D("82"))])
+    state = ag.pause(state, at("10:00:25"))
+    assert state.rule("T-07").pending is None
+    state, ev2 = flush(state, "10:01:00")
+    assert ev + ev2 == []
+
+
+def test_a_sample_after_the_pause_in_the_same_candle_gives_no_close():
+    state, _ = feed([("10:00:20", D("82"))])
+    state = ag.pause(state, at("10:00:25"))
+    state, ev = feed([("10:00:40", D("85"))], state=state)  # the feed came back inside the paused candle
+    assert state.rule("T-07").pending is None
+    state, ev2 = flush(state, "10:01:05")
+    assert ev + ev2 == []
+    state, ev3 = feed([("10:01:30", D("85"))], state=state)  # the next candle was fully watched: it opens
+    state, ev4 = flush(state, "10:02:00")
+    assert [(e.rule_id, e.at) for e in opened(ev3 + ev4)] == [("T-07", at("10:02:00"))]
+
+
+def test_a_pause_never_lapses_an_open_record():
+    state, ev = feed([("10:00:30", D("82"))])
+    state, ev2 = flush(state, "10:01:00")
+    assert len(opened(ev + ev2)) == 1
+    state, _ = feed([("10:01:10", D("60"))], state=state)  # would clear by the band at the 10:02 close
+    state = ag.pause(state, at("10:01:20"))
+    state, ev3 = flush(state, "10:02:00")
+    assert ev3 == [] and state.rule("T-07").record.final is False
+
+
+def test_a_pause_keeps_the_close_of_a_candle_that_ended_before_it():
+    state, _ = feed([("10:00:30", D("82"))])
+    state = ag.pause(state, at("10:01:02"))  # the 10:00 candle ended at 10:01:00, fully watched; not yet closed
+    state, ev = flush(state, "10:01:03")
+    assert [(e.rule_id, e.at) for e in opened(ev)] == [("T-07", at("10:01:00"))]
+
+
+def test_pause_keeps_the_latest_instant_and_needs_an_aware_time():
+    state = ag.pause(ag.pause(ag.initial_state(), at("10:00:40")), at("10:00:10"))
+    assert state.paused_at == at("10:00:40")
+    with pytest.raises(ValueError, match="timezone-aware"):
+        ag.pause(state, datetime(2026, 11, 2, 10, 0))  # noqa: DTZ001 - the naive time the gate must refuse
+
+
+# #638 / attack 2: the daily cap resets on the IST day, never the UTC day (05:30 IST is midnight UTC)
+def _capped_at_one(day: date):
+    preset = replace(ag.INTRADAY, daily_cap=1, quiet_until=time(0, 0))
+    return preset, replace(ag.initial_state(), day=day, opened_today=1)
+
+
+def test_the_cap_resets_at_ist_midnight():
+    preset, state = _capped_at_one(DAY)
+    state, ev = ag.step(state, now=at("23:58:30"), preset=preset, readings={"T-07": (T07, D("81"))})
+    state, ev2 = ag.step(state, now=at("23:59:05"), preset=preset, readings={})
+    assert [e.reason for e in held(ev + ev2)] == ["daily_limit"] and opened(ev + ev2) == []
+    nxt = DAY + timedelta(days=1)
+    state, ev = ag.step(state, now=at("00:00:30", nxt), preset=preset, readings={"T-07": (T07, D("81"))})
+    state, ev2 = ag.step(state, now=at("00:01:05", nxt), preset=preset, readings={})
+    assert [(e.at, e.level) for e in opened(ev + ev2)] == [(at("00:01", nxt), 0)]
+    assert (state.day, state.opened_today) == (nxt, 1)
+
+
+def test_the_cap_does_not_reset_at_utc_midnight():
+    preset, state = _capped_at_one(DAY)
+    state, ev = ag.step(state, now=at("05:28:30"), preset=preset, readings={"T-07": (T07, D("81"))})
+    state, ev2 = ag.step(state, now=at("05:30:30"), preset=preset, readings={"T-07": (T07, D("81"))})
+    state, ev3 = ag.step(state, now=at("05:31:05"), preset=preset, readings={})
+    assert opened(ev + ev2 + ev3) == [] and [e.reason for e in held(ev + ev2 + ev3)] == ["daily_limit"]
+    assert (state.day, state.opened_today) == (DAY, 1)
+
+
+# #639 item 2: a dismiss matches the stored record, never the rule
+def test_a_dismiss_of_another_record_leaves_the_gate_record_alone():
+    state, _ = feed([("10:40:30", D("81")), ("10:41:05", D("81"))])
+    state = ag.with_record_id(state, "T-07", 42)
+    assert ag.is_dismissed(ag.dismiss(state, "T-07", 41), "T-07") is False  # an older record's dismiss
+    assert ag.is_dismissed(ag.dismiss(state, "T-07", 42), "T-07") is True
+
+
+# ADR-237 (8): a STAGE change (same playbook body, a new ladder) re-levels the open record like a playbook change
+T01_WEEKLY = ag.RuleSpec("T-01", "le", (D("0.5"), D("0.3")))
+T01_EXPIRY_DAY = ag.RuleSpec("T-01", "le", (D("0.3"),))
+
+
+def test_a_stage_change_re_levels_the_open_record_and_a_close_beyond_the_new_line_is_worse():
+    """Record at T-01 0.5 (weekly ladder level 0); the expiry-day stage's ladder is (0.3); a close at 0.256 is beyond
+    the new, stricter line -> one worse record at once (the stored 0.5 is less severe than the whole new ladder)."""
+    state, ev = feed([("10:40:30", D("0.45")), ("10:41:05", D("0.45"))], spec=T01_WEEKLY)
+    assert [(e.level, e.threshold) for e in opened(ev)] == [(0, D("0.5"))]
+    state, ev = feed([("10:41:30", D("0.256")), ("10:42:05", D("0.256"))], spec=T01_EXPIRY_DAY, state=state)
+    assert [(e.level, e.threshold, e.worse) for e in opened(ev)] == [(0, D("0.3"), "last")]
+
+
+def test_the_same_ladder_keeps_the_record_level_quiet():
+    """Control: no ladder change, the same close level as the record -> quiet."""
+    state, _ = feed([("10:40:30", D("0.45")), ("10:41:05", D("0.45"))], spec=T01_WEEKLY)
+    _, ev = feed([("10:41:30", D("0.45")), ("10:42:05", D("0.45"))], spec=T01_WEEKLY, state=state)
+    assert opened(ev) == []

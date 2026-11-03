@@ -857,7 +857,7 @@ class OrderBook:
         return strategy_id in self._live_preparation
 
     def mark_closing(self, strategy_id: str, read_at: datetime.datetime) -> None:
-        """Close Partial Strategy was chosen on the (accepted) broker read taken at ``read_at``."""
+        """Exit Partial Strategy was chosen on the (accepted) broker read taken at ``read_at``."""
         self.check_read(read_at)
         self._closing_read_at[strategy_id] = read_at
 

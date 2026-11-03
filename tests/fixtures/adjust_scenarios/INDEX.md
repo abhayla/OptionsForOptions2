@@ -20,7 +20,7 @@ derived by hand-written code; the test cross-checks them with the engine.
 | ADJ-11 | IC weekly, NIFTY 2 lots | Loss 55% of max loss: stop line | Middle (weekly, 4 d) | T-02, T-03, T-06, T-09, T-16 |
 | ADJ-12 | IC weekly, NIFTY 2 lots | Two adjustments already used: only exit / reduce offered | Last day (weekly, 1 d) | T-18 |
 | ADJ-13 | IC weekly, NIFTY 2 lots | After one adjustment with booked P&L: whole-trade numbers include it | Middle (weekly, 4 d) | none |
-| ADJ-14 | IC weekly, NIFTY 2 lots | T-19 not checked: no approach the playbook offers can be priced (ADR-221) | Last day (weekly, 1 d) | T-07, T-09, T-10b |
+| ADJ-14 | IC weekly, NIFTY 2 lots | T-19 on the last day: only buying back the decayed untested short is priced (ADR-221) | Last day (weekly, 1 d) | T-07, T-09, T-10b |
 | ADJ-15 | IC weekly, NIFTY 2 lots | Last session before a weekend, Friday 15:00: carry check | Middle (weekly, 4 d) | none |
 | ADJ-16 | IC weekly, NIFTY 2 lots | Day before a market holiday (Christmas, Fri 25 Dec 2026) | Middle (monthly, 5 d) | none |
 | ADJ-17 | IC weekly, NIFTY 2 lots | User unavailable the next two sessions: fires the session before | Middle (weekly, 4 d) | none |
@@ -31,6 +31,15 @@ derived by hand-written code; the test cross-checks them with the engine.
 | ADJ-20c | IC weekly, broker answer states | Broker: one leg unpriced (long put wing) | Last day (weekly, 1 d) | T-01, T-09 |
 | ADJ-20d | IC weekly, broker answer states | Broker: landing strike not listed (that approach refused, others shown) | Last day (weekly, 1 d) | T-01, T-09 |
 | ADJ-20e | IC weekly, broker answer states | Broker: low-OI state unknown (warning, not refusal) | Last day (weekly, 1 d) | T-01, T-09 |
+| ADJ-51 | IC weekly, NIFTY 2 lots | Expiry day 14:30: short CE 0.21% from spot (within 0.3%), far short PE below Rs 2 | Last day (weekly, 0 d) | T-01, T-07, T-09, T-10b |
+| ADJ-52 | IC weekly, NIFTY 2 lots | Expiry day 14:30: nearest short 0.4% from spot: the expiry close rule does not fire | Last day (weekly, 0 d) | T-07, T-09, T-10b |
+| ADJ-53 | IC weekly, NIFTY 2 lots | Friday 15:00 before the weekend: the carry check fires (overnight margin, 2% gap) | Middle (weekly, 4 d) | none |
+| ADJ-54 | IC weekly, NIFTY 2 lots | Wednesday 15:00, Thursday a normal session: no carry check | Early (weekly, 6 d) | none |
+| ADJ-55 | IC weekly, NIFTY 2 lots | Monday 15:00 before the Diwali-Balipratipada holiday (Tue 10 Nov): carry check fires | Last day (weekly, 0 d) | T-07, T-09, T-10b |
+| ADJ-56 | IC weekly, NIFTY 2 lots | Trending day: net delta per lot beyond 0.15, the playbook's rolls offered | Middle (weekly, 3 d) | T-01, T-03, T-09 |
+| ADJ-57 | IC weekly, NIFTY 2 lots | Calm day: net delta per lot under 0.15, the trending-day rule reads false | Early (weekly, 6 d) | none |
+| ADJ-58 | IC weekly, NIFTY 2 lots | Big win on the entry day: profit at least 40% of max profit, take profit offered | Early (weekly, 6 d) | T-11 |
+| ADJ-59 | IC weekly, NIFTY 2 lots | Big win the next session: the day-1 rule gives no reading | Early (weekly, 5 d) | T-11, T-07 |
 | ADJ-50 | IC weekly, NIFTY 2 lots | Liquidity limits (ADR-230 (1), F-78): one thin strike, the 23,100 CE with open interest 500 | Early (weekly, 6 d) | none |
 | ADJ-21 | IC monthly, SENSEX 2 lots | SENSEX monthly, 20 days, calm | Early (monthly, 20 d) | none |
 | ADJ-22 | IC monthly, SENSEX 2 lots | SENSEX monthly, last 2 days stage | Last 2 days (monthly, 1 d) | T-01, T-09 |

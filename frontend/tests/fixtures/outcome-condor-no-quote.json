@@ -80,7 +80,7 @@
  ],
  "margin": {
   "state": "NOT_AVAILABLE_YET",
-  "reason": "Margin from Zerodha is not shown yet; it needs your Kite login."
+  "reason": "Margin from Zerodha is not shown yet; it needs your Zerodha login."
  },
  "table": {
   "underlying": "NIFTY",
@@ -170,7 +170,7 @@
    },
    {
     "id": "unrealized_pnl",
-    "label": "Unrealized P&L",
+    "label": "Unrealised P&L",
     "kind": "money",
     "is_scenario_level": false,
     "markers": [],
@@ -842,7 +842,7 @@
       "value": null,
       "display": "—",
       "kind": "text",
-      "reason": "no status was given for this leg",
+      "reason": "no status is available for this leg",
       "side": null,
       "per_unit": null,
       "vendor": null
@@ -1243,7 +1243,7 @@
       "value": null,
       "display": "—",
       "kind": "text",
-      "reason": "no status was given for this leg",
+      "reason": "no status is available for this leg",
       "side": null,
       "per_unit": null,
       "vendor": null
@@ -1644,7 +1644,7 @@
       "value": null,
       "display": "—",
       "kind": "text",
-      "reason": "no status was given for this leg",
+      "reason": "no status is available for this leg",
       "side": null,
       "per_unit": null,
       "vendor": null
@@ -2045,7 +2045,7 @@
       "value": null,
       "display": "—",
       "kind": "text",
-      "reason": "no status was given for this leg",
+      "reason": "no status is available for this leg",
       "side": null,
       "per_unit": null,
       "vendor": null

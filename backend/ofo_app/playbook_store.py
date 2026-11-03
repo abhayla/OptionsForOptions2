@@ -23,11 +23,13 @@ from __future__ import annotations
 import dataclasses
 import json
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
+from ofo.adjustment.gate_rows import GateRow, GateRows
 from ofo.adjustment.playbook_eval import validate_body
 from ofo.adjustment.playbook_types import BODY_SCHEMA, NAME_MAX, SHOWN_NAMES
 from ofo.errors.explanations import render_explanation
@@ -35,6 +37,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
 from ofo_app import strategy_store
+from ofo_app.sql_time import IST_SQL_ZONE
 
 NAME_TAKEN = "playbook_name_taken"
 SYSTEM_SAVE_IN_PLACE = "system_playbook_save_in_place"
@@ -50,6 +53,11 @@ DISMISS_REASONS = ("expected_within_plan", "will_act_later", "not_relevant", "ot
 #: why a record lapsed (REQ-112 AC-2), written into its timeline entry (the dismiss reason column is Dismiss's only)
 LAPSE_CONDITION_STOPPED = "condition_stopped"
 LAPSE_STRATEGY_CLOSED = "strategy_closed"
+#: Review round 2, finding 5: an escalation closed the record because a worse one of the same rule opened.
+LAPSE_SUPERSEDED_BY_WORSE = "superseded_by_worse"
+LAPSE_REASONS = (LAPSE_CONDITION_STOPPED, LAPSE_STRATEGY_CLOSED, LAPSE_SUPERSEDED_BY_WORSE)
+WORSE_MARKS = (None, "last", "dismissed")  # = migration 0036 WORSE plus none (a test asserts it)
+HELD_REASONS = ("daily_limit", "quiet_time")  # = alert_gate.HELD_DAILY_LIMIT / HELD_QUIET_TIME
 SOURCE_SYSTEM = "system"  # "Adjustment opportunity detected" (a system playbook's flag)
 SOURCE_OWN = "own"  # "Your rule was triggered" (the user's own playbook or the strategy's plan)
 _DECIMAL = re.compile(r"-?[0-9]+(\.[0-9]+)?")
@@ -153,7 +161,7 @@ class Suggestion:
 
     @property
     def lapse_reason(self) -> str | None:
-        """condition_stopped / strategy_closed on a lapsed record (its last timeline entry)."""
+        """condition_stopped / strategy_closed / superseded_by_worse on a lapsed record (its last timeline entry)."""
         return self.timeline[-1].get("reason") if self.outcome == "lapsed" and self.timeline else None
 
 
@@ -214,12 +222,13 @@ _SG_COLUMNS = ("id, strategy_id, rule_id, trigger_id, stage, value, threshold, s
 _OPEN_FOR_RULE = text(f"SELECT {_SG_COLUMNS} FROM public.adjustment_suggestions "  # noqa: S608 constant columns
                       "WHERE strategy_id = :strategy_id AND rule_id = :rule_id AND outcome = 'open'")
 _INSERT_SUGGESTION = text(
-    "INSERT INTO public.adjustment_suggestions (strategy_id, rule_id, trigger_id, stage, value, threshold, timeline) "  # noqa: S608
-    "VALUES (:strategy_id, :rule_id, :trigger_id, :stage, :value, :threshold, "
+    "INSERT INTO public.adjustment_suggestions (strategy_id, rule_id, trigger_id, stage, value, threshold, worse, "  # noqa: S608
+    "timeline) VALUES (:strategy_id, :rule_id, :trigger_id, :stage, :value, :threshold, CAST(:worse AS TEXT), "
     "jsonb_build_array(jsonb_build_object('at', clock_timestamp(), 'outcome', 'open', "
     "'group', CAST(:group AS TEXT), 'source', CAST(:source AS TEXT), 'cmp', CAST(:cmp AS TEXT), "
     "'label', CAST(:label AS TEXT), 'unit', CAST(:unit AS TEXT), 'approach', CAST(:approach AS TEXT), "
-    "'approach_cost', CAST(:approach_cost AS TEXT), 'unpriced', CAST(:unpriced AS INTEGER)))) "
+    "'approach_cost', CAST(:approach_cost AS TEXT), 'unpriced', CAST(:unpriced AS INTEGER), "
+    "'carry', CAST(:carry AS JSONB)))) "
     f"RETURNING {_SG_COLUMNS}")
 _CLOSE_SUGGESTION = text(
     "UPDATE public.adjustment_suggestions AS g SET outcome = CAST(:outcome AS TEXT), "  # noqa: S608
@@ -298,11 +307,21 @@ def check_body(body: object, strategy_type: str) -> dict:
                       ("approaches", dict)):
         if key in body and not isinstance(body[key], kind):
             raise _bad(key)
+    _check_day_rule_times(body.get("day_rules"))
     try:  # second layer: the evaluator's own validator (step 1B) must accept what is stored
         validate_body(body)
     except ValueError:
         raise _bad("body") from None
     return body
+
+
+def _check_day_rule_times(day_rules: object) -> None:
+    """A day rule's ``at``, when present, is HH:MM (REQ-159 AC-4): "2:30 pm" is refused here, since its rule id
+    would be outside the Identifier pattern. An absent ``at`` is the evaluator's "incomplete rule", not refused."""
+    for i, rule in enumerate(day_rules if isinstance(day_rules, list) else []):
+        at = rule.get("at") if isinstance(rule, dict) else None
+        if isinstance(rule, dict) and "at" in rule and not (isinstance(at, str) and _CLOCK.fullmatch(at)):
+            raise _bad(f"day_rules.{i}.at")
 
 
 def _check_triggers(triggers: object, counts: dict[str, int]) -> dict:
@@ -560,8 +579,13 @@ async def open_suggestion(conn: Any, user_ref: str, strategy_id: int, rule_id: s
                           threshold: Decimal | None, group: str | None = None,
                           source: str | None = None, cmp: str | None = None, label: str | None = None,
                           unit: str | None = None, approach: str | None = None,
-                          approach_cost: Decimal | None = None, unpriced: int | None = None) -> Suggestion:
-    """REQ-112 AC-1: one open record per (strategy, rule); a rule still open returns its existing record."""
+                          approach_cost: Decimal | None = None, unpriced: int | None = None,
+                          worse: str | None = None, carry: Mapping[str, str | None] | None = None) -> Suggestion:
+    """REQ-112 AC-1: one open record per (strategy, rule); a rule still open returns its existing record.
+    ``carry``: a carry check's content (GC-IC1 1b; money as strings, None = not known with its reason code).
+    ``worse``: None / 'last' / 'dismissed' (REQ-170 AC-3, ADR-237 (5)), written once at insert."""
+    if worse not in WORSE_MARKS:
+        raise ValueError(f"unknown worse marker {worse!r}")
     await _owned(conn, user_ref, strategy_id)
     params = {"strategy_id": strategy_id, "rule_id": rule_id}
     existing = (await conn.execute(_OPEN_FOR_RULE, params)).one_or_none()
@@ -571,6 +595,8 @@ async def open_suggestion(conn: Any, user_ref: str, strategy_id: int, rule_id: s
                                                    "value": value, "threshold": threshold, "group": group,
                                                    "source": source, "cmp": cmp, "label": label,
                                                    "unit": unit, "approach": approach, "unpriced": unpriced,
+                                                   "worse": worse,
+                                                   "carry": None if carry is None else json.dumps(carry),
                                                    "approach_cost": None if approach_cost is None
                                                    else format(approach_cost, "f")})).one()
     return _suggestion(row)
@@ -601,7 +627,7 @@ async def act_on(conn: Any, user_ref: str, suggestion_id: int) -> Suggestion:
 
 
 async def lapse(conn: Any, user_ref: str, suggestion_id: int, reason: str = LAPSE_CONDITION_STOPPED) -> Suggestion:
-    if reason not in (LAPSE_CONDITION_STOPPED, LAPSE_STRATEGY_CLOSED):
+    if reason not in LAPSE_REASONS:
         raise ValueError(f"unknown lapse reason {reason!r}")
     return await _close(conn, user_ref, suggestion_id, "lapsed", None, reason)
 
@@ -637,3 +663,83 @@ async def dismissed_holding(conn: Any, user_ref: str, strategy_id: int) -> dict[
 async def mark_cleared(conn: Any, user_ref: str, suggestion_id: int) -> None:
     """ADR-217: a check found the dismissed record's rule false; the next flag may open a new record."""
     await conn.execute(_MARK_CLEARED, {"id": suggestion_id, "user_ref": user_ref})
+
+
+# ---- alert gate storage (migration 0036; ADR-237 (5); REQ-170 AC-4) ----------------------------------------------
+_INSERT_HELD = text(
+    "INSERT INTO public.adjustment_held_crossings (strategy_id, rule_id, trigger_id, stage, value, threshold, reason) "
+    "VALUES (:strategy_id, :rule_id, :trigger_id, :stage, :value, :threshold, :reason) "
+    "RETURNING id, strategy_id, rule_id, trigger_id, stage, value, threshold, reason, held_at")
+#: the last record per rule (by id) and the count of records shown on `today` in IST (the cap counts every record)
+_GATE_LAST = text(
+    "SELECT DISTINCT ON (g.rule_id) g.rule_id, g.shown_at, g.threshold, g.outcome, g.id "
+    "FROM public.adjustment_suggestions g JOIN public.strategies s ON s.id = g.strategy_id "
+    "WHERE g.strategy_id = :strategy_id AND s.user_ref = :user_ref ORDER BY g.rule_id, g.id DESC")
+_GATE_TODAY = text(
+    "SELECT count(*) FROM public.adjustment_suggestions g JOIN public.strategies s ON s.id = g.strategy_id "  # noqa: S608 constant zone fragment
+    "WHERE g.strategy_id = :strategy_id AND s.user_ref = :user_ref "
+    f"AND (g.shown_at {IST_SQL_ZONE})::date = :today")
+
+
+@dataclass(frozen=True)
+class HeldCrossing:
+    id: int
+    strategy_id: int
+    rule_id: str
+    trigger_id: str | None
+    stage: str | None
+    value: Decimal | None
+    threshold: Decimal | None
+    reason: str
+    held_at: datetime
+
+
+async def record_held(conn: Any, user_ref: str, strategy_id: int, rule_id: str, *,  # noqa: PLR0913
+                      trigger_id: str | None, stage: str | None, value: Decimal | None,
+                      threshold: Decimal | None, reason: str) -> HeldCrossing:
+    """REQ-170 AC-4: a capped or quiet-time crossing is a stored row ("held: daily limit / quiet time"), never
+    dropped. A yes/no rule's value and threshold are None. held_at is the database clock (the guard sets it)."""
+    if reason not in HELD_REASONS:
+        raise ValueError(f"unknown held reason {reason!r}")
+    if isinstance(value, bool):
+        raise ValueError("a yes/no rule's held value is stored as None, not a bool")
+    await _owned(conn, user_ref, strategy_id)
+    row = (await conn.execute(_INSERT_HELD, {"strategy_id": strategy_id, "rule_id": rule_id, "trigger_id": trigger_id,
+                                             "stage": stage, "value": value, "threshold": threshold,
+                                             "reason": reason})).one()
+    return HeldCrossing(*row)
+
+
+async def gate_rows(conn: Any, user_ref: str, strategy_id: int, today: date) -> GateRows:
+    """ADR-237 (5): what ``alert_gate.restore`` needs - the last record per rule (time, threshold, dismissed, still
+    open) and today's (IST) record count. No record -> empty, 0. Another user's or a missing strategy -> not found;
+    a store error raises (never an empty default)."""
+    await _owned(conn, user_ref, strategy_id)
+    params = {"strategy_id": strategy_id, "user_ref": user_ref}
+    last = (await conn.execute(_GATE_LAST, params)).all()
+    count = (await conn.execute(_GATE_TODAY, {**params, "today": today})).scalar_one()
+    rows = tuple(GateRow(r[0], r[1], r[2], dismissed=r[3] == "dismissed", open=r[3] == "open", id=r[4])
+                 for r in last)
+    return GateRows(rows, int(count))
+
+
+_HELD_TODAY = text(
+    "SELECT h.rule_id, h.reason, h.threshold, h.held_at FROM public.adjustment_held_crossings h "  # noqa: S608 constant zone fragment
+    "JOIN public.strategies s ON s.id = h.strategy_id WHERE h.strategy_id = :strategy_id AND s.user_ref = :user_ref "
+    f"AND (h.held_at {IST_SQL_ZONE})::date = :today ORDER BY h.id")
+
+
+@dataclass(frozen=True)
+class HeldToday:
+    rule_id: str
+    reason: str
+    threshold: Decimal | None
+    held_at: datetime
+
+
+async def held_today(conn: Any, user_ref: str, strategy_id: int, today: date) -> tuple[HeldToday, ...]:
+    """GC-ALERT1 wire-b item 5: the crossings held on ``today`` (IST), oldest first, so a restarted worker restores
+    the held episode instead of writing a second Held row. Read only; a store error raises."""
+    await _owned(conn, user_ref, strategy_id)
+    rows = (await conn.execute(_HELD_TODAY, {"strategy_id": strategy_id, "user_ref": user_ref, "today": today})).all()
+    return tuple(HeldToday(r[0], r[1], r[2], r[3]) for r in rows)

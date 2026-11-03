@@ -55,9 +55,9 @@ def test_spec_fixed_choice_labels_are_the_exact_words() -> None:
     from ofo.execution.partial import PartialChoice
 
     assert CHOICE_LABEL_TEXT["RETRY_FAILED_LEG"] == "Retry Failed Leg"
-    assert CHOICE_LABEL_TEXT["CLOSE_PARTIAL_STRATEGY"] == "Close Partial Strategy"
+    assert CHOICE_LABEL_TEXT["CLOSE_PARTIAL_STRATEGY"] == "Exit Partial Strategy"
     assert [c.value for c in PartialChoice] == ["Complete Strategy", "Retry Failed Leg", "Review Manually",
-                                                 "Close Partial Strategy"]
+                                                 "Exit Partial Strategy"]
 
 
 def test_slicing_refusal_is_typed_and_keeps_the_old_wording_pieces() -> None:
@@ -80,8 +80,8 @@ def test_slicing_refusal_is_typed_and_keeps_the_old_wording_pieces() -> None:
 def test_sequence_labels_and_margin_notes_come_from_the_explanation_catalogue() -> None:
     from ofo.execution.sequence import MARGIN_NOT_USED, StepKind
 
-    assert [k.value for k in StepKind] == ["Establish protection", "Establish short positions",
-                                           "Legs with no protection relation"]
+    assert [k.value for k in StepKind] == ["Place bought legs", "Place sold legs",
+                                           "Other legs"]
     assert MARGIN_NOT_USED == "margin impact unknown — not used"
 
 

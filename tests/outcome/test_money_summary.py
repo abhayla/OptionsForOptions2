@@ -163,7 +163,7 @@ def test_two_expiries_have_no_worst_case_and_never_raise():
     two = Strategy((near, far))
     assert not two.is_single_expiry
     rr = money.reward_risk(D("1"), D("1"), single_expiry=two.is_single_expiry)
-    assert rr.reason == "no worst case for legs on different expiries" and rr.reward_risk is None
+    assert rr.reason == "no maximum loss for legs on different expiries" and rr.reward_risk is None
 
 
 def test_ratio_rounds_half_even_to_two_places():

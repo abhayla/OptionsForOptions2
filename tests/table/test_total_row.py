@@ -32,7 +32,7 @@ def test_core_golden_condor_total_pnl_percent_and_entry_value(golden, golden_sce
     assert total.cell(ColumnId.UNREALIZED_PNL).value == D("1365.00")
     entry = total.cell(ColumnId.ENTRY_VALUE)
     assert entry.value == D("6825.00") and entry.side == "Cr"
-    assert entry.display == "₹6,825.00 Cr"
+    assert entry.display == "₹6,825.00 credit"
 
 
 def test_ac2_total_pnl_percent_loss_case_is_negative():
@@ -116,7 +116,7 @@ def test_ac2_total_entry_value_debit_spread_is_dr():
             nifty_leg(Action.SELL, Instrument.CE, "23200", "60.00")]
     entry = _total(nifty_input(legs)).cell(ColumnId.ENTRY_VALUE)
     assert entry.value == D("4500.00") and entry.side == "Dr"
-    assert entry.display == "₹4,500.00 Dr"
+    assert entry.display == "₹4,500.00 debit"
 
 
 def test_ac2_total_entry_value_uses_each_legs_own_quantity():

@@ -22,6 +22,7 @@ from ofo.adjustment.approaches import (
 )
 from ofo.adjustment.approaches import tested_side as side_under_test  # a bare test_* name would be collected
 from ofo.adjustment.preferences import from_values as _prefs_from
+from ofo.rules.inputs import DataHealth
 from ofo.settings import defaults as _registry_defaults
 
 FIX = Path(__file__).resolve().parents[1] / "fixtures" / "adjust_scenarios"
@@ -33,6 +34,13 @@ def load(sid: str) -> dict:
     return json.loads((FIX / f"{sid}.json").read_text(encoding="utf-8"))
 
 
+def health(sc: dict) -> DataHealth:
+    """The quotes' health as the scenario feed gives it (ofo_app.scenario_mode: ``feed: stale`` is read stale)."""
+    state = sc.get("data_state") or {}
+    fresh = state.get("feed", "ok") != "stale" and state.get("prices", "fresh") == "fresh"
+    return DataHealth.AVAILABLE if fresh else DataHealth.STALE
+
+
 def _d(value: object) -> D | None:
     return None if value is None else D(str(value))
 
@@ -41,20 +49,23 @@ def inputs(sc: dict) -> tuple[Position, list[ChainRow], D]:
     """The scenario as the builder's input; a leg whose quote answered 'not found' has no price on its row."""
     unpriced = {q["tradingsymbol"] for q in sc["broker"]["quote"]["legs"] if q["state"] != "stated"}
     expiry = sc["expiry"]
+    later = sorted(c["expiry"] for c in sc["market"]["chains"] if c["expiry"] > expiry)
+    read = {expiry, *later[:1]}  # the position's expiry and the next listed one (A-04, ADR-239 (2)), as the route
     rows = []
     for c in sc["market"]["chains"]:
-        if c["expiry"] != expiry:
+        if c["expiry"] not in read:
             continue
         for r in c["rows"]:
             gone = r["tradingsymbol"] in unpriced
             rows.append(ChainRow(D(r["strike"]), r["type"], datetime.date.fromisoformat(c["expiry"]),
                                  r["tradingsymbol"], None if gone else _d(r["ltp"]), None if gone else _d(r["bid"]),
                                  None if gone else _d(r["ask"]), _d(r["delta"]), r["listed"], r["tradable"],
-                                 r["low_oi"]["state"], r["low_oi"]["blocked"]))
+                                 r["low_oi"]["state"], r["low_oi"]["blocked"], health=health(sc)))
     legs = tuple(PositionLeg(x["side"], x["type"], D(x["strike"]), datetime.date.fromisoformat(x["expiry"]), x["lots"],
                              D(x["entry"]), x["tradingsymbol"]) for x in sc["position"]["legs"])
     today = datetime.date.fromisoformat(sc["clock"]["ist"][:10])
-    return Position(sc["underlying"], sc["lot"], sc["expiry_kind"], today, legs), rows, D(sc["market"]["spot"])
+    return (Position(sc["underlying"], sc["lot"], sc["expiry_kind"], today, legs, D(sc["position"]["booked_pnl"])),
+            rows, D(sc["market"]["spot"]))
 
 
 def plain(built) -> dict:
@@ -163,7 +174,8 @@ def test_ac8_adj20d_refuses_only_a05_naming_the_leg():
     assert built["A-05"].refusal == "No 23,700 CE is listed for 03 Nov 2026, so leg 4 cannot move there."
     assert built["A-05"].trades == ()
     refused = {a for a, b in built.items() if b.refusal}
-    assert refused == {"A-05", "A-11"}  # A-11 only for its own rule (1 day left)
+    assert refused == {"A-05", "A-11", "A-27", "A-35", "A-04"}  # A-11 for its own rule (1 day left); A-27 / A-35: no playbook given (ADR-238); A-04: no later expiry in the chain (ADR-239 (2))
+    assert built["A-04"].refusal == "No expiry after 03 Nov 2026 is listed in the chain read, so this approach is not built."
     assert built["A-11"].refusal == "This approach needs at least 3 days left; days left now: 1."
 
 
@@ -212,12 +224,43 @@ def test_ac8_every_answer_state_of_the_landing_row(change, reason):
 
 
 def test_landing_price_from_mid_when_no_ltp():
-    """The planned price is ADR-068 (1)'s rule: LTP, else the mid of bid and ask (half-up to 0.01)."""
+    """ADR-241: a live book's mid (half-up to 0.01) prices the trade, LTP or not."""
     position, chain, spot = inputs(load("ADJ-20a"))
     changed = [replace(r, ltp=None, bid=D("10.05"), ask=D("10.10")) if (r.strike, r.type) == (D("23700"), "CE")
                else r for r in chain]
     a05 = build_approach(position, changed, spot, "A-05", CFG)
     assert [t.price for t in a05.trades if t.strike == D("23700")] == [D("10.08")]
+
+
+def test_landing_row_with_no_ltp_and_a_stale_book_is_refused():
+    """ADR-241: no LTP and no live book (stale) -> no price: the approach is refused naming the leg."""
+    position, chain, spot = inputs(load("ADJ-20a"))
+    changed = [replace(r, ltp=None, bid=D("10.05"), ask=D("10.10"), health=DataHealth.STALE)
+               if (r.strike, r.type) == (D("23700"), "CE") else r for r in chain]
+    a05 = build_approach(position, changed, spot, "A-05", CFG)
+    assert a05.refusal == "Leg 4 (BUY NIFTY 23,700 CE, expiry 03 Nov 2026) has no price, and this approach trades it."
+
+
+@pytest.mark.parametrize("sid", ["ADJ-02", "ADJ-20a"])
+def test_adr241_stale_ltps_never_price_a_trade_on_a_live_book(sid):
+    """ADR-241 discriminator: every LTP moved 10 away from its book (a stale last trade). On a live book every
+    approach still equals the hand-derived legs priced at the mid; on a stale book every trade is priced at its
+    LTP (moved where its book was two-sided). The library's own rows have mid == LTP, so only this test tells the two rules apart there."""
+    sc = load(sid)
+    position, chain, spot = inputs(sc)
+    # only a two-sided book can be live: a 0.05 row with a 0 bid keeps its LTP under both rules, so it is not moved
+    moved = [replace(r, ltp=r.ltp + 10) if r.ltp is not None and r.bid and r.bid > 0 else r for r in chain]
+    built = {a.id: a for a in applicable_approaches(position, moved, spot, CFG)}
+    priced = 0
+    for aid, expected in sc["expected"]["approach_legs"].items():
+        assert plain(built[aid]) == fixture_form(expected), (sid, aid)
+        priced += len(built[aid].trades)
+    assert priced > 0
+    stale = [replace(r, health=DataHealth.STALE) for r in moved]
+    ltp_of = {r.tradingsymbol: r.ltp for r in stale}
+    for a in applicable_approaches(position, stale, spot, CFG):
+        for t in a.trades:
+            assert t.price == ltp_of[t.tradingsymbol], (sid, a.id, t.tradingsymbol)
 
 
 def _synthetic(strikes, expiry, kind_rows=("CE", "PE")):
@@ -283,3 +326,50 @@ def test_unknown_approach_is_an_error():
     position, chain, spot = inputs(load("ADJ-20a"))
     with pytest.raises(ValueError, match="unknown approach"):
         build_approach(position, chain, spot, "A-99", CFG)
+
+
+# ---- GC-IC1 round 3: a gap in the held strikes is named, never stepped over -------------------------------------
+
+def _picked(built, typ):
+    return next(x.strike for x in built.after if x.type == typ and x.side == "SELL")
+
+
+@pytest.mark.parametrize(("approach", "outward"), [("A-05", True), ("A-01", False)])
+def test_gcic1_r3_roll_refuses_a_gap_naming_its_strike_never_picks_past_it(approach, outward):
+    """A strike the roll would have picked has no delta (nobody held it): refused naming THAT strike, and the strike
+    is listed in ``unpriced`` for the one second pass; the same chain with the gap filled picks it."""
+    position, chain, spot = inputs(load("ADJ-02"))
+    whole = build_approach(position, chain, spot, approach, CFG)
+    assert whole.refusal is None and whole.step_basis == "delta" and whole.unpriced == ()
+    typ = next(t.type for t in whole.trades)
+    pick = _picked(whole, typ)
+    holed = [replace(r, delta=None) if (r.type, r.strike) == (typ, pick) else r for r in chain]
+    gap = build_approach(position, holed, spot, approach, CFG)
+    assert gap.refusal is not None and f"{pick:,}" in gap.refusal and gap.refusal.endswith(
+        "has no price, and this approach trades it.")
+    assert gap.trades == () and (position.legs[0].expiry, typ, pick) in gap.unpriced
+    if outward:  # a strike nearer the short with no delta is a gap too (the walk out stops at it)
+        short = next(x.strike for x in position.legs if x.side == "SELL" and x.type == typ)
+        nearer = [r for r in chain if r.type == typ and abs(r.strike - short) < abs(pick - short)
+                  and r.strike != short and (r.strike > short) == (pick > short)]
+        if nearer:
+            k = nearer[0].strike
+            near_gap = build_approach(position, [replace(r, delta=None) if (r.type, r.strike) == (typ, k) else r
+                                                 for r in chain], spot, approach, CFG)
+            assert near_gap.refusal is not None and f"{k:,}" in near_gap.refusal
+
+
+def test_gcic1_r3_no_fitting_strike_with_a_gap_names_the_gap():
+    """No strike with a delta fits the target, but an unquoted one might: the gap is named, not 'no strike at delta'."""
+    position, chain, spot = inputs(load("ADJ-02"))
+    whole = build_approach(position, chain, spot, "A-05", CFG)
+    typ = next(t.type for t in whole.trades)
+    short = next(x.strike for x in position.legs if x.side == "SELL" and x.type == typ)
+    up = typ == "CE"
+    beyond = sorted((r for r in chain if r.type == typ and (r.strike > short if up else r.strike < short)),
+                    key=lambda r: abs(r.strike - short))
+    # every strike past the short: the nearest has no delta, the rest a delta above the target
+    holed = [r if r not in beyond else replace(r, delta=None if r is beyond[0] else D("0.99")) for r in chain]
+    built = build_approach(position, holed, spot, "A-05", CFG)
+    assert built.refusal is not None and f"{beyond[0].strike:,}" in built.refusal
+    assert (position.legs[0].expiry, typ, beyond[0].strike) in built.unpriced

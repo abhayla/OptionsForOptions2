@@ -25,6 +25,9 @@ ROLL_POINTS_NIFTY: Final = "adjustments.roll_points_nifty"
 ROLL_POINTS_SENSEX: Final = "adjustments.roll_points_sensex"
 IRON_FLY_MIN_DAYS: Final = "adjustments.iron_fly_min_days"
 REDUCE_DIVISOR: Final = "adjustments.reduce_divisor"
+PARTIAL_CLOSE_PERCENT: Final = "adjustments.partial_close_percent"  # ADR-238 (2)
+UNTESTED_DECAY_PERCENT: Final = "adjustments.untested_decay_percent"  # ADR-238 (3)
+SHIFT_STRIKES: Final = "adjustments.shift_strikes"  # ADR-239 (3)
 NEAR_LEVEL_PERCENT: Final = "adjustments.near_level_percent"
 GAP_AT_OPEN_UNTIL: Final = "adjustments.gap_at_open_until"
 COMPARE_RANGE_PERCENT: Final = "adjustments.compare_range_percent"
@@ -33,7 +36,8 @@ COMPARE_MOVE_SMALL: Final = "adjustments.compare_move_small"
 COMPARE_MOVE_LARGE: Final = "adjustments.compare_move_large"
 KEYS: Final = (SHORT_DELTA_WEEKLY, SHORT_DELTA_MONTHLY, ROLL_POINTS_NIFTY, ROLL_POINTS_SENSEX, IRON_FLY_MIN_DAYS,
                REDUCE_DIVISOR, NEAR_LEVEL_PERCENT, GAP_AT_OPEN_UNTIL, COMPARE_RANGE_PERCENT, COMPARE_STEPS,
-               COMPARE_MOVE_SMALL, COMPARE_MOVE_LARGE)
+               COMPARE_MOVE_SMALL, COMPARE_MOVE_LARGE, PARTIAL_CLOSE_PERCENT, UNTESTED_DECAY_PERCENT,
+               SHIFT_STRIKES)
 
 
 @dataclass(frozen=True)
@@ -66,7 +70,8 @@ def from_values(values: Mapping[str, Decimal]) -> Preferences:
 
     approach = Config({"weekly": v(SHORT_DELTA_WEEKLY), "monthly": v(SHORT_DELTA_MONTHLY)},
                       {"NIFTY": v(ROLL_POINTS_NIFTY), "SENSEX": v(ROLL_POINTS_SENSEX)},
-                      int(v(IRON_FLY_MIN_DAYS)), int(v(REDUCE_DIVISOR)))
+                      int(v(IRON_FLY_MIN_DAYS)), int(v(REDUCE_DIVISOR)), int(v(PARTIAL_CLOSE_PERCENT)),
+                      int(v(UNTESTED_DECAY_PERCENT)), int(v(SHIFT_STRIKES)))
     compare = CompareView(v(COMPARE_RANGE_PERCENT), int(v(COMPARE_STEPS)), v(COMPARE_MOVE_SMALL),
                           v(COMPARE_MOVE_LARGE))
     return Preferences(approach, v(NEAR_LEVEL_PERCENT), hhmm_text(v(GAP_AT_OPEN_UNTIL)), compare)

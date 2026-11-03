@@ -45,7 +45,7 @@ Forwards = Mapping[datetime.date, ExpiryForward]
 
 
 class SpotRefused(ValueError):
-    """The index value is missing or unusable; the calculation is refused, never computed silently."""
+    """The index value is missing or unusable; the calculation cannot be done, never computed silently."""
 
 
 def data_label(reading: SpotReading) -> ExplanationText | None:
@@ -145,7 +145,7 @@ def _gate_spot(reading: object, underlying: str) -> SpotReading:
     if not isinstance(reading, SpotReading):
         raise SpotRefused("no spot reading: a calculation is never built on a bare level (REQ-072 AC-2)")
     if reading.health in _REFUSED:
-        raise SpotRefused(f"the {underlying} spot is {reading.health.value}; the calculation is refused")
+        raise SpotRefused(f"the {underlying} spot is {reading.health.value}; the calculation cannot be done")
     return reading
 
 
@@ -297,8 +297,15 @@ def iv_price(q: NormalizedQuote) -> Decimal | None:
     the quote's health is AVAILABLE (GC-UI F-5): a STALE / DELAYED / UNHEALTHY / UNAVAILABLE book stopped ticking, so
     after hours every leg solves from its closing LTP (ADR-197), never from the stale mid - the same health gate the
     parity forward's mid uses (ofo.marketdata.forward._mid)."""
-    live_book = q.health is DataHealth.AVAILABLE and q.bid and q.ask and q.bid > 0 and q.ask >= q.bid
-    return mid_price(q.bid, q.ask) if live_book else q.ltp
+    return mid_price(q.bid, q.ask) if live_book(q.bid, q.ask, q.health) else q.ltp  # type: ignore[arg-type]
+
+
+def live_book(bid: Decimal | None, ask: Decimal | None, health: DataHealth | None) -> bool:
+    """ADR-172: THE one live-book rule (the mid is used only on a live book): both sides present and above 0, the ask
+    at or above the bid, and the quote's health AVAILABLE (None = not known = not live). ``iv_price`` and the
+    adjustment approach builder's planned price (ADR-241, ``ofo.adjustment.approaches.planned_price``) both call it."""
+    return (health is DataHealth.AVAILABLE and bid is not None and ask is not None and bid > 0 and ask > 0
+            and ask >= bid)
 
 
 def implied_vol(em: ExpiryModel, kind: Instrument, price: Decimal, strike: Decimal) -> ModelIV:

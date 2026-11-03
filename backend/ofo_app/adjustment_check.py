@@ -21,8 +21,11 @@ ambiguous -> None, so the evaluator answers NotChecked with its catalogue reason
 - margin: Zerodha's stated figure for the current legs through the approaches route's margin seam; only a CHECKED
   figure (``margin_block`` state ``stated``) counts; every other state -> None (``missing_margin``).
 - days_left / hhmm: the answer clock (``MarketInputs.now``) in IST against the nearest leg expiry.
-- expiry_kind: ``MarketInputs.expiry_kind``; prev_close: the last-close reading when STATED; day_open: no reader
-  yet -> None (T-13 is never checked from here). adjustments_used: ``Tracked.adjustments_used`` (not recorded -> None).
+- expiry_kind: ``MarketInputs.expiry_kind``; prev_close: the last-close reading when STATED; day_open (T-13, GC-IC1
+  5b): ``MarketInputs.day_open`` (``ofo.marketdata.day_open.index_day_open`` over the feed's own day values of the
+  index, read with the index quote on both paths) when STATED (dated today IST); previous session / undated / no
+  open / not held / feed not healthy / packet without day fields / not read -> None (``missing_day_open``).
+  adjustments_used: ``Tracked.adjustments_used`` (not recorded -> None).
 - prices_fresh (T-21): the market context's provider health: available -> True, stale -> False, anything else or no
   context -> None (``withheld_fresh_unknown``).
 
@@ -42,15 +45,17 @@ from collections.abc import Mapping
 from decimal import Decimal
 from typing import Any, Final
 
+from ofo.adjustment import level_watch
 from ofo.adjustment import playbook_eval as pe
-from ofo.adjustment.approaches import Config, Position
+from ofo.adjustment.approaches import Config, ExitInputs, Position
 from ofo.adjustment.compare import Cheapest, Column, MarginRead, cheapest_approach
 from ofo.adjustment.offered import offered_now
 from ofo.adjustment.strategy_type import strike_gap_of, type_of
 from ofo.engine import adjust_money
 from ofo.engine.legs import Action, Instrument, Leg
 from ofo.engine.metrics import UNLIMITED
-from ofo.errors.explanations import render_explanation
+from ofo.errors.explanations import LEVEL_WATCH_LABEL_TEXT, PLAYBOOK_DAY_RULE_ACTION_TEXT, render_explanation
+from ofo.marketdata.day_open import STATED
 from ofo.marketdata.spot_source import SourceState, SpotAnswer
 from ofo.timeutil import IST
 
@@ -66,6 +71,9 @@ from ofo_app.routes.adjustment import (
 
 #: a clock trigger's unit in the playbook body (T-10b): its value and threshold are HH:MM
 CLOCK_UNIT: Final = "time"
+#: a day rule's unit (GC-IC1 1a): its value is the nearest short's distance from spot in %
+DAY_RULE_UNIT: Final = "%"
+CARRY_GAP_PCT_TEXT: Final = Decimal(2)  # ofo.adjustment.carry.CARRY_GAP_PCT, shown on the record
 _HEALTH_FRESH: Final = "available"
 _HEALTH_STALE: Final = "stale"
 
@@ -155,10 +163,35 @@ def _abs_delta(market: MarketInputs, symbol: str) -> Decimal | None:
     return None if g is None or g.delta is None else abs(g.delta)
 
 
+class PlaybookGuards(dict):
+    """A playbook's guards (a plain mapping for every existing reader) that also carry the body they came from, so the
+    approaches route reads T-09 for A-27 (ADR-238 (4)) from the SAME playbook read, never a second one."""
+
+    def __init__(self, guards: Mapping, body: Mapping) -> None:
+        super().__init__(guards)
+        self.body = body
+
+
 def guards_of_body(body: Mapping | None) -> dict[str, Any] | None:
     """The ``guards`` of a resolved playbook body (ADR-230 (1)); None when there is no body. The route's reader
     (``adjustment_readers.read_guards``) and T-19 both read guards through this."""
-    return None if body is None else dict(body.get("guards", {}))
+    return None if body is None else PlaybookGuards(body.get("guards", {}), body)
+
+
+def exit_inputs_of(guards: Mapping | None, position: Position, now: datetime.datetime) -> ExitInputs:
+    """A-27's and A-35's playbook inputs at this check (ADR-238 (4), (5)): the clock in IST against the nearest leg
+    expiry, the due tighten rule as the playbook check applies it, then ``playbook_eval.exit_inputs`` (the expiry-day
+    rule's own T-09 reader). Guards with no body (no playbook, a test seam) -> no T-09."""
+    body = getattr(guards, "body", None)
+    ist = now.astimezone(IST)
+    hhmm = ist.strftime("%H:%M")
+    if not position.legs:
+        return ExitInputs(None, None, hhmm)
+    expiry = min(x.expiry for x in position.legs)
+    tighten = _tighten(body, ist.date(), expiry, hhmm) if isinstance(body, Mapping) else None
+    state = pe.StrategyState(expiry_kind=position.expiry_kind or "weekly",  # type: ignore[arg-type]
+                             days_left=(expiry - ist.date()).days, hhmm=hhmm, tighten_percent=tighten)
+    return pe.exit_inputs(body, guards, state)
 
 
 def cheapest_offered(body: Mapping | None, tracked: Tracked, market: MarketInputs, spot: Decimal | None,  # noqa: PLR0913 - the preferences value is a required parameter (GC-SET)
@@ -175,11 +208,15 @@ def cheapest_offered(body: Mapping | None, tracked: Tracked, market: MarketInput
     position = tracked.position  # the route's Before and guards, through the same helpers (#633, ADR-230 (1))
     if before is None:
         before = price_after(position.legs, position, tracked.booked, tracked.paid_charges, (), rates, market)
-    limits, max_profit = liquidity_inputs(guards_of_body(body), before)
+    guards = guards_of_body(body)
+    limits, max_profit = liquidity_inputs(guards, before)
+    exits = exit_inputs_of(guards, position, market.now)  # ADR-238: A-27 / A-35 read the same playbook
     for a in offered:
-        built, priced = priced_approach(a, tracked, market, spot, rates, config, limits=limits, max_profit=max_profit)
+        built, priced = priced_approach(a, tracked, market, spot, rates, config, limits=limits, max_profit=max_profit,
+                                        exits=exits)
         if built is not None and priced is not None:
-            columns[a] = Column(built, priced.after, priced.reason, priced.charges_known, MarginRead(None))
+            columns[a] = Column(built, priced.after, priced.reason, priced.charges_known, MarginRead(None),
+                                priced.adjustment_charges)
     return cheapest_approach(offered, columns, market.chain)
 
 
@@ -211,7 +248,8 @@ def state_of(tracked: Tracked, market: MarketInputs, spot: SpotAnswer, margin: M
     hhmm = now.strftime("%H:%M")
     stated_margin = Decimal(margin["value"]) if margin is not None and margin.get("state") == "stated" else None
     last = market.last_close
-    return pe.StrategyState(
+    day = market.day_open
+    return with_carry(pe.StrategyState(
         expiry_kind=market.expiry_kind or position.expiry_kind or "weekly",  # type: ignore[arg-type]
         days_left=(expiry - now.date()).days, hhmm=hhmm, spot=value, shorts=shorts, pnl=pnl,
         max_loss=None if gross is None else _limit_value(gross.max_loss),
@@ -220,8 +258,67 @@ def state_of(tracked: Tracked, market: MarketInputs, spot: SpotAnswer, margin: M
         adjustment_cost_reason=cheap.reason, adjustment_unpriced=cheap.unpriced, atm_iv=market.vol,
         prev_close=(last.value if last is not None and last.value is not None and last.state is SourceState.STATED
                     else None),
+        day_open=day.value if day is not None and day.reason == STATED else None,
         adjustments_used=tracked.adjustments_used, expiry_pnl_at_spot=expiry_pnl,
-        tighten_percent=None if body is None else _tighten(body, now.date(), expiry, hhmm), prices_fresh=fresh)
+        tighten_percent=None if body is None else _tighten(body, now.date(), expiry, hhmm), prices_fresh=fresh,
+        held=held_legs(position, market), today=now.date(), entry_day=entry_day(tracked)),
+        body, tracked, market)
+
+
+def held_legs(position: Position, market: MarketInputs) -> tuple[pe.HeldLeg, ...]:
+    """S-02 (ADR-240 (3)): every open leg with its per-unit engine Greeks from ``MarketInputs.leg_greeks`` (the
+    chain's engine Greeks; a symbol absent -> None, so S-02 is not checked, never a delta of 0)."""
+    return tuple(pe.HeldLeg(market.leg_greeks.get(x.tradingsymbol), x.side, x.lots) for x in position.legs)
+
+
+def entry_day(tracked: Tracked) -> datetime.date | None:
+    """S-12: the IST date of the strategy's first order (``Tracked.entered_at``); None when not known."""
+    at = getattr(tracked, "entered_at", None)
+    return None if at is None or at.tzinfo is None else at.astimezone(IST).date()
+
+
+def carry_model(tracked: Tracked, market: MarketInputs) -> Any:
+    """GC-IC1 1b: the gated engine model of the open legs for the carry check's gap figures (``ofo.adjustment.carry``),
+    built from the check's own market read: the expiry's forward object and each leg's engine IV (absent -> the leg
+    has no IV, so the figures say not known). None when the forward was refused or the model refuses (a second
+    expiry has no forward here, so no figure is claimed). One function: the screen and the worker both call it."""
+    from ofo.engine.inputs import LegInput, SpotReading, StrategyInput  # noqa: PLC0415 - engine types only here
+    from ofo.engine.model import model_inputs  # noqa: PLC0415
+    fwd, position = market.forward_model, tracked.position
+    if fwd is None:
+        return None
+    rows = {r.tradingsymbol: r for r in market.chain}
+    legs = tuple(LegInput(position.underlying, x.tradingsymbol, Action(x.side), Instrument(x.type), x.strike, x.expiry,
+                          x.lots * position.lot, x.entry, getattr(rows.get(x.tradingsymbol), "ltp", None),
+                          market.leg_ivs.get(x.tradingsymbol)) for x in position.legs)
+    try:
+        reading = SpotReading(fwd.spot, fwd.spot_timestamp, fwd.spot_health)  # the reading the forward was read on
+        return model_inputs(StrategyInput(position.underlying, reading, fwd.valuation_time, fwd.rate, legs,
+                                          days_in_year=fwd.days_in_year),
+                            {fwd.expiry: fwd})
+    except (ValueError, ArithmeticError):  # SpotRefused / ForwardUnavailable / a leg the input refuses
+        return None
+
+
+def with_carry(state: pe.StrategyState, body: Mapping | None, tracked: Tracked,
+               market: MarketInputs) -> pe.StrategyState:
+    """``state`` with today's carry day kinds and, only when a carry rule is due, its figures (GC-IC1 1b)."""
+    from ofo.adjustment import carry  # noqa: PLC0415
+    now = market.now.astimezone(IST)
+    state = dataclasses.replace(state, carry_days=pe.carry_day_kinds(now.date()))
+    if not pe.carry_due(body, state):
+        return state
+    figs = carry.carry_figures(carry_model(tracked, market), tracked.booked, state.margin, now)
+    return dataclasses.replace(state, carry=figs)
+
+
+def carry_record(figs: pe.CarryFigures) -> dict[str, str | None]:
+    """The carry check's record content: money as strings (``Decimal`` text), None + reason when not known."""
+    def text(v: Decimal | None) -> str | None:
+        return None if v is None else format(v, "f")
+    return {"gap_pct": format(CARRY_GAP_PCT_TEXT, "f"), "gap_up": text(figs.up), "gap_down": text(figs.down),
+            "gap_reason": figs.gap_reason, "margin": text(figs.margin), "margin_reason": figs.margin_reason,
+            "next_open": None if figs.next_open is None else figs.next_open.isoformat()}
 
 
 def scenario_entry(scn: Any, state: pe.StrategyState, position: Position) -> pe.StrategyState | None:
@@ -238,9 +335,12 @@ def scenario_entry(scn: Any, state: pe.StrategyState, position: Position) -> pe.
                             prices_fresh=True)
 
 
-async def evaluate_and_remember(conn: Any, user_ref: str, strategy_id: int, body: Mapping,  # noqa: PLR0913
-                                state: pe.StrategyState, scn: Any, position: Position, *,
-                                gap_until: str) -> pe.Evaluation:
+async def evaluate_stored(conn: Any, user_ref: str, strategy_id: int, body: Mapping,  # noqa: PLR0913
+                          state: pe.StrategyState, scn: Any, position: Position, *,
+                          gap_until: str) -> tuple[pe.Evaluation, dict]:
+    """The playbook evaluated against the STORED rule memory, writing nothing (the screen check's path; review round
+    2, finding 3: the background worker is the one writer of adjustment state, ADR-237 (6)).
+    Returns (evaluation, memory read)."""
     stored = await playbook_store.rule_state(conn, user_ref, strategy_id)
     memory = {k: {"held_at_entry": h, "seen_clear": s} for k, (h, s) in stored.items()}
     entry = scenario_entry(scn, state, position)
@@ -248,7 +348,14 @@ async def evaluate_and_remember(conn: Any, user_ref: str, strategy_id: int, body
         state = dataclasses.replace(state, entry_atm_iv=entry.atm_iv)
     elif not memory:
         entry = state  # tracking just started: this first check is the entry state
-    ev = pe.evaluate(body, state, memory, entry, gap_until=gap_until)
+    return pe.evaluate(body, state, memory, entry, gap_until=gap_until), memory
+
+
+async def evaluate_and_remember(conn: Any, user_ref: str, strategy_id: int, body: Mapping,  # noqa: PLR0913
+                                state: pe.StrategyState, scn: Any, position: Position, *,
+                                gap_until: str) -> pe.Evaluation:
+    """``evaluate_stored``, then the changed rule memory written (the background worker only, ADR-237 (6))."""
+    ev, memory = await evaluate_stored(conn, user_ref, strategy_id, body, state, scn, position, gap_until=gap_until)
     for rid, mem in ev.memory.items():
         if memory.get(rid) != mem:
             await playbook_store.put_rule_state(conn, user_ref, strategy_id, rid, held_at_entry=mem["held_at_entry"],
@@ -267,9 +374,25 @@ def stage_out(name: str | None, index: int | None) -> dict[str, Any]:
     return {"name": stage_name_text(name), "index": index}
 
 
+SIT_S12 = pe.situation_rule_id(pe.BIG_WIN_EARLY)  # its value is a % of max profit
+
+
 def trigger_words(body: Mapping | None, trigger_id: str | None) -> tuple[str | None, str | None]:
-    """(label, unit) of a trigger as the evaluated body holds them; (None, None) for a body or trigger without them."""
-    trig = (body or {}).get("triggers", {}).get(trigger_id) if isinstance(body, Mapping) else None
+    """(label, unit) of a trigger as the evaluated body holds them; (None, None) for a body or trigger without them.
+    A day rule (GC-IC1 1a, ``day.<when>.<HHMM>.<n>``): its action's catalogue words and "%" (its value is a distance
+    from spot in %)."""
+    watched = level_watch.direction_of(trigger_id)  # GC-IC1 4c (A-37): its words by direction; no unit
+    if watched is not None:
+        return LEVEL_WATCH_LABEL_TEXT[watched], None
+    situation = pe.situation_of(body, trigger_id)  # GC-IC1 6a: S-02 / S-12 read as the playbook names them
+    if situation is not None:
+        name = situation.get("name")
+        return (name if isinstance(name, str) else None), (DAY_RULE_UNIT if trigger_id == SIT_S12 else None)
+    action = pe.day_rule_action(body, trigger_id)
+    if action is not None:
+        words = PLAYBOOK_DAY_RULE_ACTION_TEXT.get(str(action))
+        return (words, DAY_RULE_UNIT) if words is not None else (None, None)
+    trig =(body or {}).get("triggers", {}).get(trigger_id) if isinstance(body, Mapping) else None
     if not isinstance(trig, Mapping):
         return None, None
     label, unit = trig.get("label"), trig.get("unit")

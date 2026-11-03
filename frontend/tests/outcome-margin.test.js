@@ -159,7 +159,7 @@ describe('outcome margin slot (ADR-099)', () => {
 
   it('no session: the catalogue login text as today, no figures', () => {
     const w = line(STATES.no_session)
-    expect(t(w, 'margin-text').text()).toBe('Margin from Zerodha is not shown yet; it needs your Kite login.')
+    expect(t(w, 'margin-text').text()).toBe('Margin from Zerodha is not shown yet; it needs your Zerodha login.')
     expect(t(w, 'margin-figures').exists()).toBe(false)
     expect(t(w, 'margin-checked-at').exists()).toBe(false)
   })

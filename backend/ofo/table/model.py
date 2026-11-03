@@ -36,7 +36,8 @@ Breakeven summary columns (Q213) from the same level set. Every money/points cel
   ITM/ATM/OTM rule was a defect, moneyness is not in the AC-2 column list). A leg's Status is whatever state the
   caller passes in for that leg (``leg_statuses``, a ``LegStatus``, not computed here); the
   TOTAL row's Status is the strategy's health, passed in as a :class:`StrategyHealth` (REQ-043 AC-2; ADR-010 lines
-  29-30, the owner's exact labels: "Healthy", "Watch", "Adjustment opportunity", "Exit condition reached"). Neither
+  29-30, the owner's exact labels (wording #629): "No condition met", "Near a condition", "Adjustment opportunity",
+  "Exit condition reached"). Neither
   is computed by this module; a missing status shows "—".
 - **TOTAL Entry Value is options-only and NET** (Q233, Q236): sells minus buys, each premium x its own leg's
   quantity. The cell's ``value`` is the non-negative magnitude, its ``side`` is "Cr" (net credit) or "Dr" (net
@@ -45,7 +46,7 @@ Breakeven summary columns (Q213) from the same level set. Every money/points cel
   notional cannot be added. Leg rows keep their unsigned ``entry_price x quantity``.
 - **TOTAL Current Value is the same NET shape** (ADR-076): sells minus buys at LTP x quantity, magnitude plus
   Cr/Dr side, "—" for a futures leg or a leg without an LTP; so TOTAL Entry Value minus TOTAL Current Value
-  (signed, Cr positive) equals the TOTAL Unrealized P&L for an options-only strategy.
+  (signed, Cr positive) equals the TOTAL Unrealised P&L for an options-only strategy.
 - **Scenario column headings (AC-7, Q227, round-4 fix).** Every scenario column's heading is its own index level
   for everyone, CURRENT and 0-P&L columns marked (:func:`scenario_header`); "NIFTY at expiry | You make/lose"
   is the section caption (:func:`scenario_caption`), not a per-column label.
@@ -106,8 +107,8 @@ class StrategyHealth(Enum):
     """REQ-043 AC-2; ADR-010 lines 29-30 (Q20 = B, T1 #41): the owner's exact four labels. Rule-based, no
     prediction (AC-3); never invented or computed by this table module — passed in by the caller."""
 
-    HEALTHY = "Healthy"
-    WATCH = "Watch"
+    HEALTHY = HEALTH_LABEL_TEXT["HEALTHY"]
+    WATCH = HEALTH_LABEL_TEXT["WATCH"]
     ADJUSTMENT_OPPORTUNITY = HEALTH_LABEL_TEXT["ADJUSTMENT_OPPORTUNITY"]
     EXIT_CONDITION_REACHED = HEALTH_LABEL_TEXT["EXIT_CONDITION_REACHED"]
 

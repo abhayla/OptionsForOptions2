@@ -244,7 +244,7 @@ const NOT_LIVE = { ...real, state: 'NOT_CONNECTED', status_label: AC5, table: nu
 const COMPUTED = real
 // The shape `_assert_from_entries_after_drop` (tests_app/test_strategy_live_push.py) checks: AC-5's text on the state,
 // REQ-077 AC-9's label as the output label, the At Expiry table kept, no ltp, no leg_quotes.
-const FROM_YOUR_PRICES = 'From your prices - no live data'
+const FROM_YOUR_PRICES = 'From your prices — no live data'
 const FROM_ENTRIES = { ...real, state: 'FROM_ENTRIES', status_label: AC5, output_label: FROM_YOUR_PRICES, spot_level: null, spot_at: null,
   leg_quotes: undefined, legs: real.legs.map((l) => ({ ...l, ltp: null, iv: null, health: null })),
   table: { ...real.table, spot_level: null, spot_at: null, output_label: FROM_YOUR_PRICES } }

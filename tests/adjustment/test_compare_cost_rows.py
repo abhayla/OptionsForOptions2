@@ -10,16 +10,18 @@ from decimal import Decimal as D
 import pytest
 from ofo.adjustment import compare_cost_rows as ccr
 from ofo.adjustment.approaches import APPROACH_IDS, build_approach
-from ofo.adjustment.compare import ROWS, Column, Context, MarginRead, compare
+from ofo.adjustment.compare import ROWS, Column, Context, MarginRead, approach_cost, chain_index, compare
 from ofo.charges import ChargeRates
 from ofo.charges.calculator import ChargeOrder, charges_for_orders
 from ofo.charges.round_trip import charge_segment, to_paise_up
 from ofo.engine.legs import Action, Instrument, Leg
-from ofo.engine.metrics import UNLIMITED
+from ofo.engine.metrics import UNLIMITED, MultiExpiryError
 from ofo.engine.strategy import Strategy
 from ofo.engine.whole_trade import whole_trade_after
 from ofo.errors.explanations import ADJUSTMENT_CHARGE_LABEL_TEXT, render_explanation
-from test_approach_compare import CFG, PAID, PREFS, greeks_of, inputs, load, row
+from ofo.rules.inputs import DataHealth
+from test_approach_compare import CFG, PAID, PREFS, greeks_of, load, row
+from test_approaches import inputs  # the position's expiry AND the next one (A-04, ADR-239 (2)), as the route
 
 RATES = ChargeRates(
     brokerage_per_order=D("20"), stt_sell_rate=D("0.0015"), stt_exercise_rate=D("0.0015"),
@@ -52,9 +54,14 @@ def build(sid: str):
         orders = [ChargeOrder(segment, t.action, t.quantity, t.price) for t in built.trades]
         adj = to_paise_up(charges_for_orders(orders, RATES).total) if orders else D(0)
         booked = D(sc["expected"]["approach_after"][a]["booked_pnl"])
-        whole = whole_trade_after(_strategy(built.after, position.lot), booked_pnl=booked,
-                                  paid_charges=PAID, adjustment_charges=adj,
-                                  open_exit_charges=_exit_charges(built.after, position.lot, segment))
+        try:
+            whole = whole_trade_after(_strategy(built.after, position.lot), booked_pnl=booked,
+                                      paid_charges=PAID, adjustment_charges=adj,
+                                      open_exit_charges=_exit_charges(built.after, position.lot, segment))
+        except MultiExpiryError:  # A-04 spans two expiries: no After, the engine's own reason (as price_after)
+            cols.append(Column(built, None, render_explanation("adjust_needs_one_expiry"), True,
+                               MarginRead(D("100000")), adj))
+            continue
         cols.append(Column(built, whole, None, True, MarginRead(D("100000"))))
     before = whole_trade_after(_strategy(position.legs, position.lot), booked_pnl=D(sc["position"]["booked_pnl"]),
                                paid_charges=PAID, adjustment_charges=D(0),
@@ -107,8 +114,10 @@ def test_leaders_follow_the_hand_values_and_unavailable_cannot_lead():
     hand = sc["expected"]["compare_cost"]
     pcts = {a: D(h["cost_pct"]) for a, h in hand.items() if h["cost_pct"] is not None}
     assert row(cmp, "cost_pct").leaders == tuple(a for a in hand if a in pcts and pcts[a] == min(pcts.values()))
-    gains = {a: D(h["max_profit_change"]) for a, h in hand.items()}
-    assert row(cmp, "max_profit_change").leaders == tuple(a for a in hand if gains[a] == max(gains.values()))
+    gains = {a: D(h["max_profit_change"]) for a, h in hand.items() if h["max_profit_change"] is not None}
+    assert row(cmp, "max_profit_change").leaders == tuple(a for a in hand if a in gains
+                                                          and gains[a] == max(gains.values()))
+    assert row(cmp, "max_profit_change").values["A-04"].value is None  # two expiries: a dash, never a figure
     assert "A-31" not in row(cmp, "cost_pct").leaders
 
 
@@ -149,6 +158,18 @@ def test_state_cost_unknown_no_bid_ask_is_a_dash_with_that_reason():
     chain = [replace(r, bid=None, ask=None) for r in ctx.chain]
     cell = row(compare(cols, replace(ctx, chain=chain), before, True), "cost_pct").values["A-01"]
     assert cell.value is None and "has no bid or no ask" in cell.unavailable_reason
+
+
+@pytest.mark.parametrize("health", [DataHealth.STALE, DataHealth.UNAVAILABLE, None])
+def test_state_cost_from_a_book_that_is_not_live_is_not_taken_after_hours(health):
+    """GC-IC1 review (B open point): a stale / unhealthy / unstated book's half-spread is not used: cost is a dash."""
+    _, cols, ctx, _ = build("ADJ-02")
+    col = next(c for c in cols if c.built.trades)
+    live = approach_cost(col, chain_index([replace(r, health=DataHealth.AVAILABLE) for r in ctx.chain]))
+    assert live.value is not None
+    chain = [replace(r, health=health) for r in ctx.chain]
+    got = approach_cost(col, chain_index(chain))
+    assert got.value is None and "has no bid or no ask" in got.reason
 
 
 def test_state_max_profit_unlimited_either_side_is_a_dash_with_a_reason():

@@ -187,12 +187,12 @@ describe('Add to Paper: unsaved strategy, toast, old path', () => {
     w.unmount()
   })
   it('a failed save stops before any paper order and shows the save error', async () => {
-    answers['POST /strategies'] = () => Promise.reject({ status: 422, parts: { what_happened: 'Give the strategy a name' } })
+    answers['POST /strategies'] = () => Promise.reject({ status: 422, parts: { what_happened: 'The strategy has no name.' } })
     const w = await bar({ current: null })
     await openList(w)
     expect(w.find('[data-testid="paper-confirm"]').exists()).toBe(false)
     expect(posts()).toHaveLength(0)
-    expect(t(w, 'save-error').text()).toContain('Give the strategy a name')
+    expect(t(w, 'save-error').text()).toContain('The strategy has no name.')
     w.unmount()
   })
   it('"Open in Builder" reloads this strategy', async () => {

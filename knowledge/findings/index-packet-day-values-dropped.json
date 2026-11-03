@@ -1,0 +1,31 @@
+{
+ "id": "index-packet-day-values-dropped",
+ "scope": "generic",
+ "class": "Any binary-feed decoder that reads only the fields one consumer needed from a packet type leaves every later consumer of the other fields with a permanent 'packet carries none' answer, which reads like a data gap rather than a decoder gap, so a rule built on those fields is silently never checked.",
+ "mechanism": "backend/ofo/marketdata/kite_frames.py decoded Kite's 28/32-byte index packet as ltp + exchange time only, although bytes 8-24 carry high, low, open and the previous close; QuoteBook.latest_day_stats of every index therefore answered PACKET_WITHOUT_DAY_FIELDS, and T-13 (gap at the open, which reads the index's day open) could never be checked from the feed on any path.",
+ "first_seen": {
+  "date": "2026-11-03",
+  "where": "GC-IC1 step 5b core proof, tests/fixtures/kite_ws/frames-2026-10-08-092000-10s.bin.gz (the real 2026-10-08 09:20 recording)",
+  "evidence": "independent struct read of the last NIFTY 50 packet (token 256265, 32 bytes): ltp 2253325, high 2259905, low 2252110, open 2259905, close 2260305, change -6980, exchange time 2026-10-08 09:20:09 IST; change = ltp - close exactly (-69.80), so close is the previous session's close. SENSEX (token 265): open 7266800, close 7263870. The decoder before the fix returned day_open None for both."
+ },
+ "fix": "The index packet's high/low/open/close are decoded into the tick's day values (a 0 is absent); an index has no trade, so its dated day values carry the packet's exchange time (None in a 28-byte packet: undated, refused by the stale-day guard ofo.marketdata.day_open.index_day_open).",
+ "detection": {
+  "status": "guarded",
+  "checks": [
+   "tests/marketdata/test_kite_frames_fixture.py::test_index_packets_carry_their_day_values",
+   "tests_app/test_background_day_open_margin.py::test_core_t13_gap_at_the_open_fires_the_same_on_the_screen_and_the_worker"
+  ],
+  "note": "The fixture test pins the real recording's index day values; the core test drives a scenario index packet through the real decoder and QuoteBook to a fired T-13 on both the screen and the worker. Not covered: other packet types' unread fields (an ltp packet has none; quote/full packets are fully read for day values)."
+ },
+ "spec_ref": [
+  "spec/requirements/REQ-080.md",
+  "spec/requirements/REQ-165.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-11-03",
+   "where": "GC-IC1 5b",
+   "evidence": "NIFTY 50 open 22599.05 / previous close 22603.05 present in the packet, absent after decoding"
+  }
+ ]
+}

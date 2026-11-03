@@ -39,6 +39,7 @@ from ofo.adjustment.approaches import (
     ApproachLegs,
     ChainRow,
     Config,
+    ExitInputs,
     Position,
     PositionLeg,
     build_approach,
@@ -95,6 +96,8 @@ class Tracked:
     booked: Decimal | None
     paid_charges: Decimal | None
     adjustments_used: int | None = None  # None: the count could not be read (the compare shows "-" with the reason)
+    #: GC-IC1 6a (S-12, ADR-240 (3)): when the strategy was entered (its first stored order); None = not known
+    entered_at: datetime.datetime | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -112,14 +115,27 @@ class MarketInputs:
     expiry_kind: str | None = None  # weekly / monthly from the listed expiries (None: keep the tracked value)
     #: trading symbol -> per-unit engine Greeks (``chain_values.chain_model``); a symbol absent -> "-" in the compare
     leg_greeks: Mapping[str, Greeks] = dataclasses.field(default_factory=dict)
+    #: GC-IC1 1b carry check: the expiry's forward object (``parity_forward``; None = refused) and each own leg's
+    #: engine IV by trading symbol (absent = no IV), so ``adjustment_check.carry_model`` builds the gated model
+    forward_model: Any = None
+    leg_ivs: Mapping[str, Decimal] = dataclasses.field(default_factory=dict)
+    #: GC-IC1 5b (T-13): the index's day open (``ofo.marketdata.day_open.DayOpen``), read in the SAME read as the index
+    #: quote on both paths; None = not read (``state_of`` treats it as no day open)
+    day_open: Any = None
+    #: GC-IC1 round 5: expiry -> ``adjustment_readers.ReachModel`` from the same frozen read (the position's expiry and
+    #: the next); used ONLY to choose the strikes the one second pass holds, never a price. Empty = no model
+    reach: Mapping[datetime.date, Any] = dataclasses.field(default_factory=dict)
 
 
 TrackedReader = Callable[[int, ChargeRates | None], Awaitable[Tracked | None]]
 MarketReader = Callable[[Tracked, MarketContext | None], Awaitable[MarketInputs]]
+#: the ONE second pass (GC-IC1 round 3): the market again with the given instrument ids held too; None: nothing held
+MoreMarketReader = Callable[[Tracked, MarketContext | None, list[str]], Awaitable[MarketInputs | None]]
 RestSpotReader = Callable[[str], Awaitable[SourceReading]]
 ApproachMargin = Callable[[list[PlannedOrderIn]], Awaitable[Margin]]
 #: strategy id, position, spot -> the guards of the strategy's playbook (None: no playbook, so no limits)
-GuardsReader = Callable[[int, Position, Decimal | None, list | None], Awaitable[Mapping[str, Any] | None]]
+#: ``GUARDS_UNREADABLE`` (adjustment_readers): the playbook could not be read, so the reply says no limit was applied
+GuardsReader = Callable[[int, Position, Decimal | None, list | None], Awaitable[Any]]
 
 
 def get_tracked_reader() -> TrackedReader:
@@ -149,6 +165,20 @@ def liquidity_inputs(guards: Mapping[str, Any] | None,
     return limits, _before_max_profit(before)
 
 
+def strike_flags(built: ApproachLegs | None, position: Position, chain: Sequence[ChainRow],
+                 limits: liquidity.Limits | None) -> list[Any]:
+    """ADR-230 (1): the liquidity flags (catalogue texts) of the strikes ``built`` would open, from the same limits the
+    Compare used (``liquidity.evaluate_rows``); the strikes stay visible. No limits or nothing new -> no flag."""
+    if limits is None or built is None or built.refusal_message is not None:
+        return []
+    before = {(x.type, x.strike, x.expiry, x.side) for x in position.legs}
+    by_key = {(r.expiry, r.type, r.strike): r for r in chain}
+    rows = [by_key[k] for x in built.after if (x.type, x.strike, x.expiry, x.side) not in before
+            if (k := (x.expiry, x.type, x.strike)) in by_key]
+    found = {f for state in liquidity.evaluate_rows(limits, rows).values() for f in state.flags}
+    return [render_explanation(f) for f in (liquidity.FLAG_BELOW, liquidity.FLAG_OI_UNKNOWN) if f in found]
+
+
 def plan_max(guards: Mapping[str, Any] | None) -> int | None:
     """F-93: the plan's ``guards.max_adjustments`` for the Compare's "used of max" (the same reading as the history
     page's ``_plan_max``): a whole number >= 0, else None (no guards, no key, not a whole number: "no plan maximum")."""
@@ -160,6 +190,44 @@ def get_market_reader() -> MarketReader:
     """The market reader over the outcome's market context (``adjustment_readers.read_market``)."""
     from ofo_app.adjustment_readers import read_market  # noqa: PLC0415 - as above
     return read_market
+
+
+def get_more_market_reader() -> MoreMarketReader:
+    """The second-pass reader (``adjustment_readers.read_market_more``): the landing strikes held once more."""
+    from ofo_app.adjustment_readers import read_market_more  # noqa: PLC0415 - as above
+    return read_market_more
+
+
+def unpriced_ids(built: Sequence[ApproachLegs | None], market: MarketInputs) -> list[str]:
+    """The instrument ids the approaches could not price (GC-IC1 round 3, review finding 3): every contract a build
+    listed in ``unpriced`` (no price, or a roll strike with no delta) and every After leg of a built approach with no
+    engine Greeks (the Compare's after-Greeks come only from ``leg_greeks``). A contract with no instrument id cannot
+    be held and is left out (its row stays unpriced, named by the builder)."""
+    symbol_of = {(r.expiry, r.type, r.strike): r.tradingsymbol for r in market.chain}
+    out: list[str] = []
+    for b in built:
+        if b is None:
+            continue
+        symbols = [symbol_of.get(k) for k in b.unpriced]
+        if b.refusal_message is None:
+            symbols += [x.tradingsymbol for x in b.after if x.tradingsymbol not in market.leg_greeks]
+        out += [i for sym in symbols if sym is not None and (i := market.instrument_ids.get(sym)) is not None]
+    return list(dict.fromkeys(out))
+
+
+def second_pass_ids(built: Sequence[ApproachLegs | None], market: MarketInputs, position: Position,
+                    cfg: Config) -> list[str]:
+    """The ids the ONE second pass holds (GC-IC1 round 5, second review): ``unpriced_ids`` UNION the delta reach of
+    every short (``adjustment_readers.delta_reach_ids`` over the first read's models), so a roll whose landing (or its
+    wing's) lies past the first hold is caught in that one pass, not one strike per pass. Nothing unpriced -> []
+    (no second pass, as before); no model or no target for the expiry kind -> the unpriced ids only."""
+    extra = unpriced_ids(built, market)
+    target = cfg.target_short_delta.get(position.expiry_kind)
+    if not extra or not market.reach or target is None:
+        return extra
+    from ofo_app.adjustment_readers import delta_reach_ids  # noqa: PLC0415 - as above
+    reach = delta_reach_ids(market.chain, market.instrument_ids, position, market.reach, target)
+    return list(dict.fromkeys(extra + reach))
 
 
 def get_rest_spot_reader() -> RestSpotReader:
@@ -277,6 +345,9 @@ class Priced:
     after: WholeTradeAfter | None
     charges_known: bool
     reason: Any = None  # an ExplanationText when no whole-trade figure is given
+    #: the approach's own charges when the After spans two expiries (A-04, ADR-239 (2)): the Compare's cost needs
+    #: only the trades; None otherwise or when charges are unknown
+    adjustment_charges: Decimal | None = None
 
 
 def price_after(legs: Sequence[PositionLeg], position: Position, booked: Decimal | None, paid: Decimal | None,  # noqa: PLR0913
@@ -302,7 +373,7 @@ def price_after(legs: Sequence[PositionLeg], position: Position, booked: Decimal
                                   open_exit_charges=exits if known else Decimal(0),
                                   forward=market.forward, years=market.years, vol=market.vol)
     except MultiExpiryError:
-        return Priced(None, known, render_explanation("adjust_needs_one_expiry"))
+        return Priced(None, known, render_explanation("adjust_needs_one_expiry"), adjustment if known else None)
     return Priced(after, known)
 
 
@@ -311,20 +382,22 @@ def as_of_market(tracked: Tracked, market: MarketInputs) -> Tracked:
     route and the playbook check's T-19 both build from this)."""
     return dataclasses.replace(tracked, position=dataclasses.replace(
         tracked.position, today=market.now.astimezone(IST).date(),
-        expiry_kind=market.expiry_kind or tracked.position.expiry_kind))
+        expiry_kind=market.expiry_kind or tracked.position.expiry_kind, booked=tracked.booked))  # ADR-238 (6)
 
 
 def priced_approach(a: str, tracked: Tracked, market: MarketInputs, spot: Decimal,  # noqa: PLR0913 - the preferences value is a required parameter (GC-SET)
                     rates: ChargeRates | None, config: Config, *, limits: liquidity.Limits | None = None,
-                    max_profit: Decimal | None = None) -> tuple[ApproachLegs | None, Priced | None]:
+                    max_profit: Decimal | None = None,
+                    exits: ExitInputs | None = None) -> tuple[ApproachLegs | None, Priced | None]:
     """One approach as the approaches route and the Compare build and price it (the ONE build path; the playbook
     check's T-19 reads it too, ADR-221): an unknown id -> (None, None); refused -> (built, None); else the built legs
     and the whole-trade After of its legs, with this approach's own charges. ``limits`` / ``max_profit``: the
-    playbook's liquidity limits and the Before's max profit (ADR-230 (1)); None: not applied."""
+    playbook's liquidity limits and the Before's max profit (ADR-230 (1)); None: not applied. ``exits``: A-27's and
+    A-35's playbook inputs (``adjustment_check.exit_inputs_of``, ADR-238); None: both refused with the reason."""
     if a not in APPROACH_IDS:
         return None, None
     position = tracked.position
-    built = build_approach(position, market.chain, spot, a, config, None, limits, max_profit)
+    built = build_approach(position, market.chain, spot, a, config, None, limits, max_profit, exits)
     if built.refusal is not None:
         return built, None
     booked = None if tracked.booked is None else tracked.booked + _closed_booked(built)
@@ -357,7 +430,7 @@ def _leg_out(x: Any) -> dict:
 # ---- route --------------------------------------------------------------------------------------------------------
 
 @router.post("/api/strategies/{strategy_id}/adjustment-approaches", response_model=AdjustApproachesOut)
-async def adjustment_approaches(  # noqa: PLR0913 - FastAPI dependencies, one per input
+async def adjustment_approaches(  # noqa: PLR0913, PLR0915 - FastAPI dependencies, one per input; one second pass
         strategy_id: int, body: ApproachesIn,
         tracked_reader: Annotated[TrackedReader, Depends(get_tracked_reader)],
         market_reader: Annotated[MarketReader, Depends(get_market_reader)],
@@ -367,7 +440,8 @@ async def adjustment_approaches(  # noqa: PLR0913 - FastAPI dependencies, one pe
         rates: Annotated[ChargeRates | None, Depends(load_charge_rates)],
         held_environ: Annotated[Mapping[str, str] | None, Depends(get_held_environ)],
         guards_of: Annotated[GuardsReader, Depends(get_guards_reader)],
-        prefs: UserPreferences) -> AdjustApproachesOut:
+        prefs: UserPreferences,
+        more_reader: Annotated[MoreMarketReader, Depends(get_more_market_reader)]) -> AdjustApproachesOut:
     started = time.perf_counter()
     from ofo_app import adjustment_check as check  # noqa: PLC0415 - it imports this module's dataclasses
     from ofo_app.adjustment_readers import TrackedUnreadable  # noqa: PLC0415 - as above
@@ -389,17 +463,33 @@ async def adjustment_approaches(  # noqa: PLR0913 - FastAPI dependencies, one pe
                              "pop_switch_on": pop_on}
     position = tracked.position
     engine = 0.0
+    limits: liquidity.Limits | None = None
+    max_profit: Decimal | None = None
+    exits: ExitInputs | None = None
     if not spot.available:  # AC-5: no After at all
         reply |= {"before": None, "approaches": []}
         built_list: list[tuple[str, ApproachLegs | None]] = []
     else:
         t0 = time.perf_counter()
-        before = price_after(position.legs, position, tracked.booked, tracked.paid_charges, (), rates, market)
-        reply["before"] = _after_block(before, pop_on)
         guards = await guards_of(strategy_id, position, spot.value, check.listed_of(ctx))
-        limits, max_profit = liquidity_inputs(guards, before)  # no playbook, no limits
-        answers = [(a, priced_approach(a, tracked, market, spot.value, rates, prefs.approach,  # type: ignore[arg-type]
-                                       limits=limits, max_profit=max_profit)) for a in asked]
+        guards = _guards_or_reason(guards, reply)
+        exits = check.exit_inputs_of(guards, position, market.now)  # ADR-238: the same playbook read
+
+        def price_all(m: MarketInputs) -> tuple[Priced, liquidity.Limits | None, Decimal | None, list]:
+            b = price_after(position.legs, position, tracked.booked, tracked.paid_charges, (), rates, m)
+            lim, mp = liquidity_inputs(guards, b)  # no playbook, no limits
+            return b, lim, mp, [(a, priced_approach(a, tracked, m, spot.value, rates,  # type: ignore[arg-type]
+                                                    prefs.approach, limits=lim, max_profit=mp, exits=exits))
+                                for a in asked]
+        before, limits, max_profit, answers = price_all(market)
+        # GC-IC1 round 3: the landing strikes nobody held are held ONCE more and everything is built again; never a
+        # third read, whatever is still unpriced after it (bounded: at most one more LEG_WAIT_S)
+        extra = second_pass_ids([b for _, (b, _) in answers], market, position, prefs.approach)
+        more = await more_reader(tracked, ctx, extra) if extra else None
+        if more is not None:
+            market = more
+            before, limits, max_profit, answers = price_all(market)
+        reply["before"] = _after_block(before, pop_on)
         built_list = [(a, built) for a, (built, _) in answers]
         priced: dict[str, Priced] = {a: p for a, (_, p) in answers if p is not None}
         engine = time.perf_counter() - t0
@@ -407,15 +497,18 @@ async def adjustment_approaches(  # noqa: PLR0913 - FastAPI dependencies, one pe
         columns: list[Column] = []
         for a, built in built_list:
             item = await _approach_item(a, built, priced, pop_on, margin_of, market)
+            item["liquidity_flags"] = strike_flags(built, position, market.chain, limits)
             if built is not None and built.refusal_message is None:
                 columns.append(Column(built, priced[a].after, priced[a].reason, priced[a].charges_known,
-                                      _margin_read(item["margin"])))
+                                      _margin_read(item["margin"]), priced[a].adjustment_charges))
             out.append(item)
         reply["approaches"] = out
+        from ofo_app import delta_neutral_reply  # noqa: PLC0415 - A-23 figures, no trade (GC-IC1 4a)
+        reply["delta_neutral"] = delta_neutral_reply.block(position, market.chain, market.leg_greeks, spot.value)
         reply |= await _compare_reply(columns, tracked, spot.value, market, rates, pop_on, before,  # type: ignore[arg-type]
                                       margin_of, prefs, limits, guards)
     reply["available"] = _available(position, market.chain, spot.value if spot.available else None, dict(built_list),
-                                    prefs.approach)
+                                    prefs.approach, limits, max_profit, exits)
     reply["days_to_expiry"] = _days_to_expiry(position)
     total = time.perf_counter() - started
     log.info("adjustment approaches strategy=%s approaches=%s engine_s=%.4f total_s=%.4f",
@@ -426,8 +519,19 @@ async def adjustment_approaches(  # noqa: PLR0913 - FastAPI dependencies, one pe
     return AdjustApproachesOut.model_validate(reply)
 
 
+def _guards_or_reason(guards: Any, reply: dict[str, Any]) -> Mapping[str, Any] | None:
+    """#624 item 1: an unreadable playbook applies no limit and the reply SAYS so (``limits_reason``); a mapping or
+    None (no playbook matches: no reason) pass through."""
+    from ofo_app.adjustment_readers import GUARDS_UNREADABLE  # noqa: PLC0415 - as above
+    if guards is GUARDS_UNREADABLE:
+        reply["limits_reason"] = render_explanation("adjust_limits_not_applied")
+        return None
+    return guards  # type: ignore[no-any-return]
+
+
 def _available(position: Position, chain: Sequence[ChainRow], spot: Decimal | None,
-               built: Mapping[str, ApproachLegs | None], config: Config) -> list[dict[str, Any]]:
+               built: Mapping[str, ApproachLegs | None], config: Config, limits: liquidity.Limits | None = None,
+               max_profit: Decimal | None = None, exits: ExitInputs | None = None) -> list[dict[str, Any]]:
     """REQ-046 AC-3 / REQ-045 AC-5: every generic approach with its one-line text and whether it can be built for this
     position now (else the refusal's own reason). No figure; nothing is priced here. No spot -> none can be built."""
     out: list[dict[str, Any]] = []
@@ -437,8 +541,9 @@ def _available(position: Position, chain: Sequence[ChainRow], spot: Decimal | No
         if spot is None:
             out.append(item | {"applicable": False, "reason": render_explanation("adjust_available_spot_missing")})
             continue
-        b = built.get(a) or build_approach(position, chain, spot, a, config)
-        out.append(item | {"applicable": b.refusal_message is None, "reason": b.refusal_message})
+        b = built.get(a) or build_approach(position, chain, spot, a, config, None, limits, max_profit, exits)
+        out.append(item | {"applicable": b.refusal_message is None, "reason": b.refusal_message,
+                           "liquidity_flags": strike_flags(b, position, chain, limits)})
     return out
 
 

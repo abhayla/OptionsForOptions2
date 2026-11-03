@@ -65,7 +65,7 @@ const REFUSAL = { what_happened: 'The market is closed. Orders can be placed onc
 // W-151 (REQ-119 AC-5): the saved revision the review was loaded at (GET /strategies/1), sent with every Execute
 const REVISION = 3
 // the server's execute_plan_changed parts (backend/ofo/errors/templates.py), shown as given
-const PLAN_CHANGED = { what_happened: 'Your plan changed - review it again.',
+const PLAN_CHANGED = { what_happened: 'Your plan changed after you reviewed it.',
   impact: 'No order was prepared and nothing was stored; orders are only prepared from the plan you reviewed.',
   what_is_blocked: 'Preparing orders from an older version of this strategy.',
   next_action: 'Review the current plan, then prepare the orders again.' }

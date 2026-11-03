@@ -136,7 +136,7 @@ def test_ac_5_a_quantity_not_below_the_stored_freeze_limit_is_blocked_never_spli
                                    {0: "NIFTY2661023000CE"})
     assert 0 in exact and "53 lots" in exact[0].what_happened  # F-36: units equal to the limit are NOT allowed
     assert found[0].what_happened == (
-        "NIFTY2661023000CE: 3575 units (55 lots) is not below the exchange freeze limit of 3511 units; the largest "
+        "NIFTY2661023000CE: 3575 units (55 lots) is at or above the exchange freeze limit of 3511 units; the largest "
         "single order allowed is 3510 units (54 lots).")  # hand: 55 x 65 = 3575; (3511 - 1) // 65 x 65 = 3510 = 54 lots
     assert leg_edit.freeze_blocks(legs, {}, {}) == {}  # no stored limit: no block here
 

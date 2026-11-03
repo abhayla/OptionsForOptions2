@@ -75,6 +75,9 @@ ROUTE_ORDER_EDGES: dict[str, dict[tuple[str, str], str]] = {
     # copy of the plan query: a second resolution path could drift from ADR-230 (1)
     "ofo_app.routes.adjustment": {**STRATEGY_STORE},
     # GC-ADJ2 1C: the playbook check reads plans and rule memory through playbook_store (its ownership check)
+    # GC-ALERT1 4b (REQ-170): the strategy alert-style route reads the tracked position through adjustment_readers ->
+    # adjustment_check -> playbook_store (its strategy_store import); it reads and stores a style, never an order
+    "ofo_app.routes.alert_style": {**STRATEGY_STORE},
     "ofo_app.routes.adjustment_check": {**STRATEGY_STORE},
     # GC-ADJ2 6: the adjustment history reads the strategy's plan and records through playbook_store (its
     # strategy_store import); it reads, it never prepares or posts an order
@@ -105,7 +108,8 @@ ROUTE_ORDER_EDGES: dict[str, dict[tuple[str, str], str]] = {
 #: GC-ADJ2 5: +2 adjustment_opportunities, +2 adjustment_plan; 6: +2 adjustment_history (all via playbook_store)
 #: GC-MU A1: +2 adjustment (read_guards via adjustment_check -> playbook_store)
 #: GC-SET step 9: +2 system_playbooks (via playbook_store)
-PINNED_EDGE_COUNT = 35
+#: GC-ALERT1 4b: +2 alert_style (via adjustment_readers -> playbook_store)
+PINNED_EDGE_COUNT = 37
 
 
 def route_modules(backend: pathlib.Path) -> list[str]:

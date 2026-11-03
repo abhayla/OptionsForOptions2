@@ -291,13 +291,13 @@ def test_status_leg_and_total_are_caller_supplied_not_computed(golden, golden_sc
     )
     for row in table2.rows[:4]:
         assert row.cell(ColumnId.STATUS).value == "Open"
-    assert table2.rows[-1].cell(ColumnId.STATUS).value == "Watch"
+    assert table2.rows[-1].cell(ColumnId.STATUS).value == StrategyHealth.WATCH.value
 
 
 def test_strategy_health_labels_match_adr_010_exactly():
     """ADR-010 lines 29-30 (Q20 = B, T1 #41): the owner's exact four strategy-health labels."""
     assert {h.value for h in StrategyHealth} == {
-        "Healthy", "Watch", "Adjustment opportunity", "Exit condition reached",
+        "No condition met", "Near a condition", "Adjustment opportunity", "Exit condition reached",
     }
 
 
@@ -310,7 +310,7 @@ def test_leg_statuses_length_must_match_legs(golden):
 def test_strategy_health_rejects_a_plain_string(golden):
     """Fail closed: strategy_health must be a StrategyHealth, not an arbitrary string."""
     with pytest.raises(ValueError):
-        build_table(golden, strategy_health="Healthy")
+        build_table(golden, strategy_health="No condition met")
 
 
 def test_build_table_without_scenario_leaves_no_scenario_columns():

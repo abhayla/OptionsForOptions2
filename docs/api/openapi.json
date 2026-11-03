@@ -107,6 +107,12 @@
             ],
             "title": "Kind"
           },
+          "liquidity_flags": {
+            "default": [],
+            "items": {},
+            "title": "Liquidity Flags",
+            "type": "array"
+          },
           "margin": {
             "anyOf": [
               {
@@ -280,6 +286,15 @@
             "title": "Leads",
             "type": "object"
           },
+          "limits_reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Limits Reason"
+          },
           "pop_switch_on": {
             "title": "Pop Switch On",
             "type": "boolean"
@@ -336,6 +351,12 @@
             "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
             "title": "Id",
             "type": "string"
+          },
+          "liquidity_flags": {
+            "default": [],
+            "items": {},
+            "title": "Liquidity Flags",
+            "type": "array"
           },
           "name": {
             "title": "Name"
@@ -1292,6 +1313,93 @@
           "read"
         ],
         "title": "AlertOut",
+        "type": "object"
+      },
+      "AlertStyleOut": {
+        "additionalProperties": false,
+        "properties": {
+          "automatic": {
+            "anyOf": [
+              {
+                "enum": [
+                  "intraday",
+                  "weekly",
+                  "monthly"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Automatic"
+          },
+          "choices": {
+            "items": {
+              "$ref": "#/components/schemas/ChoiceOut"
+            },
+            "title": "Choices",
+            "type": "array"
+          },
+          "in_force": {
+            "anyOf": [
+              {
+                "enum": [
+                  "intraday",
+                  "weekly",
+                  "monthly"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "In Force"
+          },
+          "label": {
+            "title": "Label"
+          },
+          "pinned": {
+            "anyOf": [
+              {
+                "enum": [
+                  "intraday",
+                  "weekly",
+                  "monthly"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pinned"
+          },
+          "reason_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason Text"
+          },
+          "strategy_id": {
+            "title": "Strategy Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "strategy_id",
+          "label",
+          "pinned",
+          "automatic",
+          "in_force",
+          "reason_text",
+          "choices"
+        ],
+        "title": "AlertStyleOut",
         "type": "object"
       },
       "AlertsOut": {
@@ -2503,6 +2611,36 @@
           "index"
         ],
         "title": "CheckStageOut",
+        "type": "object"
+      },
+      "ChoiceOut": {
+        "additionalProperties": false,
+        "properties": {
+          "label": {
+            "title": "Label"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "enum": [
+                  "intraday",
+                  "weekly",
+                  "monthly"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "value",
+          "label"
+        ],
+        "title": "ChoiceOut",
         "type": "object"
       },
       "ClockOut": {
@@ -10608,6 +10746,27 @@
         "title": "StrikesOut",
         "type": "object"
       },
+      "StyleIn": {
+        "additionalProperties": false,
+        "properties": {
+          "style": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Style"
+          }
+        },
+        "required": [
+          "style"
+        ],
+        "title": "StyleIn",
+        "type": "object"
+      },
       "SuggestionOut": {
         "additionalProperties": false,
         "properties": {
@@ -15725,6 +15884,92 @@
           }
         },
         "summary": "Edit Plan"
+      }
+    },
+    "/api/strategies/{strategy_id}/alert-style": {
+      "get": {
+        "operationId": "read_alert_style_api_strategies__strategy_id__alert_style_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_id",
+            "required": true,
+            "schema": {
+              "title": "Strategy Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlertStyleOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Alert Style"
+      },
+      "put": {
+        "operationId": "pin_alert_style_api_strategies__strategy_id__alert_style_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_id",
+            "required": true,
+            "schema": {
+              "title": "Strategy Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StyleIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlertStyleOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Pin Alert Style"
       }
     },
     "/api/strategy-templates": {

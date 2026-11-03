@@ -88,10 +88,12 @@ class Param:
         if self.must_be_positive and self.min < 1:
             raise TemplateError(f"param {self.name!r}: must_be_positive needs min >= 1, got {self.min}")
 
-    def violation(self, value: int) -> str | None:
+    def violation(self, value: int, *, matching: bool = False) -> str | None:
+        """``matching=True`` (the shape matcher, ADR-186 (4)) skips only the min / max RANGE: it limits what the
+        builder makes, not what a position is named. The int check and ``must_be_positive`` define the shape."""
         if not _is_int(value):
             return f"param {self.name!r} must be an int, got {value!r}"
-        if not self.min <= value <= self.max:
+        if not matching and not self.min <= value <= self.max:
             return f"param {self.name!r}={value} outside its bounds [{self.min}, {self.max}]"
         if self.must_be_positive and value <= 0:
             return f"param {self.name!r}={value} must be positive"
@@ -268,12 +270,13 @@ class Template:
     def violations(self, values: Mapping[str, int], *, matching: bool = False) -> list[str]:
         """Every bound or constraint ``values`` breaks; empty when the parameter set is allowed.
 
-        ``matching=True`` is the shape matcher's question (ADR-186 (4)): a build-only equal constraint is skipped."""
+        ``matching=True`` is the shape matcher's question (ADR-186 (4)): a build-only equal constraint and
+        every param min / max range are skipped."""
         problems: list[str] = []
         if set(values) != self._params_by_name.keys():
             return [f"params must be exactly {sorted(self._params_by_name)}, got {sorted(values)}"]
         for param in self.params:
-            problem = param.violation(values[param.name])
+            problem = param.violation(values[param.name], matching=matching)
             if problem:
                 problems.append(problem)
         if problems:

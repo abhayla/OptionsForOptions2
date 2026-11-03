@@ -29,6 +29,7 @@ from decimal import Decimal
 from typing import Literal
 
 from ofo import settings as registry_mod
+from ofo.adjustment import alert_presets
 from ofo.adjustment import preferences as prefs_mod
 from ofo.settings import SettingRefused
 from sqlalchemy import text
@@ -38,6 +39,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 from ofo_app import settings_store
 
 MAX_NOTE = 500
+CAP_ABOVE_ADMIN = "preference_above_admin_cap"
 Session = AsyncSession | AsyncConnection
 
 _IN_FORCE = text(
@@ -80,12 +82,17 @@ class Answer:
 
 def preference_keys() -> tuple[str, ...]:
     """The closed list: the registry keys under the adjustments prefix (the admin's "Adjustment defaults" group; the
-    list must equal the pure layer's KEYS)."""
-    keys = tuple(k for k in registry_mod.registry() if k.startswith(prefs_mod.PREFIX))
+    list must equal the pure layer's KEYS), then the user-changeable alert-discipline values per trading style
+    (REQ-170 AC-6: confirm candle, cool-down, quiet time, a lower daily cap; the re-arm margin stays admin-only)."""
+    reg = registry_mod.registry()
+    keys = tuple(k for k in reg if k.startswith(prefs_mod.PREFIX))
     if set(keys) != set(prefs_mod.KEYS):
         raise PreferencesError(f"the registry's adjustment defaults {sorted(keys)} differ from the preferences "
                                f"{sorted(prefs_mod.KEYS)}")
-    return keys
+    missing = [k for k in alert_presets.USER_KEYS if k not in reg]
+    if missing:
+        raise PreferencesError(f"the registry has no alert-discipline entries {missing}")
+    return keys + alert_presets.USER_KEYS
 
 
 def preference(key: object) -> registry_mod.Setting:
@@ -108,8 +115,9 @@ async def answers(session: Session, user_ref: str, at: datetime.datetime | None 
     admin = await settings_store.settings_in_force(session, at)  # fail closed on a refused admin value
     own: dict[str, StoredPreference] = {}
     known = registry_mod.registry()
+    closed = set(preference_keys())
     for r in (await session.execute(_IN_FORCE, {"user": user, "at": at})).all():
-        if r.key not in prefs_mod.KEYS:
+        if r.key not in closed:
             continue  # a retired key: never read
         if r.value is not None:
             if not isinstance(r.value, Decimal):
@@ -164,7 +172,17 @@ async def set_preference(session: Session, user_ref: str, key: str, value: str, 
     (SettingRefused with the readable reason otherwise)."""
     user = _user(user_ref)
     preference(key)
-    return await _insert(session, user, key, registry_mod.validate(key, value), note)
+    parsed = registry_mod.validate(key, value)
+    if key in alert_presets.CAP_KEYS:
+        ceiling = await cap_ceiling(session, key)
+        if parsed > ceiling:  # REQ-170 AC-6: the user may lower the daily cap, never raise it
+            raise SettingRefused(CAP_ABOVE_ADMIN, f"The daily limit can be at most {registry_mod.plain(ceiling)}.")
+    return await _insert(session, user, key, parsed, note)
+
+
+async def cap_ceiling(session: Session, key: str) -> Decimal:
+    """The admin's daily-cap ceiling in force now for a cap key (the refusal's limit, read back for its words)."""
+    return (await settings_store.settings_in_force(session, await settings_store.database_now(session)))[key]
 
 
 async def reset_preference(session: Session, user_ref: str, key: str, note: str = "") -> StoredPreference:

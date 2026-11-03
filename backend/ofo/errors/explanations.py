@@ -221,13 +221,13 @@ CHOICE_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
     "COMPLETE_STRATEGY": "Complete Strategy",
     "RETRY_FAILED_LEG": "Retry Failed Leg",
     "REVIEW_MANUALLY": "Review Manually",
-    "CLOSE_PARTIAL_STRATEGY": "Close Partial Strategy",
+    "CLOSE_PARTIAL_STRATEGY": "Exit Partial Strategy",
 })
 #: The order-sequence step names (ofo.execution.sequence.StepKind).
 STEP_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
-    "PROTECTION": "Establish protection",
-    "SHORT_POSITIONS": "Establish short positions",
-    "OTHER": "Legs with no protection relation",
+    "PROTECTION": "Place bought legs",
+    "SHORT_POSITIONS": "Place sold legs",
+    "OTHER": "Other legs",
 })
 #: The labels of the Builder's change history (W-016 / REQ-070 AC-2 to AC-4) and of the scenario and health tables.
 BUILDER_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
@@ -255,6 +255,11 @@ ADJUSTMENT_APPROACH_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
     "A-11": _SHAPE_WORD_NAMES["A-11"],
     "A-31": "Exit the whole strategy",
 })
+#: ADR-238 (GC-IC1 step 2): the exit and reduce approaches the approach builder builds; their shown names are the
+#: playbook editor's own labels below (one home per text), their one-line texts are in ADJUSTMENT_APPROACH_ABOUT_TEXT.
+EXIT_REDUCE_BUILT: tuple[str, ...] = ("A-24", "A-25", "A-26", "A-27", "A-35")
+#: ADR-239 (GC-IC1 step 3): the roll approaches the approach builder builds; names and one-line texts as above.
+ROLL_BUILT: tuple[str, ...] = ("A-02", "A-04", "A-06")
 #: GC-ADJ2 step 3 (REQ-159 AC-5, REQ-160 AC-1): the playbook editor's names of the approaches NOT in ADJUSTMENT_APPROACH_LABEL_TEXT (that table stays the one home of its ids; a test holds the two disjoint). Source: tests/fixtures/adjust_scenarios/_playbooks.json approaches.
 PLAYBOOK_APPROACH_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
     "A-02": "Roll the tested short away",
@@ -313,6 +318,11 @@ PLAYBOOK_DAY_RULE_ACTION_TEXT: Mapping[str, str] = MappingProxyType({
     "5": "Prepare an exit for review",
     "6": "Do not suggest rolls",
 })
+#: GC-IC1 4c (A-37, ADR-242): a level-watch record's words by direction (pending owner read).
+LEVEL_WATCH_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
+    "above": "Watched level reached (at or above)",
+    "below": "Watched level reached (at or below)",
+})
 #: GC-ADJ2 step 3 (REQ-160 AC-1): each playbook guard key (body ``guards``) in words, shown on Limits and guards.
 PLAYBOOK_GUARD_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
     "entry_guide": "Entry this playbook assumes",
@@ -366,6 +376,17 @@ ADJUSTMENT_APPROACH_ABOUT_TEXT: Mapping[str, str] = MappingProxyType({
     "A-28": "Close the whole side that spot is pressing on and keep the other side.",
     "A-11": "Move both short strikes to the strike nearest spot, keeping each wing's distance.",
     "A-31": "Close every open leg.",
+    "A-24": "Close every open leg to keep the profit made so far.",
+    "A-25": "Close the same part of every leg's lots and keep the rest open.",
+    "A-26": "Buy back the short leg of the side spot is moving away from once most of its price is gone; its wing stays.",
+    "A-27": "Buy back the short legs priced at or below your playbook's limit for this stage.",
+    "A-35": "Close every open leg on expiry day from the time exit your playbook sets.",
+    "A-02": "Move only the short leg of the side spot is pressing on further away; its wing stays, so the spread "
+            "narrows.",
+    "A-04": "Close the spread of the side spot is pressing on and open the same width in the next expiry, further "
+            "away.",
+    "A-06": "Move the short and wing of the side spot is pressing on by your set number of listed strikes away "
+            "from spot.",
 })
 #: REQ-156 AC-2 (ADR-214 (2a)): each compare criterion row's shown name, in the AC-2 group order
 ADJUSTMENT_CRITERION_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
@@ -428,11 +449,11 @@ ADJUSTMENT_CHARGE_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
 })
 SCENARIO_VIEW_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
     "AT_EXPIRY": "At Expiry",
-    "ESTIMATED_NOW": "Estimated Now (estimate)",
+    "ESTIMATED_NOW": "Estimated Now",
 })
 HEALTH_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
-    "HEALTHY": "Healthy",
-    "WATCH": "Watch",
+    "HEALTHY": "No condition met",
+    "WATCH": "Near a condition",
     "ADJUSTMENT_OPPORTUNITY": "Adjustment opportunity",
     "EXIT_CONDITION_REACHED": "Exit condition reached",
 })
@@ -441,7 +462,7 @@ FOLLOW_UP_TEXT: Mapping[str, str] = MappingProxyType({
     "ORDER_PREPARED": "Order prepared",
     "CONFIRMATION_REQUIRED": "Confirmation required",
     "EXECUTED": "Executed",
-    "BROKER_REPORTED": "Broker reported",
+    "BROKER_REPORTED": "Zerodha reported",
     "RECONCILIATION_SUCCEEDED": "Reconciliation succeeded",
 })
 
@@ -986,7 +1007,7 @@ class CellText(SlotType):
 COLUMN_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
     "LEG": "Leg", "ACTION": "Action", "INSTRUMENT": "Instrument", "EXPIRY": "Expiry", "STRIKE": "Strike",
     "QUANTITY": "Quantity", "ENTRY_PRICE": "Entry Price", "LTP": "LTP", "ENTRY_VALUE": "Entry Value",
-    "CURRENT_VALUE": "Current Value", "UNREALIZED_PNL": "Unrealized P&L", "PNL_PERCENT": "P&L %", "IV": "IV",
+    "CURRENT_VALUE": "Current Value", "UNREALIZED_PNL": "Unrealised P&L", "PNL_PERCENT": "P&L %", "IV": "IV",
     "DELTA": "Delta", "GAMMA": "Gamma", "THETA": "Theta", "DECAY": "Decay", "VEGA": "Vega", "LOWER_BE": "Lower Breakeven",
     "UPPER_BE": "Upper Breakeven", "STATUS": "Status",
 })
@@ -1016,18 +1037,18 @@ TABLE_REASON_TEXT: Mapping[str, str] = MappingProxyType({
     "fut_no_strike": "a futures leg has no strike",
     "fut_no_iv": "a futures leg has no implied volatility",
     "no_scenario": "no scenario view is available",
-    "no_status": "no status was given for this leg",
+    "no_status": "no status is available for this leg",
     "not_all_ltp": "not every leg has an LTP",
     "max_loss_multi_expiry": "max loss is exact only for a single-expiry strategy",
     "max_loss_unlimited": "max loss is unlimited",
     "max_loss_zero": "max loss is zero",
     "not_all_iv": "not every leg has an implied volatility",
-    "futures_notional": "a premium and a futures notional cannot be added",
+    "futures_notional": "a premium and a futures value cannot be added",
     "no_lower_be": "no lower breakeven",
     "no_upper_be": "no upper breakeven",
-    "no_health": "no strategy health was given",
+    "no_health": "no strategy health is available",
     "not_same_quantity": "the legs have different quantities, so there is no single per-unit figure",
-    "no_next_open": "the market calendar has no next open, so there is no decay to it",
+    "no_next_open": "time decay cannot be shown: the next market open is not known",
 })
 
 
@@ -1198,7 +1219,7 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("why_not_available", "values_seen", "Not available when checked: {inputs}.",
                         {"inputs": InputLabels}),
     ExplanationTemplate("why_checked_at", "values_seen", "Checked at: {time}.", {"time": Recorded}),
-    ExplanationTemplate("why_market_data", "values_seen", "Market data: source {source}, health {health}.",
+    ExplanationTemplate("why_market_data", "values_seen", "Market data: source {source}, status {health}.",
                         {"source": Quoted, "health": Recorded}),
     ExplanationTemplate("why_active_version", "rule", "Active strategy version: {version}.", {"version": Recorded}),
     ExplanationTemplate("why_planned_version", "rule",
@@ -1234,11 +1255,11 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("margin_note_planner_failed", "values_seen",
                         "margin impact unknown — not used (the margin planner failed)"),
     ExplanationTemplate("margin_note_used", "values_seen",
-                        "margin impact used as the tie-break within each step; unverified against real Zerodha "
-                        "margin behaviour (ADR-017 Q26)"),
+                        "margin impact was used to decide which leg goes first within a step; it has not been "
+                        "checked against Zerodha"),
     ExplanationTemplate("margin_note_not_used", "values_seen", "margin impact unknown — not used"),
     ExplanationTemplate("margin_note_not_needed", "values_seen",
-                        "margin impact not needed: no step has two legs to order"),
+                        "margin impact not needed: no step contains more than one leg"),
     # Pre-execution risk flags (ofo.execution.safety): warnings shown beside a passed gate, not errors.
     ExplanationTemplate("flag_unlimited_loss", "values_seen",
                         "This strategy's possible loss has no upper limit if the market moves far enough."),
@@ -1302,22 +1323,23 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("estimate_assume_rate", "values_seen", "rate {rate}", {"rate": Recorded}),
     ExplanationTemplate("estimate_assume_valued", "values_seen", "valued {time}", {"time": LegacyRecorded}),
     ExplanationTemplate("estimate_model_name", "values_seen",
-                        "Black-Scholes-Merton (European, each expiry's implied dividend yield from put-call parity; "
-                        "\"estimated from spot\" when the forward is unavailable)"),  # ADR-061, ADR-063
+                        "Black-Scholes-Merton (European options). Dividend yield is estimated from option "
+                        "prices; \"estimated from spot\" is shown when no forward price is "
+                        "available."),  # ADR-061, ADR-063
     ExplanationTemplate("alternative_choice_reason", "values_seen",
                         "User chose {chosen} {instrument} instead of unavailable {original} {instrument} ({code})",
                         {"chosen": Recorded, "instrument": Recorded, "original": Recorded, "code": Recorded}),
     ExplanationTemplate("review_note_undetermined", "values_seen", "{leg}: {reason}",
                         {"leg": Recorded, "reason": Recorded}),
-    ExplanationTemplate("review_note_naked", "values_seen", "{legs}: {units} sold units have no protective leg (naked)",
+    ExplanationTemplate("review_note_naked", "values_seen", "{legs}: {units} sold units have no bought leg (naked)",
                         {"legs": Values, "units": Recorded}),
     ExplanationTemplate("review_unknown_multi_expiry", "values_seen",
                         "legs expire on different dates; exact at-expiry values do not exist"),
-    ExplanationTemplate("review_unknown_no_ltp", "values_seen", "no current price (LTP) for every leg"),
+    ExplanationTemplate("review_unknown_no_ltp", "values_seen", "not every leg has a current price (LTP)"),
     ExplanationTemplate("review_unknown_margin", "values_seen", "the margin estimate is unavailable"),
     ExplanationTemplate("source_note_instrument_list", "values_seen",
-                        "Kite Connect's public instrument dump (no login required); the source of every contract, "
-                        "lot size, tick size and strike in the catalogue."),
+                        "Zerodha's public instrument list (no login required); the source of every contract, lot "
+                        "size, tick size and strike in the instrument list."),
     ExplanationTemplate("rule_alert", "what_triggered", "Your rule was triggered: {rule} ({detail}).",
                         {"rule": UserText, "detail": Explained}),
     ExplanationTemplate("rule_no_condition_detail", "values_seen", "no condition"),
@@ -1327,8 +1349,8 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("rule_observation", "values_seen", "{input} {value} {op} {threshold}",
                         {"input": Recorded, "value": Recorded, "op": Recorded, "threshold": Recorded}),
     ExplanationTemplate("plan_no_exit_rule", "rule",
-                        "No exit rule is defined. This strategy is still monitored, but no exit alert of yours will "
-                        "fire. You may want to consider defining an exit condition."),
+                        "No exit rule is defined. This strategy is still monitored, but no exit alert of yours "
+                        "will fire."),
     ExplanationTemplate("plan_no_adjustment_rule", "rule",
                         "No adjustment rule is defined. This strategy is still monitored; the platform may point out "
                         "an adjustment opportunity, but no rule of yours will trigger."),
@@ -1374,7 +1396,7 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     # --- W-066 (issue #151, REQ-034 AC-7): every text of the outcome API, with typed slots --------------------------
     ExplanationTemplate("outcome_not_connected", "values_seen", "Draft — Live data not connected"),
     # REQ-077 AC-9: no live data, At Expiry numbers from the user's own prices (never a live price)
-    ExplanationTemplate("outcome_from_entries", "values_seen", "From your prices - no live data"),
+    ExplanationTemplate("outcome_from_entries", "values_seen", "From your prices — no live data"),
     # REQ-133 AC-3: the feed just (re)connected and no price frame arrived yet, inside the staleness limit: no number
     ExplanationTemplate("outcome_waiting_first_price", "values_seen", "Waiting for the first live price"),
     ExplanationTemplate("outcome_from_entries_centre", "values_seen",
@@ -1391,10 +1413,10 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("target_greeks_no_time_left", "values_seen",
                         "No Greeks at expiry: the options have no time left."),
     # GC-TP R-19a (REQ-144 AC-1..AC-4, Sensibull 020): the Projected badge and the Target block's two captions
-    ExplanationTemplate("target_badge_profit", "values_seen", "Projected profit: Rs {amount}", {"amount": WholeRupees}),
-    ExplanationTemplate("target_badge_loss", "values_seen", "Projected loss: Rs {amount}", {"amount": WholeRupees}),
+    ExplanationTemplate("target_badge_profit", "values_seen", "Profit at target: Rs {amount}", {"amount": WholeRupees}),
+    ExplanationTemplate("target_badge_loss", "values_seen", "Loss at target: Rs {amount}", {"amount": WholeRupees}),
     ExplanationTemplate("target_badge_zero", "values_seen", "Projected P/L: {amount}", {"amount": WholeRupees}),
-    ExplanationTemplate("target_badge_unavailable", "values_seen", "Projected figure not available"),
+    ExplanationTemplate("target_badge_unavailable", "values_seen", "Estimate not available"),
     ExplanationTemplate("target_badge_no_target", "values_seen", "No target is set."),
     ExplanationTemplate("target_badge_percent_unavailable", "values_seen",
                         "% of margin needed not available: Zerodha margin could not be read"),
@@ -1407,10 +1429,10 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         "Booked profit and loss could not be read, so these figures are for the open legs only."),
     # W-071 (owner-approved 2026-10-15): the reprice prompt of a reopened draft leg; frontend REPRICE_PROMPT.
     ExplanationTemplate("draft_leg_needs_reprice", "values_seen", "This leg was saved without a planned entry. Reprice it to see its numbers."),
-    ExplanationTemplate("outcome_refused", "values_seen", "Outcome refused"),
+    ExplanationTemplate("outcome_refused", "values_seen", "Outcome cannot be shown"),
     ExplanationTemplate("outcome_reason_no_provider", "values_seen", "no live market data provider is connected"),
     ExplanationTemplate("outcome_margin_pending", "values_seen",
-                        "Margin from Zerodha is not shown yet; it needs your Kite login."),
+                        "Margin from Zerodha is not shown yet; it needs your Zerodha login."),
     # ADR-099: Zerodha's margin for the planned orders on the outcome screen (information, not advice: ADR-003)
     # GC-UI D-A47: two wordings, chosen on the server by the ADR-094 top-up (margin_gate.basket_requirement). Top-up
     # 0: Zerodha's figure already includes the bought legs' premium and nothing was added, so no addition is named.
@@ -1419,8 +1441,8 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         "legs you buy; {available} is available in your Zerodha account.",
                         {"broker_needed": Rupees, "available": Rupees}),
     ExplanationTemplate("outcome_margin_checked_top_up", "values_seen",
-                        "Zerodha's own margin figure is {broker_needed}; your planned entry prices are above "
-                        "Zerodha's, which adds about {top_up}, so about {needed} is needed (an estimate); "
+                        "Zerodha's own margin figure is {broker_needed}. Your planned entry prices are above "
+                        "Zerodha's, which adds about {top_up}, so about {needed} is needed (an estimate). "
                         "{available} is available in your Zerodha account.",
                         {"broker_needed": Rupees, "top_up": Rupees, "needed": Rupees, "available": Rupees}),
     # REQ-055 AC-4: the Builder's shortfall line, decided on the server (Margin.shortfall); text only, no action
@@ -1429,8 +1451,8 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         "legs you buy; {available} is available in your account. " + MARGIN_SHORTFALL_NEXT_ACTION,
                         {"broker_needed": Rupees, "available": Rupees}),
     ExplanationTemplate("outcome_margin_short_top_up", "values_seen",
-                        "Zerodha's own margin figure is {broker_needed}; your planned entry prices are above "
-                        "Zerodha's, which adds about {top_up}, so about {needed} is needed (an estimate); "
+                        "Zerodha's own margin figure is {broker_needed}. Your planned entry prices are above "
+                        "Zerodha's, which adds about {top_up}, so about {needed} is needed (an estimate). "
                         "{available} is available in your account. " + MARGIN_SHORTFALL_NEXT_ACTION,
                         {"broker_needed": Rupees, "top_up": Rupees, "needed": Rupees, "available": Rupees}),
     ExplanationTemplate("outcome_margin_unreadable", "values_seen",
@@ -1470,6 +1492,7 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("suggestion_outcome_lapsed", "values_seen", "Lapsed"),
     ExplanationTemplate("suggestion_lapsed_condition_stopped", "values_seen", "The condition stopped holding"),
     ExplanationTemplate("suggestion_lapsed_strategy_closed", "values_seen", "The strategy closed"),
+    ExplanationTemplate("suggestion_lapsed_superseded_by_worse", "values_seen", "A worse reading of the same rule replaced it"),
     ExplanationTemplate("suggestion_dismiss_expected_within_plan", "values_seen", "Expected and within my plan"),
     ExplanationTemplate("suggestion_dismiss_will_act_later", "values_seen", "I will act later"),
     ExplanationTemplate("suggestion_dismiss_not_relevant", "values_seen", "Not relevant"),
@@ -1492,13 +1515,13 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("adjust_condition_line_id", "values_seen", "{label}", {"label": PlaybookTriggerLabel}),
     # ADR-221: the T-19 flag line names the cheapest approach the playbook offers and its Compare cost
     ExplanationTemplate("adjust_condition_line_t19", "values_seen",
-                        "{label}: {value} (rule {threshold}); cheapest adjustment that could be priced now: "
-                        "{approach}, cost {cost} (as in Compare)",
+                        "{label}: {value} (rule {threshold}); cheapest adjustment we could price: {approach}, "
+                        "cost {cost}",
                         {"label": PlaybookTriggerLabel, "value": PlaybookField, "threshold": PlaybookField,
                          "approach": ApproachLabel, "cost": Rupees}),
     ExplanationTemplate("adjust_condition_line_t19_unpriced", "values_seen",
-                        "{label}: {value} (rule {threshold}); cheapest adjustment that could be priced now: "
-                        "{approach}, cost {cost} (as in Compare) ({count} could not be priced)",
+                        "{label}: {value} (rule {threshold}); cheapest adjustment we could price: {approach}, "
+                        "cost {cost}. {count} could not be priced.",
                         {"label": PlaybookTriggerLabel, "value": PlaybookField, "threshold": PlaybookField,
                          "approach": ApproachLabel, "cost": Rupees, "count": Count}),
     ExplanationTemplate("plan_target_words", "values_seen", "{pct} % of max profit", {"pct": PlaybookField}),
@@ -1551,9 +1574,9 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("leg_label_quote_no_price", "values_seen", "quote has no last price"),
     ExplanationTemplate("leg_label_no_iv", "values_seen", "no implied volatility for this price"),
     # W-125 (REQ-079 AC-4, ADR-150 (2) verbatim): on every leg placed by the fixed rule, until its strike is edited.
-    ExplanationTemplate("ready_made_fixed_rule_label", "rule", "Strikes placed by a fixed rule - change them"),
+    ExplanationTemplate("ready_made_fixed_rule_label", "rule", "Strikes placed by a fixed rule — change them"),
     ExplanationTemplate("outcome_problem_leg", "values_seen", "Instrument {leg} cannot be used: {why}", {"leg": InstrumentRef, "why": Explained}),
-    ExplanationTemplate("outcome_why_not_in_snapshot", "values_seen", "not in the snapshot"),
+    ExplanationTemplate("outcome_why_not_in_snapshot", "values_seen", "not in today's instrument list"),
     ExplanationTemplate("outcome_why_unknown_instrument", "values_seen", "unknown instrument"),
     ExplanationTemplate("outcome_why_expired", "values_seen", "expired"),
     ExplanationTemplate("outcome_why_other_underlying", "values_seen",
@@ -1561,16 +1584,18 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         {"contract_on": UnderlyingName, "underlying": UnderlyingName}),
     ExplanationTemplate("outcome_why_leg_input", "values_seen", "this leg cannot be valued from the data received"),
     ExplanationTemplate("outcome_why_forward", "values_seen",
-                        "the forward price could not be derived from the option chain"),
-    ExplanationTemplate("outcome_forward_error", "values_seen", "forward for {expiry}: {why}",
+                        "a reference price for this expiry could not be worked out from option prices"),
+    ExplanationTemplate("outcome_forward_error", "values_seen", "reference price for {expiry}: {why}",
                         {"expiry": ExpiryDate, "why": Explained}),
     ExplanationTemplate("outcome_spot_missing", "values_seen",
-                        "the {underlying} index value is missing; the outcome is refused", {"underlying": UnderlyingName}),
+                        "the {underlying} index value is missing; the outcome cannot be shown",
+                        {"underlying": UnderlyingName}),
     ExplanationTemplate("outcome_spot_unusable", "values_seen",
-                        "the {underlying} spot is {health}; the calculation is refused",
+                        "the {underlying} spot is {health}; the calculation cannot be done",
                         {"underlying": UnderlyingName, "health": HealthWord}),
     ExplanationTemplate("outcome_forward_refused", "values_seen",
-                        "a forward price is missing or was read on other inputs; the outcome is refused"),
+                        "a reference price is missing or was based on different inputs, so the outcome cannot be "
+                        "shown"),
     ExplanationTemplate("summary_lose_unlimited", "values_seen",
                         "Your loss has no fixed limit if {index} rises far enough by expiry.", {"index": UnderlyingName}),
     ExplanationTemplate("summary_lose_at_most", "values_seen", "At most {amount} at expiry, before charges and taxes.", {"amount": Rupees}),
@@ -1578,19 +1603,19 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         "At most {amount} at expiry, including about {charges} of charges and taxes.",
                         {"amount": Rupees, "charges": Rupees}),
     ExplanationTemplate("summary_lose_exercise_stt_note", "values_seen",
-                        "Holding a bought option to expiry in the money adds STT on its value; "
-                        "squaring off before expiry avoids it."),
+                        "Holding a bought option to expiry in the money adds STT on its value. STT is not "
+                        "charged if the option is exited before expiry."),
     ExplanationTemplate("summary_make_unlimited", "values_seen",
                         "Your profit has no fixed limit if {index} rises far enough by expiry.", {"index": UnderlyingName}),
     ExplanationTemplate("summary_make_none", "values_seen", "This strategy cannot make money at expiry."),
     # G-065 (REQ-148 AC-4/AC-6, ADR-143 (1), REQ-083 AC-3): legs on more than one expiry have no exact at-expiry payoff;
     # the worst-case line is ADR-143's own words, also the At Expiry chart's reason
     ExplanationTemplate("mixed_expiry_worst_case", "values_seen",
-                        "Worst case: the loss for this strategy can't be estimated."),
+                        "Maximum loss: the loss for this strategy cannot be estimated."),
     ExplanationTemplate("summary_make_mixed_expiry", "values_seen",
-                        "The most this strategy can make can't be estimated: its legs are on more than one expiry."),
+                        "The most this strategy can make cannot be estimated: its legs are on more than one expiry."),
     ExplanationTemplate("summary_start_mixed_expiry", "values_seen",
-                        "Where losses start can't be estimated: the legs are on more than one expiry."),
+                        "Where losses start cannot be estimated: the legs are on more than one expiry."),
     ExplanationTemplate("summary_reward_risk_none", "values_seen", "No fixed maximum"),
     # REQ-081 (W-154): the money summary. No return, gain, expected or promise wording (ADR-003, ADR-164).
     ExplanationTemplate("money_premium_get", "values_seen", "Get {amount}", {"amount": Rupees}),
@@ -1608,7 +1633,7 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         "STT on exercise: {pct}% of the value of a bought option that finishes in the money. "
                         "It depends on where the index settles, so it is not in this total.", {"pct": Amount}),
     ExplanationTemplate("money_reward_risk_multi_expiry", "values_seen",
-                        "no worst case for legs on different expiries"),
+                        "no maximum loss for legs on different expiries"),
     # REQ-081 AC-9/AC-11 (ADR-207 (8)): the percent basis is the margin needed; the label is only "% of margin needed"
     ExplanationTemplate("money_margin_percent", "values_seen", "{pct}% of margin needed", {"pct": Amount}),
     ExplanationTemplate("money_margin_percent_small", "values_seen", "less than 0.1% of margin needed"),
@@ -1644,17 +1669,19 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("paper_charges", "values_seen", "{amount}", {"amount": Rupees}),
     # GC-TP step 7a (ADR-207 (5), REQ-109 AC-8): the paper stop-loss texts - the stop order's reason and the alert
     ExplanationTemplate("paper_stop_reason_index", "what_triggered",
-                        "Conditional exit: {underlying} crossed {direction} {level}",
+                        "Stop-loss on the index: {underlying} crossed {direction} {level}",
                         {"underlying": UnderlyingName, "direction": Recorded, "level": IndexLevel}),
     ExplanationTemplate("paper_stop_reason_leg", "what_triggered", "Stop-loss: {contract} crossed {direction} {level}",
                         {"contract": Explained, "direction": Recorded, "level": IndexLevel}),
     # F-94 (ADR-082 (2)): the paper book's Max Profit / Max Loss say whether the round-trip charges are inside them
     ExplanationTemplate("paper_extremes_with_charges", "values_seen",
-                        "Max Profit and Max Loss include about {charges} of charges and taxes.", {"charges": Rupees}),
+                        "Maximum profit and maximum loss include about {charges} of charges and taxes.",
+                        {"charges": Rupees}),
     ExplanationTemplate("paper_extremes_before_charges", "values_seen",
-                        "Max Profit and Max Loss are before charges and taxes: the charges could not be priced."),
+                        "Maximum profit and maximum loss are before charges and taxes: the charges could not be "
+                        "priced."),
     ExplanationTemplate("paper_trigger_level", "values_seen", "{level}", {"level": IndexLevel}),
-    ExplanationTemplate("paper_alert_title", "what_triggered", "Paper strategy - {name}", {"name": Explained}),
+    ExplanationTemplate("paper_alert_title", "what_triggered", "Paper strategy — {name}", {"name": Explained}),
     ExplanationTemplate("paper_alert_leg", "values_seen", "{contract} at {price}",
                         {"contract": Explained, "price": Explained}),
     ExplanationTemplate("paper_alert_legs", "values_seen", "{rest}, {leg}", {"rest": Explained, "leg": Explained}),
@@ -1686,7 +1713,8 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     # GC-UI D-B16 / D-B17 (REQ-083 AC-5, AC-6): the payoff chart's OI bars; the AC-6 line always opens with the
     # requirement's own words, then the reason. Today's OI change (D-B18) is Later: no template for it.
     ExplanationTemplate("outcome_oi_count", "values_seen", "{count}", {"count": OiCount}),
-    ExplanationTemplate("outcome_oi_read_at", "values_seen", "OI data at {time} IST", {"time": HourMinute}),
+    ExplanationTemplate("outcome_oi_read_at", "values_seen", "Open interest (OI) data at {time} IST",
+                        {"time": HourMinute}),
     ExplanationTemplate("outcome_oi_nearest_expiry", "values_seen",
                         "OI is shown for the nearest expiry, {expiry}.", {"expiry": ExpiryDate}),
     ExplanationTemplate("outcome_oi_not_connected", "values_seen",
@@ -1694,12 +1722,12 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("outcome_oi_not_streaming", "values_seen",
                         "OI not available for this expiry: its strikes are not streaming."),
     ExplanationTemplate("outcome_oi_stale", "values_seen",
-                        "OI not available for this expiry: the feed is stale."),
+                        "OI not available for this expiry: live market data is stale."),
     ExplanationTemplate("outcome_oi_no_strikes", "values_seen",
                         "OI not available for this expiry: no listed strike is inside the chart's range."),
     ExplanationTemplate("cell_rupees", "values_seen", "{amount}", {"amount": Rupees}),
-    ExplanationTemplate("cell_rupees_cr", "values_seen", "{amount} Cr", {"amount": Rupees}),
-    ExplanationTemplate("cell_rupees_dr", "values_seen", "{amount} Dr", {"amount": Rupees}),
+    ExplanationTemplate("cell_rupees_cr", "values_seen", "{amount} credit", {"amount": Rupees}),
+    ExplanationTemplate("cell_rupees_dr", "values_seen", "{amount} debit", {"amount": Rupees}),
     ExplanationTemplate("cell_points", "values_seen", "{value}", {"value": Points}),
     ExplanationTemplate("cell_percent", "values_seen", "{value}%", {"value": Amount}),
     ExplanationTemplate("cell_percent_signed", "values_seen", "{value}%", {"value": SignedAmount}),
@@ -1707,7 +1735,7 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("cell_text", "values_seen", "{value}", {"value": CellText}),
     ExplanationTemplate("cell_health", "values_seen", "{health}", {"health": HealthLabel}),
     # GC-UI step 5 (REQ-091 AC-2..AC-5, ADR-203, F-64): the Strategy Chart's source, future label, notes and reasons
-    ExplanationTemplate("price_history_source", "values_seen", "Kite historical 1-minute candles"),
+    ExplanationTemplate("price_history_source", "values_seen", "Zerodha's historical 1-minute candles"),
     ExplanationTemplate("price_history_future_label", "values_seen", "{underlying} {expiry} FUT",
                         {"underlying": UnderlyingName, "expiry": DayMonth}),
     ExplanationTemplate("price_history_leg_listed_from", "values_seen", "{leg} listed from {date}; showing {days} days",
@@ -1785,6 +1813,8 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     # GC-MU A1 (ADR-230 (1)): flags beside a strike that breaks a saved liquidity limit, or whose open interest is unknown
     ExplanationTemplate("adjust_flag_below_liquidity", "values_seen", "Below your liquidity limit"),
     ExplanationTemplate("adjust_flag_oi_unknown", "values_seen", "OI not known"),
+    # #624 item 1: the playbook's limits could not be read, so none was applied (said in the reply, never a silent skip)
+    ExplanationTemplate("adjust_limits_not_applied", "values_seen", "limits not applied: playbook unreadable"),
     ExplanationTemplate("adjust_cmp_flagged", "values_seen", "{value}% ({flag}: {legs})",
                         {"value": Recorded, "flag": Explained, "legs": Recorded}),
     ExplanationTemplate("adjust_cmp_flagged_both", "values_seen", "{value}% ({flag}: {legs}; {flag2}: {legs2})",
@@ -1807,7 +1837,7 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("paper_breakeven_multi_expiry", "values_seen",
                         "Breakeven is exact only for a single-expiry strategy"),
     ExplanationTemplate("paper_reason_exited", "values_seen", "Exited"),
-    ExplanationTemplate("paper_extremes_unknown", "values_seen", "Profit left and Loss left are not worked out."),
+    ExplanationTemplate("paper_extremes_unknown", "values_seen", "Profit left and Loss left could not be calculated."),
     # GC-ADJ2 step 1A (REQ-158 AC-4): deleting the active playbook says the system one is active again
     ExplanationTemplate("playbook_system_active_again", "values_seen", "{type}: the system playbook is active again",
                         {"type": PlaybookTypeName}),
@@ -1824,6 +1854,8 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     *(ExplanationTemplate(f"table_reason_{key}", "values_seen", text) for key, text in TABLE_REASON_TEXT.items()),
     *(ExplanationTemplate(approach_name_id(key), "values_seen", text)  # REQ-155: each approach's shown name
       for key, text in ADJUSTMENT_APPROACH_LABEL_TEXT.items()),
+    *(ExplanationTemplate(approach_name_id(key), "values_seen", PLAYBOOK_APPROACH_LABEL_TEXT[key])  # ADR-238
+      for key in (*EXIT_REDUCE_BUILT, *ROLL_BUILT)),
     *(ExplanationTemplate(approach_about_id(key), "values_seen", text)  # REQ-046 AC-3: each approach's one-line text
       for key, text in ADJUSTMENT_APPROACH_ABOUT_TEXT.items()),
     *(ExplanationTemplate(f"playbook_approach_{key.lower().replace('-', '_')}", "values_seen", text)
@@ -1852,7 +1884,7 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("settings_source_url", "values_seen", "{url}", {"url": SourceUrl}),
     ExplanationTemplate("settings_refused_unknown", "rule", "There is no setting with that name."),
     ExplanationTemplate("settings_refused_not_a_number", "rule",
-                        "{label} must be a number written as text, for example {example}.",
+                        "{label} must be a number, for example {example}.",
                         {"label": RegistryText, "example": Recorded}),
     ExplanationTemplate("settings_refused_not_whole", "rule", "{label} must be a whole number.",
                         {"label": RegistryText}),
@@ -1870,6 +1902,46 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         "Index {index} is within {threshold}% of the breakeven {level} ({distance}% away).",
                         {"index": Recorded, "threshold": Recorded, "level": Recorded, "distance": Recorded}),
     ExplanationTemplate("adjust_preference_refused_unknown", "rule", "There is no adjustment preference with that name."),
+    # GC-ALERT1 (REQ-170 AC-6): a user may lower an alert daily limit, never raise it above the admin's
+    ExplanationTemplate("adjust_preference_refused_above_cap", "rule",
+                        "{label} can be at most {limit}, the limit your administrator set. Enter {limit} or less.",
+                        {"label": RegistryText, "limit": Recorded}),
+    # GC-ALERT1 (REQ-170 AC-4, ADR-236 (2)): an alert record's words and a held alert's reason (pending owner read);
+    # the alert gate's constants are tested equal to these texts (tests/strategy/test_alert_texts.py)
+    ExplanationTemplate("alert_record_worse_than_last", "what_triggered", "Worse than the last one"),
+    ExplanationTemplate("alert_record_worse_than_dismissed", "what_triggered", "Worse than the one you dismissed"),
+    ExplanationTemplate("alert_held_daily_limit", "rule", "held: daily limit"),
+    ExplanationTemplate("alert_held_quiet_time", "rule", "held: quiet time"),
+    # GC-ALERT1 (REQ-170 Q-AD-2): the strategy's alert style, automatic or pinned by the user (pending owner read)
+    # GC-IC1 4a (A-38): the user's pause of adjustment checks until a time (pending owner read)
+    ExplanationTemplate("monitor_pause_label", "rule", "Pause adjustment checks"),
+    ExplanationTemplate("monitor_pause_none", "rule", "Adjustment checks are running. Stop-losses and exits always run."),
+    ExplanationTemplate("monitor_pause_until", "rule", "Adjustment checks paused until {time}. Stop-losses and exits still run.", {"time": ClockHm}),
+    ExplanationTemplate("monitor_pause_ended", "rule", "The pause ended at {time}. Adjustment checks are running again.", {"time": ClockHm}),
+    ExplanationTemplate("monitor_pause_refused_not_a_time", "rule", "Enter the end of the pause as a time, like 10:30."),
+    ExplanationTemplate("monitor_pause_refused_in_past", "rule", "Pick a time later today than now."),
+    ExplanationTemplate("monitor_pause_refused_after_close", "rule", "Pick a time at or before the market close, 15:30."),
+    # GC-IC1 4c (A-37): a refused level watch (pending owner read)
+    ExplanationTemplate("level_watch_refused_not_a_number", "rule", "Enter the level as a number above zero, like 23800."),
+    # GC-IC1 4a (A-23, A-38 on the check): pending owner read
+    ExplanationTemplate("playbook_situation_guidance", "rule", "Guidance"),  # ADR-240 (1): S-03, S-04, S-05
+    ExplanationTemplate("delta_neutral_label", "rule", "Delta-neutral figures (a calculation, not a suggestion to trade)"),
+    ExplanationTemplate("delta_neutral_not_known", "rule", "Net delta is not known: a leg has no implied volatility now."),
+    ExplanationTemplate("monitor_pause_shown", "rule", "Adjustment checks paused until {time}.", {"time": ClockHm}),
+    ExplanationTemplate("alert_style_label", "rule", "Alert style"),
+    ExplanationTemplate("alert_style_name_intraday", "rule", "Intraday"),
+    ExplanationTemplate("alert_style_name_weekly", "rule", "Weekly"),
+    ExplanationTemplate("alert_style_name_monthly", "rule", "Monthly"),
+    ExplanationTemplate("alert_style_automatic_now", "rule", "Automatic (now {style})", {"style": Explained}),
+    ExplanationTemplate("alert_style_automatic_unknown", "rule", "Automatic (not known yet)"),
+    ExplanationTemplate("alert_style_several_expiries", "rule",
+                        "This strategy has legs on more than one expiry, so its alert style cannot be picked by "
+                        "itself. Pin a style."),
+    ExplanationTemplate("alert_style_expiry_unknown", "rule",
+                        "This strategy's expiry type or days to expiry could not be read, so its alert style cannot "
+                        "be picked by itself. Pin a style."),
+    ExplanationTemplate("alert_style_refused_unknown", "rule",
+                        "That is not an alert style. Pick Automatic, Intraday, Weekly or Monthly."),
     ExplanationTemplate("settings_refused_out_of_range", "rule",
                         "{label} must be between {low} and {high} ({unit}).",
                         {"label": RegistryText, "low": Recorded, "high": Recorded, "unit": Recorded}),
@@ -1882,7 +1954,7 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("settings_refused_same_time", "rule",
                         "Another value already takes effect at exactly that time; pick another time."),
     ExplanationTemplate("settings_refused_charges_value", "rule",
-                        "{field} is not an allowed number. Write it as text, for example 0.001.", {"field": Recorded}),
+                        "{field} is not an allowed number. Enter a number, for example 0.001.", {"field": Recorded}),
     ExplanationTemplate("settings_refused_charges_source", "rule",
                         "The source must be the web address, starting with https://, where the rates were read."),
     ExplanationTemplate("settings_refused_charges_future", "rule",
@@ -1916,7 +1988,7 @@ LABEL_TABLES: Mapping[str, Mapping[str, str]] = MappingProxyType({
     "playbook_type": PLAYBOOK_TYPE_LABEL_TEXT, "playbook_approach": PLAYBOOK_APPROACH_LABEL_TEXT,
     "playbook_day_kind": PLAYBOOK_DAY_RULE_KIND_TEXT, "playbook_day_action": PLAYBOOK_DAY_RULE_ACTION_TEXT,
     "playbook_summary": PLAYBOOK_SUMMARY_TEXT, "plan_sheet": PLAN_SHEET_LABEL_TEXT,
-    "playbook_guard": PLAYBOOK_GUARD_LABEL_TEXT,
+    "playbook_guard": PLAYBOOK_GUARD_LABEL_TEXT, "level_watch": LEVEL_WATCH_LABEL_TEXT,
 })
 
 

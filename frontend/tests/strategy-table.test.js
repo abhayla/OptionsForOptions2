@@ -461,7 +461,7 @@ describe('ADR-008: no client maths on the outcome response (second layer)', () =
 
 
 describe('REQ-077 AC-9: with no live data the page shows At Expiry from the user\'s prices, labelled, with no live number', () => {
-  const FROM_YOUR_PRICES = 'From your prices - no live data'
+  const FROM_YOUR_PRICES = 'From your prices — no live data'
   const answer = () => ({
     ...real, state: 'FROM_ENTRIES', status_label: FROM_YOUR_PRICES, output_label: FROM_YOUR_PRICES,
     centre_label: 'There is no live index price, so the levels are centred on the middle of your strikes, 22,800.',

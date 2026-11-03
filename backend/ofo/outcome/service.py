@@ -712,7 +712,7 @@ def from_entries(definition: StrategyDefinition, snapshot: MarketSnapshot | None
                  sd_bands: bool = False, target: TargetAsk | None = None,
                  settings: Mapping[str, Decimal]) -> Outcome | None:
     """REQ-077 AC-9: with no live data, a strategy whose EVERY leg has a planned entry shows its At Expiry numbers
-    from the one engine at those prices, labelled "From your prices - no live data". Returns None (the caller keeps
+    from the one engine at those prices, labelled "From your prices — no live data". Returns None (the caller keeps
     today's not-connected / not-live answer, ADR-085) when any leg has no entry, a contract is unknown, the legs are
     not one expiry or there is no strike to centre on. No price here is live: no LTP, IV, Greek, bid/ask or index
     price is set; Estimated Now is unavailable with its reason. When live data DROPPED (a snapshot that held a quote),

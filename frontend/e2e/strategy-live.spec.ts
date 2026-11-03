@@ -62,7 +62,7 @@ function socketControl(page: Page) {
   }
 }
 
-test('AC-4: LTP and Unrealized P&L change with the pushes; a socket kill shows the not-live label; reconnect resumes', async ({ page, request }, testInfo) => {
+test('AC-4: LTP and Unrealised P&L change with the pushes; a socket kill shows the not-live label; reconnect resumes', async ({ page, request }, testInfo) => {
   test.setTimeout(60000)
   const legs = LEGS[testInfo.project.name]
   expect(legs, `no legs for project ${testInfo.project.name}`).toBeTruthy()

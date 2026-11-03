@@ -7,7 +7,7 @@
      A change applies at the next check; a saved plan is not changed. Decision support only. States: loading, ready,
      unavailable. -->
 <script setup>
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import api from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 
@@ -91,6 +91,36 @@ async function reset(p) {
   }
 }
 
+// GC-ALERT1 item 6 (REQ-170 Q-AD-1, AC-6): the alert values a user may change come as one small table per trading style.
+// A key alerts.<style>.<field> belongs to that style's table; the table title and row names are the server's label split
+// at its first ': ' ("Weekly expiry: cool-down, same rule"), the words themselves untouched.
+const ALERT_KEY = /^alerts\.([a-z_]+)\./
+const general = computed(() => prefs.value.filter((p) => !ALERT_KEY.test(p.key)))
+const head = (label) => String(label).split(': ')[0]
+const rowLabel = (p) => {
+  const name = String(p.label).split(': ').slice(1).join(': ') || String(p.label)
+  return name.charAt(0).toUpperCase() + name.slice(1)
+}
+// The one place a registry `unit` becomes the short word shown after a style-table value; a time carries none (HH:MM).
+const UNIT_WORD = { minutes: 'min', percent: '%' }
+const withUnit = (p, v) => {
+  const val = shown(p, v)
+  if (p.key.endsWith('.daily_cap')) return `${val} a day`
+  const word = UNIT_WORD[p.unit]
+  if (!word) return val
+  return word === '%' ? `${val}%` : `${val} ${word}`
+}
+// The styles are whatever the server sent (alerts.<style>.<field>), in the order it sent them; no style word is written here.
+const styleTables = computed(() => {
+  const order = []
+  for (const p of prefs.value) {
+    const style = ALERT_KEY.exec(p.key)?.[1]
+    if (style && !order.includes(style)) order.push(style)
+  }
+  return order.map((style) => ({ style, rows: prefs.value.filter((p) => ALERT_KEY.exec(p.key)?.[1] === style) }))
+    .map((t) => ({ ...t, title: head(t.rows[0].label) }))
+})
+
 onMounted(load)
 </script>
 
@@ -107,7 +137,7 @@ onMounted(load)
       <button type="button" class="mt-2 underline" data-testid="prefs-retry" @click="load">Try again</button>
     </div>
     <ul v-else class="divide-y divide-line">
-      <li v-for="p in prefs" :key="p.key" class="py-3" :data-testid="`pref-${p.key}`">
+      <li v-for="p in general" :key="p.key" class="py-3" :data-testid="`pref-${p.key}`">
         <div class="flex flex-wrap items-baseline gap-x-4 gap-y-1">
           <h3 class="font-semibold">{{ p.label }}</h3>
           <span data-testid="pref-value">{{ shown(p, p.value) }}</span>
@@ -144,5 +174,44 @@ onMounted(load)
         </details>
       </li>
     </ul>
+    <section v-for="t in styleTables" :key="t.style" class="mt-4" :data-testid="`prefs-alerts-${t.style}`">
+      <h3 class="font-semibold" data-testid="prefs-alerts-title">{{ t.title }}</h3>
+      <table class="w-full table-auto text-sm">
+        <thead>
+          <tr class="text-left text-ink-muted">
+            <th class="py-1 pr-2 font-normal">Setting</th>
+            <th class="py-1 pr-2 font-normal">Value</th>
+            <th class="py-1 pr-2 font-normal">Admin</th>
+            <th class="py-1 font-normal"><span class="sr-only">Change</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          <template v-for="p in t.rows" :key="p.key">
+            <tr class="border-t border-line align-top" :data-testid="`pref-${p.key}`">
+              <td class="break-words py-1 pr-2" data-testid="pref-name">{{ rowLabel(p) }}</td>
+              <td class="py-1 pr-2">
+                <span data-testid="pref-value">{{ withUnit(p, p.value) }}</span>
+                <span class="chip ml-1 border-line bg-surface-muted text-xs text-ink-muted" data-testid="pref-source">{{ p.source === 'yours' ? 'Your value' : 'Default' }}</span>
+              </td>
+              <td class="py-1 pr-2" data-testid="pref-admin-default">{{ withUnit(p, p.admin_default) }}</td>
+              <td class="py-1"><button type="button" class="underline" data-testid="pref-edit" @click="formFor(p.key).open = !formFor(p.key).open">Change</button></td>
+            </tr>
+            <tr v-if="formFor(p.key).open || formFor(p.key).reason">
+              <td colspan="4" class="pb-2">
+                <form v-if="formFor(p.key).open" class="flex flex-wrap items-end gap-2" :data-testid="`pref-form-${p.key}`" @submit.prevent="save(p)">
+                  <label>New value (from {{ shown(p, p.min) }} to {{ shown(p, p.max) }})
+                    <input v-if="isTime(p)" v-model="formFor(p.key).value" data-testid="pref-input" class="block border px-1" type="time" required />
+                    <input v-else v-model="formFor(p.key).value" data-testid="pref-input" class="block border px-1" inputmode="decimal" required />
+                  </label>
+                  <button type="submit" :disabled="formFor(p.key).busy" data-testid="pref-save">Save</button>
+                  <button type="button" :disabled="formFor(p.key).busy" data-testid="pref-reset" @click="reset(p)">Reset to default</button>
+                </form>
+                <p v-if="formFor(p.key).reason" role="alert" class="mt-1 text-error" data-testid="pref-refusal">{{ formFor(p.key).reason }}</p>
+              </td>
+            </tr>
+          </template>
+        </tbody>
+      </table>
+    </section>
   </section>
 </template>

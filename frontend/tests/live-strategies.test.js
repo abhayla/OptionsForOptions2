@@ -65,7 +65,7 @@ const computed = (over = {}) => ({ state: 'COMPUTED', underlying: 'NIFTY', statu
   summary: { max_profit: '0.00', max_loss: '13000.00', max_profit_unlimited: false, max_loss_unlimited: false }, legs: [leg()], ...over })
 const SERVER_LABEL = 'Server wrote this not-live sentence 10:15:00 AM'
 const notConnected = () => ({ state: 'NOT_CONNECTED', status_label: SERVER_LABEL, reason: null, answered_at: '2026-10-19T10:16:00+05:30', legs: [], spot_level: null, spot_at: null })
-const FROM_YOUR_PRICES = 'From your prices - no live data'
+const FROM_YOUR_PRICES = 'From your prices — no live data'
 // The FROM_ENTRIES answer as the server sends it after a drop (tests_app/test_strategy_live_push.py `_assert_from_entries_after_drop`).
 const fromEntries = () => ({ state: 'FROM_ENTRIES', underlying: 'NIFTY', status_label: SERVER_LABEL, output_label: FROM_YOUR_PRICES, reason: null,
   answered_at: '2026-10-19T10:16:00+05:30', spot_level: null, spot_at: null, summary: computed().summary, legs: [leg({ ltp: null, health: null })] })

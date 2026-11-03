@@ -24,6 +24,7 @@ from ofo_app.settings_store import SettingsError
 from tests_app.test_background_cycle import (
     NO_RULES,
     Calls,
+    FakeGate,
     Prov,
     _flag,
     _prefs,
@@ -35,7 +36,10 @@ ONE_S = datetime.timedelta(seconds=1)
 WARM_CYCLES = 50
 STRATEGIES = 3
 FUTURE = datetime.timedelta(minutes=2)
-KEY = calc_speeds.KEY_BACKGROUND
+#: the per-style check intervals (ADR-235 (1)); a test sets every style to one value so the scenario's style
+#: does not matter, and asserts on the first
+SPEED_KEYS = tuple(calc_speeds.BACKGROUND_KEYS.values())
+KEY = SPEED_KEYS[0]
 
 
 @pytest.fixture(scope="module")
@@ -56,6 +60,11 @@ class FakeDb:
     def add(self, key: str, value: str, effective_from: datetime.datetime) -> None:
         self.rows.append(SimpleNamespace(key=key, value=Decimal(value), effective_from=effective_from,
                                          set_by="admin", note="", created_at=effective_from))
+
+    def add_speed(self, value: str, effective_from: datetime.datetime) -> None:
+        """One stored check interval for every style (ADR-235 (1))."""
+        for key in SPEED_KEYS:
+            self.add(key, value, effective_from)
 
     def connect(self):
         fake = self
@@ -89,7 +98,8 @@ def _cycle_rig(scn, fakedb: FakeDb, n: int = STRATEGIES, recorder=None, **kw):
     async def lister():
         return watched
     w = background.Worker(provider_for=lambda _o: prov, lister=lister, clock=lambda: now[0], settings=cache.at,
-                          preferences=_prefs, recorder=recorder or calls, observe=calls.seen, db_gate=cache.gate, **kw)
+                          preferences=_prefs, recorder=recorder or calls, observe=calls.seen, db_gate=cache.gate,
+                          **{"gate_store": FakeGate(), **kw})
     return prov, now, calls, cache, w
 
 
@@ -123,7 +133,7 @@ async def test_core_zero_db_calls_on_the_check_path_in_steady_state(scn, monkeyp
     cycle, and the connection, the session factory and the recorder see ZERO calls. (Before #636 r4: 100 statements
     in 50 cycles, the settings read at background.py:756.)"""
     fakedb = FakeDb()
-    fakedb.add(KEY, "1", scn.clock_at - datetime.timedelta(days=1))  # a stored value in force: 1 s checks
+    fakedb.add_speed("1", scn.clock_at - datetime.timedelta(days=1))  # a stored value in force: 1 s checks
     prov, now, calls, cache, w = _cycle_rig(scn, fakedb)
     assert await cache.refresh() is True
     await w.cycle()  # warm-up: the first list, the first check, the first write of each strategy
@@ -136,25 +146,25 @@ async def test_core_zero_db_calls_on_the_check_path_in_steady_state(scn, monkeyp
         await w.cycle()
     assert len(calls.states) - checks == WARM_CYCLES * STRATEGIES  # every strategy checked every cycle
     assert (fakedb.executes, sessions.opened, len(calls.writes) - writes, len(w._pending)) == (0, 0, 0, 0)
-    assert w.background_seconds() == Decimal(1)  # the stored value, served from memory
+    assert set(w.background_seconds().values()) == {Decimal(1)}  # the stored value, served from memory
 
 
 # ---- 2. a future-dated setting takes effect on the worker clock, with no read -------------------------------------
 async def test_a_future_dated_setting_takes_effect_when_the_clock_passes_it_with_no_db_call(scn):
     fakedb = FakeDb()
-    fakedb.add(KEY, "1", scn.clock_at - datetime.timedelta(days=1))
-    fakedb.add(KEY, "3", scn.clock_at + FUTURE)
+    fakedb.add_speed("1", scn.clock_at - datetime.timedelta(days=1))
+    fakedb.add_speed("3", scn.clock_at + FUTURE)
     _prov, now, _calls, cache, w = _cycle_rig(scn, fakedb, n=1)
     await cache.refresh()
     await w.cycle()
-    assert w.background_seconds() == Decimal(1)
+    assert set(w.background_seconds().values()) == {Decimal(1)}
     fakedb.executes = 0
     now[0] = scn.clock_at + FUTURE - ONE_S
     await w.cycle()
-    assert w.background_seconds() == Decimal(1)  # one second before: still the old value
+    assert set(w.background_seconds().values()) == {Decimal(1)}  # one second before: still the old value
     now[0] = scn.clock_at + FUTURE
     await w.cycle()
-    assert w.background_seconds() == Decimal(3)  # effective_from <= now: in force (REQ-167 AC-1)
+    assert set(w.background_seconds().values()) == {Decimal(3)}  # effective_from <= now: in force (REQ-167 AC-1)
     assert fakedb.executes == 0 and cache.loads == 1
 
 
@@ -171,7 +181,7 @@ async def test_a_new_row_is_loaded_at_the_next_poll_and_an_unchanged_count_reads
     assert cache.at(scn.clock_at) == registry_defaults()
     fakedb.executes = 0
     assert await cache.refresh() is False and fakedb.executes == 1  # count unchanged: only the count(*) statement
-    fakedb.add(KEY, "7", scn.clock_at - ONE_S)
+    fakedb.add_speed("7", scn.clock_at - ONE_S)
     assert await cache.refresh() is True
     assert cache.at(scn.clock_at)[KEY] == Decimal(7) and cache.loads == 2  # noqa: PLR2004
 
@@ -191,10 +201,10 @@ async def test_the_poll_loop_sleeps_the_named_period_then_refreshes(scn):
 
 async def test_a_failed_poll_or_reload_keeps_the_last_good_cache_and_logs_once(scn, caplog):
     fakedb = FakeDb()
-    fakedb.add(KEY, "4", scn.clock_at - ONE_S)
+    fakedb.add_speed("4", scn.clock_at - ONE_S)
     cache = settings_cache.SettingsCache(fakedb.connect)
     await cache.refresh()
-    fakedb.add(KEY, "9", scn.clock_at - ONE_S / 2)
+    fakedb.add_speed("9", scn.clock_at - ONE_S / 2)
     fakedb.fail = ConnectionError("database blip")
     caplog.set_level(logging.ERROR, logger="ofo_app.settings_cache")
     assert await cache.refresh() is False
@@ -221,14 +231,14 @@ async def test_no_good_load_yet_refuses_to_check_and_logs_never_a_silent_default
 async def test_a_stored_value_the_registry_refuses_fails_the_load_closed_and_keeps_the_last_good(scn):
     fakedb = FakeDb()
     cache = settings_cache.SettingsCache(fakedb.connect)
-    fakedb.add(KEY, "999", scn.clock_at - ONE_S)  # above the registry's max of 60: refused
+    fakedb.add_speed("9999", scn.clock_at - ONE_S)  # above the registry's max of 600: refused
     assert await cache.refresh() is False and cache.loaded is None
     with pytest.raises(SettingsError):
         cache.at(scn.clock_at)  # nothing good yet: the worker refuses to check
     fakedb.rows.clear()
-    fakedb.add(KEY, "5", scn.clock_at - ONE_S)
+    fakedb.add_speed("5", scn.clock_at - ONE_S)
     assert await cache.refresh() is True
-    fakedb.add(KEY, "999", scn.clock_at + FUTURE)  # a refused row, even future-dated, fails the reload
+    fakedb.add_speed("9999", scn.clock_at + FUTURE)  # a refused row, even future-dated, fails the reload
     assert await cache.refresh() is False and cache.at(scn.clock_at + FUTURE)[KEY] == Decimal(5)
 
 
@@ -243,7 +253,7 @@ async def test_a_row_for_a_key_the_registry_does_not_hold_is_ignored_as_today(sc
 # ---- 4. a plan change is rechecked with no price tick --------------------------------------------------------------
 async def test_a_plan_body_change_found_by_the_rebuild_is_rechecked_with_no_price_tick(scn):
     fakedb = FakeDb()
-    fakedb.add(KEY, "1", scn.clock_at - datetime.timedelta(days=1))
+    fakedb.add_speed("1", scn.clock_at - datetime.timedelta(days=1))
     _prov, now, calls, cache, w = _cycle_rig(scn, fakedb, n=1)
     await cache.refresh()
     await w.cycle()
@@ -270,7 +280,7 @@ async def test_a_plan_body_change_found_by_the_rebuild_is_rechecked_with_no_pric
 async def test_two_flags_inside_one_write_slot_coalesce_into_one_write_of_the_latest_state(scn, monkeypatch):
     monkeypatch.setattr(background.pe, "evaluate", lambda *_a, **_k: _flag("R-1"))
     fakedb = FakeDb()
-    fakedb.add(KEY, "1", scn.clock_at - datetime.timedelta(days=1))
+    fakedb.add_speed("1", scn.clock_at - datetime.timedelta(days=1))
     prov, now, calls, cache, w = _cycle_rig(scn, fakedb, n=1)
     await cache.refresh()
     await w.cycle()
@@ -292,7 +302,7 @@ async def test_a_raising_write_leaves_rule_memory_unset_and_the_next_check_write
             raise RuntimeError("db down")
         written.append(wd.strategy_id)
     fakedb = FakeDb()
-    fakedb.add(KEY, "1", scn.clock_at - datetime.timedelta(days=1))
+    fakedb.add_speed("1", scn.clock_at - datetime.timedelta(days=1))
     _prov, now, _calls, cache, w = _cycle_rig(scn, fakedb, n=1, recorder=recorder)
     await cache.refresh()
     await w.cycle()
@@ -314,7 +324,7 @@ async def test_a_slow_writer_does_not_delay_other_strategies_checks(scn):
         started.append(wd.strategy_id)
         await release.wait()  # the 2 s write: still running for the whole of the cycles below
     fakedb = FakeDb()
-    fakedb.add(KEY, "1", scn.clock_at - datetime.timedelta(days=1))
+    fakedb.add_speed("1", scn.clock_at - datetime.timedelta(days=1))
     never = asyncio.Event()
 
     async def rebuild_sleep(_s):
@@ -342,7 +352,7 @@ async def test_a_slow_writer_does_not_delay_other_strategies_checks(scn):
 # ---- 6. connection budget: one connection at a time ---------------------------------------------------------------
 async def test_poll_rebuild_and_writer_share_one_gate_so_at_most_one_connection_is_open(scn):
     fakedb = FakeDb()
-    fakedb.add(KEY, "1", scn.clock_at - datetime.timedelta(days=1))
+    fakedb.add_speed("1", scn.clock_at - datetime.timedelta(days=1))
 
     async def on_db():
         async with fakedb.connect() as conn:

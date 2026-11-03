@@ -123,7 +123,7 @@
         <template v-else-if="step === 'sits'">
           <h2 class="h2">Situations</h2>
           <p class="mb-2 text-sm text-ink-muted">Possible approaches for each situation, never one best.</p>
-          <ul class="space-y-2 text-sm"><li v-for="s in work.situations ?? []" :key="s.id"><b>{{ s.id }} {{ s.name }}</b>: {{ s.rule }}</li></ul>
+          <ul class="space-y-2 text-sm"><li v-for="s in work.situations ?? []" :key="s.id" :data-testid="`pb-sit-${s.id}`"><b>{{ s.id }} {{ s.name }}</b><span v-if="guidanceLabel(s.id)" class="chip ml-2 border-line bg-surface-muted text-xs text-ink-muted" :data-testid="`pb-sit-kind-${s.id}`">{{ guidanceLabel(s.id) }}</span>: {{ s.rule }}</li></ul>
         </template>
 
         <template v-else-if="step === 'limits'">
@@ -193,6 +193,7 @@ const playbooks = ref([])
 const listEmpty = ref(false)
 const pickedId = ref(null)
 const current = ref(null) // the read answer (without the body)
+const kinds = ref([]) // the read answer's situation_kinds: the server says which situations are guidance (ADR-240 (1))
 const saved = ref(null) // the body as read or last saved
 const work = ref(null) // the working copy the steps edit
 const step = ref('basics')
@@ -210,6 +211,7 @@ const pastNote = ref(null)
 let readSeq = 0 // newest read wins: an answer for an earlier pick is dropped (state read after await)
 let testSeq = 0
 
+const guidanceLabel = (id) => { const k = kinds.value.find((x) => x.id === id); return k?.kind === 'guidance' ? k.label : null }
 const dirty = computed(() => isDirty(work.value, saved.value))
 const typeName = computed(() => said(types.value.find((t) => t.key === typeKey.value)?.name) || typeKey.value)
 const summary = computed(() => summaryLines(work.value, typeName.value, kind.value, labels.value))
@@ -263,8 +265,9 @@ async function loadList(keepId = null) {
 }
 
 function show(pb) {
-  const { body, ...meta } = pb
+  const { body, situation_kinds: sk, ...meta } = pb
   current.value = meta
+  kinds.value = sk ?? []
   saved.value = clone(body)
   work.value = clone(body)
   answer.value = null
