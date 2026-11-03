@@ -20,7 +20,7 @@ import datetime
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends
-from ofo.adjustment.alert_gate import HELD_TEXT_IDS
+from ofo.adjustment.held_reasons import HELD_TEXT_IDS
 from ofo.errors import render
 from ofo.errors.explanations import render_explanation
 from ofo.strategy.stored_form import shown_name
@@ -146,7 +146,7 @@ def _record(s: store.Suggestion, paper: bool) -> dict:
 
 
 def held_body(rows: list[store.HeldInboxRow]) -> list[dict]:
-    """The held crossings in the catalogue's words (alert_gate.HELD_TEXT_IDS), newest first."""
+    """The held crossings in the catalogue's words (held_reasons.HELD_TEXT_IDS), newest first."""
     return [{"id": h.id, "strategy_id": h.strategy_id, "strategy_name": shown_name(h.strategy_name),
              "rule_id": h.rule_id, "trigger_id": h.trigger_id, "reason": h.reason,
              "text": render_explanation(HELD_TEXT_IDS[h.reason]), "held_at": h.held_at} for h in rows]

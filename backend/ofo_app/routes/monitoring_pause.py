@@ -107,6 +107,11 @@ Now = Annotated[datetime.datetime, Depends(pause_now)]
 User = Annotated[str, Depends(current_user_ref)]
 
 
+def _refusal(reason: monitor_pause.Refusal) -> Any:
+    """The 422 answer for a refused pause: the catalogue sentence for the refusal code, never the exception text."""
+    return respond(RefusedOut(reason=render_explanation(REFUSAL_TEXT[reason])), 422)
+
+
 @router.get(PATH, response_model=PauseOut)
 async def read_pause(strategy_id: int, db: Db, user: User, now: Now) -> Any:
     return compose(strategy_id, await _read(db, user, strategy_id), now)
@@ -115,18 +120,21 @@ async def read_pause(strategy_id: int, db: Db, user: User, now: Now) -> Any:
 @router.put(PATH, response_model=PauseOut)
 async def set_pause(strategy_id: int, body: PauseIn, db: Db, user: User, now: Now) -> Any:
     await _read(db, user, strategy_id)  # 404 before anything else
+    code = None
     try:
         until = await store.set_pause(db, user, strategy_id, parse_until(body.until, now), now)
         await db.commit()
     except monitor_pause.PauseRefused as refused:
         await db.rollback()
-        return respond(RefusedOut(reason=render_explanation(REFUSAL_TEXT[refused.reason])), 422)
+        code = refused.reason  # the refusal code only; the answer is built below, from the catalogue
     except store.PauseSameTime:
         await db.rollback()
         return respond(RefusedOut(reason=render_explanation("settings_refused_same_time")), 409)
     except Exception:
         await db.rollback()
         raise
+    if code is not None:
+        return _refusal(code)
     return compose(strategy_id, until, now)
 
 

@@ -386,5 +386,32 @@
   "what_is_blocked": "This rule.",
   "next_action": "Enter a value for expiry day in the playbook.",
   "external_text": null
+ },
+ "day_acting": [
+  {
+   "when": "beforeHoliday",
+   "action": 0
+  },
+  {
+   "when": "beforeWeekend",
+   "action": 0
+  },
+  {
+   "when": "expiry",
+   "action": 4
+  },
+  {
+   "when": "expiry",
+   "action": 5
+  }
+ ],
+ "day_not_checked": {
+  "error_class": "USER_INPUT",
+  "code": "USER_INPUT_509",
+  "what_happened": "This day rule is saved and shown, but it is not checked yet: only the expiry day exit and tighten rules and the before-a-weekend and before-a-holiday carry checks are.",
+  "impact": "This rule is not checked now; it never counts as passed.",
+  "what_is_blocked": "This rule.",
+  "next_action": "Nothing to do; it has no effect on any check until it is supported.",
+  "external_text": null
  }
 }
