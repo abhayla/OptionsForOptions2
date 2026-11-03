@@ -2020,6 +2020,13 @@ render_explanation = _make_render_explanation()
 del _make_render_explanation
 
 
+# Earlier texts a STORED line may still hold, per template id (read-back only, never rendered). When a template whose
+# rendered text a store keeps changes wording, the old text goes here (tests/errors/test_restored_former_texts.py pins).
+RESTORED_FORMER_TEXTS: dict[str, tuple[str, ...]] = {
+    "paper_alert_title": ("Paper strategy - {name}",),  # before the #629 wording (GC-IC1 step 7)
+}
+
+
 def restore_explanation(template_id: str, stored: str) -> ExplanationText:
     """A line a `render_explanation()` call made earlier and a store kept (GC-TP 7a: a paper alert's title and body) read
     back as an explanation. Only a string that fits the template's fixed words, in order, is restored; anything else
@@ -2027,11 +2034,13 @@ def restore_explanation(template_id: str, stored: str) -> ExplanationText:
     found = next((t for t in _EXPLANATIONS if t.id == template_id), None)
     if found is None:
         raise ValueError(f"unknown explanation template id {template_id!r}")
-    pieces = re.split(r"\{[a-z_]+\}", found.text)
-    shape = ".+?".join(re.escape(piece) for piece in pieces)
-    if type(stored) is not str or re.fullmatch(shape, stored, re.DOTALL) is None:
-        raise ValueError(f"stored text does not fit explanation template {template_id!r}")
-    return ExplanationText(stored, _EXPLANATION_MINT)
+    if type(stored) is str:
+        for text in (found.text, *RESTORED_FORMER_TEXTS.get(template_id, ())):
+            pieces = re.split(r"\{[a-z_]+\}", text)
+            shape = ".+?".join(re.escape(piece) for piece in pieces)
+            if re.fullmatch(shape, stored, re.DOTALL) is not None:
+                return ExplanationText(stored, _EXPLANATION_MINT)
+    raise ValueError(f"stored text does not fit explanation template {template_id!r}")
 
 
 def join_explanations(parts: tuple[ExplanationText, ...] | list[ExplanationText], sep: str = ", ") -> ExplanationText:
