@@ -68,6 +68,7 @@ from ofo_app.routes.adjustment import (
 CLOCK_UNIT: Final = "time"
 #: a day rule's unit (GC-IC1 1a): its value is the nearest short's distance from spot in %
 DAY_RULE_UNIT: Final = "%"
+CARRY_GAP_PCT_TEXT: Final = Decimal(2)  # ofo.adjustment.carry.CARRY_GAP_PCT, shown on the record
 _HEALTH_FRESH: Final = "available"
 _HEALTH_STALE: Final = "stale"
 
@@ -213,7 +214,7 @@ def state_of(tracked: Tracked, market: MarketInputs, spot: SpotAnswer, margin: M
     hhmm = now.strftime("%H:%M")
     stated_margin = Decimal(margin["value"]) if margin is not None and margin.get("state") == "stated" else None
     last = market.last_close
-    return pe.StrategyState(
+    return with_carry(pe.StrategyState(
         expiry_kind=market.expiry_kind or position.expiry_kind or "weekly",  # type: ignore[arg-type]
         days_left=(expiry - now.date()).days, hhmm=hhmm, spot=value, shorts=shorts, pnl=pnl,
         max_loss=None if gross is None else _limit_value(gross.max_loss),
@@ -223,7 +224,52 @@ def state_of(tracked: Tracked, market: MarketInputs, spot: SpotAnswer, margin: M
         prev_close=(last.value if last is not None and last.value is not None and last.state is SourceState.STATED
                     else None),
         adjustments_used=tracked.adjustments_used, expiry_pnl_at_spot=expiry_pnl,
-        tighten_percent=None if body is None else _tighten(body, now.date(), expiry, hhmm), prices_fresh=fresh)
+        tighten_percent=None if body is None else _tighten(body, now.date(), expiry, hhmm), prices_fresh=fresh),
+        body, tracked, market)
+
+
+def carry_model(tracked: Tracked, market: MarketInputs) -> Any:
+    """GC-IC1 1b: the gated engine model of the open legs for the carry check's gap figures (``ofo.adjustment.carry``),
+    built from the check's own market read: the expiry's forward object and each leg's engine IV (absent -> the leg
+    has no IV, so the figures say not known). None when the forward was refused or the model refuses (a second
+    expiry has no forward here, so no figure is claimed). One function: the screen and the worker both call it."""
+    from ofo.engine.inputs import LegInput, SpotReading, StrategyInput  # noqa: PLC0415 - engine types only here
+    from ofo.engine.model import model_inputs  # noqa: PLC0415
+    fwd, position = market.forward_model, tracked.position
+    if fwd is None:
+        return None
+    rows = {r.tradingsymbol: r for r in market.chain}
+    legs = tuple(LegInput(position.underlying, x.tradingsymbol, Action(x.side), Instrument(x.type), x.strike, x.expiry,
+                          x.lots * position.lot, x.entry, getattr(rows.get(x.tradingsymbol), "ltp", None),
+                          market.leg_ivs.get(x.tradingsymbol)) for x in position.legs)
+    try:
+        reading = SpotReading(fwd.spot, fwd.spot_timestamp, fwd.spot_health)  # the reading the forward was read on
+        return model_inputs(StrategyInput(position.underlying, reading, fwd.valuation_time, fwd.rate, legs,
+                                          days_in_year=fwd.days_in_year),
+                            {fwd.expiry: fwd})
+    except (ValueError, ArithmeticError):  # SpotRefused / ForwardUnavailable / a leg the input refuses
+        return None
+
+
+def with_carry(state: pe.StrategyState, body: Mapping | None, tracked: Tracked,
+               market: MarketInputs) -> pe.StrategyState:
+    """``state`` with today's carry day kinds and, only when a carry rule is due, its figures (GC-IC1 1b)."""
+    from ofo.adjustment import carry  # noqa: PLC0415
+    now = market.now.astimezone(IST)
+    state = dataclasses.replace(state, carry_days=pe.carry_day_kinds(now.date()))
+    if not pe.carry_due(body, state):
+        return state
+    figs = carry.carry_figures(carry_model(tracked, market), tracked.booked, state.margin, now)
+    return dataclasses.replace(state, carry=figs)
+
+
+def carry_record(figs: pe.CarryFigures) -> dict[str, str | None]:
+    """The carry check's record content: money as strings (``Decimal`` text), None + reason when not known."""
+    def text(v: Decimal | None) -> str | None:
+        return None if v is None else format(v, "f")
+    return {"gap_pct": format(CARRY_GAP_PCT_TEXT, "f"), "gap_up": text(figs.up), "gap_down": text(figs.down),
+            "gap_reason": figs.gap_reason, "margin": text(figs.margin), "margin_reason": figs.margin_reason,
+            "next_open": None if figs.next_open is None else figs.next_open.isoformat()}
 
 
 def scenario_entry(scn: Any, state: pe.StrategyState, position: Position) -> pe.StrategyState | None:

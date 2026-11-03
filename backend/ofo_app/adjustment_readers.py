@@ -276,11 +276,14 @@ async def read_market(tracked: Tracked, ctx: Any) -> MarketInputs:
         return None if g is None else Greeks(g.delta, g.gamma if g.gamma_exact is None else g.gamma_exact, g.theta,
                                              g.vega)
     rows, ids, leg_greeks = chain_rows(listed, expiry, quotes, model_greeks, scn)
-    forward = None
+    forward = fwd_model = None
     try:
-        forward = parity_forward(list(quotes.values()), spot_q, expiry, now, ctx.rate, ctx.forward_quality).forward
+        fwd_model = parity_forward(list(quotes.values()), spot_q, expiry, now, ctx.rate, ctx.forward_quality)
+        forward = fwd_model.forward
     except (ForwardUnavailable, ValueError, ArithmeticError):
-        forward = None
+        forward = fwd_model = None
+    leg_ivs = {sym: model.greeks[iid].iv for sym, iid in ids.items()  # the chain model's IV of each own leg (1b)
+               if iid in model.greeks and sym in {x.tradingsymbol for x in position.legs}}
     try:
         years = year_fraction(now, expiry)
     except ValueError:
@@ -289,7 +292,7 @@ async def read_market(tracked: Tracked, ctx: Any) -> MarketInputs:
     feed = (SourceReading(SourceState.ABSENT) if spot_q is None
             else SourceReading(SourceState.STATED, spot_q.ltp, spot_q.timestamp))
     return MarketInputs(tuple(rows), ids, forward, years, vol, feed, read_last_close(spot_q, closed, scn, now), now,
-                        expiry_kind, leg_greeks)
+                        expiry_kind, leg_greeks, fwd_model, leg_ivs)
 
 
 def read_last_close(spot_q: Any, market_closed: bool, scn: Any, now: datetime.datetime) -> SourceReading:

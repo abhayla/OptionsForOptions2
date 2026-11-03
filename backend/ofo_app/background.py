@@ -312,8 +312,16 @@ def market_inputs(watched: Watched, read: PriceRead, shared: FeedScope, now: dat
         years = None
     feed = feed_spot(read, now)
     last = read_last_close(read.spot, False, scenario_mode.current(), now)  # a check runs only with the market open
+    own = {x.tradingsymbol for x in position.legs}
+    by_id = {q.instrument_id: q for q in chain}
+    leg_ivs = {}  # GC-IC1 1b: each own leg's IV, the same shared per-option figure as its Greeks
+    if em is not None:
+        for sym, iid in ids.items():
+            if sym in own and iid in by_id and (iv := _figures(shared, at, by_id[iid], em)[0]) is not None:
+                leg_ivs[sym] = iv
     return MarketInputs(tuple(rows), ids, None if fwd is None else fwd.forward, years, vol, feed, last, now,
-                        expiry_kind_of(expiry, read.listed, read.futures, scenario_mode.current()), leg_greeks)
+                        expiry_kind_of(expiry, read.listed, read.futures, scenario_mode.current()), leg_greeks,
+                        fwd, leg_ivs)
 
 
 def background_state(watched: Watched, read: PriceRead, shared: FeedScope, now: datetime.datetime,  # noqa: PLR0913
@@ -445,6 +453,8 @@ class DbGateStore:
                 t19 = {} if ctx is None else t19_record(trigger or "", cheapest(ctx.state))
                 if not t19 and rv is not None and rv.approaches:  # a day rule names its approaches (GC-IC1 1a)
                     t19 = {"approach": DAY_APPROACH_SEPARATOR.join(rv.approaches)}
+                if rv is not None and rv.carry is not None:  # the carry check's content (GC-IC1 1b)
+                    t19 = {**t19, "carry": check.carry_record(rv.carry)}
                 rec = await playbook_store.open_suggestion(
                     db, w.user_ref, w.strategy_id, e.rule_id, trigger_id=trigger,
                     stage=flag.stage_name if flag is not None else stage, value=value, threshold=threshold,

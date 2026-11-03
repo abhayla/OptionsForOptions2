@@ -23,6 +23,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
@@ -226,7 +227,8 @@ _INSERT_SUGGESTION = text(
     "jsonb_build_array(jsonb_build_object('at', clock_timestamp(), 'outcome', 'open', "
     "'group', CAST(:group AS TEXT), 'source', CAST(:source AS TEXT), 'cmp', CAST(:cmp AS TEXT), "
     "'label', CAST(:label AS TEXT), 'unit', CAST(:unit AS TEXT), 'approach', CAST(:approach AS TEXT), "
-    "'approach_cost', CAST(:approach_cost AS TEXT), 'unpriced', CAST(:unpriced AS INTEGER)))) "
+    "'approach_cost', CAST(:approach_cost AS TEXT), 'unpriced', CAST(:unpriced AS INTEGER), "
+    "'carry', CAST(:carry AS JSONB)))) "
     f"RETURNING {_SG_COLUMNS}")
 _CLOSE_SUGGESTION = text(
     "UPDATE public.adjustment_suggestions AS g SET outcome = CAST(:outcome AS TEXT), "  # noqa: S608
@@ -568,8 +570,9 @@ async def open_suggestion(conn: Any, user_ref: str, strategy_id: int, rule_id: s
                           source: str | None = None, cmp: str | None = None, label: str | None = None,
                           unit: str | None = None, approach: str | None = None,
                           approach_cost: Decimal | None = None, unpriced: int | None = None,
-                          worse: str | None = None) -> Suggestion:
+                          worse: str | None = None, carry: Mapping[str, str | None] | None = None) -> Suggestion:
     """REQ-112 AC-1: one open record per (strategy, rule); a rule still open returns its existing record.
+    ``carry``: a carry check's content (GC-IC1 1b; money as strings, None = not known with its reason code).
     ``worse``: None / 'last' / 'dismissed' (REQ-170 AC-3, ADR-237 (5)), written once at insert."""
     if worse not in WORSE_MARKS:
         raise ValueError(f"unknown worse marker {worse!r}")
@@ -583,6 +586,7 @@ async def open_suggestion(conn: Any, user_ref: str, strategy_id: int, rule_id: s
                                                    "source": source, "cmp": cmp, "label": label,
                                                    "unit": unit, "approach": approach, "unpriced": unpriced,
                                                    "worse": worse,
+                                                   "carry": None if carry is None else json.dumps(carry),
                                                    "approach_cost": None if approach_cost is None
                                                    else format(approach_cost, "f")})).one()
     return _suggestion(row)

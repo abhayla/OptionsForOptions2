@@ -8,6 +8,7 @@ from __future__ import annotations
 import datetime
 import importlib.util
 import pathlib
+from decimal import Decimal
 
 from ofo.adjustment.preferences import from_values
 from ofo.errors.explanations import PLAYBOOK_DAY_RULE_ACTION_TEXT
@@ -132,7 +133,8 @@ async def test_core_expiry_rule_opens_one_record_at_1430_through_the_gate_and_ne
         t4 = t3 + datetime.timedelta(seconds=120)
         await _run(worker, now, scn, "23400", t4, 120)  # true again: the next close opens a NEW record
         rearmed = await _day_rows(app_engine, sid)
-        assert len(rearmed) == 2 and rearmed[1][1] == "open" and worker.errors == [], (rearmed, worker.errors)
+        assert len(rearmed) == len(held) + 1 and rearmed[1][1] == "open" and worker.errors == [], \
+            (rearmed, worker.errors)
         print(f"CORE-PROOF ADJ-51 sid={sid} rows_at_1429={len(at_1429)} rows_after_1431_close={len(at_1431)} "
               f"rows_after_5_more_closes={len(later)} record={rec}")
     finally:
@@ -150,6 +152,67 @@ async def test_short_04_pct_away_opens_no_record(app_engine, monkeypatch):
         assert rows == [] and worker.errors == [] and worker.status[sid] is background.MonitoringStatus.ACTIVE, \
             (rows, worker.errors)
         print(f"CORE-PROOF ADJ-52 sid={sid} rows={len(rows)}")
+    finally:
+        await app_db.close_db()
+        _reset_engine()
+
+
+# ---- GC-IC1 1b: the carry check (before-weekend / before-holiday, 15:00, action 0) -----------------------------
+CARRY_RID = "day:beforeWeekend:15:00:0"
+FRI_1459 = datetime.datetime(2026, 10, 30, 14, 59, 0, tzinfo=IST)
+WED_1459 = datetime.datetime(2026, 10, 28, 14, 59, 0, tzinfo=IST)
+
+
+async def _carry_rows(engine, sid: int) -> list[tuple]:
+    async with engine.connect() as conn:
+        rows = (await conn.execute(text(
+            "SELECT id, outcome, rule_id, timeline->0->>'group', timeline->0->'carry' "
+            "FROM public.adjustment_suggestions WHERE strategy_id = :s AND rule_id LIKE 'day:before%' ORDER BY id"),
+            {"s": sid})).all()
+    return [tuple(r) for r in rows]
+
+
+async def test_core_carry_check_friday_opens_one_record_at_the_1501_close_with_gap_figures(app_engine, monkeypatch):
+    sid, scn = await _seeded(app_engine, monkeypatch, "ADJ-53")
+    try:
+        now = [FRI_1459]
+        worker = _worker(scn, lambda now=now: now[0])
+        await _run(worker, now, scn, "23100", FRI_1459, LAST_SECOND + 1)  # 14:59:00 .. 14:59:59
+        assert worker.errors == [] and worker.status[sid] is background.MonitoringStatus.ACTIVE, worker.errors
+        at_1459 = await _carry_rows(app_engine, sid)
+        assert at_1459 == [], at_1459
+        t1500 = FRI_1459 + datetime.timedelta(minutes=1)
+        await _run(worker, now, scn, "23100", t1500, 75)  # the 15:00 candle closes at 15:01
+        rows = await _carry_rows(app_engine, sid)
+        assert len(rows) == 1, rows
+        rec = rows[0]
+        assert rec[1:4] == ("open", CARRY_RID, background.gate_group(sid, t1500 + datetime.timedelta(minutes=1))), rec
+        carry = rec[4]
+        assert carry["gap_pct"] == "2" and carry["gap_reason"] is None, carry
+        up, down = Decimal(carry["gap_up"]), Decimal(carry["gap_down"])
+        assert up == up.quantize(Decimal("0.01")) and down == down.quantize(Decimal("0.01")) and up != down, carry
+        assert carry["margin"] is None and carry["margin_reason"] == "adjust_trigger_missing_margin", carry
+        assert carry["next_open"] == "2026-11-02T09:15:00+05:30", carry
+        await _run(worker, now, scn, "23100", t1500 + datetime.timedelta(seconds=75), 300)  # 5 more closes
+        later = await _carry_rows(app_engine, sid)
+        assert later == rows and worker.errors == [], (later, worker.errors)
+        print(f"CORE-PROOF ADJ-53 sid={sid} rows_at_1459={len(at_1459)} rows_after_1501_close={len(rows)} "
+              f"rows_after_5_more_closes={len(later)} record={rec}")
+    finally:
+        await app_db.close_db()
+        _reset_engine()
+
+
+async def test_carry_check_wednesday_opens_no_record(app_engine, monkeypatch):
+    sid, scn = await _seeded(app_engine, monkeypatch, "ADJ-54")
+    try:
+        now = [WED_1459]
+        worker = _worker(scn, lambda now=now: now[0])
+        await _run(worker, now, scn, "23100", WED_1459, 60 + 180)  # 14:59 .. 15:02:59
+        rows = await _carry_rows(app_engine, sid)
+        assert rows == [] and worker.errors == [] and worker.status[sid] is background.MonitoringStatus.ACTIVE, \
+            (rows, worker.errors)
+        print(f"CORE-PROOF ADJ-54 sid={sid} rows={len(rows)}")
     finally:
         await app_db.close_db()
         _reset_engine()

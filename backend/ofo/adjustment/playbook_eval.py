@@ -651,7 +651,8 @@ def evaluate(body: Mapping, state: StrategyState, memory: Mapping[str, Mapping[s
 #: A day rule is reported as a rule of its own, id ``day:<when>:<at>:<action>`` (from the rule's content, so a
 #: reordered day_rules list keeps every id; GC-IC1 1a review B3). It goes to the alert gate as a yes/no value
 #: (``RuleValue.yes_no``), so a record is opened only by ``alert_gate.step`` (edge, not level: one record per
-#: episode). F-71 memory does not apply: the rule is checked only from its time on, so the time reaching ``at`` is itself the event.
+#: episode). F-71 memory does not apply: the rule is checked only from its time on, so the time reaching ``at`` is
+#: itself the event.
 #: Not due (not expiry day, or before ``at``) -> no answer at all: no reading, so no record and no false clear.
 DAY_RULE_PREFIX: Final = "day:"
 DAY_ACTION_PREPARE_EXIT: Final = 5  # PLAYBOOK_DAY_RULE_ACTION_TEXT["5"], "Prepare an exit for review"
