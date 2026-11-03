@@ -318,6 +318,11 @@ PLAYBOOK_DAY_RULE_ACTION_TEXT: Mapping[str, str] = MappingProxyType({
     "5": "Prepare an exit for review",
     "6": "Do not suggest rolls",
 })
+#: GC-IC1 4c (A-37, ADR-242): a level-watch record's words by direction (pending owner read).
+LEVEL_WATCH_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
+    "above": "Watched level reached (at or above)",
+    "below": "Watched level reached (at or below)",
+})
 #: GC-ADJ2 step 3 (REQ-160 AC-1): each playbook guard key (body ``guards``) in words, shown on Limits and guards.
 PLAYBOOK_GUARD_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
     "entry_guide": "Entry this playbook assumes",
@@ -1910,6 +1915,8 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("monitor_pause_refused_not_a_time", "rule", "Enter the end of the pause as a time, like 10:30."),
     ExplanationTemplate("monitor_pause_refused_in_past", "rule", "Pick a time later today than now."),
     ExplanationTemplate("monitor_pause_refused_after_close", "rule", "Pick a time at or before the market close, 15:30."),
+    # GC-IC1 4c (A-37): a refused level watch (pending owner read)
+    ExplanationTemplate("level_watch_refused_not_a_number", "rule", "Enter the level as a number above zero, like 23800."),
     # GC-IC1 4a (A-23, A-38 on the check): pending owner read
     ExplanationTemplate("delta_neutral_label", "rule", "Delta-neutral figures (a calculation, not a suggestion to trade)"),
     ExplanationTemplate("delta_neutral_not_known", "rule", "Net delta is not known: a leg has no implied volatility now."),
@@ -1974,7 +1981,7 @@ LABEL_TABLES: Mapping[str, Mapping[str, str]] = MappingProxyType({
     "playbook_type": PLAYBOOK_TYPE_LABEL_TEXT, "playbook_approach": PLAYBOOK_APPROACH_LABEL_TEXT,
     "playbook_day_kind": PLAYBOOK_DAY_RULE_KIND_TEXT, "playbook_day_action": PLAYBOOK_DAY_RULE_ACTION_TEXT,
     "playbook_summary": PLAYBOOK_SUMMARY_TEXT, "plan_sheet": PLAN_SHEET_LABEL_TEXT,
-    "playbook_guard": PLAYBOOK_GUARD_LABEL_TEXT,
+    "playbook_guard": PLAYBOOK_GUARD_LABEL_TEXT, "level_watch": LEVEL_WATCH_LABEL_TEXT,
 })
 
 

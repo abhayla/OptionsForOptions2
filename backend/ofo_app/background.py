@@ -65,6 +65,11 @@ One cycle (``Worker.cycle``), each step with its answer state:
    expired (end at or before the check's time) or cleared -> checked as normal, with no action needed. Answer states:
    none / cleared -> checked; set and in force -> paused (``user_paused_until`` holds the end for the status); set and
    expired -> checked. Risk exits never read it (``tests_app/test_risk_exit_not_gated.py`` walks the paper path).
+7. The user's level watches (A-37, GC-IC1 step 4c, ADR-242, ``ofo.adjustment.level_watch``): read with the gate load
+   on the rebuild task (``GateLoad.watches``, never a database call per check, B4 (a)) and put on the check's state;
+   the evaluator answers each as a yes/no rule ``watch.level.<direction>`` that reaches the alert gate through
+   ``gate_readings`` like every other rule, so the gate is the one writer (one record per crossing episode, re-armed
+   at a false close). No spot / withheld -> no reading. A watch set or cleared takes effect at the next rebuild.
    One strategy's error is logged with its id and does not stop the others
    (REQ-115 AC-9).
 
@@ -93,6 +98,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import dataclasses
 import datetime
 import enum
 import functools
@@ -495,6 +501,7 @@ class GateLoad:
     held: tuple = ()
     pin: str | None = None
     paused_until: datetime.datetime | None = None
+    watches: tuple = ()  # A-37 (GC-IC1 4c): the user's active level watches (``level_watch.LevelWatch``)
 
 
 @dataclass(frozen=True)
@@ -535,6 +542,7 @@ class DbGateStore:
         from ofo_app import (  # noqa: PLC0415 - database layer at run time
             playbook_store,
             strategy_alert_style_store,
+            strategy_level_watch_store,
             strategy_pause_store,
         )
         from ofo_app.db import get_sessionmaker  # noqa: PLC0415
@@ -543,7 +551,8 @@ class DbGateStore:
             held = await playbook_store.held_today(db, w.user_ref, w.strategy_id, today)
             pin = await strategy_alert_style_store.pin_of(db, w.user_ref, w.strategy_id)
             until = await strategy_pause_store.pause_of(db, w.user_ref, w.strategy_id)
-        return GateLoad(rows, held, pin.style, until)
+            watches = await strategy_level_watch_store.watches_of(db, w.user_ref, w.strategy_id)
+        return GateLoad(rows, held, pin.style, until, watches)
 
     async def apply(self, w: Watched, events: Iterable[alert_gate.Event], ctx: GateContext | None) -> dict[str, int]:
         """The gate's events in ONE transaction; rule id -> id of each record opened. An escalation while the
@@ -995,6 +1004,7 @@ class Worker:
             return False
         market = market_inputs(w, read, FeedScope(self.cache, w.feed_owner), now, self._values)
         state = state_from_market(w, market, now, self._values, prefs, self.margins.block_for(w, now))
+        state = dataclasses.replace(state, watches=load.watches)  # A-37: read on the rebuild (step 7), never per check
         self.margins.seen(w, market)
         self._recomputes[sid] = self._recomputes.get(sid, 0) + 1  # a real recompute (REQ-166)
         self._rebuilds += 1
