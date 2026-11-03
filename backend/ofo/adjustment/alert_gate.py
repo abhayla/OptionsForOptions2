@@ -19,19 +19,15 @@ from decimal import Decimal
 from typing import Literal, Union
 
 from ofo.adjustment.gate_rows import GateRow, GateRows, Preset  # noqa: F401 - re-exported for callers
+from ofo.adjustment.held_reasons import HELD_DAILY_LIMIT, HELD_QUIET_TIME, HELD_TEXT_IDS  # noqa: F401 - re-exported
 from ofo.timeutil import IST
 from ofo.timeutil import SESSION_OPEN as MARKET_OPEN
 
 #: Catalogue ids (ofo.errors.explanations is the one home of the shown words); the gate holds no English.
 WORSE_THAN_LAST = "alert_record_worse_than_last"
 WORSE_THAN_DISMISSED = "alert_record_worse_than_dismissed"
-HELD_DAILY_LIMIT = "daily_limit"
-HELD_QUIET_TIME = "quiet_time"
-#: The held reasons (stored values) -> the catalogue ids that render them.
-HELD_TEXT_IDS: Mapping[str, str] = {
-    HELD_DAILY_LIMIT: "alert_held_daily_limit",
-    HELD_QUIET_TIME: "alert_held_quiet_time",
-}
+# The held reasons and their catalogue ids live in `held_reasons`, a neutral module the opportunities route reads
+# without reaching this gate; re-exported here for the gate's callers.
 
 Cmp = Literal["ge", "le", "bool"]
 Value = Union[Decimal, bool]  # noqa: UP007

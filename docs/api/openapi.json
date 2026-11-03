@@ -276,6 +276,16 @@
             ],
             "title": "Days To Expiry"
           },
+          "delta_neutral": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AdjustDeltaNeutralOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "leads": {
             "default": {},
             "patternProperties": {
@@ -632,6 +642,127 @@
           "values"
         ],
         "title": "AdjustCriterionOut",
+        "type": "object"
+      },
+      "AdjustDeltaNeutralOut": {
+        "additionalProperties": false,
+        "description": "A-23 (GC-IC1 4a): figures only, no trade, no After (``ofo.adjustment.delta_neutral``). Lots are signed: + long,\n- short. ``known`` False -> every figure None and ``missing_leg`` names the leg with no delta.",
+        "properties": {
+          "future_lots": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Future Lots"
+          },
+          "future_remaining": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Future Remaining"
+          },
+          "known": {
+            "title": "Known",
+            "type": "boolean"
+          },
+          "label": {
+            "title": "Label"
+          },
+          "missing_leg": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Missing Leg"
+          },
+          "net_delta": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Net Delta"
+          },
+          "option_lots": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Option Lots"
+          },
+          "option_remaining": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Option Remaining"
+          },
+          "option_strike": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Option Strike"
+          },
+          "option_type": {
+            "anyOf": [
+              {
+                "enum": [
+                  "CE",
+                  "PE"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Option Type"
+          },
+          "reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "label",
+          "known"
+        ],
+        "title": "AdjustDeltaNeutralOut",
         "type": "object"
       },
       "AdjustFiguresOut": {
@@ -1088,6 +1219,16 @@
       "AdjustmentCheckOut": {
         "additionalProperties": false,
         "properties": {
+          "paused": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CheckPauseOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "playbook": {
             "$ref": "#/components/schemas/CheckPlaybookOut"
           },
@@ -2408,6 +2549,25 @@
         "title": "ChargesOut",
         "type": "object"
       },
+      "CheckPauseOut": {
+        "additionalProperties": false,
+        "properties": {
+          "text": {
+            "title": "Text"
+          },
+          "until": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Until",
+            "type": "string"
+          }
+        },
+        "required": [
+          "until",
+          "text"
+        ],
+        "title": "CheckPauseOut",
+        "type": "object"
+      },
       "CheckPlaybookOut": {
         "additionalProperties": false,
         "properties": {
@@ -3076,6 +3236,26 @@
           "estimated_now"
         ],
         "title": "CurvesOut",
+        "type": "object"
+      },
+      "DayPairOut": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "integer"
+          },
+          "when": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "When",
+            "type": "string"
+          }
+        },
+        "required": [
+          "when",
+          "action"
+        ],
+        "title": "DayPairOut",
         "type": "object"
       },
       "DefinitionOut": {
@@ -4582,6 +4762,68 @@
         "title": "HealthOut",
         "type": "object"
       },
+      "HeldOut": {
+        "additionalProperties": false,
+        "description": "REQ-170 AC-4: a crossing the alert gate held (daily limit / quiet time). Not a record: no outcome, nothing to\nact on, no compare link.",
+        "properties": {
+          "held_at": {
+            "format": "date-time",
+            "title": "Held At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "reason": {
+            "enum": [
+              "daily_limit",
+              "quiet_time"
+            ],
+            "title": "Reason",
+            "type": "string"
+          },
+          "rule_id": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Rule Id",
+            "type": "string"
+          },
+          "strategy_id": {
+            "title": "Strategy Id",
+            "type": "integer"
+          },
+          "strategy_name": {
+            "title": "Strategy Name"
+          },
+          "text": {
+            "title": "Text"
+          },
+          "trigger_id": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trigger Id"
+          }
+        },
+        "required": [
+          "id",
+          "strategy_id",
+          "strategy_name",
+          "rule_id",
+          "trigger_id",
+          "reason",
+          "text",
+          "held_at"
+        ],
+        "title": "HeldOut",
+        "type": "object"
+      },
       "HistoryOrderOut": {
         "additionalProperties": false,
         "properties": {
@@ -4745,6 +4987,14 @@
             ],
             "title": "Rule Id"
           },
+          "rule_ids": {
+            "items": {
+              "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+              "type": "string"
+            },
+            "title": "Rule Ids",
+            "type": "array"
+          },
           "step": {
             "enum": [
               "entry",
@@ -4755,13 +5005,12 @@
             "title": "Step",
             "type": "string"
           },
+          "why_lines": {
+            "items": {},
+            "title": "Why Lines",
+            "type": "array"
+          },
           "why_text": {
-            "anyOf": [
-              {},
-              {
-                "type": "null"
-              }
-            ],
             "title": "Why Text"
           }
         },
@@ -4777,7 +5026,9 @@
           "booked_pending",
           "charges",
           "rule_id",
+          "rule_ids",
           "why_text",
+          "why_lines",
           "fill",
           "fill_text"
         ],
@@ -5085,10 +5336,18 @@
             },
             "title": "Groups",
             "type": "array"
+          },
+          "held": {
+            "items": {
+              "$ref": "#/components/schemas/HeldOut"
+            },
+            "title": "Held",
+            "type": "array"
           }
         },
         "required": [
           "groups",
+          "held",
           "counts",
           "empty_text",
           "dismiss_reasons"
@@ -5250,6 +5509,13 @@
             "title": "Approaches",
             "type": "array"
           },
+          "day_acting": {
+            "items": {
+              "$ref": "#/components/schemas/DayPairOut"
+            },
+            "title": "Day Acting",
+            "type": "array"
+          },
           "day_actions": {
             "items": {
               "$ref": "#/components/schemas/LabelOut"
@@ -5263,6 +5529,9 @@
             },
             "title": "Day Kinds",
             "type": "array"
+          },
+          "day_not_checked": {
+            "title": "Day Not Checked"
           },
           "guards": {
             "items": {
@@ -5292,7 +5561,9 @@
           "past_note",
           "summary",
           "guards",
-          "no_values"
+          "no_values",
+          "day_acting",
+          "day_not_checked"
         ],
         "title": "LabelsOut",
         "type": "object"
@@ -7325,6 +7596,16 @@
             "minItems": 1,
             "title": "Orders",
             "type": "array"
+          },
+          "suggestion_ids": {
+            "items": {
+              "exclusiveMinimum": 0.0,
+              "maximum": 2147483647.0,
+              "type": "integer"
+            },
+            "maxItems": 16,
+            "title": "Suggestion Ids",
+            "type": "array"
           }
         },
         "required": [
@@ -8001,6 +8282,60 @@
           "decay_reason"
         ],
         "title": "PaperTotalsOut",
+        "type": "object"
+      },
+      "PauseIn": {
+        "additionalProperties": false,
+        "properties": {
+          "until": {
+            "title": "Until",
+            "type": "string"
+          }
+        },
+        "required": [
+          "until"
+        ],
+        "title": "PauseIn",
+        "type": "object"
+      },
+      "PauseOut": {
+        "additionalProperties": false,
+        "properties": {
+          "label": {
+            "title": "Label"
+          },
+          "paused": {
+            "title": "Paused",
+            "type": "boolean"
+          },
+          "state_text": {
+            "title": "State Text"
+          },
+          "strategy_id": {
+            "title": "Strategy Id",
+            "type": "integer"
+          },
+          "until": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Until"
+          }
+        },
+        "required": [
+          "strategy_id",
+          "label",
+          "paused",
+          "until",
+          "state_text"
+        ],
+        "title": "PauseOut",
         "type": "object"
       },
       "PayoffCellOut": {
@@ -8776,6 +9111,13 @@
           "name": {
             "title": "Name"
           },
+          "situation_kinds": {
+            "items": {
+              "$ref": "#/components/schemas/SituationKindOut"
+            },
+            "title": "Situation Kinds",
+            "type": "array"
+          },
           "status": {
             "anyOf": [
               {
@@ -8820,7 +9162,8 @@
           "active",
           "version",
           "updated_at",
-          "body"
+          "body",
+          "situation_kinds"
         ],
         "title": "PlaybookFullOut",
         "type": "object"
@@ -10180,6 +10523,41 @@
           "charges"
         ],
         "title": "SettingsOut",
+        "type": "object"
+      },
+      "SituationKindOut": {
+        "additionalProperties": false,
+        "description": "One situation of the body: ``kind`` \"rule\" or \"guidance\" (ADR-240 (1)), from one server constant\n(``pe.GUIDANCE_SITUATIONS``); ``label`` is the catalogue's \"Guidance\" for guidance, None for a rule.\nNot a body key.",
+        "properties": {
+          "id": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "rule",
+              "guidance"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "label"
+        ],
+        "title": "SituationKindOut",
         "type": "object"
       },
       "StandardDeviationOut": {
@@ -12802,6 +13180,60 @@
           "definition"
         ],
         "title": "VersionOut",
+        "type": "object"
+      },
+      "WatchIn": {
+        "additionalProperties": false,
+        "properties": {
+          "level": {
+            "title": "Level",
+            "type": "string"
+          }
+        },
+        "required": [
+          "level"
+        ],
+        "title": "WatchIn",
+        "type": "object"
+      },
+      "WatchOut": {
+        "additionalProperties": false,
+        "properties": {
+          "above": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Above"
+          },
+          "below": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Below"
+          },
+          "strategy_id": {
+            "title": "Strategy Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "strategy_id",
+          "above",
+          "below"
+        ],
+        "title": "WatchOut",
         "type": "object"
       },
       "ofo_app__routes__adjustment_opportunities__GroupOut": {
@@ -15970,6 +16402,280 @@
           }
         },
         "summary": "Pin Alert Style"
+      }
+    },
+    "/api/strategies/{strategy_id}/level-watch": {
+      "get": {
+        "operationId": "read_watch_api_strategies__strategy_id__level_watch_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_id",
+            "required": true,
+            "schema": {
+              "title": "Strategy Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WatchOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Watch"
+      }
+    },
+    "/api/strategies/{strategy_id}/level-watch/{direction}": {
+      "delete": {
+        "operationId": "clear_watch_api_strategies__strategy_id__level_watch__direction__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_id",
+            "required": true,
+            "schema": {
+              "title": "Strategy Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "direction",
+            "required": true,
+            "schema": {
+              "enum": [
+                "above",
+                "below"
+              ],
+              "title": "Direction",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WatchOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Clear Watch"
+      },
+      "put": {
+        "operationId": "set_watch_api_strategies__strategy_id__level_watch__direction__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_id",
+            "required": true,
+            "schema": {
+              "title": "Strategy Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "direction",
+            "required": true,
+            "schema": {
+              "enum": [
+                "above",
+                "below"
+              ],
+              "title": "Direction",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WatchIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WatchOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Watch"
+      }
+    },
+    "/api/strategies/{strategy_id}/monitoring-pause": {
+      "delete": {
+        "operationId": "clear_pause_api_strategies__strategy_id__monitoring_pause_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_id",
+            "required": true,
+            "schema": {
+              "title": "Strategy Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PauseOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Clear Pause"
+      },
+      "get": {
+        "operationId": "read_pause_api_strategies__strategy_id__monitoring_pause_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_id",
+            "required": true,
+            "schema": {
+              "title": "Strategy Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PauseOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Pause"
+      },
+      "put": {
+        "operationId": "set_pause_api_strategies__strategy_id__monitoring_pause_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_id",
+            "required": true,
+            "schema": {
+              "title": "Strategy Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PauseIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PauseOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Pause"
       }
     },
     "/api/strategy-templates": {

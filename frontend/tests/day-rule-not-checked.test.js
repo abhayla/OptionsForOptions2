@@ -11,6 +11,8 @@ const ANSWER = {
   day_not_checked: { what_happened: WHY },
 }
 const maps = labelMaps(ANSWER)
+// The route answer carries the acting list now; "no list loaded" is that same answer without the two keys.
+const { day_acting: _acting, day_not_checked: _why, ...NO_LIST } = LABELS
 
 describe('day rules that are not checked', () => {
   it('a switched-on rule outside the acting list carries the server reason; others do not', () => {
@@ -20,7 +22,7 @@ describe('day rules that are not checked', () => {
   })
 
   it('no acting list loaded: nothing is guessed in the browser', () => {
-    expect(dayRuleNotChecked({ on: true, when: 'afterBreak', action: 2 }, labelMaps(LABELS))).toBe('')
+    expect(dayRuleNotChecked({ on: true, when: 'afterBreak', action: 2 }, labelMaps(NO_LIST))).toBe('')
   })
 
   it('the plan sheet summary marks the not-checked rule with the reason', () => {
