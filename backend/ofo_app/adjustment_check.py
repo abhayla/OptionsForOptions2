@@ -378,7 +378,7 @@ SIT_S12 = pe.situation_rule_id(pe.BIG_WIN_EARLY)  # its value is a % of max prof
 
 def trigger_words(body: Mapping | None, trigger_id: str | None) -> tuple[str | None, str | None]:
     """(label, unit) of a trigger as the evaluated body holds them; (None, None) for a body or trigger without them.
-    A day rule (GC-IC1 1a, ``day:<when>:<index>``): its action's catalogue words and "%" (its value is a distance
+    A day rule (GC-IC1 1a, ``day.<when>.<HHMM>.<action>``): its action's catalogue words and "%" (its value is a distance
     from spot in %)."""
     situation = pe.situation_of(body, trigger_id)  # GC-IC1 6a: S-02 / S-12 read as the playbook names them
     if situation is not None:

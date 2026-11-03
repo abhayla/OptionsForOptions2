@@ -3169,13 +3169,13 @@
    }
   },
   "situation_rules": {
-   "sit:S-02": {
+   "sit.S-02": {
     "fires": false,
     "value": "0.0149",
     "threshold": "0.15",
     "approaches": []
    },
-   "sit:S-12": {
+   "sit.S-12": {
     "fires": null,
     "value": null,
     "threshold": "40",

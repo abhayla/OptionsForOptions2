@@ -3169,7 +3169,7 @@
     "beforeWeekend"
    ],
    "fires": [
-    "day:beforeWeekend:15:00:0"
+    "day.beforeWeekend.1500.0"
    ],
    "next_open": "2026-11-02T09:15:00+05:30",
    "gap_pct": "2",

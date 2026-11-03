@@ -3084,7 +3084,7 @@
    }
   },
   "day_close": {
-   "rule_id": "day:expiry:14:30:5",
+   "rule_id": "day.expiry.1430.5",
    "at": "14:30",
    "due": true,
    "fires": true,

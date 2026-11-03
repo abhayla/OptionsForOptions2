@@ -46,6 +46,6 @@ def test_entry_day_is_the_ist_date_of_the_first_order():
 
 def test_trigger_words_name_a_situation_record_by_the_playbook():
     body = {"situations": [{"id": "S-02", "name": "Trending day"}, {"id": "S-12", "name": "Big win early"}]}
-    assert check.trigger_words(body, "sit:S-02") == ("Trending day", None)
-    assert check.trigger_words(body, "sit:S-12") == ("Big win early", "%")
-    assert check.trigger_words(body, "sit:S-03") == (None, None)
+    assert check.trigger_words(body, "sit.S-02") == ("Trending day", None)
+    assert check.trigger_words(body, "sit.S-12") == ("Big win early", "%")
+    assert check.trigger_words(body, "sit.S-03") == (None, None)

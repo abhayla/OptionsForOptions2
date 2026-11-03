@@ -27,7 +27,7 @@ seed_mod = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(seed_mod)
 CATALOGUE_AS_OF = datetime.datetime(2026, 10, 31, 9, 0, tzinfo=IST)
 MAX_DELIST = settings_calc.max_delist_percent(registry_defaults())
-RID = "day:expiry:14:30:5"
+RID = "day.expiry.1430.5"
 T1429 = datetime.datetime(2026, 11, 3, 14, 29, 0, tzinfo=IST)
 T1430 = T1429 + datetime.timedelta(minutes=1)
 LAST_SECOND = 59
@@ -159,7 +159,7 @@ async def test_short_04_pct_away_opens_no_record(app_engine, monkeypatch):
 
 
 # ---- GC-IC1 1b: the carry check (before-weekend / before-holiday, 15:00, action 0) -----------------------------
-CARRY_RID = "day:beforeWeekend:15:00:0"
+CARRY_RID = "day.beforeWeekend.1500.0"
 FRI_1459 = datetime.datetime(2026, 10, 30, 14, 59, 0, tzinfo=IST)
 WED_1459 = datetime.datetime(2026, 10, 28, 14, 59, 0, tzinfo=IST)
 
@@ -168,7 +168,7 @@ async def _carry_rows(engine, sid: int) -> list[tuple]:
     async with engine.connect() as conn:
         rows = (await conn.execute(text(
             "SELECT id, outcome, rule_id, timeline->0->>'group', timeline->0->'carry' "
-            "FROM public.adjustment_suggestions WHERE strategy_id = :s AND rule_id LIKE 'day:before%' ORDER BY id"),
+            "FROM public.adjustment_suggestions WHERE strategy_id = :s AND rule_id LIKE 'day.before%' ORDER BY id"),
             {"s": sid})).all()
     return [tuple(r) for r in rows]
 
@@ -250,7 +250,7 @@ async def test_carry_check_monday_before_the_holiday_opens_exactly_one_record(ap
         rows = await _carry_rows(app_engine, sid)
         assert len(rows) == 1 and worker.errors == [], (rows, worker.errors)
         rec = rows[0]
-        assert rec[1:3] == ("open", "day:beforeHoliday:15:00:0"), rec
+        assert rec[1:3] == ("open", "day.beforeHoliday.1500.0"), rec
         carry = rec[4]
         assert carry["next_open"] == "2026-11-11T09:15:00+05:30", carry
         _assert_gap_matches_generator("ADJ-55", Decimal(carry["gap_up"]), Decimal(carry["gap_down"]))

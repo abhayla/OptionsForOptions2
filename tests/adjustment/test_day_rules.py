@@ -18,7 +18,7 @@ from ofo.timeutil import IST
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 SEED = ROOT / "backend" / "ofo" / "adjustment" / "system_playbooks.json"
 GAP = "09:30"
-RID = "day:expiry:14:30:5"  # the iron condor's switched-on expiry close rule (id from its content, B3)
+RID = "day.expiry.1430.5"  # the iron condor's switched-on expiry close rule (id from its content, B3)
 
 
 def _ic() -> dict:
@@ -207,7 +207,7 @@ def test_attack3_the_gate_opens_one_record_per_episode_across_checks():
 
 def test_day_rule_action_names_action_5():
     assert pe.day_rule_action(_ic(), RID) == pe.DAY_ACTION_PREPARE_EXIT
-    assert pe.day_rule_action(_ic(), "day:expiry:99") is None and pe.day_rule_action(_ic(), "T-01") is None
+    assert pe.day_rule_action(_ic(), "day.expiry.99") is None and pe.day_rule_action(_ic(), "T-01") is None
 
 
 # ---- step 2 / 4: the generator cases, read through the scenario state the screen tests use ----------------------

@@ -667,13 +667,14 @@ def evaluate(body: Mapping, state: StrategyState, memory: Mapping[str, Mapping[s
 
 
 # ---- day rules (GC-IC1 step 1a; REQ-159 AC-4, REQ-170) -----------------------------------------------------------
-#: A day rule is reported as a rule of its own, id ``day:<when>:<at>:<action>`` (from the rule's content, so a
+#: A day rule is reported as a rule of its own, id ``day.<when>.<HHMM>.<action>`` (from the rule's content, so a
 #: reordered day_rules list keeps every id; GC-IC1 1a review B3). It goes to the alert gate as a yes/no value
 #: (``RuleValue.yes_no``), so a record is opened only by ``alert_gate.step`` (edge, not level: one record per
 #: episode). F-71 memory does not apply: the rule is checked only from its time on, so the time reaching ``at`` is
 #: itself the event.
 #: Not due (not expiry day, or before ``at``) -> no answer at all: no reading, so no record and no false clear.
-DAY_RULE_PREFIX: Final = "day:"
+DAY_RULE_PREFIX: Final = "day."
+LEGACY_DAY_RULE_PREFIX: Final = "day:"  # ids stored before GC-IC1 fix (colons fail the API Identifier pattern); read, never re-matched
 DAY_ACTION_PREPARE_EXIT: Final = 5  # PLAYBOOK_DAY_RULE_ACTION_TEXT["5"], "Prepare an exit for review"
 DAY_RULE_INCOMPLETE: Final = f"{P}day_rule_incomplete"
 CLOSE_WITHIN_KEY: Final = "close_if_short_within_pct"
@@ -696,12 +697,13 @@ class DayAnswer:
 
 
 def day_rule_id(rule: Mapping) -> str:
-    """The stable id of a day rule: its kind, time and action (``day:expiry:14:30:5``)."""
-    return f"{DAY_RULE_PREFIX}{rule.get('when')}:{rule.get('at')}:{rule.get('action')}"
+    """The stable id of a day rule: its kind, time and action (``day.expiry.1430.5``)."""
+    at = str(rule.get("at")).replace(":", "")
+    return f"{DAY_RULE_PREFIX}{rule.get('when')}.{at}.{rule.get('action')}"
 
 
 def is_day_rule_id(rule_id: object) -> bool:
-    return isinstance(rule_id, str) and rule_id.startswith(DAY_RULE_PREFIX)
+    return isinstance(rule_id, str) and rule_id.startswith((DAY_RULE_PREFIX, LEGACY_DAY_RULE_PREFIX))
 
 
 def day_rule_action(body: Mapping | None, rule_id: object) -> int | None:
@@ -912,11 +914,12 @@ def _carry_check(rule: Mapping, rid: str, state: StrategyState) -> DayAnswer | N
 
 # ---- situation rules (GC-IC1 step 6a; REQ-159 AC-5, ADR-240 (3)) ---------------------------------------------------
 #: S-02 "Trending day" and S-12 "Big win early" are rules when the playbook lists the situation (its ``situations``,
-#: present in every saved body since v1; no new body key). Each answers as a yes/no gate reading, id ``sit:<S-id>``,
+#: present in every saved body since v1; no new body key). Each answers as a yes/no gate reading, id ``sit.<S-id>``,
 #: and names its approaches on the record (the gate opens one record per episode, ``alert_gate.step``).
 #: The thresholds are ADR-240 (3)'s, named here until the editor exposes them; NEVER read from the body, so a body
 #: saved before this step fires the same way.
-SITUATION_RULE_PREFIX: Final = "sit:"
+SITUATION_RULE_PREFIX: Final = "sit."
+LEGACY_SITUATION_RULE_PREFIX: Final = "sit:"
 TRENDING_DAY: Final = "S-02"
 BIG_WIN_EARLY: Final = "S-12"
 S02_NET_DELTA_PER_LOT: Final = Decimal("0.15")  # ADR-240 (3): at or beyond +/-0.15 per lot
@@ -933,11 +936,11 @@ def situation_rule_id(situation: str) -> str:
 
 
 def is_situation_rule_id(rule_id: object) -> bool:
-    return isinstance(rule_id, str) and rule_id.startswith(SITUATION_RULE_PREFIX)
+    return isinstance(rule_id, str) and rule_id.startswith((SITUATION_RULE_PREFIX, LEGACY_SITUATION_RULE_PREFIX))
 
 
 def situation_of(body: Mapping | None, rule_id: object) -> Mapping | None:
-    """The ``situations`` entry of ``body`` that ``rule_id`` (``sit:S-02``) names; None when it names none."""
+    """The ``situations`` entry of ``body`` that ``rule_id`` (``sit.S-02``) names; None when it names none."""
     if not is_situation_rule_id(rule_id) or not isinstance(body, Mapping):
         return None
     sid = rule_id[len(SITUATION_RULE_PREFIX):]
