@@ -117,6 +117,9 @@ class MarketInputs:
     #: engine IV by trading symbol (absent = no IV), so ``adjustment_check.carry_model`` builds the gated model
     forward_model: Any = None
     leg_ivs: Mapping[str, Decimal] = dataclasses.field(default_factory=dict)
+    #: GC-IC1 5b (T-13): the index's day open (``ofo.marketdata.day_open.DayOpen``), read in the SAME read as the index
+    #: quote on both paths; None = not read (``state_of`` treats it as no day open)
+    day_open: Any = None
 
 
 TrackedReader = Callable[[int, ChargeRates | None], Awaitable[Tracked | None]]

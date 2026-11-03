@@ -246,9 +246,9 @@ def test_gcic1_read_market_asks_held_read_for_the_window_ids(monkeypatch):
     seen = []
     real = readers.held_read
 
-    async def spy(provider, underlying, expiry, ids, feed, index_id=None):  # noqa: PLR0913
+    async def spy(provider, underlying, expiry, ids, feed, index_id=None, now=None):  # noqa: PLR0913
         seen.append(list(ids))
-        return await real(provider, underlying, expiry, ids, feed, index_id)
+        return await real(provider, underlying, expiry, ids, feed, index_id, now)
     monkeypatch.setattr(readers, "held_read", spy)
     asyncio.run(readers.read_market(tracked_of(sc), ctx))
     assert leg_ids <= set(seen[0]) and len(set(seen[0]) - leg_ids) >= ctx.chain_strikes_each_side  # legs plus window

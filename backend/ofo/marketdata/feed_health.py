@@ -325,7 +325,7 @@ class QuoteBook:
     def latest_day_stats(self, instrument_id: str, now: datetime.datetime) -> DayStatsAnswer:
         """The day values of the instrument's latest packet, or the reason there are none: not held (never seen,
         removed or parked), the quote is not AVAILABLE (the feed's health, as for depth), or the latest packet was an
-        ltp / index packet that carries no day fields."""
+        ltp packet (or a zero index packet) that carries no day fields."""
         e = self._entries.get(instrument_id)
         if e is None:
             return DayStatsAnswer.unavailable(NOT_HELD)
