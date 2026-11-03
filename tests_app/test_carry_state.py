@@ -33,7 +33,9 @@ def _state(hhmm: str, margin: D | None = None) -> pe.StrategyState:
 
 def test_state_of_and_the_worker_both_go_through_with_carry():
     assert "with_carry(" in inspect.getsource(check.state_of)
-    assert "check.state_of(" in inspect.getsource(background.background_state)
+    # the worker builds its state through state_from_market (GC-IC1 5b), which calls check.state_of
+    assert "state_from_market(" in inspect.getsource(background.background_state)
+    assert "check.state_of(" in inspect.getsource(background.state_from_market)
 
 
 def test_friday_1500_fills_days_and_figures_through_carry_figures():
