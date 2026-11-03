@@ -10,11 +10,12 @@ a default spot is never made up.
 Rules:
 - the feed counts only while its tick is no older than ``windows.stale`` (the feed-health window in force,
   ``detection.feed_stale_seconds``); a tick
-  dated in the future is not fresh either (fail closed);
+  dated more than ``CLOCK_SKEW_TOLERANCE`` (2 s, shared with the Execute gate) after the caller's clock is not fresh
+  either (fail closed);
 - a REST answer or a last close counts only when stated with a price above 0 (``is_live_price``): a 200 with no
   ``last_price`` is EMPTY, never 0;
 - a value that is not finite (NaN, sNaN, Infinity) is ``not_finite``, checked before any comparison, never a spot and
-  never an exception; a reading dated in the future is refused for EVERY source, not only the feed (fail closed);
+  never an exception; a reading dated beyond the skew window in the future is refused for EVERY source (fail closed);
 - the last close is labelled with its own date, never as live (ADR-212 / ADR-177).
 
 Standard library only; no wall clock (the caller passes ``now``).
@@ -28,6 +29,7 @@ from decimal import Decimal
 from typing import Final
 
 from ofo.marketdata.feed_health import FeedWindows
+from ofo.marketdata.health import CLOCK_SKEW_TOLERANCE
 from ofo.marketdata.quote import is_live_price
 
 SOURCE_FEED: Final = "feed"
@@ -99,13 +101,13 @@ def _time_problem(name: str, at: datetime.datetime | None, now: datetime.datetim
     """None when a STATED reading's time is aware, not in the future and (for the feed) fresh, else the reason."""
     if at is None or at.tzinfo is None:
         return REASON_NO_TIME
-    if at > now:
+    if at - now > CLOCK_SKEW_TOLERANCE:  # a stamp a moment after the caller's clock is a fresh quote, not a future one
         return REASON_FUTURE
     return _feed_age_problem(now - at, windows) if name == SOURCE_FEED else None
 
 
 def _feed_age_problem(age: datetime.timedelta, windows: FeedWindows) -> str | None:
-    if age < datetime.timedelta(0):
+    if age < -CLOCK_SKEW_TOLERANCE:
         return REASON_FUTURE
     if age > windows.stale:
         return REASON_STALE
