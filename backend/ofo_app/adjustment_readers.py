@@ -21,8 +21,7 @@
 """
 from __future__ import annotations
 
-import asyncio
-import contextlib
+import dataclasses
 import datetime
 import json
 import logging
@@ -47,7 +46,7 @@ from ofo.tracking.orderbook import net_positions
 
 from ofo_app import live_market, paper_book, scenario_mode, tracked_contracts
 from ofo_app.db import get_sessionmaker
-from ofo_app.live_push import no_listener
+from ofo_app.live_push import hold_and_read
 from ofo_app.routes.adjustment import MarketInputs, Tracked
 from ofo_app.routes.broker import current_user_ref
 from ofo_app.routes.outcome import feed_windows_of, market_state, read_booked, server_now
@@ -216,43 +215,42 @@ LEG_WAIT_S = 3.0
 LEG_POLL_S = 0.05
 
 
-async def chain_quotes(provider: Any, underlying: str, expiry: datetime.date, leg_ids: list[str],  # noqa: PLR0913
-                       feed: Any, index_id: str | None = None) -> dict[str, Any]:
-    """The held quotes of one expiry, plus the position's OWN legs (F-92). The feed's book lists only contracts somebody
-    holds, so a leg nobody else holds (the far hedge: 400 points from spot) was absent although the paper book, which
-    holds its legs for the read (``routes.paper._hold_until_ready``), priced it. A leg missing from the book is held on
-    the shared fan-out until its first quote arrives or ``LEG_WAIT_S`` passes, and the hold is ALWAYS released (timeout,
-    error, cancel). Answer states of a leg: quoted (read as is, no hold) / not held yet (held, then quoted) / no quote
-    after the wait or no token or no feed or provider disconnected (stays absent: the row is unpriced, never 0) /
-    stale and market closed (the quote the book holds, judged by the same planning rule as before).
-    ``index_id``: the index of the underlying, held with the rest when the book has no index quote (the chain model's
-    forward needs it); it is ready when ``provider.underlying_quote`` answers."""
-    quotes = {q.instrument_id: q for q in provider.option_chain_snapshot(underlying, expiry)}
-    missing = [i for i in dict.fromkeys(leg_ids) if i not in quotes]
-    index_wait = index_id is not None and provider.underlying_quote(underlying) is None
-    if index_wait:
-        missing.append(index_id)
+@dataclasses.dataclass(frozen=True)
+class FrozenRead:
+    """ONE read of the market taken while the hold is on (GC-IC1 round 3): the option quotes of the expiry the book
+    lists and the index quote (None: not quoted). ``read_market`` builds EVERYTHING from this and never asks the
+    provider again after the release, because a released contract is parked (``QuoteBook.park``) and reads as None."""
 
-    def ready(snap: Mapping[str, Any]) -> bool:
-        return (all(i in snap for i in missing if i != index_id)
-                and (not index_wait or provider.underlying_quote(underlying) is not None))
+    quotes: Mapping[str, Any]
+    index: Any
+
+
+async def held_read(provider: Any, underlying: str, expiry: datetime.date, leg_ids: list[str],  # noqa: PLR0913
+                    feed: Any, index_id: str | None = None) -> FrozenRead:
+    """The frozen read of one expiry plus the contracts in ``leg_ids`` (the position's legs, the near-the-money window,
+    the roll range, a second pass's landing strikes). The feed's book lists only contracts somebody holds (F-92), so
+    the ones missing are held on the shared fan-out (``live_push.hold_and_read``, the paper book's own helper) until
+    they are quoted or ``LEG_WAIT_S`` passes, and the read is taken INSIDE the hold. Answer states per contract:
+    quoted at once (no hold) / quoted after the wait / never quoted (absent: unpriced, never 0) / no token (KeyError:
+    nothing held, the first read stands) / no feed (the first read stands) / provider disconnected (the read so far).
+    The index: quoted / not (``index`` None: no forward, the chain model names its reason). ``index_id``: held with the
+    rest when the first read has no index quote."""
+    def read() -> FrozenRead:
+        return FrozenRead({q.instrument_id: q for q in provider.option_chain_snapshot(underlying, expiry)},
+                          provider.underlying_quote(underlying))
+    first = read()
+    missing = [i for i in dict.fromkeys(leg_ids) if i not in first.quotes]
+    index_wait = index_id is not None and first.index is None
+    if index_wait:
+        missing.append(index_id)  # type: ignore[arg-type]
     if not missing or feed is None:
-        return quotes
-    try:
-        handle = feed.fanout.subscribe(no_listener, missing, max_queue=1)
-    except KeyError:  # a contract the provider has no token for: nothing was subscribed, the unpriced answer stands
-        return quotes
-    try:
-        loop = asyncio.get_running_loop()
-        deadline = loop.time() + LEG_WAIT_S
-        while True:
-            await asyncio.sleep(LEG_POLL_S)
-            quotes = {q.instrument_id: q for q in provider.option_chain_snapshot(underlying, expiry)}
-            if ready(quotes) or not provider.status().connected or loop.time() >= deadline:
-                return quotes
-    finally:
-        with contextlib.suppress(Exception):
-            feed.fanout.unsubscribe(handle)
+        return first
+
+    def done(snap: FrozenRead) -> bool:
+        return all(i in snap.quotes for i in missing if i != index_id) and (not index_wait or snap.index is not None)
+    held = await hold_and_read(feed.fanout, missing, read, done, lambda: provider.status().connected, LEG_WAIT_S,
+                               LEG_POLL_S)
+    return first if held is None else held
 
 
 def window_ids(listed: Iterable[Any], underlying: str, expiry: datetime.date, spot: Decimal | None,
@@ -295,7 +293,51 @@ def own_leg_ids(position: Position, listed: Iterable[Any]) -> list[str]:
             if lc.broker_refs[0].broker_symbol in wanted]
 
 
-async def read_market(tracked: Tracked, ctx: Any) -> MarketInputs:
+def roll_ids(listed: Iterable[Any], position: Position, spot: Decimal | None,
+             points: Mapping[str, Decimal]) -> list[str]:
+    """The strikes a roll of each short searches (``approaches._Builder.roll_distance``), held in the SAME hold as the
+    window so the search sees no gap it made itself (GC-IC1 round 3, review finding 2): for each SELL leg, every listed
+    strike of its type and expiry from the short to the spot and one past it (inward, A-01), and from the short out
+    past its wing by ``points[underlying]`` (outward, A-05; ``roll_points_without_delta``). No spot: outward only. A
+    strike still unquoted after the hold is a gap the roll refuses by name, never steps over."""
+    legs = position.legs
+    out: list[str] = []
+    for short in (x for x in legs if x.side == "SELL"):
+        by_strike = {lc.contract.strike: f"{lc.contract.exchange_segment}:{lc.contract.exchange_token}"
+                     for lc in listed if lc.contract.name == position.underlying and lc.contract.expiry == short.expiry
+                     and lc.contract.instrument_type == short.type and lc.contract.strike is not None}
+        up = short.type == "CE"  # outward: a call rolls up, a put down
+        wings = [x.strike for x in legs if x.side == "BUY" and x.type == short.type and x.expiry == short.expiry
+                 and (x.strike > short.strike if up else x.strike < short.strike)]
+        reach = points.get(position.underlying, Decimal(0))
+        far = (max(wings, default=short.strike) + reach) if up else (min(wings, default=short.strike) - reach)
+        grid = sorted(by_strike)
+        keep = {k for k in grid if (short.strike < k <= far if up else far <= k < short.strike)}
+        if spot is not None:
+            inward = [k for k in grid if min(short.strike, spot) <= k <= max(short.strike, spot) and k != short.strike]
+            keep |= set(inward)
+            beyond = [k for k in grid if (k < spot if up else k > spot) and k not in keep]  # one past the spot
+            if beyond:
+                keep.add(max(beyond) if up else min(beyond))
+        out += [by_strike[k] for k in sorted(keep)]
+    return out
+
+
+def _roll_points() -> Mapping[str, Decimal]:
+    """The roll range the hold covers: the registry's ``roll_points_without_delta`` defaults (REQ-168 AC-1). A user who
+    set a longer distance gets a gap past it, which the roll refuses by name and the second pass holds (never a
+    strike picked past it)."""
+    from ofo.adjustment import preferences  # noqa: PLC0415 - one home of the keys
+    from ofo.settings import defaults  # noqa: PLC0415
+    d = defaults()
+    return {"NIFTY": d[preferences.ROLL_POINTS_NIFTY], "SENSEX": d[preferences.ROLL_POINTS_SENSEX]}
+
+
+async def read_market(tracked: Tracked, ctx: Any, *, extra_ids: Iterable[str] = ()) -> MarketInputs:
+    """The screen check's market: ONE frozen read (``held_read``) of the legs, the near-the-money window, the roll
+    range, the index and ``extra_ids`` (the approaches route's second pass), taken while held; the chain model, the
+    forward, the Greeks, the ATM vol, the feed spot reading and the last close all come from that read only. Nothing
+    asks the provider for a quote after the release (GC-IC1 round 3)."""
     if ctx is None:  # not connected: no chain, no feed spot (the REST reader and the reasons still answer)
         now = server_now()
         return MarketInputs((), {}, None, None, None, SourceReading(SourceState.ABSENT),
@@ -308,17 +350,16 @@ async def read_market(tracked: Tracked, ctx: Any) -> MarketInputs:
     scn = _scenario()
     expiry_kind = _expiry_kind(provider, underlying, expiry, listed, scn)
     live = live_market.current_feed()  # F-92: the position's own legs are held for the read, like the paper book's
-    spot_q = provider.underlying_quote(underlying)
-    window_spot = await _window_spot(ctx, underlying, spot_q, now)
-    # REQ-165 AC-5 / REQ-155: the chain model needs near-the-money quotes for its forward, so the window is held too
-    # (GC-IC1: without a chain screen open for the expiry there was no forward, no Greeks, no ATM IV)
+    first_index = provider.underlying_quote(underlying)  # only to centre the window; never used after the hold
+    window_spot = await _window_spot(ctx, underlying, first_index, now)
+    # REQ-165 AC-5 / REQ-155: the chain model needs near-the-money quotes for its forward, so the window is held too;
+    # the roll range so a roll never steps over an unheld strike (GC-IC1)
     from ofo_app.chain_push import index_id_of  # noqa: PLC0415 - chain_push imports the app layer
-    wanted = own_leg_ids(position, listed) + window_ids(listed, underlying, expiry, window_spot,
-                                                              ctx.chain_strikes_each_side)
-    # nobody holds the index: hold it for the read too
-    held_index = index_id_of(ctx, underlying) if spot_q is None else None
-    quotes = await chain_quotes(provider, underlying, expiry, wanted, live, held_index)
-    spot_q = provider.underlying_quote(underlying)  # the held index's first quote, if it came
+    wanted = (own_leg_ids(position, listed) + window_ids(listed, underlying, expiry, window_spot,
+                                                         ctx.chain_strikes_each_side)
+              + roll_ids(listed, position, window_spot, _roll_points()) + list(extra_ids))
+    frozen = await held_read(provider, underlying, expiry, wanted, live, index_id_of(ctx, underlying))
+    quotes, spot_q = frozen.quotes, frozen.index
     closed = market_state(ctx, now).closed
     model = chain_model(list(quotes.values()), spot_q, expiry, now, ctx.rate, ctx.forward_quality, market_closed=closed)
 
@@ -344,6 +385,16 @@ async def read_market(tracked: Tracked, ctx: Any) -> MarketInputs:
             else SourceReading(SourceState.STATED, spot_q.ltp, spot_q.timestamp))
     return MarketInputs(tuple(rows), ids, forward, years, vol, feed, read_last_close(spot_q, closed, scn, now), now,
                         expiry_kind, leg_greeks, fwd_model, leg_ivs)
+
+
+async def read_market_more(tracked: Tracked, ctx: Any, extra_ids: Iterable[str]) -> MarketInputs | None:
+    """The approaches route's ONE second pass (GC-IC1 round 3, review finding 3): the landing strikes the builder
+    could not price are held with the rest in one more frozen read (at most one more ``LEG_WAIT_S``). None: nothing to
+    hold (no ids, not connected, no live feed): the first read stands."""
+    extra = list(dict.fromkeys(extra_ids))
+    if not extra or ctx is None or live_market.current_feed() is None:
+        return None
+    return await read_market(tracked, ctx, extra_ids=extra)
 
 
 def read_last_close(spot_q: Any, market_closed: bool, scn: Any, now: datetime.datetime) -> SourceReading:

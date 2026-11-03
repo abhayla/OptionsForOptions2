@@ -283,3 +283,50 @@ def test_unknown_approach_is_an_error():
     position, chain, spot = inputs(load("ADJ-20a"))
     with pytest.raises(ValueError, match="unknown approach"):
         build_approach(position, chain, spot, "A-99", CFG)
+
+
+# ---- GC-IC1 round 3: a gap in the held strikes is named, never stepped over -------------------------------------
+
+def _picked(built, typ):
+    return next(x.strike for x in built.after if x.type == typ and x.side == "SELL")
+
+
+@pytest.mark.parametrize(("approach", "outward"), [("A-05", True), ("A-01", False)])
+def test_gcic1_r3_roll_refuses_a_gap_naming_its_strike_never_picks_past_it(approach, outward):
+    """A strike the roll would have picked has no delta (nobody held it): refused naming THAT strike, and the strike
+    is listed in ``unpriced`` for the one second pass; the same chain with the gap filled picks it."""
+    position, chain, spot = inputs(load("ADJ-02"))
+    whole = build_approach(position, chain, spot, approach, CFG)
+    assert whole.refusal is None and whole.step_basis == "delta" and whole.unpriced == ()
+    typ = next(t.type for t in whole.trades)
+    pick = _picked(whole, typ)
+    holed = [replace(r, delta=None) if (r.type, r.strike) == (typ, pick) else r for r in chain]
+    gap = build_approach(position, holed, spot, approach, CFG)
+    assert gap.refusal is not None and f"{pick:,}" in gap.refusal and gap.refusal.endswith(
+        "has no price, and this approach trades it.")
+    assert gap.trades == () and (position.legs[0].expiry, typ, pick) in gap.unpriced
+    if outward:  # a strike nearer the short with no delta is a gap too (the walk out stops at it)
+        short = next(x.strike for x in position.legs if x.side == "SELL" and x.type == typ)
+        nearer = [r for r in chain if r.type == typ and abs(r.strike - short) < abs(pick - short)
+                  and r.strike != short and (r.strike > short) == (pick > short)]
+        if nearer:
+            k = nearer[0].strike
+            near_gap = build_approach(position, [replace(r, delta=None) if (r.type, r.strike) == (typ, k) else r
+                                                 for r in chain], spot, approach, CFG)
+            assert near_gap.refusal is not None and f"{k:,}" in near_gap.refusal
+
+
+def test_gcic1_r3_no_fitting_strike_with_a_gap_names_the_gap():
+    """No strike with a delta fits the target, but an unquoted one might: the gap is named, not 'no strike at delta'."""
+    position, chain, spot = inputs(load("ADJ-02"))
+    whole = build_approach(position, chain, spot, "A-05", CFG)
+    typ = next(t.type for t in whole.trades)
+    short = next(x.strike for x in position.legs if x.side == "SELL" and x.type == typ)
+    up = typ == "CE"
+    beyond = sorted((r for r in chain if r.type == typ and (r.strike > short if up else r.strike < short)),
+                    key=lambda r: abs(r.strike - short))
+    # every strike past the short: the nearest has no delta, the rest a delta above the target
+    holed = [r if r not in beyond else replace(r, delta=None if r is beyond[0] else D("0.99")) for r in chain]
+    built = build_approach(position, holed, spot, "A-05", CFG)
+    assert built.refusal is not None and f"{beyond[0].strike:,}" in built.refusal
+    assert (position.legs[0].expiry, typ, beyond[0].strike) in built.unpriced

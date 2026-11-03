@@ -150,8 +150,10 @@ class _FakeFanout:
             self.provider.held |= set(ids)
         return len(self.subscribed)
 
-    def unsubscribe(self, _handle):
+    def unsubscribe(self, handle):
+        """As the live book: a released contract is parked (``QuoteBook.park``), its quote gone from the snapshot."""
         self.released += 1
+        self.provider.held -= set(self.subscribed[handle - 1])
 
 
 def _hedge_case(monkeypatch, **fan):
@@ -239,15 +241,15 @@ def test_gcic1_check_holds_the_window_so_legs_have_greeks_and_the_vol_is_stated(
     assert feed.released == 1 and feed.subscribed and set(feed.subscribed[0]) - leg_ids  # window ids asked, one release
 
 
-def test_gcic1_read_market_asks_chain_quotes_for_the_window_ids(monkeypatch):
+def test_gcic1_read_market_asks_held_read_for_the_window_ids(monkeypatch):
     sc, leg_ids, _feed, ctx = _book_of_legs_only(monkeypatch)
     seen = []
-    real = readers.chain_quotes
+    real = readers.held_read
 
     async def spy(provider, underlying, expiry, ids, feed, index_id=None):  # noqa: PLR0913
         seen.append(list(ids))
         return await real(provider, underlying, expiry, ids, feed, index_id)
-    monkeypatch.setattr(readers, "chain_quotes", spy)
+    monkeypatch.setattr(readers, "held_read", spy)
     asyncio.run(readers.read_market(tracked_of(sc), ctx))
     assert leg_ids <= set(seen[0]) and len(set(seen[0]) - leg_ids) >= ctx.chain_strikes_each_side  # legs plus window
 
@@ -261,8 +263,15 @@ def test_gcic1_no_spot_means_no_window_legs_only_no_crash(monkeypatch):
     monkeypatch.setattr(readers, "read_rest_spot", no_rest)
     monkeypatch.setattr(readers, "read_last_close", lambda *_a: readers.SourceReading(SourceState.ABSENT))
     m = asyncio.run(readers.read_market(tracked_of(sc), ctx))
-    # the legs are in the book already; no spot -> no window held, only the index is asked for (released once)
-    assert m.vol is None and feed.subscribed == [["NSE_INDEX:1001"]] and feed.released == 1
+    # the legs are in the book already; no spot -> no window and no inward roll range: the index and the outward
+    # roll range (past each wing) only, in ONE hold released once
+    legs = tracked_of(sc).position.legs
+    shorts = sorted(x.strike for x in legs if x.side == "SELL")
+    strike_of = {f"{lc.contract.exchange_segment}:{lc.contract.exchange_token}": lc.contract.strike
+                 for lc in ctx.provider.instrument_master()}
+    held = feed.subscribed[0]
+    assert m.vol is None and len(feed.subscribed) == 1 and feed.released == 1 and "NSE_INDEX:1001" in held
+    assert all(not shorts[0] <= strike_of[i] <= shorts[1] for i in held if i != "NSE_INDEX:1001")
 
 
 def test_gcic1_window_released_when_the_provider_raises(monkeypatch):
@@ -312,3 +321,137 @@ def test_gcic1_no_index_quote_on_the_feed_the_window_is_centred_on_the_rest_spot
     assert asked == ["NIFTY"] and feed.subscribed and set(feed.subscribed[0]) - leg_ids
     assert index_id in feed.subscribed[0]
     assert legs <= set(m.leg_greeks) and m.vol is not None
+
+
+# ---- GC-IC1 round 3: ONE frozen read inside the hold; nothing read after the release; the roll range held ---------
+
+def _index_on_demand(monkeypatch, ctx):
+    """The round-2 shape: nobody holds the index; it is quoted only while this read holds it."""
+    spot = ctx.provider.underlying_quote("NIFTY")
+    index_id = spot.instrument_id
+    ctx.provider.index_id = lambda _u: index_id
+    ctx.provider.underlying_quote = lambda _u: spot if index_id in ctx.provider.held else None
+
+    async def rest(_u):
+        return readers.SourceReading(SourceState.STATED, spot.ltp, ctx.clock())
+    monkeypatch.setattr(readers, "read_rest_spot", rest)
+    return spot, index_id
+
+
+def test_gcic1_r3_no_provider_read_after_the_release(monkeypatch):
+    """Attack 1: a provider that RAISES on any quote read once the hold is released; the check still answers in full."""
+    sc, _leg_ids, feed, ctx = _book_of_legs_only(monkeypatch)
+    _index_on_demand(monkeypatch, ctx)
+    p = ctx.provider
+    snap, under = p.option_chain_snapshot, p.underlying_quote
+
+    def guarded(read):
+        def call(*a):
+            if feed.released:
+                raise AssertionError("provider read after the hold was released")
+            return read(*a)
+        return call
+    p.option_chain_snapshot, p.underlying_quote = guarded(snap), guarded(under)
+    m = asyncio.run(readers.read_market(tracked_of(sc), ctx))
+    legs = {x.tradingsymbol for x in tracked_of(sc).position.legs}
+    assert feed.released == 1 and legs <= set(m.leg_greeks) and m.vol is not None and m.forward is not None
+    assert m.feed.state is SourceState.STATED
+
+
+def test_gcic1_r3_real_quote_book_parks_the_index_and_the_check_still_has_greeks(monkeypatch):
+    """The live book itself: the index's quote lives in a real ``QuoteBook``; the release calls ``park`` on it (as
+    ``kite_provider.unsubscribe`` does), after which the book answers None. The check read it before that."""
+    import datetime  # noqa: PLC0415
+
+    from ofo.marketdata.feed_health import FeedState, QuoteBook  # noqa: PLC0415
+    from ofo.settings import calc, defaults  # noqa: PLC0415
+    sc, _leg_ids, feed, ctx = _book_of_legs_only(monkeypatch)
+    spot = ctx.provider.underlying_quote("NIFTY")
+    index_id = spot.instrument_id
+    now = ctx.clock()
+    state = FeedState(windows=calc.feed_windows(defaults()), market_open=lambda _t: True)
+    state.on_connected(now - datetime.timedelta(seconds=1))
+    state.on_data(now)
+    book = QuoteBook(state)
+    ctx.provider.index_id = lambda _u: index_id
+    ctx.provider.underlying_quote = lambda _u: book.get(index_id, now)
+    real_sub, real_unsub = feed.subscribe, feed.unsubscribe
+
+    def sub(listener, ids, **kw):
+        handle = real_sub(listener, ids, **kw)
+        if index_id in ids:
+            book.update(spot)
+        return handle
+
+    def unsub(handle):
+        real_unsub(handle)
+        if index_id in feed.subscribed[handle - 1]:
+            book.park(index_id)
+    feed.subscribe, feed.unsubscribe = sub, unsub
+
+    async def rest(_u):
+        return readers.SourceReading(SourceState.STATED, spot.ltp, now)
+    monkeypatch.setattr(readers, "read_rest_spot", rest)
+    m = asyncio.run(readers.read_market(tracked_of(sc), ctx))
+    legs = {x.tradingsymbol for x in tracked_of(sc).position.legs}
+    assert book.get(index_id, now) is None and index_id in book.parked_ids()  # released and parked
+    assert legs <= set(m.leg_greeks) and m.vol is not None and m.feed.value == spot.ltp
+
+
+def test_gcic1_r3_roll_range_is_held_with_the_window(monkeypatch):
+    """Item 3: every strike from each short to the spot and out past its wing by the roll points is in the ONE hold."""
+    sc, _leg_ids, feed, ctx = _book_of_legs_only(monkeypatch)
+    asyncio.run(readers.read_market(tracked_of(sc), ctx))
+    position = tracked_of(sc).position
+    spot = ctx.provider.underlying_quote("NIFTY").ltp
+    points = readers._roll_points()["NIFTY"]
+    held = set(feed.subscribed[0])
+    master = ctx.provider.instrument_master()
+    by = {(lc.contract.instrument_type, lc.contract.strike):
+          f"{lc.contract.exchange_segment}:{lc.contract.exchange_token}"
+          for lc in master if lc.contract.expiry == position.legs[0].expiry and lc.contract.name == "NIFTY"}
+    legs = set(readers.own_leg_ids(position, master))
+    checked = 0
+    for short in (x for x in position.legs if x.side == "SELL"):
+        wing = next(x.strike for x in position.legs if x.side == "BUY" and x.type == short.type)
+        if short.type == "CE":
+            lo, hi = min(short.strike, spot), wing + points
+        else:
+            lo, hi = wing - points, max(short.strike, spot)
+        need = {i for (t, k), i in by.items() if t == short.type and lo <= k <= hi} - legs
+        assert need and need <= held, short
+        checked += len(need)
+    assert checked > 0 and len(feed.subscribed) == 1 and feed.released == 1
+
+
+def test_gcic1_r3_second_pass_holds_once_and_releases(monkeypatch):
+    """Item 4: ``read_market_more`` takes exactly one more hold with the extra ids in it, released once; it answers
+    None (no hold) with nothing to hold or no feed."""
+    sc, _leg_ids, feed, ctx = _book_of_legs_only(monkeypatch)
+    asyncio.run(readers.read_market(tracked_of(sc), ctx))
+    first = set(feed.subscribed[0])
+    far = next(i for i in sorted(ctx.provider.hidden) if i not in first)
+    feed.subscribed.clear()
+    feed.released = 0
+    m = asyncio.run(readers.read_market_more(tracked_of(sc), ctx, [far]))
+    assert m is not None and len(feed.subscribed) == 1 and far in feed.subscribed[0] and feed.released == 1
+    assert asyncio.run(readers.read_market_more(tracked_of(sc), ctx, [])) is None
+    monkeypatch.setattr(readers.live_market, "current_feed", lambda: None)
+    assert asyncio.run(readers.read_market_more(tracked_of(sc), ctx, [far])) is None
+    assert len(feed.subscribed) == 1
+
+
+def test_gcic1_r3_second_pass_hold_released_on_an_exception(monkeypatch):
+    """Attack 4: the second pass's read raises while held; the hold is still released."""
+    sc, _leg_ids, feed, ctx = _book_of_legs_only(monkeypatch)
+    real = ctx.provider.option_chain_snapshot
+
+    def boom(u, e):
+        if feed.subscribed:
+            raise RuntimeError("feed down")
+        return real(u, e)
+    ctx.provider.option_chain_snapshot = boom
+    far = sorted(ctx.provider.hidden)[0]
+    with pytest.raises(RuntimeError):
+        asyncio.run(readers.read_market_more(tracked_of(sc), ctx, [far]))
+    assert feed.released == 1

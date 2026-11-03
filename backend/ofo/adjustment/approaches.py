@@ -18,7 +18,11 @@ Rules (each one decided here and stated, catalogue Part 2 followed where the con
   at most the target; A-01 rolls the untested short IN to the strike nearest spot whose |delta| is at most the target.
   The wing moves the same distance (width kept). When no chain row of that type and expiry carries a delta, the move
   is ``roll_points_without_delta`` of the underlying (200 NIFTY / 500 SENSEX). ``step_basis`` says which ("delta" or
-  "points") and ``step_value`` the number used.
+  "points") and ``step_value`` the number used. A strike of the search with no delta (unquoted: nobody held it) that
+  lies between the short and the strike picked, or (rolling in) the next strike past it, is a GAP: the roll is refused
+  naming that strike (``adjust_no_price``), never a strike picked past it (GC-IC1 round 3); with no fitting strike and
+  a gap, the gap is named too. Every contract the builder could not price is listed in ``unpriced`` so the caller can
+  hold it once and build again.
 - Landing: through the REQ-078 landing rule ``leg_edit.land`` (a strike not listed is refused naming the leg).
 - A-01 that would put the put short above the call short (or the call short below the put short) is refused: the
   condor would be inverted. Equal shorts are allowed.
@@ -154,6 +158,9 @@ class ApproachLegs:
     #: the refusal and warnings as catalogue messages, for the API door (``refusal`` / ``warnings`` hold their text)
     refusal_message: UserFacingError | None = None
     warning_messages: tuple[UserFacingError, ...] = ()
+    #: (expiry, type, strike) of every contract this build needed and found no price / no delta for (the caller's ONE
+    #: second pass holds them, GC-IC1 round 3); empty when none
+    unpriced: tuple[tuple[datetime.date, str, Decimal], ...] = ()
 
 
 class _Refused(Exception):
@@ -236,6 +243,7 @@ class _Builder:
         self.warning_messages: list[UserFacingError] = []  # the same warnings as catalogue messages (API door)
         self.basis: tuple[str, Decimal] | None = None
         self.limits, self.max_profit = limits, max_profit  # the playbook's saved liquidity limits (ADR-230 (1))
+        self.unpriced: list[tuple[datetime.date, str, Decimal]] = []
 
     def guard_debit(self, trades: Sequence[Trade]) -> None:
         """ADR-230 (1): a roll whose net debit is above the playbook's limit is refused, with the reason."""
@@ -261,8 +269,14 @@ class _Builder:
     def price_of(self, leg: PositionLeg) -> Decimal:
         price = planned_price(self.rows.get((leg.expiry, leg.type, leg.strike)))
         if price is None:
+            self.unpriced.append((leg.expiry, leg.type, leg.strike))
             raise _refusal("adjust_no_price", leg=self.ref(leg))
         return price
+
+    def _gap(self, short: PositionLeg, row: ChainRow) -> _Refused:
+        """A strike of the roll search with no delta: named (as the short moved there), listed for the second pass."""
+        self.unpriced.append((row.expiry, row.type, row.strike))
+        return _refusal("adjust_no_price", leg=self.ref(replace(short, strike=row.strike)))
 
     def close(self, leg: PositionLeg, lots: int) -> tuple[Trade, ClosedLeg]:
         price = self.price_of(leg)
@@ -301,8 +315,9 @@ class _Builder:
     def roll_distance(self, leg: PositionLeg, outward: bool) -> Decimal:
         """How far the short moves (signed points); records the basis used in ``self.basis``."""
         up = (leg.type == "CE") == outward  # a call rolls out upwards, a put rolls out downwards
-        rows = [r for r in self.chain if r.type == leg.type and r.expiry == leg.expiry
-                and (r.strike > leg.strike if up else r.strike < leg.strike)]
+        rows = sorted((r for r in self.chain if r.type == leg.type and r.expiry == leg.expiry
+                       and (r.strike > leg.strike if up else r.strike < leg.strike)),
+                      key=lambda r: abs(r.strike - leg.strike))  # the walk away from the short
         with_delta = [(r, r.delta) for r in rows if r.delta is not None]
         target = self.cfg.target_short_delta[self.p.expiry_kind]
         if not with_delta:
@@ -312,10 +327,18 @@ class _Builder:
         self.basis = ("delta", target)
         fit = [r for r, delta in with_delta if abs(delta) <= target]
         if not fit:
+            gap = next((r for r in rows if r.delta is None), None)
+            if gap is not None:  # an unquoted strike might have fitted: named, never "no strike"
+                raise self._gap(leg, gap)
             raise _refusal("adjust_no_strike_at_delta", leg=self.ref(leg))
         # outward: the first strike beyond the short; inward: the strike nearest spot (the last one going in)
         pick = min(fit, key=lambda r: abs(r.strike - leg.strike)) if outward else \
             min(fit, key=lambda r: abs(r.strike - self.spot))
+        at = rows.index(pick)
+        between = rows[:at + (1 if outward else 2)]  # rolling in, the next strike past the pick could fit too
+        gap = next((r for r in between if r.delta is None), None)
+        if gap is not None:
+            raise self._gap(leg, gap)
         return pick.strike - leg.strike
 
     def roll(self, found: _Condor, side: str, outward: bool) -> tuple[list[Trade], list[PositionLeg],
@@ -422,6 +445,7 @@ def build_approach(position: Position, chain: Sequence[ChainRow], spot: Decimal,
         refusal = refusal_message = None
     basis, value = b.basis if b.basis is not None else (None, None)
     base = ApproachLegs(approach_id, NAMES[approach_id], KINDS[approach_id], side, step_basis=basis, step_value=value)
+    base = replace(base, unpriced=tuple(dict.fromkeys(b.unpriced)))
     if refusal is not None:
         return replace(base, refusal=refusal, refusal_message=refusal_message)
     return replace(base, trades=_ordered(trades), after=tuple(after), closed=tuple(closed), warnings=tuple(b.warnings),
