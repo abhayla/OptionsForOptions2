@@ -258,13 +258,13 @@ function setMultiplier(index) {
       <div v-if="showsControls(legs)" class="border-t border-line py-2" :style="cardPadding">
         <StrategyControls :controls="shownControls" @edit="(e) => emit('edit', e)" />
       </div>
-      <div class="flex min-h-10 items-center justify-between gap-3 border-t border-line py-2" :style="cardPadding" data-testid="money-row">
+      <div class="flex min-h-10 items-center justify-between gap-3 max-[639px]:flex-wrap border-t border-line py-2" :style="cardPadding" data-testid="money-row">
         <label class="flex items-center gap-2" :title="`Strategy multiplier (${MULTIPLIER_MIN} to ${multiplierMax ?? '...'})`">Multiplier
           <select v-model="multiplier" class="rounded border border-line px-1" data-testid="multiplier" @change="setMultiplier($event.target.selectedIndex)">
             <option v-for="n in multiplierList" :key="n" :value="n">{{ n }}</option>
           </select>
         </label>
-        <div class="min-w-0"><slot name="money" /></div>
+        <div class="min-w-0 max-[639px]:w-full"><slot name="money" /></div>
       </div>
     </template>
   </div>

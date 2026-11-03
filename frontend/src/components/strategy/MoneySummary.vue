@@ -36,7 +36,7 @@ const netText = computed(() => {
     >
       <div
         v-if="netPremium"
-        class="flex items-center gap-1"
+        class="flex items-center gap-1 max-[639px]:flex-wrap max-[639px]:whitespace-normal"
         data-testid="net-premium"
       >
         <span class="text-gray-500">Net premium: </span>
