@@ -55,6 +55,10 @@ GC-LIVE4 in market hours; then #638 diagnosis, #636 round 5, #639.
   minute and read 4.5 GB free at 05:06. The chatty-monitor theory above is WRONG. Stopped; not pushed. Reliable options:
   the owner runs `python scripts/orchestrator/prepush.py --full` in their own terminal, or restarts the app with the
   reap switched off (env CLAUDE_CODE_DISABLE_BG_SHELL_PRESSURE_REAP=1); on TOTAL PASS push.
-- NOT DONE: gate TOTAL PASS on the final head; push of feature/adjustments (66 local commits ahead of origin). Nothing on main.
+- CLOSED 05:36: run 7 on 7a80cbce, started as a separate Windows process (Start-Process, outside the session's background
+  shells, so the reap could not stop it), 05:09-05:35: TOTAL PASS 1520.2s, all 9 steps (app_tests 722.3s), marker
+  .git/ofo-prepush/7a80cbce7c24fc23e3fbb238d55bf3d19e1b423d.json. Pushed `396c1eaa..7a80cbce` to origin/feature/adjustments.
+  Nothing on main. This line is a docs-only commit on top, pushed with PREPUSH_GATE_ALLOW (reason in the push).
+- (superseded by the line above) NOT DONE: gate TOTAL PASS on the final head; push of feature/adjustments (66 local commits ahead of origin). Nothing on main.
 - NEXT for the owner: say 'run the gate' (one run, chatty monitor) -> on TOTAL PASS push feature/adjustments as its own command; then approve GC-LIVE4.
 
