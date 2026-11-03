@@ -206,3 +206,83 @@ def test_f92_legs_already_held_take_no_hold(monkeypatch):
     ctx.provider.held.add(iid)
     asyncio.run(readers.read_market(tracked_of(sc), ctx))
     assert feed.subscribed == [] and feed.released == 0
+
+
+# ---- GC-IC1: the screen check holds the near-the-money window (Greeks and ATM IV with no chain screen open) ----
+
+FOUR_LEGS = 4
+
+
+def _book_of_legs_only(monkeypatch, **fan):
+    """The live book lists only the position's 4 legs until a hold on other ids exists (no chain screen is open)."""
+    sc = load("ADJ-02")
+    scn, _ = _scn(monkeypatch, "ADJ-02")
+    position = tracked_of(sc).position
+    leg_symbols = {x.tradingsymbol for x in position.legs}
+    everything = {f"{lc.contract.exchange_segment}:{lc.contract.exchange_token}":
+                  lc.broker_refs[0].broker_symbol for lc in scn.provider.instrument_master()}
+    leg_ids = {i for i, sym in everything.items() if sym in leg_symbols}
+    snapshot = scn.provider.option_chain_snapshot(position.underlying, position.legs[0].expiry)
+    all_ids = {q.instrument_id for q in snapshot}
+    provider = _HidingProvider(scn.provider, all_ids - leg_ids, set())
+    feed = _FakeFanout(provider, **fan)
+    monkeypatch.setattr(readers.live_market, "current_feed", lambda: types.SimpleNamespace(fanout=feed))
+    monkeypatch.setattr(readers, "LEG_WAIT_S", 0.3)
+    return sc, leg_ids, feed, outcome.MarketContext(provider, scn.clock, scn.rate)
+
+
+def test_gcic1_check_holds_the_window_so_legs_have_greeks_and_the_vol_is_stated(monkeypatch):
+    sc, leg_ids, feed, ctx = _book_of_legs_only(monkeypatch)
+    m = asyncio.run(readers.read_market(tracked_of(sc), ctx))
+    legs = {x.tradingsymbol for x in tracked_of(sc).position.legs}
+    assert len(legs) == FOUR_LEGS and legs <= set(m.leg_greeks) and m.vol is not None and m.forward is not None
+    assert feed.released == 1 and feed.subscribed and set(feed.subscribed[0]) - leg_ids  # window ids asked, one release
+
+
+def test_gcic1_read_market_asks_chain_quotes_for_the_window_ids(monkeypatch):
+    sc, leg_ids, _feed, ctx = _book_of_legs_only(monkeypatch)
+    seen = []
+    real = readers.chain_quotes
+
+    async def spy(provider, underlying, expiry, ids, feed):
+        seen.append(list(ids))
+        return await real(provider, underlying, expiry, ids, feed)
+    monkeypatch.setattr(readers, "chain_quotes", spy)
+    asyncio.run(readers.read_market(tracked_of(sc), ctx))
+    assert leg_ids <= set(seen[0]) and len(set(seen[0]) - leg_ids) >= ctx.chain_strikes_each_side  # legs plus window
+
+
+def test_gcic1_no_spot_means_no_window_legs_only_no_crash(monkeypatch):
+    sc, _ids, feed, ctx = _book_of_legs_only(monkeypatch)
+    ctx.provider.underlying_quote = lambda _u: None
+    m = asyncio.run(readers.read_market(tracked_of(sc), ctx))
+    assert m.vol is None and feed.subscribed == []  # the legs are in the book already; no window was held
+
+
+def test_gcic1_window_released_when_the_provider_raises(monkeypatch):
+    sc, _ids, feed, ctx = _book_of_legs_only(monkeypatch)
+    real = ctx.provider.option_chain_snapshot
+
+    def boom(u, e):
+        if feed.subscribed:
+            raise RuntimeError("feed down")
+        return real(u, e)
+    ctx.provider.option_chain_snapshot = boom
+    with pytest.raises(RuntimeError):
+        asyncio.run(readers.read_market(tracked_of(sc), ctx))
+    assert feed.released == 1
+
+
+def test_gcic1_window_ids_skip_strikes_without_a_contract_and_unlisted_expiry():
+    import datetime
+    ns = types.SimpleNamespace
+    expiry = datetime.date(2026, 11, 26)
+
+    def lc(strike, typ, tok):
+        return ns(contract=ns(name="NIFTY", expiry=expiry, strike=D(strike), instrument_type=typ,
+                              exchange_segment="NFO", exchange_token=str(tok)))
+    listed = [lc(100, "CE", 1), lc(100, "PE", 2), lc(200, "CE", 3), lc(300, "CE", 4), lc(300, "PE", 5)]
+    spot = ns(ltp=D(200))
+    assert readers.window_ids(listed, "NIFTY", expiry, spot, 1) == ["NFO:1", "NFO:2", "NFO:3", "NFO:4", "NFO:5"]
+    assert readers.window_ids(listed, "NIFTY", datetime.date(2027, 1, 1), spot, 1) == []
+    assert readers.window_ids(listed, "NIFTY", expiry, None, 1) == []

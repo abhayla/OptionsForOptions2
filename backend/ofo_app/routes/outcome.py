@@ -174,6 +174,10 @@ class MarketContext:
     #: is told the same windows (``ctx_in_force``). The default is the registry's, as for ``forward_quality``.
     feed_windows: FeedWindows = dataclasses.field(
         default_factory=lambda: calc.feed_windows(settings_defaults()))
+    #: ``limits.chain_strikes_each_side`` in force: the near-the-money window the adjustment check holds (one rule with
+    #: the background's, ``chain_push.window_strikes``). Replaced with the same single read; the default is the registry's.
+    chain_strikes_each_side: int = dataclasses.field(
+        default_factory=lambda: calc.chain_strikes_each_side(settings_defaults()))
 
 
 @dataclass(frozen=True)
@@ -245,7 +249,8 @@ def ctx_in_force(ctx: MarketContext, values: Mapping[str, Decimal]) -> MarketCon
     if feed is not None and hasattr(feed, "apply_windows"):
         feed.apply_windows(windows)  # the feed's next verdict (quote health, phase) uses the windows in force
     return dataclasses.replace(ctx, rate=registry_value_of(values, RISK_FREE_RATE),
-                               forward_quality=calc.forward_quality(values), feed_windows=windows)
+                               forward_quality=calc.forward_quality(values), feed_windows=windows,
+                               chain_strikes_each_side=calc.chain_strikes_each_side(values))
 
 
 def feed_windows_of(ctx: MarketContext | None) -> FeedWindows:
