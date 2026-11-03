@@ -50,7 +50,7 @@ from ofo.adjustment.strategy_type import strike_gap_of, type_of
 from ofo.engine import adjust_money
 from ofo.engine.legs import Action, Instrument, Leg
 from ofo.engine.metrics import UNLIMITED
-from ofo.errors.explanations import render_explanation
+from ofo.errors.explanations import PLAYBOOK_DAY_RULE_ACTION_TEXT, render_explanation
 from ofo.marketdata.spot_source import SourceState, SpotAnswer
 from ofo.timeutil import IST
 
@@ -66,6 +66,8 @@ from ofo_app.routes.adjustment import (
 
 #: a clock trigger's unit in the playbook body (T-10b): its value and threshold are HH:MM
 CLOCK_UNIT: Final = "time"
+#: a day rule's unit (GC-IC1 1a): its value is the nearest short's distance from spot in %
+DAY_RULE_UNIT: Final = "%"
 _HEALTH_FRESH: Final = "available"
 _HEALTH_STALE: Final = "stale"
 
@@ -278,8 +280,14 @@ def stage_out(name: str | None, index: int | None) -> dict[str, Any]:
 
 
 def trigger_words(body: Mapping | None, trigger_id: str | None) -> tuple[str | None, str | None]:
-    """(label, unit) of a trigger as the evaluated body holds them; (None, None) for a body or trigger without them."""
-    trig = (body or {}).get("triggers", {}).get(trigger_id) if isinstance(body, Mapping) else None
+    """(label, unit) of a trigger as the evaluated body holds them; (None, None) for a body or trigger without them.
+    A day rule (GC-IC1 1a, ``day:<when>:<index>``): its action's catalogue words and "%" (its value is a distance
+    from spot in %)."""
+    action = pe.day_rule_action(body, trigger_id)
+    if action is not None:
+        words = PLAYBOOK_DAY_RULE_ACTION_TEXT.get(str(action))
+        return (words, DAY_RULE_UNIT) if words is not None else (None, None)
+    trig =(body or {}).get("triggers", {}).get(trigger_id) if isinstance(body, Mapping) else None
     if not isinstance(trig, Mapping):
         return None, None
     label, unit = trig.get("label"), trig.get("unit")

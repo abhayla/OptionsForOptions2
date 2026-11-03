@@ -31,6 +31,8 @@ derived by hand-written code; the test cross-checks them with the engine.
 | ADJ-20c | IC weekly, broker answer states | Broker: one leg unpriced (long put wing) | Last day (weekly, 1 d) | T-01, T-09 |
 | ADJ-20d | IC weekly, broker answer states | Broker: landing strike not listed (that approach refused, others shown) | Last day (weekly, 1 d) | T-01, T-09 |
 | ADJ-20e | IC weekly, broker answer states | Broker: low-OI state unknown (warning, not refusal) | Last day (weekly, 1 d) | T-01, T-09 |
+| ADJ-51 | IC weekly, NIFTY 2 lots | Expiry day 14:30: short CE 0.21% from spot (within 0.3%), far short PE below Rs 2 | Last day (weekly, 0 d) | T-01, T-07, T-09, T-10b |
+| ADJ-52 | IC weekly, NIFTY 2 lots | Expiry day 14:30: nearest short 0.4% from spot: the expiry close rule does not fire | Last day (weekly, 0 d) | T-07, T-09, T-10b |
 | ADJ-50 | IC weekly, NIFTY 2 lots | Liquidity limits (ADR-230 (1), F-78): one thin strike, the 23,100 CE with open interest 500 | Early (weekly, 6 d) | none |
 | ADJ-21 | IC monthly, SENSEX 2 lots | SENSEX monthly, 20 days, calm | Early (monthly, 20 d) | none |
 | ADJ-22 | IC monthly, SENSEX 2 lots | SENSEX monthly, last 2 days stage | Last 2 days (monthly, 1 d) | T-01, T-09 |

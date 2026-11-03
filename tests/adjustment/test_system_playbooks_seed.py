@@ -31,7 +31,8 @@ def test_ic_seed_carries_every_adr_216_guard():
         "50", "50", "4", "whichever comes first", 2, "14:30")
     expiry = [r for r in body["day_rules"] if r["when"] == "expiry"]
     assert [r for r in expiry if r["on"]] == [{"on": True, "when": "expiry", "at": "14:30", "action": 5,
-                                               "close_if_short_within_pct": "0.3"}]
+                                               "close_if_short_within_pct": "0.3",
+                                               "buy_back_short_below_rs": "2"}]
     assert [r for r in expiry if not r["on"]] == [{"on": False, "when": "expiry", "at": "13:00", "action": 4,
                                                    "percent": "20"}]
 

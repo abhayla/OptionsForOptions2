@@ -7,7 +7,8 @@ engine-input-chosen-per-caller: the worker and every test call this, none builds
   then the playbook's later-stage thresholds of this expiry kind (``alert_gate.ladder_for``), e.g. T-03 weekly Early
   0.30 -> (0.30, 0.35, 0.40).
 - A yes/no rule reads True / False with no ladder (ADR-237 (1): re-arms at a false close): T-02 (``lt`` 0), a clock
-  rule (T-10b, an "HH:MM" value), and a rule combining several triggers (one value cannot stand for an AND / OR).
+  rule (T-10b, an "HH:MM" value), a rule combining several triggers (one value cannot stand for an AND / OR), and a
+  day rule (``RuleValue.yes_no``, GC-IC1 1a: its value is shown, its line has no later-stage ladder).
 - A NotChecked or AlreadyTrue rule, a withheld check, or a rule with no value reads None: neither clears nor opens
   (ADR-217; F-71). Its RuleSpec is a yes/no placeholder the gate never reads (a None value gives no sample).
 - Fails closed: a comparison the gate does not know, or a value whose level disagrees with the evaluator's own
@@ -30,7 +31,7 @@ def _yes_no(v: RuleValue) -> Reading:
 
 def reading(v: RuleValue) -> Reading:
     """One checked rule's reading; ValueError on an unknown comparison or a value that disagrees with its flag."""
-    if v.members > 1 or isinstance(v.value, str) or v.cmp == "lt":
+    if v.yes_no or v.members > 1 or isinstance(v.value, str) or v.cmp == "lt":
         return _yes_no(v)
     if v.cmp not in ("ge", "le"):
         raise ValueError(f"rule {v.rule_id}: the alert gate does not know the cmp {v.cmp!r}")

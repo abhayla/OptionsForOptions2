@@ -22,6 +22,7 @@ from ofo.adjustment.playbook_eval import (
     ShortLeg,
     StrategyState,
     body_from_fixture,
+    is_day_rule_id,
     reason_text,
     validate_body,
 )
@@ -131,7 +132,7 @@ def entry_of(sc: dict) -> StrategyState:
 
 
 def flags(ev) -> dict[str, Flag]:
-    return {r.trigger_id: r for r in ev.results if isinstance(r, Flag)}
+    return {r.trigger_id: r for r in ev.results if isinstance(r, Flag) and not is_day_rule_id(r.rule_id)}  # day rules: test_day_rules.py
 
 
 def _shown(value) -> str:

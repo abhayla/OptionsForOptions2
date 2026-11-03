@@ -3526,5 +3526,9 @@
   "explanation:alert_style_refused_unknown": {
     "sha256": "2311d3ba09eec3bb5dda17c62faca6882f71c7bf919dda69b8c10698cb7d5431",
     "reviewed": "pending owner read"
+  },
+  "adjust_trigger_day_rule_incomplete": {
+    "sha256": "e0cd697da4c1c3f6f4896345cc0ccb0781996f4f27050b72c6764aa8400acc51",
+    "reviewed": "pending owner read"
   }
 }
