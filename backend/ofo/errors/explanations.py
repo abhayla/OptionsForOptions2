@@ -1902,6 +1902,18 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("alert_held_daily_limit", "rule", "held: daily limit"),
     ExplanationTemplate("alert_held_quiet_time", "rule", "held: quiet time"),
     # GC-ALERT1 (REQ-170 Q-AD-2): the strategy's alert style, automatic or pinned by the user (pending owner read)
+    # GC-IC1 4a (A-38): the user's pause of adjustment checks until a time (pending owner read)
+    ExplanationTemplate("monitor_pause_label", "rule", "Pause adjustment checks"),
+    ExplanationTemplate("monitor_pause_none", "rule", "Adjustment checks are running. Stop-losses and exits always run."),
+    ExplanationTemplate("monitor_pause_until", "rule", "Adjustment checks paused until {time}. Stop-losses and exits still run.", {"time": ClockHm}),
+    ExplanationTemplate("monitor_pause_ended", "rule", "The pause ended at {time}. Adjustment checks are running again.", {"time": ClockHm}),
+    ExplanationTemplate("monitor_pause_refused_not_a_time", "rule", "Enter the end of the pause as a time, like 10:30."),
+    ExplanationTemplate("monitor_pause_refused_in_past", "rule", "Pick a time later today than now."),
+    ExplanationTemplate("monitor_pause_refused_after_close", "rule", "Pick a time at or before the market close, 15:30."),
+    # GC-IC1 4a (A-23, A-38 on the check): pending owner read
+    ExplanationTemplate("delta_neutral_label", "rule", "Delta-neutral figures (a calculation, not a suggestion to trade)"),
+    ExplanationTemplate("delta_neutral_not_known", "rule", "Net delta is not known: a leg has no implied volatility now."),
+    ExplanationTemplate("monitor_pause_shown", "rule", "Adjustment checks paused until {time}.", {"time": ClockHm}),
     ExplanationTemplate("alert_style_label", "rule", "Alert style"),
     ExplanationTemplate("alert_style_name_intraday", "rule", "Intraday"),
     ExplanationTemplate("alert_style_name_weekly", "rule", "Weekly"),

@@ -13,6 +13,7 @@ detected", the user's own playbook or plan's "Your rule was triggered" (REQ-045 
 """
 from __future__ import annotations
 
+import datetime
 import logging
 from collections.abc import Mapping
 from decimal import ROUND_HALF_UP, Decimal
@@ -25,6 +26,7 @@ from ofo.charges import ChargeRates
 from ofo.errors import render
 from ofo.errors.explanations import render_explanation
 from ofo.marketdata.spot_source import resolve_spot
+from ofo.timeutil import IST
 from sqlalchemy.exc import SQLAlchemyError
 
 from ofo_app import adjustment_check as check
@@ -80,6 +82,11 @@ class CheckResultOut(ApiModel):
     note: CatalogueText | None = None  # ADR-217: "You dismissed this" on a flag whose dismissed record still holds
 
 
+class CheckPauseOut(ApiModel):
+    until: Identifier  # HHMM IST, e.g. 1030 (an Identifier has no ':')
+    text: CatalogueText
+
+
 class AdjustmentCheckOut(ApiModel):
     strategy_id: int
     strategy_type: Identifier | None
@@ -88,6 +95,21 @@ class AdjustmentCheckOut(ApiModel):
     stage: CheckStageOut
     withheld: CatalogueText | None
     results: list[CheckResultOut]
+    #: A-38 (GC-IC1 4a): the user's pause in force at the check's own time -> {until, text} and no evaluation (the
+    #: worker skips it too); none, cleared or expired -> None
+    paused: CheckPauseOut | None = None
+
+
+async def pause_in_force(db: Any, user_ref: str, strategy_id: int, now: datetime.datetime) -> dict | None:
+    """The check's pause block at ``now`` (the market reader's clock, the check's own time); None when not paused."""
+    from ofo.adjustment import monitor_pause  # noqa: PLC0415 - A-38
+
+    from ofo_app import strategy_pause_store  # noqa: PLC0415 - A-38
+    until = await strategy_pause_store.pause_of(db, user_ref, strategy_id)
+    if until is None or not monitor_pause.in_force(until, now):
+        return None
+    end = until.astimezone(IST).time().replace(second=0, microsecond=0)
+    return {"until": f"{end:%H%M}", "text": render_explanation("monitor_pause_shown", time=end)}
 
 
 #: the shown scale of a check value and threshold (the scenario fixtures' "0.3416" / "0.5000"); the evaluator keeps
@@ -209,7 +231,8 @@ async def adjustment_check(  # noqa: PLR0913 - FastAPI dependencies, one per inp
         "playbook": {"source": resolved.source, "id": resolved.playbook_id, "status": resolved.status,
                      "draft": resolved.status == "draft"},
         "stage": {"name": None, "index": None}, "withheld": None, "results": []}
-    if resolved.body is None:
+    reply["paused"] = await pause_in_force(db, user_ref, strategy_id, market.now)
+    if resolved.body is None or reply["paused"] is not None:  # A-38: paused -> shown with its end, not evaluated
         return AdjustmentCheckOut.model_validate(reply)
     margin = await current_margin(margin_of, tracked, market)
     state = check.state_of(tracked, market, spot, margin, rates, check.prices_fresh(ctx), resolved.body,

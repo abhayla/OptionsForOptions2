@@ -503,6 +503,8 @@ async def adjustment_approaches(  # noqa: PLR0913, PLR0915 - FastAPI dependencie
                                       _margin_read(item["margin"]), priced[a].adjustment_charges))
             out.append(item)
         reply["approaches"] = out
+        from ofo_app import delta_neutral_reply  # noqa: PLC0415 - A-23 figures, no trade (GC-IC1 4a)
+        reply["delta_neutral"] = delta_neutral_reply.block(position, market.chain, market.leg_greeks, spot.value)
         reply |= await _compare_reply(columns, tracked, spot.value, market, rates, pop_on, before,  # type: ignore[arg-type]
                                       margin_of, prefs, limits, guards)
     reply["available"] = _available(position, market.chain, spot.value if spot.available else None, dict(built_list),

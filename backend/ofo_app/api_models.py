@@ -536,6 +536,23 @@ class AdjustAvailableOut(ApiModel):
     liquidity_flags: list[CatalogueText] = []  # ADR-230 (1): flags of the new strikes it would open
 
 
+class AdjustDeltaNeutralOut(ApiModel):
+    """A-23 (GC-IC1 4a): figures only, no trade, no After (``ofo.adjustment.delta_neutral``). Lots are signed: + long,
+    - short. ``known`` False -> every figure None and ``missing_leg`` names the leg with no delta."""
+
+    label: CatalogueText
+    known: bool
+    reason: CatalogueText | None = None
+    missing_leg: Identifier | None = None  # the trading symbol of the leg with no delta
+    net_delta: Money | None = None
+    option_type: Literal["CE", "PE"] | None = None
+    option_strike: Money | None = None
+    option_lots: int | None = None
+    option_remaining: Money | None = None
+    future_lots: int | None = None
+    future_remaining: Money | None = None
+
+
 class AdjustApproachesOut(ApiModel):
     strategy_id: int
     view: Literal["at_expiry", "estimated_now"]
@@ -550,3 +567,4 @@ class AdjustApproachesOut(ApiModel):
     timing: AdjustTimingOut | None = None
     available: list[AdjustAvailableOut] = []  # every generic approach, whatever was asked (no figures)
     days_to_expiry: int | None = None  # whole days from the reply's own market day to the nearest open leg's expiry
+    delta_neutral: AdjustDeltaNeutralOut | None = None  # A-23 figures; None when there is no spot

@@ -58,6 +58,13 @@ One cycle (``Worker.cycle``), each step with its answer state:
    (the pin or the store read failed, none kept), no user values, a style that cannot be told, or a preset that
    cannot be built -> that strategy is paused (``CHECK_FAILED``, "Monitoring paused"), never checked on a default.
    Risk exits (paper triggers, stop-loss) never pass through here (AC-5).
+6. The user's pause (A-38, GC-IC1 step 4a, ``ofo.adjustment.monitor_pause``): the pause end is read with the gate
+   load on the rebuild task (``GateLoad.paused_until``, never a database call per check, B4 (a)); each check compares
+   it with ITS OWN clock read first: in force -> ``PriceState.USER_PAUSED`` through ``_pause`` (the same path as every
+   other pause, so the candle it fell in has no close), no price read, no evaluation, and the close pass skips it;
+   expired (end at or before the check's time) or cleared -> checked as normal, with no action needed. Answer states:
+   none / cleared -> checked; set and in force -> paused (``user_paused_until`` holds the end for the status); set and
+   expired -> checked. Risk exits never read it (``tests_app/test_risk_exit_not_gated.py`` walks the paper path).
    One strategy's error is logged with its id and does not stop the others
    (REQ-115 AC-9).
 
@@ -96,7 +103,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any, Final
 
-from ofo.adjustment import alert_gate, alert_presets, gate_readings
+from ofo.adjustment import alert_gate, alert_presets, gate_readings, monitor_pause
 from ofo.adjustment import playbook_eval as pe
 from ofo.adjustment.preferences import Preferences
 from ofo.adjustment.preferences import from_values as prefs_from_values
@@ -144,6 +151,7 @@ class PriceState(enum.Enum):
     LEG_MISSING = "leg_missing"
     MARKET_CLOSED = "market_closed"
     CHECK_FAILED = "check_failed"
+    USER_PAUSED = "user_paused"  # A-38: the user paused adjustment checks until a time (module docstring, step 6)
 
 
 @dataclass(frozen=True)
@@ -468,11 +476,13 @@ async def record_check(watched: Watched, state: pe.StrategyState, prefs: Prefere
 @dataclass(frozen=True)
 class GateLoad:
     """What the rebuild task read for one strategy's gate (ADR-237 (5)): the last record per rule and today's count,
-    today's held crossings (``playbook_store.HeldToday``, oldest first), the pinned style (None = automatic)."""
+    today's held crossings (``playbook_store.HeldToday``, oldest first), the pinned style (None = automatic), the
+    end of the user's pause (A-38; None = never paused or cleared; compared with each check's own time)."""
 
     rows: alert_gate.GateRows
     held: tuple = ()
     pin: str | None = None
+    paused_until: datetime.datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -510,13 +520,18 @@ class DbGateStore:
     """The real gate store: ``playbook_store`` and the pin store, one session per call."""
 
     async def load(self, w: Watched, today: datetime.date) -> GateLoad:
-        from ofo_app import playbook_store, strategy_alert_style_store  # noqa: PLC0415 - database layer at run time
+        from ofo_app import (  # noqa: PLC0415 - database layer at run time
+            playbook_store,
+            strategy_alert_style_store,
+            strategy_pause_store,
+        )
         from ofo_app.db import get_sessionmaker  # noqa: PLC0415
         async with get_sessionmaker()() as db:
             rows = await playbook_store.gate_rows(db, w.user_ref, w.strategy_id, today)
             held = await playbook_store.held_today(db, w.user_ref, w.strategy_id, today)
             pin = await strategy_alert_style_store.pin_of(db, w.user_ref, w.strategy_id)
-        return GateLoad(rows, held, pin.style)
+            until = await strategy_pause_store.pause_of(db, w.user_ref, w.strategy_id)
+        return GateLoad(rows, held, pin.style, until)
 
     async def apply(self, w: Watched, events: Iterable[alert_gate.Event], ctx: GateContext | None) -> dict[str, int]:
         """The gate's events in ONE transaction; rule id -> id of each record opened. An escalation while the
@@ -638,6 +653,7 @@ class Worker:
         # strategy -> its latest pause not yet given to its gate (applied at the next gate step, ``_gate_step``)
         self._paused_at: dict[int, datetime.datetime] = {}
         self._style: dict[int, str] = {}  # strategy -> the trading style of its last check (its check interval)
+        self.user_paused_until: dict[int, datetime.datetime] = {}  # strategy -> the end of its user pause in force
         self.margins = MarginCache(margin_of)  # T-16's margin, refreshed on its own task (module docstring, step 3)
 
     async def rebuild(self) -> None:
@@ -914,9 +930,16 @@ class Worker:
         pin = None if load is None else load.pin
         return pin if pin is not None else self._style.get(sid, "")
 
-    async def _check_one(self, w: Watched, speeds: Mapping[str, Decimal]) -> bool:  # noqa: PLR0911, C901
+    async def _check_one(self, w: Watched, speeds: Mapping[str, Decimal]) -> bool:
         """True when a check ran (counted against the cycle's cap)."""
         now = self._clock()  # finding 1: THIS check's clock, never the cycle's start
+        if self._user_paused(w.strategy_id, now):
+            return False  # A-38: no read, no evaluation until the end (module docstring, step 6)
+        return await self._check_unpaused(w, speeds, now)
+
+    async def _check_unpaused(self, w: Watched, speeds: Mapping[str, Decimal],  # noqa: PLR0911, C901
+                              now: datetime.datetime) -> bool:
+        """One check at ``now`` of a strategy the user has not paused."""
         sid = w.strategy_id
         provider = self._provider_for(w.feed_owner)
         early = feed_state(provider, now)
@@ -972,6 +995,17 @@ class Worker:
         self._tick[sid] = tick
         self._last_check[sid] = now
         _keep_recent(self.checks, (sid, now))
+        return True
+
+    def _user_paused(self, sid: int, now: datetime.datetime) -> bool:
+        """Step 6: the user's pause compared with THIS check's time; in force -> paused through ``_pause``."""
+        load = self._gate_load.get(sid)
+        until = None if load is None else load.paused_until
+        if until is None or not monitor_pause.in_force(until, now):
+            self.user_paused_until.pop(sid, None)
+            return False
+        self._pause(sid, PriceState.USER_PAUSED, now)
+        self.user_paused_until[sid] = until
         return True
 
     async def _evaluate_and_write(self, w: Watched, state: pe.StrategyState, prefs: Preferences) -> pe.Evaluation:
@@ -1064,6 +1098,8 @@ class Worker:
             sid = w.strategy_id
             if sid in checked or sid not in self._gate or sid not in self._preset:
                 continue
+            if sid in self.user_paused_until and self._user_paused(sid, self._clock()):
+                continue  # A-38: no close is processed while the user's pause holds
             try:
                 await self._gate_step(w, self._clock(), self._preset[sid], {})
             except Exception as exc:  # REQ-115 AC-9: contained to this strategy, retried next wake
