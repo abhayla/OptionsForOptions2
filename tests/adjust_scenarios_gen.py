@@ -810,7 +810,26 @@ def hand_day_close(spec: dict, rules: list[dict], today: datetime.date, expiry: 
     return out
 
 
-def hand_carry(spec: dict, rules: list[dict], clock: datetime.datetime) -> dict | None:
+def hand_gap_pnl(legs: list[dict], booked: Fraction, spot: Decimal, atm: Decimal, at: datetime.datetime,
+                 factor: Decimal) -> Fraction:
+    """Whole-trade P&L (booked plus open legs) at ``spot * factor`` valued at ``at``: each option leg at its own
+    generator IV (``iv_at`` at today's spot), the generator's own rate and option formula (never the app's carry code)."""
+    shifted = (spot * factor).quantize(D("0.01"), rounding=ROUND_HALF_EVEN)
+    total = booked
+    for leg in legs:
+        assert leg["type"] != "FUT", "carry gap figures are written for option legs only"
+        if at.date() >= leg["expiry"]:  # expired before that open: it settles at intrinsic value
+            value = intrinsic(leg["type"], Fraction(leg["strike"]), Fraction(shifted))
+            total += sign(leg["side"]) * leg["quantity"] * (value - Fraction(leg["entry"]))
+            continue
+        iv = iv_at(spot, leg["strike"], atm)
+        value = bs_price(Instrument(leg["type"]), shifted, leg["strike"], year_fraction(at, leg["expiry"]), RATE, iv)
+        total += sign(leg["side"]) * leg["quantity"] * (Fraction(value) - Fraction(leg["entry"]))
+    return total
+
+
+def hand_carry(spec: dict, rules: list[dict], clock: datetime.datetime, legs: list[dict], booked: Fraction,
+               spot: Decimal, atm: Decimal) -> dict | None:
     """GC-IC1 1b, engine-free: the switched-on carry rules (action 0) due at ``clock``. Before-weekend = today is a
     session and a Saturday lies before the next session; before-holiday = today is a session and the NEXT CALENDAR
     WEEKDAY is a listed holiday (so a Friday before a Monday holiday is both). Rule id = ``day:<when>:<at>:<action>``."""
@@ -829,8 +848,10 @@ def hand_carry(spec: dict, rules: list[dict], clock: datetime.datetime) -> dict 
         kinds.add("beforeHoliday")
     fires = [f"day:{r['when']}:{r['at']}:{r['action']}" for r in rules
              if r["on"] and r["action"] == 0 and r["when"] in kinds and hhmm >= r["at"]]
-    out = {"day_kinds": sorted(kinds), "fires": fires,
-           "next_open": datetime.datetime.combine(nxt, datetime.time(9, 15), IST).isoformat()}
+    open_at = datetime.datetime.combine(nxt, datetime.time(9, 15), IST)
+    out = {"day_kinds": sorted(kinds), "fires": fires, "next_open": open_at.isoformat(), "gap_pct": "2",
+           "gap_up": dec_text(hand_gap_pnl(legs, booked, spot, atm, open_at, D("1.02"))),
+           "gap_down": dec_text(hand_gap_pnl(legs, booked, spot, atm, open_at, D("0.98")))}
     assert fires == want["fires"], (spec["id"], "carry", out)
     return out
 
@@ -1189,7 +1210,7 @@ def build(spec: dict, pb: dict) -> dict:  # noqa: C901, PLR0912, PLR0915 - one r
     t09_on = "T-09" in fpb["triggers_on"]  # T-09 off in the playbook: A-27 not named
     day_close = hand_day_close(spec, rules, today, expiry, clock, spot, shorts, ltp,
                                limit_for(pb, "T-09", kind, stage_ix, overrides, family) if t09_on else None)
-    carry = hand_carry(spec, rules, clock)
+    carry = hand_carry(spec, rules, clock, legs, booked, spot, atm)
     if "check" in spec:
         spec["check"](locals())
 

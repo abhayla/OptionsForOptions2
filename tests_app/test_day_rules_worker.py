@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import datetime
 import importlib.util
+import json
 import pathlib
 from decimal import Decimal
 
@@ -172,6 +173,19 @@ async def _carry_rows(engine, sid: int) -> list[tuple]:
     return [tuple(r) for r in rows]
 
 
+def _assert_gap_matches_generator(sid_name: str, up: Decimal, down: Decimal) -> None:
+    """REQ-159 AC-4: the record's 2% gap figures against the generator's own values (its own leg model, never the
+    app's carry code). The worker solves each leg's IV from prices rounded to the 0.05 tick, so the bound is one
+    tick per leg per unit of quantity: 0.05 x quantity x legs (Rs 26 for ADJ-53)."""
+    exp = json.loads((ROOT / "tests" / "fixtures" / "adjust_scenarios" / f"{sid_name}.json").read_text(
+        encoding="utf-8"))
+    legs = exp["position"]["legs"]
+    tol = Decimal("0.05") * sum(leg["quantity"] for leg in legs)
+    carry = exp["expected"]["carry"]
+    assert abs(up - Decimal(carry["gap_up"])) <= tol, (sid_name, "up", up, carry["gap_up"], tol)
+    assert abs(down - Decimal(carry["gap_down"])) <= tol, (sid_name, "down", down, carry["gap_down"], tol)
+
+
 async def test_core_carry_check_friday_opens_one_record_at_the_1501_close_with_gap_figures(app_engine, monkeypatch):
     sid, scn = await _seeded(app_engine, monkeypatch, "ADJ-53")
     try:
@@ -191,6 +205,7 @@ async def test_core_carry_check_friday_opens_one_record_at_the_1501_close_with_g
         assert carry["gap_pct"] == "2" and carry["gap_reason"] is None, carry
         up, down = Decimal(carry["gap_up"]), Decimal(carry["gap_down"])
         assert up == up.quantize(Decimal("0.01")) and down == down.quantize(Decimal("0.01")) and up != down, carry
+        _assert_gap_matches_generator("ADJ-53", up, down)
         assert carry["margin"] is None and carry["margin_reason"] == "adjust_trigger_missing_margin", carry
         assert carry["next_open"] == "2026-11-02T09:15:00+05:30", carry
         await _run(worker, now, scn, "23100", t1500 + datetime.timedelta(seconds=75), 300)  # 5 more closes
@@ -213,6 +228,33 @@ async def test_carry_check_wednesday_opens_no_record(app_engine, monkeypatch):
         assert rows == [] and worker.errors == [] and worker.status[sid] is background.MonitoringStatus.ACTIVE, \
             (rows, worker.errors)
         print(f"CORE-PROOF ADJ-54 sid={sid} rows={len(rows)}")
+    finally:
+        await app_db.close_db()
+        _reset_engine()
+
+
+MON_1459 = datetime.datetime(2026, 11, 9, 14, 59, 0, tzinfo=IST)
+
+
+async def test_carry_check_monday_before_the_holiday_opens_exactly_one_record(app_engine, monkeypatch):
+    """ADJ-55: Monday 9 Nov, Tuesday 10 Nov a listed holiday. Monday is not before a weekend: one before-holiday
+    record only (never also a before-weekend one), with gap figures inside the generator's tolerance."""
+    sid, scn = await _seeded(app_engine, monkeypatch, "ADJ-55")
+    try:
+        now = [MON_1459]
+        worker = _worker(scn, lambda now=now: now[0])
+        await _run(worker, now, scn, "23100", MON_1459, LAST_SECOND + 1)  # 14:59:00 .. 14:59:59
+        assert await _carry_rows(app_engine, sid) == []
+        t1500 = MON_1459 + datetime.timedelta(minutes=1)
+        await _run(worker, now, scn, "23100", t1500, 75)  # the 15:00 candle closes at 15:01
+        rows = await _carry_rows(app_engine, sid)
+        assert len(rows) == 1 and worker.errors == [], (rows, worker.errors)
+        rec = rows[0]
+        assert rec[1:3] == ("open", "day:beforeHoliday:15:00:0"), rec
+        carry = rec[4]
+        assert carry["next_open"] == "2026-11-11T09:15:00+05:30", carry
+        _assert_gap_matches_generator("ADJ-55", Decimal(carry["gap_up"]), Decimal(carry["gap_down"]))
+        print(f"CORE-PROOF ADJ-55 sid={sid} rows={len(rows)} record={rec}")
     finally:
         await app_db.close_db()
         _reset_engine()
