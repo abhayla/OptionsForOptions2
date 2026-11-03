@@ -115,9 +115,12 @@ const legs = ref(legsFromQuery())
 const adjustId = computed(() => (/^\d+$/.test(String(route.query.adjust ?? '')) ? String(route.query.adjust) : null))
 const pickedIds = computed(() => picksFromQuery(route.query.pick)) // the approaches ticked in the Review adjustment drawer
 const opportunityIds = computed(() => opportunitiesFromQuery(route.query.opp)) // GC-ADJ2 5: records the prepare acts on
-function prepareApproach({ legs: next }) { // the chosen approach's legs become the builder's legs; no order is placed
-  const { adjust: _gone, pick: _picks, ...rest } = route.query
+// REQ-163 AC-1: the suggestion records the prepared basket acted on; sent once with its paper orders, then cleared
+const actedSuggestionIds = ref([])
+function prepareApproach({ legs: next, suggestionIds = [] }) { // the chosen approach's legs become the builder's legs; no order is placed
+  const { adjust: _gone, pick: _picks, opp: _opp, ...rest } = route.query
   router.replace({ query: rest })
+  actedSuggestionIds.value = suggestionIds
   setLegs(next)
 }
 // W-090 (REQ-034 AC-4, AC-6): the scenario column and range the user picked; kept across every reload and push.
@@ -389,7 +392,8 @@ async function confirmPending(orders) {
   paperBusy.value = true
   paperError.value = ''
   try {
-    await postPaperOrders(api, id, orders)
+    await postPaperOrders(api, id, orders, actedSuggestionIds.value)
+    actedSuggestionIds.value = [] // one basket answers the records once
   } catch (e) {
     paperError.value = (e?.parts ?? NEUTRAL_PARTS).what_happened || NEUTRAL_PARTS.what_happened // nothing changes locally on a refusal
     paperBusy.value = false

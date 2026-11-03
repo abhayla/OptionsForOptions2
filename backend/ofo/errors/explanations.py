@@ -1872,6 +1872,8 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     # GC-ADJ2 step 6 (REQ-163 AC-1, AC-3, AC-2): the adjustment history's fixed words
     ExplanationTemplate("adjust_history_paper_fill", "values_seen", "Paper - not sent to Zerodha"),
     ExplanationTemplate("adjust_history_own_change", "values_seen", "Your own change"),
+    ExplanationTemplate("adjust_history_why_unreadable", "values_seen",
+                        "From an adjustment opportunity whose condition could not be read"),
     ExplanationTemplate("adjust_history_pending", "values_seen", "pending"),
     ExplanationTemplate("adjust_history_no_plan_max", "values_seen", "No plan maximum is set for this strategy."),
     ExplanationTemplate("adjust_history_fill_confirmed", "values_seen", "Filled - confirmed by Zerodha"),

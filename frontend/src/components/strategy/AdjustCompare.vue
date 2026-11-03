@@ -300,15 +300,20 @@ const clearFilters = () => { filters.value = EMPTY_FILTERS() }
 // its own outcome (REQ-112 AC-4). A record already final answers its refusal; that never stops the basket (the outcome
 // is a record, not the order path), and the refusal text is shown under the button.
 const actedRefusal = ref(null)
+// REQ-163 AC-1: the ids actually marked acted on travel with the basket, so its paper orders name them (the history's
+// Why); a refused record is left out, never sent (the server would refuse the whole basket for it).
 async function markActedOn() {
   actedRefusal.value = null
+  const acted = []
   for (const id of props.opportunities) {
     try {
       await props.client.post(`/adjustment-opportunities/${id}/acted-on`)
+      acted.push(id) // ids stay strings (opportunitiesFromQuery); the server's model reads them as whole numbers
     } catch (e) {
       actedRefusal.value = e?.parts ?? NEUTRAL_PARTS
     }
   }
+  return acted
 }
 
 async function openInBuilder() {
@@ -321,8 +326,8 @@ async function openInBuilder() {
     for (const e of expiries) contracts.push(...(await props.client.get(`/catalogue/${underlying.value}/contracts?expiry=${e}`)).data.contracts)
     const legs = legsFromApproach(underlying.value, a, contracts, reply.value.spot?.at ?? null)
     if (!legs) { prepareError.value = NEUTRAL_PARTS; return }
-    await markActedOn()
-    emit('prepare', { legs, underlying: underlying.value })
+    const acted = await markActedOn()
+    emit('prepare', { legs, underlying: underlying.value, suggestionIds: acted })
   } catch (e) {
     prepareError.value = e?.parts ?? NEUTRAL_PARTS
   }

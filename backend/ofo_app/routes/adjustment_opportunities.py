@@ -112,7 +112,8 @@ def _detail(s: store.Suggestion) -> Any:
     return None
 
 
-def _condition(s: store.Suggestion) -> Any:
+def condition_text(s: store.Suggestion) -> Any:
+    """A record's condition in the catalogue's words (the inbox line; the adjustment history's Why, REQ-163 AC-1)."""
     if s.cmp not in ("le", "ge", "lt") or s.trigger_id is None or s.value is None or s.threshold is None:
         return None
     if s.trigger_id == "T-19" and s.approach is not None and s.approach_cost is not None:  # ADR-221: as the check
@@ -124,7 +125,7 @@ def _condition(s: store.Suggestion) -> Any:
 def _record(s: store.Suggestion, paper: bool) -> dict:
     return {"id": s.id, "rule_id": s.rule_id, "trigger_id": s.trigger_id,
             "stage": stage_name_text(s.stage), "value": s.value, "threshold": s.threshold,
-            "condition": _condition(s), "shown_at": s.shown_at, "outcome": s.outcome,
+            "condition": condition_text(s), "shown_at": s.shown_at, "outcome": s.outcome,
             "outcome_text": outcome_text(s, paper), "detail": _detail(s), "can_act": s.outcome == "open"}
 
 

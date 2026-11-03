@@ -160,6 +160,16 @@ class Suggestion:
         return self.timeline[0].get("unit") if self.timeline else None
 
     @property
+    def placed_order_ids(self) -> tuple[int, ...] | None:
+        """REQ-163 AC-1: the paper orders the basket acted on from this record placed (its ``orders_placed`` timeline
+        entry, written once by ``link_orders``); None when no basket names it, () when the entry is unreadable."""
+        found = [e for e in self.timeline if isinstance(e, dict) and e.get("event") == ORDERS_PLACED]
+        if not found:
+            return None
+        ids = found[0].get("order_ids")
+        return tuple(ids) if isinstance(ids, list) and all(type(i) is int for i in ids) else ()
+
+    @property
     def lapse_reason(self) -> str | None:
         """condition_stopped / strategy_closed / superseded_by_worse on a lapsed record (its last timeline entry)."""
         return self.timeline[-1].get("reason") if self.outcome == "lapsed" and self.timeline else None
@@ -259,6 +269,21 @@ _MARK_CLEARED = text(
     "'at', clock_timestamp(), 'event', 'condition_cleared')) "
     "FROM public.strategies s WHERE g.id = :id AND s.id = g.strategy_id AND s.user_ref = :user_ref "
     "AND g.outcome = 'dismissed'")
+#: REQ-163 AC-1 (GC-IC1 step 10): an acted-on record names the paper orders its basket placed, so the history can say
+#: why the adjustment was made. One timeline entry {'at', 'event': 'orders_placed', 'order_ids': [...]} (migration 0031
+#: allows an append without an outcome change), written once, in the placement's own transaction, and only on a record
+#: of the SAME strategy and user that is acted on and names no basket yet.
+ORDERS_PLACED = "orders_placed"
+_LINK_ORDERS = text(
+    "UPDATE public.adjustment_suggestions AS g SET timeline = g.timeline || jsonb_build_array(jsonb_build_object("
+    "'at', clock_timestamp(), 'event', 'orders_placed', 'order_ids', CAST(:order_ids AS JSONB))) "
+    "FROM public.strategies s WHERE g.id = :id AND s.id = g.strategy_id AND s.user_ref = :user_ref "
+    "AND g.strategy_id = :strategy_id AND g.outcome = 'acted_on' "
+    "AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(g.timeline) e WHERE e ->> 'event' = 'orders_placed') "
+    "RETURNING g.id")
+_SUGGESTION_OF_STRATEGY = text(
+    "SELECT g.outcome FROM public.adjustment_suggestions g JOIN public.strategies s ON s.id = g.strategy_id "
+    "WHERE g.id = :id AND g.strategy_id = :strategy_id AND s.user_ref = :user_ref")
 _INBOX = text(f"SELECT {', '.join('g.' + c for c in _SG_COLUMNS.split(', '))}, s.name, "  # noqa: S608 constant
               "EXISTS (SELECT 1 FROM public.paper_orders o WHERE o.strategy_id = s.id) "
               "FROM public.adjustment_suggestions g JOIN public.strategies s ON s.id = g.strategy_id "
@@ -624,6 +649,31 @@ async def dismiss(conn: Any, user_ref: str, suggestion_id: int, reason: str | No
 
 async def act_on(conn: Any, user_ref: str, suggestion_id: int) -> Suggestion:
     return await _close(conn, user_ref, suggestion_id, "acted_on", None)
+
+
+async def link_orders(conn: Any, user_ref: str, strategy_id: int, suggestion_id: int,
+                      order_ids: list[int]) -> None:
+    """REQ-163 AC-1: the acted-on record ``suggestion_id`` names the paper orders ``order_ids`` its basket placed.
+
+    Fail closed, nothing written: a missing record, another user's, or one of another strategy -> SUGGESTION_NOT_FOUND;
+    a record not acted on, or one that already names a basket -> SUGGESTION_NOT_OPEN. The caller rolls back the orders.
+    """
+    if type(suggestion_id) is not int or not order_ids or any(type(i) is not int for i in order_ids):
+        raise strategy_store.StrategyStoreError(SUGGESTION_NOT_FOUND, f"suggestion {suggestion_id!r}")
+    args = {"id": suggestion_id, "user_ref": user_ref, "strategy_id": strategy_id}
+    row = (await conn.execute(_LINK_ORDERS, {**args, "order_ids": json.dumps(order_ids)})).one_or_none()
+    if row is not None:
+        return
+    found = (await conn.execute(_SUGGESTION_OF_STRATEGY, args)).first()
+    if found is None:
+        raise strategy_store.StrategyStoreError(SUGGESTION_NOT_FOUND, f"suggestion {suggestion_id}")
+    raise strategy_store.StrategyStoreError(SUGGESTION_NOT_OPEN,
+                                            f"suggestion {suggestion_id} is {found[0]} or already names a basket")
+
+
+async def placed_links(conn: Any, user_ref: str, strategy_id: int) -> dict[int, Suggestion]:
+    """REQ-163 AC-1: paper order id -> the record whose basket placed it, for one strategy of the user."""
+    return {oid: s for s in await suggestions(conn, user_ref, strategy_id) for oid in (s.placed_order_ids or ())}
 
 
 async def lapse(conn: Any, user_ref: str, suggestion_id: int, reason: str = LAPSE_CONDITION_STOPPED) -> Suggestion:
