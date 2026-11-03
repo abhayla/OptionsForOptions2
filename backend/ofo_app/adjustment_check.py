@@ -267,7 +267,8 @@ def state_of(tracked: Tracked, market: MarketInputs, spot: SpotAnswer, margin: M
         day_open=day.value if day is not None and day.reason == STATED else None,
         adjustments_used=tracked.adjustments_used, expiry_pnl_at_spot=expiry_pnl,
         tighten_percent=None if body is None else _tighten(body, now.date(), expiry, hhmm), prices_fresh=fresh,
-        held=held_legs(position, market), today=now.date(), entry_day=entry_day(tracked)),
+        held=held_legs(position, market), today=now.date(), entry_day=entry_day(tracked),
+        s02_delta_per_lot=market.s02_delta_per_lot, s12_percent=market.s12_percent),
         body, tracked, market)
 
 
