@@ -2380,7 +2380,7 @@
     "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"
   },
   "labels:adjustment_approach_about": {
-    "sha256": "56acda2d12ec1e78d3a259d45d1e1c1be7153a53822b75fea10bce7fd5b22c6c",
+    "sha256": "843aa0e640c75d0b15f59f2b62ce637c78b81a9f7544f33e42dc7436334d5dcb",
     "reviewed": "pending owner read"
   },
   "explanation:adjust_spot_why_absent": {
@@ -3605,6 +3605,50 @@
   },
   "explanation:adjust_approach_about_a_35": {
     "sha256": "ab145ad2e39bfff83963a4de5341ad2233312a0d4c8a6aa1a5976880669259d9",
+    "reviewed": "pending owner read"
+  },
+  "adjust_roll_short_past_wing": {
+    "sha256": "95e39b27305d7766a5433d0febb541d1bace5f7929548eb18825ac979597d311",
+    "reviewed": "pending owner read"
+  },
+  "adjust_roll_out_no_next_expiry": {
+    "sha256": "397b3fe7e5b7c031b545651b4bfebc4d10f2863eb6539a422a3871736132fe98",
+    "reviewed": "pending owner read"
+  },
+  "adjust_roll_out_no_prices": {
+    "sha256": "f62339fe99d3ce75b7c4cd8d9190b9b66178364a6ccb6381de4578a5d898818a",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_approach_name_a_02": {
+    "sha256": "f79740f70fcad87e7ad48ca386d6a0670a87b3c15e7e5e4e13ff23e84c68b84c",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_approach_name_a_04": {
+    "sha256": "7ecfbcaf6e104343d5fa4354d50017496f19ce02c85c57df81812f0fc2288914",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_approach_name_a_06": {
+    "sha256": "0314a2f56e9488d40d4728971a7a468d2d2b4d5bc7dd0ed5e81e56f78faf35bb",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_approach_about_a_02": {
+    "sha256": "6aeb2664192b4b2713100ca9d684792b6996be1324e56b6c70240b81c6782ae4",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_approach_about_a_04": {
+    "sha256": "692597ded90204d05825d198bafe7df6f61fae048f5b286e51dfcce756f826e1",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_approach_about_a_06": {
+    "sha256": "57cd53bead41172a75680eaf3d37b5d9ddcc1d2a4d8bad2d437f5bf1c8b99e8c",
+    "reviewed": "pending owner read"
+  },
+  "adjust_take_profit_not_in_profit": {
+    "sha256": "a6f82fcf0f05a926ed9043158b3053d5c4eab04a4a5ab806c5bf3040e22f071b",
+    "reviewed": "pending owner read"
+  },
+  "adjust_take_profit_booked_unknown": {
+    "sha256": "fb23414a7469aeeb2912e6e99ed14bc638e288450fa6c76e62b511f1baa51b46",
     "reviewed": "pending owner read"
   }
 }

@@ -1312,6 +1312,26 @@ _PLAYBOOK_TEMPLATES: tuple[MessageTemplate, ...] = (
           _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {}),
     _gate("adjust_time_exit_not_yet", _UI, 185, "The time exit is offered on expiry day from {time}.",
           _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {"time": ClockTime}),
+    # ADR-239 (GC-IC1 step 3): the roll approaches A-02 and A-04
+    _gate("adjust_roll_short_past_wing", _UI, 186,
+          "Moving {leg} to {strikes} would put it at or beyond its wing at {wing}, so the wing would no longer "
+          "protect it.",
+          _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {"leg": LegRef, "strikes": Strikes, "wing": Strikes}),
+    _gate("adjust_roll_out_no_next_expiry", _UI, 187,
+          "No expiry after {expiry} is listed in the chain read, so this approach is not built.",
+          _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {"expiry": Date}),
+    _gate("adjust_roll_out_no_prices", _UI, 188,
+          "The {expiry} expiry has no prices in the chain read, so this approach is not built.",
+          _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {"expiry": Date}),
+    # ADR-238 (6): take profit only when the whole trade is in profit
+    _gate("adjust_take_profit_not_in_profit", _UI, 189,
+          "The whole trade is not in profit with every open leg closed at its planned price, so this approach is "
+          "not built.",
+          _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {}),
+    _gate("adjust_take_profit_booked_unknown", _UI, 190,
+          "The profit or loss booked so far is not known, so whether the whole trade is in profit cannot be worked "
+          "out and this approach is not built.",
+          _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {}),
 )
 
 _TEMPLATES = (_TEMPLATES + _TRIGGER_TEMPLATES + _GATE_TEMPLATES

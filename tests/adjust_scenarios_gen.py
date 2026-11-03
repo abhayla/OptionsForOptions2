@@ -489,8 +489,10 @@ APPROACH_CONFIG = {
     "reduce_divisor": int(_DEF["adjustments.reduce_divisor"]),
     "partial_close_percent": int(_DEF["adjustments.partial_close_percent"]),  # ADR-238 (2)
     "untested_decay_percent": int(_DEF["adjustments.untested_decay_percent"]),  # ADR-238 (3)
+    "shift_strikes": int(_DEF["adjustments.shift_strikes"]),  # ADR-239 (3)
 }
-IC_APPROACHES = ["A-36", "A-01", "A-05", "A-29", "A-28", "A-11", "A-31", "A-24", "A-25", "A-26", "A-27", "A-35"]
+IC_APPROACHES = ["A-36", "A-01", "A-05", "A-29", "A-28", "A-11", "A-31", "A-24", "A-25", "A-26", "A-27", "A-35",
+                 "A-02", "A-04", "A-06"]
 #: ADR-238: the cases whose A-27 / A-35 are also derived with the iron condor playbook's own inputs (T-09 of the stage,
 #: time_exit, the clock); every other build uses no playbook, as the approaches route does with none
 PLAYBOOK_EXIT_CASES = ("ADJ-02", "ADJ-08", "ADJ-09", "ADJ-13")
@@ -518,9 +520,10 @@ class HandRefused(Exception):
 
 def hand_approaches(u: str, lot: int, kind: str, today: datetime.date, spot: Decimal, legs: list[dict],  # noqa: C901, PLR0912, PLR0915
                     rows: list[dict], booked: Fraction, exits: dict | None = None,
-                    only: list[str] | None = None) -> tuple[dict, dict]:
+                    only: list[str] | None = None, next_rows: list[dict] | None = None) -> tuple[dict, dict]:
     """Per approach: trades / After legs / closed legs (or the refusal), and the whole-trade at-expiry After.
-    ``exits`` = A-27's / A-35's playbook inputs {t09: (limit, cmp) or None, time_exit, hhmm}; None = no playbook."""
+    ``exits`` = A-27's / A-35's playbook inputs {t09: (limit, cmp) or None, time_exit, hhmm}; None = no playbook.
+    ``next_rows`` = the chain rows of the next listed expiry (A-04, ADR-239 (2)); None = no later expiry read."""
     exits = exits or NO_PLAYBOOK
     expiry = legs[0]["expiry"]
     by = {(r["type"], r["strike"]): r for r in rows}
@@ -579,9 +582,9 @@ def hand_approaches(u: str, lot: int, kind: str, today: datetime.date, spot: Dec
                 after.append(x)
         return trades, after, closed
 
-    def distance(short, out, basis):
+    def distance(short, out, basis, pool=None):
         up = (short["type"] == "CE") == out
-        cands = [r for r in rows if r["type"] == short["type"] and (r["strike"] > short["strike"] if up else r["strike"] < short["strike"])]
+        cands = [r for r in (rows if pool is None else pool) if r["type"] == short["type"] and (r["strike"] > short["strike"] if up else r["strike"] < short["strike"])]
         with_delta = [r for r in cands if r["delta"] is not None]
         if not with_delta:
             pts = D(APPROACH_CONFIG["roll_points_without_delta"][u])
@@ -597,6 +600,12 @@ def hand_approaches(u: str, lot: int, kind: str, today: datetime.date, spot: Dec
             best = sorted(fit, key=lambda r: abs(r["strike"] - spot))[0]
         return best["strike"] - short["strike"]
 
+    def hand_take_profit():  # ADR-238 (6): the whole trade at the planned exit prices must be above zero
+        whole = booked + sum(Fraction(sign(x["side"]) * x["lots"] * lot * (price(x) - x["entry"])) for x in legs)
+        if whole <= 0:
+            raise HandRefused("The whole trade is not in profit with every open leg closed at its planned price, so "
+                              "this approach is not built.")
+
     def close_every():
         pairs = [close(x, x["lots"]) for x in legs]
         return [t for t, _ in pairs], [], [c for _, c in pairs]
@@ -611,6 +620,8 @@ def hand_approaches(u: str, lot: int, kind: str, today: datetime.date, spot: Dec
             trades, after, closed = [], list(legs), []
             if aid in ("A-31", "A-24"):  # ADR-238 (1): take profit closes every leg, as the exit does
                 trades, after, closed = close_every()
+                if aid == "A-24":
+                    hand_take_profit()
             elif aid == "A-35":  # ADR-238 (5): on expiry day from the playbook's time exit
                 if exits["time_exit"] is None:
                     raise HandRefused("Your playbook sets no time exit, so this approach is not built.")
@@ -618,6 +629,7 @@ def hand_approaches(u: str, lot: int, kind: str, today: datetime.date, spot: Dec
                     raise HandRefused(f"The time exit is offered on expiry day from {exits['time_exit']}.")
                 trades, after, closed = close_every()
             elif aid == "A-25":  # ADR-238 (2): X% of every leg's lots, whole lots only
+                hand_take_profit()
                 pct = APPROACH_CONFIG["partial_close_percent"]
                 after = []
                 for x in legs:
@@ -671,6 +683,58 @@ def hand_approaches(u: str, lot: int, kind: str, today: datetime.date, spot: Dec
                     if (s == "put" and targets[si] > other) or (s == "call" and targets[si] < other):
                         raise HandRefused(f"Moving {name(legs[si])} to {targets[si]:,} would cross the other short leg at {other:,}.")
                 trades, after, closed = reopen(targets, warnings)
+            elif aid == "A-02":  # ADR-239 (1): the tested short alone, out by the A-05 distance; its wing stays
+                si, wi = pos[(tested, "short")], pos[(tested, "wing")]
+                new = legs[si]["strike"] + distance(legs[si], True, basis)
+                wing = legs[wi]["strike"]
+                if (legs[si]["type"] == "CE" and new >= wing) or (legs[si]["type"] == "PE" and new <= wing):
+                    raise HandRefused(f"Moving {name(legs[si])} to {new:,} would put it at or beyond its wing at "
+                                      f"{wing:,}, so the wing would no longer protect it.")
+                check_listed({si: new})
+                trades, after, closed = reopen({si: new}, warnings)
+            elif aid == "A-04":  # ADR-239 (2): the tested spread into the next expiry, short by its own chain's delta
+                si, wi = pos[(tested, "short")], pos[(tested, "wing")]
+                if not next_rows:
+                    raise HandRefused(f"No expiry after {expiry.strftime('%d %b %Y')} is listed in the chain read, so "
+                                      "this approach is not built.")
+                nxt = next_rows[0]["expiry"]
+                if all(hand_price(r) is None for r in next_rows):
+                    raise HandRefused(f"The {nxt.strftime('%d %b %Y')} expiry has no prices in the chain read, so "
+                                      "this approach is not built.")
+                d = distance({**legs[si], "expiry": nxt}, True, basis, next_rows)
+                nby = {(r["type"], r["strike"]): r for r in next_rows}
+                for i in (si, wi):  # the landing rule on the next expiry's listing
+                    k = legs[i]["strike"] + d
+                    if (legs[i]["type"], k) not in {(r["type"], r["strike"]) for r in next_rows if r["listed"]}:
+                        raise HandRefused(f"No {k:,} {legs[i]['type']} is listed for {nxt.strftime('%d %b %Y')}, "
+                                          f"so leg {i + 1} cannot move there.")
+                after = list(legs)
+                for i in (si, wi):
+                    x = legs[i]
+                    t, c = close(x, x["lots"])
+                    r = nby[(x["type"], x["strike"] + d)]
+                    p = hand_price(r)
+                    if p is None:
+                        raise HandRefused(f"{name({**x, 'strike': x['strike'] + d, 'expiry': nxt})} has no price, "
+                                          "and this approach trades it.")
+                    trades += [t, {"action": x["side"], "type": x["type"], "strike": x["strike"] + d, "expiry": nxt,
+                                   "lots": x["lots"], "quantity": x["lots"] * lot, "price": p,
+                                   "tradingsymbol": r["tradingsymbol"]}]
+                    closed.append(c)
+                    after[i] = {**x, "strike": x["strike"] + d, "expiry": nxt, "entry": p,
+                                "tradingsymbol": r["tradingsymbol"]}
+            elif aid == "A-06":  # ADR-239 (3): short and wing N listed strikes away from spot, by the listing
+                si, wi = pos[(tested, "short")], pos[(tested, "wing")]
+                n = APPROACH_CONFIG["shift_strikes"]
+                step = 1 if tested == "call" else -1
+                targets = {}
+                for i in (si, wi):
+                    grid = sorted(k for t, k in listed if t == legs[i]["type"])
+                    at = grid.index(legs[i]["strike"]) + step * n
+                    if not 0 <= at < len(grid):
+                        raise HandRefused(f"{name(legs[i])} has no further listed strike in that direction.")
+                    targets[i] = grid[at]
+                trades, after, closed = reopen(targets, warnings)
             elif aid == "A-28":
                 gone = [pos[(tested, "short")], pos[(tested, "wing")]]
                 for i in sorted(gone):
@@ -716,7 +780,9 @@ def hand_approaches(u: str, lot: int, kind: str, today: datetime.date, spot: Dec
         legs_out[aid] = {"side": side, **basis, "trades": trades, "after": after, "closed": closed,
                          "warnings": warnings}
         total = booked + sum(Fraction(sign(c["side"]) * c["quantity"] * (c["exit"] - c["entry"])) for c in closed)
-        if after:
+        if len({x["expiry"] for x in after}) > 1:  # A-04: two expiries have no exact at-expiry figures
+            after_out[aid] = {"multi_expiry": True, "booked_pnl": dec_text(total)}
+        elif after:
             after_out[aid] = {**hand_expiry(after, total), "booked_pnl": dec_text(total)}
         else:  # nothing open: the whole trade is what was booked
             after_out[aid] = {"exact": True, "max_profit": dec_text(total), "max_loss": dec_text(-total) if total < 0 else "0",
@@ -746,17 +812,17 @@ def hand_exit(lot: int, legs: list[dict], rows: list[dict]) -> dict:
         if p is None:
             return {"refused": "a leg cannot be closed from this chain"}
         trades.append({"action": "BUY" if x["side"] == "SELL" else "SELL", "type": x["type"], "strike": x["strike"],
-                       "quantity": x["lots"] * lot, "price": p})
+                       "quantity": x["lots"] * lot, "price": p, "tradingsymbol": x["tradingsymbol"]})
     return {"trades": trades}
 
 
 def hand_cost(u: str, trades: list[dict], rows: list[dict]) -> Decimal | None:
     """ADR-221 / REQ-156 AC-2: the approach's own charges (rounded up to the paisa) + (ask - bid) / 2 x qty per traded
     contract, half-even to the paisa; a traded contract without a usable bid and ask -> None (the Compare's "-")."""
-    by = {(r["type"], r["strike"]): r for r in rows}
+    by = {r["tradingsymbol"]: r for r in rows}
     half = D(0)
     for t in trades:
-        r = by.get((t["type"], t["strike"]))
+        r = by.get(t["tradingsymbol"])
         if r is None or r["bid"] is None or r["ask"] is None or r["bid"] <= 0 or r["ask"] < r["bid"]:
             return None
         half += (r["ask"] - r["bid"]) / 2 * t["quantity"]
@@ -831,9 +897,9 @@ def hand_compare_cost(u: str, lot: int, legs: list[dict], rows: list[dict], appr
                    Fraction(0))
         exits_after = sum(hand_charge_sum(u, [("SELL" if x["side"] == "BUY" else "BUY", x["quantity"], Fraction(x["entry"])) for x in built["after"]]).values(), Fraction(0)) if built["after"] else Fraction(0)
         exits_after = Fraction(math.ceil(exits_after * 100), 100)
-        after_mp, before_mp = approach_after[a]["max_profit"], before["max_profit"]
-        change = None
-        if after_mp != "UNLIMITED" and before_mp != "UNLIMITED":
+        after_mp, before_mp = approach_after[a].get("max_profit"), before["max_profit"]
+        change = None  # A-04 (two expiries): no After max profit, so no change (the engine's own refusal)
+        if after_mp is not None and after_mp != "UNLIMITED" and before_mp != "UNLIMITED":
             change = (Fraction(D(after_mp)) - charges_total - exits_after) - (
                 Fraction(D(before_mp)) - Fraction(math.ceil(exit_before * 100), 100))
         out[a] = {
@@ -998,8 +1064,9 @@ def build(spec: dict, pb: dict) -> dict:  # noqa: C901, PLR0912, PLR0915 - one r
 
     # market
     chains = []
-    for e in expiries:
-        strikes = [leg["strike"] for leg in legs if leg["strike"] is not None and leg["expiry"] == e]
+    for e in expiries + ([day(spec["next_expiry"])] if "next_expiry" in spec else []):  # ADR-239 (2): A-04's chain
+        strikes = [leg["strike"] for leg in legs if leg["strike"] is not None
+                   and (leg["expiry"] == e or e not in expiries)]  # A-04's next expiry: around the legs' strikes
         strikes += [D(s) for s in spec.get("extra_strikes", [])]
         rows = chain(u, spot, clock, e, atm, strikes or [spot])
         monthly = spec.get("expiry_kinds", {}).get(e.isoformat(), kind) == "monthly"
@@ -1097,8 +1164,11 @@ def build(spec: dict, pb: dict) -> dict:  # noqa: C901, PLR0912, PLR0915 - one r
     near_rows = [{**r, "ltp": None, "bid": None, "ask": None} if r["tradingsymbol"] == unpriced else r
                  for c in chains if c["expiry"] == expiry for r in c["rows"]]
     hand_legs = hand_after = None
+    later = sorted(c["expiry"] for c in chains if c["expiry"] > expiry)
+    next_rows = [{**r, "expiry": later[0]} for c in chains if later and c["expiry"] == later[0] for r in c["rows"]]
     if family == "ic" or is_condor(legs):  # the approach builder builds every approach for a condor shape
-        hand_legs, hand_after = hand_approaches(u, lot, kind, today, spot, legs, near_rows, booked)
+        hand_legs, hand_after = hand_approaches(u, lot, kind, today, spot, legs, near_rows, booked,
+                                                next_rows=next_rows or None)
     playbook_exits = None
     if family == "ic" and spec["id"] in PLAYBOOK_EXIT_CASES:  # ADR-238 (4), (5): the playbook's own inputs
         t09_raw = limit_for(pb, "T-09", kind, stage_ix, overrides, family) if "T-09" in fpb["triggers_on"] else ""
@@ -1117,7 +1187,7 @@ def build(spec: dict, pb: dict) -> dict:  # noqa: C901, PLR0912, PLR0915 - one r
     if adjustments_used >= overrides.get("max_adjustments", fpb.get("guards", {}).get("max_adjustments", GUARDS["max_adjustments"])):
         offered = [a for a in offered if a in EXIT_REDUCE]  # S-11: only exit and reduce are offered (hand copy)
     cost_legs = hand_legs if hand_legs is not None else {"A-31": hand_exit(lot, legs, near_rows)}
-    adj_approach, adj_cost = hand_cheapest(offered, cost_legs, u, near_rows)
+    adj_approach, adj_cost = hand_cheapest(offered, cost_legs, u, near_rows + next_rows)
     if priced and family in SHORTS and any(leg["type"] != "FUT" for leg in legs):
         premium_left = sum(-sign(leg["side"]) * leg["quantity"] * ltp(leg) for leg in legs if leg["type"] != "FUT")
 
@@ -1344,7 +1414,8 @@ def build(spec: dict, pb: dict) -> dict:  # noqa: C901, PLR0912, PLR0915 - one r
     if playbook_exits is not None:  # ADR-238: A-27 / A-35 with the playbook's T-09, time exit and the clock
         out["expected"]["playbook_exits"] = playbook_exits
     if family == "ic" and spec["id"] in ("ADJ-02", "ADJ-13"):  # GC-MU A2 (ADR-230 (3)): the compare's cost rows
-        out["expected"]["compare_cost"] = hand_compare_cost(u, lot, legs, near_rows, out["expected"]["approach_legs"],
+        out["expected"]["compare_cost"] = hand_compare_cost(u, lot, legs, near_rows + next_rows,
+                                                            out["expected"]["approach_legs"],
                                                             out["expected"]["approach_after"], expiry_metrics)
     if carry is not None:  # GC-IC1 1b: only the cases that ask for it carry the block
         out["expected"]["carry"] = carry
@@ -1426,7 +1497,7 @@ def scenarios() -> list[dict]:  # noqa: PLR0915 - a flat list of scenario specs
     s.append(ic_spec("ADJ-01", "Calm, early stage: nothing fires", ["PB-04", "P-10"], "2026-10-28T14:00:00", "23050",
                      exact_fire=[], situations=["S-03"]))
     s.append(ic_spec("ADJ-02", "Drift up, middle stage: spot within 0.5% of the short CE and its delta >= 0.35",
-                     ["T-01", "T-03", "S-02", "PB-04"], "2026-11-06T11:40:00", "23420", legs=IC9, entry=E9,
+                     ["T-01", "T-03", "S-02", "PB-04"], "2026-11-06T11:40:00", "23420", legs=IC9, entry=E9, next_expiry="2026-11-17",
                      must_fire=["T-01", "T-03"], must_not_fire=["T-02"], situations=["S-02"],
                      notes=["Expiry moved from Tue 10 Nov (Diwali-Balipratipada) to Mon 9 Nov (M-01)."]))
     s.append(ic_spec("ADJ-03", "Drift down, middle stage: mirror on the put side", ["T-01", "T-03", "S-02", "PB-04"],
@@ -1478,7 +1549,7 @@ def scenarios() -> list[dict]:  # noqa: PLR0915 - a flat list of scenario specs
     rolled1 = [L("BUY", "PE", 22700, N3, 2, "6.10", opened_by=1), L("SELL", "PE", 22900, N3, 2, "16.85", opened_by=1),
                L("SELL", "CE", 23450, N3, 2), L("BUY", "CE", 23650, N3, 2)]
     s.append(ic_spec("ADJ-13", "After one adjustment with booked P&L: whole-trade numbers include it", ["F-74", "F-06"],
-                     "2026-10-30T13:00:00", "23250", legs=rolled1, history=hist1,
+                     "2026-10-30T13:00:00", "23250", legs=rolled1, history=hist1, next_expiry=N9,
                      adjustment_times={1: "2026-10-29T11:00:00"},
                      notes=["Put spread rolled up 300 points on 29 Oct; booked P&L carries into max profit, max loss "
                             "and breakevens (F-74)."]))

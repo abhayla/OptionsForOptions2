@@ -56,8 +56,9 @@ def tracked_of(sc: dict, booked="stated") -> route.Tracked:
 def market_of(sc: dict) -> route.MarketInputs:
     unpriced = {q["tradingsymbol"] for q in sc["broker"]["quote"]["legs"] if q["state"] != "stated"}
     rows, ids = [], {}
+    later = sorted(c["expiry"] for c in sc["market"]["chains"] if c["expiry"] > sc["expiry"])
     for c in sc["market"]["chains"]:
-        if c["expiry"] != sc["expiry"]:
+        if c["expiry"] not in {sc["expiry"], *later[:1]}:  # its expiry + the next, as read_market (A-04, ADR-239)
             continue
         for r in c["rows"]:
             gone = r["tradingsymbol"] in unpriced
@@ -618,12 +619,14 @@ def test_adr238_the_five_exit_and_reduce_approaches_come_back_as_columns():
     guards.pop("roll_debit_limit", None)  # the liquidity limits are another test's; this one reads T-09 and the time
     reply = post(client_for(sc, guards=guards)).json()
     by_id = {a["id"]: a for a in reply["approaches"]}
-    assert list(by_id) == list(APPROACH_IDS) and list(APPROACH_IDS)[-5:] == ["A-24", "A-25", "A-26", "A-27", "A-35"]
+    assert list(by_id) == list(APPROACH_IDS) and list(APPROACH_IDS)[-8:-3] == ["A-24", "A-25", "A-26", "A-27", "A-35"]
     hand = {**sc["expected"]["approach_legs"], **sc["expected"]["playbook_exits"]["approach_legs"]}
 
     def norm(rows, keys):
         return [{k: str(r[k]) for k in keys} for r in rows]
-    for a in ("A-24", "A-25", "A-26", "A-27"):
+    for a in ("A-24", "A-25"):  # ADR-238 (6): ADJ-02's whole trade is at a loss, so take profit is refused
+        assert by_id[a]["refusal"]["what_happened"] == hand[a]["refused"], a
+    for a in ("A-26", "A-27"):
         got, want = by_id[a], hand[a]
         assert got["refusal"] is None, (a, got["refusal"])
         keys = ("action", "type", "strike", "lots", "quantity", "price", "tradingsymbol")
@@ -631,4 +634,29 @@ def test_adr238_the_five_exit_and_reduce_approaches_come_back_as_columns():
         assert norm(got["after_legs"], ("side", "strike", "lots")) == norm(want["after"], ("side", "strike", "lots")), a
     assert by_id["A-35"]["refusal"]["what_happened"] == hand["A-35"]["refused"]
     columns = next(c for c in reply["criteria"] if c["id"] == "cost")["values"]
-    assert {"A-24", "A-25", "A-26", "A-27"} <= set(columns) and "A-35" not in columns
+    assert {"A-26", "A-27"} <= set(columns) and not {"A-24", "A-25", "A-35"} & set(columns)
+
+
+def test_adr239_the_three_roll_approaches_come_back_as_columns():
+    """GC-IC1 step 3 (ADR-239, REQ-155 AC-1): ADJ-02 through the route returns A-02, A-04 and A-06 built; each one's
+    trades and After equal the generator's engine-free copy (A-04 on the 17 Nov chain the route read in its one hold),
+    each is a compare column with a cost, and A-04's After (two expiries) is a dash with the engine's reason."""
+    sc = load("ADJ-02")
+    reply = post(client_for(sc)).json()
+    by_id = {a["id"]: a for a in reply["approaches"]}
+    assert list(by_id) == list(APPROACH_IDS) and list(APPROACH_IDS)[-3:] == ["A-02", "A-04", "A-06"]
+    hand = sc["expected"]["approach_legs"]
+
+    def norm(rows, keys):
+        return [{k: str(r[k]) for k in keys} for r in rows]
+    for a in ("A-02", "A-04", "A-06"):
+        got, want = by_id[a], hand[a]
+        assert got["refusal"] is None, (a, got["refusal"])
+        keys = ("action", "type", "strike", "expiry", "lots", "quantity", "price", "tradingsymbol")
+        assert norm(got["trades"], keys) == norm(want["trades"], keys), a
+        assert norm(got["after_legs"], ("side", "strike", "expiry", "lots")) == norm(
+            want["after"], ("side", "strike", "expiry", "lots")), a
+    rows = {c["id"]: c["values"] for c in reply["criteria"]}
+    assert {"A-02", "A-04", "A-06"} <= set(rows["cost"])
+    assert all(rows["cost"][a]["value"] is not None for a in ("A-02", "A-04", "A-06"))
+    assert rows["max_profit"]["A-04"]["value"] is None
