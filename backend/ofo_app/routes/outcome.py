@@ -178,6 +178,9 @@ class MarketContext:
     #: the background's, ``chain_push.window_strikes``). Replaced with the same single read; the default is the registry's.
     chain_strikes_each_side: int = dataclasses.field(
         default_factory=lambda: calc.chain_strikes_each_side(settings_defaults()))
+    #: ``adjustments.carry_gap_percent`` in force (the carry check's gap), replaced with the same single read
+    carry_gap_pct: Decimal = dataclasses.field(
+        default_factory=lambda: calc.carry_gap_percent(settings_defaults()))
 
 
 @dataclass(frozen=True)
@@ -250,7 +253,8 @@ def ctx_in_force(ctx: MarketContext, values: Mapping[str, Decimal]) -> MarketCon
         feed.apply_windows(windows)  # the feed's next verdict (quote health, phase) uses the windows in force
     return dataclasses.replace(ctx, rate=registry_value_of(values, RISK_FREE_RATE),
                                forward_quality=calc.forward_quality(values), feed_windows=windows,
-                               chain_strikes_each_side=calc.chain_strikes_each_side(values))
+                               chain_strikes_each_side=calc.chain_strikes_each_side(values),
+                               carry_gap_pct=calc.carry_gap_percent(values))
 
 
 def feed_windows_of(ctx: MarketContext | None) -> FeedWindows:

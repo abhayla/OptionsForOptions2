@@ -73,7 +73,6 @@ from ofo_app.routes.adjustment import (
 CLOCK_UNIT: Final = "time"
 #: a day rule's unit (GC-IC1 1a): its value is the nearest short's distance from spot in %
 DAY_RULE_UNIT: Final = "%"
-CARRY_GAP_PCT_TEXT: Final = Decimal(2)  # ofo.adjustment.carry.CARRY_GAP_PCT, shown on the record
 _HEALTH_FRESH: Final = "available"
 _HEALTH_STALE: Final = "stale"
 
@@ -83,8 +82,13 @@ class Resolved:
     source: str  # plan / active / system / none
     body: Mapping | None
     playbook_id: int | None
-    status: str | None
+    status: str | None  # a system playbook's status only; None for the user's own (REQ-158 AC-2)
     is_system: bool
+
+    @property
+    def draft(self) -> bool:
+        """Draft is a property of SYSTEM playbooks only: an own copy's status column defaults to 'draft'."""
+        return self.is_system and self.status == "draft"
 
 
 @dataclasses.dataclass(frozen=True)
@@ -131,11 +135,12 @@ def strategy_type(position: Position, spot: Decimal | None, listed: list | None)
 async def resolve(conn: Any, user_ref: str, strategy_id: int, stype: str | None) -> Resolved:
     plan = await playbook_store.plan_for(conn, user_ref, strategy_id)
     if plan is not None:
-        return Resolved("plan", plan.body, plan.playbook_id, plan.body.get("status"), False)
+        return Resolved("plan", plan.body, plan.playbook_id, None, False)
     if stype is None:
         return Resolved("none", None, None, None, False)
     pb = await playbook_store.active_for(conn, user_ref, stype)
-    return Resolved("system" if pb.is_system else "active", pb.body, pb.id, pb.status, pb.is_system)
+    return Resolved("system" if pb.is_system else "active", pb.body, pb.id, pb.status if pb.is_system else None,
+                    pb.is_system)
 
 
 def _limit_value(v: Any) -> Decimal | str:
@@ -308,7 +313,8 @@ def with_carry(state: pe.StrategyState, body: Mapping | None, tracked: Tracked,
     state = dataclasses.replace(state, carry_days=pe.carry_day_kinds(now.date()))
     if not pe.carry_due(body, state):
         return state
-    figs = carry.carry_figures(carry_model(tracked, market), tracked.booked, state.margin, now)
+    figs = carry.carry_figures(carry_model(tracked, market), tracked.booked, state.margin, now,
+                               gap_pct=market.carry_gap_pct)
     return dataclasses.replace(state, carry=figs)
 
 
@@ -316,7 +322,7 @@ def carry_record(figs: pe.CarryFigures) -> dict[str, str | None]:
     """The carry check's record content: money as strings (``Decimal`` text), None + reason when not known."""
     def text(v: Decimal | None) -> str | None:
         return None if v is None else format(v, "f")
-    return {"gap_pct": format(CARRY_GAP_PCT_TEXT, "f"), "gap_up": text(figs.up), "gap_down": text(figs.down),
+    return {"gap_pct": text(figs.gap_pct), "gap_up": text(figs.up), "gap_down": text(figs.down),
             "gap_reason": figs.gap_reason, "margin": text(figs.margin), "margin_reason": figs.margin_reason,
             "next_open": None if figs.next_open is None else figs.next_open.isoformat()}
 

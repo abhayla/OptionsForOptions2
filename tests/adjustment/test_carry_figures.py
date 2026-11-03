@@ -46,11 +46,11 @@ def _hand(level: D) -> D:
 
 
 def test_gap_levels_are_2_pct_up_and_down_rounded_to_a_paisa_point():
-    assert carry.gap_levels(SPOT) == (D("23507.94"), D("22586.06"))
+    assert carry.gap_levels(SPOT, D("2")) == (D("23507.94"), D("22586.06"))
 
 
 def test_core_gap_figures_equal_an_independent_leg_sum_at_the_next_open():
-    figs = carry.carry_figures(_model(), BOOKED, D("98765.40"), FRI_1500, TABLE)
+    figs = carry.carry_figures(_model(), BOOKED, D("98765.40"), FRI_1500, TABLE, gap_pct=D("2"))
     assert figs.next_open == NEXT_OPEN
     assert figs.up == _hand(D("23507.94")) and figs.down == _hand(D("22586.06")), figs
     assert figs.gap_reason is None and figs.margin == D("98765.40") and figs.margin_reason is None
@@ -58,7 +58,7 @@ def test_core_gap_figures_equal_an_independent_leg_sum_at_the_next_open():
 
 
 def test_attack3_not_valued_at_expiry_intrinsic():
-    figs = carry.carry_figures(_model(), BOOKED, None, FRI_1500, TABLE)
+    figs = carry.carry_figures(_model(), BOOKED, None, FRI_1500, TABLE, gap_pct=D("2"))
     up = D("23507.94")  # at expiry: short 23400 CE intrinsic 107.94, long 23600 CE 0, puts 0
     intrinsic = BOOKED + (D("-42.50") + D("86.00") + D("91.50") - D("107.94") - D("44.00")) * 75
     assert figs.up != intrinsic.quantize(D("0.01"))
@@ -66,32 +66,33 @@ def test_attack3_not_valued_at_expiry_intrinsic():
 
 
 def test_margin_not_stated_says_so_never_a_number():
-    figs = carry.carry_figures(_model(), BOOKED, None, FRI_1500, TABLE)
+    figs = carry.carry_figures(_model(), BOOKED, None, FRI_1500, TABLE, gap_pct=D("2"))
     assert figs.margin is None and figs.margin_reason == carry.MISSING_MARGIN and figs.up is not None
 
 
 def test_a_leg_without_iv_gives_no_gap_figures_never_zero():
-    figs = carry.carry_figures(_model(ivs=False), BOOKED, D("1"), FRI_1500, TABLE)
+    figs = carry.carry_figures(_model(ivs=False), BOOKED, D("1"), FRI_1500, TABLE, gap_pct=D("2"))
     assert figs.up is None and figs.down is None and figs.gap_reason == carry.CARRY_GAP_UNKNOWN
 
 
 def test_no_spot_model_gives_no_gap_figures():
-    figs = carry.carry_figures(None, BOOKED, D("1"), FRI_1500, TABLE)
+    figs = carry.carry_figures(None, BOOKED, D("1"), FRI_1500, TABLE, gap_pct=D("2"))
     assert figs.up is None and figs.gap_reason == carry.CARRY_GAP_UNKNOWN
 
 
 def test_next_open_in_a_year_with_no_holiday_list_is_not_known():
-    figs = carry.carry_figures(_model(), BOOKED, D("1"), datetime.datetime(2026, 12, 31, 15, 0, tzinfo=IST), TABLE)
+    later = datetime.datetime(2026, 12, 31, 15, 0, tzinfo=IST)
+    figs = carry.carry_figures(_model(), BOOKED, D("1"), later, TABLE, gap_pct=D("2"))
     assert figs.up is None and figs.gap_reason == pe.HOLIDAY_LIST_UNKNOWN and figs.next_open is None
 
 
 def test_figures_are_exact_decimals_to_the_paisa():
-    figs = carry.carry_figures(_model(), BOOKED, None, FRI_1500, TABLE)
+    figs = carry.carry_figures(_model(), BOOKED, None, FRI_1500, TABLE, gap_pct=D("2"))
     for v in (figs.up, figs.down):
         assert isinstance(v, D) and v == v.quantize(D("0.01"))
 
 
 def test_gap_levels_exact_decimal_ties_round_half_even_never_through_float():
     # 0.75 x 1.02 = 0.765 exactly: half-even -> 0.76 (a float 0.765 is 0.76500000000000001 -> 0.77)
-    assert carry.gap_levels(D("0.75"))[0] == D("0.76")
-    assert carry.gap_levels(D("23500.25")) == (D("23970.26"), D("23030.24"))
+    assert carry.gap_levels(D("0.75"), D("2"))[0] == D("0.76")
+    assert carry.gap_levels(D("23500.25"), D("2")) == (D("23970.26"), D("23030.24"))

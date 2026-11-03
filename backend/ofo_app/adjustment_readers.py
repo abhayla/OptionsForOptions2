@@ -524,7 +524,7 @@ async def read_market(tracked: Tracked, ctx: Any, *, extra_ids: Iterable[str] = 
     feed = screen_feed_reading(provider, spot_q, now)
     return MarketInputs(tuple(rows) + later_rows, ids, forward, years, vol, feed,
                         read_last_close(spot_q, closed, scn, now), now, expiry_kind, leg_greeks, fwd_model, leg_ivs,
-                        index_day_open(frozen.day, now), reach)
+                        index_day_open(frozen.day, now), reach, ctx.carry_gap_pct)
 
 
 async def read_market_more(tracked: Tracked, ctx: Any, extra_ids: Iterable[str]) -> MarketInputs | None:

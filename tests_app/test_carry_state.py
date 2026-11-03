@@ -20,7 +20,7 @@ BODY = {"day_rules": [{"on": True, "when": "beforeWeekend", "at": "15:00", "acti
 
 
 def _market(now: datetime.datetime) -> SimpleNamespace:
-    return SimpleNamespace(now=now, forward_model=None, leg_ivs={}, chain=())
+    return SimpleNamespace(now=now, forward_model=None, leg_ivs={}, chain=(), carry_gap_pct=D("2"))
 
 
 def _tracked() -> SimpleNamespace:
@@ -42,7 +42,8 @@ def test_friday_1500_fills_days_and_figures_through_carry_figures():
     now = datetime.datetime(2026, 10, 30, 15, 0, tzinfo=IST)
     got = check.with_carry(_state("15:00", D("98000")), BODY, _tracked(), _market(now))
     assert got.carry_days == frozenset({"beforeWeekend"})
-    assert got.carry == carry.carry_figures(None, D("0"), D("98000"), now)  # no forward: figures not known
+    # no forward: figures not known
+    assert got.carry == carry.carry_figures(None, D("0"), D("98000"), now, gap_pct=D("2"))
     assert got.carry.gap_reason == carry.CARRY_GAP_UNKNOWN and got.carry.margin == D("98000")
 
 
@@ -56,9 +57,8 @@ def test_before_the_time_or_another_day_computes_no_figures():
 
 def test_carry_record_money_as_strings_and_reasons():
     figs = pe.CarryFigures(D("-1234.50"), D("-2345.60"), None, None, carry.MISSING_MARGIN,
-                           datetime.datetime(2026, 11, 2, 9, 15, tzinfo=IST))
+                           datetime.datetime(2026, 11, 2, 9, 15, tzinfo=IST), D("2"))
     assert check.carry_record(figs) == {"gap_pct": "2", "gap_up": "-1234.50", "gap_down": "-2345.60",
                                         "gap_reason": None, "margin": None, "margin_reason": carry.MISSING_MARGIN,
                                         "next_open": "2026-11-02T09:15:00+05:30"}
-    assert check.CARRY_GAP_PCT_TEXT == carry.CARRY_GAP_PCT
     assert dataclasses.is_dataclass(figs)

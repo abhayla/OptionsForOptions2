@@ -68,6 +68,7 @@ OLD_HOMES: dict[str, list[tuple[str, str]]] = {
                                     ("RETRY_UNTIL", "facts.paper_retry_until")],
     "ofo/adjustment/detection.py": [("NEAR_LEVEL_THRESHOLD_PERCENT", "adjustments.near_level_percent")],
     "ofo/adjustment/playbook_eval.py": [("_GAP_UNTIL", "adjustments.gap_at_open_until")],
+    "ofo/adjustment/carry.py": [("CARRY_GAP_PCT", "adjustments.carry_gap_percent")],
     "ofo/adjustment/compare.py": [("CURVE_RANGE", "adjustments.compare_range_percent"),
                                   ("CURVE_STEPS", "adjustments.compare_steps"),
                                   ("MOVES", "adjustments.compare_move_small")],

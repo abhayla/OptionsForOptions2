@@ -1,6 +1,6 @@
 """The carry check's figures (GC-IC1 step 1b; REQ-159 AC-4, S-06 "overnight margin, gap loss").
 
-The whole-trade P&L (booked plus the open legs) if spot gaps ``CARRY_GAP_PCT`` up and down at the NEXT session's
+The whole-trade P&L (booked plus the open legs) if spot gaps the setting ``adjustments.carry_gap_percent`` up and down at the NEXT session's
 open (``market_calendar.next_open``), and the broker-stated overnight margin.
 
 One valuation, never a second formula (ADR-008, finding engine-input-chosen-per-caller): each open leg is valued by
@@ -26,16 +26,16 @@ from ofo.engine import adjust_money
 from ofo.engine.model import ModelInputs, estimate
 from ofo.money import PAISE
 
-CARRY_GAP_PCT: Final = Decimal(2)
 CARRY_GAP_UNKNOWN: Final = f"{pe.P}carry_gap_unknown"
 MISSING_MARGIN: Final = f"{pe.P}missing_margin"
 _HUNDRED: Final = Decimal(100)
 
 
-def gap_levels(spot: Decimal) -> tuple[Decimal, Decimal]:
-    """(up, down): spot x (1 +/- CARRY_GAP_PCT / 100), rounded half-even to 0.01 points (the what-if path's rule)."""
-    up = spot * (_HUNDRED + CARRY_GAP_PCT) / _HUNDRED
-    down = spot * (_HUNDRED - CARRY_GAP_PCT) / _HUNDRED
+def gap_levels(spot: Decimal, gap_pct: Decimal) -> tuple[Decimal, Decimal]:
+    """(up, down): spot x (1 +/- gap_pct / 100), rounded half-even to 0.01 points (the what-if path's rule).
+    ``gap_pct`` is the setting ``adjustments.carry_gap_percent`` in force (REQ-167 AC-4), passed in."""
+    up = spot * (_HUNDRED + gap_pct) / _HUNDRED
+    down = spot * (_HUNDRED - gap_pct) / _HUNDRED
     return up.quantize(PAISE, rounding=ROUND_HALF_EVEN), down.quantize(PAISE, rounding=ROUND_HALF_EVEN)
 
 
@@ -43,18 +43,21 @@ def _whole_trade(model: ModelInputs, booked: Decimal, level: Decimal, at: dateti
     return adjust_money.with_booked(booked, estimate(model, level, at).total).quantize(PAISE, rounding=ROUND_HALF_EVEN)
 
 
-def carry_figures(model: ModelInputs | None, booked: Decimal | None, margin: Decimal | None,
-                  now: datetime.datetime, holidays: mc.Holidays | None = None) -> pe.CarryFigures:
+def carry_figures(model: ModelInputs | None, booked: Decimal | None, margin: Decimal | None,  # noqa: PLR0913
+                  now: datetime.datetime, holidays: mc.Holidays | None = None, *,
+                  gap_pct: Decimal | None) -> pe.CarryFigures:
     """The carry record's content at ``now`` (see the module docstring for every answer state)."""
     margin_reason = None if margin is not None else MISSING_MARGIN
+    if gap_pct is None:  # the gap setting not read: no figures and a named reason, never a typed stand-in
+        return pe.CarryFigures(None, None, CARRY_GAP_UNKNOWN, margin, margin_reason, None, None)
     opens = mc.next_open(now, holidays)
     if opens is None:
-        return pe.CarryFigures(None, None, pe.HOLIDAY_LIST_UNKNOWN, margin, margin_reason)
+        return pe.CarryFigures(None, None, pe.HOLIDAY_LIST_UNKNOWN, margin, margin_reason, None, gap_pct)
     if model is None or booked is None or any(leg.leg.is_option and leg.iv is None for leg in model.legs):
-        return pe.CarryFigures(None, None, CARRY_GAP_UNKNOWN, margin, margin_reason, opens)
-    up, down = gap_levels(model.spot.level)  # the gated reading's level (== ModelInputs.spot_level)
+        return pe.CarryFigures(None, None, CARRY_GAP_UNKNOWN, margin, margin_reason, opens, gap_pct)
+    up, down = gap_levels(model.spot.level, gap_pct)  # the gated reading's level (== ModelInputs.spot_level)
     return pe.CarryFigures(_whole_trade(model, booked, up, opens), _whole_trade(model, booked, down, opens), None,
-                           margin, margin_reason, opens)
+                           margin, margin_reason, opens, gap_pct)
 
 
-__all__ = ["CARRY_GAP_PCT", "CARRY_GAP_UNKNOWN", "MISSING_MARGIN", "carry_figures", "gap_levels"]
+__all__ = ["CARRY_GAP_UNKNOWN", "MISSING_MARGIN", "carry_figures", "gap_levels"]

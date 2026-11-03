@@ -114,6 +114,14 @@ def chain_strikes_each_side(values: Mapping[str, Decimal]) -> int:
     return int(value_of(values, CHAIN_STRIKES_EACH_SIDE))
 
 
+CARRY_GAP_PERCENT = "adjustments.carry_gap_percent"
+
+
+def carry_gap_percent(values: Mapping[str, Decimal]) -> Decimal:
+    """The overnight gap, in percent, the carry check values a strategy at (REQ-167 AC-4)."""
+    return value_of(values, CARRY_GAP_PERCENT)
+
+
 HISTORY_MAX_DAYS = "limits.history_max_days"
 
 
