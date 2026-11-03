@@ -248,6 +248,11 @@ class LabelOut(ApiModel):
     text: CatalogueText
 
 
+class DayPairOut(ApiModel):
+    when: Identifier
+    action: int
+
+
 class LabelsOut(ApiModel):
     approaches: list[LabelOut]
     day_kinds: list[LabelOut]
@@ -256,6 +261,8 @@ class LabelsOut(ApiModel):
     summary: list[LabelOut]  # sentence templates: "{slot}" is filled by the editor from the body's own strings
     guards: list[LabelOut]  # each guard key in words (Limits and guards never shows a raw key)
     no_values: CatalogueText  # a trigger with no value list for an expiry kind (null in the body)
+    day_acting: list[DayPairOut]  # every day rule (kind, action) pair the worker acts on (the one table in playbook_eval)
+    day_not_checked: CatalogueText  # why any other switched-on day rule is shown as not checked
 
 
 def _labels(table: Mapping[str, str], template_id: Callable[[str], str]) -> list[dict[str, Any]]:
@@ -282,7 +289,9 @@ def _labels_body() -> dict[str, Any]:
         "past_note": render_explanation("playbook_test_past_out_of_v1"),
         "summary": _labels(PLAYBOOK_SUMMARY_TEXT, lambda k: f"playbook_summary_{k}"),
         "guards": _labels(PLAYBOOK_GUARD_LABEL_TEXT, lambda k: f"playbook_guard_{k}"),
-        "no_values": render("adjust_trigger_no_expiry_values")}
+        "no_values": render("adjust_trigger_no_expiry_values"),
+        "day_acting": [{"when": k, "action": a} for k, a in sorted(pe.ACTING_DAY_PAIRS)],
+        "day_not_checked": render(pe.DAY_RULE_NOT_CHECKED)}
 
 
 @router.get("/api/playbooks", response_model=PlaybookListOut)

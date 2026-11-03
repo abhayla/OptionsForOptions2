@@ -3531,6 +3531,10 @@
     "sha256": "e0cd697da4c1c3f6f4896345cc0ccb0781996f4f27050b72c6764aa8400acc51",
     "reviewed": "pending owner read"
   },
+  "adjust_trigger_day_rule_not_checked": {
+    "sha256": "84e060326e9571b1c24471db09099128763e4bc96678a8b22f5147c3bf353981",
+    "reviewed": "pending owner read"
+  },
   "adjust_trigger_holiday_list_unknown": {
     "sha256": "3f62fcf354bf522a7bff1747e054614554e28e6e57a07a8f2151366e8f97d7d9",
     "reviewed": "pending owner read"

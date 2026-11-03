@@ -145,7 +145,8 @@ def _limit_value(v: Any) -> Decimal | str:
 def _tighten(body: Mapping, today: datetime.date, expiry: datetime.date, hhmm: str) -> Decimal | None:
     """The due "Tighten every trigger by X%" day rule (``when: expiry``) on expiry day from its time on."""
     for rule in body.get("day_rules", []):
-        if rule.get("on") and rule.get("when") == "expiry" and rule.get("percent") and today == expiry \
+        if rule.get("on") and pe.day_rule_acts(rule) and rule.get("action") == pe.DAY_ACTION_TIGHTEN \
+                and rule.get("when") == "expiry" and rule.get("percent") and today == expiry \
                 and hhmm >= rule.get("at", "99:99"):
             return Decimal(rule["percent"])
     return None
