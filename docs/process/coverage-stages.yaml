@@ -564,6 +564,7 @@ issues:
   "#639": S6.7  # Alert worker follow-ups: screen vs worker spot freshness, dismiss by rule, interval after style change
   "#640": S6.7  # Day rules judge expiry day from the nearest leg, not per leg (multi-expiry positions)
   "#641": S6.7  # T-11 never checked live: entry ATM IV is only filled in scenario mode
+  "#642": S6.7  # Background worker reads only the position's expiry: A-04 and T-19 differ from the screen
 
 # Work items whose status is not done.
 work_items:
