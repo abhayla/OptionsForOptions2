@@ -273,6 +273,19 @@ describe('GC-ADJ1 step 3: picks from the drawer and the hand-off', () => {
     expect(ev[0].legs[0]).toMatchObject({ action: a.after_legs[0].side, lots: a.after_legs[0].lots, planned_entry: a.after_legs[0].entry, symbol: a.after_legs[0].tradingsymbol })
     expect(c.post).toHaveBeenCalledTimes(1)
   })
+
+  it('REQ-163 AC-1: the basket carries only the records actually marked acted on (a refused one is left out)', async () => {
+    const { w, c } = await show(adj02, { opportunities: ['41', '42'] })
+    c.post.mockImplementation(async (url) => {
+      if (url === '/adjustment-opportunities/42/acted-on') throw Object.assign(new Error('x'), { parts: { what_happened: 'not open' } })
+      return { data: adj02 }
+    })
+    await t(w, 'adjust-pick').setValue('A-01')
+    await t(w, 'adjust-open').trigger('click')
+    await flushPromises()
+    expect(c.post).toHaveBeenCalledWith('/adjustment-opportunities/41/acted-on')
+    expect(w.emitted('prepare')[0][0].suggestionIds).toEqual(['41'])
+  })
 })
 
 describe('cmpDecimal (string comparison, no arithmetic)', () => {

@@ -30,8 +30,10 @@ export function paperPriceOk(text) {
 export const paperLotsOk = (text) => /^[1-9]\d{0,5}$/.test(String(text ?? '').trim())
 
 /** POST the confirmed orders in ONE request (the server stores them in one transaction or none). Throws the client error. */
-export async function addToPaper(client, strategyId, orders) {
-  const { data } = await client.post(`/paper/strategies/${strategyId}/orders`, { orders })
+export async function addToPaper(client, strategyId, orders, suggestionIds = []) {
+  // REQ-163 AC-1: the acted-on records this basket answers (Compare -> Open in builder); omitted when none
+  const body = suggestionIds.length ? { orders, suggestion_ids: suggestionIds } : { orders }
+  const { data } = await client.post(`/paper/strategies/${strategyId}/orders`, body)
   return data
 }
 /** GC-BP F-1: a tracked strategy's paper P&L is re-read this often while it is on screen (the strike picker's rate). */

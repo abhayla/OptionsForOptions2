@@ -14,8 +14,12 @@ Inputs, each from the reader the paper book already uses (never a second reader 
 - the plan's maximum: the strategy's own plan (``playbook_store.plan_for``), else the type's active playbook
   (``adjustment_check.resolve``), guard ``max_adjustments``; none found or not a whole number -> None with
   ``max_reason`` ("1 of -").
-- why: no suggestion link is stored on a paper order today (REQ-112 AC-1 records are GC-ADJ2 step 5), so every row is
-  "Your own change"; a linked rule id would be sent as ``rule_id``.
+- why (GC-IC1 step 10 fix): an acted-on suggestion record names the paper orders its basket placed
+  (``playbook_store.link_orders``, written in the placement's transaction; read by ``placed_links``). A row whose
+  orders one record placed sends its ``rule_id`` and its condition line (``condition_text``, the inbox's catalogue
+  words); several records -> each rule in ``rule_ids``, the group count as ``why_text`` and each line in
+  ``why_lines``; a record whose condition cannot be worded -> ``adjust_history_why_unreadable`` (named, never a guess);
+  no record -> "Your own change". Settle and stop rows are the server's, never linked.
 - fill: every paper order is "Paper - not sent to Zerodha" (REQ-163 AC-1).
 
 Suggest-only: nothing here places an order. The user comes from the session (``current_user_ref``).
@@ -81,8 +85,10 @@ class HistoryRowOut(ApiModel):
     booked_text: CatalogueText | None
     booked_pending: CatalogueText | None
     charges: Money | None
-    rule_id: Identifier | None
-    why_text: CatalogueText | None  # set when rule_id is None
+    rule_id: Identifier | None  # the one rule the row acted on (None: own change, or several rules)
+    rule_ids: list[Identifier]  # every rule of the records that placed the row ([] = own change)
+    why_text: CatalogueText  # the record's condition / the group count / "Your own change"
+    why_lines: list[CatalogueText]  # each record's condition when several records placed the row
     fill: Literal["paper", "confirmed", "unconfirmed", "failed"]
     fill_text: CatalogueText  # every state worded by the server (paper: in place of a fill state)
 
@@ -170,7 +176,25 @@ def _money_text(value: Decimal | None) -> Any:
     return paper.signed(value)
 
 
-def _row(r: ah.HistoryRow, found: dict) -> dict:
+def _why_line(s: playbook_store.Suggestion) -> Any:
+    from ofo_app.routes.adjustment_opportunities import condition_text  # noqa: PLC0415 - route-to-route, late
+    line = condition_text(s)
+    return line if line is not None else render_explanation("adjust_history_why_unreadable")
+
+
+def _why(records: list[playbook_store.Suggestion]) -> dict:
+    """REQ-163 AC-1: the row's Why from the records that placed it (see the module docstring)."""
+    if not records:
+        return {"rule_ids": [], "why_text": render_explanation("adjust_history_own_change"), "why_lines": []}
+    ordered = sorted(records, key=lambda s: (s.rule_id, s.id))
+    if len(ordered) == 1:
+        return {"rule_ids": [ordered[0].rule_id], "why_text": _why_line(ordered[0]), "why_lines": []}
+    return {"rule_ids": sorted({s.rule_id for s in ordered}),
+            "why_text": render_explanation("suggestion_group_count", count=len(ordered)),
+            "why_lines": [_why_line(s) for s in ordered]}
+
+
+def _row(r: ah.HistoryRow, found: dict, records: list[playbook_store.Suggestion]) -> dict:
     return {"step": r.step, "number": r.number, "at": r.at,
             "orders": [{"side": o.side,
                         "contract_text": describe_contract(paper.identity(found[int(o.instrument_id)])),
@@ -179,8 +203,7 @@ def _row(r: ah.HistoryRow, found: dict) -> dict:
             "cash": r.cash, "cash_text": _money_text(r.cash),
             "booked": paper.exact(r.booked), "booked_text": _money_text(r.booked),
             "booked_pending": render_explanation("adjust_history_pending") if r.booked is None else None,
-            "charges": paper.exact(r.charges), "rule_id": r.rule_id,
-            "why_text": render_explanation("adjust_history_own_change") if r.rule_id is None else None,
+            "charges": paper.exact(r.charges), "rule_id": r.rule_id, **_why(records),
             "fill": r.fill, "fill_text": render_explanation(FILL_TEXT[r.fill])}
 
 
@@ -208,9 +231,18 @@ async def adjustment_history(  # noqa: PLR0913 - FastAPI dependencies, one per i
     live = {str(cid): p.price for cid, p in prices.items() if paper_prices.is_live(p) and p.price is not None}
     per_order, charges_reason = _per_order_charges(orders, found, underlying, rates)
     plan_max = await _plan_max(db, user_ref, strategy_id, (tracked_reader, rates), ctx)
+    links = await playbook_store.placed_links(db, user_ref, strategy_id)  # order id -> every record that placed it
+    by_batch: dict[datetime.datetime, dict[int, playbook_store.Suggestion]] = {}
+    for o in orders:  # a batch = every order of one placed_at (the engine's batch rule)
+        if o.order.kind not in ah.OWN_KINDS:
+            for s in links.get(o.id, ()):
+                by_batch.setdefault(o.order.placed_at, {})[s.id] = s
+    one_rule = {at: next(iter({s.rule_id for s in rs.values()})) for at, rs in by_batch.items()
+                if len({s.rule_id for s in rs.values()}) == 1}
     history = ah.adjustment_history(
         [ah.HistoryOrder(str(o.order.contract_id), o.order.side,  # type: ignore[arg-type]
                          o.order.quantity, o.order.price, o.order.kind, o.order.placed_at,  # type: ignore[arg-type]
+                         rule_id=one_rule.get(o.order.placed_at) if o.order.kind not in ah.OWN_KINDS else None,
                          is_option=paper.identity(found[o.order.contract_id])[1] is not Instrument.FUT)
          for o in orders], live, adjustments_max=plan_max,
         per_order_charges=per_order)
@@ -241,4 +273,6 @@ async def adjustment_history(  # noqa: PLR0913 - FastAPI dependencies, one per i
               "charges_reason_text": None if t.charges is not None else reason_text(charges_reason)}
     return AdjustmentHistoryOut.model_validate({"strategy_id": strategy_id,
                                                 "fill_column_text": render_explanation("adjust_history_col_fill"),
-                                                "rows": [_row(r, found) for r in history.rows], "totals": totals})
+                                                "rows": [_row(r, found, [] if r.step in ah.OWN_KINDS else
+                                                              list(by_batch.get(r.at, {}).values()))
+                                                         for r in history.rows], "totals": totals})

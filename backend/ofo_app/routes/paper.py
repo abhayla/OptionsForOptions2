@@ -36,6 +36,7 @@ from ofo.engine.book_totals import book_totals
 from ofo.engine.extremes import UNLIMITED, ContractTerms, ExtremesReason, book_breakevens, book_extremes
 from ofo.engine.extremes_charges import open_round_trip_charges, with_charges
 from ofo.engine.legs import Instrument
+from ofo.errors import render
 from ofo.errors.explanations import render_explanation, restore_explanation
 from ofo.instruments.models import FUTURE_TYPE
 from ofo.limits import INTEGER_MAX
@@ -52,7 +53,7 @@ from ofo.tracking.orderbook import NetPosition, PaperOrder, is_typed_price, net_
 from ofo.tracking.paper_alert import restore_alert_body
 from pydantic import BaseModel, ConfigDict, Field
 
-from ofo_app import paper_monitor, paper_store, paper_trigger_store, tracked_contracts
+from ofo_app import paper_monitor, paper_store, paper_trigger_store, playbook_store, tracked_contracts
 from ofo_app import strategy_store as store
 from ofo_app.api_models import ApiModel, CatalogueText, Money
 from ofo_app.db import get_db
@@ -76,6 +77,9 @@ from ofo_app.underlying import Underlying
 _LOG = logging.getLogger(__name__)
 
 router = APIRouter(route_class=ClosedRoute)
+#: REQ-163 AC-1: a basket naming a suggestion record it may not link (the opportunities routes' own answers)
+_LINK_REFUSAL = {playbook_store.SUGGESTION_NOT_FOUND: Failure.NOT_FOUND,
+                 playbook_store.SUGGESTION_NOT_OPEN: Failure.CONFLICT}
 
 #: The order kinds a request may carry; settle and stop are written by the server only (ADR-207).
 REQUEST_KINDS = ("open", "add", "exit")
@@ -100,6 +104,9 @@ class PaperOrderIn(BaseModel):
 class PaperOrdersIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     orders: list[PaperOrderIn] = Field(min_length=1, max_length=64)
+    #: REQ-163 AC-1: the acted-on suggestion records this basket answers (Compare -> Open in builder); each must be
+    #: of this strategy and user, acted on and not yet linked, or the whole basket is refused (nothing stored)
+    suggestion_ids: list[Annotated[int, Field(gt=0, le=INTEGER_MAX)]] = Field(default_factory=list, max_length=16)
 
 
 class PaperNetOut(ApiModel):
@@ -715,13 +722,18 @@ async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR
         raise StrategyRefused("paper_contract_not_tradable")
     placed_at = now()
     try:
-        await paper_store.place(db, user_ref, strategy_id, [
+        book = await paper_store.place(db, user_ref, strategy_id, [
             paper_store.NewOrder(o.contract_id, o.side, o.quantity, o.price, o.kind, placed_at) for o in body.orders])
+        new_ids = [o.id for o in book][-len(body.orders):]  # place inserts in order under the strategy's row lock
+        for suggestion_id in dict.fromkeys(body.suggestion_ids):  # REQ-163 AC-1: same transaction, or nothing
+            await playbook_store.link_orders(db, user_ref, strategy_id, suggestion_id, new_ids)
         await db.commit()
     except store.StrategyStoreError as exc:
         await db.rollback()
         if exc.code == paper_store.EXIT_EXCEEDS_OPEN:
             raise StrategyRefused("paper_exit_exceeds_open") from None
+        if exc.code in _LINK_REFUSAL:
+            raise StrategyRefused(exc.code, _LINK_REFUSAL[exc.code], message=render(exc.code)) from None
         raise refused_answer(exc, 409) from None
     except Exception:
         await db.rollback()

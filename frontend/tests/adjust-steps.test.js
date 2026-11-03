@@ -65,6 +65,17 @@ describe('AdjustSteps', () => {
     expect(rows.map((r) => r.get('[data-testid="steps-fill"]').text())).toEqual(['Paper - not sent to Zerodha', 'Paper - not sent to Zerodha'])
   })
 
+  it('AC-1 (GC-IC1 10): a row made from opportunities shows the server\'s Why and each record\'s line', async () => {
+    const rows = [row(), row({ step: 'adjustment', number: 1, rule_id: 'T-03', rule_ids: ['T-03'], why_text: 'Short call delta 0.32, at or above 0.30', why_lines: [] }),
+      row({ step: 'adjustment', number: 2, rule_id: null, rule_ids: ['T-01', 'T-09'], why_text: '2 adjustment conditions triggered', why_lines: ['line one', 'line two'] })]
+    const w = await open(body(totals(), rows))
+    const why = w.findAll('[data-testid="steps-why"]')
+    expect(why[1].text()).toBe('Short call delta 0.32, at or above 0.30')
+    expect(why[2].text().startsWith('2 adjustment conditions triggered')).toBe(true)
+    expect(why[2].findAll('[data-testid="steps-why-line"]').map((x) => x.text())).toEqual(['line one', 'line two'])
+    expect(why[1].text()).not.toContain('T-03') // the rule id is never shown in place of words
+  })
+
   it('AC-2: totals tiles are the server texts as given', async () => {
     const w = await open(body())
     expect(tid(w, 'steps-total-pnl').text()).toContain('-2,015.00')

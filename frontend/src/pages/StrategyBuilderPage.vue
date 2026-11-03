@@ -115,10 +115,24 @@ const legs = ref(legsFromQuery())
 const adjustId = computed(() => (/^\d+$/.test(String(route.query.adjust ?? '')) ? String(route.query.adjust) : null))
 const pickedIds = computed(() => picksFromQuery(route.query.pick)) // the approaches ticked in the Review adjustment drawer
 const opportunityIds = computed(() => opportunitiesFromQuery(route.query.opp)) // GC-ADJ2 5: records the prepare acts on
-function prepareApproach({ legs: next }) { // the chosen approach's legs become the builder's legs; no order is placed
-  const { adjust: _gone, pick: _picks, ...rest } = route.query
-  router.replace({ query: rest })
+// REQ-163 AC-1: the suggestion records the prepared basket acted on travel in the URL (`acted=41,42`), so a reload between
+// Open in builder and Confirm keeps them; sent once with the paper orders, then dropped. Validated as whole positive
+// numbers only: the server alone decides whether each may be named (owner, strategy, acted on, not yet named).
+const actedSuggestionIds = computed(() => opportunitiesFromQuery(route.query.acted))
+function prepareApproach({ legs: next, suggestionIds = [] }) { // the chosen approach's legs become the builder's legs; no order is placed
+  const { adjust: _gone, pick: _picks, opp: _opp, acted: _acted, ...rest } = route.query
+  const acted = opportunitiesFromQuery(suggestionIds.join(','))
+  router.replace({ query: acted.length ? { ...rest, acted: acted.join(',') } : rest })
   setLegs(next)
+}
+// a 404/409 to a basket naming records: a refused record (or the strategy gone or changed); the same ids would be
+// refused on every retry. A 422 (price, contract) is fixed by the user and keeps them.
+const ACTED_REFUSED = new Set([404, 409])
+// awaited: a later URL write (nameInUrl after the book re-read) spreads route.query and would put the ids back
+async function dropActed() { // the basket answered its records, or the server refused them: never sent again
+  if (route.query.acted === undefined) return
+  const { acted: _acted, ...rest } = route.query
+  await router.replace({ path: route.path, query: rest })
 }
 // W-090 (REQ-034 AC-4, AC-6): the scenario column and range the user picked; kept across every reload and push.
 const choice = ref({ ...DEFAULT_CHOICE })
@@ -389,9 +403,11 @@ async function confirmPending(orders) {
   paperBusy.value = true
   paperError.value = ''
   try {
-    await postPaperOrders(api, id, orders)
+    await postPaperOrders(api, id, orders, actedSuggestionIds.value)
+    await dropActed() // one basket answers the records once
   } catch (e) {
     paperError.value = (e?.parts ?? NEUTRAL_PARTS).what_happened || NEUTRAL_PARTS.what_happened // nothing changes locally on a refusal
+    if (actedSuggestionIds.value.length && ACTED_REFUSED.has(e?.status)) await dropActed() // the server's sentence above says why
     paperBusy.value = false
     return
   }

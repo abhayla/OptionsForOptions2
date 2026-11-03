@@ -34,7 +34,10 @@
                 </td>
                 <td class="py-1.5 pr-3 text-right tabular-nums" data-testid="steps-cash">{{ r.cash_text }}</td>
                 <td class="py-1.5 pr-3 text-right tabular-nums" data-testid="steps-booked">{{ r.booked_pending ?? r.booked_text }}</td>
-                <td class="py-1.5 pr-3" data-testid="steps-why">{{ r.why_text ?? r.rule_id }}</td>
+                <td class="py-1.5 pr-3" data-testid="steps-why">
+                  {{ r.why_text }}
+                  <span v-for="(w, j) in r.why_lines ?? []" :key="j" class="block text-xs" data-testid="steps-why-line">{{ w }}</span>
+                </td>
                 <td class="py-1.5 pr-3" data-testid="steps-fill">{{ r.fill_text }}</td>
               </tr>
             </tbody>
