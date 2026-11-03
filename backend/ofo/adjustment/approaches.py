@@ -56,6 +56,10 @@ Rules (each one decided here and stated, catalogue Part 2 followed where the con
   steps the tested short and wing ``shift_strikes`` LISTED strikes away from spot through ``leg_edit.step_strike`` (the
   REQ-078 step rule; a gap in the listing is stepped over by the listing, never by arithmetic); no further strike or a
   strike not listed is the step rule's own refusal. Every roll passes ``guard_debit`` (ADR-230).
+- Take profit (ADR-238 (6)): A-24 and A-25 are refused when the whole trade (``Position.booked`` plus every open leg
+  at its planned exit price, ``adjust_money.pnl_now``) is not in profit (``adjust_money.in_profit``: above zero);
+  booked P&L not known -> refused (fail closed). A-24 prices (and names an unpriced leg) first, as A-31; A-25 checks
+  the profit before its whole-lots rule.
 """
 from __future__ import annotations
 
@@ -155,6 +159,7 @@ class Position:
     expiry_kind: str  # weekly / monthly
     today: datetime.date
     legs: tuple[PositionLeg, ...]
+    booked: Decimal | None = None  # the P&L already booked (ADR-238 (6)); None = not known
 
 
 @dataclass(frozen=True)
@@ -472,6 +477,16 @@ def _close_all(b: _Builder, legs: Sequence[PositionLeg]) -> tuple[list[Trade], l
     return [t for t, _ in pairs], [c for _, c in pairs], []
 
 
+def _take_profit_guard(b: _Builder, legs: Sequence[PositionLeg]) -> None:
+    """ADR-238 (6): A-24 / A-25 only when the whole trade is in profit at the planned exit prices (the engine sums
+    and compares, ADR-008); booked unknown -> refused."""
+    if b.p.booked is None:
+        raise _refusal("adjust_take_profit_booked_unknown")
+    pnl = adjust_money.pnl_now(b.p.booked, [(x.side, x.entry, b.price_of(x), x.lots * b.p.lot) for x in legs])
+    if not adjust_money.in_profit(pnl):
+        raise _refusal("adjust_take_profit_not_in_profit")
+
+
 def _partial(b: _Builder, legs: Sequence[PositionLeg], percent: int) -> tuple[list[Trade], list[ClosedLeg],
                                                                                list[PositionLeg]]:
     """A-25 (ADR-238 (2)): ``percent`` % of every leg's lots, refused naming the first leg whose share is fractional."""
@@ -562,7 +577,10 @@ def build_approach(position: Position, chain: Sequence[ChainRow], spot: Decimal,
             if approach_id == "A-35":
                 _time_exit_due(position, exits)
             trades, closed, after = _close_all(b, legs)
+            if approach_id == "A-24":
+                _take_profit_guard(b, legs)
         elif approach_id == "A-25":
+            _take_profit_guard(b, legs)
             trades, closed, after = _partial(b, legs, config.partial_close_percent)
         elif approach_id == "A-27":
             trades, closed, after = _cheap_shorts(b, legs, exits.t09)

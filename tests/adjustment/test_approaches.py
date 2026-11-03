@@ -56,7 +56,8 @@ def inputs(sc: dict) -> tuple[Position, list[ChainRow], D]:
     legs = tuple(PositionLeg(x["side"], x["type"], D(x["strike"]), datetime.date.fromisoformat(x["expiry"]), x["lots"],
                              D(x["entry"]), x["tradingsymbol"]) for x in sc["position"]["legs"])
     today = datetime.date.fromisoformat(sc["clock"]["ist"][:10])
-    return Position(sc["underlying"], sc["lot"], sc["expiry_kind"], today, legs), rows, D(sc["market"]["spot"])
+    return (Position(sc["underlying"], sc["lot"], sc["expiry_kind"], today, legs, D(sc["position"]["booked_pnl"])),
+            rows, D(sc["market"]["spot"]))
 
 
 def plain(built) -> dict:

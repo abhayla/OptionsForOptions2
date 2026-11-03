@@ -624,7 +624,9 @@ def test_adr238_the_five_exit_and_reduce_approaches_come_back_as_columns():
 
     def norm(rows, keys):
         return [{k: str(r[k]) for k in keys} for r in rows]
-    for a in ("A-24", "A-25", "A-26", "A-27"):
+    for a in ("A-24", "A-25"):  # ADR-238 (6): ADJ-02's whole trade is at a loss, so take profit is refused
+        assert by_id[a]["refusal"]["what_happened"] == hand[a]["refused"], a
+    for a in ("A-26", "A-27"):
         got, want = by_id[a], hand[a]
         assert got["refusal"] is None, (a, got["refusal"])
         keys = ("action", "type", "strike", "lots", "quantity", "price", "tradingsymbol")
@@ -632,7 +634,7 @@ def test_adr238_the_five_exit_and_reduce_approaches_come_back_as_columns():
         assert norm(got["after_legs"], ("side", "strike", "lots")) == norm(want["after"], ("side", "strike", "lots")), a
     assert by_id["A-35"]["refusal"]["what_happened"] == hand["A-35"]["refused"]
     columns = next(c for c in reply["criteria"] if c["id"] == "cost")["values"]
-    assert {"A-24", "A-25", "A-26", "A-27"} <= set(columns) and "A-35" not in columns
+    assert {"A-26", "A-27"} <= set(columns) and not {"A-24", "A-25", "A-35"} & set(columns)
 
 
 def test_adr239_the_three_roll_approaches_come_back_as_columns():

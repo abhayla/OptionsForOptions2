@@ -362,7 +362,7 @@ def as_of_market(tracked: Tracked, market: MarketInputs) -> Tracked:
     route and the playbook check's T-19 both build from this)."""
     return dataclasses.replace(tracked, position=dataclasses.replace(
         tracked.position, today=market.now.astimezone(IST).date(),
-        expiry_kind=market.expiry_kind or tracked.position.expiry_kind))
+        expiry_kind=market.expiry_kind or tracked.position.expiry_kind, booked=tracked.booked))  # ADR-238 (6)
 
 
 def priced_approach(a: str, tracked: Tracked, market: MarketInputs, spot: Decimal,  # noqa: PLR0913 - the preferences value is a required parameter (GC-SET)

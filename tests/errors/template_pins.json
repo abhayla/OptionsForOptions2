@@ -3642,5 +3642,13 @@
   "explanation:adjust_approach_about_a_06": {
     "sha256": "57cd53bead41172a75680eaf3d37b5d9ddcc1d2a4d8bad2d437f5bf1c8b99e8c",
     "reviewed": "pending owner read"
+  },
+  "adjust_take_profit_not_in_profit": {
+    "sha256": "a6f82fcf0f05a926ed9043158b3053d5c4eab04a4a5ab806c5bf3040e22f071b",
+    "reviewed": "pending owner read"
+  },
+  "adjust_take_profit_booked_unknown": {
+    "sha256": "fb23414a7469aeeb2912e6e99ed14bc638e288450fa6c76e62b511f1baa51b46",
+    "reviewed": "pending owner read"
   }
 }

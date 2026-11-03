@@ -100,6 +100,11 @@ def sum_amounts(amounts: Iterable[Decimal]) -> Decimal:
     return sum(amounts, Decimal(0))
 
 
+def in_profit(pnl: Decimal) -> bool:
+    """ADR-238 (6): a whole-trade P&L is in profit only above zero (zero and a loss are not)."""
+    return pnl > 0
+
+
 def fell_at_least_pct(entry: Decimal, now: Decimal, percent: int | Decimal) -> bool:
     """ADR-238 (3), A-26: (entry - now) x 100 >= percent x entry, exact. No entry price (zero or below) -> False."""
     if entry <= 0:

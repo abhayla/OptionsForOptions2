@@ -64,8 +64,9 @@ def test_a24_and_a35_trade_exactly_as_a31():
 
 @pytest.mark.parametrize(("lots", "closes"), [(1, None), (2, 1), (3, None), (4, 2)])
 def test_a25_at_50_percent_whole_lots_only(lots, closes):
-    """Attack 2: 1 and 3 lots are refused naming leg 1 (never floored); 2 and 4 close half of every leg."""
-    position, chain, spot = inputs(load("ADJ-02"))
+    """Attack 2: 1 and 3 lots are refused naming leg 1 (never floored); 2 and 4 close half of every leg. ADJ-10 is in
+    profit (ADR-238 (6)), so only the whole-lots rule decides."""
+    position, chain, spot = inputs(load("ADJ-10"))
     position = replace(position, legs=tuple(replace(x, lots=lots) for x in position.legs))
     got = build_approach(position, chain, spot, "A-25", CFG)
     if closes is None:
@@ -171,3 +172,33 @@ def test_the_two_preferences_default_to_the_adr_values():
     values = _registry_defaults()
     assert (values[PARTIAL_CLOSE_PERCENT], values[UNTESTED_DECAY_PERCENT]) == (D("50"), D("80"))
     assert (CFG.partial_close_percent, CFG.untested_decay_percent) == (50, 80)
+
+
+NOT_IN_PROFIT = "The whole trade is not in profit with every open leg closed at its planned price, so this approach is not built."
+
+
+def test_adr238_6_take_profit_refused_at_a_loss_and_built_in_profit():
+    """ADR-238 (6): ADJ-02 (whole trade at a loss) -> A-24 and A-25 refused with the reason; ADJ-10 (in profit) -> both
+    built as before (equal to the generator's copy)."""
+    position, chain, spot = inputs(load("ADJ-02"))
+    for a in ("A-24", "A-25"):
+        assert build_approach(position, chain, spot, a, CFG).refusal == NOT_IN_PROFIT, a
+    assert build_approach(position, chain, spot, "A-31", CFG).refusal is None  # the exit stays offered
+    sc = load("ADJ-10")
+    position, chain, spot = inputs(sc)
+    for a in ("A-24", "A-25"):
+        got = build_approach(position, chain, spot, a, CFG)
+        assert got.refusal is None and plain(got) == fixture_form(sc["expected"]["approach_legs"][a]), a
+
+
+def test_adr238_6_zero_is_not_profit_and_unknown_booked_is_refused():
+    """Boundary: a whole trade of exactly 0 is not in profit (> 0, not >=); booked P&L unknown fails closed."""
+    position, chain, spot = inputs(load("ADJ-10"))
+    built = build_approach(position, chain, spot, "A-24", CFG)
+    whole = position.booked + sum((c.exit - c.entry) * c.quantity * (1 if c.side == "BUY" else -1) for c in built.closed)
+    assert whole > 0
+    for booked, want in ((position.booked - whole, NOT_IN_PROFIT), (position.booked - whole + D("0.01"), None)):
+        assert build_approach(replace(position, booked=booked), chain, spot, "A-24", CFG).refusal == want, booked
+    assert build_approach(replace(position, booked=None), chain, spot, "A-25", CFG).refusal == (
+        "The profit or loss booked so far is not known, so whether the whole trade is in profit cannot be worked out "
+        "and this approach is not built.")

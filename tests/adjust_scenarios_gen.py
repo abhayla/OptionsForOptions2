@@ -600,6 +600,12 @@ def hand_approaches(u: str, lot: int, kind: str, today: datetime.date, spot: Dec
             best = sorted(fit, key=lambda r: abs(r["strike"] - spot))[0]
         return best["strike"] - short["strike"]
 
+    def hand_take_profit():  # ADR-238 (6): the whole trade at the planned exit prices must be above zero
+        whole = booked + sum(Fraction(sign(x["side"]) * x["lots"] * lot * (price(x) - x["entry"])) for x in legs)
+        if whole <= 0:
+            raise HandRefused("The whole trade is not in profit with every open leg closed at its planned price, so "
+                              "this approach is not built.")
+
     def close_every():
         pairs = [close(x, x["lots"]) for x in legs]
         return [t for t, _ in pairs], [], [c for _, c in pairs]
@@ -614,6 +620,8 @@ def hand_approaches(u: str, lot: int, kind: str, today: datetime.date, spot: Dec
             trades, after, closed = [], list(legs), []
             if aid in ("A-31", "A-24"):  # ADR-238 (1): take profit closes every leg, as the exit does
                 trades, after, closed = close_every()
+                if aid == "A-24":
+                    hand_take_profit()
             elif aid == "A-35":  # ADR-238 (5): on expiry day from the playbook's time exit
                 if exits["time_exit"] is None:
                     raise HandRefused("Your playbook sets no time exit, so this approach is not built.")
@@ -621,6 +629,7 @@ def hand_approaches(u: str, lot: int, kind: str, today: datetime.date, spot: Dec
                     raise HandRefused(f"The time exit is offered on expiry day from {exits['time_exit']}.")
                 trades, after, closed = close_every()
             elif aid == "A-25":  # ADR-238 (2): X% of every leg's lots, whole lots only
+                hand_take_profit()
                 pct = APPROACH_CONFIG["partial_close_percent"]
                 after = []
                 for x in legs:
