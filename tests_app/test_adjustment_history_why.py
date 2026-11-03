@@ -130,12 +130,27 @@ async def test_an_adjustment_from_a_suggestion_names_its_rule_and_every_bad_link
     assert (rows[-1]["why_text"], rows[-1]["rule_id"], rows[-1]["rule_ids"]) == (OWN, None, [])
     assert rows[-2]["rule_id"] == "T-03" and rows[-2]["why_text"] == EXPECTED_T03
 
-    # a record of ANOTHER strategy (same user) is not found for this one, and stays unlinked
+    # review of c128d015 (MAJOR): ONE basket for TWO acted-on records names BOTH (count line + each condition, in rule
+    # order whatever order the ids were sent in), never only the last record read
+    t01 = await _acted(app_db_url, sid, "T-01")
     t09 = await _acted(app_db_url, sid, "T-09")
+    status, out = await _place(app_db_url, sid, [t09.id, t01.id])
+    assert status == CREATED, out
+    both_id = (await _book(app_db_url, sid))[-1].id
+    for rule in ("T-01", "T-09"):
+        assert (await _record(app_db_url, sid, rule)).placed_order_ids == (both_id,)
+    rows = (await _history(sid))["rows"]
+    assert (rows[-1]["step"], rows[-1]["rule_id"], rows[-1]["rule_ids"]) == ("adjustment", None, ["T-01", "T-09"])
+    assert rows[-1]["why_text"] == "2 adjustment conditions triggered"
+    lines = [await _inbox_condition(sid, t01.id), await _inbox_condition(sid, t09.id)]
+    assert rows[-1]["why_lines"] == lines and lines[0] != lines[1]
+    assert rows[-3]["rule_id"] == "T-03" and rows[-3]["why_text"] == EXPECTED_T03  # the one-record row is unchanged
+
+    # a record of ANOTHER strategy (same user) is not found for this one, and the refusal names no new basket
     other = await _seeded(app_db_url, monkeypatch, "ADJ-13")
     assert other != sid
     assert (await _refused(app_db_url, other, [t09.id], NOT_FOUND))["what_happened"] == NOT_FOUND_TEXT
-    assert (await _record(app_db_url, sid, "T-09")).placed_order_ids is None
+    assert (await _record(app_db_url, sid, "T-09")).placed_order_ids == (both_id,)
 
 
 def _rec(rid: int, rule: str, *, readable: bool = True) -> playbook_store.Suggestion:

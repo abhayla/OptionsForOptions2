@@ -231,11 +231,12 @@ async def adjustment_history(  # noqa: PLR0913 - FastAPI dependencies, one per i
     live = {str(cid): p.price for cid, p in prices.items() if paper_prices.is_live(p) and p.price is not None}
     per_order, charges_reason = _per_order_charges(orders, found, underlying, rates)
     plan_max = await _plan_max(db, user_ref, strategy_id, (tracked_reader, rates), ctx)
-    links = await playbook_store.placed_links(db, user_ref, strategy_id)  # order id -> the record that placed it
+    links = await playbook_store.placed_links(db, user_ref, strategy_id)  # order id -> every record that placed it
     by_batch: dict[datetime.datetime, dict[int, playbook_store.Suggestion]] = {}
     for o in orders:  # a batch = every order of one placed_at (the engine's batch rule)
-        if o.id in links and o.order.kind not in ah.OWN_KINDS:
-            by_batch.setdefault(o.order.placed_at, {})[links[o.id].id] = links[o.id]
+        if o.order.kind not in ah.OWN_KINDS:
+            for s in links.get(o.id, ()):
+                by_batch.setdefault(o.order.placed_at, {})[s.id] = s
     one_rule = {at: next(iter({s.rule_id for s in rs.values()})) for at, rs in by_batch.items()
                 if len({s.rule_id for s in rs.values()}) == 1}
     history = ah.adjustment_history(

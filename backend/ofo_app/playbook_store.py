@@ -671,9 +671,14 @@ async def link_orders(conn: Any, user_ref: str, strategy_id: int, suggestion_id:
                                             f"suggestion {suggestion_id} is {found[0]} or already names a basket")
 
 
-async def placed_links(conn: Any, user_ref: str, strategy_id: int) -> dict[int, Suggestion]:
-    """REQ-163 AC-1: paper order id -> the record whose basket placed it, for one strategy of the user."""
-    return {oid: s for s in await suggestions(conn, user_ref, strategy_id) for oid in (s.placed_order_ids or ())}
+async def placed_links(conn: Any, user_ref: str, strategy_id: int) -> dict[int, list[Suggestion]]:
+    """REQ-163 AC-1: paper order id -> EVERY record whose basket placed it (one basket may answer several records;
+    ``link_orders`` writes the whole order list into each), oldest record first, for one strategy of the user."""
+    out: dict[int, list[Suggestion]] = {}
+    for s in sorted(await suggestions(conn, user_ref, strategy_id), key=lambda s: s.id):
+        for oid in dict.fromkeys(s.placed_order_ids or ()):
+            out.setdefault(oid, []).append(s)
+    return out
 
 
 async def lapse(conn: Any, user_ref: str, suggestion_id: int, reason: str = LAPSE_CONDITION_STOPPED) -> Suggestion:
