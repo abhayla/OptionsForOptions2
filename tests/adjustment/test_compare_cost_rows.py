@@ -15,11 +15,10 @@ from ofo.charges import ChargeRates
 from ofo.charges.calculator import ChargeOrder, charges_for_orders
 from ofo.charges.round_trip import charge_segment, to_paise_up
 from ofo.engine.legs import Action, Instrument, Leg
-from ofo.engine.metrics import UNLIMITED
+from ofo.engine.metrics import UNLIMITED, MultiExpiryError
 from ofo.engine.strategy import Strategy
 from ofo.engine.whole_trade import whole_trade_after
 from ofo.errors.explanations import ADJUSTMENT_CHARGE_LABEL_TEXT, render_explanation
-from ofo.engine.metrics import MultiExpiryError
 from test_approach_compare import CFG, PAID, PREFS, greeks_of, load, row
 from test_approaches import inputs  # the position's expiry AND the next one (A-04, ADR-239 (2)), as the route
 
