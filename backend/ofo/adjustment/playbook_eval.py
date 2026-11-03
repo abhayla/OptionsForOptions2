@@ -21,14 +21,17 @@ finds it false; from then on it flags like any other rule. ``evaluate`` takes th
 from __future__ import annotations
 
 import dataclasses
+import datetime
 import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from decimal import Context, Decimal, DivisionByZero, Inexact, InvalidOperation, Overflow, localcontext
 from typing import Final, Literal
 
+from ofo import market_calendar as mc
 from ofo.engine import adjust_ratios as ratios
 from ofo.errors import render
+from ofo.timeutil import IST
 
 ExpiryKind = Literal["weekly", "monthly"]
 Cmp = Literal["le", "ge", "lt"]
@@ -53,6 +56,20 @@ class ShortLeg:
     strike: Decimal
     abs_delta: Decimal | None
     ltp: Decimal | None
+
+
+@dataclass(frozen=True)
+class CarryFigures:
+    """The carry check's content (GC-IC1 1b, S-06): the whole-trade P&L (booked plus open legs) if spot gaps
+    ``CARRY_GAP_PCT`` up / down at the next session's open, valued by the engine (``ofo.adjustment.carry.gap_pnl``),
+    and the broker-stated overnight margin. A figure not known is None with its reason code, never a zero."""
+
+    up: Decimal | None
+    down: Decimal | None
+    gap_reason: str | None = None  # why up / down are None (a catalogue reason code)
+    margin: Decimal | None = None  # the broker-stated margin; None = not stated (``margin_reason``)
+    margin_reason: str | None = None
+    next_open: datetime.datetime | None = None  # the time the gap figures are valued at
 
 
 @dataclass(frozen=True)
@@ -81,6 +98,10 @@ class StrategyState:
     expiry_pnl_at_spot: Decimal | None = None  # T-02: whole-trade P&L at expiry if spot stays here
     tighten_percent: Decimal | None = None  # the due day rule's X ("Tighten every trigger by X%")
     prices_fresh: bool | None = None  # T-21: True only when the prices are fresh; None = unknown
+    #: GC-IC1 1b: today's carry day kinds (``carry_day_kinds``: "beforeWeekend" / "beforeHoliday"); None = the
+    #: holiday list is not known for the days it needs (never assumed a session)
+    carry_days: frozenset[str] | None = None
+    carry: CarryFigures | None = None  # the carry check's figures; None = not computed (no carry rule due)
 
 
 # ---- results ---------------------------------------------------------------------------------------------------------
@@ -157,6 +178,7 @@ class RuleValue:
     later: tuple[Decimal | str, ...] = ()
     yes_no: bool = False  # a day rule (GC-IC1 1a): the gate reads it yes/no, never on a ladder
     approaches: tuple[str, ...] = ()  # a day rule's approaches the record names (A-28 tested spread, A-27 far short)
+    carry: CarryFigures | None = None  # a carry check's figures the record carries (GC-IC1 1b)
 
 
 @dataclass(frozen=True)
@@ -740,10 +762,14 @@ def day_answers(body: Mapping, state: StrategyState, why: str | None = None) -> 
     out: list[DayAnswer] = []
     rules = body.get("day_rules")
     for i, rule in enumerate(rules if isinstance(rules, list) else []):
-        if not isinstance(rule, Mapping) or rule.get("on") is not True or rule.get("when") != "expiry" or \
-                rule.get("action") != DAY_ACTION_PREPARE_EXIT:
+        if not isinstance(rule, Mapping) or rule.get("on") is not True:
             continue
-        answer = _expiry_close(body, rule, day_rule_id("expiry", i), state, why)
+        when, action = rule.get("when"), rule.get("action")
+        answer = None
+        if when == "expiry" and action == DAY_ACTION_PREPARE_EXIT:
+            answer = _expiry_close(body, rule, day_rule_id("expiry", i), state, why)
+        elif when in CARRY_WHENS and action == DAY_ACTION_CARRY_CHECK:
+            answer = _carry_check(rule, day_rule_id(str(when), i), state)
         if answer is not None:
             out.append(answer)
     return tuple(out)
@@ -762,5 +788,75 @@ def _add_day_rules(body: Mapping, state: StrategyState, why: str | None, stage_n
             results.append(Flag(d.rule_id, d.rule_id, stage_name, hit.value, hit.threshold, hit.cmp, (hit,)))
         else:
             clear.append(d.rule_id)
+        carry = state.carry if d.action == DAY_ACTION_CARRY_CHECK else None
         values.append(RuleValue(d.rule_id, d.rule_id, hit.value, hit.threshold, hit.cmp, hit.fired,
-                                yes_no=True, approaches=d.approaches))
+                                yes_no=True, approaches=d.approaches, carry=carry))
+
+
+# ---- carry check (GC-IC1 step 1b; REQ-159 AC-4, S-06) ------------------------------------------------------------
+#: ``beforeWeekend`` / ``beforeHoliday`` + action 0 ("Run the carry check"): on such a day from ``at`` the rule reads
+#: True (a yes/no gate reading; the gate opens one record per episode, so later checks the same evening hold it).
+#: The record carries ``StrategyState.carry`` (the 2% gap figures at the next open and the stated margin).
+#: Not due (another day, or before ``at``) -> no answer. Holiday list not known -> NotChecked, never assumed a session.
+#: A Thursday before a Friday holiday is both kinds: both switched-on rules answer, one record per rule id.
+DAY_ACTION_CARRY_CHECK: Final = 0  # PLAYBOOK_DAY_RULE_ACTION_TEXT["0"], "Run the carry check"
+BEFORE_WEEKEND: Final = "beforeWeekend"
+BEFORE_HOLIDAY: Final = "beforeHoliday"
+CARRY_WHENS: Final = (BEFORE_WEEKEND, BEFORE_HOLIDAY)
+HOLIDAY_LIST_UNKNOWN: Final = f"{P}holiday_list_unknown"
+_NOON: Final = datetime.time(12, 0)
+_SATURDAY: Final = 5
+
+
+def _status(day: datetime.date, holidays: mc.Holidays | None) -> mc.MarketStatus:
+    """The day-level status (read at noon, inside the session hours)."""
+    return mc.market_status(datetime.datetime.combine(day, _NOON, IST), holidays)
+
+
+def carry_day_kinds(today: datetime.date, holidays: mc.Holidays | None = None) -> frozenset[str] | None:
+    """Today's carry day kinds from the NSE holiday data (``market_calendar``; ``holidays`` for tests only).
+    ``beforeWeekend``: today is a session and a Saturday lies before the next session (the generator's ``day_type``).
+    ``beforeHoliday``: today is a session and the next calendar weekday is a listed holiday. Today not a session ->
+    empty. None = a year the answer needs has no holiday data (``NO_CALENDAR``): not known, never a guess."""
+    status = _status(today, holidays)
+    if status is mc.MarketStatus.NO_CALENDAR:
+        return None
+    if status is not mc.MarketStatus.OPEN:  # a weekend or a holiday itself: no carry day
+        return frozenset()
+    opens = mc.next_open(datetime.datetime.combine(today, _NOON, IST), holidays)
+    if opens is None:
+        return None
+    kinds: set[str] = set()
+    if any((today + datetime.timedelta(days=i)).weekday() == _SATURDAY for i in range(1, (opens.date() - today).days)):
+        kinds.add(BEFORE_WEEKEND)
+    weekday = today + datetime.timedelta(days=1)
+    while weekday.weekday() >= _SATURDAY:
+        weekday += datetime.timedelta(days=1)
+    after = _status(weekday, holidays)
+    if after is mc.MarketStatus.NO_CALENDAR:
+        return None
+    if after is mc.MarketStatus.CLOSED_HOLIDAY:
+        kinds.add(BEFORE_HOLIDAY)
+    return frozenset(kinds)
+
+
+def carry_due(body: Mapping | None, state: StrategyState) -> bool:
+    """True when a switched-on carry rule is due on ``state`` (its day kind and its time): the caller computes the
+    carry figures (``StrategyState.carry``) only then, so no other check pays for them."""
+    return isinstance(body, Mapping) and any(
+        d.hit is not None and d.action == DAY_ACTION_CARRY_CHECK for d in day_answers(body, state))
+
+
+def _carry_check(rule: Mapping, rid: str, state: StrategyState) -> DayAnswer | None:
+    at = rule.get("at")
+    if not isinstance(at, str) or not _HHMM.fullmatch(at):
+        return DayAnswer(rid, DAY_ACTION_CARRY_CHECK, reason=DAY_RULE_INCOMPLETE)
+    if state.hhmm is None:
+        return DayAnswer(rid, DAY_ACTION_CARRY_CHECK, reason=f"{P}missing_clock")
+    if state.hhmm < at:
+        return None
+    if state.carry_days is None:
+        return DayAnswer(rid, DAY_ACTION_CARRY_CHECK, reason=HOLIDAY_LIST_UNKNOWN)
+    if rule.get("when") not in state.carry_days:
+        return None
+    return DayAnswer(rid, DAY_ACTION_CARRY_CHECK, Hit(rid, state.hhmm, at, "ge", True))
