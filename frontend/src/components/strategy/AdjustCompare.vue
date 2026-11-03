@@ -26,6 +26,7 @@
           <template v-for="r in why.rows" :key="r.id"><dt class="text-ink-muted">{{ r.label }}</dt><dd class="tabular-nums" :data-testid="`adjust-why-${r.id}`">{{ r.value }}</dd></template>
         </dl>
       </div>
+      <AdjustControls :strategy-id="strategyId" :client="client" :delta-neutral="reply.delta_neutral ?? null" />
       <div class="grid min-w-0 grid-cols-1 gap-4 min-[1100px]:grid-cols-2">
         <div class="min-w-0 rounded-lg border border-line bg-surface p-3" data-testid="adjust-chart-card">
           <h3 class="mb-1 text-sm font-semibold">Payoff at expiry, whole trade</h3>
@@ -159,6 +160,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import api, { NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
+import AdjustControls from '@/components/strategy/AdjustControls.vue'
 import AdjustPayoffChart from '@/components/strategy/AdjustPayoffChart.vue'
 import { istTime } from '@/lib/displayFormat'
 import { plainName } from '@/lib/saveDraft'

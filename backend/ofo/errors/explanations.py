@@ -1918,6 +1918,7 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     # GC-IC1 4c (A-37): a refused level watch (pending owner read)
     ExplanationTemplate("level_watch_refused_not_a_number", "rule", "Enter the level as a number above zero, like 23800."),
     # GC-IC1 4a (A-23, A-38 on the check): pending owner read
+    ExplanationTemplate("playbook_situation_guidance", "rule", "Guidance"),  # ADR-240 (1): S-03, S-04, S-05
     ExplanationTemplate("delta_neutral_label", "rule", "Delta-neutral figures (a calculation, not a suggestion to trade)"),
     ExplanationTemplate("delta_neutral_not_known", "rule", "Net delta is not known: a leg has no implied volatility now."),
     ExplanationTemplate("monitor_pause_shown", "rule", "Adjustment checks paused until {time}.", {"time": ClockHm}),
