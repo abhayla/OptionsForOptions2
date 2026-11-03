@@ -3706,5 +3706,9 @@
   "labels:level_watch": {
     "sha256": "15846104109b0536944c179820cfa6b5e2d9085fd030e5b4f0a205ba825851c1",
     "reviewed": "pending owner read"
+  },
+  "explanation:playbook_situation_guidance": {
+    "sha256": "5bdcdf3f887ec401930655f7c668f2b95a554265bacd23f582f86dad807be63d",
+    "reviewed": "pending owner read"
   }
 }
