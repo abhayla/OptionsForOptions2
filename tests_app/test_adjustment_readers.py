@@ -244,9 +244,9 @@ def test_gcic1_read_market_asks_chain_quotes_for_the_window_ids(monkeypatch):
     seen = []
     real = readers.chain_quotes
 
-    async def spy(provider, underlying, expiry, ids, feed):
+    async def spy(provider, underlying, expiry, ids, feed, index_id=None):  # noqa: PLR0913
         seen.append(list(ids))
-        return await real(provider, underlying, expiry, ids, feed)
+        return await real(provider, underlying, expiry, ids, feed, index_id)
     monkeypatch.setattr(readers, "chain_quotes", spy)
     asyncio.run(readers.read_market(tracked_of(sc), ctx))
     assert leg_ids <= set(seen[0]) and len(set(seen[0]) - leg_ids) >= ctx.chain_strikes_each_side  # legs plus window
@@ -255,8 +255,14 @@ def test_gcic1_read_market_asks_chain_quotes_for_the_window_ids(monkeypatch):
 def test_gcic1_no_spot_means_no_window_legs_only_no_crash(monkeypatch):
     sc, _ids, feed, ctx = _book_of_legs_only(monkeypatch)
     ctx.provider.underlying_quote = lambda _u: None
+
+    async def no_rest(_u):
+        return readers.SourceReading(SourceState.ABSENT)
+    monkeypatch.setattr(readers, "read_rest_spot", no_rest)
+    monkeypatch.setattr(readers, "read_last_close", lambda *_a: readers.SourceReading(SourceState.ABSENT))
     m = asyncio.run(readers.read_market(tracked_of(sc), ctx))
-    assert m.vol is None and feed.subscribed == []  # the legs are in the book already; no window was held
+    # the legs are in the book already; no spot -> no window held, only the index is asked for (released once)
+    assert m.vol is None and feed.subscribed == [["NSE_INDEX:1001"]] and feed.released == 1
 
 
 def test_gcic1_window_released_when_the_provider_raises(monkeypatch):
@@ -282,7 +288,27 @@ def test_gcic1_window_ids_skip_strikes_without_a_contract_and_unlisted_expiry():
         return ns(contract=ns(name="NIFTY", expiry=expiry, strike=D(strike), instrument_type=typ,
                               exchange_segment="NFO", exchange_token=str(tok)))
     listed = [lc(100, "CE", 1), lc(100, "PE", 2), lc(200, "CE", 3), lc(300, "CE", 4), lc(300, "PE", 5)]
-    spot = ns(ltp=D(200))
+    spot = D(200)
     assert readers.window_ids(listed, "NIFTY", expiry, spot, 1) == ["NFO:1", "NFO:2", "NFO:3", "NFO:4", "NFO:5"]
     assert readers.window_ids(listed, "NIFTY", datetime.date(2027, 1, 1), spot, 1) == []
     assert readers.window_ids(listed, "NIFTY", expiry, None, 1) == []
+
+
+def test_gcic1_no_index_quote_on_the_feed_the_window_is_centred_on_the_rest_spot(monkeypatch):
+    """Round 2: nobody holds the index on the feed (only a strategy open); REST centres the window."""
+    sc, leg_ids, feed, ctx = _book_of_legs_only(monkeypatch)
+    spot = ctx.provider.underlying_quote("NIFTY")
+    index_id = spot.instrument_id
+    ctx.provider.index_id = lambda _u: index_id
+    ctx.provider.underlying_quote = lambda _u: spot if index_id in ctx.provider.held else None  # held on demand only
+    asked = []
+
+    async def rest(u):
+        asked.append(u)
+        return readers.SourceReading(SourceState.STATED, spot.ltp, ctx.clock())
+    monkeypatch.setattr(readers, "read_rest_spot", rest)
+    m = asyncio.run(readers.read_market(tracked_of(sc), ctx))
+    legs = {x.tradingsymbol for x in tracked_of(sc).position.legs}
+    assert asked == ["NIFTY"] and feed.subscribed and set(feed.subscribed[0]) - leg_ids
+    assert index_id in feed.subscribed[0]
+    assert legs <= set(m.leg_greeks) and m.vol is not None
