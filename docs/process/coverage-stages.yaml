@@ -567,6 +567,7 @@ issues:
   "#642": S6.7  # Background worker reads only the position's expiry: A-04 and T-19 differ from the screen
   "#643": S6.7  # Admin settings page scrolls sideways at 390 px (table 457 px wide)
   "#644": S6.7  # Adjustment approaches read the Kite token 3 times and the market twice per request (dev over the tunnel: 4-16 s)
+  "#645": S6.7  # Suggestion outcomes never follow a real Zerodha order (Completed / Partly completed unwritten; real-strategy state unnamed)
 
 # Work items whose status is not done.
 work_items:
