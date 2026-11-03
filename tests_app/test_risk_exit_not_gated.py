@@ -35,8 +35,11 @@ D = Decimal
 #: the gate, its worker, and the user's pause (A-38, GC-IC1 4a): a pause is for adjustment checks only (AC-5)
 GATE_MODULES: frozenset[str] = frozenset({"ofo.adjustment.alert_gate", "ofo_app.background",
                                           "ofo.adjustment.monitor_pause", "ofo_app.strategy_pause_store",
-                                          # the user's level watch (A-37, GC-IC1 4c, ADR-242): an adjustment alert
-                                          "ofo.adjustment.level_watch", "ofo_app.strategy_level_watch_store"})
+                                          # the user's level watch (A-37, GC-IC1 4c, ADR-242): an adjustment alert.
+                                          # Only its STORE is here: ofo.adjustment.level_watch is a pure "is the
+                                          # level reached" module (stdlib imports only) used by playbook_eval, which
+                                          # the paper routes already reach for reply models; it gates nothing.
+                                          "ofo_app.strategy_level_watch_store"})
 #: the paper exit path: the monitor, the trigger store, the stop crossing rule (the order book's own modules too)
 EXIT_MODULES: tuple[str, ...] = PAPER_MODULES
 
@@ -59,7 +62,6 @@ def test_no_paper_exit_module_reaches_the_alert_gate_or_the_worker():
     ("ofo_app/paper_monitor.py", "from ofo_app import strategy_pause_store  # noqa: F401",
      "ofo_app.strategy_pause_store"),
     ("ofo/tracking/stops.py", "from ofo.adjustment import monitor_pause  # noqa: F401", "ofo.adjustment.monitor_pause"),
-    ("ofo/tracking/stops.py", "from ofo.adjustment import level_watch  # noqa: F401", "ofo.adjustment.level_watch"),
     ("ofo_app/paper_monitor.py", "from ofo_app import strategy_level_watch_store  # noqa: F401",
      "ofo_app.strategy_level_watch_store"),
 ])
