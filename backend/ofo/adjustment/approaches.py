@@ -84,6 +84,7 @@ from ofo.errors.explanations import (
 )
 from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS, Catalogue
 from ofo.instruments.models import Contract
+from ofo.marketdata.forward import mid_price
 from ofo.money import PAISE
 from ofo.rules.inputs import DataHealth
 from ofo.strategy import leg_edit
@@ -239,11 +240,12 @@ def is_no_change(built: ApproachLegs) -> bool:
 
 def planned_price(row: ChainRow | None) -> Decimal | None:
     """ADR-241: the bid-ask mid when the row's book is live (``live_book``, the ADR-172 rule ``iv_price`` uses, health
-    gate included), else a positive LTP, half-up to 0.01; else None (no fake price, no model price, ADR-020 Q185)."""
+    gate included; ``forward.mid_price``, half-even), else a positive LTP, half-up to 0.01; else None (no fake
+    price, no model price, ADR-020 Q185)."""
     if row is None:
         return None
     if live_book(row.bid, row.ask, row.health):
-        return ((row.bid + row.ask) / 2).quantize(PAISE, rounding=ROUND_HALF_UP)  # type: ignore[operator]
+        return mid_price(row.bid, row.ask)  # type: ignore[arg-type]  # the ONE mid (half-even), as iv_price uses
     if row.ltp is not None and row.ltp > 0:
         return row.ltp.quantize(PAISE, rounding=ROUND_HALF_UP)
     return None

@@ -31,6 +31,10 @@ def _body(strategy_type: str = "ic", value: str = "0.5") -> dict:
             "rules": [{"id": "T-01", "any_of": ["T-01"]}]}
 
 
+def _carry_rule(at) -> dict:
+    return {"on": True, "when": "beforeWeekend", "at": at, "action": 0}
+
+
 @pytest.fixture
 async def db(app_engine):
     async with app_engine.connect() as conn:
@@ -287,6 +291,9 @@ async def test_another_users_playbook_answers_not_found_everywhere(db):
     (lambda b: b["triggers"]["T-01"].update(weekly=["half", ""]), "triggers.T-01.weekly.0"),
     (lambda b: b["rules"].append({"id": "R-2", "all_of": ["T-99"]}), "rules.1"),
     (lambda b: b.pop("stages"), "stages"),
+    (lambda b: b.update(day_rules=[_carry_rule("2:30 pm")]), "day_rules.0.at"),
+    (lambda b: b.update(day_rules=[_carry_rule(1430)]), "day_rules.0.at"),
+    (lambda b: b.update(day_rules=[_carry_rule("24:00")]), "day_rules.0.at"),
 ])
 async def test_an_invalid_body_is_refused_naming_the_field_and_nothing_is_written(db, mutate, field):
     user = _user()

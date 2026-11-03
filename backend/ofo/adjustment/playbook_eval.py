@@ -696,10 +696,21 @@ class DayAnswer:
     approaches: tuple[str, ...] = ()
 
 
+#: the id of a day rule that cannot be named (a malformed ``at``, ``when`` or ``action``): inside the Identifier
+#: pattern, matches no rule (``day_rule_action`` refuses it), so a stored bad body never reaches the check route.
+DAY_RULE_UNNAMEABLE: Final = f"{DAY_RULE_PREFIX}invalid"
+_ID_PART: Final = re.compile(r"[A-Za-z0-9_-]{1,20}")
+
+
 def day_rule_id(rule: Mapping) -> str:
-    """The stable id of a day rule: its kind, time and action (``day.expiry.1430.5``)."""
-    at = str(rule.get("at")).replace(":", "")
-    return f"{DAY_RULE_PREFIX}{rule.get('when')}.{at}.{rule.get('action')}"
+    """The stable id of a day rule: its kind, time and action (``day.expiry.1430.5``). Fail closed: a part that is not
+    a plain token (``at`` not HH:MM, a missing kind or action) -> ``DAY_RULE_UNNAMEABLE``, never an id outside the
+    Identifier pattern."""
+    at, when, action = rule.get("at"), rule.get("when"), rule.get("action")
+    if (not isinstance(at, str) or not _HHMM.fullmatch(at) or not isinstance(when, str)
+            or not _ID_PART.fullmatch(when) or type(action) is not int or not 0 <= action <= 99):  # noqa: PLR2004
+        return DAY_RULE_UNNAMEABLE
+    return f"{DAY_RULE_PREFIX}{when}.{at.replace(':', '')}.{action}"
 
 
 def is_day_rule_id(rule_id: object) -> bool:
@@ -708,7 +719,7 @@ def is_day_rule_id(rule_id: object) -> bool:
 
 def day_rule_action(body: Mapping | None, rule_id: object) -> int | None:
     """The action index of the day rule ``rule_id`` names in ``body``; None when it names none."""
-    if not is_day_rule_id(rule_id) or not isinstance(body, Mapping):
+    if not is_day_rule_id(rule_id) or rule_id == DAY_RULE_UNNAMEABLE or not isinstance(body, Mapping):
         return None
     rules = body.get("day_rules")
     for rule in rules if isinstance(rules, list) else []:

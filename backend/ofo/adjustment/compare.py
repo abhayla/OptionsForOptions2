@@ -65,6 +65,7 @@ from ofo.engine import adjust_money
 from ofo.engine.black_scholes import GREEK_STEP, Greeks
 from ofo.engine.legs import Action, Instrument, Leg
 from ofo.engine.metrics import UNLIMITED
+from ofo.engine.model import live_book
 from ofo.engine.pop import Why
 from ofo.engine.strategy import Strategy
 from ofo.engine.whole_trade import WholeTradeAfter, whole_pnl_at, whole_trade_after
@@ -225,7 +226,8 @@ def approach_cost(col: Column, rows: Mapping[tuple, ChainRow]) -> CostAnswer:
     """The Compare's "This adjustment" cost of one built column (REQ-156 AC-2, ADR-221): the approach's own charges
     (the whole-trade After's ``adjustment_charges``) plus half the bid-ask spread of each traded contract times its
     quantity (``adjust_money.cost_with_spread``), rounded half-even to the paisa as the cell shows it. No trade -> 0.
-    No whole trade or charges unknown -> that reason; a traded contract without a usable bid and ask -> named.
+    No whole trade or charges unknown -> that reason; a traded contract without a live book (ADR-172 ``live_book``: both
+    sides, ask >= bid, health available) -> named.
 
     The Compare's cost cell and the T-19 trigger (``cheapest_approach``) both read this; no second formula exists."""
     trades = col.built.trades
@@ -239,7 +241,7 @@ def approach_cost(col: Column, rows: Mapping[tuple, ChainRow]) -> CostAnswer:
     quotes = []
     for t in trades:
         row = rows.get((t.expiry, t.type, t.strike))
-        if row is None or row.bid is None or row.ask is None or row.bid <= 0 or row.ask < row.bid:
+        if row is None or not live_book(row.bid, row.ask, row.health):
             return CostAnswer(None, render_explanation("adjust_cmp_no_bid_ask", leg=t.tradingsymbol))
         quotes.append((row.bid, row.ask, t.quantity))
     value = adjust_money.cost_with_spread(charges, quotes)
@@ -466,7 +468,7 @@ class _Rows:
         unknown_oi: list[str] = []
         for x in new:
             row = self._row(x)
-            if row is None or row.bid is None or row.ask is None or row.bid <= 0 or row.ask < row.bid:
+            if row is None or not live_book(row.bid, row.ask, row.health):
                 return _dash(render_explanation("adjust_cmp_no_bid_ask", leg=x.tradingsymbol))
             if row.low_oi_state != "stated":  # the builder's low-OI warning, carried into this cell too
                 unknown_oi.append(x.tradingsymbol)

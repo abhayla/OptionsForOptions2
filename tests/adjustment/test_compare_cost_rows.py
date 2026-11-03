@@ -10,7 +10,7 @@ from decimal import Decimal as D
 import pytest
 from ofo.adjustment import compare_cost_rows as ccr
 from ofo.adjustment.approaches import APPROACH_IDS, build_approach
-from ofo.adjustment.compare import ROWS, Column, Context, MarginRead, compare
+from ofo.adjustment.compare import ROWS, Column, Context, MarginRead, approach_cost, chain_index, compare
 from ofo.charges import ChargeRates
 from ofo.charges.calculator import ChargeOrder, charges_for_orders
 from ofo.charges.round_trip import charge_segment, to_paise_up
@@ -19,6 +19,7 @@ from ofo.engine.metrics import UNLIMITED, MultiExpiryError
 from ofo.engine.strategy import Strategy
 from ofo.engine.whole_trade import whole_trade_after
 from ofo.errors.explanations import ADJUSTMENT_CHARGE_LABEL_TEXT, render_explanation
+from ofo.rules.inputs import DataHealth
 from test_approach_compare import CFG, PAID, PREFS, greeks_of, load, row
 from test_approaches import inputs  # the position's expiry AND the next one (A-04, ADR-239 (2)), as the route
 
@@ -157,6 +158,18 @@ def test_state_cost_unknown_no_bid_ask_is_a_dash_with_that_reason():
     chain = [replace(r, bid=None, ask=None) for r in ctx.chain]
     cell = row(compare(cols, replace(ctx, chain=chain), before, True), "cost_pct").values["A-01"]
     assert cell.value is None and "has no bid or no ask" in cell.unavailable_reason
+
+
+@pytest.mark.parametrize("health", [DataHealth.STALE, DataHealth.UNAVAILABLE, None])
+def test_state_cost_from_a_book_that_is_not_live_is_not_taken_after_hours(health):
+    """GC-IC1 review (B open point): a stale / unhealthy / unstated book's half-spread is not used: cost is a dash."""
+    _, cols, ctx, _ = build("ADJ-02")
+    col = next(c for c in cols if c.built.trades)
+    live = approach_cost(col, chain_index([replace(r, health=DataHealth.AVAILABLE) for r in ctx.chain]))
+    assert live.value is not None
+    chain = [replace(r, health=health) for r in ctx.chain]
+    got = approach_cost(col, chain_index(chain))
+    assert got.value is None and "has no bid or no ask" in got.reason
 
 
 def test_state_max_profit_unlimited_either_side_is_a_dash_with_a_reason():

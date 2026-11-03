@@ -182,13 +182,46 @@ async def test_a_failed_or_busy_margin_read_is_not_known_on_both_paths_never_zer
     assert verdict == _verdict(w.body, screen, "T-16")
 
 
+def _t16_off(body: dict) -> dict:
+    return {**body, "triggers": {**body["triggers"], "T-16": {**body["triggers"]["T-16"], "on": False}}}
+
+
+@pytest.mark.parametrize(("body", "needed"), [
+    ({"triggers": {"T-16": {"on": True}}}, True),
+    ({"triggers": {"T-16": {"on": False}}, "day_rules": [{"on": True, "when": "beforeWeekend", "action": 0}]}, True),
+    ({"day_rules": [{"on": True, "when": "beforeHoliday", "action": 0}]}, True),
+    ({"day_rules": [{"on": False, "when": "beforeWeekend", "action": 0}]}, False),
+    ({"day_rules": [{"on": True, "when": "expiry", "action": 5}]}, False),
+    ({"day_rules": [{"on": True, "when": "beforeWeekend", "action": 4}]}, False),
+    ({"day_rules": "x"}, False),
+    ({}, False),
+    (None, False),
+])
+def test_margin_is_needed_when_t16_or_a_carry_day_rule_is_on(body, needed):
+    assert background.margin_needed(body) is needed
+
+
+async def test_a_carry_rule_alone_makes_the_worker_read_the_margin_the_screen_reads(gap):
+    """GC-IC1 review A2: T-16 OFF, the Friday carry rule ON -> the worker still reads the margin, so its carry record
+    holds the same stated margin as the screen (before: None, margin_reason missing)."""
+    prov = Prov(gap)
+    at = _gap_time(prov)
+    w = dataclasses.replace(_ic_watched(gap), body=_t16_off(_system_body("ic")))
+    assert any(r["when"] == "beforeWeekend" and r["on"] for r in w.body["day_rules"])
+    fake = FakeMargin(at)
+    worker, bg, at2 = await _worker_after_refresh(prov, w, at, fake)
+    screen = await _screen_with(prov, w.tracked, at2, w.body, fake)
+    assert bg.margin == screen.margin == MARGIN_X
+    assert worker.margins.calls == {w.strategy_id: 1}
+
+
 async def test_ten_cycles_in_a_minute_make_at_most_one_margin_call_per_strategy(gap):
     """Attack 2: a check every 6 s for a minute with a refresh pass after each -> ONE margin read per strategy; the
     next read only after ``MARGIN_REFRESH_S``; a playbook with T-16 off is never read."""
     prov = Prov(gap)
     at = _gap_time(prov)
     on = _ic_watched(gap)
-    off_body = {**on.body, "triggers": {**on.body["triggers"], "T-16": {**on.body["triggers"]["T-16"], "on": False}}}
+    off_body = {**_t16_off(on.body), "day_rules": []}  # no T-16 and no carry rule: no margin is needed
     off = dataclasses.replace(on, strategy_id=FIRST_ID + 1, body=off_body)
     fake, now, calls = FakeMargin(at), [at], Calls()
     worker = _worker(prov, [on, off], now, calls, margin_of=background.screen_margin_reader(fake))

@@ -307,11 +307,21 @@ def check_body(body: object, strategy_type: str) -> dict:
                       ("approaches", dict)):
         if key in body and not isinstance(body[key], kind):
             raise _bad(key)
+    _check_day_rule_times(body.get("day_rules"))
     try:  # second layer: the evaluator's own validator (step 1B) must accept what is stored
         validate_body(body)
     except ValueError:
         raise _bad("body") from None
     return body
+
+
+def _check_day_rule_times(day_rules: object) -> None:
+    """A day rule's ``at``, when present, is HH:MM (REQ-159 AC-4): "2:30 pm" is refused here, since its rule id
+    would be outside the Identifier pattern. An absent ``at`` is the evaluator's "incomplete rule", not refused."""
+    for i, rule in enumerate(day_rules if isinstance(day_rules, list) else []):
+        at = rule.get("at") if isinstance(rule, dict) else None
+        if isinstance(rule, dict) and "at" in rule and not (isinstance(at, str) and _CLOCK.fullmatch(at)):
+            raise _bad(f"day_rules.{i}.at")
 
 
 def _check_triggers(triggers: object, counts: dict[str, int]) -> dict:
