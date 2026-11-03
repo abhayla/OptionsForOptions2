@@ -100,7 +100,8 @@ async def test_a_cleared_pause_checks_again_at_the_next_rebuild(app_db_url, monk
 async def test_the_screen_check_shows_the_pause_with_its_end_and_evaluates_nothing(
         app_db_url, monkeypatch, cleared):  # noqa: F811
     from test_adjustment_check import _check  # noqa: PLC0415 - the check route's own harness
-    sid, scn, _now, _worker = await _ready(app_db_url, monkeypatch)
+    from test_background_worker import _seeded  # noqa: PLC0415 - no Worker here: its pool would hold connections
+    sid, scn = await _seeded(app_db_url, monkeypatch)
     status, before = await _check("ADJ-02", sid)
     assert status == OK and before["paused"] is None and before["results"], before  # not paused: evaluated
     until = scn.clock_at + datetime.timedelta(minutes=PAUSE_MINUTES)
