@@ -3,17 +3,20 @@ source state from the SAME provider / client path the live app uses, and never a
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import datetime
 import types
 from decimal import Decimal as D
 
 import pytest
-from ofo.adjustment.approaches import build_approach
+from ofo.adjustment import liquidity
+from ofo.adjustment.approaches import ChainRow, Position, PositionLeg, build_approach, planned_price
 from ofo.adjustment.preferences import from_values
 from ofo.marketdata.spot_source import SourceState
 from ofo.settings import defaults
 from ofo_app import adjustment_readers as readers
 from ofo_app import scenario_mode
+from ofo_app.routes import adjustment as route
 from ofo_app.routes import outcome
 from test_adjustment_approaches_route import load, tracked_of
 
@@ -488,3 +491,162 @@ def test_gcic1_s3_next_expiry_read_inside_the_one_hold_with_its_own_greeks(monke
     position = tracked_of(sc).position
     built = build_approach(position, m.chain, D(sc["market"]["spot"]), "A-04", from_values(defaults()).approach)
     assert built.refusal is None and {t.expiry for t in built.trades} == {position.legs[0].expiry, nxt}
+
+
+# ---- GC-IC1 round 5 (second review): the ONE second pass holds the whole delta reach of a roll -----------------------
+
+NEAR = datetime.date(2026, 11, 9)
+FAR_NEXT = datetime.date(2026, 11, 17)
+WING_LANDING = D("24100")
+
+
+def _reach_case(monkeypatch, target: str):
+    """A book listing only the position's legs; the first hold's fixed reach ends AT the wing (roll points 0, window 2
+    strikes each side), so the fit (23,900 CE) is 4 strikes past it and the wing lands on 24,100 CE. The fixture chain
+    ends 400 points past the wing, so the 200-point default reach is narrowed to show the same 4-strike shortfall."""
+    sc, _leg_ids, feed, ctx = _book_of_legs_only(monkeypatch)
+    p = ctx.provider
+    p.hidden |= {q.instrument_id for q in p._inner.option_chain_snapshot("NIFTY", FAR_NEXT)}
+    ctx = dataclasses.replace(ctx, chain_strikes_each_side=2)
+    monkeypatch.setattr(readers, "_roll_points", lambda: {"NIFTY": D(0), "SENSEX": D(0)})
+    cfg = from_values(defaults()).approach
+    cfg = dataclasses.replace(cfg, target_short_delta={k: D(target) for k in cfg.target_short_delta})
+    return sc, feed, ctx, cfg
+
+
+def _second_pass(sc, ctx, cfg, ids_of, approaches):
+    """The route's order: first read, build, the second-pass ids (``ids_of``), ONE more read, build again."""
+    tracked = tracked_of(sc)
+    spot = D(sc["market"]["spot"])
+    first = asyncio.run(readers.read_market(tracked, ctx))
+    built = [build_approach(tracked.position, first.chain, spot, a, cfg) for a in approaches]
+    extra = ids_of(built, first, tracked.position, cfg)
+    final = asyncio.run(readers.read_market_more(tracked, ctx, extra)) or first
+    return built, extra, final, {a: build_approach(tracked.position, final.chain, spot, a, cfg) for a in approaches}
+
+
+@pytest.mark.parametrize(("approach", "target", "expiry"), [("A-05", "0.08", NEAR), ("A-04", "0.25", FAR_NEXT)])
+def test_gcic1_r5_delta_reach_prices_a_far_roll_after_exactly_one_second_pass(monkeypatch, approach, target, expiry):
+    """Proof (brief step 1): the fan-out quotes ONLY held ids; the first read leaves the roll 'no price'; the one second
+    pass holds the delta reach (to one past the fit, plus the wing landing) and the roll is priced from quotes."""
+    sc, feed, ctx, cfg = _reach_case(monkeypatch, target)
+    built, extra, final, after = _second_pass(sc, ctx, cfg, route.second_pass_ids, [approach])
+    assert built[0].refusal is not None and "has no price" in built[0].refusal
+    rows = {(r.expiry, r.type, r.strike): r for r in final.chain}
+    landing = final.instrument_ids[rows[(expiry, "CE", WING_LANDING)].tradingsymbol]
+    assert landing in extra and landing in feed.subscribed[1]  # the wing landing was in the ONE second hold
+    assert len(feed.subscribed) == 2 and feed.released == 2  # noqa: PLR2004 - the first hold and exactly one more
+    got = after[approach]
+    assert got.refusal is None, got.refusal
+    assert {(t.action, t.strike) for t in got.trades if t.expiry == expiry} >= {("SELL", D("23900")),
+                                                                                 ("BUY", WING_LANDING)}
+    for t in got.trades:  # ADR-068 (1): every price is the quote's planned price, never a model value
+        assert t.price is not None and t.price == planned_price(rows[(t.expiry, t.type, t.strike)])
+
+
+def test_gcic1_r5_unpriced_only_second_pass_still_has_no_price(monkeypatch):
+    """Discrimination: today's second pass (the unpriced ids only) holds one strike more and A-04 stays 'no price'."""
+    sc, _feed, ctx, cfg = _reach_case(monkeypatch, "0.25")
+    _b, _e, _f, after = _second_pass(sc, ctx, cfg, lambda b, m, _p, _c: route.unpriced_ids(b, m), ["A-04"])
+    assert after["A-04"].refusal is not None and "has no price" in after["A-04"].refusal
+
+
+def test_gcic1_r5_a02_past_its_wing_refusal_unchanged_by_the_reach(monkeypatch):
+    """A-02 at the same target lands at 23,900, past the 23,700 wing: still refused for THAT reason after the reach."""
+    sc, _feed, ctx, cfg = _reach_case(monkeypatch, "0.08")
+    _b, _e, _f, after = _second_pass(sc, ctx, cfg, route.second_pass_ids, ["A-02", "A-05"])
+    assert "23,900" in after["A-02"].refusal and "23,700" in after["A-02"].refusal
+    assert after["A-05"].refusal is None
+
+
+def test_gcic1_r5_a05_debit_limit_refusal_unchanged_by_the_reach(monkeypatch):
+    sc, _feed, ctx, cfg = _reach_case(monkeypatch, "0.08")
+    tracked = tracked_of(sc)
+    _b, _e, final, after = _second_pass(sc, ctx, cfg, route.second_pass_ids, ["A-05"])
+    assert after["A-05"].refusal is None
+    limits = liquidity.limits_from_guards({"roll_debit_limit": "Rs 1"})
+    refused = build_approach(tracked.position, final.chain, D(sc["market"]["spot"]), "A-05", cfg, limits=limits,
+                             max_profit=D("100000"))
+    assert refused.refusal is not None and "₹1 your playbook allows" in refused.refusal
+
+
+class _FakeReach:
+    """|delta| 0.40 at 23,500, falling 0.05 per 50 points away from it (only the walk is under test)."""
+
+    def __init__(self, *, flat: bool = False) -> None:
+        self.flat = flat
+
+    def delta(self, kind, strike):
+        if self.flat:
+            return D("0.9")
+        return max(D("0.40") - abs(strike - D("23500")) / 50 * D("0.05"), D(0)) * (1 if kind == "CE" else -1)
+
+
+def _grid(expiries, unlisted=()):
+    rows, ids = [], {}
+    for e in expiries:
+        for k in range(21000, 26001, 50):
+            for t in ("CE", "PE"):
+                sym = f"N{e:%m%d}{k}{t}"
+                rows.append(ChainRow(D(k), t, e, sym, listed=(t, k) not in unlisted))
+                ids[sym] = f"NFO:{sym}"
+    return rows, ids
+
+
+def _strikes(out, ids, kind, expiry):
+    back = {v: k for k, v in ids.items()}
+    return sorted(int(back[i][5:-2]) for i in out if back[i].endswith(kind) and back[i][1:5] == f"{expiry:%m%d}")
+
+
+def _ic(expiry=NEAR):
+    legs = tuple(PositionLeg(s, t, D(k), expiry, 1, D(10), f"L{k}{t}") for s, t, k in
+                 (("BUY", "PE", 22500), ("SELL", "PE", 22700), ("SELL", "CE", 23500), ("BUY", "CE", 23700)))
+    return Position("NIFTY", 65, "weekly", expiry, legs)
+
+
+def test_gcic1_r5_delta_reach_walks_to_one_past_the_fit_plus_the_wing_shift():
+    rows, ids = _grid([NEAR])
+    out = readers.delta_reach_ids(rows, ids, _ic(), {NEAR: _FakeReach()}, D("0.25"))
+    # CE: |delta| <= 0.25 first at 23,650; one more -> 23,700; the same shifted by the 200 wing -> 23,750..23,900
+    assert _strikes(out, ids, "CE", NEAR) == [23550, 23600, 23650, 23700, 23750, 23800, 23850, 23900]
+    # PE: |delta| of 22,700 is 0 already (fake); one more -> 22,600; shifted by -200 -> 22,450, 22,400
+    assert _strikes(out, ids, "PE", NEAR) == [22400, 22450, 22600, 22650]
+    assert len(out) == len(set(out))
+
+
+def test_gcic1_r5_delta_reach_is_capped_per_short():
+    rows, ids = _grid([NEAR])
+    out = readers.delta_reach_ids(rows, ids, _ic(), {NEAR: _FakeReach(flat=True)}, D("0.25"))  # never reaches it
+    cap = readers.REACH_MAX_STRIKES
+    ce = _strikes(out, ids, "CE", NEAR)
+    assert [k for k in ce if k <= 23500 + 50 * cap] == list(range(23550, 23500 + 50 * cap + 1, 50))
+    assert max(ce) == 23500 + 50 * cap + 200 and len(ce) == cap + 4  # the shifted copy overlaps all but 4
+
+
+def test_gcic1_r5_delta_reach_covers_the_next_expiry_skips_unlisted_and_no_model():
+    rows, ids = _grid([NEAR, FAR_NEXT], unlisted={("CE", 23600)})
+    out = readers.delta_reach_ids(rows, ids, _ic(), {NEAR: _FakeReach(), FAR_NEXT: _FakeReach()}, D("0.25"))
+    assert _strikes(out, ids, "CE", FAR_NEXT) == [23550, 23650, 23700, 23750, 23850, 23900]  # 23,600 unlisted
+    assert readers.delta_reach_ids(rows, ids, _ic(), {}, D("0.25")) == []
+    earlier = datetime.date(2026, 11, 3)  # an expiry before the short's own: never walked
+    assert readers.delta_reach_ids(rows, ids, _ic(), {earlier: _FakeReach()}, D("0.25")) == []
+
+
+def test_gcic1_r5_conservative_iv_is_the_highest():
+    g = {"a": types.SimpleNamespace(iv=D("0.11")), "b": types.SimpleNamespace(iv=D("0.19")),
+         "c": types.SimpleNamespace(iv=D("0.14"))}
+    assert readers.conservative_iv(g) == D("0.19") and readers.conservative_iv({}) is None
+
+
+def test_gcic1_r5_second_pass_ids_answer_states():
+    rows, ids = _grid([NEAR])
+    cfg = from_values(defaults()).approach
+    market = route.MarketInputs(tuple(rows), ids, None, None, None, None, None,
+                                datetime.datetime(2026, 11, 9, 10, 0, tzinfo=datetime.UTC), reach={NEAR: _FakeReach()})
+    priced = types.SimpleNamespace(unpriced=(), refusal_message=None, after=())
+    assert route.second_pass_ids([priced], market, _ic(), cfg) == []  # nothing unpriced: no second pass at all
+    gap = types.SimpleNamespace(unpriced=((NEAR, "CE", D("23750")),), refusal_message=object(), after=())
+    with_reach = route.second_pass_ids([gap], market, _ic(), cfg)
+    assert with_reach[0] == ids[f"N{NEAR:%m%d}23750CE"] and len(with_reach) > 1
+    no_model = dataclasses.replace(market, reach={})
+    assert route.second_pass_ids([gap], no_model, _ic(), cfg) == [ids[f"N{NEAR:%m%d}23750CE"]]
