@@ -106,7 +106,7 @@ def test_core_s54_reply_carries_each_plotted_strikes_call_and_put_oi_for_its_exp
              if start <= q.strike <= end]
     assert datetime.datetime.fromisoformat(oi["read_at"]) == min(times)  # the oldest used quote: never overstated
     assert oi["read_at_display"] == render_explanation("outcome_oi_read_at", time=min(times))
-    assert oi["read_at_display"].startswith("OI data at ")
+    assert oi["read_at_display"].startswith("Open interest (OI) data at ")  # wording per #629 (commit 9ab9aabf)
 
 
 def test_display_text_is_the_drawers_compact_form(provider):

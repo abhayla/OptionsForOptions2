@@ -141,7 +141,8 @@ def test_no_approach_offered_is_not_checked_with_the_reason():
     tracked, market, spot = s.inputs(sc)
     got = check.cheapest_offered(body, tracked, market, spot, s.RATES, s.PREFS.approach)
     assert got.reason == cmp.NO_APPROACH_OFFERED
-    assert pe.reason_text(got.reason).startswith("This playbook offers no adjustment approach to price")
+    # wording per the #629 decisions (commit 9ab9aabf)
+    assert pe.reason_text(got.reason).startswith("This playbook lists no adjustment we can price")
 
 
 def test_a_tie_keeps_the_first_in_playbook_order():
