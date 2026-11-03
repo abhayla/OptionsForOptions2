@@ -23,6 +23,7 @@ from ofo.charges import ChargeRates
 from ofo.engine.black_scholes import year_fraction
 from ofo.marketdata.spot_source import SourceReading, SourceState
 from ofo.outcome.service import MARGIN_CHECKED, Margin, margin_empty, margin_unreadable
+from ofo.rules.inputs import DataHealth
 from ofo_app import adjustment_check, paper_store
 from ofo_app import adjustment_readers as readers
 from ofo_app.main import create_app
@@ -65,7 +66,8 @@ def market_of(sc: dict) -> route.MarketInputs:
             rows.append(ChainRow(D(r["strike"]), r["type"], datetime.date.fromisoformat(c["expiry"]),
                                  r["tradingsymbol"], None if gone else _d(r["ltp"]), None if gone else _d(r["bid"]),
                                  None if gone else _d(r["ask"]), _d(r["delta"]), r["listed"], r["tradable"],
-                                 r["low_oi"]["state"], r["low_oi"]["blocked"], r.get("oi")))
+                                 r["low_oi"]["state"], r["low_oi"]["blocked"], r.get("oi"),
+                                 None if gone else DataHealth.AVAILABLE))  # a stated book is a live one (ADR-172)
             ids[r["tradingsymbol"]] = f"NSE_FO:{r['tradingsymbol']}"
     now = datetime.datetime.fromisoformat(sc["clock"]["ist"])
     spot = D(sc["market"]["spot"])

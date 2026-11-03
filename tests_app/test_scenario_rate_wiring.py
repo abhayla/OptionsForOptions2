@@ -43,7 +43,8 @@ def _body():
         c = lc.contract
         iid = scenario_mode.instrument_id(lc)
         q = scn.provider.book.get(iid, now) if c.expiry is not None else None
-        if q is None or q.ltp is None or c.strike not in (Decimal("23400"),) or c.instrument_type not in ("CE", "PE"):
+        if (q is None or q.ltp is None or c.strike not in (Decimal("23400"),) or c.instrument_type not in ("CE", "PE")
+                or c.expiry.isoformat() != scn.data["expiry"]):  # ADR-239: ADJ-02 also lists the next expiry
             continue
         legs.append({"instrument_id": iid, "action": "SELL", "lots": 1, "planned_entry": f"{q.ltp:f}",
                      "captured_at": now.isoformat()})

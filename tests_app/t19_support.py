@@ -17,6 +17,7 @@ from ofo.adjustment.compare import Cheapest, Column, Context, MarginRead, compar
 from ofo.adjustment.playbook_eval import body_from_fixture
 from ofo.adjustment.preferences import from_values
 from ofo.charges import ChargeRates
+from ofo.rules.inputs import DataHealth
 from ofo.settings import defaults as registry_defaults
 from ofo_app import adjustment_check as check
 from ofo_app.routes.adjustment import MarketInputs, Tracked, priced_approach
@@ -43,7 +44,9 @@ def inputs(sc: dict) -> tuple[Tracked, MarketInputs, D]:
     rows = tuple(ChainRow(D(r["strike"]), r["type"], datetime.date.fromisoformat(c["expiry"]), r["tradingsymbol"],
                           *((None, None, None) if r["tradingsymbol"] in unpriced else
                             (_d(r["ltp"]), _d(r["bid"]), _d(r["ask"]))),
-                          _d(r["delta"]), r["listed"], r["tradable"], r["low_oi"]["state"], r["low_oi"]["blocked"])
+                          _d(r["delta"]), r["listed"], r["tradable"], r["low_oi"]["state"], r["low_oi"]["blocked"],
+                          None,
+                          None if r["tradingsymbol"] in unpriced else DataHealth.AVAILABLE)  # live book, ADR-172
                  for c in sc["market"]["chains"] if c["expiry"] == expiry for r in c["rows"])
     legs = tuple(PositionLeg(x["side"], x["type"], D(x["strike"]), datetime.date.fromisoformat(x["expiry"]), x["lots"],
                              D(x["entry"]), x["tradingsymbol"]) for x in sc["position"]["legs"] if x["type"] != "FUT")
