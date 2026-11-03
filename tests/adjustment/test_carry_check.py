@@ -19,8 +19,8 @@ from ofo.errors import render
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 SEED = ROOT / "backend" / "ofo" / "adjustment" / "system_playbooks.json"
 GAP = "09:30"
-WEEKEND = "day:beforeWeekend:0"
-HOLIDAY = "day:beforeHoliday:1"
+WEEKEND = "day:beforeWeekend:15:00:0"
+HOLIDAY = "day:beforeHoliday:15:00:0"
 FRI = datetime.date(2026, 10, 30)  # a session; Saturday 31 Oct follows
 WED = datetime.date(2026, 10, 28)  # Thursday 29 Oct is a normal session
 MON_BEFORE_HOLIDAY = datetime.date(2026, 11, 23)  # Tuesday 24 Nov: Prakash Gurpurb (NSE F&O list)

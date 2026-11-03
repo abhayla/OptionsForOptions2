@@ -642,21 +642,21 @@ def evaluate(body: Mapping, state: StrategyState, memory: Mapping[str, Mapping[s
                 rv = _value_of(c, rules.get(o.rule_id), o)
                 if rv is not None:
                     values.append(rv)
-    _add_day_rules(body, state, why, c.stage_name, (results, clear, values))
+    _add_day_rules(body, state, why, c.stage_name, (results, clear, values),
+                   _t09_now(c))
     return Evaluation(c.stage_name, c.stage, tuple(results), new, tuple(clear), why, values=tuple(values))
 
 
 # ---- day rules (GC-IC1 step 1a; REQ-159 AC-4, REQ-170) -----------------------------------------------------------
-#: A day rule is reported as a rule of its own, id ``day:<when>:<index in day_rules>`` (stable while the body's
-#: day_rules list is unchanged). It goes to the alert gate as a yes/no value (``RuleValue.yes_no``), so a record is
-#: opened only by ``alert_gate.step`` (edge, not level: one record per episode). F-71 memory does not apply: the
-#: rule is checked only from its time on, so the time reaching ``at`` is itself the event.
+#: A day rule is reported as a rule of its own, id ``day:<when>:<at>:<action>`` (from the rule's content, so a
+#: reordered day_rules list keeps every id; GC-IC1 1a review B3). It goes to the alert gate as a yes/no value
+#: (``RuleValue.yes_no``), so a record is opened only by ``alert_gate.step`` (edge, not level: one record per
+#: episode). F-71 memory does not apply: the rule is checked only from its time on, so the time reaching ``at`` is itself the event.
 #: Not due (not expiry day, or before ``at``) -> no answer at all: no reading, so no record and no false clear.
 DAY_RULE_PREFIX: Final = "day:"
 DAY_ACTION_PREPARE_EXIT: Final = 5  # PLAYBOOK_DAY_RULE_ACTION_TEXT["5"], "Prepare an exit for review"
 DAY_RULE_INCOMPLETE: Final = f"{P}day_rule_incomplete"
 CLOSE_WITHIN_KEY: Final = "close_if_short_within_pct"
-BUY_BACK_BELOW_KEY: Final = "buy_back_short_below_rs"  # A-27 "the far side for <= Rs 2" (catalogue 374): the X
 TESTED_SPREAD: Final = "A-28"
 FAR_SHORT: Final = "A-27"
 _HHMM: Final = re.compile(r"[0-2][0-9]:[0-5][0-9]")
@@ -675,8 +675,9 @@ class DayAnswer:
     approaches: tuple[str, ...] = ()
 
 
-def day_rule_id(when: str, index: int) -> str:
-    return f"{DAY_RULE_PREFIX}{when}:{index}"
+def day_rule_id(rule: Mapping) -> str:
+    """The stable id of a day rule: its kind, time and action (``day:expiry:14:30:5``)."""
+    return f"{DAY_RULE_PREFIX}{rule.get('when')}:{rule.get('at')}:{rule.get('action')}"
 
 
 def is_day_rule_id(rule_id: object) -> bool:
@@ -687,13 +688,12 @@ def day_rule_action(body: Mapping | None, rule_id: object) -> int | None:
     """The action index of the day rule ``rule_id`` names in ``body``; None when it names none."""
     if not is_day_rule_id(rule_id) or not isinstance(body, Mapping):
         return None
-    index = str(rule_id).rsplit(":", 1)[-1]
     rules = body.get("day_rules")
-    if not index.isdigit() or not isinstance(rules, list) or int(index) >= len(rules):
-        return None
-    rule = rules[int(index)]
-    action = rule.get("action") if isinstance(rule, Mapping) else None
-    return action if type(action) is int else None
+    for rule in rules if isinstance(rules, list) else []:
+        if isinstance(rule, Mapping) and day_rule_id(rule) == rule_id:
+            action = rule.get("action")
+            return action if type(action) is int else None
+    return None
 
 
 def _decimal_text(value: object) -> Decimal | None:
@@ -707,15 +707,12 @@ def _decimal_text(value: object) -> Decimal | None:
     return d if d.is_finite() and d >= 0 else None
 
 
-def _expiry_close(body: Mapping, rule: Mapping, rid: str, state: StrategyState,  # noqa: PLR0911 - one answer per reason
-                  why: str | None) -> DayAnswer | None:
+def _expiry_close(t09: tuple[Decimal, Cmp] | None, rule: Mapping, rid: str,  # noqa: PLR0911 - one answer per reason
+                  state: StrategyState, why: str | None) -> DayAnswer | None:
     """``when: expiry`` + ``close_if_short_within_pct`` P: on expiry day from ``at``, True when a short's strike is
     within P% of spot (|strike - spot| * 100 <= P * spot, exact). None = not due (no reading at all)."""
     at, pct = rule.get("at"), _decimal_text(rule.get(CLOSE_WITHIN_KEY))
-    below_text = rule.get(BUY_BACK_BELOW_KEY)
-    below = _decimal_text(below_text)
-    if not isinstance(at, str) or not _HHMM.fullmatch(at) or pct is None or \
-            (below_text is not None and below is None):
+    if not isinstance(at, str) or not _HHMM.fullmatch(at) or pct is None:
         return DayAnswer(rid, DAY_ACTION_PREPARE_EXIT, reason=DAY_RULE_INCOMPLETE)
     if state.days_left is None:
         return DayAnswer(rid, DAY_ACTION_PREPARE_EXIT, reason=f"{P}missing_days_left")
@@ -734,17 +731,17 @@ def _expiry_close(body: Mapping, rule: Mapping, rid: str, state: StrategyState, 
     hit = _exact(rid, *short_gap_pct(state.spot, state.shorts), pct, "le")  # T-01's measure: nearest short within
     if not hit.fired:
         return DayAnswer(rid, DAY_ACTION_PREPARE_EXIT, hit)
-    far = _far_short_named(body, state, pct, below)
+    far = _far_short_named(t09, state, pct)
     return DayAnswer(rid, DAY_ACTION_PREPARE_EXIT, hit, approaches=(TESTED_SPREAD, *((FAR_SHORT,) if far else ())))
 
 
-def _far_short_named(body: Mapping, state: StrategyState, pct: Decimal, below: Decimal | None) -> bool:
-    """A-27 for the shorts NOT within ``pct`` (each read with T-01's measure), when T-09's measure on them (lowest
-    LTP, any unpriced -> not named) passes T-09's own comparison against the rule's Rs limit (``le``: at or below)."""
-    t09 = body.get("triggers", {}).get("T-09") if isinstance(body.get("triggers"), Mapping) else None
-    cmp = t09.get("cmp") if isinstance(t09, Mapping) else None
-    if below is None or state.spot is None or cmp not in ("le", "ge"):
+def _far_short_named(t09: tuple[Decimal, Cmp] | None, state: StrategyState, pct: Decimal) -> bool:
+    """A-27 (ADR-238 (4)) for the shorts NOT within ``pct`` (each read with T-01's measure), when T-09's measure on
+    them (lowest LTP, any unpriced -> not named) passes T-09's own comparison against T-09's threshold of the CURRENT
+    stage (iron condor weekly Rs 3 / 3 / 2, ``le``): one value, no second body key. T-09 off or absent -> not named."""
+    if t09 is None or state.spot is None:
         return False
+    below, cmp = t09
     spot = state.spot
     others = tuple(x for x in state.shorts if not _exact("T-01", *short_gap_pct(spot, (x,)), pct, "le").fired)
     if not others:
@@ -755,31 +752,47 @@ def _far_short_named(body: Mapping, state: StrategyState, pct: Decimal, below: D
         return False
 
 
-def day_answers(body: Mapping, state: StrategyState, why: str | None = None) -> tuple[DayAnswer, ...]:
+def day_answers(body: Mapping, state: StrategyState, why: str | None = None,
+                t09: tuple[Decimal, Cmp] | None = None) -> tuple[DayAnswer, ...]:
     """Every switched-on day rule this version checks, answered on ``state`` (the one function: ``evaluate`` calls
     it for the screen and the worker alike). Only the expiry-day close rule (action 5 with
     ``close_if_short_within_pct``) is checked here; the tighten rule (action 4) stays ``tighten_percent``."""
     out: list[DayAnswer] = []
     rules = body.get("day_rules")
-    for i, rule in enumerate(rules if isinstance(rules, list) else []):
+    for rule in rules if isinstance(rules, list) else []:
         if not isinstance(rule, Mapping) or rule.get("on") is not True:
             continue
         when, action = rule.get("when"), rule.get("action")
         answer = None
         if when == "expiry" and action == DAY_ACTION_PREPARE_EXIT:
-            answer = _expiry_close(body, rule, day_rule_id("expiry", i), state, why)
+            answer = _expiry_close(t09, rule, day_rule_id(rule), state, why)
         elif when in CARRY_WHENS and action == DAY_ACTION_CARRY_CHECK:
-            answer = _carry_check(rule, day_rule_id(str(when), i), state)
+            answer = _carry_check(rule, day_rule_id(rule), state)
         if answer is not None:
             out.append(answer)
     return tuple(out)
 
 
-def _add_day_rules(body: Mapping, state: StrategyState, why: str | None, stage_name: str | None,
-                   out: tuple[list[Result], list[str], list[RuleValue]]) -> None:
+def _t09_now(c: _Ctx) -> tuple[Decimal, Cmp] | None:
+    """T-09's threshold of the current stage and its comparison (ADR-238 (4)); None when T-09 is off, absent, or has
+    no value this stage (then A-27 is not named)."""
+    triggers = c.body.get("triggers")
+    t = triggers.get("T-09") if isinstance(triggers, Mapping) else None
+    if not isinstance(t, Mapping) or t.get("on") is not True or t.get("cmp") not in ("le", "ge"):
+        return None
+    try:
+        lim = _limit(c, "T-09")
+    except (_Missing, InvalidOperation, IndexError):
+        return None
+    return (lim, t["cmp"]) if isinstance(lim, Decimal) else None
+
+
+def _add_day_rules(body: Mapping, state: StrategyState, why: str | None, stage_name: str | None,  # noqa: PLR0913
+                   out: tuple[list[Result], list[str], list[RuleValue]],
+                   t09: tuple[Decimal, Cmp] | None = None) -> None:
     """The due day rules into ``evaluate``'s results / clear / values (a yes/no value each)."""
     results, clear, values = out
-    for d in day_answers(body, state, why):
+    for d in day_answers(body, state, why, t09):
         if d.hit is None:
             results.append(NotChecked(d.rule_id, d.rule_id, d.reason or DAY_RULE_INCOMPLETE, d.slots))
             continue

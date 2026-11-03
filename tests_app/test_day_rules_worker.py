@@ -14,7 +14,7 @@ from ofo.errors.explanations import PLAYBOOK_DAY_RULE_ACTION_TEXT
 from ofo.settings import calc as settings_calc
 from ofo.settings import defaults as registry_defaults
 from ofo.timeutil import IST
-from ofo_app import background, catalogue_store, scenario_mode, strategy_alert_style_store
+from ofo_app import background, catalogue_store, playbook_store, scenario_mode, strategy_alert_style_store
 from ofo_app import db as app_db
 from ofo_app.config import get_settings
 from sqlalchemy import text
@@ -25,7 +25,7 @@ seed_mod = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(seed_mod)
 CATALOGUE_AS_OF = datetime.datetime(2026, 10, 31, 9, 0, tzinfo=IST)
 MAX_DELIST = settings_calc.max_delist_percent(registry_defaults())
-RID = "day:expiry:5"
+RID = "day:expiry:14:30:5"
 T1429 = datetime.datetime(2026, 11, 3, 14, 29, 0, tzinfo=IST)
 T1430 = T1429 + datetime.timedelta(minutes=1)
 LAST_SECOND = 59
@@ -83,7 +83,8 @@ def _worker(scn: scenario_mode.Scenario, clock) -> background.Worker:
 async def _day_rows(engine, sid: int) -> list[tuple]:
     async with engine.connect() as conn:
         rows = (await conn.execute(text(
-            "SELECT id, outcome, trigger_id, timeline->0->>'approach', timeline->0->>'label', value, threshold "
+            "SELECT id, outcome, trigger_id, timeline->0->>'approach', timeline->0->>'label', value, threshold, "
+            "timeline->0->>'group' "
             "FROM public.adjustment_suggestions WHERE strategy_id = :s AND rule_id = :r ORDER BY id"),
             {"s": sid, "r": RID})).all()
     return [tuple(r) for r in rows]
@@ -111,9 +112,27 @@ async def test_core_expiry_rule_opens_one_record_at_1430_through_the_gate_and_ne
         assert len(at_1431) == 1, at_1431
         rec = at_1431[0]
         assert rec[1:5] == ("open", RID, "A-28,A-27", PLAYBOOK_DAY_RULE_ACTION_TEXT["5"]), rec
+        # B1 (GC-IC1 1a review): opened BY alert_gate.step at the first 1-minute candle close at or after 14:30, i.e.
+        # 14:31:00 (gate_group = the close the gate processed), never at the 14:30:00 check a direct write would use
+        assert rec[7] == background.gate_group(sid, T1430 + datetime.timedelta(minutes=1)), rec
         await _run(worker, now, scn, "23400", T1430 + datetime.timedelta(seconds=75), 300)  # 5 more closes
         later = await _day_rows(app_engine, sid)
         assert later == at_1431 and worker.errors == [], (later, worker.errors)
+        # B1, ADR-237 (1) yes/no re-arm: dismissed while still true -> no new record; a false close re-arms it
+        async with app_engine.connect() as conn:
+            await playbook_store.dismiss(conn, "owner", rec[0])
+            await conn.commit()
+        await worker.rebuild()  # the rebuild task feeds the dismissed row to alert_gate.dismiss (ADR-236)
+        t2 = T1430 + datetime.timedelta(seconds=375)
+        await _run(worker, now, scn, "23400", t2, 180)  # still within 0.3%: three more closes
+        held = await _day_rows(app_engine, sid)
+        assert [r[:2] for r in held] == [(rec[0], "dismissed")], held
+        t3 = t2 + datetime.timedelta(seconds=180)
+        await _run(worker, now, scn, "23356.55", t3, 120)  # 0.4% away: a false close re-arms the rule
+        t4 = t3 + datetime.timedelta(seconds=120)
+        await _run(worker, now, scn, "23400", t4, 120)  # true again: the next close opens a NEW record
+        rearmed = await _day_rows(app_engine, sid)
+        assert len(rearmed) == 2 and rearmed[1][1] == "open" and worker.errors == [], (rearmed, worker.errors)
         print(f"CORE-PROOF ADJ-51 sid={sid} rows_at_1429={len(at_1429)} rows_after_1431_close={len(at_1431)} "
               f"rows_after_5_more_closes={len(later)} record={rec}")
     finally:

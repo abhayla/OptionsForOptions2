@@ -188,8 +188,8 @@ SYSTEM_DAY_RULES = [
 FAMILY_GUARDS = {"ic": {"stop_line_pct_of_margin": "4", "stop_line_rule": "whichever comes first",
                         "time_exit": "14:30"}}
 FAMILY_DAY_RULES = {"ic": [r if r["when"] != "expiry" else {**r, "on": False} for r in SYSTEM_DAY_RULES] + [
-    {"on": True, "when": "expiry", "at": "14:30", "action": 5, "close_if_short_within_pct": "0.3",
-     "buy_back_short_below_rs": "2"}]}  # A-27 "the far side for <= Rs 2" (catalogue 374): at or below, as T-09
+    {"on": True, "when": "expiry", "at": "14:30", "action": 5, "close_if_short_within_pct": "0.3"}]}
+# A-27 on that rule (ADR-238 (4)): T-09's threshold of the current stage, T-09's own comparison; no second key
 SITUATIONS = [
     ("S-01", "Gap at the open", "Wait until 09:30 before suggesting, unless a short opens in the money"),
     ("S-02", "Trending day", "Show early rolls when net delta grows past 0.15 per lot"),
@@ -785,28 +785,53 @@ def hand_compare_cost(u: str, lot: int, legs: list[dict], rows: list[dict], appr
 # Scenario builder
 # ---------------------------------------------------------------------------------------------------------------------
 def hand_day_close(spec: dict, rules: list[dict], today: datetime.date, expiry: datetime.date,
-                   clock: datetime.datetime, spot: Decimal, shorts: list[dict], ltp) -> dict | None:
+                   clock: datetime.datetime, spot: Decimal, shorts: list[dict], ltp, t09_limit: str | None) -> dict | None:
     """GC-IC1 1a, engine-free: the switched-on expiry close rule (action 5, close_if_short_within_pct P) fires on
     expiry day from its time when a short's strike is within P% of spot (|strike - spot| * 100 <= P * spot, exact
     fractions); it names A-28, plus A-27 when another short's LTP is at or below the rule's Rs limit (as T-09)."""
     want = spec.get("day_close")
     if want is None:
         return None
-    ix, rule = next((i, r) for i, r in enumerate(rules) if r["on"] and r["when"] == "expiry" and r["action"] == 5)
+    rule = next(r for r in rules if r["on"] and r["when"] == "expiry" and r["action"] == 5)
     due = today == expiry and clock.strftime("%H:%M") >= rule["at"]
     pct, sp = Fraction(D(rule["close_if_short_within_pct"])), Fraction(spot)
     within = [abs(Fraction(leg["strike"]) - sp) * 100 <= pct * sp for leg in shorts]
     fires = due and any(within)
-    limit = rule.get("buy_back_short_below_rs")
+    limit = t09_limit  # ADR-238 (4): T-09's threshold of the current stage (le)
     far = [leg["tradingsymbol"] for leg, w in zip(shorts, within, strict=True)
            if not w and limit is not None and ltp(leg) is not None and Fraction(ltp(leg)) <= Fraction(D(limit))]
     nearest = min(abs(Fraction(leg["strike"]) - sp) for leg in shorts) * 100 / sp
-    out = {"rule_id": f"day:expiry:{ix}", "at": rule["at"], "due": due, "fires": fires,
+    out = {"rule_id": f"day:expiry:{rule['at']}:{rule['action']}", "at": rule["at"], "due": due, "fires": fires,
            "nearest_short_pct": dec_text_round(nearest), "rule_pct": rule["close_if_short_within_pct"],
-           "buy_back_below_rs": limit, "far_shorts_below_limit": far,
+           "t09_limit": limit, "far_shorts_below_limit": far,
            "approaches": (["A-28"] + (["A-27"] if far else [])) if fires else []}
     assert fires is want["fires"], (spec["id"], "day close", out)
     assert out["approaches"] == want["approaches"], (spec["id"], "day close approaches", out)
+    return out
+
+
+def hand_carry(spec: dict, rules: list[dict], clock: datetime.datetime) -> dict | None:
+    """GC-IC1 1b, engine-free: the switched-on carry rules (action 0) due at ``clock``. Before-weekend = today is a
+    session and a Saturday lies before the next session; before-holiday = today is a session and the NEXT CALENDAR
+    WEEKDAY is a listed holiday (so a Friday before a Monday holiday is both). Rule id = ``day:<when>:<at>:<action>``."""
+    want = spec.get("carry")
+    if want is None:
+        return None
+    today, hhmm = clock.date(), clock.strftime("%H:%M")
+    nxt = next_session(today)
+    weekday = today + datetime.timedelta(days=1)
+    while weekday.weekday() >= 5:
+        weekday += datetime.timedelta(days=1)
+    kinds = set()
+    if is_session(today) and any((today + datetime.timedelta(days=i)).weekday() == 5 for i in range(1, (nxt - today).days)):
+        kinds.add("beforeWeekend")
+    if is_session(today) and weekday in HOLIDAYS:
+        kinds.add("beforeHoliday")
+    fires = [f"day:{r['when']}:{r['at']}:{r['action']}" for r in rules
+             if r["on"] and r["action"] == 0 and r["when"] in kinds and hhmm >= r["at"]]
+    out = {"day_kinds": sorted(kinds), "fires": fires,
+           "next_open": datetime.datetime.combine(nxt, datetime.time(9, 15), IST).isoformat()}
+    assert fires == want["fires"], (spec["id"], "carry", out)
     return out
 
 
@@ -1161,7 +1186,10 @@ def build(spec: dict, pb: dict) -> dict:  # noqa: C901, PLR0912, PLR0915 - one r
         assert ids == set(spec["exact_fire"]), (spec["id"], "exact", ids, fired)
     for s in spec.get("must_situations", []):
         assert s in sits, (spec["id"], "situation", s, sits)
-    day_close = hand_day_close(spec, rules, today, expiry, clock, spot, shorts, ltp)
+    t09_on = "T-09" in fpb["triggers_on"]  # T-09 off in the playbook: A-27 not named
+    day_close = hand_day_close(spec, rules, today, expiry, clock, spot, shorts, ltp,
+                               limit_for(pb, "T-09", kind, stage_ix, overrides, family) if t09_on else None)
+    carry = hand_carry(spec, rules, clock)
     if "check" in spec:
         spec["check"](locals())
 
@@ -1218,6 +1246,8 @@ def build(spec: dict, pb: dict) -> dict:  # noqa: C901, PLR0912, PLR0915 - one r
     if family == "ic" and spec["id"] in ("ADJ-02", "ADJ-13"):  # GC-MU A2 (ADR-230 (3)): the compare's cost rows
         out["expected"]["compare_cost"] = hand_compare_cost(u, lot, legs, near_rows, out["expected"]["approach_legs"],
                                                             out["expected"]["approach_after"], expiry_metrics)
+    if carry is not None:  # GC-IC1 1b: only the cases that ask for it carry the block
+        out["expected"]["carry"] = carry
     if day_close is not None:  # GC-IC1 1a: only the cases that ask for it carry the block
         out["expected"]["day_close"] = day_close
     if "charges" in spec:
@@ -1418,6 +1448,19 @@ def scenarios() -> list[dict]:  # noqa: PLR0915 - a flat list of scenario specs
                      ["S-07", "ADR-216"], "2026-11-03T14:30:00", "23356.55",
                      day_close={"fires": False, "approaches": []},
                      notes=["93.45 / 23,356.55 = 0.4001% > 0.3%: the rule reads false (no record)."]))
+    # GC-IC1 1b (REQ-159 AC-4, S-06): the carry check at 15:00 before a weekend / a holiday
+    s.append(ic_spec("ADJ-53", "Friday 15:00 before the weekend: the carry check fires (overnight margin, 2% gap)",
+                     ["S-06", "REQ-159 AC-4"], "2026-10-30T15:00:00", "23100",
+                     carry={"fires": ["day:beforeWeekend:15:00:0"]},
+                     notes=["Friday 30 Oct 2026 is a session; Saturday follows, the next session is Monday 2 Nov 09:15."]))
+    s.append(ic_spec("ADJ-54", "Wednesday 15:00, Thursday a normal session: no carry check",
+                     ["S-06", "REQ-159 AC-4"], "2026-10-28T15:00:00", "23100", carry={"fires": []},
+                     notes=["Wednesday 28 Oct 2026: the next weekday (Thursday 29 Oct) is a session, no weekend between."]))
+    s.append(ic_spec("ADJ-55", "Monday 15:00 before the Diwali-Balipratipada holiday (Tue 10 Nov): carry check fires",
+                     ["S-06", "REQ-159 AC-4"], "2026-11-09T15:00:00", "23100", legs=IC9, entry=E9,
+                     carry={"fires": ["day:beforeHoliday:15:00:0"]},
+                     notes=["Monday 9 Nov 2026 (the moved weekly expiry): the next calendar weekday, Tuesday 10 Nov, is a "
+                            "listed NSE F&O holiday, so before-holiday fires; the next session is Wednesday 11 Nov."]))
     s.append(ic_spec("ADJ-50", "Liquidity limits (ADR-230 (1), F-78): one thin strike, the 23,100 CE with open interest 500",
                      ["F-78", "REQ-159 AC-6", "ADR-230"], "2026-10-28T14:00:00", "23050", exact_fire=[],
                      chain_changes=[{"expiry": N3, "strike": "23100", "type": "CE", "oi": 500}],
