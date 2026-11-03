@@ -131,7 +131,7 @@ def test_closed_slots_still_take_their_real_values() -> None:
     assert str(render_explanation("leg_label_symbol", symbol="SENSEX26OCTFUT",
                                   label=render_explanation("leg_label_no_quote"))) == "SENSEX26OCTFUT: no live quote"
     assert str(render_explanation("outcome_forward_error", expiry=datetime.date(2026, 10, 29),
-                                  why=render_explanation("outcome_why_forward"))).startswith("forward for 2026-10-29: ")
+                                  why=render_explanation("outcome_why_forward"))).startswith("reference price for 2026-10-29: ")
 
 
 @pytest.mark.parametrize("value, text", [
@@ -154,7 +154,7 @@ def test_problem_leg_and_margin_wording() -> None:
     assert line == "Instrument NSE_FO:44624 cannot be used: expired"
     assert "::" not in line and ": :" not in line
     margin = str(render_explanation("outcome_margin_pending"))
-    assert margin == "Margin from Zerodha is not shown yet; it needs your Kite login."
+    assert margin == "Margin from Zerodha is not shown yet; it needs your Zerodha login."
     assert "item" not in margin and "W-0" not in margin
 
 

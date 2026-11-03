@@ -112,7 +112,7 @@ def test_expired_leg_template_is_the_briefs_wording() -> None:
     from ofo.errors import CATALOGUE
 
     assert _parts(CATALOGUE["gate_expiry_passed"]) == (
-        "Leg {leg} ({contract}) expired on {date}.", "This strategy cannot be executed as planned.", "Execute",
+        "Leg {leg} ({contract}) expired on {date}.", "This strategy cannot be executed as planned.", "Execution of this strategy.",
         "Replace or remove this leg.")
 
 
