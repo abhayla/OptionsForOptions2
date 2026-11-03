@@ -88,7 +88,7 @@ class PlacedLegOut(ApiModel):
     expiry: datetime.date
     instrument_id: InstrumentId
     symbol: Identifier
-    label: CatalogueText  # "Strikes placed by a fixed rule - change them" until the user edits the strike (AC-4)
+    label: CatalogueText  # "Strikes placed by a fixed rule — change them" until the user edits the strike (AC-4)
 
 
 class ReadyMadeOut(ApiModel):

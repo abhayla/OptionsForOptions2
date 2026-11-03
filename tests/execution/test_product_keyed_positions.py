@@ -100,7 +100,7 @@ def test_two_products_the_ledger_cannot_separate_is_refused_with_four_parts(cata
     a = assess(big_plan(LOT), broker.positions, broker.order_statuses, book, FakePlanner(), read_at=broker.read_at)
     assert a.status is ExecutionStatus.RECONCILIATION_REQUIRED
     text = [m for m in a.mismatches if SHORT in m and "more than one product" in m]
-    assert len(text) == 1 and "Exit the position in Zerodha yourself" in text[0]
+    assert len(text) == 1 and "Check in Zerodha which product holds this strategy" in text[0]
     prep = close_partial_strategy(big_plan(LOT), broker, book, FakePlanner(), entry_context(), catalogue, eligibility)
     assert not prep.ready and prep.orders == ()
 

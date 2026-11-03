@@ -1,4 +1,4 @@
-"""REQ-118 AC-3 (W-138): a user action refused because Zerodha is busy shows "Zerodha is busy - try again in a moment"
+"""REQ-118 AC-3 (W-138): a user action refused because Zerodha is busy shows "Zerodha is busy. Try again in a moment."
 (its one home: ``ofo.errors.templates.ZERODHA_BUSY_TEXT``), never the generic "could not confirm your connection"
 text and never a figure. One test per caller group; the limiter's own answer states (slot / busy wait / 429 after
 retries / timeout / write refused) are proven at the door in ``test_rate_limit_door.py``."""
@@ -31,7 +31,7 @@ def _text(refused: StrategyRefused) -> str:
 
 
 def test_the_busy_text_is_the_requirements_words_and_has_a_gate_template() -> None:
-    assert ZERODHA_BUSY_TEXT == "Zerodha is busy - try again in a moment"
+    assert ZERODHA_BUSY_TEXT == "Zerodha is busy. Try again in a moment."
     message = render("gate_zerodha_busy")
     assert message.what_happened == ZERODHA_BUSY_TEXT
     assert message.what_happened != render("gate_broker_unconfirmed").what_happened

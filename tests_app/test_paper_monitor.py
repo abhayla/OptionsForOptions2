@@ -121,14 +121,14 @@ async def test_core_a_crossing_tick_fires_once_through_the_fan_out_and_never_aga
         assert await monitor.step() == 0
     market.tick(INDEX, "22849.95")
     assert await monitor.step() == 1
-    reason = "Conditional exit: NIFTY crossed below 22,850.00"
+    reason = "Stop-loss on the index: NIFTY crossed below 22,850.00"
     assert await _stops(db, stored.id) == [(ids[0], "BUY", 65, D("41.00"), reason, tid),
                                            (ids[1], "SELL", 65, D("12.50"), reason, tid)]
     assert await _trigger_state(db, tid) == (True, False)
     [(title, body)] = await _alerts(db, stored.id)
-    assert title.startswith("Paper strategy - ")
-    assert body.startswith("Conditional exit: ")
-    assert "Paper strategy - " not in body  # the title shows once, as the alert title
+    assert title.startswith("Paper strategy — ")
+    assert body.startswith("Stop-loss on the index: ")
+    assert "Paper strategy — " not in body  # the title shows once, as the alert title
     assert reason in body
     assert "exited 2 legs at" in body and "41.00" in body
     assert "no order was sent to Zerodha" in body
@@ -255,7 +255,8 @@ async def test_a_cancelled_trigger_never_fires(db):
                                               (D("22976.85"), "22,976.85")])
 def test_the_reason_text_shows_a_level_grouped_with_two_decimals(level, shown):
     trigger = stops.Trigger(1, 1, "conditional_exit", "below", level, underlying="NIFTY")
-    assert str(paper_monitor.PaperMonitor._reason(trigger, {})) == f"Conditional exit: NIFTY crossed below {shown}"
+    assert str(paper_monitor.PaperMonitor._reason(trigger, {})) == (
+        f"Stop-loss on the index: NIFTY crossed below {shown}")
 
 
 async def test_claiming_one_armed_trigger_twice_wins_once_and_the_second_claim_does_not_raise(db):

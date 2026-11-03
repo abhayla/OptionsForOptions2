@@ -50,13 +50,13 @@ def test_ac5_golden_condor_review_shows_every_field_from_the_engine() -> None:
     assert review.leg_count == 4
     assert review.broker == "Zerodha"
     assert review.sequence == (
-        ReviewLine(1, "Establish protection", "leg-1", BUY, "NIFTY26O0622800PE", 75),
-        ReviewLine(1, "Establish protection", "leg-4", BUY, "NIFTY26O0623600CE", 75),
-        ReviewLine(2, "Establish short positions", "leg-2", SELL, "NIFTY26O0623000PE", 75, batch=2),
-        ReviewLine(2, "Establish short positions", "leg-3", SELL, "NIFTY26O0623400CE", 75, batch=2),
+        ReviewLine(1, "Place bought legs", "leg-1", BUY, "NIFTY26O0622800PE", 75),
+        ReviewLine(1, "Place bought legs", "leg-4", BUY, "NIFTY26O0623600CE", 75),
+        ReviewLine(2, "Place sold legs", "leg-2", SELL, "NIFTY26O0623000PE", 75, batch=2),
+        ReviewLine(2, "Place sold legs", "leg-3", SELL, "NIFTY26O0623400CE", 75, batch=2),
     )  # a batch never spans two steps
     assert review.unknown == () and review.notes == ()
-    assert "unverified against real Zerodha margin behaviour" in review.margin_basis
+    assert "it has not been checked against Zerodha" in review.margin_basis
     # the review's own figure (whole strategy), then the sequence's base + one without each of the 4 legs
     assert fake.asked[0] == Strategy(tuple(p.leg for p in golden(75).legs)) and len(fake.asked) == 6
 
@@ -103,7 +103,7 @@ def test_ac5_naked_short_call_shows_unlimited_loss_and_a_naked_note() -> None:
     review = execution_review(mk(leg(SELL, CE, "23400", price="91.50")), planner(), freeze_limits=None, today=date(2026, 10, 16), freeze_stale_days=FREEZE_STALE_DAYS)  # noqa: E501
     assert review.max_loss is UNLIMITED
     assert review.max_profit == D("91.50") * LOT
-    assert review.notes == ("L1: 65 sold units have no protective leg (naked)",)
+    assert review.notes == ("L1: 65 sold units have no bought leg (naked)",)
 
 
 def test_ac5_covered_call_is_not_called_naked_and_its_loss_is_finite() -> None:

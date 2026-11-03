@@ -5,7 +5,7 @@ to the first expiry, and the Projected profit / loss badge with its percent of m
 
 Answer states: no live spot -> the move is absent with its reason (never computed from another price); a margin that is not
 CHECKED -> the badge amount stays, its percent is absent with the reason (AC-3); no target, or no Estimated view (an option
-leg without IV, no live prices) -> the badge is "Projected figure not available" with the reason, never a number (AC-4).
+leg without IV, no live prices) -> the badge is "Estimate not available" with the reason, never a number (AC-4).
 """
 from __future__ import annotations
 

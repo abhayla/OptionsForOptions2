@@ -119,7 +119,7 @@ def test_status_and_margin_texts_are_exact(replayed) -> None:
     none = _response(replayed, with_provider=False).model_dump(mode="json")
     assert none["status_label"] == "Draft — Live data not connected"
     assert none["reason"] == "no live market data provider is connected"
-    assert none["margin"]["reason"] == "Margin from Zerodha is not shown yet; it needs your Kite login."
+    assert none["margin"]["reason"] == "Margin from Zerodha is not shown yet; it needs your Zerodha login."
     assert all(leg["label"] == "Draft — Live data not connected" for leg in none["legs"])
 
 
@@ -131,7 +131,7 @@ def test_column_and_cell_texts_are_exact(replayed) -> None:
     total = next(r for r in out["table"]["rows"] if r["row_id"] == "TOTAL")
     assert total["cells"]["lower_be"]["display"] == "22,326.85" and total["cells"]["upper_be"]["display"] == "22,873.15"
     assert total["cells"]["status"] == {"value": None, "display": "—", "kind": "text",
-                                        "reason": "no strategy health was given", "side": None, "per_unit": None,
+                                        "reason": "no strategy health is available", "side": None, "per_unit": None,
                                         "per_unit_display": None,
                                         "vendor": None}
     assert out["scenario"]["label"] == "At Expiry"

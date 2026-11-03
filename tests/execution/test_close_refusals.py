@@ -181,7 +181,7 @@ def test_ac6_unusable_freeze_value_is_a_refusal_without_marking_closing(catalogu
     """AC-6: a broker constraint that is not a positive integer (0) is refused as a result, not an exception."""
     plan, book, broker, ctx = _state()
     prep = _close(plan, book, broker, ctx, catalogue, eligibility, constraints=FakeConstraints(freeze=0, per_batch=10))
-    _assert_refused(prep, "positive integer")
+    _assert_refused(prep, "whole number above 0")
     assert book.closing_read_at(STRATEGY_ID) is None
 
 
@@ -274,6 +274,6 @@ def test_ac6_a_read_gone_stale_while_preparing_leaves_no_marker_and_no_held_prep
     plan, book, broker, ctx = _state(clock=clock)
     prep = close_partial_strategy(plan, broker, book, _SlowPlanner(clock), ctx, catalogue, eligibility)
     assert clock() == READ_AT + datetime.timedelta(seconds=70)
-    _assert_refused(prep, "stale broker read")
+    _assert_refused(prep, "became too old")
     assert book.closing_read_at(STRATEGY_ID) is None
     assert not book.has_live_preparation(STRATEGY_ID)

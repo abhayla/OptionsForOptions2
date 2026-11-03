@@ -200,7 +200,7 @@ def test_ac_1_an_unknown_instrument_is_refused_by_its_number_only():
     bad = legs()
     bad[1]["instrument_id"] = "NSE_FO:1"
     status, reply = post({"legs": bad, "edit": {"control": "multiplier", "multiplier": 2}})
-    assert status == HTTP_UNPROCESSABLE and "Leg 2 is not a contract in the instrument file." in str(reply)
+    assert status == HTTP_UNPROCESSABLE and "Leg 2 is not a contract in the instrument list." in str(reply)
 
 
 def test_ac_4_multiplier_gives_lots_and_quantity_and_one_restores_base_lots():
@@ -950,7 +950,7 @@ def test_g065_core_live_leg_4_on_19_oct_answers_200_with_the_outcome_and_no_sing
     assert reply["controls"] == {"shift": True, "width": False, "hedge": False}
 
 
-WORST_CASE = "Worst case: the loss for this strategy can't be estimated."  # ADR-143 (1), REQ-148 AC-4
+WORST_CASE = "Maximum loss: the loss for this strategy cannot be estimated."  # ADR-143 (1), REQ-148 AC-4
 ONE_EXPIRY = "Width and Hedge need one expiry."  # REQ-148 AC-3
 
 

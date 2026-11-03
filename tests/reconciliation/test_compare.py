@@ -52,7 +52,7 @@ def test_ac3_mismatch_records_time_broker_platform_difference_and_next_action():
     assert m.platform_state == ((SC23400, -100),)    # -75 strategy + -25 standalone
     assert m.platform_breakdown == ((STANDALONE, SC23400, -25), ("IC-1", SC23400, -75))
     assert m.difference == ((SC23400, 50),)
-    assert m.next_action.startswith("Reconcile this strategy: adopt the broker position")
+    assert m.next_action.startswith("Reconcile this strategy: accept Zerodha's position")
     assert "you should" not in m.next_action.lower()
 
 
@@ -155,7 +155,7 @@ def test_ac2_partially_executed_strategy():
     broker = dict(CONDOR_UNITS) | {BP22800: 150}
     (m,) = run(broker, {"IC-1": rec}).mismatches
     assert m.kind is MismatchKind.PARTIAL_EXECUTION and m.difference == ((BP22800, 75),)
-    assert m.next_action.startswith("Partially executed: Complete Strategy")
+    assert m.next_action.startswith("Choose Complete Strategy")
     # Overfill beyond the proposal (225 > 150) is outside the path: a quantity mismatch, not a partial.
     (over,) = run(dict(CONDOR_UNITS) | {BP22800: 225}, {"IC-1": rec}).mismatches
     assert over.kind is MismatchKind.QUANTITY_MISMATCH

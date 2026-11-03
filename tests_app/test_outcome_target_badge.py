@@ -57,7 +57,7 @@ async def test_reply_carries_move_days_and_badge(provider):
     assert t["days_to_expiry"] == 3 and t["days_to_expiry_display"] == "3D to expiry"
     b, pnl = t["badge"], Decimal(t["pnl"]["value"])
     assert b["state"] == ("profit" if pnl > 0 else "loss" if pnl < 0 else "zero") and Decimal(b["amount"]) == pnl
-    assert b["label"].startswith("Projected ") and b["output_label"] == t["output_label"]
+    assert b["label"].startswith(("Profit at target", "Loss at target", "Projected ")) and b["output_label"] == t["output_label"]
     close = (await _target(provider, target_level=level, target_at=CLOSE.isoformat()))["target"]
     assert close["days_to_expiry_display"] == "0D to expiry"
 
@@ -75,7 +75,7 @@ async def test_plain_reply_has_captions_and_a_not_available_badge_with_its_reaso
     t = (await _target(provider))["target"]
     assert t["days_to_expiry_display"] == "5D to expiry" and t["move_pct_display"] == "0.0%"
     b = t["badge"]
-    assert b["state"] == "unavailable" and b["label"] == "Projected figure not available"
+    assert b["state"] == "unavailable" and b["label"] == "Estimate not available"
     assert b["reason"] == "No target is set." and b["amount"] is None and b["percent"] is None
 
 
@@ -106,12 +106,12 @@ def _margin(needed: Decimal | None, state: str = CHECKED) -> Margin:
 
 
 @pytest.mark.parametrize(("pnl", "state", "label"), [
-    # REQ-144 AC-1 exactly ("Projected profit: Rs 7,714"); whole rupees, half-up (REQ-152 AC-3), the state from the
+    # REQ-144 AC-1 exactly ("Profit at target: Rs 7,714"); whole rupees, half-up (REQ-152 AC-3), the state from the
     # exact value; a true zero reads "Projected P/L: 0" (ADR-211 (1))
-    (Decimal("7714"), "profit", "Projected profit: Rs 7,714"),
-    (Decimal("-3200"), "loss", "Projected loss: Rs 3,200"),
-    (Decimal("0.01"), "profit", "Projected profit: Rs 0"),
-    (Decimal("-0.01"), "loss", "Projected loss: Rs 0"),
+    (Decimal("7714"), "profit", "Profit at target: Rs 7,714"),
+    (Decimal("-3200"), "loss", "Loss at target: Rs 3,200"),
+    (Decimal("0.01"), "profit", "Profit at target: Rs 0"),
+    (Decimal("-0.01"), "loss", "Loss at target: Rs 0"),
     (Decimal("0"), "zero", "Projected P/L: 0"),
     (Decimal("-0.00"), "zero", "Projected P/L: 0"),
 ])

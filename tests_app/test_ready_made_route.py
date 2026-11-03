@@ -22,7 +22,7 @@ T0 = datetime.datetime(2026, 10, 22, 10, 0, 0, tzinfo=IST)
 NEAR, NEXT = datetime.date(2026, 10, 27), datetime.date(2026, 11, 3)
 GRID = [Decimal(22000 + 50 * i) for i in range(31)]  # 22000 .. 23500
 NIFTY_ID = "NSE_INDEX:256265"
-LABEL = "Strikes placed by a fixed rule - change them"
+LABEL = "Strikes placed by a fixed rule — change them"
 LOAD, PICK = "/api/strategies/load-template", "/api/strategies/quick-pick"
 HTTP_OK, HTTP_CONFLICT, HTTP_UNPROCESSABLE, HTTP_UNAVAILABLE = 200, 409, 422, 503
 HELD_SENTENCE = "Ready-made shapes and quick picks are not available yet."

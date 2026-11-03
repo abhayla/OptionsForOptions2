@@ -74,7 +74,7 @@ def test_ac6_unusable_freeze_value_returns_a_refusal_result(flow, catalogue, eli
     """AC-6: a broker constraint of 0 (not a positive integer) is a refusal result, not an exception."""
     plan, book, broker, ctx = _state()
     prep = _run(flow, plan, book, broker, ctx, catalogue, eligibility, constraints=FakeConstraints(freeze=0, per_batch=10))
-    _assert_refused(prep, flow, book, "positive integer")
+    _assert_refused(prep, flow, book, "whole number above 0")
 
 
 @pytest.mark.parametrize("flow", ["complete", "retry"])

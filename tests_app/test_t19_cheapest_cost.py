@@ -101,8 +101,8 @@ def test_some_unpriceable_takes_the_cheapest_of_the_priced():
     got = cheapest_approach(order, {**cols, first: no_charges}, market.chain)
     assert got == cmp.Cheapest(nxt, rest[nxt], None, 1)
     line = str(check.condition_line_t19("Premium left", "0.5000", "1.0000", got.approach, got.cost, got.unpriced))
-    assert line.startswith("Premium left: 0.5000 (rule 1.0000); cheapest adjustment that could be priced now: ")
-    assert f"cost ₹{rest[nxt]} (as in Compare) (1 could not be priced)" in line
+    assert line.startswith("Premium left: 0.5000 (rule 1.0000); cheapest adjustment we could price: ")
+    assert f"cost ₹{rest[nxt]}. 1 could not be priced." in line
     a29 = cols["A-29"]
     no_whole = dataclasses.replace(a29, whole=None)
     assert cheapest_approach(("A-29", "A-31"), {**cols, "A-29": no_whole}, market.chain) ==         cmp.Cheapest("A-31", hand["A-31"], None, 1)  # noqa: E501
@@ -129,7 +129,7 @@ def test_none_priceable_is_not_checked_with_the_reason():
                                                        prices_fresh=True), gap_until=s.PREFS.gap_until)
     t19 = next(r for r in ev.results if r.trigger_id == "T-19")
     assert isinstance(t19, pe.NotChecked) and t19.code == cmp.NO_APPROACH_PRICED
-    assert pe.reason_text(t19.code).startswith("No adjustment approach this playbook offers can be priced now")
+    assert pe.reason_text(t19.code).startswith("No adjustment this playbook lists can be priced now")
 
 
 def test_no_approach_offered_is_not_checked_with_the_reason():
@@ -169,8 +169,7 @@ def test_the_flag_line_names_the_approach_and_its_cost():
     line = check.condition_line_t19("Premium still left is below this x the adjustment cost", "0.3629", "1.0000",
                                     "A-28", D("53.73"))
     assert str(line) == ("Premium still left is below this x the adjustment cost: 0.3629 (rule 1.0000); cheapest "
-                         "adjustment that could be priced now: Close the tested spread, cost \u20b953.73 "
-                         "(as in Compare)")
+                         "adjustment we could price: Close the tested spread, cost \u20b953.73")
     fallback = check.condition_line_t19("Premium still left", "0.3629", "1.0000", "A-99", D("53.73"))
     assert "53.73" not in str(fallback)  # an approach the slot refuses -> the plain line, never a guessed name
 

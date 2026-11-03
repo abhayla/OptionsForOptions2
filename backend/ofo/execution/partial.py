@@ -3,7 +3,7 @@
 Spec basis (REQ-058; ADR-017 Q27, Q192, Q193; ADR-016/ADR-018; ADR-018 Q198; REQ-059; core invariants 4-7, 21):
 - AC-1 some legs fill and others fail -> ``ExecutionStatus.PARTIAL_EXCEPTION``; risk (max profit/loss, breakevens),
   live P&L and margin are recomputed by the engine from the broker's REAL legs (``Assessment``).
-- AC-2 choices, in this order: Complete Strategy, Retry Failed Leg, Review Manually, Close Partial Strategy.
+- AC-2 choices, in this order: Complete Strategy, Retry Failed Leg, Review Manually, Exit Partial Strategy.
 - AC-3 filled legs are never unwound automatically: nothing here opens an order against a held position except
   ``close_partial_strategy``, which runs only when the user picks it.
 - AC-4 completing re-fetches positions AND order status (``BrokerReader``), recomputes the remaining strategy,
@@ -789,7 +789,7 @@ def close_partial_strategy(
     plan: ExecutionPlan, reader: BrokerReader, book: OrderBook, planner: MarginPlanner, context: ExecutionContext,
     catalogue: Catalogue, eligibility: ZerodhaEligibility, *, constraints: BrokerConstraints | None = None,
 ) -> Preparation:
-    """Close Partial Strategy: reduce-only exits for exactly the filled legs, through the gate as an EXIT.
+    """Exit Partial Strategy: reduce-only exits for exactly the filled legs, through the gate as an EXIT.
 
     Exit quantity per leg = held (broker-confirmed) - exits already open in the reconciled book. The platform's own
     open ENTRY orders are listed as cancel requests (OD-m). Not offered under a reconciliation mismatch.

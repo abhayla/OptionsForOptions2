@@ -6,7 +6,7 @@ Spec basis:
   buys first' is never hard-coded for every strategy"; AC-4 "If a protective leg fails, the sell leg that depends on
   it is not submitted" (core invariant 21).
 - ADR-017 Q26: "Strategy -> Execution Plan -> Leg Dependencies -> Execution Sequence -> Orders"; the user sees
-  "Step 1 - Establish protection · Step 2 - Establish short positions"; "futures/naked strategies differ". The owner's
+  "Step 1 - Place bought legs · Step 2 - Place sold legs"; "futures/naked strategies differ". The owner's
   reason (T1 #55): legs placed first free margin for the sells they hedge.
 
 PROTECTION (``protects``). A leg protects a SOLD option when its payoff rises where the sold option loses, so it caps
@@ -26,8 +26,8 @@ short future would NOT count as protection, contradicting the covered-put case; 
 all (``MultiExpiryError``). The payoff-direction rule above covers every case both W-014 rules and REQ-059 name.
 Nothing protects a futures leg in the spec; a futures leg that protects nothing is listed in ``undetermined``.
 
-STEPS (ADR-017 Q26 display): step 1 "Establish protection" = every leg that protects some sold option; step 2
-"Establish short positions" = every sold option that has a protector; step 3 = every other leg. Within a step the
+STEPS (ADR-017 Q26 display): step 1 "Place bought legs" = every leg that protects some sold option; step 2
+"Place sold legs" = every sold option that has a protector; step 3 = every other leg. Within a step the
 order is the MARGIN tie-break, else the order the user confirmed (stable). A strategy with no dependency is therefore
 never forced into "all buys first" (AC-3).
 
@@ -47,7 +47,7 @@ instrument's catalogue lot size, else refused. ORCHESTRATOR DEFAULT (W-028, the 
 that is not a whole number of lots is rounded DOWN to whole lots (freeze 200, lot 65 -> 195), so every slice is
 lot-aligned; a freeze below one lot is refused.
 ONE SLICING RULE (W-032, deferred #50): ``slice_quantity`` is the only place a leg is split at the freeze quantity;
-the plan (Complete / Retry) and Close Partial Strategy (``exit_orders``, REQ-056 AC-10) both go through it.
+the plan (Complete / Retry) and Exit Partial Strategy (``exit_orders``, REQ-056 AC-10) both go through it.
 REMAINING ORDERS (W-028): ``quantities`` names the units still to order per leg (Complete / Retry); steps, dependencies
 and margin order stay those of the FULL plan, only the named legs get orders.
 
@@ -397,7 +397,7 @@ def _batched(plan: ExecutionPlan, groups: Sequence[Sequence[str]], constraints: 
 
 def exit_orders(plan: ExecutionPlan, groups: Sequence[Sequence[tuple[str, int]]],
                 constraints: BrokerConstraints | None, catalogue: Catalogue) -> tuple[PlannedOrder, ...]:
-    """Close Partial Strategy's orders (W-032, REQ-056 AC-10): ``groups`` are the exit steps in the order the close
+    """Exit Partial Strategy's orders (W-032, REQ-056 AC-10): ``groups`` are the exit steps in the order the close
     sends them (OD-e: buy-backs of shorts, then sells of longs), each a sequence of (leg_ref, units to exit). Every
     leg is sliced by ``slice_quantity`` with its catalogue lot, batches never span two steps. A leg appears at most
     once and never exits more than its planned units (reduce-only upper bound; the held-units cap is the caller's)."""

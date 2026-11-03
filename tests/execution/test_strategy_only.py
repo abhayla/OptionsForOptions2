@@ -370,7 +370,7 @@ def test_core_sink_refuses_a_forged_plan_symbol_and_the_transport_is_never_calle
     forged_plan = ExecutionPlan(STRATEGY_ID, tuple(forged_legs))
     transport = CountingTransport()
     order = Order(STRATEGY_ID, "leg-3", CONTRACTS[3], Action.BUY, LOT, D("44.00"), version_id="v1")
-    with pytest.raises(SendRefused, match="not the catalogue symbol"):
+    with pytest.raises(SendRefused, match="does not match the Zerodha instrument"):
         _sink(book, catalogue, transport=transport,
               leg_slots={p.leg_ref: (p.leg.instrument.value, p.leg.strike, p.leg.expiry) for p in forged_plan.legs}
               ).resolve_all((_tagged(order),))
@@ -382,7 +382,7 @@ def test_sink_refuses_a_banknifty_symbol_on_a_nifty_record(catalogue) -> None:
     """Round 3: a BANKNIFTY contract on the NIFTY record is refused at the sink; transport untouched."""
     transport = CountingTransport()
     order = Order(STRATEGY_ID, "leg-4", "BANKNIFTY26OCT50000CE", Action.BUY, 30, D("100.00"), version_id="v1")
-    with pytest.raises(SendRefused, match="not the catalogue symbol"):
+    with pytest.raises(SendRefused, match="does not match the Zerodha instrument"):
         _sink(book_with_three_filled(), catalogue, transport=transport).resolve_all((_tagged(order),))
     assert transport.calls == []
 
@@ -410,7 +410,7 @@ def test_sink_derives_side_from_the_leg_never_from_the_order(catalogue) -> None:
 
 def test_sink_needs_the_catalogue(catalogue) -> None:
     """Round 3: without the catalogue the sink cannot derive a symbol, so it refuses to open."""
-    with pytest.raises(SendRefused, match="needs the instrument catalogue"):
+    with pytest.raises(SendRefused, match="instrument list needed to find trading symbols"):
         _sink(book_with_three_filled(), None)
 
 

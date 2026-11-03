@@ -1809,7 +1809,7 @@
    },
    {
     "id": "T-19",
-    "reason": "No adjustment approach this playbook offers can be priced now (a contract without a bid or an ask, charges not available, or no whole-trade figure)."
+    "reason": "No adjustment this playbook lists can be priced now. The cause may be a contract without a bid or an ask, charges not available, or no total cost for the whole trade."
    }
   ],
   "day_rules": [

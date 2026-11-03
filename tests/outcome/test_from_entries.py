@@ -1,5 +1,5 @@
 """REQ-077 AC-9 / AC-3 (W-149, row 21d): with no live data, a strategy whose EVERY leg has a planned entry shows its At
-Expiry numbers from the ONE engine at those prices, labelled "From your prices - no live data"; nothing typed is shown
+Expiry numbers from the ONE engine at those prices, labelled "From your prices — no live data"; nothing typed is shown
 as a live price; a partly priced strategy keeps today's answer (ADR-085).
 
 Hand-computed (REQ-077 AC-3's own strikes) on the real 2026-10-08 NIFTY 13-Oct catalogue (lot 65): BUY 23000 CE at
@@ -34,7 +34,7 @@ _FQ = _fq_calc.forward_quality(_fq_defaults())
 LOW, HIGH = "NSE_FO:44632", "NSE_FO:44650"  # 23000 CE, 23200 CE (13-Oct)
 LOT = 65
 _EXTRA = ("NSE_FO:44624", "NSE_FO:44604", "NSE_FO:44595")  # 22800 CE, 22400 PE, 22200 PE (centre tests)
-LABEL = "From your prices - no live data"
+LABEL = "From your prices — no live data"
 
 
 def _stored():

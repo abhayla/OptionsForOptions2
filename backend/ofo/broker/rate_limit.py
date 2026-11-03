@@ -10,7 +10,7 @@ never really sleep), then re-checks that no cooldown started meanwhile. Both doo
 limiter, so one quote through urllib and one through httpx share one bucket.
 
 - AC-3: a request whose slot is later than its deadline (5 s for a user action, 30 s for a background job) or that
-  would be one waiter too many is refused at once with ``KiteBusy`` ("Zerodha is busy - try again in a moment"). A
+  would be one waiter too many is refused at once with ``KiteBusy`` ("Zerodha is busy. Try again in a moment."). A
   background job may keep only ``BACKGROUND_QUEUE_SECONDS`` of slots booked ahead, so a user action never queues behind
   a long background burst.
 - AC-4 / F-60: a 429 starts a cooldown for that group of the wait Kite states (``stated_wait``: a ``Retry-After``

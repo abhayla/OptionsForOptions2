@@ -138,7 +138,7 @@ async def test_ac6_core_both_order_routes_refuse_before_any_kite_read_or_db_use(
     assert response.status_code == HTTPStatus.CONFLICT, response.text
     answer = response.json()
     assert answer["what_happened"] == SENTENCE
-    assert answer["next_action"] == "You can build, save and track strategies."
+    assert answer["next_action"] == "You can still build, save and track strategies."
     assert (counter.kite, counter.db) == (0, 0)
 
 
