@@ -3052,7 +3052,7 @@
     "beforeHoliday"
    ],
    "fires": [
-    "day:beforeHoliday:15:00:0"
+    "day.beforeHoliday.1500.0"
    ],
    "next_open": "2026-11-11T09:15:00+05:30",
    "gap_pct": "2",

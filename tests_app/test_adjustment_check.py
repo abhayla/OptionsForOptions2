@@ -16,12 +16,13 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from ofo.adjustment.playbook_eval import validate_body
 from ofo.adjustment.playbook_types import TYPE_KEYS
+from ofo.settings import calc as _calc
+from ofo.settings import defaults as _defaults
 from ofo.timeutil import IST
 from ofo_app import adjustment_readers, catalogue_store, playbook_store, scenario_mode
 from ofo_app import db as app_db
 from ofo_app.config import get_settings
 from sqlalchemy import text
-from ofo.settings import calc as _calc, defaults as _defaults
 
 _MAX_DELIST = _calc.max_delist_percent(_defaults())
 
@@ -74,8 +75,14 @@ async def _check(sid: str, strategy_id: int) -> tuple[int, dict]:
     return r.status_code, r.json()
 
 
+def _is_sit(x: dict) -> bool:
+    """A situation rule (GC-IC1 6a: ``sit.S-02`` / ``sit.S-12``), covered by tests/adjustment/test_situation_rules.py."""  # noqa: E501
+    return x["rule_id"].startswith("sit.") if "rule_id" in x else str(x["trigger_id"]).startswith("sit.")
+
+
 def _by_kind(body: dict, kind: str) -> list[tuple]:
-    return sorted((x["trigger_id"], x["value"], x["threshold"], x["cmp"]) for x in body["results"] if x["kind"] == kind)
+    return sorted((x["trigger_id"], x["value"], x["threshold"], x["cmp"])
+                  for x in body["results"] if x["kind"] == kind and not _is_sit(x))
 
 
 async def test_adj02_flags_exactly_t01_t03_t09_with_the_system_wording(app_db_url, monkeypatch):
@@ -85,7 +92,7 @@ async def test_adj02_flags_exactly_t01_t03_t09_with_the_system_wording(app_db_ur
     assert (body["strategy_type"], body["type_name"], body["stage"]) == ("ic", "Iron condor",
                                                                        {"name": "Middle", "index": 1})
     assert body["playbook"]["source"] == "system" and body["playbook"]["status"] == "approved"
-    flags = [x for x in body["results"] if x["kind"] == "flag"]
+    flags = [x for x in body["results"] if x["kind"] == "flag" and not _is_sit(x)]  # sit.S-02 / S-12: step 6a tests
     # GC-ADJ2 step 5 item 1: rounded half-up to 4 places, as the fixture writes them (ADJ-02.json triggers_fired)
     assert sorted((x["trigger_id"], x["value"], x["threshold"], x["cmp"]) for x in flags) == [
         ("T-01", "0.3416", "0.5000", "le"), ("T-03", "0.4103", "0.3500", "ge"), ("T-09", "2.7000", "3.0000", "le")]

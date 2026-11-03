@@ -822,6 +822,28 @@ def hand_exit(lot: int, legs: list[dict], rows: list[dict]) -> dict:
     return {"trades": trades}
 
 
+def hand_generic_exits(lot: int, legs: list[dict], rows: list[dict], booked: Fraction) -> dict:
+    """Exit and reduce approaches of a position that is not a condor (hand copy, ADR-238): A-31 closes every leg; A-24
+    (take profit) is the same trades, refused unless the whole trade is above zero at the planned exit prices (6);
+    A-25 closes X% of every leg's lots, whole lots only (2), same profit test."""
+    out = {"A-31": hand_exit(lot, legs, rows)}
+    if "trades" not in out["A-31"]:
+        return dict.fromkeys(("A-31", "A-24", "A-25"), out["A-31"])
+    prices = [t["price"] for t in out["A-31"]["trades"]]
+    whole = booked + sum(Fraction(sign(x["side"]) * x["lots"] * lot * (p - x["entry"])) for x, p in zip(legs, prices, strict=True))
+    if whole <= 0:
+        refused = {"refused": "The whole trade is not in profit with every open leg closed at its planned price."}
+        return {**out, "A-24": refused, "A-25": refused}
+    out["A-24"] = out["A-31"]
+    pct = APPROACH_CONFIG["partial_close_percent"]
+    if any((x["lots"] * pct) % 100 != 0 for x in legs):
+        out["A-25"] = {"refused": "a leg's lots do not split into whole lots at the partial-close percent"}
+    else:
+        out["A-25"] = {"trades": [{**t, "quantity": x["lots"] * pct // 100 * lot}
+                                  for t, x in zip(out["A-31"]["trades"], legs, strict=True)]}
+    return out
+
+
 def hand_cost(u: str, trades: list[dict], rows: list[dict]) -> Decimal | None:
     """ADR-221 / REQ-156 AC-2: the approach's own charges (rounded up to the paisa) + (ask - bid) / 2 x qty per traded
     contract, half-even to the paisa; a traded contract without a usable bid and ask -> None (the Compare's "-")."""
@@ -932,14 +954,14 @@ def hand_situation_rules(spec: dict, legs: list[dict], row_of, today: datetime.d
     per_lot = abs(net) / max(leg["lots"] for leg in legs)
     s02 = per_lot >= Fraction(15, 100)
     rolls = [a for a in offered if a in SIT_ROLLS]
-    out = {"sit:S-02": {"fires": s02, "value": dec_text_round(per_lot), "threshold": "0.15",
+    out = {"sit.S-02": {"fires": s02, "value": dec_text_round(per_lot), "threshold": "0.15",
                         "approaches": rolls if s02 else []}}
     if today != entry_day:
-        out["sit:S-12"] = {"fires": None, "value": None, "threshold": "40", "approaches": []}
+        out["sit.S-12"] = {"fires": None, "value": None, "threshold": "40", "approaches": []}
     else:
         pct = max(pnl_now, Fraction(0)) * 100 / Fraction(D(max_profit))
         s12 = pct >= 40
-        out["sit:S-12"] = {"fires": s12, "value": dec_text_round(pct), "threshold": "40",
+        out["sit.S-12"] = {"fires": s12, "value": dec_text_round(pct), "threshold": "40",
                            "approaches": ["A-24", "A-25"] if s12 else []}
     got = {k: v["fires"] for k, v in out.items()}
     assert got == want, (spec["id"], "situation rules", out)
@@ -963,7 +985,7 @@ def hand_day_close(spec: dict, rules: list[dict], today: datetime.date, expiry: 
     far = [leg["tradingsymbol"] for leg, w in zip(shorts, within, strict=True)
            if not w and limit is not None and ltp(leg) is not None and Fraction(ltp(leg)) <= Fraction(D(limit))]
     nearest = min(abs(Fraction(leg["strike"]) - sp) for leg in shorts) * 100 / sp
-    out = {"rule_id": f"day:expiry:{rule['at']}:{rule['action']}", "at": rule["at"], "due": due, "fires": fires,
+    out = {"rule_id": f"day.expiry.{rule['at'].replace(':', '')}.{rule['action']}", "at": rule["at"], "due": due, "fires": fires,
            "nearest_short_pct": dec_text_round(nearest), "rule_pct": rule["close_if_short_within_pct"],
            "t09_limit": limit, "far_shorts_below_limit": far,
            "approaches": (["A-28"] + (["A-27"] if far else [])) if fires else []}
@@ -994,7 +1016,7 @@ def hand_carry(spec: dict, rules: list[dict], clock: datetime.datetime, legs: li
                spot: Decimal, atm: Decimal) -> dict | None:
     """GC-IC1 1b, engine-free: the switched-on carry rules (action 0) due at ``clock``. Before-weekend = today is a
     session and a Saturday lies before the next session; before-holiday = today is a session and the NEXT CALENDAR
-    WEEKDAY is a listed holiday (so a Friday before a Monday holiday is both). Rule id = ``day:<when>:<at>:<action>``."""
+    WEEKDAY is a listed holiday (so a Friday before a Monday holiday is both). Rule id = ``day.<when>.<HHMM>.<action>``."""
     want = spec.get("carry")
     if want is None:
         return None
@@ -1008,7 +1030,7 @@ def hand_carry(spec: dict, rules: list[dict], clock: datetime.datetime, legs: li
         kinds.add("beforeWeekend")
     if is_session(today) and weekday in HOLIDAYS:
         kinds.add("beforeHoliday")
-    fires = [f"day:{r['when']}:{r['at']}:{r['action']}" for r in rules
+    fires = [f"day.{r['when']}.{r['at'].replace(':', '')}.{r['action']}" for r in rules
              if r["on"] and r["action"] == 0 and r["when"] in kinds and hhmm >= r["at"]]
     open_at = datetime.datetime.combine(nxt, datetime.time(9, 15), IST)
     out = {"day_kinds": sorted(kinds), "fires": fires, "next_open": open_at.isoformat(), "gap_pct": "2",
@@ -1221,7 +1243,7 @@ def build(spec: dict, pb: dict) -> dict:  # noqa: C901, PLR0912, PLR0915 - one r
         a for a in overrides.get("approaches_on", []) if a in fpb["approaches"]["off_in_playbook"]]) if a != "A-36"]
     if adjustments_used >= overrides.get("max_adjustments", fpb.get("guards", {}).get("max_adjustments", GUARDS["max_adjustments"])):
         offered = [a for a in offered if a in EXIT_REDUCE]  # S-11: only exit and reduce are offered (hand copy)
-    cost_legs = hand_legs if hand_legs is not None else {"A-31": hand_exit(lot, legs, near_rows)}
+    cost_legs = hand_legs if hand_legs is not None else hand_generic_exits(lot, legs, near_rows, booked)
     adj_approach, adj_cost = hand_cheapest(offered, cost_legs, u, near_rows + next_rows)
     if priced and family in SHORTS and any(leg["type"] != "FUT" for leg in legs):
         premium_left = sum(-sign(leg["side"]) * leg["quantity"] * ltp(leg) for leg in legs if leg["type"] != "FUT")
@@ -1665,31 +1687,31 @@ def scenarios() -> list[dict]:  # noqa: PLR0915 - a flat list of scenario specs
     # GC-IC1 1b (REQ-159 AC-4, S-06): the carry check at 15:00 before a weekend / a holiday
     s.append(ic_spec("ADJ-53", "Friday 15:00 before the weekend: the carry check fires (overnight margin, 2% gap)",
                      ["S-06", "REQ-159 AC-4"], "2026-10-30T15:00:00", "23100",
-                     carry={"fires": ["day:beforeWeekend:15:00:0"]},
+                     carry={"fires": ["day.beforeWeekend.1500.0"]},
                      notes=["Friday 30 Oct 2026 is a session; Saturday follows, the next session is Monday 2 Nov 09:15."]))
     s.append(ic_spec("ADJ-54", "Wednesday 15:00, Thursday a normal session: no carry check",
                      ["S-06", "REQ-159 AC-4"], "2026-10-28T15:00:00", "23100", carry={"fires": []},
                      notes=["Wednesday 28 Oct 2026: the next weekday (Thursday 29 Oct) is a session, no weekend between."]))
     s.append(ic_spec("ADJ-55", "Monday 15:00 before the Diwali-Balipratipada holiday (Tue 10 Nov): carry check fires",
                      ["S-06", "REQ-159 AC-4"], "2026-11-09T15:00:00", "23100", legs=IC9, entry=E9,
-                     carry={"fires": ["day:beforeHoliday:15:00:0"]},
+                     carry={"fires": ["day.beforeHoliday.1500.0"]},
                      notes=["Monday 9 Nov 2026 (the moved weekly expiry): the next calendar weekday, Tuesday 10 Nov, is a "
                             "listed NSE F&O holiday, so before-holiday fires; the next session is Wednesday 11 Nov."]))
     # GC-IC1 6a (REQ-159 AC-5, ADR-240 (3)): S-02 trending day and S-12 big win early as rules
     s.append(ic_spec("ADJ-56", "Trending day: net delta per lot beyond 0.15, the playbook's rolls offered",
                      ["S-02", "ADR-240"], "2026-11-06T11:40:00", "23420", legs=IC9, entry=E9, next_expiry="2026-11-17",
-                     situation_rules={"sit:S-02": True, "sit:S-12": None}))
+                     situation_rules={"sit.S-02": True, "sit.S-12": None}))
     s.append(ic_spec("ADJ-57", "Calm day: net delta per lot under 0.15, the trending-day rule reads false",
                      ["S-02", "ADR-240"], "2026-10-28T14:00:00", "23050",
-                     situation_rules={"sit:S-02": False, "sit:S-12": False}))
+                     situation_rules={"sit.S-02": False, "sit.S-12": False}))
     s.append(ic_spec("ADJ-58", "Big win on the entry day: profit at least 40% of max profit, take profit offered",
                      ["S-12", "A-24", "A-25", "ADR-240"], "2026-10-28T15:00:00", "23030",
                      entry={**E3, "atm_iv": "0.16"}, atm_iv="0.115",
-                     situation_rules={"sit:S-02": False, "sit:S-12": True}))
+                     situation_rules={"sit.S-02": False, "sit.S-12": True}))
     s.append(ic_spec("ADJ-59", "Big win the next session: the day-1 rule gives no reading",
                      ["S-12", "ADR-240"], "2026-10-29T15:00:00", "23030",
                      entry={**E3, "atm_iv": "0.16"}, atm_iv="0.115",
-                     situation_rules={"sit:S-02": False, "sit:S-12": None}))
+                     situation_rules={"sit.S-02": False, "sit.S-12": None}))
     s.append(ic_spec("ADJ-50", "Liquidity limits (ADR-230 (1), F-78): one thin strike, the 23,100 CE with open interest 500",
                      ["F-78", "REQ-159 AC-6", "ADR-230"], "2026-10-28T14:00:00", "23050", exact_fire=[],
                      chain_changes=[{"expiry": N3, "strike": "23100", "type": "CE", "oi": 500}],

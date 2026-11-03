@@ -136,8 +136,18 @@ def test_ac2_every_scenario_approach_gross_equals_the_hand_values(sid):
         got = by_id[a]
         if got["refusal"] is not None or not h.get("exact", True):
             continue
+        if h.get("multi_expiry"):  # A-04 spans two expiries: no whole-trade After by design (ADR-239)
+            assert got["after"] is None or got["after"]["gross"] is None, (sid, a, got["after"])
+            want = (sc["expected"].get("approach_legs") or {}).get(a)  # figure-less: compared on its trades
+            assert want is not None and got["trades"], (sid, a)
+            keys = ("action", "type", "strike", "expiry", "lots", "price")
+            assert [{k: str(t[k]) for k in keys} for t in got["trades"]] ==                 [{k: str(t[k]) for k in keys} for t in want["trades"]], (sid, a)  # noqa: E501
+            continue
         g = got["after"]["gross"]
-        assert D(g["max_profit"]) == D(h["max_profit"]), (sid, a, g, h)
+        if str(h["max_profit"]).upper() == "UNLIMITED":  # a text answer, not a number (A-26 leaves only the long wing)
+            assert str(g["max_profit"]).upper() == "UNLIMITED", (sid, a, g, h)
+        else:
+            assert D(g["max_profit"]) == D(h["max_profit"]), (sid, a, g, h)
         assert D(g["max_loss"]) == D(h["max_loss"]), (sid, a, g, h)
         assert [D(b) for b in g["breakevens"]] == [D(b).quantize(D("0.01")) for b in h["breakevens"]], (sid, a)
         assert D(got["after"]["booked_pnl"]) == D(h["booked_pnl"]), (sid, a)
@@ -351,13 +361,16 @@ def test_req156_ac2_adj02_reply_carries_every_criterion_for_every_approach_and_t
     rows = {c["id"]: c for c in body["criteria"]}
     legs, after = sc["expected"]["approach_legs"], sc["expected"]["approach_after"]
     for a in built:
+        if after[a].get("multi_expiry"):  # A-04: two expiries, no whole-trade figure by design: a dash with its reason
+            assert rows["max_loss"]["values"][a]["value"] is None and rows["move_m2"]["values"][a]["value"] is None, a
+            continue
         ch = next(x for x in body["approaches"] if x["id"] == a)["charges"]
         lines = D(ch["this_adjustment"]) + D(ch["paid_so_far"]) + D(ch["open_exit"])
         assert D(rows["max_loss"]["values"][a]["value"]) == D(after[a]["max_loss"]) + lines, a
         level = Fraction(sc["market"]["spot"]) * Fraction(98, 100)
         h = gen.hand_pnl_at(legs[a]["after"], Fraction(after[a]["booked_pnl"]), level)
         assert D(rows["move_m2"]["values"][a]["value"]) == D(h.numerator) / D(h.denominator) - lines, a
-    assert set(body["curves"]) == {"before", *built}
+    assert set(body["curves"]) == {"before", *(a for a in built if not after[a].get("multi_expiry"))}  # A-04: no curve
     assert all(len(p) == 2 for pts in body["curves"].values() for p in pts)  # noqa: PLR2004 - [level, P&L]
     m = sum(1 for c in body["criteria"] if c["leaders"])
     assert list(body["leads"]) == built and all(v["m"] == m for v in body["leads"].values())
@@ -414,7 +427,11 @@ def test_drawer_a36_only_builds_no_change_and_lists_every_generic_approach_witho
     for a in body["available"]:
         assert set(a) == {"id", "name", "explanation", "applicable", "reason", "liquidity_flags"}
         assert a["name"] and a["explanation"] and not re.search(r"\d", a["explanation"]), a  # REQ-045 AC-5: no figure
-    assert body["available"][0]["name"] == "No change" and all(a["applicable"] for a in body["available"])
+    # the generator's hand path says which approaches ADJ-02 cannot build (the rest are applicable)
+    cannot = {a for a, v in load("ADJ-02")["expected"]["approach_legs"].items() if "refused" in v}
+    assert body["available"][0]["name"] == "No change"
+    assert {a["id"] for a in body["available"] if not a["applicable"]} == cannot, [
+        (a["id"], a["reason"]) for a in body["available"] if not a["applicable"]]
 
 
 def test_drawer_layer2_current_state_comes_from_the_a36_column_and_days_to_expiry_from_the_legs():
@@ -642,7 +659,7 @@ def test_adr239_the_three_roll_approaches_come_back_as_columns():
     trades and After equal the generator's engine-free copy (A-04 on the 17 Nov chain the route read in its one hold),
     each is a compare column with a cost, and A-04's After (two expiries) is a dash with the engine's reason."""
     sc = load("ADJ-02")
-    reply = post(client_for(sc)).json()
+    reply = post(client_for(sc, rates=RATES)).json()
     by_id = {a["id"]: a for a in reply["approaches"]}
     assert list(by_id) == list(APPROACH_IDS) and list(APPROACH_IDS)[-3:] == ["A-02", "A-04", "A-06"]
     hand = sc["expected"]["approach_legs"]
