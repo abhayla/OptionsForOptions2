@@ -305,12 +305,13 @@ QUIET_UNTIL_1150 = D("1150")  # the owner's intraday quiet time: 11:50 (the scen
 CAP_ONE = {"alerts.intraday.daily_cap": D("1")}
 
 
-async def _ready(app_db_url, monkeypatch, overrides: dict | None = None, lister=None):
-    """A seeded, intraday-pinned strategy, a real Worker and a clock settled clear (two closes at 23000)."""
+async def _ready(app_db_url, monkeypatch, overrides: dict | None = None, lister_for=None):
+    """A seeded, intraday-pinned strategy, a real Worker and a clock settled clear (two closes at 23000).
+    ``lister_for(scn)`` builds another lister from the seeded scenario (the worker's first rebuild calls it)."""
     sid, scn = await _seeded(app_db_url, monkeypatch)
     await _pin_intraday(app_db_url, sid)
     now = [scn.clock_at]
-    worker = _worker(scn, lambda: now[0], overrides=overrides, lister=lister)
+    worker = _worker(scn, lambda: now[0], overrides=overrides, lister=None if lister_for is None else lister_for(scn))
     await _settle_clear(worker, scn, now, scn.clock_at)
     assert worker.errors == [] and worker.status[sid] is background.MonitoringStatus.ACTIVE
     return sid, scn, now, worker
@@ -388,15 +389,19 @@ async def test_dismiss_then_the_next_ladder_level_opens_a_record_worse_than_dism
     assert worker.errors == []
 
 
-@pytest.mark.xfail(strict=True, reason="parked #638: not diagnosed (GC-ALERT1 step 5, 2 rounds used)")
 async def test_a_plan_change_restores_the_gate_against_the_new_ladder(app_db_url, monkeypatch):
     """The first record opens at the SECOND rung of the old ladder (0.5, 0.3). The plan then moves that rung to 0.2:
     the stored threshold 0.3 is the first rung of the new ladder (0.5, 0.2), so 0.17 % is one level worse -> a
-    record worse than the last. With the old level kept (1) it would stay quiet."""
+    record worse than the last. With the old level kept (1) it would stay quiet. #638 RCA: the test's lister read
+    ``scn`` before ``_ready`` returned it (NameError at the worker's first rebuild, caught into ``worker.errors``); the
+    lister is now built from the seeded scenario (``lister_for``). The worker was not at fault."""
     changed = [False]
     new_body: list = []
 
-    async def lister():
+    def lister_for(scn):
+        return lambda: lister(scn)
+
+    async def lister(scn):
         watched = await background.owner_lister(scn.provider)
         if not changed[0]:
             return watched
@@ -407,7 +412,7 @@ async def test_a_plan_change_restores_the_gate_against_the_new_ladder(app_db_url
                     body["triggers"]["T-01"][kind] = [v if v == "" or D(v) >= D("0.5") else NEW_RUNG for v in values]
             new_body.append(body)
         return [dataclasses.replace(w, body=new_body[0]) for w in watched]
-    sid, scn, now, worker = await _ready(app_db_url, monkeypatch, lister=lister)
+    sid, scn, now, worker = await _ready(app_db_url, monkeypatch, lister_for=lister_for)
     base = await _last_id(app_db_url, sid)
     first = await _cross(app_db_url, worker, scn, now, LEVEL_ONE_SPOT, sid, base)
     assert await _t01_rows(app_db_url, sid, base) == [(first, "open", None)]
@@ -446,7 +451,8 @@ async def test_the_ist_day_rollover_resets_the_cap(app_db_url, monkeypatch):
         now[0] += ONE_SECOND
     assert worker.status[sid] is background.MonitoringStatus.ACTIVE, worker.paused_reason
     rows = await _t01_rows(app_db_url, sid, base)
-    assert [(r[1], r[2]) for r in rows] == [("lapsed", None), ("open", "last")], rows  # the cap no longer holds it
+    ctx = worker._gate_ctx.get(sid)
+    assert [(r[1], r[2]) for r in rows] == [("lapsed", None), ("open", "last")], (rows, worker._gate.get(sid), ctx and ctx.evaluation.stage_name, ctx and [v for v in ctx.evaluation.values if v.rule_id == "T-01"], worker._style.get(sid), worker._last_check.get(sid), now[0])  # TEMPDIAG
     assert await _held_reasons(app_db_url, sid) == held
 
 
