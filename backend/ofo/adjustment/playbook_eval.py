@@ -334,10 +334,9 @@ def _limit(c: _Ctx, tid: str) -> Decimal | str:
     return lim
 
 
-def _compare(c: _Ctx, tid: str, num: Decimal, den: Decimal = Decimal(1)) -> Hit:
-    """value = num / den (den > 0) against this stage's limit, exact and inclusive."""
-    lim = _limit(c, tid)
-    cmp = c.body["triggers"][tid]["cmp"]
+def _exact(tid: str, num: Decimal, den: Decimal, lim: Decimal, cmp: Cmp) -> Hit:
+    """value = num / den (den > 0) against ``lim``, exact and inclusive (the one comparison every trigger and day
+    rule uses)."""
     with localcontext(_EXACT):
         scaled = lim * den
         fired = num <= scaled if cmp == "le" else num >= scaled
@@ -346,16 +345,28 @@ def _compare(c: _Ctx, tid: str, num: Decimal, den: Decimal = Decimal(1)) -> Hit:
     return Hit(tid, value, lim, cmp, fired)
 
 
+def _compare(c: _Ctx, tid: str, num: Decimal, den: Decimal = Decimal(1)) -> Hit:
+    """value = num / den (den > 0) against this stage's limit, exact and inclusive."""
+    lim = _limit(c, tid)
+    return _exact(tid, num, den, lim, c.body["triggers"][tid]["cmp"])  # type: ignore[arg-type]
+
+
 def _shorts(s: StrategyState) -> tuple[ShortLeg, ...]:
     if not s.shorts:
         raise _Missing(f"{P}no_short_leg")
     return s.shorts
 
 
+def short_gap_pct(spot: Decimal, shorts: tuple[ShortLeg, ...]) -> tuple[Decimal, Decimal]:
+    """T-01's measure, "spot within this % of a short strike": (num, den) of the NEAREST short's |strike - spot| x 100
+    / spot, kept as a fraction for the exact comparison. One function: T-01 and the expiry-day close rule use it."""
+    near = min(abs(x.strike - spot) for x in shorts)  # ambiguous (two shorts): the nearest one
+    return near * _HUNDRED, spot
+
+
 def _t01(c: _Ctx) -> Hit:
     spot = _need(c.state.spot, "spot")
-    near = min(abs(x.strike - spot) for x in _shorts(c.state))  # ambiguous (two shorts): the nearest one
-    return _compare(c, "T-01", near * _HUNDRED, spot)
+    return _compare(c, "T-01", *short_gap_pct(spot, _shorts(c.state)))
 
 
 def _t01b(c: _Ctx) -> Hit:
@@ -392,11 +403,17 @@ def _t07(c: _Ctx) -> Hit:
     return _compare(c, "T-07", *ratios.profit_pct_of_max_profit(pnl, _finite(c.state.max_profit, "max_profit")))
 
 
-def _t09(c: _Ctx) -> Hit:
-    prices = [x.ltp for x in _shorts(c.state)]
+def short_premium(shorts: tuple[ShortLeg, ...]) -> Decimal:
+    """T-09's measure, "short premium at or below Rs X": the lowest short LTP; any short unpriced -> not checked.
+    One function: T-09 and the expiry-day close rule's A-27 (catalogue: T-09 -> A-27) use it."""
+    prices = [x.ltp for x in shorts]
     if any(p is None for p in prices):
         raise _Missing(f"{P}missing_short_price")
-    return _compare(c, "T-09", min(prices))
+    return min(p for p in prices if p is not None)
+
+
+def _t09(c: _Ctx) -> Hit:
+    return _compare(c, "T-09", short_premium(_shorts(c.state)))
 
 
 def _t10b(c: _Ctx) -> Hit:
@@ -617,7 +634,7 @@ DAY_RULE_PREFIX: Final = "day:"
 DAY_ACTION_PREPARE_EXIT: Final = 5  # PLAYBOOK_DAY_RULE_ACTION_TEXT["5"], "Prepare an exit for review"
 DAY_RULE_INCOMPLETE: Final = f"{P}day_rule_incomplete"
 CLOSE_WITHIN_KEY: Final = "close_if_short_within_pct"
-BUY_BACK_BELOW_KEY: Final = "buy_back_short_below_rs"  # A-27 "premium < Rs X" (catalogue line 164): the rule's X
+BUY_BACK_BELOW_KEY: Final = "buy_back_short_below_rs"  # A-27 "the far side for <= Rs 2" (catalogue 374): the X
 TESTED_SPREAD: Final = "A-28"
 FAR_SHORT: Final = "A-27"
 _HHMM: Final = re.compile(r"[0-2][0-9]:[0-5][0-9]")
@@ -668,7 +685,7 @@ def _decimal_text(value: object) -> Decimal | None:
     return d if d.is_finite() and d >= 0 else None
 
 
-def _expiry_close(rule: Mapping, rid: str, state: StrategyState,  # noqa: PLR0911 - one answer per reason
+def _expiry_close(body: Mapping, rule: Mapping, rid: str, state: StrategyState,  # noqa: PLR0911 - one answer per reason
                   why: str | None) -> DayAnswer | None:
     """``when: expiry`` + ``close_if_short_within_pct`` P: on expiry day from ``at``, True when a short's strike is
     within P% of spot (|strike - spot| * 100 <= P * spot, exact). None = not due (no reading at all)."""
@@ -692,19 +709,28 @@ def _expiry_close(rule: Mapping, rid: str, state: StrategyState,  # noqa: PLR091
         return DayAnswer(rid, DAY_ACTION_PREPARE_EXIT, reason=f"{P}missing_spot")
     if not state.shorts:
         return DayAnswer(rid, DAY_ACTION_PREPARE_EXIT, reason=f"{P}no_short_leg")
-    spot = state.spot
-    with localcontext(_EXACT):
-        within = [abs(s.strike - spot) * _HUNDRED <= pct * spot for s in state.shorts]
-        near = min(abs(s.strike - spot) for s in state.shorts)
-    with localcontext(_SHOW):
-        value = near * _HUNDRED / spot
-    fired = any(within)
-    hit = Hit(rid, value, pct, "le", fired)
-    if not fired:
+    hit = _exact(rid, *short_gap_pct(state.spot, state.shorts), pct, "le")  # T-01's measure: nearest short within
+    if not hit.fired:
         return DayAnswer(rid, DAY_ACTION_PREPARE_EXIT, hit)
-    far = below is not None and any(not w and s.ltp is not None and s.ltp < below
-                                    for s, w in zip(state.shorts, within, strict=True))
+    far = _far_short_named(body, state, pct, below)
     return DayAnswer(rid, DAY_ACTION_PREPARE_EXIT, hit, approaches=(TESTED_SPREAD, *((FAR_SHORT,) if far else ())))
+
+
+def _far_short_named(body: Mapping, state: StrategyState, pct: Decimal, below: Decimal | None) -> bool:
+    """A-27 for the shorts NOT within ``pct`` (each read with T-01's measure), when T-09's measure on them (lowest
+    LTP, any unpriced -> not named) passes T-09's own comparison against the rule's Rs limit (``le``: at or below)."""
+    t09 = body.get("triggers", {}).get("T-09") if isinstance(body.get("triggers"), Mapping) else None
+    cmp = t09.get("cmp") if isinstance(t09, Mapping) else None
+    if below is None or state.spot is None or cmp not in ("le", "ge"):
+        return False
+    spot = state.spot
+    others = tuple(x for x in state.shorts if not _exact("T-01", *short_gap_pct(spot, (x,)), pct, "le").fired)
+    if not others:
+        return False
+    try:
+        return _exact("T-09", short_premium(others), Decimal(1), below, cmp).fired
+    except _Missing:
+        return False
 
 
 def day_answers(body: Mapping, state: StrategyState, why: str | None = None) -> tuple[DayAnswer, ...]:
@@ -717,7 +743,7 @@ def day_answers(body: Mapping, state: StrategyState, why: str | None = None) -> 
         if not isinstance(rule, Mapping) or rule.get("on") is not True or rule.get("when") != "expiry" or \
                 rule.get("action") != DAY_ACTION_PREPARE_EXIT:
             continue
-        answer = _expiry_close(rule, day_rule_id("expiry", i), state, why)
+        answer = _expiry_close(body, rule, day_rule_id("expiry", i), state, why)
         if answer is not None:
             out.append(answer)
     return tuple(out)

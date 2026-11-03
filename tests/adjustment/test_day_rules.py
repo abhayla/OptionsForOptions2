@@ -112,9 +112,9 @@ def test_case_b_04_pct_away_reads_false_and_records_a_clear():
     assert _reading(ev) is False and RID in ev.clear and _day(ev) == []
 
 
-def test_a27_boundary_ltp_195_named_200_not_and_absent_not():
-    assert _value(pe.evaluate(_ic(), _state(far_ltp="1.95"), gap_until=GAP)).approaches == ("A-28", "A-27")
-    assert _value(pe.evaluate(_ic(), _state(far_ltp="2.00"), gap_until=GAP)).approaches == ("A-28",)
+def test_a27_boundary_at_or_below_rs2_as_t09_ltp_200_named_205_not_and_absent_not():
+    assert _value(pe.evaluate(_ic(), _state(far_ltp="2.00"), gap_until=GAP)).approaches == ("A-28", "A-27")
+    assert _value(pe.evaluate(_ic(), _state(far_ltp="2.05"), gap_until=GAP)).approaches == ("A-28",)
     assert _value(pe.evaluate(_ic(), _state(far_ltp=None), gap_until=GAP)).approaches == ("A-28",)
 
 
@@ -122,6 +122,7 @@ def test_a27_limit_read_from_the_body_not_hard_coded():
     body = _ic()
     body["day_rules"][5]["buy_back_short_below_rs"] = "1.5"
     assert _value(pe.evaluate(body, _state(far_ltp="1.95"), gap_until=GAP)).approaches == ("A-28",)
+    assert _value(pe.evaluate(body, _state(far_ltp="1.50"), gap_until=GAP)).approaches == ("A-28", "A-27")
     body["day_rules"][5]["buy_back_short_below_rs"] = "3"
     assert _value(pe.evaluate(body, _state(far_ltp="2.50"), gap_until=GAP)).approaches == ("A-28", "A-27")
     del body["day_rules"][5]["buy_back_short_below_rs"]  # no limit stated: A-27 is never named (no default)
@@ -207,3 +208,9 @@ def test_generator_case_matches_its_engine_free_expected_block(case, hhmm):
     v = next(x for x in ev.values if x.rule_id == want["rule_id"])
     assert list(v.approaches) == want["approaches"]
     assert format(v.value.quantize(D("0.0001")), "f") == want["nearest_short_pct"]
+
+
+def test_t01_and_the_day_rule_share_one_measure():
+    shorts = (pe.ShortLeg(D(22600), None, D(1)), pe.ShortLeg(D(23450), None, D(60)))
+    assert pe.short_gap_pct(D(23400), shorts) == (D(5000), D(23400))
+    assert pe.short_premium(shorts) == D(1)

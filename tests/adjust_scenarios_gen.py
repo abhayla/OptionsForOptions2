@@ -189,7 +189,7 @@ FAMILY_GUARDS = {"ic": {"stop_line_pct_of_margin": "4", "stop_line_rule": "which
                         "time_exit": "14:30"}}
 FAMILY_DAY_RULES = {"ic": [r if r["when"] != "expiry" else {**r, "on": False} for r in SYSTEM_DAY_RULES] + [
     {"on": True, "when": "expiry", "at": "14:30", "action": 5, "close_if_short_within_pct": "0.3",
-     "buy_back_short_below_rs": "2"}]}  # A-27 "the far side for <= Rs 2": strict < Rs 2 (orchestrator 2026-11-03)
+     "buy_back_short_below_rs": "2"}]}  # A-27 "the far side for <= Rs 2" (catalogue 374): at or below, as T-09
 SITUATIONS = [
     ("S-01", "Gap at the open", "Wait until 09:30 before suggesting, unless a short opens in the money"),
     ("S-02", "Trending day", "Show early rolls when net delta grows past 0.15 per lot"),
@@ -788,7 +788,7 @@ def hand_day_close(spec: dict, rules: list[dict], today: datetime.date, expiry: 
                    clock: datetime.datetime, spot: Decimal, shorts: list[dict], ltp) -> dict | None:
     """GC-IC1 1a, engine-free: the switched-on expiry close rule (action 5, close_if_short_within_pct P) fires on
     expiry day from its time when a short's strike is within P% of spot (|strike - spot| * 100 <= P * spot, exact
-    fractions); it names A-28, plus A-27 when another short's LTP is below the rule's Rs limit (strict)."""
+    fractions); it names A-28, plus A-27 when another short's LTP is at or below the rule's Rs limit (as T-09)."""
     want = spec.get("day_close")
     if want is None:
         return None
@@ -799,7 +799,7 @@ def hand_day_close(spec: dict, rules: list[dict], today: datetime.date, expiry: 
     fires = due and any(within)
     limit = rule.get("buy_back_short_below_rs")
     far = [leg["tradingsymbol"] for leg, w in zip(shorts, within, strict=True)
-           if not w and limit is not None and ltp(leg) is not None and Fraction(ltp(leg)) < Fraction(D(limit))]
+           if not w and limit is not None and ltp(leg) is not None and Fraction(ltp(leg)) <= Fraction(D(limit))]
     nearest = min(abs(Fraction(leg["strike"]) - sp) for leg in shorts) * 100 / sp
     out = {"rule_id": f"day:expiry:{ix}", "at": rule["at"], "due": due, "fires": fires,
            "nearest_short_pct": dec_text_round(nearest), "rule_pct": rule["close_if_short_within_pct"],
