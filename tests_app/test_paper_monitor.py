@@ -255,7 +255,8 @@ async def test_a_cancelled_trigger_never_fires(db):
                                               (D("22976.85"), "22,976.85")])
 def test_the_reason_text_shows_a_level_grouped_with_two_decimals(level, shown):
     trigger = stops.Trigger(1, 1, "conditional_exit", "below", level, underlying="NIFTY")
-    assert str(paper_monitor.PaperMonitor._reason(trigger, {})) == f"Stop-loss on the index: NIFTY crossed below {shown}"
+    assert str(paper_monitor.PaperMonitor._reason(trigger, {})) == (
+        f"Stop-loss on the index: NIFTY crossed below {shown}")
 
 
 async def test_claiming_one_armed_trigger_twice_wins_once_and_the_second_claim_does_not_raise(db):

@@ -227,14 +227,15 @@ def _gate(id: str, error_class: ErrorClass, number: int, what: str, impact: str,
     )
 
 
-def _contract_pair(id: str, error_class: ErrorClass, number: int, problem: str, replace: str = _REPLACE_OR_REMOVE,
-                   pick: str = _PICK_OR_REMOVE) -> tuple[MessageTemplate, ...]:
+def _contract_pair(id: str, error_class: ErrorClass, number: int, problem: str,
+                   next_actions: tuple[str, str] = (_REPLACE_OR_REMOVE, _PICK_OR_REMOVE),
+                   ) -> tuple[MessageTemplate, ...]:
     """A contract problem in its two forms: no alternative strike to offer, and one or two offered (never applied)."""
     return (
         _gate(id, error_class, number, "{leg} " + problem + _NO_ALTERNATIVE, _NOT_TRADABLE, _EXEC,
-              replace, {"leg": LegRef}),
+              next_actions[0], {"leg": LegRef}),
         _gate(id + "_alternatives", error_class, number + 1, "{leg} " + problem + _ALTERNATIVES, _NOT_TRADABLE, _EXEC,
-              pick, {"leg": LegRef, "strikes": Strikes}),
+              next_actions[1], {"leg": LegRef, "strikes": Strikes}),
     )
 
 
@@ -338,9 +339,10 @@ _GATE_TEMPLATES: tuple[MessageTemplate, ...] = (
     *_contract_pair("gate_contract_not_listed", _MD, 110, "is no longer listed by Zerodha."),
     *_contract_pair("gate_contract_unconfirmed", _BE, 101,
                     "has not been confirmed as available on Zerodha yet. Refresh availability to continue.",
-                    "Refresh availability, then check again. If it still cannot be confirmed, replace or remove this leg.",
-                    "Refresh availability, then check again. If it still cannot be confirmed, pick one of the strikes shown "
-                    "for this leg yourself, or remove the leg."),
+                    ("Refresh availability, then check again. If it still cannot be confirmed, replace or remove "
+                     "this leg.",
+                     "Refresh availability, then check again. If it still cannot be confirmed, pick one of the "
+                     "strikes shown for this leg yourself, or remove the leg.")),
     *_contract_pair("gate_contract_unavailable", _BE, 103,
                     "is currently unavailable on Zerodha. Zerodha is not accepting new orders for this contract "
                     "right now."),
@@ -418,9 +420,11 @@ _GATE_TEMPLATES: tuple[MessageTemplate, ...] = (
           "We could not re-read your Zerodha positions and orders. No order has been prepared.",
           "The platform does not know this strategy's current state at Zerodha.", _PARTIAL_BLOCKED,
           "Try again in a moment; check the positions in Zerodha if this keeps happening."),
-    _gate("partial_nothing_prepared", _PE, 102, "No orders were prepared for this strategy.", "No order is waiting for your confirmation.",
+    _gate("partial_nothing_prepared", _PE, 102, "No orders were prepared for this strategy.",
+          "No order is waiting for your confirmation.",
           _PARTIAL_BLOCKED,
-          "Open the strategy, read its status, then choose Complete Strategy, Retry Failed Leg or Exit Partial Strategy again."),
+          "Open the strategy, read its status, then choose Complete Strategy, Retry Failed Leg or Exit "
+          "Partial Strategy again."),
     _gate("partial_status_not_partial", _PE, 103, "Nothing prepared: the strategy is {status}.",
           "Completing, retrying or closing applies only to a partly executed strategy.", _PARTIAL_BLOCKED,
           "Check the strategy's state, then choose again.", {"status": ExecutionStatusName}),
@@ -565,7 +569,8 @@ _RECONCILIATION_TEMPLATES: tuple[MessageTemplate, ...] = (
     _gate("recon_unexpected_broker_position", _RM, 202,
           "Zerodha shows a position on {contracts} contract(s) that no strategy or recorded standalone position holds.",
           "The platform's record does not include this position.", _REC_NONE_BLOCKED,
-          "Choose how to group it: add to an existing strategy, create a new strategy, or leave it standalone.", _REC_SLOT),
+          "Choose how to group it: add to an existing strategy, create a new strategy, or leave it "
+          "standalone.", _REC_SLOT),
     _gate("recon_quantity_mismatch", _RM, 203,
           "Zerodha's quantity on {contracts} contract(s) differs from the platform's record for this strategy.",
           _REC_IMPACT, _REC_BLOCKED, _REC_RECONCILE, _REC_SLOT),
@@ -719,7 +724,8 @@ _PART4_TEMPLATES: tuple[MessageTemplate, ...] = (
           "Orders for this contract cannot be split without a usable freeze quantity.",
           _PARTIAL_BLOCKED, _SLICE_NEXT, {"contract": ContractSymbol}),
     _gate("partial_read_stale", _PE, 119,
-          "Nothing prepared: the positions loaded from Zerodha became too old while the orders were being prepared.", "Orders based on an old read could add to positions that have since changed.",
+          "Nothing prepared: the positions loaded from Zerodha became too old while the orders were being "
+          "prepared.", "Orders based on an old read could add to positions that have since changed.",
           _PARTIAL_BLOCKED, "Refresh the strategy's positions from Zerodha, then choose again."),
     _gate("partial_mismatch_unknown_order", _RM, 301,
           "Zerodha shows order {order} that the platform has no record of.",
@@ -838,19 +844,8 @@ _STRATEGY_DRAFT_TEMPLATES: tuple[MessageTemplate, ...] = (
                                                                           "instrument list."),
     _gate("strategy_contract_terms_changed", _SV, 402,
           "The instrument list now describes one of this strategy's contracts differently from the strategy.",
-          "The draft was not saved or changed.", "Using this strategy until its contracts are chosen again.", "Pick "
-                                                                                                              "the "
-                                                                                                              "contracts "
-                                                                                                              "again "
-                                                                                                              "from "
-                                                                                                              "the "
-                                                                                                              "instrument "
-                                                                                                              "list; "
-                                                                                                              "nothing "
-                                                                                                              "is "
-                                                                                                              "replaced "
-                                                                                                              "for "
-                                                                                                              "you."),
+          "The draft was not saved or changed.", "Using this strategy until its contracts are chosen again.",
+          "Pick the contracts again from the instrument list; nothing is replaced for you."),
     _gate("strategy_contract_not_live", _SV, 403,
           "A contract in this strategy is no longer live in the instrument list.",
           "The draft was not saved or changed.", "Saving this strategy.", "Replace that leg with a live contract."),

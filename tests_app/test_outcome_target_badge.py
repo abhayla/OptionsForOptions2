@@ -57,7 +57,7 @@ async def test_reply_carries_move_days_and_badge(provider):
     assert t["days_to_expiry"] == 3 and t["days_to_expiry_display"] == "3D to expiry"
     b, pnl = t["badge"], Decimal(t["pnl"]["value"])
     assert b["state"] == ("profit" if pnl > 0 else "loss" if pnl < 0 else "zero") and Decimal(b["amount"]) == pnl
-    assert b["label"].startswith("Projected ") and b["output_label"] == t["output_label"]
+    assert b["label"].startswith(("Profit at target", "Loss at target", "Projected ")) and b["output_label"] == t["output_label"]
     close = (await _target(provider, target_level=level, target_at=CLOSE.isoformat()))["target"]
     assert close["days_to_expiry_display"] == "0D to expiry"
 

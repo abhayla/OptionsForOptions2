@@ -2,7 +2,8 @@
 
 Spec basis (quoted): REQ-070 AC-6 "Only a strategy that never sent a basket can be deleted: the user confirms, Undo is
 offered, the draft is hidden from every list and kept on the server with its history for audit; a strategy that ever
-sent a basket cannot be deleted and shows \"Orders were already sent for this strategy, so it cannot be deleted.\" instead of Delete (ADR-118)."; ADR-118
+sent a basket cannot be deleted and shows
+\"Orders were already sent for this strategy, so it cannot be deleted.\" instead of Delete (ADR-118)."; ADR-118
 "Deleting never erases history or audit rows".
 
 Sensibull: no history/restore screen in the study; delete = soft delete at catalogue-raw.md 270-273, screens 270-272.

@@ -131,7 +131,8 @@ def test_closed_slots_still_take_their_real_values() -> None:
     assert str(render_explanation("leg_label_symbol", symbol="SENSEX26OCTFUT",
                                   label=render_explanation("leg_label_no_quote"))) == "SENSEX26OCTFUT: no live quote"
     assert str(render_explanation("outcome_forward_error", expiry=datetime.date(2026, 10, 29),
-                                  why=render_explanation("outcome_why_forward"))).startswith("reference price for 2026-10-29: ")
+                                  why=render_explanation("outcome_why_forward"))).startswith(
+        "reference price for 2026-10-29: ")
 
 
 @pytest.mark.parametrize("value, text", [

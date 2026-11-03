@@ -36,7 +36,8 @@ Breakeven summary columns (Q213) from the same level set. Every money/points cel
   ITM/ATM/OTM rule was a defect, moneyness is not in the AC-2 column list). A leg's Status is whatever state the
   caller passes in for that leg (``leg_statuses``, a ``LegStatus``, not computed here); the
   TOTAL row's Status is the strategy's health, passed in as a :class:`StrategyHealth` (REQ-043 AC-2; ADR-010 lines
-  29-30, the owner's exact labels (wording #629): "No condition met", "Near a condition", "Adjustment opportunity", "Exit condition reached"). Neither
+  29-30, the owner's exact labels (wording #629): "No condition met", "Near a condition", "Adjustment opportunity",
+  "Exit condition reached"). Neither
   is computed by this module; a missing status shows "—".
 - **TOTAL Entry Value is options-only and NET** (Q233, Q236): sells minus buys, each premium x its own leg's
   quantity. The cell's ``value`` is the non-negative magnitude, its ``side`` is "Cr" (net credit) or "Dr" (net

@@ -129,7 +129,7 @@ def test_none_priceable_is_not_checked_with_the_reason():
                                                        prices_fresh=True), gap_until=s.PREFS.gap_until)
     t19 = next(r for r in ev.results if r.trigger_id == "T-19")
     assert isinstance(t19, pe.NotChecked) and t19.code == cmp.NO_APPROACH_PRICED
-    assert pe.reason_text(t19.code).startswith("No adjustment approach this playbook offers can be priced now")
+    assert pe.reason_text(t19.code).startswith("No adjustment this playbook lists can be priced now")
 
 
 def test_no_approach_offered_is_not_checked_with_the_reason():
@@ -169,8 +169,7 @@ def test_the_flag_line_names_the_approach_and_its_cost():
     line = check.condition_line_t19("Premium still left is below this x the adjustment cost", "0.3629", "1.0000",
                                     "A-28", D("53.73"))
     assert str(line) == ("Premium still left is below this x the adjustment cost: 0.3629 (rule 1.0000); cheapest "
-                         "adjustment that could be priced now: Close the tested spread, cost \u20b953.73 "
-                         "(as in Compare)")
+                         "adjustment we could price: Close the tested spread, cost \u20b953.73")
     fallback = check.condition_line_t19("Premium still left", "0.3629", "1.0000", "A-99", D("53.73"))
     assert "53.73" not in str(fallback)  # an approach the slot refuses -> the plain line, never a guessed name
 

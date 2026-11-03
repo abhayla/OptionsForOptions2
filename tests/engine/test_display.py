@@ -63,7 +63,8 @@ def test_estimated_now_line_exact_text(condor_inputs):
     """AC-5: the Estimated Now result renders as a labelled, approximate line with its model, IVs, rate and time."""
     text = describe_estimate(estimate_now(condor_inputs, D("23500")), "NIFTY")
     assert text == (
-        "Estimated P&L now at NIFTY 23,500: ~−₹1,009 (estimate; assumes Black-Scholes-Merton (European options). Dividend "
+        "Estimated P&L now at NIFTY 23,500: ~−₹1,009 (estimate; assumes Black-Scholes-Merton (European options). "
+        "Dividend "
         "yield is estimated from option prices; \"estimated from spot\" is shown when no forward price is "
         "available. model; IV 11.7%, 10.9%, 9.3%, 10.2%; rate 6.5%; valued 2026-10-17 15:30 IST)"
     )

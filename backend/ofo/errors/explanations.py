@@ -1324,7 +1324,8 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("estimate_assume_valued", "values_seen", "valued {time}", {"time": LegacyRecorded}),
     ExplanationTemplate("estimate_model_name", "values_seen",
                         "Black-Scholes-Merton (European options). Dividend yield is estimated from option "
-                        "prices; \"estimated from spot\" is shown when no forward price is available."),  # ADR-061, ADR-063
+                        "prices; \"estimated from spot\" is shown when no forward price is "
+                        "available."),  # ADR-061, ADR-063
     ExplanationTemplate("alternative_choice_reason", "values_seen",
                         "User chose {chosen} {instrument} instead of unavailable {original} {instrument} ({code})",
                         {"chosen": Recorded, "instrument": Recorded, "original": Recorded, "code": Recorded}),
@@ -1587,7 +1588,8 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("outcome_forward_error", "values_seen", "reference price for {expiry}: {why}",
                         {"expiry": ExpiryDate, "why": Explained}),
     ExplanationTemplate("outcome_spot_missing", "values_seen",
-                        "the {underlying} index value is missing; the outcome cannot be shown", {"underlying": UnderlyingName}),
+                        "the {underlying} index value is missing; the outcome cannot be shown",
+                        {"underlying": UnderlyingName}),
     ExplanationTemplate("outcome_spot_unusable", "values_seen",
                         "the {underlying} spot is {health}; the calculation cannot be done",
                         {"underlying": UnderlyingName, "health": HealthWord}),
@@ -1673,7 +1675,8 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         {"contract": Explained, "direction": Recorded, "level": IndexLevel}),
     # F-94 (ADR-082 (2)): the paper book's Max Profit / Max Loss say whether the round-trip charges are inside them
     ExplanationTemplate("paper_extremes_with_charges", "values_seen",
-                        "Maximum profit and maximum loss include about {charges} of charges and taxes.", {"charges": Rupees}),
+                        "Maximum profit and maximum loss include about {charges} of charges and taxes.",
+                        {"charges": Rupees}),
     ExplanationTemplate("paper_extremes_before_charges", "values_seen",
                         "Maximum profit and maximum loss are before charges and taxes: the charges could not be "
                         "priced."),
@@ -1710,7 +1713,8 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     # GC-UI D-B16 / D-B17 (REQ-083 AC-5, AC-6): the payoff chart's OI bars; the AC-6 line always opens with the
     # requirement's own words, then the reason. Today's OI change (D-B18) is Later: no template for it.
     ExplanationTemplate("outcome_oi_count", "values_seen", "{count}", {"count": OiCount}),
-    ExplanationTemplate("outcome_oi_read_at", "values_seen", "Open interest (OI) data at {time} IST", {"time": HourMinute}),
+    ExplanationTemplate("outcome_oi_read_at", "values_seen", "Open interest (OI) data at {time} IST",
+                        {"time": HourMinute}),
     ExplanationTemplate("outcome_oi_nearest_expiry", "values_seen",
                         "OI is shown for the nearest expiry, {expiry}.", {"expiry": ExpiryDate}),
     ExplanationTemplate("outcome_oi_not_connected", "values_seen",

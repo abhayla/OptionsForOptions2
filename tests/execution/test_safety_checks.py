@@ -444,7 +444,8 @@ def test_rule5_blocked_reason_names_the_premium_free_worst_cases(catalogue, elig
     (failure,) = check(strategy, ctx, catalogue, eligibility).failures
     assert failure.reason == (
         "This adjustment raises the maximum loss at expiry from a loss "
-        "of ₹26,000.00 to a loss of ₹2,990,000.00 (option premiums excluded). Adjustments that add risk need Pro. Exiting or "
+        "of ₹26,000.00 to a loss of ₹2,990,000.00 (option premiums excluded). "
+        "Adjustments that add risk need Pro. Exiting or "
         "reducing legs stays available on every plan."
     )
 
