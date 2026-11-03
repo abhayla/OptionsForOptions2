@@ -3718,5 +3718,9 @@
   "adjust_trigger_situation_setting_unavailable": {
     "sha256": "6a4d705bc3b75fe290fd23f046a07bacb093b093831e95649ee541caa36df64f",
     "reviewed": "pending owner read"
+  },
+  "explanation:adjust_history_why_unreadable": {
+    "sha256": "f594583346838525dceb61dd689bdab34f48618fa3ac65fac98f8bf9d73a6560",
+    "reviewed": "pending owner read"
   }
 }
