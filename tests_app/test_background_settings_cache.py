@@ -489,7 +489,7 @@ async def test_r5_f2_a_replanned_strategy_drops_the_old_write_and_writes_the_new
     now[0] += ONE_S  # no price tick: the plan change forgot the signature, so it is checked and queued again
     await w.cycle()
     await w.drain_writes()
-    assert [s.strategy_id for s, _ in [(m, None) for m in w.monitors]] == [new.strategy_id]
+    assert [m.strategy_id for m in w.monitors] == [new.strategy_id]
     assert len(calls.writes) == 1 and w._written.get(new.strategy_id) is not None
 
 
@@ -550,7 +550,7 @@ async def test_r5_f3_stop_drains_the_queue_even_with_a_write_in_flight(scn):
             hang[0] = False
             await never.wait()  # the first write hangs until the stop cancels the writer
         written.append(wd.strategy_id)
-    prov, now, calls, cache, w = _cycle_rig(scn, fakedb, n=2, recorder=recorder, rebuild_sleep=rebuild_sleep)
+    prov, now, _calls, cache, w = _cycle_rig(scn, fakedb, n=2, recorder=recorder, rebuild_sleep=rebuild_sleep)
     w._sleep = _stopping_sleep(w, prov, now, at=2)
     await cache.refresh()
     await w.run()
