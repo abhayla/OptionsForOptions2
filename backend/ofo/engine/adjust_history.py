@@ -22,7 +22,8 @@ Per row:
 - booked: the P&L of the legs the row closes, each at the engine's average entry of that contract just before the
   closing order (``ofo.tracking.orderbook.net_positions``) through ``adjust_money.closed_booked`` (no new formula).
 - charges: the sum of the caller's per-order charges (``ofo.charges.paper_charges``), exact; None when not given.
-- why: the rule id of the suggestion the row acted on; None = "Your own change" (no suggestion link is stored today).
+- why: the rule id of the suggestion the row acted on (the caller reads the link: an acted-on record names the paper
+  orders its basket placed, ``ofo_app.playbook_store.link_orders``); None = "Your own change".
 - fill: ``paper`` / ``confirmed`` / ``unconfirmed`` / ``failed``. Any order unconfirmed or failed makes the row that
   state (failed first); its booked is None ("pending") and the row is left out of every total, and its orders out of
   the position the totals are read from (an unfilled order holds nothing).
