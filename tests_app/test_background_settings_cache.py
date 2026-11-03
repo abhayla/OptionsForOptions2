@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import dataclasses
 import datetime
 import logging
 from decimal import Decimal
@@ -169,9 +170,12 @@ async def test_a_future_dated_setting_takes_effect_when_the_clock_passes_it_with
 
 
 # ---- 3. the count poll -------------------------------------------------------------------------------------------
-def test_the_poll_period_is_named_and_the_lag_is_one_poll_plus_one_cycle():
+def test_the_poll_period_is_named_and_the_lag_is_one_poll_plus_the_gate_wait_plus_one_cycle():
+    """#636 r5 finding 4: the stated lag counts the poll's wait for the shared gate (its budget)."""
     assert 2 <= settings_cache.POLL_SECONDS <= 5  # noqa: PLR2004 - the #636 design range
-    assert settings_cache.LAG_SECONDS == settings_cache.POLL_SECONDS + background.WAKE_SECONDS
+    assert settings_cache.WAKE_SECONDS == background.WAKE_SECONDS
+    assert settings_cache.LAG_SECONDS == (settings_cache.POLL_SECONDS + settings_cache.GATE_WAIT_BUDGET_SECONDS
+                                          + background.WAKE_SECONDS) == 5  # noqa: PLR2004
 
 
 async def test_a_new_row_is_loaded_at_the_next_poll_and_an_unchanged_count_reads_no_rows(scn):
@@ -227,19 +231,55 @@ async def test_no_good_load_yet_refuses_to_check_and_logs_never_a_silent_default
     assert calls.states == [] and any("no background speed" in r.message for r in caplog.records)
 
 
-# ---- 7. the registry check runs on load ---------------------------------------------------------------------------
-async def test_a_stored_value_the_registry_refuses_fails_the_load_closed_and_keeps_the_last_good(scn):
+# ---- 7. the registry check: the row IN FORCE only (#636 r5 finding 1) -----------------------------------------------
+STALE_KEY = "detection.feed_stale_seconds"  # registry max 30, default 3
+
+
+async def test_r5_f1_a_replaced_bad_row_never_stops_reloads_and_checks_go_on_after_a_restart(scn, caplog):
+    """The table is insert-only: a row of 45 stored when a release allowed it, now above the registry max of 30, and
+    replaced by an in-force 20. Round 4 validated every row, so every reload failed for good (and after a restart
+    nothing loaded: no check at all). Now: the load succeeds, the in-force 20 is served, nothing is logged."""
+    fakedb = FakeDb()
+    fakedb.add(STALE_KEY, "45", scn.clock_at - datetime.timedelta(days=2))  # replaced, refused today
+    fakedb.add(STALE_KEY, "20", scn.clock_at - datetime.timedelta(days=1))  # in force, valid
+    fakedb.add_speed("1", scn.clock_at - datetime.timedelta(days=1))
+    caplog.set_level(logging.ERROR, logger="ofo_app.settings_cache")
+    for _restart in range(2):  # a first process, then a restart: a new cache and a new worker
+        _prov, now, calls, cache, w = _cycle_rig(scn, fakedb, n=1)
+        assert await cache.refresh() is True and cache.loaded is not None
+        assert cache.at(now[0])[STALE_KEY] == Decimal(20)
+        await w.cycle()
+        assert len(calls.states) == 1  # the check ran
+    assert [r for r in caplog.records if "refused" in r.message] == []
+
+
+async def test_r5_f1_a_refused_row_in_force_falls_back_to_the_registry_default_named_once(scn, caplog):
+    """Answer state: the row in force is refused -> that key alone serves its registry default, logged once with
+    the key; the other keys keep their stored values; a valid newer row in force wins again."""
+    fakedb = FakeDb()
+    fakedb.add_speed("5", scn.clock_at - ONE_S)
+    fakedb.add(STALE_KEY, "45", scn.clock_at - ONE_S)
+    cache = settings_cache.SettingsCache(fakedb.connect)
+    caplog.set_level(logging.ERROR, logger="ofo_app.settings_cache")
+    assert await cache.refresh() is True
+    for _ in range(3):
+        values = cache.at(scn.clock_at)
+        assert values[STALE_KEY] == registry_defaults()[STALE_KEY] == Decimal(3)
+        assert values[KEY] == Decimal(5)
+    named = [r.getMessage() for r in caplog.records if "refused" in r.getMessage()]
+    assert len(named) == 1 and STALE_KEY in named[0] and "45" not in named[0].split("(")[0]
+    fakedb.add(STALE_KEY, "9", scn.clock_at + FUTURE)  # a valid future row takes over when the clock passes it
+    assert await cache.refresh() is True and cache.at(scn.clock_at + FUTURE)[STALE_KEY] == Decimal(9)
+
+
+async def test_a_refused_future_row_is_ignored_until_in_force_then_the_key_is_at_its_default(scn):
     fakedb = FakeDb()
     cache = settings_cache.SettingsCache(fakedb.connect)
-    fakedb.add_speed("9999", scn.clock_at - ONE_S)  # above the registry's max of 600: refused
-    assert await cache.refresh() is False and cache.loaded is None
-    with pytest.raises(SettingsError):
-        cache.at(scn.clock_at)  # nothing good yet: the worker refuses to check
-    fakedb.rows.clear()
     fakedb.add_speed("5", scn.clock_at - ONE_S)
+    fakedb.add_speed("9999", scn.clock_at + FUTURE)  # above the registry's max of 600
     assert await cache.refresh() is True
-    fakedb.add_speed("9999", scn.clock_at + FUTURE)  # a refused row, even future-dated, fails the reload
-    assert await cache.refresh() is False and cache.at(scn.clock_at + FUTURE)[KEY] == Decimal(5)
+    assert cache.at(scn.clock_at)[KEY] == Decimal(5)  # not in force yet: never looked at
+    assert cache.at(scn.clock_at + FUTURE)[KEY] == registry_defaults()[KEY]  # in force and refused: default
 
 
 async def test_a_row_for_a_key_the_registry_does_not_hold_is_ignored_as_today(scn):
@@ -410,3 +450,134 @@ async def test_owner_lister_never_holds_two_sessions_at_once(scn, monkeypatch):
     monkeypatch.setattr(background.check, "resolve", resolve)
     out = await background.owner_lister(Prov(scn))
     assert [w.strategy_id for w in out] == [1, 2] and open_max[0] == 1
+
+
+# ---- #636 r5 finding 2: a queued write of a strategy that left the list or changed its plan is dropped ---------------
+async def test_r5_f2_a_strategy_that_exits_while_its_write_is_queued_gets_no_write(scn):
+    fakedb = FakeDb()
+    fakedb.add_speed("1", scn.clock_at - datetime.timedelta(days=1))
+    _prov, _now, calls, cache, w = _cycle_rig(scn, fakedb, n=2)
+    await cache.refresh()
+    await w.cycle()  # queues the first write of both strategies; the writer has not run
+    gone, kept = (m.strategy_id for m in w.monitors)
+    assert set(w._pending) == {gone, kept}
+    still = [m for m in w.monitors if m.strategy_id == kept]
+
+    async def lister():  # every leg of ``gone`` exited: the rebuild no longer lists it
+        return still
+    w._lister = lister
+    await w._rebuild_safely()
+    await w.drain_writes()
+    assert [sid for sid, _ in calls.writes] == [kept] and w.writes_dropped == 1 and w._pending == {}
+    assert gone not in w._memory  # nothing written, nothing remembered
+
+
+async def test_r5_f2_a_replanned_strategy_drops_the_old_write_and_writes_the_new_plan(scn):
+    fakedb = FakeDb()
+    fakedb.add_speed("1", scn.clock_at - datetime.timedelta(days=1))
+    _prov, now, calls, cache, w = _cycle_rig(scn, fakedb, n=1)
+    await cache.refresh()
+    await w.cycle()
+    old = w.monitors[0]
+    new = dataclasses.replace(old, body={**old.body, "r5_marker": "plan changed"})
+
+    async def lister():
+        return [new]
+    w._lister = lister
+    await w._rebuild_safely()
+    assert w._pending == {} and w.writes_dropped == 1
+    now[0] += ONE_S  # no price tick: the plan change forgot the signature, so it is checked and queued again
+    await w.cycle()
+    await w.drain_writes()
+    assert [s.strategy_id for s, _ in [(m, None) for m in w.monitors]] == [new.strategy_id]
+    assert len(calls.writes) == 1 and w._written.get(new.strategy_id) is not None
+
+
+# ---- #636 r5 finding 3: the writer task is watched (restarted, logged) and drained on stop --------------------------
+def _stopping_sleep(w, prov, now, at: int, also=None):
+    cycles = [0]
+
+    async def sleep(_s):
+        cycles[0] += 1
+        _tick(prov, now)
+        if also is not None:
+            also(cycles[0])
+        if cycles[0] == at:
+            w.stop()
+        for _ in range(5):
+            await asyncio.sleep(0)  # let the writer task run
+    return sleep
+
+
+async def test_r5_f3_a_writer_that_raises_is_restarted_named_in_the_log_and_its_write_lands(scn, caplog):
+    fakedb = FakeDb()
+    fakedb.add_speed("1", scn.clock_at - datetime.timedelta(days=1))
+    never = asyncio.Event()
+
+    async def rebuild_sleep(_s):
+        await never.wait()
+    prov, now, calls, cache, w = _cycle_rig(scn, fakedb, n=2, rebuild_sleep=rebuild_sleep)
+    w._sleep = _stopping_sleep(w, prov, now, at=4)
+    real, raised = w._write_one, []
+
+    async def write_one(sid):
+        if not raised:
+            raised.append(sid)
+            raise RuntimeError("writer bug")  # the writer task dies with the entry still queued
+        await real(sid)
+    w._write_one = write_one
+    await cache.refresh()
+    caplog.set_level(logging.ERROR, logger="ofo_app.background")
+    await w.run()
+    assert w.writer_restarts == 1
+    named = [r.getMessage() for r in caplog.records if "background-writer" in r.getMessage()]
+    assert len(named) == 1 and "RuntimeError('writer bug')" in named[0]
+    assert raised[0] in {sid for sid, _ in calls.writes}  # the write it held landed after the restart
+    assert {m.strategy_id for m in w.monitors} <= {sid for sid, _ in calls.writes} and w._pending == {}
+
+
+async def test_r5_f3_stop_drains_the_queue_even_with_a_write_in_flight(scn):
+    fakedb = FakeDb()
+    fakedb.add_speed("1", scn.clock_at - datetime.timedelta(days=1))
+    never = asyncio.Event()
+
+    async def rebuild_sleep(_s):
+        await never.wait()
+    hang, written = [True], []
+
+    async def recorder(wd, _state, _prefs=None):
+        if hang[0]:
+            hang[0] = False
+            await never.wait()  # the first write hangs until the stop cancels the writer
+        written.append(wd.strategy_id)
+    prov, now, calls, cache, w = _cycle_rig(scn, fakedb, n=2, recorder=recorder, rebuild_sleep=rebuild_sleep)
+    w._sleep = _stopping_sleep(w, prov, now, at=2)
+    await cache.refresh()
+    await w.run()
+    assert set(written) == {m.strategy_id for m in w.monitors} and w._pending == {}
+    assert w.writer_restarts == 0 and w._writer is None  # stopping: never restarted
+
+
+# ---- #636 r5 finding 4: the lag counts the poll's wait for the shared gate ------------------------------------------
+async def test_r5_f4_a_rebuild_holding_the_gate_2s_is_counted_in_the_lag(scn):
+    fakedb = FakeDb()
+    fakedb.add_speed("1", scn.clock_at - datetime.timedelta(days=1))
+    _prov, _now, _calls, cache, w = _cycle_rig(scn, fakedb, n=1)
+    mono = [100.0]  # float-ok: a monotonic clock reading
+    cache._monotonic = lambda: mono[0]
+    watched = list(w.monitors) or _watched(scn, 1)
+
+    async def lister():  # the rebuild's list read, holding the gate for 2 s of the injected clock
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+        mono[0] += 2.0
+        return watched
+    w._lister = lister
+    rebuild = asyncio.create_task(w._rebuild_safely())
+    await asyncio.sleep(0)  # the rebuild takes the gate first
+    assert w.db_gate.locked()
+    assert await cache.refresh() is True
+    await rebuild
+    assert cache.gate_wait == 2.0  # noqa: PLR2004
+    assert cache.lag_seconds() == settings_cache.POLL_SECONDS + 2.0 + 1  # poll + gate wait + one cycle
+    assert settings_cache.LAG_SECONDS >= settings_cache.POLL_SECONDS + 2 + 1  # the stated bound includes it

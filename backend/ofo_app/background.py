@@ -681,6 +681,9 @@ class Worker:
         self._pending: dict[int, tuple[Watched, pe.StrategyState, Preferences, pe.Evaluation]] = {}
         self._write_wake = asyncio.Event()
         self.writes_failed = 0
+        self.writes_dropped = 0  # queued writes dropped at a rebuild (#636 r5 finding 2)
+        self._writer: asyncio.Task | None = None  # the writer task, watched by ``_watch_writer`` (#636 r5 finding 3)
+        self.writer_restarts = 0
         # the alert gate (module docstring, step 5)
         self._gate_store = gate_store if gate_store is not None else DbGateStore()
         self._user_values_read = user_values  # None: the user's alert values are the admin values in force (named)
@@ -705,6 +708,7 @@ class Worker:
             if w.strategy_id in before and before[w.strategy_id] != w.body:
                 self._signature.pop(w.strategy_id, None)
                 self._tick.pop(w.strategy_id, None)
+        self._drop_stale_writes(monitors)
         self.monitors = monitors
         self._rebuilt_at = self._clock()
         for user in dict.fromkeys(w.user_ref for w in monitors):  # once per user, never per check (finding 3)
@@ -718,6 +722,18 @@ class Worker:
                 _keep_recent(self.errors, (0, type(exc).__name__))
         await self._load_gates(monitors)
         log.info("background: %s strategies monitored", len(monitors))
+
+    def _drop_stale_writes(self, monitors: list[Watched]) -> None:
+        """#636 r5 finding 2: a queued write whose strategy left the list (exited, deleted, no playbook) or whose plan
+        changed is dropped, never written: it was evaluated against a strategy or a ladder that no longer holds. A
+        re-planned strategy is checked again at the next cycle (its signature was forgotten above) and queues anew."""
+        body = {w.strategy_id: w.body for w in monitors}
+        stale = [sid for sid, item in self._pending.items() if body.get(sid, _GONE) != item[0].body]
+        for sid in stale:
+            self._pending.pop(sid, None)
+            self.writes_dropped += 1
+            log.info("background: the queued write of strategy %s was dropped (%s)", sid,
+                     "no longer listed" if sid not in body else "plan changed")
 
     async def _load_gates(self, monitors: list[Watched]) -> None:
         """Step 5's store read, on the rebuild task: per strategy the gate rows, today's held crossings and the pin.
@@ -1083,11 +1099,14 @@ class Worker:
         when no newer state for the strategy was queued meanwhile (that one is written next). A raising recorder
         leaves the memory unset and forgets the strategy's signature and tick, so its next cycle checks and queues
         again (fail closed, no automatic retry of the same call)."""
-        w, state, prefs, ev = self._pending.pop(sid)
+        item = self._pending[sid]
+        w, state, prefs, ev = item
         try:
             async with self.db_gate:
                 recorded = await self._recorder(w, state, prefs)
         except Exception as exc:  # contained: the other strategies' writes go on
+            if self._pending.get(sid) is item:
+                del self._pending[sid]
             log.exception("background: writing the check of strategy %s failed", sid)
             _keep_recent(self.errors, (sid, type(exc).__name__))
             self.writes_failed += 1
@@ -1096,13 +1115,16 @@ class Worker:
             self._signature.pop(sid, None)
             self._tick.pop(sid, None)
             return
+        newer = self._pending.get(sid) is not item  # a newer state queued meanwhile, or dropped at a rebuild
+        if not newer:
+            del self._pending[sid]
         if isinstance(recorded, Recorded):
             opened, ev = recorded.opened, recorded.evaluation
         else:
             opened = recorded
         self._log_opportunities(w, opened)
-        if sid in self._pending:
-            return  # a newer state is queued: the memory stays unknown until that one is written
+        if newer:
+            return  # the memory stays unknown until the newer one is written (a dropped one: re-checked anew)
         self._memory[sid] = dict(ev.memory)
         self._written[sid] = _write_key(ev)
 
@@ -1192,6 +1214,38 @@ class Worker:
             self._write_wake.clear()
             await self.drain_writes()
 
+    def _watch_writer(self) -> None:
+        """#636 r5 finding 3, every cycle: the writer task is started, and a writer that ended (it raised, or returned
+        while the role runs) is logged by name with its error and restarted; a write it held stays queued and is
+        written by the new writer. Answer states: alive -> nothing; died -> logged + restarted (``writer_restarts``);
+        stopping -> never restarted (``run`` drains what is queued instead)."""
+        if self._stop:
+            return
+        task = self._writer
+        if task is not None and not task.done():
+            return
+        if task is not None:
+            why = "cancelled" if task.cancelled() else repr(task.exception())
+            self.writer_restarts += 1
+            log.error("background: the writer task (background-writer) ended (%s); restarted, %s writes queued",
+                      why, len(self._pending))
+            _keep_recent(self.errors, (0, "writer_restarted"))
+        self._writer = asyncio.create_task(self._writer_loop(), name="background-writer")
+        if self._pending:
+            self._write_wake.set()
+
+    async def _drain_on_stop(self) -> None:
+        """A normal stop writes what is queued; one failing write is logged and dropped, never blocks the stop."""
+        while self._pending:
+            sid = next(iter(self._pending))
+            item = self._pending[sid]
+            try:
+                await self._write_one(sid)
+            except Exception:  # contained: the rest still drains
+                log.exception("background: the queued write of strategy %s failed at stop", sid)
+                if self._pending.get(sid) is item:
+                    del self._pending[sid]
+
     def _count_outcomes(self, ev: pe.Evaluation) -> None:
         """Item g: why rules gave no flag this minute (withheld / not checked with the reason code), and flags."""
         names = [f"not_checked {r.code}" if isinstance(r, pe.NotChecked) else
@@ -1278,11 +1332,12 @@ class Worker:
         if not self._rebuild_tried:
             await self._rebuild_safely()
         rebuilder = asyncio.create_task(self._rebuild_loop(), name="background-rebuild")
-        others = [asyncio.create_task(self._writer_loop(), name="background-writer"),
-                  *(asyncio.create_task(t(), name=f"background-side-{i}") for i, t in enumerate(self._side_tasks))]
+        self._watch_writer()
+        others = [asyncio.create_task(t(), name=f"background-side-{i}") for i, t in enumerate(self._side_tasks)]
         margins = asyncio.create_task(self._margin_loop(), name="background-margin")
         try:
             while not self._stop:
+                self._watch_writer()
                 try:
                     await self.cycle()
                 except Exception as exc:  # one cycle's failure never ends the role (CancelledError is not one)
@@ -1298,7 +1353,11 @@ class Worker:
             margins.cancel()
             for t in others:
                 t.cancel()
-        await self.drain_writes()  # a normal stop writes what was queued (a cancellation does not get here)
+            if self._writer is not None:
+                self._writer.cancel()  # a write it held stays queued (``_write_one``) and is drained below
+                await asyncio.gather(self._writer, return_exceptions=True)
+                self._writer = None
+        await self._drain_on_stop()  # a normal stop writes what was queued (a cancellation does not get here)
         self.flush_minute()
 
     async def refresh_margins(self) -> None:
@@ -1321,6 +1380,8 @@ def _keep_recent(kept: list, item: object) -> None:
     if len(kept) > RECENT_KEPT:
         del kept[:-RECENT_KEPT]
 
+
+_GONE = object()  # a strategy no longer listed (``_drop_stale_writes``)
 
 #: Review round 2, finding 4: how many exited strategies' lapse writes failed in this process (each logged once).
 LISTER_LAPSE_FAILURES: dict[int, int] = {}

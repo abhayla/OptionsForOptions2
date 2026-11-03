@@ -17,12 +17,18 @@ How it works:
 Answer states (each has a test in ``tests_app/test_background_settings_cache.py``):
 - a stored row in force -> its value; an absent key, or only future rows -> the registry default;
 - a row for a key the registry no longer holds -> ignored (the store's reader drops it), as today;
-- a stored value the registry refuses (checked on LOAD, every row, future-dated ones included) -> the load fails
-  closed: ``SettingsError``, the last good cache is kept (a refused future row therefore blocks a reload from the
-  moment it is stored, not from its effective time: stricter than the per-request read, named here);
+- only the row IN FORCE per key is checked against the registry (#636 r5 finding 1; as
+  ``settings_store.rows_in_force`` checks only the rows in force): the check runs once per row on load and is kept
+  with it, so ``at`` does no registry work per check. A replaced row (older than the one in force) or a future row
+  the registry refuses never fails a load (the table is insert-only: a replaced bad row can never be removed, so
+  failing on it would stop every reload for good). A refused row IN FORCE -> that key falls back to its registry
+  default, logged once per row with the key, the value and the reason (never the refused value);
 - empty table -> every key at its registry default (a loaded, valid cache);
 - a failed count or reload -> the last good cache is kept and the failure is logged ONCE until a refresh succeeds;
 - nothing loaded yet -> ``at`` raises ``SettingsError``: the caller refuses to check (never a silent default).
+
+Lag (#636 r5 finding 4): a change reaches a check within one poll period + the poll's wait for ``gate`` + one cycle;
+``LAG_SECONDS`` states it with the gate wait at its budget, ``lag_seconds()`` with the longest wait measured.
 
 Connections: every refresh holds ``gate`` (the worker's one database gate, shared with its rebuild and its writer), so
 the role opens at most one connection at a time (ADR-048 role limit of 5: API 2 + background 1 + feed 1).
@@ -32,6 +38,7 @@ from __future__ import annotations
 import asyncio
 import datetime
 import logging
+import time
 from collections.abc import Callable, Mapping
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
@@ -49,8 +56,14 @@ log = logging.getLogger("ofo_app.settings_cache")
 
 #: how often the background role polls ``count(*)`` of ``app_settings`` (#636 design: 2-5 s)
 POLL_SECONDS: Final = 2
-#: the longest a stored change waits before a check uses it: one poll period plus one worker cycle (WAKE_SECONDS = 1)
-LAG_SECONDS: Final = POLL_SECONDS + 1
+#: the longest the poll is expected to wait for the role's one database gate (held by the rebuild's list and gate
+#: reads, by the writer, by itself); a longer wait is measured, logged and counted in ``lag_seconds`` (#636 r5)
+GATE_WAIT_BUDGET_SECONDS: Final = 2
+#: the longest a stored change waits before a check uses it: one poll period, plus the poll's wait for the shared
+#: database gate (its budget), plus one worker cycle (WAKE_SECONDS = 1). #636 r5 finding 4: round 4's figure (poll +
+#: cycle = 3 s) left the gate wait out. The figure measured per refresh is ``SettingsCache.lag_seconds``.
+LAG_SECONDS: Final = POLL_SECONDS + GATE_WAIT_BUDGET_SECONDS + 1
+WAKE_SECONDS: Final = 1
 
 _COUNT = text("SELECT count(*) FROM public.app_settings")
 
@@ -58,40 +71,59 @@ Connect = Callable[[], AbstractAsyncContextManager[Any]]
 
 
 @dataclass(frozen=True)
+class Checked:
+    """One stored row with its registry answer: ``refused`` is None for a valid value, else the reason."""
+
+    row: StoredSetting
+    refused: str | None
+
+
+@dataclass(frozen=True)
 class Loaded:
-    """One good load: the row count it was read at, every stored row per registry key (newest first), the defaults."""
+    """One good load: the row count it was read at, every stored row per registry key (newest first, each with its
+    registry answer), the defaults."""
 
     count: int
-    rows: Mapping[str, tuple[StoredSetting, ...]]
+    rows: Mapping[str, tuple[Checked, ...]]
     defaults: Mapping[str, Decimal]
 
 
-def check_rows(rows: Mapping[str, list[StoredSetting]]) -> dict[str, tuple[StoredSetting, ...]]:
-    """The registry check of every stored row (as ``settings_store.rows_in_force`` does for the rows in force)."""
+def _refusal(spec: Any, value: Any) -> str | None:
+    if not isinstance(value, Decimal):
+        return "not an exact Decimal"
+    try:
+        registry_mod.check_value(spec, value)
+    except SettingRefused as exc:
+        return str(exc.reason)
+    return None
+
+
+def check_rows(rows: Mapping[str, list[StoredSetting]]) -> dict[str, tuple[Checked, ...]]:
+    """Every stored row per key, newest first, with its registry answer. Never raises for a refused value: whether
+    it matters is decided by ``resolve`` for the row in force only (#636 r5 finding 1)."""
     known = registry_mod.registry()
-    out: dict[str, tuple[StoredSetting, ...]] = {}
+    out: dict[str, tuple[Checked, ...]] = {}
     for key, kept in rows.items():
-        for r in kept:
-            if not isinstance(r.value, Decimal):
-                raise SettingsError(f"setting {key} did not come back as an exact Decimal")
-            try:
-                registry_mod.check_value(known[key], r.value)
-            except SettingRefused as exc:
-                raise SettingsError(
-                    f"stored setting {key} = {r.value} is refused by the registry: {exc.reason}") from None
-        out[key] = tuple(sorted(kept, key=lambda r: r.effective_from, reverse=True))
+        ordered = sorted(kept, key=lambda r: r.effective_from, reverse=True)
+        out[key] = tuple(Checked(r, _refusal(known[key], r.value)) for r in ordered)
     return out
 
 
-def resolve(loaded: Loaded, at: datetime.datetime) -> dict[str, Decimal]:
-    """key -> value in force at ``at`` for every registry key: the newest row not after ``at``, else the default."""
+def resolve(loaded: Loaded, at: datetime.datetime,
+            refused: Callable[[str, Checked], None] | None = None) -> dict[str, Decimal]:
+    """key -> value in force at ``at`` for every registry key: the newest row not after ``at``, else the default.
+    A row in force the registry refuses -> the key's registry default (``refused(key, row)`` is told); rows it
+    replaced are never looked at."""
     if not isinstance(at, datetime.datetime) or at.utcoffset() is None:
         raise SettingsError("the time asked about must be a timezone-aware datetime")
     values = dict(loaded.defaults)
     for key, rows in loaded.rows.items():
-        for r in rows:  # newest first
-            if r.effective_from <= at:
-                values[key] = r.value
+        for c in rows:  # newest first
+            if c.row.effective_from <= at:
+                if c.refused is None:
+                    values[key] = c.row.value
+                elif refused is not None:
+                    refused(key, c)
                 break
     return values
 
@@ -101,23 +133,30 @@ class SettingsCache:
 
     def __init__(self, connect: Connect, *, gate: asyncio.Lock | None = None,
                  poll_seconds: float = POLL_SECONDS,
-                 sleep: Callable[[float], Any] = asyncio.sleep) -> None:
+                 sleep: Callable[[float], Any] = asyncio.sleep,
+                 monotonic: Callable[[], float] = time.monotonic) -> None:
         self._connect, self.gate = connect, gate if gate is not None else asyncio.Lock()
-        self.poll_seconds, self._sleep = poll_seconds, sleep
+        self.poll_seconds, self._sleep, self._monotonic = poll_seconds, sleep, monotonic
+        self.gate_wait = 0.0  # the last refresh's wait for the shared gate, seconds (float-ok: a duration measure)
+        self.gate_wait_max = 0.0  # the longest such wait this process
         self.loaded: Loaded | None = None
         self.failing = False  # a failure streak is logged once
         self.failures = 0
         self.loads = 0
+        self._logged: set[tuple[str, datetime.datetime, Any]] = set()  # refused rows in force already logged
 
     async def refresh(self) -> bool:
         """One poll: True when the cache was (re)loaded. Never raises (a failure keeps the last good cache)."""
         try:
-            async with self.gate, self._connect() as conn:
-                count = (await conn.execute(_COUNT)).scalar_one()
-                if self.loaded is not None and count == self.loaded.count:
-                    self.failing = False
-                    return False
-                rows = check_rows(await settings_store.history(conn))
+            asked = self._monotonic()
+            async with self.gate:
+                self._waited(self._monotonic() - asked)
+                async with self._connect() as conn:
+                    count = (await conn.execute(_COUNT)).scalar_one()
+                    if self.loaded is not None and count == self.loaded.count:
+                        self.failing = False
+                        return False
+                    rows = check_rows(await settings_store.history(conn))
             self.loaded = Loaded(count, rows, registry_mod.defaults())
             self.loads += 1
             self.failing = False
@@ -129,11 +168,31 @@ class SettingsCache:
             self.failing = True
             return False
 
+    def _waited(self, seconds: float) -> None:
+        self.gate_wait = seconds
+        self.gate_wait_max = max(self.gate_wait_max, seconds)
+        if seconds > GATE_WAIT_BUDGET_SECONDS:
+            log.warning("settings cache: the poll waited %.1f s for the database gate (budget %s s); a stored change "
+                        "can take %.1f s to reach a check", seconds, GATE_WAIT_BUDGET_SECONDS,
+                        self.poll_seconds + seconds + WAKE_SECONDS)
+
+    def lag_seconds(self) -> float:
+        """The measured bound on a change reaching a check: poll period + the longest gate wait seen + one cycle."""
+        return self.poll_seconds + max(self.gate_wait_max, 0.0) + WAKE_SECONDS
+
     def at(self, now: datetime.datetime) -> dict[str, Decimal]:
         """The settings in force at ``now`` from memory only; SettingsError when nothing has been loaded yet."""
         if self.loaded is None:
             raise SettingsError("no settings have been loaded yet")
-        return resolve(self.loaded, now)
+        return resolve(self.loaded, now, self._refused_in_force)
+
+    def _refused_in_force(self, key: str, c: Checked) -> None:
+        mark = (key, c.row.effective_from, c.row.value)
+        if mark not in self._logged:
+            self._logged.add(mark)
+            log.error("settings cache: stored setting %s (from %s) is refused by the registry (%s); the registry "
+                      "default %s is used", key, c.row.effective_from, c.refused, self.loaded.defaults.get(key)
+                      if self.loaded is not None else None)
 
     async def poll_loop(self) -> None:
         """The refresh on its own task: every ``poll_seconds``, until cancelled."""
