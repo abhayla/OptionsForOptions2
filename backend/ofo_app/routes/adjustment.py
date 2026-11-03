@@ -116,6 +116,8 @@ class MarketInputs:
 
 TrackedReader = Callable[[int, ChargeRates | None], Awaitable[Tracked | None]]
 MarketReader = Callable[[Tracked, MarketContext | None], Awaitable[MarketInputs]]
+#: the ONE second pass (GC-IC1 round 3): the market again with the given instrument ids held too; None: nothing held
+MoreMarketReader = Callable[[Tracked, MarketContext | None, list[str]], Awaitable[MarketInputs | None]]
 RestSpotReader = Callable[[str], Awaitable[SourceReading]]
 ApproachMargin = Callable[[list[PlannedOrderIn]], Awaitable[Margin]]
 #: strategy id, position, spot -> the guards of the strategy's playbook (None: no playbook, so no limits)
@@ -175,6 +177,29 @@ def get_market_reader() -> MarketReader:
     """The market reader over the outcome's market context (``adjustment_readers.read_market``)."""
     from ofo_app.adjustment_readers import read_market  # noqa: PLC0415 - as above
     return read_market
+
+
+def get_more_market_reader() -> MoreMarketReader:
+    """The second-pass reader (``adjustment_readers.read_market_more``): the landing strikes held once more."""
+    from ofo_app.adjustment_readers import read_market_more  # noqa: PLC0415 - as above
+    return read_market_more
+
+
+def unpriced_ids(built: Sequence[ApproachLegs | None], market: MarketInputs) -> list[str]:
+    """The instrument ids the approaches could not price (GC-IC1 round 3, review finding 3): every contract a build
+    listed in ``unpriced`` (no price, or a roll strike with no delta) and every After leg of a built approach with no
+    engine Greeks (the Compare's after-Greeks come only from ``leg_greeks``). A contract with no instrument id cannot
+    be held and is left out (its row stays unpriced, named by the builder)."""
+    symbol_of = {(r.expiry, r.type, r.strike): r.tradingsymbol for r in market.chain}
+    out: list[str] = []
+    for b in built:
+        if b is None:
+            continue
+        symbols = [symbol_of.get(k) for k in b.unpriced]
+        if b.refusal_message is None:
+            symbols += [x.tradingsymbol for x in b.after if x.tradingsymbol not in market.leg_greeks]
+        out += [i for sym in symbols if sym is not None and (i := market.instrument_ids.get(sym)) is not None]
+    return list(dict.fromkeys(out))
 
 
 def get_rest_spot_reader() -> RestSpotReader:
@@ -382,7 +407,8 @@ async def adjustment_approaches(  # noqa: PLR0913 - FastAPI dependencies, one pe
         rates: Annotated[ChargeRates | None, Depends(load_charge_rates)],
         held_environ: Annotated[Mapping[str, str] | None, Depends(get_held_environ)],
         guards_of: Annotated[GuardsReader, Depends(get_guards_reader)],
-        prefs: UserPreferences) -> AdjustApproachesOut:
+        prefs: UserPreferences,
+        more_reader: Annotated[MoreMarketReader, Depends(get_more_market_reader)]) -> AdjustApproachesOut:
     started = time.perf_counter()
     from ofo_app import adjustment_check as check  # noqa: PLC0415 - it imports this module's dataclasses
     from ofo_app.adjustment_readers import TrackedUnreadable  # noqa: PLC0415 - as above
@@ -411,13 +437,23 @@ async def adjustment_approaches(  # noqa: PLR0913 - FastAPI dependencies, one pe
         built_list: list[tuple[str, ApproachLegs | None]] = []
     else:
         t0 = time.perf_counter()
-        before = price_after(position.legs, position, tracked.booked, tracked.paid_charges, (), rates, market)
-        reply["before"] = _after_block(before, pop_on)
         guards = await guards_of(strategy_id, position, spot.value, check.listed_of(ctx))
         guards = _guards_or_reason(guards, reply)
-        limits, max_profit = liquidity_inputs(guards, before)  # no playbook, no limits
-        answers = [(a, priced_approach(a, tracked, market, spot.value, rates, prefs.approach,  # type: ignore[arg-type]
-                                       limits=limits, max_profit=max_profit)) for a in asked]
+
+        def price_all(m: MarketInputs) -> tuple[Priced, liquidity.Limits | None, Decimal | None, list]:
+            b = price_after(position.legs, position, tracked.booked, tracked.paid_charges, (), rates, m)
+            lim, mp = liquidity_inputs(guards, b)  # no playbook, no limits
+            return b, lim, mp, [(a, priced_approach(a, tracked, m, spot.value, rates,  # type: ignore[arg-type]
+                                                    prefs.approach, limits=lim, max_profit=mp)) for a in asked]
+        before, limits, max_profit, answers = price_all(market)
+        # GC-IC1 round 3: the landing strikes nobody held are held ONCE more and everything is built again; never a
+        # third read, whatever is still unpriced after it (bounded: at most one more LEG_WAIT_S)
+        extra = unpriced_ids([b for _, (b, _) in answers], market)
+        more = await more_reader(tracked, ctx, extra) if extra else None
+        if more is not None:
+            market = more
+            before, limits, max_profit, answers = price_all(market)
+        reply["before"] = _after_block(before, pop_on)
         built_list = [(a, built) for a, (built, _) in answers]
         priced: dict[str, Priced] = {a: p for a, (_, p) in answers if p is not None}
         engine = time.perf_counter() - t0

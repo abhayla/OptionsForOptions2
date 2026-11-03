@@ -566,3 +566,41 @@ def test_624_2_each_approach_and_available_row_carries_the_new_strike_flag_the_c
     assert by_id["A-01"]["liquidity_flags"] == []
     none = post(client_for(sc, guards=None)).json()
     assert all(a["liquidity_flags"] == [] for a in none["approaches"] + none["available"])
+
+
+# ---- GC-IC1 round 3: the landing strikes nobody held get ONE second pass --------------------------------------------
+
+def test_gcic1_r3_second_pass_is_asked_once_with_the_unpriced_landing_strikes():
+    """The first read has no engine Greeks for any landing strike (the fake market carries none): the route asks the
+    second-pass reader exactly ONCE with those ids, rebuilds from its answer, and never asks again although the
+    answer is still missing them (bounded: at most one more wait)."""
+    sc = load("ADJ-02")
+    c = client_for(sc)
+    asked: list[list[str]] = []
+
+    async def more(_t, _ctx, ids):
+        asked.append(list(ids))
+        return market_of(sc)
+    c.app.dependency_overrides[route.get_more_market_reader] = lambda: more
+    r = post(c)
+    assert r.status_code == 200, r.text
+    assert len(asked) == 1 and asked[0] and len(asked[0]) == len(set(asked[0]))
+    a05 = next(a for a in r.json()["approaches"] if a["id"] == "A-05")
+    ids = market_of(sc).instrument_ids
+    assert {ids[x["tradingsymbol"]] for x in a05["after_legs"]} <= set(asked[0])
+
+
+def test_gcic1_r3_unpriced_ids_lists_builder_gaps_and_after_legs_without_greeks():
+    import dataclasses  # noqa: PLC0415
+    sc = load("ADJ-02")
+    market = market_of(sc)
+    position = tracked_of(sc).position
+    spot = D(sc["market"]["spot"])
+    from ofo.adjustment.preferences import from_values  # noqa: PLC0415
+    from ofo.settings import defaults  # noqa: PLC0415
+    cfg = from_values(defaults()).approach
+    built = route.build_approach(position, market.chain, spot, "A-05", cfg)
+    every = route.unpriced_ids([built, None], market)
+    assert every == list(dict.fromkeys(market.instrument_ids[x.tradingsymbol] for x in built.after))
+    greeks = {x.tradingsymbol: object() for x in built.after}
+    assert route.unpriced_ids([built], dataclasses.replace(market, leg_greeks=greeks)) == []
