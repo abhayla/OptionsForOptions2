@@ -57,8 +57,8 @@ class RawTick:
     depth_bids: tuple[tuple[Decimal, int], ...] | None = None
     depth_asks: tuple[tuple[Decimal, int], ...] | None = None
     depth_unusable: bool = False  # full packet with a negative depth quantity: depth None, counted by the caller
-    # the day's open / high / low / previous close and the last trade time (REQ-080 AC-7). Quote and full packets carry
-    # them; ltp / index packets do not (``None``). A price of 0 is absent (F-29), so ``None``, never Rs 0.
+    # the day's open / high / low / previous close and the last trade time (REQ-080 AC-7). Quote, full and index
+    # packets carry them; ltp packets do not (``None``). A price of 0 is absent (F-29), so ``None``, never Rs 0.
     day_open: Decimal | None = None
     day_high: Decimal | None = None
     day_low: Decimal | None = None
@@ -67,9 +67,9 @@ class RawTick:
 
 
 def day_stats_of(tick: RawTick) -> DayStats | None:
-    """What the packet says about the day; ``None`` for a packet that carries none of it (ltp / index)."""
+    """What the packet says about the day; ``None`` for a packet that carries none of its prices (ltp, a zero index)."""
     stats = DayStats(tick.day_open, tick.day_high, tick.day_low, tick.prev_close, tick.last_trade_ts)
-    return None if stats == DayStats(None, None, None, None, None) else stats
+    return None if (tick.day_open, tick.day_high, tick.day_low, tick.prev_close) == (None,) * 4 else stats
 
 
 @dataclass(frozen=True)
@@ -94,9 +94,15 @@ def _decode(p: bytes, divisor: int, token: int) -> RawTick | None:
     if n == PACKET_LTP:
         return RawTick(token, "ltp", _money(struct.unpack(">i", p[4:8])[0], divisor))
     if n in PACKET_INDEX:
-        ltp = struct.unpack(">i", p[4:8])[0]
+        # Kite's index packet: ltp, high, low, open, close (the previous session's), change, [exchange time]. The day
+        # values were dropped before GC-IC1 5b (finding index-packet-day-values-dropped: the 2026-10-08 recording's
+        # NIFTY 50 packet states open 22599.05, close 22603.05), so the index never had a day open. An index has no
+        # trade: its ``last_trade_ts`` is the packet's own exchange time (None in a 28-byte packet: undated).
+        ltp, high, low, opened, close = struct.unpack(">5i", p[4:24])
         ts = struct.unpack(">i", p[28:32])[0] if n == 32 else None
-        return RawTick(token, "index", _money(ltp, divisor), exchange_ts=ts)
+        return RawTick(token, "index", _money(ltp, divisor), exchange_ts=ts, day_open=_price_or_none(opened, divisor),
+                       day_high=_price_or_none(high, divisor), day_low=_price_or_none(low, divisor),
+                       prev_close=_price_or_none(close, divisor), last_trade_ts=ts if ts else None)
     if n == PACKET_QUOTE or n == PACKET_FULL:
         f = struct.unpack(">10i", p[4:44])
         ltp, volume = f[0], f[3]
