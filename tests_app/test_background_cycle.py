@@ -78,6 +78,11 @@ class Prov:
     def instrument_master(self):
         return self.real.instrument_master()
 
+    def latest_day_stats(self, iid, now=None):
+        """The real provider's day values of the index (the scenario's index packet through the real decoder), unless
+        a test set ``day`` (an answer state of the read)."""
+        return self.day if getattr(self, "day", None) is not None else self.real.latest_day_stats(iid, now)
+
     def move_spot(self, ltp: Decimal, at: datetime.datetime) -> None:
         self.spot = dataclasses.replace(self.spot, ltp=ltp, timestamp=at)
 

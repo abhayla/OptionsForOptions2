@@ -21,8 +21,11 @@ ambiguous -> None, so the evaluator answers NotChecked with its catalogue reason
 - margin: Zerodha's stated figure for the current legs through the approaches route's margin seam; only a CHECKED
   figure (``margin_block`` state ``stated``) counts; every other state -> None (``missing_margin``).
 - days_left / hhmm: the answer clock (``MarketInputs.now``) in IST against the nearest leg expiry.
-- expiry_kind: ``MarketInputs.expiry_kind``; prev_close: the last-close reading when STATED; day_open: no reader
-  yet -> None (T-13 is never checked from here). adjustments_used: ``Tracked.adjustments_used`` (not recorded -> None).
+- expiry_kind: ``MarketInputs.expiry_kind``; prev_close: the last-close reading when STATED; day_open (T-13, GC-IC1
+  5b): ``MarketInputs.day_open`` (``ofo.marketdata.day_open.index_day_open`` over the feed's own day values of the
+  index, read with the index quote on both paths) when STATED (dated today IST); previous session / undated / no
+  open / not held / feed not healthy / packet without day fields / not read -> None (``missing_day_open``).
+  adjustments_used: ``Tracked.adjustments_used`` (not recorded -> None).
 - prices_fresh (T-21): the market context's provider health: available -> True, stale -> False, anything else or no
   context -> None (``withheld_fresh_unknown``).
 
@@ -51,6 +54,7 @@ from ofo.engine import adjust_money
 from ofo.engine.legs import Action, Instrument, Leg
 from ofo.engine.metrics import UNLIMITED
 from ofo.errors.explanations import PLAYBOOK_DAY_RULE_ACTION_TEXT, render_explanation
+from ofo.marketdata.day_open import STATED
 from ofo.marketdata.spot_source import SourceState, SpotAnswer
 from ofo.timeutil import IST
 
@@ -214,6 +218,7 @@ def state_of(tracked: Tracked, market: MarketInputs, spot: SpotAnswer, margin: M
     hhmm = now.strftime("%H:%M")
     stated_margin = Decimal(margin["value"]) if margin is not None and margin.get("state") == "stated" else None
     last = market.last_close
+    day = market.day_open
     return with_carry(pe.StrategyState(
         expiry_kind=market.expiry_kind or position.expiry_kind or "weekly",  # type: ignore[arg-type]
         days_left=(expiry - now.date()).days, hhmm=hhmm, spot=value, shorts=shorts, pnl=pnl,
@@ -223,6 +228,7 @@ def state_of(tracked: Tracked, market: MarketInputs, spot: SpotAnswer, margin: M
         adjustment_cost_reason=cheap.reason, adjustment_unpriced=cheap.unpriced, atm_iv=market.vol,
         prev_close=(last.value if last is not None and last.value is not None and last.state is SourceState.STATED
                     else None),
+        day_open=day.value if day is not None and day.reason == STATED else None,
         adjustments_used=tracked.adjustments_used, expiry_pnl_at_spot=expiry_pnl,
         tighten_percent=None if body is None else _tighten(body, now.date(), expiry, hhmm), prices_fresh=fresh),
         body, tracked, market)

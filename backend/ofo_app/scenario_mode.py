@@ -254,9 +254,15 @@ def _full_packet(token: int, row: Mapping[str, Any], ts: int) -> bytes:
     return head + tail + levels
 
 
-def _index_packet(token: int, spot: object, ts: int) -> bytes:
-    """A Kite index packet (32 bytes: ltp, high, low, open, close, change, exchange time)."""
-    return struct.pack(">i6ii", token, _paise(spot), 0, 0, 0, 0, 0, ts)
+def _index_packet(token: int, spot: object, ts: int, market: dict | None = None) -> bytes:
+    """A Kite index packet (32 bytes: ltp, high, low, open, close, change, exchange time). ``market``: the scenario's
+    ``day_open`` / ``prev_close`` go in the open / close fields (GC-IC1 5b: the index's day values reach the check
+    through the real decoder and ``QuoteBook.latest_day_stats``); null -> 0 (absent)."""
+    m = market or {}
+
+    def field(key: str) -> int:
+        return 0 if m.get(key) is None else _paise(m[key])
+    return struct.pack(">i6ii", token, _paise(spot), 0, 0, field("day_open"), field("prev_close"), 0, ts)
 
 
 def _frame(packets: list[bytes]) -> bytes:
@@ -489,7 +495,7 @@ def load(scenario_id: str) -> Scenario:
     provider.on_connected(received)
     packets = [_full_packet(token, row, ts) for token, row in priced]
     if feed != "missing":
-        packets.append(_index_packet(index_token, scn["market"]["spot"], ts))
+        packets.append(_index_packet(index_token, scn["market"]["spot"], ts, scn["market"]))
     if packets:
         provider.on_frame(_frame(packets), received)  # the real frame parser
     by_token = {int(lc.broker_refs[0].broker_token): lc for lc in listed}

@@ -33,8 +33,15 @@ One cycle (``Worker.cycle``), each step with its answer state:
    time); the screen values at its clock, so the two are equal when the clock reads the price's time and otherwise
    differ only by the time decay of that gap. ``state_of`` -> ``price_after`` prices the strategy's own legs (payoff
    kinks, breakevens, POP); the full scenario table (``ofo.scenario.views.scenario_values``) is never called
-   (REQ-166 AC-2). Margin is None: the background has no margin read (as a screen whose margin read failed,
-   ``missing_margin``).
+   (REQ-166 AC-2). Margin (T-16, GC-IC1 5b): the strategy's broker margin through the SCREEN's margin reader
+   (``routes.adjustment_check.current_margin``, the ``margin_of`` seam), never read in the check path: a per-strategy
+   cache (``MarginCache``) refreshed on its own task (``_margin_loop``), at most once per ``MARGIN_REFRESH_S`` per
+   strategy and only for a playbook with T-16 on (Kite allows about 1 REST call per second per key, shared with every
+   screen). Answer states the check sees: stated and younger than ``MARGIN_STALE_S`` -> the figure; busy (rate limit)
+   / failed / Zerodha stated none -> the screen's own non-stated block (``missing_margin``), never the last good
+   figure; not refreshed yet, legs changed since the read, or older than ``MARGIN_STALE_S`` -> None
+   (``missing_margin``). The day open (T-13): the index's day values read with the spot (``read_prices``), the rule
+   ``ofo.marketdata.day_open.index_day_open`` the screen's reader applies too.
 4. The playbook is evaluated (``playbook_eval.evaluate``, the rule memory last written for the strategy) and the
    rule memory is written (``record_check``: ``adjustment_check.evaluate_and_remember``) ONLY when it is needed: the
    first check of the process, or a check whose rule memory, flagged rules or clear rules differ from the last write.
@@ -98,6 +105,7 @@ from ofo.engine.legs import Instrument
 from ofo.engine.model import expiry_model, greeks, iv_price
 from ofo.instruments.models import ZERODHA
 from ofo.marketdata.availability import MonitoringStatus, strategy_monitoring_status
+from ofo.marketdata.day_open import index_day_open
 from ofo.marketdata.feed_health import market_closed_for
 from ofo.marketdata.forward import parity_forward
 from ofo.marketdata.quote import is_live_price
@@ -121,6 +129,10 @@ DEFAULT_MAX_PER_CYCLE: Final = 200  # strategies checked in one cycle; the rest 
 #: 1,000 strategies checked each second would add ~21.6 million entries in one market day)
 RECENT_KEPT: Final = 1000
 WAKE_SECONDS: Final = Decimal(1)  # ADR-233 (6): the longest the worker sleeps between cycles
+#: MERGE-SWAP: no settings key for the background margin refresh exists yet (searched ``ofo.settings`` for margin);
+#: when one lands, read it from the settings in force instead. One Kite basket read per strategy per 5 minutes.
+MARGIN_REFRESH_S: Final = Decimal(300)
+MARGIN_STALE_S: Final = 2 * MARGIN_REFRESH_S  # an entry older than this is not used (a refresh that kept failing)
 REBUILD_SECONDS: Final = 30 # the monitor set is re-read this often, so a newly tracked strategy joins (AC-3: 60 s)
 _MICROS: Final = 1_000_000
 
@@ -142,6 +154,9 @@ class PriceRead:
     chains: Mapping[datetime.date, tuple] = field(default_factory=dict)  # each leg expiry's chain snapshot
     listed: tuple = ()  # every listed option of the underlying (``adjustment_readers.listed_options``)
     futures: frozenset = frozenset()  # the underlying's future expiries (``adjustment_readers.future_expiries``)
+    #: GC-IC1 5b: the index's day values (``latest_day_stats``) read with ``spot`` in the same read (the index is held
+    #: by the worker's wanted set, as the screen reads it inside its hold); None = not read
+    day: Any = None
 
     def signature(self, now: datetime.datetime) -> tuple:
         """What a check depends on: every leg's and the spot's price and time, and the IST minute (clock rules)."""
@@ -205,7 +220,7 @@ def read_prices(provider: Any, watched: Watched, now: datetime.datetime,
         return PriceRead(PriceState.STALE)
     if known is None:
         known = catalogue_of(provider, position.underlying)
-    return PriceRead(PriceState.FRESH, spot, legs, chains, *known)
+    return PriceRead(PriceState.FRESH, spot, legs, chains, *known, provider.latest_day_stats(spot.instrument_id, now))
 
 
 def catalogue_of(provider: Any, underlying: str) -> tuple[tuple, frozenset]:
@@ -321,21 +336,107 @@ def market_inputs(watched: Watched, read: PriceRead, shared: FeedScope, now: dat
                 leg_ivs[sym] = iv
     return MarketInputs(tuple(rows), ids, None if fwd is None else fwd.forward, years, vol, feed, last, now,
                         expiry_kind_of(expiry, read.listed, read.futures, scenario_mode.current()), leg_greeks,
-                        fwd, leg_ivs)
+                        fwd, leg_ivs, index_day_open(read.day, now))
 
 
 def background_state(watched: Watched, read: PriceRead, shared: FeedScope, now: datetime.datetime,  # noqa: PLR0913
-                     values: Mapping[str, Decimal], prefs: Preferences) -> pe.StrategyState:
-    """The check's state through the SCREEN's own builder (``adjustment_check.state_of``), never a copy of it. Margin:
-    the background has no margin read, so None (as a screen whose margin read failed: ``missing_margin``). Charge
+                     values: Mapping[str, Decimal], prefs: Preferences,
+                     margin: Mapping | None = None) -> pe.StrategyState:
+    """The check's state through the SCREEN's own builder (``adjustment_check.state_of``), never a copy of it."""
+    return state_from_market(watched, market_inputs(watched, read, shared, now, values), now, values, prefs, margin)
+
+
+def state_from_market(watched: Watched, market: MarketInputs, now: datetime.datetime,  # noqa: PLR0913
+                      values: Mapping[str, Decimal], prefs: Preferences,
+                      margin: Mapping | None) -> pe.StrategyState:
+    """``background_state`` from an already built market. Margin: the cached block of the screen's margin reader
+    (``MarginCache.block_for``; None = not known: ``missing_margin``). Charge
     rates: None (``state_of`` reads only the gross figures, which carry no charges). The REST spot is not read (a
     check runs only on a fresh feed). ``values``: the settings in force this cycle (rate, forward settings, feed
     windows, REQ-167); ``prefs``: the strategy owner's preferences (the approach config, REQ-168), as the screen
     passes them."""
-    market = market_inputs(watched, read, shared, now, values)
     spot = resolve_spot(market.feed, None, market.last_close, now=now, windows=settings_calc.feed_windows(values))
-    return check.state_of(watched.tracked, market, spot, None, None, fresh=True, body=watched.body,
+    return check.state_of(watched.tracked, market, spot, margin, None, fresh=True, body=watched.body,
                           config=prefs.approach)
+
+
+#: the worker's margin seam: the strategy and the market of its last check -> the screen's margin block (``state``
+#: ``stated`` with ``value``, or a non-stated block, or None for a failed read)
+MarginOf = Callable[["Watched", MarketInputs], Awaitable[Mapping | None]]
+
+
+def t16_on(body: Mapping | None) -> bool:
+    """A playbook whose T-16 (loss vs margin) rule is on: the only strategies whose margin is read."""
+    t = None if body is None else (body.get("triggers") or {}).get("T-16")
+    return isinstance(t, Mapping) and t.get("on") is True
+
+
+@dataclass(frozen=True)
+class MarginEntry:
+    legs: tuple  # the position's legs the block was read for (a changed position is not refreshed yet)
+    block: Mapping | None  # the screen's margin block; None = the read failed
+    read_at: datetime.datetime
+
+
+class MarginCache:
+    """Per strategy: the last margin read and its time (module docstring, step 3). The check only reads it."""
+
+    def __init__(self, margin_of: MarginOf | None) -> None:
+        self._margin_of = margin_of
+        self._entries: dict[int, MarginEntry] = {}
+        self._markets: dict[int, tuple[tuple, MarketInputs]] = {}  # strategy -> (its legs, its last check's market)
+        self.calls: dict[int, int] = {}  # strategy -> margin reads made (status and tests)
+
+    def seen(self, w: Watched, market: MarketInputs) -> None:
+        """A check's market (its instrument ids are the margin basket's keys); read by the next refresh."""
+        if t16_on(w.body):
+            self._markets[w.strategy_id] = (w.tracked.position.legs, market)
+
+    def block_for(self, w: Watched, now: datetime.datetime) -> Mapping | None:
+        """The block a check uses: the entry for the current legs younger than ``MARGIN_STALE_S``, else None."""
+        e = self._entries.get(w.strategy_id)
+        if e is None or e.legs != w.tracked.position.legs or _seconds(now - e.read_at) > MARGIN_STALE_S:
+            return None
+        return e.block
+
+    def due(self, w: Watched, now: datetime.datetime) -> bool:
+        if self._margin_of is None or not t16_on(w.body) or w.strategy_id not in self._markets:
+            return False
+        e = self._entries.get(w.strategy_id)
+        return e is None or e.legs != w.tracked.position.legs or _seconds(now - e.read_at) >= MARGIN_REFRESH_S
+
+    async def refresh(self, monitors: Iterable[Watched], clock: Callable[[], datetime.datetime]) -> None:
+        """One pass: each due strategy read once (one strategy's failure is its own ``None``, never the old figure)."""
+        live = set()
+        for w in monitors:
+            sid = w.strategy_id
+            live.add(sid)
+            now = clock()
+            if not self.due(w, now):
+                continue
+            legs, market = self._markets[sid]
+            if legs != w.tracked.position.legs:
+                continue  # the position changed since its last check: refreshed after the next check
+            self.calls[sid] = self.calls.get(sid, 0) + 1
+            try:
+                block = await self._margin_of(w, market)  # type: ignore[misc]
+            except Exception as exc:  # noqa: BLE001 - a failed read is "margin not known", retried next window
+                log.warning("background: margin of strategy %s unreadable: %s", sid, type(exc).__name__)
+                block = None
+            self._entries[sid] = MarginEntry(legs, block, now)
+        for gone in [k for k in self._entries if k not in live]:
+            self._entries.pop(gone, None)
+            self._markets.pop(gone, None)
+
+
+def screen_margin_reader(margin_of: Any) -> MarginOf:
+    """The worker's margin seam over the SCREEN's own margin read (``routes.adjustment_check.current_margin`` with an
+    ``ApproachMargin``, ``routes.adjustment.get_approach_margin``): the same legs, the same block."""
+    from ofo_app.routes.adjustment_check import current_margin  # noqa: PLC0415 - the route module, at run time
+
+    async def read(w: Watched, market: MarketInputs) -> Mapping | None:
+        return await current_margin(margin_of, w.tracked, market)
+    return read
 
 
 @dataclass(frozen=True)
@@ -483,7 +584,8 @@ class Worker:
                  sleep: Callable[[float], Awaitable[None]] = asyncio.sleep, want_client: Any = None,
                  observe: Observer | None = None,
                  rebuild_sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
-                 gate_store: Any = None, user_values: UserValuesRead | None = None) -> None:
+                 gate_store: Any = None, user_values: UserValuesRead | None = None,
+                 margin_of: MarginOf | None = None) -> None:
         if max_per_cycle < 1:
             raise ValueError("max_per_cycle must be at least 1")
         self._provider_for, self._lister, self._clock = provider_for, lister, clock
@@ -537,6 +639,7 @@ class Worker:
         # strategy -> its latest pause not yet given to its gate (applied at the next gate step, ``_gate_step``)
         self._paused_at: dict[int, datetime.datetime] = {}
         self._style: dict[int, str] = {}  # strategy -> the trading style of its last check (its check interval)
+        self.margins = MarginCache(margin_of)  # T-16's margin, refreshed on its own task (module docstring, step 3)
 
     async def rebuild(self) -> None:
         """REQ-115 AC-3: the monitors from the database (the lister); a strategy's memory stays in the store."""
@@ -847,7 +950,9 @@ class Worker:
         if load is None or user_values is None:  # no gate read / no alert values: paused, never a default preset
             self._pause(sid, PriceState.CHECK_FAILED, now)
             return False
-        state = background_state(w, read, FeedScope(self.cache, w.feed_owner), now, self._values, prefs)
+        market = market_inputs(w, read, FeedScope(self.cache, w.feed_owner), now, self._values)
+        state = state_from_market(w, market, now, self._values, prefs, self.margins.block_for(w, now))
+        self.margins.seen(w, market)
         self._recomputes[sid] = self._recomputes.get(sid, 0) + 1  # a real recompute (REQ-166)
         self._rebuilds += 1
         self._legs[sid] = len(w.tracked.position.legs)
@@ -1039,6 +1144,7 @@ class Worker:
         if not self._rebuild_tried:
             await self._rebuild_safely()
         rebuilder = asyncio.create_task(self._rebuild_loop(), name="background-rebuild")
+        margins = asyncio.create_task(self._margin_loop(), name="background-margin")
         try:
             while not self._stop:
                 try:
@@ -1053,7 +1159,21 @@ class Worker:
                 await self._sleep(float(wait))  # float-ok: asyncio.sleep takes seconds as float
         finally:
             rebuilder.cancel()
+            margins.cancel()
         self.flush_minute()
+
+    async def refresh_margins(self) -> None:
+        """One margin refresh pass (``MarginCache.refresh``); never inside a check (B4 (a))."""
+        await self.margins.refresh(list(self.monitors), self._clock)
+
+    async def _margin_loop(self) -> None:
+        while not self._stop:
+            try:
+                await self.refresh_margins()
+            except Exception as exc:  # one failed pass never ends the loop; the checks see no margin meanwhile
+                log.exception("background: a margin refresh pass failed")
+                _keep_recent(self.errors, (0, type(exc).__name__))
+            await self._rebuild_sleep(float(WAKE_SECONDS))  # float-ok: asyncio.sleep takes seconds as float
 
 
 def _keep_recent(kept: list, item: object) -> None:

@@ -19,9 +19,10 @@ frame) so a recorded session can be replayed through the same code the live sock
 from __future__ import annotations
 
 import struct
+from collections.abc import Iterator
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import BinaryIO, Iterator
+from typing import BinaryIO
 
 from ofo.marketdata.provider import DayStats
 

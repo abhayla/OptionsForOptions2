@@ -38,6 +38,7 @@ from ofo.engine.black_scholes import Greeks, year_fraction
 from ofo.engine.chain_values import chain_model
 from ofo.engine.legs import Instrument
 from ofo.instruments.models import INDEX_ROWS, is_lot_aligned
+from ofo.marketdata.day_open import index_day_open
 from ofo.marketdata.forward import ForwardUnavailable, parity_forward
 from ofo.marketdata.quote import planning_price_usable
 from ofo.marketdata.spot_source import SourceReading, SourceState, resolve_spot
@@ -223,10 +224,13 @@ class FrozenRead:
 
     quotes: Mapping[str, Any]
     index: Any
+    #: GC-IC1 5b: the index's day values (``latest_day_stats``) read in the SAME read as ``index``, inside the hold
+    #: (a released index is parked and its day values read NOT_HELD); None = no index quote, nothing asked
+    day: Any = None
 
 
 async def held_read(provider: Any, underlying: str, expiry: datetime.date, leg_ids: list[str],  # noqa: PLR0913
-                    feed: Any, index_id: str | None = None) -> FrozenRead:
+                    feed: Any, index_id: str | None = None, now: datetime.datetime | None = None) -> FrozenRead:
     """The frozen read of one expiry plus the contracts in ``leg_ids`` (the position's legs, the near-the-money window,
     the roll range, a second pass's landing strikes). The feed's book lists only contracts somebody holds (F-92), so
     the ones missing are held on the shared fan-out (``live_push.hold_and_read``, the paper book's own helper) until
@@ -234,10 +238,11 @@ async def held_read(provider: Any, underlying: str, expiry: datetime.date, leg_i
     quoted at once (no hold) / quoted after the wait / never quoted (absent: unpriced, never 0) / no token (KeyError:
     nothing held, the first read stands) / no feed (the first read stands) / provider disconnected (the read so far).
     The index: quoted / not (``index`` None: no forward, the chain model names its reason). ``index_id``: held with the
-    rest when the first read has no index quote."""
+    rest when the first read has no index quote. ``now``: the check's clock, for the index's day values."""
     def read() -> FrozenRead:
-        return FrozenRead({q.instrument_id: q for q in provider.option_chain_snapshot(underlying, expiry)},
-                          provider.underlying_quote(underlying))
+        index = provider.underlying_quote(underlying)
+        return FrozenRead({q.instrument_id: q for q in provider.option_chain_snapshot(underlying, expiry)}, index,
+                          None if index is None else provider.latest_day_stats(index.instrument_id, now))
     first = read()
     missing = [i for i in dict.fromkeys(leg_ids) if i not in first.quotes]
     index_wait = index_id is not None and first.index is None
@@ -358,7 +363,7 @@ async def read_market(tracked: Tracked, ctx: Any, *, extra_ids: Iterable[str] = 
     wanted = (own_leg_ids(position, listed) + window_ids(listed, underlying, expiry, window_spot,
                                                          ctx.chain_strikes_each_side)
               + roll_ids(listed, position, window_spot, _roll_points()) + list(extra_ids))
-    frozen = await held_read(provider, underlying, expiry, wanted, live, index_id_of(ctx, underlying))
+    frozen = await held_read(provider, underlying, expiry, wanted, live, index_id_of(ctx, underlying), now)
     quotes, spot_q = frozen.quotes, frozen.index
     closed = market_state(ctx, now).closed
     model = chain_model(list(quotes.values()), spot_q, expiry, now, ctx.rate, ctx.forward_quality, market_closed=closed)
@@ -384,7 +389,7 @@ async def read_market(tracked: Tracked, ctx: Any, *, extra_ids: Iterable[str] = 
     feed = (SourceReading(SourceState.ABSENT) if spot_q is None
             else SourceReading(SourceState.STATED, spot_q.ltp, spot_q.timestamp))
     return MarketInputs(tuple(rows), ids, forward, years, vol, feed, read_last_close(spot_q, closed, scn, now), now,
-                        expiry_kind, leg_greeks, fwd_model, leg_ivs)
+                        expiry_kind, leg_greeks, fwd_model, leg_ivs, index_day_open(frozen.day, now))
 
 
 async def read_market_more(tracked: Tracked, ctx: Any, extra_ids: Iterable[str]) -> MarketInputs | None:
