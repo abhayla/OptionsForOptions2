@@ -2,14 +2,14 @@
 work_item: W-206
 requirement: REQ-159
 ac: AC-3
-result: fail
-verified_by: "independent verifier (Sonnet, GC-IC1 step 10 round 2)"
+result: pass
+verified_by: "independent verifier (Sonnet, GC-IC1 step 10 round 3)"
 date: 2026-11-03
 ac_fp: "0798a169d6a7"
-commands: "python -m pytest -q -p no:cacheprovider tests/adjustment (723 passed); read playbook_eval.py:560-583 (_rule); grep tests test_all_of_rule (line 333), test_any_of_rule_fires_when_one_member_fires (line 348)"
+commands: "python <scratchpad>/atk1.py (rules built on the ADJ-01 body from tests/adjustment/test_playbook_eval.py, evaluate called); env -u TEST_DATABASE_URL -u TEST_ADMIN_DATABASE_URL -u ALEMBIC_DATABASE_URL python -m pytest -q -p no:cacheprovider tests/adjustment/test_playbook_eval.py -k 'all_of or any_of or rule'"
 ---
-Not verified in budget (no combined-rule attack run). Code read: all_of fires only if all members fire and one NotChecked member makes the rule NotChecked; any_of fires on any member, else NotChecked if a member is missing, else clear; the editor offers an AND/OR flip (AdjustmentsPage.vue ~97). Leaning PASS.
+all_of [T-01 fires, T-11 unavailable] -> NotChecked (T-11), never a Flag; all_of [T-01, T-03] with T-03 delta None -> NotChecked (T-03); any_of with one member firing and another unavailable -> Flag (T-01); any_of with nothing fired and one unavailable -> NotChecked; all_of with both available and one not firing -> no result. 2 tests passed; code read playbook_eval.py _rule 564-583.
 
-Re-run with an all_of [T-01, T-03] snippet with one member data-unavailable.
+all_of with one false and one unavailable member gives NotChecked, not false: conservative, does not break the AC.
 
 Recorded by the orchestrator from the verifier's returned block.
