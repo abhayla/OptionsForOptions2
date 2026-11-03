@@ -828,7 +828,7 @@ def hand_generic_exits(lot: int, legs: list[dict], rows: list[dict], booked: Fra
     A-25 closes X% of every leg's lots, whole lots only (2), same profit test."""
     out = {"A-31": hand_exit(lot, legs, rows)}
     if "trades" not in out["A-31"]:
-        return {a: out["A-31"] for a in ("A-31", "A-24", "A-25")}
+        return dict.fromkeys(("A-31", "A-24", "A-25"), out["A-31"])
     prices = [t["price"] for t in out["A-31"]["trades"]]
     whole = booked + sum(Fraction(sign(x["side"]) * x["lots"] * lot * (p - x["entry"])) for x, p in zip(legs, prices, strict=True))
     if whole <= 0:

@@ -141,7 +141,7 @@ def test_ac2_every_scenario_approach_gross_equals_the_hand_values(sid):
             want = (sc["expected"].get("approach_legs") or {}).get(a)  # figure-less: compared on its trades
             assert want is not None and got["trades"], (sid, a)
             keys = ("action", "type", "strike", "expiry", "lots", "price")
-            assert [{k: str(t[k]) for k in keys} for t in got["trades"]] ==                 [{k: str(t[k]) for k in keys} for t in want["trades"]], (sid, a)
+            assert [{k: str(t[k]) for k in keys} for t in got["trades"]] ==                 [{k: str(t[k]) for k in keys} for t in want["trades"]], (sid, a)  # noqa: E501
             continue
         g = got["after"]["gross"]
         if str(h["max_profit"]).upper() == "UNLIMITED":  # a text answer, not a number (A-26 leaves only the long wing)

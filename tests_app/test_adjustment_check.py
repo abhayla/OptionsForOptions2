@@ -16,12 +16,13 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from ofo.adjustment.playbook_eval import validate_body
 from ofo.adjustment.playbook_types import TYPE_KEYS
+from ofo.settings import calc as _calc
+from ofo.settings import defaults as _defaults
 from ofo.timeutil import IST
 from ofo_app import adjustment_readers, catalogue_store, playbook_store, scenario_mode
 from ofo_app import db as app_db
 from ofo_app.config import get_settings
 from sqlalchemy import text
-from ofo.settings import calc as _calc, defaults as _defaults
 
 _MAX_DELIST = _calc.max_delist_percent(_defaults())
 
@@ -75,7 +76,7 @@ async def _check(sid: str, strategy_id: int) -> tuple[int, dict]:
 
 
 def _is_sit(x: dict) -> bool:
-    """A situation rule (GC-IC1 6a: ``sit.S-02`` / ``sit.S-12``), covered by tests/adjustment/test_situation_rules.py."""
+    """A situation rule (GC-IC1 6a: ``sit.S-02`` / ``sit.S-12``), covered by tests/adjustment/test_situation_rules.py."""  # noqa: E501
     return x["rule_id"].startswith("sit.") if "rule_id" in x else str(x["trigger_id"]).startswith("sit.")
 
 

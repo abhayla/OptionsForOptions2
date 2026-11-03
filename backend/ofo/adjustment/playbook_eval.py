@@ -674,7 +674,7 @@ def evaluate(body: Mapping, state: StrategyState, memory: Mapping[str, Mapping[s
 #: itself the event.
 #: Not due (not expiry day, or before ``at``) -> no answer at all: no reading, so no record and no false clear.
 DAY_RULE_PREFIX: Final = "day."
-LEGACY_DAY_RULE_PREFIX: Final = "day:"  # ids stored before GC-IC1 fix (colons fail the API Identifier pattern); read, never re-matched
+LEGACY_DAY_RULE_PREFIX: Final = "day:"  # ids stored before GC-IC1 fix (colons fail the Identifier pattern); read only
 DAY_ACTION_PREPARE_EXIT: Final = 5  # PLAYBOOK_DAY_RULE_ACTION_TEXT["5"], "Prepare an exit for review"
 DAY_RULE_INCOMPLETE: Final = f"{P}day_rule_incomplete"
 CLOSE_WITHIN_KEY: Final = "close_if_short_within_pct"

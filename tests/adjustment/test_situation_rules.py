@@ -9,6 +9,7 @@ import dataclasses
 import datetime
 import json
 import pathlib
+import re
 from decimal import Decimal as D
 
 import pytest
@@ -17,6 +18,7 @@ from ofo.adjustment import playbook_eval as pe
 from ofo.engine import adjust_ratios as ratios
 from ofo.engine.black_scholes import Greeks
 from ofo.engine.legs import Action
+from ofo.strategy.settings_value import IDENTIFIER_PATTERN
 from ofo.timeutil import IST
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -247,11 +249,9 @@ def _produced_ids(body: dict) -> set[str]:
 
 
 def test_guard_every_rule_id_the_evaluator_produces_matches_the_identifier_pattern():
-    import re
 
-    from ofo.strategy.settings_value import IDENTIFIER_PATTERN
     pre = json.loads(PRE.read_text(encoding="utf-8"))
-    bodies = (_ic(), pre["body"] if "body" in pre else pre)
+    bodies = (_ic(), pre.get("body", pre))
     ids = set().union(*(_produced_ids(b) for b in bodies))
     assert S02 in ids and S12 in ids and "day.expiry.1430.5" in ids, sorted(ids)  # the guard saw both kinds
     assert r"[A-Za-z0-9_.-]{1,64}" == IDENTIFIER_PATTERN  # the shared pattern is not loosened
@@ -263,4 +263,4 @@ def test_old_stored_colon_ids_are_read_without_crash_and_never_match_a_rule():
     body = _ic()
     assert pe.is_day_rule_id("day:expiry:14:30:5") and pe.is_situation_rule_id("sit:S-02")
     assert pe.day_rule_action(body, "day:expiry:14:30:5") is None  # not re-opened as a rule of today's form
-    assert pe.day_rule_action(body, "day.expiry.1430.5") == 5
+    assert pe.day_rule_action(body, "day.expiry.1430.5") == 5  # noqa: PLR2004

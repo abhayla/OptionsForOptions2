@@ -56,7 +56,7 @@ def test_t19_cost_equals_the_cheapest_compare_cell_for_every_scenario(sid):
     if sc["expected"]["adjustment_approach"] is None:
         assert (got.approach, got.cost, got.reason) == (None, None, cmp.NO_APPROACH_PRICED)
     else:
-        assert (got.approach, str(got.cost)) == (sc["expected"]["adjustment_approach"], sc["expected"]["adjustment_cost"])
+        assert (got.approach, str(got.cost)) == (sc["expected"]["adjustment_approach"], sc["expected"]["adjustment_cost"])  # noqa: E501
         if got.approach in cells:  # a column the Compare shows carries the same figure (to the paisa)
             assert cells[got.approach].value == got.cost
         assert all(c.value >= got.cost for a, c in cells.items() if a != "A-36")  # nothing shown is cheaper
@@ -65,8 +65,8 @@ def test_t19_cost_equals_the_cheapest_compare_cell_for_every_scenario(sid):
 
 
 def _hand_costs(sc: dict) -> dict[str, D]:
-    """The generator's own Compare cost per built approach (``expected.compare_cost``, hand path), A-36 and A-04 left out."""
-    return {a: D(v["cost"]) for a, v in sc["expected"]["compare_cost"].items() if a not in ("A-36", "A-04")}  # A-04 needs the next expiry chain: the route test covers it
+    """The generator's own Compare cost per built approach (``expected.compare_cost``, hand path), A-36 and A-04 left out."""  # noqa: E501
+    return {a: D(v["cost"]) for a, v in sc["expected"]["compare_cost"].items() if a not in ("A-36", "A-04")}  # A-04 needs the next expiry chain: the route test covers it  # noqa: E501
 
 
 def test_core_adj02_cheapest_is_the_generators_pick_and_every_compare_cell_equals_its_hand_cost():
@@ -105,7 +105,7 @@ def test_some_unpriceable_takes_the_cheapest_of_the_priced():
     assert f"cost ₹{rest[nxt]} (as in Compare) (1 could not be priced)" in line
     a29 = cols["A-29"]
     no_whole = dataclasses.replace(a29, whole=None)
-    assert cheapest_approach(("A-29", "A-31"), {**cols, "A-29": no_whole}, market.chain) ==         cmp.Cheapest("A-31", hand["A-31"], None, 1)
+    assert cheapest_approach(("A-29", "A-31"), {**cols, "A-29": no_whole}, market.chain) ==         cmp.Cheapest("A-31", hand["A-31"], None, 1)  # noqa: E501
     no_quote = tuple(dataclasses.replace(r, bid=None) if r.tradingsymbol == a29.built.trades[0].tradingsymbol else r
                      for r in market.chain)
     assert cheapest_approach(("A-29", "A-01"), cols, no_quote) == cmp.Cheapest("A-01", hand["A-01"], None, 1)
