@@ -42,3 +42,9 @@ def test_empty_legs():
 
 def test_with_booked():
     assert adjust_money.with_booked(D("-5"), D("12.5")) == D("7.5")
+
+
+def test_fell_at_least_pct_boundary():
+    assert adjust_money.fell_at_least_pct(D("100"), D("20"), 80) is True      # exactly 80%
+    assert adjust_money.fell_at_least_pct(D("100"), D("20.01"), 80) is False  # 79.99%
+    assert adjust_money.fell_at_least_pct(D("0"), D("0"), 80) is False        # no entry

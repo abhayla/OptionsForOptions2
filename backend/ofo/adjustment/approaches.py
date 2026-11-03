@@ -426,7 +426,7 @@ def _untested_decayed(b: _Builder, legs: Sequence[PositionLeg], short_at: int, p
     price = b.price_of(short)
     if short.entry <= 0:
         raise _refusal("adjust_untested_no_entry", leg=b.ref(short))
-    if (short.entry - price) * _HUNDRED < percent * short.entry:
+    if not adjust_money.fell_at_least_pct(short.entry, price, percent):
         raise _refusal("adjust_untested_not_decayed", leg=b.ref(short), entry=short.entry, now=price, percent=percent)
     t, c = b.close(short, short.lots)
     return [t], [c], [x for i, x in enumerate(legs) if i != short_at]
