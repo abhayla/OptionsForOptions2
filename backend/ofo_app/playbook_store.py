@@ -792,6 +792,29 @@ class HeldToday:
     held_at: datetime
 
 
+_HELD_INBOX = text(
+    "SELECT h.id, h.strategy_id, h.rule_id, h.trigger_id, h.reason, h.held_at, s.name "
+    "FROM public.adjustment_held_crossings h JOIN public.strategies s ON s.id = h.strategy_id "
+    "WHERE s.user_ref = :user_ref ORDER BY h.held_at DESC, h.id DESC")
+
+
+@dataclass(frozen=True)
+class HeldInboxRow:
+    id: int
+    strategy_id: int
+    rule_id: str
+    trigger_id: str | None
+    reason: str
+    held_at: datetime
+    strategy_name: str
+
+
+async def held_inbox(conn: Any, user_ref: str) -> list[HeldInboxRow]:
+    """REQ-170 AC-4: every crossing the gate held on the user's strategies, newest first (the timeline's reader)."""
+    rows = (await conn.execute(_HELD_INBOX, {"user_ref": user_ref})).all()
+    return [HeldInboxRow(*r) for r in rows]
+
+
 async def held_today(conn: Any, user_ref: str, strategy_id: int, today: date) -> tuple[HeldToday, ...]:
     """GC-ALERT1 wire-b item 5: the crossings held on ``today`` (IST), oldest first, so a restarted worker restores
     the held episode instead of writing a second Held row. Read only; a store error raises."""

@@ -20,6 +20,7 @@ import datetime
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends
+from ofo.adjustment.alert_gate import HELD_TEXT_IDS
 from ofo.errors import render
 from ofo.errors.explanations import render_explanation
 from ofo.strategy.stored_form import shown_name
@@ -85,8 +86,23 @@ class ReasonOut(ApiModel):
     text: CatalogueText
 
 
+class HeldOut(ApiModel):
+    """REQ-170 AC-4: a crossing the alert gate held (daily limit / quiet time). Not a record: no outcome, nothing to
+    act on, no compare link."""
+
+    id: int
+    strategy_id: int
+    strategy_name: CatalogueText
+    rule_id: Identifier
+    trigger_id: Identifier | None
+    reason: Literal["daily_limit", "quiet_time"]
+    text: CatalogueText
+    held_at: datetime.datetime
+
+
 class InboxOut(ApiModel):
     groups: list[GroupOut]
+    held: list[HeldOut]
     counts: list[CountOut]
     empty_text: CatalogueText | None
     dismiss_reasons: list[ReasonOut]
@@ -129,7 +145,14 @@ def _record(s: store.Suggestion, paper: bool) -> dict:
             "outcome_text": outcome_text(s, paper), "detail": _detail(s), "can_act": s.outcome == "open"}
 
 
-def inbox_body(rows: list[store.InboxRow]) -> dict:
+def held_body(rows: list[store.HeldInboxRow]) -> list[dict]:
+    """The held crossings in the catalogue's words (alert_gate.HELD_TEXT_IDS), newest first."""
+    return [{"id": h.id, "strategy_id": h.strategy_id, "strategy_name": shown_name(h.strategy_name),
+             "rule_id": h.rule_id, "trigger_id": h.trigger_id, "reason": h.reason,
+             "text": render_explanation(HELD_TEXT_IDS[h.reason]), "held_at": h.held_at} for h in rows]
+
+
+def inbox_body(rows: list[store.InboxRow], held: list[store.HeldInboxRow] | None = None) -> dict:
     groups: dict[str, dict] = {}
     for row in rows:  # newest first; a group's first row seen is its newest record
         s = row.suggestion
@@ -147,7 +170,7 @@ def inbox_body(rows: list[store.InboxRow]) -> dict:
         g["summary"] = render_explanation("suggestion_group_count", count=n) if n > 1 else None
         g["has_open"] = any(r["can_act"] for r in g["records"])
     counted = {o: sum(1 for r in rows if r.suggestion.outcome == o) for o in OUTCOMES}
-    return {"groups": list(groups.values()),
+    return {"groups": list(groups.values()), "held": held_body(held or []),
             "counts": [{"outcome": o, "text": render_explanation(f"suggestion_outcome_{o}"), "count": counted[o]}
                        for o in OUTCOMES],
             "empty_text": None if rows else render_explanation("suggestion_inbox_empty"),
@@ -199,7 +222,7 @@ async def _close(db: Any, work: Any) -> SuggestionOut:
 @router.get("/api/adjustment-opportunities", response_model=InboxOut)
 async def adjustment_opportunities(db: Annotated[Any, Depends(get_db)],
                                    user_ref: Annotated[str, Depends(current_user_ref)]) -> InboxOut:
-    return InboxOut.model_validate(inbox_body(await store.inbox(db, user_ref)))
+    return InboxOut.model_validate(inbox_body(await store.inbox(db, user_ref), await store.held_inbox(db, user_ref)))
 
 
 @router.post("/api/adjustment-opportunities/{suggestion_id}/dismiss", response_model=SuggestionOut)
