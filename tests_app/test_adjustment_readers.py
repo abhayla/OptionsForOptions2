@@ -150,8 +150,10 @@ class _FakeFanout:
             self.provider.held |= set(ids)
         return len(self.subscribed)
 
-    def unsubscribe(self, _handle):
+    def unsubscribe(self, handle):
+        """As the live book: a released contract is parked (``QuoteBook.park``), its quote gone from the snapshot."""
         self.released += 1
+        self.provider.held -= set(self.subscribed[handle - 1])
 
 
 def _hedge_case(monkeypatch, **fan):
