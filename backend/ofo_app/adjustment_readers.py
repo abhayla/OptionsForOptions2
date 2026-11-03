@@ -227,10 +227,13 @@ class FrozenRead:
     #: GC-IC1 5b: the index's day values (``latest_day_stats``) read in the SAME read as ``index``, inside the hold
     #: (a released index is parked and its day values read NOT_HELD); None = no index quote, nothing asked
     day: Any = None
+    #: ADR-239 (2): the option quotes of the NEXT listed expiry (A-04), read in the SAME read; empty = not asked
+    later: Mapping[str, Any] = dataclasses.field(default_factory=dict)
 
 
 async def held_read(provider: Any, underlying: str, expiry: datetime.date, leg_ids: list[str],  # noqa: PLR0913
-                    feed: Any, index_id: str | None = None, now: datetime.datetime | None = None) -> FrozenRead:
+                    feed: Any, index_id: str | None = None, now: datetime.datetime | None = None,
+                    later: datetime.date | None = None) -> FrozenRead:
     """The frozen read of one expiry plus the contracts in ``leg_ids`` (the position's legs, the near-the-money window,
     the roll range, a second pass's landing strikes). The feed's book lists only contracts somebody holds (F-92), so
     the ones missing are held on the shared fan-out (``live_push.hold_and_read``, the paper book's own helper) until
@@ -238,13 +241,16 @@ async def held_read(provider: Any, underlying: str, expiry: datetime.date, leg_i
     quoted at once (no hold) / quoted after the wait / never quoted (absent: unpriced, never 0) / no token (KeyError:
     nothing held, the first read stands) / no feed (the first read stands) / provider disconnected (the read so far).
     The index: quoted / not (``index`` None: no forward, the chain model names its reason). ``index_id``: held with the
-    rest when the first read has no index quote. ``now``: the check's clock, for the index's day values."""
+    rest when the first read has no index quote. ``now``: the check's clock, for the index's day values. ``later``:
+    the next listed expiry (A-04, ADR-239 (2)), snapshotted in the SAME read (its ids may be in ``leg_ids``); never a
+    read of its own after a release (finding live-subscription-lost-on-release-reacquire)."""
     def read() -> FrozenRead:
         index = provider.underlying_quote(underlying)
+        more = {} if later is None else {q.instrument_id: q for q in provider.option_chain_snapshot(underlying, later)}
         return FrozenRead({q.instrument_id: q for q in provider.option_chain_snapshot(underlying, expiry)}, index,
-                          None if index is None else provider.latest_day_stats(index.instrument_id, now))
+                          None if index is None else provider.latest_day_stats(index.instrument_id, now), more)
     first = read()
-    missing = [i for i in dict.fromkeys(leg_ids) if i not in first.quotes]
+    missing = [i for i in dict.fromkeys(leg_ids) if i not in first.quotes and i not in first.later]
     index_wait = index_id is not None and first.index is None
     if index_wait:
         missing.append(index_id)  # type: ignore[arg-type]
@@ -252,7 +258,8 @@ async def held_read(provider: Any, underlying: str, expiry: datetime.date, leg_i
         return first
 
     def done(snap: FrozenRead) -> bool:
-        return all(i in snap.quotes for i in missing if i != index_id) and (not index_wait or snap.index is not None)
+        return all(i in snap.quotes or i in snap.later for i in missing if i != index_id) and (
+            not index_wait or snap.index is not None)
     held = await hold_and_read(feed.fanout, missing, read, done, lambda: provider.status().connected, LEG_WAIT_S,
                                LEG_POLL_S)
     return first if held is None else held
@@ -328,6 +335,24 @@ def roll_ids(listed: Iterable[Any], position: Position, spot: Decimal | None,
     return out
 
 
+def next_expiry(listed: Iterable[Any], underlying: str, expiry: datetime.date) -> datetime.date | None:
+    """ADR-239 (2): the first listed option expiry of ``underlying`` after ``expiry``; None = none listed."""
+    return min((lc.contract.expiry for lc in listed if lc.contract.name == underlying and lc.contract.expiry > expiry),
+               default=None)
+
+
+def later_ids(listed: Iterable[Any], position: Position, spot: Decimal | None, later: datetime.date | None,
+              each_side: int) -> list[str]:
+    """The next expiry's contracts A-04 may trade and price from (ADR-239 (2)): its near-the-money window (that
+    expiry's own forward and Greeks) and each short's roll range read ON that expiry (``roll_ids`` with the legs
+    moved there). None listed -> []."""
+    if later is None:
+        return []
+    moved = dataclasses.replace(position, legs=tuple(dataclasses.replace(x, expiry=later) for x in position.legs))
+    return (window_ids(listed, position.underlying, later, spot, each_side)
+            + roll_ids(listed, moved, spot, _roll_points()))
+
+
 def _roll_points() -> Mapping[str, Decimal]:
     """The roll range the hold covers: the registry's ``roll_points_without_delta`` defaults (REQ-168 AC-1). A user who
     set a longer distance gets a gap past it, which the roll refuses by name and the second pass holds (never a
@@ -363,7 +388,9 @@ async def read_market(tracked: Tracked, ctx: Any, *, extra_ids: Iterable[str] = 
     wanted = (own_leg_ids(position, listed) + window_ids(listed, underlying, expiry, window_spot,
                                                          ctx.chain_strikes_each_side)
               + roll_ids(listed, position, window_spot, _roll_points()) + list(extra_ids))
-    frozen = await held_read(provider, underlying, expiry, wanted, live, index_id_of(ctx, underlying), now)
+    later = next_expiry(listed, underlying, expiry)  # A-04 (ADR-239 (2)): read in the SAME hold, never after it
+    wanted += later_ids(listed, position, window_spot, later, ctx.chain_strikes_each_side)
+    frozen = await held_read(provider, underlying, expiry, wanted, live, index_id_of(ctx, underlying), now, later)
     quotes, spot_q = frozen.quotes, frozen.index
     closed = market_state(ctx, now).closed
     model = chain_model(list(quotes.values()), spot_q, expiry, now, ctx.rate, ctx.forward_quality, market_closed=closed)
@@ -373,6 +400,17 @@ async def read_market(tracked: Tracked, ctx: Any, *, extra_ids: Iterable[str] = 
         return None if g is None else Greeks(g.delta, g.gamma if g.gamma_exact is None else g.gamma_exact, g.theta,
                                              g.vega)
     rows, ids, leg_greeks = chain_rows(listed, expiry, quotes, model_greeks, scn)
+    later_rows: tuple[ChainRow, ...] = ()
+    if later is not None:  # that expiry's OWN chain model (its forward, its time), from the same frozen read
+        later_model = chain_model(list(frozen.later.values()), spot_q, later, now, ctx.rate, ctx.forward_quality,
+                                  market_closed=closed)
+
+        def later_greeks(iid: str, _q: Any) -> Greeks | None:
+            g = later_model.greeks.get(iid)
+            return None if g is None else Greeks(g.delta, g.gamma if g.gamma_exact is None else g.gamma_exact,
+                                                 g.theta, g.vega)
+        later_rows, later_symbols, _ = chain_rows(listed, later, frozen.later, later_greeks, scn)
+        ids = {**ids, **later_symbols}
     forward = fwd_model = None
     try:
         fwd_model = parity_forward(list(quotes.values()), spot_q, expiry, now, ctx.rate, ctx.forward_quality)
@@ -388,8 +426,8 @@ async def read_market(tracked: Tracked, ctx: Any, *, extra_ids: Iterable[str] = 
     vol = _atm_vol(rows, ids, model.greeks, forward)
     feed = (SourceReading(SourceState.ABSENT) if spot_q is None
             else SourceReading(SourceState.STATED, spot_q.ltp, spot_q.timestamp))
-    return MarketInputs(tuple(rows), ids, forward, years, vol, feed, read_last_close(spot_q, closed, scn, now), now,
-                        expiry_kind, leg_greeks, fwd_model, leg_ivs, index_day_open(frozen.day, now))
+    return MarketInputs(tuple(rows) + later_rows, ids, forward, years, vol, feed,
+                        read_last_close(spot_q, closed, scn, now), now, expiry_kind, leg_greeks, fwd_model, leg_ivs, index_day_open(frozen.day, now))
 
 
 async def read_market_more(tracked: Tracked, ctx: Any, extra_ids: Iterable[str]) -> MarketInputs | None:

@@ -3,11 +3,15 @@ source state from the SAME provider / client path the live app uses, and never a
 from __future__ import annotations
 
 import asyncio
+import datetime
 import types
 from decimal import Decimal as D
 
 import pytest
+from ofo.adjustment.approaches import build_approach
+from ofo.adjustment.preferences import from_values
 from ofo.marketdata.spot_source import SourceState
+from ofo.settings import defaults
 from ofo_app import adjustment_readers as readers
 from ofo_app import scenario_mode
 from ofo_app.routes import outcome
@@ -29,8 +33,8 @@ def test_market_reader_gives_chain_deltas_pop_inputs_and_the_feed_spot(monkeypat
     sc = load("ADJ-02")
     scn, ctx = _scn(monkeypatch, "ADJ-02")
     m = asyncio.run(readers.read_market(tracked_of(sc), ctx))
-    listed = [r for c in sc["market"]["chains"] if c["expiry"] == sc["expiry"] for r in c["rows"] if r["listed"]]
-    assert len(m.chain) == len(listed)
+    listed = [r for c in sc["market"]["chains"] for r in c["rows"] if r["listed"]]  # its expiry + the next (A-04)
+    assert len(m.chain) == len(listed) and len({r.expiry for r in m.chain}) == len(sc["market"]["chains"])
     assert all(r.delta is not None for r in m.chain if r.ltp is not None)
     assert m.forward is not None and m.years is not None and m.vol is not None
     assert m.feed.state is SourceState.STATED and m.feed.value == D(sc["market"]["spot"])
@@ -246,9 +250,9 @@ def test_gcic1_read_market_asks_held_read_for_the_window_ids(monkeypatch):
     seen = []
     real = readers.held_read
 
-    async def spy(provider, underlying, expiry, ids, feed, index_id=None, now=None):  # noqa: PLR0913
+    async def spy(provider, underlying, expiry, ids, feed, index_id=None, now=None, later=None):  # noqa: PLR0913
         seen.append(list(ids))
-        return await real(provider, underlying, expiry, ids, feed, index_id, now)
+        return await real(provider, underlying, expiry, ids, feed, index_id, now, later)
     monkeypatch.setattr(readers, "held_read", spy)
     asyncio.run(readers.read_market(tracked_of(sc), ctx))
     assert leg_ids <= set(seen[0]) and len(set(seen[0]) - leg_ids) >= ctx.chain_strikes_each_side  # legs plus window
@@ -455,3 +459,32 @@ def test_gcic1_r3_second_pass_hold_released_on_an_exception(monkeypatch):
     with pytest.raises(RuntimeError):
         asyncio.run(readers.read_market_more(tracked_of(sc), ctx, [far]))
     assert feed.released == 1
+
+
+def test_gcic1_s3_next_expiry_read_inside_the_one_hold_with_its_own_greeks(monkeypatch):
+    """ADR-239 (2) / finding live-subscription-lost-on-release-reacquire: A-04's next-expiry chain is read in the SAME
+    hold as the position's expiry (its landing range held too), priced with that expiry's own model, and nothing is
+    read after the release (the provider raises then). The book hides every contract of BOTH expiries until held."""
+    sc, _leg_ids, feed, ctx = _book_of_legs_only(monkeypatch)
+    nxt = datetime.date(2026, 11, 17)
+    p = ctx.provider
+    p.hidden |= {q.instrument_id for q in p._inner.option_chain_snapshot("NIFTY", nxt)}
+    _index_on_demand(monkeypatch, ctx)
+    snap, under = p.option_chain_snapshot, p.underlying_quote
+
+    def guarded(read):
+        def call(*a):
+            if feed.released:
+                raise AssertionError("provider read after the hold was released")
+            return read(*a)
+        return call
+    p.option_chain_snapshot, p.underlying_quote = guarded(snap), guarded(under)
+    m = asyncio.run(readers.read_market(tracked_of(sc), ctx))
+    later = {(r.type, r.strike): r for r in m.chain if r.expiry == nxt}
+    assert later[("CE", D("23800"))].delta is not None and later[("CE", D("24000"))].ltp is not None
+    assert len(feed.subscribed) == 1 and feed.released == 1  # one hold, one release
+    current = {(r.type, r.strike): r for r in m.chain if r.expiry != nxt}
+    assert later[("CE", D("23800"))].delta != current[("CE", D("23800"))].delta  # that expiry's own model
+    position = tracked_of(sc).position
+    built = build_approach(position, m.chain, D(sc["market"]["spot"]), "A-04", from_values(defaults()).approach)
+    assert built.refusal is None and {t.expiry for t in built.trades} == {position.legs[0].expiry, nxt}
