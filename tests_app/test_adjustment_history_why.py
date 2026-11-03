@@ -14,10 +14,13 @@ switches the scenario market.
 from __future__ import annotations
 
 import datetime
+import itertools
 from decimal import Decimal
+from typing import Any
 
 import test_adjustment_check as check_test
 from ofo_app import paper_book, playbook_store
+from ofo_app.routes.outcome import get_answer_clock
 from ofo_app.scenario_mode import refuse_orders
 from test_adjustment_check import _seeded
 from test_adjustment_opportunities import _call, _clean, _opened, _records
@@ -30,7 +33,19 @@ NOT_FOUND_TEXT = "This adjustment opportunity was not found."
 #: ADJ-02 T-03's condition line, exactly as the catalogue words it (measured on a fresh DB 2026-11-03; the test also
 #: reads it back from the inbox, so the two readers must agree)
 EXPECTED_T03 = "Tested short's delta reaches: 0.4103 delta (rule 0.3500 delta)"
-ORDERS_ON = {refuse_orders: lambda: None}  # the scenario's market, with the paper order path open (not Kite)
+_TICKS = itertools.count(1)
+_BASE = datetime.datetime(2026, 11, 3, 10, 0, tzinfo=datetime.UTC)  # after every scenario's entry clock
+
+
+def _stepping_clock() -> Any:
+    """Each placement its own minute: a basket is the orders of one placed_at (the engine's batch rule), and two
+    requests must never share one, as they never do on a real clock."""
+    at = _BASE + datetime.timedelta(minutes=next(_TICKS))
+    return lambda: at
+
+
+#: the scenario's market, with the paper order path open (not Kite) and a clock that moves per request
+ORDERS_ON = {refuse_orders: lambda: None, get_answer_clock: _stepping_clock}
 
 
 async def _book(engine, sid: int) -> list:
@@ -124,7 +139,7 @@ async def test_an_adjustment_from_a_suggestion_names_its_rule_and_every_bad_link
 
 
 def _rec(rid: int, rule: str, *, readable: bool = True) -> playbook_store.Suggestion:
-    head = {"group": "g1", "source": "system", "label": "Tested short's delta", "unit": "delta"}
+    head = {"group": "g1", "source": "system", "label": "Tested short's delta reaches", "unit": "delta"}
     if readable:
         head["cmp"] = "ge"
     return playbook_store.Suggestion(rid, 1, rule, "T-03", None, Decimal("0.4103"), Decimal("0.3500"),
