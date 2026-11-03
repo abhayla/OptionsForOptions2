@@ -79,7 +79,9 @@ def test_a25_at_50_percent_whole_lots_only(lots, closes):
 
 
 def _with_price(chain, leg, price):
-    return [replace(r, ltp=price) if (r.type, r.strike) == (leg.type, leg.strike) else r for r in chain]
+    """The row's planned price set to ``price``: LTP and a locked live book (ADR-241 prices from the live mid first)."""
+    return [replace(r, ltp=price, bid=price, ask=price) if (r.type, r.strike) == (leg.type, leg.strike) else r
+            for r in chain]
 
 
 def test_a26_reads_the_untested_short_against_its_entry():

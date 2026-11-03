@@ -8,7 +8,6 @@ import inspect
 from decimal import Decimal as D
 
 import pytest
-
 from ofo.adjustment import approaches
 from ofo.adjustment.approaches import ChainRow, planned_price
 from ofo.engine import model

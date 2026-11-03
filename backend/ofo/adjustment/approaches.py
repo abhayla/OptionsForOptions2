@@ -143,7 +143,7 @@ class ChainRow:
     low_oi_state: str = "stated"  # stated / unknown
     low_oi_blocked: bool | None = False
     oi: int | None = None  # open interest; None = no source gave it (F-78), read by liquidity.evaluate_strike
-    health: DataHealth | None = None  # the quote's health (ADR-241: the mid only on an AVAILABLE book); None = not known
+    health: DataHealth | None = None  # the quote's health (ADR-241: mid only on an AVAILABLE book); None = not known
 
 
 @dataclass(frozen=True)
