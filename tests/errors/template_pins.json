@@ -3686,5 +3686,17 @@
   "explanation:monitor_pause_refused_after_close": {
     "sha256": "b0a72213dfc5be4edf088300bc5ce6788966c946f75510fb392a3587d3ba50ab",
     "reviewed": "pending owner read"
+  },
+  "explanation:delta_neutral_label": {
+    "sha256": "514ba885e63074d902c195b0f89ad0f44a5d29c32f6feff674f204de2dd26d24",
+    "reviewed": "pending owner read"
+  },
+  "explanation:delta_neutral_not_known": {
+    "sha256": "c1f6f91fa1ccae90d3ab21d839410e18d66f95dd9851d4916da0f67848e734ca",
+    "reviewed": "pending owner read"
+  },
+  "explanation:monitor_pause_shown": {
+    "sha256": "a4c27244595649220211c01104b2ab87a95f6e16d4afc3696d05d4f2b45fb25a",
+    "reviewed": "pending owner read"
   }
 }

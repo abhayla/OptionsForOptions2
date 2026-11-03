@@ -12,6 +12,7 @@ from __future__ import annotations
 import datetime
 
 import pytest
+from ofo.timeutil import IST
 from ofo_app import background, strategy_pause_store
 from test_background_worker import (  # noqa: F401 - the shared fixture
     CROSS_SPOT,
@@ -61,8 +62,9 @@ async def test_core_a_user_pause_skips_adjustment_checks_until_its_end_then_one_
     assert worker.user_paused_until[sid] == until
     now[0] = start + datetime.timedelta(minutes=CROSS_AFTER_MINUTES)
     _push_spot(scn, CROSS_SPOT, now[0])  # T-01 true, and it stays true
-    while now[0] < until - datetime.timedelta(seconds=1):
+    while now[0] + datetime.timedelta(seconds=5) < until:  # the last cycle stays inside the pause
         await _advance(worker, now, 5, step=5)
+    assert now[0] < until
     assert await _t01_rows(app_db_url, sid, base) == []  # the crossing inside the pause opened nothing
     assert len(worker.checks) == checks_before  # no adjustment check ran inside the pause
     assert worker.status[sid] is background.MonitoringStatus.PAUSED
@@ -92,3 +94,18 @@ async def test_a_cleared_pause_checks_again_at_the_next_rebuild(app_db_url, monk
     await worker.rebuild()
     await _advance(worker, now, 61)
     assert worker.status[sid] is background.MonitoringStatus.ACTIVE and sid not in worker.user_paused_until
+
+
+async def test_the_screen_check_shows_the_pause_with_its_end_and_evaluates_nothing(
+        app_db_url, monkeypatch, cleared):  # noqa: F811
+    from test_adjustment_check import _check  # noqa: PLC0415 - the check route's own harness
+    sid, scn, _now, _worker = await _ready(app_db_url, monkeypatch)
+    status, before = await _check("ADJ-02", sid)
+    assert status == 200 and before["paused"] is None and before["results"], before  # not paused: evaluated
+    until = scn.clock_at + datetime.timedelta(minutes=PAUSE_MINUTES)
+    await _pause(app_db_url, sid, until, scn.clock_at)
+    status, body = await _check("ADJ-02", sid)
+    end = f"{until.astimezone(IST):%H%M}"
+    assert status == 200 and body["paused"] == {
+        "until": end, "text": f"Adjustment checks paused until {end[:2]}:{end[2:]}."}, body
+    assert body["results"] == []  # paused: not evaluated, as the worker
