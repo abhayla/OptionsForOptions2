@@ -114,7 +114,7 @@ def chain_strikes_each_side(values: Mapping[str, Decimal]) -> int:
     return int(value_of(values, CHAIN_STRIKES_EACH_SIDE))
 
 
-CARRY_GAP_PERCENT = "adjustments.carry_gap_percent"
+CARRY_GAP_PERCENT = "other.carry_gap_percent"
 
 
 def carry_gap_percent(values: Mapping[str, Decimal]) -> Decimal:

@@ -1,7 +1,7 @@
 """The carry check's figures (GC-IC1 step 1b; REQ-159 AC-4, S-06 "overnight margin, gap loss").
 
-The whole-trade P&L (booked plus the open legs) if spot gaps the setting ``adjustments.carry_gap_percent`` up and down at the NEXT session's
-open (``market_calendar.next_open``), and the broker-stated overnight margin.
+The whole-trade P&L (booked plus the open legs) if spot gaps ``other.carry_gap_percent`` (a setting) up and down at the
+NEXT session's open (``market_calendar.next_open``), and the broker-stated overnight margin.
 
 One valuation, never a second formula (ADR-008, finding engine-input-chosen-per-caller): each open leg is valued by
 ``ofo.engine.model.estimate(model, level, at)``, the function the what-if path ``scenario.views.scenario_values``
@@ -33,7 +33,7 @@ _HUNDRED: Final = Decimal(100)
 
 def gap_levels(spot: Decimal, gap_pct: Decimal) -> tuple[Decimal, Decimal]:
     """(up, down): spot x (1 +/- gap_pct / 100), rounded half-even to 0.01 points (the what-if path's rule).
-    ``gap_pct`` is the setting ``adjustments.carry_gap_percent`` in force (REQ-167 AC-4), passed in."""
+    ``gap_pct`` is the setting ``other.carry_gap_percent`` in force (REQ-167 AC-4), passed in."""
     up = spot * (_HUNDRED + gap_pct) / _HUNDRED
     down = spot * (_HUNDRED - gap_pct) / _HUNDRED
     return up.quantize(PAISE, rounding=ROUND_HALF_EVEN), down.quantize(PAISE, rounding=ROUND_HALF_EVEN)

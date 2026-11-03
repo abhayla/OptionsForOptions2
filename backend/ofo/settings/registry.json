@@ -830,8 +830,8 @@
       "source": "ADR-222 (7), REQ-168 AC-1, AC-5; was ofo/adjustment/compare.py CURVE_RANGE"
     },
     {
-      "key": "adjustments.carry_gap_percent",
-      "group": "Adjustment defaults",
+      "key": "other.carry_gap_percent",
+      "group": "Other",
       "label": "Overnight gap size for the carry check",
       "unit": "percent",
       "type": "decimal",

@@ -178,7 +178,7 @@ class MarketContext:
     #: the background's, ``chain_push.window_strikes``). Replaced with the same single read; the default is the registry's.
     chain_strikes_each_side: int = dataclasses.field(
         default_factory=lambda: calc.chain_strikes_each_side(settings_defaults()))
-    #: ``adjustments.carry_gap_percent`` in force (the carry check's gap), replaced with the same single read
+    #: ``other.carry_gap_percent`` in force (the carry check's gap), replaced with the same single read
     carry_gap_pct: Decimal = dataclasses.field(
         default_factory=lambda: calc.carry_gap_percent(settings_defaults()))
 

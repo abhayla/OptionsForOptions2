@@ -66,7 +66,7 @@ class ShortLeg:
 @dataclass(frozen=True)
 class CarryFigures:
     """The carry check's content (GC-IC1 1b, S-06): the whole-trade P&L (booked plus open legs) if spot gaps
-    the carry gap setting (``adjustments.carry_gap_percent``) up / down at the next session's open, valued by the engine (``ofo.adjustment.carry.gap_pnl``),
+    the carry gap setting (``other.carry_gap_percent``) up / down at the next session's open, valued by the engine (``ofo.adjustment.carry.gap_pnl``),
     and the broker-stated overnight margin. A figure not known is None with its reason code, never a zero."""
 
     up: Decimal | None
@@ -75,7 +75,7 @@ class CarryFigures:
     margin: Decimal | None = None  # the broker-stated margin; None = not stated (``margin_reason``)
     margin_reason: str | None = None
     next_open: datetime.datetime | None = None  # the time the gap figures are valued at
-    gap_pct: Decimal | None = None  # the gap size in force (``adjustments.carry_gap_percent``); None = not read
+    gap_pct: Decimal | None = None  # the gap size in force (``other.carry_gap_percent``); None = not read
 
 
 @dataclass(frozen=True)

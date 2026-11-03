@@ -1,7 +1,7 @@
 """GC-IC1 step 10 fixes (W-205 AC-2, W-211 AC-4), pure, no DB.
 
 1. ``adjustment_check.resolve``: ``draft`` is a property of SYSTEM playbooks only (REQ-158 AC-2).
-2. The carry check's gap figure is read from the settings registry (``adjustments.carry_gap_percent``), never typed
+2. The carry check's gap figure is read from the settings registry (``other.carry_gap_percent``), never typed
    in code (REQ-167 AC-1/AC-4, ADR-222 (1)); a missing value fails closed with a named reason, never a default."""
 from __future__ import annotations
 
@@ -45,12 +45,12 @@ def test_draft_is_a_property_of_system_playbooks_only(monkeypatch, is_system, st
 
 
 def test_carry_gap_follows_a_changed_setting_with_no_restart():
-    assert "adjustments.carry_gap_percent" in registry()
+    assert "other.carry_gap_percent" in registry()
     values = defaults()
     assert settings_calc.carry_gap_percent(values) == D("2")
     spot = D("24000")
     assert carry.gap_levels(spot, D("2")) == (D("24480.00"), D("23520.00"))
-    three = settings_calc.carry_gap_percent({**values, "adjustments.carry_gap_percent": D("3")})
+    three = settings_calc.carry_gap_percent({**values, "other.carry_gap_percent": D("3")})
     assert carry.gap_levels(spot, three) == (D("24720.00"), D("23280.00"))
 
 
