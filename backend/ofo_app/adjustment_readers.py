@@ -382,7 +382,8 @@ def conservative_iv(model_greeks: Mapping[str, Any]) -> Decimal | None:
     return max((g.iv for g in model_greeks.values()), default=None)
 
 
-def reach_model(quotes: Mapping[str, Any], spot_q: Any, expiry: datetime.date, now: datetime.datetime, ctx: Any,
+def reach_model(quotes: Mapping[str, Any], spot_q: Any, expiry: datetime.date,  # noqa: PLR0913 - one read's parts
+                now: datetime.datetime, ctx: Any,
                 model_greeks: Mapping[str, Any]) -> ReachModel | None:
     """The expiry's ``ReachModel`` from the SAME frozen read as its chain model. None (no reach: today's behaviour)
     when no IV was solved, the spot is refused or the forward is unavailable."""
@@ -398,7 +399,7 @@ def reach_model(quotes: Mapping[str, Any], spot_q: Any, expiry: datetime.date, n
         return None
 
 
-def delta_reach_ids(rows: Iterable[ChainRow], ids: Mapping[str, str], position: Position,  # noqa: C901
+def delta_reach_ids(rows: Iterable[ChainRow], ids: Mapping[str, str], position: Position,
                     models: Mapping[datetime.date, ReachModel], target: Decimal) -> list[str]:
     """Every strike a delta-based roll can land on (GC-IC1 round 5): for each short, on each expiry with a model that is
     not before its own (the position's and the next, A-04), the listed strikes walked outward from the short to ONE
@@ -425,7 +426,8 @@ def delta_reach_ids(rows: Iterable[ChainRow], ids: Mapping[str, str], position: 
                     reach = walk[:min(i + 2, REACH_MAX_STRIKES)]  # one past the first fit
                     break
             strikes = list(reach) + ([k + width for k in reach] if width is not None else [])
-            out += [i for k in strikes if (sym := by_strike.get(k)) is not None and (i := ids.get(sym)) is not None]
+            out += [iid for k in strikes if (sym := by_strike.get(k)) is not None
+                    and (iid := ids.get(sym)) is not None]
     return list(dict.fromkeys(out))
 
 

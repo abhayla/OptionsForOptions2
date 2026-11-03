@@ -514,7 +514,7 @@ def _reach_case(monkeypatch, target: str):
     return sc, feed, ctx, cfg
 
 
-def _second_pass(sc, ctx, cfg, ids_of, approaches):  # noqa: PLR0913
+def _second_pass(sc, ctx, cfg, ids_of, approaches):
     """The route's order: first read, build, the second-pass ids (``ids_of``), ONE more read, build again."""
     tracked = tracked_of(sc)
     spot = D(sc["market"]["spot"])
