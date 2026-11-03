@@ -1239,6 +1239,11 @@ _TRIGGER_TEMPLATES: tuple[MessageTemplate, ...] = (
     # GC-IC1 1b: the carry check's 2% gap figures need the spot and every option leg's implied volatility
     _trig("carry_gap_unknown", 506, "The profit or loss if the market opens 2% higher or lower cannot be estimated: "
           "the spot or a leg's implied volatility is not available."),
+    # GC-IC1 6a (ADR-240 (3)): S-02 needs every open leg's delta; S-12 needs the day the strategy was entered
+    _trig("missing_leg_delta", 507, "A leg's delta is not available, so the position's net delta per lot cannot be "
+          "worked out."),
+    _trig("missing_entry_day", 508, "The day this strategy was entered is not known, so the big win on the first "
+          "day cannot be checked."),
     _gate("adjust_trigger_already_true", _UI, 152, "Already true when tracking started.",
           "It is shown, not flagged, until a check finds it false.", "Nothing.",
           "Watch it: it flags if it clears and then comes back.", {}),

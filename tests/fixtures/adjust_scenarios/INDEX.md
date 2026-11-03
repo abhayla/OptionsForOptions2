@@ -36,6 +36,10 @@ derived by hand-written code; the test cross-checks them with the engine.
 | ADJ-53 | IC weekly, NIFTY 2 lots | Friday 15:00 before the weekend: the carry check fires (overnight margin, 2% gap) | Middle (weekly, 4 d) | none |
 | ADJ-54 | IC weekly, NIFTY 2 lots | Wednesday 15:00, Thursday a normal session: no carry check | Early (weekly, 6 d) | none |
 | ADJ-55 | IC weekly, NIFTY 2 lots | Monday 15:00 before the Diwali-Balipratipada holiday (Tue 10 Nov): carry check fires | Last day (weekly, 0 d) | T-07, T-09, T-10b |
+| ADJ-56 | IC weekly, NIFTY 2 lots | Trending day: net delta per lot beyond 0.15, the playbook's rolls offered | Middle (weekly, 3 d) | T-01, T-03, T-09 |
+| ADJ-57 | IC weekly, NIFTY 2 lots | Calm day: net delta per lot under 0.15, the trending-day rule reads false | Early (weekly, 6 d) | none |
+| ADJ-58 | IC weekly, NIFTY 2 lots | Big win on the entry day: profit at least 40% of max profit, take profit offered | Early (weekly, 6 d) | T-11 |
+| ADJ-59 | IC weekly, NIFTY 2 lots | Big win the next session: the day-1 rule gives no reading | Early (weekly, 5 d) | T-11, T-07 |
 | ADJ-50 | IC weekly, NIFTY 2 lots | Liquidity limits (ADR-230 (1), F-78): one thin strike, the 23,100 CE with open interest 500 | Early (weekly, 6 d) | none |
 | ADJ-21 | IC monthly, SENSEX 2 lots | SENSEX monthly, 20 days, calm | Early (monthly, 20 d) | none |
 | ADJ-22 | IC monthly, SENSEX 2 lots | SENSEX monthly, last 2 days stage | Last 2 days (monthly, 1 d) | T-01, T-09 |
