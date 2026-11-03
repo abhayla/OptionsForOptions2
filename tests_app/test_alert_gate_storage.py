@@ -277,6 +277,7 @@ async def test_gate_rows_none_rows_and_restore(db):
     last = {r.rule_id: r for r in got.last}
     assert (last["T-03"].threshold, last["T-03"].dismissed, last["T-03"].open) == (D("0.40"), True, False)
     assert (last["T-01"].threshold, last["T-01"].dismissed, last["T-01"].open) == (D("0.5"), False, True)
+    assert last["T-03"].id == second.id  # #639 item 2: the worker's dismiss matches this record id
     assert (await pb.gate_rows(db, user, sid, today + datetime.timedelta(days=1))).opened_today == 0
     spec = ag.RuleSpec("T-03", "ge", (D("0.35"), D("0.40")))
     state = ag.restore(got, today, {"T-03": spec})
