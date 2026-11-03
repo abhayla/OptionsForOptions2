@@ -229,7 +229,7 @@ async def adjustment_check(  # noqa: PLR0913 - FastAPI dependencies, one per inp
         "strategy_id": strategy_id, "strategy_type": stype,
         "type_name": None if stype is None else render_explanation("adjust_check_type_name", name=SHOWN_NAMES[stype]),
         "playbook": {"source": resolved.source, "id": resolved.playbook_id, "status": resolved.status,
-                     "draft": resolved.status == "draft"},
+                     "draft": resolved.draft},
         "stage": {"name": None, "index": None}, "withheld": None, "results": []}
     reply["paused"] = await pause_in_force(db, user_ref, strategy_id, market.now)
     if resolved.body is None or reply["paused"] is not None:  # A-38: paused -> shown with its end, not evaluated

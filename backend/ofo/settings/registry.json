@@ -830,6 +830,18 @@
       "source": "ADR-222 (7), REQ-168 AC-1, AC-5; was ofo/adjustment/compare.py CURVE_RANGE"
     },
     {
+      "key": "other.carry_gap_percent",
+      "group": "Other",
+      "label": "Overnight gap size for the carry check",
+      "unit": "percent",
+      "type": "decimal",
+      "min": "0.1",
+      "max": "10",
+      "default": "2",
+      "what_it_changes": "How big a gap, in percent of the index level, the carry check assumes at the next session's open when it shows what a strategy would make or lose before a weekend or holiday (2 means a 2% gap up and a 2% gap down).",
+      "source": "ADR-222 (1), REQ-167 AC-1, AC-4; was ofo/adjustment/carry.py CARRY_GAP_PCT"
+    },
+    {
       "key": "adjustments.compare_steps",
       "group": "Adjustment defaults",
       "label": "Compare chart steps",

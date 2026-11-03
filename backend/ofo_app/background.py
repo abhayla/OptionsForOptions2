@@ -149,8 +149,8 @@ DEFAULT_MAX_PER_CYCLE: Final = 200  # strategies checked in one cycle; the rest 
 #: 1,000 strategies checked each second would add ~21.6 million entries in one market day)
 RECENT_KEPT: Final = 1000
 WAKE_SECONDS: Final = Decimal(1)  # ADR-233 (6): the longest the worker sleeps between cycles
-#: MERGE-SWAP: no settings key for the background margin refresh exists yet (searched ``ofo.settings`` for margin);
-#: when one lands, read it from the settings in force instead. One Kite basket read per strategy per 5 minutes.
+#: Internal refresh cadence, NOT a business number (no figure, threshold or wording a user sees depends on it; it only
+#: bounds Kite basket-margin reads to one per strategy per 5 minutes, so it stays in code by decision GC-IC1 step 10).
 MARGIN_REFRESH_S: Final = Decimal(300)
 MARGIN_STALE_S: Final = 2 * MARGIN_REFRESH_S  # an entry older than this is not used (a refresh that kept failing)
 REBUILD_SECONDS: Final = 30 # the monitor set is re-read this often, so a newly tracked strategy joins (AC-3: 60 s)
@@ -356,7 +356,8 @@ def market_inputs(watched: Watched, read: PriceRead, shared: FeedScope, now: dat
                 leg_ivs[sym] = iv
     return MarketInputs(tuple(rows), ids, None if fwd is None else fwd.forward, years, vol, feed, last, now,
                         expiry_kind_of(expiry, read.listed, read.futures, scenario_mode.current()), leg_greeks,
-                        fwd, leg_ivs, index_day_open(read.day, now))
+                        fwd, leg_ivs, index_day_open(read.day, now),
+                        carry_gap_pct=values.get(settings_calc.CARRY_GAP_PERCENT))  # absent -> no figures, named reason
 
 
 def background_state(watched: Watched, read: PriceRead, shared: FeedScope, now: datetime.datetime,  # noqa: PLR0913
