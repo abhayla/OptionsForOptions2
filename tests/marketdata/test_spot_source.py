@@ -11,6 +11,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
 
+from ofo.marketdata.health import HealthThresholds
 from ofo.marketdata.spot_source import (
     REASON_FUTURE,
     REASON_NO_PRICE,
@@ -147,3 +148,53 @@ def test_a_future_dated_rest_quote_or_last_close_is_refused_like_the_feed(slot: 
     readings = [future if i == slot else SourceReading(S.ABSENT) for i in range(3)]
     a = resolve_spot(*readings, now=NOW, windows=WINDOWS)
     assert a.value is None and a.reasons[slot] == (SOURCE_ORDER[slot], REASON_FUTURE)
+
+
+# GC-IC1 fix: one shared skew window (the health module's clock_skew_tolerance) for every stated source.
+def _td(**kw: float) -> datetime.timedelta:
+    return datetime.timedelta(**kw)
+
+
+def _only(slot: int, reading: SourceReading) -> list[SourceReading]:
+    return [reading if i == slot else SourceReading(S.ABSENT) for i in range(3)]
+
+
+@pytest.mark.parametrize("slot", [0, 1, 2], ids=["feed", "rest", "last_close"])
+def test_a_reading_1s_after_the_callers_clock_resolves(slot: int) -> None:
+    r = SourceReading(S.STATED, Decimal("23658.75"), NOW + _td(seconds=1))
+    a = resolve_spot(*_only(slot, r), now=NOW, windows=WINDOWS)
+    assert a.value == Decimal("23658.75") and a.source == SOURCE_ORDER[slot]
+
+
+@pytest.mark.parametrize("slot", [0, 1, 2], ids=["feed", "rest", "last_close"])
+def test_a_reading_exactly_at_the_skew_limit_resolves_and_beyond_is_refused(slot: int) -> None:
+    skew = HealthThresholds().clock_skew_tolerance
+    assert skew == _td(seconds=2)  # one constant, shared with the Execute gate (PR #427)
+    ok = SourceReading(S.STATED, Decimal("23100"), NOW + skew)
+    assert resolve_spot(*_only(slot, ok), now=NOW, windows=WINDOWS).available
+    for ahead in (_td(seconds=2.5), _td(seconds=2, microseconds=1)):
+        bad = SourceReading(S.STATED, Decimal("23100"), NOW + ahead)
+        a = resolve_spot(*_only(slot, bad), now=NOW, windows=WINDOWS)
+        assert a.value is None and a.reasons[slot] == (SOURCE_ORDER[slot], REASON_FUTURE)
+
+
+@pytest.mark.parametrize("slot", [0, 1, 2], ids=["feed", "rest", "last_close"])
+def test_a_reading_5h30_ahead_the_time_zone_error_shape_is_refused(slot: int) -> None:
+    bad = SourceReading(S.STATED, Decimal("23100"), NOW + _td(hours=5, minutes=30))
+    a = resolve_spot(*_only(slot, bad), now=NOW, windows=WINDOWS)
+    assert a.value is None and a.reasons[slot] == (SOURCE_ORDER[slot], REASON_FUTURE)
+
+
+def test_the_stale_rule_still_applies_to_old_feed_readings_and_a_skewed_one_is_fresh() -> None:
+    old = SourceReading(S.STATED, Decimal("23100"), NOW - FEED_STALE - _td(seconds=1))
+    a = resolve_spot(old, None, None, now=NOW, windows=WINDOWS)
+    assert a.reasons[0] == (SOURCE_FEED, REASON_STALE)
+    ahead = SourceReading(S.STATED, Decimal("23100"), NOW + _td(seconds=1.5))
+    assert resolve_spot(ahead, None, None, now=NOW, windows=WINDOWS).source == SOURCE_FEED
+
+
+@pytest.mark.parametrize("slot", [0, 1, 2], ids=["feed", "rest", "last_close"])
+def test_naive_time_and_no_time_still_refused_with_skew(slot: int) -> None:
+    for at in (None, (NOW + _td(seconds=1)).replace(tzinfo=None)):
+        a = resolve_spot(*_only(slot, SourceReading(S.STATED, Decimal("1"), at)), now=NOW, windows=WINDOWS)
+        assert a.value is None and a.reasons[slot][1] == "no_time"
