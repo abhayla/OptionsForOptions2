@@ -68,8 +68,16 @@ def _push_spot(scn: scenario_mode.Scenario, spot: str, received: datetime.dateti
     scn.provider.on_frame(scenario_mode._frame([packet]), received)
 
 
+class _Draining(background.Worker):
+    """The real Worker with its writer queue written at the end of each cycle (#636 r4; no writer task here)."""
+
+    async def cycle(self) -> None:
+        await super().cycle()
+        await self.drain_writes()
+
+
 def _worker(scn: scenario_mode.Scenario, clock) -> background.Worker:
-    async def settings():
+    def settings(_at):  # the settings in force at the worker clock, from memory (#636 r4 settings cache seam)
         return registry_defaults()
 
     async def preferences(_user_ref):
@@ -77,9 +85,9 @@ def _worker(scn: scenario_mode.Scenario, clock) -> background.Worker:
 
     async def user_values(_user_ref):
         return registry_defaults()
-    return background.Worker(provider_for=lambda _owner: scn.provider,
-                             lister=lambda: background.owner_lister(scn.provider), clock=clock,
-                             settings=settings, preferences=preferences, user_values=user_values)
+    return _Draining(provider_for=lambda _owner: scn.provider,
+                     lister=lambda: background.owner_lister(scn.provider), clock=clock,
+                     settings=settings, preferences=preferences, user_values=user_values)
 
 
 async def _day_rows(engine, sid: int) -> list[tuple]:

@@ -3,7 +3,10 @@ screen open (REQ-165, REQ-115 AC-1..AC-5, REQ-166 AC-1..AC-3). Suggest-only (ADR
 reaches an order door (``tests_app/test_paper_order_door.py`` walks this module's imports).
 
 One cycle (``Worker.cycle``), each step with its answer state:
-1. The settings and speeds are read NOW (``calc_speeds.read_speeds``, every cycle) and the safety valve applied. The
+1. The settings and speeds are resolved NOW from memory (``settings_cache.SettingsCache.at`` at the worker clock, every
+   cycle; no database call: #636 r4; the cache polls ``count(*)`` of ``app_settings`` every
+   ``settings_cache.POLL_SECONDS`` on its own task, so a stored change is used within ``settings_cache.LAG_SECONDS``;
+   ``calc_speeds.read_speeds``) and the safety valve applied. The
    strategy list and each user's preferences are NOT read by a cycle: ``rebuild`` reads them on its own task every
    ``REBUILD_SECONDS`` (preferences once per user per rebuild); a cycle uses the last good list.
 2. Each monitored strategy, in rotation, at most ``max_per_cycle`` per cycle (the rest roll to the next cycle; B4 (a)),
@@ -45,6 +48,10 @@ One cycle (``Worker.cycle``), each step with its answer state:
 4. The playbook is evaluated (``playbook_eval.evaluate``, the rule memory last written for the strategy) and the
    rule memory is written (``record_check``: ``adjustment_check.evaluate_and_remember``) ONLY when it is needed: the
    first check of the process, or a check whose rule memory, flagged rules or clear rules differ from the last write.
+   The write itself leaves the check path (#636 r4): the check queues the latest state per strategy (a newer one
+   replaces it: coalesced) and ONE writer task writes it under the role's one database gate; rule memory is set only
+   after the write succeeded. A queued write of a strategy removed or re-planned at a rebuild is dropped (#636 r5);
+   the writer is watched (a dead writer is logged and restarted) and drained on stop.
 5. The alert gate (REQ-170, ADR-237 (6): the ONE writer of suggestion records). Each check feeds
    ``gate_readings.readings(evaluation)`` into ``alert_gate.step`` with the strategy's preset (``alert_presets.
    preset_for`` of ``style_for(expiry kind, days left, pin)``); every cycle (the ~1 s wake) also steps every gated
@@ -104,7 +111,7 @@ import enum
 import functools
 import logging
 import sys
-from collections.abc import Awaitable, Callable, Iterable, Mapping
+from collections.abc import Awaitable, Callable, Coroutine, Iterable, Mapping
 from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any, Final
@@ -132,7 +139,7 @@ from ofo.settings import calc as settings_calc
 from ofo.timeutil import IST
 
 from ofo_app import adjustment_check as check
-from ofo_app import calc_speeds, feed_bus, roles
+from ofo_app import calc_speeds, feed_bus, roles, settings_cache
 from ofo_app.routes.adjustment import MarketInputs
 
 log = logging.getLogger("ofo_app.background")
@@ -603,7 +610,8 @@ class DbGateStore:
 
 Lister = Callable[[], Awaitable[list[Watched]]]
 Recorder = Callable[[Watched, pe.StrategyState, Preferences], Awaitable[Any]]
-SettingsRead = Callable[[], Awaitable[Mapping[str, Decimal]]]  # every registry setting in force now (REQ-167)
+#: every registry setting in force at the worker clock, from MEMORY (``settings_cache.SettingsCache.at``; #636 r4)
+SettingsAt = Callable[[datetime.datetime], Mapping[str, Decimal]]
 PreferencesRead = Callable[[str], Awaitable[Preferences]]  # one user's preferences in force now (REQ-168)
 Observer = Callable[[Watched, pe.StrategyState], None]  # every state a check built (tests and status)
 UserValuesRead = Callable[[str], Awaitable[Mapping[str, Decimal]]]  # one user's preference values in force (REQ-168)
@@ -613,12 +621,14 @@ class Worker:
     """The background role's monitors and their cycle. Every seam is injected; ``main`` wires the real ones."""
 
     def __init__(self, *, provider_for: Callable[[str], Any], lister: Lister,  # noqa: PLR0913, PLR0915
-                 clock: Callable[[], datetime.datetime], settings: SettingsRead, preferences: PreferencesRead,
+                 clock: Callable[[], datetime.datetime], settings: SettingsAt, preferences: PreferencesRead,
                  recorder: Recorder = record_check,
                  cache: SharedCompute | None = None, max_per_cycle: int = DEFAULT_MAX_PER_CYCLE,
                  sleep: Callable[[float], Awaitable[None]] = asyncio.sleep, want_client: Any = None,
                  observe: Observer | None = None,
                  rebuild_sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+                 db_gate: asyncio.Lock | None = None,
+                 side_tasks: tuple[Callable[[], Coroutine[Any, Any, None]], ...] = (),
                  gate_store: Any = None, user_values: UserValuesRead | None = None,
                  margin_of: MarginOf | None = None) -> None:
         if max_per_cycle < 1:
@@ -662,6 +672,18 @@ class Worker:
         self._written: dict[int, tuple] = {}  # strategy -> ``_write_key`` of its last write
         self._grids: dict[tuple, tuple] = {}  # (id(provider), underlying, expiry) -> (provider, strike grid)
         self._outcomes: dict[str, int] = {}  # evaluation outcome (withheld / not checked reason) -> count this minute
+        #: the ONE database gate of the role: rebuild, writer and settings poll hold it, so the role opens at
+        #: most one connection at a time (ADR-048 limit 5 = API 2 + background 1 + feed 1); a check never takes it
+        self.db_gate = db_gate if db_gate is not None else asyncio.Lock()
+        self._side_tasks = side_tasks  # e.g. the settings cache's poll loop, started and stopped with ``run``
+        #: the writer queue (#636 r4 item 4): strategy -> the latest (watched, state, prefs) to write; a newer check
+        #: for the same strategy replaces its entry (coalesced: one write of the latest state)
+        self._pending: dict[int, tuple[Watched, pe.StrategyState, Preferences, pe.Evaluation]] = {}
+        self._write_wake = asyncio.Event()
+        self.writes_failed = 0
+        self.writes_dropped = 0  # queued writes dropped at a rebuild (#636 r5 finding 2)
+        self._writer: asyncio.Task | None = None  # the writer task, watched by ``_watch_writer`` (#636 r5 finding 3)
+        self.writer_restarts = 0
         # the alert gate (module docstring, step 5)
         self._gate_store = gate_store if gate_store is not None else DbGateStore()
         self._user_values_read = user_values  # None: the user's alert values are the admin values in force (named)
@@ -679,19 +701,39 @@ class Worker:
 
     async def rebuild(self) -> None:
         """REQ-115 AC-3: the monitors from the database (the lister); a strategy's memory stays in the store."""
-        monitors = await self._lister()
+        async with self.db_gate:
+            monitors = await self._lister()
+        before = {w.strategy_id: w.body for w in self.monitors}
+        for w in monitors:  # a changed plan is rechecked at the next cycle, with no price tick (#636 r4 item 3)
+            if w.strategy_id in before and before[w.strategy_id] != w.body:
+                self._signature.pop(w.strategy_id, None)
+                self._tick.pop(w.strategy_id, None)
+        self._drop_stale_writes(monitors)
         self.monitors = monitors
         self._rebuilt_at = self._clock()
         for user in dict.fromkeys(w.user_ref for w in monitors):  # once per user, never per check (finding 3)
             try:
-                self._prefs_of[user] = await self._preferences(user)
-                if self._user_values_read is not None:
-                    self._user_values[user] = await self._user_values_read(user)
+                async with self.db_gate:
+                    self._prefs_of[user] = await self._preferences(user)
+                    if self._user_values_read is not None:
+                        self._user_values[user] = await self._user_values_read(user)
             except Exception as exc:  # the last good read stays; none yet -> that user's strategies are paused
                 log.exception("background: reading the preferences of %s failed; keeping the last good read", user)
                 _keep_recent(self.errors, (0, type(exc).__name__))
         await self._load_gates(monitors)
         log.info("background: %s strategies monitored", len(monitors))
+
+    def _drop_stale_writes(self, monitors: list[Watched]) -> None:
+        """#636 r5 finding 2: a queued write whose strategy left the list (exited, deleted, no playbook) or whose plan
+        changed is dropped, never written: it was evaluated against a strategy or a ladder that no longer holds. A
+        re-planned strategy is checked again at the next cycle (its signature was forgotten above) and queues anew."""
+        body = {w.strategy_id: w.body for w in monitors}
+        stale = [sid for sid, item in self._pending.items() if body.get(sid, _GONE) != item[0].body]
+        for sid in stale:
+            self._pending.pop(sid, None)
+            self.writes_dropped += 1
+            log.info("background: the queued write of strategy %s was dropped (%s)", sid,
+                     "no longer listed" if sid not in body else "plan changed")
 
     async def _load_gates(self, monitors: list[Watched]) -> None:
         """Step 5's store read, on the rebuild task: per strategy the gate rows, today's held crossings and the pin.
@@ -707,7 +749,8 @@ class Worker:
         for w in monitors:
             sid = w.strategy_id
             try:
-                load = await self._gate_store.load(w, today)
+                async with self.db_gate:  # one connection for the role (#636 r4)
+                    load = await self._gate_store.load(w, today)
             except Exception as exc:  # contained: the last good read stays
                 log.exception("background: reading the alert gate of strategy %s failed", sid)
                 _keep_recent(self.errors, (sid, type(exc).__name__))
@@ -738,11 +781,12 @@ class Worker:
             log.exception("background: re-reading the strategy list failed; keeping the last list")
             _keep_recent(self.errors, (0, type(exc).__name__))
 
-    async def _settings_safely(self) -> Mapping[str, Decimal] | None:
-        """The settings in force, read ONCE per cycle (REQ-166 AC-1, REQ-167 AC-4: no restart for a change); a failed
-        read keeps the last good one, None when there is none yet (REQ-115 AC-9)."""
+    def _settings_safely(self, now: datetime.datetime) -> Mapping[str, Decimal] | None:
+        """The settings in force at ``now``, resolved ONCE per cycle from memory (no database call: #636 r4; a stored
+        change is used within ``settings_cache.LAG_SECONDS``, REQ-166 AC-1, REQ-167 AC-4); a failed resolve keeps the
+        last good one, None when there is none yet (the cycle then checks nothing, REQ-115 AC-9)."""
         try:
-            self._values = await self._settings()
+            self._values = self._settings(now)
         except Exception as exc:  # contained to this step
             log.exception("background: reading the settings in force failed; keeping the last good read")
             _keep_recent(self.errors, (0, type(exc).__name__))
@@ -1045,15 +1089,44 @@ class Worker:
             return ev  # nothing a write would change (rule memory, flagged ids, clear ids): no DB call
         self._memory.pop(sid, None)  # fail closed: until this write succeeds the stored state is unknown, so the
         self._written.pop(sid, None)  # next check writes (a raising recorder leaves both empty)
-        recorded = await self._recorder(w, state, prefs)
+        self._pending.pop(sid, None)  # re-inserted last: the latest state replaces an older one (coalesced)
+        self._pending[sid] = (w, state, prefs, ev)
+        self._write_wake.set()  # the writer task writes it; the check never waits for the database
+        return ev
+
+    async def _write_one(self, sid: int) -> None:
+        """One queued write, holding the database gate. Rule memory is set only after the write succeeded and only
+        when no newer state for the strategy was queued meanwhile (that one is written next). A raising recorder
+        leaves the memory unset and forgets the strategy's signature and tick, so its next cycle checks and queues
+        again (fail closed, no automatic retry of the same call)."""
+        item = self._pending[sid]
+        w, state, prefs, ev = item
+        try:
+            async with self.db_gate:
+                recorded = await self._recorder(w, state, prefs)
+        except Exception as exc:  # contained: the other strategies' writes go on
+            if self._pending.get(sid) is item:
+                del self._pending[sid]
+            log.exception("background: writing the check of strategy %s failed", sid)
+            _keep_recent(self.errors, (sid, type(exc).__name__))
+            self.writes_failed += 1
+            self.status[sid] = MonitoringStatus.PAUSED  # its last check is not stored: never shown as active
+            self.paused_reason[sid] = PriceState.CHECK_FAILED
+            self._signature.pop(sid, None)
+            self._tick.pop(sid, None)
+            return
+        newer = self._pending.get(sid) is not item  # a newer state queued meanwhile, or dropped at a rebuild
+        if not newer:
+            del self._pending[sid]
         if isinstance(recorded, Recorded):
             opened, ev = recorded.opened, recorded.evaluation
         else:
             opened = recorded
         self._log_opportunities(w, opened)
+        if newer:
+            return  # the memory stays unknown until the newer one is written (a dropped one: re-checked anew)
         self._memory[sid] = dict(ev.memory)
         self._written[sid] = _write_key(ev)
-        return ev
 
     async def _evaluate_and_gate(self, w: Watched, now: datetime.datetime, state: pe.StrategyState,
                                  prefs: Preferences, style_in: tuple[str | None, Mapping[str, Decimal]]) -> bool:
@@ -1091,7 +1164,8 @@ class Worker:
             self._gate[sid] = state  # kept even when the step below fails to write
         new, events = alert_gate.step(state, now=now, preset=preset, readings=readings)
         if events:
-            opened = await self._gate_store.apply(w, events, self._gate_ctx.get(sid))
+            async with self.db_gate:  # events only (never in steady state); one connection for the role (#636 r4)
+                opened = await self._gate_store.apply(w, events, self._gate_ctx.get(sid))
             self._log_opportunities(w, opened)
             # the gate's record carries its stored id, so a later dismiss matches by record (#639 item 2)
             for rid, rec_id in (opened.items() if isinstance(opened, Mapping) else ()):
@@ -1127,6 +1201,50 @@ class Worker:
             except Exception as exc:  # REQ-115 AC-9: contained to this strategy, retried next wake
                 log.exception("background: strategy %s alert close failed", sid)
                 _keep_recent(self.errors, (sid, type(exc).__name__))
+
+    async def drain_writes(self) -> None:
+        """Write every queued state, oldest strategy first (the writer task; tests call it after a cycle)."""
+        while self._pending:
+            await self._write_one(next(iter(self._pending)))
+
+    async def _writer_loop(self) -> None:
+        """The ONE writer, on its own task: wakes when a check queues a state."""
+        while not self._stop:
+            await self._write_wake.wait()
+            self._write_wake.clear()
+            await self.drain_writes()
+
+    def _watch_writer(self) -> None:
+        """#636 r5 finding 3, every cycle: the writer task is started, and a writer that ended (it raised, or returned
+        while the role runs) is logged by name with its error and restarted; a write it held stays queued and is
+        written by the new writer. Answer states: alive -> nothing; died -> logged + restarted (``writer_restarts``);
+        stopping -> never restarted (``run`` drains what is queued instead)."""
+        if self._stop:
+            return
+        task = self._writer
+        if task is not None and not task.done():
+            return
+        if task is not None:
+            why = "cancelled" if task.cancelled() else repr(task.exception())
+            self.writer_restarts += 1
+            log.error("background: the writer task (background-writer) ended (%s); restarted, %s writes queued",
+                      why, len(self._pending))
+            _keep_recent(self.errors, (0, "writer_restarted"))
+        self._writer = asyncio.create_task(self._writer_loop(), name="background-writer")
+        if self._pending:
+            self._write_wake.set()
+
+    async def _drain_on_stop(self) -> None:
+        """A normal stop writes what is queued; one failing write is logged and dropped, never blocks the stop."""
+        while self._pending:
+            sid = next(iter(self._pending))
+            item = self._pending[sid]
+            try:
+                await self._write_one(sid)
+            except Exception:  # contained: the rest still drains
+                log.exception("background: the queued write of strategy %s failed at stop", sid)
+                if self._pending.get(sid) is item:
+                    del self._pending[sid]
 
     def _count_outcomes(self, ev: pe.Evaluation) -> None:
         """Item g: why rules gave no flag this minute (withheld / not checked with the reason code), and flags."""
@@ -1179,7 +1297,7 @@ class Worker:
         self._cycles += 1
         if not self._rebuild_tried:  # the first list only; every later re-read runs on its own task (``run``)
             await self._rebuild_safely()
-        await self._settings_safely()  # ONE settings read per cycle: speeds, valve steps, rate, forward, windows
+        self._settings_safely(now)  # ONE resolve per cycle, from memory: speeds, valve, rate, forward, windows
         await self._write_wants(now)  # not behind the speed: the feed is wanted whatever the checks do
         every = self._speed_safely()  # read on EVERY cycle (REQ-166 AC-1)
         if every is None:
@@ -1214,9 +1332,12 @@ class Worker:
         if not self._rebuild_tried:
             await self._rebuild_safely()
         rebuilder = asyncio.create_task(self._rebuild_loop(), name="background-rebuild")
+        self._watch_writer()
+        others = [asyncio.create_task(t(), name=f"background-side-{i}") for i, t in enumerate(self._side_tasks)]
         margins = asyncio.create_task(self._margin_loop(), name="background-margin")
         try:
             while not self._stop:
+                self._watch_writer()
                 try:
                     await self.cycle()
                 except Exception as exc:  # one cycle's failure never ends the role (CancelledError is not one)
@@ -1230,6 +1351,13 @@ class Worker:
         finally:
             rebuilder.cancel()
             margins.cancel()
+            for t in others:
+                t.cancel()
+            if self._writer is not None:
+                self._writer.cancel()  # a write it held stays queued (``_write_one``) and is drained below
+                await asyncio.gather(self._writer, return_exceptions=True)
+                self._writer = None
+        await self._drain_on_stop()  # a normal stop writes what was queued (a cancellation does not get here)
         self.flush_minute()
 
     async def refresh_margins(self) -> None:
@@ -1252,6 +1380,8 @@ def _keep_recent(kept: list, item: object) -> None:
     if len(kept) > RECENT_KEPT:
         del kept[:-RECENT_KEPT]
 
+
+_GONE = object()  # a strategy no longer listed (``_drop_stale_writes``)
 
 #: Review round 2, finding 4: how many exited strategies' lapse writes failed in this process (each logged once).
 LISTER_LAPSE_FAILURES: dict[int, int] = {}
@@ -1281,26 +1411,31 @@ async def owner_lister(provider: Any) -> list[Watched]:
     from ofo_app.db import get_sessionmaker  # noqa: PLC0415
     from ofo_app.live_market import OWNER_REF  # noqa: PLC0415
     out: list[Watched] = []
+    # one session at a time (#636 r4 connection budget): ``read_tracked`` opens its own session, so the list's session
+    # is closed before it and the playbook lookup gets a fresh one after it (never two connections held at once)
     async with get_sessionmaker()() as db:
-        for s in await strategy_store.list_strategies(db, OWNER_REF):
-            try:
-                tracked = await read_tracked(s.id, None)
-                if tracked is None:
-                    continue
-                spot = provider.underlying_quote(tracked.position.underlying)
-                stype = check.strategy_type(tracked.position, None if spot is None else spot.ltp,
-                                            provider.instrument_master())
+        strategies = await strategy_store.list_strategies(db, OWNER_REF)
+    for s in strategies:
+        try:
+            tracked = await read_tracked(s.id, None)
+            if tracked is None:
+                continue
+            spot = provider.underlying_quote(tracked.position.underlying)
+            stype = check.strategy_type(tracked.position, None if spot is None else spot.ltp,
+                                        provider.instrument_master())
+            async with get_sessionmaker()() as db:
                 resolved = await check.resolve(db, OWNER_REF, s.id, stype)
-            except TrackedExited:  # every leg exited: its open records lapse (REQ-112 AC-2; one writer, ADR-237 (6))
+        except TrackedExited:  # every leg exited: its open records lapse (REQ-112 AC-2; one writer, ADR-237 (6))
+            async with get_sessionmaker()() as db:  # one session at a time (#636 r4 connection budget)
                 await _lapse_exited(db, OWNER_REF, s.id)
-                continue
-            except TrackedUnreadable:
-                continue
-            except Exception:  # REQ-115 AC-9: one strategy's lookup failing never drops the others from the list
-                log.exception("background: listing strategy %s failed; it is skipped", s.id)
-                continue
-            if resolved.body is not None:
-                out.append(Watched(OWNER_REF, s.id, tracked, resolved.body, resolved.is_system, OWNER_REF))
+            continue
+        except TrackedUnreadable:
+            continue
+        except Exception:  # REQ-115 AC-9: one strategy's lookup failing never drops the others from the list
+            log.exception("background: listing strategy %s failed; it is skipped", s.id)
+            continue
+        if resolved.body is not None:
+            out.append(Watched(OWNER_REF, s.id, tracked, resolved.body, resolved.is_system, OWNER_REF))
     return out
 
 
@@ -1313,7 +1448,6 @@ async def _serve() -> int:  # pragma: no cover - the process wiring; each part i
     from ofo_app.db import get_engine, get_sessionmaker  # noqa: PLC0415
     from ofo_app.feed_bus import BusSocket  # noqa: PLC0415
     from ofo_app.live_market import OWNER_REF, KiteProvider, listed_for_kite  # noqa: PLC0415
-    from ofo_app.routes.outcome import get_settings_reader  # noqa: PLC0415
     async with get_engine().connect() as conn:
         catalogue = await load_catalogue(conn)
 
@@ -1342,9 +1476,13 @@ async def _serve() -> int:  # pragma: no cover - the process wiring; each part i
     from ofo_app.routes.adjustment import get_approach_margin  # noqa: PLC0415
     from ofo_app.routes.outcome import MarketContext  # noqa: PLC0415
     margin_ctx = MarketContext(provider, clock, defaults()[RISK_FREE_RATE], OWNER_REF)
+    gate = asyncio.Lock()  # the role's one database gate: rebuild, writer and settings poll share one connection
+    cache = settings_cache.SettingsCache(lambda: get_engine().connect(), gate=gate)
+    if not await cache.refresh():  # the first load; a failure leaves the worker refusing to check until a poll loads
+        log.error("background: the first settings load failed; no check runs until a poll loads them")
     worker = Worker(provider_for=lambda _owner: provider, lister=functools.partial(owner_lister, provider),
-                    clock=clock, settings=get_settings_reader(), preferences=preferences, want_client=bus,
-                    user_values=user_values,
+                    clock=clock, settings=cache.at, preferences=preferences, want_client=bus, db_gate=gate,
+                    side_tasks=(cache.poll_loop,), user_values=user_values,
                     margin_of=screen_margin_reader(get_approach_margin(margin_ctx, margin_source())))
     feed = asyncio.create_task(socket.run(), name="background-feed")
     try:
