@@ -284,6 +284,15 @@ def strike_window(grid: list[Decimal], atm: Decimal, each_side: int, max_each_si
     return tuple(grid[max(0, i - each_side): i + each_side + 1])
 
 
+def window_strikes(grid: list[Decimal], spot: Decimal | None, each_side: int) -> tuple[Decimal, ...]:
+    """THE one near-the-money strike window rule of the adjustment check (the screen's ``read_market`` and the
+    background worker both call it): ``each_side`` strikes either side of the grid strike nearest the live spot, with
+    that strike. Empty when there is no usable spot or no grid (no window: the legs alone are held as before)."""
+    if spot is None or not grid or each_side < 1 or not is_live_price(spot):
+        return ()
+    return strike_window(grid, atm_strike(grid, spot), each_side, each_side)
+
+
 def _spot_quote(ctx: MarketContext, underlying: str) -> NormalizedQuote | None:
     index_id = index_id_of(ctx, underlying)
     quote = None if index_id is None else ctx.provider.underlying_quote(underlying)

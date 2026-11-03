@@ -677,7 +677,7 @@ class Worker:
         forward and ATM IV are read from, ``adjustment_readers.read_market``): ``chain_push.strike_window`` around
         ``chain_push.atm_strike`` of the live spot, ``limits.chain_strikes_each_side`` (the chain screen's default)
         each side (finding 2). Empty when not known: no settings read yet, no live spot, the expiry not listed."""
-        from ofo_app.chain_push import atm_strike, strike_window  # noqa: PLC0415 - the screen's own window
+        from ofo_app.chain_push import window_strikes  # noqa: PLC0415 - the ONE window rule, shared with the screen
         if self._values is None:
             return set()
         provider = self._provider_for(w.feed_owner)
@@ -685,13 +685,9 @@ class Worker:
         position = w.tracked.position
         expiry = position.legs[0].expiry
         spot = provider.underlying_quote(position.underlying)
-        if spot is None or not is_live_price(spot.ltp):
-            return set()
         grid = self._grid_of(provider, options, position.underlying, expiry)
-        if not grid:
-            return set()
         each = settings_calc.chain_strikes_each_side(self._values)
-        window = strike_window(grid, atm_strike(grid, spot.ltp), each, each)
+        window = window_strikes(grid, None if spot is None else spot.ltp, each)
         return {t for k in window for side in ("CE", "PE")
                 if (t := options.get((position.underlying, expiry, k, side))) is not None}
 

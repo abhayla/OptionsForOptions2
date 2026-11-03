@@ -246,6 +246,19 @@ async def chain_quotes(provider: Any, underlying: str, expiry: datetime.date, le
             feed.fanout.unsubscribe(handle)
 
 
+def window_ids(listed: Iterable[Any], underlying: str, expiry: datetime.date, spot: Any, each_side: int) -> list[str]:
+    """The instrument ids of the near-the-money calls and puts of ``expiry`` (``chain_push.window_strikes``, the rule
+    the background worker also uses). Answer states: spot live -> the window; no spot / no live price / expiry not
+    listed -> [] (legs only, as before); a window strike without a contract -> skipped."""
+    from ofo_app.chain_push import window_strikes  # noqa: PLC0415 - chain_push imports the app layer
+    by_key = {(lc.contract.strike, lc.contract.instrument_type):
+              f"{lc.contract.exchange_segment}:{lc.contract.exchange_token}"
+              for lc in listed if lc.contract.name == underlying and lc.contract.expiry == expiry}
+    grid = sorted({k[0] for k in by_key if k[0] is not None})
+    window = window_strikes(grid, None if spot is None else spot.ltp, each_side)
+    return [i for k in window for side in ("CE", "PE") if (i := by_key.get((k, side))) is not None]
+
+
 def own_leg_ids(position: Position, listed: Iterable[Any]) -> list[str]:
     """The instrument ids of the position's legs (by trading symbol, the key the chain rows and the margin use)."""
     wanted = {x.tradingsymbol for x in position.legs}
@@ -266,8 +279,11 @@ async def read_market(tracked: Tracked, ctx: Any) -> MarketInputs:
     scn = _scenario()
     expiry_kind = _expiry_kind(provider, underlying, expiry, listed, scn)
     live = live_market.current_feed()  # F-92: the position's own legs are held for the read, like the paper book's
-    quotes = await chain_quotes(provider, underlying, expiry, own_leg_ids(position, listed), live)
     spot_q = provider.underlying_quote(underlying)
+    # REQ-165 AC-5 / REQ-155: the chain model needs near-the-money quotes for its forward, so the window is held too
+    # (GC-IC1: without a chain screen open for the expiry there was no forward, no Greeks, no ATM IV)
+    wanted = own_leg_ids(position, listed) + window_ids(listed, underlying, expiry, spot_q, ctx.chain_strikes_each_side)
+    quotes = await chain_quotes(provider, underlying, expiry, wanted, live)
     closed = market_state(ctx, now).closed
     model = chain_model(list(quotes.values()), spot_q, expiry, now, ctx.rate, ctx.forward_quality, market_closed=closed)
 
