@@ -3,10 +3,12 @@
 stale book / one side missing / ask below bid (crossed) / no LTP and no live book."""
 from __future__ import annotations
 
+import ast
 import datetime
 import inspect
 from decimal import Decimal as D
 
+import adjust_scenarios_gen as gen
 import pytest
 from ofo.adjustment import approaches
 from ofo.adjustment.approaches import ChainRow, planned_price
@@ -74,3 +76,15 @@ def test_one_rule_shared_with_iv_price() -> None:
     assert "live_book(" in inspect.getsource(approaches.planned_price)
     assert "DataHealth.AVAILABLE" not in inspect.getsource(approaches)
     assert "live_book(" in inspect.getsource(model.iv_price)
+
+
+def test_generator_price_copy_is_independent_of_the_builder() -> None:
+    """Attack 5: the scenario generator's ``hand_price`` is a hand copy; neither it nor the generator may import the
+    builder's price rule (``ofo.adjustment.approaches`` / ``ofo.engine.model``), or the two paths stop checking each
+    other."""
+    tree = ast.parse(inspect.getsource(gen))
+    imported = {n.module for n in ast.walk(tree) if isinstance(n, ast.ImportFrom) and n.module}
+    imported |= {a.name for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names}
+    assert not imported & {"ofo.adjustment.approaches", "ofo.engine.model", "ofo.engine"}, imported
+    src = inspect.getsource(gen.hand_price)
+    assert "planned_price" not in src and "live_book" not in src and "import" not in src
