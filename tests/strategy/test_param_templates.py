@@ -59,7 +59,7 @@ CASES = [
     ("R9 straddle 36 steps off ATM is not Straddle (Short)", NIFTY, [_leg(S, CE, "25000"), _leg(S, PE, "25000")],
      None, None, "short_straddle", "strikes do not fit"),
     ("R10 FUT + ITM short call is not a Covered Call", NIFTY, [_leg(B, FUT, None), _leg(S, CE, "22000")],
-     None, None, "covered_call", "outside its bounds"),
+     None, None, "covered_call", "sign constraint"),
     ("R11 condor with unequal wings is still an Iron Condor (ADR-186 (4))", NIFTY,
      [_leg(B, PE, "23000"), _leg(S, PE, "23100"), _leg(S, CE, "23300"), _leg(B, CE, "23450")],
      "iron_condor", {"p": 2, "q": 2, "w_put": 2, "w_call": 3}, None, None),
@@ -190,15 +190,15 @@ def test_mutation_sign_constraint_is_load_bearing():
     assert isinstance(match_shape(shape, [_without(csp, SignConstraint)]), MatchResult)
 
 
-def test_mutation_bounds_are_load_bearing():
-    """A 30-step-wide bull call spread is outside the width bound (max 20); widening the bound accepts it."""
+def test_bounds_limit_building_only_not_matching():
+    """GC-IC1: a 30-step-wide bull call spread (max 20) is still named a Bull Call Spread, but the builder's
+    bounds still refuse it (the earlier assertion that matching refused it was the defect)."""
     spread = BY_ID["bull_call_spread"]
     shape = template_shape(spread, {"k": 0, "w": 30})
-    assert isinstance(match_shape(shape, [spread]), Custom)
-    widened = dataclasses.replace(
-        spread, params=tuple(dataclasses.replace(p, max=40) if p.name == "w" else p for p in spread.params)
-    )
-    assert isinstance(match_shape(shape, [widened]), MatchResult)
+    result = match_shape(shape, [spread])
+    assert isinstance(result, MatchResult) and dict(result.params) == {"k": 0, "w": 30}
+    assert spread.violations({"k": 0, "w": 30})
+    assert not spread.violations({"k": 0, "w": 30}, matching=True)
 
 
 def test_resolve_overrides_fail_closed():
