@@ -353,6 +353,82 @@ def later_ids(listed: Iterable[Any], position: Position, spot: Decimal | None, l
             + roll_ids(listed, moved, spot, _roll_points()))
 
 
+#: GC-IC1 round 5: the most strikes the delta reach holds per short per expiry (the hold never grows without bound)
+REACH_MAX_STRIKES = 30
+
+
+@dataclasses.dataclass(frozen=True)
+class ReachModel:
+    """One expiry's model, used ONLY to choose which strikes the second pass holds (GC-IC1 round 5, second review):
+    the expiry's gated model (``ofo.engine.model.expiry_model``, the frozen read's spot and parity forward) at a
+    conservative IV. It never gives a price: a planned price is the quote's LTP, else its bid / ask mid (ADR-068 (1));
+    a model delta here only widens the hold."""
+
+    em: Any  # ofo.engine.model.ExpiryModel
+    vol: Decimal
+
+    def delta(self, kind: str, strike: Decimal) -> Decimal | None:
+        """The engine's per-unit delta of ``kind`` at ``strike`` (None: the engine refuses it, never a guess)."""
+        from ofo.engine.model import greeks  # noqa: PLC0415 - the engine owns the delta
+        try:
+            return greeks(self.em, Instrument(kind), strike, self.vol).greeks.delta
+        except (ValueError, ArithmeticError):
+            return None
+
+
+def conservative_iv(model_greeks: Mapping[str, Any]) -> Decimal | None:
+    """The HIGHEST implied volatility the frozen chain model solved for the expiry's quoted strikes: the widest delta
+    reach (a higher IV keeps a far strike's delta larger, so the walk goes further). None: no IV at all."""
+    return max((g.iv for g in model_greeks.values()), default=None)
+
+
+def reach_model(quotes: Mapping[str, Any], spot_q: Any, expiry: datetime.date, now: datetime.datetime, ctx: Any,
+                model_greeks: Mapping[str, Any]) -> ReachModel | None:
+    """The expiry's ``ReachModel`` from the SAME frozen read as its chain model. None (no reach: today's behaviour)
+    when no IV was solved, the spot is refused or the forward is unavailable."""
+    from ofo.engine.model import SpotRefused, expiry_model  # noqa: PLC0415
+    from ofo.scenario.spot import spot_reading  # noqa: PLC0415
+    vol = conservative_iv(model_greeks)
+    if vol is None:
+        return None
+    try:
+        fwd = parity_forward(list(quotes.values()), spot_q, expiry, now, ctx.rate, ctx.forward_quality)
+        return ReachModel(expiry_model(spot_reading(spot_q), fwd), vol)
+    except (SpotRefused, ForwardUnavailable, ValueError, ArithmeticError):
+        return None
+
+
+def delta_reach_ids(rows: Iterable[ChainRow], ids: Mapping[str, str], position: Position,  # noqa: C901
+                    models: Mapping[datetime.date, ReachModel], target: Decimal) -> list[str]:
+    """Every strike a delta-based roll can land on (GC-IC1 round 5): for each short, on each expiry with a model that is
+    not before its own (the position's and the next, A-04), the listed strikes walked outward from the short to ONE
+    past the first whose model |delta| is at or under ``target`` (none within ``REACH_MAX_STRIKES``: the capped walk,
+    so the builder refuses by name), plus the same strikes shifted by the wing width (where the wing lands). A strike
+    not listed (no row, or no instrument id) is skipped. No model -> nothing (today's behaviour)."""
+    rows = [r for r in rows if r.listed]
+    out: list[str] = []
+    for short in (x for x in position.legs if x.side == "SELL"):
+        up = short.type == "CE"
+        wings = [x.strike for x in position.legs if x.side == "BUY" and x.type == short.type
+                 and x.expiry == short.expiry and (x.strike > short.strike if up else x.strike < short.strike)]
+        width = ((min(wings) if up else max(wings)) - short.strike) if wings else None
+        for expiry, model in models.items():
+            if expiry < short.expiry:
+                continue
+            by_strike = {r.strike: r.tradingsymbol for r in rows if r.type == short.type and r.expiry == expiry}
+            walk = sorted((k for k in by_strike if (k > short.strike if up else k < short.strike)),
+                          key=lambda k: abs(k - short.strike))
+            reach = walk[:REACH_MAX_STRIKES]
+            for i, k in enumerate(reach):
+                d = model.delta(short.type, k)
+                if d is not None and abs(d) <= target:
+                    reach = walk[:min(i + 2, REACH_MAX_STRIKES)]  # one past the first fit
+                    break
+            strikes = list(reach) + ([k + width for k in reach] if width is not None else [])
+            out += [i for k in strikes if (sym := by_strike.get(k)) is not None and (i := ids.get(sym)) is not None]
+    return list(dict.fromkeys(out))
+
+
 def _roll_points() -> Mapping[str, Decimal]:
     """The roll range the hold covers: the registry's ``roll_points_without_delta`` defaults (REQ-168 AC-1). A user who
     set a longer distance gets a gap past it, which the roll refuses by name and the second pass holds (never a
@@ -401,9 +477,14 @@ async def read_market(tracked: Tracked, ctx: Any, *, extra_ids: Iterable[str] = 
                                              g.vega)
     rows, ids, leg_greeks = chain_rows(listed, expiry, quotes, model_greeks, scn)
     later_rows: tuple[ChainRow, ...] = ()
+    reach: dict[datetime.date, ReachModel] = {}  # GC-IC1 round 5: which strikes a second pass holds, never a price
+    if (rm := reach_model(quotes, spot_q, expiry, now, ctx, model.greeks)) is not None:
+        reach[expiry] = rm
     if later is not None:  # that expiry's OWN chain model (its forward, its time), from the same frozen read
         later_model = chain_model(list(frozen.later.values()), spot_q, later, now, ctx.rate, ctx.forward_quality,
                                   market_closed=closed)
+        if (rm := reach_model(frozen.later, spot_q, later, now, ctx, later_model.greeks)) is not None:
+            reach[later] = rm
 
         def later_greeks(iid: str, _q: Any) -> Greeks | None:
             g = later_model.greeks.get(iid)
@@ -428,7 +509,7 @@ async def read_market(tracked: Tracked, ctx: Any, *, extra_ids: Iterable[str] = 
             else SourceReading(SourceState.STATED, spot_q.ltp, spot_q.timestamp))
     return MarketInputs(tuple(rows) + later_rows, ids, forward, years, vol, feed,
                         read_last_close(spot_q, closed, scn, now), now, expiry_kind, leg_greeks, fwd_model, leg_ivs,
-                        index_day_open(frozen.day, now))
+                        index_day_open(frozen.day, now), reach)
 
 
 async def read_market_more(tracked: Tracked, ctx: Any, extra_ids: Iterable[str]) -> MarketInputs | None:

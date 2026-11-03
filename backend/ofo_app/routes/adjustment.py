@@ -120,6 +120,9 @@ class MarketInputs:
     #: GC-IC1 5b (T-13): the index's day open (``ofo.marketdata.day_open.DayOpen``), read in the SAME read as the index
     #: quote on both paths; None = not read (``state_of`` treats it as no day open)
     day_open: Any = None
+    #: GC-IC1 round 5: expiry -> ``adjustment_readers.ReachModel`` from the same frozen read (the position's expiry and
+    #: the next); used ONLY to choose the strikes the one second pass holds, never a price. Empty = no model
+    reach: Mapping[datetime.date, Any] = dataclasses.field(default_factory=dict)
 
 
 TrackedReader = Callable[[int, ChargeRates | None], Awaitable[Tracked | None]]
@@ -208,6 +211,21 @@ def unpriced_ids(built: Sequence[ApproachLegs | None], market: MarketInputs) -> 
             symbols += [x.tradingsymbol for x in b.after if x.tradingsymbol not in market.leg_greeks]
         out += [i for sym in symbols if sym is not None and (i := market.instrument_ids.get(sym)) is not None]
     return list(dict.fromkeys(out))
+
+
+def second_pass_ids(built: Sequence[ApproachLegs | None], market: MarketInputs, position: Position,
+                    cfg: Config) -> list[str]:
+    """The ids the ONE second pass holds (GC-IC1 round 5, second review): ``unpriced_ids`` UNION the delta reach of
+    every short (``adjustment_readers.delta_reach_ids`` over the first read's models), so a roll whose landing (or its
+    wing's) lies past the first hold is caught in that one pass, not one strike per pass. Nothing unpriced -> []
+    (no second pass, as before); no model or no target for the expiry kind -> the unpriced ids only."""
+    extra = unpriced_ids(built, market)
+    target = cfg.target_short_delta.get(position.expiry_kind)
+    if not extra or not market.reach or target is None:
+        return extra
+    from ofo_app.adjustment_readers import delta_reach_ids  # noqa: PLC0415 - as above
+    reach = delta_reach_ids(market.chain, market.instrument_ids, position, market.reach, target)
+    return list(dict.fromkeys(extra + reach))
 
 
 def get_rest_spot_reader() -> RestSpotReader:
@@ -464,7 +482,7 @@ async def adjustment_approaches(  # noqa: PLR0913, PLR0915 - FastAPI dependencie
         before, limits, max_profit, answers = price_all(market)
         # GC-IC1 round 3: the landing strikes nobody held are held ONCE more and everything is built again; never a
         # third read, whatever is still unpriced after it (bounded: at most one more LEG_WAIT_S)
-        extra = unpriced_ids([b for _, (b, _) in answers], market)
+        extra = second_pass_ids([b for _, (b, _) in answers], market, position, prefs.approach)
         more = await more_reader(tracked, ctx, extra) if extra else None
         if more is not None:
             market = more
