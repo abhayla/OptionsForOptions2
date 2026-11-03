@@ -11,3 +11,5 @@ commands: "cd frontend && npx vitest run tests/adjust-compare.test.js"
 AdjustPayoffChart.vue draws one dataset per line with borderDash for Before; one legend button per line with aria-pressed toggles hiddenLines. Test :117 (Before dashed, own lines, hiding removes only that line) passed.
 
 Canvas pixels not inspected.
+
+Recorded by the orchestrator from the verifier's returned block.

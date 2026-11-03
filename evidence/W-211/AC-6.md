@@ -11,3 +11,5 @@ commands: "python -m pytest -q -p no:cacheprovider tests/test_settings_literal_g
 Passed. test_every_registry_key_has_a_reader scans backend/ and frontend/src for each key; test_no_old_literal_is_back_in_its_old_home checks old homes by name and exact literal, fails closed on unparsable files and checks retired env reads; self-tests prove it fails on a redefined constant, a renamed constant with the same literal, a key with no reader and an unresolvable source. Attack: the guard covers only modules in OLD_HOMES; CARRY_GAP_PCT, MARGIN_REFRESH_S and the timeutil hours sit outside it.
 
 Fits the AC wording (wired modules), not the broader ADR-222 (1).
+
+Recorded by the orchestrator from the verifier's returned block.

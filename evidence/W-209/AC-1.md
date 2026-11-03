@@ -11,3 +11,5 @@ commands: "cd frontend && npx vitest run tests/adjustment-opportunities.test.js;
 vitest 19 passed. _INBOX joins strategies on user_ref (paper and imported real strategies both included; paper flagged by EXISTS on paper_orders); inbox_body groups by strategy and group id, newest first, with the strategy name and shown_at; the page shows Time and Strategy columns. Attack: another user's rows are excluded by the user_ref predicate.
 
 DB proof owed: tests_app/test_adjustment_opportunities.py::test_adj02_worker_opens_three_records_the_screen_check_names_them_and_opens_none (read by name only).
+
+Recorded by the orchestrator from the verifier's returned block.

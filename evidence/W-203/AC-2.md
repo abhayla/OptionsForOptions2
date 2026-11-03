@@ -11,3 +11,5 @@ commands: "python -m pytest -q -p no:cacheprovider tests/adjustment/test_approac
 compare.py:83-92 ROWS covers all five groups with the move rows from the user's view; an import-time check ties ROWS to the catalogue labels (compare.py:101). Every number comes from whole_trade_after, Strategy.expiry_pnl_at and the charges calculator. Attack: no browser-side P&L (adjustCompare.js compares decimal texts only).
 
 Default move percents not re-checked.
+
+Recorded by the orchestrator from the verifier's returned block.

@@ -354,6 +354,76 @@
    "key": "UNRESOLVED REQ-136 W-160 AC-4",
    "reason": "unresolved: frontend-only AC - the evidence names Vitest/Playwright files, which the reach check does not read - #532",
    "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-156 W-203 AC-5",
+   "reason": "unresolved: evidence names no python test (vitest, code read or attack script; GC-IC1 step 10) - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-157 W-204 AC-1",
+   "reason": "unresolved: evidence names no python test (vitest, code read or attack script; GC-IC1 step 10) - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-157 W-204 AC-2",
+   "reason": "unresolved: evidence names no python test (vitest, code read or attack script; GC-IC1 step 10) - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-157 W-204 AC-3",
+   "reason": "unresolved: evidence names no python test (vitest, code read or attack script; GC-IC1 step 10) - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-157 W-204 AC-4",
+   "reason": "unresolved: evidence names no python test (vitest, code read or attack script; GC-IC1 step 10) - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-157 W-204 AC-5",
+   "reason": "unresolved: evidence names no python test (vitest, code read or attack script; GC-IC1 step 10) - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-160 W-207 AC-1",
+   "reason": "unresolved: evidence names no python test (vitest, code read or attack script; GC-IC1 step 10) - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-160 W-207 AC-2",
+   "reason": "unresolved: evidence names no python test (vitest, code read or attack script; GC-IC1 step 10) - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-162 W-209 AC-3",
+   "reason": "unresolved: evidence names no python test (vitest, code read or attack script; GC-IC1 step 10) - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-167 W-211 AC-6",
+   "reason": "unresolved: the named guard tests are repo scans that import no product module (GC-IC1 step 10) - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-168 W-212 AC-1",
+   "reason": "unresolved: evidence names no python test (vitest, code read or attack script; GC-IC1 step 10) - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-170 W-214 AC-3",
+   "reason": "unresolved: evidence names no python test (vitest, code read or attack script; GC-IC1 step 10) - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-170 W-214 AC-5",
+   "reason": "unresolved: evidence names no python test (vitest, code read or attack script; GC-IC1 step 10) - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-170 W-214 AC-6",
+   "reason": "unresolved: evidence names no python test (vitest, code read or attack script; GC-IC1 step 10) - #532",
+   "issue": "#532"
   }
  ]
 }

@@ -11,3 +11,5 @@ commands: "python -m pytest -q -p no:cacheprovider tests/engine/test_pop_paise_l
 test_ac4_f75_level_22771_372_becomes_22771_37_at_the_producer passes; rounding is half-even to 0.01; pop.py:60-66 turns NaN/Infinity vol, years or forward into a named Unavailable reason; the route's pop_block shows 'POP not available' with the reason (adjustment.py:273-283). Property test of non-round prices and charges passes.
 
 _to_decimal read by grep and docstring only.
+
+Recorded by the orchestrator from the verifier's returned block.

@@ -11,3 +11,5 @@ commands: "read backend/ofo_app/routes/adjustment_history.py; read backend/ofo/e
 Rows carry time, orders, cash, booked P&L, charges and the paper fill text. But the route builds HistoryOrder without rule_id and without fill (adjustment_history.py:211-216), so 'why it was made' is always 'Your own change' and the opportunity is never shown; the docstring (lines 17-18) says no suggestion link is stored. Every row is fixed to the 'paper' fill state, so no REQ-112 AC-3 fill state can appear.
 
 Fix at adjustment_history.py:211-216 (pass the suggestion rule_id and the fill state). DB proof owed: tests_app/test_adjustment_history.py::test_adj13_history_rows_and_totals_equal_the_domain_and_the_generator.
+
+Recorded by the orchestrator from the verifier's returned block.

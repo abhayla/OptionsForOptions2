@@ -11,3 +11,5 @@ commands: "git rev-parse HEAD (989623c9); python -m pytest -q -p no:cacheprovide
 232 passed. registry.json has 92 entries; the loader rejects a missing key, group, label, unit, type, range, default or what_it_changes, floats, duplicates and a default outside its range. The store reads the newest row with effective_from <= at via DISTINCT ON, else the default; migration 0032 has an append-only guard. Attack: a stored row the registry refuses raises SettingsError instead of silently using the default.
 
 DB proof owed: tests_app/test_settings_store.py.
+
+Recorded by the orchestrator from the verifier's returned block.

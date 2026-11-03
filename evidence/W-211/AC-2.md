@@ -11,3 +11,5 @@ commands: "read backend/ofo_app/routes/settings.py; read backend/ofo/settings/__
 vitest 21/21. GET /api/settings returns group, value in force, default, effective_from, set_by and earlier values (in force / scheduled / earlier); check_value gives the fraction hint for 6.5 on a fraction unit; reset writes a new row at the default with no delete route; back-dated times are refused; Charges comes from its own dated table with source_url. Attack: a JSON number instead of a string is refused (StrictStr).
 
 DB proof owed: tests_app/test_settings_route.py.
+
+Recorded by the orchestrator from the verifier's returned block.

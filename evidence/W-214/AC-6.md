@@ -11,3 +11,5 @@ commands: "read backend/ofo/adjustment/alert_presets.py; registry.json defaults 
 preset_for (alert_presets.py:94-105) takes re-arm only from admin settings and the cap as min(user, admin ceiling); candle, cool-down and quiet time from the user's values; USER_KEYS excludes re-arm and speed; check speed via speeds.background_check_seconds.<style>; user_preferences_store.py:176-179 refuses a cap above the ceiling; style from the pin, else days left and expiry kind. Registry defaults match the preset table.
 
 Frontend vitest not run; DB proof of the cap refusal owed.
+
+Recorded by the orchestrator from the verifier's returned block.

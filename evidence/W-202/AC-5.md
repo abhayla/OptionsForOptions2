@@ -11,3 +11,5 @@ commands: "python -m pytest -q -p no:cacheprovider tests/marketdata/test_spot_so
 resolve_spot tries feed, REST, last close, each labelled with source and time; a stale feed, a future tick, a non-finite value and a 200 with no price are refused with a reason. kite_http.py:40-48 allow-lists the index symbols. With no usable source the route returns before=None and a 'Spot not available' text naming each source's reason. Attack: zero/NaN prices and a skewed future time are refused (tests 142-201).
 
 Route-level reply covered only by tests_app/test_adjustment_approaches_route.py (not read).
+
+Recorded by the orchestrator from the verifier's returned block.

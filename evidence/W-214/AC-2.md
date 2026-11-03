@@ -11,3 +11,5 @@ commands: "python -I attack script (alert_gate.step); python -m pytest -q -p no:
 Band = rearm_fraction x |threshold| (alert_gate.py:189-196). T-07 at 80, intraday: a close of 72 lapses, 75 does not; a re-open after 72 once the 5 min cool-down passed gave a new record; cleared inside the cool-down gave nothing; cool-down passed but only back to 75 gave nothing.
 
 Weekly/monthly margins read from registry defaults only.
+
+Recorded by the orchestrator from the verifier's returned block.

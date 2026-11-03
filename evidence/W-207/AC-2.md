@@ -11,3 +11,5 @@ commands: "read frontend/src/pages/AdjustmentsPage.vue:253-299; read backend/ofo
 pickPlaybook -> openPicked -> GET /playbooks/:id returns the full body (for a system playbook its current version's body); show() clones it into saved and work, which the steps and summary bind to; same for system and own playbooks. Attack: a failed read closes the editor and shows the server sentence instead of half-filled values.
 
 Code read only.
+
+Recorded by the orchestrator from the verifier's returned block.

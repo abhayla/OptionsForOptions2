@@ -11,3 +11,5 @@ commands: "read backend/ofo_app/routes/settings.py require_admin and write route
 All three write routes take Depends(require_admin) (single owner until sign-in, as the AC allows); add_setting inserts the row and an ADMIN_CHANGE_RECORDED audit event in one savepoint; the charges route also audits; no other module writes app_settings. Attack: a duplicate-time insert or an audit failure rolls back both.
 
 DB proof owed: tests_app/test_settings_route.py (ac3 tests).
+
+Recorded by the orchestrator from the verifier's returned block.

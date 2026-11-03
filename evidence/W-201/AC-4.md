@@ -11,3 +11,5 @@ commands: "read backend/ofo_app/alembic/versions/0031_adjustment_playbooks.py:23
 The close UPDATE appends one timeline entry with outcome and suggestion_id, only WHERE outcome='open'. The DB guard allows only open->dismissed|acted_on|lapsed and acted_on->completed|partly_completed, requires exactly one appended entry per change, keeps the timeline append-only and forbids DELETE. A second close gives suggestion_not_open (409). Attack: a double write is refused in code and in the guard.
 
 Later migrations (0036+) not re-read for guard changes. DB proof owed: tests_app/test_playbook_store.py, tests_app/test_adjustment_opportunities.py.
+
+Recorded by the orchestrator from the verifier's returned block.

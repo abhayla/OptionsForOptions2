@@ -11,3 +11,5 @@ commands: "read backend/ofo/engine/adjust_history.py; read backend/ofo_app/route
 The engine handles unconfirmed and failed rows correctly (booked None 'pending', left out of totals and of the position). The route never passes a non-paper fill state (no fill= argument, lines 211-216), so the path is unreachable from any screen; only unit tests exercise it. No imported-real history is wired.
 
 Domain right, wiring missing at adjustment_history.py:211-216. Paper iron condor paths do not hit this case.
+
+Recorded by the orchestrator from the verifier's returned block.

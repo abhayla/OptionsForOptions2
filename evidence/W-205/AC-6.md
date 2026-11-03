@@ -11,3 +11,5 @@ commands: "read backend/ofo_app/playbook_store.py:467-501; read backend/ofo_app/
 save_in_place, rename and delete on a system playbook raise system_playbook_save_in_place (409) before any write; the DB guard OF031 blocks UPDATE/DELETE of system rows by the app role; 'Save as new playbook' creates the user's own; 'Save changes' and 'Delete' are hidden for system playbooks. Attack: a PUT on a system id hits the store refusal and the row is unchanged.
 
 DB proof owed: tests_app/test_playbook_routes.py, tests_app/test_playbook_store.py.
+
+Recorded by the orchestrator from the verifier's returned block.

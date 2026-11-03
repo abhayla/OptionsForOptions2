@@ -11,3 +11,5 @@ commands: "python -m pytest -q -p no:cacheprovider tests/adjustment/test_system_
 143 passed. The seed has exactly 12 system rows (strangle, straddle, ic, ifly, credit, debit, longopt, longvol, calendar, ratio, dirfly, other), no intraday PB-02 type; TYPE_KEYS is pinned to the catalogue labels at import; the editor lists types from GET /playbooks/types.
 
 DB proof owed: tests_app/test_adjustment_check.py::test_seed_twelve_system_rows_ic_approved_t19_one_rest_draft_every_body_valid.
+
+Recorded by the orchestrator from the verifier's returned block.

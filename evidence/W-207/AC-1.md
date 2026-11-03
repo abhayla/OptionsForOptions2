@@ -11,3 +11,5 @@ commands: "read frontend/src/lib/playbookEditor.js:6-93; read frontend/src/pages
 STEPS holds the 7 steps in order (Expiry and stages, When to look, Approaches to show, Days and dates, Situations, Limits and guards, Test on my strategies); the 'This playbook in plain words' aside is computed from the live working copy, so it changes as values change. Attack: labels not loaded -> empty summary, no crash.
 
 Code read only; frontend/tests/adjustments-page.test.js not run.
+
+Recorded by the orchestrator from the verifier's returned block.

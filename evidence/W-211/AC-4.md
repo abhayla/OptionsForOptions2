@@ -11,3 +11,5 @@ commands: "python -m pytest -q -p no:cacheprovider -c pytest-app.ini tests_app/t
 81 passed. The cache polls every 2 s, LAG_SECONDS 5, measured; the cycle resolves settings from memory with no restart; a future-dated row applies at its time. Not proven: one test per wired setting (wiring files are DB-only, not run). Typed values on the iron condor path that are not settings: backend/ofo/adjustment/carry.py:29 CARRY_GAP_PCT = Decimal(2), backend/ofo_app/adjustment_check.py:76, backend/ofo_app/background.py:154 MARGIN_REFRESH_S = 300.
 
 Per-setting wiring DB proof owed: tests_app/test_settings_*_wiring.py, test_settings_tick_rate.py.
+
+Recorded by the orchestrator from the verifier's returned block.

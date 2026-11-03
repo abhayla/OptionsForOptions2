@@ -11,3 +11,5 @@ commands: "python -m pytest -q -p no:cacheprovider tests/adjustment/test_alert_g
 65 passed. A dismissed record sets 'cleared' on a safe-by-band close with no Lapsed event and reopens only when armed (cleared and cool-down passed). A None reading neither clears nor reopens (test_none_never_clears). A higher ladder level opens at once with worse='dismissed' ('Worse than the one you dismissed'). Attack: restore() marks all rules not-cleared, so after a restart it can only stay quiet longer.
 
 DB proof owed: tests_app/test_alert_gate_storage.py, tests_app/test_background_worker.py.
+
+Recorded by the orchestrator from the verifier's returned block.

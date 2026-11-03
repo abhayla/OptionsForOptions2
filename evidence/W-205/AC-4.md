@@ -11,3 +11,5 @@ commands: "read backend/ofo_app/playbook_store.py:499-518; read migration 0031:3
 The active table's PRIMARY KEY (user_ref, strategy_type) allows one active row per type; make_active upserts it; the FK to playbooks is ON DELETE CASCADE, so deleting the active playbook removes the row and active_for falls back to the system playbook; delete() returns active_now_system with playbook_system_active_again. Attack: a second active row is blocked by the PK.
 
 Exact message text not read. DB proof owed: tests_app/test_playbook_store.py, tests_app/test_playbook_routes.py.
+
+Recorded by the orchestrator from the verifier's returned block.
