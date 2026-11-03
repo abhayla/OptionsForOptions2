@@ -29,6 +29,7 @@ from decimal import Context, Decimal, DivisionByZero, Inexact, InvalidOperation,
 from typing import Final, Literal
 
 from ofo import market_calendar as mc
+from ofo.adjustment import level_watch
 from ofo.adjustment.approaches import KINDS, ExitInputs
 from ofo.adjustment.offered import offered_now
 from ofo.engine import adjust_ratios as ratios
@@ -120,6 +121,9 @@ class StrategyState:
     held: tuple[HeldLeg, ...] | None = None
     today: datetime.date | None = None  # the IST session date of this check (S-12); None = not known
     entry_day: datetime.date | None = None  # the IST date the strategy was entered (first order); None = not known
+    #: GC-IC1 4c (A-37, ADR-242): the user's active level watches, read on the rebuild with the gate load (never per
+    #: check); () = none set
+    watches: tuple[level_watch.LevelWatch, ...] = ()
 
 
 # ---- results ---------------------------------------------------------------------------------------------------------
@@ -663,6 +667,7 @@ def evaluate(body: Mapping, state: StrategyState, memory: Mapping[str, Mapping[s
     _add_day_rules(body, state, why, c.stage_name, (results, clear, values),
                    _t09_now(c))
     _add_situation_rules(body, state, why, c.stage_name, (results, clear, values))
+    _add_watch_rules(state, why, c.stage_name, (results, clear, values))
     return Evaluation(c.stage_name, c.stage, tuple(results), new, tuple(clear), why, values=tuple(values))
 
 
@@ -841,6 +846,32 @@ def _add_day_rules(body: Mapping, state: StrategyState, why: str | None, stage_n
         carry = state.carry if d.action == DAY_ACTION_CARRY_CHECK else None
         values.append(RuleValue(d.rule_id, d.rule_id, hit.value, hit.threshold, hit.cmp, hit.fired,
                                 yes_no=True, approaches=d.approaches, carry=carry))
+
+
+# ---- level watch (GC-IC1 step 4c; A-37, ADR-242) -----------------------------------------------------------------
+#: Each active watch is a yes/no rule ``watch.level.<direction>`` (``level_watch``): value = the spot, threshold = the
+#: level, ``ge`` (above) / ``le`` (below), exact and inclusive. It goes to the alert gate as a yes/no value, so the
+#: gate opens one record per episode. A withheld check (stale prices) or no spot -> NotChecked: no reading, never
+#: False. F-71 memory does not apply (the user set the level to be told when it is reached).
+WATCH_NO_SPOT: Final = f"{P}missing_spot"
+
+
+def _add_watch_rules(state: StrategyState, why: str | None, stage_name: str | None,
+                     out: tuple[list[Result], list[str], list[RuleValue]]) -> None:
+    results, clear, values = out
+    for w in state.watches:
+        rid = level_watch.rule_id(w.direction)
+        reached = None if why is not None else level_watch.answer(w, state.spot)
+        if reached is None or state.spot is None:
+            results.append(NotChecked(rid, rid, why or WATCH_NO_SPOT))
+            continue
+        cmp: Cmp = level_watch.CMP[w.direction]  # type: ignore[assignment]
+        hit = Hit(rid, state.spot, w.level, cmp, reached)
+        if reached:
+            results.append(Flag(rid, rid, stage_name, hit.value, hit.threshold, hit.cmp, (hit,)))
+        else:
+            clear.append(rid)
+        values.append(RuleValue(rid, rid, hit.value, hit.threshold, hit.cmp, reached, yes_no=True))
 
 
 # ---- carry check (GC-IC1 step 1b; REQ-159 AC-4, S-06) ------------------------------------------------------------

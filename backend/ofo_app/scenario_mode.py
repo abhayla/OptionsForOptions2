@@ -104,6 +104,8 @@ NON_ORDER_ROUTES: frozenset[tuple[str, str]] = frozenset({
     ("PUT", "/api/strategies/{strategy_id}/alert-style"),  # GC-ALERT1 4: pin a strategy's alert style (data, no order)
     ("PUT", "/api/strategies/{strategy_id}/monitoring-pause"),  # GC-IC1 4a A-38: pause adjustment checks (data)
     ("DELETE", "/api/strategies/{strategy_id}/monitoring-pause"),  # GC-IC1 4a A-38: clear the pause (data)
+    ("PUT", "/api/strategies/{strategy_id}/level-watch/{direction}"),  # GC-IC1 4c A-37: set a watch (data)
+    ("DELETE", "/api/strategies/{strategy_id}/level-watch/{direction}"),  # GC-IC1 4c A-37: clear a watch (data)
     ("POST", "/paper/alerts/read"),  # marks alerts read
     ("POST", "/api/strategies/planned-entry"),  # captures planned prices
     ("POST", "/api/strategies/load-template"),  # a ready-made shape into the builder

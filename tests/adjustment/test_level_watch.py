@@ -1,55 +1,84 @@
-"""A-37 (GC-IC1 step 4a): the level watch IS a REQ-041 rule (alert only, underlying level), evaluated by the one rule
-evaluator; refused with its reason when the level is not a number or there is no underlying price."""
+"""A-37 (GC-IC1 step 4c, ADR-242): a level watch is a yes/no rule ``watch.level.<direction>`` answered by the
+evaluator and read by ``gate_readings`` as a bool (the alert gate opens one record per episode). No spot or a
+withheld check -> no reading (never False). The rule id is Identifier-safe (no colon)."""
 from __future__ import annotations
 
-import datetime
+import re
 from decimal import Decimal as D
 
 import pytest
+from ofo.adjustment import alert_gate, gate_readings
 from ofo.adjustment import level_watch as lw
-from ofo.rules.conditions import Compare, Op
-from ofo.rules.inputs import DataHealth, InputName, Snapshot
-from ofo.rules.model import Outcome, Rule, RuleAction, RuleKind, evaluate
-from ofo.timeutil import IST
+from ofo.adjustment import playbook_eval as pe
+from ofo.strategy.settings_value import IDENTIFIER_PATTERN
 
-AT = datetime.datetime(2026, 11, 3, 10, 10, tzinfo=IST)
-
-
-def _snap(level: str | None, health: DataHealth = DataHealth.AVAILABLE) -> Snapshot:
-    values = {} if level is None else {InputName.UNDERLYING_LEVEL: D(level)}
-    return Snapshot(values, AT, health)
+ABOVE = lw.LevelWatch("above", D("23800"))
+BELOW = lw.LevelWatch("below", D("23000"))
 
 
-def test_a_level_above_the_spot_is_an_alert_only_rule_at_or_above():
-    rule = lw.watch("w-1", "23600", D("23420"))
-    assert isinstance(rule, Rule)
-    assert (rule.kind, rule.action) == (RuleKind.ADJUSTMENT, RuleAction.ALERT_ONLY)
-    assert rule.condition == Compare(InputName.UNDERLYING_LEVEL, Op.GTE, D("23600"))
-    assert evaluate(rule, _snap("23599.95")).outcome is Outcome.NOT_TRIGGERED
-    assert evaluate(rule, _snap("23600")).outcome is Outcome.TRIGGERED
+def test_every_watch_rule_id_matches_the_identifier_pattern():
+    for direction in lw.DIRECTIONS:
+        rid = lw.rule_id(direction)
+        assert re.fullmatch(IDENTIFIER_PATTERN, rid), rid
+        assert lw.is_rule_id(rid) and lw.direction_of(rid) == direction
+    assert lw.rule_id("above") == "watch.level.above"
 
 
-def test_a_level_below_the_spot_is_watched_at_or_below():
-    rule = lw.watch("w-2", " 23000.5 ", D("23420"))
-    assert rule.condition == Compare(InputName.UNDERLYING_LEVEL, Op.LTE, D("23000.5"))
-    assert evaluate(rule, _snap("23000")).outcome is Outcome.TRIGGERED
-
-
-def test_a_stale_level_cannot_be_evaluated_never_a_guess():
-    rule = lw.watch("w-3", "23600", D("23420"))
-    assert evaluate(rule, _snap("23700", DataHealth.STALE)).outcome is Outcome.CANNOT_EVALUATE
-    assert evaluate(rule, _snap(None)).outcome is Outcome.CANNOT_EVALUATE
-
-
-@pytest.mark.parametrize(("text", "spot", "reason"), [
-    ("abc", D("23420"), lw.Refusal.NOT_A_NUMBER),
-    ("", D("23420"), lw.Refusal.NOT_A_NUMBER),
-    ("NaN", D("23420"), lw.Refusal.NOT_A_NUMBER),
-    ("-5", D("23420"), lw.Refusal.NOT_A_NUMBER),
-    ("23600", None, lw.Refusal.NO_SPOT),
-    ("23420", D("23420"), lw.Refusal.AT_SPOT),
+@pytest.mark.parametrize(("watch", "spot", "want"), [
+    (ABOVE, "23790", False), (ABOVE, "23800", True), (ABOVE, "23805", True),
+    (BELOW, "23010", False), (BELOW, "23000", True), (BELOW, "22990", True),
 ])
-def test_a_refused_watch_names_its_reason(text, spot, reason):
+def test_the_answer_is_inclusive_and_follows_the_direction(watch, spot, want):
+    assert lw.answer(watch, D(spot)) is want
+
+
+def test_no_spot_is_no_answer_never_false():
+    assert lw.answer(ABOVE, None) is None
+
+
+@pytest.mark.parametrize("text", ["abc", "", "NaN", "Infinity", "0", "-5", None, 1.5, True])
+def test_a_level_that_is_not_a_number_above_zero_is_refused(text):
     with pytest.raises(lw.WatchRefused) as refused:
-        lw.watch("w-x", text, spot)
-    assert refused.value.reason is reason
+        lw.parse_level(text)
+    assert refused.value.reason is lw.Refusal.NOT_A_NUMBER
+
+
+def test_a_direction_other_than_above_or_below_is_refused():
+    with pytest.raises(lw.WatchRefused) as refused:
+        lw.parse_direction("sideways")
+    assert refused.value.reason is lw.Refusal.NOT_A_DIRECTION
+
+
+def _state(spot: str | None, fresh: bool | None = True, watches=(ABOVE,)) -> pe.StrategyState:
+    return pe.StrategyState("weekly", days_left=3, hhmm="10:10", spot=None if spot is None else D(spot),
+                            prices_fresh=fresh, watches=watches)
+
+
+def _body() -> dict:
+    from test_day_rules import _ic  # noqa: PLC0415 - the iron condor playbook body the day-rule tests use
+    return _ic()
+
+
+def _readings(state: pe.StrategyState):
+    return gate_readings.readings(pe.evaluate(_body(), state, gap_until="09:30"))
+
+
+def test_a_watch_reaches_the_gate_as_a_yes_no_reading():
+    rid = "watch.level.above"
+    assert _readings(_state("23790"))[rid] == (alert_gate.RuleSpec(rid, "bool", ()), False)
+    assert _readings(_state("23805"))[rid] == (alert_gate.RuleSpec(rid, "bool", ()), True)
+    assert _readings(_state("23800"))[rid][1] is True  # at the level: reached
+
+
+def test_a_watch_below_reads_its_own_direction():
+    got = _readings(_state("22990", watches=(BELOW,)))
+    assert got["watch.level.below"][1] is True and "watch.level.above" not in got
+
+
+def test_a_withheld_check_or_no_spot_gives_no_reading_never_false():
+    assert _readings(_state("23805", fresh=False))["watch.level.above"][1] is None
+    assert _readings(_state("23805", fresh=None))["watch.level.above"][1] is None
+
+
+def test_no_watch_set_adds_no_rule():
+    assert not any(lw.is_rule_id(r) for r in _readings(_state("23805", watches=())))

@@ -3698,5 +3698,13 @@
   "explanation:monitor_pause_shown": {
     "sha256": "a4c27244595649220211c01104b2ab87a95f6e16d4afc3696d05d4f2b45fb25a",
     "reviewed": "pending owner read"
+  },
+  "explanation:level_watch_refused_not_a_number": {
+    "sha256": "5e92d16620a549f60e19d2b749e0aa8b0ebbed48a2cf6989e6a124b2f09129b0",
+    "reviewed": "pending owner read"
+  },
+  "labels:level_watch": {
+    "sha256": "15846104109b0536944c179820cfa6b5e2d9085fd030e5b4f0a205ba825851c1",
+    "reviewed": "pending owner read"
   }
 }

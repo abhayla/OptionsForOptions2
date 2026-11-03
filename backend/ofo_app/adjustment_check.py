@@ -45,6 +45,7 @@ from collections.abc import Mapping
 from decimal import Decimal
 from typing import Any, Final
 
+from ofo.adjustment import level_watch
 from ofo.adjustment import playbook_eval as pe
 from ofo.adjustment.approaches import Config, ExitInputs, Position
 from ofo.adjustment.compare import Cheapest, Column, MarginRead, cheapest_approach
@@ -53,7 +54,7 @@ from ofo.adjustment.strategy_type import strike_gap_of, type_of
 from ofo.engine import adjust_money
 from ofo.engine.legs import Action, Instrument, Leg
 from ofo.engine.metrics import UNLIMITED
-from ofo.errors.explanations import PLAYBOOK_DAY_RULE_ACTION_TEXT, render_explanation
+from ofo.errors.explanations import LEVEL_WATCH_LABEL_TEXT, PLAYBOOK_DAY_RULE_ACTION_TEXT, render_explanation
 from ofo.marketdata.day_open import STATED
 from ofo.marketdata.spot_source import SourceState, SpotAnswer
 from ofo.timeutil import IST
@@ -380,6 +381,9 @@ def trigger_words(body: Mapping | None, trigger_id: str | None) -> tuple[str | N
     """(label, unit) of a trigger as the evaluated body holds them; (None, None) for a body or trigger without them.
     A day rule (GC-IC1 1a, ``day.<when>.<HHMM>.<n>``): its action's catalogue words and "%" (its value is a distance
     from spot in %)."""
+    watched = level_watch.direction_of(trigger_id)  # GC-IC1 4c (A-37): its words by direction; no unit
+    if watched is not None:
+        return LEVEL_WATCH_LABEL_TEXT[watched], None
     situation = pe.situation_of(body, trigger_id)  # GC-IC1 6a: S-02 / S-12 read as the playbook names them
     if situation is not None:
         name = situation.get("name")
