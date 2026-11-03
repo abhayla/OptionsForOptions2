@@ -12,6 +12,8 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
 
 from ofo.marketdata.health import HealthThresholds
+from ofo.marketdata.kite_provider import SOURCE
+from ofo.marketdata.quote import NormalizedQuote
 from ofo.marketdata.spot_source import (
     REASON_FUTURE,
     REASON_NO_PRICE,
@@ -24,8 +26,10 @@ from ofo.marketdata.spot_source import (
     SPOT_NOT_AVAILABLE,
     SourceReading,
     SourceState,
+    feed_reading,
     resolve_spot,
 )
+from ofo.rules.inputs import DataHealth
 from ofo.settings import calc, defaults
 from ofo.timeutil import IST
 
@@ -198,3 +202,57 @@ def test_naive_time_and_no_time_still_refused_with_skew(slot: int) -> None:
     for at in (None, (NOW + _td(seconds=1)).replace(tzinfo=None)):
         a = resolve_spot(*_only(slot, SourceReading(S.STATED, Decimal("1"), at)), now=NOW, windows=WINDOWS)
         assert a.value is None and a.reasons[slot][1] == "no_time"
+
+
+# ---- #639 item 1: ONE feed reading rule for the screen and the worker (connection-aware, never last-change age) ----
+def _index_quote(at: datetime.datetime, health=None):
+    return NormalizedQuote(
+        instrument_id="NSE_INDEX:256265", underlying="NIFTY", exchange="NSE", segment="NSE_INDEX", instrument_type=None,
+        expiry=None, strike=None, ltp=Decimal("23420.00"), bid=None, ask=None, volume=None, oi=None, oi_change=None,
+        iv=None, delta=None, gamma=None, theta=None, vega=None, timestamp=at, source=SOURCE,
+        health=health or DataHealth.AVAILABLE)
+
+
+QUIET = datetime.timedelta(seconds=10)  # a quiet index: last tick 10 s ago, longer than the 3 s feed window
+
+
+def test_feed_reading_quiet_index_on_a_live_feed_is_fresh():
+    reading = feed_reading(_index_quote(NOW - QUIET), NOW, feed_live=True)
+    assert reading == SourceReading(S.STATED, Decimal("23420.00"), NOW)
+    answer = resolve_spot(reading, None, None, now=NOW, windows=WINDOWS)
+    assert (answer.value, answer.source) == (Decimal("23420.00"), SOURCE_FEED)
+
+
+@pytest.mark.parametrize("why", ["feed_stale_or_disconnected_or_closed", "quote_stale", "no_tick_today"])
+def test_feed_reading_not_live_keeps_the_last_change_so_the_window_refuses_it(why):
+    at = NOW - QUIET
+    live, health = True, DataHealth.AVAILABLE
+    if why == "feed_stale_or_disconnected_or_closed":
+        live = False
+    elif why == "quote_stale":
+        health = DataHealth.STALE
+    else:
+        at = NOW - datetime.timedelta(days=1)  # yesterday's last tick, no tick yet today
+    reading = feed_reading(_index_quote(at, health), NOW, feed_live=live)
+    assert reading == SourceReading(S.STATED, Decimal("23420.00"), at)
+    assert resolve_spot(reading, None, None, now=NOW, windows=WINDOWS).reasons == ((SOURCE_FEED, REASON_STALE),
+                                                                                   (SOURCE_REST, "absent"),
+                                                                                   (SOURCE_LAST_CLOSE, "absent"))
+
+
+def test_feed_reading_rollover_day_is_ist_not_utc():
+    """Attack 2: 00:01 IST is still the previous UTC day; a tick at 23:59 IST the night before is NOT today."""
+    now = datetime.datetime(2026, 10, 30, 0, 1, tzinfo=IST)
+    before_midnight = datetime.datetime(2026, 10, 29, 23, 59, tzinfo=IST)
+    assert feed_reading(_index_quote(before_midnight), now, feed_live=True).at == before_midnight
+    after_utc_midnight = datetime.datetime(2026, 10, 30, 5, 29, tzinfo=IST)
+    later = datetime.datetime(2026, 10, 30, 5, 31, tzinfo=IST)
+    assert feed_reading(_index_quote(after_utc_midnight), later, feed_live=True).at == later
+
+
+def test_feed_reading_absent_and_future():
+    assert feed_reading(None, NOW, feed_live=True) == SourceReading(S.ABSENT)
+    ahead = NOW + datetime.timedelta(minutes=1)
+    reading = feed_reading(_index_quote(ahead), NOW, feed_live=True)
+    assert reading.at == ahead
+    assert resolve_spot(reading, None, None, now=NOW, windows=WINDOWS).reasons[0] == (SOURCE_FEED, REASON_FUTURE)

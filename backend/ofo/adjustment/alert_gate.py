@@ -110,6 +110,9 @@ class _Record:
     dismissed: bool = False
     final: bool = False  # lapsed / acted on / dismissed: no Lapsed event any more
     unleveled: bool = False  # restored with a stored threshold but no real ladder yet: levelled at the first real close
+    record_id: int | None = None  # the stored record's id (restored, or set after the open is written; #639 item 2)
+    #: the (cmp, ladder) its level was taken against; a close with another ladder re-levels it (ADR-237 (8))
+    ladder: tuple | None = None
 
 
 @dataclass(frozen=True)
@@ -118,6 +121,7 @@ class _Hold:
     level: int
     threshold: Decimal | None
     unleveled: bool = False  # as _Record.unleveled
+    ladder: tuple | None = None  # as _Record.ladder
 
 
 @dataclass(frozen=True)
@@ -216,16 +220,30 @@ def _unleveled(spec: RuleSpec | None, threshold: Decimal | None) -> bool:
     return threshold is not None and (spec is None or spec.cmp == "bool")
 
 
+def _ladder_key(spec: RuleSpec | None) -> tuple | None:
+    """What a level is relative to: the comparison and the ladder (None: no real ladder, a yes/no placeholder)."""
+    return None if spec is None or spec.cmp == "bool" else (spec.cmp, spec.ladder)
+
+
+def _stale(kept: _Record | _Hold, key: tuple) -> bool:
+    return kept.unleveled or (kept.ladder is not None and kept.ladder != key)
+
+
 def _leveled(rule: _Rule, spec: RuleSpec) -> _Rule:
-    """Level a restored record / hold against the first real (ge / le) ladder a close carries; the stored THRESHOLD
-    is kept, never replaced by the placeholder's. A yes/no close leaves it unlevelled (it cannot escalate a number)."""
-    if spec.cmp == "bool":
+    """Level a record / hold against the ladder this close carries, by the restore rule (``_restored_level``): a
+    restored one at the first real (ge / le) ladder, and ANY one whose ladder changed since it was levelled - a
+    playbook change or a STAGE change (days left, expiry kind) alike (ADR-237 (8)). The stored THRESHOLD is kept,
+    never replaced by the placeholder's. A yes/no close leaves it as it is (it cannot escalate a number)."""
+    key = _ladder_key(spec)
+    if key is None:
         return rule
     rec, hold = rule.record, rule.hold
-    if rec is not None and rec.unleveled:
-        rule = replace(rule, record=replace(rec, level=_restored_level(spec, rec.threshold), unleveled=False))
-    if hold is not None and hold.unleveled:
-        rule = replace(rule, hold=replace(hold, level=max(_restored_level(spec, hold.threshold), 0), unleveled=False))
+    if rec is not None and _stale(rec, key):
+        rule = replace(rule, record=replace(rec, level=_restored_level(spec, rec.threshold), unleveled=False,
+                                            ladder=key))
+    if hold is not None and _stale(hold, key):
+        rule = replace(rule, hold=replace(hold, level=max(_restored_level(spec, hold.threshold), 0), unleveled=False,
+                                          ladder=key))
     return rule
 
 
@@ -263,9 +281,9 @@ def _decide(  # noqa: PLR0913 - one close's inputs
     if reason is not None:
         if hold is not None and hold.reason == reason and level <= hold.level:
             return state.with_rule(rule_id, rule), []
-        rule = replace(rule, hold=_Hold(reason, level, threshold))
+        rule = replace(rule, hold=_Hold(reason, level, threshold, ladder=_ladder_key(spec)))
         return state.with_rule(rule_id, rule), [Held(rule_id, t, reason, value, level)]
-    rule = replace(rule, record=_Record(level, threshold, t), cleared=False, hold=None)
+    rule = replace(rule, record=_Record(level, threshold, t, ladder=_ladder_key(spec)), cleared=False, hold=None)
     state = replace(state.with_rule(rule_id, rule), opened_today=state.opened_today + 1)
     return state, [Opened(rule_id, t, level, threshold, value, worse)]
 
@@ -317,10 +335,13 @@ def pause(state: GateState, at: datetime) -> GateState:
     return replace(state, rules=rules, paused_at=latest)
 
 
-def dismiss(state: GateState, rule_id: str) -> GateState:
-    """ADR-236: mark the rule's last record dismissed; same-level re-opening still needs cleared + cool-down."""
+def dismiss(state: GateState, rule_id: str, record_id: int | None = None) -> GateState:
+    """ADR-236: mark the rule's last record dismissed; same-level re-opening still needs cleared + cool-down.
+    ``record_id`` (#639 item 2): only when the gate's record IS that stored record; a record opened after the dismissed
+    one was read (the rebuild's read window) is a different record and is left as it is. None = the rule's last record
+    (a caller with no stored ids)."""
     rule = state.rule(rule_id)
-    if rule.record is None:
+    if rule.record is None or (record_id is not None and rule.record.record_id != record_id):
         return state
     return state.with_rule(rule_id, replace(rule, record=replace(rule.record, dismissed=True)))
 
@@ -347,7 +368,8 @@ def restore(rows: GateRows, today: date, specs: Mapping[str, RuleSpec]) -> GateS
     for row in rows.last:
         spec = specs.get(row.rule_id)
         rec = _Record(_restored_level(spec, row.threshold), row.threshold, _ist(row.at),
-                      dismissed=row.dismissed, final=not row.open, unleveled=_unleveled(spec, row.threshold))
+                      dismissed=row.dismissed, final=not row.open, unleveled=_unleveled(spec, row.threshold),
+                      record_id=row.id, ladder=_ladder_key(spec))
         state = state.with_rule(row.rule_id, _Rule(record=rec))
     return state
 
@@ -360,8 +382,16 @@ def restore_held(state: GateState, rule_id: str, reason: str, threshold: Decimal
     if reason not in (HELD_DAILY_LIMIT, HELD_QUIET_TIME):
         raise ValueError(f"unknown held reason {reason!r}")
     level = max(_restored_level(spec, threshold), 0)
-    hold = _Hold(reason, level, threshold, unleveled=_unleveled(spec, threshold))
+    hold = _Hold(reason, level, threshold, unleveled=_unleveled(spec, threshold), ladder=_ladder_key(spec))
     return state.with_rule(rule_id, replace(state.rule(rule_id), hold=hold))
+
+
+def with_record_id(state: GateState, rule_id: str, record_id: int) -> GateState:
+    """The stored id of the rule's record the gate just opened (the store answers it after the write); pure."""
+    rule = state.rule(rule_id)
+    if rule.record is None:
+        return state
+    return state.with_rule(rule_id, replace(rule, record=replace(rule.record, record_id=record_id)))
 
 
 def is_dismissed(state: GateState, rule_id: str) -> bool | None:

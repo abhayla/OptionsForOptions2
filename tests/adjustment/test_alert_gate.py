@@ -317,3 +317,59 @@ def test_pause_keeps_the_latest_instant_and_needs_an_aware_time():
     assert state.paused_at == at("10:00:40")
     with pytest.raises(ValueError, match="timezone-aware"):
         ag.pause(state, datetime(2026, 11, 2, 10, 0))  # noqa: DTZ001 - the naive time the gate must refuse
+
+
+# #638 / attack 2: the daily cap resets on the IST day, never the UTC day (05:30 IST is midnight UTC)
+def _capped_at_one(day: date):
+    preset = replace(ag.INTRADAY, daily_cap=1, quiet_until=time(0, 0))
+    return preset, replace(ag.initial_state(), day=day, opened_today=1)
+
+
+def test_the_cap_resets_at_ist_midnight():
+    preset, state = _capped_at_one(DAY)
+    state, ev = ag.step(state, now=at("23:58:30"), preset=preset, readings={"T-07": (T07, D("81"))})
+    state, ev2 = ag.step(state, now=at("23:59:05"), preset=preset, readings={})
+    assert [e.reason for e in held(ev + ev2)] == ["daily_limit"] and opened(ev + ev2) == []
+    nxt = DAY + timedelta(days=1)
+    state, ev = ag.step(state, now=at("00:00:30", nxt), preset=preset, readings={"T-07": (T07, D("81"))})
+    state, ev2 = ag.step(state, now=at("00:01:05", nxt), preset=preset, readings={})
+    assert [(e.at, e.level) for e in opened(ev + ev2)] == [(at("00:01", nxt), 0)]
+    assert (state.day, state.opened_today) == (nxt, 1)
+
+
+def test_the_cap_does_not_reset_at_utc_midnight():
+    preset, state = _capped_at_one(DAY)
+    state, ev = ag.step(state, now=at("05:28:30"), preset=preset, readings={"T-07": (T07, D("81"))})
+    state, ev2 = ag.step(state, now=at("05:30:30"), preset=preset, readings={"T-07": (T07, D("81"))})
+    state, ev3 = ag.step(state, now=at("05:31:05"), preset=preset, readings={})
+    assert opened(ev + ev2 + ev3) == [] and [e.reason for e in held(ev + ev2 + ev3)] == ["daily_limit"]
+    assert (state.day, state.opened_today) == (DAY, 1)
+
+
+# #639 item 2: a dismiss matches the stored record, never the rule
+def test_a_dismiss_of_another_record_leaves_the_gate_record_alone():
+    state, _ = feed([("10:40:30", D("81")), ("10:41:05", D("81"))])
+    state = ag.with_record_id(state, "T-07", 42)
+    assert ag.is_dismissed(ag.dismiss(state, "T-07", 41), "T-07") is False  # an older record's dismiss
+    assert ag.is_dismissed(ag.dismiss(state, "T-07", 42), "T-07") is True
+
+
+# ADR-237 (8): a STAGE change (same playbook body, a new ladder) re-levels the open record like a playbook change
+T01_WEEKLY = ag.RuleSpec("T-01", "le", (D("0.5"), D("0.3")))
+T01_EXPIRY_DAY = ag.RuleSpec("T-01", "le", (D("0.3"),))
+
+
+def test_a_stage_change_re_levels_the_open_record_and_a_close_beyond_the_new_line_is_worse():
+    """Record at T-01 0.5 (weekly ladder level 0); the expiry-day stage's ladder is (0.3); a close at 0.256 is beyond
+    the new, stricter line -> one worse record at once (the stored 0.5 is less severe than the whole new ladder)."""
+    state, ev = feed([("10:40:30", D("0.45")), ("10:41:05", D("0.45"))], spec=T01_WEEKLY)
+    assert [(e.level, e.threshold) for e in opened(ev)] == [(0, D("0.5"))]
+    state, ev = feed([("10:41:30", D("0.256")), ("10:42:05", D("0.256"))], spec=T01_EXPIRY_DAY, state=state)
+    assert [(e.level, e.threshold, e.worse) for e in opened(ev)] == [(0, D("0.3"), "last")]
+
+
+def test_the_same_ladder_keeps_the_record_level_quiet():
+    """Control: no ladder change, the same close level as the record -> quiet."""
+    state, _ = feed([("10:40:30", D("0.45")), ("10:41:05", D("0.45"))], spec=T01_WEEKLY)
+    _, ev = feed([("10:41:30", D("0.45")), ("10:42:05", D("0.45"))], spec=T01_WEEKLY, state=state)
+    assert opened(ev) == []

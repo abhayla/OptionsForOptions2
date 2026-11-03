@@ -17,6 +17,9 @@ class GateRow:
     threshold: Decimal | None
     dismissed: bool
     open: bool
+    #: the stored record's id (#639 item 2: a dismiss read on the rebuild matches THIS record, never the rule); None =
+    #: not known (a caller without ids), and a dismiss without an id matches nothing in the worker
+    id: int | None = None
 
 
 @dataclass(frozen=True)
