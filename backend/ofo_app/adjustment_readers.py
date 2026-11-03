@@ -427,7 +427,8 @@ async def read_market(tracked: Tracked, ctx: Any, *, extra_ids: Iterable[str] = 
     feed = (SourceReading(SourceState.ABSENT) if spot_q is None
             else SourceReading(SourceState.STATED, spot_q.ltp, spot_q.timestamp))
     return MarketInputs(tuple(rows) + later_rows, ids, forward, years, vol, feed,
-                        read_last_close(spot_q, closed, scn, now), now, expiry_kind, leg_greeks, fwd_model, leg_ivs, index_day_open(frozen.day, now))
+                        read_last_close(spot_q, closed, scn, now), now, expiry_kind, leg_greeks, fwd_model, leg_ivs,
+                        index_day_open(frozen.day, now))
 
 
 async def read_market_more(tracked: Tracked, ctx: Any, extra_ids: Iterable[str]) -> MarketInputs | None:
