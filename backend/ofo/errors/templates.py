@@ -1232,6 +1232,13 @@ _TRIGGER_TEMPLATES: tuple[MessageTemplate, ...] = (
     # GC-IC1 1a: a switched-on expiry close day rule without a valid time, distance % or Rs limit is never checked
     _trig("day_rule_incomplete", 504, "This day rule is missing its time or its distance from spot, or has a value "
           "that is not a number.", None, "Fix this day rule in the playbook to have it checked."),
+    # GC-IC1 1b: a carry check (before a weekend or a holiday) when the NSE holiday list has no year it needs
+    _trig("holiday_list_unknown", 505, "The market holiday list is not known for these days, so it cannot be "
+          "told whether tonight is before a weekend or a holiday.", None,
+          "This rule is checked again once the holiday list for that year is added."),
+    # GC-IC1 1b: the carry check's 2% gap figures need the spot and every option leg's implied volatility
+    _trig("carry_gap_unknown", 506, "The profit or loss if the market opens 2% higher or lower cannot be estimated: "
+          "the spot or a leg's implied volatility is not available."),
     _gate("adjust_trigger_already_true", _UI, 152, "Already true when tracking started.",
           "It is shown, not flagged, until a check finds it false.", "Nothing.",
           "Watch it: it flags if it clears and then comes back.", {}),

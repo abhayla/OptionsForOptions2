@@ -7,14 +7,16 @@ from __future__ import annotations
 
 import datetime
 import importlib.util
+import json
 import pathlib
+from decimal import Decimal
 
 from ofo.adjustment.preferences import from_values
 from ofo.errors.explanations import PLAYBOOK_DAY_RULE_ACTION_TEXT
 from ofo.settings import calc as settings_calc
 from ofo.settings import defaults as registry_defaults
 from ofo.timeutil import IST
-from ofo_app import background, catalogue_store, scenario_mode, strategy_alert_style_store
+from ofo_app import background, catalogue_store, playbook_store, scenario_mode, strategy_alert_style_store
 from ofo_app import db as app_db
 from ofo_app.config import get_settings
 from sqlalchemy import text
@@ -25,7 +27,7 @@ seed_mod = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(seed_mod)
 CATALOGUE_AS_OF = datetime.datetime(2026, 10, 31, 9, 0, tzinfo=IST)
 MAX_DELIST = settings_calc.max_delist_percent(registry_defaults())
-RID = "day:expiry:5"
+RID = "day:expiry:14:30:5"
 T1429 = datetime.datetime(2026, 11, 3, 14, 29, 0, tzinfo=IST)
 T1430 = T1429 + datetime.timedelta(minutes=1)
 LAST_SECOND = 59
@@ -83,7 +85,8 @@ def _worker(scn: scenario_mode.Scenario, clock) -> background.Worker:
 async def _day_rows(engine, sid: int) -> list[tuple]:
     async with engine.connect() as conn:
         rows = (await conn.execute(text(
-            "SELECT id, outcome, trigger_id, timeline->0->>'approach', timeline->0->>'label', value, threshold "
+            "SELECT id, outcome, trigger_id, timeline->0->>'approach', timeline->0->>'label', value, threshold, "
+            "timeline->0->>'group' "
             "FROM public.adjustment_suggestions WHERE strategy_id = :s AND rule_id = :r ORDER BY id"),
             {"s": sid, "r": RID})).all()
     return [tuple(r) for r in rows]
@@ -111,9 +114,28 @@ async def test_core_expiry_rule_opens_one_record_at_1430_through_the_gate_and_ne
         assert len(at_1431) == 1, at_1431
         rec = at_1431[0]
         assert rec[1:5] == ("open", RID, "A-28,A-27", PLAYBOOK_DAY_RULE_ACTION_TEXT["5"]), rec
+        # B1 (GC-IC1 1a review): opened BY alert_gate.step at the first 1-minute candle close at or after 14:30, i.e.
+        # 14:31:00 (gate_group = the close the gate processed), never at the 14:30:00 check a direct write would use
+        assert rec[7] == background.gate_group(sid, T1430 + datetime.timedelta(minutes=1)), rec
         await _run(worker, now, scn, "23400", T1430 + datetime.timedelta(seconds=75), 300)  # 5 more closes
         later = await _day_rows(app_engine, sid)
         assert later == at_1431 and worker.errors == [], (later, worker.errors)
+        # B1, ADR-237 (1) yes/no re-arm: dismissed while still true -> no new record; a false close re-arms it
+        async with app_engine.connect() as conn:
+            await playbook_store.dismiss(conn, "owner", rec[0])
+            await conn.commit()
+        await worker.rebuild()  # the rebuild task feeds the dismissed row to alert_gate.dismiss (ADR-236)
+        t2 = T1430 + datetime.timedelta(seconds=375)
+        await _run(worker, now, scn, "23400", t2, 180)  # still within 0.3%: three more closes
+        held = await _day_rows(app_engine, sid)
+        assert [r[:2] for r in held] == [(rec[0], "dismissed")], held
+        t3 = t2 + datetime.timedelta(seconds=180)
+        await _run(worker, now, scn, "23356.55", t3, 120)  # 0.4% away: a false close re-arms the rule
+        t4 = t3 + datetime.timedelta(seconds=120)
+        await _run(worker, now, scn, "23400", t4, 120)  # true again: the next close opens a NEW record
+        rearmed = await _day_rows(app_engine, sid)
+        assert len(rearmed) == len(held) + 1 and rearmed[1][1] == "open" and worker.errors == [], \
+            (rearmed, worker.errors)
         print(f"CORE-PROOF ADJ-51 sid={sid} rows_at_1429={len(at_1429)} rows_after_1431_close={len(at_1431)} "
               f"rows_after_5_more_closes={len(later)} record={rec}")
     finally:
@@ -131,6 +153,108 @@ async def test_short_04_pct_away_opens_no_record(app_engine, monkeypatch):
         assert rows == [] and worker.errors == [] and worker.status[sid] is background.MonitoringStatus.ACTIVE, \
             (rows, worker.errors)
         print(f"CORE-PROOF ADJ-52 sid={sid} rows={len(rows)}")
+    finally:
+        await app_db.close_db()
+        _reset_engine()
+
+
+# ---- GC-IC1 1b: the carry check (before-weekend / before-holiday, 15:00, action 0) -----------------------------
+CARRY_RID = "day:beforeWeekend:15:00:0"
+FRI_1459 = datetime.datetime(2026, 10, 30, 14, 59, 0, tzinfo=IST)
+WED_1459 = datetime.datetime(2026, 10, 28, 14, 59, 0, tzinfo=IST)
+
+
+async def _carry_rows(engine, sid: int) -> list[tuple]:
+    async with engine.connect() as conn:
+        rows = (await conn.execute(text(
+            "SELECT id, outcome, rule_id, timeline->0->>'group', timeline->0->'carry' "
+            "FROM public.adjustment_suggestions WHERE strategy_id = :s AND rule_id LIKE 'day:before%' ORDER BY id"),
+            {"s": sid})).all()
+    return [tuple(r) for r in rows]
+
+
+def _assert_gap_matches_generator(sid_name: str, up: Decimal, down: Decimal) -> None:
+    """REQ-159 AC-4: the record's 2% gap figures against the generator's own values (its own leg model, never the
+    app's carry code). The worker solves each leg's IV from prices rounded to the 0.05 tick, so the bound is one
+    tick per leg per unit of quantity: 0.05 x quantity x legs (Rs 26 for ADJ-53)."""
+    exp = json.loads((ROOT / "tests" / "fixtures" / "adjust_scenarios" / f"{sid_name}.json").read_text(
+        encoding="utf-8"))
+    legs = exp["position"]["legs"]
+    tol = Decimal("0.05") * sum(leg["quantity"] for leg in legs)
+    carry = exp["expected"]["carry"]
+    assert abs(up - Decimal(carry["gap_up"])) <= tol, (sid_name, "up", up, carry["gap_up"], tol)
+    assert abs(down - Decimal(carry["gap_down"])) <= tol, (sid_name, "down", down, carry["gap_down"], tol)
+
+
+async def test_core_carry_check_friday_opens_one_record_at_the_1501_close_with_gap_figures(app_engine, monkeypatch):
+    sid, scn = await _seeded(app_engine, monkeypatch, "ADJ-53")
+    try:
+        now = [FRI_1459]
+        worker = _worker(scn, lambda now=now: now[0])
+        await _run(worker, now, scn, "23100", FRI_1459, LAST_SECOND + 1)  # 14:59:00 .. 14:59:59
+        assert worker.errors == [] and worker.status[sid] is background.MonitoringStatus.ACTIVE, worker.errors
+        at_1459 = await _carry_rows(app_engine, sid)
+        assert at_1459 == [], at_1459
+        t1500 = FRI_1459 + datetime.timedelta(minutes=1)
+        await _run(worker, now, scn, "23100", t1500, 75)  # the 15:00 candle closes at 15:01
+        rows = await _carry_rows(app_engine, sid)
+        assert len(rows) == 1, rows
+        rec = rows[0]
+        assert rec[1:4] == ("open", CARRY_RID, background.gate_group(sid, t1500 + datetime.timedelta(minutes=1))), rec
+        carry = rec[4]
+        assert carry["gap_pct"] == "2" and carry["gap_reason"] is None, carry
+        up, down = Decimal(carry["gap_up"]), Decimal(carry["gap_down"])
+        assert up == up.quantize(Decimal("0.01")) and down == down.quantize(Decimal("0.01")) and up != down, carry
+        _assert_gap_matches_generator("ADJ-53", up, down)
+        assert carry["margin"] is None and carry["margin_reason"] == "adjust_trigger_missing_margin", carry
+        assert carry["next_open"] == "2026-11-02T09:15:00+05:30", carry
+        await _run(worker, now, scn, "23100", t1500 + datetime.timedelta(seconds=75), 300)  # 5 more closes
+        later = await _carry_rows(app_engine, sid)
+        assert later == rows and worker.errors == [], (later, worker.errors)
+        print(f"CORE-PROOF ADJ-53 sid={sid} rows_at_1459={len(at_1459)} rows_after_1501_close={len(rows)} "
+              f"rows_after_5_more_closes={len(later)} record={rec}")
+    finally:
+        await app_db.close_db()
+        _reset_engine()
+
+
+async def test_carry_check_wednesday_opens_no_record(app_engine, monkeypatch):
+    sid, scn = await _seeded(app_engine, monkeypatch, "ADJ-54")
+    try:
+        now = [WED_1459]
+        worker = _worker(scn, lambda now=now: now[0])
+        await _run(worker, now, scn, "23100", WED_1459, 60 + 180)  # 14:59 .. 15:02:59
+        rows = await _carry_rows(app_engine, sid)
+        assert rows == [] and worker.errors == [] and worker.status[sid] is background.MonitoringStatus.ACTIVE, \
+            (rows, worker.errors)
+        print(f"CORE-PROOF ADJ-54 sid={sid} rows={len(rows)}")
+    finally:
+        await app_db.close_db()
+        _reset_engine()
+
+
+MON_1459 = datetime.datetime(2026, 11, 9, 14, 59, 0, tzinfo=IST)
+
+
+async def test_carry_check_monday_before_the_holiday_opens_exactly_one_record(app_engine, monkeypatch):
+    """ADJ-55: Monday 9 Nov, Tuesday 10 Nov a listed holiday. Monday is not before a weekend: one before-holiday
+    record only (never also a before-weekend one), with gap figures inside the generator's tolerance."""
+    sid, scn = await _seeded(app_engine, monkeypatch, "ADJ-55")
+    try:
+        now = [MON_1459]
+        worker = _worker(scn, lambda now=now: now[0])
+        await _run(worker, now, scn, "23100", MON_1459, LAST_SECOND + 1)  # 14:59:00 .. 14:59:59
+        assert await _carry_rows(app_engine, sid) == []
+        t1500 = MON_1459 + datetime.timedelta(minutes=1)
+        await _run(worker, now, scn, "23100", t1500, 75)  # the 15:00 candle closes at 15:01
+        rows = await _carry_rows(app_engine, sid)
+        assert len(rows) == 1 and worker.errors == [], (rows, worker.errors)
+        rec = rows[0]
+        assert rec[1:3] == ("open", "day:beforeHoliday:15:00:0"), rec
+        carry = rec[4]
+        assert carry["next_open"] == "2026-11-11T09:15:00+05:30", carry
+        _assert_gap_matches_generator("ADJ-55", Decimal(carry["gap_up"]), Decimal(carry["gap_down"]))
+        print(f"CORE-PROOF ADJ-55 sid={sid} rows={len(rows)} record={rec}")
     finally:
         await app_db.close_db()
         _reset_engine()

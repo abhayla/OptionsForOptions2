@@ -18,7 +18,7 @@ from ofo.timeutil import IST
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 SEED = ROOT / "backend" / "ofo" / "adjustment" / "system_playbooks.json"
 GAP = "09:30"
-RID = "day:expiry:5"  # the iron condor's 6th day rule (index 5): the switched-on expiry close rule
+RID = "day:expiry:14:30:5"  # the iron condor's switched-on expiry close rule (id from its content, B3)
 
 
 def _ic() -> dict:
@@ -50,8 +50,7 @@ def _reading(ev: pe.Evaluation):
 
 def test_the_seeded_ic_rule_carries_its_a27_limit():
     rule = _ic()["day_rules"][5]
-    assert rule == {"on": True, "when": "expiry", "at": "14:30", "action": 5, "close_if_short_within_pct": "0.3",
-                    "buy_back_short_below_rs": "2"}
+    assert rule == {"on": True, "when": "expiry", "at": "14:30", "action": 5, "close_if_short_within_pct": "0.3"}
 
 
 def test_core_at_1430_on_expiry_day_a_short_within_03_pct_flags_and_names_a28_and_a27():
@@ -118,15 +117,33 @@ def test_a27_boundary_at_or_below_rs2_as_t09_ltp_200_named_205_not_and_absent_no
     assert _value(pe.evaluate(_ic(), _state(far_ltp=None), gap_until=GAP)).approaches == ("A-28",)
 
 
-def test_a27_limit_read_from_the_body_not_hard_coded():
+def test_a27_limit_is_t09_of_the_current_stage_not_hard_coded():
     body = _ic()
-    body["day_rules"][5]["buy_back_short_below_rs"] = "1.5"
+    body["triggers"]["T-09"]["weekly"][2] = "1.5"  # the Last day stage (days left 0)
     assert _value(pe.evaluate(body, _state(far_ltp="1.95"), gap_until=GAP)).approaches == ("A-28",)
     assert _value(pe.evaluate(body, _state(far_ltp="1.50"), gap_until=GAP)).approaches == ("A-28", "A-27")
-    body["day_rules"][5]["buy_back_short_below_rs"] = "3"
+    body["triggers"]["T-09"]["weekly"][2] = "3"
     assert _value(pe.evaluate(body, _state(far_ltp="2.50"), gap_until=GAP)).approaches == ("A-28", "A-27")
-    del body["day_rules"][5]["buy_back_short_below_rs"]  # no limit stated: A-27 is never named (no default)
+    body["triggers"]["T-09"]["on"] = False  # T-09 off: A-27 is never named (no default)
     assert _value(pe.evaluate(body, _state(far_ltp="0.05"), gap_until=GAP)).approaches == ("A-28",)
+    del body["triggers"]["T-09"]  # T-09 absent: not named
+    assert _value(pe.evaluate(body, _state(far_ltp="0.05"), gap_until=GAP)).approaches == ("A-28",)
+
+
+def test_b2_a_body_saved_before_1a_names_a27_through_t09():
+    """GC-IC1 1a review B2: the pre-1a system iron condor (37824fb9 system_playbooks.json playbooks[2]) has no
+    second key; A-27 is named through its T-09 weekly Last day threshold (Rs 2, le)."""
+    body = json.loads((pathlib.Path(__file__).parent / "pre1a_ic_body.json").read_text(encoding="utf-8"))
+    assert "buy_back_short_below_rs" not in json.dumps(body)
+    v = _value(pe.evaluate(body, _state(), gap_until=GAP))
+    assert v.fired is True and v.approaches == ("A-28", "A-27")
+
+
+def test_b3_reordering_day_rules_keeps_every_id():
+    body = _ic()
+    before = {a.rule_id for a in pe.day_answers(body, _state())}
+    body["day_rules"].reverse()
+    assert {a.rule_id for a in pe.day_answers(body, _state())} == before == {RID}
 
 
 def test_long_legs_are_never_read_as_shorts():
@@ -138,7 +155,7 @@ def test_long_legs_are_never_read_as_shorts():
 
 @pytest.mark.parametrize("change", [
     {"at": None}, {"at": "2:30"}, {"close_if_short_within_pct": None}, {"close_if_short_within_pct": "abc"},
-    {"close_if_short_within_pct": 0.3}, {"buy_back_short_below_rs": "two"},
+    {"close_if_short_within_pct": 0.3},
 ])
 def test_malformed_rule_is_not_checked_with_a_reason_never_true(change):
     body = _ic()
@@ -152,7 +169,9 @@ def test_malformed_rule_is_not_checked_with_a_reason_never_true(change):
         assert [a.reason for a in ev_results] == [pe.DAY_RULE_INCOMPLETE]
         return
     ev = pe.evaluate(body, _state(), gap_until=GAP)
-    assert [r.code for r in _day(ev)] == [pe.DAY_RULE_INCOMPLETE] and _reading(ev) is None
+    rid = pe.day_rule_id(body["day_rules"][5])  # a malformed time is part of the id
+    assert [r.code for r in ev.results if r.rule_id == rid] == [pe.DAY_RULE_INCOMPLETE]
+    assert gate_readings.readings(ev).get(rid, (None, None))[1] is None  # NotChecked reads None, never True
     assert pe.reason_text(pe.DAY_RULE_INCOMPLETE)
 
 

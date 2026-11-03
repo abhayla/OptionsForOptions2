@@ -112,6 +112,10 @@ class MarketInputs:
     expiry_kind: str | None = None  # weekly / monthly from the listed expiries (None: keep the tracked value)
     #: trading symbol -> per-unit engine Greeks (``chain_values.chain_model``); a symbol absent -> "-" in the compare
     leg_greeks: Mapping[str, Greeks] = dataclasses.field(default_factory=dict)
+    #: GC-IC1 1b carry check: the expiry's forward object (``parity_forward``; None = refused) and each own leg's
+    #: engine IV by trading symbol (absent = no IV), so ``adjustment_check.carry_model`` builds the gated model
+    forward_model: Any = None
+    leg_ivs: Mapping[str, Decimal] = dataclasses.field(default_factory=dict)
 
 
 TrackedReader = Callable[[int, ChargeRates | None], Awaitable[Tracked | None]]

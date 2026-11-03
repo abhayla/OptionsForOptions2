@@ -2521,13 +2521,13 @@
    }
   },
   "day_close": {
-   "rule_id": "day:expiry:5",
+   "rule_id": "day:expiry:14:30:5",
    "at": "14:30",
    "due": true,
    "fires": false,
    "nearest_short_pct": "0.4001",
    "rule_pct": "0.3",
-   "buy_back_below_rs": "2",
+   "t09_limit": "2",
    "far_shorts_below_limit": [
     "NIFTY26N0322600PE",
     "NIFTY26N0323450CE"

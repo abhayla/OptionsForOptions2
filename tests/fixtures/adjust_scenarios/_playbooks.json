@@ -1112,8 +1112,7 @@
      "when": "expiry",
      "at": "14:30",
      "action": 5,
-     "close_if_short_within_pct": "0.3",
-     "buy_back_short_below_rs": "2"
+     "close_if_short_within_pct": "0.3"
     }
    ],
    "approaches": {
