@@ -3,13 +3,13 @@ work_item: W-206
 requirement: REQ-159
 ac: AC-4
 result: fail
-verified_by: "independent verifier (Sonnet, GC-IC1 step 10)"
+verified_by: "independent verifier (Sonnet, GC-IC1 step 10 round 2)"
 date: 2026-11-03
-ac_fp: "4f0dfa7f6658"
-commands: "read playbook_eval.py lines 660-960; read adjustment_check.py lines 140-153 and 296-312; read background.py lines 962-1066"
+ac_fp: "a189106cf019"
+commands: "grep ACTING_DAY_PAIRS|NotChecked|_tighten backend; read playbook_eval.py 794-812, routes/playbooks.py:293, playbookEditor.js:64-69, AdjustmentsPage.vue:114"
 ---
-The iron condor's on-rules act in the worker: expiry + action 5 (close_if_short_within_pct 0.3 from 14:30) via _expiry_close; beforeWeekend/beforeHoliday + action 0 (from 15:00) via _carry_check with NSE calendar days; the tick key includes the IST minute so clock rules fire without a price change. But day_answers (playbook_eval.py ~797-810) handles only those two combinations and _tighten (adjustment_check.py:145) handles expiry + percent: kinds weekday, afterBreak, beforeExpiry, monthlyWeek, dom, date, event, away and actions 1, 2, 3, 6 are stored and shown but never act, with no 'not checked' label.
+Not verified in budget. Seen after the round-1 fix (ca2ee383): ACTING_DAY_PAIRS (playbook_eval.py:909); day_answers answers NotChecked(DAY_RULE_NOT_CHECKED) for non-acting pairs (:812); the labels route sends day_acting (routes/playbooks.py:293); the editor greys such rows (AdjustmentsPage.vue:114). Not checked: the table contents, _tighten (adjustment_check.py:150) limited to listed pairs, every switched-on ic rule acting, the plan sheet, the carry_gap_percent default.
 
-The iron condor's own off rules are inert by design. Worker DB tests not run.
+tests/adjustment/test_day_rules_not_checked.py passed within the 723 but was not read.
 
 Recorded by the orchestrator from the verifier's returned block.

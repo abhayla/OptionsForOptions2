@@ -424,6 +424,16 @@
    "key": "UNRESOLVED REQ-170 W-214 AC-6",
    "reason": "unresolved: evidence names no python test (vitest, code read or attack script; GC-IC1 step 10) - #532",
    "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-046 W-200 AC-1",
+   "reason": "unresolved: evidence names no python test (vitest, code read or attack script; GC-IC1 step 10) - #532",
+   "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-160 W-207 AC-4",
+   "reason": "unresolved: evidence names no python test (vitest, code read or attack script; GC-IC1 step 10) - #532",
+   "issue": "#532"
   }
  ]
 }

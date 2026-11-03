@@ -3,13 +3,13 @@ work_item: W-211
 requirement: REQ-167
 ac: AC-4
 result: fail
-verified_by: "independent verifier (Sonnet, GC-IC1 step 10)"
+verified_by: "independent verifier (Sonnet, GC-IC1 step 10 round 2)"
 date: 2026-11-03
 ac_fp: "752e47b6cefb"
-commands: "python -m pytest -q -p no:cacheprovider -c pytest-app.ini tests_app/test_background_settings_cache.py tests_app/test_background_cycle.py; read backend/ofo_app/settings_cache.py and background.py; read tests/test_settings_reader_guard.py"
+commands: "python -m pytest -q -p no:cacheprovider tests/test_settings_literal_guard.py tests/test_settings_reader_guard.py tests/test_settings_registry.py; AST literal scan of backend/ofo/adjustment/*.py, ofo_app/adjustment_check.py, ofo_app/background.py; grep carry_gap_percent backend; read ADR-240 (3), registry.json"
 ---
-81 passed. The cache polls every 2 s, LAG_SECONDS 5, measured; the cycle resolves settings from memory with no restart; a future-dated row applies at its time. Not proven: one test per wired setting (wiring files are DB-only, not run). Typed values on the iron condor path that are not settings: backend/ofo/adjustment/carry.py:29 CARRY_GAP_PCT = Decimal(2), backend/ofo_app/adjustment_check.py:76, backend/ofo_app/background.py:154 MARGIN_REFRESH_S = 300.
+71 passed. carry_gap_percent is wired (calc.py:117, outcome.py:257, background.py:360) and the carry.py literal is gone. Still typed on the playbook path: playbook_eval.py:995 S02_NET_DELTA_PER_LOT = Decimal('0.15') and :996 S12_PCT_OF_MAX_PROFIT = Decimal(40); neither has a registry key nor a KNOWN_LEFTOVERS row, so the guard does not see them, and both decide whether a user-visible record opens (ADR-240 (3)).
 
-Per-setting wiring DB proof owed: tests_app/test_settings_*_wiring.py, test_settings_tick_rate.py.
+Mapping each wired setting to a test not finished; whether carry_gap_percent has a wiring test is unverified.
 
 Recorded by the orchestrator from the verifier's returned block.
