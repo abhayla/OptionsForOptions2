@@ -36,7 +36,7 @@ const TEMPLATES = [
   { id: 'iron_condor', name: 'Iron Condor', level: 'Intermediate', views: ['range-bound'] },
   { id: 'long_straddle', name: 'Long Straddle', level: 'Intermediate', views: ['volatile'] },
 ]
-const LABEL = 'Strikes placed by a fixed rule - change them'
+const LABEL = 'Strikes placed by a fixed rule — change them'
 const ANSWER = {
   underlying: 'NIFTY',
   legs: [

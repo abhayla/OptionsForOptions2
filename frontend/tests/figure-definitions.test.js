@@ -136,7 +136,7 @@ describe("REQ-136 AC-4: models and exactness", () => {
     join(ROOT, "backend/ofo/errors/explanations.py"),
     "utf8",
   );
-  // The first string segment of the engine's own template: "<model> (European, each expiry's implied dividend yield ...".
+  // The first string segment of the engine's own template: "<model> (European options). Dividend yield is estimated ...".
   const engineModel = SRC.match(
     /"estimate_model_name",\s*"values_seen",\s*"([^"]*)"/,
   );
@@ -149,10 +149,10 @@ describe("REQ-136 AC-4: models and exactness", () => {
     const family = engineModel[1].split(" (")[0];
     expect(family).toMatch(/^[A-Z][\w-]+$/);
     expect(MODEL_PHRASE.startsWith(`${family} price`)).toBe(true);
-    expect(engineModel[1]).toContain("each expiry's implied dividend yield");
-    expect(MODEL_PHRASE).toContain("each expiry's implied dividend yield");
+    expect(engineModel[1]).toContain("Dividend yield is estimated from option");
+    expect(MODEL_PHRASE).toContain("dividend yield estimated from option prices");
     expect(MODEL_PHRASE).toBe(
-      "Black-Scholes-Merton price from today's implied volatility, with each expiry's implied dividend yield",
+      "Black-Scholes-Merton price from today's implied volatility, with each expiry's dividend yield estimated from option prices",
     );
   });
 

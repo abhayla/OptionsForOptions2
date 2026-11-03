@@ -188,7 +188,7 @@ describe('R-19a: the Target block under the graph, the move, the days and the Pr
 
   it('the badge prints the reply label and percent text; a missing percent shows the reply reason', async () => {
     const w = await openPage()
-    expect(t(w, 'target-badge-label').text()).toBe('Projected figure not available') // no target: the reply's not-available text
+    expect(t(w, 'target-badge-label').text()).toBe('Estimate not available') // no target: the reply's not-available text
     expect(t(w, 'target-badge-reason').text()).toBe(plain.target.badge.reason)
     await startTarget(w)
     expect(t(w, 'target-badge-label').text()).toBe(mid.target.badge.label)
@@ -206,7 +206,7 @@ describe('R-19a: the Target block under the graph, the move, the days and the Pr
     await startTarget(w)
     expect(t(w, 'target-move-text').text()).toBe('-')
     expect(t(w, 'target-move-reason').text()).toBe(noIv.target.move_pct_reason)
-    expect(t(w, 'target-badge-label').text()).toBe('Projected figure not available')
+    expect(t(w, 'target-badge-label').text()).toBe('Estimate not available')
     expect(t(w, 'target-badge-reason').text()).toBe(noIv.target.at_refused_reason)
   })
 

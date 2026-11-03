@@ -218,7 +218,7 @@ describe('REQ-134: the name as the API sends it (quoted user words, ADR-003)', (
 })
 
 // The refusal and conflict texts are the catalogue's (backend/ofo/errors/templates.py strategy_name_empty, strategy_revision_conflict).
-const EMPTY_NAME = { what_happened: 'Give the strategy a name', impact: 'The strategy was not saved or renamed.',
+const EMPTY_NAME = { what_happened: 'The strategy has no name.', impact: 'The strategy was not saved or renamed.',
   what_is_blocked: 'Saving or renaming this strategy.', next_action: 'Type a name of 1 to 20 characters, then save again.' }
 const CONFLICT = { what_happened: 'This strategy was changed by another action after you opened it.', impact: 'The draft was not saved or changed.',
   what_is_blocked: 'Applying your change to the newer version.', next_action: 'Reload the strategy and make the change again.' }
@@ -254,14 +254,14 @@ describe('REQ-134 AC-1: the first Save of a never-saved strategy asks for a name
     expect(w.emitted('saved')).toEqual([[7, 1, quoted('NIFTY Oct condor')]])
     expect(t(w, 'name-form').exists()).toBe(false)
   })
-  it('an empty name is sent as typed and the API refusal "Give the strategy a name" is shown; nothing is saved and the field stays', async () => {
+  it('an empty name is sent as typed and the API refusal "The strategy has no name." is shown; nothing is saved and the field stays', async () => {
     answers['POST /strategies'] = () => Promise.reject({ status: 422, parts: EMPTY_NAME })
     const w = await bar()
     await t(w, 'save-draft').trigger('click')
     await t(w, 'name-input').setValue('')
     await t(w, 'name-form').trigger('submit')
     await flushPromises()
-    expect(t(w, 'save-error-what').text()).toBe('Give the strategy a name')
+    expect(t(w, 'save-error-what').text()).toBe('The strategy has no name.')
     expect(w.emitted('saved')).toBeUndefined()
     expect(t(w, 'name-form').exists()).toBe(true)
   })
@@ -352,7 +352,7 @@ describe('REQ-134 AC-3: Rename from the builder (saved strategy only)', () => {
     expect(t(w, 'rename-open').exists()).toBe(false)
   })
   it('attack 4: an empty name shows the API refusal text and emits nothing', async () => {
-    const EMPTY = { what_happened: 'Give the strategy a name', impact: 'The strategy was not saved or renamed.', what_is_blocked: 'Saving or renaming this strategy.', next_action: 'Type a name of 1 to 20 characters, then save again.' }
+    const EMPTY = { what_happened: 'The strategy has no name.', impact: 'The strategy was not saved or renamed.', what_is_blocked: 'Saving or renaming this strategy.', next_action: 'Type a name of 1 to 20 characters, then save again.' }
     answers['PATCH /strategies/7/name'] = () => Promise.reject({ status: 422, parts: EMPTY })
     const w = await bar({ current })
     await t(w, 'rename-open').trigger('click')
@@ -431,7 +431,7 @@ describe('REQ-134 AC-2 (attack 2): Save As makes a copy, opens it and never send
     await t(w, 'name-form').trigger('submit')
     await flushPromises()
     expect(w.emitted('open')).toBeUndefined()
-    expect(t(w, 'save-error-what').text()).toBe('Give the strategy a name')
+    expect(t(w, 'save-error-what').text()).toBe('The strategy has no name.')
   })
 })
 
@@ -485,7 +485,7 @@ describe('G-024: the "..." menu lists only the items that apply, never an empty 
     await t(w, 'name-input').setValue('')
     await t(w, 'name-form').trigger('submit')
     await flushPromises()
-    expect(t(w, 'save-error-what').text()).toBe('Give the strategy a name')
+    expect(t(w, 'save-error-what').text()).toBe('The strategy has no name.')
     await t(w, 'name-input').setValue('x'.repeat(21))
     await t(w, 'name-form').trigger('submit')
     await flushPromises()

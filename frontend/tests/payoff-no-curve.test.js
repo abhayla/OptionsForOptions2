@@ -21,7 +21,7 @@ vi.mock('chart.js/auto', () => ({
 import PayoffChart from '@/components/strategy/PayoffChart.vue'
 import ChartCard from '@/components/strategy/ChartCard.vue'
 
-const WORST = "Worst case: the loss for this strategy can't be estimated."
+const WORST = "Maximum loss: the loss for this strategy cannot be estimated."
 const CURVE = [{ level: '22800', pnl: '-1000.00' }, { level: '23000', pnl: '6400.00' }, { level: '23200', pnl: '-900.00' }]
 const live = () => charts.filter((c) => !c.destroyed)
 

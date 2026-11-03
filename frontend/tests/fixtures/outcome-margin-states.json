@@ -40,7 +40,7 @@
  },
  "no_session": {
   "state": "NOT_AVAILABLE_YET",
-  "reason": "Margin from Zerodha is not shown yet; it needs your Kite login.",
+  "reason": "Margin from Zerodha is not shown yet; it needs your Zerodha login.",
   "needed": null,
   "available": null,
   "checked_at": null,

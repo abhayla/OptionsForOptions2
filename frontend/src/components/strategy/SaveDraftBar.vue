@@ -4,7 +4,7 @@
      /api/strategies/{id} with the revision THIS PAGE loaded and asks nothing (REQ-134 AC-2); Save As asks for a name
      prefilled "<name> copy", POSTs a new strategy and opens the copy; the original is never sent. The list (GET /api/strategies)
      reopens a draft (GET /api/strategies/{id}) with the legs exactly as stored: a planned entry and its capture time are never
-     re-captured here. Every refusal shows the API's catalogue message (an empty name: "Give the strategy a name", from the API,
+     re-captured here. Every refusal shows the API's catalogue message (an empty name: "The strategy has no name.", from the API,
      not retyped); the draft on screen is never cleared by a failure. A name is shown as text, never as HTML. No number is computed. -->
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
