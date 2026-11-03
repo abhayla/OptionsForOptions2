@@ -32,7 +32,7 @@ def test_core_strategy_54_top_up_0_says_zerodhas_figure_already_includes_the_pre
 def test_checked_with_a_top_up_names_it_and_the_estimate() -> None:
     m = margin_checked(D("7065.50"), FUNDS, AT, D("6409"), D("656.50"))
     assert str(m.reason) == ("Zerodha's own margin figure is ₹6,409.00; your planned entry prices are above Zerodha's, "
-                             "which adds about ₹656.50, so about ₹7,065.50 is needed (an estimate); ₹1,00,000.00 is "
+                             "which adds about ₹656.50, so about ₹7,065.50 is needed (an estimate). ₹1,00,000.00 is "
                              "available in your Zerodha account.")
 
 

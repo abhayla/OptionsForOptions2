@@ -86,7 +86,7 @@ def test_every_extremes_code_has_its_words_and_an_unknown_one_the_generic() -> N
         got = paper_reasons.extremes_reason_text(code)
         assert got and got.startswith("Profit left and Loss left are not worked out"), code
         assert code not in got
-    assert paper_reasons.extremes_reason_text("future_code") == "Profit left and Loss left are not worked out."
+    assert paper_reasons.extremes_reason_text("future_code") == "Profit left and Loss left could not be calculated."
     assert paper_reasons.extremes_reason_text(None) is None
 
 

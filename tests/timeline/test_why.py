@@ -93,7 +93,7 @@ def test_answer_has_no_advice_words():
     # checker is live: main's phrase list first, then the shared Q226/Q230 checker's extra label (W-024 round 6)
     assert advice_words_in("You should exit now, it is the best trade") == ["best", "you should", "should"]
     assert "Alert generated: yes." in text and "Executed: no." in text
-    assert 'Broker reported: "no order placed".' in text and "Reconciliation succeeded: yes." in text
+    assert 'Zerodha reported: "no order placed".' in text and "Reconciliation succeeded: yes." in text
 
 
 def test_answer_reports_missing_inputs_and_unhealthy_data_honestly():
@@ -145,5 +145,5 @@ def test_platform_wording_is_checked_at_runtime_but_recorded_text_is_quoted_not_
         check_explanation_wording("Condition met: at or below, you should exit at.", "test")
     timeline.record_follow_up(FollowUp(FollowUpKind.BROKER_REPORTED, seq, CHECKED_AT, "best price filled"))
     text = timeline.why(seq)
-    assert 'Broker reported: "best price filled".' in text
+    assert 'Zerodha reported: "best price filled".' in text
     assert text.splitlines()[0] == 'Your rule was triggered: "Max loss 3000" (exit rule ml-3000).'

@@ -251,7 +251,7 @@ _FORM_TEMPLATE = MappingProxyType({
     sf.QUANTITY_NOT_LOT_MULTIPLE: "strategy_quantity_not_lot_multiple",
     sf.UNDERLYING_MISMATCH: "strategy_underlying_mismatch",
     sf.UNKNOWN_NAME: "strategy_name_not_allowed",
-    sf.STRATEGY_NAME_EMPTY: "strategy_name_empty",  # REQ-134 AC-1: "Give the strategy a name"
+    sf.STRATEGY_NAME_EMPTY: "strategy_name_empty",  # REQ-134 AC-1: "The strategy has no name."
     sf.STRATEGY_NAME_INVALID: "strategy_name_invalid",
     sf.VALUE_NOT_ALLOWED: "user_input_request_invalid",  # ADR-069: the fixed input error (422), value never echoed
     sf.INVALID_PLANNED_ENTRY: "user_input_request_invalid",  # ADR-075: a malformed / one-sided / future entry (422)

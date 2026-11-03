@@ -195,7 +195,7 @@ async def test_route_returns_the_scenario_heading_pair(replayed):
 
 # ---- REQ-077 AC-9 (row 21d): no live data, every leg priced -> At Expiry from the user's prices --------------------
 
-LABEL_FROM_ENTRIES = "From your prices - no live data"
+LABEL_FROM_ENTRIES = "From your prices — no live data"
 SPREAD = (("NSE_FO:44624", "BUY", "81.30"), ("NSE_FO:44632", "SELL", "30.00"))
 
 
@@ -363,7 +363,7 @@ async def test_last_price_at_is_null_before_the_first_frame_and_an_aware_time_af
 
 # ---- G-065 (REQ-148, issue #586): legs on more than one expiry, futures legs included -----------------------------
 
-WORST_CASE = "Worst case: the loss for this strategy can't be estimated."  # ADR-143 (1), REQ-148 AC-4
+WORST_CASE = "Maximum loss: the loss for this strategy cannot be estimated."  # ADR-143 (1), REQ-148 AC-4
 LATER = datetime.date(2026, 10, 19)  # the replay's second NIFTY weekly; the condor sits on 13 Oct
 HTTP_OK = 200
 MIN_CURVE_POINTS = 3  # a curve needs at least three points to show its step changing

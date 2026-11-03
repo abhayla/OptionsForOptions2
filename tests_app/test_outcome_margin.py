@@ -52,7 +52,7 @@ OWNER_SESSION = ("owner", b"s1")
 VALUATION = datetime.datetime(2026, 10, 8, 9, 20, 9, tzinfo=IST)
 RATE = Decimal("0.065")
 FAKE_ACCESS = "tok-NOT-REAL-123"
-LOGIN_TEXT = "Margin from Zerodha is not shown yet; it needs your Kite login."
+LOGIN_TEXT = "Margin from Zerodha is not shown yet; it needs your Zerodha login."
 
 
 def _listed(symbol: str, token: int, strike: str, kind: str):
@@ -112,8 +112,8 @@ def source(transport, session=OWNER_SESSION, **kw) -> OutcomeMargin:
 def _own_line(theirs: str, ours: str, have: str, where: str = "your Zerodha account", added: str = "₹656.50") -> str:
     """The catalogue sentence with an ADR-094 top-up (GC-UI D-A47): Zerodha's own figure as Zerodha's, the top-up
     named, ours as an estimate (REQ-055 AC-3). The recorded strangle's top-up is 7,065.50 - 6,409 = 656.50."""
-    return (f"Zerodha's own margin figure is {theirs}; your planned entry prices are above Zerodha's, which adds about "
-            f"{added}, so about {ours} is needed (an estimate); {have} is available in {where}.")
+    return (f"Zerodha's own margin figure is {theirs}. Your planned entry prices are above Zerodha's, which adds about "
+            f"{added}, so about {ours} is needed (an estimate). {have} is available in {where}.")
 
 
 def _short_line(theirs: str, ours: str, have: str, added: str = "₹656.50") -> str:
@@ -296,7 +296,7 @@ async def test_kite_unreadable_is_the_could_not_read_text_and_retried_only_after
     m = await margin_answer(s, CTX, plan())
     assert m.state == "UNREADABLE" and m.needed is None and m.available is None
     if status == HTTPStatus.TOO_MANY_REQUESTS:  # REQ-118 AC-3: busy (the limiter's refusal arrives as 429)
-        assert str(m.reason) == "Zerodha is busy - try again in a moment"
+        assert str(m.reason) == "Zerodha is busy. Try again in a moment."
     else:
         assert str(m.reason) == "Margin from Zerodha could not be read just now, so no margin figure is shown."
     calls = len(t.calls)

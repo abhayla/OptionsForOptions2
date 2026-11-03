@@ -101,8 +101,8 @@ def test_some_unpriceable_takes_the_cheapest_of_the_priced():
     got = cheapest_approach(order, {**cols, first: no_charges}, market.chain)
     assert got == cmp.Cheapest(nxt, rest[nxt], None, 1)
     line = str(check.condition_line_t19("Premium left", "0.5000", "1.0000", got.approach, got.cost, got.unpriced))
-    assert line.startswith("Premium left: 0.5000 (rule 1.0000); cheapest adjustment that could be priced now: ")
-    assert f"cost ₹{rest[nxt]} (as in Compare) (1 could not be priced)" in line
+    assert line.startswith("Premium left: 0.5000 (rule 1.0000); cheapest adjustment we could price: ")
+    assert f"cost ₹{rest[nxt]}. 1 could not be priced." in line
     a29 = cols["A-29"]
     no_whole = dataclasses.replace(a29, whole=None)
     assert cheapest_approach(("A-29", "A-31"), {**cols, "A-29": no_whole}, market.chain) ==         cmp.Cheapest("A-31", hand["A-31"], None, 1)  # noqa: E501

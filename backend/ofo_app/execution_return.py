@@ -45,7 +45,7 @@ EXITED = "exited"
 NOTHING_PLACED = "nothing_placed"
 PARTIAL = "partial"
 RECONCILE = "reconciliation_required"
-#: REQ-058 AC-2, in its order: "Complete Strategy, Retry Failed Leg, Review Manually, Close Partial Strategy."
+#: REQ-058 AC-2, in its order: "Complete Strategy, Retry Failed Leg, Review Manually, Exit Partial Strategy."
 PARTIAL_CHOICES = ("complete_strategy", "retry_failed_leg", "review_manually", "close_partial_strategy")
 #: Mismatch kinds, named by their catalogue template (ofo.reconciliation.compare's ids; the screen renders the text).
 MISSING, SIDE, QUANTITY = "recon_missing_platform_position", "recon_side_mismatch", "recon_quantity_mismatch"

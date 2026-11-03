@@ -157,7 +157,7 @@ def test_every_preference_route_and_the_read_dependency_depend_on_the_one_guard(
 
 @pytest.mark.parametrize(("raw", "status", "reason"), [
     ("9", 422, "Alert distance with no playbook must be between 0.1 and 5 (percent)."),
-    ("abc", 422, "Alert distance with no playbook must be a number written as text, for example 0.5."),
+    ("abc", 422, "Alert distance with no playbook must be a number, for example 0.5."),
 ])
 async def test_a_refused_value_answers_the_reason_and_writes_nothing(db, raw, status, reason):
     app, _stored, _body = await _untyped(db)

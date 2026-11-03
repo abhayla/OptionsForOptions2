@@ -30,7 +30,7 @@ from test_execute_route import (
 
 pytestmark = pytest.mark.usefixtures("order_path_on")  # W-121
 
-PLAN_CHANGED = "Your plan changed - review it again."
+PLAN_CHANGED = "Your plan changed after you reviewed it."
 INPUT_REFUSED = "USER_INPUT_002"  # the catalogue answer for a body the model refuses
 
 

@@ -2,7 +2,7 @@
 
 Spec basis (quoted): REQ-070 AC-6 "Only a strategy that never sent a basket can be deleted: the user confirms, Undo is
 offered, the draft is hidden from every list and kept on the server with its history for audit; a strategy that ever
-sent a basket cannot be deleted and shows \"Can't delete: orders were sent\" instead of Delete (ADR-118)."; ADR-118
+sent a basket cannot be deleted and shows \"Orders were already sent for this strategy, so it cannot be deleted.\" instead of Delete (ADR-118)."; ADR-118
 "Deleting never erases history or audit rows".
 
 Sensibull: no history/restore screen in the study; delete = soft delete at catalogue-raw.md 270-273, screens 270-272.
@@ -27,7 +27,7 @@ from test_strategy_followups import _ConnMaker
 from test_strategy_store import WING, _app, _body, _client, _history_rows, _saved_in, _user, _with_draft
 
 RAW_ROW = text("SELECT id, revision, updated_at, deleted_at FROM public.strategies WHERE id = :id")
-REFUSAL_TEXT = "Can't delete: orders were sent"
+REFUSAL_TEXT = "Orders were already sent for this strategy, so it cannot be deleted."
 NOT_FOUND_CODE = "USER_INPUT_003"
 CONFLICT_CODE = "STRATEGY_VALIDATION_409"
 DELETE_REFUSED_CODE = "STRATEGY_VALIDATION_432"

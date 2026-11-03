@@ -3,7 +3,7 @@ that depend on them; 'all buys first' never hard-coded). W-022.
 
 Expected values come from the spec, not from running the builder: the strategy is the golden Iron Condor of
 scenario-calculations.md §6 on the real instrument-list contracts (partial_inputs.py); the order is ADR-017 Q26's
-"Step 1 - Establish protection (both bought wings) · Step 2 - Establish short positions (both sold legs)"; the other
+"Step 1 - Place bought legs (both bought wings) · Step 2 - Place sold legs (both sold legs)"; the other
 cases are hand-built so that which bought leg caps which sold leg's risk can be read off the strikes.
 """
 from __future__ import annotations
@@ -33,8 +33,8 @@ def test_core_golden_condor_wing_before_its_sell_and_a_put_wing_failure_stops_on
     assert seq.steps == (PlanStep(StepKind.PROTECTION, (BUY_PE, BUY_CE)),
                          PlanStep(StepKind.SHORT_POSITIONS, (SELL_PE, SELL_CE)))
     assert seq.sequence == (BUY_PE, BUY_CE, SELL_PE, SELL_CE)
-    assert StepKind.PROTECTION.value == "Establish protection"  # ADR-017 Q26 wording
-    assert StepKind.SHORT_POSITIONS.value == "Establish short positions"
+    assert StepKind.PROTECTION.value == "Place bought legs"  # ADR-017 Q26 wording
+    assert StepKind.SHORT_POSITIONS.value == "Place sold legs"
     sim = seq.simulate({BUY_PE})
     assert sim.sent == (BUY_PE, BUY_CE, SELL_CE)
     assert sim.failed == (BUY_PE,)

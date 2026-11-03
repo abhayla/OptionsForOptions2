@@ -45,7 +45,7 @@ Forwards = Mapping[datetime.date, ExpiryForward]
 
 
 class SpotRefused(ValueError):
-    """The index value is missing or unusable; the calculation is refused, never computed silently."""
+    """The index value is missing or unusable; the calculation cannot be done, never computed silently."""
 
 
 def data_label(reading: SpotReading) -> ExplanationText | None:
@@ -145,7 +145,7 @@ def _gate_spot(reading: object, underlying: str) -> SpotReading:
     if not isinstance(reading, SpotReading):
         raise SpotRefused("no spot reading: a calculation is never built on a bare level (REQ-072 AC-2)")
     if reading.health in _REFUSED:
-        raise SpotRefused(f"the {underlying} spot is {reading.health.value}; the calculation is refused")
+        raise SpotRefused(f"the {underlying} spot is {reading.health.value}; the calculation cannot be done")
     return reading
 
 

@@ -320,7 +320,7 @@ def test_table_has_no_charges_row_without_rates_and_in_estimated_now(replayed):
 # --- round 4 (owner OQ-4 a): one line under the max-loss sentence when the strategy holds a bought option --------
 
 EXERCISE_STT_LINE = (
-    "Holding a bought option to expiry in the money adds STT on its value; squaring off before expiry avoids it.")
+    "Holding a bought option to expiry in the money adds STT on its value. STT is not charged if the option is exited before expiry.")
 
 
 def _summary_of_legs(provider, picks, rates=RATES):

@@ -803,7 +803,7 @@
       "value": null,
       "display": "\u2014",
       "kind": "text",
-      "reason": "no status was given for this leg",
+      "reason": "no status is available for this leg",
       "side": null,
       "per_unit": null,
       "vendor": null
@@ -1195,7 +1195,7 @@
       "value": null,
       "display": "\u2014",
       "kind": "text",
-      "reason": "no status was given for this leg",
+      "reason": "no status is available for this leg",
       "side": null,
       "per_unit": null,
       "vendor": null
@@ -1587,7 +1587,7 @@
       "value": null,
       "display": "\u2014",
       "kind": "text",
-      "reason": "no strategy health was given",
+      "reason": "no strategy health is available",
       "side": null,
       "per_unit": null,
       "vendor": null
@@ -1598,7 +1598,7 @@
  },
  "scenario": {
   "view": "estimated_now",
-  "label": "Estimated Now (estimate)",
+  "label": "Estimated Now",
   "kind": "estimate",
   "available": true,
   "unavailable_reason": null,
@@ -1871,7 +1871,7 @@
   ]
  },
  "summary": {
-  "what_can_i_lose": "At most \u20b95,847.79 at expiry, including about \u20b9140.79 of charges and taxes. Holding a bought option to expiry in the money adds STT on its value; squaring off before expiry avoids it.",
+  "what_can_i_lose": "At most \u20b95,847.79 at expiry, including about \u20b9140.79 of charges and taxes. Holding a bought option to expiry in the money adds STT on its value. STT is not charged if the option is exited before expiry.",
   "what_can_i_make": "At most \u20b97,152.21 at expiry, including about \u20b9140.79 of charges and taxes.",
   "where_do_i_start_losing": "If NIFTY ends below 22,687.80 at expiry.",
   "max_profit": "7152.21",

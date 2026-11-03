@@ -326,7 +326,7 @@ LINES: dict[str, tuple[str, ...]] = {
     'frontend/src/lib/brokerAccount.js': (
         "not_connected: 'Connect Zerodha to see your available margin.',",
         "empty: 'Zerodha did not send an available margin figure.',",
-        "busy: 'Zerodha is busy - try again in a moment.',",
+        "busy: 'Zerodha is busy. Try again in a moment..',",
         "session_expired: 'Your Zerodha login for today has expired. Use Reconnect to see your margin.',",
         "read_failed: 'Your available margin could not be read from Zerodha.',",
         "export const ACCOUNT_UNREADABLE = 'Your Zerodha account details could not be read.'",

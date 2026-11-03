@@ -148,7 +148,7 @@ MUTATIONS = [
     ("rules-invalid", _ctx(rules_valid=False), CheckCode.RULES_INVALID,
      "This strategy's rules are not valid. Review them to continue."),
     ("dependencies", _ctx(dependencies_satisfied=False), CheckCode.DEPENDENCIES_UNSATISFIED,
-     "An order this execution depends on is not in place yet (for example a protective leg)."),
+     "An order this execution depends on is not in place yet (for example a bought option leg)."),
     ("margin-short", _ctx(margin_available=D("48210.74")), CheckCode.MARGIN_INSUFFICIENT,
      "Available margin ₹48,210.74 is less than the estimated ₹48,210.75 this strategy needs. "
      "No order has been submitted."),
@@ -443,7 +443,7 @@ def test_rule5_blocked_reason_names_the_premium_free_worst_cases(catalogue, elig
     strategy, ctx = _limited_adjustment(IC[1:])
     (failure,) = check(strategy, ctx, catalogue, eligibility).failures
     assert failure.reason == (
-        "This adjustment makes the strategy's worst case at expiry larger (option premiums excluded): from a loss "
+        "This adjustment raises the maximum loss at expiry from a loss "
         "of ₹26,000.00 to a loss of ₹2,990,000.00. Adjustments that add risk need Pro. Exiting, or closing or "
         "reducing legs without a larger worst case, stays available on every plan."
     )
