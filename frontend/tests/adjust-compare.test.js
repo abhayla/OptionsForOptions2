@@ -304,3 +304,17 @@ describe('GC-ADJ1 follow-up: the display forms (text only)', () => {
     expect(percentFromFraction('n/a')).toBe('n/a')
   })
 })
+
+describe('GC-IC1 4b: the controls sit on the compare page and take the reply\'s delta_neutral block', () => {
+  it('draws the pause, watch and (when the reply has it) delta cards; none when the block is absent', async () => {
+    const r = clone(adj02)
+    r.delta_neutral = { label: 'Delta-neutral figures', known: false, reason: 'Net delta is not known: a leg has no implied volatility now.', missing_leg: 'X1' }
+    const { w, c } = await show(r)
+    expect(t(w, 'pause-card').exists()).toBe(true)
+    expect(t(w, 'watch-card').exists()).toBe(true)
+    expect(t(w, 'delta-reason').text()).toContain('Net delta is not known')
+    expect(c.get).toHaveBeenCalledWith('/strategies/72/monitoring-pause')
+    const old = await show(clone(adj02))
+    expect(t(old.w, 'delta-card').exists()).toBe(false)
+  })
+})

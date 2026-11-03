@@ -427,3 +427,51 @@ describe('summary plan line: stop words and missing values', () => {
     expect(all).not.toContain('{')
   })
 })
+
+describe('GC-IC1 6b (REQ-159 AC-5, ADR-240 (1)): the Guidance label comes from the reply\'s situation_kinds', () => {
+  const SITS = ['S-01', 'S-02', 'S-03', 'S-04', 'S-05', 'S-06'].map((id) => ({ id, name: `Sit ${id}`, rule: `rule ${id}` }))
+  const kindOf = (id) => ['S-03', 'S-04', 'S-05'].includes(id)
+  const KINDS = SITS.map((s) => ({ id: s.id, kind: kindOf(s.id) ? 'guidance' : 'rule', label: kindOf(s.id) ? 'Guidance' : null }))
+
+  async function sits(kinds) {
+    setUp()
+    answers['GET /playbooks/1'] = { ...SYSTEM, body: { ...JSON.parse(JSON.stringify(BODY)), situations: SITS }, ...(kinds ? { situation_kinds: kinds } : {}) }
+    const w = await open()
+    await w.get('[data-testid=pb-step-sits]').trigger('click')
+    return w
+  }
+
+  it('shows "Guidance" on exactly S-03, S-04, S-05 and on no rule situation', async () => {
+    const w = await sits(KINDS)
+    const shown = SITS.map((s) => s.id).filter((id) => w.find(`[data-testid="pb-sit-kind-${id}"]`).exists())
+    expect(shown).toEqual(['S-03', 'S-04', 'S-05'])
+    expect(w.get('[data-testid="pb-sit-kind-S-04"]').text()).toBe('Guidance')
+  })
+
+  it('reads kind from the reply, not from a list in the page: a reply that calls S-01 guidance is drawn so', async () => {
+    const w = await sits(KINDS.map((k) => ({ ...k, kind: k.id === 'S-01' ? 'guidance' : 'rule', label: k.id === 'S-01' ? 'Guidance' : null })))
+    expect(SITS.filter((s) => w.find(`[data-testid="pb-sit-kind-${s.id}"]`).exists()).map((s) => s.id)).toEqual(['S-01'])
+  })
+
+  it('an older server (no situation_kinds) draws no label and does not crash', async () => {
+    const w = await sits(null)
+    expect(w.findAll('[data-testid^="pb-sit-kind-"]').length).toBe(0)
+    expect(w.get('[data-testid="pb-sit-S-03"]').text()).toContain('rule S-03')
+  })
+
+  it('saving sends the body as edited, with no kind key added', async () => {
+    setUp([SYSTEM, OWN])
+    answers['GET /playbooks/7'] = { ...OWN, body: { ...JSON.parse(JSON.stringify(BODY)), situations: SITS }, situation_kinds: KINDS }
+    answers['PUT /playbooks/7'] = { ...OWN, body: BODY, situation_kinds: KINDS }
+    const w = await open()
+    await w.get('[data-testid=pb-pick] option[value="7"]').setSelected()
+    await flushPromises()
+    await w.get('[data-testid=pb-step-when]').trigger('click')
+    await w.get('[data-testid=pb-value-T-01-1]').setValue('0.4')
+    await w.get('[data-testid=pb-save]').trigger('click')
+    await flushPromises()
+    const sent = calls.find(([m]) => m === 'PUT')[2]
+    expect(sent.body.situations.every((s) => !('kind' in s))).toBe(true)
+    expect(JSON.stringify(sent)).not.toContain('situation_kinds')
+  })
+})

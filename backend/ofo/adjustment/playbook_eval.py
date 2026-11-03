@@ -964,6 +964,15 @@ SITUATION_RULE_PREFIX: Final = "sit."
 LEGACY_SITUATION_RULE_PREFIX: Final = "sit:"
 TRENDING_DAY: Final = "S-02"
 BIG_WIN_EARLY: Final = "S-12"
+#: ADR-240 (1): S-03, S-04, S-05 are GUIDANCE (shown as words, never a rule that fires). ONE server constant: the
+#: playbook reply derives each situation's ``kind`` from it; it is never a key stored in a body.
+GUIDANCE_SITUATIONS: Final = ("S-03", "S-04", "S-05")
+
+
+def situation_kind(situation_id: object) -> str:
+    return "guidance" if situation_id in GUIDANCE_SITUATIONS else "rule"
+
+
 S02_NET_DELTA_PER_LOT: Final = Decimal("0.15")  # ADR-240 (3): at or beyond +/-0.15 per lot
 S12_PCT_OF_MAX_PROFIT: Final = Decimal(40)  # ADR-240 (3): profit at or above 40% of max profit, entry session only
 S12_APPROACHES: Final = ("A-24", "A-25")  # ADR-240 (3): take profit / close the whole position
