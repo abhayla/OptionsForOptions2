@@ -163,7 +163,7 @@ def test_ac8_adj20d_refuses_only_a05_naming_the_leg():
     assert built["A-05"].refusal == "No 23,700 CE is listed for 03 Nov 2026, so leg 4 cannot move there."
     assert built["A-05"].trades == ()
     refused = {a for a, b in built.items() if b.refusal}
-    assert refused == {"A-05", "A-11"}  # A-11 only for its own rule (1 day left)
+    assert refused == {"A-05", "A-11", "A-27", "A-35"}  # A-11 for its own rule (1 day left); A-27 / A-35: no playbook given (ADR-238)
     assert built["A-11"].refusal == "This approach needs at least 3 days left; days left now: 1."
 
 

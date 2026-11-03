@@ -2266,6 +2266,93 @@
     "refused": "Leg 1 (BUY NIFTY 22,400 PE, expiry 03 Nov 2026) has no price, and this approach trades it.",
     "step_basis": null,
     "step_value": null
+   },
+   "A-24": {
+    "side": "both",
+    "refused": "Leg 1 (BUY NIFTY 22,400 PE, expiry 03 Nov 2026) has no price, and this approach trades it.",
+    "step_basis": null,
+    "step_value": null
+   },
+   "A-25": {
+    "side": "both",
+    "refused": "Leg 1 (BUY NIFTY 22,400 PE, expiry 03 Nov 2026) has no price, and this approach trades it.",
+    "step_basis": null,
+    "step_value": null
+   },
+   "A-26": {
+    "side": "put",
+    "step_basis": null,
+    "step_value": null,
+    "trades": [
+     {
+      "action": "BUY",
+      "type": "PE",
+      "strike": "22600",
+      "expiry": "2026-11-03",
+      "lots": 2,
+      "quantity": 130,
+      "price": "0.05",
+      "tradingsymbol": "NIFTY26N0322600PE"
+     }
+    ],
+    "after": [
+     {
+      "side": "BUY",
+      "type": "PE",
+      "strike": "22400",
+      "expiry": "2026-11-03",
+      "lots": 2,
+      "quantity": 130,
+      "entry": "20.10",
+      "tradingsymbol": "NIFTY26N0322400PE"
+     },
+     {
+      "side": "SELL",
+      "type": "CE",
+      "strike": "23450",
+      "expiry": "2026-11-03",
+      "lots": 2,
+      "quantity": 130,
+      "entry": "36.90",
+      "tradingsymbol": "NIFTY26N0323450CE"
+     },
+     {
+      "side": "BUY",
+      "type": "CE",
+      "strike": "23650",
+      "expiry": "2026-11-03",
+      "lots": 2,
+      "quantity": 130,
+      "entry": "15.50",
+      "tradingsymbol": "NIFTY26N0323650CE"
+     }
+    ],
+    "closed": [
+     {
+      "side": "SELL",
+      "type": "PE",
+      "strike": "22600",
+      "expiry": "2026-11-03",
+      "lots": 2,
+      "quantity": 130,
+      "entry": "38.85",
+      "exit": "0.05",
+      "tradingsymbol": "NIFTY26N0322600PE"
+     }
+    ],
+    "warnings": []
+   },
+   "A-27": {
+    "side": "both",
+    "refused": "Your playbook sets no buy-back price for short legs at this stage, so this approach is not built.",
+    "step_basis": null,
+    "step_value": null
+   },
+   "A-35": {
+    "side": "both",
+    "refused": "Your playbook sets no time exit, so this approach is not built.",
+    "step_basis": null,
+    "step_value": null
    }
   },
   "approach_after": {
@@ -2307,6 +2394,15 @@
      "22596.3"
     ],
     "booked_pnl": "-1956.5"
+   },
+   "A-26": {
+    "exact": true,
+    "max_profit": "2917213",
+    "max_loss": "20787",
+    "breakevens": [
+     "23490.1"
+    ],
+    "booked_pnl": "5044"
    }
   }
  }

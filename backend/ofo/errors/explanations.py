@@ -255,6 +255,9 @@ ADJUSTMENT_APPROACH_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
     "A-11": _SHAPE_WORD_NAMES["A-11"],
     "A-31": "Exit the whole strategy",
 })
+#: ADR-238 (GC-IC1 step 2): the exit and reduce approaches the approach builder builds; their shown names are the
+#: playbook editor's own labels below (one home per text), their one-line texts are in ADJUSTMENT_APPROACH_ABOUT_TEXT.
+EXIT_REDUCE_BUILT: tuple[str, ...] = ("A-24", "A-25", "A-26", "A-27", "A-35")
 #: GC-ADJ2 step 3 (REQ-159 AC-5, REQ-160 AC-1): the playbook editor's names of the approaches NOT in ADJUSTMENT_APPROACH_LABEL_TEXT (that table stays the one home of its ids; a test holds the two disjoint). Source: tests/fixtures/adjust_scenarios/_playbooks.json approaches.
 PLAYBOOK_APPROACH_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
     "A-02": "Roll the tested short away",
@@ -366,6 +369,11 @@ ADJUSTMENT_APPROACH_ABOUT_TEXT: Mapping[str, str] = MappingProxyType({
     "A-28": "Close the whole side that spot is pressing on and keep the other side.",
     "A-11": "Move both short strikes to the strike nearest spot, keeping each wing's distance.",
     "A-31": "Close every open leg.",
+    "A-24": "Close every open leg to keep the profit made so far.",
+    "A-25": "Close the same part of every leg's lots and keep the rest open.",
+    "A-26": "Buy back the short leg of the side spot is moving away from once most of its price is gone; its wing stays.",
+    "A-27": "Buy back the short legs priced at or below your playbook's limit for this stage.",
+    "A-35": "Close every open leg on expiry day from the time exit your playbook sets.",
 })
 #: REQ-156 AC-2 (ADR-214 (2a)): each compare criterion row's shown name, in the AC-2 group order
 ADJUSTMENT_CRITERION_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
@@ -1827,6 +1835,8 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     *(ExplanationTemplate(f"table_reason_{key}", "values_seen", text) for key, text in TABLE_REASON_TEXT.items()),
     *(ExplanationTemplate(approach_name_id(key), "values_seen", text)  # REQ-155: each approach's shown name
       for key, text in ADJUSTMENT_APPROACH_LABEL_TEXT.items()),
+    *(ExplanationTemplate(approach_name_id(key), "values_seen", PLAYBOOK_APPROACH_LABEL_TEXT[key])  # ADR-238
+      for key in EXIT_REDUCE_BUILT),
     *(ExplanationTemplate(approach_about_id(key), "values_seen", text)  # REQ-046 AC-3: each approach's one-line text
       for key, text in ADJUSTMENT_APPROACH_ABOUT_TEXT.items()),
     *(ExplanationTemplate(f"playbook_approach_{key.lower().replace('-', '_')}", "values_seen", text)

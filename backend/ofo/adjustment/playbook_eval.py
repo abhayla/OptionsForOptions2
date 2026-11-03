@@ -29,6 +29,7 @@ from decimal import Context, Decimal, DivisionByZero, Inexact, InvalidOperation,
 from typing import Final, Literal
 
 from ofo import market_calendar as mc
+from ofo.adjustment.approaches import ExitInputs
 from ofo.engine import adjust_ratios as ratios
 from ofo.errors import render
 from ofo.timeutil import IST
@@ -786,6 +787,21 @@ def _t09_now(c: _Ctx) -> tuple[Decimal, Cmp] | None:
     except (_Missing, InvalidOperation, IndexError):
         return None
     return (lim, t["cmp"]) if isinstance(lim, Decimal) else None
+
+
+def exit_inputs(body: Mapping | None, guards: Mapping | None, state: StrategyState) -> ExitInputs:
+    """A-27's and A-35's playbook inputs (ADR-238 (4), (5)) for the approach builder: T-09's threshold of the CURRENT
+    stage through the expiry-day rule's own reader (``_t09_now``: one value, tightened as T-09 is), the guard
+    ``time_exit`` when it is a valid "HH:MM", and the check's clock ``state.hhmm``. No body (or a body this reader
+    cannot read) -> no T-09; never a default."""
+    t09 = None
+    if isinstance(body, Mapping):
+        try:
+            t09 = _t09_now(_context(body, state))
+        except (KeyError, TypeError, IndexError):  # a body without this expiry kind's stages: no limit, never a guess
+            t09 = None
+    at = guards.get("time_exit") if isinstance(guards, Mapping) else None
+    return ExitInputs(t09, at if isinstance(at, str) and _HHMM.fullmatch(at) else None, state.hhmm)
 
 
 def _add_day_rules(body: Mapping, state: StrategyState, why: str | None, stage_name: str | None,  # noqa: PLR0913

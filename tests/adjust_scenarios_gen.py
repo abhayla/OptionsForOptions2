@@ -487,8 +487,19 @@ APPROACH_CONFIG = {
                                   "SENSEX": _DEF["adjustments.roll_points_sensex"]},
     "iron_fly_min_days_left": int(_DEF["adjustments.iron_fly_min_days"]),
     "reduce_divisor": int(_DEF["adjustments.reduce_divisor"]),
+    "partial_close_percent": int(_DEF["adjustments.partial_close_percent"]),  # ADR-238 (2)
+    "untested_decay_percent": int(_DEF["adjustments.untested_decay_percent"]),  # ADR-238 (3)
 }
-IC_APPROACHES = ["A-36", "A-01", "A-05", "A-29", "A-28", "A-11", "A-31"]
+IC_APPROACHES = ["A-36", "A-01", "A-05", "A-29", "A-28", "A-11", "A-31", "A-24", "A-25", "A-26", "A-27", "A-35"]
+#: ADR-238: the cases whose A-27 / A-35 are also derived with the iron condor playbook's own inputs (T-09 of the stage,
+#: time_exit, the clock); every other build uses no playbook, as the approaches route does with none
+PLAYBOOK_EXIT_CASES = ("ADJ-02", "ADJ-08", "ADJ-09", "ADJ-13")
+NO_PLAYBOOK = {"t09": None, "time_exit": None, "hhmm": None}
+
+
+def rupees(x: Decimal) -> str:
+    """The catalogue's rupee text: whole rupees without decimals, else exactly 2 decimals."""
+    return f"\u20b9{x.quantize(D('1')):,}" if x == x.to_integral_value() else f"\u20b9{x.quantize(D('0.01')):,}"
 
 
 def hand_price(row: dict | None) -> Decimal | None:
@@ -505,9 +516,12 @@ class HandRefused(Exception):
     pass
 
 
-def hand_approaches(u: str, lot: int, kind: str, today: datetime.date, spot: Decimal, legs: list[dict],  # noqa: C901, PLR0912, PLR0915
-                    rows: list[dict], booked: Fraction) -> tuple[dict, dict]:
-    """Per approach: trades / After legs / closed legs (or the refusal), and the whole-trade at-expiry After."""
+def hand_approaches(u: str, lot: int, kind: str, today: datetime.date, spot: Decimal, legs: list[dict],  # noqa: C901, PLR0912, PLR0915, PLR0913
+                    rows: list[dict], booked: Fraction, exits: dict | None = None,
+                    only: list[str] | None = None) -> tuple[dict, dict]:
+    """Per approach: trades / After legs / closed legs (or the refusal), and the whole-trade at-expiry After.
+    ``exits`` = A-27's / A-35's playbook inputs {t09: (limit, cmp) or None, time_exit, hhmm}; None = no playbook."""
+    exits = exits or NO_PLAYBOOK
     expiry = legs[0]["expiry"]
     by = {(r["type"], r["strike"]): r for r in rows}
     listed = {(r["type"], r["strike"]) for r in rows if r["listed"]}
@@ -583,19 +597,69 @@ def hand_approaches(u: str, lot: int, kind: str, today: datetime.date, spot: Dec
             best = sorted(fit, key=lambda r: abs(r["strike"] - spot))[0]
         return best["strike"] - short["strike"]
 
+    def close_every():
+        pairs = [close(x, x["lots"]) for x in legs]
+        return [t for t, _ in pairs], [], [c for _, c in pairs]
+
     legs_out, after_out = {}, {}
-    for aid in IC_APPROACHES:
-        side = {"A-36": "none", "A-31": "both", "A-11": "both", "A-01": untested}.get(aid, tested)
+    for aid in only or IC_APPROACHES:
+        side = {"A-36": "none", "A-31": "both", "A-11": "both", "A-01": untested, "A-26": untested, "A-24": "both",
+                "A-25": "both", "A-27": "both", "A-35": "both"}.get(aid, tested)
         warnings: list[str] = []
         basis = {"step_basis": None, "step_value": None}
         try:
             trades, after, closed = [], list(legs), []
-            if aid == "A-31":
+            if aid in ("A-31", "A-24"):  # ADR-238 (1): take profit closes every leg, as the exit does
+                trades, after, closed = close_every()
+            elif aid == "A-35":  # ADR-238 (5): on expiry day from the playbook's time exit
+                if exits["time_exit"] is None:
+                    raise HandRefused("Your playbook sets no time exit, so this approach is not built.")
+                if not (today == expiry and exits["hhmm"] is not None and exits["hhmm"] >= exits["time_exit"]):
+                    raise HandRefused(f"The time exit is offered on expiry day from {exits['time_exit']}.")
+                trades, after, closed = close_every()
+            elif aid == "A-25":  # ADR-238 (2): X% of every leg's lots, whole lots only
+                pct = APPROACH_CONFIG["partial_close_percent"]
+                after = []
                 for x in legs:
-                    t, c = close(x, x["lots"])
+                    if (x["lots"] * pct) % 100 != 0:
+                        raise HandRefused(f"{name(x)} holds {x['lots']} lots, and {pct}% of them is not a whole "
+                                          "number of lots.")
+                    n = x["lots"] * pct // 100
+                    t, c = close(x, n)
                     trades.append(t)
                     closed.append(c)
-                after = []
+                    if x["lots"] > n:
+                        after.append({**x, "lots": x["lots"] - n})
+            elif aid == "A-27":  # ADR-238 (4): every short at or below T-09's threshold of the stage
+                if exits["t09"] is None:
+                    raise HandRefused("Your playbook sets no buy-back price for short legs at this stage, so this "
+                                      "approach is not built.")
+                limit, cmp = exits["t09"]
+                shorts = [i for i, x in enumerate(legs) if x["side"] == "SELL"]
+                prices = {i: price(legs[i]) for i in shorts}
+                cheap = [i for i in shorts if (prices[i] <= limit if cmp == "le" else prices[i] >= limit)]
+                if not cheap:
+                    raise HandRefused(f"No short leg is priced within the buy-back limit of {rupees(limit)} your "
+                                      "playbook sets for this stage.")
+                for i in cheap:
+                    t, c = close(legs[i], legs[i]["lots"])
+                    trades.append(t)
+                    closed.append(c)
+                after = [x for i, x in enumerate(legs) if i not in cheap]
+            elif aid == "A-26":  # ADR-238 (3): the untested short only, once it lost D% of its entry
+                ui = pos[(untested, "short")]
+                x = legs[ui]
+                p = price(x)
+                need = APPROACH_CONFIG["untested_decay_percent"]
+                if x["entry"] <= 0:
+                    raise HandRefused(f"{name(x)} has no entry price above zero, so how far its price has fallen "
+                                      "cannot be worked out.")
+                if Fraction(x["entry"] - p) * 100 < Fraction(need) * Fraction(x["entry"]):
+                    raise HandRefused(f"{name(x)} has fallen from {rupees(x['entry'])} to {rupees(p)}; this approach "
+                                      f"waits until it has fallen by {need}% or more.")
+                t, c = close(x, x["lots"])
+                trades, closed = [t], [c]
+                after = [y for i, y in enumerate(legs) if i != ui]
             elif aid in ("A-05", "A-01"):
                 s = tested if aid == "A-05" else untested
                 si, wi = pos[(s, "short")], pos[(s, "wing")]
@@ -1035,6 +1099,19 @@ def build(spec: dict, pb: dict) -> dict:  # noqa: C901, PLR0912, PLR0915 - one r
     hand_legs = hand_after = None
     if family == "ic" or is_condor(legs):  # the approach builder builds every approach for a condor shape
         hand_legs, hand_after = hand_approaches(u, lot, kind, today, spot, legs, near_rows, booked)
+    playbook_exits = None
+    if family == "ic" and spec["id"] in PLAYBOOK_EXIT_CASES:  # ADR-238 (4), (5): the playbook's own inputs
+        t09_raw = limit_for(pb, "T-09", kind, stage_ix, overrides, family) if "T-09" in fpb["triggers_on"] else ""
+        t09_lim = None if t09_raw == "" else D(t09_raw)
+        if t09_lim is not None and tighten_pct is not None and "T-09" in pb.get("tightened", []):
+            t09_lim = tighten(t09_lim, "le", tighten_pct)
+        exits = {"t09": None if t09_lim is None else (t09_lim, "le"),
+                 "time_exit": fpb.get("guards", {}).get("time_exit"), "hhmm": clock.strftime("%H:%M")}
+        pl_legs, pl_after = hand_approaches(u, lot, kind, today, spot, legs, near_rows, booked, exits,
+                                            ["A-27", "A-35"])
+        playbook_exits = {"inputs": {"t09": None if t09_lim is None else format(t09_lim, "f"), "t09_cmp": "le",
+                                     "time_exit": exits["time_exit"], "hhmm": exits["hhmm"]},
+                          "approach_legs": pl_legs, "approach_after": pl_after}
     offered = [a for a in dict.fromkeys(list(fpb["approaches"]["applicable"]) + [
         a for a in overrides.get("approaches_on", []) if a in fpb["approaches"]["off_in_playbook"]]) if a != "A-36"]
     if adjustments_used >= overrides.get("max_adjustments", fpb.get("guards", {}).get("max_adjustments", GUARDS["max_adjustments"])):
@@ -1264,6 +1341,8 @@ def build(spec: dict, pb: dict) -> dict:  # noqa: C901, PLR0912, PLR0915 - one r
     }
     if family == "ic":
         out["expected"]["approach_legs"], out["expected"]["approach_after"] = hand_legs, hand_after
+    if playbook_exits is not None:  # ADR-238: A-27 / A-35 with the playbook's T-09, time exit and the clock
+        out["expected"]["playbook_exits"] = playbook_exits
     if family == "ic" and spec["id"] in ("ADJ-02", "ADJ-13"):  # GC-MU A2 (ADR-230 (3)): the compare's cost rows
         out["expected"]["compare_cost"] = hand_compare_cost(u, lot, legs, near_rows, out["expected"]["approach_legs"],
                                                             out["expected"]["approach_after"], expiry_metrics)
@@ -1403,13 +1482,16 @@ def scenarios() -> list[dict]:  # noqa: PLR0915 - a flat list of scenario specs
                      adjustment_times={1: "2026-10-29T11:00:00"},
                      notes=["Put spread rolled up 300 points on 29 Oct; booked P&L carries into max profit, max loss "
                             "and breakevens (F-74)."]))
-    s.append(ic_spec("ADJ-14", "T-19 not checked: no approach the playbook offers can be priced (ADR-221)",
-                     ["T-19", "P-04"], "2026-11-02T15:00:00", "23020", must_not_fire=["T-19"],
-                     check=lambda v: _assert(v["premium_left"] > 0 and v["adj_cost"] is None
-                                             and any(x["id"] == "T-19" for x in v["skipped"]),
-                                             "ADJ-14 wants premium left > 0 and T-19 not checked"),
-                     notes=["Last day 15:00: every offered approach trades a contract quoted at 0.05 with bid 0, so "
-                            "none has a Compare cost; T-19 is not checked, with the reason (ADR-221)."]))
+    s.append(ic_spec("ADJ-14", "T-19 on the last day: only buying back the decayed untested short is priced (ADR-221)",
+                     ["T-19", "P-04", "A-26"], "2026-11-02T15:00:00", "23020", must_not_fire=["T-19"],
+                     check=lambda v: _assert(v["premium_left"] > 0 and v["adj_approach"] == "A-26"
+                                             and v["adj_cost"] == D("30.12"),
+                                             "ADJ-14 wants premium left > 0 and A-26 the one priced approach"),
+                     notes=["Last day 15:00: every offered approach that trades a contract quoted at 0.05 with bid 0 "
+                            "has no Compare cost (ADR-221). Since ADR-238, A-26 buys back only the untested short "
+                            "(Rs 0.30, bid 0.25 / ask 0.35, 99% below its entry), so it is the cheapest priced one "
+                            "and T-19 is checked; the not-priceable reason is proven with A-26 left out of the "
+                            "playbook (tests_app/test_t19_cheapest_cost.py)."]))
     s.append(ic_spec("ADJ-15", "Last session before a weekend, Friday 15:00: carry check", ["S-06", "S-09", "F-15"],
                      "2026-10-30T15:00:00", "23100", situations=["S-06", "S-09"],
                      check=lambda v: _assert(any(r["rule"] == "beforeWeekend" and r["due"] for r in v["applying"]), "ADJ-15")))
