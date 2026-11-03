@@ -14,7 +14,9 @@
   "checks": [],
   "note": "prepush --full selects tests_app files by change (select_app_tests) and may not include every non-DB file; until a gate runs the whole non-DB tests_app set per batch, this class is unguarded. Candidate: a prepush step 'app_nodb_all'."
  },
- "spec_ref": [],
+ "spec_ref": [
+  "spec/decisions/ADR-189.md"
+ ],
  "occurrences": [
   {
    "date": "2026-11-04",

@@ -4,14 +4,9 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (224)
+## Decisions (229)
 
-- Older decisions: 184 rows, ADR-1..ADR-188 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
-- ADR-189 2026-10-26: (1) CLAUDE.md holds only pointers and the hard product rules, so CLAUDE.md plus the always-loaded r… [amends ADR-178; amends ADR-181; amends ADR-171; a…]
-- ADR-190 2026-10-26: (1) The project takes Startup-Factory kit 1.15.0 (from 1.14.0) through PR #564, opened by tools/kit… [applies ADR-189; applies ADR-115]
-- ADR-191 2026-10-26: (1) The project opts in to the kit's docs-only CI test list: `.claude/project/ci-docs-only-tests.tx… [amends ADR-187 (5); amends ADR-189]
-- ADR-192 2026-10-26: When Save As pre-fills its name box and "<name> copy" would be longer than 20 characters (ADR-183),… [amends REQ-134]
-- ADR-193 2026-10-26: (1) Scope: every screen the spec already has (Strategy Builder and its leg picker, option chain, po… [refines ADR-152; extends ADR-173 from behaviour t…]
+- Older decisions: 189 rows, ADR-1..ADR-193 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
 - ADR-194 2026-10-26: In the Strategy Builder's P&L Table tab: (1) the default view is a compact per-leg table like Sensi… [amends REQ-035 AC-1 and AC-7; refines ADR-008 sec…]
 - ADR-195 2026-10-26: When at least one leg is unticked ("left out of the numbers", REQ-076 AC-6), the selection label re… [refines REQ-076 AC-6 and AC-8; applies ADR-152]
 - ADR-196 2026-10-27: SPEC CHANGE to ADR-193 (1) for the builder and option chain only. [SPEC CHANGE to ADR-193 (1) (builder and option ch…]
@@ -47,6 +42,11 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-235 2026-11-02: (1) The background playbook check speed (REQ-166 AC-1 "background checks") is three admin settings,… [ADR-237 (3) (2026-11-02) amends (4): a record ope…]
 - ADR-236 2026-11-02: (1) After the user dismisses an adjustment suggestion, the same rule on the same strategy stays qui… [Amends ADR-217 (a dismiss no longer silences a wo…]
 - ADR-237 2026-11-02: Technical reconciliation of REQ-170 with the existing spec (GC-ALERT1 step 2), decided by the orche… [Amends REQ-170 AC-2 (band base), REQ-112 AC-2 (wh…]
+- ADR-238 2026-11-03: Technical definitions for GC-IC1 step 2 (owner scope 2026-11-03 "Full playbook": every approach the… [Adds A-24, A-25, A-26, A-27, A-35 to the approach…]
+- ADR-239 2026-11-03: Technical definitions for GC-IC1 step 3 (owner scope 2026-11-03 "Full playbook"), decided by the or… [Adds A-02, A-04, A-06 to the approach builder of…]
+- ADR-240 2026-11-03: REQ-159 AC-5 keeps S-01 to S-12 in the playbook. [Clarifies REQ-159 AC-5 (situations: rule or guida…]
+- ADR-241 2026-11-03: Owner 2026-11-03 (question tool, "Mid when spread is live"): every planned trade of an adjustment a… [Amends ADR-068 (1) for adjustment approach trades…]
+- ADR-242 2026-11-03: Technical decision for GC-IC1 step 4c, made by the orchestrator under the owner's standing rule tha… [REQ-155 AC-1 (A-37 offered as an alert, not a tra…]
 
 ## Requirements (161)
 

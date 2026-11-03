@@ -36,8 +36,8 @@ Db = Annotated[AsyncSession, Depends(get_db)]
 User = Annotated[str, Depends(current_user_ref)]
 Direction = Literal["above", "below"]
 _NOT_AVAILABLE = "user_input_request_not_available"
-PATH = "/api/strategies/{strategy_id}/level-watch"
-DIRECTION_PATH = PATH + "/{direction}"
+# Route paths are written as literals in the decorators: the app-test selector (scripts/orchestrator/
+# select_app_tests.py) reads them from the source and fails closed on a computed path.
 
 
 class WatchIn(BaseModel):
@@ -67,12 +67,12 @@ async def _read(db: AsyncSession, user: str, strategy_id: int) -> tuple[level_wa
         raise StrategyRefused(_NOT_AVAILABLE, Failure.NOT_FOUND) from None
 
 
-@router.get(PATH, response_model=WatchOut)
+@router.get("/api/strategies/{strategy_id}/level-watch", response_model=WatchOut)
 async def read_watch(strategy_id: int, db: Db, user: User) -> Any:
     return compose(strategy_id, await _read(db, user, strategy_id))
 
 
-@router.put(DIRECTION_PATH, response_model=WatchOut)
+@router.put("/api/strategies/{strategy_id}/level-watch/{direction}", response_model=WatchOut)
 async def set_watch(strategy_id: int, direction: Direction, body: WatchIn, db: Db, user: User) -> Any:
     await _read(db, user, strategy_id)  # 404 before anything else
     try:
@@ -90,7 +90,7 @@ async def set_watch(strategy_id: int, direction: Direction, body: WatchIn, db: D
     return compose(strategy_id, await _read(db, user, strategy_id))
 
 
-@router.delete(DIRECTION_PATH, response_model=WatchOut)
+@router.delete("/api/strategies/{strategy_id}/level-watch/{direction}", response_model=WatchOut)
 async def clear_watch(strategy_id: int, direction: Direction, db: Db, user: User) -> Any:
     await _read(db, user, strategy_id)
     try:

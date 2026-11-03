@@ -16,7 +16,9 @@
   ],
   "note": "tests/errors/test_restored_former_texts.py pins the current text of paper_alert_title and every ALERT_BODY_TEMPLATES id. Orchestrator mutant 2026-11-03: rewording the title to 'Paper trade — {name}' without a former text -> 3 tests red (incl. test_stored_template_wording_pinned); the builder's mutant (former tuple blanked) -> 2 red. Covers only templates listed in the pin; a NEW stored-and-restored template must be added to the pin (restore_explanation has one caller today: routes/paper.py _alerts_out)."
  },
- "spec_ref": [],
+ "spec_ref": [
+  "spec/decisions/ADR-003.md"
+ ],
  "occurrences": [
   {
    "date": "2026-11-03",

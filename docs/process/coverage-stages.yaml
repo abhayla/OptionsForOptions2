@@ -397,6 +397,11 @@ decisions:
   ADR-235: S6.7         # background check speed per trading style 10 / 30 / 120 s (owner, 2026-11-02)
   ADR-236: S6.7         # a dismiss silences the same level; one stage worse opens a new suggestion (owner, 2026-11-02)
   ADR-237: S6.7         # alert discipline technical definitions: re-arm band, candle close, lapse, one writer (2026-11-02)
+  ADR-238: S6.7         # IC exit and reduce approaches A-24/25/26/27/35 (GC-IC1 step 2)
+  ADR-239: S6.7         # IC roll approaches A-02/A-04/A-06 (GC-IC1 step 3)
+  ADR-240: S6.7         # IC situations: rules vs guidance (GC-IC1 step 6)
+  ADR-241: S6.7         # approach trades priced at the live bid-ask mid first (owner, GC-IC1)
+  ADR-242: S6.7         # A-37 watch a level is an adjustment alert through the gate (GC-IC1 step 4c)
 
 questions:
   Q210: 4a              # external: Zerodha's written answer; ADR-051 covers the owner's own account
@@ -686,6 +691,21 @@ work_items:
   W-197: S6.4  # GC-ADJ1 step 2: compare adjustment approaches in adjust mode (REQ-156, ADR-214)
   W-198: S6.4  # GC-ADJ1 step 2: filters on the approach compare (REQ-157, ADR-214)
   W-199: S6.4  # GC-ADJ1 step 3: review-adjustment drawer on the Live Strategies card (REQ-046, ADR-214)
+  W-200: S6.7  # GC-IC1 step 10: verification of REQ-046 (iron condor paths)
+  W-201: S6.7  # GC-IC1 step 10: verification of REQ-112 (iron condor paths)
+  W-202: S6.7  # GC-IC1 step 10: verification of REQ-155 (iron condor paths)
+  W-203: S6.7  # GC-IC1 step 10: verification of REQ-156 (iron condor paths)
+  W-204: S6.7  # GC-IC1 step 10: verification of REQ-157 (iron condor paths)
+  W-205: S6.7  # GC-IC1 step 10: verification of REQ-158 (iron condor paths)
+  W-206: S6.7  # GC-IC1 step 10: verification of REQ-159 (iron condor paths)
+  W-207: S6.7  # GC-IC1 step 10: verification of REQ-160 (iron condor paths)
+  W-208: S6.7  # GC-IC1 step 10: verification of REQ-161 (iron condor paths)
+  W-209: S6.7  # GC-IC1 step 10: verification of REQ-162 (iron condor paths)
+  W-210: S6.7  # GC-IC1 step 10: verification of REQ-163 (iron condor paths)
+  W-211: S6.7  # GC-IC1 step 10: verification of REQ-167 (iron condor paths)
+  W-212: S6.7  # GC-IC1 step 10: verification of REQ-168 (iron condor paths)
+  W-213: S6.7  # GC-IC1 step 10: verification of REQ-169 (iron condor paths)
+  W-214: S6.7  # GC-IC1 step 10: verification of REQ-170 (iron condor paths)
   W-115: 4b           # GC-5S: Home overview, states 1-2 + strip (REQ-008)
   W-117: 4b           # GC-5S: Learn / Alerts / Market context shells (REQ-011 AC-1 part)
 
