@@ -8,11 +8,13 @@ import dataclasses
 import datetime
 import json
 import pathlib
+import re
 from decimal import Decimal as D
 
 import pytest
 from ofo.adjustment import alert_gate, gate_readings
 from ofo.adjustment import playbook_eval as pe
+from ofo.strategy.settings_value import IDENTIFIER_PATTERN
 from ofo.timeutil import IST
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
@@ -233,3 +235,23 @@ def test_t01_and_the_day_rule_share_one_measure():
     shorts = (pe.ShortLeg(D(22600), None, D(1)), pe.ShortLeg(D(23450), None, D(60)))
     assert pe.short_gap_pct(D(23400), shorts) == (D(5000), D(23400))
     assert pe.short_premium(shorts) == D(1)
+
+
+# ---- GC-IC1 review A1: a day rule id is always inside the Identifier pattern -----------------------------------------
+@pytest.mark.parametrize("at", ["2:30 pm", "14.30", "", None, 1430, "14:30 ", "9:5"])
+def test_a_malformed_time_never_makes_an_id_outside_the_identifier_pattern(at):
+    rule = {"on": True, "when": "expiry", "at": at, "action": 5}
+    rid = pe.day_rule_id(rule)
+    assert re.fullmatch(IDENTIFIER_PATTERN, rid)
+    assert rid == pe.DAY_RULE_UNNAMEABLE
+    assert pe.day_rule_action({"day_rules": [rule]}, rid) is None  # never names a rule
+
+
+@pytest.mark.parametrize("rule", [{"at": "14:30", "action": 5}, {"when": "a b", "at": "14:30", "action": 5},
+                                  {"when": "expiry", "at": "14:30"}, {"when": "expiry", "at": "14:30", "action": "5"}])
+def test_a_missing_or_odd_kind_or_action_also_fails_closed(rule):
+    assert pe.day_rule_id(rule) == pe.DAY_RULE_UNNAMEABLE
+
+
+def test_a_good_rule_keeps_its_id():
+    assert pe.day_rule_id({"when": "expiry", "at": "14:30", "action": 5}) == "day.expiry.1430.5"

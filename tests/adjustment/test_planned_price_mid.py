@@ -13,6 +13,7 @@ import pytest
 from ofo.adjustment import approaches
 from ofo.adjustment.approaches import ChainRow, planned_price
 from ofo.engine import model
+from ofo.marketdata import forward
 from ofo.rules.inputs import DataHealth
 
 EXP = datetime.date(2026, 12, 29)
@@ -60,11 +61,17 @@ def test_no_ltp_live_book_is_the_mid() -> None:
     assert planned_price(row(None, "72.00", "75.30", DataHealth.AVAILABLE)) == D("73.65")
 
 
-def test_mid_is_rounded_half_up_to_the_paisa() -> None:
-    """72.00 / 75.31 -> 73.655 -> 73.66; 72.00 / 75.25 -> 73.625 -> 73.63 (half-up, as the planned price always
-    was; half-even would give 73.62)."""
+def test_mid_is_the_one_half_even_mid_of_iv_price() -> None:
+    """GC-IC1 review B1: 100.00 / 100.05 -> 100.025 -> 100.02 (half-even, ``forward.mid_price``; half-up gave 100.03);
+    72.00 / 75.31 -> 73.655 -> 73.66; 72.00 / 75.25 -> 73.625 -> 73.62."""
+    assert planned_price(row("117.75", "100.00", "100.05", DataHealth.AVAILABLE)) == D("100.02")
     assert planned_price(row("117.75", "72.00", "75.31", DataHealth.AVAILABLE)) == D("73.66")
-    assert planned_price(row("117.75", "72.00", "75.25", DataHealth.AVAILABLE)) == D("73.63")
+    assert planned_price(row("117.75", "72.00", "75.25", DataHealth.AVAILABLE)) == D("73.62")
+
+
+def test_the_planned_price_calls_the_one_mid_function() -> None:
+    assert "mid_price(" in inspect.getsource(approaches.planned_price)
+    assert approaches.mid_price is forward.mid_price
 
 
 def test_ltp_rounded_to_the_paisa_when_book_not_live() -> None:

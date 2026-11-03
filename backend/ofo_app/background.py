@@ -373,9 +373,21 @@ MarginOf = Callable[["Watched", MarketInputs], Awaitable[Mapping | None]]
 
 
 def t16_on(body: Mapping | None) -> bool:
-    """A playbook whose T-16 (loss vs margin) rule is on: the only strategies whose margin is read."""
+    """A playbook whose T-16 (loss vs margin) rule is on."""
     t = None if body is None else (body.get("triggers") or {}).get("T-16")
     return isinstance(t, Mapping) and t.get("on") is True
+
+
+def carry_rule_on(body: Mapping | None) -> bool:
+    """A playbook with a switched-on carry day rule (its record carries the stated margin, REQ-159 AC-4)."""
+    rules = body.get("day_rules") if isinstance(body, Mapping) else None
+    return any(isinstance(r, Mapping) and r.get("on") is True and r.get("when") in pe.CARRY_WHENS
+               and r.get("action") == pe.DAY_ACTION_CARRY_CHECK for r in rules) if isinstance(rules, list) else False
+
+
+def margin_needed(body: Mapping | None) -> bool:
+    """The strategies whose margin is read: T-16 on OR a carry day rule on."""
+    return t16_on(body) or carry_rule_on(body)
 
 
 @dataclass(frozen=True)
@@ -396,7 +408,7 @@ class MarginCache:
 
     def seen(self, w: Watched, market: MarketInputs) -> None:
         """A check's market (its instrument ids are the margin basket's keys); read by the next refresh."""
-        if t16_on(w.body):
+        if margin_needed(w.body):
             self._markets[w.strategy_id] = (w.tracked.position.legs, market)
 
     def block_for(self, w: Watched, now: datetime.datetime) -> Mapping | None:
@@ -407,7 +419,7 @@ class MarginCache:
         return e.block
 
     def due(self, w: Watched, now: datetime.datetime) -> bool:
-        if self._margin_of is None or not t16_on(w.body) or w.strategy_id not in self._markets:
+        if self._margin_of is None or not margin_needed(w.body) or w.strategy_id not in self._markets:
             return False
         e = self._entries.get(w.strategy_id)
         return e is None or e.legs != w.tracked.position.legs or _seconds(now - e.read_at) >= MARGIN_REFRESH_S
