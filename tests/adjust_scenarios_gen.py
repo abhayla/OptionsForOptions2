@@ -507,12 +507,16 @@ def rupees(x: Decimal) -> str:
 
 
 def hand_price(row: dict | None) -> Decimal | None:
+    """ADR-241 (hand copy, written here on purpose): the bid-ask mid when the row's book is live (the scenario's own
+    data state says the quotes are fresh: ``live``; both sides above 0; ask not below bid), else a positive LTP, both
+    half-up to the paisa; else no price."""
     if row is None:
         return None
+    bid, ask = row["bid"], row["ask"]
+    if row["live"] and bid is not None and ask is not None and bid > 0 and ask > 0 and ask >= bid:
+        return ((bid + ask) / 2).quantize(D("0.01"), rounding=ROUND_HALF_UP)
     if row["ltp"] is not None and row["ltp"] > 0:
         return row["ltp"].quantize(D("0.01"), rounding=ROUND_HALF_UP)
-    if row["bid"] is not None and row["ask"] is not None and row["bid"] > 0 and row["ask"] > 0:
-        return ((row["bid"] + row["ask"]) / 2).quantize(D("0.01"), rounding=ROUND_HALF_UP)
     return None
 
 
@@ -1189,11 +1193,14 @@ def build(spec: dict, pb: dict) -> dict:  # noqa: C901, PLR0912, PLR0915 - one r
     shorts = [leg for leg in legs if leg["side"] == "SELL" and leg["type"] != "FUT"]
     premium_left = None
     # the unpriced leg's quote answered "not found": its row has no price for the approach builder either
-    near_rows = [{**r, "ltp": None, "bid": None, "ask": None} if r["tradingsymbol"] == unpriced else r
-                 for c in chains if c["expiry"] == expiry for r in c["rows"]]
+    # ADR-241: a row's book is live only when the scenario's quotes are fresh (feed not stale): a stale book keeps its LTP
+    book_live = data_state["prices"] == "fresh" and data_state["feed"] != "stale"
+    near_rows = [{**r, "ltp": None, "bid": None, "ask": None, "live": book_live} if r["tradingsymbol"] == unpriced
+                 else {**r, "live": book_live} for c in chains if c["expiry"] == expiry for r in c["rows"]]
     hand_legs = hand_after = None
     later = sorted(c["expiry"] for c in chains if c["expiry"] > expiry)
-    next_rows = [{**r, "expiry": later[0]} for c in chains if later and c["expiry"] == later[0] for r in c["rows"]]
+    next_rows = [{**r, "expiry": later[0], "live": book_live} for c in chains if later and c["expiry"] == later[0]
+                 for r in c["rows"]]
     if family == "ic" or is_condor(legs):  # the approach builder builds every approach for a condor shape
         hand_legs, hand_after = hand_approaches(u, lot, kind, today, spot, legs, near_rows, booked,
                                                 next_rows=next_rows or None)
