@@ -1263,9 +1263,19 @@ async def _serve() -> int:  # pragma: no cover - the process wiring; each part i
     async def preferences(user_ref: str) -> Preferences:
         return prefs_from_values(await user_values(user_ref))
 
+    # T-16 (GC-IC1 5b): the screen's own margin read (``get_approach_margin`` over the app's margin source). Named
+    # gap (#627): this process holds no Kite session of its own yet (``live_market.current_session`` answers None
+    # here), so the read answers "not checked" and T-16 stays ``missing_margin`` until the session is shared.
+    from ofo.settings import defaults  # noqa: PLC0415
+
+    from ofo_app.live_market import margin_source  # noqa: PLC0415
+    from ofo_app.routes.adjustment import get_approach_margin  # noqa: PLC0415
+    from ofo_app.routes.outcome import MarketContext  # noqa: PLC0415
+    margin_ctx = MarketContext(provider, clock, defaults()[RISK_FREE_RATE], OWNER_REF)
     worker = Worker(provider_for=lambda _owner: provider, lister=functools.partial(owner_lister, provider),
                     clock=clock, settings=get_settings_reader(), preferences=preferences, want_client=bus,
-                    user_values=user_values)
+                    user_values=user_values,
+                    margin_of=screen_margin_reader(get_approach_margin(margin_ctx, margin_source())))
     feed = asyncio.create_task(socket.run(), name="background-feed")
     try:
         await worker.run()

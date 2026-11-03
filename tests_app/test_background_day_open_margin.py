@@ -172,7 +172,7 @@ async def test_a_failed_or_busy_margin_read_is_not_known_on_both_paths_never_zer
     at = _gap_time(prov)
     w = _ic_watched(gap)
     fake = FakeMargin(at, KiteBusy("queue full") if fail == "busy" else RuntimeError("margin endpoint down"))
-    _worker_, bg, at2 = await _worker_after_refresh(prov, w, at, fake)
+    _, bg, at2 = await _worker_after_refresh(prov, w, at, fake)
     screen = await _screen_with(prov, w.tracked, at2, w.body, fake)
     assert bg.margin is None
     assert screen.margin is None
