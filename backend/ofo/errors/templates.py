@@ -1259,6 +1259,10 @@ _TRIGGER_TEMPLATES: tuple[MessageTemplate, ...] = (
           "worked out."),
     _trig("missing_entry_day", 508, "The day this strategy was entered is not known, so the big win on the first "
           "day cannot be checked."),
+    # GC-IC1 step 10 fix (REQ-159 AC-4): a switched-on day rule whose kind and action the worker does not act on yet
+    _trig("day_rule_not_checked", 509, "This day rule is saved and shown, but it is not checked yet: only the expiry "
+          "day exit and tighten rules and the before-a-weekend and before-a-holiday carry checks are.", None,
+          "Nothing to do; it has no effect on any check until it is supported."),
     _gate("adjust_trigger_already_true", _UI, 152, "Already true when tracking started.",
           "It is shown, not flagged, until a check finds it false.", "Nothing.",
           "Watch it: it flags if it clears and then comes back.", {}),

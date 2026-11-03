@@ -793,8 +793,9 @@ def _far_short_named(t09: tuple[Decimal, Cmp] | None, state: StrategyState, pct:
 def day_answers(body: Mapping, state: StrategyState, why: str | None = None,
                 t09: tuple[Decimal, Cmp] | None = None) -> tuple[DayAnswer, ...]:
     """Every switched-on day rule this version checks, answered on ``state`` (the one function: ``evaluate`` calls
-    it for the screen and the worker alike). Only the expiry-day close rule (action 5 with
-    ``close_if_short_within_pct``) is checked here; the tighten rule (action 4) stays ``tighten_percent``."""
+    it for the screen and the worker alike). The expiry-day close rule (action 5) and the carry checks are
+    answered here; the tighten rule (action 4) stays ``tighten_percent``; a switched-on rule whose pair is not in
+    ``ACTING_DAY_PAIRS`` is answered NotChecked (``DAY_RULE_NOT_CHECKED``), never skipped."""
     out: list[DayAnswer] = []
     rules = body.get("day_rules")
     for rule in rules if isinstance(rules, list) else []:
@@ -806,6 +807,8 @@ def day_answers(body: Mapping, state: StrategyState, why: str | None = None,
             answer = _expiry_close(t09, rule, day_rule_id(rule), state, why)
         elif when in CARRY_WHENS and action == DAY_ACTION_CARRY_CHECK:
             answer = _carry_check(rule, day_rule_id(rule), state)
+        elif not day_rule_acts(rule):  # switched on but never acted on: "not checked", never silent
+            answer = DayAnswer(day_rule_id(rule), action if type(action) is int else -1, reason=DAY_RULE_NOT_CHECKED)
         if answer is not None:
             out.append(answer)
     return tuple(out)
@@ -896,6 +899,21 @@ BEFORE_WEEKEND: Final = "beforeWeekend"
 BEFORE_HOLIDAY: Final = "beforeHoliday"
 CARRY_WHENS: Final = (BEFORE_WEEKEND, BEFORE_HOLIDAY)
 HOLIDAY_LIST_UNKNOWN: Final = f"{P}holiday_list_unknown"
+DAY_ACTION_TIGHTEN: Final = 4  # PLAYBOOK_DAY_RULE_ACTION_TEXT["4"], "Tighten every trigger by this %"
+DAY_RULE_NOT_CHECKED: Final = f"{P}day_rule_not_checked"
+#: THE table of day-rule (kind, action) pairs the worker acts on (GC-IC1 step 10 fix, REQ-159 AC-4; B8: one place).
+#: ``day_answers`` and ``adjustment_check._tighten`` act only on a pair listed here; the labels route sends the same
+#: list to the editor and the plan sheet, which show every other switched-on rule as "not checked". A new acting pair
+#: is added here only.
+ACTING_DAY_PAIRS: Final = frozenset({
+    ("expiry", DAY_ACTION_PREPARE_EXIT), ("expiry", DAY_ACTION_TIGHTEN),
+    (BEFORE_WEEKEND, DAY_ACTION_CARRY_CHECK), (BEFORE_HOLIDAY, DAY_ACTION_CARRY_CHECK)})
+
+
+def day_rule_acts(rule: Mapping) -> bool:
+    """True when the worker acts on this rule's (kind, action) pair; every other pair is stored and shown only."""
+    when, action = rule.get("when"), rule.get("action")
+    return isinstance(when, str) and type(action) is int and (when, action) in ACTING_DAY_PAIRS
 _NOON: Final = datetime.time(12, 0)
 _SATURDAY: Final = 5
 

@@ -111,9 +111,9 @@
           <div class="tw"><table class="tbl">
             <thead><tr><th>On</th><th>When</th><th>Time</th><th>Action</th><th>%</th></tr></thead>
             <tbody>
-              <tr v-for="(r, i) in work.day_rules ?? []" :key="i">
+              <tr v-for="(r, i) in work.day_rules ?? []" :key="i" :class="{ greyed: dayRuleNotChecked(r, labels) }" :data-testid="`pb-day-${i}`">
                 <td><input v-model="r.on" type="checkbox" class="h-4 w-4 accent-accent"></td><td>{{ labels.dayKinds[r.when] ?? r.when }}<span v-if="r.date"> {{ r.date }}</span></td>
-                <td><input v-model="r.at" class="field w-20"></td><td>{{ labels.dayActions[String(r.action)] ?? r.action }}</td>
+                <td><input v-model="r.at" class="field w-20"></td><td>{{ labels.dayActions[String(r.action)] ?? r.action }}<small v-if="dayRuleNotChecked(r, labels)" class="why" :data-testid="`pb-day-not-checked-${i}`">{{ dayRuleNotChecked(r, labels) }}</small></td>
                 <td><input v-if="r.percent !== undefined" v-model="r.percent" class="field w-16"></td>
               </tr>
             </tbody>
@@ -180,7 +180,7 @@ import api from '@/services/api'
 import Tabs from '@/components/common/Tabs.vue'
 import PreferencesTab from '@/components/adjustments/PreferencesTab.vue'
 import SystemPlaybookAdmin from '@/components/adjustments/SystemPlaybookAdmin.vue'
-import { STEPS, EXPIRY_KINDS, addStage, clone, isDirty, labelMaps, refusalText, removeStage, ruleMembers, said, stagesOf, summaryLines,
+import { STEPS, EXPIRY_KINDS, addStage, clone, dayRuleNotChecked, isDirty, labelMaps, refusalText, removeStage, ruleMembers, said, stagesOf, summaryLines,
   testRow, valuesOf } from '@/lib/playbookEditor'
 
 const route = useRoute()

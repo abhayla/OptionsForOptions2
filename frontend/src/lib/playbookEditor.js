@@ -56,7 +56,15 @@ export function labelMaps(answer) {
   const map = (list) => Object.fromEntries((list ?? []).map((x) => [x.key, said(x.text)]))
   return { approaches: map(answer?.approaches), dayKinds: map(answer?.day_kinds), dayActions: map(answer?.day_actions),
     summary: map(answer?.summary), guards: map(answer?.guards), pastNote: said(answer?.past_note),
-    noValues: said(answer?.no_values) }
+    noValues: said(answer?.no_values), dayActing: answer?.day_acting ?? null, dayNotChecked: said(answer?.day_not_checked) }
+}
+
+/** Why a switched-on day rule is shown as not checked (GC-IC1 step 10 fix): its (kind, action) pair is not in the
+ *  server's list of pairs the worker acts on. '' when it acts, is off, or the list is not loaded (never guessed here). */
+export function dayRuleNotChecked(rule, labels) {
+  const acting = labels?.dayActing
+  if (!rule?.on || !Array.isArray(acting)) return ''
+  return acting.some((p) => p.when === rule.when && p.action === rule.action) ? '' : (labels.dayNotChecked ?? '')
 }
 
 /** A stage's days in the catalogue's words. */
@@ -79,8 +87,12 @@ export function summaryLines(body, typeName, kind, labels) {
       return fill(x.unit && x.unit !== 'time' ? t.trigger_unit : t.trigger, slots)
     })
   const both = (body.rules ?? []).filter((r) => ruleMembers(r).all).map((r) => fill(t.rule_all, { id: r.id, members: r.all_of.join(t.joiner_and) }))
-  const days = (body.day_rules ?? []).filter((r) => r.on).map((r) => fill(t.day_rule, {
-    when: `${labels.dayKinds?.[r.when] ?? r.when}${r.date ? ' ' + r.date : ''}`, at: r.at, action: labels.dayActions?.[String(r.action)] ?? String(r.action) }))
+  const days = (body.day_rules ?? []).filter((r) => r.on).map((r) => {
+    const line = fill(t.day_rule, {
+      when: `${labels.dayKinds?.[r.when] ?? r.when}${r.date ? ' ' + r.date : ''}`, at: r.at, action: labels.dayActions?.[String(r.action)] ?? String(r.action) })
+    const why = dayRuleNotChecked(r, labels)
+    return why ? `${line} (${why})` : line
+  })
   const g = body.guards ?? {}
   return [
     { key: 'type', text: fill(t.type_line, { type: typeName, kind: t[`kind_${kind}`], stages: stages.map((s) => stageText(s, t)).join(', ') }) },
