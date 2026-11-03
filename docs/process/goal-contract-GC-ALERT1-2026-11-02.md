@@ -86,7 +86,7 @@ DATES: every time written in a record comes from `date` in the same step. NIFTY 
 | 5 | DONE, 3 tests PARKED #638 | Tier A review FIX FIRST (7 findings): 2/3/4/5 fixed in 546c07fc (merged c93fbdb6: no record from a candle that saw a pause, exit-lapse failure contained, screen writes nothing, superseded_by_worse), 1 rejected (per-instrument age not used, finding staleness-by-last-change-age; worker holds its own index token), 6/7 + screen spot freshness deferred #639; domain 1232 passed on c93fbdb6; fresh-DB on c93fbdb6: worker 12 passed + 3 xfail (#638) + 1 async-timeout flake (quiet time: passes alone, noted on #638), cycle 59, adjustment_check 11, opportunities 14, storage 27, risk exits 5. Earlier: 5a merged 79196507 (readings for every rule, Lapsed at band, restore, migration 0036); 5b r1 b6d6fb1d + r2a 3ac7b661 (worker drives Opened/Held/Lapsed through the gate; fresh spot stamped now: quiet index was read stale after 3 s; group key letters+digits: inbox 500 fixed) + r2b 05bd6e78 (screen check writes no record, 503 on store failure; AC-5 risk exits import-walk) + completion 44f0d4c9 (catalogue ids in the gate, gate_rows.py split, worker tests: cap, quiet time, dismiss x2, close pass). Fresh-DB on merged heads: worker 5 (pre-completion), cycle 59, wire_want 7, storage 27, adjustment_check 10, opportunities 14, group key 1, speeds 10, alert style 35, openapi 1, reply inventory 24; domain 1227. PARKED #638: per-style interval gaps {30,60} for weekly, plan change, day rollover (xfail strict). Still owed: dev ofo_dev runs live in GC-LIVE4 |
 | 6 | DONE | settings in step 3 (speeds.background_check_seconds.<style> 10/30/120), worker use in 5b r1; old single key removed; interval test parked #638 |
 | 7 | MOVED to GC-LIVE4 (owner 2026-11-03 00:39) | docs/process/goal-contract-GC-LIVE4-2026-11-03-DRAFT.md |
-| 8 | BLOCKED (gate) | regen done (cd062f28); handover written; gate run 2 TOTAL FAIL 4/9 (guards) -> fixed 208c1baf + c2ad7028; runs 1 and 3 killed by Claude Code's low-memory reap (no output); no TOTAL PASS, no push yet (66 local commits); restart only on the owner's word |
+| 8 | DONE 05:36 | gate runs: 2 TOTAL FAIL 4/9 (guards, fixed 208c1baf + c2ad7028), 4 FAIL app collection (fixed 689a9bec), 5 8/9 (one load flake test_feed_control, 16/16 alone), 1/3/6 killed by the low-memory reap; run 7 as a detached Start-Process: TOTAL PASS 1520.2s on 7a80cbce (marker written); pushed 396c1eaa..7a80cbce, then docs 5008c931; handover docs/process/session-handover-2026-11-03-gcalert1.md; memory gcalert1-close-2026-11-03; origin/main still 4119c8c5 |
 
 ## Amendment 2026-11-03 00:39 IST (owner, chat)
 Owner: "finish everything as soon as possible, obviously test it. But for market hour testing, create a separate contract, separate goal contract, and we will run it during that market hours. Maybe we will combine other live market hours testing along with this one ... At least the building part should be completed."
@@ -95,8 +95,8 @@ Owner: "finish everything as soon as possible, obviously test it. But for market
 - Definition of Done line 2: "live counts recorded, or step 7 PARKED" is replaced by "step 7 handed to GC-LIVE4 (draft written)".
 
 ## Definition of Done
-- [ ] Step 0 data + hand-derived counts, then the core proof (step 1), before any other code.
-- [ ] Spec reconciled (step 2); REQ-170 AC-1..AC-7, ADR-236 and ADR-235 built with tests; #636 round 4 built or
+- [x] Step 0 data + hand-derived counts, then the core proof (step 1), before any other code.
+- [x] Spec reconciled (step 2); REQ-170 AC-1..AC-7, ADR-236 and ADR-235 built with tests; #636 round 4 built or
       PARKED with its reason; live counts recorded, or step 7 PARKED if no market day falls inside the run.
-- [ ] S1 done or parked; S2 / S3 closed or commented; S4 issue filed.
-- [ ] Full gate TOTAL PASS on the final head; feature/adjustments pushed; handover written; nothing on main.
+- [x] S1 done or parked; S2 / S3 closed or commented; S4 issue filed.
+- [x] Full gate TOTAL PASS on the final head; feature/adjustments pushed; handover written; nothing on main.
