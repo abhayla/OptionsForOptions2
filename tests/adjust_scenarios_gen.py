@@ -822,6 +822,28 @@ def hand_exit(lot: int, legs: list[dict], rows: list[dict]) -> dict:
     return {"trades": trades}
 
 
+def hand_generic_exits(lot: int, legs: list[dict], rows: list[dict], booked: Fraction) -> dict:
+    """Exit and reduce approaches of a position that is not a condor (hand copy, ADR-238): A-31 closes every leg; A-24
+    (take profit) is the same trades, refused unless the whole trade is above zero at the planned exit prices (6);
+    A-25 closes X% of every leg's lots, whole lots only (2), same profit test."""
+    out = {"A-31": hand_exit(lot, legs, rows)}
+    if "trades" not in out["A-31"]:
+        return {a: out["A-31"] for a in ("A-31", "A-24", "A-25")}
+    prices = [t["price"] for t in out["A-31"]["trades"]]
+    whole = booked + sum(Fraction(sign(x["side"]) * x["lots"] * lot * (p - x["entry"])) for x, p in zip(legs, prices, strict=True))
+    if whole <= 0:
+        refused = {"refused": "The whole trade is not in profit with every open leg closed at its planned price."}
+        return {**out, "A-24": refused, "A-25": refused}
+    out["A-24"] = out["A-31"]
+    pct = APPROACH_CONFIG["partial_close_percent"]
+    if any((x["lots"] * pct) % 100 != 0 for x in legs):
+        out["A-25"] = {"refused": "a leg's lots do not split into whole lots at the partial-close percent"}
+    else:
+        out["A-25"] = {"trades": [{**t, "quantity": x["lots"] * pct // 100 * lot}
+                                  for t, x in zip(out["A-31"]["trades"], legs, strict=True)]}
+    return out
+
+
 def hand_cost(u: str, trades: list[dict], rows: list[dict]) -> Decimal | None:
     """ADR-221 / REQ-156 AC-2: the approach's own charges (rounded up to the paisa) + (ask - bid) / 2 x qty per traded
     contract, half-even to the paisa; a traded contract without a usable bid and ask -> None (the Compare's "-")."""
@@ -1221,7 +1243,7 @@ def build(spec: dict, pb: dict) -> dict:  # noqa: C901, PLR0912, PLR0915 - one r
         a for a in overrides.get("approaches_on", []) if a in fpb["approaches"]["off_in_playbook"]]) if a != "A-36"]
     if adjustments_used >= overrides.get("max_adjustments", fpb.get("guards", {}).get("max_adjustments", GUARDS["max_adjustments"])):
         offered = [a for a in offered if a in EXIT_REDUCE]  # S-11: only exit and reduce are offered (hand copy)
-    cost_legs = hand_legs if hand_legs is not None else {"A-31": hand_exit(lot, legs, near_rows)}
+    cost_legs = hand_legs if hand_legs is not None else hand_generic_exits(lot, legs, near_rows, booked)
     adj_approach, adj_cost = hand_cheapest(offered, cost_legs, u, near_rows + next_rows)
     if priced and family in SHORTS and any(leg["type"] != "FUT" for leg in legs):
         premium_left = sum(-sign(leg["side"]) * leg["quantity"] * ltp(leg) for leg in legs if leg["type"] != "FUT")

@@ -51,53 +51,64 @@ def test_t19_cost_equals_the_cheapest_compare_cell_for_every_scenario(sid):
     the paisa) and equals the generator's hand figure; no cell priced -> the not-checked reason."""
     sc = s.load(sid)
     tracked, market, spot = s.inputs(sc)
-    offered = offered_now(s.body_of(sc), sc["position"]["adjustments_used"])  # S-11 filter included
-    _, cols, _ = _columns(sid)
-    cells = {a: c for a, c in s.compare_costs(tracked, market, spot).items()
-             if a in offered and c.value is not None and cols[a].built.trades}  # a no-trade column is not an adjustment
-    got = s.cheapest(sc)
-    if not cells:
+    cells = {a: c for a, c in s.compare_costs(tracked, market, spot).items() if c.value is not None}
+    got = s.cheapest(sc)  # the engine path; the expected figures are the generator's independent hand path
+    if sc["expected"]["adjustment_approach"] is None:
         assert (got.approach, got.cost, got.reason) == (None, None, cmp.NO_APPROACH_PRICED)
     else:
-        low = min(c.value for c in cells.values())
-        assert got.cost == low and cells[got.approach].value == low
-        assert got.approach == next(a for a in offered if a in cells and cells[a].value == low)  # playbook order
+        assert (got.approach, str(got.cost)) == (sc["expected"]["adjustment_approach"], sc["expected"]["adjustment_cost"])
+        if got.approach in cells:  # a column the Compare shows carries the same figure (to the paisa)
+            assert cells[got.approach].value == got.cost
+        assert all(c.value >= got.cost for a, c in cells.items() if a != "A-36")  # nothing shown is cheaper
     assert (None if got.cost is None else str(got.cost)) == sc["expected"]["adjustment_cost"]
     assert got.approach == sc["expected"]["adjustment_approach"]
 
 
-def test_core_adj02_cheapest_is_a29_at_rs_92_35_the_compare_cell():
-    """The core proof, pinned: ADJ-02's Compare cells and T-19's cost (old formula gave Rs 342.00)."""
+def _hand_costs(sc: dict) -> dict[str, D]:
+    """The generator's own Compare cost per built approach (``expected.compare_cost``, hand path), A-36 and A-04 left out."""
+    return {a: D(v["cost"]) for a, v in sc["expected"]["compare_cost"].items() if a not in ("A-36", "A-04")}  # A-04 needs the next expiry chain: the route test covers it
+
+
+def test_core_adj02_cheapest_is_the_generators_pick_and_every_compare_cell_equals_its_hand_cost():
+    """The core proof: ADJ-02's Compare cells equal the generator's hand costs, and T-19's cost is the generator's
+    cheapest offered approach (A-26 at Rs 30.26 since step 2: the untested short's buy-back, ADR-238 (3); it was A-29 at
+    Rs 92.35 when only the original seven were built; the old formula gave Rs 342.00)."""
     sc = s.load("ADJ-02")
     tracked, market, spot = s.inputs(sc)
     cells = {a: c.value for a, c in s.compare_costs(tracked, market, spot).items()}
-    assert cells == {"A-36": D("0.00"), "A-01": D("173.36"), "A-05": D("250.44"), "A-29": D("92.35"),
-                     "A-28": D("137.49"), "A-11": D("575.99"), "A-31": D("198.06")}
+    assert cells == {"A-36": D("0.00"), **_hand_costs(sc)}
     got = s.cheapest(sc)
-    assert (got.approach, got.cost) == ("A-29", D("92.35"))
+    assert (got.approach, str(got.cost)) == (sc["expected"]["adjustment_approach"], sc["expected"]["adjustment_cost"])
+    assert (got.approach, got.cost) == ("A-26", min(_hand_costs(sc).values()))
 
 
 def test_all_priced_names_the_cheapest():
     sc, cols, market = _columns("ADJ-02")
-    assert len(cols) == 6
-    assert cheapest_approach(offered_approaches(s.body_of(sc)), cols, market.chain) == cmp.Cheapest("A-29", D("92.35"))
+    hand = _hand_costs(sc)
+    assert set(cols) == set(hand) and len(cols) == 9  # A-01 A-05 A-29 A-28 A-11 A-31 A-26 A-02 A-06
+    want = cmp.Cheapest(sc["expected"]["adjustment_approach"], D(sc["expected"]["adjustment_cost"]))
+    assert cheapest_approach(offered_approaches(s.body_of(sc)), cols, market.chain) == want
 
 
 def test_some_unpriceable_takes_the_cheapest_of_the_priced():
     sc, cols, market = _columns("ADJ-02")
-    a29 = cols["A-29"]
-    no_charges = dataclasses.replace(a29, charges_known=False)  # A-29's charges unknown -> "-" -> left out
-    got = cheapest_approach(offered_approaches(s.body_of(sc)), {**cols, "A-29": no_charges}, market.chain)
-    assert got == cmp.Cheapest("A-28", D("137.49"), None, 1)  # A-29 left out, and counted
+    hand = _hand_costs(sc)
+    first = sc["expected"]["adjustment_approach"]  # A-26: its charges unknown -> "-" -> left out, and counted
+    no_charges = dataclasses.replace(cols[first], charges_known=False)
+    order = offered_approaches(s.body_of(sc))
+    rest = {a: c for a, c in hand.items() if a != first and a in order}
+    nxt = next(a for a in order if a in rest and rest[a] == min(rest.values()))  # playbook order on a tie
+    got = cheapest_approach(order, {**cols, first: no_charges}, market.chain)
+    assert got == cmp.Cheapest(nxt, rest[nxt], None, 1)
     line = str(check.condition_line_t19("Premium left", "0.5000", "1.0000", got.approach, got.cost, got.unpriced))
-    assert line == ("Premium left: 0.5000 (rule 1.0000); cheapest adjustment that could be priced now: "
-                    "Close the tested spread, cost \u20b9137.49 (as in Compare) (1 could not be priced)")
+    assert line.startswith("Premium left: 0.5000 (rule 1.0000); cheapest adjustment that could be priced now: ")
+    assert f"cost ₹{rest[nxt]} (as in Compare) (1 could not be priced)" in line
+    a29 = cols["A-29"]
     no_whole = dataclasses.replace(a29, whole=None)
-    assert cheapest_approach(("A-29", "A-31"), {**cols, "A-29": no_whole}, market.chain) == \
-        cmp.Cheapest("A-31", D("198.06"), None, 1)
+    assert cheapest_approach(("A-29", "A-31"), {**cols, "A-29": no_whole}, market.chain) ==         cmp.Cheapest("A-31", hand["A-31"], None, 1)
     no_quote = tuple(dataclasses.replace(r, bid=None) if r.tradingsymbol == a29.built.trades[0].tradingsymbol else r
                      for r in market.chain)
-    assert cheapest_approach(("A-29", "A-01"), cols, no_quote) == cmp.Cheapest("A-01", D("173.36"), None, 1)
+    assert cheapest_approach(("A-29", "A-01"), cols, no_quote) == cmp.Cheapest("A-01", hand["A-01"], None, 1)
 
 
 def test_none_priceable_is_not_checked_with_the_reason():
@@ -105,8 +116,12 @@ def test_none_priceable_is_not_checked_with_the_reason():
     other offered approach trades a contract with bid 0, so none is priced."""
     sc = s.load("ADJ-14")
     body = s.body_of(sc)
-    body["approaches"]["applicable"] = [a for a in body["approaches"]["applicable"] if a != "A-26"]
     tracked, market, spot = s.inputs(sc)
+    unpriced = {a for a, c in s.compare_costs(tracked, market, spot).items() if c.value is None}
+    # keep only the approaches that price to nothing: A-26 (the one decayed untested short with a bid), A-02, A-27 and
+    # every other priced approach are the ones the playbook offers that DO price (ADR-238 / ADR-239)
+    body["approaches"]["applicable"] = [a for a in body["approaches"]["applicable"] if a in unpriced or a == "A-36"]
+    assert unpriced and "A-26" not in body["approaches"]["applicable"]
     got = check.cheapest_offered(body, tracked, market, spot, s.RATES, s.PREFS.approach)
     assert (got.approach, got.cost, got.reason) == (None, None, cmp.NO_APPROACH_PRICED) and got.unpriced > 0
     ev = pe.evaluate(s.body_of(sc), pe.StrategyState("weekly", days_left=1, hhmm="15:00", spot=D("23020"),
@@ -175,11 +190,12 @@ def test_s11_at_the_limit_only_exit_and_reduce_are_priced():
     a01 = cols["A-01"]
     cheap_roll = dataclasses.replace(a01, whole=dataclasses.replace(a01.whole, adjustment_charges=D(0)))
     tilted = {**cols, "A-01": cheap_roll}
-    below = cheapest_approach(offered_now(body, 1), tilted, market.chain)
+    pool = tuple(a for a in offered_now(body, 1) if a != "A-26")  # A-26 (Rs 30.26) is an exit: it would win anyway
+    below = cheapest_approach(pool, tilted, market.chain)
     assert below.approach == "A-01" and below.cost < D("92.35")
     at = offered_now(body, body["guards"]["max_adjustments"])
-    assert "A-01" not in at and set(at) <= EXIT_REDUCE and "A-29" in at
-    assert cheapest_approach(at, tilted, market.chain) == cmp.Cheapest("A-29", D("92.35"))
+    assert "A-01" not in at and set(at) <= EXIT_REDUCE and "A-26" in at
+    assert cheapest_approach(at, tilted, market.chain) == cmp.Cheapest("A-26", _hand_costs(sc)["A-26"])
     assert offered_now(body, None) == offered_approaches(body)  # an unread count filters nothing (T-18 says why)
 
 

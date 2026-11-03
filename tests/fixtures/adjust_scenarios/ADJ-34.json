@@ -1018,7 +1018,7 @@
   "pnl_now": "4400.5000",
   "premium_left": null,
   "adjustment_cost": "282.62",
-  "adjustment_approach": "A-31",
+  "adjustment_approach": "A-24",
   "triggers_fired": [
    {
     "id": "T-01",
