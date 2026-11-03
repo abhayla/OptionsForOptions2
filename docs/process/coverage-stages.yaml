@@ -571,6 +571,7 @@ issues:
   "#646": S6.7  # Catalogue items named by a playbook or AC with no working path or label (A-30, T-10/T-10c/T-17, data-state labels, Test row form)
   "#647": S6.7  # Review-adjustment drawer lacks margin utilisation and the options' IV / OI / LTP (REQ-046 AC-2)
   "#648": S6.7  # Suggestion records: prepared exits create none; 'Why did this trigger?' shows no outcome or its time (REQ-112 AC-1, AC-5)
+  "#649": S6.7  # Scenario fixtures carry fixed expiries: from 4 Nov DB tests that switch scenarios fail on the contract-lifecycle guard
 
 # Work items whose status is not done.
 work_items:
