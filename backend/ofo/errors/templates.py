@@ -23,7 +23,7 @@ from ofo.errors.model import UserFacingError, _build, _claim_render_token
 from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS
 
 from ofo.errors.gate_slots import (
-    Clock, ContractSymbol, DataHealthState, DataInputName, Date, DisplayRupees, ExecutionStatusName, LegContract, LegRef, OrderRef,
+    Clock, ClockTime, ContractSymbol, DataHealthState, DataInputName, Date, DisplayRupees, ExecutionStatusName, LegContract, LegRef, OrderRef,
     PlaybookField, PlaybookName, PlaybookTypeName, RiskRows, Rupees, ShapeFamilies, Strikes, Symbol, UnitsByContract,
     VersionStateName, VersionStates, WorstCase,
 )
@@ -1289,6 +1289,29 @@ _PLAYBOOK_TEMPLATES: tuple[MessageTemplate, ...] = (
           "The roll limit saved in your playbook could not be read, so this roll costing {debit} net was not built.",
           _ADJ_REFUSED, _ADJ_BLOCKED, "Fix the roll limit in the playbook, or compare the other approaches.",
           {"debit": Money}),
+    # ADR-238 (GC-IC1 step 2): the exit and reduce approaches' refusals (REQ-155 AC-8)
+    _gate("adjust_partial_not_whole_lots", _UI, 179,
+          "{leg} holds {lots} lots, and {percent}% of them is not a whole number of lots.",
+          _ADJ_REFUSED, _ADJ_BLOCKED, "Change the partial close percent in your preferences, or compare the other "
+          "approaches.", {"leg": LegRef, "lots": Count, "percent": Count}),
+    _gate("adjust_untested_not_decayed", _UI, 180,
+          "{leg} has fallen from {entry} to {now}; this approach waits until it has fallen by {percent}% or more.",
+          _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {"leg": LegRef, "entry": Money, "now": Money,
+                                                        "percent": Count}),
+    _gate("adjust_untested_no_entry", _UI, 181,
+          "{leg} has no entry price above zero, so how far its price has fallen cannot be worked out.",
+          _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {"leg": LegRef}),
+    _gate("adjust_buyback_no_limit", _UI, 182,
+          "Your playbook sets no buy-back price for short legs at this stage, so this approach is not built.",
+          _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {}),
+    _gate("adjust_buyback_none_at_limit", _UI, 183,
+          "No short leg is priced within the buy-back limit of {limit} your playbook sets for this stage.",
+          _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {"limit": Money}),
+    _gate("adjust_time_exit_not_set", _UI, 184,
+          "Your playbook sets no time exit, so this approach is not built.",
+          _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {}),
+    _gate("adjust_time_exit_not_yet", _UI, 185, "The time exit is offered on expiry day from {time}.",
+          _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {"time": ClockTime}),
 )
 
 _TEMPLATES = (_TEMPLATES + _TRIGGER_TEMPLATES + _GATE_TEMPLATES

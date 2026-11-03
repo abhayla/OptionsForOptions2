@@ -20,7 +20,7 @@ derived by hand-written code; the test cross-checks them with the engine.
 | ADJ-11 | IC weekly, NIFTY 2 lots | Loss 55% of max loss: stop line | Middle (weekly, 4 d) | T-02, T-03, T-06, T-09, T-16 |
 | ADJ-12 | IC weekly, NIFTY 2 lots | Two adjustments already used: only exit / reduce offered | Last day (weekly, 1 d) | T-18 |
 | ADJ-13 | IC weekly, NIFTY 2 lots | After one adjustment with booked P&L: whole-trade numbers include it | Middle (weekly, 4 d) | none |
-| ADJ-14 | IC weekly, NIFTY 2 lots | T-19 not checked: no approach the playbook offers can be priced (ADR-221) | Last day (weekly, 1 d) | T-07, T-09, T-10b |
+| ADJ-14 | IC weekly, NIFTY 2 lots | T-19 on the last day: only buying back the decayed untested short is priced (ADR-221) | Last day (weekly, 1 d) | T-07, T-09, T-10b |
 | ADJ-15 | IC weekly, NIFTY 2 lots | Last session before a weekend, Friday 15:00: carry check | Middle (weekly, 4 d) | none |
 | ADJ-16 | IC weekly, NIFTY 2 lots | Day before a market holiday (Christmas, Fri 25 Dec 2026) | Middle (monthly, 5 d) | none |
 | ADJ-17 | IC weekly, NIFTY 2 lots | User unavailable the next two sessions: fires the session before | Middle (weekly, 4 d) | none |

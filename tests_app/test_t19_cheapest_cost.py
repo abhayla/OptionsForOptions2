@@ -101,8 +101,13 @@ def test_some_unpriceable_takes_the_cheapest_of_the_priced():
 
 
 def test_none_priceable_is_not_checked_with_the_reason():
+    """ADJ-14 without A-26 (ADR-238: A-26 buys back the decayed untested short, the one contract with a bid): every
+    other offered approach trades a contract with bid 0, so none is priced."""
     sc = s.load("ADJ-14")
-    got = s.cheapest(sc)
+    body = s.body_of(sc)
+    body["approaches"]["applicable"] = [a for a in body["approaches"]["applicable"] if a != "A-26"]
+    tracked, market, spot = s.inputs(sc)
+    got = check.cheapest_offered(body, tracked, market, spot, s.RATES, s.PREFS.approach)
     assert (got.approach, got.cost, got.reason) == (None, None, cmp.NO_APPROACH_PRICED) and got.unpriced > 0
     ev = pe.evaluate(s.body_of(sc), pe.StrategyState("weekly", days_left=1, hhmm="15:00", spot=D("23020"),
                                                        premium_left=D("110.50"), adjustment_cost_reason=got.reason,

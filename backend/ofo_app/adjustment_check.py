@@ -43,7 +43,7 @@ from decimal import Decimal
 from typing import Any, Final
 
 from ofo.adjustment import playbook_eval as pe
-from ofo.adjustment.approaches import Config, Position
+from ofo.adjustment.approaches import Config, ExitInputs, Position
 from ofo.adjustment.compare import Cheapest, Column, MarginRead, cheapest_approach
 from ofo.adjustment.offered import offered_now
 from ofo.adjustment.strategy_type import strike_gap_of, type_of
@@ -158,10 +158,35 @@ def _abs_delta(market: MarketInputs, symbol: str) -> Decimal | None:
     return None if g is None or g.delta is None else abs(g.delta)
 
 
+class PlaybookGuards(dict):
+    """A playbook's guards (a plain mapping for every existing reader) that also carry the body they came from, so the
+    approaches route reads T-09 for A-27 (ADR-238 (4)) from the SAME playbook read, never a second one."""
+
+    def __init__(self, guards: Mapping, body: Mapping) -> None:
+        super().__init__(guards)
+        self.body = body
+
+
 def guards_of_body(body: Mapping | None) -> dict[str, Any] | None:
     """The ``guards`` of a resolved playbook body (ADR-230 (1)); None when there is no body. The route's reader
     (``adjustment_readers.read_guards``) and T-19 both read guards through this."""
-    return None if body is None else dict(body.get("guards", {}))
+    return None if body is None else PlaybookGuards(body.get("guards", {}), body)
+
+
+def exit_inputs_of(guards: Mapping | None, position: Position, now: datetime.datetime) -> ExitInputs:
+    """A-27's and A-35's playbook inputs at this check (ADR-238 (4), (5)): the clock in IST against the nearest leg
+    expiry, the due tighten rule as the playbook check applies it, then ``playbook_eval.exit_inputs`` (the expiry-day
+    rule's own T-09 reader). Guards with no body (no playbook, a test seam) -> no T-09."""
+    body = getattr(guards, "body", None)
+    ist = now.astimezone(IST)
+    hhmm = ist.strftime("%H:%M")
+    if not position.legs:
+        return ExitInputs(None, None, hhmm)
+    expiry = min(x.expiry for x in position.legs)
+    tighten = _tighten(body, ist.date(), expiry, hhmm) if isinstance(body, Mapping) else None
+    state = pe.StrategyState(expiry_kind=position.expiry_kind or "weekly",  # type: ignore[arg-type]
+                             days_left=(expiry - ist.date()).days, hhmm=hhmm, tighten_percent=tighten)
+    return pe.exit_inputs(body, guards, state)
 
 
 def cheapest_offered(body: Mapping | None, tracked: Tracked, market: MarketInputs, spot: Decimal | None,  # noqa: PLR0913 - the preferences value is a required parameter (GC-SET)
@@ -178,9 +203,12 @@ def cheapest_offered(body: Mapping | None, tracked: Tracked, market: MarketInput
     position = tracked.position  # the route's Before and guards, through the same helpers (#633, ADR-230 (1))
     if before is None:
         before = price_after(position.legs, position, tracked.booked, tracked.paid_charges, (), rates, market)
-    limits, max_profit = liquidity_inputs(guards_of_body(body), before)
+    guards = guards_of_body(body)
+    limits, max_profit = liquidity_inputs(guards, before)
+    exits = exit_inputs_of(guards, position, market.now)  # ADR-238: A-27 / A-35 read the same playbook
     for a in offered:
-        built, priced = priced_approach(a, tracked, market, spot, rates, config, limits=limits, max_profit=max_profit)
+        built, priced = priced_approach(a, tracked, market, spot, rates, config, limits=limits, max_profit=max_profit,
+                                        exits=exits)
         if built is not None and priced is not None:
             columns[a] = Column(built, priced.after, priced.reason, priced.charges_known, MarginRead(None))
     return cheapest_approach(offered, columns, market.chain)

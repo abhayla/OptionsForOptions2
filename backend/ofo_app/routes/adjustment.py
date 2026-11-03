@@ -39,6 +39,7 @@ from ofo.adjustment.approaches import (
     ApproachLegs,
     ChainRow,
     Config,
+    ExitInputs,
     Position,
     PositionLeg,
     build_approach,
@@ -360,15 +361,17 @@ def as_of_market(tracked: Tracked, market: MarketInputs) -> Tracked:
 
 def priced_approach(a: str, tracked: Tracked, market: MarketInputs, spot: Decimal,  # noqa: PLR0913 - the preferences value is a required parameter (GC-SET)
                     rates: ChargeRates | None, config: Config, *, limits: liquidity.Limits | None = None,
-                    max_profit: Decimal | None = None) -> tuple[ApproachLegs | None, Priced | None]:
+                    max_profit: Decimal | None = None,
+                    exits: ExitInputs | None = None) -> tuple[ApproachLegs | None, Priced | None]:
     """One approach as the approaches route and the Compare build and price it (the ONE build path; the playbook
     check's T-19 reads it too, ADR-221): an unknown id -> (None, None); refused -> (built, None); else the built legs
     and the whole-trade After of its legs, with this approach's own charges. ``limits`` / ``max_profit``: the
-    playbook's liquidity limits and the Before's max profit (ADR-230 (1)); None: not applied."""
+    playbook's liquidity limits and the Before's max profit (ADR-230 (1)); None: not applied. ``exits``: A-27's and
+    A-35's playbook inputs (``adjustment_check.exit_inputs_of``, ADR-238); None: both refused with the reason."""
     if a not in APPROACH_IDS:
         return None, None
     position = tracked.position
-    built = build_approach(position, market.chain, spot, a, config, None, limits, max_profit)
+    built = build_approach(position, market.chain, spot, a, config, None, limits, max_profit, exits)
     if built.refusal is not None:
         return built, None
     booked = None if tracked.booked is None else tracked.booked + _closed_booked(built)
@@ -436,6 +439,7 @@ async def adjustment_approaches(  # noqa: PLR0913, PLR0915 - FastAPI dependencie
     engine = 0.0
     limits: liquidity.Limits | None = None
     max_profit: Decimal | None = None
+    exits: ExitInputs | None = None
     if not spot.available:  # AC-5: no After at all
         reply |= {"before": None, "approaches": []}
         built_list: list[tuple[str, ApproachLegs | None]] = []
@@ -443,12 +447,14 @@ async def adjustment_approaches(  # noqa: PLR0913, PLR0915 - FastAPI dependencie
         t0 = time.perf_counter()
         guards = await guards_of(strategy_id, position, spot.value, check.listed_of(ctx))
         guards = _guards_or_reason(guards, reply)
+        exits = check.exit_inputs_of(guards, position, market.now)  # ADR-238: the same playbook read
 
         def price_all(m: MarketInputs) -> tuple[Priced, liquidity.Limits | None, Decimal | None, list]:
             b = price_after(position.legs, position, tracked.booked, tracked.paid_charges, (), rates, m)
             lim, mp = liquidity_inputs(guards, b)  # no playbook, no limits
             return b, lim, mp, [(a, priced_approach(a, tracked, m, spot.value, rates,  # type: ignore[arg-type]
-                                                    prefs.approach, limits=lim, max_profit=mp)) for a in asked]
+                                                    prefs.approach, limits=lim, max_profit=mp, exits=exits))
+                                for a in asked]
         before, limits, max_profit, answers = price_all(market)
         # GC-IC1 round 3: the landing strikes nobody held are held ONCE more and everything is built again; never a
         # third read, whatever is still unpriced after it (bounded: at most one more LEG_WAIT_S)
@@ -474,7 +480,7 @@ async def adjustment_approaches(  # noqa: PLR0913, PLR0915 - FastAPI dependencie
         reply |= await _compare_reply(columns, tracked, spot.value, market, rates, pop_on, before,  # type: ignore[arg-type]
                                       margin_of, prefs, limits, guards)
     reply["available"] = _available(position, market.chain, spot.value if spot.available else None, dict(built_list),
-                                    prefs.approach, limits, max_profit)
+                                    prefs.approach, limits, max_profit, exits)
     reply["days_to_expiry"] = _days_to_expiry(position)
     total = time.perf_counter() - started
     log.info("adjustment approaches strategy=%s approaches=%s engine_s=%.4f total_s=%.4f",
@@ -497,7 +503,7 @@ def _guards_or_reason(guards: Any, reply: dict[str, Any]) -> Mapping[str, Any] |
 
 def _available(position: Position, chain: Sequence[ChainRow], spot: Decimal | None,
                built: Mapping[str, ApproachLegs | None], config: Config, limits: liquidity.Limits | None = None,
-               max_profit: Decimal | None = None) -> list[dict[str, Any]]:
+               max_profit: Decimal | None = None, exits: ExitInputs | None = None) -> list[dict[str, Any]]:
     """REQ-046 AC-3 / REQ-045 AC-5: every generic approach with its one-line text and whether it can be built for this
     position now (else the refusal's own reason). No figure; nothing is priced here. No spot -> none can be built."""
     out: list[dict[str, Any]] = []
@@ -507,7 +513,7 @@ def _available(position: Position, chain: Sequence[ChainRow], spot: Decimal | No
         if spot is None:
             out.append(item | {"applicable": False, "reason": render_explanation("adjust_available_spot_missing")})
             continue
-        b = built.get(a) or build_approach(position, chain, spot, a, config, None, limits, max_profit)
+        b = built.get(a) or build_approach(position, chain, spot, a, config, None, limits, max_profit, exits)
         out.append(item | {"applicable": b.refusal_message is None, "reason": b.refusal_message,
                            "liquidity_flags": strike_flags(b, position, chain, limits)})
     return out

@@ -2380,8 +2380,8 @@
     "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"
   },
   "labels:adjustment_approach_about": {
-    "sha256": "d13322e7ec5098bbd0a6c70058da13d42a8ae72ffc05d961ff9030bace661357",
-    "reviewed": "owner read 2026-10-31 (decided in chat)"
+    "sha256": "56acda2d12ec1e78d3a259d45d1e1c1be7153a53822b75fea10bce7fd5b22c6c",
+    "reviewed": "pending owner read"
   },
   "explanation:adjust_spot_why_absent": {
     "sha256": "da10d6800a3d3b1c2b5b9b017bdd8225b49bc9ddf6f5f97a4be76d1448bfb475",
@@ -3537,6 +3537,74 @@
   },
   "adjust_trigger_carry_gap_unknown": {
     "sha256": "7938ad971c715eab355dca68185b73aead4a82271409561dc304b45ce47b7b71",
+    "reviewed": "pending owner read"
+  },
+  "adjust_partial_not_whole_lots": {
+    "sha256": "8e62825bb9a304b0bbb101ce4614e383c439c4d884d233635466cb8853e5834e",
+    "reviewed": "pending owner read"
+  },
+  "adjust_untested_not_decayed": {
+    "sha256": "73c2d172749ca8bc3dc6d1e50bbf33dbc1b45603d0285b51805182e94f59327c",
+    "reviewed": "pending owner read"
+  },
+  "adjust_untested_no_entry": {
+    "sha256": "6ccc9e665bfc81c26a1fd99d2cea21c833d68318efae2f87f282922d24fe3d2d",
+    "reviewed": "pending owner read"
+  },
+  "adjust_buyback_no_limit": {
+    "sha256": "f8fe347b094f66690c746645e790f209a66a329c9258a379d2a0406f2e17296f",
+    "reviewed": "pending owner read"
+  },
+  "adjust_buyback_none_at_limit": {
+    "sha256": "1421ac54b424c6da8c58efde23210ecae9d3116c029dced3c6ef8bb387b00a6c",
+    "reviewed": "pending owner read"
+  },
+  "adjust_time_exit_not_set": {
+    "sha256": "db27aff19bb520a2b9816f9769aee071793e5f547cf89d69591cdd9ba175dfbc",
+    "reviewed": "pending owner read"
+  },
+  "adjust_time_exit_not_yet": {
+    "sha256": "70da2563d16d2ccd1385f6e65ca3119c7fa2ac30923b6d69e1809b402ae7bb35",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_approach_name_a_24": {
+    "sha256": "47209d17fb155bc3857beda8ae94889261439aeaf60eee98f615cdb71932daa5",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_approach_name_a_25": {
+    "sha256": "74a415248f5b5600a99e10f51514a1beadb3f969820508bd463629ba3d867afe",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_approach_name_a_26": {
+    "sha256": "031fdf8ca7740096ccc8ef4bc83e7a9c9d55b6e25faa80b65c47ee4e4ca2b462",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_approach_name_a_27": {
+    "sha256": "300e08e145064f92d7f369d836d3ca1e990f0818b5fe03db2a212554e0756973",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_approach_name_a_35": {
+    "sha256": "3da7b1b276527a6ece178561b4c942351b9a3bc4ed6888a4e4a2973029ce9cda",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_approach_about_a_24": {
+    "sha256": "b22f7333ebdfa6638f34cb7b102c8360b8ccf1a5e941662c925bcb6216824e38",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_approach_about_a_25": {
+    "sha256": "28a8b5a079480c2ccb4e5eed18f5a305a17fcea4f43d4a4588aac2aab218b668",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_approach_about_a_26": {
+    "sha256": "632062ee8c131d943e7cf2e58c4d7e8b8cc219283fd3dd2ff119ab5a2c50dc76",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_approach_about_a_27": {
+    "sha256": "2924e16608e3fa45e33c3bf4ff684be52bae13ce7287acf84e23787747efa14c",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_approach_about_a_35": {
+    "sha256": "ab145ad2e39bfff83963a4de5341ad2233312a0d4c8a6aa1a5976880669259d9",
     "reviewed": "pending owner read"
   }
 }

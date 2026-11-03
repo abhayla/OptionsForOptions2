@@ -98,3 +98,10 @@ def max_profit_change(after: Decimal, before: Decimal) -> Decimal:
 
 def sum_amounts(amounts: Iterable[Decimal]) -> Decimal:
     return sum(amounts, Decimal(0))
+
+
+def fell_at_least_pct(entry: Decimal, now: Decimal, percent: int | Decimal) -> bool:
+    """ADR-238 (3), A-26: (entry - now) x 100 >= percent x entry, exact. No entry price (zero or below) -> False."""
+    if entry <= 0:
+        return False
+    return (entry - now) * 100 >= percent * entry

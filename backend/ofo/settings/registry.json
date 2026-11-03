@@ -758,6 +758,30 @@
       "source": "ADR-222 (7), REQ-168 AC-1, AC-5; was ofo/adjustment/approach_config.json reduce_divisor"
     },
     {
+      "key": "adjustments.partial_close_percent",
+      "group": "Adjustment defaults",
+      "label": "Partial close percent",
+      "unit": "percent",
+      "type": "integer",
+      "min": "1",
+      "max": "100",
+      "default": "50",
+      "what_it_changes": "The starting share of every leg's lots the partial close approach closes (50 closes half); a share that is not a whole number of lots is not built; each user can set their own.",
+      "source": "ADR-238 (2), REQ-168 AC-1; catalogue A-25 and S-12; was never typed in code (new in ADR-238)"
+    },
+    {
+      "key": "adjustments.untested_decay_percent",
+      "group": "Adjustment defaults",
+      "label": "Untested short fall before closing it",
+      "unit": "percent",
+      "type": "integer",
+      "min": "1",
+      "max": "99",
+      "default": "80",
+      "what_it_changes": "How far, in percent of its entry price, the short leg of the side spot is moving away from must have fallen before the close-the-untested-side approach is built (80 means it now costs 20% of its entry or less); each user can set their own.",
+      "source": "ADR-238 (3), REQ-168 AC-1; catalogue A-26, 80 to 90 percent; was never typed in code (new in ADR-238)"
+    },
+    {
       "key": "adjustments.near_level_percent",
       "group": "Adjustment defaults",
       "label": "Alert distance with no playbook",

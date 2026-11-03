@@ -39,6 +39,15 @@ Rules (each one decided here and stated, catalogue Part 2 followed where the con
 - Trade order: BUY trades first, then SELL (the playbook guard "buy legs first"), each group in leg order.
 - The builder does not apply the playbook's adjustment limit (S-11) or the data-state hold: those are filters of the
   caller (REQ-157), so every approach is built whenever its own legs allow it.
+- Exit and reduce (ADR-238): A-24 (take profit) and A-35 (time exit) close every open leg through the SAME code path as
+  A-31 (``_close_all``). A-25 closes ``partial_close_percent`` % of EVERY leg's lots; refused naming the first leg
+  (position order) whose share is not a whole number of lots (never rounded). A-26 buys back the untested short only
+  when (entry - price) x 100 >= ``untested_decay_percent`` x entry (exact; entry <= 0 is refused, no division); its wing
+  stays. A-27 buys back every short whose planned price passes T-09's own comparison against T-09's threshold of the
+  current stage; A-35 is built on expiry day from the playbook's ``time_exit``. Their playbook inputs come from the
+  CALLER as :class:`ExitInputs` (never a clock or a global): no T-09 -> A-27 refused ("no limit"); no ``time_exit``
+  -> A-35 refused; no check time -> A-35 refused as before the time (fail closed). A short with no price: refused
+  naming the leg, as every approach.
 """
 from __future__ import annotations
 
@@ -52,18 +61,20 @@ from ofo.adjustment import liquidity
 from ofo.engine import adjust_money
 from ofo.engine.legs import Action, Instrument, Leg
 from ofo.errors import LegValue, UserFacingError, render
-from ofo.errors.explanations import ADJUSTMENT_APPROACH_LABEL_TEXT
+from ofo.errors.explanations import ADJUSTMENT_APPROACH_LABEL_TEXT, EXIT_REDUCE_BUILT, PLAYBOOK_APPROACH_LABEL_TEXT
 from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS, Catalogue
 from ofo.instruments.models import Contract
 from ofo.money import PAISE
 from ofo.strategy import leg_edit
 from ofo.strategy.leg_edit import EditLeg, LegEditRefused, Listing
 
-APPROACH_IDS = ("A-36", "A-01", "A-05", "A-29", "A-28", "A-11", "A-31")
+APPROACH_IDS = ("A-36", "A-01", "A-05", "A-29", "A-28", "A-11", "A-31", *EXIT_REDUCE_BUILT)
 NO_CHANGE = APPROACH_IDS[0]  # A-36 "No change": always compared, always the first column (REQ-156 AC-1, AC-4)
-NAMES = ADJUSTMENT_APPROACH_LABEL_TEXT
+NAMES = {**ADJUSTMENT_APPROACH_LABEL_TEXT, **{a: PLAYBOOK_APPROACH_LABEL_TEXT[a] for a in EXIT_REDUCE_BUILT}}
 KINDS = {"A-36": "none", "A-01": "roll", "A-05": "roll", "A-29": "reduce", "A-28": "close_part", "A-11": "convert",
-         "A-31": "exit"}
+         "A-31": "exit", "A-24": "exit", "A-25": "reduce", "A-26": "close_part", "A-27": "close_part", "A-35": "exit"}
+_CLOSE_ALL = frozenset({"A-31", "A-24", "A-35"})  # ADR-238 (1), (5): one builder for every close-all
+_HUNDRED = Decimal(100)
 CALL, PUT = "call", "put"
 _OPPOSITE = {"BUY": "SELL", "SELL": "BUY"}
 
@@ -76,6 +87,21 @@ class Config:
     roll_points_without_delta: Mapping[str, Decimal]
     iron_fly_min_days_left: int
     reduce_divisor: int
+    partial_close_percent: int  # ADR-238 (2): A-25 closes this % of every leg's lots
+    untested_decay_percent: int  # ADR-238 (3): A-26 needs the untested short this % below its entry
+
+
+@dataclass(frozen=True)
+class ExitInputs:
+    """The playbook inputs of A-27 and A-35 (ADR-238 (4), (5)), passed in by the caller (``playbook_eval.exit_inputs``).
+
+    ``t09`` = T-09's threshold of the current stage and its comparison ("le" / "ge"); None = T-09 off, absent or with
+    no value this stage. ``time_exit`` = the playbook guard "HH:MM"; None = not set. ``hhmm`` = the check's IST clock
+    "HH:MM"; None = not known."""
+
+    t09: tuple[Decimal, str] | None = None
+    time_exit: str | None = None
+    hhmm: str | None = None
 
 
 @dataclass(frozen=True)
@@ -370,35 +396,111 @@ class _Builder:
         return trades, after, closed
 
 
+def _close_all(b: _Builder, legs: Sequence[PositionLeg]) -> tuple[list[Trade], list[ClosedLeg], list[PositionLeg]]:
+    """A-31, A-24 and A-35 (ADR-238 (1), (5)): every open leg closed at its planned price; nothing stays open."""
+    pairs = [b.close(x, x.lots) for x in legs]
+    return [t for t, _ in pairs], [c for _, c in pairs], []
+
+
+def _partial(b: _Builder, legs: Sequence[PositionLeg], percent: int) -> tuple[list[Trade], list[ClosedLeg],
+                                                                               list[PositionLeg]]:
+    """A-25 (ADR-238 (2)): ``percent`` % of every leg's lots, refused naming the first leg whose share is fractional."""
+    trades, closed, after = [], [], []
+    for x in legs:
+        share = Decimal(x.lots) * percent / _HUNDRED
+        if share != share.to_integral_value() or share <= 0:
+            raise _refusal("adjust_partial_not_whole_lots", leg=b.ref(x), lots=x.lots, percent=percent)
+        n = int(share)
+        t, c = b.close(x, n)
+        trades.append(t)
+        closed.append(c)
+        if x.lots > n:
+            after.append(replace(x, lots=x.lots - n))
+    return trades, closed, after
+
+
+def _untested_decayed(b: _Builder, legs: Sequence[PositionLeg], short_at: int, percent: int) -> tuple[
+        list[Trade], list[ClosedLeg], list[PositionLeg]]:
+    """A-26 (ADR-238 (3)): buy back the untested short (wing stays) when (entry - price) x 100 >= percent x entry."""
+    short = legs[short_at]
+    price = b.price_of(short)
+    if short.entry <= 0:
+        raise _refusal("adjust_untested_no_entry", leg=b.ref(short))
+    if not adjust_money.fell_at_least_pct(short.entry, price, percent):
+        raise _refusal("adjust_untested_not_decayed", leg=b.ref(short), entry=short.entry, now=price, percent=percent)
+    t, c = b.close(short, short.lots)
+    return [t], [c], [x for i, x in enumerate(legs) if i != short_at]
+
+
+def _cheap_shorts(b: _Builder, legs: Sequence[PositionLeg], t09: tuple[Decimal, str] | None) -> tuple[
+        list[Trade], list[ClosedLeg], list[PositionLeg]]:
+    """A-27 (ADR-238 (4)): buy back every short whose planned price passes T-09's comparison against its threshold."""
+    if t09 is None:
+        raise _refusal("adjust_buyback_no_limit")
+    limit, cmp = t09
+    picked = []
+    for i, x in enumerate(legs):
+        if x.side != "SELL":
+            continue
+        price = b.price_of(x)
+        if (price <= limit) if cmp == "le" else (price >= limit):
+            picked.append(i)
+    if not picked:
+        raise _refusal("adjust_buyback_none_at_limit", limit=limit.quantize(PAISE, rounding=ROUND_HALF_UP))
+    pairs = [b.close(legs[i], legs[i].lots) for i in picked]
+    return [t for t, _ in pairs], [c for _, c in pairs], [x for i, x in enumerate(legs) if i not in picked]
+
+
+def _time_exit_due(position: Position, exits: ExitInputs) -> None:
+    """A-35 (ADR-238 (5)): built on expiry day from the playbook's time exit; otherwise refused naming the time."""
+    if exits.time_exit is None:
+        raise _refusal("adjust_time_exit_not_set")
+    expiry_day = bool(position.legs) and position.today == min(x.expiry for x in position.legs)
+    if not expiry_day or exits.hhmm is None or exits.hhmm < exits.time_exit:
+        raise _refusal("adjust_time_exit_not_yet", time=exits.time_exit)
+
+
 def _ordered(trades: Sequence[Trade]) -> tuple[Trade, ...]:
     return tuple(t for t in trades if t.action == "BUY") + tuple(t for t in trades if t.action == "SELL")
 
 
 def build_approach(position: Position, chain: Sequence[ChainRow], spot: Decimal, approach_id: str,  # noqa: C901, PLR0912, PLR0913, PLR0915 - one branch per approach
                    config: Config, listing: Listing | None = None, limits: liquidity.Limits | None = None,
-                   max_profit: Decimal | None = None) -> ApproachLegs:
+                   max_profit: Decimal | None = None, exits: ExitInputs | None = None) -> ApproachLegs:
     """The exact trades, After legs and closed legs of one approach, or its refusal naming the leg (AC-1, AC-8).
     ``limits`` = the playbook's saved liquidity limits (None: not applied); ``max_profit`` = the engine's, for the
-    "% of max profit" part of the roll debit limit."""
+    "% of max profit" part of the roll debit limit; ``exits`` = A-27's and A-35's playbook inputs (None: none known,
+    so both are refused with the reason)."""
     if approach_id not in NAMES:
         raise ValueError(f"unknown approach {approach_id!r}")
     b = _Builder(position, chain, spot, config, listing, limits, max_profit)
     legs = list(position.legs)
     found = _condor(legs)
     tested = tested_side(position, spot)
-    side ={"A-36": "none", "A-31": "both", "A-11": "both"}.get(approach_id) or \
-        ((PUT if tested == CALL else CALL) if approach_id == "A-01" else (tested or "none"))
+    exits = exits or ExitInputs()
+    untested = None if tested is None else (PUT if tested == CALL else CALL)
+    side = {"A-36": "none", "A-31": "both", "A-11": "both", "A-24": "both", "A-25": "both", "A-27": "both",
+            "A-35": "both"}.get(approach_id) or \
+        ((untested or "none") if approach_id in ("A-01", "A-26") else (tested or "none"))
     trades: list[Trade] = []
     closed: list[ClosedLeg] = []
     after = legs
     try:
         if approach_id == "A-36":
             pass
-        elif approach_id == "A-31":
-            pairs = [b.close(x, x.lots) for x in legs]
-            trades, closed, after = [t for t, _ in pairs], [c for _, c in pairs], []
-        elif found is None or tested is None:
+        elif approach_id in _CLOSE_ALL:
+            if approach_id == "A-35":
+                _time_exit_due(position, exits)
+            trades, closed, after = _close_all(b, legs)
+        elif approach_id == "A-25":
+            trades, closed, after = _partial(b, legs, config.partial_close_percent)
+        elif approach_id == "A-27":
+            trades, closed, after = _cheap_shorts(b, legs, exits.t09)
+        elif found is None or tested is None or untested is None:
             raise _refusal("adjust_needs_two_spreads")
+        elif approach_id == "A-26":
+            trades, closed, after = _untested_decayed(b, legs, found.index[(untested, "short")],
+                                                      config.untested_decay_percent)
         elif approach_id == "A-05":
             trades, after, closed = b.roll(found, tested, outward=True)
         elif approach_id == "A-01":
@@ -452,8 +554,8 @@ def build_approach(position: Position, chain: Sequence[ChainRow], spot: Decimal,
                    warning_messages=tuple(b.warning_messages))
 
 
-def applicable_approaches(position: Position, chain: Sequence[ChainRow], spot: Decimal, config: Config,
-                          listing: Listing | None = None) -> list[ApproachLegs]:
-    """The 7 approaches of the iron condor, in the contract's order; A-11 under 3 days left and A-29 under 2 lots come
-    back refused with their reason (never dropped silently), every other approach still builds (AC-8)."""
-    return [build_approach(position, chain, spot, a, config, listing) for a in APPROACH_IDS]
+def applicable_approaches(position: Position, chain: Sequence[ChainRow], spot: Decimal, config: Config,  # noqa: PLR0913
+                          listing: Listing | None = None, exits: ExitInputs | None = None) -> list[ApproachLegs]:
+    """Every built approach of the iron condor, in ``APPROACH_IDS`` order; a refused one comes back with its reason
+    (never dropped silently), every other approach still builds (AC-8)."""
+    return [build_approach(position, chain, spot, a, config, listing, exits=exits) for a in APPROACH_IDS]
