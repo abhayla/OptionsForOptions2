@@ -3658,5 +3658,33 @@
   "adjust_take_profit_booked_unknown": {
     "sha256": "fb23414a7469aeeb2912e6e99ed14bc638e288450fa6c76e62b511f1baa51b46",
     "reviewed": "pending owner read"
+  },
+  "explanation:monitor_pause_label": {
+    "sha256": "75aa8fe6ba24988ff5add8cd84a50478f9c042dd0b7b432bd696ef6fb0abc7fd",
+    "reviewed": "pending owner read"
+  },
+  "explanation:monitor_pause_none": {
+    "sha256": "f7bedece22d285d255bd3f8c23dd3f62aeb5d2564f674e4527a4cfd675765053",
+    "reviewed": "pending owner read"
+  },
+  "explanation:monitor_pause_until": {
+    "sha256": "22acaec6ffe2faf900ef127df78cb2b02828ebf10d91a9aecce9f00de4547c8d",
+    "reviewed": "pending owner read"
+  },
+  "explanation:monitor_pause_ended": {
+    "sha256": "e5695cc8d239b20ed157e172150ce801b7066c9a5f827d061e86948b905d98d0",
+    "reviewed": "pending owner read"
+  },
+  "explanation:monitor_pause_refused_not_a_time": {
+    "sha256": "ed4e06e0a7cd346757e7af5ac10d142dd16482357f085c2adf90c17638d6e72f",
+    "reviewed": "pending owner read"
+  },
+  "explanation:monitor_pause_refused_in_past": {
+    "sha256": "76868cee267d70c0a3533f314a3338174f9bd368437bf752bcbf5cf19e6c9cac",
+    "reviewed": "pending owner read"
+  },
+  "explanation:monitor_pause_refused_after_close": {
+    "sha256": "b0a72213dfc5be4edf088300bc5ce6788966c946f75510fb392a3587d3ba50ab",
+    "reviewed": "pending owner read"
   }
 }
