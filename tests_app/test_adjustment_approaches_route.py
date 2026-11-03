@@ -583,7 +583,7 @@ def test_gcic1_r3_second_pass_is_asked_once_with_the_unpriced_landing_strikes():
         return market_of(sc)
     c.app.dependency_overrides[route.get_more_market_reader] = lambda: more
     r = post(c)
-    assert r.status_code == 200, r.text
+    assert r.status_code == 200, r.text  # noqa: PLR2004 - HTTP OK
     assert len(asked) == 1 and asked[0] and len(asked[0]) == len(set(asked[0]))
     a05 = next(a for a in r.json()["approaches"] if a["id"] == "A-05")
     ids = market_of(sc).instrument_ids

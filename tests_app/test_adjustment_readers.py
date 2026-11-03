@@ -362,6 +362,7 @@ def test_gcic1_r3_real_quote_book_parks_the_index_and_the_check_still_has_greeks
     """The live book itself: the index's quote lives in a real ``QuoteBook``; the release calls ``park`` on it (as
     ``kite_provider.unsubscribe`` does), after which the book answers None. The check read it before that."""
     import datetime  # noqa: PLC0415
+
     from ofo.marketdata.feed_health import FeedState, QuoteBook  # noqa: PLC0415
     from ofo.settings import calc, defaults  # noqa: PLC0415
     sc, _leg_ids, feed, ctx = _book_of_legs_only(monkeypatch)
@@ -406,7 +407,8 @@ def test_gcic1_r3_roll_range_is_held_with_the_window(monkeypatch):
     points = readers._roll_points()["NIFTY"]
     held = set(feed.subscribed[0])
     master = ctx.provider.instrument_master()
-    by = {(lc.contract.instrument_type, lc.contract.strike): f"{lc.contract.exchange_segment}:{lc.contract.exchange_token}"
+    by = {(lc.contract.instrument_type, lc.contract.strike):
+          f"{lc.contract.exchange_segment}:{lc.contract.exchange_token}"
           for lc in master if lc.contract.expiry == position.legs[0].expiry and lc.contract.name == "NIFTY"}
     legs = set(readers.own_leg_ids(position, master))
     checked = 0

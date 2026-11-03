@@ -397,7 +397,7 @@ def _leg_out(x: Any) -> dict:
 # ---- route --------------------------------------------------------------------------------------------------------
 
 @router.post("/api/strategies/{strategy_id}/adjustment-approaches", response_model=AdjustApproachesOut)
-async def adjustment_approaches(  # noqa: PLR0913 - FastAPI dependencies, one per input
+async def adjustment_approaches(  # noqa: PLR0913, PLR0915 - FastAPI dependencies, one per input; one second pass
         strategy_id: int, body: ApproachesIn,
         tracked_reader: Annotated[TrackedReader, Depends(get_tracked_reader)],
         market_reader: Annotated[MarketReader, Depends(get_market_reader)],
