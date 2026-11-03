@@ -214,7 +214,8 @@ def cheapest_offered(body: Mapping | None, tracked: Tracked, market: MarketInput
         built, priced = priced_approach(a, tracked, market, spot, rates, config, limits=limits, max_profit=max_profit,
                                         exits=exits)
         if built is not None and priced is not None:
-            columns[a] = Column(built, priced.after, priced.reason, priced.charges_known, MarginRead(None))
+            columns[a] = Column(built, priced.after, priced.reason, priced.charges_known, MarginRead(None),
+                                priced.adjustment_charges)
     return cheapest_approach(offered, columns, market.chain)
 
 

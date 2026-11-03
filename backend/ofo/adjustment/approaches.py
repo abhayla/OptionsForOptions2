@@ -48,6 +48,14 @@ Rules (each one decided here and stated, catalogue Part 2 followed where the con
   CALLER as :class:`ExitInputs` (never a clock or a global): no T-09 -> A-27 refused ("no limit"); no ``time_exit``
   -> A-35 refused; no check time -> A-35 refused as before the time (fail closed). A short with no price: refused
   naming the leg, as every approach.
+- Rolls (ADR-239): A-02 moves ONLY the tested short out by the roll distance above (``roll_distance``, the one rule);
+  its wing stays, so the spread narrows; a new short at or beyond its wing is refused naming both strikes. A-04 closes
+  the tested spread and opens it in the NEXT expiry the chain carries (the first later expiry of the rows passed in):
+  the short by the same ``roll_distance`` read on THAT expiry's rows only, the wing at the old width; no later expiry
+  in the chain -> refused naming the position's expiry; a later expiry with no priced row -> refused naming it. A-06
+  steps the tested short and wing ``shift_strikes`` LISTED strikes away from spot through ``leg_edit.step_strike`` (the
+  REQ-078 step rule; a gap in the listing is stepped over by the listing, never by arithmetic); no further strike or a
+  strike not listed is the step rule's own refusal. Every roll passes ``guard_debit`` (ADR-230).
 """
 from __future__ import annotations
 
@@ -61,18 +69,25 @@ from ofo.adjustment import liquidity
 from ofo.engine import adjust_money
 from ofo.engine.legs import Action, Instrument, Leg
 from ofo.errors import LegValue, UserFacingError, render
-from ofo.errors.explanations import ADJUSTMENT_APPROACH_LABEL_TEXT, EXIT_REDUCE_BUILT, PLAYBOOK_APPROACH_LABEL_TEXT
+from ofo.errors.explanations import (
+    ADJUSTMENT_APPROACH_LABEL_TEXT,
+    EXIT_REDUCE_BUILT,
+    PLAYBOOK_APPROACH_LABEL_TEXT,
+    ROLL_BUILT,
+)
 from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS, Catalogue
 from ofo.instruments.models import Contract
 from ofo.money import PAISE
 from ofo.strategy import leg_edit
 from ofo.strategy.leg_edit import EditLeg, LegEditRefused, Listing
 
-APPROACH_IDS = ("A-36", "A-01", "A-05", "A-29", "A-28", "A-11", "A-31", *EXIT_REDUCE_BUILT)
+APPROACH_IDS = ("A-36", "A-01", "A-05", "A-29", "A-28", "A-11", "A-31", *EXIT_REDUCE_BUILT, *ROLL_BUILT)
 NO_CHANGE = APPROACH_IDS[0]  # A-36 "No change": always compared, always the first column (REQ-156 AC-1, AC-4)
-NAMES = {**ADJUSTMENT_APPROACH_LABEL_TEXT, **{a: PLAYBOOK_APPROACH_LABEL_TEXT[a] for a in EXIT_REDUCE_BUILT}}
+NAMES = {**ADJUSTMENT_APPROACH_LABEL_TEXT,
+         **{a: PLAYBOOK_APPROACH_LABEL_TEXT[a] for a in (*EXIT_REDUCE_BUILT, *ROLL_BUILT)}}
 KINDS = {"A-36": "none", "A-01": "roll", "A-05": "roll", "A-29": "reduce", "A-28": "close_part", "A-11": "convert",
-         "A-31": "exit", "A-24": "exit", "A-25": "reduce", "A-26": "close_part", "A-27": "close_part", "A-35": "exit"}
+         "A-31": "exit", "A-24": "exit", "A-25": "reduce", "A-26": "close_part", "A-27": "close_part", "A-35": "exit",
+         "A-02": "roll", "A-04": "roll", "A-06": "roll"}
 _CLOSE_ALL = frozenset({"A-31", "A-24", "A-35"})  # ADR-238 (1), (5): one builder for every close-all
 _HUNDRED = Decimal(100)
 CALL, PUT = "call", "put"
@@ -89,6 +104,7 @@ class Config:
     reduce_divisor: int
     partial_close_percent: int  # ADR-238 (2): A-25 closes this % of every leg's lots
     untested_decay_percent: int  # ADR-238 (3): A-26 needs the untested short this % below its entry
+    shift_strikes: int = 1  # ADR-239 (3): A-06 steps the tested spread this many listed strikes
 
 
 @dataclass(frozen=True)
@@ -285,9 +301,10 @@ class _Builder:
 
     def ref(self, leg: PositionLeg) -> LegValue:
         """The leg as a message names it: its number in the position, side, contract and expiry."""
-        number = next(i for i, x in enumerate(self.p.legs)
-                      if (x.side, x.type, x.expiry) == (leg.side, leg.type, leg.expiry)
-                      and (x.strike == leg.strike or x.tradingsymbol == leg.tradingsymbol)) + 1
+        number = next(i for i, x in enumerate(self.p.legs)  # a moved leg keeps its old symbol (A-04: a new expiry)
+                      if (x.side, x.type) == (leg.side, leg.type)
+                      and ((x.expiry == leg.expiry and x.strike == leg.strike) or x.tradingsymbol == leg.tradingsymbol)
+                      ) + 1
         engine = Leg(Action(leg.side), Instrument(leg.type), leg.strike, leg.expiry, leg.lots * self.p.lot,
                      self.p.legs[number - 1].entry)
         return LegValue(number, engine, self.p.underlying)
@@ -327,10 +344,16 @@ class _Builder:
         return Trade(leg.side, leg.type, leg.strike, leg.expiry, leg.lots, leg.lots * self.p.lot, price,
                      row.tradingsymbol), new
 
-    def land(self, targets: Mapping[int, Decimal]) -> dict[int, Decimal]:
-        """REQ-078's one landing rule: refuses (naming the leg) any target strike the listing does not hold."""
-        edit = [EditLeg(Leg(Action(x.side), Instrument(x.type), x.strike, x.expiry, x.lots * self.p.lot, x.entry),
-                        x.lots, x.lots) for x in self.p.legs]
+    def edit_legs(self, moved: Mapping[int, datetime.date] | None = None) -> list[EditLeg]:
+        """The position as leg_edit reads it; ``moved`` puts a leg on another expiry (A-04) before it lands."""
+        moved = moved or {}
+        return [EditLeg(Leg(Action(x.side), Instrument(x.type), x.strike, moved.get(i, x.expiry), x.lots * self.p.lot,
+                            x.entry), x.lots, x.lots) for i, x in enumerate(self.p.legs)]
+
+    def land(self, targets: Mapping[int, Decimal], expiry: datetime.date | None = None) -> dict[int, Decimal]:
+        """REQ-078's one landing rule: refuses (naming the leg) any target strike the listing does not hold.
+        ``expiry``: the moved legs land on that expiry's listing (A-04), never the position's."""
+        edit = self.edit_legs(dict.fromkeys(targets, expiry) if expiry is not None else None)
         try:
             moved = leg_edit.land(self.listing, self.p.underlying, edit, targets)
         except LegEditRefused as refused:
@@ -339,7 +362,8 @@ class _Builder:
         return {i: strike for i in targets if (strike := moved.legs[i].leg.strike) is not None}
 
     def roll_distance(self, leg: PositionLeg, outward: bool) -> Decimal:
-        """How far the short moves (signed points); records the basis used in ``self.basis``."""
+        """How far the short moves (signed points); records the basis used in ``self.basis``. The search reads the
+        rows of ``leg.expiry`` only (A-04 passes the leg on the next expiry)."""
         up = (leg.type == "CE") == outward  # a call rolls out upwards, a put rolls out downwards
         rows = sorted((r for r in self.chain if r.type == leg.type and r.expiry == leg.expiry
                        and (r.strike > leg.strike if up else r.strike < leg.strike)),
@@ -382,12 +406,58 @@ class _Builder:
         self.guard_debit(rolled[0])
         return rolled
 
-    def replace(self, landed: Mapping[int, Decimal]) -> tuple[list[Trade], list[PositionLeg], list[ClosedLeg]]:
+    def roll_short(self, found: _Condor, side: str) -> tuple[list[Trade], list[PositionLeg], list[ClosedLeg]]:
+        """A-02 (ADR-239 (1)): only the tested short moves out; its wing stays; at or beyond the wing is refused."""
+        si, wi = found.index[(side, "short")], found.index[(side, "wing")]
+        short, wing = self.p.legs[si], self.p.legs[wi]
+        new = short.strike + self.roll_distance(short, outward=True)
+        if (new >= wing.strike) if short.type == "CE" else (new <= wing.strike):
+            raise _refusal("adjust_roll_short_past_wing", leg=self.ref(short), strikes=(new,), wing=(wing.strike,))
+        rolled = self.replace(self.land({si: new}))
+        self.guard_debit(rolled[0])
+        return rolled
+
+    def roll_out(self, found: _Condor, side: str) -> tuple[list[Trade], list[PositionLeg], list[ClosedLeg]]:
+        """A-04 (ADR-239 (2)): the tested spread closed and opened on the NEXT expiry the chain carries, the short by
+        ``roll_distance`` read on that expiry's rows, the wing at the old width."""
+        si, wi = found.index[(side, "short")], found.index[(side, "wing")]
+        short, wing = self.p.legs[si], self.p.legs[wi]
+        later = sorted({r.expiry for r in self.chain if r.expiry > short.expiry})
+        if not later:
+            raise _refusal("adjust_roll_out_no_next_expiry", expiry=short.expiry)
+        nxt = later[0]
+        if not any(planned_price(r) is not None for r in self.chain if r.expiry == nxt):
+            raise _refusal("adjust_roll_out_no_prices", expiry=nxt)
+        distance = self.roll_distance(replace(short, expiry=nxt), outward=True)
+        landed = self.land({si: short.strike + distance, wi: wing.strike + distance}, nxt)
+        rolled = self.replace(landed, nxt)
+        self.guard_debit(rolled[0])
+        return rolled
+
+    def shift(self, found: _Condor, side: str, steps: int) -> tuple[list[Trade], list[PositionLeg], list[ClosedLeg]]:
+        """A-06 (ADR-239 (3)): the tested short and wing each ``steps`` LISTED strikes away from spot, one REQ-078
+        step at a time (``leg_edit.step_strike``), so a gap in the listing is stepped by the listing."""
+        si, wi = found.index[(side, "short")], found.index[(side, "wing")]
+        direction = 1 if side == CALL else -1
+        edit = self.edit_legs()
+        try:
+            for _ in range(steps):
+                for i in (si, wi):
+                    edit = leg_edit.step_strike(self.listing, self.p.underlying, edit, i, direction).legs
+        except LegEditRefused as refused:
+            raise _Refused(cast(UserFacingError, refused.message)) from refused
+        rolled = self.replace({i: cast(Decimal, edit[i].leg.strike) for i in (si, wi)})
+        self.guard_debit(rolled[0])
+        return rolled
+
+    def replace(self, landed: Mapping[int, Decimal], expiry: datetime.date | None = None) -> tuple[
+            list[Trade], list[PositionLeg], list[ClosedLeg]]:
+        """Close each landed leg and open it at its new strike (and ``expiry``, A-04; None: the same expiry)."""
         trades, after, closed = [], [], []
         for i, leg in enumerate(self.p.legs):
-            if i in landed and landed[i] != leg.strike:
+            if i in landed and (landed[i] != leg.strike or (expiry is not None and expiry != leg.expiry)):
                 close_trade, booked = self.close(leg, leg.lots)
-                open_trade, new = self.open(replace(leg, strike=landed[i]))
+                open_trade, new = self.open(replace(leg, strike=landed[i], expiry=expiry or leg.expiry))
                 trades += [close_trade, open_trade]
                 closed.append(booked)
                 after.append(new)
@@ -503,6 +573,12 @@ def build_approach(position: Position, chain: Sequence[ChainRow], spot: Decimal,
                                                       config.untested_decay_percent)
         elif approach_id == "A-05":
             trades, after, closed = b.roll(found, tested, outward=True)
+        elif approach_id == "A-02":
+            trades, after, closed = b.roll_short(found, tested)
+        elif approach_id == "A-04":
+            trades, after, closed = b.roll_out(found, tested)
+        elif approach_id == "A-06":
+            trades, after, closed = b.shift(found, tested, config.shift_strikes)
         elif approach_id == "A-01":
             trades, after, closed = b.roll(found, PUT if tested == CALL else CALL, outward=False)
         elif approach_id == "A-28":

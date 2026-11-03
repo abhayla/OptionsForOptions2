@@ -2361,6 +2361,132 @@
     "refused": "Your playbook sets no time exit, so this approach is not built.",
     "step_basis": null,
     "step_value": null
+   },
+   "A-02": {
+    "side": "call",
+    "refused": "Moving Leg 3 (SELL NIFTY 23,450 CE, expiry 03 Nov 2026) to 23,500 would put it at or beyond its wing at 23,500, so the wing would no longer protect it.",
+    "step_basis": "delta",
+    "step_value": "0.30"
+   },
+   "A-04": {
+    "side": "call",
+    "refused": "No expiry after 03 Nov 2026 is listed in the chain read, so this approach is not built.",
+    "step_basis": null,
+    "step_value": null
+   },
+   "A-06": {
+    "side": "call",
+    "step_basis": null,
+    "step_value": null,
+    "trades": [
+     {
+      "action": "BUY",
+      "type": "CE",
+      "strike": "23450",
+      "expiry": "2026-11-03",
+      "lots": 1,
+      "quantity": 65,
+      "price": "0.30",
+      "tradingsymbol": "NIFTY26N0323450CE"
+     },
+     {
+      "action": "BUY",
+      "type": "CE",
+      "strike": "23550",
+      "expiry": "2026-11-03",
+      "lots": 1,
+      "quantity": 65,
+      "price": "0.05",
+      "tradingsymbol": "NIFTY26N0323550CE"
+     },
+     {
+      "action": "SELL",
+      "type": "CE",
+      "strike": "23500",
+      "expiry": "2026-11-03",
+      "lots": 1,
+      "quantity": 65,
+      "price": "0.15",
+      "tradingsymbol": "NIFTY26N0323500CE"
+     },
+     {
+      "action": "SELL",
+      "type": "CE",
+      "strike": "23500",
+      "expiry": "2026-11-03",
+      "lots": 1,
+      "quantity": 65,
+      "price": "0.15",
+      "tradingsymbol": "NIFTY26N0323500CE"
+     }
+    ],
+    "after": [
+     {
+      "side": "BUY",
+      "type": "PE",
+      "strike": "22500",
+      "expiry": "2026-11-03",
+      "lots": 1,
+      "quantity": 65,
+      "entry": "28.00",
+      "tradingsymbol": "NIFTY26N0322500PE"
+     },
+     {
+      "side": "SELL",
+      "type": "PE",
+      "strike": "22550",
+      "expiry": "2026-11-03",
+      "lots": 1,
+      "quantity": 65,
+      "entry": "33.00",
+      "tradingsymbol": "NIFTY26N0322550PE"
+     },
+     {
+      "side": "SELL",
+      "type": "CE",
+      "strike": "23500",
+      "expiry": "2026-11-03",
+      "lots": 1,
+      "quantity": 65,
+      "entry": "0.15",
+      "tradingsymbol": "NIFTY26N0323500CE"
+     },
+     {
+      "side": "BUY",
+      "type": "CE",
+      "strike": "23550",
+      "expiry": "2026-11-03",
+      "lots": 1,
+      "quantity": 65,
+      "entry": "0.05",
+      "tradingsymbol": "NIFTY26N0323550CE"
+     }
+    ],
+    "closed": [
+     {
+      "side": "SELL",
+      "type": "CE",
+      "strike": "23450",
+      "expiry": "2026-11-03",
+      "lots": 1,
+      "quantity": 65,
+      "entry": "36.90",
+      "exit": "0.30",
+      "tradingsymbol": "NIFTY26N0323450CE"
+     },
+     {
+      "side": "BUY",
+      "type": "CE",
+      "strike": "23500",
+      "expiry": "2026-11-03",
+      "lots": 1,
+      "quantity": 65,
+      "entry": "29.95",
+      "exit": "0.15",
+      "tradingsymbol": "NIFTY26N0323500CE"
+     }
+    ],
+    "warnings": []
    }
   },
   "approach_after": {
@@ -2425,6 +2551,16 @@
      "23461.65"
     ],
     "booked_pnl": "2125.5"
+   },
+   "A-06": {
+    "exact": true,
+    "max_profit": "773.5",
+    "max_loss": "2476.5",
+    "breakevens": [
+     "22538.1",
+     "23511.9"
+    ],
+    "booked_pnl": "442"
    }
   }
  }

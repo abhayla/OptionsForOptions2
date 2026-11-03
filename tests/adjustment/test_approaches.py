@@ -41,9 +41,11 @@ def inputs(sc: dict) -> tuple[Position, list[ChainRow], D]:
     """The scenario as the builder's input; a leg whose quote answered 'not found' has no price on its row."""
     unpriced = {q["tradingsymbol"] for q in sc["broker"]["quote"]["legs"] if q["state"] != "stated"}
     expiry = sc["expiry"]
+    later = sorted(c["expiry"] for c in sc["market"]["chains"] if c["expiry"] > expiry)
+    read = {expiry, *later[:1]}  # the position's expiry and the next listed one (A-04, ADR-239 (2)), as the route
     rows = []
     for c in sc["market"]["chains"]:
-        if c["expiry"] != expiry:
+        if c["expiry"] not in read:
             continue
         for r in c["rows"]:
             gone = r["tradingsymbol"] in unpriced
@@ -163,7 +165,8 @@ def test_ac8_adj20d_refuses_only_a05_naming_the_leg():
     assert built["A-05"].refusal == "No 23,700 CE is listed for 03 Nov 2026, so leg 4 cannot move there."
     assert built["A-05"].trades == ()
     refused = {a for a, b in built.items() if b.refusal}
-    assert refused == {"A-05", "A-11", "A-27", "A-35"}  # A-11 for its own rule (1 day left); A-27 / A-35: no playbook given (ADR-238)
+    assert refused == {"A-05", "A-11", "A-27", "A-35", "A-04"}  # A-11 for its own rule (1 day left); A-27 / A-35: no playbook given (ADR-238); A-04: no later expiry in the chain (ADR-239 (2))
+    assert built["A-04"].refusal == "No expiry after 03 Nov 2026 is listed in the chain read, so this approach is not built."
     assert built["A-11"].refusal == "This approach needs at least 3 days left; days left now: 1."
 
 

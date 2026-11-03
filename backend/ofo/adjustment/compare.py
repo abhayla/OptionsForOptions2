@@ -118,6 +118,9 @@ class Column:
     no_whole_reason: ExplanationText | None
     charges_known: bool
     margin: MarginRead
+    #: this approach's own charges when no whole trade exists because the After spans two expiries (A-04, ADR-239
+    #: (2)): the cost needs only the trades, never the After; None = not known (the reason above stands)
+    adjustment_charges: Decimal | None = None
 
 
 @dataclass(frozen=True)
@@ -228,7 +231,8 @@ def approach_cost(col: Column, rows: Mapping[tuple, ChainRow]) -> CostAnswer:
     trades = col.built.trades
     if not trades:
         return CostAnswer(Decimal(0).quantize(PAISE))
-    if col.whole is None:
+    charges = col.whole.adjustment_charges if col.whole is not None else col.adjustment_charges
+    if charges is None:
         return CostAnswer(None, col.no_whole_reason)
     if not col.charges_known:
         return CostAnswer(None, render_explanation("adjust_charges_unknown"))
@@ -238,7 +242,7 @@ def approach_cost(col: Column, rows: Mapping[tuple, ChainRow]) -> CostAnswer:
         if row is None or row.bid is None or row.ask is None or row.bid <= 0 or row.ask < row.bid:
             return CostAnswer(None, render_explanation("adjust_cmp_no_bid_ask", leg=t.tradingsymbol))
         quotes.append((row.bid, row.ask, t.quantity))
-    value = adjust_money.cost_with_spread(col.whole.adjustment_charges, quotes)
+    value = adjust_money.cost_with_spread(charges, quotes)
     return CostAnswer(value.quantize(PAISE, rounding=ROUND_HALF_EVEN))
 
 
@@ -341,7 +345,8 @@ class _Rows:
             orders = [ChargeOrder(segment, t.action, t.quantity, t.price) for t in self.b.trades]
         except ValueError:  # no known segment / a price the calculator refuses: the figure stays, no breakdown
             return shown
-        lines = compare_cost_rows.charge_breakdown(orders, self.ctx.rates, self.col.whole.adjustment_charges,  # type: ignore[union-attr]
+        charges = self.col.whole.adjustment_charges if self.col.whole is not None else self.col.adjustment_charges
+        lines = compare_cost_rows.charge_breakdown(orders, self.ctx.rates, charges,  # type: ignore[arg-type]
                                                    shown.value)  # type: ignore[arg-type]
         return replace(shown, breakdown=lines)
 

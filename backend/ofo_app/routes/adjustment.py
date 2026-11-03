@@ -325,6 +325,9 @@ class Priced:
     after: WholeTradeAfter | None
     charges_known: bool
     reason: Any = None  # an ExplanationText when no whole-trade figure is given
+    #: the approach's own charges when the After spans two expiries (A-04, ADR-239 (2)): the Compare's cost needs
+    #: only the trades; None otherwise or when charges are unknown
+    adjustment_charges: Decimal | None = None
 
 
 def price_after(legs: Sequence[PositionLeg], position: Position, booked: Decimal | None, paid: Decimal | None,  # noqa: PLR0913
@@ -350,7 +353,7 @@ def price_after(legs: Sequence[PositionLeg], position: Position, booked: Decimal
                                   open_exit_charges=exits if known else Decimal(0),
                                   forward=market.forward, years=market.years, vol=market.vol)
     except MultiExpiryError:
-        return Priced(None, known, render_explanation("adjust_needs_one_expiry"))
+        return Priced(None, known, render_explanation("adjust_needs_one_expiry"), adjustment if known else None)
     return Priced(after, known)
 
 
@@ -477,7 +480,7 @@ async def adjustment_approaches(  # noqa: PLR0913, PLR0915 - FastAPI dependencie
             item["liquidity_flags"] = strike_flags(built, position, market.chain, limits)
             if built is not None and built.refusal_message is None:
                 columns.append(Column(built, priced[a].after, priced[a].reason, priced[a].charges_known,
-                                      _margin_read(item["margin"])))
+                                      _margin_read(item["margin"]), priced[a].adjustment_charges))
             out.append(item)
         reply["approaches"] = out
         reply |= await _compare_reply(columns, tracked, spot.value, market, rates, pop_on, before,  # type: ignore[arg-type]

@@ -782,6 +782,18 @@
       "source": "ADR-238 (3), REQ-168 AC-1; catalogue A-26, 80 to 90 percent; was never typed in code (new in ADR-238)"
     },
     {
+      "key": "adjustments.shift_strikes",
+      "group": "Adjustment defaults",
+      "label": "Strikes to shift a spread by",
+      "unit": "count",
+      "type": "integer",
+      "min": "1",
+      "max": "10",
+      "default": "1",
+      "what_it_changes": "How many listed strikes the shift approach moves the short and wing of the side spot is pressing on, away from spot (1 moves them to the next listed strike); each user can set their own.",
+      "source": "ADR-239 (3), REQ-168 AC-1; catalogue A-06 one-click step"
+    },
+    {
       "key": "adjustments.near_level_percent",
       "group": "Adjustment defaults",
       "label": "Alert distance with no playbook",
