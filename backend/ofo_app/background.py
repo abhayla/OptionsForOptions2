@@ -992,8 +992,7 @@ class Worker:
             return False
         market = market_inputs(w, read, FeedScope(self.cache, w.feed_owner), now, self._values)
         state = state_from_market(w, market, now, self._values, prefs, self.margins.block_for(w, now))
-        if load.watches:  # A-37: the watches read on the rebuild (step 7), never a database call per check
-            state = dataclasses.replace(state, watches=load.watches)
+        state = dataclasses.replace(state, watches=load.watches)  # A-37: read on the rebuild (step 7), never per check
         self.margins.seen(w, market)
         self._recomputes[sid] = self._recomputes.get(sid, 0) + 1  # a real recompute (REQ-166)
         self._rebuilds += 1
