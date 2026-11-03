@@ -56,7 +56,7 @@ def test_ac5_golden_condor_review_shows_every_field_from_the_engine() -> None:
         ReviewLine(2, "Place sold legs", "leg-3", SELL, "NIFTY26O0623400CE", 75, batch=2),
     )  # a batch never spans two steps
     assert review.unknown == () and review.notes == ()
-    assert "unverified against real Zerodha margin behaviour" in review.margin_basis
+    assert "it has not been checked against Zerodha" in review.margin_basis
     # the review's own figure (whole strategy), then the sequence's base + one without each of the 4 legs
     assert fake.asked[0] == Strategy(tuple(p.leg for p in golden(75).legs)) and len(fake.asked) == 6
 

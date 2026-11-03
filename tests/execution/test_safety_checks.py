@@ -167,8 +167,8 @@ MUTATIONS = [
      "Leg 2 (SELL NIFTY 23,000 PE, expiry 06 Oct 2026) is no longer listed by Zerodha. Strikes you could consider "
      "instead: 22,950 or 23,050. Your strategy has not been changed."),
     ("contract-not-eligible", _not_eligible, CheckCode.CONTRACT_NOT_ELIGIBLE,
-     "Leg 3 (SELL NIFTY 23,400 CE, expiry 06 Oct 2026) is currently unavailable on Zerodha. Zerodha isn't "
-     "accepting fresh orders for this contract right now. Strikes you could consider instead: 23,350 or 23,450. "
+     "Leg 3 (SELL NIFTY 23,400 CE, expiry 06 Oct 2026) is currently unavailable on Zerodha. Zerodha is not "
+     "accepting new orders for this contract right now. Strikes you could consider instead: 23,350 or 23,450. "
      "Your strategy has not been changed."),
     ("eligibility-unknown", _eligibility_unknown, CheckCode.CONTRACT_NOT_ELIGIBLE,
      "Leg 4 (BUY NIFTY 23,600 CE, expiry 06 Oct 2026) has not been confirmed as available on Zerodha yet. "
@@ -444,8 +444,8 @@ def test_rule5_blocked_reason_names_the_premium_free_worst_cases(catalogue, elig
     (failure,) = check(strategy, ctx, catalogue, eligibility).failures
     assert failure.reason == (
         "This adjustment raises the maximum loss at expiry from a loss "
-        "of ₹26,000.00 to a loss of ₹2,990,000.00. Adjustments that add risk need Pro. Exiting, or closing or "
-        "reducing legs without a larger worst case, stays available on every plan."
+        "of ₹26,000.00 to a loss of ₹2,990,000.00 (option premiums excluded). Adjustments that add risk need Pro. Exiting or "
+        "reducing legs stays available on every plan."
     )
 
 

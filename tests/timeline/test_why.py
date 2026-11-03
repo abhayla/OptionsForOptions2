@@ -47,7 +47,7 @@ def test_core_max_loss_trigger_answer_quotes_the_recorded_values():
     assert lines[0] == 'Your rule was triggered: "Max loss 3000" (exit rule ml-3000).'
     assert lines[1] == "Condition met: live P&L (Rs) was -3450.00, at or below the threshold -3000."
     assert f"Checked at: {CHECKED_AT.isoformat()}." in lines
-    assert f'Market data: source "{SOURCE}", health available.' in lines
+    assert f'Market data: source "{SOURCE}", status available.' in lines
     assert "Active strategy version: 1." in lines
     assert "The rule's chosen action: alert and prepare orders for your review." in lines
     # No follow-up recorded yet: said so, never assumed.
@@ -107,7 +107,7 @@ def test_answer_reports_missing_inputs_and_unhealthy_data_honestly():
     assert evaluation.outcome is Outcome.TRIGGERED
     record = RuleTriggerRecord.from_evaluation(rule, evaluation, strategy=executed_record())
     text = why_did_this_trigger(record)
-    assert 'Market data: source "zerodha-kite-quote", health stale.' in text
+    assert 'Market data: source "zerodha-kite-quote", status stale.' in text
     assert "Active strategy version: 1." in text
     assert "Condition met: this rule has no market condition; it applies as soon as it is checked." in text
 

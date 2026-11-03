@@ -157,7 +157,7 @@
    },
    {
     "id": "unrealized_pnl",
-    "label": "Unrealized P&L",
+    "label": "Unrealised P&L",
     "kind": "money",
     "is_scenario_level": false,
     "markers": [],
@@ -1418,7 +1418,7 @@
      },
      "entry_price": {
       "value": "1065.50",
-      "display": "\u20b91,065.50 Cr",
+      "display": "\u20b91,065.50 credit",
       "kind": "money",
       "reason": null,
       "side": "Cr",
@@ -1428,7 +1428,7 @@
      },
      "ltp": {
       "value": "1162.65",
-      "display": "\u20b91,162.65 Cr",
+      "display": "\u20b91,162.65 credit",
       "kind": "money",
       "reason": null,
       "side": "Cr",
@@ -1438,7 +1438,7 @@
      },
      "entry_value": {
       "value": "21310.00",
-      "display": "\u20b921,310.00 Cr",
+      "display": "\u20b921,310.00 credit",
       "kind": "money",
       "reason": null,
       "side": "Cr",
@@ -1448,7 +1448,7 @@
      },
      "current_value": {
       "value": "23253.00",
-      "display": "\u20b923,253.00 Cr",
+      "display": "\u20b923,253.00 credit",
       "kind": "money",
       "reason": null,
       "side": "Cr",

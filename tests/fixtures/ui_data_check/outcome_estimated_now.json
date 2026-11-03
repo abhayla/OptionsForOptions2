@@ -150,7 +150,7 @@
    },
    {
     "id": "unrealized_pnl",
-    "label": "Unrealized P&L",
+    "label": "Unrealised P&L",
     "kind": "money",
     "is_scenario_level": false,
     "markers": [],
@@ -1279,7 +1279,7 @@
      },
      "entry_value": {
       "value": "5707.00",
-      "display": "\u20b95,707.00 Dr",
+      "display": "\u20b95,707.00 debit",
       "kind": "money",
       "reason": null,
       "side": "Dr",
@@ -1288,7 +1288,7 @@
      },
      "current_value": {
       "value": "7393.75",
-      "display": "\u20b97,393.75 Dr",
+      "display": "\u20b97,393.75 debit",
       "kind": "money",
       "reason": null,
       "side": "Dr",

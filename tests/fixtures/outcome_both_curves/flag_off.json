@@ -318,7 +318,7 @@
      "id": "unrealized_pnl",
      "is_scenario_level": false,
      "kind": "money",
-     "label": "Unrealized P&L",
+     "label": "Unrealised P&L",
      "markers": [],
      "visible": true
     },
@@ -1686,7 +1686,7 @@
        "vendor": null
       },
       "current_value": {
-       "display": "₹4,985.50 Dr",
+       "display": "₹4,985.50 debit",
        "kind": "money",
        "per_unit": null,
        "per_unit_display": null,
@@ -1716,7 +1716,7 @@
        "vendor": null
       },
       "entry_price": {
-       "display": "₹76.70 Dr",
+       "display": "₹76.70 debit",
        "kind": "money",
        "per_unit": null,
        "per_unit_display": null,
@@ -1726,7 +1726,7 @@
        "vendor": null
       },
       "entry_value": {
-       "display": "₹4,985.50 Dr",
+       "display": "₹4,985.50 debit",
        "kind": "money",
        "per_unit": null,
        "per_unit_display": null,
@@ -1796,7 +1796,7 @@
        "vendor": null
       },
       "ltp": {
-       "display": "₹76.70 Dr",
+       "display": "₹76.70 debit",
        "kind": "money",
        "per_unit": null,
        "per_unit_display": null,
@@ -2377,7 +2377,7 @@
      "id": "unrealized_pnl",
      "is_scenario_level": false,
      "kind": "money",
-     "label": "Unrealized P&L",
+     "label": "Unrealised P&L",
      "markers": [],
      "visible": true
     },
@@ -3745,7 +3745,7 @@
        "vendor": null
       },
       "current_value": {
-       "display": "₹4,985.50 Dr",
+       "display": "₹4,985.50 debit",
        "kind": "money",
        "per_unit": null,
        "per_unit_display": null,
@@ -3775,7 +3775,7 @@
        "vendor": null
       },
       "entry_price": {
-       "display": "₹76.70 Dr",
+       "display": "₹76.70 debit",
        "kind": "money",
        "per_unit": null,
        "per_unit_display": null,
@@ -3785,7 +3785,7 @@
        "vendor": null
       },
       "entry_value": {
-       "display": "₹4,985.50 Dr",
+       "display": "₹4,985.50 debit",
        "kind": "money",
        "per_unit": null,
        "per_unit_display": null,
@@ -3855,7 +3855,7 @@
        "vendor": null
       },
       "ltp": {
-       "display": "₹76.70 Dr",
+       "display": "₹76.70 debit",
        "kind": "money",
        "per_unit": null,
        "per_unit_display": null,
@@ -4452,7 +4452,7 @@
      "id": "unrealized_pnl",
      "is_scenario_level": false,
      "kind": "money",
-     "label": "Unrealized P&L",
+     "label": "Unrealised P&L",
      "markers": [],
      "visible": true
     },
@@ -5860,7 +5860,7 @@
        "vendor": null
       },
       "current_value": {
-       "display": "₹4,056.00 Dr",
+       "display": "₹4,056.00 debit",
        "kind": "money",
        "per_unit": null,
        "per_unit_display": null,
@@ -5890,7 +5890,7 @@
        "vendor": null
       },
       "entry_price": {
-       "display": "₹62.40 Dr",
+       "display": "₹62.40 debit",
        "kind": "money",
        "per_unit": null,
        "per_unit_display": null,
@@ -5900,7 +5900,7 @@
        "vendor": null
       },
       "entry_value": {
-       "display": "₹4,056.00 Dr",
+       "display": "₹4,056.00 debit",
        "kind": "money",
        "per_unit": null,
        "per_unit_display": null,
@@ -5970,7 +5970,7 @@
        "vendor": null
       },
       "ltp": {
-       "display": "₹62.40 Dr",
+       "display": "₹62.40 debit",
        "kind": "money",
        "per_unit": null,
        "per_unit_display": null,
@@ -6567,7 +6567,7 @@
      "id": "unrealized_pnl",
      "is_scenario_level": false,
      "kind": "money",
-     "label": "Unrealized P&L",
+     "label": "Unrealised P&L",
      "markers": [],
      "visible": true
     },
@@ -7975,7 +7975,7 @@
        "vendor": null
       },
       "current_value": {
-       "display": "₹4,056.00 Dr",
+       "display": "₹4,056.00 debit",
        "kind": "money",
        "per_unit": null,
        "per_unit_display": null,
@@ -8005,7 +8005,7 @@
        "vendor": null
       },
       "entry_price": {
-       "display": "₹62.40 Dr",
+       "display": "₹62.40 debit",
        "kind": "money",
        "per_unit": null,
        "per_unit_display": null,
@@ -8015,7 +8015,7 @@
        "vendor": null
       },
       "entry_value": {
-       "display": "₹4,056.00 Dr",
+       "display": "₹4,056.00 debit",
        "kind": "money",
        "per_unit": null,
        "per_unit_display": null,
@@ -8085,7 +8085,7 @@
        "vendor": null
       },
       "ltp": {
-       "display": "₹62.40 Dr",
+       "display": "₹62.40 debit",
        "kind": "money",
        "per_unit": null,
        "per_unit_display": null,
@@ -8669,7 +8669,7 @@
      "id": "unrealized_pnl",
      "is_scenario_level": false,
      "kind": "money",
-     "label": "Unrealized P&L",
+     "label": "Unrealised P&L",
      "markers": [],
      "visible": true
     },
@@ -10067,7 +10067,7 @@
        "vendor": null
       },
       "entry_price": {
-       "display": "₹62.40 Dr",
+       "display": "₹62.40 debit",
        "kind": "money",
        "per_unit": null,
        "per_unit_display": null,
@@ -10077,7 +10077,7 @@
        "vendor": null
       },
       "entry_value": {
-       "display": "₹4,056.00 Dr",
+       "display": "₹4,056.00 debit",
        "kind": "money",
        "per_unit": null,
        "per_unit_display": null,

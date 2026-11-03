@@ -186,7 +186,7 @@ def test_ac2_margin_impact_breaks_ties_within_a_step_lower_impact_first() -> Non
     seq = sequence_plan(mk(*legs), planner)
     assert seq.sequence == ("L2", "L3", "L1")
     assert seq.margin_used is True
-    assert "unverified against real Zerodha margin behaviour (ADR-017 Q26)" in seq.margin_note
+    assert "it has not been checked against Zerodha" in seq.margin_note
     assert len(planner.asked) == 4  # the whole strategy once, then once without each leg
     assert sequence_plan(mk(*legs)).sequence == ("L1", "L2", "L3")  # no planner: the user's order
 
