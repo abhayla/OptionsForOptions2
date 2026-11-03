@@ -137,6 +137,14 @@ def test_ac2_every_scenario_approach_gross_equals_the_hand_values(sid):
         if got["refusal"] is not None or not h.get("exact", True):
             continue
         g = got["after"]["gross"]
+        if h.get("multi_expiry"):  # A-04 spans two expiries: no whole-trade figure by design (ADR-239); compare its trades
+            assert g["max_profit"] is None or not re.fullmatch(r"-?\d+(\.\d+)?", str(g["max_profit"])), (sid, a, g)
+            want = (sc["expected"].get("approach_legs") or {}).get(a)
+            if want is not None:
+                keys = ("action", "type", "strike", "expiry", "lots", "price")
+                assert [{k: str(t[k]) for k in keys} for t in got["trades"]] == \
+                    [{k: str(t[k]) for k in keys} for t in want["trades"]], (sid, a)
+            continue
         assert D(g["max_profit"]) == D(h["max_profit"]), (sid, a, g, h)
         assert D(g["max_loss"]) == D(h["max_loss"]), (sid, a, g, h)
         assert [D(b) for b in g["breakevens"]] == [D(b).quantize(D("0.01")) for b in h["breakevens"]], (sid, a)
