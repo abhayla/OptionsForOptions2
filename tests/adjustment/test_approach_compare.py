@@ -40,6 +40,7 @@ from ofo.errors.explanations import (
     ADJUSTMENT_LEADER_LABEL_TEXT,
     render_explanation,
 )
+from ofo.rules.inputs import DataHealth
 from ofo.settings import defaults as _registry_defaults
 
 FIX = Path(__file__).resolve().parents[1] / "fixtures" / "adjust_scenarios"
@@ -54,6 +55,13 @@ def load(sid: str) -> dict:
     return json.loads((FIX / f"{sid}.json").read_text(encoding="utf-8"))
 
 
+def gen_health(sc: dict) -> DataHealth:
+    """ADR-241: the quotes' health as the scenario feed gives it (``feed: stale`` is read stale)."""
+    state = sc.get("data_state") or {}
+    fresh = state.get("feed", "ok") != "stale" and state.get("prices", "fresh") == "fresh"
+    return DataHealth.AVAILABLE if fresh else DataHealth.STALE
+
+
 def _d(v: object) -> D | None:
     return None if v is None else D(str(v))
 
@@ -62,7 +70,7 @@ def inputs(sc: dict) -> tuple[Position, list[ChainRow], D]:
     expiry = sc["expiry"]
     rows = [ChainRow(D(r["strike"]), r["type"], datetime.date.fromisoformat(c["expiry"]), r["tradingsymbol"],
                      _d(r["ltp"]), _d(r["bid"]), _d(r["ask"]), _d(r["delta"]), r["listed"], r["tradable"],
-                     r["low_oi"]["state"], r["low_oi"]["blocked"])
+                     r["low_oi"]["state"], r["low_oi"]["blocked"], health=gen_health(sc))
             for c in sc["market"]["chains"] if c["expiry"] == expiry for r in c["rows"]]
     legs = tuple(PositionLeg(x["side"], x["type"], D(x["strike"]), datetime.date.fromisoformat(x["expiry"]), x["lots"],
                              D(x["entry"]), x["tradingsymbol"]) for x in sc["position"]["legs"])

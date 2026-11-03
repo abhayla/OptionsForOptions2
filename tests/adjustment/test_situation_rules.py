@@ -9,6 +9,7 @@ import dataclasses
 import datetime
 import json
 import pathlib
+import re
 from decimal import Decimal as D
 
 import pytest
@@ -17,14 +18,15 @@ from ofo.adjustment import playbook_eval as pe
 from ofo.engine import adjust_ratios as ratios
 from ofo.engine.black_scholes import Greeks
 from ofo.engine.legs import Action
+from ofo.strategy.settings_value import IDENTIFIER_PATTERN
 from ofo.timeutil import IST
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 SEED = ROOT / "backend" / "ofo" / "adjustment" / "system_playbooks.json"
 PRE = pathlib.Path(__file__).with_name("pre1a_ic_body.json")  # the 37824fb9 system iron condor, saved before 6a
 GAP = "09:30"
-S02 = "sit:S-02"
-S12 = "sit:S-12"
+S02 = "sit.S-02"
+S12 = "sit.S-12"
 ROLLS = ("A-01", "A-02", "A-05", "A-04", "A-06")  # the iron condor playbook's roll approaches, playbook order
 DAY1 = datetime.date(2026, 10, 28)
 Z = D(0)
@@ -234,3 +236,31 @@ def test_generator_case_matches_its_engine_free_expected_block(case):
         v = _value(ev, rid)
         assert list(v.approaches) == w["approaches"]
         assert format(v.value.quantize(D("0.0001")), "f") == w["value"]
+
+
+# ---- GC-IC1 fix: every produced rule id fits the API's Identifier pattern (ADR-069) --------------------------------
+def _produced_ids(body: dict) -> set[str]:
+    ids: set[str] = set()
+    for kw in ({}, {"days_left": 0, "hhmm": "14:30"}, {"days_left": 0, "hhmm": "15:00"},
+               {"entry_day": DAY1, "pnl": D(6000)}, {"held": _held("0.10")}):
+        ev = _ev(body, **kw)
+        ids |= {r.rule_id for r in ev.results} | {v.rule_id for v in ev.values}
+    return ids
+
+
+def test_guard_every_rule_id_the_evaluator_produces_matches_the_identifier_pattern():
+
+    pre = json.loads(PRE.read_text(encoding="utf-8"))
+    bodies = (_ic(), pre.get("body", pre))
+    ids = set().union(*(_produced_ids(b) for b in bodies))
+    assert S02 in ids and S12 in ids and "day.expiry.1430.5" in ids, sorted(ids)  # the guard saw both kinds
+    assert r"[A-Za-z0-9_.-]{1,64}" == IDENTIFIER_PATTERN  # the shared pattern is not loosened
+    bad = sorted(i for i in ids if re.fullmatch(IDENTIFIER_PATTERN, i) is None)
+    assert bad == [], bad
+
+
+def test_old_stored_colon_ids_are_read_without_crash_and_never_match_a_rule():
+    body = _ic()
+    assert pe.is_day_rule_id("day:expiry:14:30:5") and pe.is_situation_rule_id("sit:S-02")
+    assert pe.day_rule_action(body, "day:expiry:14:30:5") is None  # not re-opened as a rule of today's form
+    assert pe.day_rule_action(body, "day.expiry.1430.5") == 5  # noqa: PLR2004

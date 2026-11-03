@@ -45,6 +45,21 @@ def test_market_reader_gives_chain_deltas_pop_inputs_and_the_feed_spot(monkeypat
     assert all(r.ltp is None or r.ltp > 0 for r in m.chain)  # an unpriced row stays None, never 0
 
 
+@pytest.mark.parametrize(("sid", "health"), [("ADJ-02", "AVAILABLE"), ("ADJ-19", "STALE")])
+def test_adr241_reader_rows_carry_the_quote_health_so_a_stale_book_keeps_its_ltp(monkeypatch, sid, health):
+    """ADR-241 step 1: the one reader fills each priced row's health from its quote (the real feed health rule): a
+    fresh feed -> AVAILABLE (the mid may price it), a stale feed (ADJ-19) -> STALE (its LTP prices it); an unquoted
+    row has no health (None: not live)."""
+    sc = load(sid)
+    ctx = _scn(monkeypatch, sid)[1]
+    m = asyncio.run(readers.read_market(tracked_of(sc), ctx))
+    priced = [r for r in m.chain if r.ltp is not None]
+    assert priced and {r.health.name for r in priced} == {health}
+    assert all(r.health is None for r in m.chain if r.ltp is None)
+    if health == "STALE":
+        assert all(planned_price(r) == r.ltp.quantize(D("0.01")) for r in priced)
+
+
 def test_market_reader_without_a_context_is_absent_never_zero():
     m = asyncio.run(readers.read_market(tracked_of(load("ADJ-02")), None))
     assert m.chain == () and m.feed.state is SourceState.ABSENT and m.forward is None

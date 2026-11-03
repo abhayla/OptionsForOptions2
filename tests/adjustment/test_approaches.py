@@ -22,6 +22,7 @@ from ofo.adjustment.approaches import (
 )
 from ofo.adjustment.approaches import tested_side as side_under_test  # a bare test_* name would be collected
 from ofo.adjustment.preferences import from_values as _prefs_from
+from ofo.rules.inputs import DataHealth
 from ofo.settings import defaults as _registry_defaults
 
 FIX = Path(__file__).resolve().parents[1] / "fixtures" / "adjust_scenarios"
@@ -31,6 +32,13 @@ IC_IDS = sorted(s["id"] for s in gen.scenarios() if s["family"] == "ic")  # the 
 
 def load(sid: str) -> dict:
     return json.loads((FIX / f"{sid}.json").read_text(encoding="utf-8"))
+
+
+def health(sc: dict) -> DataHealth:
+    """The quotes' health as the scenario feed gives it (ofo_app.scenario_mode: ``feed: stale`` is read stale)."""
+    state = sc.get("data_state") or {}
+    fresh = state.get("feed", "ok") != "stale" and state.get("prices", "fresh") == "fresh"
+    return DataHealth.AVAILABLE if fresh else DataHealth.STALE
 
 
 def _d(value: object) -> D | None:
@@ -52,7 +60,7 @@ def inputs(sc: dict) -> tuple[Position, list[ChainRow], D]:
             rows.append(ChainRow(D(r["strike"]), r["type"], datetime.date.fromisoformat(c["expiry"]),
                                  r["tradingsymbol"], None if gone else _d(r["ltp"]), None if gone else _d(r["bid"]),
                                  None if gone else _d(r["ask"]), _d(r["delta"]), r["listed"], r["tradable"],
-                                 r["low_oi"]["state"], r["low_oi"]["blocked"]))
+                                 r["low_oi"]["state"], r["low_oi"]["blocked"], health=health(sc)))
     legs = tuple(PositionLeg(x["side"], x["type"], D(x["strike"]), datetime.date.fromisoformat(x["expiry"]), x["lots"],
                              D(x["entry"]), x["tradingsymbol"]) for x in sc["position"]["legs"])
     today = datetime.date.fromisoformat(sc["clock"]["ist"][:10])
@@ -216,12 +224,43 @@ def test_ac8_every_answer_state_of_the_landing_row(change, reason):
 
 
 def test_landing_price_from_mid_when_no_ltp():
-    """The planned price is ADR-068 (1)'s rule: LTP, else the mid of bid and ask (half-up to 0.01)."""
+    """ADR-241: a live book's mid (half-up to 0.01) prices the trade, LTP or not."""
     position, chain, spot = inputs(load("ADJ-20a"))
     changed = [replace(r, ltp=None, bid=D("10.05"), ask=D("10.10")) if (r.strike, r.type) == (D("23700"), "CE")
                else r for r in chain]
     a05 = build_approach(position, changed, spot, "A-05", CFG)
     assert [t.price for t in a05.trades if t.strike == D("23700")] == [D("10.08")]
+
+
+def test_landing_row_with_no_ltp_and_a_stale_book_is_refused():
+    """ADR-241: no LTP and no live book (stale) -> no price: the approach is refused naming the leg."""
+    position, chain, spot = inputs(load("ADJ-20a"))
+    changed = [replace(r, ltp=None, bid=D("10.05"), ask=D("10.10"), health=DataHealth.STALE)
+               if (r.strike, r.type) == (D("23700"), "CE") else r for r in chain]
+    a05 = build_approach(position, changed, spot, "A-05", CFG)
+    assert a05.refusal == "Leg 4 (BUY NIFTY 23,700 CE, expiry 03 Nov 2026) has no price, and this approach trades it."
+
+
+@pytest.mark.parametrize("sid", ["ADJ-02", "ADJ-20a"])
+def test_adr241_stale_ltps_never_price_a_trade_on_a_live_book(sid):
+    """ADR-241 discriminator: every LTP moved 10 away from its book (a stale last trade). On a live book every
+    approach still equals the hand-derived legs priced at the mid; on a stale book every trade is priced at its
+    LTP (moved where its book was two-sided). The library's own rows have mid == LTP, so only this test tells the two rules apart there."""
+    sc = load(sid)
+    position, chain, spot = inputs(sc)
+    # only a two-sided book can be live: a 0.05 row with a 0 bid keeps its LTP under both rules, so it is not moved
+    moved = [replace(r, ltp=r.ltp + 10) if r.ltp is not None and r.bid and r.bid > 0 else r for r in chain]
+    built = {a.id: a for a in applicable_approaches(position, moved, spot, CFG)}
+    priced = 0
+    for aid, expected in sc["expected"]["approach_legs"].items():
+        assert plain(built[aid]) == fixture_form(expected), (sid, aid)
+        priced += len(built[aid].trades)
+    assert priced > 0
+    stale = [replace(r, health=DataHealth.STALE) for r in moved]
+    ltp_of = {r.tradingsymbol: r.ltp for r in stale}
+    for a in applicable_approaches(position, stale, spot, CFG):
+        for t in a.trades:
+            assert t.price == ltp_of[t.tradingsymbol], (sid, a.id, t.tradingsymbol)
 
 
 def _synthetic(strikes, expiry, kind_rows=("CE", "PE")):

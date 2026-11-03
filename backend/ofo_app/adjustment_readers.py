@@ -210,7 +210,8 @@ def chain_rows(listed: Iterable[Any], expiry: datetime.date, quotes: Mapping[str
             blocked = (row.get("low_oi") or {}).get("blocked")
         rows.append(ChainRow(c.strike, c.instrument_type, expiry, symbol, None if q is None else q.ltp,
                              None if q is None else q.bid, None if q is None else q.ask,
-                             None if g is None else g.delta, True, tradable, low_oi, blocked))
+                             None if g is None else g.delta, True, tradable, low_oi, blocked,
+                             health=None if q is None else q.health))  # ADR-241: the mid only on a live book
         ids[symbol] = iid
         if g is not None:
             leg_greeks[symbol] = g
