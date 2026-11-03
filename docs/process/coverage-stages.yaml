@@ -566,6 +566,7 @@ issues:
   "#641": S6.7  # T-11 never checked live: entry ATM IV is only filled in scenario mode
   "#642": S6.7  # Background worker reads only the position's expiry: A-04 and T-19 differ from the screen
   "#643": S6.7  # Admin settings page scrolls sideways at 390 px (table 457 px wide)
+  "#644": S6.7  # Adjustment approaches read the Kite token 3 times and the market twice per request (dev over the tunnel: 4-16 s)
 
 # Work items whose status is not done.
 work_items:
