@@ -203,7 +203,7 @@ def test_the_gate_opens_one_s02_record_per_episode():
 
 
 def test_the_gate_opens_one_s12_record_per_episode():
-    pnl = [3900] + [4000, 4200, 4500, 4600, 4700]
+    pnl = [3900, 4000, 4200, 4500, 4600, 4700]  # under, then at or above 40% for five checks
     opened = _run([(m, _state(entry_day=DAY1, pnl=D(p))) for m, p in enumerate(pnl)])
     assert [e.rule_id for e in opened if e.rule_id == S12] == [S12]
 
