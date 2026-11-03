@@ -96,6 +96,8 @@ class Tracked:
     booked: Decimal | None
     paid_charges: Decimal | None
     adjustments_used: int | None = None  # None: the count could not be read (the compare shows "-" with the reason)
+    #: GC-IC1 6a (S-12, ADR-240 (3)): when the strategy was entered (its first stored order); None = not known
+    entered_at: datetime.datetime | None = None
 
 
 @dataclasses.dataclass(frozen=True)

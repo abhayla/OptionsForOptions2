@@ -29,8 +29,11 @@ from decimal import Context, Decimal, DivisionByZero, Inexact, InvalidOperation,
 from typing import Final, Literal
 
 from ofo import market_calendar as mc
-from ofo.adjustment.approaches import ExitInputs
+from ofo.adjustment.approaches import KINDS, ExitInputs
+from ofo.adjustment.offered import offered_now
 from ofo.engine import adjust_ratios as ratios
+from ofo.engine.black_scholes import Greeks
+from ofo.engine.legs import Action
 from ofo.errors import render
 from ofo.timeutil import IST
 
@@ -74,6 +77,16 @@ class CarryFigures:
 
 
 @dataclass(frozen=True)
+class HeldLeg:
+    """One open option leg as S-02 reads it (GC-IC1 6a): its per-unit engine Greeks (``None`` = not available),
+    BUY / SELL, and its lots."""
+
+    greeks: Greeks | None
+    side: str
+    lots: int
+
+
+@dataclass(frozen=True)
 class StrategyState:
     """Everything the triggers read. Every input that can be missing is Optional (``None`` = not available)."""
 
@@ -103,6 +116,10 @@ class StrategyState:
     #: holiday list is not known for the days it needs (never assumed a session)
     carry_days: frozenset[str] | None = None
     carry: CarryFigures | None = None  # the carry check's figures; None = not computed (no carry rule due)
+    #: GC-IC1 6a (ADR-240 (3)): every open option leg with its engine Greeks (S-02); None = the legs were not read
+    held: tuple[HeldLeg, ...] | None = None
+    today: datetime.date | None = None  # the IST session date of this check (S-12); None = not known
+    entry_day: datetime.date | None = None  # the IST date the strategy was entered (first order); None = not known
 
 
 # ---- results ---------------------------------------------------------------------------------------------------------
@@ -645,6 +662,7 @@ def evaluate(body: Mapping, state: StrategyState, memory: Mapping[str, Mapping[s
                     values.append(rv)
     _add_day_rules(body, state, why, c.stage_name, (results, clear, values),
                    _t09_now(c))
+    _add_situation_rules(body, state, why, c.stage_name, (results, clear, values))
     return Evaluation(c.stage_name, c.stage, tuple(results), new, tuple(clear), why, values=tuple(values))
 
 
@@ -890,3 +908,110 @@ def _carry_check(rule: Mapping, rid: str, state: StrategyState) -> DayAnswer | N
     if rule.get("when") not in state.carry_days:
         return None
     return DayAnswer(rid, DAY_ACTION_CARRY_CHECK, Hit(rid, state.hhmm, at, "ge", True))
+
+
+# ---- situation rules (GC-IC1 step 6a; REQ-159 AC-5, ADR-240 (3)) ---------------------------------------------------
+#: S-02 "Trending day" and S-12 "Big win early" are rules when the playbook lists the situation (its ``situations``,
+#: present in every saved body since v1; no new body key). Each answers as a yes/no gate reading, id ``sit:<S-id>``,
+#: and names its approaches on the record (the gate opens one record per episode, ``alert_gate.step``).
+#: The thresholds are ADR-240 (3)'s, named here until the editor exposes them; NEVER read from the body, so a body
+#: saved before this step fires the same way.
+SITUATION_RULE_PREFIX: Final = "sit:"
+TRENDING_DAY: Final = "S-02"
+BIG_WIN_EARLY: Final = "S-12"
+S02_NET_DELTA_PER_LOT: Final = Decimal("0.15")  # ADR-240 (3): at or beyond +/-0.15 per lot
+S12_PCT_OF_MAX_PROFIT: Final = Decimal(40)  # ADR-240 (3): profit at or above 40% of max profit, entry session only
+S12_APPROACHES: Final = ("A-24", "A-25")  # ADR-240 (3): take profit / close the whole position
+MISSING_LEG_DELTA: Final = f"{P}missing_leg_delta"
+MISSING_ENTRY_DAY: Final = f"{P}missing_entry_day"
+_ROLL: Final = "roll"
+SITUATION_ACTION: Final = -1  # a situation rule has no day-rule action index
+
+
+def situation_rule_id(situation: str) -> str:
+    return f"{SITUATION_RULE_PREFIX}{situation}"
+
+
+def is_situation_rule_id(rule_id: object) -> bool:
+    return isinstance(rule_id, str) and rule_id.startswith(SITUATION_RULE_PREFIX)
+
+
+def situation_of(body: Mapping | None, rule_id: object) -> Mapping | None:
+    """The ``situations`` entry of ``body`` that ``rule_id`` (``sit:S-02``) names; None when it names none."""
+    if not is_situation_rule_id(rule_id) or not isinstance(body, Mapping):
+        return None
+    sid = rule_id[len(SITUATION_RULE_PREFIX):]
+    listed = body.get("situations")
+    if not isinstance(listed, list):
+        return None
+    return next((x for x in listed if isinstance(x, Mapping) and x.get("id") == sid), None)
+
+
+def _listed(body: Mapping, situation: str) -> bool:
+    return situation_of(body, situation_rule_id(situation)) is not None
+
+
+def _trending_day(body: Mapping, state: StrategyState, why: str | None) -> DayAnswer | None:
+    """S-02: |net delta per lot| >= 0.15 (``ratios.net_delta_per_lot``, the engine sum). None = no answer: the
+    playbook does not list S-02, or it offers no roll now (none on, or S-11's limit)."""
+    rid = situation_rule_id(TRENDING_DAY)
+    rolls = tuple(a for a in offered_now(body, state.adjustments_used) if KINDS.get(a) == _ROLL)
+    if not _listed(body, TRENDING_DAY) or not rolls:
+        return None
+    if why is not None:
+        return DayAnswer(rid, SITUATION_ACTION, reason=why)
+    if not state.held or any(x.greeks is None or x.greeks.delta is None for x in state.held):
+        return DayAnswer(rid, SITUATION_ACTION, reason=MISSING_LEG_DELTA)  # never a missing delta read as 0
+    try:
+        num, den = ratios.net_delta_per_lot(tuple((x.greeks, Action(x.side), x.lots) for x in state.held))
+    except ValueError:
+        return DayAnswer(rid, SITUATION_ACTION, reason=MISSING_LEG_DELTA)
+    hit = _exact(rid, num, den, S02_NET_DELTA_PER_LOT, "ge")
+    return DayAnswer(rid, SITUATION_ACTION, hit, approaches=rolls if hit.fired else ())
+
+
+def _big_win_early(body: Mapping, state: StrategyState, why: str | None) -> DayAnswer | None:  # noqa: PLR0911
+    """S-12: on the entry session (IST date of the first order) profit >= 40% of max profit (T-07's engine ratio).
+    Another session -> no answer (day 1 only). Entry day or today not known -> NotChecked, never False."""
+    rid = situation_rule_id(BIG_WIN_EARLY)
+    offered = offered_now(body, state.adjustments_used)
+    named = tuple(a for a in S12_APPROACHES if a in offered)
+    if not _listed(body, BIG_WIN_EARLY) or not named:
+        return None
+    if state.entry_day is None:
+        return DayAnswer(rid, SITUATION_ACTION, reason=MISSING_ENTRY_DAY)
+    if state.today is None:
+        return DayAnswer(rid, SITUATION_ACTION, reason=f"{P}missing_clock")
+    if state.today != state.entry_day:
+        return None
+    if why is not None:
+        return DayAnswer(rid, SITUATION_ACTION, reason=why)
+    try:
+        pnl = _need(state.pnl, "pnl")
+        hit = _exact(rid, *ratios.profit_pct_of_max_profit(pnl, _finite(state.max_profit, "max_profit")),
+                     S12_PCT_OF_MAX_PROFIT, "ge")
+    except _Missing as e:
+        return DayAnswer(rid, SITUATION_ACTION, reason=e.code, slots=e.slots)
+    return DayAnswer(rid, SITUATION_ACTION, hit, approaches=named if hit.fired else ())
+
+
+def situation_answers(body: Mapping, state: StrategyState, why: str | None = None) -> tuple[DayAnswer, ...]:
+    """S-02 and S-12 answered on ``state`` (the one function the screen and the worker reach through ``evaluate``)."""
+    return tuple(a for a in (_trending_day(body, state, why), _big_win_early(body, state, why)) if a is not None)
+
+
+def _add_situation_rules(body: Mapping, state: StrategyState, why: str | None, stage_name: str | None,
+                         out: tuple[list[Result], list[str], list[RuleValue]]) -> None:
+    """S-02 / S-12 into ``evaluate``'s results / clear / values, a yes/no value each (as the day rules)."""
+    results, clear, values = out
+    for d in situation_answers(body, state, why):
+        if d.hit is None:
+            results.append(NotChecked(d.rule_id, d.rule_id, d.reason or MISSING_LEG_DELTA, d.slots))
+            continue
+        hit = d.hit
+        if hit.fired:
+            results.append(Flag(d.rule_id, d.rule_id, stage_name, hit.value, hit.threshold, hit.cmp, (hit,)))
+        else:
+            clear.append(d.rule_id)
+        values.append(RuleValue(d.rule_id, d.rule_id, hit.value, hit.threshold, hit.cmp, hit.fired,
+                                yes_no=True, approaches=d.approaches))

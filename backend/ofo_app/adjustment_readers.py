@@ -116,7 +116,14 @@ async def read_tracked(strategy_id: int, rates: ChargeRates | None) -> Tracked |
     used = history_count(orders, lambda cid: found[cid].stored is not None
                          and found[cid].stored.listed.contract.instrument_type in _OPTION_TYPES)
     return Tracked(Position(underlying, lot, "", datetime.date.min, tuple(legs)), booked, paid,
-                   adjustments_used=used)
+                   adjustments_used=used, entered_at=entered_at(orders))
+
+
+def entered_at(orders: Any) -> datetime.datetime | None:
+    """S-12 (ADR-240 (3)): the strategy's entry time = its first stored order's ``created_at``; None when no order
+    states one (never a guess)."""
+    times = [o.created_at for o in orders if isinstance(getattr(o, "created_at", None), datetime.datetime)]
+    return min(times) if times else None
 
 
 def history_count(orders: Any, is_option: Any) -> int | None:

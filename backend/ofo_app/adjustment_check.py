@@ -259,8 +259,21 @@ def state_of(tracked: Tracked, market: MarketInputs, spot: SpotAnswer, margin: M
                     else None),
         day_open=day.value if day is not None and day.reason == STATED else None,
         adjustments_used=tracked.adjustments_used, expiry_pnl_at_spot=expiry_pnl,
-        tighten_percent=None if body is None else _tighten(body, now.date(), expiry, hhmm), prices_fresh=fresh),
+        tighten_percent=None if body is None else _tighten(body, now.date(), expiry, hhmm), prices_fresh=fresh,
+        held=held_legs(position, market), today=now.date(), entry_day=entry_day(tracked)),
         body, tracked, market)
+
+
+def held_legs(position: Position, market: MarketInputs) -> tuple[pe.HeldLeg, ...]:
+    """S-02 (ADR-240 (3)): every open leg with its per-unit engine Greeks from ``MarketInputs.leg_greeks`` (the
+    chain's engine Greeks; a symbol absent -> None, so S-02 is not checked, never a delta of 0)."""
+    return tuple(pe.HeldLeg(market.leg_greeks.get(x.tradingsymbol), x.side, x.lots) for x in position.legs)
+
+
+def entry_day(tracked: Tracked) -> datetime.date | None:
+    """S-12: the IST date of the strategy's first order (``Tracked.entered_at``); None when not known."""
+    at = getattr(tracked, "entered_at", None)
+    return None if at is None or at.tzinfo is None else at.astimezone(IST).date()
 
 
 def carry_model(tracked: Tracked, market: MarketInputs) -> Any:
@@ -360,10 +373,17 @@ def stage_out(name: str | None, index: int | None) -> dict[str, Any]:
     return {"name": stage_name_text(name), "index": index}
 
 
+SIT_S12 = pe.situation_rule_id(pe.BIG_WIN_EARLY)  # its value is a % of max profit
+
+
 def trigger_words(body: Mapping | None, trigger_id: str | None) -> tuple[str | None, str | None]:
     """(label, unit) of a trigger as the evaluated body holds them; (None, None) for a body or trigger without them.
     A day rule (GC-IC1 1a, ``day:<when>:<index>``): its action's catalogue words and "%" (its value is a distance
     from spot in %)."""
+    situation = pe.situation_of(body, trigger_id)  # GC-IC1 6a: S-02 / S-12 read as the playbook names them
+    if situation is not None:
+        name = situation.get("name")
+        return (name if isinstance(name, str) else None), (DAY_RULE_UNIT if trigger_id == SIT_S12 else None)
     action = pe.day_rule_action(body, trigger_id)
     if action is not None:
         words = PLAYBOOK_DAY_RULE_ACTION_TEXT.get(str(action))
