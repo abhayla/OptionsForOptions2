@@ -435,8 +435,14 @@ async def test_cap_reached_writes_exactly_one_held_row_for_the_episode(app_db_ur
     assert await _t01_rows(app_db_url, sid, base) == [(rec, "open", None)] and worker.errors == []
 
 
-@pytest.mark.xfail(strict=True, reason="parked #638: not diagnosed (GC-ALERT1 step 5, 2 rounds used)")
 async def test_the_ist_day_rollover_resets_the_cap(app_db_url, monkeypatch):
+    """The cap holds the worse level today; the next trading day (IST) it opens. #638 RCA: ADJ-02's next trading day
+    (Monday 9 Nov) is its expiry day, whose stage carries the stricter T-01 ladder (0.3); the gate kept the record's
+    level from the old ladder, so 0.256 % read as the same level and stayed quiet. ADR-237 (8): a stage change
+    re-levels the record like a playbook change (pure tests ``test_a_stage_change_re_levels_...`` in
+    tests/adjustment/test_alert_gate.py). The cap reset alone, on one ladder, at IST and never UTC midnight:
+    ``test_the_cap_resets_at_ist_midnight`` / ``test_the_cap_does_not_reset_at_utc_midnight`` there. Here a cap that
+    did not reset holds the worse record on Monday too (no open), so this stays red without the reset."""
     sid, scn, now, worker = await _ready(app_db_url, monkeypatch, overrides=CAP_ONE)
     base, rec = await _open_one(app_db_url, worker, scn, now, sid)
     now[0] += ONE_SECOND
@@ -451,8 +457,7 @@ async def test_the_ist_day_rollover_resets_the_cap(app_db_url, monkeypatch):
         now[0] += ONE_SECOND
     assert worker.status[sid] is background.MonitoringStatus.ACTIVE, worker.paused_reason
     rows = await _t01_rows(app_db_url, sid, base)
-    ctx = worker._gate_ctx.get(sid)
-    assert [(r[1], r[2]) for r in rows] == [("lapsed", None), ("open", "last")], (rows, worker._gate.get(sid), ctx and ctx.evaluation.stage_name, ctx and [v for v in ctx.evaluation.values if v.rule_id == "T-01"], worker._style.get(sid), worker._last_check.get(sid), now[0])  # TEMPDIAG
+    assert [(r[1], r[2]) for r in rows] == [("lapsed", None), ("open", "last")], rows  # the cap no longer holds it
     assert await _held_reasons(app_db_url, sid) == held
 
 
