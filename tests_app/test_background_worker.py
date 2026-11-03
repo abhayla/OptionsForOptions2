@@ -8,6 +8,7 @@ price reached the provider (read from the same database clock). A restarted work
 """
 from __future__ import annotations
 
+import asyncio
 import copy
 import dataclasses
 import datetime
@@ -546,26 +547,43 @@ async def test_after_a_style_change_the_next_check_uses_the_new_interval(app_db_
 
 async def test_a_dismiss_read_by_the_rebuild_never_dismisses_a_record_opened_in_its_read_window(app_db_url,
                                                                                                 monkeypatch):
-    """#639 item 2: the rebuild reads R1 dismissed; while that read is in flight the worker opens R2 (one level
-    worse) for the same rule. The stale read must not mark R2 dismissed: the dismiss matches by record id."""
+    """#639 item 2, under the one DB gate (#636 r4/r5): the rebuild reads R1 dismissed; a crossing that would open R2
+    (one level worse) is started inside the read window. The open WAITS for the gate the read holds, so R2's apply
+    runs after the read returned; the dismiss still matches by record id, so R2 stays open and not dismissed.
+    The crossing runs as a task, never awaited inside the read (it would wait for the gate the read holds); every
+    worker call is bounded so a regression fails instead of hanging."""
     sid, scn, now, worker = await _ready(app_db_url, monkeypatch)
     base, first = await _open_one(app_db_url, worker, scn, now, sid)
     async with app_db_url.begin() as conn:
         await playbook_store.dismiss(conn, "owner", first)
-    real_load = worker._gate_store.load
-    opened: list[int] = []
+    real_load, real_apply = worker._gate_store.load, worker._gate_store.apply
+    order: list[str] = []
+    crossing: list[asyncio.Task] = []
 
-    async def load_with_an_open_in_its_window(w, today):
+    async def load_with_a_crossing_in_its_window(w, today):
         got = await real_load(w, today)  # R1 dismissed, as read
-        opened.append(await _cross(app_db_url, worker, scn, now, LEVEL_ONE_SPOT, sid, first))  # R2 opens meanwhile
+        crossing.append(asyncio.create_task(_cross(app_db_url, worker, scn, now, LEVEL_ONE_SPOT, sid, first)))
+        order.append("read_returned")
         return got
-    monkeypatch.setattr(worker._gate_store, "load", load_with_an_open_in_its_window)
-    await worker.rebuild()
-    assert [r for r in (await _t01_rows(app_db_url, sid, base)) if r[0] == opened[0]] == [(opened[0], "open", "last")]
+
+    async def marked_apply(*args, **kwargs):
+        order.append("apply")
+        return await real_apply(*args, **kwargs)
+    monkeypatch.setattr(worker._gate_store, "load", load_with_a_crossing_in_its_window)
+    monkeypatch.setattr(worker._gate_store, "apply", marked_apply)
+    await asyncio.wait_for(worker.rebuild(), 120)
+    opened = await asyncio.wait_for(crossing[0], 120)
+    assert "apply" in order and order.index("read_returned") < order.index("apply"), order  # the open waited
+    # R2 opened after the read, so the gate it was judged against already holds R1 dismissed: worse = 'dismissed'
+    # (ADR-237 (5)); 'last' would mean it was judged before the read applied. Either way it is open, never dismissed.
+    assert [r for r in (await _t01_rows(app_db_url, sid, base)) if r[0] == opened] == [(opened, "open", "dismissed")]
     assert alert_gate.is_dismissed(worker._gate[sid], "T-01") is False
     monkeypatch.setattr(worker._gate_store, "load", real_load)
-    await worker.rebuild()  # the next read sees R2 open and not dismissed: still not dismissed
+    await asyncio.wait_for(worker.rebuild(), 120)  # the next read sees R2 open and not dismissed
     assert alert_gate.is_dismissed(worker._gate[sid], "T-01") is False and worker.errors == []
+    async with app_db_url.connect() as conn:
+        assert (await conn.execute(text("SELECT outcome FROM public.adjustment_suggestions WHERE id = :i"),
+                                   {"i": first})).scalar_one() == "dismissed"  # R1 stays dismissed
 
 
 async def test_a_close_is_processed_with_no_check_that_wake(app_db_url, monkeypatch):
