@@ -83,7 +83,7 @@
  ],
  "margin": {
   "state": "NOT_AVAILABLE_YET",
-  "reason": "Margin from Zerodha is not shown yet; it needs your Kite login.",
+  "reason": "Margin from Zerodha is not shown yet; it needs your Zerodha login.",
   "needed": null,
   "broker_needed": null,
   "available": null,
@@ -186,7 +186,7 @@
    },
    {
     "id": "unrealized_pnl",
-    "label": "Unrealized P&L",
+    "label": "Unrealised P&L",
     "kind": "money",
     "is_scenario_level": false,
     "markers": [],
@@ -858,7 +858,7 @@
       "value": null,
       "display": "—",
       "kind": "text",
-      "reason": "no status was given for this leg",
+      "reason": "no status is available for this leg",
       "side": null,
       "per_unit": null,
       "vendor": null
@@ -1259,7 +1259,7 @@
       "value": null,
       "display": "—",
       "kind": "text",
-      "reason": "no status was given for this leg",
+      "reason": "no status is available for this leg",
       "side": null,
       "per_unit": null,
       "vendor": null
@@ -1660,7 +1660,7 @@
       "value": null,
       "display": "—",
       "kind": "text",
-      "reason": "no status was given for this leg",
+      "reason": "no status is available for this leg",
       "side": null,
       "per_unit": null,
       "vendor": null
@@ -2061,7 +2061,7 @@
       "value": null,
       "display": "—",
       "kind": "text",
-      "reason": "no status was given for this leg",
+      "reason": "no status is available for this leg",
       "side": null,
       "per_unit": null,
       "vendor": null
@@ -2145,7 +2145,7 @@
      },
      "entry_value": {
       "value": "6366.75",
-      "display": "₹6,366.75 Cr",
+      "display": "₹6,366.75 credit",
       "kind": "money",
       "reason": null,
       "side": "Cr",
@@ -2154,7 +2154,7 @@
      },
      "current_value": {
       "value": "5911.75",
-      "display": "₹5,911.75 Cr",
+      "display": "₹5,911.75 credit",
       "kind": "money",
       "reason": null,
       "side": "Cr",

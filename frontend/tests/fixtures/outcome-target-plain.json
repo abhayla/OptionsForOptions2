@@ -94,7 +94,7 @@
   ],
   "margin": {
     "state": "NOT_AVAILABLE_YET",
-    "reason": "Margin from Zerodha is not shown yet; it needs your Kite login.",
+    "reason": "Margin from Zerodha is not shown yet; it needs your Zerodha login.",
     "needed": null,
     "broker_needed": null,
     "available": null,
@@ -197,7 +197,7 @@
       },
       {
         "id": "unrealized_pnl",
-        "label": "Unrealized P&L",
+        "label": "Unrealised P&L",
         "kind": "money",
         "is_scenario_level": false,
         "markers": [],
@@ -930,7 +930,7 @@
             "value": null,
             "display": "—",
             "kind": "text",
-            "reason": "no status was given for this leg",
+            "reason": "no status is available for this leg",
             "side": null,
             "per_unit": null,
             "per_unit_display": null,
@@ -1385,7 +1385,7 @@
             "value": null,
             "display": "—",
             "kind": "text",
-            "reason": "no status was given for this leg",
+            "reason": "no status is available for this leg",
             "side": null,
             "per_unit": null,
             "per_unit_display": null,
@@ -1840,7 +1840,7 @@
             "value": null,
             "display": "—",
             "kind": "text",
-            "reason": "no status was given for this leg",
+            "reason": "no status is available for this leg",
             "side": null,
             "per_unit": null,
             "per_unit_display": null,
@@ -2295,7 +2295,7 @@
             "value": null,
             "display": "—",
             "kind": "text",
-            "reason": "no status was given for this leg",
+            "reason": "no status is available for this leg",
             "side": null,
             "per_unit": null,
             "per_unit_display": null,
@@ -2368,7 +2368,7 @@
           },
           "entry_price": {
             "value": "73.15",
-            "display": "₹73.15 Cr",
+            "display": "₹73.15 credit",
             "kind": "money",
             "reason": null,
             "side": "Cr",
@@ -2378,7 +2378,7 @@
           },
           "ltp": {
             "value": "73.15",
-            "display": "₹73.15 Cr",
+            "display": "₹73.15 credit",
             "kind": "money",
             "reason": null,
             "side": "Cr",
@@ -2388,7 +2388,7 @@
           },
           "entry_value": {
             "value": "4754.75",
-            "display": "₹4,754.75 Cr",
+            "display": "₹4,754.75 credit",
             "kind": "money",
             "reason": null,
             "side": "Cr",
@@ -2398,7 +2398,7 @@
           },
           "current_value": {
             "value": "4754.75",
-            "display": "₹4,754.75 Cr",
+            "display": "₹4,754.75 credit",
             "kind": "money",
             "reason": null,
             "side": "Cr",
@@ -2921,7 +2921,7 @@
     "customised": false,
     "other": {
       "view": "estimated_now",
-      "label": "Estimated Now (estimate)",
+      "label": "Estimated Now",
       "kind": "estimate",
       "available": true,
       "unavailable_reason": null,
@@ -3297,7 +3297,7 @@
     },
     "estimated_now": {
       "view": "estimated_now",
-      "label": "Estimated Now (estimate)",
+      "label": "Estimated Now",
       "kind": "estimate",
       "available": true,
       "unavailable_reason": null,
@@ -3433,7 +3433,7 @@
     "columns": [
       {
         "view": "estimated_now",
-        "label": "Estimated Now (estimate)",
+        "label": "Estimated Now",
         "kind": "estimate",
         "available": true,
         "unavailable_reason": null
@@ -4079,7 +4079,7 @@
     "days_to_expiry_display": "5D to expiry",
     "badge": {
       "state": "unavailable",
-      "label": "Projected figure not available",
+      "label": "Estimate not available",
       "reason": "No target is set.",
       "amount": null,
       "amount_display": null,

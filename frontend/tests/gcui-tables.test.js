@@ -85,7 +85,7 @@ describe('D-B24 / D-B25 / D-B26: the Payoff Table from the server rows, interval
   })
   it('both columns in the server order with its labels; one row per server row, every cell its display', () => {
     const w = open()
-    expect(all(w, 'payoff-step-head').map((h) => h.text())).toEqual(['Index level', 'Estimated Now (estimate)', 'At Expiry'])
+    expect(all(w, 'payoff-step-head').map((h) => h.text())).toEqual(['Index level', 'Estimated Now', 'At Expiry'])
     const rows = all(w, 'payoff-step-row')
     expect(rows).toHaveLength(41)
     expect(rows[0].find('[data-testid="payoff-step-level"]').text()).toBe('21,500')
@@ -143,11 +143,11 @@ describe('D-B24: the picked interval goes into the outcome request; a late answe
 // D-B28 (REQ-146 AC-3 TOTAL row; ADR-008): the compact P&L Total row prints the server's net Entry / LTP text.
 describe('D-B28: the TOTAL row prints the net Entry / LTP the server sent', () => {
   const totalCell = (w, id) => w.find(`[data-testid="compact-row"][data-row="TOTAL"] [data-field="${id}"]`).text()
-  it('s54 Entry and LTP "₹62.40 Dr"; calendar "₹76.70 Dr"; from-entries LTP is the server dash', () => {
-    expect(totalCell(card(), 'entry_price')).toBe('₹62.40 Dr')
-    expect(totalCell(card(), 'ltp')).toBe('₹62.40 Dr')
-    expect(totalCell(card(flagOff.calendar_estimated_now), 'entry_price')).toBe('₹76.70 Dr')
-    expect(totalCell(card(fromEntries), 'entry_price')).toBe('₹62.40 Dr')
+  it('s54 Entry and LTP "₹62.40 debit"; calendar "₹76.70 debit"; from-entries LTP is the server dash', () => {
+    expect(totalCell(card(), 'entry_price')).toBe('₹62.40 debit')
+    expect(totalCell(card(), 'ltp')).toBe('₹62.40 debit')
+    expect(totalCell(card(flagOff.calendar_estimated_now), 'entry_price')).toBe('₹76.70 debit')
+    expect(totalCell(card(fromEntries), 'entry_price')).toBe('₹62.40 debit')
     expect(totalCell(card(fromEntries), 'ltp')).toBe('—')
   })
 })

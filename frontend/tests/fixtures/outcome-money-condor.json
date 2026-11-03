@@ -189,7 +189,7 @@
    },
    {
     "id": "unrealized_pnl",
-    "label": "Unrealized P&L",
+    "label": "Unrealised P&L",
     "kind": "money",
     "is_scenario_level": false,
     "markers": [],
@@ -861,7 +861,7 @@
       "value": null,
       "display": "—",
       "kind": "text",
-      "reason": "no status was given for this leg",
+      "reason": "no status is available for this leg",
       "side": null,
       "per_unit": null,
       "vendor": null
@@ -1262,7 +1262,7 @@
       "value": null,
       "display": "—",
       "kind": "text",
-      "reason": "no status was given for this leg",
+      "reason": "no status is available for this leg",
       "side": null,
       "per_unit": null,
       "vendor": null
@@ -1663,7 +1663,7 @@
       "value": null,
       "display": "—",
       "kind": "text",
-      "reason": "no status was given for this leg",
+      "reason": "no status is available for this leg",
       "side": null,
       "per_unit": null,
       "vendor": null
@@ -2064,7 +2064,7 @@
       "value": null,
       "display": "—",
       "kind": "text",
-      "reason": "no status was given for this leg",
+      "reason": "no status is available for this leg",
       "side": null,
       "per_unit": null,
       "vendor": null
@@ -2148,7 +2148,7 @@
      },
      "entry_value": {
       "value": "4754.75",
-      "display": "₹4,754.75 Cr",
+      "display": "₹4,754.75 credit",
       "kind": "money",
       "reason": null,
       "side": "Cr",
@@ -2157,7 +2157,7 @@
      },
      "current_value": {
       "value": "4754.75",
-      "display": "₹4,754.75 Cr",
+      "display": "₹4,754.75 credit",
       "kind": "money",
       "reason": null,
       "side": "Cr",
@@ -2736,7 +2736,7 @@
   ]
  },
  "summary": {
-  "what_can_i_lose": "At most ₹8,460.35 at expiry, including about ₹215.10 of charges and taxes. Holding a bought option to expiry in the money adds STT on its value; squaring off before expiry avoids it.",
+  "what_can_i_lose": "At most ₹8,460.35 at expiry, including about ₹215.10 of charges and taxes. Holding a bought option to expiry in the money adds STT on its value. STT is not charged if the option is exited before expiry.",
   "what_can_i_make": "At most ₹4,539.65 at expiry, including about ₹215.10 of charges and taxes.",
   "where_do_i_start_losing": "If NIFTY ends below 22,326.85 or above 22,873.15 at expiry.",
   "max_profit": "4539.65",

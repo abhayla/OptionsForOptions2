@@ -10,7 +10,7 @@ import { summaryFigure } from '@/lib/summaryFigures'
 import { MAX_NOT_AVAILABLE } from '@/lib/displayFormat'
 
 const MAKE = 'At most ₹7,152.21 at expiry, including about ₹140.79 of charges and taxes.'
-const LOSE = 'At most ₹5,847.79 at expiry, including about ₹140.79 of charges and taxes. Holding a bought option to expiry in the money adds STT on its value; squaring off before expiry avoids it.'
+const LOSE = 'At most ₹5,847.79 at expiry, including about ₹140.79 of charges and taxes. Holding a bought option to expiry in the money adds STT on its value. STT is not charged if the option is exited before expiry.'
 const START = 'If NIFTY ends below 22,687.80 at expiry, before about ₹140.79 of charges and taxes.'
 const S54 = {
   max_profit: '7152.21', max_profit_display: '+7,152', max_loss: '5847.79', max_loss_display: '\u22125,848',

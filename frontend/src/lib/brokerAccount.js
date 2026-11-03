@@ -10,7 +10,7 @@ export const MARGIN_REASON = Object.freeze({
   not_connected: 'Connect Zerodha to see your available margin.',
   not_offered: 'Available margin is not shown for this account.',
   empty: 'Zerodha did not send an available margin figure.',
-  busy: 'Zerodha is busy - try again in a moment.',
+  busy: 'Zerodha is busy. Try again in a moment.',
   session_expired: 'Your Zerodha login for today has expired. Use Reconnect to see your margin.',
   read_failed: 'Your available margin could not be read from Zerodha.',
 })

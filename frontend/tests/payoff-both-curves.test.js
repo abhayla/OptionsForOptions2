@@ -96,7 +96,7 @@ describe('answer states of the curves (REQ-083 AC-3; ADR-143)', () => {
   })
   it("calendar: the at-expiry curve is absent and the server's ADR-143 line is shown", () => {
     const curves = clone(real.curves)
-    const adr143 = "Worst case: the loss for this strategy can't be estimated."
+    const adr143 = "Maximum loss: the loss for this strategy cannot be estimated."
     Object.assign(curves.at_expiry, { available: false, points: [], unavailable_reason: adr143 })
     const w = chart({ curves })
     expect(lines().map((d) => d.label)).toEqual(['Estimated now'])

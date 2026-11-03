@@ -5,7 +5,7 @@ import { NEUTRAL_PARTS } from "@/services/api";
 import { draftFromReply } from "@/lib/saveDraft";
 
 /** REQ-070 AC-6: shown INSTEAD of Delete once a basket was sent (or when the server could not say). */
-export const DELETE_REFUSED_TEXT = "Can't delete: orders were sent";
+export const DELETE_REFUSED_TEXT = "Orders were already sent for this strategy, so it cannot be deleted.";
 export const DELETE_CONFIRM_TEXT =
   "Delete this draft? Its history is kept, and you can Undo right after.";
 export const NOTHING_TO_UNDO_TEXT = "Nothing to undo";
