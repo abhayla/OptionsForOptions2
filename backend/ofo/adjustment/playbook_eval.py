@@ -125,6 +125,10 @@ class StrategyState:
     #: GC-IC1 4c (A-37, ADR-242): the user's active level watches, read on the rebuild with the gate load (never per
     #: check); () = none set
     watches: tuple[level_watch.LevelWatch, ...] = ()
+    #: REQ-167 AC-4: the situation settings in force (``other.situation_net_delta_per_lot`` for S-02,
+    #: ``other.situation_big_win_percent`` for S-12); None = not read, so that situation answers not checked
+    s02_delta_per_lot: Decimal | None = None
+    s12_percent: Decimal | None = None
 
 
 # ---- results ---------------------------------------------------------------------------------------------------------
@@ -476,7 +480,7 @@ def _t11(c: _Ctx) -> Hit:
 def _t13(c: _Ctx) -> Hit:
     hhmm = _need(c.state.hhmm, "clock")
     if hhmm > c.gap_until:
-        raise _Missing(f"{P}gap_after_open")
+        raise _Missing(f"{P}gap_after_open", until=c.gap_until)
     prev = _need(c.state.prev_close, "prev_close")
     if prev <= 0:
         raise _Missing(f"{P}prev_close_not_positive")
@@ -992,8 +996,9 @@ def situation_kind(situation_id: object) -> str:
     return "guidance" if situation_id in GUIDANCE_SITUATIONS else "rule"
 
 
-S02_NET_DELTA_PER_LOT: Final = Decimal("0.15")  # ADR-240 (3): at or beyond +/-0.15 per lot
-S12_PCT_OF_MAX_PROFIT: Final = Decimal(40)  # ADR-240 (3): profit at or above 40% of max profit, entry session only
+#: ADR-240 (3) numbers are settings (REQ-167 AC-4): ``other.situation_net_delta_per_lot`` (S-02, default 0.15) and
+#: ``other.situation_big_win_percent`` (S-12, default 40, entry session only), carried on ``StrategyState``
+SETTING_UNAVAILABLE: Final = f"{P}situation_setting_unavailable"
 S12_APPROACHES: Final = ("A-24", "A-25")  # ADR-240 (3): take profit / close the whole position
 MISSING_LEG_DELTA: Final = f"{P}missing_leg_delta"
 MISSING_ENTRY_DAY: Final = f"{P}missing_entry_day"
@@ -1033,13 +1038,15 @@ def _trending_day(body: Mapping, state: StrategyState, why: str | None) -> DayAn
         return None
     if why is not None:
         return DayAnswer(rid, SITUATION_ACTION, reason=why)
+    if state.s02_delta_per_lot is None:  # the setting was not read: never a typed stand-in
+        return DayAnswer(rid, SITUATION_ACTION, reason=SETTING_UNAVAILABLE)
     if not state.held or any(x.greeks is None or x.greeks.delta is None for x in state.held):
         return DayAnswer(rid, SITUATION_ACTION, reason=MISSING_LEG_DELTA)  # never a missing delta read as 0
     try:
         num, den = ratios.net_delta_per_lot(tuple((x.greeks, Action(x.side), x.lots) for x in state.held))
     except ValueError:
         return DayAnswer(rid, SITUATION_ACTION, reason=MISSING_LEG_DELTA)
-    hit = _exact(rid, num, den, S02_NET_DELTA_PER_LOT, "ge")
+    hit = _exact(rid, num, den, state.s02_delta_per_lot, "ge")
     return DayAnswer(rid, SITUATION_ACTION, hit, approaches=rolls if hit.fired else ())
 
 
@@ -1059,10 +1066,12 @@ def _big_win_early(body: Mapping, state: StrategyState, why: str | None) -> DayA
         return None
     if why is not None:
         return DayAnswer(rid, SITUATION_ACTION, reason=why)
+    if state.s12_percent is None:  # the setting was not read: never a typed stand-in
+        return DayAnswer(rid, SITUATION_ACTION, reason=SETTING_UNAVAILABLE)
     try:
         pnl = _need(state.pnl, "pnl")
         hit = _exact(rid, *ratios.profit_pct_of_max_profit(pnl, _finite(state.max_profit, "max_profit")),
-                     S12_PCT_OF_MAX_PROFIT, "ge")
+                     state.s12_percent, "ge")
     except _Missing as e:
         return DayAnswer(rid, SITUATION_ACTION, reason=e.code, slots=e.slots)
     return DayAnswer(rid, SITUATION_ACTION, hit, approaches=named if hit.fired else ())

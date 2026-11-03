@@ -18,6 +18,7 @@ from ofo.adjustment import playbook_eval as pe
 from ofo.engine import adjust_ratios as ratios
 from ofo.engine.black_scholes import Greeks
 from ofo.engine.legs import Action
+from ofo.settings import calc, defaults as settings_defaults
 from ofo.strategy.settings_value import IDENTIFIER_PATTERN
 from ofo.timeutil import IST
 
@@ -30,6 +31,8 @@ S12 = "sit.S-12"
 ROLLS = ("A-01", "A-02", "A-05", "A-04", "A-06")  # the iron condor playbook's roll approaches, playbook order
 DAY1 = datetime.date(2026, 10, 28)
 Z = D(0)
+DEFAULTS_S02 = calc.situation_net_delta_per_lot(settings_defaults())
+DEFAULTS_S12 = calc.situation_big_win_percent(settings_defaults())
 
 
 def _ic() -> dict:
@@ -51,7 +54,8 @@ def _state(**kw) -> pe.StrategyState:
     base = {"expiry_kind": "weekly", "days_left": 5, "hhmm": "11:00", "spot": D(23100), "prices_fresh": True,
             "shorts": (pe.ShortLeg(D(22600), D("0.10"), D(20)), pe.ShortLeg(D(23450), D("0.45"), D(60))),
             "held": _held(), "today": DAY1, "entry_day": DAY1 + datetime.timedelta(days=1),
-            "pnl": D(1000), "max_profit": D(10000), "max_loss": D(20000), "adjustments_used": 0}
+            "pnl": D(1000), "max_profit": D(10000), "max_loss": D(20000), "adjustments_used": 0,
+            "s02_delta_per_lot": DEFAULTS_S02, "s12_percent": DEFAULTS_S12}  # the registry defaults, passed in
     base.update(kw)
     return pe.StrategyState(**base)
 
@@ -218,7 +222,8 @@ def _scenario_state(sc: dict) -> pe.StrategyState:
     entry = datetime.datetime.fromisoformat(sc["position"]["entry"]["clock"]).date()
     whole = sc["expected"]["at_expiry_whole_trade"]
     return dataclasses.replace(state_of(sc), held=held, today=clock, entry_day=entry,
-                               max_profit=D(whole["max_profit"]), adjustments_used=0)
+                               max_profit=D(whole["max_profit"]), adjustments_used=0,
+                               s02_delta_per_lot=DEFAULTS_S02, s12_percent=DEFAULTS_S12)
 
 
 @pytest.mark.parametrize("case", ["ADJ-56", "ADJ-57", "ADJ-58", "ADJ-59"])
@@ -264,3 +269,49 @@ def test_old_stored_colon_ids_are_read_without_crash_and_never_match_a_rule():
     assert pe.is_day_rule_id("day:expiry:14:30:5") and pe.is_situation_rule_id("sit:S-02")
     assert pe.day_rule_action(body, "day:expiry:14:30:5") is None  # not re-opened as a rule of today's form
     assert pe.day_rule_action(body, "day.expiry.1430.5") == 5  # noqa: PLR2004
+
+
+# ---- REQ-167 AC-4 (GC-IC1 step 10 round 2): the two numbers are settings, not code ---------------------------------
+def test_the_registry_defaults_are_todays_numbers():
+    assert (D("0.15"), D(40)) == (DEFAULTS_S02, DEFAULTS_S12)
+
+
+def test_s02_follows_the_setting_with_no_restart():
+    # net per lot of the default held legs is -0.20: opens at the default 0.15, stays shut when the setting is 0.25
+    assert _reading(_ev(), S02) is True
+    assert _reading(_ev(s02_delta_per_lot=D("0.25")), S02) is False
+    assert _reading(_ev(s02_delta_per_lot=D("0.20")), S02) is True  # inclusive at the setting
+
+
+def test_s12_follows_the_setting_with_no_restart():
+    same_day = {"today": DAY1, "entry_day": DAY1}  # profit 1000 of 10000 = 10%
+    assert _reading(_ev(**same_day), S12) is False
+    assert _reading(_ev(s12_percent=D(10), **same_day), S12) is True
+    assert _reading(_ev(s12_percent=D(11), **same_day), S12) is False
+
+
+@pytest.mark.parametrize("rid, key, extra", [(S02, "s02_delta_per_lot", {}),
+                                             (S12, "s12_percent", {"today": DAY1, "entry_day": DAY1})])
+def test_a_setting_not_read_fails_closed_with_a_named_reason(rid, key, extra):
+    ev = _ev(**{key: None}, **extra)
+    assert _reading(ev, rid) is None
+    [r] = _results(ev, rid)
+    assert isinstance(r, pe.NotChecked) and r.code == pe.SETTING_UNAVAILABLE
+    assert r.code == "adjust_trigger_situation_setting_unavailable"
+
+
+def test_the_situation_numbers_are_not_module_constants_any_more():
+    assert not hasattr(pe, "S02_NET_DELTA_PER_LOT") and not hasattr(pe, "S12_PCT_OF_MAX_PROFIT")
+
+
+# ---- REQ-168 AC-4: the gap-at-open line names the user's own time ---------------------------------------------------
+@pytest.mark.parametrize("until", ["09:30", "10:00", "15:30"])
+def test_the_gap_after_open_line_names_the_preference(until):
+    from ofo.errors import render  # noqa: PLC0415
+    ev = pe.evaluate(_ic(), _state(hhmm="15:31" if until == "15:30" else "15:20" if until != "09:30" else "11:00"),
+                     gap_until=until)
+    hit = [r for r in ev.results if isinstance(r, pe.NotChecked) and r.code == "adjust_trigger_gap_after_open"]
+    assert hit, "T-13 must be not checked after the gap time"
+    err = render(hit[0].code, **dict(hit[0].slots))
+    assert f"checked only until {until}." in err.what_happened
+    assert "09:30" not in err.what_happened or until == "09:30"

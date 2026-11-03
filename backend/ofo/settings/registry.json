@@ -842,6 +842,30 @@
       "source": "ADR-222 (1), REQ-167 AC-1, AC-4; was ofo/adjustment/carry.py CARRY_GAP_PCT"
     },
     {
+      "key": "other.situation_net_delta_per_lot",
+      "group": "Other",
+      "label": "Trending-day net delta per lot",
+      "unit": "fraction",
+      "type": "decimal",
+      "min": "0.01",
+      "max": "1",
+      "default": "0.15",
+      "what_it_changes": "How large the net delta per lot of the open legs must be, up or down, before the trending-day situation (S-02) opens and offers a roll (0.15 means plus or minus 0.15 per lot).",
+      "source": "ADR-222 (1), ADR-240 (3), REQ-167 AC-4; was ofo/adjustment/playbook_eval.py S02_NET_DELTA_PER_LOT"
+    },
+    {
+      "key": "other.situation_big_win_percent",
+      "group": "Other",
+      "label": "Big early win, percent of maximum profit",
+      "unit": "percent",
+      "type": "decimal",
+      "min": "1",
+      "max": "100",
+      "default": "40",
+      "what_it_changes": "How much of the maximum profit, in percent, a strategy must have made on its entry session before the big-early-win situation (S-12) opens and offers to take the profit (40 means 40%).",
+      "source": "ADR-222 (1), ADR-240 (3), REQ-167 AC-4; was ofo/adjustment/playbook_eval.py S12_PCT_OF_MAX_PROFIT"
+    },
+    {
       "key": "adjustments.compare_steps",
       "group": "Adjustment defaults",
       "label": "Compare chart steps",

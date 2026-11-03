@@ -181,6 +181,11 @@ class MarketContext:
     #: ``other.carry_gap_percent`` in force (the carry check's gap), replaced with the same single read
     carry_gap_pct: Decimal = dataclasses.field(
         default_factory=lambda: calc.carry_gap_percent(settings_defaults()))
+    #: the S-02 / S-12 situation settings in force, replaced with the same single read
+    s02_delta_per_lot: Decimal = dataclasses.field(
+        default_factory=lambda: calc.situation_net_delta_per_lot(settings_defaults()))
+    s12_percent: Decimal = dataclasses.field(
+        default_factory=lambda: calc.situation_big_win_percent(settings_defaults()))
 
 
 @dataclass(frozen=True)
@@ -254,7 +259,9 @@ def ctx_in_force(ctx: MarketContext, values: Mapping[str, Decimal]) -> MarketCon
     return dataclasses.replace(ctx, rate=registry_value_of(values, RISK_FREE_RATE),
                                forward_quality=calc.forward_quality(values), feed_windows=windows,
                                chain_strikes_each_side=calc.chain_strikes_each_side(values),
-                               carry_gap_pct=calc.carry_gap_percent(values))
+                               carry_gap_pct=calc.carry_gap_percent(values),
+                               s02_delta_per_lot=calc.situation_net_delta_per_lot(values),
+                               s12_percent=calc.situation_big_win_percent(values))
 
 
 def feed_windows_of(ctx: MarketContext | None) -> FeedWindows:

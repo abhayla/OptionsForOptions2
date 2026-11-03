@@ -128,6 +128,10 @@ class MarketInputs:
     #: ``other.carry_gap_percent`` in force (REQ-167 AC-4), read from the settings at run time; None = not read:
     #: the carry check shows no figures and names the reason (never a typed stand-in)
     carry_gap_pct: Decimal | None = None
+    #: ``other.situation_net_delta_per_lot`` / ``other.situation_big_win_percent`` in force (REQ-167 AC-4); None = not
+    #: read: S-02 / S-12 answer not checked with a named reason (never a typed stand-in)
+    s02_delta_per_lot: Decimal | None = None
+    s12_percent: Decimal | None = None
 
 
 TrackedReader = Callable[[int, ChargeRates | None], Awaitable[Tracked | None]]

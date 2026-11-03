@@ -2552,8 +2552,8 @@
     "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"
   },
   "adjust_trigger_gap_after_open": {
-    "sha256": "4bdaa9d2decd94b1cbe14e4bdbc4ee0e98b2473ed2f1aa9211cc2b733a1a6567",
-    "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"
+    "sha256": "d18a111a523e1c778df9c7fb13b0bd397bfe74bf767ea8c2cecc38372b0a9a46",
+    "reviewed": "pending owner read"
   },
   "adjust_trigger_missing_clock": {
     "sha256": "7331e48edf062399aa89b744400b26a573040d1b3811ccc743a4eceee2cee81a",
@@ -3540,7 +3540,7 @@
     "reviewed": "pending owner read"
   },
   "adjust_trigger_carry_gap_unknown": {
-    "sha256": "7938ad971c715eab355dca68185b73aead4a82271409561dc304b45ce47b7b71",
+    "sha256": "563562458f807c3c6829c7d61c932d1d708163a0c03e3a4f8e8dbc9685ade3e6",
     "reviewed": "pending owner read"
   },
   "adjust_trigger_missing_leg_delta": {
@@ -3713,6 +3713,10 @@
   },
   "explanation:playbook_situation_guidance": {
     "sha256": "5bdcdf3f887ec401930655f7c668f2b95a554265bacd23f582f86dad807be63d",
+    "reviewed": "pending owner read"
+  },
+  "adjust_trigger_situation_setting_unavailable": {
+    "sha256": "6a4d705bc3b75fe290fd23f046a07bacb093b093831e95649ee541caa36df64f",
     "reviewed": "pending owner read"
   }
 }

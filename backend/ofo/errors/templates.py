@@ -1217,7 +1217,7 @@ _TRIGGER_TEMPLATES: tuple[MessageTemplate, ...] = (
     _trig("missing_prev_close", 135, "Previous close not available."),
     _trig("prev_close_not_positive", 136, "Previous close not positive."),
     _trig("missing_day_open", 137, "Day open not available."),
-    _trig("gap_after_open", 138, "The gap at the open is checked only until 09:30."),
+    _trig("gap_after_open", 138, "The gap at the open is checked only until {until}.", {"until": ClockTime}),
     _trig("missing_clock", 139, "Clock time not available."),
     _trig("missing_days_left", 140, "Days left not available."),
     _trig("missing_adjustments_used", 141, "Adjustments used not available."),
@@ -1252,11 +1252,13 @@ _TRIGGER_TEMPLATES: tuple[MessageTemplate, ...] = (
           "told whether tonight is before a weekend or a holiday.", None,
           "This rule is checked again once the holiday list for that year is added."),
     # GC-IC1 1b: the carry check's 2% gap figures need the spot and every option leg's implied volatility
-    _trig("carry_gap_unknown", 506, "The profit or loss if the market opens 2% higher or lower cannot be estimated: "
+    _trig("carry_gap_unknown", 506, "The profit or loss if the market opens higher or lower cannot be estimated: "
           "the spot or a leg's implied volatility is not available."),
     # GC-IC1 6a (ADR-240 (3)): S-02 needs every open leg's delta; S-12 needs the day the strategy was entered
     _trig("missing_leg_delta", 507, "A leg's delta is not available, so the position's net delta per lot cannot be "
           "worked out."),
+    _trig("situation_setting_unavailable", 510, "A setting this situation needs could not be read, so the situation "
+          "is not checked."),
     _trig("missing_entry_day", 508, "The day this strategy was entered is not known, so the big win on the first "
           "day cannot be checked."),
     # GC-IC1 step 10 fix (REQ-159 AC-4): a switched-on day rule whose kind and action the worker does not act on yet

@@ -122,6 +122,20 @@ def carry_gap_percent(values: Mapping[str, Decimal]) -> Decimal:
     return value_of(values, CARRY_GAP_PERCENT)
 
 
+SITUATION_NET_DELTA_PER_LOT = "other.situation_net_delta_per_lot"
+SITUATION_BIG_WIN_PERCENT = "other.situation_big_win_percent"
+
+
+def situation_net_delta_per_lot(values: Mapping[str, Decimal]) -> Decimal:
+    """S-02's trigger: the net delta per lot, up or down, at or beyond which the situation opens (REQ-167 AC-4)."""
+    return value_of(values, SITUATION_NET_DELTA_PER_LOT)
+
+
+def situation_big_win_percent(values: Mapping[str, Decimal]) -> Decimal:
+    """S-12's trigger: the percent of maximum profit at or beyond which the situation opens (REQ-167 AC-4)."""
+    return value_of(values, SITUATION_BIG_WIN_PERCENT)
+
+
 HISTORY_MAX_DAYS = "limits.history_max_days"
 
 
