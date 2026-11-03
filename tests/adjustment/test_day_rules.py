@@ -4,6 +4,7 @@ reading, and opens a record only through ``alert_gate.step``. Pure: no DB, no cl
 from __future__ import annotations
 
 import copy
+import dataclasses
 import datetime
 import json
 import pathlib
@@ -185,5 +186,24 @@ def test_attack3_the_gate_opens_one_record_per_episode_across_checks():
 
 
 def test_day_rule_action_names_action_5():
-    assert pe.day_rule_action(_ic(), RID) == 5
+    assert pe.day_rule_action(_ic(), RID) == pe.DAY_ACTION_PREPARE_EXIT
     assert pe.day_rule_action(_ic(), "day:expiry:99") is None and pe.day_rule_action(_ic(), "T-01") is None
+
+
+# ---- step 2 / 4: the generator cases, read through the scenario state the screen tests use ----------------------
+@pytest.mark.parametrize(("case", "hhmm"), [("ADJ-51", "14:30"), ("ADJ-51", "14:29"), ("ADJ-52", "14:30")])
+def test_generator_case_matches_its_engine_free_expected_block(case, hhmm):
+    from test_adjust_scenarios import load  # noqa: PLC0415 - the scenario library's loader
+    from test_playbook_eval import body_of, state_of  # noqa: PLC0415 - the scenario state the screen tests use
+    sc = load(case)
+    want = sc["expected"]["day_close"]
+    state = dataclasses.replace(state_of(sc), hhmm=hhmm)
+    ev = pe.evaluate(body_of(sc), state, gap_until=GAP)
+    got = gate_readings.readings(ev).get(want["rule_id"])
+    if hhmm < want["at"]:
+        assert got is None  # before its time: no reading at all
+        return
+    assert got[1] is want["fires"]
+    v = next(x for x in ev.values if x.rule_id == want["rule_id"])
+    assert list(v.approaches) == want["approaches"]
+    assert format(v.value.quantize(D("0.0001")), "f") == want["nearest_short_pct"]

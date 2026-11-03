@@ -375,6 +375,10 @@ class GateContext:
     state: pe.StrategyState
 
 
+#: a day rule record names its approaches in the one approach slot, in order: "A-28,A-27" (GC-IC1 1a)
+DAY_APPROACH_SEPARATOR = ","
+
+
 def _quantized(v: object) -> Decimal | None:
     from ofo_app.routes.adjustment_check import SHOWN_PLACES  # noqa: PLC0415 - the screen's shown scale
     return v.quantize(SHOWN_PLACES) if isinstance(v, Decimal) else None
@@ -439,6 +443,8 @@ class DbGateStore:
                 flag = flags.get(e.rule_id)
                 label, unit = check.trigger_words(w.body, trigger)
                 t19 = {} if ctx is None else t19_record(trigger or "", cheapest(ctx.state))
+                if not t19 and rv is not None and rv.approaches:  # a day rule names its approaches (GC-IC1 1a)
+                    t19 = {"approach": DAY_APPROACH_SEPARATOR.join(rv.approaches)}
                 rec = await playbook_store.open_suggestion(
                     db, w.user_ref, w.strategy_id, e.rule_id, trigger_id=trigger,
                     stage=flag.stage_name if flag is not None else stage, value=value, threshold=threshold,

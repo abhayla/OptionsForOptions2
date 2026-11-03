@@ -784,7 +784,7 @@ def hand_compare_cost(u: str, lot: int, legs: list[dict], rows: list[dict], appr
 # ---------------------------------------------------------------------------------------------------------------------
 # Scenario builder
 # ---------------------------------------------------------------------------------------------------------------------
-def hand_day_close(spec: dict, rules: list[dict], today: datetime.date, expiry: datetime.date,  # noqa: PLR0913
+def hand_day_close(spec: dict, rules: list[dict], today: datetime.date, expiry: datetime.date,
                    clock: datetime.datetime, spot: Decimal, shorts: list[dict], ltp) -> dict | None:
     """GC-IC1 1a, engine-free: the switched-on expiry close rule (action 5, close_if_short_within_pct P) fires on
     expiry day from its time when a short's strike is within P% of spot (|strike - spot| * 100 <= P * spot, exact
