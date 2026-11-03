@@ -30,9 +30,11 @@ Rules (each one decided here and stated, catalogue Part 2 followed where the con
   one lot is not a whole lot).
 - A-11: both shorts to the ATM strike (the listed strike nearest spot, a tie goes to the higher strike), each wing
   keeps its distance from its short; refused with fewer than ``iron_fly_min_days_left`` days left.
-- Planned price of every trade = the planned-entry rule of ADR-068 (1) (``ofo.outcome.planned_entry``): the row's LTP
-  if positive, else the mid of a positive bid and ask, half-up to 0.01; otherwise there is no price and the approach
-  is refused naming the leg (``adjust_no_price``).
+- Planned price of every trade (ADR-241, SPEC CHANGE to ADR-068 (1) for approach trades only): the bid-ask mid when
+  the row's book is live (the engine's one ADR-172 rule ``ofo.engine.model.live_book``: both sides above 0, ask at or
+  above bid, health AVAILABLE), half-up to 0.01; else the row's LTP if positive, half-up to 0.01; otherwise there is
+  no price and the approach is refused naming the leg (``adjust_no_price``). A stale book (after hours) keeps its
+  closing LTP. A draft leg's planned entry in the builder (``ofo.outcome.planned_entry``) is NOT this rule.
 - Answer states of the chain row a NEW leg lands on: listed + tradable + low-OI stated not blocked -> build; not listed
   -> refused (landing rule); not tradable -> refused; low-OI stated blocked -> refused; low-OI unknown -> a warning on
   the leg (AC-8), not a refusal; no price -> refused. A CLOSING trade needs only a price (exits are always allowed).
@@ -72,6 +74,7 @@ from typing import cast
 from ofo.adjustment import liquidity
 from ofo.engine import adjust_money
 from ofo.engine.legs import Action, Instrument, Leg
+from ofo.engine.model import live_book
 from ofo.errors import LegValue, UserFacingError, render
 from ofo.errors.explanations import (
     ADJUSTMENT_APPROACH_LABEL_TEXT,
@@ -82,6 +85,7 @@ from ofo.errors.explanations import (
 from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS, Catalogue
 from ofo.instruments.models import Contract
 from ofo.money import PAISE
+from ofo.rules.inputs import DataHealth
 from ofo.strategy import leg_edit
 from ofo.strategy.leg_edit import EditLeg, LegEditRefused, Listing
 
@@ -139,6 +143,7 @@ class ChainRow:
     low_oi_state: str = "stated"  # stated / unknown
     low_oi_blocked: bool | None = False
     oi: int | None = None  # open interest; None = no source gave it (F-78), read by liquidity.evaluate_strike
+    health: DataHealth | None = None  # the quote's health (ADR-241: mid only on an AVAILABLE book); None = not known
 
 
 @dataclass(frozen=True)
@@ -233,14 +238,14 @@ def is_no_change(built: ApproachLegs) -> bool:
 
 
 def planned_price(row: ChainRow | None) -> Decimal | None:
-    """ADR-068 (1), as ``ofo.outcome.planned_entry.planned_entry_of``: a positive LTP, else the mid of a positive bid
-    and ask, half-up to 0.01; else None (no fake price, ADR-020 Q185)."""
+    """ADR-241: the bid-ask mid when the row's book is live (``live_book``, the ADR-172 rule ``iv_price`` uses, health
+    gate included), else a positive LTP, half-up to 0.01; else None (no fake price, no model price, ADR-020 Q185)."""
     if row is None:
         return None
+    if live_book(row.bid, row.ask, row.health):
+        return ((row.bid + row.ask) / 2).quantize(PAISE, rounding=ROUND_HALF_UP)  # type: ignore[operator]
     if row.ltp is not None and row.ltp > 0:
         return row.ltp.quantize(PAISE, rounding=ROUND_HALF_UP)
-    if row.bid is not None and row.ask is not None and row.bid > 0 and row.ask > 0:
-        return ((row.bid + row.ask) / 2).quantize(PAISE, rounding=ROUND_HALF_UP)
     return None
 
 
