@@ -241,15 +241,15 @@ def test_gcic1_check_holds_the_window_so_legs_have_greeks_and_the_vol_is_stated(
     assert feed.released == 1 and feed.subscribed and set(feed.subscribed[0]) - leg_ids  # window ids asked, one release
 
 
-def test_gcic1_read_market_asks_chain_quotes_for_the_window_ids(monkeypatch):
+def test_gcic1_read_market_asks_held_read_for_the_window_ids(monkeypatch):
     sc, leg_ids, _feed, ctx = _book_of_legs_only(monkeypatch)
     seen = []
-    real = readers.chain_quotes
+    real = readers.held_read
 
     async def spy(provider, underlying, expiry, ids, feed, index_id=None):  # noqa: PLR0913
         seen.append(list(ids))
         return await real(provider, underlying, expiry, ids, feed, index_id)
-    monkeypatch.setattr(readers, "chain_quotes", spy)
+    monkeypatch.setattr(readers, "held_read", spy)
     asyncio.run(readers.read_market(tracked_of(sc), ctx))
     assert leg_ids <= set(seen[0]) and len(set(seen[0]) - leg_ids) >= ctx.chain_strikes_each_side  # legs plus window
 
@@ -263,8 +263,15 @@ def test_gcic1_no_spot_means_no_window_legs_only_no_crash(monkeypatch):
     monkeypatch.setattr(readers, "read_rest_spot", no_rest)
     monkeypatch.setattr(readers, "read_last_close", lambda *_a: readers.SourceReading(SourceState.ABSENT))
     m = asyncio.run(readers.read_market(tracked_of(sc), ctx))
-    # the legs are in the book already; no spot -> no window held, only the index is asked for (released once)
-    assert m.vol is None and feed.subscribed == [["NSE_INDEX:1001"]] and feed.released == 1
+    # the legs are in the book already; no spot -> no window and no inward roll range: the index and the outward
+    # roll range (past each wing) only, in ONE hold released once
+    legs = tracked_of(sc).position.legs
+    shorts = sorted(x.strike for x in legs if x.side == "SELL")
+    strike_of = {f"{lc.contract.exchange_segment}:{lc.contract.exchange_token}": lc.contract.strike
+                 for lc in ctx.provider.instrument_master()}
+    held = feed.subscribed[0]
+    assert m.vol is None and len(feed.subscribed) == 1 and feed.released == 1 and "NSE_INDEX:1001" in held
+    assert all(not shorts[0] <= strike_of[i] <= shorts[1] for i in held if i != "NSE_INDEX:1001")
 
 
 def test_gcic1_window_released_when_the_provider_raises(monkeypatch):

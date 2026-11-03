@@ -92,6 +92,31 @@ def no_listener(_quote: Any) -> None:
     """The forward strikes' holder: reads take the provider's current quotes; a forward tick alone pushes nothing."""
 
 
+async def hold_and_read(fanout: Any, ids: Any, read: Callable[[], Any], done: Callable[[Any], bool],  # noqa: PLR0913
+                        connected: Callable[[], bool], wait_s: float, poll_s: float) -> Any:
+    """THE one hold-and-read of a request read (the paper book's ``_hold_until_ready``, the adjustment check's
+    ``adjustment_readers.held_read``): ONE hold of ``ids`` on the shared fan-out; ``read()`` is polled WHILE held and
+    the last read taken while held is returned; the hold is ALWAYS released (timeout, error, cancel). Nothing is read
+    after the release: a released contract is parked (``QuoteBook.park``), so a read after it answers "no quote"
+    (GC-LIVE F-3, GC-IC1 round 3). The read is final when ``done(read)``, the provider disconnects, or ``wait_s``
+    passes. None: the fan-out has no token for an id (KeyError), nothing was held; the caller keeps its own read."""
+    try:
+        handle = fanout.subscribe(no_listener, list(dict.fromkeys(ids)), max_queue=1)
+    except KeyError:
+        return None
+    try:
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + wait_s
+        while True:
+            await asyncio.sleep(poll_s)
+            snap = read()
+            if done(snap) or not connected() or loop.time() >= deadline:
+                return snap
+    finally:
+        with contextlib.suppress(Exception):
+            fanout.unsubscribe(handle)
+
+
 class StrategyPush:
     def __init__(self, channel: Channel, feed: Optional[LiveFeed], *,  # noqa: PLR0913 - one seam per collaborator
                  monotonic: Callable[[], float],
