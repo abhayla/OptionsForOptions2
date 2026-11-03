@@ -470,10 +470,12 @@ async def test_quiet_time_holds_once_then_opens_at_the_first_close_after(app_db_
     assert [(r[1], r[2]) for r in await _t01_rows(app_db_url, sid, base)] == [("open", None)]
 
 
-@pytest.mark.xfail(strict=True, reason="parked #638: not diagnosed (GC-ALERT1 step 5, 2 rounds used)")
 async def test_each_style_is_checked_at_its_own_interval(app_db_url, monkeypatch):
     """ADR-235 (1): intraday 10 s, weekly 30 s, monthly 120 s; the price changes every second so only the interval
-    decides how often the Worker recomputes."""
+    decides how often the Worker checks. #638 RCA: a check is read from ``_last_check`` (set by every check that ran),
+    never from the per-minute ``_recomputes`` count: ``flush_minute`` empties that count at the start of the cycle
+    that crosses a minute, so a check ON a minute boundary (weekly 11:41:00, monthly 11:42:00) read as no check and
+    the gap came out 60 / 240."""
     sid, scn = await _seeded(app_db_url, monkeypatch)
     try:
         for style, every, run_s in (("intraday", 10, 60), ("weekly", 30, 100), ("monthly", 120, 250)):
@@ -486,14 +488,65 @@ async def test_each_style_is_checked_at_its_own_interval(app_db_url, monkeypatch
             for s in range(run_s):
                 now[0] = scn.clock_at + datetime.timedelta(seconds=s)
                 _push_spot(scn, "23000" if s % 2 else "23001", now[0])
-                before = worker._recomputes.get(sid, 0)
+                before = worker._last_check.get(sid)
                 await worker.cycle()
-                if worker._recomputes.get(sid, 0) > before:
+                if worker._last_check.get(sid) != before:
                     at.append(now[0])
             gaps = {int((b - a).total_seconds()) for a, b in itertools.pairwise(at)}
             assert len(at) >= 3 and gaps == {every}, (style, at, gaps)  # noqa: PLR2004
     finally:
         await _pin_intraday(app_db_url, sid)
+
+
+async def test_after_a_style_change_the_next_check_uses_the_new_interval(app_db_url, monkeypatch):
+    """#639 item 3: pinned monthly (120 s) and checked at 0 s; the user pins intraday (10 s) and the rebuild reads it
+    at 3 s. The next check comes 10 s after the last one, never the old style's 120 s once."""
+    sid, scn = await _seeded(app_db_url, monkeypatch)
+    try:
+        async with app_db_url.connect() as conn:
+            await strategy_alert_style_store.set_pin(conn, "owner", sid, "monthly")
+            await conn.commit()
+        now = [scn.clock_at]
+        worker = _worker(scn, lambda: now[0])
+        at: list[datetime.datetime] = []
+        for s in range(40):
+            now[0] = scn.clock_at + datetime.timedelta(seconds=s)
+            if s == 3:  # noqa: PLR2004
+                await _pin_intraday(app_db_url, sid)
+                await worker.rebuild()  # the rebuild task reads the new pin
+            _push_spot(scn, "23000" if s % 2 else "23001", now[0])
+            before = worker._last_check.get(sid)
+            await worker.cycle()
+            if worker._last_check.get(sid) != before:
+                at.append(now[0])
+        assert worker._style[sid] == "intraday"
+        assert [int((t - scn.clock_at).total_seconds()) for t in at] == [0, 10, 20, 30], at
+    finally:
+        await _pin_intraday(app_db_url, sid)
+
+
+async def test_a_dismiss_read_by_the_rebuild_never_dismisses_a_record_opened_in_its_read_window(app_db_url,
+                                                                                                monkeypatch):
+    """#639 item 2: the rebuild reads R1 dismissed; while that read is in flight the worker opens R2 (one level
+    worse) for the same rule. The stale read must not mark R2 dismissed: the dismiss matches by record id."""
+    sid, scn, now, worker = await _ready(app_db_url, monkeypatch)
+    base, first = await _open_one(app_db_url, worker, scn, now, sid)
+    async with app_db_url.begin() as conn:
+        await playbook_store.dismiss(conn, "owner", first)
+    real_load = worker._gate_store.load
+    opened: list[int] = []
+
+    async def load_with_an_open_in_its_window(w, today):
+        got = await real_load(w, today)  # R1 dismissed, as read
+        opened.append(await _cross(app_db_url, worker, scn, now, LEVEL_ONE_SPOT, sid, first))  # R2 opens meanwhile
+        return got
+    monkeypatch.setattr(worker._gate_store, "load", load_with_an_open_in_its_window)
+    await worker.rebuild()
+    assert [r for r in (await _t01_rows(app_db_url, sid, base)) if r[0] == opened[0]] == [(opened[0], "open", "last")]
+    assert alert_gate.is_dismissed(worker._gate[sid], "T-01") is False
+    monkeypatch.setattr(worker._gate_store, "load", real_load)
+    await worker.rebuild()  # the next read sees R2 open and not dismissed: still not dismissed
+    assert alert_gate.is_dismissed(worker._gate[sid], "T-01") is False and worker.errors == []
 
 
 async def test_a_close_is_processed_with_no_check_that_wake(app_db_url, monkeypatch):

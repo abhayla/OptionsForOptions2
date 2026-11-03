@@ -41,7 +41,7 @@ from ofo.instruments.models import INDEX_ROWS, is_lot_aligned
 from ofo.marketdata.day_open import index_day_open
 from ofo.marketdata.forward import ForwardUnavailable, parity_forward
 from ofo.marketdata.quote import planning_price_usable
-from ofo.marketdata.spot_source import SourceReading, SourceState, resolve_spot
+from ofo.marketdata.spot_source import SourceReading, SourceState, feed_is_live, feed_reading, resolve_spot
 from ofo.timeutil import IST, SESSION_CLOSE
 from ofo.tracking.orderbook import net_positions
 
@@ -272,12 +272,18 @@ def window_ids(listed: Iterable[Any], underlying: str, expiry: datetime.date, sp
     return [i for k in window for side in ("CE", "PE") if (i := by_key.get((k, side))) is not None]
 
 
+def screen_feed_reading(provider: Any, spot_q: Any, now: datetime.datetime) -> SourceReading:
+    """The screen's feed spot reading by the worker's rule (#639 item 1, REQ-165 AC-5 "same answer"): a quiet index on
+    a live feed is current (``spot_source.feed_reading`` with ``feed_is_live``), never refused by its last-change age;
+    a stale / disconnected feed, a closed market or no tick yet today keeps the last change for the age window."""
+    return feed_reading(spot_q, now, feed_live=feed_is_live(provider, now))
+
+
 async def _window_spot(ctx: Any, underlying: str, spot_q: Any, now: datetime.datetime) -> Decimal | None:
     """The spot the window is centred on: the SAME answer the routes resolve (``resolve_spot``: feed, else the REST
     index quote, else the last close), so a user with only a strategy open (nobody holds the index on the feed) still
     gets a window. The REST quote is asked only when the feed's own reading is not usable. None: no spot at all."""
-    feed = (SourceReading(SourceState.ABSENT) if spot_q is None
-            else SourceReading(SourceState.STATED, spot_q.ltp, spot_q.timestamp))
+    feed = screen_feed_reading(ctx.provider, spot_q, now)
     answer = resolve_spot(feed, None, None, now=now, windows=feed_windows_of(ctx))
     if answer.available:
         return answer.value
@@ -386,8 +392,7 @@ async def read_market(tracked: Tracked, ctx: Any, *, extra_ids: Iterable[str] = 
     except ValueError:
         years = None
     vol = _atm_vol(rows, ids, model.greeks, forward)
-    feed = (SourceReading(SourceState.ABSENT) if spot_q is None
-            else SourceReading(SourceState.STATED, spot_q.ltp, spot_q.timestamp))
+    feed = screen_feed_reading(provider, spot_q, now)
     return MarketInputs(tuple(rows), ids, forward, years, vol, feed, read_last_close(spot_q, closed, scn, now), now,
                         expiry_kind, leg_greeks, fwd_model, leg_ivs, index_day_open(frozen.day, now))
 

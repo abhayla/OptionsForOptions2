@@ -110,6 +110,7 @@ class _Record:
     dismissed: bool = False
     final: bool = False  # lapsed / acted on / dismissed: no Lapsed event any more
     unleveled: bool = False  # restored with a stored threshold but no real ladder yet: levelled at the first real close
+    record_id: int | None = None  # the stored record's id (restored, or set after the open is written; #639 item 2)
 
 
 @dataclass(frozen=True)
@@ -317,10 +318,13 @@ def pause(state: GateState, at: datetime) -> GateState:
     return replace(state, rules=rules, paused_at=latest)
 
 
-def dismiss(state: GateState, rule_id: str) -> GateState:
-    """ADR-236: mark the rule's last record dismissed; same-level re-opening still needs cleared + cool-down."""
+def dismiss(state: GateState, rule_id: str, record_id: int | None = None) -> GateState:
+    """ADR-236: mark the rule's last record dismissed; same-level re-opening still needs cleared + cool-down.
+    ``record_id`` (#639 item 2): only when the gate's record IS that stored record; a record opened after the dismissed
+    one was read (the rebuild's read window) is a different record and is left as it is. None = the rule's last record
+    (a caller with no stored ids)."""
     rule = state.rule(rule_id)
-    if rule.record is None:
+    if rule.record is None or (record_id is not None and rule.record.record_id != record_id):
         return state
     return state.with_rule(rule_id, replace(rule, record=replace(rule.record, dismissed=True)))
 
@@ -347,7 +351,8 @@ def restore(rows: GateRows, today: date, specs: Mapping[str, RuleSpec]) -> GateS
     for row in rows.last:
         spec = specs.get(row.rule_id)
         rec = _Record(_restored_level(spec, row.threshold), row.threshold, _ist(row.at),
-                      dismissed=row.dismissed, final=not row.open, unleveled=_unleveled(spec, row.threshold))
+                      dismissed=row.dismissed, final=not row.open, unleveled=_unleveled(spec, row.threshold),
+                      record_id=row.id)
         state = state.with_rule(row.rule_id, _Rule(record=rec))
     return state
 
@@ -362,6 +367,14 @@ def restore_held(state: GateState, rule_id: str, reason: str, threshold: Decimal
     level = max(_restored_level(spec, threshold), 0)
     hold = _Hold(reason, level, threshold, unleveled=_unleveled(spec, threshold))
     return state.with_rule(rule_id, replace(state.rule(rule_id), hold=hold))
+
+
+def with_record_id(state: GateState, rule_id: str, record_id: int) -> GateState:
+    """The stored id of the rule's record the gate just opened (the store answers it after the write); pure."""
+    rule = state.rule(rule_id)
+    if rule.record is None:
+        return state
+    return state.with_rule(rule_id, replace(rule, record=replace(rule.record, record_id=record_id)))
 
 
 def is_dismissed(state: GateState, rule_id: str) -> bool | None:

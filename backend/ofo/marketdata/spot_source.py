@@ -26,11 +26,13 @@ import datetime
 import enum
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Final
+from typing import Any, Final
 
-from ofo.marketdata.feed_health import FeedWindows
+from ofo.marketdata.feed_health import FeedWindows, market_closed_for
 from ofo.marketdata.health import CLOCK_SKEW_TOLERANCE
-from ofo.marketdata.quote import is_live_price
+from ofo.marketdata.quote import NormalizedQuote, is_live_price
+from ofo.rules.inputs import DataHealth
+from ofo.timeutil import IST
 
 SOURCE_FEED: Final = "feed"
 SOURCE_REST: Final = "rest_quote"
@@ -112,6 +114,39 @@ def _feed_age_problem(age: datetime.timedelta, windows: FeedWindows) -> str | No
     if age > windows.stale:
         return REASON_STALE
     return None
+
+
+def feed_is_live(provider: Any, now: datetime.datetime) -> bool:
+    """The connection-aware liveness both callers pass to ``feed_reading``: the market is open (``market_closed_for``,
+    the one market-state answer) and the provider's feed health is AVAILABLE (not stale, not disconnected). The
+    background worker's ``feed_state`` returns None exactly when this is True."""
+    if market_closed_for(provider, now):
+        return False
+    return provider.status().health is DataHealth.AVAILABLE
+
+
+def feed_reading(quote: NormalizedQuote | None, now: datetime.datetime, *, feed_live: bool) -> SourceReading:
+    """The feed spot reading, ONE rule for the screen and the background worker (#639 item 1, REQ-165 AC-5; findings
+    staleness-by-last-change-age and engine-input-chosen-per-caller).
+
+    A quote's timestamp is its LAST CHANGE: Kite sends a packet only when the price changes, so a quiet index on a live
+    feed keeps an old stamp while its price is current. Freshness is therefore judged by the CONNECTION, not by that
+    age: a quote on a live feed is stamped ``now``. Answer states:
+    - no quote held -> ABSENT;
+    - live (``feed_live``: the feed is connected and current and the market is open, the caller's connection-aware
+      answer) and the quote's own health AVAILABLE and its last change today (IST), not in the future -> STATED at
+      ``now`` (fresh, however quiet);
+    - feed stale / disconnected / market closed (``feed_live`` False), the quote's own health not AVAILABLE, or no tick
+      yet today (a last change on an earlier IST day) -> STATED with its own last change, so ``resolve_spot``'s age
+      window judges it (an old stamp is refused as stale: fail closed);
+    - a last change in the future or with no timezone -> kept as is, so ``resolve_spot`` refuses it."""
+    if quote is None:
+        return SourceReading(SourceState.ABSENT)
+    at = quote.timestamp
+    if (feed_live and quote.health is DataHealth.AVAILABLE and at is not None and at.tzinfo is not None
+            and at <= now and at.astimezone(IST).date() == now.astimezone(IST).date()):
+        at = now
+    return SourceReading(SourceState.STATED, quote.ltp, at)
 
 
 def resolve_spot(feed: SourceReading | None, rest: SourceReading | None, last_close: SourceReading | None, *,

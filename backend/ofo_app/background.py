@@ -110,7 +110,7 @@ from ofo.marketdata.feed_health import market_closed_for
 from ofo.marketdata.forward import parity_forward
 from ofo.marketdata.quote import is_live_price
 from ofo.marketdata.shared_compute import FeedScope, SharedCompute
-from ofo.marketdata.spot_source import SourceReading, SourceState, resolve_spot
+from ofo.marketdata.spot_source import SourceReading, feed_reading, resolve_spot
 from ofo.outcome.service import solved_iv, unit_greeks
 from ofo.rules.inputs import DataHealth
 from ofo.scenario.spot import spot_reading
@@ -273,10 +273,9 @@ def feed_spot(read: PriceRead, now: datetime.datetime) -> SourceReading:
     future, or none, is kept so ``resolve_spot`` still refuses it (fail closed); a read that is not FRESH raises."""
     if read.state is not PriceState.FRESH or read.spot is None:
         raise ValueError(f"feed_spot needs a fresh read, got {read.state}")
-    at = read.spot.timestamp
-    if at is not None and at.tzinfo is not None and at <= now:
-        at = now
-    return SourceReading(SourceState.STATED, read.spot.ltp, at)
+    # FRESH = the feed was AVAILABLE (connected, current) and the market open at this read (``feed_state``): live.
+    # The ONE rule the screen applies too (``spot_source.feed_reading``, #639 item 1).
+    return feed_reading(read.spot, now, feed_live=True)
 
 
 def market_inputs(watched: Watched, read: PriceRead, shared: FeedScope, now: datetime.datetime,
@@ -683,8 +682,8 @@ class Worker:
             if state is None:
                 continue
             for row in load.rows.last:
-                if row.dismissed and alert_gate.is_dismissed(state, row.rule_id) is False:
-                    state = alert_gate.dismiss(state, row.rule_id)
+                if row.dismissed and alert_gate.is_dismissed(state, row.rule_id) is False and row.id is not None:
+                    state = alert_gate.dismiss(state, row.rule_id, row.id)  # by record, never by rule (#639 item 2)
             self._gate[sid] = state
 
     async def _rebuild_loop(self) -> None:
@@ -906,6 +905,15 @@ class Worker:
         kept = self._paused_at.get(sid)
         self._paused_at[sid] = now if kept is None else max(kept, now)
 
+    def _interval_style(self, sid: int) -> str:
+        """The style whose interval gates this check (ADR-235 (1)). #639 item 3: the pin the last rebuild read wins, so
+        after a style change (monthly -> intraday) the NEXT check already uses the new interval, never the old style's
+        once; no pin (automatic) -> the style of the last check (it needs this check's expiry and days left); none
+        yet -> "" (no interval: the first check runs)."""
+        load = self._gate_load.get(sid)
+        pin = None if load is None else load.pin
+        return pin if pin is not None else self._style.get(sid, "")
+
     async def _check_one(self, w: Watched, speeds: Mapping[str, Decimal]) -> bool:  # noqa: PLR0911, C901
         """True when a check ran (counted against the cycle's cap)."""
         now = self._clock()  # finding 1: THIS check's clock, never the cycle's start
@@ -936,7 +944,7 @@ class Worker:
             self._tick[sid] = tick
             return False
         last = self._last_check.get(sid)
-        every = speeds.get(self._style.get(sid, ""), Decimal(0))  # the interval of its last check's style
+        every = speeds.get(self._interval_style(sid), Decimal(0))
         if last is not None and _seconds(now - last) < every:
             return False  # changed, but too soon: the tick key stays old, so it is read again next cycle
         if self._values is None:
@@ -1027,7 +1035,11 @@ class Worker:
             self._gate[sid] = state  # kept even when the step below fails to write
         new, events = alert_gate.step(state, now=now, preset=preset, readings=readings)
         if events:
-            self._log_opportunities(w, await self._gate_store.apply(w, events, self._gate_ctx.get(sid)))
+            opened = await self._gate_store.apply(w, events, self._gate_ctx.get(sid))
+            self._log_opportunities(w, opened)
+            # the gate's record carries its stored id, so a later dismiss matches by record (#639 item 2)
+            for rid, rec_id in (opened.items() if isinstance(opened, Mapping) else ()):
+                new = alert_gate.with_record_id(new, rid, rec_id)
         self._gate[sid] = new
 
     def _restored(self, sid: int, now: datetime.datetime,
