@@ -155,6 +155,8 @@ class RuleValue:
     fired: bool
     members: int = 1  # how many triggers the rule combines
     later: tuple[Decimal | str, ...] = ()
+    yes_no: bool = False  # a day rule (GC-IC1 1a): the gate reads it yes/no, never on a ladder
+    approaches: tuple[str, ...] = ()  # a day rule's approaches the record names (A-28 tested spread, A-27 far short)
 
 
 @dataclass(frozen=True)
@@ -601,4 +603,138 @@ def evaluate(body: Mapping, state: StrategyState, memory: Mapping[str, Mapping[s
                 rv = _value_of(c, rules.get(o.rule_id), o)
                 if rv is not None:
                     values.append(rv)
+    _add_day_rules(body, state, why, c.stage_name, (results, clear, values))
     return Evaluation(c.stage_name, c.stage, tuple(results), new, tuple(clear), why, values=tuple(values))
+
+
+# ---- day rules (GC-IC1 step 1a; REQ-159 AC-4, REQ-170) -----------------------------------------------------------
+#: A day rule is reported as a rule of its own, id ``day:<when>:<index in day_rules>`` (stable while the body's
+#: day_rules list is unchanged). It goes to the alert gate as a yes/no value (``RuleValue.yes_no``), so a record is
+#: opened only by ``alert_gate.step`` (edge, not level: one record per episode). F-71 memory does not apply: the
+#: rule is checked only from its time on, so the time reaching ``at`` is itself the event.
+#: Not due (not expiry day, or before ``at``) -> no answer at all: no reading, so no record and no false clear.
+DAY_RULE_PREFIX: Final = "day:"
+DAY_ACTION_PREPARE_EXIT: Final = 5  # PLAYBOOK_DAY_RULE_ACTION_TEXT["5"], "Prepare an exit for review"
+DAY_RULE_INCOMPLETE: Final = f"{P}day_rule_incomplete"
+CLOSE_WITHIN_KEY: Final = "close_if_short_within_pct"
+BUY_BACK_BELOW_KEY: Final = "buy_back_short_below_rs"  # A-27 "premium < Rs X" (catalogue line 164): the rule's X
+TESTED_SPREAD: Final = "A-28"
+FAR_SHORT: Final = "A-27"
+_HHMM: Final = re.compile(r"[0-2][0-9]:[0-5][0-9]")
+
+
+@dataclass(frozen=True)
+class DayAnswer:
+    """One due day rule's answer: a ``hit`` (value = the nearest short's distance from spot in %, threshold = the
+    rule's %, ``le``) or a NotChecked ``reason``; ``approaches`` named when it fired."""
+
+    rule_id: str
+    action: int
+    hit: Hit | None = None
+    reason: str | None = None
+    slots: tuple[tuple[str, object], ...] = ()
+    approaches: tuple[str, ...] = ()
+
+
+def day_rule_id(when: str, index: int) -> str:
+    return f"{DAY_RULE_PREFIX}{when}:{index}"
+
+
+def is_day_rule_id(rule_id: object) -> bool:
+    return isinstance(rule_id, str) and rule_id.startswith(DAY_RULE_PREFIX)
+
+
+def day_rule_action(body: Mapping | None, rule_id: object) -> int | None:
+    """The action index of the day rule ``rule_id`` names in ``body``; None when it names none."""
+    if not is_day_rule_id(rule_id) or not isinstance(body, Mapping):
+        return None
+    index = str(rule_id).rsplit(":", 1)[-1]
+    rules = body.get("day_rules")
+    if not index.isdigit() or not isinstance(rules, list) or int(index) >= len(rules):
+        return None
+    rule = rules[int(index)]
+    action = rule.get("action") if isinstance(rule, Mapping) else None
+    return action if type(action) is int else None
+
+
+def _decimal_text(value: object) -> Decimal | None:
+    """A non-negative finite decimal string -> its Decimal; anything else (a float, a word, None) -> None."""
+    if not isinstance(value, str):
+        return None
+    try:
+        d = Decimal(value)
+    except InvalidOperation:
+        return None
+    return d if d.is_finite() and d >= 0 else None
+
+
+def _expiry_close(rule: Mapping, rid: str, state: StrategyState,  # noqa: PLR0911 - one answer per reason
+                  why: str | None) -> DayAnswer | None:
+    """``when: expiry`` + ``close_if_short_within_pct`` P: on expiry day from ``at``, True when a short's strike is
+    within P% of spot (|strike - spot| * 100 <= P * spot, exact). None = not due (no reading at all)."""
+    at, pct = rule.get("at"), _decimal_text(rule.get(CLOSE_WITHIN_KEY))
+    below_text = rule.get(BUY_BACK_BELOW_KEY)
+    below = _decimal_text(below_text)
+    if not isinstance(at, str) or not _HHMM.fullmatch(at) or pct is None or \
+            (below_text is not None and below is None):
+        return DayAnswer(rid, DAY_ACTION_PREPARE_EXIT, reason=DAY_RULE_INCOMPLETE)
+    if state.days_left is None:
+        return DayAnswer(rid, DAY_ACTION_PREPARE_EXIT, reason=f"{P}missing_days_left")
+    if state.days_left != 0:
+        return None
+    if state.hhmm is None:
+        return DayAnswer(rid, DAY_ACTION_PREPARE_EXIT, reason=f"{P}missing_clock")
+    if state.hhmm < at:
+        return None
+    if why is not None:
+        return DayAnswer(rid, DAY_ACTION_PREPARE_EXIT, reason=why)
+    if state.spot is None:
+        return DayAnswer(rid, DAY_ACTION_PREPARE_EXIT, reason=f"{P}missing_spot")
+    if not state.shorts:
+        return DayAnswer(rid, DAY_ACTION_PREPARE_EXIT, reason=f"{P}no_short_leg")
+    spot = state.spot
+    with localcontext(_EXACT):
+        within = [abs(s.strike - spot) * _HUNDRED <= pct * spot for s in state.shorts]
+        near = min(abs(s.strike - spot) for s in state.shorts)
+    with localcontext(_SHOW):
+        value = near * _HUNDRED / spot
+    fired = any(within)
+    hit = Hit(rid, value, pct, "le", fired)
+    if not fired:
+        return DayAnswer(rid, DAY_ACTION_PREPARE_EXIT, hit)
+    far = below is not None and any(not w and s.ltp is not None and s.ltp < below
+                                    for s, w in zip(state.shorts, within, strict=True))
+    return DayAnswer(rid, DAY_ACTION_PREPARE_EXIT, hit, approaches=(TESTED_SPREAD, *((FAR_SHORT,) if far else ())))
+
+
+def day_answers(body: Mapping, state: StrategyState, why: str | None = None) -> tuple[DayAnswer, ...]:
+    """Every switched-on day rule this version checks, answered on ``state`` (the one function: ``evaluate`` calls
+    it for the screen and the worker alike). Only the expiry-day close rule (action 5 with
+    ``close_if_short_within_pct``) is checked here; the tighten rule (action 4) stays ``tighten_percent``."""
+    out: list[DayAnswer] = []
+    rules = body.get("day_rules")
+    for i, rule in enumerate(rules if isinstance(rules, list) else []):
+        if not isinstance(rule, Mapping) or rule.get("on") is not True or rule.get("when") != "expiry" or \
+                rule.get("action") != DAY_ACTION_PREPARE_EXIT:
+            continue
+        answer = _expiry_close(rule, day_rule_id("expiry", i), state, why)
+        if answer is not None:
+            out.append(answer)
+    return tuple(out)
+
+
+def _add_day_rules(body: Mapping, state: StrategyState, why: str | None, stage_name: str | None,
+                   out: tuple[list[Result], list[str], list[RuleValue]]) -> None:
+    """The due day rules into ``evaluate``'s results / clear / values (a yes/no value each)."""
+    results, clear, values = out
+    for d in day_answers(body, state, why):
+        if d.hit is None:
+            results.append(NotChecked(d.rule_id, d.rule_id, d.reason or DAY_RULE_INCOMPLETE, d.slots))
+            continue
+        hit = d.hit
+        if hit.fired:
+            results.append(Flag(d.rule_id, d.rule_id, stage_name, hit.value, hit.threshold, hit.cmp, (hit,)))
+        else:
+            clear.append(d.rule_id)
+        values.append(RuleValue(d.rule_id, d.rule_id, hit.value, hit.threshold, hit.cmp, hit.fired,
+                                yes_no=True, approaches=d.approaches))

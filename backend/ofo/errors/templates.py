@@ -1229,6 +1229,9 @@ _TRIGGER_TEMPLATES: tuple[MessageTemplate, ...] = (
           "cannot be compared with an adjustment's cost."),
     _trig("no_approach_priced", 174, "No adjustment approach this playbook offers can be priced now (a contract "
           "without a bid or an ask, charges not available, or no whole-trade figure)."),
+    # GC-IC1 1a: a switched-on expiry close day rule without a valid time, distance % or Rs limit is never checked
+    _trig("day_rule_incomplete", 504, "This day rule is missing its time or its distance from spot, or has a value "
+          "that is not a number.", None, "Fix this day rule in the playbook to have it checked."),
     _gate("adjust_trigger_already_true", _UI, 152, "Already true when tracking started.",
           "It is shown, not flagged, until a check finds it false.", "Nothing.",
           "Watch it: it flags if it clears and then comes back.", {}),

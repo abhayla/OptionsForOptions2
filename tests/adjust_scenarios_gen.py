@@ -188,7 +188,8 @@ SYSTEM_DAY_RULES = [
 FAMILY_GUARDS = {"ic": {"stop_line_pct_of_margin": "4", "stop_line_rule": "whichever comes first",
                         "time_exit": "14:30"}}
 FAMILY_DAY_RULES = {"ic": [r if r["when"] != "expiry" else {**r, "on": False} for r in SYSTEM_DAY_RULES] + [
-    {"on": True, "when": "expiry", "at": "14:30", "action": 5, "close_if_short_within_pct": "0.3"}]}
+    {"on": True, "when": "expiry", "at": "14:30", "action": 5, "close_if_short_within_pct": "0.3",
+     "buy_back_short_below_rs": "2"}]}  # A-27 "the far side for <= Rs 2": strict < Rs 2 (orchestrator 2026-11-03)
 SITUATIONS = [
     ("S-01", "Gap at the open", "Wait until 09:30 before suggesting, unless a short opens in the money"),
     ("S-02", "Trending day", "Show early rolls when net delta grows past 0.15 per lot"),
@@ -783,6 +784,32 @@ def hand_compare_cost(u: str, lot: int, legs: list[dict], rows: list[dict], appr
 # ---------------------------------------------------------------------------------------------------------------------
 # Scenario builder
 # ---------------------------------------------------------------------------------------------------------------------
+def hand_day_close(spec: dict, rules: list[dict], today: datetime.date, expiry: datetime.date,  # noqa: PLR0913
+                   clock: datetime.datetime, spot: Decimal, shorts: list[dict], ltp) -> dict | None:
+    """GC-IC1 1a, engine-free: the switched-on expiry close rule (action 5, close_if_short_within_pct P) fires on
+    expiry day from its time when a short's strike is within P% of spot (|strike - spot| * 100 <= P * spot, exact
+    fractions); it names A-28, plus A-27 when another short's LTP is below the rule's Rs limit (strict)."""
+    want = spec.get("day_close")
+    if want is None:
+        return None
+    ix, rule = next((i, r) for i, r in enumerate(rules) if r["on"] and r["when"] == "expiry" and r["action"] == 5)
+    due = today == expiry and clock.strftime("%H:%M") >= rule["at"]
+    pct, sp = Fraction(D(rule["close_if_short_within_pct"])), Fraction(spot)
+    within = [abs(Fraction(leg["strike"]) - sp) * 100 <= pct * sp for leg in shorts]
+    fires = due and any(within)
+    limit = rule.get("buy_back_short_below_rs")
+    far = [leg["tradingsymbol"] for leg, w in zip(shorts, within, strict=True)
+           if not w and limit is not None and ltp(leg) is not None and Fraction(ltp(leg)) < Fraction(D(limit))]
+    nearest = min(abs(Fraction(leg["strike"]) - sp) for leg in shorts) * 100 / sp
+    out = {"rule_id": f"day:expiry:{ix}", "at": rule["at"], "due": due, "fires": fires,
+           "nearest_short_pct": dec_text_round(nearest), "rule_pct": rule["close_if_short_within_pct"],
+           "buy_back_below_rs": limit, "far_shorts_below_limit": far,
+           "approaches": (["A-28"] + (["A-27"] if far else [])) if fires else []}
+    assert fires is want["fires"], (spec["id"], "day close", out)
+    assert out["approaches"] == want["approaches"], (spec["id"], "day close approaches", out)
+    return out
+
+
 def dt(text: str) -> datetime.datetime:
     return datetime.datetime.fromisoformat(text).replace(tzinfo=IST)
 
@@ -1134,6 +1161,7 @@ def build(spec: dict, pb: dict) -> dict:  # noqa: C901, PLR0912, PLR0915 - one r
         assert ids == set(spec["exact_fire"]), (spec["id"], "exact", ids, fired)
     for s in spec.get("must_situations", []):
         assert s in sits, (spec["id"], "situation", s, sits)
+    day_close = hand_day_close(spec, rules, today, expiry, clock, spot, shorts, ltp)
     if "check" in spec:
         spec["check"](locals())
 
@@ -1190,6 +1218,8 @@ def build(spec: dict, pb: dict) -> dict:  # noqa: C901, PLR0912, PLR0915 - one r
     if family == "ic" and spec["id"] in ("ADJ-02", "ADJ-13"):  # GC-MU A2 (ADR-230 (3)): the compare's cost rows
         out["expected"]["compare_cost"] = hand_compare_cost(u, lot, legs, near_rows, out["expected"]["approach_legs"],
                                                             out["expected"]["approach_after"], expiry_metrics)
+    if day_close is not None:  # GC-IC1 1a: only the cases that ask for it carry the block
+        out["expected"]["day_close"] = day_close
     if "charges" in spec:
         out["expected"]["at_expiry_after_charges"] = hand_expiry(legs, booked, -Fraction(D(spec["charges"])))
     return out
@@ -1378,6 +1408,16 @@ def scenarios() -> list[dict]:  # noqa: PLR0915 - a flat list of scenario specs
                      chain_changes=[{"expiry": N3, "strike": "23650", "type": "CE", "low_oi": {"state": "unknown", "blocked": None}}],
                      warnings=["Low-OI state unknown for NIFTY 3 Nov 23,650 CE: Zerodha may block a fresh order in it "
                                "(M-15); exits are always allowed"]))
+    # GC-IC1 1a (REQ-159 AC-4, ADR-216): the iron condor's expiry-day close rule at 14:30
+    s.append(ic_spec("ADJ-51", "Expiry day 14:30: short CE 0.21% from spot (within 0.3%), far short PE below Rs 2",
+                     ["S-07", "A-28", "A-27", "ADR-216"], "2026-11-03T14:30:00", "23400",
+                     day_close={"fires": True, "approaches": ["A-28", "A-27"]},
+                     notes=["The expiry close rule (action 5) fires at 14:30: 50 / 23,400 = 0.2137% <= 0.3%. The "
+                            "22,600 PE is far out of the money at a tick, below the rule's Rs 2, so A-27 is named."]))
+    s.append(ic_spec("ADJ-52", "Expiry day 14:30: nearest short 0.4% from spot: the expiry close rule does not fire",
+                     ["S-07", "ADR-216"], "2026-11-03T14:30:00", "23356.55",
+                     day_close={"fires": False, "approaches": []},
+                     notes=["93.45 / 23,356.55 = 0.4001% > 0.3%: the rule reads false (no record)."]))
     s.append(ic_spec("ADJ-50", "Liquidity limits (ADR-230 (1), F-78): one thin strike, the 23,100 CE with open interest 500",
                      ["F-78", "REQ-159 AC-6", "ADR-230"], "2026-10-28T14:00:00", "23050", exact_fire=[],
                      chain_changes=[{"expiry": N3, "strike": "23100", "type": "CE", "oi": 500}],

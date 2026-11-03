@@ -1589,6 +1589,7 @@
      {
       "action": 5,
       "at": "14:30",
+      "buy_back_short_below_rs": "2",
       "close_if_short_within_pct": "0.3",
       "on": true,
       "when": "expiry"
