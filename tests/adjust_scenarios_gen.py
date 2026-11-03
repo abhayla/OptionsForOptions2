@@ -516,7 +516,7 @@ class HandRefused(Exception):
     pass
 
 
-def hand_approaches(u: str, lot: int, kind: str, today: datetime.date, spot: Decimal, legs: list[dict],  # noqa: C901, PLR0912, PLR0915, PLR0913
+def hand_approaches(u: str, lot: int, kind: str, today: datetime.date, spot: Decimal, legs: list[dict],  # noqa: C901, PLR0912, PLR0915
                     rows: list[dict], booked: Fraction, exits: dict | None = None,
                     only: list[str] | None = None) -> tuple[dict, dict]:
     """Per approach: trades / After legs / closed legs (or the refusal), and the whole-trade at-expiry After.

@@ -421,7 +421,7 @@ def _partial(b: _Builder, legs: Sequence[PositionLeg], percent: int) -> tuple[li
 
 def _untested_decayed(b: _Builder, legs: Sequence[PositionLeg], short_at: int, percent: int) -> tuple[
         list[Trade], list[ClosedLeg], list[PositionLeg]]:
-    """A-26 (ADR-238 (3)): buy back the untested short (its wing stays) when (entry - price) x 100 >= percent x entry."""
+    """A-26 (ADR-238 (3)): buy back the untested short (wing stays) when (entry - price) x 100 >= percent x entry."""
     short = legs[short_at]
     price = b.price_of(short)
     if short.entry <= 0:
@@ -554,7 +554,7 @@ def build_approach(position: Position, chain: Sequence[ChainRow], spot: Decimal,
                    warning_messages=tuple(b.warning_messages))
 
 
-def applicable_approaches(position: Position, chain: Sequence[ChainRow], spot: Decimal, config: Config,
+def applicable_approaches(position: Position, chain: Sequence[ChainRow], spot: Decimal, config: Config,  # noqa: PLR0913
                           listing: Listing | None = None, exits: ExitInputs | None = None) -> list[ApproachLegs]:
     """Every built approach of the iron condor, in ``APPROACH_IDS`` order; a refused one comes back with its reason
     (never dropped silently), every other approach still builds (AC-8)."""

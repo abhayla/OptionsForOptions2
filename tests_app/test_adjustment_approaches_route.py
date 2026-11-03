@@ -16,6 +16,7 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from ofo.adjustment import playbook_eval as pe
 from ofo.adjustment.approaches import APPROACH_IDS, ChainRow, Position, PositionLeg
 from ofo.adjustment.compare import ROWS
 from ofo.charges import ChargeRates
@@ -604,3 +605,30 @@ def test_gcic1_r3_unpriced_ids_lists_builder_gaps_and_after_legs_without_greeks(
     assert every == list(dict.fromkeys(market.instrument_ids[x.tradingsymbol] for x in built.after))
     greeks = {x.tradingsymbol: object() for x in built.after}
     assert route.unpriced_ids([built], dataclasses.replace(market, leg_greeks=greeks)) == []
+
+
+def test_adr238_the_five_exit_and_reduce_approaches_come_back_as_columns():
+    """GC-IC1 step 2 (ADR-238, REQ-155 AC-1): with the iron condor playbook read through the route's guards seam, ADJ-02
+    returns A-24, A-25, A-26, A-27 and A-35; each built one's trades and After equal the generator's (A-27 with the
+    playbook's T-09 of the stage), A-35 says its time, and every built one is a compare column."""
+
+    sc = load("ADJ-02")
+    body = pe.body_from_fixture(json.loads((FIX / "_playbooks.json").read_text(encoding="utf-8")), "ic")
+    guards = adjustment_check.guards_of_body(body)
+    guards.pop("roll_debit_limit", None)  # the liquidity limits are another test's; this one reads T-09 and the time
+    reply = post(client_for(sc, guards=guards)).json()
+    by_id = {a["id"]: a for a in reply["approaches"]}
+    assert list(by_id) == list(APPROACH_IDS) and list(APPROACH_IDS)[-5:] == ["A-24", "A-25", "A-26", "A-27", "A-35"]
+    hand = {**sc["expected"]["approach_legs"], **sc["expected"]["playbook_exits"]["approach_legs"]}
+
+    def norm(rows, keys):
+        return [{k: str(r[k]) for k in keys} for r in rows]
+    for a in ("A-24", "A-25", "A-26", "A-27"):
+        got, want = by_id[a], hand[a]
+        assert got["refusal"] is None, (a, got["refusal"])
+        keys = ("action", "type", "strike", "lots", "quantity", "price", "tradingsymbol")
+        assert norm(got["trades"], keys) == norm(want["trades"], keys), a
+        assert norm(got["after_legs"], ("side", "strike", "lots")) == norm(want["after"], ("side", "strike", "lots")), a
+    assert by_id["A-35"]["refusal"]["what_happened"] == hand["A-35"]["refused"]
+    columns = next(c for c in reply["criteria"] if c["id"] == "cost")["values"]
+    assert {"A-24", "A-25", "A-26", "A-27"} <= set(columns) and "A-35" not in columns
