@@ -4,7 +4,7 @@ today (GC-IC1 step 4a).
 Spec basis: REQ-170 AC-5 (risk exits are never paused: the paper exit path never reads this pause); REQ-168 AC-3
 (keyed by the user). Copy from: ``routes/alert_style.py`` (same key, same store shape, same refusals).
 
-- GET: {strategy_id, label, paused, until (HH:MM IST or null), state_text}.
+- GET: {strategy_id, label, paused, until (HHMM IST or null), state_text}.
 - PUT {until: "HH:MM"}: a pause until that time today (IST), then the GET reply. Refused with its reason (422): not a
   time, at or before now, after the session close. The time "now" is the database clock (ADR-023).
 - DELETE: the pause cleared now, then the GET reply.
@@ -28,7 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ofo_app import settings_store
 from ofo_app import strategy_pause_store as store
-from ofo_app.api_models import ApiModel, CatalogueText
+from ofo_app.api_models import ApiModel, CatalogueText, Identifier
 from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure, respond
 from ofo_app.routes.broker import current_user_ref
@@ -56,7 +56,7 @@ class PauseOut(ApiModel):
     strategy_id: int
     label: CatalogueText
     paused: bool
-    until: str | None  # HH:MM IST
+    until: Identifier | None  # HHMM IST, e.g. 1030 (an Identifier has no colon)
     state_text: CatalogueText
 
 
@@ -65,7 +65,7 @@ class RefusedOut(ApiModel):
 
 
 def _hhmm(at: datetime.datetime) -> str:
-    return f"{at.astimezone(IST):%H:%M}"
+    return f"{at.astimezone(IST):%H%M}"
 
 
 def compose(strategy_id: int, until: datetime.datetime | None, now: datetime.datetime) -> PauseOut:

@@ -44,9 +44,9 @@ async def test_set_read_expire_and_clear_a_pause(app_db_url, monkeypatch):  # no
     assert _shape(body) == (False, None, "Adjustment checks are running. Stop-losses and exits always run.")
     status, body = await _call("PUT", _path(sid), user, _clock(10, 10), json={"until": "10:30"})
     assert status == OK, body
-    assert _shape(body) == (True, "10:30", "Adjustment checks paused until 10:30. Stop-losses and exits still run.")
+    assert _shape(body) == (True, "1030", "Adjustment checks paused until 10:30. Stop-losses and exits still run.")
     status, body = await _call("GET", _path(sid), user, _clock(10, 31))  # ends by itself
-    assert _shape(body) == (False, "10:30", "The pause ended at 10:30. Adjustment checks are running again.")
+    assert _shape(body) == (False, "1030", "The pause ended at 10:30. Adjustment checks are running again.")
     await _call("PUT", _path(sid), user, _clock(10, 40), json={"until": "11:00"})
     status, body = await _call("DELETE", _path(sid), user, _clock(10, 41))
     assert status == OK, body

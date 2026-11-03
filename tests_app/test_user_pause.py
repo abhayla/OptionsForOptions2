@@ -26,6 +26,7 @@ from test_background_worker import (  # noqa: F401 - the shared fixture
 
 PAUSE_MINUTES = 20
 CROSS_AFTER_MINUTES = 5
+OK = 200
 
 
 @pytest.fixture
@@ -101,11 +102,11 @@ async def test_the_screen_check_shows_the_pause_with_its_end_and_evaluates_nothi
     from test_adjustment_check import _check  # noqa: PLC0415 - the check route's own harness
     sid, scn, _now, _worker = await _ready(app_db_url, monkeypatch)
     status, before = await _check("ADJ-02", sid)
-    assert status == 200 and before["paused"] is None and before["results"], before  # not paused: evaluated
+    assert status == OK and before["paused"] is None and before["results"], before  # not paused: evaluated
     until = scn.clock_at + datetime.timedelta(minutes=PAUSE_MINUTES)
     await _pause(app_db_url, sid, until, scn.clock_at)
     status, body = await _check("ADJ-02", sid)
     end = f"{until.astimezone(IST):%H%M}"
-    assert status == 200 and body["paused"] == {
+    assert status == OK and body["paused"] == {
         "until": end, "text": f"Adjustment checks paused until {end[:2]}:{end[2:]}."}, body
     assert body["results"] == []  # paused: not evaluated, as the worker
