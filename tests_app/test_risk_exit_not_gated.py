@@ -10,10 +10,12 @@ Two proofs:
 """
 from __future__ import annotations
 
+import datetime
 from decimal import Decimal
 
 import pytest
-from ofo_app import paper_store, playbook_store, tracked_contracts
+from ofo.timeutil import IST
+from ofo_app import paper_store, playbook_store, strategy_pause_store, tracked_contracts
 from test_order_path_switch import ALLOWED_ORDER_PATHS, BACKEND, order_closure_problems
 from test_paper_monitor import (  # noqa: F401
     INDEX,
@@ -30,7 +32,9 @@ from test_paper_order_door import PAPER_MODULES, _mutated
 from test_strategy_store import _user, _with_draft
 
 D = Decimal
-GATE_MODULES: frozenset[str] = frozenset({"ofo.adjustment.alert_gate", "ofo_app.background"})
+#: the gate, its worker, and the user's pause (A-38, GC-IC1 4a): a pause is for adjustment checks only (AC-5)
+GATE_MODULES: frozenset[str] = frozenset({"ofo.adjustment.alert_gate", "ofo_app.background",
+                                          "ofo.adjustment.monitor_pause", "ofo_app.strategy_pause_store"})
 #: the paper exit path: the monitor, the trigger store, the stop crossing rule (the order book's own modules too)
 EXIT_MODULES: tuple[str, ...] = PAPER_MODULES
 
@@ -50,6 +54,9 @@ def test_no_paper_exit_module_reaches_the_alert_gate_or_the_worker():
     ("ofo/tracking/stops.py", "def _late():\n    from ofo.adjustment import alert_gate  # noqa: F401",
      "ofo.adjustment.alert_gate"),
     ("ofo_app/paper_trigger_store.py", "from ofo_app import background  # noqa: F401", "ofo_app.background"),
+    ("ofo_app/paper_monitor.py", "from ofo_app import strategy_pause_store  # noqa: F401",
+     "ofo_app.strategy_pause_store"),
+    ("ofo/tracking/stops.py", "from ofo.adjustment import monitor_pause  # noqa: F401", "ofo.adjustment.monitor_pause"),
 ])
 def test_mutation_a_gate_import_in_a_paper_exit_module_is_red(tmp_path, module_file, extra, gate):
     reached = _gate_reached(_mutated(tmp_path, module_file, extra))
@@ -81,3 +88,30 @@ async def test_a_gated_adjustment_rule_never_delays_the_conditional_exit(db):  #
     assert [(r.id, r.outcome) for r in await playbook_store.open_suggestions(db, user, stored.id)] == [
         (rec.id, "open")]  # the exit neither waited for nor touched the adjustment record
 
+
+
+async def test_a_user_paused_strategy_still_fires_its_conditional_exit(db):  # noqa: F811 - the paper fixture
+    """A-38 (GC-IC1 4a): the user paused the strategy's ADJUSTMENT checks 10:10 -> 10:30; its paper exit crossing
+    inside the pause (the first tick past the level) still fires at once, through the real monitor and database."""
+    market = Market()
+    user = _user()
+    _, stored = await _with_draft(db, user)
+    ids = stored.saved.contract_ids[:2]
+    await paper_store.place(db, user, stored.id, [
+        paper_store.NewOrder(ids[0], "SELL", 65, D("39.15"), "open", OPEN_AT),
+        paper_store.NewOrder(ids[1], "BUY", 65, D("12.95"), "open", OPEN_AT)])
+    keys = [c.feed_key for c in await tracked_contracts.resolve(db, ids)]
+    day = datetime.date(2026, 11, 3)
+    paused_at = datetime.datetime.combine(day, datetime.time(10, 10), IST)
+    until = datetime.datetime.combine(day, datetime.time(10, 30), IST)
+    assert await strategy_pause_store.set_pause(db, user, stored.id, until, paused_at) == until
+    assert await strategy_pause_store.pause_of(db, user, stored.id) == until
+    tid = await _exit_below(db, stored.id)
+    monitor = _monitor(db, market)
+    assert await monitor.step() == 0
+    market.tick(keys[0], "41.00")
+    market.tick(keys[1], "12.50")
+    market.tick(INDEX, "22849.95")  # the first tick past the level, inside the pause
+    assert await monitor.step() == 1
+    assert [s[1:3] for s in await _stops(db, stored.id)] == [("BUY", 65), ("SELL", 65)]
+    assert await _trigger_state(db, tid) == (True, False)
