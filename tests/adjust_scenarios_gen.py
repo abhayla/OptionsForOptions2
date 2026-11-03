@@ -164,6 +164,8 @@ APPROACHES = [
     ("A-37", "Alert only / watch a level", True, "", None),
     ("A-38", "Pause monitoring until a time", True, "e.g. after a gap, until 09:30", None),
 ]
+#: GC-IC1 6a: the roll approaches (ADR-239: A-01, A-02, A-04, A-05, A-06 move a short or a side)
+SIT_ROLLS = {"A-01", "A-02", "A-04", "A-05", "A-06"}
 EXIT_REDUCE = ["A-23", "A-24", "A-25", "A-26", "A-27", "A-28", "A-29", "A-31", "A-35", "A-36", "A-37", "A-38"]
 DAY_RULE_KINDS = [
     ("weekday", "Every week on"), ("beforeWeekend", "The last session before a weekend"),
@@ -914,6 +916,32 @@ def hand_compare_cost(u: str, lot: int, legs: list[dict], rows: list[dict], appr
 # ---------------------------------------------------------------------------------------------------------------------
 # Scenario builder
 # ---------------------------------------------------------------------------------------------------------------------
+def hand_situation_rules(spec: dict, legs: list[dict], row_of, today: datetime.date, entry_day: datetime.date,
+                         pnl_now: Fraction | None, max_profit, offered: list[str]) -> dict | None:
+    """GC-IC1 6a (ADR-240 (3)), engine-free: S-02 = |sum of sign x chain delta x lots| / the largest leg's lots, true
+    at or beyond 0.15, naming the playbook's rolls; S-12 = on the entry day only, profit >= 40% of max profit, naming
+    A-24 and A-25 (another day: no reading, ``fires`` None)."""
+    want = spec.get("situation_rules")
+    if want is None:
+        return None
+    net = sum(sign(leg["side"]) * Fraction(D(str(row_of(leg)["delta"]))) * leg["lots"] for leg in legs)
+    per_lot = abs(net) / max(leg["lots"] for leg in legs)
+    s02 = per_lot >= Fraction(15, 100)
+    rolls = [a for a in offered if a in SIT_ROLLS]
+    out = {"sit:S-02": {"fires": s02, "value": dec_text_round(per_lot), "threshold": "0.15",
+                        "approaches": rolls if s02 else []}}
+    if today != entry_day:
+        out["sit:S-12"] = {"fires": None, "value": None, "threshold": "40", "approaches": []}
+    else:
+        pct = max(pnl_now, Fraction(0)) * 100 / Fraction(D(max_profit))
+        s12 = pct >= 40
+        out["sit:S-12"] = {"fires": s12, "value": dec_text_round(pct), "threshold": "40",
+                           "approaches": ["A-24", "A-25"] if s12 else []}
+    got = {k: v["fires"] for k, v in out.items()}
+    assert got == want, (spec["id"], "situation rules", out)
+    return out
+
+
 def hand_day_close(spec: dict, rules: list[dict], today: datetime.date, expiry: datetime.date,
                    clock: datetime.datetime, spot: Decimal, shorts: list[dict], ltp, t09_limit: str | None) -> dict | None:
     """GC-IC1 1a, engine-free: the switched-on expiry close rule (action 5, close_if_short_within_pct P) fires on
@@ -1358,6 +1386,9 @@ def build(spec: dict, pb: dict) -> dict:  # noqa: C901, PLR0912, PLR0915 - one r
     day_close = hand_day_close(spec, rules, today, expiry, clock, spot, shorts, ltp,
                                limit_for(pb, "T-09", kind, stage_ix, overrides, family) if t09_on else None)
     carry = hand_carry(spec, rules, clock, legs, booked, spot, atm)
+    sit_rules = hand_situation_rules(spec, legs, row_of, today, entry_clock.date(), pnl_now,
+                                     expiry_metrics.get("max_profit"),
+                                     list(fpb["approaches"]["applicable"])) if "situation_rules" in spec else None
     if "check" in spec:
         spec["check"](locals())
 
@@ -1421,6 +1452,8 @@ def build(spec: dict, pb: dict) -> dict:  # noqa: C901, PLR0912, PLR0915 - one r
         out["expected"]["carry"] = carry
     if day_close is not None:  # GC-IC1 1a: only the cases that ask for it carry the block
         out["expected"]["day_close"] = day_close
+    if sit_rules is not None:  # GC-IC1 6a: only the cases that ask for it carry the block
+        out["expected"]["situation_rules"] = sit_rules
     if "charges" in spec:
         out["expected"]["at_expiry_after_charges"] = hand_expiry(legs, booked, -Fraction(D(spec["charges"])))
     return out
@@ -1635,6 +1668,21 @@ def scenarios() -> list[dict]:  # noqa: PLR0915 - a flat list of scenario specs
                      carry={"fires": ["day:beforeHoliday:15:00:0"]},
                      notes=["Monday 9 Nov 2026 (the moved weekly expiry): the next calendar weekday, Tuesday 10 Nov, is a "
                             "listed NSE F&O holiday, so before-holiday fires; the next session is Wednesday 11 Nov."]))
+    # GC-IC1 6a (REQ-159 AC-5, ADR-240 (3)): S-02 trending day and S-12 big win early as rules
+    s.append(ic_spec("ADJ-56", "Trending day: net delta per lot beyond 0.15, the playbook's rolls offered",
+                     ["S-02", "ADR-240"], "2026-11-06T11:40:00", "23420", legs=IC9, entry=E9, next_expiry="2026-11-17",
+                     situation_rules={"sit:S-02": True, "sit:S-12": None}))
+    s.append(ic_spec("ADJ-57", "Calm day: net delta per lot under 0.15, the trending-day rule reads false",
+                     ["S-02", "ADR-240"], "2026-10-28T14:00:00", "23050",
+                     situation_rules={"sit:S-02": False, "sit:S-12": False}))
+    s.append(ic_spec("ADJ-58", "Big win on the entry day: profit at least 40% of max profit, take profit offered",
+                     ["S-12", "A-24", "A-25", "ADR-240"], "2026-10-28T15:00:00", "23030",
+                     entry={**E3, "atm_iv": "0.16"}, atm_iv="0.115",
+                     situation_rules={"sit:S-02": False, "sit:S-12": True}))
+    s.append(ic_spec("ADJ-59", "Big win the next session: the day-1 rule gives no reading",
+                     ["S-12", "ADR-240"], "2026-10-29T15:00:00", "23030",
+                     entry={**E3, "atm_iv": "0.16"}, atm_iv="0.115",
+                     situation_rules={"sit:S-02": False, "sit:S-12": None}))
     s.append(ic_spec("ADJ-50", "Liquidity limits (ADR-230 (1), F-78): one thin strike, the 23,100 CE with open interest 500",
                      ["F-78", "REQ-159 AC-6", "ADR-230"], "2026-10-28T14:00:00", "23050", exact_fire=[],
                      chain_changes=[{"expiry": N3, "strike": "23100", "type": "CE", "oi": 500}],

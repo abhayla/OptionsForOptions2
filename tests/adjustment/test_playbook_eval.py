@@ -13,6 +13,7 @@ from dataclasses import replace
 from decimal import ROUND_HALF_EVEN, Decimal
 
 import pytest
+from ofo.adjustment import playbook_eval as pe
 from ofo.adjustment.playbook_eval import (
     ALREADY_TRUE,
     T14_PENDING,
@@ -251,7 +252,9 @@ def test_no_spot_or_stale_prices_never_flag(sid):
     want = {"ADJ-24b": ("adjust_trigger_withheld_no_spot", "No adjustment opportunity checked: spot not available."),
             "ADJ-19": ("adjust_trigger_withheld_stale", "No adjustment opportunity checked: prices stale or missing.")}[sid]
     assert (ev.withheld, reason_text(ev.withheld)) == want
-    assert {r.rule_id for r in ev.results} == {r["id"] for r in body_of(sc)["rules"]}
+    # GC-IC1 6a: the situation rules (S-02 / S-12) answer beside the body's rules, each withheld or not checked
+    assert {r.rule_id for r in ev.results if not pe.is_situation_rule_id(r.rule_id)} == \
+        {r["id"] for r in body_of(sc)["rules"]}
 
 
 def test_unpriced_leg_is_not_checked_never_flagged_or_counted_clear():
@@ -338,14 +341,16 @@ def test_all_of_rule():
     assert {h.trigger_id for h in ev.results[0].members} == {"T-01", "T-11"}
     one_missing = StrategyState(**{**both.__dict__, "entry_atm_iv": None})
     ev = evaluate(body, one_missing, {}, None)
-    assert [type(r) for r in ev.results] == [NotChecked] and ev.results[0].rule_id == "R-1"
+    body_rules = [r for r in ev.results if not pe.is_situation_rule_id(r.rule_id)]  # GC-IC1 6a: S-02 / S-12 apart
+    assert [type(r) for r in body_rules] == [NotChecked] and body_rules[0].rule_id == "R-1"
 
 
 def test_any_of_rule_fires_when_one_member_fires():
     body, s = _calm()
     body["rules"] = [{"id": "R-2", "any_of": ["T-11", "T-01"]}]
     ev = evaluate(body, StrategyState(**{**s.__dict__, "spot": D("23400")}), {}, None)
-    assert [(r.rule_id, r.trigger_id) for r in ev.results] == [("R-2", "T-01")]
+    assert [(r.rule_id, r.trigger_id) for r in ev.results if not pe.is_situation_rule_id(r.rule_id)] == \
+        [("R-2", "T-01")]
 
 
 @pytest.mark.parametrize("limit", ["0.5", "0.50"])
