@@ -48,7 +48,7 @@ const INBOX = {
   }],
   counts: COUNTS(2, 1), empty_text: null, dismiss_reasons: REASONS,
 }
-const EMPTY = { groups: [], counts: COUNTS(0), empty_text: 'No adjustment opportunities', dismiss_reasons: REASONS }
+const EMPTY = { groups: [], held: [], counts: COUNTS(0), empty_text: 'No adjustment opportunities', dismiss_reasons: REASONS }
 
 const push = vi.fn()
 const mounted = []
@@ -91,6 +91,24 @@ describe('REQ-162: the Adjustment opportunities page', () => {
     await flushPromises()
     expect(t(w, 'opp-empty').text()).toBe('No adjustment opportunities')
     expect(t(w, 'opp-scroll').exists()).toBe(false)
+  })
+
+  it('REQ-170 AC-4: held crossings show the server text and time, never a Compare link or Dismiss', async () => {
+    const held = [
+      { id: 2, strategy_id: 1, strategy_name: '"Scenario ADJ-02"', rule_id: 'T-08', trigger_id: 'T-08', reason: 'quiet_time',
+        text: 'held: quiet time', held_at: '2026-11-04T03:47:00Z' },
+      { id: 1, strategy_id: 1, strategy_name: '"Scenario ADJ-02"', rule_id: 'T-07', trigger_id: 'T-07', reason: 'daily_limit',
+        text: 'held: daily limit', held_at: '2026-11-04T03:40:00Z' }]
+    answers['GET /adjustment-opportunities'] = { ...EMPTY, held }
+    const w = keep(mount(AdjustmentOpportunitiesPage, stub))
+    await flushPromises()
+    expect(w.findAll('[data-testid="opp-held-row"]').map((r) => r.attributes('data-reason'))).toEqual(['quiet_time', 'daily_limit'])
+    expect(w.findAll('[data-testid="opp-held-text"]').map((x) => x.text())).toEqual(['held: quiet time', 'held: daily limit'])
+    expect(w.findAll('[data-testid="opp-held-time"]').map((x) => x.text())).toEqual(['4 Nov 2026, 09:17:00 IST', '4 Nov 2026, 09:10:00 IST'])
+    expect(w.findAll('[data-testid="opp-held-strategy"]')[0].text()).toBe('Scenario ADJ-02')
+    expect(t(w, 'opp-compare').exists()).toBe(false)
+    expect(t(w, 'opp-dismiss').exists()).toBe(false)
+    expect(w.findAll('[data-testid="opp-row"]').length).toBe(0)
   })
 
   it('a failed read shows the server\'s refusal, no row and no count', async () => {

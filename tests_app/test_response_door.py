@@ -367,6 +367,7 @@ APP_MODELS = (
     "ofo_app.routes.adjustment_history.HistoryTotalsOut",
     "ofo_app.routes.adjustment_opportunities.CountOut",
     "ofo_app.routes.adjustment_opportunities.GroupOut",
+    "ofo_app.routes.adjustment_opportunities.HeldOut",
     "ofo_app.routes.adjustment_opportunities.InboxOut",
     "ofo_app.routes.adjustment_opportunities.OpportunityOut",
     "ofo_app.routes.adjustment_opportunities.ReasonOut",

@@ -57,6 +57,18 @@
           </tbody>
         </table>
       </div>
+      <!-- GC-IC1 step 10 fix (REQ-170 AC-4): crossings the alert gate held, in the server's words with their time; never a
+           record, so no Compare and no Dismiss -->
+      <section v-if="reply.held && reply.held.length" class="mt-4" data-testid="opp-held">
+        <h2 class="text-sm font-medium">Held crossings</h2>
+        <ul class="mt-1 text-sm">
+          <li v-for="h in reply.held" :key="h.id" class="border-b border-line py-1" :data-reason="h.reason" data-testid="opp-held-row">
+            <span class="tabular-nums" data-testid="opp-held-time">{{ istTime(h.held_at) }}</span>
+            <span class="ml-2" data-testid="opp-held-strategy">{{ plainName(h.strategy_name) }}</span>
+            <span class="ml-2 rounded border border-line px-1.5 text-xs" data-testid="opp-held-text">{{ h.text }}</span>
+          </li>
+        </ul>
+      </section>
     </template>
   </section>
 </template>
