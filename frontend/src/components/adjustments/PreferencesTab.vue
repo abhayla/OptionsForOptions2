@@ -114,6 +114,9 @@ async function loadStrategies() {
     strategies.value = [] // failed: the picker keeps "All my strategies" only
   }
 }
+// strategy id from the picker value (a string); null when not a positive integer
+// looked up in the loaded list (ids are integers there), so no number parsing is needed
+const strategyIdOf = (v) => strategies.value.find((s) => String(s.id) === String(v))?.id ?? null
 const scopeName = computed(() => strategies.value.find((s) => String(s.id) === scope.value))
 const stratLabel = (s) => (s.name ? `${s.id} · ${s.name}` : String(s.id))
 
@@ -127,7 +130,7 @@ async function loadPlan() {
   plan.state = 'loading'
   plan.form = null
   try {
-    const sheet = await fetchPlan(api, Number(scope.value))
+    const sheet = await fetchPlan(api, strategyIdOf(scope.value))
     plan.sheet = sheet
     plan.state = sheet.kind === 'invalid' ? 'unavailable' : sheet.kind === 'generic' ? 'generic' : sheet.plan ? 'plan' : 'none'
   } catch (e) {
@@ -168,7 +171,7 @@ async function savePlan() {
   plan.busy = true
   plan.reason = ''
   try {
-    const sheet = await sendPlan(api, Number(scope.value), saveBody(plan.form), true)
+    const sheet = await sendPlan(api, strategyIdOf(scope.value), saveBody(plan.form), true)
     plan.form = null
     if (sheet.kind === 'invalid') await loadPlan()
     else {
