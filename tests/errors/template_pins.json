@@ -3271,6 +3271,14 @@
     "sha256": "0570c2c7c3580c1113aeebf21c84f7862bc08c0ad1bec43f3b78740cbd034c0d",
     "reviewed": "owner read 2026-11-01 (GC-MU texts approved as recommended, in chat; not read line by line)"
   },
+  "explanation:adjust_cmp_cost_warning": {
+    "sha256": "e85f46186ca61eb8efa7a2630b8cc85d8322bc4ad6fe6d29d862262cdd485053",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_cost_warning_off": {
+    "sha256": "e4a5fd916c3ad7868f406be429f45552d00b916854f2316676b30bf7a8f79623",
+    "reviewed": "pending owner read"
+  },
   "explanation:adjust_cmp_no_premium_left": {
     "sha256": "f684efc98b19f40df79d287d7766837107b92026e5d9959e8d66a92af8dc523f",
     "reviewed": "owner read 2026-11-01 (GC-MU texts approved as recommended, in chat; not read line by line)"

@@ -46,7 +46,7 @@ from ofo.adjustment.approaches import (
     is_no_change,
 )
 from ofo.adjustment.compare import POP_TEXT, Column, Context, MarginRead, compare
-from ofo.adjustment.compare_cost_rows import breakdown_lines
+from ofo.adjustment.compare_cost_rows import breakdown_lines, warn_threshold
 from ofo.adjustment.preferences import Preferences
 from ofo.charges import ChargeRates
 from ofo.charges.calculator import ChargeOrder, charges_for_orders
@@ -590,8 +590,9 @@ async def _compare_reply(columns: list[Column], tracked: Tracked, spot: Decimal,
     if before_margin is None:
         unchanged = build_approach(position, market.chain, spot, NO_CHANGE, prefs.approach)
         before_margin = _margin_read(await _margin(margin_of, unchanged, market))
+    warn_pct, warn_off = warn_threshold(guards)  # REQ-159 AC-6: no playbook / no level -> no warning and a reason
     ctx = Context(position, spot, market.chain, rates, pop_on, before_margin, market.leg_greeks,
-                  tracked.adjustments_used, prefs.compare, limits, plan_max(guards))
+                  tracked.adjustments_used, prefs.compare, limits, plan_max(guards), warn_pct, warn_off)
     return _compare_block(compare(columns, ctx, before.after, before.charges_known))
 
 
@@ -609,7 +610,8 @@ def _compare_block(cmp: Any) -> dict:
     criteria = [{"id": c.id, "group": c.group, "label": c.label, "leader_label": c.leader_label,
                  "leaders": list(c.leaders),
                  "values": {a: {"text": v.text, "value": v.value, "unavailable_reason": v.unavailable_reason,
-                                **({"breakdown": breakdown_lines(v.breakdown)} if v.breakdown else {})}  # ADR-230 (3)
+                                **({"breakdown": breakdown_lines(v.breakdown)} if v.breakdown else {}),  # ADR-230 (3)
+                                "warning": v.warning, "warning_off": v.warning_off}  # REQ-159 AC-6
                             for a, v in c.values.items()}} for c in cmp.criteria]
     return {"criteria": criteria, "leads": {a: {"n": n, "m": m} for a, (n, m) in cmp.leads.items()},
             "curves": {k: [[level, pnl] for level, pnl in points] for k, points in cmp.curves.items()}}

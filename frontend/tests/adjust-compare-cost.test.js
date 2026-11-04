@@ -44,6 +44,21 @@ const withCostRows = () => {
   return r
 }
 
+describe('REQ-159 AC-6 cost warning', () => {
+  it('shows the server warning on the cost % cell that carries one, the reason on one that carries that, nothing else', async () => {
+    const r = withCostRows()
+    const pct = r.criteria.find((c) => c.id === 'cost_pct')
+    pct.values['A-01'].warning = 'Cost is 61.00% of the premium left; your playbook warns above 50%.'
+    pct.values['A-11'].warning_off = "Cost warning not applied: the playbook's warning level is not set or cannot be read."
+    const w = await show(r)
+    expect(t(w, 'adjust-cell-cost_pct-A-01').get('[data-testid="adjust-cell-warning"]').text()).toBe(
+      'Cost is 61.00% of the premium left; your playbook warns above 50%.')
+    expect(t(w, 'adjust-cell-cost_pct-A-11').get('[data-testid="adjust-cell-warning-off"]').text()).toContain('not applied')
+    expect(t(w, 'adjust-cell-cost_pct-A-36').find('[data-testid="adjust-cell-warning"]').exists()).toBe(false)
+    expect(t(w, 'adjust-cell-cost_pct-A-36').find('[data-testid="adjust-cell-warning-off"]').exists()).toBe(false)
+  })
+})
+
 describe('GC-MU A2 compare cost rows', () => {
   it('both rows render right under the cost row with the server text, the leader label, and a dash with its reason', async () => {
     const w = await show(withCostRows())
