@@ -56,14 +56,21 @@ One cycle (``Worker.cycle``), each step with its answer state:
    ``gate_readings.readings(evaluation)`` into ``alert_gate.step`` with the strategy's preset (``alert_presets.
    preset_for`` of ``style_for(expiry kind, days left, pin)``); every cycle (the ~1 s wake) also steps every gated
    strategy that was not checked with EMPTY readings, so candle closes are processed with no price change
-   (ADR-237 (2)). Only the gate's events touch the database (``GateStore.apply``, one transaction): Opened ->
-   ``open_suggestion(worse=...)``, Held -> ``record_held``, Lapsed -> ``lapse``. The gate state is restored on the
-   first check from the store (``GateStore.load``: last record per rule, today's count, today's held crossings, the
-   pin), read on the rebuild task, never per check; a dismissed record read there is fed to ``alert_gate.dismiss``
-   (ADR-236); a changed playbook body (plan change) restores the state again against the new ladder. A strategy
-   whose legs all exited has its open records lapsed by the lister (strategy closed). Answer states: no gate load
-   (the pin or the store read failed, none kept), no user values, a style that cannot be told, or a preset that
-   cannot be built -> that strategy is paused (``CHECK_FAILED``, "Monitoring paused"), never checked on a default.
+   (ADR-237 (2)). Only the gate's events touch the database (``GateStore.apply``, one transaction per step's
+   events): Opened -> ``open_suggestion(worse=...)``, Held -> ``record_held``, Lapsed -> ``lapse``. The check never
+   writes them (#636 r6): each step's events join the strategy's ordered queue (``GateBatch``; never merged, never
+   dropped while the strategy is listed), written by the ONE writer task before any rule-memory write; the record id
+   is put on the gate state when the write returns. Answer states: written -> ids attached; the write raises ->
+   counted (``gate_writes_failed``), kept at the head of its queue in order and retried at the writer's next wake
+   (every cycle while anything is queued); the strategy left the list while queued -> dropped with a log line
+   (``gate_events_dropped``); the gate held long by the rebuild -> the loop is unaffected (it never awaits the gate).
+   The gate state is restored on the first check from the store (``GateStore.load``: last record per rule, today's
+   count, today's held crossings, the pin), read on the rebuild task, never per check; a dismissed record read there
+   is fed to ``alert_gate.dismiss`` (ADR-236); a changed playbook body (plan change) restores the state again against
+   the new ladder. A strategy whose legs all exited has its open records lapsed by the lister (strategy closed).
+   Answer states: no gate load (the pin or the store read failed, none kept), no user values, a style that cannot be
+   told, or a preset that cannot be built -> that strategy is paused (``CHECK_FAILED``, "Monitoring paused"), never
+   checked on a default.
    Risk exits (paper triggers, stop-loss) never pass through here (AC-5).
 6. The user's pause (A-38, GC-IC1 step 4a, ``ofo.adjustment.monitor_pause``): the pause end is read with the gate
    load on the rebuild task (``GateLoad.paused_until``, never a database call per check, B4 (a)); each check compares
@@ -105,6 +112,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import collections
 import dataclasses
 import datetime
 import enum
@@ -140,9 +148,12 @@ from ofo.timeutil import IST
 
 from ofo_app import adjustment_check as check
 from ofo_app import calc_speeds, feed_bus, roles, settings_cache
+from ofo_app.db_gate import GATE_POLL, GATE_REBUILD, GATE_WRITER, DbGate, held
 from ofo_app.routes.adjustment import MarketInputs
 
 log = logging.getLogger("ofo_app.background")
+
+__all__ = ["GATE_POLL", "GATE_REBUILD", "GATE_WRITER", "DbGate"]  # the role's one gate (``db_gate``)
 
 DEFAULT_MAX_PER_CYCLE: Final = 200  # strategies checked in one cycle; the rest roll to the next (B4 (a))
 #: the recent checks and errors kept in memory for tests and status (a long-running process must not grow without end:
@@ -522,6 +533,16 @@ class GateContext:
     state: pe.StrategyState
 
 
+@dataclass(frozen=True)
+class GateBatch:
+    """One gate step's events for one strategy, queued for the writer in step order (#636 r6): ``ctx`` is the check
+    the events take their words from, as at the step."""
+
+    watched: Watched
+    events: tuple
+    ctx: GateContext | None
+
+
 #: a day rule record names its approaches in the one approach slot, in order: "A-28,A-27" (GC-IC1 1a)
 DAY_APPROACH_SEPARATOR = ","
 
@@ -630,7 +651,7 @@ class Worker:
                  sleep: Callable[[float], Awaitable[None]] = asyncio.sleep, want_client: Any = None,
                  observe: Observer | None = None,
                  rebuild_sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
-                 db_gate: asyncio.Lock | None = None,
+                 db_gate: DbGate | asyncio.Lock | None = None,
                  side_tasks: tuple[Callable[[], Coroutine[Any, Any, None]], ...] = (),
                  gate_store: Any = None, user_values: UserValuesRead | None = None,
                  margin_of: MarginOf | None = None) -> None:
@@ -676,8 +697,9 @@ class Worker:
         self._grids: dict[tuple, tuple] = {}  # (id(provider), underlying, expiry) -> (provider, strike grid)
         self._outcomes: dict[str, int] = {}  # evaluation outcome (withheld / not checked reason) -> count this minute
         #: the ONE database gate of the role: rebuild, writer and settings poll hold it, so the role opens at
-        #: most one connection at a time (ADR-048 limit 5 = API 2 + background 1 + feed 1); a check never takes it
-        self.db_gate = db_gate if db_gate is not None else asyncio.Lock()
+        #: most one connection at a time (ADR-048 limit 5 = API 2 + background 1 + feed 1); the cycle path never
+        #: names it (#636 r6, ``tests_app/test_background_db_gate.py``); served writer, poll, rebuild (``db_gate``)
+        self.db_gate = db_gate if db_gate is not None else DbGate()
         self._side_tasks = side_tasks  # e.g. the settings cache's poll loop, started and stopped with ``run``
         #: the writer queue (#636 r4 item 4): strategy -> the latest (watched, state, prefs) to write; a newer check
         #: for the same strategy replaces its entry (coalesced: one write of the latest state)
@@ -687,6 +709,10 @@ class Worker:
         self.writes_dropped = 0  # queued writes dropped at a rebuild (#636 r5 finding 2)
         self._writer: asyncio.Task | None = None  # the writer task, watched by ``_watch_writer`` (#636 r5 finding 3)
         self.writer_restarts = 0
+        #: #636 r6: strategy -> its gate steps' events not yet written, oldest first (the writer writes them first)
+        self._gate_events: dict[int, collections.deque[GateBatch]] = {}
+        self.gate_writes_failed = 0
+        self.gate_events_dropped = 0
         # the alert gate (module docstring, step 5)
         self._gate_store = gate_store if gate_store is not None else DbGateStore()
         self._user_values_read = user_values  # None: the user's alert values are the admin values in force (named)
@@ -704,8 +730,8 @@ class Worker:
 
     async def rebuild(self) -> None:
         """REQ-115 AC-3: the monitors from the database (the lister); a strategy's memory stays in the store."""
-        async with self.db_gate:
-            monitors = await self._lister()
+        # #636 r6: no hold around the list; the lister holds the gate per strategy's reads (``owner_lister(gate=)``)
+        monitors = await self._lister()
         before = {w.strategy_id: w.body for w in self.monitors}
         for w in monitors:  # a changed plan is rechecked at the next cycle, with no price tick (#636 r4 item 3)
             if w.strategy_id in before and before[w.strategy_id] != w.body:
@@ -716,7 +742,7 @@ class Worker:
         self._rebuilt_at = self._clock()
         for user in dict.fromkeys(w.user_ref for w in monitors):  # once per user, never per check (finding 3)
             try:
-                async with self.db_gate:
+                async with held(self.db_gate, GATE_REBUILD):  # one user's reads per hold
                     self._prefs_of[user] = await self._preferences(user)
                     if self._user_values_read is not None:
                         self._user_values[user] = await self._user_values_read(user)
@@ -737,6 +763,11 @@ class Worker:
             self.writes_dropped += 1
             log.info("background: the queued write of strategy %s was dropped (%s)", sid,
                      "no longer listed" if sid not in body else "plan changed")
+        for sid in [k for k in self._gate_events if k not in body]:  # #636 r6: a plan change keeps them (real closes)
+            gone = self._gate_events.pop(sid)
+            self.gate_events_dropped += len(gone)
+            log.info("background: %s queued alert events of strategy %s were dropped (no longer listed)",
+                     sum(len(b.events) for b in gone), sid)
 
     async def _load_gates(self, monitors: list[Watched]) -> None:
         """Step 5's store read, on the rebuild task: per strategy the gate rows, today's held crossings and the pin.
@@ -752,7 +783,7 @@ class Worker:
         for w in monitors:
             sid = w.strategy_id
             try:
-                async with self.db_gate:  # one connection for the role (#636 r4)
+                async with held(self.db_gate, GATE_REBUILD):  # one strategy per hold (#636 r4, r6)
                     load = await self._gate_store.load(w, today)
             except Exception as exc:  # contained: the last good read stays
                 log.exception("background: reading the alert gate of strategy %s failed", sid)
@@ -1105,7 +1136,7 @@ class Worker:
         item = self._pending[sid]
         w, state, prefs, ev = item
         try:
-            async with self.db_gate:
+            async with held(self.db_gate, GATE_WRITER):
                 recorded = await self._recorder(w, state, prefs)
         except Exception as exc:  # contained: the other strategies' writes go on
             if self._pending.get(sid) is item:
@@ -1166,14 +1197,42 @@ class Worker:
             state = alert_gate.pause(state, paused)
             self._gate[sid] = state  # kept even when the step below fails to write
         new, events = alert_gate.step(state, now=now, preset=preset, readings=readings)
-        if events:
-            async with self.db_gate:  # events only (never in steady state); one connection for the role (#636 r4)
-                opened = await self._gate_store.apply(w, events, self._gate_ctx.get(sid))
-            self._log_opportunities(w, opened)
-            # the gate's record carries its stored id, so a later dismiss matches by record (#639 item 2)
-            for rid, rec_id in (opened.items() if isinstance(opened, Mapping) else ()):
-                new = alert_gate.with_record_id(new, rid, rec_id)
         self._gate[sid] = new
+        if events:  # #636 r6: queued in step order for the ONE writer; the check never waits for the database
+            self._gate_events.setdefault(sid, collections.deque()).append(
+                GateBatch(w, tuple(events), self._gate_ctx.get(sid)))
+            self._write_wake.set()
+
+    async def _write_gate_batch(self, sid: int) -> bool:
+        """The oldest queued gate step of ``sid`` in one transaction, holding the gate first in its order of service.
+        True = written (removed, its record ids put on the gate state, logged); False = the write raised (kept at the
+        head of the queue, in order, for the next wake)."""
+        queue = self._gate_events[sid]
+        batch = queue[0]
+        try:
+            async with held(self.db_gate, GATE_WRITER):
+                opened = await self._gate_store.apply(batch.watched, batch.events, batch.ctx)
+        except Exception as exc:  # contained: retried in order at the next wake, never dropped, never merged
+            log.exception("background: writing the alert events of strategy %s failed; kept in order", sid)
+            _keep_recent(self.errors, (sid, type(exc).__name__))
+            self.gate_writes_failed += 1
+            return False
+        if self._gate_events.get(sid) is queue and queue and queue[0] is batch:
+            queue.popleft()
+            if not queue:
+                del self._gate_events[sid]
+        self._log_opportunities(batch.watched, opened)
+        later = {e.rule_id for b in self._gate_events.get(sid, ()) for e in b.events
+                 if isinstance(e, alert_gate.Opened)}
+        state = self._gate.get(sid)
+        # the gate's record carries its stored id, so a later dismiss matches by record (#639 item 2); a rule whose
+        # newer record is still queued gets that one's id when it is written
+        for rid, rec_id in (opened.items() if isinstance(opened, Mapping) else ()):
+            if state is not None and rid not in later:
+                state = alert_gate.with_record_id(state, rid, rec_id)
+        if state is not None:
+            self._gate[sid] = state
+        return True
 
     def _restored(self, sid: int, now: datetime.datetime,
                   readings: Mapping[str, gate_readings.Reading]) -> alert_gate.GateState:
@@ -1206,8 +1265,18 @@ class Worker:
                 _keep_recent(self.errors, (sid, type(exc).__name__))
 
     async def drain_writes(self) -> None:
-        """Write every queued state, oldest strategy first (the writer task; tests call it after a cycle)."""
-        while self._pending:
+        """The writer's pass (tests call it after a cycle): every queued gate event first, each strategy's in step
+        order; then every queued rule-memory state, oldest strategy first. A strategy whose event write raised is not
+        retried in this pass (its next events wait behind it: order kept); the next wake retries it."""
+        failed: set[int] = set()
+        while True:
+            ready = [sid for sid in self._gate_events if sid not in failed]
+            if ready:
+                if not await self._write_gate_batch(ready[0]):
+                    failed.add(ready[0])
+                continue
+            if not self._pending:
+                return
             await self._write_one(next(iter(self._pending)))
 
     async def _writer_loop(self) -> None:
@@ -1234,11 +1303,17 @@ class Worker:
                       why, len(self._pending))
             _keep_recent(self.errors, (0, "writer_restarted"))
         self._writer = asyncio.create_task(self._writer_loop(), name="background-writer")
-        if self._pending:
+        if self._pending or self._gate_events:  # a failed event write is retried each cycle until it lands
             self._write_wake.set()
 
     async def _drain_on_stop(self) -> None:
         """A normal stop writes what is queued; one failing write is logged and dropped, never blocks the stop."""
+        for sid in list(self._gate_events):
+            while sid in self._gate_events:
+                if not await self._write_gate_batch(sid):
+                    lost = self._gate_events.pop(sid)
+                    log.error("background: %s queued alert steps of strategy %s were not written at stop", len(lost),
+                              sid)
         while self._pending:
             sid = next(iter(self._pending))
             item = self._pending[sid]
@@ -1406,9 +1481,10 @@ async def _lapse_exited(db: Any, user_ref: str, sid: int) -> None:
             log.exception("background: lapsing the records of exited strategy %s failed; the others are listed", sid)
 
 
-async def owner_lister(provider: Any) -> list[Watched]:
+async def owner_lister(provider: Any, gate: Any = None) -> list[Watched]:
     """Every strategy of the V1 owner (ADR-051) that is tracked (open paper legs) and has a playbook; its type is read
-    against the provider's instrument list and spot (as the screen's check)."""
+    against the provider's instrument list and spot (as the screen's check). ``gate`` (the role's ``db_gate``) is held
+    for the list read, then once per strategy's reads, never for the whole list (#636 r6): a write waits one hold."""
     from ofo_app import strategy_store  # noqa: PLC0415 - database layer at run time only
     from ofo_app.adjustment_readers import TrackedExited, TrackedUnreadable, read_tracked  # noqa: PLC0415
     from ofo_app.db import get_sessionmaker  # noqa: PLC0415
@@ -1416,20 +1492,21 @@ async def owner_lister(provider: Any) -> list[Watched]:
     out: list[Watched] = []
     # one session at a time (#636 r4 connection budget): ``read_tracked`` opens its own session, so the list's session
     # is closed before it and the playbook lookup gets a fresh one after it (never two connections held at once)
-    async with get_sessionmaker()() as db:
+    async with held(gate, GATE_REBUILD), get_sessionmaker()() as db:
         strategies = await strategy_store.list_strategies(db, OWNER_REF)
     for s in strategies:
         try:
-            tracked = await read_tracked(s.id, None)
-            if tracked is None:
-                continue
-            spot = provider.underlying_quote(tracked.position.underlying)
-            stype = check.strategy_type(tracked.position, None if spot is None else spot.ltp,
-                                        provider.instrument_master())
-            async with get_sessionmaker()() as db:
-                resolved = await check.resolve(db, OWNER_REF, s.id, stype)
+            async with held(gate, GATE_REBUILD):  # one strategy's reads per hold
+                tracked = await read_tracked(s.id, None)
+                if tracked is None:
+                    continue
+                spot = provider.underlying_quote(tracked.position.underlying)
+                stype = check.strategy_type(tracked.position, None if spot is None else spot.ltp,
+                                            provider.instrument_master())
+                async with get_sessionmaker()() as db:
+                    resolved = await check.resolve(db, OWNER_REF, s.id, stype)
         except TrackedExited:  # every leg exited: its open records lapse (REQ-112 AC-2; one writer, ADR-237 (6))
-            async with get_sessionmaker()() as db:  # one session at a time (#636 r4 connection budget)
+            async with held(gate, GATE_REBUILD), get_sessionmaker()() as db:  # one session at a time (#636 r4)
                 await _lapse_exited(db, OWNER_REF, s.id)
             continue
         except TrackedUnreadable:
@@ -1479,11 +1556,11 @@ async def _serve() -> int:  # pragma: no cover - the process wiring; each part i
     from ofo_app.routes.adjustment import get_approach_margin  # noqa: PLC0415
     from ofo_app.routes.outcome import MarketContext  # noqa: PLC0415
     margin_ctx = MarketContext(provider, clock, defaults()[RISK_FREE_RATE], OWNER_REF)
-    gate = asyncio.Lock()  # the role's one database gate: rebuild, writer and settings poll share one connection
+    gate = DbGate()  # the role's one database gate: writer, settings poll and rebuild, served in that order
     cache = settings_cache.SettingsCache(lambda: get_engine().connect(), gate=gate)
     if not await cache.refresh():  # the first load; a failure leaves the worker refusing to check until a poll loads
         log.error("background: the first settings load failed; no check runs until a poll loads them")
-    worker = Worker(provider_for=lambda _owner: provider, lister=functools.partial(owner_lister, provider),
+    worker = Worker(provider_for=lambda _owner: provider, lister=functools.partial(owner_lister, provider, gate=gate),
                     clock=clock, settings=cache.at, preferences=preferences, want_client=bus, db_gate=gate,
                     side_tasks=(cache.poll_loop,), user_values=user_values,
                     margin_of=screen_margin_reader(get_approach_margin(margin_ctx, margin_source())))

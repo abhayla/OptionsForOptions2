@@ -50,6 +50,7 @@ from ofo.settings import SettingRefused
 from sqlalchemy import text
 
 from ofo_app import settings_store
+from ofo_app.db_gate import GATE_POLL, DbGate, held
 from ofo_app.settings_store import SettingsError, StoredSetting
 
 log = logging.getLogger("ofo_app.settings_cache")
@@ -131,11 +132,11 @@ def resolve(loaded: Loaded, at: datetime.datetime,
 class SettingsCache:
     """Every stored setting in memory, refreshed off the check path (module docstring)."""
 
-    def __init__(self, connect: Connect, *, gate: asyncio.Lock | None = None,
+    def __init__(self, connect: Connect, *, gate: DbGate | asyncio.Lock | None = None,
                  poll_seconds: float = POLL_SECONDS,
                  sleep: Callable[[float], Any] = asyncio.sleep,
                  monotonic: Callable[[], float] = time.monotonic) -> None:
-        self._connect, self.gate = connect, gate if gate is not None else asyncio.Lock()
+        self._connect, self.gate = connect, gate if gate is not None else DbGate()
         self.poll_seconds, self._sleep, self._monotonic = poll_seconds, sleep, monotonic
         self.gate_wait = 0.0  # the last refresh's wait for the shared gate, seconds (float-ok: a duration measure)
         self.gate_wait_max = 0.0  # the longest such wait this process
@@ -149,7 +150,7 @@ class SettingsCache:
         """One poll: True when the cache was (re)loaded. Never raises (a failure keeps the last good cache)."""
         try:
             asked = self._monotonic()
-            async with self.gate:
+            async with held(self.gate, GATE_POLL):  # served after the writer, before the rebuild (#636 r6)
                 self._waited(self._monotonic() - asked)
                 async with self._connect() as conn:
                     count = (await conn.execute(_COUNT)).scalar_one()
