@@ -48,6 +48,7 @@ from ofo.tracking.orderbook import net_positions
 from ofo_app import live_market, paper_book, scenario_mode, tracked_contracts
 from ofo_app.db import get_sessionmaker
 from ofo_app.live_push import hold_and_read
+from ofo_app.outcome_oi import oi_of
 from ofo_app.routes.adjustment import MarketInputs, Tracked
 from ofo_app.routes.broker import current_user_ref
 from ofo_app.routes.outcome import feed_windows_of, market_state, read_booked, server_now, spot_judging_now
@@ -182,15 +183,16 @@ def listed_options(provider: Any, underlying: str) -> list:
             and lc.contract.instrument_type in _OPTION_TYPES]
 
 
-def chain_rows(listed: Iterable[Any], expiry: datetime.date, quotes: Mapping[str, Any],
+def chain_rows(listed: Iterable[Any], expiry: datetime.date, quotes: Mapping[str, Any],  # noqa: PLR0913
                greeks_of: Callable[[str, Any], Greeks | None],
-               scn: Any) -> tuple[tuple[ChainRow, ...], dict[str, str], dict[str, Greeks]]:
+               scn: Any, closed: bool = False) -> tuple[tuple[ChainRow, ...], dict[str, str], dict[str, Greeks]]:
     """THE one builder of the adjustment chain rows of one expiry: a row for EVERY listed contract of it (quoted or
     not), so an approach (T-19, the Compare) sees every strike it may trade. The screen's ``read_market`` and the
     background's ``market_inputs`` both call it; only the Greeks source differs (``greeks_of(instrument id, quote or
     None)``: the chain model on the screen, the shared per-option figures in the background). Scenario mode adds each
     row's tradable / low-OI state. Returns (rows, trading symbol -> instrument id, trading symbol -> per-unit
-    Greeks)."""
+    Greeks). Each row's ``oi`` is the strike drawer's one OI rule (``outcome_oi.oi_of``; ``closed`` = the one
+    market-state answer): None = no usable OI, so the Compare's OI flag reads "OI not known" (fail closed)."""
     rows: list[ChainRow] = []
     ids: dict[str, str] = {}
     leg_greeks: dict[str, Greeks] = {}
@@ -211,6 +213,7 @@ def chain_rows(listed: Iterable[Any], expiry: datetime.date, quotes: Mapping[str
         rows.append(ChainRow(c.strike, c.instrument_type, expiry, symbol, None if q is None else q.ltp,
                              None if q is None else q.bid, None if q is None else q.ask,
                              None if g is None else g.delta, True, tradable, low_oi, blocked,
+                             oi=oi_of(q, closed),
                              health=None if q is None else q.health))  # ADR-241: the mid only on a live book
         ids[symbol] = iid
         if g is not None:
@@ -493,7 +496,7 @@ async def read_market(tracked: Tracked, ctx: Any, *, extra_ids: Iterable[str] = 
         g = model.greeks.get(iid)
         return None if g is None else Greeks(g.delta, g.gamma if g.gamma_exact is None else g.gamma_exact, g.theta,
                                              g.vega)
-    rows, ids, leg_greeks = chain_rows(listed, expiry, quotes, model_greeks, scn)
+    rows, ids, leg_greeks = chain_rows(listed, expiry, quotes, model_greeks, scn, closed)
     later_rows: tuple[ChainRow, ...] = ()
     reach: dict[datetime.date, ReachModel] = {}  # GC-IC1 round 5: which strikes a second pass holds, never a price
     if (rm := reach_model(quotes, spot_q, expiry, now, ctx, model.greeks)) is not None:
@@ -508,7 +511,7 @@ async def read_market(tracked: Tracked, ctx: Any, *, extra_ids: Iterable[str] = 
             g = later_model.greeks.get(iid)
             return None if g is None else Greeks(g.delta, g.gamma if g.gamma_exact is None else g.gamma_exact,
                                                  g.theta, g.vega)
-        later_rows, later_symbols, _ = chain_rows(listed, later, frozen.later, later_greeks, scn)
+        later_rows, later_symbols, _ = chain_rows(listed, later, frozen.later, later_greeks, scn, closed)
         ids = {**ids, **later_symbols}
     forward = fwd_model = None
     try:

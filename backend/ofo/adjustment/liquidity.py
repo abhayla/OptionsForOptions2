@@ -22,7 +22,9 @@ is refused as "cannot confirm", never passed.
 Known bypasses: (1) the caller must pass the playbook's guards; ``limits_from_guards({})`` sets nothing, so a route that
 does not pass them flags nothing (the approaches route does not read a playbook yet); (2) a user editing the saved JSON
 by hand to a readable but absurd value (out of scope); (3) limits GC-SET owns (admin settings) are not read here;
-(4) the OI flag uses the row's ``oi`` only: no live source sets it today, so a live strike reads "OI not known".
+(4) the OI flag uses the row's ``oi`` only; the live chain rows carry the feed's OI through the strike drawer's one rule
+(``ofo_app.outcome_oi.oi_of``), so a strike with no usable OI (no quote, market closed without a close) reads
+"OI not known".
 """
 from __future__ import annotations
 
