@@ -26,6 +26,19 @@ Nothing on main, no PR (owner rule). Previous handover: `session-handover-2026-1
   AC-4 (Q1 below), REQ-159 AC-5 (Q2 below). Partial by design: REQ-167 AC-5 (ADR-222 (11)). REQ-156 AC-1: spec now
   states the no-spot exception (2b208de4); its evidence is the round-4 FAIL until a verifier re-reads it.
 
+## OWNER ANSWERS 2026-11-04 (question tool)
+- Q1 roll basis: "Target delta" -> ADR-243. Then: target delta is the DEFAULT; each user picks the basis and each
+  strategy can override it ("Yes, and per strategy too") -> ADR-243 CONFIGURABLE section.
+- Q2 S-08 / S-09: "Add both as Guidance" -> ADR-244 (new iron condor system playbook version; not built yet).
+- Every adjustment number and rule has three layers, admin default -> user override -> strategy override ("Yes, 3
+  layers for all") -> ADR-245. Owner principle: act as an expert option trader building for other traders; every
+  answer on an adjustment behaviour sets a default, never a fixed rule.
+- Sequencing (process, no spec row): "New contract after live day" - the live day runs first on today's defaults;
+  draft goal contract GC-CFG1 (roll basis with entry distance + per-strategy override, every admin-only adjustment
+  number to three layers, Preferences / plan sheet show value in force and source, S-08/S-09 version, REQ-156 AC-1
+  no-spot page) for ONE owner approval; GC-IC1 closes with the live day. Estimate given: about 2 working days
+  (14-18 h; 12-20 h range).
+
 ## OWNER ITEMS
 - `docs/process/owner-questions-2026-11-04.md` Q1: roll basis - REQ-046 Q255 (entry distance from spot) vs the approved
   playbooks' target delta (what is built). Recommendation: target delta, mark Q255 superseded.
