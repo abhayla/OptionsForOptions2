@@ -406,6 +406,9 @@ decisions:
   ADR-244: S6.7         # S-08 / S-09 join the iron condor system playbook as Guidance (owner)
   ADR-245: S6.7         # every adjustment number is a three-layer setting: admin -> user -> strategy (owner)
   ADR-246: S6.7         # alert presets kept after the 4 Nov live day; intraday reviewed after two expiry days (owner)
+  ADR-247: S6.7         # default stop 50 % of max loss or 2x credit; % of margin and T-16 off by default (owner 5 Nov)
+  ADR-248: S6.7         # Suggested for you: eligible approaches only, ranked by cost / credit by default (owner 5 Nov)
+  ADR-249: S6.7         # Suggested for you: one or two suggestions from several preferences; combined adjustments later (owner 5 Nov)
 
 questions:
   Q210: 4a              # external: Zerodha's written answer; ADR-051 covers the owner's own account
