@@ -34,10 +34,10 @@ Nothing on main, no PR (owner rule). Previous handover: `session-handover-2026-1
   layers for all") -> ADR-245. Owner principle: act as an expert option trader building for other traders; every
   answer on an adjustment behaviour sets a default, never a fixed rule.
 - Sequencing (process, no spec row): "New contract after live day" - the live day runs first on today's defaults;
-  draft goal contract GC-CFG1 (roll basis with entry distance + per-strategy override, every admin-only adjustment
+  draft goal contract "Your adjustment settings" (was GC-CFG1) (roll basis with entry distance + per-strategy override, every admin-only adjustment
   number to three layers, Preferences / plan sheet show value in force and source, S-08/S-09 version, REQ-156 AC-1
   no-spot page) for ONE owner approval; GC-IC1 closes with the live day. APPROVED ~08:25 ("Approve as drafted"):
-  docs/process/goal-contract-GC-CFG1-2026-11-04.md - runs after the live day. Estimate given: about 2 working days
+  docs/process/goal-contract-your-adjustment-settings-2026-11-04.md - runs after the live day. Estimate given: about 2 working days
   (14-18 h; 12-20 h range).
 
 ## OWNER ITEMS

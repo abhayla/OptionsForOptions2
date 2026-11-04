@@ -1,4 +1,6 @@
-# Goal contract GC-CFG1 (APPROVED): every adjustment behaviour is a configurable default
+# Goal contract "Your adjustment settings" (APPROVED): every adjustment rule becomes a default you can change
+
+Former working name: GC-CFG1 (renamed by the owner 2026-11-04 for a plain name).
 
 Status: APPROVED by the owner 2026-11-04 ~08:25 IST (question tool, "Approve as drafted"); drafted 08:22. Runs AFTER the GC-IC1 live day (owner answer 2026-11-04 "New contract after live
 day"). Tree `D:\Abhay\Ventures\OptionsForOptions2-OptionsForOptions2-settings`, branch `feature/adjustments`. Nothing
@@ -22,7 +24,7 @@ entry-distance strike (REQ-046 example: entered 353 above, spot 23,300 -> 23,650
 - Owner principle: act as an expert option trader building for other traders.
 
 ## Settings in scope (measured from backend/ofo/settings/registry.json, feature/adjustments 1dae432a)
-| Setting | Today | After GC-CFG1 |
+| Setting | Today | After this contract |
 |---|---|---|
 | Roll basis (new) | fixed: target delta | admin default "Target delta" -> user -> strategy |
 | adjustments.* (15: short delta weekly/monthly, roll points, iron fly min days, reduce divisor, partial close %, untested decay %, shift strikes, near level %, gap-at-open until, compare range/steps/moves) | admin default -> user | + strategy override |
