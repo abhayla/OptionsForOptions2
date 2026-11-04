@@ -2,11 +2,11 @@
 
 The role opens at most one connection at a time (ADR-048 role limit 5 = API 2 + background 1 + feed 1;
 ``config.py`` DB_POOL_SIZE=1 for the worker), so every database step of the role holds this gate. Waiters are served
-by rank, then by arrival: the writer's alert-event and rule-memory writes first (``GATE_WRITER``: ADR-237 (3) promises a
-confirmed crossing's record within 10 s of the close), then the settings poll (``GATE_POLL``: REQ-167 AC-4 lag), then the
-rebuild's per-strategy reads (``GATE_REBUILD``, also the rank of a plain ``async with gate``). A holder is never
-interrupted, so a waiter's longest wait is one hold of whoever has the gate; the rebuild holds it for one strategy's
-reads at a time (``background.owner_lister``, ``Worker._load_gates``), never for the whole list.
+by rank, then by arrival: the writer's alert-event and rule-memory writes first (``GATE_WRITER``: ADR-237 (3)
+promises a confirmed crossing's record within 10 s of the close), then the settings poll (``GATE_POLL``: REQ-167 AC-4
+lag), then the rebuild's per-strategy reads (``GATE_REBUILD``, also the rank of a plain ``async with gate``). A
+holder is never interrupted, so a waiter's longest wait is one hold of whoever has the gate; the rebuild holds it for
+one strategy's reads at a time (``background.owner_lister``, ``Worker._load_gates``), never for the whole list.
 
 Answer states: free -> taken at once; held -> queued by (rank, arrival); a queued waiter cancelled -> removed, never
 keeps the gate; a waiter handed the gate and cancelled before it ran -> the gate passes to the next waiter.

@@ -63,13 +63,14 @@ One cycle (``Worker.cycle``), each step with its answer state:
    is put on the gate state when the write returns. Answer states: written -> ids attached; the write raises ->
    counted (``gate_writes_failed``), kept at the head of its queue in order and retried at the writer's next wake
    (every cycle while anything is queued); the strategy left the list while queued -> dropped with a log line
-   (``gate_events_dropped``); the gate held long by the rebuild -> the loop is unaffected (it never awaits the gate). The gate state is restored on the
-   first check from the store (``GateStore.load``: last record per rule, today's count, today's held crossings, the
-   pin), read on the rebuild task, never per check; a dismissed record read there is fed to ``alert_gate.dismiss``
-   (ADR-236); a changed playbook body (plan change) restores the state again against the new ladder. A strategy
-   whose legs all exited has its open records lapsed by the lister (strategy closed). Answer states: no gate load
-   (the pin or the store read failed, none kept), no user values, a style that cannot be told, or a preset that
-   cannot be built -> that strategy is paused (``CHECK_FAILED``, "Monitoring paused"), never checked on a default.
+   (``gate_events_dropped``); the gate held long by the rebuild -> the loop is unaffected (it never awaits the gate).
+   The gate state is restored on the first check from the store (``GateStore.load``: last record per rule, today's
+   count, today's held crossings, the pin), read on the rebuild task, never per check; a dismissed record read there
+   is fed to ``alert_gate.dismiss`` (ADR-236); a changed playbook body (plan change) restores the state again against
+   the new ladder. A strategy whose legs all exited has its open records lapsed by the lister (strategy closed).
+   Answer states: no gate load (the pin or the store read failed, none kept), no user values, a style that cannot be
+   told, or a preset that cannot be built -> that strategy is paused (``CHECK_FAILED``, "Monitoring paused"), never
+   checked on a default.
    Risk exits (paper triggers, stop-loss) never pass through here (AC-5).
 6. The user's pause (A-38, GC-IC1 step 4a, ``ofo.adjustment.monitor_pause``): the pause end is read with the gate
    load on the rebuild task (``GateLoad.paused_until``, never a database call per check, B4 (a)); each check compares
