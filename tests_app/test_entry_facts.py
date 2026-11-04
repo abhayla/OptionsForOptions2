@@ -18,6 +18,7 @@ from types import SimpleNamespace
 
 import pytest
 from ofo.adjustment.approaches import (
+    NO_STRATEGY_BASIS,
     ROLL_ENTRY_DISTANCE,
     ROLL_TARGET_DELTA,
     ChainRow,
@@ -247,7 +248,7 @@ async def test_core_strategy_with_no_stored_facts_is_refused_by_name_under_entry
     assert built.trades == () and built.refusal_message.code == "USER_INPUT_191"  # type: ignore[union-attr]
     assert "spot at entry is not stored" in built.refusal
     # Target delta users are unaffected by the missing facts
-    today = build_approach(_condor(), _chain(), SPOT, "A-05", _cfg(None))
+    today = build_approach(_condor(), _chain(), SPOT, "A-05", _cfg(NO_STRATEGY_BASIS))  # today's rule, stated
     default = build_approach(_condor(), _chain(), SPOT, "A-05",
                              _cfg(check.roll_basis_of(D(1), _values(None), None, None)))
     assert (default.trades, default.after) == (today.trades, today.after)
