@@ -41,7 +41,6 @@ from ofo.errors.explanations import (
     approach_name_id,
     render_explanation,
 )
-from ofo.marketdata.spot_source import resolve_spot
 from ofo.strategy.stored_form import shown_name
 from pydantic import BaseModel, ConfigDict
 
@@ -67,10 +66,9 @@ from ofo_app.routes.adjustment_preferences import UserPreferences
 from ofo_app.routes.broker import current_user_ref
 from ofo_app.routes.outcome import (
     MarketContext,
-    feed_windows_of,
     get_market_context,
     load_charge_rates,
-    spot_judging_now,
+    judge_spot,
 )
 from ofo_app.strategy_refused import StrategyRefused
 
@@ -445,9 +443,7 @@ async def _read_one(row: Any, seams: _Seams, listed: Any, read: _Read) -> None:
         return
     market = await seams.market_reader(read.tracked, seams.ctx)
     read.market = market
-    rest_spot = await seams.rest_reader(read.tracked.position.underlying)
-    read.spot = resolve_spot(market.feed, rest_spot, market.last_close, now=spot_judging_now(seams.ctx),
-                             windows=feed_windows_of(seams.ctx))
+    read.spot = judge_spot(market, await seams.rest_reader(read.tracked.position.underlying), seams.ctx)
     read.margin = await current_margin(seams.margin_of, read.tracked, market)
     read.done = True
 

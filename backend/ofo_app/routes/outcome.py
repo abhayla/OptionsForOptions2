@@ -18,7 +18,7 @@ import logging
 import time
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Annotated, Awaitable, Callable, Iterable, Literal, Mapping, Union
+from typing import Annotated, Any, Awaitable, Callable, Iterable, Literal, Mapping, Union
 
 from fastapi import APIRouter, Depends
 from ofo.charges import ChargeRates
@@ -32,6 +32,7 @@ from ofo.marketdata.forward import ForwardQuality
 from ofo.marketdata.feed_health import FeedWindows, awaiting_first_price_for, market_closed_for
 from ofo.marketdata.provider import MarketDataProvider
 from ofo.marketdata.quote import NormalizedQuote
+from ofo.marketdata.spot_source import resolve_spot
 from ofo.marketdata.shared_compute import FeedScope, SharedCompute
 from ofo.outcome import (
     OutcomeState,
@@ -130,6 +131,15 @@ def spot_judging_now(ctx: MarketContext | None) -> datetime.datetime:
     tunnel then refused a quote stamped 2.5 s after it began as ``tick_in_future``. The ONE helper every caller of
     ``resolve_spot`` in the routes uses (a repo-scan test holds it). ``ctx`` None: no live context, the server clock."""
     return server_now() if ctx is None else ctx.clock()
+
+
+def judge_spot(market: Any, rest: Any, ctx: MarketContext | None) -> Any:
+    """The spot a route answers (GC-IC1 step 9): feed, else the REST quote, else the last close, ALL judged at ONE
+    instant read after the slow reads - the live feed reading is re-stamped at that same instant (``market.feed_at``),
+    so a 5 s request neither refuses a fresh quote as future nor ages a live feed past its stale window. The one
+    caller of ``resolve_spot`` in the routes (a repo-scan test holds it)."""
+    judged = spot_judging_now(ctx)
+    return resolve_spot(market.feed_at(judged), rest, market.last_close, now=judged, windows=feed_windows_of(ctx))
 
 
 def get_answer_clock() -> AnswerClock:

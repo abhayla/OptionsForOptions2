@@ -59,7 +59,7 @@ from ofo.engine.pop import Why
 from ofo.engine.strategy import Strategy
 from ofo.engine.whole_trade import WholeTradeAfter, WholeTradeFigures, whole_trade_after
 from ofo.errors.explanations import EXPLANATIONS, approach_about_id, approach_name_id, render_explanation
-from ofo.marketdata.spot_source import SourceReading, SpotAnswer, resolve_spot
+from ofo.marketdata.spot_source import SourceReading, SpotAnswer, feed_reading
 from ofo.money import PAISE
 from ofo.outcome.service import MARGIN_CHECKED, Margin
 from ofo.timeutil import IST
@@ -73,11 +73,10 @@ from ofo_app.outcome_margin import OutcomeMargin, PlannedOrderIn, margin_answer
 from ofo_app.routes.adjustment_preferences import UserPreferences
 from ofo_app.routes.outcome import (
     MarketContext,
-    feed_windows_of,
     get_margin_source,
     get_market_context,
     load_charge_rates,
-    spot_judging_now,
+    judge_spot,
 )
 from ofo_app.strategy_refused import StrategyRefused
 
@@ -133,6 +132,18 @@ class MarketInputs:
     #: read: S-02 / S-12 answer not checked with a named reason (never a typed stand-in)
     s02_delta_per_lot: Decimal | None = None
     s12_percent: Decimal | None = None
+    #: the index quote the feed reading was built from and whether the feed was live (``feed_is_live``): carried so the
+    #: reading is re-derived at the instant the spot is judged (``feed_at``); None = ``feed`` was given as it stands
+    feed_quote: Any = None
+    feed_live: bool = False
+
+    def feed_at(self, judged: datetime.datetime) -> SourceReading | None:
+        """The feed reading as of ``judged``: a LIVE quote is stamped at the judging instant (``feed_reading``'s one
+        rule), not at the request start, so a slow request does not age a healthy feed past its stale window. A stale
+        or disconnected feed keeps its own last change (judged by its age). No raw quote carried: ``feed`` as it is."""
+        if self.feed_quote is None:
+            return self.feed
+        return feed_reading(self.feed_quote, judged, feed_live=self.feed_live)
 
 
 TrackedReader = Callable[[int, ChargeRates | None], Awaitable[Tracked | None]]
@@ -463,9 +474,7 @@ async def adjustment_approaches(  # noqa: PLR0913, PLR0915 - FastAPI dependencie
     rates = rates if isinstance(rates, ChargeRates) else None
     market = await market_reader(tracked, ctx)
     tracked = as_of_market(tracked, market)
-    rest_spot = await rest_reader(tracked.position.underlying)
-    spot = resolve_spot(market.feed, rest_spot, market.last_close, now=spot_judging_now(ctx),
-                        windows=feed_windows_of(ctx))
+    spot = judge_spot(market, await rest_reader(tracked.position.underlying), ctx)
     pop_on = held_switches.held_on(held_switches.PROBABILITY_OF_PROFIT, held_environ)
     asked = list(dict.fromkeys(body.approaches)) if body.approaches is not None else list(APPROACH_IDS)
     reply: dict[str, Any] = {"strategy_id": strategy_id, "view": body.view, "spot": _spot_block(spot),

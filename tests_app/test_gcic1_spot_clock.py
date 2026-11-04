@@ -198,3 +198,61 @@ async def test_window_spot_rest_branch_judges_at_the_later_clock(monkeypatch):
     monkeypatch.setattr(readers, "read_last_close", lambda *_a: SourceReading(SourceState.ABSENT))
     ctx = SimpleNamespace(clock=clock, provider=None, feed_windows=outcome.feed_windows_of(None))
     assert await readers._window_spot(ctx, "NIFTY", None, T0) == SPOT
+
+
+# --- fix round 1: a LIVE feed quote is re-stamped at the judging instant, not at the request start ---------------
+
+def _live_market(t0, *, stamp_after=0.0, feed_live=True):
+    """A market whose feed reading came from a raw quote (as ``read_market`` builds it). The carried-quote fields are
+    set only where the field exists, so this test body also runs against the commit before the fix."""
+    from ofo.marketdata.quote import DataHealth  # noqa: PLC0415
+    from ofo.marketdata.spot_source import feed_reading  # noqa: PLC0415
+    quote = SimpleNamespace(ltp=SPOT, timestamp=t0 + S(seconds=stamp_after), health=DataHealth.AVAILABLE)
+    market = route.MarketInputs((), {}, None, None, None, feed_reading(quote, t0, feed_live=feed_live),
+                                SourceReading(SourceState.ABSENT), t0)
+    if "feed_quote" in {f.name for f in dataclasses.fields(market)}:
+        market = dataclasses.replace(market, feed_quote=quote, feed_live=feed_live)
+    return market
+
+
+def _judge(market, clock, rest):
+    ctx = SimpleNamespace(clock=clock, feed_windows=outcome.feed_windows_of(None))
+    clock.slow_reads()
+    if hasattr(outcome, "judge_spot"):
+        return outcome.judge_spot(market, rest, ctx)
+    from ofo.marketdata.spot_source import resolve_spot  # noqa: PLC0415 - the commit before the fix
+    return resolve_spot(market.feed, rest, market.last_close, now=outcome.spot_judging_now(ctx),
+                        windows=ctx.feed_windows)
+
+
+def test_a_live_feed_stays_the_spot_when_the_request_took_3_5_s():
+    spot = _judge(_live_market(T0), Clock(T0, took=3.5), SourceReading(SourceState.ABSENT))
+    assert spot.source == "feed" and spot.value == SPOT
+
+
+def test_a_live_feed_stays_the_spot_on_a_3_5_s_request_through_the_compare_route(monkeypatch):
+    sc = load(IC_IDS[0])
+    t0 = datetime.datetime.fromisoformat(sc["clock"]["ist"])
+    clock = Clock(t0, took=3.5)
+    monkeypatch.setattr(outcome, "server_now", clock)
+    market = dataclasses.replace(_live_market(t0), last_close=SourceReading(SourceState.ABSENT))
+    c = client_for(sc)
+
+    async def market_reader(_t, _ctx):
+        return market
+    c.app.dependency_overrides[route.get_market_reader] = lambda: market_reader
+    c.app.dependency_overrides[route.get_rest_spot_reader] = lambda: _rest_reader(
+        clock, SourceReading(SourceState.FAILED))
+    spot = post(c).json()["spot"]
+    assert spot["source"] == "feed" and spot["value"] is not None
+
+
+def test_a_feed_that_is_not_live_is_still_judged_by_its_own_last_change():
+    spot = _judge(_live_market(T0, feed_live=False), Clock(T0, took=3.5), SourceReading(SourceState.ABSENT))
+    assert spot.value is None  # last change 3.5 s old at the judging instant, window 3 s
+    assert any(r[0] == "feed" for r in spot.reasons)
+
+
+def test_a_live_feed_quote_stamped_5_s_after_the_judging_instant_is_still_refused():
+    spot = _judge(_live_market(T0, stamp_after=8.6), Clock(T0, took=3.5), SourceReading(SourceState.ABSENT))
+    assert spot.value is None

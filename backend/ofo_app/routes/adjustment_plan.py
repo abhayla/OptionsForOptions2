@@ -33,7 +33,6 @@ from ofo.adjustment.playbook_types import SHOWN_NAMES
 from ofo.charges import ChargeRates
 from ofo.errors import render
 from ofo.errors.explanations import LABEL_TABLES, render_explanation
-from ofo.marketdata.spot_source import resolve_spot
 from pydantic import BaseModel, ConfigDict
 
 from ofo_app import adjustment_check as check
@@ -52,10 +51,9 @@ from ofo_app.routes.adjustment import (
 from ofo_app.routes.broker import current_user_ref
 from ofo_app.routes.outcome import (
     MarketContext,
-    feed_windows_of,
     get_market_context,
     load_charge_rates,
-    spot_judging_now,
+    judge_spot,
 )
 from ofo_app.strategy_refused import StrategyRefused
 
@@ -249,9 +247,7 @@ async def _type_of(db: Any, user_ref: str, strategy_id: int, tracked: Any, marke
     if plan is not None:
         return plan.strategy_type, plan
     market = await market_reader(tracked, ctx)
-    rest_spot = await rest_reader(tracked.position.underlying)
-    spot = resolve_spot(market.feed, rest_spot, market.last_close, now=spot_judging_now(ctx),
-                        windows=feed_windows_of(ctx))
+    spot = judge_spot(market, await rest_reader(tracked.position.underlying), ctx)
     listed = None if ctx is None else ctx.provider.instrument_master()
     return check.strategy_type(tracked.position, spot.value if spot.available else None, listed), None
 
