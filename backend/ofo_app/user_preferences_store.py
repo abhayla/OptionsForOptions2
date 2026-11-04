@@ -151,6 +151,8 @@ class UserValues(dict):
     def __init__(self, found: Mapping[str, Answer]) -> None:
         super().__init__({k: a.value for k, a in found.items()})
         self.own: dict[str, Decimal] = {k: a.value for k, a in found.items() if a.source == "yours"}
+        #: the admin default of every key (ADR-243: the admin layer of ``adjustments.roll_basis``), same read
+        self.admin: dict[str, Decimal] = {k: a.admin_default for k, a in found.items()}
 
 
 async def values_for(session: Session, user_ref: str, at: datetime.datetime | None = None) -> UserValues:

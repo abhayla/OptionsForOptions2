@@ -230,7 +230,7 @@ class PaperMonitor:
             reason = self._reason(t, texts)
             await paper_store.place(session, a.user_ref, t.strategy_id, [
                 paper_store.NewOrder(c, "SELL" if open_net[c] > 0 else "BUY", abs(open_net[c]), prices[c], "stop",
-                                     now, str(reason), t.id) for c in targets])
+                                     now, str(reason), t.id) for c in targets], entry=None)  # a stop: never first
             body = alert_body(reason, [(texts[c], prices[c]) for c in targets], names_contract=t.kind == "leg_stop")
             name = sf.shown_name(a.name) if a.name else render_explanation("cell_dash")
             await triggers.add_alert(session, t.strategy_id, t.id, str(render_explanation("paper_alert_title",

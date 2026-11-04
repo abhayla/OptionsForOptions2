@@ -48,7 +48,7 @@ from typing import Any, Final
 
 from ofo.adjustment import level_watch
 from ofo.adjustment import playbook_eval as pe
-from ofo.adjustment.approaches import BASIS_CODES, Config, ExitInputs, Position, RollBasis
+from ofo.adjustment.approaches import BASIS_CODES, Config, EntryFacts, ExitInputs, Position, RollBasis
 from ofo.adjustment.compare import Cheapest, Column, MarginRead, cheapest_approach
 from ofo.adjustment.offered import offered_now
 from ofo.adjustment.strategy_type import strike_gap_of, type_of
@@ -390,30 +390,41 @@ def carry_gap_of(admin: Decimal | None, user_values: Mapping[str, Decimal] | Non
     return GapInForce(got.value, got.source, None)
 
 
-#: the entry spot read failed (logs only): under "Entry distance" the roll is refused as for an unknown entry spot
-ENTRY_SPOT_UNREADABLE: Final = "entry_spot_unreadable"
+def admin_of(user_values: Mapping[str, Decimal] | None, key: str) -> Decimal | None:
+    """The ADMIN layer of ``key`` from the request's one values read (``user_preferences_store.UserValues.admin``);
+    None when the caller has no user read path or the record carries no admin values (the resolver then refuses with
+    ``layers.DEFAULT_UNREADABLE`` unless a plan or user value decides first)."""
+    admin = getattr(user_values, "admin", None)
+    if not isinstance(admin, Mapping):
+        return None
+    found = admin.get(key)
+    return found if isinstance(found, Decimal) else None
 
 
 def roll_basis_of(admin: Decimal | None, user_values: Mapping[str, Decimal] | None, strategy: layers.Layer,
-                  entry_spot: Decimal | layers.Unreadable | None) -> RollBasis:
+                  entry: EntryFacts | layers.Unreadable | None) -> RollBasis:
     """``adjustments.roll_basis`` in force for one strategy (ADR-243) through the ONE resolver (``layers``):
-    the plan's, else the user's own, else the admin default; with the strategy's stored entry spot. Answer states:
+    the plan's, else the user's own, else the admin default; with the strategy's entry facts stored at its first fill
+    (``entry_facts_store``). Answer states:
     - basis read: 1 -> target delta, 2 -> entry distance (with its source);
     - a layer that exists but cannot be read, or a value with no basis code -> ``reason`` set: every roll refused;
-    - entry spot present -> carried; absent (None: not stored) or unreadable -> None: under "Entry distance" every roll
-      is refused naming the leg (never the target delta silently); under "Target delta" it is not used."""
+    - entry facts present -> the entry spot and each side's STORED distance carried; absent (None: not stored, e.g. a
+      strategy first filled before migration 0039) or unreadable -> no distance: under "Entry distance" every roll is
+      refused naming the leg (never the target delta silently); under "Target delta" they are not used."""
     admin_layer: layers.Layer = layers.Unreadable("not read") if admin is None else {layers.ROLL_BASIS: admin}
-    spot = entry_spot if isinstance(entry_spot, Decimal) else None
-    if isinstance(entry_spot, layers.Unreadable):
-        log.warning("roll basis: entry spot unreadable: %s", entry_spot.detail)
+    facts = entry if isinstance(entry, EntryFacts) else None
+    if isinstance(entry, layers.Unreadable):
+        log.warning("roll basis: entry facts unreadable: %s", entry.detail)
+    spot, call, put = (None, None, None) if facts is None else (facts.entry_spot, facts.call_distance,
+                                                                facts.put_distance)
     try:
         got = layers.resolve(layers.ROLL_BASIS, admin_layer, user_layer(user_values), strategy)
     except layers.LayerUnreadable as exc:
-        return RollBasis(None, None, spot, exc.code)
+        return RollBasis(None, None, spot, exc.code, call, put)
     code = BASIS_CODES.get(got.value)
     if code is None:
-        return RollBasis(None, got.source, spot, layers.DEFAULT_UNREADABLE)
-    return RollBasis(code, got.source, spot)
+        return RollBasis(None, got.source, spot, layers.DEFAULT_UNREADABLE, call, put)
+    return RollBasis(code, got.source, spot, None, call, put)
 
 
 def scenario_entry(scn: Any, state: pe.StrategyState, position: Position) -> pe.StrategyState | None:

@@ -470,8 +470,10 @@ class AdjustApproachOut(ApiModel):
     name: CatalogueText | None = None
     kind: Identifier | None = None
     side: Identifier | None = None
-    step_basis: Identifier | None = None
-    step_value: Money | None = None
+    step_basis: Identifier | None = None  # "delta" / "points" / "entry_distance" (ADR-243): the basis that built it
+    step_value: Money | None = None  # the target delta, the points moved, or the stored entry distance
+    #: ADR-243: where the roll basis came from (``ofo.settings.layers`` codes strategy / user / default); None: no roll
+    basis_source: Identifier | None = None
     refusal: CatalogueText | None = None
     warnings: list[CatalogueText] = []
     trades: list[AdjustTradeOut] | None = None

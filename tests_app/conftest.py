@@ -104,13 +104,22 @@ def _preferences_defaults_by_default(request, monkeypatch):
 
     async def defaults(session, user_ref, at=None):
         values = settings.defaults()
-        return {k: values[k] for k in user_preferences_store.preference_keys()}
+        # the store's own record shape (no own value: every key "default"), so the three-layer resolver reads it
+        return user_preferences_store.UserValues(
+            {k: user_preferences_store.Answer(k, values[k], "default", values[k], None)
+             for k in user_preferences_store.preference_keys()})
 
     def sessionmaker():
         return _NoSession
 
+    async def no_plan_no_entry_facts(strategy_id):
+        return None, None  # ADR-243: no plan override, no stored entry facts (Target delta is unaffected)
+
+    from ofo_app import adjustment_readers  # noqa: PLC0415
+
     monkeypatch.setattr(db, "get_sessionmaker", sessionmaker)
     monkeypatch.setattr(user_preferences_store, "values_for", defaults)
+    monkeypatch.setattr(adjustment_readers, "read_roll_inputs", no_plan_no_entry_facts)
 
 
 # W-058: create_app refuses to build without a broker configuration. Tests get placeholders and a key generated for
