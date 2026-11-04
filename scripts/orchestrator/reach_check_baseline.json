@@ -434,6 +434,11 @@
    "key": "UNRESOLVED REQ-160 W-207 AC-4",
    "reason": "unresolved: evidence names no python test (vitest, code read or attack script; GC-IC1 step 10) - #532",
    "issue": "#532"
+  },
+  {
+   "key": "UNRESOLVED REQ-167 W-211 AC-7",
+   "reason": "unresolved: the named literal guard is a repo scan that imports no product module (GC-IC1 step 10) - #532",
+   "issue": "#532"
   }
  ]
 }
