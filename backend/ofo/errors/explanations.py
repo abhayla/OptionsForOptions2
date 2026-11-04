@@ -1809,17 +1809,17 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("adjust_cmp_no_position_left", "values_seen", "No position left after exit"),
     ExplanationTemplate("adjust_cmp_low_oi", "values_seen",
                         "{value}% (Zerodha may refuse fresh orders in {legs} if its open interest is too low; this app could not check that)",
-                        {"value": Recorded, "legs": Recorded}),
+                        {"value": Recorded, "legs": LegRefs}),
     # GC-MU A1 (ADR-230 (1)): flags beside a strike that breaks a saved liquidity limit, or whose open interest is unknown
     ExplanationTemplate("adjust_flag_below_liquidity", "values_seen", "Below your liquidity limit"),
     ExplanationTemplate("adjust_flag_oi_unknown", "values_seen", "OI not known"),
     # #624 item 1: the playbook's limits could not be read, so none was applied (said in the reply, never a silent skip)
     ExplanationTemplate("adjust_limits_not_applied", "values_seen", "limits not applied: playbook unreadable"),
     ExplanationTemplate("adjust_cmp_flagged", "values_seen", "{value}% ({flag}: {legs})",
-                        {"value": Recorded, "flag": Explained, "legs": Recorded}),
+                        {"value": Recorded, "flag": Explained, "legs": LegRefs}),
     ExplanationTemplate("adjust_cmp_flagged_both", "values_seen", "{value}% ({flag}: {legs}; {flag2}: {legs2})",
-                        {"value": Recorded, "flag": Explained, "legs": Recorded, "flag2": Explained,
-                         "legs2": Recorded}),
+                        {"value": Recorded, "flag": Explained, "legs": LegRefs, "flag2": Explained,
+                         "legs2": LegRefs}),
     # GC-MU A2 (ADR-230 (3)): the reasons beside the two new cost rows, and the cost breakdown's line names
     ExplanationTemplate("adjust_cmp_no_premium_left", "values_seen", "Not available: no premium is left to earn."),
     # GC-IC1 step 10 round 4 (REQ-159 AC-6): the playbook's cost warning level, applied to the cost % row (numbers only)

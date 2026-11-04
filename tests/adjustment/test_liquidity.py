@@ -14,7 +14,7 @@ from pathlib import Path
 import pytest
 from ofo.adjustment import liquidity as lq
 from ofo.adjustment.approaches import build_approach
-from ofo.adjustment.compare import _symbols_token, compare
+from ofo.adjustment.compare import compare
 from ofo.errors.explanations import PLAYBOOK_GUARD_LABEL_TEXT
 from test_approach_compare import build_columns
 from test_approach_compare import row as compare_row
@@ -159,7 +159,7 @@ def test_compare_cell_flags_a_strike_below_the_limit_and_one_with_unknown_oi():
     # every row of the test's chain carries no OI: with the OI limit set, each new leg reads "OI not known"
     unknown = compare_row(compare(cols, replace(ctx, limits=BOTH)), "liquidity").values["A-11"]
     assert unknown.value == plain.value and unknown.rank == plain.rank
-    assert unknown.text == f"{plain.value}% (OI not known: {_symbols_token(new)})"
+    assert unknown.text == f"{plain.value}% (OI not known: {', '.join(new)})"
     # first new leg thin, the others deep: the thin one is flagged, nothing else is
     chain = [replace(r, oi=500 if r.tradingsymbol == new[0] else 50000) for r in ctx.chain]
     flagged = compare_row(compare(cols, replace(ctx, chain=chain, limits=BOTH)), "liquidity").values["A-11"]
@@ -195,14 +195,6 @@ def test_class_every_playbook_guard_key_has_a_reader_or_a_reasoned_known_unread_
     assert missing == [], f"guard keys saved in a playbook with no reader: {missing}"
     assert all(reason.strip() for reason in lq.KNOWN_UNREAD.values())
     assert not set(lq.GUARD_READERS) & set(lq.KNOWN_UNREAD)
-
-
-def test_symbols_token_fits_the_slot_limit_and_counts_the_rest():
-    names = [f"NIFTY26N0923{n}00CE" for n in range(10, 18)]
-    token = _symbols_token(names)
-    assert len(token) <= 64 and " " not in token
-    assert token.startswith(names[0]) and token.endswith("more")
-    assert _symbols_token(names[:2]) == ",".join(names[:2])
 
 
 def test_class_the_named_reader_file_really_mentions_the_key():

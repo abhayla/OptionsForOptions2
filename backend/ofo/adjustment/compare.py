@@ -171,20 +171,6 @@ class Comparison:
     curves: Mapping[str, tuple[tuple[Decimal, Decimal], ...]]  # "before" / approach id -> (level, P&L after charges)
 
 
-def _symbols_token(symbols: Sequence[str], limit: int = 64) -> str:
-    """Trading symbols as one slot token (a Recorded slot takes at most 64 characters, no spaces): as many as fit,
-    then ``+Nmore`` for the rest, so a long list never fails the render."""
-    shown: list[str] = []
-    for i, s in enumerate(symbols):
-        rest = len(symbols) - i - 1
-        tail = f",+{rest}more" if rest else ""
-        if len(",".join([*shown, s])) + len(tail) > limit:
-            break
-        shown.append(s)
-    left = len(symbols) - len(shown)
-    return ",".join(shown) + (f",+{left}more" if left else "")
-
-
 # ---- cells -------------------------------------------------------------------------------------------------------
 
 def _dash(reason: ExplanationText | None) -> Cell:
@@ -490,7 +476,7 @@ class _Rows:
             flagged = self._flagged(new, pct)
             if flagged is not None:
                 return Cell(flagged, pct, None, pct)
-        text = render_explanation("adjust_cmp_low_oi", value=pct, legs=",".join(unknown_oi)) if unknown_oi else \
+        text = render_explanation("adjust_cmp_low_oi", value=pct, legs=tuple(unknown_oi)) if unknown_oi else \
             render_explanation("adjust_cmp_percent", value=pct)
         return Cell(text, pct, None, pct)
 
@@ -503,7 +489,7 @@ class _Rows:
                                               getattr(row, "ask", None))
             for flag in state.flags:
                 by_flag[flag].append(x.tradingsymbol)
-        hit = [(f, _symbols_token(legs)) for f, legs in by_flag.items() if legs]
+        hit = [(f, tuple(legs)) for f, legs in by_flag.items() if legs]
         if not hit:
             return None
         first = render_explanation(hit[0][0])
