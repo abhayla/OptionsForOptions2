@@ -16,6 +16,16 @@ from test_approach_compare import build_columns
 from test_approach_compare import row as compare_row
 
 
+def _new_legs():
+    _, cols, ctx = build_columns("ADJ-02")
+    a11 = next(c for c in cols if c.built.id == "A-11")
+    old = {x.tradingsymbol for x in ctx.position.legs}
+    return tuple(x.tradingsymbol for x in a11.built.after if x.tradingsymbol not in old)
+
+
+NEW = _new_legs()
+
+
 def _cell(chain_edit, **ctx_edit):
     _, cols, ctx = build_columns("ADJ-02")
     a11 = next(c for c in cols if c.built.id == "A-11")
@@ -36,12 +46,13 @@ def test_core_several_new_legs_with_unstated_oi_render_instead_of_raising():
 
 
 def test_one_new_leg_text_is_the_same_as_before():
-    assert render_explanation("adjust_cmp_low_oi", value="1.00", legs=("NIFTY26DEC23300PE",)).endswith(
-        "in NIFTY26DEC23300PE if its open interest is too low; this app could not check that)")
+    assert render_explanation("adjust_cmp_low_oi", value="1.00", legs=(NEW[0],)).endswith(
+        f"in {NEW[0]} if its open interest is too low; this app could not check that)")
 
 
 def test_three_legs_render_in_flagged_templates_too():
-    legs = ("NIFTY26DEC23300PE", "NIFTY26DEC23800PE", "NIFTY26DEC24000CE")
+    legs = tuple(NEW[:3])
+    assert len(legs) == 3
     text = render_explanation("adjust_cmp_flagged", value="1", flag=render_explanation("adjust_flag_oi_unknown"), legs=legs)
     assert text.endswith("OI not known: " + ", ".join(legs) + ")")
 
