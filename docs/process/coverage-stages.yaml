@@ -586,6 +586,7 @@ issues:
   "#652": S6.7  # Open suggestion records never lapse when their strategy leaves the worker's list (#26 #27 #32)
   "#653": S6.7  # A tightened limit can open a suggestion with no candle-close confirmation when the rule was already true (record 142)
   "#654": S6.7  # Joined lists in one-token text slots crash the Compare (compare.py:397 breakeven levels)
+  "#655": S6.7  # Flaky frontend test fails the 45-57 min gate: option-chain 'late push for the old expiry is ignored'
 
 # Work items whose status is not done.
 work_items:
