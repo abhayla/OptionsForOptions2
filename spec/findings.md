@@ -1273,3 +1273,18 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   "an improvised Black 76 model, in which Theta, Vega, and Gamma for Call and Put Options are the same" (bundle-findings
   2.5) and its chain shows one IV column per strike. Paid exchange-registered vendors were not checked. Bears on
   ADR-220 (5) (no vendor IV planned), RD-080, F-98. Status: **read from sources; confirms ADR-220 (5)**.
+
+## F-101 - Live alert discipline cut suggestion noise by three quarters; a 1-day SENSEX condor past its breakeven still flaps
+- Measured live 2026-11-04 09:30-11:50 IST on ofo_dev (read-only queries, D:\Abhay\scratch\gclive3\a2_count.sh; raw
+  a2-final-1104.txt): 27 suggestion records (21 without strategy 78, which was re-armed on purpose for timing tests),
+  8 lapsed on their own; the same window on 2026-11-02 (before REQ-170): 103 records, 75 lapsed. Records -74 %
+  (-80 % without 78), self-lapses -89 %. Worst case 2026-11-02: one strategy 30 records in 31 min; 2026-11-04: strategy
+  84 (SENSEX 5 Nov iron condor, 1 day left, intraday style, spot about 270 points past its upper breakeven) 5 records
+  in hour 10 with 4 lapsed, then 2 crossings held by the intraday daily limit of 6. Held crossings in the window:
+  78 daily limit 3, 84 daily limit 2, 85 quiet time 2. A paper stop-loss fired 8.4 s after arming while its strategy's
+  alerts were in quiet time (REQ-170 AC-5).
+- Record timing after #636 round 6 (worker never waits on the DB lock): records 1.3-1.6 s after the confirming candle
+  close (limit: one check interval, 10 s intraday); before the fix one record came 34 s after its close during a
+  30 s worker stall. Observed once: after a limit was tightened while the rule was already true under the old limit,
+  the new crossing opened inside its candle (record 142, 12:09:01, no confirming close) - deferred issue.
+- Bears on REQ-170 presets; owner decision ADR-246: presets kept, intraday reviewed after two more expiry days.
