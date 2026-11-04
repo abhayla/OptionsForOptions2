@@ -22,3 +22,14 @@ Asked at the 09:15 Kite login, one at a time, recommended option first.
   basis later.
 - Spec basis: REQ-046 Q255 section; spec/open-questions.md Q255 (DECIDED 2026-09-29); ADR-239; catalogue
   2026-10-30 line 329; REQ-155 AC-1 (does not name a basis).
+
+## Q2. Should the iron condor system playbook list S-08 (day before a known event) and S-09 (weekend or holiday)?
+
+- Business call: which situations a system playbook shows users is product scope, and it changes an approved system
+  playbook (a new version under REQ-169).
+- Found: GC-IC1 step 10 round 4, evidence/W-206/AC-5.md (FAIL): REQ-159 AC-5 says situations S-01 to S-12 are part of
+  the playbook; the ic system playbook lists S-01..S-07, S-10, S-11, S-12; ADR-240 classifies S-03/S-04/S-05 as
+  guidance and S-02/S-12 as rules but never names S-08 or S-09; there is no event list, so S-08 cannot be checked.
+- Recommendation: add both as "Guidance" (the user checks it), the reasoning ADR-240 used for S-03..S-05; S-09's
+  carry check already exists as the before-weekend / before-holiday day rule, so its guidance can point to it.
+- Spec basis: REQ-159 AC-5; ADR-240; REQ-169 (system playbook versions).
