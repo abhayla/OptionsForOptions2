@@ -32,6 +32,24 @@ entry-distance strike (REQ-046 example: entered 353 above, spot 23,300 -> 23,650
 | Playbook values (triggers and thresholds, stages, day-and-date rules, situations, approaches on/off, guards incl. the cost warning) | user's own playbook copy; a strategy plan stores a copy but its sheet edits only target, stop, max adjustments, time exit, alert style | the plan sheet edits every playbook value for that strategy (the plan copy is the strategy layer) |
 | EXCEPTIONS, admin only (not trading preferences) | speeds.* (check and push cadence: server load), detection.feed_*, facts.*, data.*, limits.*, billing.*, pricing.*, scenarios.* (screen grids), worker refresh / cache periods | unchanged; each listed with its reason in the build's PR body |
 
+## Step 0: clickable mockups, owner approval BEFORE any screen code (owner 2026-11-04 ~08:50, question tool)
+Owner, verbatim: "before working on anything, I want to see the mockups on those HTMLs for whatever you are going to
+do. Until I approve the mockups, the implementation of the UI should not start ... the mockup should be partially
+functional ... if I click on the buttons, what will come up, how the data will be shown, with the sample data".
+Answer to the scope question: "UI waits; server work may start".
+- 0a Mockups as ONE private claude.ai HTML page (Artifact tool, link given to the owner), partially functional: every
+  changed screen with realistic sample data from the owner's own case (strategy 82, NIFTY 29 Dec iron condor
+  21000/21500 PE - 24000/24500 CE, spot ~23,800): the Preferences tab (each setting with "default" / "yours", reset);
+  the plan sheet (every value for this one strategy with "default / yours / this strategy", the roll basis choice);
+  the Compare (each roll naming its basis: "0.20 delta" or "entry distance 353 pts", the cost warning line); the
+  playbook editor's situations with S-08 / S-09 "Guidance"; the no-spot Compare state. Buttons work: clicking a
+  value opens its editor, a change shows where the value now comes from, reset returns to the default, the roll
+  basis switch changes the shown strikes (23,650 / 23,850 vs the delta strike), a 390 px phone view toggle.
+- 0b The owner reviews and answers (approve / change list); changes go into the mockup until approved; the approval
+  and every change request are written into the handover (process) and any product decision into spec/decisions.
+- 0c GATE: no Vue / frontend screen change (step 4 and the screen parts of 2, 5, 6) starts until 0b is approved.
+  Server-only steps (1, 2's entry spot and resolver wiring, 3) may start before the approval.
+
 ## Steps (each: builder -> independent check -> merge; Tier per blast radius)
 | # | Item | Proof | Tier |
 |---|---|---|---|
