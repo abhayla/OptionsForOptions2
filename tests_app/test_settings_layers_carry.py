@@ -3,7 +3,7 @@ plan's value, else the user's, else the admin default, and the carry check's fig
 
 Spec basis: ADR-245 "The value in force is the strategy's, else the user's, else the admin default, and every flag,
 alert line and Compare cell names the value it used." Contract step 1 proof: iron condor plan; carry gap admin 2, user
-3, strategy 1.5 -> the figures use 1.5, "this strategy"; strategy value removed -> 3, "your setting"; user value
+3, strategy 1.5 -> the figures use 1.5, "strategy"; strategy value removed -> 3, "user"; user value
 removed -> 2, "default". Real PostgreSQL (db_run_fresh); every test rolls back.
 
 The path under test is the one the worker and the screen both take: ``playbook_store.plan_for`` (via
@@ -83,8 +83,8 @@ async def test_core_strategy_then_user_then_default(db):
     await pb.accept_plan(db, user, stored.id, system.id, body)
 
     market, figs = await _in_force(db, user, stored.id, admin)
-    assert (market.carry_gap_pct, market.carry_gap_source) == (D("1.5"), "this strategy")
-    assert (figs.gap_pct, figs.gap_source, figs.gap_reason) == (D("1.5"), "this strategy", None)
+    assert (market.carry_gap_pct, market.carry_gap_source) == (D("1.5"), "strategy")
+    assert (figs.gap_pct, figs.gap_source, figs.gap_reason) == (D("1.5"), "strategy", None)
     assert carry.gap_levels(SPOT, figs.gap_pct) == (D("23392.70"), D("22701.30"))
     expected = carry.carry_figures(_model(), BOOKED, D("98765.40"), FRI_1500, TABLE, gap_pct=D("1.5"))
     assert (figs.up, figs.down) == (expected.up, expected.down) and figs.up is not None
@@ -92,7 +92,7 @@ async def test_core_strategy_then_user_then_default(db):
     # remove the strategy value (the plan sheet accepted again without it) -> the user's 3
     await pb.accept_plan(db, user, stored.id, system.id, copy.deepcopy(system.body))
     market, figs = await _in_force(db, user, stored.id, admin)
-    assert (figs.gap_pct, figs.gap_source) == (D("3"), "your setting")
+    assert (figs.gap_pct, figs.gap_source) == (D("3"), "user")
     assert carry.gap_levels(SPOT, figs.gap_pct) == (D("23738.41"), D("22355.59"))
 
     # remove the user value (reset: follow the default) -> the admin's 2

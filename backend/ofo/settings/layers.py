@@ -29,8 +29,8 @@ from typing import Final
 
 from ofo.settings import SettingRefused, check_value, setting
 
-SOURCE_STRATEGY: Final = "this strategy"
-SOURCE_USER: Final = "your setting"
+SOURCE_STRATEGY: Final = "strategy"  # a code; the words are rendered by the screen (render())
+SOURCE_USER: Final = "user"
 SOURCE_DEFAULT: Final = "default"
 
 #: reason codes of a layer that exists but cannot be read (fail closed)
@@ -50,7 +50,7 @@ THREE_LAYER_KEYS: Final = (CARRY_GAP_PERCENT,)
 class Unreadable:
     """A layer that exists but could not be read; ``detail`` says why (logs only, never shown as a value)."""
 
-    detail: str
+    detail: str  # a log code, never shown
 
 
 Layer = Mapping[str, object] | Unreadable | None
@@ -60,14 +60,14 @@ Layer = Mapping[str, object] | Unreadable | None
 class InForce:
     key: str
     value: Decimal
-    source: str  # SOURCE_STRATEGY / SOURCE_USER / SOURCE_DEFAULT
+    source: str  # SOURCE_STRATEGY / SOURCE_USER / SOURCE_DEFAULT (codes, never shown as typed)
 
 
 class LayerUnreadable(ValueError):
     """A layer exists for the key but cannot be read; ``code`` names the layer (fail closed, never a default)."""
 
     def __init__(self, key: str, code: str, detail: str) -> None:
-        super().__init__(f"{key}: {code}: {detail}")
+        super().__init__(key, code, detail)  # log args, never shown text
         self.key = key
         self.code = code
         self.detail = detail
@@ -126,10 +126,10 @@ def strategy_layer(plan_body: object) -> Layer:
     if plan_body is None:
         return None
     if not isinstance(plan_body, Mapping):
-        return Unreadable("the plan body is not an object")
+        return Unreadable("plan_body_not_object")
     found = plan_body.get(PLAN_SETTINGS, {})
     if not isinstance(found, Mapping):
-        return Unreadable(f"the plan's {PLAN_SETTINGS} is not an object")
+        return Unreadable("plan_settings_not_object")
     return found
 
 

@@ -24,16 +24,16 @@ PLAN = {KEY: "1.5"}
 
 
 def test_precedence_strategy_then_user_then_default():
-    assert layers.resolve(KEY, ADMIN, USER, PLAN) == layers.InForce(KEY, D("1.5"), "this strategy")
-    assert layers.resolve(KEY, ADMIN, USER, {}) == layers.InForce(KEY, D("3"), "your setting")
+    assert layers.resolve(KEY, ADMIN, USER, PLAN) == layers.InForce(KEY, D("1.5"), "strategy")
+    assert layers.resolve(KEY, ADMIN, USER, {}) == layers.InForce(KEY, D("3"), "user")
     assert layers.resolve(KEY, ADMIN, None, None) == layers.InForce(KEY, D("2"), "default")
 
 
 @pytest.mark.parametrize(("strategy", "expected"), [
-    (None, (D("3"), "your setting")),  # no plan: the user's
-    ({}, (D("3"), "your setting")),  # a plan with no settings / an empty container: the user's
-    ({"other.something_else": "9"}, (D("3"), "your setting")),  # the key absent: the user's
-    ({KEY: "1.5"}, (D("1.5"), "this strategy")),  # present and valid
+    (None, (D("3"), "user")),  # no plan: the user's
+    ({}, (D("3"), "user")),  # a plan with no settings / an empty container: the user's
+    ({"other.something_else": "9"}, (D("3"), "user")),  # the key absent: the user's
+    ({KEY: "1.5"}, (D("1.5"), "strategy")),  # present and valid
 ])
 def test_strategy_layer_present_absent_empty(strategy, expected):
     got = layers.resolve(KEY, ADMIN, USER, strategy)
@@ -99,14 +99,14 @@ def _values(source: str) -> UserValues:
 
 def test_user_layer_is_the_users_own_values_only():
     assert check.user_layer(_values("yours")) == {KEY: D("3")}
-    assert check.user_layer(_values("default")) == {}  # a merged default is never "your setting"
+    assert check.user_layer(_values("default")) == {}  # a merged default is never "user"
     assert check.user_layer({KEY: D("3")}) is None  # a plain mapping (a test seam) has no user layer
 
 
 def test_carry_gap_of_names_value_source_and_reason():
-    assert check.carry_gap_of(D("2"), _values("yours"), {KEY: "1.5"}) == check.GapInForce(D("1.5"), "this strategy",
+    assert check.carry_gap_of(D("2"), _values("yours"), {KEY: "1.5"}) == check.GapInForce(D("1.5"), "strategy",
                                                                                          None)
-    assert check.carry_gap_of(D("2"), _values("yours"), None) == check.GapInForce(D("3"), "your setting", None)
+    assert check.carry_gap_of(D("2"), _values("yours"), None) == check.GapInForce(D("3"), "user", None)
     assert check.carry_gap_of(D("2"), _values("default"), None) == check.GapInForce(D("2"), "default", None)
     assert check.carry_gap_of(D("2"), _values("yours"), {KEY: "999"}) == check.GapInForce(
         None, None, layers.STRATEGY_UNREADABLE)
@@ -115,10 +115,10 @@ def test_carry_gap_of_names_value_source_and_reason():
 
 def test_carry_figures_and_record_name_the_source_and_the_reason():
     now = datetime.datetime(2026, 10, 30, 15, 0, tzinfo=IST)
-    figs = carry.carry_figures(None, D("0"), None, now, gap_pct=D("1.5"), gap_source="this strategy")
-    assert (figs.gap_pct, figs.gap_source, figs.gap_setting_reason) == (D("1.5"), "this strategy", None)
+    figs = carry.carry_figures(None, D("0"), None, now, gap_pct=D("1.5"), gap_source="strategy")
+    assert (figs.gap_pct, figs.gap_source, figs.gap_setting_reason) == (D("1.5"), "strategy", None)
     record = check.carry_record(figs)
-    assert (record["gap_pct"], record["gap_source"], record["gap_setting_reason"]) == ("1.5", "this strategy", None)
+    assert (record["gap_pct"], record["gap_source"], record["gap_setting_reason"]) == ("1.5", "strategy", None)
     closed = carry.carry_figures(None, D("0"), None, now, gap_pct=None, gap_source="default",
                                  gap_setting_reason=layers.USER_UNREADABLE)
     assert (closed.gap_pct, closed.gap_source, closed.gap_reason, closed.gap_setting_reason) == (
@@ -140,7 +140,7 @@ def _market(admin: D | None):
 
 def test_carry_gap_in_force_replaces_the_admin_value_with_the_strategys():
     got = check.carry_gap_in_force(_market(D("2")), _values("yours"), {KEY: "1.5"})
-    assert (got.carry_gap_pct, got.carry_gap_source, got.carry_gap_reason) == (D("1.5"), "this strategy", None)
+    assert (got.carry_gap_pct, got.carry_gap_source, got.carry_gap_reason) == (D("1.5"), "strategy", None)
     closed = check.carry_gap_in_force(_market(D("2")), _values("yours"), layers.Unreadable("x"))
     assert (closed.carry_gap_pct, closed.carry_gap_source, closed.carry_gap_reason) == (
         None, None, layers.STRATEGY_UNREADABLE)
