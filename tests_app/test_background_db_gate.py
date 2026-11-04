@@ -324,7 +324,7 @@ async def test_the_owner_lister_opens_each_session_inside_its_own_gate_hold(scn,
             return _tracked(scn)
 
     async def resolve(_db, _owner, _sid, _stype):
-        return SimpleNamespace(body=NO_RULES, is_system=True)
+        return SimpleNamespace(body=NO_RULES, is_system=True, strategy_layer=None)
     monkeypatch.setattr(strategy_store, "list_strategies", list_strategies)
     monkeypatch.setattr(adjustment_readers, "read_tracked", read_tracked)
     monkeypatch.setattr(background.check, "strategy_type", lambda *_a: "short_strangle")
@@ -461,7 +461,7 @@ async def test_a_strategy_whose_list_read_failed_keeps_its_queued_events_and_one
         return None if sid == left else _tracked(scn)
 
     async def resolve(_db, _owner, _sid, _stype):
-        return SimpleNamespace(body=NO_RULES, is_system=True)
+        return SimpleNamespace(body=NO_RULES, is_system=True, strategy_layer=None)
     monkeypatch.setattr(strategy_store, "list_strategies", list_strategies)
     monkeypatch.setattr(adjustment_readers, "read_tracked", read_tracked)
     monkeypatch.setattr(background.check, "strategy_type", lambda *_a: "short_strangle")

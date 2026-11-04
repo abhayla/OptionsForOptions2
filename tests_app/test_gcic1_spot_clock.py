@@ -138,7 +138,7 @@ async def test_check_route_judges_the_spot_at_the_later_clock(monkeypatch):
 
     with pytest.raises(_Stop):
         await check_route.adjustment_check(
-            1, None, "u", tracked, market, _rest_reader(clock, rest), None, None, None, None)
+            1, None, "u", tracked, market, _rest_reader(clock, rest), None, None, None, None, None)
     assert seen["spot"] == SPOT
 
 
