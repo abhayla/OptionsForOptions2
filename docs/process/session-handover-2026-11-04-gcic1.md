@@ -9,7 +9,8 @@ Nothing on main, no PR (owner rule). Previous handover: `session-handover-2026-1
 |---|---|---|
 | 5c #636 r5 | merged 989623c9: settings cache checks only the row in force; stale queued writes dropped; writer watchdog + drain on stop; lag counts the gate wait (LAG_SECONDS 5, REQ-167 AC-4 amended b624a859); the #639 read-window test rewritten (it deadlocked on the one DB gate; test-only) | worker + day rules DB files on the merge: 23 passed; 5/5 mutants red; #636 comment 6609441635; #636 OPEN (live 1.0 s owed) |
 | 8 pass 2 | 390 px: builder page overflow FIXED (06c1cf6a, scrollWidth 458 -> 375); history, adjustment history, plan sheet, Compare + controls fit | `D:\Abhay\scratch\gcic1\step8\pass2-2026-11-03.md`; drawer NOT checked (needs a live detection: step 9) |
-| 10 verifier pass | W-200..W-214: 80 of 80 ACs have an evidence block from an independent verifier: 60 PASS, 20 FAIL (3 rounds; round 3 re-verified the 4 fixed ACs: all PASS) | `find evidence/W-2*` 80 files, 60 `result: pass`; footers + reach baseline (#532) |
+| 10 verifier pass | W-200..W-214: 80 of 80 ACs have an evidence block from an independent verifier: 65 PASS, 15 FAIL (5 rounds; every FAIL fixed in GC-IC1 was re-verified PASS: REQ-158 AC-2/AC-3, REQ-159 AC-4/AC-6, REQ-167 AC-4, REQ-168 AC-4, REQ-163 AC-1, REQ-170 AC-4, REQ-046 AC-5) | `find evidence/W-2*` 80 files, 65 `result: pass`; footers + reach baseline (#532) |
+| 11 gate + push | prepush --full run 1 TOTAL FAIL (stale generated files, stage rows, a non-literal route path, 2 stale test expectations) -> fixed 71486176 -> run 2 TOTAL PASS 1569.9s; pushed 5e5eb400..71486176. Later commits (step 10 rounds 4-5 fixes) need their own gate + push | prepush logs D:\Abhay\scratch\gcic1\step11\ |
 | Fixes from step 10 | own playbook never draft (REQ-158 AC-2); carry gap + S-02/S-12 thresholds are settings (REQ-167 AC-4); unbuilt day-rule pairs shown "not checked" (REQ-159 AC-4); gap-at-open line names the user's time (REQ-168 AC-4); history names every suggestion behind an adjustment, link survives reload (REQ-163 AC-1; Tier A review FIX FIRST -> fixed -> re-check PASS); held crossings shown (REQ-170 AC-4) | mutants red for each; merges b84b5b3c, ca2ee383, ef8ed5e5, 3a92ca27, 7dc98182 |
 | Found + fixed on the way | 5 stored paper alerts hidden by the #629 wording (8abeb451, guard test; alerts back: 5); reply inventory / response door / template pin drift (1bde4efc, 8ca5c8d1); 71 non-DB tests_app regressions from GC-IC1 steps 0-7 (route fake lacked the ADR-172 live-book health, wording, openapi, labels fixture, pause route outside the error boundary, a route importing the alert gate into the risk-exit chain) fixed 9500fa50 + 874fa104 | full non-DB tests_app sweep: 71 failed (8ca5c8d1) -> 4 (9500fa50) -> the 4 files green on 874fa104 |
 
@@ -20,15 +21,17 @@ Nothing on main, no PR (owner rule). Previous handover: `session-handover-2026-1
   <tree> python -m uvicorn --factory ofo_app.main:create_app --app-dir backend --loop ofo_app.event_loop:selector_loop
   --host 127.0.0.1 --port 8765`); Vite on 5174 still serves the tree. DB_POOL_SIZE=3 because the tunnel makes 2 too few.
 - Step 11: prepush --full TOTAL PASS on the final head, then push feature/adjustments (see the push brief below).
-- Step 10: the 20 FAIL ACs. Out of GC-IC1 scope, filed: REQ-112 AC-1/2/3/5, REQ-162 AC-2, REQ-163 AC-3 (#645, #648);
-  REQ-155 AC-1 A-30, REQ-158 AC-7, REQ-159 AC-2, REQ-160 AC-3 (#646); REQ-046 AC-2 (#647). Owner decision: REQ-046 AC-4
-  (Q1 below). Partial by design: REQ-167 AC-5 (ADR-222 (11)). Not verified in budget (next verifier pass): REQ-046
-  AC-5, REQ-156 AC-1 (no-spot vs 'always No change' - may need one spec line), REQ-158 AC-3, AC-5, REQ-159 AC-5,
-  AC-6, REQ-167 AC-7.
+- Step 10: the 15 FAIL ACs. Out of GC-IC1 scope, filed: REQ-112 AC-1/2/3/5, REQ-162 AC-2, REQ-163 AC-3 (#645, #648);
+  REQ-155 AC-1 A-30, REQ-158 AC-7, REQ-159 AC-2, REQ-160 AC-3 (#646); REQ-046 AC-2 (#647). Owner decisions: REQ-046
+  AC-4 (Q1 below), REQ-159 AC-5 (Q2 below). Partial by design: REQ-167 AC-5 (ADR-222 (11)). REQ-156 AC-1: spec now
+  states the no-spot exception (2b208de4); its evidence is the round-4 FAIL until a verifier re-reads it.
 
 ## OWNER ITEMS
 - `docs/process/owner-questions-2026-11-04.md` Q1: roll basis - REQ-046 Q255 (entry distance from spot) vs the approved
   playbooks' target delta (what is built). Recommendation: target delta, mark Q255 superseded.
+- Q2 (REQ-159 AC-5, evidence/W-206/AC-5.md): the iron condor system playbook lists 10 of the 12 situations; S-08 (day
+  before a known event) and S-09 (weekend or holiday) are absent and ADR-240 never classifies them. Recommendation: add
+  both labelled "Guidance" (as ADR-240 did for S-03..S-05: no event list yet), as a new system playbook version.
 - Texts "pending owner read" in tests/errors/template_pins.json (new tonight: day rule not checked, gap line, carry gap,
   situation setting unavailable, history why unreadable).
 - New admin settings tonight (Other group): other.carry_gap_percent (2), other.situation_net_delta_per_lot (0.15),

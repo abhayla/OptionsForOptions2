@@ -2,14 +2,14 @@
 work_item: W-205
 requirement: REQ-158
 ac: AC-3
-result: fail
-verified_by: "independent verifier (Sonnet, GC-IC1 step 10 round 4)"
+result: pass
+verified_by: "independent verifier (Sonnet, GC-IC1 step 10 round 5)"
 date: 2026-11-04
 ac_fp: "21a5018bd134"
-commands: "read backend/ofo_app/playbook_store.py:196-206,408-414,462-531; read backend/ofo_app/alembic/versions/0031_adjustment_playbooks.py:394; read backend/ofo/errors/templates.py:1275-1280; read tests_app/test_playbook_routes.py:131-157, tests_app/test_playbook_store.py:101-142; python -m pytest -q -p no:cacheprovider tests/errors/test_user_text_slot.py"
+commands: "env -u TEST_DATABASE_URL -u TEST_ADMIN_DATABASE_URL -u ALEMBIC_DATABASE_URL python -m pytest -q -p no:cacheprovider -c pytest-app.ini tests_app/test_playbook_store.py; read playbook_store.py:202-204, _name 410-416, _write_named 463-476, create/duplicate/rename 479-500; read alembic 0031 seed and index adjustment_playbooks_name"
 ---
-Create, duplicate (via create, :481) and rename (:497) all go through _write_named; a case-insensitive, whitespace-folded clash per user and type is refused with the template text; delete works; test_user_text_slot 10/10. Gap: _NAME_USED (:201-202) filters user_ref = :user_ref and the index (0031:394) uses coalesce(user_ref,''), so a user can create, duplicate or rename to the system playbook's own name ('Iron condor: system default') and two same-named playbooks show in one type, against 'a name is unique within a type'. No test covers it.
+_NAME_USED now matches (user_ref = :user_ref OR is_system) AND strategy_type = :type AND lower(name) = lower(:name) AND id IS DISTINCT FROM :id; _name() trims and folds whitespace first, so case/whitespace variants of 'Iron condor: system default' hit the system row; create, duplicate (via create) and rename all go through _write_named; another type's system name is not matched (type filter); the refusal is built by _taken from the typed name and the type.
 
-If 'unique among the user's own' is intended, the AC needs to say so.
+DB proof owed: tests_app/test_playbook_store.py::test_req158_ac3_the_system_playbooks_name_is_taken_for_create_duplicate_and_rename (builder's db_run_fresh run: 47 passed; read, not run here).
 
 Recorded by the orchestrator from the verifier's returned block.
