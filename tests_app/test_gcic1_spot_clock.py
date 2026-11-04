@@ -23,7 +23,7 @@ from test_adjustment_approaches_route import IC_IDS, client_for, load, market_of
 
 S = datetime.timedelta
 SPOT = D("24500.00")
-T0 = datetime.datetime(2026, 11, 4, 3, 48, 55, tzinfo=datetime.timezone.utc)
+T0 = datetime.datetime(2026, 11, 4, 3, 48, 55, tzinfo=datetime.UTC)
 
 
 class Clock:

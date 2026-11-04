@@ -79,6 +79,17 @@ def market_of(sc: dict) -> route.MarketInputs:
                               SourceReading(SourceState.ABSENT), now)
 
 
+_SCENARIO_NOW: list = [None]
+
+
+@pytest.fixture(autouse=True)
+def _scenario_server_clock(monkeypatch):
+    """GC-IC1 step 9: with no market context the routes judge the spot at ``outcome.server_now`` (read after the slow
+    reads); a scenario's readings are stamped at the scenario's clock, so that clock is the server's here."""
+    _SCENARIO_NOW[0] = None
+    monkeypatch.setattr(outcome, "server_now", lambda: _SCENARIO_NOW[0])
+
+
 class Calls:
     def __init__(self):
         self.margin = 0
@@ -89,6 +100,7 @@ def client_for(sc: dict, *, booked="stated", margin=None, environ=None, rates=No
     app = create_app()
     rest_ok = sc["data_state"].get("rest", "ok") == "ok" and sc["data_state"].get("spot_source") != "none"
     now = datetime.datetime.fromisoformat(sc["clock"]["ist"])
+    _SCENARIO_NOW[0] = now
 
     async def tracked(sid, _rates):
         return tracked_of(sc, booked) if sid == 72 else None  # noqa: PLR2004 - the one strategy of this user

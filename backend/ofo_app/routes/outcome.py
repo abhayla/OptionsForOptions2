@@ -124,7 +124,7 @@ def server_now() -> datetime.datetime:
     return datetime.datetime.now(datetime.timezone.utc)
 
 
-def spot_judging_now(ctx: "MarketContext | None") -> datetime.datetime:
+def spot_judging_now(ctx: MarketContext | None) -> datetime.datetime:
     """The clock a route judges the spot readings against (GC-IC1 step 9): read at CALL time, so call it only AFTER the
     feed, REST and DB reads arrived. ``market.now`` was taken before them; a request that took 3 s over the database
     tunnel then refused a quote stamped 2.5 s after it began as ``tick_in_future``. The ONE helper every caller of

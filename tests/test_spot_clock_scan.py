@@ -16,17 +16,17 @@ HELPER = "spot_judging_now"
 
 
 def _files():
-    return sorted((BACKEND / "routes").glob("*.py")) + [BACKEND / "adjustment_readers.py"]
+    return [*sorted((BACKEND / "routes").glob("*.py")), BACKEND / "adjustment_readers.py"]
 
 
 def problems(source: str, name: str = "<src>") -> list[str]:
     out: list[str] = []
     tree = ast.parse(source)
+    skip_args = 2  # resolve_spot(feed, rest, ...): the second positional is the REST reading
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom):
-            for a in node.names:
-                if a.name == "resolve_spot" and a.asname not in (None, "resolve_spot"):
-                    out.append(f"{name}:{node.lineno} resolve_spot imported under another name")
+            out += [f"{name}:{node.lineno} resolve_spot imported under another name" for a in node.names
+                    if a.name == "resolve_spot" and a.asname not in (None, "resolve_spot")]
         if not isinstance(node, ast.Call):
             continue
         fn = node.func
@@ -37,7 +37,7 @@ def problems(source: str, name: str = "<src>") -> list[str]:
         if any(isinstance(a, ast.Starred) for a in node.args) or any(k.arg is None for k in node.keywords):
             out.append(f"{where} *args / **kwargs: cannot be read")
             continue
-        if len(node.args) >= 2 and isinstance(node.args[1], ast.Constant) and node.args[1].value is None:
+        if len(node.args) >= skip_args and isinstance(node.args[1], ast.Constant) and node.args[1].value is None:
             continue  # feed-only: no awaited reader before it
         now = next((k.value for k in node.keywords if k.arg == "now"), None)
         ok = (isinstance(now, ast.Call) and isinstance(now.func, (ast.Name, ast.Attribute))

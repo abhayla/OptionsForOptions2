@@ -7,6 +7,7 @@ background: all others already pass the instrument listing.
 """
 from __future__ import annotations
 
+import datetime
 import sys
 from decimal import Decimal as D
 from pathlib import Path
@@ -80,6 +81,7 @@ def test_the_route_hands_the_guards_reader_the_market_context_listing():
     client = rt.client_for(sc)
     client.app.dependency_overrides[route.get_guards_reader] = lambda: guards
     ctx = SimpleNamespace(provider=SimpleNamespace(instrument_master=lambda: listing),
+                          clock=lambda: datetime.datetime.fromisoformat(sc["clock"]["ist"]),
                           feed_windows=calc.feed_windows(settings_defaults()))
     client.app.dependency_overrides[outcome.get_market_context] = lambda: ctx
     rt.post(client)
