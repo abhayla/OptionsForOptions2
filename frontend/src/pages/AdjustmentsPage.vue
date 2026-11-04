@@ -184,7 +184,7 @@ import { STEPS, EXPIRY_KINDS, addStage, clone, dayRuleNotChecked, isDirty, label
   testRow, valuesOf } from '@/lib/playbookEditor'
 
 const route = useRoute()
-const SCREEN_TABS = [{ key: 'playbooks', label: 'Playbooks' }, { key: 'preferences', label: 'Preferences' }]
+const SCREEN_TABS = [{ key: 'playbooks', label: 'Playbooks' }, { key: 'preferences', label: 'Adjustment settings' }]
 const screenTab = ref('playbooks')
 const types = ref([])
 const labels = ref(labelMaps(null)) // every word the body does not carry (GET /playbooks/labels)
