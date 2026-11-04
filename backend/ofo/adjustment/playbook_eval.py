@@ -76,6 +76,11 @@ class CarryFigures:
     margin_reason: str | None = None
     next_open: datetime.datetime | None = None  # the time the gap figures are valued at
     gap_pct: Decimal | None = None  # the gap size in force (``other.carry_gap_percent``); None = not read
+    #: where ``gap_pct`` came from (ADR-245, ``ofo.settings.layers``): "this strategy" / "your setting" / "default";
+    #: None when not read
+    gap_source: str | None = None
+    #: why the gap setting could not be read (a ``layers`` reason code naming the layer; fail closed), else None
+    gap_setting_reason: str | None = None
 
 
 @dataclass(frozen=True)

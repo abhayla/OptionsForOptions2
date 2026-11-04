@@ -45,19 +45,22 @@ def _whole_trade(model: ModelInputs, booked: Decimal, level: Decimal, at: dateti
 
 def carry_figures(model: ModelInputs | None, booked: Decimal | None, margin: Decimal | None,  # noqa: PLR0913
                   now: datetime.datetime, holidays: mc.Holidays | None = None, *,
-                  gap_pct: Decimal | None) -> pe.CarryFigures:
-    """The carry record's content at ``now`` (see the module docstring for every answer state)."""
+                  gap_pct: Decimal | None, gap_source: str | None = None,
+                  gap_setting_reason: str | None = None) -> pe.CarryFigures:
+    """The carry record's content at ``now`` (see the module docstring for every answer state). ``gap_source``: where
+    the gap in force came from (ADR-245, ``ofo.settings.layers``); ``gap_setting_reason``: why it could not be read."""
     margin_reason = None if margin is not None else MISSING_MARGIN
+    named = {"gap_source": None if gap_pct is None else gap_source, "gap_setting_reason": gap_setting_reason}
     if gap_pct is None:  # the gap setting not read: no figures and a named reason, never a typed stand-in
-        return pe.CarryFigures(None, None, CARRY_GAP_UNKNOWN, margin, margin_reason, None, None)
+        return pe.CarryFigures(None, None, CARRY_GAP_UNKNOWN, margin, margin_reason, None, None, **named)
     opens = mc.next_open(now, holidays)
     if opens is None:
-        return pe.CarryFigures(None, None, pe.HOLIDAY_LIST_UNKNOWN, margin, margin_reason, None, gap_pct)
+        return pe.CarryFigures(None, None, pe.HOLIDAY_LIST_UNKNOWN, margin, margin_reason, None, gap_pct, **named)
     if model is None or booked is None or any(leg.leg.is_option and leg.iv is None for leg in model.legs):
-        return pe.CarryFigures(None, None, CARRY_GAP_UNKNOWN, margin, margin_reason, opens, gap_pct)
+        return pe.CarryFigures(None, None, CARRY_GAP_UNKNOWN, margin, margin_reason, opens, gap_pct, **named)
     up, down = gap_levels(model.spot.level, gap_pct)  # the gated reading's level (== ModelInputs.spot_level)
     return pe.CarryFigures(_whole_trade(model, booked, up, opens), _whole_trade(model, booked, down, opens), None,
-                           margin, margin_reason, opens, gap_pct)
+                           margin, margin_reason, opens, gap_pct, **named)
 
 
 __all__ = ["CARRY_GAP_UNKNOWN", "MISSING_MARGIN", "carry_figures", "gap_levels"]

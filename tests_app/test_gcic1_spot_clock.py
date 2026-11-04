@@ -138,7 +138,7 @@ async def test_check_route_judges_the_spot_at_the_later_clock(monkeypatch):
 
     with pytest.raises(_Stop):
         await check_route.adjustment_check(
-            1, None, "u", tracked, market, _rest_reader(clock, rest), None, None, None, None)
+            1, None, "u", tracked, market, _rest_reader(clock, rest), None, None, None, None, None)
     assert seen["spot"] == SPOT
 
 
@@ -177,7 +177,8 @@ async def test_playbook_preview_judges_the_spot_at_the_later_clock(monkeypatch):
         return None
 
     monkeypatch.setattr(playbooks, "current_margin", margin)
-    seams = playbooks._Seams(tracked_reader, market_reader, _rest_reader(clock, rest), None, None, None, None)
+    seams = playbooks._Seams(tracked_reader, market_reader, _rest_reader(clock, rest), None, None, None, None,
+                             None)
     read = playbooks._Read()
     await playbooks._read_one(SimpleNamespace(id=1), seams, None, read)
     assert read.spot.value == SPOT and read.spot.source == "rest_quote"

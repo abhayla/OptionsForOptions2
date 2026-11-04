@@ -125,8 +125,9 @@ class MarketInputs:
     #: GC-IC1 round 5: expiry -> ``adjustment_readers.ReachModel`` from the same frozen read (the position's expiry and
     #: the next); used ONLY to choose the strikes the one second pass holds, never a price. Empty = no model
     reach: Mapping[datetime.date, Any] = dataclasses.field(default_factory=dict)
-    #: ``other.carry_gap_percent`` in force (REQ-167 AC-4), read from the settings at run time; None = not read:
-    #: the carry check shows no figures and names the reason (never a typed stand-in)
+    #: the ADMIN layer of ``other.carry_gap_percent`` (REQ-167 AC-4), read from the settings at run time; None = not
+    #: read. Never the value in force: ``adjustment_check.state_of`` resolves the strategy's gap from it (ADR-245,
+    #: plan, else the user's own, else this), so no caller can skip the resolution
     carry_gap_pct: Decimal | None = None
     #: ``other.situation_net_delta_per_lot`` / ``other.situation_big_win_percent`` in force (REQ-167 AC-4); None = not
     #: read: S-02 / S-12 answer not checked with a named reason (never a typed stand-in)

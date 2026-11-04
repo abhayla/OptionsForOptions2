@@ -241,3 +241,40 @@ async def test_zz_another_users_strategy_is_not_found_on_get_post_and_put_and_no
         assert (await _call(method, _plan_path(sid), **kw))[0] == NOT_FOUND, method
         assert (await _call(method, _plan_path(987654321), **kw))[0] == NOT_FOUND, method
     assert await _plan_row(app_db_url, sid) == before
+
+
+# --- ADR-245: the strategy layer (``settings``) through the plan write routes (cfg step 1 fix round 1) ----------------
+CARRY_KEY = "other.carry_gap_percent"
+
+
+async def test_plan_settings_accepted_refused_with_a_named_reason_and_removable(app_db_url, monkeypatch):
+    """POST/PUT carry ``settings`` (the strategy's own overrides): a registry-accepted value is stored in the plan
+    body (never dropped); an out-of-range value, an unknown key, an admin-only key, "" and a number are refused naming
+    the field and write nothing; an edit leaving settings out keeps them; ``{}`` removes the override."""
+    sid = await _seeded(app_db_url, monkeypatch, "ADJ-02")  # ADJ-01's contracts are delisted by the ADJ-02 tests above
+    system = await _system_ic(app_db_url)
+    before = await _plan_row(app_db_url, sid)  # the strategy may already carry a plan from the earlier tests
+    refused = [({CARRY_KEY: "99"}, f"settings.{CARRY_KEY}"), ({"other.unknown_key": "1"}, "settings.other.unknown_key"),
+               ({"speeds.open_strategy_seconds": "5"}, "settings.speeds.open_strategy_seconds"),
+               ({CARRY_KEY: ""}, f"settings.{CARRY_KEY}")]
+    for settings, field in refused:
+        status, out = await _call("POST", _plan_path(sid), json={"playbook_id": system.id, "settings": settings})
+        assert (status, out["what_happened"]) == (UNPROCESSABLE, f"The playbook value {field} is not valid."), settings
+    status, _ = await _call("POST", _plan_path(sid), json={"playbook_id": system.id, "settings": {CARRY_KEY: 1.5}})
+    assert status == UNPROCESSABLE  # strict: a number is not the text the sheet sends
+    assert await _plan_row(app_db_url, sid) == before  # nothing written by any refusal
+
+    def stored(row) -> dict:
+        return json.loads(row.body)["settings"]
+    status, out = await _call("POST", _plan_path(sid), json={"playbook_id": system.id, "settings": {CARRY_KEY: "1.5"}})
+    assert status == OK, out
+    assert stored(await _plan_row(app_db_url, sid)) == {CARRY_KEY: "1.5"}
+    status, out = await _call("PUT", _plan_path(sid), json={"playbook_id": system.id, "target": "50"})
+    assert status == OK, out  # an edit that leaves settings out keeps them
+    assert stored(await _plan_row(app_db_url, sid)) == {CARRY_KEY: "1.5"}
+    status, out = await _call("PUT", _plan_path(sid), json={"playbook_id": system.id, "settings": {CARRY_KEY: "99"}})
+    assert (status, out["what_happened"]) == (UNPROCESSABLE, f"The playbook value settings.{CARRY_KEY} is not valid.")
+    assert stored(await _plan_row(app_db_url, sid)) == {CARRY_KEY: "1.5"}  # unchanged
+    status, out = await _call("PUT", _plan_path(sid), json={"playbook_id": system.id, "settings": {}})
+    assert status == OK, out
+    assert stored(await _plan_row(app_db_url, sid)) == {}

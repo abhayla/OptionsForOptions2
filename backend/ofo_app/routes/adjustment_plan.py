@@ -33,6 +33,7 @@ from ofo.adjustment.playbook_types import SHOWN_NAMES
 from ofo.charges import ChargeRates
 from ofo.errors import render
 from ofo.errors.explanations import LABEL_TABLES, render_explanation
+from ofo.settings import layers
 from pydantic import BaseModel, ConfigDict
 
 from ofo_app import adjustment_check as check
@@ -88,6 +89,11 @@ class PlanIn(_In):
     stop: str | None = None
     max_adjustments: str | None = None
     time_exit: str | None = None
+    #: ADR-245: this strategy's own setting overrides (the strategy layer), ``{key: "decimal text"}``. Given -> the
+    #: plan's overrides become exactly this object (``{}`` removes every override, so each value follows the user's,
+    #: else the default); left out -> kept as the body has them. Each key must be a three-layer setting and each value
+    #: one the registry accepts, else refused naming ``settings.<key>`` (never dropped, never clamped)
+    settings: dict[str, str] | None = None
 
 
 class ClockOut(ApiModel):
@@ -215,6 +221,13 @@ def with_overrides(body: dict, data: PlanIn) -> dict:
         if not _CLOCK.fullmatch(data.time_exit):
             raise _bad(TIME_KEY)
         guards[TIME_KEY] = data.time_exit
+    if data.settings is not None:
+        for key, raw in data.settings.items():
+            try:
+                layers.check_plan_settings({key: raw})
+            except ValueError:
+                raise _bad(f"{layers.PLAN_SETTINGS}.{key}") from None
+        out[layers.PLAN_SETTINGS] = dict(data.settings)
     return out
 
 

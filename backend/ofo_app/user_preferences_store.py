@@ -31,7 +31,7 @@ from typing import Literal
 from ofo import settings as registry_mod
 from ofo.adjustment import alert_presets
 from ofo.adjustment import preferences as prefs_mod
-from ofo.settings import SettingRefused
+from ofo.settings import SettingRefused, layers
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
@@ -92,7 +92,12 @@ def preference_keys() -> tuple[str, ...]:
     missing = [k for k in alert_presets.USER_KEYS if k not in reg]
     if missing:
         raise PreferencesError(f"the registry has no alert-discipline entries {missing}")
-    return keys + alert_presets.USER_KEYS
+    extra = [k for k in layers.THREE_LAYER_KEYS if k not in reg]
+    if extra:
+        raise PreferencesError(f"the registry has no three-layer entries {extra}")
+    # ADR-245: the three-layer settings outside the adjustments group (GC "Your adjustment settings" step 1: the carry
+    # gap) are user-changeable too; the admin's value stays their default
+    return keys + alert_presets.USER_KEYS + tuple(k for k in layers.THREE_LAYER_KEYS if k not in keys)
 
 
 def preference(key: object) -> registry_mod.Setting:
@@ -138,9 +143,20 @@ async def answers(session: Session, user_ref: str, at: datetime.datetime | None 
     return out
 
 
-async def values_for(session: Session, user_ref: str, at: datetime.datetime | None = None) -> dict[str, Decimal]:
-    """key -> the value in force for ``user_ref`` (the mapping ``ofo.adjustment.preferences.from_values`` takes)."""
-    return {k: a.value for k, a in (await answers(session, user_ref, at)).items()}
+class UserValues(dict):
+    """key -> the value in force for a user (the merged mapping every existing reader takes), that also carries the
+    user's OWN values (``own``: the keys whose source is "yours"), the user layer of ADR-245's resolver
+    (``ofo.settings.layers``). One read gives both, never a second query."""
+
+    def __init__(self, found: Mapping[str, Answer]) -> None:
+        super().__init__({k: a.value for k, a in found.items()})
+        self.own: dict[str, Decimal] = {k: a.value for k, a in found.items() if a.source == "yours"}
+
+
+async def values_for(session: Session, user_ref: str, at: datetime.datetime | None = None) -> UserValues:
+    """key -> the value in force for ``user_ref`` (the mapping ``ofo.adjustment.preferences.from_values`` takes), with
+    the user's own values on ``.own``."""
+    return UserValues(await answers(session, user_ref, at))
 
 
 async def history(session: Session, user_ref: str) -> dict[str, list[StoredPreference]]:

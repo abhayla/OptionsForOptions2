@@ -117,7 +117,7 @@ def _tracked(scn) -> Tracked:
 
 def _watched(scn, n: int = 1) -> list[background.Watched]:
     t = _tracked(scn)
-    return [background.Watched("owner", FIRST_ID + i, t, NO_RULES, True, "owner") for i in range(n)]
+    return [background.Watched("owner", FIRST_ID + i, t, NO_RULES, True, "owner", None) for i in range(n)]
 
 
 class Calls:
@@ -464,14 +464,14 @@ async def _screen_state(prov, tracked, at, body) -> pe.StrategyState:
     market = await adjustment_readers.read_market(tracked, ctx)
     spot = resolve_spot(market.feed, None, market.last_close, now=market.now, windows=ctx.feed_windows)
     return adjustment_check.state_of(tracked, market, spot, None, None, adjustment_check.prices_fresh(ctx), body,
-                                     config=PREFS.approach)
+                                     config=PREFS.approach, user_values=None, strategy_layer=None)
 
 
 def _background_state(prov, watched, at) -> pe.StrategyState:
     read = background.read_prices(prov, watched, at)
     assert read.state is background.PriceState.FRESH
     return background.background_state(watched, read, FeedScope(background.SharedCompute(), "owner"), at, DEFAULTS,
-                                       PREFS)
+                                       PREFS, user_values=None)
 
 
 def test_a_quiet_but_live_spot_is_read_never_withheld(scn):
@@ -579,7 +579,7 @@ def test_state_of_prices_only_the_strategys_own_legs_and_is_light(scn, scenario_
     monkeypatch.setattr(adjustment_check, "price_after", counted)
     started = time.perf_counter()
     for _ in range(TIMED_CALLS):
-        background.background_state(w, read, shared, at, DEFAULTS, PREFS)
+        background.background_state(w, read, shared, at, DEFAULTS, PREFS, user_values=None)
     per_call = (time.perf_counter() - started) / TIMED_CALLS
     print(f"STATE-OF-TIMING calls={TIMED_CALLS} each_ms={per_call * 1000:.2f} computations={shared.cache.computations}")
     assert len(priced) == TIMED_CALLS  # one own-legs pricing per check (work counted, never wall time)
@@ -633,7 +633,7 @@ async def test_owner_lister_skips_the_one_strategy_whose_playbook_lookup_raises(
     async def resolve(_db, _owner, sid, _stype):
         if sid == FIRST_ID:
             raise RuntimeError("playbook lookup failed")
-        return type("R", (), {"body": {}, "is_system": True})()
+        return type("R", (), {"body": {}, "is_system": True, "strategy_layer": None})()  # Resolved's read fields
     monkeypatch.setattr(adjustment_check, "resolve", resolve)
     out = await background.owner_lister(Prov(scn))
     assert [x.strategy_id for x in out] == [FIRST_ID + 1]
@@ -832,7 +832,7 @@ def _straddle(*, strikes=("22550",)) -> list[background.Watched]:
     legs = tuple(PositionLeg("SELL", kind, Decimal(k), datetime.date(2026, 10, 13), 1, Decimal("100"), "x")
                  for k in strikes for kind in ("CE", "PE"))
     t = Tracked(Position("NIFTY", 65, "weekly", datetime.date.min, legs), Decimal(0), None, adjustments_used=0)
-    return [background.Watched("owner", FIRST_ID, t, NO_RULES, True, "owner")]
+    return [background.Watched("owner", FIRST_ID, t, NO_RULES, True, "owner", None)]
 
 
 async def test_a_frame_for_a_monitored_leg_reads_available_and_fresh_with_no_screen(scn):
@@ -945,8 +945,8 @@ def _two_strategies(scn) -> tuple[list[background.Watched], tuple[str, str]]:
     full = _tracked(scn)
     part = dataclasses.replace(full, position=dataclasses.replace(full.position, legs=full.position.legs[:-1]))
     last = full.position.legs[-1]
-    return [background.Watched("owner", FIRST_ID, full, NO_RULES, True, "owner"),
-            background.Watched("owner", FIRST_ID + 1, part, NO_RULES, True, "owner")], (str(last.strike), last.type)
+    return [background.Watched("owner", FIRST_ID, full, NO_RULES, True, "owner", None),
+            background.Watched("owner", FIRST_ID + 1, part, NO_RULES, True, "owner", None)], (str(last.strike), last.type)
 
 
 async def test_only_a_strategy_whose_tokens_ticked_is_read_and_checked(scn, monkeypatch):

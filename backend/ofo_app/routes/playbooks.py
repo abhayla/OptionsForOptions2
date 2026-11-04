@@ -41,6 +41,7 @@ from ofo.errors.explanations import (
     approach_name_id,
     render_explanation,
 )
+from ofo.settings import layers
 from ofo.strategy.stored_form import shown_name
 from pydantic import BaseModel, ConfigDict
 
@@ -62,7 +63,7 @@ from ofo_app.routes.adjustment import (
     get_tracked_reader,
 )
 from ofo_app.routes.adjustment_check import CheckResultOut, CheckStageOut, current_margin, result_out
-from ofo_app.routes.adjustment_preferences import UserPreferences
+from ofo_app.routes.adjustment_preferences import UserPreferences, UserValuesIn
 from ofo_app.routes.broker import current_user_ref
 from ofo_app.routes.outcome import (
     MarketContext,
@@ -412,6 +413,8 @@ class _Seams:
     ctx: MarketContext | None
     rates: ChargeRates | None
     prefs: Preferences  # the user's adjustment preferences (REQ-168), read once per request
+    #: the user's values as the store reads them (own values on ``.own``: the user layer of ADR-245), once per request
+    user_values: Mapping
 
 
 #: REQ-160 AC-3: the whole outside read of ONE strategy (tracked legs, chain/market, REST spot, margin) is bounded by
@@ -481,6 +484,18 @@ async def _read_bounded(row: Any, seams: _Seams, listed: Any, gate: asyncio.Sema
     return row, read
 
 
+async def _strategy_layer(db: Any, user_ref: str, strategy_id: int) -> layers.Layer:
+    """ADR-245: the strategy layer for a tested strategy is ITS plan copy's settings (the unsaved body under test is a
+    playbook, not that strategy's override): no plan -> None; a plan read that fails -> ``Unreadable`` (the carry
+    figures then show the named reason, never the user's or the admin value)."""
+    try:
+        plan = await store.plan_for(db, user_ref, strategy_id)
+    except Exception:  # read only: a failed plan read fails the carry figures closed, not the whole test
+        log.exception("playbook test: the plan of strategy %s could not be read", strategy_id)
+        return layers.Unreadable("plan_read_failed")
+    return None if plan is None else layers.strategy_layer(plan.body)
+
+
 async def _tested(db: Any, user_ref: str, data: TestIn, seams: _Seams) -> list[dict[str, Any]]:
     """Read only. Cheap first: a strategy with no open paper leg is skipped before any outside read; the rest are read
     TEST_READ_CONCURRENCY at a time, each under TEST_READ_LIMIT_SECONDS."""
@@ -500,7 +515,8 @@ async def _tested(db: Any, user_ref: str, data: TestIn, seams: _Seams) -> list[d
         row, read = answer
         tracked, market, spot = read.tracked, read.market, read.spot
         state = check.state_of(tracked, market, spot, read.margin, seams.rates, check.prices_fresh(seams.ctx),
-                               data.body, config=seams.prefs.approach)
+                               data.body, config=seams.prefs.approach, user_values=seams.user_values,
+                               strategy_layer=await _strategy_layer(db, user_ref, row.id))
         entry = check.scenario_entry(scenario_mode.current(), state, tracked.position)
         if entry is not None:
             state = dataclasses.replace(state, entry_atm_iv=entry.atm_iv)
@@ -521,13 +537,13 @@ async def test_playbook(  # noqa: PLR0913 - FastAPI dependencies, one per input 
         margin_of: Annotated[ApproachMargin, Depends(get_approach_margin)],
         ctx: Annotated[MarketContext | None, Depends(get_market_context)],
         rates: Annotated[ChargeRates | None, Depends(load_charge_rates)],
-        prefs: UserPreferences) -> TestOut:
+        prefs: UserPreferences, user_values: UserValuesIn) -> TestOut:
     """REQ-160 AC-3: the unsaved body checked exactly as a save checks it (``_precheck``: body, keys, stage gap and
     overlap), then evaluated on each of the user's tracked strategies of the type. Nothing is written: empty rule
     memory (a rule true now flags; the F-71 entry state is the scenario's stated entry only), no rule state, no
     suggestion, no order; the transaction is rolled back. A not-checked rule is listed with its reason, never passed."""
     seams = _Seams(tracked_reader, market_reader, rest_reader, margin_of, ctx,
-                   rates if isinstance(rates, ChargeRates) else None, prefs)
+                   rates if isinstance(rates, ChargeRates) else None, prefs, user_values)
     try:
         _precheck(data.type, data.body)
     except (store.PlaybookStoreError, stages.StageProblem) as exc:

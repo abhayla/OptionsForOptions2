@@ -33,6 +33,7 @@ from ofo.adjustment.gate_rows import GateRow, GateRows
 from ofo.adjustment.playbook_eval import validate_body
 from ofo.adjustment.playbook_types import BODY_SCHEMA, NAME_MAX, SHOWN_NAMES
 from ofo.errors.explanations import render_explanation
+from ofo.settings import layers
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
@@ -335,6 +336,11 @@ def check_body(body: object, strategy_type: str) -> dict:
         if key in body and not isinstance(body[key], kind):
             raise _bad(key)
     _check_day_rule_times(body.get("day_rules"))
+    if layers.PLAN_SETTINGS in body:  # ADR-245: the strategy layer's values, each a registry-accepted decimal string
+        try:
+            layers.check_plan_settings(body[layers.PLAN_SETTINGS])
+        except ValueError:
+            raise _bad(layers.PLAN_SETTINGS) from None
     try:  # second layer: the evaluator's own validator (step 1B) must accept what is stored
         validate_body(body)
     except ValueError:
