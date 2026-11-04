@@ -77,6 +77,7 @@ from ofo_app.routes.outcome import (
     get_margin_source,
     get_market_context,
     load_charge_rates,
+    spot_judging_now,
 )
 from ofo_app.strategy_refused import StrategyRefused
 
@@ -462,7 +463,8 @@ async def adjustment_approaches(  # noqa: PLR0913, PLR0915 - FastAPI dependencie
     rates = rates if isinstance(rates, ChargeRates) else None
     market = await market_reader(tracked, ctx)
     tracked = as_of_market(tracked, market)
-    spot = resolve_spot(market.feed, await rest_reader(tracked.position.underlying), market.last_close, now=market.now,
+    rest_spot = await rest_reader(tracked.position.underlying)
+    spot = resolve_spot(market.feed, rest_spot, market.last_close, now=spot_judging_now(ctx),
                         windows=feed_windows_of(ctx))
     pop_on = held_switches.held_on(held_switches.PROBABILITY_OF_PROFIT, held_environ)
     asked = list(dict.fromkeys(body.approaches)) if body.approaches is not None else list(APPROACH_IDS)

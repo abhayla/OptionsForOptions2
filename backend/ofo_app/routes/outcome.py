@@ -124,6 +124,14 @@ def server_now() -> datetime.datetime:
     return datetime.datetime.now(datetime.timezone.utc)
 
 
+def spot_judging_now(ctx: "MarketContext | None") -> datetime.datetime:
+    """The clock a route judges the spot readings against (GC-IC1 step 9): read at CALL time, so call it only AFTER the
+    feed, REST and DB reads arrived. ``market.now`` was taken before them; a request that took 3 s over the database
+    tunnel then refused a quote stamped 2.5 s after it began as ``tick_in_future``. The ONE helper every caller of
+    ``resolve_spot`` in the routes uses (a repo-scan test holds it). ``ctx`` None: no live context, the server clock."""
+    return server_now() if ctx is None else ctx.clock()
+
+
 def get_answer_clock() -> AnswerClock:
     """The answer-time seam: tests override this dependency with a fixed clock."""
     return server_now

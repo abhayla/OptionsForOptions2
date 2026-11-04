@@ -50,7 +50,7 @@ from ofo_app.db import get_sessionmaker
 from ofo_app.live_push import hold_and_read
 from ofo_app.routes.adjustment import MarketInputs, Tracked
 from ofo_app.routes.broker import current_user_ref
-from ofo_app.routes.outcome import feed_windows_of, market_state, read_booked, server_now
+from ofo_app.routes.outcome import feed_windows_of, market_state, read_booked, server_now, spot_judging_now
 
 log = logging.getLogger(__name__)
 _OPTION_TYPES = (Instrument.CE.value, Instrument.PE.value)
@@ -309,7 +309,7 @@ async def _window_spot(ctx: Any, underlying: str, spot_q: Any, now: datetime.dat
         rest = SourceReading(SourceState.FAILED)
     closed = market_state(ctx, now).closed
     last_close = read_last_close(spot_q, closed, _scenario(), now)
-    return resolve_spot(feed, rest, last_close, now=now, windows=feed_windows_of(ctx)).value
+    return resolve_spot(feed, rest, last_close, now=spot_judging_now(ctx), windows=feed_windows_of(ctx)).value
 
 
 def own_leg_ids(position: Position, listed: Iterable[Any]) -> list[str]:
