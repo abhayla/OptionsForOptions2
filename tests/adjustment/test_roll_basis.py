@@ -35,7 +35,8 @@ CFG20 = replace(CFG, target_short_delta={"weekly": D("0.20"), "monthly": D("0.20
 def _delta(strike: int, typ: str, spot: D = SPOT) -> D:
     """A smooth made-up delta falling with distance from spot (|delta| 0.50 at spot, 0.01 per 25 points)."""
     away = (strike - spot) if typ == "CE" else (spot - strike)
-    value = max(D("0.02"), D("0.50") - D(away) / D(2500)) if away >= 0 else min(D("0.98"), D("0.50") - D(away) / D(2500))
+    raw = D("0.50") - D(away) / D(2500)
+    value = max(D("0.02"), raw) if away >= 0 else min(D("0.98"), raw)
     return value if typ == "CE" else -value
 
 
@@ -127,7 +128,8 @@ def test_resolver_refuses_a_basis_value_outside_the_registry():
 
 
 def test_entry_distance_put_side_and_a01_roll_in():
-    """A-01 rolls the untested put in: 22,700 entered 347 below 23,047 -> 23,300 - 347 = 22,953 -> 22,950; wing 22,750."""
+    """A-01 rolls the untested put in: 22,700 entered 347 below 23,047 -> 23,300 - 347 = 22,953 -> 22,950;
+    wing 22,750."""
     basis = _basis(user="2")
     built = build_approach(_condor(), _chain(), SPOT, "A-01", replace(CFG20, roll_basis=basis))
     assert built.refusal is None

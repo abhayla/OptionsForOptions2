@@ -40,8 +40,8 @@ check's own state is the entry state. The returned memory is written with ``play
 from __future__ import annotations
 
 import dataclasses
-import logging
 import datetime
+import logging
 from collections.abc import Mapping
 from decimal import Decimal
 from typing import Any, Final
@@ -396,7 +396,7 @@ ENTRY_SPOT_UNREADABLE: Final = "entry_spot_unreadable"
 
 def roll_basis_of(admin: Decimal | None, user_values: Mapping[str, Decimal] | None, strategy: layers.Layer,
                   entry_spot: Decimal | layers.Unreadable | None) -> RollBasis:
-    """``adjustments.roll_basis`` in force for one strategy (ADR-243) through the ONE resolver (``ofo.settings.layers``):
+    """``adjustments.roll_basis`` in force for one strategy (ADR-243) through the ONE resolver (``layers``):
     the plan's, else the user's own, else the admin default; with the strategy's stored entry spot. Answer states:
     - basis read: 1 -> target delta, 2 -> entry distance (with its source);
     - a layer that exists but cannot be read, or a value with no basis code -> ``reason`` set: every roll refused;
