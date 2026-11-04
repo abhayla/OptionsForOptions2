@@ -67,8 +67,8 @@ from ofo_app.routes.broker import current_user_ref
 from ofo_app.routes.outcome import (
     MarketContext,
     get_market_context,
-    load_charge_rates,
     judge_spot,
+    load_charge_rates,
 )
 from ofo_app.strategy_refused import StrategyRefused
 

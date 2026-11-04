@@ -75,8 +75,8 @@ from ofo_app.routes.outcome import (
     MarketContext,
     get_margin_source,
     get_market_context,
-    load_charge_rates,
     judge_spot,
+    load_charge_rates,
 )
 from ofo_app.strategy_refused import StrategyRefused
 
