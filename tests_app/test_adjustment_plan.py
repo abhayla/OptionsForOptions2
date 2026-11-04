@@ -251,8 +251,9 @@ async def test_plan_settings_accepted_refused_with_a_named_reason_and_removable(
     """POST/PUT carry ``settings`` (the strategy's own overrides): a registry-accepted value is stored in the plan
     body (never dropped); an out-of-range value, an unknown key, an admin-only key, "" and a number are refused naming
     the field and write nothing; an edit leaving settings out keeps them; ``{}`` removes the override."""
-    sid = await _seeded(app_db_url, monkeypatch, "ADJ-01")
+    sid = await _seeded(app_db_url, monkeypatch, "ADJ-02")  # ADJ-01's contracts are delisted by the ADJ-02 tests above
     system = await _system_ic(app_db_url)
+    before = await _plan_row(app_db_url, sid)  # the strategy may already carry a plan from the earlier tests
     refused = [({CARRY_KEY: "99"}, f"settings.{CARRY_KEY}"), ({"other.unknown_key": "1"}, "settings.other.unknown_key"),
                ({"speeds.open_strategy_seconds": "5"}, "settings.speeds.open_strategy_seconds"),
                ({CARRY_KEY: ""}, f"settings.{CARRY_KEY}")]
@@ -261,7 +262,7 @@ async def test_plan_settings_accepted_refused_with_a_named_reason_and_removable(
         assert (status, out["what_happened"]) == (UNPROCESSABLE, f"The playbook value {field} is not valid."), settings
     status, _ = await _call("POST", _plan_path(sid), json={"playbook_id": system.id, "settings": {CARRY_KEY: 1.5}})
     assert status == UNPROCESSABLE  # strict: a number is not the text the sheet sends
-    assert await _plan_row(app_db_url, sid) is None  # nothing written by any refusal
+    assert await _plan_row(app_db_url, sid) == before  # nothing written by any refusal
 
     def stored(row) -> dict:
         return json.loads(row.body)["settings"]

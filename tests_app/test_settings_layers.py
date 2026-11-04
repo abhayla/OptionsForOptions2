@@ -20,6 +20,9 @@ from ofo.timeutil import IST
 from ofo_app import adjustment_check as check
 from ofo_app.user_preferences_store import Answer, UserValues
 
+# Two tests walk the source tree (rglob), so the whole module carries the mark (tests/test_repo_scan_marked.py).
+pytestmark = pytest.mark.repo_scan
+
 KEY = layers.CARRY_GAP_PERCENT
 ADMIN = {KEY: D("2")}
 USER = {KEY: D("3")}
