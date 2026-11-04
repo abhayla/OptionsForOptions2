@@ -402,6 +402,10 @@ decisions:
   ADR-240: S6.7         # IC situations: rules vs guidance (GC-IC1 step 6)
   ADR-241: S6.7         # approach trades priced at the live bid-ask mid first (owner, GC-IC1)
   ADR-242: S6.7         # A-37 watch a level is an adjustment alert through the gate (GC-IC1 step 4c)
+  ADR-243: S6.7         # roll basis: target delta default, entry distance second, user + strategy override (owner)
+  ADR-244: S6.7         # S-08 / S-09 join the iron condor system playbook as Guidance (owner)
+  ADR-245: S6.7         # every adjustment number is a three-layer setting: admin -> user -> strategy (owner)
+  ADR-246: S6.7         # alert presets kept after the 4 Nov live day; intraday reviewed after two expiry days (owner)
 
 questions:
   Q210: 4a              # external: Zerodha's written answer; ADR-051 covers the owner's own account
@@ -810,6 +814,7 @@ findings:
   F-98: S6.4      # theta call/put carry split vs the reference (ADR-234)
   F-99: S6.7      # stopping a second feed process blanks the API chain for a minute
   F-100: S6.4      # no feed supplies IV or Greeks; every app computes its own
+  F-101: S6.7      # live alert discipline cut suggestion noise by three quarters (4 Nov)
 
 hypotheses:
   H1: done
