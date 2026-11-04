@@ -43,6 +43,8 @@ INVENTORY = (
     "FIELD AdjustApproachesOut.approaches[].after_legs[].type: Literal['CE','PE']",
     'FIELD AdjustApproachesOut.approaches[].after_reason: CatalogueText',
     'FIELD AdjustApproachesOut.approaches[].after_reason: None',
+    'FIELD AdjustApproachesOut.approaches[].basis_source: Identifier',
+    'FIELD AdjustApproachesOut.approaches[].basis_source: None',
     'FIELD AdjustApproachesOut.approaches[].charges.not_available: CatalogueText',
     'FIELD AdjustApproachesOut.approaches[].charges.not_available: None',
     'FIELD AdjustApproachesOut.approaches[].charges.open_exit: Money',
@@ -2631,6 +2633,7 @@ INVENTORY = (
 
 NOTES = {
     'AdjustApproachOut.after_reason': 'catalogue text: only a render()/render_explanation() result (a catalogue sentence; its parameters are server-computed figures, never a stored credential)',
+    'AdjustApproachOut.basis_source': 'Identifier: a closed token chosen by server code (a catalogue key, state, label or display token); never read from the token store (value canary in test_reply_inventory)',
     'AdjustApproachOut.id': 'Identifier: a server-minted id or key of a domain row (strategy, leg, rule, order tag); never read from the token store (value canary in test_reply_inventory)',
     'AdjustApproachOut.kind': 'Identifier: a closed token chosen by server code (a catalogue key, state, label or display token); never read from the token store (value canary in test_reply_inventory)',
     'AdjustApproachOut.liquidity_flags': 'catalogue text: only a render()/render_explanation() result (a catalogue sentence; its parameters are server-computed figures, never a stored credential)',
