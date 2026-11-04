@@ -12,6 +12,7 @@ lister and ``alert_gate.step`` (to place an event on a chosen cycle) are fakes.
 from __future__ import annotations
 
 import asyncio
+import collections
 import datetime
 import inspect
 import logging
@@ -332,3 +333,174 @@ async def test_the_owner_lister_opens_each_session_inside_its_own_gate_hold(scn,
     assert [w.strategy_id for w in out] == [1, 2, 3]
     assert seen and all(seen)  # every session opened while the gate was held
     assert holds[0] == 1 + 3  # the list read, then one hold per strategy
+
+
+# ---- #636 r6 review follow-up (Tier A review, 5 MINOR findings) ------------------------------------------------------
+async def test_a_waiter_handed_the_gate_then_cancelled_before_running_passes_it_on():
+    """db_gate.py: the holder's release hands the gate to the waiter; the waiter is cancelled before it ever runs. The
+    gate must pass to the next waiter (and be free after it), never stay held by nobody."""
+    gate = background.DbGate()
+    first = gate.hold(background.GATE_REBUILD)
+    await first.__aenter__()  # the test holds the gate
+    handed = asyncio.create_task(gate.hold(background.GATE_WRITER).__aenter__())
+    got = []
+
+    async def later():
+        async with gate.hold(background.GATE_POLL):
+            got.append("later")
+    nxt = asyncio.create_task(later())
+    await _turns(3)  # both queued
+    await first.__aexit__(None, None, None)  # hands the gate to ``handed`` (no suspension in between)
+    handed.cancel()  # cancelled before it ran
+    await asyncio.gather(handed, return_exceptions=True)
+    await _turns(5)
+    try:
+        assert nxt.done() and got == ["later"] and not gate.locked()  # a kept gate: the next waiter never runs
+    finally:
+        nxt.cancel()
+        await asyncio.gather(nxt, return_exceptions=True)
+
+
+class _IdStore:
+    """Answers each written batch with the next record id per opened rule; keeps the call order."""
+
+    def __init__(self, order: list) -> None:
+        self.ids, self.order = iter(range(101, 200)), order
+
+    async def load(self, _w, _today):
+        return background.GateLoad(background.alert_gate.GateRows((), 0))
+
+    async def apply(self, w, events, _ctx):
+        self.order.append(("gate", w.strategy_id))
+        return {e.rule_id: next(self.ids) for e in events if isinstance(e, background.alert_gate.Opened)}
+
+
+async def test_a_record_id_goes_to_its_own_record_and_a_dismiss_of_it_never_silences_a_queued_worse(
+        scn, monkeypatch):
+    """Two opens of T-01 queued (101, then the worse 102). When 101 is written the gate's record is already the worse
+    one, so 101 is NOT put on it; a dismiss of record 101 (read by the rebuild) leaves the worse record live; when the
+    worse one is written it carries 102."""
+    _fire_on_next_step(monkeypatch)
+    store = _IdStore([])
+    _p, now, _c, _cache, w, _db = await _gated(scn, monkeypatch, store)
+    sid, wd = w.monitors[0].strategy_id, w.monitors[0]
+    ag = background.alert_gate
+    at = now[0]
+    first = ag.Opened("T-01", at, 0, None, None)
+    worse = ag.Opened("T-01", at + datetime.timedelta(minutes=1), 1, None, None, worse="last")
+    w._gate[sid] = ag.initial_state().with_rule("T-01", ag._Rule(record=ag._Record(1, None, worse.at)))  # the worse
+    w._gate_events[sid] = collections.deque([background.GateBatch(wd, (first,), None, at),
+                                             background.GateBatch(wd, (worse,), None, at)])
+    assert await w._write_gate_batch(sid) is True  # 101 written
+    assert w._gate[sid].rule("T-01").record.record_id is None  # not put on the worse record
+    after_dismiss = ag.dismiss(w._gate[sid], "T-01", 101)  # the rebuild read record 101 as dismissed
+    assert after_dismiss.rule("T-01").record.dismissed is False
+    assert await w._write_gate_batch(sid) is True
+    assert w._gate[sid].rule("T-01").record.record_id == 102  # noqa: PLR2004 - the worse record's own id
+
+
+async def test_alert_events_are_written_before_rule_memory_writes_at_every_step(scn, monkeypatch):
+    """Order of service inside the writer: a queued gate event goes before any rule-memory write, also one queued
+    while the memory writes are running (it jumps the remaining memory writes)."""
+    _fire_on_next_step(monkeypatch)
+    order: list = []
+    store = _IdStore(order)
+    _p, now, _c, _cache, w, _db = await _gated(scn, monkeypatch, store, n=2)
+    s1, s2 = (m.strategy_id for m in w.monitors)
+    memory = list(w.monitors)
+
+    async def recorder(wd, _state, _prefs=None):
+        order.append(("memory", wd.strategy_id))
+        if len([o for o in order if o[0] == "memory"]) == 1:  # a close lands while the memory writes run
+            w._gate_events.setdefault(s2, collections.deque()).append(
+                background.GateBatch(memory[1], (background.alert_gate.Lapsed("T-01", now[0], None),), None, now[0]))
+    w._recorder = recorder
+    w._pending.clear()
+    for m in memory:
+        w._pending[m.strategy_id] = (m, None, None, _ev_stub())
+    w._gate_events[s1] = collections.deque([background.GateBatch(memory[0], (background.alert_gate.Lapsed(
+        "T-01", now[0], None),), None, now[0])])
+    await w.drain_writes()
+    assert order == [("gate", s1), ("memory", s1), ("gate", s2), ("memory", s2)], order
+
+
+def _ev_stub():
+    return SimpleNamespace(memory={}, results=(), clear=())
+
+
+async def test_a_strategy_whose_list_read_failed_keeps_its_queued_events_and_one_that_left_drops_them(
+        scn, monkeypatch, caplog):
+    """A lister read that raised for one strategy (database down, a bad row) is not the strategy leaving: its queued
+    gate events stay queued and are written; a strategy no longer tracked drops its events with a log line."""
+    from ofo_app import adjustment_readers, db, strategy_store  # noqa: PLC0415
+
+    from tests_app.test_background_cycle import NO_RULES, Prov, _tracked  # noqa: PLC0415
+    _fire_on_next_step(monkeypatch)
+    order: list = []
+    store = _IdStore(order)
+    _p, now, _c, _cache, w, _db = await _gated(scn, monkeypatch, store, n=3)
+    ok, failing, left = (m.strategy_id for m in w.monitors)
+    for m in w.monitors:
+        w._gate_events[m.strategy_id] = collections.deque([background.GateBatch(
+            m, (background.alert_gate.Lapsed("T-01", now[0], None),), None, now[0])])
+
+    class _S:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_a):
+            return False
+    monkeypatch.setattr(db, "get_sessionmaker", lambda: _S)
+
+    async def list_strategies(_db, _owner):
+        return [SimpleNamespace(id=i) for i in (ok, failing, left)]
+
+    async def read_tracked(sid, _x):
+        if sid == failing:
+            raise ConnectionError("database went away")
+        return None if sid == left else _tracked(scn)
+
+    async def resolve(_db, _owner, _sid, _stype):
+        return SimpleNamespace(body=NO_RULES, is_system=True)
+    monkeypatch.setattr(strategy_store, "list_strategies", list_strategies)
+    monkeypatch.setattr(adjustment_readers, "read_tracked", read_tracked)
+    monkeypatch.setattr(background.check, "strategy_type", lambda *_a: "short_strangle")
+    monkeypatch.setattr(background.check, "resolve", resolve)
+    prov = Prov(scn)
+
+    async def lister():
+        return await background.owner_lister(prov, gate=w.db_gate)
+    w._lister = lister
+    caplog.set_level(logging.INFO, logger="ofo_app.background")
+    await w._rebuild_safely()
+    assert set(w._gate_events) == {ok, failing} and w.gate_events_dropped == 1
+    await w.drain_writes()
+    assert sorted(sid for _k, sid in order) == sorted([ok, failing])
+    assert any(f"alert events of strategy {left} were dropped" in r.getMessage() for r in caplog.records)
+
+
+async def test_a_db_outage_logs_one_traceback_per_strategy_then_a_count_and_the_oldest_events_age(
+        scn, monkeypatch, caplog):
+    """While the database is down the writer retries every wake: ONE traceback per strategy per outage, then a count
+    line (no traceback) at 10 failures; the oldest queued event's age is logged once when it passes 10 s; the outage's
+    end is logged with its failure count."""
+    queued = _fire_on_next_step(monkeypatch)
+    store = _Store()
+    prov, now, _calls, _cache, w, _db = await _gated(scn, monkeypatch, store)
+    sid = w.monitors[0].strategy_id
+    queued.append([_ev("opened")])
+    _tick(prov, now)
+    await w.cycle()
+    caplog.set_level(logging.INFO, logger="ofo_app.background")
+    store.fail = 12
+    for _ in range(12):
+        now[0] += datetime.timedelta(seconds=1)
+        await w.drain_writes()
+    mine = [r for r in caplog.records if r.name == "ofo_app.background" and f"strategy {sid}" in r.getMessage()]
+    assert sum(1 for r in mine if "failed; kept in order" in r.getMessage()) == 1  # the one log.exception line
+    assert sum(1 for r in mine if "10 failed writes" in r.getMessage()) == 1
+    aged = [r.getMessage() for r in mine if "oldest queued alert event" in r.getMessage()]
+    assert len(aged) == 1 and "queued 11 s" in aged[0], aged  # the first drain past 10 s, logged once
+    await w.drain_writes()  # the database is back
+    assert [names for _s, names, _x in store.batches] == [("opened",)]
+    assert any("written again after 12 failed writes" in r.getMessage() for r in caplog.records)

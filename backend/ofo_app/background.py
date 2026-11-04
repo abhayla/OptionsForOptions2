@@ -541,6 +541,22 @@ class GateBatch:
     watched: Watched
     events: tuple
     ctx: GateContext | None
+    queued_at: datetime.datetime | None = None  # the worker clock at the step (the oldest one's age is logged)
+
+
+class Listed(list):
+    """The lister's answer (#636 r6 review): the strategies listed, and ``unread`` = the ids whose read RAISED (the
+    database down, a bad row). An unread strategy did not leave the list: its queued gate events are kept."""
+
+    def __init__(self, items: Iterable[Watched] = (), unread: Iterable[int] = ()) -> None:
+        super().__init__(items)
+        self.unread = frozenset(unread)
+
+
+#: ADR-237 (3) promises an intraday record within 10 s of its close: a queued event older than this is logged once
+GATE_EVENT_AGE_WARN_S: Final = 10
+#: while one strategy's event writes keep failing, a count line (no traceback) every this many failures
+GATE_FAIL_COUNT_EVERY: Final = 10
 
 
 #: a day rule record names its approaches in the one approach slot, in order: "A-28,A-27" (GC-IC1 1a)
@@ -713,6 +729,8 @@ class Worker:
         self._gate_events: dict[int, collections.deque[GateBatch]] = {}
         self.gate_writes_failed = 0
         self.gate_events_dropped = 0
+        self._gate_fails: dict[int, int] = {}  # strategy -> event writes failed in a row (this outage)
+        self._aged_warned: GateBatch | None = None  # the oldest batch whose age was already logged
         # the alert gate (module docstring, step 5)
         self._gate_store = gate_store if gate_store is not None else DbGateStore()
         self._user_values_read = user_values  # None: the user's alert values are the admin values in force (named)
@@ -763,7 +781,8 @@ class Worker:
             self.writes_dropped += 1
             log.info("background: the queued write of strategy %s was dropped (%s)", sid,
                      "no longer listed" if sid not in body else "plan changed")
-        for sid in [k for k in self._gate_events if k not in body]:  # #636 r6: a plan change keeps them (real closes)
+        unread = getattr(monitors, "unread", frozenset())  # a failed read is not a strategy leaving (r6 review)
+        for sid in [k for k in self._gate_events if k not in body and k not in unread]:  # a plan change keeps them
             gone = self._gate_events.pop(sid)
             self.gate_events_dropped += len(gone)
             log.info("background: %s queued alert events of strategy %s were dropped (no longer listed)",
@@ -1200,7 +1219,7 @@ class Worker:
         self._gate[sid] = new
         if events:  # #636 r6: queued in step order for the ONE writer; the check never waits for the database
             self._gate_events.setdefault(sid, collections.deque()).append(
-                GateBatch(w, tuple(events), self._gate_ctx.get(sid)))
+                GateBatch(w, tuple(events), self._gate_ctx.get(sid), now))
             self._write_wake.set()
 
     async def _write_gate_batch(self, sid: int) -> bool:
@@ -1213,10 +1232,19 @@ class Worker:
             async with held(self.db_gate, GATE_WRITER):
                 opened = await self._gate_store.apply(batch.watched, batch.events, batch.ctx)
         except Exception as exc:  # contained: retried in order at the next wake, never dropped, never merged
-            log.exception("background: writing the alert events of strategy %s failed; kept in order", sid)
+            fails = self._gate_fails[sid] = self._gate_fails.get(sid, 0) + 1
+            if fails == 1:  # one traceback per strategy per outage; the retries every wake are counted
+                log.exception("background: writing the alert events of strategy %s failed; kept in order", sid)
+            elif fails % GATE_FAIL_COUNT_EVERY == 0:
+                log.error("background: the alert events of strategy %s: %s failed writes so far (%s), %s steps queued",
+                          sid, fails, type(exc).__name__, len(queue))
             _keep_recent(self.errors, (sid, type(exc).__name__))
             self.gate_writes_failed += 1
             return False
+        fails = self._gate_fails.pop(sid, 0)
+        if fails:
+            log.warning("background: the alert events of strategy %s were written again after %s failed writes", sid,
+                        fails)
         if self._gate_events.get(sid) is queue and queue and queue[0] is batch:
             queue.popleft()
             if not queue:
@@ -1268,6 +1296,7 @@ class Worker:
         """The writer's pass (tests call it after a cycle): every queued gate event first, each strategy's in step
         order; then every queued rule-memory state, oldest strategy first. A strategy whose event write raised is not
         retried in this pass (its next events wait behind it: order kept); the next wake retries it."""
+        self._log_oldest_event()
         failed: set[int] = set()
         while True:
             ready = [sid for sid in self._gate_events if sid not in failed]
@@ -1278,6 +1307,18 @@ class Worker:
             if not self._pending:
                 return
             await self._write_one(next(iter(self._pending)))
+
+    def _log_oldest_event(self) -> None:
+        """The age of the oldest queued gate event, logged once per batch when it passes ``GATE_EVENT_AGE_WARN_S``."""
+        heads = [q[0] for q in self._gate_events.values() if q and q[0].queued_at is not None]
+        if not heads:
+            return
+        oldest = min(heads, key=lambda b: b.queued_at)
+        age = int((self._clock() - oldest.queued_at).total_seconds())
+        if age > GATE_EVENT_AGE_WARN_S and oldest is not self._aged_warned:
+            self._aged_warned = oldest
+            log.warning("background: the oldest queued alert event of strategy %s has been queued %s s (promise %s s)",
+                        oldest.watched.strategy_id, age, GATE_EVENT_AGE_WARN_S)
 
     async def _writer_loop(self) -> None:
         """The ONE writer, on its own task: wakes when a check queues a state."""
@@ -1481,7 +1522,7 @@ async def _lapse_exited(db: Any, user_ref: str, sid: int) -> None:
             log.exception("background: lapsing the records of exited strategy %s failed; the others are listed", sid)
 
 
-async def owner_lister(provider: Any, gate: Any = None) -> list[Watched]:
+async def owner_lister(provider: Any, gate: Any = None) -> Listed:
     """Every strategy of the V1 owner (ADR-051) that is tracked (open paper legs) and has a playbook; its type is read
     against the provider's instrument list and spot (as the screen's check). ``gate`` (the role's ``db_gate``) is held
     for the list read, then once per strategy's reads, never for the whole list (#636 r6): a write waits one hold."""
@@ -1489,7 +1530,7 @@ async def owner_lister(provider: Any, gate: Any = None) -> list[Watched]:
     from ofo_app.adjustment_readers import TrackedExited, TrackedUnreadable, read_tracked  # noqa: PLC0415
     from ofo_app.db import get_sessionmaker  # noqa: PLC0415
     from ofo_app.live_market import OWNER_REF  # noqa: PLC0415
-    out: list[Watched] = []
+    out, unread = Listed(), set()
     # one session at a time (#636 r4 connection budget): ``read_tracked`` opens its own session, so the list's session
     # is closed before it and the playbook lookup gets a fresh one after it (never two connections held at once)
     async with held(gate, GATE_REBUILD), get_sessionmaker()() as db:
@@ -1510,13 +1551,15 @@ async def owner_lister(provider: Any, gate: Any = None) -> list[Watched]:
                 await _lapse_exited(db, OWNER_REF, s.id)
             continue
         except TrackedUnreadable:
+            unread.add(s.id)
             continue
         except Exception:  # REQ-115 AC-9: one strategy's lookup failing never drops the others from the list
             log.exception("background: listing strategy %s failed; it is skipped", s.id)
+            unread.add(s.id)  # not read is not gone: its queued alert events stay (#636 r6 review)
             continue
         if resolved.body is not None:
             out.append(Watched(OWNER_REF, s.id, tracked, resolved.body, resolved.is_system, OWNER_REF))
-    return out
+    return Listed(out, unread)
 
 
 async def _serve() -> int:  # pragma: no cover - the process wiring; each part is tested on its own
