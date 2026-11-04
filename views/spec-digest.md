@@ -4,10 +4,9 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (232)
+## Decisions (233)
 
-- Older decisions: 192 rows, ADR-1..ADR-196 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
-- ADR-197 2026-10-27: SPEC CHANGE to REQ-077 AC-9. [SPEC CHANGE to REQ-077 AC-9 (Estimated Now and an…]
+- Older decisions: 193 rows, ADR-1..ADR-197 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
 - ADR-198 2026-10-27: (1) REQ-142 (Funds needed), REQ-143 (Add Booked P&L chart toggle, out of this phase per ADR-196 (4)… [approves REQ-142, REQ-143, REQ-144, REQ-145, REQ-…]
 - ADR-199 2026-10-27: (1) After the NSE derivatives market closes on a trading day (15:30 IST, ADR-119), an expiry that f… [adds a rule to REQ-135 AC-2]
 - ADR-200 2026-10-27: (1) The after-hours builder is ADR-197, unchanged: outside market hours the builder captures planne… [clarifies ADR-197 ("last close", its label time);…]
@@ -47,6 +46,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-243 2026-11-04: Owner 2026-11-04 (question tool, "Target delta"): when an adjustment approach rolls a short strike… [Supersedes REQ-046 Q255 (placement basis); matche…]
 - ADR-244 2026-11-04: Owner 2026-11-04 (question tool, "Add both as Guidance"): the iron condor system playbook lists S-0… [Extends ADR-240 (situations: rules vs guidance) t…]
 - ADR-245 2026-11-04: Owner 2026-11-04 (question tool, "Yes, 3 layers for all"; and "always act as an expert option trade… [Extends REQ-168 (user preferences) and REQ-161 (p…]
+- ADR-246 2026-11-04: Owner 2026-11-04 ~12:5x IST (question tool, "Keep presets for now"): the REQ-170 style presets stay… [No preset value changes. Adds F-101 (live counts)…]
 
 ## Requirements (161)
 
@@ -212,7 +212,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - REQ-169 [Approved]: The admin edits a system playbook in the same playbook editor and saves it as a new version with history and…
 - REQ-170 [Approved]: An adjustment suggestion is raised once per crossing, confirmed on a candle close, then held quiet until it r…
 
-## Spec sections (263)
+## Spec sections (264)
 
 ### spec/SPEC-DEVIATION.md
 
@@ -367,6 +367,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ## F-98 - Our theta splits call and put by a carry term that drifts; the…
 - ## F-99 - Stopping a second Kite feed process blanks the API's chain for…
 - ## F-100 - No feed we use supplies IV or Greeks; every app studied compu…
+- ## F-101 - Live alert discipline cut suggestion noise by three quarters;…
 
 ### spec/open-questions.md
 
