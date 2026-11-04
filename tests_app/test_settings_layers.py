@@ -132,6 +132,32 @@ def test_check_plan_settings_refuses(bad):
         layers.check_plan_settings(bad)
 
 
+def _market(admin: D | None):
+    from ofo_app.routes.adjustment import MarketInputs  # noqa: PLC0415
+    return MarketInputs((), {}, None, None, None, None, None, datetime.datetime(2026, 10, 30, 15, 0, tzinfo=IST),
+                        carry_gap_pct=admin)
+
+
+def test_carry_gap_in_force_replaces_the_admin_value_with_the_strategys():
+    got = check.carry_gap_in_force(_market(D("2")), _values("yours"), {KEY: "1.5"})
+    assert (got.carry_gap_pct, got.carry_gap_source, got.carry_gap_reason) == (D("1.5"), "this strategy", None)
+    closed = check.carry_gap_in_force(_market(D("2")), _values("yours"), layers.Unreadable("x"))
+    assert (closed.carry_gap_pct, closed.carry_gap_source, closed.carry_gap_reason) == (
+        None, None, layers.STRATEGY_UNREADABLE)
+
+
+def test_the_worker_and_the_screen_check_both_resolve_through_carry_gap_in_force_before_state_of():
+    import inspect  # noqa: PLC0415
+
+    from ofo_app import background  # noqa: PLC0415
+    from ofo_app.routes import adjustment_check as route  # noqa: PLC0415
+    worker = inspect.getsource(background.Worker._check_unpaused)
+    assert worker.index("check.carry_gap_in_force(") < worker.index("state_from_market(")
+    screen = inspect.getsource(route.adjustment_check)
+    assert screen.index("check.carry_gap_in_force(") < screen.index("check.state_of(")
+    assert "resolved.strategy_layer" in inspect.getsource(background.owner_lister)
+
+
 def test_check_plan_settings_accepts():
     assert layers.check_plan_settings({KEY: "1.5"}) == {KEY: "1.5"}
     assert layers.check_plan_settings({}) == {}
