@@ -45,7 +45,7 @@ from ofo_app.routes.adjustment import (
     get_tracked_reader,
     margin_block,
 )
-from ofo_app.routes.adjustment_preferences import UserPreferences
+from ofo_app.routes.adjustment_preferences import UserPreferences, UserValuesIn
 from ofo_app.routes.broker import current_user_ref
 from ofo_app.routes.outcome import (
     MarketContext,
@@ -211,7 +211,7 @@ async def adjustment_check(  # noqa: PLR0913 - FastAPI dependencies, one per inp
         margin_of: Annotated[ApproachMargin, Depends(get_approach_margin)],
         ctx: Annotated[MarketContext | None, Depends(get_market_context)],
         rates: Annotated[ChargeRates | None, Depends(load_charge_rates)],
-        prefs: UserPreferences) -> AdjustmentCheckOut:
+        prefs: UserPreferences, user_values: UserValuesIn) -> AdjustmentCheckOut:
     from ofo_app.adjustment_readers import TrackedExited, TrackedUnreadable  # noqa: PLC0415 - imports routes.adjustment
     rates = rates if isinstance(rates, ChargeRates) else None
     try:
@@ -238,6 +238,9 @@ async def adjustment_check(  # noqa: PLR0913 - FastAPI dependencies, one per inp
     if resolved.body is None or reply["paused"] is not None:  # A-38: paused -> shown with its end, not evaluated
         return AdjustmentCheckOut.model_validate(reply)
     margin = await current_margin(margin_of, tracked, market)
+    # ADR-245: the carry gap in force for this strategy (plan, else the user's own, else the admin default); the
+    # worker makes the same resolution (``background.Worker``)
+    market = check.carry_gap_in_force(market, user_values, resolved.strategy_layer)
     state = check.state_of(tracked, market, spot, margin, rates, check.prices_fresh(ctx), resolved.body,
                            config=prefs.approach)
     # read-only (review round 2, finding 3): evaluated against the stored rule memory, NOTHING written; the background

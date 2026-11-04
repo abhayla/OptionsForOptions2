@@ -57,6 +57,7 @@ from ofo.engine.metrics import UNLIMITED
 from ofo.errors.explanations import LEVEL_WATCH_LABEL_TEXT, PLAYBOOK_DAY_RULE_ACTION_TEXT, render_explanation
 from ofo.marketdata.day_open import STATED
 from ofo.marketdata.spot_source import SourceState, SpotAnswer
+from ofo.settings import layers
 from ofo.timeutil import IST
 
 from ofo_app import playbook_store
@@ -89,6 +90,12 @@ class Resolved:
     def draft(self) -> bool:
         """Draft is a property of SYSTEM playbooks only: an own copy's status column defaults to 'draft'."""
         return self.is_system and self.status == "draft"
+
+    @property
+    def strategy_layer(self) -> layers.Layer:
+        """ADR-245: the strategy layer of the three-layer settings is the strategy's PLAN copy only (REQ-161); a
+        strategy following the user's active or the system playbook has none (``layers.strategy_layer``)."""
+        return layers.strategy_layer(self.body) if self.source == "plan" else None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -316,7 +323,8 @@ def with_carry(state: pe.StrategyState, body: Mapping | None, tracked: Tracked,
     if not pe.carry_due(body, state):
         return state
     figs = carry.carry_figures(carry_model(tracked, market), tracked.booked, state.margin, now,
-                               gap_pct=market.carry_gap_pct)
+                               gap_pct=market.carry_gap_pct, gap_source=getattr(market, "carry_gap_source", None),
+                               gap_setting_reason=getattr(market, "carry_gap_reason", None))
     return dataclasses.replace(state, carry=figs)
 
 
@@ -326,7 +334,48 @@ def carry_record(figs: pe.CarryFigures) -> dict[str, str | None]:
         return None if v is None else format(v, "f")
     return {"gap_pct": text(figs.gap_pct), "gap_up": text(figs.up), "gap_down": text(figs.down),
             "gap_reason": figs.gap_reason, "margin": text(figs.margin), "margin_reason": figs.margin_reason,
-            "next_open": None if figs.next_open is None else figs.next_open.isoformat()}
+            "next_open": None if figs.next_open is None else figs.next_open.isoformat(),
+            "gap_source": figs.gap_source, "gap_setting_reason": figs.gap_setting_reason}
+
+
+@dataclasses.dataclass(frozen=True)
+class GapInForce:
+    """The carry gap for one strategy (ADR-245): the value, where it came from, or the reason no value is read."""
+
+    value: Decimal | None
+    source: str | None
+    reason: str | None
+
+
+def user_layer(user_values: Mapping[str, Decimal] | None) -> layers.Layer:
+    """The user layer: the user's OWN values (``user_preferences_store.UserValues.own``), never the merged mapping
+    (a merged value equal to the default cannot say whose it is). A mapping with no own-values record (the registry
+    defaults a test seam passes) has no user layer."""
+    own = getattr(user_values, "own", None)
+    return own if isinstance(own, Mapping) else None
+
+
+def carry_gap_of(admin: Decimal | None, user_values: Mapping[str, Decimal] | None,
+                 strategy: layers.Layer) -> GapInForce:
+    """``other.carry_gap_percent`` in force for one strategy through the ONE resolver (``ofo.settings.layers``):
+    the plan's, else the user's, else the admin default. A layer that exists but cannot be read -> no value and its
+    reason code (fail closed, never the next layer); an admin value not read -> ``DEFAULT_UNREADABLE``."""
+    admin_layer: layers.Layer = layers.Unreadable("not read") if admin is None else {layers.CARRY_GAP_PERCENT: admin}
+    try:
+        got = layers.resolve(layers.CARRY_GAP_PERCENT, admin_layer, user_layer(user_values), strategy)
+    except layers.LayerUnreadable as exc:
+        return GapInForce(None, None, exc.code)
+    return GapInForce(got.value, got.source, None)
+
+
+def carry_gap_in_force(market: MarketInputs, user_values: Mapping[str, Decimal] | None,
+                       strategy: layers.Layer) -> MarketInputs:
+    """``market`` (whose ``carry_gap_pct`` holds the ADMIN value in force, as the market readers set it) with the
+    strategy's carry gap in force and its source. The screen check and the worker both call this before
+    ``state_of`` (one resolution, ADR-245)."""
+    gap = carry_gap_of(market.carry_gap_pct, user_values, strategy)
+    return dataclasses.replace(market, carry_gap_pct=gap.value, carry_gap_source=gap.source,
+                               carry_gap_reason=gap.reason)
 
 
 def scenario_entry(scn: Any, state: pe.StrategyState, position: Position) -> pe.StrategyState | None:

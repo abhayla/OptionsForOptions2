@@ -208,6 +208,9 @@ class Watched:
     body: Mapping
     is_system: bool
     feed_owner: str
+    #: ADR-245: the strategy layer of the three-layer settings (``adjustment_check.Resolved.strategy_layer``: the plan
+    #: copy's ``settings``; None = no plan), read with the body on the rebuild, never per check
+    strategy_layer: Any = None
 
 
 def _seconds(delta: datetime.timedelta) -> Decimal:
@@ -1100,6 +1103,9 @@ class Worker:
             self._pause(sid, PriceState.CHECK_FAILED, now)
             return False
         market = market_inputs(w, read, FeedScope(self.cache, w.feed_owner), now, self._values)
+        # ADR-245: the carry gap in force for THIS strategy (plan, else the user's own, else the admin default), the
+        # one resolution the screen check also makes (``adjustment_check.carry_gap_in_force``)
+        market = check.carry_gap_in_force(market, user_values, w.strategy_layer)
         state = state_from_market(w, market, now, self._values, prefs, self.margins.block_for(w, now))
         state = dataclasses.replace(state, watches=load.watches)  # A-37: read on the rebuild (step 7), never per check
         self.margins.seen(w, market)
@@ -1558,7 +1564,8 @@ async def owner_lister(provider: Any, gate: Any = None) -> Listed:
             unread.add(s.id)  # not read is not gone: its queued alert events stay (#636 r6 review)
             continue
         if resolved.body is not None:
-            out.append(Watched(OWNER_REF, s.id, tracked, resolved.body, resolved.is_system, OWNER_REF))
+            out.append(Watched(OWNER_REF, s.id, tracked, resolved.body, resolved.is_system, OWNER_REF,
+                               resolved.strategy_layer))
     return Listed(out, unread)
 
 

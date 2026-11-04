@@ -23,6 +23,7 @@ Known bypasses (out of the threat model today): until sign-in exists ``require_u
 from __future__ import annotations
 
 import datetime
+from collections.abc import Mapping
 from decimal import Decimal
 from typing import Annotated, Literal
 
@@ -54,10 +55,19 @@ def require_user(user: Annotated[str, Depends(current_user_ref)]) -> str:
 User = Annotated[str, Depends(require_user)]
 
 
-async def get_user_preferences(db: Db, user: User) -> prefs_mod.Preferences:
-    """The signed-in user's preferences in force now, read ONCE per request (FastAPI caches a dependency per request)
-    and handed to the pure adjustment functions as required parameters. A store that cannot answer raises (500)."""
-    return prefs_mod.from_values(await store.values_for(db, user))
+async def get_user_values(db: Db, user: User) -> Mapping[str, Decimal]:
+    """The signed-in user's values in force now (``store.UserValues``: merged, with the user's own on ``.own``), read
+    ONCE per request (FastAPI caches a dependency per request). A store that cannot answer raises (500)."""
+    return await store.values_for(db, user)
+
+
+UserValuesIn = Annotated[Mapping[str, Decimal], Depends(get_user_values)]
+
+
+async def get_user_preferences(values: UserValuesIn) -> prefs_mod.Preferences:
+    """The signed-in user's preferences in force now, from the request's one values read, handed to the pure
+    adjustment functions as required parameters."""
+    return prefs_mod.from_values(values)
 
 
 UserPreferences = Annotated[prefs_mod.Preferences, Depends(get_user_preferences)]

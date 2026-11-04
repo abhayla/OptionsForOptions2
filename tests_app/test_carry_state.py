@@ -60,5 +60,6 @@ def test_carry_record_money_as_strings_and_reasons():
                            datetime.datetime(2026, 11, 2, 9, 15, tzinfo=IST), D("2"))
     assert check.carry_record(figs) == {"gap_pct": "2", "gap_up": "-1234.50", "gap_down": "-2345.60",
                                         "gap_reason": None, "margin": None, "margin_reason": carry.MISSING_MARGIN,
-                                        "next_open": "2026-11-02T09:15:00+05:30"}
+                                        "next_open": "2026-11-02T09:15:00+05:30",
+                                        "gap_source": None, "gap_setting_reason": None}  # ADR-245 (GC step 1)
     assert dataclasses.is_dataclass(figs)

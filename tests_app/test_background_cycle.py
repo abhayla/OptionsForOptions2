@@ -633,7 +633,7 @@ async def test_owner_lister_skips_the_one_strategy_whose_playbook_lookup_raises(
     async def resolve(_db, _owner, sid, _stype):
         if sid == FIRST_ID:
             raise RuntimeError("playbook lookup failed")
-        return type("R", (), {"body": {}, "is_system": True})()
+        return type("R", (), {"body": {}, "is_system": True, "strategy_layer": None})()  # Resolved's read fields
     monkeypatch.setattr(adjustment_check, "resolve", resolve)
     out = await background.owner_lister(Prov(scn))
     assert [x.strategy_id for x in out] == [FIRST_ID + 1]
