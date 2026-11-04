@@ -50,7 +50,7 @@ from ofo_app.db import get_sessionmaker
 from ofo_app.live_push import hold_and_read
 from ofo_app.routes.adjustment import MarketInputs, Tracked
 from ofo_app.routes.broker import current_user_ref
-from ofo_app.routes.outcome import feed_windows_of, market_state, read_booked, server_now
+from ofo_app.routes.outcome import feed_windows_of, market_state, read_booked, server_now, spot_judging_now
 
 log = logging.getLogger(__name__)
 _OPTION_TYPES = (Instrument.CE.value, Instrument.PE.value)
@@ -299,7 +299,7 @@ async def _window_spot(ctx: Any, underlying: str, spot_q: Any, now: datetime.dat
     index quote, else the last close), so a user with only a strategy open (nobody holds the index on the feed) still
     gets a window. The REST quote is asked only when the feed's own reading is not usable. None: no spot at all."""
     feed = screen_feed_reading(ctx.provider, spot_q, now)
-    answer = resolve_spot(feed, None, None, now=now, windows=feed_windows_of(ctx))
+    answer = resolve_spot(feed, None, None, now=now, windows=feed_windows_of(ctx))  # feed only: no await before it
     if answer.available:
         return answer.value
     try:
@@ -309,7 +309,9 @@ async def _window_spot(ctx: Any, underlying: str, spot_q: Any, now: datetime.dat
         rest = SourceReading(SourceState.FAILED)
     closed = market_state(ctx, now).closed
     last_close = read_last_close(spot_q, closed, _scenario(), now)
-    return resolve_spot(feed, rest, last_close, now=now, windows=feed_windows_of(ctx)).value
+    judged = spot_judging_now(ctx)  # after the REST read: the live feed is re-stamped at the same instant
+    feed = screen_feed_reading(ctx.provider, spot_q, judged)
+    return resolve_spot(feed, rest, last_close, now=judged, windows=feed_windows_of(ctx)).value
 
 
 def own_leg_ids(position: Position, listed: Iterable[Any]) -> list[str]:
@@ -525,7 +527,7 @@ async def read_market(tracked: Tracked, ctx: Any, *, extra_ids: Iterable[str] = 
     return MarketInputs(tuple(rows) + later_rows, ids, forward, years, vol, feed,
                         read_last_close(spot_q, closed, scn, now), now, expiry_kind, leg_greeks, fwd_model, leg_ivs,
                         index_day_open(frozen.day, now), reach, ctx.carry_gap_pct, ctx.s02_delta_per_lot,
-                        ctx.s12_percent)
+                        ctx.s12_percent, spot_q, feed_is_live(provider, now))
 
 
 async def read_market_more(tracked: Tracked, ctx: Any, extra_ids: Iterable[str]) -> MarketInputs | None:
