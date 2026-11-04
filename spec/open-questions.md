@@ -318,6 +318,8 @@ complimentary list · Zerodha rate limits for per-user WebSockets.
 ## Q255 — DECIDED (owner, 2026-09-29) — Building an approach's exact configuration (REQ-046 AC-4)
 - Decision: keep widths, restore the short strikes' entry distance from spot (snapped to listed strikes); always an
   editable proposal. Recorded in REQ-046.
+- 2026-11-04 (owner, ADR-243 + ADR-245): target delta is the DEFAULT roll basis; entry distance (this decision) is a
+  second basis each user can pick in Preferences, and each strategy's plan can override it.
 
 ## Q256 — DECIDED (owner, 2026-10-02) — The clock-skew window value (ADR-023 Q225)
 - Question: ADR-023 names a clock-skew window for new entitlement events but gave no number.

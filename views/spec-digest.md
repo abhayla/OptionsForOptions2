@@ -4,12 +4,9 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (229)
+## Decisions (232)
 
-- Older decisions: 189 rows, ADR-1..ADR-193 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
-- ADR-194 2026-10-26: In the Strategy Builder's P&L Table tab: (1) the default view is a compact per-leg table like Sensi… [amends REQ-035 AC-1 and AC-7; refines ADR-008 sec…]
-- ADR-195 2026-10-26: When at least one leg is unticked ("left out of the numbers", REQ-076 AC-6), the selection label re… [refines REQ-076 AC-6 and AC-8; applies ADR-152]
-- ADR-196 2026-10-27: SPEC CHANGE to ADR-193 (1) for the builder and option chain only. [SPEC CHANGE to ADR-193 (1) (builder and option ch…]
+- Older decisions: 192 rows, ADR-1..ADR-196 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
 - ADR-197 2026-10-27: SPEC CHANGE to REQ-077 AC-9. [SPEC CHANGE to REQ-077 AC-9 (Estimated Now and an…]
 - ADR-198 2026-10-27: (1) REQ-142 (Funds needed), REQ-143 (Add Booked P&L chart toggle, out of this phase per ADR-196 (4)… [approves REQ-142, REQ-143, REQ-144, REQ-145, REQ-…]
 - ADR-199 2026-10-27: (1) After the NSE derivatives market closes on a trading day (15:30 IST, ADR-119), an expiry that f… [adds a rule to REQ-135 AC-2]
@@ -47,6 +44,9 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-240 2026-11-03: REQ-159 AC-5 keeps S-01 to S-12 in the playbook. [Clarifies REQ-159 AC-5 (situations: rule or guida…]
 - ADR-241 2026-11-03: Owner 2026-11-03 (question tool, "Mid when spread is live"): every planned trade of an adjustment a… [Amends ADR-068 (1) for adjustment approach trades…]
 - ADR-242 2026-11-03: Technical decision for GC-IC1 step 4c, made by the orchestrator under the owner's standing rule tha… [REQ-155 AC-1 (A-37 offered as an alert, not a tra…]
+- ADR-243 2026-11-04: Owner 2026-11-04 (question tool, "Target delta"): when an adjustment approach rolls a short strike… [Supersedes REQ-046 Q255 (placement basis); matche…]
+- ADR-244 2026-11-04: Owner 2026-11-04 (question tool, "Add both as Guidance"): the iron condor system playbook lists S-0… [Extends ADR-240 (situations: rules vs guidance) t…]
+- ADR-245 2026-11-04: Owner 2026-11-04 (question tool, "Yes, 3 layers for all"; and "always act as an expert option trade… [Extends REQ-168 (user preferences) and REQ-161 (p…]
 
 ## Requirements (161)
 
