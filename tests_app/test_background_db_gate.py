@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import datetime
 import inspect
+import logging
 from types import SimpleNamespace
 
 import pytest
@@ -235,6 +236,7 @@ async def test_events_of_a_strategy_that_left_the_list_are_dropped_with_a_log_li
     async def lister():
         return still
     w._lister = lister
+    caplog.set_level(logging.INFO, logger="ofo_app.background")
     await w._rebuild_safely()
     await w.drain_writes()
     assert [(sid, names) for sid, names, _x in store.batches] == [(kept, ("opened-kept",))]

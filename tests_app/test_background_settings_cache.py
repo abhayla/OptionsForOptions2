@@ -398,8 +398,9 @@ async def test_poll_rebuild_and_writer_share_one_gate_so_at_most_one_connection_
         async with fakedb.connect() as conn:
             await conn.execute("SELECT 1")
 
-    async def lister():
-        await on_db()
+    async def lister():  # #636 r6: the lister holds the gate for its own reads (owner_lister(gate=)), not the rebuild
+        async with w.db_gate:
+            await on_db()
         return _watched(scn, 2)
 
     async def preferences(user):
@@ -567,10 +568,11 @@ async def test_r5_f4_a_rebuild_holding_the_gate_2s_is_counted_in_the_lag(scn):
     cache._monotonic = lambda: mono[0]
     watched = list(w.monitors) or _watched(scn, 1)
 
-    async def lister():  # the rebuild's list read, holding the gate for 2 s of the injected clock
-        await asyncio.sleep(0)
-        await asyncio.sleep(0)
-        mono[0] += 2.0
+    async def lister():  # the rebuild's list read, holding the gate for 2 s of the injected clock (one hold, #636 r6)
+        async with w.db_gate:
+            await asyncio.sleep(0)
+            await asyncio.sleep(0)
+            mono[0] += 2.0
         return watched
     w._lister = lister
     rebuild = asyncio.create_task(w._rebuild_safely())
