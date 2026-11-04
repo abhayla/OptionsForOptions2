@@ -577,6 +577,11 @@ issues:
   "#647": S6.7  # Review-adjustment drawer lacks margin utilisation and the options' IV / OI / LTP (REQ-046 AC-2)
   "#648": S6.7  # Suggestion records: prepared exits create none; 'Why did this trigger?' shows no outcome or its time (REQ-112 AC-1, AC-5)
   "#649": S6.7  # Scenario fixtures carry fixed expiries: from 4 Nov DB tests that switch scenarios fail on the contract-lifecycle guard
+  "#650": S6.7  # Trigger values shown in the wrong unit: 'Spot crosses a breakeven: -1065.0000 (rule 0.0000)' is rupees of expiry P&L
+  "#651": S6.7  # Max loss shown with different signs across screens (drawer +3,331.21 vs paper -23,897.03)
+  "#652": S6.7  # Open suggestion records never lapse when their strategy leaves the worker's list (#26 #27 #32)
+  "#653": S6.7  # A tightened limit can open a suggestion with no candle-close confirmation when the rule was already true (record 142)
+  "#654": S6.7  # Joined lists in one-token text slots crash the Compare (compare.py:397 breakeven levels)
 
 # Work items whose status is not done.
 work_items:
