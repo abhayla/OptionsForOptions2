@@ -85,6 +85,14 @@ const lotsOf = (replyLegs, leg) => (Array.isArray(replyLegs)
   ? replyLegs.find((r) => r?.instrument_id === leg.instrument_id && String(r.quantity) === String(leg.quantity))?.lots ?? null
   : null)
 
+/** REQ-046 AC-5: the data state of the figures behind a detection, from the server's price_health (live / stale / missing).
+ *  An answer that is itself PAUSED / NOT_CONNECTED reads paused; a state not named here is said as not known. */
+const DATA_STATE_TEXT = Object.freeze({ live: 'Data: live', stale: 'Data: stale', missing: 'Data: paused' })
+export function dataStateText(health, answerState) {
+  if (answerState === 'PAUSED' || answerState === 'NOT_CONNECTED') return 'Data: paused'
+  return DATA_STATE_TEXT[health] ?? 'Data: not known'
+}
+
 /** The one reading of GET/POST /strategies/{id}/tracking. kind: live | paused | not_connected | exited | invalid.
  *  booked / unbooked are the server's signed texts (null when absent). */
 export function readTracking(body, replyLegs = null) {
@@ -122,7 +130,8 @@ export function readTracking(body, replyLegs = null) {
         // GC-UI D-B50 (ADR-202 (1), ADR-204): one visible line, the rest of REQ-046 AC-1's Layer 1 behind the "?"
         // REQ-151 AC-2: the strike the server sent ("22400.00") trims only its trailing zeros -> "22400"
         line: `${PLATFORM_DETECTION_LABEL}: ${condition}: ${strikeLabel(d.level)}, ${distance} away`,
-        details: [`Index: ${d.index_level}`, `Distance: ${distance}`, `Threshold: ${d.threshold_percent}%`, `As of ${istTime(d.at)}`],
+        details: [`Index: ${d.index_level}`, `Distance: ${distance}`, `Threshold: ${d.threshold_percent}%`,
+          dataStateText(d.price_health, body.state), `As of ${istTime(d.at)}`],
       }
     })
   if (body.state === 'NOT_CONNECTED') return { kind: 'not_connected', text: NOT_CONNECTED_TEXT, figure: null, legs, detections }

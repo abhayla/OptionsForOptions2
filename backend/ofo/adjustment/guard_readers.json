@@ -8,11 +8,11 @@
   "stop_line_pct_of_margin": "backend/ofo_app/routes/adjustment_plan.py",
   "stop_line_pct_of_max_loss": "backend/ofo_app/routes/adjustment_plan.py",
   "stop_line_rule": "backend/ofo_app/routes/adjustment_plan.py",
-  "time_exit": "backend/ofo_app/routes/adjustment_plan.py"
+  "time_exit": "backend/ofo_app/routes/adjustment_plan.py",
+  "warn_cost_pct_of_premium_left": "backend/ofo/adjustment/compare_cost_rows.py"
  },
  "known_unread": {
   "entry_guide": "words describing the entry the playbook assumes; shown in the editor, nothing to apply",
-  "order_sequence": "words describing the order sequence; the buy-legs-first order is fixed in approaches._ordered",
-  "warn_cost_pct_of_premium_left": "no reader today; the two Compare cost rows (ADR-230 (3)) are where it would apply"
+  "order_sequence": "words describing the order sequence; the buy-legs-first order is fixed in approaches._ordered"
  }
 }

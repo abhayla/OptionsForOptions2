@@ -108,6 +108,9 @@
                   <template v-if="cellOf(c, x.a.id)?.text != null && cellOf(c, x.a.id)?.unavailable_reason == null">
                     <div>{{ cellOf(c, x.a.id).text }}</div>
                     <div v-if="isLeader(c, x.a.id)" class="text-xs text-ink-muted" data-testid="adjust-leader-label">{{ c.leader_label }}</div>
+                    <!-- REQ-159 AC-6: the server's judgement of the cost % against the playbook's warning level (numbers only) -->
+                    <div v-if="cellOf(c, x.a.id).warning" class="text-xs text-warn" data-testid="adjust-cell-warning">{{ cellOf(c, x.a.id).warning }}</div>
+                    <div v-else-if="cellOf(c, x.a.id).warning_off" class="text-xs text-ink-muted" data-testid="adjust-cell-warning-off">{{ cellOf(c, x.a.id).warning_off }}</div>
                   </template>
                   <template v-else>
                     <div>{{ UNAVAILABLE_VALUE }}</div>

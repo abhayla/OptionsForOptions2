@@ -109,6 +109,27 @@ async def test_a_duplicate_name_in_any_case_is_refused_with_the_exact_text(db):
     assert await _scalar(db, "SELECT count(*) FROM public.adjustment_playbooks WHERE user_ref = :u", u=user) == 1
 
 
+@pytest.mark.parametrize("variant", ["{n}", "{N}", "  {n}  ", "{l}"])
+async def test_req158_ac3_the_system_playbooks_name_is_taken_for_create_duplicate_and_rename(db, variant):
+    """GC-IC1 step 10 round 4: the uniqueness check also counts the type's SYSTEM playbook, so no second playbook
+    of that type can carry its name (any case / whitespace variant), by create, save-as (duplicate) or rename."""
+    user = _user()
+    system = await pb.active_for(db, user, "ic")
+    name = variant.format(n=system.name, N=system.name.upper(), l=system.name.lower())
+    for attempt in (lambda: pb.create(db, user, "ic", name, _body()), lambda: pb.duplicate(db, user, system.id, name)):
+        with pytest.raises(pb.PlaybookStoreError) as taken:
+            await attempt()
+        assert taken.value.code == pb.NAME_TAKEN
+    own = await pb.create(db, user, "ic", "Mine", _body())
+    with pytest.raises(pb.PlaybookStoreError) as taken:
+        await pb.rename(db, user, own.id, name)
+    assert taken.value.code == pb.NAME_TAKEN
+    assert [p.name for p in await pb.list_for_type(db, user, "ic")] == [system.name, "Mine"]  # one of that name
+    # another type keeps its own namespace: the same words are allowed on a type whose system playbook differs
+    other = await pb.create(db, user, "credit", system.name, _body("credit"))
+    assert other.name == system.name
+
+
 async def test_the_same_name_for_another_type_or_another_user_is_allowed(db):
     user, other = _user(), _user()
     await pb.create(db, user, "ic", "Iron Condor Safe", _body())

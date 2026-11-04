@@ -137,6 +137,10 @@ class Context:
     view: CompareView  # the user's Compare range, steps and move columns (REQ-168 AC-1; required)
     limits: liquidity.Limits | None = None  # the playbook's saved liquidity limits (ADR-230 (1)); None: not applied
     adjustments_max: int | None = None  # the plan's guards.max_adjustments (F-93); None: the plan sets none
+    #: REQ-159 AC-6: the playbook's warn_cost_pct_of_premium_left (``compare_cost_rows.warn_threshold``); None: no
+    #: warning, and ``warn_cost_off`` (when set) is the reason the cost % cells carry
+    warn_cost_pct: Decimal | None = None
+    warn_cost_off: ExplanationText | None = None
 
 
 @dataclass(frozen=True)
@@ -146,6 +150,8 @@ class Cell:
     unavailable_reason: ExplanationText | None = None
     rank: Decimal | None = None  # what the leader rule compares; None -> cannot lead
     breakdown: tuple[tuple[str, Decimal], ...] | None = None  # the cost cell's charge lines (ADR-230 (3))
+    warning: ExplanationText | None = None  # REQ-159 AC-6: cost % above the playbook's warning level (numbers only)
+    warning_off: ExplanationText | None = None  # why no warning could be judged (level missing / unreadable)
 
 
 @dataclass(frozen=True)
@@ -355,8 +361,13 @@ class _Rows:
     def cost_pct(self) -> Cell:
         # the numerator is the cost cell, i.e. ADR-221's one cost function (approach_cost)
         cost, left = self.cost(), self.premium_left()
-        return _from(compare_cost_rows.cost_pct_of_premium_left(cost.value, cost.unavailable_reason, left.value,
+        cell = _from(compare_cost_rows.cost_pct_of_premium_left(cost.value, cost.unavailable_reason, left.value,
                                                                 left.unavailable_reason))
+        if cell.value is None:  # a dash has no figure to judge
+            return cell
+        # REQ-159 AC-6: the playbook's warning level, judged here on the server's figure (the browser computes nothing)
+        return replace(cell, warning=compare_cost_rows.cost_warning(cell.value, self.ctx.warn_cost_pct),
+                       warning_off=self.ctx.warn_cost_off if self.ctx.warn_cost_pct is None else None)
 
     def max_profit_change(self) -> Cell:
         after = None if self._after_reason() is not None else self.col.whole.after_charges.max_profit  # type: ignore[union-attr]

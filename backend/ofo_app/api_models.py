@@ -507,6 +507,8 @@ class AdjustCellOut(ApiModel):
     value: Money | None = None
     unavailable_reason: CatalogueText | None = None
     breakdown: list[AdjustBreakdownLineOut] | None = None  # only the cost cell of a known cost with rates (ADR-230 (3))
+    warning: CatalogueText | None = None  # REQ-159 AC-6: the cost % row only, above the playbook's warning level
+    warning_off: CatalogueText | None = None  # REQ-159 AC-6: why no warning was judged
 
 
 class AdjustCriterionOut(ApiModel):

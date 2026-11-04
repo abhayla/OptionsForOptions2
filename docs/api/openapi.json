@@ -454,6 +454,24 @@
               }
             ],
             "title": "Value"
+          },
+          "warning": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warning"
+          },
+          "warning_off": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warning Off"
           }
         },
         "required": [

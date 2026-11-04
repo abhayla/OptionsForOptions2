@@ -12,9 +12,9 @@
 """
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from decimal import ROUND_HALF_EVEN, Decimal
+from decimal import ROUND_HALF_EVEN, Decimal, InvalidOperation
 
 from ofo.charges import ChargeRates
 from ofo.charges.calculator import ChargeOrder, OrderCharges, charges_for_orders
@@ -56,6 +56,30 @@ def cost_pct_of_premium_left(cost: Decimal | None, cost_reason: ExplanationText 
     if pct is None:
         return _dash(render_explanation("adjust_cmp_no_premium_left"))
     return Figure(render_explanation("adjust_cmp_percent", value=pct), pct, None, pct)
+
+
+WARN_KEY = "warn_cost_pct_of_premium_left"
+
+
+def warn_threshold(guards: Mapping[str, object] | None) -> tuple[Decimal | None, ExplanationText | None]:
+    """REQ-159 AC-6: the playbook's cost warning level (a percent, 0 or more) -> ``(level, None)``; no playbook, no key,
+    or a value that is not a finite number of at least 0 -> ``(None, reason)``: no warning, and the reason is said."""
+    raw = None if guards is None else guards.get(WARN_KEY)
+    off = render_explanation("adjust_cmp_cost_warning_off")
+    if raw is None or isinstance(raw, bool) or (isinstance(raw, str) and not raw.strip()):
+        return None, off
+    try:
+        level = Decimal(str(raw).strip())
+    except InvalidOperation:
+        return None, off
+    return (level, None) if level.is_finite() and level >= 0 else (None, off)
+
+
+def cost_warning(pct: Decimal | None, level: Decimal | None) -> ExplanationText | None:
+    """The warning of a priced cost % above the level (strictly above); a dash or no level -> None."""
+    if pct is None or level is None or pct <= level:
+        return None
+    return render_explanation("adjust_cmp_cost_warning", value=pct, limit=level)
 
 
 def max_profit_change(after: object, before: object, reason: ExplanationText | None, before_known: bool) -> Figure:

@@ -1822,6 +1822,12 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                          "legs2": Recorded}),
     # GC-MU A2 (ADR-230 (3)): the reasons beside the two new cost rows, and the cost breakdown's line names
     ExplanationTemplate("adjust_cmp_no_premium_left", "values_seen", "Not available: no premium is left to earn."),
+    # GC-IC1 step 10 round 4 (REQ-159 AC-6): the playbook's cost warning level, applied to the cost % row (numbers only)
+    ExplanationTemplate("adjust_cmp_cost_warning", "values_seen",
+                        "Cost is {value}% of the premium left; your playbook warns above {limit}%.",
+                        {"value": Recorded, "limit": Recorded}),
+    ExplanationTemplate("adjust_cmp_cost_warning_off", "values_seen",
+                        "Cost warning not applied: the playbook's warning level is not set or cannot be read."),
     ExplanationTemplate("adjust_cmp_max_profit_unlimited", "values_seen",
                         "Not available: max profit is unlimited before or after."),
     ExplanationTemplate("adjust_cmp_before_max_profit_unknown", "values_seen",

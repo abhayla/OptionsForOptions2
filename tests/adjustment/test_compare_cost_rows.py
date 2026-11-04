@@ -204,3 +204,63 @@ def test_breakdown_is_absent_without_rates_and_labels_are_catalogue_words():
     lines = ccr.breakdown_lines((("sebi", D("0.02")), ("gst", D("15.91"))))
     assert [x["label"] for x in lines] == ["SEBI turnover fee", "GST"] and lines[1]["text"] == "₹15.91"
     assert set(ADJUSTMENT_CHARGE_LABEL_TEXT) == {c for c, _ in ccr.COMPONENTS} | {ccr.TOTAL_ID, ccr.SPREAD_ID}
+
+
+# ---- REQ-159 AC-6 (GC-IC1 step 10 round 4): the playbook's warn_cost_pct_of_premium_left has a reader -------------
+
+def _pct_cells(ctx_over):
+    _, cols, ctx, before = build("ADJ-02")
+    return row(compare(cols, replace(ctx, **ctx_over), before, True), "cost_pct").values
+
+
+def test_req159_ac6_cost_above_the_playbooks_threshold_carries_a_warning_naming_both_numbers():
+    base = _pct_cells({})
+    priced = {a: c for a, c in base.items() if c.value is not None and c.value > 0}
+    assert len({c.value for c in priced.values()}) > 1, "the scenario needs two different cost percents"
+    high = max(c.value for c in priced.values())
+    low = min(c.value for c in priced.values())
+    threshold = ((high + low) / 2).quantize(D("0.01"))
+    cells = _pct_cells({"warn_cost_pct": threshold})
+    for a, c in cells.items():
+        if c.value is not None and c.value > threshold:
+            assert c.warning == render_explanation("adjust_cmp_cost_warning", value=c.value, limit=threshold), a
+            assert str(c.value) in c.warning and str(threshold) in c.warning, a
+        else:
+            assert c.warning is None, a
+        assert c.warning_off is None, a  # a readable threshold: nothing to explain
+    assert any(c.warning for c in cells.values())
+    assert any(c.value is not None and c.warning is None for c in cells.values())
+
+
+def test_req159_ac6_a_cost_equal_to_the_threshold_does_not_warn():
+    equal = max(c.value for c in _pct_cells({}).values() if c.value is not None)  # the highest figure sits AT the level
+    assert all(c.warning is None for c in _pct_cells({"warn_cost_pct": equal}).values())
+
+
+def test_req159_ac6_a_missing_or_unreadable_threshold_warns_nothing_and_says_why():
+    reason = render_explanation("adjust_cmp_cost_warning_off")
+    cells = _pct_cells({"warn_cost_pct": None, "warn_cost_off": reason})
+    priced = [c for c in cells.values() if c.value is not None]
+    assert priced
+    assert all(c.warning is None and c.warning_off == reason for c in priced)
+    dashes = [c for c in cells.values() if c.value is None]
+    assert all(c.warning is None and c.warning_off is None for c in dashes)  # a dash has no figure to warn about
+
+
+@pytest.mark.parametrize(("guards", "want", "why"), [
+    ({"warn_cost_pct_of_premium_left": "50"}, D("50"), False),
+    ({"warn_cost_pct_of_premium_left": "12.5"}, D("12.5"), False),
+    ({"warn_cost_pct_of_premium_left": "0"}, D("0"), False),
+    ({}, None, True), (None, None, True),
+    ({"warn_cost_pct_of_premium_left": None}, None, True),
+    ({"warn_cost_pct_of_premium_left": "fifty"}, None, True),
+    ({"warn_cost_pct_of_premium_left": ""}, None, True),
+    ({"warn_cost_pct_of_premium_left": "-5"}, None, True),
+    ({"warn_cost_pct_of_premium_left": True}, None, True),
+    ({"warn_cost_pct_of_premium_left": "NaN"}, None, True),
+])
+def test_req159_ac6_threshold_reader_fails_closed_with_a_reason(guards, want, why):
+    got, off = ccr.warn_threshold(guards)
+    assert got == want
+    assert (off == render_explanation("adjust_cmp_cost_warning_off")) is why
+    assert (off is None) is (not why)

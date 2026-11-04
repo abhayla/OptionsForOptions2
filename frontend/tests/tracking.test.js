@@ -112,7 +112,23 @@ describe('TrackingPanel', () => {
     expect(d.text()).not.toContain('22533.25')
     await d.get('[data-testid="figure-hint-mark"]').trigger('click')
     const lines = d.findAll('[data-testid="figure-hint-line"]').map((l) => l.text())
-    expect(lines).toEqual(['Index: 22533.25', 'Distance: 133.25 points (0.59%)', 'Threshold: 0.6%', 'As of 8 Oct 2026, 09:20:09 IST'])
+    expect(lines).toEqual(['Index: 22533.25', 'Distance: 133.25 points (0.59%)', 'Threshold: 0.6%', 'Data: live', 'As of 8 Oct 2026, 09:20:09 IST'])
+  })
+
+  it('REQ-046 AC-5: the "?" details name the DATA STATE of the figures (live / stale / paused), the price_health the server sent', async () => {
+    const lines = async (over, extra = {}) => {
+      answers['GET /strategies/7/tracking'] = () => Promise.resolve({ data: body({ detections: [{ ...detection, ...over }], ...extra }) })
+      const w = await panel()
+      await w.get('[data-testid="detection"] [data-testid="figure-hint-mark"]').trigger('click')
+      return w.findAll('[data-testid="figure-hint-line"]').map((l) => l.text())
+    }
+    expect(await lines({ price_health: 'live' })).toContain('Data: live')
+    expect(await lines({ price_health: 'stale' })).toContain('Data: stale')
+    expect(await lines({ price_health: 'missing' })).toContain('Data: paused')
+    // the whole answer paused (prices not live): the state is paused whatever the detection carried
+    expect(await lines({ price_health: 'live' }, { state: 'PAUSED', paper_pnl: null, as_of: '2026-10-08T09:20:09+05:30' })).toContain('Data: paused')
+    // a state this screen cannot name is said, never dropped
+    expect(await lines({ price_health: 'weird' })).toContain('Data: not known')
   })
 
   it('D-B49: headings sit over their columns (right-aligned numbers), no "₹" or rounding added to the server text', async () => {

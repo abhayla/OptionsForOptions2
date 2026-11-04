@@ -198,7 +198,9 @@ _SELECT_ACTIVE = text(f"SELECT {', '.join('p.' + c for c in _PB_COLUMNS.split(',
 #: REQ-169: a system playbook's current version is the newest stored one (never the first, never the 0031 row's body)
 _SYSTEM_CURRENT = text("SELECT version, status, body::text, saved_at FROM public.system_playbook_versions "
                        "WHERE strategy_type = :type ORDER BY version DESC LIMIT 1")
-_NAME_USED = text("SELECT 1 FROM public.adjustment_playbooks WHERE user_ref = :user_ref AND strategy_type = :type "
+#: REQ-158 AC-3: the user's own names AND the type's system playbook's name (user_ref IS NULL) are taken
+_NAME_USED = text("SELECT 1 FROM public.adjustment_playbooks WHERE (user_ref = :user_ref OR is_system) "
+                  "AND strategy_type = :type "
                   "AND lower(name) = lower(:name) AND id IS DISTINCT FROM :id")
 _INSERT = text("INSERT INTO public.adjustment_playbooks (user_ref, strategy_type, name, body) "  # noqa: S608
                f"VALUES (:user_ref, :type, :name, CAST(:body AS JSONB)) RETURNING {_PB_COLUMNS}")
