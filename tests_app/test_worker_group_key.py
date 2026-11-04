@@ -25,7 +25,7 @@ AT = datetime.datetime(2026, 11, 2, 4, 30, 1, 250000, tzinfo=datetime.UTC)
 async def test_a_worker_opened_record_renders_in_the_inbox(app_db_url, monkeypatch):
     sid = await _seeded(app_db_url, monkeypatch, "ADJ-02")
     w = Watched(user_ref="owner", strategy_id=sid, tracked=None, body={}, is_system=True, feed_owner="owner",
-                strategy_layer=None)
+                strategy_layer=None, entry_facts=None)
     opened = await DbGateStore().apply(
         w, [alert_gate.Opened("T-01", AT, 0, Decimal("0.5000"), Decimal("0.3416"))], None)
     assert list(opened) == ["T-01"]

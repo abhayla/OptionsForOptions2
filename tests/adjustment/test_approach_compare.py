@@ -19,7 +19,14 @@ from pathlib import Path
 
 import adjust_scenarios_gen as gen
 import pytest
-from ofo.adjustment.approaches import APPROACH_IDS, ChainRow, Position, PositionLeg, build_approach
+from ofo.adjustment.approaches import (
+    APPROACH_IDS,
+    NO_STRATEGY_BASIS,
+    ChainRow,
+    Position,
+    PositionLeg,
+    build_approach,
+)
 from ofo.adjustment.compare import (
     Cell,
     Column,
@@ -45,7 +52,7 @@ from ofo.settings import defaults as _registry_defaults
 
 FIX = Path(__file__).resolve().parents[1] / "fixtures" / "adjust_scenarios"
 PREFS = _prefs_from(_registry_defaults())  # the registry defaults, passed explicitly
-CFG = PREFS.approach
+CFG = replace(PREFS.approach, roll_basis=NO_STRATEGY_BASIS)  # a pure caller: no strategy, stated
 MOVES = PREFS.compare.moves()
 PAID, ADJ, EXIT = D("150.25"), D("92.40"), D("60.10")  # stated charge lines (each subtracted once)
 FORBIDDEN = re.compile(r"\b(best|winner|rank\w*|score\w*|better)\b", re.IGNORECASE)

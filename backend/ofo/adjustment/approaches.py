@@ -24,7 +24,8 @@ Rules (each one decided here and stated, catalogue Part 2 followed where the con
   a gap, the gap is named too. Every contract the builder could not price is listed in ``unpriced`` so the caller can
   hold it once and build again.
 - Roll basis (ADR-243): ``Config.roll_basis`` (the basis in force, resolved strategy -> user -> default by the
-  caller). Target delta (or None) = the roll distance above, unchanged. Entry distance from spot (REQ-046 Q255) = the
+  caller). Target delta = the roll distance above, unchanged; None (not resolved) = every roll refused.
+  Entry distance from spot (REQ-046 Q255) = the
   moved short goes to spot + the side's distance stored at the first fill (``EntryFacts``), snapped to the nearest listed strike of its type
   and expiry (tie: farther from spot); the wing moves the same distance (width kept); ``step_basis`` "entry_distance"
   and ``step_value`` the entry distance in points. No entry spot, or a basis that could not be read: every roll is
@@ -121,7 +122,9 @@ class Config:
     untested_decay_percent: int  # ADR-238 (3): A-26 needs the untested short this % below its entry
     shift_strikes: int = 1  # ADR-239 (3): A-06 steps the tested spread this many listed strikes
     #: ADR-243: the roll basis in force for THIS strategy (``ofo_app.adjustment_check.roll_basis_of``, through the
-    #: three-layer resolver); None = no basis read (a pure caller): the target delta, today's rule unchanged
+    #: three-layer resolver). None = NOT RESOLVED: every roll is refused (``adjust_roll_basis_unreadable``), never the
+    #: target delta silently. A caller with no strategy passes ``NO_STRATEGY_BASIS`` explicitly; every production path
+    #: sets it through ``ofo_app.routes.adjustment.priced_approach`` / ``with_basis`` (required ``roll_basis``)
     roll_basis: RollBasis | None = None
 
 
@@ -151,6 +154,11 @@ class RollBasis:
     reason: str | None = None  # a resolver reason code (logs; the refusal is the catalogue's)
     call_distance: Decimal | None = None  # entry short call strike - entry spot (stored at the first fill)
     put_distance: Decimal | None = None  # entry spot - entry short put strike (stored at the first fill)
+
+
+#: the explicit basis of a caller that has no strategy (a pure what-if, a domain test): today's target-delta rule,
+#: no source. Production paths never use it: they resolve the strategy's basis (``adjustment_check.roll_basis_of``)
+NO_STRATEGY_BASIS: Final = RollBasis(ROLL_TARGET_DELTA, None)
 
 
 @dataclass(frozen=True)
@@ -436,11 +444,11 @@ class _Builder:
         rows of ``leg.expiry`` only (A-04 passes the leg on the next expiry)."""
         up = (leg.type == "CE") == outward  # a call rolls out upwards, a put rolls out downwards
         found = self.cfg.roll_basis
-        if found is not None and found.reason is not None:
+        if found is None or found.reason is not None:  # not resolved / unreadable: refused, never the delta silently
             raise _refusal("adjust_roll_basis_unreadable", leg=self.ref(leg))
-        if found is not None and found.code == ROLL_ENTRY_DISTANCE:
+        if found.code == ROLL_ENTRY_DISTANCE:
             return self.entry_distance(leg, found)
-        if found is not None and found.code != ROLL_TARGET_DELTA:
+        if found.code != ROLL_TARGET_DELTA:
             raise _refusal("adjust_roll_basis_unreadable", leg=self.ref(leg))
         rows = sorted((r for r in self.chain if r.type == leg.type and r.expiry == leg.expiry
                        and (r.strike > leg.strike if up else r.strike < leg.strike)),

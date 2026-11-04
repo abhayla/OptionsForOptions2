@@ -10,7 +10,14 @@ from decimal import Decimal as D
 
 import pytest
 from ofo.adjustment import liquidity
-from ofo.adjustment.approaches import ChainRow, Position, PositionLeg, build_approach, planned_price
+from ofo.adjustment.approaches import (
+    NO_STRATEGY_BASIS,
+    ChainRow,
+    Position,
+    PositionLeg,
+    build_approach,
+    planned_price,
+)
 from ofo.adjustment.preferences import from_values
 from ofo.marketdata.spot_source import SourceState
 from ofo.settings import defaults
@@ -504,7 +511,8 @@ def test_gcic1_s3_next_expiry_read_inside_the_one_hold_with_its_own_greeks(monke
     current = {(r.type, r.strike): r for r in m.chain if r.expiry != nxt}
     assert later[("CE", D("23800"))].delta != current[("CE", D("23800"))].delta  # that expiry's own model
     position = tracked_of(sc).position
-    built = build_approach(position, m.chain, D(sc["market"]["spot"]), "A-04", from_values(defaults()).approach)
+    cfg = dataclasses.replace(from_values(defaults()).approach, roll_basis=NO_STRATEGY_BASIS)  # a pure caller
+    built = build_approach(position, m.chain, D(sc["market"]["spot"]), "A-04", cfg)
     assert built.refusal is None and {t.expiry for t in built.trades} == {position.legs[0].expiry, nxt}
 
 
@@ -524,7 +532,7 @@ def _reach_case(monkeypatch, target: str):
     p.hidden |= {q.instrument_id for q in p._inner.option_chain_snapshot("NIFTY", FAR_NEXT)}
     ctx = dataclasses.replace(ctx, chain_strikes_each_side=2)
     monkeypatch.setattr(readers, "_roll_points", lambda: {"NIFTY": D(0), "SENSEX": D(0)})
-    cfg = from_values(defaults()).approach
+    cfg = dataclasses.replace(from_values(defaults()).approach, roll_basis=NO_STRATEGY_BASIS)
     cfg = dataclasses.replace(cfg, target_short_delta={k: D(target) for k in cfg.target_short_delta})
     return sc, feed, ctx, cfg
 
@@ -655,7 +663,7 @@ def test_gcic1_r5_conservative_iv_is_the_highest():
 
 def test_gcic1_r5_second_pass_ids_answer_states():
     rows, ids = _grid([NEAR])
-    cfg = from_values(defaults()).approach
+    cfg = dataclasses.replace(from_values(defaults()).approach, roll_basis=NO_STRATEGY_BASIS)
     market = route.MarketInputs(tuple(rows), ids, None, None, None, None, None,
                                 datetime.datetime(2026, 11, 9, 10, 0, tzinfo=datetime.UTC), reach={NEAR: _FakeReach()})
     priced = types.SimpleNamespace(unpriced=(), refusal_message=None, after=())

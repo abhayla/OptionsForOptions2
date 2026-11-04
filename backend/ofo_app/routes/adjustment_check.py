@@ -212,7 +212,11 @@ async def adjustment_check(  # noqa: PLR0913 - FastAPI dependencies, one per inp
         ctx: Annotated[MarketContext | None, Depends(get_market_context)],
         rates: Annotated[ChargeRates | None, Depends(load_charge_rates)],
         prefs: UserPreferences, user_values: UserValuesIn) -> AdjustmentCheckOut:
-    from ofo_app.adjustment_readers import TrackedExited, TrackedUnreadable  # noqa: PLC0415 - imports routes.adjustment
+    from ofo_app.adjustment_readers import (  # noqa: PLC0415 - imports routes.adjustment
+        TrackedExited,
+        TrackedUnreadable,
+        entry_facts_in,
+    )
     rates = rates if isinstance(rates, ChargeRates) else None
     try:
         tracked = await tracked_reader(strategy_id, rates)
@@ -239,8 +243,10 @@ async def adjustment_check(  # noqa: PLR0913 - FastAPI dependencies, one per inp
         return AdjustmentCheckOut.model_validate(reply)
     margin = await current_margin(margin_of, tracked, market)
     # ADR-245: the carry gap in force (plan, else the user's own, else the admin default) is resolved inside state_of
+    # ADR-243: the roll basis in force is resolved inside state_of too, from the same layers and the stored entry facts
     state = check.state_of(tracked, market, spot, margin, rates, check.prices_fresh(ctx), resolved.body,
-                           config=prefs.approach, user_values=user_values, strategy_layer=resolved.strategy_layer)
+                           config=prefs.approach, user_values=user_values, strategy_layer=resolved.strategy_layer,
+                           entry_facts=await entry_facts_in(db, strategy_id))
     # read-only (review round 2, finding 3): evaluated against the stored rule memory, NOTHING written; the background
     # worker is the one writer of rule memory and records (ADR-237 (6)), so the two never disagree about a dip
     ev, _memory = await check.evaluate_stored(db, user_ref, strategy_id, resolved.body, state, scenario_mode.current(),

@@ -211,11 +211,12 @@ def exit_inputs_of(guards: Mapping | None, position: Position, now: datetime.dat
 
 
 def cheapest_offered(body: Mapping | None, tracked: Tracked, market: MarketInputs, spot: Decimal | None,  # noqa: PLR0913 - the preferences value is a required parameter (GC-SET)
-                     rates: Any, config: Config, *, before: Any = None) -> Cheapest:
+                     rates: Any, config: Config, *, roll_basis: RollBasis, before: Any = None) -> Cheapest:
     """ADR-221: the cheapest approach ``body`` offers, every one built and priced by the Compare's own path.
     ``before``: the Before already priced by the caller (``price_after`` of the current legs: it reads only the legs,
     the underlying and the lot, which ``as_of_market`` leaves unchanged), so the own legs are priced once per check;
-    None prices it here."""
+    None prices it here. ``roll_basis`` (ADR-243, REQUIRED): the strategy's basis in force (``basis_in_force``), the
+    same the Compare builds on."""
     offered = offered_now(body, tracked.adjustments_used)  # S-11: only exit and reduce at the limit
     if spot is None:  # nothing can be built without spot: none priceable (T-19 is withheld for no spot anyway)
         return cheapest_approach(offered, {}, market.chain)
@@ -228,8 +229,8 @@ def cheapest_offered(body: Mapping | None, tracked: Tracked, market: MarketInput
     limits, max_profit = liquidity_inputs(guards, before)
     exits = exit_inputs_of(guards, position, market.now)  # ADR-238: A-27 / A-35 read the same playbook
     for a in offered:
-        built, priced = priced_approach(a, tracked, market, spot, rates, config, limits=limits, max_profit=max_profit,
-                                        exits=exits)
+        built, priced = priced_approach(a, tracked, market, spot, rates, config, roll_basis=roll_basis, limits=limits,
+                                        max_profit=max_profit, exits=exits)
         if built is not None and priced is not None:
             columns[a] = Column(built, priced.after, priced.reason, priced.charges_known, MarginRead(None),
                                 priced.adjustment_charges)
@@ -239,14 +240,18 @@ def cheapest_offered(body: Mapping | None, tracked: Tracked, market: MarketInput
 def state_of(tracked: Tracked, market: MarketInputs, spot: SpotAnswer, margin: Mapping | None,  # noqa: PLR0913
              rates: Any, fresh: bool | None, body: Mapping | None = None, *,
              config: Config, user_values: Mapping[str, Decimal] | None,
-             strategy_layer: layers.Layer) -> pe.StrategyState:
+             strategy_layer: layers.Layer, entry_facts: EntryFacts | layers.Unreadable | None) -> pe.StrategyState:
     """The check's state for one strategy: the ONE function the screen check, the worker and the playbook test route
     pass through. ADR-245: the carry gap in force is resolved HERE (``carry_gap_of``: the plan's, else the user's own,
     else the admin value ``market.carry_gap_pct``), from two REQUIRED keyword arguments with no default, so a caller
     cannot skip the resolution or silently use the admin value. ``user_values``: the user's values as the store reads
     them (``user_preferences_store.UserValues``, own values on ``.own``), or None when the caller has no user read
-    path; ``strategy_layer``: ``Resolved.strategy_layer`` (None = the strategy has no plan)."""
+    path; ``strategy_layer``: ``Resolved.strategy_layer`` (None = the strategy has no plan). ADR-243: the roll basis
+    in force is resolved HERE too (``basis_in_force``) from the same two layers and ``entry_facts`` (REQUIRED, no
+    default: the strategy's stored entry facts, ``adjustment_readers.entry_facts_in``; None = none stored), so the
+    check's cheapest approach builds every roll exactly as the Compare does."""
     gap = carry_gap_of(market.carry_gap_pct, user_values, strategy_layer)
+    basis = basis_in_force(user_values, strategy_layer, entry_facts)
     position = tracked.position
     rows = {r.tradingsymbol: r for r in market.chain}
     ltp = {x.tradingsymbol: getattr(rows.get(x.tradingsymbol), "ltp", None) for x in position.legs}
@@ -261,7 +266,7 @@ def state_of(tracked: Tracked, market: MarketInputs, spot: SpotAnswer, margin: M
     left = adjust_money.premium_left((x.side, ltp[x.tradingsymbol], qty[x.tradingsymbol])
                                      for x in position.legs) if priced else None
     before = price_after(position.legs, position, booked, tracked.paid_charges, (), rates, market)  # once per check
-    cheap = cheapest_offered(body, tracked, market, value, rates, config, before=before)
+    cheap = cheapest_offered(body, tracked, market, value, rates, config, roll_basis=basis, before=before)
     gross = None if before.after is None else before.after.gross
     expiry_pnl = None
     if value is not None and booked is not None:
@@ -391,14 +396,26 @@ def carry_gap_of(admin: Decimal | None, user_values: Mapping[str, Decimal] | Non
 
 
 def admin_of(user_values: Mapping[str, Decimal] | None, key: str) -> Decimal | None:
-    """The ADMIN layer of ``key`` from the request's one values read (``user_preferences_store.UserValues.admin``);
-    None when the caller has no user read path or the record carries no admin values (the resolver then refuses with
-    ``layers.DEFAULT_UNREADABLE`` unless a plan or user value decides first)."""
+    """The ADMIN layer of ``key`` from the request's one values read (``user_preferences_store.UserValues.admin``).
+    No admin value for the key (the caller has no user read path, or the record carries no admin row for it) -> the
+    REGISTRY default: with no admin row the admin layer IS the registry's default (``settings_in_force``), so a user
+    who changed nothing gets today's rule, never every roll refused. An admin value that is present but not a Decimal
+    -> None: the resolver refuses with ``layers.DEFAULT_UNREADABLE`` (fail closed)."""
+    from ofo import settings  # noqa: PLC0415 - the checked-in registry, loaded once
+
     admin = getattr(user_values, "admin", None)
-    if not isinstance(admin, Mapping):
-        return None
-    found = admin.get(key)
+    if not isinstance(admin, Mapping) or key not in admin:
+        return settings.defaults().get(key)
+    found = admin[key]
     return found if isinstance(found, Decimal) else None
+
+
+def basis_in_force(user_values: Mapping[str, Decimal] | None, strategy: layers.Layer,
+                   entry: EntryFacts | layers.Unreadable | None) -> RollBasis:
+    """ADR-243: the ONE resolution of a strategy's roll basis, used by the Compare route and by ``state_of`` (the
+    screen check, the worker, the playbook test): the admin layer (``admin_of``), the user's own, the plan's, with
+    the stored entry facts."""
+    return roll_basis_of(admin_of(user_values, layers.ROLL_BASIS), user_values, strategy, entry)
 
 
 def roll_basis_of(admin: Decimal | None, user_values: Mapping[str, Decimal] | None, strategy: layers.Layer,

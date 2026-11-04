@@ -42,6 +42,7 @@ from ofo.adjustment.approaches import (
     ExitInputs,
     Position,
     PositionLeg,
+    RollBasis,
     build_approach,
     is_no_change,
 )
@@ -62,7 +63,6 @@ from ofo.errors.explanations import EXPLANATIONS, approach_about_id, approach_na
 from ofo.marketdata.spot_source import SourceReading, SpotAnswer, feed_reading
 from ofo.money import PAISE
 from ofo.outcome.service import MARGIN_CHECKED, Margin
-from ofo.settings import layers
 from ofo.timeutil import IST
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -417,18 +417,29 @@ def as_of_market(tracked: Tracked, market: MarketInputs) -> Tracked:
         expiry_kind=market.expiry_kind or tracked.position.expiry_kind, booked=tracked.booked))  # ADR-238 (6)
 
 
+def with_basis(config: Config, roll_basis: RollBasis) -> Config:
+    """The approach config with the strategy's roll basis in force (ADR-243). ``roll_basis`` is required: a None
+    (not resolved) is refused here, so no production path can build a roll on an unresolved basis."""
+    if not isinstance(roll_basis, RollBasis):
+        raise TypeError("roll_basis must be the resolved RollBasis of the strategy (adjustment_check.roll_basis_of)")
+    return dataclasses.replace(config, roll_basis=roll_basis)
+
+
 def priced_approach(a: str, tracked: Tracked, market: MarketInputs, spot: Decimal,  # noqa: PLR0913 - the preferences value is a required parameter (GC-SET)
-                    rates: ChargeRates | None, config: Config, *, limits: liquidity.Limits | None = None,
-                    max_profit: Decimal | None = None,
+                    rates: ChargeRates | None, config: Config, *, roll_basis: RollBasis,
+                    limits: liquidity.Limits | None = None, max_profit: Decimal | None = None,
                     exits: ExitInputs | None = None) -> tuple[ApproachLegs | None, Priced | None]:
     """One approach as the approaches route and the Compare build and price it (the ONE build path; the playbook
     check's T-19 reads it too, ADR-221): an unknown id -> (None, None); refused -> (built, None); else the built legs
     and the whole-trade After of its legs, with this approach's own charges. ``limits`` / ``max_profit``: the
     playbook's liquidity limits and the Before's max profit (ADR-230 (1)); None: not applied. ``exits``: A-27's and
-    A-35's playbook inputs (``adjustment_check.exit_inputs_of``, ADR-238); None: both refused with the reason."""
+    A-35's playbook inputs (``adjustment_check.exit_inputs_of``, ADR-238); None: both refused with the reason.
+    ``roll_basis`` (ADR-243, REQUIRED, no default): the strategy's basis in force (``adjustment_check.roll_basis_of``),
+    so the Compare and the adjustment check build every roll on the same basis; it replaces ``config.roll_basis``."""
     if a not in APPROACH_IDS:
         return None, None
     position = tracked.position
+    config = with_basis(config, roll_basis)
     built = build_approach(position, market.chain, spot, a, config, None, limits, max_profit, exits)
     if built.refusal is not None:
         return built, None
@@ -490,8 +501,8 @@ async def adjustment_approaches(  # noqa: PLR0913, PLR0915 - FastAPI dependencie
     # ADR-243: the roll basis in force for THIS strategy (plan, else the user's own, else the admin default) with its
     # stored entry facts; every roll below is built on it and names it (step_basis / step_value / basis_source)
     plan_layer, facts = await roll_inputs(strategy_id)
-    cfg = dataclasses.replace(prefs.approach, roll_basis=check.roll_basis_of(
-        check.admin_of(user_values, layers.ROLL_BASIS), user_values, plan_layer, facts))
+    basis = check.basis_in_force(user_values, plan_layer, facts)  # the same resolution as the adjustment check
+    cfg = with_basis(prefs.approach, basis)
     market = await market_reader(tracked, ctx)
     tracked = as_of_market(tracked, market)
     spot = judge_spot(market, await rest_reader(tracked.position.underlying), ctx)
@@ -517,7 +528,8 @@ async def adjustment_approaches(  # noqa: PLR0913, PLR0915 - FastAPI dependencie
             b = price_after(position.legs, position, tracked.booked, tracked.paid_charges, (), rates, m)
             lim, mp = liquidity_inputs(guards, b)  # no playbook, no limits
             return b, lim, mp, [(a, priced_approach(a, tracked, m, spot.value, rates,  # type: ignore[arg-type]
-                                                    cfg, limits=lim, max_profit=mp, exits=exits))
+                                                    cfg, roll_basis=basis, limits=lim, max_profit=mp,
+                                                    exits=exits))
                                 for a in asked]
         before, limits, max_profit, answers = price_all(market)
         # GC-IC1 round 3: the landing strikes nobody held are held ONCE more and everything is built again; never a

@@ -112,8 +112,9 @@ def test_roll_basis_of_plan_override_and_default_and_unreadable_layers():
 
 def test_admin_of_reads_the_admin_layer_only():
     assert check.admin_of(_values(D(2), admin=D(1)), layers.ROLL_BASIS) == D(1)
-    assert check.admin_of({layers.ROLL_BASIS: D(2)}, layers.ROLL_BASIS) is None  # a plain mapping: not the admin
-    assert check.admin_of(None, layers.ROLL_BASIS) is None
+    # no admin layer read (a plain mapping, no user read path): the REGISTRY default (1), never the mapping's own 2
+    assert check.admin_of({layers.ROLL_BASIS: D(2)}, layers.ROLL_BASIS) == D(1)
+    assert check.admin_of(None, layers.ROLL_BASIS) == D(1)
 
 
 # --- the paper route's entry facts read (no database) ------------------------------------------------------------

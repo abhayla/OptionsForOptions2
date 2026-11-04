@@ -36,7 +36,8 @@ def _route_cheapest(sc: dict, guards: dict | None):
     offered = offered_now(s.body_of(sc), tracked.adjustments_used)
     cols = {}
     for a in offered:
-        built, priced = route.priced_approach(a, tracked, market, spot, s.RATES, s.PREFS.approach, limits=limits,
+        built, priced = route.priced_approach(a, tracked, market, spot, s.RATES, s.PREFS.approach, roll_basis=s.BASIS,
+                                              limits=limits,
                                               max_profit=route._before_max_profit(before))
         if built is not None and priced is not None:
             cols[a] = Column(built, priced.after, priced.reason, priced.charges_known, MarginRead(None))
@@ -67,18 +68,19 @@ def test_a_roll_the_compare_refuses_is_not_named_by_t19():
     tracked2 = route.as_of_market(tracked, market)
     before = route.price_after(tracked2.position.legs, tracked2.position, tracked2.booked, tracked2.paid_charges, (),
                                s.RATES, market)
-    built, priced = route.priced_approach("A-05", tracked2, market, spot, s.RATES, s.PREFS.approach,
+    built, priced = route.priced_approach("A-05", tracked2, market, spot, s.RATES, s.PREFS.approach, roll_basis=s.BASIS,
                                           limits=liquidity.limits_from_guards(body["guards"]),
                                           max_profit=route._before_max_profit(before))
     assert built.refusal is not None and priced is None  # the Compare refuses it
-    got = check.cheapest_offered(body, tracked, market, spot, s.RATES, s.PREFS.approach)
+    got = check.cheapest_offered(body, tracked, market, spot, s.RATES, s.PREFS.approach, roll_basis=s.BASIS)
     assert (got.approach, got.cost) == (None, None)
 
 
 def test_no_body_offers_nothing_and_applies_no_limits():
     sc = s.load("ADJ-50")
     tracked, market, spot = s.inputs(sc)
-    assert check.cheapest_offered(None, tracked, market, spot, s.RATES, s.PREFS.approach).approach is None
+    assert check.cheapest_offered(None, tracked, market, spot, s.RATES, s.PREFS.approach,
+                                  roll_basis=s.BASIS).approach is None
 
 
 def test_body_without_guards_applies_no_limits_as_the_route_with_no_guards():
@@ -86,7 +88,7 @@ def test_body_without_guards_applies_no_limits_as_the_route_with_no_guards():
     body = {**s.body_of(sc), "guards": {}}
     tracked, market, spot = s.inputs(sc)
     want, _ = _route_cheapest(sc, {})
-    got = check.cheapest_offered(body, tracked, market, spot, s.RATES, s.PREFS.approach)
+    got = check.cheapest_offered(body, tracked, market, spot, s.RATES, s.PREFS.approach, roll_basis=s.BASIS)
     assert (got.approach, got.cost) == (want.approach, want.cost)
     assert (got.approach, str(got.cost)) == ("A-29", "73.24")  # the expected value of the no-limits build
 
@@ -97,5 +99,6 @@ def test_unreadable_guard_value_is_fail_closed_like_the_route():
     guards = {**s.body_of(sc)["guards"], "roll_debit_limit": "garbage"}
     want, _ = _route_cheapest(sc, guards)
     tracked, market, spot = s.inputs(sc)
-    got = check.cheapest_offered({**s.body_of(sc), "guards": guards}, tracked, market, spot, s.RATES, s.PREFS.approach)
+    got = check.cheapest_offered({**s.body_of(sc), "guards": guards}, tracked, market, spot, s.RATES, s.PREFS.approach,
+                                 roll_basis=s.BASIS)
     assert (got.approach, got.cost) == (want.approach, want.cost)
