@@ -87,7 +87,7 @@ async def _gated(scn, monkeypatch, store, n=1):
 async def test_core_a_lister_holding_the_gate_60s_never_stops_the_loop_and_the_event_lands_within_one_hold(
         scn, monkeypatch):
     queued = _fire_on_next_step(monkeypatch)
-    step = [0]  # the lister step running now (0..LISTED-1), LISTED when done
+    step = [-1]  # the lister step holding the gate now (0..LISTED-1), LISTED when done, -1 before its first hold
     store = _Store(lambda: step[0])
     prov, now, _calls, _cache, w, _db = await _gated(scn, monkeypatch, store)
     monitors = list(w.monitors)
@@ -101,28 +101,36 @@ async def test_core_a_lister_holding_the_gate_60s_never_stops_the_loop_and_the_e
         step[0] = LISTED
         return monitors
     w._lister = lister
-    rebuild = asyncio.create_task(w._rebuild_safely())
-    await _turns()
-    assert w.db_gate.locked() and step[0] == 0  # the 60 s hold is under way
-    queued.append([_ev("opened")])  # a confirmed crossing at this cycle's close
-    cycles = []
-    for _ in range(5):  # the loop keeps cycling once a second through the hold
-        _tick(prov, now)
-        task = asyncio.create_task(w.cycle())
+    tasks = [asyncio.create_task(w._rebuild_safely())]
+    try:
         await _turns()
-        cycles.append(task.done())
-        if not task.done():
-            break
-    assert cycles == [True] * 5, cycles  # red on 5bf9a342: the first cycle waits on db_gate for the whole hold
-    writer = asyncio.create_task(w.drain_writes())
-    await _turns()
-    released[0].set()  # the first per-strategy hold ends
-    await _turns()
-    assert [(sid, names) for sid, names, _s in store.batches] == [(monitors[0].strategy_id, ("opened",))]
-    assert store.batches[0][2] == 0  # written before the lister's second hold began: within one per-strategy hold
-    for e in released:
-        e.set()
-    await asyncio.gather(rebuild, writer)
+        assert w.db_gate.locked()  # the 60 s hold is under way (per strategy: step 0; one list hold: the rebuild's)
+        queued.append([_ev("opened")])  # a confirmed crossing at this cycle's close
+        cycles = []
+        for _ in range(5):  # the loop keeps cycling once a second through the hold
+            _tick(prov, now)
+            tasks.append(asyncio.create_task(w.cycle()))
+            await _turns()
+            cycles.append(tasks[-1].done())
+            if not tasks[-1].done():
+                break
+        assert cycles == [True] * 5, cycles  # red on 5bf9a342: the first cycle waits on db_gate for the whole hold
+        tasks.append(asyncio.create_task(w.drain_writes()))
+        await _turns()
+        released[0].set()  # the first per-strategy hold ends
+        await _turns()
+        assert [(sid, names) for sid, names, _s in store.batches] == [(monitors[0].strategy_id, ("opened",))]
+        assert store.batches[0][2] == 0  # written before the lister's second hold began: within one per-strategy hold
+        for e in released:
+            e.set()
+        await asyncio.gather(*tasks)
+        assert step[0] == LISTED and w.monitors == monitors
+    finally:  # a failing run leaves no task waiting on the gate for the next test (the event loop is shared)
+        for e in released:
+            e.set()
+        for t in tasks:
+            t.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
     print(f"CORE-PROOF cycles_during_hold={len(cycles)} event_written_at_lister_step={store.batches[0][2]} "
           f"holds={LISTED}")
 
