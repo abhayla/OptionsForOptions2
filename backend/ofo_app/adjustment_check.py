@@ -40,6 +40,7 @@ check's own state is the entry state. The returned memory is written with ``play
 from __future__ import annotations
 
 import dataclasses
+import logging
 import datetime
 from collections.abc import Mapping
 from decimal import Decimal
@@ -47,7 +48,7 @@ from typing import Any, Final
 
 from ofo.adjustment import level_watch
 from ofo.adjustment import playbook_eval as pe
-from ofo.adjustment.approaches import Config, ExitInputs, Position
+from ofo.adjustment.approaches import BASIS_CODES, Config, ExitInputs, Position, RollBasis
 from ofo.adjustment.compare import Cheapest, Column, MarginRead, cheapest_approach
 from ofo.adjustment.offered import offered_now
 from ofo.adjustment.strategy_type import strike_gap_of, type_of
@@ -69,6 +70,8 @@ from ofo_app.routes.adjustment import (
     price_after,
     priced_approach,
 )
+
+log = logging.getLogger(__name__)
 
 #: a clock trigger's unit in the playbook body (T-10b): its value and threshold are HH:MM
 CLOCK_UNIT: Final = "time"
@@ -385,6 +388,32 @@ def carry_gap_of(admin: Decimal | None, user_values: Mapping[str, Decimal] | Non
     except layers.LayerUnreadable as exc:
         return GapInForce(None, None, exc.code)
     return GapInForce(got.value, got.source, None)
+
+
+#: the entry spot read failed (logs only): under "Entry distance" the roll is refused as for an unknown entry spot
+ENTRY_SPOT_UNREADABLE: Final = "entry_spot_unreadable"
+
+
+def roll_basis_of(admin: Decimal | None, user_values: Mapping[str, Decimal] | None, strategy: layers.Layer,
+                  entry_spot: Decimal | layers.Unreadable | None) -> RollBasis:
+    """``adjustments.roll_basis`` in force for one strategy (ADR-243) through the ONE resolver (``ofo.settings.layers``):
+    the plan's, else the user's own, else the admin default; with the strategy's stored entry spot. Answer states:
+    - basis read: 1 -> target delta, 2 -> entry distance (with its source);
+    - a layer that exists but cannot be read, or a value with no basis code -> ``reason`` set: every roll refused;
+    - entry spot present -> carried; absent (None: not stored) or unreadable -> None: under "Entry distance" every roll
+      is refused naming the leg (never the target delta silently); under "Target delta" it is not used."""
+    admin_layer: layers.Layer = layers.Unreadable("not read") if admin is None else {layers.ROLL_BASIS: admin}
+    spot = entry_spot if isinstance(entry_spot, Decimal) else None
+    if isinstance(entry_spot, layers.Unreadable):
+        log.warning("roll basis: entry spot unreadable: %s", entry_spot.detail)
+    try:
+        got = layers.resolve(layers.ROLL_BASIS, admin_layer, user_layer(user_values), strategy)
+    except layers.LayerUnreadable as exc:
+        return RollBasis(None, None, spot, exc.code)
+    code = BASIS_CODES.get(got.value)
+    if code is None:
+        return RollBasis(None, got.source, spot, layers.DEFAULT_UNREADABLE)
+    return RollBasis(code, got.source, spot)
 
 
 def scenario_entry(scn: Any, state: pe.StrategyState, position: Position) -> pe.StrategyState | None:

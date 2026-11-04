@@ -23,6 +23,7 @@ SHORT_DELTA_WEEKLY: Final = "adjustments.short_delta_weekly"
 SHORT_DELTA_MONTHLY: Final = "adjustments.short_delta_monthly"
 ROLL_POINTS_NIFTY: Final = "adjustments.roll_points_nifty"
 ROLL_POINTS_SENSEX: Final = "adjustments.roll_points_sensex"
+ROLL_BASIS: Final = "adjustments.roll_basis"  # ADR-243: 1 target delta / 2 entry distance; resolved per strategy
 IRON_FLY_MIN_DAYS: Final = "adjustments.iron_fly_min_days"
 REDUCE_DIVISOR: Final = "adjustments.reduce_divisor"
 PARTIAL_CLOSE_PERCENT: Final = "adjustments.partial_close_percent"  # ADR-238 (2)
@@ -37,7 +38,7 @@ COMPARE_MOVE_LARGE: Final = "adjustments.compare_move_large"
 KEYS: Final = (SHORT_DELTA_WEEKLY, SHORT_DELTA_MONTHLY, ROLL_POINTS_NIFTY, ROLL_POINTS_SENSEX, IRON_FLY_MIN_DAYS,
                REDUCE_DIVISOR, NEAR_LEVEL_PERCENT, GAP_AT_OPEN_UNTIL, COMPARE_RANGE_PERCENT, COMPARE_STEPS,
                COMPARE_MOVE_SMALL, COMPARE_MOVE_LARGE, PARTIAL_CLOSE_PERCENT, UNTESTED_DECAY_PERCENT,
-               SHIFT_STRIKES)
+               SHIFT_STRIKES, ROLL_BASIS)
 
 
 @dataclass(frozen=True)

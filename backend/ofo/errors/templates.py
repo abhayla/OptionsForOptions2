@@ -1157,6 +1157,14 @@ _ADJUSTMENT_TEMPLATES: tuple[MessageTemplate, ...] = (
           "Check the open interest of this contract before you place the order.", {"leg": LegRef}),
     _gate("adjust_no_strike_at_delta", _UI, 108, "No strike in the chain brings {leg} to the target delta.",
           _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {"leg": LegRef}),
+    _gate("adjust_roll_entry_spot_unknown", _UI, 191,
+          "{leg} cannot be rolled at its entry distance from spot: this strategy's spot at entry is not stored.",
+          _ADJ_REFUSED, _ADJ_BLOCKED, "Choose Target delta as the roll basis for this strategy, or compare the "
+          "other approaches.", {"leg": LegRef}),
+    _gate("adjust_roll_basis_unreadable", _UI, 192,
+          "{leg} cannot be rolled: the roll basis setting for this strategy could not be read.",
+          _ADJ_REFUSED, _ADJ_BLOCKED, "Open your adjustment settings and save the roll basis again, or compare the "
+          "other approaches.", {"leg": LegRef}),
     _gate("adjust_roll_would_cross", _UI, 109,
           "Moving {leg} to {strikes} would cross the other short leg at {other}.",
           _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {"leg": LegRef, "strikes": Strikes, "other": Strikes}),
