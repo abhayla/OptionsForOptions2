@@ -25,7 +25,7 @@ Rules (each one decided here and stated, catalogue Part 2 followed where the con
   hold it once and build again.
 - Roll basis (ADR-243): ``Config.roll_basis`` (the basis in force, resolved strategy -> user -> default by the
   caller). Target delta (or None) = the roll distance above, unchanged. Entry distance from spot (REQ-046 Q255) = the
-  moved short goes to spot + (its strike - the strategy's entry spot), snapped to the nearest listed strike of its type
+  moved short goes to spot + the side's distance stored at the first fill (``EntryFacts``), snapped to the nearest listed strike of its type
   and expiry (tie: farther from spot); the wing moves the same distance (width kept); ``step_basis`` "entry_distance"
   and ``step_value`` the entry distance in points. No entry spot, or a basis that could not be read: every roll is
   refused naming the leg (fail closed, never the delta rule). A-06 steps ``shift_strikes`` listed strikes under both.
@@ -135,10 +135,12 @@ BASIS_CODES: Final = {Decimal(1): ROLL_TARGET_DELTA, Decimal(2): ROLL_ENTRY_DIST
 class RollBasis:
     """The roll basis in force for one strategy (ADR-243). Answer states:
     - ``code`` target_delta -> today's rule (``roll_distance``), unchanged;
-    - ``code`` entry_distance + ``entry_spot`` -> keep widths, re-place the short at its entry distance from spot,
-      snapped to the nearest listed strike of its type and expiry (a tie goes to the strike farther from spot);
-    - ``code`` entry_distance, ``entry_spot`` None (not stored / unreadable) -> every roll refused
-      (``adjust_roll_entry_spot_unknown``), never the target delta silently;
+    - ``code`` entry_distance + the side's STORED entry distance (``call_distance`` / ``put_distance``, written once
+      at the strategy's first fill, ``entry_facts_of``) -> keep widths, re-place the short at that distance from spot,
+      snapped to the nearest listed strike of its type and expiry (a tie goes to the strike farther from spot). Never
+      the current strike's distance: after a second roll it would inflate (353 -> 603);
+    - ``code`` entry_distance, the side's distance None (no entry facts stored, unreadable, or no short on that side
+      at entry) -> every roll of that side refused (``adjust_roll_entry_spot_unknown``), never the target delta;
     - ``reason`` set (a settings layer that exists but could not be read) -> every roll refused
       (``adjust_roll_basis_unreadable``), never a default.
     ``source`` = where the basis came from (``ofo.settings.layers`` codes strategy / user / default)."""
@@ -147,6 +149,27 @@ class RollBasis:
     source: str | None
     entry_spot: Decimal | None = None
     reason: str | None = None  # a resolver reason code (logs; the refusal is the catalogue's)
+    call_distance: Decimal | None = None  # entry short call strike - entry spot (stored at the first fill)
+    put_distance: Decimal | None = None  # entry spot - entry short put strike (stored at the first fill)
+
+
+@dataclass(frozen=True)
+class EntryFacts:
+    """A strategy's facts at its FIRST fill (ADR-243): the spot then and each side's short distance from it. Written
+    once, never rewritten; a side with no short at entry has None."""
+
+    entry_spot: Decimal
+    call_distance: Decimal | None
+    put_distance: Decimal | None
+
+
+def entry_facts_of(spot: Decimal, shorts: Sequence[tuple[str, Decimal]]) -> EntryFacts:
+    """The entry facts from the spot at the first fill and the SOLD legs of that fill (type, strike): the call side's
+    short is the lowest sold call (the one nearest spot), the put side's the highest sold put. Distances are signed
+    (call: strike - spot; put: spot - strike), so an in-the-money short gives a negative distance."""
+    calls = [k for t, k in shorts if t == "CE"]
+    puts = [k for t, k in shorts if t == "PE"]
+    return EntryFacts(spot, min(calls) - spot if calls else None, spot - max(puts) if puts else None)
 
 
 @dataclass(frozen=True)
@@ -446,12 +469,13 @@ class _Builder:
         return pick.strike - leg.strike
 
     def entry_distance(self, leg: PositionLeg, basis: RollBasis) -> Decimal:
-        """ADR-243 / REQ-046 Q255: the short re-placed at its entry distance from spot (``leg.strike`` - entry spot,
-        signed), snapped to the nearest LISTED strike of its type on ``leg.expiry`` (a tie: the strike farther from
+        """ADR-243 / REQ-046 Q255: the short re-placed at its STORED entry distance from spot (the side's distance at
+        the first fill, never the current strike's), snapped to the nearest LISTED strike of its type on ``leg.expiry`` (a tie: the strike farther from
         spot); returns the signed move. No entry spot -> refused naming the leg (fail closed, never the delta rule)."""
-        if basis.entry_spot is None:
+        stored = basis.call_distance if leg.type == "CE" else basis.put_distance
+        if stored is None:
             raise _refusal("adjust_roll_entry_spot_unknown", leg=self.ref(leg))
-        distance = leg.strike - basis.entry_spot
+        distance = stored if leg.type == "CE" else -stored  # signed: a put sits below spot
         target = self.spot + distance
         strikes = sorted({r.strike for r in self.chain if r.listed and r.type == leg.type and r.expiry == leg.expiry})
         if not strikes:

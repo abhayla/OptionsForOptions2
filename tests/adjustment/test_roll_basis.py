@@ -19,8 +19,10 @@ from ofo.adjustment.approaches import (
     ChainRow,
     Position,
     PositionLeg,
+    EntryFacts,
     RollBasis,
     build_approach,
+    entry_facts_of,
 )
 from ofo.settings import layers
 from test_approaches import CFG, inputs, load
@@ -60,7 +62,10 @@ def _basis(user: str | None = None, plan: str | None = None, entry_spot=ENTRY_SP
     got = layers.resolve(layers.ROLL_BASIS, {layers.ROLL_BASIS: admin},
                          None if user is None else {layers.ROLL_BASIS: user},
                          None if plan is None else {layers.ROLL_BASIS: plan})
-    return RollBasis(BASIS_CODES[got.value], got.source, entry_spot)
+    if entry_spot is None:
+        return RollBasis(BASIS_CODES[got.value], got.source, None)
+    facts = entry_facts_of(entry_spot, [("PE", D("22700")), ("CE", D("23400"))])  # the condor's shorts at entry
+    return RollBasis(BASIS_CODES[got.value], got.source, entry_spot, None, facts.call_distance, facts.put_distance)
 
 
 def _calls(built) -> list[D]:
@@ -177,3 +182,30 @@ def test_users_who_change_nothing_get_byte_identical_rolls(sid, approach):
     today = build_approach(position, chain, spot, approach, CFG)
     default = build_approach(position, chain, spot, approach, replace(CFG, roll_basis=_basis()))
     assert replace(default, basis_source=None) == today
+
+
+def test_entry_facts_of_takes_the_nearest_short_per_side_signed():
+    facts = entry_facts_of(ENTRY_SPOT, [("PE", D("22700")), ("PE", D("22500")), ("CE", D("23400")),
+                                        ("CE", D("23600"))])
+    assert facts == EntryFacts(ENTRY_SPOT, D("353"), D("347"))
+    assert entry_facts_of(ENTRY_SPOT, [("CE", D("23000"))]) == EntryFacts(ENTRY_SPOT, D("-47"), None)
+    assert entry_facts_of(ENTRY_SPOT, []) == EntryFacts(ENTRY_SPOT, None, None)
+
+
+def test_a_second_roll_keeps_the_stored_353_never_the_current_strikes_distance():
+    """After the first roll the short call sits at 23,650 / wing 23,850. Spot now 23,500: the stored 353 places the
+    short at 23,853 -> 23,850 (wing 24,050); the current strike's distance (23,650 - 23,047 = 603) would give 24,100."""
+    rolled = replace(_condor(), legs=tuple(
+        replace(x, strike={"c1": D("23650"), "c2": D("23850")}.get(x.tradingsymbol, x.strike))
+        for x in _condor().legs))
+    spot = D("23500")
+    built = build_approach(rolled, _chain(), spot, "A-05", replace(CFG20, roll_basis=_basis(user="2")))
+    assert built.refusal is None
+    assert _calls(built) == [D("23850"), D("24050")]
+    assert built.step_value == D("353")
+
+
+def test_entry_distance_with_no_short_on_that_side_at_entry_fails_closed():
+    basis = RollBasis(ROLL_ENTRY_DISTANCE, "user", ENTRY_SPOT, None, None, D("347"))
+    built = build_approach(_condor(), _chain(), SPOT, "A-05", replace(CFG20, roll_basis=basis))
+    assert built.refusal is not None and built.refusal_message.code == "USER_INPUT_191"  # type: ignore[union-attr]
