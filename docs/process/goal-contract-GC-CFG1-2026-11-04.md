@@ -1,6 +1,6 @@
-# Goal contract GC-CFG1 (DRAFT, needs ONE owner approval): every adjustment behaviour is a configurable default
+# Goal contract GC-CFG1 (APPROVED): every adjustment behaviour is a configurable default
 
-Status: DRAFT 2026-11-04 08:3x IST. Runs AFTER the GC-IC1 live day (owner answer 2026-11-04 "New contract after live
+Status: APPROVED by the owner 2026-11-04 ~08:25 IST (question tool, "Approve as drafted"); drafted 08:22. Runs AFTER the GC-IC1 live day (owner answer 2026-11-04 "New contract after live
 day"). Tree `D:\Abhay\Ventures\OptionsForOptions2-OptionsForOptions2-settings`, branch `feature/adjustments`. Nothing
 to main, no PR; push feature/adjustments only after `prepush.py --full` TOTAL PASS (owner rule).
 
