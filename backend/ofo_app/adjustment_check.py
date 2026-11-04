@@ -235,7 +235,15 @@ def cheapest_offered(body: Mapping | None, tracked: Tracked, market: MarketInput
 
 def state_of(tracked: Tracked, market: MarketInputs, spot: SpotAnswer, margin: Mapping | None,  # noqa: PLR0913
              rates: Any, fresh: bool | None, body: Mapping | None = None, *,
-             config: Config) -> pe.StrategyState:
+             config: Config, user_values: Mapping[str, Decimal] | None,
+             strategy_layer: layers.Layer) -> pe.StrategyState:
+    """The check's state for one strategy: the ONE function the screen check, the worker and the playbook test route
+    pass through. ADR-245: the carry gap in force is resolved HERE (``carry_gap_of``: the plan's, else the user's own,
+    else the admin value ``market.carry_gap_pct``), from two REQUIRED keyword arguments with no default, so a caller
+    cannot skip the resolution or silently use the admin value. ``user_values``: the user's values as the store reads
+    them (``user_preferences_store.UserValues``, own values on ``.own``), or None when the caller has no user read
+    path; ``strategy_layer``: ``Resolved.strategy_layer`` (None = the strategy has no plan)."""
+    gap = carry_gap_of(market.carry_gap_pct, user_values, strategy_layer)
     position = tracked.position
     rows = {r.tradingsymbol: r for r in market.chain}
     ltp = {x.tradingsymbol: getattr(rows.get(x.tradingsymbol), "ltp", None) for x in position.legs}
@@ -276,7 +284,7 @@ def state_of(tracked: Tracked, market: MarketInputs, spot: SpotAnswer, margin: M
         tighten_percent=None if body is None else _tighten(body, now.date(), expiry, hhmm), prices_fresh=fresh,
         held=held_legs(position, market), today=now.date(), entry_day=entry_day(tracked),
         s02_delta_per_lot=market.s02_delta_per_lot, s12_percent=market.s12_percent),
-        body, tracked, market)
+        body, tracked, market, gap)
 
 
 def held_legs(position: Position, market: MarketInputs) -> tuple[pe.HeldLeg, ...]:
@@ -315,16 +323,16 @@ def carry_model(tracked: Tracked, market: MarketInputs) -> Any:
 
 
 def with_carry(state: pe.StrategyState, body: Mapping | None, tracked: Tracked,
-               market: MarketInputs) -> pe.StrategyState:
-    """``state`` with today's carry day kinds and, only when a carry rule is due, its figures (GC-IC1 1b)."""
+               market: MarketInputs, gap: GapInForce) -> pe.StrategyState:
+    """``state`` with today's carry day kinds and, only when a carry rule is due, its figures (GC-IC1 1b), valued at
+    ``gap``: the carry gap in force for this strategy (``carry_gap_of``, ADR-245), never ``market``'s admin value."""
     from ofo.adjustment import carry  # noqa: PLC0415
     now = market.now.astimezone(IST)
     state = dataclasses.replace(state, carry_days=pe.carry_day_kinds(now.date()))
     if not pe.carry_due(body, state):
         return state
     figs = carry.carry_figures(carry_model(tracked, market), tracked.booked, state.margin, now,
-                               gap_pct=market.carry_gap_pct, gap_source=getattr(market, "carry_gap_source", None),
-                               gap_setting_reason=getattr(market, "carry_gap_reason", None))
+                               gap_pct=gap.value, gap_source=gap.source, gap_setting_reason=gap.reason)
     return dataclasses.replace(state, carry=figs)
 
 
@@ -347,12 +355,23 @@ class GapInForce:
     reason: str | None
 
 
+#: the user layer's reason detail when the values handed in are not the store's own-values record (logs only)
+USER_VALUES_WITHOUT_OWN: Final = "user_values_without_own"
+
+
 def user_layer(user_values: Mapping[str, Decimal] | None) -> layers.Layer:
     """The user layer: the user's OWN values (``user_preferences_store.UserValues.own``), never the merged mapping
-    (a merged value equal to the default cannot say whose it is). A mapping with no own-values record (the registry
-    defaults a test seam passes) has no user layer."""
+    (a merged value equal to the default cannot say whose it is). Answer states:
+    - None: the caller has no user read path -> no user layer (the next layer);
+    - a record whose ``.own`` is a mapping -> that mapping (a key absent -> the next layer);
+    - anything else (a plain merged mapping, an ``.own`` that is not a mapping, a wrong type) -> ``Unreadable``: the
+      resolver refuses with ``layers.USER_UNREADABLE`` (fail closed), never the admin default."""
+    if user_values is None:
+        return None
     own = getattr(user_values, "own", None)
-    return own if isinstance(own, Mapping) else None
+    if isinstance(own, Mapping):
+        return own
+    return layers.Unreadable(USER_VALUES_WITHOUT_OWN)
 
 
 def carry_gap_of(admin: Decimal | None, user_values: Mapping[str, Decimal] | None,
@@ -366,16 +385,6 @@ def carry_gap_of(admin: Decimal | None, user_values: Mapping[str, Decimal] | Non
     except layers.LayerUnreadable as exc:
         return GapInForce(None, None, exc.code)
     return GapInForce(got.value, got.source, None)
-
-
-def carry_gap_in_force(market: MarketInputs, user_values: Mapping[str, Decimal] | None,
-                       strategy: layers.Layer) -> MarketInputs:
-    """``market`` (whose ``carry_gap_pct`` holds the ADMIN value in force, as the market readers set it) with the
-    strategy's carry gap in force and its source. The screen check and the worker both call this before
-    ``state_of`` (one resolution, ADR-245)."""
-    gap = carry_gap_of(market.carry_gap_pct, user_values, strategy)
-    return dataclasses.replace(market, carry_gap_pct=gap.value, carry_gap_source=gap.source,
-                               carry_gap_reason=gap.reason)
 
 
 def scenario_entry(scn: Any, state: pe.StrategyState, position: Position) -> pe.StrategyState | None:

@@ -7,8 +7,8 @@ alert line and Compare cell names the value it used." Contract step 1 proof: iro
 removed -> 2, "default". Real PostgreSQL (db_run_fresh); every test rolls back.
 
 The path under test is the one the worker and the screen both take: ``playbook_store.plan_for`` (via
-``adjustment_check.resolve``) and ``user_preferences_store.values_for`` -> ``adjustment_check.carry_gap_in_force``
--> ``ofo.adjustment.carry.carry_figures`` on a real engine model (the GC-IC1 golden legs).
+``adjustment_check.resolve``) and ``user_preferences_store.values_for`` -> ``adjustment_check.carry_gap_of``
+(inside ``state_of``) -> ``ofo.adjustment.carry.carry_figures`` on a real engine model (the GC-IC1 golden legs).
 """
 from __future__ import annotations
 

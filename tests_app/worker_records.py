@@ -52,5 +52,6 @@ async def open_flags(engine: Any, sid: int, reply: Mapping, body: Mapping | None
 async def lapse_through_worker(sid: int, rule_id: str, *, user_ref: str = "owner",
                                at: datetime.datetime = AT) -> None:
     """The worker's own store applies the gate's Lapsed event (the app engine must point at the test database)."""
-    w = Watched(user_ref=user_ref, strategy_id=sid, tracked=None, body={}, is_system=True, feed_owner=user_ref)
+    w = Watched(user_ref=user_ref, strategy_id=sid, tracked=None, body={}, is_system=True, feed_owner=user_ref,
+                strategy_layer=None)
     await DbGateStore().apply(w, [alert_gate.Lapsed(rule_id, at, None)], None)

@@ -177,7 +177,8 @@ async def test_playbook_preview_judges_the_spot_at_the_later_clock(monkeypatch):
         return None
 
     monkeypatch.setattr(playbooks, "current_margin", margin)
-    seams = playbooks._Seams(tracked_reader, market_reader, _rest_reader(clock, rest), None, None, None, None)
+    seams = playbooks._Seams(tracked_reader, market_reader, _rest_reader(clock, rest), None, None, None, None,
+                             None)
     read = playbooks._Read()
     await playbooks._read_one(SimpleNamespace(id=1), seams, None, read)
     assert read.spot.value == SPOT and read.spot.source == "rest_quote"

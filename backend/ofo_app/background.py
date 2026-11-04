@@ -209,8 +209,10 @@ class Watched:
     is_system: bool
     feed_owner: str
     #: ADR-245: the strategy layer of the three-layer settings (``adjustment_check.Resolved.strategy_layer``: the plan
-    #: copy's ``settings``; None = no plan), read with the body on the rebuild, never per check
-    strategy_layer: Any = None
+    #: copy's ``settings``; None = no plan; ``layers.Unreadable`` = a plan whose settings cannot be read), read with the
+    #: body on the rebuild, never per check. REQUIRED (no default): a lister that forgets it cannot construct a
+    #: Watched, so a plan's override is never silently dropped
+    strategy_layer: Any
 
 
 def _seconds(delta: datetime.timedelta) -> Decimal:
@@ -378,14 +380,18 @@ def market_inputs(watched: Watched, read: PriceRead, shared: FeedScope, now: dat
 
 def background_state(watched: Watched, read: PriceRead, shared: FeedScope, now: datetime.datetime,  # noqa: PLR0913
                      values: Mapping[str, Decimal], prefs: Preferences,
-                     margin: Mapping | None = None) -> pe.StrategyState:
-    """The check's state through the SCREEN's own builder (``adjustment_check.state_of``), never a copy of it."""
-    return state_from_market(watched, market_inputs(watched, read, shared, now, values), now, values, prefs, margin)
+                     margin: Mapping | None = None, *,
+                     user_values: Mapping[str, Decimal] | None) -> pe.StrategyState:
+    """The check's state through the SCREEN's own builder (``adjustment_check.state_of``), never a copy of it; the
+    carry gap in force is resolved there (ADR-245) from ``user_values`` (required: the store's own-values record, or
+    None for no user read path) and ``watched.strategy_layer``."""
+    return state_from_market(watched, market_inputs(watched, read, shared, now, values), now, values, prefs, margin,
+                             user_values=user_values)
 
 
 def state_from_market(watched: Watched, market: MarketInputs, now: datetime.datetime,  # noqa: PLR0913
                       values: Mapping[str, Decimal], prefs: Preferences,
-                      margin: Mapping | None) -> pe.StrategyState:
+                      margin: Mapping | None, *, user_values: Mapping[str, Decimal] | None) -> pe.StrategyState:
     """``background_state`` from an already built market. Margin: the cached block of the screen's margin reader
     (``MarginCache.block_for``; None = not known: ``missing_margin``). Charge
     rates: None (``state_of`` reads only the gross figures, which carry no charges). The REST spot is not read (a
@@ -394,7 +400,7 @@ def state_from_market(watched: Watched, market: MarketInputs, now: datetime.date
     passes them."""
     spot = resolve_spot(market.feed, None, market.last_close, now=now, windows=settings_calc.feed_windows(values))
     return check.state_of(watched.tracked, market, spot, margin, None, fresh=True, body=watched.body,
-                          config=prefs.approach)
+                          config=prefs.approach, user_values=user_values, strategy_layer=watched.strategy_layer)
 
 
 #: the worker's margin seam: the strategy and the market of its last check -> the screen's margin block (``state``
@@ -1103,10 +1109,11 @@ class Worker:
             self._pause(sid, PriceState.CHECK_FAILED, now)
             return False
         market = market_inputs(w, read, FeedScope(self.cache, w.feed_owner), now, self._values)
-        # ADR-245: the carry gap in force for THIS strategy (plan, else the user's own, else the admin default), the
-        # one resolution the screen check also makes (``adjustment_check.carry_gap_in_force``)
-        market = check.carry_gap_in_force(market, user_values, w.strategy_layer)
-        state = state_from_market(w, market, now, self._values, prefs, self.margins.block_for(w, now))
+        # ADR-245: the carry gap in force (plan, else the user's own, else the admin default) is resolved inside
+        # state_of; with no user read path there is no user layer (None), never the admin values posing as the user's
+        own = None if self._user_values_read is None else user_values
+        state = state_from_market(w, market, now, self._values, prefs, self.margins.block_for(w, now),
+                                  user_values=own)
         state = dataclasses.replace(state, watches=load.watches)  # A-37: read on the rebuild (step 7), never per check
         self.margins.seen(w, market)
         self._recomputes[sid] = self._recomputes.get(sid, 0) + 1  # a real recompute (REQ-166)

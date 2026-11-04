@@ -247,3 +247,58 @@ def test_the_limit_is_one_named_constant():
     src = (pathlib.Path(__file__).resolve().parent.parent / "backend/ofo_app/routes/playbooks.py").read_text("utf-8")
     assert src.count("asyncio.wait_for(") == 1 and "seams, listed, read), TEST_READ_LIMIT_SECONDS)" in src
     assert src.count("TEST_READ_LIMIT_SECONDS = ") == 1  # defined once; no second literal limit
+
+
+# ---- ADR-245: the test route values the carry gap in force, as the screen and the worker do (cfg step 1 round 1) ----
+CARRY_KEY = "other.carry_gap_percent"
+
+
+def _spy_carry(monkeypatch) -> list[tuple]:
+    """Every carry computation's gap (value, source, reason); the carry rule is forced due so the figures are built."""
+    from ofo.adjustment import carry  # noqa: PLC0415
+    from ofo.adjustment import playbook_eval as pe  # noqa: PLC0415
+    seen: list[tuple] = []
+    real = carry.carry_figures
+
+    def spy(*a, **k):
+        seen.append((k.get("gap_pct"), k.get("gap_source"), k.get("gap_setting_reason")))
+        return real(*a, **k)
+    monkeypatch.setattr(carry, "carry_figures", spy)
+    monkeypatch.setattr(pe, "carry_due", lambda body, state: True)
+    return seen
+
+
+async def test_the_test_route_uses_the_users_own_carry_gap_not_the_admin_default(app_db_url, monkeypatch):
+    """Round 0 defect: the route called state_of with the market's admin gap (2, no source). The user's own 3 must
+    reach the carry figures, named "user"."""
+    from decimal import Decimal  # noqa: PLC0415
+
+    from ofo_app import user_preferences_store as prefs_store  # noqa: PLC0415
+    sid = await _seeded(app_db_url, monkeypatch, "ADJ-02")
+    async with app_db_url.begin() as conn:
+        await prefs_store.set_preference(conn, "owner", CARRY_KEY, "3")
+    body = await _system_ic_body(app_db_url)
+    seen = _spy_carry(monkeypatch)
+    (r,) = await _calls(("POST", "/api/playbooks/test", {"type": "ic", "body": body}))
+    assert r.status_code == OK, r.text
+    assert sid in {s["strategy_id"] for s in r.json()["strategies"]}
+    assert seen and set(seen) == {(Decimal("3"), "user", None)}
+
+
+async def test_the_test_route_uses_the_strategys_plan_value_over_the_users(app_db_url, monkeypatch):
+    from decimal import Decimal  # noqa: PLC0415
+
+    from ofo_app import user_preferences_store as prefs_store  # noqa: PLC0415
+    sid = await _seeded(app_db_url, monkeypatch, "ADJ-02")
+    async with app_db_url.begin() as conn:
+        await prefs_store.set_preference(conn, "owner", CARRY_KEY, "3")
+        system = await playbook_store.active_for(conn, "owner", "ic")
+        await playbook_store.accept_plan(conn, "owner", sid, system.id,
+                                         copy.deepcopy(system.body) | {"settings": {CARRY_KEY: "1.5"}})
+    body = await _system_ic_body(app_db_url)
+    seen = _spy_carry(monkeypatch)
+    (r,) = await _calls(("POST", "/api/playbooks/test", {"type": "ic", "body": body}))
+    assert r.status_code == OK, r.text
+    # the planned strategy follows its plan; the file's earlier seeded strategies (no plan) follow the user's 3
+    assert seen.count((Decimal("1.5"), "strategy", None)) == 1
+    assert set(seen) == {(Decimal("1.5"), "strategy", None), (Decimal("3"), "user", None)}

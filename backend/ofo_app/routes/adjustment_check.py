@@ -238,11 +238,9 @@ async def adjustment_check(  # noqa: PLR0913 - FastAPI dependencies, one per inp
     if resolved.body is None or reply["paused"] is not None:  # A-38: paused -> shown with its end, not evaluated
         return AdjustmentCheckOut.model_validate(reply)
     margin = await current_margin(margin_of, tracked, market)
-    # ADR-245: the carry gap in force for this strategy (plan, else the user's own, else the admin default); the
-    # worker makes the same resolution (``background.Worker``)
-    market = check.carry_gap_in_force(market, user_values, resolved.strategy_layer)
+    # ADR-245: the carry gap in force (plan, else the user's own, else the admin default) is resolved inside state_of
     state = check.state_of(tracked, market, spot, margin, rates, check.prices_fresh(ctx), resolved.body,
-                           config=prefs.approach)
+                           config=prefs.approach, user_values=user_values, strategy_layer=resolved.strategy_layer)
     # read-only (review round 2, finding 3): evaluated against the stored rule memory, NOTHING written; the background
     # worker is the one writer of rule memory and records (ADR-237 (6)), so the two never disagree about a dip
     ev, _memory = await check.evaluate_stored(db, user_ref, strategy_id, resolved.body, state, scenario_mode.current(),

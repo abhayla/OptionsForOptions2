@@ -27,6 +27,10 @@ def _tracked() -> SimpleNamespace:
     return SimpleNamespace(position=SimpleNamespace(legs=()), booked=D("0"))
 
 
+#: the gap in force as ``state_of`` resolves it (here: the admin default, no user or plan value)
+GAP = check.GapInForce(D("2"), "default", None)
+
+
 def _state(hhmm: str, margin: D | None = None) -> pe.StrategyState:
     return pe.StrategyState(expiry_kind="weekly", days_left=4, hhmm=hhmm, margin=margin)
 
@@ -40,18 +44,18 @@ def test_state_of_and_the_worker_both_go_through_with_carry():
 
 def test_friday_1500_fills_days_and_figures_through_carry_figures():
     now = datetime.datetime(2026, 10, 30, 15, 0, tzinfo=IST)
-    got = check.with_carry(_state("15:00", D("98000")), BODY, _tracked(), _market(now))
+    got = check.with_carry(_state("15:00", D("98000")), BODY, _tracked(), _market(now), GAP)
     assert got.carry_days == frozenset({"beforeWeekend"})
     # no forward: figures not known
-    assert got.carry == carry.carry_figures(None, D("0"), D("98000"), now, gap_pct=D("2"))
+    assert got.carry == carry.carry_figures(None, D("0"), D("98000"), now, gap_pct=D("2"), gap_source="default")
     assert got.carry.gap_reason == carry.CARRY_GAP_UNKNOWN and got.carry.margin == D("98000")
 
 
 def test_before_the_time_or_another_day_computes_no_figures():
     fri = datetime.datetime(2026, 10, 30, 14, 59, tzinfo=IST)
-    assert check.with_carry(_state("14:59"), BODY, _tracked(), _market(fri)).carry is None
+    assert check.with_carry(_state("14:59"), BODY, _tracked(), _market(fri), GAP).carry is None
     wed = datetime.datetime(2026, 10, 28, 15, 0, tzinfo=IST)
-    got = check.with_carry(_state("15:00"), BODY, _tracked(), _market(wed))
+    got = check.with_carry(_state("15:00"), BODY, _tracked(), _market(wed), GAP)
     assert got.carry is None and got.carry_days == frozenset()
 
 
