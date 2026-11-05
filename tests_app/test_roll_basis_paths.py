@@ -51,7 +51,7 @@ def _check_builds(monkeypatch, user_values, facts, strategy_layer=None) -> dict:
     body.pop("guards", None)  # no roll debit limit: the basis decides the strikes, not the playbook's cost cap
     check.state_of(tracked, market, SpotAnswer(spot, "feed", market.now), None, s.RATES, True, body,
                    config=s.PREFS.approach, user_values=user_values, strategy_layer=strategy_layer,
-                   entry_facts=facts)
+                   entry_facts=facts, resolved=None)  # stops not supplied: this test reads the roll basis only
     assert set(ROLLS) <= set(seen), sorted(seen)  # never a vacuous pass: both rolls were built by the check
     return seen
 

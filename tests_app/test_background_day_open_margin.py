@@ -26,6 +26,7 @@ from test_background_cycle import (
     Calls,
     Prov,
     _background_state,
+    _followed,
     _system_body,
     _verdict,
     _watched,
@@ -59,11 +60,12 @@ async def _screen_with(prov, tracked, at, body, margin_of=None) -> pe.StrategySt
     spot = resolve_spot(market.feed, None, market.last_close, now=market.now, windows=ctx.feed_windows)
     return adjustment_check.state_of(tracked, market, spot, margin, None, adjustment_check.prices_fresh(ctx), body,
                                      config=PREFS.approach, user_values=None, strategy_layer=None,
-                                     entry_facts=None)
+                                     entry_facts=None, resolved=_followed(body))
 
 
 def _ic_watched(scn) -> background.Watched:
-    return dataclasses.replace(_watched(scn)[0], body=_system_body("ic"))
+    body = _system_body("ic")
+    return dataclasses.replace(_watched(scn)[0], body=body, resolved=_followed(body))
 
 
 # ---- T-13 ---------------------------------------------------------------------------------------------------------
@@ -207,7 +209,8 @@ async def test_a_carry_rule_alone_makes_the_worker_read_the_margin_the_screen_re
     holds the same stated margin as the screen (before: None, margin_reason missing)."""
     prov = Prov(gap)
     at = _gap_time(prov)
-    w = dataclasses.replace(_ic_watched(gap), body=_t16_off(_system_body("ic")))
+    off_body = _t16_off(_system_body("ic"))
+    w = dataclasses.replace(_ic_watched(gap), body=off_body, resolved=_followed(off_body))
     assert any(r["when"] == "beforeWeekend" and r["on"] for r in w.body["day_rules"])
     fake = FakeMargin(at)
     worker, bg, at2 = await _worker_after_refresh(prov, w, at, fake)
@@ -223,7 +226,7 @@ async def test_ten_cycles_in_a_minute_make_at_most_one_margin_call_per_strategy(
     at = _gap_time(prov)
     on = _ic_watched(gap)
     off_body = {**_t16_off(on.body), "day_rules": []}  # no T-16 and no carry rule: no margin is needed
-    off = dataclasses.replace(on, strategy_id=FIRST_ID + 1, body=off_body)
+    off = dataclasses.replace(on, strategy_id=FIRST_ID + 1, body=off_body, resolved=_followed(off_body))
     fake, now, calls = FakeMargin(at), [at], Calls()
     worker = _worker(prov, [on, off], now, calls, margin_of=background.screen_margin_reader(fake))
     for i in range(CYCLES):

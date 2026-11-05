@@ -458,7 +458,7 @@ def _price_time(prov) -> datetime.datetime:
     return max([prov.underlying_quote("NIFTY").timestamp, *(q.timestamp for q in chain)])
 
 
-async def _screen_state(prov, tracked, at, body) -> pe.StrategyState:
+async def _screen_state(prov, tracked, at, body, resolved=None) -> pe.StrategyState:
     """The screen's state for the same prices: its own reader (``read_market``), spot answer and ``state_of``, with a
     margin read that failed (the background has none)."""
     ctx = ctx_in_force(MarketContext(prov, lambda: at, RATE), DEFAULTS)  # the same settings read as the worker's
@@ -466,7 +466,7 @@ async def _screen_state(prov, tracked, at, body) -> pe.StrategyState:
     spot = resolve_spot(market.feed, None, market.last_close, now=market.now, windows=ctx.feed_windows)
     return adjustment_check.state_of(tracked, market, spot, None, None, adjustment_check.prices_fresh(ctx), body,
                                      config=PREFS.approach, user_values=None, strategy_layer=None,
-                                     entry_facts=None)
+                                     entry_facts=None, resolved=resolved)
 
 
 def _background_state(prov, watched, at) -> pe.StrategyState:
@@ -502,12 +502,19 @@ def _system_body(stype: str) -> dict:
                 if pb["strategy_type"] == stype)
 
 
-async def _both(scn) -> tuple[dict, pe.StrategyState, pe.StrategyState]:
+async def _both(scn, body: dict | None = None) -> tuple[dict, pe.StrategyState, pe.StrategyState]:
+    """``body`` None -> the system iron condor; a stop line is read from the body the strategy follows (step 3), so a
+    test changing a stop trigger passes its body here."""
     prov = Prov(scn)
     at = _price_time(prov)  # the screen's clock reads the price's own time
-    body = _system_body("ic")
-    w = dataclasses.replace(_watched(scn)[0], body=body)
-    return body, await _screen_state(prov, w.tracked, at, body), _background_state(prov, w, at)
+    body = _system_body("ic") if body is None else body
+    w = dataclasses.replace(_watched(scn)[0], body=body, resolved=_followed(body))
+    return body, await _screen_state(prov, w.tracked, at, body, w.resolved), _background_state(prov, w, at)
+
+
+def _followed(body: dict) -> adjustment_check.Resolved:
+    """The strategy follows ``body`` (the route's and the worker's own resolution, step 3: ``resolved`` is required)."""
+    return adjustment_check.Resolved("active", body, None, None, False, saved_before_adr247=False)
 
 
 async def test_core_background_state_equals_the_screens_state_field_by_field(scn, scenario_on):
@@ -517,6 +524,9 @@ async def test_core_background_state_equals_the_screens_state_field_by_field(scn
         assert getattr(screen, name) is not None, name  # a real figure on both sides, never two Nones agreeing
     assert all(s.abs_delta is not None for s in screen.shorts)
     assert screen.margin is None
+
+
+MIN_STOP_PCT = "0.01"  # the smallest stop % a line accepts is above 0: any loss of 0.01 % of max loss crosses it
 
 
 def _with(body: dict, trigger: str, cmp: str) -> dict:
@@ -536,6 +546,9 @@ def _verdict(body: dict, state: pe.StrategyState, trigger: str):
                                                      ("T-11", "atm_iv")])
 async def test_a_trigger_on_a_formerly_dropped_field_fires_in_the_background_as_on_the_screen(
         scn, scenario_on, trigger, field_name):
+    if trigger == "T-06":  # a stop line (step 3): read from the followed body's T-06 at the stage, (0, 100] % only
+        await _a_max_loss_stop_fires_the_same_on_both_sides(scn)
+        return
     base, screen, bg = await _both(scn)
     if trigger == "T-11":  # an entry IV 5 points below today's on both sides
         screen = dataclasses.replace(screen, entry_atm_iv=screen.atm_iv - IV_STEP)
@@ -544,6 +557,18 @@ async def test_a_trigger_on_a_formerly_dropped_field_fires_in_the_background_as_
     cmp, on_screen = next((c, r) for c, r in fired if isinstance(r, pe.Flag))  # it fires on the screen
     assert getattr(screen, field_name) is not None
     assert _verdict(_with(base, trigger, cmp), bg, trigger) == on_screen  # and fires the same in the background
+
+
+async def _a_max_loss_stop_fires_the_same_on_both_sides(scn) -> None:
+    body = _system_body("ic")
+    body = {**body, "triggers": {**body["triggers"], "T-06": {**body["triggers"]["T-06"], "on": True,
+                                                              "weekly": [MIN_STOP_PCT] * 3,
+                                                              "monthly": [MIN_STOP_PCT] * 3}}}
+    _base, screen, bg = await _both(scn, body)
+    assert screen.max_loss is not None
+    on_screen = _verdict(body, screen, "T-06")
+    assert isinstance(on_screen, pe.Flag), on_screen  # it fires on the screen
+    assert _verdict(body, bg, "T-06") == on_screen  # and fires the same in the background
 
 
 async def test_margin_and_prev_close_rules_answer_the_same_not_checked_as_the_screen(scn, scenario_on, monkeypatch):
