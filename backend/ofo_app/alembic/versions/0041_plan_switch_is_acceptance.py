@@ -84,17 +84,17 @@ def extended_allowlist_sql() -> str:
     return previous.replace(old, new, 1)
 
 
-def _install(function_sql: str, allowlist_sql: str) -> None:
+def upgrade() -> None:
     base = _m31()._BASE
-    op.execute(function_sql)
-    op.execute(allowlist_sql)
+    op.execute(upgrade_sql())
+    op.execute(extended_allowlist_sql())
     op.execute(f"REVOKE ALL ON FUNCTION {base.ALLOWLIST_FUNCTION}(TEXT, TEXT) FROM PUBLIC")
     op.execute(f"SELECT {base.ALLOWLIST_FUNCTION}('{base._app_role()}', 'post')")
 
 
-def upgrade() -> None:
-    _install(upgrade_sql(), extended_allowlist_sql())
-
-
 def downgrade() -> None:
-    _install(downgrade_sql(), previous_allowlist_sql())
+    base = _m31()._BASE
+    op.execute(downgrade_sql())
+    op.execute(previous_allowlist_sql())
+    op.execute(f"REVOKE ALL ON FUNCTION {base.ALLOWLIST_FUNCTION}(TEXT, TEXT) FROM PUBLIC")
+    op.execute(f"SELECT {base.ALLOWLIST_FUNCTION}('{base._app_role()}', 'post')")
