@@ -1083,9 +1083,9 @@ SITUATION_RULE_PREFIX: Final = "sit."
 LEGACY_SITUATION_RULE_PREFIX: Final = "sit:"
 TRENDING_DAY: Final = "S-02"
 BIG_WIN_EARLY: Final = "S-12"
-#: ADR-240 (1): S-03, S-04, S-05 are GUIDANCE (shown as words, never a rule that fires). ONE server constant: the
-#: playbook reply derives each situation's ``kind`` from it; it is never a key stored in a body.
-GUIDANCE_SITUATIONS: Final = ("S-03", "S-04", "S-05")
+#: ADR-240 (1): S-03, S-04, S-05 are GUIDANCE (shown as words, never a rule that fires); ADR-244 adds S-08 and S-09.
+#: ONE server constant: the playbook reply derives each situation's ``kind`` from it; never a key stored in a body.
+GUIDANCE_SITUATIONS: Final = ("S-03", "S-04", "S-05", "S-08", "S-09")
 
 
 def situation_kind(situation_id: object) -> str:

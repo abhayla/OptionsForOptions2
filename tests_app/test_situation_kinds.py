@@ -17,14 +17,14 @@ def _ic() -> dict:
     return copy.deepcopy(next(r["body"] for r in rows if r["strategy_type"] == "ic"))
 
 
-def test_the_constant_names_exactly_s03_s04_s05() -> None:
-    assert pe.GUIDANCE_SITUATIONS == ("S-03", "S-04", "S-05")
+def test_the_constant_names_exactly_the_guidance_situations() -> None:
+    assert pe.GUIDANCE_SITUATIONS == ("S-03", "S-04", "S-05", "S-08", "S-09")  # ADR-244 added S-08, S-09
 
 
 def test_iron_condor_reply_marks_exactly_the_guidance_situations() -> None:
     kinds = situation_kinds(_ic())
     assert [k["id"] for k in kinds] == [s["id"] for s in _ic()["situations"]]
-    assert {k["id"] for k in kinds if k["kind"] == "guidance"} == {"S-03", "S-04", "S-05"}
+    assert {k["id"] for k in kinds if k["kind"] == "guidance"} == {"S-03", "S-04", "S-05"}  # seed lists no S-08/S-09
     assert all(k["kind"] == "rule" and k["label"] is None for k in kinds if k["id"] not in pe.GUIDANCE_SITUATIONS)
     assert all(k["label"] == "Guidance" for k in kinds if k["kind"] == "guidance")
 

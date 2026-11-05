@@ -52,8 +52,8 @@ def _stop_shape(body: dict) -> tuple:
 
 async def test_a_fresh_database_ships_the_adr247_iron_condor_as_a_new_version_seed_kept(db):
     history = await sys_store.history(db, "ic")
-    assert [(v.version, v.reason) for v in history] == [(2, M40.REASON), (1, "seed")]
-    new, seed = history[0].body, history[1].body
+    assert [(v.version, v.reason) for v in history][1:] == [(2, M40.REASON), (1, "seed")]  # v3 is 0042 (ADR-244)
+    new, seed = history[1].body, history[2].body
     assert _stop_shape(seed) == ("4", True, T16_VALUES, T16_VALUES)  # version 1 kept, never overwritten
     assert _stop_shape(new) == (None, False, T16_VALUES, T16_VALUES)  # margin stop and T-16 off, values kept
     assert new["guards"]["stop_line_pct_of_max_loss"] == "50"
