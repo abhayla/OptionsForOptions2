@@ -16,6 +16,7 @@ import test_ic_paper_loop_core as core
 from ofo.timeutil import IST
 from ofo_app import paper_settlement as ps
 
+LEGS = 4
 CLOSE = D("23600")
 EXPIRY = datetime.date(2026, 11, 9)
 AFTER = datetime.datetime(2026, 11, 9, 15, 50, tzinfo=IST)
@@ -43,7 +44,7 @@ async def test_held_to_expiry_legs_settle_once_and_history_equals_the_fills(app_
         await core._move(ex.F_SETTLE)
         entry_cash = await ex.sum_of_fills(sid)
         legs_before = {c: n for c, n in (await core._net(sid)).items() if n}
-        assert len(legs_before) == 4  # attack 1 reversed: all four legs are open before the settlement
+        assert len(legs_before) == LEGS  # attack 1 reversed: all four legs are open before the settlement
         # before the settle time: nothing (a settle is never early)
         async with core._engine().connect() as conn:
             early = await ps.settle_expired(conn, BEFORE, _close_of())
@@ -52,7 +53,7 @@ async def test_held_to_expiry_legs_settle_once_and_history_equals_the_fills(app_
         async with core._engine().connect() as conn:
             run = await ps.settle_expired(conn, AFTER, _close_of(calls))
         mine = [s for s in run.settled if s.strategy_id == sid]
-        assert len(mine) == 4 and run.failed == ()
+        assert len(mine) == LEGS and run.failed == ()
         assert calls.count(("NIFTY", EXPIRY)) == 1
         assert await _settles(sid) == [(D("23500"), "CE", "BUY", 130, D("100")),  # short call in the money: bought back at 100
                                         (D("23700"), "CE", "SELL", 130, D("0")),

@@ -27,6 +27,8 @@ PATH = "PATH-50"
 F_STOP, F_PROFIT, F_QUIET, F_1420, F_1429, F_1431, F_PENNIES, F_SETTLE = range(8)
 TIME_EXIT_RULE = "day.expiry.1430.5"  # the day rule 5 of the time exit (playbook_eval.day_rule_id shape)
 _RUN = itertools.count(1)
+WINGS = ("22950 PE", "23700 CE")  # the two bought wings stay open after A-27 closes the two shorts
+SHORTS_CLOSED_BY_A27 = 2
 
 
 async def setup(app_engine, monkeypatch, path: str = PATH) -> int:
@@ -151,7 +153,7 @@ async def test_close_for_pennies_t09_a27_closes_the_shorts_then_every_leg_and_hi
                                                                                                           monkeypatch):
     got, cash, left = await run_exit(app_engine, monkeypatch, frame=F_PENNIES, rule="T-09", approach="A-27",
                                      all_legs=False)
-    assert left == 2, left  # A-27 closes the two shorts; the two bought wings are exited next
+    assert left == SHORTS_CLOSED_BY_A27 and left == len(WINGS), left  # A-27 closes the two shorts; the two bought wings are exited next
     assert got == cash, (got, cash)
 
 
