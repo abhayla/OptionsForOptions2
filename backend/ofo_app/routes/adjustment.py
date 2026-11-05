@@ -340,13 +340,16 @@ def margin_block(margin: Margin | None) -> dict:
 def _spot_why(source: str, code: str) -> Any:
     """One source's reason code in plain words: the source-specific sentence when the catalogue has one."""
     specific = f"adjust_spot_why_{source}_{code}"
-    return render_explanation(specific if specific in EXPLANATIONS else f"adjust_spot_why_{code}")
+    general = f"adjust_spot_why_{code}"
+    # A code the catalogue has no words for reads "reason not given", never the code itself.
+    return render_explanation(specific if specific in EXPLANATIONS
+                              else general if general in EXPLANATIONS else "adjust_spot_why_unknown")
 
 
 def _spot_block(answer: SpotAnswer) -> dict:
-    reasons = [{"source": s, "reason": r} for s, r in answer.reasons]
+    reasons = [{"source": s, "reason": r, "reason_text": _spot_why(s, r)} for s, r in answer.reasons]
     if not answer.available:
-        why = {src: _spot_why(src, code) for src, code in answer.reasons}
+        why = {r["source"]: r["reason_text"] for r in reasons}
         absent = render_explanation("adjust_spot_why_absent")
         text = render_explanation("adjust_spot_not_available", feed=why.get("feed", absent),
                                   rest=why.get("rest_quote", absent), close=why.get("last_close", absent))

@@ -2443,6 +2443,10 @@
     "sha256": "cb7d59f45f66b8f9346d112a40e7ab27592d94f4a9cba882bd44615fafa445e2",
     "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"
   },
+  "explanation:adjust_spot_why_unknown": {
+    "sha256": "eb9c81bc17a34f638df5cf80dc4b283b2277ee01a0a6251c3e8a1091e085242f",
+    "reviewed": "pending owner read"
+  },
   "explanation:adjust_cmp_no_position_left": {
     "sha256": "44c5f06c010d3208cdf6184f9ca1dcbbcdb535b64d3dfcf9d0f75e9609867c8e",
     "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"
