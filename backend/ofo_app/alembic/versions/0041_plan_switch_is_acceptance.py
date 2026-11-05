@@ -8,6 +8,11 @@ copied the old value otherwise, so a switch to a playbook whose body equals the 
 cutoff treated it as an old acceptance. This replaces ONLY that function: ``accepted_at`` is also stamped when
 ``playbook_id`` changes to another playbook (a playbook deleted -> playbook_id NULL is not an acceptance). Existing
 rows are not touched. Downgrade restores the 0031 function.
+
+Re-pin: the app-role allow-list (block 23, 0031) pins md5 of this function's body, so replacing the body without
+re-pinning makes every later ``'post'`` check refuse. Upgrade installs the chain head (0039's text) with the plan
+guard's pin moved to the new body; downgrade re-installs 0039's text (the 0031 pin). Both end with the ``'post'``
+check, like 0040. Fails closed (RuntimeError) when the old pin is not in the chain exactly once.
 """
 from __future__ import annotations
 
@@ -26,14 +31,25 @@ NEW_TEST = ("IF NEW.body IS DISTINCT FROM OLD.body OR (NEW.playbook_id IS NOT NU
             "AND NEW.playbook_id IS DISTINCT FROM OLD.playbook_id) THEN")
 
 
-def _m31():
-    path = Path(__file__).with_name("0031_adjustment_playbooks.py")
-    found = importlib.util.spec_from_file_location("ofo_migration_0031_for_0041", path)
+def _load(filename: str, name: str):
+    path = Path(__file__).with_name(filename)
+    found = importlib.util.spec_from_file_location(name, path)
     if found is None or found.loader is None:
         raise RuntimeError(f"cannot load the migration {path}")
     module = importlib.util.module_from_spec(found)
     found.loader.exec_module(module)
     return module
+
+
+def _m31():
+    return _load("0031_adjustment_playbooks.py", "ofo_migration_0031_for_0041")
+
+
+def _m39():
+    return _load("0039_strategy_entry_facts.py", "ofo_migration_0039_for_0041")
+
+
+PLAN_GUARD = "public.strategy_adjustment_plans_guard"
 
 
 def upgrade_sql() -> str:
@@ -47,9 +63,38 @@ def downgrade_sql() -> str:
     return _m31()._plans_guard_sql()
 
 
+def old_pin() -> str:
+    return _m31().PINS[PLAN_GUARD]
+
+
+def new_pin() -> str:
+    return _m31()._M4._md5_body(upgrade_sql())
+
+
+def previous_allowlist_sql() -> str:
+    return _m39().extended_allowlist_sql()
+
+
+def extended_allowlist_sql() -> str:
+    """0039's chain text with the plan guard's pin moved to the new body. Fails closed on a changed shape."""
+    previous = previous_allowlist_sql()
+    old, new = f"'{old_pin()}'", f"'{new_pin()}'"
+    if old == new or previous.count(old) != 1 or new in previous:
+        raise RuntimeError("previous allowlist SQL changed shape: cannot re-pin the plan guard safely")
+    return previous.replace(old, new, 1)
+
+
+def _install(function_sql: str, allowlist_sql: str) -> None:
+    base = _m31()._BASE
+    op.execute(function_sql)
+    op.execute(allowlist_sql)
+    op.execute(f"REVOKE ALL ON FUNCTION {base.ALLOWLIST_FUNCTION}(TEXT, TEXT) FROM PUBLIC")
+    op.execute(f"SELECT {base.ALLOWLIST_FUNCTION}('{base._app_role()}', 'post')")
+
+
 def upgrade() -> None:
-    op.execute(upgrade_sql())
+    _install(upgrade_sql(), extended_allowlist_sql())
 
 
 def downgrade() -> None:
-    op.execute(downgrade_sql())
+    _install(downgrade_sql(), previous_allowlist_sql())

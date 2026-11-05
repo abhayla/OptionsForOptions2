@@ -122,6 +122,34 @@ def test_the_plan_guard_stamps_accepted_at_when_the_playbook_changes():
     assert "NEW.accepted_at := OLD.accepted_at" in up  # an unchanged playbook and body still keep the old time
 
 
+def _statements(m, step) -> list[str]:
+    seen: list[str] = []
+
+    class _Op:
+        def execute(self, sql):
+            seen.append(str(sql))
+
+    m.op = _Op()
+    step()
+    return seen
+
+
+def test_0041_re_pins_the_plan_guard_both_ways_and_ends_with_the_post_check():
+    m = _migration()
+    old, new = f"'{m.old_pin()}'", f"'{m.new_pin()}'"
+    assert old != new
+    ext, prev = m.extended_allowlist_sql(), m.previous_allowlist_sql()
+    assert ext.count(new) == 1 and old not in ext
+    assert prev.count(old) == 1 and new not in prev
+    assert ext.replace(new, old) == prev  # only the plan guard's pin moved
+    up = _statements(m, m.upgrade)
+    down = _statements(m, m.downgrade)
+    assert up[0] == m.upgrade_sql() and up[1] == ext
+    assert down[0] == m.downgrade_sql() and down[1] == prev
+    for statements in (up, down):
+        assert "'post'" in statements[-1] and "allowlist" in statements[-1].lower()
+
+
 def test_the_upsert_does_not_write_accepted_at_itself_the_guard_stamps_it():
     sql = str(store._UPSERT_PLAN)
     assert "accepted_at" in sql.split("RETURNING")[1]
