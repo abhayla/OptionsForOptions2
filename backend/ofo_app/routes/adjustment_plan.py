@@ -228,12 +228,12 @@ _STOP_WORD_IDS = {in_force_mod.STOP_MAX_LOSS: "plan_stop_words_loss",
                   in_force_mod.STOP_MARGIN: "plan_stop_words_margin"}
 _STOP_SLOTS = {in_force_mod.STOP_MAX_LOSS: "pct", in_force_mod.STOP_CREDIT: "multiple",
                in_force_mod.STOP_MARGIN: "margin"}
-def _stop_words(body: dict, saved_before: bool) -> Any:
+def _stop_words(body: dict, saved_before: bool, kind: str | None = None) -> Any:
     """ADR-247/252: the ACTIVE stops from the ONE settings-in-force stops list (``settings_in_force.stops_of`` at the
     first stage: T-06 % of max loss, N x the credit received where it applies, T-16 % of margin only when on), joined
     "..., whichever comes first". Read for every plan, whatever guard keys its body holds."""
     lines = in_force_mod.stops_of(check.Resolved("plan", body, None, None, False, saved_before_adr247=saved_before),
-                                  None, in_force_mod.FIRST_STAGE).lines
+                                  None, in_force_mod.first_stage_of(kind)).lines
     parts = [render_explanation(_STOP_WORD_IDS[x.kind], **{_STOP_SLOTS[x.kind]: format(x.figure, "f")})
              for x in lines if x.active and x.figure is not None]
     if not parts:
@@ -247,40 +247,40 @@ def _stop_words(body: dict, saved_before: bool) -> Any:
     return render_explanation("plan_stop_words_first", words=joined)
 
 
-def _words(body: dict, guards: dict, saved_before: bool) -> tuple[Any, Any]:
+def _words(body: dict, guards: dict, saved_before: bool, kind: str | None = None) -> tuple[Any, Any]:
     """GC-ADJ2 item 3: what the target and the stop numbers ARE, in words from the catalogue (the number stays the
     input). The stop words come from the stops in force (ADR-247), not from the guards the body happens to hold."""
     target = _read_percent(guards, TARGET_KEY)
     t_words = None if target is None else render_explanation("plan_target_words", pct=format(target, "f"))
-    return t_words, _stop_words(body, saved_before)
+    return t_words, _stop_words(body, saved_before, kind)
 
 
-def _values(body: dict, saved_before: bool) -> dict[str, Any]:
+def _values(body: dict, saved_before: bool, kind: str | None = None) -> dict[str, Any]:
     found = body.get("guards")
     guards: dict = found if isinstance(found, dict) else {}
     mx = guards.get(MAX_KEY)
-    t_words, s_words = _words(body, guards, saved_before)
-    return {"target": _read_percent(guards, TARGET_KEY), "stop": in_force_mod.sheet_stop(body),
+    t_words, s_words = _words(body, guards, saved_before, kind)
+    return {"target": _read_percent(guards, TARGET_KEY), "stop": in_force_mod.sheet_stop(body, kind),
             "target_words": t_words, "stop_words": s_words,
             "max_adjustments": mx if type(mx) is int else None, "time_exit": _read_clock(guards)}
 
 
-def _set_stop(out: dict, raw: str) -> None:
+def _set_stop(out: dict, raw: str, kind: str | None = None) -> None:
     """ADR-252: the sheet's stop edit IS the T-06 value the live check reads (``settings_in_force``), every stage."""
     try:
-        in_force_mod.set_max_loss_stop(out, _percent(raw, "stop"))
+        in_force_mod.set_max_loss_stop(out, _percent(raw, "stop"), kind)
     except ValueError:
         raise _bad("stop") from None
 
 
-def with_overrides(body: dict, data: PlanIn) -> dict:
+def with_overrides(body: dict, data: PlanIn, kind: str | None = None) -> dict:
     """A copy of ``body`` whose guards hold the sheet's values (a value left out stays as the body has it)."""
     out = copy.deepcopy(body)
     guards = out.setdefault("guards", {})
     if data.target is not None:
         guards[TARGET_KEY] = _percent(data.target, "target")
     if data.stop is not None:
-        _set_stop(out, data.stop)
+        _set_stop(out, data.stop, kind)
     if data.max_adjustments is not None:
         if not _COUNT.fullmatch(data.max_adjustments) or int(data.max_adjustments) > MAX_ADJUSTMENTS_LIMIT:
             raise _bad(MAX_KEY)
@@ -345,7 +345,13 @@ async def _type_of(db: Any, user_ref: str, strategy_id: int, tracked: Any, marke
     return check.strategy_type(tracked.position, spot.value if spot.available else None, listed), None
 
 
-async def _plan_out(db: Any, user_ref: str, plan: store.Plan) -> dict[str, Any]:
+def _kind_of(tracked: Any, money: in_force_mod.MoneyInputs | None) -> str:
+    """The strategy's own expiry kind (the live check's read): the market's, else the position's, else weekly."""
+    at = None if money is None else money.at
+    return (None if at is None else at.expiry_kind) or getattr(tracked.position, "expiry_kind", None) or "weekly"
+
+
+async def _plan_out(db: Any, user_ref: str, plan: store.Plan, kind: str | None = None) -> dict[str, Any]:
     name = None
     if plan.playbook_id is not None:  # a deleted playbook leaves the plan's playbook_id NULL
         try:
@@ -353,7 +359,7 @@ async def _plan_out(db: Any, user_ref: str, plan: store.Plan) -> dict[str, Any]:
         except store.PlaybookStoreError:
             name = None
     return {"playbook_id": plan.playbook_id, "playbook_name": name, "accepted_at": plan.accepted_at,
-            **_values(plan.body, await check.plan_saved_before_adr247(db, plan))}
+            **_values(plan.body, await check.plan_saved_before_adr247(db, plan), kind)}
 
 
 def _in_force_reply(found: in_force_mod.InForce) -> dict[str, Any]:
@@ -380,7 +386,7 @@ def _in_force_reply(found: in_force_mod.InForce) -> dict[str, Any]:
 
 async def _sheet(db: Any, user_ref: str, strategy_id: int, stype: str | None, plan: store.Plan | None,  # noqa: PLR0913
                  pick: int | None, user_values: Any = None,
-                 money: in_force_mod.MoneyInputs | None = None) -> AdjustmentPlanOut:
+                 money: in_force_mod.MoneyInputs | None = None, kind: str | None = None) -> AdjustmentPlanOut:
     reply: dict[str, Any] = {"strategy_id": strategy_id, "type": stype, "type_name": None, "generic": stype is None,
                              "generic_text": render(_GENERIC) if stype is None else None, "playbooks": [],
                              "plan": None, "prefill": None, "labels": _labels()}
@@ -405,13 +411,13 @@ async def _sheet(db: Any, user_ref: str, strategy_id: int, stype: str | None, pl
         chosen = found
     if plan is not None and pick is None:
         saved_before = await check.plan_saved_before_adr247(db, plan)
-        values = _values(plan.body, saved_before)
+        values = _values(plan.body, saved_before, kind)
         source_id = plan.playbook_id if plan.playbook_id is not None else active.id
     else:
-        values, source_id = _values(chosen.body, False), chosen.id  # a playbook, not a saved plan
+        values, source_id = _values(chosen.body, False, kind), chosen.id  # a playbook, not a saved plan
     reply |= {"type_name": render_explanation("adjust_check_type_name", name=SHOWN_NAMES[stype]),
               "playbooks": [_playbook_row(p, active.id) for p in listed],
-              "plan": None if plan is None else await _plan_out(db, user_ref, plan),
+              "plan": None if plan is None else await _plan_out(db, user_ref, plan, kind),
               "prefill": {"playbook_id": source_id, **values}}
     return AdjustmentPlanOut.model_validate(reply)
 
@@ -447,7 +453,8 @@ async def read_plan(  # noqa: PLR0913 - FastAPI dependencies, one per input
     money = in_force_mod.money_inputs(tracked, market, rates)
 
     async def work() -> AdjustmentPlanOut:
-        return await _sheet(db, user_ref, strategy_id, stype, plan, playbook_id, user_values, money)
+        return await _sheet(db, user_ref, strategy_id, stype, plan, playbook_id, user_values, money,
+                            _kind_of(tracked, money))
     return await _run(db, work)
 
 
@@ -471,9 +478,9 @@ async def _write(strategy_id: int, data: PlanIn, edit: bool, db: Any, user_ref: 
         if source.strategy_type != stype:
             raise _bad("playbook_id")
         keep = edit and plan is not None and plan.playbook_id == source.id  # editing the plan keeps its own body
-        body = with_overrides(plan.body if keep and plan is not None else source.body, data)
+        body = with_overrides(plan.body if keep and plan is not None else source.body, data, _kind_of(tracked, money))
         saved = await store.accept_plan(db, user_ref, strategy_id, source.id, body)
-        return await _sheet(db, user_ref, strategy_id, stype, saved, None, user_values, money)
+        return await _sheet(db, user_ref, strategy_id, stype, saved, None, user_values, money, _kind_of(tracked, money))
     return await _run(db, work)
 
 

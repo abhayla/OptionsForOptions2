@@ -233,6 +233,13 @@ CREDIT_MULTIPLE_MAX: Final = Decimal(100)
 PCT_MAX: Final = Decimal(100)
 #: the plan sheet and the plan words read the FIRST stage (the sheet edits every stage at once, ``set_max_loss_stop``)
 FIRST_STAGE: Final = "first"
+#: the same for a monthly strategy: the sheet shows the strategy's OWN stage row (ADR-252 addendum)
+FIRST_STAGE_MONTHLY: Final = "first:monthly"
+
+
+def first_stage_of(kind: str | None) -> str:
+    """The sheet's stage marker for the strategy's expiry kind (anything but "monthly" -> the weekly row)."""
+    return FIRST_STAGE_MONTHLY if kind == "monthly" else FIRST_STAGE
 #: the per-stage trigger behind each % line (ADR-252: T-06 for % of max loss, T-16 for % of margin)
 TRIGGER_OF_LINE: Final = {STOP_MAX_LOSS: sl.TRIGGER_MAX_LOSS, STOP_MARGIN: sl.TRIGGER_MARGIN}
 _KINDS: Final = ("weekly", "monthly")
@@ -262,8 +269,8 @@ def _trigger(body: Mapping, tid: str) -> tuple[Mapping | None, bool]:
 
 
 def _stage_index(body: Mapping, at: StageAt | str | None) -> tuple[str, int] | None:
-    if at == FIRST_STAGE:
-        return "weekly", 0
+    if isinstance(at, str) and at in (FIRST_STAGE, FIRST_STAGE_MONTHLY):
+        return ("monthly" if at == FIRST_STAGE_MONTHLY else "weekly"), 0
     if not isinstance(at, StageAt) or at.days_left is None:
         return None
     try:
@@ -370,22 +377,38 @@ def stops_of(resolved: check.Resolved, money: MoneyInputs | None,
     return _first(lines)
 
 
-def set_max_loss_stop(body: dict, raw: str) -> None:
-    """The plan sheet's stop edit (ADR-252): ``raw`` becomes T-06's value at every stage of both expiry kinds (a stage
-    without a value stays without one) and T-06 is switched on; no guard key is written."""
-    _pct(raw)
+def set_max_loss_stop(body: dict, raw: str, kind: str | None = None) -> None:
+    """The plan sheet's stop edit (ADR-252 addendum). ``raw`` equal to the value the sheet shows (the strategy's own
+    stage row, early stage) -> nothing is written. Different V -> early and middle stages = V, last stage =
+    min(V, its current value) (never looser), both expiry kinds; a stage without a value stays without one; T-06 is
+    switched on; no guard key is written. Decimal only."""
+    wanted = _pct(raw)
     trig = body.setdefault("triggers", {}).get(sl.TRIGGER_MAX_LOSS)
     if not isinstance(trig, dict):
         raise ValueError("the body has no % of max loss trigger")
-    for kind in _KINDS:
-        if isinstance(trig.get(kind), list):
-            trig[kind] = [raw if x not in (None, "") else x for x in trig[kind]]
+    if sheet_stop(body, kind) == wanted:
+        return
+    for stage_kind in _KINDS:
+        values = trig.get(stage_kind)
+        if not isinstance(values, list):
+            continue
+        filled = [n for n, x in enumerate(values) if x not in (None, "")]
+        last = filled[-1] if filled else None
+        for n in filled:
+            if n == last:
+                try:
+                    if _pct(values[n]) <= wanted:
+                        continue  # the last stage keeps a stricter (or equal) value
+                except ValueError:
+                    pass
+            values[n] = format(wanted, "f")
     trig["on"] = True
 
 
-def sheet_stop(body: Mapping) -> Decimal | None:
-    """The plan sheet's stop: T-06's first-stage value when T-06 is on (None otherwise)."""
-    line = _trigger_line(body, STOP_MAX_LOSS, None, FIRST_STAGE, None)
+def sheet_stop(body: Mapping, kind: str | None = None) -> Decimal | None:
+    """The plan sheet's stop: T-06's early-stage value in the strategy's own stage row when T-06 is on (None
+    otherwise)."""
+    line = _trigger_line(body, STOP_MAX_LOSS, None, first_stage_of(kind), None)
     return None if line is None or not line.active else line.figure
 
 
@@ -431,6 +454,8 @@ __all__ = [
     "CREDIT_MULTIPLE_DEFAULT",
     "CREDIT_UNKNOWN",
     "FIRST_STAGE",
+    "FIRST_STAGE_MONTHLY",
+    "first_stage_of",
     "FIRST_UNKNOWN",
     "GUARDS_UNREADABLE",
     "MARGIN_NOT_READ",

@@ -68,16 +68,17 @@ async def test_a_fresh_database_ships_the_adr247_iron_condor_as_a_new_version_se
     assert others == 0
 
 
-async def test_adr247_saved_at_is_the_save_time_of_ic_version_2(db):
-    """ADR-250: the cutoff a saved plan is compared with is the save time of the ic system version 2 (migration 0040);
-    a plan accepted before it keeps its own stops. Version 2 absent -> every plan counts as pre-ADR-247."""
+async def test_adr247_saved_at_is_the_save_time_of_the_row_0040_wrote(db):
+    """ADR-250: the cutoff a saved plan is compared with is the save time of the ic system row whose reason is
+    0040's (never a version number); a plan accepted before it keeps its own stops. No such row -> every plan counts
+    as pre-ADR-247."""
     import dataclasses  # noqa: PLC0415
     import datetime  # noqa: PLC0415
 
     cutoff = await pbs.adr247_saved_at(db)
     v2_at = (await db.execute(text(
         "SELECT saved_at FROM public.system_playbook_versions "
-        "WHERE strategy_type = 'ic' AND version = 2"))).scalar_one()
+        "WHERE strategy_type = 'ic' AND reason = :reason"), {"reason": M40.REASON})).scalar_one()
     assert cutoff == v2_at
 
     @dataclasses.dataclass
