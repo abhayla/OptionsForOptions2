@@ -347,9 +347,12 @@ def margin_in(margin: Mapping | None) -> tuple[Decimal | None, bool]:
 def with_gamma(state: pe.StrategyState, body: Mapping | None, tracked: Tracked,
                market: MarketInputs) -> pe.StrategyState:
     """``state`` with T-14's 1% repricing figures (design decision 8, ``ofo.adjustment.gamma``) when the body has
-    T-14 switched on; the model is the check's own (``carry_model``), so the screen and the worker value it alike."""
+    T-14 switched on AND the process runs in scenario mode (B2 review F1: the ONE choke point; in live mode no figures,
+    so T-14 answers "not checked yet" exactly as before). The model is the check's own (``carry_model``), so the
+    screen and the worker value it alike."""
+    from ofo_app import scenario_mode  # noqa: PLC0415 - the single mode reader
     t14 = ((body or {}).get("triggers") or {}).get("T-14") or {}
-    if not t14.get("on"):
+    if not t14.get("on") or scenario_mode.current() is None:
         return state
     from ofo.adjustment import gamma  # noqa: PLC0415 - engine valuation only here
     return dataclasses.replace(state, gamma=gamma.gamma_figures(carry_model(tracked, market)))

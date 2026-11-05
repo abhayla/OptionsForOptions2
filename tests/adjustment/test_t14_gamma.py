@@ -115,8 +115,9 @@ def test_exact_boundary_value_equal_to_the_stage_value_fires():
 
 def test_not_crossing_one_rupee_more_margin_is_not_fired():
     lim = _limit()
-    t = _t14(evaluate(body_of(SC), _state(margin=_margin_at(lim) + 1), {}, None))
-    assert t == []  # checked and clear: neither a flag nor "not checked"
+    ev = evaluate(body_of(SC), _state(margin=_margin_at(lim) + 1), {}, None)
+    t = _t14(ev)
+    assert t == [] and ev.memory["T-14"]["seen_clear"] is True  # checked and clear: no entry, memory says clear
 
 
 @pytest.mark.parametrize(("up", "down"), [(D("-5000"), D("120")), (D("120"), D("-5000"))])
@@ -142,9 +143,9 @@ def test_margin_absent_unreadable_or_not_positive_is_not_checked_never_passed(ma
     assert pe.reason_text(code)
 
 
-def test_no_gamma_figures_is_not_checked_with_its_reason():
+def test_no_gamma_figures_live_mode_is_not_checked_yet_exactly_as_before():
     t = _t14(evaluate(body_of(SC), replace(state_of(SC), gamma=None), {}, None))
-    assert t == [pe.NotChecked("T-14", "T-14", pe.GAMMA_UNKNOWN)]
+    assert t == [pe.NotChecked("T-14", "T-14", pe.T14_PENDING)]
     assert "1% move" in pe.reason_text(pe.GAMMA_UNKNOWN)
 
 

@@ -44,7 +44,9 @@ Cmp = Literal["le", "ge", "lt"]
 UNLIMITED: Final = "UNLIMITED"
 #: T-14 (goal contract ic-e2e-paper, design decision 8): the worst whole-position P&L change from repricing at spot
 #: x 1.01 and x 0.99 (same IV, same clock) through the engine (``ofo.adjustment.gamma``), as a % of the margin blocked.
-#: ``T14_PENDING`` stays only as the scenario library's documented text (that library has no engine model to reprice).
+#: Evaluated ONLY in scenario mode (B2 review F1): the one choke point is ``adjustment_check.with_gamma``, which fills
+#: ``StrategyState.gamma`` only when ``scenario_mode.current()`` is set. No figures (live mode, or no state builder)
+#: -> T-14 answers ``T14_PENDING`` exactly as before; figures that could not be valued -> ``GAMMA_UNKNOWN``.
 #: Reason codes: each is a catalogue template id (backend/ofo/errors/templates.py, ``adjust_trigger_*``). The
 #: evaluator returns the code and its slots; ``reason_text`` renders it through render(), the one route to a user.
 P: Final = "adjust_trigger_"
@@ -146,7 +148,9 @@ class StrategyState:
     #: holiday list is not known for the days it needs (never assumed a session)
     carry_days: frozenset[str] | None = None
     carry: CarryFigures | None = None  # the carry check's figures; None = not computed (no carry rule due)
-    gamma: GammaFigures | None = None  # T-14's 1% repricing; None = not computed, so T-14 answers not checked
+    #: T-14's 1% repricing; None = not computed (live mode: ``with_gamma`` fills it in scenario mode only), so T-14
+    #: answers ``T14_PENDING`` as before the formula existed
+    gamma: GammaFigures | None = None
     #: GC-IC1 6a (ADR-240 (3)): every open option leg with its engine Greeks (S-02); None = the legs were not read
     held: tuple[HeldLeg, ...] | None = None
     today: datetime.date | None = None  # the IST session date of this check (S-12); None = not known
@@ -557,8 +561,8 @@ def t14_margin(margin: object, unreadable: bool = False) -> Decimal:
 def _t14(c: _Ctx) -> Hit:
     """The worst of the up and down 1% P&L changes, as a loss % of the margin blocked, >= this stage's value."""
     g = c.state.gamma
-    if g is None:
-        raise _Missing(GAMMA_UNKNOWN)
+    if g is None:  # not computed: live mode (scenario-only, review F1), so "not checked yet" exactly as before
+        raise _Missing(T14_PENDING)
     if g.reason is not None or g.up is None or g.down is None:
         raise _Missing(g.reason or GAMMA_UNKNOWN)
     margin = t14_margin(c.state.margin, c.state.margin_unreadable)

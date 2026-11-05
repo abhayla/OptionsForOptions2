@@ -18,7 +18,7 @@ from ofo.adjustment import playbook_eval as pe
 from ofo.marketdata.forward import spot_fallback_forward
 from ofo.rules.inputs import DataHealth
 from ofo_app import adjustment_check as check
-from ofo_app import background
+from ofo_app import background, scenario_mode
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tests" / "adjustment"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tests"))
@@ -47,12 +47,42 @@ def _tracked() -> SimpleNamespace:
     return SimpleNamespace(position=SimpleNamespace(underlying="NIFTY", lot=SC["lot"], legs=legs), booked=D("0"))
 
 
+@pytest.fixture
+def scenario(monkeypatch):
+    """Scenario mode on, through the single mode reader (``scenario_mode.current``) every T-14 gate reads."""
+    monkeypatch.setattr(scenario_mode, "current", lambda: SimpleNamespace(id="ADJ-02"))
+
+
+@pytest.fixture
+def live(monkeypatch):
+    monkeypatch.delenv(scenario_mode.ENV_NAME, raising=False)
+    assert scenario_mode.current() is None
+
+
+def test_live_mode_t14_answers_exactly_as_before_on_the_screen_and_worker_state(live):
+    """Review F1: in live mode T-14 is NOT evaluated: no figures, and the answer is 9e8e4eae's T14_PENDING."""
+    state = check.with_gamma(state_of(SC), body_of(SC), _tracked(), _market())
+    assert state.gamma is None
+    t = [r for r in evaluate(body_of(SC), state, {}, None).results if r.trigger_id == "T-14"]
+    assert t == [pe.NotChecked("T-14", "T-14", pe.T14_PENDING)], t
+
+
+def test_live_mode_margin_needed_is_unchanged_by_t14(live):
+    t14_only = {"triggers": {"T-16": {"on": False}, "T-14": {"on": True}}}
+    assert background.margin_needed(t14_only) is False  # as at 9e8e4eae: no live margin read for T-14
+
+
+def test_scenario_mode_margin_is_read_for_t14(scenario):
+    assert background.margin_needed({"triggers": {"T-16": {"on": False}, "T-14": {"on": True}}}) is True
+    assert background.margin_needed({"triggers": {"T-16": {"on": False}, "T-14": {"on": False}}}) is False
+
+
 def test_screen_and_worker_both_build_t14_through_state_of():
     assert "with_gamma(" in inspect.getsource(check.state_of)
     assert "check.state_of(" in inspect.getsource(background.state_from_market)  # the worker's one path
 
 
-def test_with_gamma_values_adj02_on_the_checks_own_model_equal_to_an_independent_repricing():
+def test_with_gamma_values_adj02_on_the_checks_own_model_equal_to_an_independent_repricing(scenario):
     body = body_of(SC)
     assert body["triggers"]["T-14"]["on"] is True
     got = check.with_gamma(state_of(SC), body, _tracked(), _market())
@@ -63,7 +93,7 @@ def test_with_gamma_values_adj02_on_the_checks_own_model_equal_to_an_independent
     assert not any(isinstance(r, pe.NotChecked) for r in t), t
 
 
-def test_with_gamma_is_skipped_when_t14_is_off_and_unknown_without_ivs():
+def test_with_gamma_is_skipped_when_t14_is_off_and_unknown_without_ivs(scenario):
     body = body_of(SC)
     body["triggers"]["T-14"]["on"] = False
     assert check.with_gamma(state_of(SC), body, _tracked(), _market()).gamma is None
@@ -84,7 +114,7 @@ def test_margin_in_every_answer_state(block, want):
     assert check.margin_in(block) == want
 
 
-def test_an_unreadable_margin_reaches_t14_as_its_reason_never_a_pass():
+def test_an_unreadable_margin_reaches_t14_as_its_reason_never_a_pass(scenario):
     state = check.with_gamma(state_of(SC), body_of(SC), _tracked(), _market())
     from dataclasses import replace  # noqa: PLC0415
     for margin, unreadable, code in ((None, True, pe.MARGIN_UNREADABLE), (None, False, f"{pe.P}missing_margin")):

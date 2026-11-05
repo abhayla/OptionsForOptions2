@@ -198,8 +198,6 @@ def _t16_off(body: dict) -> dict:
     ({"day_rules": [{"on": True, "when": "beforeWeekend", "action": 4}]}, False),
     ({"day_rules": "x"}, False),
     ({}, False),
-    ({"triggers": {"T-16": {"on": False}, "T-14": {"on": True}}}, True),  # B2: T-14 is a % of the margin
-    ({"triggers": {"T-16": {"on": False}, "T-14": {"on": False}}}, False),
     (None, False),
 ])
 def test_margin_is_needed_when_t16_or_a_carry_day_rule_is_on(body, needed):
@@ -227,7 +225,7 @@ async def test_ten_cycles_in_a_minute_make_at_most_one_margin_call_per_strategy(
     prov = Prov(gap)
     at = _gap_time(prov)
     on = _ic_watched(gap)
-    t16_off = _t16_off(on.body)  # B2: T-14 on also needs the margin (a % of it), so it is switched off here too
+    t16_off = _t16_off(on.body)  # B2: in scenario mode (this file) T-14 on also needs the margin, so it is off too
     off_body = {**t16_off, "day_rules": [],
                 "triggers": {**t16_off["triggers"], "T-14": {**t16_off["triggers"]["T-14"], "on": False}}}
     off = dataclasses.replace(on, strategy_id=FIRST_ID + 1, body=off_body, resolved=_followed(off_body))
