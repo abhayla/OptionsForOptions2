@@ -41,7 +41,11 @@ GUIDANCE = ("sit.S-03", "sit.S-04", "sit.S-05", "sit.S-08", "sit.S-09")
 KNOWN = {  # case -> measured blocker (a throwaway DB run; the layer is proven with file:line)
     # S-12 left KNOWN in the Stage D core-proof fix: adjustment_readers.entered_at now reads the orders' placed_at
     # (the seed's scenario entry clock), not the row's created_at (the real date of the seeding)
-    # T-19 left KNOWN in retry round 3 (#661 item 1): the lister reads the charge rates (background.owner_lister)
+    "T-19": "r3-b1.log (retry round 3): the lister now reads the charge rates (background.owner_lister rates_of; "
+            "the plumbing is proven without a DB in test_background_cycle.py::test_t19_*), yet on the throwaway DB "
+            "B1-OBSERVED PATH-12 still shows cost None, adjust_trigger_no_approach_priced at every frame: not "
+            "measured whether load_charge_rates answered None there (no rate set in the throwaway DB?) or a column "
+            "stayed unpriced; next: print w.charge_rates and the per-approach reasons in one run",
 }
 
 
