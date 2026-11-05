@@ -43,3 +43,41 @@ export async function markPaperAlertsRead() {
 function takeAlertsKeepRows(data) {
   if (data && Number.isInteger(data.unread) && data.unread >= 0) paperAlerts.unread = data.unread
 }
+
+// IC e2e stage B4 (design decision 10): the bell also counts the OPEN adjustment records of GET /adjustment-opportunities,
+// read on the SAME tick as the paper alerts (no timer, no seen-state store beyond the ids already announced this page load).
+// The browser counts nothing but list lengths of the server's own rows; a failed read leaves NO open records (paper count only).
+export const openRecords = reactive({ list: [] }) // [{ id, strategy_id }] in the server's order
+const announced = new Set()
+let opportunitiesLoaded = false
+
+export function resetOpenRecords() {
+  openRecords.list = []
+  announced.clear()
+  opportunitiesLoaded = false
+}
+
+export const bellCount = () => paperAlerts.unread + openRecords.list.length
+
+/** Take one answer of GET /adjustment-opportunities. Returns the NEW open records (never on the first good read). */
+export function takeOpportunities(data) {
+  const groups = data && Array.isArray(data.groups) ? data.groups : null
+  if (!groups) {
+    openRecords.list = []
+    return []
+  }
+  const open = []
+  for (const g of groups) {
+    for (const r of Array.isArray(g?.records) ? g.records : []) {
+      if (r && r.outcome === 'open' && Number.isInteger(r.id)) open.push({ id: r.id, strategy_id: g.strategy_id })
+    }
+  }
+  openRecords.list = open
+  const fresh = open.filter((r) => !announced.has(r.id))
+  open.forEach((r) => announced.add(r.id))
+  const first = !opportunitiesLoaded
+  opportunitiesLoaded = true
+  return first ? [] : fresh
+}
+
+export const readOpportunities = async () => (await api.get('/adjustment-opportunities')).data
