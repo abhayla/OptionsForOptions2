@@ -26,8 +26,9 @@ Rules (each one decided here and stated, catalogue Part 2 followed where the con
 - Roll basis (ADR-243): ``Config.roll_basis`` (the basis in force, resolved strategy -> user -> default by the
   caller). Target delta = the roll distance above, unchanged; None (not resolved) = every roll refused.
   Entry distance from spot (REQ-046 Q255) = the
-  moved short goes to spot + the side's distance stored at the first fill (``EntryFacts``), snapped to the nearest listed strike of its type
-  and expiry (tie: farther from spot); the wing moves the same distance (width kept); ``step_basis`` "entry_distance"
+  moved short goes to spot + the side's distance stored at the first fill (``EntryFacts``), snapped to the nearest
+  listed strike of its type and expiry (tie: farther from spot); the wing moves the same distance (width kept);
+  ``step_basis`` "entry_distance"
   and ``step_value`` the entry distance in points. No entry spot, or a basis that could not be read: every roll is
   refused naming the leg (fail closed, never the delta rule). A-06 steps ``shift_strikes`` listed strikes under both.
 - Landing: through the REQ-078 landing rule ``leg_edit.land`` (a strike not listed is refused naming the leg).
@@ -478,8 +479,9 @@ class _Builder:
 
     def entry_distance(self, leg: PositionLeg, basis: RollBasis) -> Decimal:
         """ADR-243 / REQ-046 Q255: the short re-placed at its STORED entry distance from spot (the side's distance at
-        the first fill, never the current strike's), snapped to the nearest LISTED strike of its type on ``leg.expiry`` (a tie: the strike farther from
-        spot); returns the signed move. No entry spot -> refused naming the leg (fail closed, never the delta rule)."""
+        the first fill, never the current strike's), snapped to the nearest LISTED strike of its type on ``leg.expiry``
+        (a tie: the strike farther from spot); returns the signed move. No entry spot -> refused naming the leg
+        (fail closed, never the delta rule)."""
         stored = basis.call_distance if leg.type == "CE" else basis.put_distance
         if stored is None:
             raise _refusal("adjust_roll_entry_spot_unknown", leg=self.ref(leg))
