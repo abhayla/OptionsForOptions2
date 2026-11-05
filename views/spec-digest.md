@@ -4,12 +4,9 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (233)
+## Decisions (236)
 
-- Older decisions: 193 rows, ADR-1..ADR-197 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
-- ADR-198 2026-10-27: (1) REQ-142 (Funds needed), REQ-143 (Add Booked P&L chart toggle, out of this phase per ADR-196 (4)… [approves REQ-142, REQ-143, REQ-144, REQ-145, REQ-…]
-- ADR-199 2026-10-27: (1) After the NSE derivatives market closes on a trading day (15:30 IST, ADR-119), an expiry that f… [adds a rule to REQ-135 AC-2]
-- ADR-200 2026-10-27: (1) The after-hours builder is ADR-197, unchanged: outside market hours the builder captures planne… [clarifies ADR-197 ("last close", its label time);…]
+- Older decisions: 196 rows, ADR-1..ADR-200 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
 - ADR-201 2026-10-28: (1) A strategy started with "Start tracking" (REQ-109, ADR-165 (2)) is a paper trade: no order goes… [SPEC CHANGE to ADR-138 (2) / W-111: the Positions…]
 - ADR-202 2026-10-28: (1) Definitions and caveats that today sit as visible sentences under a figure (for example "At mos… [Refines REQ-136 (where definitions live: behind t…]
 - ADR-203 2026-10-28: (1) The builder's Strategy Chart tab (Sensibull 016: the strategy's combined price against the inde… [SPEC CHANGE to REQ-091 (hold lifted for the build…]
@@ -47,6 +44,9 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-244 2026-11-04: Owner 2026-11-04 (question tool, "Add both as Guidance"): the iron condor system playbook lists S-0… [Extends ADR-240 (situations: rules vs guidance) t…]
 - ADR-245 2026-11-04: Owner 2026-11-04 (question tool, "Yes, 3 layers for all"; and "always act as an expert option trade… [Extends REQ-168 (user preferences) and REQ-161 (p…]
 - ADR-246 2026-11-04: Owner 2026-11-04 ~12:5x IST (question tool, "Keep presets for now"): the REQ-170 style presets stay… [No preset value changes. Adds F-101 (live counts)…]
+- ADR-247 2026-11-05: Owner 2026-11-05 ~00:3x IST (question tool, "50% max loss or 2x credit (Recommended)"): the iron co… [SPEC CHANGE to ADR-216: its stop line "a loss of…]
+- ADR-248 2026-11-05: Owner 2026-11-05 ~00:4x IST (question tool, "Cost / credit (Recommended)"): the default ranking key… [New: fills the gap the spec left on ranking sugge…]
+- ADR-249 2026-11-05: Owner 2026-11-05 ~00:5x IST (question tool, "A now, B later (Recommended)"), answering what "adjust… [New: settles the open question in the mockup owne…]
 
 ## Requirements (161)
 
