@@ -61,8 +61,10 @@ def _worker(scn, now):
 
 
 async def _records(sid: int) -> list[tuple]:
-    return await core._rows("SELECT id, rule_id, outcome FROM public.adjustment_suggestions WHERE strategy_id = :s "
+    """The trigger records; situation notes (sit.S-12, raised at frame 0) are not crossings."""
+    rows = await core._rows("SELECT id, rule_id, outcome FROM public.adjustment_suggestions WHERE strategy_id = :s "
                             "ORDER BY id", s=sid)
+    return [r for r in rows if not str(r[1]).startswith("sit.")]
 
 
 async def _run_frame(worker, now, k: int) -> None:
