@@ -497,6 +497,7 @@ APP_MODELS = (
     "ofo_app.routes.ready_made.PlacedLegOut",
     "ofo_app.routes.ready_made.QuickPickIn",
     "ofo_app.routes.ready_made.ReadyMadeOut",
+    "ofo_app.routes.scenario_frame.FrameOut",
     "ofo_app.routes.settings.ChargesOut",
     "ofo_app.routes.settings.EarlierValueOut",
     "ofo_app.routes.settings.GroupOut",

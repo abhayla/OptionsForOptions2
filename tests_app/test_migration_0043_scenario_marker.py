@@ -91,10 +91,10 @@ async def test_marker_comes_from_the_process_mode_and_is_never_carried(app_engin
         try:
             _ids, first = await _with_draft(conn, user)  # live mode
             monkeypatch.setenv("OFO_SCENARIO", "PATH-01")
-            in_scenario = await store.save_draft(conn, user, first.saved, "made in scenario mode")
+            in_scenario = await store.save_draft(conn, user, first.saved, "in scenario")
             setting = (await conn.execute(text("SELECT current_setting('ofo.scenario_id', true)"))).scalar_one()
             monkeypatch.delenv("OFO_SCENARIO")
-            after = await store.save_draft(conn, user, first.saved, "made live after it")
+            after = await store.save_draft(conn, user, first.saved, "live after")
             rows = dict((await conn.execute(text("SELECT id, scenario_id FROM public.strategies WHERE user_ref = :u"),
                                             {"u": user})).all())
             assert rows == {first.id: None, in_scenario.id: "PATH-01", after.id: None}

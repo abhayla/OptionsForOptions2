@@ -736,25 +736,32 @@ def _calls(dependant: Any) -> set[Any]:
     return out
 
 
+#: The guards by module + name: this module never imports the order path (the order-closure scan), only names it.
+_REQUIRE_ORDER_PATH = ("ofo_app.order_path_switch", "require_order_path")
+_GUARD_PAPER_ORDER = ("ofo_app.scenario_guard", "guard_paper_order")
+
+
+def _name(fn: Any) -> tuple[str, str]:
+    return (getattr(fn, "__module__", ""), getattr(fn, "__qualname__", ""))
+
+
 def misguarded_order_routes(routes: list[Any]) -> list[tuple[str, str]]:
     """Every order route whose guard is not wired (fail closed at start-up in scenario mode): a REAL route without
     ``refuse_orders`` (directly or through ``order_path_switch.require_order_path``), a PAPER route without
     ``scenario_guard.guard_paper_order``, or a route listed in a set that the app does not serve."""
-    from ofo_app.order_path_switch import require_order_path  # noqa: PLC0415 - late: that module imports this one
-    from ofo_app.scenario_guard import guard_paper_order  # noqa: PLC0415
     seen: set[tuple[str, str]] = set()
     out = []
     for r in routes:
         for m in sorted(getattr(r, "methods", None) or ()):
             key = (m, getattr(r, "path", ""))
-            calls = _calls(getattr(r, "dependant", None))
+            names = {_name(c) for c in _calls(getattr(r, "dependant", None))}
             if key in REAL_ORDER_ROUTES:
                 seen.add(key)
-                if refuse_orders not in calls and require_order_path not in calls:
+                if not names & {_name(refuse_orders), _REQUIRE_ORDER_PATH}:
                     out.append(key)
             elif key in PAPER_ORDER_ROUTES:
                 seen.add(key)
-                if guard_paper_order not in calls:
+                if _GUARD_PAPER_ORDER not in names:
                     out.append(key)
     out.extend(sorted(ORDER_ROUTES - seen))
     return out

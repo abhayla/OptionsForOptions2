@@ -136,6 +136,11 @@ async def test_check_route_judges_the_spot_at_the_later_clock(monkeypatch):
     async def market(_t, _c):
         return _market(T0, SourceReading(SourceState.ABSENT))
 
+    from ofo_app import scenario_guard  # noqa: PLC0415
+
+    async def no_isolation_read(*_args):  # this direct call has no database; isolation has its own tests
+        return None
+    monkeypatch.setattr(scenario_guard, "check_screen_isolation", no_isolation_read)
     with pytest.raises(_Stop):
         await check_route.adjustment_check(
             1, None, "u", tracked, market, _rest_reader(clock, rest), None, None, None, None, None)

@@ -1581,7 +1581,7 @@ async def owner_lister(provider: Any, gate: Any = None) -> Listed:
     from ofo_app import scenario_mode  # noqa: PLC0415 - the process mode, read at list time
     mode = scenario_mode.current_id()
     for s in strategies:
-        if not listable(s.scenario_id, mode):
+        if not listable(getattr(s, "scenario_id", None), mode):  # a row read without the column is a real one
             continue  # IC e2e decision 4: a live worker never checks a scenario strategy, and the reverse
         try:
             async with held(gate, GATE_REBUILD):  # one strategy's reads per hold
