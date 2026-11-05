@@ -595,6 +595,7 @@ issues:
   "#655": S6.7  # Flaky frontend test fails the 45-57 min gate: option-chain 'late push for the old expiry is ignored'
   "#656": S6.7  # Step 3 (live stops via settings in force + migration 0040) parked after round 3: 4 MAJOR findings, round-3 tip fails its own tests
   "#657": S6.7  # Settings screen says the 2x-credit stop is 'always active' for every strategy (false for pre-ADR-247 plans and non-iron-condor families)
+  "#658": S6.7  # S-06 rule text hard-codes the 2% carry gap, which is a user setting
 
 # Work items whose status is not done.
 work_items:
