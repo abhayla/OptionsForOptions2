@@ -39,10 +39,10 @@ EXTRA_FRAMES = {"PATH-12": [4, 5, 6, 7], "PATH-13": [6]}
 NEXT_COUNT = {"T-11": 2}
 GUIDANCE = ("sit.S-03", "sit.S-04", "sit.S-05", "sit.S-08", "sit.S-09")
 KNOWN = {  # case -> measured blocker (a throwaway DB run; the layer is proven with file:line)
-    "S-12": "SEED INPUT: the evaluator flags it (54% vs 40%) but the entry day is the wall day of the seeding: "
-            "adjustment_readers.py:156 reads created_at, paper_store.py:37 INSERT cannot set it and the app role "
-            "cannot UPDATE paper_orders (permission denied, tried)",
-}  # T-19 left KNOWN in retry round 3 (#661 item 1): the lister reads the charge rates (background.owner_lister)
+    # S-12 left KNOWN in the Stage D core-proof fix: adjustment_readers.entered_at now reads the orders' placed_at
+    # (the seed's scenario entry clock), not the row's created_at (the real date of the seeding)
+    # T-19 left KNOWN in retry round 3 (#661 item 1): the lister reads the charge rates (background.owner_lister)
+}
 
 
 def frames_for(path_id: str) -> list[int]:

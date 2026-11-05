@@ -141,6 +141,7 @@ async def _core(app_engine) -> None:  # noqa: PLR0915 - one readable walk of the
                        before_cycle=before_cycle)
     t01_at: dict[int, int] = {}
     total_at: dict[int, int] = {}
+    rules_at: dict[int, list[str]] = {}
     for k in range(CROSS_FRAME + 1):
         await _move(k)
         start = datetime.datetime.fromisoformat(frame_doc(k)["clock"]["ist"])
@@ -150,11 +151,14 @@ async def _core(app_engine) -> None:  # noqa: PLR0915 - one readable walk of the
         assert scn.frame == k and str(scn.provider.underlying_quote("NIFTY").ltp) == str(frame_doc(k)["market"]["spot"])
         t01_at[k] = len(await _rows("SELECT id FROM public.adjustment_suggestions "
                                     "WHERE strategy_id = :s AND rule_id = 'T-01'", s=sid))
-        total_at[k] = len(await _rows("SELECT id FROM public.adjustment_suggestions WHERE strategy_id = :s", s=sid))
+        rules_rows = await _rows("SELECT rule_id FROM public.adjustment_suggestions WHERE strategy_id = :s", s=sid)
+        total_at[k] = len(rules_rows)
+        rules_at[k] = sorted(str(r[0]) for r in rules_rows)
+        print(f"CORE-FRAME k={k} rules={rules_at[k]}")
     assert worker.errors == [], worker.errors
     # contract Proof: ONE record in total, 0 of any rule through frame 5 (PATH-01's legs make T-01 the only crossing)
-    assert all(total_at[k] == 0 for k in range(CROSS_FRAME)), total_at
-    assert total_at[CROSS_FRAME] == 1 and t01_at[CROSS_FRAME] == 1, (total_at, t01_at)
+    assert all(total_at[k] == 0 for k in range(CROSS_FRAME)), (total_at, rules_at)
+    assert total_at[CROSS_FRAME] == 1 and t01_at[CROSS_FRAME] == 1, (total_at, t01_at, rules_at)
     all_records = await _rows("SELECT id, outcome, rule_id FROM public.adjustment_suggestions WHERE strategy_id = :s",
                               s=sid)
     record = all_records[0]
