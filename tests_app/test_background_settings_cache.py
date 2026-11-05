@@ -304,7 +304,11 @@ async def test_a_plan_body_change_found_by_the_rebuild_is_rechecked_with_no_pric
     assert len(calls.states) == 1  # no tick, no change: not checked
     changed = copy.deepcopy(NO_RULES)
     changed["stages"]["weekly"][0]["name"] = "renamed"
-    new = [background.Watched("owner", w.monitors[0].strategy_id, w.monitors[0].tracked, changed, True, "owner", None, None)]
+    new = [
+        background.Watched(
+            "owner", w.monitors[0].strategy_id, w.monitors[0].tracked, changed, True, "owner", None, None
+        )
+    ]
 
     async def lister():
         return new

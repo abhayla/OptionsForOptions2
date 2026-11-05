@@ -180,7 +180,9 @@ def test_reply_names_entry_distance_and_its_source_per_roll(monkeypatch):
 
 def test_reply_default_basis_is_target_delta_named_default(monkeypatch):
     got = _reply(monkeypatch, None, None)
-    assert {a["basis_source"] for a in got.values() if a["step_basis"] is not None} == {"default"}, [(a["id"], a["step_basis"], a["refusal"]) for a in got.values()]
+    assert {a["basis_source"] for a in got.values() if a["step_basis"] is not None} == {"default"}, [
+        (a["id"], a["step_basis"], a["refusal"]) for a in got.values()
+    ]
     assert all(a["step_basis"] in ("delta", "points", None) for a in got.values())
 
 
@@ -255,8 +257,8 @@ async def test_core_strategy_with_no_stored_facts_is_refused_by_name_under_entry
 
 
 async def test_stored_entry_facts_cannot_be_updated_or_deleted_by_the_app_role(db):
-    from test_strategy_store import _user  # noqa: PLC0415
     from sqlalchemy import text  # noqa: PLC0415
+    from test_strategy_store import _user  # noqa: PLC0415
 
     user = _user()
     sid, c = await _strategy(db, user)

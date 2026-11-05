@@ -12,6 +12,7 @@ import pytest
 
 pytestmark = pytest.mark.repo_scan
 
+MIN_PLACE_CALLS = 3  # the scan must see at least this many production paper_store.place calls
 ROOT = Path(__file__).resolve().parents[1]
 APP = ROOT / "backend" / "ofo_app"
 
@@ -51,7 +52,9 @@ def _scan(root: Path) -> tuple[list[str], int]:
 
 def test_every_production_place_call_names_entry():
     problems, calls = _scan(APP)
-    assert calls >= 3, f"the scan found only {calls} paper_store.place calls: it is not looking at the right tree"
+    assert calls >= MIN_PLACE_CALLS, (
+        f"the scan found only {calls} paper_store.place calls: it is not looking at the right tree"
+    )
     assert problems == [], f"paper_store.place called without entry= at {problems}"
 
 
