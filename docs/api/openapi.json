@@ -1098,6 +1098,9 @@
             "title": "Reason",
             "type": "string"
           },
+          "reason_text": {
+            "title": "Reason Text"
+          },
           "source": {
             "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
             "title": "Source",
@@ -1106,7 +1109,8 @@
         },
         "required": [
           "source",
-          "reason"
+          "reason",
+          "reason_text"
         ],
         "title": "AdjustSpotReasonOut",
         "type": "object"
@@ -10848,6 +10852,13 @@
             "title": "Kind",
             "type": "string"
           },
+          "later": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Later",
+            "type": "array"
+          },
           "reason": {
             "anyOf": [
               {
@@ -10879,7 +10890,8 @@
           "figure",
           "amount",
           "source",
-          "reason"
+          "reason",
+          "later"
         ],
         "title": "StopLineOut",
         "type": "object"

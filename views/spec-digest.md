@@ -4,12 +4,9 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (236)
+## Decisions (239)
 
-- Older decisions: 196 rows, ADR-1..ADR-200 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
-- ADR-201 2026-10-28: (1) A strategy started with "Start tracking" (REQ-109, ADR-165 (2)) is a paper trade: no order goes… [SPEC CHANGE to ADR-138 (2) / W-111: the Positions…]
-- ADR-202 2026-10-28: (1) Definitions and caveats that today sit as visible sentences under a figure (for example "At mos… [Refines REQ-136 (where definitions live: behind t…]
-- ADR-203 2026-10-28: (1) The builder's Strategy Chart tab (Sensibull 016: the strategy's combined price against the inde… [SPEC CHANGE to REQ-091 (hold lifted for the build…]
+- Older decisions: 199 rows, ADR-1..ADR-203 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
 - ADR-204 2026-10-28: (1) docs/process/ui-match-differences-2026-10-28.md is approved with every recommendation as writte… [SPEC CHANGE (approved) to REQ-034 AC-7, REQ-081 A…]
 - ADR-205 2026-10-28: (1) The Charges breakdown keeps ADR-082 (1) as decided: every charge is exact Decimal, STT and stam… [none to ADR-082; REQ-081 AC-2 gains one sentence…]
 - ADR-206 2026-10-28: (1) Confirmed as written: a strategy started from the builder ("Start tracking", REQ-109) is record… [REQ-142 held (title marked); no change to ADR-165…]
@@ -47,6 +44,9 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-247 2026-11-05: Owner 2026-11-05 ~00:3x IST (question tool, "50% max loss or 2x credit (Recommended)"): the iron co… [SPEC CHANGE to ADR-216: its stop line "a loss of…]
 - ADR-248 2026-11-05: Owner 2026-11-05 ~00:4x IST (question tool, "Cost / credit (Recommended)"): the default ranking key… [New: fills the gap the spec left on ranking sugge…]
 - ADR-249 2026-11-05: Owner 2026-11-05 ~00:5x IST (question tool, "A now, B later (Recommended)"), answering what "adjust… [New: settles the open question in the mockup owne…]
+- ADR-250 2026-11-05: Owner 2026-11-05 ~09:3x IST (question tool, "New plans only (Recommended)"), answering what happens… [Narrows ADR-247 to new plans; the step 3 live-che…]
+- ADR-251 2026-11-05: Owner 2026-11-05 ~09:4x IST (question tool, "Net credit so far (Recommended)"), defining the credit… [Defines a term ADR-247 left open; the step 3 live…]
+- ADR-252 2026-11-05: Orchestrator 2026-11-05 ~11:2x IST, decided under the owner's delegation ("For all the strategy rel… [Clarifies ADR-247 (the 50 % is the per-stage T-06…]
 
 ## Requirements (161)
 
