@@ -334,6 +334,8 @@ def margin_in(margin: Mapping | None) -> tuple[Decimal | None, bool]:
     if margin.get("state") == "failed":
         return None, True
     if margin.get("state") != "stated":
+        # "empty" (Zerodha stated no figure) and other non-stated blocks read "Margin not available" on T-14: still
+        # not checked, never passed (accepted by the coordinator, B2 round 1). The worker's failed read is None here.
         return None, False
     try:
         value = Decimal(str(margin["value"]))

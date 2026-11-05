@@ -425,7 +425,7 @@ def carry_rule_on(body: Mapping | None) -> bool:
 
 def margin_needed(body: Mapping | None, resolved: Any = None) -> bool:
     """The strategies whose margin is read: an ACTIVE % of margin stop line in force (``settings_in_force``, contract
-    step 3: never the body's T-16 directly) OR a carry day rule on. ``resolved``: the strategy's
+    step 3: never the body's T-16 directly) OR a carry day rule on OR T-14 on (B2). ``resolved``: the strategy's
     ``adjustment_check.Resolved`` (a pre-ADR-247 plan's own T-16); None -> the body as a followed playbook."""
     from ofo_app import settings_in_force as sif  # noqa: PLC0415 - it imports adjustment_check, as this module does
 
@@ -433,7 +433,13 @@ def margin_needed(body: Mapping | None, resolved: Any = None) -> bool:
         return False
     r = resolved if resolved is not None else check.Resolved("active", body, None, None, False,
                                                              saved_before_adr247=False)
-    return sif.margin_line_on(r) or carry_rule_on(body)
+    return sif.margin_line_on(r) or carry_rule_on(body) or t14_on(body)
+
+
+def t14_on(body: Mapping | None) -> bool:
+    """T-14 (ic-e2e-paper design decision 8) on: its value is a % of the margin blocked, so it needs the margin read."""
+    t = ((body.get("triggers") if isinstance(body, Mapping) else None) or {}).get("T-14")
+    return isinstance(t, Mapping) and t.get("on") is True
 
 
 @dataclass(frozen=True)
