@@ -20,6 +20,7 @@ from ofo.timeutil import IST
 from ofo_app import background, catalogue_store, scenario_mode, strategy_alert_style_store
 from ofo_app import db as app_db
 from ofo_app.config import get_settings
+from ofo_app.routes.outcome import load_charge_rates
 from sqlalchemy import text
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -108,7 +109,8 @@ async def walk(app_engine, path_id: str, frames: list[int] | None = None, *, sta
     async def user_values(_u):
         return registry_defaults()
     provider, before_cycle = background.scenario_worker_parts(scn, app_db.get_sessionmaker())
-    worker = Draining(provider_for=lambda _o: provider, lister=lambda: background.owner_lister(provider),
+    worker = Draining(provider_for=lambda _o: provider,
+                      lister=lambda: background.owner_lister(provider, rates_of=load_charge_rates),
                       clock=lambda: now[0], settings=settings, preferences=preferences, user_values=user_values,
                       before_cycle=before_cycle, observe=lambda _w, st: OBSERVED.append(
                           (st.hhmm, st.adjustment_cost, st.adjustment_cost_reason, st.premium_left, st.entry_atm_iv,

@@ -42,10 +42,7 @@ KNOWN = {  # case -> measured blocker (a throwaway DB run; the layer is proven w
     "S-12": "SEED INPUT: the evaluator flags it (54% vs 40%) but the entry day is the wall day of the seeding: "
             "adjustment_readers.py:156 reads created_at, paper_store.py:37 INSERT cannot set it and the app role "
             "cannot UPDATE paper_orders (permission denied, tried)",
-    "T-19": "WORKER INPUT: adjustment_cost None, reason adjust_trigger_no_approach_priced, at EVERY observed frame "
-            "(B1-OBSERVED): background.py:404 passes rates=None, so adjustment_check.cheapest_offered "
-            "(:230-254) prices no approach and _t19 (playbook_eval.py:508-519) is NotChecked; live has the same gap",
-}
+}  # T-19 left KNOWN in retry round 3 (#661 item 1): the lister reads the charge rates (background.owner_lister)
 
 
 def frames_for(path_id: str) -> list[int]:
