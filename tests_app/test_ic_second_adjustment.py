@@ -10,7 +10,6 @@ from __future__ import annotations
 import datetime
 import json
 
-import pytest
 import test_ic_paper_loop_core as core
 from httpx import ASGITransport, AsyncClient
 from ofo.adjustment.offered import EXIT_REDUCE
@@ -71,6 +70,13 @@ async def _records(sid: int) -> list[tuple]:
 async def _run_frame(worker, now, k: int) -> None:
     await core._move(k)
     start = datetime.datetime.fromisoformat(core.frame_doc(k)["clock"]["ist"])
+    now[0] = start
+    # #662: the real role re-reads its monitors (the tracked legs and adjustments_used) on its own task every
+    # REBUILD_SECONDS (background.Worker.run -> _rebuild_loop); cycle() alone reads them only at the first cycle, so
+    # the C1 run checked the ENTRY position with adjustments_used 0 on every frame (no T-18 could open). Frames are a
+    # minute apart, so the real role has re-read them before each frame: so does this test.
+    if worker.monitors:
+        await worker.rebuild()
     for s in range(core.CYCLES_PER_FRAME):
         now[0] = start + datetime.timedelta(seconds=s)
         await worker.cycle()
@@ -126,13 +132,6 @@ async def test_two_adjustments_are_placed_acted_on_and_counted(app_engine, monke
     await _run(app_engine, monkeypatch, "C1 two adjusts", to_limit=False)
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "c1c.log 2026-11-06: after the 2nd adjustment (adjustments_used == max 2) the worker raised NO T-18 record through "
-    "frame 11 (records: T-01 acted_on, T-03 acted_on, T-01 open, T-03 open; assert 0 == 1). Open explanations: "
-    "(1) T-18 is a guard only (system_playbooks.json T-18: cmp '', no ladder), not a rule the gate raises a record "
-    "for; "
-    "(2) the worker's adjustments_used differs from the history count. The offered-only-exit/reduce and T-19 parts "
-    "were never reached. Parked (C1)."))
 async def test_limit_raises_one_t18_record_and_offers_only_exit_reduce_with_t19(app_engine, monkeypatch):
     await _run(app_engine, monkeypatch, "C1 limit", to_limit=True)
 
@@ -177,7 +176,9 @@ async def _scenario(sid: int, *, to_limit: bool) -> None:
                 await _run_frame(worker, now, k)
                 k3 = k
         t18 = [r for r in await _records(sid) if r[1] == "T-18"]
-        assert len(t18) == 1, (k3, await _records(sid))
+        held = await core._rows("SELECT rule_id, reason FROM public.adjustment_held_crossings WHERE strategy_id = :s",
+                                s=sid)  # a T-18 held by the daily cap / quiet time is named, never silent
+        assert len(t18) == 1, (k3, await _records(sid), held)
         assert len(await _records(sid)) >= before
         for k in range(k3 + 1, min(k3 + 3, LAST_FRAME) + 1):  # attack 3: more frames never raise T-18 a second time
             await _run_frame(worker, now, k)
