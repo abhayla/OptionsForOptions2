@@ -10,6 +10,7 @@ from types import SimpleNamespace
 from ofo.timeutil import IST
 from ofo_app.adjustment_readers import history_count
 
+TWO = 2
 T0 = datetime.datetime(2026, 11, 6, 11, 28, tzinfo=IST)
 
 
@@ -39,7 +40,7 @@ def test_entry_only_counts_zero():
 def test_each_adjustment_batch_counts_one_and_entry_never():
     orders = _entry() + _adjustment(5, 3, 5)
     assert _count(orders) == 1
-    assert _count(orders + _adjustment(9, 5, 6)) == 2
+    assert _count(orders + _adjustment(9, 5, 6)) == TWO
 
 
 def test_settle_and_stop_orders_are_not_adjustments():
@@ -51,7 +52,7 @@ def test_another_strategys_orders_are_not_counted():
     mine = _entry() + _adjustment(5, 3, 5)
     other = _entry(10) + _adjustment(6, 13, 15) + _adjustment(7, 15, 16)
     assert _count(mine) == 1  # the reader is given one strategy's orders only: the other's two do not leak in
-    assert _count(other) == 2
+    assert _count(other) == TWO
 
 
 def test_unreadable_history_is_none_never_zero():
