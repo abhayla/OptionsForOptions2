@@ -3758,5 +3758,25 @@
   "explanation:plan_stop_words_first": {
     "sha256": "d4a1f2f4128afc9683ca095870118463d9841b7c9b9f630fc81672a2988020b6",
     "reviewed": "pending owner read"
+  },
+  "adjust_trigger_stop_not_supplied": {
+    "sha256": "801657f720eeec57f47e7c7695e2dd893f7740a678ffa3f7fe23460c1c2a6fe4",
+    "reviewed": "pending owner read"
+  },
+  "adjust_trigger_stop_no_credit": {
+    "sha256": "d7d9610d3fa90e8e53ccb3fe68b686b66bad01c25dea81f3531005a868ac9dd4",
+    "reviewed": "pending owner read"
+  },
+  "adjust_trigger_stop_credit_unknown": {
+    "sha256": "c194402bfa48794bad0d5331dc221bb1a87e3bc72c17ff0d3022288f6b97f898",
+    "reviewed": "pending owner read"
+  },
+  "adjust_trigger_stop_value_unreadable": {
+    "sha256": "f495232709c9924106ebfcf3210ddf2abb7e5612989df36782bdbd3abb08d610",
+    "reviewed": "pending owner read"
+  },
+  "labels:stop": {
+    "sha256": "a5fb4a38ee48dd4dc17ed6ace27757be06bd6906fc0fa9001de223960961c079",
+    "reviewed": "pending owner read"
   }
 }
