@@ -117,6 +117,21 @@ async def test_adj02_worker_opens_three_records_the_screen_check_names_them_and_
     assert all(r["outcome"] != "open" for x in inbox["groups"] if x is not g for r in x["records"])
 
 
+async def test_b4_bell_reads_open_records_for_the_owner(app_db_url, monkeypatch):
+    """IC e2e B4: the header bell counts records with outcome "open" (and strategy_id per group) from this endpoint."""
+    sid = await _clean(app_db_url, await _seeded(app_db_url, monkeypatch, "ADJ-02"))
+    await _check(sid)
+    await _opened(app_db_url, sid)
+    await _check(sid)
+    inbox = await _inbox()
+    g = _mine(inbox, sid)[0]
+    assert g["strategy_id"] == sid
+    open_ids = [r["id"] for x in inbox["groups"] for r in x["records"] if r["outcome"] == "open"]
+    assert open_ids and all(isinstance(i, int) for i in open_ids)
+    # what the bell counts (outcome "open" over all groups) is the inbox's own "open" count
+    assert len(open_ids) == {c["outcome"]: c["count"] for c in inbox["counts"]}["open"]
+
+
 async def test_adj01_opens_none_and_the_inbox_says_so(app_db_url, monkeypatch):
     sid = await _clean(app_db_url, await _seeded(app_db_url, monkeypatch, "ADJ-01"))
     await _check(sid)
