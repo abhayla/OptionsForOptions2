@@ -1551,6 +1551,7 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("adjust_spot_why_not_found", "values_seen", "it does not know this contract"),
     ExplanationTemplate("adjust_spot_why_failed", "values_seen", "the read failed"),
     ExplanationTemplate("adjust_spot_why_empty", "values_seen", "the quote had no price"),
+    ExplanationTemplate("adjust_spot_why_unknown", "values_seen", "reason not given"),
     ExplanationTemplate("adjust_booked_unknown", "values_seen",
                         "The booked P&L of this strategy could not be read, so no whole-trade figure is shown."),
     ExplanationTemplate("adjust_charges_unknown", "values_seen",

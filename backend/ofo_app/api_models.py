@@ -414,6 +414,7 @@ class AdjustMarginOut(ApiModel):
 class AdjustSpotReasonOut(ApiModel):
     source: Identifier
     reason: Identifier
+    reason_text: CatalogueText
 
 
 class AdjustSpotOut(ApiModel):

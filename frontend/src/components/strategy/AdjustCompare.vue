@@ -289,7 +289,7 @@ const SPOT_SOURCES = [['feed', 'Live feed'], ['rest_quote', 'One-time price requ
 const noSpot = computed(() => !!reply.value && (!reply.value.spot || reply.value.spot.value == null))
 const spotReasons = computed(() => {
   const given = reply.value?.spot?.reasons ?? []
-  const text = (r) => { const v = r?.reason_text ?? r?.reason; return typeof v === 'string' && v.trim() ? v : 'reason not given' }
+  const text = (r) => { const v = r?.reason_text; return typeof v === 'string' && v.trim() ? v : 'reason not given' }
   const known = SPOT_SOURCES.map(([source, label]) => ({ source, label, reason: text(given.find((r) => r.source === source)) }))
   const extra = given.filter((r) => !SPOT_SOURCES.some(([s]) => s === r.source)).map((r) => ({ source: r.source, label: String(r.source), reason: text(r) }))
   return [...known, ...extra]

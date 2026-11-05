@@ -24,9 +24,9 @@ const lines = (w) => w.findAll('[data-testid="adjust-no-spot-reason"]').map((x) 
 describe('REQ-156 AC-1: no-spot page', () => {
   it('shows "Spot not available" and each source\'s reason, and nothing priced', async () => {
     const w = await show(noSpot([
-      { source: 'feed', reason: 'the feed is not connected' },
-      { source: 'rest_quote', reason: 'the quote request failed' },
-      { source: 'last_close', reason: 'no close is stored' },
+      { source: 'feed', reason: 'absent', reason_text: 'the feed is not connected' },
+      { source: 'rest_quote', reason: 'rest_quote_failed', reason_text: 'the quote request failed' },
+      { source: 'last_close', reason: 'absent', reason_text: 'no close is stored' },
     ]))
     expect(t(w, 'adjust-no-spot').text()).toContain('Spot not available')
     const l = lines(w)
@@ -39,7 +39,7 @@ describe('REQ-156 AC-1: no-spot page', () => {
   })
 
   it('a source with no reason reads "reason not given", never blank; a reply with no reasons still shows the title', async () => {
-    const w = await show(noSpot([{ source: 'feed', reason: 'the feed is not connected' }, { source: 'rest_quote' }, { source: 'last_close', reason: '' }]))
+    const w = await show(noSpot([{ source: 'feed', reason: 'absent', reason_text: 'the feed is not connected' }, { source: 'rest_quote' }, { source: 'last_close', reason: '' }]))
     const l = lines(w)
     expect(l[1]).toContain('reason not given')
     expect(l[2]).toContain('reason not given')
@@ -48,5 +48,12 @@ describe('REQ-156 AC-1: no-spot page', () => {
     expect(lines(w2).length).toBeGreaterThan(0)
     for (const x of lines(w2)) expect(x).toContain('reason not given')
     expect(t(w2, 'adjust-table').exists()).toBe(false)
+  })
+
+  it('a source that carries only a code never shows the code: "reason not given"', async () => {
+    const w = await show(noSpot([{ source: 'feed', reason: 'rest_quote_failed' }, { source: 'rest_quote', reason: 'absent' }, { source: 'last_close', reason: 'stale' }]))
+    const l = lines(w)
+    expect(l).toHaveLength(3)
+    for (const x of l) { expect(x).toContain('reason not given'); expect(x).not.toMatch(/rest_quote_failed|absent|stale/) }
   })
 })
