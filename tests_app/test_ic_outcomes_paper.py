@@ -147,14 +147,14 @@ async def test_acted_on_a_record_with_paper_orders_under_its_suggestion_id_shows
 async def test_completed_when_every_leg_of_the_prepared_basket_was_placed(app_engine, monkeypatch, cleanup):
     body, rid, _ = await _walk(app_engine, monkeypatch, place="all", legs="given")
     rec = _find(body, rid)
-    assert rec["outcome"] == "completed" and rec["outcome_text"]["text"] == "Completed", rec
+    assert rec["outcome"] == "completed" and rec["outcome_text"] == "Completed", rec
     assert _count(body, "completed") == 1 and _count(body, "acted_on") == 0
 
 
 async def test_partly_completed_when_one_leg_is_missing(app_engine, monkeypatch, cleanup):  # attack 1
     body, rid, _ = await _walk(app_engine, monkeypatch, place="first", legs="given")
     rec = _find(body, rid)
-    assert rec["outcome"] == "partly_completed" and rec["outcome_text"]["text"] == "Partly completed", rec
+    assert rec["outcome"] == "partly_completed" and rec["outcome_text"] == "Partly completed", rec
     assert _count(body, "partly_completed") == 1 and _count(body, "completed") == 0
 
 
