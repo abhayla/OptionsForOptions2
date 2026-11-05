@@ -160,6 +160,43 @@ describe('Adjustment settings screen (contract step 4, ADR-245, ADR-247)', () =>
     w.unmount()
   })
 
+  it('every source code the server sends maps to its words; an unknown code keeps the fallback (ADR-245)', async () => {
+    answers[GET] = { preferences: [
+      pref('adjustments.short_delta_weekly', 'A', '0.20', 'user'),
+      pref('adjustments.near_level_percent', 'B', '0.75', 'strategy', { unit: 'percent' }),
+      pref('adjustments.compare_steps', 'C', '20', 'default', { unit: 'count' }),
+      pref('adjustments.reduce_divisor', 'D', '2', 'something_new', { unit: 'count' }),
+    ] }
+    const w = await open()
+    const word = (k) => row(w, k).get('[data-testid=pref-source]').text()
+    expect(word('adjustments.short_delta_weekly')).toBe('Yours')
+    expect(word('adjustments.near_level_percent')).toBe('This strategy')
+    expect(word('adjustments.compare_steps')).toBe('Default')
+    expect(word('adjustments.reduce_divisor')).toBe('source unavailable')
+    w.unmount()
+  })
+
+  it('a value with source "user" counts as changed by me (chip)', async () => {
+    answers[GET] = { preferences: [
+      pref('adjustments.short_delta_weekly', 'A', '0.20', 'user'),
+      pref('adjustments.compare_steps', 'C', '20', 'default', { unit: 'count' }),
+    ] }
+    const w = await open()
+    await w.get('[data-testid=settings-chip-changed]').trigger('click')
+    expect(w.find('[data-testid="pref-adjustments.short_delta_weekly"]').exists()).toBe(true)
+    expect(w.find('[data-testid="pref-adjustments.compare_steps"]').exists()).toBe(false)
+    w.unmount()
+  })
+
+  it('an orders.* setting (user > admin default) renders under "Other settings"', async () => {
+    answers[GET] = { preferences: [pref('orders.default_lots', 'Default lots', '1', 'user', { unit: 'count' })] }
+    const w = await open()
+    expect(w.findAll('[data-testid=set-group-title]').map((t) => t.text())).toContain('Other settings')
+    expect(w.get('#g-other').find('[data-testid="pref-orders.default_lots"]').exists()).toBe(true)
+    expect(row(w, 'orders.default_lots').get('[data-testid=pref-source]').text()).toBe('Yours')
+    w.unmount()
+  })
+
   it('the strategy list failing keeps "All my strategies" only; a plan read failing shows no plan value', async () => {
     answers['GET /strategies'] = new Error('down')
     let w = await open()
