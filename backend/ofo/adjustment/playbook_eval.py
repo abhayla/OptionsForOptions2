@@ -42,12 +42,19 @@ from ofo.timeutil import IST
 ExpiryKind = Literal["weekly", "monthly"]
 Cmp = Literal["le", "ge", "lt"]
 UNLIMITED: Final = "UNLIMITED"
-#: T-14's formula (loss from a 1% move) is written in GC-ADJ2 step 2; until then it is never checked.
+#: T-14 (goal contract ic-e2e-paper, design decision 8): the worst whole-position P&L change from repricing at spot
+#: x 1.01 and x 0.99 (same IV, same clock) through the engine (``ofo.adjustment.gamma``), as a % of the margin blocked.
+#: Evaluated ONLY in scenario mode (B2 review F1): the one choke point is ``adjustment_check.with_gamma``, which fills
+#: ``StrategyState.gamma`` only when ``scenario_mode.current()`` is set. No figures (live mode, or no state builder)
+#: -> T-14 answers ``T14_PENDING`` exactly as before; figures that could not be valued -> ``GAMMA_UNKNOWN``.
 #: Reason codes: each is a catalogue template id (backend/ofo/errors/templates.py, ``adjust_trigger_*``). The
 #: evaluator returns the code and its slots; ``reason_text`` renders it through render(), the one route to a user.
 P: Final = "adjust_trigger_"
 T14_PENDING: Final = f"{P}t14_pending"
 ALREADY_TRUE: Final = f"{P}already_true"
+GAMMA_UNKNOWN: Final = f"{P}gamma_unknown"  # T-14: the 1% repricing could not be done (no model, a leg without IV)
+MARGIN_UNREADABLE: Final = f"{P}margin_unreadable"  # a margin that is not a finite number
+GAMMA_MOVE_PCT: Final = Decimal(1)  # T-14: the spot move, % up and down
 _HUNDRED: Final = Decimal(100)
 #: every step of a comparison must be exact; a rounding there would be a wrong flag at the boundary
 _EXACT: Final = Context(prec=200, traps=[Inexact, InvalidOperation, DivisionByZero, Overflow])
@@ -85,6 +92,20 @@ class CarryFigures:
 
 
 @dataclass(frozen=True)
+class GammaFigures:
+    """T-14's content (design decision 8): the whole-position P&L change if spot were ``GAMMA_MOVE_PCT`` % up / down
+    NOW (same IVs, the same valuation clock ``at`` for the base and both moves), valued by the engine
+    (``ofo.adjustment.gamma.gamma_figures``). Booked P&L cancels out of a change. Not known -> None with ``reason``
+    (a catalogue reason code), never a zero."""
+
+    up: Decimal | None
+    down: Decimal | None
+    reason: str | None = None
+    at: datetime.datetime | None = None  # the one clock the base and both moves are valued at
+    levels: tuple[Decimal, Decimal] | None = None  # (up level, down level) repriced at
+
+
+@dataclass(frozen=True)
 class HeldLeg:
     """One open option leg as S-02 reads it (GC-IC1 6a): its per-unit engine Greeks (``None`` = not available),
     BUY / SELL, and its lots."""
@@ -107,6 +128,9 @@ class StrategyState:
     max_loss: Decimal | str | None = None  # Decimal, UNLIMITED or None
     max_profit: Decimal | str | None = None
     margin: Decimal | None = None  # None = the broker did not state it
+    #: B2: True when the margin reply could not be read (``margin_block`` state "failed", or a figure that is not a
+    #: number); T-14 then says "could not be read" rather than "not available". Either way ``margin`` is None.
+    margin_unreadable: bool = False
     premium_left: Decimal | None = None
     adjustment_cost: Decimal | None = None  # ADR-221: the cheapest offered approach's Compare cost
     adjustment_approach: str | None = None  # that approach's id (A-xx), named on the T-19 flag
@@ -124,6 +148,9 @@ class StrategyState:
     #: holiday list is not known for the days it needs (never assumed a session)
     carry_days: frozenset[str] | None = None
     carry: CarryFigures | None = None  # the carry check's figures; None = not computed (no carry rule due)
+    #: T-14's 1% repricing; None = not computed (live mode: ``with_gamma`` fills it in scenario mode only), so T-14
+    #: answers ``T14_PENDING`` as before the formula existed
+    gamma: GammaFigures | None = None
     #: GC-IC1 6a (ADR-240 (3)): every open option leg with its engine Greeks (S-02); None = the legs were not read
     held: tuple[HeldLeg, ...] | None = None
     today: datetime.date | None = None  # the IST session date of this check (S-12); None = not known
@@ -519,8 +546,30 @@ def _t19(c: _Ctx) -> Hit:
     return _compare(c, "T-19", *pair)
 
 
-def _t14(_c: _Ctx) -> Hit:
-    raise _Missing(T14_PENDING)
+def t14_margin(margin: object, unreadable: bool = False) -> Decimal:
+    """The margin blocked T-14 divides by; absent, unreadable or not positive -> not checked (never a pass, never a
+    division error)."""
+    if margin is None:
+        raise _Missing(MARGIN_UNREADABLE if unreadable else f"{P}missing_margin")
+    if not isinstance(margin, Decimal) or not margin.is_finite():
+        raise _Missing(MARGIN_UNREADABLE)
+    if margin <= 0:
+        raise _Missing(f"{P}margin_not_positive")
+    return margin
+
+
+def _t14(c: _Ctx) -> Hit:
+    """The worst of the up and down 1% P&L changes, as a loss % of the margin blocked, >= this stage's value."""
+    g = c.state.gamma
+    if g is None:  # not computed: live mode (scenario-only, review F1), so "not checked yet" exactly as before
+        raise _Missing(T14_PENDING)
+    if g.reason is not None or g.up is None or g.down is None:
+        raise _Missing(g.reason or GAMMA_UNKNOWN)
+    margin = t14_margin(c.state.margin, c.state.margin_unreadable)
+    worst = min(g.up, g.down)
+    with localcontext(_EXACT):
+        num = -worst * _HUNDRED
+    return _compare(c, "T-14", num, margin)
 
 
 _EVALUATORS: Final[dict[str, Callable[[_Ctx], Hit]]] = {

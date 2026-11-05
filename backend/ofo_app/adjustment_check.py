@@ -295,7 +295,7 @@ def state_of(tracked: Tracked, market: MarketInputs, spot: SpotAnswer, margin: M
     now = market.now.astimezone(IST)
     expiry = min(x.expiry for x in position.legs)
     hhmm = now.strftime("%H:%M")
-    stated_margin = Decimal(margin["value"]) if margin is not None and margin.get("state") == "stated" else None
+    stated_margin, margin_unreadable = margin_in(margin)
     last = market.last_close
     day = market.day_open
     kind = market.expiry_kind or position.expiry_kind or "weekly"
@@ -307,12 +307,13 @@ def state_of(tracked: Tracked, market: MarketInputs, spot: SpotAnswer, margin: M
         stops = sif.stops_of(resolved, sif.MoneyInputs(None if gross is None else gross.max_loss, credit,
                                                        stated_margin),
                              sif.StageAt(kind, (expiry - now.date()).days))
-    return with_carry(pe.StrategyState(stops=stops,
+    return with_gamma(with_carry(pe.StrategyState(stops=stops,
         expiry_kind=market.expiry_kind or position.expiry_kind or "weekly",  # type: ignore[arg-type]
         days_left=(expiry - now.date()).days, hhmm=hhmm, spot=value, shorts=shorts, pnl=pnl,
         max_loss=None if gross is None else _limit_value(gross.max_loss),
         max_profit=None if gross is None else _limit_value(gross.max_profit),
-        margin=stated_margin, premium_left=left, adjustment_cost=cheap.cost, adjustment_approach=cheap.approach,
+        margin=stated_margin, margin_unreadable=margin_unreadable, premium_left=left, adjustment_cost=cheap.cost,
+        adjustment_approach=cheap.approach,
         adjustment_cost_reason=cheap.reason, adjustment_unpriced=cheap.unpriced, atm_iv=market.vol,
         prev_close=(last.value if last is not None and last.value is not None and last.state is SourceState.STATED
                     else None),
@@ -321,7 +322,40 @@ def state_of(tracked: Tracked, market: MarketInputs, spot: SpotAnswer, margin: M
         tighten_percent=None if body is None else _tighten(body, now.date(), expiry, hhmm), prices_fresh=fresh,
         held=held_legs(position, market), today=now.date(), entry_day=entry_day(tracked),
         s02_delta_per_lot=market.s02_delta_per_lot, s12_percent=market.s12_percent),
-        body, tracked, market, gap)
+        body, tracked, market, gap), body, tracked, market)
+
+
+def margin_in(margin: Mapping | None) -> tuple[Decimal | None, bool]:
+    """(the stated margin, unreadable?) from ``routes.adjustment.margin_block``'s answer: "stated" with a finite
+    number -> that figure; "failed", or "stated" with a figure that is not a finite number -> (None, True); anything
+    else (empty, not available, no read) -> (None, False). Never a stand-in figure."""
+    if margin is None:
+        return None, False
+    if margin.get("state") == "failed":
+        return None, True
+    if margin.get("state") != "stated":
+        # "empty" (Zerodha stated no figure) and other non-stated blocks read "Margin not available" on T-14: still
+        # not checked, never passed (accepted by the coordinator, B2 round 1). The worker's failed read is None here.
+        return None, False
+    try:
+        value = Decimal(str(margin["value"]))
+    except (KeyError, ArithmeticError, ValueError, TypeError):
+        return None, True
+    return (value, False) if value.is_finite() else (None, True)
+
+
+def with_gamma(state: pe.StrategyState, body: Mapping | None, tracked: Tracked,
+               market: MarketInputs) -> pe.StrategyState:
+    """``state`` with T-14's 1% repricing figures (design decision 8, ``ofo.adjustment.gamma``) when the body has
+    T-14 switched on AND the process runs in scenario mode (B2 review F1: the ONE choke point; in live mode no figures,
+    so T-14 answers "not checked yet" exactly as before). The model is the check's own (``carry_model``), so the
+    screen and the worker value it alike."""
+    from ofo_app import scenario_mode  # noqa: PLC0415 - the single mode reader
+    t14 = ((body or {}).get("triggers") or {}).get("T-14") or {}
+    if not t14.get("on") or scenario_mode.current() is None:
+        return state
+    from ofo.adjustment import gamma  # noqa: PLC0415 - engine valuation only here
+    return dataclasses.replace(state, gamma=gamma.gamma_figures(carry_model(tracked, market)))
 
 
 def held_legs(position: Position, market: MarketInputs) -> tuple[pe.HeldLeg, ...]:

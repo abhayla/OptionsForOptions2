@@ -225,7 +225,9 @@ async def test_ten_cycles_in_a_minute_make_at_most_one_margin_call_per_strategy(
     prov = Prov(gap)
     at = _gap_time(prov)
     on = _ic_watched(gap)
-    off_body = {**_t16_off(on.body), "day_rules": []}  # no T-16 and no carry rule: no margin is needed
+    t16_off = _t16_off(on.body)  # B2: in scenario mode (this file) T-14 on also needs the margin, so it is off too
+    off_body = {**t16_off, "day_rules": [],
+                "triggers": {**t16_off["triggers"], "T-14": {**t16_off["triggers"]["T-14"], "on": False}}}
     off = dataclasses.replace(on, strategy_id=FIRST_ID + 1, body=off_body, resolved=_followed(off_body))
     fake, now, calls = FakeMargin(at), [at], Calls()
     worker = _worker(prov, [on, off], now, calls, margin_of=background.screen_margin_reader(fake))

@@ -3563,6 +3563,14 @@
     "sha256": "563562458f807c3c6829c7d61c932d1d708163a0c03e3a4f8e8dbc9685ade3e6",
     "reviewed": "pending owner read"
   },
+  "adjust_trigger_gamma_unknown": {
+    "sha256": "9528fd396c3eba9af4a5610d4f9c5bebf3beafe7a988a2b55d73ac1e4f3e2ae4",
+    "reviewed": "pending owner read"
+  },
+  "adjust_trigger_margin_unreadable": {
+    "sha256": "ed76de40071e88f9ffabdc2ec8c189c90d25129f9c1846f3292d9f1e5bc27947",
+    "reviewed": "pending owner read"
+  },
   "adjust_trigger_missing_leg_delta": {
     "sha256": "de3396561782c919de61a6ab7dcab9fd8f79fd3176bbc8a1fc232000e9155119",
     "reviewed": "pending owner read"
