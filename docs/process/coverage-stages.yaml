@@ -410,6 +410,7 @@ decisions:
   ADR-248: S6.7         # Suggested for you: eligible approaches only, ranked by cost / credit by default (owner 5 Nov)
   ADR-249: S6.7         # Suggested for you: one or two suggestions from several preferences; combined adjustments later (owner 5 Nov)
   ADR-250: S6.7         # ADR-247 stop default for new plans only; saved plans keep their own stop alerts (owner 5 Nov)
+  ADR-251: S6.7         # 2x credit stop = 2x net credit collected so far (entry +/- every roll); fail closed on none (owner 5 Nov)
 
 questions:
   Q210: 4a              # external: Zerodha's written answer; ADR-051 covers the owner's own account
