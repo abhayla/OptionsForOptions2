@@ -18,6 +18,7 @@ Real order routes (``REAL_ORDER_ROUTES``) keep ``scenario_mode.refuse_orders``: 
 """
 from __future__ import annotations
 
+import contextlib
 from typing import Annotated, Any
 
 from fastapi import Depends
@@ -56,10 +57,8 @@ async def guard_paper_order(strategy_id: int, db: Annotated[Any, Depends(get_db)
 
 
 async def _rollback(db: Any) -> None:
-    try:
+    with contextlib.suppress(Exception):  # the refusal is the answer either way
         await db.rollback()
-    except Exception:  # noqa: BLE001, S110 - the refusal below is the answer either way
-        pass
 
 
 def isolation_refusal(marker: object, current: str | None) -> bool:

@@ -2,8 +2,8 @@
 marker read that fails is itself an answer state (refused). Database cases are in test_ic_paper_loop_core.py."""
 from __future__ import annotations
 
-import json
 import importlib.util
+import json
 import pathlib
 import shutil
 
@@ -30,7 +30,7 @@ def _app(monkeypatch, scenario: str | None):
     return create_app()
 
 
-# ---- decision 4 / 17: the lister lists each side only ---------------------------------------------------------------
+# ---- decision 4 / 17: the lister lists each side only -------------------------------------------------------------
 @pytest.mark.parametrize(("marker", "mode", "listed"), [
     (None, None, True),  # a real strategy in a live worker: listed exactly as before (decision 17)
     ("PATH-01", None, False),  # a scenario strategy in a live worker: never
@@ -50,10 +50,10 @@ def test_screen_check_refuses_each_cross_case(marker, current, refused):
     assert scenario_guard.isolation_refusal(marker, current) is refused
 
 
-# ---- decision 5: the guard split, wired and fail closed -------------------------------------------------------------
+# ---- decision 5: the guard split, wired and fail closed -----------------------------------------------------------
 def test_order_route_sets_split_and_cover_every_order_route():
-    assert scenario_mode.REAL_ORDER_ROUTES == {("POST", "/strategies/{strategy_id}/execute"),
-                                               ("POST", "/strategies/{strategy_id}/execution/return")}
+    real = {("POST", "/strategies/{strategy_id}/execute"), ("POST", "/strategies/{strategy_id}/execution/return")}
+    assert scenario_mode.REAL_ORDER_ROUTES == real
     assert scenario_mode.REAL_ORDER_ROUTES.isdisjoint(scenario_mode.PAPER_ORDER_ROUTES)
     assert scenario_mode.ORDER_ROUTES == scenario_mode.REAL_ORDER_ROUTES | scenario_mode.PAPER_ORDER_ROUTES
     assert ("POST", "/api/scenario/frame") in scenario_mode.NON_ORDER_ROUTES
@@ -114,7 +114,7 @@ async def test_real_route_refused_in_a_path_scenario(monkeypatch, path):
     assert r.status_code == CONFLICT and r.json()["code"] == "USER_INPUT_026", r.text
 
 
-# ---- decision 7: the worker refuses scenario mode outside development/test ------------------------------------------
+# ---- decision 7: the worker refuses scenario mode outside development/test ----------------------------------------
 @pytest.mark.parametrize("env", ["production", "staging", "Test", ""])
 def test_worker_refuses_scenario_outside_dev_or_test(monkeypatch, env):
     monkeypatch.setenv("OFO_SCENARIO", "PATH-01")
@@ -135,7 +135,7 @@ def test_scenario_worker_uses_the_scenario_feed():
     assert provider is scn.provider and callable(step)
 
 
-# ---- decision 2: the frame route -------------------------------------------------------------------------------------
+# ---- decision 2: the frame route -----------------------------------------------------------------------------------
 async def test_frame_route_is_404_when_scenario_mode_is_off(monkeypatch):
     app = _app(monkeypatch, None)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as ac:
@@ -151,7 +151,7 @@ async def test_frame_route_refuses_a_frame_outside_the_path(monkeypatch, frame):
     assert r.status_code == UNPROCESSABLE, r.text
 
 
-# ---- decision 1: path scenarios ---------------------------------------------------------------------------------------
+# ---- decision 1: path scenarios -------------------------------------------------------------------------------------
 def test_path_ids_accepted_by_the_one_reader_and_malformed_ones_refused():
     assert scenario_mode.scenario_path("PATH-01").name == "frame-000.json"
     assert scenario_mode.last_frame("PATH-01") == 9  # noqa: PLR2004 - ten frames

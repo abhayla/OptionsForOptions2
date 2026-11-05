@@ -62,7 +62,6 @@ from decimal import Decimal
 from typing import Any
 
 from fastapi import Depends
-
 from ofo.engine import adjust_money
 from ofo.instruments.models import BSE_FO, BSE_INDEX, INDEX_ROWS, NSE_FO, NSE_INDEX
 from ofo.instruments.parser import parse_instruments_rows
@@ -76,7 +75,7 @@ _ID = re.compile(r"ADJ-[0-9]{2}[a-e]?|PATH-[0-9]{2}")
 _PATH_ID = re.compile(r"PATH-[0-9]{2}")
 TEMPLATE = "scenario_no_orders"
 
-#: (method, path) of every route that posts a basket to the BROKER: refused in scenario mode, always (``refuse_orders``).
+#: (method, path) of every route that posts a basket to the BROKER: always refused in scenario mode (refuse_orders).
 REAL_ORDER_ROUTES: frozenset[tuple[str, str]] = frozenset({
     ("POST", "/strategies/{strategy_id}/execute"),
     ("POST", "/strategies/{strategy_id}/execution/return"),
