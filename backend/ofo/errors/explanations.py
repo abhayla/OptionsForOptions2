@@ -298,6 +298,14 @@ PLAYBOOK_APPROACH_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
     "A-37": "Alert only / watch a level",
     "A-38": "Pause monitoring until a time",
 })
+#: The shown name of EVERY approach the approach builder builds (ADR-221 / ADR-238 / ADR-239): the first table's 7 plus
+#: the exit, reduce and roll approaches by their playbook editor names. ONE home: the ApproachLabel slot validates on it
+#: and ``approaches.NAMES`` is it (IC e2e fix-opps: the slot took only the first 7, so a T-19 line whose cheapest was
+#: A-26 lost its approach and cost).
+BUILT_APPROACH_NAMES: Mapping[str, str] = MappingProxyType({
+    **ADJUSTMENT_APPROACH_LABEL_TEXT,
+    **{a: PLAYBOOK_APPROACH_LABEL_TEXT[a] for a in (*EXIT_REDUCE_BUILT, *ROLL_BUILT)},
+})
 #: GC-ADJ2 step 3 (REQ-159 AC-4): each day-and-date rule kind in words.
 PLAYBOOK_DAY_RULE_KIND_TEXT: Mapping[str, str] = MappingProxyType({
     "weekday": "Every week on",
@@ -610,16 +618,16 @@ class Rupees(SlotType):
 
 
 class ApproachLabel(SlotType):
-    """ADR-221: an adjustment approach id the app builds (``ADJUSTMENT_APPROACH_LABEL_TEXT``), printed as its name."""
+    """ADR-221: an adjustment approach id the app builds (``BUILT_APPROACH_NAMES``), printed as its name."""
 
     @staticmethod
     def validate(value: object) -> None:
-        if not isinstance(value, str) or value not in ADJUSTMENT_APPROACH_LABEL_TEXT:
+        if not isinstance(value, str) or value not in BUILT_APPROACH_NAMES:
             raise TypeError(f"ApproachLabel slot requires a built approach id, got {value!r}")
 
     @staticmethod
     def format(value: str) -> str:
-        return ADJUSTMENT_APPROACH_LABEL_TEXT[value]
+        return BUILT_APPROACH_NAMES[value]
 
 
 class WholeRupees(SlotType):

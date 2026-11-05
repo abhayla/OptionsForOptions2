@@ -175,6 +175,17 @@ def test_the_flag_line_names_the_approach_and_its_cost():
     assert "53.73" not in str(fallback)  # an approach the slot refuses -> the plain line, never a guessed name
 
 
+def test_every_built_approach_is_named_on_the_t19_line():
+    """IC e2e fix-opps: the cheapest approach can be ANY approach the builder builds (ADJ-43's is A-26, measured
+    2026-11-05: A-26 cost 26.86, 2 unpriced); the line names it, never falls back to the plain line. Before the fix
+    the ApproachLabel slot took only the first 7 ids, so A-02/04/06/24/25/26/27/35 lost the approach and cost."""
+    from ofo.adjustment.approaches import APPROACH_IDS, NAMES  # noqa: PLC0415
+    for a in APPROACH_IDS:
+        line = str(check.condition_line_t19("Premium left", "0.7260", "1.0000", a, D("26.86"), 2))
+        assert line == (f"Premium left: 0.7260 (rule 1.0000); cheapest adjustment we could price: {NAMES[a]}, "
+                        "cost ₹26.86. 2 could not be priced."), a
+
+
 def test_the_old_per_leg_cost_is_gone_everywhere():
     assert not hasattr(adjust_money, "adjustment_cost")
     assert not hasattr(check, "COST_PER_LEG")
