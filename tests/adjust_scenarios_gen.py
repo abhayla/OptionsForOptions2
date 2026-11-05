@@ -1932,6 +1932,8 @@ def path_frame(base: dict, frame: dict) -> dict:
     out["market"]["spot"], out["market"]["atm_iv"] = spot, atm
     if frame.get("day_open") is not None:
         out["market"]["day_open"] = D(frame["day_open"])
+    if frame.get("prev_close") is not None:  # Stage B1: T-13 (gap at the open) needs the previous close
+        out["market"]["prev_close"] = D(frame["prev_close"])
     for c in out["market"]["chains"]:
         years = year_fraction(at, datetime.date.fromisoformat(c["expiry"]))
         for row in c["rows"]:
