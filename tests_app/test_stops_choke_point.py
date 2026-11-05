@@ -19,12 +19,16 @@ import json
 from decimal import Decimal as D
 from pathlib import Path
 
+import pytest
+
 from ofo.adjustment import playbook_eval as pe
 from ofo.adjustment import stop_lines as sl
 from ofo.engine import adjust_money
 from ofo_app import adjustment_check as check
 from ofo_app import background
 from ofo_app import settings_in_force as sif
+
+pytestmark = pytest.mark.repo_scan  # test 1 walks backend/ (tests/test_repo_scan_marked.py)
 
 ROOT = Path(__file__).resolve().parents[1]
 MAX_LOSS = D("23897.04")
@@ -172,3 +176,23 @@ def test_unreadable_stop_value_is_not_checked():
     stops = sif.stops_of(_plan(body, before=False), sif.MoneyInputs(MAX_LOSS, CREDIT), sif.StageAt("weekly", 3))
     res = _results(pe.evaluate(body, _state(stops, D("-1")), {}, None, gap_until="09:30"))
     assert res[sl.CREDIT_RULE].code == sl.NOT_CHECKED_OTHER
+
+
+# ADR-252: T-16 off by default; absent or off -> no ACTIVE % of margin line, the live alert and the margin read agree --
+@pytest.mark.parametrize(("body", "on"), [
+    ({}, False),  # no triggers key at all
+    ({"triggers": {}}, False),  # triggers without T-16
+    ({"triggers": {sl.TRIGGER_MARGIN: {"on": False, "weekly": ["4"]}}}, False),
+    ({"triggers": {sl.TRIGGER_MARGIN: {"on": True, "weekly": ["4"]}}}, True),
+])
+def test_margin_stop_line_is_active_only_when_t16_is_present_and_on(body, on):
+    stops = sif.stops_of(_plan(body, before=False), sif.MoneyInputs(MAX_LOSS, CREDIT, margin=D(100000)),
+                         sif.StageAt("weekly", 0))
+    assert any(x.kind == sif.STOP_MARGIN and x.active for x in stops.lines) is on
+    assert sif.margin_line_on(_plan(body, before=False)) is on
+    assert background.margin_needed(body) is on
+
+
+def test_shipped_ic_body_has_no_active_margin_line():
+    assert sif.margin_line_on(_plan(_ic_body(), before=False)) is False
+    assert sif.margin_line_on(_plan(_ic_body(v2=False), before=True)) is True  # ADR-216 seed: T-16 on

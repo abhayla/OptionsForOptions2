@@ -295,7 +295,11 @@ def _figures(trig: Mapping, expiry_kind: str, stage: int) -> tuple[Decimal, tupl
 def _trigger_line(body: Mapping, kind: str, base: Decimal | Any | None,  # noqa: PLR0911 - one return per answer state
                   at: StageAt | str | None, source: str | None) -> StopInForce | None:
     """ADR-252: the line of ``kind`` = its trigger's value at the current stage; on/off = that trigger's switch only.
-    Trigger absent -> no line; off -> inactive; on with an unreadable / out-of-range value -> active, not checked."""
+    Trigger absent -> no line; off -> inactive; on with an unreadable / out-of-range value -> active, not checked.
+    A body with no ``triggers`` key has no T-16, so no % of margin line (ADR-252: T-16 off by default); the % of max
+    loss line stays fail closed (unreadable, active) there."""
+    if kind == STOP_MARGIN and "triggers" not in body:
+        return None
     trig, readable = _trigger(body, TRIGGER_OF_LINE[kind])
     if not readable:
         return StopInForce(kind, True, None, None, None, STOP_VALUE_UNREADABLE)
