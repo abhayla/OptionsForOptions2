@@ -80,7 +80,7 @@ class StrategySummary:
     leg_count: int = 0  # the ACTIVE definition's legs (the active version's after the first execution)
     first_leg: Optional[FirstLeg] = None  # its first leg's contract terms; the browser writes "... and N more"
     can_delete: bool = False  # REQ-070 AC-6: no plan row and no version row; False (fail closed) unless proven
-    scenario_id: Optional[str] = None  # IC e2e decision 3: the scenario marker (None = a real strategy)
+    scenario_id: str | None = None  # IC e2e decision 3: the scenario marker (None = a real strategy)
 
 
 @dataclass(frozen=True)

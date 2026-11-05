@@ -190,7 +190,7 @@ async def _core(app_engine) -> None:  # noqa: PLR0915 - one readable walk of the
         assert await _net(sid) != net  # the paper legs changed
         tracking = await ac.get(f"/strategies/{sid}/tracking")
         assert tracking.status_code == OK, tracking.text
-        legs = [leg["leg_index"] for leg in tracking.json()["legs"]]
+        legs = [leg["leg_index"] for leg in tracking.json()["legs"] if leg["exited_at"] is None]  # every open leg
         exit_r = await ac.post(f"/strategies/{sid}/tracking/exit", json={"legs": legs})
         assert exit_r.status_code == OK, exit_r.text
         history = await ac.get(f"/api/strategies/{sid}/adjustment-history")

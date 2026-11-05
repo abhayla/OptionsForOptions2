@@ -56,7 +56,8 @@ def check_environment(env: Mapping[str, str]) -> None:
 def scenario_path(scenario_id: str) -> pathlib.Path:
     if not ID_SHAPE.fullmatch(scenario_id or ""):
         raise SeedRefused(f"REFUSED: {scenario_id!r} is not a scenario id")
-    path = PATHS / scenario_id / "frame-000.json" if PATH_SHAPE.fullmatch(scenario_id) else FIXTURES / f"{scenario_id}.json"
+    path = (PATHS / scenario_id / "frame-000.json" if PATH_SHAPE.fullmatch(scenario_id)
+            else FIXTURES / f"{scenario_id}.json")
     if not path.is_file():
         raise SeedRefused(f"REFUSED: no scenario file {path.name} in {FIXTURES}")
     return path
