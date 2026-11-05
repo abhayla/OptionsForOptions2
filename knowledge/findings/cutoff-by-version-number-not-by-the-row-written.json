@@ -1,0 +1,28 @@
+{
+ "id": "cutoff-by-version-number-not-by-the-row-written",
+ "scope": "project",
+ "class": "Any code that finds 'the row a migration wrote' in an append-only versioned table by a fixed version NUMBER is wrong on every database where another writer (admin save, restore, an earlier migration) appended versions before the migration ran: the number then names someone else's row, and every rule keyed on that row's time or body (a cutoff, an 'already applied' check, a before/after split) silently applies to the wrong population. The number is only stable on a fresh database, which is the one database the tests use.",
+ "mechanism": "fix/cfg-step3-one-history 30d6a531: backend/ofo_app/playbook_store.py _ADR247_VERSION = 2 / _ADR247_SAVED_AT selects min(saved_at) WHERE strategy_type='ic' AND version = 2, assuming 'version 1 = seed, version 2 = 0040' on every database. Migration 0040 writes version = newest + 1 (alembic/versions/0040_ic_default_stop_adr247.py:83) and system_playbook_store.save/restore also write newest + 1 (system_playbook_store.py:104,110), so any earlier admin save takes version 2. adr247_saved_at then returns the admin save time; adjustment_check.py:165 / settings_in_force.py:311 treat every plan accepted after it as post-ADR-247 and give it the 2x-credit stop, against ADR-250 (saved plans keep their own stops).",
+ "first_seen": {
+  "date": "2026-11-05",
+  "where": "Tier A review part B of contract 'Your adjustment settings' step 3 (finding F1), confirmed by the orchestrator on ofo_dev",
+  "evidence": "Read-only SELECT on ofo_dev public.system_playbook_versions WHERE strategy_type='ic' (2026-11-05 ~13:30 IST): (1,'seed','release',2026-11-01 08:07 UTC), (2,'GC-SET step 9 proof: stop line 50 to 45 percent of max loss','owner',2026-11-01 09:22 UTC), (3,'GC-SET step 9 proof: restore version 1','owner',2026-11-01 09:23 UTC). 0040 would write v4; the cutoff would read v2 = 2026-11-01 09:22 UTC, so plans accepted after 1 Nov (the owner's live iron condor among them, unmeasured which) would gain the 2x-credit stop."
+ },
+ "fix": "Open: identify the migration's row by its own marker (reason = 0040.REASON, as 0040's downgrade already does at line 105), never by a version number; plus a test on a history with an admin save before 0040 (v1 seed, v2 admin, then 0040 -> v3) asserting the cutoff is v3's saved_at and that a plan accepted between v2 and v3 keeps its own stops.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "tests_app/test_ic_default_stop_migration.py derives its expected cutoff with the same version = 2 filter as the code, so it passes on a fresh DB with the bug in place (review F2)."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-247.md",
+  "spec/decisions/ADR-250.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-11-05",
+   "where": "ofo_dev, before 0040 ran",
+   "evidence": "ic versions 1..3 already present; cutoff would point at the owner's 1 Nov test save"
+  }
+ ]
+}
