@@ -338,7 +338,15 @@ async def _plan_out(db: Any, user_ref: str, plan: store.Plan) -> dict[str, Any]:
 def _in_force_reply(found: in_force_mod.InForce) -> dict[str, Any]:
     """The reply fields of the ONE settings-in-force read; every field is copied, nothing is recomputed here."""
     def trig_label(label: str | None) -> Any:
-        return None if label is None else render_explanation("settings_registry_text", text=label)
+        # the label is the PLAYBOOK body's own text (the user may edit it), never settings-registry text: it goes
+        # through the playbook-trigger-label slot; a label that slot refuses (empty, a quote, too long) -> None and
+        # the trigger ``id`` names it (fail visible, never a 500)
+        if label is None:
+            return None
+        try:
+            return render_explanation("adjust_condition_line_id", label=label)
+        except (TypeError, ValueError):
+            return None
     return {
         "settings": [dataclasses.asdict(x) for x in found.settings],
         "triggers": [{**dataclasses.asdict(t), "label": trig_label(t.label),

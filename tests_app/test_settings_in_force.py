@@ -9,6 +9,8 @@ No database: the layers are handed in as the store and the plan store hand them 
 from __future__ import annotations
 
 import datetime
+import json
+import pathlib
 from decimal import Decimal as D
 from types import SimpleNamespace
 
@@ -17,6 +19,7 @@ from ofo.engine.metrics import UNLIMITED
 from ofo.settings import layers
 from ofo_app import adjustment_check as check
 from ofo_app import settings_in_force as sif
+from ofo_app.routes import adjustment_plan as ap
 from ofo_app.user_preferences_store import Answer, UserValues
 
 CARRY = layers.CARRY_GAP_PERCENT
@@ -171,3 +174,54 @@ def test_order_defaults_are_user_settings_with_sources_and_a_plan_never_sets_the
 def test_an_order_default_out_of_range_from_the_user_layer_fails_closed():
     user = UserValues({"orders.default_lots": Answer("orders.default_lots", D(500), "yours", D(1), NOW)})
     assert _value(sif.in_force(user, _plan({}), None), "orders.default_lots") == (None, None, layers.USER_UNREADABLE)
+
+
+# ---- fix round 1: the max-loss stop default and the reply's text fields ---------------------------------------------
+
+def test_guards_without_the_max_loss_pct_still_stop_at_50_pct_of_max_loss_first_on_strategy_82():
+    """ADR-247: 50 % of max loss is ALWAYS active; a body that does not state it follows the default (source
+    "default"), exactly like the credit multiple. Strategy 82: 11,948.52 fires before 17,836."""
+    for guards in ({}, {"stop_line_x_credit": "2"}):
+        found = _stops(guards, source="plan")
+        assert found.lines[0] == sif.StopInForce("max_loss_pct", True, D(50), D("11948.52"), "default", None)
+        assert found.lines[1].amount == D("17836.00")
+        assert (found.first, found.reason) == ("max_loss_pct", None)
+    stated = _stops({"stop_line_pct_of_max_loss": "30"}, source="plan").lines[0]
+    assert (stated.figure, stated.amount, stated.source) == (D(30), D("7169.11"), "strategy")
+
+
+def _system_bodies() -> list[dict]:
+    path = pathlib.Path(__file__).resolve().parents[1] / "backend" / "ofo" / "adjustment" / "system_playbooks.json"
+    return [p["body"] for p in json.loads(path.read_text(encoding="utf-8"))["playbooks"]]
+
+
+@pytest.mark.parametrize("source", ["plan", "active", "system"])
+def test_every_text_field_of_the_in_force_reply_validates_for_every_system_playbook(source):
+    """Class: every text field the settings-in-force reply carries (settings[], triggers[], stops) passes its reply
+    type for every shipped playbook body: the trigger label through the playbook-trigger-label slot (never the
+    settings-registry slot), the unit as a closed code. Before the fix the label raised TypeError (a 500)."""
+    for body in _system_bodies():
+        reply = ap._in_force_reply(sif.in_force(None, check.Resolved(source, body, 1, None, False), S82))
+        for row in reply["settings"]:
+            ap.SettingInForceOut.model_validate(row)
+        for row in reply["triggers"]:
+            out = ap.TriggerInForceOut.model_validate(row)
+            assert out.unit is None or out.unit in sif.UNIT_CODES.values()
+        ap.StopsOut.model_validate(reply["stops"])
+    ic = next(b for b in _system_bodies() if "T-01" in b.get("triggers", {}))
+    reply = ap._in_force_reply(sif.in_force(None, check.Resolved(source, ic, 1, None, False), S82))
+    t01 = next(t for t in reply["triggers"] if t["id"] == "T-01")
+    assert (str(t01["label"]), t01["unit"]) == (ic["triggers"]["T-01"]["label"], "pct")
+
+
+@pytest.mark.parametrize(("label", "unit", "want_label", "want_unit"), [
+    ('a "quoted" label', "%", None, "pct"),  # the slot refuses it -> None (the id names it), never a 500
+    ("", "", None, None),  # empty label / no unit
+    ("Delta per lot", "delta/lot", "Delta per lot", "delta_per_lot"),
+    ("Odd unit", "furlongs", "Odd unit", None),  # a unit outside the closed set -> None, never free text
+])
+def test_trigger_label_and_unit_answer_states(label, unit, want_label, want_unit):
+    body = {"triggers": {"T-01": {"label": label, "unit": unit, "on": True, "weekly": None, "monthly": None}}}
+    row = ap._in_force_reply(sif.in_force(None, _plan(body), None))["triggers"][0]
+    out = ap.TriggerInForceOut.model_validate(row)
+    assert (None if out.label is None else str(out.label), out.unit) == (want_label, want_unit)

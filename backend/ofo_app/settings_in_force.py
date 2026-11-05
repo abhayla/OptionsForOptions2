@@ -66,6 +66,14 @@ STOP_MARGIN_KEY: Final = "stop_line_pct_of_margin"
 #: ADR-247: the "2x the credit received" stop is ALWAYS active; a body that does not state its multiple follows this
 #: default (source "default"); a strategy or a user changes it by writing ``stop_line_x_credit`` into their copy
 CREDIT_MULTIPLE_DEFAULT: Final = Decimal(2)
+#: ADR-247: the "50 % of max loss" stop is ALWAYS active too; a body that does not state it follows this default
+#: (source "default"), exactly like the credit multiple (fix round 1: it used to drop out, so strategy 82 showed its
+#: first stop at the 2x-credit 17,836 instead of 11,948.52)
+MAX_LOSS_PCT_DEFAULT: Final = Decimal(50)
+#: a trigger's unit as the body holds it -> the closed code the reply carries (the screen renders the words); a unit
+#: outside this set -> None (never free text in an Identifier field)
+UNIT_CODES: Final = {"%": "pct", "pts": "pts", "x": "x", "Rs": "rs", "SD": "sd", "delta": "delta",
+                     "delta/lot": "delta_per_lot", "time": "time"}
 
 STOP_MAX_LOSS: Final = "max_loss_pct"
 STOP_CREDIT: Final = "credit_multiple"
@@ -173,7 +181,7 @@ def triggers_of(resolved: check.Resolved) -> tuple[tuple[TriggerInForce, ...], s
             continue
         label, unit, on = trig.get("label"), trig.get("unit"), trig.get("on")
         label = label if isinstance(label, str) else None
-        unit = unit if isinstance(unit, str) and unit else None
+        unit = UNIT_CODES.get(unit) if isinstance(unit, str) else None
         on = on if isinstance(on, bool) else None
         try:
             weekly, monthly = _values(trig.get("weekly")), _values(trig.get("monthly"))
@@ -230,14 +238,14 @@ def stops_of(resolved: check.Resolved, money: MoneyInputs | None) -> StopsInForc
     except ValueError:
         lines.append(StopInForce(STOP_MAX_LOSS, True, None, None, None, STOP_VALUE_UNREADABLE))
     else:
-        if pct is None:
-            lines.append(StopInForce(STOP_MAX_LOSS, False, None, None, None, None))
-        elif max_loss is UNLIMITED:
-            lines.append(StopInForce(STOP_MAX_LOSS, True, pct, None, source, MAX_LOSS_UNLIMITED))
+        pct, psource = (MAX_LOSS_PCT_DEFAULT, layers.SOURCE_DEFAULT) if pct is None else (pct, source)
+        if max_loss is UNLIMITED:
+            lines.append(StopInForce(STOP_MAX_LOSS, True, pct, None, psource, MAX_LOSS_UNLIMITED))
         elif not isinstance(max_loss, Decimal):
-            lines.append(StopInForce(STOP_MAX_LOSS, True, pct, None, source, MAX_LOSS_UNKNOWN))
+            lines.append(StopInForce(STOP_MAX_LOSS, True, pct, None, psource, MAX_LOSS_UNKNOWN))
         else:
-            lines.append(StopInForce(STOP_MAX_LOSS, True, pct, adjust_money.stop_at_pct(max_loss, pct), source, None))
+            lines.append(StopInForce(STOP_MAX_LOSS, True, pct, adjust_money.stop_at_pct(max_loss, pct), psource,
+                                     None))
     # 2x the credit received (ADR-247: always active)
     try:
         stated = _guard(guards, STOP_CREDIT_KEY)
@@ -278,6 +286,6 @@ def in_force(user_values: Mapping[str, Decimal] | None, resolved: check.Resolved
     return InForce(settings_of(user_values, resolved.strategy_layer), triggers, reason, stops_of(resolved, money))
 
 
-__all__ = ["CREDIT_MULTIPLE_DEFAULT", "FIRST_UNKNOWN", "NO_PLAYBOOK", "PLAYBOOK_SOURCE", "InForce", "MoneyInputs",
-           "SettingInForce", "StopInForce", "StopsInForce", "TriggerInForce", "covered_keys", "in_force",
-           "money_inputs", "setting_of", "settings_of", "stops_of", "triggers_of"]
+__all__ = ["CREDIT_MULTIPLE_DEFAULT", "FIRST_UNKNOWN", "MAX_LOSS_PCT_DEFAULT", "NO_PLAYBOOK", "PLAYBOOK_SOURCE",
+           "UNIT_CODES", "InForce", "MoneyInputs", "SettingInForce", "StopInForce", "StopsInForce", "TriggerInForce",
+           "covered_keys", "in_force", "money_inputs", "setting_of", "settings_of", "stops_of", "triggers_of"]
