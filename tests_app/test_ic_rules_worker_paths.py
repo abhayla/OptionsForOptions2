@@ -6,9 +6,9 @@ k+1 (no duplicate per tick). Guidance situations (S-03, S-04, S-05, S-08, S-09) 
 withhold the record. Each path is walked ONLY over the frames its cases need (throwaway database, one seeded paper
 iron condor per path). T-14 is Stage B2, T-18 Stage C1, T-16 is off by default (ADR-247).
 
-Paths (tests/fixtures/adjust_paths, all one iron condor: BUY PE 22600, SELL PE 22800, SELL CE 23400, BUY CE 23600, 2 lots):
-PATH-10 spot drifts up on Fri 6 Nov; PATH-11 spot falls; PATH-12 time passes at a flat spot (Fri to Mon expiry);
-PATH-13 IV rises; PATH-14 IV falls on the entry day; PATH-15 gap at the open; PATH-16 expiry day, short within 0.3%;
+Paths (tests/fixtures/adjust_paths, one iron condor: BUY PE 22600, SELL PE 22800, SELL CE 23400, BUY CE 23600, 2 lots):
+PATH-10 spot drifts up on Fri 6 Nov; PATH-11 spot falls; PATH-12 time passes at a flat spot (Fri to Mon);
+PATH-13 IV rises; PATH-14 IV falls on the entry day; PATH-15 gap at the open; PATH-16 expiry day (short within 0.3%);
 PATH-17 the PATH-11 crossing with stale prices.
 
 KNOWN holds ``xfail(strict=True)`` semantics per case: a case listed there MUST still fail (if it passes the test
@@ -16,12 +16,13 @@ fails, so the list cannot rot); the reason is the measured blocker, reported to 
 """
 from __future__ import annotations
 
-import pytest
 import _paths_helpers as h
+import pytest
 
 # (case id, rule id as stored, crossing frame k)
 CASES: dict[str, list[tuple[str, str, int]]] = {
-    "PATH-10": [("T-03", "T-03", 9), ("T-02", "T-02", 14), ("T-06", "T-06", 18), ("T-06-2x-credit", "stop.credit_x", 18)],
+    "PATH-10": [("T-03", "T-03", 9), ("T-02", "T-02", 14), ("T-06", "T-06", 18),
+                ("T-06-2x-credit", "stop.credit_x", 18)],
     "PATH-11": [("T-09", "T-09", 6), ("S-02", "sit.S-02", 7)],
     "PATH-12": [("S-06", "day.beforeWeekend.1500.0", 3), ("T-10b", "T-10b", 8), ("T-19", "T-19", 8)],
     "PATH-13": [("T-11", "T-11", 3)],
@@ -58,7 +59,7 @@ def check(seen: dict, rule: str, k: int) -> None:
 async def test_every_on_rule_raises_exactly_one_record_at_its_crossing_frame(app_engine, monkeypatch, path_id):
     h.set_env(app_engine, monkeypatch, path_id)
     try:
-        sid, seen, errors = await h.walk(app_engine, path_id, frames_for(path_id))
+        _sid, seen, errors = await h.walk(app_engine, path_id, frames_for(path_id))
         print("B1-COUNTS", path_id, {k: dict(c) for k, c in seen.items()})
         assert errors == [], errors
         failed, rotten = [], []
@@ -80,7 +81,7 @@ async def test_every_on_rule_raises_exactly_one_record_at_its_crossing_frame(app
 
 
 async def test_t21_stale_prices_withhold_the_record_a_fresh_run_raises(app_engine, monkeypatch):
-    """PATH-11 frame 6 raises T-09 with fresh prices (above); PATH-17 is the same crossing with the feed 600 s old: 0."""
+    """PATH-11 frame 6 raises T-09 with fresh prices; PATH-17 is that crossing with the feed 600 s old: 0."""
     h.set_env(app_engine, monkeypatch, "PATH-17")
     try:
         _sid, seen, errors = await h.walk(app_engine, "PATH-17")

@@ -83,7 +83,7 @@ async def seed_path(app_engine, path_id: str, style: str = "intraday") -> int:
     return sid
 
 
-async def walk(app_engine, path_id: str, frames: list[int] | None = None, *, stale_by: int = 0,
+async def walk(app_engine, path_id: str, frames: list[int] | None = None, *, stale_by: int = 0,  # noqa: PLR0913
                sid: int | None = None, style: str = "intraday") -> tuple[int, dict[int, Counter], list]:
     """Walks ``frames`` (default all) with the real worker; returns (strategy id, {frame: Counter(rule_id) of ALL
     records of the strategy after that frame}, worker errors). ``stale_by`` seconds: the worker clock runs that far
