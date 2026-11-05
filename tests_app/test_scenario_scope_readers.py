@@ -24,8 +24,8 @@ async def _three(conn, user: str) -> dict[str, int]:
     own = await store.save_draft(conn, user, live.saved, "own scenario", scenario_id="PATH-01")
     other = await store.save_draft(conn, user, live.saved, "other scenario", scenario_id="ADJ-02")
     cid = next(iter(ids.values()))
-    lot = (await conn.execute(text("SELECT lot_size FROM public.catalogue_contracts WHERE id = :c"),
-                              {"c": cid})).scalar_one()
+    lot = (await conn.execute(text("SELECT lot_size FROM public.broker_instruments "  # lot lives per broker (0004)
+                                   "WHERE contract_id = :c AND broker = 'zerodha'"), {"c": cid})).scalar_one()
     at = datetime.datetime(2026, 10, 1, 10, 0, tzinfo=IST)
     out = {"live": live.id, "own": own.id, "other": other.id}
     for sid in out.values():
