@@ -24,7 +24,7 @@ def _block(code: str) -> dict:
 @pytest.mark.parametrize("code", CODES)
 def test_every_emitted_code_has_a_sentence(code: str) -> None:
     block = _block(code)
-    assert len(block["reasons"]) == 3
+    assert len(block["reasons"]) == len(SOURCES)
     for item in block["reasons"]:
         text = str(item["reason_text"])
         assert text != code and text != item["reason"]

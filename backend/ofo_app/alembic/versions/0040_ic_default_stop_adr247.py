@@ -107,7 +107,8 @@ def downgrade() -> None:
                 RETURN;
             END IF;
             IF mine <> newest THEN
-                RAISE EXCEPTION 'refusing to downgrade {revision}: a newer {TYPE} system playbook version % was saved after it', newest
+                RAISE EXCEPTION 'refusing to downgrade {revision}: {TYPE} version % was saved after it',
+                    newest
                     USING ERRCODE = '{SQLSTATE}';
             END IF;
             EXECUTE 'ALTER TABLE {TABLE} DISABLE TRIGGER {GUARD_TRIGGER}';

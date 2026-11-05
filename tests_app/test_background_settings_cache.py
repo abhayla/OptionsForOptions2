@@ -306,7 +306,8 @@ async def test_a_plan_body_change_found_by_the_rebuild_is_rechecked_with_no_pric
     changed["stages"]["weekly"][0]["name"] = "renamed"
     new = [
         background.Watched(
-            "owner", w.monitors[0].strategy_id, w.monitors[0].tracked, changed, True, "owner", None, None, resolved=None)
+            "owner", w.monitors[0].strategy_id, w.monitors[0].tracked, changed, True, "owner", None, None,
+            resolved=None)
     ]
 
     async def lister():

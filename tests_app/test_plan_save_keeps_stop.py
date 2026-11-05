@@ -104,7 +104,7 @@ def test_the_monthly_stop_words_follow_the_monthly_row():
     assert ap._values(b, False, "monthly")["stop_words"] != ap._values(b, False)["stop_words"]
 
 
-# ---- item 3: a playbook switch is a new acceptance --------------------------------------------------------------------
+# ---- item 3: a playbook switch is a new acceptance -------------------------------------------------------------------
 def _migration():
     path = ROOT / "backend/ofo_app/alembic/versions/0041_plan_switch_is_acceptance.py"
     found = importlib.util.spec_from_file_location("m0041_for_test", path)
@@ -159,5 +159,5 @@ def test_the_upsert_does_not_write_accepted_at_itself_the_guard_stamps_it():
 
 @pytest.mark.parametrize("raw", ["0", "101", "x", ""])
 def test_a_bad_stop_is_still_refused(raw):
-    with pytest.raises(Exception):  # noqa: B017, PT011 - the store error type is the route's concern
+    with pytest.raises(Exception):  # noqa: B017 - the store error type is the route's concern
         save(plan(), raw)

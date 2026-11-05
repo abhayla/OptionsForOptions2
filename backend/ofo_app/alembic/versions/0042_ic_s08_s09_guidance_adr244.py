@@ -84,11 +84,12 @@ _LISTED = (
 )
 #: the newest body with both situations listed, sorted by id (a missing ``situations`` list is built, never skipped)
 _NEW_BODY = (
-    "jsonb_set(b.body, '{situations}', COALESCE((SELECT jsonb_agg(s ORDER BY s ->> 'id') FROM ("
+    "jsonb_set(b.body, '{situations}', COALESCE((SELECT jsonb_agg(s ORDER BY s ->> 'id') "  # noqa: S608 - constant SQL
+    "FROM ("
     f"SELECT e AS s FROM {_LISTED} e WHERE e ->> 'id' NOT IN ('S-08', 'S-09') "
     f"UNION ALL SELECT {_lit(S08)} UNION ALL SELECT {_lit(S09)}) u), '[]'::jsonb), true)"
 )
-_HAS_BOTH = f"(SELECT count(*) FROM {_LISTED} e WHERE e ->> 'id' IN ('S-08', 'S-09')) = 2"
+_HAS_BOTH = f"(SELECT count(*) FROM {_LISTED} e WHERE e ->> 'id' IN ('S-08', 'S-09')) = 2"  # noqa: S608 - constants
 
 
 def upgrade_sql() -> str:
@@ -121,7 +122,8 @@ def downgrade() -> None:
                 RETURN;
             END IF;
             IF mine <> newest THEN
-                RAISE EXCEPTION 'refusing to downgrade {revision}: a newer {TYPE} system playbook version % was saved after it', newest
+                RAISE EXCEPTION 'refusing to downgrade {revision}: {TYPE} version % was saved after it',
+                    newest
                     USING ERRCODE = '{SQLSTATE}';
             END IF;
             EXECUTE 'ALTER TABLE {TABLE} DISABLE TRIGGER {GUARD_TRIGGER}';
