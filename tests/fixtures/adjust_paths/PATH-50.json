@@ -1,0 +1,75 @@
+{
+ "id": "PATH-50",
+ "base": "ADJ-02",
+ "title": "Weekly path to expiry: Wed profit frame, Thu stop frame, Fri quiet, Mon expiry day 14:20 / 14:29 / 14:31 / 15:00 (cheap shorts) / 15:25 (spot above the short call)",
+ "notes": "C2: the frames the four exits and the settlement need. Same condor as PATH-31 (expiry 2026-11-09).",
+ "entry_atm_iv": "0.10",
+ "legs": [
+  {
+   "side": "BUY",
+   "type": "PE",
+   "strike": "22950",
+   "lots": 2
+  },
+  {
+   "side": "SELL",
+   "type": "PE",
+   "strike": "23150",
+   "lots": 2
+  },
+  {
+   "side": "SELL",
+   "type": "CE",
+   "strike": "23500",
+   "lots": 2
+  },
+  {
+   "side": "BUY",
+   "type": "CE",
+   "strike": "23700",
+   "lots": 2
+  }
+ ],
+ "frames": [
+  {
+   "clock": "2026-11-04T11:00:00",
+   "spot": "23100",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2026-11-05T12:00:00",
+   "spot": "23450",
+   "atm_iv": "0.12"
+  },
+  {
+   "clock": "2026-11-06T11:00:00",
+   "spot": "23200",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2026-11-09T14:20:00",
+   "spot": "23330",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2026-11-09T14:29:00",
+   "spot": "23330",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2026-11-09T14:31:00",
+   "spot": "23330",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2026-11-09T15:00:00",
+   "spot": "23330",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2026-11-09T15:25:00",
+   "spot": "23600",
+   "atm_iv": "0.10"
+  }
+ ]
+}
