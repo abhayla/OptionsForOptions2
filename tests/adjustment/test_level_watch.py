@@ -50,7 +50,7 @@ def test_a_direction_other_than_above_or_below_is_refused():
 
 
 def _state(spot: str | None, fresh: bool | None = True, watches=(ABOVE,)) -> pe.StrategyState:
-    return pe.StrategyState("weekly", days_left=3, hhmm="10:10", spot=None if spot is None else D(spot),
+    return pe.StrategyState("weekly", stops=None, days_left=3, hhmm="10:10", spot=None if spot is None else D(spot),
                             prices_fresh=fresh, watches=watches)
 
 

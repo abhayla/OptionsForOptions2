@@ -38,7 +38,7 @@ def _ic() -> dict:
 
 def _state(today: datetime.date = FRI, hhmm: str | None = "15:00", holidays=None, **kw) -> pe.StrategyState:
     shorts = (pe.ShortLeg(D(23200), D("0.15"), D("40")), pe.ShortLeg(D(23800), D("0.15"), D("40")))
-    return pe.StrategyState(expiry_kind="weekly", days_left=4, hhmm=hhmm, spot=D("23500"), shorts=shorts,
+    return pe.StrategyState(stops=None, expiry_kind="weekly", days_left=4, hhmm=hhmm, spot=D("23500"), shorts=shorts,
                             prices_fresh=True, carry_days=pe.carry_day_kinds(today, holidays), **kw)
 
 

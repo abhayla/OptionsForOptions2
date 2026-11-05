@@ -39,7 +39,7 @@ def test_core_adj02_every_checked_rule_has_a_value_and_its_ladder():
     assert t01_spec == gate.RuleSpec("T-01", "le", (D("0.5"), D("0.3")))
     assert t01 <= D("0.5")
     # a rule FALSE at this check still reads its value (before this step ev.clear held ids only)
-    assert "T-06" in ev.clear
+    assert "stop.max_loss_pct" in ev.clear
     t06_spec, t06 = got["T-06"]
     assert t06_spec == gate.RuleSpec("T-06", "ge", (D("50"),))  # Last day 40 is not more severe for ge: dropped
     assert isinstance(t06, Decimal) and t06 < D("50")

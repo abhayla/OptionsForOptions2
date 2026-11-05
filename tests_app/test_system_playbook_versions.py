@@ -37,7 +37,7 @@ AUDIT = text("SELECT count(*) FROM public.audit_events WHERE event_type = 'admin
 LAST_AUDIT = text("SELECT payload->>'action', payload->>'reason', actor FROM public.audit_events "
                   "WHERE event_type = 'admin_change_recorded' ORDER BY seq DESC LIMIT 1")
 #: a weekly Early check of an iron condor at 47% of its max loss: flags at a 45 limit, not at the seeded 50
-STATE_47 = pe.StrategyState(expiry_kind="weekly", days_left=6, hhmm="10:00", spot=D("22500"), pnl=D("-470"),
+STATE_47 = pe.StrategyState(stops=None, expiry_kind="weekly", days_left=6, hhmm="10:00", spot=D("22500"), pnl=D("-470"),
                             max_loss=D("1000"), prices_fresh=True)
 CLEARED = {"T-06": {"held_at_entry": False, "seen_clear": True}}
 #: the iron condor's CURRENT version on a fresh database: the seed (1) plus migration 0040's ADR-247 version (2)

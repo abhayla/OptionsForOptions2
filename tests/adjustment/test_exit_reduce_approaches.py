@@ -114,8 +114,8 @@ def test_a27_threshold_is_the_current_stage_of_t09():
     only on the earlier stage."""
     body = _ic_body()
     guards = body["guards"]
-    last = pe.exit_inputs(body, guards, pe.StrategyState("weekly", days_left=0, hhmm="13:30"))
-    early = pe.exit_inputs(body, guards, pe.StrategyState("weekly", days_left=6, hhmm="13:30"))
+    last = pe.exit_inputs(body, guards, pe.StrategyState("weekly", stops=None, days_left=0, hhmm="13:30"))
+    early = pe.exit_inputs(body, guards, pe.StrategyState("weekly", stops=None, days_left=6, hhmm="13:30"))
     assert (last.t09, early.t09) == ((D("2"), "le"), (D("3"), "le"))
     assert (last.time_exit, last.hhmm) == ("14:30", "13:30")
     position, chain, spot = inputs(load("ADJ-02"))
@@ -132,7 +132,7 @@ def test_a27_with_t09_off_or_absent_is_refused_never_a_default():
     body = _ic_body()
     off = {**body, "triggers": {**body["triggers"], "T-09": {**body["triggers"]["T-09"], "on": False}}}
     gone = {**body, "triggers": {k: v for k, v in body["triggers"].items() if k != "T-09"}}
-    state = pe.StrategyState("weekly", days_left=3, hhmm="11:00")
+    state = pe.StrategyState("weekly", stops=None, days_left=3, hhmm="11:00")
     assert pe.exit_inputs(off, None, state).t09 is None and pe.exit_inputs(gone, None, state).t09 is None
     assert pe.exit_inputs(None, None, state) == ExitInputs(None, None, "11:00")
     position, chain, spot = inputs(load("ADJ-02"))

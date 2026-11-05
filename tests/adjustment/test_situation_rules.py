@@ -55,7 +55,7 @@ def _state(**kw) -> pe.StrategyState:
             "shorts": (pe.ShortLeg(D(22600), D("0.10"), D(20)), pe.ShortLeg(D(23450), D("0.45"), D(60))),
             "held": _held(), "today": DAY1, "entry_day": DAY1 + datetime.timedelta(days=1),
             "pnl": D(1000), "max_profit": D(10000), "max_loss": D(20000), "adjustments_used": 0,
-            "s02_delta_per_lot": DEFAULTS_S02, "s12_percent": DEFAULTS_S12}  # the registry defaults, passed in
+            "s02_delta_per_lot": DEFAULTS_S02, "s12_percent": DEFAULTS_S12, "stops": None}  # registry defaults
     base.update(kw)
     return pe.StrategyState(**base)
 

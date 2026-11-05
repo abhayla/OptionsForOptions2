@@ -217,6 +217,9 @@ class Watched:
     #: stored, ``layers.Unreadable``), read on the rebuild with the plan. REQUIRED (no default), as above: the check
     #: builds every roll on the strategy's basis in force, the same as the Compare
     entry_facts: Any
+    #: contract step 3: the strategy's ``adjustment_check.Resolved`` (its stop lines in force come from it through
+    #: ``settings_in_force.stops_of``). None = not supplied: every stop answers "not checked", never a pass
+    resolved: Any = None
 
 
 def _seconds(delta: datetime.timedelta) -> Decimal:
@@ -405,18 +408,12 @@ def state_from_market(watched: Watched, market: MarketInputs, now: datetime.date
     spot = resolve_spot(market.feed, None, market.last_close, now=now, windows=settings_calc.feed_windows(values))
     return check.state_of(watched.tracked, market, spot, margin, None, fresh=True, body=watched.body,
                           config=prefs.approach, user_values=user_values, strategy_layer=watched.strategy_layer,
-                          entry_facts=watched.entry_facts)
+                          entry_facts=watched.entry_facts, resolved=watched.resolved)
 
 
 #: the worker's margin seam: the strategy and the market of its last check -> the screen's margin block (``state``
 #: ``stated`` with ``value``, or a non-stated block, or None for a failed read)
 MarginOf = Callable[["Watched", MarketInputs], Awaitable[Mapping | None]]
-
-
-def t16_on(body: Mapping | None) -> bool:
-    """A playbook whose T-16 (loss vs margin) rule is on."""
-    t = None if body is None else (body.get("triggers") or {}).get("T-16")
-    return isinstance(t, Mapping) and t.get("on") is True
 
 
 def carry_rule_on(body: Mapping | None) -> bool:
@@ -426,9 +423,16 @@ def carry_rule_on(body: Mapping | None) -> bool:
                and r.get("action") == pe.DAY_ACTION_CARRY_CHECK for r in rules) if isinstance(rules, list) else False
 
 
-def margin_needed(body: Mapping | None) -> bool:
-    """The strategies whose margin is read: T-16 on OR a carry day rule on."""
-    return t16_on(body) or carry_rule_on(body)
+def margin_needed(body: Mapping | None, resolved: Any = None) -> bool:
+    """The strategies whose margin is read: an ACTIVE % of margin stop line in force (``settings_in_force``, contract
+    step 3: never the body's T-16 directly) OR a carry day rule on. ``resolved``: the strategy's
+    ``adjustment_check.Resolved`` (a pre-ADR-247 plan's own T-16); None -> the body as a followed playbook."""
+    from ofo_app import settings_in_force as sif  # noqa: PLC0415 - it imports adjustment_check, as this module does
+
+    if body is None:
+        return False
+    r = resolved if resolved is not None else check.Resolved("active", body, None, None, False)
+    return sif.margin_line_on(r) or carry_rule_on(body)
 
 
 @dataclass(frozen=True)
@@ -449,7 +453,7 @@ class MarginCache:
 
     def seen(self, w: Watched, market: MarketInputs) -> None:
         """A check's market (its instrument ids are the margin basket's keys); read by the next refresh."""
-        if margin_needed(w.body):
+        if margin_needed(w.body, w.resolved):
             self._markets[w.strategy_id] = (w.tracked.position.legs, market)
 
     def block_for(self, w: Watched, now: datetime.datetime) -> Mapping | None:
@@ -460,7 +464,7 @@ class MarginCache:
         return e.block
 
     def due(self, w: Watched, now: datetime.datetime) -> bool:
-        if self._margin_of is None or not margin_needed(w.body) or w.strategy_id not in self._markets:
+        if self._margin_of is None or not margin_needed(w.body, w.resolved) or w.strategy_id not in self._markets:
             return False
         e = self._entries.get(w.strategy_id)
         return e is None or e.legs != w.tracked.position.legs or _seconds(now - e.read_at) >= MARGIN_REFRESH_S
@@ -1583,7 +1587,7 @@ async def owner_lister(provider: Any, gate: Any = None) -> Listed:
             continue
         if resolved.body is not None:
             out.append(Watched(OWNER_REF, s.id, tracked, resolved.body, resolved.is_system, OWNER_REF,
-                               resolved.strategy_layer, facts))
+                               resolved.strategy_layer, facts, resolved=resolved))
     return Listed(out, unread)
 
 

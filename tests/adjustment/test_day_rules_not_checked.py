@@ -23,7 +23,7 @@ def _ic() -> dict:
 
 def _state() -> pe.StrategyState:
     shorts = (pe.ShortLeg(D(22600), D("0.01"), D("1.95")), pe.ShortLeg(D(23450), D("0.40"), D("60")))
-    return pe.StrategyState(expiry_kind="weekly", days_left=3, hhmm="09:30", spot=D("23400"), shorts=shorts,
+    return pe.StrategyState(stops=None, expiry_kind="weekly", days_left=3, hhmm="09:30", spot=D("23400"), shorts=shorts,
                             prices_fresh=True)
 
 

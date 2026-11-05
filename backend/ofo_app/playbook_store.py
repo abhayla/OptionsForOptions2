@@ -576,6 +576,16 @@ async def accept_plan(conn: Any, user_ref: str, strategy_id: int, playbook_id: i
     return _plan(row)
 
 
+#: ADR-250: when the ADR-247 iron condor default (migration 0040, reason "ADR-247: ...") was saved; a plan accepted
+#: before it keeps its own stops. No such version (a database before 0040) -> None: every plan predates ADR-247.
+_ADR247_SAVED_AT = text("SELECT min(saved_at) FROM public.system_playbook_versions "
+                        "WHERE strategy_type = 'ic' AND reason LIKE 'ADR-247:%'")
+
+
+async def adr247_saved_at(conn: Any) -> datetime | None:
+    return (await conn.execute(_ADR247_SAVED_AT)).scalar_one_or_none()
+
+
 async def plan_for(conn: Any, user_ref: str, strategy_id: int) -> Plan | None:
     row = (await conn.execute(_SELECT_PLAN, {"strategy_id": strategy_id, "user_ref": user_ref})).one_or_none()
     return None if row is None else _plan(row)

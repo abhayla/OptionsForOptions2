@@ -1205,6 +1205,14 @@ _TRIGGER_TEMPLATES: tuple[MessageTemplate, ...] = (
     _trig("no_expiry_values", 116, "This trigger has no values for this expiry type.", None,
           "Enter a value for expiry day in the playbook."),
     _trig("no_short_leg", 117, "No short leg."),
+    _trig("stop_not_supplied", 511, "The stop lines in force were not supplied to this check, so the stop is not "
+          "checked."),
+    _trig("stop_no_credit", 512, "No net credit has been collected so far (zero or a net debit), so the 2x-credit "
+          "stop is not checked. The max-loss stop is still checked."),
+    _trig("stop_credit_unknown", 513, "The net credit collected so far could not be read, so the 2x-credit stop is "
+          "not checked. The max-loss stop is still checked."),
+    _trig("stop_value_unreadable", 514, "The stop value saved in the playbook cannot be read, so this stop is not "
+          "checked."),
     _trig("missing_spot", 118, "Spot not available."),
     _trig("missing_short_delta", 119, "Delta of a short leg not available."),
     _trig("missing_short_price", 120, "Price of a short leg not available."),

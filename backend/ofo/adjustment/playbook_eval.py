@@ -30,6 +30,7 @@ from typing import Final, Literal
 
 from ofo import market_calendar as mc
 from ofo.adjustment import level_watch
+from ofo.adjustment import stop_lines as sl
 from ofo.adjustment.approaches import KINDS, ExitInputs
 from ofo.adjustment.offered import offered_now
 from ofo.engine import adjust_ratios as ratios
@@ -134,6 +135,10 @@ class StrategyState:
     #: ``other.situation_big_win_percent`` for S-12); None = not read, so that situation answers not checked
     s02_delta_per_lot: Decimal | None = None
     s12_percent: Decimal | None = None
+    #: contract step 3 (ADR-245/247/250/251): the stop lines in force, from ``settings_in_force.stops_of`` ONLY (the
+    #: evaluator owns no stop value). REQUIRED, no default: a caller that forgets the stops cannot build a state; None
+    #: = not supplied, so the stop answers "not checked" (``sl.STOPS_NOT_SUPPLIED``), never a pass
+    stops: sl.StopsInForce | None = field(kw_only=True)
 
 
 # ---- results ---------------------------------------------------------------------------------------------------------
@@ -447,11 +452,6 @@ def _finite(value, what: str) -> Decimal:
     return value
 
 
-def _t06(c: _Ctx) -> Hit:
-    pnl = _need(c.state.pnl, "pnl")
-    return _compare(c, "T-06", *ratios.loss_pct_of_max_loss(pnl, _finite(c.state.max_loss, "max_loss")))
-
-
 def _t07(c: _Ctx) -> Hit:
     pnl = _need(c.state.pnl, "pnl")
     return _compare(c, "T-07", *ratios.profit_pct_of_max_profit(pnl, _finite(c.state.max_profit, "max_profit")))
@@ -492,16 +492,6 @@ def _t13(c: _Ctx) -> Hit:
     return _compare(c, "T-13", abs(_need(c.state.day_open, "day_open") - prev) * _HUNDRED, prev)
 
 
-def _t16(c: _Ctx) -> Hit:
-    margin = _need(c.state.margin, "margin")
-    pnl = _need(c.state.pnl, "pnl")
-    try:
-        pair = ratios.loss_pct_of_margin(pnl, margin)
-    except ValueError:
-        raise _Missing(f"{P}margin_not_positive") from None
-    return _compare(c, "T-16", *pair)
-
-
 def _t18(c: _Ctx) -> Hit:
     used = _need(c.state.adjustments_used, "adjustments_used")
     mx = c.body.get("guards", {}).get("max_adjustments")
@@ -529,8 +519,8 @@ def _t14(_c: _Ctx) -> Hit:
 
 
 _EVALUATORS: Final[dict[str, Callable[[_Ctx], Hit]]] = {
-    "T-01": _t01, "T-01b": _t01b, "T-02": _t02, "T-03": _t03, "T-06": _t06, "T-07": _t07, "T-09": _t09,
-    "T-10b": _t10b, "T-11": _t11, "T-13": _t13, "T-14": _t14, "T-16": _t16, "T-18": _t18, "T-19": _t19,
+    "T-01": _t01, "T-01b": _t01b, "T-02": _t02, "T-03": _t03, "T-07": _t07, "T-09": _t09,
+    "T-10b": _t10b, "T-11": _t11, "T-13": _t13, "T-14": _t14, "T-18": _t18, "T-19": _t19,
 }
 _T21: Final = "T-21"
 
@@ -600,7 +590,7 @@ def _withheld(state: StrategyState) -> str | None:
 
 def _later(c: _Ctx, tid: str) -> tuple[Decimal | str, ...]:
     """The limits of ``tid`` at the stages after this one (same tightening); a stage without a value is skipped."""
-    if c.stage is None:
+    if c.stage is None or sl.is_stop_rule(tid):  # a stop line is one amount in force, not a per-stage body value
         return ()
     out = []
     for i in range(c.stage + 1, len(c.body["stages"][c.state.expiry_kind])):
@@ -626,13 +616,41 @@ def _outcomes(body: Mapping, state: StrategyState, gap_until: str) -> tuple[_Ctx
     out = []
     for rule in body.get("rules", []):
         members = rule.get("any_of") or rule["all_of"]
+        if set(members) <= sl.STOP_TRIGGERS:  # a stop: answered from the stop lines in force below, never the body
+            continue
         if why is not None:
             out.append(_Outcome(rule["id"], members[0], reason=why))
         elif members == [_T21]:  # the T-21 guard: prices are fresh, so its condition is false
             out.append(_Outcome(rule["id"], _T21))
         else:
             out.append(_rule(c, rule))
+    out.extend(_stop_outcomes(state, why))
     return c, why, out
+
+
+def _stop_outcomes(state: StrategyState, why: str | None) -> list[_Outcome]:
+    """One ``stop.<kind>`` rule per ACTIVE stop line in force: the loss (``max(-pnl, 0)``) against the line's rupee
+    amount, exact and inclusive. No stops supplied -> the max-loss stop "not checked: stops not supplied"; a line with
+    no amount -> "not checked" with its reason (fail closed: never a passed stop)."""
+    if state.stops is None:
+        rid = sl.rule_id(sl.STOP_MAX_LOSS)
+        return [_Outcome(rid, rid, reason=why or sl.STOPS_NOT_SUPPLIED)]
+    out = []
+    for line in state.stops.lines:
+        if not line.active:
+            continue
+        rid = sl.rule_id(line.kind)
+        if why is not None:
+            out.append(_Outcome(rid, rid, reason=why))
+        elif line.amount is None or line.amount <= 0:
+            out.append(_Outcome(rid, rid, reason=sl.not_checked_code(line.reason)))
+        elif state.pnl is None:
+            out.append(_Outcome(rid, rid, reason=f"{P}missing_pnl"))
+        else:
+            loss = max(-state.pnl, Decimal(0))
+            fired = loss >= line.amount
+            out.append(_Outcome(rid, rid, (Hit(rid, loss, line.amount, "ge", fired),), fired=fired))
+    return out
 
 
 def evaluate(body: Mapping, state: StrategyState, memory: Mapping[str, Mapping[str, bool]] | None = None,

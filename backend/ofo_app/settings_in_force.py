@@ -35,6 +35,11 @@ from collections.abc import Mapping, Sequence
 from decimal import Decimal, InvalidOperation
 from typing import Any, Final
 
+from ofo.adjustment import playbook_eval as pe
+from ofo.adjustment import stop_lines as sl
+from ofo.adjustment.stop_lines import (CREDIT_UNKNOWN, GUARDS_UNREADABLE, MARGIN_NOT_READ, MAX_LOSS_UNKNOWN,
+                                       MAX_LOSS_UNLIMITED, NO_CREDIT, STAGE_UNKNOWN, STOP_CREDIT, STOP_MARGIN,
+                                       STOP_MAX_LOSS, STOP_VALUE_UNREADABLE, StopInForce, StopsInForce)
 from ofo.engine import adjust_money
 from ofo.engine.metrics import UNLIMITED
 from ofo.settings import layers
@@ -49,13 +54,6 @@ PLAYBOOK_SOURCE: Final = {"plan": layers.SOURCE_STRATEGY, "active": layers.SOURC
 NO_PLAYBOOK: Final = "settings_no_playbook"
 TRIGGERS_UNREADABLE: Final = "settings_triggers_unreadable"
 TRIGGER_UNREADABLE: Final = "settings_trigger_unreadable"
-GUARDS_UNREADABLE: Final = "stop_guards_unreadable"
-STOP_VALUE_UNREADABLE: Final = "stop_value_unreadable"
-MAX_LOSS_UNKNOWN: Final = "stop_max_loss_unknown"
-MAX_LOSS_UNLIMITED: Final = "stop_max_loss_unlimited"
-NO_CREDIT: Final = "stop_no_credit_received"
-CREDIT_UNKNOWN: Final = "stop_credit_unknown"
-MARGIN_NOT_READ: Final = "stop_margin_not_read"
 FIRST_UNKNOWN: Final = "stop_first_unknown"
 NO_ACTIVE_STOP: Final = "stop_none_active"
 
@@ -75,9 +73,6 @@ MAX_LOSS_PCT_DEFAULT: Final = Decimal(50)
 UNIT_CODES: Final = {"%": "pct", "pts": "pts", "x": "x", "Rs": "rs", "SD": "sd", "delta": "delta",
                      "delta/lot": "delta_per_lot", "time": "time"}
 
-STOP_MAX_LOSS: Final = "max_loss_pct"
-STOP_CREDIT: Final = "credit_multiple"
-STOP_MARGIN: Final = "margin_pct"
 
 
 @dataclasses.dataclass(frozen=True)
@@ -97,23 +92,6 @@ class TriggerInForce:
     weekly: tuple[Decimal | None, ...] | None
     monthly: tuple[Decimal | None, ...] | None
     source: str | None
-    reason: str | None
-
-
-@dataclasses.dataclass(frozen=True)
-class StopInForce:
-    kind: str  # STOP_MAX_LOSS / STOP_CREDIT / STOP_MARGIN
-    active: bool
-    figure: Decimal | None  # the % or the multiple in force
-    amount: Decimal | None  # the loss in rupees at which it fires (engine)
-    source: str | None
-    reason: str | None
-
-
-@dataclasses.dataclass(frozen=True)
-class StopsInForce:
-    lines: tuple[StopInForce, ...]
-    first: str | None
     reason: str | None
 
 
@@ -195,11 +173,30 @@ def triggers_of(resolved: check.Resolved) -> tuple[tuple[TriggerInForce, ...], s
 @dataclasses.dataclass(frozen=True)
 class MoneyInputs:
     """What the stop amounts are computed from: ``max_loss`` the Before's gross whole-trade max loss
-    (``price_after``, as the playbook check's T-06 reads it; None = not priced, UNLIMITED = unlimited) and
-    ``credit`` the open legs' entry credit (``adjust_money.trade_credit``; None = not read)."""
+    (``price_after``; None = not priced, UNLIMITED = unlimited), ``credit`` the net credit collected so far (ADR-251,
+    ``adjust_money.net_credit_so_far``: entry +/- every adjustment's net credit or debit, booked trades included;
+    None = not read) and ``margin`` Zerodha's stated margin (None = not read here, #627)."""
 
     max_loss: Decimal | Any | None
     credit: Decimal | None
+    margin: Decimal | None = None
+
+
+@dataclasses.dataclass(frozen=True)
+class StageAt:
+    """Where the strategy is in its playbook's stages (a plan saved before ADR-247 holds a per-stage %)."""
+
+    expiry_kind: str
+    days_left: int | None
+
+
+def net_credit(tracked: Any) -> Decimal | None:
+    """ADR-251: the net credit collected so far for a tracked strategy (book unread -> None, never 0)."""
+    position = tracked.position
+    if tracked.booked is None:
+        return None
+    return adjust_money.net_credit_so_far(tracked.booked, ((x.side, x.entry, x.lots * position.lot)
+                                                           for x in position.legs))
 
 
 def money_inputs(tracked: Any, market: Any, rates: Any) -> MoneyInputs:
@@ -207,8 +204,7 @@ def money_inputs(tracked: Any, market: Any, rates: Any) -> MoneyInputs:
     from ofo_app.routes.adjustment import price_after  # noqa: PLC0415 - it imports this package's routes
 
     position = tracked.position
-    credit = adjust_money.trade_credit((x.side, x.entry, x.lots * position.lot) for x in position.legs) \
-        if position.legs else None
+    credit = net_credit(tracked)
     if market is None:
         return MoneyInputs(None, credit)
     before = price_after(position.legs, position, tracked.booked, tracked.paid_charges, (), rates, market)
@@ -221,13 +217,70 @@ def _guard(guards: Mapping, key: str) -> Decimal | None:
     return None if raw is None else _decimal_text(raw)
 
 
-def stops_of(resolved: check.Resolved, money: MoneyInputs | None) -> StopsInForce:  # noqa: C901, PLR0912 - one row per answer state
+def _stage_value(body: Mapping, tid: str, at: StageAt | None) -> tuple[bool, Decimal | None, str | None]:
+    """ADR-250: a pre-ADR-247 plan's own per-stage % from its trigger ``tid``: (active, figure, reason)."""
+    trig = (body.get("triggers") or {}).get(tid) if isinstance(body.get("triggers"), Mapping) else None
+    if not isinstance(trig, Mapping):
+        return False, None, None
+    if trig.get("on") is not True:
+        return trig.get("on") is not False, None, None if trig.get("on") is False else STOP_VALUE_UNREADABLE
+    if at is None or at.days_left is None:
+        return True, None, STAGE_UNKNOWN
+    try:
+        stage = pe.stage_of(body, at.expiry_kind, at.days_left)  # type: ignore[arg-type]
+        values = trig.get(at.expiry_kind)
+        if stage is None:
+            return True, None, STAGE_UNKNOWN
+        return True, _decimal_text(values[stage]), None
+    except (ValueError, TypeError, KeyError, IndexError):
+        return True, None, STOP_VALUE_UNREADABLE
+
+
+def _saved_plan_lines(body: Mapping, money: MoneyInputs | None, at: StageAt | None) -> list[StopInForce]:
+    """ADR-250: a plan saved before ADR-247 keeps its own stops exactly as saved: its per-stage % of max loss (T-06)
+    and its % of margin (T-16) if on; NO 2x-credit line."""
+    source = layers.SOURCE_STRATEGY
+    max_loss = None if money is None else money.max_loss
+    margin = None if money is None else money.margin
+    lines = []
+    active, pct, reason = _stage_value(body, sl.TRIGGER_MAX_LOSS, at)
+    if active and pct is not None:
+        if max_loss is UNLIMITED:
+            reason = MAX_LOSS_UNLIMITED
+        elif not isinstance(max_loss, Decimal):
+            reason = MAX_LOSS_UNKNOWN
+    amount = adjust_money.stop_at_pct(max_loss, pct) if active and reason is None and pct is not None else None
+    lines.append(StopInForce(STOP_MAX_LOSS, active, pct, amount, source, reason))
+    active, pct, reason = _stage_value(body, sl.TRIGGER_MARGIN, at)
+    if active and pct is not None and margin is None:
+        reason = MARGIN_NOT_READ
+    amount = adjust_money.stop_at_pct(margin, pct) if active and reason is None and pct is not None else None
+    lines.append(StopInForce(STOP_MARGIN, active, pct, amount, source, reason))
+    return lines
+
+
+def _first(lines: list[StopInForce]) -> StopsInForce:
+    active = [x for x in lines if x.active]
+    if not active:
+        return StopsInForce(tuple(lines), None, NO_ACTIVE_STOP)
+    if any(x.amount is None for x in active):
+        return StopsInForce(tuple(lines), None, FIRST_UNKNOWN)
+    first = min(active, key=lambda x: x.amount)  # the smallest loss is reached first; ties keep the listed order
+    return StopsInForce(tuple(lines), first.kind, None)
+
+
+def stops_of(resolved: check.Resolved, money: MoneyInputs | None,  # noqa: C901, PLR0912 - one row per answer state
+             at: StageAt | None = None) -> StopsInForce:
+    """THE stop lines in force (the live check's only stop source, ``adjustment_check.state_of``). ``at``: the
+    strategy's stage (needed only by a plan saved before ADR-247, whose stops are per stage)."""
     body = resolved.body
     if resolved.source == "none" or body is None:
         return StopsInForce((), None, NO_PLAYBOOK)
     guards = body.get("guards", {}) if isinstance(body, Mapping) else None
     if not isinstance(guards, Mapping):
         return StopsInForce((), None, GUARDS_UNREADABLE)
+    if resolved.source == "plan" and resolved.saved_before_adr247:
+        return _first(_saved_plan_lines(body, money, at))
     source = PLAYBOOK_SOURCE.get(resolved.source)
     lines: list[StopInForce] = []
     max_loss = None if money is None else money.max_loss
@@ -266,17 +319,21 @@ def stops_of(resolved: check.Resolved, money: MoneyInputs | None) -> StopsInForc
     except ValueError:
         lines.append(StopInForce(STOP_MARGIN, True, None, None, None, STOP_VALUE_UNREADABLE))
     else:
+        margin = None if money is None else money.margin
         if margin_pct is None:
             lines.append(StopInForce(STOP_MARGIN, False, None, None, layers.SOURCE_DEFAULT, None))
-        else:
+        elif margin is None:
             lines.append(StopInForce(STOP_MARGIN, True, margin_pct, None, source, MARGIN_NOT_READ))
-    active = [x for x in lines if x.active]
-    if not active:
-        return StopsInForce(tuple(lines), None, NO_ACTIVE_STOP)
-    if any(x.amount is None for x in active):
-        return StopsInForce(tuple(lines), None, FIRST_UNKNOWN)
-    first = min(active, key=lambda x: x.amount)  # the smallest loss is reached first; ties keep the listed order
-    return StopsInForce(tuple(lines), first.kind, None)
+        else:
+            lines.append(StopInForce(STOP_MARGIN, True, margin_pct, adjust_money.stop_at_pct(margin, margin_pct),
+                                     source, None))
+    return _first(lines)
+
+
+def margin_line_on(resolved: check.Resolved) -> bool:
+    """The strategy's stops in force include an ACTIVE % of margin line (the background worker reads the margin only
+    then; ADR-247: off by default)."""
+    return any(x.kind == STOP_MARGIN and x.active for x in stops_of(resolved, None).lines)
 
 
 def in_force(user_values: Mapping[str, Decimal] | None, resolved: check.Resolved,
@@ -286,6 +343,8 @@ def in_force(user_values: Mapping[str, Decimal] | None, resolved: check.Resolved
     return InForce(settings_of(user_values, resolved.strategy_layer), triggers, reason, stops_of(resolved, money))
 
 
-__all__ = ["CREDIT_MULTIPLE_DEFAULT", "FIRST_UNKNOWN", "MAX_LOSS_PCT_DEFAULT", "NO_PLAYBOOK", "PLAYBOOK_SOURCE",
+__all__ = ["CREDIT_MULTIPLE_DEFAULT", "CREDIT_UNKNOWN", "GUARDS_UNREADABLE", "MARGIN_NOT_READ", "MAX_LOSS_UNKNOWN",
+           "MAX_LOSS_UNLIMITED", "NO_CREDIT", "STAGE_UNKNOWN", "STOP_CREDIT", "STOP_MARGIN", "STOP_MAX_LOSS",
+           "STOP_VALUE_UNREADABLE", "StageAt", "margin_line_on", "net_credit", "FIRST_UNKNOWN", "MAX_LOSS_PCT_DEFAULT", "NO_PLAYBOOK", "PLAYBOOK_SOURCE",
            "UNIT_CODES", "InForce", "MoneyInputs", "SettingInForce", "StopInForce", "StopsInForce", "TriggerInForce",
            "covered_keys", "in_force", "money_inputs", "setting_of", "settings_of", "stops_of", "triggers_of"]

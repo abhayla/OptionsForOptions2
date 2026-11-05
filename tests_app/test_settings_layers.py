@@ -170,7 +170,7 @@ def test_with_carry_values_the_figures_at_the_gap_in_force_never_the_markets_adm
     market = _market(D("2"))  # Friday 2026-10-30 15:00: the carry rule is due
     tracked = SimpleNamespace(position=SimpleNamespace(legs=()), booked=D("0"))
     gap = check.carry_gap_of(market.carry_gap_pct, _values(user), strategy)
-    got = check.with_carry(pe.StrategyState(expiry_kind="weekly", days_left=4, hhmm="15:00"), body, tracked, market,
+    got = check.with_carry(pe.StrategyState(stops=None, expiry_kind="weekly", days_left=4, hhmm="15:00"), body, tracked, market,
                            gap).carry
     assert (got.gap_pct, got.gap_source, got.gap_setting_reason) == expected
 
