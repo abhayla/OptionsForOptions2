@@ -10,6 +10,14 @@
     <ErrorMessage v-if="state === 'error'" :parts="errorParts" compact prefix="adjust-error" data-testid="adjust-error" />
     <p v-else-if="state === 'loading'" class="text-sm text-ink-muted" data-testid="adjust-loading">Loading the approaches.</p>
 
+    <!-- REQ-156 AC-1 / REQ-155 AC-5: no usable spot -> nothing is priced, so only this and each source's reason (no figures) -->
+    <div v-else-if="reply && noSpot" class="rounded-lg border border-line bg-surface p-3" data-testid="adjust-no-spot">
+      <p class="text-sm font-semibold">Spot not available</p>
+      <ul class="mt-1 text-sm">
+        <li v-for="r in spotReasons" :key="r.source" data-testid="adjust-no-spot-reason">{{ r.label }}: {{ r.reason }}</li>
+      </ul>
+    </div>
+
     <template v-else-if="reply">
       <div v-if="picked.length" class="flex flex-wrap items-center gap-2 text-sm" data-testid="adjust-scope">
         <label class="flex min-w-0 max-w-full flex-wrap items-center gap-2">Approaches in the compare
@@ -276,6 +284,16 @@ const groups = computed(() => {
 const cellOf = (c, id) => c.values?.[id]
 const isLeader = (c, id) => (c.leaders ?? []).includes(id) && cellOf(c, id)?.unavailable_reason == null && cellOf(c, id)?.text != null
 const leadsText = (id) => { const l = reply.value?.leads?.[id]; return l ? `${l.n} of ${l.m}` : UNAVAILABLE_VALUE }
+
+const SPOT_SOURCES = [['feed', 'Live feed'], ['rest_quote', 'One-time price request'], ['last_close', 'Last close']]
+const noSpot = computed(() => !!reply.value && (!reply.value.spot || reply.value.spot.value == null))
+const spotReasons = computed(() => {
+  const given = reply.value?.spot?.reasons ?? []
+  const text = (r) => { const v = r?.reason_text ?? r?.reason; return typeof v === 'string' && v.trim() ? v : 'reason not given' }
+  const known = SPOT_SOURCES.map(([source, label]) => ({ source, label, reason: text(given.find((r) => r.source === source)) }))
+  const extra = given.filter((r) => !SPOT_SOURCES.some(([s]) => s === r.source)).map((r) => ({ source: r.source, label: String(r.source), reason: text(r) }))
+  return [...known, ...extra]
+})
 
 const spotLine = computed(() => {
   const s = reply.value?.spot
