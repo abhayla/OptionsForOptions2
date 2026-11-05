@@ -119,10 +119,14 @@ const opportunityIds = computed(() => opportunitiesFromQuery(route.query.opp)) /
 // Open in builder and Confirm keeps them; sent once with the paper orders, then dropped. Validated as whole positive
 // numbers only: the server alone decides whether each may be named (owner, strategy, acted on, not yet named).
 const actedSuggestionIds = computed(() => opportunitiesFromQuery(route.query.acted))
-function prepareApproach({ legs: next, suggestionIds = [] }) { // the chosen approach's legs become the builder's legs; no order is placed
-  const { adjust: _gone, pick: _picks, opp: _opp, acted: _acted, ...rest } = route.query
+// REQ-112: how many orders the prepared basket held (`basket=4`, set by prepare, travels with `acted`); sent with the
+// paper orders so the server can tell completed from partly completed. Anything but a whole 1..64 is not sent.
+const preparedBasketLegs = computed(() => { const n = String(route.query.basket ?? ''); return /^[1-9]\d?$/.test(n) && Number(n) <= 64 ? Number(n) : null })
+function prepareApproach({ legs: next, suggestionIds = [], basketLegs = 0 }) { // the chosen approach's legs become the builder's legs; no order is placed
+  const { adjust: _gone, pick: _picks, opp: _opp, acted: _acted, basket: _basket, ...rest } = route.query
   const acted = opportunitiesFromQuery(suggestionIds.join(','))
-  router.replace({ query: acted.length ? { ...rest, acted: acted.join(',') } : rest })
+  const size = Number.isInteger(basketLegs) && basketLegs > 0 && basketLegs <= 64 ? { basket: String(basketLegs) } : {}
+  router.replace({ query: acted.length ? { ...rest, acted: acted.join(','), ...size } : rest })
   setLegs(next)
 }
 // a 404/409 to a basket naming records: a refused record (or the strategy gone or changed); the same ids would be
@@ -131,7 +135,7 @@ const ACTED_REFUSED = new Set([404, 409])
 // awaited: a later URL write (nameInUrl after the book re-read) spreads route.query and would put the ids back
 async function dropActed() { // the basket answered its records, or the server refused them: never sent again
   if (route.query.acted === undefined) return
-  const { acted: _acted, ...rest } = route.query
+  const { acted: _acted, basket: _basket, ...rest } = route.query
   await router.replace({ path: route.path, query: rest })
 }
 // W-090 (REQ-034 AC-4, AC-6): the scenario column and range the user picked; kept across every reload and push.
@@ -403,7 +407,7 @@ async function confirmPending(orders) {
   paperBusy.value = true
   paperError.value = ''
   try {
-    await postPaperOrders(api, id, orders, actedSuggestionIds.value)
+    await postPaperOrders(api, id, orders, actedSuggestionIds.value, preparedBasketLegs.value)
     await dropActed() // one basket answers the records once
   } catch (e) {
     paperError.value = (e?.parts ?? NEUTRAL_PARTS).what_happened || NEUTRAL_PARTS.what_happened // nothing changes locally on a refusal

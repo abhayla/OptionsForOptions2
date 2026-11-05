@@ -348,7 +348,7 @@ async function openInBuilder() {
     const legs = legsFromApproach(underlying.value, a, contracts, reply.value.spot?.at ?? null)
     if (!legs) { prepareError.value = NEUTRAL_PARTS; return }
     const acted = await markActedOn()
-    emit('prepare', { legs, underlying: underlying.value, suggestionIds: acted })
+    emit('prepare', { legs, underlying: underlying.value, suggestionIds: acted, basketLegs: (a.trades ?? []).length })
   } catch (e) {
     prepareError.value = e?.parts ?? NEUTRAL_PARTS
   }
