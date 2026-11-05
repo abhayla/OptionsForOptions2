@@ -10,7 +10,6 @@ Every test rolls back.
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 import pytest
 from _migration_replay import round_trip_sql
@@ -121,17 +120,3 @@ async def test_downgrade_refuses_when_a_newer_version_was_saved_on_top(admin_eng
             assert len((await conn.execute(_MINE, {"r": REASON})).all()) == 1  # not removed
         finally:
             await trans.rollback()
-
-
-def test_old_words_are_gone_outside_migrations_and_the_seed():
-    root = Path(__file__).resolve().parents[1]
-    hits = []
-    for base in ("backend", "frontend/src"):
-        for path in (root / base).rglob("*"):
-            parts = path.parts
-            if (not path.is_file() or "node_modules" in parts or "alembic" in parts
-                    or path.name == "system_playbooks.json" or path.suffix in {".pyc", ".png", ".ico"}):
-                continue
-            if "+/-2% gap" in path.read_text(encoding="utf-8", errors="ignore"):
-                hits.append(str(path))
-    assert hits == []

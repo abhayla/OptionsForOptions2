@@ -47,7 +47,7 @@ suggestion (legs changed) -> paper exit -> history totals = sum of the paper fil
    (branch `live/serve-1105` at b5ae7021, purpose recorded in its `.worktree-meta.json`), started with:
    `APP_ENV=development LIVE_MARKET=1 python D:\Abhay\Ventures\OptionsForOptions2\scripts\orchestrator\dev_run.py
    D:\Abhay\Ventures\OptionsForOptions2-live python -m uvicorn --factory ofo_app.main:create_app --app-dir backend
-   --loop ofo_app.event_loop:selector_loop --host 127.0.0.1 --port 8765` (logs `D:\Abhay\scratch\gcic1pi-live-tree.*`).
+   --loop ofo_app.event_loop:selector_loop --host 127.0.0.1 --port 8765` (logs `D:\Abhay\scratch\gcic1\api-live-tree.*`).
    So the run tree (settings tree) is free: merges there never reach the live app.
 2. The run MUST NOT, at any time: edit, merge into or check out anything in the frozen tree; stop or restart the app
    on 8765; or run anything against `ofo_dev` - EXCEPT the Stage D dev move in point 3. All proofs use throwaway

@@ -8,11 +8,14 @@
   "where": "ic-e2e-paper goal run Stage B1 round 2",
   "evidence": "pure evaluator flags S-12 at 54% vs 40% on the seeded entry day; DB run: no record; seed UPDATE: 'permission denied for table paper_orders'."
  },
- "fix": "Open (recommended): read the entry day from placed_at, falling back to created_at when absent; parked from the ic-e2e-paper run.",
+ "fix": "Fixed 2026-11-06 (dc54140e, ic-e2e Stage D core-proof fix): adjustment_readers.entered_at reads the orders' placed_at (ADR-240: the session the strategy was entered); a failing test first in tests_app/test_situation_state.py (2 failed -> 4 passed). Live: placed_at is the order route's own clock at the same instant, so no change.",
  "detection": {
-  "status": "unguarded",
-  "checks": [],
-  "note": "tests_app/test_ic_rules_worker_paths.py holds S-12 as a strict known blocker."
+  "status": "guarded",
+  "checks": [
+   "tests_app/test_situation_state.py",
+   "tests_app/test_ic_paper_loop_core.py"
+  ],
+  "note": "The core proof failed on 2026-11-06 only because the run's real date equalled the scenario date (date-dependent): S-12 opened a record at frame 0."
  },
  "spec_ref": [
   "spec/requirements/REQ-165.md"
@@ -22,6 +25,11 @@
    "date": "2026-11-05",
    "where": "scenario seeds",
    "evidence": "S-12 never raised on a seeded entry day"
+  },
+  {
+   "date": "2026-11-06",
+   "where": "core proof on merged feature/adjustments 9bd23a73",
+   "evidence": "CORE-FRAME k=0 rules=['sit.S-12'] ... 1 failed; after the fix 1 passed in 155.51s"
   }
  ]
 }

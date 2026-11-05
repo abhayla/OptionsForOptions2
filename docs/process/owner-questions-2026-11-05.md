@@ -29,3 +29,6 @@ What the run did (technical call, reversible): T-14 is evaluated in TEST-DATA (s
 stays "pending / not checked yet" exactly as before. Proven by tests both ways.
 Recommendation: turn T-14 on for live after you look at its value on strategy 82 (one line change + its live test).
 Expect T-14 alerts on most short iron condors near expiry, since a 1% move costs more than 3% of margin there.
+
+ANSWERED 2026-11-06 ~01:2x IST via the question tool: (f) "Keep test-data only for now (Recommended)". Written as
+ADR-253 (T-14 scenario-only; live keeps "not checked yet"; strategy 82's value measured read-only after the dev move).
