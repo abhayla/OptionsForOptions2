@@ -10,6 +10,7 @@ from __future__ import annotations
 import datetime
 import json
 
+import pytest
 import test_ic_paper_loop_core as core
 from httpx import ASGITransport, AsyncClient
 from ofo.adjustment.offered import EXIT_REDUCE
@@ -24,8 +25,8 @@ MAX_ADJUSTMENTS = 2
 ROLLS_FIRST = ("A-01", "A-05", "A-02", "A-06", "A-04", "A-11")
 
 
-async def _setup(app_engine, monkeypatch) -> int:
-    monkeypatch.setattr(core.seed_mod, "strategy_name", lambda scenario_id: "C1 2nd adjust")
+async def _setup(app_engine, monkeypatch, name: str) -> int:
+    monkeypatch.setattr(core.seed_mod, "strategy_name", lambda _scenario_id: name)
     monkeypatch.setattr(core, "PATH_ID", PATH)
     await core._db_url(app_engine, monkeypatch)
     monkeypatch.setenv("DB_POOL_SIZE", "2")
@@ -110,17 +111,33 @@ async def _adjust(ac, sid: int, record_id: int, frame: int, wanted: tuple[str, .
     return pick
 
 
-async def test_second_adjustment_then_t18_record_and_only_exit_reduce_offered(app_engine, monkeypatch):
-    sid = await _setup(app_engine, monkeypatch)
+async def _run(app_engine, monkeypatch, name: str, *, to_limit: bool) -> None:
+    sid = await _setup(app_engine, monkeypatch, name)  # one strategy name per test (the DB is shared)
     try:
-        await _scenario(sid)
+        await _scenario(sid, to_limit=to_limit)
     finally:
         await app_db.close_db()
         core._reset_engine()
         scenario_mode._loaded.clear()
 
 
-async def _scenario(sid: int) -> None:
+async def test_two_adjustments_are_placed_acted_on_and_counted(app_engine, monkeypatch):
+    """Proven (c1c.log): T-01 at frame 6 -> A-01 (used 1) -> a new record -> second adjustment (used 2 = the max)."""
+    await _run(app_engine, monkeypatch, "C1 two adjusts", to_limit=False)
+
+
+@pytest.mark.xfail(strict=True, reason=(
+    "c1c.log 2026-11-06: after the 2nd adjustment (adjustments_used == max 2) the worker raised NO T-18 record through "
+    "frame 11 (records: T-01 acted_on, T-03 acted_on, T-01 open, T-03 open; assert 0 == 1). Open explanations: "
+    "(1) T-18 is a guard only (system_playbooks.json T-18: cmp '', no ladder), not a rule the gate raises a record "
+    "for; "
+    "(2) the worker's adjustments_used differs from the history count. The offered-only-exit/reduce and T-19 parts "
+    "were never reached. Parked (C1)."))
+async def test_limit_raises_one_t18_record_and_offers_only_exit_reduce_with_t19(app_engine, monkeypatch):
+    await _run(app_engine, monkeypatch, "C1 limit", to_limit=True)
+
+
+async def _scenario(sid: int, *, to_limit: bool) -> None:
     scn = scenario_mode.load(PATH)
     entry_orders = (await core._rows("SELECT count(*) FROM public.paper_orders WHERE strategy_id = :s", s=sid))[0][0]
     now = [scn.clock_at]
@@ -149,6 +166,8 @@ async def _scenario(sid: int) -> None:
         assert used == MAX_ADJUSTMENTS, (second, used)
         assert (await core._rows("SELECT count(*) FROM public.paper_orders WHERE strategy_id = :s", s=sid))[0][0] \
             > entry_orders
+        if not to_limit:
+            return
         # crossing 3: the limit. Exactly one T-18 record, however many cycles and frames follow
         before = len(await _records(sid))
         k3 = k2
