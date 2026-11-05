@@ -383,6 +383,7 @@ INVENTORY = (
     'FIELD AdjustmentPlanOut.stops.lines[].figure: Money',
     'FIELD AdjustmentPlanOut.stops.lines[].figure: None',
     'FIELD AdjustmentPlanOut.stops.lines[].kind: Identifier',
+    'FIELD AdjustmentPlanOut.stops.lines[].later[]: Money',
     'FIELD AdjustmentPlanOut.stops.lines[].reason: Identifier',
     'FIELD AdjustmentPlanOut.stops.lines[].reason: None',
     'FIELD AdjustmentPlanOut.stops.lines[].source: Identifier',
