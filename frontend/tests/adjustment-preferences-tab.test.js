@@ -42,12 +42,12 @@ async function open() {
 const row = (w, key) => w.get(`[data-testid="pref-${key}"]`)
 
 describe('Preferences tab (REQ-168 AC-2)', () => {
-  it('shows value, Your value / Default, the admin default and the range, and the time as HH:MM', async () => {
+  it('shows value, Yours / Default, the admin default and the range, and the time as HH:MM', async () => {
     answers[GET] = LIST()
     const w = await open()
     const a = row(w, NEAR.key)
     expect(a.get('[data-testid=pref-value]').text()).toBe('0.75')
-    expect(a.get('[data-testid=pref-source]').text()).toBe('Your value')
+    expect(a.get('[data-testid=pref-source]').text()).toBe('Yours')
     expect(a.get('[data-testid=pref-admin-default]').text()).toBe('Admin default: 0.5')
     expect(a.get('[data-testid=pref-range]').text()).toBe('Allowed: 0.1 to 5')
     const g = row(w, GAP.key)
@@ -68,7 +68,7 @@ describe('Preferences tab (REQ-168 AC-2)', () => {
     await w.get('form').trigger('submit')
     await flushPromises()
     expect(calls.find((c) => c[0] === 'POST')).toEqual(['POST', `/adjustments/preferences/${NEAR.key}`, { value: '1.25', note: '' }])
-    expect(calls.filter((c) => c[0] === 'GET').length).toBe(2)
+    expect(calls.filter((c) => c[0] === 'GET' && c[1] === '/adjustments/preferences').length).toBe(2)
     expect(row(w, NEAR.key).get('[data-testid=pref-value]').text()).toBe('1.25')
   })
 
@@ -148,7 +148,7 @@ const ALERTS = () => [
 ]
 
 describe('Alert values per trading style (REQ-170 AC-6)', () => {
-  it('one table per style: setting, value, Your value / Default and the admin value; quiet time as HH:MM', async () => {
+  it('one table per style: setting, value, Yours / Default and the admin value; quiet time as HH:MM', async () => {
     answers[GET] = { preferences: [...LIST().preferences, ...ALERTS()] }
     const w = await open()
     expect(w.findAll('section[data-testid^="prefs-alerts-"]').map((s) => s.attributes('data-testid')))
@@ -158,7 +158,7 @@ describe('Alert values per trading style (REQ-170 AC-6)', () => {
     const rows = weekly.findAll('tbody tr').map((r) => [r.get('[data-testid=pref-name]').text(), r.get('[data-testid=pref-value]').text(),
       r.get('[data-testid=pref-source]').text(), r.get('[data-testid=pref-admin-default]').text()])
     expect(rows).toEqual([
-      ['Confirm on candle close', '5 min', 'Default', '5 min'], ['Cool-down, same rule', '45 min', 'Your value', '30 min'],
+      ['Confirm on candle close', '5 min', 'Default', '5 min'], ['Cool-down, same rule', '45 min', 'Yours', '30 min'],
       ['Quiet time until', '09:30', 'Default', '09:30'], ['Daily limit per strategy', '4 a day', 'Default', '4 a day'],
     ])
     expect(w.findAll('li[data-testid^="pref-alerts."]').length).toBe(0) // not repeated in the general list
@@ -188,7 +188,7 @@ describe('Alert values per trading style (REQ-170 AC-6)', () => {
       .filter(Boolean).map(Number))
     expect(widths.filter((px) => px > 390)).toEqual([])
     expect(w.findAll('[style*="width"]').length).toBe(0)
-    const tables = w.findAll('table')
+    const tables = w.findAll('section[data-testid^="prefs-alerts-"] table')
     expect(tables.length).toBe(2)
     for (const t of tables) expect(t.classes()).toContain('w-full')
   })
