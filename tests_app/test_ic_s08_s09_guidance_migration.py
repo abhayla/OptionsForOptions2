@@ -31,6 +31,14 @@ def _load(name: str, filename: str):
 
 M42 = _load("ofo_migration_0042_test", "0042_ic_s08_s09_guidance_adr244.py")
 M40 = _load("ofo_migration_0040_for_0042_test", "0040_ic_default_stop_adr247.py")
+M44 = _load("ofo_migration_0044_for_0042_test", "0044_ic_s06_carry_gap_wording.py")
+
+
+def _row(history, reason: str):
+    """(index, version) of the one history row written for ``reason`` (newest first): never 'the head'."""
+    found = [(i, v) for i, v in enumerate(history) if v.reason == reason]
+    assert len(found) == 1, reason
+    return found[0]
 
 
 @pytest.fixture
@@ -66,9 +74,10 @@ def test_s09_names_the_users_carry_gap_not_a_fixed_percent() -> None:
 
 async def test_new_version_is_appended_with_reason_and_lists_s08_s09_as_guidance(db):
     history = await sys_store.history(db, "ic")
-    assert history[0].reason == M42.REASON and history[0].version == history[1].version + 1
-    assert history[1].reason == M40.REASON  # the version it was built from is kept
-    new, before = history[0].body, history[1].body
+    i, mine = _row(history, M42.REASON)
+    assert mine.version == history[i + 1].version + 1
+    assert history[i + 1].reason == M40.REASON  # the version it was built from is kept
+    new, before = mine.body, history[i + 1].body
     assert _ids(new) == sorted(_ids(new)) and {"S-08", "S-09"} <= set(_ids(new))
     assert {"S-08", "S-09"}.isdisjoint(_ids(before))
     kinds = {k["id"]: k for k in situation_kinds(new)}
@@ -92,7 +101,8 @@ async def test_adr247_and_adr252_stops_are_intact_in_the_new_version(db):
 async def test_user_copy_and_saved_plan_are_byte_identical_across_the_upgrade(db):
     user = _user()
     cur = await sys_store.current(db, "ic")
-    older = await sys_store.restore(db, ADMIN, "ic", cur.version - 1, "pre-ADR-244 body", cur.version)
+    pre = _row(await sys_store.history(db, "ic"), M40.REASON)[1]  # the version 0042 was built from, by its reason
+    older = await sys_store.restore(db, ADMIN, "ic", pre.version, "pre-ADR-244 body", cur.version)
     assert "S-08" not in _ids(older.body)
     system = await pbs.active_for(db, user, "ic")
     copy = await pbs.duplicate(db, user, system.id, "My IC")
@@ -124,17 +134,24 @@ async def test_downgrade_removes_only_its_own_row_found_by_reason(db, admin_engi
     async with admin_engine.connect() as conn:
         outer = await conn.begin()
         try:
-            rows = (await conn.execute(text(
-                f"SELECT version, reason FROM {M42.TABLE} WHERE strategy_type = 'ic' ORDER BY version"  # noqa: S608
-            ))).all()
-            mine = [v for v, r in rows if r == M42.REASON]
-            assert len(mine) == 1 and mine[0] == rows[-1][0]
             statements: list[str] = []
 
             class _Op:
                 def execute(self, sql):
                     statements.append(str(sql))
 
+            # 0042's downgrade refuses (OF042) under a newer version, so put the database where 0042 was the newest:
+            # undo the later iron condor migration (0044) first, found by its own reason, in this same transaction
+            M44.op = _Op()
+            M44.downgrade()
+            for sql in statements:
+                await conn.execute(text(sql))
+            statements.clear()
+            rows = (await conn.execute(text(
+                f"SELECT version, reason FROM {M42.TABLE} WHERE strategy_type = 'ic' ORDER BY version"  # noqa: S608
+            ))).all()
+            mine = [v for v, r in rows if r == M42.REASON]
+            assert len(mine) == 1 and mine[0] == rows[-1][0]
             M42.op = _Op()
             M42.downgrade()
             # the last statement is the app-role allow-list check; every statement runs, the check included
