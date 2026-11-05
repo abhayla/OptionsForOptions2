@@ -108,6 +108,9 @@ class PaperOrdersIn(BaseModel):
     #: REQ-163 AC-1: the acted-on suggestion records this basket answers (Compare -> Open in builder); each must be
     #: of this strategy and user, acted on and not yet linked, or the whole basket is refused (nothing stored)
     suggestion_ids: list[Annotated[int, Field(gt=0, le=INTEGER_MAX)]] = Field(default_factory=list, max_length=16)
+    #: REQ-112 (IC e2e 11): how many legs the prepared basket held; with it the linked records read completed (all
+    #: placed) or partly completed (some); without it they stay acted on
+    basket_legs: int | None = Field(default=None, gt=0, le=64)
 
 
 class PaperNetOut(ApiModel):
@@ -746,7 +749,8 @@ async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR
             entry=entry)  # ADR-243: stored only if this is the strategy's first fill
         new_ids = [o.id for o in book][-len(body.orders):]  # place inserts in order under the strategy's row lock
         for suggestion_id in dict.fromkeys(body.suggestion_ids):  # REQ-163 AC-1: same transaction, or nothing
-            await playbook_store.link_orders(db, user_ref, strategy_id, suggestion_id, new_ids)
+            await playbook_store.link_orders(db, user_ref, strategy_id, suggestion_id, new_ids,
+                                           body.basket_legs)
         await db.commit()
     except store.StrategyStoreError as exc:
         await db.rollback()

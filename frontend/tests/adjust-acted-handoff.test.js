@@ -75,6 +75,25 @@ describe('the acted-on records survive a reload and are sent once', () => {
     expect(posts()[0].body.suggestion_ids).toEqual(['41', '42'])
     expect(router.currentRoute.value.query).toEqual({ strategy: '63' })
   })
+  it('prepare writes the prepared basket size, and a confirm sends it as basket_legs once (REQ-112)', async () => {
+    const { w, router } = await openBuilder({ strategy: '63', adjust: '63', pick: 'A-01', opp: '41' })
+    w.vm.$.setupState.prepareApproach({ legs: w.vm.$.setupState.legs, suggestionIds: ['41'], basketLegs: 4 })
+    await flushPromises()
+    expect(router.currentRoute.value.query).toEqual({ strategy: '63', acted: '41', basket: '4' })
+    answers[ORDERS] = { ok: true }
+    await confirmOneExit(w)
+    expect(posts()[0].body.basket_legs).toBe('4')
+    expect(router.currentRoute.value.query).toEqual({ strategy: '63' })
+  })
+  it('a junk or missing basket size is never sent (the server then keeps the record acted on)', async () => {
+    for (const basket of ['0', 'x', '99', '-1']) {
+      calls.length = 0
+      const { w } = await openBuilder({ strategy: '63', acted: '41', basket })
+      answers[ORDERS] = { ok: true }
+      await confirmOneExit(w)
+      expect(posts()[0].body).not.toHaveProperty('basket_legs')
+    }
+  })
   it('a junk acted value is never sent', async () => {
     const { w } = await openBuilder({ strategy: '63', acted: 'abc,0' })
     answers[ORDERS] = { ok: true }

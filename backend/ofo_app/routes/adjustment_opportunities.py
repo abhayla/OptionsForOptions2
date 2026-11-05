@@ -115,9 +115,10 @@ class SuggestionOut(ApiModel):
 
 
 def outcome_text(s: store.Suggestion, paper: bool) -> Any:
-    if s.outcome == "acted_on" and paper:
+    shown = s.shown_outcome
+    if shown == "acted_on" and paper:
         return render_explanation("suggestion_outcome_acted_on_paper")
-    return render_explanation(f"suggestion_outcome_{s.outcome}")
+    return render_explanation(f"suggestion_outcome_{shown}")
 
 
 def _detail(s: store.Suggestion) -> Any:
@@ -141,7 +142,7 @@ def condition_text(s: store.Suggestion) -> Any:
 def _record(s: store.Suggestion, paper: bool) -> dict:
     return {"id": s.id, "rule_id": s.rule_id, "trigger_id": s.trigger_id,
             "stage": stage_name_text(s.stage), "value": s.value, "threshold": s.threshold,
-            "condition": condition_text(s), "shown_at": s.shown_at, "outcome": s.outcome,
+            "condition": condition_text(s), "shown_at": s.shown_at, "outcome": s.shown_outcome,
             "outcome_text": outcome_text(s, paper), "detail": _detail(s), "can_act": s.outcome == "open"}
 
 
@@ -169,7 +170,7 @@ def inbox_body(rows: list[store.InboxRow], held: list[store.HeldInboxRow] | None
         n = len(g["records"])
         g["summary"] = render_explanation("suggestion_group_count", count=n) if n > 1 else None
         g["has_open"] = any(r["can_act"] for r in g["records"])
-    counted = {o: sum(1 for r in rows if r.suggestion.outcome == o) for o in OUTCOMES}
+    counted = {o: sum(1 for r in rows if r.suggestion.shown_outcome == o) for o in OUTCOMES}
     return {"groups": list(groups.values()), "held": held_body(held or []),
             "counts": [{"outcome": o, "text": render_explanation(f"suggestion_outcome_{o}"), "count": counted[o]}
                        for o in OUTCOMES],

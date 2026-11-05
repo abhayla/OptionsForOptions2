@@ -171,6 +171,26 @@ class Suggestion:
         return tuple(ids) if isinstance(ids, list) and all(type(i) is int for i in ids) else ()
 
     @property
+    def basket_legs(self) -> int | None:
+        """How many legs the prepared basket held when it was placed (the ``orders_placed`` entry); None when the
+        placement did not say, or the entry is unreadable."""
+        found = [e for e in self.timeline if isinstance(e, dict) and e.get("event") == ORDERS_PLACED]
+        legs = found[0].get("basket_legs") if found else None
+        return legs if type(legs) is int and legs > 0 else None
+
+    @property
+    def shown_outcome(self) -> str:
+        """REQ-112 AC-3 (IC e2e design 11): the outcome from what was actually placed. An acted-on record whose basket
+        placed every leg it held is completed, some of them partly_completed; no basket named, the basket's size not
+        said, no readable orders, or more orders than legs (inconsistent) stay acted_on. Others are as stored."""
+        if self.outcome != "acted_on":
+            return self.outcome
+        placed, legs = self.placed_order_ids, self.basket_legs
+        if not placed or legs is None or len(set(placed)) > legs:
+            return "acted_on"
+        return "completed" if len(set(placed)) == legs else "partly_completed"
+
+    @property
     def lapse_reason(self) -> str | None:
         """condition_stopped / strategy_closed / superseded_by_worse on a lapsed record (its last timeline entry)."""
         return self.timeline[-1].get("reason") if self.outcome == "lapsed" and self.timeline else None
@@ -279,7 +299,8 @@ _MARK_CLEARED = text(
 ORDERS_PLACED = "orders_placed"
 _LINK_ORDERS = text(
     "UPDATE public.adjustment_suggestions AS g SET timeline = g.timeline || jsonb_build_array(jsonb_build_object("
-    "'at', clock_timestamp(), 'event', 'orders_placed', 'order_ids', CAST(:order_ids AS JSONB))) "
+    "'at', clock_timestamp(), 'event', 'orders_placed', 'order_ids', CAST(:order_ids AS JSONB), "
+    "'basket_legs', CAST(:basket_legs AS JSONB))) "
     "FROM public.strategies s WHERE g.id = :id AND s.id = g.strategy_id AND s.user_ref = :user_ref "
     "AND g.strategy_id = :strategy_id AND g.outcome = 'acted_on' "
     "AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(g.timeline) e WHERE e ->> 'event' = 'orders_placed') "
@@ -677,8 +698,8 @@ async def act_on(conn: Any, user_ref: str, suggestion_id: int) -> Suggestion:
     return await _close(conn, user_ref, suggestion_id, "acted_on", None)
 
 
-async def link_orders(conn: Any, user_ref: str, strategy_id: int, suggestion_id: int,
-                      order_ids: list[int]) -> None:
+async def link_orders(conn: Any, user_ref: str, strategy_id: int, suggestion_id: int,  # noqa: PLR0913
+                      order_ids: list[int], basket_legs: int | None = None) -> None:
     """REQ-163 AC-1: the acted-on record ``suggestion_id`` names the paper orders ``order_ids`` its basket placed.
 
     Fail closed, nothing written: a missing record, another user's, or one of another strategy -> SUGGESTION_NOT_FOUND;
@@ -687,7 +708,8 @@ async def link_orders(conn: Any, user_ref: str, strategy_id: int, suggestion_id:
     if type(suggestion_id) is not int or not order_ids or any(type(i) is not int for i in order_ids):
         raise strategy_store.StrategyStoreError(SUGGESTION_NOT_FOUND, f"suggestion {suggestion_id!r}")
     args = {"id": suggestion_id, "user_ref": user_ref, "strategy_id": strategy_id}
-    row = (await conn.execute(_LINK_ORDERS, {**args, "order_ids": json.dumps(order_ids)})).one_or_none()
+    row = (await conn.execute(_LINK_ORDERS, {**args, "order_ids": json.dumps(order_ids),
+                                                 "basket_legs": json.dumps(basket_legs)})).one_or_none()
     if row is not None:
         return
     found = (await conn.execute(_SUGGESTION_OF_STRATEGY, args)).first()
