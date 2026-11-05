@@ -140,6 +140,7 @@ async def _core(app_engine) -> None:  # noqa: PLR0915 - one readable walk of the
                        clock=lambda: now[0], settings=settings, preferences=preferences, user_values=user_values,
                        before_cycle=before_cycle)
     t01_at: dict[int, int] = {}
+    total_at: dict[int, int] = {}
     for k in range(CROSS_FRAME + 1):
         await _move(k)
         start = datetime.datetime.fromisoformat(frame_doc(k)["clock"]["ist"])
@@ -149,12 +150,15 @@ async def _core(app_engine) -> None:  # noqa: PLR0915 - one readable walk of the
         assert scn.frame == k and str(scn.provider.underlying_quote("NIFTY").ltp) == str(frame_doc(k)["market"]["spot"])
         t01_at[k] = len(await _rows("SELECT id FROM public.adjustment_suggestions "
                                     "WHERE strategy_id = :s AND rule_id = 'T-01'", s=sid))
+        total_at[k] = len(await _rows("SELECT id FROM public.adjustment_suggestions WHERE strategy_id = :s", s=sid))
     assert worker.errors == [], worker.errors
-    assert t01_at[CROSS_FRAME - 1] == 0 and t01_at[CROSS_FRAME] == 1, t01_at
-    record = (await _rows("SELECT id, outcome FROM public.adjustment_suggestions "
-                          "WHERE strategy_id = :s AND rule_id = 'T-01'", s=sid))[0]
-    assert record[1] == "open"
-    all_records = await _rows("SELECT rule_id FROM public.adjustment_suggestions WHERE strategy_id = :s", s=sid)
+    # contract Proof: ONE record in total, 0 of any rule through frame 5 (PATH-01's legs make T-01 the only crossing)
+    assert all(total_at[k] == 0 for k in range(CROSS_FRAME)), total_at
+    assert total_at[CROSS_FRAME] == 1 and t01_at[CROSS_FRAME] == 1, (total_at, t01_at)
+    all_records = await _rows("SELECT id, outcome, rule_id FROM public.adjustment_suggestions WHERE strategy_id = :s",
+                              s=sid)
+    record = all_records[0]
+    assert (record[1], record[2]) == ("open", "T-01")  # T-01 IS that record
 
     from ofo_app.main import create_app  # noqa: PLC0415 - after the environment above
     scenario_mode._loaded.clear()
@@ -201,5 +205,5 @@ async def _core(app_engine) -> None:  # noqa: PLR0915 - one readable walk of the
     booked = D(history.json()["totals"]["booked"])
     assert booked == cash, (history.json()["totals"], cash)
     print(f"CORE-PROOF strategy={sid} marker={PATH_ID} t01_by_frame={t01_at} records_all={len(all_records)} "
-          f"rules={sorted(r[0] for r in all_records)} entry_orders={entry_orders} a01_orders={len(new)} "
-          f"fills={len(fills)} booked={booked} sum_of_fills={cash}")
+          f"total_by_frame={total_at} rules={sorted(r[2] for r in all_records)} entry_orders={entry_orders} "
+          f"a01_orders={len(new)} fills={len(fills)} booked={booked} sum_of_fills={cash}")

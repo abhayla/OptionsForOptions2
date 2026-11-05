@@ -165,9 +165,9 @@ def test_path_ids_accepted_by_the_one_reader_and_malformed_ones_refused():
 
 def test_moving_a_path_feeds_the_frame_through_the_real_parser():
     scn = scenario_mode.load("PATH-01")
-    assert str(scn.provider.underlying_quote("NIFTY").ltp) == "23000"
+    assert str(scn.provider.underlying_quote("NIFTY").ltp) == "23290"
     scn.move_to(6)
-    assert scn.frame == 6 and str(scn.provider.underlying_quote("NIFTY").ltp) == "23420"  # noqa: PLR2004
+    assert scn.frame == 6 and str(scn.provider.underlying_quote("NIFTY").ltp) == "23390"  # noqa: PLR2004
     assert scn.clock().isoformat() == "2026-11-06T11:40:00+05:30"
     assert scn.clock_box == [scn.clock()]  # the provider clock reads this box
 

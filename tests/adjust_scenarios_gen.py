@@ -1939,6 +1939,33 @@ def path_frame(base: dict, frame: dict) -> dict:
     return out
 
 
+def path_position(base: dict, spec: dict) -> dict:
+    """The path's own iron condor when the spec states ``legs`` (side, type, strike, lots; the base's expiry): each
+    leg's entry is the generator's own price at the base entry clock and spot with the spec's ``entry_atm_iv``, and
+    the credit received is re-derived. No ``legs`` -> the base position unchanged."""
+    position = json.loads(json.dumps(base["position"]))
+    if not spec.get("legs"):
+        return position
+    entry = position["entry"]
+    at = datetime.datetime.fromisoformat(entry["clock"])
+    atm = D(spec["entry_atm_iv"])
+    expiry = position["legs"][0]["expiry"]
+    lot = int(base["lot"])
+    symbols = {(r["type"], D(r["strike"])): r["tradingsymbol"] for c in base["market"]["chains"]
+               if c["expiry"] == expiry for r in c["rows"]}
+    legs = []
+    for leg in spec["legs"]:
+        strike = D(leg["strike"])
+        price = option_row(leg["type"], D(entry["spot"]), strike, year_fraction(at, datetime.date.fromisoformat(expiry)),
+                           atm)["ltp"]
+        legs.append({"side": leg["side"], "type": leg["type"], "strike": strike, "expiry": expiry, "lots": leg["lots"],
+                     "quantity": leg["lots"] * lot, "entry": price, "tradingsymbol": symbols[(leg["type"], strike)]})
+    credit = sum(((1 if x["side"] == "SELL" else -1) * x["entry"] * x["quantity"] for x in legs), D(0))
+    position.update(legs=legs, credit_received=credit.quantize(D("0.01")))
+    position["entry"] = {**entry, "atm_iv": atm}
+    return position
+
+
 def generate_paths(out_dir: Path = PATHS_DIR, scenarios_dir: Path = OUT_DIR) -> list[str]:
     """Expands every ``PATH-NN.json`` in ``out_dir`` into ``PATH-NN/frame-KKK.json`` (deterministic: same input, same
     bytes)."""
@@ -1949,7 +1976,8 @@ def generate_paths(out_dir: Path = PATHS_DIR, scenarios_dir: Path = OUT_DIR) -> 
         folder = out_dir / spec["id"]
         folder.mkdir(parents=True, exist_ok=True)
         for k, frame in enumerate(spec["frames"]):
-            doc = {**path_frame(base, frame), "id": spec["id"], "path": {"base": spec["base"], "frame": k,
+            doc = {**path_frame(base, frame), "position": path_position(base, spec), "id": spec["id"],
+                   "path": {"base": spec["base"], "frame": k,
                                                                           "last": len(spec["frames"]) - 1}}
             name = folder / f"frame-{k:03d}.json"
             name.write_bytes(dump(doc).encode("utf-8"))
