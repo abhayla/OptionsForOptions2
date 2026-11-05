@@ -23,6 +23,13 @@ Rules (each one decided here and stated, catalogue Part 2 followed where the con
   naming that strike (``adjust_no_price``), never a strike picked past it (GC-IC1 round 3); with no fitting strike and
   a gap, the gap is named too. Every contract the builder could not price is listed in ``unpriced`` so the caller can
   hold it once and build again.
+- Roll basis (ADR-243): ``Config.roll_basis`` (the basis in force, resolved strategy -> user -> default by the
+  caller). Target delta = the roll distance above, unchanged; None (not resolved) = every roll refused.
+  Entry distance from spot (REQ-046 Q255) = the
+  moved short goes to spot + the side's distance stored at the first fill (``EntryFacts``), snapped to the nearest listed strike of its type
+  and expiry (tie: farther from spot); the wing moves the same distance (width kept); ``step_basis`` "entry_distance"
+  and ``step_value`` the entry distance in points. No entry spot, or a basis that could not be read: every roll is
+  refused naming the leg (fail closed, never the delta rule). A-06 steps ``shift_strikes`` listed strikes under both.
 - Landing: through the REQ-078 landing rule ``leg_edit.land`` (a strike not listed is refused naming the leg).
 - A-01 that would put the put short above the call short (or the call short below the put short) is refused: the
   condor would be inverted. Equal shorts are allowed.
@@ -69,7 +76,7 @@ import datetime
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from decimal import ROUND_HALF_UP, Decimal
-from typing import cast
+from typing import Final, cast
 
 from ofo.adjustment import liquidity
 from ofo.engine import adjust_money
@@ -114,6 +121,63 @@ class Config:
     partial_close_percent: int  # ADR-238 (2): A-25 closes this % of every leg's lots
     untested_decay_percent: int  # ADR-238 (3): A-26 needs the untested short this % below its entry
     shift_strikes: int = 1  # ADR-239 (3): A-06 steps the tested spread this many listed strikes
+    #: ADR-243: the roll basis in force for THIS strategy (``ofo_app.adjustment_check.roll_basis_of``, through the
+    #: three-layer resolver). None = NOT RESOLVED: every roll is refused (``adjust_roll_basis_unreadable``), never the
+    #: target delta silently. A caller with no strategy passes ``NO_STRATEGY_BASIS`` explicitly; every production path
+    #: sets it through ``ofo_app.routes.adjustment.priced_approach`` / ``with_basis`` (required ``roll_basis``)
+    roll_basis: RollBasis | None = None
+
+
+#: ADR-243 roll basis codes; the registry setting ``adjustments.roll_basis`` stores them as 1 / 2 (``BASIS_CODES``)
+ROLL_TARGET_DELTA: Final = "target_delta"
+ROLL_ENTRY_DISTANCE: Final = "entry_distance"
+BASIS_CODES: Final = {Decimal(1): ROLL_TARGET_DELTA, Decimal(2): ROLL_ENTRY_DISTANCE}
+
+
+@dataclass(frozen=True)
+class RollBasis:
+    """The roll basis in force for one strategy (ADR-243). Answer states:
+    - ``code`` target_delta -> today's rule (``roll_distance``), unchanged;
+    - ``code`` entry_distance + the side's STORED entry distance (``call_distance`` / ``put_distance``, written once
+      at the strategy's first fill, ``entry_facts_of``) -> keep widths, re-place the short at that distance from spot,
+      snapped to the nearest listed strike of its type and expiry (a tie goes to the strike farther from spot). Never
+      the current strike's distance: after a second roll it would inflate (353 -> 603);
+    - ``code`` entry_distance, the side's distance None (no entry facts stored, unreadable, or no short on that side
+      at entry) -> every roll of that side refused (``adjust_roll_entry_spot_unknown``), never the target delta;
+    - ``reason`` set (a settings layer that exists but could not be read) -> every roll refused
+      (``adjust_roll_basis_unreadable``), never a default.
+    ``source`` = where the basis came from (``ofo.settings.layers`` codes strategy / user / default)."""
+
+    code: str | None
+    source: str | None
+    entry_spot: Decimal | None = None
+    reason: str | None = None  # a resolver reason code (logs; the refusal is the catalogue's)
+    call_distance: Decimal | None = None  # entry short call strike - entry spot (stored at the first fill)
+    put_distance: Decimal | None = None  # entry spot - entry short put strike (stored at the first fill)
+
+
+#: the explicit basis of a caller that has no strategy (a pure what-if, a domain test): today's target-delta rule,
+#: no source. Production paths never use it: they resolve the strategy's basis (``adjustment_check.roll_basis_of``)
+NO_STRATEGY_BASIS: Final = RollBasis(ROLL_TARGET_DELTA, None)
+
+
+@dataclass(frozen=True)
+class EntryFacts:
+    """A strategy's facts at its FIRST fill (ADR-243): the spot then and each side's short distance from it. Written
+    once, never rewritten; a side with no short at entry has None."""
+
+    entry_spot: Decimal
+    call_distance: Decimal | None
+    put_distance: Decimal | None
+
+
+def entry_facts_of(spot: Decimal, shorts: Sequence[tuple[str, Decimal]]) -> EntryFacts:
+    """The entry facts from the spot at the first fill and the SOLD legs of that fill (type, strike): the call side's
+    short is the lowest sold call (the one nearest spot), the put side's the highest sold put. Distances are signed
+    (call: strike - spot; put: spot - strike), so an in-the-money short gives a negative distance."""
+    calls = [k for t, k in shorts if t == "CE"]
+    puts = [k for t, k in shorts if t == "PE"]
+    return EntryFacts(spot, min(calls) - spot if calls else None, spot - max(puts) if puts else None)
 
 
 @dataclass(frozen=True)
@@ -207,7 +271,9 @@ class ApproachLegs:
     refusal: str | None = None
     warnings: tuple[str, ...] = ()
     step_basis: str | None = None  # "delta" / "points" (rolls only)
-    step_value: Decimal | None = None  # the target delta or the points moved
+    step_value: Decimal | None = None  # the target delta, the points moved, or the entry distance in points
+    #: ADR-243: where the roll basis came from (strategy / user / default); None when no basis was read or no roll
+    basis_source: str | None = None
     #: the refusal and warnings as catalogue messages, for the API door (``refusal`` / ``warnings`` hold their text)
     refusal_message: UserFacingError | None = None
     warning_messages: tuple[UserFacingError, ...] = ()
@@ -377,6 +443,13 @@ class _Builder:
         """How far the short moves (signed points); records the basis used in ``self.basis``. The search reads the
         rows of ``leg.expiry`` only (A-04 passes the leg on the next expiry)."""
         up = (leg.type == "CE") == outward  # a call rolls out upwards, a put rolls out downwards
+        found = self.cfg.roll_basis
+        if found is None or found.reason is not None:  # not resolved / unreadable: refused, never the delta silently
+            raise _refusal("adjust_roll_basis_unreadable", leg=self.ref(leg))
+        if found.code == ROLL_ENTRY_DISTANCE:
+            return self.entry_distance(leg, found)
+        if found.code != ROLL_TARGET_DELTA:
+            raise _refusal("adjust_roll_basis_unreadable", leg=self.ref(leg))
         rows = sorted((r for r in self.chain if r.type == leg.type and r.expiry == leg.expiry
                        and (r.strike > leg.strike if up else r.strike < leg.strike)),
                       key=lambda r: abs(r.strike - leg.strike))  # the walk away from the short
@@ -402,6 +475,22 @@ class _Builder:
         if gap is not None:
             raise self._gap(leg, gap)
         return pick.strike - leg.strike
+
+    def entry_distance(self, leg: PositionLeg, basis: RollBasis) -> Decimal:
+        """ADR-243 / REQ-046 Q255: the short re-placed at its STORED entry distance from spot (the side's distance at
+        the first fill, never the current strike's), snapped to the nearest LISTED strike of its type on ``leg.expiry`` (a tie: the strike farther from
+        spot); returns the signed move. No entry spot -> refused naming the leg (fail closed, never the delta rule)."""
+        stored = basis.call_distance if leg.type == "CE" else basis.put_distance
+        if stored is None:
+            raise _refusal("adjust_roll_entry_spot_unknown", leg=self.ref(leg))
+        distance = stored if leg.type == "CE" else -stored  # signed: a put sits below spot
+        target = self.spot + distance
+        strikes = sorted({r.strike for r in self.chain if r.listed and r.type == leg.type and r.expiry == leg.expiry})
+        if not strikes:
+            raise _refusal("leg_edit_landing_not_tradable", leg=self.ref(leg))
+        snapped = min(strikes, key=lambda k: (abs(k - target), -abs(k - self.spot)))
+        self.basis = (ROLL_ENTRY_DISTANCE, abs(distance))
+        return snapped - leg.strike
 
     def roll(self, found: _Condor, side: str, outward: bool) -> tuple[list[Trade], list[PositionLeg],
                                                                         list[ClosedLeg]]:
@@ -647,7 +736,9 @@ def build_approach(position: Position, chain: Sequence[ChainRow], spot: Decimal,
     else:
         refusal = refusal_message = None
     basis, value = b.basis if b.basis is not None else (None, None)
-    base = ApproachLegs(approach_id, NAMES[approach_id], KINDS[approach_id], side, step_basis=basis, step_value=value)
+    source = config.roll_basis.source if config.roll_basis is not None and basis is not None else None
+    base = ApproachLegs(approach_id, NAMES[approach_id], KINDS[approach_id], side, step_basis=basis, step_value=value,
+                        basis_source=source)
     base = replace(base, unpriced=tuple(dict.fromkeys(b.unpriced)))
     if refusal is not None:
         return replace(base, refusal=refusal, refusal_message=refusal_message)

@@ -213,6 +213,10 @@ class Watched:
     #: body on the rebuild, never per check. REQUIRED (no default): a lister that forgets it cannot construct a
     #: Watched, so a plan's override is never silently dropped
     strategy_layer: Any
+    #: ADR-243: the strategy's stored entry facts (``adjustment_readers.entry_facts_in``: ``EntryFacts``, None = none
+    #: stored, ``layers.Unreadable``), read on the rebuild with the plan. REQUIRED (no default), as above: the check
+    #: builds every roll on the strategy's basis in force, the same as the Compare
+    entry_facts: Any
 
 
 def _seconds(delta: datetime.timedelta) -> Decimal:
@@ -400,7 +404,8 @@ def state_from_market(watched: Watched, market: MarketInputs, now: datetime.date
     passes them."""
     spot = resolve_spot(market.feed, None, market.last_close, now=now, windows=settings_calc.feed_windows(values))
     return check.state_of(watched.tracked, market, spot, margin, None, fresh=True, body=watched.body,
-                          config=prefs.approach, user_values=user_values, strategy_layer=watched.strategy_layer)
+                          config=prefs.approach, user_values=user_values, strategy_layer=watched.strategy_layer,
+                          entry_facts=watched.entry_facts)
 
 
 #: the worker's margin seam: the strategy and the market of its last check -> the screen's margin block (``state``
@@ -1540,7 +1545,12 @@ async def owner_lister(provider: Any, gate: Any = None) -> Listed:
     against the provider's instrument list and spot (as the screen's check). ``gate`` (the role's ``db_gate``) is held
     for the list read, then once per strategy's reads, never for the whole list (#636 r6): a write waits one hold."""
     from ofo_app import strategy_store  # noqa: PLC0415 - database layer at run time only
-    from ofo_app.adjustment_readers import TrackedExited, TrackedUnreadable, read_tracked  # noqa: PLC0415
+    from ofo_app.adjustment_readers import (  # noqa: PLC0415
+        TrackedExited,
+        TrackedUnreadable,
+        entry_facts_in,
+        read_tracked,
+    )
     from ofo_app.db import get_sessionmaker  # noqa: PLC0415
     from ofo_app.live_market import OWNER_REF  # noqa: PLC0415
     out, unread = Listed(), set()
@@ -1559,6 +1569,7 @@ async def owner_lister(provider: Any, gate: Any = None) -> Listed:
                                             provider.instrument_master())
                 async with get_sessionmaker()() as db:
                     resolved = await check.resolve(db, OWNER_REF, s.id, stype)
+                    facts = await entry_facts_in(db, s.id) if resolved.body is not None else None
         except TrackedExited:  # every leg exited: its open records lapse (REQ-112 AC-2; one writer, ADR-237 (6))
             async with held(gate, GATE_REBUILD), get_sessionmaker()() as db:  # one session at a time (#636 r4)
                 await _lapse_exited(db, OWNER_REF, s.id)
@@ -1572,7 +1583,7 @@ async def owner_lister(provider: Any, gate: Any = None) -> Listed:
             continue
         if resolved.body is not None:
             out.append(Watched(OWNER_REF, s.id, tracked, resolved.body, resolved.is_system, OWNER_REF,
-                               resolved.strategy_layer))
+                               resolved.strategy_layer, facts))
     return Listed(out, unread)
 
 

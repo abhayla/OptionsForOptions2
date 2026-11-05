@@ -117,7 +117,7 @@ def _tracked(scn) -> Tracked:
 
 def _watched(scn, n: int = 1) -> list[background.Watched]:
     t = _tracked(scn)
-    return [background.Watched("owner", FIRST_ID + i, t, NO_RULES, True, "owner", None) for i in range(n)]
+    return [background.Watched("owner", FIRST_ID + i, t, NO_RULES, True, "owner", None, None) for i in range(n)]
 
 
 class Calls:
@@ -464,7 +464,8 @@ async def _screen_state(prov, tracked, at, body) -> pe.StrategyState:
     market = await adjustment_readers.read_market(tracked, ctx)
     spot = resolve_spot(market.feed, None, market.last_close, now=market.now, windows=ctx.feed_windows)
     return adjustment_check.state_of(tracked, market, spot, None, None, adjustment_check.prices_fresh(ctx), body,
-                                     config=PREFS.approach, user_values=None, strategy_layer=None)
+                                     config=PREFS.approach, user_values=None, strategy_layer=None,
+                                     entry_facts=None)
 
 
 def _background_state(prov, watched, at) -> pe.StrategyState:
@@ -832,7 +833,7 @@ def _straddle(*, strikes=("22550",)) -> list[background.Watched]:
     legs = tuple(PositionLeg("SELL", kind, Decimal(k), datetime.date(2026, 10, 13), 1, Decimal("100"), "x")
                  for k in strikes for kind in ("CE", "PE"))
     t = Tracked(Position("NIFTY", 65, "weekly", datetime.date.min, legs), Decimal(0), None, adjustments_used=0)
-    return [background.Watched("owner", FIRST_ID, t, NO_RULES, True, "owner", None)]
+    return [background.Watched("owner", FIRST_ID, t, NO_RULES, True, "owner", None, None)]
 
 
 async def test_a_frame_for_a_monitored_leg_reads_available_and_fresh_with_no_screen(scn):
@@ -945,8 +946,9 @@ def _two_strategies(scn) -> tuple[list[background.Watched], tuple[str, str]]:
     full = _tracked(scn)
     part = dataclasses.replace(full, position=dataclasses.replace(full.position, legs=full.position.legs[:-1]))
     last = full.position.legs[-1]
-    return [background.Watched("owner", FIRST_ID, full, NO_RULES, True, "owner", None),
-            background.Watched("owner", FIRST_ID + 1, part, NO_RULES, True, "owner", None)], (str(last.strike), last.type)
+    watched = [background.Watched("owner", FIRST_ID, full, NO_RULES, True, "owner", None, None),
+               background.Watched("owner", FIRST_ID + 1, part, NO_RULES, True, "owner", None, None)]
+    return watched, (str(last.strike), last.type)
 
 
 async def test_only_a_strategy_whose_tokens_ticked_is_read_and_checked(scn, monkeypatch):

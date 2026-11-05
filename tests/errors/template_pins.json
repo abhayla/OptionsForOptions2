@@ -3730,5 +3730,13 @@
   "explanation:adjust_history_why_unreadable": {
     "sha256": "f594583346838525dceb61dd689bdab34f48618fa3ac65fac98f8bf9d73a6560",
     "reviewed": "pending owner read"
+  },
+  "adjust_roll_entry_spot_unknown": {
+    "sha256": "f6d39b442d386873bae121af3ac861ed115df136f1dc753957ae12eb9b1c3c77",
+    "reviewed": "pending owner read"
+  },
+  "adjust_roll_basis_unreadable": {
+    "sha256": "3f9f001e96976b950d63c1b68c0a2cb2208e76017ed7ea83acbe11a1f786aaa7",
+    "reviewed": "pending owner read"
   }
 }

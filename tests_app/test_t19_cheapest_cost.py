@@ -39,7 +39,7 @@ def _columns(sid: str) -> tuple[dict, dict[str, Column], object]:
     tracked, market, spot = s.inputs(sc)
     cols = {}
     for a in offered_approaches(s.body_of(sc)):
-        built, priced = priced_approach(a, tracked, market, spot, s.RATES, s.PREFS.approach)
+        built, priced = priced_approach(a, tracked, market, spot, s.RATES, s.PREFS.approach, roll_basis=s.BASIS)
         if built is not None and priced is not None:
             cols[a] = Column(built, priced.after, priced.reason, priced.charges_known, MarginRead(None))
     return sc, cols, market
@@ -122,7 +122,7 @@ def test_none_priceable_is_not_checked_with_the_reason():
     # every other priced approach are the ones the playbook offers that DO price (ADR-238 / ADR-239)
     body["approaches"]["applicable"] = [a for a in body["approaches"]["applicable"] if a in unpriced or a == "A-36"]
     assert unpriced and "A-26" not in body["approaches"]["applicable"]
-    got = check.cheapest_offered(body, tracked, market, spot, s.RATES, s.PREFS.approach)
+    got = check.cheapest_offered(body, tracked, market, spot, s.RATES, s.PREFS.approach, roll_basis=s.BASIS)
     assert (got.approach, got.cost, got.reason) == (None, None, cmp.NO_APPROACH_PRICED) and got.unpriced > 0
     ev = pe.evaluate(s.body_of(sc), pe.StrategyState("weekly", days_left=1, hhmm="15:00", spot=D("23020"),
                                                        premium_left=D("110.50"), adjustment_cost_reason=got.reason,
@@ -139,7 +139,7 @@ def test_no_approach_offered_is_not_checked_with_the_reason():
     assert offered_approaches(body) == ()
     assert cheapest_approach((), cols, market.chain) == cmp.Cheapest(None, None, cmp.NO_APPROACH_OFFERED)
     tracked, market, spot = s.inputs(sc)
-    got = check.cheapest_offered(body, tracked, market, spot, s.RATES, s.PREFS.approach)
+    got = check.cheapest_offered(body, tracked, market, spot, s.RATES, s.PREFS.approach, roll_basis=s.BASIS)
     assert got.reason == cmp.NO_APPROACH_OFFERED
     # wording per the #629 decisions (commit 9ab9aabf)
     assert pe.reason_text(got.reason).startswith("This playbook lists no adjustment we can price")

@@ -58,7 +58,8 @@ async def _screen_with(prov, tracked, at, body, margin_of=None) -> pe.StrategySt
     margin = None if margin_of is None else await current_margin(margin_of, tracked, market)
     spot = resolve_spot(market.feed, None, market.last_close, now=market.now, windows=ctx.feed_windows)
     return adjustment_check.state_of(tracked, market, spot, margin, None, adjustment_check.prices_fresh(ctx), body,
-                                     config=PREFS.approach, user_values=None, strategy_layer=None)
+                                     config=PREFS.approach, user_values=None, strategy_layer=None,
+                                     entry_facts=None)
 
 
 def _ic_watched(scn) -> background.Watched:

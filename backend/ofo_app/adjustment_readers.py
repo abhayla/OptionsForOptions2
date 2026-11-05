@@ -59,6 +59,39 @@ _SATURDAY = 5
 _CLOSE = SESSION_CLOSE  # one home: ofo.timeutil
 
 
+async def read_roll_inputs(strategy_id: int) -> tuple[Any, Any]:
+    """ADR-243: the strategy's roll-basis inputs, read ONCE per request: (its plan's settings layer, its entry facts).
+    Answer states, each fail closed with a named reason (never a default): plan absent -> None (follow the user); plan
+    read failed -> ``layers.Unreadable("plan_read_failed")``; entry facts stored -> ``EntryFacts``; none stored ->
+    None; unreadable -> ``layers.Unreadable``. The caller (``adjustment_check.roll_basis_of``) turns both into the
+    basis in force; an unreadable plan refuses every roll, missing entry facts refuse only "Entry distance" rolls."""
+    from ofo.settings import layers  # noqa: PLC0415 - read path only
+
+    from ofo_app import playbook_store  # noqa: PLC0415 - read path only
+    async with get_sessionmaker()() as db:
+        try:
+            plan = await playbook_store.plan_for(db, current_user_ref(), strategy_id)
+            layer: Any = None if plan is None else layers.strategy_layer(plan.body)
+        except Exception:
+            log.exception("roll basis: the plan of strategy %s could not be read", strategy_id)
+            layer = layers.Unreadable("plan_read_failed")
+        facts = await entry_facts_in(db, strategy_id)
+    return layer, facts
+
+
+async def entry_facts_in(db: Any, strategy_id: int) -> Any:
+    """ADR-243: the strategy's stored entry facts, as every roll-basis caller reads them (the Compare route through
+    ``read_roll_inputs``, the screen check, the playbook test, the worker's rebuild). Answer states: stored ->
+    ``EntryFacts``; none stored -> None; unreadable -> ``layers.Unreadable`` (named, never a guess)."""
+    from ofo.settings import layers  # noqa: PLC0415 - read path only
+
+    from ofo_app import entry_facts_store  # noqa: PLC0415 - read path only
+    try:
+        return await entry_facts_store.read(db, strategy_id)
+    except entry_facts_store.EntryFactsUnreadable as exc:
+        return layers.Unreadable(str(exc))
+
+
 class TrackedUnreadable(Exception):
     """The strategy exists for this user but its open legs cannot be read as option legs (named, never guessed)."""
 

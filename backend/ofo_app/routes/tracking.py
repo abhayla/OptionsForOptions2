@@ -462,7 +462,7 @@ async def exit_tracking(strategy_id: int, body: TrackingExitIn,  # noqa: PLR0913
                                    p.price, "exit", p.at or answered)  # type: ignore[arg-type] - live: price set
               for i, p in zip(body.legs, prices, strict=True)]
     # a racing exit that closed the leg first makes this one exceed the open quantity: refused as already exited
-    after = await _write(db, strategy_id, paper_store.place(db, user_ref, strategy_id, orders),
+    after = await _write(db, strategy_id, paper_store.place(db, user_ref, strategy_id, orders, entry=None),  # an exit
                          paper_store.EXIT_EXCEEDS_OPEN, "tracking_leg_already_exited")
     return await _answer(db, stored, after, ctx, feed, threshold, answered)
 

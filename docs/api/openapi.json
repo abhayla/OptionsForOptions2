@@ -66,6 +66,18 @@
             ],
             "title": "After Reason"
           },
+          "basis_source": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Basis Source"
+          },
           "charges": {
             "anyOf": [
               {

@@ -14,6 +14,7 @@ import adjust_scenarios_gen as gen
 import pytest
 from ofo.adjustment.approaches import (
     APPROACH_IDS,
+    NO_STRATEGY_BASIS,
     ChainRow,
     Position,
     PositionLeg,
@@ -26,7 +27,7 @@ from ofo.rules.inputs import DataHealth
 from ofo.settings import defaults as _registry_defaults
 
 FIX = Path(__file__).resolve().parents[1] / "fixtures" / "adjust_scenarios"
-CFG = _prefs_from(_registry_defaults()).approach  # the registry defaults, explicitly
+CFG = replace(_prefs_from(_registry_defaults()).approach, roll_basis=NO_STRATEGY_BASIS)  # registry defaults, no strategy
 IC_IDS = sorted(s["id"] for s in gen.scenarios() if s["family"] == "ic")  # the generator's own list, not a file scan
 
 

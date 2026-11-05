@@ -42,6 +42,7 @@ from ofo.adjustment.approaches import (
     ExitInputs,
     Position,
     PositionLeg,
+    RollBasis,
     build_approach,
     is_no_change,
 )
@@ -70,7 +71,7 @@ from ofo_app.api_models import AdjustApproachesOut
 from ofo_app.config import app_env
 from ofo_app.errors import ClosedRoute, Failure
 from ofo_app.outcome_margin import OutcomeMargin, PlannedOrderIn, margin_answer
-from ofo_app.routes.adjustment_preferences import UserPreferences
+from ofo_app.routes.adjustment_preferences import UserPreferences, UserValuesIn
 from ofo_app.routes.outcome import (
     MarketContext,
     get_margin_source,
@@ -162,6 +163,17 @@ def get_tracked_reader() -> TrackedReader:
     """The paper book reader (``adjustment_readers.read_tracked``); tests override it."""
     from ofo_app.adjustment_readers import read_tracked  # noqa: PLC0415 - it imports this module's dataclasses
     return read_tracked
+
+
+#: ADR-243: strategy id -> (its plan's settings layer, its entry facts), each possibly ``layers.Unreadable``
+RollInputsReader = Callable[[int], Awaitable[tuple[Any, Any]]]
+
+
+def get_roll_inputs_reader() -> RollInputsReader:
+    """The strategy's roll-basis inputs (``adjustment_readers.read_roll_inputs``), looked up at call time; tests
+    override it."""
+    from ofo_app import adjustment_readers  # noqa: PLC0415 - it imports this module's dataclasses
+    return adjustment_readers.read_roll_inputs
 
 
 def get_guards_reader() -> GuardsReader:
@@ -405,18 +417,29 @@ def as_of_market(tracked: Tracked, market: MarketInputs) -> Tracked:
         expiry_kind=market.expiry_kind or tracked.position.expiry_kind, booked=tracked.booked))  # ADR-238 (6)
 
 
+def with_basis(config: Config, roll_basis: RollBasis) -> Config:
+    """The approach config with the strategy's roll basis in force (ADR-243). ``roll_basis`` is required: a None
+    (not resolved) is refused here, so no production path can build a roll on an unresolved basis."""
+    if not isinstance(roll_basis, RollBasis):
+        raise TypeError("roll_basis must be the resolved RollBasis of the strategy (adjustment_check.roll_basis_of)")
+    return dataclasses.replace(config, roll_basis=roll_basis)
+
+
 def priced_approach(a: str, tracked: Tracked, market: MarketInputs, spot: Decimal,  # noqa: PLR0913 - the preferences value is a required parameter (GC-SET)
-                    rates: ChargeRates | None, config: Config, *, limits: liquidity.Limits | None = None,
-                    max_profit: Decimal | None = None,
+                    rates: ChargeRates | None, config: Config, *, roll_basis: RollBasis,
+                    limits: liquidity.Limits | None = None, max_profit: Decimal | None = None,
                     exits: ExitInputs | None = None) -> tuple[ApproachLegs | None, Priced | None]:
     """One approach as the approaches route and the Compare build and price it (the ONE build path; the playbook
     check's T-19 reads it too, ADR-221): an unknown id -> (None, None); refused -> (built, None); else the built legs
     and the whole-trade After of its legs, with this approach's own charges. ``limits`` / ``max_profit``: the
     playbook's liquidity limits and the Before's max profit (ADR-230 (1)); None: not applied. ``exits``: A-27's and
-    A-35's playbook inputs (``adjustment_check.exit_inputs_of``, ADR-238); None: both refused with the reason."""
+    A-35's playbook inputs (``adjustment_check.exit_inputs_of``, ADR-238); None: both refused with the reason.
+    ``roll_basis`` (ADR-243, REQUIRED, no default): the strategy's basis in force (``adjustment_check.roll_basis_of``),
+    so the Compare and the adjustment check build every roll on the same basis; it replaces ``config.roll_basis``."""
     if a not in APPROACH_IDS:
         return None, None
     position = tracked.position
+    config = with_basis(config, roll_basis)
     built = build_approach(position, market.chain, spot, a, config, None, limits, max_profit, exits)
     if built.refusal is not None:
         return built, None
@@ -461,7 +484,9 @@ async def adjustment_approaches(  # noqa: PLR0913, PLR0915 - FastAPI dependencie
         held_environ: Annotated[Mapping[str, str] | None, Depends(get_held_environ)],
         guards_of: Annotated[GuardsReader, Depends(get_guards_reader)],
         prefs: UserPreferences,
-        more_reader: Annotated[MoreMarketReader, Depends(get_more_market_reader)]) -> AdjustApproachesOut:
+        more_reader: Annotated[MoreMarketReader, Depends(get_more_market_reader)],
+        user_values: UserValuesIn,
+        roll_inputs: Annotated[RollInputsReader, Depends(get_roll_inputs_reader)]) -> AdjustApproachesOut:
     started = time.perf_counter()
     from ofo_app import adjustment_check as check  # noqa: PLC0415 - it imports this module's dataclasses
     from ofo_app.adjustment_readers import TrackedUnreadable  # noqa: PLC0415 - as above
@@ -473,6 +498,11 @@ async def adjustment_approaches(  # noqa: PLR0913, PLR0915 - FastAPI dependencie
     if tracked is None:  # not this user's, or no such strategy: nothing priced (attack 1)
         raise StrategyRefused("user_input_request_not_available", Failure.NOT_FOUND)
     rates = rates if isinstance(rates, ChargeRates) else None
+    # ADR-243: the roll basis in force for THIS strategy (plan, else the user's own, else the admin default) with its
+    # stored entry facts; every roll below is built on it and names it (step_basis / step_value / basis_source)
+    plan_layer, facts = await roll_inputs(strategy_id)
+    basis = check.basis_in_force(user_values, plan_layer, facts)  # the same resolution as the adjustment check
+    cfg = with_basis(prefs.approach, basis)
     market = await market_reader(tracked, ctx)
     tracked = as_of_market(tracked, market)
     spot = judge_spot(market, await rest_reader(tracked.position.underlying), ctx)
@@ -498,12 +528,13 @@ async def adjustment_approaches(  # noqa: PLR0913, PLR0915 - FastAPI dependencie
             b = price_after(position.legs, position, tracked.booked, tracked.paid_charges, (), rates, m)
             lim, mp = liquidity_inputs(guards, b)  # no playbook, no limits
             return b, lim, mp, [(a, priced_approach(a, tracked, m, spot.value, rates,  # type: ignore[arg-type]
-                                                    prefs.approach, limits=lim, max_profit=mp, exits=exits))
+                                                    cfg, roll_basis=basis, limits=lim, max_profit=mp,
+                                                    exits=exits))
                                 for a in asked]
         before, limits, max_profit, answers = price_all(market)
         # GC-IC1 round 3: the landing strikes nobody held are held ONCE more and everything is built again; never a
         # third read, whatever is still unpriced after it (bounded: at most one more LEG_WAIT_S)
-        extra = second_pass_ids([b for _, (b, _) in answers], market, position, prefs.approach)
+        extra = second_pass_ids([b for _, (b, _) in answers], market, position, cfg)
         more = await more_reader(tracked, ctx, extra) if extra else None
         if more is not None:
             market = more
@@ -527,7 +558,7 @@ async def adjustment_approaches(  # noqa: PLR0913, PLR0915 - FastAPI dependencie
         reply |= await _compare_reply(columns, tracked, spot.value, market, rates, pop_on, before,  # type: ignore[arg-type]
                                       margin_of, prefs, limits, guards)
     reply["available"] = _available(position, market.chain, spot.value if spot.available else None, dict(built_list),
-                                    prefs.approach, limits, max_profit, exits)
+                                    cfg, limits, max_profit, exits)
     reply["days_to_expiry"] = _days_to_expiry(position)
     total = time.perf_counter() - started
     log.info("adjustment approaches strategy=%s approaches=%s engine_s=%.4f total_s=%.4f",
@@ -582,6 +613,7 @@ async def _approach_item(a: str, built: ApproachLegs | None, priced: Mapping[str
     item: dict[str, Any] = {"id": built.id, "name": render_explanation(approach_name_id(built.id)),
                             "kind": built.kind, "side": built.side, "step_basis": built.step_basis,
                             "step_value": None if built.step_value is None else _money(built.step_value),
+                            "basis_source": built.basis_source,  # ADR-243: the basis's source per roll
                             "refusal": built.refusal_message, "warnings": list(built.warning_messages)}
     if built.refusal_message is None:
         item |= {"trades": [_leg_out(t) for t in built.trades], "after_legs": [_leg_out(x) for x in built.after],

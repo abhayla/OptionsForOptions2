@@ -23,6 +23,8 @@ from ofo_app import adjustment_check as check
 from ofo_app.routes.adjustment import MarketInputs, Tracked, priced_approach
 
 PREFS = from_values(registry_defaults())  # the registry defaults, passed explicitly (REQ-168 AC-1)
+#: ADR-243: the roll basis of a user who changed nothing on a strategy with no plan (the admin default, target delta)
+BASIS = check.basis_in_force(None, None, None)
 
 FIX = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "adjust_scenarios"
 PLAYBOOKS = json.loads((FIX / "_playbooks.json").read_text(encoding="utf-8"))
@@ -68,7 +70,7 @@ def compare_costs(tracked: Tracked, market: MarketInputs, spot: D) -> dict[str, 
     """The Compare's "This adjustment" cell of every built approach: the route's build path, then ``compare``."""
     cols = []
     for a in APPROACH_IDS:
-        built, priced = priced_approach(a, tracked, market, spot, RATES, PREFS.approach)
+        built, priced = priced_approach(a, tracked, market, spot, RATES, PREFS.approach, roll_basis=BASIS)
         if built is not None and priced is not None:
             cols.append(Column(built, priced.after, priced.reason, priced.charges_known, MarginRead(None)))
     ctx = Context(tracked.position, spot, market.chain, RATES, False, MarginRead(None), {}, tracked.adjustments_used,
@@ -80,4 +82,4 @@ def compare_costs(tracked: Tracked, market: MarketInputs, spot: D) -> dict[str, 
 def cheapest(sc: dict) -> Cheapest:
     """The checker's T-19 cost of a scenario: ``adjustment_check.cheapest_offered`` on the scenario's own inputs."""
     tracked, market, spot = inputs(sc)
-    return check.cheapest_offered(body_of(sc), tracked, market, spot, RATES, PREFS.approach)
+    return check.cheapest_offered(body_of(sc), tracked, market, spot, RATES, PREFS.approach, roll_basis=BASIS)

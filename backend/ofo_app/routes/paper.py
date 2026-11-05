@@ -24,11 +24,12 @@ from __future__ import annotations
 
 import datetime
 import logging
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Annotated, Any, Literal, get_args
 
 from fastapi import APIRouter, Depends
+from ofo.adjustment.approaches import EntryFacts, entry_facts_of
 from ofo.charges import ChargeRates
 from ofo.charges.paper_charges import PaperFill, charges_sum, paper_charges
 from ofo.charges.round_trip import ChargesNotComputable
@@ -702,6 +703,23 @@ def _check_price(price: Decimal) -> None:
         raise StrategyRefused("paper_price_invalid")
 
 
+def entry_facts(ctx: MarketContext | None, underlying: str, orders: Sequence[Any],
+                state: Mapping[int, tracked_contracts.TrackedContract]) -> EntryFacts | None:
+    """ADR-243: the entry facts this fill would store if it is the strategy's first (``paper_store.place`` decides):
+    the index's live spot now and each side's sold strike among the opening orders (``entry_facts_of``). Answer
+    states: not connected, no quote, or a quote that is not a positive price -> None (nothing stored; "Entry distance"
+    then refuses this strategy's rolls by name, never a guessed spot)."""
+    if not _connected(ctx):
+        return None
+    quote = ctx.provider.underlying_quote(underlying)  # type: ignore[union-attr] - connected: a provider
+    ltp = None if quote is None else quote.ltp
+    if not isinstance(ltp, Decimal) or ltp <= 0:
+        return None
+    shorts = [(c.instrument_type, c.strike) for o in orders if o.side == "SELL" and o.kind != "exit"
+              for c in (state[o.contract_id].stored.listed.contract,)]  # type: ignore[union-attr] - checked above
+    return entry_facts_of(ltp, shorts)
+
+
 @router.post("/paper/strategies/{strategy_id}/orders", status_code=201, response_model=PaperBookOut,
              dependencies=[Depends(refuse_orders)])  # GC-ADJ1 1b: no order in scenario mode
 async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR0913 - FastAPI dependencies
@@ -721,9 +739,11 @@ async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR
            for o in body.orders):
         raise StrategyRefused("paper_contract_not_tradable")
     placed_at = now()
+    entry = entry_facts(ctx, stored.saved.definition.underlying, body.orders, state)
     try:
         book = await paper_store.place(db, user_ref, strategy_id, [
-            paper_store.NewOrder(o.contract_id, o.side, o.quantity, o.price, o.kind, placed_at) for o in body.orders])
+            paper_store.NewOrder(o.contract_id, o.side, o.quantity, o.price, o.kind, placed_at) for o in body.orders],
+            entry=entry)  # ADR-243: stored only if this is the strategy's first fill
         new_ids = [o.id for o in book][-len(body.orders):]  # place inserts in order under the strategy's row lock
         for suggestion_id in dict.fromkeys(body.suggestion_ids):  # REQ-163 AC-1: same transaction, or nothing
             await playbook_store.link_orders(db, user_ref, strategy_id, suggestion_id, new_ids)

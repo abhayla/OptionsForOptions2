@@ -734,6 +734,18 @@
       "source": "ADR-222 (7), REQ-168 AC-1, AC-5; was ofo/adjustment/approach_config.json roll_points_without_delta.SENSEX"
     },
     {
+      "key": "adjustments.roll_basis",
+      "group": "Adjustment defaults",
+      "label": "Roll basis",
+      "unit": "choice",
+      "type": "integer",
+      "min": "1",
+      "max": "2",
+      "default": "1",
+      "what_it_changes": "Where a roll places the new short strike: 1 = Target delta (the first listed strike at or under the playbook's target delta; the default), 2 = Entry distance from spot (the short keeps the distance from spot it had at entry, snapped to a listed strike; spread widths are kept). Each strategy's plan can override it.",
+      "source": "ADR-243, REQ-046 Q255; was never typed in code (new in ADR-243: rolls were fixed at the target delta)"
+    },
+    {
       "key": "adjustments.iron_fly_min_days",
       "group": "Adjustment defaults",
       "label": "Fewest days left for the iron fly approach",

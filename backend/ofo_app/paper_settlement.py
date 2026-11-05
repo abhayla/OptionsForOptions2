@@ -170,7 +170,7 @@ async def _settle_strategy(conn: Any, due: Sequence[DueContract], closes: dict[t
                                            SETTLE_REASON))
         settled.append(Settled(d.strategy_id, d.contract_id, d.underlying, d.expiry, side, abs(net), price))
     if orders:
-        await paper_store.place(conn, first.user_ref, first.strategy_id, orders)
+        await paper_store.place(conn, first.user_ref, first.strategy_id, orders, entry=None)  # a settle: never a first fill
     return settled
 
 

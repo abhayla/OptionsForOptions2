@@ -499,6 +499,8 @@ async def _strategy_layer(db: Any, user_ref: str, strategy_id: int) -> layers.La
 async def _tested(db: Any, user_ref: str, data: TestIn, seams: _Seams) -> list[dict[str, Any]]:
     """Read only. Cheap first: a strategy with no open paper leg is skipped before any outside read; the rest are read
     TEST_READ_CONCURRENCY at a time, each under TEST_READ_LIMIT_SECONDS."""
+    from ofo_app.adjustment_readers import entry_facts_in  # noqa: PLC0415 - it imports routes.adjustment
+
     rows = await strategy_store.list_strategies(db, user_ref)
     tracked_ids = await paper_store.tracked_ids(db, [r.id for r in rows])
     listed = None if seams.ctx is None else seams.ctx.provider.instrument_master()
@@ -516,7 +518,8 @@ async def _tested(db: Any, user_ref: str, data: TestIn, seams: _Seams) -> list[d
         tracked, market, spot = read.tracked, read.market, read.spot
         state = check.state_of(tracked, market, spot, read.margin, seams.rates, check.prices_fresh(seams.ctx),
                                data.body, config=seams.prefs.approach, user_values=seams.user_values,
-                               strategy_layer=await _strategy_layer(db, user_ref, row.id))
+                               strategy_layer=await _strategy_layer(db, user_ref, row.id),
+                               entry_facts=await entry_facts_in(db, row.id))  # ADR-243: the roll basis's facts
         entry = check.scenario_entry(scenario_mode.current(), state, tracked.position)
         if entry is not None:
             state = dataclasses.replace(state, entry_atm_iv=entry.atm_iv)
