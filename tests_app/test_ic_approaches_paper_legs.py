@@ -167,8 +167,6 @@ async def test_diagnose_a35_time_exit_source(app_engine, monkeypatch):
                  "spot": reply["spot"]["value"], "spot_at": str(reply["spot"]["at"]),
                  "a35 refusal": (a35["refusal"] or {}).get("what_happened"), "a35 trades": bool(a35["trades"])}
         print("A35-FACTS " + json.dumps(facts, default=str))
-        with open("D:/Abhay/scratch/ic-e2e/b3-a35.txt", "w", encoding="utf-8") as out:
-            out.write(json.dumps(facts, default=str, indent=1))
         assert facts["guards time_exit via active_for"] == "14:30", facts
     finally:
         await _cleanup()
