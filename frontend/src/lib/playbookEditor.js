@@ -105,21 +105,14 @@ export function summaryLines(body, typeName, kind, labels) {
 }
 
 const present = (v) => v !== undefined && v !== null && v !== ''
-const EITHER_RULE = 'whichever comes first'
 
 /** The plan line (REQ-160 AC-1): one clause per value the playbook holds; a clause whose value is missing is left out,
- *  and no clause at all leaves out the line, so a brace never reaches the screen. The stop words follow the body's
- *  stop_line_rule: the loss words, the margin words, or both when the rule says whichever comes first or there is no rule (ADR-230 (4)). */
+ *  and no clause at all leaves out the line, so a brace never reaches the screen. The stop is NOT worded here (ADR-247):
+ *  the stops in force are the server's (`stop_words` on the plan reply, shown by the plan sheet and the Plan entry), so the
+ *  editor's preview of an unsaved draft leaves the stop out rather than word a second reading of the body's guards. */
 export function planLine(g, t) {
   const clauses = []
   if (present(g.profit_target_pct_of_max_profit)) clauses.push(fill(t.plan_target, { target: String(g.profit_target_pct_of_max_profit) }))
-  const loss = g.stop_line_pct_of_max_loss
-  const margin = g.stop_line_pct_of_margin
-  let words = null
-  if (present(loss) && present(margin) && (!present(g.stop_line_rule) || g.stop_line_rule === EITHER_RULE)) words = fill(t.stop_either, { pct: String(loss), margin: String(margin) })
-  else if (present(loss)) words = fill(t.stop_loss, { pct: String(loss) })
-  else if (present(margin)) words = fill(t.stop_margin, { margin: String(margin) })
-  if (words !== null) clauses.push(fill(t.plan_stop, { stop_words: words }))
   if (present(g.max_adjustments)) clauses.push(fill(t.plan_max, { max: String(g.max_adjustments) }))
   if (!clauses.length || !t.plan) return []
   const text = fill(t.plan, { clauses: clauses.join(t.plan_joiner ?? ', ') })

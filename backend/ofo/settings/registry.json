@@ -1152,6 +1152,42 @@
       "default": "120",
       "what_it_changes": "The shortest time between two background playbook checks of one strategy of this trading style. A larger number means fewer checks and less server work.",
       "source": "ADR-235 (1), REQ-166 AC-1, REQ-170 AC-6; range 1 to 600: under 1 s is faster than the worker wakes, over 10 minutes misses a candle close by more than the record timing allows (ADR-237 (3)); was ofo_app/calc_speeds.py KEY_BACKGROUND (one interval for every style)"
+    },
+    {
+      "key": "orders.default_lots",
+      "group": "Order defaults",
+      "label": "Lots an order starts at",
+      "unit": "count",
+      "type": "integer",
+      "min": "1",
+      "max": "50",
+      "default": "1",
+      "what_it_changes": "How many lots a new order starts with on the order screen; you can change it on each order before you send it.",
+      "source": "Contract \"Your adjustment settings\" step 3 (ADR-245: two layers, admin default -> user; a plan never sets them); new, was never typed in code"
+    },
+    {
+      "key": "orders.start_price",
+      "group": "Order defaults",
+      "label": "Price an order starts at",
+      "unit": "choice",
+      "type": "integer",
+      "min": "1",
+      "max": "3",
+      "default": "1",
+      "what_it_changes": "The limit price a new order starts at: 1 = mid of bid and ask (the default), 2 = last traded price, 3 = the price that fills now (ask to buy, bid to sell). You can change it on each order before you send it.",
+      "source": "Contract \"Your adjustment settings\" step 3 (ADR-245: two layers, admin default -> user; a plan never sets them); new, was never typed in code"
+    },
+    {
+      "key": "orders.validity",
+      "group": "Order defaults",
+      "label": "Order validity",
+      "unit": "choice",
+      "type": "integer",
+      "min": "1",
+      "max": "2",
+      "default": "1",
+      "what_it_changes": "How long a new order stays open at the exchange: 1 = for the day (DAY, the default), 2 = fill now or cancel (IOC). You can change it on each order before you send it.",
+      "source": "Contract \"Your adjustment settings\" step 3 (ADR-245: two layers, admin default -> user; a plan never sets them); new, was never typed in code"
     }
   ]
 }

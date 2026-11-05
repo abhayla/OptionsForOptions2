@@ -55,7 +55,12 @@ from ofo.adjustment.strategy_type import strike_gap_of, type_of
 from ofo.engine import adjust_money
 from ofo.engine.legs import Action, Instrument, Leg
 from ofo.engine.metrics import UNLIMITED
-from ofo.errors.explanations import LEVEL_WATCH_LABEL_TEXT, PLAYBOOK_DAY_RULE_ACTION_TEXT, render_explanation
+from ofo.errors.explanations import (
+    LEVEL_WATCH_LABEL_TEXT,
+    PLAYBOOK_DAY_RULE_ACTION_TEXT,
+    STOP_LABEL_TEXT,
+    render_explanation,
+)
 from ofo.marketdata.day_open import STATED
 from ofo.marketdata.spot_source import SourceState, SpotAnswer
 from ofo.settings import layers
@@ -88,6 +93,10 @@ class Resolved:
     playbook_id: int | None
     status: str | None  # a system playbook's status only; None for the user's own (REQ-158 AC-2)
     is_system: bool
+    #: ADR-250: a strategy PLAN accepted before the iron condor system version 2 (migration 0040) was saved; it keeps
+    #: its own stops (per-stage T-06 / T-16) and gains no 2x-credit line. Read in ``resolve`` from the plan's
+    #: ``accepted_at`` (kept on every re-save) against ``playbook_store.adr247_saved_at``; False for every other source
+    saved_before_adr247: bool = dataclasses.field(kw_only=True)  # REQUIRED, no default (contract step 3 r3)
 
     @property
     def draft(self) -> bool:
@@ -142,15 +151,23 @@ def strategy_type(position: Position, spot: Decimal | None, listed: list | None)
     return found
 
 
+async def plan_saved_before_adr247(conn: Any, plan: Any) -> bool:
+    """ADR-250: a plan accepted before the iron condor system version 2 (migration 0040) was saved (the plan's
+    ``accepted_at`` survives every re-save). Version 2 absent -> True: keep its own stops."""
+    cutoff = await playbook_store.adr247_saved_at(conn)
+    return cutoff is None or plan.accepted_at < cutoff
+
+
 async def resolve(conn: Any, user_ref: str, strategy_id: int, stype: str | None) -> Resolved:
     plan = await playbook_store.plan_for(conn, user_ref, strategy_id)
     if plan is not None:
-        return Resolved("plan", plan.body, plan.playbook_id, None, False)
+        return Resolved("plan", plan.body, plan.playbook_id, None, False,
+                        saved_before_adr247=await plan_saved_before_adr247(conn, plan))
     if stype is None:
-        return Resolved("none", None, None, None, False)
+        return Resolved("none", None, None, None, False, saved_before_adr247=False)
     pb = await playbook_store.active_for(conn, user_ref, stype)
     return Resolved("system" if pb.is_system else "active", pb.body, pb.id, pb.status if pb.is_system else None,
-                    pb.is_system)
+                    pb.is_system, saved_before_adr247=False)
 
 
 def _limit_value(v: Any) -> Decimal | str:
@@ -205,7 +222,7 @@ def exit_inputs_of(guards: Mapping | None, position: Position, now: datetime.dat
         return ExitInputs(None, None, hhmm)
     expiry = min(x.expiry for x in position.legs)
     tighten = _tighten(body, ist.date(), expiry, hhmm) if isinstance(body, Mapping) else None
-    state = pe.StrategyState(expiry_kind=position.expiry_kind or "weekly",  # type: ignore[arg-type]
+    state = pe.StrategyState(stops=None, expiry_kind=position.expiry_kind or "weekly",  # type: ignore[arg-type]
                              days_left=(expiry - ist.date()).days, hhmm=hhmm, tighten_percent=tighten)
     return pe.exit_inputs(body, guards, state)
 
@@ -240,7 +257,8 @@ def cheapest_offered(body: Mapping | None, tracked: Tracked, market: MarketInput
 def state_of(tracked: Tracked, market: MarketInputs, spot: SpotAnswer, margin: Mapping | None,  # noqa: PLR0913
              rates: Any, fresh: bool | None, body: Mapping | None = None, *,
              config: Config, user_values: Mapping[str, Decimal] | None,
-             strategy_layer: layers.Layer, entry_facts: EntryFacts | layers.Unreadable | None) -> pe.StrategyState:
+             strategy_layer: layers.Layer, entry_facts: EntryFacts | layers.Unreadable | None,
+             resolved: Resolved | None) -> pe.StrategyState:
     """The check's state for one strategy: the ONE function the screen check, the worker and the playbook test route
     pass through. ADR-245: the carry gap in force is resolved HERE (``carry_gap_of``: the plan's, else the user's own,
     else the admin value ``market.carry_gap_pct``), from two REQUIRED keyword arguments with no default, so a caller
@@ -249,7 +267,9 @@ def state_of(tracked: Tracked, market: MarketInputs, spot: SpotAnswer, margin: M
     path; ``strategy_layer``: ``Resolved.strategy_layer`` (None = the strategy has no plan). ADR-243: the roll basis
     in force is resolved HERE too (``basis_in_force``) from the same two layers and ``entry_facts`` (REQUIRED, no
     default: the strategy's stored entry facts, ``adjustment_readers.entry_facts_in``; None = none stored), so the
-    check's cheapest approach builds every roll exactly as the Compare does."""
+    check's cheapest approach builds every roll exactly as the Compare does. Contract step 3: the stop lines are
+    read HERE, once, from ``settings_in_force.stops_of`` (REQUIRED ``resolved``, no default; None = the stops are not
+    supplied, so every stop answers "not checked"), and the evaluator compares the loss to them and nothing else."""
     gap = carry_gap_of(market.carry_gap_pct, user_values, strategy_layer)
     basis = basis_in_force(user_values, strategy_layer, entry_facts)
     position = tracked.position
@@ -278,7 +298,16 @@ def state_of(tracked: Tracked, market: MarketInputs, spot: SpotAnswer, margin: M
     stated_margin = Decimal(margin["value"]) if margin is not None and margin.get("state") == "stated" else None
     last = market.last_close
     day = market.day_open
-    return with_carry(pe.StrategyState(
+    kind = market.expiry_kind or position.expiry_kind or "weekly"
+    stops = None
+    if resolved is not None:
+        from ofo_app import settings_in_force as sif  # noqa: PLC0415 - it imports this module
+        credit = None if booked is None else adjust_money.net_credit_so_far(
+            booked, ((x.side, x.entry, qty[x.tradingsymbol]) for x in position.legs))
+        stops = sif.stops_of(resolved, sif.MoneyInputs(None if gross is None else gross.max_loss, credit,
+                                                       stated_margin),
+                             sif.StageAt(kind, (expiry - now.date()).days))
+    return with_carry(pe.StrategyState(stops=stops,
         expiry_kind=market.expiry_kind or position.expiry_kind or "weekly",  # type: ignore[arg-type]
         days_left=(expiry - now.date()).days, hhmm=hhmm, spot=value, shorts=shorts, pnl=pnl,
         max_loss=None if gross is None else _limit_value(gross.max_loss),
@@ -451,7 +480,7 @@ def scenario_entry(scn: Any, state: pe.StrategyState, position: Position) -> pe.
         return None
     clock = datetime.datetime.fromisoformat(entry["clock"]).astimezone(IST)
     expiry = min(x.expiry for x in position.legs)
-    return pe.StrategyState(expiry_kind=state.expiry_kind, days_left=(expiry - clock.date()).days,
+    return pe.StrategyState(stops=None, expiry_kind=state.expiry_kind, days_left=(expiry - clock.date()).days,
                             hhmm=clock.strftime("%H:%M"), spot=Decimal(str(entry["spot"])),
                             shorts=tuple(pe.ShortLeg(s.strike, None, None) for s in state.shorts),
                             atm_iv=None if entry.get("atm_iv") is None else Decimal(str(entry["atm_iv"])),
@@ -504,6 +533,8 @@ def trigger_words(body: Mapping | None, trigger_id: str | None) -> tuple[str | N
     """(label, unit) of a trigger as the evaluated body holds them; (None, None) for a body or trigger without them.
     A day rule (GC-IC1 1a, ``day.<when>.<HHMM>.<n>``): its action's catalogue words and "%" (its value is a distance
     from spot in %)."""
+    if trigger_id == pe.sl.CREDIT_RULE:  # contract step 3: the 2x-credit stop line, catalogue words, rupees
+        return STOP_LABEL_TEXT["credit_x"], "Rs"
     watched = level_watch.direction_of(trigger_id)  # GC-IC1 4c (A-37): its words by direction; no unit
     if watched is not None:
         return LEVEL_WATCH_LABEL_TEXT[watched], None

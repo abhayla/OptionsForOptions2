@@ -83,7 +83,8 @@ def _unlisted(w):
     legs = list(w.tracked.position.legs)
     legs[0] = dataclasses.replace(legs[0], strike=legs[0].strike + 1)
     pos = dataclasses.replace(w.tracked.position, legs=tuple(legs))
-    return background.Watched(OWNER, 999, dataclasses.replace(w.tracked, position=pos), {}, True, OWNER, None, None)
+    return background.Watched(OWNER, 999, dataclasses.replace(w.tracked, position=pos), {}, True, OWNER, None, None,
+                              resolved=None)
 
 
 def _worker(prov, watched, now, client):

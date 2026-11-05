@@ -39,7 +39,7 @@ def _capture(monkeypatch) -> list:
 
     async def fake_resolve(_conn, _user, _sid, stype):
         seen.append(stype)
-        return check.Resolved("active", {"guards": {"hide_oi_below": 1}}, 1, "active", False)
+        return check.Resolved("active", {"guards": {"hide_oi_below": 1}}, 1, "active", False, saved_before_adr247=False)
 
     monkeypatch.setattr(readers, "get_sessionmaker", lambda: _Session)
     monkeypatch.setattr(readers, "current_user_ref", lambda: "u")

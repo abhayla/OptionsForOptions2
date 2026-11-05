@@ -35,6 +35,13 @@ def trade_credit(trades: Iterable[tuple[str, Decimal, int]]) -> Decimal:
     return sum((price * quantity * _sign(action) for action, price, quantity in trades), Decimal(0))
 
 
+def net_credit_so_far(booked: Decimal, open_trades: Iterable[tuple[str, Decimal, int]]) -> Decimal:
+    """ADR-251: the net credit collected so far = the open legs' entry credit plus the booked P&L of the closed legs
+    (each closed leg's entry credit minus its exit debit), i.e. entry +/- every adjustment's net credit or debit.
+    Example: an iron condor opened for Rs 6,000, then a roll that cost Rs 1,500 net -> Rs 4,500."""
+    return trade_credit(open_trades) + booked
+
+
 def pct_of(amount: Decimal, pct: Decimal) -> Decimal:
     """``pct`` percent of ``amount`` (the "% of max profit" part of a playbook's roll debit limit, ADR-230 (1))."""
     return amount * pct / 100
@@ -110,3 +117,15 @@ def fell_at_least_pct(entry: Decimal, now: Decimal, percent: int | Decimal) -> b
     if entry <= 0:
         return False
     return (entry - now) * 100 >= percent * entry
+
+
+def stop_at_pct(max_loss: Decimal, pct: Decimal) -> Decimal:
+    """ADR-247: the loss at which a "``pct`` % of max loss" stop fires, to the paisa (half up). Example (strategy 82):
+    max loss 23,897.04 at 50 % -> 11,948.52."""
+    return pct_of(max_loss, pct).quantize(PAISE, rounding=ROUND_HALF_UP)
+
+
+def stop_at_multiple(credit: Decimal, multiple: Decimal) -> Decimal:
+    """ADR-247: the loss at which a "``multiple`` x the credit received" stop fires, to the paisa (half up). Example
+    (strategy 82): credit 8,918 at 2 -> 17,836."""
+    return (credit * multiple).quantize(PAISE, rounding=ROUND_HALF_UP)

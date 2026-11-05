@@ -45,6 +45,24 @@ CARRY_GAP_PERCENT: Final = "other.carry_gap_percent"
 #: the keys resolved through three layers so far (GC step 1: the carry gap; step 3 adds the rest of ADR-245's list)
 ROLL_BASIS: Final = "adjustments.roll_basis"  # ADR-243: 1 target delta / 2 entry distance from spot
 THREE_LAYER_KEYS: Final = (CARRY_GAP_PERCENT, ROLL_BASIS)
+#: Step 3 (ADR-245): the registry groups whose keys the resolver reads (admin default -> user -> strategy). A plan may
+#: WRITE only ``THREE_LAYER_KEYS`` (``check_plan_settings``); the rest resolve from the user's and the admin's layers.
+#: ``orders.*`` are two-layer (admin default -> user): a plan never writes them. Every other prefix (speeds,
+#: detection, facts, data, limits, billing, pricing, scenarios, other.undo_*) is admin-only and refused here.
+LAYERED_PREFIXES: Final = ("adjustments.", "alerts.", "orders.")
+TWO_LAYER_PREFIXES: Final = ("orders.",)
+LAYERED_OTHER: Final = (CARRY_GAP_PERCENT, "other.situation_net_delta_per_lot", "other.situation_big_win_percent")
+
+
+def is_layered(key: object) -> bool:
+    """True for a key the resolver answers (a registry key in ADR-245's list); False for an admin-only key."""
+    if not isinstance(key, str):
+        return False
+    from ofo.settings import registry  # noqa: PLC0415 - the checked-in registry, loaded once
+
+    if key not in registry():
+        return False
+    return key in THREE_LAYER_KEYS or key in LAYERED_OTHER or key.startswith(LAYERED_PREFIXES)
 
 
 @dataclass(frozen=True)
@@ -107,9 +125,10 @@ def _read(key: str, layer: Layer, code: str) -> Decimal | None:
 def resolve(key: str, admin: Layer, user: Layer, strategy: Layer) -> InForce:
     """The value in force for ``key``: the strategy's, else the user's, else the admin default (ADR-245). A missing
     admin value is a defect (the admin layer always holds every registry key): LayerUnreadable, never a typed one."""
-    if key not in THREE_LAYER_KEYS:
+    if not is_layered(key):
         raise KeyError(f"{key} is not a three-layer setting")
-    found = _read(key, strategy, STRATEGY_UNREADABLE)
+    # two-layer keys (orders.*): the strategy layer is never read, whatever a plan body holds
+    found = None if key.startswith(TWO_LAYER_PREFIXES) else _read(key, strategy, STRATEGY_UNREADABLE)
     if found is not None:
         return InForce(key, found, SOURCE_STRATEGY)
     found = _read(key, user, USER_UNREADABLE)
@@ -151,7 +170,25 @@ def check_plan_settings(found: object) -> dict[str, str]:
     return dict(found)
 
 
-__all__ = ["CARRY_GAP_PERCENT", "DEFAULT_UNREADABLE", "PLAN_SETTINGS", "ROLL_BASIS",
-           "SOURCE_DEFAULT", "SOURCE_STRATEGY",
-           "SOURCE_USER", "STRATEGY_UNREADABLE", "THREE_LAYER_KEYS", "USER_UNREADABLE", "InForce", "Layer",
-           "LayerUnreadable", "Unreadable", "check_plan_settings", "resolve", "strategy_layer"]
+__all__ = [
+    "CARRY_GAP_PERCENT",
+    "DEFAULT_UNREADABLE",
+    "LAYERED_OTHER",
+    "LAYERED_PREFIXES",
+    "PLAN_SETTINGS",
+    "ROLL_BASIS",
+    "SOURCE_DEFAULT",
+    "SOURCE_STRATEGY",
+    "SOURCE_USER",
+    "STRATEGY_UNREADABLE",
+    "THREE_LAYER_KEYS",
+    "USER_UNREADABLE",
+    "InForce",
+    "Layer",
+    "LayerUnreadable",
+    "Unreadable",
+    "check_plan_settings",
+    "is_layered",
+    "resolve",
+    "strategy_layer",
+]

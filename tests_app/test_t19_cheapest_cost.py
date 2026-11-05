@@ -124,7 +124,7 @@ def test_none_priceable_is_not_checked_with_the_reason():
     assert unpriced and "A-26" not in body["approaches"]["applicable"]
     got = check.cheapest_offered(body, tracked, market, spot, s.RATES, s.PREFS.approach, roll_basis=s.BASIS)
     assert (got.approach, got.cost, got.reason) == (None, None, cmp.NO_APPROACH_PRICED) and got.unpriced > 0
-    ev = pe.evaluate(s.body_of(sc), pe.StrategyState("weekly", days_left=1, hhmm="15:00", spot=D("23020"),
+    ev = pe.evaluate(s.body_of(sc), pe.StrategyState("weekly", stops=None, days_left=1, hhmm="15:00", spot=D("23020"),
                                                        premium_left=D("110.50"), adjustment_cost_reason=got.reason,
                                                        prices_fresh=True), gap_until=s.PREFS.gap_until)
     t19 = next(r for r in ev.results if r.trigger_id == "T-19")

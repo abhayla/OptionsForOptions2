@@ -52,11 +52,13 @@ def test_a_trigger_without_a_usable_label_shows_its_id(label):
 
 
 def test_plan_target_and_stop_say_what_the_numbers_are():
-    ic = _values(body_from_fixture(PLAYBOOKS, "ic"))
+    ic = _values(body_from_fixture(PLAYBOOKS, "ic"), False)
     assert ic["target_words"] == "50 % of max profit"
-    assert ic["stop_words"] == "50 % of max loss or 4 % of margin, whichever comes first"
-    assert _values(body_from_fixture(PLAYBOOKS, "strangle"))["stop_words"] == "50 % of max loss"
-    assert _values({"guards": {}})["target_words"] is None and _values({})["stop_words"] is None
+    # the fixture body is the ADR-216 copy (T-16 on), so all three stops are active (ADR-252: stops = triggers)
+    assert ic["stop_words"] == "50 % of max loss, 2x the credit received or 4 % of margin, whichever comes first"
+    strangle = _values(body_from_fixture(PLAYBOOKS, "strangle"), False)["stop_words"]
+    assert strangle == "50 % of max loss or 4 % of margin, whichever comes first"  # ADR-247 is the iron condor's
+    assert _values({"guards": {}}, False)["target_words"] is None and _values({}, False)["stop_words"] is None
 
 
 def test_no_body_shows_the_id():

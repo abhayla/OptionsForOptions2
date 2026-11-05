@@ -19,15 +19,34 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 
 from ofo.errors.classes import ErrorClass
-from ofo.errors.model import UserFacingError, _build, _claim_render_token
-from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS
-
 from ofo.errors.gate_slots import (
-    Clock, ClockTime, ContractSymbol, DataHealthState, DataInputName, Date, DisplayRupees, ExecutionStatusName, LegContract, LegRef, OrderRef,
-    PlaybookField, PlaybookName, PlaybookTypeName, RiskRows, Rupees, ShapeFamilies, Strikes, Symbol, UnitsByContract,
-    VersionStateName, VersionStates, WorstCase,
+    Clock,
+    ClockTime,
+    ContractSymbol,
+    DataHealthState,
+    DataInputName,
+    Date,
+    DisplayRupees,
+    ExecutionStatusName,
+    LegContract,
+    LegRef,
+    OrderRef,
+    PlaybookField,
+    PlaybookName,
+    PlaybookTypeName,
+    RiskRows,
+    Rupees,
+    ShapeFamilies,
+    Strikes,
+    Symbol,
+    UnitsByContract,
+    VersionStateName,
+    VersionStates,
+    WorstCase,
 )
+from ofo.errors.model import UserFacingError, _build, _claim_render_token
 from ofo.errors.slots import Code, Count, ExternalText, Instrument, Int, Money, SlotType, Time, Underlying
+from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS
 
 _PART_NAMES: tuple[str, ...] = ("what_happened", "impact", "what_is_blocked", "next_action")
 
@@ -1205,6 +1224,14 @@ _TRIGGER_TEMPLATES: tuple[MessageTemplate, ...] = (
     _trig("no_expiry_values", 116, "This trigger has no values for this expiry type.", None,
           "Enter a value for expiry day in the playbook."),
     _trig("no_short_leg", 117, "No short leg."),
+    _trig("stop_not_supplied", 511, "The stop lines in force were not supplied to this check, so the stop is not "
+          "checked."),
+    _trig("stop_no_credit", 512, "No net credit has been collected so far (zero or a net debit), so the 2x-credit "
+          "stop is not checked. The max-loss stop is still checked."),
+    _trig("stop_credit_unknown", 513, "The net credit collected so far could not be read, so the 2x-credit stop is "
+          "not checked. The max-loss stop is still checked."),
+    _trig("stop_value_unreadable", 514, "The stop value saved in the playbook cannot be read, so this stop is not "
+          "checked."),
     _trig("missing_spot", 118, "Spot not available."),
     _trig("missing_short_delta", 119, "Delta of a short leg not available."),
     _trig("missing_short_price", 120, "Price of a short leg not available."),

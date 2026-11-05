@@ -32,7 +32,7 @@ def _state(spot: str | None = "23400", hhmm: str | None = "14:30", days_left: in
            far_ltp: str | None = "1.95", **kw) -> pe.StrategyState:
     shorts = (pe.ShortLeg(D(22600), D("0.01"), None if far_ltp is None else D(far_ltp)),
               pe.ShortLeg(D(23450), D("0.40"), D("60")))
-    return pe.StrategyState(expiry_kind="weekly", days_left=days_left, hhmm=hhmm,
+    return pe.StrategyState(stops=None, expiry_kind="weekly", days_left=days_left, hhmm=hhmm,
                             spot=None if spot is None else D(spot), shorts=kw.pop("shorts", shorts),
                             prices_fresh=kw.pop("prices_fresh", True), **kw)
 

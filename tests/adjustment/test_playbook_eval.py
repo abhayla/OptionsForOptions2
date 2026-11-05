@@ -78,6 +78,10 @@ def body_of(sc: dict) -> dict:
     return body
 
 
+from ofo.adjustment import stop_lines as sl  # noqa: E402 - contract step 3 helpers
+from ofo.engine import adjust_money  # noqa: E402
+
+
 def state_of(sc: dict) -> StrategyState:
     """A StrategyState from the scenario's own numbers (the same reads as tests/test_adjust_scenarios.py)."""
     clock = datetime.datetime.fromisoformat(sc["clock"]["ist"])
@@ -110,7 +114,7 @@ def state_of(sc: dict) -> StrategyState:
                                    datetime.date.fromisoformat(x["expiry"]), x["quantity"], D(x["entry"])) for x in legs))
         expiry_pnl = strat.expiry_pnl_at(spot) + booked
     margin = sc["broker"]["margin"]
-    return StrategyState(
+    state = StrategyState(stops=None,
         expiry_kind=sc["expiry_kind"], days_left=sc["dte"], hhmm=hhmm, spot=spot, shorts=shorts, pnl=pnl,
         max_loss=(whole["max_loss"] if whole["max_loss"] == "UNLIMITED" else D(whole["max_loss"])) if whole["exact"] else None,
         max_profit=(whole["max_profit"] if whole["max_profit"] == "UNLIMITED" else D(whole["max_profit"])) if whole["exact"] else None,
@@ -120,6 +124,27 @@ def state_of(sc: dict) -> StrategyState:
         day_open=_dec(sc["market"]["day_open"]), prev_close=_dec(sc["market"]["prev_close"]),
         adjustments_used=sc["position"]["adjustments_used"], expiry_pnl_at_spot=expiry_pnl, tighten_percent=tighten,
         prices_fresh=sc["data_state"]["prices"] == "fresh")
+    return replace(state, stops=_stops(body_of(sc), state))
+
+
+def _stops(body, state) -> sl.StopsInForce:
+    """Contract step 3: the scenario's stops as the settings in force would give a plan holding the body's own
+    per-stage stop values (ADR-250 shape): T-06 % of max loss, T-16 % of margin (amounts by the engine)."""
+    stage = None if state.days_left is None else pe.stage_of(body, state.expiry_kind, state.days_left)
+    lines = []
+    for kind, tid, base in ((sl.STOP_MAX_LOSS, sl.TRIGGER_MAX_LOSS, state.max_loss),
+                            (sl.STOP_MARGIN, sl.TRIGGER_MARGIN, state.margin)):
+        trig = body["triggers"].get(tid) or {}
+        if trig.get("on") is not True:
+            continue
+        values = trig[state.expiry_kind]
+        raw = None if stage is None else values[stage]
+        pct = None if raw in (None, "") else D(raw)
+        ok = pct is not None and isinstance(base, D) and base > 0
+        later = () if stage is None else tuple(D(x) for x in values[stage + 1:] if x not in (None, ""))
+        lines.append(sl.StopInForce(kind, True, pct, adjust_money.stop_at_pct(base, pct) if ok else None, "strategy",
+                                    None if pct is not None else sl.STAGE_UNKNOWN, later))
+    return sl.StopsInForce(tuple(lines), None, None)
 
 
 def entry_of(sc: dict) -> StrategyState:
@@ -127,7 +152,7 @@ def entry_of(sc: dict) -> StrategyState:
     entry = datetime.datetime.fromisoformat(sc["position"]["entry"]["clock"])
     shorts = tuple(ShortLeg(D(x["strike"]), None, None)
                    for x in sc["position"]["legs"] if x["side"] == "SELL" and x["type"] != "FUT")
-    return StrategyState(expiry_kind=sc["expiry_kind"], days_left=(datetime.date.fromisoformat(sc["expiry"]) - entry.date()).days,
+    return StrategyState(stops=None, expiry_kind=sc["expiry_kind"], days_left=(datetime.date.fromisoformat(sc["expiry"]) - entry.date()).days,
                          hhmm=entry.strftime("%H:%M"), spot=D(sc["position"]["entry"]["spot"]), shorts=shorts,
                          prices_fresh=True)
 
@@ -277,13 +302,13 @@ def test_unpriced_short_is_not_checked_for_t09():
 @pytest.mark.parametrize(("field", "value", "tid", "code", "text"), [
     ("margin", None, "T-16", "missing_margin", "Margin not available."),
     ("margin", D(0), "T-16", "margin_not_positive", "Margin not positive."),
+    ("max_loss", "UNLIMITED", "T-06", "max_loss_not_finite", "Max loss not finite (unlimited or multi-expiry)."),
+    ("max_loss", D(0), "T-06", "max_loss_not_finite", "Max loss not finite (unlimited or multi-expiry)."),
     ("adjustment_cost", D(0), "T-19", "cost_not_positive", "Adjustment cost not positive."),
     ("premium_left", D(-1), "T-19", "net_long_premium", "No premium to earn (net long premium)."),
     ("atm_iv", None, "T-11", "missing_atm_iv", "ATM IV not available."),
     ("adjustments_used", None, "T-18", "missing_adjustments_used", "Adjustments used not available."),
     ("expiry_pnl_at_spot", None, "T-02", "missing_expiry_pnl", "Expiry P&L at spot not available (multi-expiry: no exact breakeven)."),
-    ("max_loss", "UNLIMITED", "T-06", "max_loss_not_finite", "Max loss not finite (unlimited or multi-expiry)."),
-    ("max_loss", D(0), "T-06", "max_loss_not_finite", "Max loss not finite (unlimited or multi-expiry)."),
     ("pnl", None, "T-07", "missing_pnl", "P&L not available (a leg unpriced)."),
     ("shorts", (), "T-01", "no_short_leg", "No short leg."),
     ("shorts", (), "T-03", "no_short_leg", "No short leg."),
@@ -341,7 +366,7 @@ def test_all_of_rule():
     assert {h.trigger_id for h in ev.results[0].members} == {"T-01", "T-11"}
     one_missing = StrategyState(**{**both.__dict__, "entry_atm_iv": None})
     ev = evaluate(body, one_missing, {}, None)
-    body_rules = [r for r in ev.results if not pe.is_situation_rule_id(r.rule_id)]  # GC-IC1 6a: S-02 / S-12 apart
+    body_rules = [r for r in ev.results if not pe.is_situation_rule_id(r.rule_id) and not sl.is_stop_rule(r.rule_id)]  # GC-IC1 6a: S-02 / S-12 apart
     assert [type(r) for r in body_rules] == [NotChecked] and body_rules[0].rule_id == "R-1"
 
 
@@ -349,7 +374,7 @@ def test_any_of_rule_fires_when_one_member_fires():
     body, s = _calm()
     body["rules"] = [{"id": "R-2", "any_of": ["T-11", "T-01"]}]
     ev = evaluate(body, StrategyState(**{**s.__dict__, "spot": D("23400")}), {}, None)
-    assert [(r.rule_id, r.trigger_id) for r in ev.results if not pe.is_situation_rule_id(r.rule_id)] == \
+    assert [(r.rule_id, r.trigger_id) for r in ev.results if not pe.is_situation_rule_id(r.rule_id) and not sl.is_stop_rule(r.rule_id)] == \
         [("R-2", "T-01")]
 
 
@@ -415,5 +440,5 @@ def test_tighten_applies_to_tightened_triggers_only():
 ])
 def test_stage_boundaries(kind, days, stage):
     body, _s = _calm()
-    ev = evaluate(body, StrategyState(expiry_kind=kind, days_left=days, prices_fresh=True, spot=D(23000)), {}, None)
+    ev = evaluate(body, StrategyState(stops=None, expiry_kind=kind, days_left=days, prices_fresh=True, spot=D(23000)), {}, None)
     assert ev.stage_name == stage

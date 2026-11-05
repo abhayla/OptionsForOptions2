@@ -246,7 +246,7 @@ async def adjustment_check(  # noqa: PLR0913 - FastAPI dependencies, one per inp
     # ADR-243: the roll basis in force is resolved inside state_of too, from the same layers and the stored entry facts
     state = check.state_of(tracked, market, spot, margin, rates, check.prices_fresh(ctx), resolved.body,
                            config=prefs.approach, user_values=user_values, strategy_layer=resolved.strategy_layer,
-                           entry_facts=await entry_facts_in(db, strategy_id))
+                           entry_facts=await entry_facts_in(db, strategy_id), resolved=resolved)
     # read-only (review round 2, finding 3): evaluated against the stored rule memory, NOTHING written; the background
     # worker is the one writer of rule memory and records (ADR-237 (6)), so the two never disagree about a dip
     ev, _memory = await check.evaluate_stored(db, user_ref, strategy_id, resolved.body, state, scenario_mode.current(),

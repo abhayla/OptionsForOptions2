@@ -117,7 +117,8 @@ def _tracked(scn) -> Tracked:
 
 def _watched(scn, n: int = 1) -> list[background.Watched]:
     t = _tracked(scn)
-    return [background.Watched("owner", FIRST_ID + i, t, NO_RULES, True, "owner", None, None) for i in range(n)]
+    return [background.Watched("owner", FIRST_ID + i, t, NO_RULES, True, "owner", None, None,
+                               resolved=None) for i in range(n)]
 
 
 class Calls:
@@ -833,7 +834,7 @@ def _straddle(*, strikes=("22550",)) -> list[background.Watched]:
     legs = tuple(PositionLeg("SELL", kind, Decimal(k), datetime.date(2026, 10, 13), 1, Decimal("100"), "x")
                  for k in strikes for kind in ("CE", "PE"))
     t = Tracked(Position("NIFTY", 65, "weekly", datetime.date.min, legs), Decimal(0), None, adjustments_used=0)
-    return [background.Watched("owner", FIRST_ID, t, NO_RULES, True, "owner", None, None)]
+    return [background.Watched("owner", FIRST_ID, t, NO_RULES, True, "owner", None, None, resolved=None)]
 
 
 async def test_a_frame_for_a_monitored_leg_reads_available_and_fresh_with_no_screen(scn):
@@ -946,8 +947,8 @@ def _two_strategies(scn) -> tuple[list[background.Watched], tuple[str, str]]:
     full = _tracked(scn)
     part = dataclasses.replace(full, position=dataclasses.replace(full.position, legs=full.position.legs[:-1]))
     last = full.position.legs[-1]
-    watched = [background.Watched("owner", FIRST_ID, full, NO_RULES, True, "owner", None, None),
-               background.Watched("owner", FIRST_ID + 1, part, NO_RULES, True, "owner", None, None)]
+    watched = [background.Watched("owner", FIRST_ID, full, NO_RULES, True, "owner", None, None, resolved=None),
+               background.Watched("owner", FIRST_ID + 1, part, NO_RULES, True, "owner", None, None, resolved=None)]
     return watched, (str(last.strike), last.type)
 
 

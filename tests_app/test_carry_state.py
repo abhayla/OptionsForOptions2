@@ -32,7 +32,7 @@ GAP = check.GapInForce(D("2"), "default", None)
 
 
 def _state(hhmm: str, margin: D | None = None) -> pe.StrategyState:
-    return pe.StrategyState(expiry_kind="weekly", days_left=4, hhmm=hhmm, margin=margin)
+    return pe.StrategyState(stops=None, expiry_kind="weekly", days_left=4, hhmm=hhmm, margin=margin)
 
 
 def test_state_of_and_the_worker_both_go_through_with_carry():

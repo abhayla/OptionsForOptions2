@@ -94,9 +94,10 @@ def test_strategy_layer_of_an_unreadable_plan_body(body):
 
 def test_only_a_plan_is_a_strategy_layer():
     body = {"settings": {KEY: "1.5"}}
-    assert check.Resolved("plan", body, 1, None, False).strategy_layer == {KEY: "1.5"}
+    assert check.Resolved("plan", body, 1, None, False, saved_before_adr247=False).strategy_layer == {KEY: "1.5"}
     for source in ("active", "system", "none"):  # a playbook the user follows is not this strategy's own value
-        assert check.Resolved(source, body, 1, None, source == "system").strategy_layer is None
+        assert check.Resolved(source, body, 1, None, source == "system",
+                              saved_before_adr247=False).strategy_layer is None
 
 
 def _values(source: str) -> UserValues:
@@ -170,7 +171,8 @@ def test_with_carry_values_the_figures_at_the_gap_in_force_never_the_markets_adm
     market = _market(D("2"))  # Friday 2026-10-30 15:00: the carry rule is due
     tracked = SimpleNamespace(position=SimpleNamespace(legs=()), booked=D("0"))
     gap = check.carry_gap_of(market.carry_gap_pct, _values(user), strategy)
-    got = check.with_carry(pe.StrategyState(expiry_kind="weekly", days_left=4, hhmm="15:00"), body, tracked, market,
+    got = check.with_carry(pe.StrategyState(stops=None, expiry_kind="weekly", days_left=4, hhmm="15:00"), body,
+                           tracked, market,
                            gap).carry
     assert (got.gap_pct, got.gap_source, got.gap_setting_reason) == expected
 

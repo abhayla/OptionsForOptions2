@@ -336,6 +336,9 @@ def check_body(body: object, strategy_type: str) -> dict:
         if key in body and not isinstance(body[key], kind):
             raise _bad(key)
     _check_day_rule_times(body.get("day_rules"))
+    from ofo_app.settings_in_force import check_stop_values  # noqa: PLC0415 - it imports this module's callers
+    if (bad := check_stop_values(body)) is not None:  # a stop value out of range is refused on save (ADR-252)
+        raise _bad(bad)
     if layers.PLAN_SETTINGS in body:  # ADR-245: the strategy layer's values, each a registry-accepted decimal string
         try:
             layers.check_plan_settings(body[layers.PLAN_SETTINGS])
@@ -574,6 +577,21 @@ async def accept_plan(conn: Any, user_ref: str, strategy_id: int, playbook_id: i
     row = (await conn.execute(_UPSERT_PLAN, {"strategy_id": strategy_id, "playbook_id": source.id,
                                              "type": source.strategy_type, "body": _dump(copy)})).one()
     return _plan(row)
+
+
+#: ADR-250: when migration 0040 saved the iron condor ADR-247 version (margin stop and T-16 off). The row is found by
+#: the reason 0040 writes (as 0040's own downgrade finds it), NEVER by a version number: an admin save or restore also
+#: writes newest + 1, so "version 2" can be someone else's row
+#: (finding cutoff-by-version-number-not-by-the-row-written).
+#: The text equals ``0040_ic_default_stop_adr247.REASON`` (a test asserts it). No such row -> None -> every plan
+#: predates ADR-247 (fail closed: it keeps its own stops).
+ADR247_REASON = "ADR-247: default stop 50 % of max loss or 2x credit; % of margin stop and T-16 off by default"
+_ADR247_SAVED_AT = text("SELECT min(saved_at) FROM public.system_playbook_versions WHERE strategy_type = 'ic' "
+                        "AND reason = :reason")
+
+
+async def adr247_saved_at(conn: Any) -> datetime | None:
+    return (await conn.execute(_ADR247_SAVED_AT, {"reason": ADR247_REASON})).scalar_one_or_none()
 
 
 async def plan_for(conn: Any, user_ref: str, strategy_id: int) -> Plan | None:

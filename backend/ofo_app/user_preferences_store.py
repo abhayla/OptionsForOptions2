@@ -40,6 +40,11 @@ from ofo_app import settings_store
 
 MAX_NOTE = 500
 CAP_ABOVE_ADMIN = "preference_above_admin_cap"
+#: the registry prefix of the order defaults (two layers: admin default -> user)
+ORDER_PREFIX = "orders."
+#: the order defaults the order screen starts from (contract "Your adjustment settings" step 3); the registry's
+#: ``orders.*`` entries must be exactly these (``preference_keys`` refuses otherwise)
+ORDER_KEYS = ("orders.default_lots", "orders.start_price", "orders.validity")
 Session = AsyncSession | AsyncConnection
 
 _IN_FORCE = text(
@@ -97,7 +102,11 @@ def preference_keys() -> tuple[str, ...]:
         raise PreferencesError(f"the registry has no three-layer entries {extra}")
     # ADR-245: the three-layer settings outside the adjustments group (GC "Your adjustment settings" step 1: the carry
     # gap) are user-changeable too; the admin's value stays their default
-    return keys + alert_presets.USER_KEYS + tuple(k for k in layers.THREE_LAYER_KEYS if k not in keys)
+    # step 3 (ADR-245): the order defaults, two layers (admin default -> user; a plan never sets them)
+    orders = tuple(k for k in reg if k.startswith(ORDER_PREFIX))
+    if set(orders) != set(ORDER_KEYS):
+        raise PreferencesError(f"the registry's order defaults {sorted(orders)} differ from {sorted(ORDER_KEYS)}")
+    return keys + alert_presets.USER_KEYS + tuple(k for k in layers.THREE_LAYER_KEYS if k not in keys) + orders
 
 
 def preference(key: object) -> registry_mod.Setting:

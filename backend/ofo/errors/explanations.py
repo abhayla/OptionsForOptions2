@@ -24,9 +24,13 @@ from pathlib import Path
 from types import MappingProxyType
 
 from ofo import wording as _wording
-
 from ofo.errors.gate_slots import (
-    ClockTime, PlaybookField, PlaybookName, PlaybookTriggerLabel, PlaybookTypeName, PlaybookUnit,
+    ClockTime,
+    PlaybookField,
+    PlaybookName,
+    PlaybookTriggerLabel,
+    PlaybookTypeName,
+    PlaybookUnit,
 )
 from ofo.errors.slots import Count, SlotType, _require_exact
 from ofo.errors.templates import MARGIN_SHORTFALL_NEXT_ACTION, ZERODHA_BUSY_TEXT
@@ -322,6 +326,10 @@ PLAYBOOK_DAY_RULE_ACTION_TEXT: Mapping[str, str] = MappingProxyType({
 LEVEL_WATCH_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
     "above": "Watched level reached (at or above)",
     "below": "Watched level reached (at or below)",
+})
+#: contract step 3 (ADR-247/251): the 2x-credit stop line's label on an alert (rule ``stop.credit_x``)
+STOP_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
+    "credit_x": "Loss reached 2x the net credit collected so far",
 })
 #: GC-ADJ2 step 3 (REQ-160 AC-1): each playbook guard key (body ``guards``) in words, shown on Limits and guards.
 PLAYBOOK_GUARD_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
@@ -1530,6 +1538,13 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("plan_stop_words_either", "values_seen",
                         "{pct} % of max loss or {margin} % of margin, whichever comes first",
                         {"pct": PlaybookField, "margin": PlaybookField}),
+    ExplanationTemplate("plan_stop_words_credit", "values_seen", "{multiple}x the credit received",
+                        {"multiple": PlaybookField}),
+    ExplanationTemplate("plan_stop_words_or", "values_seen", "{a} or {b}", {"a": Explained, "b": Explained}),
+    ExplanationTemplate("plan_stop_words_or3", "values_seen", "{a}, {b} or {c}",
+                        {"a": Explained, "b": Explained, "c": Explained}),
+    ExplanationTemplate("plan_stop_words_first", "values_seen", "{words}, whichever comes first",
+                        {"words": Explained}),
     ExplanationTemplate("adjust_spot_from_feed", "values_seen", "Spot from the live feed"),
     ExplanationTemplate("adjust_spot_from_rest_quote", "values_seen", "Spot from a one-time price request"),
     ExplanationTemplate("adjust_spot_from_last_close", "values_seen", "Spot from the last close"),
@@ -1998,6 +2013,7 @@ LABEL_TABLES: Mapping[str, Mapping[str, str]] = MappingProxyType({
     "playbook_day_kind": PLAYBOOK_DAY_RULE_KIND_TEXT, "playbook_day_action": PLAYBOOK_DAY_RULE_ACTION_TEXT,
     "playbook_summary": PLAYBOOK_SUMMARY_TEXT, "plan_sheet": PLAN_SHEET_LABEL_TEXT,
     "playbook_guard": PLAYBOOK_GUARD_LABEL_TEXT, "level_watch": LEVEL_WATCH_LABEL_TEXT,
+    "stop": STOP_LABEL_TEXT,
 })
 
 
