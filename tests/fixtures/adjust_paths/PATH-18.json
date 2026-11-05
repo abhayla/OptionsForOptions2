@@ -1,0 +1,55 @@
+{
+ "id": "PATH-18",
+ "base": "ADJ-02",
+ "title": "T-03 crosses once, inside one ladder step",
+ "notes": "",
+ "entry_atm_iv": "0.10",
+ "legs": [
+  {
+   "side": "BUY",
+   "type": "PE",
+   "strike": "22600",
+   "lots": 2
+  },
+  {
+   "side": "SELL",
+   "type": "PE",
+   "strike": "22800",
+   "lots": 2
+  },
+  {
+   "side": "SELL",
+   "type": "CE",
+   "strike": "23400",
+   "lots": 2
+  },
+  {
+   "side": "BUY",
+   "type": "CE",
+   "strike": "23600",
+   "lots": 2
+  }
+ ],
+ "frames": [
+  {
+   "clock": "2026-11-06T11:40:00",
+   "spot": "23290",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2026-11-06T11:41:00",
+   "spot": "23300",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2026-11-06T11:42:00",
+   "spot": "23310",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2026-11-06T11:43:00",
+   "spot": "23320",
+   "atm_iv": "0.10"
+  }
+ ]
+}
