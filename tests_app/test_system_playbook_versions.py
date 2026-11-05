@@ -101,7 +101,9 @@ async def test_core_proof_new_version_reaches_the_next_check_copies_and_plans_un
     # AC-4: the system-tracked strategy checks against 45 at its next check; the copy and the plan keep 50
     resolved = await check.resolve(db, tracked_user, tracked.id, "ic")
     assert (resolved.source, _t06(resolved.body)) == ("system", "45")
-    assert _t06_flag(resolved.body) == [(D("45"), D("47"))]
+    # (ADR-252: a stop trigger is answered from the stop lines in force, not from the body's value, so with
+    # ``stops=None`` T-06 is never flagged; the body value reaching the check is the line above)
+    assert _t06_flag(resolved.body) == []
     assert _t06((await pbs.get(db, user, copy_before.id)).body) == "50"
     plan = await check.resolve(db, user, planned.id, "ic")
     assert (plan.source, _t06(plan.body)) == ("plan", "50")
