@@ -50,6 +50,7 @@ THREE_LAYER_KEYS: Final = (CARRY_GAP_PERCENT, ROLL_BASIS)
 #: ``orders.*`` are two-layer (admin default -> user): a plan never writes them. Every other prefix (speeds,
 #: detection, facts, data, limits, billing, pricing, scenarios, other.undo_*) is admin-only and refused here.
 LAYERED_PREFIXES: Final = ("adjustments.", "alerts.", "orders.")
+TWO_LAYER_PREFIXES: Final = ("orders.",)
 LAYERED_OTHER: Final = (CARRY_GAP_PERCENT, "other.situation_net_delta_per_lot", "other.situation_big_win_percent")
 
 
@@ -126,7 +127,8 @@ def resolve(key: str, admin: Layer, user: Layer, strategy: Layer) -> InForce:
     admin value is a defect (the admin layer always holds every registry key): LayerUnreadable, never a typed one."""
     if not is_layered(key):
         raise KeyError(f"{key} is not a three-layer setting")
-    found = _read(key, strategy, STRATEGY_UNREADABLE)
+    # two-layer keys (orders.*): the strategy layer is never read, whatever a plan body holds
+    found = None if key.startswith(TWO_LAYER_PREFIXES) else _read(key, strategy, STRATEGY_UNREADABLE)
     if found is not None:
         return InForce(key, found, SOURCE_STRATEGY)
     found = _read(key, user, USER_UNREADABLE)

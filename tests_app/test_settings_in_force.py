@@ -148,3 +148,26 @@ def test_money_inputs_credit_is_the_engine_entry_credit_and_no_market_prices_no_
     tracked = SimpleNamespace(position=SimpleNamespace(lot=65, legs=[
         leg("BUY", "10"), leg("SELL", "60"), leg("SELL", "70"), leg("BUY", "12")]), booked=D(0), paid_charges=D(0))
     assert sif.money_inputs(tracked, None, None) == sif.MoneyInputs(None, D(108) * 65)
+
+
+# ---- order defaults (gap 4): two layers, admin default -> user ------------------------------------------------------
+
+ORDER_KEYS = ("orders.default_lots", "orders.start_price", "orders.validity")
+
+
+def test_order_defaults_are_user_settings_with_sources_and_a_plan_never_sets_them():
+    assert set(ORDER_KEYS) <= set(sif.covered_keys())
+    user = UserValues({"orders.default_lots": Answer("orders.default_lots", D(3), "yours", D(1), NOW),
+                       "orders.validity": Answer("orders.validity", D(1), "default", D(1), None)})
+    body = {"settings": {"orders.default_lots": "5", "orders.validity": "2"}}  # never written; never read either
+    found = sif.in_force(user, _plan(body), None)
+    assert _value(found, "orders.default_lots") == (D(3), "user", None)
+    assert _value(found, "orders.validity") == (D(1), "default", None)
+    assert _value(found, "orders.start_price") == (D(1), "default", None)  # mid of bid and ask
+    with pytest.raises(ValueError, match="not a setting a strategy can change"):
+        layers.check_plan_settings({"orders.default_lots": "5"})
+
+
+def test_an_order_default_out_of_range_from_the_user_layer_fails_closed():
+    user = UserValues({"orders.default_lots": Answer("orders.default_lots", D(500), "yours", D(1), NOW)})
+    assert _value(sif.in_force(user, _plan({}), None), "orders.default_lots") == (None, None, layers.USER_UNREADABLE)
