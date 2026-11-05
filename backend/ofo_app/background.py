@@ -1161,6 +1161,11 @@ class Worker:
         sid = w.strategy_id
         memory = self._memory.get(sid)
         known = memory or {}
+        from ofo_app import scenario_mode  # noqa: PLC0415 - read at check time (the screen's own scenario switch)
+        scn = scenario_mode.current()
+        entry = check.scenario_entry(scn, state, w.tracked.position) if scn is not None else None
+        if entry is not None:  # T-11: the scenario's own entry IV, as the screen's check does (adjustment_check:500)
+            state = dataclasses.replace(state, entry_atm_iv=entry.atm_iv)
         ev = pe.evaluate(w.body, state, known, None if known else state, gap_until=prefs.gap_until)
         self._count_outcomes(ev)
         if memory is not None and _write_key(ev) == self._written.get(sid):

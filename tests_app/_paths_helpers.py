@@ -30,6 +30,7 @@ CATALOGUE_AS_OF = datetime.datetime(2026, 10, 31, 9, 0, tzinfo=IST)
 MAX_DELIST = settings_calc.max_delist_percent(registry_defaults())
 CYCLES_PER_FRAME = 14  # x STEP_S seconds = 70 s: past one 1-minute candle close
 STEP_S = 5
+OBSERVED: list = []  # per recompute: (hhmm, T-19 cost, cost reason, premium left, entry IV, entry day, today, S-12 %)
 
 
 def reset_engine() -> None:
@@ -57,6 +58,10 @@ class Draining(background.Worker):
     async def cycle(self) -> None:
         await super().cycle()
         await self.drain_writes()
+
+
+def last_frame(path_id: str) -> int:
+    return len(list(scenario_mode.frame_path(path_id, 0).parent.glob("frame-*.json"))) - 1
 
 
 def frame_doc(path_id: str, k: int) -> dict:
@@ -91,7 +96,7 @@ async def walk(app_engine, path_id: str, frames: list[int] | None = None, *, sta
     scn = scenario_mode.load(path_id)
     if sid is None:
         sid = await seed_path(app_engine, path_id, style)
-    last = len(list(scenario_mode.frame_path(path_id, 0).parent.glob("frame-*.json"))) - 1
+    last = last_frame(path_id)
     now = [scn.clock_at]
 
     def settings(_at):
@@ -105,7 +110,9 @@ async def walk(app_engine, path_id: str, frames: list[int] | None = None, *, sta
     provider, before_cycle = background.scenario_worker_parts(scn, app_db.get_sessionmaker())
     worker = Draining(provider_for=lambda _o: provider, lister=lambda: background.owner_lister(provider),
                       clock=lambda: now[0], settings=settings, preferences=preferences, user_values=user_values,
-                      before_cycle=before_cycle)
+                      before_cycle=before_cycle, observe=lambda _w, st: OBSERVED.append(
+                          (st.hhmm, st.adjustment_cost, st.adjustment_cost_reason, st.premium_left, st.entry_atm_iv,
+                           st.entry_day, st.today, st.s12_percent)))
     seen: dict[int, Counter] = {}
     for k in (frames if frames is not None else range(last + 1)):
         async with app_db.get_engine().begin() as conn:

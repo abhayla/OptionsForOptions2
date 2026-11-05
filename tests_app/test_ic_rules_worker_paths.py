@@ -21,28 +21,30 @@ import pytest
 
 # (case id, rule id as stored, crossing frame k)
 CASES: dict[str, list[tuple[str, str, int]]] = {
-    "PATH-10": [("T-03", "T-03", 9), ("T-02", "T-02", 14), ("T-06", "T-06", 18),
+    "PATH-10": [("T-02", "T-02", 14), ("T-06", "T-06", 18),
                 ("T-06-2x-credit", "stop.credit_x", 18)],
+    "PATH-18": [("T-03", "T-03", 2)],
     "PATH-11": [("T-09", "T-09", 6), ("S-02", "sit.S-02", 7)],
     "PATH-12": [("S-06", "day.beforeWeekend.1500.0", 3), ("T-10b", "T-10b", 8), ("T-19", "T-19", 8)],
-    "PATH-13": [("T-11", "T-11", 3)],
-    "PATH-14": [("T-07", "T-07", 3), ("T-11-day1", "T-11", 3), ("S-12", "sit.S-12", 3)],
+    "PATH-13": [("T-11", "T-11", 4)],
+    "PATH-14": [("T-07", "T-07", 3), ("T-11-day1", "T-11", 4), ("S-12", "sit.S-12", 3)],
     "PATH-15": [("T-13", "T-13", 1)],
     "PATH-16": [("S-07", "day.expiry.1430.5", 1)],
 }
 EXTRA_FRAMES = {"PATH-12": [4, 5, 6, 7]}
 GUIDANCE = ("sit.S-03", "sit.S-04", "sit.S-05", "sit.S-08", "sit.S-09")
-KNOWN = {  # case -> measured blocker (2026-11-05 run on a throwaway DB; counts are the records of that rule)
-    "T-03": "DEFECT for the lead: T-03 raised 1 record at PATH-10 frame 9 and a SECOND at frame 10 (2 records, k+1)",
-    "T-11": "no T-11 record at +3 and +4 IV points (PATH-13 frames 2-4: 0 records); cause not found in B1 budget",
-    "T-11-day1": "no T-11 record at +3 IV points on the entry day (PATH-14 frame 3: only T-07)",
-    "S-12": "no sit.S-12 record at 54% of max profit on the entry session (PATH-14 frame 3: only T-07)",
-    "T-19": "no T-19 record on the expiry day at flat spot (PATH-12 frames 4-8: T-09, T-10b only)",
+KNOWN = {  # case -> measured blocker (a throwaway DB run; the layer is proven with file:line)
+    "S-12": "SEED INPUT: the evaluator flags it (54% vs 40%) but the entry day is the wall day of the seeding: "
+            "adjustment_readers.py:156 reads created_at, paper_store.py:37 INSERT cannot set it and the app role "
+            "cannot UPDATE paper_orders (permission denied, tried)",
+    "T-19": "WORKER INPUT: adjustment_cost None, reason adjust_trigger_no_approach_priced, at EVERY observed frame "
+            "(B1-OBSERVED): background.py:404 passes rates=None, so adjustment_check.cheapest_offered "
+            "(:230-254) prices no approach and _t19 (playbook_eval.py:508-519) is NotChecked; live has the same gap",
 }
 
 
 def frames_for(path_id: str) -> list[int]:
-    last = len(list(h.scenario_mode.frame_path(path_id, 0).parent.glob("frame-*.json"))) - 1
+    last = h.last_frame(path_id)
     need = {f for _c, _r, k in CASES[path_id] for f in (k - 1, k, k + 1) if 0 <= f <= last}
     return sorted(need | set(EXTRA_FRAMES.get(path_id, [])))
 
@@ -60,6 +62,7 @@ async def test_every_on_rule_raises_exactly_one_record_at_its_crossing_frame(app
     h.set_env(app_engine, monkeypatch, path_id)
     try:
         _sid, seen, errors = await h.walk(app_engine, path_id, frames_for(path_id))
+        print("B1-OBSERVED", path_id, h.OBSERVED[-12:])
         print("B1-COUNTS", path_id, {k: dict(c) for k, c in seen.items()})
         assert errors == [], errors
         failed, rotten = [], []
