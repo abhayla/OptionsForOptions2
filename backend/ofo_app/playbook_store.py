@@ -182,7 +182,7 @@ class Suggestion:
     def shown_outcome(self) -> str:
         """REQ-112 AC-3 (IC e2e design 11): the outcome from what was actually placed. An acted-on record whose basket
         placed every leg it held is completed, some of them partly_completed; no basket named, the basket's size not
-        said, no readable orders, or more orders than legs (inconsistent) stay acted_on. Any other outcome is as stored."""
+        said, no readable orders, or more orders than legs (inconsistent) stay acted_on. Others are as stored."""
         if self.outcome != "acted_on":
             return self.outcome
         placed, legs = self.placed_order_ids, self.basket_legs
@@ -698,7 +698,7 @@ async def act_on(conn: Any, user_ref: str, suggestion_id: int) -> Suggestion:
     return await _close(conn, user_ref, suggestion_id, "acted_on", None)
 
 
-async def link_orders(conn: Any, user_ref: str, strategy_id: int, suggestion_id: int,
+async def link_orders(conn: Any, user_ref: str, strategy_id: int, suggestion_id: int,  # noqa: PLR0913
                       order_ids: list[int], basket_legs: int | None = None) -> None:
     """REQ-163 AC-1: the acted-on record ``suggestion_id`` names the paper orders ``order_ids`` its basket placed.
 

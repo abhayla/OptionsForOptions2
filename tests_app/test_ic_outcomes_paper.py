@@ -1,4 +1,4 @@
-# ruff: noqa: E501, PLR0913 - long measured-fact comments; keyword-only helper arguments
+# ruff: noqa: E501, PLR2004 - long comments; basket sizes are literal test data
 """IC e2e paper contract, Stage C3 (design decision 11, REQ-112): every adjustment record ends in its outcome, read from
 what was actually placed on paper: acted on (orders placed under its suggestion id), completed (every leg of the prepared
 basket placed), partly completed (some), lapsed (the crossing cleared / the gate closed it).
