@@ -121,7 +121,7 @@ const opportunityIds = computed(() => opportunitiesFromQuery(route.query.opp)) /
 const actedSuggestionIds = computed(() => opportunitiesFromQuery(route.query.acted))
 // REQ-112: how many orders the prepared basket held (`basket=4`, set by prepare, travels with `acted`); sent with the
 // paper orders so the server can tell completed from partly completed. Anything but a whole 1..64 is not sent.
-const preparedBasketLegs = computed(() => { const n = String(route.query.basket ?? ''); return /^[1-9]\d?$/.test(n) && Number(n) <= 64 ? Number(n) : null })
+const preparedBasketLegs = computed(() => { const n = String(route.query.basket ?? ''); return /^(?:[1-9]|[1-5]\d|6[0-4])$/.test(n) ? n : null }) // stays a string like the ids: the server's model reads it as a whole number
 function prepareApproach({ legs: next, suggestionIds = [], basketLegs = 0 }) { // the chosen approach's legs become the builder's legs; no order is placed
   const { adjust: _gone, pick: _picks, opp: _opp, acted: _acted, basket: _basket, ...rest } = route.query
   const acted = opportunitiesFromQuery(suggestionIds.join(','))

@@ -82,7 +82,7 @@ describe('the acted-on records survive a reload and are sent once', () => {
     expect(router.currentRoute.value.query).toEqual({ strategy: '63', acted: '41', basket: '4' })
     answers[ORDERS] = { ok: true }
     await confirmOneExit(w)
-    expect(posts()[0].body.basket_legs).toBe(4)
+    expect(posts()[0].body.basket_legs).toBe('4')
     expect(router.currentRoute.value.query).toEqual({ strategy: '63' })
   })
   it('a junk or missing basket size is never sent (the server then keeps the record acted on)', async () => {
