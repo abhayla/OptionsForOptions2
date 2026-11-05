@@ -101,6 +101,13 @@ def _find(body: dict, rid: int) -> dict:
     return next(rec for g in body["groups"] for rec in g["records"] if rec["id"] == rid)
 
 
+def _counts_follow_the_records(body: dict) -> None:
+    """The database is shared by the tests of a run: every outcome count equals the records shown with that outcome."""
+    shown = [r["outcome"] for g in body["groups"] for r in g["records"]]
+    assert {c["outcome"]: c["count"] for c in body["counts"]} == {c["outcome"]: shown.count(c["outcome"]) for c in body["counts"]}
+
+
+
 def _count(body: dict, outcome: str) -> int:
     return next(c["count"] for c in body["counts"] if c["outcome"] == outcome)
 
@@ -141,21 +148,21 @@ async def test_acted_on_a_record_with_paper_orders_under_its_suggestion_id_shows
     body, rid, _ = await _walk(app_engine, monkeypatch, place="all", legs="absent")
     assert _find(body, rid)["outcome"] == "acted_on"
     assert len(await b3._timeline_orders(rid)) == 1
-    assert _count(body, "acted_on") == 1 and _count(body, "completed") == 0
+    _counts_follow_the_records(body)
 
 
 async def test_completed_when_every_leg_of_the_prepared_basket_was_placed(app_engine, monkeypatch, cleanup):
     body, rid, _ = await _walk(app_engine, monkeypatch, place="all", legs="given")
     rec = _find(body, rid)
     assert rec["outcome"] == "completed" and rec["outcome_text"] == "Completed", rec
-    assert _count(body, "completed") == 1 and _count(body, "acted_on") == 0
+    _counts_follow_the_records(body)
 
 
 async def test_partly_completed_when_one_leg_is_missing(app_engine, monkeypatch, cleanup):  # attack 1
     body, rid, _ = await _walk(app_engine, monkeypatch, place="first", legs="given")
     rec = _find(body, rid)
     assert rec["outcome"] == "partly_completed" and rec["outcome_text"] == "Partly completed", rec
-    assert _count(body, "partly_completed") == 1 and _count(body, "completed") == 0
+    _counts_follow_the_records(body)
 
 
 async def test_acted_on_with_zero_orders_stays_acted_on(app_engine, monkeypatch, cleanup):  # attack 4
@@ -183,5 +190,5 @@ async def test_lapsed_when_the_crossing_clears_and_it_is_no_longer_open(app_engi
         body = await _inbox(ac)
     rec = _find(body, rid)
     assert rec["outcome"] == "lapsed" and rec["can_act"] is False, rec
-    assert _count(body, "lapsed") == 1 and _count(body, "open") == 0
+    _counts_follow_the_records(body)
     assert not any(g["has_open"] for g in body["groups"] if g["strategy_id"] == sid)
