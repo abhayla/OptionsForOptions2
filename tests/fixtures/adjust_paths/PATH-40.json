@@ -1,0 +1,125 @@
+{
+ "id": "PATH-40",
+ "base": "ADJ-02",
+ "title": "Second adjustment: T-01 at frame 6, A-01, further drift raises a new rule, second adjustment, then the T-18 limit",
+ "notes": "C1: PATH-01 legs; spot keeps drifting up after frame 6 so a second crossing follows the first adjustment.",
+ "entry_atm_iv": "0.10",
+ "legs": [
+  {
+   "side": "BUY",
+   "type": "PE",
+   "strike": "22950",
+   "lots": 2
+  },
+  {
+   "side": "SELL",
+   "type": "PE",
+   "strike": "23150",
+   "lots": 2
+  },
+  {
+   "side": "SELL",
+   "type": "CE",
+   "strike": "23500",
+   "lots": 2
+  },
+  {
+   "side": "BUY",
+   "type": "CE",
+   "strike": "23700",
+   "lots": 2
+  }
+ ],
+ "frames": [
+  {
+   "clock": "2026-11-06T11:28:00",
+   "spot": "23290",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2026-11-06T11:30:00",
+   "spot": "23305",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2026-11-06T11:32:00",
+   "spot": "23320",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2026-11-06T11:34:00",
+   "spot": "23335",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2026-11-06T11:36:00",
+   "spot": "23350",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2026-11-06T11:38:00",
+   "spot": "23365",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2026-11-06T11:40:00",
+   "spot": "23390",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2026-11-06T11:42:00",
+   "spot": "23400",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2026-11-06T11:44:00",
+   "spot": "23412",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2026-11-06T11:46:00",
+   "spot": "23424",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2026-11-06T11:48:00",
+   "spot": "23436",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2026-11-06T11:50:00",
+   "spot": "23448",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2026-11-06T11:52:00",
+   "spot": "23460",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2026-11-06T11:54:00",
+   "spot": "23472",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2026-11-06T11:56:00",
+   "spot": "23484",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2026-11-06T11:58:00",
+   "spot": "23496",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2026-11-06T12:00:00",
+   "spot": "23508",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2026-11-06T12:02:00",
+   "spot": "23520",
+   "atm_iv": "0.10"
+  }
+ ]
+}
