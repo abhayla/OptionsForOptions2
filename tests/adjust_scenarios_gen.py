@@ -1932,6 +1932,8 @@ def path_frame(base: dict, frame: dict) -> dict:
     out["market"]["spot"], out["market"]["atm_iv"] = spot, atm
     if frame.get("day_open") is not None:
         out["market"]["day_open"] = D(frame["day_open"])
+    if frame.get("data_state") is not None:  # Stage B1: T-21 (stale prices), e.g. ADJ-19's feed=stale + age_seconds
+        out["data_state"] = {**out["data_state"], **frame["data_state"]}
     if frame.get("prev_close") is not None:  # Stage B1: T-13 (gap at the open) needs the previous close
         out["market"]["prev_close"] = D(frame["prev_close"])
     for c in out["market"]["chains"]:
