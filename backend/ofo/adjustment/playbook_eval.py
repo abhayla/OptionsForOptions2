@@ -126,6 +126,9 @@ class StrategyState:
     max_loss: Decimal | str | None = None  # Decimal, UNLIMITED or None
     max_profit: Decimal | str | None = None
     margin: Decimal | None = None  # None = the broker did not state it
+    #: B2: True when the margin reply could not be read (``margin_block`` state "failed", or a figure that is not a
+    #: number); T-14 then says "could not be read" rather than "not available". Either way ``margin`` is None.
+    margin_unreadable: bool = False
     premium_left: Decimal | None = None
     adjustment_cost: Decimal | None = None  # ADR-221: the cheapest offered approach's Compare cost
     adjustment_approach: str | None = None  # that approach's id (A-xx), named on the T-19 flag
@@ -539,11 +542,11 @@ def _t19(c: _Ctx) -> Hit:
     return _compare(c, "T-19", *pair)
 
 
-def t14_margin(margin: object) -> Decimal:
+def t14_margin(margin: object, unreadable: bool = False) -> Decimal:
     """The margin blocked T-14 divides by; absent, unreadable or not positive -> not checked (never a pass, never a
     division error)."""
     if margin is None:
-        raise _Missing(f"{P}missing_margin")
+        raise _Missing(MARGIN_UNREADABLE if unreadable else f"{P}missing_margin")
     if not isinstance(margin, Decimal) or not margin.is_finite():
         raise _Missing(MARGIN_UNREADABLE)
     if margin <= 0:
@@ -558,7 +561,7 @@ def _t14(c: _Ctx) -> Hit:
         raise _Missing(GAMMA_UNKNOWN)
     if g.reason is not None or g.up is None or g.down is None:
         raise _Missing(g.reason or GAMMA_UNKNOWN)
-    margin = t14_margin(c.state.margin)
+    margin = t14_margin(c.state.margin, c.state.margin_unreadable)
     worst = min(g.up, g.down)
     with localcontext(_EXACT):
         num = -worst * _HUNDRED
