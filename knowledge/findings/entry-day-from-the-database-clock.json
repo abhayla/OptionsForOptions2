@@ -1,0 +1,27 @@
+{
+ "id": "entry-day-from-the-database-clock",
+ "scope": "project",
+ "class": "A rule that reads 'when the position was entered' from a row's database-default creation time (clock_timestamp) instead of the order's own placed time gives the wrong day for any order written later than it was placed (a seed, an import, a backfill, a replay), and the app role cannot correct it because the column is not writable.",
+ "mechanism": "S-12 reads the entry day from paper_orders.created_at (DB default clock_timestamp()); scripts/seed_scenario.py sets only placed_at (~line 169), so a seeded 3 Nov entry reads as the real day; UPDATE of created_at by the app role: permission denied for table paper_orders.",
+ "first_seen": {
+  "date": "2026-11-05",
+  "where": "ic-e2e-paper goal run Stage B1 round 2",
+  "evidence": "pure evaluator flags S-12 at 54% vs 40% on the seeded entry day; DB run: no record; seed UPDATE: 'permission denied for table paper_orders'."
+ },
+ "fix": "Open (recommended): read the entry day from placed_at, falling back to created_at when absent; parked from the ic-e2e-paper run.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "tests_app/test_ic_rules_worker_paths.py holds S-12 as a strict known blocker."
+ },
+ "spec_ref": [
+  "spec/requirements/REQ-165.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-11-05",
+   "where": "scenario seeds",
+   "evidence": "S-12 never raised on a seeded entry day"
+  }
+ ]
+}

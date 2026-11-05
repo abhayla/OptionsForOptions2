@@ -4494,6 +4494,45 @@
         "title": "ForwardOut",
         "type": "object"
       },
+      "FrameIn": {
+        "additionalProperties": false,
+        "properties": {
+          "frame": {
+            "title": "Frame",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "frame"
+        ],
+        "title": "FrameIn",
+        "type": "object"
+      },
+      "FrameOut": {
+        "additionalProperties": false,
+        "properties": {
+          "frame": {
+            "title": "Frame",
+            "type": "integer"
+          },
+          "last": {
+            "title": "Last",
+            "type": "integer"
+          },
+          "scenario_id": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Scenario Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scenario_id",
+          "frame",
+          "last"
+        ],
+        "title": "FrameOut",
+        "type": "object"
+      },
       "FundsShareOut": {
         "additionalProperties": false,
         "description": "REQ-081 AC-9/AC-10 (ADR-207 (8)): max profit / max loss as a percent, one decimal, of the margin needed the Funds &\nMargins block shows. The whole block is null (never estimated, never of available funds) unless the margin read is\nCHECKED with a positive margin needed; a side that is Unlimited has null percent/text.",
@@ -7655,6 +7694,19 @@
       "PaperOrdersIn": {
         "additionalProperties": false,
         "properties": {
+          "basket_legs": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "maximum": 64.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Basket Legs"
+          },
           "orders": {
             "items": {
               "$ref": "#/components/schemas/PaperOrderIn"
@@ -16066,6 +16118,44 @@
           }
         },
         "summary": "Duplicate Playbook"
+      }
+    },
+    "/api/scenario/frame": {
+      "post": {
+        "operationId": "move_frame_api_scenario_frame_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FrameIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FrameOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Move Frame"
       }
     },
     "/api/settings": {

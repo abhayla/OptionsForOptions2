@@ -596,6 +596,10 @@ issues:
   "#656": S6.7  # Step 3 (live stops via settings in force + migration 0040) parked after round 3: 4 MAJOR findings, round-3 tip fails its own tests
   "#657": S6.7  # Settings screen says the 2x-credit stop is 'always active' for every strategy (false for pre-ADR-247 plans and non-iron-condor families)
   "#658": S6.7  # S-06 rule text hard-codes the 2% carry gap, which is a user setting
+  "#659": S6.7  # Scenario mode: data routes (pause, plan, edit, delete) accept a live strategy id
+  "#660": S6.7  # Flaky: test_feed_control login/Disconnect bus count (1 of 3 runs red, no code change)
+  "#661": S6.7  # IC rules in the background worker: T-19 never checked, S-12 entry day, T-11 second record at flat IV (parked from ic-e2e B1)
+  "#662": S6.7  # Second adjustment: no T-18 record after max adjustments (parked from ic-e2e C1)
 
 # Work items whose status is not done.
 work_items:
