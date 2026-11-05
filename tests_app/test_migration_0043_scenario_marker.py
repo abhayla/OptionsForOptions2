@@ -142,9 +142,11 @@ async def test_cross_cases_are_refused_with_409(app_engine, monkeypatch):
         app = _app(monkeypatch, app_engine, "PATH-01", user)
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as ac:
             for sid in (live, other):  # attack 1 (a live strategy) and 2 (another scenario's) in scenario mode
-                for path in (f"/paper/strategies/{sid}/orders", f"/paper/strategies/{sid}/triggers",
-                             f"/strategies/{sid}/tracking/exit"):
-                    r = await ac.post(path, json={})
+                for method, path in (("POST", f"/paper/strategies/{sid}/orders"),
+                                     ("POST", f"/paper/strategies/{sid}/triggers"),
+                                     ("POST", f"/strategies/{sid}/tracking/exit"),
+                                     ("DELETE", f"/paper/strategies/{sid}/triggers/1")):
+                    r = await ac.request(method, path, json={} if method == "POST" else None)
                     assert r.status_code == CONFLICT and r.json()["code"] == "USER_INPUT_026", (sid, path, r.text)
                 r = await ac.get(f"/api/strategies/{sid}/adjustment-check")
                 assert r.status_code == CONFLICT and r.json()["code"] == "USER_INPUT_193", (sid, r.text)

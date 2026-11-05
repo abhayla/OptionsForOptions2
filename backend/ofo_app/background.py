@@ -1557,7 +1557,8 @@ async def _lapse_exited(db: Any, user_ref: str, sid: int) -> None:
 def listable(marker: str | None, mode: str | None) -> bool:
     """Isolation both ways (IC e2e decision 4): live mode (``mode`` None) lists only real strategies (marker None);
     scenario mode lists only the strategies of the current scenario."""
-    return marker is None if mode is None else marker == mode
+    from ofo_app import scenario_mode  # noqa: PLC0415 - the one isolation helper
+    return scenario_mode.in_scope(marker, mode)
 
 
 async def owner_lister(provider: Any, gate: Any = None) -> Listed:
@@ -1735,6 +1736,8 @@ def refuse_scenario_outside_dev_or_test() -> None:
     from ofo_app.config import app_env  # noqa: PLC0415
     if scenario_mode.scenario_requested():
         scenario_mode.require_dev_or_test(app_env())
+        from ofo_app.live_market import live_requested  # noqa: PLC0415
+        scenario_mode.require_no_live_market(live_requested())  # never the real feed with test data
 
 
 if __name__ == "__main__":

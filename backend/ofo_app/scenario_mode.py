@@ -223,10 +223,39 @@ def require_dev_or_test(app_env: str | None) -> None:
         raise ScenarioRefused(f"{ENV_NAME} is a development/test-only setting: it needs APP_ENV=development or test")
 
 
+def require_no_live_market(live_requested: bool) -> None:
+    """Start-up refusal (API and worker): scenario test data and the real Kite feed (LIVE_MARKET) never run together."""
+    if live_requested:
+        raise ScenarioRefused(f"{ENV_NAME} cannot run with LIVE_MARKET on: test data and the real market never mix")
+
+
 def current_id() -> str | None:
     """The scenario id the process runs under (the marker the server writes on a new strategy), or None when the mode
     is off. No load and no environment check here: start-up already refused a bad setting."""
     return _raw() or None
+
+
+_ALIAS = re.compile(r"[a-z][a-z_]{0,15}")
+SCOPE_PARAM = "scope_scenario_id"
+
+
+def in_scope(marker: str | None, mode: str | None) -> bool:
+    """THE isolation rule (IC e2e decision 4), one place: live mode (``mode`` None) owns only real strategies (marker
+    None); scenario mode owns only the strategies of its own scenario. Every background / monitor / settlement /
+    reconcile reader goes through this or ``scope_clause`` (its SQL twin)."""
+    return marker is None if mode is None else marker == mode
+
+
+def scope_clause(alias: str) -> tuple[str, dict[str, str]]:
+    """The SQL twin of ``in_scope`` for the process mode, on the strategies row ``alias``: live ->
+    ``<alias>.scenario_id IS NULL``; scenario -> ``<alias>.scenario_id = :scope_scenario_id`` with its bound value.
+    ``alias`` is a constant SQL alias (refused otherwise, so no request text ever reaches the SQL)."""
+    if not _ALIAS.fullmatch(alias):
+        raise ValueError(f"not a SQL alias: {alias!r}")
+    sid = current_id()
+    if sid is None:
+        return f"{alias}.scenario_id IS NULL", {}
+    return f"{alias}.scenario_id = :{SCOPE_PARAM}", {SCOPE_PARAM: sid}
 
 
 def is_path(scenario_id: str) -> bool:

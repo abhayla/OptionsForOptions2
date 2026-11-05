@@ -176,10 +176,11 @@ async def _core(app_engine) -> None:  # noqa: PLR0915 - one readable walk of the
         net = await _net(sid)
         orders = []
         for t in a01["trades"]:
+            assert D(t["price"]) == mid_of(CROSS_FRAME, t["tradingsymbol"]), t  # the app pre-fills frame 6 mid
             cid = await _contract_id(t)
             closes = (net.get(cid, 0) < 0 and t["action"] == "BUY") or (net.get(cid, 0) > 0 and t["action"] == "SELL")
             orders.append({"contract_id": cid, "side": t["action"], "quantity": t["quantity"],
-                           "price": str(mid_of(CROSS_FRAME, t["tradingsymbol"])),  # the basket pre-fill: frame 6 mid
+                           "price": t["price"],  # the PREPARED basket's own pre-filled price, sent as typed
                            "kind": "exit" if closes else "open"})
         before = (await _rows("SELECT count(*) FROM public.paper_orders WHERE strategy_id = :s", s=sid))[0][0]
         placed = await ac.post(f"/paper/strategies/{sid}/orders", json={"orders": orders,

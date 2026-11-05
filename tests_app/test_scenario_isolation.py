@@ -53,7 +53,7 @@ def test_screen_check_refuses_each_cross_case(marker, current, refused):
 # ---- decision 5: the guard split, wired and fail closed -----------------------------------------------------------
 def test_order_route_sets_split_and_cover_every_order_route():
     real = {("POST", "/strategies/{strategy_id}/execute"), ("POST", "/strategies/{strategy_id}/execution/return")}
-    assert scenario_mode.REAL_ORDER_ROUTES == real
+    assert real == scenario_mode.REAL_ORDER_ROUTES
     assert scenario_mode.REAL_ORDER_ROUTES.isdisjoint(scenario_mode.PAPER_ORDER_ROUTES)
     assert scenario_mode.ORDER_ROUTES == scenario_mode.REAL_ORDER_ROUTES | scenario_mode.PAPER_ORDER_ROUTES
     assert ("POST", "/api/scenario/frame") in scenario_mode.NON_ORDER_ROUTES
@@ -182,3 +182,37 @@ def test_path_frames_regenerate_to_the_same_json(tmp_path):
     for name in names:
         fresh, committed = (json.loads((d / name).read_text(encoding="utf-8")) for d in (tmp_path, gen.PATHS_DIR))
         assert fresh == committed, name  # parsed JSON: line endings (checkout CRLF) do not count
+
+
+# ---- fix round 1: ONE isolation helper for every background reader; scenario never with LIVE_MARKET
+@pytest.mark.parametrize(("mode", "clause", "params"), [
+    (None, "s.scenario_id IS NULL", {}),
+    ("PATH-01", "s.scenario_id = :scope_scenario_id", {"scope_scenario_id": "PATH-01"}),
+])
+def test_scope_clause_is_the_sql_twin_of_in_scope(monkeypatch, mode, clause, params):
+    if mode is None:
+        monkeypatch.delenv("OFO_SCENARIO", raising=False)
+    else:
+        monkeypatch.setenv("OFO_SCENARIO", mode)
+    assert scenario_mode.scope_clause("s") == (clause, params)
+    assert background.listable(None, mode) is (mode is None)
+
+
+@pytest.mark.parametrize("alias", ["s; DROP TABLE x", "", "S", "s.x"])
+def test_scope_clause_refuses_anything_but_a_constant_alias(alias):
+    with pytest.raises(ValueError, match="not a SQL alias"):
+        scenario_mode.scope_clause(alias)
+
+
+def test_api_refuses_scenario_with_live_market(monkeypatch):
+    monkeypatch.setenv("LIVE_MARKET", "1")
+    with pytest.raises(scenario_mode.ScenarioRefused, match="LIVE_MARKET"):
+        _app(monkeypatch, "PATH-01")
+
+
+def test_worker_refuses_scenario_with_live_market(monkeypatch):
+    monkeypatch.setenv("OFO_SCENARIO", "PATH-01")
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setenv("LIVE_MARKET", "1")
+    with pytest.raises(scenario_mode.ScenarioRefused, match="LIVE_MARKET"):
+        background.refuse_scenario_outside_dev_or_test()

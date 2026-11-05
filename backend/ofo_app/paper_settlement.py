@@ -66,12 +66,13 @@ _MIDDAY: Final = datetime.time(12, 0)
 #: (underlying, expiry date) -> the index's official close that day, or None when it is not available.
 CloseOf = Callable[[str, datetime.date], Awaitable[Decimal | None]]
 
-_OPEN = text(
+#: ``{scope}`` = ``scenario_mode.scope_clause("s")`` (IC e2e decision 4): only the process mode's own strategies.
+_OPEN_SQL = (
     "SELECT o.strategy_id, s.user_ref, o.contract_id, c.name, c.instrument_type, c.strike, c.expiry "
     "FROM public.paper_orders AS o "
     "JOIN public.strategies AS s ON s.id = o.strategy_id "
     "JOIN public.catalogue_contracts AS c ON c.id = o.contract_id "
-    "WHERE s.deleted_at IS NULL AND c.expiry IS NOT NULL AND c.expiry <= :last_day "
+    "WHERE s.deleted_at IS NULL AND {scope} AND c.expiry IS NOT NULL AND c.expiry <= :last_day "
     "GROUP BY o.strategy_id, s.user_ref, o.contract_id, c.name, c.instrument_type, c.strike, c.expiry "
     "HAVING SUM(CASE WHEN o.side = 'BUY' THEN o.quantity ELSE -o.quantity END) <> 0 "
     "ORDER BY o.strategy_id, o.contract_id")
@@ -138,7 +139,10 @@ async def due_contracts(conn: Any, now: datetime.datetime) -> list[DueContract]:
     """The open paper contracts due at ``now``; the settle-from time is the setting in force NOW (the database clock),
     read in this call. A stored value the registry refuses raises (fail closed: nothing is settled on a guess)."""
     settle_from = calc.paper_settle_from(await settings_store.settings_in_force(conn))
-    rows = (await conn.execute(_OPEN, {"last_day": last_due_day(now, settle_from)})).all()
+    from ofo_app.scenario_mode import scope_clause  # noqa: PLC0415 - the one isolation helper
+    clause, params = scope_clause("s")
+    rows = (await conn.execute(text(_OPEN_SQL.format(scope=clause)),
+                               {"last_day": last_due_day(now, settle_from), **params})).all()
     return [DueContract(int(r.strategy_id), r.user_ref, int(r.contract_id), r.name, Instrument(r.instrument_type),
                         Decimal(r.strike), r.expiry) for r in rows]
 
