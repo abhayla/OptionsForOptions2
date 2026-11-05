@@ -98,6 +98,9 @@ describe('Adjustment settings screen (contract step 4, ADR-245, ADR-247)', () =>
     expect(ex.get('[data-testid=exit-stop_loss]').text()).toContain('50 % of max loss')
     expect(ex.get('[data-testid=exit-stop_loss]').text()).toContain('always active')
     expect(ex.get('[data-testid=exit-credit2]').text()).toContain('2× the credit received')
+    expect(ex.get('[data-testid=exit-credit2]').text()).toContain(
+      'Stop at 2x the credit received: for plans accepted from 5 Nov 2026; older plans keep their own stops')
+    expect(ex.get('[data-testid=exit-credit2]').text()).not.toContain('always active')
     const sw = ex.get('[data-testid=margin-stop-switch]')
     expect(sw.element.checked).toBe(false)
     expect(ex.get('[data-testid=exit-stop_margin]').text()).toContain('Off')
