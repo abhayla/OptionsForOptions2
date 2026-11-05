@@ -71,7 +71,8 @@ TRIGGER_ID = "T-16"
 _NEW_BODY = (
     "CASE WHEN (b.body -> 'triggers' -> '" + TRIGGER_ID + "') IS NULL "
     "THEN b.body #- '{guards," + MARGIN_KEY + "}' "
-    "ELSE jsonb_set(b.body #- '{guards," + MARGIN_KEY + "}', '{triggers," + TRIGGER_ID + ",on}', 'false'::jsonb, false) "
+    "ELSE jsonb_set(b.body #- '{guards," + MARGIN_KEY + "}', "
+    "'{triggers," + TRIGGER_ID + ",on}', 'false'::jsonb, false) "
     "END"
 )
 
