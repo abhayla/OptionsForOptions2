@@ -2799,7 +2799,7 @@ NOTES = {
     'FirstLegOut.instrument': 'Identifier: an instrument name from the exchange instrument list; never read from the token store (value canary in test_reply_inventory)',
     'FirstLegOut.strike': 'Identifier: an instrument name from the exchange instrument list; never read from the token store (value canary in test_reply_inventory)',
     'ForwardOut.label': 'catalogue text: only a render()/render_explanation() result (a catalogue sentence; its parameters are server-computed figures, never a stored credential)',
-    'FrameOut.scenario_id': 'UNREVIEWED',
+    'FrameOut.scenario_id': 'Identifier: a closed token chosen by server code (a catalogue key, state, label or display token); never read from the token store (value canary in test_reply_inventory); the scenario id of OFO_SCENARIO (ADJ-nn or PATH-nn, checked by scenario_mode._ID), never a credential',
     'FundsShareOut.max_loss_text': 'catalogue text: only a render()/render_explanation() result (a catalogue sentence; its parameters are server-computed figures, never a stored credential)',
     'FundsShareOut.max_profit_text': 'catalogue text: only a render()/render_explanation() result (a catalogue sentence; its parameters are server-computed figures, never a stored credential)',
     'FutureOut.instrument_id': 'SEGMENT:digits instrument id; its pattern cannot hold a 32-character token',
