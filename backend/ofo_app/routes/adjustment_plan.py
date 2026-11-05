@@ -21,6 +21,7 @@ playbook, and editing or deleting the playbook later never changes the plan.
 from __future__ import annotations
 
 import copy
+import dataclasses
 import datetime
 import logging
 import re
@@ -37,6 +38,7 @@ from ofo.settings import layers
 from pydantic import BaseModel, ConfigDict
 
 from ofo_app import adjustment_check as check
+from ofo_app import settings_in_force as in_force_mod
 from ofo_app import playbook_store as store
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier, Money
 from ofo_app.db import get_db
@@ -49,6 +51,7 @@ from ofo_app.routes.adjustment import (
     get_rest_spot_reader,
     get_tracked_reader,
 )
+from ofo_app.routes.adjustment_preferences import UserValuesIn
 from ofo_app.routes.broker import current_user_ref
 from ofo_app.routes.outcome import (
     MarketContext,
@@ -133,6 +136,45 @@ class PlanOut(ApiModel):
     accepted_at: datetime.datetime
 
 
+class SettingInForceOut(ApiModel):
+    """One covered setting in force for this strategy (ADR-245): its value and where it came from (``strategy`` /
+    ``user`` / ``default``); a layer that exists but cannot be read -> value and source None, ``reason`` its code."""
+    key: Identifier
+    value: Money | None
+    source: Identifier | None
+    reason: Identifier | None
+
+
+class TriggerInForceOut(ApiModel):
+    """One trigger of the playbook in force, its per-stage values (Trigger 1 / 2 / 3: Early, Middle, Last) and the
+    playbook's source; values None = the trigger has no threshold (a cross) or ``reason`` names why it is unread."""
+    id: Identifier
+    label: CatalogueText | None
+    unit: Identifier | None
+    on: bool | None
+    weekly: list[Money | None] | None
+    monthly: list[Money | None] | None
+    source: Identifier | None
+    reason: Identifier | None
+
+
+class StopLineOut(ApiModel):
+    """ADR-247: one stop line: ``figure`` the % or multiple in force, ``amount`` the loss in rupees at which it fires
+    (engine, exact decimal text), or None with ``reason`` naming the missing input."""
+    kind: Identifier
+    active: bool
+    figure: Money | None
+    amount: Money | None
+    source: Identifier | None
+    reason: Identifier | None
+
+
+class StopsOut(ApiModel):
+    lines: list[StopLineOut]
+    first: Identifier | None  # the kind that fires first (the smallest amount), None with ``reason``
+    reason: Identifier | None
+
+
 class AdjustmentPlanOut(ApiModel):
     strategy_id: int
     type: Identifier | None
@@ -143,6 +185,11 @@ class AdjustmentPlanOut(ApiModel):
     plan: PlanOut | None
     prefill: PrefillOut | None
     labels: dict[Identifier, CatalogueText]
+    #: contract "Your adjustment settings" step 3: the ONE settings-in-force read (``settings_in_force.in_force``)
+    settings: list[SettingInForceOut]
+    triggers: list[TriggerInForceOut]
+    triggers_reason: Identifier | None
+    stops: StopsOut
 
 
 def _bad(field: str) -> store.PlaybookStoreError:
@@ -253,13 +300,25 @@ async def _own_strategy(strategy_id: int, tracked_reader: TrackedReader, rates: 
     return tracked
 
 
+async def _market(tracked: Any, market_reader: MarketReader, ctx: MarketContext | None) -> Any:
+    """The market read the stop amounts are priced from; a failed read -> None (each stop amount then names
+    ``stop_max_loss_unknown``), never a guessed figure."""
+    try:
+        return await market_reader(tracked, ctx)
+    except Exception:  # noqa: BLE001 - any failed read means "not priced", logged
+        log.warning("adjustment plan: market not read for the stop amounts", exc_info=True)
+        return None
+
+
 async def _type_of(db: Any, user_ref: str, strategy_id: int, tracked: Any, market_reader: MarketReader,  # noqa: PLR0913
-                   rest_reader: RestSpotReader, ctx: MarketContext | None) -> tuple[str | None, store.Plan | None]:
+                   rest_reader: RestSpotReader, ctx: MarketContext | None,
+                   market: Any = None) -> tuple[str | None, store.Plan | None]:
     """The plan's type when there is a plan (a plan keeps its type), else the shape's, read as the check route does."""
     plan = await store.plan_for(db, user_ref, strategy_id)
     if plan is not None:
         return plan.strategy_type, plan
-    market = await market_reader(tracked, ctx)
+    if market is None:
+        market = await market_reader(tracked, ctx)
     spot = judge_spot(market, await rest_reader(tracked.position.underlying), ctx)
     listed = None if ctx is None else ctx.provider.instrument_master()
     return check.strategy_type(tracked.position, spot.value if spot.available else None, listed), None
@@ -276,14 +335,35 @@ async def _plan_out(db: Any, user_ref: str, plan: store.Plan) -> dict[str, Any]:
             **_values(plan.body)}
 
 
+def _in_force_reply(found: in_force_mod.InForce) -> dict[str, Any]:
+    """The reply fields of the ONE settings-in-force read; every field is copied, nothing is recomputed here."""
+    def trig_label(label: str | None) -> Any:
+        return None if label is None else render_explanation("settings_registry_text", text=label)
+    return {
+        "settings": [dataclasses.asdict(x) for x in found.settings],
+        "triggers": [{**dataclasses.asdict(t), "label": trig_label(t.label),
+                      "weekly": None if t.weekly is None else list(t.weekly),
+                      "monthly": None if t.monthly is None else list(t.monthly)} for t in found.triggers],
+        "triggers_reason": found.triggers_reason,
+        "stops": {"lines": [dataclasses.asdict(x) for x in found.stops.lines], "first": found.stops.first,
+                  "reason": found.stops.reason}}
+
+
 async def _sheet(db: Any, user_ref: str, strategy_id: int, stype: str | None, plan: store.Plan | None,  # noqa: PLR0913
-                 pick: int | None) -> AdjustmentPlanOut:
+                 pick: int | None, user_values: Any = None,
+                 money: in_force_mod.MoneyInputs | None = None) -> AdjustmentPlanOut:
     reply: dict[str, Any] = {"strategy_id": strategy_id, "type": stype, "type_name": None, "generic": stype is None,
                              "generic_text": render(_GENERIC) if stype is None else None, "playbooks": [],
                              "plan": None, "prefill": None, "labels": _labels()}
     if stype is None:
-        return AdjustmentPlanOut.model_validate(reply)
+        none = check.Resolved("none", None, None, None, False)
+        return AdjustmentPlanOut.model_validate(reply | _in_force_reply(in_force_mod.in_force(user_values, none, money)))
     active = await store.active_for(db, user_ref, stype)
+    # the playbook in force (as ``adjustment_check.resolve``): the plan copy, else the user's active / the system one
+    resolved = check.Resolved("plan", plan.body, plan.playbook_id, None, False) if plan is not None else \
+        check.Resolved("system" if active.is_system else "active", active.body, active.id,
+                       active.status if active.is_system else None, active.is_system)
+    reply |= _in_force_reply(in_force_mod.in_force(user_values, resolved, money))
     listed = await store.list_for_type(db, user_ref, stype)
     chosen = active
     if pick is not None:
@@ -324,22 +404,27 @@ async def read_plan(  # noqa: PLR0913 - FastAPI dependencies, one per input
         rest_reader: Annotated[RestSpotReader, Depends(get_rest_spot_reader)],
         ctx: Annotated[MarketContext | None, Depends(get_market_context)],
         rates: Annotated[ChargeRates | None, Depends(load_charge_rates)],
+        user_values: UserValuesIn,
         playbook_id: Annotated[int | None, Query(ge=1, le=ID_MAX)] = None) -> AdjustmentPlanOut:
     rates = rates if isinstance(rates, ChargeRates) else None
     tracked = await _own_strategy(strategy_id, tracked_reader, rates)
-    stype, plan = await _type_of(db, user_ref, strategy_id, tracked, market_reader, rest_reader, ctx)
+    market = await _market(tracked, market_reader, ctx)
+    stype, plan = await _type_of(db, user_ref, strategy_id, tracked, market_reader, rest_reader, ctx, market)
+    money = in_force_mod.money_inputs(tracked, market, rates)
 
     async def work() -> AdjustmentPlanOut:
-        return await _sheet(db, user_ref, strategy_id, stype, plan, playbook_id)
+        return await _sheet(db, user_ref, strategy_id, stype, plan, playbook_id, user_values, money)
     return await _run(db, work)
 
 
 async def _write(strategy_id: int, data: PlanIn, edit: bool, db: Any, user_ref: str,  # noqa: PLR0913
                  tracked_reader: TrackedReader, market_reader: MarketReader, rest_reader: RestSpotReader,
-                 ctx: MarketContext | None, rates: ChargeRates | None) -> AdjustmentPlanOut:
+                 ctx: MarketContext | None, rates: ChargeRates | None, user_values: Any = None) -> AdjustmentPlanOut:
     rates = rates if isinstance(rates, ChargeRates) else None
     tracked = await _own_strategy(strategy_id, tracked_reader, rates)
-    stype, plan = await _type_of(db, user_ref, strategy_id, tracked, market_reader, rest_reader, ctx)
+    market = await _market(tracked, market_reader, ctx)
+    stype, plan = await _type_of(db, user_ref, strategy_id, tracked, market_reader, rest_reader, ctx, market)
+    money = in_force_mod.money_inputs(tracked, market, rates)
     if stype is None:
         raise StrategyRefused(_GENERIC, Failure.CONFLICT)
     if edit and plan is None:
@@ -354,7 +439,7 @@ async def _write(strategy_id: int, data: PlanIn, edit: bool, db: Any, user_ref: 
         keep = edit and plan is not None and plan.playbook_id == source.id  # editing the plan keeps its own body
         body = with_overrides(plan.body if keep and plan is not None else source.body, data)
         saved = await store.accept_plan(db, user_ref, strategy_id, source.id, body)
-        return await _sheet(db, user_ref, strategy_id, stype, saved, None)
+        return await _sheet(db, user_ref, strategy_id, stype, saved, None, user_values, money)
     return await _run(db, work)
 
 
@@ -366,9 +451,11 @@ async def accept_plan(  # noqa: PLR0913 - FastAPI dependencies, one per input
         market_reader: Annotated[MarketReader, Depends(get_market_reader)],
         rest_reader: Annotated[RestSpotReader, Depends(get_rest_spot_reader)],
         ctx: Annotated[MarketContext | None, Depends(get_market_context)],
-        rates: Annotated[ChargeRates | None, Depends(load_charge_rates)]) -> AdjustmentPlanOut:
+        rates: Annotated[ChargeRates | None, Depends(load_charge_rates)],
+        user_values: UserValuesIn) -> AdjustmentPlanOut:
     """REQ-161 AC-2: accept the sheet (one click when only ``playbook_id`` is sent)."""
-    return await _write(strategy_id, data, False, db, user_ref, tracked_reader, market_reader, rest_reader, ctx, rates)
+    return await _write(strategy_id, data, False, db, user_ref, tracked_reader, market_reader, rest_reader, ctx, rates,
+                        user_values)
 
 
 @router.put("/api/strategies/{strategy_id}/adjustment-plan", response_model=AdjustmentPlanOut)
@@ -379,6 +466,8 @@ async def edit_plan(  # noqa: PLR0913 - FastAPI dependencies, one per input
         market_reader: Annotated[MarketReader, Depends(get_market_reader)],
         rest_reader: Annotated[RestSpotReader, Depends(get_rest_spot_reader)],
         ctx: Annotated[MarketContext | None, Depends(get_market_context)],
-        rates: Annotated[ChargeRates | None, Depends(load_charge_rates)]) -> AdjustmentPlanOut:
+        rates: Annotated[ChargeRates | None, Depends(load_charge_rates)],
+        user_values: UserValuesIn) -> AdjustmentPlanOut:
     """REQ-161 AC-3: edit the strategy's plan later (REQ-158 AC-5); 404 when it has none."""
-    return await _write(strategy_id, data, True, db, user_ref, tracked_reader, market_reader, rest_reader, ctx, rates)
+    return await _write(strategy_id, data, True, db, user_ref, tracked_reader, market_reader, rest_reader, ctx, rates,
+                        user_values)
