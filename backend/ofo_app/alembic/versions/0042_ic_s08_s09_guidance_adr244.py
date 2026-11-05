@@ -69,8 +69,8 @@ S08 = {
 S09 = {
     "id": "S-09",
     "name": "Weekend or market holiday ahead",
-    "rule": "The carry check on the day before a weekend or holiday shows the overnight margin and the loss at a "
-            "2% gap; possible approaches are holding with wings, or reducing",
+    "rule": "The carry check on the day before a weekend or holiday shows the overnight margin and the loss at "
+            "your carry gap; possible approaches are holding with wings, or reducing",
 }
 
 

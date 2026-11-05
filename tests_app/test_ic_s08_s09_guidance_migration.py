@@ -55,6 +55,15 @@ def test_guidance_constant_names_s08_and_s09_too() -> None:
     assert pe.GUIDANCE_SITUATIONS == ("S-03", "S-04", "S-05", "S-08", "S-09")
 
 
+def test_s09_names_the_users_carry_gap_not_a_fixed_percent() -> None:
+    # the carry gap is a user setting, so the guidance never hard-codes a percent; decision-support wording only
+    rule = M42.S09["rule"]
+    assert "the loss at your carry gap" in rule
+    assert "%" not in rule and "2%" not in rule
+    assert "possible approaches" in rule and "best" not in rule.lower()
+    assert "best" not in M42.S08["rule"].lower()
+
+
 async def test_new_version_is_appended_with_reason_and_lists_s08_s09_as_guidance(db):
     history = await sys_store.history(db, "ic")
     assert history[0].reason == M42.REASON and history[0].version == history[1].version + 1
