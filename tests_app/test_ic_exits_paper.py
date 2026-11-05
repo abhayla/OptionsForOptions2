@@ -24,7 +24,7 @@ from ofo_app import catalogue_store, playbook_store, scenario_mode
 
 OK, CREATED, CONFLICT = 200, 201, 409
 PATH = "PATH-50"
-F_PROFIT, F_STOP, F_QUIET, F_1420, F_1429, F_1431, F_PENNIES, F_SETTLE = range(8)
+F_STOP, F_PROFIT, F_QUIET, F_1420, F_1429, F_1431, F_PENNIES, F_SETTLE = range(8)
 TIME_EXIT_RULE = "day.expiry.1430.5"  # the day rule 5 of the time exit (playbook_eval.day_rule_id shape)
 _RUN = itertools.count(1)
 
