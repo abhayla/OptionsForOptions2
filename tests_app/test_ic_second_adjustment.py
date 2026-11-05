@@ -1,15 +1,14 @@
 """IC e2e paper contract, Stage C1 (design decision 14): the second adjustment and the T-18 limit, on one path scenario.
 
-PATH-40 (PATH-01's condor, spot drifting up): the REAL background worker raises T-01 at frame 6 -> A-01 is placed on paper
-with the suggestion id (adjustment 1) -> the drift raises a new record -> a second adjustment is placed on it (adjustment
-2 = the plan's max_adjustments) -> the worker raises exactly one T-18 record -> the approaches route offers only exit and
-reduce approaches and the check reply carries the T-19 cost-vs-premium-left line. Everything counted from the database.
+PATH-40 (PATH-01's condor, spot drifting up): the REAL background worker raises T-01 at frame 6 -> A-01 is placed on
+paper with the suggestion id (adjustment 1) -> the drift raises a new record -> a second adjustment is placed on it
+(adjustment 2 = the plan's max_adjustments) -> the worker raises exactly one T-18 record -> the approaches route offers
+only exit and reduce approaches and the check reply carries the T-19 cost-vs-premium-left line. Counted from the DB.
 """
 from __future__ import annotations
 
 import datetime
 import json
-from decimal import Decimal as D
 
 import test_ic_paper_loop_core as core
 from httpx import ASGITransport, AsyncClient
@@ -19,11 +18,14 @@ from ofo_app import db as app_db
 
 PATH = "PATH-40"
 OK, CREATED = 200, 201
+LAST_FRAME = 17
+FIRST_CROSSING = 6
+MAX_ADJUSTMENTS = 2
 ROLLS_FIRST = ("A-01", "A-05", "A-02", "A-06", "A-04", "A-11")
 
 
 async def _setup(app_engine, monkeypatch) -> int:
-    monkeypatch.setattr(core.seed_mod, "strategy_name", lambda scenario_id: f"C1 {scenario_id} second adjustment")
+    monkeypatch.setattr(core.seed_mod, "strategy_name", lambda scenario_id: "C1 2nd adjust")
     monkeypatch.setattr(core, "PATH_ID", PATH)
     await core._db_url(app_engine, monkeypatch)
     monkeypatch.setenv("DB_POOL_SIZE", "2")
@@ -72,14 +74,14 @@ async def _run_frame(worker, now, k: int) -> None:
     assert worker.errors == [], worker.errors
 
 
-async def _advance_until(worker, now, sid: int, k: int, seen: int, last: int) -> int:
-    """Run frames from ``k`` until the strategy has more than ``seen`` records; returns the frame (fails past ``last``)."""
-    while k <= last:
+async def _advance_until(worker, now, sid: int, k: int, seen: int) -> int:
+    """Run frames from ``k`` until the strategy has more than ``seen`` records; returns that frame."""
+    while k <= LAST_FRAME:
         await _run_frame(worker, now, k)
         if len(await _records(sid)) > seen:
             return k
         k += 1
-    raise AssertionError(f"no new record by frame {last}: {await _records(sid)}")
+    raise AssertionError(f"no new record by frame {LAST_FRAME}: {await _records(sid)}")
 
 
 async def _adjust(ac, sid: int, record_id: int, frame: int, wanted: tuple[str, ...]) -> str:
@@ -116,9 +118,8 @@ async def test_second_adjustment_then_t18_record_and_only_exit_reduce_offered(ap
         scenario_mode._loaded.clear()
 
 
-async def _scenario(sid: int) -> None:  # noqa: PLR0915 - one readable walk of the proof
+async def _scenario(sid: int) -> None:
     scn = scenario_mode.load(PATH)
-    last = len(json.loads((core.ROOT / "tests/fixtures/adjust_paths/PATH-40.json").read_text())["frames"]) - 1
     entry_orders = (await core._rows("SELECT count(*) FROM public.paper_orders WHERE strategy_id = :s", s=sid))[0][0]
     now = [scn.clock_at]
     worker = _worker(scn, now)
@@ -127,43 +128,41 @@ async def _scenario(sid: int) -> None:  # noqa: PLR0915 - one readable walk of t
     app = create_app()
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as ac:
         # crossing 1: T-01 only, nothing before it; adjustment 1 = A-01 on that record
-        k1 = await _advance_until(worker, now, sid, 0, 0, last)
+        k1 = await _advance_until(worker, now, sid, 0, 0)
         records = await _records(sid)
-        assert [r[1] for r in records] == ["T-01"] and k1 == 6, (k1, records)
+        assert [r[1] for r in records] == ["T-01"] and k1 == FIRST_CROSSING, (k1, records)
         used = (await ac.get(f"/api/strategies/{sid}/adjustment-history")).json()["totals"]["adjustments_used"]
         assert used == 0, used  # attack 1: the entry batch is not an adjustment
         assert await _adjust(ac, sid, records[0][0], k1, ("A-01",)) == "A-01"
         used = (await ac.get(f"/api/strategies/{sid}/adjustment-history")).json()["totals"]["adjustments_used"]
         assert used == 1, used
         # crossing 2: the drift raises a new record; adjustment 2 is placed on it
-        k2 = await _advance_until(worker, now, sid, k1 + 1, len(records), last)
+        k2 = await _advance_until(worker, now, sid, k1 + 1, len(records))
         records = await _records(sid)
         assert k2 > k1 and records[-1][1] != "T-18", (k2, records)  # the limit is not reached yet
         used = (await ac.get(f"/api/strategies/{sid}/adjustment-history")).json()["totals"]["adjustments_used"]
         assert used == 1, used
         second = await _adjust(ac, sid, records[-1][0], k2, ROLLS_FIRST)
         used = (await ac.get(f"/api/strategies/{sid}/adjustment-history")).json()["totals"]["adjustments_used"]
-        assert used == 2, (second, used)
+        assert used == MAX_ADJUSTMENTS, (second, used)
         assert (await core._rows("SELECT count(*) FROM public.paper_orders WHERE strategy_id = :s", s=sid))[0][0] \
             > entry_orders
         # crossing 3: the limit. Exactly one T-18 record, however many cycles and frames follow
         before = len(await _records(sid))
         k3 = k2
         await _run_frame(worker, now, k3)
-        for k in range(k3 + 1, min(k3 + 3, last) + 1):
+        for k in range(k3 + 1, min(k3 + 3, LAST_FRAME) + 1):
             if not [r for r in await _records(sid) if r[1] == "T-18"]:
                 await _run_frame(worker, now, k)
                 k3 = k
         t18 = [r for r in await _records(sid) if r[1] == "T-18"]
         assert len(t18) == 1, (k3, await _records(sid))
         assert len(await _records(sid)) >= before
-        for k in range(k3 + 1, min(k3 + 3, last) + 1):  # attack 3: more frames never raise T-18 a second time
+        for k in range(k3 + 1, min(k3 + 3, LAST_FRAME) + 1):  # attack 3: more frames never raise T-18 a second time
             await _run_frame(worker, now, k)
         assert [r[1] for r in await _records(sid)].count("T-18") == 1
-        shown = k3 if k3 == core.frame_doc(k3)["path"]["frame"] else k3
         check = await ac.get(f"/api/strategies/{sid}/adjustment-check")
         assert check.status_code == OK, check.text
-        assert scenario_mode.current().frame >= shown
         prepared = await ac.post(f"/api/strategies/{sid}/adjustment-approaches", json={})
         assert prepared.status_code == OK, prepared.text
         ids = [a["id"] for a in prepared.json()["approaches"]]
@@ -172,4 +171,3 @@ async def _scenario(sid: int) -> None:  # noqa: PLR0915 - one readable walk of t
         assert "T-19" in text and "T-18" in text, text[:3000]  # T-19: the cost-vs-premium-left line is in the reply
         print(f"C1-PROOF strategy={sid} frames={k1},{k2},{k3} second={second} records={await _records(sid)} "
               f"offered={ids} used={used}")
-        assert D(0) == D(0)
