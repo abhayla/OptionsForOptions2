@@ -126,13 +126,7 @@ async def _cleanup() -> None:
     scenario_mode._loaded.clear()
 
 
-A35_XFAIL = pytest.mark.xfail(strict=True, reason=(
-    "FINDING: A-35 reads the playbook GUARD time_exit (ADR-238 (5), playbook_eval.exit_inputs); the iron condor system "
-    "playbook has no time_exit guard (only a rule T-10b 'Clock time reached 14:30'), so the real route refuses A-35 with "
-    "USER_INPUT_184 'time exit not set'. Not mine to change (playbook data)."))
-
-
-@pytest.mark.parametrize("approach", [pytest.param(a, marks=A35_XFAIL) if a == "A-35" else a for a in APPROACHES])
+@pytest.mark.parametrize("approach", APPROACHES)
 async def test_the_stored_paper_legs_equal_the_built_after_legs(approach, app_engine, monkeypatch):
     try:
         done, want, stored, sid = await _run(app_engine, monkeypatch, approach)
@@ -141,6 +135,41 @@ async def test_the_stored_paper_legs_equal_the_built_after_legs(approach, app_en
         newest = [i for (i,) in await core._rows("SELECT id FROM public.paper_orders WHERE strategy_id = :s "
                                                  "ORDER BY id DESC LIMIT :n", s=sid, n=done["sent"])]
         assert await _timeline_orders(done["record"]) == [sorted(newest)]
+    finally:
+        await _cleanup()
+
+
+async def test_diagnose_a35_time_exit_source(app_engine, monkeypatch):
+    """A-35's refusal on the real route: which playbook body the route resolves, its stored versions, the check clock."""
+    import json  # noqa: PLC0415
+    from ofo.adjustment import playbook_eval as pe  # noqa: PLC0415
+    from ofo_app import adjustment_check  # noqa: PLC0415
+    sid = await _setup(app_engine, monkeypatch, "PATH-31")
+    try:
+        versions = await core._rows("SELECT version, reason, body::jsonb->'guards'->>'time_exit' "
+                                    "FROM public.system_playbook_versions WHERE strategy_type = 'ic' ORDER BY version")
+        await core._move(2)
+        from ofo_app.main import create_app  # noqa: PLC0415
+        scenario_mode._loaded.clear()
+        async with AsyncClient(transport=ASGITransport(app=create_app()), base_url="http://t") as ac:
+            assert (await ac.get(f"/api/strategies/{sid}/adjustment-check")).status_code == OK
+            reply = (await ac.post(f"/api/strategies/{sid}/adjustment-approaches", json={})).json()
+        a35 = next(a for a in reply["approaches"] if a["id"] == "A-35")
+        async with core._engine().connect() as conn:
+            pb = await playbook_store.active_for(conn, "owner", "ic")
+            plan = await playbook_store.plan_for(conn, "owner", sid)
+        guards = adjustment_check.guards_of_body(pb.body)
+        facts = {"versions(version, reason, time_exit)": [list(v) for v in versions],
+                 "active_for ic: version/status": [pb.version, pb.status], "plan_for": None if plan is None else plan.playbook_id,
+                 "guards time_exit via active_for": dict(pb.body.get("guards", {})).get("time_exit"),
+                 "exit_inputs": repr(pe.exit_inputs(pb.body, guards, pe.StrategyState(
+                     stops=None, expiry_kind="weekly", days_left=0, hhmm="15:00", tighten_percent=None))),
+                 "spot": reply["spot"]["value"], "spot_at": str(reply["spot"]["at"]),
+                 "a35 refusal": (a35["refusal"] or {}).get("what_happened"), "a35 trades": bool(a35["trades"])}
+        print("A35-FACTS " + json.dumps(facts, default=str))
+        with open("D:/Abhay/scratch/ic-e2e/b3-a35.txt", "w", encoding="utf-8") as out:
+            out.write(json.dumps(facts, default=str, indent=1))
+        assert facts["guards time_exit via active_for"] == "14:30", facts
     finally:
         await _cleanup()
 
