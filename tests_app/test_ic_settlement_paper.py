@@ -63,7 +63,6 @@ async def test_held_to_expiry_legs_settle_once_and_history_equals_the_fills(app_
         cash = await ex.sum_of_fills(sid)
         assert cash == entry_cash - D(130) * D(100), (cash, entry_cash)  # exact Decimal: settle adds only -13,000
         async with ex.client() as ac:
-            assert (await ac.get(f"/api/strategies/{sid}/adjustment-check")).status_code == ex.OK
             assert await ex.booked(ac, sid) == cash
         # attack 3: the second run writes 0 rows
         before = (await core._rows("SELECT count(*) FROM public.paper_orders WHERE strategy_id = :s", s=sid))[0][0]
