@@ -576,16 +576,16 @@ async def accept_plan(conn: Any, user_ref: str, strategy_id: int, playbook_id: i
     return _plan(row)
 
 
-#: ADR-250: when the first iron condor version with the ADR-247 stop shape (no % of margin guard, T-16 off or
-#: absent) was saved: migration 0040's row on an existing database, the version 1 seed on a fresh one (the seed ships
-#: that shape). A plan accepted before it keeps its own stops. None (no such version) -> every plan predates ADR-247.
+#: ADR-250: when migration 0040 saved the iron condor system version 2 (ADR-247: margin stop and T-16 off). Every
+#: database has the same history (version 1 = the original seed, version 2 = 0040), so a plan accepted before this
+#: time keeps its own stops. Version 2 absent -> None -> every plan predates ADR-247 (fail closed).
+_ADR247_VERSION = 2
 _ADR247_SAVED_AT = text("SELECT min(saved_at) FROM public.system_playbook_versions WHERE strategy_type = 'ic' "
-                        "AND NOT (body -> 'guards') ? 'stop_line_pct_of_margin' "
-                        "AND coalesce(body -> 'triggers' -> 'T-16' ->> 'on', 'false') <> 'true'")
+                        "AND version = :version")
 
 
 async def adr247_saved_at(conn: Any) -> datetime | None:
-    return (await conn.execute(_ADR247_SAVED_AT)).scalar_one_or_none()
+    return (await conn.execute(_ADR247_SAVED_AT, {"version": _ADR247_VERSION})).scalar_one_or_none()
 
 
 async def plan_for(conn: Any, user_ref: str, strategy_id: int) -> Plan | None:

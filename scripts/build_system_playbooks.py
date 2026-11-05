@@ -12,24 +12,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-from ofo.adjustment import stop_lines  # noqa: E402
 from ofo.adjustment.playbook_eval import body_from_fixture  # noqa: E402
 from ofo.adjustment.playbook_types import APPROVED_SYSTEM_TYPES, SHOWN_NAMES, TYPE_KEYS  # noqa: E402
 
 FIXTURE = ROOT / "tests" / "fixtures" / "adjust_scenarios" / "_playbooks.json"
 OUT = ROOT / "backend" / "ofo" / "adjustment" / "system_playbooks.json"
-#: ADR-247 (migration 0040, for new installs): the iron condor ships with the % of margin stop and T-16 OFF
-ADR247_TYPE = "ic"
-MARGIN_GUARD = "stop_line_pct_of_margin"
-
-
-def _adr247(body: dict) -> dict:
-    """The same change migration 0040 makes to an existing database's iron condor: margin guard removed, T-16 off
-    (a missing T-16 is left missing). The scenario fixture keeps the ADR-216 values its expected files encode."""
-    body["guards"].pop(MARGIN_GUARD, None)
-    if stop_lines.TRIGGER_MARGIN in body["triggers"]:
-        body["triggers"][stop_lines.TRIGGER_MARGIN]["on"] = False
-    return body
 
 
 def _refuse_float(text: str) -> None:
@@ -41,8 +28,6 @@ def build() -> str:
     rows = []
     for key in TYPE_KEYS:
         body = body_from_fixture(playbooks, key)
-        if key == ADR247_TYPE:
-            body = _adr247(body)
         status = "approved" if key in APPROVED_SYSTEM_TYPES else "draft"
         if body.get("status") != status:
             raise ValueError(f"{key}: the fixture's status {body.get('status')!r} is not {status!r}")

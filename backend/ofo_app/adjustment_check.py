@@ -93,7 +93,7 @@ class Resolved:
     playbook_id: int | None
     status: str | None  # a system playbook's status only; None for the user's own (REQ-158 AC-2)
     is_system: bool
-    #: ADR-250: a strategy PLAN accepted before the ADR-247 iron condor version (migration 0040) was saved; it keeps
+    #: ADR-250: a strategy PLAN accepted before the iron condor system version 2 (migration 0040) was saved; it keeps
     #: its own stops (per-stage T-06 / T-16) and gains no 2x-credit line. Read in ``resolve`` from the plan's
     #: ``accepted_at`` (kept on every re-save) against ``playbook_store.adr247_saved_at``; False for every other source
     saved_before_adr247: bool = dataclasses.field(kw_only=True)  # REQUIRED, no default (contract step 3 r3)
@@ -152,8 +152,8 @@ def strategy_type(position: Position, spot: Decimal | None, listed: list | None)
 
 
 async def plan_saved_before_adr247(conn: Any, plan: Any) -> bool:
-    """ADR-250: a plan accepted before the first iron condor version with the ADR-247 stop shape was saved (the plan's
-    ``accepted_at`` survives every re-save). No such version (cannot happen after 0040) -> True: keep its own stops."""
+    """ADR-250: a plan accepted before the iron condor system version 2 (migration 0040) was saved (the plan's
+    ``accepted_at`` survives every re-save). Version 2 absent -> True: keep its own stops."""
     cutoff = await playbook_store.adr247_saved_at(conn)
     return cutoff is None or plan.accepted_at < cutoff
 

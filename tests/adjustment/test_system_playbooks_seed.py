@@ -22,15 +22,13 @@ def _seed_bodies() -> dict:
 
 
 def test_ic_seed_carries_every_adr_216_guard():
-    """ADR-216 as changed by ADR-247 (migration 0040 for new installs): stop = 50% of max loss (or 2x the credit,
-    a default of the stops in force), the % of margin stop and T-16 OFF; expiry day: close a spread whose short is
+    """ADR-216: stop = 50% of max loss or 4% of margin, whichever first; expiry day: close a spread whose short is
     within 0.3% of spot by 14:30; the plan sheet's time exit is 14:30. The mockup's 13:00 tighten rule is OFF."""
     body = _seed_bodies()["ic"]
     g = body["guards"]
-    assert (g["profit_target_pct_of_max_profit"], g["stop_line_pct_of_max_loss"],
+    assert (g["profit_target_pct_of_max_profit"], g["stop_line_pct_of_max_loss"], g["stop_line_pct_of_margin"],
             g["stop_line_rule"], g["max_adjustments"], g["time_exit"]) == (
-        "50", "50", "whichever comes first", 2, "14:30")
-    assert "stop_line_pct_of_margin" not in g and body["triggers"]["T-16"]["on"] is False
+        "50", "50", "4", "whichever comes first", 2, "14:30")
     expiry = [r for r in body["day_rules"] if r["when"] == "expiry"]
     assert [r for r in expiry if r["on"]] == [{"on": True, "when": "expiry", "at": "14:30", "action": 5,
                                                "close_if_short_within_pct": "0.3"}]

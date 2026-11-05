@@ -1602,6 +1602,7 @@
      "order_sequence": "buy legs first; buy back shorts before selling hedges",
      "profit_target_pct_of_max_profit": "50",
      "roll_debit_limit": "Rs 500 or 10% of max profit",
+     "stop_line_pct_of_margin": "4",
      "stop_line_pct_of_max_loss": "50",
      "stop_line_rule": "whichever comes first",
      "time_exit": "14:30",
@@ -2155,7 +2156,7 @@
        "4",
        "3"
       ],
-      "on": false,
+      "on": true,
       "unit": "%",
       "weekly": [
        "4",
