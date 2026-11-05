@@ -40,8 +40,8 @@ LAST_AUDIT = text("SELECT payload->>'action', payload->>'reason', actor FROM pub
 STATE_47 = pe.StrategyState(stops=None, expiry_kind="weekly", days_left=6, hhmm="10:00", spot=D("22500"), pnl=D("-470"),
                             max_loss=D("1000"), prices_fresh=True)
 CLEARED = {"T-06": {"held_at_entry": False, "seen_clear": True}}
-#: the iron condor's CURRENT version on a fresh database: the seed (1) plus migration 0040's ADR-247 version (2)
-ICV = 2
+#: the iron condor's CURRENT version is read in each test (``icv``): later migrations append versions, so no test
+#: assumes a number or that its own migration's row is the newest (finding cutoff-by-version-number)
 
 
 @pytest.fixture
@@ -76,9 +76,10 @@ async def _count(db, query) -> int:
 # ---- the core proof (AC-2, AC-4) -----------------------------------------------------------------------------------
 
 async def test_core_proof_new_version_reaches_the_next_check_copies_and_plans_unchanged_restore_appends(db):
+    icv = (await sys_store.current(db, "ic")).version
     user = _user()
     system = await pbs.active_for(db, user, "ic")
-    assert system.is_system and system.version == ICV and _t06(system.body) == "50"
+    assert system.is_system and system.version > 1 and _t06(system.body) == "50"
     copy_before = await pbs.duplicate(db, user, system.id, "My IC")  # a user's copy made before the change
     _, planned = await _with_draft(db, user)
     await pbs.accept_plan(db, user, planned.id, system.id)  # a saved plan made before the change
@@ -88,27 +89,29 @@ async def test_core_proof_new_version_reaches_the_next_check_copies_and_plans_un
     assert _t06_flag((await check.resolve(db, tracked_user, tracked.id, "ic")).body) == []  # 47 < 50: no flag
     audits = await _count(db, AUDIT)
 
-    saved = await sys_store.save(db, ADMIN, "ic", _edited(system.body), "  tighter stop  after review ", ICV)
+    saved = await sys_store.save(db, ADMIN, "ic", _edited(system.body), "  tighter stop  after review ", icv)
 
     assert (saved.version, saved.status, saved.reason, saved.saved_by) == (
-        ICV + 1, "approved", "tighter stop after review", ADMIN)
+        icv + 1, "approved", "tighter stop after review", ADMIN)
     history = await sys_store.history(db, "ic")
-    assert [(v.version, _t06(v.body)) for v in history][:2] == [(ICV + 1, "45"), (ICV, "50")]  # kept, not overwritten
+    assert [(v.version, _t06(v.body)) for v in history][:2] == [(icv + 1, "45"), (icv, "50")]  # kept, not overwritten
     assert await _count(db, AUDIT) == audits + 1
     action, reason, actor = (await db.execute(LAST_AUDIT)).one()
     assert (action, actor) == (sys_store.AUDIT_SAVED, ADMIN) and "tighter stop after review" in reason
     # AC-4: the system-tracked strategy checks against 45 at its next check; the copy and the plan keep 50
     resolved = await check.resolve(db, tracked_user, tracked.id, "ic")
     assert (resolved.source, _t06(resolved.body)) == ("system", "45")
-    assert _t06_flag(resolved.body) == [(D("45"), D("47"))]
+    # (ADR-252: a stop trigger is answered from the stop lines in force, not from the body's value, so with
+    # ``stops=None`` T-06 is never flagged; the body value reaching the check is the line above)
+    assert _t06_flag(resolved.body) == []
     assert _t06((await pbs.get(db, user, copy_before.id)).body) == "50"
     plan = await check.resolve(db, user, planned.id, "ic")
     assert (plan.source, _t06(plan.body)) == ("plan", "50")
     assert (await pbs.get(db, user, system.id)).version == saved.version  # reads as its current version
 
-    restored = await sys_store.restore(db, ADMIN, "ic", ICV, "back to the approved numbers", ICV + 1)
-    assert (restored.version, restored.restored_from, _t06(restored.body)) == (ICV + 2, ICV, "50")
-    assert [v.version for v in await sys_store.history(db, "ic")][:3] == [ICV + 2, ICV + 1, ICV]  # appends only
+    restored = await sys_store.restore(db, ADMIN, "ic", icv, "back to the approved numbers", icv + 1)
+    assert (restored.version, restored.restored_from, _t06(restored.body)) == (icv + 2, icv, "50")
+    assert [v.version for v in await sys_store.history(db, "ic")][:3] == [icv + 2, icv + 1, icv]  # appends only
     assert _t06((await check.resolve(db, tracked_user, tracked.id, "ic")).body) == "50"
     assert (await db.execute(LAST_AUDIT)).one()[0] == sys_store.AUDIT_RESTORED
 
@@ -137,19 +140,21 @@ async def test_approve_marks_a_draft_approved_as_a_new_version_shown_on_the_play
 
 @pytest.mark.parametrize("reason", ["", "   ", "x" * 501, None])
 async def test_a_version_without_a_reason_is_refused_and_nothing_is_written(db, reason):
+    icv = (await sys_store.current(db, "ic")).version
     body = (await sys_store.current(db, "ic")).body
     before = await _count(db, VERSIONS)
     with pytest.raises(pbs.PlaybookStoreError) as refused:
-        await sys_store.save(db, ADMIN, "ic", _edited(body), reason, ICV)
+        await sys_store.save(db, ADMIN, "ic", _edited(body), reason, icv)
     assert refused.value.code == sys_store.REASON_REQUIRED and await _count(db, VERSIONS) == before
 
 
 async def test_a_save_on_a_stale_base_version_is_refused(db):
+    icv = (await sys_store.current(db, "ic")).version
     body = (await sys_store.current(db, "ic")).body
-    await sys_store.save(db, ADMIN, "ic", _edited(body), "first", ICV)
+    await sys_store.save(db, ADMIN, "ic", _edited(body), "first", icv)
     with pytest.raises(pbs.PlaybookStoreError) as refused:
-        await sys_store.save(db, ADMIN, "ic", _edited(body, "40"), "second admin", ICV)
-    assert refused.value.code == sys_store.VERSION_STALE and (await sys_store.current(db, "ic")).version == ICV + 1
+        await sys_store.save(db, ADMIN, "ic", _edited(body, "40"), "second admin", icv)
+    assert refused.value.code == sys_store.VERSION_STALE and (await sys_store.current(db, "ic")).version == icv + 1
 
 
 async def test_a_save_cannot_change_the_approval_state(db):
@@ -234,9 +239,9 @@ async def _ic_body(env) -> dict:
     return (await sys_store.current(env.conn, "ic")).body
 
 
-def _writes(body: dict) -> list[tuple[str, dict]]:
-    return [(f"{BASE}/versions", {"body": _edited(body), "reason": "r", "base_version": ICV}),
-            (f"{BASE}/versions/1/restore", {"reason": "r", "base_version": ICV}),
+def _writes(body: dict, icv: int) -> list[tuple[str, dict]]:
+    return [(f"{BASE}/versions", {"body": _edited(body), "reason": "r", "base_version": icv}),
+            (f"{BASE}/versions/1/restore", {"reason": "r", "base_version": icv}),
             ("/api/system-playbooks/ifly/approve", {"reason": "r", "base_version": 1})]
 
 
@@ -253,6 +258,7 @@ async def test_every_route_depends_on_the_one_admin_guard_and_a_new_unguarded_ro
 
 
 async def test_a_non_admin_is_refused_on_every_route_and_nothing_is_written(env):
+    icv = (await sys_store.current(env.conn, "ic")).version
     from ofo_app.routes.settings import require_admin  # noqa: PLC0415
 
     def deny():
@@ -261,36 +267,38 @@ async def test_a_non_admin_is_refused_on_every_route_and_nothing_is_written(env)
     body = await _ic_body(env)
     env.app.dependency_overrides[require_admin] = deny
     before, audits = await _count(env.conn, VERSIONS), await _count(env.conn, AUDIT)
-    for path, payload in _writes(body):
+    for path, payload in _writes(body, icv):
         assert (await env.client.post(path, json=payload)).status_code == HTTPStatus.FORBIDDEN, path
     assert (await env.client.get(f"{BASE}/versions")).status_code == HTTPStatus.FORBIDDEN
     assert (await _count(env.conn, VERSIONS), await _count(env.conn, AUDIT)) == (before, audits)
 
 
 async def test_the_admin_saves_restores_and_approves_over_http(env):
+    icv = (await sys_store.current(env.conn, "ic")).version
     body = await _ic_body(env)
     saved = await env.client.post(f"{BASE}/versions", json={"body": _edited(body), "reason": "why",
-                                                            "base_version": ICV})
+                                                            "base_version": icv})
     assert saved.status_code == HTTPStatus.CREATED, saved.text
-    assert (saved.json()["version"], saved.json()["current"], saved.json()["saved_by"]) == (ICV + 1, True, ADMIN)
+    assert (saved.json()["version"], saved.json()["current"], saved.json()["saved_by"]) == (icv + 1, True, ADMIN)
     history = (await env.client.get(f"{BASE}/versions")).json()["versions"]
-    assert [(v["version"], v["current"]) for v in history][:2] == [(ICV + 1, True), (ICV, False)]
-    restored = await env.client.post(f"{BASE}/versions/1/restore", json={"reason": "undo", "base_version": ICV + 1})
-    assert (restored.status_code, restored.json()["version"], restored.json()["restored_from"]) == (201, ICV + 2, 1)
+    assert [(v["version"], v["current"]) for v in history][:2] == [(icv + 1, True), (icv, False)]
+    restored = await env.client.post(f"{BASE}/versions/1/restore", json={"reason": "undo", "base_version": icv + 1})
+    assert (restored.status_code, restored.json()["version"], restored.json()["restored_from"]) == (201, icv + 2, 1)
     approved = await env.client.post("/api/system-playbooks/ifly/approve", json={"reason": "ok", "base_version": 1})
     assert (approved.status_code, approved.json()["status"], approved.json()["draft"]) == (201, "approved", False)
 
 
 async def test_this_apis_refusals_answer_their_catalogue_reason(env):
+    icv = (await sys_store.current(env.conn, "ic")).version
     body = await _ic_body(env)
     cases = [
-        (f"{BASE}/versions", {"body": _edited(body), "reason": " ", "base_version": ICV}, 422,
+        (f"{BASE}/versions", {"body": _edited(body), "reason": " ", "base_version": icv}, 422,
          render_explanation("system_playbook_refused_reason")),
         (f"{BASE}/versions", {"body": _edited(body), "reason": "r", "base_version": 9}, 409,
-         render_explanation("system_playbook_refused_stale", version=ICV)),
-        (f"{BASE}/versions/9/restore", {"reason": "r", "base_version": ICV}, 404,
+         render_explanation("system_playbook_refused_stale", version=icv)),
+        (f"{BASE}/versions/9/restore", {"reason": "r", "base_version": icv}, 404,
          render_explanation("system_playbook_refused_version", version=9)),
-        (f"{BASE}/approve", {"reason": "r", "base_version": ICV}, 409,
+        (f"{BASE}/approve", {"reason": "r", "base_version": icv}, 409,
          render_explanation("system_playbook_refused_approved")),  # PB-04 is approved (ADR-216)
     ]
     before = await _count(env.conn, VERSIONS)
@@ -302,6 +310,7 @@ async def test_this_apis_refusals_answer_their_catalogue_reason(env):
 
 async def test_an_invalid_body_is_refused_with_the_same_answer_as_the_user_editor(env):
     """REQ-160: one validator. The same bad body to a user's save and to the system save: same status, same text."""
+    icv = (await sys_store.current(env.conn, "ic")).version
     body = await _ic_body(env)
     own = await env.client.post("/api/playbooks", json={"type": "ic", "name": "Mine", "body": body})
     assert own.status_code == HTTPStatus.CREATED, own.text
@@ -312,7 +321,7 @@ async def test_an_invalid_body_is_refused_with_the_same_answer_as_the_user_edito
     before = await _count(env.conn, VERSIONS)
     for bad in (gap, bad_value, unknown_key):
         user = await env.client.put(f"/api/playbooks/{own.json()['id']}", json={"body": bad, "version": 1})
-        system = await env.client.post(f"{BASE}/versions", json={"body": bad, "reason": "r", "base_version": ICV})
+        system = await env.client.post(f"{BASE}/versions", json={"body": bad, "reason": "r", "base_version": icv})
         assert user.status_code == system.status_code == HTTPStatus.UNPROCESSABLE_ENTITY, (user.text, system.text)
         assert user.json() == system.json()
     assert await _count(env.conn, VERSIONS) == before

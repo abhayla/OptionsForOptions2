@@ -362,7 +362,7 @@ type="button" class="flex min-h-11 w-full items-center justify-between px-3 py-2
                   <tr class="border-t border-line align-top" data-testid="exit-credit2">
                     <th scope="row" class="break-words py-1 pr-2 text-left font-normal">Stop at 2× credit</th>
                     <td class="break-words py-1 pr-2">2× the credit received <span class="chip border-line bg-surface-muted text-xs text-ink-muted">source unavailable</span></td>
-                    <td class="break-words py-1 text-ink-muted">always active; whichever stop comes first raises the one alert</td>
+                    <td class="break-words py-1 text-ink-muted">Stop at 2x the credit received: for plans accepted from 5 Nov 2026; older plans keep their own stops. Whichever stop comes first raises the one alert</td>
                   </tr>
                   <tr class="border-t border-line align-top text-ink-muted" data-testid="exit-stop_margin">
                     <th scope="row" class="break-words py-1 pr-2 text-left font-normal">Stop at % of margin</th>
