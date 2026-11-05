@@ -120,3 +120,87 @@ async def test_the_upgrade_statement_is_re_runnable_and_never_writes_an_empty_ve
     before = (await sys_store.current(db, "ic")).version
     await db.execute(text(M40.upgrade_sql()))
     assert (await sys_store.current(db, "ic")).version == before
+
+
+class _Op:
+    """Stands in for alembic's ``op``: records every statement ``upgrade()`` runs, so the test runs exactly those."""
+
+    def __init__(self):
+        self.sql: list[str] = []
+
+    def execute(self, sql):
+        self.sql.append(str(sql))
+
+
+async def _run_upgrade(conn, monkeypatch) -> None:
+    op = _Op()
+    monkeypatch.setattr(M40, "op", op)
+    M40.upgrade()  # upgrade() itself, not only upgrade_sql()
+    assert op.sql
+    for sql in op.sql:
+        await conn.execute(text(sql))
+
+
+@pytest.fixture
+async def owner_db(admin_engine):
+    async with admin_engine.connect() as conn:
+        outer = await conn.begin()
+        try:
+            yield conn
+        finally:
+            await outer.rollback()
+
+
+async def test_cutoff_is_0040s_row_found_by_reason_on_the_ofo_dev_history(owner_db, monkeypatch):
+    """#656 MAJOR 1 (ofo_dev's real history): v1 seed, v2 an admin save, v3 a restore, THEN 0040 -> v4. The cutoff
+    is v4's save time (found by 0040's reason), never v2's; a plan accepted between v2 and v4 keeps its own stops;
+    admin edits and users' copies survive upgrade()."""
+    db = owner_db
+    table, guard = M40.TABLE, M40.GUARD_TRIGGER
+    await db.execute(text(f"ALTER TABLE {table} DISABLE TRIGGER {guard}"))
+    await db.execute(text(f"DELETE FROM {table} WHERE strategy_type = 'ic' AND version > 1"))  # noqa: S608 - constant
+    await db.execute(text(f"ALTER TABLE {table} ENABLE TRIGGER {guard}"))
+    saved = await sys_store.restore(db, ADMIN, "ic", 1, "owner test save", 1)  # v2: an admin's row
+    restored = await sys_store.restore(db, ADMIN, "ic", 1, "restore", saved.version)  # v3
+    assert (saved.version, restored.version) == (2, 3)
+    user = _user()
+    system = await pbs.active_for(db, user, "ic")
+    copy_before = await pbs.duplicate(db, user, system.id, "My IC")
+    _, planned = await _with_draft(db, user)
+    await pbs.accept_plan(db, user, planned.id, system.id)  # accepted between v2 and v4
+
+    await _run_upgrade(db, monkeypatch)
+
+    rows = dict((await db.execute(text(
+        f"SELECT version, saved_at FROM {table} WHERE strategy_type = 'ic'"))).all())  # noqa: S608 - constant
+    assert sorted(rows) == [1, 2, 3, 4]
+    cutoff = await pbs.adr247_saved_at(db)
+    assert cutoff == rows[4] and cutoff != rows[2]  # expected read by the version the test built, not by reason
+    plan_row = await pbs.plan_for(db, user, planned.id)
+    assert rows[2] < plan_row.accepted_at < rows[4]
+    assert await check.plan_saved_before_adr247(db, plan_row) is True
+    history = {v.version: v for v in await sys_store.history(db, "ic")}
+    assert history[4].reason == M40.REASON and _stop_shape(history[4].body)[:2] == (None, False)
+    assert _stop_shape(history[2].body)[:2] == ("4", True)  # the admin's row is never rewritten
+    assert _stop_shape((await pbs.get(db, user, copy_before.id)).body)[:2] == ("4", True)  # the user's copy kept
+
+
+async def test_upgrade_function_leaves_copies_and_plans_untouched(db, monkeypatch):
+    """upgrade() (not only upgrade_sql()) on top of a restored margin stop: the new version drops it, a user's copy and
+    plan keep it."""
+    user = _user()
+    cur = await sys_store.current(db, "ic")
+    await sys_store.restore(db, ADMIN, "ic", 1, "pre-ADR-247 numbers", cur.version)
+    system = await pbs.active_for(db, user, "ic")
+    copy_before = await pbs.duplicate(db, user, system.id, "My IC")
+    _, planned = await _with_draft(db, user)
+    await pbs.accept_plan(db, user, planned.id, system.id)
+    await _run_upgrade(db, monkeypatch)
+    assert _stop_shape((await sys_store.current(db, "ic")).body)[:2] == (None, False)
+    assert _stop_shape((await pbs.get(db, user, copy_before.id)).body)[:2] == ("4", True)
+    plan = await check.resolve(db, user, planned.id, "ic")
+    assert _stop_shape(plan.body)[:2] == ("4", True)
+
+
+def test_the_store_cutoff_reason_is_0040s_reason():
+    assert pbs.ADR247_REASON == M40.REASON

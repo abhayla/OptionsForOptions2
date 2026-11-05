@@ -16,6 +16,7 @@ family not ic -> no 2x-credit line; no playbook -> NO_PLAYBOOK; plan before the 
 """
 from __future__ import annotations
 
+import asyncio
 import copy
 import importlib.util
 import json
@@ -60,8 +61,8 @@ def resolved(b, source="plan", *, before=False) -> check.Resolved:
     return check.Resolved(source, b, None, None, source == "system", saved_before_adr247=before)
 
 
-def stops(b, source="plan", *, before=False, days=3, credit=CREDIT, margin=MARGIN):
-    return sif.stops_of(resolved(b, source, before=before), sif.MoneyInputs(MAX_LOSS, credit, margin),
+def stops(b, source="plan", *, before=False, days=3):
+    return sif.stops_of(resolved(b, source, before=before), sif.MoneyInputs(MAX_LOSS, CREDIT, MARGIN),
                         sif.StageAt("weekly", days))
 
 
@@ -102,7 +103,7 @@ def test_no_family_but_the_iron_condor_gets_a_credit_line(family):
     assert sl.STOP_CREDIT not in lines(stops(body(family), "system"))
 
 
-# ---- MAJOR 3: on/off from the trigger switch only ---------------------------------------------------------------------
+# ---- MAJOR 3: on/off from the trigger switch only ------------------------------------------------------------------
 def test_t16_turned_on_in_a_new_ic_plan_is_active_and_flags():
     b = body()
     b["triggers"][sl.TRIGGER_MARGIN]["on"] = True
@@ -154,7 +155,7 @@ def test_sheet_stop_edit_turns_a_switched_off_t06_on():
     assert lines(stops(edited))[sl.STOP_MAX_LOSS].active
 
 
-# ---- MAJOR 1: the cutoff is 0040's row by its reason, never a version number ------------------------------------------
+# ---- MAJOR 1: the cutoff is 0040's row by its reason, never a version number ---------------------------------------
 class _Conn:
     def __init__(self):
         self.calls = []
@@ -169,15 +170,14 @@ class _Conn:
 
 
 def test_cutoff_reads_0040s_row_by_reason():
-    import asyncio
     conn = _Conn()
     assert asyncio.run(store.adr247_saved_at(conn)) is None
     (query, params), = conn.calls
-    assert not re.search(r"version\s*=", query, re.IGNORECASE)
+    assert not re.search(r"\bversion\s*=", query, re.IGNORECASE)
     assert _m0040().REASON in params.values()
 
 
-# ---- MINOR: the max-loss stop does not depend on a body rule made only of stop triggers -------------------------------
+# ---- MINOR: the max-loss stop does not depend on a body rule made only of stop triggers ----------------------------
 def test_max_loss_stop_evaluated_with_its_body_rule_removed():
     b = body()
     b["rules"] = [r for r in b["rules"] if sl.TRIGGER_MAX_LOSS not in (r.get("any_of") or r.get("all_of"))]
@@ -191,7 +191,7 @@ def test_max_loss_stop_in_a_mixed_rule_is_evaluated_from_the_line():
     assert isinstance(results(b, stops(b), D(-14400))[sl.TRIGGER_MAX_LOSS], pe.Flag)
 
 
-# ---- MINOR: range checks; invalid -> "not checked" in the check, refused on save --------------------------------------
+# ---- MINOR: range checks; invalid -> "not checked" in the check, refused on save -----------------------------------
 @pytest.mark.parametrize("raw", ["0", "-2", "1e400", "NaN", "two"])
 def test_invalid_credit_multiple_is_not_checked_never_raises(raw):
     b = body()
@@ -240,7 +240,8 @@ def test_pre_adr247_plan_keeps_40_in_the_last_stage():
     assert lines(stops(body(v2=False), before=True, days=0))[sl.STOP_MAX_LOSS].figure == D(40)
 
 
-@pytest.mark.parametrize(("family", "v2", "before"), [("ic", False, True), ("ic", True, False), ("strangle", True, False),
+@pytest.mark.parametrize(("family", "v2", "before"), [("ic", False, True), ("ic", True, False),
+                                                      ("strangle", True, False),
                                                       ("debit", True, False)])
 def test_plan_stop_words_present_for_every_plan(family, v2, before):
     b = body(family, v2=v2)

@@ -265,17 +265,22 @@ def _values(body: dict, saved_before: bool) -> dict[str, Any]:
             "max_adjustments": mx if type(mx) is int else None, "time_exit": _read_clock(guards)}
 
 
+def _set_stop(out: dict, raw: str) -> None:
+    """ADR-252: the sheet's stop edit IS the T-06 value the live check reads (``settings_in_force``), every stage."""
+    try:
+        in_force_mod.set_max_loss_stop(out, _percent(raw, "stop"))
+    except ValueError:
+        raise _bad("stop") from None
+
+
 def with_overrides(body: dict, data: PlanIn) -> dict:
     """A copy of ``body`` whose guards hold the sheet's values (a value left out stays as the body has it)."""
     out = copy.deepcopy(body)
     guards = out.setdefault("guards", {})
     if data.target is not None:
         guards[TARGET_KEY] = _percent(data.target, "target")
-    if data.stop is not None:  # ADR-252: the stop edit IS the T-06 value the live check reads
-        try:
-            in_force_mod.set_max_loss_stop(out, _percent(data.stop, "stop"))
-        except ValueError:
-            raise _bad("stop") from None
+    if data.stop is not None:
+        _set_stop(out, data.stop)
     if data.max_adjustments is not None:
         if not _COUNT.fullmatch(data.max_adjustments) or int(data.max_adjustments) > MAX_ADJUSTMENTS_LIMIT:
             raise _bad(MAX_KEY)

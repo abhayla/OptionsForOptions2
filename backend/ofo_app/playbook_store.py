@@ -581,7 +581,8 @@ async def accept_plan(conn: Any, user_ref: str, strategy_id: int, playbook_id: i
 
 #: ADR-250: when migration 0040 saved the iron condor ADR-247 version (margin stop and T-16 off). The row is found by
 #: the reason 0040 writes (as 0040's own downgrade finds it), NEVER by a version number: an admin save or restore also
-#: writes newest + 1, so "version 2" can be someone else's row (finding cutoff-by-version-number-not-by-the-row-written).
+#: writes newest + 1, so "version 2" can be someone else's row
+#: (finding cutoff-by-version-number-not-by-the-row-written).
 #: The text equals ``0040_ic_default_stop_adr247.REASON`` (a test asserts it). No such row -> None -> every plan
 #: predates ADR-247 (fail closed: it keeps its own stops).
 ADR247_REASON = "ADR-247: default stop 50 % of max loss or 2x credit; % of margin stop and T-16 off by default"

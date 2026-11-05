@@ -148,7 +148,8 @@ def test_tighten_rule_still_applies_to_the_max_loss_line():
 def test_two_x_credit_uses_net_credit_so_far():
     assert adjust_money.net_credit_so_far(D(-1500), [("SELL", D(60), 100)]) == D(4500)  # 6,000 entry, roll cost 1,500
     body = _ic_body()
-    lines = {x.kind: x for x in sif.stops_of(_plan(body, before=False), sif.MoneyInputs(MAX_LOSS, D(4500)), sif.StageAt("weekly", 3)).lines}
+    found = sif.stops_of(_plan(body, before=False), sif.MoneyInputs(MAX_LOSS, D(4500)), sif.StageAt("weekly", 3))
+    lines = {x.kind: x for x in found.lines}
     assert lines[sl.STOP_CREDIT].amount == D("9000.00")
     for credit, reason in ((D(-100), sif.NO_CREDIT), (D(0), sif.NO_CREDIT), (None, sif.CREDIT_UNKNOWN)):
         stops = sif.stops_of(_plan(body, before=False), sif.MoneyInputs(MAX_LOSS, credit), sif.StageAt("weekly", 3))
