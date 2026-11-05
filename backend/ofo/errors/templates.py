@@ -1312,6 +1312,11 @@ _TRIGGER_TEMPLATES: tuple[MessageTemplate, ...] = (
     _trig("day_rule_not_checked", 509, "This day rule is saved and shown, but it is not checked yet: only the expiry "
           "day exit and tighten rules and the before-a-weekend and before-a-holiday carry checks are.", None,
           "Nothing to do; it has no effect on any check until it is supported."),
+    # ic-e2e-paper B2 (design decision 8): T-14 reprices the position at spot +/- 1% with the engine; it needs the
+    # spot and every option leg's implied volatility, and a margin that is a number
+    _trig("gamma_unknown", 540, "The profit or loss from a 1% move in the market cannot be estimated: the spot or a "
+          "leg's implied volatility is not available."),
+    _trig("margin_unreadable", 541, "The margin blocked could not be read as a number."),
     _gate("adjust_trigger_already_true", _UI, 152, "Already true when tracking started.",
           "It is shown, not flagged, until a check finds it false.", "Nothing.",
           "Watch it: it flags if it clears and then comes back.", {}),

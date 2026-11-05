@@ -201,11 +201,11 @@ def test_adj01_flags_nothing():
     assert not flags(ev) and not [r for r in ev.results if isinstance(r, AlreadyTrue)]
 
 
-def test_t14_is_not_checked_with_the_generator_reason():
+def test_t14_without_gamma_figures_is_not_checked_and_the_library_keeps_its_text():
     sc = load("ADJ-01")
     ev = evaluate(body_of(sc), state_of(sc), {}, None)
     t14 = [r for r in ev.results if r.trigger_id == "T-14"]
-    assert t14 == [NotChecked("T-14", "T-14", T14_PENDING)]
+    assert t14 == [NotChecked("T-14", "T-14", pe.GAMMA_UNKNOWN)]  # B2: no engine model in this harness
     assert {"id": "T-14", "reason": reason_text(T14_PENDING)} in sc["expected"]["triggers_not_evaluated"]
 
 
