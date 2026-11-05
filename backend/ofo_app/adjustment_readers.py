@@ -154,9 +154,12 @@ async def read_tracked(strategy_id: int, rates: ChargeRates | None) -> Tracked |
 
 
 def entered_at(orders: Any) -> datetime.datetime | None:
-    """S-12 (ADR-240 (3)): the strategy's entry time = its first stored order's ``created_at``; None when no order
-    states one (never a guess)."""
-    times = [o.created_at for o in orders if isinstance(getattr(o, "created_at", None), datetime.datetime)]
+    """S-12 (ADR-240 (3)): the strategy's entry time = its first stored order's ``placed_at`` (the trade's own time on
+    the app's clock, the scenario's clock in scenario mode); None when no order states one (never a guess). Never the
+    row's ``created_at``: that is the DB's insertion clock, so against a scenario's check day it made S-12's "entry
+    session" depend on the real date (Stage D core proof, PATH-01: placed 3 Nov, inserted 6 Nov, checked 6 Nov)."""
+    times = [p for p in (getattr(getattr(o, "order", None), "placed_at", None) for o in orders)
+             if isinstance(p, datetime.datetime)]
     return min(times) if times else None
 
 

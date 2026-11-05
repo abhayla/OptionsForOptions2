@@ -38,9 +38,8 @@ EXTRA_FRAMES = {"PATH-12": [4, 5, 6, 7]}
 NO_NEXT_CHECK = {"T-11"}
 GUIDANCE = ("sit.S-03", "sit.S-04", "sit.S-05", "sit.S-08", "sit.S-09")
 KNOWN = {  # case -> measured blocker (a throwaway DB run; the layer is proven with file:line)
-    "S-12": "SEED INPUT: the evaluator flags it (54% vs 40%) but the entry day is the wall day of the seeding: "
-            "adjustment_readers.py:156 reads created_at, paper_store.py:37 INSERT cannot set it and the app role "
-            "cannot UPDATE paper_orders (permission denied, tried)",
+    # S-12 left KNOWN in the Stage D core-proof fix: adjustment_readers.entered_at now reads the orders' placed_at
+    # (the seed's scenario entry clock), not the row's created_at (the real date of the seeding)
     "T-19": "WORKER INPUT: adjustment_cost None, reason adjust_trigger_no_approach_priced, at EVERY observed frame "
             "(B1-OBSERVED): background.py:404 passes rates=None, so adjustment_check.cheapest_offered "
             "(:230-254) prices no approach and _t19 (playbook_eval.py:508-519) is NotChecked; live has the same gap",

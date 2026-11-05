@@ -32,11 +32,27 @@ def test_held_legs_carry_the_engine_greeks_and_lots_and_none_when_absent():
     assert held == (pe.HeldLeg(g, "SELL", 2), pe.HeldLeg(None, "BUY", 2))
 
 
+def _stored(placed_at: datetime.datetime, created_at: datetime.datetime) -> SimpleNamespace:
+    """A stored paper order as ``paper_book.StoredOrder``: the trade's own time on ``order.placed_at`` (the app's
+    clock, the scenario's clock in scenario mode) and the row's insertion time on ``created_at`` (the DB clock)."""
+    return SimpleNamespace(order=SimpleNamespace(placed_at=placed_at), created_at=created_at)
+
+
+def test_entry_day_is_the_placement_clock_not_the_rows_insertion_clock():
+    # PATH-01 (Stage D core proof): the scenario entry was placed on Tue 3 Nov 10:00 IST, the rows were inserted on
+    # the real date 6 Nov; the frames' check day is 6 Nov, so the insertion date made S-12 "the entry session"
+    placed = datetime.datetime(2026, 11, 3, 10, 0, tzinfo=IST)
+    inserted = datetime.datetime(2026, 11, 6, 1, 20, tzinfo=IST)
+    at = entered_at([_stored(placed, inserted)])
+    assert at == placed
+    assert check.entry_day(SimpleNamespace(entered_at=at)) == datetime.date(2026, 11, 3)
+
+
 def test_entry_day_is_the_ist_date_of_the_first_order():
     # 2026-10-27 20:00 UTC is 28 Oct 01:30 IST: the IST date, never the UTC one
     first = datetime.datetime(2026, 10, 27, 20, 0, tzinfo=datetime.UTC)
     later = datetime.datetime(2026, 10, 29, 5, 0, tzinfo=datetime.UTC)
-    orders = [SimpleNamespace(created_at=later), SimpleNamespace(created_at=first)]
+    orders = [_stored(later, later), _stored(first, later)]
     at = entered_at(orders)
     assert at == first
     assert check.entry_day(SimpleNamespace(entered_at=at)) == datetime.date(2026, 10, 28)
