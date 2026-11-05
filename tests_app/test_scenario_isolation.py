@@ -2,7 +2,7 @@
 marker read that fails is itself an answer state (refused). Database cases are in test_ic_paper_loop_core.py."""
 from __future__ import annotations
 
-import filecmp
+import json
 import importlib.util
 import pathlib
 import shutil
@@ -172,7 +172,7 @@ def test_moving_a_path_feeds_the_frame_through_the_real_parser():
     assert scn.clock_box == [scn.clock()]  # the provider clock reads this box
 
 
-def test_path_frames_regenerate_byte_for_byte(tmp_path):
+def test_path_frames_regenerate_to_the_same_json(tmp_path):
     spec = importlib.util.spec_from_file_location("adjust_scenarios_gen", ROOT / "tests" / "adjust_scenarios_gen.py")
     gen = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(gen)
@@ -180,4 +180,5 @@ def test_path_frames_regenerate_byte_for_byte(tmp_path):
     names = gen.generate_paths(tmp_path, gen.OUT_DIR)
     assert len(names) == 10  # noqa: PLR2004
     for name in names:
-        assert filecmp.cmp(tmp_path / name, gen.PATHS_DIR / name, shallow=False), name
+        fresh, committed = (json.loads((d / name).read_text(encoding="utf-8")) for d in (tmp_path, gen.PATHS_DIR))
+        assert fresh == committed, name  # parsed JSON: line endings (checkout CRLF) do not count
