@@ -34,7 +34,7 @@ const PLAYBOOKS = [
   { id: 9, name: '"Mine"', type: 'ic', type_name: 'Iron condor', is_system: false, draft: false, active: true },
 ]
 const PREFILL_9 = { playbook_id: 9, target: '50', stop: '50', max_adjustments: 2, time_exit: null,
-  target_words: '50 % of max profit', stop_words: '50 % of max loss or 4 % of margin, whichever comes first' }
+  target_words: '50 % of max profit', stop_words: '50 % of max loss or 2x the credit received, whichever comes first' }
 const sheetAnswer = (over = {}) => ({
   strategy_id: 70, type: 'ic', type_name: 'Iron condor', generic: false, generic_text: null, playbooks: PLAYBOOKS, plan: null,
   prefill: PREFILL_9, labels: LABELS, ...over,
@@ -70,7 +70,7 @@ describe('REQ-161 AC-1: the sheet is pre-filled from the server', () => {
     expect(calls).toEqual([{ method: 'GET', url: PATH, body: undefined }, { method: 'GET', url: ALERT_STYLE, body: undefined }])
     expect(inputs(w)).toEqual({ playbook: '9', target: '50', stop: '50', max: '2', time: '' })
     expect(w.find('[data-testid="plan-target-words"]').text()).toBe('50 % of max profit')
-    expect(w.find('[data-testid="plan-stop-words"]').text()).toBe('50 % of max loss or 4 % of margin, whichever comes first')
+    expect(w.find('[data-testid="plan-stop-words"]').text()).toBe('50 % of max loss or 2x the credit received, whichever comes first')
     expect(t(w, 'plan-sheet-type').text()).toBe('Iron condor')
     expect(t(w, 'plan-use-as-is').text()).toBe('Use playbook as is')
     expect(t(w, 'plan-customise').text()).toBe('Customise triggers')

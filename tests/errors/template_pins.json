@@ -3738,5 +3738,21 @@
   "adjust_roll_basis_unreadable": {
     "sha256": "3f9f001e96976b950d63c1b68c0a2cb2208e76017ed7ea83acbe11a1f786aaa7",
     "reviewed": "pending owner read"
+  },
+  "explanation:plan_stop_words_credit": {
+    "sha256": "b504f7140430dda3217b4e922b0b8ec92ae19c0865ec761d1b2808c6652432cf",
+    "reviewed": "pending owner read"
+  },
+  "explanation:plan_stop_words_or": {
+    "sha256": "3ac432a2ba56e4d95a26ee5a0d002b4beec0766cd6541700a8d731d66b1ccbde",
+    "reviewed": "pending owner read"
+  },
+  "explanation:plan_stop_words_or3": {
+    "sha256": "bf6e5290f6c4038e6bf3c8c8e0cbefadcdde042eee973921b520911b6b185d86",
+    "reviewed": "pending owner read"
+  },
+  "explanation:plan_stop_words_first": {
+    "sha256": "d4a1f2f4128afc9683ca095870118463d9841b7c9b9f630fc81672a2988020b6",
+    "reviewed": "pending owner read"
   }
 }

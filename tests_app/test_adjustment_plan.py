@@ -108,7 +108,7 @@ async def test_get_without_a_plan_prefills_from_the_active_system_playbook_and_p
     assert out["prefill"] == {"playbook_id": system.id, "target": "50", "stop": "50", "max_adjustments": 2,
                               "time_exit": {"hour": 14, "minute": 30},  # ADR-216: the iron condor seed
                               "target_words": "50 % of max profit",
-                              "stop_words": "50 % of max loss or 4 % of margin, whichever comes first"}
+                              "stop_words": "50 % of max loss or 2x the credit received, whichever comes first"}
     row = next(p for p in out["playbooks"] if p["id"] == system.id)
     assert (row["is_system"], row["active"], row["draft"]) == (True, True, False)
     assert out["labels"]["title"] == "When tracking starts: this strategy's plan"
@@ -122,8 +122,8 @@ async def test_get_without_a_plan_prefills_from_the_active_system_playbook_and_p
     assert status == OK and picked["prefill"] == {"playbook_id": own.id, "target": "70", "stop": "30",
                                                   "max_adjustments": 4, "time_exit": {"hour": 14, "minute": 45},
                                                   "target_words": "70 % of max profit",
-                                                  "stop_words":
-                                                      "30 % of max loss or 4 % of margin, whichever comes first"}
+                                                  "stop_words": "30 % of max loss or 2x the credit received, "
+                                                                  "whichever comes first"}
     assert (await _call("GET", _plan_path(sid) + "?playbook_id=999999999"))[0] == UNPROCESSABLE
 
 

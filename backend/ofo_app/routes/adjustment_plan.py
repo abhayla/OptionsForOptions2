@@ -223,30 +223,47 @@ def _read_clock(guards: dict) -> ClockOut | None:
     return None if found is None else ClockOut.model_validate({"hour": int(found[1]), "minute": int(found[2])})
 
 
-def _words(guards: dict) -> tuple[Any, Any]:
-    """GC-ADJ2 item 3: what the target and the stop numbers ARE, in words from the catalogue (the number stays the
-    input). The two-part stop (loss or margin, "whichever comes first") only when the body says exactly that rule."""
-    target, loss = _read_percent(guards, TARGET_KEY), _read_percent(guards, STOP_KEY)
-    margin = _read_percent(guards, MARGIN_KEY)
-    t_words = None if target is None else render_explanation("plan_target_words", pct=format(target, "f"))
-    rule = guards.get(RULE_KEY)
-    # ADR-230 (4): two stops with no combining rule mean "whichever comes first"
-    if loss is not None and margin is not None and (rule in (None, "") or rule == EITHER_RULE):
-        s_words = render_explanation("plan_stop_words_either", pct=format(loss, "f"), margin=format(margin, "f"))
-    elif loss is not None:
-        s_words = render_explanation("plan_stop_words_loss", pct=format(loss, "f"))
-    elif margin is not None:
-        s_words = render_explanation("plan_stop_words_margin", margin=format(margin, "f"))
+_STOP_WORD_IDS = {in_force_mod.STOP_MAX_LOSS: "plan_stop_words_loss",
+                  in_force_mod.STOP_CREDIT: "plan_stop_words_credit",
+                  in_force_mod.STOP_MARGIN: "plan_stop_words_margin"}
+_STOP_SLOTS = {in_force_mod.STOP_MAX_LOSS: "pct", in_force_mod.STOP_CREDIT: "multiple",
+               in_force_mod.STOP_MARGIN: "margin"}
+_STOP_GUARD_KEYS = (STOP_KEY, in_force_mod.STOP_CREDIT_KEY, MARGIN_KEY)
+
+
+def _stop_words(body: dict, guards: dict) -> Any:
+    """ADR-247: the ACTIVE stops from the ONE settings-in-force stops list (``settings_in_force.stops_of``: 50 % of max
+    loss, N x the credit received, % of margin only when on), joined "..., whichever comes first". A body that says
+    nothing about any stop gets no words."""
+    if not any(k in guards for k in _STOP_GUARD_KEYS):
+        return None
+    lines = in_force_mod.stops_of(check.Resolved("plan", body, None, None, False), None).lines
+    parts = [render_explanation(_STOP_WORD_IDS[x.kind], **{_STOP_SLOTS[x.kind]: format(x.figure, "f")})
+             for x in lines if x.active and x.figure is not None]
+    if not parts:
+        return None
+    if len(parts) == 1:
+        return parts[0]
+    if len(parts) == 2:  # noqa: PLR2004
+        joined = render_explanation("plan_stop_words_or", a=parts[0], b=parts[1])
     else:
-        s_words = None
-    return t_words, s_words
+        joined = render_explanation("plan_stop_words_or3", a=parts[0], b=parts[1], c=parts[2])
+    return render_explanation("plan_stop_words_first", words=joined)
+
+
+def _words(body: dict, guards: dict) -> tuple[Any, Any]:
+    """GC-ADJ2 item 3: what the target and the stop numbers ARE, in words from the catalogue (the number stays the
+    input). The stop words come from the stops in force (ADR-247), not from the guards the body happens to hold."""
+    target = _read_percent(guards, TARGET_KEY)
+    t_words = None if target is None else render_explanation("plan_target_words", pct=format(target, "f"))
+    return t_words, _stop_words(body, guards)
 
 
 def _values(body: dict) -> dict[str, Any]:
     found = body.get("guards")
     guards: dict = found if isinstance(found, dict) else {}
     mx = guards.get(MAX_KEY)
-    t_words, s_words = _words(guards)
+    t_words, s_words = _words(body, guards)
     return {"target": _read_percent(guards, TARGET_KEY), "stop": _read_percent(guards, STOP_KEY),
             "target_words": t_words, "stop_words": s_words,
             "max_adjustments": mx if type(mx) is int else None, "time_exit": _read_clock(guards)}
