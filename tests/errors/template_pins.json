@@ -1383,6 +1383,14 @@
     "sha256": "d348b6cddbdace21fb0b539b519d9769a57e1a4ea7e0debc5e21842904581284",
     "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"
   },
+  "scenario_strategy_isolated": {
+    "sha256": "1158d651995cf85465a766c4dd6b189dacb23726442e5ebbede72820c33cb6cc",
+    "reviewed": "pending owner read"
+  },
+  "scenario_frame_out_of_range": {
+    "sha256": "35fcaa62f508e546f6c7f159d9d6dfee67d01b0586cec5cbb39c6a21e375a01f",
+    "reviewed": "pending owner read"
+  },
   "explanation:flag_expiry_day_entry": {
     "sha256": "f5b9f82fe3efbe78476ea0e59b5b5d4ed9e10e9c98a6959e63901a64a54686de",
     "reviewed": "owner read 2026-11-02 (accepted after independent screen, not read line by line)"
