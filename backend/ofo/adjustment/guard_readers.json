@@ -5,14 +5,14 @@
   "max_adjustments": "backend/ofo/adjustment/playbook_eval.py",
   "profit_target_pct_of_max_profit": "backend/ofo_app/routes/adjustment_plan.py",
   "roll_debit_limit": "backend/ofo/adjustment/liquidity.py",
-  "stop_line_pct_of_margin": "backend/ofo_app/routes/adjustment_plan.py",
-  "stop_line_pct_of_max_loss": "backend/ofo_app/routes/adjustment_plan.py",
-  "stop_line_rule": "backend/ofo_app/routes/adjustment_plan.py",
   "time_exit": "backend/ofo_app/routes/adjustment_plan.py",
   "warn_cost_pct_of_premium_left": "backend/ofo/adjustment/compare_cost_rows.py"
  },
  "known_unread": {
   "entry_guide": "words describing the entry the playbook assumes; shown in the editor, nothing to apply",
-  "order_sequence": "words describing the order sequence; the buy-legs-first order is fixed in approaches._ordered"
+  "order_sequence": "words describing the order sequence; the buy-legs-first order is fixed in approaches._ordered",
+  "stop_line_pct_of_margin": "ADR-252: words only; the % of margin stop is trigger T-16 (settings_in_force.stops_of)",
+  "stop_line_pct_of_max_loss": "ADR-252: words only; the % of max loss stop is trigger T-06 (settings_in_force.stops_of)",
+  "stop_line_rule": "words only; the stops are always whichever comes first (settings_in_force._first)"
  }
 }

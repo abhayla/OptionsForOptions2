@@ -55,6 +55,7 @@ from ofo.adjustment.stop_lines import (
 from ofo.engine import adjust_money
 from ofo.engine.metrics import UNLIMITED
 from ofo.settings import layers
+from ofo.timeutil import IST
 
 from ofo_app import adjustment_check as check
 from ofo_app import user_preferences_store as store
@@ -69,17 +70,12 @@ TRIGGER_UNREADABLE: Final = "settings_trigger_unreadable"
 FIRST_UNKNOWN: Final = "stop_first_unknown"
 NO_ACTIVE_STOP: Final = "stop_none_active"
 
-#: the plan copy's guards (docs/design/playbook-body-v1.md "guards")
-STOP_PCT_KEY: Final = "stop_line_pct_of_max_loss"
+#: the plan copy's 2x-credit multiple (docs/design/playbook-body-v1.md "guards"); ADR-252: no guard key is the source
+#: of a % stop line (the body's % of max loss / % of margin guard keys are never read)
 STOP_CREDIT_KEY: Final = "stop_line_x_credit"
-STOP_MARGIN_KEY: Final = "stop_line_pct_of_margin"
 #: ADR-247: the "2x the credit received" stop is ALWAYS active; a body that does not state its multiple follows this
 #: default (source "default"); a strategy or a user changes it by writing ``stop_line_x_credit`` into their copy
 CREDIT_MULTIPLE_DEFAULT: Final = Decimal(2)
-#: ADR-247: the "50 % of max loss" stop is ALWAYS active too; a body that does not state it follows this default
-#: (source "default"), exactly like the credit multiple (fix round 1: it used to drop out, so strategy 82 showed its
-#: first stop at the 2x-credit 17,836 instead of 11,948.52)
-MAX_LOSS_PCT_DEFAULT: Final = Decimal(50)
 #: a trigger's unit as the body holds it -> the closed code the reply carries (the screen renders the words); a unit
 #: outside this set -> None (never free text in an Identifier field)
 UNIT_CODES: Final = {"%": "pct", "pts": "pts", "x": "x", "Rs": "rs", "SD": "sd", "delta": "delta",
@@ -192,6 +188,8 @@ class MoneyInputs:
     max_loss: Decimal | Any | None
     credit: Decimal | None
     margin: Decimal | None = None
+    #: the strategy's stage (ADR-252: the % lines are per stage); None -> the % lines name ``STAGE_UNKNOWN``
+    at: StageAt | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -221,71 +219,126 @@ def money_inputs(tracked: Any, market: Any, rates: Any) -> MoneyInputs:
         return MoneyInputs(None, credit)
     before = price_after(position.legs, position, tracked.booked, tracked.paid_charges, (), rates, market)
     gross = None if before.after is None else before.after.gross
-    return MoneyInputs(None if gross is None else gross.max_loss, credit)
+    expiry = min(x.expiry for x in position.legs)  # the live check's stage read (``adjustment_check.state_of``)
+    at = StageAt(market.expiry_kind or position.expiry_kind or "weekly",
+                 (expiry - market.now.astimezone(IST).date()).days)
+    return MoneyInputs(None if gross is None else gross.max_loss, credit, at=at)
 
 
-def _guard(guards: Mapping, key: str) -> Decimal | None:
-    raw = guards.get(key)
-    return None if raw is None else _decimal_text(raw)
+#: ADR-247 is "Default stop for the iron condor playbook": only this family gets the 2x-credit line
+CREDIT_FAMILY: Final = "ic"
+#: a stated credit multiple above this is refused (a typo such as 1e400 would overflow the rupee amount)
+CREDIT_MULTIPLE_MAX: Final = Decimal(100)
+#: a % of max loss / of margin stop is in (0, 100]
+PCT_MAX: Final = Decimal(100)
+#: the plan sheet and the plan words read the FIRST stage (the sheet edits every stage at once, ``set_max_loss_stop``)
+FIRST_STAGE: Final = "first"
+#: the per-stage trigger behind each % line (ADR-252: T-06 for % of max loss, T-16 for % of margin)
+TRIGGER_OF_LINE: Final = {STOP_MAX_LOSS: sl.TRIGGER_MAX_LOSS, STOP_MARGIN: sl.TRIGGER_MARGIN}
+_KINDS: Final = ("weekly", "monthly")
 
 
-def _stage_value(body: Mapping, tid: str, at: StageAt | None) -> tuple[bool, Decimal | None, str | None]:
-    """ADR-250: a pre-ADR-247 plan's own per-stage % from its trigger ``tid``: (active, figure, reason)."""
-    trig = (body.get("triggers") or {}).get(tid) if isinstance(body.get("triggers"), Mapping) else None
-    if not isinstance(trig, Mapping):
-        return False, None, None
-    if trig.get("on") is not True:
-        return trig.get("on") is not False, None, None if trig.get("on") is False else STOP_VALUE_UNREADABLE
-    if at is None or at.days_left is None:
-        return True, None, STAGE_UNKNOWN
+def _pct(raw: object) -> Decimal:
+    value = _decimal_text(raw)
+    if not 0 < value <= PCT_MAX:
+        raise ValueError(f"stop % out of (0, 100]: {raw!r}")
+    return value
+
+
+def _multiple(raw: object) -> Decimal:
+    value = _decimal_text(raw)
+    if not 0 < value <= CREDIT_MULTIPLE_MAX:
+        raise ValueError(f"credit multiple out of (0, {CREDIT_MULTIPLE_MAX}]: {raw!r}")
+    return value
+
+
+def _trigger(body: Mapping, tid: str) -> tuple[Mapping | None, bool]:
+    """(the trigger, readable): a body whose ``triggers`` is not an object is unreadable (fail closed)."""
+    found = body.get("triggers")
+    if not isinstance(found, Mapping):
+        return None, False
+    trig = found.get(tid)
+    return (trig, True) if trig is None or isinstance(trig, Mapping) else (None, False)
+
+
+def _stage_index(body: Mapping, at: StageAt | str | None) -> tuple[str, int] | None:
+    if at == FIRST_STAGE:
+        return "weekly", 0
+    if not isinstance(at, StageAt) or at.days_left is None:
+        return None
     try:
         stage = pe.stage_of(body, at.expiry_kind, at.days_left)  # type: ignore[arg-type]
-        values = trig.get(at.expiry_kind)
-        if stage is None:
-            return True, None, STAGE_UNKNOWN
-        return True, _decimal_text(values[stage]), None
-    except (ValueError, TypeError, KeyError, IndexError):
-        return True, None, STOP_VALUE_UNREADABLE
+    except (ValueError, TypeError, KeyError):
+        return None
+    return None if stage is None else (at.expiry_kind, stage)
 
 
-def _saved_plan_lines(body: Mapping, money: MoneyInputs | None, at: StageAt | None) -> list[StopInForce]:
-    """ADR-250: a plan saved before ADR-247 keeps its own stops exactly as saved: its per-stage % of max loss (T-06)
-    and its % of margin (T-16) if on; NO 2x-credit line."""
-    source = layers.SOURCE_STRATEGY
-    max_loss = None if money is None else money.max_loss
-    margin = None if money is None else money.margin
-    lines = []
-    active, pct, reason = _stage_value(body, sl.TRIGGER_MAX_LOSS, at)
-    if active and pct is not None:
-        if max_loss is UNLIMITED:
-            reason = MAX_LOSS_UNLIMITED
-        elif not isinstance(max_loss, Decimal):
-            reason = MAX_LOSS_UNKNOWN
-    amount = adjust_money.stop_at_pct(max_loss, pct) if active and reason is None and pct is not None else None
-    lines.append(StopInForce(STOP_MAX_LOSS, active, pct, amount, source, reason,
-                             _later(body, sl.TRIGGER_MAX_LOSS, at) if amount is not None or pct is not None else ()))
-    active, pct, reason = _stage_value(body, sl.TRIGGER_MARGIN, at)
-    if active and pct is not None and margin is None:
-        reason = MARGIN_NOT_READ
-    amount = adjust_money.stop_at_pct(margin, pct) if active and reason is None and pct is not None else None
-    lines.append(StopInForce(STOP_MARGIN, active, pct, amount, source, reason,
-                             _later(body, sl.TRIGGER_MARGIN, at) if pct is not None else ()))
-    return lines
-
-
-def _later(body: Mapping, tid: str, at: StageAt | None) -> tuple[Decimal, ...]:
-    """The plan's own figures of ``tid`` at the stages after the current one (a stage without a value skipped)."""
-    if at is None or at.days_left is None:
-        return ()
-    stage = pe.stage_of(body, at.expiry_kind, at.days_left)  # type: ignore[arg-type]
-    values = body["triggers"][tid].get(at.expiry_kind) or []
-    out = []
-    for raw in values[stage + 1:] if stage is not None else ():
+def _figures(trig: Mapping, expiry_kind: str, stage: int) -> tuple[Decimal, tuple[Decimal, ...]]:
+    values = trig.get(expiry_kind)
+    figure = _pct(values[stage])  # type: ignore[index]
+    later = []
+    for raw in values[stage + 1:]:  # type: ignore[index]
         try:
-            out.append(_decimal_text(raw))
+            later.append(_pct(raw))
         except ValueError:
-            continue
-    return tuple(out)
+            continue  # a stage without a value is skipped
+    return figure, tuple(later)
+
+
+def _trigger_line(body: Mapping, kind: str, base: Decimal | Any | None,  # noqa: PLR0911 - one return per answer state
+                  at: StageAt | str | None, source: str | None) -> StopInForce | None:
+    """ADR-252: the line of ``kind`` = its trigger's value at the current stage; on/off = that trigger's switch only.
+    Trigger absent -> no line; off -> inactive; on with an unreadable / out-of-range value -> active, not checked."""
+    trig, readable = _trigger(body, TRIGGER_OF_LINE[kind])
+    if not readable:
+        return StopInForce(kind, True, None, None, None, STOP_VALUE_UNREADABLE)
+    if trig is None:
+        return None
+    if trig.get("on") is False:
+        return StopInForce(kind, False, None, None, source, None)
+    if trig.get("on") is not True:
+        return StopInForce(kind, True, None, None, source, STOP_VALUE_UNREADABLE)
+    where = _stage_index(body, at)
+    if where is None:
+        return StopInForce(kind, True, None, None, source, STAGE_UNKNOWN)
+    try:
+        figure, later = _figures(trig, *where)
+    except (ValueError, TypeError, KeyError, IndexError):
+        return StopInForce(kind, True, None, None, source, STOP_VALUE_UNREADABLE)
+    if kind == STOP_MAX_LOSS and base is UNLIMITED:
+        return StopInForce(kind, True, figure, None, source, MAX_LOSS_UNLIMITED, later)
+    if not isinstance(base, Decimal):
+        missing = MAX_LOSS_UNKNOWN if kind == STOP_MAX_LOSS else MARGIN_NOT_READ
+        return StopInForce(kind, True, figure, None, source, missing, later)
+    return StopInForce(kind, True, figure, adjust_money.stop_at_pct(base, figure), source, None, later)
+
+
+def _credit_line(body: Mapping, credit: Decimal | None, source: str | None) -> StopInForce:
+    """ADR-247/251: N x the net credit so far; N = the copy's stated multiple, else 2 (source "default")."""
+    guards = body.get("guards", {})
+    stated = guards.get(STOP_CREDIT_KEY) if isinstance(guards, Mapping) else STOP_VALUE_UNREADABLE
+    try:
+        multiple, msource = (CREDIT_MULTIPLE_DEFAULT, layers.SOURCE_DEFAULT) if stated is None \
+            else (_multiple(stated), source)
+    except ValueError:
+        return StopInForce(STOP_CREDIT, True, None, None, source, STOP_VALUE_UNREADABLE)
+    if credit is None:
+        return StopInForce(STOP_CREDIT, True, multiple, None, msource, CREDIT_UNKNOWN)
+    if credit <= 0:
+        return StopInForce(STOP_CREDIT, True, multiple, None, msource, NO_CREDIT)
+    try:
+        amount = adjust_money.stop_at_multiple(credit, multiple)
+    except ArithmeticError:  # decimal.InvalidOperation included: never raise inside the check
+        return StopInForce(STOP_CREDIT, True, multiple, None, msource, STOP_VALUE_UNREADABLE)
+    return StopInForce(STOP_CREDIT, True, multiple, amount, msource, None)
+
+
+def credit_line_applies(resolved: check.Resolved) -> bool:
+    """ADR-247 (iron condor only) and ADR-250 (a plan saved before ADR-247 gains no 2x-credit line)."""
+    body = resolved.body
+    if not isinstance(body, Mapping) or body.get("strategy_type") != CREDIT_FAMILY:
+        return False
+    return not (resolved.source == "plan" and resolved.saved_before_adr247)
 
 
 def _first(lines: list[StopInForce]) -> StopsInForce:
@@ -298,65 +351,65 @@ def _first(lines: list[StopInForce]) -> StopsInForce:
     return StopsInForce(tuple(lines), first.kind, None)
 
 
-def stops_of(resolved: check.Resolved, money: MoneyInputs | None,  # noqa: C901, PLR0912 - one row per answer state
-             at: StageAt | None = None) -> StopsInForce:
-    """THE stop lines in force (the live check's only stop source, ``adjustment_check.state_of``). ``at``: the
-    strategy's stage (needed only by a plan saved before ADR-247, whose stops are per stage)."""
+def stops_of(resolved: check.Resolved, money: MoneyInputs | None,
+             at: StageAt | str | None = None) -> StopsInForce:
+    """THE stop lines in force (the live check's only stop source, ``adjustment_check.state_of``). ADR-252: the % of
+    max loss line is T-06 at the strategy's stage ``at``, the % of margin line T-16, each on/off by its own switch;
+    the 2x-credit line only where ``credit_line_applies``. No guard key is the source of a % line. ``at`` None -> the
+    % lines name ``STAGE_UNKNOWN``; ``FIRST_STAGE`` -> the first stage (the plan sheet and its words)."""
     body = resolved.body
-    if resolved.source == "none" or body is None:
+    if resolved.source == "none" or not isinstance(body, Mapping):
         return StopsInForce((), None, NO_PLAYBOOK)
-    guards = body.get("guards", {}) if isinstance(body, Mapping) else None
-    if not isinstance(guards, Mapping):
-        return StopsInForce((), None, GUARDS_UNREADABLE)
-    if resolved.source == "plan" and resolved.saved_before_adr247:
-        return _first(_saved_plan_lines(body, money, at))
     source = PLAYBOOK_SOURCE.get(resolved.source)
-    lines: list[StopInForce] = []
     max_loss = None if money is None else money.max_loss
-    credit = None if money is None else money.credit
-    # 50 % of max loss (ADR-247: always active)
-    try:
-        pct = _guard(guards, STOP_PCT_KEY)
-    except ValueError:
-        lines.append(StopInForce(STOP_MAX_LOSS, True, None, None, None, STOP_VALUE_UNREADABLE))
-    else:
-        pct, psource = (MAX_LOSS_PCT_DEFAULT, layers.SOURCE_DEFAULT) if pct is None else (pct, source)
-        if max_loss is UNLIMITED:
-            lines.append(StopInForce(STOP_MAX_LOSS, True, pct, None, psource, MAX_LOSS_UNLIMITED))
-        elif not isinstance(max_loss, Decimal):
-            lines.append(StopInForce(STOP_MAX_LOSS, True, pct, None, psource, MAX_LOSS_UNKNOWN))
-        else:
-            lines.append(StopInForce(STOP_MAX_LOSS, True, pct, adjust_money.stop_at_pct(max_loss, pct), psource,
-                                     None))
-    # 2x the credit received (ADR-247: always active)
-    try:
-        stated = _guard(guards, STOP_CREDIT_KEY)
-    except ValueError:
-        lines.append(StopInForce(STOP_CREDIT, True, None, None, None, STOP_VALUE_UNREADABLE))
-    else:
-        multiple, msource = (CREDIT_MULTIPLE_DEFAULT, layers.SOURCE_DEFAULT) if stated is None else (stated, source)
-        if credit is None:
-            lines.append(StopInForce(STOP_CREDIT, True, multiple, None, msource, CREDIT_UNKNOWN))
-        elif credit <= 0:
-            lines.append(StopInForce(STOP_CREDIT, True, multiple, None, msource, NO_CREDIT))
-        else:
-            lines.append(StopInForce(STOP_CREDIT, True, multiple, adjust_money.stop_at_multiple(credit, multiple),
-                                     msource, None))
-    # % of margin (ADR-247: OFF unless the copy states it; the margin is Zerodha's figure, not read here, #627)
-    try:
-        margin_pct = _guard(guards, STOP_MARGIN_KEY)
-    except ValueError:
-        lines.append(StopInForce(STOP_MARGIN, True, None, None, None, STOP_VALUE_UNREADABLE))
-    else:
-        margin = None if money is None else money.margin
-        if margin_pct is None:
-            lines.append(StopInForce(STOP_MARGIN, False, None, None, layers.SOURCE_DEFAULT, None))
-        elif margin is None:
-            lines.append(StopInForce(STOP_MARGIN, True, margin_pct, None, source, MARGIN_NOT_READ))
-        else:
-            lines.append(StopInForce(STOP_MARGIN, True, margin_pct, adjust_money.stop_at_pct(margin, margin_pct),
-                                     source, None))
+    margin = None if money is None else money.margin
+    lines = [x for x in (_trigger_line(body, STOP_MAX_LOSS, max_loss, at, source),) if x is not None]
+    if credit_line_applies(resolved):
+        lines.append(_credit_line(body, None if money is None else money.credit, source))
+    lines.extend(x for x in (_trigger_line(body, STOP_MARGIN, margin, at, source),) if x is not None)
     return _first(lines)
+
+
+def set_max_loss_stop(body: dict, raw: str) -> None:
+    """The plan sheet's stop edit (ADR-252): ``raw`` becomes T-06's value at every stage of both expiry kinds (a stage
+    without a value stays without one) and T-06 is switched on; no guard key is written."""
+    _pct(raw)
+    trig = body.setdefault("triggers", {}).get(sl.TRIGGER_MAX_LOSS)
+    if not isinstance(trig, dict):
+        raise ValueError("the body has no % of max loss trigger")
+    for kind in _KINDS:
+        if isinstance(trig.get(kind), list):
+            trig[kind] = [raw if x not in (None, "") else x for x in trig[kind]]
+    trig["on"] = True
+
+
+def sheet_stop(body: Mapping) -> Decimal | None:
+    """The plan sheet's stop: T-06's first-stage value when T-06 is on (None otherwise)."""
+    line = _trigger_line(body, STOP_MAX_LOSS, None, FIRST_STAGE, None)
+    return None if line is None or not line.active else line.figure
+
+
+def check_stop_values(body: Mapping) -> str | None:
+    """Save-time range check (the check itself never raises on these): the field out of range, or None."""
+    guards = body.get("guards")
+    if isinstance(guards, Mapping) and guards.get(STOP_CREDIT_KEY) is not None:
+        try:
+            _multiple(guards[STOP_CREDIT_KEY])
+        except ValueError:
+            return f"guards.{STOP_CREDIT_KEY}"
+    for tid in TRIGGER_OF_LINE.values():
+        trig, readable = _trigger(body, tid)
+        if not readable:
+            return f"triggers.{tid}"
+        for kind in _KINDS:
+            for raw in (trig or {}).get(kind) or ():
+                if raw in (None, ""):
+                    continue
+                try:
+                    _pct(raw)
+                except ValueError:
+                    return f"triggers.{tid}.{kind}"
+    return None
 
 
 def margin_line_on(resolved: check.Resolved) -> bool:
@@ -369,16 +422,18 @@ def in_force(user_values: Mapping[str, Decimal] | None, resolved: check.Resolved
              money: MoneyInputs | None) -> InForce:
     """THE settings in force for one strategy (ADR-245): every reply field about a covered setting reads this."""
     triggers, reason = triggers_of(resolved)
-    return InForce(settings_of(user_values, resolved.strategy_layer), triggers, reason, stops_of(resolved, money))
+    return InForce(settings_of(user_values, resolved.strategy_layer), triggers, reason,
+                   stops_of(resolved, money, None if money is None else money.at))
 
 
 __all__ = [
+    "CREDIT_FAMILY",
     "CREDIT_MULTIPLE_DEFAULT",
+    "FIRST_STAGE",
     "CREDIT_UNKNOWN",
     "FIRST_UNKNOWN",
     "GUARDS_UNREADABLE",
     "MARGIN_NOT_READ",
-    "MAX_LOSS_PCT_DEFAULT",
     "MAX_LOSS_UNKNOWN",
     "MAX_LOSS_UNLIMITED",
     "NO_CREDIT",
@@ -397,13 +452,17 @@ __all__ = [
     "StopInForce",
     "StopsInForce",
     "TriggerInForce",
+    "check_stop_values",
     "covered_keys",
+    "credit_line_applies",
     "in_force",
     "margin_line_on",
     "money_inputs",
     "net_credit",
     "setting_of",
+    "set_max_loss_stop",
     "settings_of",
+    "sheet_stop",
     "stops_of",
     "triggers_of",
 ]

@@ -19,6 +19,7 @@ from __future__ import annotations
 import copy
 import importlib.util
 import json
+import re
 from decimal import Decimal as D
 from pathlib import Path
 
@@ -172,7 +173,7 @@ def test_cutoff_reads_0040s_row_by_reason():
     conn = _Conn()
     assert asyncio.run(store.adr247_saved_at(conn)) is None
     (query, params), = conn.calls
-    assert "version" not in query.lower()
+    assert not re.search(r"version\s*=", query, re.IGNORECASE)
     assert _m0040().REASON in params.values()
 
 

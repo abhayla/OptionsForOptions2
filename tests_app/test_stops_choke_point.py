@@ -29,22 +29,23 @@ from ofo_app import settings_in_force as sif
 ROOT = Path(__file__).resolve().parents[1]
 MAX_LOSS = D("23897.04")
 CREDIT = D("8918")
-#: files allowed to name a stop trigger id or a stop_line_* key: the one reader, the domain names, the plan editor
-#: (it WRITES the guards the user edits), the label catalogue and the migrations
+#: files allowed to name a stop trigger id or a stop_line_* key: the one reader, the domain names, the label catalogue
+#: and the migrations
 ALLOW = {"backend/ofo_app/settings_in_force.py", "backend/ofo/adjustment/stop_lines.py",
-         "backend/ofo_app/routes/adjustment_plan.py", "backend/ofo/errors/explanations.py"}
+         "backend/ofo/errors/explanations.py"}  # round 4: the plan editor is NOT allowed (its stop edit goes through
+#                                           settings_in_force.set_max_loss_stop / sheet_stop, #656 MAJOR 4)
 
 
 def _ic_body(*, v2: bool = True) -> dict:
-    """The shipped iron condor (ADR-247 shape since migration 0040); ``v2=False`` -> the body a plan saved before
-    ADR-247 holds (the ADR-216 seed: % of margin guard 4, T-16 on 4 / 4 / 3)."""
+    """The iron condor after migration 0040 (ADR-247 shape); ``v2=False`` -> the shipped seed, the body a plan saved
+    before ADR-247 holds (ADR-216: % of margin guard 4, T-16 on 4 / 4 / 3)."""
     data = json.loads((ROOT / "backend/ofo/adjustment/system_playbooks.json").read_text(encoding="utf-8"),
                       parse_float=D)
     row = next(r for r in data["playbooks"] if r["strategy_type"] == "ic")
     body = json.loads(json.dumps(row["body"], default=str))
-    if not v2:
-        body["guards"]["stop_line_pct_of_margin"] = "4"
-        body["triggers"][sl.TRIGGER_MARGIN]["on"] = True
+    if v2:  # migration 0040's change on the ADR-216 seed: margin guard dropped, T-16 off (values kept)
+        body["guards"].pop("stop_line_pct_of_margin", None)
+        body["triggers"][sl.TRIGGER_MARGIN]["on"] = False
     return body
 
 
@@ -95,7 +96,7 @@ def test_no_default_for_stops_resolved_or_the_saved_plan_flag():
 # (3) parity: every active line in force answers once, under its id, with the same figure / amount -------------------
 def test_every_active_stop_line_has_a_matching_result():
     body = _ic_body()
-    stops = sif.stops_of(_plan(body, before=False), sif.MoneyInputs(MAX_LOSS, CREDIT))
+    stops = sif.stops_of(_plan(body, before=False), sif.MoneyInputs(MAX_LOSS, CREDIT), sif.StageAt("weekly", 3))
     active = {x.kind: x for x in stops.lines if x.active}
     assert {k: (x.figure, x.amount) for k, x in active.items()} == {
         sl.STOP_MAX_LOSS: (D(50), D("11948.52")), sl.STOP_CREDIT: (D(2), D("17836.00"))}
@@ -125,7 +126,7 @@ def test_pre_adr247_plan_keeps_its_own_stops_and_new_plan_gets_the_default():
     assert next(x for x in early.lines if x.kind == sl.STOP_MAX_LOSS).later == (D(50), D(40))
     new = sif.stops_of(_plan(_ic_body(), before=False), money, last)
     new_active = {x.kind: x for x in new.lines if x.active}
-    assert new_active[sl.STOP_MAX_LOSS].figure == D(50)
+    assert new_active[sl.STOP_MAX_LOSS].figure == D(40)  # ADR-252: T-06 50 / 50 / 40, the last stage stricter
     assert new_active[sl.STOP_CREDIT].amount == D("17836.00")
     assert sl.STOP_MARGIN not in new_active
     unknown = sif.stops_of(_plan(_ic_body(v2=False), before=True), money, None)
@@ -147,10 +148,10 @@ def test_tighten_rule_still_applies_to_the_max_loss_line():
 def test_two_x_credit_uses_net_credit_so_far():
     assert adjust_money.net_credit_so_far(D(-1500), [("SELL", D(60), 100)]) == D(4500)  # 6,000 entry, roll cost 1,500
     body = _ic_body()
-    lines = {x.kind: x for x in sif.stops_of(_plan(body, before=False), sif.MoneyInputs(MAX_LOSS, D(4500))).lines}
+    lines = {x.kind: x for x in sif.stops_of(_plan(body, before=False), sif.MoneyInputs(MAX_LOSS, D(4500)), sif.StageAt("weekly", 3)).lines}
     assert lines[sl.STOP_CREDIT].amount == D("9000.00")
     for credit, reason in ((D(-100), sif.NO_CREDIT), (D(0), sif.NO_CREDIT), (None, sif.CREDIT_UNKNOWN)):
-        stops = sif.stops_of(_plan(body, before=False), sif.MoneyInputs(MAX_LOSS, credit))
+        stops = sif.stops_of(_plan(body, before=False), sif.MoneyInputs(MAX_LOSS, credit), sif.StageAt("weekly", 3))
         got = {x.kind: x for x in stops.lines}
         assert got[sl.STOP_CREDIT].amount is None and got[sl.STOP_CREDIT].reason == reason
         res = _results(pe.evaluate(body, _state(stops, D("-12000")), {}, None, gap_until="09:30"))
@@ -167,6 +168,6 @@ def test_credit_line_has_catalogue_words():
 def test_unreadable_stop_value_is_not_checked():
     body = _ic_body()
     body["guards"]["stop_line_x_credit"] = "two"
-    stops = sif.stops_of(_plan(body, before=False), sif.MoneyInputs(MAX_LOSS, CREDIT))
+    stops = sif.stops_of(_plan(body, before=False), sif.MoneyInputs(MAX_LOSS, CREDIT), sif.StageAt("weekly", 3))
     res = _results(pe.evaluate(body, _state(stops, D("-1")), {}, None, gap_until="09:30"))
     assert res[sl.CREDIT_RULE].code == sl.NOT_CHECKED_OTHER

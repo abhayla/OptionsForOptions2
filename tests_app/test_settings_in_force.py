@@ -104,17 +104,27 @@ def test_trigger_answer_states():
 
 # ---- stops (gap 2), strategy 82's figures (ADR-247) ------------------------------------------------------------------
 
-S82 = sif.MoneyInputs(max_loss=D("23897.04"), credit=D("8918"))
-SYSTEM_GUARDS = {"stop_line_pct_of_max_loss": "50"}
+STAGE = sif.StageAt("weekly", 3)  # strategy 82's Early/Middle stage: T-06 = 50 %
+S82 = sif.MoneyInputs(max_loss=D("23897.04"), credit=D("8918"), at=STAGE)
 
 
-def _stops(guards, money=S82, source="system") -> sif.StopsInForce:
-    return sif.in_force(None, check.Resolved(source, {"guards": guards}, 1, None, True, saved_before_adr247=False),
-                        money).stops
+def _ic(guards: dict | None = None, *, margin_on: bool = False) -> dict:
+    """The shipped iron condor after migration 0040 (ADR-247: T-16 off, no margin guard); ``guards`` replaces the
+    body's guards (ADR-252: no guard key but the credit multiple is ever read)."""
+    path = pathlib.Path(__file__).resolve().parents[1] / "backend" / "ofo" / "adjustment" / "system_playbooks.json"
+    body = next(p["body"] for p in json.loads(path.read_text(encoding="utf-8"))["playbooks"]
+                if p["strategy_type"] == "ic")
+    body["guards"] = {} if guards is None else guards
+    body["triggers"]["T-16"]["on"] = margin_on
+    return body
+
+
+def _stops(body, money=S82, source="system") -> sif.StopsInForce:
+    return sif.in_force(None, check.Resolved(source, body, 1, None, True, saved_before_adr247=False), money).stops
 
 
 def test_default_stops_on_strategy_82_fire_at_the_smaller_amount_first():
-    found = _stops(SYSTEM_GUARDS)
+    found = _stops(_ic())
     assert [(x.kind, x.active, x.figure, x.amount, x.source, x.reason) for x in found.lines] == [
         ("max_loss_pct", True, D(50), D("11948.52"), "default", None),
         ("credit_multiple", True, D(2), D("17836.00"), "default", None),
@@ -123,29 +133,45 @@ def test_default_stops_on_strategy_82_fire_at_the_smaller_amount_first():
 
 
 def test_a_plan_credit_multiple_wins_and_can_fire_first():
-    found = _stops({**SYSTEM_GUARDS, "stop_line_x_credit": "1"}, source="plan")
+    found = _stops(_ic({"stop_line_x_credit": "1"}), source="plan")
     assert found.lines[1].amount == D("8918.00") and found.lines[1].source == "strategy"
     assert found.first == "credit_multiple"
 
 
-@pytest.mark.parametrize(("guards", "money", "kind", "reason"), [
-    (SYSTEM_GUARDS, sif.MoneyInputs(None, D(8918)), "max_loss_pct", sif.MAX_LOSS_UNKNOWN),
-    (SYSTEM_GUARDS, sif.MoneyInputs(UNLIMITED, D(8918)), "max_loss_pct", sif.MAX_LOSS_UNLIMITED),
-    (SYSTEM_GUARDS, sif.MoneyInputs(D("23897.04"), D(-100)), "credit_multiple", sif.NO_CREDIT),
-    (SYSTEM_GUARDS, sif.MoneyInputs(D("23897.04"), None), "credit_multiple", sif.CREDIT_UNKNOWN),
-    ({**SYSTEM_GUARDS, "stop_line_pct_of_margin": "4"}, S82, "margin_pct", sif.MARGIN_NOT_READ),
-    ({"stop_line_pct_of_max_loss": 50}, S82, "max_loss_pct", sif.STOP_VALUE_UNREADABLE),
+@pytest.mark.parametrize(("body", "money", "kind", "reason"), [
+    (_ic(), sif.MoneyInputs(None, D(8918), at=STAGE), "max_loss_pct", sif.MAX_LOSS_UNKNOWN),
+    (_ic(), sif.MoneyInputs(UNLIMITED, D(8918), at=STAGE), "max_loss_pct", sif.MAX_LOSS_UNLIMITED),
+    (_ic(), sif.MoneyInputs(D("23897.04"), D(-100), at=STAGE), "credit_multiple", sif.NO_CREDIT),
+    (_ic(), sif.MoneyInputs(D("23897.04"), None, at=STAGE), "credit_multiple", sif.CREDIT_UNKNOWN),
+    (_ic(margin_on=True), S82, "margin_pct", sif.MARGIN_NOT_READ),
+    (_ic(), sif.MoneyInputs(D("23897.04"), D(8918)), "max_loss_pct", sif.STAGE_UNKNOWN),
+    (_ic({"stop_line_x_credit": 2}), S82, "credit_multiple", sif.STOP_VALUE_UNREADABLE),
 ])
-def test_a_missing_stop_input_names_its_reason_and_first_is_not_guessed(guards, money, kind, reason):
-    found = _stops(guards, money)
+def test_a_missing_stop_input_names_its_reason_and_first_is_not_guessed(body, money, kind, reason):
+    found = _stops(body, money)
     line = next(x for x in found.lines if x.kind == kind)
     assert (line.active, line.amount, line.reason) == (True, None, reason)
     assert (found.first, found.reason) == (None, sif.FIRST_UNKNOWN)
 
 
-def test_stop_answer_states_without_a_playbook_or_guards():
+def test_stop_answer_states_without_a_playbook_or_with_unreadable_triggers():
     assert _stops(None, source="none") == sif.StopsInForce((), None, sif.NO_PLAYBOOK)
-    assert sif.stops_of(_plan({"guards": ["x"]}), S82) == sif.StopsInForce((), None, sif.GUARDS_UNREADABLE)
+    # triggers not an object: the % lines are active and "not checked" (fail closed, never silent)
+    found = sif.stops_of(_plan({"triggers": ["x"], "guards": {}}), S82, STAGE)
+    assert [(x.kind, x.active, x.reason) for x in found.lines] == [
+        ("max_loss_pct", True, sif.STOP_VALUE_UNREADABLE), ("margin_pct", True, sif.STOP_VALUE_UNREADABLE)]
+    assert found.reason == sif.FIRST_UNKNOWN
+
+
+def test_the_max_loss_guard_key_is_never_a_source_t06_is():
+    """ADR-252: a body holding ``stop_line_pct_of_max_loss`` 30 with T-06 at 50 stops at 50 % (11,948.52)."""
+    found = _stops(_ic({"stop_line_pct_of_max_loss": "30"}), source="plan")
+    assert found.lines[0] == sif.StopInForce("max_loss_pct", True, D(50), D("11948.52"), "strategy", None,
+                                             (D(40),))
+    edited = _ic()
+    edited["triggers"]["T-06"]["weekly"] = ["30", "30", "30"]
+    stated = _stops(edited, source="plan").lines[0]
+    assert (stated.figure, stated.amount, stated.source) == (D(30), D("7169.11"), "strategy")
 
 
 def test_money_inputs_credit_is_the_engine_entry_credit_and_no_market_prices_no_max_loss():
@@ -176,20 +202,6 @@ def test_order_defaults_are_user_settings_with_sources_and_a_plan_never_sets_the
 def test_an_order_default_out_of_range_from_the_user_layer_fails_closed():
     user = UserValues({"orders.default_lots": Answer("orders.default_lots", D(500), "yours", D(1), NOW)})
     assert _value(sif.in_force(user, _plan({}), None), "orders.default_lots") == (None, None, layers.USER_UNREADABLE)
-
-
-# ---- fix round 1: the max-loss stop default and the reply's text fields ---------------------------------------------
-
-def test_guards_without_the_max_loss_pct_still_stop_at_50_pct_of_max_loss_first_on_strategy_82():
-    """ADR-247: 50 % of max loss is ALWAYS active; a body that does not state it follows the default (source
-    "default"), exactly like the credit multiple. Strategy 82: 11,948.52 fires before 17,836."""
-    for guards in ({}, {"stop_line_x_credit": "2"}):
-        found = _stops(guards, source="plan")
-        assert found.lines[0] == sif.StopInForce("max_loss_pct", True, D(50), D("11948.52"), "default", None)
-        assert found.lines[1].amount == D("17836.00")
-        assert (found.first, found.reason) == ("max_loss_pct", None)
-    stated = _stops({"stop_line_pct_of_max_loss": "30"}, source="plan").lines[0]
-    assert (stated.figure, stated.amount, stated.source) == (D(30), D("7169.11"), "strategy")
 
 
 def _system_bodies() -> list[dict]:

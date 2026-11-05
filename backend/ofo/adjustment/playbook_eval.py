@@ -531,7 +531,10 @@ _T21: Final = "T-21"
 
 
 def _trigger(c: _Ctx, tid: str) -> Hit | _Missing:  # noqa: PLR0911 - one answer per reason a trigger is not checked
-    """A Hit, or the reason it is not checked."""
+    """A Hit, or the reason it is not checked. A stop trigger (T-06 / T-16) in ANY rule, a mixed one included, is
+    answered from its stop line in force, never from the body's values (ADR-252)."""
+    if tid in sl.STOP_TRIGGERS:
+        return _stop_answer(c, tid)
     t = c.body["triggers"].get(tid)
     if t is None:
         return _Missing(f"{P}unknown")
@@ -633,6 +636,11 @@ def _outcomes(body: Mapping, state: StrategyState, gap_until: str) -> tuple[_Ctx
             out.append(_Outcome(rule["id"], _T21))
         else:
             out.append(_rule(c, rule))
+    named = {m for rule in body.get("rules", []) for m in (rule.get("any_of") or rule["all_of"])}
+    for tid in sorted(sl.STOP_TRIGGERS - named):  # an active line no body rule names is still checked (ADR-252)
+        line = _line(state, tid)
+        if line is not None and line.active:
+            out.append(_stop_rule(c, {"id": tid, "any_of": [tid]}, why))
     out.extend(_credit_outcome(state, why))
     return c, why, out
 

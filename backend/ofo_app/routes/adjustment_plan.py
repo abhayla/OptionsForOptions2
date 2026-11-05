@@ -72,9 +72,8 @@ _CLOCK = re.compile(r"([01][0-9]|2[0-3]):([0-5][0-9])")
 _COUNT = re.compile(r"[0-9]{1,3}")
 #: The sheet field -> the guard of the plan's copy that holds it (docs/design/playbook-body-v1.md "guards")
 TARGET_KEY = "profit_target_pct_of_max_profit"
-STOP_KEY = "stop_line_pct_of_max_loss"
-MARGIN_KEY = "stop_line_pct_of_margin"
-RULE_KEY = "stop_line_rule"
+#: the sheet's stop is the % of max loss trigger's value (ADR-252: ``settings_in_force.set_max_loss_stop`` /
+#: ``sheet_stop``), never a guard key
 EITHER_RULE = "whichever comes first"
 MAX_KEY = "max_adjustments"
 TIME_KEY = "time_exit"
@@ -167,6 +166,7 @@ class StopLineOut(ApiModel):
     amount: Money | None
     source: Identifier | None
     reason: Identifier | None
+    later: list[Money]  # the figures at the stages after this one (ADR-252: per stage)
 
 
 class StopsOut(ApiModel):
@@ -228,17 +228,12 @@ _STOP_WORD_IDS = {in_force_mod.STOP_MAX_LOSS: "plan_stop_words_loss",
                   in_force_mod.STOP_MARGIN: "plan_stop_words_margin"}
 _STOP_SLOTS = {in_force_mod.STOP_MAX_LOSS: "pct", in_force_mod.STOP_CREDIT: "multiple",
                in_force_mod.STOP_MARGIN: "margin"}
-_STOP_GUARD_KEYS = (STOP_KEY, in_force_mod.STOP_CREDIT_KEY, MARGIN_KEY)
-
-
-def _stop_words(body: dict, guards: dict, saved_before: bool) -> Any:
-    """ADR-247: the ACTIVE stops from the ONE settings-in-force stops list (``settings_in_force.stops_of``: 50 % of max
-    loss, N x the credit received, % of margin only when on), joined "..., whichever comes first". A body that says
-    nothing about any stop gets no words."""
-    if not any(k in guards for k in _STOP_GUARD_KEYS):
-        return None
+def _stop_words(body: dict, saved_before: bool) -> Any:
+    """ADR-247/252: the ACTIVE stops from the ONE settings-in-force stops list (``settings_in_force.stops_of`` at the
+    first stage: T-06 % of max loss, N x the credit received where it applies, T-16 % of margin only when on), joined
+    "..., whichever comes first". Read for every plan, whatever guard keys its body holds."""
     lines = in_force_mod.stops_of(check.Resolved("plan", body, None, None, False, saved_before_adr247=saved_before),
-                                  None).lines
+                                  None, in_force_mod.FIRST_STAGE).lines
     parts = [render_explanation(_STOP_WORD_IDS[x.kind], **{_STOP_SLOTS[x.kind]: format(x.figure, "f")})
              for x in lines if x.active and x.figure is not None]
     if not parts:
@@ -257,7 +252,7 @@ def _words(body: dict, guards: dict, saved_before: bool) -> tuple[Any, Any]:
     input). The stop words come from the stops in force (ADR-247), not from the guards the body happens to hold."""
     target = _read_percent(guards, TARGET_KEY)
     t_words = None if target is None else render_explanation("plan_target_words", pct=format(target, "f"))
-    return t_words, _stop_words(body, guards, saved_before)
+    return t_words, _stop_words(body, saved_before)
 
 
 def _values(body: dict, saved_before: bool) -> dict[str, Any]:
@@ -265,7 +260,7 @@ def _values(body: dict, saved_before: bool) -> dict[str, Any]:
     guards: dict = found if isinstance(found, dict) else {}
     mx = guards.get(MAX_KEY)
     t_words, s_words = _words(body, guards, saved_before)
-    return {"target": _read_percent(guards, TARGET_KEY), "stop": _read_percent(guards, STOP_KEY),
+    return {"target": _read_percent(guards, TARGET_KEY), "stop": in_force_mod.sheet_stop(body),
             "target_words": t_words, "stop_words": s_words,
             "max_adjustments": mx if type(mx) is int else None, "time_exit": _read_clock(guards)}
 
@@ -276,8 +271,11 @@ def with_overrides(body: dict, data: PlanIn) -> dict:
     guards = out.setdefault("guards", {})
     if data.target is not None:
         guards[TARGET_KEY] = _percent(data.target, "target")
-    if data.stop is not None:
-        guards[STOP_KEY] = _percent(data.stop, "stop")
+    if data.stop is not None:  # ADR-252: the stop edit IS the T-06 value the live check reads
+        try:
+            in_force_mod.set_max_loss_stop(out, _percent(data.stop, "stop"))
+        except ValueError:
+            raise _bad("stop") from None
     if data.max_adjustments is not None:
         if not _COUNT.fullmatch(data.max_adjustments) or int(data.max_adjustments) > MAX_ADJUSTMENTS_LIMIT:
             raise _bad(MAX_KEY)
