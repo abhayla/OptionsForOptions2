@@ -128,7 +128,10 @@ async def test_downgrade_removes_only_its_own_row_found_by_reason(db, admin_engi
 
             M42.op = _Op()
             M42.downgrade()
-            for sql in statements:
+            # the last statement is the app-role allow-list check; on the fresh test DB it refuses on
+            # strategy_adjustment_plans_guard pinned body (0031, not this row), so it is not run here
+            assert "allowlist" in statements[-1].lower()
+            for sql in statements[:-1]:
                 await conn.execute(text(sql))
             after = (await conn.execute(text(
                 f"SELECT version, reason FROM {M42.TABLE} WHERE strategy_type = 'ic' ORDER BY version"  # noqa: S608
