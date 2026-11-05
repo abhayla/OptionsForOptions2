@@ -217,6 +217,11 @@ async def adjustment_check(  # noqa: PLR0913 - FastAPI dependencies, one per inp
         TrackedUnreadable,
         entry_facts_in,
     )
+    from ofo_app.scenario_guard import check_screen_isolation  # noqa: PLC0415 - imports routes.broker
+    await check_screen_isolation(db, user_ref, strategy_id)  # IC e2e decision 4: never across the live/scenario line
+    scn = scenario_mode.current()
+    if scn is not None:
+        await scenario_mode.sync_frame(db, scn)  # IC e2e decision 2: the shared frame index, read on every check
     rates = rates if isinstance(rates, ChargeRates) else None
     try:
         tracked = await tracked_reader(strategy_id, rates)

@@ -28,7 +28,9 @@ from decimal import Decimal
 FIXTURES = pathlib.Path(__file__).resolve().parent.parent / "tests" / "fixtures" / "adjust_scenarios"
 ALLOWED_ENVS = ("development", "test")
 DEV_DATABASE = "ofo_dev"
-ID_SHAPE = re.compile(r"ADJ-[0-9]{2}[a-e]?")
+ID_SHAPE = re.compile(r"ADJ-[0-9]{2}[a-e]?|PATH-[0-9]{2}")
+PATH_SHAPE = re.compile(r"PATH-[0-9]{2}")
+PATHS = FIXTURES.parent / "adjust_paths"  # a path scenario seeds from its frame 0 (IC e2e decision 1)
 NAME_PREFIX = "Scenario "
 OWNER_REF = "owner"  # routes.broker.V1_OWNER_REF, the one signed-in user of v1
 
@@ -54,7 +56,7 @@ def check_environment(env: Mapping[str, str]) -> None:
 def scenario_path(scenario_id: str) -> pathlib.Path:
     if not ID_SHAPE.fullmatch(scenario_id or ""):
         raise SeedRefused(f"REFUSED: {scenario_id!r} is not a scenario id")
-    path = FIXTURES / f"{scenario_id}.json"
+    path = PATHS / scenario_id / "frame-000.json" if PATH_SHAPE.fullmatch(scenario_id) else FIXTURES / f"{scenario_id}.json"
     if not path.is_file():
         raise SeedRefused(f"REFUSED: no scenario file {path.name} in {FIXTURES}")
     return path
@@ -156,7 +158,8 @@ async def seed(scenario_id: str) -> int:
             choices = [sf.LegChoice(await _contract_id(db, leg, underlying), Action(leg["side"]), int(leg["quantity"]))
                        for leg in legs]
             stored = await strategy_store.save_draft(
-                db, OWNER_REF, await strategy_store.build_definition(db, underlying, choices), name)
+                db, OWNER_REF, await strategy_store.build_definition(db, underlying, choices), name,
+                scenario_id=scenario_id)  # IC e2e decision 16: every seed carries its scenario marker
             orders = []
             for at, batch in placement_batches(position, clock):  # one batch per real placement (REQ-163)
                 for side, leg, price, kind in batch:

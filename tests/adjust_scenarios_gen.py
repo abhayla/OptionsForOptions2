@@ -1914,7 +1914,54 @@ def generate(out_dir: Path) -> list[str]:
     return sorted(written)
 
 
+# ---------------------------------------------------------------------------------------------------------------------
+# Path scenarios (IC e2e paper contract, design decision 1): a base ADJ snapshot moved frame by frame
+# ---------------------------------------------------------------------------------------------------------------------
+PATHS_DIR = ROOT / "tests" / "fixtures" / "adjust_paths"
+
+
+def path_frame(base: dict, frame: dict) -> dict:
+    """One frame of a path: the base ADJ snapshot with its clock, spot, ATM IV (and day open when stated) moved, every
+    chain row re-priced by the generator's own pricing (``option_row``); the base's hand-derived ``expected`` block
+    does not hold at a moved market, so a frame carries none."""
+    out = json.loads(json.dumps(base))
+    out.pop("expected", None)
+    at = datetime.datetime.fromisoformat(frame["clock"]).replace(tzinfo=IST)
+    spot, atm = D(frame["spot"]), D(frame["atm_iv"])
+    out["clock"] = {**out["clock"], "ist": at.isoformat()}
+    out["market"]["spot"], out["market"]["atm_iv"] = spot, atm
+    if frame.get("day_open") is not None:
+        out["market"]["day_open"] = D(frame["day_open"])
+    for c in out["market"]["chains"]:
+        years = year_fraction(at, datetime.date.fromisoformat(c["expiry"]))
+        for row in c["rows"]:
+            row.update(option_row(row["type"], spot, D(row["strike"]), years, atm))
+    return out
+
+
+def generate_paths(out_dir: Path = PATHS_DIR, scenarios_dir: Path = OUT_DIR) -> list[str]:
+    """Expands every ``PATH-NN.json`` in ``out_dir`` into ``PATH-NN/frame-KKK.json`` (deterministic: same input, same
+    bytes)."""
+    written = []
+    for spec_file in sorted(out_dir.glob("PATH-[0-9][0-9].json")):
+        spec = json.loads(spec_file.read_text(encoding="utf-8"))
+        base = json.loads((scenarios_dir / f"{spec['base']}.json").read_text(encoding="utf-8"))
+        folder = out_dir / spec["id"]
+        folder.mkdir(parents=True, exist_ok=True)
+        for k, frame in enumerate(spec["frames"]):
+            doc = {**path_frame(base, frame), "id": spec["id"], "path": {"base": spec["base"], "frame": k,
+                                                                          "last": len(spec["frames"]) - 1}}
+            name = folder / f"frame-{k:03d}.json"
+            name.write_bytes(dump(doc).encode("utf-8"))
+            written.append(f"{spec['id']}/{name.name}")
+    return written
+
+
 if __name__ == "__main__":
+    if sys.argv[1:2] == ["--paths"]:
+        names = generate_paths()
+        print(f"wrote {len(names)} path frames to {PATHS_DIR}")
+        sys.exit(0)
     target = Path(sys.argv[1]) if len(sys.argv) > 1 else OUT_DIR
     names = generate(target)
     print(f"wrote {len(names)} files to {target}")

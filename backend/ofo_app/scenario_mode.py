@@ -71,21 +71,31 @@ from ofo.marketdata.kite_provider import KiteProvider
 ENV_NAME = "OFO_SCENARIO"
 OPEN_ENVIRONMENTS = frozenset({"development", "test"})
 FIXTURES = pathlib.Path(__file__).resolve().parent.parent.parent / "tests" / "fixtures" / "adjust_scenarios"
-_ID = re.compile(r"ADJ-[0-9]{2}[a-e]?")
+PATHS = FIXTURES.parent / "adjust_paths"  # path scenarios (IC e2e paper contract decision 1): PATH-NN/frame-KKK.json
+_ID = re.compile(r"ADJ-[0-9]{2}[a-e]?|PATH-[0-9]{2}")
+_PATH_ID = re.compile(r"PATH-[0-9]{2}")
 TEMPLATE = "scenario_no_orders"
 
-#: (method, path) of every route that posts a basket, places, modifies or cancels an order (real or paper).
-ORDER_ROUTES: frozenset[tuple[str, str]] = frozenset({
+#: (method, path) of every route that posts a basket to the BROKER: refused in scenario mode, always (``refuse_orders``).
+REAL_ORDER_ROUTES: frozenset[tuple[str, str]] = frozenset({
     ("POST", "/strategies/{strategy_id}/execute"),
     ("POST", "/strategies/{strategy_id}/execution/return"),
+})
+#: (method, path) of every PAPER order route (places, modifies or cancels a paper order or trigger, paper exit). In
+#: scenario mode allowed ONLY on a strategy whose stored ``scenario_id`` equals the current scenario
+#: (``scenario_guard.guard_paper_order``, an allow-list: anything else is 409 ``scenario_no_orders``).
+PAPER_ORDER_ROUTES: frozenset[tuple[str, str]] = frozenset({
     ("POST", "/paper/strategies/{strategy_id}/orders"),
     ("POST", "/paper/strategies/{strategy_id}/triggers"),
     ("DELETE", "/paper/strategies/{strategy_id}/triggers/{trigger_id}"),
     ("POST", "/strategies/{strategy_id}/tracking/exit"),  # places paper exit orders (paper_store.place)
 })
+#: Every order route, real or paper (derived; read by the start-up classification).
+ORDER_ROUTES: frozenset[tuple[str, str]] = REAL_ORDER_ROUTES | PAPER_ORDER_ROUTES
 #: Every other mutating route, each one checked: none of them prepares, places, modifies or cancels an order.
 NON_ORDER_ROUTES: frozenset[tuple[str, str]] = frozenset({
     ("POST", "/api/broker/disconnect"),  # ends the broker session
+    ("POST", "/api/scenario/frame"),  # IC e2e decision 2: moves the test market's frame index (dev/test data, no order)
     ("POST", "/api/playbooks"),  # GC-ADJ2 2: create / save as new (a playbook is data, no order)
     ("POST", "/api/playbooks/{playbook_id}/duplicate"),
     ("PATCH", "/api/playbooks/{playbook_id}"),
@@ -214,10 +224,46 @@ def require_dev_or_test(app_env: str | None) -> None:
         raise ScenarioRefused(f"{ENV_NAME} is a development/test-only setting: it needs APP_ENV=development or test")
 
 
+def current_id() -> str | None:
+    """The scenario id the process runs under (the marker the server writes on a new strategy), or None when the mode
+    is off. No load and no environment check here: start-up already refused a bad setting."""
+    return _raw() or None
+
+
+def is_path(scenario_id: str) -> bool:
+    return bool(_PATH_ID.fullmatch(scenario_id))
+
+
+def last_frame(scenario_id: str) -> int:
+    """The last frame index of a path scenario (0 for a one-snapshot ADJ scenario)."""
+    if not is_path(scenario_id):
+        return 0
+    spec = PATHS / f"{scenario_id}.json"
+    if not spec.is_file():
+        raise ScenarioRefused(f"{ENV_NAME}: no such path scenario in the library")
+    return len(json.loads(spec.read_text(encoding="utf-8"))["frames"]) - 1
+
+
+def frame_path(scenario_id: str, frame: int) -> pathlib.Path:
+    """The generated snapshot of frame ``frame`` of a path scenario; refuses a frame outside 0..last."""
+    if not _PATH_ID.fullmatch(scenario_id):
+        raise ScenarioRefused(f"{ENV_NAME}: {scenario_id!r} is not a path scenario")
+    if not isinstance(frame, int) or isinstance(frame, bool) or frame < 0:
+        raise ScenarioRefused(f"{ENV_NAME}: frame {frame!r} is not a frame index")
+    folder = PATHS / scenario_id
+    path = folder / f"frame-{frame:03d}.json"
+    if path.resolve().parent != folder.resolve() or not path.is_file():
+        raise ScenarioRefused(f"{ENV_NAME}: {scenario_id} has no frame {frame}")
+    return path
+
+
 def scenario_path(scenario_id: str) -> pathlib.Path:
-    """The fixture file of a scenario id; refuses anything but ``ADJ-nn`` (+ one letter a-e) naming a file there."""
+    """The fixture file of a scenario id; refuses anything but ``ADJ-nn`` (+ one letter a-e) or ``PATH-nn`` naming a
+    file there (a path scenario starts at its frame 0)."""
     if not _ID.fullmatch(scenario_id):
-        raise ScenarioRefused(f"{ENV_NAME} must look like ADJ-02 or ADJ-20a")
+        raise ScenarioRefused(f"{ENV_NAME} must look like ADJ-02, ADJ-20a or PATH-01")
+    if is_path(scenario_id):
+        return frame_path(scenario_id, 0)
     path = FIXTURES / f"{scenario_id}.json"
     if path.resolve().parent != FIXTURES or not path.is_file():
         raise ScenarioRefused(f"{ENV_NAME}: no such scenario in the library")
@@ -285,9 +331,40 @@ class Scenario:
     clock_at: datetime.datetime
     provider: KiteProvider
     rows_by_id: dict[str, dict]  # instrument_id -> the scenario chain row (low-OI state, listed, tradable)
+    frame: int = 0  # the path frame the provider holds (0 for a one-snapshot scenario)
+    clock_box: list[datetime.datetime] | None = None  # the provider's clock reads this box (moved with the frame)
 
     def clock(self) -> datetime.datetime:
         return self.clock_at
+
+    def move_to(self, frame: int) -> None:
+        """Feeds frame ``frame`` of a path scenario through the provider's real frame parser (every priced chain row
+        and the index, received at the frame's own clock) and moves the scenario's clock to it. Same frame -> no-op."""
+        if frame == self.frame:
+            return
+        data = json.loads(frame_path(self.scenario_id, frame).read_text(encoding="utf-8"))
+        at = _at((data.get("clock") or {}).get("ist"))
+        master = self.provider.instrument_master()
+        token_of = {lc.broker_refs[0].broker_symbol: int(lc.broker_refs[0].broker_token) for lc in master}
+        id_of = {lc.broker_refs[0].broker_symbol: instrument_id(lc) for lc in master}
+        state = data.get("data_state") or {}
+        received = at - datetime.timedelta(seconds=int(state.get("age_seconds") or 0))
+        ts = int(received.timestamp())
+        packets, rows_by_id = [], {}
+        for chain in data["market"].get("chains") or []:
+            for row in chain["rows"]:
+                sym = row["tradingsymbol"]
+                if sym in token_of and row.get("ltp") is not None:
+                    packets.append(_full_packet(token_of[sym], row, ts))
+                    rows_by_id[id_of[sym]] = row
+        if state.get("feed", "ok") != "missing":
+            index = next(lc for lc in master if lc.contract.expiry is None)
+            packets.append(_index_packet(int(index.broker_refs[0].broker_token), data["market"]["spot"], ts,
+                                         data["market"]))
+        if self.clock_box is not None:
+            self.clock_box[0] = at
+        self.provider.on_frame(_frame(packets), received)  # the real frame parser
+        self.data, self.clock_at, self.rows_by_id, self.frame = data, at, rows_by_id, frame
 
     @property
     def rate(self) -> Decimal:
@@ -492,7 +569,8 @@ def load(scenario_id: str) -> Scenario:
               for c in scn["market"].get("chains") or [] for r in c["rows"] if r.get("listed", True)]
     rows, priced, index_token = _instrument_rows(scn, catalogue_twins(wanted))
     listed = list(parse_instruments_rows(rows))  # the real instrument-list parser
-    provider = KiteProvider(listed, clock=lambda: clock_at)
+    box = [clock_at]  # a path scenario moves it with its frame (``Scenario.move_to``)
+    provider = KiteProvider(listed, clock=lambda: box[0])
     provider.subscribe([instrument_id(lc) for lc in listed])
     received = clock_at - datetime.timedelta(seconds=int(state.get("age_seconds") or 0))
     ts = int(received.timestamp())
@@ -504,7 +582,7 @@ def load(scenario_id: str) -> Scenario:
         provider.on_frame(_frame(packets), received)  # the real frame parser
     by_token = {int(lc.broker_refs[0].broker_token): lc for lc in listed}
     rows_by_id = {instrument_id(by_token[t]): r for t, r in priced}
-    return Scenario(scenario_id, scn, clock_at, provider, rows_by_id)
+    return Scenario(scenario_id, scn, clock_at, provider, rows_by_id, 0, box)
 
 
 _loaded: dict[str, Scenario] = {}  # the one loaded scenario, by id
@@ -615,6 +693,72 @@ def overrides(scn: Scenario) -> dict[Any, Any]:
         leg_picker.get_feed: lambda: feed,
         planned_entry.get_live_feed: lambda: feed,
     }
+
+
+FRAMES_TABLE = "public.scenario_frames"
+_READ_FRAME = f"SELECT frame FROM {FRAMES_TABLE} WHERE scenario_id = :sid"  # noqa: S608 constant table name
+_WRITE_FRAME = (f"INSERT INTO {FRAMES_TABLE} (scenario_id, frame, moved_at) "  # noqa: S608 constant table name
+                "VALUES (:sid, :frame, clock_timestamp()) "
+                "ON CONFLICT (scenario_id) DO UPDATE SET frame = EXCLUDED.frame, moved_at = EXCLUDED.moved_at")
+
+
+async def read_frame(conn: Any, scenario_id: str) -> int:
+    """The shared frame index of a scenario (API and worker read it on every check). Answer states: a stored frame in
+    0..last -> it; no row -> frame 0; a stored frame outside 0..last -> ``ScenarioRefused`` (never a guess); an
+    unreadable table -> the database error is raised (the check does not run)."""
+    from sqlalchemy import text  # noqa: PLC0415
+    row = (await conn.execute(text(_READ_FRAME), {"sid": scenario_id})).first()
+    frame = 0 if row is None else int(row[0])
+    last = last_frame(scenario_id)
+    if not 0 <= frame <= last:
+        raise ScenarioRefused(f"{ENV_NAME}: stored frame {frame} is outside 0..{last}")
+    return frame
+
+
+async def write_frame(conn: Any, scenario_id: str, frame: int) -> None:
+    """Moves the shared frame index (the dev/test frame route and the tests). The caller commits."""
+    from sqlalchemy import text  # noqa: PLC0415
+    await conn.execute(text(_WRITE_FRAME), {"sid": scenario_id, "frame": frame})
+
+
+async def sync_frame(conn: Any, scn: Scenario) -> int:
+    """Moves ``scn`` to the stored frame (a one-snapshot scenario never moves). The frame now held."""
+    if is_path(scn.scenario_id):
+        scn.move_to(await read_frame(conn, scn.scenario_id))
+    return scn.frame
+
+
+def _calls(dependant: Any) -> set[Any]:
+    out: set[Any] = set()
+    for dep in getattr(dependant, "dependencies", None) or ():
+        if dep.call is not None:
+            out.add(dep.call)
+        out |= _calls(dep)
+    return out
+
+
+def misguarded_order_routes(routes: list[Any]) -> list[tuple[str, str]]:
+    """Every order route whose guard is not wired (fail closed at start-up in scenario mode): a REAL route without
+    ``refuse_orders`` (directly or through ``order_path_switch.require_order_path``), a PAPER route without
+    ``scenario_guard.guard_paper_order``, or a route listed in a set that the app does not serve."""
+    from ofo_app.order_path_switch import require_order_path  # noqa: PLC0415 - late: that module imports this one
+    from ofo_app.scenario_guard import guard_paper_order  # noqa: PLC0415
+    seen: set[tuple[str, str]] = set()
+    out = []
+    for r in routes:
+        for m in sorted(getattr(r, "methods", None) or ()):
+            key = (m, getattr(r, "path", ""))
+            calls = _calls(getattr(r, "dependant", None))
+            if key in REAL_ORDER_ROUTES:
+                seen.add(key)
+                if refuse_orders not in calls and require_order_path not in calls:
+                    out.append(key)
+            elif key in PAPER_ORDER_ROUTES:
+                seen.add(key)
+                if guard_paper_order not in calls:
+                    out.append(key)
+    out.extend(sorted(ORDER_ROUTES - seen))
+    return out
 
 
 def unclassified_mutating_routes(routes: list[Any]) -> list[tuple[str, str]]:

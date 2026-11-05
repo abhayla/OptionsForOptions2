@@ -80,6 +80,7 @@ class StrategySummary:
     leg_count: int = 0  # the ACTIVE definition's legs (the active version's after the first execution)
     first_leg: Optional[FirstLeg] = None  # its first leg's contract terms; the browser writes "... and N more"
     can_delete: bool = False  # REQ-070 AC-6: no plan row and no version row; False (fail closed) unless proven
+    scenario_id: Optional[str] = None  # IC e2e decision 3: the scenario marker (None = a real strategy)
 
 
 @dataclass(frozen=True)
@@ -127,7 +128,7 @@ _SELECT_FOR_UPDATE = text(
 #: The list reads the ACTIVE definition like ``load`` does (the active version's after the first execution, else the
 #: row's), only for the signed-in user's rows (REQ-134 AC-6).
 _LIST = text(
-    "SELECT s.id, s.underlying, s.status, s.created_at, s.updated_at, s.name, "
+    "SELECT s.id, s.underlying, s.status, s.created_at, s.updated_at, s.name, s.scenario_id, "
     f"{_CAN_DELETE_SQL} AS can_delete, "
     "d.definition -> 'legs' AS legs "
     "FROM public.strategies AS s "
@@ -234,18 +235,32 @@ async def _check_saveable(conn: Any, saved: sf.SavedDefinition) -> str:
 
 
 async def save_draft(conn: Any, user_ref: str, saved: sf.SavedDefinition,
-                     name: str = sf.DEFAULT_STRATEGY_NAME) -> StoredStrategy:
+                     name: str = sf.DEFAULT_STRATEGY_NAME, *, scenario_id: str | None = None) -> StoredStrategy:
     """Save Draft / Save As: a new strategy row with the user's name (REQ-134 AC-1/AC-2; duplicates are allowed, each
-    row keeps its own id). The caller commits."""
+    row keeps its own id). The caller commits.
+
+    Scenario marker (IC e2e decision 3): the row's ``scenario_id`` is the scenario the PROCESS runs under
+    (``scenario_mode.current_id()``), or ``scenario_id`` passed by server code (the seed script). No route passes it;
+    the column has no grant, so the database default (the transaction-local ``ofo.scenario_id`` setting) writes it."""
+    from ofo_app import scenario_mode  # noqa: PLC0415 - late: scenario_mode imports the stores lazily too
     if not isinstance(user_ref, str) or not user_ref:
         raise StrategyStoreError(NOT_FOUND, "a strategy belongs to a user")
     chosen = sf.check_strategy_name(name)  # before any query: an empty or over-long name stores nothing
     document = await _check_saveable(conn, saved)
+    marker = scenario_id if scenario_id is not None else scenario_mode.current_id()
     async with conn.begin_nested():
+        if marker is not None:
+            await conn.execute(_SET_MARKER, {"value": marker})
         row = (await conn.execute(_INSERT, {"user_ref": user_ref, "underlying": saved.definition.underlying,
                                             "definition": document, "version": sf.SCHEMA_VERSION,
                                             "name": str.__str__(chosen)})).one()
+        if marker is not None:
+            await conn.execute(_SET_MARKER, {"value": ""})  # never carried to a later insert of the transaction
     return _stored(row, saved)
+
+
+#: The transaction-local setting the ``strategies.scenario_id`` default reads (migration 0043).
+_SET_MARKER = text("SELECT set_config('ofo.scenario_id', :value, true)")
 
 
 async def rename(conn: Any, user_ref: str, strategy_id: int, new_name: str, *,
@@ -699,7 +714,7 @@ async def version_saved(conn: Any, version: StoredVersion) -> sf.SavedDefinition
 async def list_strategies(conn: Any, user_ref: str) -> list[StrategySummary]:
     rows = (await conn.execute(_LIST, {"user_ref": user_ref})).all()
     return [StrategySummary(int(r.id), r.underlying, r.status, r.created_at, r.updated_at, r.name,
-                            len(r.legs), _first_leg(r.legs), r.can_delete is True) for r in rows]
+                            len(r.legs), _first_leg(r.legs), r.can_delete is True, r.scenario_id) for r in rows]
 
 
 def _first_leg(legs: Sequence[Mapping[str, Any]]) -> FirstLeg:

@@ -1058,6 +1058,18 @@ _ORDER_PATH_TEMPLATES: tuple[MessageTemplate, ...] = (
           "No order was prepared or changed and nothing was sent to Zerodha.",
           "Placing, changing and cancelling orders, real or paper.",
           "Restart the app without the scenario setting to place orders."),
+    # IC e2e paper contract decision 4: a scenario strategy is checked only under its own scenario, a real one only live.
+    _gate("scenario_strategy_isolated", _UI, 193,
+          "This strategy belongs to another mode: scenario test data and the market are kept apart.",
+          "Nothing was checked and nothing was changed.",
+          "Checking this strategy in the mode the app is running in.",
+          "Open it in the app running its own scenario, or a real strategy in the app without the scenario setting."),
+    # IC e2e paper contract decision 2: the dev/test frame route refuses a frame the path scenario does not have.
+    _gate("scenario_frame_out_of_range", _UI, 194,
+          "This scenario has no such frame.",
+          "The test market did not move.",
+          "Moving the scenario test market to that frame.",
+          "Pick a frame from 0 to the scenario's last frame."),
 )
 
 # --- W-125 (REQ-079 AC-1, AC-6, AC-7, AC-8): ready-made shapes and quick picks, held for the Q211 legal answer.

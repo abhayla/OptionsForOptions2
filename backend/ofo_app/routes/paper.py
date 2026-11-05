@@ -72,7 +72,7 @@ from ofo_app.routes.outcome import (
 )
 from ofo_app.routes.planned_entry import get_live_feed
 from ofo_app.routes.strategies import StrategyRefused, refused_answer
-from ofo_app.scenario_mode import refuse_orders
+from ofo_app.scenario_guard import guard_paper_order
 from ofo_app.underlying import Underlying
 
 _LOG = logging.getLogger(__name__)
@@ -721,7 +721,7 @@ def entry_facts(ctx: MarketContext | None, underlying: str, orders: Sequence[Any
 
 
 @router.post("/paper/strategies/{strategy_id}/orders", status_code=201, response_model=PaperBookOut,
-             dependencies=[Depends(refuse_orders)])  # GC-ADJ1 1b: no order in scenario mode
+             dependencies=[Depends(guard_paper_order)])  # IC e2e 5: scenario mode = own scenario only
 async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR0913 - FastAPI dependencies
                              db: Annotated[Any, Depends(get_db)], user_ref: Annotated[str, Depends(current_user_ref)],
                              ctx: Annotated[MarketContext | None, Depends(get_market_context)],
@@ -864,7 +864,7 @@ def _new_triggers(body: TriggerIn, underlying: str, open_ids: Sequence[int]) -> 
 
 
 @router.post("/paper/strategies/{strategy_id}/triggers", status_code=201, response_model=TriggersOut,
-             dependencies=[Depends(refuse_orders)])  # GC-ADJ1 1b: no order in scenario mode
+             dependencies=[Depends(guard_paper_order)])  # IC e2e 5: scenario mode = own scenario only
 async def add_paper_triggers(strategy_id: int, body: TriggerIn, db: Annotated[Any, Depends(get_db)],
                              user_ref: Annotated[str, Depends(current_user_ref)]) -> TriggersOut:
     stored = await _load_strategy(db, user_ref, strategy_id)
@@ -884,7 +884,7 @@ async def add_paper_triggers(strategy_id: int, body: TriggerIn, db: Annotated[An
 
 
 @router.delete("/paper/strategies/{strategy_id}/triggers/{trigger_id}", response_model=TriggersOut,
-             dependencies=[Depends(refuse_orders)])  # GC-ADJ1 1b: no order in scenario mode
+             dependencies=[Depends(guard_paper_order)])  # IC e2e 5: scenario mode = own scenario only
 async def cancel_paper_trigger(strategy_id: int, trigger_id: int, db: Annotated[Any, Depends(get_db)],
                                user_ref: Annotated[str, Depends(current_user_ref)]) -> TriggersOut:
     await _load_strategy(db, user_ref, strategy_id)

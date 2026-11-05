@@ -43,7 +43,7 @@ from ofo.tracking.orderbook import PaperOrder, net_positions
 from pydantic import BaseModel, ConfigDict, Field
 
 from ofo_app import paper_store, tracked_contracts
-from ofo_app import scenario_mode  # dev/test scenario guard; the module reaches no Execute code
+from ofo_app.scenario_guard import guard_paper_order  # dev/test scenario guard; reaches no Execute code
 from ofo_app import strategy_store as store
 from ofo_app.api_models import ApiModel, CatalogueText, InstrumentId, Money
 from ofo_app.db import get_db
@@ -423,7 +423,7 @@ async def get_tracking(strategy_id: int,  # noqa: PLR0913 - FastAPI dependencies
 
 
 @router.post("/strategies/{strategy_id}/tracking/exit", response_model=TrackingOut,
-             dependencies=[Depends(scenario_mode.refuse_orders)])  # GC-ADJ1 1b: no paper exit in scenario mode
+             dependencies=[Depends(guard_paper_order)])  # IC e2e 5: scenario mode = own scenario only
 async def exit_tracking(strategy_id: int, body: TrackingExitIn,  # noqa: PLR0913 - FastAPI dependencies
                         db: Annotated[Any, Depends(get_db)], user_ref: Annotated[str, Depends(current_user_ref)],
                         ctx: Annotated[MarketContext | None, Depends(get_market_context)],

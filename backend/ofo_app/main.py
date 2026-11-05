@@ -62,6 +62,7 @@ from ofo_app.routes import (
     playbooks,
     positions,
     ready_made,
+    scenario_frame,
     settings,
     strategies,
     strategy_templates,
@@ -142,6 +143,7 @@ def _mount_routes(app: FastAPI, config: BrokerConfig) -> None:
     app.include_router(positions.router)  # W-111: Positions read - own lots per strategy, outside lots apart, no money
     app.include_router(tracking.router)  # W-122: paper tracking of a saved strategy + Q253 condition 1
     app.include_router(paper.router)  # GC-TP 1b: the paper order book (net positions, orderbook, typed orders)
+    app.include_router(scenario_frame.router)  # IC e2e 2: dev/test scenario frame index (404 when the mode is off)
 
 
 def create_app(broker_config: BrokerConfig | None = None) -> FastAPI:
@@ -193,5 +195,8 @@ def create_app(broker_config: BrokerConfig | None = None) -> FastAPI:
         unclassified = scenario_mode.unclassified_mutating_routes(app.routes)
         if unclassified:  # fail closed: a new mutating route must be classified before scenario mode serves it
             raise scenario_mode.ScenarioRefused(f"unclassified mutating routes in scenario mode: {unclassified}")
+        misguarded = scenario_mode.misguarded_order_routes(app.routes)
+        if misguarded:  # fail closed: an order route whose guard is not wired never serves in scenario mode
+            raise scenario_mode.ScenarioRefused(f"order routes without their scenario guard: {misguarded}")
         app.dependency_overrides.update(scenario_mode.overrides(scenario))  # every seam a scenario serves
     return app

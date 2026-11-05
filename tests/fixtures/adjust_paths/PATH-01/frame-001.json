@@ -1,0 +1,3229 @@
+{
+ "id": "PATH-01",
+ "title": "Drift up, middle stage: spot within 0.5% of the short CE and its delta >= 0.35",
+ "group": "IC weekly, NIFTY 2 lots",
+ "refs": [
+  "T-01",
+  "T-03",
+  "S-02",
+  "PB-04"
+ ],
+ "family": "ic",
+ "playbook_ref": {
+  "file": "_playbooks.json",
+  "family": "ic",
+  "expiry_kind": "weekly",
+  "plan_overrides": {}
+ },
+ "underlying": "NIFTY",
+ "lot": 65,
+ "tick": "0.05",
+ "strike_step": 50,
+ "exchange": "NFO",
+ "clock": {
+  "ist": "2026-11-06T11:30:00+05:30",
+  "weekday": "Friday",
+  "day_type": [
+   "day before expiry",
+   "last session before weekend"
+  ]
+ },
+ "expiry": "2026-11-09",
+ "expiry_kind": "weekly",
+ "dte": 3,
+ "market": {
+  "spot": "23060",
+  "prev_close": null,
+  "day_open": null,
+  "india_vix": null,
+  "atm_iv": "0.13",
+  "rate": "0.065",
+  "futures": [],
+  "chains": [
+   {
+    "expiry": "2026-11-09",
+    "kind": "weekly",
+    "rows": [
+     {
+      "strike": "22100",
+      "type": "CE",
+      "ltp": "973.05",
+      "bid": "968.15",
+      "ask": "977.95",
+      "iv": "0.1800",
+      "delta": "0.9950",
+      "gamma": "0.000037",
+      "oi": 9295,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0922100CE"
+     },
+     {
+      "strike": "22100",
+      "type": "PE",
+      "ltp": "0.60",
+      "bid": "0.55",
+      "ask": "0.65",
+      "iv": "0.1800",
+      "delta": "-0.0050",
+      "gamma": "0.000037",
+      "oi": 9295,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0922100PE"
+     },
+     {
+      "strike": "22150",
+      "type": "CE",
+      "ltp": "923.30",
+      "bid": "918.65",
+      "ask": "927.95",
+      "iv": "0.1774",
+      "delta": "0.9934",
+      "gamma": "0.000048",
+      "oi": 10010,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0922150CE"
+     },
+     {
+      "strike": "22150",
+      "type": "PE",
+      "ltp": "0.80",
+      "bid": "0.75",
+      "ask": "0.85",
+      "iv": "0.1774",
+      "delta": "-0.0066",
+      "gamma": "0.000048",
+      "oi": 10010,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0922150PE"
+     },
+     {
+      "strike": "22200",
+      "type": "CE",
+      "ltp": "873.60",
+      "bid": "869.20",
+      "ask": "878.00",
+      "iv": "0.1748",
+      "delta": "0.9913",
+      "gamma": "0.000063",
+      "oi": 10790,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0922200CE"
+     },
+     {
+      "strike": "22200",
+      "type": "PE",
+      "ltp": "1.10",
+      "bid": "1.05",
+      "ask": "1.15",
+      "iv": "0.1748",
+      "delta": "-0.0087",
+      "gamma": "0.000063",
+      "oi": 10790,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0922200PE"
+     },
+     {
+      "strike": "22250",
+      "type": "CE",
+      "ltp": "824.00",
+      "bid": "819.85",
+      "ask": "828.15",
+      "iv": "0.1722",
+      "delta": "0.9885",
+      "gamma": "0.000082",
+      "oi": 11765,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0922250CE"
+     },
+     {
+      "strike": "22250",
+      "type": "PE",
+      "ltp": "1.45",
+      "bid": "1.40",
+      "ask": "1.50",
+      "iv": "0.1722",
+      "delta": "-0.0115",
+      "gamma": "0.000082",
+      "oi": 11765,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0922250PE"
+     },
+     {
+      "strike": "22300",
+      "type": "CE",
+      "ltp": "774.55",
+      "bid": "770.65",
+      "ask": "778.45",
+      "iv": "0.1695",
+      "delta": "0.9849",
+      "gamma": "0.000105",
+      "oi": 12740,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0922300CE"
+     },
+     {
+      "strike": "22300",
+      "type": "PE",
+      "ltp": "1.95",
+      "bid": "1.90",
+      "ask": "2.00",
+      "iv": "0.1695",
+      "delta": "-0.0151",
+      "gamma": "0.000105",
+      "oi": 12740,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0922300PE"
+     },
+     {
+      "strike": "22350",
+      "type": "CE",
+      "ltp": "725.25",
+      "bid": "721.60",
+      "ask": "728.90",
+      "iv": "0.1669",
+      "delta": "0.9801",
+      "gamma": "0.000135",
+      "oi": 13975,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0922350CE"
+     },
+     {
+      "strike": "22350",
+      "type": "PE",
+      "ltp": "2.65",
+      "bid": "2.60",
+      "ask": "2.70",
+      "iv": "0.1669",
+      "delta": "-0.0199",
+      "gamma": "0.000135",
+      "oi": 13975,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0922350PE"
+     },
+     {
+      "strike": "22400",
+      "type": "CE",
+      "ltp": "676.15",
+      "bid": "672.75",
+      "ask": "679.55",
+      "iv": "0.1643",
+      "delta": "0.9739",
+      "gamma": "0.000172",
+      "oi": 15275,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0922400CE"
+     },
+     {
+      "strike": "22400",
+      "type": "PE",
+      "ltp": "3.50",
+      "bid": "3.45",
+      "ask": "3.55",
+      "iv": "0.1643",
+      "delta": "-0.0261",
+      "gamma": "0.000172",
+      "oi": 15275,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0922400PE"
+     },
+     {
+      "strike": "22450",
+      "type": "CE",
+      "ltp": "627.35",
+      "bid": "624.20",
+      "ask": "630.50",
+      "iv": "0.1617",
+      "delta": "0.9660",
+      "gamma": "0.000217",
+      "oi": 16835,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0922450CE"
+     },
+     {
+      "strike": "22450",
+      "type": "PE",
+      "ltp": "4.70",
+      "bid": "4.65",
+      "ask": "4.75",
+      "iv": "0.1617",
+      "delta": "-0.0340",
+      "gamma": "0.000217",
+      "oi": 16835,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0922450PE"
+     },
+     {
+      "strike": "22500",
+      "type": "CE",
+      "ltp": "578.90",
+      "bid": "576.00",
+      "ask": "581.80",
+      "iv": "0.1591",
+      "delta": "0.9558",
+      "gamma": "0.000273",
+      "oi": 18655,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0922500CE"
+     },
+     {
+      "strike": "22500",
+      "type": "PE",
+      "ltp": "6.20",
+      "bid": "6.15",
+      "ask": "6.25",
+      "iv": "0.1591",
+      "delta": "-0.0442",
+      "gamma": "0.000273",
+      "oi": 18655,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0922500PE"
+     },
+     {
+      "strike": "22550",
+      "type": "CE",
+      "ltp": "530.95",
+      "bid": "528.25",
+      "ask": "533.65",
+      "iv": "0.1565",
+      "delta": "0.9430",
+      "gamma": "0.000341",
+      "oi": 20670,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0922550CE"
+     },
+     {
+      "strike": "22550",
+      "type": "PE",
+      "ltp": "8.25",
+      "bid": "8.20",
+      "ask": "8.30",
+      "iv": "0.1565",
+      "delta": "-0.0570",
+      "gamma": "0.000341",
+      "oi": 20670,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0922550PE"
+     },
+     {
+      "strike": "22600",
+      "type": "CE",
+      "ltp": "483.60",
+      "bid": "481.15",
+      "ask": "486.05",
+      "iv": "0.1539",
+      "delta": "0.9268",
+      "gamma": "0.000420",
+      "oi": 23140,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0922600CE"
+     },
+     {
+      "strike": "22600",
+      "type": "PE",
+      "ltp": "10.85",
+      "bid": "10.75",
+      "ask": "10.95",
+      "iv": "0.1539",
+      "delta": "-0.0732",
+      "gamma": "0.000420",
+      "oi": 23140,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0922600PE"
+     },
+     {
+      "strike": "22650",
+      "type": "CE",
+      "ltp": "437.05",
+      "bid": "434.85",
+      "ask": "439.25",
+      "iv": "0.1513",
+      "delta": "0.9066",
+      "gamma": "0.000514",
+      "oi": 26000,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0922650CE"
+     },
+     {
+      "strike": "22650",
+      "type": "PE",
+      "ltp": "14.25",
+      "bid": "14.15",
+      "ask": "14.35",
+      "iv": "0.1513",
+      "delta": "-0.0934",
+      "gamma": "0.000514",
+      "oi": 26000,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0922650PE"
+     },
+     {
+      "strike": "22700",
+      "type": "CE",
+      "ltp": "391.45",
+      "bid": "389.45",
+      "ask": "393.45",
+      "iv": "0.1487",
+      "delta": "0.8817",
+      "gamma": "0.000620",
+      "oi": 29380,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0922700CE"
+     },
+     {
+      "strike": "22700",
+      "type": "PE",
+      "ltp": "18.65",
+      "bid": "18.55",
+      "ask": "18.75",
+      "iv": "0.1487",
+      "delta": "-0.1183",
+      "gamma": "0.000620",
+      "oi": 29380,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0922700PE"
+     },
+     {
+      "strike": "22750",
+      "type": "CE",
+      "ltp": "347.05",
+      "bid": "345.30",
+      "ask": "348.80",
+      "iv": "0.1461",
+      "delta": "0.8515",
+      "gamma": "0.000738",
+      "oi": 33475,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0922750CE"
+     },
+     {
+      "strike": "22750",
+      "type": "PE",
+      "ltp": "24.25",
+      "bid": "24.10",
+      "ask": "24.40",
+      "iv": "0.1461",
+      "delta": "-0.1485",
+      "gamma": "0.000738",
+      "oi": 33475,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0922750PE"
+     },
+     {
+      "strike": "22800",
+      "type": "CE",
+      "ltp": "304.15",
+      "bid": "302.60",
+      "ask": "305.70",
+      "iv": "0.1435",
+      "delta": "0.8152",
+      "gamma": "0.000865",
+      "oi": 38480,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0922800CE"
+     },
+     {
+      "strike": "22800",
+      "type": "PE",
+      "ltp": "31.30",
+      "bid": "31.10",
+      "ask": "31.50",
+      "iv": "0.1435",
+      "delta": "-0.1848",
+      "gamma": "0.000865",
+      "oi": 38480,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0922800PE"
+     },
+     {
+      "strike": "22850",
+      "type": "CE",
+      "ltp": "263.05",
+      "bid": "261.70",
+      "ask": "264.40",
+      "iv": "0.1409",
+      "delta": "0.7723",
+      "gamma": "0.000998",
+      "oi": 44525,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0922850CE"
+     },
+     {
+      "strike": "22850",
+      "type": "PE",
+      "ltp": "40.20",
+      "bid": "39.95",
+      "ask": "40.45",
+      "iv": "0.1409",
+      "delta": "-0.2277",
+      "gamma": "0.000998",
+      "oi": 44525,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0922850PE"
+     },
+     {
+      "strike": "22900",
+      "type": "CE",
+      "ltp": "224.10",
+      "bid": "222.95",
+      "ask": "225.25",
+      "iv": "0.1383",
+      "delta": "0.7226",
+      "gamma": "0.001128",
+      "oi": 52000,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0922900CE"
+     },
+     {
+      "strike": "22900",
+      "type": "PE",
+      "ltp": "51.20",
+      "bid": "50.90",
+      "ask": "51.50",
+      "iv": "0.1383",
+      "delta": "-0.2774",
+      "gamma": "0.001128",
+      "oi": 52000,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0922900PE"
+     },
+     {
+      "strike": "22950",
+      "type": "CE",
+      "ltp": "187.65",
+      "bid": "186.70",
+      "ask": "188.60",
+      "iv": "0.1357",
+      "delta": "0.6661",
+      "gamma": "0.001248",
+      "oi": 61295,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0922950CE"
+     },
+     {
+      "strike": "22950",
+      "type": "PE",
+      "ltp": "64.70",
+      "bid": "64.35",
+      "ask": "65.05",
+      "iv": "0.1357",
+      "delta": "-0.3339",
+      "gamma": "0.001248",
+      "oi": 61295,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0922950PE"
+     },
+     {
+      "strike": "23000",
+      "type": "CE",
+      "ltp": "154.05",
+      "bid": "153.25",
+      "ask": "154.85",
+      "iv": "0.1331",
+      "delta": "0.6033",
+      "gamma": "0.001348",
+      "oi": 73060,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0923000CE"
+     },
+     {
+      "strike": "23000",
+      "type": "PE",
+      "ltp": "81.10",
+      "bid": "80.65",
+      "ask": "81.55",
+      "iv": "0.1331",
+      "delta": "-0.3967",
+      "gamma": "0.001348",
+      "oi": 73060,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0923000PE"
+     },
+     {
+      "strike": "23050",
+      "type": "CE",
+      "ltp": "123.65",
+      "bid": "123.00",
+      "ask": "124.30",
+      "iv": "0.1305",
+      "delta": "0.5351",
+      "gamma": "0.001418",
+      "oi": 87815,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0923050CE"
+     },
+     {
+      "strike": "23050",
+      "type": "PE",
+      "ltp": "100.65",
+      "bid": "100.10",
+      "ask": "101.20",
+      "iv": "0.1305",
+      "delta": "-0.4649",
+      "gamma": "0.001418",
+      "oi": 87815,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0923050PE"
+     },
+     {
+      "strike": "23100",
+      "type": "CE",
+      "ltp": "99.10",
+      "bid": "98.60",
+      "ask": "99.60",
+      "iv": "0.1307",
+      "delta": "0.4642",
+      "gamma": "0.001415",
+      "oi": 106535,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0923100CE"
+     },
+     {
+      "strike": "23100",
+      "type": "PE",
+      "ltp": "126.05",
+      "bid": "125.40",
+      "ask": "126.70",
+      "iv": "0.1307",
+      "delta": "-0.5358",
+      "gamma": "0.001415",
+      "oi": 106535,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0923100PE"
+     },
+     {
+      "strike": "23150",
+      "type": "CE",
+      "ltp": "78.65",
+      "bid": "78.25",
+      "ask": "79.05",
+      "iv": "0.1316",
+      "delta": "0.3953",
+      "gamma": "0.001362",
+      "oi": 130000,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0923150CE"
+     },
+     {
+      "strike": "23150",
+      "type": "PE",
+      "ltp": "155.55",
+      "bid": "154.75",
+      "ask": "156.35",
+      "iv": "0.1316",
+      "delta": "-0.6047",
+      "gamma": "0.001362",
+      "oi": 130000,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0923150PE"
+     },
+     {
+      "strike": "23200",
+      "type": "CE",
+      "ltp": "61.40",
+      "bid": "61.05",
+      "ask": "61.75",
+      "iv": "0.1324",
+      "delta": "0.3304",
+      "gamma": "0.001274",
+      "oi": 158535,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0923200CE"
+     },
+     {
+      "strike": "23200",
+      "type": "PE",
+      "ltp": "188.30",
+      "bid": "187.35",
+      "ask": "189.25",
+      "iv": "0.1324",
+      "delta": "-0.6696",
+      "gamma": "0.001274",
+      "oi": 158535,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0923200PE"
+     },
+     {
+      "strike": "23250",
+      "type": "CE",
+      "ltp": "47.25",
+      "bid": "47.00",
+      "ask": "47.50",
+      "iv": "0.1333",
+      "delta": "0.2712",
+      "gamma": "0.001157",
+      "oi": 191165,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0923250CE"
+     },
+     {
+      "strike": "23250",
+      "type": "PE",
+      "ltp": "224.15",
+      "bid": "223.00",
+      "ask": "225.30",
+      "iv": "0.1333",
+      "delta": "-0.7288",
+      "gamma": "0.001157",
+      "oi": 191165,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0923250PE"
+     },
+     {
+      "strike": "23300",
+      "type": "CE",
+      "ltp": "35.85",
+      "bid": "35.65",
+      "ask": "36.05",
+      "iv": "0.1342",
+      "delta": "0.2186",
+      "gamma": "0.001023",
+      "oi": 224120,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0923300CE"
+     },
+     {
+      "strike": "23300",
+      "type": "PE",
+      "ltp": "262.75",
+      "bid": "261.40",
+      "ask": "264.10",
+      "iv": "0.1342",
+      "delta": "-0.7814",
+      "gamma": "0.001023",
+      "oi": 224120,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0923300PE"
+     },
+     {
+      "strike": "23350",
+      "type": "CE",
+      "ltp": "26.75",
+      "bid": "26.60",
+      "ask": "26.90",
+      "iv": "0.1350",
+      "delta": "0.1729",
+      "gamma": "0.000882",
+      "oi": 249990,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0923350CE"
+     },
+     {
+      "strike": "23350",
+      "type": "PE",
+      "ltp": "303.60",
+      "bid": "302.05",
+      "ask": "305.15",
+      "iv": "0.1350",
+      "delta": "-0.8271",
+      "gamma": "0.000882",
+      "oi": 249990,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0923350PE"
+     },
+     {
+      "strike": "23400",
+      "type": "CE",
+      "ltp": "19.70",
+      "bid": "19.60",
+      "ask": "19.80",
+      "iv": "0.1359",
+      "delta": "0.1345",
+      "gamma": "0.000742",
+      "oi": 260000,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0923400CE"
+     },
+     {
+      "strike": "23400",
+      "type": "PE",
+      "ltp": "346.50",
+      "bid": "344.75",
+      "ask": "348.25",
+      "iv": "0.1359",
+      "delta": "-0.8655",
+      "gamma": "0.000742",
+      "oi": 260000,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0923400PE"
+     },
+     {
+      "strike": "23450",
+      "type": "CE",
+      "ltp": "14.30",
+      "bid": "14.20",
+      "ask": "14.40",
+      "iv": "0.1368",
+      "delta": "0.1028",
+      "gamma": "0.000610",
+      "oi": 249990,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0923450CE"
+     },
+     {
+      "strike": "23450",
+      "type": "PE",
+      "ltp": "391.10",
+      "bid": "389.10",
+      "ask": "393.10",
+      "iv": "0.1368",
+      "delta": "-0.8972",
+      "gamma": "0.000610",
+      "oi": 249990,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0923450PE"
+     },
+     {
+      "strike": "23500",
+      "type": "CE",
+      "ltp": "10.20",
+      "bid": "10.10",
+      "ask": "10.30",
+      "iv": "0.1376",
+      "delta": "0.0772",
+      "gamma": "0.000490",
+      "oi": 224120,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0923500CE"
+     },
+     {
+      "strike": "23500",
+      "type": "PE",
+      "ltp": "436.95",
+      "bid": "434.75",
+      "ask": "439.15",
+      "iv": "0.1376",
+      "delta": "-0.9228",
+      "gamma": "0.000490",
+      "oi": 224120,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0923500PE"
+     },
+     {
+      "strike": "23550",
+      "type": "CE",
+      "ltp": "7.20",
+      "bid": "7.15",
+      "ask": "7.25",
+      "iv": "0.1385",
+      "delta": "0.0571",
+      "gamma": "0.000385",
+      "oi": 191165,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0923550CE"
+     },
+     {
+      "strike": "23550",
+      "type": "PE",
+      "ltp": "483.95",
+      "bid": "481.50",
+      "ask": "486.40",
+      "iv": "0.1385",
+      "delta": "-0.9429",
+      "gamma": "0.000385",
+      "oi": 191165,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0923550PE"
+     },
+     {
+      "strike": "23600",
+      "type": "CE",
+      "ltp": "5.05",
+      "bid": "5.00",
+      "ask": "5.10",
+      "iv": "0.1394",
+      "delta": "0.0416",
+      "gamma": "0.000297",
+      "oi": 158535,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0923600CE"
+     },
+     {
+      "strike": "23600",
+      "type": "PE",
+      "ltp": "531.70",
+      "bid": "529.00",
+      "ask": "534.40",
+      "iv": "0.1394",
+      "delta": "-0.9584",
+      "gamma": "0.000297",
+      "oi": 158535,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0923600PE"
+     },
+     {
+      "strike": "23650",
+      "type": "CE",
+      "ltp": "3.45",
+      "bid": "3.40",
+      "ask": "3.50",
+      "iv": "0.1402",
+      "delta": "0.0297",
+      "gamma": "0.000224",
+      "oi": 130000,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0923650CE"
+     },
+     {
+      "strike": "23650",
+      "type": "PE",
+      "ltp": "580.10",
+      "bid": "577.15",
+      "ask": "583.05",
+      "iv": "0.1402",
+      "delta": "-0.9703",
+      "gamma": "0.000224",
+      "oi": 130000,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0923650PE"
+     },
+     {
+      "strike": "23700",
+      "type": "CE",
+      "ltp": "2.35",
+      "bid": "2.30",
+      "ask": "2.40",
+      "iv": "0.1411",
+      "delta": "0.0210",
+      "gamma": "0.000167",
+      "oi": 106535,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0923700CE"
+     },
+     {
+      "strike": "23700",
+      "type": "PE",
+      "ltp": "629.00",
+      "bid": "625.85",
+      "ask": "632.15",
+      "iv": "0.1411",
+      "delta": "-0.9790",
+      "gamma": "0.000167",
+      "oi": 106535,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0923700PE"
+     },
+     {
+      "strike": "23750",
+      "type": "CE",
+      "ltp": "1.55",
+      "bid": "1.50",
+      "ask": "1.60",
+      "iv": "0.1420",
+      "delta": "0.0146",
+      "gamma": "0.000122",
+      "oi": 87815,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0923750CE"
+     },
+     {
+      "strike": "23750",
+      "type": "PE",
+      "ltp": "678.20",
+      "bid": "674.80",
+      "ask": "681.60",
+      "iv": "0.1420",
+      "delta": "-0.9854",
+      "gamma": "0.000122",
+      "oi": 87815,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0923750PE"
+     },
+     {
+      "strike": "23800",
+      "type": "CE",
+      "ltp": "1.05",
+      "bid": "1.00",
+      "ask": "1.10",
+      "iv": "0.1428",
+      "delta": "0.0100",
+      "gamma": "0.000087",
+      "oi": 73060,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0923800CE"
+     },
+     {
+      "strike": "23800",
+      "type": "PE",
+      "ltp": "727.60",
+      "bid": "723.95",
+      "ask": "731.25",
+      "iv": "0.1428",
+      "delta": "-0.9900",
+      "gamma": "0.000087",
+      "oi": 73060,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0923800PE"
+     },
+     {
+      "strike": "23850",
+      "type": "CE",
+      "ltp": "0.70",
+      "bid": "0.65",
+      "ask": "0.75",
+      "iv": "0.1437",
+      "delta": "0.0068",
+      "gamma": "0.000062",
+      "oi": 61295,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0923850CE"
+     },
+     {
+      "strike": "23850",
+      "type": "PE",
+      "ltp": "777.25",
+      "bid": "773.35",
+      "ask": "781.15",
+      "iv": "0.1437",
+      "delta": "-0.9932",
+      "gamma": "0.000062",
+      "oi": 61295,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0923850PE"
+     },
+     {
+      "strike": "23900",
+      "type": "CE",
+      "ltp": "0.45",
+      "bid": "0.40",
+      "ask": "0.50",
+      "iv": "0.1446",
+      "delta": "0.0046",
+      "gamma": "0.000043",
+      "oi": 52000,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0923900CE"
+     },
+     {
+      "strike": "23900",
+      "type": "PE",
+      "ltp": "826.95",
+      "bid": "822.80",
+      "ask": "831.10",
+      "iv": "0.1446",
+      "delta": "-0.9954",
+      "gamma": "0.000043",
+      "oi": 52000,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0923900PE"
+     },
+     {
+      "strike": "23950",
+      "type": "CE",
+      "ltp": "0.30",
+      "bid": "0.25",
+      "ask": "0.35",
+      "iv": "0.1454",
+      "delta": "0.0030",
+      "gamma": "0.000029",
+      "oi": 44525,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0923950CE"
+     },
+     {
+      "strike": "23950",
+      "type": "PE",
+      "ltp": "876.80",
+      "bid": "872.40",
+      "ask": "881.20",
+      "iv": "0.1454",
+      "delta": "-0.9970",
+      "gamma": "0.000029",
+      "oi": 44525,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0923950PE"
+     },
+     {
+      "strike": "24000",
+      "type": "CE",
+      "ltp": "0.20",
+      "bid": "0.15",
+      "ask": "0.25",
+      "iv": "0.1463",
+      "delta": "0.0020",
+      "gamma": "0.000020",
+      "oi": 38480,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0924000CE"
+     },
+     {
+      "strike": "24000",
+      "type": "PE",
+      "ltp": "926.65",
+      "bid": "922.00",
+      "ask": "931.30",
+      "iv": "0.1463",
+      "delta": "-0.9980",
+      "gamma": "0.000020",
+      "oi": 38480,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0924000PE"
+     },
+     {
+      "strike": "24050",
+      "type": "CE",
+      "ltp": "0.10",
+      "bid": "0.05",
+      "ask": "0.15",
+      "iv": "0.1472",
+      "delta": "0.0013",
+      "gamma": "0.000013",
+      "oi": 33475,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0924050CE"
+     },
+     {
+      "strike": "24050",
+      "type": "PE",
+      "ltp": "976.55",
+      "bid": "971.65",
+      "ask": "981.45",
+      "iv": "0.1472",
+      "delta": "-0.9987",
+      "gamma": "0.000013",
+      "oi": 33475,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0924050PE"
+     },
+     {
+      "strike": "24100",
+      "type": "CE",
+      "ltp": "0.05",
+      "bid": "0.00",
+      "ask": "0.10",
+      "iv": "0.1480",
+      "delta": "0.0008",
+      "gamma": "0.000009",
+      "oi": 29380,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0924100CE"
+     },
+     {
+      "strike": "24100",
+      "type": "PE",
+      "ltp": "1026.50",
+      "bid": "1021.35",
+      "ask": "1031.65",
+      "iv": "0.1480",
+      "delta": "-0.9992",
+      "gamma": "0.000009",
+      "oi": 29380,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N0924100PE"
+     }
+    ]
+   },
+   {
+    "expiry": "2026-11-17",
+    "kind": "weekly",
+    "rows": [
+     {
+      "strike": "22100",
+      "type": "CE",
+      "ltp": "1029.15",
+      "bid": "1024.00",
+      "ask": "1034.30",
+      "iv": "0.1800",
+      "delta": "0.9236",
+      "gamma": "0.000198",
+      "oi": 9295,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1722100CE"
+     },
+     {
+      "strike": "22100",
+      "type": "PE",
+      "ltp": "25.25",
+      "bid": "25.10",
+      "ask": "25.40",
+      "iv": "0.1800",
+      "delta": "-0.0764",
+      "gamma": "0.000198",
+      "oi": 9295,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1722100PE"
+     },
+     {
+      "strike": "22150",
+      "type": "CE",
+      "ltp": "981.95",
+      "bid": "977.00",
+      "ask": "986.90",
+      "iv": "0.1774",
+      "delta": "0.9158",
+      "gamma": "0.000216",
+      "oi": 10010,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1722150CE"
+     },
+     {
+      "strike": "22150",
+      "type": "PE",
+      "ltp": "27.95",
+      "bid": "27.80",
+      "ask": "28.10",
+      "iv": "0.1774",
+      "delta": "-0.0842",
+      "gamma": "0.000216",
+      "oi": 10010,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1722150PE"
+     },
+     {
+      "strike": "22200",
+      "type": "CE",
+      "ltp": "935.00",
+      "bid": "930.30",
+      "ask": "939.70",
+      "iv": "0.1748",
+      "delta": "0.9072",
+      "gamma": "0.000236",
+      "oi": 10790,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1722200CE"
+     },
+     {
+      "strike": "22200",
+      "type": "PE",
+      "ltp": "30.90",
+      "bid": "30.70",
+      "ask": "31.10",
+      "iv": "0.1748",
+      "delta": "-0.0928",
+      "gamma": "0.000236",
+      "oi": 10790,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1722200PE"
+     },
+     {
+      "strike": "22250",
+      "type": "CE",
+      "ltp": "888.45",
+      "bid": "884.00",
+      "ask": "892.90",
+      "iv": "0.1722",
+      "delta": "0.8976",
+      "gamma": "0.000257",
+      "oi": 11765,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1722250CE"
+     },
+     {
+      "strike": "22250",
+      "type": "PE",
+      "ltp": "34.25",
+      "bid": "34.05",
+      "ask": "34.45",
+      "iv": "0.1722",
+      "delta": "-0.1024",
+      "gamma": "0.000257",
+      "oi": 11765,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1722250PE"
+     },
+     {
+      "strike": "22300",
+      "type": "CE",
+      "ltp": "842.20",
+      "bid": "837.95",
+      "ask": "846.45",
+      "iv": "0.1695",
+      "delta": "0.8873",
+      "gamma": "0.000280",
+      "oi": 12740,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1722300CE"
+     },
+     {
+      "strike": "22300",
+      "type": "PE",
+      "ltp": "37.85",
+      "bid": "37.65",
+      "ask": "38.05",
+      "iv": "0.1695",
+      "delta": "-0.1127",
+      "gamma": "0.000280",
+      "oi": 12740,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1722300PE"
+     },
+     {
+      "strike": "22350",
+      "type": "CE",
+      "ltp": "796.40",
+      "bid": "792.40",
+      "ask": "800.40",
+      "iv": "0.1669",
+      "delta": "0.8757",
+      "gamma": "0.000305",
+      "oi": 13975,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1722350CE"
+     },
+     {
+      "strike": "22350",
+      "type": "PE",
+      "ltp": "42.00",
+      "bid": "41.75",
+      "ask": "42.25",
+      "iv": "0.1669",
+      "delta": "-0.1243",
+      "gamma": "0.000305",
+      "oi": 13975,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1722350PE"
+     },
+     {
+      "strike": "22400",
+      "type": "CE",
+      "ltp": "751.10",
+      "bid": "747.30",
+      "ask": "754.90",
+      "iv": "0.1643",
+      "delta": "0.8630",
+      "gamma": "0.000331",
+      "oi": 15275,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1722400CE"
+     },
+     {
+      "strike": "22400",
+      "type": "PE",
+      "ltp": "46.60",
+      "bid": "46.35",
+      "ask": "46.85",
+      "iv": "0.1643",
+      "delta": "-0.1370",
+      "gamma": "0.000331",
+      "oi": 15275,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1722400PE"
+     },
+     {
+      "strike": "22450",
+      "type": "CE",
+      "ltp": "706.35",
+      "bid": "702.80",
+      "ask": "709.90",
+      "iv": "0.1617",
+      "delta": "0.8490",
+      "gamma": "0.000359",
+      "oi": 16835,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1722450CE"
+     },
+     {
+      "strike": "22450",
+      "type": "PE",
+      "ltp": "51.75",
+      "bid": "51.45",
+      "ask": "52.05",
+      "iv": "0.1617",
+      "delta": "-0.1510",
+      "gamma": "0.000359",
+      "oi": 16835,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1722450PE"
+     },
+     {
+      "strike": "22500",
+      "type": "CE",
+      "ltp": "662.15",
+      "bid": "658.80",
+      "ask": "665.50",
+      "iv": "0.1591",
+      "delta": "0.8337",
+      "gamma": "0.000389",
+      "oi": 18655,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1722500CE"
+     },
+     {
+      "strike": "22500",
+      "type": "PE",
+      "ltp": "57.45",
+      "bid": "57.15",
+      "ask": "57.75",
+      "iv": "0.1591",
+      "delta": "-0.1663",
+      "gamma": "0.000389",
+      "oi": 18655,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1722500PE"
+     },
+     {
+      "strike": "22550",
+      "type": "CE",
+      "ltp": "618.60",
+      "bid": "615.50",
+      "ask": "621.70",
+      "iv": "0.1565",
+      "delta": "0.8168",
+      "gamma": "0.000420",
+      "oi": 20670,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1722550CE"
+     },
+     {
+      "strike": "22550",
+      "type": "PE",
+      "ltp": "63.80",
+      "bid": "63.45",
+      "ask": "64.15",
+      "iv": "0.1565",
+      "delta": "-0.1832",
+      "gamma": "0.000420",
+      "oi": 20670,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1722550PE"
+     },
+     {
+      "strike": "22600",
+      "type": "CE",
+      "ltp": "575.80",
+      "bid": "572.90",
+      "ask": "578.70",
+      "iv": "0.1539",
+      "delta": "0.7984",
+      "gamma": "0.000453",
+      "oi": 23140,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1722600CE"
+     },
+     {
+      "strike": "22600",
+      "type": "PE",
+      "ltp": "70.90",
+      "bid": "70.50",
+      "ask": "71.30",
+      "iv": "0.1539",
+      "delta": "-0.2016",
+      "gamma": "0.000453",
+      "oi": 23140,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1722600PE"
+     },
+     {
+      "strike": "22650",
+      "type": "CE",
+      "ltp": "533.85",
+      "bid": "531.15",
+      "ask": "536.55",
+      "iv": "0.1513",
+      "delta": "0.7782",
+      "gamma": "0.000487",
+      "oi": 26000,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1722650CE"
+     },
+     {
+      "strike": "22650",
+      "type": "PE",
+      "ltp": "78.85",
+      "bid": "78.45",
+      "ask": "79.25",
+      "iv": "0.1513",
+      "delta": "-0.2218",
+      "gamma": "0.000487",
+      "oi": 26000,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1722650PE"
+     },
+     {
+      "strike": "22700",
+      "type": "CE",
+      "ltp": "492.75",
+      "bid": "490.25",
+      "ask": "495.25",
+      "iv": "0.1487",
+      "delta": "0.7563",
+      "gamma": "0.000523",
+      "oi": 29380,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1722700CE"
+     },
+     {
+      "strike": "22700",
+      "type": "PE",
+      "ltp": "87.65",
+      "bid": "87.20",
+      "ask": "88.10",
+      "iv": "0.1487",
+      "delta": "-0.2437",
+      "gamma": "0.000523",
+      "oi": 29380,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1722700PE"
+     },
+     {
+      "strike": "22750",
+      "type": "CE",
+      "ltp": "452.65",
+      "bid": "450.35",
+      "ask": "454.95",
+      "iv": "0.1461",
+      "delta": "0.7324",
+      "gamma": "0.000559",
+      "oi": 33475,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1722750CE"
+     },
+     {
+      "strike": "22750",
+      "type": "PE",
+      "ltp": "97.45",
+      "bid": "96.95",
+      "ask": "97.95",
+      "iv": "0.1461",
+      "delta": "-0.2676",
+      "gamma": "0.000559",
+      "oi": 33475,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1722750PE"
+     },
+     {
+      "strike": "22800",
+      "type": "CE",
+      "ltp": "413.60",
+      "bid": "411.50",
+      "ask": "415.70",
+      "iv": "0.1435",
+      "delta": "0.7066",
+      "gamma": "0.000595",
+      "oi": 38480,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1722800CE"
+     },
+     {
+      "strike": "22800",
+      "type": "PE",
+      "ltp": "108.30",
+      "bid": "107.75",
+      "ask": "108.85",
+      "iv": "0.1435",
+      "delta": "-0.2934",
+      "gamma": "0.000595",
+      "oi": 38480,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1722800PE"
+     },
+     {
+      "strike": "22850",
+      "type": "CE",
+      "ltp": "375.80",
+      "bid": "373.90",
+      "ask": "377.70",
+      "iv": "0.1409",
+      "delta": "0.6788",
+      "gamma": "0.000630",
+      "oi": 44525,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1722850CE"
+     },
+     {
+      "strike": "22850",
+      "type": "PE",
+      "ltp": "120.40",
+      "bid": "119.75",
+      "ask": "121.05",
+      "iv": "0.1409",
+      "delta": "-0.3212",
+      "gamma": "0.000630",
+      "oi": 44525,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1722850PE"
+     },
+     {
+      "strike": "22900",
+      "type": "CE",
+      "ltp": "339.30",
+      "bid": "337.60",
+      "ask": "341.00",
+      "iv": "0.1383",
+      "delta": "0.6488",
+      "gamma": "0.000665",
+      "oi": 52000,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1722900CE"
+     },
+     {
+      "strike": "22900",
+      "type": "PE",
+      "ltp": "133.80",
+      "bid": "133.10",
+      "ask": "134.50",
+      "iv": "0.1383",
+      "delta": "-0.3512",
+      "gamma": "0.000665",
+      "oi": 52000,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1722900PE"
+     },
+     {
+      "strike": "22950",
+      "type": "CE",
+      "ltp": "304.20",
+      "bid": "302.65",
+      "ask": "305.75",
+      "iv": "0.1357",
+      "delta": "0.6168",
+      "gamma": "0.000697",
+      "oi": 61295,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1722950CE"
+     },
+     {
+      "strike": "22950",
+      "type": "PE",
+      "ltp": "148.60",
+      "bid": "147.85",
+      "ask": "149.35",
+      "iv": "0.1357",
+      "delta": "-0.3832",
+      "gamma": "0.000697",
+      "oi": 61295,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1722950PE"
+     },
+     {
+      "strike": "23000",
+      "type": "CE",
+      "ltp": "270.65",
+      "bid": "269.25",
+      "ask": "272.05",
+      "iv": "0.1331",
+      "delta": "0.5828",
+      "gamma": "0.000727",
+      "oi": 73060,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1723000CE"
+     },
+     {
+      "strike": "23000",
+      "type": "PE",
+      "ltp": "165.00",
+      "bid": "164.15",
+      "ask": "165.85",
+      "iv": "0.1331",
+      "delta": "-0.4172",
+      "gamma": "0.000727",
+      "oi": 73060,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1723000PE"
+     },
+     {
+      "strike": "23050",
+      "type": "CE",
+      "ltp": "238.80",
+      "bid": "237.60",
+      "ask": "240.00",
+      "iv": "0.1305",
+      "delta": "0.5468",
+      "gamma": "0.000753",
+      "oi": 87815,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1723050CE"
+     },
+     {
+      "strike": "23050",
+      "type": "PE",
+      "ltp": "183.00",
+      "bid": "182.05",
+      "ask": "183.95",
+      "iv": "0.1305",
+      "delta": "-0.4532",
+      "gamma": "0.000753",
+      "oi": 87815,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1723050PE"
+     },
+     {
+      "strike": "23100",
+      "type": "CE",
+      "ltp": "213.25",
+      "bid": "212.15",
+      "ask": "214.35",
+      "iv": "0.1307",
+      "delta": "0.5090",
+      "gamma": "0.000757",
+      "oi": 106535,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1723100CE"
+     },
+     {
+      "strike": "23100",
+      "type": "PE",
+      "ltp": "207.35",
+      "bid": "206.30",
+      "ask": "208.40",
+      "iv": "0.1307",
+      "delta": "-0.4910",
+      "gamma": "0.000757",
+      "oi": 106535,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1723100PE"
+     },
+     {
+      "strike": "23150",
+      "type": "CE",
+      "ltp": "190.70",
+      "bid": "189.70",
+      "ask": "191.70",
+      "iv": "0.1316",
+      "delta": "0.4716",
+      "gamma": "0.000750",
+      "oi": 130000,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1723150CE"
+     },
+     {
+      "strike": "23150",
+      "type": "PE",
+      "ltp": "234.70",
+      "bid": "233.50",
+      "ask": "235.90",
+      "iv": "0.1316",
+      "delta": "-0.5284",
+      "gamma": "0.000750",
+      "oi": 130000,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1723150PE"
+     },
+     {
+      "strike": "23200",
+      "type": "CE",
+      "ltp": "169.80",
+      "bid": "168.95",
+      "ask": "170.65",
+      "iv": "0.1324",
+      "delta": "0.4349",
+      "gamma": "0.000737",
+      "oi": 158535,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1723200CE"
+     },
+     {
+      "strike": "23200",
+      "type": "PE",
+      "ltp": "263.70",
+      "bid": "262.35",
+      "ask": "265.05",
+      "iv": "0.1324",
+      "delta": "-0.5651",
+      "gamma": "0.000737",
+      "oi": 158535,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1723200PE"
+     },
+     {
+      "strike": "23250",
+      "type": "CE",
+      "ltp": "150.85",
+      "bid": "150.05",
+      "ask": "151.65",
+      "iv": "0.1333",
+      "delta": "0.3994",
+      "gamma": "0.000718",
+      "oi": 191165,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1723250CE"
+     },
+     {
+      "strike": "23250",
+      "type": "PE",
+      "ltp": "294.65",
+      "bid": "293.15",
+      "ask": "296.15",
+      "iv": "0.1333",
+      "delta": "-0.6006",
+      "gamma": "0.000718",
+      "oi": 191165,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1723250PE"
+     },
+     {
+      "strike": "23300",
+      "type": "CE",
+      "ltp": "133.60",
+      "bid": "132.90",
+      "ask": "134.30",
+      "iv": "0.1342",
+      "delta": "0.3652",
+      "gamma": "0.000695",
+      "oi": 224120,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1723300CE"
+     },
+     {
+      "strike": "23300",
+      "type": "PE",
+      "ltp": "327.35",
+      "bid": "325.70",
+      "ask": "329.00",
+      "iv": "0.1342",
+      "delta": "-0.6348",
+      "gamma": "0.000695",
+      "oi": 224120,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1723300PE"
+     },
+     {
+      "strike": "23350",
+      "type": "CE",
+      "ltp": "117.85",
+      "bid": "117.25",
+      "ask": "118.45",
+      "iv": "0.1350",
+      "delta": "0.3324",
+      "gamma": "0.000667",
+      "oi": 249990,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1723350CE"
+     },
+     {
+      "strike": "23350",
+      "type": "PE",
+      "ltp": "361.45",
+      "bid": "359.60",
+      "ask": "363.30",
+      "iv": "0.1350",
+      "delta": "-0.6676",
+      "gamma": "0.000667",
+      "oi": 249990,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1723350PE"
+     },
+     {
+      "strike": "23400",
+      "type": "CE",
+      "ltp": "103.75",
+      "bid": "103.20",
+      "ask": "104.30",
+      "iv": "0.1359",
+      "delta": "0.3015",
+      "gamma": "0.000636",
+      "oi": 260000,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1723400CE"
+     },
+     {
+      "strike": "23400",
+      "type": "PE",
+      "ltp": "397.25",
+      "bid": "395.25",
+      "ask": "399.25",
+      "iv": "0.1359",
+      "delta": "-0.6985",
+      "gamma": "0.000636",
+      "oi": 260000,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1723400PE"
+     },
+     {
+      "strike": "23450",
+      "type": "CE",
+      "ltp": "91.05",
+      "bid": "90.55",
+      "ask": "91.55",
+      "iv": "0.1368",
+      "delta": "0.2723",
+      "gamma": "0.000602",
+      "oi": 249990,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1723450CE"
+     },
+     {
+      "strike": "23450",
+      "type": "PE",
+      "ltp": "434.50",
+      "bid": "432.30",
+      "ask": "436.70",
+      "iv": "0.1368",
+      "delta": "-0.7277",
+      "gamma": "0.000602",
+      "oi": 249990,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1723450PE"
+     },
+     {
+      "strike": "23500",
+      "type": "CE",
+      "ltp": "79.60",
+      "bid": "79.20",
+      "ask": "80.00",
+      "iv": "0.1376",
+      "delta": "0.2449",
+      "gamma": "0.000566",
+      "oi": 224120,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1723500CE"
+     },
+     {
+      "strike": "23500",
+      "type": "PE",
+      "ltp": "472.90",
+      "bid": "470.50",
+      "ask": "475.30",
+      "iv": "0.1376",
+      "delta": "-0.7551",
+      "gamma": "0.000566",
+      "oi": 224120,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1723500PE"
+     },
+     {
+      "strike": "23550",
+      "type": "CE",
+      "ltp": "69.50",
+      "bid": "69.15",
+      "ask": "69.85",
+      "iv": "0.1385",
+      "delta": "0.2195",
+      "gamma": "0.000529",
+      "oi": 191165,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1723550CE"
+     },
+     {
+      "strike": "23550",
+      "type": "PE",
+      "ltp": "512.70",
+      "bid": "510.10",
+      "ask": "515.30",
+      "iv": "0.1385",
+      "delta": "-0.7805",
+      "gamma": "0.000529",
+      "oi": 191165,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1723550PE"
+     },
+     {
+      "strike": "23600",
+      "type": "CE",
+      "ltp": "60.50",
+      "bid": "60.15",
+      "ask": "60.85",
+      "iv": "0.1394",
+      "delta": "0.1961",
+      "gamma": "0.000492",
+      "oi": 158535,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1723600CE"
+     },
+     {
+      "strike": "23600",
+      "type": "PE",
+      "ltp": "553.65",
+      "bid": "550.85",
+      "ask": "556.45",
+      "iv": "0.1394",
+      "delta": "-0.8039",
+      "gamma": "0.000492",
+      "oi": 158535,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1723600PE"
+     },
+     {
+      "strike": "23650",
+      "type": "CE",
+      "ltp": "52.45",
+      "bid": "52.15",
+      "ask": "52.75",
+      "iv": "0.1402",
+      "delta": "0.1744",
+      "gamma": "0.000455",
+      "oi": 130000,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1723650CE"
+     },
+     {
+      "strike": "23650",
+      "type": "PE",
+      "ltp": "595.50",
+      "bid": "592.50",
+      "ask": "598.50",
+      "iv": "0.1402",
+      "delta": "-0.8256",
+      "gamma": "0.000455",
+      "oi": 130000,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1723650PE"
+     },
+     {
+      "strike": "23700",
+      "type": "CE",
+      "ltp": "45.45",
+      "bid": "45.20",
+      "ask": "45.70",
+      "iv": "0.1411",
+      "delta": "0.1547",
+      "gamma": "0.000418",
+      "oi": 106535,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1723700CE"
+     },
+     {
+      "strike": "23700",
+      "type": "PE",
+      "ltp": "638.35",
+      "bid": "635.15",
+      "ask": "641.55",
+      "iv": "0.1411",
+      "delta": "-0.8453",
+      "gamma": "0.000418",
+      "oi": 106535,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1723700PE"
+     },
+     {
+      "strike": "23750",
+      "type": "CE",
+      "ltp": "39.30",
+      "bid": "39.10",
+      "ask": "39.50",
+      "iv": "0.1420",
+      "delta": "0.1369",
+      "gamma": "0.000383",
+      "oi": 87815,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1723750CE"
+     },
+     {
+      "strike": "23750",
+      "type": "PE",
+      "ltp": "682.10",
+      "bid": "678.65",
+      "ask": "685.55",
+      "iv": "0.1420",
+      "delta": "-0.8631",
+      "gamma": "0.000383",
+      "oi": 87815,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1723750PE"
+     },
+     {
+      "strike": "23800",
+      "type": "CE",
+      "ltp": "33.80",
+      "bid": "33.60",
+      "ask": "34.00",
+      "iv": "0.1428",
+      "delta": "0.1205",
+      "gamma": "0.000348",
+      "oi": 73060,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1723800CE"
+     },
+     {
+      "strike": "23800",
+      "type": "PE",
+      "ltp": "726.55",
+      "bid": "722.90",
+      "ask": "730.20",
+      "iv": "0.1428",
+      "delta": "-0.8795",
+      "gamma": "0.000348",
+      "oi": 73060,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1723800PE"
+     },
+     {
+      "strike": "23850",
+      "type": "CE",
+      "ltp": "29.10",
+      "bid": "28.95",
+      "ask": "29.25",
+      "iv": "0.1437",
+      "delta": "0.1059",
+      "gamma": "0.000316",
+      "oi": 61295,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1723850CE"
+     },
+     {
+      "strike": "23850",
+      "type": "PE",
+      "ltp": "771.75",
+      "bid": "767.85",
+      "ask": "775.65",
+      "iv": "0.1437",
+      "delta": "-0.8941",
+      "gamma": "0.000316",
+      "oi": 61295,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1723850PE"
+     },
+     {
+      "strike": "23900",
+      "type": "CE",
+      "ltp": "25.00",
+      "bid": "24.85",
+      "ask": "25.15",
+      "iv": "0.1446",
+      "delta": "0.0929",
+      "gamma": "0.000285",
+      "oi": 52000,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1723900CE"
+     },
+     {
+      "strike": "23900",
+      "type": "PE",
+      "ltp": "817.50",
+      "bid": "813.40",
+      "ask": "821.60",
+      "iv": "0.1446",
+      "delta": "-0.9071",
+      "gamma": "0.000285",
+      "oi": 52000,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1723900PE"
+     },
+     {
+      "strike": "23950",
+      "type": "CE",
+      "ltp": "21.40",
+      "bid": "21.25",
+      "ask": "21.55",
+      "iv": "0.1454",
+      "delta": "0.0810",
+      "gamma": "0.000256",
+      "oi": 44525,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1723950CE"
+     },
+     {
+      "strike": "23950",
+      "type": "PE",
+      "ltp": "863.80",
+      "bid": "859.45",
+      "ask": "868.15",
+      "iv": "0.1454",
+      "delta": "-0.9190",
+      "gamma": "0.000256",
+      "oi": 44525,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1723950PE"
+     },
+     {
+      "strike": "24000",
+      "type": "CE",
+      "ltp": "18.30",
+      "bid": "18.20",
+      "ask": "18.40",
+      "iv": "0.1463",
+      "delta": "0.0707",
+      "gamma": "0.000229",
+      "oi": 38480,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1724000CE"
+     },
+     {
+      "strike": "24000",
+      "type": "PE",
+      "ltp": "910.60",
+      "bid": "906.00",
+      "ask": "915.20",
+      "iv": "0.1463",
+      "delta": "-0.9293",
+      "gamma": "0.000229",
+      "oi": 38480,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1724000PE"
+     },
+     {
+      "strike": "24050",
+      "type": "CE",
+      "ltp": "15.65",
+      "bid": "15.55",
+      "ask": "15.75",
+      "iv": "0.1472",
+      "delta": "0.0615",
+      "gamma": "0.000204",
+      "oi": 33475,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1724050CE"
+     },
+     {
+      "strike": "24050",
+      "type": "PE",
+      "ltp": "957.85",
+      "bid": "953.05",
+      "ask": "962.65",
+      "iv": "0.1472",
+      "delta": "-0.9385",
+      "gamma": "0.000204",
+      "oi": 33475,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1724050PE"
+     },
+     {
+      "strike": "24100",
+      "type": "CE",
+      "ltp": "13.30",
+      "bid": "13.20",
+      "ask": "13.40",
+      "iv": "0.1480",
+      "delta": "0.0532",
+      "gamma": "0.000182",
+      "oi": 29380,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1724100CE"
+     },
+     {
+      "strike": "24100",
+      "type": "PE",
+      "ltp": "1005.40",
+      "bid": "1000.35",
+      "ask": "1010.45",
+      "iv": "0.1480",
+      "delta": "-0.9468",
+      "gamma": "0.000182",
+      "oi": 29380,
+      "listed": true,
+      "tradable": true,
+      "low_oi": {
+       "state": "stated",
+       "blocked": false
+      },
+      "tradingsymbol": "NIFTY26N1724100PE"
+     }
+    ]
+   }
+  ]
+ },
+ "events": [],
+ "data_state": {
+  "prices": "fresh",
+  "age_seconds": 1,
+  "spot_source": "feed",
+  "feed": "ok",
+  "rest": "ok"
+ },
+ "position": {
+  "entry": {
+   "clock": "2026-11-03T10:00:00+05:30",
+   "spot": "23100",
+   "atm_iv": "0.13"
+  },
+  "legs": [
+   {
+    "side": "BUY",
+    "type": "PE",
+    "strike": "22500",
+    "expiry": "2026-11-09",
+    "lots": 2,
+    "quantity": 130,
+    "entry": "21.75",
+    "tradingsymbol": "NIFTY26N0922500PE"
+   },
+   {
+    "side": "SELL",
+    "type": "PE",
+    "strike": "22700",
+    "expiry": "2026-11-09",
+    "lots": 2,
+    "quantity": 130,
+    "entry": "41.80",
+    "tradingsymbol": "NIFTY26N0922700PE"
+   },
+   {
+    "side": "SELL",
+    "type": "CE",
+    "strike": "23500",
+    "expiry": "2026-11-09",
+    "lots": 2,
+    "quantity": 130,
+    "entry": "42.00",
+    "tradingsymbol": "NIFTY26N0923500CE"
+   },
+   {
+    "side": "BUY",
+    "type": "CE",
+    "strike": "23700",
+    "expiry": "2026-11-09",
+    "lots": 2,
+    "quantity": 130,
+    "entry": "18.00",
+    "tradingsymbol": "NIFTY26N0923700CE"
+   }
+  ],
+  "history": [],
+  "booked_pnl": "0",
+  "adjustments_used": 0,
+  "credit_received": "5726.50"
+ },
+ "broker": {
+  "margin": {
+   "state": "stated",
+   "value": "100000",
+   "reply": {
+    "status": "success",
+    "data": {
+     "initial": {
+      "total": 100000.0
+     },
+     "final": {
+      "total": 100000.0
+     },
+     "orders": [],
+     "charges": {
+      "total": 0
+     }
+    }
+   },
+   "funds_reply": {
+    "status": "success",
+    "data": {
+     "equity": {
+      "net": 10000000.0
+     }
+    }
+   }
+  },
+  "quote": {
+   "state": "stated",
+   "lot": 65,
+   "tick": 0.05,
+   "legs": [
+    {
+     "tradingsymbol": "NIFTY26N0922500PE",
+     "side": "BUY",
+     "quantity": 130,
+     "last_price": 0.85,
+     "timestamp": "2026-11-06 11:40:00",
+     "depth": {
+      "buy": [
+       {
+        "price": 0.8,
+        "quantity": 650,
+        "orders": 5
+       }
+      ],
+      "sell": [
+       {
+        "price": 0.9,
+        "quantity": 650,
+        "orders": 5
+       }
+      ]
+     },
+     "state": "stated"
+    },
+    {
+     "tradingsymbol": "NIFTY26N0922700PE",
+     "side": "SELL",
+     "quantity": 130,
+     "last_price": 2.7,
+     "timestamp": "2026-11-06 11:40:00",
+     "depth": {
+      "buy": [
+       {
+        "price": 2.65,
+        "quantity": 650,
+        "orders": 5
+       }
+      ],
+      "sell": [
+       {
+        "price": 2.75,
+        "quantity": 650,
+        "orders": 5
+       }
+      ]
+     },
+     "state": "stated"
+    },
+    {
+     "tradingsymbol": "NIFTY26N0923500CE",
+     "side": "SELL",
+     "quantity": 130,
+     "last_price": 84.1,
+     "timestamp": "2026-11-06 11:40:00",
+     "depth": {
+      "buy": [
+       {
+        "price": 83.65,
+        "quantity": 650,
+        "orders": 5
+       }
+      ],
+      "sell": [
+       {
+        "price": 84.55,
+        "quantity": 650,
+        "orders": 5
+       }
+      ]
+     },
+     "state": "stated"
+    },
+    {
+     "tradingsymbol": "NIFTY26N0923700CE",
+     "side": "BUY",
+     "quantity": 130,
+     "last_price": 29.5,
+     "timestamp": "2026-11-06 11:40:00",
+     "depth": {
+      "buy": [
+       {
+        "price": 29.35,
+        "quantity": 650,
+        "orders": 5
+       }
+      ],
+      "sell": [
+       {
+        "price": 29.65,
+        "quantity": 650,
+        "orders": 5
+       }
+      ]
+     },
+     "state": "stated"
+    }
+   ]
+  },
+  "low_oi": [
+   {
+    "tradingsymbol": "NIFTY26N0922500PE",
+    "state": "stated",
+    "blocked": false
+   },
+   {
+    "tradingsymbol": "NIFTY26N0922700PE",
+    "state": "stated",
+    "blocked": false
+   },
+   {
+    "tradingsymbol": "NIFTY26N0923500CE",
+    "state": "stated",
+    "blocked": false
+   },
+   {
+    "tradingsymbol": "NIFTY26N0923700CE",
+    "state": "stated",
+    "blocked": false
+   }
+  ]
+ },
+ "path": {
+  "base": "ADJ-02",
+  "frame": 1,
+  "last": 9
+ }
+}

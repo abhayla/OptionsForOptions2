@@ -689,7 +689,8 @@ class Worker:
                  db_gate: DbGate | asyncio.Lock | None = None,
                  side_tasks: tuple[Callable[[], Coroutine[Any, Any, None]], ...] = (),
                  gate_store: Any = None, user_values: UserValuesRead | None = None,
-                 margin_of: MarginOf | None = None) -> None:
+                 margin_of: MarginOf | None = None,
+                 before_cycle: Callable[[], Awaitable[None]] | None = None) -> None:
         if max_per_cycle < 1:
             raise ValueError("max_per_cycle must be at least 1")
         self._provider_for, self._lister, self._clock = provider_for, lister, clock
@@ -735,6 +736,7 @@ class Worker:
         #: most one connection at a time (ADR-048 limit 5 = API 2 + background 1 + feed 1); the cycle path never
         #: names it (#636 r6, ``tests_app/test_background_db_gate.py``); served writer, poll, rebuild (``db_gate``)
         self.db_gate = db_gate if db_gate is not None else DbGate()
+        self._before_cycle = before_cycle  # scenario mode: the shared frame index is read before every cycle
         self._side_tasks = side_tasks  # e.g. the settings cache's poll loop, started and stopped with ``run``
         #: the writer queue (#636 r4 item 4): strategy -> the latest (watched, state, prefs) to write; a newer check
         #: for the same strategy replaces its entry (coalesced: one write of the latest state)
@@ -1434,6 +1436,13 @@ class Worker:
         self._recomputes, self._legs, self._read_states, self._outcomes = {}, {}, {}, {}
 
     async def cycle(self) -> None:
+        if self._before_cycle is not None:
+            try:
+                await self._before_cycle()  # e.g. move the scenario feed to the stored frame (IC e2e decision 2)
+            except Exception as exc:  # fail closed: no check on a market the worker could not move to
+                log.exception("background: the pre-cycle step failed; this cycle is skipped")
+                _keep_recent(self.errors, (0, type(exc).__name__))
+                return
         now = self._clock()
         self._roll_minute(now)
         self._cycles += 1
@@ -1545,6 +1554,12 @@ async def _lapse_exited(db: Any, user_ref: str, sid: int) -> None:
             log.exception("background: lapsing the records of exited strategy %s failed; the others are listed", sid)
 
 
+def listable(marker: str | None, mode: str | None) -> bool:
+    """Isolation both ways (IC e2e decision 4): live mode (``mode`` None) lists only real strategies (marker None);
+    scenario mode lists only the strategies of the current scenario."""
+    return marker is None if mode is None else marker == mode
+
+
 async def owner_lister(provider: Any, gate: Any = None) -> Listed:
     """Every strategy of the V1 owner (ADR-051) that is tracked (open paper legs) and has a playbook; its type is read
     against the provider's instrument list and spot (as the screen's check). ``gate`` (the role's ``db_gate``) is held
@@ -1563,7 +1578,11 @@ async def owner_lister(provider: Any, gate: Any = None) -> Listed:
     # is closed before it and the playbook lookup gets a fresh one after it (never two connections held at once)
     async with held(gate, GATE_REBUILD), get_sessionmaker()() as db:
         strategies = await strategy_store.list_strategies(db, OWNER_REF)
+    from ofo_app import scenario_mode  # noqa: PLC0415 - the process mode, read at list time
+    mode = scenario_mode.current_id()
     for s in strategies:
+        if not listable(s.scenario_id, mode):
+            continue  # IC e2e decision 4: a live worker never checks a scenario strategy, and the reverse
         try:
             async with held(gate, GATE_REBUILD):  # one strategy's reads per hold
                 tracked = await read_tracked(s.id, None)
@@ -1593,6 +1612,58 @@ async def owner_lister(provider: Any, gate: Any = None) -> Listed:
 
 
 async def _serve() -> int:  # pragma: no cover - the process wiring; each part is tested on its own
+    from ofo_app import scenario_mode  # noqa: PLC0415
+    if scenario_mode.scenario_requested():  # provider by PROCESS mode only (IC e2e decision 7)
+        return await _serve_scenario()
+    return await _serve_live()
+
+
+async def _settings_reads():  # pragma: no cover - the process wiring
+    from ofo_app import user_preferences_store  # noqa: PLC0415
+    from ofo_app.db import get_sessionmaker  # noqa: PLC0415
+
+    async def user_values(user_ref: str) -> Mapping[str, Decimal]:
+        async with get_sessionmaker()() as db:
+            return await user_preferences_store.values_for(db, user_ref)
+
+    async def preferences(user_ref: str) -> Preferences:
+        return prefs_from_values(await user_values(user_ref))
+    return user_values, preferences
+
+
+def scenario_worker_parts(scn: Any, session: Callable[[], Any]) -> tuple[Any, Callable[[], Awaitable[None]]]:
+    """The scenario worker's provider and pre-cycle step: the scenario's own fed provider (no Kite, no feed bus) and a
+    read of the shared frame index before every cycle (``scenario_mode.sync_frame``)."""
+    from ofo_app import scenario_mode  # noqa: PLC0415
+
+    async def before_cycle() -> None:
+        async with session() as db:
+            await scenario_mode.sync_frame(db, scn)
+    return scn.provider, before_cycle
+
+
+async def _serve_scenario() -> int:  # pragma: no cover - the process wiring; each part is tested on its own
+    from ofo_app import scenario_mode  # noqa: PLC0415
+    from ofo_app.config import app_env  # noqa: PLC0415
+    from ofo_app.db import get_engine, get_sessionmaker  # noqa: PLC0415
+    from ofo_app.live_market import OWNER_REF  # noqa: PLC0415
+    scenario_mode.require_dev_or_test(app_env())  # refused outside development/test, before anything runs
+    scn = scenario_mode.current()
+    provider, before_cycle = scenario_worker_parts(scn, get_sessionmaker())
+    user_values, preferences = await _settings_reads()
+    gate = DbGate()
+    cache = settings_cache.SettingsCache(lambda: get_engine().connect(), gate=gate)
+    if not await cache.refresh():
+        log.error("background: the first settings load failed; no check runs until a poll loads them")
+    log.info("background: scenario %s (test data, no Kite) for %s", scn.scenario_id, OWNER_REF)
+    worker = Worker(provider_for=lambda _owner: provider, lister=functools.partial(owner_lister, provider, gate=gate),
+                    clock=scn.clock, settings=cache.at, preferences=preferences, db_gate=gate,
+                    side_tasks=(cache.poll_loop,), user_values=user_values, before_cycle=before_cycle)
+    await worker.run()
+    return 0
+
+
+async def _serve_live() -> int:  # pragma: no cover - the process wiring; each part is tested on its own
     from ofo_app import feed_mode, user_preferences_store  # noqa: PLC0415
 
     # live rows by key only (the provider's instrument list); each leg's stored id reached its terms through
@@ -1653,7 +1724,17 @@ def main(argv: list[str] | None = None) -> int:
         description=f"Start the {roles.BACKGROUND.name} role (REQ-165 playbook checks with no screen open).")
     parser.parse_args(sys.argv[1:] if argv is None else argv)
     logging.basicConfig(level=logging.INFO)  # as feed_main: without it the INFO lines below never reach the log
+    refuse_scenario_outside_dev_or_test()
     return asyncio.run(_serve())
+
+
+def refuse_scenario_outside_dev_or_test() -> None:
+    """Start-up refusal (IC e2e decision 7), before any loop or database: scenario mode outside APP_ENV
+    development/test raises ``ScenarioRefused`` (as the API's ``create_app``)."""
+    from ofo_app import scenario_mode  # noqa: PLC0415
+    from ofo_app.config import app_env  # noqa: PLC0415
+    if scenario_mode.scenario_requested():
+        scenario_mode.require_dev_or_test(app_env())
 
 
 if __name__ == "__main__":
