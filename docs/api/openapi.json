@@ -1399,9 +1399,38 @@
               }
             ]
           },
+          "settings": {
+            "items": {
+              "$ref": "#/components/schemas/SettingInForceOut"
+            },
+            "title": "Settings",
+            "type": "array"
+          },
+          "stops": {
+            "$ref": "#/components/schemas/StopsOut"
+          },
           "strategy_id": {
             "title": "Strategy Id",
             "type": "integer"
+          },
+          "triggers": {
+            "items": {
+              "$ref": "#/components/schemas/TriggerInForceOut"
+            },
+            "title": "Triggers",
+            "type": "array"
+          },
+          "triggers_reason": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Triggers Reason"
           },
           "type": {
             "anyOf": [
@@ -1434,7 +1463,11 @@
           "playbooks",
           "plan",
           "prefill",
-          "labels"
+          "labels",
+          "settings",
+          "triggers",
+          "triggers_reason",
+          "stops"
         ],
         "title": "AdjustmentPlanOut",
         "type": "object"
@@ -10443,6 +10476,60 @@
         "title": "SdRowOut",
         "type": "object"
       },
+      "SettingInForceOut": {
+        "additionalProperties": false,
+        "description": "One covered setting in force for this strategy (ADR-245): its value and where it came from (``strategy`` /\n``user`` / ``default``); a layer that exists but cannot be read -> value and source None, ``reason`` its code.",
+        "properties": {
+          "key": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Key",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "key",
+          "value",
+          "source",
+          "reason"
+        ],
+        "title": "SettingInForceOut",
+        "type": "object"
+      },
       "SettingOut": {
         "additionalProperties": false,
         "properties": {
@@ -10724,6 +10811,120 @@
           "fix"
         ],
         "title": "StatusOut",
+        "type": "object"
+      },
+      "StopLineOut": {
+        "additionalProperties": false,
+        "description": "ADR-247: one stop line: ``figure`` the % or multiple in force, ``amount`` the loss in rupees at which it fires\n(engine, exact decimal text), or None with ``reason`` naming the missing input.",
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "amount": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount"
+          },
+          "figure": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Figure"
+          },
+          "kind": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Kind",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          }
+        },
+        "required": [
+          "kind",
+          "active",
+          "figure",
+          "amount",
+          "source",
+          "reason"
+        ],
+        "title": "StopLineOut",
+        "type": "object"
+      },
+      "StopsOut": {
+        "additionalProperties": false,
+        "properties": {
+          "first": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/StopLineOut"
+            },
+            "title": "Lines",
+            "type": "array"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "lines",
+          "first",
+          "reason"
+        ],
+        "title": "StopsOut",
         "type": "object"
       },
       "StrategyContractOut": {
@@ -12911,6 +13112,127 @@
           "kind"
         ],
         "title": "TriggerIn",
+        "type": "object"
+      },
+      "TriggerInForceOut": {
+        "additionalProperties": false,
+        "description": "One trigger of the playbook in force, its per-stage values (Trigger 1 / 2 / 3: Early, Middle, Last) and the\nplaybook's source; values None = the trigger has no threshold (a cross) or ``reason`` names why it is unread.",
+        "properties": {
+          "id": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "monthly": {
+            "anyOf": [
+              {
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Monthly"
+          },
+          "on": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "On"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "weekly": {
+            "anyOf": [
+              {
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weekly"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "unit",
+          "on",
+          "weekly",
+          "monthly",
+          "source",
+          "reason"
+        ],
+        "title": "TriggerInForceOut",
         "type": "object"
       },
       "TriggerOut": {
