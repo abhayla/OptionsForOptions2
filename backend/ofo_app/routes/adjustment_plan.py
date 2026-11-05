@@ -38,8 +38,8 @@ from ofo.settings import layers
 from pydantic import BaseModel, ConfigDict
 
 from ofo_app import adjustment_check as check
-from ofo_app import settings_in_force as in_force_mod
 from ofo_app import playbook_store as store
+from ofo_app import settings_in_force as in_force_mod
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier, Money
 from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure
@@ -357,7 +357,8 @@ async def _sheet(db: Any, user_ref: str, strategy_id: int, stype: str | None, pl
                              "plan": None, "prefill": None, "labels": _labels()}
     if stype is None:
         none = check.Resolved("none", None, None, None, False)
-        return AdjustmentPlanOut.model_validate(reply | _in_force_reply(in_force_mod.in_force(user_values, none, money)))
+        found = in_force_mod.in_force(user_values, none, money)
+        return AdjustmentPlanOut.model_validate(reply | _in_force_reply(found))
     active = await store.active_for(db, user_ref, stype)
     # the playbook in force (as ``adjustment_check.resolve``): the plan copy, else the user's active / the system one
     resolved = check.Resolved("plan", plan.body, plan.playbook_id, None, False) if plan is not None else \

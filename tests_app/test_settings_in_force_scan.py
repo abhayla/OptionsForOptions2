@@ -32,9 +32,8 @@ def violations(source: str, keys: tuple[str, ...]) -> list[str]:
     """Every bypass in one module's source (the scanner, also run on seeded sources below)."""
     found = [m.group(0) for m in _CALLS.finditer(source)]
     covered = set(keys)
-    for node in ast.walk(ast.parse(source)):
-        if isinstance(node, ast.Constant) and isinstance(node.value, str) and node.value in covered:
-            found.append(repr(node.value))
+    found.extend(repr(node.value) for node in ast.walk(ast.parse(source))
+                 if isinstance(node, ast.Constant) and isinstance(node.value, str) and node.value in covered)
     return found
 
 
