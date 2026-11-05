@@ -33,7 +33,7 @@ def _user(carry_user: D | None, admin: D = D(2)) -> UserValues:
 
 
 def _plan(body: dict) -> check.Resolved:
-    return check.Resolved("plan", body, 7, None, False)
+    return check.Resolved("plan", body, 7, None, False, saved_before_adr247=False)
 
 
 def _value(found: sif.InForce, key: str) -> tuple:
@@ -52,7 +52,7 @@ def test_core_plan_then_user_then_default_with_sources():
 
 def test_a_strategy_following_its_playbook_has_no_strategy_layer():
     """Only the PLAN copy is the strategy layer: the same ``settings`` in the user's active playbook is not."""
-    active = check.Resolved("active", {"settings": {CARRY: "1.5"}}, 3, None, False)
+    active = check.Resolved("active", {"settings": {CARRY: "1.5"}}, 3, None, False, saved_before_adr247=False)
     assert _value(sif.in_force(_user(D(3)), active, None), CARRY) == (D(3), "user", None)
 
 
@@ -70,7 +70,7 @@ def test_every_covered_key_is_answered_and_admin_only_keys_are_not():
     assert CARRY in keys and layers.ROLL_BASIS in keys
     assert "adjustments.short_delta_weekly" in keys and "alerts.weekly.cooldown_minutes" in keys
     assert not [k for k in keys if k.startswith(("speeds.", "pricing.", "limits.", "facts.", "detection."))]
-    found = sif.in_force(None, check.Resolved("none", None, None, None, False), None)
+    found = sif.in_force(None, check.Resolved("none", None, None, None, False, saved_before_adr247=False), None)
     assert [x.key for x in found.settings] == list(keys)
     assert all(x.source == "default" and x.value is not None for x in found.settings)  # no user path: the defaults
 
@@ -84,7 +84,8 @@ TRIGGERS = {"T-01": {"label": "Spot within this % of a short strike", "unit": "%
 
 @pytest.mark.parametrize(("source", "code"), [("plan", "strategy"), ("active", "user"), ("system", "default")])
 def test_trigger_values_carry_the_source_of_the_playbook_in_force(source, code):
-    found = sif.in_force(None, check.Resolved(source, {"triggers": TRIGGERS}, 1, None, source == "system"), None)
+    found = sif.in_force(None, check.Resolved(source, {"triggers": TRIGGERS}, 1, None, source == "system",
+                                              saved_before_adr247=False), None)
     t1 = found.triggers[0]
     assert (t1.id, t1.weekly, t1.monthly, t1.source, t1.reason) == (
         "T-01", (D("0.75"), D("0.5"), D("0.3")), (D("1.5"), D("1.0"), D("0.5")), code, None)
@@ -92,7 +93,7 @@ def test_trigger_values_carry_the_source_of_the_playbook_in_force(source, code):
 
 
 def test_trigger_answer_states():
-    none = sif.in_force(None, check.Resolved("none", None, None, None, False), None)
+    none = sif.in_force(None, check.Resolved("none", None, None, None, False, saved_before_adr247=False), None)
     assert (none.triggers, none.triggers_reason) == ((), sif.NO_PLAYBOOK)
     bad = sif.in_force(None, _plan({"triggers": ["x"]}), None)
     assert (bad.triggers, bad.triggers_reason) == ((), sif.TRIGGERS_UNREADABLE)
@@ -108,7 +109,8 @@ SYSTEM_GUARDS = {"stop_line_pct_of_max_loss": "50"}
 
 
 def _stops(guards, money=S82, source="system") -> sif.StopsInForce:
-    return sif.in_force(None, check.Resolved(source, {"guards": guards}, 1, None, True), money).stops
+    return sif.in_force(None, check.Resolved(source, {"guards": guards}, 1, None, True, saved_before_adr247=False),
+                        money).stops
 
 
 def test_default_stops_on_strategy_82_fire_at_the_smaller_amount_first():
@@ -201,7 +203,8 @@ def test_every_text_field_of_the_in_force_reply_validates_for_every_system_playb
     type for every shipped playbook body: the trigger label through the playbook-trigger-label slot (never the
     settings-registry slot), the unit as a closed code. Before the fix the label raised TypeError (a 500)."""
     for body in _system_bodies():
-        reply = ap._in_force_reply(sif.in_force(None, check.Resolved(source, body, 1, None, False), S82))
+        reply = ap._in_force_reply(sif.in_force(None, check.Resolved(source, body, 1, None, False,
+                                                                     saved_before_adr247=False), S82))
         for row in reply["settings"]:
             ap.SettingInForceOut.model_validate(row)
         for row in reply["triggers"]:
@@ -209,7 +212,8 @@ def test_every_text_field_of_the_in_force_reply_validates_for_every_system_playb
             assert out.unit is None or out.unit in sif.UNIT_CODES.values()
         ap.StopsOut.model_validate(reply["stops"])
     ic = next(b for b in _system_bodies() if "T-01" in b.get("triggers", {}))
-    reply = ap._in_force_reply(sif.in_force(None, check.Resolved(source, ic, 1, None, False), S82))
+    reply = ap._in_force_reply(sif.in_force(None, check.Resolved(source, ic, 1, None, False,
+                                                                 saved_before_adr247=False), S82))
     t01 = next(t for t in reply["triggers"] if t["id"] == "T-01")
     assert (str(t01["label"]), t01["unit"]) == (ic["triggers"]["T-01"]["label"], "pct")
 

@@ -53,5 +53,5 @@ async def lapse_through_worker(sid: int, rule_id: str, *, user_ref: str = "owner
                                at: datetime.datetime = AT) -> None:
     """The worker's own store applies the gate's Lapsed event (the app engine must point at the test database)."""
     w = Watched(user_ref=user_ref, strategy_id=sid, tracked=None, body={}, is_system=True, feed_owner=user_ref,
-                strategy_layer=None, entry_facts=None)
+                strategy_layer=None, entry_facts=None, resolved=None)
     await DbGateStore().apply(w, [alert_gate.Lapsed(rule_id, at, None)], None)

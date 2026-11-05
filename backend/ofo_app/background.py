@@ -219,7 +219,7 @@ class Watched:
     entry_facts: Any
     #: contract step 3: the strategy's ``adjustment_check.Resolved`` (its stop lines in force come from it through
     #: ``settings_in_force.stops_of``). None = not supplied: every stop answers "not checked", never a pass
-    resolved: Any = None
+    resolved: Any
 
 
 def _seconds(delta: datetime.timedelta) -> Decimal:
@@ -431,7 +431,8 @@ def margin_needed(body: Mapping | None, resolved: Any = None) -> bool:
 
     if body is None:
         return False
-    r = resolved if resolved is not None else check.Resolved("active", body, None, None, False)
+    r = resolved if resolved is not None else check.Resolved("active", body, None, None, False,
+                                                             saved_before_adr247=False)
     return sif.margin_line_on(r) or carry_rule_on(body)
 
 

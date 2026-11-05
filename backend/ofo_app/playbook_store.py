@@ -576,10 +576,12 @@ async def accept_plan(conn: Any, user_ref: str, strategy_id: int, playbook_id: i
     return _plan(row)
 
 
-#: ADR-250: when the ADR-247 iron condor default (migration 0040, reason "ADR-247: ...") was saved; a plan accepted
-#: before it keeps its own stops. No such version (a database before 0040) -> None: every plan predates ADR-247.
-_ADR247_SAVED_AT = text("SELECT min(saved_at) FROM public.system_playbook_versions "
-                        "WHERE strategy_type = 'ic' AND reason LIKE 'ADR-247:%'")
+#: ADR-250: when the first iron condor version with the ADR-247 stop shape (no % of margin guard, T-16 off or
+#: absent) was saved: migration 0040's row on an existing database, the version 1 seed on a fresh one (the seed ships
+#: that shape). A plan accepted before it keeps its own stops. None (no such version) -> every plan predates ADR-247.
+_ADR247_SAVED_AT = text("SELECT min(saved_at) FROM public.system_playbook_versions WHERE strategy_type = 'ic' "
+                        "AND NOT (body -> 'guards') ? 'stop_line_pct_of_margin' "
+                        "AND coalesce(body -> 'triggers' -> 'T-16' ->> 'on', 'false') <> 'true'")
 
 
 async def adr247_saved_at(conn: Any) -> datetime | None:

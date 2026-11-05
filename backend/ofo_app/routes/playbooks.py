@@ -521,7 +521,8 @@ async def _tested(db: Any, user_ref: str, data: TestIn, seams: _Seams) -> list[d
                                strategy_layer=await _strategy_layer(db, user_ref, row.id),
                                entry_facts=await entry_facts_in(db, row.id),  # ADR-243: the roll basis's facts
                                # step 3: the stops of the playbook under test, followed as the user's own copy
-                               resolved=check.Resolved("active", data.body, None, None, False))
+                               resolved=check.Resolved("active", data.body, None, None, False,
+                                                       saved_before_adr247=False))
         entry = check.scenario_entry(scenario_mode.current(), state, tracked.position)
         if entry is not None:
             state = dataclasses.replace(state, entry_atm_iv=entry.atm_iv)

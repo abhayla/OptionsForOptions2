@@ -18,7 +18,8 @@ from ofo.adjustment import playbook_eval as pe
 from ofo.engine import adjust_ratios as ratios
 from ofo.engine.black_scholes import Greeks
 from ofo.engine.legs import Action
-from ofo.settings import calc, defaults as settings_defaults
+from ofo.settings import calc
+from ofo.settings import defaults as settings_defaults
 from ofo.strategy.settings_value import IDENTIFIER_PATTERN
 from ofo.timeutil import IST
 

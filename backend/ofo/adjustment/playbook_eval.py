@@ -385,11 +385,16 @@ def _limit(c: _Ctx, tid: str) -> Decimal | str:
         raise _Missing(f"{P}no_stage_value", stage=stage_words(c.stage_name))
     if tid == "T-10b":
         return raw
-    lim = Decimal(raw)
+    return _tightened(c, tid, Decimal(raw), t["cmp"])
+
+
+def _tightened(c: _Ctx, tid: str, lim: Decimal, cmp: str) -> Decimal:
+    """``lim`` tightened by the due day rule's X % when ``tid`` is a tightened trigger (one rule for every trigger
+    and for the stop lines in force)."""
     pct = c.state.tighten_percent
     if pct is not None and tid in c.body.get("tightened", ()):
         with localcontext(_EXACT):
-            lim = lim * (1 + pct / _HUNDRED) if t["cmp"] == "le" else lim * (1 - pct / _HUNDRED)
+            lim = lim * (1 + pct / _HUNDRED) if cmp == "le" else lim * (1 - pct / _HUNDRED)
     return lim
 
 
@@ -590,7 +595,10 @@ def _withheld(state: StrategyState) -> str | None:
 
 def _later(c: _Ctx, tid: str) -> tuple[Decimal | str, ...]:
     """The limits of ``tid`` at the stages after this one (same tightening); a stage without a value is skipped."""
-    if c.stage is None or sl.is_stop_rule(tid):  # a stop line is one amount in force, not a per-stage body value
+    if tid in sl.STOP_TRIGGERS:  # the line in force carries its later figures (a flat line: none)
+        line = _line(c.state, tid)
+        return () if line is None or line.figure is None else tuple(_tightened(c, tid, x, "ge") for x in line.later)
+    if c.stage is None or sl.is_stop_rule(tid):  # the 2x-credit line is one amount, not a per-stage value
         return ()
     out = []
     for i in range(c.stage + 1, len(c.body["stages"][c.state.expiry_kind])):
@@ -616,7 +624,8 @@ def _outcomes(body: Mapping, state: StrategyState, gap_until: str) -> tuple[_Ctx
     out = []
     for rule in body.get("rules", []):
         members = rule.get("any_of") or rule["all_of"]
-        if set(members) <= sl.STOP_TRIGGERS:  # a stop: answered from the stop lines in force below, never the body
+        if set(members) <= sl.STOP_TRIGGERS:  # a stop: answered from the stop lines in force, never the body
+            out.append(_stop_rule(c, rule, why))
             continue
         if why is not None:
             out.append(_Outcome(rule["id"], members[0], reason=why))
@@ -624,33 +633,89 @@ def _outcomes(body: Mapping, state: StrategyState, gap_until: str) -> tuple[_Ctx
             out.append(_Outcome(rule["id"], _T21))
         else:
             out.append(_rule(c, rule))
-    out.extend(_stop_outcomes(state, why))
+    out.extend(_credit_outcome(state, why))
     return c, why, out
 
 
-def _stop_outcomes(state: StrategyState, why: str | None) -> list[_Outcome]:
-    """One ``stop.<kind>`` rule per ACTIVE stop line in force: the loss (``max(-pnl, 0)``) against the line's rupee
-    amount, exact and inclusive. No stops supplied -> the max-loss stop "not checked: stops not supplied"; a line with
-    no amount -> "not checked" with its reason (fail closed: never a passed stop)."""
-    if state.stops is None:
-        rid = sl.rule_id(sl.STOP_MAX_LOSS)
-        return [_Outcome(rid, rid, reason=why or sl.STOPS_NOT_SUPPLIED)]
-    out = []
-    for line in state.stops.lines:
-        if not line.active:
-            continue
-        rid = sl.rule_id(line.kind)
-        if why is not None:
-            out.append(_Outcome(rid, rid, reason=why))
-        elif line.amount is None or line.amount <= 0:
-            out.append(_Outcome(rid, rid, reason=sl.not_checked_code(line.reason)))
-        elif state.pnl is None:
-            out.append(_Outcome(rid, rid, reason=f"{P}missing_pnl"))
-        else:
-            loss = max(-state.pnl, Decimal(0))
-            fired = loss >= line.amount
-            out.append(_Outcome(rid, rid, (Hit(rid, loss, line.amount, "ge", fired),), fired=fired))
-    return out
+def _line(state: StrategyState, tid: str) -> sl.StopInForce | None:
+    kind = sl.LINE_OF_TRIGGER.get(tid)
+    return next((x for x in (state.stops.lines if state.stops is not None else ()) if x.kind == kind), None)
+
+
+def _stop_hit(c: _Ctx, tid: str, line: sl.StopInForce) -> Hit:
+    """The max-loss / margin stop: the loss as % of max loss / of margin against the line's % in force (tightened by
+    the due day rule exactly as before), exact and inclusive."""
+    if tid == sl.TRIGGER_MARGIN:
+        margin = _need(c.state.margin, "margin")
+        pnl = _need(c.state.pnl, "pnl")
+        try:
+            num, den = ratios.loss_pct_of_margin(pnl, margin)
+        except ValueError:
+            raise _Missing(f"{P}margin_not_positive") from None
+    else:
+        pnl = _need(c.state.pnl, "pnl")
+        num, den = ratios.loss_pct_of_max_loss(pnl, _finite(c.state.max_loss, "max_loss"))
+    return _exact(tid, num, den, _tightened(c, tid, line.figure, "ge"), "ge")  # type: ignore[arg-type]
+
+
+def _stop_answer(c: _Ctx, tid: str) -> Hit | _Missing:  # noqa: PLR0911 - one answer per reason a stop is not checked
+    t = c.body.get("triggers", {}).get(tid) or {}
+    if t.get("greyed"):
+        return _Missing(f"{P}greyed")
+    if t.get("data", "ok") != "ok":
+        return _Missing(f"{P}data_unavailable")
+    if c.state.stops is None:
+        return _Missing(sl.STOPS_NOT_SUPPLIED)
+    line = _line(c.state, tid)
+    if line is None or not line.active:
+        return _Missing(f"{P}switched_off")
+    if line.figure is None:
+        return _Missing(sl.not_checked_code(line.reason))
+    try:
+        return _stop_hit(c, tid, line)
+    except _Missing as e:
+        return e
+
+
+def _stop_rule(c: _Ctx, rule: Mapping, why: str | None) -> _Outcome:
+    """A body rule whose members are stop triggers (T-06 / T-16): answered from the stop lines in force, never from
+    the body's values (contract step 3); same rule id, same lead, same memory."""
+    rid = rule["id"]
+    members = rule.get("any_of") or rule["all_of"]
+    if why is not None:
+        return _Outcome(rid, members[0], reason=why)
+    answers = [(m, _stop_answer(c, m)) for m in members]
+    missing = [(m, x) for m, x in answers if isinstance(x, _Missing)]
+    hits = tuple(x for _, x in answers if isinstance(x, Hit))
+    fired = [h for h in hits if h.fired]
+    if "all_of" in rule:
+        if missing:
+            return _Outcome(rid, missing[0][0], hits, missing[0][1].code, missing[0][1].slots)
+        return _Outcome(rid, members[0], hits, fired=all(h.fired for h in hits))
+    if fired:
+        return _Outcome(rid, fired[0].trigger_id, hits, fired=True)
+    if missing:
+        return _Outcome(rid, missing[0][0], hits, missing[0][1].code, missing[0][1].slots)
+    return _Outcome(rid, members[0], hits)
+
+
+def _credit_outcome(state: StrategyState, why: str | None) -> list[_Outcome]:
+    """ADR-247/251: the 2x-credit line (new plans only, ADR-250): the loss (``max(-pnl, 0)``) against the line's rupee
+    amount, exact and inclusive; no amount -> "not checked" with its reason (fail closed)."""
+    line = next((x for x in (state.stops.lines if state.stops is not None else ()) if x.kind == sl.STOP_CREDIT),
+                None)
+    if line is None or not line.active:
+        return []
+    rid = sl.CREDIT_RULE
+    if why is not None:
+        return [_Outcome(rid, rid, reason=why)]
+    if line.amount is None or line.amount <= 0:
+        return [_Outcome(rid, rid, reason=sl.not_checked_code(line.reason))]
+    if state.pnl is None:
+        return [_Outcome(rid, rid, reason=f"{P}missing_pnl")]
+    loss = max(-state.pnl, Decimal(0))
+    fired = loss >= line.amount
+    return [_Outcome(rid, rid, (Hit(rid, loss, line.amount, "ge", fired),), fired=fired)]
 
 
 def evaluate(body: Mapping, state: StrategyState, memory: Mapping[str, Mapping[str, bool]] | None = None,

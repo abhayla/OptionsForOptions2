@@ -26,8 +26,11 @@ TRIGGER_MAX_LOSS: Final = "T-06"
 TRIGGER_MARGIN: Final = "T-16"
 STOP_TRIGGERS: Final = frozenset({TRIGGER_MAX_LOSS, TRIGGER_MARGIN})
 
-#: the rule id prefix of a stop result (``stop.max_loss_pct``)
-RULE_PREFIX: Final = "stop."
+#: rule ids: the max-loss and margin lines answer under their old trigger ids (same wording, same rule memory, so
+#: "already true" and the alert gate carry over); only the 2x-credit line (ADR-247) has a new id
+CREDIT_RULE: Final = "stop.credit_x"
+LINE_OF_TRIGGER: Final = {TRIGGER_MAX_LOSS: STOP_MAX_LOSS, TRIGGER_MARGIN: STOP_MARGIN}
+RULE_OF_LINE: Final = {STOP_MAX_LOSS: TRIGGER_MAX_LOSS, STOP_MARGIN: TRIGGER_MARGIN, STOP_CREDIT: CREDIT_RULE}
 
 # ---- why a line has no amount (the settings screen's codes; ``settings_in_force`` re-exports them) ----------------
 GUARDS_UNREADABLE: Final = "stop_guards_unreadable"
@@ -69,6 +72,8 @@ class StopInForce:
     amount: Decimal | None  # the loss in rupees at which it fires (engine)
     source: str | None
     reason: str | None
+    #: the figures at the stages after this one (a pre-ADR-247 plan's per-stage %; () for a flat line)
+    later: tuple[Decimal, ...] = ()
 
 
 @dataclasses.dataclass(frozen=True)
@@ -79,15 +84,38 @@ class StopsInForce:
 
 
 def rule_id(kind: str) -> str:
-    return f"{RULE_PREFIX}{kind}"
+    return RULE_OF_LINE[kind]
 
 
 def is_stop_rule(rule_id_: object) -> bool:
-    return isinstance(rule_id_, str) and rule_id_.startswith(RULE_PREFIX)
+    return rule_id_ in RULE_OF_LINE.values()
 
 
-__all__ = ["CREDIT_UNKNOWN", "GUARDS_UNREADABLE", "KINDS", "MARGIN_NOT_READ", "MAX_LOSS_UNKNOWN", "MAX_LOSS_UNLIMITED",
-           "NOT_CHECKED", "NOT_CHECKED_OTHER", "NO_CREDIT", "STAGE_UNKNOWN", "STOP_VALUE_UNREADABLE",
-           "not_checked_code", "RULE_PREFIX", "STOPS_NOT_SUPPLIED", "STOP_CREDIT", "STOP_MARGIN", "STOP_MAX_LOSS",
-           "STOP_TRIGGERS", "TRIGGER_MARGIN", "TRIGGER_MAX_LOSS", "StopInForce", "StopsInForce", "is_stop_rule",
-           "rule_id"]
+__all__ = [
+    "CREDIT_RULE",
+    "CREDIT_UNKNOWN",
+    "GUARDS_UNREADABLE",
+    "KINDS",
+    "LINE_OF_TRIGGER",
+    "MARGIN_NOT_READ",
+    "MAX_LOSS_UNKNOWN",
+    "MAX_LOSS_UNLIMITED",
+    "NOT_CHECKED",
+    "NOT_CHECKED_OTHER",
+    "NO_CREDIT",
+    "RULE_OF_LINE",
+    "STAGE_UNKNOWN",
+    "STOPS_NOT_SUPPLIED",
+    "STOP_CREDIT",
+    "STOP_MARGIN",
+    "STOP_MAX_LOSS",
+    "STOP_TRIGGERS",
+    "STOP_VALUE_UNREADABLE",
+    "TRIGGER_MARGIN",
+    "TRIGGER_MAX_LOSS",
+    "StopInForce",
+    "StopsInForce",
+    "is_stop_rule",
+    "not_checked_code",
+    "rule_id",
+]

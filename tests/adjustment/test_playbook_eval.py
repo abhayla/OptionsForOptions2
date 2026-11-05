@@ -114,7 +114,7 @@ def state_of(sc: dict) -> StrategyState:
                                    datetime.date.fromisoformat(x["expiry"]), x["quantity"], D(x["entry"])) for x in legs))
         expiry_pnl = strat.expiry_pnl_at(spot) + booked
     margin = sc["broker"]["margin"]
-    state = StrategyState(stops=None, 
+    state = StrategyState(stops=None,
         expiry_kind=sc["expiry_kind"], days_left=sc["dte"], hhmm=hhmm, spot=spot, shorts=shorts, pnl=pnl,
         max_loss=(whole["max_loss"] if whole["max_loss"] == "UNLIMITED" else D(whole["max_loss"])) if whole["exact"] else None,
         max_profit=(whole["max_profit"] if whole["max_profit"] == "UNLIMITED" else D(whole["max_profit"])) if whole["exact"] else None,
@@ -137,16 +137,14 @@ def _stops(body, state) -> sl.StopsInForce:
         trig = body["triggers"].get(tid) or {}
         if trig.get("on") is not True:
             continue
-        raw = None if stage is None else trig[state.expiry_kind][stage]
+        values = trig[state.expiry_kind]
+        raw = None if stage is None else values[stage]
         pct = None if raw in (None, "") else D(raw)
         ok = pct is not None and isinstance(base, D) and base > 0
+        later = () if stage is None else tuple(D(x) for x in values[stage + 1:] if x not in (None, ""))
         lines.append(sl.StopInForce(kind, True, pct, adjust_money.stop_at_pct(base, pct) if ok else None, "strategy",
-                                    None if ok else sl.MAX_LOSS_UNKNOWN))
+                                    None if pct is not None else sl.STAGE_UNKNOWN, later))
     return sl.StopsInForce(tuple(lines), None, None)
-
-
-#: the body trigger a stop result used to be reported under (expected files still name T-06 / T-16)
-_STOP_ID = {sl.TRIGGER_MAX_LOSS: sl.rule_id(sl.STOP_MAX_LOSS), sl.TRIGGER_MARGIN: sl.rule_id(sl.STOP_MARGIN)}
 
 
 def entry_of(sc: dict) -> StrategyState:
@@ -186,15 +184,12 @@ def test_every_scenario_flags_exactly_the_expected_triggers(sid):
         assert not got and ev.withheld
         assert all(isinstance(r, NotChecked) for r in ev.results)
         return
-    assert set(got) == {_STOP_ID.get(f["id"], f["id"]) for f in exp["triggers_fired"]}
+    assert set(got) == {f["id"] for f in exp["triggers_fired"]}
     for f in exp["triggers_fired"]:
-        if f["id"] in _STOP_ID:  # step 3: a stop compares rupees (loss vs the line), not the body's percent
-            assert got[_STOP_ID[f["id"]]].fired
-            continue
         assert _same(got[f["id"]].value, f["value"]), (f, got[f["id"]])
         assert _same(got[f["id"]].threshold, f["limit"]), (f, got[f["id"]])
     already = {r.trigger_id for r in ev.results if isinstance(r, AlreadyTrue)}
-    assert already == {_STOP_ID.get(x, x) for x in exp.get("already_true_at_entry", [])}
+    assert already == set(exp.get("already_true_at_entry", []))
     # with no entry state nothing held at entry: the level answer is fired + already true (F-71 is the only difference)
     level = flags(evaluate(body, state, {}, None))
     assert set(level) == set(got) | already
@@ -305,6 +300,10 @@ def test_unpriced_short_is_not_checked_for_t09():
 
 
 @pytest.mark.parametrize(("field", "value", "tid", "code", "text"), [
+    ("margin", None, "T-16", "missing_margin", "Margin not available."),
+    ("margin", D(0), "T-16", "margin_not_positive", "Margin not positive."),
+    ("max_loss", "UNLIMITED", "T-06", "max_loss_not_finite", "Max loss not finite (unlimited or multi-expiry)."),
+    ("max_loss", D(0), "T-06", "max_loss_not_finite", "Max loss not finite (unlimited or multi-expiry)."),
     ("adjustment_cost", D(0), "T-19", "cost_not_positive", "Adjustment cost not positive."),
     ("premium_left", D(-1), "T-19", "net_long_premium", "No premium to earn (net long premium)."),
     ("atm_iv", None, "T-11", "missing_atm_iv", "ATM IV not available."),

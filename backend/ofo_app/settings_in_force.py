@@ -37,9 +37,21 @@ from typing import Any, Final
 
 from ofo.adjustment import playbook_eval as pe
 from ofo.adjustment import stop_lines as sl
-from ofo.adjustment.stop_lines import (CREDIT_UNKNOWN, GUARDS_UNREADABLE, MARGIN_NOT_READ, MAX_LOSS_UNKNOWN,
-                                       MAX_LOSS_UNLIMITED, NO_CREDIT, STAGE_UNKNOWN, STOP_CREDIT, STOP_MARGIN,
-                                       STOP_MAX_LOSS, STOP_VALUE_UNREADABLE, StopInForce, StopsInForce)
+from ofo.adjustment.stop_lines import (
+    CREDIT_UNKNOWN,
+    GUARDS_UNREADABLE,
+    MARGIN_NOT_READ,
+    MAX_LOSS_UNKNOWN,
+    MAX_LOSS_UNLIMITED,
+    NO_CREDIT,
+    STAGE_UNKNOWN,
+    STOP_CREDIT,
+    STOP_MARGIN,
+    STOP_MAX_LOSS,
+    STOP_VALUE_UNREADABLE,
+    StopInForce,
+    StopsInForce,
+)
 from ofo.engine import adjust_money
 from ofo.engine.metrics import UNLIMITED
 from ofo.settings import layers
@@ -250,13 +262,30 @@ def _saved_plan_lines(body: Mapping, money: MoneyInputs | None, at: StageAt | No
         elif not isinstance(max_loss, Decimal):
             reason = MAX_LOSS_UNKNOWN
     amount = adjust_money.stop_at_pct(max_loss, pct) if active and reason is None and pct is not None else None
-    lines.append(StopInForce(STOP_MAX_LOSS, active, pct, amount, source, reason))
+    lines.append(StopInForce(STOP_MAX_LOSS, active, pct, amount, source, reason,
+                             _later(body, sl.TRIGGER_MAX_LOSS, at) if amount is not None or pct is not None else ()))
     active, pct, reason = _stage_value(body, sl.TRIGGER_MARGIN, at)
     if active and pct is not None and margin is None:
         reason = MARGIN_NOT_READ
     amount = adjust_money.stop_at_pct(margin, pct) if active and reason is None and pct is not None else None
-    lines.append(StopInForce(STOP_MARGIN, active, pct, amount, source, reason))
+    lines.append(StopInForce(STOP_MARGIN, active, pct, amount, source, reason,
+                             _later(body, sl.TRIGGER_MARGIN, at) if pct is not None else ()))
     return lines
+
+
+def _later(body: Mapping, tid: str, at: StageAt | None) -> tuple[Decimal, ...]:
+    """The plan's own figures of ``tid`` at the stages after the current one (a stage without a value skipped)."""
+    if at is None or at.days_left is None:
+        return ()
+    stage = pe.stage_of(body, at.expiry_kind, at.days_left)  # type: ignore[arg-type]
+    values = body["triggers"][tid].get(at.expiry_kind) or []
+    out = []
+    for raw in values[stage + 1:] if stage is not None else ():
+        try:
+            out.append(_decimal_text(raw))
+        except ValueError:
+            continue
+    return tuple(out)
 
 
 def _first(lines: list[StopInForce]) -> StopsInForce:
@@ -343,8 +372,38 @@ def in_force(user_values: Mapping[str, Decimal] | None, resolved: check.Resolved
     return InForce(settings_of(user_values, resolved.strategy_layer), triggers, reason, stops_of(resolved, money))
 
 
-__all__ = ["CREDIT_MULTIPLE_DEFAULT", "CREDIT_UNKNOWN", "GUARDS_UNREADABLE", "MARGIN_NOT_READ", "MAX_LOSS_UNKNOWN",
-           "MAX_LOSS_UNLIMITED", "NO_CREDIT", "STAGE_UNKNOWN", "STOP_CREDIT", "STOP_MARGIN", "STOP_MAX_LOSS",
-           "STOP_VALUE_UNREADABLE", "StageAt", "margin_line_on", "net_credit", "FIRST_UNKNOWN", "MAX_LOSS_PCT_DEFAULT", "NO_PLAYBOOK", "PLAYBOOK_SOURCE",
-           "UNIT_CODES", "InForce", "MoneyInputs", "SettingInForce", "StopInForce", "StopsInForce", "TriggerInForce",
-           "covered_keys", "in_force", "money_inputs", "setting_of", "settings_of", "stops_of", "triggers_of"]
+__all__ = [
+    "CREDIT_MULTIPLE_DEFAULT",
+    "CREDIT_UNKNOWN",
+    "FIRST_UNKNOWN",
+    "GUARDS_UNREADABLE",
+    "MARGIN_NOT_READ",
+    "MAX_LOSS_PCT_DEFAULT",
+    "MAX_LOSS_UNKNOWN",
+    "MAX_LOSS_UNLIMITED",
+    "NO_CREDIT",
+    "NO_PLAYBOOK",
+    "PLAYBOOK_SOURCE",
+    "STAGE_UNKNOWN",
+    "STOP_CREDIT",
+    "STOP_MARGIN",
+    "STOP_MAX_LOSS",
+    "STOP_VALUE_UNREADABLE",
+    "UNIT_CODES",
+    "InForce",
+    "MoneyInputs",
+    "SettingInForce",
+    "StageAt",
+    "StopInForce",
+    "StopsInForce",
+    "TriggerInForce",
+    "covered_keys",
+    "in_force",
+    "margin_line_on",
+    "money_inputs",
+    "net_credit",
+    "setting_of",
+    "settings_of",
+    "stops_of",
+    "triggers_of",
+]

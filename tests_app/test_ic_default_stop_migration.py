@@ -50,22 +50,40 @@ def _stop_shape(body: dict) -> tuple:
     return body["guards"].get(MARGIN), t16["on"], t16["weekly"], t16["monthly"]
 
 
-async def test_a_fresh_database_ships_the_adr247_iron_condor_as_a_new_version_seed_kept(db):
+async def test_a_fresh_database_ships_the_adr247_iron_condor_as_its_seed(db):
+    """Orchestrator decision (5), step 3 r3: the seed (system_playbooks.json, built by scripts/build_system_playbooks.py)
+    matches migration 0040, so a fresh install ships the ADR-247 iron condor as version 1 and 0040 writes nothing
+    (its re-runnable no-op); an existing database gets 0040's version 2 (tests below)."""
     history = await sys_store.history(db, "ic")
-    assert [(v.version, v.reason) for v in history] == [(2, M40.REASON), (1, "seed")]
-    new, seed = history[0].body, history[1].body
-    assert _stop_shape(seed) == ("4", True, T16_VALUES, T16_VALUES)  # version 1 kept, never overwritten
-    assert _stop_shape(new) == (None, False, T16_VALUES, T16_VALUES)  # margin stop and T-16 off, values kept
-    assert new["guards"]["stop_line_pct_of_max_loss"] == "50"
-    # nothing else in the body moved
-    strip = lambda b: {**b, "guards": {k: v for k, v in b["guards"].items() if k != MARGIN},  # noqa: E731
-                       "triggers": {**b["triggers"], "T-16": {**b["triggers"]["T-16"], "on": None}}}
-    assert strip(new) == strip(seed)
-    # every other strategy type is untouched: version 1 only
+    assert [(v.version, v.reason) for v in history] == [(1, "seed")]
+    seed = history[0].body
+    assert _stop_shape(seed) == (None, False, T16_VALUES, T16_VALUES)  # margin stop and T-16 off, values kept
+    assert seed["guards"]["stop_line_pct_of_max_loss"] == "50"
     others = (await db.execute(text(
         "SELECT count(*) FROM public.system_playbook_versions WHERE strategy_type <> 'ic' AND version > 1")
     )).scalar_one()
     assert others == 0
+
+
+async def test_adr247_saved_at_is_the_first_ic_version_with_the_adr247_stop_shape(db):
+    """ADR-250: the cutoff a saved plan is compared with (``playbook_store.adr247_saved_at``); a plan accepted before
+    it keeps its own stops, one accepted at or after it gets the ADR-247 default."""
+    import dataclasses  # noqa: PLC0415
+    import datetime  # noqa: PLC0415
+
+    cutoff = await pbs.adr247_saved_at(db)
+    seed_at = (await db.execute(text(
+        "SELECT saved_at FROM public.system_playbook_versions WHERE strategy_type = 'ic' AND version = 1"))).scalar_one()
+    assert cutoff == seed_at
+
+    @dataclasses.dataclass
+    class _Plan:
+        accepted_at: datetime.datetime
+
+    second = datetime.timedelta(seconds=1)
+    assert await check.plan_saved_before_adr247(db, _Plan(cutoff - second)) is True
+    assert await check.plan_saved_before_adr247(db, _Plan(cutoff)) is False
+    assert await check.plan_saved_before_adr247(db, _Plan(cutoff + second)) is False
 
 
 async def test_existing_user_copies_and_plans_keep_the_margin_stop_when_the_version_lands(db):

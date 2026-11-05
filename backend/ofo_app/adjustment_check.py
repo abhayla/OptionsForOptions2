@@ -55,7 +55,12 @@ from ofo.adjustment.strategy_type import strike_gap_of, type_of
 from ofo.engine import adjust_money
 from ofo.engine.legs import Action, Instrument, Leg
 from ofo.engine.metrics import UNLIMITED
-from ofo.errors.explanations import LEVEL_WATCH_LABEL_TEXT, PLAYBOOK_DAY_RULE_ACTION_TEXT, render_explanation
+from ofo.errors.explanations import (
+    LEVEL_WATCH_LABEL_TEXT,
+    PLAYBOOK_DAY_RULE_ACTION_TEXT,
+    STOP_LABEL_TEXT,
+    render_explanation,
+)
 from ofo.marketdata.day_open import STATED
 from ofo.marketdata.spot_source import SourceState, SpotAnswer
 from ofo.settings import layers
@@ -91,7 +96,7 @@ class Resolved:
     #: ADR-250: a strategy PLAN accepted before the ADR-247 iron condor version (migration 0040) was saved; it keeps
     #: its own stops (per-stage T-06 / T-16) and gains no 2x-credit line. Read in ``resolve`` from the plan's
     #: ``accepted_at`` (kept on every re-save) against ``playbook_store.adr247_saved_at``; False for every other source
-    saved_before_adr247: bool = False
+    saved_before_adr247: bool = dataclasses.field(kw_only=True)  # REQUIRED, no default (contract step 3 r3)
 
     @property
     def draft(self) -> bool:
@@ -146,17 +151,23 @@ def strategy_type(position: Position, spot: Decimal | None, listed: list | None)
     return found
 
 
+async def plan_saved_before_adr247(conn: Any, plan: Any) -> bool:
+    """ADR-250: a plan accepted before the first iron condor version with the ADR-247 stop shape was saved (the plan's
+    ``accepted_at`` survives every re-save). No such version (cannot happen after 0040) -> True: keep its own stops."""
+    cutoff = await playbook_store.adr247_saved_at(conn)
+    return cutoff is None or plan.accepted_at < cutoff
+
+
 async def resolve(conn: Any, user_ref: str, strategy_id: int, stype: str | None) -> Resolved:
     plan = await playbook_store.plan_for(conn, user_ref, strategy_id)
     if plan is not None:
-        cutoff = await playbook_store.adr247_saved_at(conn)
         return Resolved("plan", plan.body, plan.playbook_id, None, False,
-                        saved_before_adr247=cutoff is None or plan.accepted_at < cutoff)
+                        saved_before_adr247=await plan_saved_before_adr247(conn, plan))
     if stype is None:
-        return Resolved("none", None, None, None, False)
+        return Resolved("none", None, None, None, False, saved_before_adr247=False)
     pb = await playbook_store.active_for(conn, user_ref, stype)
     return Resolved("system" if pb.is_system else "active", pb.body, pb.id, pb.status if pb.is_system else None,
-                    pb.is_system)
+                    pb.is_system, saved_before_adr247=False)
 
 
 def _limit_value(v: Any) -> Decimal | str:
@@ -522,6 +533,8 @@ def trigger_words(body: Mapping | None, trigger_id: str | None) -> tuple[str | N
     """(label, unit) of a trigger as the evaluated body holds them; (None, None) for a body or trigger without them.
     A day rule (GC-IC1 1a, ``day.<when>.<HHMM>.<n>``): its action's catalogue words and "%" (its value is a distance
     from spot in %)."""
+    if trigger_id == pe.sl.CREDIT_RULE:  # contract step 3: the 2x-credit stop line, catalogue words, rupees
+        return STOP_LABEL_TEXT["credit_x"], "Rs"
     watched = level_watch.direction_of(trigger_id)  # GC-IC1 4c (A-37): its words by direction; no unit
     if watched is not None:
         return LEVEL_WATCH_LABEL_TEXT[watched], None

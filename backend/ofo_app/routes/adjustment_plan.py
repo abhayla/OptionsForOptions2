@@ -231,13 +231,14 @@ _STOP_SLOTS = {in_force_mod.STOP_MAX_LOSS: "pct", in_force_mod.STOP_CREDIT: "mul
 _STOP_GUARD_KEYS = (STOP_KEY, in_force_mod.STOP_CREDIT_KEY, MARGIN_KEY)
 
 
-def _stop_words(body: dict, guards: dict) -> Any:
+def _stop_words(body: dict, guards: dict, saved_before: bool) -> Any:
     """ADR-247: the ACTIVE stops from the ONE settings-in-force stops list (``settings_in_force.stops_of``: 50 % of max
     loss, N x the credit received, % of margin only when on), joined "..., whichever comes first". A body that says
     nothing about any stop gets no words."""
     if not any(k in guards for k in _STOP_GUARD_KEYS):
         return None
-    lines = in_force_mod.stops_of(check.Resolved("plan", body, None, None, False), None).lines
+    lines = in_force_mod.stops_of(check.Resolved("plan", body, None, None, False, saved_before_adr247=saved_before),
+                                  None).lines
     parts = [render_explanation(_STOP_WORD_IDS[x.kind], **{_STOP_SLOTS[x.kind]: format(x.figure, "f")})
              for x in lines if x.active and x.figure is not None]
     if not parts:
@@ -251,19 +252,19 @@ def _stop_words(body: dict, guards: dict) -> Any:
     return render_explanation("plan_stop_words_first", words=joined)
 
 
-def _words(body: dict, guards: dict) -> tuple[Any, Any]:
+def _words(body: dict, guards: dict, saved_before: bool) -> tuple[Any, Any]:
     """GC-ADJ2 item 3: what the target and the stop numbers ARE, in words from the catalogue (the number stays the
     input). The stop words come from the stops in force (ADR-247), not from the guards the body happens to hold."""
     target = _read_percent(guards, TARGET_KEY)
     t_words = None if target is None else render_explanation("plan_target_words", pct=format(target, "f"))
-    return t_words, _stop_words(body, guards)
+    return t_words, _stop_words(body, guards, saved_before)
 
 
-def _values(body: dict) -> dict[str, Any]:
+def _values(body: dict, saved_before: bool) -> dict[str, Any]:
     found = body.get("guards")
     guards: dict = found if isinstance(found, dict) else {}
     mx = guards.get(MAX_KEY)
-    t_words, s_words = _words(body, guards)
+    t_words, s_words = _words(body, guards, saved_before)
     return {"target": _read_percent(guards, TARGET_KEY), "stop": _read_percent(guards, STOP_KEY),
             "target_words": t_words, "stop_words": s_words,
             "max_adjustments": mx if type(mx) is int else None, "time_exit": _read_clock(guards)}
@@ -349,7 +350,7 @@ async def _plan_out(db: Any, user_ref: str, plan: store.Plan) -> dict[str, Any]:
         except store.PlaybookStoreError:
             name = None
     return {"playbook_id": plan.playbook_id, "playbook_name": name, "accepted_at": plan.accepted_at,
-            **_values(plan.body)}
+            **_values(plan.body, await check.plan_saved_before_adr247(db, plan))}
 
 
 def _in_force_reply(found: in_force_mod.InForce) -> dict[str, Any]:
@@ -381,14 +382,16 @@ async def _sheet(db: Any, user_ref: str, strategy_id: int, stype: str | None, pl
                              "generic_text": render(_GENERIC) if stype is None else None, "playbooks": [],
                              "plan": None, "prefill": None, "labels": _labels()}
     if stype is None:
-        none = check.Resolved("none", None, None, None, False)
+        none = check.Resolved("none", None, None, None, False, saved_before_adr247=False)
         found = in_force_mod.in_force(user_values, none, money)
         return AdjustmentPlanOut.model_validate(reply | _in_force_reply(found))
     active = await store.active_for(db, user_ref, stype)
     # the playbook in force (as ``adjustment_check.resolve``): the plan copy, else the user's active / the system one
-    resolved = check.Resolved("plan", plan.body, plan.playbook_id, None, False) if plan is not None else \
+    resolved = check.Resolved("plan", plan.body, plan.playbook_id, None, False,
+                              saved_before_adr247=await check.plan_saved_before_adr247(db,
+                                                                                       plan)) if plan is not None else \
         check.Resolved("system" if active.is_system else "active", active.body, active.id,
-                       active.status if active.is_system else None, active.is_system)
+                       active.status if active.is_system else None, active.is_system, saved_before_adr247=False)
     reply |= _in_force_reply(in_force_mod.in_force(user_values, resolved, money))
     listed = await store.list_for_type(db, user_ref, stype)
     chosen = active
@@ -398,9 +401,11 @@ async def _sheet(db: Any, user_ref: str, strategy_id: int, stype: str | None, pl
             raise _bad("playbook_id")
         chosen = found
     if plan is not None and pick is None:
-        values, source_id = _values(plan.body), plan.playbook_id if plan.playbook_id is not None else active.id
+        saved_before = await check.plan_saved_before_adr247(db, plan)
+        values = _values(plan.body, saved_before)
+        source_id = plan.playbook_id if plan.playbook_id is not None else active.id
     else:
-        values, source_id = _values(chosen.body), chosen.id
+        values, source_id = _values(chosen.body, False), chosen.id  # a playbook, not a saved plan
     reply |= {"type_name": render_explanation("adjust_check_type_name", name=SHOWN_NAMES[stype]),
               "playbooks": [_playbook_row(p, active.id) for p in listed],
               "plan": None if plan is None else await _plan_out(db, user_ref, plan),
