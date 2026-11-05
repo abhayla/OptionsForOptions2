@@ -732,6 +732,7 @@ def build_approach(position: Position, chain: Sequence[ChainRow], spot: Decimal,
                 targets[si] = atm
                 targets[wi] = atm + (legs[wi].strike - legs[si].strike)
             trades, after, closed = b.replace(b.land(targets))
+            b.guard_debit(trades)  # design decision 15: A-11 is a roll too, so the same ADR-230 (1) debit limit
     except _Refused as refused:
         refusal: str | None = refused.reason
         refusal_message: UserFacingError | None = refused.message
