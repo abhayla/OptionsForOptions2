@@ -100,7 +100,8 @@ async def test_adj02_worker_opens_three_records_the_screen_check_names_them_and_
     await _opened(app_db_url, sid)
     first = await _check(sid)
     recs = await _records(app_db_url, sid)
-    assert sorted((r.rule_id, r.outcome) for r in recs) == [("T-01", "open"), ("T-03", "open"), ("T-09", "open"), ("sit.S-02", "open")]
+    assert sorted((r.rule_id, r.outcome) for r in recs) == [
+        ("T-01", "open"), ("T-03", "open"), ("T-09", "open"), ("sit.S-02", "open")]
     assert len({r.group for r in recs}) == 1 and recs[0].group  # one check = one group (REQ-045 AC-8)
     assert {r.source for r in recs} == {"system"}
     assert sorted((r.value, r.threshold) for r in recs if r.rule_id == "T-01") == [
@@ -221,7 +222,7 @@ async def test_a_dismissed_flag_shows_the_note_and_the_screen_check_writes_nothi
                    if x["kind"] == "flag" and x["rule_id"] != "T-01")
     recs = await _records(app_db_url, sid)
     assert sorted((r.rule_id, r.outcome) for r in recs) == [
-        ("T-01", "dismissed"), ("T-03", "open"), ("T-09", "open"), ("sit.S-02", "open")]  # attack 4: the others unaffected
+        ("T-01", "dismissed"), ("T-03", "open"), ("T-09", "open"), ("sit.S-02", "open")]  # attack 4: others unaffected
     async with app_db_url.begin() as conn:  # attack 5: the hold is per strategy (the seed makes one ADJ-02 strategy)
         assert list(await playbook_store.dismissed_holding(conn, "owner", sid)) == ["T-01"]
         assert await playbook_store.dismissed_holding(conn, "owner", sid + 1000) == {}
