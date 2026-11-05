@@ -69,8 +69,12 @@ async def _start(app_db_url, monkeypatch, margin: _Margin | None):
     return sid, scn, now, worker
 
 
-async def _run(worker, now, seconds: int) -> None:
-    for _ in range(seconds):
+async def _run(worker, scn, now, seconds: int) -> None:
+    """One-second cycles with a refresh pass after each; spot ticks 23000 / 23001 every 10 s (T-01 stays clear), so
+    each 10 s check is a fresh evaluation (an unchanged feed is not re-evaluated)."""
+    for i in range(seconds):
+        if i % 10 == 0:
+            bw._push_spot(scn, "23001" if (i // 10) % 2 else bw.BEFORE_CROSS_SPOT, now[0])
         await worker.cycle()
         await worker.refresh_margins()
         now[0] += datetime.timedelta(seconds=1)
@@ -81,9 +85,9 @@ def _t14_answers(worker) -> list:
 
 
 async def test_t14_crossing_raises_exactly_one_record_and_not_crossing_none(app_db_url, monkeypatch):
-    sid, _scn, now, worker = await _start(app_db_url, monkeypatch, margin := _Margin(D("1000000000"), CLOCK0))
+    sid, scn, now, worker = await _start(app_db_url, monkeypatch, margin := _Margin(D("1000000000"), CLOCK0))
     base = await _t14_total(app_db_url, sid)
-    await _run(worker, now, 150)  # two 1-minute closes with the huge margin: checked, clear
+    await _run(worker, scn, now, 150)  # two 1-minute closes with the huge margin: checked, clear
     assert worker.errors == []
     assert await _t14_total(app_db_url, sid) == base  # not crossing: 0 records
     answers = _t14_answers(worker)
@@ -91,16 +95,16 @@ async def test_t14_crossing_raises_exactly_one_record_and_not_crossing_none(app_
     assert not any(isinstance(r, pe.NotChecked) for r in answers[-5:]), answers[-5:]  # checked, not skipped
     margin.value = D("1000")  # the margin falls: the worst 1% loss is far over the stage value
     worker.margins._entries.clear()  # the next refresh reads the new figure now (refresh window is 5 min)
-    await _run(worker, now, 150)
+    await _run(worker, scn, now, 150)
     assert worker.errors == []
     assert await _t14_total(app_db_url, sid) == base + 1  # crossing: exactly 1 record
     assert isinstance(_t14_answers(worker)[-1], pe.Flag)
 
 
 async def test_t14_margin_absent_raises_no_record_and_answers_not_checked(app_db_url, monkeypatch):
-    sid, _scn, now, worker = await _start(app_db_url, monkeypatch, None)
+    sid, scn, now, worker = await _start(app_db_url, monkeypatch, None)
     base = await _t14_total(app_db_url, sid)
-    await _run(worker, now, 150)
+    await _run(worker, scn, now, 150)
     assert worker.errors == []
     assert await _t14_total(app_db_url, sid) == base
     answers = _t14_answers(worker)
