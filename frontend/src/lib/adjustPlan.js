@@ -15,7 +15,7 @@ const count = (v) => (Number.isInteger(v) ? String(v) : '')
 /** The sheet's form values from a prefill or plan (server values as text; empty text = the server holds none). */
 export const formOf = (src) => ({
   playbookId: src?.playbook_id ?? null,
-  target: decimal(src?.target), stop: decimal(src?.stop), maxAdjustments: count(src?.max_adjustments),
+  target: decimal(src?.target), stop: decimal(src?.stop), stopShown: decimal(src?.stop), maxAdjustments: count(src?.max_adjustments),
   timeExit: clockText(src?.time_exit),
   targetWords: text(src?.target_words), stopWords: text(src?.stop_words), // what the numbers are, the server's words
 })
@@ -57,7 +57,8 @@ export const asIsBody = (playbookId) => ({ playbook_id: playbookId })
 export function saveBody(form) {
   const body = { playbook_id: form.playbookId }
   if (form.target.trim() !== '') body.target = form.target.trim()
-  if (form.stop.trim() !== '') body.stop = form.stop.trim()
+  // ADR-252 addendum: a stop left as the sheet showed it is not sent (the server also compares; this is the first layer)
+  if (form.stop.trim() !== '' && form.stop.trim() !== (form.stopShown ?? '').trim()) body.stop = form.stop.trim()
   if (form.maxAdjustments.trim() !== '') body.max_adjustments = form.maxAdjustments.trim()
   if (form.timeExit.trim() !== '') body.time_exit = form.timeExit.trim()
   return body
