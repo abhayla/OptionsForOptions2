@@ -23,7 +23,12 @@ from worker_records import lapse_through_worker, open_flags
 app_db_url = check_test.app_db_url  # the fresh-database fixture of the check test
 
 OK, NOT_FOUND, CONFLICT, INVALID = 200, 404, 409, 422
-ADJ02_FLAGS = 3  # T-01, T-03, T-09 (ADJ-02.json triggers_fired)
+#: T-01, T-03, T-09 (ADJ-02.json triggers_fired) + the situation rule sit.S-02 "Trending day" (ADJ-02.json
+#: expected.situations == ["S-02"]; a rule since GC-IC1 6a, 9faf4a28, ADR-240 (3): |net delta per lot| >= 0.15).
+#: Measured 2026-11-05 at 9e8e4eae (lead log lead-opps-9e8e.log): 4 records, the 4th ('sit.S-02', 'open',
+#: label 'Trending day'). This test predated 6a and still said 3 (test_adjustment_check filters sit.* out instead).
+ADJ02_FLAGS = 4
+S02_THRESHOLD = Decimal("0.1500")  # other.situation_net_delta_per_lot, default 0.15 (REQ-167 AC-4)
 SYSTEM_LABEL = "Adjustment opportunity detected"
 OWN_LABEL = "Your rule was triggered"
 
@@ -95,11 +100,13 @@ async def test_adj02_worker_opens_three_records_the_screen_check_names_them_and_
     await _opened(app_db_url, sid)
     first = await _check(sid)
     recs = await _records(app_db_url, sid)
-    assert sorted((r.rule_id, r.outcome) for r in recs) == [("T-01", "open"), ("T-03", "open"), ("T-09", "open")]
+    assert sorted((r.rule_id, r.outcome) for r in recs) == [("T-01", "open"), ("T-03", "open"), ("T-09", "open"), ("sit.S-02", "open")]
     assert len({r.group for r in recs}) == 1 and recs[0].group  # one check = one group (REQ-045 AC-8)
     assert {r.source for r in recs} == {"system"}
     assert sorted((r.value, r.threshold) for r in recs if r.rule_id == "T-01") == [
         (Decimal("0.3416"), Decimal("0.5000"))]
+    s02 = next(r for r in recs if r.rule_id == "sit.S-02")
+    assert (s02.threshold, s02.cmp, s02.value >= S02_THRESHOLD) == (S02_THRESHOLD, "ge", True)
     flag_ids = {x["rule_id"]: x["suggestion_id"] for x in first["results"] if x["kind"] == "flag"}
     assert flag_ids == {r.rule_id: r.id for r in recs}
     await _check(sid)  # attack 1: more checks -> still exactly 3 records, not 6
@@ -109,9 +116,9 @@ async def test_adj02_worker_opens_three_records_the_screen_check_names_them_and_
     assert len(_mine(inbox, sid)) == 1
     g = _mine(inbox, sid)[0]
     assert (g["strategy_id"], g["strategy_name"], g["label"], g["summary"], g["has_open"]) == (
-        sid, f'"{seed_mod.strategy_name("ADJ-02")}"', SYSTEM_LABEL, "3 adjustment conditions triggered", True)
-    assert [(r["rule_id"], r["outcome_text"], r["can_act"]) for r in g["records"]] == [
-        ("T-01", "Open", True), ("T-03", "Open", True), ("T-09", "Open", True)]
+        sid, f'"{seed_mod.strategy_name("ADJ-02")}"', SYSTEM_LABEL, "4 adjustment conditions triggered", True)
+    assert sorted((r["rule_id"], r["outcome_text"], r["can_act"]) for r in g["records"]) == [
+        ("T-01", "Open", True), ("T-03", "Open", True), ("T-09", "Open", True), ("sit.S-02", "Open", True)]
     assert g["records"][0]["condition"] == "Spot within this % of a short strike: 0.3416 % (rule 0.5000 %)"
     assert {c["outcome"]: c["count"] for c in inbox["counts"]}["open"] == ADJ02_FLAGS and inbox["empty_text"] is None
     assert all(r["outcome"] != "open" for x in inbox["groups"] if x is not g for r in x["records"])
@@ -163,7 +170,7 @@ async def test_acted_on_and_the_paper_wording(app_db_url, monkeypatch):
     answer = await _check(sid)  # T-03 still flagged, its record final: the screen opens no new one (ADR-237 (6))
     assert {x["rule_id"]: x["suggestion_id"] for x in answer["results"] if x["kind"] == "flag"}["T-03"] is None
     assert sorted((r.rule_id, r.outcome) for r in await _records(app_db_url, sid)) == [
-        ("T-01", "open"), ("T-03", "acted_on"), ("T-09", "open")]
+        ("T-01", "open"), ("T-03", "acted_on"), ("T-09", "open"), ("sit.S-02", "open")]
 
 
 async def test_another_users_record_is_not_found_and_nothing_is_written(app_db_url, monkeypatch):
@@ -214,7 +221,7 @@ async def test_a_dismissed_flag_shows_the_note_and_the_screen_check_writes_nothi
                    if x["kind"] == "flag" and x["rule_id"] != "T-01")
     recs = await _records(app_db_url, sid)
     assert sorted((r.rule_id, r.outcome) for r in recs) == [
-        ("T-01", "dismissed"), ("T-03", "open"), ("T-09", "open")]  # attack 4: T-03 / T-09 unaffected
+        ("T-01", "dismissed"), ("T-03", "open"), ("T-09", "open"), ("sit.S-02", "open")]  # attack 4: the others unaffected
     async with app_db_url.begin() as conn:  # attack 5: the hold is per strategy (the seed makes one ADJ-02 strategy)
         assert list(await playbook_store.dismissed_holding(conn, "owner", sid)) == ["T-01"]
         assert await playbook_store.dismissed_holding(conn, "owner", sid + 1000) == {}
@@ -276,7 +283,7 @@ async def test_card_mark_counts_open_records_and_goes_when_the_last_is_dismissed
     assert (await _card(sid))["open_opportunities_text"] is None  # the screen's check records nothing
     await _opened(app_db_url, sid)
     card = await _card(sid)
-    assert (card["open_opportunities"], card["open_opportunities_text"]) == (ADJ02_FLAGS, "3 adjustment opportunities")
+    assert (card["open_opportunities"], card["open_opportunities_text"]) == (ADJ02_FLAGS, "4 adjustment opportunities")
     records = await _records(app_db_url, sid)
     for r in records[:-1]:
         status, _ = await _call("POST", f"/api/adjustment-opportunities/{r.id}/dismiss", {"reason": "other"})
@@ -331,9 +338,14 @@ async def test_t19_list_line_names_the_same_approach_and_cost_as_the_check(app_d
     assert clock["condition"] == "Clock time reached (checked in this stage): 15:00 (rule 14:30)"
     flag = next((x for x in first["results"] if x["kind"] == "flag" and x["trigger_id"] == "T-19"), None)
     assert flag is not None, [(x["kind"], str(x["reason"])[:400]) for x in first["results"] if x["trigger_id"] == "T-19"]
-    assert "cheapest adjustment that could be priced now: Close the tested spread, cost ₹" in flag["condition"]
+    # Measured 2026-11-05 (t19_support.cheapest on ADJ-43, the same cheapest_offered): A-26 "Close the untested side
+    # for profit" (built since GC-IC1 s2, c899dccb) costs 26.86 < A-28's, 2 offered approaches unpriced; premium left
+    # 19.50 / 26.86 = 0.7260, the flag's value. The #629 wording (9ab9aabf) reads "we could price".
+    assert flag["condition"] == ("Premium still left to earn is below this many x the adjustment's cost: 0.7260 "
+                                 "(rule 1.0000); cheapest adjustment we could price: Close the untested side for "
+                                 "profit, cost ₹26.86. 2 could not be priced.")
     rec = next(r for r in await _records(app_db_url, sid) if r.rule_id == "T-19")
-    assert rec.approach == "A-28" and rec.approach_cost is not None and rec.approach_cost > 0
+    assert (rec.approach, rec.approach_cost, rec.unpriced) == ("A-26", Decimal("26.86"), 2)
     assert f"₹{rec.approach_cost}" in flag["condition"]
     g = _mine(await _inbox(), sid)[0]
     listed = next(r for r in g["records"] if r["rule_id"] == "T-19")

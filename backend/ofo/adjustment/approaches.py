@@ -85,9 +85,8 @@ from ofo.engine.legs import Action, Instrument, Leg
 from ofo.engine.model import live_book
 from ofo.errors import LegValue, UserFacingError, render
 from ofo.errors.explanations import (
-    ADJUSTMENT_APPROACH_LABEL_TEXT,
+    BUILT_APPROACH_NAMES,
     EXIT_REDUCE_BUILT,
-    PLAYBOOK_APPROACH_LABEL_TEXT,
     ROLL_BUILT,
 )
 from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS, Catalogue
@@ -100,8 +99,7 @@ from ofo.strategy.leg_edit import EditLeg, LegEditRefused, Listing
 
 APPROACH_IDS = ("A-36", "A-01", "A-05", "A-29", "A-28", "A-11", "A-31", *EXIT_REDUCE_BUILT, *ROLL_BUILT)
 NO_CHANGE = APPROACH_IDS[0]  # A-36 "No change": always compared, always the first column (REQ-156 AC-1, AC-4)
-NAMES = {**ADJUSTMENT_APPROACH_LABEL_TEXT,
-         **{a: PLAYBOOK_APPROACH_LABEL_TEXT[a] for a in (*EXIT_REDUCE_BUILT, *ROLL_BUILT)}}
+NAMES = dict(BUILT_APPROACH_NAMES)  # one home: the same table the ApproachLabel slot validates on
 KINDS = {"A-36": "none", "A-01": "roll", "A-05": "roll", "A-29": "reduce", "A-28": "close_part", "A-11": "convert",
          "A-31": "exit", "A-24": "exit", "A-25": "reduce", "A-26": "close_part", "A-27": "close_part", "A-35": "exit",
          "A-02": "roll", "A-04": "roll", "A-06": "roll"}
