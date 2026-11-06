@@ -122,12 +122,26 @@ const actedSuggestionIds = computed(() => opportunitiesFromQuery(route.query.act
 // REQ-112: how many orders the prepared basket held (`basket=4`, set by prepare, travels with `acted`); sent with the
 // paper orders so the server can tell completed from partly completed. Anything but a whole 1..64 is not sent.
 const preparedBasketLegs = computed(() => { const n = String(route.query.basket ?? ''); return /^(?:[1-9]|[1-5]\d|6[0-4])$/.test(n) ? n : null }) // stays a string like the ids: the server's model reads it as a whole number
-function prepareApproach({ legs: next, suggestionIds = [], basketLegs = 0 }) { // the chosen approach's legs become the builder's legs; no order is placed
+async function prepareApproach({ legs: next, suggestionIds = [], basketLegs = 0, exit = false }) { // the chosen approach's legs become the builder's legs; no order is placed
   const { adjust: _gone, pick: _picks, opp: _opp, acted: _acted, basket: _basket, ...rest } = route.query
   const acted = opportunitiesFromQuery(suggestionIds.join(','))
   const size = Number.isInteger(basketLegs) && basketLegs > 0 && basketLegs <= 64 ? { basket: String(basketLegs) } : {}
+  const id = adjustId.value
   router.replace({ query: acted.length ? { ...rest, acted: acted.join(','), ...size } : rest })
-  setLegs(next)
+  if (!exit) { setLegs(next); return }
+  // a full exit: the same path as the book's Exit all (Drafts Mode, legs none, the confirm list opens); the user confirms there
+  try {
+    const read = id ? await readPaperBook(api, id) : { kind: 'plan' }
+    if (read.kind === 'paper') {
+      enterDrafts(read.book.strategy_id ?? Number(id), read)
+      exitAllPaper()
+      return
+    }
+  } catch (e) {
+    openError.value = unreadableParts(e)
+    return
+  }
+  setLegs(next) // no paper book to edit: the closing orders show as the builder's legs
 }
 // a 404/409 to a basket naming records: a refused record (or the strategy gone or changed); the same ids would be
 // refused on every retry. A 422 (price, contract) is fixed by the user and keeps them.

@@ -83,7 +83,7 @@ import { istTime } from '@/lib/displayFormat'
 import { plainName } from '@/lib/saveDraft'
 
 const props = defineProps({
-  client: { type: Object, default: () => api }, // the api module; a test passes a stand-in
+  client: { type: [Object, Function], default: () => api }, // the api module; a test passes a stand-in
 })
 const state = ref('loading') // loading | ready | error
 const reply = ref(null)

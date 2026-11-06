@@ -234,3 +234,36 @@ export function legsFromApproach(underlying, approach, contracts, capturedAt) {
   }
   return out.length ? out : null
 }
+
+/** An approach that leaves nothing open (its After legs are empty): the whole strategy is closed. */
+export const isFullExit = (approach) => (approach?.after_legs ?? []).length === 0 && (approach?.trades ?? []).length > 0
+
+/** The closing orders of a full-exit approach as builder legs: each trade is matched to the catalogue contract with the same
+ *  trading symbol; side and lots are the trade's own (the side opposite to the open position), the price its entry. Null when any
+ *  trade has no contract (fail closed). */
+export function exitLegsFromApproach(underlying, approach, contracts, capturedAt) {
+  const bySymbol = new Map(contracts.map((c) => [c.symbol, c]))
+  const out = []
+  for (const [i, t] of (approach.trades ?? []).entries()) {
+    const c = bySymbol.get(t.tradingsymbol)
+    if (!c) return null
+    out.push({
+      id: `adjust-exit-${i}`,
+      underlying,
+      instrument_id: `${c.exchange_segment}:${c.exchange_token}`,
+      contract_id: c.contract_id,
+      symbol: c.symbol,
+      expiry: c.expiry,
+      instrument_type: c.instrument_type,
+      strike: c.strike,
+      lot_size: c.lot_size,
+      action: t.action,
+      lots: t.lots,
+      planned_entry: t.price,
+      captured_at: capturedAt ?? null,
+      source: null,
+      reason_code: capturedAt ? null : 'needs_reprice',
+    })
+  }
+  return out.length ? out : null
+}
