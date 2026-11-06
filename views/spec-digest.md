@@ -4,29 +4,9 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (241)
+## Decisions (261)
 
-- Older decisions: 201 rows, ADR-1..ADR-205 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
-- ADR-206 2026-10-28: (1) Confirmed as written: a strategy started from the builder ("Start tracking", REQ-109) is record… [REQ-142 held (title marked); no change to ADR-165…]
-- ADR-207 2026-10-29: (1) PLACE: the builder has an "Add to Paper" button (Sensibull "Add to Drafts", study 166-173) that… [SPEC CHANGE to REQ-081 AC-9 and ADR-164 (percenta…]
-- ADR-208 2026-10-29: (1) Every what-if figure (target level and target date, REQ-084) carries the label "Estimate from t… [refines REQ-084 AC-2 and AC-5 (wording written th…]
-- ADR-209 2026-10-29: On a paper strategy (REQ-109), the what-if P&L at the target level and date (REQ-084 AC-4) and the… [refines REQ-084 AC-4 (text written there in the s…]
-- ADR-210 2026-10-29: A paper or what-if figure that cannot be shown displays "-" with one of these sentences (REQ-152 AC… [refines REQ-109 and REQ-084 AC-5 (no wording ther…]
-- ADR-211 2026-10-29: (1) The projected badge at exactly zero reads "Projected P/L: 0" (Sensibull's own words: badge "Pro… [refines REQ-144 AC-3 and AC-4 and REQ-109 (paper…]
-- ADR-212 2026-10-30: SPEC CHANGE to REQ-109 AC-5. [SPEC CHANGE to REQ-109 AC-5 (after hours the last…]
-- ADR-213 2026-10-30: SPEC CHANGE to ADR-077 / REQ-049 AC-5 for the NIFTY 50 and SENSEX index strip. [SPEC CHANGE to ADR-077 / REQ-049 AC-5 for the ind…]
-- ADR-214 2026-10-30: Where adjustments sit in the app. [Places REQ-045 AC-7/AC-9 and REQ-046 on named scr…]
-- ADR-215 2026-10-31: In the approach compare (REQ-156), the four "Greeks after" rows (net delta, gamma, theta, vega) des… [Extends REQ-156 AC-3 (one sentence added). Keeps…]
-- ADR-216 2026-10-31: The iron condor system playbook ships with the catalogue's PB-04 numbers, no longer labelled "Draft… [Narrows REQ-158 AC-2 (iron condor no longer Draft…]
-- ADR-217 2026-10-31: When the user dismisses an adjustment opportunity, the same rule on the same strategy opens no new… [Adds REQ-112 AC-7 (REQ-112 AC-2 defined "Dismisse…]
-- ADR-220 2026-10-31: (1) Server roles. [Adds REQ-166 (calculation speeds and the safety v…]
-- ADR-221 2026-10-31: The T-19 trigger ("premium still left to earn is below N x the adjustment's cost") uses, at each ch… [Settles the gap in REQ-159 "How the open triggers…]
-- ADR-222 2026-10-31: (1) No rupee amount, rate, percentage or threshold that changes a figure a user sees is typed in co… [Builds the "admin settings" ADR-082 (charge rates…]
-- ADR-230 2026-10-31: (1) Playbook liquidity limits (REQ-159 AC-6; finding F-78). [Answers Q-ADJ3-2..5 (docs/process/owner-questions…]
-- ADR-231 2026-11-01: A playbook's "Most debit paid for one roll" written as "Rs 500 or 10% of max profit" allows a roll… [Answers Q-MU-1 (docs/process/owner-questions-2026…]
-- ADR-232 2026-11-01: The Live Strategies card's "N adjustment opportunities" (ADR-230 (2)) counts the strategy's OPEN su… [Answers Q-MU-2 (docs/process/owner-questions-2026…]
-- ADR-233 2026-11-02: (1) The default of the admin setting for background playbook checks (REQ-166 AC-1, "background chec… [Amends REQ-165 (statement, AC-1) and REQ-166 (AC-…]
-- ADR-234 2026-11-02: (1) The pricing model stays (ADR-220 (4): Black-Scholes-Merton on each expiry's put-call-parity for… [Applies ADR-220 (4) ("only how a Greek is stated…]
+- Older decisions: 221 rows, ADR-1..ADR-234 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
 - ADR-235 2026-11-02: (1) The background playbook check speed (REQ-166 AC-1 "background checks") is three admin settings,… [ADR-237 (3) (2026-11-02) amends (4): a record ope…]
 - ADR-236 2026-11-02: (1) After the user dismisses an adjustment suggestion, the same rule on the same strategy stays qui… [Amends ADR-217 (a dismiss no longer silences a wo…]
 - ADR-237 2026-11-02: Technical reconciliation of REQ-170 with the existing spec (GC-ALERT1 step 2), decided by the orche… [Amends REQ-170 AC-2 (band base), REQ-112 AC-2 (wh…]
@@ -47,6 +27,26 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-252 2026-11-05: Orchestrator 2026-11-05 ~11:2x IST, decided under the owner's delegation ("For all the strategy rel… [Clarifies ADR-247 (the 50 % is the per-stage T-06…]
 - ADR-253 2026-11-06: Owner 2026-11-06 ~01:2x IST (question tool, "Keep test-data only for now"). [Limits goal contract ic-e2e-paper design decision…]
 - ADR-254 2026-11-06: Owner 2026-11-06 ~02:0x IST (question tool, "Live too"). [Extends REQ-165 to T-19 in the worker; leaves ADR…]
+- ADR-255 2026-11-06: Owner 2026-11-06 ~14:0x IST (question tool, "Partial exits count, Exit all doesn't"). [Refines REQ-161 / REQ-163 / ADR-214 "adjustments…]
+- ADR-256 2026-11-06: Owner 2026-11-06 ~14:0x IST (question tool, "Warn, user confirms"). [Adds a warning to the paper exit confirm list (AD…]
+- ADR-257 2026-11-06: Owner 2026-11-06 ~14:1x IST (question tool, "Ask when arming"). [Extends ADR-207 (5) per-leg stops with an optiona…]
+- ADR-258 2026-11-06: Owner 2026-11-06 ~14:1x IST (question tool, "Reset after each adjustment"). [Extends REQ-159 / F-71 from entry to every adjust…]
+- ADR-259 2026-11-06: Owner 2026-11-06 ~14:1x IST (question tool, "Yes, with final totals"). [Defines "completed" for the Completed Strategies…]
+- ADR-260 2026-11-06: Owner 2026-11-06 ~14:2x IST (question tool, "One list in Alerts"). [Joins REQ-162 alerts into Alerts > Active; define…]
+- ADR-261 2026-11-06: Owner 2026-11-06 ~14:2x IST (question tool, "Yes, 'Compare approaches' always"). [Adds an always-available entry to the compare bes…]
+- ADR-262 2026-11-06: Owner 2026-11-06 ~14:2x IST (question tool, "This should be based on each user preference", then "D… [Replaces the fixed placement rule in the ready-ma…]
+- ADR-263 2026-11-06: Owner 2026-11-06 ~14:3x IST (question tool, "After charges everywhere, labelled"). [Defines the charges basis of every headline money…]
+- ADR-264 2026-11-06: Owner 2026-11-06 ~14:4x IST (question tool: "Yes: admin default, user can change" and "Yes, a lock… [Extends REQ-166 (admin settings) and REQ-138 / RE…]
+- ADR-265 2026-11-06: Owner 2026-11-06 ~14:4x IST (question tool, "Mid, LTP only if no quote"). [SPEC CHANGE: REQ-077 AC-5 capture basis LTP -> mi…]
+- ADR-266 2026-11-06: Decided under the owner's standing delegation for strategy behaviour ("go with your recommendation"… [Extends ADR-265 (capture) to marking for paper P&…]
+- ADR-267 2026-11-06: Decided under the owner's standing delegation for strategy behaviour ("go with your recommendation"… [Exempts A-37 user level watches from the alert-st…]
+- ADR-268 2026-11-06: Decided under the owner's standing delegation for strategy behaviour ("go with your recommendation"… [Fills the intrinsic-value gap for delta-based rul…]
+- ADR-269 2026-11-06: Owner 2026-11-06 ~16:1x IST (question tool, during the live iron condor test): "Consider rollover a… [SPEC CHANGE: ADR-207 (2) no longer covers expiry-…]
+- ADR-270 2026-11-06: Owner 2026-11-06 ~16:2x IST (question tool, after the reason was explained): "Test both and all rel… [SPEC CHANGE: ADR-253 superseded for live; adds th…]
+- ADR-271 2026-11-06: Decided under the owner's standing delegation for strategy and behaviour calls (owner 2026-11-06 ~1… [clarifies ADR-118 (paper orders were not named);…]
+- ADR-272 2026-11-07: Decided under the owner's standing delegation for strategy and behaviour calls (owner 2026-11-06 ~1… [applies ADR-015 to REQ-156 (compare) and REQ-045…]
+- ADR-273 2026-11-07: Decided under the owner's standing delegation for strategy and behaviour calls (owner 2026-11-06 ~1… [SPEC CHANGE REQ-163 AC-1 (adds the approach as a…]
+- ADR-274 2026-11-07: Owner 2026-11-07 ~00:5x IST (question tool): "of course send one combined order". [adds a basket rule for adjustments; REQ-030 AC-11…]
 
 ## Requirements (161)
 
