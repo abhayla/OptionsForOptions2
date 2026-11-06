@@ -8,7 +8,7 @@
     <h2 class="text-lg font-semibold" data-testid="adjust-title">Compare possible approaches{{ name ? `: ${name}` : '' }}</h2>
     <p class="text-sm text-ink-muted" data-testid="adjust-intro">{{ INTRO }}</p>
     <ErrorMessage v-if="state === 'error'" :parts="errorParts" compact prefix="adjust-error" data-testid="adjust-error" />
-    <p v-else-if="state === 'loading'" class="text-sm text-ink-muted" data-testid="adjust-loading">Loading the approaches.</p>
+    <p v-else-if="state === 'loading'" class="text-sm text-ink-muted" data-testid="adjust-loading">Working out the approaches...</p>
 
     <!-- REQ-156 AC-1 / REQ-155 AC-5: no usable spot -> nothing is priced, so only this and each source's reason (no figures) -->
     <div v-else-if="reply && noSpot" class="rounded-lg border border-line bg-surface p-3" data-testid="adjust-no-spot">
@@ -201,6 +201,8 @@ const BREAKDOWN_NOTE = 'Charges are approximate; the lines add up to the cost ab
 const showBreakdown = ref(false)
 const hasBreakdown = (c) => Object.values(c.values ?? {}).some((v) => v?.breakdown?.length)
 
+// live test 2026-11-06 issue 29: the approaches call took 9.5 s against the client's shared 10 s timeout
+const APPROACHES_TIMEOUT_MS = 30000
 const state = ref('loading') // loading | ready | error
 const reply = ref(null)
 const name = ref(null)
@@ -216,7 +218,7 @@ const why = ref(null) // the drawer's layers 1-2 again: { lines, rows } from a t
 async function load() {
   state.value = 'loading'
   try {
-    const res = await props.client.post(`/strategies/${props.strategyId}/adjustment-approaches`, {})
+    const res = await props.client.post(`/strategies/${props.strategyId}/adjustment-approaches`, {}, { timeout: APPROACHES_TIMEOUT_MS })
     reply.value = res.data
     state.value = 'ready'
   } catch (e) {
