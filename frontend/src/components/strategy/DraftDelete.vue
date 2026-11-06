@@ -7,8 +7,8 @@ import { computed } from "vue";
 import { strategyLabel } from "@/lib/saveDraft";
 import {
   DELETE_CONFIRM_TEXT,
-  DELETE_REFUSED_TEXT,
   canDelete,
+  refusedText,
 } from "@/lib/strategyActivity";
 
 const props = defineProps({
@@ -31,7 +31,7 @@ const rowName = computed(() => strategyLabel(props.row, `Draft ${props.row.id}`)
       data-testid="delete-refused"
       :aria-label="`Delete ${rowName} (not available)`"
       :aria-describedby="`delete-refused-reason-${row.id}`"
-      :title="DELETE_REFUSED_TEXT"
+      :title="refusedText(row)"
     >
       <Icon name="trash" :size="16" />
     </button>
@@ -40,10 +40,10 @@ const rowName = computed(() => strategyLabel(props.row, `Draft ${props.row.id}`)
       role="tooltip"
       class="pointer-events-none absolute right-0 top-full z-10 hidden w-max max-w-56 rounded border border-line bg-surface p-1 text-xs text-ink peer-focus:block"
       data-testid="delete-refused-reason"
-      >{{ DELETE_REFUSED_TEXT }}</span
+      >{{ refusedText(row) }}</span
     >
   </span>
-  <span v-else-if="!canDelete(row)" class="text-ink-muted" data-testid="delete-refused">{{ DELETE_REFUSED_TEXT }}</span>
+  <span v-else-if="!canDelete(row)" class="text-ink-muted" data-testid="delete-refused">{{ refusedText(row) }}</span>
   <button
     v-else-if="flow.confirming !== row.id"
     type="button"

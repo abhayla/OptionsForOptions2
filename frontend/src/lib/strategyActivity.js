@@ -6,6 +6,9 @@ import { draftFromReply } from "@/lib/saveDraft";
 
 /** REQ-070 AC-6: shown INSTEAD of Delete once a basket was sent (or when the server could not say). */
 export const DELETE_REFUSED_TEXT = "Orders were already sent for this strategy, so it cannot be deleted.";
+export const DELETE_REFUSED_PAPER_TEXT = "Can't delete: paper orders were placed";
+/** ADR-271: the refusal wording of one row (paper orders named; a real-order strategy keeps the sent-orders text). */
+export const refusedText = (row) => (row?.has_paper_order === true ? DELETE_REFUSED_PAPER_TEXT : DELETE_REFUSED_TEXT);
 export const DELETE_CONFIRM_TEXT =
   "Delete this draft? Its history is kept, and you can Undo right after.";
 export const NOTHING_TO_UNDO_TEXT = "Nothing to undo";

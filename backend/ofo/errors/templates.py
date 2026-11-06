@@ -950,6 +950,11 @@ _STRATEGY_DRAFT_TEMPLATES: tuple[MessageTemplate, ...] = (
           "Orders were already sent for this strategy, so it cannot be deleted.",
           "The strategy and its history were not changed.", "Deleting this strategy.",
           "Its history stays readable."),
+    # ADR-271: a strategy with a paper order is never deleted either.
+    _gate("strategy_delete_after_paper_order", _SV, 504,
+          "Can't delete: paper orders were placed for this strategy.",
+          "The strategy, its paper orders and its history were not changed.", "Deleting this strategy.",
+          "Finish it and it moves to Completed Strategies, where its result stays."),
     # GC-BP step 5 (REQ-109 AC-4, AC-5): paper exit of tracked legs.
     _gate("tracking_exit_prices_not_live", _SV, 433,
           "Prices are not live; try again when they update.",

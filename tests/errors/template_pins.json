@@ -1619,6 +1619,10 @@
     "sha256": "3d38562149284ea4780da1470db4f1f0a237375d84a7d7e78810cf8bfc73166e",
     "reviewed": "owner read 2026-11-02 (decided in session under owner delegation, independent screen)"
   },
+  "strategy_delete_after_paper_order": {
+    "sha256": "e97b4f5b25044035f9868fd2e660d01b94e2e3444d806674cd92f4a5f21686ca",
+    "reviewed": "pending owner read"
+  },
   "tracking_exit_prices_not_live": {
     "sha256": "8e9b743393a8285037720b57610cc24635474f33cd191315aaaf8dee44f941ba",
     "reviewed": "owner read 2026-11-02 (accepted after independent screen, not read line by line)"

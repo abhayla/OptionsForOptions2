@@ -2191,6 +2191,7 @@ INVENTORY = (
     'FIELD StrategyListOut.strategies[].first_leg.instrument: Identifier',
     'FIELD StrategyListOut.strategies[].first_leg.strike: Identifier',
     'FIELD StrategyListOut.strategies[].first_leg.strike: None',
+    'FIELD StrategyListOut.strategies[].has_paper_order: bool',
     'FIELD StrategyListOut.strategies[].id: int',
     'FIELD StrategyListOut.strategies[].leg_count: int',
     'FIELD StrategyListOut.strategies[].name: CatalogueText',
