@@ -1,4 +1,4 @@
-# ruff: noqa: PLR2004 - scenario numbers are the point
+
 """Issue 65 (entry baseline fallback) and ADR-268 (2) (T-01 at or beyond the short strike), on scenario ADJ-42.
 
 Spec basis: REQ-159 / F-71; ADR-258; ADR-268 (2) "T-01 also flags when spot is at or beyond the short strike".
@@ -27,7 +27,7 @@ def _kinds(state):
 
 
 def test_entry_baseline_from_the_entry_not_the_first_check():
-    """Entry at spot 22850 (T-01 false: 150 points from both shorts, 0.66 %), first check at 22920 (true): the rule flags."""
+    """Entry at spot 22850 (T-01 false: 150 points from both shorts), first check at 22920 (true): it flags."""
     sc = load(F71)
     body, state = body_of(sc), state_of(sc)
     entry = replace(entry_of(sc), spot=D("22850"))

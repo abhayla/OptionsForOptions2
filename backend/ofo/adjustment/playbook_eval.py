@@ -69,7 +69,7 @@ class ShortLeg:
     strike: Decimal
     abs_delta: Decimal | None
     ltp: Decimal | None
-    kind: str | None = None  # "CE" / "PE" (ADR-268: T-01's breached side); None = not known (no breach checked)
+    kind: str | None = None  # "CE" / "PE" (ADR-268: T-01 breached side); None = unknown, no breach check
 
 
 @dataclass(frozen=True)

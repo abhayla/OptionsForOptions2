@@ -22,7 +22,7 @@ ONE_MINUTE_AND_A_BIT = 70
 
 
 def _t01(worker, sid: int):
-    return next(r for r in worker._gate_ctx[sid].evaluation.results if r.rule_id == "T-01")  # noqa: SLF001
+    return next(r for r in worker._gate_ctx[sid].evaluation.results if r.rule_id == "T-01")
 
 
 async def _run(worker, now, seconds: int) -> None:
@@ -32,14 +32,14 @@ async def _run(worker, now, seconds: int) -> None:
 
 
 async def test_core_entry_crossing_stays_quiet_across_a_restart_and_a_new_crossing_opens_exactly_one(
-        app_db_url, monkeypatch):
-    sid, scn = await bw._seeded(app_db_url, monkeypatch)  # noqa: SLF001
+        app_db_url, monkeypatch):  # noqa: F811 - the imported fixture
+    sid, scn = await bw._seeded(app_db_url, monkeypatch)
     scn.data["position"]["entry"]["spot"] = bw.CROSS_SPOT  # T-01 true AT ENTRY (80 points under the 23500 CE)
-    await bw._pin_intraday(app_db_url, sid)  # noqa: SLF001
+    await bw._pin_intraday(app_db_url, sid)
     now = [scn.clock_at]
-    bw._push_spot(scn, bw.CROSS_SPOT, now[0])  # noqa: SLF001
-    base = await bw._last_id(app_db_url, sid)  # noqa: SLF001
-    first = bw._worker(scn, lambda: now[0])  # noqa: SLF001
+    bw._push_spot(scn, bw.CROSS_SPOT, now[0])
+    base = await bw._last_id(app_db_url, sid)
+    first = bw._worker(scn, lambda: now[0])
     await _run(first, now, ONE_MINUTE_AND_A_BIT)
     assert isinstance(_t01(first, sid), pe.AlreadyTrue), _t01(first, sid)
     async with app_db_url.connect() as conn:
@@ -47,28 +47,28 @@ async def test_core_entry_crossing_stays_quiet_across_a_restart_and_a_new_crossi
     assert state["T-01"] == (True, False), state  # held at entry, not seen clear
     first.stop()
 
-    second = bw._worker(scn, lambda: now[0])  # noqa: SLF001 - restarted, still past the line
+    second = bw._worker(scn, lambda: now[0])
     now[0] += bw.ONE_SECOND
     await second.cycle()
     assert isinstance(_t01(second, sid), pe.AlreadyTrue), _t01(second, sid)
     await _run(second, now, ONE_MINUTE_AND_A_BIT)
-    assert await bw._t01_rows(app_db_url, sid, base) == []  # noqa: SLF001 - 0 records for the entry crossing
+    assert await bw._t01_rows(app_db_url, sid, base) == []
 
     now[0] += datetime.timedelta(seconds=5)
-    bw._push_spot(scn, bw.BEFORE_CROSS_SPOT, now[0])  # noqa: SLF001 - clears
+    bw._push_spot(scn, bw.BEFORE_CROSS_SPOT, now[0])
     await _run(second, now, ONE_MINUTE_AND_A_BIT)
     async with app_db_url.connect() as conn:
         assert (await playbook_store.rule_state(conn, "owner", sid))["T-01"] == (True, True)
     second.stop()
 
     now[0] += datetime.timedelta(seconds=5)
-    bw._push_spot(scn, bw.CROSS_SPOT, now[0])  # noqa: SLF001 - a NEW crossing, seen first by a restarted worker
-    third = bw._worker(scn, lambda: now[0])  # noqa: SLF001
+    bw._push_spot(scn, bw.CROSS_SPOT, now[0])
+    third = bw._worker(scn, lambda: now[0])
     now[0] += bw.ONE_SECOND
     await third.cycle()
     first_check = _t01(third, sid)
     await _run(third, now, ONE_MINUTE_AND_A_BIT)
-    rows = await bw._t01_rows(app_db_url, sid, base)  # noqa: SLF001
+    rows = await bw._t01_rows(app_db_url, sid, base)
     print(f"CORE-PROOF strategy={sid} entry_spot={bw.CROSS_SPOT} restart_first_check="
           f"{type(first_check).__name__} records_after_new_crossing={len(rows)} rows={rows}")
     assert isinstance(first_check, pe.Flag), first_check  # memory from the DB: seen clear, so a new crossing flags
