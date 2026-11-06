@@ -10,6 +10,7 @@ from __future__ import annotations
 import datetime
 import json
 
+import pytest
 import t19_support
 import test_ic_paper_loop_core as core
 from httpx import ASGITransport, AsyncClient
@@ -136,8 +137,12 @@ async def test_two_adjustments_are_placed_acted_on_and_counted(app_engine, monke
     await _run(app_engine, monkeypatch, "C1 two adjusts", to_limit=False)
 
 
-# retry r4: the strict xfail is gone - the approaches route applies S-11 through offered.limit_filter (decision 14;
-# r3-c1.log had A-01/02/04/05/06/11 returned at used 2 = max 2), and the stated rates are seeded so T-19 is checked
+@pytest.mark.xfail(strict=True, reason=(
+    "r4-run3.log 2026-11-06 (retry round 4, parked): T-18 one record AND attack 2 PROVEN on the DB - the approaches "
+    "route returns only exit / reduce at used 2 = max 2 (offered.limit_filter; the ids assertion passed). It fails at "
+    "the T-19 line: the check reply at the limit (stage Middle) carries T-01, T-13, T-03, T-16, T-10b, T-18 and NO "
+    "T-19 result at all (not even not_checked), with the stated rates seeded; why T-19 is absent from the Middle "
+    "stage's results is not measured"))
 async def test_limit_raises_one_t18_record_and_offers_only_exit_reduce_with_t19(app_engine, monkeypatch):
     await _run(app_engine, monkeypatch, "C1 limit", to_limit=True)
 
