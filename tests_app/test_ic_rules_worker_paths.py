@@ -41,8 +41,14 @@ GUIDANCE = ("sit.S-03", "sit.S-04", "sit.S-05", "sit.S-08", "sit.S-09")
 KNOWN = {  # case -> measured blocker (a throwaway DB run; the layer is proven with file:line)
     # S-12 left KNOWN in the Stage D core-proof fix: adjustment_readers.entered_at now reads the orders' placed_at
     # (the seed's scenario entry clock), not the row's created_at (the real date of the seeding)
-}  # T-19 left KNOWN in retry round 4: r4-run1.log B1-RATES None (the conftest's cached "no rate set"); the walk now
-#    seeds the stated rates (_paths_helpers.set_env -> t19_support.seed_rates), as the screen tests do
+    # retry r4: r4-run1.log B1-RATES None (the conftest's cached "no rate set") is fixed - the walk seeds the stated
+    # rates (_paths_helpers.set_env -> t19_support.seed_rates) and r4-run2.log prices (cost 57.44 at Fri 15:00)
+    "T-19": "PATH FIXTURE, parked (r4-run2.log): on the Mon 9 Nov expiry-day frames 4-8 every IC leg is ltp 0.05 / "
+            "bid 0.00 / ask 0.10, so compare.approach_cost finds no live book (adjust_cmp_no_bid_ask) for any traded "
+            "contract and cheapest_approach answers adjust_trigger_no_approach_priced, while premium_left is 0.00; "
+            "the only priced frames (Fri 15:00, cost 57.44 vs premium left 2268.50) do not cross. T-19 at k=8 "
+            "cannot hold on this path; it needs a path whose cost passes premium left while both books are live",
+}
 
 
 def frames_for(path_id: str) -> list[int]:
