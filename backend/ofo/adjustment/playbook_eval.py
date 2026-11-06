@@ -775,10 +775,13 @@ def _credit_outcome(state: StrategyState, why: str | None) -> list[_Outcome]:
     return [_Outcome(rid, rid, (Hit(rid, loss, line.amount, "ge", fired),), fired=fired)]
 
 
-def evaluate(body: Mapping, state: StrategyState, memory: Mapping[str, Mapping[str, bool]] | None = None,
-             entry_state: StrategyState | None = None, *, gap_until: str) -> Evaluation:
+def evaluate(body: Mapping, state: StrategyState, memory: Mapping[str, Mapping[str, bool]] | None = None,  # noqa: PLR0913
+             entry_state: StrategyState | None = None, *, gap_until: str,
+             entry_fallback: StrategyState | None = None) -> Evaluation:
     """Evaluate every rule of ``body`` on ``state``; pure (takes the F-71 memory, returns the new one). ``gap_until``
-    is the user's gap-at-open window end "HH:MM" (REQ-168 AC-1; required, never defaulted)."""
+    is the user's gap-at-open window end "HH:MM" (REQ-168 AC-1; required, never defaulted). ``entry_fallback``
+    (issue 65): a rule that cannot be computed on ``entry_state`` (the entry stated only spot and strikes, no Greeks)
+    takes its entry value from this state instead (the first check), never "not held" by default."""
     validate_body(body)
     if not isinstance(gap_until, str) or not re.fullmatch(r"[0-2][0-9]:[0-5][0-9]", gap_until):
         raise ValueError(f"gap_until must be HH:MM, got {gap_until!r}")
@@ -792,8 +795,7 @@ def evaluate(body: Mapping, state: StrategyState, memory: Mapping[str, Mapping[s
     for o in outcomes:
         if o.rule_id not in new:
             if entry is None:
-                entry = ({} if entry_state is None else
-                         {x.rule_id: x.fired for x in _outcomes(body, entry_state, gap_until)[2]})
+                entry = _entry_held(body, entry_state, entry_fallback, gap_until)
             new[o.rule_id] = {"held_at_entry": bool(entry.get(o.rule_id, False)), "seen_clear": False}
         mem = new[o.rule_id]
         if o.reason is not None:
@@ -819,6 +821,18 @@ def evaluate(body: Mapping, state: StrategyState, memory: Mapping[str, Mapping[s
     _add_situation_rules(body, state, why, c.stage_name, (results, clear, values))
     _add_watch_rules(state, why, c.stage_name, (results, clear, values))
     return Evaluation(c.stage_name, c.stage, tuple(results), new, tuple(clear), why, values=tuple(values))
+
+
+def _entry_held(body: Mapping, entry_state: StrategyState | None, fallback: StrategyState | None,
+                gap_until: str) -> dict[str, bool]:
+    """rule id -> held at entry: on ``entry_state``; a rule not computable there, on ``fallback`` (when given)."""
+    if entry_state is None:
+        return {}
+    held = {x.rule_id: x.fired for x in _outcomes(body, entry_state, gap_until)[2] if x.reason is None}
+    if fallback is not None:
+        for x in _outcomes(body, fallback, gap_until)[2]:
+            held.setdefault(x.rule_id, x.fired)
+    return held
 
 
 # ---- day rules (GC-IC1 step 1a; REQ-159 AC-4, REQ-170) -----------------------------------------------------------

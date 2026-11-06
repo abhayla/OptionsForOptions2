@@ -1141,7 +1141,7 @@ async def test_a_recorded_write_is_logged_and_its_stored_memory_is_the_next_chec
         return background.Recorded({"T-01": 7}, stored)
     w = _worker(prov, _watched(scn), now, recorder)
     await w.cycle()
-    assert w._memory[FIRST_ID] == stored.memory
+    assert w._memory[FIRST_ID] == (0, stored.memory)  # (starting point, memory), ADR-258
     assert any("record=7" in r.getMessage() for r in caplog.records)
     now[0] += datetime.timedelta(seconds=2)
     prov.move_spot(Decimal("23421"), now[0])
