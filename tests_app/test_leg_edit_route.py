@@ -992,3 +992,56 @@ def test_gcset_lots_the_leg_edit_route_refuses_lots_above_the_max_lots_setting_w
     assert status == HTTP_UNPROCESSABLE and "at most 500 lots; this leg has 600" in str(reply)
     status, _ = post({"legs": legs(lots=500), "edit": edit}, max_lots=500)
     assert status == HTTP_OK
+
+
+# ---- 2026-11-06: N quick clicks of one relative control arrive as ONE request with steps=N (every click lands) ----
+
+def test_steps_4_on_a_strike_step_moves_four_listed_strikes_like_four_single_clicks():
+    """+ four times on SELL 23400 CE (50-point listed step) -> 23600 CE; - twice -> 23300 CE. Only that leg moves."""
+    status, reply = post({"legs": legs(), "edit": {"control": "step", "index": 2, "direction": 1, "steps": 4}})
+    assert status == HTTP_OK, reply
+    assert strikes(reply) == [22800, 23000, 23600, 23600]
+    status, back = post({"legs": legs(), "edit": {"control": "step", "index": 2, "direction": -1, "steps": 2}})
+    assert status == HTTP_OK, back
+    assert strikes(back) == [22800, 23000, 23300, 23600]
+
+
+def test_steps_on_shift_moves_every_leg_n_steps_and_adds_n_steps_to_the_shift_total():
+    """Shift +1 three times in one request: every option leg +150 and the total +150."""
+    status, reply = post({"legs": rows(START), "edit": {"control": "shift", "direction": 1, "steps": 3}},
+                         capture=priced(), stored=all_stored)
+    assert status == HTTP_OK, reply
+    assert strikes(reply) == [22950, 23150, 23550, 23750]
+    assert reply["shift_total"] == 3 * SHIFT_STEP
+
+
+@pytest.mark.parametrize("bad", [{"control": "multiplier", "multiplier": 2, "steps": 2},
+                                 {"control": "include", "index": 1, "included": False, "steps": 2},
+                                 {"control": "step", "index": 2, "direction": 1, "steps": 0},
+                                 {"control": "step", "index": 2, "direction": 1, "steps": 21},
+                                 {"control": "step", "index": 2, "direction": 1, "steps": "2"}])
+def test_steps_is_only_for_relative_controls_and_is_a_strict_bounded_integer(bad):
+    status, _ = post({"legs": legs(), "edit": bad})
+    assert status == HTTP_UNPROCESSABLE
+
+
+def test_steps_past_the_last_listed_strike_refuses_the_whole_edit():
+    """Fail closed: one step too many refuses the whole request (nothing half-moved), the same text as one click."""
+    one = [{"instrument_id": BY_KEY[("CE", 25750)], "action": "BUY", "lots": 1, "base_lots": 1,
+            "planned_entry": "1.00", "captured_at": STAMP.isoformat()}]
+    status, reply = post({"legs": one, "edit": {"control": "step", "index": 0, "direction": 1, "steps": 2}})
+    assert status == HTTP_UNPROCESSABLE and "no further listed strike" in str(reply) and "legs" not in reply
+
+
+def test_one_timing_line_per_request_names_every_phase(caplog):
+    """The latency probe: one INFO line per request with each phase and the body total."""
+    with caplog.at_level("INFO", logger="ofo_app.routes.leg_edit"):
+        status, _ = post({"legs": rows(START), "edit": {"control": "step", "index": 2, "direction": 1, "steps": 2}},
+                         capture=priced(), stored=all_stored)
+    assert status == HTTP_OK
+    lines = [r.getMessage() for r in caplog.records if r.getMessage().startswith("leg-edit timing")]
+    assert len(lines) == 1
+    for part in ("control=step steps=2", "apply=", "catalogue_scan=", "contract_ids_db=", "capture=", "margin=",
+                 "outcome_engine=", "total="):
+        assert part in lines[0], part
+    print(lines[0])

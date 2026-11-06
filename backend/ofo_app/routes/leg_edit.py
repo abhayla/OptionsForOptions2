@@ -27,6 +27,7 @@ stored and above it (no block), not stored (no block; the order review warns).
 from __future__ import annotations
 
 import datetime
+import logging
 import time
 from collections.abc import Awaitable, Callable, Mapping
 from decimal import Decimal
@@ -114,9 +115,43 @@ def hold_future_legs(feed: LiveFeed | None, viewer: str, underlying: str, future
 MIN_SHAPE_LEGS = 2  # a shape needs at least 2 legs
 MAX_HEDGE_LEGS = edit.MAX_HEDGE_LEGS
 MOVES = ("shift", "width", "hedge")  # REQ-078: the controls that move strikes by one strike step per click
+RELATIVE = ("step", *MOVES)  # moved one step per click: several quick clicks arrive as one request (steps)
+MAX_STEPS = 20  # one request moves at most 20 steps (quick clicking on a leg row is a few clicks per second)
 SHIFT_TOTAL_BOUND = 1_000_000  # index points; far beyond any strike
 CATALOGUE_TTL_SECONDS = 60.0  # AC-10: never "yesterday's list": a stored list is reused for a minute, no longer
 _catalogue_cache: dict = {"until": 0.0, "value": None}
+log = logging.getLogger(__name__)
+
+
+class _Phases:
+    """2026-11-06 (leg-edit latency, 4-5 s measured in the browser): milliseconds per phase of one request's body,
+    logged as ONE line at INFO. The dependency reads (today, list current, freeze limits) run before the body: their
+    share is the browser's total minus the logged ``total``."""
+
+    def __init__(self) -> None:
+        self.start = time.perf_counter()
+        self.parts: list[str] = []
+
+    def _add(self, name: str, since: float) -> None:
+        self.parts.append(f"{name}={(time.perf_counter() - since) * 1000:.0f}ms")
+
+    def run[T](self, name: str, work: Callable[[], T]) -> T:
+        since = time.perf_counter()
+        try:
+            return work()
+        finally:
+            self._add(name, since)
+
+    async def wait[T](self, name: str, pending: Awaitable[T]) -> T:
+        since = time.perf_counter()
+        try:
+            return await pending
+        finally:
+            self._add(name, since)
+
+    def line(self, control: str, steps: int) -> str:
+        return (f"leg-edit timing control={control} steps={steps} " + " ".join(self.parts)
+                + f" total={(time.perf_counter() - self.start) * 1000:.0f}ms")
 
 Capture = Callable[[MarketContext | None, LiveFeed | None, str, list[str]], Awaitable[tuple]]
 ContractIds = Callable[[list[str]], Awaitable[dict[str, int]]]
@@ -229,6 +264,10 @@ class EditIn(BaseModel):
     multiplier: StrictInt | None = Field(default=None, ge=edit.MULTIPLIER_MIN, le=edit.MULTIPLIER_MAX)  # '3', 2.5: 422
     included: StrictBool | None = None
     price: str | None = Field(default=None, max_length=64)  # the user's text: edit.set_typed_price is the one judge
+    # 2026-11-06 (REQ-076 AC-1, REQ-119): N quick clicks of one relative control (step / shift / width / hedge)
+    # arrive as ONE request with steps=N; the server moves N listed strikes one at a time, so every click lands.
+    # Absent = 1.
+    steps: StrictInt | None = Field(default=None, ge=1, le=MAX_STEPS)
 
     @field_validator("direction", mode="before")
     @classmethod
@@ -249,6 +288,8 @@ class EditIn(BaseModel):
         missing = [name for name in needs if given[name] is None]
         if missing:
             raise ValueError(f"{self.control} needs {missing}")
+        if self.steps is not None and self.control not in RELATIVE:
+            raise ValueError(f"{self.control} takes no steps")
         return self
 
 
@@ -472,6 +513,17 @@ def _apply_move(cat: Catalogue, req: LegEditIn, legs: list[EditLeg], today: date
     return moved.legs, moved.moved
 
 
+def apply_steps(cat: Catalogue, req: LegEditIn, legs: list[EditLeg], today: datetime.date, gate: Gate | None = None):
+    """:func:`apply_edit` ``steps`` times (absent = once): N quick clicks = N single steps, each from the legs the last
+    one left; any refusal refuses the whole request (nothing half-moved). The gate is the one the legs as sent got."""
+    one = req.model_copy(update={"edit": req.edit.model_copy(update={"steps": None})})
+    moved: frozenset[int] = frozenset()
+    for _ in range(req.edit.steps or 1):
+        legs, now_moved = apply_edit(cat, one, legs, today, gate)
+        moved |= now_moved
+    return legs, moved
+
+
 def apply_edit(cat: Catalogue, req: LegEditIn, legs: list[EditLeg], today: datetime.date, gate: Gate | None = None):
     """Apply the one edit; ``(legs, indexes whose contract changed)``. Raises LegEditRefused. A move (shift / width /
     hedge) needs ``gate`` (:func:`_controls`, the Hedge marks and the live index level for Width's last-step case,
@@ -516,7 +568,7 @@ def _next_shift_total(req: LegEditIn, cat: Catalogue, today: datetime.date, legs
     control = req.edit.control
     if control == "shift":
         step = int(edit.shift_step(edit.Listing(cat, today), req.underlying, legs))
-        return (req.shift_total or 0) + (req.edit.direction or 1) * step
+        return (req.shift_total or 0) + (req.edit.direction or 1) * step * (req.edit.steps or 1)
     return None if control in ("step", "width", "hedge") else req.shift_total
 
 
@@ -560,14 +612,17 @@ async def leg_edit(req: LegEditIn,  # noqa: PLR0913 - FastAPI dependencies, one 
                    margin_source: Annotated[OutcomeMargin | None, Depends(get_margin_source)],
                    calc_settings: Annotated[Mapping[str, Decimal], Depends(get_calc_settings)]) -> LegEditOut:
     check_lots([n for x in req.legs for n in (x.lots, x.base_lots)], calc_settings)  # limits.max_lots, before any work
+    phases = _Phases()
     legs = _legs_of(cat, req, today)
-    new_legs, moved = apply_edit(cat, req, legs, today, _move_gate(cat, req, ctx, legs, list_current))
-    entries_of = [_entry_of(cat, req.underlying, new_legs, i) for i in range(len(new_legs))]
+    new_legs, moved = phases.run("apply", lambda: apply_steps(cat, req, legs, today,
+                                                             _move_gate(cat, req, ctx, legs, list_current)))
+    entries_of = phases.run("catalogue_scan", lambda: [_entry_of(cat, req.underlying, new_legs, i)
+                                                       for i in range(len(new_legs))])
     ids = [f"{e.contract.exchange_segment}:{e.contract.exchange_token}" for e in entries_of]
-    stored_ids = await contract_ids(ids)
+    stored_ids = await phases.wait("contract_ids_db", contract_ids(ids))
     if req.edit.control in MOVES:
         stored_of = {i: stored_ids[ids[i]] for i in moved if ids[i] in stored_ids}
-        await _check_landing(tradable, req.underlying, new_legs, moved, stored_of)
+        await phases.wait("eligibility_db", _check_landing(tradable, req.underlying, new_legs, moved, stored_of))
     shift_total = _next_shift_total(req, cat, today, legs)
     stamps: dict[int, datetime.datetime | None] = {i: x.captured_at for i, x in enumerate(req.legs)}
     # ADR-197: a leg the edit does not re-capture keeps the close time it was sent; a re-captured one takes the new one
@@ -580,7 +635,7 @@ async def leg_edit(req: LegEditIn,  # noqa: PLR0913 - FastAPI dependencies, one 
         closes[req.edit.index] = None  # a typed price is the user's, never the close
         unpriced.discard(req.edit.index)
     if recapture:
-        valuation, got = await capture(ctx, feed, req.underlying, [ids[i] for i in recapture])
+        valuation, got = await phases.wait("capture", capture(ctx, feed, req.underlying, [ids[i] for i in recapture]))
         entries = {}
         for i in recapture:
             price = got.get(ids[i])
@@ -595,8 +650,8 @@ async def leg_edit(req: LegEditIn,  # noqa: PLR0913 - FastAPI dependencies, one 
                 stamps[i] = valuation
                 closes[i] = price.close_at
         new_legs = edit.with_entries(new_legs, entries)
-    template, hedged = shape_and_marks(cat, ctx, req.underlying, new_legs)
-    blocks = _freeze_blocks(cat, req.underlying, new_legs, limits)
+    template, hedged = phases.run("shape_match", lambda: shape_and_marks(cat, ctx, req.underlying, new_legs))
+    blocks = phases.run("freeze_scan", lambda: _freeze_blocks(cat, req.underlying, new_legs, limits))
     off_now = _controls(template, hedged, new_legs, list_current)
     out_legs = [{
         "instrument_id": ids[i], "contract_id": stored_ids.get(ids[i]), "lot_size": entries_of[i].contract.lot_size,
@@ -621,9 +676,10 @@ async def leg_edit(req: LegEditIn,  # noqa: PLR0913 - FastAPI dependencies, one 
                   for i in shown])
         hold_future_legs(feed, viewer, req.underlying,
                          [ids[i] for i in shown if new_legs[i].leg.instrument is Instrument.FUT])
-        margin: Margin = await margin_for_request(outcome_req, ctx, margin_source)
-        outcome = outcome_response(outcome_req, ctx, streaming, now=now, rates=rates, margin=margin,
-                                   settings=calc_settings)
+        margin: Margin = await phases.wait("margin", margin_for_request(outcome_req, ctx, margin_source))
+        outcome = phases.run("outcome_engine", lambda: outcome_response(
+            outcome_req, ctx, streaming, now=now, rates=rates, margin=margin, settings=calc_settings))
+    log.info(phases.line(req.edit.control, req.edit.steps or 1))
     name = None if template is None else render_explanation("catalogue_template_name", text=template.name)
     reply = {"legs": out_legs, "controls": {name: why is None for name, why in off_now.items()},
              "control_reasons": {name: None if why is None else render_reason(why) for name, why in off_now.items()},

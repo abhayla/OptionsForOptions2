@@ -49,7 +49,7 @@ import ActivityPanel from '@/components/strategy/ActivityPanel.vue'
 import Drawer from '@/components/common/Drawer.vue'
 import SaveDraftBar from '@/components/strategy/SaveDraftBar.vue'
 import LegList from '@/components/strategy/LegList.vue'
-import { applyEditReply, buildEditRequest, controlsFrom, executeRefusal, CLEAR_UNDO_SECONDS_KEY, MULTIPLIER_MAX_KEY, EXECUTE_WAITS_FOR_LATEST, NO_CONTROLS } from '@/lib/legEdit'
+import { applyEditReply, buildEditRequest, controlsFrom, moveKey, MAX_STEPS, RELATIVE_CONTROLS, executeRefusal, CLEAR_UNDO_SECONDS_KEY, MULTIPLIER_MAX_KEY, EXECUTE_WAITS_FOR_LATEST, NO_CONTROLS } from '@/lib/legEdit'
 import { createNewestWins, isSuperseded } from '@/lib/newestWins'
 import { NOT_CONNECTED_LABEL, buildDraft } from '@/lib/legPicker'
 import { matchesLegs } from '@/lib/liveMatch'
@@ -566,10 +566,49 @@ const editView = () => {
   const { view } = choiceFields(choice.value)
   return view ? { view } : {}
 }
+// 2026-11-06 (REQ-076 AC-1, REQ-119): a strike step / Shift / Width / Hedge is RELATIVE to the legs shown. Under newest-wins
+// alone each quick click cancelled the one before and was computed from the same old legs, so 5 clicks moved 1 strike. Now
+// the clicks of one control (and leg) ADD UP while a request is in flight: every click sends ONE request from the last
+// CONFIRMED legs carrying the total (`steps`), and newest-wins still drops every older reply. Any other edit waits until
+// the move has landed (it would otherwise cancel it and send the old legs). `move` is null when no move is pending.
+let move = null
+const pendingSteps = ref({}) // the clicks not yet confirmed, per move key ({ 'step:2': 4 }): the row shows them at once
+function endMove(m) {
+  if (move !== m) return
+  move = null
+  pendingSteps.value = {}
+  m.release()
+}
+async function moveLeg(edit) {
+  const key = moveKey(edit)
+  while (move && move.key !== key) await move.done
+  if (!move) {
+    let release
+    const done = new Promise((resolve) => (release = resolve))
+    move = { key, net: 0, legs: legs.value, shiftTotal: controls.value.shiftTotal, done, release }
+  }
+  const m = move
+  m.net = Math.max(-MAX_STEPS, Math.min(MAX_STEPS, m.net + edit.direction))
+  pendingSteps.value = { [key]: m.net }
+  if (m.net === 0) { // the clicks cancel out: nothing to ask, the confirmed legs stand
+    guard.cancel('leg-edit')
+    endMove(m)
+    return
+  }
+  await sendEdit({ ...edit, direction: Math.sign(m.net), steps: Math.abs(m.net) }, m.legs, m.shiftTotal, m)
+}
 async function editLeg(edit) {
-  const body = buildEditRequest(legs.value[0]?.underlying, legs.value, edit, controls.value.shiftTotal)
-  if (!body) return
-  const mine = guard.next('leg-edit') // aborts the edit still in flight
+  if (RELATIVE_CONTROLS.includes(edit?.control) && (edit.direction === 1 || edit.direction === -1)) return moveLeg(edit)
+  while (move) await move.done
+  return sendEdit(edit, legs.value, controls.value.shiftTotal, null)
+}
+async function sendEdit(edit, baseLegs, shiftTotal, owner) {
+  const body = buildEditRequest(baseLegs[0]?.underlying, baseLegs, edit, shiftTotal)
+  if (!body) {
+    if (owner) endMove(owner)
+    return
+  }
+  const mine = guard.next('leg-edit') // aborts the edit still in flight (its reply would be stale)
   editError.value = null
   editErrorIndex.value = null
   try {
@@ -617,6 +656,8 @@ async function editLeg(edit) {
     editError.value = e?.parts ?? NEUTRAL_PARTS
     editErrorIndex.value = edit.control === 'price' ? edit.index : null
   } finally {
+    // the move ends with its NEWEST request (answered, refused or failed): a refused one leaves the confirmed legs shown
+    if (owner && guard.isNewest('leg-edit', mine)) endMove(owner)
     guard.settle('leg-edit', mine)
   }
 }
@@ -795,7 +836,7 @@ const pricesStamp = computed(() => {
         <div :class="paper ? 'rounded-lg border-2 border-dashed border-warn p-2' : 'contents'" data-testid="legs-frame" :data-paper-mode="paper ? 'true' : 'false'">
         <p v-if="paper" class="mb-2 text-xs font-semibold text-warn" data-testid="paper-mode-label">{{ PAPER_MODE_LABEL }}</p>
         <LegList
-          :multiplier-max="served.integer(MULTIPLIER_MAX_KEY)" :legs="legs" :paper-fills="paperFills" :shape-name="shapeName" :has-reply="hasReply" :controls="controls" :updating="updating" :error-parts="editError" :error-index="editErrorIndex" :ltp-by-id="ltpById" :price-text-by-id="priceTextById"
+          :multiplier-max="served.integer(MULTIPLIER_MAX_KEY)" :legs="legs" :pending-steps="pendingSteps" :paper-fills="paperFills" :shape-name="shapeName" :has-reply="hasReply" :controls="controls" :updating="updating" :error-parts="editError" :error-index="editErrorIndex" :ltp-by-id="ltpById" :price-text-by-id="priceTextById"
           :undo-offered="undoHeld !== null" :leg-unit="legUnit" :strategy-name="openStrategy?.name ?? null"
           @edit="editLeg" @edit-leg="openInPicker" @include-all="includeAll" @remove="removeLeg" @add-leg="focusPicker" @pick-chain="pickFromChain" @clear-all="clearAll" @undo-clear="undoClear"
         >
