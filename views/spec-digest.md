@@ -4,11 +4,9 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (239)
+## Decisions (241)
 
-- Older decisions: 199 rows, ADR-1..ADR-203 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
-- ADR-204 2026-10-28: (1) docs/process/ui-match-differences-2026-10-28.md is approved with every recommendation as writte… [SPEC CHANGE (approved) to REQ-034 AC-7, REQ-081 A…]
-- ADR-205 2026-10-28: (1) The Charges breakdown keeps ADR-082 (1) as decided: every charge is exact Decimal, STT and stam… [none to ADR-082; REQ-081 AC-2 gains one sentence…]
+- Older decisions: 201 rows, ADR-1..ADR-205 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
 - ADR-206 2026-10-28: (1) Confirmed as written: a strategy started from the builder ("Start tracking", REQ-109) is record… [REQ-142 held (title marked); no change to ADR-165…]
 - ADR-207 2026-10-29: (1) PLACE: the builder has an "Add to Paper" button (Sensibull "Add to Drafts", study 166-173) that… [SPEC CHANGE to REQ-081 AC-9 and ADR-164 (percenta…]
 - ADR-208 2026-10-29: (1) Every what-if figure (target level and target date, REQ-084) carries the label "Estimate from t… [refines REQ-084 AC-2 and AC-5 (wording written th…]
@@ -47,6 +45,8 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-250 2026-11-05: Owner 2026-11-05 ~09:3x IST (question tool, "New plans only (Recommended)"), answering what happens… [Narrows ADR-247 to new plans; the step 3 live-che…]
 - ADR-251 2026-11-05: Owner 2026-11-05 ~09:4x IST (question tool, "Net credit so far (Recommended)"), defining the credit… [Defines a term ADR-247 left open; the step 3 live…]
 - ADR-252 2026-11-05: Orchestrator 2026-11-05 ~11:2x IST, decided under the owner's delegation ("For all the strategy rel… [Clarifies ADR-247 (the 50 % is the per-stage T-06…]
+- ADR-253 2026-11-06: Owner 2026-11-06 ~01:2x IST (question tool, "Keep test-data only for now"). [Limits goal contract ic-e2e-paper design decision…]
+- ADR-254 2026-11-06: Owner 2026-11-06 ~02:0x IST (question tool, "Live too"). [Extends REQ-165 to T-19 in the worker; leaves ADR…]
 
 ## Requirements (161)
 

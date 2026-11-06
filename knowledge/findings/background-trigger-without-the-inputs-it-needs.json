@@ -8,7 +8,7 @@
   "where": "ic-e2e-paper goal run Stage B1 (worker -> gate -> record test over path scenarios)",
   "evidence": "b1-db5.log B1-OBSERVED: T-19 cost None, reason adjust_trigger_no_approach_priced at every frame; lead read background.py:399-410."
  },
- "fix": "Open: T-19 in the worker needs approach pricing per check (ties to #644 approach speed). Parked from the ic-e2e-paper run.",
+ "fix": "T-19: the worker now loads the screen's charge rates (ADR-254; retry rounds 3-4, merged af4527ed): priced on a throwaway DB (Rs 57.44) and on live prices (A-01 Rs 225.16, read-only shadow 2026-11-06 10:20); the PATH-12 end-to-end test stays a known blocker (expiry-day frames have bid 0.00). Open: T-11 in LIVE mode and worker roll basis (below).",
  "detection": {
   "status": "unguarded",
   "checks": [],
@@ -22,6 +22,11 @@
    "date": "2026-11-05",
    "where": "worker, live and scenario",
    "evidence": "T-19 never checked in the background"
+  },
+  {
+   "date": "2026-11-06",
+   "where": "live read-only shadow check on strategy 82 (merged code, real prices)",
+   "evidence": "T-11 not checked: missing_entry_atm_iv in live mode on the screen path and in the worker (no entry IV is set live), so T-11 can never raise on a live strategy; also the worker refuses rolls A-01/A-02/A-05 with 'the roll basis setting for this strategy could not be read' (retry round 4 DB run)."
   }
  ]
 }
