@@ -179,12 +179,12 @@ import { readTracking } from '@/lib/tracking'
 import { stateRows } from '@/lib/adjustDrawer'
 import {
   EMPTY_FILTERS, GROUP_TITLES, KIND_TITLES, NO_CHANGE_ID, RANGES, SIDE_TITLES, UNAVAILABLE_FOR_FILTER, UNAVAILABLE_VALUE,
-  applyFilters, buildFacets, cmpDecimal, isNoChange, legsFromApproach, rangeEndText, refusalText, refusedApproaches, showingText, tableApproaches,
+  applyFilters, buildFacets, cmpDecimal, isNoChange, exitLegsFromApproach, isFullExit, legsFromApproach, rangeEndText, refusalText, refusedApproaches, showingText, tableApproaches,
 } from '@/lib/adjustCompare'
 
 const props = defineProps({
   strategyId: { type: [String, Number], required: true },
-  client: { type: Object, default: () => api }, // the api module; a test passes a stand-in
+  client: { type: [Object, Function], default: () => api }, // the api module; a test passes a stand-in
   picked: { type: Array, default: () => [] }, // the approach ids ticked in the drawer (`pick` in the address); none = all
   opportunities: { type: Array, default: () => [] }, // GC-ADJ2 5: the open suggestion records this compare answers (`opp`)
 })
@@ -192,6 +192,7 @@ const emit = defineEmits(['prepare']) // { legs, underlying }: the chosen approa
 
 const INTRO = 'Each approach is shown as the whole trade, including P&L already booked. The green cells mark which approach leads on each line. The app picks no overall approach for you; you decide.'
 const FILTER_NOTE = 'The choices and ranges come from this strategy\'s approaches right now, so they change as the market moves. "No change" stays in the table as the baseline.'
+const NOT_A_BASKET = 'This approach could not be turned into a basket.' // nothing was asked of the server
 const NONE_TO_PREPARE = 'No approach is left to prepare: the filters keep only "No change". Clear the filters to choose one.'
 const PALETTE = ['#2563eb', '#16a34a', '#d97706', '#9333ea', '#0891b2', '#db2777', '#65a30d', '#ea580c']
 
@@ -337,18 +338,21 @@ async function markActedOn() {
   return acted
 }
 
+const LOCAL_FAILURE = { ...NEUTRAL_PARTS, what_happened: NOT_A_BASKET } // a failure that never called the server says so
 async function openInBuilder() {
   prepareError.value = null
   const a = all.value.find((x) => x.id === pick.value && x.id !== NO_CHANGE_ID)
-  if (!a || !underlying.value) { prepareError.value = NEUTRAL_PARTS; return }
+  if (!a || !underlying.value) { prepareError.value = LOCAL_FAILURE; return }
   try {
-    const expiries = [...new Set((a.after_legs ?? []).map((l) => l.expiry))]
+    const exit = isFullExit(a) // nothing stays open: the basket is the closing trades of every open leg
+    const expiries = [...new Set((exit ? (a.trades ?? []) : (a.after_legs ?? [])).map((l) => l.expiry))]
     const contracts = []
     for (const e of expiries) contracts.push(...(await props.client.get(`/catalogue/${underlying.value}/contracts?expiry=${e}`)).data.contracts)
-    const legs = legsFromApproach(underlying.value, a, contracts, reply.value.spot?.at ?? null)
-    if (!legs) { prepareError.value = NEUTRAL_PARTS; return }
+    const at = reply.value.spot?.at ?? null
+    const legs = exit ? exitLegsFromApproach(underlying.value, a, contracts, at) : legsFromApproach(underlying.value, a, contracts, at)
+    if (!legs) { prepareError.value = LOCAL_FAILURE; return }
     const acted = await markActedOn()
-    emit('prepare', { legs, underlying: underlying.value, suggestionIds: acted, basketLegs: (a.trades ?? []).length })
+    emit('prepare', { legs, underlying: underlying.value, suggestionIds: acted, basketLegs: (a.trades ?? []).length, exit })
   } catch (e) {
     prepareError.value = e?.parts ?? NEUTRAL_PARTS
   }

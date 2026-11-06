@@ -80,7 +80,7 @@ const props = defineProps({
   lines: { type: Array, default: () => [] }, // layer 1: the detection's own texts, as the card shows them
   detected: { type: Boolean, default: true }, // false when the detection lapsed while the drawer was open
   cardRows: { type: Array, default: () => [] }, // layer 2, the part the card has: [{id, label, value}]
-  client: { type: Object, default: () => api }, // the api module; a test passes a stand-in
+  client: { type: [Object, Function], default: () => api }, // the api module; a test passes a stand-in
   suggestionIds: { type: Array, default: () => [] }, // GC-ADJ2 5: the open records shown (the check answer's suggestion_id)
 })
 const emit = defineEmits(['close', 'compare', 'dismissed']) // compare: { ids, url }; dismissed: { ids }

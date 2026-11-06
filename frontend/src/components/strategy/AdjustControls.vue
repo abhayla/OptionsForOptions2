@@ -49,7 +49,7 @@ import ErrorMessage from '@/components/common/ErrorMessage.vue'
 
 const props = defineProps({
   strategyId: { type: [String, Number], required: true },
-  client: { type: Object, default: () => api },
+  client: { type: [Object, Function], default: () => api },
   deltaNeutral: { type: Object, default: null }, // the approaches reply's `delta_neutral` block; null = absent
 })
 const DIRECTIONS = ['above', 'below']
