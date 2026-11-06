@@ -66,7 +66,8 @@ async def test_downgrade_is_refused_with_a_count_while_a_marked_row_exists(admin
                 async with conn.begin_nested():
                     for sql in own_down:
                         await conn.execute(text(sql))
-            with pytest.raises(DBAPIError, match="OF031"):
+            # the guard keeps adjustment_no fixed (asyncpg's message carries the text, not the SQLSTATE)
+            with pytest.raises(DBAPIError, match="a rule state only records seen clear, once"):
                 async with conn.begin_nested():
                     await conn.execute(text("UPDATE public.adjustment_rule_state SET adjustment_no = 2 "
                                             "WHERE strategy_id = :s AND adjustment_no = 1"), {"s": stored.id})

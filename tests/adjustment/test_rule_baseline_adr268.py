@@ -66,6 +66,9 @@ def test_t01_flags_beyond_the_short_call():
     ev = evaluate(body, beyond, {"T-01": {"held_at_entry": True, "seen_clear": True}}, None)
     flag = _rule(ev, "T-01")
     assert isinstance(flag, Flag) and flag.value == D(0) and flag.threshold == D("0.5"), flag
+    assert flag.beyond == ("CE", D("23000"), D("235")), flag  # the line names the short and the points past it
+    rv = next(v for v in ev.values if v.rule_id == "T-01")
+    assert rv.beyond == flag.beyond, rv  # the record the worker opens carries it too
     assert short_breached(D("23235"), beyond.shorts).strike == D("23000")
 
 
@@ -75,3 +78,11 @@ def test_t01_at_the_strike_flags_and_inside_is_unchanged():
     assert short_breached(D("21990"), shorts).strike == D("22000")  # beyond the put
     assert short_breached(D("22500"), shorts) is None  # between the shorts
     assert short_breached(D("23100"), (ShortLeg(D("23000"), None, None),)) is None  # kind unknown: no breach
+
+
+def test_t01_inside_the_gap_carries_no_beyond():
+    sc = load(F71)
+    body, state = body_of(sc), _kinds(state_of(sc))
+    ev = evaluate(body, state, {"T-01": {"held_at_entry": True, "seen_clear": True}}, None)
+    flag = _rule(ev, "T-01")
+    assert isinstance(flag, Flag) and flag.beyond is None and flag.value != D(0), flag
