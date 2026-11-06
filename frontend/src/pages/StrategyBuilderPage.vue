@@ -127,21 +127,34 @@ async function prepareApproach({ legs: next, suggestionIds = [], basketLegs = 0,
   const acted = opportunitiesFromQuery(suggestionIds.join(','))
   const size = Number.isInteger(basketLegs) && basketLegs > 0 && basketLegs <= 64 ? { basket: String(basketLegs) } : {}
   const id = adjustId.value
-  router.replace({ query: acted.length ? { ...rest, acted: acted.join(','), ...size } : rest })
-  if (!exit) { setLegs(next); return }
-  // a full exit: the same path as the book's Exit all (Drafts Mode, legs none, the confirm list opens); the user confirms there
+  await router.replace({ query: acted.length ? { ...rest, acted: acted.join(','), ...size } : rest }) // awaited: nameInUrl below spreads it
+  // ADR-207 (2), live 2026-11-06 (strategy 88, A-11): a strategy with a paper book is edited in ITS Drafts Mode, never as a new
+  // unlinked draft (whose Add to Paper would open a second position). A full exit takes the book's Exit all path; any other
+  // approach's after-legs become the edited legs, so the pending changes are paperOrdersFor(net, after-legs) (the exit + add
+  // orders), reviewed in the same confirm list. A book that cannot be read is said; no unlinked draft is opened instead.
+  let read
   try {
-    const read = id ? await readPaperBook(api, id) : { kind: 'plan' }
-    if (read.kind === 'paper') {
-      enterDrafts(read.book.strategy_id ?? Number(id), read)
-      exitAllPaper()
-      return
-    }
+    read = id ? await readPaperBook(api, id) : { kind: 'plan' }
   } catch (e) {
     openError.value = unreadableParts(e)
     return
   }
-  setLegs(next) // no paper book to edit: the closing orders show as the builder's legs
+  if (read.kind === 'paper') {
+    enterDrafts(read.book.strategy_id ?? Number(id), read)
+    if (exit) exitAllPaper()
+    else setLegs(keepHeldFills(read.net, next))
+    return
+  }
+  setLegs(next) // no paper book to edit (a plan only): the approach's legs show as the builder's legs
+}
+// a contract the approach keeps unchanged (same side, same lots) stays the net leg the book loaded (its paper average, R-11),
+// so the held legs are not repriced at the approach's entry; every other leg is the approach's own.
+function keepHeldFills(net, next) {
+  const held = new Map(net.map((l) => [l.contract_id, l]))
+  return next.map((l) => {
+    const h = held.get(l.contract_id)
+    return h && h.action === l.action && h.lots === l.lots && h.lot_size === l.lot_size ? { ...h } : l
+  })
 }
 // a 404/409 to a basket naming records: a refused record (or the strategy gone or changed); the same ids would be
 // refused on every retry. A 422 (price, contract) is fixed by the user and keeps them.
