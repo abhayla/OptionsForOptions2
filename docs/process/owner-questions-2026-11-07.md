@@ -17,3 +17,20 @@ Options:
 - B. Keep two orders, in the spirit of Q43 "no netting". Costs Rs 20 more and a second fill each time.
 
 Until answered: nothing changes (development is on hold).
+
+## Q2. Approve fix plan v4 (code-verified), and which speed-up?
+
+Plan: D:\Abhay\scratch\ic-uitest\FIX-PLAN-v4-2026-11-07.md - every issue (~65) in 4 parallel lanes, one screen test at
+the end, ~42 h builder time, ~16 h elapsed. Implementation = code + unit tests of changed code + test of what changed +
+on-screen check; no PRs, no CI. Business call: lifts the development hold and sets the round's scope.
+
+Options:
+- **A. Approve v4 with 5 builders (recommended):** lane B split in two; ~12 h elapsed; nothing dropped.
+- B. Approve v4, issue 68 (roll to a later expiry as a new strategy) in a later round: ~12 h elapsed with 4 builders.
+- C. Approve v4 as is: ~16 h elapsed.
+- D. Change it again.
+
+Until answered: nothing is built (development on hold).
+
+Q2 answer (owner 7 Nov ~01:1x): NOT approved. "Save the plan in detail. I will come back to this plan again. We will
+revisit and get it reviewed again through reviewers." Saved in docs/process/fix-plan-2026-11-07/.

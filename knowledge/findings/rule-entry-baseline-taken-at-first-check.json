@@ -13,7 +13,13 @@
     "checks": [],
     "note": "F-71 tests pass a fixed entry to evaluate(); test_background_cycle uses a fake recorder; no test makes a first check after a crossing or compares screen and worker on one path. Needed: those three tests."
   },
-  "spec_ref": ["spec/requirements/REQ-159.md", "spec/requirements/REQ-165.md", "spec/decisions/ADR-237.md", "spec/decisions/ADR-258.md"],
+  "spec_ref": [
+    "spec/requirements/REQ-159.md",
+    "spec/requirements/REQ-165.md",
+    "spec/decisions/ADR-237.md",
+    "spec/decisions/ADR-258.md"
+  ],
   "occurrences": 4,
-  "live_example": "A condor filled at 15:27 is first checked at 09:16 the next morning after a 0.9 % gap up: T-13 is stored held_at_entry=true and the gap warning never fires."
+  "live_example": "A condor filled at 15:27 is first checked at 09:16 the next morning after a 0.9 % gap up: T-13 is stored held_at_entry=true and the gap warning never fires.",
+  "scope": "project"
 }
