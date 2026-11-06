@@ -41,12 +41,8 @@ GUIDANCE = ("sit.S-03", "sit.S-04", "sit.S-05", "sit.S-08", "sit.S-09")
 KNOWN = {  # case -> measured blocker (a throwaway DB run; the layer is proven with file:line)
     # S-12 left KNOWN in the Stage D core-proof fix: adjustment_readers.entered_at now reads the orders' placed_at
     # (the seed's scenario entry clock), not the row's created_at (the real date of the seeding)
-    "T-19": "r3-b1.log (retry round 3): the lister now reads the charge rates (background.owner_lister rates_of; "
-            "the plumbing is proven without a DB in test_background_cycle.py::test_t19_*), yet on the throwaway DB "
-            "B1-OBSERVED PATH-12 still shows cost None, adjust_trigger_no_approach_priced at every frame: not "
-            "measured whether load_charge_rates answered None there (no rate set in the throwaway DB?) or a column "
-            "stayed unpriced; next: print w.charge_rates and the per-approach reasons in one run",
-}
+}  # T-19 left KNOWN in retry round 4: r4-run1.log B1-RATES None (the conftest's cached "no rate set"); the walk now
+#    seeds the stated rates (_paths_helpers.set_env -> t19_support.seed_rates), as the screen tests do
 
 
 def frames_for(path_id: str) -> list[int]:
@@ -65,11 +61,34 @@ def check(seen: dict, rule: str, k: int, *, after: int | None = None) -> None:
         assert seen[f][rule] == (1 if after is None else after), (f"k+{f - k}", seen[f])
 
 
+def _spy_pricing(monkeypatch) -> dict:
+    """Each approach the worker's T-19 pick priced, with its outcome: (approach, rates given, refusal or not-priced
+    reason) -> count. Read-only: the real ``priced_approach`` answers every call."""
+    from ofo_app import adjustment_check  # noqa: PLC0415 - app module, loaded after the env is set
+    real = adjustment_check.priced_approach
+    out: dict = {}
+
+    def spy(a, tracked, market, spot, rates, *args, **kw):
+        built, priced = real(a, tracked, market, spot, rates, *args, **kw)
+        why = ("refused", getattr(built, "refusal", None)) if priced is None else (
+            "priced" if priced.after is not None else ("not_priced", getattr(priced.reason, "id", priced.reason)),
+            priced.charges_known)
+        key = (a, rates is not None, str(why))
+        out[key] = out.get(key, 0) + 1
+        return built, priced
+    monkeypatch.setattr(adjustment_check, "priced_approach", spy)
+    return out
+
+
 @pytest.mark.parametrize("path_id", sorted(CASES))
 async def test_every_on_rule_raises_exactly_one_record_at_its_crossing_frame(app_engine, monkeypatch, path_id):
     h.set_env(app_engine, monkeypatch, path_id)
+    reasons = _spy_pricing(monkeypatch)
     try:
         _sid, seen, errors = await h.walk(app_engine, path_id, frames_for(path_id))
+        from ofo_app.routes.outcome import load_charge_rates  # noqa: PLC0415 - the worker's rates source
+        print("B1-RATES", path_id, await load_charge_rates())
+        print("B1-REASONS", path_id, ascii(sorted(reasons.items())))  # ascii: a rupee sign broke cp1252 stdout
         print("B1-OBSERVED", path_id, h.OBSERVED[-12:])
         print("B1-COUNTS", path_id, {k: dict(c) for k, c in seen.items()})
         assert errors == [], errors

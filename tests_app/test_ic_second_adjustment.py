@@ -11,6 +11,7 @@ import datetime
 import json
 
 import pytest
+import t19_support
 import test_ic_paper_loop_core as core
 from httpx import ASGITransport, AsyncClient
 from ofo.adjustment.offered import EXIT_REDUCE
@@ -32,6 +33,7 @@ async def _setup(app_engine, monkeypatch, name: str) -> int:
     await core._db_url(app_engine, monkeypatch)
     monkeypatch.setenv("DB_POOL_SIZE", "2")
     monkeypatch.setenv("DB_MAX_OVERFLOW", "0")
+    t19_support.seed_rates(monkeypatch)  # retry r4: the stated rates, as the screen tests; else T-19 is never checked
     core._reset_engine()
     scn = scenario_mode.load(PATH)
     async with app_engine.begin() as conn:

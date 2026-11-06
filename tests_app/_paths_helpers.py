@@ -13,6 +13,7 @@ import pathlib
 from collections import Counter
 from decimal import Decimal as D
 
+import t19_support
 from ofo.adjustment.preferences import from_values
 from ofo.settings import calc as settings_calc
 from ofo.settings import defaults as registry_defaults
@@ -46,6 +47,10 @@ def set_env(app_engine, monkeypatch, path_id: str) -> None:
     monkeypatch.setenv("OFO_SCENARIO", path_id)
     monkeypatch.setenv("DB_POOL_SIZE", "2")
     monkeypatch.setenv("DB_MAX_OVERFLOW", "0")
+    # retry r4 (#661): r4-run1.log measured B1-RATES None - the throwaway DB walk read the conftest's cached "no rate
+    # set", so the worker priced no approach and T-19 was never checked. Seed the stated rates as the screen tests do
+    # (the worker never invents rates: no rates -> not checked, ADR-254; tested in test_background_cycle.py)
+    t19_support.seed_rates(monkeypatch)
     reset_engine()
 
 

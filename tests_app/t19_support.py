@@ -31,6 +31,16 @@ PLAYBOOKS = json.loads((FIX / "_playbooks.json").read_text(encoding="utf-8"))
 RATES = ChargeRates(**{**gen.CHARGE_RATES, "read_on": datetime.date.fromisoformat(gen.CHARGE_RATES["read_on"])})
 
 
+def seed_rates(monkeypatch) -> None:
+    """The screen's charge rates source (``routes.outcome.load_charge_rates``) answers ``RATES`` for this test, the way
+    the screen tests seed it (the conftest default is a cached "no rate set", so T-19 is rightly not checked). The
+    worker's lister and the screen routes read the SAME cache, so both price with the same set (ADR-254)."""
+    import math  # noqa: PLC0415
+
+    from ofo_app.routes import outcome  # noqa: PLC0415 - app module, loaded after the env placeholders
+    monkeypatch.setattr(outcome, "_rates_cache", {"until": math.inf, "value": RATES})
+
+
 def load(sid: str) -> dict:
     return json.loads((FIX / f"{sid}.json").read_text(encoding="utf-8"))
 
