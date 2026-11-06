@@ -7,11 +7,15 @@
     "where": "IC test-data run on the scenario copy (code 514113f1), scratch ISSUES.md issue 65 (PATH-12, PATH-14) and 89 (PATH-15), condor 112 (PATH-13)",
     "evidence": "SELECT rule_id, held_at_entry, seen_clear FROM public.adjustment_rule_state WHERE strategy_id = 115 (7 Nov 00:4x): T-01, T-03, T-13 held_at_entry=true, seen_clear=false, the three rules the screen showed 'already true' at the 0.87 % gap frame although at the Thursday entry (spot 23,100) none held; condor 113, whose first background check ran at frame 0, flagged T-11 correctly. Independent read-only review 7 Nov 00:1x-00:3x (fresh Opus) traced the three baselines; lines re-read by the lead."
   },
-  "fix": "none yet (development on hold). Proposed by the review: store the entry baseline once when tracking starts (first fill, next to entry_facts_store, ADR-243), one function for all three callers, delete the 'entry = current state' fallbacks, ADR-258 writes its new baseline through the same function, one-off repair of rows written after a crossing.",
+  "fix": "Branch fix/b1-rule-baseline-2 (2026-11-07, not merged): the worker's rule memory is read from the DB at the rebuild (GateLoad.rule_memory); one entry baseline (adjustment_check.entry_baseline: scenario entry, else stored entry facts with their time, else the first check) for screen, recorder and worker; the recorder reads the process scenario as the worker does (it had passed scn=None and stored the CURRENT state as the entry); ADR-258 starting point adjustment_rule_state.adjustment_no (migration 0045); repair tool scripts/repair_rule_entry_baseline.py (dry run default, --apply writes).",
   "detection": {
-    "status": "unguarded",
-    "checks": [],
-    "note": "F-71 tests pass a fixed entry to evaluate(); test_background_cycle uses a fake recorder; no test makes a first check after a crossing or compares screen and worker on one path. Needed: those three tests."
+    "status": "guarded",
+    "checks": [
+      "tests_app/test_rule_entry_baseline.py (real worker, restart, counted from the DB)",
+      "tests_app/test_repair_rule_entry_baseline.py",
+      "tests_app/test_migration_0045_rule_state_marker.py"
+    ],
+    "note": "Guarded once the branch merges; main is unguarded until then. Known gap kept: a live fill before 0039 (no entry facts) still takes the first check as its entry."
   },
   "spec_ref": [
     "spec/requirements/REQ-159.md",
