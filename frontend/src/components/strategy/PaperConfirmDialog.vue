@@ -14,11 +14,11 @@
         <span class="min-w-0 flex-1" data-testid="paper-order-text">{{ row.text }}</span>
         <label class="flex items-center gap-1">
           <span class="text-ink-muted">Lots</span>
-          <input v-model="row.lots" type="text" inputmode="numeric" class="h-9 w-14 rounded border border-line px-2 text-right" :aria-label="`Lots for ${row.text}`" data-testid="paper-lots" />
+          <input v-model="row.lots" :disabled="state === 'placed'" type="text" inputmode="numeric" class="h-9 w-14 rounded border border-line px-2 text-right" :aria-label="`Lots for ${row.text}`" data-testid="paper-lots" />
         </label>
         <label class="flex items-center gap-1">
           <span class="text-ink-muted">Price</span>
-          <input v-model="row.price" type="text" inputmode="decimal" class="h-9 w-24 rounded border border-line px-2 text-right" :aria-label="`Price for ${row.text}`" data-testid="paper-price" />
+          <input v-model="row.price" :disabled="state === 'placed'" type="text" inputmode="decimal" class="h-9 w-24 rounded border border-line px-2 text-right" :aria-label="`Price for ${row.text}`" data-testid="paper-price" />
           <!-- GC-TP step 3b1 (REQ-109 AC-4): an exit with no live price has an empty box, marked, and must be typed -->
           <span v-if="row.price_note" class="text-xs text-warn" data-testid="paper-price-note">{{ row.price_note }}</span>
         </label>
@@ -26,19 +26,29 @@
       </li>
     </ul>
     <p class="mt-3 text-xs text-ink-muted" data-testid="paper-not-real">{{ PAPER_NOT_REAL_TEXT }}</p>
-    <p v-if="error" class="mt-2 text-sm text-red-700" role="alert" data-testid="paper-error">{{ error }}</p>
+    <!-- fix/paper-dialog-safe (ADR-017): a stored order is never offered again; an answer of unknown outcome sends the user to the
+         Orderbook first and keeps Confirm locked for PAPER_UNKNOWN_HOLD_MS; a refusal (4xx: nothing stored) unlocks after an edit -->
+    <p v-if="state === 'placed'" class="mt-2 text-sm font-medium" role="status" data-testid="paper-placed">{{ PAPER_PLACED_NOT_REFRESHED_TEXT }}</p>
+    <p v-else-if="state === 'unknown'" class="mt-2 text-sm text-red-700" role="alert" data-testid="paper-unknown">
+      {{ PAPER_UNKNOWN_TEXT }}
+      <button type="button" class="ml-1 font-semibold text-accent underline" data-testid="paper-open-orderbook" @click="emit('orderbook')">{{ PAPER_OPEN_ORDERBOOK_LABEL }}</button>
+    </p>
+    <p v-else-if="error" class="mt-2 text-sm text-red-700" role="alert" data-testid="paper-error">{{ error }}</p>
     <template #actions>
-      <button type="button" class="h-10 rounded-lg border border-line px-3 font-medium" data-testid="paper-cancel" @click="emit('cancel')">Cancel</button>
-      <button type="button" class="h-10 rounded-lg bg-accent px-3 font-medium text-white disabled:opacity-50" :disabled="busy || !ready" data-testid="paper-confirm-button" @click="confirm">Confirm</button>
+      <button type="button" class="h-10 rounded-lg border border-line px-3 font-medium" data-testid="paper-cancel" @click="emit('cancel')">{{ state === 'placed' ? 'Close' : 'Cancel' }}</button>
+      <button v-if="state !== 'placed'" type="button" class="h-10 rounded-lg bg-accent px-3 font-medium text-white disabled:opacity-50" :disabled="!canConfirm" data-testid="paper-confirm-button" @click="confirm">Confirm</button>
     </template>
   </Modal>
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import Chip from '@/components/common/Chip.vue'
 import Modal from '@/components/common/Modal.vue'
-import { PAPER_NOT_REAL_TEXT, PAPER_PRICE_REASON, PAPER_LOTS_REASON, paperLotsOk, paperPriceOk } from '@/lib/tracking'
+import {
+  PAPER_NOT_REAL_TEXT, PAPER_OPEN_ORDERBOOK_LABEL, PAPER_PLACED_NOT_REFRESHED_TEXT, PAPER_PRICE_REASON, PAPER_LOTS_REASON, PAPER_UNKNOWN_HOLD_MS,
+  PAPER_UNKNOWN_TEXT, paperLotsOk, paperPriceOk,
+} from '@/lib/tracking'
 import { paperDialogTitle, paperKindLabel } from '@/lib/paperDrafts'
 
 const props = defineProps({
@@ -46,8 +56,11 @@ const props = defineProps({
   orders: { type: Array, default: () => [] },
   busy: { type: Boolean, default: false },
   error: { type: String, default: '' },
+  // fix/paper-dialog-safe: '' ready | 'refused' (4xx, shown in `error`) | 'unknown' (no answer / 5xx) | 'placed' (stored, refresh failed)
+  state: { type: String, default: '' },
+  holdMs: { type: Number, default: PAPER_UNKNOWN_HOLD_MS },
 })
-const emit = defineEmits(['confirm', 'cancel'])
+const emit = defineEmits(['confirm', 'cancel', 'orderbook'])
 
 const rows = ref([])
 watch(() => [props.open, props.orders], () => {
@@ -63,8 +76,25 @@ const ready = computed(() => rows.value.length > 0 && reasons.value.every((r) =>
 const unitsOf = (r) => r.lots * r.lot_size
 const orderOf = (r) => ({ contract_id: r.contract_id, side: r.side, quantity: unitsOf(r), price: String(r.price).trim(), kind: r.kind }) // price: as typed
 
+// the rows as they were when the server refused them: Confirm unlocks only once the user has changed something
+const snapshot = () => JSON.stringify(rows.value.map((r) => [r.lots, r.price]))
+const refusedAt = ref(null)
+const held = ref(false)
+let holdTimer = null
+watch(() => props.state, (s) => {
+  refusedAt.value = s === 'refused' ? snapshot() : null
+  clearTimeout(holdTimer)
+  held.value = s === 'unknown'
+  if (held.value) holdTimer = setTimeout(() => { held.value = false }, props.holdMs)
+}, { immediate: true })
+onBeforeUnmount(() => clearTimeout(holdTimer))
+const canConfirm = computed(() => {
+  if (props.busy || !ready.value || props.state === 'placed' || held.value) return false
+  return props.state !== 'refused' || refusedAt.value === null || snapshot() !== refusedAt.value
+})
+
 function confirm() {
-  if (props.busy || !ready.value) return
+  if (!canConfirm.value) return
   emit('confirm', rows.value.map(orderOf))
 }
 </script>

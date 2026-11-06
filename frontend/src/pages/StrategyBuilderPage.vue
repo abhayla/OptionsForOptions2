@@ -26,7 +26,7 @@ import MarginLine from '@/components/strategy/MarginLine.vue'
 import ProjectionsNote from '@/components/strategy/ProjectionsNote.vue'
 import StrategyActions from '@/components/strategy/StrategyActions.vue'
 import TrackingPanel from '@/components/strategy/TrackingPanel.vue'
-import { ADD_TO_PAPER_LABEL, addToPaper as postPaperOrders } from '@/lib/tracking'
+import { ADD_TO_PAPER_LABEL, PAPER_PLACED_NOT_REFRESHED_TEXT, PAPER_STATE, addToPaper as postPaperOrders, paperPostOutcome } from '@/lib/tracking'
 import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
 import {
   DISCARD_LABEL, PAPER_BOOK_UNREADABLE, PAPER_MODE_LABEL, PAPER_PENDING_UNREADABLE, REVIEW_AND_ADD_LABEL, confirmRowsFor, paperOrdersFor, pendingText, readPaperBook,
@@ -364,29 +364,36 @@ const paperRows = ref([])
 const paperDialog = ref(false)
 const paperBusy = ref(false)
 const paperError = ref('')
+const paperState = ref(PAPER_STATE.READY) // fix/paper-dialog-safe: the dialog's answer state (tracking.js PAPER_STATE)
+// orders were stored but the book could not be re-read: the net on screen is stale, so its diff (the pending orders) would
+// re-offer what was just placed. Until a book is read again nothing is offered for review.
+const paperStale = ref(false)
+const showOrdersTick = ref(0) // bumped to switch the book panel to its Orderbook view
 const unreadableParts = (e) => ({ ...(e?.parts ?? NEUTRAL_PARTS), what_happened: PAPER_BOOK_UNREADABLE })
 const copyLegs = (net) => net.map((l) => ({ ...l }))
 function enterDrafts(id, read) {
+  paperStale.value = false
   paper.value = { id, book: read.book, net: read.net }
   openSaved(copyLegs(read.net), id, null, read.book.name ?? null)
 }
-const leaveDrafts = () => { paper.value = null }
+const leaveDrafts = () => { paper.value = null; paperStale.value = false }
 function reviewPending() {
-  if (!paper.value || !pendingOrders.value?.length) return
+  if (!paper.value || paperStale.value || !pendingOrders.value?.length) return
   paperError.value = ''
-  paperRows.value = confirmRowsFor(pendingOrders.value, paper.value.book, contractName)
+  paperState.value = PAPER_STATE.READY
+  paperRows.value = confirmRowsFor(pendingOrders.value, paper.value.book, contractName, livePriceById.value)
   paperDialog.value = true
 }
 const discardPending = () => { if (paper.value) setLegs(copyLegs(paper.value.net)) }
 // GC-TP step 3b2 (Sensibull Drafts Mode 274-279): Exit all / a (partial) Exit only EDIT the legs (none / the contract less N lots),
 // then open the same confirm list: the orders are paperOrdersFor(net, legs) like every other edit, never built here.
 function exitAllPaper() {
-  if (!paper.value) return
+  if (!paper.value || paperStale.value) return
   setLegs([])
   reviewPending()
 }
 function exitPaper(contractId, lots) {
-  if (!paper.value) return
+  if (!paper.value || paperStale.value) return
   const next = legsAfterExit(paper.value.net, legs.value, contractId, lots)
   if (!next) return
   setLegs(next)
@@ -406,24 +413,50 @@ async function confirmPending(orders) {
   const { id } = paper.value
   paperBusy.value = true
   paperError.value = ''
+  paperState.value = PAPER_STATE.READY
   try {
     await postPaperOrders(api, id, orders, actedSuggestionIds.value, preparedBasketLegs.value)
-    await dropActed() // one basket answers the records once
   } catch (e) {
-    paperError.value = (e?.parts ?? NEUTRAL_PARTS).what_happened || NEUTRAL_PARTS.what_happened // nothing changes locally on a refusal
-    if (actedSuggestionIds.value.length && ACTED_REFUSED.has(e?.status)) await dropActed() // the server's sentence above says why
+    const outcome = paperPostOutcome(e)
+    if (outcome === PAPER_STATE.REFUSED) { // 4xx: the server stored nothing (one transaction or none)
+      paperError.value = (e?.parts ?? NEUTRAL_PARTS).what_happened || NEUTRAL_PARTS.what_happened
+    }
+    paperState.value = outcome === 'superseded' ? PAPER_STATE.READY : outcome // superseded: silent
+    // REQ-163: a refused record is dropped, so the next request differs from the refused one; Confirm is ready again (text kept)
+    if (outcome === PAPER_STATE.REFUSED && actedSuggestionIds.value.length && ACTED_REFUSED.has(e?.status)) {
+      await dropActed() // the server's sentence above says why
+      paperState.value = PAPER_STATE.READY
+    }
     paperBusy.value = false
     return
   }
-  paperDialog.value = false
+  // STORED (201). From here nothing may offer these orders again: a failure below is only a failed refresh.
+  paperStale.value = true
   try {
+    await dropActed() // one basket answers the records once
     const read = await readPaperBook(api, id) // the server's book after the orders: the new net position
-    if (read.kind === 'paper') enterDrafts(id, read)
-    else openError.value = unreadableParts(null)
-  } catch (e) {
-    openError.value = unreadableParts(e)
+    if (read.kind !== 'paper') throw new Error('unreadable paper book')
+    enterDrafts(id, read)
+    paperDialog.value = false
+  } catch {
+    paperState.value = PAPER_STATE.PLACED // the dialog stays, says it was placed, and has no Confirm
   } finally {
     paperBusy.value = false
+  }
+}
+// the unknown-outcome link: re-read the book (the server's truth) and show its Orderbook; a failed read is said plainly
+async function openPaperOrderbook() {
+  if (!paper.value) return
+  const { id } = paper.value
+  paperDialog.value = false
+  try {
+    const read = await readPaperBook(api, id)
+    if (read.kind !== 'paper') throw new Error('unreadable paper book')
+    enterDrafts(id, read)
+    showOrdersTick.value += 1
+  } catch (e) {
+    paperStale.value = true // the screen's net cannot be trusted until a book is read
+    openError.value = unreadableParts(e)
   }
 }
 // the Saved tab's Open goes through the same check: a strategy with paper orders opens as its net position, never its plan
@@ -759,6 +792,9 @@ const headerUnderlying = computed(() => data.value?.underlying ?? legs.value[0]?
 // REQ-077 AC-6: each leg's live LTP string from the outcome the page already has (a FROM_ENTRIES answer carries none)
 const ltpById = computed(() => Object.fromEntries((data.value?.legs ?? []).filter((l) => l.ltp != null).map((l) => [l.instrument_id, l.ltp])))
 // GC-UI D-PX (REQ-152 AC-2): the server's two-decimal price texts by instrument id; the browser prints these, never the values
+// fix/paper-dialog-safe item 2: the live price per leg as the table shows it (ltp_display, else the ltp string); an entry row in
+// the paper confirm list starts at it instead of the planned entry captured when the leg was added
+const livePriceById = computed(() => Object.fromEntries((data.value?.legs ?? []).map((l) => [l.instrument_id, l.ltp_display ?? l.ltp ?? null]).filter(([, v]) => typeof v === 'string' && v.trim() !== '')))
 const priceTextById = computed(() => Object.fromEntries((data.value?.legs ?? []).map((l) => [l.instrument_id, { ltp_display: l.ltp_display ?? null, planned_entry_display: l.planned_entry_display ?? null }])))
 const legQuoteRows = computed(() => legQuotes(data.value))
 // A leg's contract name: from its own fields, else looked up from the page's draft legs by instrument id (ADR-086).
@@ -845,14 +881,15 @@ const pricesStamp = computed(() => {
           </template>
         </LegList>
         <div v-if="paper" class="mt-2 flex flex-wrap items-center gap-2 text-sm" data-testid="paper-pending">
-          <span class="flex-1" data-testid="paper-pending-count">{{ pendingOrders === null ? PAPER_PENDING_UNREADABLE : pendingText(pendingOrders.length) }}</span>
-          <button v-if="pendingOrders?.length" type="button" class="h-9 rounded-lg bg-accent px-3 font-medium text-white" data-testid="paper-review" @click="reviewPending">{{ REVIEW_AND_ADD_LABEL }}</button>
+          <span v-if="paperStale" class="flex-1" data-testid="paper-pending-stale">{{ PAPER_PLACED_NOT_REFRESHED_TEXT }}</span>
+          <span v-else class="flex-1" data-testid="paper-pending-count">{{ pendingOrders === null ? PAPER_PENDING_UNREADABLE : pendingText(pendingOrders.length) }}</span>
+          <button v-if="!paperStale && pendingOrders?.length" type="button" class="h-9 rounded-lg bg-accent px-3 font-medium text-white" data-testid="paper-review" @click="reviewPending">{{ REVIEW_AND_ADD_LABEL }}</button>
           <button v-if="pendingOrders === null || pendingOrders.length" type="button" class="h-9 rounded-lg border border-line px-3 font-medium" data-testid="paper-discard" @click="discardPending">{{ DISCARD_LABEL }}</button>
         </div>
-        <PaperBookPanel v-if="paper" :book="paper.book" :net="paper.net" @exit="exitPaper" @exit-all="exitAllPaper" />
+        <PaperBookPanel v-if="paper" :book="paper.book" :net="paper.net" :show-orders="showOrdersTick" @exit="exitPaper" @exit-all="exitAllPaper" />
         </div>
-        <PaperConfirmDialog :open="paperDialog" :orders="paperRows" :busy="paperBusy" :error="paperError" @confirm="confirmPending" @cancel="paperDialog = false" />
-        <SaveDraftBar :legs="legs" :rules-ref="String(route.query.rules_ref || '')" :current="openStrategy" :shown-name="shapeName ?? ''" :paper-mode="paper !== null" class="max-[1099px]:contents" @open="openFromBar" @saved="onSaved" @paper-added="onPaperAdded" @renamed="onRenamed" @deleted="onDeleted">
+        <PaperConfirmDialog :open="paperDialog" :orders="paperRows" :busy="paperBusy" :error="paperError" :state="paperState" @confirm="confirmPending" @cancel="paperDialog = false" @orderbook="openPaperOrderbook" />
+        <SaveDraftBar :legs="legs" :rules-ref="String(route.query.rules_ref || '')" :current="openStrategy" :shown-name="shapeName ?? ''" :paper-mode="paper !== null" :live-price-by-id="livePriceById" class="max-[1099px]:contents" @open="openFromBar" @saved="onSaved" @paper-added="onPaperAdded" @renamed="onRenamed" @deleted="onDeleted">
           <template #add-edit>
             <button type="button" class="h-10 flex-1 basis-0 rounded-lg border border-line font-medium" aria-haspopup="dialog" :aria-expanded="pickerOpen ? 'true' : 'false'" data-testid="add-edit" @click="pickerOpen = !pickerOpen">Add/Edit</button>
           </template>

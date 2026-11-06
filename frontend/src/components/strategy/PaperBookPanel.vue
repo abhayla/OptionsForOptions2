@@ -83,10 +83,12 @@ import { EXIT_ALL_LABEL, EXIT_LABEL, NET_POSITIONS_LABEL, ORDERBOOK_LABEL, exitL
 const props = defineProps({
   book: { type: Object, required: true }, // GET /paper/strategies/{id} as sent
   net: { type: Array, required: true }, // the net legs (netLegsFromBook): whole lots per open contract
+  showOrders: { type: Number, default: 0 }, // fix/paper-dialog-safe: a bump switches to the Orderbook view (the unknown-outcome link)
 })
 const emit = defineEmits(['exit', 'exit-all'])
 
-const view = ref('net')
+const view = ref(props.showOrders > 0 ? 'orders' : 'net')
+watch(() => props.showOrders, (n) => { if (n > 0) view.value = 'orders' })
 const open = computed(() => props.book.positions.filter((p) => p.net_quantity !== 0))
 const closed = computed(() => props.book.positions.filter((p) => p.net_quantity === 0))
 const lotsOf = (p) => openLots(props.net, p.contract_id)
