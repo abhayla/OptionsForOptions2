@@ -3,6 +3,7 @@
 // position, and every leg edit reaches the server ONLY as the paper orders paperOrdersFor(net, edited) returns, reviewed in
 // the confirm list first. Quantities only (units = lots x lot size, a count): no price or money is formed here (ADR-008);
 // prices are the server's texts or what the user types in the dialog.
+import { entryPriceFor } from '@/lib/tracking'
 
 /** The Drafts Mode frame's label (Sensibull 274-279; RD-121: paper trades said plainly as not real). */
 export const PAPER_MODE_LABEL = 'Paper mode - not real trades'
@@ -120,12 +121,14 @@ export function paperOrdersFor(net, edited) {
 /** The confirm list's rows for `orders` (PaperConfirmDialog props). Default price: an exit at the contract's live LTP text from
  *  the book; an add at the leg's builder entry price. With no live LTP (after hours, REQ-109 AC-4) the exit's box is empty, marked
  *  "last close", and must be typed (the dialog refuses an empty price). Texts only: no price is formed here (ADR-008). */
-export function confirmRowsFor(orders, book, nameOf) {
+export function confirmRowsFor(orders, book, nameOf, livePriceById = {}) {
   const byId = new Map((book?.positions ?? []).map((p) => [p.contract_id, p]))
   return orders.map((o, i) => {
     const p = byId.get(o.contract_id)
     const live = o.kind === 'exit' && p?.price_state === 'live' && typeof p.ltp_text === 'string' && p.ltp_text.trim() !== ''
-    const price = o.kind === 'exit' ? (live ? p.ltp_text.trim() : '') : (typeof o.leg?.planned_entry === 'string' ? o.leg.planned_entry : '')
+    // an entry starts at the live price the page holds for the leg, else the planned entry (noted); fix/paper-dialog-safe item 2
+    const entry = o.kind === 'exit' ? null : entryPriceFor(o.leg, livePriceById)
+    const price = o.kind === 'exit' ? (live ? p.ltp_text.trim() : '') : entry.price
     return {
       key: `${o.kind}-${o.contract_id}-${i}`,
       contract_id: o.contract_id,
@@ -135,7 +138,7 @@ export function confirmRowsFor(orders, book, nameOf) {
       lot_size: o.lot_size,
       price,
       kind: o.kind,
-      price_note: o.kind === 'exit' && !live ? LAST_CLOSE_LABEL : '',
+      price_note: o.kind === 'exit' ? (live ? '' : LAST_CLOSE_LABEL) : entry.price_note,
     }
   })
 }

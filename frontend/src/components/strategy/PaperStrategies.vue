@@ -120,7 +120,7 @@
       </template>
     </template>
     <!-- GC-TP step 4b round 2 (REQ-109 AC-4; Sensibull 166-173): every exit goes through the shared confirm list, in lots -->
-    <PaperConfirmDialog :open="!!confirm" :orders="confirm ? confirm.orders : []" :busy="busy" :error="dialogError" @confirm="doExit" @cancel="cancelExit" />
+    <PaperConfirmDialog :open="!!confirm" :orders="confirm ? confirm.orders : []" :busy="busy" :error="dialogError" :state="dialogState" @confirm="doExit" @cancel="cancelExit" @orderbook="openOrderbook" />
   </section>
 </template>
 
@@ -132,6 +132,8 @@ import PaperStops from '@/components/strategy/PaperStops.vue'
 import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
 import { ALL_CLOSED_TEXT, GREEK_COLUMNS, PAPER_NO_FIGURE, SHOW_CLOSED_LABEL, exitRowsFor, readPaperList, visibleGroups } from '@/lib/paperList'
 import { usePaperRefresh } from '@/lib/usePaperRefresh'
+import { PAPER_STATE, paperPostOutcome } from '@/lib/tracking'
+import { useRouter } from 'vue-router'
 import { signOf } from '@/lib/chartCard'
 
 defineProps({ compact: { type: Boolean, default: false } })
@@ -186,6 +188,8 @@ const tickedOpen = (g) => g.positions.filter((p) => canExit(p) && isTicked(g.id,
 const confirm = ref(null)
 const busy = ref(false)
 const dialogError = ref('') // the server's refusal text, shown inside the confirm list
+const dialogState = ref(PAPER_STATE.READY) // fix/paper-dialog-safe: the dialog's answer state (tracking.js PAPER_STATE)
+const router = useRouter()
 
 function show(data) {
   const read = readPaperList(data)
@@ -231,12 +235,14 @@ function settle(now) {
 function cancelExit() {
   confirm.value = null
   dialogError.value = ''
+  dialogState.value = PAPER_STATE.READY
 }
 
 function ask(g, rows) {
   const orders = exitRowsFor(rows)
   if (busy.value || orders === null || !orders.length) return
   dialogError.value = ''
+  dialogState.value = PAPER_STATE.READY
   confirm.value = { id: g.id, orders, units: rows.map((p) => ({ id: p.contractId, units: p.units })) }
 }
 
@@ -246,15 +252,26 @@ async function doExit(orders) {
   if (!c || busy.value) return
   busy.value = true
   dialogError.value = ''
+  dialogState.value = PAPER_STATE.READY
   try {
     await api.post(`/paper/strategies/${c.id}/orders`, { orders })
-    confirm.value = null
-    ticks.value = { ...ticks.value, [c.id]: [] }
-    refreshNow()
   } catch (e) {
-    dialogError.value = e?.parts?.what_happened || NEUTRAL_ERROR
-  } finally {
+    const outcome = paperPostOutcome(e)
+    if (outcome === PAPER_STATE.REFUSED) dialogError.value = e?.parts?.what_happened || NEUTRAL_ERROR // 4xx: nothing stored
+    dialogState.value = outcome === 'superseded' ? PAPER_STATE.READY : outcome
     busy.value = false
+    return
   }
+  // STORED (201): the dialog closes and is never re-offered for these rows; a failed list refresh is the list's own message
+  confirm.value = null
+  ticks.value = { ...ticks.value, [c.id]: [] }
+  busy.value = false
+  try { refreshNow() } catch { /* the list says its own read failed */ }
+}
+// the unknown-outcome link: the strategy's builder shows its book (Orderbook) read from the server
+function openOrderbook() {
+  const c = confirm.value
+  cancelExit()
+  if (c && router) router.push({ path: '/strategy/builder', query: { strategy: String(c.id) } })
 }
 </script>

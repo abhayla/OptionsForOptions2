@@ -83,7 +83,7 @@ describe('Add to Paper ends in Drafts Mode', () => {
   })
 
   it('POST refused with text: stays a plan, Add to Paper available, refusal shown', async () => {
-    answers['POST /paper/strategies/70/orders'] = () => Promise.reject({ parts: { what_happened: 'Refused for a test reason.' } })
+    answers['POST /paper/strategies/70/orders'] = () => Promise.reject({ status: 422, parts: { what_happened: 'Refused for a test reason.' } }) // a 4xx: nothing stored
     const w = await mountPage()
     await t(w, 'add-to-paper').trigger('click')
     await flushPromises()

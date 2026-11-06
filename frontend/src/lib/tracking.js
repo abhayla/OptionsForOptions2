@@ -29,6 +29,36 @@ export function paperPriceOk(text) {
 }
 export const paperLotsOk = (text) => /^[1-9]\d{0,5}$/.test(String(text ?? '').trim())
 
+// fix/paper-dialog-safe (ADR-017: no automatic retry; submitted is not executed): what a paper-order dialog does with each
+// answer to its ONE POST. Before this, every failure read as "not placed" and Confirm came back, so a POST the server had
+// stored (201) but whose answer or follow-up read was lost could be sent a second time (live 2026-11-06, strategy 86).
+export const PAPER_PLACED_NOT_REFRESHED_TEXT = 'Placed on paper. The screen could not refresh: reload to see it.'
+export const PAPER_UNKNOWN_TEXT = 'We could not confirm the order. Check Orderbook before trying again.'
+export const PAPER_OPEN_ORDERBOOK_LABEL = 'Open Orderbook'
+export const PAPER_PLANNED_PRICE_NOTE = 'planned price, no live quote'
+/** How long Confirm stays locked after an answer of unknown outcome (the user checks the Orderbook first). */
+export const PAPER_UNKNOWN_HOLD_MS = 5000
+/** The dialog states after Confirm: '' (ready), 'refused', 'unknown', 'placed'. */
+export const PAPER_STATE = Object.freeze({ READY: '', REFUSED: 'refused', UNKNOWN: 'unknown', PLACED: 'placed' })
+/** Classify a FAILED paper-order POST (the mapped client error). 'superseded' = the page cancelled it itself (silent);
+ *  'refused' = the server answered 4xx, so it stored nothing (one transaction or none); 'unknown' = no answer (timeout,
+ *  dropped connection) or a 5xx (a gateway timeout can follow a commit): the order may be stored, so it is never re-offered
+ *  as if it were not. */
+export function paperPostOutcome(e) {
+  if (e?.superseded) return 'superseded'
+  const status = Number.isInteger(e?.status) ? e.status : null
+  if (status !== null && status >= 400 && status < 500) return PAPER_STATE.REFUSED
+  return PAPER_STATE.UNKNOWN
+}
+/** An entry (`open`) row's starting price: the live price the page holds for the leg (the LTP the table shows), else the
+ *  planned entry with a note saying so. The planned-entry field itself is never changed. */
+export function entryPriceFor(leg, livePriceById = {}) {
+  const live = livePriceById?.[leg?.instrument_id]
+  if (typeof live === 'string' && live.trim() !== '') return { price: live.trim(), price_note: '' }
+  const planned = typeof leg?.planned_entry === 'string' ? leg.planned_entry : ''
+  return { price: planned, price_note: planned ? PAPER_PLANNED_PRICE_NOTE : '' }
+}
+
 /** POST the confirmed orders in ONE request (the server stores them in one transaction or none). Throws the client error. */
 export async function addToPaper(client, strategyId, orders, suggestionIds = [], basketLegs = null) {
   // REQ-163 AC-1: the acted-on records this basket answers (Compare -> Open in builder); omitted when none
