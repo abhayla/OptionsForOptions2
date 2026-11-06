@@ -540,8 +540,12 @@ def _write_key(ev: pe.Evaluation) -> tuple:
 async def record_check(watched: Watched, state: pe.StrategyState, prefs: Preferences,
                        scn: Any = None) -> Recorded:
     """The check's rule memory in one transaction, through the screen's own function (REQ-165 AC-5). Opens no record:
-    records are the alert gate's (``DbGateStore.apply``, ADR-237 (6)). ``opened`` is empty."""
+    records are the alert gate's (``DbGateStore.apply``, ADR-237 (6)). ``opened`` is empty. No ``scn`` -> the
+    process's scenario (``scenario_mode.current()``, None live), as the worker's own check reads it (issue 65: the
+    stored entry baseline and the worker's must be the same one; scn=None here once stored the CURRENT state)."""
+    from ofo_app import scenario_mode  # noqa: PLC0415 - read at check time
     from ofo_app.db import get_sessionmaker  # noqa: PLC0415 - the database layer only when a check runs
+    scn = scenario_mode.current() if scn is None else scn
     async with get_sessionmaker()() as db:
         ev = await check.evaluate_and_remember(db, watched.user_ref, watched.strategy_id, watched.body, state, scn,
                                                watched.tracked.position, gap_until=prefs.gap_until)

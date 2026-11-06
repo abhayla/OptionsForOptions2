@@ -529,7 +529,7 @@ def _entry_state(clock: datetime.datetime, spot: Decimal, atm_iv: Decimal | None
     expiry = min(x.expiry for x in position.legs)
     return pe.StrategyState(stops=None, expiry_kind=state.expiry_kind, days_left=(expiry - clock.date()).days,
                             hhmm=clock.strftime("%H:%M"), spot=spot,
-                            shorts=tuple(pe.ShortLeg(s.strike, None, None) for s in state.shorts),
+                            shorts=tuple(pe.ShortLeg(s.strike, None, None, s.kind) for s in state.shorts),
                             atm_iv=atm_iv, prices_fresh=True)
 
 

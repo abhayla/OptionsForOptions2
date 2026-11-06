@@ -19,6 +19,7 @@ from ofo_app import playbook_store
 from test_background_worker import app_db_url  # noqa: F401 - the fixture
 
 ONE_MINUTE_AND_A_BIT = 70
+ENTRY_SPOT = "23460"  # 40 points (0.17 %) under the 23500 CE short: inside every stage's T-01 limit (lowest 0.3 %)
 
 
 def _t01(worker, sid: int):
@@ -34,7 +35,7 @@ async def _run(worker, now, seconds: int) -> None:
 async def test_core_entry_crossing_stays_quiet_across_a_restart_and_a_new_crossing_opens_exactly_one(
         app_db_url, monkeypatch):  # noqa: F811 - the imported fixture
     sid, scn = await bw._seeded(app_db_url, monkeypatch)
-    scn.data["position"]["entry"]["spot"] = bw.CROSS_SPOT  # T-01 true AT ENTRY (80 points under the 23500 CE)
+    scn.data["position"]["entry"]["spot"] = ENTRY_SPOT  # T-01 true AT ENTRY at its entry-stage limit
     await bw._pin_intraday(app_db_url, sid)
     now = [scn.clock_at]
     bw._push_spot(scn, bw.CROSS_SPOT, now[0])
@@ -69,7 +70,7 @@ async def test_core_entry_crossing_stays_quiet_across_a_restart_and_a_new_crossi
     first_check = _t01(third, sid)
     await _run(third, now, ONE_MINUTE_AND_A_BIT)
     rows = await bw._t01_rows(app_db_url, sid, base)
-    print(f"CORE-PROOF strategy={sid} entry_spot={bw.CROSS_SPOT} restart_first_check="
+    print(f"CORE-PROOF strategy={sid} entry_spot={ENTRY_SPOT} restart_first_check="
           f"{type(first_check).__name__} records_after_new_crossing={len(rows)} rows={rows}")
     assert isinstance(first_check, pe.Flag), first_check  # memory from the DB: seen clear, so a new crossing flags
     assert len(rows) == 1 and rows[0][1] == "open", rows
