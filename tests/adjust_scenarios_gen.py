@@ -590,14 +590,16 @@ def hand_approaches(u: str, lot: int, kind: str, today: datetime.date, spot: Dec
 
     def distance(short, out, basis, pool=None):
         up = (short["type"] == "CE") == out
-        cands = [r for r in (rows if pool is None else pool) if r["type"] == short["type"] and (r["strike"] > short["strike"] if up else r["strike"] < short["strike"])]
+        def otm(r):  # live test 2026-11-06: a delta pick is never in the money; rolling in stops short of spot
+            return r["strike"] > spot if r["type"] == "CE" else r["strike"] < spot
+        cands = [r for r in (rows if pool is None else pool) if r["type"] == short["type"] and (r["strike"] > short["strike"] if up else r["strike"] < short["strike"]) and (out or otm(r))]
         with_delta = [r for r in cands if r["delta"] is not None]
         if not with_delta:
             pts = D(APPROACH_CONFIG["roll_points_without_delta"][u])
             basis.update(step_basis="points", step_value=pts)
             return pts if up else -pts
         basis.update(step_basis="delta", step_value=target)
-        fit = [r for r in with_delta if abs(r["delta"]) <= target]
+        fit = [r for r in with_delta if abs(r["delta"]) <= target and otm(r)]
         if not fit:
             raise HandRefused(f"No strike in the chain brings {name(short)} to the target delta.")
         if out:  # the first strike beyond the short

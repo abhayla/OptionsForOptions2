@@ -16,6 +16,10 @@ Rules (each one decided here and stated, catalogue Part 2 followed where the con
 - Roll distance (contract): the move that brings the moved short to the playbook's Early delta (config
   ``target_short_delta`` by expiry kind). A-05 rolls the tested short OUT to the first strike beyond it whose |delta| is
   at most the target; A-01 rolls the untested short IN to the strike nearest spot whose |delta| is at most the target.
+  Every delta pick is out of the money (a call strike above spot, a put strike below it; |delta| compared, put deltas
+  are negative), and rolling IN walks only the strikes between the short and spot: with none of them at the target
+  the roll is refused (``adjust_no_strike_at_delta``), never walked past spot (live test 2026-11-06: an untested put
+  short at 24,500 with spot 24,738 was walked up to an unquoted 25,600 PE, about 860 points in the money).
   The wing moves the same distance (width kept). When no chain row of that type and expiry carries a delta, the move
   is ``roll_points_without_delta`` of the underlying (200 NIFTY / 500 SENSEX). ``step_basis`` says which ("delta" or
   "points") and ``step_value`` the number used. A strike of the search with no delta (unquoted: nobody held it) that
@@ -438,6 +442,10 @@ class _Builder:
             raise _Refused(cast(UserFacingError, refused.message)) from refused
         return {i: strike for i in targets if (strike := moved.legs[i].leg.strike) is not None}
 
+    def otm(self, row: ChainRow) -> bool:
+        """Out of the money: a call strike above spot, a put strike below it (at spot is neither)."""
+        return row.strike > self.spot if row.type == "CE" else row.strike < self.spot
+
     def roll_distance(self, leg: PositionLeg, outward: bool) -> Decimal:
         """How far the short moves (signed points); records the basis used in ``self.basis``. The search reads the
         rows of ``leg.expiry`` only (A-04 passes the leg on the next expiry)."""
@@ -450,7 +458,8 @@ class _Builder:
         if found.code != ROLL_TARGET_DELTA:
             raise _refusal("adjust_roll_basis_unreadable", leg=self.ref(leg))
         rows = sorted((r for r in self.chain if r.type == leg.type and r.expiry == leg.expiry
-                       and (r.strike > leg.strike if up else r.strike < leg.strike)),
+                       and (r.strike > leg.strike if up else r.strike < leg.strike)
+                       and (outward or self.otm(r))),  # rolling IN stops short of spot (live 2026-11-06)
                       key=lambda r: abs(r.strike - leg.strike))  # the walk away from the short
         with_delta = [(r, r.delta) for r in rows if r.delta is not None]
         target = self.cfg.target_short_delta[self.p.expiry_kind]
@@ -459,7 +468,7 @@ class _Builder:
             self.basis = ("points", points)
             return points if up else -points
         self.basis = ("delta", target)
-        fit = [r for r, delta in with_delta if abs(delta) <= target]
+        fit = [r for r, delta in with_delta if abs(delta) <= target and self.otm(r)]  # |delta| (puts < 0); never ITM
         if not fit:
             gap = next((r for r in rows if r.delta is None), None)
             if gap is not None:  # an unquoted strike might have fitted: named, never "no strike"
