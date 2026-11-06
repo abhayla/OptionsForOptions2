@@ -33,7 +33,7 @@ def _reply(*, stale: bool, at_minutes_old: int | None):
 
 
 def test_fresh_prices_say_so_and_still_rank():
-    body, now = _reply(stale=False, at_minutes_old=0)
+    body, _ = _reply(stale=False, at_minutes_old=0)
     p = body["prices"]
     assert p["stale"] is False and p["banner"] is None and p["prepare_blocked_reason"] is None
     assert p["label"].startswith("prices from ") and p["label"].endswith(("AM", "PM"))  # ADR-015 clock form
@@ -44,7 +44,7 @@ def test_stale_prices_carry_age_and_as_of_and_rank_nothing():
     body, now = _reply(stale=True, at_minutes_old=10)
     p = body["prices"]
     last = (now - datetime.timedelta(minutes=10)).astimezone(IST)
-    assert p["stale"] is True and p["age_minutes"] == 10
+    assert p["stale"] is True and p["age_minutes"] == 10  # noqa: PLR2004 - the minutes set above
     assert p["banner"] == f"Prices are 10 min old (last update {last:%H:%M} IST): figures below are not live."
     assert p["as_of_note"] == f"as of {last:%H:%M}"
     assert p["prepare_blocked_reason"] == "Wait for fresh prices"
@@ -93,7 +93,7 @@ def test_leg_prices_state_every_answer_state_unknown_is_stale(name, ctx, quotes,
 
 
 def test_prices_block_naive_timestamp_is_unknown_age_and_stale():
-    m = dataclasses.replace(market_of(load("ADJ-02")), prices_stale=True, prices_at=datetime.datetime(2026, 1, 1))
+    m = dataclasses.replace(market_of(load("ADJ-02")), prices_stale=True, prices_at=datetime.datetime(2026, 1, 1))  # noqa: DTZ001 - naive on purpose
     p = route._prices_block(m)
     assert p["stale"] is True and p["age_minutes"] is None and p["as_of"] is None
 
@@ -101,9 +101,9 @@ def test_prices_block_naive_timestamp_is_unknown_age_and_stale():
 # issue 91: the 14:30 time-exit clock reads the IST wall clock, whatever zone `now` carries
 @pytest.mark.parametrize(("now", "hhmm"), [
     (datetime.datetime(2026, 11, 10, 14, 20, tzinfo=IST), "14:20"),
-    (datetime.datetime(2026, 11, 10, 8, 50, tzinfo=datetime.timezone.utc), "14:20"),
+    (datetime.datetime(2026, 11, 10, 8, 50, tzinfo=datetime.UTC), "14:20"),
     (datetime.datetime(2026, 11, 10, 14, 30, tzinfo=IST), "14:30"),
-    (datetime.datetime(2026, 11, 10, 9, 0, tzinfo=datetime.timezone.utc), "14:30"),
+    (datetime.datetime(2026, 11, 10, 9, 0, tzinfo=datetime.UTC), "14:30"),
 ])
 def test_91_time_exit_clock_is_ist_and_not_due_before_1430(now, hhmm):
     pos = Position("NIFTY", 75, "weekly", datetime.date(2026, 11, 10), (LEG,))

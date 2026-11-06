@@ -578,7 +578,8 @@ async def read_market(tracked: Tracked, ctx: Any, *, extra_ids: Iterable[str] = 
     return MarketInputs(tuple(rows) + later_rows, ids, forward, years, vol, feed,
                         read_last_close(spot_q, closed, scn, now), now, expiry_kind, leg_greeks, fwd_model, leg_ivs,
                         index_day_open(frozen.day, now), reach, ctx.carry_gap_pct, ctx.s02_delta_per_lot,
-                        ctx.s12_percent, spot_q, feed_is_live(provider, now), *leg_prices_state(ctx, quotes, ids, position))
+                        ctx.s12_percent, spot_q, feed_is_live(provider, now),
+                        *leg_prices_state(ctx, quotes, ids, position))
 
 
 async def read_market_more(tracked: Tracked, ctx: Any, extra_ids: Iterable[str]) -> MarketInputs | None:

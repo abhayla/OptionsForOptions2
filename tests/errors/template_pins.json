@@ -3794,5 +3794,25 @@
   "labels:stop": {
     "sha256": "a5fb4a38ee48dd4dc17ed6ace27757be06bd6906fc0fa9001de223960961c079",
     "reviewed": "pending owner read"
+  },
+  "explanation:adjust_prices_stale": {
+    "sha256": "5e562ac183d1f88accdb019b4dc31bb8c3ebc6dc37c0f13bea22fca34bbb0adc",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_prices_unknown_age": {
+    "sha256": "147a9f3fb3bd3e368b2235a712eddbc6f884f1a7d593543fa49180a66df10473",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_prices_as_of": {
+    "sha256": "c7efeab8a8cc6c35aac68cf6bba5e05a285b4463c5b2e36265835f681515b608",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_prices_from": {
+    "sha256": "842ea2422fb1f8043dcbd4eb175624cd5857d6874b37b566d486646c3dc7f5bf",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_prepare_wait_fresh": {
+    "sha256": "2c2acdeffe92f55d4d8a464386d84c1214ab91e7e26c3c12587484a8c3b97681",
+    "reviewed": "pending owner read"
   }
 }

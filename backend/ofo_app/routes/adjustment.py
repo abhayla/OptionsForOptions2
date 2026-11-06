@@ -568,11 +568,7 @@ async def adjustment_approaches(  # noqa: PLR0913, PLR0915 - FastAPI dependencie
         reply["delta_neutral"] = delta_neutral_reply.block(position, market.chain, market.leg_greeks, spot.value)
         reply |= await _compare_reply(columns, tracked, spot.value, market, rates, pop_on, before,  # type: ignore[arg-type]
                                       margin_of, prefs, limits, guards)
-    reply["prices"] = _prices_block(market)
-    if reply["prices"]["stale"]:  # ADR-272: nothing is ranked on stale prices
-        for c in reply.get("criteria", []):
-            c["leaders"] = []
-        reply["leads"] = {a: {"n": 0, "m": 0} for a in reply.get("leads", {})}
+    _state_prices(reply, market)
     reply["available"] = _available(position, market.chain, spot.value if spot.available else None, dict(built_list),
                                     cfg, limits, max_profit, exits)
     reply["days_to_expiry"] = _days_to_expiry(position)
@@ -583,6 +579,15 @@ async def adjustment_approaches(  # noqa: PLR0913, PLR0915 - FastAPI dependencie
         reply["timing"] = {"engine_seconds": Decimal(f"{engine:.4f}"), "total_seconds": Decimal(f"{total:.4f}"),
                            "approaches": len(built_list)}
     return AdjustApproachesOut.model_validate(reply)
+
+
+def _state_prices(reply: dict[str, Any], market: MarketInputs) -> None:
+    """ADR-272: the reply names its prices' age; on stale prices nothing is ranked (no leaders, no leads)."""
+    reply["prices"] = _prices_block(market)
+    if reply["prices"]["stale"]:
+        for c in reply.get("criteria", []):
+            c["leaders"] = []
+        reply["leads"] = {a: {"n": 0, "m": 0} for a in reply.get("leads", {})}
 
 
 def _prices_block(market: MarketInputs) -> dict[str, Any]:
