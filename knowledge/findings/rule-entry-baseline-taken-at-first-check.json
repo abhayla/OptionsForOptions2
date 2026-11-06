@@ -1,0 +1,19 @@
+{
+  "id": "rule-entry-baseline-taken-at-first-check",
+  "class": "Any playbook rule (T-01, T-03, T-07, T-09, T-11, T-13 and every other F-71 crossing rule) on any tracked strategy, live or test data, whose FIRST background check, or a screen check made before that first check, happens after the rule has already crossed: the rule is stored and shown as 'Already true when tracking started' and never flags until it clears, although it was false at the real entry.",
+  "mechanism": "The entry baseline is not stored at entry. Three callers each choose one at check time: the worker's write (background.py:1207 record_check with scn=None, then adjustment_check.py:535-536 'elif not memory: entry = state') and the worker's own check (background.py:1187 'None if known else state') take the CURRENT state as the entry; the screen uses the fixture entry in test mode and the current state otherwise. held_at_entry is fixed at first insert (playbook_store.py:250-252, migration 0031 trigger), so a baseline taken after a crossing is permanent.",
+  "first_seen": {
+    "date": "2026-11-06",
+    "where": "IC test-data run on the scenario copy (code 514113f1), scratch ISSUES.md issue 65 (PATH-12, PATH-14) and 89 (PATH-15), condor 112 (PATH-13)",
+    "evidence": "SELECT rule_id, held_at_entry, seen_clear FROM public.adjustment_rule_state WHERE strategy_id = 115 (7 Nov 00:4x): T-01, T-03, T-13 held_at_entry=true, seen_clear=false, the three rules the screen showed 'already true' at the 0.87 % gap frame although at the Thursday entry (spot 23,100) none held; condor 113, whose first background check ran at frame 0, flagged T-11 correctly. Independent read-only review 7 Nov 00:1x-00:3x (fresh Opus) traced the three baselines; lines re-read by the lead."
+  },
+  "fix": "none yet (development on hold). Proposed by the review: store the entry baseline once when tracking starts (first fill, next to entry_facts_store, ADR-243), one function for all three callers, delete the 'entry = current state' fallbacks, ADR-258 writes its new baseline through the same function, one-off repair of rows written after a crossing.",
+  "detection": {
+    "status": "unguarded",
+    "checks": [],
+    "note": "F-71 tests pass a fixed entry to evaluate(); test_background_cycle uses a fake recorder; no test makes a first check after a crossing or compares screen and worker on one path. Needed: those three tests."
+  },
+  "spec_ref": ["spec/requirements/REQ-159.md", "spec/requirements/REQ-165.md", "spec/decisions/ADR-237.md", "spec/decisions/ADR-258.md"],
+  "occurrences": 4,
+  "live_example": "A condor filled at 15:27 is first checked at 09:16 the next morning after a 0.9 % gap up: T-13 is stored held_at_entry=true and the gap warning never fires."
+}
