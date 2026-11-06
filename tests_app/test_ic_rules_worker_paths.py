@@ -31,18 +31,23 @@ CASES: dict[str, list[tuple[str, str, int]]] = {
     "PATH-15": [("T-13", "T-13", 1)],
     "PATH-16": [("S-07", "day.expiry.1430.5", 1)],
 }
-EXTRA_FRAMES = {"PATH-12": [4, 5, 6, 7]}
-# k+1 is not asserted for these cases: PATH-13 frame 5 opens a second T-11 record although the IV is flat from frame 4
-# (b1-db7.log: {4: {T-11: 1}, 5: {T-11: 2}}); a record is opened again when the level rises (alert_gate.py:267-268),
-# cause not found in the B1 budget. PATH-14 (T-11-day1) holds one record at k+1 and keeps the check.
-NO_NEXT_CHECK = {"T-11"}
+EXTRA_FRAMES = {"PATH-12": [4, 5, 6, 7], "PATH-13": [6]}
+# #661 item 3 (retry round 3), proven without a DB in tests/adjustment/test_ic_retry_661_662.py: PATH-13's frame 4
+# count is frame 3's close (3 pts = the stage line, level 0); frame 4's close (4 pts = the later-stage rung, ladder
+# 3 -> 4) is ONE designed escalation (alert_gate.py:267-268, worse "last"), seen at frame 5; the value is flat from
+# frame 4, so nothing more opens (frame 6 still 2). case -> the count expected at k+1 and after (default 1).
+NEXT_COUNT = {"T-11": 2}
 GUIDANCE = ("sit.S-03", "sit.S-04", "sit.S-05", "sit.S-08", "sit.S-09")
 KNOWN = {  # case -> measured blocker (a throwaway DB run; the layer is proven with file:line)
     # S-12 left KNOWN in the Stage D core-proof fix: adjustment_readers.entered_at now reads the orders' placed_at
     # (the seed's scenario entry clock), not the row's created_at (the real date of the seeding)
-    "T-19": "WORKER INPUT: adjustment_cost None, reason adjust_trigger_no_approach_priced, at EVERY observed frame "
-            "(B1-OBSERVED): background.py:404 passes rates=None, so adjustment_check.cheapest_offered "
-            "(:230-254) prices no approach and _t19 (playbook_eval.py:508-519) is NotChecked; live has the same gap",
+    # retry r4: r4-run1.log B1-RATES None (the conftest's cached "no rate set") is fixed - the walk seeds the stated
+    # rates (_paths_helpers.set_env -> t19_support.seed_rates) and r4-run2.log prices (cost 57.44 at Fri 15:00)
+    "T-19": "PATH FIXTURE, parked (r4-run2.log): on the Mon 9 Nov expiry-day frames 4-8 every IC leg is ltp 0.05 / "
+            "bid 0.00 / ask 0.10, so compare.approach_cost finds no live book (adjust_cmp_no_bid_ask) for any traded "
+            "contract and cheapest_approach answers adjust_trigger_no_approach_priced, while premium_left is 0.00; "
+            "the only priced frames (Fri 15:00, cost 57.44 vs premium left 2268.50) do not cross. T-19 at k=8 "
+            "cannot hold on this path; it needs a path whose cost passes premium left while both books are live",
 }
 
 
@@ -52,26 +57,51 @@ def frames_for(path_id: str) -> list[int]:
     return sorted(need | set(EXTRA_FRAMES.get(path_id, [])))
 
 
-def check(seen: dict, rule: str, k: int, *, next_frame: bool = True) -> None:
-    last = max(seen)
+def check(seen: dict, rule: str, k: int, *, after: int | None = None) -> None:
+    """0 at k-1, 1 at k, 1 at k+1 (no duplicate per tick); ``after`` (NEXT_COUNT): that count at k+1 and at every
+    later walked frame."""
     assert seen[k - 1][rule] == 0, ("k-1", seen[k - 1])
     assert seen[k][rule] == 1, ("k", seen[k])
-    if next_frame and k + 1 <= last:
-        assert seen[k + 1][rule] == 1, ("k+1", seen[k + 1])
+    later = sorted(x for x in seen if x > k) if after is not None else [x for x in seen if x == k + 1]
+    for f in later:
+        assert seen[f][rule] == (1 if after is None else after), (f"k+{f - k}", seen[f])
+
+
+def _spy_pricing(monkeypatch) -> dict:
+    """Each approach the worker's T-19 pick priced, with its outcome: (approach, rates given, refusal or not-priced
+    reason) -> count. Read-only: the real ``priced_approach`` answers every call."""
+    from ofo_app import adjustment_check  # noqa: PLC0415 - app module, loaded after the env is set
+    real = adjustment_check.priced_approach
+    out: dict = {}
+
+    def spy(a, tracked, market, spot, rates, *args, **kw):
+        built, priced = real(a, tracked, market, spot, rates, *args, **kw)
+        why = ("refused", getattr(built, "refusal", None)) if priced is None else (
+            "priced" if priced.after is not None else ("not_priced", getattr(priced.reason, "id", priced.reason)),
+            priced.charges_known)
+        key = (a, rates is not None, str(why))
+        out[key] = out.get(key, 0) + 1
+        return built, priced
+    monkeypatch.setattr(adjustment_check, "priced_approach", spy)
+    return out
 
 
 @pytest.mark.parametrize("path_id", sorted(CASES))
 async def test_every_on_rule_raises_exactly_one_record_at_its_crossing_frame(app_engine, monkeypatch, path_id):
     h.set_env(app_engine, monkeypatch, path_id)
+    reasons = _spy_pricing(monkeypatch)
     try:
         _sid, seen, errors = await h.walk(app_engine, path_id, frames_for(path_id))
+        from ofo_app.routes.outcome import load_charge_rates  # noqa: PLC0415 - the worker's rates source
+        print("B1-RATES", path_id, await load_charge_rates())
+        print("B1-REASONS", path_id, ascii(sorted(reasons.items())))  # ascii: a rupee sign broke cp1252 stdout
         print("B1-OBSERVED", path_id, h.OBSERVED[-12:])
         print("B1-COUNTS", path_id, {k: dict(c) for k, c in seen.items()})
         assert errors == [], errors
         failed, rotten = [], []
         for case, rule, k in CASES[path_id]:
             try:
-                check(seen, rule, k, next_frame=case not in NO_NEXT_CHECK)
+                check(seen, rule, k, after=NEXT_COUNT.get(case))
             except AssertionError as e:
                 if case not in KNOWN:
                     failed.append((case, e))

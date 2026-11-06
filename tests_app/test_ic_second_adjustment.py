@@ -11,11 +11,13 @@ import datetime
 import json
 
 import pytest
+import t19_support
 import test_ic_paper_loop_core as core
 from httpx import ASGITransport, AsyncClient
 from ofo.adjustment.offered import EXIT_REDUCE
 from ofo_app import background, catalogue_store, scenario_mode, strategy_alert_style_store
 from ofo_app import db as app_db
+from ofo_app.routes.outcome import load_charge_rates
 
 PATH = "PATH-40"
 OK, CREATED = 200, 201
@@ -31,6 +33,7 @@ async def _setup(app_engine, monkeypatch, name: str) -> int:
     await core._db_url(app_engine, monkeypatch)
     monkeypatch.setenv("DB_POOL_SIZE", "2")
     monkeypatch.setenv("DB_MAX_OVERFLOW", "0")
+    t19_support.seed_rates(monkeypatch)  # retry r4: the stated rates, as the screen tests; else T-19 is never checked
     core._reset_engine()
     scn = scenario_mode.load(PATH)
     async with app_engine.begin() as conn:
@@ -56,7 +59,8 @@ def _worker(scn, now):
     async def user_values(_u):
         return core.registry_defaults()
     provider, before_cycle = background.scenario_worker_parts(scn, app_db.get_sessionmaker())
-    return core._Draining(provider_for=lambda _o: provider, lister=lambda: background.owner_lister(provider),
+    return core._Draining(provider_for=lambda _o: provider,
+                          lister=lambda: background.owner_lister(provider, rates_of=load_charge_rates),
                           clock=lambda: now[0], settings=settings, preferences=preferences, user_values=user_values,
                           before_cycle=before_cycle)
 
@@ -71,6 +75,13 @@ async def _records(sid: int) -> list[tuple]:
 async def _run_frame(worker, now, k: int) -> None:
     await core._move(k)
     start = datetime.datetime.fromisoformat(core.frame_doc(k)["clock"]["ist"])
+    now[0] = start
+    # #662: the real role re-reads its monitors (the tracked legs and adjustments_used) on its own task every
+    # REBUILD_SECONDS (background.Worker.run -> _rebuild_loop); cycle() alone reads them only at the first cycle, so
+    # the C1 run checked the ENTRY position with adjustments_used 0 on every frame (no T-18 could open). Frames are a
+    # minute apart, so the real role has re-read them before each frame: so does this test.
+    if worker.monitors:
+        await worker.rebuild()
     for s in range(core.CYCLES_PER_FRAME):
         now[0] = start + datetime.timedelta(seconds=s)
         await worker.cycle()
@@ -127,12 +138,11 @@ async def test_two_adjustments_are_placed_acted_on_and_counted(app_engine, monke
 
 
 @pytest.mark.xfail(strict=True, reason=(
-    "c1c.log 2026-11-06: after the 2nd adjustment (adjustments_used == max 2) the worker raised NO T-18 record through "
-    "frame 11 (records: T-01 acted_on, T-03 acted_on, T-01 open, T-03 open; assert 0 == 1). Open explanations: "
-    "(1) T-18 is a guard only (system_playbooks.json T-18: cmp '', no ladder), not a rule the gate raises a record "
-    "for; "
-    "(2) the worker's adjustments_used differs from the history count. The offered-only-exit/reduce and T-19 parts "
-    "were never reached. Parked (C1)."))
+    "r4-run3.log 2026-11-06 (retry round 4, parked): T-18 one record AND attack 2 PROVEN on the DB - the approaches "
+    "route returns only exit / reduce at used 2 = max 2 (offered.limit_filter; the ids assertion passed). It fails at "
+    "the T-19 line: the check reply at the limit (stage Middle) carries T-01, T-13, T-03, T-16, T-10b, T-18 and NO "
+    "T-19 result at all (not even not_checked), with the stated rates seeded; why T-19 is absent from the Middle "
+    "stage's results is not measured"))
 async def test_limit_raises_one_t18_record_and_offers_only_exit_reduce_with_t19(app_engine, monkeypatch):
     await _run(app_engine, monkeypatch, "C1 limit", to_limit=True)
 
@@ -177,7 +187,9 @@ async def _scenario(sid: int, *, to_limit: bool) -> None:
                 await _run_frame(worker, now, k)
                 k3 = k
         t18 = [r for r in await _records(sid) if r[1] == "T-18"]
-        assert len(t18) == 1, (k3, await _records(sid))
+        held = await core._rows("SELECT rule_id, reason FROM public.adjustment_held_crossings WHERE strategy_id = :s",
+                                s=sid)  # a T-18 held by the daily cap / quiet time is named, never silent
+        assert len(t18) == 1, (k3, await _records(sid), held)
         assert len(await _records(sid)) >= before
         for k in range(k3 + 1, min(k3 + 3, LAST_FRAME) + 1):  # attack 3: more frames never raise T-18 a second time
             await _run_frame(worker, now, k)

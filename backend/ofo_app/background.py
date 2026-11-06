@@ -220,6 +220,12 @@ class Watched:
     #: contract step 3: the strategy's ``adjustment_check.Resolved`` (its stop lines in force come from it through
     #: ``settings_in_force.stops_of``). None = not supplied: every stop answers "not checked", never a pass
     resolved: Any
+    #: #661 item 1: the charge rates in force, read ONCE per list by the lister from the screen's own source
+    #: (``routes.outcome.load_charge_rates``), never per check; the tracked position's paid charges are read with the
+    #: same set. They price the cheapest offered approach as the screen check does, so T-19 is checked in the
+    #: background (REQ-165). None = no rates source or none readable: no approach is priced, T-19 is not checked with
+    #: that reason (never a guessed cost)
+    charge_rates: Any = None
 
 
 def _seconds(delta: datetime.timedelta) -> Decimal:
@@ -388,25 +394,28 @@ def market_inputs(watched: Watched, read: PriceRead, shared: FeedScope, now: dat
 def background_state(watched: Watched, read: PriceRead, shared: FeedScope, now: datetime.datetime,  # noqa: PLR0913
                      values: Mapping[str, Decimal], prefs: Preferences,
                      margin: Mapping | None = None, *,
-                     user_values: Mapping[str, Decimal] | None) -> pe.StrategyState:
+                     user_values: Mapping[str, Decimal] | None, rates: Any = None) -> pe.StrategyState:
     """The check's state through the SCREEN's own builder (``adjustment_check.state_of``), never a copy of it; the
     carry gap in force is resolved there (ADR-245) from ``user_values`` (required: the store's own-values record, or
     None for no user read path) and ``watched.strategy_layer``."""
     return state_from_market(watched, market_inputs(watched, read, shared, now, values), now, values, prefs, margin,
-                             user_values=user_values)
+                             user_values=user_values, rates=rates)
 
 
 def state_from_market(watched: Watched, market: MarketInputs, now: datetime.datetime,  # noqa: PLR0913
                       values: Mapping[str, Decimal], prefs: Preferences,
-                      margin: Mapping | None, *, user_values: Mapping[str, Decimal] | None) -> pe.StrategyState:
+                      margin: Mapping | None, *, user_values: Mapping[str, Decimal] | None,
+                      rates: Any) -> pe.StrategyState:
     """``background_state`` from an already built market. Margin: the cached block of the screen's margin reader
-    (``MarginCache.block_for``; None = not known: ``missing_margin``). Charge
-    rates: None (``state_of`` reads only the gross figures, which carry no charges). The REST spot is not read (a
-    check runs only on a fresh feed). ``values``: the settings in force this cycle (rate, forward settings, feed
-    windows, REQ-167); ``prefs``: the strategy owner's preferences (the approach config, REQ-168), as the screen
-    passes them."""
+    (``MarginCache.block_for``; None = not known: ``missing_margin``). ``rates`` (REQUIRED, #661 item 1): the charge
+    rates in force from the screen's own source (``routes.outcome.load_charge_rates``, read on the rebuild, never per
+    check); they price the cheapest offered approach exactly as the screen check does, so T-19 is checked in the
+    background (REQ-165). None = not readable / no seam: no approach is priced and T-19 is not checked, with that
+    reason (never a guess). The REST spot is not read (a check runs only on a fresh feed). ``values``: the settings in
+    force this cycle (rate, forward settings, feed windows, REQ-167); ``prefs``: the strategy owner's preferences (the
+    approach config, REQ-168), as the screen passes them."""
     spot = resolve_spot(market.feed, None, market.last_close, now=now, windows=settings_calc.feed_windows(values))
-    return check.state_of(watched.tracked, market, spot, margin, None, fresh=True, body=watched.body,
+    return check.state_of(watched.tracked, market, spot, margin, rates, fresh=True, body=watched.body,
                           config=prefs.approach, user_values=user_values, strategy_layer=watched.strategy_layer,
                           entry_facts=watched.entry_facts, resolved=watched.resolved)
 
@@ -1134,7 +1143,7 @@ class Worker:
         # state_of; with no user read path there is no user layer (None), never the admin values posing as the user's
         own = None if self._user_values_read is None else user_values
         state = state_from_market(w, market, now, self._values, prefs, self.margins.block_for(w, now),
-                                  user_values=own)
+                                  user_values=own, rates=w.charge_rates)
         state = dataclasses.replace(state, watches=load.watches)  # A-37: read on the rebuild (step 7), never per check
         self.margins.seen(w, market)
         self._recomputes[sid] = self._recomputes.get(sid, 0) + 1  # a real recompute (REQ-166)
@@ -1575,10 +1584,13 @@ def listable(marker: str | None, mode: str | None) -> bool:
     return scenario_mode.in_scope(marker, mode)
 
 
-async def owner_lister(provider: Any, gate: Any = None) -> Listed:
+async def owner_lister(provider: Any, gate: Any = None,
+                       rates_of: Callable[[], Awaitable[Any]] | None = None) -> Listed:
     """Every strategy of the V1 owner (ADR-051) that is tracked (open paper legs) and has a playbook; its type is read
     against the provider's instrument list and spot (as the screen's check). ``gate`` (the role's ``db_gate``) is held
-    for the list read, then once per strategy's reads, never for the whole list (#636 r6): a write waits one hold."""
+    for the list read, then once per strategy's reads, never for the whole list (#636 r6): a write waits one hold.
+    ``rates_of`` (#661 item 1): the charge rates source, read once per list (None: no rates, T-19 not checked); a
+    read that raises is logged and taken as no rates (the list still runs)."""
     from ofo_app import strategy_store  # noqa: PLC0415 - database layer at run time only
     from ofo_app.adjustment_readers import (  # noqa: PLC0415
         TrackedExited,
@@ -1593,6 +1605,13 @@ async def owner_lister(provider: Any, gate: Any = None) -> Listed:
     # is closed before it and the playbook lookup gets a fresh one after it (never two connections held at once)
     async with held(gate, GATE_REBUILD), get_sessionmaker()() as db:
         strategies = await strategy_store.list_strategies(db, OWNER_REF)
+    rates = None
+    if rates_of is not None:
+        try:
+            async with held(gate, GATE_REBUILD):
+                rates = await rates_of()
+        except Exception:  # the list still runs: no approach is priced, T-19 says why
+            log.exception("background: reading the charge rates failed; T-19 is not checked this list")
     from ofo_app import scenario_mode  # noqa: PLC0415 - the process mode, read at list time
     mode = scenario_mode.current_id()
     for s in strategies:
@@ -1600,7 +1619,7 @@ async def owner_lister(provider: Any, gate: Any = None) -> Listed:
             continue  # IC e2e decision 4: a live worker never checks a scenario strategy, and the reverse
         try:
             async with held(gate, GATE_REBUILD):  # one strategy's reads per hold
-                tracked = await read_tracked(s.id, None)
+                tracked = await read_tracked(s.id, rates)
                 if tracked is None:
                     continue
                 spot = provider.underlying_quote(tracked.position.underlying)
@@ -1622,7 +1641,7 @@ async def owner_lister(provider: Any, gate: Any = None) -> Listed:
             continue
         if resolved.body is not None:
             out.append(Watched(OWNER_REF, s.id, tracked, resolved.body, resolved.is_system, OWNER_REF,
-                               resolved.strategy_layer, facts, resolved=resolved))
+                               resolved.strategy_layer, facts, resolved=resolved, charge_rates=rates))
     return Listed(out, unread)
 
 
@@ -1662,6 +1681,7 @@ async def _serve_scenario() -> int:  # pragma: no cover - the process wiring; ea
     from ofo_app.config import app_env  # noqa: PLC0415
     from ofo_app.db import get_engine, get_sessionmaker  # noqa: PLC0415
     from ofo_app.live_market import OWNER_REF  # noqa: PLC0415
+    from ofo_app.routes.outcome import load_charge_rates  # noqa: PLC0415 - the screen's charge rates source
     scenario_mode.require_dev_or_test(app_env())  # refused outside development/test, before anything runs
     scn = scenario_mode.current()
     provider, before_cycle = scenario_worker_parts(scn, get_sessionmaker())
@@ -1671,7 +1691,8 @@ async def _serve_scenario() -> int:  # pragma: no cover - the process wiring; ea
     if not await cache.refresh():
         log.error("background: the first settings load failed; no check runs until a poll loads them")
     log.info("background: scenario %s (test data, no Kite) for %s", scn.scenario_id, OWNER_REF)
-    worker = Worker(provider_for=lambda _owner: provider, lister=functools.partial(owner_lister, provider, gate=gate),
+    lister = functools.partial(owner_lister, provider, gate=gate, rates_of=load_charge_rates)  # #661 item 1
+    worker = Worker(provider_for=lambda _owner: provider, lister=lister,
                     clock=scn.clock, settings=cache.at, preferences=preferences, db_gate=gate,
                     side_tasks=(cache.poll_loop,), user_values=user_values, before_cycle=before_cycle)
     await worker.run()
@@ -1713,13 +1734,14 @@ async def _serve_live() -> int:  # pragma: no cover - the process wiring; each p
 
     from ofo_app.live_market import margin_source  # noqa: PLC0415
     from ofo_app.routes.adjustment import get_approach_margin  # noqa: PLC0415
-    from ofo_app.routes.outcome import MarketContext  # noqa: PLC0415
+    from ofo_app.routes.outcome import MarketContext, load_charge_rates  # noqa: PLC0415
     margin_ctx = MarketContext(provider, clock, defaults()[RISK_FREE_RATE], OWNER_REF)
     gate = DbGate()  # the role's one database gate: writer, settings poll and rebuild, served in that order
     cache = settings_cache.SettingsCache(lambda: get_engine().connect(), gate=gate)
     if not await cache.refresh():  # the first load; a failure leaves the worker refusing to check until a poll loads
         log.error("background: the first settings load failed; no check runs until a poll loads them")
-    worker = Worker(provider_for=lambda _owner: provider, lister=functools.partial(owner_lister, provider, gate=gate),
+    lister = functools.partial(owner_lister, provider, gate=gate, rates_of=load_charge_rates)  # #661 item 1
+    worker = Worker(provider_for=lambda _owner: provider, lister=lister,
                     clock=clock, settings=cache.at, preferences=preferences, want_client=bus, db_gate=gate,
                     side_tasks=(cache.poll_loop,), user_values=user_values,
                     margin_of=screen_margin_reader(get_approach_margin(margin_ctx, margin_source())))

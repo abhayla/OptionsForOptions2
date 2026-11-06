@@ -19,6 +19,7 @@ from ofo.adjustment import alert_gate
 from ofo.adjustment import playbook_eval as pe
 from ofo.adjustment.approaches import Position, PositionLeg
 from ofo.adjustment.preferences import from_values
+from ofo.charges import ChargeRates
 from ofo.marketdata.shared_compute import FeedScope
 from ofo.marketdata.spot_source import resolve_spot
 from ofo.outcome import service as outcome_service
@@ -1186,3 +1187,86 @@ async def test_a_strategy_is_rechecked_only_after_30_seconds_and_only_when_a_pri
     prov.move_spot(prov.spot.ltp + 1, now[0])
     await w.cycle()  # past t+30 and the price changed since the check: rechecked
     assert len(w.checks) == SECOND
+
+
+# ---- #661 item 1: T-19 in the background (the cheapest offered approach priced with the screen's charge rates) ----
+T19_RATES = ChargeRates(
+    brokerage_per_order=Decimal("20"), stt_sell_rate=Decimal("0.0015"), stt_exercise_rate=Decimal("0.0015"),
+    transaction_rates={"NSE_FO": Decimal("0.0003553"), "BSE_FO": Decimal("0.000325")}, sebi_rate=Decimal("0.000001"),
+    stamp_buy_rate=Decimal("0.00003"), gst_rate=Decimal("0.18"), read_on=datetime.date(2026, 10, 15),
+    source_url="https://zerodha.com/charges")
+PAID_ENTRY = Decimal("94.40")  # the entry orders' charges as stored (any set amount)
+ZERO_RATES = dataclasses.replace(T19_RATES, brokerage_per_order=Decimal(0), stt_sell_rate=Decimal(0),
+                                 stt_exercise_rate=Decimal(0), transaction_rates={"NSE_FO": Decimal(0),
+                                                                                  "BSE_FO": Decimal(0)},
+                                 sebi_rate=Decimal(0), stamp_buy_rate=Decimal(0), gst_rate=Decimal(0))
+
+
+def _why_unpriced(w, market, spot, rates, body) -> dict:
+    """Each offered approach's refusal / price reason (the failure message names why none was priced)."""
+    from ofo.adjustment.offered import offered_now  # noqa: PLC0415
+    from ofo_app.routes.adjustment import as_of_market, priced_approach  # noqa: PLC0415
+    tracked = as_of_market(w.tracked, market)
+    basis = adjustment_check.basis_in_force(None, None, None)
+    out = {}
+    for a in offered_now(body, tracked.adjustments_used):
+        built, priced = priced_approach(a, tracked, market, spot.value, rates, PREFS.approach, roll_basis=basis)
+        out[a] = (None if built is None else (built.refusal, len(built.trades)),
+                  None if priced is None else (priced.reason, priced.charges_known))
+    return out
+
+
+async def test_t19_background_state_prices_the_cheapest_approach_exactly_as_the_screen(scn, scenario_on):
+    prov = Prov(scn)
+    at = _price_time(prov)
+    body = _system_body("ic")
+    w = _priced_watched(scn, body, T19_RATES)[0]
+    read = background.read_prices(prov, w, at)
+    ctx = ctx_in_force(MarketContext(prov, lambda: at, RATE), DEFAULTS)
+    market = await adjustment_readers.read_market(w.tracked, ctx)
+    spot = resolve_spot(market.feed, None, market.last_close, now=market.now, windows=ctx.feed_windows)
+    for rates in (T19_RATES, ZERO_RATES):
+        w = _priced_watched(scn, body, rates)[0]
+        screen = adjustment_check.state_of(w.tracked, market, spot, None, rates, adjustment_check.prices_fresh(ctx),
+                                           body, config=PREFS.approach, user_values=None, strategy_layer=None,
+                                           entry_facts=None, resolved=w.resolved)
+        bg = background.background_state(w, read, FeedScope(background.SharedCompute(), "owner"), at, DEFAULTS,
+                                         PREFS, user_values=None, rates=rates)
+        assert bg == screen  # every field, the cost and the approach included
+        assert isinstance(bg.adjustment_cost, Decimal) and bg.adjustment_approach is not None, (
+            bg.adjustment_cost_reason, _why_unpriced(w, market, spot, rates, body))
+    zero_cost = bg.adjustment_cost
+    assert screen.adjustment_cost == zero_cost
+    none = background.background_state(w, read, FeedScope(background.SharedCompute(), "owner"), at, DEFAULTS, PREFS,
+                                       user_values=None, rates=None)
+    assert none.adjustment_cost is None and none.adjustment_cost_reason == "adjust_trigger_no_approach_priced"
+
+
+def _priced_watched(scn, body, rates):
+    """The worker's Watched as the lister builds it: the paid charges read with ``rates`` (a set: the entry orders'
+    charges; None: not read), the same set carried for pricing."""
+    w = _watched(scn)[0]
+    paid = None if rates is None else PAID_ENTRY
+    return [dataclasses.replace(w, body=body, resolved=_followed(body), charge_rates=rates,
+                                tracked=dataclasses.replace(w.tracked, paid_charges=paid))]
+
+
+async def test_t19_the_worker_prices_with_the_listed_rates_and_checks_t19(scn, scenario_on):
+    """Answer states of the listed rates: stated (real or all-zero) -> priced, T-19 checked (not the no-approach
+    reason); None (no source / not readable) -> not priced, T-19 not checked with that reason."""
+    body = _system_body("ic")
+    states = {}
+    for name, rates in (("stated", T19_RATES), ("zero", ZERO_RATES), ("none", None)):
+        prov, now, calls = Prov(scn), [scn.clock_at], Calls()
+        w = _worker(prov, _priced_watched(scn, body, rates), now, calls)
+        await w.cycle()
+        assert calls.states, name
+        states[name] = calls.states[-1][1]
+    for name in ("stated", "zero"):
+        st = states[name]
+        assert isinstance(st.adjustment_cost, Decimal) and st.adjustment_approach is not None, name
+        t19 = {r.rule_id: r for r in pe.evaluate(body, st, {}, None, gap_until="09:30").results}.get("T-19")
+        assert getattr(t19, "reason", None) != "adjust_trigger_no_approach_priced", (name, t19)
+    assert states["zero"].adjustment_cost < states["stated"].adjustment_cost  # the charges are in the cost
+    assert states["none"].adjustment_cost is None
+    assert states["none"].adjustment_cost_reason == "adjust_trigger_no_approach_priced"
