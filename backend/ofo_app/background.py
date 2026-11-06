@@ -1203,9 +1203,6 @@ class Worker:
         base = check.entry_baseline(scn, state, w.tracked.position, w.entry_facts, marker)
         ev = pe.evaluate(w.body, state, known, base or state, gap_until=prefs.gap_until, entry_fallback=state)
         self._count_outcomes(ev)
-        import os as _os
-        if _os.environ.get('OFO_TRACE'):
-            print('TRACE', self._clock(), state.spot, state.adjustments_used, marker, 'stored', stored, 'last', last, 'known', known.get('T-01'), 'base', None if base is None else base.spot, 'mem', ev.memory.get('T-01'), [type(r).__name__ for r in ev.results if getattr(r,'rule_id',None)=='T-01'])
         if memory is not None and _write_key(ev) == self._written.get(sid):
             return ev  # nothing a write would change (rule memory, flagged ids, clear ids): no DB call
         self._written.pop(sid, None)  # fail closed: until this write succeeds the next check writes again
@@ -1287,9 +1284,6 @@ class Worker:
             state = alert_gate.pause(state, paused)
             self._gate[sid] = state  # kept even when the step below fails to write
         new, events = alert_gate.step(state, now=now, preset=preset, readings=readings)
-        import os as _os
-        if _os.environ.get('OFO_TRACE') and (events or 'T-01' in readings):
-            print('GTRACE', now, readings.get('T-01'), events, repr(state)[:1500])
         self._gate[sid] = new
         if events:  # #636 r6: queued in step order for the ONE writer; the check never waits for the database
             self._gate_events.setdefault(sid, collections.deque()).append(
@@ -1341,7 +1335,11 @@ class Worker:
         """ADR-237 (5) from the rebuild's store read, plus today's held crossings newer than the rule's last record."""
         load = self._gate_load[sid]
         specs = {rid: spec for rid, (spec, _v) in readings.items()}
-        state = alert_gate.restore(load.rows, now.astimezone(IST).date(), specs)
+        # a record stamped after this clock (DB clock ahead of the worker's: scenario mode's fixed clock, clock skew)
+        # counts from this clock, so its cool-down can pass; else the rule never re-arms after a restart
+        rows = dataclasses.replace(load.rows, last=tuple(
+            r if r.at is None or r.at <= now else dataclasses.replace(r, at=now) for r in load.rows.last))
+        state = alert_gate.restore(rows, now.astimezone(IST).date(), specs)
         last_at = {r.rule_id: r.at for r in load.rows.last}
         latest: dict[str, Any] = {}
         for h in load.held:
