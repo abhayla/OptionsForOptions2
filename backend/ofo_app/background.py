@@ -1335,11 +1335,7 @@ class Worker:
         """ADR-237 (5) from the rebuild's store read, plus today's held crossings newer than the rule's last record."""
         load = self._gate_load[sid]
         specs = {rid: spec for rid, (spec, _v) in readings.items()}
-        # a record stamped after this clock (DB clock ahead of the worker's: scenario mode's fixed clock, clock skew)
-        # counts from this clock, so its cool-down can pass; else the rule never re-arms after a restart
-        rows = dataclasses.replace(load.rows, last=tuple(
-            r if r.at is None or r.at <= now else dataclasses.replace(r, at=now) for r in load.rows.last))
-        state = alert_gate.restore(rows, now.astimezone(IST).date(), specs)
+        state = alert_gate.restore(load.rows, now.astimezone(IST).date(), specs)
         last_at = {r.rule_id: r.at for r in load.rows.last}
         latest: dict[str, Any] = {}
         for h in load.held:
