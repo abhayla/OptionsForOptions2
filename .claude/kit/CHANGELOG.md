@@ -4,6 +4,102 @@ One entry per kit version (OD-23). The version in force is the project's `KIT_VE
 replaces kit-owned files and adds an entry here. Every version entry carries at least one `Migration:` line
 (`Migration: none` when nothing is needed); a test fails an entry without one.
 
+## 1.21.0 — the graph briefs each work item and carries lessons forward (PL-011 M3, REQ-069)
+
+1. `graph.py brief W-###` (W-097): at most 60 lines of ids and paths, each with a reason, never file contents: the
+   item's own criteria first, decisions in number order, files that import its affected files (direct importers
+   first), tests to run, and findings that apply. The deliver skill and the builder brief template paste it into
+   builder and checker briefs.
+   Migration: none.
+2. Findings may carry `applies_to:` (paths or globs; `*` stays inside one folder, `**` crosses folders, or record
+   kinds). A brief lists a finding whose `applies_to` matches the item's files, or a file one import away (labelled).
+   Migration: none (add `applies_to` to your own findings to make them reach later work).
+3. `graph.py tier W-###` suggests A, B or C from what the item touches, never from model confidence. Tier A paths:
+   `.claude/kit/tier-paths.json` (merge gate, production-gate hooks, deploy, migrations, auth and secrets), extended by
+   `.claude/project/tier-paths.json`. Test-only work is C; an item with no `affected:` keeps its declared tier; a
+   declared tier above the suggestion prints a NOTE to keep it.
+   Migration: list your project's own high-risk paths (money, orders, broker, execution) in
+   `.claude/project/tier-paths.json`; the kit cannot know them.
+
+## 1.20.0 — a changed requirement flags the work built on it (PL-011 M2, REQ-068)
+
+1. `graph.py pin W-###` (W-096) writes `req_fp:` into the work item: a fingerprint of each linked requirement's
+   statement and criteria. The deliver skill runs it at intake. `graph.py suspects .` lists every work item whose
+   requirement changed since it was pinned: REASSESS (done or verified, with its evidence and releases) or RE-BRIEF
+   (open), dependencies first; an open item with no pin is UNPINNED. `trace_check.py` prints the same section
+   (warn only this release).
+   Migration: none. Open work items that predate this release show as UNPINNED; run `python tools/graph.py pin
+   <W-id>` on the ones still being built.
+
+## 1.19.0 — one project graph, built on demand (PL-011 M1, OD-137, REQ-067)
+
+1. `tools/graph.py` (W-094, W-095): one stdlib tool builds, in memory on every call, a graph of the project's records
+   (decisions in the Factory table or `spec/decisions/ADR-*.md`, requirements and criteria, work items, evidence,
+   findings, reviews, releases, plans) and code (Python imports with `ast`; JS/TS/Vue relative imports from
+   `.claude/kit/graph-defaults.json`, extendable by an optional `.claude/project/graph.json`). Commands: `build`,
+   `lint` (warn only this release; `--strict` exits 1), `impact <id|path>`, `why <id>`,
+   `affected --base <ref>` or `--files <path>...` (a changed kit-owned or project-listed shared file answers `ALL`).
+   A work item's `affected:` entry that is a folder matches every file under it. Nothing is written.
+   Migration: none. Optional: list shared paths in `.claude/project/graph.json` as `{"shared": [...]}`.
+2. The kit workflow runs `python tools/graph.py lint .` (warn only), and `kit_selftest.py` check (h) runs it.
+   Migration: none (dead `affected:` paths on open work items show as WARN lines; fix them before a later release
+   makes the lint blocking).
+
+## 1.18.0 — adopt an old project (PL-011 M0, OD-136, OD-137, REQ-066)
+
+1. Adopt an old project (W-091): `python tools/new_project.py <repo> --adopt [--dry-run]` installs the whole kit into
+   an existing git repository. A preview lists every file as ADD, KEEP, SIDE or APPEND and writes nothing. No project
+   file is overwritten: an existing CLAUDE.md gets one line loading `.claude/project/CLAUDE.kit.md`; `.gitignore`
+   gets only the kit lines it lacks; an existing CI workflow stays and the kit's goes in as
+   `.github/workflows/kit-ci.yml`; every key of an existing Claude settings file is carried into
+   `.claude/project/settings.adopted.json` and kept in the generated settings (kit deny rules always kept).
+   Migration: none.
+2. The kit finds its workflow wherever the lock put it (W-092): one helper, `tools/kit_paths.py`, read from the
+   repository top; `ci_local.py`, the merge gate, `kit_upgrade.py` and `kit_selftest.py` use it. The merge gate fails
+   closed (waits) when a lock exists but cannot be read or names an unsafe path; `kit_upgrade.py` refuses a lock that
+   lists the kit workflow under two paths and never writes the project's own `ci.yml`.
+   Migration: none (a project without a lock behaves as before).
+3. An adopted project's own tests stay with its own CI (W-093): the kit workflow runs the project's tests unless
+   `.claude/project/ci-run-tests.txt` says `no` (adoption writes `no` when the project has its own tests or CI; any
+   other value or no file runs them). On a project with no records, every record check prints one line naming what is
+   missing and the next step; the intake skill can start from an existing codebase.
+   Migration: none.
+
+## 1.17.0 — the kit's open issue queue (OD-128, OD-129, OD-130, REQ-064)
+
+From the Factory's open kit issues (178, 166, 155, 149, 60).
+
+1. Generated table files at the merge gate (W-079, issue 178): a generated file changed after review counts as
+   bookkeeping only when its git mode at the head is 100644, read in the gate's fresh repository; a link, an
+   executable or an unreadable mode is `RE-REVIEW NEEDED`. The gate no longer leaves its import path on `sys.path`.
+   Migration: none (replace a committed link or executable generated file with a plain file).
+2. Unchanged generated files are left alone (W-080, issue 166): every generator writes through
+   `generated_files.write_if_changed`, which leaves a file untouched when only its line endings differ and otherwise
+   writes LF. On Windows with `core.autocrlf=true` a regenerate no longer shows unchanged files as modified, so
+   dirty-tree gates stop refusing.
+   Migration: none.
+3. Verifier write guard (W-081, issue 155): a worktree that another session removes during a verifier call is one
+   line (`worktree removed during the call: <root>`), not per-file deletions and a refusal; the call's own checkout
+   removed is still refused.
+   Migration: none.
+4. Status-page hook from any branch (W-082, issue 149): the Stop hook reads its fingerprint from origin's default
+   branch (origin/HEAD, else origin/main or origin/master) and builds the page from that commit's tree, so a session
+   on a feature branch or in a linked worktree is asked to publish after a merge it has fetched; the page never
+   shows a branch's unmerged records. Code state, pull requests and the project name still come from the checkout
+   (`build_status_page.py --code-root <checkout>`; without the flag the page is built as before). The hook reads the
+   link only from the checkout's `views/status-page.json`. With no origin ref it behaves as before. Known limits: a
+   merge not yet fetched is not seen; on a page built this way "This week" and card ages read "Not measured yet"
+   (Factory issue 182).
+   Migration: none.
+5. Legacy evidence goes stale (W-084, issue 60): `ac_fp.py --freeze-unpinned ROOT [--force] [--at <commit>]` writes
+   each listed path with `# ac_fp=<hex>`, the criterion it proved at freeze time, and `trace_check.py` reports a
+   listed file stale when that criterion has changed since. An entry without the comment keeps its old meaning.
+   Migration: optional; a project with a non-empty unpinned list may re-freeze it with `--at` the commit that wrote
+   the list, then re-verify any criterion it reports stale.
+6. Tier table (OD-129): the deliver skill's Tier A row names the merge gate (`merge_when_green.py`); the other kit
+   hooks and tools stay Tier B.
+   Migration: none.
+
 ## 1.16.0 — tests a change can break run before it lands (OD-125, OD-126, REQ-063)
 
 From OptionsForOptions2's harvest of kit 1.15.0 (Factory issues 172 to 176).

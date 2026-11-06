@@ -529,6 +529,45 @@ issues:
   "#614": S6.4  # Leg-stop alert says 'exited 1 legs' (GC-LIVE2 M3)
   "#615": S6.4  # Strike picker first cold read says LIVE with no spot or prices (same class as #612)
   "#616": S6.4  # After the close: Paper has no market-closed banner and shows no-IV text; index read returns nulls
+  "#623": S6.4  # Compare low-OI cell raises on 4+ new legs: symbols joined into one 64-char slot
+  "#624": S6.4  # A1 liquidity limits PARKED after 2 rounds: unreadable playbook skips limits silently; adjust drawer has no strike flags
+  "#625": S6.4  # Range-reading rule (REQ-026 AC-1) lives only in the browser; REQ-063 AC-2 wants it on the server (F-90)
+  "#626": S6.4  # GC-MU step 2 D3: no Content-Security-Policy connect-src 'self' (structural layer behind the bundle scan)
+  "#627": S6.4  # GC-MU step 4 remainder: background margin (T-16), T-13 open price, restart + heartbeat, screen reads worker result
+  "#628": S6.4  # seed_scenario.py batches a scenario's trade wrongly: ADJ-13 seeds 2 adjustments where the scenario has 1
+  "#629": S6.4  # Owner sign-off for 461 pending catalogue texts: independent wording check, then owner reads the flags
+  "#630": S6.4  # Compare intermittently shows 'no current price' for a current leg in scenario mode (seen once, not reproduced)
+  "#631": S6.4  # DB pool has no pre-ping: a dropped pooled connection turns the next request into a 500
+  "#632": S6.4  # GC-SET2: market hours and order/limit facts as settings (parked from GC-SET)
+  "#633": S6.4  # T-19 builds approaches without the playbook liquidity limits the Compare applies
+  "#636": S6.7  # Background role: opportunity within 1.0 s of the crossing tick not met (DB round trips on the check path) - GC-LIVE3 D3
+  "#634": S6.7  # merge_preflight PR to main: owner decision after two review rounds (parked)
+  "#637": S6.7  # spec_basis_gate refuses owner questions citing ids that exist only in another worktree's spec
+  "#638": S6.7  # GC-ALERT1 step 5: 3 worker-level tests red (per-style interval gaps 30/60, plan change, day rollover)
+  "#639": S6.7  # Alert worker follow-ups: screen vs worker spot freshness, dismiss by rule, interval after style change
+  "#640": S6.7  # Day rules judge expiry day from the nearest leg, not per leg (multi-expiry positions)
+  "#641": S6.7  # T-11 never checked live: entry ATM IV is only filled in scenario mode
+  "#642": S6.7  # Background worker reads only the position's expiry: A-04 and T-19 differ from the screen
+  "#643": S6.7  # Admin settings page scrolls sideways at 390 px (table 457 px wide)
+  "#644": S6.7  # Adjustment approaches read the Kite token 3 times and the market twice per request (dev over the tunnel: 4-16 s)
+  "#645": S6.7  # Suggestion outcomes never follow a real Zerodha order (Completed / Partly completed unwritten; real-strategy state unnamed)
+  "#646": S6.7  # Catalogue items named by a playbook or AC with no working path or label (A-30, T-10/T-10c/T-17, data-state labels, Test row form)
+  "#647": S6.7  # Review-adjustment drawer lacks margin utilisation and the options' IV / OI / LTP (REQ-046 AC-2)
+  "#648": S6.7  # Suggestion records: prepared exits create none; 'Why did this trigger?' shows no outcome or its time (REQ-112 AC-1, AC-5)
+  "#649": S6.7  # Scenario fixtures carry fixed expiries: from 4 Nov DB tests that switch scenarios fail on the contract-lifecycle guard
+  "#650": S6.7  # Trigger values shown in the wrong unit: 'Spot crosses a breakeven: -1065.0000 (rule 0.0000)' is rupees of expiry P&L
+  "#651": S6.7  # Max loss shown with different signs across screens (drawer +3,331.21 vs paper -23,897.03)
+  "#652": S6.7  # Open suggestion records never lapse when their strategy leaves the worker's list (#26 #27 #32)
+  "#653": S6.7  # A tightened limit can open a suggestion with no candle-close confirmation when the rule was already true (record 142)
+  "#654": S6.7  # Joined lists in one-token text slots crash the Compare (compare.py:397 breakeven levels)
+  "#655": S6.7  # Flaky frontend test fails the 45-57 min gate: option-chain 'late push for the old expiry is ignored'
+  "#656": S6.7  # Step 3 (live stops via settings in force + migration 0040) parked after round 3: 4 MAJOR findings, round-3 tip fails its own tests
+  "#657": S6.7  # Settings screen says the 2x-credit stop is 'always active' for every strategy (false for pre-ADR-247 plans and non-iron-condor families)
+  "#658": S6.7  # S-06 rule text hard-codes the 2% carry gap, which is a user setting
+  "#659": S6.7  # Scenario mode: data routes (pause, plan, edit, delete) accept a live strategy id
+  "#660": S6.7  # Flaky: test_feed_control login/Disconnect bus count (1 of 3 runs red, no code change)
+  "#661": S6.7  # IC rules in the background worker: T-19 never checked, S-12 entry day, T-11 second record at flat IV (parked from ic-e2e B1)
+  "#662": S6.7  # Second adjustment: no T-18 record after max adjustments (parked from ic-e2e C1)
 
 # Work items whose status is not done.
 work_items:

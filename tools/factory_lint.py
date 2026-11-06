@@ -32,6 +32,9 @@ from typing import Iterable
 import yaml
 from jsonschema import Draft7Validator
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import kit_paths  # noqa: E402  (the one zero-records line, REQ-066 AC-5)
+
 SCHEMA_DIR = Path(__file__).resolve().parent.parent / "factory" / "schemas"
 
 REQ_ID_RE = re.compile(r"^REQ-\d{3,}$")
@@ -657,6 +660,7 @@ def main(argv: Iterable[str] | None = None) -> int:
 
     for root_str in args.roots:
         root = Path(root_str)
+        kit_paths.note_zero_records(root)
         if not root.is_dir():
             print(f"{root_str}: (root): not a directory")
             all_errors.append(LintError(root_str, "(root)", "not a directory"))

@@ -10,27 +10,27 @@ with `python tools/generate_kit_tools_provenance.py` whenever a source tool chan
 
 | kit copy | Factory source | sha256 |
 |---|---|---|
-| `tools/ac_fp.py` | `tools/ac_fp.py` | `24f0e65a63b07ecd051b70f354d75c9749aeac7cf41863953da2cbc9d3a7a5f6` |
-| `tools/build_findings_index.py` | `tools/build_findings_index.py` | `1ffc268709fa927a817783a4a1891c20dc227e9c1064c9e5da1bf691ecf886b5` |
-| `tools/build_order.py` | `tools/build_order.py` | `0b9e7c64ab35861fb7d42f3b1b32d65822f4508a62d9c8a09157d1ca43ee3160` |
-| `tools/build_spec_index.py` | `tools/build_spec_index.py` | `5e10948f36118c4258b0a11d1b560cfc85edd92c9b4837bc7332ab7a69874b65` |
-| `tools/build_spec_digest.py` | `tools/build_spec_digest.py` | `bedba08fca1e2191573121351dc8fc2a07a1055b01c5586a7fc017f564baedb4` |
-| `tools/spec_dupes.py` | `tools/spec_dupes.py` | `285dfffa891d35fb47265ef300af7a10667fe8ab7578cb8b0f5d8c4d080723ef` |
+| `tools/ac_fp.py` | `tools/ac_fp.py` | `cdc418050e972ce0744ca00242361e1888ec439031b63a0260a4b48185c7ef7b` |
+| `tools/build_findings_index.py` | `tools/build_findings_index.py` | `7dd76d354e5b625efee071c323e51817476b42a4f5b6ba23de73040f4bd5a209` |
+| `tools/build_order.py` | `tools/build_order.py` | `2ade4877fa791e3445d9a8286d9878e96d78fc74ea963d0ce196352e77555251` |
+| `tools/build_spec_index.py` | `tools/build_spec_index.py` | `2328d10f96c70dd191fcd56140089e8e7892b7cac5ca46bef73586a3b9bbe9ff` |
+| `tools/build_spec_digest.py` | `tools/build_spec_digest.py` | `0ed5dbdc654c8716e63d86457285d9579e6e8142f15c5e6641a2a6655d248c9f` |
+| `tools/spec_dupes.py` | `tools/spec_dupes.py` | `8730eb04c03f3f64561f6fb7a03be85f2ebff2d92a1a0d797e5f1a33c74193fe` |
 | `tools/spec_similar.py` | `tools/spec_similar.py` | `c348179a817661000073c8738ad513c40375a2b849224bcba6cd82278125df04` |
 | `tools/spec_text.py` | `tools/spec_text.py` | `714d236b3328bb7883d74aab3e52b026e3d92470a61ba75ee9a8c98889ba3b2f` |
-| `tools/build_status_page.py` | `tools/build_status_page.py` | `388c839ccaa39817924c87abf1ea9b9f41eb5f44044ebf34d07aed1607f0a744` |
-| `tools/ci_local.py` | `tools/ci_local.py` | `ce27ecb56a81e6ddd338167d6cb7cd229b773d8ccf9311022e13f2a713dec1dc` |
+| `tools/build_status_page.py` | `tools/build_status_page.py` | `0b7065a22526e76d472d1635a969931913b20ec89630ff1fcffc077453583bd3` |
+| `tools/ci_local.py` | `tools/ci_local.py` | `74f57a05d6c3a35015f2f86f427eb92f75e9ec3bb5882fb0f5dc67d21b55836e` |
 | `tools/check_pr_spec_block.py` | `tools/check_pr_spec_block.py` | `833fcd0df520cce053bc16f13f900b0a7ca8c9a3758943b8b1b242d03b37f759` |
-| `tools/check_spec_refs.py` | `tools/check_spec_refs.py` | `2bab5a3bccf57954057bd4c8f111bb28540b0228c7a0e5cf5eccd73f72269288` |
-| `tools/factory_lint.py` | `tools/factory_lint.py` | `428726a3a625d13448c573a13b20d826ffc92e2f033e744f6279e72f304698ec` |
-| `tools/kit_settings.py` | `tools/kit_settings.py` | `d532d91793e36963dc0db2b5277c7f4d65414b1ed9be6549f991951ceb25fc40` |
+| `tools/check_spec_refs.py` | `tools/check_spec_refs.py` | `bb3ea6c8720b4969360a4b795b536aece8dde608074f85c3fd6c02cfe23d88c2` |
+| `tools/factory_lint.py` | `tools/factory_lint.py` | `90d925008fb41fc4cd7bbbfea642c9a611e926414f128e20e8711786168b10c9` |
+| `tools/kit_settings.py` | `tools/kit_settings.py` | `ea45b8fec45a6847e8251bbf0db9e6826bf5e8dc69da4b02d1ce54e9cc5de3cb` |
 | `tools/kit_drift.py` | `tools/kit_drift.py` | `2556ccf424f45456adcf0f8aaa32273b4f691519d1a94246877ee7c3c3045b62` |
-| `tools/kit_selftest.py` | `tools/kit_selftest.py` | `3091acf5fe889922c33948c742592130acc04c41f2fa1d39dcb63c2a28a4d133` |
+| `tools/kit_selftest.py` | `tools/kit_selftest.py` | `c22c8bd37f79c2341e4b7ac82a664e40b8df889a2013d3aeea0758b8edb636ad` |
 | `tools/kithash.py` | `tools/kithash.py` | `9897059e8ed6133393f4bdf7fe4dca1bc9795f25a90fe450b833a4d3c63ccb4c` |
-| `tools/merge_when_green.py` | `tools/merge_when_green.py` | `df39f8fa970e40343871c6ded1a6f89be76be8a479622e65cc26d68fe9db875e` |
+| `tools/merge_when_green.py` | `tools/merge_when_green.py` | `a32e49ca996abb00c5438fc2a223506020501f48be7022c0853440f3986a6404` |
 | `tools/pathsafe.py` | `tools/pathsafe.py` | `1aecb7d961f51a99bd2e2c98bba453f6c244bb9e4e62b6d44d1b0dac93ae7a87` |
-| `tools/run_smoke.py` | `tools/run_smoke.py` | `af5d1d41194e7fdcca73149df18876890808bd50268e93faeeea27e9d079d5cc` |
-| `tools/trace_check.py` | `tools/trace_check.py` | `3c4fa8439e421e4c88386deebbe3feb798760db4c3fcbd9b807182ccbd508c59` |
+| `tools/run_smoke.py` | `tools/run_smoke.py` | `b35c3112332e8bfef0e81baab975fca785f0cdb245c0b4142add2ab913508f44` |
+| `tools/trace_check.py` | `tools/trace_check.py` | `fd1693212e1f3fc82f55e14841f348cd81632427463b0ba470ec04a3ee16b88b` |
 | `tools/model_mix.py` | `tools/model_mix.py` | `833cc0bedd6f1e4faf01dc903e39434cbd4718f8267361827fa76c9c3195046c` |
 | `tools/run_lock.py` | `tools/run_lock.py` | `1c8a44782cd47dbc6ccc2fefb6b0032899b3f1dc6248a6d5d1653fab2efc1bbd` |
 | `tools/delivery_metrics.py` | `tools/delivery_metrics.py` | `d1a4084e11a682bdc82ccb93fa5ef8d442a973001a5134d24fa76f6b5cee668c` |
@@ -39,5 +39,7 @@ with `python tools/generate_kit_tools_provenance.py` whenever a source tool chan
 | `tools/ci_reds.py` | `tools/ci_reds.py` | `d43949d35f2f9c33acb78d05e3d7e5268bd60dd4e46a7efb8126040995229f0f` |
 | `tools/record_evidence.py` | `tools/record_evidence.py` | `b10b8ae6a11ebfddd7b49e332fed6b9b3ed2ef88e60bf0c2073759ff3b09cf75` |
 | `tools/check_control_bytes.py` | `tools/check_control_bytes.py` | `eaf98500fb7a05d3130b1d33805b7e947ce6d9089ff5788896facbecf141827d` |
-| `tools/generated_files.py` | `tools/generated_files.py` | `59ecc0def0a36ee15d359bfbcc3cf16eeb03a65cc72d49696ac04f22f520ffd2` |
+| `tools/generated_files.py` | `tools/generated_files.py` | `ade2f6b1247ce58d151c4bb5844081fbfe5242bff72e9a46900a95b613655756` |
+| `tools/kit_paths.py` | `tools/kit_paths.py` | `384feca80051e0457b25f260821b0e9e793cded2d865caf77fab8538fbcb63a4` |
+| `tools/graph.py` | `tools/graph.py` | `82eb0b3a72769892d040ccd2198634b304cf91c001be6afee15b952b58246610` |
 | `.claude/kit/model-routing.yaml` | `capabilities/routing/model-routing.yaml` | `35b23b8be6a9544c2513f127f4b8ee9bd4969683dff7e6dd839580db05361d05` |

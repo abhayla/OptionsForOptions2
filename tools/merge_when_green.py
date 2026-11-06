@@ -41,6 +41,11 @@ and check command (ci_local.py --regen reads it too). A table file changed after
 past the Tier A check, which still runs first for every file) is bookkeeping only when its check command exits 0 on
 the same archive of H that trace_check runs on: one extraction, trace_check, then each needed check. A non-zero
 exit, a timeout or a missing tool refuses with "RE-REVIEW NEEDED: <file>". A file not in the table is refused.
+Mode (REQ-064 AC-1): such a file is bookkeeping only when its git mode at H is 100644, read with git ls-tree from the
+fresh repository the gate fetched H into (never the checkout). Answers: 100644 -> go on to the check; 120000 link,
+100755 executable, 160000 submodule, absent at H, or git ls-tree failing -> "RE-REVIEW NEEDED: <file>". Known bypasses,
+not chased (accidents only, OD-120): a deliberate attacker who commits a plain file with hostile bytes that still pass
+the file's own check command; a link in a folder ABOVE the file (the path is then absent at H, so refused).
 Editing a generator itself is a tools/ change, refused as non-bookkeeping.
 
 Known gap (no fix without branch protection): the base can move between the staleness check and the merge. GitHub
@@ -80,7 +85,11 @@ import tempfile
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))   # tools/ and a project's tools/ both ship it
-import generated_files  # noqa: E402 - the one table of generated files (REQ-063 AC-4)
+try:
+    import generated_files  # noqa: E402 - the one table of generated files (REQ-063 AC-4)
+    import kit_paths  # noqa: E402 - where the lock put the kit workflow (REQ-066 AC-3)
+finally:
+    sys.path.pop(0)   # the entry is removed again after the import (REQ-064 AC-1)
 
 # The kit CI workflow name and job id in the template CI workflow (a test asserts both are equal). A merge
 # needs the kit job itself to have PASSED on the head: other checks passing, or the kit job being skipped
@@ -213,11 +222,21 @@ def _is_id(value):
     return isinstance(value, int) and not isinstance(value, bool)
 
 
+_LOCK_UNTRUSTED = ("unreadable", "unsafe")
+
+
 def _kit_workflow_id():
-    """The numeric id of the kit workflow file (ci.yml), read once per process; None when unreadable."""
+    """The numeric id of the kit workflow file, read once per process; None when unreadable. The file is the one
+    the project's lock records (kit-ci.yml in an adopted project); no lock is ci.yml as before; a lock that
+    exists but cannot be read or names an unsafe path is None (fail closed: the gate waits)."""
     global _KIT_WORKFLOW_ID
     if _KIT_WORKFLOW_ID is None:
-        data = _gh_json("repos/{owner}/{repo}/actions/workflows/ci.yml")
+        wf_path, reason = kit_paths.kit_workflow_path(os.getcwd())
+        if reason in _LOCK_UNTRUSTED:
+            # A lock exists but cannot be read (a missing PyYAML, bad bytes) or names an unsafe path: the gate
+            # cannot know which workflow is the kit's, so it fails closed (no kit workflow id -> it waits).
+            return None
+        data = _gh_json("repos/{owner}/{repo}/actions/workflows/" + wf_path.rsplit("/", 1)[-1])
         if data is None or not _is_id(data.get("id")):
             return None
         _KIT_WORKFLOW_ID = data["id"]
@@ -714,17 +733,48 @@ def work_item_status_only(path, reviewed, head):
     return body_before == body_after and keep(fm_before) == keep(fm_after)
 
 
+_PLAIN_FILE_MODE = b"100644"
+
+
+def head_modes(repo, sha, paths):
+    """{path: git mode (bytes), or None when the path is absent at sha} for `paths`, read with `git ls-tree` on the
+    fresh repository that holds sha. Raises ApiError when git cannot answer."""
+    paths = sorted(paths)
+    if not paths:
+        return {}
+    done = _git(["--literal-pathspecs", "ls-tree", "-z", sha.lower(), "--"] + paths, cwd=repo.path)
+    if done.returncode:
+        raise ApiError("git ls-tree of %s failed: %s" % (sha[:12], _git_tail(done)))
+    found = {}
+    for entry in (done.stdout or b"").split(b"\0"):
+        if not entry:
+            continue
+        meta, _, name = entry.partition(b"\t")
+        found[name.decode("utf-8", errors="replace")] = meta.split(b" ")[0]
+    return {path: found.get(path) for path in paths}
+
+
 def run_trace_check(sha, timeout_s=300, checks=()):
     """Run the project's trace_check on a `git archive` of `sha` (no worktree). Returns (ok, message); fails closed.
 
     `checks` = table files (generated_files.py) that changed after review: on the same extraction each one's check
-    command must also exit 0, else "RE-REVIEW NEEDED: <file>" (non-zero, timeout, missing tool or not in the table)."""
+    command must also exit 0, else "RE-REVIEW NEEDED: <file>" (non-zero, timeout, missing tool or not in the table).
+    Each such file must also have git mode 100644 at `sha` (REQ-064 AC-1), read from the same fresh repository; a link
+    (120000), an executable (100755), a submodule (160000), an absent path or a mode that cannot be read is refused."""
     tmp = None
     try:
         try:
             with _FreshRepo() as repo:   # the head's tree comes from a verified fetch, never from the checkout
                 repo.fetch([sha], depth=1, filtered=False)
                 repo.write_neutral_attributes()
+                try:
+                    modes = head_modes(repo, sha, checks)
+                except ApiError as exc:
+                    return (False, "RE-REVIEW NEEDED: %s (file mode at %s cannot be read: %s)"
+                            % (", ".join(sorted(checks)), sha[:12], exc))
+                odd = sorted(f for f in checks if modes.get(f) != _PLAIN_FILE_MODE)
+                if odd:
+                    return (False, "RE-REVIEW NEEDED: %s (git mode at %s is not 100644)" % (", ".join(odd), sha[:12]))
                 archive = _git(["archive", "--format=tar", sha.lower()], cwd=repo.path)
         except ApiError as exc:
             return (False, "REFUSED: trace_check not run, git fetch of %s failed: %s" % (sha[:12], exc))

@@ -38,11 +38,11 @@ check must never block a session start).
 | `evidence_claim_guard.py` | `capabilities/hooks/evidence-claim-guard/evidence_claim_guard.py` | `c56b9d0c080800e126eba0934a0f6ca8f9811e1aaa45dba12770ff8f13fa443f` |
 | `spec_basis_gate.py` | `capabilities/hooks/spec-basis-gate/spec_basis_gate.py` | `179db94356bed5443ef391777291d6faf8554f46a1c3fbe7ce178f4efef06059` |
 | `answer_writeback_guard.py` | `capabilities/hooks/answer-writeback-guard/answer_writeback_guard.py` | `3a4f6fd94ef0ffabcc234ce719df141bf9b5f14602710572d2d0426aab34bf90` |
-| `status_page_due.py` | `capabilities/hooks/status-page-due/status_page_due.py` | `9289c152610b998fdd5dff060c3cd747e28a6c0e4d0db2657192b6c9a2233de5` |
+| `status_page_due.py` | `capabilities/hooks/status-page-due/status_page_due.py` | `1b872cf70661f6c5b81ce3195906dd6d8bba3e7d419953412ae366d499ddf8b4` |
 | `git_discard_uncommitted_guard.py` | `capabilities/hooks/git-discard-uncommitted-guard/git_discard_uncommitted_guard.py` | `6cc931e14caf0a3dc68b74e7814b4eed26c82b91002dcd2cba39399ec3797ca0` |
 | `git_hook_bypass_guard.py` | `capabilities/hooks/git-hook-bypass-guard/git_hook_bypass_guard.py` | `6058465bf03078ddf905b8eeba1c3d18b7e5e90048e544b32e8b9113ad15fe83` |
 | `git_stash_worktree_guard.py` | `capabilities/hooks/git-stash-worktree-guard/git_stash_worktree_guard.py` | `3345a59bd57e22d96d3d9420839b87e85a135907389bbc36ea84e0951fd14cf8` |
-| `verifier_write_guard.py` | `capabilities/hooks/verifier-write-guard/verifier_write_guard.py` | `f0f3f6d769e36f29f96e48c5bf5503bd0f5f74777ae76c203b11c0920ca3d2d6` |
+| `verifier_write_guard.py` | `capabilities/hooks/verifier-write-guard/verifier_write_guard.py` | `6f850f52f55b2563186d245d97123f78f798fec038a644555be71143c3278e80` |
 | `gate.py` | `the production seatbelt's gate script (Capability Library)` | `89eca78b5f905d6e9557852f2766ce65d955304f9e5d9adf23b9c997b773ddbc` |
 | `recorder.py` | `the production seatbelt's recorder script (Capability Library)` | `8e63830068828db0582d40580d0b198f907cfd52181f8968540e9ab5a5cb2cbf` |
 | `_common.py` | `the production seatbelt's shared helper module (Capability Library)` | `c2a0b081880de0949642894a3b26047f9b5e0536d070a5c315be5e17243f25cc` |

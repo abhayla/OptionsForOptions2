@@ -14,7 +14,9 @@ line; read it before pushing or touching process files.
 - `python tools/build_spec_index.py . --check` (requirements by section; regenerate without `--check`)
 - `python tools/build_spec_digest.py . --check` (spec digest, read before any owner question; regenerate without `--check`)
 - `python tools/spec_dupes.py .` (blocks restated spec text; before writing a spec line: `python tools/spec_similar.py . "<text>"`)
+- `python tools/graph.py lint .` (links between records, files and tests; warn only. Also: `graph.py impact <id|path>`, `why <id>`, `affected --base <ref>`, `brief <W-id>`, `tier <W-id>`, `suspects .`, `pin <W-id>`)
 - `python tools/build_findings_index.py . --check` (once `knowledge/findings/*.json` exists)
+- `python tools/kit_paths.py .` (with no findings yet: prints the one line naming the missing records)
 - `python tools/check_spec_refs.py .`
 - `python -m pytest -q -p no:cacheprovider` (once `tests/` exists; run single files while iterating)
 - `python tools/kit_selftest.py .`

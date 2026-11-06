@@ -28,7 +28,9 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import kit_paths  # noqa: E402  (the one zero-records line, REQ-066 AC-5)
 import spec_text as st  # noqa: E402  (the one spec reader, REQ-009)
+import generated_files  # noqa: E402  (one write helper: an unchanged file is left alone, REQ-064)
 
 DIGEST_REL = Path("views") / "spec-digest.md"
 HANDOFF_REL = "docs/spec/00-master-handoff.md"
@@ -193,6 +195,7 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     st.utf8_stdout()
     root = Path(args.root)
+    kit_paths.note_zero_records(root)
     expected = render(root)
     digest = root / DIGEST_REL
     if args.check:
@@ -205,7 +208,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"build_spec_digest: {digest} is current")
         return 0
     digest.parent.mkdir(parents=True, exist_ok=True)
-    digest.write_text(expected, encoding="utf-8", newline="\n")
+    generated_files.write_if_changed(digest, expected)
     print(f"build_spec_digest: wrote {digest} ({len(expected.encode('utf-8'))} bytes)")
     return 0
 

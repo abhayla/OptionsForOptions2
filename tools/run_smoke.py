@@ -30,6 +30,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import kit_paths  # noqa: E402  (the one zero-records line, REQ-066 AC-5)
 from factory_lint import parse_frontmatter, smoke_line_problem  # noqa: E402  (shared with the lint)
 
 TIMEOUT_SECONDS = 600
@@ -114,6 +115,7 @@ def main(argv: list[str] | None = None) -> int:
     _safe_stdio()
     args = list(argv if argv is not None else sys.argv[1:])
     root = Path(args[0]) if args else Path(".")
+    kit_paths.note_zero_records(root)
     n_reqs, commands = load_smoke(root)
     if n_reqs == 0:
         print(f"run_smoke: no requirements under {root / 'spec' / 'requirements'}; nothing to run")
