@@ -48,6 +48,7 @@ from ofo.adjustment.approaches import (
 )
 from ofo.adjustment.compare import POP_TEXT, Column, Context, MarginRead, compare
 from ofo.adjustment.compare_cost_rows import breakdown_lines, warn_threshold
+from ofo.adjustment.offered import limit_filter
 from ofo.adjustment.preferences import Preferences
 from ofo.charges import ChargeRates
 from ofo.charges.calculator import ChargeOrder, charges_for_orders
@@ -525,6 +526,9 @@ async def adjustment_approaches(  # noqa: PLR0913, PLR0915 - FastAPI dependencie
         t0 = time.perf_counter()
         guards = await guards_of(strategy_id, position, spot.value, check.listed_of(ctx))
         guards = _guards_or_reason(guards, reply)
+        # goal contract decision 14 / catalogue S-11: at the plan maximum only exit and reduce approaches are offered,
+        # through THE filter the check's T-19 pick uses (offered.limit_filter), never a second copy
+        asked = list(limit_filter(asked, guards, tracked.adjustments_used))
         exits = check.exit_inputs_of(guards, position, market.now)  # ADR-238: the same playbook read
 
         def price_all(m: MarketInputs) -> tuple[Priced, liquidity.Limits | None, Decimal | None, list]:

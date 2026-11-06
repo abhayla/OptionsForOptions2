@@ -12,7 +12,7 @@ two paths still check each other.
 """
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from typing import Final
 
 from ofo.adjustment.compare import offered_approaches
@@ -22,15 +22,30 @@ EXIT_REDUCE: Final = frozenset({"A-23", "A-24", "A-25", "A-26", "A-27", "A-28", 
                                 "A-37", "A-38"})
 
 
-def limit_reached(body: Mapping | None, adjustments_used: int | None) -> bool:
-    guards = (body or {}).get("guards") if isinstance(body, Mapping) else None
+def guards_at_limit(guards: Mapping | None, adjustments_used: int | None) -> bool:
+    """S-11 on a playbook's ``guards`` mapping: the count used reached ``max_adjustments``. An unread count (None), no
+    guards or no maximum set -> False (T-18 already answers "not checked" for an unread count)."""
     mx = guards.get("max_adjustments") if isinstance(guards, Mapping) else None
-    return isinstance(mx, int) and isinstance(adjustments_used, int) and adjustments_used >= mx
+    return (isinstance(mx, int) and not isinstance(mx, bool) and isinstance(adjustments_used, int)
+            and adjustments_used >= mx)
+
+
+def limit_filter(ids: Iterable[str], guards: Mapping | None, adjustments_used: int | None) -> tuple[str, ...]:
+    """THE S-11 filter (goal contract design decision 14): at the limit only exit and reduce approaches are kept, in
+    ``ids``' order; otherwise ``ids`` unchanged. The check's T-19 pick (``offered_now``) and the approaches route behind
+    the Compare (``routes.adjustment.adjustment_approaches``) both call this one function, never a copy."""
+    ids = tuple(ids)
+    if guards_at_limit(guards, adjustments_used):
+        return tuple(a for a in ids if a in EXIT_REDUCE)
+    return ids
+
+
+def limit_reached(body: Mapping | None, adjustments_used: int | None) -> bool:
+    guards = body.get("guards") if isinstance(body, Mapping) else None
+    return guards_at_limit(guards, adjustments_used)
 
 
 def offered_now(body: Mapping | None, adjustments_used: int | None) -> tuple[str, ...]:
     """The approaches ``body`` offers at this check, playbook order; S-11 keeps only exit and reduce."""
-    offered = offered_approaches(body)
-    if limit_reached(body, adjustments_used):
-        return tuple(a for a in offered if a in EXIT_REDUCE)
-    return offered
+    guards = body.get("guards") if isinstance(body, Mapping) else None
+    return limit_filter(offered_approaches(body), guards, adjustments_used)

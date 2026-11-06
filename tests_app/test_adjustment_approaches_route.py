@@ -691,3 +691,35 @@ def test_adr239_the_three_roll_approaches_come_back_as_columns():
     assert {"A-02", "A-04", "A-06"} <= set(rows["cost"])
     assert all(rows["cost"][a]["value"] is not None for a in ("A-02", "A-04", "A-06"))
     assert rows["max_profit"]["A-04"]["value"] is None
+
+
+# ---- goal contract design decision 14 / catalogue S-11: at the adjustment limit only exit and reduce are offered -----
+
+def _at_used(sid: str, used: int | None) -> dict:
+    sc = load(sid)
+    sc["position"]["adjustments_used"] = used
+    return sc
+
+
+def test_s11_at_the_limit_the_route_offers_only_exit_and_reduce_approaches():
+    """Decision 14: adjustments used 2 of a plan maximum of 2 -> POST {} returns exit / reduce approaches only (no
+    roll), the same S-11 filter the check's T-19 pick uses (``offered.limit_filter``); an explicit roll is not built."""
+    from ofo.adjustment.offered import EXIT_REDUCE  # noqa: PLC0415
+    guards = {"max_adjustments": 2}
+    reply = post(client_for(_at_used("ADJ-02", 2), guards=guards, rates=RATES)).json()
+    ids = [a["id"] for a in reply["approaches"]]
+    assert ids == [a for a in APPROACH_IDS if a in EXIT_REDUCE], ids
+    assert not {"A-01", "A-02", "A-04", "A-05", "A-06", "A-11"} & set(ids)
+    cost = next(c for c in reply["criteria"] if c["id"] == "cost")["values"]
+    assert set(cost) <= EXIT_REDUCE, sorted(cost)
+    explicit = post(client_for(_at_used("ADJ-02", 2), guards=guards, rates=RATES),
+                    body={"approaches": ["A-05", "A-26"]}).json()
+    assert [a["id"] for a in explicit["approaches"]] == ["A-26"]
+
+
+@pytest.mark.parametrize(("used", "guards"), [(1, {"max_adjustments": 2}), (None, {"max_adjustments": 2}),
+                                              (2, {}), (2, None)])
+def test_s11_below_the_limit_or_no_limit_known_the_route_still_offers_every_approach(used, guards):
+    """Attack 4: below the maximum, an unread count, or no maximum set -> every approach, as before."""
+    reply = post(client_for(_at_used("ADJ-02", used), guards=guards, rates=RATES)).json()
+    assert [a["id"] for a in reply["approaches"]] == list(APPROACH_IDS)

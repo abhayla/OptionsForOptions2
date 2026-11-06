@@ -10,7 +10,6 @@ from __future__ import annotations
 import datetime
 import json
 
-import pytest
 import t19_support
 import test_ic_paper_loop_core as core
 from httpx import ASGITransport, AsyncClient
@@ -137,13 +136,8 @@ async def test_two_adjustments_are_placed_acted_on_and_counted(app_engine, monke
     await _run(app_engine, monkeypatch, "C1 two adjusts", to_limit=False)
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "r3-c1.log 2026-11-06 (retry round 3): T-18 IS PROVEN - exactly one T-18 record at the limit and none on 3 more "
-    "frames (every assertion through the repeat check passed once the test re-reads the monitors per frame). It fails "
-    "at attack 2: POST adjustment-approaches with {} builds every APPROACH_IDS (routes/adjustment.py:513) and does not "
-    "apply S-11 (offered.offered_now is applied only to the check's cheapest approach, adjustment_check.py:237): "
-    "A-01, A-02, A-04, A-05, A-06, A-11 are returned at used 2 = max 2. Whether the Compare hides rolls at the limit "
-    "is a product question for the lead (design decision 14); the T-19 line part is not reached."))
+# retry r4: the strict xfail is gone - the approaches route applies S-11 through offered.limit_filter (decision 14;
+# r3-c1.log had A-01/02/04/05/06/11 returned at used 2 = max 2), and the stated rates are seeded so T-19 is checked
 async def test_limit_raises_one_t18_record_and_offers_only_exit_reduce_with_t19(app_engine, monkeypatch):
     await _run(app_engine, monkeypatch, "C1 limit", to_limit=True)
 
