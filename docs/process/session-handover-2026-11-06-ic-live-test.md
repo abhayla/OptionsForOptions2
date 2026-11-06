@@ -66,7 +66,7 @@ watches and day rules exempt from the daily cap, nothing dropped silently, every
 intrinsic, T-01 flags when breached; 269 roll to a later expiry = close + new linked strategy; 270 T-11/T-14 live,
 test data first. Ops: dev DB limit 10 kept.
 
-## Update 2026-11-06 evening (17:0x-17:3x IST, session 2)
+## Update 2026-11-06 evening (16:52-17:18 IST, session 2)
 - Item 3 DONE (Chrome 5173 -> 8765): reopen PASS (86 closed, 91/92 open, lots right); rename PASS (20-char cap, empty
   name refused, persists); delete + Undo PASS functionally; undelete via API PASS (95, 97, 86); real-order refusal PASS in
   the row and on the server (strategy 9: 409 STRATEGY_VALIDATION_432). Found: issue 73 paper strategies (86-92) CAN be
@@ -74,7 +74,7 @@ test data first. Ops: dev DB limit 10 kept.
   "No legs yet"; issue 70 REGRESSION of ADR-197/200: after close the builder shows no outcome and no index (bus mode).
 - Item 2 DONE: 130 passed, 1 failed (issue 74, stale downgrade test since 0041, not a product defect). DB tests run with
   the main checkout's runner: `python D:\Abhay\Ventures\OptionsForOptions2\scripts\orchestrator\db_run_fresh.py <tree> ...`.
-- Issue 75: the background role had run 42924b7b since 12:50 (pre-fix A-01). Restarted 17:2x on 514113f1: launcher
+- Issue 75: the background role had run 42924b7b since 12:50 (pre-fix A-01). Restarted 17:15 on 514113f1: launcher
   7712, role 6116 (PID file D:\Abhay\scratch\ic-uitest\background.pid). Today's live alert rows are evidence for the old code.
 - Clean re-run: test-data rows and automated suites already ran on 514113f1 and count; every LIVE row must re-run in
   market hours -> Monday 9 Nov, checklist D:\Abhay\scratch\ic-uitest\RERUN-2026-11-09.md. Owner step: Kite login
