@@ -26,6 +26,9 @@ import { PAPER_AVERAGE_LABEL, paperFillKey } from '@/lib/paperDrafts'
 
 const props = defineProps({
   legs: { type: Array, required: true },
+  // 2026-11-06: clicks of a strike step not yet confirmed by the server, per move key ({ 'step:2': 4 }); shown on the row at
+  // once as "+4" (a count of listed strikes to move, never a strike the browser computed: REQ-076 AC-1)
+  pendingSteps: { type: Object, default: () => ({}) },
   multiplierMax: { type: Number, default: null }, // the page passes the served limits.multiplier_max; null = not read yet (no choices)
   shapeName: { type: String, default: null }, // the server's name; null = no reply yet (nothing is invented here)
   hasReply: { type: Boolean, default: false }, // a reply named the shape (a null name then means Custom Strategy)
@@ -193,7 +196,7 @@ function setMultiplier(index) {
               <template v-if="canStep(leg)">
                 <button type="button" class="h-8 w-8 shrink-0 border-r border-line" aria-label="Previous strike" data-testid="strike-minus" @click="emit('edit', { control: 'step', index: i, direction: -1 })">-</button>
                 <button type="button" class="num relative min-w-0 flex-1 text-center" :title="strikeTitle(leg)" :aria-label="`Edit ${legName(leg)}`" data-testid="edit-leg" @click="emit('edit-leg', i)">
-                  <span data-testid="leg-strike">{{ strikeLabel(leg.strike) }}</span><span v-if="isHedge(leg)" class="absolute left-0.5 top-0 rounded-sm bg-accent px-0.5 text-[9px] font-semibold leading-3 text-white" title="Hedge" aria-label="Hedge" data-testid="hedge-mark">H</span>
+                  <span data-testid="leg-strike">{{ strikeLabel(leg.strike) }}</span><span v-if="pendingSteps[`step:${i}`]" class="ml-0.5 text-[10px] text-accent" :title="`Moving ${Math.abs(pendingSteps[`step:${i}`])} listed strikes, waiting for the server`" data-testid="leg-pending-steps">{{ pendingSteps[`step:${i}`] > 0 ? '+' : '' }}{{ pendingSteps[`step:${i}`] }}</span><span v-if="isHedge(leg)" class="absolute left-0.5 top-0 rounded-sm bg-accent px-0.5 text-[9px] font-semibold leading-3 text-white" title="Hedge" aria-label="Hedge" data-testid="hedge-mark">H</span>
                 </button>
                 <button type="button" class="h-8 w-8 shrink-0 border-l border-line" aria-label="Next strike" data-testid="strike-plus" @click="emit('edit', { control: 'step', index: i, direction: 1 })">+</button>
               </template>

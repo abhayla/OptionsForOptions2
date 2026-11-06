@@ -45,6 +45,14 @@ const CONTROL_FIELDS = {
   read: [], // changes no leg: the server answers the current numbers, shape name and Hedge marks (REQ-076 AC-8)
 }
 
+/** The controls a click moves by ONE step relative to the legs shown (2026-11-06): while one is in flight, further clicks of
+ *  the same control (and leg) add up, and the newest request carries the total as `steps` from the last confirmed legs. */
+export const RELATIVE_CONTROLS = Object.freeze(['step', 'shift', 'width', 'hedge'])
+export const MAX_STEPS = 20 // the server's cap per request (EditIn.steps)
+
+/** The key two relative clicks share when they add up: the control and, for a strike step, the leg. */
+export const moveKey = (edit) => (edit.control === 'step' ? `step:${edit.index}` : edit.control)
+
 /** True for a leg the step control applies to: an option leg only (an allow-list: a futures or unknown leg has none). */
 export function canStep(leg) {
   return leg?.instrument_type === 'CE' || leg?.instrument_type === 'PE'
@@ -64,6 +72,8 @@ export function buildEditRequest(underlying, legs, edit, shiftTotal = null) {
   if (edit.control === 'price' && typeof edit.price !== 'string') return null // text, never a number (ADR-008)
   const body = { control: edit.control }
   for (const f of fields) body[f] = edit[f]
+  // 2026-11-06: N quick clicks of one relative control go as ONE request moving N listed strikes (the server steps them)
+  if (RELATIVE_CONTROLS.includes(edit.control) && Number.isInteger(edit.steps) && edit.steps > 1) body.steps = edit.steps
   return {
     underlying,
     edit: body,

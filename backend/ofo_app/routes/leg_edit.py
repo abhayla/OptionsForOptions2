@@ -26,7 +26,9 @@ stored and above it (no block), not stored (no block; the order review warns).
 """
 from __future__ import annotations
 
+import asyncio
 import datetime
+import logging
 import time
 from collections.abc import Awaitable, Callable, Mapping
 from decimal import Decimal
@@ -114,47 +116,128 @@ def hold_future_legs(feed: LiveFeed | None, viewer: str, underlying: str, future
 MIN_SHAPE_LEGS = 2  # a shape needs at least 2 legs
 MAX_HEDGE_LEGS = edit.MAX_HEDGE_LEGS
 MOVES = ("shift", "width", "hedge")  # REQ-078: the controls that move strikes by one strike step per click
+RELATIVE = ("step", *MOVES)  # moved one step per click: several quick clicks arrive as one request (steps)
+MAX_STEPS = 20  # one request moves at most 20 steps (quick clicking on a leg row is a few clicks per second)
 SHIFT_TOTAL_BOUND = 1_000_000  # index points; far beyond any strike
 CATALOGUE_TTL_SECONDS = 60.0  # AC-10: never "yesterday's list": a stored list is reused for a minute, no longer
-_catalogue_cache: dict = {"until": 0.0, "value": None}
+log = logging.getLogger(__name__)
+
+
+class _Phases:
+    """2026-11-06 (leg-edit latency, 4-5 s measured in the browser): milliseconds per phase of one request's body,
+    logged as ONE line at INFO. The dependency reads (today, list current, freeze limits) run before the body: their
+    share is the browser's total minus the logged ``total``."""
+
+    def __init__(self) -> None:
+        self.start = time.perf_counter()
+        self.parts: list[str] = []
+
+    def _add(self, name: str, since: float) -> None:
+        self.parts.append(f"{name}={(time.perf_counter() - since) * 1000:.0f}ms")
+
+    def run[T](self, name: str, work: Callable[[], T]) -> T:
+        since = time.perf_counter()
+        try:
+            return work()
+        finally:
+            self._add(name, since)
+
+    async def wait[T](self, name: str, pending: Awaitable[T]) -> T:
+        since = time.perf_counter()
+        try:
+            return await pending
+        finally:
+            self._add(name, since)
+
+    def line(self, control: str, steps: int) -> str:
+        return (f"leg-edit timing control={control} steps={steps} " + " ".join(self.parts)
+                + f" total={(time.perf_counter() - self.start) * 1000:.0f}ms")
 
 Capture = Callable[[MarketContext | None, LiveFeed | None, str, list[str]], Awaitable[tuple]]
 ContractIds = Callable[[list[str]], Awaitable[dict[str, int]]]
 Tradable = Callable[[list[int]], Awaitable[list[bool]]]
 
 
-async def get_edit_catalogue() -> Catalogue:
-    """The stored instrument list as a domain Catalogue (REQ-076 AC-1). Tests override this dependency."""
-    if time.monotonic() < _catalogue_cache["until"]:
-        return _catalogue_cache["value"]
-    from ofo_app import catalogue_store  # noqa: PLC0415 - late, like outcome.stored_contracts
+class _EditState:
+    """What the dependencies read before the body, held for ``CATALOGUE_TTL_SECONDS`` (AC-10: a minute, no longer): the
+    stored list, today's date, whether today's list is loaded, and the freeze limits in force. ONE connection and one
+    single-flight load fill all four (2026-11-06 pool starvation: they used to take four connections per request)."""
+
+    def __init__(self) -> None:
+        self.until = 0.0
+        self.value: tuple | None = None
+        self.flight: asyncio.Future | None = None
+
+
+_edit_state = _EditState()
+
+
+async def _load_edit_state() -> tuple:
+    from ofo_app import (  # noqa: PLC0415 - late, like outcome.stored_contracts
+        catalogue_picker,
+        catalogue_store,
+        freeze_read,
+    )
     from ofo_app.db import get_sessionmaker  # noqa: PLC0415
 
     async with get_sessionmaker()() as session:
-        value = await catalogue_store.load_catalogue(await session.connection())
-    _catalogue_cache.update(until=time.monotonic() + CATALOGUE_TTL_SECONDS, value=value)
+        conn = await session.connection()
+        catalogue = await catalogue_store.load_catalogue(conn)
+        today = await catalogue_picker.database_today(conn)
+        current = await catalogue_picker.list_is_current(conn, today)
+        stored = await freeze_read.limits_in_force(conn)
+    limits = {key: (v.freeze_limit, v.file_date) for key, v in stored.items()}
+    value = (catalogue, today, current, limits)
+    _edit_state.value, _edit_state.until = value, time.monotonic() + CATALOGUE_TTL_SECONDS
     return value
+
+
+async def _edit_state_now() -> tuple:
+    """(catalogue, today, list current, freeze limits). A database error is raised to every waiting caller and never
+    cached (the same error class as the separate reads gave)."""
+    if _edit_state.value is not None and time.monotonic() < _edit_state.until:
+        return _edit_state.value
+    loop = asyncio.get_running_loop()
+    flight = _edit_state.flight
+    if flight is None or flight.done() or flight.get_loop() is not loop:
+        flight = loop.create_task(_load_edit_state())
+        _edit_state.flight = flight
+    return await asyncio.shield(flight)
+
+
+async def get_edit_catalogue() -> Catalogue:
+    """The stored instrument list as a domain Catalogue (REQ-076 AC-1). Tests override this dependency."""
+    return (await _edit_state_now())[0]
 
 
 async def get_edit_today() -> datetime.date:
     """Today's date on the database clock, the one every expiry judgement uses (the leg picker's). Tests override it."""
-    from ofo_app import catalogue_picker  # noqa: PLC0415
-    from ofo_app.db import get_sessionmaker  # noqa: PLC0415
-
-    async with get_sessionmaker()() as session:
-        return await catalogue_picker.database_today(await session.connection())
+    return (await _edit_state_now())[1]
 
 
 async def get_list_current() -> bool:
     """AC-10 (ADR-104): whether today's instrument list is loaded (the latest load is at or after this session's publish
     time, database clock). False = Shift / Width / Hedge are off, never computed from yesterday's list. Tests
     override it."""
-    from ofo_app import catalogue_picker  # noqa: PLC0415
-    from ofo_app.db import get_sessionmaker  # noqa: PLC0415
+    return (await _edit_state_now())[2]
 
-    async with get_sessionmaker()() as session:
-        conn = await session.connection()
-        return await catalogue_picker.list_is_current(conn, await catalogue_picker.database_today(conn))
+
+_templates_cache: dict = {"key": None, "value": None}
+
+
+def cached_templates():
+    """The strategy templates, parsed once per process and again only when the catalogue file changes (it was parsed on
+    every request, ~115 ms each)."""
+    from ofo.strategy.loader import DEFAULT_CATALOGUE_PATH  # noqa: PLC0415
+
+    try:
+        stat = DEFAULT_CATALOGUE_PATH.stat()
+        key = (stat.st_mtime_ns, stat.st_size)
+    except OSError:
+        return load_templates()  # no file: load_templates raises its own error
+    if _templates_cache["key"] != key:
+        _templates_cache.update(value=load_templates(), key=key)
+    return _templates_cache["value"]
 
 
 def get_move_eligibility() -> Tradable:
@@ -174,30 +257,24 @@ def get_move_eligibility() -> Tradable:
 
 async def get_freeze_limits() -> dict[ContractKey, tuple[int, datetime.date]]:
     """The stored exchange freeze limit in force for every stored contract, as (limit, file date). Tests override it."""
-    from ofo_app import freeze_read  # noqa: PLC0415
-    from ofo_app.db import get_sessionmaker  # noqa: PLC0415
-
-    async with get_sessionmaker()() as session:
-        stored = await freeze_read.limits_in_force(await session.connection())
-    return {key: (v.freeze_limit, v.file_date) for key, v in stored.items()}
+    return (await _edit_state_now())[3]
 
 
 def get_contract_ids() -> ContractIds:
-    """The stored internal contract id of each live instrument id (what Save Draft links a leg to, ADR-057). A contract
-    with no live stored row is absent from the answer; its leg is then not savable. Tests override it."""
+    """The stored internal contract id of each live instrument id (what Save Draft links a leg to, ADR-057), in ONE
+    query for all legs. A contract with no live stored row is absent from the answer; its leg is then not savable.
+    Tests override it."""
     async def lookup(instrument_ids: list[str]) -> dict[str, int]:
         from ofo_app import catalogue_store  # noqa: PLC0415
         from ofo_app.db import get_sessionmaker  # noqa: PLC0415
 
-        found: dict[str, int] = {}
+        keys = {}
+        for iid in instrument_ids:
+            segment, _, token = iid.partition(":")
+            keys[iid] = ContractKey(segment, int(token))
         async with get_sessionmaker()() as session:
-            conn = await session.connection()
-            for iid in instrument_ids:
-                segment, _, token = iid.partition(":")
-                stored = await catalogue_store.live_contract_id(conn, ContractKey(segment, int(token)))
-                if stored is not None:
-                    found[iid] = stored
-        return found
+            stored = await catalogue_store.live_contract_ids(await session.connection(), keys.values())
+        return {iid: stored[key] for iid, key in keys.items() if key in stored}
     return lookup
 
 
@@ -229,6 +306,10 @@ class EditIn(BaseModel):
     multiplier: StrictInt | None = Field(default=None, ge=edit.MULTIPLIER_MIN, le=edit.MULTIPLIER_MAX)  # '3', 2.5: 422
     included: StrictBool | None = None
     price: str | None = Field(default=None, max_length=64)  # the user's text: edit.set_typed_price is the one judge
+    # 2026-11-06 (REQ-076 AC-1, REQ-119): N quick clicks of one relative control (step / shift / width / hedge)
+    # arrive as ONE request with steps=N; the server moves N listed strikes one at a time, so every click lands.
+    # Absent = 1.
+    steps: StrictInt | None = Field(default=None, ge=1, le=MAX_STEPS)
 
     @field_validator("direction", mode="before")
     @classmethod
@@ -249,6 +330,8 @@ class EditIn(BaseModel):
         missing = [name for name in needs if given[name] is None]
         if missing:
             raise ValueError(f"{self.control} needs {missing}")
+        if self.steps is not None and self.control not in RELATIVE:
+            raise ValueError(f"{self.control} takes no steps")
         return self
 
 
@@ -395,7 +478,7 @@ def shape_and_marks(cat: Catalogue, ctx: MarketContext | None, underlying: str, 
         return None, frozenset()
     gap = min(cat.strike_gap(underlying, expiry) for expiry in {x.leg.expiry for x in options})
     spot = _reference_spot(ctx, underlying, legs, gap)
-    templates = load_templates()
+    templates = cached_templates()
     found = match([x.leg for x in legs], spot=spot, strike_gap=gap, templates=templates)
     if isinstance(found, Custom) and _live_spot(ctx, underlying) is None:
         # no live index: the middle of the strikes is only a guess, so the neighbouring ATM strikes are tried too
@@ -472,6 +555,17 @@ def _apply_move(cat: Catalogue, req: LegEditIn, legs: list[EditLeg], today: date
     return moved.legs, moved.moved
 
 
+def apply_steps(cat: Catalogue, req: LegEditIn, legs: list[EditLeg], today: datetime.date, gate: Gate | None = None):
+    """:func:`apply_edit` ``steps`` times (absent = once): N quick clicks = N single steps, each from the legs the last
+    one left; any refusal refuses the whole request (nothing half-moved). The gate is the one the legs as sent got."""
+    one = req.model_copy(update={"edit": req.edit.model_copy(update={"steps": None})})
+    moved: frozenset[int] = frozenset()
+    for _ in range(req.edit.steps or 1):
+        legs, now_moved = apply_edit(cat, one, legs, today, gate)
+        moved |= now_moved
+    return legs, moved
+
+
 def apply_edit(cat: Catalogue, req: LegEditIn, legs: list[EditLeg], today: datetime.date, gate: Gate | None = None):
     """Apply the one edit; ``(legs, indexes whose contract changed)``. Raises LegEditRefused. A move (shift / width /
     hedge) needs ``gate`` (:func:`_controls`, the Hedge marks and the live index level for Width's last-step case,
@@ -516,7 +610,7 @@ def _next_shift_total(req: LegEditIn, cat: Catalogue, today: datetime.date, legs
     control = req.edit.control
     if control == "shift":
         step = int(edit.shift_step(edit.Listing(cat, today), req.underlying, legs))
-        return (req.shift_total or 0) + (req.edit.direction or 1) * step
+        return (req.shift_total or 0) + (req.edit.direction or 1) * step * (req.edit.steps or 1)
     return None if control in ("step", "width", "hedge") else req.shift_total
 
 
@@ -560,14 +654,17 @@ async def leg_edit(req: LegEditIn,  # noqa: PLR0913 - FastAPI dependencies, one 
                    margin_source: Annotated[OutcomeMargin | None, Depends(get_margin_source)],
                    calc_settings: Annotated[Mapping[str, Decimal], Depends(get_calc_settings)]) -> LegEditOut:
     check_lots([n for x in req.legs for n in (x.lots, x.base_lots)], calc_settings)  # limits.max_lots, before any work
+    phases = _Phases()
     legs = _legs_of(cat, req, today)
-    new_legs, moved = apply_edit(cat, req, legs, today, _move_gate(cat, req, ctx, legs, list_current))
-    entries_of = [_entry_of(cat, req.underlying, new_legs, i) for i in range(len(new_legs))]
+    new_legs, moved = phases.run("apply", lambda: apply_steps(cat, req, legs, today,
+                                                             _move_gate(cat, req, ctx, legs, list_current)))
+    entries_of = phases.run("catalogue_scan", lambda: [_entry_of(cat, req.underlying, new_legs, i)
+                                                       for i in range(len(new_legs))])
     ids = [f"{e.contract.exchange_segment}:{e.contract.exchange_token}" for e in entries_of]
-    stored_ids = await contract_ids(ids)
+    stored_ids = await phases.wait("contract_ids_db", contract_ids(ids))
     if req.edit.control in MOVES:
         stored_of = {i: stored_ids[ids[i]] for i in moved if ids[i] in stored_ids}
-        await _check_landing(tradable, req.underlying, new_legs, moved, stored_of)
+        await phases.wait("eligibility_db", _check_landing(tradable, req.underlying, new_legs, moved, stored_of))
     shift_total = _next_shift_total(req, cat, today, legs)
     stamps: dict[int, datetime.datetime | None] = {i: x.captured_at for i, x in enumerate(req.legs)}
     # ADR-197: a leg the edit does not re-capture keeps the close time it was sent; a re-captured one takes the new one
@@ -580,7 +677,7 @@ async def leg_edit(req: LegEditIn,  # noqa: PLR0913 - FastAPI dependencies, one 
         closes[req.edit.index] = None  # a typed price is the user's, never the close
         unpriced.discard(req.edit.index)
     if recapture:
-        valuation, got = await capture(ctx, feed, req.underlying, [ids[i] for i in recapture])
+        valuation, got = await phases.wait("capture", capture(ctx, feed, req.underlying, [ids[i] for i in recapture]))
         entries = {}
         for i in recapture:
             price = got.get(ids[i])
@@ -595,8 +692,8 @@ async def leg_edit(req: LegEditIn,  # noqa: PLR0913 - FastAPI dependencies, one 
                 stamps[i] = valuation
                 closes[i] = price.close_at
         new_legs = edit.with_entries(new_legs, entries)
-    template, hedged = shape_and_marks(cat, ctx, req.underlying, new_legs)
-    blocks = _freeze_blocks(cat, req.underlying, new_legs, limits)
+    template, hedged = phases.run("shape_match", lambda: shape_and_marks(cat, ctx, req.underlying, new_legs))
+    blocks = phases.run("freeze_scan", lambda: _freeze_blocks(cat, req.underlying, new_legs, limits))
     off_now = _controls(template, hedged, new_legs, list_current)
     out_legs = [{
         "instrument_id": ids[i], "contract_id": stored_ids.get(ids[i]), "lot_size": entries_of[i].contract.lot_size,
@@ -621,9 +718,10 @@ async def leg_edit(req: LegEditIn,  # noqa: PLR0913 - FastAPI dependencies, one 
                   for i in shown])
         hold_future_legs(feed, viewer, req.underlying,
                          [ids[i] for i in shown if new_legs[i].leg.instrument is Instrument.FUT])
-        margin: Margin = await margin_for_request(outcome_req, ctx, margin_source)
-        outcome = outcome_response(outcome_req, ctx, streaming, now=now, rates=rates, margin=margin,
-                                   settings=calc_settings)
+        margin: Margin = await phases.wait("margin", margin_for_request(outcome_req, ctx, margin_source))
+        outcome = phases.run("outcome_engine", lambda: outcome_response(
+            outcome_req, ctx, streaming, now=now, rates=rates, margin=margin, settings=calc_settings))
+    log.info(phases.line(req.edit.control, req.edit.steps or 1))
     name = None if template is None else render_explanation("catalogue_template_name", text=template.name)
     reply = {"legs": out_legs, "controls": {name: why is None for name, why in off_now.items()},
              "control_reasons": {name: None if why is None else render_reason(why) for name, why in off_now.items()},
