@@ -156,6 +156,17 @@ class Suggestion:
         return raw if isinstance(raw, int) else 0
 
     @property
+    def beyond(self) -> tuple[str, Decimal, Decimal] | None:
+        """ADR-268 (2): (kind, strike, points) when the flag's short was at or beyond its strike (None otherwise)."""
+        raw = self.timeline[0].get("beyond") if self.timeline else None
+        if not isinstance(raw, dict) or raw.get("kind") not in ("CE", "PE"):
+            return None
+        try:
+            return raw["kind"], Decimal(raw["strike"]), Decimal(raw["points"])
+        except (KeyError, TypeError, ArithmeticError):  # a malformed marker: the plain line (fail visible)
+            return None
+
+    @property
     def unit(self) -> str | None:
         """The trigger's unit as the evaluated body held it when the flag was shown (None on an older record)."""
         return self.timeline[0].get("unit") if self.timeline else None
@@ -265,7 +276,7 @@ _INSERT_SUGGESTION = text(
     "'group', CAST(:group AS TEXT), 'source', CAST(:source AS TEXT), 'cmp', CAST(:cmp AS TEXT), "
     "'label', CAST(:label AS TEXT), 'unit', CAST(:unit AS TEXT), 'approach', CAST(:approach AS TEXT), "
     "'approach_cost', CAST(:approach_cost AS TEXT), 'unpriced', CAST(:unpriced AS INTEGER), "
-    "'carry', CAST(:carry AS JSONB)))) "
+    "'carry', CAST(:carry AS JSONB), 'beyond', CAST(:beyond AS JSONB)))) "
     f"RETURNING {_SG_COLUMNS}")
 _CLOSE_SUGGESTION = text(
     "UPDATE public.adjustment_suggestions AS g SET outcome = CAST(:outcome AS TEXT), "  # noqa: S608
@@ -671,7 +682,8 @@ async def open_suggestion(conn: Any, user_ref: str, strategy_id: int, rule_id: s
                           source: str | None = None, cmp: str | None = None, label: str | None = None,
                           unit: str | None = None, approach: str | None = None,
                           approach_cost: Decimal | None = None, unpriced: int | None = None,
-                          worse: str | None = None, carry: Mapping[str, str | None] | None = None) -> Suggestion:
+                          worse: str | None = None, carry: Mapping[str, str | None] | None = None,
+                          beyond: tuple[str, Decimal, Decimal] | None = None) -> Suggestion:
     """REQ-112 AC-1: one open record per (strategy, rule); a rule still open returns its existing record.
     ``carry``: a carry check's content (GC-IC1 1b; money as strings, None = not known with its reason code).
     ``worse``: None / 'last' / 'dismissed' (REQ-170 AC-3, ADR-237 (5)), written once at insert."""
@@ -688,6 +700,9 @@ async def open_suggestion(conn: Any, user_ref: str, strategy_id: int, rule_id: s
                                                    "unit": unit, "approach": approach, "unpriced": unpriced,
                                                    "worse": worse,
                                                    "carry": None if carry is None else json.dumps(carry),
+                                                   "beyond": None if beyond is None else json.dumps(
+                                                       {"kind": beyond[0], "strike": format(beyond[1], "f"),
+                                                        "points": format(beyond[2], "f")}),
                                                    "approach_cost": None if approach_cost is None
                                                    else format(approach_cost, "f")})).one()
     return _suggestion(row)

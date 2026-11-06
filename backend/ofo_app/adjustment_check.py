@@ -652,7 +652,8 @@ def trigger_words(body: Mapping | None, trigger_id: str | None) -> tuple[str | N
     return (label if isinstance(label, str) else None), (unit if isinstance(unit, str) else None)
 
 
-def condition_line(trigger_id: str, label: str | None, unit: str | None, value: str, threshold: str) -> Any:
+def condition_line(trigger_id: str, label: str | None, unit: str | None, value: str, threshold: str,  # noqa: PLR0913
+                   beyond: tuple[str, Decimal, Decimal] | None = None) -> Any:
     """GC-ADJ2 item 1: "Spot within this % of a short strike: 0.3416 % (rule 0.5000 %)" from the trigger's own label
     and unit. A label the slot refuses or a body without one -> the trigger id (fail visible); a unit that is empty
     or not a plain unit -> the line without it."""
@@ -663,6 +664,13 @@ def condition_line(trigger_id: str, label: str | None, unit: str | None, value: 
             return render_explanation("adjust_condition_line", label=lab, value=value, unit=un, threshold=threshold)
         return render_explanation("adjust_condition_line_plain", label=lab, value=value, threshold=threshold)
 
+    if beyond is not None and beyond[0] in ("CE", "PE"):  # ADR-268 (2): never "0 %" for a breached short
+        try:
+            return render_explanation(f"adjust_condition_line_t01_beyond_{beyond[0].lower()}",
+                                      label=label if label is not None else trigger_id, strike=beyond[1],
+                                      points=beyond[2])
+        except (TypeError, ValueError):  # a refused slot: the plain line below (fail visible)
+            pass
     try:
         return line(label if label is not None else trigger_id, unit)
     except (TypeError, ValueError):  # the slot refused the label or the unit: the id, with no unit (fail visible)
