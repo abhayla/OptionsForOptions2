@@ -26,6 +26,7 @@ stored and above it (no block), not stored (no block; the order review warns).
 """
 from __future__ import annotations
 
+import asyncio
 import datetime
 import logging
 import time
@@ -119,7 +120,6 @@ RELATIVE = ("step", *MOVES)  # moved one step per click: several quick clicks ar
 MAX_STEPS = 20  # one request moves at most 20 steps (quick clicking on a leg row is a few clicks per second)
 SHIFT_TOTAL_BOUND = 1_000_000  # index points; far beyond any strike
 CATALOGUE_TTL_SECONDS = 60.0  # AC-10: never "yesterday's list": a stored list is reused for a minute, no longer
-_catalogue_cache: dict = {"until": 0.0, "value": None}
 log = logging.getLogger(__name__)
 
 
@@ -158,38 +158,86 @@ ContractIds = Callable[[list[str]], Awaitable[dict[str, int]]]
 Tradable = Callable[[list[int]], Awaitable[list[bool]]]
 
 
-async def get_edit_catalogue() -> Catalogue:
-    """The stored instrument list as a domain Catalogue (REQ-076 AC-1). Tests override this dependency."""
-    if time.monotonic() < _catalogue_cache["until"]:
-        return _catalogue_cache["value"]
-    from ofo_app import catalogue_store  # noqa: PLC0415 - late, like outcome.stored_contracts
+class _EditState:
+    """What the dependencies read before the body, held for ``CATALOGUE_TTL_SECONDS`` (AC-10: a minute, no longer): the
+    stored list, today's date, whether today's list is loaded, and the freeze limits in force. ONE connection and one
+    single-flight load fill all four (2026-11-06 pool starvation: they used to take four connections per request)."""
+
+    def __init__(self) -> None:
+        self.until = 0.0
+        self.value: tuple | None = None
+        self.flight: asyncio.Future | None = None
+
+
+_edit_state = _EditState()
+
+
+async def _load_edit_state() -> tuple:
+    from ofo_app import (  # noqa: PLC0415 - late, like outcome.stored_contracts
+        catalogue_picker,
+        catalogue_store,
+        freeze_read,
+    )
     from ofo_app.db import get_sessionmaker  # noqa: PLC0415
 
     async with get_sessionmaker()() as session:
-        value = await catalogue_store.load_catalogue(await session.connection())
-    _catalogue_cache.update(until=time.monotonic() + CATALOGUE_TTL_SECONDS, value=value)
+        conn = await session.connection()
+        catalogue = await catalogue_store.load_catalogue(conn)
+        today = await catalogue_picker.database_today(conn)
+        current = await catalogue_picker.list_is_current(conn, today)
+        stored = await freeze_read.limits_in_force(conn)
+    limits = {key: (v.freeze_limit, v.file_date) for key, v in stored.items()}
+    value = (catalogue, today, current, limits)
+    _edit_state.value, _edit_state.until = value, time.monotonic() + CATALOGUE_TTL_SECONDS
     return value
+
+
+async def _edit_state_now() -> tuple:
+    """(catalogue, today, list current, freeze limits). A database error is raised to every waiting caller and never
+    cached (the same error class as the separate reads gave)."""
+    if _edit_state.value is not None and time.monotonic() < _edit_state.until:
+        return _edit_state.value
+    loop = asyncio.get_running_loop()
+    flight = _edit_state.flight
+    if flight is None or flight.done() or flight.get_loop() is not loop:
+        flight = loop.create_task(_load_edit_state())
+        _edit_state.flight = flight
+    return await asyncio.shield(flight)
+
+
+async def get_edit_catalogue() -> Catalogue:
+    """The stored instrument list as a domain Catalogue (REQ-076 AC-1). Tests override this dependency."""
+    return (await _edit_state_now())[0]
 
 
 async def get_edit_today() -> datetime.date:
     """Today's date on the database clock, the one every expiry judgement uses (the leg picker's). Tests override it."""
-    from ofo_app import catalogue_picker  # noqa: PLC0415
-    from ofo_app.db import get_sessionmaker  # noqa: PLC0415
-
-    async with get_sessionmaker()() as session:
-        return await catalogue_picker.database_today(await session.connection())
+    return (await _edit_state_now())[1]
 
 
 async def get_list_current() -> bool:
     """AC-10 (ADR-104): whether today's instrument list is loaded (the latest load is at or after this session's publish
     time, database clock). False = Shift / Width / Hedge are off, never computed from yesterday's list. Tests
     override it."""
-    from ofo_app import catalogue_picker  # noqa: PLC0415
-    from ofo_app.db import get_sessionmaker  # noqa: PLC0415
+    return (await _edit_state_now())[2]
 
-    async with get_sessionmaker()() as session:
-        conn = await session.connection()
-        return await catalogue_picker.list_is_current(conn, await catalogue_picker.database_today(conn))
+
+_templates_cache: dict = {"key": None, "value": None}
+
+
+def cached_templates():
+    """The strategy templates, parsed once per process and again only when the catalogue file changes (it was parsed on
+    every request, ~115 ms each)."""
+    from ofo.strategy.loader import DEFAULT_CATALOGUE_PATH  # noqa: PLC0415
+
+    try:
+        stat = DEFAULT_CATALOGUE_PATH.stat()
+        key = (stat.st_mtime_ns, stat.st_size)
+    except OSError:
+        return load_templates()  # no file: load_templates raises its own error
+    if _templates_cache["key"] != key:
+        _templates_cache.update(value=load_templates(), key=key)
+    return _templates_cache["value"]
 
 
 def get_move_eligibility() -> Tradable:
@@ -209,30 +257,24 @@ def get_move_eligibility() -> Tradable:
 
 async def get_freeze_limits() -> dict[ContractKey, tuple[int, datetime.date]]:
     """The stored exchange freeze limit in force for every stored contract, as (limit, file date). Tests override it."""
-    from ofo_app import freeze_read  # noqa: PLC0415
-    from ofo_app.db import get_sessionmaker  # noqa: PLC0415
-
-    async with get_sessionmaker()() as session:
-        stored = await freeze_read.limits_in_force(await session.connection())
-    return {key: (v.freeze_limit, v.file_date) for key, v in stored.items()}
+    return (await _edit_state_now())[3]
 
 
 def get_contract_ids() -> ContractIds:
-    """The stored internal contract id of each live instrument id (what Save Draft links a leg to, ADR-057). A contract
-    with no live stored row is absent from the answer; its leg is then not savable. Tests override it."""
+    """The stored internal contract id of each live instrument id (what Save Draft links a leg to, ADR-057), in ONE
+    query for all legs. A contract with no live stored row is absent from the answer; its leg is then not savable.
+    Tests override it."""
     async def lookup(instrument_ids: list[str]) -> dict[str, int]:
         from ofo_app import catalogue_store  # noqa: PLC0415
         from ofo_app.db import get_sessionmaker  # noqa: PLC0415
 
-        found: dict[str, int] = {}
+        keys = {}
+        for iid in instrument_ids:
+            segment, _, token = iid.partition(":")
+            keys[iid] = ContractKey(segment, int(token))
         async with get_sessionmaker()() as session:
-            conn = await session.connection()
-            for iid in instrument_ids:
-                segment, _, token = iid.partition(":")
-                stored = await catalogue_store.live_contract_id(conn, ContractKey(segment, int(token)))
-                if stored is not None:
-                    found[iid] = stored
-        return found
+            stored = await catalogue_store.live_contract_ids(await session.connection(), keys.values())
+        return {iid: stored[key] for iid, key in keys.items() if key in stored}
     return lookup
 
 
@@ -436,7 +478,7 @@ def shape_and_marks(cat: Catalogue, ctx: MarketContext | None, underlying: str, 
         return None, frozenset()
     gap = min(cat.strike_gap(underlying, expiry) for expiry in {x.leg.expiry for x in options})
     spot = _reference_spot(ctx, underlying, legs, gap)
-    templates = load_templates()
+    templates = cached_templates()
     found = match([x.leg for x in legs], spot=spot, strike_gap=gap, templates=templates)
     if isinstance(found, Custom) and _live_spot(ctx, underlying) is None:
         # no live index: the middle of the strikes is only a guess, so the neighbouring ATM strikes are tried too
