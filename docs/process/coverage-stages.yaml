@@ -413,6 +413,7 @@ decisions:
   ADR-251: S6.7         # 2x credit stop = 2x net credit collected so far (entry +/- every roll); fail closed on none (owner 5 Nov)
   ADR-252: S6.7         # % of max loss stop = per-stage T-06 value, one source for words and alerts (decided under owner delegation 5 Nov)
   ADR-253: S6.7         # T-14 gamma evaluated in test-data mode only; live keeps "not checked yet" (owner 6 Nov)
+  ADR-254: S6.7         # T-19 checked by the background worker, live and test data (owner 6 Nov)
 
 questions:
   Q210: 4a              # external: Zerodha's written answer; ADR-051 covers the owner's own account
