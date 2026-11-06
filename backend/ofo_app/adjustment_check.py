@@ -191,9 +191,23 @@ def prices_fresh(ctx: Any) -> bool | None:
     return True if health == _HEALTH_FRESH else False if health == _HEALTH_STALE else None
 
 
-def _abs_delta(market: MarketInputs, symbol: str) -> Decimal | None:
-    g = market.leg_greeks.get(symbol)
-    return None if g is None or g.delta is None else abs(g.delta)
+#: ADR-268 (1): an option price within one tick of its intrinsic value has no time value left (NSE/BSE option tick)
+INTRINSIC_TICK: Final = Decimal("0.05")
+
+
+def _abs_delta(market: MarketInputs, leg: Any, ltp: Decimal | None, spot: Decimal | None) -> Decimal | None:
+    """The leg's absolute delta for the rule checks. Answer states: engine delta stated -> |delta|; no delta but the
+    price is within one tick of intrinsic (ADR-268 (1)) -> 1 in the money, 0 out of the money; no delta and no
+    price or no spot, or a price with time value left -> None ("delta not available")."""
+    g = market.leg_greeks.get(leg.tradingsymbol)
+    if g is not None and g.delta is not None:
+        return abs(g.delta)
+    if ltp is None or spot is None or leg.type not in ("CE", "PE"):
+        return None
+    intrinsic = max(spot - leg.strike if leg.type == "CE" else leg.strike - spot, Decimal(0))
+    if ltp - intrinsic > INTRINSIC_TICK:
+        return None
+    return Decimal(1) if intrinsic > 0 else Decimal(0)
 
 
 class PlaybookGuards(dict):
@@ -277,8 +291,8 @@ def state_of(tracked: Tracked, market: MarketInputs, spot: SpotAnswer, margin: M
     ltp = {x.tradingsymbol: getattr(rows.get(x.tradingsymbol), "ltp", None) for x in position.legs}
     priced = all(v is not None for v in ltp.values())
     value = spot.value if spot.available else None
-    shorts = tuple(pe.ShortLeg(x.strike, _abs_delta(market, x.tradingsymbol), ltp[x.tradingsymbol])
-                   for x in position.legs if x.side == Action.SELL.value)
+    shorts = tuple(pe.ShortLeg(x.strike, _abs_delta(market, x, ltp[x.tradingsymbol], value), ltp[x.tradingsymbol],
+                               x.type) for x in position.legs if x.side == Action.SELL.value)
     qty = {x.tradingsymbol: x.lots * position.lot for x in position.legs}
     booked = tracked.booked
     pnl = None if booked is None or not priced else adjust_money.pnl_now(

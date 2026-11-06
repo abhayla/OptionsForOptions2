@@ -69,6 +69,7 @@ class ShortLeg:
     strike: Decimal
     abs_delta: Decimal | None
     ltp: Decimal | None
+    kind: str | None = None  # "CE" / "PE" (ADR-268: T-01's breached side); None = not known (no breach checked)
 
 
 @dataclass(frozen=True)
@@ -455,9 +456,20 @@ def short_gap_pct(spot: Decimal, shorts: tuple[ShortLeg, ...]) -> tuple[Decimal,
     return near * _HUNDRED, spot
 
 
+def short_breached(spot: Decimal, shorts: tuple[ShortLeg, ...]) -> ShortLeg | None:
+    """ADR-268 (2): the short spot is AT or BEYOND (in the money): a CE with spot >= strike, a PE with spot <= strike.
+    The deepest one when several; None when none (or no short states its kind)."""
+    hit = [x for x in shorts if (x.kind == "CE" and spot >= x.strike) or (x.kind == "PE" and spot <= x.strike)]
+    return max(hit, key=lambda x: abs(spot - x.strike)) if hit else None
+
+
 def _t01(c: _Ctx) -> Hit:
     spot = _need(c.state.spot, "spot")
-    return _compare(c, "T-01", *short_gap_pct(spot, _shorts(c.state)))
+    hit = _compare(c, "T-01", *short_gap_pct(spot, _shorts(c.state)))
+    if not hit.fired and short_breached(spot, c.state.shorts) is not None:
+        # ADR-268 (2): at or beyond the strike flags, whatever the % gap (no distance left: value 0)
+        return Hit("T-01", Decimal(0), hit.threshold, hit.cmp, True)
+    return hit
 
 
 def _t01b(c: _Ctx) -> Hit:
