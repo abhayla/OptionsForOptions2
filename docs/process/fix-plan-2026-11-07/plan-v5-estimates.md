@@ -41,10 +41,32 @@ plugins ponytail (smallest complete change) and pstack (manual-only skills). Cod
 | Longest lane (B) | ~15 h |
 | Tier A review of the 3 migrations | ~1 h |
 | Merge 4 lanes (3 shared files) | ~2 h |
-| Full gate once + fixes (last full run failed 5 steps) | ~1.5 h |
+| Impact tests at merge (changed files' tests + direct importers' tests; owner 7 Nov: no full gate, no PR, no CI) | ~0.5 h |
 | One screen test of every fix (test data, Chrome) | ~3 h |
-| **Total** | **~22 h (about 3 long sessions)** vs v4 ~16 h |
+| **Total** | **~21 h (about 3 long sessions)** vs v4 ~16 h; reviewer results pending |
 
 Options: defer 68 (-4 h builder, longest lane ~14.2 h (C), elapsed ~21 h, and one fewer migration); 68 deferred + split
 B or C into a 5th lane: elapsed ~18 h. Risks: 70/17 cause not found (+1-2 h); 65 DB repair size (+1 h); 5/46/13
 unlocated; past measured rows ran ~30% over code-read estimates.
+
+## Independent review, 7 Nov ~03:xx IST (2 fresh Sonnet reviewers, read-only, code-cited; lead re-read 7 claims: all held)
+Verdict: REVISE (both). Reviewed minutes: A 885, B 1,275, C 1,140, D 790 = 4,090 min (~68 h builder) vs v5 3,065.
+- Hidden migrations: 43 wing box (0029 has no column; paper_monitor.py:246 prices targets[0] only), the admin lock
+  (app_settings), 84/39 approach id (PaperOrdersIn has no field, paper.py:105-113), maybe 44: 5-6 migrations, not 3.
+- ADR-274 one combined order vs history booked by order kind (adjust_history.py:200): design inside lane B first.
+- Settings prerequisite not in the plan: is_layered answers only adjustments./alerts./orders. keys (layers.py:52);
+  ADR-262/265 settings need it widened (+45).
+- 66 is not a default change: role CONNECTION LIMIT 5, start-up refuses a bigger pool (config.py:42-46).
+- 1 relaxes the ADR-058/059 delist guard (catalogue.py:377) with no decision row: decision row before build.
+- 11/38: Alerts page lists paper alerts only (AlertsPage.vue:38-52): the one list is new UI.
+- Lanes are not file-disjoint (paper.py, StrategyBuilderPage.vue, adjustment_check.py, TrackingPanel.vue, templates.py).
+- Gate: strategy-table baseline is keyed by line text: baseline entries (5 min) instead of moving maths.
+Scope (owner 7 Nov): code change + unit tests of changed code + tests of direct importers; no PR, no CI, no full gate.
+
+## v6 elapsed (reviewed minutes; fixed steps = migration review 1.5 h, merge 3 h, impact tests 0.5 h, screen test 3 h)
+| Shape | Longest lane | Elapsed |
+|---|---|---|
+| 4 lanes as v4 | B ~21 h | ~29 h |
+| 6 lanes (B split: 68 + 43 own lane; C split: settings/placement vs data/lists) | A ~15 h | ~23 h |
+| 5 lanes + 68 deferred | ~16 h | ~23.5 h |
+6 builders at once needs ~6 GB free memory; check before dispatch.
