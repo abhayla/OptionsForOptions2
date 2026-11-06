@@ -15,7 +15,7 @@ import datetime
 
 import test_background_worker as bw
 from ofo.adjustment import playbook_eval as pe
-from ofo_app import playbook_store
+from ofo_app import playbook_store, scenario_mode
 from test_background_worker import app_db_url  # noqa: F401 - the fixture
 
 ONE_MINUTE_AND_A_BIT = 70
@@ -36,6 +36,7 @@ async def test_core_entry_crossing_stays_quiet_across_a_restart_and_a_new_crossi
         app_db_url, monkeypatch):  # noqa: F811 - the imported fixture
     sid, scn = await bw._seeded(app_db_url, monkeypatch)
     scn.data["position"]["entry"]["spot"] = ENTRY_SPOT  # T-01 true AT ENTRY at its entry-stage limit
+    monkeypatch.setattr(scenario_mode, "_loaded", {"ADJ-02": scn})  # the worker reads current(): make it this object
     await bw._pin_intraday(app_db_url, sid)
     now = [scn.clock_at]
     bw._push_spot(scn, bw.CROSS_SPOT, now[0])
