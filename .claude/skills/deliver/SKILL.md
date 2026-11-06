@@ -27,10 +27,15 @@ Delivers exactly one work item: intake, build, check, evidence, trace check, PR,
    criteria. Run `python tools/build_order.py . --may-start REQ-###` per requirement; non-zero stops the delivery,
    unless the work item carries `order_override: <reason>`. Any plan is written as `plans/PL-###.md`; a change
    appends a `changes` entry (was, now, why), never rewrites silently.
+   Then run `python tools/graph.py pin <W-id>`: it writes `req_fp:` (the requirement text this work started from) into
+   the work item; a later edit of that requirement lists the item under `suspects` (REQ-068).
 2. **Builder** - dispatch the builder of the tier in its own worktree: `builder-c` (Tier C, 40 turns), `builder-b`
    (Tier B, 75 turns) or `builder` (Tier A, 100 turns). `maxTurns` is the hard stop and the budget hook refuses a Budget
    line above 80% of it. It writes code and one test per acceptance criterion in `tests_required`, never writes
-   `evidence/` files and never marks a status verified or reviewed.
+   `evidence/` files and never marks a status verified or reviewed. Before dispatching the builder (and again the
+   checker) run `python tools/graph.py brief <W-id>` and paste its output into the brief: ids and paths with one line of
+   why, at most 60 lines, never file contents; the agent opens a file only when it needs it. `python tools/graph.py tier
+   <W-id>` suggests the tier from the touched paths (a suggestion for the tier table below, never a model's confidence).
 2a. **Heavy CI first** - run `python tools/change_scope.py --base <base> --triggers`. When it prints any path
    or `UNKNOWN`, open a draft pull request right after the builder and start the checker only once the project's heavy
    CI is green on that head; a red run goes back to the builder first (a fix round).
@@ -69,7 +74,7 @@ Delivers exactly one work item: intake, build, check, evidence, trace check, PR,
 |---|---|---|
 | **C** | docs, records, text, test-only | builder + CI only |
 | **B** | normal code, kit tools and hooks | builder + one Sonnet checker |
-| **A** | production deploy path, money and order maths, data migrations, auth and secrets | builder + one Opus checker |
+| **A** | production deploy path, money and order maths, data migrations, auth and secrets, the merge gate (`merge_when_green.py`) | builder + one Opus checker |
 
 A change takes the tier of its highest-risk file. Mutation tests apply only to Tier A guards: at most 5 mutants, run by
 the builder on a scratch copy, not a gate.

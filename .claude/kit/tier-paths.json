@@ -1,0 +1,16 @@
+[
+  "tools/merge_when_green.py",
+  "**/tools/merge_when_green.py",
+  "**/.claude/hooks/gate.py",
+  "capabilities/hooks/prod-gate/**",
+  "deploy/**",
+  "**/deploy/**",
+  "**/scripts/deploy*",
+  ".github/workflows/*deploy*",
+  "**/migrations/**",
+  "alembic/**",
+  "**/alembic/**",
+  "**/auth/**",
+  "**/*secret*",
+  "**/*credential*"
+]

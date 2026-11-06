@@ -48,6 +48,14 @@ anything before the decision that shapes it exists.
    never before they exist, and never inventing a decision the owner has not actually made.
 7. **Write the plan as a record.** Any plan made or changed is written as `plans/PL-###.md`; a change appends a `changes` entry (was, now, why), never rewrites silently.
 
+## Starting from an existing codebase
+
+When the project already has code (an adopted project, `new_project.py --adopt`), start from the code, not from a blank idea:
+
+1. **Read the code and the history first** (`README`, the folders, the commit log, the tests): what the project already does is a real input, so never ask the owner what the code can show.
+2. **Draft a requirement for each thing that already exists**, marked Delivered-before-trace (it shipped before the trace existed; its acceptance text records what the code does today, not a wish).
+3. **Then go on with the steps above** for what the owner wants next: one question per turn, decisions before requirements.
+
 ## What this skill never does
 
 - Never invents a decision to avoid asking a question — an unanswered fork stays a question.

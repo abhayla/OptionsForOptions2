@@ -26,7 +26,12 @@
     "release_status": { "type": "string" },
     "blockers": { "type": "array", "items": { "type": "string" } },
     "evidence": { "type": "array", "items": { "type": "string" } },
-    "next_action": { "type": "string" }
+    "next_action": { "type": "string" },
+    "req_fp": {
+      "type": "object",
+      "description": "requirement id -> fingerprint of its statement and criteria texts when the work started (graph.py pin)",
+      "additionalProperties": { "type": "string", "pattern": "^[0-9a-f]{12}$" }
+    }
   },
   "additionalProperties": true
 }

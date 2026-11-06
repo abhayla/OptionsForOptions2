@@ -48,6 +48,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import kit_paths  # noqa: E402  (the one zero-records line, REQ-066 AC-5)
 import spec_text as st  # noqa: E402  (the one shared tokenizer, REQ-009 AC-2)
 
 # "<record id>[ <item label>] #<fp> — <difference>" (separator: em/en dash, "--" or ":"); the fp is optional here
@@ -586,6 +587,7 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     st.utf8_stdout()
     root = Path(args.root)
+    kit_paths.note_zero_records(root)
     if not root.is_dir():
         print(f"spec_dupes: ROOT not found: {root}", file=sys.stderr)
         return 2

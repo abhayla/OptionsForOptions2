@@ -65,6 +65,10 @@ jobs:
         if: ${{ !cancelled() }}
         run: python tools/spec_dupes.py .
 
+      - name: Graph lint (warn only this release; links between records, files and tests, REQ-067)
+        if: ${{ !cancelled() }}
+        run: python tools/graph.py lint .
+
       - name: Check findings index is current
         if: ${{ !cancelled() }}
         run: |
@@ -72,6 +76,7 @@ jobs:
             python tools/build_findings_index.py . --check
           else
             echo "0 findings: nothing to index"
+            python tools/kit_paths.py .
           fi
 
       - name: Check every finding's spec_ref resolves
@@ -81,6 +86,17 @@ jobs:
       - name: Run tests on push (always the full suite)
         if: ${{ !cancelled() && github.event_name != 'pull_request' }}
         run: |
+          # push: the project tests run unless the run-tests file says no
+          # .claude/project/ci-run-tests.txt (first non-comment line): "no" skips the project's tests here (an adopted
+          # project's own CI runs them); absent file or any other value runs them
+          RUNF=.claude/project/ci-run-tests.txt
+          if [ -f "$RUNF" ]; then
+            RUNV=$(tr -d '\r' < "$RUNF" | grep -v '^[[:space:]]*#' | grep -v '^[[:space:]]*$' | sed -n '1s/^[[:space:]]*//;1s/[[:space:]]*$//;1p' | tr 'A-Z' 'a-z' || true)
+            if [ "$RUNV" = "no" ]; then
+              echo "project tests skipped: .claude/project/ci-run-tests.txt says no (the project's own CI runs them)"
+              exit 0
+            fi
+          fi
           if [ -d tests ]; then
             python -m pytest -q -p no:cacheprovider
           else
@@ -95,6 +111,16 @@ jobs:
       - name: Run tests on pull request (full suite unless docs-only)
         if: ${{ !cancelled() && github.event_name == 'pull_request' }}
         run: |
+          # .claude/project/ci-run-tests.txt (first non-comment line): "no" skips the project's tests here (an adopted
+          # project's own CI runs them); absent file or any other value runs them
+          RUNF=.claude/project/ci-run-tests.txt
+          if [ -f "$RUNF" ]; then
+            RUNV=$(tr -d '\r' < "$RUNF" | grep -v '^[[:space:]]*#' | grep -v '^[[:space:]]*$' | sed -n '1s/^[[:space:]]*//;1s/[[:space:]]*$//;1p' | tr 'A-Z' 'a-z' || true)
+            if [ "$RUNV" = "no" ]; then
+              echo "project tests skipped: .claude/project/ci-run-tests.txt says no (the project's own CI runs them)"
+              exit 0
+            fi
+          fi
           if [ ! -d tests ]; then
             echo "no tests/ folder yet — skipping"
             exit 0

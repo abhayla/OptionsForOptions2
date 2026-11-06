@@ -10,12 +10,21 @@ A project made from the kit never edits its settings file by hand. The file is G
   3. minus the kit hooks the project opted out of in `.claude/project/optouts.json` (project-owned):
      `[{"piece": "<kit path, e.g. .claude/hooks/agent_budget_required.py>", "reason": "<why>"}]`.
 
+  4. when an old project adopted the kit (new_project.py --adopt), everything its own settings file already
+     had (hooks, permissions and every other top-level key such as env, model, statusLine), carried verbatim in `.claude/project/settings.adopted.json` (project-owned):
+     `{"hooks": {<event>: [<entry>, ...]}, "permissions": {"allow"|"deny"|"ask": [<string>, ...]}, <other keys>}`.
+     Other keys the kit does not set are taken from the project; objects merge with the kit's entries
+     winning on the same key; a scalar the kit sets keeps the kit's value (the adopt dry run prints a NOTE).
+
 Merge contract:
   * addendum hook entries are APPENDED after the kit's entries for the same event, as their own
     entries; a kit entry is never replaced, reordered or edited;
   * permissions are merged as unions of the list keys `allow`, `deny`, `ask` (kit first, then
     addendum, duplicates dropped); any other permissions key, and any addendum top-level key other
     than `hooks` / `permissions`, is refused (exit 2) because it could loosen a kit setting;
+    the adopted file's lists are merged after the addendum the same way, but its strings are carried as
+    they were (they were the project's own before the kit; a deny rule always beats an allow rule, so
+    the kit's deny rules still win), and its hooks are appended as their own entries;
     `deny` / `ask` (they only tighten) are plain strings; every `allow` entry loosens, so it must be
     `{"rule": "Tool(specifier)", "reason": "<10+ chars>"}` and never a blanket rule (a bare tool
     name or `Tool(*)`); the output carries the plain rule string;
@@ -49,6 +58,9 @@ import re
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import generated_files  # noqa: E402  (one write helper: an unchanged file is left alone, REQ-064)
+
 _DOT_CLAUDE = "." + "claude"
 _DOT_FACTORY = "." + "factory"
 _SETTINGS_NAME = "settings" + ".json"
@@ -57,6 +69,7 @@ _SEATBELT_CONFIG_NAME = "authority" + ".yaml"
 KIT_WIRING_REL = f"{_DOT_CLAUDE}/kit/settings.kit.json"
 ADDENDUM_REL = f"{_DOT_CLAUDE}/project/hooks.json"
 OPTOUTS_REL = f"{_DOT_CLAUDE}/project/optouts.json"
+ADOPTED_REL = f"{_DOT_CLAUDE}/project/settings.adopted.json"
 SETTINGS_REL = f"{_DOT_CLAUDE}/{_SETTINGS_NAME}"
 SEATBELT_CONFIG_REL = f"{_DOT_FACTORY}/{_SEATBELT_CONFIG_NAME}"
 
@@ -226,6 +239,54 @@ def _validate_allow(i: int, entry) -> str:
     return rule
 
 
+def _validate_adopted(adopted) -> tuple[dict, dict, dict]:
+    """The adopted file is the project's own pre-kit settings. Returns (hooks, permissions, extras):
+    hooks: event -> list; permissions: allow/deny/ask are lists of strings (other permissions keys ride
+    along as they were); extras: every other top-level key ($schema, env, model, statusLine, ...)."""
+    if not isinstance(adopted, dict):
+        raise BadInput(f"{ADOPTED_REL} must be a JSON object")
+    hooks = adopted.get("hooks", {})
+    perms = adopted.get("permissions", {})
+    if not isinstance(hooks, dict) or not all(isinstance(v, list) for v in hooks.values()):
+        raise BadInput(f"{ADOPTED_REL}: hooks must be an object of event -> list")
+    if not isinstance(perms, dict):
+        raise BadInput(f"{ADOPTED_REL}: permissions must be an object")
+    for key in PERMISSION_LIST_KEYS:
+        val = perms.get(key, [])
+        if not isinstance(val, list) or not all(isinstance(v, str) and v.strip() for v in val):
+            raise BadInput(f"{ADOPTED_REL}: permissions.{key} must be a list of non-empty strings")
+    extras = {k: v for k, v in adopted.items() if k not in ADDENDUM_KEYS}
+    return hooks, perms, extras
+
+
+def _merge_extra(out: dict, key: str, val, notes: list[str] | None) -> None:
+    """One adopted top-level key into the generated settings: a key the kit does not set is taken from
+    the project; two objects merge with the kit's entries winning on the same key; any other clash keeps
+    the kit's value and (when `notes` is given) records a NOTE."""
+    if key not in out:
+        out[key] = json.loads(json.dumps(val))
+        return
+    if isinstance(out[key], dict) and isinstance(val, dict):
+        for k2, v2 in val.items():
+            if k2 not in out[key]:
+                out[key][k2] = json.loads(json.dumps(v2))
+            elif notes is not None and out[key][k2] != v2:
+                notes.append(f"NOTE {key}.{k2}: kit value kept, project value {json.dumps(v2)} dropped")
+        return
+    if notes is not None and out[key] != val:
+        notes.append(f"NOTE {key}: kit value kept, project value {json.dumps(val)} dropped")
+
+
+def adopted_notes(root: Path) -> list[str]:
+    """NOTE lines for adopted project values the kit's own settings override (shown by the adopt dry run)."""
+    notes: list[str] = []
+    out = json.loads(json.dumps(_load_json(root / KIT_WIRING_REL, None)))
+    _h, _p, extras = _validate_adopted(_load_json(root / ADOPTED_REL, {}))
+    for key, val in extras.items():
+        _merge_extra(out, key, val, notes)
+    return notes
+
+
 def build(root: Path) -> dict:
     """The settings object for the project at `root`. Raises BadInput."""
     kit = _load_json(root / KIT_WIRING_REL, None)
@@ -233,6 +294,7 @@ def build(root: Path) -> dict:
         raise BadInput(f"{KIT_WIRING_REL} must be a JSON object")
     addendum = _load_json(root / ADDENDUM_REL, {"hooks": {}, "permissions": {}})
     optouts = _load_json(root / OPTOUTS_REL, [])
+    adopted_hooks, adopted_perms, adopted_extras = _validate_adopted(_load_json(root / ADOPTED_REL, {}))
 
     out = json.loads(json.dumps(kit))  # deep copy; the kit object is never mutated
     out_hooks = out.setdefault("hooks", {})
@@ -259,18 +321,26 @@ def build(root: Path) -> dict:
     for event, entries in add_hooks.items():
         out_hooks.setdefault(event, []).extend(json.loads(json.dumps(entries)))
 
+    for event, entries in adopted_hooks.items():
+        out_hooks.setdefault(event, []).extend(json.loads(json.dumps(entries)))
+
     perms = out.get("permissions") if isinstance(out.get("permissions"), dict) else {}
     extra_deny = SEATBELT_DENY_PATTERNS if (root / SEATBELT_CONFIG_REL).is_file() else []
     for key in PERMISSION_LIST_KEYS:
         merged = list(perms.get(key, [])) if isinstance(perms.get(key), list) else []
-        additions = list(add_perms.get(key, [])) + (extra_deny if key == "deny" else [])
+        additions = list(add_perms.get(key, [])) + list(adopted_perms.get(key, [])) + (extra_deny if key == "deny" else [])
         for item in additions:
             if item not in merged:
                 merged.append(item)
         if merged:
             perms[key] = merged
+    for key, val in adopted_perms.items():
+        if key not in PERMISSION_LIST_KEYS and key not in perms:
+            perms[key] = json.loads(json.dumps(val))
     if perms:
         out["permissions"] = perms
+    for key, val in adopted_extras.items():
+        _merge_extra(out, key, val, None)
     return out
 
 
@@ -300,7 +370,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"kit_settings.py: {SETTINGS_REL} is current")
         return 0
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(text, encoding="utf-8", newline="\n")
+    generated_files.write_if_changed(target, text)
     print(f"kit_settings.py: wrote {SETTINGS_REL}")
     return 0
 

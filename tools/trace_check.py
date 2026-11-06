@@ -28,6 +28,14 @@ For each requirement under ROOT/spec/requirements/REQ-###.md, checks:
     "unpinned: before tracing": it completes the chain, is shown as unpinned and never counted
     fresh; this tool never writes a fingerprint into it. A malformed ac_fp is a FAIL at any status.
 
+REQ-064 AC-6 (extends REQ-014 AC-2): a listed unpinned file may carry, as a trailing comment on its list line
+(`<path>  # ac_fp=<hex>`, written by `ac_fp.py --freeze-unpinned`), the fingerprint of the criterion it proved when
+the list was frozen. A fingerprint equal to the criterion's current one: still unpinned. Different: STALE, exactly
+like stale pinned evidence. Malformed (not 12 lowercase hex): a FAIL at any status. No fingerprint: as before. A
+criterion no longer in its requirement is not examined (as for all evidence); a requirement file that is gone is
+the work item's orphan link FAIL. ACCEPTED GAP (OD-120): appending a path to the list by hand, with or without a
+fingerprint, is not detected; the list is a one-time freeze and review of the list's diff is the control.
+
 Hard FAIL lines at any status (REQ-014 AC-3/AC-4): `split_from` naming no other existing
 requirement; unpinned evidence on a split requirement; status Delivered-before-trace without a
 `delivered_in` naming an existing docs/milestones/*-report.md that names it, or linked by any work item (OD-48); status Superseded without a
@@ -84,7 +92,9 @@ from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import kit_paths  # noqa: E402  (the one zero-records line, REQ-066 AC-5)
 import spec_text  # noqa: E402  (spec_text.fingerprint is the one fingerprint function; OD/ADR ids come from it too)
+import generated_files  # noqa: E402  (one write helper: an unchanged file is left alone, REQ-064)
 
 AC_ID_RE = re.compile(r"^AC-\d+$")
 REQ_ID_RE = re.compile(r"^REQ-\d{3,}$")
@@ -104,17 +114,30 @@ UNPINNED = "unpinned: before tracing"
 UNPINNED_LIST = ("spec", "traceability", "unpinned-before-tracing.txt")
 
 
-def load_unpinned_list(root: Path) -> set[str]:
-    """Evidence paths (posix, relative to ROOT) allowed to lack ac_fp. Blank lines and # comments are skipped."""
+def _unpinned_entries(root: Path) -> dict[str, str | None]:
+    """path -> the raw text after `ac_fp=` in the entry's trailing comment, or None (no fingerprint)."""
     p = root.joinpath(*UNPINNED_LIST)
     if not p.is_file():
-        return set()
-    out = set()
+        return {}
+    out: dict[str, str | None] = {}
     for line in p.read_text(encoding="utf-8").splitlines():
-        line = line.split("#", 1)[0].strip()
-        if line:
-            out.add(line.replace("\\", "/"))
+        path, _hash, comment = line.partition("#")
+        path = path.strip()
+        if path:
+            m = re.search(r"\bac_fp=(\S*)", comment)
+            out[path.replace("\\", "/")] = m.group(1) if m else None
     return out
+
+
+def load_unpinned_list(root: Path) -> set[str]:
+    """Evidence paths (posix, relative to ROOT) allowed to lack ac_fp. Blank lines and # comments are skipped."""
+    return set(_unpinned_entries(root))
+
+
+def load_unpinned_fps(root: Path) -> dict[str, str]:
+    """path -> the criterion fingerprint recorded for it at freeze time (REQ-064 AC-6); entries without one are
+    absent. A malformed value is kept as written, so check_requirement can fail on it."""
+    return {k: v for k, v in _unpinned_entries(root).items() if v is not None}
 
 
 VIEW_HEADER = (
@@ -316,7 +339,8 @@ def _renumber_hint(req: Requirement, ac_id: str, fp: str) -> str:
 
 
 def check_requirement(root: Path, req: Requirement, work_items: list[WorkItem],
-                      allowed_unpinned: set[str] | None = None) -> Result:
+                      allowed_unpinned: set[str] | None = None,
+                      unpinned_fps: dict[str, str] | None = None) -> Result:
     """Check one requirement's chain. Evidence is keyed by criterion id; its `ac_fp` must equal the fingerprint of
     that criterion's CURRENT text, else it is stale. Evidence without `ac_fp` is 'unpinned: before tracing': it
     still completes the chain, it is never counted fresh, and nothing here ever writes a fingerprint into it."""
@@ -401,6 +425,20 @@ def check_requirement(root: Path, req: Requirement, work_items: list[WorkItem],
                         f"(python tools/ac_fp.py {req.id} {ac_id} --yaml)")
                     ac_reason = f"{ac_id} evidence has no ac_fp and was not written before tracing ({rel})"
                     continue
+                frozen = (unpinned_fps or {}).get(rel)      # REQ-064 AC-6: the criterion text it proved when listed
+                if frozen is not None:
+                    if not AC_FP_RE.match(frozen):
+                        res.failures.append(f"{req.id} {ac_id}: {'/'.join(UNPINNED_LIST)} entry {rel} has a "
+                                            f"malformed ac_fp {frozen!r} (want 12 lowercase hex)")
+                        ac_reason = f"{ac_id} unpinned list holds a malformed ac_fp for {rel}"
+                        continue
+                    if frozen != req.ac_fps[ac_id]:
+                        hint = _renumber_hint(req, ac_id, frozen)
+                        stale_lines.append(
+                            f"{ac_id} evidence STALE: {rel} proved text #{frozen} (unpinned list), the criterion is "
+                            f"now #{req.ac_fps[ac_id]} — re-verify {req.id} {ac_id}{hint}")
+                        res.stale.append((ac_id, rel, hint))
+                        continue
                 state = state or "unpinned"
                 continue
             fp = data.get("ac_fp")
@@ -875,6 +913,16 @@ def _safe_stdio() -> None:
             pass
 
 
+def suspects_section(root: Path) -> list[str]:
+    """REQ-068 AC-3: work items whose requirement changed since they were pinned (tools/graph.py). Warn only: the
+    section never changes the exit code, and a failure to compute it is one WARN line, never a crash."""
+    try:
+        import graph  # lazy: graph.py imports this module
+        return ["", "Suspects (a requirement changed after its work item was pinned; warn only):"] + graph.suspects_lines(root)
+    except Exception as exc:  # noqa: BLE001 - a warning section must never break the check
+        return [f"WARN suspects not computed: {type(exc).__name__}: {exc}"]
+
+
 def main(argv: list[str] | None = None) -> int:
     _safe_stdio()
 
@@ -886,6 +934,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     root = Path(args.root)
+    kit_paths.note_zero_records(root)
     if not root.is_dir():
         print(f"{args.root}: not a directory")
         return 1
@@ -902,6 +951,7 @@ def main(argv: list[str] | None = None) -> int:
     dec_ids = decision_ids(root)
     by_id = {r.id: r for r in reqs}
     allowed_unpinned = load_unpinned_list(root)
+    unpinned_fps = load_unpinned_fps(root)
     linked: dict[str, list[str]] = {}
     for wi in work_items:
         for rid in dict.fromkeys(wi.requirement_ids):
@@ -931,7 +981,7 @@ def main(argv: list[str] | None = None) -> int:
         if req.status in NO_EVIDENCE_STATUSES:
             req_lines.append(status_line(req, None))
             continue
-        res = check_requirement(root, req, work_items, allowed_unpinned)
+        res = check_requirement(root, req, work_items, allowed_unpinned, unpinned_fps)
         fail_lines += [f"FAIL {x}" for x in res.failures]
         if res.reasons:
             any_incomplete = True
@@ -949,6 +999,8 @@ def main(argv: list[str] | None = None) -> int:
     for line in rel_lines:
         print(line)
     for line in warn_lines + fail_lines:
+        print(line)
+    for line in suspects_section(root):
         print(line)
 
     exit_code = 0
@@ -971,7 +1023,7 @@ def main(argv: list[str] | None = None) -> int:
 
         if args.write_view:
             views_dir.mkdir(parents=True, exist_ok=True)
-            view_path.write_text(expected, encoding="utf-8")
+            generated_files.write_if_changed(view_path, expected)
 
     return exit_code
 

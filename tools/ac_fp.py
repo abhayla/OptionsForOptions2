@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -66,20 +67,61 @@ def unpinned_evidence(root: Path) -> list[str]:
     return paths
 
 
-def freeze_unpinned(root: Path, force: bool = False) -> int:
+def _read_at(root: Path, rel: str, commit: str | None) -> str | None:
+    """Text of `rel` in the working tree, or in `commit` when given; None when it is not there."""
+    if commit is None:
+        p = root / rel
+        return p.read_text(encoding="utf-8") if p.is_file() else None
+    r = subprocess.run(["git", "show", f"{commit}:{rel}"], cwd=root, capture_output=True, text=True,
+                       encoding="utf-8", errors="replace")
+    return r.stdout if r.returncode == 0 else None
+
+
+def entry_fingerprint(root: Path, rel: str, commit: str | None = None) -> str | None:
+    """The fingerprint of the criterion a listed evidence file proves (REQ-064 AC-6): evidence/<W>/<AC>.md ->
+    work item <W>'s requirement_ids (the one that has criterion <AC>) -> that criterion's text, as of `commit`
+    (the working tree when None). None when it cannot be told: the entry is then written without a fingerprint."""
+    m = re.fullmatch(r"evidence/(W-\d{3,})/(AC-\d+)\.md", rel)
+    if not m:
+        return None
+    wtext = _read_at(root, f"work/{m.group(1)}.md", commit)
+    wdata = spec_text.parse_frontmatter(wtext)[0] if wtext else None
+    if not isinstance(wdata, dict):
+        return None
+    found = set()
+    for rid in wdata.get("requirement_ids") or []:
+        rtext = _read_at(root, f"spec/requirements/{rid}.md", commit) if isinstance(rid, str) else None
+        rdata = spec_text.parse_frontmatter(rtext)[0] if rtext else None
+        if isinstance(rdata, dict) and m.group(2) in criteria(rdata):
+            found.add(ac_fingerprint(criteria(rdata)[m.group(2)]))
+    return found.pop() if len(found) == 1 else None   # ambiguous (two requirements, different texts) = none
+
+
+def freeze_unpinned(root: Path, force: bool = False, at_commit: str | None = None) -> int:
     """Write the list of evidence files that lack ac_fp (evidence written before fingerprints existed). Run ONCE,
-    when a project adopts fingerprints; refuses to overwrite an existing list unless force."""
+    when a project adopts fingerprints; refuses to overwrite an existing list unless force. Each entry carries the
+    fingerprint of its criterion at freeze time as a trailing comment (`<path>  # ac_fp=<hex>`), so a loader that
+    strips comments still reads the path, and trace_check marks the file stale when the criterion changes later
+    (REQ-064 AC-6). `at_commit` (--at <commit>) takes the work item and requirement texts from that commit instead
+    of the working tree: the one-off that re-froze the Factory's list at 7b49f10, the commit that wrote it."""
     out = root.joinpath(*UNPINNED_LIST)
     if out.exists() and not force:
         print(f"ac_fp: {out.as_posix()} already exists; it is written once (use --force to rewrite it)",
               file=sys.stderr)
         return 1
     paths = unpinned_evidence(root)
+    lines = []
+    for x in paths:
+        fp = entry_fingerprint(root, x, at_commit)
+        lines.append(f"{x}  # ac_fp={fp}\n" if fp else x + "\n")
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text("# Evidence written before fingerprints existed (REQ-014): the only files allowed to lack ac_fp.\n"
                    "# Written once by `python tools/ac_fp.py --freeze-unpinned .`; never add new evidence here.\n"
-                   + "".join(x + "\n" for x in paths), encoding="utf-8", newline="\n")
-    print(f"ac_fp: wrote {out.as_posix()} ({len(paths)} evidence files unpinned: before tracing)")
+                   "# `# ac_fp=<hex>` = the criterion text this file proved at freeze time (REQ-064 AC-6): when the\n"
+                   "# criterion changes, trace_check reports the file stale. An entry without it keeps its old meaning.\n"
+                   + "".join(lines), encoding="utf-8", newline="\n")
+    print(f"ac_fp: wrote {out.as_posix()} ({len(paths)} evidence files unpinned: before tracing, "
+          f"{sum('ac_fp=' in x for x in lines)} with a fingerprint)")
     return 0
 
 
@@ -89,8 +131,10 @@ def main(argv: list[str] | None = None) -> int:
         fz = argparse.ArgumentParser(description="Write the list of evidence files written before fingerprints.")
         fz.add_argument("--freeze-unpinned", metavar="ROOT", required=True)
         fz.add_argument("--force", action="store_true")
+        fz.add_argument("--at", metavar="COMMIT", default=None,
+                        help="read work items and requirements as of this commit (default: the working tree)")
         f = fz.parse_args(argv)
-        return freeze_unpinned(Path(f.freeze_unpinned), f.force)
+        return freeze_unpinned(Path(f.freeze_unpinned), f.force, f.at)
     ap = argparse.ArgumentParser(description="Print the fingerprint of one acceptance criterion's current text.")
     ap.add_argument("req_id")
     ap.add_argument("ac_id")
