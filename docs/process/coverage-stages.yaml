@@ -414,6 +414,26 @@ decisions:
   ADR-252: S6.7         # % of max loss stop = per-stage T-06 value, one source for words and alerts (decided under owner delegation 5 Nov)
   ADR-253: S6.7         # T-14 gamma evaluated in test-data mode only; live keeps "not checked yet" (owner 6 Nov)
   ADR-254: S6.7         # T-19 checked by the background worker, live and test data (owner 6 Nov)
+  ADR-255: S6.7         # partial exit counts against the plan maximum; Exit all does not
+  ADR-256: S6.7         # exit leaving a sold leg unprotected warns; user can still confirm
+  ADR-257: S6.7         # stop on a sold leg asks to close its wing too (default on)
+  ADR-258: S6.7         # every adjustment is a new starting point for the already-true rule (F-71)
+  ADR-259: S6.7         # strategy with no open leg moves to Completed Strategies with final totals
+  ADR-260: S6.7         # Alerts > Active is the one attention list; bell counts live strategies only
+  ADR-261: S6.7         # every open strategy has Compare approaches, with or without an alert
+  ADR-262: S6.7         # ready-made Short Iron Condor strikes by per-user preference
+  ADR-263: S6.7         # every headline money figure is after charges and says so
+  ADR-264: S6.7         # behaviours and numbers are settings: admin default, user override, admin lock
+  ADR-265: S6.7         # planned entries captured at bid-ask mid; impossible credit flagged
+  ADR-266: S6.7         # paper P&L and rules mark a stale-trade leg at the bid-ask mid
+  ADR-267: S6.7         # a watched level is never held by the daily alert cap
+  ADR-268: S6.7         # breached or intrinsic-only short never 'not checked'
+  ADR-269: S6.7         # roll into a later expiry closes the strategy and opens a linked one
+  ADR-270: S6.7         # T-11 and T-14 work on live strategies, proven on test data
+  ADR-271: S6.7         # paper orders count as orders sent: no delete, Undo limited
+  ADR-272: S6.7         # stale prices on Compare and tracking panel say how old they are
+  ADR-273: S6.7         # adjustment prepared from Compare records its approach
+  ADR-274: S6.7         # one basket sends one order per contract and side
 
 questions:
   Q210: 4a              # external: Zerodha's written answer; ADR-051 covers the owner's own account
