@@ -1247,6 +1247,8 @@ _TRIGGER_TEMPLATES: tuple[MessageTemplate, ...] = (
     _trig("missing_spot", 118, "Spot not available."),
     _trig("missing_short_delta", 119, "Delta of a short leg not available."),
     _trig("missing_short_price", 120, "Price of a short leg not available."),
+    _trig("inconsistent_prices", 515, "The leg prices do not fit together: the loss they give is larger than the most "
+          "this trade can lose, so this stop is not checked."),
     _trig("missing_pnl", 121, "P&L not available (a leg unpriced)."),
     _trig("missing_expiry_pnl", 122, "Expiry P&L at spot not available (multi-expiry: no exact breakeven)."),
     _trig("missing_max_loss", 123, "Max loss not available."),

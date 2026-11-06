@@ -442,3 +442,17 @@ def test_stage_boundaries(kind, days, stage):
     body, _s = _calm()
     ev = evaluate(body, StrategyState(stops=None, expiry_kind=kind, days_left=days, prices_fresh=True, spot=D(23000)), {}, None)
     assert ev.stage_name == stage
+
+
+def test_stop_with_marked_loss_above_max_loss_is_not_checked_inconsistent_prices():
+    """ADR-266: a loss larger than the max loss is inconsistent prices -> T-06 not checked with that reason, never flagged."""
+    sc = load("ADJ-14")
+    s = state_of(sc)
+    s = replace(s, max_loss=D(300), pnl=D(-723), stops=None)
+    s = replace(s, stops=_stops(body_of(sc), s))
+    ev = evaluate(body_of(sc), s, {}, None)
+    assert NotChecked("T-06", "T-06", "adjust_trigger_inconsistent_prices") in ev.results
+    assert "T-06" not in flags(ev)
+    ok = replace(s, pnl=D(-299))  # inside max loss: the guard is silent
+    assert not any(isinstance(r, NotChecked) and r.code.endswith("inconsistent_prices")
+                   for r in evaluate(body_of(sc), ok, {}, None).results)

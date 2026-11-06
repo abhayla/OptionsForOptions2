@@ -2495,6 +2495,10 @@
     "sha256": "c02620783874d19b13623e71d24d0b581d491ba0351b7550694fe7694157f20d",
     "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"
   },
+  "adjust_trigger_inconsistent_prices": {
+    "sha256": "a81d34db2b65327ce028813fcadb7793cb4dcfc5b8f8083dcea1d3181a741295",
+    "reviewed": "pending owner read"
+  },
   "adjust_trigger_missing_pnl": {
     "sha256": "9813d23c1475d87c43b96471846ed5fc55a85f3412d59f28eee02f5b4c397251",
     "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"
