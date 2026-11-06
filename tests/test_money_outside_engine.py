@@ -97,6 +97,7 @@ NOT_MONEY_ON_MAIN_WHY: dict[str, str] = {
     "backend/ofo/strategy/leg_edit.py": 'strike width and index-to-strike distance (REQ-078 AC-4); points, not rupees',
     "backend/ofo/strategy/linear.py": 'exact linear algebra over generic coefficients/values',
     "backend/ofo_app/errors.py": 'encodes an HTTP header value, not money',
+    "backend/ofo_app/routes/adjustment.py": 'ADR-272: whole minutes between two clock times (a price age), not money',
     "backend/ofo_app/reconcile_attribution.py": (
         'net units minus units held by open plans (contract quantity), not money'
     ),
@@ -131,6 +132,9 @@ NOT_MONEY_ON_MAIN: dict[str, tuple[str, ...]] = {
     "backend/ofo_app/errors.py": (
         'headers += [(name.lower().encode("ascii"), value.encode("ascii")) for name, value in NO_LEAK_HEADERS.items()]',
     ),
+    "backend/ofo_app/routes/adjustment.py": (
+        'age = None if at is None else max(int((market.now - at).total_seconds() // 60), 0)',
+    ),
     "backend/ofo_app/reconcile_attribution.py": (
         'left = (raw_net.get(contract, 0) - sum(units.get(contract, 0) for units in held.values())',
     ),
@@ -142,6 +146,9 @@ NOT_MONEY_ON_MAIN: dict[str, tuple[str, ...]] = {
 NOT_MONEY_FRONTEND_WHY: dict[str, str] = {
     "frontend/src/lib/guided.js": 'index levels and listed strikes (points) parsed for selection; no rupee value',
     "frontend/src/pages/CreateStrategyPage.vue": 'the wizard step counter (`step.value`), a page number',
+    "frontend/src/pages/StrategyBuilderPage.vue": (
+        'a strategy ID from the address (`Number(id)`) and the orders-panel refresh counter (`showOrdersTick`); not money'
+    ),
     "frontend/src/lib/oiBars.js": 'open-interest COUNTS (contracts, not rupees) scaled to a CSS bar width',
     "frontend/src/lib/settingsValues.js": 'whole-number setting COUNTS (strikes each side) parsed and split for a picker',
 }
@@ -159,6 +166,10 @@ NOT_MONEY_FRONTEND: dict[str, tuple[str, ...]] = {
     ),
     "frontend/src/pages/CreateStrategyPage.vue": (
         'step.value = step.value === 3 && isKnow.value ? 1 : step.value - 1',
+    ),
+    "frontend/src/pages/StrategyBuilderPage.vue": (
+        'enterDrafts(read.book.strategy_id ?? Number(id), read)',
+        'showOrdersTick.value += 1',
     ),
     "frontend/src/lib/oiBars.js": (
         "const oiCount = (v) => (v === null || v === undefined || v === '' || !Number.isFinite(Number(v)) ? null "

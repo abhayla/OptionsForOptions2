@@ -239,11 +239,28 @@ describe('ADR-008: no client maths on the outcome response (second layer)', () =
     expect(files.some((f) => f.endsWith('StrategyBuilderPage.vue'))).toBe(true)
     expect(files.some((f) => f.endsWith('StrategyTable.vue'))).toBe(true)
   })
+  // Uses a banned helper makes that are NOT money (a strategy id from the address, a step-count clamp). Matched as exact text
+  // inside the line, with the reason; a listed use that no longer exists fails (the list cannot go stale or be padded).
+  const U = (line, reason) => ({ line, reason })
+  const NOT_MONEY_USES = {
+    [path.join('pages', 'StrategyBuilderPage.vue')]: [
+      U('Number(id)', 'the strategy id from the address, a whole number'),
+      U('Math.max(-MAX_STEPS, Math.min(MAX_STEPS, m.net + edit.direction))', 'a strike-step count clamp (whole steps), not money'),
+      U('Math.abs(m.net)', 'a strike-step count (whole steps), not money'),
+    ],
+    [path.join('components', 'strategy', 'LegList.vue')]: [
+      U('Math.abs(pendingSteps[`step:${i}`])', 'a pending strike-step count shown in a tooltip, not money'),
+    ],
+  }
   it('has no number parsing or arithmetic helpers in any screen file', () => {
     const hits = []
     for (const f of files) {
-      const text = fs.readFileSync(f, 'utf8')
-      for (const re of path.relative(SRC, f) === path.join('lib', 'guided.js') ? GUIDED_BANNED : BANNED) if (re.test(text.replace(/\/\*[\s\S]*?\*\/|<!--[\s\S]*?-->|\/\/.*$/gm, ''))) hits.push(`${path.relative(SRC, f)}: ${re}`)
+      let text = fs.readFileSync(f, 'utf8').replace(/\/\*[\s\S]*?\*\/|<!--[\s\S]*?-->|\/\/.*$/gm, '')
+      for (const u of NOT_MONEY_USES[path.relative(SRC, f)] ?? []) {
+        expect(text, `${path.relative(SRC, f)}: listed use gone: ${u.line}`).toContain(u.line)
+        text = text.split(u.line).join('')
+      }
+      for (const re of path.relative(SRC, f) === path.join('lib', 'guided.js') ? GUIDED_BANNED : BANNED) if (re.test(text)) hits.push(`${path.relative(SRC, f)}: ${re}`)
     }
     // PayoffChart.vue draws coordinates with toFixed on pixel positions from chartGeometry; it is the one named exception
     expect(hits.filter((h) => !h.startsWith(path.join('components', 'strategy', 'PayoffChart.vue') + ': /\\.toFixed'))).toEqual([])

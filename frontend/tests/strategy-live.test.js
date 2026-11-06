@@ -228,7 +228,10 @@ describe('AC-4: the Builder live socket', () => {
   it('AC-4 (ADR-008): the composable and the page contain no arithmetic on a price or P&L value', () => {
     const src = readFileSync(resolve(__dirname, '../src/composables/useStrategyLive.js'), 'utf-8')
     for (const banned of ['parseFloat', 'Number(', 'toFixed', 'ltp *', 'pnl', 'planned_entry']) expect(src).not.toContain(banned)
-    const page = readFileSync(resolve(__dirname, '../src/pages/StrategyBuilderPage.vue'), 'utf-8')
+    // `Number(id)` is the strategy id from the address (a whole number, not money); the one listed use, which must still exist
+    const raw = readFileSync(resolve(__dirname, '../src/pages/StrategyBuilderPage.vue'), 'utf-8')
+    expect(raw).toContain('Number(id)')
+    const page = raw.split('Number(id)').join('')
     for (const banned of ['parseFloat', 'Number(', 'toFixed']) expect(page).not.toContain(banned)
   })
 })

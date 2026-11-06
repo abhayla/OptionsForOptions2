@@ -84,6 +84,7 @@ PR241_SELECTION = {
     "tests_app/test_leg_picker_routes.py",  # row 19: imports ofo_app.catalogue_picker, which the #241 diff changes
     "tests_app/test_leg_edit_route.py",  # row 20: POST /api/strategies/leg-edit, a /api/strategies/... route
     "tests_app/test_strategy_name_app.py",  # row 29b: POST/PATCH/GET /strategies routes and the strategy store
+    "tests_app/test_leg_edit_db_trips.py",  # batch 1 gate leftover: names the leg-edit route/store the #241 diff changes
     "tests_app/test_leg_edit_eligibility_db.py",  # row 30b: imports the leg-edit route's eligibility/list checks
     "tests_app/test_drawer_after_hours.py",  # GC-BM F-18: imports ofo_app.catalogue_picker, calls leg_picker answers
     "tests_app/test_outcome_open_interest.py",  # GC-UI D-B16: imports ofo_app.routes.outcome / live_push (explanations)
