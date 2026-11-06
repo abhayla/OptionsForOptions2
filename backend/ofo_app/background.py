@@ -1203,6 +1203,9 @@ class Worker:
         base = check.entry_baseline(scn, state, w.tracked.position, w.entry_facts, marker)
         ev = pe.evaluate(w.body, state, known, base or state, gap_until=prefs.gap_until, entry_fallback=state)
         self._count_outcomes(ev)
+        import os as _os
+        if _os.environ.get('OFO_TRACE'):
+            print('TRACE', self._clock(), state.spot, state.adjustments_used, marker, 'stored', stored, 'last', last, 'known', known.get('T-01'), 'base', None if base is None else base.spot, 'mem', ev.memory.get('T-01'), [type(r).__name__ for r in ev.results if getattr(r,'rule_id',None)=='T-01'])
         if memory is not None and _write_key(ev) == self._written.get(sid):
             return ev  # nothing a write would change (rule memory, flagged ids, clear ids): no DB call
         self._written.pop(sid, None)  # fail closed: until this write succeeds the next check writes again
@@ -1243,7 +1246,9 @@ class Worker:
         if newer:
             return  # the memory stays unknown until the newer one is written (a dropped one: re-checked anew)
         load = self._gate_load.get(sid)
-        self._memory[sid] = (check.rule_marker(state.adjustments_used, {} if load is None else load.rule_memory),
+        # a state with no count (None) keeps the newest stored starting point, as the check (rule_marker), never a crash
+        self._memory[sid] = (check.rule_marker(getattr(state, "adjustments_used", None),
+                                               {} if load is None else load.rule_memory),
                              dict(ev.memory))
         self._written[sid] = _write_key(ev)
 
@@ -1282,6 +1287,9 @@ class Worker:
             state = alert_gate.pause(state, paused)
             self._gate[sid] = state  # kept even when the step below fails to write
         new, events = alert_gate.step(state, now=now, preset=preset, readings=readings)
+        import os as _os
+        if _os.environ.get('OFO_TRACE') and (events or 'T-01' in readings):
+            print('GTRACE', now, readings.get('T-01'), events, repr(state)[:1500])
         self._gate[sid] = new
         if events:  # #636 r6: queued in step order for the ONE writer; the check never waits for the database
             self._gate_events.setdefault(sid, collections.deque()).append(
