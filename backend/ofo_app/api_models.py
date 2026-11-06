@@ -558,6 +558,17 @@ class AdjustDeltaNeutralOut(ApiModel):
     future_remaining: Money | None = None
 
 
+class AdjustPricesOut(ApiModel):
+    """ADR-272: the age of the prices behind a Compare reply; stale -> banner + no leaders + Prepare blocked."""
+    stale: bool
+    as_of: datetime.datetime | None  # the oldest own-leg price time; None = unknown (then stale)
+    age_minutes: int | None
+    banner: CatalogueText | None
+    as_of_note: CatalogueText | None  # "as of hh:mm" beside each money line
+    label: CatalogueText | None  # "prices from hh:mm:ss"
+    prepare_blocked_reason: CatalogueText | None
+
+
 class AdjustApproachesOut(ApiModel):
     strategy_id: int
     view: Literal["at_expiry", "estimated_now"]
@@ -572,4 +583,5 @@ class AdjustApproachesOut(ApiModel):
     timing: AdjustTimingOut | None = None
     available: list[AdjustAvailableOut] = []  # every generic approach, whatever was asked (no figures)
     days_to_expiry: int | None = None  # whole days from the reply's own market day to the nearest open leg's expiry
+    prices: AdjustPricesOut | None = None  # ADR-272; None = no prices were read (the reply is empty)
     delta_neutral: AdjustDeltaNeutralOut | None = None  # A-23 figures; None when there is no spot

@@ -1839,6 +1839,15 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("adjust_flag_oi_unknown", "values_seen", "OI not known"),
     # #624 item 1: the playbook's limits could not be read, so none was applied (said in the reply, never a silent skip)
     ExplanationTemplate("adjust_limits_not_applied", "values_seen", "limits not applied: playbook unreadable"),
+    # ADR-272 / issues 79, 87, 77: how old the prices behind a Compare reply are (a stale reply names its age and is not ranked)
+    ExplanationTemplate("adjust_prices_stale", "values_seen",
+                        "Prices are {minutes} min old (last update {time} IST): figures below are not live.",
+                        {"minutes": Recorded, "time": HourMinute}),
+    ExplanationTemplate("adjust_prices_unknown_age", "values_seen",
+                        "Prices are not live (no recent update): figures below are not live."),
+    ExplanationTemplate("adjust_prices_as_of", "values_seen", "as of {time}", {"time": HourMinute}),
+    ExplanationTemplate("adjust_prices_from", "values_seen", "prices from {time}", {"time": ClockSeconds}),
+    ExplanationTemplate("adjust_prepare_wait_fresh", "values_seen", "Wait for fresh prices"),
     ExplanationTemplate("adjust_cmp_flagged", "values_seen", "{value}% ({flag}: {legs})",
                         {"value": Recorded, "flag": Explained, "legs": LegRefs}),
     ExplanationTemplate("adjust_cmp_flagged_both", "values_seen", "{value}% ({flag}: {legs}; {flag2}: {legs2})",
