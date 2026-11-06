@@ -567,6 +567,7 @@ class AdjustPricesOut(ApiModel):
     as_of_note: CatalogueText | None  # "as of hh:mm" beside each money line
     label: CatalogueText | None  # "prices from hh:mm:ss"
     prepare_blocked_reason: CatalogueText | None
+    checks_text: CatalogueText | None  # the Pause box line while the check is withheld on stale prices
 
 
 class AdjustApproachesOut(ApiModel):

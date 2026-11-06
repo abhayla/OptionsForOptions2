@@ -3814,5 +3814,13 @@
   "explanation:adjust_prepare_wait_fresh": {
     "sha256": "2c2acdeffe92f55d4d8a464386d84c1214ab91e7e26c3c12587484a8c3b97681",
     "reviewed": "pending owner read"
+  },
+  "explanation:adjust_checks_paused_prices": {
+    "sha256": "af469c8217bd32c23adc65e17c8a8e6c31ffff1c643c527a288500254d360019",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_checks_paused_prices_unknown": {
+    "sha256": "7dca55ab649808f3d7ed854e9dfca55935341f370e2d48d5c357dba338737f9e",
+    "reviewed": "pending owner read"
   }
 }

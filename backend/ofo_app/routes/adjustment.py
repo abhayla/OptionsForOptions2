@@ -606,7 +606,9 @@ def _prices_block(market: MarketInputs) -> dict[str, Any]:
     return {"stale": stale, "as_of": at, "age_minutes": age, "banner": banner,
             "as_of_note": None if at is None else render_explanation("adjust_prices_as_of", time=at),
             "label": None if at is None else render_explanation("adjust_prices_from", time=at),
-            "prepare_blocked_reason": render_explanation("adjust_prepare_wait_fresh") if stale else None}
+            "prepare_blocked_reason": render_explanation("adjust_prepare_wait_fresh") if stale else None,
+            "checks_text": (render_explanation("adjust_checks_paused_prices", time=at) if at is not None
+                            else render_explanation("adjust_checks_paused_prices_unknown")) if stale else None}
 
 
 def _guards_or_reason(guards: Any, reply: dict[str, Any]) -> Mapping[str, Any] | None:

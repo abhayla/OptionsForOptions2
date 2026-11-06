@@ -48,6 +48,7 @@ def test_stale_prices_carry_age_and_as_of_and_rank_nothing():
     assert p["banner"] == f"Prices are 10 min old (last update {last:%H:%M} IST): figures below are not live."
     assert p["as_of_note"] == f"as of {last:%H:%M}"
     assert p["prepare_blocked_reason"] == "Wait for fresh prices"
+    assert p["checks_text"] == f"Adjustment checks are paused: prices are not live (since {last:%H:%M})."
     assert body["criteria"] and all(c["leaders"] == [] for c in body["criteria"])
     assert all(v == {"n": 0, "m": 0} for v in body["leads"].values())
 
