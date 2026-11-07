@@ -232,6 +232,19 @@ the basket is split into a buy step and a sell step.
 - **S-01 (wait until 09:30 at a gap open):** limits only T-13; other triggers can flag at 09:15
   (`playbook_eval.py:540-543`). Borderline; owner to judge.
 
+## Architecture conformance (2026-11-07, measured with `tools/graph.py build --json` at ebefb113)
+
+| Rule | Followed? | Measurement |
+|---|---|---|
+| Domain `backend/ofo` never imports the app, DB, web or broker libraries | YES | graph: 0 `ofo/* -> ofo_app/*` import edges (ast walk, lazy imports included); grep of fastapi/sqlalchemy/httpx/redis/kiteconnect imports in `backend/ofo`: 0 |
+| One engine, exact money (ADR-008) | YES | float only inside the `engine/black_scholes.py` maths, quantized back to Decimal (`:129`); the browser only plots server numbers (`PayoffChart.vue:185`) |
+| Broker behind adapters (ADR-029) | PARTLY | Kite specifics sit in the domain: `ofo/execution/basket.py:57` (Kite basket URL and format), `ofo/instruments/sources.py:50`. Fine for one broker; a second broker means editing domain modules |
+| Five server roles (ADR-220) | PARTLY | `ofo_app/roles.py:18-22`: liveprices and background built; api has no own start module; maths and user orders are `None` (not built) |
+| One position source per strategy | NO | two models: the paper book (`paper_orders`, read by 11 app modules) and the live plan net (`execute_plan.held_units`, 7 modules). The whole adjustment and monitoring subsystem reads only the paper book (C1 part 1, C2) |
+| Domain code is wired before more is built | NO | 22 of 189 domain modules are reached by no app module, including `strategy/modification.py`, `execution/review.py`, `reconciliation/{blocking,grouping,resolution,triggers}.py`, `rules/{actions,plan,defaults}.py`, `engine/price_protection.py` and `adjustment/registry.py`. The app reconciles with its own `reconcile_attribution.py`, so the domain reconciliation rules exist twice |
+| Graph completeness | GAP (tool) | frontend imports use the `@/` alias (403 uses), but the kit's `graph-defaults.json` extracts only relative imports, so the frontend graph has only 52 edges. Needs a `harvest` issue to the kit, or a project `graph.json` extractor |
+| Records lint | 3 errors | `graph.py lint`: W-009 (two missing paths), W-150 (`backend/ofo/scenario/outcome.py` missing) |
+
 ## Not checked
 
 - No tests that need the database were run.
