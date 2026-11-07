@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import datetime
 import importlib.util
-import json
 import pathlib
 from decimal import Decimal as D
 
@@ -57,7 +56,7 @@ class _Draining(background.Worker):
 
 
 def frame_doc(k: int) -> dict:
-    return json.loads(scenario_mode.frame_path(PATH_ID, k).read_text(encoding="utf-8"), parse_float=D)
+    return scenario_mode.read(scenario_mode.frame_path(PATH_ID, k), parse_float=D)
 
 
 def mid_of(k: int, symbol: str) -> D:

@@ -21,6 +21,8 @@ from ofo_app import db as app_db
 from ofo_app.config import get_settings
 from sqlalchemy import text
 
+SHIFT = scenario_mode.date_shift()  # issue #649: the scenario library's dates move by whole weeks
+
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 _spec = importlib.util.spec_from_file_location("seed_scenario", ROOT / "scripts" / "seed_scenario.py")
 seed_mod = importlib.util.module_from_spec(_spec)
@@ -28,7 +30,7 @@ _spec.loader.exec_module(seed_mod)
 CATALOGUE_AS_OF = datetime.datetime(2026, 10, 31, 9, 0, tzinfo=IST)
 MAX_DELIST = settings_calc.max_delist_percent(registry_defaults())
 RID = "day.expiry.1430.5"
-T1429 = datetime.datetime(2026, 11, 3, 14, 29, 0, tzinfo=IST)
+T1429 = datetime.datetime(2026, 11, 3, 14, 29, 0, tzinfo=IST) + SHIFT
 T1430 = T1429 + datetime.timedelta(minutes=1)
 LAST_SECOND = 59
 
@@ -168,8 +170,8 @@ async def test_short_04_pct_away_opens_no_record(app_engine, monkeypatch):
 
 # ---- GC-IC1 1b: the carry check (before-weekend / before-holiday, 15:00, action 0) -----------------------------
 CARRY_RID = "day.beforeWeekend.1500.0"
-FRI_1459 = datetime.datetime(2026, 10, 30, 14, 59, 0, tzinfo=IST)
-WED_1459 = datetime.datetime(2026, 10, 28, 14, 59, 0, tzinfo=IST)
+FRI_1459 = datetime.datetime(2026, 10, 30, 14, 59, 0, tzinfo=IST) + SHIFT
+WED_1459 = datetime.datetime(2026, 10, 28, 14, 59, 0, tzinfo=IST) + SHIFT
 
 
 async def _carry_rows(engine, sid: int) -> list[tuple]:
@@ -215,7 +217,7 @@ async def test_core_carry_check_friday_opens_one_record_at_the_1501_close_with_g
         assert up == up.quantize(Decimal("0.01")) and down == down.quantize(Decimal("0.01")) and up != down, carry
         _assert_gap_matches_generator("ADJ-53", up, down)
         assert carry["margin"] is None and carry["margin_reason"] == "adjust_trigger_missing_margin", carry
-        assert carry["next_open"] == "2026-11-02T09:15:00+05:30", carry
+        assert carry["next_open"] == scenario_mode.shifted("2026-11-02T09:15:00+05:30"), carry
         await _run(worker, now, scn, "23100", t1500 + datetime.timedelta(seconds=75), 300)  # 5 more closes
         later = await _carry_rows(app_engine, sid)
         assert later == rows and worker.errors == [], (later, worker.errors)
@@ -241,7 +243,7 @@ async def test_carry_check_wednesday_opens_no_record(app_engine, monkeypatch):
         _reset_engine()
 
 
-MON_1459 = datetime.datetime(2026, 11, 9, 14, 59, 0, tzinfo=IST)
+MON_1459 = datetime.datetime(2026, 11, 9, 14, 59, 0, tzinfo=IST) + SHIFT
 
 
 async def test_carry_check_monday_before_the_holiday_opens_exactly_one_record(app_engine, monkeypatch):
@@ -260,7 +262,7 @@ async def test_carry_check_monday_before_the_holiday_opens_exactly_one_record(ap
         rec = rows[0]
         assert rec[1:3] == ("open", "day.beforeHoliday.1500.0"), rec
         carry = rec[4]
-        assert carry["next_open"] == "2026-11-11T09:15:00+05:30", carry
+        assert carry["next_open"] == scenario_mode.shifted("2026-11-11T09:15:00+05:30"), carry
         _assert_gap_matches_generator("ADJ-55", Decimal(carry["gap_up"]), Decimal(carry["gap_down"]))
         print(f"CORE-PROOF ADJ-55 sid={sid} rows={len(rows)} record={rec}")
     finally:

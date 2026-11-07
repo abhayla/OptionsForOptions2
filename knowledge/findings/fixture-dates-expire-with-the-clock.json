@@ -8,11 +8,14 @@
   "where": "GC-IC1 step 10 fix merge ef8ed5e5, db_run_fresh tests_app/test_situation_state.py + tests_app/test_adjustment_check.py at ~02:20 IST",
   "evidence": "D:\\Abhay\\scratch\\gcic1\\step10\\db_sit.log: '2 failed, 12 passed'; FAILED test_adj24b_no_spot_every_rule_not_checked_with_its_reason_never_a_flag and test_another_users_strategy_is_not_found with UnknownPostgresError 'catalogue store: contract id 222 (NSE_FO 5000057) has left the market and never changes (ADR-057, ADR-058)'; the same file passed 11/11 on 2026-11-03 ~23:40 IST (builder fix-a run). Expiry census: 45x 2026-11-03, 8x 2026-11-09, 1x 2026-11-23, 2x 2026-11-26, 1x 2026-12-29."
  },
- "fix": "Not fixed (deferred issue). Candidate class fixes: generate the scenario library relative to a pinned 'scenario today' and give each test database a catalogue whose expiries are always in the future (shift every fixture date by the same offset at load, keeping days-to-expiry, so the paisa-level expectations stay valid), or seed each scenario into its own fresh database instead of switching lists inside one.",
+ "fix": "Fixed at one choke point (issue #649, GC-MERGE1, 2026-11-08): backend/ofo_app/scenario_mode.py `read` is the one reader of scenario files (scenario_mode.load, Scenario.move_to, scripts/seed_scenario.seed). It moves EVERY date in a file (ISO dates, ISO timestamps, Kite 'YYYY-MM-DD HH:MM:SS' stamps) by one library-wide whole-week offset `date_shift()`: the smallest whole weeks putting the library's earliest expiry (2026-11-03) on or after today + LEAD_DAYS (7), fixed once per process. Whole weeks keep weekdays and every interval, so prices and paise are unchanged. While OFO_SCENARIO is set, backend/ofo/market_calendar.py `world_shift` moves the NSE holidays by the same offset, so before-holiday / next-open answers stay as the fixtures were written (a status-preserving shift without moving the calendar was measured unsatisfiable: the library reaches 2026-12-29 and the calendar has no 2027). Trading symbols (opaque ids) and prose stay as written. Tests' own literal clocks for a scenario add `scenario_mode.date_shift()` / use `scenario_mode.shifted()`.",
  "detection": {
-  "status": "unguarded",
-  "checks": [],
-  "note": "No check fails BEFORE the date passes. A cheap detector: a unit test that fails when any fixture expiry is within N days of today (names the files), so the regeneration is scheduled before the bomb goes off."
+  "status": "guarded",
+  "checks": [
+   "tests_app/test_fixture_dates_never_expire.py::test_fixture_dates_every_loaded_file_has_its_expiries_ahead_of_today",
+   "tests_app/test_fixture_dates_never_expire.py::test_fixture_dates_no_reader_bypasses_the_shifting_reader"
+  ],
+  "note": "No database. Mutation measured 2026-11-08: with the offset forced to 0 the first check flags 174 library files (expiry before today + 7 days); with the shift it flags 0. The second fails if app code or a script reads a scenario file without `read`. Not covered: a test that reads a fixture file directly with json.loads (tests_app/t19_support.py and test_adjustment_approaches_route.py do, without the DB or the loader, so they need no shift)."
  },
  "spec_ref": [
   "spec/decisions/ADR-057.md",
