@@ -8,7 +8,7 @@
     <div class="flex flex-wrap items-end gap-2">
       <button v-if="!editing" type="button" class="btn" data-testid="sys-edit" @click="editing = true">Edit system playbook</button>
       <label class="flex flex-col gap-1 text-xs font-medium text-ink-muted">Reason for this change (required)
-        <input v-model="reason" class="field w-96" maxlength="300" data-testid="sys-reason">
+        <input v-model="reason" class="field w-full max-w-96" maxlength="300" data-testid="sys-reason">
       </label>
       <template v-if="editing">
         <button type="button" class="btn btn-primary" data-testid="sys-save" :disabled="busy" @click="save">Save as a new version</button>
