@@ -33,6 +33,20 @@ nothing else in this contract is safe without it.
    is still red, HALT with a report. The merge is never forced.
 8. Stamp every progress line with the output of `date`. Log to `D:\Abhay\scratch\gc-merge1\progress.md`.
 
+## §0b Backup push of the unpushed commits (FIRST action after the lock and bundle; owner 2026-11-07)
+The settings tree's `feature/adjustments` holds 83 commits that are not on origin (82 from fix batch 1 and earlier,
+plus this contract's commit). Count them: `git rev-list --count origin/feature/adjustments..HEAD`. Push them before
+§1, so a disk failure during the run cannot lose them:
+1. Settings tree clean (`git status --porcelain` empty); record HEAD.
+2. `python scripts/orchestrator/prepush.py > D:\Abhay\scratch\gc-merge1\prepush-0b.log 2>&1`; read the tail. PASS
+   writes the marker for HEAD.
+3. PASS -> `git push origin feature/adjustments` (a fast-forward; never `--force`). Prove it:
+   `git rev-list --count origin/feature/adjustments..HEAD` prints 0.
+4. FAIL -> do NOT bypass the gate. Fix the red step in at most 2 rounds (commit, re-run, push). Still red: push the
+   commits to a backup ref with `PREPUSH_GATE_ALLOW="GC-MERGE1 0b backup of unpushed commits, gate red: <step>" git push
+   origin HEAD:refs/heads/backup/feature-adjustments-2026-11-07` (a backup ref, not the branch, so nothing reads it as
+   gated). Log the red step, then continue; §2.3 must still pass before anything merges. Delete that backup ref in §4.3.
+
 ## §1 Inventory (read-only, ~20 min)
 Fill in manifest.csv (§0.2). The categories:
 - **CONTAINED**: sha is an ancestor of feature/adjustments or main, or the cherry check shows nothing missing. Action:
@@ -53,7 +67,7 @@ Fill in manifest.csv (§0.2). The categories:
 2. Merge each MERGE branch by sha, one at a time. After each one, run that branch's changed files' tests.
 3. Core proof: `python scripts/orchestrator/prepush.py --full` writes its PASS marker for HEAD, and `alembic heads`
    shows exactly one head. Record both in the log.
-4. Push feature/adjustments to origin. That alone removes the laptop-only risk for the 82 commits.
+4. Push feature/adjustments to origin (the merge commits on top of the §0b push).
 
 ## §3 PR to main and review (Tier A)
 1. `land.py <settings tree> --title "Land feature/adjustments on main (GC-ADJ1/2, GC-SET, GC-MU, GC-ALERT1, GC-IC1,
@@ -91,6 +105,7 @@ strategies page loads in the owner's Chrome → wt-rm the `-live` tree. If the h
 ## §6 Done means (each one is an evidence-table row with the command run this turn)
 | Check | Command | Expected |
 |---|---|---|
+| Unpushed commits backed up (§0b) | `git rev-list --count origin/feature/adjustments..<0b HEAD>` (before branch deletion) | 0 |
 | Branch landed | `git merge-base --is-ancestor <adj tip> origin/main` | exit 0 |
 | Worktrees | `git worktree list` | 1 line (main checkout) |
 | Local branches | `git branch` | `main` only |
