@@ -54,3 +54,6 @@ the existing tone; a later wording pass can change any of them in minutes). B. H
 Until answered: built with the texts as written (safe default: not shipped anywhere, feature branch only).
 
 Q3 answer (owner 7 Nov ~09:2x IST, question tool): "Approve all (Recommended)". The 9 batch-1 texts are marked "owner read 2026-11-07" in tests/errors/template_pins.json (pin test 63 passed). The builder-1 T-01 "beyond the sold" text is on the parked branch (#664), not approved here.
+
+## Q4 (13:3x). How to close batch 1 with 5 goal-hook items open?
+Owner answer (question tool): "Stop now". Batch 1 accepted as it is; repair tool fix, ADR-268 "delta taken as 1" wording, a full impact run on the final tip, and the stale-price / T-01-at-the-short on-screen checks stay open in #664. The owner clears the goal and decides the push.
