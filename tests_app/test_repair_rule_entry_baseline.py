@@ -4,7 +4,7 @@ row count never change; a second run finds the class empty for those rows (re-ru
 
 Setup: scenario ADJ-02 (iron condor, 23500 CE short), entry facts stored with a spot far from both shorts (T-01 false
 at entry), and two stored rows held at entry, not seen clear: T-01 (false at entry -> repaired) and a rule the entry
-cannot compute (T-03, short delta: no Greeks at entry -> left, counted).
+cannot compute (T-07, P&L: not known at entry -> left, counted; T-03 now has its engine delta at entry).
 """
 from __future__ import annotations
 
@@ -46,18 +46,18 @@ async def test_dry_run_counts_and_apply_repairs_only_rows_false_at_the_real_entr
 
     async with app_db_url.begin() as conn:
         await entry_facts_store.record_first(conn, sid, EntryFacts(FAR_SPOT, None, None))
-        for rule in ("T-01", "T-03"):
+        for rule in ("T-01", "T-07"):
             await playbook_store.put_rule_state(conn, "owner", sid, rule, held_at_entry=True, seen_clear=False)
     async with app_db_url.begin() as conn:
         dry = await tool.repair(conn, position_of, apply=False)
-        assert await _rows(conn, sid) == {"T-01": (True, False), "T-03": (True, False)}  # dry run: nothing written
+        assert await _rows(conn, sid) == {"T-01": (True, False), "T-07": (True, False)}  # dry run: nothing written
     print(f"REPAIR-DRY {dry}")
     assert {k: v for k, v in dry.items() if v} == {tool.HELD: 2, tool.FALSE_AT_ENTRY: 1, tool.NOT_COMPUTABLE: 1}
     async with app_db_url.begin() as conn:
         applied = await tool.repair(conn, position_of, apply=True)
     assert applied == dry
     async with app_db_url.begin() as conn:
-        assert await _rows(conn, sid) == {"T-01": (True, True), "T-03": (True, False)}
+        assert await _rows(conn, sid) == {"T-01": (True, True), "T-07": (True, False)}
         again = await tool.repair(conn, position_of, apply=False)
     print(f"REPAIR-AFTER {again}")
     assert {k: v for k, v in again.items() if v} == {tool.HELD: 1, tool.NOT_COMPUTABLE: 1}  # class 2 -> 1
