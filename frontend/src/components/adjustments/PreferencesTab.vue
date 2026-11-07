@@ -15,7 +15,7 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import api from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
-import { ALERT_KEY, CHIPS, GROUPS, OPEN_BY_DEFAULT, groupOf, matches, sourceWord } from '@/lib/settingsGroups'
+import { ALERT_KEY, CHIPS, GROUPS, OPEN_BY_DEFAULT, groupOf, isYours, matches, sourceWord } from '@/lib/settingsGroups'
 import { fetchPlan, saveBody, sendPlan } from '@/lib/adjustPlan'
 
 const prefs = ref([])
@@ -207,7 +207,7 @@ function jump(id) {
 const visible = computed(() => prefs.value.filter((p) => matches(p, search.value, pressed)))
 const inGroup = (id) => visible.value.filter((p) => groupOf(p.key) === id)
 const general = (id) => inGroup(id).filter((p) => !ALERT_KEY.test(p.key))
-const changedIn = (id) => prefs.value.filter((p) => groupOf(p.key) === id && p.source === 'yours')
+const changedIn = (id) => prefs.value.filter((p) => groupOf(p.key) === id && isYours(p.source))
 // Groups with no server preference of their own (the exits table, plan values, playbook, orders, the admin list) show
 // while no filter is on; with a filter, only the groups holding a matching preference show.
 const STATIC = ['g-exit', 'g-plan', 'g-pb', 'g-order', 'g-admin']

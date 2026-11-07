@@ -38,10 +38,14 @@ const BY_KEY = {
   'adjustments.compare_move_large': 'g-disp',
 }
 
+/** The server's source codes (backend ofo/settings/layers.py: strategy / user / default). "yours" is the older preferences word. */
+export const isYours = (source) => source === 'user' || source === 'yours'
+
 export const ALERT_KEY = /^alerts\.([a-z_]+)\./
 
 export function groupOf(key) {
   if (ALERT_KEY.test(key)) return 'g-loud'
+  if (key.startsWith('orders.')) return 'g-other' // two-layer (user > admin default); the approved "Other settings" group
   return BY_KEY[key] ?? 'g-other'
 }
 
@@ -52,7 +56,7 @@ export const CHIPS = [
   { id: 'weekly', label: 'Weekly', test: (p) => /weekly/i.test(`${p.key} ${p.label}`) },
   { id: 'monthly', label: 'Monthly', test: (p) => /monthly/i.test(`${p.key} ${p.label}`) },
   { id: 'delta', label: 'Delta-based', test: (p) => /delta/i.test(`${p.key} ${p.label}`) },
-  { id: 'changed', label: 'Changed by me', test: (p) => p.source === 'yours' },
+  { id: 'changed', label: 'Changed by me', test: (p) => isYours(p.source) },
 ]
 
 /** True when the preference passes the search text and the pressed chips. */
@@ -65,7 +69,7 @@ export function matches(p, search, pressed) {
 
 /** The source tag's words (ADR-245): the server's source, or "source unavailable" when it sent none it names. */
 export function sourceWord(source) {
-  if (source === 'yours') return 'Yours'
+  if (isYours(source)) return 'Yours'
   if (source === 'default') return 'Default'
   if (source === 'strategy') return 'This strategy'
   return 'source unavailable'
