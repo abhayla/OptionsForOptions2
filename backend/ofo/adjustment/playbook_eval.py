@@ -735,6 +735,8 @@ def _stop_hit(c: _Ctx, tid: str, line: sl.StopInForce) -> Hit:
     else:
         pnl = _need(c.state.pnl, "pnl")
         num, den = ratios.loss_pct_of_max_loss(pnl, _finite(c.state.max_loss, "max_loss"))
+        if num > den * 100:  # ADR-266: a marked loss above max loss cannot be real -> inconsistent prices, never flagged
+            raise _Missing(f"{P}inconsistent_prices")
     return _exact(tid, num, den, _tightened(c, tid, line.figure, "ge"), "ge")  # type: ignore[arg-type]
 
 

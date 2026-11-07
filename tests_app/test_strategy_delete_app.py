@@ -208,15 +208,15 @@ async def test_a_hidden_draft_is_not_tracked_and_undo_tracks_it_again(app_engine
         trans = await conn.begin()
         try:
             _, first = await _with_draft(conn, user := _user())
-            # tracked = has a paper order (GC-TP 1a: strategy_tracking is migrated into paper_orders, migration 0028)
-            await conn.execute(text("INSERT INTO public.paper_orders (strategy_id, contract_id, side, quantity, "
-                                    "price, kind, placed_at) VALUES (:id, :c, 'BUY', 65, 10.00, 'open', now())"),
-                               {"id": first.id, "c": first.saved.contract_ids[0]})
+            # ADR-271: a strategy WITH a paper order can no longer be deleted, so the order is added while it is hidden
             async with _client(_app(_ConnMaker(conn), user)) as ac:
-                assert [s["tracked"] for s in (await ac.get("/strategies")).json()["strategies"]] == [True]
                 await ac.delete(f"/strategies/{first.id}", params={"expected_revision": 1})
                 assert (await ac.get("/strategies")).json()["strategies"] == []
                 assert (await ac.get(f"/strategies/{first.id}/tracking")).status_code == HTTPStatus.NOT_FOUND
+                await conn.execute(text("INSERT INTO public.paper_orders (strategy_id, contract_id, side, quantity, "
+                                        "price, kind, placed_at) VALUES (:id, :c, 'BUY', 65, 10.00, 'open', now())"),
+                                   {"id": first.id, "c": first.saved.contract_ids[0]})
+                assert (await ac.get("/strategies")).json()["strategies"] == []
                 await ac.post(f"/strategies/{first.id}/undelete", params={"expected_revision": 1})
                 assert [s["tracked"] for s in (await ac.get("/strategies")).json()["strategies"]] == [True]
         finally:
@@ -402,3 +402,27 @@ async def test_the_app_role_cannot_insert_a_row_born_hidden(app_engine):
                 "WHERE id = :id"), {"id": tx.strategy_id})
         await point.rollback()
         assert getattr(err.value.orig, "sqlstate", None) == INSUFFICIENT_PRIVILEGE
+
+
+async def _paper_order(conn, strategy_id: int) -> None:
+    contract = (await conn.execute(text("SELECT id FROM public.catalogue_contracts ORDER BY id LIMIT 1"))).scalar_one()
+    await conn.execute(text("INSERT INTO public.paper_orders (strategy_id, contract_id, side, quantity, price, kind, "
+                            "placed_at) VALUES (:s, :c, 'SELL', 65, 10.00, 'open', now())"),
+                       {"s": strategy_id, "c": contract})
+
+
+async def test_a_strategy_with_a_paper_order_is_never_deleted_and_says_paper(app_engine):
+    """ADR-271: list says can_delete false + has_paper_order true; DELETE refuses with the paper wording."""
+    async with _Tx(app_engine) as tx:
+        revision = await _revision(tx.conn, tx.strategy_id)
+        async with _client(_app(_ConnMaker(tx.conn), tx.user)) as ac:
+            before = (await ac.get("/strategies")).json()["strategies"]
+            assert [(s["can_delete"], s["has_paper_order"]) for s in before] == [(True, False)]
+        await _paper_order(tx.conn, tx.strategy_id)
+        async with _client(_app(_ConnMaker(tx.conn), tx.user)) as ac:
+            listed = (await ac.get("/strategies")).json()["strategies"]
+            assert [(s["can_delete"], s["has_paper_order"]) for s in listed] == [(False, True)]
+            refused = await ac.delete(f"/strategies/{tx.strategy_id}", params={"expected_revision": revision})
+            assert (refused.status_code, refused.json()["code"]) == (HTTPStatus.CONFLICT, "STRATEGY_VALIDATION_504")
+            assert refused.json()["what_happened"] == "Can't delete: paper orders were placed for this strategy."
+        assert (await tx.conn.execute(RAW_ROW, {"id": tx.strategy_id})).one().deleted_at is None

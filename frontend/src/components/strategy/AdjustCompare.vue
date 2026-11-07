@@ -7,6 +7,9 @@
   <section class="mt-3 flex min-w-0 flex-col gap-4" data-testid="adjust-compare" :data-state="state">
     <h2 class="text-lg font-semibold" data-testid="adjust-title">Compare possible approaches{{ name ? `: ${name}` : '' }}</h2>
     <p class="text-sm text-ink-muted" data-testid="adjust-intro">{{ INTRO }}</p>
+    <!-- ADR-272: stale prices are said once at the top, in the server's words -->
+    <p v-if="stale" role="alert" class="rounded-lg border border-line bg-surface-muted p-3 text-sm font-semibold text-warn" data-testid="adjust-stale-banner">{{ prices.banner }}</p>
+    <p v-else-if="prices?.label" class="text-xs text-ink-muted" data-testid="adjust-prices-label">{{ prices.label }}</p>
     <ErrorMessage v-if="state === 'error'" :parts="errorParts" compact prefix="adjust-error" data-testid="adjust-error" />
     <p v-else-if="state === 'loading'" class="text-sm text-ink-muted" data-testid="adjust-loading">Working out the approaches...</p>
 
@@ -34,7 +37,7 @@
           <template v-for="r in why.rows" :key="r.id"><dt class="text-ink-muted">{{ r.label }}</dt><dd class="tabular-nums" :data-testid="`adjust-why-${r.id}`">{{ r.value }}</dd></template>
         </dl>
       </div>
-      <AdjustControls :strategy-id="strategyId" :client="client" :delta-neutral="reply.delta_neutral ?? null" />
+      <AdjustControls :strategy-id="strategyId" :client="client" :delta-neutral="reply.delta_neutral ?? null" :prices="prices" />
       <div class="grid min-w-0 grid-cols-1 gap-4 min-[1100px]:grid-cols-2">
         <div class="min-w-0 rounded-lg border border-line bg-surface p-3" data-testid="adjust-chart-card">
           <h3 class="mb-1 text-sm font-semibold">Payoff at expiry, whole trade</h3>
@@ -115,6 +118,7 @@
                 <td v-for="x in kept" :key="x.a.id" class="p-2 align-top" :class="isLeader(c, x.a.id) ? 'bg-profit-soft' : ''" :data-leader="isLeader(c, x.a.id) ? 'true' : 'false'" :data-testid="`adjust-cell-${c.id}-${x.a.id}`">
                   <template v-if="cellOf(c, x.a.id)?.text != null && cellOf(c, x.a.id)?.unavailable_reason == null">
                     <div>{{ cellOf(c, x.a.id).text }}</div>
+                    <div v-if="stale && c.group === 'money_now' && prices.as_of_note" class="text-xs text-ink-muted" data-testid="adjust-cell-asof">{{ prices.as_of_note }}</div>
                     <div v-if="isLeader(c, x.a.id)" class="text-xs text-ink-muted" data-testid="adjust-leader-label">{{ c.leader_label }}</div>
                     <!-- REQ-159 AC-6: the server's judgement of the cost % against the playbook's warning level (numbers only) -->
                     <div v-if="cellOf(c, x.a.id).warning" class="text-xs text-warn" data-testid="adjust-cell-warning">{{ cellOf(c, x.a.id).warning }}</div>
@@ -158,8 +162,9 @@
             <option v-for="x in pickable" :key="x.a.id" :value="x.a.id">{{ x.a.name ?? x.a.id }}</option>
           </select>
         </label>
-        <button type="button" class="h-9 rounded-lg bg-accent px-3 font-medium text-white disabled:opacity-50" :disabled="!pick" data-testid="adjust-open" @click="openInBuilder">Open in builder and prepare basket</button>
+        <button type="button" class="h-9 rounded-lg bg-accent px-3 font-medium text-white disabled:opacity-50" :disabled="!pick || stale" :title="stale ? prices.prepare_blocked_reason : null" data-testid="adjust-open" @click="openInBuilder">Open in builder and prepare basket</button>
         <ErrorMessage v-if="actedRefusal" :parts="actedRefusal" compact prefix="adjust-acted" data-testid="adjust-acted-refusal" />
+        <span v-if="stale" class="text-sm text-ink-muted" data-testid="adjust-prepare-wait">{{ prices.prepare_blocked_reason }}</span>
         <span v-if="!pickable.length" class="text-sm text-ink-muted" data-testid="adjust-pick-empty">{{ NONE_TO_PREPARE }}</span>
         <ErrorMessage v-if="prepareError" :parts="prepareError" compact prefix="adjust-prepare-error" data-testid="adjust-prepare-error" />
       </div>
@@ -286,7 +291,9 @@ const groups = computed(() => {
 })
 const cellOf = (c, id) => c.values?.[id]
 const isLeader = (c, id) => (c.leaders ?? []).includes(id) && cellOf(c, id)?.unavailable_reason == null && cellOf(c, id)?.text != null
-const leadsText = (id) => { const l = reply.value?.leads?.[id]; return l ? `${l.n} of ${l.m}` : UNAVAILABLE_VALUE }
+const prices = computed(() => reply.value?.prices ?? null)
+const stale = computed(() => prices.value?.stale === true) // ADR-272: nothing is ranked or prepared on stale prices
+const leadsText = (id) => { const l = reply.value?.leads?.[id]; return l && !stale.value ?`${l.n} of ${l.m}` : UNAVAILABLE_VALUE }
 
 const SPOT_SOURCES = [['feed', 'Live feed'], ['rest_quote', 'One-time price request'], ['last_close', 'Last close']]
 const noSpot = computed(() => !!reply.value && (!reply.value.spot || reply.value.spot.value == null))

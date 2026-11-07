@@ -9,7 +9,9 @@
   <section class="flex min-w-0 flex-col gap-3" data-testid="adjust-controls">
     <div class="rounded-lg border border-line bg-surface p-3" data-testid="pause-card">
       <h3 class="text-sm font-semibold" data-testid="pause-label">{{ pause.data?.label ?? 'Pause' }}</h3>
-      <p v-if="pause.data?.state_text" class="mt-1 text-sm" :data-paused="pause.data.paused ? 'true' : 'false'" data-testid="pause-state">{{ pause.data.state_text }}</p>
+      <!-- ADR-272 (2): while prices are stale the check is withheld, so the box never says the checks are running -->
+      <p v-if="withheldText && !pause.data?.paused" class="mt-1 text-sm" data-paused="false" data-testid="pause-state">{{ withheldText }}</p>
+      <p v-else-if="pause.data?.state_text" class="mt-1 text-sm" :data-paused="pause.data.paused ? 'true' : 'false'" data-testid="pause-state">{{ pause.data.state_text }}</p>
       <div class="mt-2 flex flex-wrap items-center gap-2">
         <input v-model="pauseTime" type="time" class="h-9 rounded border border-line px-2 text-sm" aria-label="Pause until" data-testid="pause-time" />
         <button type="button" class="h-9 rounded border border-line px-3 text-sm disabled:opacity-50" :disabled="!pauseTime || pause.busy" data-testid="pause-set" @click="setPause">Pause</button>
@@ -51,7 +53,9 @@ const props = defineProps({
   strategyId: { type: [String, Number], required: true },
   client: { type: [Object, Function], default: () => api },
   deltaNeutral: { type: Object, default: null }, // the approaches reply's `delta_neutral` block; null = absent
+  prices: { type: Object, default: null }, // the approaches reply's `prices` block (ADR-272); null = absent
 })
+const withheldText = computed(() => (props.prices?.stale ? props.prices.checks_text : null))
 const DIRECTIONS = ['above', 'below']
 const base = computed(() => `/strategies/${props.strategyId}`)
 

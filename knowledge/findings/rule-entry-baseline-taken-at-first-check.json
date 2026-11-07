@@ -7,9 +7,10 @@
     "where": "IC test-data run on the scenario copy (code 514113f1), scratch ISSUES.md issue 65 (PATH-12, PATH-14) and 89 (PATH-15), condor 112 (PATH-13)",
     "evidence": "SELECT rule_id, held_at_entry, seen_clear FROM public.adjustment_rule_state WHERE strategy_id = 115 (7 Nov 00:4x): T-01, T-03, T-13 held_at_entry=true, seen_clear=false, the three rules the screen showed 'already true' at the 0.87 % gap frame although at the Thursday entry (spot 23,100) none held; condor 113, whose first background check ran at frame 0, flagged T-11 correctly. Independent read-only review 7 Nov 00:1x-00:3x (fresh Opus) traced the three baselines; lines re-read by the lead."
   },
+  "fix_attempt_2026_11_07": "Fix batch 1 (branch park/b1-rule-baseline, issue #664, PARKED after 2 rounds): DB seeding + one entry_baseline function + 0045 marker made the core proof pass (restart_first_check=Flag, records_after_new_crossing=1) but broke 11 ADJ-02 tests: the entry state carries no Greeks and no ltp, so T-03 (delta) and T-09 (premium) fall back to the first check (entry_fallback=state) and a rule true NOW is held at entry. ADJ-02 entry (spot 23100, IV 0.13): CE 23500 delta 0.1691, PE 22700 -0.1313 < 0.35; T-09 41.80 vs 3.0: neither held. Lesson: an entry baseline must reproduce every rule input AT ENTRY (model Greeks from entry spot/IV, entry premiums); a first-check fallback re-creates this very class for every Greek/premium rule.",
   "fix": "Branch fix/b1-rule-baseline-2 (2026-11-07, not merged): the worker's rule memory is read from the DB at the rebuild (GateLoad.rule_memory); one entry baseline (adjustment_check.entry_baseline: scenario entry, else stored entry facts with their time, else the first check) for screen, recorder and worker; the recorder reads the process scenario as the worker does (it had passed scn=None and stored the CURRENT state as the entry); ADR-258 starting point adjustment_rule_state.adjustment_no (migration 0045); repair tool scripts/repair_rule_entry_baseline.py (dry run default, --apply writes).",
   "detection": {
-    "status": "guarded",
+    "status": "unguarded",
     "checks": [
       "tests_app/test_rule_entry_baseline.py (real worker, restart, counted from the DB)",
       "tests_app/test_repair_rule_entry_baseline.py",

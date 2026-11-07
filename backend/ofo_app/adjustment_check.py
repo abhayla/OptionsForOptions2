@@ -62,6 +62,7 @@ from ofo.errors.explanations import (
     render_explanation,
 )
 from ofo.marketdata.day_open import STATED
+from ofo.marketdata.forward import mid_price
 from ofo.marketdata.spot_source import SourceState, SpotAnswer
 from ofo.settings import layers
 from ofo.timeutil import IST
@@ -268,6 +269,18 @@ def cheapest_offered(body: Mapping | None, tracked: Tracked, market: MarketInput
     return cheapest_approach(offered, columns, market.chain)
 
 
+def mark_of(row: Any) -> Decimal | None:
+    """ADR-266: a leg's mark. LTP inside a sound two-sided book (0 < bid <= ask) -> LTP; outside it -> the bid-ask mid
+    (no per-option quote time exists, so "stale" = outside the book); no ltp -> None (unpriced, never a stand-in);
+    bid or ask missing, zero or crossed -> the LTP (last trade, no live quote)."""
+    ltp, bid, ask = (getattr(row, k, None) for k in ("ltp", "bid", "ask"))
+    if ltp is None:
+        return None
+    if bid is None or ask is None or bid <= 0 or ask < bid or bid <= ltp <= ask:
+        return ltp
+    return mid_price(bid, ask)
+
+
 def state_of(tracked: Tracked, market: MarketInputs, spot: SpotAnswer, margin: Mapping | None,  # noqa: PLR0913
              rates: Any, fresh: bool | None, body: Mapping | None = None, *,
              config: Config, user_values: Mapping[str, Decimal] | None,
@@ -288,7 +301,7 @@ def state_of(tracked: Tracked, market: MarketInputs, spot: SpotAnswer, margin: M
     basis = basis_in_force(user_values, strategy_layer, entry_facts)
     position = tracked.position
     rows = {r.tradingsymbol: r for r in market.chain}
-    ltp = {x.tradingsymbol: getattr(rows.get(x.tradingsymbol), "ltp", None) for x in position.legs}
+    ltp = {x.tradingsymbol: mark_of(rows.get(x.tradingsymbol)) for x in position.legs}
     priced = all(v is not None for v in ltp.values())
     value = spot.value if spot.available else None
     shorts = tuple(pe.ShortLeg(x.strike, _abs_delta(market, x, ltp[x.tradingsymbol], value), ltp[x.tradingsymbol],

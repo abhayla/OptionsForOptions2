@@ -950,6 +950,11 @@ _STRATEGY_DRAFT_TEMPLATES: tuple[MessageTemplate, ...] = (
           "Orders were already sent for this strategy, so it cannot be deleted.",
           "The strategy and its history were not changed.", "Deleting this strategy.",
           "Its history stays readable."),
+    # ADR-271: a strategy with a paper order is never deleted either.
+    _gate("strategy_delete_after_paper_order", _SV, 504,
+          "Can't delete: paper orders were placed for this strategy.",
+          "The strategy, its paper orders and its history were not changed.", "Deleting this strategy.",
+          "Finish it and it moves to Completed Strategies, where its result stays."),
     # GC-BP step 5 (REQ-109 AC-4, AC-5): paper exit of tracked legs.
     _gate("tracking_exit_prices_not_live", _SV, 433,
           "Prices are not live; try again when they update.",
@@ -1247,6 +1252,8 @@ _TRIGGER_TEMPLATES: tuple[MessageTemplate, ...] = (
     _trig("missing_spot", 118, "Spot not available."),
     _trig("missing_short_delta", 119, "Delta of a short leg not available."),
     _trig("missing_short_price", 120, "Price of a short leg not available."),
+    _trig("inconsistent_prices", 515, "The leg prices do not fit together: the loss they give is larger than the most "
+          "this trade can lose, so this stop is not checked."),
     _trig("missing_pnl", 121, "P&L not available (a leg unpriced)."),
     _trig("missing_expiry_pnl", 122, "Expiry P&L at spot not available (multi-expiry: no exact breakeven)."),
     _trig("missing_max_loss", 123, "Max loss not available."),

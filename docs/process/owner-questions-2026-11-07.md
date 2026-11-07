@@ -52,3 +52,5 @@ Recommended: **A. Keep them as written and read them in the screen-check screens
 the existing tone; a later wording pass can change any of them in minutes). B. Hold batch 1 until you have read them.
 
 Until answered: built with the texts as written (safe default: not shipped anywhere, feature branch only).
+
+Q3 answer (owner 7 Nov ~09:2x IST, question tool): "Approve all (Recommended)". The 9 batch-1 texts are marked "owner read 2026-11-07" in tests/errors/template_pins.json (pin test 63 passed). The builder-1 T-01 "beyond the sold" text is on the parked branch (#664), not approved here.

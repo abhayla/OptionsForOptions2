@@ -42,6 +42,7 @@ from ofo.marketdata.day_open import index_day_open
 from ofo.marketdata.forward import ForwardUnavailable, parity_forward
 from ofo.marketdata.quote import planning_price_usable
 from ofo.marketdata.spot_source import SourceReading, SourceState, feed_is_live, feed_reading, resolve_spot
+from ofo.rules.inputs import DataHealth
 from ofo.timeutil import IST, SESSION_CLOSE
 from ofo.tracking.orderbook import net_positions
 
@@ -360,6 +361,17 @@ def own_leg_ids(position: Position, listed: Iterable[Any]) -> list[str]:
             if lc.broker_refs[0].broker_symbol in wanted]
 
 
+def leg_prices_state(ctx: Any, quotes: Mapping[str, Any], ids: Mapping[str, str],
+                     position: Position) -> tuple[datetime.datetime | None, bool]:
+    """ADR-272: (oldest own-leg price time, stale?). Stale = the check's own ``prices_fresh`` is not True (stale OR
+    unknown) or any own leg has no quote / a quote that is not AVAILABLE. Unknown age is stale (fail closed)."""
+    from ofo_app.adjustment_check import prices_fresh  # noqa: PLC0415 - that module imports this one's types
+    own = [quotes.get(ids.get(x.tradingsymbol, "")) for x in position.legs]
+    stamps = [q.timestamp for q in own if q is not None]
+    return (min(stamps, default=None),
+            prices_fresh(ctx) is not True or any(q is None or q.health is not DataHealth.AVAILABLE for q in own))
+
+
 def roll_ids(listed: Iterable[Any], position: Position, spot: Decimal | None,
              points: Mapping[str, Decimal]) -> list[str]:
     """The strikes a roll of each short searches (``approaches._Builder.roll_distance``), held in the SAME hold as the
@@ -504,7 +516,7 @@ async def read_market(tracked: Tracked, ctx: Any, *, extra_ids: Iterable[str] = 
     if ctx is None:  # not connected: no chain, no feed spot (the REST reader and the reasons still answer)
         now = server_now()
         return MarketInputs((), {}, None, None, None, SourceReading(SourceState.ABSENT),
-                            SourceReading(SourceState.ABSENT), now)
+                            SourceReading(SourceState.ABSENT), now, prices_stale=True)
     now = ctx.clock()
     position = tracked.position
     underlying, expiry = position.underlying, position.legs[0].expiry
@@ -566,7 +578,8 @@ async def read_market(tracked: Tracked, ctx: Any, *, extra_ids: Iterable[str] = 
     return MarketInputs(tuple(rows) + later_rows, ids, forward, years, vol, feed,
                         read_last_close(spot_q, closed, scn, now), now, expiry_kind, leg_greeks, fwd_model, leg_ivs,
                         index_day_open(frozen.day, now), reach, ctx.carry_gap_pct, ctx.s02_delta_per_lot,
-                        ctx.s12_percent, spot_q, feed_is_live(provider, now))
+                        ctx.s12_percent, spot_q, feed_is_live(provider, now),
+                        *leg_prices_state(ctx, quotes, ids, position))
 
 
 async def read_market_more(tracked: Tracked, ctx: Any, extra_ids: Iterable[str]) -> MarketInputs | None:

@@ -12,6 +12,7 @@ import datetime
 from decimal import Decimal
 
 import pytest
+from sqlalchemy import text
 from ofo_app import paper_book, paper_store
 from ofo_app import strategy_store as store
 from test_strategy_store import _user, _with_draft
@@ -59,11 +60,11 @@ async def test_a_hidden_strategy_reads_as_no_orders(db):
     user = _user()
     ids, stored = await _with_draft(db, user)
     c = sorted(ids.values())
-    await paper_store.place(db, user, stored.id, [paper_store.NewOrder(c[0], "BUY", 65, Decimal("10.00"), "open", AT)])
     revision = (await store.load(db, user, stored.id)).revision
-    try:
-        await store.delete_draft(db, user, stored.id, expected_revision=revision)
-    except store.StrategyStoreError as exc:  # a paper order is not a basket; if the store refuses, say so plainly
-        pytest.fail(f"delete_draft refused a paper-only strategy: {exc.code}")
+    await store.delete_draft(db, user, stored.id, expected_revision=revision)
+    # ADR-271: a strategy with a paper order cannot be deleted, so the row goes in directly while it is hidden
+    await db.execute(text("INSERT INTO public.paper_orders (strategy_id, contract_id, side, quantity, price, kind, "
+                          "placed_at) VALUES (:s, :c, 'BUY', 65, 10.00, 'open', :at)"),
+                     {"s": stored.id, "c": c[0], "at": AT})
     assert len(await paper_store.load(db, stored.id)) == 1
     assert await paper_book.load_owned(db, user, stored.id) == ()

@@ -321,6 +321,16 @@
             "title": "Pop Switch On",
             "type": "boolean"
           },
+          "prices": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AdjustPricesOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "spot": {
             "$ref": "#/components/schemas/AdjustSpotOut"
           },
@@ -1013,6 +1023,96 @@
           "reason"
         ],
         "title": "AdjustPopOut",
+        "type": "object"
+      },
+      "AdjustPricesOut": {
+        "additionalProperties": false,
+        "description": "ADR-272: the age of the prices behind a Compare reply; stale -> banner + no leaders + Prepare blocked.",
+        "properties": {
+          "age_minutes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Age Minutes"
+          },
+          "as_of": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "As Of"
+          },
+          "as_of_note": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "As Of Note"
+          },
+          "banner": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Banner"
+          },
+          "checks_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checks Text"
+          },
+          "label": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "prepare_blocked_reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prepare Blocked Reason"
+          },
+          "stale": {
+            "title": "Stale",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "stale",
+          "as_of",
+          "age_minutes",
+          "banner",
+          "as_of_note",
+          "label",
+          "prepare_blocked_reason",
+          "checks_text"
+        ],
+        "title": "AdjustPricesOut",
         "type": "object"
       },
       "AdjustSpotOut": {
@@ -3804,6 +3904,19 @@
               }
             ],
             "title": "Price"
+          },
+          "steps": {
+            "anyOf": [
+              {
+                "maximum": 20.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Steps"
           }
         },
         "required": [
@@ -14791,6 +14904,10 @@
           "first_leg": {
             "$ref": "#/components/schemas/FirstLegOut"
           },
+          "has_paper_order": {
+            "title": "Has Paper Order",
+            "type": "boolean"
+          },
           "id": {
             "title": "Id",
             "type": "integer"
@@ -14863,6 +14980,7 @@
           "first_leg",
           "tracked",
           "can_delete",
+          "has_paper_order",
           "open_opportunities",
           "open_opportunities_text"
         ],
