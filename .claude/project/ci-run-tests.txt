@@ -1,0 +1,3 @@
+# Skip the kit ci.yml pytest step: the kit job cap is 10 min and the domain suite needs ~10-12 min on the runner.
+# The suite runs in .github/workflows/domain-tests.yml (25 min cap) on every push to main and pull request.
+no
