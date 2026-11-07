@@ -158,6 +158,14 @@ describe('REQ-045 AC-1 / F-71: the panel shows the playbook flags of a typed str
     expect(w.findAll('[data-testid="detection"]').length).toBe(0)
   })
 
+  it('ADR-272 (3): a withheld check shows the server\'s withheld line under the P&L; a check that ran shows none', async () => {
+    const withheld = 'No adjustment opportunity checked: prices stale or missing'
+    const w = await panel([], { ...CHECK_TYPED, withheld, results: [] })
+    expect(t(w, 'check-withheld').text()).toBe(withheld)
+    const w2 = await panel([], CHECK_TYPED)
+    expect(t(w2, 'check-withheld').exists()).toBe(false)
+  })
+
   it('attack 5b: an untyped strategy keeps the platform detection and shows no playbook flag', async () => {
     const w = await panel([DETECTION], CHECK_UNTYPED)
     expect(w.findAll('[data-testid="detection"]').length).toBe(1)

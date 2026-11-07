@@ -139,6 +139,10 @@ class MarketInputs:
     #: reading is re-derived at the instant the spot is judged (``feed_at``); None = ``feed`` was given as it stands
     feed_quote: Any = None
     feed_live: bool = False
+    #: ADR-272: the oldest own-leg price time and whether the prices are stale (unknown = stale); the default is a
+    #: stated (scenario) market, which is live
+    prices_at: datetime.datetime | None = None
+    prices_stale: bool = False
 
     def feed_at(self, judged: datetime.datetime) -> SourceReading | None:
         """The feed reading as of ``judged``: a LIVE quote is stamped at the judging instant (``feed_reading``'s one
@@ -564,6 +568,7 @@ async def adjustment_approaches(  # noqa: PLR0913, PLR0915 - FastAPI dependencie
         reply["delta_neutral"] = delta_neutral_reply.block(position, market.chain, market.leg_greeks, spot.value)
         reply |= await _compare_reply(columns, tracked, spot.value, market, rates, pop_on, before,  # type: ignore[arg-type]
                                       margin_of, prefs, limits, guards)
+    _state_prices(reply, market)
     reply["available"] = _available(position, market.chain, spot.value if spot.available else None, dict(built_list),
                                     cfg, limits, max_profit, exits)
     reply["days_to_expiry"] = _days_to_expiry(position)
@@ -574,6 +579,36 @@ async def adjustment_approaches(  # noqa: PLR0913, PLR0915 - FastAPI dependencie
         reply["timing"] = {"engine_seconds": Decimal(f"{engine:.4f}"), "total_seconds": Decimal(f"{total:.4f}"),
                            "approaches": len(built_list)}
     return AdjustApproachesOut.model_validate(reply)
+
+
+def _state_prices(reply: dict[str, Any], market: MarketInputs) -> None:
+    """ADR-272: the reply names its prices' age; on stale prices nothing is ranked (no leaders, no leads)."""
+    reply["prices"] = _prices_block(market)
+    if reply["prices"]["stale"]:
+        for c in reply.get("criteria", []):
+            c["leaders"] = []
+        reply["leads"] = {a: {"n": 0, "m": 0} for a in reply.get("leads", {})}
+
+
+def _prices_block(market: MarketInputs) -> dict[str, Any]:
+    """ADR-272 / issues 79, 87, 77: how old the prices behind this reply are. Stale (the check's ``prices_fresh``, or an
+    own leg without a live quote) names the age and the last-update time and blocks Prepare; an unknown or timezone-less
+    time is stale with no age (fail closed). ``label`` is the "prices from hh:mm:ss" of the one frozen read."""
+    at = market.prices_at
+    if at is not None and (at.tzinfo is None or at.utcoffset() is None):
+        at = None
+    age = None if at is None else max(int((market.now - at).total_seconds() // 60), 0)
+    stale = market.prices_stale
+    banner = None
+    if stale:
+        banner = (render_explanation("adjust_prices_stale", minutes=age, time=at) if at is not None
+                  else render_explanation("adjust_prices_unknown_age"))
+    return {"stale": stale, "as_of": at, "age_minutes": age, "banner": banner,
+            "as_of_note": None if at is None else render_explanation("adjust_prices_as_of", time=at),
+            "label": None if at is None else render_explanation("adjust_prices_from", time=at),
+            "prepare_blocked_reason": render_explanation("adjust_prepare_wait_fresh") if stale else None,
+            "checks_text": (render_explanation("adjust_checks_paused_prices", time=at) if at is not None
+                            else render_explanation("adjust_checks_paused_prices_unknown")) if stale else None}
 
 
 def _guards_or_reason(guards: Any, reply: dict[str, Any]) -> Mapping[str, Any] | None:

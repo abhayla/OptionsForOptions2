@@ -44,6 +44,8 @@
         <Chip kind="state" :label="f.wording" data-testid="playbook-flag-label" />
         <span data-testid="playbook-flag-condition">{{ f.condition }}</span>
       </div>
+      <!-- ADR-272 (3): the check's withheld state, in the server's words, instead of silence -->
+      <p v-if="typed && check.withheld" class="mt-1 text-xs text-ink-muted" data-testid="check-withheld">{{ check.withheld }}</p>
       <p v-for="a in alreadyTrue" :key="a.rule_id" class="mt-1 text-xs text-ink-muted" data-testid="playbook-already-true">{{ a.wording?.what_happened }} {{ a.condition }}</p>
       <button v-if="view.detections.length || flags.length" ref="reviewBtn" type="button" class="mt-2 rounded border border-line bg-surface px-2 py-1 text-xs font-medium" data-testid="review-adjustment" @click="openDrawer">{{ REVIEW_BUTTON_TEXT }}</button>
     </div>
