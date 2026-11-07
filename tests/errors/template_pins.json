@@ -1621,7 +1621,7 @@
   },
   "strategy_delete_after_paper_order": {
     "sha256": "e97b4f5b25044035f9868fd2e660d01b94e2e3444d806674cd92f4a5f21686ca",
-    "reviewed": "pending owner read"
+    "reviewed": "owner read 2026-11-07 (fix batch 1 texts approved as written, question tool)"
   },
   "tracking_exit_prices_not_live": {
     "sha256": "8e9b743393a8285037720b57610cc24635474f33cd191315aaaf8dee44f941ba",
@@ -2501,7 +2501,7 @@
   },
   "adjust_trigger_inconsistent_prices": {
     "sha256": "a81d34db2b65327ce028813fcadb7793cb4dcfc5b8f8083dcea1d3181a741295",
-    "reviewed": "pending owner read"
+    "reviewed": "owner read 2026-11-07 (fix batch 1 texts approved as written, question tool)"
   },
   "adjust_trigger_missing_pnl": {
     "sha256": "9813d23c1475d87c43b96471846ed5fc55a85f3412d59f28eee02f5b4c397251",
@@ -3805,30 +3805,30 @@
   },
   "explanation:adjust_prices_stale": {
     "sha256": "5e562ac183d1f88accdb019b4dc31bb8c3ebc6dc37c0f13bea22fca34bbb0adc",
-    "reviewed": "pending owner read"
+    "reviewed": "owner read 2026-11-07 (fix batch 1 texts approved as written, question tool)"
   },
   "explanation:adjust_prices_unknown_age": {
     "sha256": "147a9f3fb3bd3e368b2235a712eddbc6f884f1a7d593543fa49180a66df10473",
-    "reviewed": "pending owner read"
+    "reviewed": "owner read 2026-11-07 (fix batch 1 texts approved as written, question tool)"
   },
   "explanation:adjust_prices_as_of": {
     "sha256": "c7efeab8a8cc6c35aac68cf6bba5e05a285b4463c5b2e36265835f681515b608",
-    "reviewed": "pending owner read"
+    "reviewed": "owner read 2026-11-07 (fix batch 1 texts approved as written, question tool)"
   },
   "explanation:adjust_prices_from": {
     "sha256": "842ea2422fb1f8043dcbd4eb175624cd5857d6874b37b566d486646c3dc7f5bf",
-    "reviewed": "pending owner read"
+    "reviewed": "owner read 2026-11-07 (fix batch 1 texts approved as written, question tool)"
   },
   "explanation:adjust_prepare_wait_fresh": {
     "sha256": "2c2acdeffe92f55d4d8a464386d84c1214ab91e7e26c3c12587484a8c3b97681",
-    "reviewed": "pending owner read"
+    "reviewed": "owner read 2026-11-07 (fix batch 1 texts approved as written, question tool)"
   },
   "explanation:adjust_checks_paused_prices": {
     "sha256": "af469c8217bd32c23adc65e17c8a8e6c31ffff1c643c527a288500254d360019",
-    "reviewed": "pending owner read"
+    "reviewed": "owner read 2026-11-07 (fix batch 1 texts approved as written, question tool)"
   },
   "explanation:adjust_checks_paused_prices_unknown": {
     "sha256": "7dca55ab649808f3d7ed854e9dfca55935341f370e2d48d5c357dba338737f9e",
-    "reviewed": "pending owner read"
+    "reviewed": "owner read 2026-11-07 (fix batch 1 texts approved as written, question tool)"
   }
 }
