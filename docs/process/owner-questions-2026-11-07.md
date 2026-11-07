@@ -34,3 +34,21 @@ Until answered: nothing is built (development on hold).
 
 Q2 answer (owner 7 Nov ~01:1x): NOT approved. "Save the plan in detail. I will come back to this plan again. We will
 revisit and get it reviewed again through reviewers." Saved in docs/process/fix-plan-2026-11-07/.
+
+## Q3 (fix batch 1, night of 7 Nov). Read the new user-facing wording batch 1 adds (pinned "pending owner read")
+
+Business call: these are texts users read on screen (decision-support wording, ADR-003); only the owner approves wording.
+
+Spec basis: ADR-266 (stale leg marked at mid; loss above max loss = "not checked"), ADR-268 (T-01 at/beyond the short),
+ADR-271 (paper orders block delete), ADR-272 (stale prices: banner, no leaders, Prepare disabled). Each text was written
+to its ADR; none changes a decision.
+
+What: about 10 new templates in `tests/errors/template_pins.json` marked "pending owner read" (builder 2: 7 stale-price
+texts; builder 3: STRATEGY_VALIDATION_515 inconsistent prices, STRATEGY_VALIDATION_504 "Can't delete: paper orders were
+placed for this strategy."; builder 1: "spot is beyond the sold 23,500 CE by 100 points"). The screen check
+screenshots (handover) show them in place.
+
+Recommended: **A. Keep them as written and read them in the screen-check screenshots** (they follow the ADR wording and
+the existing tone; a later wording pass can change any of them in minutes). B. Hold batch 1 until you have read them.
+
+Until answered: built with the texts as written (safe default: not shipped anywhere, feature branch only).

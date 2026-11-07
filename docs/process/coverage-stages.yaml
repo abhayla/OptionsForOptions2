@@ -622,6 +622,7 @@ issues:
   "#660": S6.7  # Flaky: test_feed_control login/Disconnect bus count (1 of 3 runs red, no code change)
   "#661": S6.7  # IC rules in the background worker: T-19 never checked, S-12 entry day, T-11 second record at flat IV (parked from ic-e2e B1)
   "#662": S6.7  # Second adjustment: no T-18 record after max adjustments (parked from ic-e2e C1)
+  "#663": S6.7  # test_background_worker red in full-file runs since 2026-11-06: fixed scenario clock vs DB clock
 
 # Work items whose status is not done.
 work_items:
