@@ -843,7 +843,7 @@ def evaluate(body: Mapping, state: StrategyState, memory: Mapping[str, Mapping[s
                     values.append(rv)
     _add_day_rules(body, state, why, c.stage_name, (results, clear, values),
                    _t09_now(c))
-    _add_situation_rules(body, state, why, c.stage_name, (results, clear, values))
+    _add_situation_rules(body, state, why, c.stage_name, (results, clear, values), (new, entry_state))
     _add_watch_rules(state, why, c.stage_name, (results, clear, values))
     return Evaluation(c.stage_name, c.stage, tuple(results), new, tuple(clear), why, values=tuple(values))
 
@@ -1261,15 +1261,31 @@ def situation_answers(body: Mapping, state: StrategyState, why: str | None = Non
     return tuple(a for a in (_trending_day(body, state, why), _big_win_early(body, state, why)) if a is not None)
 
 
-def _add_situation_rules(body: Mapping, state: StrategyState, why: str | None, stage_name: str | None,
-                         out: tuple[list[Result], list[str], list[RuleValue]]) -> None:
-    """S-02 / S-12 into ``evaluate``'s results / clear / values, a yes/no value each (as the day rules)."""
+def _add_situation_rules(body: Mapping, state: StrategyState, why: str | None, stage_name: str | None,  # noqa: PLR0913
+                         out: tuple[list[Result], list[str], list[RuleValue]],
+                         memory: tuple[dict[str, dict[str, bool]], StrategyState | None]) -> None:
+    """S-02 / S-12 into ``evaluate``'s results / clear / values, a yes/no value each (as the day rules). S-02 follows
+    F-71 like a trigger (``memory`` = the rule memory being built, the entry state): true at entry and not yet seen
+    clear -> AlreadyTrue, not a crossing. S-12 is a day-1 event rule and has no memory."""
     results, clear, values = out
+    new, entry_state = memory
     for d in situation_answers(body, state, why):
         if d.hit is None:
             results.append(NotChecked(d.rule_id, d.rule_id, d.reason or MISSING_LEG_DELTA, d.slots))
             continue
         hit = d.hit
+        mem = None
+        if d.rule_id == situation_rule_id(TRENDING_DAY):
+            if d.rule_id not in new:
+                at_entry = next((a.hit for a in situation_answers(body, entry_state) if a.rule_id == d.rule_id),
+                                None) if entry_state is not None else None
+                new[d.rule_id] = {"held_at_entry": bool(at_entry is not None and at_entry.fired), "seen_clear": False}
+            mem = new[d.rule_id]
+        if not hit.fired and mem is not None:
+            mem["seen_clear"] = True
+        if hit.fired and mem is not None and mem["held_at_entry"] and not mem["seen_clear"]:
+            results.append(AlreadyTrue(d.rule_id, d.rule_id, hit.value, hit.threshold, cmp=hit.cmp))
+            continue
         if hit.fired:
             results.append(Flag(d.rule_id, d.rule_id, stage_name, hit.value, hit.threshold, hit.cmp, (hit,)))
         else:
