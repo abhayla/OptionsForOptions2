@@ -226,7 +226,7 @@ jobs:
           OFO_HISTORY_SCALE_INSTRUMENTS: '1603'
           OFO_HISTORY_SCALE_BOUND_S: '600'
           OFO_HISTORY_SCALE_BATCH_BOUND_S: '45'
-        run: python -m pytest -c pytest-app.ini -q -rfEs --durations=40 -p no:cacheprovider
+        run: python -m pytest -c pytest-app.ini -q -rfEs --maxfail=1 --tb=long -p no:cacheprovider
 
       # W-101 core proof (REQ-073 AC-3, AC-4): a TEST-ONLY API (APP_ENV=test + EXECUTE_REPLAY=1, port 8011) answers
       # Execute and the return from the recorded 2026-10-16 Kite replies (no live session, no live feed). Runs AFTER the
