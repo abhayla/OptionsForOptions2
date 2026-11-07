@@ -534,8 +534,8 @@ def roll_basis_of(admin: Decimal | None, user_values: Mapping[str, Decimal] | No
     return RollBasis(code, got.source, spot, None, call, put)
 
 
-def _entry_abs_delta(leg: Any, clock: datetime.datetime, spot: Decimal, atm_iv: Decimal | None) -> Decimal | None:
-    """A short's |delta| AT ENTRY from the engine (ADR-008): entry spot and clock, the entry ATM IV, else the vol the
+def _entry_greeks(leg: Any, clock: datetime.datetime, spot: Decimal, atm_iv: Decimal | None) -> Any:
+    """An open leg's per-unit engine Greeks AT ENTRY (ADR-008): entry spot and clock, the entry ATM IV, else the vol the
     engine solves from the leg's own entry (fill) price. Not an option, past expiry, or no vol -> None (not checked)."""
     from ofo import settings  # noqa: PLC0415 - the checked-in registry
     from ofo.engine import black_scholes as bs  # noqa: PLC0415 - engine only here
@@ -548,7 +548,7 @@ def _entry_abs_delta(leg: Any, clock: datetime.datetime, spot: Decimal, atm_iv: 
     try:
         years = bs.year_fraction(clock, leg.expiry)
         vol = atm_iv if atm_iv is not None else bs.implied_volatility(kind, leg.entry, spot, leg.strike, years, rate)
-        return abs(bs.bs_greeks(kind, spot, leg.strike, years, rate, vol).delta)
+        return bs.bs_greeks(kind, spot, leg.strike, years, rate, vol)
     except ValueError:  # the engine's refusals (no IV for this price, expiry passed): the rule is not checked at entry
         return None
 
@@ -556,15 +556,19 @@ def _entry_abs_delta(leg: Any, clock: datetime.datetime, spot: Decimal, atm_iv: 
 def _entry_state(clock: datetime.datetime, spot: Decimal, atm_iv: Decimal | None, state: pe.StrategyState,
                  position: Position) -> pe.StrategyState:
     """An F-71 entry state (round 3, finding rule-entry-baseline-taken-at-first-check): the entry's clock and spot,
-    each short with its engine delta AT ENTRY and its entry premium as its price, the entry ATM IV as both IVs. A
+    each short with its engine delta AT ENTRY and its entry premium as its price, every open leg with its engine
+    Greeks (S-02), the entry ATM IV as both IVs. A
     rule still not computable here (no P&L, no margin at entry) counts as not held, never as the first check."""
     clock = clock.astimezone(IST)
     expiry = min(x.expiry for x in position.legs)
-    shorts = tuple(pe.ShortLeg(x.strike, _entry_abs_delta(x, clock, spot, atm_iv), x.entry, x.type)
+    greeks = {id(x): _entry_greeks(x, clock, spot, atm_iv) for x in position.legs}
+    shorts = tuple(pe.ShortLeg(x.strike, None if greeks[id(x)] is None else abs(greeks[id(x)].delta), x.entry, x.type)
                    for x in position.legs if x.side == Action.SELL.value)
+    held = tuple(pe.HeldLeg(greeks[id(x)], x.side, x.lots) for x in position.legs)  # F-71: every leg, S-02 reads them
     return pe.StrategyState(stops=None, expiry_kind=state.expiry_kind, days_left=(expiry - clock.date()).days,
-                            hhmm=clock.strftime("%H:%M"), spot=spot, shorts=shorts,
-                            atm_iv=atm_iv, entry_atm_iv=atm_iv, prices_fresh=True)
+                            hhmm=clock.strftime("%H:%M"), spot=spot, shorts=shorts, held=held,
+                            atm_iv=atm_iv, entry_atm_iv=atm_iv, prices_fresh=True,
+                            adjustments_used=state.adjustments_used, s02_delta_per_lot=state.s02_delta_per_lot)
 
 
 def scenario_entry(scn: Any, state: pe.StrategyState, position: Position) -> pe.StrategyState | None:

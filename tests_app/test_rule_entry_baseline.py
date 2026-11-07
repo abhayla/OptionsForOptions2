@@ -11,6 +11,7 @@ true" from this check), and exactly one record opens.
 """
 from __future__ import annotations
 
+import dataclasses
 import datetime
 import json
 import types
@@ -146,3 +147,34 @@ def test_known_gap_no_entry_facts_the_first_check_is_the_entry():
     assert check.entry_baseline(None, now, position, None, 0) is None
     ev = pe.evaluate(body, now, {}, now, gap_until="09:30")
     assert ev.memory["T-03"]["held_at_entry"] is True
+
+
+def _scenario(name: str):
+    data = json.loads((FIXTURES / f"{name}.json").read_text(encoding="utf-8"))
+    playbooks = json.loads((FIXTURES / "_playbooks.json").read_text(encoding="utf-8"), parse_float=Decimal)
+    legs = tuple(PositionLeg(x["side"], x["type"], Decimal(x["strike"]), datetime.date.fromisoformat(x["expiry"]),
+                             x["lots"], Decimal(x["entry"]), x["tradingsymbol"]) for x in data["position"]["legs"])
+    position = Position(data["underlying"], 65, data["expiry_kind"], datetime.date(2026, 11, 6), legs)
+    now = pe.StrategyState(stops=None, expiry_kind=data["expiry_kind"], days_left=3, hhmm="11:00",
+                           spot=Decimal(data["market"]["spot"]), atm_iv=Decimal(data["market"]["atm_iv"]),
+                           prices_fresh=True, adjustments_used=0, s02_delta_per_lot=Decimal("0.15"))
+    return types.SimpleNamespace(data=data), position, now, pe.body_from_fixture(playbooks, data["family"])
+
+
+def _s02_at_entry(name: str):
+    scn, position, now, body = _scenario(name)
+    entry = check.scenario_entry(scn, now, position)
+    assert all(h.greeks is not None for h in entry.held), entry.held  # every open leg, longs too
+    now = dataclasses.replace(now, held=entry.held)  # the first check reads the same legs (no move since entry)
+    ev = pe.evaluate(body, now, {}, entry, gap_until="09:30")
+    return ev.memory.get("sit.S-02"), [type(r).__name__ for r in ev.results if r.rule_id == "sit.S-02"]
+
+
+def test_round4_adj42_s02_held_at_entry_all_legs_carry_entry_greeks():
+    """ADJ-42 entry (spot 22920, IV 0.07): net delta per lot -0.2327, |.| >= 0.15 -> S-02 held at entry."""
+    assert _s02_at_entry("ADJ-42") == ({"held_at_entry": True, "seen_clear": False}, ["AlreadyTrue"])
+
+
+def test_round4_adj02_s02_not_held_at_entry_net_delta_below_limit():
+    """ADJ-02 entry net delta per lot -0.0159 (< 0.15) -> S-02 not held at entry, so it flags."""
+    assert _s02_at_entry("ADJ-02") == ({"held_at_entry": False, "seen_clear": True}, [])  # clear now, nothing to flag
