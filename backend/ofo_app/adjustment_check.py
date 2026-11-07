@@ -55,6 +55,7 @@ from ofo.adjustment.strategy_type import strike_gap_of, type_of
 from ofo.engine import adjust_money
 from ofo.engine.legs import Action, Instrument, Leg
 from ofo.engine.metrics import UNLIMITED
+from ofo.engine.model import delta_at_intrinsic
 from ofo.errors.explanations import (
     LEVEL_WATCH_LABEL_TEXT,
     PLAYBOOK_DAY_RULE_ACTION_TEXT,
@@ -205,10 +206,7 @@ def _abs_delta(market: MarketInputs, leg: Any, ltp: Decimal | None, spot: Decima
         return abs(g.delta)
     if ltp is None or spot is None or leg.type not in ("CE", "PE"):
         return None
-    intrinsic = max(spot - leg.strike if leg.type == "CE" else leg.strike - spot, Decimal(0))
-    if ltp - intrinsic > INTRINSIC_TICK:
-        return None
-    return Decimal(1) if intrinsic > 0 else Decimal(0)
+    return delta_at_intrinsic(Instrument(leg.type), leg.strike, spot, ltp, INTRINSIC_TICK)
 
 
 class PlaybookGuards(dict):
@@ -273,9 +271,9 @@ def mark_of(row: Any) -> Decimal | None:
     """ADR-266: a leg's mark. LTP inside a sound two-sided book (0 < bid <= ask) -> LTP; outside it -> the bid-ask mid
     (no per-option quote time exists, so "stale" = outside the book); no ltp -> None (unpriced, never a stand-in);
     bid or ask missing, zero or crossed -> the LTP (last trade, no live quote)."""
-    ltp, bid, ask = (getattr(row, k, None) for k in ("ltp", "bid", "ask"))
-    if ltp is None:
+    if row is None or row.ltp is None:
         return None
+    ltp, bid, ask = row.ltp, row.bid, row.ask
     if bid is None or ask is None or bid <= 0 or ask < bid or bid <= ltp <= ask:
         return ltp
     return mid_price(bid, ask)
@@ -538,17 +536,14 @@ def _entry_greeks(leg: Any, clock: datetime.datetime, spot: Decimal, atm_iv: Dec
     """An open leg's per-unit engine Greeks AT ENTRY (ADR-008): entry spot and clock, the entry ATM IV, else the vol the
     engine solves from the leg's own entry (fill) price. Not an option, past expiry, or no vol -> None (not checked)."""
     from ofo import settings  # noqa: PLC0415 - the checked-in registry
-    from ofo.engine import black_scholes as bs  # noqa: PLC0415 - engine only here
+    from ofo.engine.model import greeks_at_price  # noqa: PLC0415 - the engine's one pricing door
 
     if leg.type not in ("CE", "PE"):
         return None
     # shortcut: the registry's default interest rate, not a per-user override; delta moves ~0.001 per 1 % of rate
     rate = settings.defaults()[settings.RISK_FREE_RATE]
-    kind = Instrument(leg.type)
     try:
-        years = bs.year_fraction(clock, leg.expiry)
-        vol = atm_iv if atm_iv is not None else bs.implied_volatility(kind, leg.entry, spot, leg.strike, years, rate)
-        return bs.bs_greeks(kind, spot, leg.strike, years, rate, vol)
+        return greeks_at_price(Instrument(leg.type), spot, leg.strike, leg.expiry, clock, rate, leg.entry, atm_iv)
     except ValueError:  # the engine's refusals (no IV for this price, expiry passed): the rule is not checked at entry
         return None
 

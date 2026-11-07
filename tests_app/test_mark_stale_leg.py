@@ -1,13 +1,18 @@
 """ADR-266: a leg whose LTP is outside its bid/ask is marked at the bid-ask mid (rows from the scenario library)."""
 from __future__ import annotations
 
+import sys
 from decimal import Decimal as D
+from pathlib import Path
 
 import pytest
 from ofo.adjustment.approaches import ChainRow
 from ofo_app.adjustment_check import mark_of
-from test_adjust_scenarios import load
-from test_playbook_eval import _row
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tests" / "adjustment"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tests"))
+from test_adjust_scenarios import load  # noqa: E402
+from test_playbook_eval import _row  # noqa: E402
 
 
 def _chain_row(ltp, bid, ask):

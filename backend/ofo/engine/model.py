@@ -290,6 +290,26 @@ def greeks_unrounded(em: ExpiryModel, kind: Instrument, strike: Decimal, vol: De
                                    dividend_yield=e.dividend_yield)
 
 
+def greeks_at_price(kind: Instrument, spot: Decimal, strike: Decimal, expiry: datetime.date,
+                    clock: datetime.datetime, rate: Decimal, price: Decimal, vol: Decimal | None = None) -> Greeks:
+    """Per-unit engine Greeks at an explicit ``spot`` and ``clock`` (a past instant, e.g. a leg's entry), for a caller
+    that holds no gated forward: vol = ``vol`` when stated, else the vol the engine solves from ``price``. The engine's
+    refusals (no IV for this price, expiry passed) raise ValueError."""
+    years = _bs.year_fraction(clock, expiry)
+    if vol is None:
+        vol = _bs.implied_volatility(kind, price, spot, strike, years, rate)
+    return _bs.bs_greeks(kind, spot, strike, years, rate, vol)
+
+
+def delta_at_intrinsic(kind: Instrument, strike: Decimal, spot: Decimal, ltp: Decimal, tick: Decimal) -> Decimal | None:
+    """ADR-268 (1): an option price within one ``tick`` of its intrinsic value has no time value left, so its absolute
+    delta is 1 in the money, 0 out of the money; a price with time value left -> None (no delta from this rule)."""
+    intrinsic = max(spot - strike if kind is Instrument.CE else strike - spot, Decimal(0))
+    if ltp - intrinsic > tick:
+        return None
+    return Decimal(1) if intrinsic > 0 else Decimal(0)
+
+
 def iv_price(q: NormalizedQuote) -> Decimal | None:
     """ADR-172: THE price an implied volatility is solved from, for every caller (the outcome leg, the ATM pair, the
     leg picker's chain and the chain push): the bid-ask mid when both sides are live and the ask is at or above the
