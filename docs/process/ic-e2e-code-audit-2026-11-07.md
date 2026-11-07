@@ -34,6 +34,38 @@ C5, C6, C4).
   second full condor (unverified).
 - **Decision:** _open_
 
+#### C1 deep dive (2026-11-07, code read at ebefb113)
+
+An adjustment on a live condor is a chain of 12 parts. The two ends are built: picking the adjustment (1-2) and
+recording it once Zerodha returns (9-11). The middle, which turns a confirmed new version into the orders that close
+and open legs, is missing (4-6). Parts 7-8 exist only as domain code nothing calls.
+
+| # | Part | State | Evidence |
+|---|---|---|---|
+| 1 | Pick an approach, see its legs and cost (Compare) | DONE (same for paper and live) | `AdjustCompare.vue:227` calls `POST /adjustment-approaches` (`routes/adjustment.py:483`) |
+| 2 | Load the after-legs into the builder for a live strategy | DONE | `StrategyBuilderPage.vue` `prepareApproach`: no paper book, so `setLegs(next)` |
+| 3 | Save the after-legs as a PROPOSED version (the active one stays) | DONE in the backend; the screen never says so | `strategy_store.update` calls `_propose` (`strategy_store.py:384-386`, `:594-620`); table from migration 0022 |
+| 4 | User confirms the proposed version | Backend DONE, NO SCREEN | `POST /strategies/{id}/versions/{n}/confirm` (`routes/strategies.py:544`); 0 frontend callers |
+| 5 | Build the difference basket (new version minus what Zerodha holds: close some legs, open others) | NOT DONE | `routes/execute.py:108` takes ENTRY/EXIT only; `_wanted` builds ENTRY from the ACTIVE definition (`execute.py:354-368`, `strategy_store.load:715`); `_executable` refuses an ENTRY while held (`execute.py:343-351`); `ExecutionAction.ADJUSTMENT` (`ofo/execution/context.py:81,93`) is never used by the app |
+| 6 | Execute route accepts an ADJUSTMENT action and links the plan to the proposed version | NOT DONE | `record_plan(..., strategy_version=store.built_from(stored))` always passes the ACTIVE number (`execute.py:410`, `strategy_store.py:532-541`) |
+| 7 | Before/After risk, margin and charges of the change, plus the Strategy Guard acknowledgement when the risk profile changes | Domain only, NOT WIRED | `ofo/strategy/modification.py` (`propose_modification`, `prepare_confirmed_modification`) has 0 importers; tests pass (32 passed with partial/review) |
+| 8 | Order sequence: protective buys first, a sold leg never sent before its hedge | Domain only, NOT WIRED | `ofo/execution/sequence.py:419` `sequence_plan`; basket built "in plan order" (`basket.py:278`); the paper confirm list puts exits before adds (`paperDrafts.js:118`) |
+| 9 | Pre-send checks: margin with current positions, reconciliation, circuit and price band | DONE (reusable as is) | `kite_margin.py:44` `consider_positions=true`; mismatch blocks (`execute.py:395`); `_gate` (`execute.py:404`) |
+| 10 | Zerodha return, order book and audit rows | DONE | `routes/execution_return.py:290,350`; `order_audit.record_prepared` (`execute.py:415`) |
+| 11 | Make the proposed version active only when Zerodha's position matches it; flag a mismatch or partial | DONE in the backend, but unreachable | `strategy_store.settle_versions` (`:656-712`), called at `routes/execution_return.py:352`; it waits for "a closed ENTRY plan built from" the proposed version, which part 6 can never produce |
+| 12 | Partial fill of an adjustment: the four choices (Complete, Retry, Review, Exit partial) | Domain only, NO ROUTE OR SCREEN | `ofo/execution/partial.py` (REQ-058); no route acts on a choice (C5) |
+
+**Also blocks C1 end to end (other gaps):** C2 (a live strategy is not monitored, so no trigger leads to the
+suggestion), C3/C14 (sequence), C4 (freeze split), C5 (part 12).
+
+**Unverified:** whether Kite's basket screen places orders in list order. The sequence only helps if it does, or if
+the basket is split into a buy step and a sell step.
+
+**Doc mismatch fixed:** `work/W-144.md` says `todo`, but its versions code is built (commit 049806e5, migration
+0022, `strategy_store.py:445-712`). A note was added there. The status field is left for the verifier.
+
+**Correction to the first pass:** the auditor named `TwoBasketStepper.vue`; that file does not exist.
+
 ### C2: a live condor is not monitored
 - **Path:** live
 - **What is missing:** the background worker and `read_tracked` read only `public.paper_orders`. Real fills are
