@@ -31,7 +31,7 @@ def test_entry_baseline_from_the_entry_not_the_first_check():
     sc = load(F71)
     body, state = body_of(sc), state_of(sc)
     entry = replace(entry_of(sc), spot=D("22850"))
-    ev = evaluate(body, state, {}, entry, entry_fallback=state)
+    ev = evaluate(body, state, {}, entry)
     assert isinstance(_rule(ev, "T-01"), Flag)
     assert ev.memory["T-01"] == {"held_at_entry": False, "seen_clear": False}
 
@@ -39,23 +39,21 @@ def test_entry_baseline_from_the_entry_not_the_first_check():
 def test_entry_crossing_stays_quiet():
     sc = load(F71)
     body, state = body_of(sc), state_of(sc)
-    ev = evaluate(body, state, {}, entry_of(sc), entry_fallback=state)
+    ev = evaluate(body, state, {}, entry_of(sc))
     assert isinstance(_rule(ev, "T-01"), AlreadyTrue)
 
 
-def test_a_rule_not_computable_at_entry_takes_the_first_check_never_not_held():
-    """The entry state has no Greeks: a delta rule takes its entry value from the first check (fallback); with no
-    fallback it counts as not held (the old answer, kept for callers that pass none)."""
+def test_a_rule_not_computable_at_entry_is_not_held_never_the_first_check():
+    """Round 3 (finding rule-entry-baseline-taken-at-first-check): this entry state has no Greeks, so a delta rule
+    true at the first check is NOT held at entry (the app's entry state carries engine deltas; a first-check
+    fallback held every Greek / premium rule true now and hid the crossing)."""
     sc = load(F71)
     body, state = body_of(sc), state_of(sc)
-    entry = entry_of(sc)
-    with_fb = evaluate(body, state, {}, entry, entry_fallback=state)
-    no_fb = evaluate(body, state, {}, entry)
-    on_state = evaluate(body, state, {}, state)
-    for rid, mem in with_fb.memory.items():
-        expected_held = on_state.memory[rid]["held_at_entry"]
-        if no_fb.memory[rid]["held_at_entry"] != expected_held:  # a rule the entry state could not compute
-            assert mem["held_at_entry"] == expected_held, rid
+    state = replace(state, shorts=tuple(replace(s, abs_delta=D("0.9")) for s in state.shorts))  # T-03 true now
+    assert evaluate(body, state, {}, state).memory["T-03"]["held_at_entry"] is True  # the first check holds it
+    ev = evaluate(body, state, {}, entry_of(sc))
+    assert ev.memory["T-03"] == {"held_at_entry": False, "seen_clear": False}
+    assert isinstance(_rule(ev, "T-03"), Flag)
 
 
 def test_t01_flags_beyond_the_short_call():

@@ -1201,7 +1201,7 @@ class Worker:
         if entry is not None:  # T-11: the scenario's own entry IV, as the screen's check does (adjustment_check:500)
             state = dataclasses.replace(state, entry_atm_iv=entry.atm_iv)
         base = check.entry_baseline(scn, state, w.tracked.position, w.entry_facts, marker)
-        ev = pe.evaluate(w.body, state, known, base or state, gap_until=prefs.gap_until, entry_fallback=state)
+        ev = pe.evaluate(w.body, state, known, base or state, gap_until=prefs.gap_until)
         self._count_outcomes(ev)
         if memory is not None and _write_key(ev) == self._written.get(sid):
             return ev  # nothing a write would change (rule memory, flagged ids, clear ids): no DB call

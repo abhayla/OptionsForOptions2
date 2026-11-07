@@ -534,16 +534,37 @@ def roll_basis_of(admin: Decimal | None, user_values: Mapping[str, Decimal] | No
     return RollBasis(code, got.source, spot, None, call, put)
 
 
+def _entry_abs_delta(leg: Any, clock: datetime.datetime, spot: Decimal, atm_iv: Decimal | None) -> Decimal | None:
+    """A short's |delta| AT ENTRY from the engine (ADR-008): entry spot and clock, the entry ATM IV, else the vol the
+    engine solves from the leg's own entry (fill) price. Not an option, past expiry, or no vol -> None (not checked)."""
+    from ofo import settings  # noqa: PLC0415 - the checked-in registry
+    from ofo.engine import black_scholes as bs  # noqa: PLC0415 - engine only here
+
+    if leg.type not in ("CE", "PE"):
+        return None
+    # shortcut: the registry's default interest rate, not a per-user override; delta moves ~0.001 per 1 % of rate
+    rate = settings.defaults()[settings.RISK_FREE_RATE]
+    kind = Instrument(leg.type)
+    try:
+        years = bs.year_fraction(clock, leg.expiry)
+        vol = atm_iv if atm_iv is not None else bs.implied_volatility(kind, leg.entry, spot, leg.strike, years, rate)
+        return abs(bs.bs_greeks(kind, spot, leg.strike, years, rate, vol).delta)
+    except ValueError:  # the engine's refusals (no IV for this price, expiry passed): the rule is not checked at entry
+        return None
+
+
 def _entry_state(clock: datetime.datetime, spot: Decimal, atm_iv: Decimal | None, state: pe.StrategyState,
                  position: Position) -> pe.StrategyState:
-    """An F-71 entry state: the entry's clock and spot, today's short strikes, no Greeks (a rule that needs them
-    takes its entry value from the first check, ``pe.evaluate(entry_fallback=)``)."""
+    """An F-71 entry state (round 3, finding rule-entry-baseline-taken-at-first-check): the entry's clock and spot,
+    each short with its engine delta AT ENTRY and its entry premium as its price, the entry ATM IV as both IVs. A
+    rule still not computable here (no P&L, no margin at entry) counts as not held, never as the first check."""
     clock = clock.astimezone(IST)
     expiry = min(x.expiry for x in position.legs)
+    shorts = tuple(pe.ShortLeg(x.strike, _entry_abs_delta(x, clock, spot, atm_iv), x.entry, x.type)
+                   for x in position.legs if x.side == Action.SELL.value)
     return pe.StrategyState(stops=None, expiry_kind=state.expiry_kind, days_left=(expiry - clock.date()).days,
-                            hhmm=clock.strftime("%H:%M"), spot=spot,
-                            shorts=tuple(pe.ShortLeg(s.strike, None, None, s.kind) for s in state.shorts),
-                            atm_iv=atm_iv, prices_fresh=True)
+                            hhmm=clock.strftime("%H:%M"), spot=spot, shorts=shorts,
+                            atm_iv=atm_iv, entry_atm_iv=atm_iv, prices_fresh=True)
 
 
 def scenario_entry(scn: Any, state: pe.StrategyState, position: Position) -> pe.StrategyState | None:
@@ -572,9 +593,9 @@ def entry_baseline(scn: Any, state: pe.StrategyState, position: Position, facts:
       starting point ("already true after adjustment N");
     - scenario mode with a stated entry -> the scenario's entry;
     - stored entry facts with their time (``EntryFacts.at``) -> the spot and clock of the first fill;
-    - no facts (a live fill, a fill before 0039), unreadable facts, facts with no time -> None: the first check is the
-      baseline (the known gap, named in the finding).
-    The caller passes ``None`` -> this check's state, and the check's state as ``entry_fallback``."""
+    - no facts (a fill before 0039), unreadable facts, facts with no time -> None: the first check is the baseline
+      (the known gap, named in the finding; test_rule_entry_baseline::test_known_gap_no_entry_facts...).
+    The caller passes ``None`` -> this check's state."""
     if marker > 0:
         return None
     if scn is not None:
@@ -598,7 +619,7 @@ async def _evaluate_stored(conn: Any, user_ref: str, strategy_id: int, body: Map
         from ofo_app.adjustment_readers import entry_facts_in  # noqa: PLC0415 - read path only
         facts = await entry_facts_in(conn, strategy_id)
     base = entry_baseline(scn, state, position, facts, marker)
-    ev = pe.evaluate(body, state, memory, base or state, gap_until=gap_until, entry_fallback=state)
+    ev = pe.evaluate(body, state, memory, base or state, gap_until=gap_until)
     return ev, memory, marker
 
 
