@@ -6,6 +6,7 @@
      Draft and active come from the server's answer (is_system, draft, active), never inferred here. -->
 <template>
   <section class="pb mx-auto max-w-[1400px] p-4 text-ink" data-testid="adjustments-page">
+    <PageHeader parent="Strategies" title="Adjustments" />
     <Tabs v-model="screenTab" :tabs="SCREEN_TABS" label="Adjustments" id-prefix="adj" class="mb-3" />
     <div v-if="screenTab === 'preferences'" id="adj-panel-preferences" role="tabpanel" aria-labelledby="adj-tab-preferences" data-testid="adj-panel-preferences">
       <PreferencesTab />
@@ -177,6 +178,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import api from '@/services/api'
+import PageHeader from '@/components/common/PageHeader.vue'
 import Tabs from '@/components/common/Tabs.vue'
 import PreferencesTab from '@/components/adjustments/PreferencesTab.vue'
 import SystemPlaybookAdmin from '@/components/adjustments/SystemPlaybookAdmin.vue'

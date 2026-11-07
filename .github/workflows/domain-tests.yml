@@ -1,0 +1,29 @@
+# Domain suite (tests/). Project-owned. The kit ci.yml skips its pytest step (.claude/project/ci-run-tests.txt = no)
+# because its job cap is 10 min and this suite needs ~10-12 min. No paths filter: every PR and push runs it.
+name: Domain tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  domain-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install pyyaml jsonschema pytest
+      - name: Run the domain suite
+        run: python -m pytest -q -p no:cacheprovider

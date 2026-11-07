@@ -31,6 +31,7 @@ const ACCOUNT_ITEMS = [
   'Preferences',
   'Strategy Preferences',
   'Broker & Market Data',
+  'Settings', // GC-SET (REQ-167), nav.js app-settings
 ]
 
 test('the seven sections are the primary nav, in order (REQ-009 statement)', async ({ page }) => {
@@ -76,7 +77,7 @@ test('AC-5: Orders offers strategy-linked orders only, never an order-entry form
   }
 })
 
-test('AC-8: the avatar menu opens Account & Settings with its ten items', async ({ page }) => {
+test('AC-8: the avatar menu opens Account & Settings with its eleven items', async ({ page }) => {
   await page.goto('/')
   const nav = new NavPage(page)
   await nav.openAccountMenu()
@@ -105,7 +106,7 @@ test('every nav link, sub-item link and account link resolves to a real page (fa
     await page.goto(section)
     for (const href of await nav.subItems.evaluateAll((els) => els.map((e) => e.getAttribute('href') as string))) hrefs.add(href)
   }
-  // 7 sections + every sub-item + /settings + its ten items, derived from the spec strings above
+  // 7 sections + every sub-item + /settings + its eleven items, derived from the spec strings above
   const subItemCount = Object.values(SECTIONS).reduce((n, s) => n + s.items.length, 0)
   expect(hrefs.size).toBe(SECTION_ORDER.length + subItemCount + 1 + ACCOUNT_ITEMS.length)
   for (const href of hrefs) {

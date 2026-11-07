@@ -4,7 +4,7 @@
      browser counts and computes nothing. An open group links to the compare of its strategy (REQ-156). -->
 <template>
   <section ref="root" class="p-4" data-testid="opportunities-page">
-    <h1 class="text-lg font-semibold">Adjustment opportunities</h1>
+    <PageHeader parent="Positions" title="Adjustment opportunities" />
     <p v-if="state === 'loading'" class="mt-2 text-sm text-ink-muted" data-testid="opp-loading">Loading.</p>
     <ErrorMessage v-else-if="state === 'error'" :parts="errorParts" prefix="opp-error" data-testid="opp-error" />
     <template v-else>
@@ -77,6 +77,7 @@
 import { inject, nextTick, onMounted, reactive, ref } from 'vue'
 import { RouterLink, routeLocationKey } from 'vue-router'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
+import PageHeader from '@/components/common/PageHeader.vue'
 import api, { NEUTRAL_PARTS } from '@/services/api'
 import { compareUrl } from '@/lib/adjustDrawer'
 import { istTime } from '@/lib/displayFormat'
