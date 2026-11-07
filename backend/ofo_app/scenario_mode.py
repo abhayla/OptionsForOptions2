@@ -62,6 +62,7 @@ from decimal import Decimal
 from typing import Any
 
 from fastapi import Depends
+from ofo import market_calendar
 from ofo.engine import adjust_money
 from ofo.instruments.models import BSE_FO, BSE_INDEX, INDEX_ROWS, NSE_FO, NSE_INDEX
 from ofo.instruments.parser import parse_instruments_rows
@@ -298,6 +299,93 @@ def scenario_path(scenario_id: str) -> pathlib.Path:
     return path
 
 
+# --- issue #649 (finding fixture-dates-expire-with-the-clock): every read of a scenario file goes through ``read``,
+# which moves ALL its dates by ONE whole-week offset for the whole library (``date_shift``) so the library's earliest
+# expiry stays >= today + LEAD_DAYS. The database's lifecycle guard (0005, ADR-057) judges "expired" by its own clock;
+# the fixtures' fixed dates would otherwise go stale. Whole weeks keep every weekday and every interval (days to
+# expiry, clock to entry), so prices and paise are unchanged. The NSE holidays move by the same offset while a scenario
+# is requested (``market_calendar.world_shift``), so "before a holiday" / next open stay as the fixture was written.
+# Trading symbols are opaque ids (nothing parses their date part) and stay as written; prose stays as written.
+LEAD_DAYS = 7  # margin for a run lasting days
+_DATE_AT = re.compile(r"\d{4}-\d{2}-\d{2}(?=$|[T ]\d{2}:\d{2})")  # a date alone or opening an ISO / Kite timestamp
+
+
+def _map_dates(x: Any, fn: Any) -> Any:
+    if isinstance(x, dict):
+        return {k: _map_dates(v, fn) for k, v in x.items()}
+    if isinstance(x, list):
+        return [_map_dates(v, fn) for v in x]
+    if isinstance(x, str) and _DATE_AT.match(x):
+        return fn(datetime.date.fromisoformat(x[:10])) + x[10:]
+    return x
+
+
+def expiries(doc: Any) -> set[datetime.date]:
+    """Every date the document carries under an ``expiry`` key."""
+    found: set[datetime.date] = set()
+
+    def walk(x: Any, key: str) -> None:
+        if isinstance(x, dict):
+            for k, v in x.items():
+                walk(v, k)
+        elif isinstance(x, list):
+            for v in x:
+                walk(v, key)
+        elif key == "expiry" and isinstance(x, str) and _DATE_AT.match(x):
+            found.add(datetime.date.fromisoformat(x[:10]))
+
+    walk(doc, "")
+    return found
+
+
+def library_files() -> list[pathlib.Path]:
+    """Every scenario file: ADJ snapshots, PATH specs and every PATH frame."""
+    return [*sorted(FIXTURES.glob("ADJ-*.json")), *sorted(PATHS.glob("PATH-*.json")),
+            *sorted(PATHS.glob("PATH-*/frame-*.json"))]
+
+
+def shift_weeks(today: datetime.date, earliest: datetime.date) -> int:
+    """The smallest whole-week shift (>= 0) putting ``earliest`` on or after ``today + LEAD_DAYS``."""
+    return max(0, -(-(today + datetime.timedelta(days=LEAD_DAYS) - earliest).days // 7))
+
+
+def earliest_expiry() -> datetime.date:
+    return min(d for f in library_files() for d in expiries(json.loads(f.read_text(encoding="utf-8"))))
+
+
+_shift: list[datetime.timedelta] = []  # once per process: a run crossing midnight never mixes two offsets
+
+
+def date_shift() -> datetime.timedelta:
+    """The library's date offset for this process. Tests add it to their own clock constants for a scenario."""
+    if not _shift:
+        from ofo.timeutil import IST  # noqa: PLC0415
+
+        _shift.append(datetime.timedelta(weeks=shift_weeks(datetime.datetime.now(IST).date(), earliest_expiry())))
+    return _shift[0]
+
+
+def shift_doc(doc: Any, step: datetime.timedelta) -> Any:
+    return doc if not step else _map_dates(doc, lambda d: (d + step).isoformat())
+
+
+def shifted(text: str) -> str:
+    """A fixture date / timestamp text as the shifted library carries it (for tests' literal expectations)."""
+    return shift_doc(text, date_shift())
+
+
+def _calendar_shift() -> datetime.timedelta:
+    return date_shift() if scenario_requested() else datetime.timedelta(0)
+
+
+market_calendar.world_shift = _calendar_shift  # the holidays move with the scenario world, never outside it
+
+
+def read(path: pathlib.Path, **json_kw: Any) -> Any:
+    """One scenario file, its dates shifted by ``date_shift()`` (the ONE reader of scenario files, issue #649)."""
+    return shift_doc(json.loads(path.read_text(encoding="utf-8"), **json_kw), date_shift())
+
+
 def _at(text: object) -> datetime.datetime:
     try:
         at = datetime.datetime.fromisoformat(str(text))
@@ -370,7 +458,7 @@ class Scenario:
         and the index, received at the frame's own clock) and moves the scenario's clock to it. Same frame -> no-op."""
         if frame == self.frame:
             return
-        data = json.loads(frame_path(self.scenario_id, frame).read_text(encoding="utf-8"))
+        data = read(frame_path(self.scenario_id, frame))
         at = _at((data.get("clock") or {}).get("ist"))
         master = self.provider.instrument_master()
         token_of = {lc.broker_refs[0].broker_symbol: int(lc.broker_refs[0].broker_token) for lc in master}
@@ -585,7 +673,7 @@ def _instrument_rows(scn: dict, twins: Mapping[str, tuple[int, int]] | None = No
 
 def load(scenario_id: str) -> Scenario:
     """Loads and feeds one scenario (no environment read here: ``current`` passes the id)."""
-    scn = json.loads(scenario_path(scenario_id).read_text(encoding="utf-8"))
+    scn = read(scenario_path(scenario_id))
     clock_at = _at((scn.get("clock") or {}).get("ist"))
     state = scn.get("data_state") or {}
     feed = state.get("feed", "ok")

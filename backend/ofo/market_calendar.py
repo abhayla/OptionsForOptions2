@@ -85,9 +85,32 @@ def _table(holidays: Holidays | None) -> Holidays:
     if holidays is not None:
         return holidays
     try:
-        return _load()
+        table = _load()
     except CalendarError:
         return {}
+    shift = world_shift()
+    return _shifted(shift) if shift else table
+
+
+#: DEV/TEST scenario mode only (issue #649): ``ofo_app.scenario_mode`` installs the scenario library's date offset here,
+#: so a scenario moved by whole weeks keeps the holidays at the same distance from its dates. Production: always zero.
+def world_shift() -> datetime.timedelta:
+    return datetime.timedelta(0)
+
+
+@lru_cache(maxsize=4)
+def _shifted(shift: datetime.timedelta) -> Holidays:
+    """The data file's table moved by ``shift``: each year's holidays regrouped by their new year, and every year a
+    shifted year reaches is covered (shortcut: a covered year's first/last ``shift`` days come from no data,
+    read as no holiday;
+    the scenarios carry no date there)."""
+    out: dict[int, set[datetime.date]] = {}
+    for year, days in _load().items():
+        for y in {(datetime.date(year, 1, 1) + shift).year, (datetime.date(year, 12, 31) + shift).year}:
+            out.setdefault(y, set())
+        for d in days:
+            out.setdefault((d + shift).year, set()).add(d + shift)
+    return {y: frozenset(v) for y, v in out.items()}
 
 
 def _day_status(day: datetime.date, holidays: Holidays) -> MarketStatus | None:

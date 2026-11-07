@@ -9,18 +9,18 @@ from __future__ import annotations
 
 import datetime
 import importlib.util
-import json
 import pathlib
 from decimal import Decimal
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 from ofo.engine.adjust_history import HistoryOrder, adjustment_history
+from ofo.settings import calc as _calc
+from ofo.settings import defaults as _defaults
 from ofo.timeutil import IST
 from ofo_app import catalogue_store, paper_book, scenario_mode
 from ofo_app import db as app_db
 from ofo_app.config import get_settings
-from ofo.settings import calc as _calc, defaults as _defaults
 
 _MAX_DELIST = _calc.max_delist_percent(_defaults())
 
@@ -28,8 +28,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 _spec = importlib.util.spec_from_file_location("seed_scenario", ROOT / "scripts" / "seed_scenario.py")
 seed_mod = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(seed_mod)
-DOC = json.loads((ROOT / "tests" / "fixtures" / "adjust_scenarios" / "ADJ-13.json").read_text(encoding="utf-8"),
-                 parse_float=Decimal)
+DOC = scenario_mode.read(scenario_mode.scenario_path("ADJ-13"), parse_float=Decimal)  # dated as seeded (#649)
 POS = DOC["position"]
 OK, NOT_FOUND = 200, 404
 IC_MAX = 2  # system_playbooks.json iron condor guards.max_adjustments

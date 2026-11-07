@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import asyncio
 import datetime
-import json
 import os
 import pathlib
 import re
@@ -133,7 +132,8 @@ async def _contract_id(conn, leg: dict, underlying: str) -> int:
 
 
 async def seed(scenario_id: str) -> int:
-    doc = json.loads(scenario_path(scenario_id).read_text(encoding="utf-8"))
+    from ofo_app.scenario_mode import read  # noqa: PLC0415 - the one date-shifting reader (issue #649)
+    doc = read(scenario_path(scenario_id))
     position = doc.get("position") or {}
     legs, history = position.get("legs") or [], position.get("history") or []
     if not legs:
