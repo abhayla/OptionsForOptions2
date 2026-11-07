@@ -261,6 +261,13 @@ describe('Delete with Undo', () => {
     postAnswer = () => Promise.resolve({ data: { id: 7, revision: 2 } })
   })
 
+  it('ADR-271: a strategy with a paper order shows the paper refusal; a real-order one keeps the sent-orders text', async () => {
+    answer = () => Promise.resolve({ data: { strategies: [{ ...withDelete(8, false), has_paper_order: true }, withDelete(9, false)] } })
+    const w = await open()
+    expect(w.get('[data-strategy-id="8"] [data-testid="delete-refused"]').text()).toBe("Can't delete: paper orders were placed")
+    expect(w.get('[data-strategy-id="9"] [data-testid="delete-refused"]').text()).toBe("Orders were already sent for this strategy, so it cannot be deleted.")
+  })
+
   it('Delete only when can_delete is true; the refusal text replaces it otherwise; a missing field counts as false', async () => {
     answer = () => Promise.resolve({ data: { strategies: [withDelete(7, true), withDelete(8, false), withDelete(9)] } })
     const w = await open()
@@ -293,6 +300,8 @@ describe('Delete with Undo', () => {
     await flushPromises()
     expect(sent.filter((c) => c.method === 'DELETE').map((c) => c.url)).toEqual(['/strategies/7?expected_revision=2'])
     expect(w.find('[data-testid="strategy-row"]').exists()).toBe(false)
+    // ADR-271: the Undo is the fixed bottom-centre toast where the user clicked, not an inline line under the list
+    expect(w.get('[data-testid="delete-toast"]').classes()).toEqual(expect.arrayContaining(['fixed', 'bottom-6', 'left-1/2']))
     list = [withDelete(7, true)]
     await w.get('[data-testid="delete-undo"]').trigger('click')
     await flushPromises()
