@@ -1,0 +1,20 @@
+{
+  "id": "db-test-fixed-scenario-clock-vs-db-clock",
+  "class": "Any DB test file that drives code with a FIXED scenario clock while the database stamps rows with its REAL clock (now()), and shares rows (one strategy, one record set) across tests: once the calendar passes the scenario clock, a row written by an earlier test carries a time far after the scenario clock, so time-window logic (cool-downs, re-arm, day caps) in a later test never re-opens. The file turns red by calendar date with no code change; each test still passes alone.",
+  "mechanism": "Scenario ADJ-02 clock 2026-11-06 11:40 IST; records stamped by the DB on 2026-11-07. tests_app/test_background_worker.py tests reuse one strategy, so a later test's worker restores the previous test's last T-01 record (time ~17 h after the scenario clock); the gate re-arms only after record time + 5 min cool-down, so 'no T-01 record within 130 s of the crossing at 23420'.",
+  "first_seen": {
+    "date": "2026-11-07",
+    "where": "fix batch 1 impact tests (feature/adjustments)",
+    "evidence": "db_run_fresh.py on the untouched commit f8425618, tests_app/test_background_worker.py in full: '11 failed, 7 passed in 1164.83s' (07 Nov 05:2x IST); the same red test alone: '1 passed in 16.76s'; builder trace (round 2): restored T-01 record time 2026-11-07 05:09 vs worker clock 2026-11-06 11:43."
+  },
+  "fix": "none yet: issue #663 (deferred). Isolate each test (own strategy + lister filtered to it) or stamp records from the injected clock in test mode.",
+  "detection": {
+    "status": "unguarded",
+    "checks": [],
+    "note": "Only a full-file run shows it; single-test runs and name-filtered runs pass. A check that runs each scenario-clock DB file in full on a date after its scenario clock would catch it."
+  },
+  "spec_ref": [],
+  "occurrences": 1,
+  "live_example": "Every worker test that opens a T-01 record after the first test in the file: 11 of 18 red on 7 Nov, green on 6 Nov before 11:40.",
+  "scope": "generic"
+}
