@@ -42,8 +42,8 @@ and open legs, is missing (4-6). Parts 7-8 exist only as domain code nothing cal
 
 | # | Part | State | Evidence |
 |---|---|---|---|
-| 1 | Pick an approach, see its legs and cost (Compare) | DONE (same for paper and live) | `AdjustCompare.vue:227` calls `POST /adjustment-approaches` (`routes/adjustment.py:483`) |
-| 2 | Load the after-legs into the builder for a live strategy | DONE | `StrategyBuilderPage.vue` `prepareApproach`: no paper book, so `setLegs(next)` |
+| 1 | Pick an approach, see its legs and cost (Compare) | PAPER ONLY (corrected 2026-11-07 after a re-read). For a live strategy it answers "not available" | `AdjustCompare.vue:227` calls `POST /adjustment-approaches` (`routes/adjustment.py:483`); the route reads legs with `get_tracked_reader`, which is "the paper book reader" (`adjustment.py:167-170`); no paper orders gives `tracked is None`, so it is refused (`:502-506`). Same root cause as C2 |
+| 2 | Load the after-legs into the builder for a live strategy | Code path exists, but a live strategy never reaches it (part 1 refuses first) | `StrategyBuilderPage.vue` `prepareApproach`: no paper book, so `setLegs(next)` |
 | 3 | Save the after-legs as a PROPOSED version (the active one stays) | DONE in the backend; the screen never says so | `strategy_store.update` calls `_propose` (`strategy_store.py:384-386`, `:594-620`); table from migration 0022 |
 | 4 | User confirms the proposed version | Backend DONE, NO SCREEN | `POST /strategies/{id}/versions/{n}/confirm` (`routes/strategies.py:544`); 0 frontend callers |
 | 5 | Build the difference basket (new version minus what Zerodha holds: close some legs, open others) | NOT DONE | `routes/execute.py:108` takes ENTRY/EXIT only; `_wanted` builds ENTRY from the ACTIVE definition (`execute.py:354-368`, `strategy_store.load:715`); `_executable` refuses an ENTRY while held (`execute.py:343-351`); `ExecutionAction.ADJUSTMENT` (`ofo/execution/context.py:81,93`) is never used by the app |
