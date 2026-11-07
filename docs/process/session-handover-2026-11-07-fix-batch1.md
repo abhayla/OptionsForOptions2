@@ -1,4 +1,35 @@
-# Session handover: fix batch 1 (trustworthy rules and prices), 7 Nov 2026 03:11-09:3x IST
+# Session handover: fix batch 1 (trustworthy rules and prices), 7 Nov 2026 03:11-13:3x IST
+
+## UPDATE 13:2x IST: items 1+2 DONE after a reviewed round 3 and a round 4 (supersedes the PARKED lines below)
+Owner present from ~09:2x; the owner's standing rule (second occurrence -> independent review -> reviewed re-approach)
+was applied instead of leaving #664 parked. `feature/adjustments` tip **f1992b29** (+ this handover commit), local only.
+- Round 3 (790db414, merged 6e65e6ce): entry state carries engine deltas (bs_greeks at entry spot / IV, else vol from
+  the fill) and entry premiums; `entry_fallback` deleted; 4/4 mutants killed. Follow-up ae3f4d1e (merged a8406d9f):
+  test_playbook_test_route expects sit.S-02 (ADJ-02 entry net delta/lot -0.0159 < 0.15 -> correctly flags); PATH-10
+  `T-06-2x-credit` on the strict KNOWN list: S-02's correct 6th record hits alerts.intraday.daily_cap 6 (cap scope =
+  batch 2 issues 57/59, ADR-267; the paper stop itself is never gated, REQ-170 AC-5).
+- Round 4 (034e9cd9, merged f1992b29): the screen check found sit.S-02 flagged on ADJ-42 although true at entry
+  (net delta/lot -0.2327): round 3 gave entry Greeks to shorts only. Now every open leg carries entry Greeks and S-02
+  keeps F-71 memory. Reviewer skipped for this third red: single measured cause (stated to the owner).
+- Lead runs (one file per throwaway DB) on the merged tips: rule_entry_baseline 7, playbook_test_route 11,
+  adjustment_opportunities 15, ic_rules_worker_paths 9, db_gate 15, 0045 2, repair 1, ic_second_adjustment 1+1xfail,
+  risk_exit 9, settings_in_force 31, worker_group_key 1 passed; adjustment_check 9 passed / 2 failed = the same 2 as
+  f8425618; pure 1589 / 1550 passed.
+- Screen check (f1992b29): (a) ADJ-42 T-01 already_true 0.3490, S-02 already_true 0.2065, Adjustment opportunities
+  Open 0 on screen - PASS; ADJ-02 check flags T-01 0.3416, T-03 0.4103, T-09 2.7000, S-02 0.2120 (none true at entry) -
+  PASS by API (the screen copy's frozen scenario clock never closes a candle, so it opens no record; record opening is
+  the DB core test, `records_after_new_crossing=1`). (c) delete refused AND Undo in the fixed toast ("Strategy deleted.
+  Undo" restores the row) - PASS. (b) and (d) not checked on screen: the library has no unexpired stale-feed or
+  through-the-short scenario (unit tests cover both). Screenshots: `C:\Users\itsab\AppData\Local\Temp\claude-chrome-screenshots-P8hkWb\screenshot-1794037407554-1.jpg`,
+  `...\screenshot-1794037491287-2.jpg`; API replies `D:\Abhay\scratch\fix-batch1\evidence-adj42-already-true.json`, `evidence-adj02-flags.json`.
+- Still open on items 1+2: ADR-268 "delta taken as 1" wording line; reviewer MINOR findings (0045 downgrade lock,
+  repair second run is a dry run, repair compares with today's strikes -> never `--apply` on a real DB until fixed).
+- Time: ~10.5 h vs 7.5 h estimated. Biggest cost: ~2.5 h of throwaway-DB setup (~3 min per file x ~50 runs).
+  Next before batch 2 (recommended to the owner): migrate a template DB once and clone it per file; baseline the
+  start commit while builders build; size builders to their 80-call cap; refresh scenario dates.
+
+---
+(Original 09:3x text follows.)
 
 Contract: `docs/process/goal-contract-fix-batch1-2026-11-07.md`. Run tree `D:\Abhay\Ventures\OptionsForOptions2-OptionsForOptions2-settings`,
 branch `feature/adjustments`, start f8425618, end **c816a576** (local only: no push, no PR, no CI, per contract).
