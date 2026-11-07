@@ -43,6 +43,9 @@ KNOWN = {  # case -> measured blocker (a throwaway DB run; the layer is proven w
     # (the seed's scenario entry clock), not the row's created_at (the real date of the seeding)
     # retry r4: r4-run1.log B1-RATES None (the conftest's cached "no rate set") is fixed - the walk seeds the stated
     # rates (_paths_helpers.set_env -> t19_support.seed_rates) and r4-run2.log prices (cost 57.44 at Fri 15:00)
+    "T-06-2x-credit": "held by alerts.intraday.daily_cap 6: S-02 now opens a 6th record (F-71 round 3, correct); the "
+                      "cap's scope is batch 2 (issues 57/59, ADR-267). The paper stop itself is not gated (REQ-170 "
+                      "AC-5, test_risk_exit_not_gated)",
     "T-19": "PATH FIXTURE, parked (r4-run2.log): on the Mon 9 Nov expiry-day frames 4-8 every IC leg is ltp 0.05 / "
             "bid 0.00 / ask 0.10, so compare.approach_cost finds no live book (adjust_cmp_no_bid_ask) for any traded "
             "contract and cheapest_approach answers adjust_trigger_no_approach_priced, while premium_left is 0.00; "
