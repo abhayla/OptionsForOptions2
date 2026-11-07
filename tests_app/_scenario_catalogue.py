@@ -7,6 +7,7 @@ knowledge/findings/fixture-dates-expire-with-the-clock.json). Guarded by tests_a
 from __future__ import annotations
 
 import datetime
+import functools
 
 from ofo.settings import calc as _calc
 from ofo.settings import defaults as _defaults
@@ -25,6 +26,7 @@ def scenario_ids() -> list[str]:
                   + [p.name for p in scenario_mode.PATHS.glob("PATH-*") if p.is_dir()])
 
 
+@functools.cache  # 70 scenario loads: once per process (the union is the same list every time)
 def library_contracts() -> list:
     """The union of every scenario's instrument list (the index rows once). ADJ-20d leaves NIFTY26N0323700CE out of
     its own list; the union carries it (every other scenario lists it) and ADJ-20d's provider still does not."""

@@ -8,11 +8,14 @@
   "where": "GC-IC1 step 10 fix merge ef8ed5e5, db_run_fresh tests_app/test_situation_state.py + tests_app/test_adjustment_check.py at ~02:20 IST",
   "evidence": "D:\\Abhay\\scratch\\gcic1\\step10\\db_sit.log: '2 failed, 12 passed'; FAILED test_adj24b_no_spot_every_rule_not_checked_with_its_reason_never_a_flag and test_another_users_strategy_is_not_found with UnknownPostgresError 'catalogue store: contract id 222 (NSE_FO 5000057) has left the market and never changes (ADR-057, ADR-058)'; the same file passed 11/11 on 2026-11-03 ~23:40 IST (builder fix-a run). Expiry census: 45x 2026-11-03, 8x 2026-11-09, 1x 2026-11-23, 2x 2026-11-26, 1x 2026-12-29."
  },
- "fix": "Not fixed (deferred issue). Candidate class fixes: generate the scenario library relative to a pinned 'scenario today' and give each test database a catalogue whose expiries are always in the future (shift every fixture date by the same offset at load, keeping days-to-expiry, so the paisa-level expectations stay valid), or seed each scenario into its own fresh database instead of switching lists inside one.",
+ "fix": "Round 2 (GC-MERGE1, 2026-11-08, after an independent review; the round 1 date shift stays parked, not merged): the trigger is the SWITCH between instrument lists, not the dates. scenario_mode.library_numbers gives one synthetic token per (exchange, tradingsymbol) across the whole library (550 symbols over 57 ADJ files and every path's frame 0; no symbol carries two sets of terms), and tests_app/_scenario_catalogue.load_library loads the UNION of every scenario's list once per test database (skipped when every member is already live). A later scenario then changes only quotes and the clock, and no contract is ever delisted and re-listed. ADJ-20d leaves NIFTY26N0323700CE out of its own list; the union carries it, and ADJ-20d's provider (what its not-listed check reads) still leaves it out. Every tests_app fixture read goes through scenario_mode.read.",
  "detection": {
-  "status": "unguarded",
-  "checks": [],
-  "note": "No check fails BEFORE the date passes. A cheap detector: a unit test that fails when any fixture expiry is within N days of today (names the files), so the regeneration is scheduled before the bomb goes off."
+  "status": "guarded",
+  "checks": [
+   "tests_app/test_scenario_catalogue_guard.py::test_loading_the_library_twice_leaves_no_contract_delisted",
+   "tests_app/test_scenario_catalogue_guard.py::test_no_tests_app_file_reads_a_scenario_fixture_except_through_scenario_mode_read"
+  ],
+  "note": "The DB check fails if the union load ever delists or retires one of its members; the no-DB scan (with its own shape self-test) fails on any tests_app read of tests/fixtures/adjust_scenarios or adjust_paths around scenario_mode.read, failing closed on a use it cannot resolve. Not covered: a test in ANOTHER file that commits a forced list of its own delists the union, and the next union load is then refused (tests_app/test_strategy_alert_style.py::_committed_draft does this)."
  },
  "spec_ref": [
   "spec/decisions/ADR-057.md",

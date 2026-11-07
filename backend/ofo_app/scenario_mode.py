@@ -301,7 +301,7 @@ def scenario_path(scenario_id: str) -> pathlib.Path:
 
 def read(scenario_id: str, frame: int | None = None, **json_kw: Any) -> dict:
     """THE one read of a scenario fixture file: the scenario's own file, or frame ``frame`` of a path scenario. Every
-    reader goes through here (tests_app/test_scenario_reader_guard.py), so a change to how fixtures load lands once."""
+    reader goes through here (tests_app/test_scenario_catalogue_guard.py), so a fixture change lands once."""
     path = scenario_path(scenario_id) if frame is None else frame_path(scenario_id, frame)
     return json.loads(path.read_text(encoding="utf-8"), **json_kw)
 
