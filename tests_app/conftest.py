@@ -16,10 +16,12 @@ from __future__ import annotations
 import asyncio
 import base64
 import functools
+import itertools
 import math
 import os
 import platform
 import sys
+import urllib.parse
 from collections.abc import AsyncIterator, Iterator
 
 import pytest
@@ -152,6 +154,93 @@ def _url_or_skip(name: str, reason: str) -> str:
 
 def _engine(url: str) -> AsyncEngine:
     return create_async_engine(url, poolclass=NullPool, connect_args={"server_settings": {"jit": "off"}})
+
+
+# GC-MERGE1 (#649): every test FILE runs on its own copy of the migrated database, so no file sees rows another file
+# committed (the catalogue union vs a file's own small list, the fixed user "owner"'s playbooks). The migrated database
+# named in the URLs is only the TEMPLATE: nothing connects to it while the suite runs (CREATE ... TEMPLATE needs that).
+_REPOINTED = ("TEST_DATABASE_URL", "TEST_ADMIN_DATABASE_URL", "ALEMBIC_DATABASE_URL", "DATABASE_URL")
+_clone_seq = itertools.count(1)
+CLONES_MADE: list[str] = []  # in order; read by tests_app/test_db_per_file_guard.py
+
+
+def _db_name(url: str) -> str:
+    return urllib.parse.urlsplit(url).path.lstrip("/")
+
+
+def _with_db(url: str, name: str) -> str:
+    return urllib.parse.urlunsplit(urllib.parse.urlsplit(url)._replace(path="/" + name))
+
+
+def _admin_run(admin_url: str, statements: list[str]) -> None:
+    """The statements, in order, on the server's maintenance database (a connection to the template would block the
+    clone). A fresh loop, never the suite's session loop (that one is not running between files)."""
+    import asyncpg  # noqa: PLC0415
+
+    async def go():
+        conn = await asyncpg.connect(_with_db(admin_url, "postgres").replace("+asyncpg", "", 1), timeout=30)
+        try:
+            for sql in statements:
+                await conn.execute(sql, timeout=120)
+        finally:
+            await conn.close()
+
+    loop = asyncio.new_event_loop()
+    try:
+        loop.run_until_complete(go())
+    finally:
+        loop.close()
+
+
+def _forget_app_engines() -> None:
+    """The app caches its settings and engine per process; a file must never reach the previous file's database."""
+    from ofo_app import config, db  # noqa: PLC0415 - the env placeholders above must be set first
+
+    config.get_settings.cache_clear()
+    db.get_engine.cache_clear()
+    db.get_sessionmaker.cache_clear()
+
+
+def clone_for_file(admin_url: str, app_url: str) -> str:
+    """CREATE <template>_f<n> TEMPLATE <template> plus the database-level grants CI gives the app role (a template does
+    not copy them; schema and table privileges are inside the database and are copied). Raises on any failure, after
+    dropping a half-made clone: the caller's tests then ERROR, they never fall back to the shared database."""
+    template = _db_name(admin_url)
+    clone = f"{template}_f{next(_clone_seq)}"
+    app_role = urllib.parse.urlsplit(app_url).username
+    _admin_run(admin_url, [f'CREATE DATABASE "{clone}" TEMPLATE "{template}"'])
+    try:
+        _admin_run(admin_url, [f'REVOKE CONNECT ON DATABASE "{clone}" FROM PUBLIC',
+                               f'GRANT CONNECT ON DATABASE "{clone}" TO "{app_role}"'])
+    except BaseException:
+        _admin_run(admin_url, [f'DROP DATABASE IF EXISTS "{clone}" WITH (FORCE)'])
+        raise
+    CLONES_MADE.append(clone)
+    return clone
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _fresh_database_per_file() -> Iterator[None]:
+    admin = os.environ.get("TEST_ADMIN_DATABASE_URL", "").strip()
+    app = os.environ.get("TEST_DATABASE_URL", "").strip()
+    if not admin or not app:
+        yield  # no database tests here: they skip (or fail under OFO_REQUIRE_DB_TESTS) in their own fixtures
+        return
+    template = _db_name(admin)
+    if _db_name(app) != template:
+        pytest.fail("TEST_DATABASE_URL and TEST_ADMIN_DATABASE_URL name different databases; per-file copies need one")
+    _forget_app_engines()
+    clone = clone_for_file(admin, app)
+    with pytest.MonkeyPatch.context() as mp:
+        for name in _REPOINTED:
+            url = os.environ.get(name, "").strip()
+            if url and _db_name(url) == template:
+                mp.setenv(name, _with_db(url, clone))
+        try:
+            yield
+        finally:
+            _forget_app_engines()
+            _admin_run(admin, [f'DROP DATABASE IF EXISTS "{clone}" WITH (FORCE)'])
 
 
 @pytest.fixture
