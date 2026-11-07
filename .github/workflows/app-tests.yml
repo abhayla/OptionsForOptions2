@@ -128,7 +128,7 @@ jobs:
     needs: changes
     if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.changes.result != 'success' || needs.changes.outputs.api == 'true') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30  # was 15; the W-067 full-day finalize test is bounded at 10 min by its own assertion
+    timeout-minutes: 60  # DIAG ONLY (never merged); was 30. the W-067 full-day finalize test is bounded at 10 min by its own assertion
     env:
       PGHOST: localhost
       PGPORT: '5432'
@@ -226,7 +226,7 @@ jobs:
           OFO_HISTORY_SCALE_INSTRUMENTS: '1603'
           OFO_HISTORY_SCALE_BOUND_S: '600'
           OFO_HISTORY_SCALE_BATCH_BOUND_S: '45'
-        run: python -m pytest -c pytest-app.ini -q -rs -p no:cacheprovider
+        run: python -m pytest -c pytest-app.ini -q -rfEs --maxfail=40 --tb=line -p no:cacheprovider
 
       # W-101 core proof (REQ-073 AC-3, AC-4): a TEST-ONLY API (APP_ENV=test + EXECUTE_REPLAY=1, port 8011) answers
       # Execute and the return from the recorded 2026-10-16 Kite replies (no live session, no live feed). Runs AFTER the
