@@ -134,6 +134,14 @@ def scope_files(repo: str) -> tuple[list[str], str] | str:
 
 
 def layer_interface(repo: str, log: str) -> tuple[int, str]:
+    rc, note = _layer_interface(repo, log)
+    if not os.path.isfile(log):  # every layer leaves its log, even when it stops before running mypy
+        with open(log, "a", encoding="utf-8") as handle:
+            handle.write(note + "\n")
+    return rc, note
+
+
+def _layer_interface(repo: str, log: str) -> tuple[int, str]:
     scoped = scope_files(repo)
     if isinstance(scoped, str):
         return 1, scoped
