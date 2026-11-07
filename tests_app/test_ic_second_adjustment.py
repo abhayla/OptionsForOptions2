@@ -13,9 +13,10 @@ import json
 import pytest
 import t19_support
 import test_ic_paper_loop_core as core
+from _scenario_catalogue import load_library
 from httpx import ASGITransport, AsyncClient
 from ofo.adjustment.offered import EXIT_REDUCE
-from ofo_app import background, catalogue_store, scenario_mode, strategy_alert_style_store
+from ofo_app import background, scenario_mode, strategy_alert_style_store
 from ofo_app import db as app_db
 from ofo_app.routes.outcome import load_charge_rates
 
@@ -35,11 +36,7 @@ async def _setup(app_engine, monkeypatch, name: str) -> int:
     monkeypatch.setenv("DB_MAX_OVERFLOW", "0")
     t19_support.seed_rates(monkeypatch)  # retry r4: the stated rates, as the screen tests; else T-19 is never checked
     core._reset_engine()
-    scn = scenario_mode.load(PATH)
-    async with app_engine.begin() as conn:
-        await catalogue_store.apply_update(conn, scn.provider.instrument_master(), as_of=core.CATALOGUE_AS_OF,
-                                           force=True, reason="test: path scenario PATH-40 contracts", actor="test",
-                                           max_delist_percent=core.MAX_DELIST)
+    await load_library(app_engine)  # the whole library's list, once per database
     await app_engine.dispose()
     sid = await core.seed_mod.seed(PATH)
     core._reset_engine()

@@ -9,31 +9,25 @@ from __future__ import annotations
 
 import datetime
 import importlib.util
-import json
 import pathlib
 from decimal import Decimal
 
 import pytest
+from _scenario_catalogue import load_library
 from httpx import ASGITransport, AsyncClient
 from ofo.engine.adjust_history import HistoryOrder, adjustment_history
-from ofo.timeutil import IST
-from ofo_app import catalogue_store, paper_book, scenario_mode
 from ofo_app import db as app_db
+from ofo_app import paper_book, scenario_mode
 from ofo_app.config import get_settings
-from ofo.settings import calc as _calc, defaults as _defaults
-
-_MAX_DELIST = _calc.max_delist_percent(_defaults())
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 _spec = importlib.util.spec_from_file_location("seed_scenario", ROOT / "scripts" / "seed_scenario.py")
 seed_mod = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(seed_mod)
-DOC = json.loads((ROOT / "tests" / "fixtures" / "adjust_scenarios" / "ADJ-13.json").read_text(encoding="utf-8"),
-                 parse_float=Decimal)
+DOC = scenario_mode.read("ADJ-13", parse_float=Decimal)
 POS = DOC["position"]
 OK, NOT_FOUND = 200, 404
 IC_MAX = 2  # system_playbooks.json iron condor guards.max_adjustments
-CATALOGUE_AS_OF = datetime.datetime(2026, 10, 31, 9, 0, tzinfo=IST)
 PAPER = "Paper - not sent to Zerodha"
 OWN = "Your own change"
 
@@ -56,11 +50,7 @@ async def app_db_url(app_engine, monkeypatch):
 
 async def _seeded(app_engine, monkeypatch, sid: str) -> int:
     monkeypatch.setenv("OFO_SCENARIO", sid)
-    scn = scenario_mode.load(sid)
-    async with app_engine.begin() as conn:
-        await catalogue_store.apply_update(conn, scn.provider.instrument_master(), as_of=CATALOGUE_AS_OF,
-                                           force=True, reason=f"test: scenario {sid} contracts", actor="test",
-                                               max_delist_percent=_MAX_DELIST)
+    await load_library(app_engine)  # the whole library's list, once per database
     return await seed_mod.seed(sid)
 
 

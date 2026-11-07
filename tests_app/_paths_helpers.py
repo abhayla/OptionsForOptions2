@@ -8,17 +8,15 @@ from __future__ import annotations
 
 import datetime
 import importlib.util
-import json
 import pathlib
 from collections import Counter
 from decimal import Decimal as D
 
 import t19_support
+from _scenario_catalogue import load_library
 from ofo.adjustment.preferences import from_values
-from ofo.settings import calc as settings_calc
 from ofo.settings import defaults as registry_defaults
-from ofo.timeutil import IST
-from ofo_app import background, catalogue_store, scenario_mode, strategy_alert_style_store
+from ofo_app import background, scenario_mode, strategy_alert_style_store
 from ofo_app import db as app_db
 from ofo_app.config import get_settings
 from ofo_app.routes.outcome import load_charge_rates
@@ -28,8 +26,6 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 _spec = importlib.util.spec_from_file_location("seed_scenario", ROOT / "scripts" / "seed_scenario.py")
 seed_mod = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(seed_mod)
-CATALOGUE_AS_OF = datetime.datetime(2026, 10, 31, 9, 0, tzinfo=IST)
-MAX_DELIST = settings_calc.max_delist_percent(registry_defaults())
 CYCLES_PER_FRAME = 14  # x STEP_S seconds = 70 s: past one 1-minute candle close
 STEP_S = 5
 OBSERVED: list = []  # per recompute: (hhmm, T-19 cost, cost reason, premium left, entry IV, entry day, today, S-12 %)
@@ -67,11 +63,11 @@ class Draining(background.Worker):
 
 
 def last_frame(path_id: str) -> int:
-    return len(list(scenario_mode.frame_path(path_id, 0).parent.glob("frame-*.json"))) - 1
+    return scenario_mode.last_frame(path_id)
 
 
 def frame_doc(path_id: str, k: int) -> dict:
-    return json.loads(scenario_mode.frame_path(path_id, k).read_text(encoding="utf-8"), parse_float=D)
+    return scenario_mode.read(path_id, k, parse_float=D)
 
 
 async def rows(sql: str, **params) -> list:
@@ -80,11 +76,7 @@ async def rows(sql: str, **params) -> list:
 
 
 async def seed_path(app_engine, path_id: str, style: str = "intraday") -> int:
-    scn = scenario_mode.load(path_id)
-    async with app_engine.begin() as conn:
-        await catalogue_store.apply_update(conn, scn.provider.instrument_master(), as_of=CATALOGUE_AS_OF, force=True,
-                                           reason=f"test: path scenario {path_id} contracts", actor="test",
-                                           max_delist_percent=MAX_DELIST)
+    await load_library(app_engine)  # the whole library's list, once per database
     await app_engine.dispose()
     sid = await seed_mod.seed(path_id)
     reset_engine()

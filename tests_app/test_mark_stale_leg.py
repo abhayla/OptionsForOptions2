@@ -11,7 +11,7 @@ from ofo_app.adjustment_check import mark_of
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tests" / "adjustment"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tests"))
-from test_adjust_scenarios import load
+from ofo_app.scenario_mode import read as load
 from test_playbook_eval import _row
 
 

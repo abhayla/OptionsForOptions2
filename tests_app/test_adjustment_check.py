@@ -7,32 +7,25 @@ the plan it accepts stays on the ADJ-02 strategy.
 from __future__ import annotations
 
 import copy
-import datetime
 import importlib.util
 import json
 import pathlib
 
 import pytest
+from _scenario_catalogue import load_library
 from httpx import ASGITransport, AsyncClient
 from ofo.adjustment.playbook_eval import validate_body
 from ofo.adjustment.playbook_types import TYPE_KEYS
-from ofo.settings import calc as _calc
-from ofo.settings import defaults as _defaults
-from ofo.timeutil import IST
-from ofo_app import adjustment_readers, catalogue_store, playbook_store, scenario_mode
+from ofo_app import adjustment_readers, playbook_store
 from ofo_app import db as app_db
 from ofo_app.config import get_settings
 from sqlalchemy import text
-
-_MAX_DELIST = _calc.max_delist_percent(_defaults())
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 _spec = importlib.util.spec_from_file_location("seed_scenario", ROOT / "scripts" / "seed_scenario.py")
 seed_mod = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(seed_mod)
 OK, NOT_FOUND = 200, 404
-#: one list date before every scenario's expiry, so a forced reload retires nothing (ADR-057)
-CATALOGUE_AS_OF = datetime.datetime(2026, 10, 31, 9, 0, tzinfo=IST)
 
 
 def _reset_engine() -> None:
@@ -55,13 +48,7 @@ async def app_db_url(app_engine, monkeypatch):
 async def _seeded(app_engine, monkeypatch, sid: str) -> int:
     """The scenario's contracts into the catalogue (the store's writer), then its strategy (seed_scenario.seed)."""
     monkeypatch.setenv("OFO_SCENARIO", sid)
-    scn = scenario_mode.load(sid)
-    async with app_engine.begin() as conn:
-        await catalogue_store.apply_update(conn, scn.provider.instrument_master(),
-                                           as_of=CATALOGUE_AS_OF,
-                                           force=True, reason=f"test: scenario {sid} contracts", actor="test",
-                                               max_delist_percent=_MAX_DELIST)
-        # forced: each scenario is its own instrument list, so the previous one's contracts leave (ADR-058 guard)
+    await load_library(app_engine)  # the whole library's list, once per database
     return await seed_mod.seed(sid)
 
 

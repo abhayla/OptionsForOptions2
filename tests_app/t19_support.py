@@ -20,6 +20,7 @@ from ofo.charges import ChargeRates
 from ofo.rules.inputs import DataHealth
 from ofo.settings import defaults as registry_defaults
 from ofo_app import adjustment_check as check
+from ofo_app import scenario_mode
 from ofo_app.routes.adjustment import MarketInputs, Tracked, priced_approach
 
 PREFS = from_values(registry_defaults())  # the registry defaults, passed explicitly (REQ-168 AC-1)
@@ -42,7 +43,7 @@ def seed_rates(monkeypatch) -> None:
 
 
 def load(sid: str) -> dict:
-    return json.loads((FIX / f"{sid}.json").read_text(encoding="utf-8"))
+    return scenario_mode.read(sid)  # the one fixture reader
 
 
 def _d(v: object) -> D | None:
