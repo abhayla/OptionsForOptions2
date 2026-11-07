@@ -69,6 +69,7 @@ class ShortLeg:
     strike: Decimal
     abs_delta: Decimal | None
     ltp: Decimal | None
+    kind: str | None = None  # "CE" / "PE" (ADR-268: T-01 breached side); None = unknown, no breach check
 
 
 @dataclass(frozen=True)
@@ -178,6 +179,8 @@ class Hit:
     threshold: Decimal | str
     cmp: Cmp
     fired: bool
+    #: ADR-268 (2): (short kind, strike, points spot is past it) when spot is at/beyond a short; the line names it
+    beyond: tuple[str, Decimal, Decimal] | None = None
 
 
 @dataclass(frozen=True)
@@ -191,6 +194,8 @@ class Flag:
     threshold: Decimal | str
     cmp: Cmp
     members: tuple[Hit, ...] = ()
+    #: ADR-268 (2): (short kind, strike, points spot is past it) when spot is at/beyond a short; the line names it
+    beyond: tuple[str, Decimal, Decimal] | None = None
 
 
 @dataclass(frozen=True)
@@ -213,6 +218,8 @@ class AlreadyTrue:
     threshold: Decimal | str
     code: str = ALREADY_TRUE
     cmp: Cmp | None = None  # GC-ADJ2 step 5: the lead trigger's comparison, as a Flag carries it
+    #: ADR-268 (2): (short kind, strike, points spot is past it) when spot is at/beyond a short; the line names it
+    beyond: tuple[str, Decimal, Decimal] | None = None
 
 
 def reason_text(code: str, slots: tuple[tuple[str, object], ...] = ()) -> str:
@@ -243,6 +250,8 @@ class RuleValue:
     yes_no: bool = False  # a day rule (GC-IC1 1a): the gate reads it yes/no, never on a ladder
     approaches: tuple[str, ...] = ()  # a day rule's approaches the record names (A-28 tested spread, A-27 far short)
     carry: CarryFigures | None = None  # a carry check's figures the record carries (GC-IC1 1b)
+    #: ADR-268 (2): (short kind, strike, points spot is past it) when spot is at/beyond a short; the line names it
+    beyond: tuple[str, Decimal, Decimal] | None = None
 
 
 @dataclass(frozen=True)
@@ -455,9 +464,23 @@ def short_gap_pct(spot: Decimal, shorts: tuple[ShortLeg, ...]) -> tuple[Decimal,
     return near * _HUNDRED, spot
 
 
+def short_breached(spot: Decimal, shorts: tuple[ShortLeg, ...]) -> ShortLeg | None:
+    """ADR-268 (2): the short spot is AT or BEYOND (in the money): a CE with spot >= strike, a PE with spot <= strike.
+    The deepest one when several; None when none (or no short states its kind)."""
+    hit = [x for x in shorts if (x.kind == "CE" and spot >= x.strike) or (x.kind == "PE" and spot <= x.strike)]
+    return max(hit, key=lambda x: abs(spot - x.strike)) if hit else None
+
+
 def _t01(c: _Ctx) -> Hit:
     spot = _need(c.state.spot, "spot")
-    return _compare(c, "T-01", *short_gap_pct(spot, _shorts(c.state)))
+    hit = _compare(c, "T-01", *short_gap_pct(spot, _shorts(c.state)))
+    b = short_breached(spot, c.state.shorts)
+    if b is None:
+        return hit
+    beyond = (str(b.kind), b.strike, abs(spot - b.strike))
+    if not hit.fired:  # ADR-268 (2): at or beyond the strike flags, whatever the % gap (no distance left: value 0)
+        return Hit("T-01", Decimal(0), hit.threshold, hit.cmp, True, beyond)
+    return dataclasses.replace(hit, beyond=beyond)
 
 
 def _t01b(c: _Ctx) -> Hit:
@@ -667,7 +690,7 @@ def _value_of(c: _Ctx, rule: Mapping | None, o: _Outcome) -> RuleValue | None:
         return None
     members = len((rule or {}).get("any_of") or (rule or {}).get("all_of") or [o.lead])
     return RuleValue(o.rule_id, lead.trigger_id, lead.value, lead.threshold, lead.cmp, o.fired, members,
-                     _later(c, lead.trigger_id))
+                     _later(c, lead.trigger_id), beyond=lead.beyond)
 
 
 def _outcomes(body: Mapping, state: StrategyState, gap_until: str) -> tuple[_Ctx, str | None, list[_Outcome]]:
@@ -780,7 +803,9 @@ def _credit_outcome(state: StrategyState, why: str | None) -> list[_Outcome]:
 def evaluate(body: Mapping, state: StrategyState, memory: Mapping[str, Mapping[str, bool]] | None = None,
              entry_state: StrategyState | None = None, *, gap_until: str) -> Evaluation:
     """Evaluate every rule of ``body`` on ``state``; pure (takes the F-71 memory, returns the new one). ``gap_until``
-    is the user's gap-at-open window end "HH:MM" (REQ-168 AC-1; required, never defaulted)."""
+    is the user's gap-at-open window end "HH:MM" (REQ-168 AC-1; required, never defaulted). A rule not computable
+    on ``entry_state`` is not held at entry: never its value at the first check (round 3, finding
+    rule-entry-baseline-taken-at-first-check: a first-check fallback held every Greek / premium rule true now)."""
     validate_body(body)
     if not isinstance(gap_until, str) or not re.fullmatch(r"[0-2][0-9]:[0-5][0-9]", gap_until):
         raise ValueError(f"gap_until must be HH:MM, got {gap_until!r}")
@@ -794,8 +819,7 @@ def evaluate(body: Mapping, state: StrategyState, memory: Mapping[str, Mapping[s
     for o in outcomes:
         if o.rule_id not in new:
             if entry is None:
-                entry = ({} if entry_state is None else
-                         {x.rule_id: x.fired for x in _outcomes(body, entry_state, gap_until)[2]})
+                entry = _entry_held(body, entry_state, gap_until)
             new[o.rule_id] = {"held_at_entry": bool(entry.get(o.rule_id, False)), "seen_clear": False}
         mem = new[o.rule_id]
         if o.reason is not None:
@@ -809,10 +833,11 @@ def evaluate(body: Mapping, state: StrategyState, memory: Mapping[str, Mapping[s
         else:
             lead = next((h for h in o.hits if h.trigger_id == o.lead), o.hits[0])
             if mem["held_at_entry"] and not mem["seen_clear"]:
-                results.append(AlreadyTrue(o.rule_id, lead.trigger_id, lead.value, lead.threshold, cmp=lead.cmp))
+                results.append(AlreadyTrue(o.rule_id, lead.trigger_id, lead.value, lead.threshold, cmp=lead.cmp,
+                                               beyond=lead.beyond))
             else:
                 results.append(Flag(o.rule_id, lead.trigger_id, c.stage_name, lead.value, lead.threshold, lead.cmp,
-                                    o.hits))
+                                    o.hits, lead.beyond))
                 rv = _value_of(c, rules.get(o.rule_id), o)
                 if rv is not None:
                     values.append(rv)
@@ -821,6 +846,13 @@ def evaluate(body: Mapping, state: StrategyState, memory: Mapping[str, Mapping[s
     _add_situation_rules(body, state, why, c.stage_name, (results, clear, values))
     _add_watch_rules(state, why, c.stage_name, (results, clear, values))
     return Evaluation(c.stage_name, c.stage, tuple(results), new, tuple(clear), why, values=tuple(values))
+
+
+def _entry_held(body: Mapping, entry_state: StrategyState | None, gap_until: str) -> dict[str, bool]:
+    """rule id -> held at entry, on ``entry_state`` only (a rule not computable there is absent: not held)."""
+    if entry_state is None:
+        return {}
+    return {x.rule_id: x.fired for x in _outcomes(body, entry_state, gap_until)[2] if x.reason is None}
 
 
 # ---- day rules (GC-IC1 step 1a; REQ-159 AC-4, REQ-170) -----------------------------------------------------------

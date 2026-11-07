@@ -156,6 +156,17 @@ class Suggestion:
         return raw if isinstance(raw, int) else 0
 
     @property
+    def beyond(self) -> tuple[str, Decimal, Decimal] | None:
+        """ADR-268 (2): (kind, strike, points) when the flag's short was at or beyond its strike (None otherwise)."""
+        raw = self.timeline[0].get("beyond") if self.timeline else None
+        if not isinstance(raw, dict) or raw.get("kind") not in ("CE", "PE"):
+            return None
+        try:
+            return raw["kind"], Decimal(raw["strike"]), Decimal(raw["points"])
+        except (KeyError, TypeError, ArithmeticError):  # a malformed marker: the plain line (fail visible)
+            return None
+
+    @property
     def unit(self) -> str | None:
         """The trigger's unit as the evaluated body held it when the flag was shown (None on an older record)."""
         return self.timeline[0].get("unit") if self.timeline else None
@@ -245,10 +256,14 @@ _SELECT_PLAN = text(f"SELECT {', '.join('p.' + c for c in _PLAN_COLUMNS.split(',
                     "FROM public.strategy_adjustment_plans p JOIN public.strategies s ON s.id = p.strategy_id "
                     "WHERE p.strategy_id = :strategy_id AND s.user_ref = :user_ref")
 _OWNS_STRATEGY = text("SELECT 1 FROM public.strategies WHERE id = :strategy_id AND user_ref = :user_ref")
-_SELECT_STATE = text("SELECT rule_id, held_at_entry, seen_clear FROM public.adjustment_rule_state "
-                     "WHERE strategy_id = :strategy_id ORDER BY rule_id")
+_SELECT_STATE = text("SELECT adjustment_no, rule_id, held_at_entry, seen_clear FROM public.adjustment_rule_state "
+                     "WHERE strategy_id = :strategy_id ORDER BY adjustment_no, rule_id")
+#: ADR-258 (migration 0045): the row's starting point comes from the column DEFAULT, read from this transaction-local
+#: setting (the application role has no INSERT grant on the column, as 0043's scenario marker)
+RULE_MARKER_SETTING = "ofo.rule_adjustment_no"
+_SET_MARKER = text(f"SELECT set_config('{RULE_MARKER_SETTING}', :n, true)")
 _PUT_STATE = text("INSERT INTO public.adjustment_rule_state (strategy_id, rule_id, held_at_entry, seen_clear) "
-                  "VALUES (:strategy_id, :rule_id, :held, :seen) ON CONFLICT (strategy_id, rule_id) "
+                  "VALUES (:strategy_id, :rule_id, :held, :seen) ON CONFLICT (strategy_id, rule_id, adjustment_no) "
                   "DO UPDATE SET seen_clear = adjustment_rule_state.seen_clear OR EXCLUDED.seen_clear")
 _SG_COLUMNS = ("id, strategy_id, rule_id, trigger_id, stage, value, threshold, shown_at, outcome, dismiss_reason, "
                "timeline::text")
@@ -261,7 +276,7 @@ _INSERT_SUGGESTION = text(
     "'group', CAST(:group AS TEXT), 'source', CAST(:source AS TEXT), 'cmp', CAST(:cmp AS TEXT), "
     "'label', CAST(:label AS TEXT), 'unit', CAST(:unit AS TEXT), 'approach', CAST(:approach AS TEXT), "
     "'approach_cost', CAST(:approach_cost AS TEXT), 'unpriced', CAST(:unpriced AS INTEGER), "
-    "'carry', CAST(:carry AS JSONB)))) "
+    "'carry', CAST(:carry AS JSONB), 'beyond', CAST(:beyond AS JSONB)))) "
     f"RETURNING {_SG_COLUMNS}")
 _CLOSE_SUGGESTION = text(
     "UPDATE public.adjustment_suggestions AS g SET outcome = CAST(:outcome AS TEXT), "  # noqa: S608
@@ -625,17 +640,32 @@ async def _owned(conn: Any, user_ref: str, strategy_id: int) -> None:
         raise strategy_store.StrategyStoreError(strategy_store.NOT_FOUND, f"strategy {strategy_id}")
 
 
-async def rule_state(conn: Any, user_ref: str, strategy_id: int) -> dict[str, tuple[bool, bool]]:
-    """rule id -> (held_at_entry, seen_clear)."""
+async def rule_states(conn: Any, user_ref: str, strategy_id: int) -> dict[int, dict[str, tuple[bool, bool]]]:
+    """starting point (adjustments made, ADR-258) -> rule id -> (held_at_entry, seen_clear). No row -> {}."""
     await _owned(conn, user_ref, strategy_id)
-    rows = (await conn.execute(_SELECT_STATE, {"strategy_id": strategy_id})).all()
-    return {r[0]: (r[1], r[2]) for r in rows}
+    out: dict[int, dict[str, tuple[bool, bool]]] = {}
+    for r in (await conn.execute(_SELECT_STATE, {"strategy_id": strategy_id})).all():
+        out.setdefault(int(r[0]), {})[r[1]] = (r[2], r[3])
+    return out
+
+
+async def rule_state(conn: Any, user_ref: str, strategy_id: int,
+                     adjustment_no: int | None = None) -> dict[str, tuple[bool, bool]]:
+    """rule id -> (held_at_entry, seen_clear) at one starting point; None = the newest stored one."""
+    states = await rule_states(conn, user_ref, strategy_id)
+    if adjustment_no is None:
+        adjustment_no = max(states, default=0)
+    return states.get(adjustment_no, {})
 
 
 async def put_rule_state(conn: Any, user_ref: str, strategy_id: int, rule_id: str, *, held_at_entry: bool,  # noqa: PLR0913
-                         seen_clear: bool) -> None:
-    """First call records held_at_entry; later calls only ever turn seen_clear on (F-71)."""
+                         seen_clear: bool, adjustment_no: int = 0) -> None:
+    """First call per (rule, starting point) records held_at_entry; later calls only ever turn seen_clear on (F-71).
+    ``adjustment_no`` = the adjustments made before this memory started (ADR-258; 0 = the entry)."""
+    if isinstance(adjustment_no, bool) or not isinstance(adjustment_no, int) or adjustment_no < 0:
+        raise ValueError(f"adjustment_no must be an int >= 0, got {adjustment_no!r}")
     await _owned(conn, user_ref, strategy_id)
+    await conn.execute(_SET_MARKER, {"n": str(adjustment_no)})
     await conn.execute(_PUT_STATE, {"strategy_id": strategy_id, "rule_id": rule_id, "held": held_at_entry,
                                     "seen": seen_clear})
 
@@ -652,7 +682,8 @@ async def open_suggestion(conn: Any, user_ref: str, strategy_id: int, rule_id: s
                           source: str | None = None, cmp: str | None = None, label: str | None = None,
                           unit: str | None = None, approach: str | None = None,
                           approach_cost: Decimal | None = None, unpriced: int | None = None,
-                          worse: str | None = None, carry: Mapping[str, str | None] | None = None) -> Suggestion:
+                          worse: str | None = None, carry: Mapping[str, str | None] | None = None,
+                          beyond: tuple[str, Decimal, Decimal] | None = None) -> Suggestion:
     """REQ-112 AC-1: one open record per (strategy, rule); a rule still open returns its existing record.
     ``carry``: a carry check's content (GC-IC1 1b; money as strings, None = not known with its reason code).
     ``worse``: None / 'last' / 'dismissed' (REQ-170 AC-3, ADR-237 (5)), written once at insert."""
@@ -669,6 +700,9 @@ async def open_suggestion(conn: Any, user_ref: str, strategy_id: int, rule_id: s
                                                    "unit": unit, "approach": approach, "unpriced": unpriced,
                                                    "worse": worse,
                                                    "carry": None if carry is None else json.dumps(carry),
+                                                   "beyond": None if beyond is None else json.dumps(
+                                                       {"kind": beyond[0], "strike": format(beyond[1], "f"),
+                                                        "points": format(beyond[2], "f")}),
                                                    "approach_cost": None if approach_cost is None
                                                    else format(approach_cost, "f")})).one()
     return _suggestion(row)

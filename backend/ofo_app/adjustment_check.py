@@ -192,9 +192,23 @@ def prices_fresh(ctx: Any) -> bool | None:
     return True if health == _HEALTH_FRESH else False if health == _HEALTH_STALE else None
 
 
-def _abs_delta(market: MarketInputs, symbol: str) -> Decimal | None:
-    g = market.leg_greeks.get(symbol)
-    return None if g is None or g.delta is None else abs(g.delta)
+#: ADR-268 (1): an option price within one tick of its intrinsic value has no time value left (NSE/BSE option tick)
+INTRINSIC_TICK: Final = Decimal("0.05")
+
+
+def _abs_delta(market: MarketInputs, leg: Any, ltp: Decimal | None, spot: Decimal | None) -> Decimal | None:
+    """The leg's absolute delta for the rule checks. Answer states: engine delta stated -> |delta|; no delta but the
+    price is within one tick of intrinsic (ADR-268 (1)) -> 1 in the money, 0 out of the money; no delta and no
+    price or no spot, or a price with time value left -> None ("delta not available")."""
+    g = market.leg_greeks.get(leg.tradingsymbol)
+    if g is not None and g.delta is not None:
+        return abs(g.delta)
+    if ltp is None or spot is None or leg.type not in ("CE", "PE"):
+        return None
+    intrinsic = max(spot - leg.strike if leg.type == "CE" else leg.strike - spot, Decimal(0))
+    if ltp - intrinsic > INTRINSIC_TICK:
+        return None
+    return Decimal(1) if intrinsic > 0 else Decimal(0)
 
 
 class PlaybookGuards(dict):
@@ -290,8 +304,8 @@ def state_of(tracked: Tracked, market: MarketInputs, spot: SpotAnswer, margin: M
     ltp = {x.tradingsymbol: mark_of(rows.get(x.tradingsymbol)) for x in position.legs}
     priced = all(v is not None for v in ltp.values())
     value = spot.value if spot.available else None
-    shorts = tuple(pe.ShortLeg(x.strike, _abs_delta(market, x.tradingsymbol), ltp[x.tradingsymbol])
-                   for x in position.legs if x.side == Action.SELL.value)
+    shorts = tuple(pe.ShortLeg(x.strike, _abs_delta(market, x, ltp[x.tradingsymbol], value), ltp[x.tradingsymbol],
+                               x.type) for x in position.legs if x.side == Action.SELL.value)
     qty = {x.tradingsymbol: x.lots * position.lot for x in position.legs}
     booked = tracked.booked
     pnl = None if booked is None or not priced else adjust_money.pnl_now(
@@ -520,45 +534,117 @@ def roll_basis_of(admin: Decimal | None, user_values: Mapping[str, Decimal] | No
     return RollBasis(code, got.source, spot, None, call, put)
 
 
+def _entry_abs_delta(leg: Any, clock: datetime.datetime, spot: Decimal, atm_iv: Decimal | None) -> Decimal | None:
+    """A short's |delta| AT ENTRY from the engine (ADR-008): entry spot and clock, the entry ATM IV, else the vol the
+    engine solves from the leg's own entry (fill) price. Not an option, past expiry, or no vol -> None (not checked)."""
+    from ofo import settings  # noqa: PLC0415 - the checked-in registry
+    from ofo.engine import black_scholes as bs  # noqa: PLC0415 - engine only here
+
+    if leg.type not in ("CE", "PE"):
+        return None
+    # shortcut: the registry's default interest rate, not a per-user override; delta moves ~0.001 per 1 % of rate
+    rate = settings.defaults()[settings.RISK_FREE_RATE]
+    kind = Instrument(leg.type)
+    try:
+        years = bs.year_fraction(clock, leg.expiry)
+        vol = atm_iv if atm_iv is not None else bs.implied_volatility(kind, leg.entry, spot, leg.strike, years, rate)
+        return abs(bs.bs_greeks(kind, spot, leg.strike, years, rate, vol).delta)
+    except ValueError:  # the engine's refusals (no IV for this price, expiry passed): the rule is not checked at entry
+        return None
+
+
+def _entry_state(clock: datetime.datetime, spot: Decimal, atm_iv: Decimal | None, state: pe.StrategyState,
+                 position: Position) -> pe.StrategyState:
+    """An F-71 entry state (round 3, finding rule-entry-baseline-taken-at-first-check): the entry's clock and spot,
+    each short with its engine delta AT ENTRY and its entry premium as its price, the entry ATM IV as both IVs. A
+    rule still not computable here (no P&L, no margin at entry) counts as not held, never as the first check."""
+    clock = clock.astimezone(IST)
+    expiry = min(x.expiry for x in position.legs)
+    shorts = tuple(pe.ShortLeg(x.strike, _entry_abs_delta(x, clock, spot, atm_iv), x.entry, x.type)
+                   for x in position.legs if x.side == Action.SELL.value)
+    return pe.StrategyState(stops=None, expiry_kind=state.expiry_kind, days_left=(expiry - clock.date()).days,
+                            hhmm=clock.strftime("%H:%M"), spot=spot, shorts=shorts,
+                            atm_iv=atm_iv, entry_atm_iv=atm_iv, prices_fresh=True)
+
+
 def scenario_entry(scn: Any, state: pe.StrategyState, position: Position) -> pe.StrategyState | None:
     """The scenario's ``position.entry`` as the F-71 entry state (None: the scenario states none)."""
     entry = (scn.data.get("position") or {}).get("entry") if scn is not None else None
     if not entry:
         return None
-    clock = datetime.datetime.fromisoformat(entry["clock"]).astimezone(IST)
-    expiry = min(x.expiry for x in position.legs)
-    return pe.StrategyState(stops=None, expiry_kind=state.expiry_kind, days_left=(expiry - clock.date()).days,
-                            hhmm=clock.strftime("%H:%M"), spot=Decimal(str(entry["spot"])),
-                            shorts=tuple(pe.ShortLeg(s.strike, None, None) for s in state.shorts),
-                            atm_iv=None if entry.get("atm_iv") is None else Decimal(str(entry["atm_iv"])),
-                            prices_fresh=True)
+    return _entry_state(datetime.datetime.fromisoformat(entry["clock"]), Decimal(str(entry["spot"])),
+                        None if entry.get("atm_iv") is None else Decimal(str(entry["atm_iv"])), state, position)
+
+
+def rule_marker(adjustments_used: int | None, stored: Mapping[int, Any]) -> int:
+    """ADR-258: the rule-memory starting point a check reads and writes = the adjustments made so far (ADR-255 count).
+    A count that could not be read (None) keeps the newest stored starting point (0 when none): never a re-baseline
+    on an unread count, so a crossing is never hidden as "already true" by a read failure."""
+    if isinstance(adjustments_used, int) and not isinstance(adjustments_used, bool) and adjustments_used >= 0:
+        return adjustments_used
+    return max(stored, default=0)
+
+
+def entry_baseline(scn: Any, state: pe.StrategyState, position: Position, facts: Any,
+                   marker: int) -> pe.StrategyState | None:
+    """The ONE entry baseline of a rule with no stored memory (issue 65, finding rule-entry-baseline-taken-at-first-
+    check; screen, recorder and worker all call it). Answer states:
+    - after an adjustment basket (``marker`` > 0, ADR-258) -> None: the first check after the basket is the new
+      starting point ("already true after adjustment N");
+    - scenario mode with a stated entry -> the scenario's entry;
+    - stored entry facts with their time (``EntryFacts.at``) -> the spot and clock of the first fill;
+    - no facts (a fill before 0039), unreadable facts, facts with no time -> None: the first check is the baseline
+      (the known gap, named in the finding; test_rule_entry_baseline::test_known_gap_no_entry_facts...).
+    The caller passes ``None`` -> this check's state."""
+    if marker > 0:
+        return None
+    if scn is not None:
+        return scenario_entry(scn, state, position)
+    if isinstance(facts, EntryFacts) and isinstance(facts.at, datetime.datetime) and position.legs:
+        return _entry_state(facts.at, facts.entry_spot, None, state, position)
+    return None
+
+
+async def _evaluate_stored(conn: Any, user_ref: str, strategy_id: int, body: Mapping,  # noqa: PLR0913
+                           state: pe.StrategyState, scn: Any, position: Position, *,
+                           gap_until: str) -> tuple[pe.Evaluation, dict, int]:
+    stored = await playbook_store.rule_states(conn, user_ref, strategy_id)
+    marker = rule_marker(state.adjustments_used, stored)
+    memory = {k: {"held_at_entry": h, "seen_clear": s} for k, (h, s) in stored.get(marker, {}).items()}
+    entry = scenario_entry(scn, state, position)
+    if scn is not None and entry is not None:  # T-11: the scenario's own entry IV
+        state = dataclasses.replace(state, entry_atm_iv=entry.atm_iv)
+    facts = None
+    if not memory and marker == 0 and scn is None:
+        from ofo_app.adjustment_readers import entry_facts_in  # noqa: PLC0415 - read path only
+        facts = await entry_facts_in(conn, strategy_id)
+    base = entry_baseline(scn, state, position, facts, marker)
+    ev = pe.evaluate(body, state, memory, base or state, gap_until=gap_until)
+    return ev, memory, marker
 
 
 async def evaluate_stored(conn: Any, user_ref: str, strategy_id: int, body: Mapping,  # noqa: PLR0913
                           state: pe.StrategyState, scn: Any, position: Position, *,
                           gap_until: str) -> tuple[pe.Evaluation, dict]:
-    """The playbook evaluated against the STORED rule memory, writing nothing (the screen check's path; review round
-    2, finding 3: the background worker is the one writer of adjustment state, ADR-237 (6)).
-    Returns (evaluation, memory read)."""
-    stored = await playbook_store.rule_state(conn, user_ref, strategy_id)
-    memory = {k: {"held_at_entry": h, "seen_clear": s} for k, (h, s) in stored.items()}
-    entry = scenario_entry(scn, state, position)
-    if scn is not None and entry is not None:
-        state = dataclasses.replace(state, entry_atm_iv=entry.atm_iv)
-    elif not memory:
-        entry = state  # tracking just started: this first check is the entry state
-    return pe.evaluate(body, state, memory, entry, gap_until=gap_until), memory
+    """The playbook evaluated against the STORED rule memory of the current starting point (ADR-258), writing nothing
+    (the screen check's path; review round 2, finding 3: the background worker is the one writer of adjustment state,
+    ADR-237 (6)). A rule with no memory takes its entry from ``entry_baseline``. Returns (evaluation, memory read)."""
+    ev, memory, _marker = await _evaluate_stored(conn, user_ref, strategy_id, body, state, scn, position,
+                                                 gap_until=gap_until)
+    return ev, memory
 
 
 async def evaluate_and_remember(conn: Any, user_ref: str, strategy_id: int, body: Mapping,  # noqa: PLR0913
                                 state: pe.StrategyState, scn: Any, position: Position, *,
                                 gap_until: str) -> pe.Evaluation:
-    """``evaluate_stored``, then the changed rule memory written (the background worker only, ADR-237 (6))."""
-    ev, memory = await evaluate_stored(conn, user_ref, strategy_id, body, state, scn, position, gap_until=gap_until)
+    """``evaluate_stored``, then the changed rule memory written at its starting point (the background worker only,
+    ADR-237 (6))."""
+    ev, memory, marker = await _evaluate_stored(conn, user_ref, strategy_id, body, state, scn, position,
+                                                gap_until=gap_until)
     for rid, mem in ev.memory.items():
         if memory.get(rid) != mem:
             await playbook_store.put_rule_state(conn, user_ref, strategy_id, rid, held_at_entry=mem["held_at_entry"],
-                                                seen_clear=mem["seen_clear"])
+                                                seen_clear=mem["seen_clear"], adjustment_no=marker)
     return ev
 
 
@@ -600,7 +686,8 @@ def trigger_words(body: Mapping | None, trigger_id: str | None) -> tuple[str | N
     return (label if isinstance(label, str) else None), (unit if isinstance(unit, str) else None)
 
 
-def condition_line(trigger_id: str, label: str | None, unit: str | None, value: str, threshold: str) -> Any:
+def condition_line(trigger_id: str, label: str | None, unit: str | None, value: str, threshold: str,  # noqa: PLR0913
+                   beyond: tuple[str, Decimal, Decimal] | None = None) -> Any:
     """GC-ADJ2 item 1: "Spot within this % of a short strike: 0.3416 % (rule 0.5000 %)" from the trigger's own label
     and unit. A label the slot refuses or a body without one -> the trigger id (fail visible); a unit that is empty
     or not a plain unit -> the line without it."""
@@ -611,6 +698,13 @@ def condition_line(trigger_id: str, label: str | None, unit: str | None, value: 
             return render_explanation("adjust_condition_line", label=lab, value=value, unit=un, threshold=threshold)
         return render_explanation("adjust_condition_line_plain", label=lab, value=value, threshold=threshold)
 
+    if beyond is not None and beyond[0] in ("CE", "PE"):  # ADR-268 (2): never "0 %" for a breached short
+        try:
+            return render_explanation(f"adjust_condition_line_t01_beyond_{beyond[0].lower()}",
+                                      label=label if label is not None else trigger_id, strike=beyond[1],
+                                      points=beyond[2])
+        except (TypeError, ValueError):  # a refused slot: the plain line below (fail visible)
+            pass
     try:
         return line(label if label is not None else trigger_id, unit)
     except (TypeError, ValueError):  # the slot refused the label or the unit: the id, with no unit (fail visible)

@@ -540,8 +540,12 @@ def _write_key(ev: pe.Evaluation) -> tuple:
 async def record_check(watched: Watched, state: pe.StrategyState, prefs: Preferences,
                        scn: Any = None) -> Recorded:
     """The check's rule memory in one transaction, through the screen's own function (REQ-165 AC-5). Opens no record:
-    records are the alert gate's (``DbGateStore.apply``, ADR-237 (6)). ``opened`` is empty."""
+    records are the alert gate's (``DbGateStore.apply``, ADR-237 (6)). ``opened`` is empty. No ``scn`` -> the
+    process's scenario (``scenario_mode.current()``, None live), as the worker's own check reads it (issue 65: the
+    stored entry baseline and the worker's must be the same one; scn=None here once stored the CURRENT state)."""
+    from ofo_app import scenario_mode  # noqa: PLC0415 - read at check time
     from ofo_app.db import get_sessionmaker  # noqa: PLC0415 - the database layer only when a check runs
+    scn = scenario_mode.current() if scn is None else scn
     async with get_sessionmaker()() as db:
         ev = await check.evaluate_and_remember(db, watched.user_ref, watched.strategy_id, watched.body, state, scn,
                                                watched.tracked.position, gap_until=prefs.gap_until)
@@ -560,6 +564,9 @@ class GateLoad:
     pin: str | None = None
     paused_until: datetime.datetime | None = None
     watches: tuple = ()  # A-37 (GC-IC1 4c): the user's active level watches (``level_watch.LevelWatch``)
+    #: issue 65: the stored F-71 rule memory (``playbook_store.rule_states``: starting point -> rule id ->
+    #: (held_at_entry, seen_clear)), so a restarted worker's first check reads the memory, never a fresh baseline
+    rule_memory: Mapping = dataclasses.field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -636,7 +643,8 @@ class DbGateStore:
             pin = await strategy_alert_style_store.pin_of(db, w.user_ref, w.strategy_id)
             until = await strategy_pause_store.pause_of(db, w.user_ref, w.strategy_id)
             watches = await strategy_level_watch_store.watches_of(db, w.user_ref, w.strategy_id)
-        return GateLoad(rows, held, pin.style, until, watches)
+            memory = await playbook_store.rule_states(db, w.user_ref, w.strategy_id)
+        return GateLoad(rows, held, pin.style, until, watches, memory)
 
     async def apply(self, w: Watched, events: Iterable[alert_gate.Event], ctx: GateContext | None) -> dict[str, int]:
         """The gate's events in ONE transaction; rule id -> id of each record opened. An escalation while the
@@ -679,7 +687,8 @@ class DbGateStore:
                     db, w.user_ref, w.strategy_id, e.rule_id, trigger_id=trigger,
                     stage=flag.stage_name if flag is not None else stage, value=value, threshold=threshold,
                     group=gate_group(w.strategy_id, e.at), source=source,
-                    cmp=None if rv is None else rv.cmp, label=label, unit=unit, worse=e.worse, **t19)
+                    cmp=None if rv is None else rv.cmp, label=label, unit=unit, worse=e.worse,
+                    beyond=None if rv is None else rv.beyond, **t19)
                 opened[e.rule_id] = rec.id
             await db.commit()
         return opened
@@ -746,7 +755,8 @@ class Worker:
         self._prefs_of: dict[str, Preferences] = {}  # user -> preferences, read once per rebuild (last good kept)
         self._leg_ids: dict[int, tuple[tuple, tuple[str, ...]]] = {}  # strategy -> (its legs, spot + leg ids read)
         self._tick: dict[int, tuple | None] = {}  # strategy -> tick key at its last check (``_tick_key``)
-        self._memory: dict[int, dict] = {}  # strategy -> rule memory of its last write
+        #: strategy -> (starting point, rule memory) of its last successful write (ADR-258 starting point)
+        self._memory: dict[int, tuple[int, dict]] = {}
         self._written: dict[int, tuple] = {}  # strategy -> ``_write_key`` of its last write
         self._grids: dict[tuple, tuple] = {}  # (id(provider), underlying, expiry) -> (provider, strike grid)
         self._outcomes: dict[str, int] = {}  # evaluation outcome (withheld / not checked reason) -> count this minute
@@ -1171,25 +1181,31 @@ class Worker:
         return True
 
     async def _evaluate_and_write(self, w: Watched, state: pe.StrategyState, prefs: Preferences) -> pe.Evaluation:
-        """Module docstring, step 4: evaluated here with the last written memory (the entry state is this check's
-        when the memory is empty, as ``evaluate_and_remember`` with no scenario); written only when the write key
-        (rule memory, flagged rule ids, clear rule ids) changed from this process's last successful write; a repeated
-        identical flag makes no call (round 3). The memory holds only two booleans per rule (``held_at_entry``,
-        ``seen_clear``), no timestamp, so it is stable between checks."""
+        """Module docstring, step 4: evaluated with the rule memory of the current starting point (ADR-258): this
+        process's last successful write, else the stored memory the rebuild read (``GateLoad.rule_memory``, issue 65:
+        a restart never takes a fresh baseline); a rule with no memory takes ``check.entry_baseline`` (the same
+        function as the screen and the recorder). Written only when the write key (rule memory, flagged rule ids,
+        clear rule ids) changed from this process's last successful write; a repeated identical flag makes no call
+        (round 3). The memory holds only two booleans per rule, no timestamp, so it is stable between checks."""
         sid = w.strategy_id
-        memory = self._memory.get(sid)
-        known = memory or {}
+        load = self._gate_load.get(sid)
+        stored = {} if load is None else load.rule_memory
+        marker = check.rule_marker(state.adjustments_used, stored)
+        last = self._memory.get(sid)
+        memory = last[1] if last is not None and last[0] == marker else None
+        known = memory if memory is not None else {
+            k: {"held_at_entry": h, "seen_clear": c} for k, (h, c) in stored.get(marker, {}).items()}
         from ofo_app import scenario_mode  # noqa: PLC0415 - read at check time (the screen's own scenario switch)
         scn = scenario_mode.current()
         entry = check.scenario_entry(scn, state, w.tracked.position) if scn is not None else None
         if entry is not None:  # T-11: the scenario's own entry IV, as the screen's check does (adjustment_check:500)
             state = dataclasses.replace(state, entry_atm_iv=entry.atm_iv)
-        ev = pe.evaluate(w.body, state, known, None if known else state, gap_until=prefs.gap_until)
+        base = check.entry_baseline(scn, state, w.tracked.position, w.entry_facts, marker)
+        ev = pe.evaluate(w.body, state, known, base or state, gap_until=prefs.gap_until)
         self._count_outcomes(ev)
         if memory is not None and _write_key(ev) == self._written.get(sid):
             return ev  # nothing a write would change (rule memory, flagged ids, clear ids): no DB call
-        self._memory.pop(sid, None)  # fail closed: until this write succeeds the stored state is unknown, so the
-        self._written.pop(sid, None)  # next check writes (a raising recorder leaves both empty)
+        self._written.pop(sid, None)  # fail closed: until this write succeeds the next check writes again
         self._pending.pop(sid, None)  # re-inserted last: the latest state replaces an older one (coalesced)
         self._pending[sid] = (w, state, prefs, ev)
         self._write_wake.set()  # the writer task writes it; the check never waits for the database
@@ -1226,7 +1242,11 @@ class Worker:
         self._log_opportunities(w, opened)
         if newer:
             return  # the memory stays unknown until the newer one is written (a dropped one: re-checked anew)
-        self._memory[sid] = dict(ev.memory)
+        load = self._gate_load.get(sid)
+        # a state with no count (None) keeps the newest stored starting point, as the check (rule_marker), never a crash
+        self._memory[sid] = (check.rule_marker(getattr(state, "adjustments_used", None),
+                                               {} if load is None else load.rule_memory),
+                             dict(ev.memory))
         self._written[sid] = _write_key(ev)
 
     async def _evaluate_and_gate(self, w: Watched, now: datetime.datetime, state: pe.StrategyState,

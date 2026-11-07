@@ -3803,6 +3803,14 @@
     "sha256": "a5fb4a38ee48dd4dc17ed6ace27757be06bd6906fc0fa9001de223960961c079",
     "reviewed": "pending owner read"
   },
+  "explanation:adjust_condition_line_t01_beyond_ce": {
+    "sha256": "3d17720cda147ab5288393772b59ae8ab25d246b61971c17164ff9ccde2a80c1",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_condition_line_t01_beyond_pe": {
+    "sha256": "9ccacd5b70330d566c79a7cdbc8b726db0c8c85fc8fffc639c6c065b68954559",
+    "reviewed": "pending owner read"
+  },
   "explanation:adjust_prices_stale": {
     "sha256": "5e562ac183d1f88accdb019b4dc31bb8c3ebc6dc37c0f13bea22fca34bbb0adc",
     "reviewed": "owner read 2026-11-07 (fix batch 1 texts approved as written, question tool)"
