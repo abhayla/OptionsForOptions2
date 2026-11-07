@@ -1,5 +1,6 @@
 """land.py: push -> PR -> merge gate in one command, with a faked command runner (no network, no real git/gh)."""
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -51,7 +52,11 @@ class Fake:
         return answers.get(key, (0, ""))
 
     def ran(self, *words):
-        return [c for c in self.calls if all(w in " ".join(c) for w in words)]
+        """Calls holding every word as a WHOLE argument (or as a program's file name, ``gh`` = ``C:\\...\\gh.exe``).
+        2026-11-02: a substring match read "gh" inside a checkout folder named ...-preflight and failed two tests."""
+        def has(call, word):
+            return any(word in (arg, os.path.basename(arg), os.path.splitext(os.path.basename(arg))[0]) for arg in call)
+        return [c for c in self.calls if all(has(c, w) for w in words)]
 
 
 def run(fake, tmp_path, capsys, reviewed_sha=SHA, **opts):

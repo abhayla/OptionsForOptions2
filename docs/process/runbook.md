@@ -69,9 +69,14 @@ says how to run them. Kit commands and kit-owned files: `.claude/kit/GUIDE.md`.
   coverage check).
 
 ## Before a push
+After any merge of two branches, first run `python scripts/orchestrator/merge_preflight.py` (about 1-10 min): that
+frontend/dist is a build of this tree, mypy call/import mismatches in every changed file (a clean textual merge can still break
+calls), collect-only of both suites, and the repo-wide scans no per-item build runs. prepush runs it first and stops on
+a red one, so it never spends ~35 min on a merge the preflight would reject.
 One command, the whole list on a committed, clean tree: `python scripts/orchestrator/prepush.py` (`--full` after a
-large merge). It runs ci_local, the ruff ratchet, the coverage check and the alembic guard, plus, when the change
-touches `frontend/`, `npm run lint`, vitest (the changed files' tests; all with `--full`) and `npm run build` in
+large merge). It runs the preflight, ci_local, the ruff ratchet, the coverage check and the alembic guard, plus, when
+the change touches `frontend/`, `npm run build` FIRST (the domain tests' bundle scan reads `frontend/dist`), then
+`npm run lint` and vitest (the changed files' tests; all with `--full`) in
 `frontend/` (needs `frontend/node_modules`: a missing one is a FAIL). It writes the marker that `git push` and
 `land.py` require for that exact HEAD only when every step passed, the tree was clean from start to end, HEAD did not
 move and no untracked file sits under backend/, tests*/, scripts/ or frontend/src/ (an amend needs a new run). A push
