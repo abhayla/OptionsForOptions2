@@ -210,7 +210,8 @@ def clone_for_file(admin_url: str, app_url: str) -> str:
     app_role = urllib.parse.urlsplit(app_url).username
     _admin_run(admin_url, [f'CREATE DATABASE "{clone}" TEMPLATE "{template}"'])
     try:
-        _admin_run(admin_url, [f'REVOKE CONNECT ON DATABASE "{clone}" FROM PUBLIC',
+        # what CI (CONNECT) and migration 0001 (CREATE, TEMPORARY) revoke on the original
+        _admin_run(admin_url, [f'REVOKE CONNECT, CREATE, TEMPORARY ON DATABASE "{clone}" FROM PUBLIC',
                                f'GRANT CONNECT ON DATABASE "{clone}" TO "{app_role}"'])
     except BaseException:
         _admin_run(admin_url, [f'DROP DATABASE IF EXISTS "{clone}" WITH (FORCE)'])

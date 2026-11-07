@@ -33,5 +33,12 @@ async def test_this_file_runs_on_its_own_copy(app_engine, admin_engine):
         assert (await conn.execute(text("SELECT current_database()"))).scalar_one() == mine
     async with admin_engine.connect() as conn:
         assert (await conn.execute(text("SELECT current_database()"))).scalar_one() == mine
+        # a TEMPLATE copy does not carry the database-level ACL: the copy must grant what the original grants
+        role = app_engine.url.username
+        privs = (await conn.execute(text(
+            "SELECT has_database_privilege(:r, current_database(), 'CONNECT'), "
+            "has_database_privilege(:r, current_database(), 'CREATE'), "
+            "has_database_privilege(:r, current_database(), 'TEMPORARY')"), {"r": role})).one()
+        assert tuple(privs) == (True, False, False)
     for name in ("TEST_DATABASE_URL", "TEST_ADMIN_DATABASE_URL"):
         assert conftest._db_name(os.environ[name]) == mine
