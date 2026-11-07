@@ -340,7 +340,7 @@ type="button" class="flex min-h-11 w-full items-center justify-between px-3 py-2
           <div v-show="isOpen(g.id)" :id="`body-${g.id}`" class="min-w-0 px-3 pb-3">
             <!-- Exits and targets: every threshold in one table (ADR-247 default stop) -->
             <template v-if="g.id === 'g-exit' && !filtering">
-              <table class="w-full table-fixed text-sm" data-testid="exit-table">
+              <div class="overflow-x-auto" data-h-scroll><table class="w-full table-fixed text-sm" data-testid="exit-table">
                 <thead>
                   <tr class="text-left text-xs text-ink-muted">
                     <th class="w-1/3 py-1 pr-2 font-semibold">Threshold</th>
@@ -375,7 +375,7 @@ type="button" class="flex min-h-11 w-full items-center justify-between px-3 py-2
                     <td class="break-words py-1">off by default; checked only while the app is open, not in the background yet</td>
                   </tr>
                 </tbody>
-              </table>
+              </table></div>
               <p v-if="scope === 'all'" class="mt-2 text-sm text-ink-muted" data-testid="plan-per-strategy">
                 &#128274; The profit target and the plan stop are set per strategy: pick one strategy in "Show for" to see and change them.
               </p>
@@ -478,7 +478,7 @@ v-if="hasValue(p)" type="button" class="underline" data-testid="pref-edit" :aria
               <p class="text-sm text-ink-muted">One table per alert style. The daily limit cannot go above the admin limit.</p>
               <section v-for="t in styleTables" :key="t.style" class="mt-3" :data-testid="`prefs-alerts-${t.style}`">
                 <h3 class="font-semibold" data-testid="prefs-alerts-title">{{ t.title }}</h3>
-                <table class="w-full table-auto text-sm">
+                <div class="overflow-x-auto" data-h-scroll><table class="w-full table-auto text-sm">
                   <thead>
                     <tr class="text-left text-ink-muted">
                       <th class="py-1 pr-2 font-normal">Setting</th>
@@ -513,7 +513,7 @@ v-if="hasValue(p)" type="button" class="underline" data-testid="pref-edit" :aria
                       </tr>
                     </template>
                   </tbody>
-                </table>
+                </table></div>
               </section>
               <p v-if="!styleTables.length" class="text-sm text-ink-muted">No alert value came back from the server.</p>
             </template>

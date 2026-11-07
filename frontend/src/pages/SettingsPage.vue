@@ -159,7 +159,7 @@ onMounted(load)
     <div v-else>
       <section v-for="g in data.groups" :key="g.name" class="mb-8" :data-testid="`settings-group-${g.name}`">
         <h2 class="mb-2 text-lg font-semibold">{{ g.name }}</h2>
-        <table class="w-full text-left text-sm">
+        <div class="overflow-x-auto" data-h-scroll><table class="w-full text-left text-sm">
           <thead>
             <tr class="text-ink-muted">
               <th>Setting</th><th>Value in force</th><th>Unit</th><th>Default</th><th>Since</th><th>Set by</th><th>What it changes</th><th></th>
@@ -214,7 +214,7 @@ onMounted(load)
               </tr>
             </template>
           </tbody>
-        </table>
+        </table></div>
       </section>
 
       <section class="mb-8" data-testid="settings-group-Charges">
