@@ -81,16 +81,17 @@ async def _get(app, url: str):
 
 async def test_adj02_chain_spot_and_clock_served(monkeypatch):
     app = _app(monkeypatch, "ADJ-02")
-    out = (await _get(app, "/api/market/chain?underlying=NIFTY&expiry=2026-11-09&strikes_each_side=2")).json()
+    expiry = scenario_mode.shifted("2026-11-09")  # issue #649: the library's dates move by whole weeks
+    out = (await _get(app, f"/api/market/chain?underlying=NIFTY&expiry={expiry}&strikes_each_side=2")).json()
     assert out["state"] == "LIVE" and out["spot"] == "23420.00" and out["atm_strike"] == "23400.00"
-    assert out["spot_at"] == "2026-11-06T11:39:59+05:30"  # clock 11:40, data age 1 s
+    assert out["spot_at"] == scenario_mode.shifted("2026-11-06T11:39:59+05:30")  # clock 11:40, data age 1 s
     row = next(r for r in out["rows"] if r["strike"] == "23400.00")
     scn = scenario_mode.load("ADJ-02")
     fixture = {(r["strike"], r["type"]): r for r in scn.data["market"]["chains"][0]["rows"]}
     assert row["ce"]["ltp"] == f"{Decimal(fixture[('23400', 'CE')]['ltp']):.2f}"
     assert row["pe"]["bid"] == f"{Decimal(fixture[('23400', 'PE')]['bid']):.2f}"
     idx = (await _get(app, "/api/market/indices")).json()
-    assert idx["answered_at"] == "2026-11-06T11:40:00+05:30"
+    assert idx["answered_at"] == scenario_mode.shifted("2026-11-06T11:40:00+05:30")
     assert idx["indices"][0]["value"] == "23420.00"
     feats = (await _get(app, "/features")).json()
     assert feats["scenario"] == "ADJ-02" and feats["order_path"] == "off"
@@ -199,7 +200,8 @@ def test_adj20e_low_oi_unknown_carried():
 
 
 def test_clock_is_the_scenario_clock():
-    assert scenario_mode.load("ADJ-02").clock() == datetime.datetime.fromisoformat("2026-11-06T11:40:00+05:30")
+    at = scenario_mode.shifted("2026-11-06T11:40:00+05:30")
+    assert scenario_mode.load("ADJ-02").clock() == datetime.datetime.fromisoformat(at)
 
 
 def test_a_socket_release_never_drops_a_scenario_quote():

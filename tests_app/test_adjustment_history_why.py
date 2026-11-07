@@ -19,11 +19,13 @@ from decimal import Decimal
 from typing import Any
 
 import test_adjustment_check as check_test
-from ofo_app import paper_book, playbook_store
+from ofo_app import paper_book, playbook_store, scenario_mode
 from ofo_app.routes.outcome import get_answer_clock
 from ofo_app.scenario_mode import refuse_orders
 from test_adjustment_check import _seeded
 from test_adjustment_opportunities import _call, _clean, _opened, _records
+
+SHIFT = scenario_mode.date_shift()  # issue #649: the scenario library's dates move by whole weeks
 
 app_db_url = check_test.app_db_url
 
@@ -34,7 +36,7 @@ NOT_FOUND_TEXT = "This adjustment opportunity was not found."
 #: reads it back from the inbox, so the two readers must agree)
 EXPECTED_T03 = "Tested short's delta reaches: 0.4103 delta (rule 0.3500 delta)"
 _TICKS = itertools.count(1)
-_BASE = datetime.datetime(2026, 11, 3, 10, 0, tzinfo=datetime.UTC)  # after every scenario's entry clock
+_BASE = datetime.datetime(2026, 11, 3, 10, 0, tzinfo=datetime.UTC) + SHIFT  # after every scenario's entry clock
 
 
 def _stepping_clock() -> Any:
@@ -158,7 +160,7 @@ def _rec(rid: int, rule: str, *, readable: bool = True) -> playbook_store.Sugges
     if readable:
         head["cmp"] = "ge"
     return playbook_store.Suggestion(rid, 1, rule, "T-03", None, Decimal("0.4103"), Decimal("0.3500"),
-                                     datetime.datetime(2026, 11, 3, 10, 0, tzinfo=datetime.UTC), "acted_on", None,
+                                     _BASE, "acted_on", None,
                                      [head, {"event": "orders_placed", "order_ids": [7]}])
 
 
