@@ -25,8 +25,6 @@ from ofo_app import adjustment_check as check
 from ofo_app import playbook_store, scenario_mode
 from test_background_worker import app_db_url  # noqa: F401 - the fixture
 
-SHIFT = scenario_mode.date_shift()  # issue #649: the scenario library's dates move by whole weeks
-
 ONE_MINUTE_AND_A_BIT = 70
 ENTRY_SPOT = "23460"  # 40 points (0.17 %) under the 23500 CE short: inside every stage's T-01 limit (lowest 0.3 %)
 
@@ -134,7 +132,7 @@ def test_entry_facts_with_no_iv_solve_each_short_from_its_entry_premium():
     """Stored entry facts (live / paper) carry no IV: each short's vol is solved by the engine from its own entry
     (fill) price at the entry spot and clock, never taken from the first check."""
     _scn, position, now, body = _adj02()
-    facts = EntryFacts(Decimal("23100"), None, None, at=datetime.datetime(2026, 11, 3, 10, 0, tzinfo=IST) + SHIFT)
+    facts = EntryFacts(Decimal("23100"), None, None, at=datetime.datetime(2026, 11, 3, 10, 0, tzinfo=IST))
     entry = check.entry_baseline(None, now, position, facts, 0)
     deltas = {s.strike: s.abs_delta for s in entry.shorts}
     assert all(d is not None and Decimal(0) < d < Decimal("0.35") for d in deltas.values()), deltas

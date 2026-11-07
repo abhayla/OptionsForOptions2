@@ -112,7 +112,7 @@ async def test_adj24a_feed_missing_spot_absent_route_answers(monkeypatch):
     scn = scenario_mode.load("ADJ-24a")
     assert scn.provider.underlying_quote("NIFTY") is None
     assert scn.rest_index_quote() == (200, {"status": "success", "data": {"NSE:NIFTY 50": {
-        "last_price": 23100.0, "timestamp": "2026-10-30 11:00:00"}}})
+        "last_price": 23100.0, "timestamp": scenario_mode.shifted("2026-10-30 11:00:00")}}})
     idx = await _get(_app(monkeypatch, "ADJ-24a"), "/api/market/indices")
     assert idx.status_code == OK and idx.json()["indices"][0]["value"] is None
 
