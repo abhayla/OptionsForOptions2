@@ -13,7 +13,7 @@
     "checks": [],
     "note": "Only a full-file run shows it; single-test runs and name-filtered runs pass. A check that runs each scenario-clock DB file in full on a date after its scenario clock would catch it."
   },
-  "spec_ref": [],
+  "spec_ref": ["spec/testing/README.md"],
   "occurrences": 1,
   "live_example": "Every worker test that opens a T-01 record after the first test in the file: 11 of 18 red on 7 Nov, green on 6 Nov before 11:40.",
   "scope": "generic"
