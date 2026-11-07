@@ -348,6 +348,7 @@ APP_MODELS = (
     "ofo_app.api_models.AdjustLegOut",
     "ofo_app.api_models.AdjustMarginOut",
     "ofo_app.api_models.AdjustPopOut",
+    "ofo_app.api_models.AdjustPricesOut",
     "ofo_app.api_models.AdjustSpotOut",
     "ofo_app.api_models.AdjustSpotReasonOut",
     "ofo_app.api_models.AdjustTimingOut",
