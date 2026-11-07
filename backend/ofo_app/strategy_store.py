@@ -169,7 +169,8 @@ def check_strategy_id(value: Any) -> int:
 
 def _check_revision(row: Any, expected_revision: Any) -> None:
     """Optimistic concurrency: a write names the revision it was based on; another write since then refuses it."""
-    if isinstance(expected_revision, bool) or not isinstance(expected_revision, int) or expected_revision != row.revision:
+    if (isinstance(expected_revision, bool) or not isinstance(expected_revision, int)
+            or expected_revision != row.revision):
         raise StrategyStoreError(REVISION_CONFLICT, f"strategy {row.id} is at revision {row.revision}, the change was "
                                                     f"based on {expected_revision!r}; reload and apply it again")
 
@@ -181,7 +182,8 @@ def _check_revision(row: Any, expected_revision: Any) -> None:
 
 async def catalogue_resolver(conn: Any, contract_ids: Iterable[int]) -> sf.Resolver:
     """Reads every named contract id from the catalogue once; the resolver answers None for an id it does not hold."""
-    wanted = sorted({c for c in contract_ids if isinstance(c, int) and not isinstance(c, bool) and 0 < c <= sf.MAX_CONTRACT_ID})
+    wanted = sorted({c for c in contract_ids
+                     if isinstance(c, int) and not isinstance(c, bool) and 0 < c <= sf.MAX_CONTRACT_ID})
     existing = {int(r[0]) for r in (await conn.execute(_EXISTING_IDS, {"ids": wanted})).all()} if wanted else set()
     terms: dict[int, sf.CatalogueTerms] = {}
     for contract_id in sorted(existing):

@@ -73,7 +73,7 @@ async def test_unsaved_t01_middle_03_drops_t01_keeps_t03_t09_and_writes_nothing(
     (mine,) = [s for s in out["strategies"] if s["strategy_id"] == sid]
     assert mine["name"].startswith('"') and mine["stage"] == {"name": "Middle", "index": 1}
     assert _rows(mine, "flag") == [("T-03", "0.4103", "0.3500", "ge"), ("T-09", "2.7000", "3.0000", "le"),
-                                   ("sit.S-02", "0.2120", "0.1500", "ge")]  # S-02 net delta/lot -0.0159 at entry (< 0.15), so F-71 flags it (fix batch 1 round 3, #664)
+                                   ("sit.S-02", "0.2120", "0.1500", "ge")]  # S-02 -0.0159 < 0.15: F-71 (#664)
     not_checked = [x for x in mine["results"] if x["kind"] == "not_checked"]
     assert not_checked and all(x["reason"] and x["value"] is None for x in not_checked)  # never listed as passed
     assert "T-01" not in {x["trigger_id"] for x in mine["results"]}
@@ -89,7 +89,7 @@ async def test_unchanged_system_body_flags_t01_too(app_db_url, monkeypatch):
     (mine,) = [s for s in r.json()["strategies"] if s["strategy_id"] == sid]
     assert _rows(mine, "flag") == [("T-01", "0.3416", "0.5000", "le"), ("T-03", "0.4103", "0.3500", "ge"),
                                    ("T-09", "2.7000", "3.0000", "le"),
-                                   ("sit.S-02", "0.2120", "0.1500", "ge")]  # 4 dp half-up (step 5); S-02 net delta/lot -0.0159 at entry (< 0.15), so F-71 flags it (fix batch 1 round 3, #664)
+                                   ("sit.S-02", "0.2120", "0.1500", "ge")]  # 4 dp half-up; S-02 -0.0159 < 0.15 (#664)
 
 
 async def test_no_strategy_of_the_type_says_so(app_db_url, monkeypatch):

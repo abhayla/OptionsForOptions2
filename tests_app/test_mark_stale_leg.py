@@ -11,8 +11,8 @@ from ofo_app.adjustment_check import mark_of
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tests" / "adjustment"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tests"))
-from test_adjust_scenarios import load  # noqa: E402
-from test_playbook_eval import _row  # noqa: E402
+from test_adjust_scenarios import load
+from test_playbook_eval import _row
 
 
 def _chain_row(ltp, bid, ask):

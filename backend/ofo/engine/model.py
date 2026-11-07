@@ -290,8 +290,9 @@ def greeks_unrounded(em: ExpiryModel, kind: Instrument, strike: Decimal, vol: De
                                    dividend_yield=e.dividend_yield)
 
 
-def greeks_at_price(kind: Instrument, spot: Decimal, strike: Decimal, expiry: datetime.date,
-                    clock: datetime.datetime, rate: Decimal, price: Decimal, vol: Decimal | None = None) -> Greeks:
+def greeks_at_price(kind: Instrument, spot: Decimal, strike: Decimal, expiry: datetime.date,  # noqa: PLR0913
+                    clock: datetime.datetime, rate: Decimal, price: Decimal,
+                    vol: Decimal | None = None) -> Greeks:
     """Per-unit engine Greeks at an explicit ``spot`` and ``clock`` (a past instant, e.g. a leg's entry), for a caller
     that holds no gated forward: vol = ``vol`` when stated, else the vol the engine solves from ``price``. The engine's
     refusals (no IV for this price, expiry passed) raise ValueError."""

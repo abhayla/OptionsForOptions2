@@ -68,7 +68,7 @@ PR241_SELECTION = {
     "tests_app/test_pinned_clock.py",  # calls the /api/catalogue/{underlying}/... routes
     "tests_app/test_strategy_tracking.py",  # W-122: GET /strategies/{strategy_id}
     "tests_app/test_stored_contract_feed_keys.py",  # issue #500: GET /strategies/{id} and /history, StrategyRefused
-    "tests_app/test_stored_chain_real.py",  # PR #580 (I-4): calls the real catalogue_picker readers and catalogue routes
+    "tests_app/test_stored_chain_real.py",  # PR #580 (I-4): real catalogue_picker readers and routes
     "tests_app/test_strategy_tracking_imports.py",  # issue #500: its scan names ofo_app.catalogue_picker as a source
     "tests_app/test_ready_made_route.py",  # W-125: raises StrategyRefused and posts to /api/strategies/... routes
     "tests_app/test_playbook_labels_route.py",  # GC-ADJ2 step 3: imports ofo.errors.explanations (changed here)
@@ -84,7 +84,7 @@ PR241_SELECTION = {
     "tests_app/test_leg_picker_routes.py",  # row 19: imports ofo_app.catalogue_picker, which the #241 diff changes
     "tests_app/test_leg_edit_route.py",  # row 20: POST /api/strategies/leg-edit, a /api/strategies/... route
     "tests_app/test_strategy_name_app.py",  # row 29b: POST/PATCH/GET /strategies routes and the strategy store
-    "tests_app/test_leg_edit_db_trips.py",  # batch 1 gate leftover: names the leg-edit route/store the #241 diff changes
+    "tests_app/test_leg_edit_db_trips.py",  # batch 1 gate leftover: names the leg-edit route/store
     "tests_app/test_leg_edit_eligibility_db.py",  # row 30b: imports the leg-edit route's eligibility/list checks
     "tests_app/test_drawer_after_hours.py",  # GC-BM F-18: imports ofo_app.catalogue_picker, calls leg_picker answers
     "tests_app/test_outcome_open_interest.py",  # GC-UI D-B16: imports ofo_app.routes.outcome / live_push (explanations)

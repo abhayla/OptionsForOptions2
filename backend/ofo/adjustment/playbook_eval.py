@@ -75,7 +75,8 @@ class ShortLeg:
 @dataclass(frozen=True)
 class CarryFigures:
     """The carry check's content (GC-IC1 1b, S-06): the whole-trade P&L (booked plus open legs) if spot gaps
-    the carry gap setting (``other.carry_gap_percent``) up / down at the next session's open, valued by the engine (``ofo.adjustment.carry.gap_pnl``),
+    the carry gap setting (``other.carry_gap_percent``) up / down at the next session's open, valued by the engine
+    (``ofo.adjustment.carry.gap_pnl``),
     and the broker-stated overnight margin. A figure not known is None with its reason code, never a zero."""
 
     up: Decimal | None
@@ -735,7 +736,7 @@ def _stop_hit(c: _Ctx, tid: str, line: sl.StopInForce) -> Hit:
     else:
         pnl = _need(c.state.pnl, "pnl")
         num, den = ratios.loss_pct_of_max_loss(pnl, _finite(c.state.max_loss, "max_loss"))
-        if num > den * 100:  # ADR-266: a marked loss above max loss cannot be real -> inconsistent prices, never flagged
+        if num > den * 100:  # ADR-266: a marked loss above max loss is not real: never flagged
             raise _Missing(f"{P}inconsistent_prices")
     return _exact(tid, num, den, _tightened(c, tid, line.figure, "ge"), "ge")  # type: ignore[arg-type]
 

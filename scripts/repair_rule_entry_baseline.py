@@ -66,7 +66,7 @@ async def repair(conn: Any, read_position: Callable[[int], Awaitable[Any]], *, a
         by_strategy[row.strategy_id].append(row)
     counts[HELD] = sum(len(v) for v in by_strategy.values())
     # the stored live contracts, for the strike gap the type read needs (as the worker's instrument master)
-    listed = [lc for _, lc, _ in await catalogue_store._load_live(conn)] if by_strategy else []  # noqa: SLF001
+    listed = [lc for _, lc, _ in await catalogue_store._load_live(conn)] if by_strategy else []
     for sid, rows in by_strategy.items():
         first = rows[0]
         if first.entry_spot is None or first.created_at is None:
