@@ -19,7 +19,7 @@ from sqlalchemy import text
 _INSERT = text(
     "INSERT INTO public.strategy_entry_facts (strategy_id, entry_spot, call_distance, put_distance) "
     "VALUES (:strategy_id, :entry_spot, :call_distance, :put_distance) ON CONFLICT (strategy_id) DO NOTHING")
-_SELECT = text("SELECT entry_spot, call_distance, put_distance FROM public.strategy_entry_facts "
+_SELECT = text("SELECT entry_spot, call_distance, put_distance, created_at FROM public.strategy_entry_facts "
                "WHERE strategy_id = :id")
 
 
@@ -45,4 +45,4 @@ async def read(conn: Any, strategy_id: int) -> EntryFacts | None:
     values = (row.entry_spot, row.call_distance, row.put_distance)
     if not isinstance(row.entry_spot, Decimal) or any(v is not None and not isinstance(v, Decimal) for v in values):
         raise EntryFactsUnreadable(f"strategy {strategy_id}: a stored entry fact is not an exact Decimal")
-    return EntryFacts(row.entry_spot, row.call_distance, row.put_distance)
+    return EntryFacts(row.entry_spot, row.call_distance, row.put_distance, at=row.created_at)

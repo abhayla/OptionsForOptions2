@@ -7,10 +7,12 @@ representative value of its unit, so a new unit the slots refuse fails CI, not p
 from __future__ import annotations
 
 import json
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
 from ofo_app.adjustment_check import condition_line
+from ofo_app.playbook_store import Suggestion
 
 PLAYBOOKS = json.loads((Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "adjust_scenarios"
                         / "_playbooks.json").read_text(encoding="utf-8"))
@@ -37,3 +39,24 @@ def test_an_unrenderable_value_still_returns_the_trigger_id_line(value):
     """Last resort (fail visible): the trigger id alone, never an exception (a 500)."""
     line = condition_line("T-10b", "Clock time reached", "time", value, "14:30")
     assert str(line) == "T-10b"
+
+
+@pytest.mark.parametrize(("kind", "strike", "points", "text"), [
+    ("CE", "23500", "100", "spot is beyond the sold 23,500 CE by 100 points"),
+    ("PE", "22000", "12.35", "spot is beyond the sold 22,000 PE by 12.35 points")])
+def test_t01_beyond_the_short_names_it_never_zero_percent(kind, strike, points, text):
+    """ADR-268 (2): a breached short's T-01 line says how far past the sold strike spot is, never "0 %"."""
+    t = PLAYBOOKS["triggers"]["T-01"]
+    line = str(condition_line("T-01", t["label"], t["unit"], "0.0000", "0.3000",
+                              (kind, Decimal(strike), Decimal(points))))
+    assert line == f"{t['label']}: {text}", line
+
+
+def test_t01_beyond_marker_read_back_from_the_record():
+    def rec(first):
+        return Suggestion(1, 1, "T-01", "T-01", None, Decimal(0), Decimal("0.3"), None, "open", None, [first])
+    assert rec({"beyond": {"kind": "CE", "strike": "23500", "points": "100"}}).beyond == (
+        "CE", Decimal("23500"), Decimal("100"))
+    assert rec({}).beyond is None  # an older record: the plain line
+    assert rec({"beyond": {"kind": "XX", "strike": "1", "points": "1"}}).beyond is None  # fail visible
+    assert rec({"beyond": {"kind": "CE", "strike": "bad", "points": "1"}}).beyond is None

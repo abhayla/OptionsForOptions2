@@ -1527,6 +1527,13 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     # a clock trigger (unit "time", T-10b): its value and threshold are clock times, no unit word
     ExplanationTemplate("adjust_condition_line_time", "values_seen", "{label}: {value} (rule {threshold})",
                         {"label": PlaybookTriggerLabel, "value": ClockTime, "threshold": ClockTime}),
+    # ADR-268 (2): a T-01 short at or beyond its strike: no % gap is left to show, the line says how far past it is
+    ExplanationTemplate("adjust_condition_line_t01_beyond_ce", "values_seen",
+                        "{label}: spot is beyond the sold {strike} CE by {points} points",
+                        {"label": PlaybookTriggerLabel, "strike": WholePoints, "points": Points}),
+    ExplanationTemplate("adjust_condition_line_t01_beyond_pe", "values_seen",
+                        "{label}: spot is beyond the sold {strike} PE by {points} points",
+                        {"label": PlaybookTriggerLabel, "strike": WholePoints, "points": Points}),
     # last resort (fail visible): the trigger id alone when no line can carry its value
     ExplanationTemplate("adjust_condition_line_id", "values_seen", "{label}", {"label": PlaybookTriggerLabel}),
     # ADR-221: the T-19 flag line names the cheapest approach the playbook offers and its Compare cost

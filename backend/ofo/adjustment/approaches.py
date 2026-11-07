@@ -79,7 +79,7 @@ from __future__ import annotations
 
 import datetime
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Final, cast
 
@@ -172,6 +172,8 @@ class EntryFacts:
     entry_spot: Decimal
     call_distance: Decimal | None
     put_distance: Decimal | None
+    #: when the facts were stored (the first fill, DB clock); the F-71 entry baseline's clock (issue 65). Not compared
+    at: datetime.datetime | None = field(default=None, compare=False)
 
 
 def entry_facts_of(spot: Decimal, shorts: Sequence[tuple[str, Decimal]]) -> EntryFacts:
