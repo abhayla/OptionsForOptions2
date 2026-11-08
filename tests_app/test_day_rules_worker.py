@@ -15,7 +15,7 @@ from ofo.adjustment.preferences import from_values
 from ofo.errors.explanations import PLAYBOOK_DAY_RULE_ACTION_TEXT
 from ofo.settings import defaults as registry_defaults
 from ofo.timeutil import IST
-from ofo_app import background, playbook_store, scenario_mode, strategy_alert_style_store
+from ofo_app import background, playbook_store, scenario_mode, strategy_alert_style_store, user_preferences_store
 from ofo_app import db as app_db
 from ofo_app.config import get_settings
 from sqlalchemy import text
@@ -70,15 +70,21 @@ class _Draining(background.Worker):
         await self.drain_writes()
 
 
-def _worker(scn: scenario_mode.Scenario, clock) -> background.Worker:
+def _worker(scn: scenario_mode.Scenario, clock, overrides: dict | None = None) -> background.Worker:
+    """``overrides``: admin values that differ from the registry defaults (the admin layer, so also the user's)."""
     def settings(_at):  # the settings in force at the worker clock, from memory (#636 r4 settings cache seam)
-        return registry_defaults()
+        return {**registry_defaults(), **(overrides or {})}
 
     async def preferences(_user_ref):
         return from_values(registry_defaults())
 
     async def user_values(_user_ref):
-        return registry_defaults()
+        # the store's own record shape (``values_for``: no own value, every key "default"); a plain mapping has no
+        # user layer and the carry gap resolver fails closed (setting_user_unreadable, ADR-245)
+        values = {**registry_defaults(), **(overrides or {})}
+        return user_preferences_store.UserValues(
+            {k: user_preferences_store.Answer(k, values[k], "default", values[k], None)
+             for k in user_preferences_store.preference_keys()})
     return _Draining(provider_for=lambda _owner: scn.provider,
                      lister=lambda: background.owner_lister(scn.provider), clock=clock,
                      settings=settings, preferences=preferences, user_values=user_values)
@@ -106,7 +112,10 @@ async def test_core_expiry_rule_opens_one_record_at_1430_through_the_gate_and_ne
     sid, scn = await _seeded(app_engine, monkeypatch, "ADJ-51")
     try:
         now = [T1429]
-        worker = _worker(scn, lambda now=now: now[0])
+        # #663: at 23400 ADJ-51 also opens T-01 (twice), T-07, T-09 and T-10b by 14:42, so the default daily limit
+        # (6, ADR-237 (7)) held the re-armed day record as daily_limit (measured 2026-11-08 gate trace); the admin
+        # limit at its registry maximum keeps this test on the re-arm (ADR-237 (1)), the cap has its own tests
+        worker = _worker(scn, lambda now=now: now[0], overrides={"alerts.intraday.daily_cap": Decimal("20")})
         await _run(worker, now, scn, "23400", T1429, LAST_SECOND + 1)  # 14:29:00 .. 14:29:59
         assert worker.errors == [] and worker.status[sid] is background.MonitoringStatus.ACTIVE, worker.errors
         at_1429 = await _day_rows(app_engine, sid)
