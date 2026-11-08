@@ -182,3 +182,57 @@ Measured state at 19:45 IST (Sat 2026-11-07):
 7. **Archive tags** (`archive/2026-11-07/<branch>`) are pushed to origin only for unique, unmerged branches (~20).
    Contained branches are simply deleted, because main and the bundle both hold them.
 
+
+## §1b Amendment 1 (owner, 2026-11-07 22:20-23:10 IST): audit the archived branches, keep parked work parked, record where it lives
+
+Owner, verbatim, in order:
+1. "update this goal contract accordingly so that all those 15 branches are also audited and their code checked, and
+   wherever needed they should be merged to main."
+2. "No new implementation, just merge all the code. Do not leave anything. For the parked items, keep them parked."
+3. "find out and list what all things were parked and why they were parked and in which branch they are parked, so
+   that in future whenever the implementation starts on those parked items, it should not begin from the beginning,
+   it should begin from those parked branches."
+4. "Update the goal contract with your recommended sequence."
+
+This replaces the ARCHIVE line of §1 for the 15 branches.
+
+1. **Audit (done 22:30-22:45).** Each of the 15 branches was checked against the integrated tip a4b9b339: verdicts in
+   `docs/process/archived-branch-audit-2026-11-07.md`. Result: 14 are PRs parked together on 2026-10-29 under #605
+   ("held for the live Kite gate"; order path out of scope per ADR-165); 1 (docs/gclive-2026-10-30) was never in a PR.
+   No branch was superseded by a re-implementation; none is obsolete.
+2. **Merge vs park (owner item 2).** The 14 #605 branches stay parked: not merged, kept as archive tags
+   `archive/2026-11-07/<branch>`. docs/gclive-2026-10-30 is merged (its 2 docs files) in the GC-MERGE1 docs PR. The 2
+   stashes hold 0 changed lines; tags kept, nothing to merge. No new implementation in this contract.
+3. **Parked register (owner item 3).** `docs/process/parked-register-2026-11-07.md`: every parked item in the repo (44
+   parked issues + the 14 #605 PRs = 57 rows): what, why (quoted), done/left, branch, and a PERMANENT resume ref (an
+   archive tag or a commit in main's history; never a branch name, since branches are deleted in §4). Four parked heads
+   that had no permanent ref were tagged 2026-11-07 (archive/2026-11-07/live/2026-10-30,
+   build/W-024-error-catalogue-r3, build/W-021-reconciliation, build/W-023-partial-execution). Rule for future work:
+   start a parked item with `git checkout -b <new> <resume ref>`, merge main in, run its own tests; never from scratch.
+   #605 gets a comment linking the register and the 14 tags.
+4. §6 gains a row: every register row has a resume ref that exists on origin (tag) or is an ancestor of origin/main.
+
+## §8 Sequence after GC-MERGE1 (owner item 4; my recommendation, recorded)
+
+1. **GC-MERGE1 first, nothing else (tonight).** Land #665, clean up (§4), move the live app (§5), one docs PR (audit,
+   register, this amendment, docs/gclive files, handover). Why: every later contract is cut from main; starting before
+   main is clean recreates two drifting code lines.
+2. **IC fix batches 2-6 next, each absorbing its parked IC items.** The parked issues in the adjustment / iron condor
+   feature the owner uses live (strategy 82): #664, #661, #662, #636, #638, #645, #624. Each batch contract lists its
+   parked items with their resume refs from the register. Why: bugs in the feature in daily use cost the owner now.
+3. **Builder-scope parked items, one batch.** #558 (row 31, REQ-085, with archive tag build/c4-row-31b), W-124
+   (archive tag build/W-124-a3-chain; "much superseded by GC-UI, re-check first"), #596, #616, #433, #434, #560, #561.
+4. **The 14 held PRs (#605) only when order placing comes back into scope.** That is an owner decision (it amends
+   ADR-165). Then rebuild in #605's order (1 -> 14) from the archive tags, all of rows 1-12 before the first real order
+   (example: without row 3 "never split", a Complete above the freeze limit is sliced on the guessed 1,755 units).
+5. **Process/tooling parked items when convenient:** #200, #247, #517, #519.
+6. Steps 2-3 need no new owner decision; step 4 needs the ADR-165 decision first.
+
+## §1c Scope added during the run: the app DB test suite (2026-11-08 00:40-11:50 IST; technical, under the run's safe default "hold and fix")
+§3.3 required app-tests green. The `api` job (the DB suite) could not finish on this branch; it had been date-red since
+about 11-04 and was never run in full (the local gate skips DB tests). Four classes, each fixed at class level and each reviewed:
+the fixture-date bomb (#649: one token per symbol + one union load, guards), shared state between test files (one
+database per test file cloned from the migrated template), 9 stale expectations (each citing the migration/ADR that
+changed it), and #663 (per-test strategy, ADR-245 fakes, cap tests on a T-01-only plan). Result: #665 merged with all 8
+checks green (api 6126 tests). `domain-tests` became a required check on main. Details: #649 and #663 comments, and
+`docs/process/session-handover-2026-11-07-merge.md`.
