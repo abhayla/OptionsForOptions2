@@ -15,6 +15,25 @@ def test_the_per_file_database_fixture_is_autouse_and_module_scoped(request):
     assert defs and defs[-1].scope == "module"  # once per test FILE
 
 
+TOOL_DB = "ofo_test_tmp_20261020000000_aaaa"
+
+
+def test_clone_decision_every_state():
+    assert conftest.should_clone(TOOL_DB, {})  # throwaway made by db_run_fresh
+    assert conftest.should_clone("ofo_test", {"GITHUB_ACTIONS": "true"})  # CI
+    assert not conftest.should_clone("ofo_test", {})  # db_run on the shared database
+    assert not conftest.should_clone("ofo_dev", {"GITHUB_ACTIONS": "false"})
+
+
+def test_clone_names_carry_the_pid_and_are_swept_by_db_run_fresh(monkeypatch):
+    names = []
+    monkeypatch.setattr(conftest, "_admin_run", lambda _u, stmts: names.append(stmts[0]))
+    c = conftest.clone_for_file(f"postgresql://a:b@h/{TOOL_DB}", f"postgresql://ofo_app:b@h/{TOOL_DB}")
+    assert c.startswith(f"{TOOL_DB}_f{os.getpid()}_")
+    assert conftest._db_run_fresh.is_tool_name(c)
+    conftest.CLONES_MADE.remove(c)
+
+
 def test_a_failed_copy_raises_and_leaves_no_record():
     """Fail closed: a copy that cannot be made is an error for the file, never a quiet fall-back to the shared DB."""
     before = list(conftest.CLONES_MADE)
@@ -25,6 +44,8 @@ def test_a_failed_copy_raises_and_leaves_no_record():
 
 
 async def test_this_file_runs_on_its_own_copy(app_engine, admin_engine):
+    if not conftest.should_clone(conftest._db_name(os.environ["TEST_ADMIN_DATABASE_URL"])) and not conftest.CLONES_MADE:
+        pytest.skip("template is not a db_run_fresh throwaway and not CI: no per-file copy by design")
     if not conftest.CLONES_MADE:
         pytest.fail("TEST_ADMIN_DATABASE_URL is set but no per-file copy was made")
     mine = conftest.CLONES_MADE[-1]
