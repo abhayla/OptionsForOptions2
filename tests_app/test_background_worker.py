@@ -19,12 +19,11 @@ import time
 from decimal import Decimal as D
 
 import pytest
+from _scenario_catalogue import load_library
 from ofo.adjustment import alert_gate
 from ofo.adjustment.preferences import from_values
-from ofo.settings import calc as settings_calc
 from ofo.settings import defaults as registry_defaults
-from ofo.timeutil import IST
-from ofo_app import background, catalogue_store, playbook_store, scenario_mode, strategy_alert_style_store
+from ofo_app import background, playbook_store, scenario_mode, strategy_alert_style_store
 from ofo_app import db as app_db
 from ofo_app.config import get_settings
 from sqlalchemy import text
@@ -33,8 +32,6 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 _spec = importlib.util.spec_from_file_location("seed_scenario", ROOT / "scripts" / "seed_scenario.py")
 seed_mod = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(seed_mod)
-CATALOGUE_AS_OF = datetime.datetime(2026, 10, 31, 9, 0, tzinfo=IST)
-MAX_DELIST = settings_calc.max_delist_percent(registry_defaults())  # the registry default, passed explicitly
 BEFORE_CROSS_SPOT = "23000"  # 2.1 % below the 23500 CE short and 1.3 % above the 22700 PE short: T-01 (0.5 %) false
 ONE_SECOND = datetime.timedelta(seconds=1)
 REBUILD_LIMIT_S = 60
@@ -68,10 +65,7 @@ async def app_db_url(app_engine, monkeypatch):
 async def _seeded(app_engine, monkeypatch) -> tuple[int, scenario_mode.Scenario]:
     monkeypatch.setenv("OFO_SCENARIO", "ADJ-02")
     scn = scenario_mode.load("ADJ-02")
-    async with app_engine.begin() as conn:
-        await catalogue_store.apply_update(conn, scn.provider.instrument_master(), as_of=CATALOGUE_AS_OF, force=True,
-                                           reason="test: scenario ADJ-02 contracts", actor="test",
-                                           max_delist_percent=MAX_DELIST)
+    await load_library(app_engine)  # the whole library's list, once per database
     return await seed_mod.seed("ADJ-02"), scn
 
 

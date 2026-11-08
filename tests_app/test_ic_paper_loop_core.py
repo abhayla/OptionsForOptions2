@@ -11,16 +11,14 @@ from __future__ import annotations
 
 import datetime
 import importlib.util
-import json
 import pathlib
 from decimal import Decimal as D
 
+from _scenario_catalogue import load_library
 from httpx import ASGITransport, AsyncClient
 from ofo.adjustment.preferences import from_values
-from ofo.settings import calc as settings_calc
 from ofo.settings import defaults as registry_defaults
-from ofo.timeutil import IST
-from ofo_app import background, catalogue_store, scenario_mode, strategy_alert_style_store
+from ofo_app import background, scenario_mode, strategy_alert_style_store
 from ofo_app import db as app_db
 from ofo_app.config import get_settings
 from sqlalchemy import text
@@ -29,8 +27,6 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 _spec = importlib.util.spec_from_file_location("seed_scenario", ROOT / "scripts" / "seed_scenario.py")
 seed_mod = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(seed_mod)
-CATALOGUE_AS_OF = datetime.datetime(2026, 10, 31, 9, 0, tzinfo=IST)
-MAX_DELIST = settings_calc.max_delist_percent(registry_defaults())
 PATH_ID = "PATH-01"
 CROSS_FRAME = 6
 CYCLES_PER_FRAME = 75  # past one 1-minute candle close (intraday style) at one-second cycles
@@ -57,7 +53,7 @@ class _Draining(background.Worker):
 
 
 def frame_doc(k: int) -> dict:
-    return json.loads(scenario_mode.frame_path(PATH_ID, k).read_text(encoding="utf-8"), parse_float=D)
+    return scenario_mode.read(PATH_ID, k, parse_float=D)
 
 
 def mid_of(k: int, symbol: str) -> D:
@@ -112,10 +108,7 @@ async def _net(sid: int) -> dict[int, int]:
 
 async def _core(app_engine) -> None:  # noqa: PLR0915 - one readable walk of the proof
     scn = scenario_mode.load(PATH_ID)
-    async with app_engine.begin() as conn:
-        await catalogue_store.apply_update(conn, scn.provider.instrument_master(), as_of=CATALOGUE_AS_OF, force=True,
-                                           reason="test: path scenario PATH-01 contracts", actor="test",
-                                           max_delist_percent=MAX_DELIST)
+    await load_library(app_engine)  # the whole library's list, once per database
     await app_engine.dispose()  # from here on ONE engine (the app's) holds every connection
     sid = await seed_mod.seed(PATH_ID)  # paper entry at frame 0 (the base position's entry fills)
     _reset_engine()

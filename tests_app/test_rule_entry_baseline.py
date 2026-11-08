@@ -93,7 +93,7 @@ IST = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
 def _adj02():
     """ADJ-02 as the app reads it: the position (entry spot 23100, ATM IV 0.13 at 3 Nov 10:00), the system IC
     playbook, and a first check where T-03 and T-09 are true NOW (CE short delta 0.4103, PE short price 2.70)."""
-    data = json.loads((FIXTURES / "ADJ-02.json").read_text(encoding="utf-8"))
+    data = scenario_mode.read("ADJ-02")
     playbooks = json.loads((FIXTURES / "_playbooks.json").read_text(encoding="utf-8"), parse_float=Decimal)
     legs = tuple(PositionLeg(x["side"], x["type"], Decimal(x["strike"]), datetime.date.fromisoformat(x["expiry"]),
                              x["lots"], Decimal(x["entry"]), x["tradingsymbol"]) for x in data["position"]["legs"])
@@ -150,7 +150,7 @@ def test_known_gap_no_entry_facts_the_first_check_is_the_entry():
 
 
 def _scenario(name: str):
-    data = json.loads((FIXTURES / f"{name}.json").read_text(encoding="utf-8"))
+    data = scenario_mode.read(name)
     playbooks = json.loads((FIXTURES / "_playbooks.json").read_text(encoding="utf-8"), parse_float=Decimal)
     legs = tuple(PositionLeg(x["side"], x["type"], Decimal(x["strike"]), datetime.date.fromisoformat(x["expiry"]),
                              x["lots"], Decimal(x["entry"]), x["tradingsymbol"]) for x in data["position"]["legs"])

@@ -22,7 +22,7 @@ from ofo_app import background, scenario_mode
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tests" / "adjustment"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tests"))
-from test_adjust_scenarios import load
+from ofo_app.scenario_mode import read as load
 from test_playbook_eval import _row, body_of, evaluate, state_of
 from test_t14_gamma import _hand
 

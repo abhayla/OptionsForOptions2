@@ -7,16 +7,15 @@ from __future__ import annotations
 
 import datetime
 import importlib.util
-import json
 import pathlib
 from decimal import Decimal
 
+from _scenario_catalogue import load_library
 from ofo.adjustment.preferences import from_values
 from ofo.errors.explanations import PLAYBOOK_DAY_RULE_ACTION_TEXT
-from ofo.settings import calc as settings_calc
 from ofo.settings import defaults as registry_defaults
 from ofo.timeutil import IST
-from ofo_app import background, catalogue_store, playbook_store, scenario_mode, strategy_alert_style_store
+from ofo_app import background, playbook_store, scenario_mode, strategy_alert_style_store
 from ofo_app import db as app_db
 from ofo_app.config import get_settings
 from sqlalchemy import text
@@ -25,8 +24,6 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 _spec = importlib.util.spec_from_file_location("seed_scenario", ROOT / "scripts" / "seed_scenario.py")
 seed_mod = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(seed_mod)
-CATALOGUE_AS_OF = datetime.datetime(2026, 10, 31, 9, 0, tzinfo=IST)
-MAX_DELIST = settings_calc.max_delist_percent(registry_defaults())
 RID = "day.expiry.1430.5"
 T1429 = datetime.datetime(2026, 11, 3, 14, 29, 0, tzinfo=IST)
 T1430 = T1429 + datetime.timedelta(minutes=1)
@@ -49,10 +46,7 @@ async def _seeded(app_engine, monkeypatch, sid_name: str) -> tuple[int, scenario
     await _app_db(app_engine, monkeypatch)
     monkeypatch.setenv("OFO_SCENARIO", sid_name)
     scn = scenario_mode.load(sid_name)
-    async with app_engine.begin() as conn:
-        await catalogue_store.apply_update(conn, scn.provider.instrument_master(), as_of=CATALOGUE_AS_OF, force=True,
-                                           reason=f"test: scenario {sid_name} contracts", actor="test",
-                                           max_delist_percent=MAX_DELIST)
+    await load_library(app_engine)  # the whole library's list, once per database
     sid = await seed_mod.seed(sid_name)
     async with app_engine.connect() as conn:  # 1-minute candles (REQ-170 Q-AD-2), as the worker tests pin
         await strategy_alert_style_store.set_pin(conn, "owner", sid, "intraday")
@@ -185,8 +179,7 @@ def _assert_gap_matches_generator(sid_name: str, up: Decimal, down: Decimal) -> 
     """REQ-159 AC-4: the record's 2% gap figures against the generator's own values (its own leg model, never the
     app's carry code). The worker solves each leg's IV from prices rounded to the 0.05 tick, so the bound is one
     tick per leg per unit of quantity: 0.05 x quantity x legs (Rs 26 for ADJ-53)."""
-    exp = json.loads((ROOT / "tests" / "fixtures" / "adjust_scenarios" / f"{sid_name}.json").read_text(
-        encoding="utf-8"))
+    exp = scenario_mode.read(sid_name)
     legs = exp["position"]["legs"]
     tol = Decimal("0.05") * sum(leg["quantity"] for leg in legs)
     carry = exp["expected"]["carry"]

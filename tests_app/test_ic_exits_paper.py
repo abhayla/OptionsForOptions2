@@ -19,8 +19,9 @@ from decimal import Decimal as D
 
 import pytest
 import test_ic_paper_loop_core as core
+from _scenario_catalogue import load_library
 from httpx import ASGITransport, AsyncClient
-from ofo_app import catalogue_store, playbook_store, scenario_mode
+from ofo_app import playbook_store, scenario_mode
 
 OK, CREATED, CONFLICT = 200, 201, 409
 PATH = "PATH-50"
@@ -39,11 +40,7 @@ async def setup(app_engine, monkeypatch, path: str = PATH) -> int:
     monkeypatch.setenv("DB_POOL_SIZE", "2")
     monkeypatch.setenv("DB_MAX_OVERFLOW", "0")
     core._reset_engine()
-    scn = scenario_mode.load(path)
-    async with app_engine.begin() as conn:
-        await catalogue_store.apply_update(conn, scn.provider.instrument_master(), as_of=core.CATALOGUE_AS_OF, force=True,
-                                           reason=f"test: path scenario {path} contracts", actor="test",
-                                           max_delist_percent=core.MAX_DELIST)
+    await load_library(app_engine)  # the whole library's list, once per database
     await app_engine.dispose()
     sid = await core.seed_mod.seed(path)
     core._reset_engine()

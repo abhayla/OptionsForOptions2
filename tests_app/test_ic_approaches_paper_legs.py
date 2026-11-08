@@ -15,8 +15,9 @@ from decimal import Decimal as D
 
 import pytest
 import test_ic_paper_loop_core as core
+from _scenario_catalogue import load_library
 from httpx import ASGITransport, AsyncClient
-from ofo_app import background, catalogue_store, playbook_store, scenario_mode
+from ofo_app import background, playbook_store, scenario_mode
 from ofo_app import db as app_db
 
 OK, CREATED, CONFLICT = 200, 201, 409
@@ -41,11 +42,7 @@ async def _setup(app_engine, monkeypatch, path: str) -> int:
     monkeypatch.setenv("DB_POOL_SIZE", "2")
     monkeypatch.setenv("DB_MAX_OVERFLOW", "0")
     core._reset_engine()
-    scn = scenario_mode.load(path)
-    async with app_engine.begin() as conn:
-        await catalogue_store.apply_update(conn, scn.provider.instrument_master(), as_of=core.CATALOGUE_AS_OF,
-                                           force=True, reason=f"test: path scenario {path} contracts", actor="test",
-                                           max_delist_percent=core.MAX_DELIST)
+    await load_library(app_engine)  # the whole library's list, once per database
     await app_engine.dispose()  # from here on ONE engine (the app's) holds every connection
     sid = await core.seed_mod.seed(path)
     core._reset_engine()
@@ -142,6 +139,7 @@ async def test_the_stored_paper_legs_equal_the_built_after_legs(approach, app_en
 async def test_diagnose_a35_time_exit_source(app_engine, monkeypatch):
     """A-35's refusal on the real route: which playbook body the route resolves, its stored versions, the check clock."""
     import json  # noqa: PLC0415
+
     from ofo.adjustment import playbook_eval as pe  # noqa: PLC0415
     from ofo_app import adjustment_check  # noqa: PLC0415
     sid = await _setup(app_engine, monkeypatch, "PATH-31")

@@ -25,7 +25,8 @@ import asyncpg
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import db_run  # (reuse its env reading and GLOBAL.env location)
 
-NAME_RE = re.compile(r"ofo_test_tmp_[0-9]{14}_[0-9a-f]{4}")
+# the optional _f<n> is a per-test-file copy made by tests_app/conftest.py (GC-MERGE1, #649); sweep and drop find it too
+NAME_RE = re.compile(r"ofo_test_tmp_[0-9]{14}_[0-9a-f]{4}(_f[0-9]+)?")
 PREFIX = "ofo_test_tmp_"
 SWEEP_AGE = datetime.timedelta(hours=24)
 APP_ROLE = "ofo_app"
@@ -75,6 +76,14 @@ async def drop_database(conn, name):
     await conn.execute(
         "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()", name)
     await conn.execute(f'DROP DATABASE IF EXISTS "{name}"')
+
+
+async def drop_with_copies(conn, name):
+    """Drop the per-test-file copies of `name` a killed pytest left behind, then `name` itself (allow-list on each)."""
+    rows = await conn.fetch("SELECT datname FROM pg_database WHERE starts_with(datname, $1)", name + "_f")
+    for r in rows:
+        await drop_database(conn, r["datname"])
+    await drop_database(conn, name)
 
 
 async def create_database(conn, name, on_created=None):
@@ -168,7 +177,7 @@ class Fresh:
 
     def _drop_own(self, code):
         try:
-            self._admin_do(drop_database)
+            self._admin_do(drop_with_copies)
         except Exception as e:  # noqa: BLE001 - any server answer is reported with its step
             detail = f"{type(e).__name__}: {scrub(e, self.secrets)}"
             self.err(f"db_run_fresh: step drop failed for {self.name}: {detail}")

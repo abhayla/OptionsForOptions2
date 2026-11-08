@@ -50,6 +50,7 @@ Known bypasses (out of the threat model: dev must not be protected from a develo
 from __future__ import annotations
 
 import datetime
+import functools
 import json
 import logging
 import os
@@ -298,6 +299,27 @@ def scenario_path(scenario_id: str) -> pathlib.Path:
     return path
 
 
+def read(scenario_id: str, frame: int | None = None, **json_kw: Any) -> dict:
+    """THE one read of a scenario fixture file: the scenario's own file, or frame ``frame`` of a path scenario. Every
+    reader goes through here (tests_app/test_scenario_catalogue_guard.py), so a fixture change lands once."""
+    path = scenario_path(scenario_id) if frame is None else frame_path(scenario_id, frame)
+    return json.loads(path.read_text(encoding="utf-8"), **json_kw)
+
+
+@functools.cache
+def library_numbers() -> dict[tuple[str, str], int]:
+    """One synthetic token number per ``(exchange, tradingsymbol)`` across the WHOLE library (every ADJ file and every
+    path's frame 0; later frames list nothing new), so no two scenarios give one token to two symbols and one test
+    database holds every scenario's instrument list at once, nothing ever delisted and re-listed
+    (knowledge/findings/fixture-dates-expire-with-the-clock.json)."""
+    keys: set[tuple[str, str]] = set()
+    for path in [*FIXTURES.glob("ADJ-*.json"), *PATHS.glob("PATH-*/frame-000.json")]:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+        keys.update((doc.get("exchange", "NFO"), r["tradingsymbol"])
+                    for c in doc["market"].get("chains") or [] for r in c["rows"])
+    return {k: i for i, k in enumerate(sorted(keys), start=1)}
+
+
 def _at(text: object) -> datetime.datetime:
     try:
         at = datetime.datetime.fromisoformat(str(text))
@@ -370,7 +392,7 @@ class Scenario:
         and the index, received at the frame's own clock) and moves the scenario's clock to it. Same frame -> no-op."""
         if frame == self.frame:
             return
-        data = json.loads(frame_path(self.scenario_id, frame).read_text(encoding="utf-8"))
+        data = read(self.scenario_id, frame)
         at = _at((data.get("clock") or {}).get("ist"))
         master = self.provider.instrument_master()
         token_of = {lc.broker_refs[0].broker_symbol: int(lc.broker_refs[0].broker_token) for lc in master}
@@ -565,10 +587,15 @@ def _instrument_rows(scn: dict, twins: Mapping[str, tuple[int, int]] | None = No
              "instrument_type": "EQ", "segment": "INDICES", "exchange": index_exchange}]
     priced: list[tuple[int, dict]] = []
     code = _SEGMENT_CODE[exchange]
-    n = _first_free_exchange_token(twins)  # synthetic ones start above every twin
+    base = _first_free_exchange_token(twins)  # synthetic ones start above every twin
+    numbers = library_numbers()
+    extra = len(numbers)  # a chain row outside the library (a test's own dict) numbers after it
     for chain in scn["market"].get("chains") or []:
         for row in chain["rows"]:
-            n += 1
+            key = (exchange, row["tradingsymbol"])
+            if key not in numbers:
+                extra += 1
+            n = base + numbers.get(key, extra)
             if not row.get("listed", True):
                 continue  # not in the instrument list (ADJ-20d)
             token, ex_token = (twins or {}).get(row["tradingsymbol"], (n * 256 + code, n))
@@ -585,7 +612,7 @@ def _instrument_rows(scn: dict, twins: Mapping[str, tuple[int, int]] | None = No
 
 def load(scenario_id: str) -> Scenario:
     """Loads and feeds one scenario (no environment read here: ``current`` passes the id)."""
-    scn = json.loads(scenario_path(scenario_id).read_text(encoding="utf-8"))
+    scn = read(scenario_id)
     clock_at = _at((scn.get("clock") or {}).get("ist"))
     state = scn.get("data_state") or {}
     feed = state.get("feed", "ok")

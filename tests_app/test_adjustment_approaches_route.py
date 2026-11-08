@@ -24,7 +24,7 @@ from ofo.engine.black_scholes import year_fraction
 from ofo.marketdata.spot_source import SourceReading, SourceState
 from ofo.outcome.service import MARGIN_CHECKED, Margin, margin_empty, margin_unreadable
 from ofo.rules.inputs import DataHealth
-from ofo_app import adjustment_check, paper_store
+from ofo_app import adjustment_check, paper_store, scenario_mode
 from ofo_app import adjustment_readers as readers
 from ofo_app.main import create_app
 from ofo_app.routes import adjustment as route
@@ -38,7 +38,7 @@ IC_IDS = sorted(s["id"] for s in gen.scenarios() if s["family"] == "ic")
 
 
 def load(sid: str) -> dict:
-    return json.loads((FIX / f"{sid}.json").read_text(encoding="utf-8"))
+    return scenario_mode.read(sid)  # the one fixture reader
 
 
 def _d(v):
