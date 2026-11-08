@@ -128,7 +128,7 @@ jobs:
     needs: changes
     if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.changes.result != 'success' || needs.changes.outputs.api == 'true') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30  # was 15; the W-067 full-day finalize test is bounded at 10 min by its own assertion
+    timeout-minutes: 75  # was 30: the full DB suite with one database per test file measured 58 min (diag PR #668, 2026-11-08); was 15 before that (W-067)
     env:
       PGHOST: localhost
       PGPORT: '5432'

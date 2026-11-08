@@ -14,6 +14,8 @@ import pathlib
 
 import pytest
 
+pytestmark = pytest.mark.repo_scan
+
 HERE = pathlib.Path(__file__).resolve().parent
 DIRS = {"adjust_scenarios", "adjust_paths"}
 ALLOWED = {"_playbooks.json", "INDEX.md"}  # library files that are not scenarios
