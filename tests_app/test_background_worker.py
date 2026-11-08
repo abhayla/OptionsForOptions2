@@ -444,8 +444,29 @@ async def test_a_plan_change_restores_the_gate_against_the_new_ladder(app_db_url
     assert worker._gate_body[sid] == new_body[0] and worker.errors == []
 
 
+def _only_t01(scn):
+    """A lister whose plan has only T-01 on (every other trigger and day rule off, no situation listed), through the
+    same body seam as the plan-change test. #663: with the daily limit at 1, ADJ-02 at 23420 also crosses T-03 (opened
+    first, taking the day's one slot), T-09 and S-02 (gate trace 2026-11-08); the cap tests are about T-01's episode."""
+    async def lister():
+        watched = await background.owner_lister(scn.provider)
+        out = []
+        for w in watched:
+            body = copy.deepcopy(dict(w.body))
+            for tid, t in body.get("triggers", {}).items():
+                if tid != "T-01" and isinstance(t, dict):
+                    t["on"] = False
+            for rule in body.get("day_rules") or []:
+                if isinstance(rule, dict):
+                    rule["on"] = False
+            body["situations"] = []
+            out.append(dataclasses.replace(w, body=body))
+        return background.Listed(out, watched.unread)
+    return lister
+
+
 async def test_cap_reached_writes_exactly_one_held_row_for_the_episode(app_db_url, monkeypatch):
-    sid, scn, now, worker = await _ready(app_db_url, monkeypatch, overrides=CAP_ONE)
+    sid, scn, now, worker = await _ready(app_db_url, monkeypatch, overrides=CAP_ONE, lister_for=_only_t01)
     base, rec = await _open_one(app_db_url, worker, scn, now, sid)  # the day's one record
     held = await _held_reasons(app_db_url, sid)
     now[0] += ONE_SECOND
@@ -463,7 +484,7 @@ async def test_the_ist_day_rollover_resets_the_cap(app_db_url, monkeypatch):
     tests/adjustment/test_alert_gate.py). The cap reset alone, on one ladder, at IST and never UTC midnight:
     ``test_the_cap_resets_at_ist_midnight`` / ``test_the_cap_does_not_reset_at_utc_midnight`` there. Here a cap that
     did not reset holds the worse record on Monday too (no open), so this stays red without the reset."""
-    sid, scn, now, worker = await _ready(app_db_url, monkeypatch, overrides=CAP_ONE)
+    sid, scn, now, worker = await _ready(app_db_url, monkeypatch, overrides=CAP_ONE, lister_for=_only_t01)
     base, rec = await _open_one(app_db_url, worker, scn, now, sid)
     now[0] += ONE_SECOND
     _push_spot(scn, LEVEL_ONE_SPOT, now[0])
