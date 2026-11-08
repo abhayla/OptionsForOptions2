@@ -62,11 +62,28 @@ async def app_db_url(app_engine, monkeypatch):
     _reset_engine()
 
 
+_SEED_RUN = itertools.count(1)
+
+
 async def _seeded(app_engine, monkeypatch) -> tuple[int, scenario_mode.Scenario]:
+    """ADJ-02 seeded as THIS test's own strategy, and the owner's strategy list narrowed to it for the test (#663).
+    The scenario clock is fixed but records carry the database clock: a record a previous test left on a shared
+    strategy is stamped days after the scenario clock and its cool-down never passes. A fresh strategy per test (the
+    seed is idempotent by name, so each test gets its own name) and a list of only that strategy mean no test reads
+    another's records, rule memory, held rows or day count."""
+    from ofo_app import strategy_store  # noqa: PLC0415
     monkeypatch.setenv("OFO_SCENARIO", "ADJ-02")
     scn = scenario_mode.load("ADJ-02")
     await load_library(app_engine)  # the whole library's list, once per database
-    return await seed_mod.seed("ADJ-02"), scn
+    run = next(_SEED_RUN)
+    monkeypatch.setattr(seed_mod, "strategy_name", lambda scenario_id: f"{seed_mod.NAME_PREFIX}{scenario_id} t{run}")
+    sid = await seed_mod.seed("ADJ-02")
+    real_list = strategy_store.list_strategies
+
+    async def own(conn, user_ref):
+        return [s for s in await real_list(conn, user_ref) if s.id == sid]
+    monkeypatch.setattr(strategy_store, "list_strategies", own)
+    return sid, scn
 
 
 def _push_spot(scn: scenario_mode.Scenario, spot: str, received: datetime.datetime) -> None:
@@ -136,8 +153,8 @@ async def _t01_ids(engine, sid: int) -> list[tuple[int, str]]:
 
 
 async def _settle_clear(worker, scn, now, start) -> datetime.datetime:
-    """Spot 23000 (T-01 1.3 %, clear by the band) until two 1-minute closes pass: any record a previous test of
-    this file left open lapses and the rule is armed (the seed reuses one strategy per scenario)."""
+    """Spot 23000 (T-01 1.3 %, clear by the band) until two 1-minute closes pass: the rule is armed and cleared
+    before the test's crossing (each test has its own strategy since #663, so nothing earlier is open)."""
     _push_spot(scn, BEFORE_CROSS_SPOT, start)
     for s in range(121):
         now[0] = start + datetime.timedelta(seconds=s)
@@ -223,7 +240,7 @@ async def test_restart_reopens_nothing_writes_no_second_held_and_keeps_rule_memo
     async with app_db_url.connect() as conn:
         memory = await playbook_store.rule_state(conn, "owner", sid)
     assert len(before) == 1 and memory["T-01"][0] is False  # T-01 false at entry: not held at entry
-    total_before = await _t01_total(app_db_url, sid)  # the seed reuses one strategy per scenario: history counts
+    total_before = await _t01_total(app_db_url, sid)
     first.stop()  # stopped mid-session
     now[0] += datetime.timedelta(seconds=2)
     second = _worker(scn, lambda: now[0])
