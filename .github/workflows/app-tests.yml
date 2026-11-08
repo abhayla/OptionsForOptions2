@@ -128,7 +128,7 @@ jobs:
     needs: changes
     if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.changes.result != 'success' || needs.changes.outputs.api == 'true') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 75  # was 30: the full DB suite with one database per test file measured 58 min (diag PR #668, 2026-11-08); was 15 before that (W-067)
+    timeout-minutes: 120  # was 75: PR #675 (3 new migrations) reached 92 % at 75 min; every round-trip test replays the later migrations (finding migration-round-trips-grow-with-the-chain); 58 min measured on diag PR #668
     env:
       PGHOST: localhost
       PGPORT: '5432'
