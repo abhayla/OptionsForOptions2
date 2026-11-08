@@ -1,0 +1,65 @@
+{
+ "id": "PATH-17",
+ "base": "ADJ-02",
+ "title": "stale prices on the T-09 crossing",
+ "notes": "",
+ "entry_atm_iv": "0.10",
+ "legs": [
+  {
+   "side": "BUY",
+   "type": "PE",
+   "strike": "22600",
+   "lots": 2
+  },
+  {
+   "side": "SELL",
+   "type": "PE",
+   "strike": "22800",
+   "lots": 2
+  },
+  {
+   "side": "SELL",
+   "type": "CE",
+   "strike": "23400",
+   "lots": 2
+  },
+  {
+   "side": "BUY",
+   "type": "CE",
+   "strike": "23600",
+   "lots": 2
+  }
+ ],
+ "frames": [
+  {
+   "clock": "2026-11-06T11:45:00",
+   "spot": "22975",
+   "atm_iv": "0.10",
+   "data_state": {
+    "prices": "stale",
+    "age_seconds": 600,
+    "feed": "stale"
+   }
+  },
+  {
+   "clock": "2026-11-06T11:46:00",
+   "spot": "22950",
+   "atm_iv": "0.10",
+   "data_state": {
+    "prices": "stale",
+    "age_seconds": 600,
+    "feed": "stale"
+   }
+  },
+  {
+   "clock": "2026-11-06T11:47:00",
+   "spot": "22925",
+   "atm_iv": "0.10",
+   "data_state": {
+    "prices": "stale",
+    "age_seconds": 600,
+    "feed": "stale"
+   }
+  }
+ ]
+}

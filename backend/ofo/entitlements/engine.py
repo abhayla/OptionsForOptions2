@@ -37,8 +37,6 @@ from ofo.entitlements.events import (
 )
 from ofo.entitlements.ledger import EntitlementLedger
 
-TRIAL_DAYS_DEFAULT = 7
-REFERRAL_DAYS_DEFAULT = 30
 _ZERO = timedelta(0)
 
 Segment = tuple[datetime, datetime | None]  # [start, end); end None = open-ended
@@ -263,21 +261,23 @@ def pro_end(ledger: EntitlementLedger, at: datetime) -> datetime | None:
 
 
 def trial_grant(
-    entitlement_id: str, registered_at: datetime, reference: str, note: AuditNote, days: int = TRIAL_DAYS_DEFAULT
+    entitlement_id: str, registered_at: datetime, reference: str, note: AuditNote, *, days: int
 ) -> NewGrant:
-    """The registration trial: ``days`` of Pro (7 by default, ADR-023 Q88) granted at registration.
+    """The registration trial: ``days`` of Pro (the ``billing.trial_days`` setting in force, REQUIRED; 7 at the
+    registry default, ADR-023 Q88) granted at registration.
 
     A new event: the ledger stamps when it is recorded, and ``registered_at`` must lie within its clock skew."""
     _require_days(days)
     return NewGrant(entitlement_id, Source.TRIAL, registered_at, timedelta(days=days), reference, note)
 
 
-def referral_grant(
+def referral_grant(  # noqa: PLR0913
     entitlement_id: str,
     granted_at: datetime,
     reference: str,
     note: AuditNote,
-    days: int = REFERRAL_DAYS_DEFAULT,
+    *,
+    days: int,
     stacking: bool = True,
 ) -> NewGrant:
     """A referral reward of ``days`` days (ADR-038), stacked unless the admin switched stacking off."""

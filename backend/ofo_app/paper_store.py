@@ -4,7 +4,11 @@
   strategy answers NOT_FOUND exactly like a missing one. An order of kind exit / settle / stop must REDUCE the open
   quantity of its contract and never exceed it (EXIT_EXCEEDS_OPEN, nothing stored); the check runs on the book as
   stored plus the earlier orders of the same call, through the one engine (ofo.tracking.orderbook). Insert-only; the
-  caller commits.
+  caller commits. ADR-243: ``entry`` is a keyword every app caller passes explicitly (a repo scan in
+  tests_app/test_entry_facts.py fails a call without it; tests may omit it): the strategy's entry
+  facts as the caller read them (``entry_facts_of``: the spot at this fill and each side's short distance; None when
+  no spot could be read, or for an exit / settle / stop, which can never be a first fill); written ONCE, only when the
+  book was empty before this call, through ``entry_facts_store.record_first``; never on a later fill.
 - tracked_ids: which of the given strategies have at least one paper order (REQ-134 AC-4).
 - load: the orders of one strategy the caller already loaded for its user, in placement order (the id).
 - load_all: every order of ONE user's visible strategies with name and underlying, in ONE query whatever the count
@@ -16,9 +20,11 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
+from ofo.adjustment.approaches import EntryFacts
 from ofo.tracking.orderbook import PaperOrder, net_positions
 from sqlalchemy import text
 
+from ofo_app import entry_facts_store
 from ofo_app import strategy_store as store
 from ofo_app.paper_book import COLUMNS as _COLUMNS
 from ofo_app.paper_book import NewOrder, StoredOrder, UserBook
@@ -57,14 +63,17 @@ def _check_reducing(book: list[PaperOrder], order: PaperOrder) -> None:
                                                           f"{order.side} {order.quantity} against an open {net}")
 
 
-async def place(conn: Any, user_ref: str, strategy_id: int, orders: Sequence[NewOrder]) -> tuple[StoredOrder, ...]:
-    """Stores ``orders`` in order (module docstring) and returns the whole book as stored."""
+async def place(conn: Any, user_ref: str, strategy_id: int, orders: Sequence[NewOrder], *,
+                entry: EntryFacts | None = None) -> tuple[StoredOrder, ...]:
+    """Stores ``orders`` in order (module docstring) and returns the whole book as stored; at the strategy's FIRST
+    fill (the book empty before this call) also its entry facts ``entry`` when known (ADR-243), same transaction."""
     if not orders:
         raise ValueError("place needs at least one order")
     paper = [o.as_paper() for o in orders]  # refuses a bad side, kind, quantity or price before any write
     async with conn.begin_nested():
         await store.lock_strategy(conn, user_ref, strategy_id)  # NOT_FOUND for a missing or another user's strategy
         book = [o.order.as_paper() for o in await load(conn, strategy_id)]
+        first_fill = not book
         for new in paper:
             _check_reducing(book, new)
             book.append(new)
@@ -72,6 +81,8 @@ async def place(conn: Any, user_ref: str, strategy_id: int, orders: Sequence[New
             await conn.execute(_INSERT, {"strategy_id": strategy_id, "contract_id": o.contract_id, "side": o.side,
                                          "quantity": o.quantity, "price": o.price, "kind": o.kind,
                                          "placed_at": o.placed_at, "reason": o.reason, "trigger_id": o.trigger_id})
+        if first_fill and entry is not None:  # written once; a later fill never reaches here (ADR-243)
+            await entry_facts_store.record_first(conn, strategy_id, entry)
     return await load(conn, strategy_id)
 
 

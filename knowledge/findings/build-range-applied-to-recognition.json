@@ -1,0 +1,29 @@
+{
+  "id": "build-range-applied-to-recognition",
+  "scope": "generic",
+  "class": "When a classifier reuses the limits that bound what a builder may MAKE (a template's parameter ranges) to decide what an existing thing IS, every real case outside the build range is classified as 'unknown', and everything keyed on the class (playbooks, checks, grouping) silently does nothing for it. Here: any iron condor whose short sits more than 20 strike steps from the money (1,000 NIFTY points at a 50-point gap) is not an iron condor to the app.",
+  "mechanism": "backend/ofo/strategy/model.py Template.violations(values, matching=True) applies Param.violation's min/max range (iron_condor p, q in [-20, 20] steps); ofo.strategy.matching.match returns Custom; ofo.adjustment.strategy_type.type_of -> None, so adjustment-check reports no type and no playbook, and POST adjustment-plan refuses (USER_INPUT_160). Same matcher feeds ofo/reconciliation/grouping.py (imported broker positions) and the leg editor's shape name.",
+  "first_seen": {
+    "date": "2026-11-03",
+    "where": "owner's live NIFTY iron condor (other broker) entered as paper strategy 82 on ofo_dev, feature/adjustments 54456597",
+    "evidence": "legs +21000 PE / -21500 PE / -24000 CE / +24500 CE, 29 Dec 2026, spot 23,674: match -> Custom NearMiss iron_condor reason \"param 'p'=43 outside its bounds [-20, 20]\" (gap 50; p=22 at gap 100); GET /api/strategies/82/adjustment-check -> strategy_type null, playbook source none, results []; POST adjustment-plan playbook 3 -> 409 USER_INPUT_160",
+    "fix": "build/gcic1-far-ic (in progress): matching skips only the param range; int, positivity and order constraints kept; building unchanged"
+  },
+  "fix": "pending: build/gcic1-far-ic",
+  "detection": {
+    "status": "unguarded",
+    "checks": [],
+    "note": "Planned: a per-template test that a default-shape position moved 3x past its range still matches the same template."
+  },
+  "spec_ref": [
+    "spec/decisions/ADR-186.md",
+    "spec/requirements/REQ-076.md"
+  ],
+  "occurrences": [
+    {
+      "date": "2026-11-03",
+      "where": "owner's paper strategy 82",
+      "evidence": "adjustment-check results [] on a tested iron condor (24000 CE short 1.4% from spot)"
+    }
+  ]
+}

@@ -21,13 +21,18 @@ from ofo.marketdata.quote import NormalizedQuote, SourceMetadata
 from ofo.rules.inputs import DataHealth
 
 
+#: the one clock-skew window (PR #427): a stamp up to this far after the caller's clock is fresh, not "future".
+#: The Execute gate and the shared spot reader (``spot_source``) both use it; never retype the number.
+CLOCK_SKEW_TOLERANCE = datetime.timedelta(seconds=2)
+
+
 @dataclass(frozen=True)
 class HealthThresholds:
     """orchestrator default (ADR-045) — not from the spec: REQ-049 leaves staleness thresholds implementation-defined."""
 
     stale_after: datetime.timedelta = datetime.timedelta(seconds=60)
     delayed_after: datetime.timedelta = datetime.timedelta(seconds=0)
-    clock_skew_tolerance: datetime.timedelta = datetime.timedelta(seconds=2)
+    clock_skew_tolerance: datetime.timedelta = CLOCK_SKEW_TOLERANCE
 
     def __post_init__(self) -> None:
         for name in ("stale_after", "delayed_after", "clock_skew_tolerance"):

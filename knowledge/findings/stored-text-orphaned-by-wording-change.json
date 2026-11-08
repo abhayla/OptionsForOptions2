@@ -1,0 +1,29 @@
+{
+ "id": "stored-text-orphaned-by-wording-change",
+ "scope": "project",
+ "class": "Any catalogue template whose RENDERED text is stored in the database and later read back by matching it against the template's fixed words (restore_explanation) is orphaned by a wording change: every row stored before the change no longer fits, and a reader that skips unreadable rows hides them silently (no error, no 500, the list is just shorter). A wording pass over the catalogue therefore deletes history from the user's view unless the earlier text stays readable.",
+ "mechanism": "GC-IC1 step 7 (#629 wording, merged e1f1ec0a on feature/adjustments) changed paper_alert_title from 'Paper strategy - {name}' to 'Paper strategy — {name}'. restore_explanation (backend/ofo/errors/explanations.py:2023) builds its regex from the CURRENT text only; _alerts_out (backend/ofo_app/routes/paper.py:874-886) catches the ValueError per row, logs 'paper alert N left out: stored text fits no alert template' and drops the row.",
+ "first_seen": {
+  "date": "2026-11-03",
+  "where": "GC-IC1 step 8 pass 2 set-up, dev API on feature/adjustments f0958046 against ofo_dev",
+  "evidence": "D:\\Abhay\\scratch\\gclive3\\api10.log: on every GET /paper/alerts 'paper alert 5/4/3/2/1 left out: stored text fits no alert template' (all 5 stored alerts hidden); git diff 37824fb9..HEAD -- backend/ofo/errors/explanations.py shows the title template as the only stored-and-restored template whose fixed words changed."
+ },
+ "fix": "Class-level, merged 8abeb451 on feature/adjustments (b69a610d): RESTORED_FORMER_TEXTS (template id -> earlier texts, read-back only, never rendered) tried by restore_explanation after the current text; seeded with the pre-step-7 title. Stored rows are history and keep the words they were written with. Real-data proof (the 5 ofo_dev alerts shown by GET /paper/alerts) owed at the next API start.",
+ "detection": {
+  "status": "guarded",
+  "checks": [
+   "tests/errors/test_restored_former_texts.py (pins the current text of every stored-and-restored template; a change without the old text in RESTORED_FORMER_TEXTS fails)"
+  ],
+  "note": "tests/errors/test_restored_former_texts.py pins the current text of paper_alert_title and every ALERT_BODY_TEMPLATES id. Orchestrator mutant 2026-11-03: rewording the title to 'Paper trade — {name}' without a former text -> 3 tests red (incl. test_stored_template_wording_pinned); the builder's mutant (former tuple blanked) -> 2 red. Covers only templates listed in the pin; a NEW stored-and-restored template must be added to the pin (restore_explanation has one caller today: routes/paper.py _alerts_out)."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-003.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-11-03",
+   "where": "ofo_dev paper alerts after the #629 wording pass",
+   "evidence": "5 of 5 stored alerts left out of GET /paper/alerts"
+  }
+ ]
+}

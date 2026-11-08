@@ -36,6 +36,27 @@ def paper_problems(root=BACKEND, modules=PAPER_MODULES):
     return order_closure_problems(list(modules), root, ALLOWED, TERMINAL)
 
 
+#: REQ-115 AC-2 (GC-MU step 4): the background role's modules; walked with the same closure walker and door list, so a
+#: worker that imports an order door (directly or through anything it imports) is red.
+WORKER_MODULES: tuple[str, ...] = ("ofo_app.background", "ofo_app.calc_speeds")
+
+
+def test_the_background_worker_reaches_no_order_door():
+    assert [m for m in WORKER_MODULES if _module_file(BACKEND, m) is None] == []
+    problems, _ = paper_problems(modules=WORKER_MODULES)
+    assert problems == []
+
+
+def test_mutation_an_order_import_in_the_background_worker_is_red(tmp_path):
+    root = tmp_path / "backend"
+    shutil.copytree(BACKEND, root, ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "node_modules"))
+    target = root / "ofo_app" / "background.py"
+    extra = "\nfrom ofo_app import execute_plan  # noqa: F401\n"
+    target.write_text(target.read_text(encoding="utf-8") + extra, encoding="utf-8")
+    problems, _ = paper_problems(root, WORKER_MODULES)
+    assert any(p.startswith("order module reached outside the allow-list: ofo_app.background") for p in problems)
+
+
 def test_the_paper_modules_exist():
     assert [m for m in PAPER_MODULES if _module_file(BACKEND, m) is None] == []
     assert [m for m in EXTRA_DOORS if _module_file(BACKEND, m) is None] == []  # a renamed door must be re-listed

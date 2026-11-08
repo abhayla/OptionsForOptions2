@@ -1,0 +1,5 @@
+{
+ "A-10": "Inverted strangle (short call strike below short put strike)",
+ "A-11": "Convert to an iron butterfly: move both shorts to the money",
+ "A-13": "Convert to a jade lizard: sell a put and a call spread"
+}

@@ -65,13 +65,13 @@ const computed = (over = {}) => ({ state: 'COMPUTED', underlying: 'NIFTY', statu
   summary: { max_profit: '0.00', max_loss: '13000.00', max_profit_unlimited: false, max_loss_unlimited: false }, legs: [leg()], ...over })
 const SERVER_LABEL = 'Server wrote this not-live sentence 10:15:00 AM'
 const notConnected = () => ({ state: 'NOT_CONNECTED', status_label: SERVER_LABEL, reason: null, answered_at: '2026-10-19T10:16:00+05:30', legs: [], spot_level: null, spot_at: null })
-const FROM_YOUR_PRICES = 'From your prices - no live data'
+const FROM_YOUR_PRICES = 'From your prices — no live data'
 // The FROM_ENTRIES answer as the server sends it after a drop (tests_app/test_strategy_live_push.py `_assert_from_entries_after_drop`).
 const fromEntries = () => ({ state: 'FROM_ENTRIES', underlying: 'NIFTY', status_label: SERVER_LABEL, output_label: FROM_YOUR_PRICES, reason: null,
   answered_at: '2026-10-19T10:16:00+05:30', spot_level: null, spot_at: null, summary: computed().summary, legs: [leg({ ltp: null, health: null })] })
 
 async function mountPage() {
-  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { template: '<div/>' } }, { path: '/strategy/builder', component: { template: '<div/>' } }] })
+  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { template: '<div/>' } }, { path: '/strategy/builder', component: { template: '<div/>' } }, { path: '/positions/adjustment-opportunities', component: { template: '<div/>' } }] })
   router.push('/')
   await router.isReady()
   const w = mount(LiveStrategiesPage, { global: { plugins: [router] } })
@@ -530,5 +530,21 @@ describe('REQ-134 reader sweep: the card title is the strategy name (quoted user
     expect(titles).toContain('<b>NIFTY</b> Oct condor, NIFTY')
     expect(titles).toContain('Draft 2, NIFTY')
     expect(w.find('[data-testid="live-strategy-title"] b').exists()).toBe(false)
+  })
+})
+
+// GC-MU A3 (ADR-230 (2)): the server's mark words reach the card; none at 0 or unread; the link names the strategy.
+describe('GC-MU A3: the adjustment opportunities mark', () => {
+  const marked = (id, count, text) => ({ ...row(id), open_opportunities: count, open_opportunities_text: text })
+  it('0 and unread show no mark; 1 and 3 show the server words; the link carries the strategy id', async () => {
+    listAnswer = { strategies: [marked(1, 0, null), marked(2, 1, '1 adjustment opportunity'), marked(3, 3, '3 adjustment opportunities'), marked(4, null, null)] }
+    const w = await mountPage()
+    const byId = (id) => w.find(`[data-strategy-id="${id}"]`)
+    expect(byId(1).find('[data-testid="live-opportunity-mark"]').exists()).toBe(false)
+    expect(byId(4).find('[data-testid="live-opportunity-mark"]').exists()).toBe(false)
+    expect(byId(2).find('[data-testid="live-opportunity-mark"]').text()).toBe('1 adjustment opportunity')
+    const three = byId(3).find('[data-testid="live-opportunity-mark"]')
+    expect(three.text()).toBe('3 adjustment opportunities')
+    expect(three.attributes('href')).toBe('/positions/adjustment-opportunities?strategy=3')
   })
 })

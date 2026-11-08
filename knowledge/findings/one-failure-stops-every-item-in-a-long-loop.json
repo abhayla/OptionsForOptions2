@@ -1,0 +1,28 @@
+{
+ "id": "one-failure-stops-every-item-in-a-long-loop",
+ "scope": "generic",
+ "class": "In a long-running loop that serves many items (strategies, users, jobs), any exception raised OUTSIDE the per-item try (re-reading the item list, reading a setting, the outer run loop) ends the whole process, so one bad item or one database blip stops the work for every item, and nothing restarts it.",
+ "mechanism": "GC-MU step 4 (98b54260): Worker.cycle called rebuild() and background_seconds() before the per-strategy try; run() had no try; owner_lister caught only TrackedExited/TrackedUnreadable per strategy.",
+ "first_seen": {
+  "date": "2026-11-01",
+  "where": "GC-MU step 4, Tier A read-only review (MAJOR, REQ-115 AC-9)",
+  "evidence": "background.py:326-352 read; no test made the list reader fail"
+ },
+ "fix": "ba123221: per-strategy try in owner_lister; a failed re-read keeps the last good list; a failed speed read keeps the last good speed; run() catches Exception per cycle (CancelledError passes); a check that raises sets PAUSED.",
+ "detection": {
+  "status": "guarded",
+  "checks": [
+   "tests_app/test_background_cycle.py (failing list re-read, speed read, run loop, owner_lister per-strategy, PAUSED on failure; one mutant per guard)"
+  ]
+ },
+ "spec_ref": [
+  "spec/requirements/REQ-115.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-11-01",
+   "where": "GC-MU step 4",
+   "evidence": "Tier A review MAJOR"
+  }
+ ]
+}

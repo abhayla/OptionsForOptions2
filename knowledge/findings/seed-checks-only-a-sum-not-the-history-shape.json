@@ -1,0 +1,27 @@
+{
+ "id": "seed-checks-only-a-sum-not-the-history-shape",
+ "scope": "generic",
+ "class": "A test-data seeder that checks only an aggregate (a total, a booked P&L) can store a different event history than the scenario describes: the total still matches, so the seed reports success, while every reader of the history (counts, timelines, per-step pages) shows the wrong events.",
+ "mechanism": "scripts/seed_scenario.py stored ADJ-13 as entry (2 history legs) + adjustment 1 (their exits) + adjustment 2 (all 4 current legs, including the never-adjusted call spread); the scenario says adjustments_used 1; booked P&L +962 matched, the only check.",
+ "first_seen": {
+  "date": "2026-11-01",
+  "where": "GC-MU A5 proof on ofo_dev (scenario ADJ-13, strategy 73)",
+  "evidence": "GET /api/strategies/73/adjustment-history -> 3 rows (entry, 1, 2); ADJ-13.json adjustments_used 1; Compare 'Adjustments used' reads 2 used"
+ },
+ "fix": "Not fixed (#628): batch by the scenario's adjustment numbers; refuse the seed unless the engine's adjustments_used over the stored orders equals the scenario's.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "Issue #628."
+ },
+ "spec_ref": [
+  "spec/requirements/REQ-156.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-11-01",
+   "where": "ADJ-13 seed",
+   "evidence": "2 adjustments stored for 1"
+  }
+ ]
+}

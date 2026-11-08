@@ -87,3 +87,20 @@ def test_bad_bytes_are_counted_not_raised():
     assert parse_frame(odd_length).unknown_packets == 1
     foreign_segment = (1).to_bytes(2, "big") + (8).to_bytes(2, "big") + (0x00010003).to_bytes(4, "big") + b"\x00" * 4
     assert parse_frame(foreign_segment).unsupported_segment == 1
+
+
+def test_index_packets_carry_their_day_values(replay):
+    """GC-IC1 5b (finding index-packet-day-values-dropped): the real NIFTY 50 / SENSEX index packets of 09:20:09 state
+    high, low, open and the previous close (bytes 8-24, read from the recording by an independent struct read); the
+    index's dated day values are its exchange time (an index has no trade)."""
+    from ofo.marketdata.kite_frames import day_stats_of  # noqa: PLC0415
+    n = replay["last"][NIFTY_50]
+    assert (n.day_open, n.day_high, n.day_low, n.prev_close) == (
+        Decimal("22599.05"), Decimal("22599.05"), Decimal("22521.10"), Decimal("22603.05"))
+    assert n.ltp - n.prev_close == Decimal("-69.80")  # the packet's own change field: close is the previous close
+    s = replay["last"][SENSEX]
+    assert (s.day_open, s.prev_close) == (Decimal("72668.00"), Decimal("72638.70"))
+    stats = day_stats_of(n)
+    assert stats is not None and stats.last_trade_ts == n.exchange_ts
+    assert datetime.datetime.fromtimestamp(stats.last_trade_ts, IST) == datetime.datetime(2026, 10, 8, 9, 20, 9,
+                                                                                          tzinfo=IST)

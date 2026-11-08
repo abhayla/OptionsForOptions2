@@ -70,21 +70,46 @@ def _execute_route_edge(route: str, why: str) -> dict[tuple[str, str], str]:
 
 #: route module -> {(importer, order module): reason}. Every route not listed has no crossing beyond the shared paths.
 ROUTE_ORDER_EDGES: dict[str, dict[tuple[str, str], str]] = {
+    # GC-MU A1: the approaches' guards (adjustment_readers.read_guards) resolve the strategy's playbook through
+    # adjustment_check.resolve -> playbook_store (its strategy_store import); a read, never an order. Not broken by a
+    # copy of the plan query: a second resolution path could drift from ADR-230 (1)
+    "ofo_app.routes.adjustment": {**STRATEGY_STORE},
+    # GC-ADJ2 1C: the playbook check reads plans and rule memory through playbook_store (its ownership check)
+    # GC-ALERT1 4b (REQ-170): the strategy alert-style route reads the tracked position through adjustment_readers ->
+    # adjustment_check -> playbook_store (its strategy_store import); it reads and stores a style, never an order
+    "ofo_app.routes.alert_style": {**STRATEGY_STORE},
+    "ofo_app.routes.adjustment_check": {**STRATEGY_STORE},
+    # GC-ADJ2 6: the adjustment history reads the strategy's plan and records through playbook_store (its
+    # strategy_store import); it reads, it never prepares or posts an order
+    "ofo_app.routes.adjustment_history": {**STRATEGY_STORE},
+    # GC-ADJ2 5: the opportunities inbox records outcomes through playbook_store (its strategy_store import)
+    "ofo_app.routes.adjustment_opportunities": {**STRATEGY_STORE},
+    # GC-ADJ2 4: the plan sheet accepts a plan through playbook_store (its strategy_store import)
+    "ofo_app.routes.adjustment_plan": {**STRATEGY_STORE},
     "ofo_app.routes.broker_status": _execute_route_edge(
         "broker_status", "the status route reuses the execute route's clock provider"),
     "ofo_app.routes.features": {**STRATEGY_STORE},
     "ofo_app.routes.paper": {**STRATEGY_STORE},
+    # GC-ADJ2 2: the playbook routes call playbook_store, whose strategy_store import reaches the plan modules
+    "ofo_app.routes.playbooks": {**STRATEGY_STORE},
     "ofo_app.routes.positions": {
         **_execute_route_edge("positions", "the positions route reuses the execute route's Kite session and clock"),
         **STRATEGY_STORE, **KITE_REPLIES, **RECONCILE_ATTRIBUTION},
     "ofo_app.routes.ready_made": {**STRATEGY_STORE},
     "ofo_app.routes.strategies": {**STRATEGY_STORE},
+    # GC-SET step 9 (REQ-169): the admin's system playbook versions are read and validated through playbook_store (its
+    # strategy_store import); the route writes playbook versions only, it never prepares or posts an order
+    "ofo_app.routes.system_playbooks": {**STRATEGY_STORE},
     "ofo_app.routes.tracking": {**STRATEGY_STORE},
     "ofo_app.routes.zerodha_account": _execute_route_edge(
         "zerodha_account", "the account route reuses the execute route's Kite session provider"),
 }
 #: One constant, so a new edge is a reviewed diff and never a silent pass.
-PINNED_EDGE_COUNT = 21
+#: GC-ADJ2 5: +2 adjustment_opportunities, +2 adjustment_plan; 6: +2 adjustment_history (all via playbook_store)
+#: GC-MU A1: +2 adjustment (read_guards via adjustment_check -> playbook_store)
+#: GC-SET step 9: +2 system_playbooks (via playbook_store)
+#: GC-ALERT1 4b: +2 alert_style (via adjustment_readers -> playbook_store)
+PINNED_EDGE_COUNT = 37
 
 
 def route_modules(backend: pathlib.Path) -> list[str]:
@@ -190,6 +215,20 @@ def test_ac6_mutation_health_importing_execute_plan_is_refused_with_its_chain():
                           encoding="utf-8")
         problems, _ = route_closure_problems(root, ROUTE_ORDER_EDGES)
     assert problems == ["order module reached outside the allow-list: ofo_app.routes.health -> ofo_app.execute_plan"]
+
+
+@pytest.mark.repo_scan
+def test_ac6_mutation_the_adjustment_pin_does_not_let_its_reader_import_an_order_module_directly():
+    """GC-MU A1 pin is narrow (real copy): adjustment_readers gaining an import of ofo_app.execute_plan is red, though
+    the route's strategy_store edges are pinned (an edge covers its importer only)."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = _real_copy(tmp)
+        readers = root / "ofo_app" / "adjustment_readers.py"
+        readers.write_text(readers.read_text(encoding="utf-8") + "\nfrom ofo_app import execute_plan  # noqa: F401\n",
+                           encoding="utf-8")
+        problems, _ = route_closure_problems(root, ROUTE_ORDER_EDGES)
+    assert ("order module reached outside the allow-list: ofo_app.routes.adjustment -> ofo_app.adjustment_readers"
+            " -> ofo_app.execute_plan") in problems, problems
 
 
 @pytest.mark.repo_scan

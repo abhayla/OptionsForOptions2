@@ -47,6 +47,7 @@ VERSION_NOT_FOUND = "version_not_found"
 RECONCILIATION_REQUIRED = "reconciliation_required"
 #: W-156 (REQ-070 AC-6, ADR-118): a strategy that sent a basket (any plan row or version row) is never deleted.
 DELETE_AFTER_BASKET = "delete_after_basket"
+DELETE_AFTER_PAPER = "delete_after_paper_order"  # ADR-271
 
 
 class StrategyStoreError(ValueError):
@@ -80,6 +81,8 @@ class StrategySummary:
     leg_count: int = 0  # the ACTIVE definition's legs (the active version's after the first execution)
     first_leg: Optional[FirstLeg] = None  # its first leg's contract terms; the browser writes "... and N more"
     can_delete: bool = False  # REQ-070 AC-6: no plan row and no version row; False (fail closed) unless proven
+    scenario_id: str | None = None  # IC e2e decision 3: the scenario marker (None = a real strategy)
+    has_paper_order: bool = False  # ADR-271: picks the refusal wording ("paper orders were placed")
 
 
 @dataclass(frozen=True)
@@ -112,8 +115,13 @@ _INSERT = text(
 #: row (a version only exists after a fill). Reused by the list (can_delete) and by ``never_sent`` (delete, history,
 #: restore).
 _CAN_DELETE_SQL = ("(NOT EXISTS (SELECT 1 FROM public.execution_plans p WHERE p.strategy_id = s.id) "
-                   "AND NOT EXISTS (SELECT 1 FROM public.strategy_versions v WHERE v.strategy_id = s.id))")
+                   "AND NOT EXISTS (SELECT 1 FROM public.strategy_versions v WHERE v.strategy_id = s.id) "
+                   "AND NOT EXISTS (SELECT 1 FROM public.paper_orders o WHERE o.strategy_id = s.id))")  # ADR-271
+_HAS_PAPER_SQL = "EXISTS (SELECT 1 FROM public.paper_orders o WHERE o.strategy_id = s.id)"
 _CAN_DELETE = text(f"SELECT {_CAN_DELETE_SQL} AS can_delete FROM public.strategies AS s WHERE s.id = :id")  # noqa: S608
+_PAPER_ONLY = text(f"SELECT ({_HAS_PAPER_SQL} AND NOT EXISTS (SELECT 1 FROM public.execution_plans p WHERE p.strategy_id = s.id) "  # noqa: S608
+                   "AND NOT EXISTS (SELECT 1 FROM public.strategy_versions v WHERE v.strategy_id = s.id)) AS paper_only "
+                   "FROM public.strategies AS s WHERE s.id = :id")
 _SELECT_HIDDEN = text(f"SELECT {_COLUMNS} FROM public.strategies WHERE id = :id AND user_ref = :user_ref "  # noqa: S608
                       "AND deleted_at IS NOT NULL FOR UPDATE")
 _SET_DELETED = text("UPDATE public.strategies SET deleted_at = clock_timestamp() WHERE id = :id AND deleted_at IS NULL")
@@ -127,8 +135,8 @@ _SELECT_FOR_UPDATE = text(
 #: The list reads the ACTIVE definition like ``load`` does (the active version's after the first execution, else the
 #: row's), only for the signed-in user's rows (REQ-134 AC-6).
 _LIST = text(
-    "SELECT s.id, s.underlying, s.status, s.created_at, s.updated_at, s.name, "
-    f"{_CAN_DELETE_SQL} AS can_delete, "
+    "SELECT s.id, s.underlying, s.status, s.created_at, s.updated_at, s.name, s.scenario_id, "
+    f"{_CAN_DELETE_SQL} AS can_delete, {_HAS_PAPER_SQL} AS has_paper_order, "
     "d.definition -> 'legs' AS legs "
     "FROM public.strategies AS s "
     "CROSS JOIN LATERAL (SELECT coalesce((SELECT v.definition FROM public.strategy_versions AS v "
@@ -161,7 +169,8 @@ def check_strategy_id(value: Any) -> int:
 
 def _check_revision(row: Any, expected_revision: Any) -> None:
     """Optimistic concurrency: a write names the revision it was based on; another write since then refuses it."""
-    if isinstance(expected_revision, bool) or not isinstance(expected_revision, int) or expected_revision != row.revision:
+    if (isinstance(expected_revision, bool) or not isinstance(expected_revision, int)
+            or expected_revision != row.revision):
         raise StrategyStoreError(REVISION_CONFLICT, f"strategy {row.id} is at revision {row.revision}, the change was "
                                                     f"based on {expected_revision!r}; reload and apply it again")
 
@@ -173,7 +182,8 @@ def _check_revision(row: Any, expected_revision: Any) -> None:
 
 async def catalogue_resolver(conn: Any, contract_ids: Iterable[int]) -> sf.Resolver:
     """Reads every named contract id from the catalogue once; the resolver answers None for an id it does not hold."""
-    wanted = sorted({c for c in contract_ids if isinstance(c, int) and not isinstance(c, bool) and 0 < c <= sf.MAX_CONTRACT_ID})
+    wanted = sorted({c for c in contract_ids
+                     if isinstance(c, int) and not isinstance(c, bool) and 0 < c <= sf.MAX_CONTRACT_ID})
     existing = {int(r[0]) for r in (await conn.execute(_EXISTING_IDS, {"ids": wanted})).all()} if wanted else set()
     terms: dict[int, sf.CatalogueTerms] = {}
     for contract_id in sorted(existing):
@@ -234,18 +244,32 @@ async def _check_saveable(conn: Any, saved: sf.SavedDefinition) -> str:
 
 
 async def save_draft(conn: Any, user_ref: str, saved: sf.SavedDefinition,
-                     name: str = sf.DEFAULT_STRATEGY_NAME) -> StoredStrategy:
+                     name: str = sf.DEFAULT_STRATEGY_NAME, *, scenario_id: str | None = None) -> StoredStrategy:
     """Save Draft / Save As: a new strategy row with the user's name (REQ-134 AC-1/AC-2; duplicates are allowed, each
-    row keeps its own id). The caller commits."""
+    row keeps its own id). The caller commits.
+
+    Scenario marker (IC e2e decision 3): the row's ``scenario_id`` is the scenario the PROCESS runs under
+    (``scenario_mode.current_id()``), or ``scenario_id`` passed by server code (the seed script). No route passes it;
+    the column has no grant, so the database default (the transaction-local ``ofo.scenario_id`` setting) writes it."""
+    from ofo_app import scenario_mode  # noqa: PLC0415 - late: scenario_mode imports the stores lazily too
     if not isinstance(user_ref, str) or not user_ref:
         raise StrategyStoreError(NOT_FOUND, "a strategy belongs to a user")
     chosen = sf.check_strategy_name(name)  # before any query: an empty or over-long name stores nothing
     document = await _check_saveable(conn, saved)
+    marker = scenario_id if scenario_id is not None else scenario_mode.current_id()
     async with conn.begin_nested():
+        if marker is not None:
+            await conn.execute(_SET_MARKER, {"value": marker})
         row = (await conn.execute(_INSERT, {"user_ref": user_ref, "underlying": saved.definition.underlying,
                                             "definition": document, "version": sf.SCHEMA_VERSION,
                                             "name": str.__str__(chosen)})).one()
+        if marker is not None:
+            await conn.execute(_SET_MARKER, {"value": ""})  # never carried to a later insert of the transaction
     return _stored(row, saved)
+
+
+#: The transaction-local setting the ``strategies.scenario_id`` default reads (migration 0043).
+_SET_MARKER = text("SELECT set_config('ofo.scenario_id', :value, true)")
 
 
 async def rename(conn: Any, user_ref: str, strategy_id: int, new_name: str, *,
@@ -275,6 +299,16 @@ async def never_sent(conn: Any, strategy_id: int) -> bool:
         return False
 
 
+async def _paper_only(conn: Any, strategy_id: int) -> bool:
+    """ADR-271: the refusal wording. True when a paper order exists and no real basket did; unreadable -> False
+    (the real-orders wording, the stricter one)."""
+    try:
+        async with conn.begin_nested():
+            return (await conn.execute(_PAPER_ONLY, {"id": strategy_id})).scalar_one() is True
+    except Exception:  # noqa: BLE001
+        return False
+
+
 async def delete_draft(conn: Any, user_ref: str, strategy_id: int, *, expected_revision: int) -> None:
     """REQ-070 AC-6 / ADR-118: hides a strategy that never sent a basket; the row and its history stay. The decision is
     read inside the strategy's row lock, so a plan creation (which takes the same lock) serializes with it. An
@@ -283,6 +317,8 @@ async def delete_draft(conn: Any, user_ref: str, strategy_id: int, *, expected_r
         row = await _locked(conn, user_ref, strategy_id)
         _check_revision(row, expected_revision)
         if not await never_sent(conn, row.id):
+            if await _paper_only(conn, row.id):
+                raise StrategyStoreError(DELETE_AFTER_PAPER, f"strategy {strategy_id} has paper orders")
             raise StrategyStoreError(DELETE_AFTER_BASKET, f"strategy {strategy_id} sent a basket or may have")
         await conn.execute(_SET_DELETED, {"id": row.id})
 
@@ -699,7 +735,8 @@ async def version_saved(conn: Any, version: StoredVersion) -> sf.SavedDefinition
 async def list_strategies(conn: Any, user_ref: str) -> list[StrategySummary]:
     rows = (await conn.execute(_LIST, {"user_ref": user_ref})).all()
     return [StrategySummary(int(r.id), r.underlying, r.status, r.created_at, r.updated_at, r.name,
-                            len(r.legs), _first_leg(r.legs), r.can_delete is True) for r in rows]
+                            len(r.legs), _first_leg(r.legs), r.can_delete is True, r.scenario_id,
+                            r.has_paper_order is True) for r in rows]
 
 
 def _first_leg(legs: Sequence[Mapping[str, Any]]) -> FirstLeg:

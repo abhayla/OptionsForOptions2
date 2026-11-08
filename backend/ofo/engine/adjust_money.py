@@ -1,0 +1,131 @@
+"""REQ-156 AC-2 (ADR-008): the money figures of the approach compare's "money now" and "reward after" rows.
+
+The one engine owns every rupee figure, so the compare (``ofo.adjustment.compare``) reads these and only words them.
+Every input is exact Decimal; quantities are units (lots x lot size).
+
+- ``trade_credit``: the approach's own trades at their planned prices, SELL +, BUY - (no trade: 0).
+- ``cost_with_spread``: this adjustment's own charges plus half the bid-ask spread of each traded contract times its
+  quantity (the cost of trading at bid or ask rather than mid). The one arithmetic of an approach's cost:
+  ``ofo.adjustment.compare.approach_cost`` (the Compare cell and the T-19 trigger, ADR-221) calls it.
+- ``margin_change``: the After's basket margin minus the current legs'.
+- ``closed_booked``: the P&L booked by the legs an approach closes, at their planned exit prices.
+- ``premium_left``: short legs' current price x quantity minus long legs' (the premium still left to earn).
+- ``cost_pct_of_premium_left`` and ``max_profit_change``: ADR-230 (3), the compare's two cost-side rows.
+- ``sum_amounts``: a sum of exact amounts (the charge components of the cost breakdown).
+"""
+from __future__ import annotations
+
+from collections.abc import Iterable
+from decimal import ROUND_HALF_UP, Decimal
+
+from ofo.money import HUNDREDTH, PAISE
+
+_SIGN = {"SELL": 1, "BUY": -1}
+
+
+def _sign(side: str) -> int:
+    try:
+        return _SIGN[side]
+    except KeyError:
+        raise ValueError(f"side must be BUY or SELL, got {side!r}") from None
+
+
+def trade_credit(trades: Iterable[tuple[str, Decimal, int]]) -> Decimal:
+    """(action, price, quantity) per trade -> net credit (+) or debit (-)."""
+    return sum((price * quantity * _sign(action) for action, price, quantity in trades), Decimal(0))
+
+
+def net_credit_so_far(booked: Decimal, open_trades: Iterable[tuple[str, Decimal, int]]) -> Decimal:
+    """ADR-251: the net credit collected so far = the open legs' entry credit plus the booked P&L of the closed legs
+    (each closed leg's entry credit minus its exit debit), i.e. entry +/- every adjustment's net credit or debit.
+    Example: an iron condor opened for Rs 6,000, then a roll that cost Rs 1,500 net -> Rs 4,500."""
+    return trade_credit(open_trades) + booked
+
+
+def pct_of(amount: Decimal, pct: Decimal) -> Decimal:
+    """``pct`` percent of ``amount`` (the "% of max profit" part of a playbook's roll debit limit, ADR-230 (1))."""
+    return amount * pct / 100
+
+
+def cost_with_spread(charges: Decimal, quotes: Iterable[tuple[Decimal, Decimal, int]]) -> Decimal:
+    """``charges`` plus (ask - bid) / 2 x quantity for each (bid, ask, quantity) traded."""
+    return charges + sum(((ask - bid) / 2 * quantity for bid, ask, quantity in quotes), Decimal(0))
+
+
+def margin_change(after: Decimal, before: Decimal) -> Decimal:
+    return after - before
+
+
+def closed_booked(legs: Iterable[tuple[str, Decimal, Decimal, int]]) -> Decimal:
+    """(side, entry, planned exit, quantity) per leg the approach closes -> the P&L it books: (exit - entry) x
+    quantity, + for a BUY leg, - for a SELL leg (nothing closed: 0)."""
+    return sum(((exit_ - entry) * quantity * -_sign(side) for side, entry, exit_, quantity in legs), Decimal(0))
+
+
+def with_booked(booked: Decimal, figure: Decimal) -> Decimal:
+    """A P&L figure of the open legs plus the P&L already booked."""
+    return booked + figure
+
+
+def pnl_now(booked: Decimal, legs: Iterable[tuple[str, Decimal, Decimal, int]]) -> Decimal:
+    """Booked P&L plus the open legs marked at their current price: ``booked`` + ``closed_booked(legs)`` over
+    (side, entry, current price, quantity). A missing booked figure or price is the caller's to refuse."""
+    return with_booked(booked, closed_booked(legs))
+
+
+def premium_left(legs: Iterable[tuple[str, Decimal, int]]) -> Decimal:
+    """(side, current price, quantity) per open leg -> shorts' value minus longs' value."""
+    return sum((price * quantity * _sign(side) for side, price, quantity in legs), Decimal(0))
+
+
+SELL_MARGIN_RATE = Decimal("0.12")  # TEST DATA ONLY: a stand-in rate, not Zerodha's SPAN
+
+
+def stand_in_basket_margin(legs: Iterable[tuple[str, Decimal, int]]) -> Decimal:
+    """TEST DATA, not Zerodha's SPAN (scenario mode only): (side, strike for a SELL / premium for a BUY, quantity) per
+    leg -> SELL strike x quantity x 0.12 minus BUY premium x quantity, floored at 0, to the paisa."""
+    total = Decimal(0)
+    for side, figure, quantity in legs:
+        total += figure * quantity * SELL_MARGIN_RATE if _sign(side) == 1 else -(figure * quantity)
+    return max(total, Decimal(0)).quantize(PAISE)
+
+
+def cost_pct_of_premium_left(cost: Decimal, premium_left: Decimal) -> Decimal | None:
+    """ADR-230 (3): ``cost`` / ``premium_left`` x 100, to 0.01 (half up, as the compare's other percent cells). Nothing
+    left to earn (premium left zero or below) -> None: no ratio exists, never a division error."""
+    if premium_left <= 0:
+        return None
+    return (cost / premium_left * 100).quantize(HUNDREDTH, rounding=ROUND_HALF_UP)
+
+
+def max_profit_change(after: Decimal, before: Decimal) -> Decimal:
+    """ADR-230 (3): the After's max profit minus the Before's (both after charges), to the paisa."""
+    return (after - before).quantize(PAISE)
+
+
+def sum_amounts(amounts: Iterable[Decimal]) -> Decimal:
+    return sum(amounts, Decimal(0))
+
+
+def in_profit(pnl: Decimal) -> bool:
+    """ADR-238 (6): a whole-trade P&L is in profit only above zero (zero and a loss are not)."""
+    return pnl > 0
+
+
+def fell_at_least_pct(entry: Decimal, now: Decimal, percent: int | Decimal) -> bool:
+    """ADR-238 (3), A-26: (entry - now) x 100 >= percent x entry, exact. No entry price (zero or below) -> False."""
+    if entry <= 0:
+        return False
+    return (entry - now) * 100 >= percent * entry
+
+
+def stop_at_pct(max_loss: Decimal, pct: Decimal) -> Decimal:
+    """ADR-247: the loss at which a "``pct`` % of max loss" stop fires, to the paisa (half up). Example (strategy 82):
+    max loss 23,897.04 at 50 % -> 11,948.52."""
+    return pct_of(max_loss, pct).quantize(PAISE, rounding=ROUND_HALF_UP)
+
+
+def stop_at_multiple(credit: Decimal, multiple: Decimal) -> Decimal:
+    """ADR-247: the loss at which a "``multiple`` x the credit received" stop fires, to the paisa (half up). Example
+    (strategy 82): credit 8,918 at 2 -> 17,836."""
+    return (credit * multiple).quantize(PAISE, rounding=ROUND_HALF_UP)

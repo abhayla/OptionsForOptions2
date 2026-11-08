@@ -219,7 +219,7 @@ def test_plan_without_exit_or_adjustment_is_valid_and_monitored():
     plan = RulePlan()
     assert plan.monitored is True
     assert plan.explanations() == (NO_EXIT_RULE, NO_ADJUSTMENT_RULE)
-    assert "You may want to consider defining an exit condition." in NO_EXIT_RULE
+    assert "No exit rule is defined." in NO_EXIT_RULE  # #629 wording (GC-IC1 step 7, 9ab9aabf)
     assert evaluate_plan(plan, snap(live_pnl="-9000")) == ()
 
     with_exit = RulePlan(exit=(exit_max_loss("x", D("5000"), action=RuleAction.ALERT_ONLY),))

@@ -22,9 +22,9 @@ from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
+from ofo.settings.calc import chain_strikes_each_side
 
 from ofo_app.chain_push import (
-    MAX_STRIKES_EACH_SIDE,
     ChainCatalogue,
     ChainOut,
     ChainPush,
@@ -36,7 +36,7 @@ from ofo_app.chain_push import (
     stored_chain,
     window_ids,
 )
-from ofo_app.errors import ClosedRoute, ClosedSocket, ClosedWebSocketRoute
+from ofo_app.errors import ClosedRoute, ClosedSocket, ClosedWebSocketRoute, refuse_request
 from ofo_app.routes import live, outcome
 from ofo_app.routes.outcome import (
     AnswerClock,
@@ -60,10 +60,10 @@ def get_chain_reader() -> ChainReader:
 
 
 def chain_read(ctx: MarketContext | None, streaming: Callable[[str], bool] | None, req: ChainRequest,  # noqa: PLR0913
-               catalogue: ChainCatalogue, *, fallback: bool, now: AnswerClock) -> ChainOut:
+               catalogue: ChainCatalogue, *, fallback: bool, now: AnswerClock, max_each_side: int) -> ChainOut:
     """The REST answer. ``fallback``: this screen's own socket is down, so it is not live whatever other sockets hold.
     Otherwise live only while every shown contract and the index are held by a socket (issue #206's rule)."""
-    window = pick_window(ctx, req, catalogue)
+    window = pick_window(ctx, req, catalogue, max_each_side)
     live_now = False
     if ctx is not None and not fallback:
         index_id = index_id_of(ctx, req.underlying)
@@ -80,7 +80,8 @@ async def market_chain(  # noqa: PLR0913 - one query parameter or seam each
         streaming: Annotated[Callable[[str], bool] | None, Depends(get_streaming)],
         now: Annotated[AnswerClock, Depends(get_answer_clock)],
         reader: Annotated[ChainReader, Depends(get_chain_reader)],
-        strikes_each_side: Annotated[int, Query(ge=1, le=MAX_STRIKES_EACH_SIDE)] = MAX_STRIKES_EACH_SIDE,
+        read_settings: Annotated[outcome.SettingsReader, Depends(outcome.get_settings_reader)],
+        strikes_each_side: Annotated[int | None, Query(ge=1)] = None,
         min_oi: Annotated[int | None, Query(ge=0)] = None,
         min_volume: Annotated[int | None, Query(ge=0)] = None,
         min_ltp: Annotated[Decimal | None, Query(ge=0, allow_inf_nan=False)] = None,
@@ -88,13 +89,19 @@ async def market_chain(  # noqa: PLR0913 - one query parameter or seam each
         fallback: Annotated[bool, Query(description="true when the screen's own chain socket is down (ADR-077): the "
                                                     "answer is then not live whoever else subscribes")] = False,
 ) -> ChainOut:
-    req = ChainRequest(underlying=underlying, expiry=expiry, strikes_each_side=strikes_each_side, min_oi=min_oi,
+    max_each = chain_strikes_each_side(await read_settings())  # the setting in force now; a store error fails closed
+    if strikes_each_side is not None and strikes_each_side > max_each:  # same bound as the socket (REQ-167 AC-5)
+        refuse_request(("query", "strikes_each_side"), "less_than_equal", strikes_each_side)
+    req = ChainRequest(underlying=underlying, expiry=expiry, strikes_each_side=strikes_each_side or max_each,
+                       min_oi=min_oi,
                        min_volume=min_volume, min_ltp=min_ltp, bid_and_ask=bid_and_ask)
-    return chain_read(ctx, streaming, req, await reader(underlying, expiry), fallback=fallback, now=now)
+    return chain_read(ctx, streaming, req, await reader(underlying, expiry), fallback=fallback, now=now,
+                      max_each_side=max_each)
 
 
 async def chain_live(socket: ClosedSocket) -> None:
-    await ChainPush(socket, live.current_feed(), monotonic=time.monotonic, now=outcome.server_now).run()
+    await ChainPush(socket, live.current_feed(), monotonic=time.monotonic, now=outcome.server_now,
+                    read_settings=outcome.get_settings_reader()).run()
 
 
 def socket_route() -> ClosedWebSocketRoute:

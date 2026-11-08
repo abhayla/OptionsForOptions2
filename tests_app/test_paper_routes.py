@@ -17,12 +17,21 @@ from decimal import Decimal
 from http import HTTPStatus
 
 import pytest
+from ofo.charges import ChargeRates
+from ofo.charges.round_trip import round_trip_charges
+from ofo.engine.legs import Action, Instrument, Leg
 from ofo_app import paper_store
+from ofo_app.routes.outcome import load_charge_rates
 from sqlalchemy import text
 from test_strategy_store import _client
 from test_strategy_tracking import _DELIST, _RETIRE, IDS, _frame, _setup
 
 D = Decimal
+#: The Kite-reproduced rate set (tests/charges/test_rates_reproduce_kite.py, read 2026-10-15), as test_paper_totals.
+RATES = ChargeRates(brokerage_per_order=D("20"), stt_sell_rate=D("0.0015"), stt_exercise_rate=D("0.0015"),
+                    transaction_rates={"NSE_FO": D("0.0003553"), "BSE_FO": D("0.000325")}, sebi_rate=D("0.000001"),
+                    stamp_buy_rate=D("0.00003"), gst_rate=D("0.18"), read_on=datetime.date(2026, 10, 15),
+                    source_url="https://zerodha.com/charges (F&O options)")
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 FIXTURE = ROOT / "tests/fixtures/paper/before-2026-10-29.json"
 AT = datetime.datetime(2026, 10, 29, 5, 0, tzinfo=datetime.UTC)
@@ -64,6 +73,8 @@ async def _seed_fixture(db):
     await paper_store.place(db, stored.user_ref, stored.id, orders)
     for iid, leg in zip(IDS, fixture["legs"], strict=True):
         provider.on_frame(_frame(provider, iid, leg["current_price"] or "100"), last)
+    # the hand figures of these tests are before charges; the charges-inclusive figures have their own test below
+    app.dependency_overrides[load_charge_rates] = lambda: None
     return app, stored, provider, _clock, last, fixture
 
 
@@ -339,6 +350,29 @@ async def test_core_strategy_48_extremes_equal_the_hand_figures_with_their_texts
     for name in ("profit_left", "loss_left", "max_profit", "max_loss"):  # the same money template as booked_text
         assert body[f"{name}_text"] == render_explanation("summary_paisa_signed", amount=D(body[name])), name
     assert body["profit_left_text"] == "+14,26,792.25"  # Indian grouping, read from the run of 2026-10-29
+
+
+async def test_f94_max_profit_and_loss_include_the_round_trip_charges_and_say_so(db):
+    app, stored, *_ = await _seed_fixture(db)
+    async with _client(app) as c:
+        gross = (await c.get(f"/paper/strategies/{stored.id}")).json()
+        app.dependency_overrides[load_charge_rates] = lambda: RATES
+        body = (await c.get(f"/paper/strategies/{stored.id}")).json()
+        listed = next(s for s in (await c.get("/paper/strategies")).json()["strategies"]
+                      if s["strategy_id"] == stored.id)
+    legs = [Leg(Action.BUY if p["net_quantity"] > 0 else Action.SELL, Instrument(p["instrument"]), D(p["strike"]),
+                datetime.date.fromisoformat(p["expiry"]), abs(p["net_quantity"]), D(p["average"]))
+            for p in gross["positions"] if p["net_quantity"] != 0]
+    charges = round_trip_charges(legs, stored.saved.definition.underlying, RATES)
+    assert charges > 0
+    assert D(body["max_profit"]) == D(gross["max_profit"]) - charges
+    assert D(body["max_loss"]) == D(gross["max_loss"]) - charges
+    assert (body["profit_left"], body["loss_left"]) == (gross["profit_left"], gross["loss_left"])
+    assert D(body["extremes_charges"]) == charges
+    assert "include about" in body["extremes_charges_text"] and "charges and taxes" in body["extremes_charges_text"]
+    assert gross["extremes_charges"] is None and "before charges" in gross["extremes_charges_text"]
+    assert {f: listed[f] for f in ("max_profit", "max_loss", "extremes_charges")} == {
+        f: body[f] for f in ("max_profit", "max_loss", "extremes_charges")}  # the list equals the single route
 
 
 async def test_stale_prices_drop_profit_left_and_loss_left_but_keep_the_original(db):

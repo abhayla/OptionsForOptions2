@@ -345,7 +345,7 @@ def test_req134_ac1_a_name_with_a_visible_character_stays_accepted(typed, stored
 def test_req134_ac1_the_empty_message_is_the_catalogues_not_an_ad_hoc_string():
     from ofo.errors import render  # noqa: PLC0415
 
-    assert render("strategy_name_empty").what_happened == "Give the strategy a name"
+    assert render("strategy_name_empty").what_happened == "The strategy has no name."
 
 
 def test_req134_a_name_cannot_be_minted_outside_the_request_layer():

@@ -50,6 +50,11 @@ class ChargeRatesError(Exception):
     """The stored rates cannot answer, or a write was refused."""
 
 
+class ChargeRatesFutureDate(ChargeRatesError):
+    """A write was refused because its read date is later than today (IST): a rate set records a day the rates WERE
+    read, and a future date would make every later set "older than the newest" for good (the table is append-only)."""
+
+
 def _values(rates: ChargeRates) -> dict[str, Decimal]:
     return {
         "brokerage_per_order": rates.brokerage_per_order,
@@ -96,13 +101,20 @@ async def rates_in_force(session: AsyncSession | AsyncConnection, on: date | Non
 
 async def add_rate_set(session: AsyncSession | AsyncConnection, rates: ChargeRates, note: str = "") -> None:
     """Admin write: append the whole set (one row per component) dated ``rates.read_on``. A date that already holds a
-    set is refused (history is append-only; a correction is a set on a later date)."""
+    set is refused (history is append-only; a correction is a set on a later date). A read date later than today
+    (IST, the database clock) is refused (``ChargeRatesFutureDate``): the one write path holds this bound, so no
+    caller can
+    block every later set with a mistyped year. Rate caps per field are in ``ofo.charges.rates`` (a negative or
+    over-cap value cannot build a ``ChargeRates``)."""
     if not isinstance(rates, ChargeRates):
         raise ChargeRatesError("a ChargeRates value is required")
     if not isinstance(note, str) or len(note) > MAX_NOTE:
         raise ChargeRatesError(f"note must be text of at most {MAX_NOTE} characters")
     if (await session.execute(_EXISTS, {"on": rates.read_on})).first() is not None:
         raise ChargeRatesError(f"a charge rate set dated {rates.read_on} already exists (append-only)")
+    today = (await session.execute(_TODAY)).scalar_one()
+    if rates.read_on > today:
+        raise ChargeRatesFutureDate(f"a charge rate set dated {rates.read_on} is later than today ({today}, IST)")
     newest = (await session.execute(_NEWEST)).scalar_one()
     if newest is not None and rates.read_on < newest:
         raise ChargeRatesError(f"a charge rate set dated {rates.read_on} is older than the newest stored ({newest}): "

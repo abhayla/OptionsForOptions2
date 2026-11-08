@@ -21,6 +21,7 @@ import logging
 import os
 import pathlib
 import types
+import urllib.parse
 
 import pytest
 import redis.asyncio as aioredis
@@ -42,8 +43,11 @@ class CountingKite(LoopingKite):
     def __init__(self) -> None:
         super().__init__()
         self.active = 0
+        self.tokens: list[str] = []  # the access_token each connection presented (round-2 MAJOR 2: whose token)
 
     async def handler(self, ws) -> None:
+        query = urllib.parse.parse_qs(urllib.parse.urlsplit(ws.request.path).query)
+        self.tokens.append((query.get("access_token") or [""])[0])
         self.active += 1
         try:
             await super().handler(ws)
@@ -209,6 +213,11 @@ async def test_no_token_or_fingerprint_is_on_the_bus_or_in_any_log_line(rig):
     for token in (TOKEN, TOKEN_B):
         digest = hashlib.sha256(token.encode()).digest()
         secrets += [token.encode(), digest, digest.hex().encode(), token.encode().hex().encode()]
+    # The feed stops its socket before the Disconnect entry lands on the bus: wait (bounded, 5 s) for the entry.
+    async def _two_entries():
+        return await rig.bus.xlen(feed_bus.control_key(USER)) >= 2
+
+    await rig.until(_two_entries, "the login and the Disconnect to be published", 5.0)
     assert await rig.bus.xlen(feed_bus.control_key(USER)) >= 2, "the login and the Disconnect were not published"
     blobs = []
     for key in (feed_bus.ticks_key, feed_bus.control_key):

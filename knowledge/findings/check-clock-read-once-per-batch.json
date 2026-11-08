@@ -1,0 +1,30 @@
+{
+ "id": "check-clock-read-once-per-batch",
+ "scope": "generic",
+ "class": "A loop that reads the clock once and then runs many slow steps against it treats every input that arrived after that one reading as 'from the future'. Any freshness guard that refuses future-stamped data (tick_in_future, clock skew checks) then refuses ALL live data once the batch takes longer than the feed's tick interval, so the loop silently decides nothing.",
+ "mechanism": "background.Worker.cycle read `now` once (background.py:560 at 7c804264) and passed it to every check; the rebuild and settings read ran first and 17 checks took 30-60 s over a 0.7 s-per-round-trip database, so every spot tick read by a check was stamped after `now`; spot_source.py:102-103 refused it as tick_in_future, the last close is ABSENT in market hours (adjustment_readers.py:249-250), so spot was None and every rule was withheld (playbook_eval.py:500-515): 0 of 17 strategies could flag.",
+ "first_seen": {
+  "date": "2026-11-02",
+  "where": "feature/adjustments @ 7c804264, live NIFTY ticks, FEED_MODE=bus, no browser",
+  "evidence": "minute lines 09:48-10:02: checks 17-34/min, 0 opportunity lines; screen route flagged T-03 for strategy 78 (record 7, 10:02:03) while the background had recomputed 78 every minute; independent reviewer ran the real resolve_spot: tick +2 s -> spot None (tick_in_future), -0.5 s -> 23300.15"
+ },
+ "fix": "ba6f43dd: each check reads its own clock (test: fake clock advancing 5 s per check, the 2nd strategy still flags). Live after the fix: background wrote records by itself from 10:38:32 (strategy 67 T-03 #30, T-07 #31; 70 T-07 #32; 78 T-06 #37, #39).",
+ "detection": {
+  "status": "guarded",
+  "checks": [
+   "tests_app/test_background_cycle.py (per-check clock test, added ba6f43dd)"
+  ],
+  "note": "The minute line now counts withheld / not_checked reasons (outcomes {...}); a count like withheld_no_spot = all checks shows this class at once."
+ },
+ "spec_ref": [
+  "spec/requirements/REQ-165.md",
+  "spec/decisions/ADR-220.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-11-02",
+   "where": "background role, GC-LIVE3 D3",
+   "evidence": "0 of 17 strategies flagged 09:48-10:37"
+  }
+ ]
+}

@@ -129,9 +129,10 @@ class Target:
         return render_explanation("target_clamped", value=self.at)
 
 
-def target_limits(spot: Decimal, step: Decimal) -> TargetLimits:
-    """Spot -10% .. +10%, each end snapped inward to a multiple of ``step`` (REQ-084 AC-1)."""
-    low, high = target_level_limits(spot, step)
+def target_limits(spot: Decimal, step: Decimal, span: Decimal) -> TargetLimits:
+    """Spot -span .. +span (the ``scenarios.target_span`` setting), each end snapped inward to a multiple
+    of ``step`` (REQ-084 AC-1)."""
+    low, high = target_level_limits(spot, step, span)
     return TargetLimits(low, high, step)
 
 
@@ -212,10 +213,10 @@ def _missing_iv_reason(model: ModelInputs) -> ExplanationText | None:
     return render_explanation("scenario_estimated_unavailable", legs=tuple(missing)) if missing else None
 
 
-def target_offer(model: ModelInputs, step: Decimal, *, live: bool) -> TargetOffer:
+def target_offer(model: ModelInputs, step: Decimal, span: Decimal, *, live: bool) -> TargetOffer:
     """The slider limits of an answer where no target was asked: the level range, and the date range now .. first expiry
     close when the estimate can be made (live data and every option leg's IV); else the AC-7 reason for the date."""
-    limits = target_limits(model.spot_level, step)
+    limits = target_limits(model.spot_level, step, span)
     spot = model.spot_level if live else None  # entries: the level is the grid's centre, not a live price
     days = days_to(model, model.inputs.valuation_time)
     if not live:
@@ -227,9 +228,9 @@ def target_offer(model: ModelInputs, step: Decimal, *, live: bool) -> TargetOffe
                        spot, days)
 
 
-def live_target(ask: TargetAsk, model: ModelInputs, graph_levels: LevelSet, step: Decimal) -> Target:
+def live_target(ask: TargetAsk, model: ModelInputs, graph_levels: LevelSet, step: Decimal, span: Decimal) -> Target:
     """The target block of a live computed answer: clamp, then every figure from the engine at the target."""
-    limits = target_limits(model.spot_level, step)
+    limits = target_limits(model.spot_level, step, span)
     level, level_clamped = _level(ask, model.spot_level, limits)
     reason = _missing_iv_reason(model)
     if reason is not None:  # AC-7: no IV: At Expiry P&L at the level; the time is refused
@@ -271,10 +272,10 @@ def _exact_only(limits: TargetLimits, level: Decimal, level_clamped: bool, model
                   booked=booked if pnl is not None else None, booked_unreadable=ask.booked_unreadable)
 
 
-def entries_target(ask: TargetAsk, model: ModelInputs, step: Decimal) -> Target:
+def entries_target(ask: TargetAsk, model: ModelInputs, step: Decimal, span: Decimal) -> Target:
     """REQ-077 AC-9 / REQ-084 AC-7: no live data -> At Expiry P&L at the level (limits around the grid's centre, the
     same centre the levels use); the time input is refused with the no-live-prices reason."""
-    limits = target_limits(model.spot_level, step)
+    limits = target_limits(model.spot_level, step, span)
     level, level_clamped = _level(ask, model.spot_level, limits)
     reason = render_explanation("outcome_from_entries_no_estimate")
     return _exact_only(limits, level, level_clamped, model, reason, None, ask)

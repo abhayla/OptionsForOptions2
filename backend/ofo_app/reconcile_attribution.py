@@ -447,6 +447,9 @@ async def attribute_and_compare(
     summaries = await reader.list_strategies(account.conn, account.user_ref)
     if not isinstance(summaries, (list, tuple)) or len(summaries) > MAX_STRATEGIES:
         raise AttributionError(f"the store must list at most {MAX_STRATEGIES} strategies, got {summaries!r}")
+    from ofo_app import scenario_mode  # noqa: PLC0415 - the one isolation helper (IC e2e decision 4)
+    mode = scenario_mode.current_id()
+    summaries = [s for s in summaries if scenario_mode.in_scope(getattr(s, "scenario_id", None), mode)]
     known: dict[str, dict[ContractKey, int]] = {}
     underlyings: dict[str, str] = {}
     pending: dict[ContractKey, list[Pending]] = {}

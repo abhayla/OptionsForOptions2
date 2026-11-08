@@ -1,0 +1,60 @@
+{
+ "id": "PATH-31",
+ "base": "ADJ-02",
+ "title": "Expiry day, late session, spot between the shorts: shorts nearly worthless (A-27) and past the time exit (A-35)",
+ "notes": "B3: the expiry-day frames the 14-approach paper test needs for A-27 (cheap shorts) and A-35 (time exit).",
+ "entry_atm_iv": "0.10",
+ "legs": [
+  {
+   "side": "BUY",
+   "type": "PE",
+   "strike": "22950",
+   "lots": 2
+  },
+  {
+   "side": "SELL",
+   "type": "PE",
+   "strike": "23150",
+   "lots": 2
+  },
+  {
+   "side": "SELL",
+   "type": "CE",
+   "strike": "23500",
+   "lots": 2
+  },
+  {
+   "side": "BUY",
+   "type": "CE",
+   "strike": "23700",
+   "lots": 2
+  }
+ ],
+ "frames": [
+  {
+   "clock": "2026-11-09T14:40:00",
+   "spot": "23330",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2026-11-09T14:50:00",
+   "spot": "23330",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2026-11-09T15:00:00",
+   "spot": "23330",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2026-11-09T15:10:00",
+   "spot": "23330",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2026-11-09T15:20:00",
+   "spot": "23330",
+   "atm_iv": "0.10"
+  }
+ ]
+}

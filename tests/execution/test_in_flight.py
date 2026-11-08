@@ -106,7 +106,7 @@ def test_close_then_complete_needs_a_fresh_read(catalogue, eligibility) -> None:
     discard_preparation(close_partial_strategy(plan(), stale, book, FakePlanner(), entry_context(), catalogue,
                                                eligibility))
     same = complete_strategy(plan(), stale, book, FakePlanner(), entry_context(), catalogue, eligibility)
-    assert same.orders == () and "fresh" in same.reason
+    assert same.orders == () and "latest positions" in same.reason
     fresh = FakeBroker(three_positions(LTPS), statuses(), read_at=READ_AT + datetime.timedelta(seconds=5))
     later = complete_strategy(plan(), fresh, book, FakePlanner(), entry_context(), catalogue, eligibility)
     assert [(o.contract, o.side, o.quantity) for o in later.orders] == [(CONTRACTS[3], Action.BUY, LOT)]

@@ -226,7 +226,7 @@ describe('ADR-008: no client maths on the outcome response (second layer)', () =
   // show the API strings); PnLCell parses the API value for a colour intensity only (its text is the API's display);
   // lib/oiBars.js scales the strike drawer's OI bars (GC-UI 6c, D-C26): OI counts, not money, a CSS width only.
   const ALLOWED = new Set([path.join('components', 'strategy', 'PayoffChart.vue'), path.join('components', 'strategy', 'PnLCell.vue'),
-    path.join('lib', 'oiBars.js')])
+    path.join('lib', 'oiBars.js'), path.join('lib', 'settingsValues.js')])
   const walk = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(path.join(dir, e.name)) : [path.join(dir, e.name)]))
   const files = walk(SRC).filter((f) => /\.(vue|js)$/.test(f) && !ALLOWED.has(path.relative(SRC, f)))
   const BANNED = [/parseFloat\s*\(/, /\bNumber\s*\(/, /parseInt\s*\(/, /\bMath\.(round|floor|ceil|max|min|abs)\s*\(/, /\.toFixed\s*\(/, /\.reduce\s*\(/]
@@ -239,11 +239,28 @@ describe('ADR-008: no client maths on the outcome response (second layer)', () =
     expect(files.some((f) => f.endsWith('StrategyBuilderPage.vue'))).toBe(true)
     expect(files.some((f) => f.endsWith('StrategyTable.vue'))).toBe(true)
   })
+  // Uses a banned helper makes that are NOT money (a strategy id from the address, a step-count clamp). Matched as exact text
+  // inside the line, with the reason; a listed use that no longer exists fails (the list cannot go stale or be padded).
+  const U = (line, reason) => ({ line, reason })
+  const NOT_MONEY_USES = {
+    [path.join('pages', 'StrategyBuilderPage.vue')]: [
+      U('Number(id)', 'the strategy id from the address, a whole number'),
+      U('Math.max(-MAX_STEPS, Math.min(MAX_STEPS, m.net + edit.direction))', 'a strike-step count clamp (whole steps), not money'),
+      U('Math.abs(m.net)', 'a strike-step count (whole steps), not money'),
+    ],
+    [path.join('components', 'strategy', 'LegList.vue')]: [
+      U('Math.abs(pendingSteps[`step:${i}`])', 'a pending strike-step count shown in a tooltip, not money'),
+    ],
+  }
   it('has no number parsing or arithmetic helpers in any screen file', () => {
     const hits = []
     for (const f of files) {
-      const text = fs.readFileSync(f, 'utf8')
-      for (const re of path.relative(SRC, f) === path.join('lib', 'guided.js') ? GUIDED_BANNED : BANNED) if (re.test(text.replace(/\/\*[\s\S]*?\*\/|<!--[\s\S]*?-->|\/\/.*$/gm, ''))) hits.push(`${path.relative(SRC, f)}: ${re}`)
+      let text = fs.readFileSync(f, 'utf8').replace(/\/\*[\s\S]*?\*\/|<!--[\s\S]*?-->|\/\/.*$/gm, '')
+      for (const u of NOT_MONEY_USES[path.relative(SRC, f)] ?? []) {
+        expect(text, `${path.relative(SRC, f)}: listed use gone: ${u.line}`).toContain(u.line)
+        text = text.split(u.line).join('')
+      }
+      for (const re of path.relative(SRC, f) === path.join('lib', 'guided.js') ? GUIDED_BANNED : BANNED) if (re.test(text)) hits.push(`${path.relative(SRC, f)}: ${re}`)
     }
     // PayoffChart.vue draws coordinates with toFixed on pixel positions from chartGeometry; it is the one named exception
     expect(hits.filter((h) => !h.startsWith(path.join('components', 'strategy', 'PayoffChart.vue') + ': /\\.toFixed'))).toEqual([])
@@ -299,6 +316,14 @@ describe('ADR-008: no client maths on the outcome response (second layer)', () =
         'largest OI on screen: the bar scale only'),
       L('return n === null || n <= 0 || !(max > 0) ? null : `${Math.round((n / max) * 100)}%`',
         'OI bar CSS width percent, not money'),
+    ],
+    // GC-SET (REQ-167 AC-5): whole-number setting COUNTS served by the server (strikes each side), never money
+    [path.join('lib', 'settingsValues.js')]: [
+      L("if (typeof text !== 'string' || !/^(0|[1-9][0-9]{0,8})$/.test(text)) return null",
+        'the strict digits-only check itself (the dash is a regex range, not a subtraction)'),
+      L('return Number(text)', 'a whole-number setting count after a strict digits-only check, not money'),
+      L('return [...new Set([1, 2, 3].map((k) => Math.max(1, Math.round((max * k) / 3))))]',
+        'strike-range picker choices from the served strike count, not money'),
     ],
   }
   // A small lexer, not a regex pair: comments are removed only OUTSIDE strings; a quote-delimited string is blanked, except the
@@ -443,16 +468,17 @@ describe('ADR-008: no client maths on the outcome response (second layer)', () =
     expect(scanAllowedFile(text.replace('const v = Number(props.value)', ''), NAMED_USES[rel]).length).toBeGreaterThan(0)
     expect(scanAllowedFile(text + '\nconst v = Number(props.value)', NAMED_USES[rel]).length).toBeGreaterThan(0)
   })
-  it('only the three named files may parse an API number, and they exist', () => {
+  it('only the four named files may parse an API number, and they exist', () => {
     expect([...ALLOWED].sort()).toEqual([path.join('components', 'strategy', 'PayoffChart.vue'),
-      path.join('components', 'strategy', 'PnLCell.vue'), path.join('lib', 'oiBars.js')].sort())
+      path.join('components', 'strategy', 'PnLCell.vue'), path.join('lib', 'oiBars.js'),
+      path.join('lib', 'settingsValues.js')].sort())
     for (const f of ALLOWED) expect(fs.existsSync(path.join(SRC, f))).toBe(true)
   })
 })
 
 
 describe('REQ-077 AC-9: with no live data the page shows At Expiry from the user\'s prices, labelled, with no live number', () => {
-  const FROM_YOUR_PRICES = 'From your prices - no live data'
+  const FROM_YOUR_PRICES = 'From your prices — no live data'
   const answer = () => ({
     ...real, state: 'FROM_ENTRIES', status_label: FROM_YOUR_PRICES, output_label: FROM_YOUR_PRICES,
     centre_label: 'There is no live index price, so the levels are centred on the middle of your strikes, 22,800.',

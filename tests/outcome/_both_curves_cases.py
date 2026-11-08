@@ -13,7 +13,12 @@ from ofo.engine.legs import Action
 from ofo.outcome import PlannedLeg, StrategyDefinition, build_outcome, from_entries, read_snapshot
 from ofo.outcome.serialize import outcome_to_dict
 from ofo.scenario.views import View
+from ofo.settings import calc as _fq_calc
+from ofo.settings import defaults
+from ofo.settings import defaults as _fq_defaults
 from outcome.test_same_engine import RATE, VALUATION
+
+_FQ = _fq_calc.forward_quality(_fq_defaults())
 
 GOLDEN = pathlib.Path(__file__).resolve().parent.parent / "fixtures" / "outcome_both_curves" / "flag_off.json"
 S54 = (("NSE_FO:44616", Action.BUY), ("NSE_FO:44624", Action.SELL))  # 22600 CE / 22800 CE 13-Oct
@@ -33,18 +38,18 @@ def definition(provider, legs):
 
 
 def snapshot(provider, d):
-    return read_snapshot(provider, "NIFTY", [p.instrument_id for p in d.legs], VALUATION, RATE)
+    return read_snapshot(provider, "NIFTY", [p.instrument_id for p in d.legs], VALUATION, RATE, quality=_FQ)
 
 
 def outcome(provider, legs, **kw):
     d = definition(provider, legs)
-    return build_outcome(d, snapshot(provider, d), VALUATION, **kw)
+    return build_outcome(d, snapshot(provider, d), VALUATION, **{"settings": defaults(), **kw})
 
 
 def entries_outcome(provider, legs, **kw):
     """REQ-077 AC-9 (the not-live path): At Expiry from the user's prices, contracts read from the snapshot."""
     d = definition(provider, legs)
-    return from_entries(d, snapshot(provider, d), None, VALUATION, **kw)
+    return from_entries(d, snapshot(provider, d), None, VALUATION, **{"settings": defaults(), **kw})
 
 
 def as_json(body) -> dict:

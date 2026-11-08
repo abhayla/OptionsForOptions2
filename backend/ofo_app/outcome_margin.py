@@ -14,7 +14,9 @@ States (run-discipline B4 (d)):
 - a leg that is not a listed Zerodha contract: ``NO_BASKET``; no Kite call.
 - both figures read: ``CHECKED`` with the figures; cached until the plan changes.
 - Kite says the token is no longer valid: the login text; cached for ``RETRY_SECONDS``.
-- Kite busy / refused / down / junk / no figure / a timeout / the token store unreadable: ``UNREADABLE``
+- Zerodha answered in full and stated no figure at all (EMPTY, ``KiteMarginError.empty``): ``UNREADABLE`` with
+  ``empty`` set and its own words ("returned no margin figure"), still no figure and never 0.
+- Kite busy / refused / down / junk / an ambiguous reply / a timeout / the token store unreadable: ``UNREADABLE``
   ("could not be read", never a made-up figure); cached for ``RETRY_SECONDS`` so a Kite outage costs one read per
   ``RETRY_SECONDS`` per plan, not one per push.
 
@@ -45,7 +47,15 @@ from ofo.instruments.models import ZERODHA
 from ofo.instruments.parser import ZERODHA_EXCHANGE_TO_SEGMENT
 from ofo.execution.margin_gate import MARGIN_BUSY_CODE
 from ofo.marketdata.provider import MarketDataProvider
-from ofo.outcome.service import MARGIN, Margin, margin_busy, margin_checked, margin_no_basket, margin_unreadable
+from ofo.outcome.service import (
+    MARGIN,
+    Margin,
+    margin_busy,
+    margin_checked,
+    margin_empty,
+    margin_no_basket,
+    margin_unreadable,
+)
 from ofo.outcome.snapshot import contract_id
 
 from ofo_app.kite_margin import BasketOrder, KiteMargin, KiteMarginError
@@ -187,7 +197,9 @@ class OutcomeMargin:
             log.warning("outcome margin: Zerodha could not be read: %s", exc.code)
             if exc.code == MARGIN_BUSY_CODE:
                 return margin_busy(), False
-            return (MARGIN if exc.code == "kite_margin_token" else margin_unreadable()), False
+            # an EMPTY answer (Zerodha answered in full and stated no figure) is worded apart, still with no figure
+            return (MARGIN if exc.code == "kite_margin_token" else margin_empty(funds=exc.funds) if exc.empty
+                    else margin_unreadable()), False
         except Exception as exc:  # noqa: BLE001 - a timeout, the token store, anything: "could not be read"
             log.warning("outcome margin: Zerodha could not be read: %s", type(exc).__name__)
             return margin_unreadable(), False

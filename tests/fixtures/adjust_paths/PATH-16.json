@@ -1,0 +1,45 @@
+{
+ "id": "PATH-16",
+ "base": "ADJ-02",
+ "title": "expiry day close",
+ "notes": "",
+ "entry_atm_iv": "0.10",
+ "legs": [
+  {
+   "side": "BUY",
+   "type": "PE",
+   "strike": "22600",
+   "lots": 2
+  },
+  {
+   "side": "SELL",
+   "type": "PE",
+   "strike": "22800",
+   "lots": 2
+  },
+  {
+   "side": "SELL",
+   "type": "CE",
+   "strike": "23400",
+   "lots": 2
+  },
+  {
+   "side": "BUY",
+   "type": "CE",
+   "strike": "23600",
+   "lots": 2
+  }
+ ],
+ "frames": [
+  {
+   "clock": "2026-11-09T14:20:00",
+   "spot": "23380",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2026-11-09T14:30:00",
+   "spot": "23380",
+   "atm_iv": "0.10"
+  }
+ ]
+}

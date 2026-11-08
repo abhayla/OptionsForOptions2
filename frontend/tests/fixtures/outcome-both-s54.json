@@ -262,7 +262,7 @@
   },
   "estimated_now": {
    "view": "estimated_now",
-   "label": "Estimated Now (estimate)",
+   "label": "Estimated Now",
    "kind": "estimate",
    "available": true,
    "unavailable_reason": null,

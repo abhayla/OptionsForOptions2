@@ -18,7 +18,12 @@ from ofo.marketdata.forward import mid_price
 from ofo.marketdata.shared_compute import FeedScope, SharedCompute, SharedKey
 from ofo.outcome import PlannedLeg, StrategyDefinition, build_outcome, read_snapshot, service
 from ofo.scenario.spot import spot_reading
+from ofo.settings import calc as _fq_calc
+from ofo.settings import defaults as _d
+from ofo.settings import defaults as _fq_defaults
 from ofo.table.model import CellKind
+
+_FQ = _fq_calc.forward_quality(_fq_defaults())
 
 RATE = Decimal("0.065")
 STRADDLE = ("NSE_FO:44614", "NSE_FO:44615")  # the 22550 CE and PE of the 2026-10-13 expiry
@@ -59,11 +64,11 @@ def scope(cache, owner):
 
 
 def read(provider, at, ids, cache=None, owner=None):
-    return read_snapshot(provider, "NIFTY", list(ids), at, RATE, scope(cache, owner))
+    return read_snapshot(provider, "NIFTY", list(ids), at, RATE, scope(cache, owner), quality=_FQ)
 
 
 def outcome(snap, ids, cache=None, owner=None):
-    return build_outcome(definition(ids), snap, valuation=snap.valuation, shared=scope(cache, owner))
+    return build_outcome(definition(ids), snap, valuation=snap.valuation, shared=scope(cache, owner), settings=_d())
 
 
 def test_core_two_readers_of_one_feed_snapshot_compute_once(feed, iv_calls):
@@ -128,9 +133,9 @@ def test_a_forward_is_computed_once_per_feed_snapshot_and_equals_the_unshared_on
     calls: Counter = Counter()
     real = snapshot_module.parity_forward
 
-    def counted(chain, spot, expiry, valuation, rate):
+    def counted(chain, spot, expiry, valuation, rate, quality):  # noqa: PLR0913
         calls[expiry] += 1
-        return real(chain, spot, expiry, valuation, rate)
+        return real(chain, spot, expiry, valuation, rate, quality)
 
     monkeypatch.setattr(snapshot_module, "parity_forward", counted)
     plain = read(provider, at, STRADDLE)
@@ -214,7 +219,7 @@ def test_a_changed_chain_at_the_same_instant_never_reads_the_old_forward(feed, m
     """The quotes the forward reads are in its key: other quotes at the same valuation instant are another entry."""
     provider, at = feed
     cache = FeedScope(SharedCompute(), "user-1")
-    before = read_snapshot(provider, "NIFTY", list(STRADDLE), at, RATE, cache)
+    before = read_snapshot(provider, "NIFTY", list(STRADDLE), at, RATE, cache, quality=_FQ)
     real = provider.option_chain_snapshot
 
     def shifted(underlying, expiry):
@@ -222,7 +227,7 @@ def test_a_changed_chain_at_the_same_instant_never_reads_the_old_forward(feed, m
                 if q.instrument_type.value == "CE" and q.bid and q.ask else q for q in real(underlying, expiry)]
 
     monkeypatch.setattr(provider, "option_chain_snapshot", shifted)
-    after = read_snapshot(provider, "NIFTY", list(STRADDLE), at, RATE, cache)
+    after = read_snapshot(provider, "NIFTY", list(STRADDLE), at, RATE, cache, quality=_FQ)
     assert after.forwards != before.forwards
 
 
@@ -232,16 +237,16 @@ def test_a_changed_chain_in_another_order_shares_and_other_quotes_do_not(feed, m
     calls: Counter = Counter()
     real = snapshot_module.parity_forward
 
-    def counted(chain, spot, expiry, valuation, rate):
+    def counted(chain, spot, expiry, valuation, rate, quality):  # noqa: PLR0913
         calls[expiry] += 1
-        return real(chain, spot, expiry, valuation, rate)
+        return real(chain, spot, expiry, valuation, rate, quality)
 
     monkeypatch.setattr(snapshot_module, "parity_forward", counted)
     cache = FeedScope(SharedCompute(), "user-1")
-    read_snapshot(provider, "NIFTY", list(STRADDLE), at, RATE, cache)
+    read_snapshot(provider, "NIFTY", list(STRADDLE), at, RATE, cache, quality=_FQ)
     chain = provider.option_chain_snapshot
     monkeypatch.setattr(provider, "option_chain_snapshot", lambda u, e: list(reversed(chain(u, e))))
-    read_snapshot(provider, "NIFTY", list(STRADDLE), at, RATE, cache)
+    read_snapshot(provider, "NIFTY", list(STRADDLE), at, RATE, cache, quality=_FQ)
     assert set(calls.values()) == {1}  # the reversed chain read the same entry
 
 
@@ -252,9 +257,9 @@ def test_core_a_second_reader_a_second_later_on_the_clock_computes_nothing(feed,
     forwards: Counter = Counter()
     real = snapshot_module.parity_forward
 
-    def counted(chain, spot, expiry, valuation, rate):
+    def counted(chain, spot, expiry, valuation, rate, quality):  # noqa: PLR0913
         forwards[expiry] += 1
-        return real(chain, spot, expiry, valuation, rate)
+        return real(chain, spot, expiry, valuation, rate, quality)
 
     monkeypatch.setattr(snapshot_module, "parity_forward", counted)
     cache = FeedScope(SharedCompute(), "user-1")
@@ -281,7 +286,7 @@ def test_a_newer_frame_for_one_contract_is_a_new_instant_with_new_entries(feed, 
     quote = legs[STRADDLE[0]].quote
     legs[STRADDLE[0]] = dataclasses.replace(legs[STRADDLE[0]], quote=dataclasses.replace(quote, timestamp=newer))
     moved = dataclasses.replace(snap, legs=legs, valuation=newer)
-    build_outcome(definition(STRADDLE), moved, valuation=newer, shared=FeedScope(cache, "user-1"))
+    build_outcome(definition(STRADDLE), moved, valuation=newer, shared=FeedScope(cache, "user-1"), settings=_d())
     assert sum(iv_calls.values()) == before + CONTRACTS  # every figure of the new instant is computed afresh
 
 
@@ -290,14 +295,18 @@ def test_a_newer_frame_for_one_contract_is_a_new_instant_with_new_entries(feed, 
 def greek_calls(monkeypatch):
     """Counts every per-unit Greek computation by the engine, wherever it is called from (table model or service)."""
     calls: Counter = Counter()
-    real = table_model.leg_greeks_unrounded
+    real, real_unit = table_model.leg_greeks_unrounded, service.greeks_unrounded
 
     def counted(model, leg):
         calls[(leg.instrument.value, leg.strike)] += 1
         return real(model, leg)
 
+    def counted_unit(em, kind, strike, vol):
+        calls[(kind.value, strike)] += 1
+        return real_unit(em, kind, strike, vol)
+
     monkeypatch.setattr(table_model, "leg_greeks_unrounded", counted)
-    monkeypatch.setattr(service, "leg_greeks_unrounded", counted)
+    monkeypatch.setattr(service, "greeks_unrounded", counted_unit)
     return calls
 
 
@@ -308,7 +317,7 @@ def greek_cells(out):
 
 
 def greek_keys(cache):
-    return [k for k in cache._slots if k.figure == "leg_greeks"]  # the test reads what was cached
+    return [k for k in cache._slots if k.figure == "ofo.outcome.service._unit_greeks"]  # the test reads what was cached
 
 
 def test_core_the_second_reader_computes_no_greeks_through_the_real_outcome_path(feed, greek_calls):
@@ -363,9 +372,9 @@ def test_a_spot_only_change_at_one_instant_recomputes_the_forward(feed, monkeypa
     calls: Counter = Counter()
     real = snapshot_module.parity_forward
 
-    def counted(chain, spot, expiry, valuation, rate):
+    def counted(chain, spot, expiry, valuation, rate, quality):  # noqa: PLR0913
         calls[expiry] += 1
-        return real(chain, spot, expiry, valuation, rate)
+        return real(chain, spot, expiry, valuation, rate, quality)
 
     monkeypatch.setattr(snapshot_module, "parity_forward", counted)
     cache = SharedCompute()

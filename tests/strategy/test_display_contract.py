@@ -24,5 +24,5 @@ def test_alert_body_has_no_repeated_title_and_old_rows_still_restore():
     body = str(render_explanation("paper_alert_body", what=what, count=1, prices=leg))
     assert not body.startswith("Paper strategy")
     assert "2026-" not in body
-    old = 'Paper strategy - "X": ' + body
+    old = 'Paper strategy — "X": ' + body
     assert str(restore_explanation("paper_alert_body", old)) == old

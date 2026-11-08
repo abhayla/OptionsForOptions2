@@ -1,7 +1,7 @@
 // The builder redesign's combined check (ui/builder-redesign, W-191..W-195): one test per fixed finding that a unit test
 // can reach. A: no OI bar maths (tests/leg-picker.test.js UI-202 and the ADR-008 scan); B and C: browser layout (e2e).
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { mount, flushPromises } from '@vue/test-utils'
+import { mount as mountRaw, flushPromises } from '@vue/test-utils'
 import { createRouter, createMemoryHistory } from 'vue-router'
 
 const calls = []
@@ -11,6 +11,7 @@ vi.mock('@/services/api', async (importActual) => {
   const respond = (method, url, body) => {
     calls.push({ method, url, body })
     const a = answers[`${method} ${url}`]
+    if (a === undefined && method === 'GET' && url === '/settings') return Promise.resolve({ data: settingsData() }) // the served lot caps
     if (a === undefined) return Promise.reject(new Error(`unmocked ${method} ${url}`))
     return typeof a === 'function' ? a(body) : a instanceof Error ? Promise.reject(a) : Promise.resolve({ data: a })
   }
@@ -26,6 +27,12 @@ import StrategyBuilderPage from '@/pages/StrategyBuilderPage.vue'
 import { capturedCaption } from '@/lib/displayFormat'
 import { compareStrikeText, itmSides, strikesAscending } from '@/lib/legPicker'
 import real from './fixtures/outcome-condor.json'
+
+import { settingsData } from './helpers/servedLots'
+
+// the page passes the served caps down (REQ-167 AC-5); a component mounted alone gets them as props
+const mount = (C, o = {}) => mountRaw(C, C?.__name === 'LegPicker' ? { ...o, props: { maxLots: 10000, lotChoiceCount: 10, ...o.props } }
+  : C?.__name === 'LegList' ? { ...o, props: { multiplierMax: 50, ...o.props } } : o)
 
 const AT = '2026-10-08T09:20:09+05:30'
 const t = (w, id) => w.find(`[data-testid="${id}"]`)
@@ -150,7 +157,7 @@ describe('H (review 4) and K (review 7): opening the drawer', () => {
   it('H: the picker reads the open tab again when the drawer opens, not only on the 5 s tick', async () => {
     answers['GET /catalogue/NIFTY/expiries'] = { underlying: 'NIFTY', expiries: ['2026-10-13'] }
     answers['GET /catalogue/NIFTY/contracts?expiry=2026-10-13'] = CATALOGUE
-    answers['GET /leg-picker/strikes?underlying=NIFTY&expiry=2026-10-13&width=10'] = { state: 'LIVE', rows: [], underlying: 'NIFTY', expiry: '2026-10-13' }
+    answers['GET /leg-picker/strikes?underlying=NIFTY&expiry=2026-10-13'] = { state: 'LIVE', rows: [], underlying: 'NIFTY', expiry: '2026-10-13' }
     const w = mount(LegPicker, { props: { legs: [], active: false } })
     await flushPromises()
     await t(w, 'pick-expiry').setValue('2026-10-13')

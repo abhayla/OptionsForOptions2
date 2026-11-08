@@ -13,9 +13,12 @@
   "status": "guarded",
   "checks": [
    "tests/marketdata/test_resubscribe_freeze.py (7 tests: release+acquire in one change, release-send-acquire, acquire-release before any send, quiet contract re-taken, tick between release and send, released before its first quote then ticked, not-wanted token dropped and counted)",
-   "tests_app/test_kite_ws_resubscribe.py::test_spot_released_by_one_socket_and_taken_by_another_keeps_ticking"
+   "tests_app/test_kite_ws_resubscribe.py::test_spot_released_by_one_socket_and_taken_by_another_keeps_ticking",
+   "tests_app/test_adjustment_readers.py _FakeFanout.unsubscribe parks (clears held) like QuoteBook.park: the round-2 test test_gcic1_no_index_quote_on_the_feed_the_window_is_centred_on_the_rest_spot went RED on 690ebe52",
+   "tests_app/test_adjustment_readers.py::test_gcic1_r3_no_provider_read_after_the_release (a provider that raises on any read after the release)",
+   "tests_app/test_adjustment_readers.py::test_gcic1_r3_real_quote_book_parks_the_index_and_the_check_still_has_greeks (drives the real QuoteBook.park)"
   ],
-  "note": "Discriminates: the new tests fail on the pre-fix provider (4 failed at 1fb3629; 2 failed at 269bc82 for the round-1 ghost quote, run by the round-2 Opus reviewer) and pass on faa29de. Not covered: Kite silently stopping one token on a live feed (no per-instrument staleness, by design)."
+  "note": "Discriminates: the new tests fail on the pre-fix provider (4 failed at 1fb3629; 2 failed at 269bc82 for the round-1 ghost quote, run by the round-2 Opus reviewer) and pass on faa29de. Not covered: Kite silently stopping one token on a live feed (no per-instrument staleness, by design). 2026-11-03: the request-read class (read after the hold's release) is guarded structurally by the one shared helper live_push.hold_and_read; a test fake whose unsubscribe does not park hid it for two rounds."
  },
  "spec_ref": [
   "spec/decisions/ADR-077.md",
@@ -31,6 +34,11 @@
    "date": "2026-10-16",
    "where": "D-1 fix review round 1",
    "evidence": "ghost quote: subscribe X, unsubscribe X, tick X -> book.get(X) ltp 123.45 with no holder; fixed in faa29de"
+  },
+  {
+   "date": "2026-11-03",
+   "where": "adjustment check / Compare (GC-IC1, strategy 82): backend/ofo_app/adjustment_readers.py read_market",
+   "evidence": "the hold was released in chain_quotes' finally, then read_market re-read the index (provider.underlying_quote) after the release; the released index is parked (QuoteBook.park) and answers None -> SPOT_REFUSED -> no forward -> no Greeks for any strike, no ATM vol. Rounds 1-2 widened the hold and could not fix it; their test fake never parked on unsubscribe. Independent review 2026-11-03 finding 1. Fixed on build/gcic1-check-hold: ONE shared hold-and-read helper (ofo_app.live_push.hold_and_read, used by the paper book's _hold_until_ready AND adjustment_readers.held_read) returns the read taken WHILE held; read_market builds everything from that frozen read and never reads a quote after the release."
   }
  ]
 }

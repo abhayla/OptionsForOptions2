@@ -249,25 +249,32 @@ def _greek_floats(kind: Instrument, s: float, k: float, t: float, r: float, v: f
     """The four raw (unrounded) Greek floats, Black-Scholes-Merton with yield q (Hull ch. 17-19).
 
     Shared by :func:`bs_greeks` and :func:`bs_greeks_unrounded`. With q = 0 every yield factor is exactly 1.0 or 0.0,
-    so the no-dividend values are reproduced bit for bit.
+    so the no-dividend values are reproduced bit for bit. Delta, gamma and vega are the BSM-with-q Greeks.
+
+    Theta is STATED ON THE FORWARD (ADR-234, Black-76 form): with F = S e^((r-q)T) the expiry's forward,
+    ``theta = -F e^(-rT) n(d1) v / (2 sqrt T)`` per year (= ``-S e^(-qT) n(d1) v / (2 sqrt T)``), divided by
+    ``days_in_year``. It is the time decay of the option with the forward held fixed, with no separate cost-of-carry
+    term (no ``r K e^(-rT) N(d2)``, no ``q S e^(-qT) N(d1)``), so a call and a put at the same strike, expiry and
+    volatility have the SAME theta, as the reference product states it (RD-080, F-98). Its one formula is
+    :func:`_theta_on_forward`; nothing else in the engine computes a theta.
     """
-    d1, d2 = _d1_d2(s, k, t, r, v, q)
+    d1, _ = _d1_d2(s, k, t, r, v, q)
     pdf = _norm_pdf(d1)
     yield_df = math.exp(-q * t)
-    decay = -s * yield_df * pdf * v / (2.0 * math.sqrt(t))
-    carry = r * k * math.exp(-r * t)
-    if kind is Instrument.CE:
-        delta = yield_df * _norm_cdf(d1)
-        theta_year = decay - carry * _norm_cdf(d2) + q * s * yield_df * _norm_cdf(d1)
-    else:
-        delta = yield_df * (_norm_cdf(d1) - 1.0)
-        theta_year = decay + carry * _norm_cdf(-d2) - q * s * yield_df * _norm_cdf(-d1)
+    delta = yield_df * _norm_cdf(d1) if kind is Instrument.CE else yield_df * (_norm_cdf(d1) - 1.0)
     return {
         "delta": delta,
         "gamma": yield_df * pdf / (s * v * math.sqrt(t)),
-        "theta": theta_year / days_in_year,
+        "theta": _theta_on_forward(s * yield_df, pdf, t, v) / days_in_year,
         "vega": s * yield_df * pdf * math.sqrt(t) / 100.0,
     }
+
+
+def _theta_on_forward(discounted_forward: float, pdf_d1: float, t: float, v: float) -> float:
+    """ADR-234: the annual theta on the forward, ``-F e^(-rT) n(d1) v / (2 sqrt T)``; the same for a call and a put.
+
+    ``discounted_forward`` is F e^(-rT) (= S e^(-qT)); the kind of option is deliberately not an input."""
+    return -discounted_forward * pdf_d1 * v / (2.0 * math.sqrt(t))
 
 
 def _check_greek_inputs(option: Instrument, spot: Decimal, strike: Decimal, years: Decimal, rate: Decimal,

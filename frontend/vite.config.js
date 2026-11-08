@@ -24,6 +24,12 @@ const proxy = {
 
 export default defineConfig({
   plugins: [vue(), tailwindcss()],
+  // #517 (REQ-048 AC-5): only VITE_-prefixed variables reach the bundle, and only the reviewed ones are read in src
+  // (tests/test_bundle_inputs.py); stated here so a changed Vite default cannot widen it.
+  envPrefix: 'VITE_',
+  // #517: the manifest maps each source module to its chunk, so the bundle scan pins the api_key exemption to
+  // the basket modules themselves, not to a chunk-name pattern (tests/test_bundle_secret_scan.py).
+  build: { manifest: true },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
@@ -37,5 +43,8 @@ export default defineConfig({
     environment: 'happy-dom',
     include: ['tests/**/*.{test,spec}.{js,ts}'],
     setupFiles: ['tests/setup.js'],
+    // 2026-11-01: the gate runs vitest after ~45 min of Python suites on a loaded laptop; a 2.9 s test (12 playbook
+    // bodies x every step) hit the 5 s default at 5.08 s. 15 s keeps a hung test failing while giving load headroom.
+    testTimeout: 15000,
   },
 })

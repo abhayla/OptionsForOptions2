@@ -37,7 +37,9 @@ from pydantic import BaseModel, ConfigDict, PlainSerializer, PlainValidator, Str
 from ofo.errors import UserFacingError
 from ofo.errors.explanations import ExplanationText
 from ofo_app.basket_post import BasketPost
+from ofo_app.playbook_body_out import PlaybookBody
 from ofo_app.closed_namespace import own_names
+from ofo_app.secret_values import contains_secret
 
 log = logging.getLogger("ofo_app.main")
 
@@ -70,7 +72,10 @@ _IDENTIFIER = re.compile(r"[A-Za-z0-9_\-.]{1,%d}" % IDENTIFIER_MAX)  # the same 
 _INSTRUMENT_ID = re.compile(r"[A-Z][A-Z_]{0,15}:[0-9]{1,12}")  # InstrumentId's pattern, re-checked at the door
 _FIELD_NAME = re.compile(r"[a-z][a-z0-9_]{0,63}")  # a declared field name is the only key a body may carry
 
-_LEAVES: tuple[type, ...] = (bool, int, Decimal, datetime.datetime, datetime.date, BasketPost)
+_LEAVES: tuple[type, ...] = (bool, int, Decimal, datetime.datetime, datetime.date, BasketPost, PlaybookBody)
+#: The sealed leaves and their one writer: BasketPost (W-095) is the exact Kite form text, only from the sealed basket
+#: (basket_post.py); PlaybookBody (GC-ADJ2 step 2) is a store-checked playbook body (playbook_body_out.py).
+_SEALED_LEAVES: dict[type, Any] = {BasketPost: BasketPost.as_form, PlaybookBody: PlaybookBody.as_json}
 
 
 def _closed_literal(tp: Any) -> bool:
@@ -254,10 +259,10 @@ def _walk(value: object, tp: Any, path: str, exclude_unset: bool) -> object:
         if type(value) is Decimal and value.is_finite():
             return format(value, "f")
         raise _refuse(path, value, "Money")
-    if tp is BasketPost:  # W-095: the exact Kite form text, only from the sealed basket (basket_post.py)
-        if type(value) is BasketPost:
-            return value.as_form()
-        raise _refuse(path, value, "BasketPost")
+    if isinstance(tp, type) and tp in _SEALED_LEAVES:  # a sealed leaf is written only from its own exact type
+        if type(value) is tp:
+            return _SEALED_LEAVES[tp](value)
+        raise _refuse(path, value, tp.__name__)
     origin = typing.get_origin(tp)
     if origin is Literal:
         if any(type(a) is type(value) and a == value for a in typing.get_args(tp)) and (
@@ -336,8 +341,10 @@ def _model_tree(model: ApiModel, exclude_unset: bool, path: str) -> dict[str, ob
 
 
 def _encode(tree: object) -> Emitted:
-    return Emitted(json.dumps(tree, ensure_ascii=False, allow_nan=False, separators=(",", ":")).encode("utf-8"),
-                   _token=_TOKEN)
+    data = json.dumps(tree, ensure_ascii=False, allow_nan=False, separators=(",", ":")).encode("utf-8")
+    if contains_secret(data):  # #517: a registered credential VALUE in any reviewed field refuses the whole body
+        raise DoorRefused("the body holds a registered credential value")
+    return Emitted(data, _token=_TOKEN)
 
 
 def emit(model: ApiModel, exclude_unset: bool = False) -> Emitted:
@@ -362,3 +369,220 @@ def emit_message(message: UserFacingError) -> Emitted:
     except DoorRefused as exc:
         log.error("response door refused: %s", exc)
         raise
+
+
+# ---- REQ-155 (W-196): POST /api/strategies/{id}/adjustment-approaches ------------------------------------------------
+#: a whole-trade figure: exact rupees, or UNLIMITED when the payoff is unbounded on that side
+Figure = Money | Literal["UNLIMITED"]
+_Side = Literal["BUY", "SELL"]
+_Type = Literal["CE", "PE"]
+
+
+class AdjustFiguresOut(ApiModel):
+    max_profit: Figure
+    max_loss: Figure
+    breakevens: list[Money]
+    loss_regions: list[list[Money | None]]
+
+
+class AdjustAfterOut(ApiModel):
+    gross: AdjustFiguresOut
+    after_charges: AdjustFiguresOut | None  # None: the charges are not available (the gross figures still shown)
+    booked_pnl: Money
+
+
+class AdjustChargesOut(ApiModel):
+    this_adjustment: Money | None
+    paid_so_far: Money | None
+    open_exit: Money | None
+    not_available: CatalogueText | None
+
+
+class AdjustPopOut(ApiModel):
+    value: Money | None  # a probability in [0, 1], exact
+    not_available: bool
+    reason: CatalogueText | None
+
+
+class AdjustMarginOut(ApiModel):
+    state: Identifier
+    value: Money | None
+    at: datetime.datetime | None
+    reason: CatalogueText | None
+
+
+class AdjustSpotReasonOut(ApiModel):
+    source: Identifier
+    reason: Identifier
+    reason_text: CatalogueText
+
+
+class AdjustSpotOut(ApiModel):
+    value: Money | None
+    source: Identifier | None
+    source_text: CatalogueText | None
+    at: datetime.datetime | None
+    reasons: list[AdjustSpotReasonOut]
+    text: CatalogueText | None
+
+
+class AdjustTradeOut(ApiModel):
+    action: _Side
+    type: _Type
+    strike: Money
+    expiry: datetime.date
+    lots: int
+    quantity: int
+    price: Money
+    tradingsymbol: Identifier
+
+
+class AdjustLegOut(ApiModel):
+    side: _Side
+    type: _Type
+    strike: Money
+    expiry: datetime.date
+    lots: int
+    entry: Money
+    tradingsymbol: Identifier
+
+
+class AdjustClosedLegOut(ApiModel):
+    side: _Side
+    type: _Type
+    strike: Money
+    expiry: datetime.date
+    lots: int
+    quantity: int
+    entry: Money
+    exit: Money
+    tradingsymbol: Identifier
+
+
+class AdjustWholeOut(ApiModel):
+    after: AdjustAfterOut | None
+    charges: AdjustChargesOut | None
+    pop: AdjustPopOut | None
+    after_reason: CatalogueText | None
+
+
+class AdjustApproachOut(ApiModel):
+    id: Identifier
+    name: CatalogueText | None = None
+    kind: Identifier | None = None
+    side: Identifier | None = None
+    step_basis: Identifier | None = None  # "delta" / "points" / "entry_distance" (ADR-243): the basis that built it
+    step_value: Money | None = None  # the target delta, the points moved, or the stored entry distance
+    #: ADR-243: where the roll basis came from (``ofo.settings.layers`` codes strategy / user / default); None: no roll
+    basis_source: Identifier | None = None
+    refusal: CatalogueText | None = None
+    warnings: list[CatalogueText] = []
+    trades: list[AdjustTradeOut] | None = None
+    after_legs: list[AdjustLegOut] | None = None
+    closed_legs: list[AdjustClosedLegOut] | None = None
+    after: AdjustAfterOut | None = None
+    charges: AdjustChargesOut | None = None
+    pop: AdjustPopOut | None = None
+    after_reason: CatalogueText | None = None
+    margin: AdjustMarginOut | None = None
+    liquidity_flags: list[CatalogueText] = []  # ADR-230 (1): the flags of its new strikes (same limits as the Compare)
+
+
+class AdjustTimingOut(ApiModel):
+    engine_seconds: Money  # seconds, exact decimal text
+    total_seconds: Money
+    approaches: int
+
+
+class AdjustBreakdownLineOut(ApiModel):
+    """One line of the cost cell's charge breakdown (ADR-230 (3)): the line's id, its catalogue label and amount."""
+
+    id: Identifier
+    label: CatalogueText
+    text: CatalogueText
+
+
+class AdjustCellOut(ApiModel):
+    """One approach's value on one compare criterion (REQ-156 AC-3): ``text`` always shown; ``value`` the exact
+    number when there is one; ``unavailable_reason`` beside a "-"."""
+
+    text: CatalogueText
+    value: Money | None = None
+    unavailable_reason: CatalogueText | None = None
+    breakdown: list[AdjustBreakdownLineOut] | None = None  # only the cost cell of a known cost with rates (ADR-230 (3))
+    warning: CatalogueText | None = None  # REQ-159 AC-6: the cost % row only, above the playbook's warning level
+    warning_off: CatalogueText | None = None  # REQ-159 AC-6: why no warning was judged
+
+
+class AdjustCriterionOut(ApiModel):
+    id: Identifier
+    group: Literal["money_now", "risk_after", "reward_after", "greeks_after", "practical"]
+    label: CatalogueText
+    hint: CatalogueText | None = None
+    leader_label: CatalogueText
+    leaders: list[Identifier]  # every tied leader; empty = no approach can lead this row
+    values: dict[Identifier, AdjustCellOut]  # approach id -> cell, "No change" first then catalogue order
+
+
+class AdjustLeadsOut(ApiModel):
+    n: int  # rows this approach leads
+    m: int  # rows with a leader
+
+
+class AdjustAvailableOut(ApiModel):
+    """GC-ADJ1 step 3 (REQ-046 AC-3, REQ-045 AC-5): one generic approach for the Review adjustment drawer. No figure:
+    the id, the shown name, one plain line, and whether it can be built for this position now (else the reason)."""
+
+    id: Identifier
+    name: CatalogueText
+    explanation: CatalogueText
+    applicable: bool
+    reason: CatalogueText | None = None
+    liquidity_flags: list[CatalogueText] = []  # ADR-230 (1): flags of the new strikes it would open
+
+
+class AdjustDeltaNeutralOut(ApiModel):
+    """A-23 (GC-IC1 4a): figures only, no trade, no After (``ofo.adjustment.delta_neutral``). Lots are signed: + long,
+    - short. ``known`` False -> every figure None and ``missing_leg`` names the leg with no delta."""
+
+    label: CatalogueText
+    known: bool
+    reason: CatalogueText | None = None
+    missing_leg: Identifier | None = None  # the trading symbol of the leg with no delta
+    net_delta: Money | None = None
+    option_type: Literal["CE", "PE"] | None = None
+    option_strike: Money | None = None
+    option_lots: int | None = None
+    option_remaining: Money | None = None
+    future_lots: int | None = None
+    future_remaining: Money | None = None
+
+
+class AdjustPricesOut(ApiModel):
+    """ADR-272: the age of the prices behind a Compare reply; stale -> banner + no leaders + Prepare blocked."""
+    stale: bool
+    as_of: datetime.datetime | None  # the oldest own-leg price time; None = unknown (then stale)
+    age_minutes: int | None
+    banner: CatalogueText | None
+    as_of_note: CatalogueText | None  # "as of hh:mm" beside each money line
+    label: CatalogueText | None  # "prices from hh:mm:ss"
+    prepare_blocked_reason: CatalogueText | None
+    checks_text: CatalogueText | None  # the Pause box line while the check is withheld on stale prices
+
+
+class AdjustApproachesOut(ApiModel):
+    strategy_id: int
+    view: Literal["at_expiry", "estimated_now"]
+    spot: AdjustSpotOut
+    pop_switch_on: bool
+    before: AdjustWholeOut | None
+    approaches: list[AdjustApproachOut]
+    limits_reason: CatalogueText | None = None  # #624: "limits not applied: playbook unreadable"; None otherwise
+    criteria: list[AdjustCriterionOut] = []  # REQ-156 AC-2/AC-3; refused approaches take no part
+    leads: dict[Identifier, AdjustLeadsOut] = {}  # REQ-156 AC-4 "Leads on N of M"
+    curves: dict[Identifier, list[list[Money]]] = {}  # "before" / approach id -> [[level, P&L after charges], ...]
+    timing: AdjustTimingOut | None = None
+    available: list[AdjustAvailableOut] = []  # every generic approach, whatever was asked (no figures)
+    days_to_expiry: int | None = None  # whole days from the reply's own market day to the nearest open leg's expiry
+    prices: AdjustPricesOut | None = None  # ADR-272; None = no prices were read (the reply is empty)
+    delta_neutral: AdjustDeltaNeutralOut | None = None  # A-23 figures; None when there is no spot

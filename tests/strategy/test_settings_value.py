@@ -1,4 +1,5 @@
-"""W-061 round 2 (issue #165, defect 1): ADR-069's value type is enforced on EVERY path that builds or loads a definition.
+"""W-061 round 2 (issue #165, defect 1): ADR-069's value type is enforced on EVERY path that builds or loads a
+definition.
 
 Spec basis: ADR-069 ("short identifiers or numbers only - letters, digits, underscore, hyphen and dot, at most 64
 characters"; a longer or free-text value "is refused on save with the fixed input error (HTTP 422) and is never echoed
@@ -26,7 +27,8 @@ from ofo.strategy.definition import (DefinitionLeg, PREFERENCE_NAMES, RISK_LIMIT
 SENTENCE = "LTP is 22950.35 buy now"
 EXPIRY = datetime.date(2026, 10, 13)
 LEG = DefinitionLeg(Action.SELL, Instrument.CE, Decimal("22800"), EXPIRY, 65)
-MIGRATION = Path(__file__).resolve().parents[2] / "backend" / "ofo_app" / "alembic" / "versions" / "0008_strategy_store.py"
+MIGRATION = (Path(__file__).resolve().parents[2] / "backend" / "ofo_app" / "alembic" / "versions"
+             / "0008_strategy_store.py")
 
 BAD_IDENTIFIERS = [SENTENCE, "", " ", "a b", " a", "a ", "a\n", "a\tb", "x" * 65, "a/b", "a,b", "a;b", "a:b", "café",
                    "١٢", "a+b", "1E+3 "]
@@ -113,7 +115,8 @@ def test_adr069_a_definition_built_directly_refuses_a_sentence(kind, value):
 def test_adr069_a_risk_limit_outside_the_number_form_is_refused_on_every_door(value):
     assert isinstance(_refused(lambda: StrategyDefinition("NIFTY", (LEG,), risk_limits={"max_loss": value})),
                       ValueRefusedError)
-    assert _refused(lambda: _build(risk_limits={"max_loss": value})).code in (sf.VALUE_NOT_ALLOWED, sf.INVALID_DEFINITION)
+    refused = _refused(lambda: _build(risk_limits={"max_loss": value}))
+    assert refused.code in (sf.VALUE_NOT_ALLOWED, sf.INVALID_DEFINITION)
 
 
 @pytest.mark.parametrize("fields", [{"preferences": {"objective": SENTENCE}}, {"rules_ref": SENTENCE}],

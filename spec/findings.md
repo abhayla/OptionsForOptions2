@@ -1030,8 +1030,11 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
 ## F-71 - The "near a short strike" adjustment detection fires at entry for a shape whose short strike is near spot by design
 - Same walk: right after tracking, "Adjustment opportunity detected: Index is near a short strike: 22900, 78.95 points
   (0.35%) away" on a fresh iron condor with spot 22,821 - where a 1-step-OTM short strike always sits. The threshold is
-  fixed, not relative to the position's distance at entry. Bears on REQ-045 AC-3. Status: **measured once, live;
-  deferred (outside ADR-207's eight parts)**.
+  fixed, not relative to the position's distance at entry. Bears on REQ-045 AC-3. Status: **FIXED 2026-10-31
+  (GC-ADJ2 step 1)**: a rule true at entry shows "Already true when tracking started" and opens nothing until it has
+  stopped holding and holds again (REQ-159 section text; class `knowledge/findings/level-trigger-true-at-entry-by-design.json`,
+  guarded). Proof: `tests_app/test_adjustment_check.py` 8 passed on a fresh database (ADJ-42: already true at entry,
+  then a flag after a clear check; ADJ-02 still flags T-01/T-03/T-09). Same class in the library: ADJ-33, ADJ-37, ADJ-40.
 
 ## F-72 - Kite's day candle for an index carries the exchange's official closing value (SENSEX 28 Oct: 73,246.03 on both)
 - Measured 2026-10-29 ~14:10 IST: `scripts/checks/index_close.py SENSEX 2026-10-28` (one allow-listed read-only GET
@@ -1057,15 +1060,231 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   Charges in the outcome are a round trip of the After legs as a fresh trade, so closing the old legs costs nothing in
   the figure. Effect: the whole-trade max profit, max loss and breakevens an adjustment compare needs (catalogue F-06,
   P-02) are not representable today. Bears on REQ-046 AC-4, REQ-112. Status: **measured once, live; read from the code**.
+- **Fixed (GC-ADJ1, 2026-10-30, branch feature/adjustments):** `ofo/engine/whole_trade.py` `whole_trade_after` prices
+  the whole trade: booked P&L (earlier closes + legs the adjustment closes, `ofo/engine/adjust_money.py`) enters once as
+  a flat shift into max profit, max loss, breakevens and POP; "this adjustment", "paid so far" and "open exit" charges
+  are separate lines, each subtracted once. Proof: dev server, scenario ADJ-13 (strategy 73, booked 962): every
+  approach's gross figures equal the scenario generator's engine-free values (A-01 7007.00 / 18993.00 / 22996.10,
+  23503.90); tests `tests/adjustment/test_whole_trade.py`, `tests_app/test_adjustment_approaches_route.py`.
+  Remaining (deferred, MINOR): the closed-legs booked P&L sum still sits in `ofo_app/routes/adjustment.py`.
 
 ## F-75 - POP fails on a real adjusted iron condor because the after-charges breakeven is finer than paise
 - Same run, approach A: `ValueError level must have at most 2 decimal places ... got 22771.372`
   (`ofo/engine/metrics.py:210-220` -> `ofo/engine/pop.py`); Before, B and C gave 87%, 92%, 94%. Hidden from users
   today: POP is behind the held switch `probability_of_profit` (`ofo_app/held_switches.py:24`). Defect class:
   `knowledge/findings/interpolated-level-finer-than-paise-refused.json`. Status: **measured once, live**.
+- **Fixed (GC-ADJ1, 2026-10-30):** every derived level is rounded half-even to 0.01 at its one producer
+  (`ofo/engine/metrics.py` `_to_decimal`, per `spec/business-rules/scenario-calculations.md` section 3); POP never
+  raises: a non-finite input or unknown charges give a named reason. Proof: ADJ-23 gives a POP (22547.488 -> 22547.49);
+  a property test over non-round prices and charges gives a POP or a named reason, never a ValueError
+  (`tests/engine/test_pop_paise_levels.py`, mutation gate 5/5 killed).
 
 ## F-76 - The NIFTY spot cannot be read over Kite REST: the quote allow-list refuses index symbols with a space
 - Same run: `NSE:NIFTY 50` was refused before sending because `QUOTE_INSTRUMENT` (`ofo/broker/kite_http.py:37`,
   `[A-Z0-9_-]+:[A-Z0-9_-]+`) has no space; the spike took spot from put-call parity (23020.45). Today spot comes only
   from the live feed. An adjustment compare on a closed market or without the feed needs a spot source. Status:
   **measured once, live; read from the code**.
+- **Fixed (GC-ADJ1, 2026-10-30):** the quote door accepts exactly `NSE:NIFTY 50` and `BSE:SENSEX` (raw `%20` only;
+  44 attack inputs refused), `KiteReads.fetch_index_quote` emits that form, and `ofo/marketdata/spot_source.py`
+  resolves feed -> REST quote -> last close, each labelled with source and time, else "Spot not available" with each
+  source's reason. Proof: scenarios ADJ-24a/24b (`tests/marketdata/test_spot_source.py`, `tests/test_kite_http_guard.py`,
+  mutation gate 4/4 killed). **Live proof 2026-10-31 02:40 IST** (market closed, owner's stored Kite session): dev API
+  with `LIVE_MARKET=1`, no scenario, `POST /api/strategies/72/adjustment-approaches` answered spot `23053.1`, source
+  `rest_quote`, at `2026-10-30T17:35:05+05:30`, feed reason `absent` - Kite accepted and answered `i=NSE:NIFTY%2050`.
+  Dependency found: the REST step reads the owner session only through the registered live market
+  (`ofo_app/live_market.py` `owner_kite_reads`, l.432-434), so with `LIVE_MARKET` unset the REST step always reports
+  `absent` and spot falls to the last close; every environment that should use REST spot must set `LIVE_MARKET`.
+
+## F-77 - The T-19 trigger compares premium left with a different "adjustment cost" than the spec and the Compare table
+- Read from the code 2026-10-31 (GC-ADJ3 gap check): REQ-159 ("How the open triggers are measured") says T-19 compares
+  premium still left with "the adjustment's own charges (the 'This adjustment' figure of the GC-ADJ1 compare)". The
+  checker instead uses `ofo/engine/adjust_money.py` `adjustment_cost`: the FULL bid-ask spread of every OPEN leg times
+  quantity plus a flat `COST_PER_LEG` = Rs 40 per leg (`ofo_app/adjustment_check.py:56`, `:157-158`), closer to the cost
+  of closing everything. The Compare's cost row is this adjustment's charges plus HALF the spread of each contract the
+  approach trades (`ofo/adjustment/compare.py:220-231`). Effect: the alert can fire, or stay quiet, on a cost the user
+  never sees on the Compare. Spec gap found with it: at check time no approach is picked, so "the adjustment's own
+  charges" does not say WHICH approach's cost counts. Bears on REQ-159, ADR-216, ADR-008. Status: **read from the code,
+  not yet measured on a scenario**; open for owner decision (GC-ADJ3).
+- **FIXED 2026-11-01** (GC-SET step 7, ADR-221 + ADR-222 (8), build/settings db19f061): one engine function prices the
+  Compare cell and T-19 (cheapest approach that could be priced now); COST_PER_LEG deleted. Proof: ADJ-02 T-19 = A-29
+  Rs 92.35 = the cheapest Compare cell (old formula Rs 342.00); `test_t19_cost_equals_the_cheapest_compare_cell_for_every_scenario`.
+
+## F-78 - Three playbook limits are saved and shown in the editor but nothing applies them
+- Read from the code 2026-10-31: `hide_oi_below`, `hide_spread_pct_of_mid_above` and `roll_debit_limit` are stored in
+  `ofo/adjustment/system_playbooks.json` and labelled in the editor (`ofo/errors/explanations.py:317-322`), but no code
+  reads them: strikes are not hidden or flagged by these thresholds and a roll's debit is not checked. The Compare's
+  "Strike liquidity" row shows the widest spread with no threshold. A user who sets them is told nothing about this.
+  Separately, `low_oi_blocked` is set only by scenario mode (`ofo_app/scenario_mode.py:282`); no live source sets it.
+  Bears on REQ-159 AC-6, catalogue F-12. Status: **read from the code**; open for owner decision (GC-ADJ3).
+- 2026-11-01: still OPEN - no GC-SET step fixes it (not in the contract's steps); the settings reader guard covers app
+  settings only.
+
+## F-79 - The Undo window in code is 8 s and 10 s; the spec says about 5 s, admin-configurable
+- Read from the code 2026-10-31 (settings scan, `docs/design/settings-scan-2026-10-31.md`): ADR-007 row Q56 says a
+  removed leg shows "a short Undo (duration: about 5 s, admin-configurable)"; the code uses 8000 ms on the option chain
+  (`frontend/src/pages/OptionChainPage.vue:34` `UNDO_MS`) and 10000 ms for Clear all (`frontend/src/lib/legEdit.js:26`
+  `CLEAR_UNDO_MS`), both typed in code. Bears on ADR-007, ADR-222. Status: **read from the code**; open for owner
+  decision (which default the setting starts at).
+
+## F-80 - Every playbook check where the clock trigger T-10b fires answered 500
+- Measured 2026-11-01 (GC-SET step 7, DB route test on scenario ADJ-43, last day 15:00): `condition_line`
+  (`ofo_app/adjustment_check.py:222-234`) renders "15:00" into a number slot, the slot refuses it, and the fallback
+  retries with the same value, so the check route raises `ValueError: PlaybookField slot must match ... got '15:00'`.
+  T-10b is the only trigger with unit `time`; it fires on expiry day from 14:30, so every such check failed. Fixed on
+  build/gcset-t19 97303cff (ClockTime slot; last-resort line never raises); test 6 failed before, 32 passed after.
+  Class: `knowledge/findings/reply-type-refuses-real-value-shape.json`. Bears on REQ-159.
+
+## F-81 - Every playbook check in a stage whose name has a space answered 500
+- Measured 2026-11-01 (same run, after F-80's fix): the check reply's `stage.name` and the opportunities record's stage
+  are typed `Identifier` (no spaces), so "Last day" / "Last 2 days" fail reply validation (`String should match pattern
+  '^[A-Za-z0-9_\-.]{1,64}$' ... input_value='Last day'`): every check in the last stage (1 day weekly, 2 days monthly)
+  failed all day. Fix (decided, technical): the stage name is sent as catalogue text through the PlaybookName slot,
+  keeping the reply-type guard. Class: `knowledge/findings/reply-type-refuses-real-value-shape.json`. Bears on
+  REQ-159, REQ-160.
+
+## F-82 - On a chain with a parity forward, the risk-free rate moves the implied yield, not the Greeks a user reads
+- Measured 2026-11-01 14:1x IST (GC-SET step 2 browser proof, scenario ADJ-02, Sell Put NIFTY 9 Nov 23400 PE, spot
+  23420, planned entry 98.00): the same outcome request priced in-process at rate 0.065 and 0.07 gives IV 13.10% at
+  both, Delta 29.34 -> 29.33, Theta 1039.25 -> 1039.19, Vega -560.84 -> -560.82 per position (per unit Theta 15.988 ->
+  15.987: the page's 2-decimal display does not move), while the reply's `dividend_yields` for 9 Nov moves
+  -0.0000115 -> 0.0050063; the live dev server gave the same two values on fresh requests (3 of 3 at 0.07 set
+  14:14 IST, 1 at 0.065 after each reset). One earlier reading of 0.0048023 at 0.07 (a reply captured from the page
+  at ~14:06) did not reproduce and is unexplained. Mechanism: the engine reads S and the forward
+  from put-call parity (ADR-061, ADR-063, ADR-220 "pricing model kept"); F = S e^((r-q)T) is fixed by the market, so a
+  higher r is absorbed by a higher q and the option price, IV and Greeks stay put. A model that held q fixed would
+  re-imply IV 13.10% -> 13.16% and move Theta to about 15.92 per unit. The rate DOES reach the engine (the wiring is
+  right); the effect is just small where parity holds. Only the spot-fallback path (fewer than 3 usable strikes,
+  q = 0) shows the rate in prices and Greeks directly. Bears on REQ-167 AC-1 (the registry's "what it changes" line
+  for `pricing.risk_free_rate` says "option prices, Greeks, the forward and probability figures", which over-states
+  the visible effect on a parity chain). Status: **measured; owner decided 2026-11-01 (ADR-222 (12)): model kept, line reworded** (was: open for owner decision on whether that line is reworded,
+  e.g. "the yearly interest rate the forward is read with; on a liquid chain it mostly shifts the implied dividend
+  yield, so prices and Greeks move very little"). Not a defect: no failure class registered.
+
+## F-83 - Scenario mode lost every contract's price once a builder socket let go
+- Measured 2026-11-01 (GC-SET step 2 browser proof, dev API on ADJ-02, strategy 72): on a fresh server the Compare
+  priced all 7 approaches (A-29 Rs 92.35, A-01 Rs 173.36); a few minutes after a Strategy Builder socket closed, every
+  approach but "no change" refused with "Leg 3 (SELL NIFTY 23,500.00 CE ...) has no price" and the Paper view read
+  "prices not live", until a restart. Cause: `scenario_mode.load` subscribes its contracts on the provider, outside the
+  shared fan-out's holder count, so the socket's release brought the count to zero, the fan-out unsubscribed them, and
+  the feed bus's sync dropped the parked quotes for good (the scenario sends its frame once; live Kite re-sends on
+  subscribe). New test: without the fix "82 of 82 scenario contracts lost their price"; fixed by a scenario hold on the
+  fan-out (structural), file 61 passed. Class: `knowledge/findings/one-shot-feed-loses-quote-on-shared-unsubscribe.json`
+  (guarded). Bears on ADR-214 (the scenario library as the proof surface).
+
+## F-90 - The range-reading rule (REQ-026 AC-1) lives only in the browser; the server has no copy
+- Read from the code 2026-11-01 (GC-MU step 1 T2): `readingFromRange` in `frontend/src/lib/guided.js:87-95` reads a
+  chosen range as "up" when the distance to the upper value is more than twice the distance to the lower, "down" the
+  other way, else "balanced" (REQ-026 AC-1), and refuses a range that does not hold the current level (AC-6). Its only
+  caller is `frontend/src/pages/CreateStrategyPage.vue:55`, where it picks the view tag that filters the template list.
+  A grep of `backend/` finds no server copy (searched: balanced, reading_from_range, from_range, the 2x comparison).
+- Bears on REQ-063 AC-2 ("Business rules live in backend/domain services, not only in UI code"), REQ-048 AC-5 and
+  ADR-012. The rule is a product rule (REQ-026 AC-1) held only in UI code, so it breaks REQ-063 AC-2 as written. Its
+  reach today is small (it only filters which templates are listed; it sets no price, P&L, order or eligibility, and
+  the server re-validates every leg the user then builds). Fix, per the spec: the server computes the reading and the
+  browser shows it (deferred issue #625). Status: **read from the code**; not guarded - no test fails
+  when a product rule exists only under frontend/src.
+
+## F-91 - The background role records opportunities with no screen open, but not within 1 s: its check path waits on the database
+- Measured 2026-11-02 (GC-LIVE3 D3), live NIFTY, FEED_MODE=bus, no app tab. After three fixes on feature/adjustments
+  (7c804264, ba6f43dd, f7d2088b) the role writes records by itself (strategy 67 T-03 #30 10:38:32; 78 T-01 #81, #93).
+  Timed T-01 crossings on strategy 78 (tick = Redis stream id, row = shown_at by the DB clock, which runs +0.029 to
+  +0.567 s ahead of the PC): #81 0 to 0.086 s; #93 1.035 to 1.573 s. Cycles 7-14 per minute. Cause: every DB round trip
+  from this PC costs ~0.7 s (SELECT 1 via /health 0.51-1.37 s; ping 12 ms) and the check path still reads settings
+  every cycle and writes changed records; the speed valve counts that wait as maths. Bears on REQ-165, REQ-166,
+  ADR-220 (3). Status: **measured live; parked #636**; classes `check-clock-read-once-per-batch`,
+  `bus-consumer-holds-no-own-tokens` (fixed, guarded), `check-latency-bound-by-db-round-trips` (open).
+
+## F-92 - Compare cannot price a leg that the paper book prices at the same moment, so it offers no approach
+- Measured 2026-11-02 11:06-11:10 (GC-LIVE3 D5), bus mode, strategy 78 (NIFTY 9 Nov IC), from the inbox link
+  "Compare approaches": "All 1 that apply" (only No change); cost %, premium left, Greeks, POP all "Not available:
+  NIFTY26N0922900PE has no current price", unchanged after 10 s, while GET /paper/strategies/78 read that leg at
+  LTP 63.65 (OI 1.9M). Re-run in the default inprocess mode 12:51:47 (inbox link opp=7): the same text for the same leg
+  (only that leg, the bought 22900 PE), only No change offered, while GET /paper/strategies/78 at 12:52:07 read it at
+  67.1 (and 23000 PE 88.05, 23500 CE 109.9, 23600 CE 77.95). Bears on REQ-155, REQ-156, REQ-162. Status: **measured
+  live in both feed modes**. **FIXED, proven live 2026-11-02 15:04:51** (366c6c35): Compare on 78 priced every leg,
+  Greeks and POP shown, 5 approaches offered.
+
+## F-93 - Compare says "no plan maximum set" for a strategy whose plan sets 2 adjustments
+- Same walk: "Adjustments used: 0 used; no plan maximum set" for strategy 78, whose accepted plan (from playbook 13)
+  carries max_adjustments 2 (POST /api/strategies/78/adjustment-plan answer, 11:01). Bears on REQ-161, REQ-155.
+  Status: **measured once, live**. **FIXED, proven live 2026-11-02 15:04:51** (d45e9968): "0 of 2".
+
+## F-94 - One strategy shows two different max profit / max loss figures on different screens, without saying which includes charges
+- Measured 2026-11-02: strategy 78 paper book 3,458 / -3,042 (gross); Live Strategies card and Compare
+  3,168.79 / -3,331.21. C1 hand check: the engine's figures are the gross ones net of charges (base IC 2,918.50 +
+  charges 291.14 = 3,209.64 to the paisa). Decided by ADR-082 (2): every max profit / max loss includes round-trip
+  charges and says so, so the paper book's gross figures are the defect (also ADR-008, one engine, one number). Status:
+  **measured live; defect against ADR-082 (2)** (no owner decision needed). **FIXED, proven live 2026-11-02 15:04:40**
+  (1f20bc4a): paper 78 max profit 3,168.80 / max loss -3,331.20 "include about Rs 289.20 of charges and taxes"; Compare
+  shows 3,168.79 / 3,331.21, a 1 paisa rounding difference left between the two screens.
+
+## F-95 - Every ready-made shape with a futures leg is refused, with a message about a strike
+- Measured 2026-11-02 09:44-10:04: load-template answers 422 "A strike this shape needs is not listed" for
+  covered_call, buy_future, sell_future on NIFTY 3 Nov, 9 Nov, 23 Nov (future listed) and 29 Dec; 38 of 41 shapes load.
+  Cause: `routes/ready_made.py:160-161` refuses any leg without a strike. Contradicts RD-090 (COPY, verified: the
+  reference's Buy / Sell Future, preset matrix rows 26 / 37 "B1 FUT" / "S1 FUT"). #583 I-1. Status: **measured live;
+  builder round dispatched 2026-11-02**.
+
+## F-96 - Adding a futures leg turns live numbers into "Live market data disconnected" while the feed is connected
+- Measured 2026-11-02 10:05: leg-edit read of a priced NIFTY 9 Nov iron condor -> COMPUTED; the same + BUY
+  NIFTY26NOVFUT -> FROM_ENTRIES, "Live market data disconnected. Last updated: 10:05:38 AM. Live strategy monitoring is
+  paused." #583 I-12. Status: **measured live; builder round dispatched 2026-11-02**.
+
+## F-97 - A request with no screen open answers LIVE before any price arrives, and the playbook check never warms in bus mode
+- Measured 2026-11-02, no app tab: leg-picker NIFTY 9 Nov 09:22:04 "LIVE / SPOT_MISSING", 0 of 21 priced, centred on
+  the middle strike (22150-23150 while spot was 23267.70, so ATM was outside the list); 9 s later 8-9 of 21; cold again
+  within ~30 s (API wanted tokens 43 -> 0). GET /api/strategies/78/adjustment-check 3 times 3 s apart: every rule
+  "spot not available" (the route takes no lease). #615 class. Status: **measured live, repeatedly**.
+
+## F-98 - Our theta splits call and put by a carry term that drifts; the reference states one theta per strike (T3)
+- Measured 2026-11-02 (GC-LIVE3 B1), NIFTY 9 Nov, ATM 23300 +/- 10 strikes, 3 rounds: ours from GET /api/market/chain
+  (LIVE, basis PARITY, answered 12:33:52 / 12:35:06 / 12:35:48) vs the reference product's chain page (Greeks view,
+  per lot / 65, read 12:33:48 / 12:35:02 / 12:35:44; logged out, refreshes in steps of about 30 s). Theta gap above
+  Rs 5 per lot per day on 42 of 42 pairs each round; worst Rs 172.84 / 178.52 / 209.16. Delta agrees within about
+  0.01-0.016. The reference shows the same theta for CE and PE at each strike (23300: -13.60 both); ours splits them
+  (23300: CE -14.95, PE -12.36) and the split drifts (23200: -2.57 -> -3.10 -> -3.58 per unit in 2 minutes); our CE/PE
+  average at the money is within Rs 3.6-5.0 per lot of the reference. Bears on ADR-220 (4), RD-080, F-82.
+  Status: **measured live; owner decided 2026-11-02 (ADR-234): state theta on the forward, like the reference; not
+  built yet**. Files: D:\Abhay\scratch\gclive3\t3-r1.txt, t3-r2.txt, t3-r3.txt.
+- Same day, NIFTY 3 Nov (1 day left), 3 rounds 12:50:04/12:50:07, 12:50:38/12:50:42, 12:50:51/12:50:55 (reference read /
+  ours answered): round 1 worst gap Rs 377.51 per lot per day, 41 of 42 pairs over Rs 5. At 23300 the reference shows
+  -38.55 / -38.71 / -38.71 for CE and PE alike; ours CE/PE -36.40/-41.65, -38.22/-39.68, -37.40/-40.63 (split +5.25,
+  +1.46, +3.23 per unit, the opposite sign to 9 Nov); our CE/PE average is Rs 31 / 16 / 20 per lot more negative than
+  the reference, so near expiry a gap remains even after ADR-234 (likely the time-of-day convention for T): the
+  ADR-234 re-run of T3 must include a 0-1 day expiry. File: D:\Abhay\scratch\gclive3\t3-1103-r1.txt.
+
+## F-99 - Stopping a second Kite feed process blanks the API's chain for about a minute while broker status still says connected
+- Measured 2026-11-02 12:52-12:56 (inprocess API, chain tab open on NIFTY 9 Nov): GET /api/market/chain LIVE 31 rows
+  before and while `ofo_app.feed_main` ran beside it (its own Kite socket connected 12:52:53); feed stopped by PID
+  12:54:11; LIVE until 12:54:48, then NOT_CONNECTED with 0 rows 12:55:00-12:55:48, LIVE again 12:56:01. During the gap
+  GET /api/broker/status read live_market_data "connected". Earlier the same day (feed and background stopped 12:15)
+  the chain stayed NOT_CONNECTED on both expiries until the API was restarted 12:32. Mechanism not yet read from code
+  (a second socket on the same Kite session, closed abruptly). Production runs one feed owner, so the reach is the dev
+  set-up and mode switches; the status/chain disagreement is the user-visible part. Status: **reproduced once live**.
+
+## F-100 - No feed we use supplies IV or Greeks; every app studied computes its own, and "one IV per strike" is a modelling choice
+- Read 2026-11-02 (owner asked "Normally data provider also provides IV for each option"): Zerodha staff on the Kite
+  Connect forum: "We don't provide IV in kiteconnect APIs. You need to calculate this on your end"
+  (https://kite.trade/forum/discussion/12291/need-implied-volatility-values-for-options); Greeks are not provided either
+  (https://kite.trade/forum/discussion/8173/how-do-i-get-option-greeks-data-like-delta-theta-of-a-particular-strike-price).
+  Zerodha's Kite app shows Greeks and ATM IV in its own chain only. Our study of three apps
+  (D:\Abhay\Ventures\competitors\multi-broker-architecture\2026-10-21\ARCHITECTURE.md:280-286): Sensibull, OpenAlgo and
+  OpenBull all compute IV and Greeks on their servers with Black-76 on a forward at 0% interest; Sensibull states
+  "an improvised Black 76 model, in which Theta, Vega, and Gamma for Call and Put Options are the same" (bundle-findings
+  2.5) and its chain shows one IV column per strike. Paid exchange-registered vendors were not checked. Bears on
+  ADR-220 (5) (no vendor IV planned), RD-080, F-98. Status: **read from sources; confirms ADR-220 (5)**.
+
+## F-101 - Live alert discipline cut suggestion noise by three quarters; a 1-day SENSEX condor past its breakeven still flaps
+- Measured live 2026-11-04 09:30-11:50 IST on ofo_dev (read-only queries, D:\Abhay\scratch\gclive3\a2_count.sh; raw
+  a2-final-1104.txt): 27 suggestion records (21 without strategy 78, which was re-armed on purpose for timing tests),
+  8 lapsed on their own; the same window on 2026-11-02 (before REQ-170): 103 records, 75 lapsed. Records -74 %
+  (-80 % without 78), self-lapses -89 %. Worst case 2026-11-02: one strategy 30 records in 31 min; 2026-11-04: strategy
+  84 (SENSEX 5 Nov iron condor, 1 day left, intraday style, spot about 270 points past its upper breakeven) 5 records
+  in hour 10 with 4 lapsed, then 2 crossings held by the intraday daily limit of 6. Held crossings in the window:
+  78 daily limit 3, 84 daily limit 2, 85 quiet time 2. A paper stop-loss fired 8.4 s after arming while its strategy's
+  alerts were in quiet time (REQ-170 AC-5).
+- Record timing after #636 round 6 (worker never waits on the DB lock): records 1.3-1.6 s after the confirming candle
+  close (limit: one check interval, 10 s intraday); before the fix one record came 34 s after its close during a
+  30 s worker stall. Observed once: after a limit was tightened while the rule was already true under the old limit,
+  the new crossing opened inside its candle (record 142, 12:09:01, no confirming close) - deferred issue.
+- Bears on REQ-170 presets; owner decision ADR-246: presets kept, intraday reviewed after two more expiry days.

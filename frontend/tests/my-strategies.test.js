@@ -3,6 +3,7 @@
 import { beforeEach, describe, it, expect, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createRouter, createMemoryHistory } from 'vue-router'
+import { createPinia, setActivePinia } from 'pinia'
 
 let answer = () => Promise.reject(new Error('no answer set'))
 let patchAnswer = () => Promise.reject(new Error('no patch answer set'))
@@ -221,14 +222,14 @@ describe('REQ-134 AC-3 (attack 5): rename in the list changes only the name', ()
   })
   it('an empty name is refused by the API; its message is shown and the row keeps its old name', async () => {
     serve()
-    const EMPTY = { what_happened: 'Give the strategy a name', impact: 'The strategy was not saved or renamed.', what_is_blocked: 'Saving or renaming this strategy.', next_action: 'Type a name of 1 to 20 characters, then save again.' }
+    const EMPTY = { what_happened: 'The strategy has no name.', impact: 'The strategy was not saved or renamed.', what_is_blocked: 'Saving or renaming this strategy.', next_action: 'Type a name of 1 to 20 characters, then save again.' }
     patchAnswer = () => Promise.reject({ status: 422, parts: EMPTY })
     const w = await open()
     await w.get('[data-testid="rename-7"]').trigger('click')
     await w.get('[data-testid="rename-input"]').setValue('')
     await w.get('[data-testid="rename-form"]').trigger('submit')
     await flushPromises()
-    expect(w.get('[data-testid="rename-error-what"]').text()).toBe('Give the strategy a name')
+    expect(w.get('[data-testid="rename-error-what"]').text()).toBe('The strategy has no name.')
     expect(names(w)).toEqual(['NIFTY Oct condor'])
   })
   it('a read without a revision sends no PATCH (fail closed) and shows the neutral message', async () => {
@@ -260,6 +261,13 @@ describe('Delete with Undo', () => {
     postAnswer = () => Promise.resolve({ data: { id: 7, revision: 2 } })
   })
 
+  it('ADR-271: a strategy with a paper order shows the paper refusal; a real-order one keeps the sent-orders text', async () => {
+    answer = () => Promise.resolve({ data: { strategies: [{ ...withDelete(8, false), has_paper_order: true }, withDelete(9, false)] } })
+    const w = await open()
+    expect(w.get('[data-strategy-id="8"] [data-testid="delete-refused"]').text()).toBe("Can't delete: paper orders were placed")
+    expect(w.get('[data-strategy-id="9"] [data-testid="delete-refused"]').text()).toBe("Orders were already sent for this strategy, so it cannot be deleted.")
+  })
+
   it('Delete only when can_delete is true; the refusal text replaces it otherwise; a missing field counts as false', async () => {
     answer = () => Promise.resolve({ data: { strategies: [withDelete(7, true), withDelete(8, false), withDelete(9)] } })
     const w = await open()
@@ -267,7 +275,7 @@ describe('Delete with Undo', () => {
     for (const id of [8, 9]) {
       const r = w.get(`[data-strategy-id="${id}"]`)
       expect(r.find(`[data-testid="delete-${id}"]`).exists()).toBe(false)
-      expect(r.get('[data-testid="delete-refused"]').text()).toBe("Can't delete: orders were sent")
+      expect(r.get('[data-testid="delete-refused"]').text()).toBe("Orders were already sent for this strategy, so it cannot be deleted.")
     }
   })
 
@@ -281,8 +289,10 @@ describe('Delete with Undo', () => {
   })
 
   it('confirm removes the row, shows Undo, and Undo puts the row back from a fresh read', async () => {
+    setActivePinia(createPinia()) // the settings store (REQ-167 AC-7)
     let list = [withDelete(7, true)]
-    answer = (url) => Promise.resolve({ data: url === '/strategies/7' ? { revision: 2 } : { strategies: list } })
+    const served = { groups: [{ name: 'Other', settings: [{ key: 'other.undo_clear_all_seconds', value: '10' }] }] } // REQ-167 AC-7
+    answer = (url) => Promise.resolve({ data: url === '/settings' ? served : url === '/strategies/7' ? { revision: 2 } : { strategies: list } })
     const w = await open()
     await w.get('[data-testid="delete-7"]').trigger('click')
     list = []
@@ -290,6 +300,8 @@ describe('Delete with Undo', () => {
     await flushPromises()
     expect(sent.filter((c) => c.method === 'DELETE').map((c) => c.url)).toEqual(['/strategies/7?expected_revision=2'])
     expect(w.find('[data-testid="strategy-row"]').exists()).toBe(false)
+    // ADR-271: the Undo is the fixed bottom-centre toast where the user clicked, not an inline line under the list
+    expect(w.get('[data-testid="delete-toast"]').classes()).toEqual(expect.arrayContaining(['fixed', 'bottom-6', 'left-1/2']))
     list = [withDelete(7, true)]
     await w.get('[data-testid="delete-undo"]').trigger('click')
     await flushPromises()

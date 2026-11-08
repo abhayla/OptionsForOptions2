@@ -12,6 +12,7 @@ import asyncio
 import datetime
 import itertools
 import time
+from collections.abc import Mapping
 from decimal import Decimal
 from typing import Annotated, Literal
 
@@ -21,6 +22,7 @@ from ofo.errors import render
 from ofo.errors.explanations import render_explanation
 from ofo.money import PAISE
 from ofo.rules.inputs import DataHealth
+from ofo.settings.calc import quick_pick_distances
 from ofo.strategy.loader import load_templates
 from ofo.strategy.placement import (
     Market,
@@ -41,8 +43,9 @@ from ofo_app.errors import ClosedRoute, Failure
 from ofo_app.live_push import LiveFeed
 from ofo_app.routes.broker import current_user_ref
 from ofo_app.routes.chain import get_chain_reader
-from ofo_app.routes.leg_picker import WindowLease, get_feed
-from ofo_app.routes.outcome import MarketContext, get_market_context
+from ofo_app.catalogue_picker import PickableContract
+from ofo_app.routes.leg_picker import FuturesReader, WindowLease, get_feed, get_futures_reader
+from ofo_app.routes.outcome import MarketContext, get_calc_settings, get_market_context
 from ofo_app.routes.strategies import StrategyRefused
 from ofo_app.underlying import Underlying
 
@@ -54,6 +57,7 @@ _MESSAGE = {
     Refusal.SPOT_MISSING: "ready_made_spot_unavailable", Refusal.SPOT_STALE: "ready_made_spot_unavailable",
     Refusal.EXPIRY_MISSING: "ready_made_expiry_missing", Refusal.STRIKE_NOT_LISTED: "ready_made_strike_not_listed",
     Refusal.DISTANCE_NOT_OFFERED: "ready_made_distance_invalid",
+    Refusal.FUTURE_NOT_LISTED: "ready_made_future_not_listed",
 }
 _UNUSABLE_SPOT = (DataHealth.UNHEALTHY, DataHealth.UNAVAILABLE)
 #: The routes' own hold on the index (finding live-read-without-own-subscription): a WindowLease like the picker's,
@@ -79,12 +83,12 @@ router = APIRouter(route_class=ClosedRoute, dependencies=[Depends(require_platfo
 
 class PlacedLegOut(ApiModel):
     action: Literal["BUY", "SELL"]
-    instrument: Literal["CE", "PE"]
-    strike: Money
+    instrument: Literal["CE", "PE", "FUT"]
+    strike: Money | None  # None for a future
     expiry: datetime.date
     instrument_id: InstrumentId
     symbol: Identifier
-    label: CatalogueText  # "Strikes placed by a fixed rule - change them" until the user edits the strike (AC-4)
+    label: CatalogueText  # "Strikes placed by a fixed rule — change them" until the user edits the strike (AC-4)
 
 
 class ReadyMadeOut(ApiModel):
@@ -149,14 +153,29 @@ def _strikes(catalogue: ChainCatalogue) -> set[Decimal]:
     return {c.strike for c in catalogue.contracts if c.strike is not None}
 
 
+def _future_for(futures: tuple[PickableContract, ...], on_or_after: datetime.date) -> PickableContract:
+    """RD-090 / the reference's "B1 FUT" (preset-matrix.md rows BUY_FUTURE / SELL_FUTURE; the study does not say which
+    month): ASSUMPTION, the nearest listed future expiring on or after the leg's expiry. None listed -> refused."""
+    later = [c for c in futures if c.instrument_type == "FUT" and c.expiry >= on_or_after]
+    if not later:
+        raise PlacementRefused(Refusal.FUTURE_NOT_LISTED)
+    return min(later, key=lambda c: (c.expiry, c.contract_id))
+
+
 def _out(underlying: str, placed: tuple[PlacedLeg, ...], catalogues: dict[datetime.date, ChainCatalogue],
-         ) -> ReadyMadeOut:
+         futures: tuple[PickableContract, ...] = ()) -> ReadyMadeOut:
     label = render_explanation("ready_made_fixed_rule_label")
     legs = []
     for leg in placed:
+        if leg.instrument.value == "FUT":
+            fut = _future_for(futures, leg.expiry)
+            legs.append(PlacedLegOut(action=leg.action.value, instrument="FUT", strike=None,  # type: ignore[arg-type]
+                                     expiry=fut.expiry, instrument_id=fut.instrument_id, symbol=fut.symbol,
+                                     label=label))
+            continue
         match = [c for c in catalogues[leg.expiry].contracts
                  if c.instrument_type == leg.instrument.value and c.strike == leg.strike]
-        if leg.strike is None or len(match) != 1:  # a future, or a contract the stored list does not hold exactly once
+        if leg.strike is None or len(match) != 1:  # a contract the stored list does not hold exactly once
             raise PlacementRefused(Refusal.STRIKE_NOT_LISTED)
         legs.append(PlacedLegOut(action=leg.action.value, instrument=leg.instrument.value,  # type: ignore[arg-type]
                                  strike=leg.strike.quantize(PAISE), expiry=leg.expiry,
@@ -178,6 +197,7 @@ async def load_template(
         reader: Annotated[ChainReader, Depends(get_chain_reader)],
         feed: Annotated[LiveFeed | None, Depends(get_feed)],
         viewer: Annotated[str, Depends(current_user_ref)],
+        futures_reader: Annotated[FuturesReader, Depends(get_futures_reader)],
 ) -> ReadyMadeOut:
     template = next((t for t in load_templates() if t.id == body.template_id), None)
     if template is None:
@@ -193,18 +213,25 @@ async def load_template(
             catalogues[day] = await reader(body.underlying, day)
         placed = place_template(template, slots, Market(spot, fresh, _gap(_strikes(near))),
                                 {d: _strikes(c) for d, c in catalogues.items()})
-        return _out(body.underlying, placed, catalogues)
+        futures: tuple[PickableContract, ...] = ()
+        if any(leg.instrument.value == "FUT" for leg in placed):  # read only when a futures leg needs it
+            listed = await futures_reader(body.underlying)
+            if listed.unreadable:
+                raise PlacementRefused(Refusal.FUTURE_NOT_LISTED)  # fail closed: never a guessed future
+            futures = listed.futures
+        return _out(body.underlying, placed, catalogues, futures)
     except PlacementRefused as refusal:
         raise _refused(body.underlying, refusal) from None
 
 
 @router.post(QUICK_PICK_PATH, response_model=ReadyMadeOut)
-async def quick_pick(
+async def quick_pick(  # noqa: PLR0913 - FastAPI dependencies, one per input
         body: QuickPickIn,
         ctx: Annotated[MarketContext | None, Depends(get_market_context)],
         reader: Annotated[ChainReader, Depends(get_chain_reader)],
         feed: Annotated[LiveFeed | None, Depends(get_feed)],
         viewer: Annotated[str, Depends(current_user_ref)],
+        calc_settings: Annotated[Mapping[str, Decimal], Depends(get_calc_settings)],
 ) -> ReadyMadeOut:
     try:
         spot, fresh = await _hold_and_read(feed, ctx, body.underlying, viewer)
@@ -213,7 +240,8 @@ async def quick_pick(
             raise PlacementRefused(Refusal.EXPIRY_MISSING)
         strikes = _strikes(catalogue)
         pick = QuickPick(body.kind, body.underlying, body.distance, Action(body.side), body.expiry)
-        placed = place_quick_pick(pick, Market(spot, fresh, _gap(strikes)), strikes)
+        placed = place_quick_pick(pick, Market(spot, fresh, _gap(strikes)), strikes,
+                                  quick_pick_distances(calc_settings))
         return _out(body.underlying, placed, {body.expiry: catalogue})
     except PlacementRefused as refusal:
         raise _refused(body.underlying, refusal) from None

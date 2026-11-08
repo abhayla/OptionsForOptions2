@@ -16,9 +16,10 @@ import pytest
 from ofo.engine.legs import Action, Instrument
 from ofo.instruments.catalogue import Catalogue
 from ofo.instruments.parser import parse_instruments_csv
+from ofo.settings import defaults
+from ofo.settings.calc import quick_pick_distances
 from ofo.strategy.loader import load_templates
 from ofo.strategy.placement import (
-    QUICK_PICK_DISTANCES,
     Market,
     PlacedLeg,
     PlacementRefused,
@@ -36,6 +37,7 @@ GAP = Decimal(50)
 SPOT = Decimal("22810")
 D = Decimal
 TEMPLATE_COUNT = 41
+DISTANCES = quick_pick_distances(defaults())  # the registry defaults (REQ-167)
 LIVE = Market(SPOT, True, GAP)
 BY_ID = {t.id: t for t in load_templates()}
 
@@ -57,7 +59,7 @@ def _place(template_id, listed, *, spot=SPOT, fresh=True, chosen=NEAR):
 
 
 def _qp(listed, kind="strangle", underlying="NIFTY", distance=100, market=LIVE):
-    return place_quick_pick(QuickPick(kind, underlying, distance, Action.SELL, NEAR), market, listed[NEAR])
+    return place_quick_pick(QuickPick(kind, underlying, distance, Action.SELL, NEAR), market, listed[NEAR], DISTANCES)
 
 
 def _legs(placed):
@@ -127,7 +129,8 @@ def test_ac8_a_missing_or_stale_spot_places_nothing(listed, spot, fresh, reason)
         _place("bull_call_spread", listed, spot=spot, fresh=fresh)
     assert e.value.reason is reason
     with pytest.raises(PlacementRefused) as e2:
-        place_quick_pick(QuickPick("straddle", "NIFTY", 0, Action.BUY, NEAR), Market(spot, fresh, GAP), listed[NEAR])
+        place_quick_pick(QuickPick("straddle", "NIFTY", 0, Action.BUY, NEAR), Market(spot, fresh, GAP), listed[NEAR],
+            DISTANCES)
     assert e2.value.reason is reason
 
 
@@ -143,14 +146,15 @@ def test_ac8_a_strike_the_file_does_not_list_is_refused_never_snapped(listed):
 
 def test_ac7_straddle_is_both_legs_at_atm_on_the_users_side(listed):
     """AC-7: a straddle at ATM; BUY side is the user's choice."""
-    pick = place_quick_pick(QuickPick("straddle", "NIFTY", 0, Action.BUY, NEAR), Market(SPOT, True, GAP), listed[NEAR])
+    pick = place_quick_pick(QuickPick("straddle", "NIFTY", 0, Action.BUY, NEAR), Market(SPOT, True, GAP), listed[NEAR],
+        DISTANCES)
     pe, ce = PlacedLeg(Action.BUY, Instrument.PE, D(22800), NEAR), PlacedLeg(Action.BUY, Instrument.CE, D(22800), NEAR)
     assert pick == (pe, ce)
 
 
 def test_ac7_default_distances_are_the_spec_lists():
     """AC-7: NIFTY 50/100/150/200, SENSEX 100/200/300/400."""
-    assert QUICK_PICK_DISTANCES == {"NIFTY": (50, 100, 150, 200), "SENSEX": (100, 200, 300, 400)}
+    assert DISTANCES == {"NIFTY": (50, 100, 150, 200), "SENSEX": (100, 200, 300, 400)}
 
 
 @pytest.mark.parametrize("distance", [0, 25, 75, 250, -100, 400])
@@ -173,4 +177,5 @@ def test_ac7_an_unknown_underlying_has_no_distances_and_a_bad_kind_raises(listed
     with pytest.raises(PlacementRefused):
         _qp(listed, underlying="BANKNIFTY")
     with pytest.raises(ValueError, match="straddle"):
-        place_quick_pick(QuickPick("iron", "NIFTY", 100, Action.SELL, NEAR), Market(SPOT, True, GAP), listed[NEAR])
+        place_quick_pick(QuickPick("iron", "NIFTY", 100, Action.SELL, NEAR), Market(SPOT, True, GAP), listed[NEAR],
+            DISTANCES)

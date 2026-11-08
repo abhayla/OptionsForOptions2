@@ -31,6 +31,9 @@ from ofo.execution import (
 from ofo.instruments.models import ListedContract
 from ofo.instruments import Catalogue, ZerodhaEligibility, parse_instruments_csv
 from execution_inputs import FIXTURE, refuse, zerodha_eligibility
+from ofo.settings import calc as _calc, defaults as _defaults
+
+_MAX_DELIST = _calc.max_delist_percent(_defaults())
 
 Inputs = tuple[Strategy, ExecutionContext, Catalogue, ZerodhaEligibility]
 
@@ -50,7 +53,8 @@ def _strike_off_ladder(s: Strategy, c: Catalogue, e: ZerodhaEligibility) -> Inpu
 
 def _unlisted(s: Strategy, c: Catalogue, e: ZerodhaEligibility) -> Inputs:
     token = find_token(c, "PE", "23000")
-    c.update([x for x in parse_instruments_csv(FIXTURE) if x.id != token], as_of=AS_OF, force=True, reason="test delisting", actor="test-admin", audit_log=AuditLog())
+    c.update([x for x in parse_instruments_csv(FIXTURE) if x.id != token], as_of=AS_OF, force=True, reason="test delisting", actor="test-admin", audit_log=AuditLog(),
+        max_delist_percent=_MAX_DELIST)
     return s, all_true_context(), c, e
 
 
@@ -144,7 +148,7 @@ MUTATIONS = [
     ("rules-invalid", _ctx(rules_valid=False), CheckCode.RULES_INVALID,
      "This strategy's rules are not valid. Review them to continue."),
     ("dependencies", _ctx(dependencies_satisfied=False), CheckCode.DEPENDENCIES_UNSATISFIED,
-     "An order this execution depends on is not in place yet (for example a protective leg)."),
+     "An order this execution depends on is not in place yet (for example a bought option leg)."),
     ("margin-short", _ctx(margin_available=D("48210.74")), CheckCode.MARGIN_INSUFFICIENT,
      "Available margin ₹48,210.74 is less than the estimated ₹48,210.75 this strategy needs. "
      "No order has been submitted."),
@@ -163,8 +167,8 @@ MUTATIONS = [
      "Leg 2 (SELL NIFTY 23,000 PE, expiry 06 Oct 2026) is no longer listed by Zerodha. Strikes you could consider "
      "instead: 22,950 or 23,050. Your strategy has not been changed."),
     ("contract-not-eligible", _not_eligible, CheckCode.CONTRACT_NOT_ELIGIBLE,
-     "Leg 3 (SELL NIFTY 23,400 CE, expiry 06 Oct 2026) is currently unavailable on Zerodha. Zerodha isn't "
-     "accepting fresh orders for this contract right now. Strikes you could consider instead: 23,350 or 23,450. "
+     "Leg 3 (SELL NIFTY 23,400 CE, expiry 06 Oct 2026) is currently unavailable on Zerodha. Zerodha is not "
+     "accepting new orders for this contract right now. Strikes you could consider instead: 23,350 or 23,450. "
      "Your strategy has not been changed."),
     ("eligibility-unknown", _eligibility_unknown, CheckCode.CONTRACT_NOT_ELIGIBLE,
      "Leg 4 (BUY NIFTY 23,600 CE, expiry 06 Oct 2026) has not been confirmed as available on Zerodha yet. "
@@ -439,9 +443,10 @@ def test_rule5_blocked_reason_names_the_premium_free_worst_cases(catalogue, elig
     strategy, ctx = _limited_adjustment(IC[1:])
     (failure,) = check(strategy, ctx, catalogue, eligibility).failures
     assert failure.reason == (
-        "This adjustment makes the strategy's worst case at expiry larger (option premiums excluded): from a loss "
-        "of ₹26,000.00 to a loss of ₹2,990,000.00. Adjustments that add risk need Pro. Exiting, or closing or "
-        "reducing legs without a larger worst case, stays available on every plan."
+        "This adjustment raises the maximum loss at expiry from a loss "
+        "of ₹26,000.00 to a loss of ₹2,990,000.00 (option premiums excluded). "
+        "Adjustments that add risk need Pro. Exiting or "
+        "reducing legs stays available on every plan."
     )
 
 

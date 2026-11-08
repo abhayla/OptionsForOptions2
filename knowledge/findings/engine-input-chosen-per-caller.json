@@ -12,7 +12,7 @@
  "detection": {
   "status": "unguarded",
   "checks": [],
-  "note": "Becomes guarded when the picker-vs-outcome equality test merges. Not covered: a third caller added later that bypasses the shared function - a grep test over implied_vol callers would close that."
+  "note": "Becomes guarded when the picker-vs-outcome equality test merges. Not covered: a third caller added later that bypasses the shared function - a grep test over implied_vol callers would close that. 2026-11-02: the T-19 vs Compare case is now pinned by tests_app/test_t19_limits.py and tests_app/test_guards_strategy_type.py; still no general check that every caller of a shared build passes the same inputs."
  },
  "spec_ref": [
   "spec/decisions/ADR-172.md"
@@ -22,6 +22,11 @@
    "date": "2026-10-24",
    "where": "chunk 2 Tier A review area A",
    "evidence": "as first_seen"
+  },
+  {
+   "date": "2026-11-02",
+   "where": "feature/adjustments after the GC-MU integration: the Compare route and T-19 (adjustment_check.cheapest_offered), the two callers of priced_approach (#633)",
+   "evidence": "Two inputs chosen per caller. (1) Limits: the route passed limits/max_profit, T-19 passed none; with only A-05 offered, T-19 named A-05 while the Compare refuses it (tests_app/test_t19_limits.py red before edc7ba5e). (2) Playbook type: read_guards called strategy_type(position, spot, None), so with no listing type_of returns None and only the strategy's own plan was found, never the active playbook of its type; T-19's body came from callers passing the listing. A strategy without its own plan got no limits on the Compare and the active playbook's limits in T-19 (mutation of adjustment_readers.py:142 back to None turns tests_app/test_guards_strategy_type.py red). Found by an independent Tier B review, not by any test. Also found on the way: ADJ-50's real guards crashed the Compare build (debit 511.177 into a 2-decimal Money slot), fixed by rounding the message figures only. Fix: shared liquidity_inputs, guards_of_body, listed_of (edc7ba5e, c138901e)."
   }
  ]
 }

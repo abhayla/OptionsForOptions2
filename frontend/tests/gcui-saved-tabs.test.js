@@ -114,7 +114,7 @@ describe('D-C12 row actions', () => {
     const w = await bar([summary(2, { can_delete: false, tracked: null })])
     const row = w.get('[data-testid="saved-draft-row"]')
     expect(row.find('[data-testid="delete-2"]').exists()).toBe(false)
-    expect(row.get('[data-testid="delete-refused"]').attributes('title')).toBe("Can't delete: orders were sent")
+    expect(row.get('[data-testid="delete-refused"]').attributes('title')).toBe("Orders were already sent for this strategy, so it cannot be deleted.")
     expect(row.text()).not.toMatch(/Not tracked/)
     expect(row.get('[data-testid="saved-draft-tracked"]').text()).toBe('Tracking not known')
   })

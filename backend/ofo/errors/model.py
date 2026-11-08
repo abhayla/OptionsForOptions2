@@ -108,6 +108,31 @@ class UserFacingError:
 
 _PART_NAMES: tuple[str, ...] = ("what_happened", "impact", "what_is_blocked", "next_action")
 _FIELD_NAMES: frozenset[str] = frozenset({"error_class", "code", "external", *_PART_NAMES})
+#: GC-ADJ2 1A: the optional eighth field, the user's own words placed inside a part by a `user_text` slot.
+_USER_TEXT_FIELD = "user_text"
+_USER_TEXT_MAX = 80
+#: What a user-text span is replaced by for the wording scan: the template around it is still scanned in full.
+_USER_TEXT_MASK = "name"
+
+
+def _masked(text: str, user_text: tuple[str, ...]) -> str:
+    for value in user_text:
+        text = text.replace(value, _USER_TEXT_MASK)
+    return text
+
+
+def _check_user_text(user_text: object, parts: list[str]) -> tuple[str, ...]:
+    """Each value: exactly a str, 1..80 characters, no double quote or control character, and present in a part;
+    only that span is exempt from the wording scan (the user's own words, Q226)."""
+    if type(user_text) is not tuple:
+        raise TypeError(f"user_text must be a tuple, got {type(user_text).__name__}")
+    for value in user_text:
+        if (type(value) is not str or not value.strip() or len(value) > _USER_TEXT_MAX or '"' in value
+                or any(ord(c) < 32 or ord(c) == 127 for c in value)):  # noqa: PLR2004 - ASCII control range
+            raise ValueError(f"user_text value is not a short single-line text: {value!r:.40}")
+        if not any(value in part for part in parts):
+            raise ValueError("a user_text value must appear in a message part")
+    return user_text
 
 
 def _checked(fields: Mapping[str, Any]) -> Mapping[str, Any]:
@@ -123,7 +148,7 @@ def _checked(fields: Mapping[str, Any]) -> Mapping[str, Any]:
       label, never scanned: Q226).
     """
     fields = dict(fields)  # one copy, checked and then stored: no value can change between the two
-    names = set(fields)
+    names = set(fields) - {_USER_TEXT_FIELD}
     if names != _FIELD_NAMES:
         raise TypeError(
             f"a message needs exactly the fields {sorted(_FIELD_NAMES)}: "
@@ -136,8 +161,12 @@ def _checked(fields: Mapping[str, Any]) -> Mapping[str, Any]:
     if type(code) is not str or not re.fullmatch(rf"{error_class.name}_[0-9]{{3}}", code):
         raise ValueError(f"code must be {error_class.name}_ + 3 digits, got {code!r}")
     seen: dict[str, str] = {}
+    for name in _PART_NAMES:  # exact str first, before any user-text masking reads it
+        if type(fields[name]) is not str:
+            _wording.check_platform_text(fields[name], f"UserFacingError.{name}")
+    user_text = _check_user_text(fields.get(_USER_TEXT_FIELD, ()), [fields[n] for n in _PART_NAMES])
     for name in _PART_NAMES:
-        text = fields[name]
+        text = _masked(fields[name], user_text)
         _wording.check_platform_text(text, f"UserFacingError.{name}")
         key = _wording.normalise_for_duplicate_check(text)
         if key in seen:
@@ -225,6 +254,7 @@ def _make_machinery() -> tuple[
         what_is_blocked: str,
         next_action: str,
         external: ExternalText | None,
+        user_text: tuple[str, ...] = (),
     ) -> UserFacingError:
         if _token is not token:
             raise ValueError("_build requires render()'s token; build a message with ofo.errors.render()")
@@ -237,6 +267,7 @@ def _make_machinery() -> tuple[
             "what_is_blocked": what_is_blocked,
             "next_action": next_action,
             "external": external,
+            _USER_TEXT_FIELD: user_text,
         })
         obj = object.__new__(UserFacingError)
         issued[obj] = fields

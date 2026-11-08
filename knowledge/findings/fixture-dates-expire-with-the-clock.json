@@ -1,0 +1,31 @@
+{
+ "id": "fixture-dates-expire-with-the-clock",
+ "scope": "project",
+ "class": "Any test fixture that carries real calendar dates for contracts (expiries) runs against a database whose guards judge 'expired' by the database's own clock: once the wall-clock date passes a fixture expiry, every test step that needs that contract live again (re-listing it after another fixture's forced instrument list delisted it) is refused by the contract-lifecycle guard (ADR-057: a retired contract never changes), and the test fails on a date, not on the code under test. The fixture library silently becomes a time bomb that goes off overnight.",
+ "mechanism": "tests/fixtures/adjust_scenarios/ADJ-*.json carry fixed expiries (45 of 57 files: earliest expiry 2026-11-03; 8 more 2026-11-09). tests_app/test_adjustment_check.py::_seeded loads each scenario's instrument list with catalogue_store.apply_update(force=True), which delists the previous scenario's contracts; a later test in the same database that needs one of them runs catalogue_store.py:121 `UPDATE ... SET delisted = FALSE, currently_listed = TRUE ... AND delisted AND NOT retired`, which the 0005 lifecycle guard refuses for a contract whose expiry has passed (\"contract id 222 (NSE_FO 5000057) has left the market and never changes\").",
+ "first_seen": {
+  "date": "2026-11-04",
+  "where": "GC-IC1 step 10 fix merge ef8ed5e5, db_run_fresh tests_app/test_situation_state.py + tests_app/test_adjustment_check.py at ~02:20 IST",
+  "evidence": "D:\\Abhay\\scratch\\gcic1\\step10\\db_sit.log: '2 failed, 12 passed'; FAILED test_adj24b_no_spot_every_rule_not_checked_with_its_reason_never_a_flag and test_another_users_strategy_is_not_found with UnknownPostgresError 'catalogue store: contract id 222 (NSE_FO 5000057) has left the market and never changes (ADR-057, ADR-058)'; the same file passed 11/11 on 2026-11-03 ~23:40 IST (builder fix-a run). Expiry census: 45x 2026-11-03, 8x 2026-11-09, 1x 2026-11-23, 2x 2026-11-26, 1x 2026-12-29."
+ },
+ "fix": "Round 2 (GC-MERGE1, 2026-11-08, after an independent review; the round 1 date shift stays parked, not merged): the trigger is the SWITCH between instrument lists, not the dates. scenario_mode.library_numbers gives one synthetic token per (exchange, tradingsymbol) across the whole library (550 symbols over 57 ADJ files and every path's frame 0; no symbol carries two sets of terms), and tests_app/_scenario_catalogue.load_library loads the UNION of every scenario's list once per test database (skipped when every member is already live). A later scenario then changes only quotes and the clock, and no contract is ever delisted and re-listed. ADJ-20d leaves NIFTY26N0323700CE out of its own list; the union carries it, and ADJ-20d's provider (what its not-listed check reads) still leaves it out. Every tests_app fixture read goes through scenario_mode.read.",
+ "detection": {
+  "status": "guarded",
+  "checks": [
+   "tests_app/test_scenario_catalogue_guard.py::test_loading_the_library_twice_leaves_no_contract_delisted",
+   "tests_app/test_scenario_catalogue_guard.py::test_no_tests_app_file_reads_a_scenario_fixture_except_through_scenario_mode_read"
+  ],
+  "note": "The DB check fails if the union load ever delists or retires one of its members; the no-DB scan (with its own shape self-test) fails on any tests_app read of tests/fixtures/adjust_scenarios or adjust_paths around scenario_mode.read, failing closed on a use it cannot resolve. Not covered: a test in ANOTHER file that commits a forced list of its own delists the union, and the next union load is then refused (tests_app/test_strategy_alert_style.py::_committed_draft does this)."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-057.md",
+  "spec/decisions/ADR-058.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-11-04",
+   "where": "tests_app/test_adjustment_check.py (2 of 14 in the run)",
+   "evidence": "db_sit.log"
+  }
+ ]
+}

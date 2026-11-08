@@ -40,14 +40,21 @@ class Unavailable(Exception):
         self.why = why
 
 
+def _usable(value: Decimal | None) -> bool:
+    """A finite Decimal above 0; None, NaN, sNaN, +/-Infinity, 0 and negatives are not (no comparison runs on a NaN)."""
+    return isinstance(value, Decimal) and value.is_finite() and value > 0
+
+
 def probability_of_profit(strategy: Strategy, *, forward: Decimal | None, years: Decimal | None, vol: Decimal | None,
                           charges: Decimal = Decimal(0)) -> Decimal:
     """P(expiry P&L - ``charges`` > 0) as a fraction in [0, 1] (1e-9 precision). Raises ``Unavailable``."""
     if not strategy.is_single_expiry:
         raise Unavailable(Why.MIXED_EXPIRIES)
-    if vol is None or vol <= 0 or years is None or years <= 0:
+    # a non-finite input (NaN, sNaN, Infinity) is a named reason, checked BEFORE any comparison: comparing a NaN
+    # raises InvalidOperation, which would lose the whole After (REQ-155 AC-4 "never an exception")
+    if not _usable(vol) or not _usable(years):
         raise Unavailable(Why.NO_VOLATILITY)
-    if forward is None or forward <= 0:
+    if not _usable(forward):
         raise Unavailable(Why.NO_FORWARD)
     regions = loss_regions_after_charges(strategy, charges)
     lose = Decimal(0)

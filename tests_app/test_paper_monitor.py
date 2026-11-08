@@ -16,10 +16,11 @@ import datetime
 from decimal import Decimal
 
 import pytest
+from ofo import settings
 from ofo.marketdata.fanout import FanOut
 from ofo.rules.inputs import DataHealth
 from ofo.tracking import paper, stops
-from ofo_app import paper_monitor, paper_store, tracked_contracts
+from ofo_app import paper_monitor, paper_store, settings_store, tracked_contracts
 from ofo_app import paper_trigger_store as triggers
 from ofo_app.live_push import LiveFeed
 from ofo_app.routes.outcome import MarketContext
@@ -51,18 +52,24 @@ class Market:
         self.at = at
         self.provider = FakeProvider({"NIFTY": INDEX})
         self.feed = LiveFeed(MarketContext(self.provider, lambda: self.at, D("0.065"), None), FanOut(self.provider))
+        self.rates: list[D] = []  # the rate each conditional-exit price read was given (GC-SET step 5a)
 
     def tick(self, key: str, ltp: str, health: DataHealth = DataHealth.AVAILABLE) -> None:
         self.provider.tick(quote(key, "NIFTY", ltp, self.at, health))
 
-    def leg_prices(self, _feed, _underlying, keys):
+    def leg_prices(self, feed, _underlying, keys):
+        self.rates.append(feed.ctx.rate)
         return {k: paper.price_of(self.provider.quotes.get(k), k) for k in keys}
 
 
 def _monitor(db, market: Market, **kwargs) -> paper_monitor.PaperMonitor:
     sessions = async_sessionmaker(bind=db, class_=AsyncSession, expire_on_commit=False,
                                   join_transaction_mode="create_savepoint")
+    async def read_settings():
+        return await settings_store.settings_in_force(db)  # the settings in force, through the test's transaction
+
     return paper_monitor.PaperMonitor(sessions, lambda: market.feed, leg_prices=market.leg_prices,
+                                      read_settings=kwargs.pop("read_settings", read_settings),
                                       monotonic=lambda: 0.0, **kwargs)
 
 
@@ -114,14 +121,14 @@ async def test_core_a_crossing_tick_fires_once_through_the_fan_out_and_never_aga
         assert await monitor.step() == 0
     market.tick(INDEX, "22849.95")
     assert await monitor.step() == 1
-    reason = "Conditional exit: NIFTY crossed below 22,850.00"
+    reason = "Stop-loss on the index: NIFTY crossed below 22,850.00"
     assert await _stops(db, stored.id) == [(ids[0], "BUY", 65, D("41.00"), reason, tid),
                                            (ids[1], "SELL", 65, D("12.50"), reason, tid)]
     assert await _trigger_state(db, tid) == (True, False)
     [(title, body)] = await _alerts(db, stored.id)
-    assert title.startswith("Paper strategy - ")
-    assert body.startswith("Conditional exit: ")
-    assert "Paper strategy - " not in body  # the title shows once, as the alert title
+    assert title.startswith("Paper strategy — ")
+    assert body.startswith("Stop-loss on the index: ")
+    assert "Paper strategy — " not in body  # the title shows once, as the alert title
     assert reason in body
     assert "exited 2 legs at" in body and "41.00" in body
     assert "no order was sent to Zerodha" in body
@@ -248,7 +255,8 @@ async def test_a_cancelled_trigger_never_fires(db):
                                               (D("22976.85"), "22,976.85")])
 def test_the_reason_text_shows_a_level_grouped_with_two_decimals(level, shown):
     trigger = stops.Trigger(1, 1, "conditional_exit", "below", level, underlying="NIFTY")
-    assert str(paper_monitor.PaperMonitor._reason(trigger, {})) == f"Conditional exit: NIFTY crossed below {shown}"
+    assert str(paper_monitor.PaperMonitor._reason(trigger, {})) == (
+        f"Stop-loss on the index: NIFTY crossed below {shown}")
 
 
 async def test_claiming_one_armed_trigger_twice_wins_once_and_the_second_claim_does_not_raise(db):
@@ -278,3 +286,50 @@ async def test_a_failed_write_rolls_back_whole_and_the_next_crossing_tick_fires(
     monkeypatch.setattr(triggers, "add_alert", real_alert)
     market.tick(INDEX, "22790.00")
     assert await monitor.step() == 1 and len(await _stops(db, stored.id)) == OPEN_LEGS
+
+
+# ---- GC-SET step 5a (REQ-167 AC-4): the rate is the setting in force at each tick, not the feed's start value ------
+async def test_a_rate_changed_between_two_ticks_prices_the_second_fire_with_the_new_rate(db):
+    """Two strategies, two exit levels: the first crossing tick is priced with the default 0.065 (the feed's start
+    context also holds 0.065); the admin then saves 0.07; the second crossing tick is priced with 0.07, no restart."""
+    market = Market()
+    first, _, keys = await _strategy(db)
+    second, _, _ = await _strategy(db)
+    await _exit_below(db, first.id)
+    await _exit_below(db, second.id, D("22700.00"))
+    monitor = _monitor(db, market)
+    assert await monitor.step() == 0
+    market.tick(keys[0], "41.00")
+    market.tick(keys[1], "12.50")
+    market.tick(INDEX, "22849.95")
+    assert await monitor.step() == 1
+    await settings_store.add_setting(db, settings.RISK_FREE_RATE, "0.07", set_by="admin-test", correlation_id="t")
+    assert await monitor.step() == 0  # the reload after a fire (the watch list changed)
+    market.tick(INDEX, "22699.95")
+    assert await monitor.step() == 1
+    assert market.rates == [D("0.065"), D("0.07")]
+    assert market.feed.ctx.rate == D("0.065")  # the live feed's own context is untouched; each fire builds its own
+
+
+async def test_a_settings_store_that_cannot_answer_holds_the_fire_and_the_next_tick_retries(db):
+    market = Market()
+    stored, _, keys = await _strategy(db)
+    tid = await _exit_below(db, stored.id)
+    calls: list[int] = []
+
+    async def broken():
+        calls.append(1)
+        if len(calls) == 1:
+            raise settings_store.SettingsError("stored setting refused")
+        return await settings_store.settings_in_force(db)
+
+    monitor = _monitor(db, market, read_settings=broken)
+    assert await monitor.step() == 0
+    market.tick(keys[0], "41.00")
+    market.tick(keys[1], "12.50")
+    market.tick(INDEX, "22849.95")
+    assert await monitor.step() == 0  # fail closed: no fire priced on a default rate
+    assert await _stops(db, stored.id) == [] and monitor.failures == 1
+    market.tick(INDEX, "22849.90")
+    assert await monitor.step() == 1
+    assert await _trigger_state(db, tid) == (True, False)

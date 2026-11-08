@@ -99,8 +99,8 @@ def test_user_text_from_an_exception_outside_the_request_layer_raises() -> None:
 
 def test_request_layer_is_pinned() -> None:
     """A new module allowed to mint user text fails here until reviewed."""
-    assert set(ex.REQUEST_LAYER) == {"ofo.admin.client_id", "ofo.rules.model", "ofo.strategy.definition",
-                                       "ofo.strategy.stored_form"}
+    assert set(ex.REQUEST_LAYER) == {"ofo.admin.client_id", "ofo.adjustment.playbook_text", "ofo.rules.model",
+                                     "ofo.strategy.definition", "ofo.strategy.stored_form"}
 
 
 def test_mutant_recorded_accepting_any_str_lets_a_sentence_through(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -112,8 +112,8 @@ def test_mutant_recorded_accepting_any_str_lets_a_sentence_through(monkeypatch: 
 
 def test_restore_explanation_takes_only_a_line_that_fits_its_template() -> None:
     """GC-TP 7a: a stored paper-alert line comes back as an explanation only when it fits the template's fixed words."""
-    assert type(restore_explanation("paper_alert_title", "Paper strategy - x")) is ExplanationText
-    for bad in ("Paper strategy - ", "something else", "Paper strategy - x\n"[:0]):
+    assert type(restore_explanation("paper_alert_title", "Paper strategy — x")) is ExplanationText
+    for bad in ("Paper strategy — ", "something else", "Paper strategy — x\n"[:0]):
         with pytest.raises(ValueError, match="does not fit"):
             restore_explanation("paper_alert_title", bad)
     with pytest.raises(ValueError, match="unknown"):

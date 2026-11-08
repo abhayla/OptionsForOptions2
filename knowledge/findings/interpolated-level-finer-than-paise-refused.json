@@ -8,11 +8,14 @@
     "where": "adjustments core proof (throwaway script, read-only, real NIFTY 3 Nov chain at 14:56:56 IST), approach A: iron condor put spread rolled up 200",
     "evidence": "main3.log: 'POP unavailable: ValueError level must have at most 2 decimal places (a Decimal built from a float is refused), got 22771.372'; Before, B and C computed POP (87%, 92%, 94%) because their after-charge breakevens happened to fall on paise"
   },
-  "fix": "Not fixed. Class-level fix to decide in the build: either quantise every derived level at the single place it is produced (with a stated rounding rule) or let the probability functions accept a level as a price, not a money amount. Today no user sees it: POP sits behind the held switch probability_of_profit (backend/ofo_app/held_switches.py:24) and nothing outside pop.py calls probability_of_profit.",
+  "fix": "Fixed 2026-10-30 (GC-ADJ1): every derived level is quantised half-even to 0.01 at its one producer (backend/ofo/engine/metrics.py _to_decimal, rule from spec/business-rules/scenario-calculations.md section 3); probability_of_profit maps non-finite inputs to a named reason; the adjustment route withholds POP when charges are unknown.",
   "detection": {
-    "status": "unguarded",
-    "checks": [],
-    "note": "Needed: a property test that feeds the POP path strategies with non-round entry prices and charges (real-chain shaped) and asserts a POP or a named refusal, never a ValueError."
+    "status": "guarded",
+    "checks": [
+      "tests/engine/test_pop_paise_levels.py::test_ac4_property_non_round_prices_and_charges_give_pop_or_unavailable_never_valueerror",
+      "tests/engine/test_pop_paise_levels.py::test_ac4_f75_level_22771_372_becomes_22771_37_at_the_producer"
+    ],
+    "note": "Property test feeds real-chain-shaped non-round entry prices and charges and asserts a POP or a named Unavailable, never ValueError; mutation gate 5/5 killed on the quantise."
   },
   "spec_ref": [
     "spec/requirements/REQ-046.md",

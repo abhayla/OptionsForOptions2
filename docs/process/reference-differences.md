@@ -154,7 +154,7 @@ Records: 163 (COPY 76, DIFFERENT-BY-DECISION 21, NO-SCREEN 27, MATCH 39)
 | RD-073 | REQ-072 | ADR-015 | Calculations on an old or missing index value: labelled or refused, never silent (G-12-2) | decided |
 | RD-074 | REQ-072 | ADR-061 | IV and Greeks from spot when no parity forward exists are labelled estimated from spot (G-12-3) | decided |
 | RD-079 | REQ-032 | ADR-082 | Max profit, max loss and POP include round-trip charges in ours (G-13-3) | decided |
-| RD-080 | REQ-032 | ADR-063 | Pricing model: the reference product's Black 76 against ours with an implied dividend yield (G-13-4) | decided |
+| RD-080 | REQ-032 | ADR-234 | Pricing model: the reference product's Black 76 against ours with an implied dividend yield (G-13-4) | decided |
 | RD-082 | REQ-082 | ADR-156 | Probability of profit held behind a legal check in ours, shown plainly in the reference product (G-13-6) | decided |
 | RD-103 | REQ-079 | ADR-150 | Platform-placed strikes labelled and held for the legal answer (row 15 match line, ours stricter) | decided |
 | RD-111 | REQ-070 | ADR-118 | Delete only a strategy that never sent a basket (G-16-6) | decided |

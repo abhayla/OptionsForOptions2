@@ -16,8 +16,9 @@ Conventions (orchestrator decision under ADR-045, spec basis REQ-033 AC-6 "compu
   shows the guaranteed result). The §6 Iron Condor has ``min_pnl`` -8175 and ``max_loss`` 8175.
 - **Breakevens** are every level > 0 where the payoff is zero: a sign change between points (interpolated
   exactly), a zero exactly at a strike, and a zero on the upper tail. A flat zero segment between strikes reports
-  its two end points; a flat zero upper tail reports only its strike end point. A crossing whose exact value does
-  not terminate in decimal (e.g. a third of a point) is rounded half-even to 0.01 points; all others are exact.
+  its two end points; a flat zero upper tail reports only its strike end point. Every derived level (breakeven,
+  shifted or after-charges breakeven, loss-region edge) is rounded half-even to 0.01 points at its one producer,
+  ``_to_decimal`` (REQ-155 AC-4, F-75: 22771.372 -> 22771.37); a level already on the step is exact.
 - **Loss regions** (ADR-072) are the open intervals of the underlying where the payoff is below zero (exactly zero is
   not a loss), read from the same payoff: between consecutive knots (0, every strike, every exact zero) the payoff is
   linear, so its sign at the midpoint is its sign on the whole interval; the upper tail's sign is taken one point past
@@ -91,13 +92,26 @@ def _upper_tail_slope(leg: Leg) -> int:
 
 
 def _to_decimal(value: Fraction) -> Decimal:
-    """Exact Decimal when ``value`` terminates in base 10, else rounded half-even to 0.01 points."""
+    """The ONE producer of every derived level (breakevens, shifted and after-charges breakevens, loss-region edges and
+    except levels): the exact level rounded HALF-EVEN to the 0.01 point step (REQ-155 AC-4, F-75; the §3 rule, and the
+    same rounding ``engine.display.format_points`` prints with, so no shown level moves). A level already on the step
+    is returned exactly as before, digits unchanged (``22000`` stays ``22000``, ``22860.45`` stays ``22860.45``), so
+    every reply that carried it is byte-identical. Example: 22771.372 -> 22771.37; 22771.365 -> 22771.36; 22771.375
+    -> 22771.38. Signs and regions are decided on the exact ``Fraction`` before this rounding."""
     with localcontext() as ctx:
         ctx.prec = 60
         result = Decimal(value.numerator) / Decimal(value.denominator)
-    if Fraction(result) == value:
-        return result
-    return result.quantize(HUNDREDTH, rounding=ROUND_HALF_EVEN)
+        if Fraction(result) == value and result == result.quantize(HUNDREDTH):
+            return result
+        return result.quantize(HUNDREDTH, rounding=ROUND_HALF_EVEN)
+
+
+def _breakeven_levels(zeros: list[Fraction]) -> tuple[Decimal, ...]:
+    """The reported breakevens: each exact zero rounded by ``_to_decimal``, ascending. A zero that rounds to 0.00 is
+    dropped (§3: breakevens only above 0). Two exact zeros that round to ONE level (a profit or loss stretch narrower
+    than 0.01, e.g. 21999.99999 and 22000.00001) are reported once: the list names levels, and the stretch itself is
+    carried by the loss regions as an "except" level or a single-level region (ADR-072, W-066 round 8)."""
+    return tuple(dict.fromkeys(level for level in map(_to_decimal, zeros) if level > 0))
 
 
 def _shown(level: Decimal) -> Decimal:
@@ -108,7 +122,7 @@ def _shown(level: Decimal) -> Decimal:
 def _breakevens(points: list[Decimal], values: list[Decimal], upper_slope: int) -> list[Fraction]:
     """Zeros of the payoff over [0, inf): at a point, between two points, or on the upper tail; levels > 0 only."""
     found: set[Fraction] = set()
-    for i, (point, value) in enumerate(zip(points, values)):
+    for i, (point, value) in enumerate(zip(points, values, strict=True)):
         if value == 0:
             found.add(Fraction(point))
         if i + 1 < len(points):
@@ -203,7 +217,7 @@ def strategy_metrics(strategy: Strategy) -> StrategyMetrics:
     else:
         max_loss = -min_pnl if min_pnl < 0 else Decimal(0)
     zeros = _breakevens(points, values, upper_slope)
-    breakevens = tuple(_to_decimal(x) for x in zeros)
+    breakevens = _breakeven_levels(zeros)
     return StrategyMetrics(max_profit=max_profit, min_pnl=min_pnl, max_loss=max_loss, breakevens=breakevens,
                            loss_regions=_loss_regions(points, values, upper_slope, zeros))
 
@@ -229,4 +243,4 @@ def breakevens_with_shift(strategy: Strategy, shift: Decimal) -> tuple[Decimal, 
     points = [Decimal(0), *sorted({leg.strike for leg in strategy.legs if leg.is_option})]
     values = [strategy.expiry_pnl_at(p) + shift for p in points]
     upper_slope = sum(_upper_tail_slope(leg) for leg in strategy.legs)
-    return tuple(_to_decimal(x) for x in _breakevens(points, values, upper_slope))
+    return _breakeven_levels(_breakevens(points, values, upper_slope))

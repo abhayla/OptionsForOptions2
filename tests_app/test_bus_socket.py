@@ -534,3 +534,41 @@ async def test_a_capped_status_reads_the_feed_phase_capped_and_never_live(world)
     assert w.provider.feed.connected is False
     await w.status(connected=True)  # the cap cleared and the socket connected
     await poll(lambda: w.provider.feed.phase(w.clock.now) != "capped", "the capped phase to clear")
+
+
+class _Recording:
+    """A bus client that records the key of every ``set``."""
+
+    def __init__(self, inner, keys: list) -> None:
+        self._inner, self._keys = inner, keys
+
+    async def set(self, key, *a, **k):
+        self._keys.append(key)
+        return await self._inner.set(key, *a, **k)
+
+    def __getattr__(self, name):
+        return getattr(self._inner, name)
+
+
+async def _written_keys(redis_url: str, **socket_kw) -> list[str]:
+    provider, clock, items = new_provider()
+    clock.now = T0
+    provider.subscribe(all_instrument_ids(items)[:3])
+    user, keys = f"u{uuid.uuid4().hex[:12]}", []
+    sock = feed_bus.BusSocket(provider, user_ref=user, clock=clock, **socket_kw,
+                              client_factory=lambda: _Recording(feed_bus.new_client(redis_url), keys))
+    task = asyncio.ensure_future(sock.run())
+    try:
+        await asyncio.sleep(1.5)  # a few loop turns: the want is refreshed once a second
+    finally:
+        sock.stop()
+        await asyncio.wait_for(task, 20)
+    return [k.replace(user, "U") for k in keys if k.endswith(("want", ":bg"))]
+
+
+async def test_the_api_socket_still_writes_its_own_want_key(redis_url):
+    assert set(await _written_keys(redis_url)) == {"ofo:feed:U:want"}
+
+
+async def test_the_background_socket_never_writes_the_api_want_key(redis_url):
+    assert await _written_keys(redis_url, publish_want=False) == []

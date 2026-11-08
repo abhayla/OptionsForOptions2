@@ -90,6 +90,9 @@ DYNAMIC_HEAD_RE = re.compile(
 # "attack" fixture (a symbol a guard elsewhere must refuse) or a locked spec example with no
 # matching row in this catalogue SLICE.
 ALLOWLIST: dict[tuple[str, str], str] = {
+    ("adjustment/test_planned_price_mid.py", "NIFTY26DEC25250CE"):
+        "ADR-241 real case (2026-11-03, live NIFTY 29 Dec 2026 25,250 CE): a hand-built ChainRow; planned_price reads "
+        "only the row's prices and health and never resolves the symbol against a catalogue.",
     ("execution/test_strategy_only.py", "BANKNIFTY26OCT50000CE"):
         "attack fixture: a BANKNIFTY order deliberately not in the strategy/catalogue, proving the "
         "sink refuses a contract that is not the strategy's own catalogue symbol.",

@@ -90,7 +90,7 @@ async def test_ac1_an_empty_name_is_refused_with_the_catalogue_message_and_store
                 before = len((await ac.get("/strategies")).json()["strategies"])
                 refused = await _post(ac, ids, name)
                 assert (refused.status_code, refused.json()["code"]) == (422, EMPTY_NAME_CODE), refused.text
-                assert refused.json()["what_happened"] == "Give the strategy a name"
+                assert refused.json()["what_happened"] == "The strategy has no name."
                 assert len((await ac.get("/strategies")).json()["strategies"]) == before
         finally:
             await trans.rollback()

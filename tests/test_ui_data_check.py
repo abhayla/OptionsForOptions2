@@ -27,6 +27,13 @@ sys.modules["ui_data_check"] = u
 _spec.loader.exec_module(u)
 
 
+@pytest.fixture(autouse=True)
+def _replies_recorded_before_adr234(monkeypatch):
+    """The fixtures here are server replies recorded before ADR-234 (2026-11-02): their theta carries the old call / put
+    cost-of-carry split, so the checker re-checks them on that basis. Live checks use THETA_BASIS "forward"."""
+    monkeypatch.setattr(u, "THETA_BASIS", "carry_before_adr234")
+
+
 def leg(action, kind, strike, entry, qty=65, expiry="2026-11-03"):
     return {
         "action": action,
@@ -79,12 +86,22 @@ def test_iv_round_trip():
     assert u.implied_vol(0.0001, 22700, 20000, 6 / 365, 0.065, 0.0, "CE") is None  # below intrinsic: no IV
 
 
-def test_greek_basis_theta_per_day_vega_per_vol_point():
-    s, k, t, r, q, v = 22700.0, 22700.0, 6 / 365, 0.065, 0.0, 0.16
+def test_greek_basis_theta_per_day_vega_per_vol_point(monkeypatch):
+    monkeypatch.setattr(u, "THETA_BASIS", "forward")  # the live basis (ADR-234)
+    s, k, t, r, q, v = 22700.0, 22700.0, 6 / 365, 0.065, 0.02, 0.16
     g = u.bsm_greeks(s, k, t, r, q, v, "CE")
     h = 1e-6
-    dprice_dt = (u.bsm_price(s, k, t - h, r, q, v, "CE") - u.bsm_price(s, k, t + h, r, q, v, "CE")) / (2 * h)
-    assert abs(g["theta"] - dprice_dt / 365) < 1e-3
+    # ADR-234: theta on the forward = -e^(-rT) dU/dT with the forward F held fixed (U = e^(rT) x price at spot
+    # F e^(-(r-q)T)); the same for the put
+    f = s * math.exp((r - q) * t)
+
+    def undiscounted(tt, kind):
+        return math.exp(r * tt) * u.bsm_price(f * math.exp(-(r - q) * tt), k, tt, r, q, v, kind)
+
+    for kind in ("CE", "PE"):
+        du_dt = (undiscounted(t + h, kind) - undiscounted(t - h, kind)) / (2 * h)
+        assert abs(u.bsm_greeks(s, k, t, r, q, v, kind)["theta"] + math.exp(-r * t) * du_dt / 365) < 1e-3
+    assert u.bsm_greeks(s, k, t, r, q, v, "PE")["theta"] == g["theta"]
     dv = u.bsm_price(s, k, t, r, q, v + 0.01, "CE") - u.bsm_price(s, k, t, r, q, v, "CE")
     assert abs(g["vega"] - dv) < 0.05
 

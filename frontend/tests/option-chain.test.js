@@ -13,6 +13,7 @@ vi.mock('@/services/api', async (importActual) => {
 })
 import { createPinia, setActivePinia } from 'pinia'
 import OptionChainPage from '@/pages/OptionChainPage.vue'
+import { useSettingsValues } from '@/stores/settingsValues'
 import { NOT_LIVE_LABEL, daysLeft } from '@/composables/useChainLive'
 import { healthSentence } from '@/lib/dataHealthText'
 
@@ -43,17 +44,30 @@ const answer = (ltpCe = '120.50', over = {}) => ({
 const notConnected = (over = {}) => ({ state: 'NOT_CONNECTED', underlying: 'NIFTY', expiry: EXPIRY, spot: null, spot_at: '2026-10-19T10:00:00+05:30',
   spot_health: null, atm_strike: null, rows_missing: null, rows: [], answered_at: '2026-10-19T10:00:05+05:30', ...over })
 
+// What GET /api/settings serves (REQ-167): the registry defaults unless a test says otherwise
+const SERVED = { 'limits.chain_strikes_each_side': '15', 'other.undo_one_leg_seconds': '8' }
+let served = { ...SERVED }
+const settingsAnswer = () => ({ data: { groups: [{ name: 'Limits', settings: Object.entries(served).map(([key, value]) => ({ key, value })) }], charges: null } })
+
 function script({ chain } = {}) {
   restAnswer = (url, params) => {
+    if (url === '/settings') return Promise.resolve(settingsAnswer())
     if (url.startsWith('/catalogue/')) return Promise.resolve({ data: { underlying: url.split('/')[2], expiries: [EXPIRY, '2026-10-20'] } })
     if (url === '/market/chain') return chain ? chain(params) : Promise.reject(new Error('down'))
     return Promise.reject(new Error('unexpected ' + url))
   }
 }
 
+// The strike-range options and the first request's strike count come from GET /api/settings; a test that picks a range
+// before that answer lands picks an option that is not there yet. Flush until the settings store has answered, at most
+// SETTLE_ROUNDS times (a test whose settings read fails on purpose stops after them, never hangs). 2026-11-01: rows 33
+// and attack 6 failed once under the full parallel gate run (sent 15 instead of 5; no request) and passed in 7 reruns.
+const SETTLE_ROUNDS = 10
 async function mountPage() {
   const w = mount(OptionChainPage)
   await flushPromises()
+  const settings = useSettingsValues()
+  for (let round = 0; round < SETTLE_ROUNDS && settings.values === null; round += 1) await flushPromises()
   return w
 }
 const sock = () => FakeSocket.all.at(-1)
@@ -61,6 +75,7 @@ const cellsOf = (w, testid) => w.findAll(`[data-testid="${testid}"]`).map((c) =>
 
 beforeEach(() => {
   setActivePinia(createPinia())
+  served = { ...SERVED }
   FakeSocket.all = []
   reads.length = 0
   vi.stubGlobal('WebSocket', FakeSocket)
@@ -272,6 +287,7 @@ describe('Option Chain screen', () => {
   it('switching to SENSEX with a slow catalogue shows no NIFTY number and ignores a late NIFTY push', async () => {
     let releaseSensex
     restAnswer = (url) => {
+      if (url === '/settings') return Promise.resolve(settingsAnswer())
       if (url === '/catalogue/NIFTY/expiries') return Promise.resolve({ data: { expiries: ['2026-10-20'] } })
       if (url === '/catalogue/SENSEX/expiries') return new Promise((r) => { releaseSensex = r })
       return Promise.reject(new Error('down'))
@@ -293,7 +309,7 @@ describe('Option Chain screen', () => {
   })
 
   it('switching to SENSEX when the catalogue fails shows the error and no NIFTY rows', async () => {
-    restAnswer = (url) => (url === '/catalogue/NIFTY/expiries' ? Promise.resolve({ data: { expiries: ['2026-10-20'] } }) : Promise.reject(new Error('down')))
+    restAnswer = (url) => (url === '/settings' ? Promise.resolve(settingsAnswer()) : url === '/catalogue/NIFTY/expiries' ? Promise.resolve({ data: { expiries: ['2026-10-20'] } }) : Promise.reject(new Error('down')))
     const { w } = await liveNifty()
     await w.find('[data-testid="underlying-select"]').setValue('SENSEX')
     await flushPromises()
@@ -428,7 +444,8 @@ describe('Option Chain screen', () => {
     expect(w.find('[data-testid="ce-ltp"]').attributes('data-stale')).toBeUndefined()
     sock().serverPush({ ...answer('121.50', { greeks_basis: 'SPOT_FALLBACK', greeks_label: null }), expiry: '2026-10-20' })
     await flushPromises()
-    expect(w.find('[data-testid="greeks-stale-line"]').exists()).toBe(false)
+    // the live push re-renders on its own schedule; one flush was not enough under the gate's load (2026-11-01)
+    await vi.waitFor(() => expect(w.find('[data-testid="greeks-stale-line"]').exists()).toBe(false), { timeout: 3000 })
     expect(w.find('[data-testid="ce-iv"]').attributes('data-stale')).toBeUndefined()
   })
 
@@ -453,5 +470,40 @@ describe('Option Chain screen', () => {
     expect(w.text()).not.toContain('Stale:')
     expect(w.text()).not.toContain('stale since')
     expect(cellsOf(w, 'ce-iv')).toEqual(['12.34', '12.34', '12.34']) // IV from the close is shown as the server sent it
+  })
+})
+
+
+describe('Option Chain limits come from GET /api/settings (REQ-167 AC-5)', () => {
+  it('asks for the served strike limit: 10 served gives 10, 20 served gives 20, and the picker offers up to it', async () => {
+    for (const [limit, options] of [['10', ['3', '7', '10']], ['20', ['7', '13', '20']]]) {
+      setActivePinia(createPinia())
+      FakeSocket.all = []
+      served = { ...SERVED, 'limits.chain_strikes_each_side': limit }
+      script({ chain: () => Promise.resolve({ data: notConnected() }) })
+      const w = await mountPage()
+      sock().serverOpen()
+      await flushPromises()
+      expect(JSON.parse(sock().sent[0]).strikes_each_side).toBe(Number(limit))
+      expect(w.findAll('[data-testid="filter-strike-range"] option').map((o) => o.text())).toEqual(options)
+      w.unmount()
+    }
+  })
+
+  it('shows its loading state and asks for nothing while the settings have not been read', async () => {
+    script({ chain: () => Promise.resolve({ data: notConnected() }) })
+    const base = restAnswer
+    restAnswer = (url, params) => (url === '/settings' ? Promise.reject(new Error('down')) : base(url, params))
+    const w = await mountPage()
+    expect(FakeSocket.all.every((x) => x.sent.length === 0)).toBe(true)
+    expect(w.findAll('[data-testid="filter-strike-range"] option')).toHaveLength(0)
+    w.unmount()
+  })
+
+  it('the source has no typed strike limit or undo time left', () => {
+    for (const f of ['../src/composables/useChainLive.js', '../src/pages/OptionChainPage.vue', '../src/lib/chainDisplay.js']) {
+      const code = readFileSync(resolve(__dirname, f), 'utf8').replace(/\/\/.*$/gm, '')
+      expect(code).not.toMatch(/\b15\b|\b8000\b/)
+    }
   })
 })

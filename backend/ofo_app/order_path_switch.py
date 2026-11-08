@@ -17,6 +17,7 @@ import os
 from ofo_app.config import app_env
 from ofo_app.errors import Failure
 from ofo_app.routes.strategies import StrategyRefused
+from ofo_app.scenario_mode import refuse_orders, scenario_requested
 
 ENV_NAME = "OFO_ORDER_PATH"
 TEST_ENV = "test"
@@ -25,7 +26,10 @@ TEMPLATE = "order_path_off"
 
 
 def order_path_on() -> bool:
-    """True only for APP_ENV == "test" (exact) and OFO_ORDER_PATH in 1/true/yes/on (case and edge spaces ignored)."""
+    """True only for APP_ENV == "test" (exact) and OFO_ORDER_PATH in 1/true/yes/on (case and edge spaces ignored), and
+    never while scenario mode serves test data."""
+    if scenario_requested():
+        return False
     try:
         if app_env() != TEST_ENV:
             return False
@@ -35,6 +39,8 @@ def order_path_on() -> bool:
 
 
 def require_order_path() -> None:
-    """The refusal (409, catalogue message ``order_path_off``) while the switch is off."""
+    """The refusal (409, catalogue message ``order_path_off``) while the switch is off. Scenario mode (dev/test test
+    data, ofo_app.scenario_mode) refuses first with its own named message, whatever the switch says."""
+    refuse_orders()
     if not order_path_on():
         raise StrategyRefused(TEMPLATE, Failure.CONFLICT)

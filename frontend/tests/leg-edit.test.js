@@ -4,7 +4,7 @@
 // strikes and entries are the recorded values. Adapted from this repo's branch build/W-126-a1-leg-rows (REQ-076 parts only).
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { strikeLabel } from '@/lib/displayFormat'
-import { mount, flushPromises } from '@vue/test-utils'
+import { mount as mountRaw, flushPromises } from '@vue/test-utils'
 import { createRouter, createMemoryHistory } from 'vue-router'
 
 const calls = []
@@ -16,17 +16,22 @@ vi.mock('@/services/api', async (importActual) => {
     calls.push({ method, url, body })
     const a = answers[`${method} ${url}`]
     if (a === undefined && url.startsWith('/paper/strategies/')) return Promise.reject({ status: 404 }) // GC-TP 3b1: not a paper strategy
+    if (a === undefined && url === '/settings') return Promise.resolve({ data: settingsData() }) // REQ-167 AC-5: the served lot caps
     if (a === undefined) return Promise.reject(new Error(`unmocked ${method} ${url}`))
     return typeof a === 'function' ? a(body) : a instanceof Error ? Promise.reject(a) : Promise.resolve({ data: withPriceTexts(a) })
   }
   return { ...actual, default: { get: (url) => respond('GET', url), post: (url, body) => respond('POST', url, body) } }
 })
 import LegList from '@/components/strategy/LegList.vue'
+import { settingsData } from './helpers/servedLots'
+
+// the page passes the served multiplier cap down (REQ-167 AC-5); a list mounted alone gets it as a prop
+const mount = (C, o = {}) => mountRaw(C, C === LegList ? { ...o, props: { multiplierMax: 50, ...o.props } } : o)
 import StrategyActions from '@/components/strategy/StrategyActions.vue'
 import StrategyBuilderPage from '@/pages/StrategyBuilderPage.vue'
 import {
   CUSTOM_STRATEGY, EXECUTE_NEEDS_ALL_TICKED, LEFT_OUT_LABEL, NO_LEGS_YET, applyEditReply, buildEditRequest, canStep, executeRefusal,
-  MULTIPLIER_CHOICES, shapeLabel,
+  multiplierChoices, shapeLabel,
 } from '@/lib/legEdit'
 import { buildDraft, NOT_CONNECTED_LABEL } from '@/lib/legPicker'
 import { movedMarker } from '@/lib/legEdit'
@@ -134,10 +139,13 @@ describe('the request carries one edit and nothing computed', () => {
     const body = buildEditRequest('NIFTY', legs.map((l, i) => (i === 2 ? { ...l, included: false } : l)), { control: 'include', index: 2, included: false })
     expect(body.legs.map((l) => l.included)).toEqual([true, true, false, true])
   })
-  it('AC-4: the multiplier is chosen from the fixed list 1 to 50, nothing is parsed from text', () => {
-    expect(MULTIPLIER_CHOICES).toHaveLength(50)
-    expect([MULTIPLIER_CHOICES[0], MULTIPLIER_CHOICES[49]]).toEqual([1, 50])
-    expect(new Set(MULTIPLIER_CHOICES).size).toBe(50)
+  it('AC-4: the multiplier is chosen from a fixed list 1 to the served limits.multiplier_max (none until read)', () => {
+    const list = multiplierChoices(50)
+    expect(list).toHaveLength(50)
+    expect([list[0], list[49]]).toEqual([1, 50])
+    expect(new Set(list).size).toBe(50)
+    expect(multiplierChoices(null)).toEqual([])
+    expect(multiplierChoices(3)).toEqual([1, 2, 3])
   })
 })
 

@@ -250,6 +250,8 @@ describe('AC-2: the chain and index screens show the same reconnecting text from
 
   it('AC-2: the chain page says the same text after a drop, and the live marker leaves live', async () => {
     restAnswer = (url) => {
+      // REQ-167: the chain page reads its strikes-each-side limit from GET /api/settings (the registry default here)
+      if (url === '/settings') return Promise.resolve({ data: { groups: [{ name: 'Limits', settings: [{ key: 'limits.chain_strikes_each_side', value: '15' }, { key: 'other.undo_one_leg_seconds', value: '8' }] }], charges: null } })
       if (url.startsWith('/catalogue/')) return Promise.resolve({ data: { expiries: ['2026-10-27'] } })
       return Promise.resolve({ data: { state: 'NOT_CONNECTED', underlying: 'NIFTY', expiry: '2026-10-27', spot: null, spot_at: null, spot_health: null, atm_strike: null, rows_missing: null, rows: [] } })
     }

@@ -24,13 +24,18 @@ from ofo.rules.inputs import DataHealth
 from ofo.scenario.config import ScenarioSettings
 from ofo.scenario.levels import build_level_set
 from ofo.scenario.views import View, scenario_values
+from ofo.settings import calc as _fq_calc
+from ofo.settings import defaults as _d
+from ofo.settings import defaults as _fq_defaults
 from ofo.table.columns import ColumnId
 from ofo.table.model import build_table
+
+_FQ = _fq_calc.forward_quality(_fq_defaults())
 
 VALUATION = datetime.datetime(2026, 10, 8, 9, 20, 9, tzinfo=IST)
 RATE = Decimal("0.065")
 EXPIRY = datetime.date(2026, 10, 13)
-CONFIG = ScenarioSettings().for_index("NIFTY")
+CONFIG = ScenarioSettings.from_values(_d()).for_index("NIFTY")
 STRIKE, VOL, QTY = Decimal("22550"), Decimal("0.12"), 65
 
 
@@ -40,7 +45,7 @@ def live_forward():
     provider.subscribe(all_instrument_ids(items))
     replay(provider, clock)
     return parity_forward(provider.option_chain_snapshot("NIFTY", EXPIRY), provider.underlying_quote("NIFTY"), EXPIRY,
-                          VALUATION, RATE)
+                          VALUATION, RATE, _FQ)
 
 
 def _leg():

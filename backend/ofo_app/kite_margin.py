@@ -57,9 +57,13 @@ _EXCHANGES: Final = frozenset(code for code, segment in ZERODHA_EXCHANGE_TO_SEGM
 class KiteMarginError(Exception):
     """A margin read failed. Carries only a code; never the token, a header, a URL or the response body."""
 
-    def __init__(self, code: str) -> None:
+    def __init__(self, code: str, *, empty: bool = False, funds: bool = False) -> None:
         super().__init__(code)
         self.code = code
+        #: only with ``kite_margin_no_figure``: Zerodha answered in full and stated NO figure at all (an EMPTY answer),
+        #: as opposed to an AMBIGUOUS one (rows that do not match the basket, a figure missing beside others)
+        self.empty = empty
+        self.funds = funds  #: the figure missing is the available-funds read, not the basket read
 
 
 @dataclass(frozen=True)
@@ -150,6 +154,28 @@ def _money(value: object) -> Decimal:
         raise KiteMarginError("kite_margin_no_figure") from None
 
 
+def _is_figure(value: object) -> bool:
+    """A stated amount: a JSON number (parsed as Decimal or int; a bool is not one)."""
+    return type(value) is Decimal or type(value) is int
+
+
+def _no_figure(*, empty: bool, funds: bool = False) -> KiteMarginError:
+    return KiteMarginError("kite_margin_no_figure", empty=empty, funds=funds)
+
+
+def _basket_empty(data: Mapping[str, object], orders: Sequence[BasketOrder]) -> bool:
+    """EMPTY, not ambiguous: ``initial`` and ``final`` are present, the rows are exactly the orders sent (same count,
+    same symbol and exchange, same order), and no margin total is stated anywhere (final, initial, any row). Anything
+    else - a row missing, extra or reordered, ``initial`` missing, a total stated beside missing ones - is AMBIGUOUS."""
+    initial, final, rows = data.get("initial"), data.get("final"), data.get("orders")
+    if not isinstance(initial, dict) or not isinstance(final, dict) or not isinstance(rows, list):
+        return False
+    if [(r.get("tradingsymbol"), r.get("exchange")) if isinstance(r, dict) else None for r in rows] != [
+            (o.tradingsymbol, o.exchange) for o in orders]:
+        return False
+    return not any(_is_figure(x.get("total")) for x in (initial, final, *rows))
+
+
 class KiteMargin:
     def __init__(self, *, api_key: str, access_token: str, transport: Transport = urllib_transport,
                  base_url: str = KITE_API_URL) -> None:
@@ -184,9 +210,11 @@ class KiteMargin:
 
     def fetch_available_funds(self) -> Decimal:
         """``GET /user/margins``: ``equity.net``, Zerodha's available funds, as an exact Decimal."""
-        equity = self._data("GET", FUNDS_PATH, None).get("equity")
-        if not isinstance(equity, dict):
-            raise KiteMarginError("kite_margin_no_figure")
+        data = self._data("GET", FUNDS_PATH, None)
+        equity = data.get("equity")
+        if not isinstance(equity, dict) or equity.get("net") is None:
+            empty = not any(isinstance(s, dict) and _is_figure(s.get("net")) for s in data.values())
+            raise _no_figure(empty=empty, funds=True)
         return _money(equity.get("net"))
 
     def fetch_basket_margin(self, orders: Sequence[BasketOrder]) -> BasketMargin:
@@ -198,7 +226,7 @@ class KiteMargin:
         try:
             final_total, top_up = basket_requirement(data, orders)  # ADR-094, computed once (GC-UI D-A47)
         except MarginReplyError:
-            raise KiteMarginError("kite_margin_no_figure") from None
+            raise _no_figure(empty=_basket_empty(data, orders)) from None
         required_total = final_total + top_up  # exactly required_from_basket_reply's sum
         final = data.get("final")  # a dict with a numeric total: basket_requirement just read it
         zerodha_total = _money(final.get("total") if isinstance(final, dict) else None)

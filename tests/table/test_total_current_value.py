@@ -42,7 +42,7 @@ def test_core_real_case_total_current_value_is_net_credit():
     total = _total(REAL_2026_10_15)
     cv = total.cell(ColumnId.CURRENT_VALUE)
     assert (cv.value, cv.side) == (D("4231.50"), "Cr")
-    assert cv.display.endswith(" Cr") and "4,231.50" in cv.display
+    assert cv.display.endswith(" credit") and "4,231.50" in cv.display
     ev = total.cell(ColumnId.ENTRY_VALUE)
     assert (ev.value, ev.side) == (D("4212.00"), "Cr")
     assert total.cell(ColumnId.UNREALIZED_PNL).value == D("-19.50")

@@ -1,0 +1,27 @@
+{
+ "id": "nodb-app-tests-skipped-by-step-gates",
+ "scope": "project",
+ "class": "A tests_app file that runs WITHOUT a database (its DB tests skip when TEST_DATABASE_URL is unset, the rest run) is treated as 'a DB test, CI's job' by builders and step gates, so it is never run locally; a regression in it stays red for every later merge and is found only by a full non-DB sweep or by CI. A step reported green on guard + unit + vitest + selected DB files says nothing about these files.",
+ "mechanism": "GC-IC1 steps 0-7 (37824fb9..e1f1ec0a) and the step-10 fixes ran tests/, vitest and named db_run_fresh files only. Commit 47cca3fd (step 3) wrote 'route app test ... (DB test, not run here)' for tests_app/test_adjustment_approaches_route.py, which runs without a DB; its fake-market change broke 3 tests there and its own new test never passed. Other merges added reply models without the response-door sweep, a route answering outside the error boundary, a stale openapi.json and a stale editor labels fixture.",
+ "first_seen": {
+  "date": "2026-11-04",
+  "where": "GC-IC1 step 10 close-out, full non-DB sweep of tests_app on feature/adjustments 8ca5c8d1",
+  "evidence": "D:\\Abhay\\scratch\\gcic1\\step10\\app_nodb_full.log: '71 failed, 4244 passed, 1331 skipped' (9 files: t19_cheapest_cost 60, adjustment_approaches_route 4, t19_limits 1, scenario_rate_wiring 1, outcome_open_interest 1, error_boundary_scan 1, openapi_drift 1, playbook_labels_route 1, risk_exit_not_gated 1); the same 9 files at the GC-IC1 base 37824fb9: '170 passed, 2 skipped'; test_response_door was red too (8 unswept models, fixed 8ca5c8d1); git bisect over 37824fb9..e1f1ec0a: first bad commit 47cca3fd for the approaches route file."
+ },
+ "fix": "Instances: fixed by builds nodb-a / nodb-b (GC-IC1 step 10 close-out). Class: every builder brief and every step gate runs `env -u TEST_DATABASE_URL -u TEST_ADMIN_DATABASE_URL -u ALEMBIC_DATABASE_URL python -m pytest -q -c pytest-app.ini tests_app` (about 12 minutes) once per merge batch, not only named DB files; 'DB test, not run here' is never written about a file without checking that it skips.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "prepush --full selects tests_app files by change (select_app_tests) and may not include every non-DB file; until a gate runs the whole non-DB tests_app set per batch, this class is unguarded. Candidate: a prepush step 'app_nodb_all'."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-189.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-11-04",
+   "where": "feature/adjustments GC-IC1",
+   "evidence": "71 + 1 failures across 10 files, all passing at 37824fb9"
+  }
+ ]
+}

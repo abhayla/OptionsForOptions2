@@ -1,7 +1,7 @@
-"""REQ-056 AC-10 (W-032, deferred #50): Close Partial Strategy respects the broker's freeze limit.
+"""REQ-056 AC-10 (W-032, deferred #50): Exit Partial Strategy respects the broker's freeze limit.
 
 Spec basis: REQ-056 AC-10 "The execution engine respects Zerodha's extra rules for API orders: market protection on API
-market orders and order rate limits (T1 #66, Q28)"; REQ-058 AC-2 (Close Partial Strategy is a user choice), AC-3
+market orders and order rate limits (T1 #66, Q28)"; REQ-058 AC-2 (Exit Partial Strategy is a user choice), AC-3
 "Successfully executed legs are never unwound automatically". Exit order: partial.py orchestrator default OD-e "close
 orders are priced at the broker's LTP; a missing LTP prepares nothing. Buy-backs of shorts go first." Freeze slicing
 and lot rounding are sequence.py's (W-028): "a freeze quantity that is not a whole number of lots is rounded DOWN to

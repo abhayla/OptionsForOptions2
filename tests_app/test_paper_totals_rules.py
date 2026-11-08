@@ -10,6 +10,11 @@ import pathlib
 import sys
 from decimal import Decimal
 
+from ofo.settings import calc as _fq_calc
+from ofo.settings import defaults as _fq_defaults
+
+_FQ = _fq_calc.forward_quality(_fq_defaults())
+
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tests"))
 
@@ -28,7 +33,7 @@ def _snapshot():
     provider.subscribe(all_instrument_ids(items))
     provider.drain_subscription_changes()
     last = replay(provider, clock)
-    return read_snapshot(provider, "NIFTY", IDS, last, D("0.065"), None)
+    return read_snapshot(provider, "NIFTY", IDS, last, D("0.065"), None, quality=_FQ)
 
 
 def _open(snap, key: str, qty: int) -> paper_decay.OpenContract:

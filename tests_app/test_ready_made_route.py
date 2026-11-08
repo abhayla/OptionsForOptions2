@@ -22,7 +22,7 @@ T0 = datetime.datetime(2026, 10, 22, 10, 0, 0, tzinfo=IST)
 NEAR, NEXT = datetime.date(2026, 10, 27), datetime.date(2026, 11, 3)
 GRID = [Decimal(22000 + 50 * i) for i in range(31)]  # 22000 .. 23500
 NIFTY_ID = "NSE_INDEX:256265"
-LABEL = "Strikes placed by a fixed rule - change them"
+LABEL = "Strikes placed by a fixed rule — change them"
 LOAD, PICK = "/api/strategies/load-template", "/api/strategies/quick-pick"
 HTTP_OK, HTTP_CONFLICT, HTTP_UNPROCESSABLE, HTTP_UNAVAILABLE = 200, 409, 422, 503
 HELD_SENTENCE = "Ready-made shapes and quick picks are not available yet."
@@ -160,7 +160,87 @@ def test_ac6_an_expiry_the_stored_list_does_not_hold_is_refused(monkeypatch, tmp
 
 
 def test_ac4_futures_templates_are_refused_not_half_loaded(monkeypatch, tmp_path):
-    """The stored option list has no future for a covered call: the whole load is refused (strike-not-listed)."""
-    client, _ = _client(monkeypatch, tmp_path, ctx=_ctx())
+    """No future listed for a covered call: the whole load is refused, naming the future (#583 I-1)."""
+    client, _ = _fut_client(monkeypatch, tmp_path, [])
     r = client.post(LOAD, json={"underlying": "NIFTY", "template_id": "covered_call", "expiry": NEAR.isoformat()})
     assert r.status_code == HTTP_UNPROCESSABLE and "legs" not in r.text
+
+
+# ---- #583 I-1 (RD-090): a ready-made shape with a futures leg loads the listed future ----
+FUT_NEAR, FUT_NEXT = datetime.date(2026, 10, 27), datetime.date(2026, 11, 24)
+
+
+def _fut(token, expiry):
+    return PickableContract(token, f"NSE_FO:{token}", "NSE_FO", token, "FUT", expiry, None, 75,
+                            f"NIFTY{expiry:%y%b}FUT")
+
+
+class FuturesFake:
+    """The stored futures reader seam (ofo_app.routes.leg_picker.get_futures_reader)."""
+
+    def __init__(self, futures, *, unreadable=False) -> None:
+        self.futures, self.unreadable, self.calls = tuple(futures), unreadable, 0
+
+    async def __call__(self, underlying):
+        from ofo_app.routes.leg_picker import FuturesCatalogue  # noqa: PLC0415
+
+        self.calls += 1
+        return FuturesCatalogue(option_expiries=(NEAR, NEXT), futures=self.futures, unreadable=self.unreadable)
+
+
+def _fut_client(monkeypatch, tmp_path, futures, *, unreadable=False):
+    from ofo_app.routes import leg_picker  # noqa: PLC0415
+
+    client, _reader = _client(monkeypatch, tmp_path, ctx=_ctx())
+    fake = FuturesFake(futures, unreadable=unreadable)
+    client.app.dependency_overrides[leg_picker.get_futures_reader] = lambda: fake
+    return client, fake
+
+
+@pytest.mark.parametrize(("template", "action"), [("buy_future", "BUY"), ("sell_future", "SELL")])
+def test_i1_futures_shapes_load_the_listed_future(monkeypatch, tmp_path, template, action):
+    """Core / I-1: buy_future / sell_future answer 200 with the FUT leg = the nearest listed future expiring on or
+    after the option expiry (NEAR 10-27 -> the 10-27 future, not the 11-24 one)."""
+    client, _ = _fut_client(monkeypatch, tmp_path, [_fut(61999, FUT_NEXT), _fut(61471, FUT_NEAR)])
+    r = client.post(LOAD, json={"underlying": "NIFTY", "template_id": template, "expiry": NEAR.isoformat()})
+    assert r.status_code == HTTP_OK, r.text
+    (leg,) = r.json()["legs"]
+    assert (leg["action"], leg["instrument"], leg["strike"]) == (action, "FUT", None)
+    assert leg["instrument_id"] == "NSE_FO:61471" and leg["expiry"] == FUT_NEAR.isoformat() and leg["label"] == LABEL
+
+
+def test_i1_covered_call_loads_its_future_and_its_call(monkeypatch, tmp_path):
+    client, _ = _fut_client(monkeypatch, tmp_path, [_fut(61471, FUT_NEAR)])
+    r = client.post(LOAD, json={"underlying": "NIFTY", "template_id": "covered_call", "expiry": NEAR.isoformat()})
+    assert r.status_code == HTTP_OK, r.text
+    kinds = sorted(leg["instrument"] for leg in r.json()["legs"])
+    assert kinds == ["CE", "FUT"]
+    assert next(leg for leg in r.json()["legs"] if leg["instrument"] == "FUT")["instrument_id"] == "NSE_FO:61471"
+
+
+def test_i1_the_future_is_the_nearest_on_or_after_the_chosen_expiry(monkeypatch, tmp_path):
+    """NEXT 11-03 -> the 11-24 future (the 10-27 one has expired by then)."""
+    client, _ = _fut_client(monkeypatch, tmp_path, [_fut(61471, FUT_NEAR), _fut(61999, FUT_NEXT)])
+    r = client.post(LOAD, json={"underlying": "NIFTY", "template_id": "buy_future", "expiry": NEXT.isoformat()})
+    assert r.status_code == HTTP_OK and r.json()["legs"][0]["instrument_id"] == "NSE_FO:61999", r.text
+
+
+@pytest.mark.parametrize("futures", [[], [_fut(61471, FUT_NEAR)]])
+def test_i1_no_listed_future_is_refused_naming_the_future(monkeypatch, tmp_path, futures):
+    """Answer states: none listed / only an earlier one listed -> 422 naming the future, never a strike; no legs."""
+    client, _ = _fut_client(monkeypatch, tmp_path, futures)
+    r = client.post(LOAD, json={"underlying": "NIFTY", "template_id": "buy_future", "expiry": NEXT.isoformat()})
+    assert r.status_code == HTTP_UNPROCESSABLE and "future" in r.text and "strike" not in r.text
+    assert "legs" not in r.text
+
+
+def test_i1_an_unreadable_futures_catalogue_is_refused_not_guessed(monkeypatch, tmp_path):
+    client, _ = _fut_client(monkeypatch, tmp_path, [_fut(1, FUT_NEAR)], unreadable=True)
+    r = client.post(LOAD, json={"underlying": "NIFTY", "template_id": "buy_future", "expiry": NEAR.isoformat()})
+    assert r.status_code == HTTP_UNPROCESSABLE and "legs" not in r.text
+
+
+def test_i1_an_option_only_shape_never_reads_the_futures(monkeypatch, tmp_path):
+    client, fake = _fut_client(monkeypatch, tmp_path, [_fut(61471, FUT_NEAR)])
+    r = client.post(LOAD, json={"underlying": "NIFTY", "template_id": "bull_call_spread", "expiry": NEAR.isoformat()})
+    assert r.status_code == HTTP_OK and fake.calls == 0

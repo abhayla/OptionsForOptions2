@@ -54,7 +54,12 @@ PINNED_SLOT_TYPES = frozenset({
         # W-117 (Learn): only a text the loaded strategy catalogue holds (name/description). The W-117 verifier
         # attacked it on 2026-10-19 (forged, empty, 1M-char, lookalike, NFD, str subclass, bytes: all refused);
         # per-field tightening is #435.
-        "TemplateText")),
+        "TemplateText",
+        # GC-SET (REQ-167, ADR-221; reviewed at the GC-SET close gate 2026-11-01): ApproachLabel is closed to the
+        # approach ids the app builds (ADJUSTMENT_APPROACH_LABEL_TEXT); RegistryText only takes a group / label /
+        # what-it-changes text the code-reviewed settings registry holds, re-checked against the wording rules;
+        # SourceUrl is one http(s) token of URL characters (no space, so no sentence), at most 300 long.
+        "ApproachLabel", "RegistryText", "SourceUrl")),
     *(f"ofo.errors.gate_slots.{n}" for n in (
         "LegRef", "LegContract", "Date", "Strikes", "Rupees", "WorstCase", "VersionStateName", "VersionStates",
         "DataInputName", "DataHealthState", "ExecutionStatusName", "Symbol", "Clock", "ContractSymbol", "RiskRows",
@@ -63,7 +68,15 @@ PINNED_SLOT_TYPES = frozenset({
         "DisplayRupees",
         # W-158 (row 30, REQ-078 AC-2): only family_plural labels the loaded catalogue holds; the row 30 Opus check's
         # mutant "slot accepts unknown labels" was killed (2026-10-25)
-        "ShapeFamilies")),
+        "ShapeFamilies",
+        # GC-ADJ2 (REQ-158..162, reviewed at the GC-ADJ2 close 2026-10-31): every one validates fail-closed by exact
+        # str type. PlaybookName / PlaybookTriggerLabel are the user's own words (trimmed, bounded, no double quote,
+        # user_text so the wording scan masks only that span); PlaybookUnit and PlaybookField are fullmatch patterns;
+        # PlaybookTypeName is closed to the twelve shown type names. None carries a number for maths (ADR-008).
+        "PlaybookName", "PlaybookTriggerLabel", "PlaybookUnit", "PlaybookTypeName", "PlaybookField",
+        # GC-SET (clock trigger value, reviewed at the GC-SET close gate 2026-11-01): exact str, fullmatch HH:MM
+        # from 00:00 to 23:59
+        "ClockTime")),
     *(f"ofo.errors.slots.{n}" for n in (
         "Money", "PnLMoney", "Int", "Count", "Time", "Instrument", "Code", "Underlying", "ExternalText")),
 })

@@ -9,9 +9,11 @@
      section opens its menu after 150 ms; touch and pen never hover-open. -->
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import Icon from '@/components/common/Icon.vue'
-import { dropAlerts, paperAlerts, readPaperAlerts, takeAlerts } from '@/lib/paperAlerts'
+import { useToast } from '@/composables/useToast'
+import { compareUrl } from '@/lib/adjustDrawer'
+import { bellCount, dropAlerts, openRecords, readOpportunities, readPaperAlerts, takeAlerts, takeOpportunities } from '@/lib/paperAlerts'
 import { usePaperRefresh } from '@/lib/usePaperRefresh'
 import { ACCOUNT_ITEMS, ACCOUNT_LABEL, ITEM_DESCRIPTIONS, MEGA_MENUS, SECTIONS } from '@/router/nav'
 
@@ -31,10 +33,26 @@ const ITEM_ICONS = {
 }
 
 const route = useRoute()
-// GC-TP step 7b: the bell's count is the server's unread number, re-read on the paper refresh tick (no timer of its own)
+const router = useRouter()
+const { showToast } = useToast()
+const total = computed(() => bellCount())
+// IC e2e B4: a new OPEN adjustment record shows one toast; clicking it opens the strategy's compare (suggestion drawer)
+function announce(fresh) {
+  if (!fresh.length) return
+  const first = fresh[0]
+  const ids = openRecords.list.filter((r) => r.strategy_id === first.strategy_id).map((r) => r.id)
+  showToast('New adjustment opportunity. Open it?', 'info', { onClick: () => router.push(compareUrl(first.strategy_id, [], ids)) })
+}
+// GC-TP step 7b: the bell's count is the server's unread number, re-read on the paper refresh tick (no timer of its own);
+// IC e2e B4: the open adjustment records are read on that same tick; a failed read of them leaves the paper count alone
 const { refresh: refreshAlerts } = usePaperRefresh({
   key: () => 'alerts',
-  read: readPaperAlerts,
+  read: async () => {
+    const [a, o] = await Promise.allSettled([readPaperAlerts(), readOpportunities()])
+    announce(takeOpportunities(o.status === 'fulfilled' ? o.value : null))
+    if (a.status === 'rejected') throw a.reason
+    return a.value
+  },
   onData: takeAlerts,
   onError: dropAlerts,
 })
@@ -274,16 +292,16 @@ onBeforeUnmount(() => {
         <router-link
           to="/alerts/active"
           class="relative flex h-9 w-9 items-center justify-center rounded-full text-ink-muted hover:bg-surface-muted hover:text-ink"
-          :aria-label="paperAlerts.unread > 0 ? `Alerts, ${paperAlerts.unread} unread` : 'Alerts'"
+          :aria-label="total > 0 ? `Alerts, ${total} unread` : 'Alerts'"
           data-testid="alerts-bell"
         >
           <!-- UI-002 / GC-TP step 7b: the badge is the server's unread paper-alert count (GET /paper/alerts), hidden at 0. -->
           <Icon name="bell" />
           <span
-            v-if="paperAlerts.unread > 0"
+            v-if="total > 0"
             class="absolute -right-0.5 -top-0.5 min-w-4 rounded-full bg-loss px-1 text-center text-[10px] font-semibold leading-4 text-white"
             data-testid="alerts-bell-count"
-          >{{ paperAlerts.unread }}</span>
+          >{{ total }}</span>
         </router-link>
         <div ref="accountWrap" class="relative">
           <button

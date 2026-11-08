@@ -108,8 +108,8 @@ def test_core_a_contract_not_in_the_list_is_not_tradable_and_the_gate_says_unava
     result = _gate(_leg("23550"), registry)
     assert [f.code for f in result.failures] == [CheckCode.CONTRACT_NOT_ELIGIBLE]
     assert result.failures[0].reason == (
-        "Leg 1 (BUY NIFTY 23,550 CE, expiry 19 Oct 2026) is currently unavailable on Zerodha. Zerodha isn't accepting "
-        "fresh orders for this contract right now. Strikes you could consider instead: 23,600.00 or 23,650.00. Your "
+        "Leg 1 (BUY NIFTY 23,550 CE, expiry 19 Oct 2026) is currently unavailable on Zerodha. Zerodha is not accepting "
+        "new orders for this contract right now. Strikes you could consider instead: 23,600.00 or 23,650.00. Your "
         "strategy has not been changed.")
 
 

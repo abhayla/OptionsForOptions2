@@ -1,6 +1,6 @@
-<!-- GC-TP R-19a (REQ-144 AC-1..AC-5; Sensibull study screen 012 / 123, layout only): the Projected profit / Projected loss
+<!-- GC-TP R-19a (REQ-144 AC-1..AC-5; Sensibull study screen 012 / 123, layout only): the Profit at target / Loss at target
      badge drawn on the payoff graph. Every word and number is the reply's own text (target.badge, made on the server,
-     ADR-008): the label with its amount, the percent of margin needed or the reason it is absent, or "Projected figure not
+     ADR-008): the label with its amount, the percent of margin needed or the reason it is absent, or "Estimate not
      available" with its reason. After a failed request (`stale`) the old amount is not shown: a dash and the reply's
      stale_text (ADR-210 (7), server-made) stand in its place, never 0 or the old value. -->
 <script setup>

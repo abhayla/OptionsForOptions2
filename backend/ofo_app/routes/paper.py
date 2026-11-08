@@ -22,20 +22,22 @@ The user comes from the session (``current_user_ref``), never from the request.
 """
 from __future__ import annotations
 
-import asyncio
-import contextlib
 import datetime
-from collections.abc import Sequence
+import logging
+from collections.abc import Mapping, Sequence
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Annotated, Any, Literal, get_args
 
 from fastapi import APIRouter, Depends
+from ofo.adjustment.approaches import EntryFacts, entry_facts_of
 from ofo.charges import ChargeRates
 from ofo.charges.paper_charges import PaperFill, charges_sum, paper_charges
 from ofo.charges.round_trip import ChargesNotComputable
 from ofo.engine.book_totals import book_totals
 from ofo.engine.extremes import UNLIMITED, ContractTerms, ExtremesReason, book_breakevens, book_extremes
+from ofo.engine.extremes_charges import open_round_trip_charges, with_charges
 from ofo.engine.legs import Instrument
+from ofo.errors import render
 from ofo.errors.explanations import render_explanation, restore_explanation
 from ofo.instruments.models import FUTURE_TYPE
 from ofo.limits import INTEGER_MAX
@@ -49,14 +51,15 @@ from ofo.strategy.definition import describe_contract
 from ofo.table.model import display_number
 from ofo.tracking import paper, paper_decay, paper_greeks
 from ofo.tracking.orderbook import NetPosition, PaperOrder, is_typed_price, net_positions
+from ofo.tracking.paper_alert import restore_alert_body
 from pydantic import BaseModel, ConfigDict, Field
 
-from ofo_app import paper_monitor, paper_store, paper_trigger_store, tracked_contracts
+from ofo_app import paper_monitor, paper_store, paper_trigger_store, playbook_store, tracked_contracts
 from ofo_app import strategy_store as store
 from ofo_app.api_models import ApiModel, CatalogueText, Money
 from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure
-from ofo_app.live_push import POLL_SECONDS, LiveFeed, no_listener
+from ofo_app.live_push import POLL_SECONDS, LiveFeed, hold_and_read
 from ofo_app.paper_reasons import breakevens_reason_text, extremes_reason_text, greeks_reason_text, reason_text
 from ofo_app.routes.broker import current_user_ref
 from ofo_app.routes.outcome import (
@@ -69,9 +72,15 @@ from ofo_app.routes.outcome import (
 )
 from ofo_app.routes.planned_entry import get_live_feed
 from ofo_app.routes.strategies import StrategyRefused, refused_answer
+from ofo_app.scenario_guard import guard_paper_order
 from ofo_app.underlying import Underlying
 
+_LOG = logging.getLogger(__name__)
+
 router = APIRouter(route_class=ClosedRoute)
+#: REQ-163 AC-1: a basket naming a suggestion record it may not link (the opportunities routes' own answers)
+_LINK_REFUSAL = {playbook_store.SUGGESTION_NOT_FOUND: Failure.NOT_FOUND,
+                 playbook_store.SUGGESTION_NOT_OPEN: Failure.CONFLICT}
 
 #: The order kinds a request may carry; settle and stop are written by the server only (ADR-207).
 REQUEST_KINDS = ("open", "add", "exit")
@@ -96,6 +105,12 @@ class PaperOrderIn(BaseModel):
 class PaperOrdersIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     orders: list[PaperOrderIn] = Field(min_length=1, max_length=64)
+    #: REQ-163 AC-1: the acted-on suggestion records this basket answers (Compare -> Open in builder); each must be
+    #: of this strategy and user, acted on and not yet linked, or the whole basket is refused (nothing stored)
+    suggestion_ids: list[Annotated[int, Field(gt=0, le=INTEGER_MAX)]] = Field(default_factory=list, max_length=16)
+    #: REQ-112 (IC e2e 11): how many legs the prepared basket held; with it the linked records read completed (all
+    #: placed) or partly completed (some); without it they stay acted on
+    basket_legs: int | None = Field(default=None, gt=0, le=64)
 
 
 class PaperNetOut(ApiModel):
@@ -181,6 +196,9 @@ class PaperExtremes(ApiModel):
     max_loss_text: CatalogueText | None
     extremes_reason: FigureReason | None
     extremes_reason_text: CatalogueText | None = None
+    # F-94 (ADR-082 (2)): the round-trip charges inside Max Profit / Max Loss, and the sentence that says so
+    extremes_charges: Money | None = None
+    extremes_charges_text: CatalogueText | None = None
 
 
 class PaperBreakevens(ApiModel):
@@ -306,27 +324,19 @@ async def _hold_until_ready(feed: LiveFeed, ctx: MarketContext, underlying: str,
     index_id = getattr(provider, "index_id", lambda _u: None)(underlying)
     wanted = [*ids, *([index_id] if index_id else []),
               *forward_strike_ids(provider.instrument_master(), underlying, ids, live_spot)]
-    try:
-        handle = feed.fanout.subscribe(no_listener, list(dict.fromkeys(wanted)), max_queue=1)
-    except KeyError:  # a contract the provider has no token for: nothing was subscribed, the answer stands
-        return snapshot
-    try:
-        loop = asyncio.get_running_loop()
-        deadline = loop.time() + FORWARD_WAIT_S
-        while True:
-            await asyncio.sleep(POLL_SECONDS)
-            snapshot = read_snapshot(provider, underlying, ids, ctx.clock(), ctx.rate, feed_scope(ctx))
-            if _read_ready(snapshot, ids) or not provider.status().connected or loop.time() >= deadline:
-                return snapshot
-    finally:
-        with contextlib.suppress(Exception):
-            feed.fanout.unsubscribe(handle)
+    held = await hold_and_read(
+        feed.fanout, wanted,
+        lambda: read_snapshot(provider, underlying, ids, ctx.clock(), ctx.rate, feed_scope(ctx),
+                              quality=ctx.forward_quality),
+        lambda snap: _read_ready(snap, ids), lambda: provider.status().connected, FORWARD_WAIT_S, POLL_SECONDS)
+    return snapshot if held is None else held  # None: a contract the provider has no token for, the answer stands
 
 
 async def _snapshot(ctx: MarketContext, feed: LiveFeed | None, underlying: str, ids: list[str]):
     """One market read (the tracking routes' rule): with a live feed, a read that is not ready (a contract unpriced, or
     no IV inputs) holds what it needs in one hold until it is, or the wait passes (GC-LIVE F-1, F-3)."""
-    snapshot = read_snapshot(ctx.provider, underlying, ids, ctx.clock(), ctx.rate, feed_scope(ctx))
+    snapshot = read_snapshot(ctx.provider, underlying, ids, ctx.clock(), ctx.rate, feed_scope(ctx),
+                             quality=ctx.forward_quality)
     if feed is not None and ids and not _read_ready(snapshot, ids):
         snapshot = await _hold_until_ready(feed, ctx, underlying, ids, snapshot)
     return snapshot
@@ -439,19 +449,27 @@ def _extreme(value: Any) -> tuple[Decimal | str | None, Any]:
 
 
 def _extremes(orders: Sequence[paper_store.StoredOrder], found: dict[int, tracked_contracts.TrackedContract],
-              prices: dict[int, paper.Price]) -> dict:
+              prices: dict[int, paper.Price], underlying: str = "", rates: ChargeRates | None = None) -> dict:
     """Profit left / Loss left and the original Max Profit / Max Loss from the one engine (ofo.engine.extremes)."""
     live = {str(cid): p.price for cid, p in prices.items() if paper.is_live(p) and p.price is not None}
     terms = {}
     for cid in {o.order.contract_id for o in orders}:
         _, instrument, strike, expiry = _identity(found[cid])
         terms[str(cid)] = ContractTerms(instrument, strike, expiry)
-    got = book_extremes(net_positions(_paper(orders), live), terms, live)
+    view = net_positions(_paper(orders), live)
+    got = book_extremes(view, terms, live)
+    charges = open_round_trip_charges(view, terms, underlying, rates)  # F-94: one charges function, as the builder
+    got = with_charges(got, charges)
     figures = {"profit_left": got.profit_left, "loss_left": got.loss_left, "max_profit": got.max_profit,
                "max_loss": got.max_loss}
     out: dict[str, Any] = {"extremes_reason": got.reason, "extremes_reason_text": extremes_reason_text(got.reason)}
     for name, value in figures.items():
         out[name], out[f"{name}_text"] = _extreme(value)
+    is_open = got.max_profit is not None and any(p.net_quantity for p in view.positions)
+    out["extremes_charges"] = charges if is_open else None
+    out["extremes_charges_text"] = (
+        None if not is_open else render_explanation("paper_extremes_before_charges") if charges is None else
+        render_explanation("paper_extremes_with_charges", charges=charges))
     return out
 
 
@@ -511,6 +529,7 @@ def _spot(snapshot: Any) -> Decimal | None:
 _ABSENT = {"profit_left": None, "loss_left": None, "max_profit": None, "max_loss": None, "profit_left_text": None,
            "loss_left_text": None, "max_profit_text": None, "max_loss_text": None, "extremes_reason": EXITED,
            "extremes_reason_text": extremes_reason_text(EXITED),
+           "extremes_charges": None, "extremes_charges_text": None,
            "breakevens": None, "breakevens_display": None, "breakevens_reason": EXITED,
            "breakevens_reason_text": breakevens_reason_text(EXITED), "greeks": None,
            "greeks_reason": EXITED, "greeks_reason_text": greeks_reason_text(EXITED)}
@@ -519,14 +538,14 @@ _ABSENT = {"profit_left": None, "loss_left": None, "max_profit": None, "max_loss
 def _summary(orders: Sequence[paper_store.StoredOrder],  # noqa: PLR0913
              found: dict[int, tracked_contracts.TrackedContract],
              prices: dict[int, paper.Price], figures: dict, snapshot: Any, underlying: str, *,
-             exited_absent: bool) -> dict:
+             exited_absent: bool, rates: ChargeRates | None = None) -> dict:
     """Max Profit / Max Loss (and Profit / Loss left), Breakeven and net Greeks of one book: ONE function behind both
     the list and the single-strategy reply, so the two can never differ. ``exited_absent`` (the list): a fully exited
     strategy has every one of them absent with the reason ``exited`` (never 0)."""
     if exited_absent and figures["state"] == "EXITED":
         return dict(_ABSENT)
     spot = _spot(snapshot) if figures["state"] == "LIVE" else None  # no percent from a spot that is not live
-    return (_extremes(orders, found, prices) | _breakevens(orders, found, spot)
+    return (_extremes(orders, found, prices, underlying, rates) | _breakevens(orders, found, spot)
             | _greeks(figures, found, snapshot, underlying))
 
 
@@ -578,7 +597,7 @@ async def _book(db: Any, stored: Any, orders: Sequence[paper_store.StoredOrder],
         snapshot = await _snapshot(ctx, feed, underlying, keys)  # type: ignore[arg-type]
     prices = _prices(open_ids, found, snapshot)
     base = _figures(orders, found, prices, connected)
-    figures = (base | _summary(orders, found, prices, base, snapshot, underlying, exited_absent=False)
+    figures = (base | _summary(orders, found, prices, base, snapshot, underlying, exited_absent=False, rates=rates)
                | _charges(orders, found, underlying, rates))
     return PaperBookOut.model_validate(figures | {
         "strategy_id": stored.id, "name": sf.shown_name(stored.name), "underlying": underlying,
@@ -627,7 +646,7 @@ async def list_paper_strategies(db: Annotated[Any, Depends(get_db)],  # noqa: PL
         snapshot = snapshots.get(b.underlying)
         prices = _prices(_open_ids(b.orders), found, snapshot)
         figures = _figures(b.orders, found, prices, connected)
-        summary = _summary(b.orders, found, prices, figures, snapshot, b.underlying, exited_absent=True)
+        summary = _summary(b.orders, found, prices, figures, snapshot, b.underlying, exited_absent=True, rates=rates)
         decays.append(_decay(figures, found, snapshot, b.underlying))
         held = sum(1 for p in figures["positions"] if p["net_quantity"] != 0)
         figures |= _charges(b.orders, found, b.underlying, rates) | summary
@@ -687,7 +706,25 @@ def _check_price(price: Decimal) -> None:
         raise StrategyRefused("paper_price_invalid")
 
 
-@router.post("/paper/strategies/{strategy_id}/orders", status_code=201, response_model=PaperBookOut)
+def entry_facts(ctx: MarketContext | None, underlying: str, orders: Sequence[Any],
+                state: Mapping[int, tracked_contracts.TrackedContract]) -> EntryFacts | None:
+    """ADR-243: the entry facts this fill would store if it is the strategy's first (``paper_store.place`` decides):
+    the index's live spot now and each side's sold strike among the opening orders (``entry_facts_of``). Answer
+    states: not connected, no quote, or a quote that is not a positive price -> None (nothing stored; "Entry distance"
+    then refuses this strategy's rolls by name, never a guessed spot)."""
+    if not _connected(ctx):
+        return None
+    quote = ctx.provider.underlying_quote(underlying)  # type: ignore[union-attr] - connected: a provider
+    ltp = None if quote is None else quote.ltp
+    if not isinstance(ltp, Decimal) or ltp <= 0:
+        return None
+    shorts = [(c.instrument_type, c.strike) for o in orders if o.side == "SELL" and o.kind != "exit"
+              for c in (state[o.contract_id].stored.listed.contract,)]  # type: ignore[union-attr] - checked above
+    return entry_facts_of(ltp, shorts)
+
+
+@router.post("/paper/strategies/{strategy_id}/orders", status_code=201, response_model=PaperBookOut,
+             dependencies=[Depends(guard_paper_order)])  # IC e2e 5: scenario mode = own scenario only
 async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR0913 - FastAPI dependencies
                              db: Annotated[Any, Depends(get_db)], user_ref: Annotated[str, Depends(current_user_ref)],
                              ctx: Annotated[MarketContext | None, Depends(get_market_context)],
@@ -705,14 +742,22 @@ async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR
            for o in body.orders):
         raise StrategyRefused("paper_contract_not_tradable")
     placed_at = now()
+    entry = entry_facts(ctx, stored.saved.definition.underlying, body.orders, state)
     try:
-        await paper_store.place(db, user_ref, strategy_id, [
-            paper_store.NewOrder(o.contract_id, o.side, o.quantity, o.price, o.kind, placed_at) for o in body.orders])
+        book = await paper_store.place(db, user_ref, strategy_id, [
+            paper_store.NewOrder(o.contract_id, o.side, o.quantity, o.price, o.kind, placed_at) for o in body.orders],
+            entry=entry)  # ADR-243: stored only if this is the strategy's first fill
+        new_ids = [o.id for o in book][-len(body.orders):]  # place inserts in order under the strategy's row lock
+        for suggestion_id in dict.fromkeys(body.suggestion_ids):  # REQ-163 AC-1: same transaction, or nothing
+            await playbook_store.link_orders(db, user_ref, strategy_id, suggestion_id, new_ids,
+                                           body.basket_legs)
         await db.commit()
     except store.StrategyStoreError as exc:
         await db.rollback()
         if exc.code == paper_store.EXIT_EXCEEDS_OPEN:
             raise StrategyRefused("paper_exit_exceeds_open") from None
+        if exc.code in _LINK_REFUSAL:
+            raise StrategyRefused(exc.code, _LINK_REFUSAL[exc.code], message=render(exc.code)) from None
         raise refused_answer(exc, 409) from None
     except Exception:
         await db.rollback()
@@ -822,7 +867,8 @@ def _new_triggers(body: TriggerIn, underlying: str, open_ids: Sequence[int]) -> 
     return new
 
 
-@router.post("/paper/strategies/{strategy_id}/triggers", status_code=201, response_model=TriggersOut)
+@router.post("/paper/strategies/{strategy_id}/triggers", status_code=201, response_model=TriggersOut,
+             dependencies=[Depends(guard_paper_order)])  # IC e2e 5: scenario mode = own scenario only
 async def add_paper_triggers(strategy_id: int, body: TriggerIn, db: Annotated[Any, Depends(get_db)],
                              user_ref: Annotated[str, Depends(current_user_ref)]) -> TriggersOut:
     stored = await _load_strategy(db, user_ref, strategy_id)
@@ -841,7 +887,8 @@ async def add_paper_triggers(strategy_id: int, body: TriggerIn, db: Annotated[An
     return await _triggers_out(db, strategy_id)
 
 
-@router.delete("/paper/strategies/{strategy_id}/triggers/{trigger_id}", response_model=TriggersOut)
+@router.delete("/paper/strategies/{strategy_id}/triggers/{trigger_id}", response_model=TriggersOut,
+             dependencies=[Depends(guard_paper_order)])  # IC e2e 5: scenario mode = own scenario only
 async def cancel_paper_trigger(strategy_id: int, trigger_id: int, db: Annotated[Any, Depends(get_db)],
                                user_ref: Annotated[str, Depends(current_user_ref)]) -> TriggersOut:
     await _load_strategy(db, user_ref, strategy_id)
@@ -862,11 +909,18 @@ async def cancel_paper_trigger(strategy_id: int, trigger_id: int, db: Annotated[
 
 async def _alerts_out(db: Any, user_ref: str) -> AlertsOut:
     rows, unread = await paper_trigger_store.alerts(db, user_ref)
-    return AlertsOut.model_validate({"unread": unread, "alerts": [{
-        "id": a.id, "strategy_id": a.strategy_id, "strategy_name": sf.shown_name(a.strategy_name),
-        "trigger_id": a.trigger_id, "created_at": a.created_at,
-        "title": restore_explanation("paper_alert_title", a.title),
-        "body": restore_explanation("paper_alert_body", a.body), "read": a.read_at is not None} for a in rows]})
+    shown: list[dict[str, Any]] = []
+    for a in rows:
+        try:  # one unreadable row is left out of the list (and logged), never a 500 for every alert
+            title = restore_explanation("paper_alert_title", a.title)
+            body = restore_alert_body(a.body)
+        except ValueError:
+            _LOG.warning("paper alert %s left out: stored text fits no alert template", a.id)
+            continue
+        shown.append({"id": a.id, "strategy_id": a.strategy_id, "strategy_name": sf.shown_name(a.strategy_name),
+                      "trigger_id": a.trigger_id, "created_at": a.created_at, "title": title, "body": body,
+                      "read": a.read_at is not None})
+    return AlertsOut.model_validate({"unread": unread, "alerts": shown})
 
 
 @router.get("/paper/alerts", response_model=AlertsOut)
@@ -881,3 +935,14 @@ async def read_paper_alerts(db: Annotated[Any, Depends(get_db)],
     await paper_trigger_store.mark_all_read(db, user_ref)
     await db.commit()
     return await _alerts_out(db, user_ref)
+
+
+# GC-ADJ2 step 6: the book's own readers under public names for the adjustment-history route (one reader, no copy;
+# no behaviour change)
+identity = _identity
+open_ids = _open_ids
+connected = _connected
+market_snapshot = _snapshot
+open_prices = _prices
+exact = _exact
+signed = _signed

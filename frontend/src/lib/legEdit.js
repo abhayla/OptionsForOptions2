@@ -9,7 +9,8 @@ import { listReasonText } from '@/lib/legPicker'
 import { istTime } from '@/lib/displayFormat'
 
 export const MULTIPLIER_MIN = 1
-export const MULTIPLIER_MAX = 50
+/** REQ-167 AC-5: the highest multiplier is the served setting; the browser keeps no copy of it. */
+export const MULTIPLIER_MAX_KEY = 'limits.multiplier_max'
 /** REQ-076 AC-9: the name shown when the server matched no shape. */
 export const CUSTOM_STRATEGY = 'Custom Strategy'
 /** REQ-076 AC-6: the label on an unticked leg. */
@@ -23,11 +24,13 @@ export const NO_LEGS_YET = 'No legs yet'
 /** REQ-135 AC-1: the Clear all legs question (N = the number of legs on the list) and how long Undo stays offered. */
 export const removeAllPrompt = (n) => `Remove all ${n} legs?`
 export const LEGS_CLEARED = 'All legs removed.'
-export const CLEAR_UNDO_MS = 10000
+/** REQ-167 AC-7: how long Undo stays after Clear all is the served setting (seconds); the browser keeps no copy of it. */
+export const CLEAR_UNDO_SECONDS_KEY = 'other.undo_clear_all_seconds'
 
 /** The multiplier is CHOSEN from this fixed list (REQ-076 AC-4), never parsed from text: the server still refuses any
  *  other value. A fixed list, so the page converts no text to a number (ADR-008). */
-export const MULTIPLIER_CHOICES = Object.freeze([...Array(MULTIPLIER_MAX + 1).keys()].slice(MULTIPLIER_MIN))
+export const multiplierChoices = (max) => Object.freeze(Number.isInteger(max) && max >= MULTIPLIER_MIN
+  ? [...Array(max + 1).keys()].slice(MULTIPLIER_MIN) : [])
 
 const CONTROL_FIELDS = {
   step: ['index', 'direction'],
@@ -41,6 +44,14 @@ const CONTROL_FIELDS = {
   hedge: ['direction'],
   read: [], // changes no leg: the server answers the current numbers, shape name and Hedge marks (REQ-076 AC-8)
 }
+
+/** The controls a click moves by ONE step relative to the legs shown (2026-11-06): while one is in flight, further clicks of
+ *  the same control (and leg) add up, and the newest request carries the total as `steps` from the last confirmed legs. */
+export const RELATIVE_CONTROLS = Object.freeze(['step', 'shift', 'width', 'hedge'])
+export const MAX_STEPS = 20 // the server's cap per request (EditIn.steps)
+
+/** The key two relative clicks share when they add up: the control and, for a strike step, the leg. */
+export const moveKey = (edit) => (edit.control === 'step' ? `step:${edit.index}` : edit.control)
 
 /** True for a leg the step control applies to: an option leg only (an allow-list: a futures or unknown leg has none). */
 export function canStep(leg) {
@@ -61,6 +72,8 @@ export function buildEditRequest(underlying, legs, edit, shiftTotal = null) {
   if (edit.control === 'price' && typeof edit.price !== 'string') return null // text, never a number (ADR-008)
   const body = { control: edit.control }
   for (const f of fields) body[f] = edit[f]
+  // 2026-11-06: N quick clicks of one relative control go as ONE request moving N listed strikes (the server steps them)
+  if (RELATIVE_CONTROLS.includes(edit.control) && Number.isInteger(edit.steps) && edit.steps > 1) body.steps = edit.steps
   return {
     underlying,
     edit: body,

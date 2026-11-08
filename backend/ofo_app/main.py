@@ -28,11 +28,19 @@ from ofo_app import (
     paper_settlement,
     pinned_clock,
     replay_mode,
+    scenario_mode,
 )
 from ofo_app.broker_config import BrokerConfig, load_broker_config
 from ofo_app.config import Settings, app_env
 from ofo_app.db import close_db, verify_pool_budget
 from ofo_app.routes import (
+    adjustment,
+    adjustment_check,
+    adjustment_history,
+    adjustment_opportunities,
+    adjustment_plan,
+    adjustment_preferences,
+    alert_style,
     broker,
     broker_capabilities,
     broker_status,
@@ -45,14 +53,20 @@ from ofo_app.routes import (
     indices,
     leg_edit,
     leg_picker,
+    level_watch,
     live,
+    monitoring_pause,
     outcome,
     paper,
     planned_entry,
+    playbooks,
     positions,
     ready_made,
+    scenario_frame,
+    settings,
     strategies,
     strategy_templates,
+    system_playbooks,
     tracking,
     zerodha_account,
 )
@@ -98,6 +112,18 @@ def _mount_routes(app: FastAPI, config: BrokerConfig) -> None:
     errors.add_socket_route(app, live.socket_route())  # W-065: the strategy live push, a door socket
     errors.add_socket_route(app, chain.socket_route())  # W-116: the read-only Option Chain push, a door socket
     app.include_router(chain.router)  # W-116: the chain's first paint and socket-down fallback
+    app.include_router(adjustment.router)  # W-196: adjustment approaches (REQ-155)
+    app.include_router(adjustment_plan.router)  # GC-ADJ2 4: the strategy plan sheet (REQ-161)
+    app.include_router(adjustment_check.router)  # GC-ADJ2 1C: the playbook check (REQ-158 AC-5)
+    app.include_router(adjustment_history.router)  # GC-ADJ2 6: history + totals (REQ-163)
+    app.include_router(adjustment_opportunities.router)  # GC-ADJ2 5: the opportunities inbox (REQ-162, REQ-112)
+    app.include_router(playbooks.router)  # GC-ADJ2 2: playbooks (REQ-158)
+    app.include_router(settings.router)  # GC-SET 2: the admin Settings page (REQ-167)
+    app.include_router(system_playbooks.router)  # REQ-169: the admin's system playbook versions
+    app.include_router(adjustment_preferences.router)  # REQ-168: per-user adjustment preferences
+    app.include_router(alert_style.router)  # GC-ALERT1 (REQ-170 Q-AD-2): a strategy's alert-style pin
+    app.include_router(monitoring_pause.router)  # GC-IC1 4a (A-38): pause adjustment checks
+    app.include_router(level_watch.router)  # GC-IC1 4c (A-37): watch an index level, alert through the gate
     app.include_router(leg_edit.router)  # W-148: one leg edit, answered by the engine
     app.include_router(leg_picker.router)  # W-147: the leg picker's strikes, futures and depth reads (REQ-080)
     errors.add_socket_route(app, indices.socket_route())  # W-114: the read-only index push, a door socket
@@ -117,6 +143,7 @@ def _mount_routes(app: FastAPI, config: BrokerConfig) -> None:
     app.include_router(positions.router)  # W-111: Positions read - own lots per strategy, outside lots apart, no money
     app.include_router(tracking.router)  # W-122: paper tracking of a saved strategy + Q253 condition 1
     app.include_router(paper.router)  # GC-TP 1b: the paper order book (net positions, orderbook, typed orders)
+    app.include_router(scenario_frame.router)  # IC e2e 2: dev/test scenario frame index (404 when the mode is off)
 
 
 def create_app(broker_config: BrokerConfig | None = None) -> FastAPI:
@@ -137,6 +164,8 @@ def create_app(broker_config: BrokerConfig | None = None) -> FastAPI:
     app.router.route_class = errors.ClosedRoute  # every route added on the app itself goes through the response door
     errors.install(app)
     errors.set_frontend_origin(config.frontend_origin)  # write-once (#159)
+    if scenario_mode.scenario_requested():  # first: scenario test data and the real Kite feed never run together
+        scenario_mode.require_no_live_market(live_market.live_requested())
     feed_mode.require_valid(app_env() or "", live_market.live_requested())  # REQ-113: an allow-list, before serving
     if live_market.live_requested():  # refused before anything is served when a test would reach the real Kite
         live_market.require_safe(app_env() or "",
@@ -144,6 +173,10 @@ def create_app(broker_config: BrokerConfig | None = None) -> FastAPI:
         Settings()  # type: ignore[call-arg]  # ADR-078: raises (the factory fails) on a test/unnamed database; the lifespan catch never sees it
     held_switches.require_valid_configuration()  # W-125: a held feature on without a reference refuses to start
     live.set_replay_feed(None)
+    scenario = None
+    if scenario_mode.scenario_requested():  # GC-ADJ1 1b dev/test only; refused elsewhere, before anything is served
+        scenario_mode.require_dev_or_test(app_env())
+        scenario = scenario_mode.current()  # also refuses a malformed or unknown scenario id
     if pinned_clock.pin_requested():  # #237 test-only; refused outside APP_ENV=test, before anything is served
         pinned_clock.require_test_env(app_env() or "")
         pinned_clock.pinned_today()  # also refuses a value that is not a plain date
@@ -160,4 +193,12 @@ def create_app(broker_config: BrokerConfig | None = None) -> FastAPI:
         # Execute + return answer from the recorded 2026-10-16 replies, no live session
         app.dependency_overrides.update(execute_replay.overrides())
     _mount_routes(app, config)
+    if scenario is not None:
+        unclassified = scenario_mode.unclassified_mutating_routes(app.routes)
+        if unclassified:  # fail closed: a new mutating route must be classified before scenario mode serves it
+            raise scenario_mode.ScenarioRefused(f"unclassified mutating routes in scenario mode: {unclassified}")
+        misguarded = scenario_mode.misguarded_order_routes(app.routes)
+        if misguarded:  # fail closed: an order route whose guard is not wired never serves in scenario mode
+            raise scenario_mode.ScenarioRefused(f"order routes without their scenario guard: {misguarded}")
+        app.dependency_overrides.update(scenario_mode.overrides(scenario))  # every seam a scenario serves
     return app

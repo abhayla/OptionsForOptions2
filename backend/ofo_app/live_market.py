@@ -24,6 +24,7 @@ import os
 from decimal import Decimal
 from typing import Awaitable, Callable, Optional  # noqa: UP035
 
+from ofo import settings
 from ofo.broker.kite_endpoints import KITE_WS_HOST
 from ofo.broker.rate_limit import READ_PERIOD_SECONDS, READ_POSITIONS
 from ofo.engine.executable_price import Depth
@@ -31,6 +32,8 @@ from ofo.instruments.models import ZERODHA, ListedContract
 from ofo.marketdata.fanout import FanOut
 from ofo.marketdata.feed_health import FEED_IDLE, FEED_WAITING, market_closed_for
 from ofo.marketdata.kite_provider import IST, KiteProvider
+from ofo.marketdata.quote_stamp import quote_time
+from ofo.marketdata.spot_source import SourceReading, SourceState
 from redis.exceptions import RedisError
 
 from ofo_app import feed_bus, feed_mode, kite_period_reads
@@ -45,7 +48,6 @@ from ofo_app.routes.outcome import MarketContext, server_now
 log = logging.getLogger("ofo_app.live_market")
 
 OWNER_REF = "owner"  # ADR-051 V1 single user; the same ref the W-058 login stores the session under
-LIVE_RATE = Decimal("0.065")  # the risk-free rate the replay uses too; a rates source is a later item
 REAL_KITE_WS = f"wss://{KITE_WS_HOST}"
 
 NOT_STARTED, NOT_CONNECTED, LIVE, SESSION_ENDED = "off", "not_connected", "live", "session_ended"
@@ -98,7 +100,10 @@ class LiveMarket:
                fingerprint: bytes | None = None) -> None:
         """Wires an already built provider + socket (the real start and the tests share this). ``fingerprint`` is
         ``token_fingerprint`` of the token the socket was built with (#296), None when unknown."""
-        self.feed = LiveFeed(MarketContext(provider, clock, LIVE_RATE, OWNER_REF), FanOut(provider))
+        # the registry default (ADR-222 (1): no rate typed in code); priced REST reads replace it with the setting in
+        # force per request (outcome.get_market_context); the paper monitor and sockets still read this default
+        self.feed = LiveFeed(MarketContext(provider, clock, settings.defaults()[settings.RISK_FREE_RATE], OWNER_REF),
+                             FanOut(provider))
         self._socket = socket
         self._fingerprint = fingerprint
         self.state = LIVE
@@ -450,3 +455,40 @@ async def pick_up_login(broker_config) -> None:
     if market is None or not live_requested():
         return
     await market.pick_up_login(broker_config)
+
+
+def _index_reading(reads: KiteReads, name: str) -> SourceReading:
+    """One REST index quote as the spot resolver's reading: every answer state named, never a made-up 0."""
+    try:
+        quote = reads.fetch_index_quote(name)
+    except KiteReadError as exc:
+        log.warning("REST index quote failed: %s", exc.code)
+        return SourceReading(SourceState.FAILED)
+    if quote is None:
+        return SourceReading(SourceState.NOT_FOUND)
+    price = quote.get("last_price")
+    if isinstance(price, bool) or not isinstance(price, (Decimal, int)):
+        return SourceReading(SourceState.EMPTY)
+    return SourceReading(SourceState.STATED, Decimal(price), quote_time(quote))
+
+
+async def index_spot(name: str, scenario_answer: tuple[int, str] | None = None) -> SourceReading:
+    """REQ-155 AC-5 (F-76): the index spot from Kite's REST quote (``KiteReads.fetch_index_quote``, the door's ``%20``
+    path) with the owner's session; no session -> ABSENT (not asked). ``scenario_answer`` (scenario mode only): the
+    scenario's (HTTP status, reply text) served to the SAME client as its transport, so it passes the same door."""
+    if scenario_answer is not None:
+        status, text = scenario_answer
+
+        def transport(method: str, url: str, headers: dict, body: object) -> tuple[int, str]:
+            return status, text
+        reads = KiteReads(api_key="scenario", access_token="scenario", transport=transport)  # noqa: S106
+    else:
+        owner = await owner_kite_reads()
+        if owner is None:
+            return SourceReading(SourceState.ABSENT)
+        reads = owner[1]
+    try:
+        return await asyncio.wait_for(asyncio.to_thread(_index_reading, reads, name),
+                                      timeout=CALL_TIMEOUT_SECONDS + 5)
+    except TimeoutError:
+        return SourceReading(SourceState.FAILED)

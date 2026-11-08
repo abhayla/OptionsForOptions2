@@ -28,6 +28,7 @@ from ofo.market_calendar import next_open
 from ofo.outcome import build_outcome
 from ofo.outcome.serialize import outcome_to_dict
 from ofo.scenario.spot import spot_reading
+from ofo.settings import defaults as _d
 from ofo.table import build_table
 from ofo.table.columns import LEADING_COLUMNS, ColumnId
 from outcome._both_curves_cases import CALENDAR, S54, as_json, definition, market, snapshot
@@ -75,7 +76,7 @@ def _model(provider, legs, replace=None):
     """The reply's own engine inputs: its legs (with the IV the reply solved), spot and forwards, through the gate."""
     d = definition(provider, legs)
     snap = snapshot(provider, d)
-    out = build_outcome(d, snap, VALUATION)
+    out = build_outcome(d, snap, VALUATION, settings=_d())
     inputs = [LegInput("NIFTY", x.symbol or x.instrument_id, x.action, x.instrument, x.strike, x.expiry, x.quantity,
                        x.planned_entry, x.ltp, x.iv) for x in out.legs]
     if replace is not None:
@@ -100,7 +101,7 @@ def test_decay_column_sits_between_theta_and_vega_in_the_greek_columns():
 def test_each_leg_decay_is_the_model_revaluation_at_the_next_open_signed_and_total_is_the_sum(provider, legs):
     model = _model(provider, legs)
     d = definition(provider, legs)
-    rows = _rows(build_outcome(d, snapshot(provider, d), VALUATION))
+    rows = _rows(build_outcome(d, snapshot(provider, d), VALUATION, settings=_d()))
     total = Decimal(0)
     for i, leg in enumerate(model.legs, start=1):
         cell = rows[str(i)]["decay"]
@@ -120,7 +121,7 @@ def test_each_leg_decay_is_the_model_revaluation_at_the_next_open_signed_and_tot
 def test_a_sold_leg_decays_in_the_sellers_favour(provider):
     """Signed like theta: the BUY 22600 CE loses value overnight (Decay < 0), the SELL 22800 CE gains (Decay > 0)."""
     d = definition(provider, S54)
-    rows = _rows(build_outcome(d, snapshot(provider, d), VALUATION))
+    rows = _rows(build_outcome(d, snapshot(provider, d), VALUATION, settings=_d()))
     assert Decimal(rows["1"]["decay"]["value"]) < 0 < Decimal(rows["2"]["decay"]["value"])
     for rid in ("1", "2"):  # same sign as theta, about one day of it (F-63: 0.74-0.84 overnight; not asserted)
         assert (Decimal(rows[rid]["decay"]["value"]) > 0) == (Decimal(rows[rid]["theta"]["value"]) > 0)

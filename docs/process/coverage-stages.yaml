@@ -164,6 +164,10 @@ requirements:
   REQ-164: S6.7
   REQ-165: S6.7
   REQ-166: S6.7
+  REQ-167: S6.7
+  REQ-168: S6.4
+  REQ-169: S6.4
+  REQ-170: S6.7
 
 decisions:
   ADR-001: all
@@ -379,7 +383,57 @@ decisions:
   ADR-212: S6.1         # paper positions after hours show the last close (owner, 2026-10-30)
   ADR-213: S6.4         # index strip socket drop keeps fresh values under the not-live message (owner, 2026-10-30)
   ADR-214: S6.4         # where adjustments live: drawer, adjust mode, compare, filters, playbooks (owner, 2026-10-30)
+  ADR-215: S6.4         # adjustment compare: no Greeks after an exit-whole-strategy approach (GC-ADJ1 follow-up)
+  ADR-216: S6.4         # iron condor playbook (PB-04) numbers approved as defaults (GC-ADJ2 seeds them)
+  ADR-217: S6.4         # a dismissed adjustment opportunity stays dismissed until it clears (owner, 2026-10-31)
+  ADR-221: S6.4         # T-19 uses the cheapest adjustment's cost (owner, 2026-10-31)
+  ADR-222: S6.4         # calculation numbers are admin settings on one Settings page (owner, 2026-10-31)
   ADR-220: S6.7         # server roles, one machine first, calculation speeds, pricing model kept (owner, 2026-10-31)
+  ADR-230: S6.4         # GC-ADJ3 product answers: liquidity limits, card mark, Compare cost rows, two stops (GC-MU)
+  ADR-231: S6.4         # roll debit limit is the higher of Rs 500 and 10% of max profit (owner, GC-MU)
+  ADR-232: S6.4         # the Live Strategies card counts open conditions, not inbox rows (owner, GC-MU)
+  ADR-233: S6.7         # background checks every 30 s by default (owner, 2026-11-02)
+  ADR-234: S6.4         # theta stated on the forward like the reference (owner, 2026-11-02)
+  ADR-235: S6.7         # background check speed per trading style 10 / 30 / 120 s (owner, 2026-11-02)
+  ADR-236: S6.7         # a dismiss silences the same level; one stage worse opens a new suggestion (owner, 2026-11-02)
+  ADR-237: S6.7         # alert discipline technical definitions: re-arm band, candle close, lapse, one writer (2026-11-02)
+  ADR-238: S6.7         # IC exit and reduce approaches A-24/25/26/27/35 (GC-IC1 step 2)
+  ADR-239: S6.7         # IC roll approaches A-02/A-04/A-06 (GC-IC1 step 3)
+  ADR-240: S6.7         # IC situations: rules vs guidance (GC-IC1 step 6)
+  ADR-241: S6.7         # approach trades priced at the live bid-ask mid first (owner, GC-IC1)
+  ADR-242: S6.7         # A-37 watch a level is an adjustment alert through the gate (GC-IC1 step 4c)
+  ADR-243: S6.7         # roll basis: target delta default, entry distance second, user + strategy override (owner)
+  ADR-244: S6.7         # S-08 / S-09 join the iron condor system playbook as Guidance (owner)
+  ADR-245: S6.7         # every adjustment number is a three-layer setting: admin -> user -> strategy (owner)
+  ADR-246: S6.7         # alert presets kept after the 4 Nov live day; intraday reviewed after two expiry days (owner)
+  ADR-247: S6.7         # default stop 50 % of max loss or 2x credit; % of margin and T-16 off by default (owner 5 Nov)
+  ADR-248: S6.7         # Suggested for you: eligible approaches only, ranked by cost / credit by default (owner 5 Nov)
+  ADR-249: S6.7         # Suggested for you: one or two suggestions from several preferences; combined adjustments later (owner 5 Nov)
+  ADR-250: S6.7         # ADR-247 stop default for new plans only; saved plans keep their own stop alerts (owner 5 Nov)
+  ADR-251: S6.7         # 2x credit stop = 2x net credit collected so far (entry +/- every roll); fail closed on none (owner 5 Nov)
+  ADR-252: S6.7         # % of max loss stop = per-stage T-06 value, one source for words and alerts (decided under owner delegation 5 Nov)
+  ADR-253: S6.7         # T-14 gamma evaluated in test-data mode only; live keeps "not checked yet" (owner 6 Nov)
+  ADR-254: S6.7         # T-19 checked by the background worker, live and test data (owner 6 Nov)
+  ADR-255: S6.7         # partial exit counts against the plan maximum; Exit all does not
+  ADR-256: S6.7         # exit leaving a sold leg unprotected warns; user can still confirm
+  ADR-257: S6.7         # stop on a sold leg asks to close its wing too (default on)
+  ADR-258: S6.7         # every adjustment is a new starting point for the already-true rule (F-71)
+  ADR-259: S6.7         # strategy with no open leg moves to Completed Strategies with final totals
+  ADR-260: S6.7         # Alerts > Active is the one attention list; bell counts live strategies only
+  ADR-261: S6.7         # every open strategy has Compare approaches, with or without an alert
+  ADR-262: S6.7         # ready-made Short Iron Condor strikes by per-user preference
+  ADR-263: S6.7         # every headline money figure is after charges and says so
+  ADR-264: S6.7         # behaviours and numbers are settings: admin default, user override, admin lock
+  ADR-265: S6.7         # planned entries captured at bid-ask mid; impossible credit flagged
+  ADR-266: S6.7         # paper P&L and rules mark a stale-trade leg at the bid-ask mid
+  ADR-267: S6.7         # a watched level is never held by the daily alert cap
+  ADR-268: S6.7         # breached or intrinsic-only short never 'not checked'
+  ADR-269: S6.7         # roll into a later expiry closes the strategy and opens a linked one
+  ADR-270: S6.7         # T-11 and T-14 work on live strategies, proven on test data
+  ADR-271: S6.7         # paper orders count as orders sent: no delete, Undo limited
+  ADR-272: S6.7         # stale prices on Compare and tracking panel say how old they are
+  ADR-273: S6.7         # adjustment prepared from Compare records its approach
+  ADR-274: S6.7         # one basket sends one order per contract and side
 
 questions:
   Q210: 4a              # external: Zerodha's written answer; ADR-051 covers the owner's own account
@@ -568,6 +622,8 @@ issues:
   "#660": S6.7  # Flaky: test_feed_control login/Disconnect bus count (1 of 3 runs red, no code change)
   "#661": S6.7  # IC rules in the background worker: T-19 never checked, S-12 entry day, T-11 second record at flat IV (parked from ic-e2e B1)
   "#662": S6.7  # Second adjustment: no T-18 record after max adjustments (parked from ic-e2e C1)
+  "#663": S6.7  # test_background_worker red in full-file runs since 2026-11-06: fixed scenario clock vs DB clock
+  "#664": S6.7  # Fix batch 1 item 1+2 parked: entry baseline lacks entry Greeks/premiums (T-03/T-09 hidden as already true)
 
 # Work items whose status is not done.
 work_items:
@@ -678,6 +734,25 @@ work_items:
   W-193: S6.1  # UI redesign PR-2b: builder summary card (ADR-193)
   W-194: S6.1  # UI redesign PR-2c: chart card and tables (ADR-193, ADR-194)
   W-195: S6.1  # UI redesign PR-3: slide-in strike drawer (ADR-193)
+  W-196: S6.4  # GC-ADJ1 step 1: adjustment approach builder + whole-trade After (REQ-155, ADR-214)
+  W-197: S6.4  # GC-ADJ1 step 2: compare adjustment approaches in adjust mode (REQ-156, ADR-214)
+  W-198: S6.4  # GC-ADJ1 step 2: filters on the approach compare (REQ-157, ADR-214)
+  W-199: S6.4  # GC-ADJ1 step 3: review-adjustment drawer on the Live Strategies card (REQ-046, ADR-214)
+  W-200: S6.7  # GC-IC1 step 10: verification of REQ-046 (iron condor paths)
+  W-201: S6.7  # GC-IC1 step 10: verification of REQ-112 (iron condor paths)
+  W-202: S6.7  # GC-IC1 step 10: verification of REQ-155 (iron condor paths)
+  W-203: S6.7  # GC-IC1 step 10: verification of REQ-156 (iron condor paths)
+  W-204: S6.7  # GC-IC1 step 10: verification of REQ-157 (iron condor paths)
+  W-205: S6.7  # GC-IC1 step 10: verification of REQ-158 (iron condor paths)
+  W-206: S6.7  # GC-IC1 step 10: verification of REQ-159 (iron condor paths)
+  W-207: S6.7  # GC-IC1 step 10: verification of REQ-160 (iron condor paths)
+  W-208: S6.7  # GC-IC1 step 10: verification of REQ-161 (iron condor paths)
+  W-209: S6.7  # GC-IC1 step 10: verification of REQ-162 (iron condor paths)
+  W-210: S6.7  # GC-IC1 step 10: verification of REQ-163 (iron condor paths)
+  W-211: S6.7  # GC-IC1 step 10: verification of REQ-167 (iron condor paths)
+  W-212: S6.7  # GC-IC1 step 10: verification of REQ-168 (iron condor paths)
+  W-213: S6.7  # GC-IC1 step 10: verification of REQ-169 (iron condor paths)
+  W-214: S6.7  # GC-IC1 step 10: verification of REQ-170 (iron condor paths)
   W-115: 4b           # GC-5S: Home overview, states 1-2 + strip (REQ-008)
   W-117: 4b           # GC-5S: Learn / Alerts / Market context shells (REQ-011 AC-1 part)
 
@@ -759,6 +834,25 @@ findings:
   F-74: S6.4      # After omits booked P&L and the adjustment trade charges
   F-75: S6.4      # POP fails on an after-charges breakeven finer than paise
   F-76: S6.4      # NIFTY spot unreadable over REST (allow-list has no space)
+  F-77: S6.4      # T-19 compared premium left with a different adjustment cost (FIXED, GC-SET step 7)
+  F-78: S6.4      # three playbook limits saved and shown but not applied
+  F-79: S6.4      # Undo windows 8 s / 10 s in code vs about 5 s in the spec
+  F-80: S6.4      # playbook check 500 when the clock trigger T-10b fires (fixed)
+  F-81: S6.4      # playbook check 500 in a stage whose name has a space (fixed)
+  F-82: S6.4      # risk-free rate moves the implied yield, not the visible Greeks (open for owner)
+  F-83: S6.4      # scenario mode lost every price after a socket release (fixed)
+  F-90: S6.4      # range-reading rule (REQ-026 AC-1) only in the browser; no server copy
+  F-91: S6.7      # background role records with no screen, not within 1 s (DB round trips; #636)
+  F-92: S6.4      # Compare could not price a leg the paper book priced (fixed)
+  F-93: S6.4      # Compare said no plan maximum while the plan set 2 (fixed)
+  F-94: S6.4      # paper max profit / loss without charges vs other screens (fixed)
+  F-95: S6.4      # futures ready-made shapes refused (fixed)
+  F-96: S6.4      # a futures leg showed live data disconnected (fixed)
+  F-97: S6.7      # no-screen reads answer LIVE before any price (#615)
+  F-98: S6.4      # theta call/put carry split vs the reference (ADR-234)
+  F-99: S6.7      # stopping a second feed process blanks the API chain for a minute
+  F-100: S6.4      # no feed supplies IV or Greeks; every app computes its own
+  F-101: S6.7      # live alert discipline cut suggestion noise by three quarters (4 Nov)
 
 hypotheses:
   H1: done

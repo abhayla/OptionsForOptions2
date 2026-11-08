@@ -29,9 +29,17 @@ _ADD = text("INSERT INTO public.paper_triggers (strategy_id, kind, contract_id, 
             "VALUES (:strategy_id, :kind, :contract_id, :underlying, :direction, :level) RETURNING id")
 _FOR = text(f"SELECT {_TRIGGER_COLUMNS}, t.created_at, t.fired_at, t.cancelled_at "  # noqa: S608 constant columns
             "FROM public.paper_triggers AS t WHERE t.strategy_id = :sid ORDER BY t.id")
-_ARMED = text(f"SELECT {_TRIGGER_COLUMNS}, s.user_ref, s.name, s.underlying AS strategy_underlying "  # noqa: S608
+#: ``{scope}`` = ``scenario_mode.scope_clause("s")`` (IC e2e decision 4): the live monitor never arms a scenario
+#: strategy's stop, a scenario process never arms a real one.
+_ARMED_SQL = (f"SELECT {_TRIGGER_COLUMNS}, s.user_ref, s.name, s.underlying AS strategy_underlying "  # noqa: S608
               "FROM public.paper_triggers AS t JOIN public.strategies AS s ON s.id = t.strategy_id "
-              "WHERE t.fired_at IS NULL AND t.cancelled_at IS NULL AND s.deleted_at IS NULL ORDER BY t.id")
+              "WHERE t.fired_at IS NULL AND t.cancelled_at IS NULL AND s.deleted_at IS NULL AND {scope} ORDER BY t.id")
+def _armed() -> tuple[Any, dict]:
+    from ofo_app.scenario_mode import scope_clause  # noqa: PLC0415 - the one isolation helper
+    clause, params = scope_clause("s")
+    return text(_ARMED_SQL.format(scope=clause)), params
+
+
 _ORDERS_OF = text("SELECT id, strategy_id, contract_id, side, quantity, price, kind, placed_at, created_at, reason, "
                   "trigger_id FROM public.paper_orders WHERE strategy_id = ANY(:ids) ORDER BY strategy_id, id")
 _CLAIM = text("UPDATE public.paper_triggers SET fired_at = clock_timestamp() "
@@ -111,7 +119,7 @@ async def list_for(conn: Any, strategy_id: int) -> list[TriggerRow]:
 
 async def armed(conn: Any) -> list[ArmedTrigger]:
     return [ArmedTrigger(_trigger(r), r.user_ref, r.name, r.strategy_underlying)
-            for r in (await conn.execute(_ARMED)).all()]
+            for r in (await conn.execute(*_armed())).all()]
 
 
 async def orders_of(conn: Any, strategy_ids: Sequence[int]) -> dict[int, list[paper_store.StoredOrder]]:

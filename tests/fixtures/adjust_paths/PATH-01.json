@@ -1,0 +1,25 @@
+{
+ "id": "PATH-01",
+ "base": "ADJ-02",
+ "title": "Drift up toward the 23500 CE short: frame 6 (23390, 0.47%) crosses T-01 (0.5%) alone; frame 5 (23365, 0.57%) raises nothing",
+ "notes": "Legs chosen so T-01 is the ONLY rule at frame 6 (measured with the generator's pricing, IV 0.10, Fri 6 Nov middle stage): CE23500 delta 0.3333 < T-03 0.35; both short premiums > T-09 Rs 3 (CE 48.55, PE 18.70); |net delta per lot| 0.1283 < S-02 0.15; the put short 23150 stays > 0.5% from spot on every frame.",
+ "entry_atm_iv": "0.10",
+ "legs": [
+  {"side": "BUY", "type": "PE", "strike": "22950", "lots": 2},
+  {"side": "SELL", "type": "PE", "strike": "23150", "lots": 2},
+  {"side": "SELL", "type": "CE", "strike": "23500", "lots": 2},
+  {"side": "BUY", "type": "CE", "strike": "23700", "lots": 2}
+ ],
+ "frames": [
+  {"clock": "2026-11-06T11:28:00", "spot": "23290", "atm_iv": "0.10"},
+  {"clock": "2026-11-06T11:30:00", "spot": "23305", "atm_iv": "0.10"},
+  {"clock": "2026-11-06T11:32:00", "spot": "23320", "atm_iv": "0.10"},
+  {"clock": "2026-11-06T11:34:00", "spot": "23335", "atm_iv": "0.10"},
+  {"clock": "2026-11-06T11:36:00", "spot": "23350", "atm_iv": "0.10"},
+  {"clock": "2026-11-06T11:38:00", "spot": "23365", "atm_iv": "0.10"},
+  {"clock": "2026-11-06T11:40:00", "spot": "23390", "atm_iv": "0.10"},
+  {"clock": "2026-11-06T11:42:00", "spot": "23392", "atm_iv": "0.10"},
+  {"clock": "2026-11-06T11:44:00", "spot": "23395", "atm_iv": "0.10"},
+  {"clock": "2026-11-06T11:46:00", "spot": "23392", "atm_iv": "0.10"}
+ ]
+}

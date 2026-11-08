@@ -50,8 +50,9 @@ calculation engine.
   is evaluated at level 0 and is always finite; only the upper tail can be UNLIMITED (non-zero slope above the highest
   strike). Example: SELL 23,000 PE at ₹80 × 75 → max loss ₹17,19,000 (not "unlimited"); BUY 24,000 FUT × 75 → max
   loss ₹18,00,000, max profit UNLIMITED. `min_pnl` is the signed minimum of the payoff; max loss is its magnitude
-  when negative, else 0. Breakevens are reported only above 0; a non-terminating breakeven is rounded half-even to
-  0.01 points.
+  when negative, else 0. Breakevens are reported only above 0. Every derived level (breakevens, after-charges
+  breakevens, loss-region edges) is rounded half-even to 0.01 points at its one producer, so no level finer than
+  paise reaches a later calculation (F-75).
 
 ## 4. Scenario levels and views (Q33, Q33A–Q33D — owner answers, T1 #83–#118)
 
@@ -71,7 +72,7 @@ calculation engine.
   (model-based value before expiry using time and IV; labelled as an estimate). **Default model (delegated
   overnight, ADR-045; changeable in configuration):** European Black-Scholes with each expiry's implied dividend
   yield from put-call parity (ADR-061, 2026-10-08; the engine computes Black-Scholes-Merton with that yield q and
-  owns every Greek, theta included - ADR-063; fallback to spot labelled "estimated from spot"), time = calendar
+  owns every Greek, theta included - ADR-063; theta is stated on the forward, Black-76 form, the same for a call and a put at one strike and IV - ADR-234; fallback to spot labelled "estimated from spot"), time = calendar
   days / 365
   to expiry at 15:30 IST, continuous risk-free rate as an explicit input, each leg at its own IV (implied from its
   bid-ask mid when both sides are live and the ask is at or above the bid, else from its LTP where one exists - owner

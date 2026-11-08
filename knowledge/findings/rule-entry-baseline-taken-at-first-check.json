@@ -1,0 +1,32 @@
+{
+  "id": "rule-entry-baseline-taken-at-first-check",
+  "class": "Any playbook rule (T-01, T-03, T-07, T-09, T-11, T-13 and every other F-71 crossing rule) on any tracked strategy, live or test data, whose FIRST background check, or a screen check made before that first check, happens after the rule has already crossed: the rule is stored and shown as 'Already true when tracking started' and never flags until it clears, although it was false at the real entry.",
+  "mechanism": "The entry baseline is not stored at entry. Three callers each choose one at check time: the worker's write (background.py:1207 record_check with scn=None, then adjustment_check.py:535-536 'elif not memory: entry = state') and the worker's own check (background.py:1187 'None if known else state') take the CURRENT state as the entry; the screen uses the fixture entry in test mode and the current state otherwise. held_at_entry is fixed at first insert (playbook_store.py:250-252, migration 0031 trigger), so a baseline taken after a crossing is permanent.",
+  "first_seen": {
+    "date": "2026-11-06",
+    "where": "IC test-data run on the scenario copy (code 514113f1), scratch ISSUES.md issue 65 (PATH-12, PATH-14) and 89 (PATH-15), condor 112 (PATH-13)",
+    "evidence": "SELECT rule_id, held_at_entry, seen_clear FROM public.adjustment_rule_state WHERE strategy_id = 115 (7 Nov 00:4x): T-01, T-03, T-13 held_at_entry=true, seen_clear=false, the three rules the screen showed 'already true' at the 0.87 % gap frame although at the Thursday entry (spot 23,100) none held; condor 113, whose first background check ran at frame 0, flagged T-11 correctly. Independent read-only review 7 Nov 00:1x-00:3x (fresh Opus) traced the three baselines; lines re-read by the lead."
+  },
+  "fix_attempt_2026_11_07": "Fix batch 1 (branch park/b1-rule-baseline, issue #664, PARKED after 2 rounds): DB seeding + one entry_baseline function + 0045 marker made the core proof pass (restart_first_check=Flag, records_after_new_crossing=1) but broke 11 ADJ-02 tests: the entry state carries no Greeks and no ltp, so T-03 (delta) and T-09 (premium) fall back to the first check (entry_fallback=state) and a rule true NOW is held at entry. ADJ-02 entry (spot 23100, IV 0.13): CE 23500 delta 0.1691, PE 22700 -0.1313 < 0.35; T-09 41.80 vs 3.0: neither held. Lesson: an entry baseline must reproduce every rule input AT ENTRY (model Greeks from entry spot/IV, entry premiums); a first-check fallback re-creates this very class for every Greek/premium rule.",
+  "fix": "Branch fix/b1-rule-baseline-2 (2026-11-07, not merged): the worker's rule memory is read from the DB at the rebuild (GateLoad.rule_memory); one entry baseline (adjustment_check.entry_baseline: scenario entry, else stored entry facts with their time, else the first check) for screen, recorder and worker; the recorder reads the process scenario as the worker does (it had passed scn=None and stored the CURRENT state as the entry); ADR-258 starting point adjustment_rule_state.adjustment_no (migration 0045); repair tool scripts/repair_rule_entry_baseline.py (dry run default, --apply writes). Round 3 (branch fix/b1-rule-baseline-5, after an independent review): adjustment_check._entry_state gives each short its engine |delta| AT ENTRY (bs_greeks at entry spot and clock, the scenario's entry ATM IV, else the vol solved from the leg's own fill price) and its entry premium as its price; pe.evaluate(entry_fallback=) is deleted, so a rule not computable at entry is not held, never its first-check value. ADJ-02 entry (registry rate 0.065, to 9 Nov 15:30): CE 23500 |delta| 0.1744, PE 22700 0.1352, both < 0.35; T-09 entry price 41.80 vs 3.0.",
+  "detection": {
+    "status": "guarded",
+    "mutations_2026_11_07": "4 of 4 killed: first-check fallback forced on (test_rule_baseline_adr268), entry deltas/premiums dropped (test_rule_entry_baseline round-3 tests), marker > 0 guard dropped (test_rule_marker), DB seeding of the worker's rule memory dropped (test_rule_entry_baseline core: restart read AlreadyTrue, expected Flag).",
+    "checks": [
+      "tests_app/test_rule_entry_baseline.py (real worker, restart, counted from the DB; round 3: ADJ-02 entry deltas and premiums, T-03 / T-09 not held at entry, the no-facts gap named)",
+      "tests/adjustment/test_rule_baseline_adr268.py::test_a_rule_not_computable_at_entry_is_not_held_never_the_first_check",
+      "tests_app/test_repair_rule_entry_baseline.py",
+      "tests_app/test_migration_0045_rule_state_marker.py"
+    ],
+    "note": "Guarded once the branch merges; main is unguarded until then. Known gap kept: a live fill before 0039 (no entry facts) still takes the first check as its entry."
+  },
+  "spec_ref": [
+    "spec/requirements/REQ-159.md",
+    "spec/requirements/REQ-165.md",
+    "spec/decisions/ADR-237.md",
+    "spec/decisions/ADR-258.md"
+  ],
+  "occurrences": 4,
+  "live_example": "A condor filled at 15:27 is first checked at 09:16 the next morning after a 0.9 % gap up: T-13 is stored held_at_entry=true and the gap warning never fires.",
+  "scope": "project"
+}

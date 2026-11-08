@@ -128,7 +128,7 @@ jobs:
     needs: changes
     if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.changes.result != 'success' || needs.changes.outputs.api == 'true') }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30  # was 15; the W-067 full-day finalize test is bounded at 10 min by its own assertion
+    timeout-minutes: 75  # was 30: the full DB suite with one database per test file measured 58 min (diag PR #668, 2026-11-08); was 15 before that (W-067)
     env:
       PGHOST: localhost
       PGPORT: '5432'
@@ -333,8 +333,15 @@ jobs:
           npm run lint
           npm run test:run
 
+      # #517 (REQ-048 AC-5) value canaries: every backend credential variable (.env.example) is set to its canary for
+      # the build; the scan step below fails if any canary reaches frontend/dist. tests/test_bundle_secret_scan.py
+      # asserts this env equals canary_value() for every variable.
       - name: Build
         working-directory: frontend
+        env:
+          BROKER_TOKEN_KEY: 'ofocanaryexamplebrokertokenkey'
+          KITE_API_KEY: 'ofocanaryexamplekiteapikey'
+          KITE_API_SECRET: 'ofocanaryexamplekiteapisecret'
         run: npm run build
 
       # REQ-048 AC-5 (W-134): the bundle and reply scans on the REAL build output. pytest comes from the "Install

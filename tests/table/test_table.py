@@ -7,17 +7,17 @@ independent Black-Scholes implementation written in THIS file (``math.erf``, no 
 against a hard-coded number that came from the table module itself.
 """
 import math
-from decimal import ROUND_HALF_EVEN, Decimal as D
+from decimal import ROUND_HALF_EVEN
+from decimal import Decimal as D
 
 import pytest
-
+from conftest import GOLDEN_LEGS, GOLDEN_SPOT, NIFTY_EXPIRY, RATE, VALUATION, nifty_input, nifty_leg
+from ofo.engine.black_scholes import Greeks
 from ofo.engine.inputs import LegInput
 from ofo.engine.legs import Action, Instrument
-from ofo.engine.black_scholes import Greeks
+from ofo.settings import defaults as _d
 from ofo.table.columns import ColumnId
-from ofo.table.model import CellKind, LegStatus, StrategyHealth, TOTAL_ROW_ID, build_table
-
-from conftest import GOLDEN_LEGS, GOLDEN_SPOT, NIFTY_EXPIRY, RATE, VALUATION, nifty_input, nifty_leg
+from ofo.table.model import TOTAL_ROW_ID, CellKind, LegStatus, StrategyHealth, build_table
 
 FIXED_ORDER = [
     ColumnId.LEG, ColumnId.ACTION, ColumnId.INSTRUMENT, ColumnId.EXPIRY, ColumnId.STRIKE, ColumnId.QUANTITY,
@@ -47,15 +47,12 @@ YEARS = 10 / 365  # VALUATION -> NIFTY_EXPIRY is exactly 10 calendar days at the
 def _independent_bs_greeks(is_call: bool, s: float, k: float, t: float, r: float, v: float) -> dict:
     """A from-scratch Black-Scholes Greeks implementation (Hull), independent of ofo.engine.black_scholes."""
     d1 = (math.log(s / k) + (r + 0.5 * v * v) * t) / (v * math.sqrt(t))
-    d2 = d1 - v * math.sqrt(t)
     pdf = math.exp(-0.5 * d1 * d1) / math.sqrt(2.0 * math.pi)
     cdf = lambda x: 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))  # noqa: E731
     delta = cdf(d1) if is_call else cdf(d1) - 1.0
     gamma = pdf / (s * v * math.sqrt(t))
     vega = s * pdf * math.sqrt(t) / 100.0
-    decay = -s * pdf * v / (2.0 * math.sqrt(t))
-    carry = r * k * math.exp(-r * t)
-    theta_year = decay - carry * cdf(d2) if is_call else decay + carry * cdf(-d2)
+    theta_year = -s * pdf * v / (2.0 * math.sqrt(t))  # ADR-234: theta on the forward, no carry term, CE == PE
     return {"delta": delta, "gamma": gamma, "theta": theta_year / DAYS_IN_YEAR, "vega": vega}
 
 
@@ -294,13 +291,13 @@ def test_status_leg_and_total_are_caller_supplied_not_computed(golden, golden_sc
     )
     for row in table2.rows[:4]:
         assert row.cell(ColumnId.STATUS).value == "Open"
-    assert table2.rows[-1].cell(ColumnId.STATUS).value == "Watch"
+    assert table2.rows[-1].cell(ColumnId.STATUS).value == StrategyHealth.WATCH.value
 
 
 def test_strategy_health_labels_match_adr_010_exactly():
     """ADR-010 lines 29-30 (Q20 = B, T1 #41): the owner's exact four strategy-health labels."""
     assert {h.value for h in StrategyHealth} == {
-        "Healthy", "Watch", "Adjustment opportunity", "Exit condition reached",
+        "No condition met", "Near a condition", "Adjustment opportunity", "Exit condition reached",
     }
 
 
@@ -313,7 +310,7 @@ def test_leg_statuses_length_must_match_legs(golden):
 def test_strategy_health_rejects_a_plain_string(golden):
     """Fail closed: strategy_health must be a StrategyHealth, not an arbitrary string."""
     with pytest.raises(ValueError):
-        build_table(golden, strategy_health="Healthy")
+        build_table(golden, strategy_health="No condition met")
 
 
 def test_build_table_without_scenario_leaves_no_scenario_columns():
@@ -346,6 +343,7 @@ def _stale_model():
     """The reviewer's repro: a stale spot with a parity forward (implied yield 0.0776) on the golden legs."""
     import dataclasses
     import datetime
+
     from ofo.engine.inputs import SpotReading, StrategyInput
     from ofo.engine.model import model_inputs
     from ofo.marketdata.forward import PARITY, spot_fallback_forward
@@ -363,7 +361,7 @@ def test_round4_stale_scenario_under_a_live_table_is_refused(golden):
     from ofo.scenario.levels import build_level_set
     from ofo.scenario.views import View, scenario_values
     ms = _stale_model()
-    ls = build_level_set(ms, ScenarioSettings().for_index("NIFTY"))
+    ls = build_level_set(ms, ScenarioSettings.from_values(_d()).for_index("NIFTY"))
     sv = scenario_values(ls, ms, View.ESTIMATED_NOW)
     build_table(ms, level_set=ls, scenario=sv)  # the stale table with its own stale scenario is fine
     with pytest.raises(ValueError):
@@ -375,7 +373,7 @@ def test_round4_level_set_from_another_spot_is_refused(golden):
     from ofo.scenario.levels import build_level_set
     from ofo.scenario.views import scenario_values
     other = nifty_input((nifty_leg(*row) for row in GOLDEN_LEGS), spot=D("23500"))
-    ls = build_level_set(other, ScenarioSettings().for_index("NIFTY"))
+    ls = build_level_set(other, ScenarioSettings.from_values(_d()).for_index("NIFTY"))
     with pytest.raises(ValueError):
         build_table(golden, level_set=ls, scenario=scenario_values(ls, other))
 
@@ -387,6 +385,6 @@ def test_round4_stale_scenario_is_refused_even_with_a_matching_level_set(golden,
     from ofo.scenario.views import View, scenario_values
     level_set, _values = golden_scenario
     ms = _stale_model()
-    stale_sv = scenario_values(build_level_set(ms, ScenarioSettings().for_index("NIFTY")), ms, View.ESTIMATED_NOW)
+    stale_sv = scenario_values(build_level_set(ms, ScenarioSettings.from_values(_d()).for_index("NIFTY")), ms, View.ESTIMATED_NOW)  # noqa: E501
     with pytest.raises(ValueError):
         build_table(golden, level_set=level_set, scenario=stale_sv)

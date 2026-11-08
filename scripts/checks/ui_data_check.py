@@ -6,12 +6,14 @@ tracking reply show, from the same market inputs, with its OWN formulas, and nam
 README (read first)
 -------------------
 Spec basis: spec/business-rules/scenario-calculations.md sections 1-5; ADR-061 (parity forward / implied q), ADR-063
-(BSM with q, theta per day), ADR-082 (2) + ADR-167 (scenario values before charges, max profit / loss include the
+(BSM with q, theta per day; ADR-234: theta stated on the forward), ADR-082 (2) + ADR-167 (scenario values before
+charges, max profit / loss include the
 round-trip charges), ADR-172 (IV from the bid-ask mid when two-sided, else the LTP).
 
 Independence: this file imports nothing from `ofo` or `ofo_app` (a test parses it and fails on such an import). Its
 inputs are DATA only: the reply itself, the option chain (bid/ask) captured around it, the risk-free rate (the
-configured value 0.065 read from backend/ofo_app/live_market.py LIVE_RATE, passed in as a number) and the published
+configured value 0.065, the default of pricing.risk_free_rate in backend/ofo/settings/registry.json, passed in as a
+number) and the published
 charge-rate table (the 2026-10-15 seed rows of migration 0012, copied here as data).
 
 Known bypasses (not chased; the threat model is "one altered figure in the reply"):
@@ -54,7 +56,7 @@ from fractions import Fraction
 from pathlib import Path
 
 IST = dt.timezone(dt.timedelta(hours=5, minutes=30))
-RISK_FREE_RATE = 0.065  # configured input: backend/ofo_app/live_market.py LIVE_RATE (read, not imported)
+RISK_FREE_RATE = 0.065  # configured input: registry.json pricing.risk_free_rate default (a stored setting overrides it)
 PAISA = Decimal("0.01")
 # Published Zerodha F&O options rates, seed of migration 0012 (read on 2026-10-15; F-35). Data, not engine code.
 CHARGE_RATES = {
@@ -500,21 +502,30 @@ def bsm_price(s, k, t, r, q, sigma, kind) -> float:
     return k * math.exp(-r * t) * _ncdf(-d2) - s * math.exp(-q * t) * _ncdf(-d1)
 
 
+#: How theta is stated. "forward" (ADR-234, 2026-11-02, every live check). "carry_before_adr234" re-checks a reply
+#: RECORDED before ADR-234 (the test fixtures under tests/fixtures/ui_data_check): the textbook BSM theta with the
+#: call / put cost-of-carry terms, which is what the server stated then. Set only by those fixture tests.
+THETA_BASIS = "forward"
+
+
 def bsm_greeks(s, k, t, r, q, sigma, kind) -> dict:
-    """Per unit: delta, gamma, theta per calendar day (annual / 365), vega per 1 vol point (per 0.01 sigma)."""
+    """Per unit: delta, gamma, theta per calendar day (annual / 365), vega per 1 vol point (per 0.01 sigma).
+
+    Theta is stated on the forward (ADR-234, Black-76 form): -F e^(-rT) n(d1) sigma / (2 sqrt T) with F = S e^((r-q)T),
+    i.e. -S e^(-qT) n(d1) sigma / (2 sqrt T); no cost-of-carry term, so a call and a put at one strike and vol agree."""
     sq = sigma * math.sqrt(t)
     d1 = (math.log(s / k) + (r - q + 0.5 * sigma * sigma) * t) / sq
-    d2 = d1 - sq
-    eq, er = math.exp(-q * t), math.exp(-r * t)
+    eq = math.exp(-q * t)
     gamma = eq * _npdf(d1) / (s * sq)
     vega = s * eq * _npdf(d1) * math.sqrt(t) / 100.0
-    common = -s * eq * _npdf(d1) * sigma / (2 * math.sqrt(t))
-    if kind == "CE":
-        delta = eq * _ncdf(d1)
-        theta = common - r * k * er * _ncdf(d2) + q * s * eq * _ncdf(d1)
-    else:
-        delta = -eq * _ncdf(-d1)
-        theta = common + r * k * er * _ncdf(-d2) - q * s * eq * _ncdf(-d1)
+    theta = -s * eq * _npdf(d1) * sigma / (2 * math.sqrt(t))
+    delta = eq * _ncdf(d1) if kind == "CE" else -eq * _ncdf(-d1)
+    if THETA_BASIS == "carry_before_adr234":
+        d2, er = d1 - sq, math.exp(-r * t)
+        theta += (-r * k * er * _ncdf(d2) + q * s * eq * _ncdf(d1) if kind == "CE"
+                  else r * k * er * _ncdf(-d2) - q * s * eq * _ncdf(-d1))
+    elif THETA_BASIS != "forward":
+        raise ValueError(f"THETA_BASIS must be 'forward' or 'carry_before_adr234', got {THETA_BASIS!r}")
     return {"delta": delta, "gamma": gamma, "theta": theta / 365.0, "vega": vega}
 
 

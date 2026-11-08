@@ -4,7 +4,7 @@
      /api/strategies/{id} with the revision THIS PAGE loaded and asks nothing (REQ-134 AC-2); Save As asks for a name
      prefilled "<name> copy", POSTs a new strategy and opens the copy; the original is never sent. The list (GET /api/strategies)
      reopens a draft (GET /api/strategies/{id}) with the legs exactly as stored: a planned entry and its capture time are never
-     re-captured here. Every refusal shows the API's catalogue message (an empty name: "Give the strategy a name", from the API,
+     re-captured here. Every refusal shows the API's catalogue message (an empty name: "The strategy has no name.", from the API,
      not retyped); the draft on screen is never cleared by a failure. A name is shown as text, never as HTML. No number is computed. -->
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
@@ -19,9 +19,12 @@ import { useHeldFeature } from '@/lib/heldFeatures'
 import DraftDelete from '@/components/strategy/DraftDelete.vue'
 import DraftDeleteStatus from '@/components/strategy/DraftDeleteStatus.vue'
 import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
+import AdjustPlanSheet from '@/components/strategy/AdjustPlanSheet.vue'
 import { contractName, istTime } from '@/lib/displayFormat'
-import { ADD_TO_PAPER_LABEL, PAPER_ADDED_TEXT, addToPaper } from '@/lib/tracking'
-import { CLEAR_UNDO_MS } from '@/lib/legEdit'
+import { ADD_TO_PAPER_LABEL, PAPER_ADDED_TEXT, PAPER_STATE, addToPaper, entryPriceFor, paperPostOutcome } from '@/lib/tracking'
+import { useRouter } from 'vue-router'
+import { CLEAR_UNDO_SECONDS_KEY } from '@/lib/legEdit'
+import { useSettingsValues } from '@/stores/settingsValues'
 import { newestEntry, newestSeq, restoreEntry, useDeleteFlow } from '@/lib/strategyActivity'
 import {
   STRATEGY_NAME_DEFAULT, STRATEGY_NAME_MAX, buildSaveBody, buildUpdateBody, canSaveLegs, fetchSavedDraft, legsLine, plainName, renameStrategy, saveAsName, strategyLabel, trackedText,
@@ -37,6 +40,7 @@ const props = defineProps({
   // GC-TP step 3b1 (ADR-207 (2), F-65): the builder shows a paper strategy's NET position (Drafts Mode). Save, Save As and Add to
   // Paper are not offered and refuse to run: an edit reaches the server only as the reviewed paper orders, never as a plan.
   paperMode: { type: Boolean, default: false },
+  livePriceById: { type: Object, default: () => ({}) }, // instrument id -> the live price the table shows (fix/paper-dialog-safe item 2)
 })
 const emit = defineEmits(['open', 'saved', 'renamed', 'deleted', 'paper-added'])
 
@@ -90,6 +94,7 @@ const menuDo = (fn) => {
 // REQ-070 AC-6: Delete with Undo, one flow shared with My Strategies. When the deleted strategy is the one open, the Builder is told.
 let deletedOpenId = null // the id of the OPEN strategy this bar deleted: its Undo re-opens it in the Builder (same id)
 const deleteFlow = useDeleteFlow(api, {
+  undoMs: () => useSettingsValues().waitMs(CLEAR_UNDO_SECONDS_KEY),
   onRemoved: (id) => { drafts.value = drafts.value.filter((d) => d.id !== id) },
   onDeleted: (id) => { if (props.current?.id === id) { deletedOpenId = id; emit('deleted', id) } },
   onBack: async (id, body) => {
@@ -103,7 +108,7 @@ const deleteFlow = useDeleteFlow(api, {
 })
 
 // REQ-070 AC-4: Undo after a meaningful save. The save of a saved strategy wrote one history entry holding the configuration it
-// replaced; that entry is offered back for CLEAR_UNDO_MS (the Clear-all window). A save that wrote no entry offers nothing.
+// replaced; that entry is offered back for the served Clear-all window. A save that wrote no entry offers nothing.
 const saveUndo = ref(null) // { id, seq, revision } or null
 let saveUndoTimer = null
 function dropSaveUndo() {
@@ -172,8 +177,10 @@ async function offerUndo(id, before, revision) {
   if (after === null || after.seq <= before) return // the save wrote no entry (nothing changed): nothing to undo
   if (after.restorable !== true) return // the server says this entry is not a restore target: no Undo (fail closed)
   dropSaveUndo()
+  const ms = await useSettingsValues().waitMs(CLEAR_UNDO_SECONDS_KEY)
+  if (ms === null) return // the wait could not be read: no Undo is offered
   saveUndo.value = { id, seq: after.seq, revision }
-  saveUndoTimer = setTimeout(dropSaveUndo, CLEAR_UNDO_MS)
+  saveUndoTimer = setTimeout(dropSaveUndo, ms)
 }
 
 async function undoSave() {
@@ -303,6 +310,8 @@ const paperOrders = ref([])
 const paperOpen = ref(false)
 const paperBusy = ref(false)
 const paperError = ref('')
+const paperState = ref(PAPER_STATE.READY) // fix/paper-dialog-safe: the dialog's answer state (tracking.js PAPER_STATE)
+const router = useRouter()
 const paperTarget = ref(null)
 const paperToast = ref(null) // the strategy id the toast's "Open in Builder" reopens, or null
 let paperToastTimer = null
@@ -337,8 +346,9 @@ async function startPaper() {
   paperTarget.value = id
   paperOrders.value = tickedLegs.value.map((l, i) => ({
     key: l.id ?? `leg-${i}`, contract_id: l.contract_id, side: l.action, text: contractName(l), lots: l.lots, lot_size: l.lot_size,
-    price: l.planned_entry ?? '', kind: 'open',
+    kind: 'open', ...entryPriceFor(l, props.livePriceById), // the live price the page holds, else the planned entry (noted)
   }))
+  paperState.value = PAPER_STATE.READY
   paperOpen.value = true
 }
 
@@ -346,20 +356,39 @@ async function confirmPaper(orders) {
   if (paperBusy.value) return
   paperBusy.value = true
   paperError.value = ''
+  paperState.value = PAPER_STATE.READY
   try {
     await addToPaper(api, paperTarget.value, orders)
-    paperRecorded.value = true
+  } catch (e) {
+    const outcome = paperPostOutcome(e)
+    if (outcome === PAPER_STATE.REFUSED) paperError.value = (e?.parts ?? NEUTRAL_PARTS).what_happened || NEUTRAL_PARTS.what_happened // 4xx: nothing stored
+    paperState.value = outcome === 'superseded' ? PAPER_STATE.READY : outcome
+    paperBusy.value = false
+    return
+  }
+  // STORED (201): from here this plan never records again (paperRecorded); a failure below is not "not placed"
+  paperRecorded.value = true
+  try {
     paperOpen.value = false
     paperToast.value = paperTarget.value
+    planFor.value = paperTarget.value // GC-ADJ2 step 4 (REQ-161 AC-1): the strategy exists now, so its plan sheet opens
     clearTimeout(paperToastTimer)
     paperToastTimer = setTimeout(() => { paperToast.value = null }, PAPER_TOAST_MS)
     emit('paper-added', paperTarget.value)
-  } catch (e) {
-    paperError.value = (e?.parts ?? NEUTRAL_PARTS).what_happened || NEUTRAL_PARTS.what_happened // nothing is recorded locally on any refusal
+  } catch {
+    paperOpen.value = true
+    paperState.value = PAPER_STATE.PLACED
   } finally {
     paperBusy.value = false
   }
 }
+// the unknown-outcome link: open the strategy in the builder, which reads its book (the server's truth) before offering anything
+function openPaperOrderbook() {
+  const id = paperTarget.value
+  paperOpen.value = false
+  if (id !== null && router) router.push({ path: '/strategy/builder', query: { strategy: String(id) } })
+}
+const planFor = ref(null) // the strategy whose plan sheet is open (set only after the paper orders were recorded)
 function openInBuilder() {
   const id = paperToast.value
   paperToast.value = null
@@ -420,7 +449,8 @@ id="strategy-name" ref="nameInput" v-model="nameText" data-testid="name-input" t
         <button type="submit" form="strategy-name-form" data-testid="name-confirm" class="h-10 rounded-lg bg-accent px-3 font-medium text-white disabled:opacity-50" :disabled="busy">Save</button>
       </template>
     </Modal>
-    <PaperConfirmDialog :open="paperOpen" :orders="paperOrders" :busy="paperBusy" :error="paperError" @confirm="confirmPaper" @cancel="paperOpen = false" />
+    <PaperConfirmDialog :open="paperOpen" :orders="paperOrders" :busy="paperBusy" :error="paperError" :state="paperState" @confirm="confirmPaper" @cancel="paperOpen = false" @orderbook="openPaperOrderbook" />
+    <AdjustPlanSheet :open="planFor !== null" :strategy-id="planFor" @close="planFor = null" />
     <!-- GC-TP step 3b2 (R-6): the toast is FIXED to the viewport (bottom centre), not inline under the action row. Inline it sat inside
          the left column's own scroll (sticky, overflow-y-auto at 1100 px and up; `contents` below), so after the save-first path
          it could be in the page but outside the visible area; its state lives here and survives the ?strategy=N route change

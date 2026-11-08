@@ -1,0 +1,31 @@
+{
+ "id": "bus-consumer-holds-no-own-tokens",
+ "scope": "project",
+ "class": "A second consumer of a shared price bus that asks the feed for tokens out of band, but never marks them as held in its own provider, sees every tick as a heartbeat (health counts data only for held tokens): its feed reads STALE forever. If it also reuses the API's bus socket unchanged, it writes its (empty) wanted list to the API's own want key and wipes the API's subscriptions.",
+ "mechanism": "background.py _serve built a KiteProvider + BusSocket like the API but only wrote its tokens to ofo:feed:owner:want:bg; kite_provider.on_frame (kite_provider.py:85-94) counts a tick as data only for tokens in _wanted, so FeedState stayed awaiting_data and feed_health.py:182 returned STALE; its BusSocket._publish_want (feed_bus.py:374-382) wrote provider.subscribed_tokens() = [] to ofo:feed:owner:want once a second.",
+ "first_seen": {
+  "date": "2026-11-02",
+  "where": "feature/adjustments @ 545e2a09, live, FEED_MODE=bus, Redis 5 on 6380",
+  "evidence": "minute 09:37 reads {'STALE': 21}, checks=0; Redis ofo:feed:owner:want = {\"tokens\":[]} at 09:27 while the API held reads"
+ },
+ "fix": "7c804264: Worker._hold subscribes the provider to exactly the tokens it wants (releases the rest); BusSocket(publish_want=False) in the background. Live after: reads FRESH 17/17 (09:48), api want no longer wiped (api 0 / bg 33 at 09:50). ba6f43dd widened the hold to the screen's chain window (forward/ATM IV parity with the screen).",
+ "detection": {
+  "status": "guarded",
+  "checks": [
+   "tests_app/test_background_cycle.py (frame for a monitored leg -> AVAILABLE and FRESH)",
+   "tests_app/test_bus_socket.py (background socket never writes the API want key; API socket still does)"
+  ],
+  "note": "Correction recorded: the cold REST reads of #615 are NOT caused by this (measured with the background stopped 09:41-09:42: API wants fell 43 -> 0 within 30 s on their own)."
+ },
+ "spec_ref": [
+  "spec/requirements/REQ-165.md",
+  "spec/decisions/ADR-220.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-11-02",
+   "where": "background role first live run",
+   "evidence": "STALE 21/21, checks=0"
+  }
+ ]
+}

@@ -85,10 +85,9 @@ RULES: tuple[ZerodhaRule, ...] = (
                 "longest tag of the legacy grammar (the API-order tag cap of 20), decode only",
                 "Kite orders docs: 'alphanumeric, max 20 chars' https://kite.trade/docs/connect/v3/orders/ "
                 "(fetched 2026-10-22)", "2026-10-22", True),
-    ZerodhaRule("ofo.broker.session:KITE_EXPIRY_TIME_IST",
-                "the daily Kite session lapses at 06:00 IST the next day",
-                "Kite Connect login-flow docs https://kite.trade/docs/connect/v3/user/ - not fetched on 2026-10-22 "
-                "(follow-up REQ-056 AC-10)", "2026-10-22", False),
+    # The daily Kite session expiry (06:00 IST) and the contract-list publish time (08:30 IST) are no longer code
+    # constants: they are the settings `facts.kite_session_expiry` and `facts.contract_list_publish_time` (default
+    # 06:00 / 08:30), each with its Kite docs source in backend/ofo/settings/registry.json (REQ-167 AC-5).
 )
 
 
@@ -128,6 +127,10 @@ NOT_A_ZERODHA_RULE: dict[str, str] = {
         ),
         "this product's own grammar for an input it validates (a pattern or a key list), not a limit Zerodha sets": (
             "ofo.broker.kite_http:QUOTE_INSTRUMENT", "ofo.broker.kite_http:_PLAIN_NETLOC",
+            # the quote door's index-name allow-list (F-76, REQ-155 AC-5): which names the product lets through; Kite's
+            # own rule (quote takes up to 500 instruments, QUOTE_LIMIT) is cited above
+            "ofo.broker.kite_http:QUOTE_INDEX_NAMES", "ofo.broker.kite_http:_QUOTE_INDEX_RAW",
+            "ofo.broker.kite_http:_QUOTE_ITEM",
             "ofo.broker.kite_http:_PLAIN_WS_NETLOC", "ofo.broker.kite_http:_QUOTE_TARGET",
             "ofo.broker.kite_flags:_ENTRY_KEYS", "ofo.execution.basket:_LEGACY_TAG_RE",
             "ofo.execution.basket:_STRATEGY_ID_RE", "ofo.execution.basket:_TAG_RE",
@@ -151,7 +154,7 @@ NOT_A_ZERODHA_RULE: dict[str, str] = {
             "ofo_app.kite_http:_MAX_NESTING", "ofo_app.kite_http:_TIMEOUT",
             "ofo.marketdata.reconnect_policy:BACKOFF_MAX", "ofo.marketdata.reconnect_policy:BACKOFF_START",
             "ofo_app.kite_ws:_POLL_SECONDS", "ofo.execution.partial:UNCONFIRMED_GRACE",
-            "ofo.execution.freeze:STALE_AFTER_DAYS", "ofo.broker.rate_limit:USER_MAX_WAIT_SECONDS",
+            "ofo.broker.rate_limit:USER_MAX_WAIT_SECONDS",
             "ofo.broker.rate_limit:BACKGROUND_MAX_WAIT_SECONDS", "ofo.broker.rate_limit:BACKGROUND_QUEUE_SECONDS",
             "ofo.broker.rate_limit:MAX_READ_RETRIES", "ofo.broker.rate_limit:ALERT_THRESHOLD",
             "ofo.broker.rate_limit:ALERT_WINDOW_SECONDS", "ofo.broker.rate_limit:_USER_REF_CHARS",

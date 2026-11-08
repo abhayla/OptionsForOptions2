@@ -361,6 +361,8 @@ session).
 
 ### PB-04 Iron condor — `iron_condor` (owner's reference video strategy, REQ-071)
 
+Status: approved by the owner as written, 2026-10-31 (ADR-216). "Draft value" below now means the shipped default.
+
 | Field | Draft value |
 |---|---|
 | Entry hint | Shorts 0.15-0.20 delta, wings 200-400 NIFTY points beyond (video row 7 used a 400-point gap); entry with ≥ 5 days left; not in a strongly trending market (video row 25, out of V1 as data) |
@@ -547,6 +549,7 @@ Before/After numbers matching a hand check of the same legs in the builder.
 
 Asked one at a time, when the step that needs them comes up, not all now:
 1. Approve the playbook numbers (Part 6), or name the ones to change. These are what users see by default.
+   PB-04 iron condor: APPROVED as written (ADR-216, 2026-10-31). The others are still open.
 2. India VIX (D-05): the owner said "later, not V1" (Q246). T-11 and S-04 are better with it. Is it a `SPEC CHANGE` now?
 3. Event calendar (F-09): is an admin-maintained list acceptable for V1?
 4. Should the intraday leg-stop playbook (PB-02) ship in suggest-only form, given the honest limit stated in PB-02?

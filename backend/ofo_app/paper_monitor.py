@@ -40,16 +40,16 @@ from ofo.errors.explanations import ExplanationText, render_explanation
 from ofo.instruments.models import FUTURE_TYPE
 from ofo.marketdata.quote import NormalizedQuote
 from ofo.outcome import read_snapshot
-from ofo.outcome.price_text import price_text
 from ofo.strategy import stored_form as sf
 from ofo.strategy.definition import display_contract
 from ofo.tracking import paper, stops
 from ofo.tracking.orderbook import net_positions
+from ofo.tracking.paper_alert import alert_body
 
 from ofo_app import paper_store, tracked_contracts
 from ofo_app import paper_trigger_store as triggers
 from ofo_app.live_push import LiveFeed
-from ofo_app.routes.outcome import feed_scope
+from ofo_app.routes.outcome import SettingsReader, feed_scope, with_rate_in_force
 
 log = logging.getLogger(__name__)
 
@@ -65,7 +65,8 @@ Sessions = Callable[[], Any]  # an async_sessionmaker: ``async with sessions() a
 def provider_prices(feed: LiveFeed, underlying: str, keys: Sequence[str]) -> Mapping[str, paper.Price]:
     """The routes' price rule: one snapshot of the provider, each key's live-P&L price answer (paper.leg_price)."""
     ctx = feed.ctx
-    snapshot = read_snapshot(ctx.provider, underlying, list(keys), ctx.clock(), ctx.rate, feed_scope(ctx))
+    snapshot = read_snapshot(ctx.provider, underlying, list(keys), ctx.clock(), ctx.rate, feed_scope(ctx),
+                         quality=ctx.forward_quality)
     return {k: paper.leg_price(snapshot, k) for k in keys}
 
 
@@ -89,9 +90,13 @@ def _contract_text(found: tracked_contracts.TrackedContract) -> ExplanationText:
 
 class PaperMonitor:
     def __init__(self, sessions: Sessions, feed: Callable[[], LiveFeed | None], *,  # noqa: PLR0913 - seams
+                 read_settings: SettingsReader,
                  leg_prices: LegPrices = provider_prices, holidays: market_calendar.Holidays | None = None,
                  reload_seconds: float = RELOAD_SECONDS, monotonic: Callable[[], float] | None = None) -> None:
         self._sessions = sessions
+        # REQ-167 AC-4 (GC-SET step 5a): the risk-free rate and forward settings are read at each fire, never the
+        # live feed's context captured when the socket started (which holds the registry default)
+        self._read_settings = read_settings
         self._feed_source = feed
         self._leg_prices = leg_prices
         self._holidays = holidays
@@ -203,6 +208,9 @@ class PaperMonitor:
         feed = self._feed
         if feed is None:
             return None
+        # the settings in force at THIS tick (one read; a store that cannot answer raises: the fire is not recorded
+        # and the next crossing tick retries, never priced on a held or default rate)
+        feed = LiveFeed(await with_rate_in_force(feed.ctx, self._read_settings), feed.fanout)
         async with self._sessions() as session, session.begin():
             book = await paper_store.load(session, t.strategy_id)
             open_net = {int(p.instrument_id): p.net_quantity
@@ -222,17 +230,12 @@ class PaperMonitor:
             reason = self._reason(t, texts)
             await paper_store.place(session, a.user_ref, t.strategy_id, [
                 paper_store.NewOrder(c, "SELL" if open_net[c] > 0 else "BUY", abs(open_net[c]), prices[c], "stop",
-                                     now, str(reason), t.id) for c in targets])
-            legs = [render_explanation("paper_alert_leg", contract=texts[c], price=price_text(prices[c]))
-                    for c in targets]
-            joined = legs[0]
-            for leg in legs[1:]:
-                joined = render_explanation("paper_alert_legs", rest=joined, leg=leg)
+                                     now, str(reason), t.id) for c in targets], entry=None)  # a stop: never first
+            body = alert_body(reason, [(texts[c], prices[c]) for c in targets], names_contract=t.kind == "leg_stop")
             name = sf.shown_name(a.name) if a.name else render_explanation("cell_dash")
             await triggers.add_alert(session, t.strategy_id, t.id, str(render_explanation("paper_alert_title",
                                                                                           name=name)),
-                                     str(render_explanation("paper_alert_body", what=reason,
-                                                            count=len(targets), prices=joined)))
+                                     str(body))
         self.fires += 1
         return {"fired": {t.id}, "cancelled": set()}
 
@@ -294,9 +297,10 @@ def start() -> asyncio.Task[None]:
     """The lifespan's entry: the real session maker and the live market's current feed, as one task."""
     from ofo_app import live_market  # noqa: PLC0415 - late: live_market imports the routes
     from ofo_app.db import get_sessionmaker  # noqa: PLC0415
+    from ofo_app.routes.outcome import get_settings_reader  # noqa: PLC0415
 
     global _current  # noqa: PLW0603
-    _current = PaperMonitor(get_sessionmaker(), live_market.current_feed)
+    _current = PaperMonitor(get_sessionmaker(), live_market.current_feed, read_settings=get_settings_reader())
     return asyncio.get_running_loop().create_task(_current.run_forever(), name="paper-monitor")
 
 

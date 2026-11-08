@@ -118,10 +118,8 @@ class RefreshScheduler:
 def start() -> asyncio.Task[None]:
     """The lifespan's entry: the real loader (``catalogue_load.load_once``) on the real clock, as one task."""
     from ofo_app import catalogue_load  # noqa: PLC0415 - late: the loader imports the database module
-    from ofo_app.config import get_settings  # noqa: PLC0415
-
     async def load() -> int:
-        return await catalogue_load.load_once(get_settings(), _Silent())
+        return await catalogue_load.load_once(_Silent())
 
     scheduler = RefreshScheduler(load, now=lambda: datetime.datetime.now(datetime.UTC))
     return asyncio.create_task(scheduler.run_forever(), name="catalogue-refresh")

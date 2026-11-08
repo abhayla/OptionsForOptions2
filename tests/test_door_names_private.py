@@ -620,6 +620,10 @@ REFLECTION_ALLOWED: dict[str, tuple[frozenset[str], str]] = {
         "to refuse any caller outside REQUEST_LAYER"),
     "ofo/engine/black_scholes.py": (frozenset({'getattr'}),
         "reads its own declared field names (`getattr(self, name)` over a fixed tuple) to validate a frozen value"),
+    "ofo/marketdata/shared_compute.py": (frozenset({'getattr', 'FunctionType'}),
+        "the shared-cache key normaliser (#519) reads a dataclass argument's declared public fields "
+        "(`getattr(value, f.name)` over `dataclasses.fields`) and looks up a public `key_fields` method; "
+        "`types.FunctionType` only refuses a non-function as a cached computation; it only reads"),
     "ofo/engine/model.py": (frozenset({'__setattr__', 'getattr'}),
         "token-checked frozen value: `object.__setattr__(obj, name, fields[name])` over `__slots__`; repr reads the same slots"),
     "ofo/entitlements/ledger.py": (frozenset({'__setattr__'}),
@@ -914,9 +918,10 @@ def app_assembly_uses(source: str) -> list[tuple[int, str]]:
 #: a middleware, routing-table or handler token (test below).
 APP_ASSEMBLY_ALLOWED: dict[str, tuple[frozenset[str], str]] = {
     "ofo_app/main.py": (frozenset({"FastAPI", "router", "include_router", "dependency_overrides", "route_class",
-                                   "ClosedRoute", "mount", "state"}),
+                                   "ClosedRoute", "mount", "state", "routes"}),
         "create_app: the one place that builds the FastAPI app, sets the route class, includes the routers and installs "
-        "the test override of the market context; its lifespan reads app.state.broker to start live market data (W-065)"),
+        "the test override of the market context; its lifespan reads app.state.broker to start live market data "
+        "(W-065); it reads app.routes (never writes) so scenario mode refuses to start with an unclassified mutating route"),
     "ofo_app/errors.py": (frozenset({"FastAPI", "app", "exempt", "add_middleware", "add_exception_handler", "_Boundary",
                                      "ClosedRoute", "router", "routes"}),
         "the door itself: ClosedRoute and _Boundary are defined here; install(app) adds the boundary and the one handler; "

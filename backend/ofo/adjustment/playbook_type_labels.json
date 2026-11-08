@@ -1,0 +1,14 @@
+{
+  "strangle": "Short strangle",
+  "straddle": "Short straddle",
+  "ic": "Iron condor",
+  "ifly": "Iron butterfly",
+  "credit": "Credit spreads",
+  "debit": "Debit spreads",
+  "longopt": "Single long option",
+  "longvol": "Long straddle / strangle",
+  "calendar": "Calendar / diagonal",
+  "ratio": "Ratio and back-spreads",
+  "dirfly": "Directional butterflies / condors",
+  "other": "Naked shorts / futures / others"
+}

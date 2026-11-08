@@ -2,11 +2,13 @@
 // ONE home for the history logic and wording. No number is computed here; every summary is the server's own catalogue text.
 import { reactive } from "vue";
 import { NEUTRAL_PARTS } from "@/services/api";
-import { CLEAR_UNDO_MS } from "@/lib/legEdit";
 import { draftFromReply } from "@/lib/saveDraft";
 
 /** REQ-070 AC-6: shown INSTEAD of Delete once a basket was sent (or when the server could not say). */
-export const DELETE_REFUSED_TEXT = "Can't delete: orders were sent";
+export const DELETE_REFUSED_TEXT = "Orders were already sent for this strategy, so it cannot be deleted.";
+export const DELETE_REFUSED_PAPER_TEXT = "Can't delete: paper orders were placed";
+/** ADR-271: the refusal wording of one row (paper orders named; a real-order strategy keeps the sent-orders text). */
+export const refusedText = (row) => (row?.has_paper_order === true ? DELETE_REFUSED_PAPER_TEXT : DELETE_REFUSED_TEXT);
 export const DELETE_CONFIRM_TEXT =
   "Delete this draft? Its history is kept, and you can Undo right after.";
 export const NOTHING_TO_UNDO_TEXT = "Nothing to undo";
@@ -110,8 +112,10 @@ export function useDeleteFlow(client, hooks) {
         hooks.onRemoved(id);
         hooks.onDeleted?.(id);
         dropUndo();
+        const ms = await hooks.undoMs(); // the served Undo wait (REQ-167 AC-7); unknown = no Undo is offered, never a typed time
+        if (ms === null) return;
         state.undo = { id, revision };
-        timer = setTimeout(dropUndo, CLEAR_UNDO_MS);
+        timer = setTimeout(dropUndo, ms);
       } catch (e) {
         state.confirming = null;
         if (e?.status === 404)

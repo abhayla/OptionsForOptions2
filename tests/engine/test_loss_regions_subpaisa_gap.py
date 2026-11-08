@@ -192,12 +192,20 @@ def test_ac7_a_profit_stretch_narrower_than_a_paisa_is_reported_never_merged_awa
 
 
 def test_both_members_of_the_class_are_generated() -> None:
-    """AC-7: the generated set holds stretches whose edges do not terminate (rounded to 0.01) AND stretches with an
-    exact edge finer than 0.01 (e.g. 22,399.995) - both print as the peak level at the display step."""
+    """AC-7: the generated set holds stretches whose edges do not terminate AND stretches with an exact edge finer
+    than 0.01 (e.g. 22,399.995). The exact edges are computed here from the locked per-level P&L (the stretch is linear
+    on each side of its peak Z within 0.01); since REQ-155 AC-4 (F-75) both kinds come back from the engine on the
+    0.01 step, rounded half-even at the one producer."""
     kinds = set()
     for _, _, _, _, z, _, strategy in SHAPES:
+        for strike in map(D, z):
+            peak = Fraction(strategy.expiry_pnl_at(strike))
+            for side in (-1, 1):
+                step = Fraction(strategy.expiry_pnl_at(strike + side * STEP)) - peak  # P&L change over 0.01 points
+                edge = Fraction(strike) - side * peak * Fraction(STEP) / step
+                kinds.add("exact" if 10 ** 12 % edge.denominator == 0 else "rounded")  # terminates in decimal
         near = [b for b in strategy_metrics(strategy).breakevens if any(abs(b - D(s)) < STEP for s in z)]
-        kinds |= {"exact" if b.as_tuple().exponent < -2 else "rounded" for b in near}
+        assert near and all(b == b.quantize(STEP) for b in near), near
     assert kinds == {"exact", "rounded"}
 
 

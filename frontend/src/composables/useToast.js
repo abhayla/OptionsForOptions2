@@ -12,7 +12,7 @@ export function useToast() {
    * @param {string} message - The message to display
    * @param {string} type - The type of toast (success, error, warning, info)
    */
-  const showToast = (message, type = 'info') => {
+  const showToast = (message, type = 'info', { onClick } = {}) => {
     const prefix =
       {
         success: '✓',
@@ -21,6 +21,11 @@ export function useToast() {
         info: 'ℹ',
       }[type] || 'ℹ'
 
+    // with a click action the toast is a confirm: OK is the click
+    if (onClick) {
+      if (confirm(`${prefix} ${message}`)) onClick()
+      return
+    }
     alert(`${prefix} ${message}`)
   }
 

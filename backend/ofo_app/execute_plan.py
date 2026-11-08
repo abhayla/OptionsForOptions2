@@ -33,11 +33,10 @@ from ofo.execution.planned import ExecutionPlan, PlannedLeg
 from ofo.execution.price_check import circuit_block
 from ofo.instruments.catalogue import Catalogue
 from ofo.instruments.models import ZERODHA, InstrumentId
-from ofo.timeutil import IST
+from ofo.marketdata.quote_stamp import quote_time
 
 #: Zerodha's order statuses after which an order can no longer fill (an allow-list; anything else is open).
 TERMINAL_ORDER_STATUSES = frozenset({"COMPLETE", "CANCELLED", "REJECTED"})
-_QUOTE_TIME_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 
 @dataclass(frozen=True)
@@ -104,17 +103,6 @@ def _money(value: object) -> Decimal | None:
     if isinstance(value, bool) or not isinstance(value, (Decimal, int)):
         return None  # a float or text money figure is never read (money-parsed-through-float)
     return Decimal(value)
-
-
-def quote_time(quote: Mapping[str, object]) -> datetime.datetime | None:
-    """The quote's own timestamp (Kite's IST wall time), aware; None when absent or unreadable."""
-    raw = quote.get("timestamp")
-    if not isinstance(raw, str):
-        return None
-    try:
-        return datetime.datetime.strptime(raw, _QUOTE_TIME_FORMAT).replace(tzinfo=IST)
-    except ValueError:
-        return None
 
 
 def quote_from_kite(quote: object) -> LegQuote | None:

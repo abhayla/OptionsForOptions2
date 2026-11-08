@@ -48,6 +48,8 @@ from ofo.marketdata.feed_health import FEED_MARKET_CLOSED  # noqa: E402
 from ofo.marketdata.kite_provider import IST  # noqa: E402
 from ofo.marketdata.quote import priced  # noqa: E402
 from ofo.rules.inputs import DataHealth  # noqa: E402
+from ofo.settings import defaults as settings_defaults  # noqa: E402
+from ofo.settings.calc import chain_strikes_each_side  # noqa: E402
 from ofo_app import (  # noqa: E402
     index_push,
     live_market,
@@ -435,7 +437,8 @@ def test_pre_open_index_and_chain_are_labelled_with_the_session_close():
     nifty = next(r for r in idx.indices if r.underlying == "NIFTY")
     assert (idx.market_closed, idx.last_price_at, nifty.at) == (True, SESSION_CLOSE, SESSION_CLOSE)
     for live in (True, False):
-        chain = chain_answer(ctx, ChainRequest(underlying="NIFTY", expiry=CHAIN_EXPIRY),
+        chain = chain_answer(ctx, ChainRequest(underlying="NIFTY", expiry=CHAIN_EXPIRY,  # the route's default width:
+                                               strikes_each_side=chain_strikes_each_side(settings_defaults())),
                              dah._catalogue(listed()), None, live=live, now=clock)
         assert (chain.market_closed, chain.spot_at, chain.last_price_at) == (True, SESSION_CLOSE, SESSION_CLOSE)
 

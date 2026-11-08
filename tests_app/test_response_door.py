@@ -11,6 +11,7 @@ resolve their annotations from the real objects.
 
 import enum
 import json
+import pathlib
 import re
 from decimal import Decimal
 from typing import Annotated, Literal
@@ -308,6 +309,13 @@ def _sample(tp, required_only: bool = False):
         from test_execute_route import _real_basket  # noqa: PLC0415
 
         return BasketPost.of(_real_basket(), "kitekey")
+    from ofo_app.playbook_body_out import PlaybookBody  # noqa: PLC0415 - the GC-ADJ2 leaf, next to BasketPost
+
+    if tp is PlaybookBody:  # GC-ADJ2 step 2: made only by PlaybookBody.of, here from the shipped iron condor body
+        from ofo.adjustment.playbook_eval import body_from_fixture  # noqa: PLC0415
+
+        fixture = pathlib.Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "adjust_scenarios"
+        return PlaybookBody.of(body_from_fixture(json.loads((fixture / "_playbooks.json").read_text("utf-8")), "ic"))
     raise AssertionError(f"no sample for {tp!r}: the door and this test must learn a new leaf kind together")
 
 
@@ -325,11 +333,64 @@ def _build(cls, required_only: bool = False):
 #: A model added or removed without this list changing fails the test below, naming the added and missing names.
 #: To add one: insert its `module.Name` in sorted order.
 APP_MODELS = (
+    "ofo_app.api_models.AdjustAfterOut",
+    "ofo_app.api_models.AdjustApproachOut",
+    "ofo_app.api_models.AdjustApproachesOut",
+    "ofo_app.api_models.AdjustAvailableOut",
+    "ofo_app.api_models.AdjustBreakdownLineOut",
+    "ofo_app.api_models.AdjustCellOut",
+    "ofo_app.api_models.AdjustChargesOut",
+    "ofo_app.api_models.AdjustClosedLegOut",
+    "ofo_app.api_models.AdjustCriterionOut",
+    "ofo_app.api_models.AdjustDeltaNeutralOut",
+    "ofo_app.api_models.AdjustFiguresOut",
+    "ofo_app.api_models.AdjustLeadsOut",
+    "ofo_app.api_models.AdjustLegOut",
+    "ofo_app.api_models.AdjustMarginOut",
+    "ofo_app.api_models.AdjustPopOut",
+    "ofo_app.api_models.AdjustPricesOut",
+    "ofo_app.api_models.AdjustSpotOut",
+    "ofo_app.api_models.AdjustSpotReasonOut",
+    "ofo_app.api_models.AdjustTimingOut",
+    "ofo_app.api_models.AdjustTradeOut",
+    "ofo_app.api_models.AdjustWholeOut",
     "ofo_app.chain_push.ChainCellOut",
     "ofo_app.chain_push.ChainOut",
     "ofo_app.chain_push.ChainRowOut",
     "ofo_app.index_push.IndexOut",
     "ofo_app.index_push.IndicesOut",
+    "ofo_app.routes.adjustment_check.AdjustmentCheckOut",
+    "ofo_app.routes.adjustment_check.CheckPauseOut",
+    "ofo_app.routes.adjustment_check.CheckPlaybookOut",
+    "ofo_app.routes.adjustment_check.CheckResultOut",
+    "ofo_app.routes.adjustment_check.CheckStageOut",
+    "ofo_app.routes.adjustment_history.AdjustmentHistoryOut",
+    "ofo_app.routes.adjustment_history.HistoryOrderOut",
+    "ofo_app.routes.adjustment_history.HistoryRowOut",
+    "ofo_app.routes.adjustment_history.HistoryTotalsOut",
+    "ofo_app.routes.adjustment_opportunities.CountOut",
+    "ofo_app.routes.adjustment_opportunities.GroupOut",
+    "ofo_app.routes.adjustment_opportunities.HeldOut",
+    "ofo_app.routes.adjustment_opportunities.InboxOut",
+    "ofo_app.routes.adjustment_opportunities.OpportunityOut",
+    "ofo_app.routes.adjustment_opportunities.ReasonOut",
+    "ofo_app.routes.adjustment_opportunities.SuggestionOut",
+    "ofo_app.routes.adjustment_plan.AdjustmentPlanOut",
+    "ofo_app.routes.adjustment_plan.ClockOut",
+    "ofo_app.routes.adjustment_plan.PlanOut",
+    "ofo_app.routes.adjustment_plan.PlanPlaybookOut",
+    "ofo_app.routes.adjustment_plan.PrefillOut",
+    "ofo_app.routes.adjustment_plan.SettingInForceOut",
+    "ofo_app.routes.adjustment_plan.StopLineOut",
+    "ofo_app.routes.adjustment_plan.StopsOut",
+    "ofo_app.routes.adjustment_plan.TriggerInForceOut",
+    "ofo_app.routes.adjustment_preferences.PreferenceHistoryOut",
+    "ofo_app.routes.adjustment_preferences.PreferenceOut",
+    "ofo_app.routes.adjustment_preferences.PreferencesOut",
+    "ofo_app.routes.adjustment_preferences.RefusedOut",
+    "ofo_app.routes.alert_style.AlertStyleOut",
+    "ofo_app.routes.alert_style.ChoiceOut",
+    "ofo_app.routes.alert_style.RefusedOut",
     "ofo_app.routes.broker.BrokerRedirectOut",
     "ofo_app.routes.broker.RefusalOut",
     "ofo_app.routes.broker_capabilities.CapabilitiesOut",
@@ -361,6 +422,10 @@ APP_MODELS = (
     "ofo_app.routes.leg_picker.PickerCellOut",
     "ofo_app.routes.leg_picker.PickerRowOut",
     "ofo_app.routes.leg_picker.StrikesOut",
+    "ofo_app.routes.level_watch.RefusedOut",
+    "ofo_app.routes.level_watch.WatchOut",
+    "ofo_app.routes.monitoring_pause.PauseOut",
+    "ofo_app.routes.monitoring_pause.RefusedOut",
     "ofo_app.routes.outcome.CellOut",
     "ofo_app.routes.outcome.ChargesBreakdownOut",
     "ofo_app.routes.outcome.ColumnOut",
@@ -414,6 +479,18 @@ APP_MODELS = (
     "ofo_app.routes.paper.TriggersOut",
     "ofo_app.routes.planned_entry.PlannedEntriesOut",
     "ofo_app.routes.planned_entry.PlannedEntryOut",
+    "ofo_app.routes.playbooks.DayPairOut",
+    "ofo_app.routes.playbooks.DeletedOut",
+    "ofo_app.routes.playbooks.LabelOut",
+    "ofo_app.routes.playbooks.LabelsOut",
+    "ofo_app.routes.playbooks.PlaybookFullOut",
+    "ofo_app.routes.playbooks.PlaybookListOut",
+    "ofo_app.routes.playbooks.PlaybookOut",
+    "ofo_app.routes.playbooks.SituationKindOut",
+    "ofo_app.routes.playbooks.TestOut",
+    "ofo_app.routes.playbooks.TestStrategyOut",
+    "ofo_app.routes.playbooks.TypeOut",
+    "ofo_app.routes.playbooks.TypesOut",
     "ofo_app.routes.positions.PositionsOut",
     "ofo_app.routes.positions.StrategyContractOut",
     "ofo_app.routes.positions.StrategyPositionsOut",
@@ -421,6 +498,13 @@ APP_MODELS = (
     "ofo_app.routes.ready_made.PlacedLegOut",
     "ofo_app.routes.ready_made.QuickPickIn",
     "ofo_app.routes.ready_made.ReadyMadeOut",
+    "ofo_app.routes.scenario_frame.FrameOut",
+    "ofo_app.routes.settings.ChargesOut",
+    "ofo_app.routes.settings.EarlierValueOut",
+    "ofo_app.routes.settings.GroupOut",
+    "ofo_app.routes.settings.RefusedOut",
+    "ofo_app.routes.settings.SettingOut",
+    "ofo_app.routes.settings.SettingsOut",
     "ofo_app.routes.strategies.DefinitionOut",
     "ofo_app.routes.strategies.DeletedOut",
     "ofo_app.routes.strategies.EntryOut",
@@ -440,6 +524,8 @@ APP_MODELS = (
     "ofo_app.routes.strategy_templates.TemplateLegOut",
     "ofo_app.routes.strategy_templates.TemplateOut",
     "ofo_app.routes.strategy_templates.TemplatesOut",
+    "ofo_app.routes.system_playbooks.SystemHistoryOut",
+    "ofo_app.routes.system_playbooks.SystemVersionOut",
     "ofo_app.routes.tracking.DetectionOut",
     "ofo_app.routes.tracking.TrackedStrategyOut",
     "ofo_app.routes.tracking.TrackingIndexOut",

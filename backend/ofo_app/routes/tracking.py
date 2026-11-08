@@ -19,6 +19,7 @@ The user comes from the session (``current_user_ref``), never from the request.
 """
 from __future__ import annotations
 
+import dataclasses
 import datetime
 from collections.abc import Coroutine, Sequence
 from dataclasses import dataclass
@@ -26,8 +27,9 @@ from decimal import Decimal
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends
-from ofo.adjustment.detection import NEAR_LEVEL_THRESHOLD_PERCENT, PLATFORM_DETECTION, check_threshold
-from ofo.engine.legs import Action, Instrument
+from ofo.adjustment.detection import PLATFORM_DETECTION, check_threshold
+from ofo.adjustment.strategy_type import strike_gap_of, type_of
+from ofo.engine.legs import Action, Instrument, Leg
 from ofo.engine.orderbook import BookView
 from ofo.errors.explanations import render_explanation
 from ofo.instruments.models import FUTURE_TYPE
@@ -41,11 +43,13 @@ from ofo.tracking.orderbook import PaperOrder, net_positions
 from pydantic import BaseModel, ConfigDict, Field
 
 from ofo_app import paper_store, tracked_contracts
+from ofo_app.scenario_guard import guard_paper_order  # dev/test scenario guard; reaches no Execute code
 from ofo_app import strategy_store as store
 from ofo_app.api_models import ApiModel, CatalogueText, InstrumentId, Money
 from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure
 from ofo_app.live_push import LiveFeed
+from ofo_app.routes.adjustment_preferences import UserPreferences
 from ofo_app.routes.broker import current_user_ref
 from ofo_app.routes.outcome import AnswerClock, MarketContext, feed_scope, get_answer_clock, get_market_context
 from ofo_app.routes.planned_entry import get_live_feed, hold_until_priced
@@ -57,9 +61,10 @@ router = APIRouter(route_class=ClosedRoute)
 PriceStateCode = paper.PriceState
 
 
-def get_near_level_threshold() -> Decimal:
-    """Q253 condition 1's threshold (an admin setting; the admin screen is Step 6). Tests override this dependency."""
-    return NEAR_LEVEL_THRESHOLD_PERCENT
+def get_near_level_threshold(prefs: UserPreferences) -> Decimal:
+    """Q253 condition 1's threshold: the signed-in user's ``adjustments.near_level_percent`` preference in force now
+    (REQ-168 AC-1, AC-4; else the admin default in force, AC-5), read once per request by ``get_user_preferences``."""
+    return prefs.near_level_percent
 
 
 class TrackingExitIn(BaseModel):
@@ -110,6 +115,7 @@ class DetectionOut(ApiModel):
     distance_points: Money
     distance_percent: Money
     threshold_percent: Money
+    line: CatalogueText  # REQ-168 AC-4: names the alert distance used
     at: datetime.datetime | None
     price_health: PriceStateCode
 
@@ -166,7 +172,8 @@ class TrackingListOut(ApiModel):
 async def _snapshot(ctx: MarketContext, feed: LiveFeed | None, underlying: str, ids: list[str]):
     """One market read for the legs and the index. With a live feed, legs nobody holds are held until their first live
     quote or the planned-entry wait passes (the same rule and helper as the planned-entry route)."""
-    snapshot = read_snapshot(ctx.provider, underlying, ids, ctx.clock(), ctx.rate, feed_scope(ctx))
+    snapshot = read_snapshot(ctx.provider, underlying, ids, ctx.clock(), ctx.rate, feed_scope(ctx),
+                             quality=ctx.forward_quality)
     unpriced = [i for i in ids if paper.leg_price(snapshot, i).state != paper.LIVE]
     if unpriced and feed is not None:
         _, snapshot, _ = await hold_until_priced(feed, ctx, underlying, ids, unpriced)
@@ -279,6 +286,17 @@ def _texts(figures: dict) -> dict:
             for k in ("total", "booked", "unbooked")}
 
 
+def _near_line(d: Any) -> Any:
+    """REQ-168 AC-4: the alert line names the alert distance it used (the user's preference at this check)."""
+    template = "adjust_near_short_strike_line" if d.condition == "near_short_strike" else "adjust_near_breakeven_line"
+    return render_explanation(template, index=_plain(d.index_level), threshold=_plain(d.threshold_percent),
+                              level=_plain(d.level), distance=_plain(d.distance_percent))
+
+
+def _plain(value: Decimal) -> str:
+    return format(value, "f")
+
+
 def _view(bk: _Book, legs: list[paper.TrackedLeg], underlying: str,  # noqa: PLR0913
           view: paper.TrackingView | None, answered_at: datetime.datetime,
           reasons: list[paper.ContractReason | None]) -> TrackingOut:
@@ -296,6 +314,7 @@ def _view(bk: _Book, legs: list[paper.TrackedLeg], underlying: str,  # noqa: PLR
     body["detections"] = [{"kind": PLATFORM_DETECTION, "condition": d.condition, "level": d.level,
                            "index_level": d.index_level, "distance_points": d.distance_points,
                            "distance_percent": d.distance_percent, "threshold_percent": d.threshold_percent,
+                           "line": _near_line(d),
                            "at": index.at, "price_health": index.state} for d in view.detections]
     return TrackingOut.model_validate(body)
 
@@ -339,7 +358,23 @@ async def _answer(db: Any, stored, bk: _Book, ctx: MarketContext | None,  # noqa
         return _view(bk, legs, underlying, None, answered_at, reasons)
     snapshot = await _snapshot(ctx, feed, underlying, _open_keys(bk, legs, reasons))
     view = paper.tracking_view(snapshot, legs, check_threshold(threshold), reasons, exits)
+    if view.detections and _playbook_type(ctx, underlying, legs, bk, view) is not None:
+        # F-71 / GC-ADJ2 1C: a strategy whose shape is a playbook type is checked by its playbook
+        # (GET /api/strategies/{id}/adjustment-check); the fixed 0.5% level rule fires at entry for an iron condor
+        view = dataclasses.replace(view, detections=())
     return _view(bk, legs, underlying, view, answered_at, reasons)
+
+
+def _playbook_type(ctx: MarketContext | None, underlying: str, legs: list[paper.TrackedLeg], bk: _Book,
+                   view: paper.TrackingView) -> str | None:
+    """The open legs' playbook type at the live index (``strategy_type.type_of``); None (generic, the platform
+    detection stays) for a Custom or unmapped shape, no index, or a strike gap that cannot be derived."""
+    open_legs = tuple(Leg(leg.action, leg.instrument, leg.strike, leg.expiry, leg.quantity, leg.entry_price)
+                      for leg, held in zip(legs, bk.legs, strict=True) if not held.exited)
+    if ctx is None or view.index is None or view.index.price is None or not open_legs:
+        return None
+    gap = strike_gap_of(ctx.provider.instrument_master(), underlying, {x.expiry for x in open_legs})
+    return type_of(open_legs, view.index.price, gap)
 
 
 def _open_keys(bk: _Book, legs: list[paper.TrackedLeg], reasons: list[paper.ContractReason | None]) -> list[str]:
@@ -387,7 +422,8 @@ async def get_tracking(strategy_id: int,  # noqa: PLR0913 - FastAPI dependencies
     return await _answer(db, stored, bk, ctx, feed, threshold, now())
 
 
-@router.post("/strategies/{strategy_id}/tracking/exit", response_model=TrackingOut)
+@router.post("/strategies/{strategy_id}/tracking/exit", response_model=TrackingOut,
+             dependencies=[Depends(guard_paper_order)])  # IC e2e 5: scenario mode = own scenario only
 async def exit_tracking(strategy_id: int, body: TrackingExitIn,  # noqa: PLR0913 - FastAPI dependencies
                         db: Annotated[Any, Depends(get_db)], user_ref: Annotated[str, Depends(current_user_ref)],
                         ctx: Annotated[MarketContext | None, Depends(get_market_context)],
@@ -426,7 +462,7 @@ async def exit_tracking(strategy_id: int, body: TrackingExitIn,  # noqa: PLR0913
                                    p.price, "exit", p.at or answered)  # type: ignore[arg-type] - live: price set
               for i, p in zip(body.legs, prices, strict=True)]
     # a racing exit that closed the leg first makes this one exceed the open quantity: refused as already exited
-    after = await _write(db, strategy_id, paper_store.place(db, user_ref, strategy_id, orders),
+    after = await _write(db, strategy_id, paper_store.place(db, user_ref, strategy_id, orders, entry=None),  # an exit
                          paper_store.EXIT_EXCEEDS_OPEN, "tracking_leg_already_exited")
     return await _answer(db, stored, after, ctx, feed, threshold, answered)
 

@@ -16,10 +16,12 @@ from __future__ import annotations
 import asyncio
 import base64
 import functools
+import itertools
 import math
 import os
 import platform
 import sys
+import urllib.parse
 from collections.abc import AsyncIterator, Iterator
 
 import pytest
@@ -65,6 +67,63 @@ def _no_charge_rates_by_default(monkeypatch):
     monkeypatch.setattr(outcome, "_rates_cache", {"until": math.inf, "value": None})
 
 
+@pytest.fixture(autouse=True)
+def _settings_defaults_by_default(monkeypatch):
+    """GC-SET (REQ-167 AC-1): a request that gets a LIVE context reads the settings in force from the database
+    (``outcome._settings_in_force_now``). Tests that do not care get the registry defaults (never a connection
+    attempt); the wiring tests (test_settings_rate_wiring.py) override ``get_settings_reader`` or undo this patch."""
+    from ofo import settings  # noqa: PLC0415 - import order: env placeholders are set after this module's top
+    from ofo_app.routes import outcome  # noqa: PLC0415
+
+    async def defaults():
+        return settings.defaults()
+
+    monkeypatch.setattr(outcome, "_settings_in_force_now", defaults)
+
+
+@pytest.fixture(autouse=True)
+def _preferences_defaults_by_default(request, monkeypatch):
+    """GC-SET step 8 (REQ-168 AC-2): the adjustment routes read the user's preferences once per request through
+    ``get_db`` and ``user_preferences_store.values_for``. Tests that do not care get the admin/registry defaults
+    (never a connection attempt, no configuration needed); the real-path tests (test_user_preferences.py) carry
+    ``pytestmark = pytest.mark.real_preferences``, which keeps the true database read, and so does any test that
+    asks for the ``app_engine`` fixture (it points the app at a real database). The route is not weakened:
+    only the two seams under it (the session factory and the value read) are replaced."""
+    if request.node.get_closest_marker("real_preferences") or "app_engine" in request.fixturenames:
+        return
+    from ofo import settings  # noqa: PLC0415
+    from ofo_app import db, user_preferences_store  # noqa: PLC0415
+
+    class _NoSession:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+        async def close(self):
+            return None
+
+    async def defaults(session, user_ref, at=None):
+        values = settings.defaults()
+        # the store's own record shape (no own value: every key "default"), so the three-layer resolver reads it
+        return user_preferences_store.UserValues(
+            {k: user_preferences_store.Answer(k, values[k], "default", values[k], None)
+             for k in user_preferences_store.preference_keys()})
+
+    def sessionmaker():
+        return _NoSession
+
+    async def no_plan_no_entry_facts(strategy_id):
+        return None, None  # ADR-243: no plan override, no stored entry facts (Target delta is unaffected)
+
+    from ofo_app import adjustment_readers  # noqa: PLC0415
+
+    monkeypatch.setattr(db, "get_sessionmaker", sessionmaker)
+    monkeypatch.setattr(user_preferences_store, "values_for", defaults)
+    monkeypatch.setattr(adjustment_readers, "read_roll_inputs", no_plan_no_entry_facts)
+
+
 # W-058: create_app refuses to build without a broker configuration. Tests get placeholders and a key generated for
 # this run (never a real secret); a value already in the environment (CI) is kept.
 os.environ.setdefault("KITE_API_KEY", "test_placeholder_key")
@@ -95,6 +154,94 @@ def _url_or_skip(name: str, reason: str) -> str:
 
 def _engine(url: str) -> AsyncEngine:
     return create_async_engine(url, poolclass=NullPool, connect_args={"server_settings": {"jit": "off"}})
+
+
+# GC-MERGE1 (#649): every test FILE runs on its own copy of the migrated database, so no file sees rows another file
+# committed (the catalogue union vs a file's own small list, the fixed user "owner"'s playbooks). The migrated database
+# named in the URLs is only the TEMPLATE: nothing connects to it while the suite runs (CREATE ... TEMPLATE needs that).
+_REPOINTED = ("TEST_DATABASE_URL", "TEST_ADMIN_DATABASE_URL", "ALEMBIC_DATABASE_URL", "DATABASE_URL")
+_clone_seq = itertools.count(1)
+CLONES_MADE: list[str] = []  # in order; read by tests_app/test_db_per_file_guard.py
+
+
+def _db_name(url: str) -> str:
+    return urllib.parse.urlsplit(url).path.lstrip("/")
+
+
+def _with_db(url: str, name: str) -> str:
+    return urllib.parse.urlunsplit(urllib.parse.urlsplit(url)._replace(path="/" + name))
+
+
+def _admin_run(admin_url: str, statements: list[str]) -> None:
+    """The statements, in order, on the server's maintenance database (a connection to the template would block the
+    clone). A fresh loop, never the suite's session loop (that one is not running between files)."""
+    import asyncpg  # noqa: PLC0415
+
+    async def go():
+        conn = await asyncpg.connect(_with_db(admin_url, "postgres").replace("+asyncpg", "", 1), timeout=30)
+        try:
+            for sql in statements:
+                await conn.execute(sql, timeout=120)
+        finally:
+            await conn.close()
+
+    loop = asyncio.new_event_loop()
+    try:
+        loop.run_until_complete(go())
+    finally:
+        loop.close()
+
+
+def _forget_app_engines() -> None:
+    """The app caches its settings and engine per process; a file must never reach the previous file's database."""
+    from ofo_app import config, db  # noqa: PLC0415 - the env placeholders above must be set first
+
+    config.get_settings.cache_clear()
+    db.get_engine.cache_clear()
+    db.get_sessionmaker.cache_clear()
+
+
+def clone_for_file(admin_url: str, app_url: str) -> str:
+    """CREATE <template>_f<n> TEMPLATE <template> plus the database-level grants CI gives the app role (a template does
+    not copy them; schema and table privileges are inside the database and are copied). Raises on any failure, after
+    dropping a half-made clone: the caller's tests then ERROR, they never fall back to the shared database."""
+    template = _db_name(admin_url)
+    clone = f"{template}_f{next(_clone_seq)}"
+    app_role = urllib.parse.urlsplit(app_url).username
+    _admin_run(admin_url, [f'CREATE DATABASE "{clone}" TEMPLATE "{template}"'])
+    try:
+        # what CI (CONNECT) and migration 0001 (CREATE, TEMPORARY) revoke on the original
+        _admin_run(admin_url, [f'REVOKE CONNECT, CREATE, TEMPORARY ON DATABASE "{clone}" FROM PUBLIC',
+                               f'GRANT CONNECT ON DATABASE "{clone}" TO "{app_role}"'])
+    except BaseException:
+        _admin_run(admin_url, [f'DROP DATABASE IF EXISTS "{clone}" WITH (FORCE)'])
+        raise
+    CLONES_MADE.append(clone)
+    return clone
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _fresh_database_per_file() -> Iterator[None]:
+    admin = os.environ.get("TEST_ADMIN_DATABASE_URL", "").strip()
+    app = os.environ.get("TEST_DATABASE_URL", "").strip()
+    if not admin or not app:
+        yield  # no database tests here: they skip (or fail under OFO_REQUIRE_DB_TESTS) in their own fixtures
+        return
+    template = _db_name(admin)
+    if _db_name(app) != template:
+        pytest.fail("TEST_DATABASE_URL and TEST_ADMIN_DATABASE_URL name different databases; per-file copies need one")
+    _forget_app_engines()
+    clone = clone_for_file(admin, app)
+    with pytest.MonkeyPatch.context() as mp:
+        for name in _REPOINTED:
+            url = os.environ.get(name, "").strip()
+            if url and _db_name(url) == template:
+                mp.setenv(name, _with_db(url, clone))
+        try:
+            yield
+        finally:
+            _forget_app_engines()
+            _admin_run(admin, [f'DROP DATABASE IF EXISTS "{clone}" WITH (FORCE)'])
 
 
 @pytest.fixture

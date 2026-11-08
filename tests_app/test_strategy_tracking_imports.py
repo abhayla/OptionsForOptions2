@@ -155,6 +155,10 @@ REVIEWED_RAW_IDENTITY = {
     # expiry) to settle at the index close; the one key read is the INDEX's, from load_catalogue's live rows by the
     # fixed INDEX_ROWS key (as live_market.py). No stored id -> feed key.
     "backend/ofo_app/paper_settlement.py": "stored id -> terms only; index token from live rows by INDEX_ROWS key",
+    # GC-ADJ2 close (2026-10-31), reviewed: GC-ADJ1 1b scenario mode, APP_ENV development/test only and only on
+    # ofo_dev / ofo_test. One read-only SELECT of LIVE rows (not retired, not delisted) by Zerodha broker symbol, so a
+    # scenario contract that is a real contract gets its real tokens: key -> live row, never a stored id -> key.
+    "backend/ofo_app/scenario_mode.py": "dev/test only: live rows by broker symbol (key -> row); no stored id read",
 }
 #: Paths that must never be in the reviewed list: the callers issue #500 moved onto resolve.
 MUST_USE_RESOLVE = ("backend/ofo_app/routes/strategies.py", "backend/ofo_app/routes/execute.py",

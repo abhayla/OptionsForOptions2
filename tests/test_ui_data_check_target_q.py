@@ -12,11 +12,20 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 _spec = importlib.util.spec_from_file_location("ui_data_check_q", ROOT / "scripts" / "checks" / "ui_data_check.py")
 u = importlib.util.module_from_spec(_spec)
 sys.modules["ui_data_check_q"] = u
 _spec.loader.exec_module(u)
+
+
+@pytest.fixture(autouse=True)
+def _replies_recorded_before_adr234(monkeypatch):
+    """The fixtures here are server replies recorded before ADR-234 (2026-11-02): their theta carries the old call / put
+    cost-of-carry split, so the checker re-checks them on that basis. Live checks use THETA_BASIS "forward"."""
+    monkeypatch.setattr(u, "THETA_BASIS", "carry_before_adr234")
 
 _LIVE = ROOT / "tests" / "fixtures" / "outcome-target-sensex-live-1030.json"
 _SERVER_Q = "0.116535"  # the q that reproduces the server's theta on this reply (measured, replay spike)

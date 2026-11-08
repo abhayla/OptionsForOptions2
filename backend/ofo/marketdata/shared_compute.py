@@ -4,9 +4,40 @@ ADR-053 (V1): live prices come through each user's OWN Zerodha feed and one user
 screen (F-23). So the feed owner is part of every key: two users' feeds never share an entry, even with identical data.
 Sharing across users waits for a licensed vendor feed (REQ-052 AC-5), which is not built.
 
-The key is an allow-list (:class:`SharedKey`): feed owner, underlying, expiry, snapshot instant, the figure's name, the
-contract and the exact inputs the figure is computed from. The inputs are in the key so a stale or poisoned entry can
-never answer a different input: an entry is only ever read back for the very inputs it was computed from.
+The key is an allow-list (:class:`SharedKey`): feed owner, underlying, expiry, snapshot instant, the figure (the engine
+function's identity, ``module.qualname``), the contract and the exact inputs the figure is computed from. The inputs are
+in the key so a stale or poisoned entry can never answer a different input: an entry is only ever read back for the very
+inputs it was computed from.
+
+The inputs are never written by hand (#519): :meth:`FeedScope.call` takes the engine function and its arguments, builds
+the key FROM those positional arguments (every one, in order; keywords are not accepted, so one input has one way in)
+through ONE normaliser (:func:`key_part`), then calls the function with exactly those arguments itself. A call site
+cannot drop or change an input of the computation without the key changing with it. The normaliser's answer per
+argument:
+
+- ``None``, ``bool``, ``int``, ``str`` (and ``str`` subclasses), ``Decimal`` (exact: sign, digits and exponent, so
+  ``1.0`` and ``1.00`` are two keys), ``float``, ``date``, ``datetime`` (with its offset, zone name and fold), ``time``,
+  an ``Enum`` member: kept, tagged with its exact type (``True`` and ``1`` are two keys);
+- a ``tuple`` (also the empty one): each item reduced;
+- a dataclass: its type and EVERY field by name, reduced (``compare=False`` fields too);
+- a value object that lists its own fields (a ``key_fields()`` method: the engine's gated ``ExpiryModel`` gives every
+  one of its slots): its type and every listed field by name, reduced;
+- anything else (a list, dict, set, an object hashed by identity, a function): raises ``TypeError`` (fail closed),
+  never silently left out of the key.
+
+The function must be a plain module-level function: a lambda or a nested function (every closure is one), a bound
+method, a ``functools.partial``, a class or another callable object is refused, because what it captures would not be
+in the key.
+
+Known bypasses (written down, not chased):
+
+- :meth:`SharedCompute.get_or_compute` called with a hand-built :class:`SharedKey` outside :meth:`FeedScope.call` (only
+  the cache's own tests do this);
+- module-level constants and other globals an engine function reads (``DAYS_IN_YEAR``, ``EXPIRY_CLOSE``): they are not
+  arguments, so not in the key; they change only with a code change, which restarts the process and empties the cache;
+- an argument object mutated AFTER the call (the key is taken at call time; every argument type used is frozen);
+- a function whose ``__qualname__`` was rewritten to pass as a module-level one, or a ``key_fields()`` that leaves a
+  field out (the gated engine types build theirs from ``__slots__``, asserted by a test).
 
 Behaviour (each has a test):
 
@@ -22,11 +53,15 @@ Standard library only.
 """
 from __future__ import annotations
 
+import dataclasses
 import datetime
+import enum
 import threading
+import types
 from collections import OrderedDict
 from collections.abc import Callable, Hashable
 from dataclasses import dataclass
+from decimal import Decimal
 from typing import Final, TypeVar
 
 T = TypeVar("T")
@@ -76,11 +111,67 @@ class FeedScope:
         if not isinstance(self.feed_owner, str) or not self.feed_owner.strip():
             raise ValueError("a shared cache needs the feed owner: one user's feed never serves another's (ADR-053)")
 
-    def compute(self, scope: tuple, inputs: tuple, compute: Callable[[], T]) -> T:
-        """``scope`` is (underlying, expiry, instant, figure, instrument_id); the result is computed once per key."""
-        underlying, expiry, instant, figure, instrument_id = scope
+    def call(self, scope: tuple, fn: Callable[..., T], /, *args: object) -> T:
+        """``fn(*args)``, computed once per key. ``scope`` is (underlying, expiry, instant, instrument_id); the figure
+        is ``fn``'s identity and the inputs are built from the very arguments ``fn`` is then called with."""
+        underlying, expiry, instant, instrument_id = scope
+        figure, inputs = call_key(fn, args)
         key = SharedKey(self.feed_owner, underlying, expiry, instant, figure, instrument_id, inputs)
-        return self.cache.get_or_compute(key, compute)
+        return self.cache.get_or_compute(key, lambda: fn(*args))
+
+
+def call_shared[R](shared: FeedScope | None, scope: tuple, fn: Callable[..., R], /, *args: object) -> R:
+    """The one way a market-wide figure is computed: through ``shared`` when there is a feed scope, else the same call
+    unshared. Both paths call ``fn`` with the same arguments, so a shared figure equals an unshared one."""
+    if shared is None:
+        return fn(*args)
+    return shared.call(scope, fn, *args)
+
+
+def function_identity(fn: object) -> str:
+    """``module.qualname`` of a plain module-level function; refuses what may capture inputs outside its arguments: a
+    lambda or nested function (every closure is one), a bound method, a partial, a class or another callable object."""
+    if not isinstance(fn, types.FunctionType):
+        raise TypeError(f"a shared figure is computed by a plain module-level function, got {fn!r}")
+    qualname, module = fn.__qualname__, fn.__module__
+    if "<" in qualname or "." in qualname:
+        raise TypeError(f"{module}.{qualname} is a lambda, nested function or closure: what it captures would not be "
+                        "in the cache key; pass a module-level function")
+    return f"{module}.{qualname}"
+
+
+def call_key(fn: Callable[..., object], args: tuple) -> tuple[str, tuple[Hashable, ...]]:
+    """(figure, inputs) of one engine call: ``fn``'s identity and EVERY positional argument it is called with, each
+    reduced by :func:`key_part`, in order. Keyword arguments are not accepted (one way to pass an input, so one key);
+    a parameter left at its default is part of the function, like a module constant."""
+    return function_identity(fn), tuple(key_part(value) for value in args)
+
+
+_SCALARS: Final = (type(None), bool, int, str, Decimal, float, datetime.date, datetime.time, enum.Enum)
+
+
+def _type_tag(value: object) -> str:
+    return f"{type(value).__module__}.{type(value).__qualname__}"
+
+
+def key_part(value: object) -> Hashable:
+    """The ONE normaliser of an engine argument into an exact, hashable key part (answer states in the module
+    docstring); anything it cannot reduce raises ``TypeError``, never drops out of the key."""
+    tag = _type_tag(value)
+    if isinstance(value, Decimal):
+        return (tag, value.as_tuple())  # exact: sign, digits, exponent
+    if isinstance(value, datetime.datetime):
+        return (tag, value.isoformat(), value.tzname(), value.fold)
+    if isinstance(value, _SCALARS):
+        return (tag, value)
+    if isinstance(value, tuple):
+        return (tag, tuple(key_part(item) for item in value))
+    if dataclasses.is_dataclass(value) and not isinstance(value, type):
+        return (tag, tuple((f.name, key_part(getattr(value, f.name))) for f in dataclasses.fields(value)))
+    key_fields = getattr(type(value), "key_fields", None)
+    if callable(key_fields) and not isinstance(value, type):
+        return (tag, tuple((name, key_part(field)) for name, field in value.key_fields()))
+    raise TypeError(f"{tag} cannot be reduced to a cache key part (fail closed); pass a value, a tuple or a dataclass")
 
 
 class _Slot:

@@ -311,6 +311,10 @@ def set_typed_price(cat: Catalogue, underlying: str, legs: list[EditLeg], index:
             for i, x in enumerate(legs)]
 
 
+#: The one landing rule, public for the adjustment approach builder (REQ-155 AC-1 reuses the REQ-078 strike moves).
+land = _land
+
+
 def with_entries(legs: list[EditLeg], entries: Mapping[int, Decimal]) -> list[EditLeg]:
     """REQ-076 AC-2 / REQ-077 AC-5: the freshly captured planned entries replace the old ones (and any typed mark)."""
     return [replace(x, leg=replace(x.leg, entry_price=entries[i]), typed=False) if i in entries else x

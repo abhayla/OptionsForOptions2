@@ -1,0 +1,29 @@
+{
+ "id": "approach-name-list-split-from-built-list",
+ "scope": "project",
+ "class": "Any user-facing slot that names an approach from its own hand-kept list of approach ids silently degrades (plain text, no name, no cost) for every approach added to the builder after that list was written, because nothing ties the slot's list to the list of approaches the builder can actually build.",
+ "mechanism": "The message slot ApproachLabel accepted only the first 7 approach ids while backend/ofo/adjustment/approaches.py APPROACH_IDS grew in GC-IC1 steps 2/3 (c899dccb). ADJ-43's cheapest approach became A-26, so the T-19 list line lost its approach name and cost. Affected: A-02, A-04, A-06, A-24, A-25, A-26, A-27, A-35.",
+ "first_seen": {
+  "date": "2026-11-05",
+  "where": "ic-e2e-paper goal run, fixer for tests_app/test_adjustment_opportunities.py (branch ic-e2e/fix-opps)",
+  "evidence": "probe_t19.py at b5ae7021 and at 2ba290a2: 'ADJ-43 A-26 26.86 2 None in_label_table= False'; lead DB run on 9e8e4eae: test_t19_list_line_names_the_same_approach_and_cost_as_the_check FAILED (8 failed, 6 passed in 320.17s)."
+ },
+ "fix": "One name table BUILT_APPROACH_NAMES used by both the slot and approaches.NAMES (ic-e2e/fix-opps 24ce46c9 / 92958ba3); a test over every built approach failed first on A-24.",
+ "detection": {
+  "status": "guarded",
+  "checks": [
+   "the every-built-approach slot test added with the fix"
+  ],
+  "note": "the test iterates APPROACH_IDS, so a new approach without a name fails it."
+ },
+ "spec_ref": [
+  "spec/requirements/REQ-158.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-11-05",
+   "where": "feature/adjustments since GC-IC1 step 2",
+   "evidence": "8 approach ids missing from the slot"
+  }
+ ]
+}

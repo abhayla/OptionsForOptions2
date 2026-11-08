@@ -1,0 +1,40 @@
+{
+ "id": "check-greeks-need-chain-screen-open",
+ "scope": "generic",
+ "class": "A reader that feeds a model needing near-the-money inputs (a parity forward, an ATM IV) but holds only the caller's own contracts gets those inputs only while somebody else holds the near-the-money contracts (an open chain screen). For every expiry with no such holder the model has no forward, so every rule reading Greeks or IV on that path answers not_checked. Wider shape: a quote book lists only held contracts, so a read that depends on contracts it does not itself hold works by accident of another screen.",
+ "mechanism": "adjustment_readers.read_market called chain_quotes(..., own_leg_ids(position, listed), live), which holds only the position's legs (adjustment_readers.py:269 at 7f12c1c4); chain_model needs near-the-money quotes for its parity forward, so with no chain screen open for the expiry there was no forward, no leg Greeks and no ATM IV. The background worker already held the window (background.Worker._window_tokens_of) with its own copy of the rule.",
+ "first_seen": {
+  "date": "2026-11-03",
+  "where": "feature/adjustments @ 7f12c1c4, GET /api/strategies/82/adjustment-check live",
+  "evidence": "11:12: T-03 answered not_checked 'Delta of a short leg not available' and T-11 'ATM IV not available' while the paper book of the same strategy showed the 24000 CE delta at about 0.46"
+ },
+ "fix": "chain_push.window_strikes is the ONE window rule (grid, live spot, each side); read_market holds window ids plus own leg ids (adjustment_readers.window_ids, ctx.chain_strikes_each_side in force); the worker calls window_strikes too. The hold reuses chain_quotes' LEG_WAIT_S and its always-released finally.",
+ "detection": {
+  "status": "guarded",
+  "checks": [
+   "tests_app/test_adjustment_readers.py::test_gcic1_read_market_asks_chain_quotes_for_the_window_ids",
+   "tests_app/test_adjustment_readers.py::test_gcic1_check_holds_the_window_so_legs_have_greeks_and_the_vol_is_stated",
+   "tests_app/test_adjustment_readers.py::test_gcic1_r5_delta_reach_prices_a_far_roll_after_exactly_one_second_pass",
+   "tests_app/test_adjustment_readers.py::test_gcic1_r5_unpriced_only_second_pass_still_has_no_price",
+   "tests_app/test_adjustment_readers.py::test_gcic1_r5_delta_reach_walks_to_one_past_the_fit_plus_the_wing_shift",
+   "tests_app/test_adjustment_readers.py::test_gcic1_r5_delta_reach_is_capped_per_short"
+  ],
+  "note": "Mutant window each-side 0 turns 3 gcic1 tests red. Live re-run of the strategy 82 check after merge is still owed (not run here). Round 5 mutants (each turns a test red): today's unpriced-only pass, no wing shift, no +1 strike, no cap, lowest IV instead of highest, next expiry skipped."
+ },
+ "spec_ref": [
+  "spec/requirements/REQ-165.md",
+  "spec/requirements/REQ-155.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-11-03",
+   "where": "strategy 82 screen check",
+   "evidence": "T-03 and T-11 not_checked with no chain screen open"
+  },
+  {
+   "date": "2026-11-03",
+   "where": "strategy 82 approaches route live 13:55 (GC-IC1 round 5, second independent review)",
+   "evidence": "A-05 refused 'no price' for 25,250 CE and A-04 for 24,800 CE Jan although Kite quoted all 8 target contracts in 0.69 s: the hold reach was fixed in points (wing + roll_points_without_delta) while the roll is delta-based (750-800 points on far expiries), so roll_distance met one unheld strike per pass and the wing landing was never held. Fix: the ONE second pass also holds adjustment_readers.delta_reach_ids (model delta at the expiry's highest solved IV, to one strike past the first fit, plus the wing shift, on the position's expiry and the next, capped at REACH_MAX_STRIKES=30); the model only chooses which strikes to hold, every price stays the quote's (ADR-068 (1))."
+  }
+ ]
+}

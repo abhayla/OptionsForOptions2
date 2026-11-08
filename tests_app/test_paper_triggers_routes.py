@@ -10,6 +10,7 @@ from http import HTTPStatus
 
 import pytest
 from ofo.errors.explanations import render_explanation
+from ofo.tracking.paper_alert import alert_body
 from ofo_app import paper_monitor, paper_store, paper_trigger_store
 from sqlalchemy import text
 from test_paper_routes import _new
@@ -71,6 +72,55 @@ async def test_core_a_posted_stop_is_stored_armed_notifies_the_monitor_and_its_a
         assert (await c.get(_url(stored))).json()["triggers"][0]["id"] > 0
         read = (await c.post("/paper/alerts/read")).json()
         assert read["unread"] == 0 and read["alerts"][0]["read"] is True
+
+
+_FOUR_TRIGGERS = ("any", "stop", "stop", "stop")  # a conditional exit (2 levels) + two leg stops
+
+
+async def _alerts_after_storing(db, bodies_of):
+    """Open a paper book with four armed triggers, store ``bodies_of(what, dash)`` as alerts, return the GET reply."""
+    app, stored, ids = await _open(db)
+    async with _client(app) as c:
+        for payload in ({"kind": "conditional_exit", "above": "23100", "below": "22850"},
+                        {"kind": "leg_stop", "contract_id": ids[0], "direction": "above", "level": "120.00"},
+                        {"kind": "leg_stop", "contract_id": ids[1], "direction": "below", "level": "5.00"}):
+            reply = await c.post(_url(stored), json=payload)
+            assert reply.status_code == HTTPStatus.CREATED, reply.text
+        tids = [row["id"] for row in (await c.get(_url(stored))).json()["triggers"]]
+        assert len(tids) == len(set(tids)) == len(_FOUR_TRIGGERS)
+        dash = render_explanation("cell_dash")
+        title = str(render_explanation("paper_alert_title", name=dash))
+        what = render_explanation("paper_stop_reason_index", underlying="NIFTY", direction="below",
+                                  level=D("22850"))
+        bodies = bodies_of(what, dash)
+        for tid, body in zip(tids, bodies, strict=False):
+            assert await paper_trigger_store.claim_fire(db, tid)
+            await paper_trigger_store.add_alert(db, stored.id, tid, title, body)
+        return await c.get("/paper/alerts"), bodies
+
+
+def _good_bodies(what, dash):
+    safety = "A paper exit only: no order was sent to Zerodha."
+    return [
+        f"{what}; exited 1 legs at {dash} at {dash}. {safety}",  # written before 7babdba9
+        str(alert_body(what, [(dash, D("41.00"))], names_contract=True)),
+        str(alert_body(what, [(dash, D("41.00"))], names_contract=False)),
+        str(alert_body(what, [(dash, D("41.00")), (dash, D("12.50"))], names_contract=False)),
+    ]
+
+
+async def test_alerts_list_reads_every_stored_form(db, notified):
+    """Regression 7babdba9: the new one-leg wording made GET /paper/alerts answer 500 for the whole list."""
+    reply, bodies = await _alerts_after_storing(db, _good_bodies)
+    assert reply.status_code == HTTPStatus.OK, reply.text
+    assert sorted(a["body"] for a in reply.json()["alerts"]) == sorted(bodies)
+
+
+async def test_alerts_list_leaves_out_one_unreadable_row_not_the_whole_list(db, notified):
+    reply, bodies = await _alerts_after_storing(
+        db, lambda what, dash: [_good_bodies(what, dash)[1], "hand written, no template"])
+    assert reply.status_code == HTTPStatus.OK, reply.text
+    assert [a["body"] for a in reply.json()["alerts"]] == [bodies[0]]
 
 
 async def test_a_leg_stop_names_an_open_contract_and_one_direction(db, notified):

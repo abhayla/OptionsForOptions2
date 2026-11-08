@@ -33,21 +33,21 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import datetime
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Query
 from ofo.engine.chain_values import ChainGreeks, chain_greeks
-from ofo.marketdata.forward import ExpiryForward, ForwardUnavailable, parity_forward
+from ofo.marketdata.forward import ExpiryForward, ForwardQuality, ForwardUnavailable, parity_forward
 from ofo.marketdata.provider import PACKET_WITHOUT_DAY_FIELDS, DayStatsAnswer, DayStatsReason, NotSupported
 from ofo.marketdata.quote import NormalizedQuote, is_live_price, planning_price_usable
 from ofo.money import PAISE
 from ofo.outcome.snapshot import contract_id, forward_strike_ids
 from ofo.rules.inputs import DataHealth
+from ofo.settings import RISK_FREE_RATE, calc, defaults
 from ofo.timeutil import IST
-from pydantic import AfterValidator
 from sqlalchemy.exc import SQLAlchemyError
 
 from ofo_app.api_models import ApiModel, CatalogueText, InstrumentId, Money
@@ -61,19 +61,36 @@ from ofo_app.chain_push import (
     stored_chain,
     strike_grid,
 )
-from ofo_app.errors import ClosedRoute
+from ofo_app.errors import ClosedRoute, refuse_request
 from ofo_app.live_push import LiveFeed
 from ofo_app.outcome_oi import oi_of, price_counts
 from ofo_app.routes import live
 from ofo_app.routes.broker import V1_OWNER_REF, current_user_ref
-from ofo_app.routes.outcome import AnswerClock, HealthCode, MarketContext, get_answer_clock, label_time, market_state
+from ofo_app.routes.outcome import (
+    AnswerClock,
+    HealthCode,
+    MarketContext,
+    get_answer_clock,
+    get_calc_settings,
+    get_market_context,
+    label_time,
+    market_state,
+)
 from ofo_app.underlying import Underlying
+
+# only for a caller that passes no rate (a test, or a request with no live context, where nothing is priced); a route
+# with a live context passes the setting in force (finding 1, GC-SET round 2)
+DEFAULT_RATE = defaults()[RISK_FREE_RATE]
+DEFAULT_QUALITY = calc.forward_quality(defaults())  # the same, for the forward settings (REQ-167 AC-5)
 
 STRIKES_PATH = "/api/leg-picker/strikes"
 FUTURES_PATH = "/api/leg-picker/futures"
 DEPTH_PATH = "/api/leg-picker/depth"
-WIDTHS = (10, 20, 30, 40)  # REQ-080 AC-1: strikes each side of ATM
-DEFAULT_WIDTH = 10
+#: REQ-080 AC-1 / REQ-167 AC-5: the widths offered are the ``limits.leg_picker_width_1..4`` settings in force (the route
+#: reads them per request and the answer carries them); this is only for a direct caller that passes none (a test)
+DEFAULT_WIDTHS = calc.leg_picker_widths(defaults())
+#: the same for the strangle quick-pick distances (``scenarios.strangle_quick_pick_<index>_N``, REQ-079 AC-7)
+DEFAULT_QUICK_PICKS = calc.quick_pick_distances(defaults())
 LEASE_SECONDS = 30.0  # the picker's window is held this long after its last read
 _SIDES = ("CE", "PE")
 _DELTA_STEP = Decimal("0.0001")
@@ -92,15 +109,14 @@ FutureReason = Literal["NOT_OFFERED", "NOT_STREAMABLE", "NO_QUOTE", "FEED_STALE"
 router = APIRouter(route_class=ClosedRoute)
 
 
-def _listed_width(value: int) -> int:
-    """An allow-list, not a range: only the picker's own widths (a query string gives an int, which ``Literal`` of
-    ints would refuse)."""
-    if value not in WIDTHS:
-        raise ValueError(f"width must be one of {WIDTHS}")
-    return value
-
-
-Width = Annotated[int, AfterValidator(_listed_width)]
+def width_in_force(asked: int | None, widths: tuple[int, ...]) -> int:
+    """The width the request gets: none asked = the first choice; an allow-list, not a range: only the widths the answer
+    offers (the settings in force). Anything else is the same 422 a malformed query gets."""
+    if asked is None:
+        return widths[0]
+    if asked not in widths:
+        refuse_request(("query", "width"), "enum", asked)
+    return asked
 
 
 # ---- response models ------------------------------------------------------------------------------------------------
@@ -129,6 +145,11 @@ class StrikesOut(ApiModel):
     underlying: Underlying
     expiry: datetime.date
     width: int
+    widths: list[int]  # the widths the picker offers and the server accepts (limits.leg_picker_width_1..4), in order
+    default_width: int  # the width read when none is asked (the first choice)
+    #: the strangle quick-pick distances (points) the server accepts for this underlying, in order: the Strangles tab
+    #: offers exactly these (scenarios.strangle_quick_pick_<index>_N, REQ-079 AC-7)
+    quick_pick_distances: list[int]
     spot: Money | None  # the live spot, or the last known one while the feed still holds it (``centre``)
     spot_at: datetime.datetime | None  # the time of ``spot`` (always set with it: a last known spot is dated)
     centre: Centre  # what the list is centred on; MIDDLE_STRIKE = "ATM unknown - no live price"
@@ -217,7 +238,7 @@ class WindowLease:
 
     def __init__(self) -> None:
         self._leases: dict[tuple[Any, ...], _Lease] = {}
-        self._timers: dict[tuple[Any, ...], asyncio.TimerHandle] = {}
+        self._armed: dict[tuple[Any, ...], object] = {}  # key -> the stamp of its latest timer; an older one is a no-op
 
     @property
     def held_ids(self) -> frozenset[str]:
@@ -269,18 +290,20 @@ class WindowLease:
         """End the lease of ``key``, or every lease when no key is given."""
         for k in list(self._leases) if key is None else [key]:
             lease = self._leases.pop(k, None)
-            timer = self._timers.pop(k, None)
-            if timer is not None:
-                timer.cancel()
+            self._armed.pop(k, None)  # the key's timer, if any, now finds a different stamp and does nothing
             if lease is not None and lease.handle is not None:
                 lease.feed.fanout.unsubscribe(lease.handle)
 
     def _arm(self, key: tuple[Any, ...]) -> None:
-        timer = self._timers.pop(key, None)
-        if timer is not None:
-            timer.cancel()
+        stamp = self._armed[key] = object()  # re-arming replaces the stamp: the earlier timer becomes a no-op
         with contextlib.suppress(RuntimeError):  # a direct call outside the event loop (a test): the route is inside it
-            self._timers[key] = asyncio.get_running_loop().call_later(LEASE_SECONDS, self.release, key)
+            asyncio.get_running_loop().call_later(LEASE_SECONDS, self._expire, key, stamp)
+
+    def _expire(self, key: tuple[Any, ...], stamp: object) -> None:
+        """A timer ran out: end the lease only when this timer is still the latest one armed for ``key``. (No timer
+        is cancelled: a lease route is not an order route, and the order-route scan reads a ``cancel`` call as one.)"""
+        if self._armed.get(key) is stamp:
+            self.release(key)
 
 
 LEASE = WindowLease()  # the strikes window
@@ -386,16 +409,25 @@ def _held_quotes(feed: LiveFeed, key: tuple[str, str, datetime.date, int],
 
 
 def strikes_answer(feed: LiveFeed | None, underlying: str, expiry: datetime.date, width: int,  # noqa: PLR0913
-                   catalogue: ChainCatalogue, now: AnswerClock, viewer: str = V1_OWNER_REF) -> StrikesOut:
+                   catalogue: ChainCatalogue, now: AnswerClock, viewer: str = V1_OWNER_REF,
+                   rate: Decimal = DEFAULT_RATE, quality: ForwardQuality = DEFAULT_QUALITY,
+                   widths: tuple[int, ...] = DEFAULT_WIDTHS,
+                   quick_picks: Mapping[str, tuple[int, ...]] = DEFAULT_QUICK_PICKS) -> StrikesOut:
     """The strikes read. Every answer state: catalogue unreadable / empty / expiry unknown (no rows), no feed (strikes
     listed, every price '-', NOT_CONNECTED), no live spot (strikes listed around the last known spot or the middle
     strike, every price null, SPOT_MISSING, no ATM claimed), spot stale (rows, no price), a quote missing for some
-    contracts (those cells null), a contract the provider does not know (that cell unavailable), every cell priced."""
+    contracts (those cells null), a contract the provider does not know (that cell unavailable), every cell priced.
+    ``rate`` is the risk-free rate the Greeks are priced with: the route passes the setting in force (its
+    ``get_market_context`` dependency); only a direct caller (a test) takes the registry default. ``quality``: the same
+    for the three forward settings (``ctx.forward_quality``); ``widths``: the same for the picker's width choices, which
+    the answer carries, as does ``quick_picks`` (the distances the quick-pick route accepts, by underlying)."""
     ctx = None if feed is None else feed.ctx
     answered_at = now() if ctx is None else ctx.clock()
     mstate = market_state(ctx, answered_at)
     closed = mstate.closed
-    head = {"underlying": underlying, "expiry": expiry, "width": width, "answered_at": answered_at,
+    head = {"underlying": underlying, "expiry": expiry, "width": width, "widths": list(widths),
+            "default_width": widths[0],
+            "quick_pick_distances": list(quick_picks[underlying]), "answered_at": answered_at,
             "market_closed": closed}
     state: Literal["LIVE", "NOT_LIVE"] = "NOT_LIVE" if ctx is None else "LIVE"
     missing = _catalogue_reason(catalogue, expiry)
@@ -414,7 +446,7 @@ def strikes_answer(feed: LiveFeed | None, underlying: str, expiry: datetime.date
     # banner (``market_closed``), never live; in hours a stale index gives no IV or delta (unchanged)
     engine_spot = (spot_quote if centre.kind == "LIVE_SPOT"
                    or (closed and planning_price_usable(spot_quote, market_closed=True)) else None)
-    greeks = {} if ctx is None or not usable else chain_greeks(usable, engine_spot, expiry, answered_at, ctx.rate)
+    greeks = {} if ctx is None or not usable else chain_greeks(usable, engine_spot, expiry, answered_at, rate, quality)
     cell_of = {c.instrument_id: _cell(c, quotes.get(c.instrument_id), greeks.get(c.instrument_id), closed)
                for c in contracts}
     rows = []
@@ -489,15 +521,15 @@ def _future_ltp(ctx: MarketContext | None, underlying: str, contract: PickableCo
     return FutureOut(**head, ltp=quote.ltp.quantize(PAISE), health=quote.health.value, ltp_reason=None)
 
 
-def _forward(ctx: Any, underlying: str, expiry: datetime.date, spot_quote: NormalizedQuote | None,
-             valuation: datetime.datetime) -> ForwardOut:
+def _forward(ctx: Any, underlying: str, expiry: datetime.date, spot_quote: NormalizedQuote | None,  # noqa: PLR0913
+             valuation: datetime.datetime, rate: Decimal, quality: ForwardQuality) -> ForwardOut:
     """The forward the engine prices ``expiry`` with: ADR-061's own function over this expiry's held quotes (with fewer
     than 3 usable strikes it answers the spot fallback and says so). Refused states carry a reason, never a number."""
     if ctx is None or spot_quote is None:
         return ForwardOut(expiry=expiry, forward=None, source=None, label=None, strikes_used=0, reason="SPOT_MISSING")
     try:
         fwd: ExpiryForward = parity_forward(ctx.provider.option_chain_snapshot(underlying, expiry), spot_quote, expiry,
-                                            valuation, ctx.rate)
+                                            valuation, rate, quality)
     except ForwardUnavailable:
         return ForwardOut(expiry=expiry, forward=None, source=None, label=None, strikes_used=0,
                           reason="NOT_PRICEABLE")
@@ -543,8 +575,11 @@ def _forward_hold_ids(ctx: Any, underlying: str, expiries: tuple[datetime.date, 
     return ids
 
 
-def futures_answer(feed: LiveFeed | None, underlying: str, catalogue: FuturesCatalogue, now: AnswerClock,
-                   viewer: str = V1_OWNER_REF) -> FuturesOut:
+def futures_answer(feed: LiveFeed | None, underlying: str, catalogue: FuturesCatalogue,  # noqa: PLR0913
+                   now: AnswerClock,
+                   viewer: str = V1_OWNER_REF, rate: Decimal = DEFAULT_RATE,
+                   quality: ForwardQuality = DEFAULT_QUALITY) -> FuturesOut:
+    """The futures read. ``rate``: as in :func:`strikes_answer` (the forwards are priced with it)."""
     ctx = None if feed is None else feed.ctx
     answered_at = now() if ctx is None else ctx.clock()
     streamed: frozenset[str] = frozenset()
@@ -575,7 +610,8 @@ def futures_answer(feed: LiveFeed | None, underlying: str, catalogue: FuturesCat
         state="NOT_LIVE" if ctx is None else "LIVE", reason=reason, underlying=underlying,
         spot=None if spot is None else spot.quantize(PAISE),
         futures=[_future_ltp(ctx, underlying, c, streamed) for c in catalogue.futures],
-        forwards=[_forward(ctx, underlying, e, spot_quote, answered_at) for e in catalogue.option_expiries],
+        forwards=[_forward(ctx, underlying, e, spot_quote, answered_at, rate=rate, quality=quality)
+                  for e in catalogue.option_expiries],
         answered_at=answered_at)
 
 
@@ -699,20 +735,31 @@ async def leg_picker_strikes(  # noqa: PLR0913 - one query parameter or seam eac
         now: Annotated[AnswerClock, Depends(get_answer_clock)],
         reader: Annotated[ChainReader, Depends(get_picker_reader)],
         viewer: Annotated[str, Depends(current_user_ref)],
-        width: Annotated[Width, Query(description="strikes either side of ATM: 10, 20, 30 or 40")] = DEFAULT_WIDTH,
+        calc_settings: Annotated[Mapping[str, Decimal], Depends(get_calc_settings)],
+        ctx: Annotated[MarketContext | None, Depends(get_market_context)],
+        width: Annotated[int | None, Query(description="strikes either side of ATM: one of the answer's widths; none = "
+                                                       "the first")] = None,
 ) -> StrikesOut:
-    return strikes_answer(feed, underlying, expiry, width, await reader(underlying, expiry), now, viewer)
+    widths = calc.leg_picker_widths(calc_settings)  # REQ-167 AC-5: the settings in force now, read per request
+    return strikes_answer(feed, underlying, expiry, width_in_force(width, widths),
+                          await reader(underlying, expiry), now, viewer, widths=widths,
+                          quick_picks=calc.quick_pick_distances(calc_settings),
+                          quality=DEFAULT_QUALITY if ctx is None else ctx.forward_quality,
+                          rate=DEFAULT_RATE if ctx is None else ctx.rate)
 
 
 @router.get(FUTURES_PATH, response_model=FuturesOut)
-async def leg_picker_futures(
+async def leg_picker_futures(  # noqa: PLR0913 - one dependency each
         underlying: Annotated[Underlying, Query()],
         feed: Annotated[LiveFeed | None, Depends(get_feed)],
         now: Annotated[AnswerClock, Depends(get_answer_clock)],
         reader: Annotated[FuturesReader, Depends(get_futures_reader)],
         viewer: Annotated[str, Depends(current_user_ref)],
+        ctx: Annotated[MarketContext | None, Depends(get_market_context)],
 ) -> FuturesOut:
-    return futures_answer(feed, underlying, await reader(underlying), now, viewer)
+    return futures_answer(feed, underlying, await reader(underlying), now, viewer,
+                          quality=DEFAULT_QUALITY if ctx is None else ctx.forward_quality,
+                          rate=DEFAULT_RATE if ctx is None else ctx.rate)
 
 
 @router.get(DEPTH_PATH, response_model=DepthOut)

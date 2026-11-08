@@ -29,6 +29,9 @@ from ofo.instruments import InstrumentId, MissingBrokerRef
 from ofo.instruments.catalogue import Catalogue
 from ofo.instruments.models import ListedContract
 from ofo_app.catalogue_store import CatalogueStoreError, apply_update, load_catalogue, parse_rows_naming_the_row, with_terms
+from ofo.settings import calc as _calc, defaults as _defaults
+
+_MAX_DELIST = _calc.max_delist_percent(_defaults())
 
 IST = timezone(timedelta(hours=5, minutes=30))
 AS_OF = datetime(2026, 10, 2, 10, 0, tzinfo=IST)
@@ -89,7 +92,7 @@ async def test_ac3_every_stored_contract_has_exactly_one_zerodha_row_keyed_to_it
     async with app_engine.connect() as conn:
         trans = await conn.begin()
         try:
-            result = await apply_update(conn, _fixture(), as_of=AS_OF)
+            result = await apply_update(conn, _fixture(), as_of=AS_OF, max_delist_percent=_MAX_DELIST)
             assert result.added == 23
             assert await _scalar(conn, f"SELECT count(*) FROM {TABLE}") == 23
             assert await _scalar(conn, f"SELECT count(*) FROM {BROKER} WHERE broker = 'zerodha'") == 23
@@ -107,7 +110,7 @@ async def test_ac3_a_contract_with_no_zerodha_row_cannot_be_loaded_or_traded(adm
     async with admin_engine.connect() as conn:
         trans = await conn.begin()
         try:
-            await apply_update(conn, _fixture(), as_of=AS_OF)
+            await apply_update(conn, _fixture(), as_of=AS_OF, max_delist_percent=_MAX_DELIST)
             await conn.execute(text(f"INSERT INTO {TABLE} (exchange_segment, exchange_token, name, expiry, strike, "
                                     "instrument_type) VALUES ('NSE_FO', 99999, 'NIFTY', '2026-10-27', 25000, 'CE')"))
             with pytest.raises(CatalogueStoreError, match=r"NSE_FO:99999: has no zerodha row"):
@@ -120,7 +123,7 @@ async def test_ac3_lookup_for_a_broker_with_no_row_is_refused(app_engine: AsyncE
     async with app_engine.connect() as conn:
         trans = await conn.begin()
         try:
-            await apply_update(conn, _fixture(), as_of=AS_OF)
+            await apply_update(conn, _fixture(), as_of=AS_OF, max_delist_percent=_MAX_DELIST)
             entry = (await load_catalogue(conn)).get(InstrumentId("NSE_FO", 48704))
             assert entry.ref("zerodha").broker_symbol == "NIFTY26OCTFUT"
             for broker in ("upstox", "dhan", "Zerodha"):
@@ -134,7 +137,7 @@ async def test_ac3_unknown_broker_and_segment_codes_are_refused_by_the_database(
     async with admin_engine.connect() as conn:
         trans = await conn.begin()
         try:
-            await apply_update(conn, _fixture(), as_of=AS_OF)
+            await apply_update(conn, _fixture(), as_of=AS_OF, max_delist_percent=_MAX_DELIST)
             cid = await _scalar(conn, f"SELECT min(id) FROM {TABLE}")
             await _expect_refused(conn, f"INSERT INTO {BROKER} (contract_id, broker, broker_token, broker_symbol, "
                                         f"broker_segment, lot_size, tick_size) VALUES ({cid}, 'upstox', 'X', 'X', "
@@ -153,7 +156,7 @@ async def test_ac3_app_role_cannot_delete_or_rewrite_broker_rows(app_engine: Asy
     async with app_engine.connect() as conn:
         trans = await conn.begin()
         try:
-            await apply_update(conn, _fixture(), as_of=AS_OF)
+            await apply_update(conn, _fixture(), as_of=AS_OF, max_delist_percent=_MAX_DELIST)
             await _expect_refused(conn, f"DELETE FROM {BROKER}", INSUFFICIENT_PRIVILEGE)
             await _expect_refused(conn, f"UPDATE {BROKER} SET broker_token = '1'", INSUFFICIENT_PRIVILEGE)
             await _expect_refused(conn, f"UPDATE {BROKER} SET contract_id = contract_id", INSUFFICIENT_PRIVILEGE)
@@ -166,7 +169,7 @@ async def test_ac3_owner_cannot_delete_or_change_a_broker_rows_identity(admin_en
     async with admin_engine.connect() as conn:
         trans = await conn.begin()
         try:
-            await apply_update(conn, _fixture(), as_of=AS_OF)
+            await apply_update(conn, _fixture(), as_of=AS_OF, max_delist_percent=_MAX_DELIST)
             where = "WHERE broker_symbol = 'NIFTY26OCTFUT'"
             await _expect_refused(conn, f"DELETE FROM {BROKER} {where}", CATALOGUE_SQLSTATE)
             await _expect_refused(conn, f"UPDATE {BROKER} SET broker_token = '1' {where}", CATALOGUE_SQLSTATE)
@@ -186,14 +189,14 @@ async def test_ac4_a_zerodha_lot_revision_is_dated_and_writes_one_history_row_na
     async with app_engine.connect() as conn:
         trans = await conn.begin()
         try:
-            await apply_update(conn, _fixture(), as_of=AS_OF)
+            await apply_update(conn, _fixture(), as_of=AS_OF, max_delist_percent=_MAX_DELIST)
             today_ist = await _scalar(conn, "SELECT (clock_timestamp() AT TIME ZONE 'Asia/Kolkata')::date")
             first = (await conn.execute(text(f"SELECT seen_on, first_seen_at FROM {BROKER} "
                                              "WHERE broker_token = '12468226'"))).one()
             assert first.seen_on == today_ist
             revised = [with_terms(c, lot_size=75) if c.ref("zerodha").broker_token == "12468226" else c
                        for c in _fixture()]
-            result = await apply_update(conn, revised, as_of=AS_OF)
+            result = await apply_update(conn, revised, as_of=AS_OF, max_delist_percent=_MAX_DELIST)
             assert (result.added, result.revised) == (0, 1)
             row = (await conn.execute(text(f"SELECT lot_size, seen_on, first_seen_at FROM {BROKER} "
                                            "WHERE broker_token = '12468226'"))).one()
@@ -215,10 +218,10 @@ async def test_ac4_a_tick_and_freeze_revision_each_write_a_history_row(app_engin
     async with app_engine.connect() as conn:
         trans = await conn.begin()
         try:
-            await apply_update(conn, _fixture(), as_of=AS_OF)
+            await apply_update(conn, _fixture(), as_of=AS_OF, max_delist_percent=_MAX_DELIST)
             revised = [with_terms(c, tick_size=Decimal("0.05"), freeze_limit=1800)
                        if c.ref("zerodha").broker_token == "12468226" else c for c in _fixture()]
-            await apply_update(conn, revised, as_of=AS_OF)
+            await apply_update(conn, revised, as_of=AS_OF, max_delist_percent=_MAX_DELIST)
             history = (await conn.execute(text(
                 f"SELECT broker, field, old_value, new_value FROM {HISTORY} ORDER BY field"))).all()
             assert [tuple(h) for h in history] == [("zerodha", "freeze_limit", None, "1800"),
@@ -250,7 +253,7 @@ async def test_real_file_counts_named_contracts_and_f10_collisions(
         try:
             assert await _scalar(conn, f"SELECT count(*) FROM {TABLE}") == 0, "tables must be empty (tests roll back)"
             as_of = await _scalar(conn, "SELECT clock_timestamp()")
-            await apply_update(conn, rows, as_of=as_of)
+            await apply_update(conn, rows, as_of=as_of, max_delist_percent=_MAX_DELIST)
             contracts = await _scalar(conn, f"SELECT count(*) FROM {TABLE}")
             broker_rows = await _scalar(conn, f"SELECT count(*) FROM {BROKER} WHERE broker = 'zerodha'")
             load_day = as_of.astimezone(IST).date()
@@ -317,7 +320,7 @@ async def test_m1_upgrade_refusal_statement_refuses_a_non_empty_catalogue(app_en
         try:
             async with conn.begin_nested():
                 await conn.execute(text(sql))  # empty: no refusal
-            await apply_update(conn, _fixture(), as_of=AS_OF)
+            await apply_update(conn, _fixture(), as_of=AS_OF, max_delist_percent=_MAX_DELIST)
             with pytest.raises(DBAPIError, match="refusing to upgrade to 0004_broker_instruments"):
                 async with conn.begin_nested():
                     await conn.execute(text(sql))
@@ -333,9 +336,10 @@ async def test_m4_a_zerodha_load_never_clears_a_stored_freeze_limit(app_engine: 
         try:
             with_freeze = [with_terms(c, freeze_limit=1800) if c.ref("zerodha").broker_token == "12468226" else c
                            for c in _fixture()]
-            await apply_update(conn, with_freeze, as_of=AS_OF)
+            await apply_update(conn, with_freeze, as_of=AS_OF, max_delist_percent=_MAX_DELIST)
             assert await _scalar(conn, f"SELECT freeze_limit FROM {BROKER} WHERE broker_token = '12468226'") == 1800
-            result = await apply_update(conn, _fixture(), as_of=AS_OF)  # the plain Zerodha list: no freeze value
+            result = await apply_update(conn, _fixture(), as_of=AS_OF,
+                max_delist_percent=_MAX_DELIST)  # the plain Zerodha list: no freeze value
             assert result.revised == 0
             assert await _scalar(conn, f"SELECT freeze_limit FROM {BROKER} WHERE broker_token = '12468226'") == 1800
             assert await _scalar(conn, f"SELECT count(*) FROM {HISTORY}") == 0
@@ -350,7 +354,7 @@ async def test_m1_owner_cannot_backdate_a_broker_rows_stamps(admin_engine: Async
     async with admin_engine.connect() as conn:
         trans = await conn.begin()
         try:
-            await apply_update(conn, _fixture(), as_of=AS_OF)
+            await apply_update(conn, _fixture(), as_of=AS_OF, max_delist_percent=_MAX_DELIST)
             today_ist = await _scalar(conn, "SELECT (clock_timestamp() AT TIME ZONE 'Asia/Kolkata')::date")
             await conn.execute(text(f"INSERT INTO {TABLE} (exchange_segment, exchange_token, name, expiry, strike, "
                                     "instrument_type) VALUES ('NSE_FO', 99998, 'NIFTY', '2026-10-27', 25000, 'PE')"))
@@ -376,11 +380,11 @@ async def test_m2_a_revised_broker_symbol_writes_one_dated_history_row(app_engin
     async with app_engine.connect() as conn:
         trans = await conn.begin()
         try:
-            await apply_update(conn, _fixture(), as_of=AS_OF)
+            await apply_update(conn, _fixture(), as_of=AS_OF, max_delist_percent=_MAX_DELIST)
             today_ist = await _scalar(conn, "SELECT (clock_timestamp() AT TIME ZONE 'Asia/Kolkata')::date")
             revised = [with_terms(c, broker_symbol="NIFTY26OCTFUTX") if c.ref("zerodha").broker_token == "12468226"
                        else c for c in _fixture()]
-            result = await apply_update(conn, revised, as_of=AS_OF)
+            result = await apply_update(conn, revised, as_of=AS_OF, max_delist_percent=_MAX_DELIST)
             assert result.revised == 1
             history = (await conn.execute(text(
                 f"SELECT broker, field, old_value, new_value, (changed_at AT TIME ZONE 'Asia/Kolkata')::date AS day "

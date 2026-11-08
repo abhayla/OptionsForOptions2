@@ -19,7 +19,11 @@ from marketdata._kite_fixture import all_instrument_ids, new_provider, replay
 from ofo.engine.legs import Action, Instrument
 from ofo.outcome import read_snapshot
 from ofo.rules.inputs import DataHealth
+from ofo.settings import calc as _fq_calc
+from ofo.settings import defaults as _fq_defaults
 from ofo.tracking import paper
+
+_FQ = _fq_calc.forward_quality(_fq_defaults())
 
 D = Decimal
 EXPIRY = datetime.date(2026, 10, 13)
@@ -45,7 +49,7 @@ def replayed():
 
 
 def _snapshot(provider, at):
-    return read_snapshot(provider, "NIFTY", IDS, at, RATE)
+    return read_snapshot(provider, "NIFTY", IDS, at, RATE, quality=_FQ)
 
 
 ALL_LIVE = (None, None, None, None)  # contract_reasons: every leg's stored contract live (required since issue #500)

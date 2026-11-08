@@ -70,7 +70,7 @@ test('a stale leg is labelled and the outcome is not shown as fully live', async
 
 test('a refused leg shows the reason and no numbers', async ({ page }, info) => {
   const real = await realResponse(page)
-  const refused = { ...real, state: 'REFUSED', status_label: 'Outcome refused', reason: `${real.legs[0].symbol} is not in the market data`, table: null, scenario: null, payoff: null, summary: null }
+  const refused = { ...real, state: 'REFUSED', status_label: 'Outcome cannot be shown', reason: `${real.legs[0].symbol} is not in the market data`, table: null, scenario: null, payoff: null, summary: null }
   await page.route(OUTCOME, (route) => route.fulfill({ json: refused }))
   await page.goto(url(REPLAY_URL))
   await expect(state(page)).toHaveAttribute('data-state', 'refused')

@@ -28,6 +28,8 @@ from ofo.marketdata.provider import (
     QuoteListener,
 )
 from ofo.marketdata.quote import NormalizedQuote, SourceMetadata
+from ofo.settings import calc
+from ofo.settings import defaults as settings_defaults
 from ofo.rules.inputs import DataHealth
 from ofo.timeutil import IST_UNNAMED as IST
 
@@ -64,7 +66,8 @@ class KiteProvider(MarketDataProvider):
         self._future_id: dict[tuple[str, datetime.date], str] = {
             (lc.contract.name, lc.contract.expiry): self._contract_id(lc)
             for lc in self._master if lc.contract.instrument_type == "FUT"}
-        self.feed = feed or FeedState()
+        # the registry's windows until the first request or tick applies the ones in force (``FeedState.apply_windows``)
+        self.feed = feed or FeedState(windows=calc.feed_windows(settings_defaults()))
         self.book = QuoteBook(self.feed)
         self._listener: QuoteListener | None = None
         self._wanted: set[int] = set()
@@ -142,6 +145,11 @@ class KiteProvider(MarketDataProvider):
         """ADR-200 (4): the held quote's own time (exchange time), for the market-closed label only."""
         quote = self.book.get(instrument_id, self._now() if now is None else now)
         return None if quote is None else quote.price_at
+
+    def held_quote(self, instrument_id: str, now: datetime.datetime | None = None) -> NormalizedQuote | None:
+        """The held quote of ONE instrument with its health (the book's own read, no chain copy): the background
+        role's cheap "did this leg tick?" test. None when nothing is held for it."""
+        return self.book.get(instrument_id, self._now() if now is None else now)
 
     def depth_after_close(self, instrument_id: str, now: datetime.datetime | None = None):
         """READ-ONLY popup (REQ-080 AC-7, ADR-200 (1)): see ``QuoteBook.depth_after_close``; never an order input."""

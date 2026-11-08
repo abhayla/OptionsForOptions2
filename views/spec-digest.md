@@ -4,51 +4,51 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (211)
+## Decisions (261)
 
-- Older decisions: 171 rows, ADR-1..ADR-174 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
-- ADR-175 2026-10-23: Copied from the reference product's login page (study 2026-10-21, screen 180): (1) the Connect Zero… [extends REQ-015; applies ADR-173]
-- ADR-176 2026-10-23: Refines ADR-152 and ADR-173. [refines ADR-152, ADR-173]
-- ADR-177 2026-10-23: The market-closed state reads "Market closed. [amends REQ-114, REQ-105]
-- ADR-178 2026-10-23: Adopted from the independent process audit of 2026-10-23 (docs/process/process-audit-2026-10-23.md). [amends ADR-176, ADR-168, ADR-106]
-- ADR-179 2026-10-23: Technical decision of the orchestrator (REQ-118 is a TECH row, master register MR-095, decided by t… [amends REQ-118]
-- ADR-180 2026-10-23: Owner-approved one-time exception to the CLAUDE.md hard rule "Merge only with merge.py": PR #525 (b… [applies ADR-115]
-- ADR-181 2026-10-24: Owner-approved amendment of ADR-178's process-tool freeze ("at most one item per chunk on Sonnet"):… [extends ADR-178]
-- ADR-182 2026-10-25: When price protection (ADR-095) is wired into Execute, each leg's allowance and its protected LIMIT… [extends ADR-095]
-- ADR-183 2026-10-25: A strategy name the user types (first save, Save As, rename) is 1 to 20 characters after trimming s… [amends REQ-134]
-- ADR-184 2026-10-25: (1) A rename (REQ-134 AC-3) appears in the strategy's history as its own entry ("Renamed from X to… [extends ADR-118; refines REQ-070; refines ADR-181]
-- ADR-186 2026-10-25: (1) Hedge +1 / -1 (REQ-078 AC-5) works as in Sensibull. [amends REQ-078; refines REQ-076]
-- ADR-187 2026-10-25: (1) The project takes Startup-Factory kit 1.12.0 (from 1.10.1) through PR #546, merged 74230ef6 on… [amends ADR-180; applies ADR-115]
-- ADR-188 2026-10-25: (1) Owner-approved exception to ADR-178's "at most one item per chunk": chunk 4 carries a second pr… [extends ADR-178; extends ADR-181]
-- ADR-189 2026-10-26: (1) CLAUDE.md holds only pointers and the hard product rules, so CLAUDE.md plus the always-loaded r… [amends ADR-178; amends ADR-181; amends ADR-171; a…]
-- ADR-190 2026-10-26: (1) The project takes Startup-Factory kit 1.15.0 (from 1.14.0) through PR #564, opened by tools/kit… [applies ADR-189; applies ADR-115]
-- ADR-191 2026-10-26: (1) The project opts in to the kit's docs-only CI test list: `.claude/project/ci-docs-only-tests.tx… [amends ADR-187 (5); amends ADR-189]
-- ADR-192 2026-10-26: When Save As pre-fills its name box and "<name> copy" would be longer than 20 characters (ADR-183),… [amends REQ-134]
-- ADR-193 2026-10-26: (1) Scope: every screen the spec already has (Strategy Builder and its leg picker, option chain, po… [refines ADR-152; extends ADR-173 from behaviour t…]
-- ADR-194 2026-10-26: In the Strategy Builder's P&L Table tab: (1) the default view is a compact per-leg table like Sensi… [amends REQ-035 AC-1 and AC-7; refines ADR-008 sec…]
-- ADR-195 2026-10-26: When at least one leg is unticked ("left out of the numbers", REQ-076 AC-6), the selection label re… [refines REQ-076 AC-6 and AC-8; applies ADR-152]
-- ADR-196 2026-10-27: SPEC CHANGE to ADR-193 (1) for the builder and option chain only. [SPEC CHANGE to ADR-193 (1) (builder and option ch…]
-- ADR-197 2026-10-27: SPEC CHANGE to REQ-077 AC-9. [SPEC CHANGE to REQ-077 AC-9 (Estimated Now and an…]
-- ADR-198 2026-10-27: (1) REQ-142 (Funds needed), REQ-143 (Add Booked P&L chart toggle, out of this phase per ADR-196 (4)… [approves REQ-142, REQ-143, REQ-144, REQ-145, REQ-…]
-- ADR-199 2026-10-27: (1) After the NSE derivatives market closes on a trading day (15:30 IST, ADR-119), an expiry that f… [adds a rule to REQ-135 AC-2]
-- ADR-200 2026-10-27: (1) The after-hours builder is ADR-197, unchanged: outside market hours the builder captures planne… [clarifies ADR-197 ("last close", its label time);…]
-- ADR-201 2026-10-28: (1) A strategy started with "Start tracking" (REQ-109, ADR-165 (2)) is a paper trade: no order goes… [SPEC CHANGE to ADR-138 (2) / W-111: the Positions…]
-- ADR-202 2026-10-28: (1) Definitions and caveats that today sit as visible sentences under a figure (for example "At mos… [Refines REQ-136 (where definitions live: behind t…]
-- ADR-203 2026-10-28: (1) The builder's Strategy Chart tab (Sensibull 016: the strategy's combined price against the inde… [SPEC CHANGE to REQ-091 (hold lifted for the build…]
-- ADR-204 2026-10-28: (1) docs/process/ui-match-differences-2026-10-28.md is approved with every recommendation as writte… [SPEC CHANGE (approved) to REQ-034 AC-7, REQ-081 A…]
-- ADR-205 2026-10-28: (1) The Charges breakdown keeps ADR-082 (1) as decided: every charge is exact Decimal, STT and stam… [none to ADR-082; REQ-081 AC-2 gains one sentence…]
-- ADR-206 2026-10-28: (1) Confirmed as written: a strategy started from the builder ("Start tracking", REQ-109) is record… [REQ-142 held (title marked); no change to ADR-165…]
-- ADR-207 2026-10-29: (1) PLACE: the builder has an "Add to Paper" button (Sensibull "Add to Drafts", study 166-173) that… [SPEC CHANGE to REQ-081 AC-9 and ADR-164 (percenta…]
-- ADR-208 2026-10-29: (1) Every what-if figure (target level and target date, REQ-084) carries the label "Estimate from t… [refines REQ-084 AC-2 and AC-5 (wording written th…]
-- ADR-209 2026-10-29: On a paper strategy (REQ-109), the what-if P&L at the target level and date (REQ-084 AC-4) and the… [refines REQ-084 AC-4 (text written there in the s…]
-- ADR-210 2026-10-29: A paper or what-if figure that cannot be shown displays "-" with one of these sentences (REQ-152 AC… [refines REQ-109 and REQ-084 AC-5 (no wording ther…]
-- ADR-211 2026-10-29: (1) The projected badge at exactly zero reads "Projected P/L: 0" (Sensibull's own words: badge "Pro… [refines REQ-144 AC-3 and AC-4 and REQ-109 (paper…]
-- ADR-212 2026-10-30: SPEC CHANGE to REQ-109 AC-5. [SPEC CHANGE to REQ-109 AC-5 (after hours the last…]
-- ADR-213 2026-10-30: SPEC CHANGE to ADR-077 / REQ-049 AC-5 for the NIFTY 50 and SENSEX index strip. [SPEC CHANGE to ADR-077 / REQ-049 AC-5 for the ind…]
-- ADR-214 2026-10-30: Where adjustments sit in the app. [Places REQ-045 AC-7/AC-9 and REQ-046 on named scr…]
-- ADR-220 2026-10-31: (1) Server roles. [Adds REQ-166 (calculation speeds and the safety v…]
+- Older decisions: 221 rows, ADR-1..ADR-234 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
+- ADR-235 2026-11-02: (1) The background playbook check speed (REQ-166 AC-1 "background checks") is three admin settings,… [ADR-237 (3) (2026-11-02) amends (4): a record ope…]
+- ADR-236 2026-11-02: (1) After the user dismisses an adjustment suggestion, the same rule on the same strategy stays qui… [Amends ADR-217 (a dismiss no longer silences a wo…]
+- ADR-237 2026-11-02: Technical reconciliation of REQ-170 with the existing spec (GC-ALERT1 step 2), decided by the orche… [Amends REQ-170 AC-2 (band base), REQ-112 AC-2 (wh…]
+- ADR-238 2026-11-03: Technical definitions for GC-IC1 step 2 (owner scope 2026-11-03 "Full playbook": every approach the… [Adds A-24, A-25, A-26, A-27, A-35 to the approach…]
+- ADR-239 2026-11-03: Technical definitions for GC-IC1 step 3 (owner scope 2026-11-03 "Full playbook"), decided by the or… [Adds A-02, A-04, A-06 to the approach builder of…]
+- ADR-240 2026-11-03: REQ-159 AC-5 keeps S-01 to S-12 in the playbook. [Clarifies REQ-159 AC-5 (situations: rule or guida…]
+- ADR-241 2026-11-03: Owner 2026-11-03 (question tool, "Mid when spread is live"): every planned trade of an adjustment a… [Amends ADR-068 (1) for adjustment approach trades…]
+- ADR-242 2026-11-03: Technical decision for GC-IC1 step 4c, made by the orchestrator under the owner's standing rule tha… [REQ-155 AC-1 (A-37 offered as an alert, not a tra…]
+- ADR-243 2026-11-04: Owner 2026-11-04 (question tool, "Target delta"): when an adjustment approach rolls a short strike… [Supersedes REQ-046 Q255 (placement basis); matche…]
+- ADR-244 2026-11-04: Owner 2026-11-04 (question tool, "Add both as Guidance"): the iron condor system playbook lists S-0… [Extends ADR-240 (situations: rules vs guidance) t…]
+- ADR-245 2026-11-04: Owner 2026-11-04 (question tool, "Yes, 3 layers for all"; and "always act as an expert option trade… [Extends REQ-168 (user preferences) and REQ-161 (p…]
+- ADR-246 2026-11-04: Owner 2026-11-04 ~12:5x IST (question tool, "Keep presets for now"): the REQ-170 style presets stay… [No preset value changes. Adds F-101 (live counts)…]
+- ADR-247 2026-11-05: Owner 2026-11-05 ~00:3x IST (question tool, "50% max loss or 2x credit (Recommended)"): the iron co… [SPEC CHANGE to ADR-216: its stop line "a loss of…]
+- ADR-248 2026-11-05: Owner 2026-11-05 ~00:4x IST (question tool, "Cost / credit (Recommended)"): the default ranking key… [New: fills the gap the spec left on ranking sugge…]
+- ADR-249 2026-11-05: Owner 2026-11-05 ~00:5x IST (question tool, "A now, B later (Recommended)"), answering what "adjust… [New: settles the open question in the mockup owne…]
+- ADR-250 2026-11-05: Owner 2026-11-05 ~09:3x IST (question tool, "New plans only (Recommended)"), answering what happens… [Narrows ADR-247 to new plans; the step 3 live-che…]
+- ADR-251 2026-11-05: Owner 2026-11-05 ~09:4x IST (question tool, "Net credit so far (Recommended)"), defining the credit… [Defines a term ADR-247 left open; the step 3 live…]
+- ADR-252 2026-11-05: Orchestrator 2026-11-05 ~11:2x IST, decided under the owner's delegation ("For all the strategy rel… [Clarifies ADR-247 (the 50 % is the per-stage T-06…]
+- ADR-253 2026-11-06: Owner 2026-11-06 ~01:2x IST (question tool, "Keep test-data only for now"). [Limits goal contract ic-e2e-paper design decision…]
+- ADR-254 2026-11-06: Owner 2026-11-06 ~02:0x IST (question tool, "Live too"). [Extends REQ-165 to T-19 in the worker; leaves ADR…]
+- ADR-255 2026-11-06: Owner 2026-11-06 ~14:0x IST (question tool, "Partial exits count, Exit all doesn't"). [Refines REQ-161 / REQ-163 / ADR-214 "adjustments…]
+- ADR-256 2026-11-06: Owner 2026-11-06 ~14:0x IST (question tool, "Warn, user confirms"). [Adds a warning to the paper exit confirm list (AD…]
+- ADR-257 2026-11-06: Owner 2026-11-06 ~14:1x IST (question tool, "Ask when arming"). [Extends ADR-207 (5) per-leg stops with an optiona…]
+- ADR-258 2026-11-06: Owner 2026-11-06 ~14:1x IST (question tool, "Reset after each adjustment"). [Extends REQ-159 / F-71 from entry to every adjust…]
+- ADR-259 2026-11-06: Owner 2026-11-06 ~14:1x IST (question tool, "Yes, with final totals"). [Defines "completed" for the Completed Strategies…]
+- ADR-260 2026-11-06: Owner 2026-11-06 ~14:2x IST (question tool, "One list in Alerts"). [Joins REQ-162 alerts into Alerts > Active; define…]
+- ADR-261 2026-11-06: Owner 2026-11-06 ~14:2x IST (question tool, "Yes, 'Compare approaches' always"). [Adds an always-available entry to the compare bes…]
+- ADR-262 2026-11-06: Owner 2026-11-06 ~14:2x IST (question tool, "This should be based on each user preference", then "D… [Replaces the fixed placement rule in the ready-ma…]
+- ADR-263 2026-11-06: Owner 2026-11-06 ~14:3x IST (question tool, "After charges everywhere, labelled"). [Defines the charges basis of every headline money…]
+- ADR-264 2026-11-06: Owner 2026-11-06 ~14:4x IST (question tool: "Yes: admin default, user can change" and "Yes, a lock… [Extends REQ-166 (admin settings) and REQ-138 / RE…]
+- ADR-265 2026-11-06: Owner 2026-11-06 ~14:4x IST (question tool, "Mid, LTP only if no quote"). [SPEC CHANGE: REQ-077 AC-5 capture basis LTP -> mi…]
+- ADR-266 2026-11-06: Decided under the owner's standing delegation for strategy behaviour ("go with your recommendation"… [Extends ADR-265 (capture) to marking for paper P&…]
+- ADR-267 2026-11-06: Decided under the owner's standing delegation for strategy behaviour ("go with your recommendation"… [Exempts A-37 user level watches from the alert-st…]
+- ADR-268 2026-11-06: Decided under the owner's standing delegation for strategy behaviour ("go with your recommendation"… [Fills the intrinsic-value gap for delta-based rul…]
+- ADR-269 2026-11-06: Owner 2026-11-06 ~16:1x IST (question tool, during the live iron condor test): "Consider rollover a… [SPEC CHANGE: ADR-207 (2) no longer covers expiry-…]
+- ADR-270 2026-11-06: Owner 2026-11-06 ~16:2x IST (question tool, after the reason was explained): "Test both and all rel… [SPEC CHANGE: ADR-253 superseded for live; adds th…]
+- ADR-271 2026-11-06: Decided under the owner's standing delegation for strategy and behaviour calls (owner 2026-11-06 ~1… [clarifies ADR-118 (paper orders were not named);…]
+- ADR-272 2026-11-07: Decided under the owner's standing delegation for strategy and behaviour calls (owner 2026-11-06 ~1… [applies ADR-015 to REQ-156 (compare) and REQ-045…]
+- ADR-273 2026-11-07: Decided under the owner's standing delegation for strategy and behaviour calls (owner 2026-11-06 ~1… [SPEC CHANGE REQ-163 AC-1 (adds the approach as a…]
+- ADR-274 2026-11-07: Owner 2026-11-07 ~00:5x IST (question tool): "of course send one combined order". [adds a basket rule for adjustments; REQ-030 AC-11…]
 
-## Requirements (157)
+## Requirements (161)
 
 - REQ-001 [Approved]: V1 scope: underlyings, leg types, broker
 - REQ-002 [Approved]: Account boundaries
@@ -205,10 +205,14 @@ One line per decision, requirement and spec section. Read it before asking the o
 - REQ-162 [Approved]: Positions > Adjustment opportunities lists every opportunity across strategies with its label and outcome
 - REQ-163 [Approved]: A strategy's adjustment history shows the entry, every adjustment and the whole-trade totals
 - REQ-164 [Approved]: The API runs as several copies; no request depends on the memory of one copy, and one copy stopping cuts no u…
-- REQ-165 [Approved]: Adjustment playbook triggers are checked by the background workers on fresh prices, at most once a second per…
+- REQ-165 [Approved]: Adjustment playbook triggers are checked by the background workers on fresh prices, at most once per the stra…
 - REQ-166 [Approved]: Calculations run at four speeds held as admin settings, the background uses light sums, and a safety valve sl…
+- REQ-167 [Approved]: One admin Settings page holds every app-wide business number a calculation uses, each with a default, the dat…
+- REQ-168 [Approved]: Each user sets their own adjustment preferences on a Preferences tab of the Adjustments screen, starting from…
+- REQ-169 [Approved]: The admin edits a system playbook in the same playbook editor and saves it as a new version with history and…
+- REQ-170 [Approved]: An adjustment suggestion is raised once per crossing, confirmed on a candle close, then held quiet until it r…
 
-## Spec sections (245)
+## Spec sections (264)
 
 ### spec/SPEC-DEVIATION.md
 
@@ -345,6 +349,25 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ## F-74 - An adjustment's After shows open legs only: booked P&L of clos…
 - ## F-75 - POP fails on a real adjusted iron condor because the after-cha…
 - ## F-76 - The NIFTY spot cannot be read over Kite REST: the quote allow-…
+- ## F-77 - The T-19 trigger compares premium left with a different "adjus…
+- ## F-78 - Three playbook limits are saved and shown in the editor but no…
+- ## F-79 - The Undo window in code is 8 s and 10 s; the spec says about 5…
+- ## F-80 - Every playbook check where the clock trigger T-10b fires answe…
+- ## F-81 - Every playbook check in a stage whose name has a space answere…
+- ## F-82 - On a chain with a parity forward, the risk-free rate moves the…
+- ## F-83 - Scenario mode lost every contract's price once a builder socke…
+- ## F-90 - The range-reading rule (REQ-026 AC-1) lives only in the browse…
+- ## F-91 - The background role records opportunities with no screen open,…
+- ## F-92 - Compare cannot price a leg that the paper book prices at the s…
+- ## F-93 - Compare says "no plan maximum set" for a strategy whose plan s…
+- ## F-94 - One strategy shows two different max profit / max loss figures…
+- ## F-95 - Every ready-made shape with a futures leg is refused, with a m…
+- ## F-96 - Adding a futures leg turns live numbers into "Live market data…
+- ## F-97 - A request with no screen open answers LIVE before any price ar…
+- ## F-98 - Our theta splits call and put by a carry term that drifts; the…
+- ## F-99 - Stopping a second Kite feed process blanks the API's chain for…
+- ## F-100 - No feed we use supplies IV or Greeks; every app studied compu…
+- ## F-101 - Live alert discipline cut suggestion noise by three quarters;…
 
 ### spec/open-questions.md
 

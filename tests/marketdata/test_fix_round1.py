@@ -8,10 +8,13 @@ from _kite_fixture import NIFTY_CE_ID, NIFTY_PE_ID, Clock, all_instrument_ids, n
 
 from ofo.engine.legs import Instrument
 from ofo.marketdata.fanout import FanOut
-from ofo.marketdata.feed_health import RECONNECT_WINDOW, FeedState
+from ofo.marketdata.feed_health import FeedState
 from ofo.marketdata.kite_provider import IST, KiteProvider
 from ofo.rules.inputs import DataHealth
+from ofo.settings import calc, defaults
 
+WINDOWS = calc.feed_windows(defaults())  # the registry's windows, passed explicitly (REQ-167 AC-4)
+RECONNECT_WINDOW = WINDOWS.reconnect
 SEC = datetime.timedelta(seconds=1)
 T0 = datetime.datetime(2026, 10, 8, 9, 20, 0, tzinfo=IST)
 
@@ -29,7 +32,7 @@ def _ltp_packet(token: int, paise: int = 10000) -> bytes:
 
 # 1 ------------------------------------------------------------------------------------------------------------
 def test_ten_minute_outage_with_repeated_retries_goes_unavailable_and_stays():
-    feed = FeedState()
+    feed = FeedState(windows=WINDOWS)
     feed.on_connected(T0)
     feed.on_data(T0)
     feed.on_disconnected(T0 + SEC)
@@ -44,7 +47,7 @@ def test_ten_minute_outage_with_repeated_retries_goes_unavailable_and_stays():
 
 
 def test_failed_first_connect_stays_unavailable():
-    feed = FeedState()
+    feed = FeedState(windows=WINDOWS)
     feed.on_disconnected(T0)
     assert feed.health(T0) is DataHealth.UNAVAILABLE
 

@@ -18,6 +18,7 @@ from ofo.errors.explanations import render_explanation
 from ofo.outcome import StrategyDefinition, service
 from ofo.outcome.serialize import outcome_to_dict
 from ofo.scenario.levels import move_from_spot
+from ofo.settings import defaults as _d
 from outcome._both_curves_cases import CALENDAR, S54, as_json, definition, entries_outcome, market, outcome, snapshot
 from outcome.test_same_engine import VALUATION
 
@@ -94,7 +95,8 @@ def test_payoff_table_default_step_sensex_is_100():
         c, contract=dataclasses.replace(c.contract, name="SENSEX", lot_size=20,
                                         strike=c.contract.strike + (Decimal(55000) if iid == LOW else Decimal(55100))))
               for iid, c in _stored().items()}
-    out = service.from_entries(StrategyDefinition("SENSEX", _spread().legs), None, stored, VALUATION, both_views=True)
+    out = service.from_entries(StrategyDefinition("SENSEX", _spread().legs), None, stored, VALUATION, both_views=True,
+        settings=_d())
     assert out.level_set.step == Decimal(300)  # the grid's Admin step is unchanged
     table = as_json(outcome_to_dict(out))["payoff_table"]
     assert table["step"] == "100" and _row_gaps(table) == {Decimal(100)} and len(table["rows"]) > 2  # noqa: PLR2004 - literal is the pinned value
@@ -102,7 +104,7 @@ def test_payoff_table_default_step_sensex_is_100():
 
 def test_default_step_refuses_an_index_without_a_strike_step():
     with pytest.raises(ValueError, match="strike step"):
-        service.payoff_table_default_step("BANKNIFTY")
+        service.payoff_table_default_step("BANKNIFTY", _d())
 
 
 @pytest.mark.parametrize("bad", [Decimal(30), Decimal(0), Decimal(-50), Decimal("50.5"), Decimal(300)])

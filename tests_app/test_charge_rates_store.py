@@ -13,13 +13,13 @@ import importlib.util
 import os
 import types
 from dataclasses import replace
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from pathlib import Path
 
 import pytest
 from ofo_app import charge_rates_store
-from ofo_app.charge_rates_store import ChargeRatesError, add_rate_set, rates_in_force
+from ofo_app.charge_rates_store import ChargeRatesError, ChargeRatesFutureDate, add_rate_set, rates_in_force
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncEngine
@@ -79,11 +79,12 @@ async def test_newest_set_in_force_wins_and_a_future_set_is_not_in_force(app_eng
     conn, trans = await _tx(app_engine)
     try:
         seed = await rates_in_force(conn, SEED_DAY)
-        later = replace(seed, brokerage_per_order=D("25"), read_on=date(2026, 11, 1), source_url="https://example/later")
-        await add_rate_set(conn, later, note="test")
-        assert (await rates_in_force(conn, date(2026, 10, 31))).brokerage_per_order == D("20")
-        on_day = await rates_in_force(conn, date(2026, 11, 1))
-        assert on_day.brokerage_per_order == D("25") and on_day.read_on == date(2026, 11, 1)
+        today = (await conn.execute(text("SELECT (clock_timestamp() AT TIME ZONE 'Asia/Kolkata')::date"))).scalar_one()
+        later = replace(seed, brokerage_per_order=D("25"), read_on=today, source_url="https://example/later")
+        await add_rate_set(conn, later, note="test")  # the newest day a set may carry is today (never a later day)
+        assert (await rates_in_force(conn, today - timedelta(days=1))).brokerage_per_order == D("20")
+        on_day = await rates_in_force(conn, today)
+        assert on_day.brokerage_per_order == D("25") and on_day.read_on == today
         assert on_day.source_url == "https://example/later"
         assert on_day.gst_rate == D("0.18")
     finally:
@@ -200,6 +201,8 @@ async def test_a_same_date_race_is_a_store_error():
             sql = str(stmt)
             if "INSERT" in sql:
                 raise IntegrityError("insert", {}, Exception("duplicate key"))
+            if "clock_timestamp" in sql:
+                return _Scalar(date(2026, 11, 1))  # today, so the unit set's read date is not in the future
             if "max(read_on)" in sql:
                 return _Scalar(None)
             return _Scalar(None)
@@ -323,3 +326,30 @@ async def test_the_database_refuses_a_stamp_or_sebi_rate_at_or_above_its_cap(adm
             finally:
                 await trans.rollback()
                 await conn.close()
+
+
+async def test_a_read_date_after_today_is_refused_and_writes_nothing(app_engine):
+    """A mistyped year (2062) would make every later set "older than the newest" for good: refused at the one write
+    path; tomorrow is refused too, today is accepted."""
+    conn, trans = await _tx(app_engine)
+    try:
+        seed = await rates_in_force(conn, SEED_DAY)
+        today = (await conn.execute(text("SELECT (clock_timestamp() AT TIME ZONE 'Asia/Kolkata')::date"))).scalar_one()
+        for bad in (date(2062, 1, 1), today + timedelta(days=1)):
+            with pytest.raises(ChargeRatesFutureDate, match="later than today"):
+                await add_rate_set(conn, replace(seed, read_on=bad))
+        assert (await conn.execute(text("SELECT count(*) FROM public.charge_rates WHERE read_on > :d"),
+                                   {"d": today})).scalar_one() == 0
+        await add_rate_set(conn, replace(seed, read_on=today, source_url="https://example/today"))
+    finally:
+        await trans.rollback()
+        await conn.close()
+
+
+@pytest.mark.parametrize(("field", "value"), [
+    ("brokerage_per_order", D("-1")), ("brokerage_per_order", D("1001")),
+    ("gst_rate", D("-0.01")), ("gst_rate", D("1")),
+    ("stt_sell_rate", D("0.01")), ("sebi_rate", D("0.00001"))])
+def test_a_negative_or_absurd_rate_cannot_build_a_rate_set(field, value):
+    with pytest.raises(ValueError, match=field):
+        replace(ChargeRates_for_unit(), **{field: value})

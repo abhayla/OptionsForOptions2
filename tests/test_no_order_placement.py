@@ -73,6 +73,7 @@ PRIVATE_ALLOWED: dict[str, tuple[frozenset[str], str]] = {
     "ofo/execution/partial.py": (frozenset({"ofo.execution.send_guard._BrokerSink", "ofo.execution.send_guard._Transport",
                                             "ofo.strategy.guard._decision"}),
                                  "type protocols of the send guard and the guard's decision helper"),
+    "ofo/engine/whole_trade.py": (frozenset({"ofo.engine.metrics._Unlimited"}), "the engine's unlimited marker"),
     "ofo/execution/safety.py": (frozenset({"ofo.engine.metrics._Unlimited", "ofo.engine.metrics._upper_tail_slope"}),
                                 "the engine's unlimited marker and tail slope (one engine owns the maths, ADR-008)"),
     "ofo/strategy/guard.py": (frozenset({"ofo.engine.metrics._Unlimited"}), "the engine's unlimited marker"),

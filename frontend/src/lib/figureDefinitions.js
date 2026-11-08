@@ -6,7 +6,7 @@
 
 // REQ-136 AC-4: the model named by every model-based figure; the test compares it with the engine's own model name.
 export const MODEL_PHRASE =
-  "Black-Scholes-Merton price from today's implied volatility, with each expiry's implied dividend yield";
+  "Black-Scholes-Merton price from today's implied volatility, with each expiry's dividend yield estimated from option prices";
 // REQ-136 AC-4: the wording of a figure that is exact at expiry.
 export const EXACT_AT_EXPIRY = "Exact at expiry from strikes and entry prices";
 

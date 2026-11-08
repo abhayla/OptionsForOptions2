@@ -28,6 +28,7 @@ import logging
 import re
 import secrets
 from collections.abc import Callable, Mapping
+from typing import NoReturn
 from dataclasses import dataclass, replace
 from enum import Enum
 from types import MappingProxyType
@@ -48,6 +49,7 @@ from ofo.errors import CATALOGUE, ErrorClass, UserFacingError, render, user_mess
 from ofo_app.api_models import ApiModel, DoorRefused, Emitted, emit, emit_message
 from ofo_app.broker_config import validate_frontend_origin
 from ofo_app.redaction import install_redaction, keep_public_codes
+from ofo_app.secret_values import contains_secret
 from ofo_app.underlying import refusal_of
 
 keep_public_codes(frozenset(t.code for t in CATALOGUE.values()))  # codes are public: never redacted as a token shape
@@ -144,6 +146,8 @@ def _mint_headers(*, body_length: int, content_type: bool, status: int, retry_af
             headers.append((b"location", location.encode("ascii")))
         except ValueError:
             raise DoorRefused("a door Location is a site path from the allow-list or the Zerodha login URL") from None
+    if any(contains_secret(value) for _, value in headers):  # #517: no registered credential value in any header
+        raise DoorRefused("a door header holds a registered credential value")
     return headers
 
 
@@ -612,6 +616,18 @@ def _internal_response(exc: BaseException, request: Request) -> ClosedResponse:
     reference = _reference()
     log.error("unhandled error %s on %s %s", reference, request.method, request.url.path, exc_info=exc)
     return _body(render("internal_system_request_failed", reference=reference), 500)
+
+
+#: The exception a request the API cannot read raises. Named here so a route or a socket can catch it without importing
+#: ``fastapi.exceptions``: only this door names the framework's error modules (W-024 r9, test_error_boundary_scan.py).
+RequestUnreadable = RequestValidationError
+
+
+def refuse_request(loc: tuple[str, ...], kind: str, value: object = None) -> NoReturn:
+    """Refuse a request value a route checks against the settings in force (REQ-167 AC-5): the same 422
+    (``user_input_request_invalid``) a malformed request gets from the validator. Only the location and the problem
+    type are given; no text is built outside this door, and the 422 body never shows ``input`` or ``msg``."""
+    raise RequestValidationError([{"type": kind, "loc": loc, "msg": kind, "input": value}])
 
 
 def _validation_problems(exc: RequestValidationError) -> list[tuple[tuple[object, ...], str]]:

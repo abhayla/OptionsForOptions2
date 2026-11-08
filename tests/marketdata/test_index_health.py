@@ -7,14 +7,18 @@ import datetime
 from decimal import Decimal
 
 import pytest
-
+from _kite_fixture import all_instrument_ids, listed, new_provider, recorded_frames, replay
 from ofo.instruments.models import NSE_INDEX
-from ofo.marketdata.feed_health import FEED_STALE, RECONNECT_WINDOW
 from ofo.marketdata.forward import ForwardUnavailable, parity_forward
 from ofo.marketdata.kite_provider import IST, KiteProvider
 from ofo.rules.inputs import DataHealth
+from ofo.settings import calc as _fq_calc
+from ofo.settings import defaults as _fq_defaults
 
-from _kite_fixture import all_instrument_ids, listed, new_provider, recorded_frames, replay
+FEED_STALE = _fq_calc.feed_windows(_fq_defaults()).stale  # the registry's windows, passed explicitly
+RECONNECT_WINDOW = _fq_calc.feed_windows(_fq_defaults()).reconnect
+
+_FQ = _fq_calc.forward_quality(_fq_defaults())
 
 SEC = datetime.timedelta(seconds=1)
 RATE = Decimal("0.065")
@@ -29,7 +33,7 @@ def _live():
 
 def _forward(provider, at):
     return parity_forward(provider.option_chain_snapshot("NIFTY", EXPIRY), provider.underlying_quote("NIFTY"),
-                          EXPIRY, at, RATE)
+                          EXPIRY, at, RATE, _FQ)
 
 
 def test_live_index_values_are_available_and_from_the_index_segments():
@@ -78,17 +82,18 @@ def test_missing_index_value_refuses():
     assert provider.underlying_quote("NIFTY") is None
     with pytest.raises(ForwardUnavailable, match="missing"):
         parity_forward([], provider.underlying_quote("NIFTY"), EXPIRY,
-                       datetime.datetime(2026, 10, 8, 9, 20, 9, tzinfo=IST), RATE)
+                       datetime.datetime(2026, 10, 8, 9, 20, 9, tzinfo=IST), RATE, _FQ)
 
 
 # ---- the scenario never uses the index value silently (AC-2) and records it with its time (AC-3) ---------------
 from ofo.engine.inputs import LegInput, StrategyInput  # noqa: E402
-from ofo.engine.model import model_inputs  # noqa: E402
 from ofo.engine.legs import Action, Instrument  # noqa: E402
+from ofo.engine.model import model_inputs  # noqa: E402
 from ofo.scenario.config import ScenarioSettings  # noqa: E402
 from ofo.scenario.levels import build_level_set  # noqa: E402
 from ofo.scenario.spot import SpotRefused, spot_reading  # noqa: E402
 from ofo.scenario.views import View, scenario_values  # noqa: E402
+from ofo.settings import defaults as _d  # noqa: E402
 
 VALUATION = datetime.datetime(2026, 10, 8, 9, 20, 9, tzinfo=IST)
 
@@ -101,12 +106,12 @@ def _inputs(reading):
 
 def _gated(inputs, provider):
     fwd = parity_forward(provider.option_chain_snapshot("NIFTY", EXPIRY), provider.underlying_quote("NIFTY"), EXPIRY,
-                         VALUATION, RATE)
+                         VALUATION, RATE, _FQ)
     return model_inputs(inputs, {EXPIRY: fwd})
 
 
 def _scenario(model):
-    ls = build_level_set(model, ScenarioSettings().for_index("NIFTY"))
+    ls = build_level_set(model, ScenarioSettings.from_values(_d()).for_index("NIFTY"))
     return ls, [scenario_values(ls, model, view) for view in (View.AT_EXPIRY, View.ESTIMATED_NOW)]
 
 

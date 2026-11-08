@@ -28,6 +28,7 @@ from marketdata._kite_fixture import all_instrument_ids, new_provider, replay  #
 
 from ofo.errors.explanations import ExplanationText  # noqa: E402
 from ofo.marketdata.kite_provider import IST  # noqa: E402
+from ofo.settings import defaults as settings_defaults  # noqa: E402
 
 VALUATION = datetime.datetime(2026, 10, 8, 9, 20, 9, tzinfo=IST)
 RATE = Decimal("0.065")
@@ -49,7 +50,8 @@ def _outcome(provider, legs):
     body = [{"instrument_id": iid, "action": action, "lots": lots, "planned_entry": entry,
              "captured_at": VALUATION.isoformat()} for iid, action, lots, entry in legs]
     request = OutcomeRequest.model_validate({"underlying": "NIFTY", "legs": body})
-    return strategy_outcome(request, MarketContext(provider, lambda: VALUATION, RATE), now=server_now, stored=None)
+    return strategy_outcome(request, MarketContext(provider, lambda: VALUATION, RATE), now=server_now, stored=None,
+                            calc_settings=settings_defaults())
 
 
 def test_ac7_the_172_repro_renders_one_bounded_region_with_one_excluded_level(replayed) -> None:

@@ -1,0 +1,49 @@
+{
+ "id": "PATH-15",
+ "base": "ADJ-02",
+ "title": "gap",
+ "notes": "",
+ "entry_atm_iv": "0.10",
+ "legs": [
+  {
+   "side": "BUY",
+   "type": "PE",
+   "strike": "22600",
+   "lots": 2
+  },
+  {
+   "side": "SELL",
+   "type": "PE",
+   "strike": "22800",
+   "lots": 2
+  },
+  {
+   "side": "SELL",
+   "type": "CE",
+   "strike": "23400",
+   "lots": 2
+  },
+  {
+   "side": "BUY",
+   "type": "CE",
+   "strike": "23600",
+   "lots": 2
+  }
+ ],
+ "frames": [
+  {
+   "clock": "2026-11-05T09:20:00",
+   "spot": "23100",
+   "atm_iv": "0.10",
+   "day_open": "23100",
+   "prev_close": "23100"
+  },
+  {
+   "clock": "2026-11-06T09:20:00",
+   "spot": "23300",
+   "atm_iv": "0.10",
+   "day_open": "23300",
+   "prev_close": "23100"
+  }
+ ]
+}

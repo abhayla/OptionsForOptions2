@@ -6,12 +6,16 @@ Real 2026-10-08 replay."""
 import dataclasses
 import datetime
 
+from marketdata._kite_fixture import all_instrument_ids, new_provider, replay
 from ofo.errors.explanations import render_explanation
 from ofo.outcome import NOT_CONNECTED_LABEL, OutcomeState, build_outcome, not_live, read_snapshot
 from ofo.rules.inputs import DataHealth
-
-from marketdata._kite_fixture import all_instrument_ids, new_provider, replay
+from ofo.settings import calc as _fq_calc
+from ofo.settings import defaults as _d
+from ofo.settings import defaults as _fq_defaults
 from outcome.test_same_engine import RATE, VALUATION, definition
+
+_FQ = _fq_calc.forward_quality(_fq_defaults())
 
 
 def _snap():
@@ -19,7 +23,7 @@ def _snap():
     provider.subscribe(all_instrument_ids(items))
     replay(provider, clock)
     d = definition(provider)
-    return d, read_snapshot(provider, "NIFTY", [p.instrument_id for p in d.legs], VALUATION, RATE)
+    return d, read_snapshot(provider, "NIFTY", [p.instrument_id for p in d.legs], VALUATION, RATE, quality=_FQ)
 
 
 def _never_held(snap):
@@ -60,7 +64,7 @@ def test_ac4_feed_message_with_no_quote_ever_held_is_the_q185_draft_label():
     held, the label is Q185's draft label, not AC-5's "Last updated: <request time>"."""
     d, snap = _snap()
     down = dataclasses.replace(_never_held(snap), status=dataclasses.replace(snap.status, health=DataHealth.UNAVAILABLE))
-    out = build_outcome(d, down)
+    out = build_outcome(d, down, settings=_d())
     assert out.status_label is not None
     assert NOT_CONNECTED_LABEL in (out.status_label, *getattr(out.status_label, "parts", ()))  or \
         str(NOT_CONNECTED_LABEL) in str(out.status_label)

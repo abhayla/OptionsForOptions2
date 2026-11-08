@@ -39,6 +39,9 @@ from ofo_app.catalogue_store import (
     parse_rows_naming_the_row,
     with_terms,
 )
+from ofo.settings import calc as _calc, defaults as _defaults
+
+_MAX_DELIST = _calc.max_delist_percent(_defaults())
 
 INSUFFICIENT_PRIVILEGE = "42501"
 CATALOGUE_SQLSTATE = "OF006"
@@ -316,7 +319,7 @@ class _FakeConn:
 async def test_planning_into_an_empty_catalogue_writes_every_in_scope_contract_without_a_database() -> None:
     """Reproduces CI run 36979206662 without PostgreSQL: the first write into an empty table must plan 23 inserts."""
     conn = _FakeConn()
-    result = await apply_update(conn, _fixture(), as_of=AS_OF)
+    result = await apply_update(conn, _fixture(), as_of=AS_OF, max_delist_percent=_MAX_DELIST)
     assert (result.added, result.seen, result.newly_unlisted) == (23, 0, 0)
     assert [kind for kind, _ in conn.writes] == ["INSERT", "INSERT"]  # contracts, then their zerodha rows
     assert sorted(p["exchange_token"] for p in conn.writes[0][1]) == sorted(
@@ -338,7 +341,8 @@ async def test_planning_over_stored_rows_marks_seen_and_unlisted_without_a_datab
                                  "freeze_limit", "seen_on")}) for i, c in enumerate(_in_scope(_fixture()))]
     conn = _FakeConn(stored)
     next_day = [c for c in _fixture() if c.contract.expiry != date(2026, 10, 6)]
-    result = await apply_update(conn, next_day, as_of=datetime(2026, 10, 7, 9, 0, tzinfo=IST))
+    result = await apply_update(conn, next_day, as_of=datetime(2026, 10, 7, 9, 0, tzinfo=IST),
+        max_delist_percent=_MAX_DELIST)
     assert (result.added, result.seen, result.newly_unlisted, result.retired) == (0, 19, 4, 4)
     assert [kind for kind, _ in conn.writes] == ["UPDATE", "UPDATE", "UPDATE"]  # retired (W-057), seen, listed
     expired_ids = sorted(r.id for r in stored if r.expiry == date(2026, 10, 6))
@@ -349,7 +353,7 @@ async def test_planning_over_stored_rows_marks_seen_and_unlisted_without_a_datab
         c.contract.exchange_segment for c in next_day if Catalogue._in_scope(c.contract))
     refused = _FakeConn(stored)
     with pytest.raises(ValueError, match="refused: would drop 8 of 11 live NIFTY contracts"):  # ADR-058: > 10%
-        await apply_update(refused, _without_nifty_options(_fixture()), as_of=AS_OF)
+        await apply_update(refused, _without_nifty_options(_fixture()), as_of=AS_OF, max_delist_percent=_MAX_DELIST)
     assert refused.writes == []
 
 
@@ -372,7 +376,7 @@ def _stored_rows() -> list:
 async def test_planning_a_revised_lot_size_writes_one_revise_without_a_database() -> None:
     conn = _FakeConn(_stored_rows())
     revised = [with_terms(c, lot_size=75) if _sym(c) == "NIFTY26OCTFUT" else c for c in _fixture()]
-    result = await apply_update(conn, revised, as_of=AS_OF)
+    result = await apply_update(conn, revised, as_of=AS_OF, max_delist_percent=_MAX_DELIST)
     assert (result.added, result.revised, result.seen, result.newly_unlisted) == (0, 1, 23, 0)
     assert [kind for kind, _ in conn.writes] == ["UPDATE", "UPDATE"]  # no expiry changed: no contract revise
     seen = conn.writes[0][1]
@@ -392,7 +396,7 @@ async def test_planning_an_identity_change_is_refused_with_no_write(field: str, 
     conn = _FakeConn(_stored_rows())
     changed = [with_terms(c, **{field: value}) if _sym(c) == "NIFTY26O0625050CE" else c for c in _fixture()]
     with pytest.raises(CatalogueStoreError, match=rf"NIFTY26O0625050CE .*{field} .* identity never changes"):
-        await apply_update(conn, changed, as_of=AS_OF)
+        await apply_update(conn, changed, as_of=AS_OF, max_delist_percent=_MAX_DELIST)
     assert conn.writes == []
 
 
@@ -420,7 +424,8 @@ async def test_forced_update_writes_its_audit_event_only_after_the_catalogue_wri
 
     conn.execute = tracking_execute  # type: ignore[method-assign]
     truncated = [c for c in _fixture() if _sym(c) != "NIFTY26O1325050CE"]
-    await apply_update(conn, truncated, as_of=AS_OF, force=True, reason="broker delisted", actor="admin-1")
+    await apply_update(conn, truncated, as_of=AS_OF, force=True, reason="broker delisted", actor="admin-1",
+        max_delist_percent=_MAX_DELIST)
     assert order[-1] == "audit" and order.count("audit") == 1 and "write" in order[:-1]
     assert calls[0][0] is conn and calls[0][1] is EventType.ADMIN_CHANGE_RECORDED
     payload = calls[0][2]["payload"]
@@ -440,7 +445,8 @@ async def test_forced_update_writes_its_audit_event_only_after_the_catalogue_wri
 
     failing.execute = failing_execute  # type: ignore[method-assign]
     with pytest.raises(RuntimeError, match="write failed"):
-        await apply_update(failing, truncated, as_of=AS_OF, force=True, reason="broker delisted", actor="admin-1")
+        await apply_update(failing, truncated, as_of=AS_OF, force=True, reason="broker delisted", actor="admin-1",
+            max_delist_percent=_MAX_DELIST)
     assert calls == []
 
 
@@ -460,7 +466,8 @@ async def test_a_refused_audit_append_rolls_back_the_forced_delisting_without_a_
     monkeypatch.setattr(catalogue_store.audit_store, "append", refusing_append)
     truncated = [c for c in _fixture() if _sym(c) != "NIFTY26O1325050CE"]
     with pytest.raises(ValueError, match="audit store refused"):
-        await apply_update(conn, truncated, as_of=AS_OF, force=True, reason="broker delisted", actor="admin-1")
+        await apply_update(conn, truncated, as_of=AS_OF, force=True, reason="broker delisted", actor="admin-1",
+            max_delist_percent=_MAX_DELIST)
     assert seen_writes and seen_writes[0] > 0, "append must run after the writes, inside the savepoint"
     assert conn.writes == [], "the savepoint must discard the delisting when the audit append is refused"
 
@@ -476,7 +483,7 @@ async def test_fixture_round_trips_unchanged_with_exact_decimals(app_engine: Asy
         trans = await conn.begin()
         try:
             assert await _count(conn) == 0, "catalogue table must be empty (tests roll back)"
-            result = await apply_update(conn, _fixture(), as_of=AS_OF)
+            result = await apply_update(conn, _fixture(), as_of=AS_OF, max_delist_percent=_MAX_DELIST)
             assert (result.added, result.seen, result.newly_unlisted) == (23, 0, 0)
             assert await _count(conn) == 23  # the out-of-scope rows are not stored
             catalogue = await load_catalogue(conn)
@@ -510,7 +517,7 @@ async def check_truncated_update_refused(conn: AsyncConnection) -> None:
     extra = with_terms(_by_symbol(_fixture(), "NIFTY26O1325050CE"), exchange_token=99999, broker_token="99999999",
                        broker_symbol="NEW-CONTRACT")
     try:
-        await apply_update(conn, truncated + [extra], as_of=AS_OF)
+        await apply_update(conn, truncated + [extra], as_of=AS_OF, max_delist_percent=_MAX_DELIST)
     except ValueError as exc:
         assert "refused: would drop 8 of 11 live NIFTY contracts" in str(exc), exc
         assert await _snapshot(conn) == before
@@ -522,7 +529,7 @@ async def test_update_that_drops_an_unexpired_contract_is_refused_with_no_row_ch
     async with app_engine.connect() as conn:
         trans = await conn.begin()
         try:
-            await apply_update(conn, _fixture(), as_of=AS_OF)
+            await apply_update(conn, _fixture(), as_of=AS_OF, max_delist_percent=_MAX_DELIST)
             await check_truncated_update_refused(conn)
         finally:
             await trans.rollback()
@@ -532,10 +539,11 @@ async def test_expired_contracts_roll_off_as_unlisted_and_are_never_deleted(app_
     async with app_engine.connect() as conn:
         trans = await conn.begin()
         try:
-            await apply_update(conn, _fixture(), as_of=AS_OF)
+            await apply_update(conn, _fixture(), as_of=AS_OF, max_delist_percent=_MAX_DELIST)
             before = {r.broker_symbol: r for r in (await conn.execute(SNAPSHOT)).all()}
             next_day = [c for c in _fixture() if c.contract.expiry != date(2026, 10, 6)]  # the 4 NIFTY 6-Oct options expired
-            result = await apply_update(conn, next_day, as_of=datetime(2026, 10, 7, 9, 0, tzinfo=IST))
+            result = await apply_update(conn, next_day, as_of=datetime(2026, 10, 7, 9, 0, tzinfo=IST),
+                max_delist_percent=_MAX_DELIST)
             assert (result.added, result.seen, result.newly_unlisted) == (0, 19, 4)
             after = {r.broker_symbol: r for r in (await conn.execute(SNAPSHOT)).all()}
             assert set(after) == set(before) and len(after) == 23
@@ -568,10 +576,10 @@ async def test_revised_lot_size_follows_zerodha_with_one_history_row(
     async with app_engine.connect() as conn:
         trans = await conn.begin()
         try:
-            await apply_update(conn, _fixture(), as_of=AS_OF)
+            await apply_update(conn, _fixture(), as_of=AS_OF, max_delist_percent=_MAX_DELIST)
             clock_before = (await conn.execute(text("SELECT clock_timestamp()"))).scalar_one()
             revised = [with_terms(c, lot_size=75) if _sym(c) == "NIFTY26OCTFUT" else c for c in _fixture()]
-            result = await apply_update(conn, revised, as_of=AS_OF)
+            result = await apply_update(conn, revised, as_of=AS_OF, max_delist_percent=_MAX_DELIST)
             clock_after = (await conn.execute(text("SELECT clock_timestamp()"))).scalar_one()
             assert (result.added, result.revised, result.newly_unlisted) == (0, 1, 0)
             lot = (await conn.execute(text(
@@ -599,12 +607,12 @@ async def test_an_identity_change_is_refused_with_nothing_written(
     async with app_engine.connect() as conn:
         trans = await conn.begin()
         try:
-            await apply_update(conn, _fixture(), as_of=AS_OF)
+            await apply_update(conn, _fixture(), as_of=AS_OF, max_delist_percent=_MAX_DELIST)
             before = await _snapshot(conn)
             changed = [with_terms(c, **{field: value}) if _sym(c) == "NIFTY26O0625050CE" else c
                        for c in _fixture()]
             with pytest.raises(CatalogueStoreError, match=rf"NIFTY26O0625050CE .*{field} .* identity never changes"):
-                await apply_update(conn, changed, as_of=AS_OF)
+                await apply_update(conn, changed, as_of=AS_OF, max_delist_percent=_MAX_DELIST)
             after = await _snapshot(conn)
             history = (await conn.execute(text(f"SELECT count(*) FROM {HISTORY}"))).scalar_one()
             assert after == before and history == 0
@@ -619,12 +627,12 @@ async def test_history_dates_are_iso_whatever_the_session_datestyle(app_engine: 
     async with app_engine.connect() as conn:
         trans = await conn.begin()
         try:
-            await apply_update(conn, _fixture(), as_of=AS_OF)
+            await apply_update(conn, _fixture(), as_of=AS_OF, max_delist_percent=_MAX_DELIST)
             await conn.execute(text("SET LOCAL DateStyle = 'SQL, DMY'"))
             assert (await conn.execute(text("SELECT DATE '2026-10-27'::text"))).scalar_one() == "27/10/2026"
             revised = [with_terms(c, expiry=date(2026, 10, 28)) if _sym(c) == "NIFTY26OCTFUT" else c
                        for c in _fixture()]
-            await apply_update(conn, revised, as_of=AS_OF)
+            await apply_update(conn, revised, as_of=AS_OF, max_delist_percent=_MAX_DELIST)
             history = (await conn.execute(text(f"SELECT broker, field, old_value, new_value FROM {HISTORY}"))).all()
             assert [tuple(h) for h in history] == [(None, "expiry", "2026-10-27", "2026-10-28")]
         finally:
@@ -643,12 +651,13 @@ async def test_a_refused_audit_append_leaves_the_catalogue_and_audit_log_unchang
     async with app_engine.connect() as conn:
         trans = await conn.begin()
         try:
-            await apply_update(conn, _fixture(), as_of=AS_OF)
+            await apply_update(conn, _fixture(), as_of=AS_OF, max_delist_percent=_MAX_DELIST)
             before, head = await _snapshot(conn), await read_anchor(conn)
             monkeypatch.setattr(catalogue_store.audit_store, "append", refusing_append)
             truncated = [c for c in _fixture() if _sym(c) != "NIFTY26O1325050CE"]
             with pytest.raises(ValueError, match="audit store refused"):
-                await apply_update(conn, truncated, as_of=AS_OF, force=True, reason="broker delisted", actor="admin-1")
+                await apply_update(conn, truncated, as_of=AS_OF, force=True, reason="broker delisted", actor="admin-1",
+                    max_delist_percent=_MAX_DELIST)
             assert await _snapshot(conn) == before and await read_anchor(conn) == head
         finally:
             await trans.rollback()
@@ -660,13 +669,14 @@ async def test_forced_update_unlists_and_appends_one_audit_event_on_the_same_con
     async with app_engine.connect() as conn:
         trans = await conn.begin()
         try:
-            await apply_update(conn, _fixture(), as_of=AS_OF)
+            await apply_update(conn, _fixture(), as_of=AS_OF, max_delist_percent=_MAX_DELIST)
             head = await read_anchor(conn)
             # as_of is the fixture's fixed download day, far from now: the audit event still stores, because the
             # store stamps the database clock itself (finding request-clock-for-database-stamped-fact)
             before = (await conn.execute(text("SELECT clock_timestamp()"))).scalar_one()
             truncated = [c for c in _fixture() if _sym(c) != "NIFTY26O1325050CE"]
-            await apply_update(conn, truncated, as_of=AS_OF, force=True, reason="broker delisted", actor="admin-1")
+            await apply_update(conn, truncated, as_of=AS_OF, force=True, reason="broker delisted", actor="admin-1",
+                max_delist_percent=_MAX_DELIST)
             after = (await conn.execute(text("SELECT clock_timestamp()"))).scalar_one()
             listed = (await conn.execute(text(
                 f"SELECT currently_listed FROM {TABLE} WHERE id = (SELECT contract_id FROM public.broker_instruments WHERE broker_symbol = 'NIFTY26O1325050CE')"))).scalar_one()
@@ -687,7 +697,7 @@ async def test_app_role_cannot_delete_or_rewrite_contracts(app_engine: AsyncEngi
     async with app_engine.connect() as conn:
         trans = await conn.begin()
         try:
-            await apply_update(conn, _fixture(), as_of=AS_OF)
+            await apply_update(conn, _fixture(), as_of=AS_OF, max_delist_percent=_MAX_DELIST)
             await _expect_refused(conn, f"DELETE FROM {TABLE}", INSUFFICIENT_PRIVILEGE)
             await _expect_refused(conn, f"TRUNCATE {TABLE}", INSUFFICIENT_PRIVILEGE)
             # W-057: strike is app-updatable since 0005 (a revision, ADR-057); name never is
@@ -737,7 +747,7 @@ async def test_owner_cannot_rewrite_or_delete_term_change_history(admin_engine: 
     async with admin_engine.connect() as conn:
         trans = await conn.begin()
         try:
-            await apply_update(conn, _fixture(), as_of=AS_OF)
+            await apply_update(conn, _fixture(), as_of=AS_OF, max_delist_percent=_MAX_DELIST)
             await conn.execute(text(f"UPDATE {BROKER} SET lot_size = 75 WHERE broker_symbol = 'NIFTY26OCTFUT'"))
             assert (await conn.execute(text(f"SELECT count(*) FROM {HISTORY}"))).scalar_one() == 1
             await _expect_refused(conn, f"UPDATE {HISTORY} SET new_value = '65'", CATALOGUE_SQLSTATE)
@@ -750,7 +760,7 @@ async def test_owner_cannot_delete_or_change_terms_and_cannot_backdate_first_see
     async with admin_engine.connect() as conn:
         trans = await conn.begin()
         try:
-            await apply_update(conn, _fixture(), as_of=AS_OF)
+            await apply_update(conn, _fixture(), as_of=AS_OF, max_delist_percent=_MAX_DELIST)
             await check_owner_cannot_delete_or_change_terms(conn)
             stamp = (await conn.execute(text(f"SELECT first_seen_at FROM {TABLE} WHERE id = (SELECT contract_id FROM public.broker_instruments WHERE broker_symbol = 'NIFTY26OCTFUT')"))).scalar_one()
             await conn.execute(text(f"UPDATE {TABLE} SET first_seen_at = '2000-01-01' WHERE id = (SELECT contract_id FROM public.broker_instruments WHERE broker_symbol = 'NIFTY26OCTFUT')"))
@@ -765,7 +775,7 @@ async def test_stored_nan_strike_stops_the_reload_naming_the_row(admin_engine: A
     async with admin_engine.connect() as conn:
         trans = await conn.begin()
         try:
-            await apply_update(conn, _fixture(), as_of=AS_OF)
+            await apply_update(conn, _fixture(), as_of=AS_OF, max_delist_percent=_MAX_DELIST)
             constraint = (await conn.execute(text(
                 "SELECT conname FROM pg_constraint WHERE conrelid = 'public.catalogue_contracts'::regclass "
                 "AND pg_get_constraintdef(oid) LIKE '%strike%NaN%'"))).scalar_one()
@@ -977,7 +987,7 @@ async def test_mutation_weakening_the_guard_lets_the_owner_delete(admin_engine: 
     async with admin_engine.connect() as conn:
         trans = await conn.begin()
         try:
-            await apply_update(conn, _fixture(), as_of=AS_OF)
+            await apply_update(conn, _fixture(), as_of=AS_OF, max_delist_percent=_MAX_DELIST)
             await conn.execute(text(mutation))
             with pytest.raises(AssertionError, match="not refused: DELETE"):
                 await check_owner_cannot_delete_or_change_terms(conn)
@@ -998,7 +1008,7 @@ async def test_mutation_bypassing_the_q244_guard_turns_the_refusal_check_red(
     async with app_engine.connect() as conn:
         trans = await conn.begin()
         try:
-            await apply_update(conn, _fixture(), as_of=AS_OF)
+            await apply_update(conn, _fixture(), as_of=AS_OF, max_delist_percent=_MAX_DELIST)
             await check_truncated_update_refused(conn)
             monkeypatch.setattr(domain_catalogue, "_refuse_truncation", no_guard)  # the guards live in the domain
             with pytest.raises(AssertionError, match="not refused: truncated update"):
@@ -1040,7 +1050,7 @@ async def test_real_zerodha_file_round_trips_and_a_truncated_update_is_refused(
                 (c.contract.name, c.contract.exchange_segment, c.contract.instrument_type) for c in scoped)
             assert all(file_counts[k] > 0 for k in PROOF_CATEGORIES), file_counts
             assert await _count(conn) == 0, "catalogue table must be empty (tests roll back)"
-            result = await apply_update(conn, contracts, as_of=as_of)
+            result = await apply_update(conn, contracts, as_of=as_of, max_delist_percent=_MAX_DELIST)
             rows = (await conn.execute(text(
                 f"SELECT name, exchange_segment, instrument_type, count(*) FROM {TABLE} GROUP BY 1, 2, 3"))).all()
             table_counts = Counter({(r[0], r[1], r[2]): r[3] for r in rows})
@@ -1084,7 +1094,7 @@ async def test_real_zerodha_file_round_trips_and_a_truncated_update_is_refused(
             cut = {c.id for c in nifty[: len(nifty) * 4 // 10]} | {victim.id}  # ADR-058: a 40% cut is refused
             copy = [c for c in contracts if c.id not in cut]
             with pytest.raises(ValueError, match="refused: would drop .* live NIFTY contracts"):
-                await apply_update(conn, copy, as_of=as_of)
+                await apply_update(conn, copy, as_of=as_of, max_delist_percent=_MAX_DELIST)
             after = await _snapshot(conn)
             assert after == before
             lines.append(f"W-053 PROOF refused removing {len(cut)} NIFTY incl. {_sym(victim)} (expiry {victim.contract.expiry}); "

@@ -25,6 +25,11 @@ from ofo.engine.legs import Instrument
 from ofo.engine.model import iv_price
 from ofo.marketdata.quote import NormalizedQuote, SourceMetadata
 from ofo.rules.inputs import DataHealth
+from ofo.settings import calc as _fq_calc
+from ofo.settings import defaults as _d
+from ofo.settings import defaults as _fq_defaults
+
+_FQ = _fq_calc.forward_quality(_fq_defaults())
 
 D = Decimal
 IST = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
@@ -46,7 +51,7 @@ def _quote(instrument_id: str, underlying: str, kind: Instrument | None, expiry:
 def _greeks(underlying: str, spot: str, expiry: datetime.date, rows: list[tuple[str, Instrument, str, str]]):
     spot_quote = _quote("INDEX", underlying, None, None, None, spot)
     chain = [_quote(i, underlying, kind, expiry, strike, ltp) for i, kind, strike, ltp in rows]
-    return chain_greeks(chain, spot_quote, expiry, VALUATION, RATE)
+    return chain_greeks(chain, spot_quote, expiry, VALUATION, RATE, _FQ)
 
 
 NIFTY_ROWS = [("NSE_FO:44612", Instrument.CE, "22500", "151.30"), ("NSE_FO:44615", Instrument.PE, "22550", "145.10")]
@@ -83,7 +88,7 @@ def test_ac_2_expired_expiry_gives_no_greeks():
 
 def test_greeks_without_a_spot_quote_are_empty_not_guessed():
     """AC-2: no index price, no Greeks."""
-    assert chain_greeks([], None, datetime.date(2026, 10, 13), VALUATION, RATE) == {}
+    assert chain_greeks([], None, datetime.date(2026, 10, 13), VALUATION, RATE, _FQ) == {}
 
 
 # ---- the extra chain values (REQ-087), kept with the file they belong to ---------------------------------------------
@@ -142,15 +147,15 @@ def recorded():
     provider, clock, items = new_provider()
     provider.subscribe(all_instrument_ids(items))
     replay(provider, clock)
-    return provider, read_snapshot(provider, "NIFTY", [ANCHOR], VALUATION, RATE)
+    return provider, read_snapshot(provider, "NIFTY", [ANCHOR], VALUATION, RATE, quality=_FQ)
 
 
 def _outcome_leg_iv(provider, instrument_id):
     from ofo.engine.legs import Action
     from ofo.outcome import PlannedLeg, StrategyDefinition, build_outcome, read_snapshot
-    snap = read_snapshot(provider, "NIFTY", [instrument_id], VALUATION, RATE)
+    snap = read_snapshot(provider, "NIFTY", [instrument_id], VALUATION, RATE, quality=_FQ)
     plan = StrategyDefinition("NIFTY", (PlannedLeg(instrument_id, Action.BUY, 1, D("10"), VALUATION),))
-    return build_outcome(plan, snap).legs[0].iv
+    return build_outcome(plan, snap, settings=_d()).legs[0].iv
 
 
 def test_core_picker_iv_equals_outcome_leg_iv_on_the_recorded_frames(recorded):
@@ -159,7 +164,7 @@ def test_core_picker_iv_equals_outcome_leg_iv_on_the_recorded_frames(recorded):
     fix the 22150 CE (deep in the money, stale LTP, live mid) showed 0.147669 in the picker vs 0.138008 on the leg."""
     provider, snap = recorded
     chain = snap.chains[NEAR]
-    picker = chain_greeks(chain, snap.spot, NEAR, VALUATION, RATE)
+    picker = chain_greeks(chain, snap.spot, NEAR, VALUATION, RATE, _FQ)
     by_key = {(q.instrument_type, q.strike): q for q in chain}
     for kind, strike in ((Instrument.CE, "22150"), (Instrument.CE, "22550"), (Instrument.PE, "22550"),
                          (Instrument.PE, "22900"), (Instrument.CE, "23000")):
@@ -197,7 +202,7 @@ def test_picker_solves_from_the_mid_and_a_crossed_book_from_the_ltp():
     spot = _quote("INDEX", "NIFTY", None, None, None, "22533.25")
 
     def iv(q):
-        return chain_greeks([q], spot, NEAR, VALUATION, RATE)["NSE_FO:44612"].iv
+        return chain_greeks([q], spot, NEAR, VALUATION, RATE, _FQ)["NSE_FO:44612"].iv
     on_ltp = iv(_priced("151.30", None, None))
     assert iv(_priced("151.30", "151.05", "150.00")) == on_ltp
     on_mid = iv(_priced("151.30", "140.00", "141.00"))

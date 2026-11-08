@@ -1,0 +1,137 @@
+{
+  "_about": "merge_preflight.py known interface findings: mypy false positives (each test passes), measured by whole-tree runs on a main-based tree and on feature/adjustments (2026-11-02). A finding beyond this list fails the interface layer. Keyed by file + message (no line number) with the number of copies known; a copy beyond that count fails. Whole classes live in KNOWN_PATTERNS. Remove an entry when its finding is gone.",
+  "known": [
+    {
+      "file": "tests/instruments/test_catalogue.py",
+      "message": "Unexpected keyword argument \"contract\" for \"replace\" of \"Contract\"  [call-arg]",
+      "reason": "the test asserts replace() with an unknown field raises",
+      "count": 1
+    },
+    {
+      "file": "tests/test_chain_model.py",
+      "message": "Too many arguments for \"NormalizedQuote\"  [call-arg]",
+      "reason": "NormalizedQuote built positionally with its trailing fields in a test; passes at run time",
+      "count": 1
+    },
+    {
+      "file": "tests/engine/test_iv_source_stale.py",
+      "message": "Too many arguments for \"NormalizedQuote\"  [call-arg]",
+      "reason": "NormalizedQuote built positionally with its trailing fields in a test; passes at run time",
+      "count": 2
+    },
+    {
+      "file": "tests/marketdata/test_shared_compute_keys.py",
+      "message": "Unexpected keyword argument \"b\" for \"call\" of \"FeedScope\"  [call-arg]",
+      "reason": "FeedScope.call takes *args by design; the test passes a keyword on purpose",
+      "count": 1
+    },
+    {
+      "file": "tests/engine/test_chain_values.py",
+      "message": "Too many arguments for \"NormalizedQuote\"  [call-arg]",
+      "reason": "NormalizedQuote built positionally with its trailing fields in a test; passes at run time",
+      "count": 1
+    },
+    {
+      "file": "tests_app/test_contract_identity_lifecycle.py",
+      "message": "Missing named argument \"max_delist_percent\" for \"apply_update\"  [call-arg]",
+      "reason": "the test asserts the missing argument raises TypeError (ADR-222 (1))",
+      "count": 1
+    },
+    {
+      "file": "tests_app/test_chain_push_closed.py",
+      "message": "Too many arguments for \"NormalizedQuote\"  [call-arg]",
+      "reason": "NormalizedQuote built positionally with its trailing fields in a test; passes at run time",
+      "count": 1
+    },
+    {
+      "file": "tests_app/test_response_door.py",
+      "message": "Unexpected keyword argument \"note\" for \"Hostile\"  [call-arg]",
+      "reason": "test double built with an extra keyword on purpose (response-door hostile reply)",
+      "count": 1
+    },
+    {
+      "file": "tests_app/test_response_door.py",
+      "message": "Unexpected keyword argument \"note\" for \"Loose\"  [call-arg]",
+      "reason": "test double built with an extra keyword on purpose (response-door loose reply)",
+      "count": 1
+    },
+    {
+      "file": "tests_app/test_leg_picker_routes.py",
+      "message": "Too many arguments for \"NormalizedQuote\"  [call-arg]",
+      "reason": "NormalizedQuote built positionally with its trailing fields in a test; passes at run time",
+      "count": 1
+    },
+    {
+      "file": "tests_app/test_egress_gate_doors.py",
+      "message": "Unexpected keyword argument \"auth\" for \"get\" of \"KiteClient\"  [call-arg]",
+      "reason": "the test asserts the door API refuses auth= (pytest.raises(TypeError), W-080 r9)",
+      "count": 1
+    },
+    {
+      "file": "tests_app/test_egress_gate_doors.py",
+      "message": "Unexpected keyword argument \"extensions\" for \"get\" of \"KiteClient\"  [call-arg]",
+      "reason": "the test asserts the door API refuses extensions= (pytest.raises(TypeError))",
+      "count": 1
+    },
+    {
+      "file": "tests/rules/test_exit.py",
+      "message": "Missing named argument \"action\" for \"exit_max_loss\"  [call-arg]",
+      "reason": "AC-3 test: every exit builder must refuse a missing action (TypeError expected)",
+      "count": 1
+    },
+    {
+      "file": "tests/rules/test_exit.py",
+      "message": "Missing named argument \"action\" for \"exit_profit_target\"  [call-arg]",
+      "reason": "AC-3 test: every exit builder must refuse a missing action (TypeError expected)",
+      "count": 1
+    },
+    {
+      "file": "tests/rules/test_exit.py",
+      "message": "Missing named argument \"action\" for \"exit_time\"  [call-arg]",
+      "reason": "AC-3 test: every exit builder must refuse a missing action (TypeError expected)",
+      "count": 1
+    },
+    {
+      "file": "tests/rules/test_exit.py",
+      "message": "Missing named argument \"action\" for \"exit_underlying_level\"  [call-arg]",
+      "reason": "AC-3 test: every exit builder must refuse a missing action (TypeError expected)",
+      "count": 1
+    },
+    {
+      "file": "tests/rules/test_model.py",
+      "message": "Missing positional argument \"action\" in call to \"Rule\"  [call-arg]",
+      "reason": "the test asserts Rule without an action raises TypeError",
+      "count": 1
+    },
+    {
+      "file": "tests/strategy/test_definition_state.py",
+      "message": "Unexpected keyword argument \"ltp\" for \"DefinitionLeg\"  [call-arg]",
+      "reason": "the test asserts market fields are refused (pytest.raises(TypeError))",
+      "count": 1
+    },
+    {
+      "file": "tests/strategy/test_definition_state.py",
+      "message": "Unexpected keyword argument \"spot\" for \"StrategyDefinition\"  [call-arg]",
+      "reason": "the test asserts market fields are refused (pytest.raises(TypeError))",
+      "count": 1
+    },
+    {
+      "file": "tests/strategy/test_modification.py",
+      "message": "Unexpected keyword argument \"safety\" for \"execute_confirmed_modification\"  [call-arg]",
+      "reason": "W-026: the test asserts safety= is not an accepted keyword (TypeError)",
+      "count": 1
+    },
+    {
+      "file": "tests/table/test_one_column_set.py",
+      "message": "Too many arguments for \"scenario_header\"  [call-arg]",
+      "reason": "the test asserts the old call shapes raise TypeError",
+      "count": 1
+    },
+    {
+      "file": "tests/table/test_one_column_set.py",
+      "message": "Too many arguments for \"visible_columns\"  [call-arg]",
+      "reason": "the test asserts the old call shapes raise TypeError",
+      "count": 1
+    }
+  ]
+}

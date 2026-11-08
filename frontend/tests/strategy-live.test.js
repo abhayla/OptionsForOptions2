@@ -228,7 +228,10 @@ describe('AC-4: the Builder live socket', () => {
   it('AC-4 (ADR-008): the composable and the page contain no arithmetic on a price or P&L value', () => {
     const src = readFileSync(resolve(__dirname, '../src/composables/useStrategyLive.js'), 'utf-8')
     for (const banned of ['parseFloat', 'Number(', 'toFixed', 'ltp *', 'pnl', 'planned_entry']) expect(src).not.toContain(banned)
-    const page = readFileSync(resolve(__dirname, '../src/pages/StrategyBuilderPage.vue'), 'utf-8')
+    // `Number(id)` is the strategy id from the address (a whole number, not money); the one listed use, which must still exist
+    const raw = readFileSync(resolve(__dirname, '../src/pages/StrategyBuilderPage.vue'), 'utf-8')
+    expect(raw).toContain('Number(id)')
+    const page = raw.split('Number(id)').join('')
     for (const banned of ['parseFloat', 'Number(', 'toFixed']) expect(page).not.toContain(banned)
   })
 })
@@ -244,7 +247,7 @@ const NOT_LIVE = { ...real, state: 'NOT_CONNECTED', status_label: AC5, table: nu
 const COMPUTED = real
 // The shape `_assert_from_entries_after_drop` (tests_app/test_strategy_live_push.py) checks: AC-5's text on the state,
 // REQ-077 AC-9's label as the output label, the At Expiry table kept, no ltp, no leg_quotes.
-const FROM_YOUR_PRICES = 'From your prices - no live data'
+const FROM_YOUR_PRICES = 'From your prices — no live data'
 const FROM_ENTRIES = { ...real, state: 'FROM_ENTRIES', status_label: AC5, output_label: FROM_YOUR_PRICES, spot_level: null, spot_at: null,
   leg_quotes: undefined, legs: real.legs.map((l) => ({ ...l, ltp: null, iv: null, health: null })),
   table: { ...real.table, spot_level: null, spot_at: null, output_label: FROM_YOUR_PRICES } }

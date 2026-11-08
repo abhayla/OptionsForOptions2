@@ -231,3 +231,22 @@ def test_name_is_unique_per_run_in_the_same_second():
 def test_usage_error_exits_2():
     assert fresh.main(["."], settings_loader=lambda: SETTINGS) == REFUSED
     assert fresh.main(["--bogus", "x"], settings_loader=lambda: SETTINGS) == REFUSED
+
+
+def test_sweep_finds_the_per_file_copies_of_an_old_run():
+    """GC-MERGE1 (#649): tests_app/conftest.py copies the run's database per test file as <name>_f<n>; a killed run
+    leaves them, and --sweep must drop them like their parent. A suffix that is not _f<digits> stays refused."""
+    old = "ofo_test_tmp_20261020000000_aaaa"
+    log = []
+    rows = [old, old + "_f1", old + "_f12", old + "_fx", old + "_g1"]
+    dropped = asyncio.run(fresh.sweep(FakeConn(log, rows=rows), now=NOW, out=lambda _m: None))
+    assert dropped == [old, old + "_f1", old + "_f12"]
+    assert not fresh.is_tool_name("ofo_test_f1")
+    assert not fresh.is_tool_name(old + "_f")
+
+
+def test_drop_with_copies_drops_the_copies_before_the_parent():
+    old = "ofo_test_tmp_20261020000000_aaaa"
+    log = []
+    asyncio.run(fresh.drop_with_copies(FakeConn(log, rows=[old + "_f1", old + "_f2"]), old))
+    assert drops(log) == [f'DROP DATABASE IF EXISTS "{n}"' for n in (old + "_f1", old + "_f2", old)]

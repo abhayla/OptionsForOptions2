@@ -52,7 +52,7 @@ OWNER_SESSION = ("owner", b"s1")
 VALUATION = datetime.datetime(2026, 10, 8, 9, 20, 9, tzinfo=IST)
 RATE = Decimal("0.065")
 FAKE_ACCESS = "tok-NOT-REAL-123"
-LOGIN_TEXT = "Margin from Zerodha is not shown yet; it needs your Kite login."
+LOGIN_TEXT = "Margin from Zerodha is not shown yet; it needs your Zerodha login."
 
 
 def _listed(symbol: str, token: int, strike: str, kind: str):
@@ -112,8 +112,8 @@ def source(transport, session=OWNER_SESSION, **kw) -> OutcomeMargin:
 def _own_line(theirs: str, ours: str, have: str, where: str = "your Zerodha account", added: str = "₹656.50") -> str:
     """The catalogue sentence with an ADR-094 top-up (GC-UI D-A47): Zerodha's own figure as Zerodha's, the top-up
     named, ours as an estimate (REQ-055 AC-3). The recorded strangle's top-up is 7,065.50 - 6,409 = 656.50."""
-    return (f"Zerodha's own margin figure is {theirs}; your planned entry prices are above Zerodha's, which adds about "
-            f"{added}, so about {ours} is needed (an estimate); {have} is available in {where}.")
+    return (f"Zerodha's own margin figure is {theirs}. Your planned entry prices are above Zerodha's, which adds about "
+            f"{added}, so about {ours} is needed (an estimate). {have} is available in {where}.")
 
 
 def _short_line(theirs: str, ours: str, have: str, added: str = "₹656.50") -> str:
@@ -296,7 +296,7 @@ async def test_kite_unreadable_is_the_could_not_read_text_and_retried_only_after
     m = await margin_answer(s, CTX, plan())
     assert m.state == "UNREADABLE" and m.needed is None and m.available is None
     if status == HTTPStatus.TOO_MANY_REQUESTS:  # REQ-118 AC-3: busy (the limiter's refusal arrives as 429)
-        assert str(m.reason) == "Zerodha is busy - try again in a moment"
+        assert str(m.reason) == "Zerodha is busy. Try again in a moment."
     else:
         assert str(m.reason) == "Margin from Zerodha could not be read just now, so no margin figure is shown."
     calls = len(t.calls)
@@ -542,6 +542,54 @@ async def test_ambiguous_basket_reply_shows_could_not_be_read_and_not_zerodhas_t
 async def test_empty_reads_are_unreadable_with_no_figure(funds, basket) -> None:
     m = await margin_answer(source(replies(funds, basket)), CTX, plan())
     assert m.state == "UNREADABLE" and m.needed is None and m.available is None
+    # a reply that still carries some figure is AMBIGUOUS, never "empty": the could-not-be-read words stay
+    assert str(m.reason) == UNREADABLE_TEXT and m.empty is False
+
+
+UNREADABLE_TEXT = "Margin from Zerodha could not be read just now, so no margin figure is shown."
+EMPTY_TEXT = "Zerodha returned no margin figure for this basket."
+EMPTY_FUNDS_TEXT = "Zerodha returned no available-funds figure for this account."
+
+
+def _no_figure(d):
+    """Every figure removed, the rows (symbol, exchange) kept: Zerodha answered the basket and stated nothing."""
+    d["final"], d["initial"] = {}, {}
+    d["orders"] = [{k: v for k, v in r.items() if k in ("tradingsymbol", "exchange")} for r in d["orders"]]
+
+
+def _no_figure_reordered(d):
+    _no_figure(d)
+    _reordered(d)
+
+
+EMPTY_FUNDS = json.dumps({"status": "success", "data": {}})  # ADJ-20b's funds reply shape
+
+
+@pytest.mark.parametrize(("funds", "basket", "text"),
+                         [(None, _basket(_no_figure), EMPTY_TEXT), (EMPTY_FUNDS, None, EMPTY_FUNDS_TEXT)],
+                         ids=["basket-rows-no-figure", "funds-no-figure"])
+async def test_empty_reply_is_worded_as_empty_and_shows_no_figure(funds, basket, text) -> None:
+    m = await margin_answer(source(replies(funds, basket)), CTX, plan())
+    assert m.state == "UNREADABLE" and m.empty is True
+    assert m.needed is None and m.available is None and m.broker_needed is None and m.shortfall_reason is None
+    assert str(m.reason) == text
+
+
+async def test_empty_figures_with_rows_that_do_not_match_the_basket_stay_ambiguous() -> None:
+    m = await margin_answer(source(replies(basket_text=_basket(_no_figure_reordered))), CTX, plan())
+    assert m.state == "UNREADABLE" and m.empty is False and str(m.reason) == UNREADABLE_TEXT
+
+
+def test_kite_client_marks_only_the_no_figure_reply_empty() -> None:
+    client = KiteMargin(api_key="key", access_token=FAKE_ACCESS, transport=replies(basket_text=_basket(_no_figure)))
+    orders = [BasketOrder(**{**o, "price": Decimal(str(o["price"]))}) for o in STRANGLE["request"]]  # the recorded
+    with pytest.raises(KiteMarginError) as empty:
+        client.fetch_basket_margin(orders)
+    assert empty.value.code == "kite_margin_no_figure" and empty.value.empty is True
+    ambiguous = KiteMargin(api_key="key", access_token=FAKE_ACCESS, transport=replies(basket_text=_basket(_shorter)))
+    with pytest.raises(KiteMarginError) as amb:
+        ambiguous.fetch_basket_margin(orders)
+    assert amb.value.code == "kite_margin_no_figure" and amb.value.empty is False
 
 
 # the route body, per Zerodha failure: needed, available and shortfall_reason are all null, never a made-up figure

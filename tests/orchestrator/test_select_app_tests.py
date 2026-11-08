@@ -64,12 +64,15 @@ PR241_SELECTION = {
     "tests_app/test_strategy_delete_app.py",
     "tests_app/test_strategy_planned_entry.py", "tests_app/test_strategy_store.py",
     "tests_app/test_exit_adopted_313b.py",  # imports StrategyRefused from ofo_app.routes.strategies
+    "tests_app/test_times_settings.py",  # GC-SET 5a2: calls catalogue_picker.publish_time / loaded_before
     "tests_app/test_pinned_clock.py",  # calls the /api/catalogue/{underlying}/... routes
     "tests_app/test_strategy_tracking.py",  # W-122: GET /strategies/{strategy_id}
     "tests_app/test_stored_contract_feed_keys.py",  # issue #500: GET /strategies/{id} and /history, StrategyRefused
-    "tests_app/test_stored_chain_real.py",  # PR #580 (I-4): calls the real catalogue_picker readers and catalogue routes
+    "tests_app/test_stored_chain_real.py",  # PR #580 (I-4): real catalogue_picker readers and routes
     "tests_app/test_strategy_tracking_imports.py",  # issue #500: its scan names ofo_app.catalogue_picker as a source
     "tests_app/test_ready_made_route.py",  # W-125: raises StrategyRefused and posts to /api/strategies/... routes
+    "tests_app/test_playbook_labels_route.py",  # GC-ADJ2 step 3: imports ofo.errors.explanations (changed here)
+    "tests_app/test_day_rules_worker.py",  # GC-IC1 step 1: imports ofo.errors.explanations (changed here)
     "tests_app/test_order_closure_all_routes.py",  # W-121: names ofo_app.routes.strategies in its edge table
     # builder sequence rows 1-10 (2026-10-22/23) added app tests that import the same modules or call the same routes:
     "tests_app/test_underlying_refusal.py",  # row 1
@@ -81,6 +84,7 @@ PR241_SELECTION = {
     "tests_app/test_leg_picker_routes.py",  # row 19: imports ofo_app.catalogue_picker, which the #241 diff changes
     "tests_app/test_leg_edit_route.py",  # row 20: POST /api/strategies/leg-edit, a /api/strategies/... route
     "tests_app/test_strategy_name_app.py",  # row 29b: POST/PATCH/GET /strategies routes and the strategy store
+    "tests_app/test_leg_edit_db_trips.py",  # batch 1 gate leftover: names the leg-edit route/store
     "tests_app/test_leg_edit_eligibility_db.py",  # row 30b: imports the leg-edit route's eligibility/list checks
     "tests_app/test_drawer_after_hours.py",  # GC-BM F-18: imports ofo_app.catalogue_picker, calls leg_picker answers
     "tests_app/test_outcome_open_interest.py",  # GC-UI D-B16: imports ofo_app.routes.outcome / live_push (explanations)
@@ -95,6 +99,16 @@ PR241_SELECTION = {
     "tests_app/test_outcome_target_badge.py", "tests_app/test_outcome_target_booked.py",
     "tests_app/test_paper_list_figures.py", "tests_app/test_paper_reason_texts.py", "tests_app/test_paper_routes.py",
     "tests_app/test_paper_totals.py", "tests_app/test_paper_triggers_routes.py",
+    "tests_app/test_adjustment_opportunities.py",  # GC-MU A3: its card-mark tests call GET /strategies (a diff route)
+    # GC-SET step 7 (F-81): names ofo.errors.explanations (the PlaybookName stage-name slot) in its reply-model check
+    "tests_app/test_stage_name_replies.py",
+    # GC-SET step 8 (REQ-168): names ofo.errors.explanations (the preference refusal reason text) in its route checks
+    "tests_app/test_user_preferences.py",
+    # GC-SET step 9 (REQ-169): names ofo.errors.explanations (the system playbook refusal texts) in its route checks
+    "tests_app/test_system_playbook_versions.py",
+    # GC-ALERT1 (REQ-170, ADR-236/237): names ofo.errors.explanations (the alert-style refusal / lapse texts) and the
+    # strategy routes/store the #241 diff changes, in its route and worker checks
+    "tests_app/test_strategy_alert_style.py", "tests_app/test_background_worker.py",
 }
 
 

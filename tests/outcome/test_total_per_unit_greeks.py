@@ -15,6 +15,7 @@ import pytest
 from ofo.engine.legs import Instrument
 from ofo.errors.explanations import render_explanation
 from ofo.outcome import build_outcome
+from ofo.settings import defaults as _d
 from ofo.table import build_table
 from ofo.table.columns import ColumnId
 from outcome._both_curves_cases import CALENDAR, S54, definition, snapshot
@@ -41,7 +42,7 @@ def _text(value: Decimal, places: int) -> str:
 @pytest.mark.parametrize("legs", [S54, CALENDAR], ids=["s54", "calendar"])
 def test_total_per_unit_is_the_signed_sum_of_the_leg_per_units_on_the_real_reply(provider, legs):
     d = definition(provider, legs)
-    rows = _rows(build_outcome(d, snapshot(provider, d), VALUATION))
+    rows = _rows(build_outcome(d, snapshot(provider, d), VALUATION, settings=_d()))
     for col in GREEKS:
         name = col.value
         total = rows["TOTAL"][name]

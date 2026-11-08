@@ -150,8 +150,9 @@ describe('Add to Paper: answer states of the POST', () => {
     await openList(w)
     await t(w, 'paper-confirm-button').trigger('click')
     await flushPromises()
-    expect(t(w, 'paper-error').text().length).toBeGreaterThan(0)
+    // fix/paper-dialog-safe (ADR-017): a refusal (4xx) shows the server's text; no answer is an UNKNOWN outcome, never "not placed"
     if (text) expect(t(w, 'paper-error').text()).toBe(text)
+    else expect(t(w, 'paper-unknown').text()).toContain('We could not confirm the order. Check Orderbook before trying again.')
     expect(w.find('[data-testid="paper-confirm"]').exists()).toBe(true)
     expect(w.find('[data-testid="paper-toast"]').exists()).toBe(false)
     w.unmount()
@@ -187,12 +188,12 @@ describe('Add to Paper: unsaved strategy, toast, old path', () => {
     w.unmount()
   })
   it('a failed save stops before any paper order and shows the save error', async () => {
-    answers['POST /strategies'] = () => Promise.reject({ status: 422, parts: { what_happened: 'Give the strategy a name' } })
+    answers['POST /strategies'] = () => Promise.reject({ status: 422, parts: { what_happened: 'The strategy has no name.' } })
     const w = await bar({ current: null })
     await openList(w)
     expect(w.find('[data-testid="paper-confirm"]').exists()).toBe(false)
     expect(posts()).toHaveLength(0)
-    expect(t(w, 'save-error').text()).toContain('Give the strategy a name')
+    expect(t(w, 'save-error').text()).toContain('The strategy has no name.')
     w.unmount()
   })
   it('"Open in Builder" reloads this strategy', async () => {

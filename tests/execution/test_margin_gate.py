@@ -80,7 +80,7 @@ def test_ac4_one_paisa_short_blocks_with_both_amounts(reply_data: dict) -> None:
     assert verdict.allowed is False
     assert verdict.message is not None
     assert verdict.message.what_happened == (
-        "This strategy needs ₹68,498.85 of margin with the premium up to your limit prices (an estimate); "
+        "This strategy needs about ₹68,498.85 of margin, counting the premium at your limit prices; "
         "₹68,498.84 is available in your account.")
     assert verdict.message.what_is_blocked == "Building the Zerodha basket for this strategy."
     assert verdict.message.code == "MARGIN_201"
@@ -113,11 +113,11 @@ def test_ac1_sub_paisa_amounts_never_round_in_the_users_favour() -> None:
     verdict = check_margin(Decimal("100.00"), Decimal("100.001"))
     assert verdict.allowed is False
     assert verdict.message is not None
-    assert ("needs ₹100.01 of margin with the premium up to your limit prices (an estimate); "
+    assert ("needs about ₹100.01 of margin, counting the premium at your limit prices; "
             "₹100.00 is available") in verdict.message.what_happened
     short = check_margin(Decimal("100.009"), Decimal("100.01"))
     assert short.allowed is False and short.message is not None
-    assert ("needs ₹100.01 of margin with the premium up to your limit prices (an estimate); "
+    assert ("needs about ₹100.01 of margin, counting the premium at your limit prices; "
             "₹100.00 is available") in short.message.what_happened
 
 
@@ -143,7 +143,7 @@ def test_ac4_a_negative_balance_always_blocks_and_shows_its_sign() -> None:
     assert verdict.allowed is False and verdict.available == Decimal("-120.5")
     assert verdict.message is not None
     assert verdict.message.what_happened == (
-        "This strategy needs ₹68,498.85 of margin with the premium up to your limit prices (an estimate); "
+        "This strategy needs about ₹68,498.85 of margin, counting the premium at your limit prices; "
         "-₹120.50 is available in your account.")
     assert check_margin(Decimal("-0.01"), Decimal("0")).allowed is False
     assert check_margin(Decimal("0"), Decimal("0")).allowed is True
@@ -443,7 +443,7 @@ def test_099_the_attack_one_paisa_short_stays_blocked() -> None:
     required = required_from_basket_reply(_reply(total=Decimal("68498.86")), [])
     verdict = check_margin(Decimal("68498.85"), required)
     assert verdict.allowed is False and verdict.message is not None
-    assert ("needs ₹68,498.86 of margin with the premium up to your limit prices (an estimate); "
+    assert ("needs about ₹68,498.86 of margin, counting the premium at your limit prices; "
             "₹68,498.85 is available") in verdict.message.what_happened
 
 

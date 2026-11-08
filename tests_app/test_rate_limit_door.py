@@ -214,7 +214,7 @@ def test_a_user_read_that_cannot_wait_out_the_cooldown_is_refused_busy_after_its
     out: list = []
     run(started, lambda: get(kite, "/portfolio/positions"), out)
     wait_for(lambda: len(out) == 1, "refused")
-    assert isinstance(out[0], rl.KiteBusy) and str(out[0]) == "Zerodha is busy - try again in a moment"
+    assert isinstance(out[0], rl.KiteBusy) and str(out[0]) == "Zerodha is busy. Try again in a moment."
     assert kite.times() == [0.0] and pacer.now() == 0.0
 
 
@@ -539,7 +539,7 @@ def test_f2_attack1_urllib_user_read_429_with_stated_wait_2_is_refused_busy_afte
     out: list = []
     run(started, lambda: get(kite, "/portfolio/positions"), out)
     wait_for(lambda: len(out) == 1, "refused")
-    assert isinstance(out[0], rl.KiteBusy) and str(out[0]) == "Zerodha is busy - try again in a moment"
+    assert isinstance(out[0], rl.KiteBusy) and str(out[0]) == "Zerodha is busy. Try again in a moment."
     assert kite.times() == [0.0] and pacer.now() == 0.0 and limiter.in_cooldown("other", KEY)
 
 
