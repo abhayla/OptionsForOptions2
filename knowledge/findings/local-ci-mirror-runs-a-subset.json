@@ -12,7 +12,7 @@
  "detection": {
   "status": "unguarded",
   "checks": [],
-  "note": "The mirror is still hand-maintained: a new ci.yml step would be missed again. A test that parses ci.yml's run: lines and asserts atool.py runs each tool is the candidate detection (L2 on a second occurrence). 2026-10-16: the orchestrator's own pushes skipped the mirror entirely; GC-2a carries 'run atool.py <worktree> --no-tests before every push' as a checkable line."
+  "note": "The mirror is still hand-maintained: a new ci.yml step would be missed again. A test that parses ci.yml's run: lines and asserts atool.py runs each tool is the candidate detection (L2 on a second occurrence). 2026-10-16: the orchestrator's own pushes skipped the mirror entirely; GC-2a carries 'run atool.py <worktree> --no-tests before every push' as a checkable line. 2026-11-07 (6th occurrence): the subset that matters most is the DB suite, which the local gate skips by design. A CI job that never FINISHES (cancelled at its cap) read like 'not run yet' instead of red. Candidate detections: (a) a goal or contract close that merges code requires a passing CI api run on that head (merge.py already refuses a red check, but a branch with no open PR has no CI run at all); (b) prepush prints the date of the branch's last green api run. Neither is built."
  },
  "spec_ref": [
   "spec/decisions/ADR-046.md"
@@ -42,6 +42,11 @@
    "date": "2026-10-27",
    "where": "GC-B1 batch PR #590 (commit b7b0eb3b), CI runs 40465262213 / 40465262010, after prepush.py --full TOTAL PASS on the same tree",
    "evidence": "CI red on three things the local gate does not run: (1) api job 'docs/api/openapi.json is stale' (tests_app/test_openapi_drift.py; it passes locally only after regeneration, and the gate never regenerates or checks generated API files); (2) frontend job Playwright e2e/leg-picker.spec.ts:61 expected '22800.00' after #582 item 7 printed strikes without '.00' (prepush runs no Playwright); (3) lint-and-test: 4 new gate tests built Windows paths that do not exist on the Linux runner. Mechanism wanted: prepush runs scripts/generate_openapi.py --check (or the drift test) and the Playwright specs that cover changed pages; a test that builds a platform path is marked for its platform. Recorded in #587."
+  },
+  {
+   "date": "2026-11-07",
+   "where": "GC-MERGE1, feature/adjustments (PR #665)",
+   "evidence": "prepush.py's app_tests step runs tests_app with the DB URLs unset ('No app tests selected (DB tests are CI's)'; 1393 skipped on 11-07), so every local gate on the branch was green while CI's api job, the only DB proof, had not passed since 2026-10-30 (run 41216825060 failed) and never finished on #665: cancelled at its 30-min cap (job 128448429172), then at a 90-min cap on diag #666 (progress frozen at 23%, test 1440). Behind it were four classes unseen for about 4 days: fixture dates (#649), shared state between files, 9 stale expectations, and #663. Repair: about 9 h of GC-MERGE1 (rounds on diag PRs #666-#668), merged with #665 at api 6126 tests green."
   }
  ]
 }
