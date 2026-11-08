@@ -222,11 +222,11 @@ describe('playbook editor (REQ-160)', () => {
 })
 
 // GC-ADJ2 step 3 round 3 (owner's browser, 15:40 IST): every REAL system body, read from the shipped file at test time
-// (backend/ofo/adjustment/system_playbooks.json), never typed here. T-02, T-18, T-20, T-20b and T-21 carry a null value
+// (backend/ofo/adjustment/system_playbooks.json), never typed here. T-02, T-18, T-20 and T-21 carry a null value
 // list for both expiry kinds in all 12, which crashed step 2 and left every later handler dead.
 const SYSTEM_FILE = resolve(process.cwd(), '../backend/ofo/adjustment/system_playbooks.json') // vitest runs in frontend/
 const realEntries = () => JSON.parse(readFileSync(SYSTEM_FILE, 'utf-8')).playbooks
-const NULL_LISTS = ['T-02', 'T-18', 'T-20', 'T-20b', 'T-21']
+const NULL_LISTS = ['T-02', 'T-18', 'T-20', 'T-21'] // T-20b has values since GC-ICTRACK (ADR-280 (12): ADX >= 25)
 const NO_VALUES = LABELS.no_values.what_happened
 const GUARD_WORDS = Object.fromEntries(LABELS.guards.map((g) => [g.key, g.text]))
 const reset = () => { for (const k of Object.keys(answers)) delete answers[k]; calls.length = 0 }
@@ -283,7 +283,7 @@ describe('playbook editor on the 12 real system bodies (round 3)', () => {
     }
   })
 
-  it('attack 1: iron condor step 2 shows the five null-list triggers as no value, with no input', async () => {
+  it('attack 1: iron condor step 2 shows the four null-list triggers as no value, with no input', async () => {
     setUpReal(icEntry())
     const { w, errors } = await openCaught()
     await w.get('[data-testid=pb-step-when]').trigger('click')

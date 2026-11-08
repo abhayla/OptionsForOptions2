@@ -20,7 +20,7 @@ export const clone = (body) => JSON.parse(JSON.stringify(body))
 export const isDirty = (work, saved) => work != null && saved != null && JSON.stringify(work) !== JSON.stringify(saved)
 
 // Round 3 (owner's browser): every read of a body list goes through these, so each answer state renders. A body list
-// can be stated (a non-empty list), null (all 12 system bodies: T-02, T-18, T-20, T-20b, T-21), missing, or empty.
+// can be stated (a non-empty list), null (all 12 system bodies: T-02, T-18, T-20, T-21), missing, or empty.
 /** One expiry kind's stages: the body's list, or [] when it is null, missing or not a list. */
 export const stagesOf = (body, kind) => (Array.isArray(body?.stages?.[kind]) ? body.stages[kind] : [])
 /** One trigger's values for an expiry kind: the body's list, or null when it has none (null, missing, empty). The
