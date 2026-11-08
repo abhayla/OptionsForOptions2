@@ -62,11 +62,28 @@ async def app_db_url(app_engine, monkeypatch):
     _reset_engine()
 
 
+_SEED_RUN = itertools.count(1)
+
+
 async def _seeded(app_engine, monkeypatch) -> tuple[int, scenario_mode.Scenario]:
+    """ADJ-02 seeded as THIS test's own strategy, and the owner's strategy list narrowed to it for the test (#663).
+    The scenario clock is fixed but records carry the database clock: a record a previous test left on a shared
+    strategy is stamped days after the scenario clock and its cool-down never passes. A fresh strategy per test (the
+    seed is idempotent by name, so each test gets its own name) and a list of only that strategy mean no test reads
+    another's records, rule memory, held rows or day count."""
+    from ofo_app import strategy_store  # noqa: PLC0415
     monkeypatch.setenv("OFO_SCENARIO", "ADJ-02")
     scn = scenario_mode.load("ADJ-02")
     await load_library(app_engine)  # the whole library's list, once per database
-    return await seed_mod.seed("ADJ-02"), scn
+    run = next(_SEED_RUN)
+    monkeypatch.setattr(seed_mod, "strategy_name", lambda scenario_id: f"{seed_mod.NAME_PREFIX}{scenario_id} t{run}")
+    sid = await seed_mod.seed("ADJ-02")
+    real_list = strategy_store.list_strategies
+
+    async def own(conn, user_ref):
+        return [s for s in await real_list(conn, user_ref) if s.id == sid]
+    monkeypatch.setattr(strategy_store, "list_strategies", own)
+    return sid, scn
 
 
 def _push_spot(scn: scenario_mode.Scenario, spot: str, received: datetime.datetime) -> None:
@@ -136,8 +153,8 @@ async def _t01_ids(engine, sid: int) -> list[tuple[int, str]]:
 
 
 async def _settle_clear(worker, scn, now, start) -> datetime.datetime:
-    """Spot 23000 (T-01 1.3 %, clear by the band) until two 1-minute closes pass: any record a previous test of
-    this file left open lapses and the rule is armed (the seed reuses one strategy per scenario)."""
+    """Spot 23000 (T-01 1.3 %, clear by the band) until two 1-minute closes pass: the rule is armed and cleared
+    before the test's crossing (each test has its own strategy since #663, so nothing earlier is open)."""
     _push_spot(scn, BEFORE_CROSS_SPOT, start)
     for s in range(121):
         now[0] = start + datetime.timedelta(seconds=s)
@@ -223,7 +240,7 @@ async def test_restart_reopens_nothing_writes_no_second_held_and_keeps_rule_memo
     async with app_db_url.connect() as conn:
         memory = await playbook_store.rule_state(conn, "owner", sid)
     assert len(before) == 1 and memory["T-01"][0] is False  # T-01 false at entry: not held at entry
-    total_before = await _t01_total(app_db_url, sid)  # the seed reuses one strategy per scenario: history counts
+    total_before = await _t01_total(app_db_url, sid)
     first.stop()  # stopped mid-session
     now[0] += datetime.timedelta(seconds=2)
     second = _worker(scn, lambda: now[0])
@@ -427,8 +444,29 @@ async def test_a_plan_change_restores_the_gate_against_the_new_ladder(app_db_url
     assert worker._gate_body[sid] == new_body[0] and worker.errors == []
 
 
+def _only_t01(scn):
+    """A lister whose plan has only T-01 on (every other trigger and day rule off, no situation listed), through the
+    same body seam as the plan-change test. #663: with the daily limit at 1, ADJ-02 at 23420 also crosses T-03 (opened
+    first, taking the day's one slot), T-09 and S-02 (gate trace 2026-11-08); the cap tests are about T-01's episode."""
+    async def lister():
+        watched = await background.owner_lister(scn.provider)
+        out = []
+        for w in watched:
+            body = copy.deepcopy(dict(w.body))
+            for tid, t in body.get("triggers", {}).items():
+                if tid != "T-01" and isinstance(t, dict):
+                    t["on"] = False
+            for rule in body.get("day_rules") or []:
+                if isinstance(rule, dict):
+                    rule["on"] = False
+            body["situations"] = []
+            out.append(dataclasses.replace(w, body=body))
+        return background.Listed(out, watched.unread)
+    return lister
+
+
 async def test_cap_reached_writes_exactly_one_held_row_for_the_episode(app_db_url, monkeypatch):
-    sid, scn, now, worker = await _ready(app_db_url, monkeypatch, overrides=CAP_ONE)
+    sid, scn, now, worker = await _ready(app_db_url, monkeypatch, overrides=CAP_ONE, lister_for=_only_t01)
     base, rec = await _open_one(app_db_url, worker, scn, now, sid)  # the day's one record
     held = await _held_reasons(app_db_url, sid)
     now[0] += ONE_SECOND
@@ -446,7 +484,7 @@ async def test_the_ist_day_rollover_resets_the_cap(app_db_url, monkeypatch):
     tests/adjustment/test_alert_gate.py). The cap reset alone, on one ladder, at IST and never UTC midnight:
     ``test_the_cap_resets_at_ist_midnight`` / ``test_the_cap_does_not_reset_at_utc_midnight`` there. Here a cap that
     did not reset holds the worse record on Monday too (no open), so this stays red without the reset."""
-    sid, scn, now, worker = await _ready(app_db_url, monkeypatch, overrides=CAP_ONE)
+    sid, scn, now, worker = await _ready(app_db_url, monkeypatch, overrides=CAP_ONE, lister_for=_only_t01)
     base, rec = await _open_one(app_db_url, worker, scn, now, sid)
     now[0] += ONE_SECOND
     _push_spot(scn, LEVEL_ONE_SPOT, now[0])
