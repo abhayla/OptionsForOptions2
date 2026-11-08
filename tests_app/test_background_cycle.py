@@ -28,7 +28,16 @@ from ofo.scenario import levels as scenario_levels
 from ofo.scenario import views as scenario_views
 from ofo.settings import defaults as registry_defaults
 from ofo.table import model as table_model
-from ofo_app import adjustment_check, adjustment_readers, background, calc_speeds, db, scenario_mode, strategy_store
+from ofo_app import (
+    adjustment_check,
+    adjustment_readers,
+    background,
+    calc_speeds,
+    db,
+    regime_inputs,
+    scenario_mode,
+    strategy_store,
+)
 from ofo_app.routes.adjustment import Tracked
 from ofo_app.routes.outcome import MarketContext, ctx_in_force
 
@@ -118,8 +127,9 @@ def _tracked(scn) -> Tracked:
 
 def _watched(scn, n: int = 1) -> list[background.Watched]:
     t = _tracked(scn)
+    regime = regime_inputs.in_scenario(scn, "NIFTY")  # what the lister reads once per underlying (ADR-280)
     return [background.Watched("owner", FIRST_ID + i, t, NO_RULES, True, "owner", None, None,
-                               resolved=None) for i in range(n)]
+                               resolved=None, regime=regime) for i in range(n)]
 
 
 class Calls:

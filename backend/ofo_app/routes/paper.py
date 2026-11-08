@@ -29,7 +29,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from typing import Annotated, Any, Literal, get_args
 
 from fastapi import APIRouter, Depends
-from ofo.adjustment.approaches import EntryFacts, entry_facts_of
+from ofo.adjustment.approaches import EntryFacts
 from ofo.charges import ChargeRates
 from ofo.charges.paper_charges import PaperFill, charges_sum, paper_charges
 from ofo.charges.round_trip import ChargesNotComputable
@@ -706,21 +706,17 @@ def _check_price(price: Decimal) -> None:
         raise StrategyRefused("paper_price_invalid")
 
 
-def entry_facts(ctx: MarketContext | None, underlying: str, orders: Sequence[Any],
-                state: Mapping[int, tracked_contracts.TrackedContract]) -> EntryFacts | None:
-    """ADR-243: the entry facts this fill would store if it is the strategy's first (``paper_store.place`` decides):
-    the index's live spot now and each side's sold strike among the opening orders (``entry_facts_of``). Answer
-    states: not connected, no quote, or a quote that is not a positive price -> None (nothing stored; "Entry distance"
-    then refuses this strategy's rolls by name, never a guessed spot)."""
-    if not _connected(ctx):
-        return None
-    quote = ctx.provider.underlying_quote(underlying)  # type: ignore[union-attr] - connected: a provider
-    ltp = None if quote is None else quote.ltp
-    if not isinstance(ltp, Decimal) or ltp <= 0:
-        return None
-    shorts = [(c.instrument_type, c.strike) for o in orders if o.side == "SELL" and o.kind != "exit"
-              for c in (state[o.contract_id].stored.listed.contract,)]  # type: ignore[union-attr] - checked above
-    return entry_facts_of(ltp, shorts)
+async def entry_facts(ctx: MarketContext | None, underlying: str, orders: Sequence[Any],
+                      state: Mapping[int, tracked_contracts.TrackedContract]) -> EntryFacts | None:
+    """ADR-243 + ADR-270 (1): the entry facts this fill would store if it is the strategy's first
+    (``paper_store.place`` decides), through the one first-fill reader ``adjustment_readers.entry_facts_now``: the
+    index's live spot now, each side's sold strike among the opening orders and the entry ATM IV. Answer states: not
+    connected, no quote, or a quote that is not a positive price -> None (nothing stored; "Entry distance" then refuses
+    this strategy's rolls by name, never a guessed spot); no IV readable -> the facts with no IV."""
+    from ofo_app.adjustment_readers import entry_facts_now  # noqa: PLC0415 - the readers import the route layer
+    sold = [state[o.contract_id].stored.listed.contract for o in orders  # type: ignore[union-attr] - resolved above
+            if o.side == "SELL" and o.kind != "exit"]
+    return await entry_facts_now(ctx, underlying, sold)
 
 
 @router.post("/paper/strategies/{strategy_id}/orders", status_code=201, response_model=PaperBookOut,
@@ -742,7 +738,9 @@ async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR
            for o in body.orders):
         raise StrategyRefused("paper_contract_not_tradable")
     placed_at = now()
-    entry = entry_facts(ctx, stored.saved.definition.underlying, body.orders, state)
+    # only a strategy with no paper order yet can be at its first fill (a book never shrinks): a later fill reads no IV
+    first = not await paper_store.tracked_ids(db, [strategy_id])
+    entry = await entry_facts(ctx, stored.saved.definition.underlying, body.orders, state) if first else None
     try:
         book = await paper_store.place(db, user_ref, strategy_id, [
             paper_store.NewOrder(o.contract_id, o.side, o.quantity, o.price, o.kind, placed_at) for o in body.orders],

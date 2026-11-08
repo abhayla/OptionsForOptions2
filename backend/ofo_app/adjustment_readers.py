@@ -27,9 +27,10 @@ import json
 import logging
 from collections.abc import Callable, Iterable, Mapping
 from decimal import Decimal
+from types import SimpleNamespace
 from typing import Any
 
-from ofo.adjustment.approaches import ChainRow, Position, PositionLeg
+from ofo.adjustment.approaches import ChainRow, EntryFacts, Position, PositionLeg, entry_facts_of
 from ofo.charges import ChargeRates
 from ofo.charges.paper_charges import PaperFill, paper_charges
 from ofo.charges.round_trip import ChargesNotComputable
@@ -46,7 +47,14 @@ from ofo.rules.inputs import DataHealth
 from ofo.timeutil import IST, SESSION_CLOSE
 from ofo.tracking.orderbook import net_positions
 
-from ofo_app import live_market, paper_book, scenario_mode, tracked_contracts
+from ofo_app import (
+    live_market,
+    paper_book,
+    regime_inputs,
+    scenario_mode,
+    tracked_book,
+    tracked_contracts,
+)
 from ofo_app.db import get_sessionmaker
 from ofo_app.live_push import hold_and_read
 from ofo_app.outcome_oi import oi_of
@@ -113,9 +121,11 @@ def index_name(underlying: str) -> str | None:
 
 async def read_tracked(strategy_id: int, rates: ChargeRates | None) -> Tracked | None:
     async with get_sessionmaker()() as db:
-        orders = await paper_book.load_owned(db, current_user_ref(), strategy_id)  # owner check in the query
+        paper = await paper_book.load_owned(db, current_user_ref(), strategy_id)  # owner check in the query
+        real = not paper  # ADR-276: no paper order -> the real Zerodha book (fills + adopted holdings), same netter
+        orders: Any = paper or await _real_rows(db, strategy_id)
         if not orders:
-            return None  # not this user's, or no such strategy
+            return None  # not this user's, no such strategy, or nothing traded
         found = {c.contract_id: c for c in await tracked_contracts.resolve(db, sorted({o.order.contract_id
                                                                                          for o in orders}))}
     book = net_positions([o.order.as_paper() for o in orders], {})
@@ -138,6 +148,9 @@ async def read_tracked(strategy_id: int, rates: ChargeRates | None) -> Tracked |
     if not legs or underlying is None or lot is None:
         raise TrackedExited("no open option leg")
     paid: Decimal | None = None
+    if real:  # paid charges and adjustments used before the app saw it: not readable yet ("not checked", ADR-276 (4))
+        return Tracked(Position(underlying, lot, "", datetime.date.min, tuple(legs)), book.booked, None,
+                       adjustments_used=None, entered_at=entered_at(orders))
     if rates is not None:
         fills = [PaperFill(o.order.kind, o.order.side, o.order.quantity, o.order.price, True) for o in orders]
         try:
@@ -152,6 +165,15 @@ async def read_tracked(strategy_id: int, rates: ChargeRates | None) -> Tracked |
                          and found[cid].stored.listed.contract.instrument_type in _OPTION_TYPES)
     return Tracked(Position(underlying, lot, "", datetime.date.min, tuple(legs)), booked, paid,
                    adjustments_used=used, entered_at=entered_at(orders))
+
+
+async def _real_rows(db: Any, strategy_id: int) -> list[Any]:
+    """The real book as rows shaped like the paper book's (``.order``); [] when not this user's or nothing held."""
+    try:  # the read-only real book: tracking reaches no order module (REQ-073 AC-6)
+        rows = await tracked_book.real_book(db, current_user_ref(), strategy_id)
+    except tracked_book.RealBookUnreadable as exc:
+        raise TrackedUnreadable(str(exc)) from exc
+    return [] if rows is None else [SimpleNamespace(order=o) for o in rows]
 
 
 def entered_at(orders: Any) -> datetime.datetime | None:
@@ -579,7 +601,8 @@ async def read_market(tracked: Tracked, ctx: Any, *, extra_ids: Iterable[str] = 
                         read_last_close(spot_q, closed, scn, now), now, expiry_kind, leg_greeks, fwd_model, leg_ivs,
                         index_day_open(frozen.day, now), reach, ctx.carry_gap_pct, ctx.s02_delta_per_lot,
                         ctx.s12_percent, spot_q, feed_is_live(provider, now),
-                        *leg_prices_state(ctx, quotes, ids, position))
+                        *leg_prices_state(ctx, quotes, ids, position),
+                        regime=await regime_inputs.read_regime(position.underlying))  # ADR-280: margin, VIX, ADX
 
 
 async def read_market_more(tracked: Tracked, ctx: Any, extra_ids: Iterable[str]) -> MarketInputs | None:
@@ -631,6 +654,57 @@ def expiry_kind_of(expiry: datetime.date, listed: Iterable[Any], futures: frozen
     same_month = sorted({lc.contract.expiry for lc in listed
                          if (lc.contract.expiry.year, lc.contract.expiry.month) == (expiry.year, expiry.month)})
     return "monthly" if same_month and expiry == same_month[-1] else "weekly"
+
+
+async def atm_iv_now(ctx: Any, underlying: str, expiry: datetime.date, spot: Decimal) -> Decimal | None:
+    """ADR-270 (1): the check's ATM IV of ``expiry`` at this moment (the entry IV a first fill stores): the SAME steps
+    ``read_market`` takes for its ``vol`` (one held read of the near-the-money window around ``spot``, the chain model,
+    the parity forward, ``_atm_vol``), with no position. None: not connected, no forward, or no call the model prices
+    (never a guess)."""
+    if ctx is None or not ctx.provider.status().connected:
+        return None
+    from ofo_app.chain_push import index_id_of  # noqa: PLC0415 - chain_push imports the app layer
+    now, provider = ctx.clock(), ctx.provider
+    listed = listed_options(provider, underlying)
+    wanted = window_ids(listed, underlying, expiry, spot, ctx.chain_strikes_each_side)
+    frozen = await held_read(provider, underlying, expiry, wanted, live_market.current_feed(),
+                             index_id_of(ctx, underlying), now)
+    closed = market_state(ctx, now).closed
+    model = chain_model(list(frozen.quotes.values()), frozen.index, expiry, now, ctx.rate, ctx.forward_quality,
+                        market_closed=closed)
+    rows, ids, _ = chain_rows(listed, expiry, frozen.quotes, lambda _i, _q: None, _scenario(), closed)
+    try:
+        forward = parity_forward(list(frozen.quotes.values()), frozen.index, expiry, now, ctx.rate,
+                                 ctx.forward_quality).forward
+    except (ForwardUnavailable, ValueError, ArithmeticError):
+        return None
+    return _atm_vol(list(rows), ids, model.greeks, forward)
+
+
+async def entry_facts_now(ctx: Any, underlying: str, sold: Iterable[Any]) -> EntryFacts | None:
+    """ADR-243 + ADR-270 (1): the entry facts a FIRST fill stores (paper and real alike), from the SOLD legs' listed
+    contracts ``sold`` (``.instrument_type``, ``.strike``, ``.expiry``): the index's live spot now, each side's short
+    distance (``entry_facts_of``) and the entry ATM IV of the nearest sold option expiry (``atm_iv_now``). Answer
+    states: not connected / no quote / a quote that is not a positive price -> None (nothing stored, never a guessed
+    spot); the IV not readable (no forward, unpriced chain, a read that fails) -> the facts with ``entry_atm_iv``
+    None."""
+    if ctx is None or not ctx.provider.status().connected:
+        return None
+    quote = ctx.provider.underlying_quote(underlying)
+    ltp = None if quote is None else quote.ltp
+    if not isinstance(ltp, Decimal) or ltp <= 0:
+        return None
+    sold = list(sold)
+    facts = entry_facts_of(ltp, [(c.instrument_type, c.strike) for c in sold])
+    expiries = sorted(c.expiry for c in sold if c.instrument_type in _OPTION_TYPES and c.expiry is not None)
+    if not expiries:
+        return facts
+    try:
+        iv = await atm_iv_now(ctx, underlying, expiries[0], ltp)
+    except Exception as exc:  # noqa: BLE001 - an unreadable IV is "not known at entry", never a failed fill
+        log.warning("entry ATM IV unreadable (%s)", type(exc).__name__)
+        iv = None
+    return dataclasses.replace(facts, entry_atm_iv=iv)
 
 
 def _atm_vol(rows: list[ChainRow], ids: dict[str, str], greeks: Any, level: Decimal | None) -> Decimal | None:

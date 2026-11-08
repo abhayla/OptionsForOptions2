@@ -56,6 +56,9 @@ KNOWN_ON_MAIN: dict[str, tuple[str, ...]] = {
     "backend/ofo/execution/sequence.py": (
         'impact[ref] = base - plan_margin(Strategy(others), planner).total',
     ),
+    "backend/ofo/marketdata/regime.py": (
+        'value = (value * (n - 1) + dx) / n',  # ADR-280 (12): Wilder's ADX average, an index, not money
+    ),
     "backend/ofo/marketdata/forward.py": (
         'atm = min(strikes, key=lambda k: abs(k - spot.ltp))',
     ),

@@ -17,6 +17,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 
 MIGRATION = "0044_ic_s06_carry_gap_wording.py"
+LATER_REASON = "GC-ICTRACK: T-11c and T-20b built (India VIX percentile, ADX 25), no longer greyed"  # 0048
 REASON = "Issue 658: situation S-06 rule says the loss at your carry gap, not a fixed 2% gap"
 NEW_RULE = "At 15:00: show overnight margin and the loss at your carry gap"
 OLD_RULE = "At 15:00: show overnight margin and the loss at +/-2% gap"
@@ -41,21 +42,22 @@ async def _run(conn, sqls) -> None:
 
 
 async def test_upgrade_writes_new_version_with_new_s06_and_downgrade_removes_only_it(admin_engine):
-    own_down, own_up, _down, _up = round_trip_sql(MIGRATION)
+    own_down, own_up, down, up = round_trip_sql(MIGRATION)
     assert "'post'" in own_up[-1] and "'post'" in own_down[-1]  # both end with the allow-list post check
     async with admin_engine.connect() as conn:
         trans = await conn.begin()
         try:
             total = (await conn.execute(_COUNT)).scalar_one()
+            later = len((await conn.execute(_MINE, {"r": LATER_REASON})).all())  # 0 on a fresh DB (seed built)
             mine = (await conn.execute(_MINE, {"r": REASON})).all()
             assert len(mine) == 1  # head: exactly one 0044 row
             assert [s["rule"] for s in _s06(mine[0].body)] == [NEW_RULE]
-            await _run(conn, own_down)
+            await _run(conn, down)  # 0048 appends a newer ic version on top: step down through it first
             assert (await conn.execute(_MINE, {"r": REASON})).all() == []
-            assert (await conn.execute(_COUNT)).scalar_one() == total - 1  # only its own row went
+            assert (await conn.execute(_COUNT)).scalar_one() == total - later - 1  # its own row and any 0048 row
             newest = (await conn.execute(_NEWEST)).one()
             assert newest.reason != REASON and newest.version == mine[0].version - 1
-            await _run(conn, own_up)
+            await _run(conn, up)
             again = (await conn.execute(_MINE, {"r": REASON})).all()
             assert len(again) == 1 and again[0].version == mine[0].version
         finally:
@@ -76,11 +78,11 @@ async def test_upgrade_twice_is_a_no_op(admin_engine):
 
 
 async def test_admin_version_after_0042_is_the_base_and_keeps_its_other_keys(admin_engine):
-    own_down, own_up, _down, _up = round_trip_sql(MIGRATION)
+    _own_down, own_up, down, _up = round_trip_sql(MIGRATION)
     async with admin_engine.connect() as conn:
         trans = await conn.begin()
         try:
-            await _run(conn, own_down)
+            await _run(conn, down)
             base = (await conn.execute(_NEWEST)).one()
             body = dict(_body(base.body))
             body["admin_marker"] = "kept"

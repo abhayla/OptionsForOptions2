@@ -346,8 +346,26 @@ def state_of(tracked: Tracked, market: MarketInputs, spot: SpotAnswer, margin: M
         adjustments_used=tracked.adjustments_used, expiry_pnl_at_spot=expiry_pnl,
         tighten_percent=None if body is None else _tighten(body, now.date(), expiry, hhmm), prices_fresh=fresh,
         held=held_legs(position, market), today=now.date(), entry_day=entry_day(tracked),
-        s02_delta_per_lot=market.s02_delta_per_lot, s12_percent=market.s12_percent),
+        s02_delta_per_lot=market.s02_delta_per_lot, s12_percent=market.s12_percent,
+        open_legs=tuple(pe.OpenLeg(x.type, x.side, x.strike, x.lots, x.entry, ltp[x.tradingsymbol])
+                        for x in position.legs),
+        lot_size=position.lot, underlying=position.underlying, expiry=expiry,
+        entry_spot=entry_facts.entry_spot if isinstance(entry_facts, EntryFacts) else None,
+        # ADR-270 (1): T-11's entry IV from the stored entry facts in every mode; a scenario's own entry IV still
+        # replaces it after this build (its seed stores no IV)
+        entry_atm_iv=entry_facts.entry_atm_iv if isinstance(entry_facts, EntryFacts) else None,
+        **regime_fields(market)),
         body, tracked, market, gap), body, tracked, market)
+
+
+def regime_fields(market: MarketInputs) -> dict[str, Decimal | None]:
+    """ADR-280: the five market-wide inputs from ``MarketInputs.regime`` (``regime_inputs.RegimeInputs``); no read
+    (None) -> every one None, so the triggers that read them answer not checked."""
+    r = market.regime
+    if r is None:
+        return dict.fromkeys(("available_margin", "vix", "vix_prev_close", "vix_percentile", "adx"))
+    return {"available_margin": r.available_margin, "vix": r.vix, "vix_prev_close": r.vix_prev_close,
+            "vix_percentile": r.vix_percentile, "adx": r.adx}
 
 
 def margin_in(margin: Mapping | None) -> tuple[Decimal | None, bool]:
@@ -372,12 +390,10 @@ def margin_in(margin: Mapping | None) -> tuple[Decimal | None, bool]:
 def with_gamma(state: pe.StrategyState, body: Mapping | None, tracked: Tracked,
                market: MarketInputs) -> pe.StrategyState:
     """``state`` with T-14's 1% repricing figures (design decision 8, ``ofo.adjustment.gamma``) when the body has
-    T-14 switched on AND the process runs in scenario mode (B2 review F1: the ONE choke point; in live mode no figures,
-    so T-14 answers "not checked yet" exactly as before). The model is the check's own (``carry_model``), so the
-    screen and the worker value it alike."""
-    from ofo_app import scenario_mode  # noqa: PLC0415 - the single mode reader
+    T-14 switched on, in live and test-data mode alike (ADR-278 supersedes ADR-253's scenario-only gate). The model is
+    the check's own (``carry_model``), so the screen and the worker value it alike."""
     t14 = ((body or {}).get("triggers") or {}).get("T-14") or {}
-    if not t14.get("on") or scenario_mode.current() is None:
+    if not t14.get("on"):
         return state
     from ofo.adjustment import gamma  # noqa: PLC0415 - engine valuation only here
     return dataclasses.replace(state, gamma=gamma.gamma_figures(carry_model(tracked, market)))

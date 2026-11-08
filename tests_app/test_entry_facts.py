@@ -10,6 +10,7 @@ Answer states of every read: present / absent / unreadable (``roll_basis_of``, `
 """
 from __future__ import annotations
 
+import asyncio
 import datetime
 import json
 from dataclasses import replace
@@ -32,6 +33,7 @@ from ofo.settings import layers
 from ofo_app import adjustment_check as check
 from ofo_app import entry_facts_store, paper_store, user_preferences_store
 from ofo_app.routes import paper as paper_route
+from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 
 AT = datetime.datetime(2026, 11, 5, 5, 0, tzinfo=datetime.UTC)
@@ -130,17 +132,50 @@ def _ctx(ltp, connected=True):
 
 def _state(*legs):
     return {cid: SimpleNamespace(stored=SimpleNamespace(listed=SimpleNamespace(
-        contract=SimpleNamespace(instrument_type=t, strike=D(k))))) for cid, t, k in legs}
+        contract=SimpleNamespace(instrument_type=t, strike=D(k), expiry=EXPIRY)))) for cid, t, k in legs}
 
 
-def test_paper_route_entry_facts_from_the_live_spot_and_the_sold_strikes():
-    orders = [SimpleNamespace(contract_id=1, side="SELL", kind="open"),
-              SimpleNamespace(contract_id=2, side="BUY", kind="open"),
-              SimpleNamespace(contract_id=3, side="SELL", kind="open")]
-    state = _state((1, "CE", "23400"), (2, "CE", "23600"), (3, "PE", "22700"))
-    assert paper_route.entry_facts(_ctx(ENTRY_SPOT), "NIFTY", orders, state) == REQ046_FACTS
+_ORDERS = [SimpleNamespace(contract_id=1, side="SELL", kind="open"),
+           SimpleNamespace(contract_id=2, side="BUY", kind="open"),
+           SimpleNamespace(contract_id=3, side="SELL", kind="open")]
+_LEGS = ((1, "CE", "23400"), (2, "CE", "23600"), (3, "PE", "22700"))
+ENTRY_IV = D("0.1432")
+
+
+def _iv_answers(monkeypatch, answer):
+    """``atm_iv_now`` (the check's ATM-IV figure) answers ``answer`` (a value, None, or an exception to raise)."""
+    from ofo_app import adjustment_readers  # noqa: PLC0415
+    seen = []
+
+    async def fake(_ctx, underlying, expiry, spot):
+        seen.append((underlying, expiry, spot))
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+    monkeypatch.setattr(adjustment_readers, "atm_iv_now", fake)
+    return seen
+
+
+def test_paper_route_entry_facts_from_the_live_spot_and_the_sold_strikes(monkeypatch):
+    seen = _iv_answers(monkeypatch, None)
+    state = _state(*_LEGS)
+    assert asyncio.run(paper_route.entry_facts(_ctx(ENTRY_SPOT), "NIFTY", _ORDERS, state)) == REQ046_FACTS
     for ctx in (None, _ctx(ENTRY_SPOT, connected=False), _ctx(None), _ctx(D(0))):
-        assert paper_route.entry_facts(ctx, "NIFTY", orders, state) is None  # nothing stored, never a guess
+        assert asyncio.run(paper_route.entry_facts(ctx, "NIFTY", _ORDERS, state)) is None  # never a guess
+    assert seen == [("NIFTY", EXPIRY, ENTRY_SPOT)]  # the IV asked once, of the sold legs' expiry, at the live spot
+
+
+def test_paper_route_entry_facts_carry_the_entry_atm_iv(monkeypatch):
+    """ADR-270 (1): stated -> stored with the facts; unreadable (None, or the read fails) -> facts without IV."""
+    state = _state(*_LEGS)
+    _iv_answers(monkeypatch, ENTRY_IV)
+    assert asyncio.run(paper_route.entry_facts(_ctx(ENTRY_SPOT), "NIFTY", _ORDERS, state)) == replace(
+        REQ046_FACTS, entry_atm_iv=ENTRY_IV)
+    _iv_answers(monkeypatch, RuntimeError("feed gone"))
+    assert asyncio.run(paper_route.entry_facts(_ctx(ENTRY_SPOT), "NIFTY", _ORDERS, state)) == REQ046_FACTS
+    seen = _iv_answers(monkeypatch, ENTRY_IV)  # no sold option: nothing to read an IV of
+    assert asyncio.run(paper_route.entry_facts(_ctx(ENTRY_SPOT), "NIFTY", _ORDERS[1:2], state)) == (
+        EntryFacts(ENTRY_SPOT, None, None)) and seen == []
 
 
 # --- the approaches reply names the basis per roll (no database) -------------------------------------------------
@@ -269,3 +304,145 @@ async def test_stored_entry_facts_cannot_be_updated_or_deleted_by_the_app_role(d
             async with db.begin_nested():
                 await db.execute(text(sql), {"id": sid})
     assert await entry_facts_store.read(db, sid) == REQ046_FACTS
+
+
+# --- migration 0046: the entry ATM IV beside the entry facts (ADR-270 (1)) ---------------------------------------
+
+ENTRY_IV = D("0.1432")
+MIGRATION_0046 = "0046_entry_atm_iv.py"
+_IV_COLUMN = ("SELECT count(*) FROM information_schema.columns WHERE table_schema = 'public' "
+              "AND table_name = 'strategy_entry_facts' AND column_name = 'entry_atm_iv'")
+
+
+async def test_entry_atm_iv_round_trips_exactly_through_the_app_role(db):
+    from test_strategy_store import _user  # noqa: PLC0415
+
+    sid, _ = await _strategy(db, _user())  # db = the limited app role: its column INSERT grant covers the IV
+    await entry_facts_store.record_first(db, sid, replace(REQ046_FACTS, entry_atm_iv=ENTRY_IV))
+    stored = await entry_facts_store.read(db, sid)
+    assert stored is not None and isinstance(stored.entry_atm_iv, D)
+    assert str(stored.entry_atm_iv) == "0.1432"  # exact, never a float
+
+
+async def test_entry_atm_iv_not_known_at_entry_reads_back_none(db):
+    from test_strategy_store import _user  # noqa: PLC0415
+
+    sid, _ = await _strategy(db, _user())
+    await entry_facts_store.record_first(db, sid, REQ046_FACTS)
+    stored = await entry_facts_store.read(db, sid)
+    assert stored == REQ046_FACTS and stored.entry_atm_iv is None
+
+
+async def test_entry_atm_iv_is_refused_when_not_positive(db):
+    from test_strategy_store import _user  # noqa: PLC0415
+
+    sid, _ = await _strategy(db, _user())
+    with pytest.raises(DBAPIError, match="check"):  # the column's own CHECK, written past the store
+        async with db.begin_nested():
+            await db.execute(text("INSERT INTO public.strategy_entry_facts (strategy_id, entry_spot, entry_atm_iv) "
+                                  "VALUES (:id, 23047, 0)"), {"id": sid})
+    assert await entry_facts_store.read(db, sid) is None
+    # the store never sends it: a 0 IV becomes "no IV" and the facts are still kept (written once, never again)
+    await entry_facts_store.record_first(db, sid, replace(REQ046_FACTS, entry_atm_iv=D(0)))
+    kept = await entry_facts_store.read(db, sid)
+    assert kept is not None and kept.entry_spot == REQ046_FACTS.entry_spot and kept.entry_atm_iv is None
+
+
+async def test_the_guard_refuses_an_update_of_entry_atm_iv(db):
+    from sqlalchemy import text  # noqa: PLC0415
+    from test_strategy_store import _user  # noqa: PLC0415
+
+    sid, _ = await _strategy(db, _user())
+    await entry_facts_store.record_first(db, sid, replace(REQ046_FACTS, entry_atm_iv=ENTRY_IV))
+    with pytest.raises(DBAPIError):
+        async with db.begin_nested():
+            await db.execute(text("UPDATE public.strategy_entry_facts SET entry_atm_iv = 0.2 WHERE strategy_id = :id"),
+                             {"id": sid})
+    assert (await entry_facts_store.read(db, sid)).entry_atm_iv == ENTRY_IV  # type: ignore[union-attr]
+
+
+async def test_a_stored_iv_that_is_not_an_exact_decimal_is_unreadable():
+    row = SimpleNamespace(entry_spot=ENTRY_SPOT, call_distance=D("353"), put_distance=None, entry_atm_iv=0.1432,
+                          created_at=AT)
+
+    class _Conn:
+        async def execute(self, *_a, **_k):
+            return SimpleNamespace(first=lambda: row)
+
+    with pytest.raises(entry_facts_store.EntryFactsUnreadable, match="not an exact Decimal"):
+        await entry_facts_store.read(_Conn(), 1)
+
+
+async def test_0046_round_trip_drops_and_restores_the_column_with_the_allowlist_passing(admin_engine):
+    from _migration_replay import round_trip_sql  # noqa: PLC0415
+    from sqlalchemy import text  # noqa: PLC0415
+
+    own_down, own_up, down, up = round_trip_sql(MIGRATION_0046)
+    assert "'pre'" in own_up[0] and "'post'" in own_up[-1] and "'post'" in own_down[-1]
+    async with admin_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            assert (await conn.execute(text(_IV_COLUMN))).scalar() == 1
+            for sql in down:  # ends with the allow-list post check against 0045's four-column block 31
+                await conn.execute(text(sql))
+            assert (await conn.execute(text(_IV_COLUMN))).scalar() == 0
+            for sql in up:  # ends with the post check against the five-column block 31
+                await conn.execute(text(sql))
+            assert (await conn.execute(text(_IV_COLUMN))).scalar() == 1
+        finally:
+            await trans.rollback()
+
+
+async def test_allowlist_post_check_fails_without_insert_on_entry_atm_iv(admin_engine, app_engine):
+    from sqlalchemy import text  # noqa: PLC0415
+
+    role = app_engine.url.username
+    async with admin_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            await conn.execute(text(f"SELECT public.ofo_assert_app_role_allowlist('{role}', 'post')"))  # passes
+            await conn.execute(text(f'REVOKE INSERT (entry_atm_iv) ON public.strategy_entry_facts FROM "{role}"'))
+            with pytest.raises(DBAPIError, match=r"lacks INSERT on strategy_entry_facts column entry_atm_iv"):
+                async with conn.begin_nested():
+                    await conn.execute(text(f"SELECT public.ofo_assert_app_role_allowlist('{role}', 'post')"))
+        finally:
+            await trans.rollback()
+
+
+async def test_0046_downgrade_is_refused_with_a_count_while_an_iv_is_stored(admin_engine):
+    from _migration_replay import recorded  # noqa: PLC0415
+    from sqlalchemy import text  # noqa: PLC0415
+    from test_strategy_store import _user  # noqa: PLC0415
+
+    own_down = recorded(MIGRATION_0046, "downgrade")
+    async with admin_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            sid, _ = await _strategy(conn, _user())
+            await entry_facts_store.record_first(conn, sid, replace(REQ046_FACTS, entry_atm_iv=ENTRY_IV))
+            with pytest.raises(DBAPIError, match=r"refusing to downgrade 0046_entry_atm_iv: 1 stored entry ATM IVs"):
+                async with conn.begin_nested():
+                    for sql in own_down:
+                        await conn.execute(text(sql))
+        finally:
+            await trans.rollback()
+
+
+@pytest.mark.parametrize("stored", [D("NaN"), D("Infinity")])
+async def test_a_stored_iv_that_is_not_finite_is_unreadable(stored):
+    """Tier A review (GC-ICTRACK 32): PostgreSQL's > 0 CHECK lets NaN and Infinity in; read fails closed on them."""
+    row = SimpleNamespace(entry_spot=ENTRY_SPOT, call_distance=D("353"), put_distance=None, entry_atm_iv=stored,
+                          created_at=AT)
+
+    class _Conn:
+        async def execute(self, *_a, **_k):
+            return SimpleNamespace(first=lambda: row)
+
+    with pytest.raises(entry_facts_store.EntryFactsUnreadable):
+        await entry_facts_store.read(_Conn(), 1)
+
+
+@pytest.mark.parametrize(("iv", "stored"), [(D("0.1432"), D("0.1432")), (D("NaN"), None), (D("Infinity"), None),
+                                            (D(0), None), (D("-0.1"), None), (0.14, None), (None, None)])
+def test_only_a_finite_positive_decimal_iv_is_stored(iv, stored):
+    assert entry_facts_store.usable_iv(iv) == stored

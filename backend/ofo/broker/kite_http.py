@@ -38,10 +38,11 @@ _PLAIN_NETLOC: _Final = re.compile(r"[A-Za-z0-9.-]+(:443)?", re.ASCII)
 #: One instrument as Kite's quote takes it: ``EXCHANGE:TRADINGSYMBOL``, plain ASCII only (W-099).
 QUOTE_INSTRUMENT: _Final = r"[A-Z0-9_-]+:[A-Z0-9_-]+"
 #: The index names Kite's quote takes with a space (F-76, REQ-155 AC-5): an EXPLICIT allow-list, never a wider regex.
-#: Spelled from the index rows (one home, ``ofo.instruments.models``): ``NSE:NIFTY 50`` and ``BSE:SENSEX``.
+#: Spelled from the index rows (one home, ``ofo.instruments.models``): ``NSE:NIFTY 50`` and ``BSE:SENSEX``; plus
+#: ``NSE:INDIA VIX`` (``VIX_NAME``, ADR-277: T-11b / T-11c read it).
 QUOTE_INDEX_NAMES: _Final = frozenset(
     f"{segment.split('_')[0]}:{_models.INDEX_ROWS[(segment, token)][0]}"
-    for segment, token in ((_models.NSE_INDEX, 1001), (_models.BSE_INDEX, 1)))
+    for segment, token in ((_models.NSE_INDEX, 1001), (_models.BSE_INDEX, 1))) | {f"NSE:{_models.VIX_NAME}"}
 #: The one raw encoding of a space the door accepts for those names: ``%20`` (not ``+``, not a literal space, not a
 #: second space, not lower case). Known limit, not chased: only these exact strings match, so any other name with a
 #: space or a ``%`` is refused; a caller must send ``%20`` itself (the door judges the RAW text, it never decodes).

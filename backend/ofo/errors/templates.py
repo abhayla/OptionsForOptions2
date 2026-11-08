@@ -1324,6 +1324,38 @@ _TRIGGER_TEMPLATES: tuple[MessageTemplate, ...] = (
     _trig("gamma_unknown", 540, "The profit or loss from a 1% move in the market cannot be estimated: the spot or a "
           "leg's implied volatility is not available."),
     _trig("margin_unreadable", 541, "The margin blocked could not be read as a number."),
+    # GC-ICTRACK (ADR-280): the 12 new iron condor triggers' inputs
+    _trig("missing_open_legs", 542, "The open legs are not available."),
+    _trig("missing_lot_size", 543, "Lot size not available."),
+    _trig("missing_leg_price", 544, "Price of a leg not available."),
+    _trig("side_value_not_positive", 545, "The call side or the put side is worth nothing or less, so the two sides "
+          "cannot be compared."),
+    _trig("missing_leg_entry", 546, "Entry price of a leg not available."),
+    _trig("no_credit", 547, "No credit was received for the open legs (a debit or nothing), so the loss cannot be "
+          "compared with it."),
+    _trig("entry_not_positive", 548, "A short leg's entry price is zero or less, so its price change cannot "
+          "be compared."),
+    _trig("missing_vix", 549, "India VIX not available."),
+    _trig("missing_vix_prev_close", 550, "India VIX previous close not available."),
+    _trig("vix_prev_close_not_positive", 551, "India VIX's previous close is zero or less, so today's change cannot "
+          "be worked out."),
+    _trig("missing_underlying", 552, "The index of this strategy is not known."),
+    _trig("sensex_no_vix", 553, "There is no volatility index for SENSEX, so the volatility percentile cannot be "
+          "worked out.", None, _TRIG_NEXT_NOT_FOR_THIS),
+    _trig("missing_vix_percentile", 554, "India VIX percentile not available (needs the last 250 days)."),
+    _trig("vix_percentile_unusable", 555, "India VIX percentile is not between 0 and 100."),
+    _trig("missing_entry_spot", 556, "Spot at entry not available."),
+    _trig("missing_expiry", 557, "Expiry date not available."),
+    _trig("expected_move_unusable", 558, "The expected move since entry cannot be worked out from the entry IV, "
+          "spot and days to expiry."),
+    _trig("missing_leg_greeks", 559, "A leg's Greeks are not available."),
+    _trig("no_premium_left", 560, "No premium left to earn."),
+    _trig("missing_available_margin", 561, "Zerodha did not state the available margin."),
+    _trig("margin_room_not_positive", 562, "The margin blocked plus the available margin is zero or less, so the "
+          "share in use cannot be worked out."),
+    _trig("no_level_watch", 563, "No level is set to watch.", None, "Set a level to watch on this strategy."),
+    _trig("missing_adx", 564, "Trend strength (ADX) not available."),
+    _trig("adx_unusable", 565, "Trend strength (ADX) is not between 0 and 100."),
     _gate("adjust_trigger_already_true", _UI, 152, "Already true when tracking started.",
           "It is shown, not flagged, until a check finds it false.", "Nothing.",
           "Watch it: it flags if it clears and then comes back.", {}),

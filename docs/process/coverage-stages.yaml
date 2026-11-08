@@ -434,6 +434,12 @@ decisions:
   ADR-272: S6.7         # stale prices on Compare and tracking panel say how old they are
   ADR-273: S6.7         # adjustment prepared from Compare records its approach
   ADR-274: S6.7         # one basket sends one order per contract and side
+  ADR-275: S6.7         # paper and live are one code path; only the fill source differs
+  ADR-276: S6.7         # every IC trigger tracks real Zerodha and paper strategies (GC-ICTRACK)
+  ADR-277: S6.7         # India VIX, 250-day VIX percentile, ADX(14), own daily ATM IV
+  ADR-278: S6.7         # T-14 computed and switched on for live strategies
+  ADR-279: S6.7         # two checkers on one code: live always on, test data on demand
+  ADR-280: S6.7         # what each of the 12 new IC triggers measures
 
 questions:
   Q210: 4a              # external: Zerodha's written answer; ADR-051 covers the owner's own account
@@ -623,6 +629,9 @@ issues:
   "#662": S6.7  # Second adjustment: no T-18 record after max adjustments (parked from ic-e2e C1)
   "#664": S6.7  # Fix batch 1 item 1+2 parked: entry baseline lacks entry Greeks/premiums (T-03/T-09 hidden as already true)
   "#669": S6.7  # GC-MERGE1 deferred test findings: live-mode 404 coverage, sys.path order, one more #663-shaped file
+  "#672": S6.7  # held_units is a second netting path beside the tracking netter (GC-ICTRACK deferred)
+  "#673": S6.7  # Adopted Zerodha average finer than a paisa makes a real strategy untrackable (GC-ICTRACK deferred)
+  "#674": S6.7  # Two paper-only readers left outside tracking: adjustment history page and booked P&L (GC-ICTRACK deferred)
 
 # Work items whose status is not done.
 work_items:

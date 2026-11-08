@@ -26,6 +26,7 @@ import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from decimal import Context, Decimal, DivisionByZero, Inexact, InvalidOperation, Overflow, localcontext
+from fractions import Fraction
 from typing import Final, Literal
 
 from ofo import market_calendar as mc
@@ -37,6 +38,7 @@ from ofo.engine import adjust_ratios as ratios
 from ofo.engine.black_scholes import Greeks
 from ofo.engine.legs import Action
 from ofo.errors import render
+from ofo.scenario.levels import ExpectedMove
 from ofo.timeutil import IST
 
 ExpiryKind = Literal["weekly", "monthly"]
@@ -118,6 +120,19 @@ class HeldLeg:
 
 
 @dataclass(frozen=True)
+class OpenLeg:
+    """One open option leg as T-05 / T-06b / T-08 read it (ADR-280): CE / PE, BUY / SELL, strike, lots, the entry
+    price and the last price per unit (``None`` = not available)."""
+
+    kind: str  # "CE" / "PE"
+    side: str  # "BUY" / "SELL"
+    strike: Decimal
+    lots: int
+    entry: Decimal | None
+    ltp: Decimal | None
+
+
+@dataclass(frozen=True)
 class StrategyState:
     """Everything the triggers read. Every input that can be missing is Optional (``None`` = not available)."""
 
@@ -164,6 +179,17 @@ class StrategyState:
     #: ``other.situation_big_win_percent`` for S-12); None = not read, so that situation answers not checked
     s02_delta_per_lot: Decimal | None = None
     s12_percent: Decimal | None = None
+    #: ADR-280: the 12 new iron condor triggers' inputs (the app fills them; None = not read, so "not checked")
+    open_legs: tuple[OpenLeg, ...] | None = None
+    lot_size: int | None = None
+    underlying: str | None = None  # "NIFTY" / "SENSEX"
+    entry_spot: Decimal | None = None
+    expiry: datetime.date | None = None
+    available_margin: Decimal | None = None  # Zerodha equity net available
+    vix: Decimal | None = None
+    vix_prev_close: Decimal | None = None
+    vix_percentile: Decimal | None = None  # 0-100 over the last 250 trading days (ADR-277 (2))
+    adx: Decimal | None = None  # ADX(14) on daily index candles
     #: contract step 3 (ADR-245/247/250/251): the stop lines in force, from ``settings_in_force.stops_of`` ONLY (the
     #: evaluator owns no stop value). REQUIRED, no default: a caller that forgets the stops cannot build a state; None
     #: = not supplied, so the stop answers "not checked" (``sl.STOPS_NOT_SUPPLIED``), never a pass
@@ -596,10 +622,195 @@ def _t14(c: _Ctx) -> Hit:
     return _compare(c, "T-14", num, margin)
 
 
+# ---- ADR-280: the 12 new iron condor triggers -------------------------------------------------------------------
+def _t04(c: _Ctx) -> Hit:
+    """ADR-280 (1): |net delta in lots| / lots of the largest leg (S-02's engine measure), >= the limit."""
+    held = c.state.held
+    if not held or any(x.greeks is None for x in held):
+        raise _Missing(MISSING_LEG_DELTA)  # never a missing delta read as 0
+    try:
+        pair = ratios.net_delta_per_lot(tuple((x.greeks, Action(x.side), x.lots) for x in held if x.greeks))
+    except ValueError:
+        raise _Missing(MISSING_LEG_DELTA) from None
+    return _compare(c, "T-04", *pair)
+
+
+def _open_legs(c: _Ctx) -> tuple[tuple[OpenLeg, ...], int]:
+    legs = c.state.open_legs
+    if not legs:
+        raise _Missing(f"{P}missing_open_legs")
+    lot_size = _need(c.state.lot_size, "lot_size")
+    if type(lot_size) is not int or lot_size <= 0:
+        raise _Missing(f"{P}missing_lot_size")
+    return legs, lot_size
+
+
+def _t05(c: _Ctx) -> Hit:
+    """ADR-280 (2): the larger side's value / the smaller's (SELL LTP - BUY LTP, x units, per CE / PE side)."""
+    legs, lot_size = _open_legs(c)
+    if any(x.ltp is None for x in legs):
+        raise _Missing(f"{P}missing_leg_price")
+    try:
+        pair = ratios.side_value_ratio(tuple((x.kind, Action(x.side), x.lots, x.ltp) for x in legs), lot_size)
+    except ValueError:
+        raise _Missing(f"{P}side_value_not_positive") from None
+    return _compare(c, "T-05", *pair)
+
+
+def _t06b(c: _Ctx) -> Hit:
+    """ADR-280 (3): loss (max(-pnl, 0)) / the credit received (net entry premium x units); no credit -> not checked."""
+    legs, lot_size = _open_legs(c)
+    if any(x.entry is None for x in legs):
+        raise _Missing(f"{P}missing_leg_entry")
+    pnl = _need(c.state.pnl, "pnl")
+    try:
+        credit = ratios.credit_received(tuple((Action(x.side), x.lots, x.entry) for x in legs), lot_size)
+        pair = ratios.loss_per_credit(pnl, credit)
+    except ValueError:
+        raise _Missing(f"{P}no_credit") from None
+    return _compare(c, "T-06b", *pair)
+
+
+def _t08(c: _Ctx) -> Hit:
+    """ADR-280 (4): the highest LTP / entry over the SOLD legs (the largest fraction, compared unrounded)."""
+    legs = c.state.open_legs
+    if legs is None:
+        raise _Missing(f"{P}missing_open_legs")
+    sold = [x for x in legs if x.side == Action.SELL.value]
+    if not sold:
+        raise _Missing(f"{P}no_short_leg")
+    if any(x.ltp is None for x in sold):
+        raise _Missing(f"{P}missing_short_price")
+    if any(x.entry is None for x in sold):
+        raise _Missing(f"{P}missing_leg_entry")
+    pairs = [(x.ltp, x.entry) for x in sold if x.ltp is not None and x.entry is not None]
+    if any(entry <= 0 for _, entry in pairs):
+        raise _Missing(f"{P}entry_not_positive")
+    ltp, entry = max(pairs, key=lambda p: Fraction(p[0]) / Fraction(p[1]))
+    return _compare(c, "T-08", ltp, entry)
+
+
+def _t11b(c: _Ctx) -> Hit:
+    """ADR-280 (5): (VIX now - previous close) x 100 / previous close, >= the limit (a rise only)."""
+    now = _need(c.state.vix, "vix")
+    prev = _need(c.state.vix_prev_close, "vix_prev_close")
+    if prev <= 0:
+        raise _Missing(f"{P}vix_prev_close_not_positive")
+    return _compare(c, "T-11b", (now - prev) * _HUNDRED, prev)
+
+
+_NIFTY: Final = "NIFTY"
+_SENSEX: Final = "SENSEX"
+
+
+def _t11c(c: _Ctx) -> Hit:
+    """ADR-280 (6): the India VIX percentile (0-100, ADR-277 (2)); India VIX is a NIFTY index, so SENSEX is not
+    checked (no SENSEX volatility index) and an index that is neither is not checked."""
+    underlying = _need(c.state.underlying, "underlying")
+    if underlying == _SENSEX:
+        raise _Missing(f"{P}sensex_no_vix")
+    if underlying != _NIFTY:
+        raise _Missing(f"{P}missing_underlying")
+    pct = _need(c.state.vix_percentile, "vix_percentile")
+    if not pct.is_finite() or not 0 <= pct <= _HUNDRED:
+        raise _Missing(f"{P}vix_percentile_unusable")
+    return _compare(c, "T-11c", pct)
+
+
+def _t12(c: _Ctx) -> Hit:
+    """ADR-280 (7): |spot - entry spot| / one SD, SD = ExpectedMove(entry ATM IV, calendar days entry -> expiry)
+    .exact_points(entry spot) (THE expected-move formula)."""
+    spot = _need(c.state.spot, "spot")
+    entry_spot = _need(c.state.entry_spot, "entry_spot")
+    iv = _need(c.state.entry_atm_iv, "entry_atm_iv")
+    expiry = _need(c.state.expiry, "expiry")
+    if c.state.entry_day is None:
+        raise _Missing(MISSING_ENTRY_DAY)
+    try:
+        sd = ExpectedMove(iv, (expiry - c.state.entry_day).days).exact_points(entry_spot)
+    except ValueError:
+        raise _Missing(f"{P}expected_move_unusable") from None
+    if not sd > 0:  # an entry spot of 0 or less
+        raise _Missing(f"{P}expected_move_unusable")
+    return _compare(c, "T-12", abs(spot - entry_spot), sd)
+
+
+def _held_total(c: _Ctx) -> tuple[Greeks, int]:
+    """The position's Greeks summed in lots (per unit x lots x sign) and the lot size; their product is rupees."""
+    held = c.state.held
+    if not held or any(x.greeks is None for x in held):
+        raise _Missing(f"{P}missing_leg_greeks")
+    lot_size = _need(c.state.lot_size, "lot_size")
+    if type(lot_size) is not int or lot_size <= 0:
+        raise _Missing(f"{P}missing_lot_size")
+    try:
+        total = ratios.position_total(tuple((x.greeks, Action(x.side), x.lots) for x in held if x.greeks))
+    except ValueError:
+        raise _Missing(f"{P}missing_leg_greeks") from None
+    return total, lot_size
+
+
+def _t14t(c: _Ctx) -> Hit:
+    """ADR-280 (8): theta per calendar day in rupees x 100 / premium left, <= the limit (decay too slow)."""
+    total, lot_size = _held_total(c)
+    left = _need(c.state.premium_left, "premium_left")
+    if left <= 0:
+        raise _Missing(f"{P}no_premium_left")
+    return _compare(c, "T-14t", total.theta * lot_size * _HUNDRED, left)
+
+
+def _t14v(c: _Ctx) -> Hit:
+    """ADR-280 (9): the loss a +1 volatility point would cause (max(-vega in rupees, 0)) x 100 / max profit."""
+    total, lot_size = _held_total(c)
+    max_profit = _finite(c.state.max_profit, "max_profit")
+    if max_profit <= 0:
+        raise _Missing(f"{P}max_profit_not_finite")
+    return _compare(c, "T-14v", max(-total.vega * lot_size, Decimal(0)) * _HUNDRED, max_profit)
+
+
+def _t15(c: _Ctx) -> Hit:
+    """ADR-280 (10): margin blocked x 100 / (that margin + Zerodha's available margin, equity net)."""
+    margin = t14_margin(c.state.margin, c.state.margin_unreadable)
+    available = _need(c.state.available_margin, "available_margin")
+    try:
+        pair = ratios.margin_used_pct(margin, available)
+    except ValueError:
+        raise _Missing(f"{P}margin_room_not_positive") from None
+    return _compare(c, "T-15", *pair)
+
+
+def _t20(c: _Ctx) -> Hit:
+    """ADR-280 (11): spot crossing a level watch the user set, by the watch rules' own answer (ADR-242,
+    ``level_watch.answer``; no second level store); no watch -> not checked. Value = spot, threshold = the level
+    (the first watch reached, else the first watch)."""
+    if not c.state.watches:
+        raise _Missing(f"{P}no_level_watch")
+    spot = _need(c.state.spot, "spot")
+    hits = [Hit("T-20", spot, w.level, level_watch.CMP[w.direction],  # type: ignore[arg-type]
+                level_watch.answer(w, spot) is True) for w in c.state.watches]
+    return next((h for h in hits if h.fired), hits[0])
+
+
+_ADX_MAX: Final = Decimal(100)
+
+
+def _t20b(c: _Ctx) -> Hit:
+    """ADR-280 (12): ADX(14) on daily index candles, >= the limit (trending)."""
+    adx = _need(c.state.adx, "adx")
+    if not adx.is_finite() or not 0 <= adx <= _ADX_MAX:
+        raise _Missing(f"{P}adx_unusable")
+    return _compare(c, "T-20b", adx)
+
+
 _EVALUATORS: Final[dict[str, Callable[[_Ctx], Hit]]] = {
     "T-01": _t01, "T-01b": _t01b, "T-02": _t02, "T-03": _t03, "T-07": _t07, "T-09": _t09,
     "T-10b": _t10b, "T-11": _t11, "T-13": _t13, "T-14": _t14, "T-18": _t18, "T-19": _t19,
+    "T-04": _t04, "T-05": _t05, "T-06b": _t06b, "T-08": _t08, "T-11b": _t11b, "T-11c": _t11c, "T-12": _t12,
+    "T-14t": _t14t, "T-14v": _t14v, "T-15": _t15, "T-20": _t20, "T-20b": _t20b,
 }
+#: ADR-280: a trigger whose body says its data is "vix" / "hist" / "user" is checked when it has an evaluator here
+#: (the inputs come on StrategyState; a missing one answers not checked with its own reason)
+_EVALUATED_DATA: Final = frozenset({"vix", "hist", "user"})
 _T21: Final = "T-21"
 
 
@@ -615,7 +826,8 @@ def _trigger(c: _Ctx, tid: str) -> Hit | _Missing:  # noqa: PLR0911 - one answer
         return _Missing(f"{P}greyed")
     if not t.get("on"):
         return _Missing(f"{P}switched_off")
-    if t.get("data", "ok") != "ok":
+    data = t.get("data", "ok")
+    if data != "ok" and not (data in _EVALUATED_DATA and tid in _EVALUATORS):
         return _Missing(f"{P}data_unavailable")
     fn = _EVALUATORS.get(tid)
     if fn is None:

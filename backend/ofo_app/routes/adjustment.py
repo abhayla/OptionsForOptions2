@@ -143,6 +143,9 @@ class MarketInputs:
     #: stated (scenario) market, which is live
     prices_at: datetime.datetime | None = None
     prices_stale: bool = False
+    #: ADR-280: the market-wide inputs (``regime_inputs.RegimeInputs``: margin, VIX, VIX percentile, ADX); None = not
+    #: read, so the triggers that read them answer not checked
+    regime: Any = None
 
     def feed_at(self, judged: datetime.datetime) -> SourceReading | None:
         """The feed reading as of ``judged``: a LIVE quote is stamped at the judging instant (``feed_reading``'s one

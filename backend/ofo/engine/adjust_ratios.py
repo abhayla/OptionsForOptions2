@@ -10,6 +10,9 @@ that into NotChecked, never a pass.
 - T-16 loss as a % of the margin blocked: ``max(-pnl, 0) x 100 / margin``
 - T-19 premium still left / the adjustment's cost: ``premium_left / adjustment_cost``
 - S-02 net delta per lot (ADR-240 (3)): ``|sum of per-unit delta x lots x sign| / lots of the largest leg``
+- T-05 one side's value / the other's (ADR-280 (2)): ``larger side value / smaller side value``
+- T-06b loss / credit received (ADR-280 (3)): ``max(-pnl, 0) / credit``
+- T-15 margin used (ADR-280 (10)): ``margin x 100 / (margin + available margin)``
 """
 from __future__ import annotations
 
@@ -59,6 +62,55 @@ def premium_left_per_cost(premium_left: Decimal | None, adjustment_cost: Decimal
     return left, _denominator(adjustment_cost, "adjustment_cost")
 
 
+def position_total(legs: Sequence[tuple[Greeks, Action, int]]) -> Greeks:
+    """The position's Greeks in lots: per-unit x lots x sign (``position_greeks``) summed by ``greeks_total`` (one
+    engine sum, ADR-008); x lot size gives rupees. No leg or a lot count that is not a positive int -> ValueError."""
+    if not legs:
+        raise ValueError("no leg to sum")
+    rows = []
+    for greeks, action, lots in legs:
+        rows.append(position_greeks(greeks, action, _units(lots, "lots")))
+    return greeks_total(rows)
+
+
+def side_value_ratio(legs: Sequence[tuple[str, Action, int, Decimal | None]], lot_size: int) -> Ratio:
+    """T-05 (ADR-280 (2)): each side's value = (its SELL legs' LTP minus its BUY legs' LTP) x lots x lot size, for
+    the CE side and the PE side; ``(larger, smaller)``. Example: CE SELL 120 / BUY 40 and PE SELL 30 / BUY 10, 1 lot
+    of 75: CE 6000, PE 1500 -> 6000 / 1500 = 4. A leg unpriced, a side worth 0 or less -> ValueError."""
+    units = _units(lot_size)
+    side = {"CE": _ZERO, "PE": _ZERO}
+    for kind, action, lots, ltp in legs:
+        if kind not in side:
+            raise ValueError(f"kind must be CE or PE, got {kind!r}")
+        price = _amount(ltp, "ltp")
+        side[kind] += price * _units(lots, "lots") * units * (1 if action is Action.SELL else -1)
+    small, large = sorted(side.values())
+    return large, _denominator(small, "side_value")
+
+
+def credit_received(legs: Sequence[tuple[Action, int, Decimal | None]], lot_size: int) -> Decimal:
+    """T-06b (ADR-280 (3)): the open legs' net entry premium, (SELL entry - BUY entry) x lots x lot size (a debit is
+    negative). A leg without an entry price -> ValueError."""
+    units = _units(lot_size)
+    return sum((_amount(entry, "entry") * _units(lots, "lots") * units * (1 if action is Action.SELL else -1)
+                for action, lots, entry in legs), _ZERO)
+
+
+def loss_per_credit(pnl: Decimal | None, credit: Decimal | None) -> Ratio:
+    return max(-_amount(pnl, "pnl"), _ZERO), _denominator(credit, "credit")
+
+
+def margin_used_pct(margin: Decimal | None, available: Decimal | None) -> Ratio:
+    used = _denominator(margin, "margin")
+    return used * _HUNDRED, _denominator(used + _amount(available, "available"), "margin_room")
+
+
+def _units(count: object, name: str = "lot_size") -> int:
+    if type(count) is not int or count <= 0:
+        raise ValueError(f"{name} must be a positive int, got {count!r}")
+    return count
+
+
 def net_delta_per_lot(legs: Sequence[tuple[Greeks, Action, int]]) -> Ratio:
     """S-02 (ADR-240 (3)): the position's net delta per lot as ``(|net delta|, lots of the largest leg)``.
 
@@ -68,12 +120,5 @@ def net_delta_per_lot(legs: Sequence[tuple[Greeks, Action, int]]) -> Ratio:
     0.20 call, SELL 2 lots of a -0.10 put, BUY 2 lots of a -0.05 put: net (-0.70 + 0.40 + 0.20 - 0.10) = -0.20 lots
     of delta, per lot 0.20 / 2 = 0.10. No leg, a lot count that is not a positive int, or a non-finite delta is
     refused with ValueError (never a zero)."""
-    if not legs:
-        raise ValueError("no leg to sum")
-    rows = []
-    for greeks, action, lots in legs:
-        if type(lots) is not int or lots <= 0:
-            raise ValueError(f"lots must be a positive int, got {lots!r}")
-        _amount(greeks.delta, "delta")
-        rows.append(position_greeks(greeks, action, lots))
-    return abs(greeks_total(rows).delta), Decimal(max(lots for _, _, lots in legs))
+    total = position_total(legs)
+    return abs(total.delta), Decimal(max(lots for _, _, lots in legs))

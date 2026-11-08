@@ -443,6 +443,19 @@ async def owner_kite_reads() -> tuple[str, KiteReads] | None:
     return api_key, KiteReads(api_key=api_key, access_token=token, transport=transport)
 
 
+async def owner_client[T](build: Callable[[str, str], T]) -> T | None:
+    """GC-ICTRACK 14b: ``build(api_key, access_token)`` -> a Kite client on the owner's stored session (the same read
+    as ``owner_kite_reads``), or None when not connected. The token goes only into the client, never back out; this
+    module stays free of the history client (``regime_inputs`` builds ``KiteHistory`` with it)."""
+    market = _current
+    if market is None or market._config is None:
+        return None
+    token = await market._stored_token(market._config)
+    if token is None:
+        return None
+    return build(market._config.api_key, token)
+
+
 @functools.cache
 def margin_source() -> OutcomeMargin:
     """The running app's one margin reader: one plan-keyed cache for the REST route and every live push."""

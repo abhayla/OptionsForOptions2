@@ -51,5 +51,5 @@ def test_every_library_scenario_matches_the_generators_credit_and_premium_left()
             bad[doc["id"]] = (t.credit, want_credit, t.premium_left, want_left)
         checked += 1
     # ADJ-43/44 (ADR-221), ADJ-45 (S-11) GC-SET step 7; ADJ-50 (GC-MU A1); ADJ-51..59 (GC-IC1 1a, 1b, 6a)
-    assert (checked, bad) == (57, {})
+    assert (checked, bad) == (58, {})  # GC-ICTRACK task 26 added ADJ-60
     assert negative == [("ADJ-37", "net_long_premium"), ("ADJ-38", "net_long_premium")]

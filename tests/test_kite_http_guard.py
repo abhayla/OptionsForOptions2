@@ -81,8 +81,8 @@ def test_quote_door_refuses_other_spaced_names(query: str) -> None:
         kite_http.check_call("GET", QUOTE + query)
 
 
-def test_quote_allow_list_is_exactly_the_two_indices() -> None:
-    assert {"NSE:NIFTY 50", "BSE:SENSEX"} == kite_http.QUOTE_INDEX_NAMES
+def test_quote_allow_list_is_exactly_the_two_indices_and_india_vix() -> None:
+    assert {"NSE:NIFTY 50", "BSE:SENSEX", "NSE:INDIA VIX"} == kite_http.QUOTE_INDEX_NAMES  # VIX: ADR-277
 
 
 def test_every_allow_list_entry_passes_its_own_template() -> None:

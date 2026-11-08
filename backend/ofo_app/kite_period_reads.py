@@ -24,6 +24,7 @@ from typing import Any, Final
 
 from ofo.broker import rate_limit
 from ofo.broker.rate_limit import READ_NUMBERS, READ_POSITIONS, PeriodAnswer
+from ofo.instruments.models import VIX_NAME
 
 from ofo_app.kite_margin import KiteMargin
 from ofo_app.kite_reads import KiteReads
@@ -31,6 +32,8 @@ from ofo_app.kite_reads import KiteReads
 POSITIONS_CALL: Final = "positions_and_orders"  # both replies of one moment: an order filled after a positions read
 PROFILE_CALL: Final = "profile_user_id"         # is never compared against positions read 40 s earlier
 MARGIN_CALL: Final = "available_margin"
+VIX_CALL: Final = "india_vix"
+VIX_QUOTE: Final = f"NSE:{VIX_NAME}"
 _SHOWN_EACH_END: Final = 2
 
 
@@ -69,6 +72,26 @@ def available_margin(reads: KiteReads, margin: KiteMargin, *, stamp: Any = None)
                                            stamp or utc_now)
 
 
+def vix_values(quote: Any) -> tuple[Decimal | None, Decimal | None]:
+    """(India VIX now, its previous close) from Kite's quote object (``last_price``, ``ohlc.close``): each exact
+    Decimal, or None when absent, not a number, or not above 0 (a 0 is Kite's "no value", never a VIX of 0)."""
+    def one(value: Any) -> Decimal | None:
+        if isinstance(value, bool) or not isinstance(value, (Decimal, int)) or value <= 0:
+            return None
+        return Decimal(value)
+    if not isinstance(quote, dict):
+        return None, None
+    ohlc = quote.get("ohlc")
+    return one(quote.get("last_price")), one(ohlc.get("close") if isinstance(ohlc, dict) else None)
+
+
+def india_vix(reads: KiteReads, *, stamp: Any = None) -> PeriodAnswer[tuple[Decimal | None, Decimal | None]]:
+    """ADR-277 (1): India VIX and its previous close from the one index-quote read (``fetch_index_quote``), at most once
+    per 30 s per user (the limiter's memo is the cache). Not in the reply -> (None, None); a failed read raises."""
+    return rate_limit.read_once_per_period(READ_NUMBERS, VIX_CALL, reads.user_ref,
+                                           lambda: vix_values(reads.fetch_index_quote(VIX_QUOTE)), stamp or utc_now)
+
+
 def background_screen_positions(reads: KiteReads) -> PeriodAnswer[tuple[Any, Any]]:
     """The periodic job's read: a background request (the limiter books it few slots ahead, so the order path's user
     reads still go first when the budget is tight). Runs in a worker thread, so the context is set here."""
@@ -76,5 +99,6 @@ def background_screen_positions(reads: KiteReads) -> PeriodAnswer[tuple[Any, Any
         return screen_positions(reads)
 
 
-__all__ = ["MARGIN_CALL", "POSITIONS_CALL", "PROFILE_CALL", "available_margin", "background_screen_positions",
-           "mask_user_id", "masked_user_id", "screen_positions", "utc_now"]
+__all__ = ["MARGIN_CALL", "POSITIONS_CALL", "PROFILE_CALL", "VIX_CALL", "VIX_QUOTE", "available_margin",
+           "background_screen_positions", "india_vix", "mask_user_id", "masked_user_id", "screen_positions", "utc_now",
+           "vix_values"]

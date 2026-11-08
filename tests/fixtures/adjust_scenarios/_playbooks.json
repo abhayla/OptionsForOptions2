@@ -126,10 +126,18 @@
   },
   "T-20b": {
    "label": "Market trending vs range-bound",
-   "unit": "",
-   "cmp": "",
-   "weekly": null,
-   "monthly": null,
+   "unit": "ADX",
+   "cmp": "ge",
+   "weekly": [
+    "25",
+    "25",
+    "25"
+   ],
+   "monthly": [
+    "25",
+    "25",
+    "25"
+   ],
    "on_by_default": false,
    "data": "hist"
   },
@@ -1044,16 +1052,7 @@
     "T-18",
     "T-21"
    ],
-   "triggers_greyed": [
-    {
-     "id": "T-20b",
-     "reason": "Needs price history (not in V1)"
-    },
-    {
-     "id": "T-11c",
-     "reason": "Needs price history (not in V1)"
-    }
-   ],
+   "triggers_greyed": [],
    "trigger_values": {
     "T-19": {
      "weekly": [

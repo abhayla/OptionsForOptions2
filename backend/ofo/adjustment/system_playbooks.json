@@ -713,14 +713,22 @@
       "weekly": null
      },
      "T-20b": {
-      "cmp": "",
+      "cmp": "ge",
       "data": "hist",
       "greyed": "Needs price history (not in V1)",
       "label": "Market trending vs range-bound",
-      "monthly": null,
+      "monthly": [
+       "25",
+       "25",
+       "25"
+      ],
       "on": false,
-      "unit": "",
-      "weekly": null
+      "unit": "ADX",
+      "weekly": [
+       "25",
+       "25",
+       "25"
+      ]
      },
      "T-21": {
       "cmp": "",
@@ -1456,14 +1464,22 @@
       "weekly": null
      },
      "T-20b": {
-      "cmp": "",
+      "cmp": "ge",
       "data": "hist",
       "greyed": "Needs price history (not in V1)",
       "label": "Market trending vs range-bound",
-      "monthly": null,
+      "monthly": [
+       "25",
+       "25",
+       "25"
+      ],
       "on": false,
-      "unit": "",
-      "weekly": null
+      "unit": "ADX",
+      "weekly": [
+       "25",
+       "25",
+       "25"
+      ]
      },
      "T-21": {
       "cmp": "",
@@ -2030,7 +2046,6 @@
      "T-11c": {
       "cmp": "ge",
       "data": "hist",
-      "greyed": "Needs price history (not in V1)",
       "label": "IV percentile above",
       "monthly": [
        "80",
@@ -2200,14 +2215,21 @@
       "weekly": null
      },
      "T-20b": {
-      "cmp": "",
+      "cmp": "ge",
       "data": "hist",
-      "greyed": "Needs price history (not in V1)",
       "label": "Market trending vs range-bound",
-      "monthly": null,
+      "monthly": [
+       "25",
+       "25",
+       "25"
+      ],
       "on": false,
-      "unit": "",
-      "weekly": null
+      "unit": "ADX",
+      "weekly": [
+       "25",
+       "25",
+       "25"
+      ]
      },
      "T-21": {
       "cmp": "",
@@ -2943,14 +2965,22 @@
       "weekly": null
      },
      "T-20b": {
-      "cmp": "",
+      "cmp": "ge",
       "data": "hist",
       "greyed": "Needs price history (not in V1)",
       "label": "Market trending vs range-bound",
-      "monthly": null,
+      "monthly": [
+       "25",
+       "25",
+       "25"
+      ],
       "on": false,
-      "unit": "",
-      "weekly": null
+      "unit": "ADX",
+      "weekly": [
+       "25",
+       "25",
+       "25"
+      ]
      },
      "T-21": {
       "cmp": "",
@@ -3690,14 +3720,22 @@
       "weekly": null
      },
      "T-20b": {
-      "cmp": "",
+      "cmp": "ge",
       "data": "hist",
       "greyed": "Needs price history (not in V1)",
       "label": "Market trending vs range-bound",
-      "monthly": null,
+      "monthly": [
+       "25",
+       "25",
+       "25"
+      ],
       "on": false,
-      "unit": "",
-      "weekly": null
+      "unit": "ADX",
+      "weekly": [
+       "25",
+       "25",
+       "25"
+      ]
      },
      "T-21": {
       "cmp": "",
@@ -4449,14 +4487,22 @@
       "weekly": null
      },
      "T-20b": {
-      "cmp": "",
+      "cmp": "ge",
       "data": "hist",
       "greyed": "Needs price history (not in V1)",
       "label": "Market trending vs range-bound",
-      "monthly": null,
+      "monthly": [
+       "25",
+       "25",
+       "25"
+      ],
       "on": false,
-      "unit": "",
-      "weekly": null
+      "unit": "ADX",
+      "weekly": [
+       "25",
+       "25",
+       "25"
+      ]
      },
      "T-21": {
       "cmp": "",
@@ -5197,14 +5243,22 @@
       "weekly": null
      },
      "T-20b": {
-      "cmp": "",
+      "cmp": "ge",
       "data": "hist",
       "greyed": "Needs price history (not in V1)",
       "label": "Market trending vs range-bound",
-      "monthly": null,
+      "monthly": [
+       "25",
+       "25",
+       "25"
+      ],
       "on": false,
-      "unit": "",
-      "weekly": null
+      "unit": "ADX",
+      "weekly": [
+       "25",
+       "25",
+       "25"
+      ]
      },
      "T-21": {
       "cmp": "",
@@ -5948,14 +6002,22 @@
       "weekly": null
      },
      "T-20b": {
-      "cmp": "",
+      "cmp": "ge",
       "data": "hist",
       "greyed": "Needs price history (not in V1)",
       "label": "Market trending vs range-bound",
-      "monthly": null,
+      "monthly": [
+       "25",
+       "25",
+       "25"
+      ],
       "on": false,
-      "unit": "",
-      "weekly": null
+      "unit": "ADX",
+      "weekly": [
+       "25",
+       "25",
+       "25"
+      ]
      },
      "T-21": {
       "cmp": "",
@@ -6698,14 +6760,22 @@
       "weekly": null
      },
      "T-20b": {
-      "cmp": "",
+      "cmp": "ge",
       "data": "hist",
       "greyed": "Needs price history (not in V1)",
       "label": "Market trending vs range-bound",
-      "monthly": null,
+      "monthly": [
+       "25",
+       "25",
+       "25"
+      ],
       "on": false,
-      "unit": "",
-      "weekly": null
+      "unit": "ADX",
+      "weekly": [
+       "25",
+       "25",
+       "25"
+      ]
      },
      "T-21": {
       "cmp": "",
@@ -7448,14 +7518,22 @@
       "weekly": null
      },
      "T-20b": {
-      "cmp": "",
+      "cmp": "ge",
       "data": "hist",
       "greyed": "Needs price history (not in V1)",
       "label": "Market trending vs range-bound",
-      "monthly": null,
+      "monthly": [
+       "25",
+       "25",
+       "25"
+      ],
       "on": false,
-      "unit": "",
-      "weekly": null
+      "unit": "ADX",
+      "weekly": [
+       "25",
+       "25",
+       "25"
+      ]
      },
      "T-21": {
       "cmp": "",
@@ -8204,14 +8282,22 @@
       "weekly": null
      },
      "T-20b": {
-      "cmp": "",
+      "cmp": "ge",
       "data": "hist",
       "greyed": "Needs price history (not in V1)",
       "label": "Market trending vs range-bound",
-      "monthly": null,
+      "monthly": [
+       "25",
+       "25",
+       "25"
+      ],
       "on": false,
-      "unit": "",
-      "weekly": null
+      "unit": "ADX",
+      "weekly": [
+       "25",
+       "25",
+       "25"
+      ]
      },
      "T-21": {
       "cmp": "",
@@ -8954,14 +9040,22 @@
       "weekly": null
      },
      "T-20b": {
-      "cmp": "",
+      "cmp": "ge",
       "data": "hist",
       "greyed": "Needs price history (not in V1)",
       "label": "Market trending vs range-bound",
-      "monthly": null,
+      "monthly": [
+       "25",
+       "25",
+       "25"
+      ],
       "on": false,
-      "unit": "",
-      "weekly": null
+      "unit": "ADX",
+      "weekly": [
+       "25",
+       "25",
+       "25"
+      ]
      },
      "T-21": {
       "cmp": "",

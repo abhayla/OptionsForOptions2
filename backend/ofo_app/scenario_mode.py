@@ -480,6 +480,46 @@ class Scenario:
             "last_price": float(Decimal(str(self.data["market"]["spot"]))),  # float-ok: Kite's own JSON shape
             "timestamp": stamp}}}
 
+    # ---- ADR-280 market-wide inputs (GC-ICTRACK task 26): transports for the live clients (``regime_inputs``) ------
+    def vix_transport(self, method: str, url: str, headers: dict[str, str], body: str | None) -> tuple[int, str]:
+        """``KiteReads``' transport for the India VIX quote: ``market.vix`` = {last, prev_close} -> Kite's quote object
+        (``last_price``, ``ohlc.close``); absent -> the name is not in the reply (not found). Other reads: refused."""
+        from ofo_app.kite_period_reads import VIX_QUOTE  # noqa: PLC0415
+        from ofo_app.kite_reads import index_quote_path  # noqa: PLC0415
+        if method != "GET" or not url.endswith(index_quote_path(VIX_QUOTE)):
+            return 400, '{"status": "error", "error_type": "InputException", "message": "not in the scenario"}'
+        vix = self.data["market"].get("vix")
+        data = "{}" if vix is None else (f'{{{json.dumps(VIX_QUOTE)}: {{"last_price": {_num(vix.get("last"))}, '
+                                         f'"ohlc": {{"close": {_num(vix.get("prev_close"))}}}}}}}')
+        return 200, f'{{"status": "success", "data": {data}}}'
+
+    def day_candles_transport(self, url: str, headers: dict[str, str], *, keys: Mapping[str, str]) -> tuple[int, str]:
+        """``KiteHistory``'s transport for ``/instruments/historical/<token>/day``: ``market.daily`` =
+        {"underlying": [...], "vix": [...]} of [date, high, low, close]; ``keys`` = Kite token -> that key (the reader
+        names the tokens); served inside the asked range; a key absent -> no candles (the reader answers not found)."""
+        m = _DAY_URL.search(url)
+        if m is None:
+            return 400, ""
+        token, start, end = m.group(1), datetime.date.fromisoformat(m.group(2)), datetime.date.fromisoformat(m.group(3))
+        key = keys.get(token)
+        rows = (self.data["market"].get("daily") or {}).get(key) or []
+        candles = [f'["{d}T00:00:00+0530", {_num(c)}, {_num(h)}, {_num(lo)}, {_num(c)}, 0]'
+                   for d, h, lo, c in rows if start <= datetime.date.fromisoformat(d) <= end]
+        return 200, f'{{"status": "success", "data": {{"candles": [{", ".join(candles)}]}}}}'
+
+
+_DAY_URL = re.compile(r"/instruments/historical/(\d+)/day\?from=(\d{4}-\d{2}-\d{2})&to=(\d{4}-\d{2}-\d{2})")
+
+
+def _num(value: Any) -> str:
+    """A scenario number written as JSON number text, exactly (never through a float); None -> ``null``."""
+    if value is None:
+        return "null"
+    number = Decimal(str(value))
+    if not number.is_finite():
+        raise ScenarioRefused(f"not a number {value!r}")
+    return str(number)
+
 
 _DB_TIMEOUT_SECONDS = 5  # connect and statement: a dead database must not stall start-up for asyncpg's 60 s
 _TWIN_DATABASES = ("ofo_dev", "ofo_test")

@@ -31,10 +31,10 @@ from ofo.instruments.models import ZERODHA, InstrumentId
 from sqlalchemy import text
 
 from ofo_app import eligibility_from_zerodha as elig
+from ofo_app import entry_facts_store, order_audit
 from ofo_app import execute_plan as ep
 from ofo_app import execution_plan_store as plans
 from ofo_app import execution_return as er
-from ofo_app import order_audit
 from ofo_app import order_book_store as books
 from ofo_app import return_book as rb
 from ofo_app import strategy_store as store
@@ -47,6 +47,7 @@ from ofo_app.kite_replies import ContractIndex, KiteReplyError, log_ignored, pos
 from ofo_app.order_path_switch import require_order_path
 from ofo_app.routes.broker import current_user_ref
 from ofo_app.routes.execute import KiteSession, get_execute_clock, get_kite_session
+from ofo_app.routes.outcome import MarketContext, get_market_context
 from ofo_app.routes.strategies import StrategyRefused
 
 router = APIRouter(route_class=ClosedRoute, dependencies=[Depends(require_order_path)])  # W-121: runs first
@@ -107,6 +108,7 @@ class _Request:
     session: KiteSession
     now: datetime.datetime
     today: datetime.date  # the database's India date: the session a plan must belong to, to close from the book
+    market: Any = None  # the market context (ADR-276): the first fill's entry facts; None = not connected
 
 
 def _refuse(template: str) -> StrategyRefused:
@@ -128,18 +130,19 @@ def get_return_clocks(
 
 
 @router.post("/strategies/{strategy_id}/execution/return", response_model=ReturnOut)
-async def return_from_kite(
+async def return_from_kite(  # noqa: PLR0913 - FastAPI dependencies
     strategy_id: int,
     session: Annotated[Optional[KiteSession], Depends(get_kite_session)],  # noqa: UP045
     clocks: Annotated[_Clocks, Depends(get_return_clocks)],
     db: Annotated[Any, Depends(get_db)], user_ref: Annotated[str, Depends(current_user_ref)],
+    market: Annotated[Optional[MarketContext], Depends(get_market_context)],  # noqa: UP045
 ) -> ReturnOut:
     try:
         stored = await store.load(db, user_ref, strategy_id)  # 404 before anything else
         if session is None:
             raise _refuse("gate_broker_not_connected")
         await store.lock_strategy(db, user_ref, strategy_id)  # held to commit: one return closes a plan once
-        req = _Request(db, user_ref, strategy_id, session, clocks.now(), await clocks.today_of(db))
+        req = _Request(db, user_ref, strategy_id, session, clocks.now(), await clocks.today_of(db), market)
         out = await _return(req, stored.saved.definition.underlying)
         await db.commit()
     except store.StrategyStoreError as exc:
@@ -277,7 +280,27 @@ async def _settle_open_plan(req: _Request, history: tuple[plans.StoredPlan, ...]
                                filled=dict(answer.filled), fills=er.plan_fills(plan, book))
     except plans.PlanStoreError:  # trades that cannot be stored exactly: nothing closes (fail closed, rolled back)
         raise _refuse("gate_broker_unconfirmed") from None
+    if plan.action == "ENTRY" and reason == er.FILLED and _first_fill(history, plan, world):
+        await _record_entry_facts(req, plan, world)
     return {}
+
+
+def _first_fill(history: Sequence[plans.StoredPlan], plan: plans.StoredPlan, world: _World) -> bool:
+    """ADR-243 / ADR-276: ``plan`` is the strategy's FIRST fill when no earlier plan of it has a filled quantity and it
+    has no adopted holding (an adopted lot is held like a fill, ADR-096: the strategy was entered before)."""
+    return not world.adopted and not any(
+        (o.filled_quantity or 0) > 0 for p in history if p.plan_number < plan.plan_number for o in p.orders)
+
+
+async def _record_entry_facts(req: _Request, plan: plans.StoredPlan, world: _World) -> None:
+    """The real first fill's entry facts (spot, the SOLD legs' distances, the entry ATM IV) through the paper route's
+    own reader, in the return's transaction; no live spot -> nothing written; ``record_first`` never rewrites (a
+    replay of the return writes nothing)."""
+    from ofo_app.adjustment_readers import entry_facts_now  # noqa: PLC0415 - the readers import the route layer
+    sold = [_listed(world.catalogue, o.instrument_id).contract for o in plan.orders if o.transaction_type == "SELL"]
+    facts = await entry_facts_now(req.market, world.underlying, sold)
+    if facts is not None:
+        await entry_facts_store.record_first(req.db, req.strategy_id, facts)
 
 
 def _correlation(strategy_id: int, row: Mapping[str, object]) -> str:

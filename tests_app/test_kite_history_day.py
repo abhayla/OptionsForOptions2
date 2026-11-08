@@ -94,3 +94,54 @@ def test_a_token_that_is_not_digits_is_refused_before_any_request():
         raise AssertionError("must not be called")
     with pytest.raises(CandleFetchError):
         history(never).day_close("265/../orders", EXPIRY)
+
+
+# GC-ICTRACK task 23 (ADR-277): the same read over a date range (ADX reads high, low, close; the VIX percentile closes)
+NIFTY_TOKEN = "256265"  # noqa: S105 - Kite's instrument token of NSE NIFTY 50
+START, END = datetime.date(2026, 11, 3), datetime.date(2026, 11, 6)
+
+
+def _range(body: str):
+    seen = {}
+
+    def transport(url, headers):
+        seen["url"] = url
+        return 200, body
+    return history(transport).day_candles(NIFTY_TOKEN, START, END), seen
+
+
+def test_a_range_gives_every_session_oldest_first_with_exact_high_low_close():
+    rows, seen = _range(day_body('["2026-11-03T00:00:00+0530",25601.1,25722.05,25540.3,25690.4,0]',
+                                 '["2026-11-04T00:00:00+0530",25690,25700.75,25480.15,25511.9,0]',
+                                 '["2026-11-06T00:00:00+0530",25511,25600,25390.6,25492.3,0]'))
+    assert seen["url"].endswith("/instruments/historical/256265/day?from=2026-11-03&to=2026-11-06")
+    assert [(r.day.day, r.high, r.low, r.close) for r in rows] == [
+        (3, Decimal("25722.05"), Decimal("25540.3"), Decimal("25690.4")),
+        (4, Decimal("25700.75"), Decimal("25480.15"), Decimal("25511.9")),
+        (6, Decimal("25600"), Decimal("25390.6"), Decimal("25492.3"))]  # 5 Nov: no session, no row
+
+
+def test_a_range_with_no_session_is_empty():
+    assert _range(day_body())[0] == []
+
+
+def test_a_non_positive_high_or_low_is_none_and_the_close_still_reads():
+    (row,), _ = _range(day_body('["2026-11-03T00:00:00+0530",1,0,0,25690.4,0]'))
+    assert (row.high, row.low, row.close) == (None, None, Decimal("25690.4"))
+
+
+@pytest.mark.parametrize("rows", [
+    ('["2026-11-04T00:00:00+0530",1,2,1,3,0]', '["2026-11-03T00:00:00+0530",1,2,1,3,0]'),  # out of order
+    ('["2026-11-03T00:00:00+0530",1,2,1,3,0]', '["2026-11-03T00:00:00+0530",1,2,1,3,0]'),  # a date twice
+    ('["2026-11-07T00:00:00+0530",1,2,1,3,0]',),                                              # outside the range
+])
+def test_a_range_out_of_order_twice_or_outside_is_a_candle_error(rows):
+    with pytest.raises(CandleError):
+        _range(day_body(*rows))
+
+
+def test_an_empty_range_is_refused_before_any_request():
+    def never(url, headers):
+        raise AssertionError("must not be called")
+    with pytest.raises(CandleFetchError):
+        history(never).day_candles(NIFTY_TOKEN, END, START)
