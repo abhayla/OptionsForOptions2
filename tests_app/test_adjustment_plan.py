@@ -10,6 +10,7 @@ import copy
 import importlib.util
 import json
 import pathlib
+from decimal import Decimal as D
 
 import pytest
 from _scenario_catalogue import load_library
@@ -33,6 +34,12 @@ SYSTEM_MAX = 2  # the system iron condor playbook's max_adjustments guard
 _PLAN_SQL = text("SELECT playbook_id, strategy_type, body::text FROM public.strategy_adjustment_plans "
                  "WHERE strategy_id = :id")
 _PLAYBOOK_SQL = text("SELECT body::text, version FROM public.adjustment_playbooks WHERE id = :id")
+
+
+def _t06(body: str) -> dict:
+    """The plan body's T-06 (% of max loss) stage values per expiry kind, as decimals."""
+    trig = json.loads(body)["triggers"]["T-06"]
+    return {k: [D(str(x)) for x in trig[k]] for k in ("weekly", "monthly")}
 
 
 def _reset_engine() -> None:
@@ -105,8 +112,9 @@ async def test_get_without_a_plan_prefills_from_the_active_system_playbook_and_p
     assert out["labels"]["title"] == "When tracking starts: this strategy's plan"
     assert out["labels"]["use_as_is"] == "Use playbook as is" and out["labels"]["customise"] == "Customise triggers"
     body = copy.deepcopy(system.body)  # AC-2: another playbook refills every field from itself
-    body["guards"] |= {"profit_target_pct_of_max_profit": "70", "stop_line_pct_of_max_loss": "30",
-                       "max_adjustments": 4, "time_exit": "14:45"}
+    body["guards"] |= {"profit_target_pct_of_max_profit": "70", "max_adjustments": 4, "time_exit": "14:45"}
+    for kind in ("weekly", "monthly"):  # ADR-252: the sheet's stop is the playbook's T-06 early-stage value
+        body["triggers"]["T-06"][kind] = ["30", "30", "30"]
     async with app_db_url.begin() as conn:
         own = await playbook_store.create(conn, USER, "ic", "Plan pick", body)
     status, picked = await _call("GET", _plan_path(sid) + f"?playbook_id={own.id}")
@@ -208,13 +216,18 @@ async def test_overrides_land_in_the_copy_only_and_an_edit_keeps_them(app_db_url
             out["plan"]["time_exit"]) == (system, "60", "40", 3, {"hour": 14, "minute": 45})
     row = await _plan_row(app_db_url, sid)
     guards = json.loads(row.body)["guards"]
-    assert (guards["profit_target_pct_of_max_profit"], guards["stop_line_pct_of_max_loss"], guards["max_adjustments"],
-            guards["time_exit"]) == ("60", "40", 3, "14:45")
+    assert (guards["profit_target_pct_of_max_profit"], guards["max_adjustments"], guards["time_exit"]) == (
+        "60", 3, "14:45")
+    # ADR-252 addendum: the sheet's stop is written to T-06 (early/middle = V, last = min(V, its value)), no guard key
+    assert _t06(row.body) == {k: [D("40")] * 3 for k in ("weekly", "monthly")}
     assert await _playbook_row(app_db_url, system) == before  # the playbook: body and version unchanged
     status, edited = await _call("PUT", _plan_path(sid), json={"playbook_id": system, "stop": "35"})
     assert status == OK and (edited["plan"]["stop"], edited["plan"]["target"], edited["plan"]["time_exit"]) == (
         "35", "60", {"hour": 14, "minute": 45})  # a PUT keeps what the plan already holds
-    assert json.loads((await _plan_row(app_db_url, sid)).body)["triggers"] == json.loads(row.body)["triggers"]
+    edited_body = (await _plan_row(app_db_url, sid)).body
+    assert _t06(edited_body) == {k: [D("35")] * 3 for k in ("weekly", "monthly")}  # ADR-252: the stop edit is T-06
+    assert ({k: v for k, v in json.loads(edited_body)["triggers"].items() if k != "T-06"}
+            == {k: v for k, v in json.loads(row.body)["triggers"].items() if k != "T-06"})  # nothing else moves
     assert await _playbook_row(app_db_url, system) == before
     status, sheet_now = await _call("GET", _plan_path(sid))  # AC-3: opened again later, prefilled from the plan
     assert status == OK and sheet_now["prefill"]["stop"] == "35" and sheet_now["plan"]["playbook_name"] is not None

@@ -117,6 +117,7 @@ async def test_the_app_role_gains_exactly_update_on_deleted_at(admin_engine):
     async with admin_engine.connect() as conn:
         trans = await conn.begin()
         try:
+            head = await _grants(conn)  # 0043 added strategies.scenario_id (table SELECT), so head != the 0026 state
             for sql in later_down:
                 await conn.execute(text(sql))
             now = await _grants(conn)
@@ -128,7 +129,7 @@ async def test_the_app_role_gains_exactly_update_on_deleted_at(admin_engine):
                                               ("table", "strategies", "UPDATE", "deleted_at")}
             for sql in own_up + later_up:
                 await conn.execute(text(sql))
-            assert sorted(await _grants(conn)) == sorted(now)
+            assert sorted(await _grants(conn)) == sorted(head)
         finally:
             await trans.rollback()
 

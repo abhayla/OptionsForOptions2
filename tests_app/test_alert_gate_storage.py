@@ -13,6 +13,7 @@ from decimal import Decimal
 from types import SimpleNamespace
 
 import pytest
+from _migration_replay import round_trip_sql
 from ofo.adjustment import alert_gate as ag
 from ofo_app import playbook_store as pb
 from ofo_app import strategy_store
@@ -246,8 +247,10 @@ async def test_the_downgrade_refuses_while_held_rows_or_worse_marks_exist(admin,
 async def test_the_downgrade_restores_the_0031_guard_and_the_0035_allowlist_chain(admin):
     """On a database with no held row and no worse mark the whole downgrade runs (rolled back after): the held table
     and the worse column are gone, the suggestion guard is 0031's again and the allowlist post check (0035's chain,
-    the downgrade's own last statement) passes."""
-    for sql in _recorded_downgrade():
+    the downgrade's own last statement) passes. The database is at head, so every later migration's downgrade runs
+    first (`round_trip_sql`): 0041 and 0045 re-pinned the plan and rule-state guards, and replaying 0036 alone on head
+    left their bodies against 0035's pins."""
+    for sql in round_trip_sql("0036_alert_gate_storage.py")[2]:
         await admin.execute(text(sql))
     names = (await admin.execute(text("SELECT to_regclass(:t), (SELECT count(*) FROM information_schema.columns "
                                       "WHERE table_schema = 'public' AND table_name = 'adjustment_suggestions' "
