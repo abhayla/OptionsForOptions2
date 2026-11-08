@@ -26,7 +26,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import db_run  # (reuse its env reading and GLOBAL.env location)
 
 # the optional _f<n> is a per-test-file copy made by tests_app/conftest.py (GC-MERGE1, #649); sweep and drop find it too
-NAME_RE = re.compile(r"ofo_test_tmp_[0-9]{14}_[0-9a-f]{4}(_f[0-9]+)?")
+NAME_RE = re.compile(r"ofo_test_tmp_[0-9]{14}_[0-9a-f]{4}(_f[0-9]+(_[0-9]+)?)?")
 PREFIX = "ofo_test_tmp_"
 SWEEP_AGE = datetime.timedelta(hours=24)
 APP_ROLE = "ofo_app"

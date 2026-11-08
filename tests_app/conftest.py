@@ -161,7 +161,16 @@ def _engine(url: str) -> AsyncEngine:
 # named in the URLs is only the TEMPLATE: nothing connects to it while the suite runs (CREATE ... TEMPLATE needs that).
 _REPOINTED = ("TEST_DATABASE_URL", "TEST_ADMIN_DATABASE_URL", "ALEMBIC_DATABASE_URL", "DATABASE_URL")
 _clone_seq = itertools.count(1)
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "scripts", "orchestrator"))
+import db_run_fresh as _db_run_fresh  # noqa: E402 - the one NAME_RE, not a copy
 CLONES_MADE: list[str] = []  # in order; read by tests_app/test_db_per_file_guard.py
+
+
+def should_clone(template: str, env=None) -> bool:
+    """Clone only a throwaway made by db_run_fresh, or in CI; any other template (db_run on the shared ofo_test, which
+    also serves production) is used as given: no clones to collide on, leak, or fail on a busy template."""
+    env = os.environ if env is None else env
+    return _db_run_fresh.is_tool_name(template) or env.get("GITHUB_ACTIONS") == "true"
 
 
 def _db_name(url: str) -> str:
@@ -202,11 +211,11 @@ def _forget_app_engines() -> None:
 
 
 def clone_for_file(admin_url: str, app_url: str) -> str:
-    """CREATE <template>_f<n> TEMPLATE <template> plus the database-level grants CI gives the app role (a template does
+    """CREATE <template>_f<pid>_<n> TEMPLATE <template> plus the database-level grants CI gives the app role (a template does
     not copy them; schema and table privileges are inside the database and are copied). Raises on any failure, after
     dropping a half-made clone: the caller's tests then ERROR, they never fall back to the shared database."""
     template = _db_name(admin_url)
-    clone = f"{template}_f{next(_clone_seq)}"
+    clone = f"{template}_f{os.getpid()}_{next(_clone_seq)}"  # pid: two runs never collide
     app_role = urllib.parse.urlsplit(app_url).username
     _admin_run(admin_url, [f'CREATE DATABASE "{clone}" TEMPLATE "{template}"'])
     try:
@@ -228,6 +237,9 @@ def _fresh_database_per_file() -> Iterator[None]:
         yield  # no database tests here: they skip (or fail under OFO_REQUIRE_DB_TESTS) in their own fixtures
         return
     template = _db_name(admin)
+    if not should_clone(template):
+        yield  # tests run on the given database as before
+        return
     if _db_name(app) != template:
         pytest.fail("TEST_DATABASE_URL and TEST_ADMIN_DATABASE_URL name different databases; per-file copies need one")
     _forget_app_engines()

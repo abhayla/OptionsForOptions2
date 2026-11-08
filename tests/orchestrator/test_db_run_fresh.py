@@ -245,6 +245,13 @@ def test_sweep_finds_the_per_file_copies_of_an_old_run():
     assert not fresh.is_tool_name(old + "_f")
 
 
+def test_pid_style_copy_names_are_tool_names():
+    old = "ofo_test_tmp_20261020000000_aaaa"
+    assert fresh.is_tool_name(old + "_f4242_3") and fresh.is_tool_name(old + "_f7")
+    for bad in ("ofo_test_f1", "ofo_dev", "ofo_test", old + "_f4242_", old + "_f_3", old + "_f1_2_3"):
+        assert not fresh.is_tool_name(bad)
+
+
 def test_drop_with_copies_drops_the_copies_before_the_parent():
     old = "ofo_test_tmp_20261020000000_aaaa"
     log = []
