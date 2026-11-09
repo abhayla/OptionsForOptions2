@@ -43,8 +43,10 @@ recommendation." Items below were decided that way, or are parked here for a lat
 
 ## Decided under the owner's delegation (spec-conformant; also in the PR body)
 
-1. Paper exit price (C10): the server prices every paper exit at the price the paper screen shows - live in market
-   hours, the last close after hours (ADR-212). An exit is refused only when the server has no price at all.
+1. Paper exit price (C10): the server prices every paper exit from the live price; outside market hours a paper exit
+   stays REFUSED (ADR-212 "What stays": "No fill at a closing price"). CORRECTION 19:1x IST: a first version of this
+   line said "the last close after hours (ADR-212)"; that misread ADR-212 (only its title was read), the Tier B
+   review caught it, and the fix round restores the refusal.
 2. C6 real-leg settlement: the settlement source answers "no price" until an exchange-sourced settlement price is
    stored (ADR-083: the source is unproven), so an expired real leg shows "awaiting settlement" by name instead of
    looking open. Never a guessed price.
