@@ -569,6 +569,8 @@ async def adjustment_approaches(  # noqa: PLR0913, PLR0915 - FastAPI dependencie
         reply["approaches"] = out
         from ofo_app import delta_neutral_reply  # noqa: PLC0415 - A-23 figures, no trade (GC-IC1 4a)
         reply["delta_neutral"] = delta_neutral_reply.block(position, market.chain, market.leg_greeks, spot.value)
+        from ofo_app import adjust_current  # noqa: PLC0415 - as delta_neutral_reply
+        reply["current"] = adjust_current.block(position, market, before, out)
         reply |= await _compare_reply(columns, tracked, spot.value, market, rates, pop_on, before,  # type: ignore[arg-type]
                                       margin_of, prefs, limits, guards)
     _state_prices(reply, market)

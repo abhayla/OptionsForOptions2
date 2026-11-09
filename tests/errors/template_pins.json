@@ -3934,5 +3934,49 @@
   "adjust_trigger_adx_unusable": {
     "sha256": "fd660b673f276e307b00bbe0a14cb8280be7ad5bc8790549a7ee8d9a523683d1",
     "reviewed": "owner read 2026-11-08 (GC-ICTRACK 21b, approved all 24 in the question tool)"
+  },
+  "explanation:adjust_current_na": {
+    "sha256": "e6ff65d2089ee828d745a3128d17a79d552be92a3d5a3e8e1cbd1e1ce622db1d",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_current_older": {
+    "sha256": "2215a48a6f173e009a90384d9a7dabd8a5a1660acec7427318b8309be7f8329b",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_current_leg": {
+    "sha256": "1a01d46ac93feb147e1eef456eab0fd60f02dedeff3f54786e728581b180b363",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_current_leg_line": {
+    "sha256": "67732a9d7f8fd45cf622be894089a705d4e4650bd9b9c80d6939293d509bd15b",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_current_util_no_margin": {
+    "sha256": "3b379a52af06cd783497bf99eb84ee6a76225326a7c80dd1de7d9ef642e4ddc6",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_current_util_no_funds": {
+    "sha256": "f7ec654971ff40a93f9fb51f2f924552734e998721de219cbff8889628132089",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_current_util_no_room": {
+    "sha256": "63989a3198f47b371c079be8e01c919754c9b6c9dfd68a18895da8c38d69e6af",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_current_iv_absent": {
+    "sha256": "5d223970c4375a9de890cd96e27a2427980c4268e3d291902af785c242bece61",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_current_oi_absent": {
+    "sha256": "d62d81e7f60fcfb368ac2dada796c67ad5b84bd7103de86c8e42d2dc98a739fc",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_current_ltp_absent": {
+    "sha256": "e67b106bdf47a6303ca8afa3bc1c31eb1cc2fbf5658b8cc6037fc1b7525cc6c8",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_current_loss_absent": {
+    "sha256": "841a686a5aa886ea4267ff46321a06a25814a12807925025f4e281097c399bf1",
+    "reviewed": "pending owner read"
   }
 }
