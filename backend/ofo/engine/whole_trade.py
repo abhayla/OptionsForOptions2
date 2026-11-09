@@ -168,7 +168,7 @@ class FarLegNoIV(ValueError):
     """A leg on a later expiry has no implied volatility, so it cannot be valued at the nearer expiry close."""
 
     def __init__(self, index: int) -> None:
-        super().__init__(f"leg {index} is on a later expiry and has no IV")
+        super().__init__(index)  # the leg index only: the caller words it from the catalogue
         self.index = index
 
 

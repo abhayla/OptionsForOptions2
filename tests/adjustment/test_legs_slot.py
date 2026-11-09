@@ -67,3 +67,39 @@ def test_class_no_legs_slot_is_recorded():
     with open(ex.__file__, encoding="utf-8") as f:
         src = f.read()
     assert re.findall(r'"legs2?":\s*Recorded', src) == []
+
+
+def _joined_slot_calls() -> list[str]:
+    """#654 / #623 class: every ``render_explanation(..., slot=<x>.join(...))`` in the backend into a one-token
+    ``Recorded`` slot, any slot name (a template id that is not a literal fails closed: it is listed too)."""
+    import ast  # noqa: PLC0415
+    from pathlib import Path  # noqa: PLC0415
+    root = Path(ex.__file__).resolve().parents[2]
+    hits = []
+    for path in root.rglob("*.py"):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.Call) and getattr(node.func, "id", getattr(node.func, "attr", None)) == "render_explanation":
+                first = node.args[0] if node.args else None
+                template = ex.EXPLANATIONS.get(first.value) if isinstance(first, ast.Constant) else None
+                hits += [f"{path.name}:{node.lineno} {k.arg}" for k in node.keywords
+                         if isinstance(k.value, ast.Call) and getattr(k.value.func, "attr", None) == "join"
+                         and (template is None or template.slots.get(k.arg) is ex.Recorded)]  # unknown id: fail closed
+    return hits
+
+
+def test_class_no_slot_is_fed_a_joined_list():
+    """A joined list in a one-token Recorded slot raises past 64 characters (#654 breakevens, #623 low-OI legs): a list
+    goes through a typed tuple slot (LegRefs) or ``compare.joined_token``, never a bare ``.join``."""
+    assert _joined_slot_calls() == []
+
+
+def test_eight_breakevens_render_as_one_token():
+    from decimal import Decimal  # noqa: PLC0415
+
+    from ofo.adjustment.compare import joined_token  # noqa: PLC0415
+    levels = [format(Decimal(22000) + 150 * i + Decimal("0.45"), "f") for i in range(8)]  # 8 x 8 chars + 7 "/" = 71
+    token = joined_token(levels)
+    assert token == "/".join(levels[:6]) + "/+2more" and len(token) <= 64
+    text = render_explanation("adjust_cmp_breakevens", levels=token, width=Decimal(1050))
+    assert text.startswith("22000.45/22150.45/") and "+2more" in text
+    assert joined_token(levels[:2]) == "22000.45/22150.45"  # what fits is shown whole, unchanged

@@ -2171,6 +2171,18 @@
     "sha256": "b47173a5d7ebd1c1ea29680ebcdca1658e2af8bdd77d1191c897ea737b1821a3",
     "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"
   },
+  "explanation:adjust_cmp_rupees_estimated": {
+    "sha256": "94d0716a7a89ab0f32462c652414cfcaf4a8dcd95acda7614e1d248414f25819",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_near_no_iv": {
+    "sha256": "d8e35195a4ad3d9b8daf3c2d32beed39dd822c6d138a608ab797f9c7eea2bfbd",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_near_no_rate": {
+    "sha256": "732cbda4ad837989f49b5b103d0e9372598cc942d02fa9fe8c1fa2098ea8eb25",
+    "reviewed": "pending owner read"
+  },
   "explanation:adjust_cmp_no_bid_ask": {
     "sha256": "5b9d3d6b183c1ba29ab5a35d87551f0e7ef9cf4daf84626a5782c9bba6939dac",
     "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"
