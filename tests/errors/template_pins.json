@@ -1835,6 +1835,18 @@
     "sha256": "ac0864a1f7e5b02f71bd04887f451c301a025c5d025ae495bd527f3a0a17b06e",
     "reviewed": "owner read 2026-11-02 (accepted after independent screen, not read line by line)"
   },
+  "adjust_reduce_below_one_lot": {
+    "sha256": "03945f8843e7bd956c86aac59a367ba22c5abb5f286b48d87c2f9cbee9744446",
+    "reviewed": "pending owner read"
+  },
+  "paper_adjustment_limit": {
+    "sha256": "f6471626f2d68eb6666cc043fa9f44b241e3ecdf1c257f03809e36d5eb060eb3",
+    "reviewed": "pending owner read"
+  },
+  "paper_adjustment_limit_unread": {
+    "sha256": "eaf8f950b6a51b506b2cff7f6b540090ff3f2f5ef3d41876e10c5b92263db080",
+    "reviewed": "pending owner read"
+  },
   "paper_trigger_level_invalid": {
     "sha256": "70d659d3bb7cc64629eb6a29787a54ae9b6c91a6d72288d24247ea4183026709",
     "reviewed": "owner read 2026-11-02 (accepted after independent screen, not read line by line)"

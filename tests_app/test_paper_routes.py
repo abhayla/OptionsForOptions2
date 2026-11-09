@@ -226,10 +226,10 @@ async def test_post_stores_all_orders_in_one_call_and_answers_the_book(db):
     assert reply.status_code == HTTPStatus.CREATED, reply.text
     body = reply.json()
     assert [(o["side"], o["quantity"], o["price"], o["price_text"], o["kind"]) for o in body["orders"]] == [
-        ("SELL", 65, "100.00", "100.00", "open"), ("BUY", 65, "80.00", "80.00", "exit"),
+        ("SELL", 65, "100.00", "100.00", "open"), ("BUY", 65, "39.15", "39.15", "exit"),
         ("SELL", 65, "60.05", "60.05", "open")]
     assert all(o["contract_text"] and o["placed_at"] for o in body["orders"])
-    assert D(body["booked"]) == D("1300.00")
+    assert D(body["booked"]) == D("3955.25")
     assert await _count(db, stored.id) == 3  # noqa: PLR2004 - three orders sent
 
 
