@@ -3,8 +3,9 @@
      first leg + "and N more", status, last saved and the tracked state (copies Sensibull screen 117's list line); a search box
      filters by name as typed; Rename calls PATCH /api/strategies/{id}/name; each row links to the Strategy Builder
      (`?strategy=<id>`) and to Execute Strategy for that id. No money figure is computed or shown. A status the page does not know is shown
-     as the API sent it. The Completed page lists only statuses in COMPLETED_STATUSES; the store holds only 'draft'
-     today (alembic 0008 CHECK), so that list is empty and the page says so instead of offering a filter it cannot back. -->
+     as the API sent it. The Completed page lists only statuses in COMPLETED_STATUSES ('closed', stored when the last open leg is
+     exited, alembic 0049) and shows each one's final P&L, adjustments made and their cost exactly as the server worded them
+     (a figure the server could not give shows the server's reason, never 0; no money arithmetic here). -->
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -21,7 +22,7 @@ import { useDeleteFlow } from '@/lib/strategyActivity'
 import { CLEAR_UNDO_SECONDS_KEY } from '@/lib/legEdit'
 import { useSettingsValues } from '@/stores/settingsValues'
 
-const COMPLETED_STATUSES = []
+const COMPLETED_STATUSES = ['closed'] // alembic 0049: stored when the last open leg is exited (audit C13)
 // Owner 2026-10-30 (Sensibull 117): one column grid shared by the header row and every strategy row, so columns line up
 // User test 2026-10-30 round 2 widths: last saved 16rem holds "last saved 30 Oct 2026, 08:28:55 IST" on one line
 const COLS = 'lg:grid lg:grid-cols-[minmax(0,1fr)_4rem_minmax(0,2.4fr)_3.5rem_16rem_5.5rem_14rem]'
@@ -144,6 +145,11 @@ async function confirmRename(row) {
           <DraftDelete :row="s" :flow="deleteFlow" />
           <router-link v-if="orderPathOn" :to="`/strategy/${s.id}/execute`" class="link" :data-testid="`open-execute-${s.id}`">Execute Strategy</router-link>
           </span>
+          <p v-if="s.status === 'closed'" class="col-span-full w-full text-ink-muted" data-testid="row-completed">
+            <span data-testid="row-final-pnl">Final P&amp;L {{ s.final_pnl_text ?? s.completed_reason_text }}</span>
+            <span data-testid="row-adjustments"> · Adjustments made {{ s.adjustments_made ?? s.completed_reason_text }}</span>
+            <span data-testid="row-adjustment-cost"> · Adjustment cost {{ s.adjustment_cost_text ?? s.completed_reason_text }}</span>
+          </p>
           <form v-if="renaming && renaming.id === s.id" class="col-span-full flex w-full flex-wrap items-center gap-2" data-testid="rename-form" @submit.prevent="confirmRename(s)">
             <input v-model="renaming.text" type="text" class="field" data-testid="rename-input" :maxlength="STRATEGY_NAME_MAX" aria-label="New strategy name" autocomplete="off" />
             <span class="text-xs" :class="renaming.text.length > STRATEGY_NAME_MAX ? 'text-warn' : 'text-ink-muted'" data-testid="rename-count">{{ renaming.text.length }}/{{ STRATEGY_NAME_MAX }}</span>

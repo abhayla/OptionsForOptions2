@@ -3191,6 +3191,10 @@
     "sha256": "7c1f019c44218093420445c551d9163d893ae275202ae611c6de0d82c14054d7",
     "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"
   },
+  "explanation:completed_figures_unavailable": {
+    "sha256": "6694b0586d14cca9e698bb872c9a6af443bea112ed11dea87dd9015134e504bd",
+    "reviewed": "pending owner read"
+  },
   "explanation:adjust_history_fill_confirmed": {
     "sha256": "a0cab6bf4307ef7422d0f0e99bbf48dfd6ee46bb6e5ba876b914310200fc3b1a",
     "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"
