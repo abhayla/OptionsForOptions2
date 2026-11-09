@@ -297,7 +297,12 @@ async def test_an_unknown_contract_and_a_new_position_on_a_dead_contract_are_422
             _order(c0, "SELL", 65, "12.00", "exit")]})
     assert unknown.status_code == opened.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
     assert "not a live contract" in unknown.text and "not a live contract" in opened.text
-    assert closed.status_code == HTTPStatus.CREATED, closed.text  # an exit only closes what is open
+    # GC-ICGUIDE g32 (Tier B finding 1): an exit is priced by the server from the contract's live feed key only; a dead
+    # contract has none, so the exit is refused by name and nothing is stored (an expired leg is closed by expiry
+    # settlement instead; a NIFTY option delisted before expiry stays open - accepted edge, issue #685).
+    assert closed.status_code == HTTPStatus.CONFLICT, closed.text
+    assert "no longer a live contract" in closed.text
+    assert await _count(db, stored.id) == 1  # only the earlier open order
 
 
 # --- display rule (step 1a) -------------------------------------------------------------------------------------------
