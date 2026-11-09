@@ -1038,10 +1038,10 @@ def evaluate(body: Mapping, state: StrategyState, memory: Mapping[str, Mapping[s
         if o.rule_id not in new:
             if entry is None:
                 entry = _entry_held(body, entry_state, gap_until)
-            new[o.rule_id] = {"held_at_entry": bool(entry.get(o.rule_id, False)), "seen_clear": False}
+            # #662: a counter rule's crossing is the event, whatever the baseline held (never held at entry)
+            new[o.rule_id] = {"held_at_entry": bool(entry.get(o.rule_id, False)) and o.rule_id not in COUNTER_RULES,
+                              "seen_clear": False}
         mem = new[o.rule_id]
-        if o.rule_id in COUNTER_RULES:
-            mem["held_at_entry"] = False  # #662: its crossing is the event, whatever the baseline held
         if o.reason is not None:
             results.append(NotChecked(o.rule_id, o.lead, o.reason, o.slots))
         elif not o.fired:
@@ -1052,7 +1052,7 @@ def evaluate(body: Mapping, state: StrategyState, memory: Mapping[str, Mapping[s
                 values.append(rv)
         else:
             lead = next((h for h in o.hits if h.trigger_id == o.lead), o.hits[0])
-            if mem["held_at_entry"] and not mem["seen_clear"]:
+            if mem["held_at_entry"] and not mem["seen_clear"] and o.rule_id not in COUNTER_RULES:
                 results.append(AlreadyTrue(o.rule_id, lead.trigger_id, lead.value, lead.threshold, cmp=lead.cmp,
                                                beyond=lead.beyond))
             else:
