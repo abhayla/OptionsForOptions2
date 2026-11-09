@@ -1847,6 +1847,10 @@
     "sha256": "eaf8f950b6a51b506b2cff7f6b540090ff3f2f5ef3d41876e10c5b92263db080",
     "reviewed": "pending owner read"
   },
+  "paper_strategy_closed": {
+    "sha256": "374af50e0c56fed03b6807a9f9be697dac42c28245918f6996c337be9cf59cec",
+    "reviewed": "pending owner read"
+  },
   "paper_trigger_level_invalid": {
     "sha256": "70d659d3bb7cc64629eb6a29787a54ae9b6c91a6d72288d24247ea4183026709",
     "reviewed": "owner read 2026-11-02 (accepted after independent screen, not read line by line)"

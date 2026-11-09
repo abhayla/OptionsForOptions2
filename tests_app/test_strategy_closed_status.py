@@ -106,7 +106,7 @@ async def test_the_list_carries_final_pnl_adjustments_and_their_cost_for_a_close
     row = next(r for r in rows if r["id"] == stored.id)
     assert row["status"] == "closed"
     assert (row["final_pnl"], row["final_pnl_text"]) == ("1950.00", "+1,950.00")  # 65 x 20.00 + 65 x 10.00
-    assert row["adjustments_made"] == 2  # noqa: PLR2004 - the two exit batches; the entry batch does not count
+    assert row["adjustments_made"] == 1  # the first exit; entry and closing exit do not count
     assert D(row["adjustment_cost"]) > 0 and row["adjustment_cost_text"] and row["completed_reason_text"] is None
 
 

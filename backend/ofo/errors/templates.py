@@ -1002,6 +1002,10 @@ _STRATEGY_DRAFT_TEMPLATES: tuple[MessageTemplate, ...] = (
           "The plan's most adjustments could not be read, so these orders cannot be checked against it.",
           "No order was stored; an adjustment is never saved without checking the plan's limit.",
           "Placing these paper orders.", "Place the orders again in a moment."),
+    _gate("paper_strategy_closed", _SV, 507,
+          "This strategy is closed: every leg was exited, so it takes no new position.",
+          "No order was stored; a closed strategy is never reopened.",
+          "Placing these paper orders.", "Build a new strategy for a new position."),
     # GC-TP step 7a (REQ-109 AC-8; ADR-207 (5)): paper stop triggers.
     _gate("paper_trigger_level_invalid", _SV, 440,
           "A stop level must be above 0 and a multiple of 0.05.",

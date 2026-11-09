@@ -1,9 +1,11 @@
 """GC-ICGUIDE g10 (audit C9; ADR-255; REQ-109 AC-1): the plan's most adjustments, checked when paper orders are SAVED.
 
-The one save path is ``routes.paper.place_paper_orders``. The offered approaches were already filtered by the limit
+Both user save paths (``routes.paper.place_paper_orders`` and ``routes.tracking.exit_tracking``) call
+``place_checked``, which refuses every fill outside market hours (ADR-212), stores through ``paper_store.place`` and
+then checks the limit, so neither path can skip a check. The offered approaches were already filtered by the limit
 (``ofo.adjustment.offered``); this refuses a batch a user builds by hand beyond it. Counting is the history page's
 (``adjustment_readers.history_count``: every batch after the entry is one adjustment, a partial exit included, the
-entry batch never). A batch that closes the whole strategy is always allowed.
+entry batch never). A batch that closes the whole strategy is always allowed, before any history or plan is read.
 
 Answer states of the plan read: its own plan -> its ``guards.max_adjustments``; no plan -> the active playbook of the
 position's type (the plan sheet's pre-fill); a readable plan or playbook that sets no maximum -> no limit; no plan and
@@ -21,7 +23,8 @@ from ofo.engine.legs import Instrument
 from ofo.errors import render
 from ofo.tracking.orderbook import net_positions
 
-from ofo_app import playbook_store, tracked_contracts
+from ofo_app import paper_store, playbook_store, tracked_contracts
+from ofo_app.errors import Failure
 from ofo_app.strategy_refused import StrategyRefused
 
 log = logging.getLogger(__name__)
@@ -52,20 +55,20 @@ async def check_adjustment_limit(db: Any, user_ref: str, strategy_id: int,  # no
     from ofo_app.adjustment_readers import history_count  # noqa: PLC0415 - it imports the route layer
     if not existing:
         return
+    after_orders = [*existing, *(SimpleNamespace(order=o) for o in new)]
+    if all(p.net_quantity == 0 for p in net_positions([o.order.as_paper() for o in after_orders], {}).positions):
+        return  # a full exit of the whole strategy is always allowed, even when the history cannot be read
     found = {c.contract_id: c for c in await tracked_contracts.resolve(
         db, sorted({o.order.contract_id for o in existing} | {o.contract_id for o in new}))}
 
     def is_option(cid: int) -> bool:
         stored = found[cid].stored
         return stored is not None and stored.listed.contract.instrument_type in _OPTION_TYPES
-    after_orders = [*existing, *(SimpleNamespace(order=o) for o in new)]
     before, after = history_count(existing, is_option), history_count(after_orders, is_option)
     if after is None:
         raise _unread()
     if before is not None and after <= before:
         return
-    if all(p.net_quantity == 0 for p in net_positions([o.order.as_paper() for o in after_orders], {}).positions):
-        return  # a full exit of the whole strategy is always allowed
     try:
         body = await _plan_body(db, user_ref, strategy_id, reader, rates, listed)
         guards = None if body is None else body.get("guards", {})
@@ -88,3 +91,23 @@ def _limit_of(guards: Any) -> int | None:
     if type(limit) is not int or limit < 0:
         raise _unread()
     return limit
+
+
+def refuse_when_closed(ctx: Any, at: Any) -> None:
+    """ADR-212: no paper fill outside market hours (a closing price is never a fill price); callers run it BEFORE any
+    price read so the after-hours reason is the one shown."""
+    from ofo_app.routes.outcome import market_state  # noqa: PLC0415 - it imports the route layer
+    if market_state(ctx, at).closed:
+        raise StrategyRefused("gate_market_closed", Failure.CONFLICT)
+
+
+async def place_checked(db: Any, user_ref: str, strategy_id: int, orders: Sequence[Any], *,  # noqa: PLR0913
+                        entry: Any, ctx: Any, at: Any, reader: Any, rates: Any) -> tuple[Any, ...]:
+    """The ONE write both user save paths use (ADR-212, ADR-255): every fill outside market hours at ``at`` is refused
+    (``gate_market_closed``; no market context fails closed by the calendar), then ``paper_store.place``, then the
+    adjustment limit on the stored book. The caller commits, or rolls back on any raise. Returns the whole book."""
+    refuse_when_closed(ctx, at)
+    book = await paper_store.place(db, user_ref, strategy_id, orders, entry=entry)
+    await check_adjustment_limit(db, user_ref, strategy_id, book[:-len(orders)], [o.order for o in book[-len(orders):]],
+                                 reader, rates, None if ctx is None else ctx.provider.instrument_master())
+    return book

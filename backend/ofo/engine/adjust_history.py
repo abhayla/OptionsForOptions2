@@ -128,6 +128,10 @@ class HistoryTotals:
     open_reason: Reason | None = None  # why open P&L and P&L are None
     premium_reason: Reason | None = None  # why premium left is None
     adjustment_charges: Decimal | None = None  # GC-ICGUIDE g23: charges of the adjustment rows (None: any unknown)
+    #: GC-ICGUIDE g32: the same two figures without the closing batch (the last adjustment row, when it leaves nothing
+    #: open): it is the exit, not an adjustment. ``adjustment_charges_before_exit`` None: any unknown.
+    adjustments_before_exit: int = 0
+    adjustment_charges_before_exit: Decimal | None = None
 
 
 @dataclass(frozen=True)
@@ -241,7 +245,13 @@ def adjustment_history(orders: Sequence[HistoryOrder], live_prices: Mapping[str,
     totals = _totals(rows, filled, live_prices, adjustments_max, options)
     adjusting = [r.charges for r in rows if r.step == "adjustment" and not r.pending]
     cost = None if any(c is None for c in adjusting) else sum((c for c in adjusting if c is not None), Decimal(0))
-    return History(tuple(rows), replace(totals, adjustment_charges=cost))
+    last = rows[-1] if rows else None
+    closing = (last is not None and last.step == "adjustment" and not last.pending
+               and all(p.net_quantity == 0 for p in net_positions(filled, {}).positions))
+    made = totals.adjustments_used - (1 if closing else 0)
+    before_exit = cost if not closing or cost is None else (None if last.charges is None else cost - last.charges)
+    return History(tuple(rows), replace(totals, adjustment_charges=cost, adjustments_before_exit=made,
+                                        adjustment_charges_before_exit=before_exit))
 
 
 def _totals(rows: Sequence[HistoryRow], filled: Sequence[PaperOrder],

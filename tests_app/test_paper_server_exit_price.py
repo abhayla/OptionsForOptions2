@@ -9,7 +9,7 @@ from http import HTTPStatus
 import pytest
 from ofo.marketdata.kite_provider import IST
 from ofo_app import paper_store
-from ofo_app.routes.outcome import MarketContext, get_market_context
+from ofo_app.routes.outcome import MarketContext, get_answer_clock, get_market_context
 from sqlalchemy import text
 from test_strategy_store import _client
 from test_strategy_tracking import IDS, _frame, _setup
@@ -54,16 +54,17 @@ async def test_a_browser_sent_exit_price_is_ignored_and_the_servers_live_price_i
     assert [D(p) for p in await _exit_rows(db, stored.id)] == [D("55.00")]
 
 
-async def test_after_hours_an_exit_is_priced_at_the_last_close_not_refused(db):
-    """ADR-212: closed market (18:00 IST, ADR-119 calendar) -> the price the paper screen shows, the last close."""
+async def test_after_hours_an_exit_is_refused_never_filled_at_the_last_close(db):
+    """ADR-212 (restored): closed market (18:00 IST, ADR-119 calendar) -> no paper fill at a closing price."""
     app, stored, provider, last, cid = await _open_leg(db)
     provider.on_frame(_frame(provider, IDS[0], "55.00"), last)
     after = datetime.datetime(2026, 10, 8, 18, 0, tzinfo=IST)
     app.dependency_overrides[get_market_context] = lambda: MarketContext(provider, lambda: after, D("0.065"))
+    app.dependency_overrides[get_answer_clock] = lambda: lambda: after
     async with _client(app) as c:
         reply = await c.post(f"/paper/strategies/{stored.id}/orders", json=_exit(cid, "99.00"))
-    assert reply.status_code == HTTPStatus.CREATED, reply.text
-    assert [D(p) for p in await _exit_rows(db, stored.id)] == [D("55.00")]
+    assert reply.status_code == HTTPStatus.CONFLICT, reply.text
+    assert await _exit_rows(db, stored.id) == []
 
 
 async def test_an_exit_with_no_market_at_all_is_refused_by_name_and_nothing_is_written(db):
