@@ -45,7 +45,7 @@ def test_t02_value_is_rupees_with_a_real_minus_never_four_decimals():
     """#650: 'Spot crosses a breakeven: -1065.0000 (rule 0.0000)' was rupees of expiry P&L shown as a bare number."""
     t = PLAYBOOKS["triggers"]["T-02"]
     line = str(condition_line("T-02", t["label"], t["unit"], "-1065.0000", "0.0000"))
-    assert line == f"{t['label']}: −₹1,065.00 (rule ₹0.00)", line
+    assert line == f"{t['label']}: \u2212₹1,065.00 (rule ₹0.00)", line
 
 
 def test_t18_value_is_a_whole_count():

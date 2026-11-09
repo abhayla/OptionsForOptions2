@@ -8,9 +8,7 @@ only exit and reduce approaches and the check reply carries the T-19 cost-vs-pre
 from __future__ import annotations
 
 import datetime
-import json
 
-import pytest
 import t19_support
 import test_ic_paper_loop_core as core
 from _scenario_catalogue import load_library
@@ -134,13 +132,7 @@ async def test_two_adjustments_are_placed_acted_on_and_counted(app_engine, monke
     await _run(app_engine, monkeypatch, "C1 two adjusts", to_limit=False)
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "r4-run3.log 2026-11-06 (retry round 4, parked): T-18 one record AND attack 2 PROVEN on the DB - the approaches "
-    "route returns only exit / reduce at used 2 = max 2 (offered.limit_filter; the ids assertion passed). It fails at "
-    "the T-19 line: the check reply at the limit (stage Middle) carries T-01, T-13, T-03, T-16, T-10b, T-18 and NO "
-    "T-19 result at all (not even not_checked), with the stated rates seeded; why T-19 is absent from the Middle "
-    "stage's results is not measured"))
-async def test_limit_raises_one_t18_record_and_offers_only_exit_reduce_with_t19(app_engine, monkeypatch):
+async def test_limit_raises_one_t18_record_and_offers_only_exit_reduce_and_t19_is_checked(app_engine, monkeypatch):
     await _run(app_engine, monkeypatch, "C1 limit", to_limit=True)
 
 
@@ -197,7 +189,13 @@ async def _scenario(sid: int, *, to_limit: bool) -> None:
         assert prepared.status_code == OK, prepared.text
         ids = [a["id"] for a in prepared.json()["approaches"]]
         assert ids and set(ids) <= EXIT_REDUCE, ids  # attack 2: no third roll offered
-        text = json.dumps(check.json(), default=str)
-        assert "T-19" in text and "T-18" in text, text[:3000]  # T-19: the cost-vs-premium-left line is in the reply
+        results = check.json()["results"]
+        t18 = [r for r in results if r["rule_id"] == "T-18"]
+        # T-18: the limit, shown as a flag with a whole-count line (#650: not 2.0000)
+        assert [(r["kind"], str(r["condition"]).endswith(": 2 (rule 2)")) for r in t18] == [("flag", True)], results
+        # T-19 (#661 item 1): the reply lists a rule only when it flags or is NOT checked; a passing rule is in neither
+        # list. With the stated rates seeded the worker and the screen price the cheapest approach, so T-19 is checked:
+        # it must not be listed as not_checked (before the rates it answered adjust_trigger_no_approach_priced).
+        assert not [r for r in results if r["rule_id"] == "T-19" and r["kind"] == "not_checked"], results
         print(f"C1-PROOF strategy={sid} frames={k1},{k2},{k3} second={second} records={await _records(sid)} "
               f"offered={ids} used={used}")

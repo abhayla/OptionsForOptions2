@@ -56,7 +56,9 @@ LAPSE_CONDITION_STOPPED = "condition_stopped"
 LAPSE_STRATEGY_CLOSED = "strategy_closed"
 #: Review round 2, finding 5: an escalation closed the record because a worse one of the same rule opened.
 LAPSE_SUPERSEDED_BY_WORSE = "superseded_by_worse"
-LAPSE_REASONS = (LAPSE_CONDITION_STOPPED, LAPSE_STRATEGY_CLOSED, LAPSE_SUPERSEDED_BY_WORSE)
+#: #652: the strategy dropped out of the worker's list for good (deleted, or nothing traded any more), records open.
+LAPSE_NOT_MONITORED = "not_monitored"
+LAPSE_REASONS = (LAPSE_CONDITION_STOPPED, LAPSE_STRATEGY_CLOSED, LAPSE_SUPERSEDED_BY_WORSE, LAPSE_NOT_MONITORED)
 WORSE_MARKS = (None, "last", "dismissed")  # = migration 0036 WORSE plus none (a test asserts it)
 HELD_REASONS = ("daily_limit", "quiet_time")  # = alert_gate.HELD_DAILY_LIMIT / HELD_QUIET_TIME
 SOURCE_SYSTEM = "system"  # "Adjustment opportunity detected" (a system playbook's flag)
@@ -772,6 +774,16 @@ async def lapse(conn: Any, user_ref: str, suggestion_id: int, reason: str = LAPS
 async def open_suggestions(conn: Any, user_ref: str, strategy_id: int) -> list[Suggestion]:
     rows = (await conn.execute(_OPEN_OF_STRATEGY, {"strategy_id": strategy_id, "user_ref": user_ref})).all()
     return [_suggestion(r) for r in rows]
+
+
+_OPEN_STRATEGY_IDS = text("SELECT DISTINCT g.strategy_id FROM public.adjustment_suggestions g "
+                          "JOIN public.strategies s ON s.id = g.strategy_id "
+                          "WHERE s.user_ref = :user_ref AND g.outcome = 'open' ORDER BY g.strategy_id")
+
+
+async def open_strategy_ids(conn: Any, user_ref: str) -> list[int]:
+    """#652: the ids of the user's strategies with at least one open record (deleted strategies included)."""
+    return [int(r[0]) for r in (await conn.execute(_OPEN_STRATEGY_IDS, {"user_ref": user_ref})).all()]
 
 
 async def lapse_all(conn: Any, user_ref: str, strategy_id: int, reason: str) -> list[Suggestion]:

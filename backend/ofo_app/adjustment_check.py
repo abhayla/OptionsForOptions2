@@ -740,7 +740,7 @@ def condition_line(trigger_id: str, label: str | None, unit: str | None, value: 
     try:
         own = _own_unit_line(trigger_id, label if label is not None else trigger_id, value, threshold)
         return own if own is not None else line(label if label is not None else trigger_id, unit)
-    except (TypeError, ValueError, ArithmeticError):  # the slot refused the label, unit or value: the id, no unit (fail visible)
+    except (TypeError, ValueError, ArithmeticError):  # a slot refused label, unit or value: id, no unit
         pass
     try:
         return line(trigger_id, None)

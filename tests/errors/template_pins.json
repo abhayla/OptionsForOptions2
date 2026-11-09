@@ -3942,5 +3942,9 @@
   "explanation:adjust_condition_line_count": {
     "sha256": "1184fe1a615bffeefe1063275c220e3fcda784c51ca3ff13ad10e645368cc042",
     "reviewed": "pending owner read"
+  },
+  "explanation:suggestion_lapsed_not_monitored": {
+    "sha256": "896306f8fc4dd4558c5c779697ab0df8e966ec6ba97a77e8ca419f1bf1be01ab",
+    "reviewed": "pending owner read"
   }
 }
