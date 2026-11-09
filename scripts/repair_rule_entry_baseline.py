@@ -30,7 +30,7 @@ from ofo.adjustment import playbook_eval as pe
 from ofo.adjustment.preferences import from_values as prefs_from_values
 from ofo.engine.legs import Action
 from ofo_app import adjustment_check as check
-from ofo_app import catalogue_store, playbook_store, user_preferences_store
+from ofo_app import catalogue_store, entry_facts_store, playbook_store, user_preferences_store
 from sqlalchemy import text
 
 _CLASS = text(
@@ -50,11 +50,14 @@ NO_BODY = "no_playbook"
 KEYS = (HELD, FALSE_AT_ENTRY, TRUE_AT_ENTRY, NOT_COMPUTABLE, NO_FACTS, NO_POSITION, NO_BODY)
 
 
-def _entry_state(position: Any, spot: Any, at: datetime.datetime) -> pe.StrategyState:
+def _base_state(position: Any) -> pe.StrategyState:
     shorts = tuple(pe.ShortLeg(x.strike, None, None, x.type) for x in position.legs if x.side == Action.SELL.value)
-    base = pe.StrategyState(stops=None, expiry_kind=position.expiry_kind or "weekly",  # type: ignore[arg-type]
+    return pe.StrategyState(stops=None, expiry_kind=position.expiry_kind or "weekly",  # type: ignore[arg-type]
                             days_left=0, hhmm="00:00", shorts=shorts)
-    return check._entry_state(at, spot, None, base, position)  # the worker's own entry-state builder
+
+
+def _entry_state(position: Any, spot: Any, at: datetime.datetime) -> pe.StrategyState:
+    return check._entry_state(at, spot, None, _base_state(position), position)  # the worker's own builder
 
 
 async def repair(conn: Any, read_position: Callable[[int], Awaitable[Any]], *, apply: bool) -> dict[str, int]:
@@ -82,7 +85,11 @@ async def repair(conn: Any, read_position: Callable[[int], Awaitable[Any]], *, a
             counts[NO_BODY] += len(rows)
             continue
         gap_until = prefs_from_values(await user_preferences_store.values_for(conn, first.user_ref)).gap_until
-        entry = _entry_state(position, first.entry_spot, first.created_at)
+        basket = await entry_facts_store.read_basket(conn, sid, 0)  # ADR-283: the stored fill, as the checks read it
+        if basket is None:
+            entry = _entry_state(position, first.entry_spot, first.created_at)
+        else:
+            entry = check.entry_baseline(None, _base_state(position), position, None, 0, basket)
         ev = pe.evaluate(resolved.body, entry, None, entry, gap_until=gap_until)
         clear = set(ev.clear)
         fired = {r.rule_id for r in ev.results if isinstance(r, (pe.Flag, pe.AlreadyTrue))}

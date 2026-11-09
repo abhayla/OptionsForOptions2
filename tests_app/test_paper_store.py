@@ -17,6 +17,7 @@ from test_strategy_store import _ids, _user, _with_draft
 AT = datetime.datetime(2026, 10, 29, 5, 0, tzinfo=datetime.UTC)
 D = Decimal
 THREE_ORDERS = 3
+FOUR_ORDERS = 4
 
 
 @pytest.fixture
@@ -147,6 +148,8 @@ async def test_an_add_on_the_held_side_and_a_fresh_short_are_stored(db):
 async def test_an_open_on_a_contract_flat_after_an_exit_is_stored(db):
     user = _user()
     sid, c = await _strategy(db, user)
-    await paper_store.place(db, user, sid, [_new(c[0], "BUY", 65, "10.00"), _new(c[0], "SELL", 65, "11.00", "exit")])
+    # a second leg stays open, so the strategy is not closed (every contract flat closes it for good: GC-ICGUIDE)
+    await paper_store.place(db, user, sid, [_new(c[0], "BUY", 65, "10.00"), _new(c[1], "BUY", 65, "5.00"),
+                                            _new(c[0], "SELL", 65, "11.00", "exit")])
     await paper_store.place(db, user, sid, [_new(c[0], "SELL", 65, "12.00")])
-    assert len(await paper_store.load(db, sid)) == THREE_ORDERS
+    assert len(await paper_store.load(db, sid)) == FOUR_ORDERS
