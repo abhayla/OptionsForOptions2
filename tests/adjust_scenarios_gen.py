@@ -757,6 +757,10 @@ def hand_approaches(u: str, lot: int, kind: str, today: datetime.date, spot: Dec
                 if min(legs[i]["lots"] for i in cut) < 2:
                     short = legs[pos[(tested, "short")]]
                     raise HandRefused(f"{name(short)} or its wing holds only one lot, so it cannot be halved into whole lots.")
+                if min(legs[i]["lots"] for i in cut) // APPROACH_CONFIG["reduce_divisor"] < 1:  # C11: never 0 lots
+                    short = legs[pos[(tested, "short")]]
+                    raise HandRefused(f"Dividing {name(short)} or its wing by {APPROACH_CONFIG['reduce_divisor']} leaves "
+                                      "less than one whole lot to close.")
                 after = []
                 for i, x in enumerate(legs):
                     if i in cut:

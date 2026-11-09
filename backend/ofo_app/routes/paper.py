@@ -710,25 +710,26 @@ def _check_price(price: Decimal) -> None:
 async def _server_exit_prices(ctx: MarketContext | None, feed: LiveFeed | None, underlying: str,
                               orders: Sequence[Any], state: Mapping[int, tracked_contracts.TrackedContract]
                               ) -> dict[int, Decimal]:
-    """C10 (REQ-109 AC-4/AC-5, ADR-008): order index -> the live price the SERVER reads now, for every `exit` order (the
-    same read and refusals as ``POST /strategies/{id}/tracking/exit``). Answer states: no exit -> {} and no read; not
-    connected -> tracking_not_connected; a price that is not live (stale, missing, failed read) ->
-    tracking_exit_prices_not_live; nothing is written on any refusal. The browser's price is never used."""
-    from ofo_app.routes.tracking import _connected, _snapshot  # noqa: PLC0415 - the exit route's own market read
+    """C10 (REQ-109 AC-4, ADR-008): order index -> the price the SERVER reads now for every `exit` order: the
+    price the paper screen shows for that leg (``paper.display_price``, ADR-212: live in market hours, the last
+    close after hours). Answer states: no exit -> {} and no read; no market context -> tracking_not_connected;
+    no price at all for a leg (missing, failed read) -> tracking_exit_prices_not_live; nothing is written on any
+    refusal. The browser's price is never used."""
+    from ofo_app.routes.tracking import _snapshot  # noqa: PLC0415 - the exit route's own market read
     exits = [(i, state[o.contract_id].identity) for i, o in enumerate(orders) if o.kind == "exit"]
     if not exits:
         return {}
-    if ctx is None or not _connected(ctx) or any(iid is None for _, iid in exits):
+    if ctx is None or any(iid is None for _, iid in exits):
         raise StrategyRefused("tracking_not_connected", Failure.CONFLICT)
     try:
         snapshot = await _snapshot(ctx, feed, underlying, sorted({iid for _, iid in exits}))
-        prices = {i: paper.leg_price(snapshot, iid) for i, iid in exits}
-    except Exception:
+        prices = {i: paper.display_price(snapshot, iid) for i, iid in exits}  # ADR-212: what the paper screen shows
+    except Exception:  # noqa: BLE001 - any failed read is "no price": refused by name, nothing written
         _LOG.exception("paper exit price read failed")
         raise StrategyRefused("tracking_exit_prices_not_live", Failure.CONFLICT) from None
     if not all(paper.is_live(p) and p.price is not None for p in prices.values()):
         raise StrategyRefused("tracking_exit_prices_not_live", Failure.CONFLICT)
-    return {i: p.price for i, p in prices.items()}  # type: ignore[misc] - live: price set
+    return {i: p.price for i, p in prices.items()}  # type: ignore[misc] - priced: price set
 
 
 async def entry_facts(ctx: MarketContext | None, underlying: str, orders: Sequence[Any],

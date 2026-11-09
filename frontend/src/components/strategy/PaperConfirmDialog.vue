@@ -16,7 +16,12 @@
           <span class="text-ink-muted">Lots</span>
           <input v-model="row.lots" :disabled="state === 'placed'" type="text" inputmode="numeric" class="h-9 w-14 rounded border border-line px-2 text-right" :aria-label="`Lots for ${row.text}`" data-testid="paper-lots" />
         </label>
-        <label class="flex items-center gap-1">
+        <!-- GC-ICGUIDE g21 (audit C10): the server prices an exit (live price, or the last close after hours), so it is text here -->
+        <span v-if="row.kind === 'exit'" class="flex items-center gap-1" data-testid="paper-exit-price">
+          <span class="text-ink-muted">Price</span>
+          <span class="text-xs text-ink-muted">{{ row.price ? `about ${row.price}, ` : '' }}{{ PAPER_EXIT_PRICED_BY_SERVER_TEXT }}</span>
+        </span>
+        <label v-else class="flex items-center gap-1">
           <span class="text-ink-muted">Price</span>
           <input v-model="row.price" :disabled="state === 'placed'" type="text" inputmode="decimal" class="h-9 w-24 rounded border border-line px-2 text-right" :aria-label="`Price for ${row.text}`" data-testid="paper-price" />
           <!-- GC-TP step 3b1 (REQ-109 AC-4): an exit with no live price has an empty box, marked, and must be typed -->
@@ -46,7 +51,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import Chip from '@/components/common/Chip.vue'
 import Modal from '@/components/common/Modal.vue'
 import {
-  PAPER_NOT_REAL_TEXT, PAPER_OPEN_ORDERBOOK_LABEL, PAPER_PLACED_NOT_REFRESHED_TEXT, PAPER_PRICE_REASON, PAPER_LOTS_REASON, PAPER_UNKNOWN_HOLD_MS,
+  PAPER_EXIT_PRICED_BY_SERVER_TEXT, PAPER_NOT_REAL_TEXT, PAPER_OPEN_ORDERBOOK_LABEL, PAPER_PLACED_NOT_REFRESHED_TEXT, PAPER_PRICE_REASON, PAPER_LOTS_REASON, PAPER_UNKNOWN_HOLD_MS,
   PAPER_UNKNOWN_TEXT, paperLotsOk, paperPriceOk,
 } from '@/lib/tracking'
 import { paperDialogTitle, paperKindLabel } from '@/lib/paperDrafts'
@@ -69,12 +74,12 @@ watch(() => [props.open, props.orders], () => {
 
 // GC-TP step 3b2: the title says what the list holds (adds, exits or both)
 const title = computed(() => paperDialogTitle(props.orders))
-const reasons = computed(() => rows.value.map((r) => (!paperLotsOk(r.lots) ? PAPER_LOTS_REASON : !paperPriceOk(r.price) ? PAPER_PRICE_REASON : '')))
+const reasons = computed(() => rows.value.map((r) => (!paperLotsOk(r.lots) ? PAPER_LOTS_REASON : (r.kind !== 'exit' && !paperPriceOk(r.price)) ? PAPER_PRICE_REASON : '')))
 const ready = computed(() => rows.value.length > 0 && reasons.value.every((r) => r === ''))
 
 // the quantity is a count of units (whole lots x the lot size the order carries), not money
 const unitsOf = (r) => r.lots * r.lot_size
-const orderOf = (r) => ({ contract_id: r.contract_id, side: r.side, quantity: unitsOf(r), price: String(r.price).trim(), kind: r.kind }) // price: as typed
+const orderOf = (r) => ({ contract_id: r.contract_id, side: r.side, quantity: unitsOf(r), price: r.kind === 'exit' ? '0' : String(r.price).trim(), kind: r.kind }) // price: as typed; an exit's is the server's (ignored)
 
 // the rows as they were when the server refused them: Confirm unlocks only once the user has changed something
 const snapshot = () => JSON.stringify(rows.value.map((r) => [r.lots, r.price]))

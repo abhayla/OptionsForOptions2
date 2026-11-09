@@ -7,8 +7,8 @@ entry batch never). A batch that closes the whole strategy is always allowed.
 
 Answer states of the plan read: its own plan -> its ``guards.max_adjustments``; no plan -> the active playbook of the
 position's type (the plan sheet's pre-fill); a readable plan or playbook that sets no maximum -> no limit; no plan and
-no type, a read error, or a maximum that is not a whole number >= 0 -> refused by name (``paper_adjustment_limit_unread``),
-never allowed.
+no type, a read error, or a maximum that is not a whole number >= 0 -> refused by name
+(``paper_adjustment_limit_unread``), never allowed.
 """
 from __future__ import annotations
 
@@ -28,7 +28,8 @@ log = logging.getLogger(__name__)
 _OPTION_TYPES = (Instrument.CE.value, Instrument.PE.value)
 
 
-async def _plan_body(db: Any, user_ref: str, strategy_id: int, reader: Any, rates: Any, listed: Any) -> Any:
+async def _plan_body(db: Any, user_ref: str, strategy_id: int, reader: Any,  # noqa: PLR0913
+                     rates: Any, listed: Any) -> Any:
     from ofo_app import adjustment_check as check  # noqa: PLC0415 - it imports the route layer
     plan = await playbook_store.plan_for(db, user_ref, strategy_id)
     if plan is not None:
@@ -71,13 +72,19 @@ async def check_adjustment_limit(db: Any, user_ref: str, strategy_id: int,  # no
     except Exception as exc:  # noqa: BLE001 - any failure of the read is "unreadable", never a silent allow
         log.warning("paper adjustment limit: strategy %s plan unreadable (%s)", strategy_id, type(exc).__name__)
         raise _unread() from None
-    if guards is None or not isinstance(guards, dict):
+    limit = _limit_of(guards)
+    if limit is not None and after > limit:
+        raise StrategyRefused("paper_adjustment_limit",
+                              message=render("paper_adjustment_limit", limit=limit, number=after))
+
+
+def _limit_of(guards: Any) -> int | None:
+    """The plan's most adjustments; None = the plan sets none; anything unreadable raises the named refusal."""
+    if not isinstance(guards, dict):
         raise _unread()
     limit = guards.get("max_adjustments")
     if limit is None:
-        return  # the plan sets no maximum
+        return None
     if type(limit) is not int or limit < 0:
         raise _unread()
-    if after > limit:
-        raise StrategyRefused("paper_adjustment_limit",
-                              message=render("paper_adjustment_limit", limit=limit, number=after))
+    return limit
