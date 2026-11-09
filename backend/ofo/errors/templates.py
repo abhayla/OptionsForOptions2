@@ -1373,6 +1373,10 @@ _TRIGGER_TEMPLATES: tuple[MessageTemplate, ...] = (
     _gate("adjust_trigger_already_true", _UI, 152, "Already true when tracking started.",
           "It is shown, not flagged, until a check finds it false.", "Nothing.",
           "Watch it: it flags if it clears and then comes back.", {}),
+    # ADR-258 / ADR-283: true at the fill of adjustment basket N (pending owner read)
+    _gate("adjust_trigger_already_true_after", _UI, 196, "Already true after adjustment {n}.",
+          "It is shown, not flagged, until a check finds it false.", "Nothing.",
+          "Watch it: it flags if it clears and then comes back.", {"n": Count}),
 )
 
 # GC-ADJ2 step 1A (REQ-158 AC-3, AC-6): the playbook store's refusals. Nothing is written on any of them.
