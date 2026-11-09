@@ -52,3 +52,21 @@ recommendation." Items below were decided that way, or are parked here for a lat
    looking open. Never a guessed price.
 3. Weekly test-data type (ADR-282 (2)) uses expiry 17 Nov, entered 11 Nov (6 days): in Zerodha's real list 23 Nov is
    the November monthly, so no weekly 23 Nov contract exists.
+
+## Parked at 23:1x IST (night guard): restart the DB run that was stopped for low memory?
+
+The session runner stopped the last DB test run (`test_paper_adjustment_limit`, `test_paper_save_paths_fx2`,
+`test_paper_routes` on c6b3c044) because the PC was critically low on memory (2.6 GB of 15.7 GB free afterwards;
+biggest: an older assistant session from 7 Nov, PID 9320, 913 MB; Chrome about 1.4 GB). Its note says to restart only on
+the owner's OK. Recommendation: in the morning, close the 7 Nov session if it is not needed, then run the 3 files one at
+a time under Desktop Commander, then the gate (task 33) and one PR (task 34), before the live tasks at 09:15.
+
+## VPS / tunnel check (owner asked 22:2x)
+
+Measured read-only: 1 SSH process and 1 TCP connection from this PC (`D:\tools\vps-db-tunnel.cmd`, reconnected at
+22:17 after one drop); 7 client connections on the VPS Postgres (limit 100). The slowness is round-trip time (39-156 ms,
+median 97 ms; connect 581 ms) times the 50 migrations each throwaway test database runs. 8 throwaway databases older
+than 24 h remain (`ofo_test_tmp_202611070...` / `202611080...`); dropping them was refused by the permission check (a
+permanent delete on the production database server): the owner can run
+`python D:/Abhay/Ventures/OptionsForOptions2/scripts/orchestrator/db_run_fresh.py --sweep`. Proposed speed fix (separate
+PR): build each test database as a copy of a pre-migrated template instead of running 50 migrations over the tunnel.
