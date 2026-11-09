@@ -27,6 +27,7 @@ from ofo_app import (
     paper_monitor,
     paper_settlement,
     pinned_clock,
+    real_settlement,
     replay_mode,
     scenario_mode,
 )
@@ -95,7 +96,9 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     refresh = catalogue_refresh.start() if catalogue_refresh.refresh_requested() else None  # W-133: off unless asked
     monitor = paper_monitor.start() if market is not None else None  # GC-TP 7a: paper stops, live only
     settlement = paper_settlement.start() if market is not None else None  # GC-TP 5b: expiry settlement, live only
+    real_task = real_settlement.start_if(market)  # GC-ICGUIDE g22 (C6): live only
     yield
+    await real_settlement.stop(real_task)
     await paper_settlement.stop(settlement)  # a strategy's settle in flight is cancelled and rolls back
     await paper_monitor.stop(monitor)  # a fire in flight is cancelled and rolls back
     await catalogue_refresh.stop(refresh)  # a run in flight is cancelled and rolls back
