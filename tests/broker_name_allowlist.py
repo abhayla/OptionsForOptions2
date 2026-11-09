@@ -107,7 +107,7 @@ LINES: dict[str, tuple[str, ...]] = {
         'from ofo_app.routes.execute import KiteSession, get_execute_clock, get_kite_session',
         'zerodha_units: int',
         'session: KiteSession',
-        'async def return_from_kite(',
+        'async def return_from_kite(  # noqa: PLR0913 - FastAPI dependencies',
         'session: Annotated[Optional[KiteSession], Depends(get_kite_session)],  # noqa: UP045',
         'def _read_zerodha(req: _Request, catalogue: Any) -> _Read:',
         'except (KiteReadError, KiteReplyError, ValueError) as exc:',

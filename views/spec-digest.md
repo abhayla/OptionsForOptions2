@@ -4,15 +4,9 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (261)
+## Decisions (267)
 
-- Older decisions: 221 rows, ADR-1..ADR-234 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
-- ADR-235 2026-11-02: (1) The background playbook check speed (REQ-166 AC-1 "background checks") is three admin settings,… [ADR-237 (3) (2026-11-02) amends (4): a record ope…]
-- ADR-236 2026-11-02: (1) After the user dismisses an adjustment suggestion, the same rule on the same strategy stays qui… [Amends ADR-217 (a dismiss no longer silences a wo…]
-- ADR-237 2026-11-02: Technical reconciliation of REQ-170 with the existing spec (GC-ALERT1 step 2), decided by the orche… [Amends REQ-170 AC-2 (band base), REQ-112 AC-2 (wh…]
-- ADR-238 2026-11-03: Technical definitions for GC-IC1 step 2 (owner scope 2026-11-03 "Full playbook": every approach the… [Adds A-24, A-25, A-26, A-27, A-35 to the approach…]
-- ADR-239 2026-11-03: Technical definitions for GC-IC1 step 3 (owner scope 2026-11-03 "Full playbook"), decided by the or… [Adds A-02, A-04, A-06 to the approach builder of…]
-- ADR-240 2026-11-03: REQ-159 AC-5 keeps S-01 to S-12 in the playbook. [Clarifies REQ-159 AC-5 (situations: rule or guida…]
+- Older decisions: 227 rows, ADR-1..ADR-240 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
 - ADR-241 2026-11-03: Owner 2026-11-03 (question tool, "Mid when spread is live"): every planned trade of an adjustment a… [Amends ADR-068 (1) for adjustment approach trades…]
 - ADR-242 2026-11-03: Technical decision for GC-IC1 step 4c, made by the orchestrator under the owner's standing rule tha… [REQ-155 AC-1 (A-37 offered as an alert, not a tra…]
 - ADR-243 2026-11-04: Owner 2026-11-04 (question tool, "Target delta"): when an adjustment approach rolls a short strike… [Supersedes REQ-046 Q255 (placement basis); matche…]
@@ -47,6 +41,12 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-272 2026-11-07: Decided under the owner's standing delegation for strategy and behaviour calls (owner 2026-11-06 ~1… [applies ADR-015 to REQ-156 (compare) and REQ-045…]
 - ADR-273 2026-11-07: Decided under the owner's standing delegation for strategy and behaviour calls (owner 2026-11-06 ~1… [SPEC CHANGE REQ-163 AC-1 (adds the approach as a…]
 - ADR-274 2026-11-07: Owner 2026-11-07 ~00:5x IST (question tool): "of course send one combined order". [adds a basket rule for adjustments; REQ-030 AC-11…]
+- ADR-275 2026-11-08: Owner 2026-11-08 ~16:2x IST, verbatim: "the fix or the code changes that we do should work for both… [Reframes the 2026-11-07 IC audit gaps C1-C14 as f…]
+- ADR-276 2026-11-08: Owner 2026-11-08 ~18:00 IST (GC-ICTRACK plan approval, answer A1). [Extends ADR-275 to monitoring of real strategies;…]
+- ADR-277 2026-11-08: Owner 2026-11-08 ~18:00 IST (GC-ICTRACK, answer A2). [Un-greys T-11c and T-20b in the iron condor playb…]
+- ADR-278 2026-11-08: Owner 2026-11-08 ~18:00 IST (GC-ICTRACK, answer A3). [Supersedes ADR-253 in full (ADR-270 superseded it…]
+- ADR-279 2026-11-08: Owner 2026-11-08 ~18:00 IST (GC-ICTRACK, answer A4). [Makes the price source (ADR-275 (3)) a property o…]
+- ADR-280 2026-11-08: Owner delegation 2026-11-05: decided under "go with your recommendation" (strategy behaviour), GC-I… [Fixes the measures behind 12 playbook triggers th…]
 
 ## Requirements (161)
 

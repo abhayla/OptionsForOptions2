@@ -36,6 +36,7 @@ derived by hand-written code; the test cross-checks them with the engine.
 | ADJ-53 | IC weekly, NIFTY 2 lots | Friday 15:00 before the weekend: the carry check fires (overnight margin, 2% gap) | Middle (weekly, 4 d) | none |
 | ADJ-54 | IC weekly, NIFTY 2 lots | Wednesday 15:00, Thursday a normal session: no carry check | Early (weekly, 6 d) | none |
 | ADJ-55 | IC weekly, NIFTY 2 lots | Monday 15:00 before the Diwali-Balipratipada holiday (Tue 10 Nov): carry check fires | Last day (weekly, 0 d) | T-07, T-09, T-10b |
+| ADJ-60 | IC weekly, NIFTY 2 lots | Volatility jump on a trending day: India VIX up 12% today, ADX above 25 | Middle (weekly, 3 d) | T-01, T-03, T-09 |
 | ADJ-56 | IC weekly, NIFTY 2 lots | Trending day: net delta per lot beyond 0.15, the playbook's rolls offered | Middle (weekly, 3 d) | T-01, T-03, T-09 |
 | ADJ-57 | IC weekly, NIFTY 2 lots | Calm day: net delta per lot under 0.15, the trending-day rule reads false | Early (weekly, 6 d) | none |
 | ADJ-58 | IC weekly, NIFTY 2 lots | Big win on the entry day: profit at least 40% of max profit, take profit offered | Early (weekly, 6 d) | T-11 |

@@ -5,6 +5,7 @@ door's output into ``ofo_app.kite_replies`` and expects the owner's real order: 
 a 65-unit NIFTY26O1923650CE position.
 """
 import dataclasses
+import datetime
 import json
 import logging
 import re
@@ -453,7 +454,8 @@ def test_a_bad_reply_keeps_the_earlier_sync(clean_sync) -> None:
 
 # REQ-155 AC-5 / F-76: the REST index quote for the spot resolver; the URL it builds passes the door's own check
 @pytest.mark.parametrize(("name", "raw"), [("NSE:NIFTY 50", "/quote?i=NSE:NIFTY%2050"),
-                                           ("BSE:SENSEX", "/quote?i=BSE:SENSEX")])
+                                           ("BSE:SENSEX", "/quote?i=BSE:SENSEX"),
+                                           ("NSE:INDIA VIX", "/quote?i=NSE:INDIA%20VIX")])
 def test_index_quote_url_is_written_with_percent_20_and_passes_the_door(name, raw) -> None:
     assert kite_reads.index_quote_path(name) == raw
     check_call("GET", BASE + raw)  # the door itself; raises KiteCallRefused if refused
@@ -481,3 +483,37 @@ def test_index_quote_of_any_other_name_is_refused_before_the_transport(name) -> 
 def test_urlencode_form_of_an_index_is_refused_by_the_door() -> None:
     with pytest.raises(KiteCallRefused):
         check_call("GET", BASE + "/quote?" + urlencode({"i": "NSE:NIFTY 50"}))
+
+
+# GC-ICTRACK task 22 (ADR-277 (1)): India VIX through the same index-quote read; 0 / null / absent = missing
+VIX_RAW = "/quote?i=NSE:INDIA%20VIX"
+
+
+def _vix_body(last, close) -> str:
+    return json.dumps({"status": "success", "data": {"NSE:INDIA VIX": {
+        "instrument_token": 264969, "last_price": last, "ohlc": {"open": 12.1, "high": 12.9, "low": 11.8,
+                                                                "close": close}}}})
+
+
+def test_india_vix_and_previous_close_are_read_exactly_once_per_period() -> None:
+    from ofo_app import kite_period_reads as kpr  # noqa: PLC0415
+    replay = Replay({VIX_RAW: _vix_body(13.2475, 12.0425)})
+    reads = client(replay)
+    stamp = iter([datetime.datetime(2026, 11, 9, 4, 0, tzinfo=datetime.UTC),
+                  datetime.datetime(2026, 11, 9, 4, 0, 10, tzinfo=datetime.UTC)])
+    first = kpr.india_vix(reads, stamp=lambda: next(stamp))
+    second = kpr.india_vix(reads, stamp=lambda: next(stamp))
+    assert first.value == second.value == (Decimal("13.2475"), Decimal("12.0425"))
+    assert len(replay.calls) == 1  # inside the 30 s period the limiter's memo answers
+
+
+@pytest.mark.parametrize(("quote", "want"), [
+    ({"last_price": Decimal("13.5"), "ohlc": {"close": Decimal("12")}}, (Decimal("13.5"), Decimal("12"))),
+    ({"last_price": 0, "ohlc": {"close": Decimal("12")}}, (None, Decimal("12"))),   # Kite's 0 = no value
+    ({"last_price": None, "ohlc": None}, (None, None)),
+    ({"last_price": True, "ohlc": {"close": "12"}}, (None, None)),                   # never a bool or a string
+    (None, (None, None)),                                                            # the name not in the reply
+])
+def test_vix_values_in_every_answer_state(quote, want) -> None:
+    from ofo_app.kite_period_reads import vix_values  # noqa: PLC0415
+    assert vix_values(quote) == want

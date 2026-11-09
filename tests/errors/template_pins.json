@@ -3838,5 +3838,101 @@
   "explanation:adjust_checks_paused_prices_unknown": {
     "sha256": "7dca55ab649808f3d7ed854e9dfca55935341f370e2d48d5c357dba338737f9e",
     "reviewed": "owner read 2026-11-07 (fix batch 1 texts approved as written, question tool)"
+  },
+  "adjust_trigger_missing_open_legs": {
+    "sha256": "284fe557b8af83ff8bf127035959061d20b134874fda2b9c625dc89514b40774",
+    "reviewed": "owner read 2026-11-08 (GC-ICTRACK 21b, approved all 24 in the question tool)"
+  },
+  "adjust_trigger_missing_lot_size": {
+    "sha256": "ab980505fbcfac8687f344f10e584da110843c71475587787aad77e650777b26",
+    "reviewed": "owner read 2026-11-08 (GC-ICTRACK 21b, approved all 24 in the question tool)"
+  },
+  "adjust_trigger_missing_leg_price": {
+    "sha256": "477142fdfe9d374eb933afd822f80a1302104a2f6cc4a6ea7a4feef9f442053b",
+    "reviewed": "owner read 2026-11-08 (GC-ICTRACK 21b, approved all 24 in the question tool)"
+  },
+  "adjust_trigger_side_value_not_positive": {
+    "sha256": "3e2e8f5c4046ca58135f8aa5d382323cf9461ec26f4a47102a32430ec985b083",
+    "reviewed": "owner read 2026-11-08 (GC-ICTRACK 21b, approved all 24 in the question tool)"
+  },
+  "adjust_trigger_missing_leg_entry": {
+    "sha256": "51b8cc8c667b1a6d0906d6e4c793195711c4e7ba19f996c17cb2c92e9540a5b7",
+    "reviewed": "owner read 2026-11-08 (GC-ICTRACK 21b, approved all 24 in the question tool)"
+  },
+  "adjust_trigger_no_credit": {
+    "sha256": "b4270e0410bbbc7798b72ad21e2e5a362020d6827a99d8fd544f35932df7e332",
+    "reviewed": "owner read 2026-11-08 (GC-ICTRACK 21b, approved all 24 in the question tool)"
+  },
+  "adjust_trigger_entry_not_positive": {
+    "sha256": "66f2bc85227580d3c8b3c54ff606eccc92cce971e0971e2bf9bbecb2917a80bc",
+    "reviewed": "owner read 2026-11-08 (GC-ICTRACK 21b, approved all 24 in the question tool)"
+  },
+  "adjust_trigger_missing_vix": {
+    "sha256": "742ab8e3562e4400e9e5104ebf5e65a7ac8e19407a8aa9bd12b9dcf407a081f0",
+    "reviewed": "owner read 2026-11-08 (GC-ICTRACK 21b, approved all 24 in the question tool)"
+  },
+  "adjust_trigger_missing_vix_prev_close": {
+    "sha256": "a844b288b9380c46431c8737e0c83147f2571463c95c0a0f218a4b46469ccc32",
+    "reviewed": "owner read 2026-11-08 (GC-ICTRACK 21b, approved all 24 in the question tool)"
+  },
+  "adjust_trigger_vix_prev_close_not_positive": {
+    "sha256": "accaf3dd3d0971db3aa0cb340b890c1ff4be45404e2b103c4d8b5308465bf979",
+    "reviewed": "owner read 2026-11-08 (GC-ICTRACK 21b, approved all 24 in the question tool)"
+  },
+  "adjust_trigger_missing_underlying": {
+    "sha256": "acc3c525e705d083849d0af5432fd97aab304f6b5e9ed16fc873cd7a9bad50f4",
+    "reviewed": "owner read 2026-11-08 (GC-ICTRACK 21b, approved all 24 in the question tool)"
+  },
+  "adjust_trigger_sensex_no_vix": {
+    "sha256": "e52a8debc1adbf4d56d2eb8436f7ec761c0142f94920e2dde04ed0b9bf43dcbe",
+    "reviewed": "owner read 2026-11-08 (GC-ICTRACK 21b, approved all 24 in the question tool)"
+  },
+  "adjust_trigger_missing_vix_percentile": {
+    "sha256": "97311a3cf04147b80ea687cd9d37a48b3e9c649a28b7e7ebf6a096b977d39993",
+    "reviewed": "owner read 2026-11-08 (GC-ICTRACK 21b, approved all 24 in the question tool)"
+  },
+  "adjust_trigger_vix_percentile_unusable": {
+    "sha256": "086436d4992f3f29035115ea79ee0d26108982d179015566ae450b8a8fef583c",
+    "reviewed": "owner read 2026-11-08 (GC-ICTRACK 21b, approved all 24 in the question tool)"
+  },
+  "adjust_trigger_missing_entry_spot": {
+    "sha256": "7d1b40b28dc8f56d20a7f7cab7b18ac3be9cad769994312b163acc62c44fb0c3",
+    "reviewed": "owner read 2026-11-08 (GC-ICTRACK 21b, approved all 24 in the question tool)"
+  },
+  "adjust_trigger_missing_expiry": {
+    "sha256": "f6436109380eae9a964e8f509ebe66183629feda9d798e3f763ebafba4bb274f",
+    "reviewed": "owner read 2026-11-08 (GC-ICTRACK 21b, approved all 24 in the question tool)"
+  },
+  "adjust_trigger_expected_move_unusable": {
+    "sha256": "750f6cac638af5a03604ba11441171fd9ec67326a633ea7426162dd79762f967",
+    "reviewed": "owner read 2026-11-08 (GC-ICTRACK 21b, approved all 24 in the question tool)"
+  },
+  "adjust_trigger_missing_leg_greeks": {
+    "sha256": "6b56e0863b4f2039c19fe6605a5f222709aae71feb4c004279f1e5e26b73dc99",
+    "reviewed": "owner read 2026-11-08 (GC-ICTRACK 21b, approved all 24 in the question tool)"
+  },
+  "adjust_trigger_no_premium_left": {
+    "sha256": "bbea4f247b892b859d1fbd150d64e17640cb4e0416d3ddc356ed190d202e48fc",
+    "reviewed": "owner read 2026-11-08 (GC-ICTRACK 21b, approved all 24 in the question tool)"
+  },
+  "adjust_trigger_missing_available_margin": {
+    "sha256": "fd0659bd1df6a81516494d58b915474213722066d93a62d7a538e021c525867a",
+    "reviewed": "owner read 2026-11-08 (GC-ICTRACK 21b, approved all 24 in the question tool)"
+  },
+  "adjust_trigger_margin_room_not_positive": {
+    "sha256": "56b8bc2d860990eeefb2d9f8c08884ef9a6f29e2bbefd18ff29980c497bf5ddc",
+    "reviewed": "owner read 2026-11-08 (GC-ICTRACK 21b, approved all 24 in the question tool)"
+  },
+  "adjust_trigger_no_level_watch": {
+    "sha256": "a904727df3ee4d05da6bc86d43d1bc5df81a02780252324a972dfb9adb847484",
+    "reviewed": "owner read 2026-11-08 (GC-ICTRACK 21b, approved all 24 in the question tool)"
+  },
+  "adjust_trigger_missing_adx": {
+    "sha256": "1fe61fb23e927c64fc95c50d05efc9ec26c280216fc050cf0e6e57cd40987394",
+    "reviewed": "owner read 2026-11-08 (GC-ICTRACK 21b, approved all 24 in the question tool)"
+  },
+  "adjust_trigger_adx_unusable": {
+    "sha256": "fd660b673f276e307b00bbe0a14cb8280be7ad5bc8790549a7ee8d9a523683d1",
+    "reviewed": "owner read 2026-11-08 (GC-ICTRACK 21b, approved all 24 in the question tool)"
   }
 }

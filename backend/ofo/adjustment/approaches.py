@@ -172,6 +172,8 @@ class EntryFacts:
     entry_spot: Decimal
     call_distance: Decimal | None
     put_distance: Decimal | None
+    #: the ATM IV at entry (ADR-270 (1), migration 0046); None = not known at entry
+    entry_atm_iv: Decimal | None = None
     #: when the facts were stored (the first fill, DB clock); the F-71 entry baseline's clock (issue 65). Not compared
     at: datetime.datetime | None = field(default=None, compare=False)
 

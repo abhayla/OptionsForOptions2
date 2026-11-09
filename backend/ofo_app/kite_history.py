@@ -11,7 +11,9 @@ from __future__ import annotations
 import datetime
 import json
 import logging
+from dataclasses import dataclass
 from decimal import Decimal
+from itertools import pairwise
 from typing import Any, Callable, Iterable  # noqa: UP035
 from urllib.error import HTTPError, URLError
 
@@ -77,17 +79,45 @@ class KiteHistory:
         One candle for that date -> its close as an exact Decimal; none -> None (not traded, or not yet published);
         non-200 or a transport error -> ``CandleFetchError``; a malformed body, a non-positive close, more than one
         candle or a candle for another date -> ``CandleError``."""
+        rows = self.day_candles(token, day, day)
+        if len(rows) > 1:
+            raise CandleError("more than one day candle for one day")
+        if rows and rows[0].day != day:
+            raise CandleError("the candle is for another date")
+        return rows[0].close if rows else None
+
+    def day_candles(self, token: str | int, start: datetime.date, end: datetime.date) -> list[DayCandle]:
+        """GC-ICTRACK task 23 (ADR-277): Kite's DAY candles of one instrument from ``start`` to ``end`` (inclusive),
+        oldest first, each with its exact high / low / close; none -> [] (no session traded). Same request, transport
+        and answer states as ``day_close``: non-200 or a transport error -> ``CandleFetchError``; a malformed row, a
+        non-positive price, a date out of the range or out of order, or a date twice -> ``CandleError``."""
         if not str(token).isdigit():
             raise CandleFetchError("unknown instrument")
-        url = f"{self._base}/instruments/historical/{token}/day?from={day:%Y-%m-%d}&to={day:%Y-%m-%d}"
+        if end < start:
+            raise CandleFetchError("an empty date range")
+        url = f"{self._base}/instruments/historical/{token}/day?from={start:%Y-%m-%d}&to={end:%Y-%m-%d}"
         status, text = self._fetch(url, self._headers)
         if status != 200:  # noqa: PLR2004
             log.warning("kite history HTTP status %s", status)
             raise CandleFetchError(f"http status {status}")
-        return _day_close_of(text, day)
+        rows = _day_candles_of(text)
+        if any(not start <= r.day <= end for r in rows) or any(a.day >= b.day for a, b in pairwise(rows)):
+            raise CandleError("a day candle is outside the range, out of order or twice")
+        return rows
 
 
-def _day_close_of(body: str, day: datetime.date) -> Decimal | None:
+@dataclass(frozen=True)
+class DayCandle:
+    """One exchange session's day candle: its date and exact close; high and low exact, or None when Kite gave no
+    positive figure (the close stays usable, as ``day_close`` always read it; a reader needing the range refuses)."""
+
+    day: datetime.date
+    high: Decimal | None
+    low: Decimal | None
+    close: Decimal
+
+
+def _day_candles_of(body: str) -> list[DayCandle]:
     try:
         parsed = json.loads(body, parse_float=Decimal)  # F-33: a price never passes through a float
         if parsed.get("status") != "success":
@@ -95,26 +125,33 @@ def _day_close_of(body: str, day: datetime.date) -> Decimal | None:
         rows = parsed["data"]["candles"]
         if not isinstance(rows, list):
             raise CandleError("candles is not a list")
-        if len(rows) > 1:
-            raise CandleError("more than one day candle for one day")
-        return _day_row_close(rows[0], day) if rows else None
+        return [_day_row(r) for r in rows]
     except CandleError:
         raise
     except (ValueError, KeyError, TypeError, AttributeError, IndexError, ArithmeticError) as exc:
         raise CandleError(f"malformed candle body: {type(exc).__name__}") from None
 
 
-def _day_row_close(row: object, day: datetime.date) -> Decimal:
+def _candle_value(value: object, what: str) -> Decimal:
+    if isinstance(value, int) and not isinstance(value, bool):
+        value = Decimal(value)
+    if not isinstance(value, Decimal) or not value.is_finite() or value <= 0:
+        raise CandleError(f"the {what} is not a positive number")
+    return value
+
+
+def _day_row(row: object) -> DayCandle:
     if not isinstance(row, list) or len(row) < 6:  # noqa: PLR2004 - [time, o, h, l, c, volume(, oi)]
         raise CandleError("a day candle row needs 6 fields")
-    if datetime.datetime.strptime(row[0], "%Y-%m-%dT%H:%M:%S%z").date() != day:
-        raise CandleError("the candle is for another date")
-    close = row[4]
-    if isinstance(close, int) and not isinstance(close, bool):
-        close = Decimal(close)
-    if not isinstance(close, Decimal) or not close.is_finite() or close <= 0:
-        raise CandleError("the close is not a positive number")
-    return close
+    day = datetime.datetime.strptime(row[0], "%Y-%m-%dT%H:%M:%S%z").date()
+    return DayCandle(day, _candle_value_or_none(row[2]), _candle_value_or_none(row[3]), _candle_value(row[4], "close"))
+
+
+def _candle_value_or_none(value: object) -> Decimal | None:
+    try:
+        return _candle_value(value, "range")
+    except CandleError:
+        return None
 
 
 #: (listed contracts) -> the minute-candle reader for exactly those contracts on the owner's stored session

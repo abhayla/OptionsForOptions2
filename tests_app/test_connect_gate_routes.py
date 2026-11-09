@@ -46,7 +46,7 @@ async def test_execute_without_a_stored_session_asks_with_the_ac2_sentence(monke
 async def test_return_without_a_stored_session_asks_with_the_ac2_sentence(monkeypatch):
     monkeypatch.setattr(return_route.store, "load", _no_load)
     with pytest.raises(StrategyRefused) as err:
-        await return_route.return_from_kite(1, None, None, _Db(), "owner")
+        await return_route.return_from_kite(1, None, None, _Db(), "owner", None)
     assert _what(err.value) == AC2_SENTENCE
 
 

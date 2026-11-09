@@ -110,6 +110,8 @@ NOT_A_ZERODHA_RULE: dict[str, str] = {
     "ofo_app.kite_period_reads:_SHOWN_EACH_END": "how many characters of the client id this product shows at each end (REQ-015 AC-13), not a Zerodha rule",  # noqa: E501
     "ofo_app.kite_reads:TOKEN_CODE": "this product's own error code for a read Zerodha refused the token on, not a Zerodha rule",  # noqa: E501
     "ofo_app.kite_period_reads:MARGIN_CALL":"this product's memo key for its available-margin read (REQ-015 AC-13), not a Zerodha rule",  # noqa: E501
+    "ofo_app.kite_period_reads:VIX_CALL": "this product's memo key for its India VIX quote read (ADR-277), not a Zerodha rule",  # noqa: E501
+    "ofo_app.kite_period_reads:VIX_QUOTE": "the India VIX index name this product quotes (ADR-277), not a Zerodha limit",  # noqa: E501
     "ofo.broker.rate_limit:NO_KEY": "the bucket name of a request that carries no api key (the public instrument-list download), not a Zerodha rule",  # noqa: E501
     "ofo.execution.margin_gate:MARGIN_BUSY_CODE": "this product's own refusal code (the limiter refused the margin read at once), not a Zerodha rule",  # noqa: E501
     **_grouped({

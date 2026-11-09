@@ -513,3 +513,81 @@ async def test_ac3_core_a_plan_from_yesterday_is_never_closed_from_an_empty_book
             assert (stored.status, stored.close_reason) == ("open", None)
         finally:
             await trans.rollback()
+
+
+# ---- ADR-276 / ADR-243 / ADR-270 (1): the real first fill stores the strategy's entry facts ------------------------
+
+ENTRY_SPOT = D("23500")
+ENTRY_IV = D("0.1432")
+
+
+def _world(adopted: tuple = ()) -> object:
+    from ofo_app.routes import execution_return as route  # noqa: PLC0415
+    return route._World(None, "NIFTY", None, {}, frozenset(), adopted)  # the route's own world
+
+
+@pytest.mark.parametrize(("history", "adopted", "first"), [
+    ((ENTRY_OPEN,), (), True),  # nothing filled before, nothing adopted: the first fill
+    ((ENTRY_DONE, _plan(2, "ENTRY", ("BUY",))), (), False),  # a second ENTRY: the first already filled
+    ((_plan(1, "ENTRY", ("BUY",), ((0,), "nothing_placed")), _plan(2, "ENTRY", ("BUY",))), (), True),  # 0 filled
+    ((ENTRY_OPEN,), ("adopted lot",), False),  # an adopted holding: the strategy was entered before (ADR-096)
+])
+def test_first_fill_is_no_earlier_filled_plan_and_no_adopted_holding(history, adopted, first):
+    from ofo_app.routes import execution_return as route  # noqa: PLC0415
+    assert route._first_fill(history, history[-1], _world(adopted)) is first
+
+
+def _market(ltp):
+    from types import SimpleNamespace as NS  # noqa: PLC0415
+    quote = None if ltp is None else NS(ltp=ltp)
+    return NS(provider=NS(status=lambda: NS(connected=True), underlying_quote=lambda _u: quote))
+
+
+def _sold(rows: list) -> list:
+    """The recorded entry (a BUY of 23650 CE) as a SELL, so the first fill has a sold leg with a distance."""
+    rows = copy.deepcopy(rows)
+    for r in rows:
+        r["transaction_type"] = "SELL"
+    return rows
+
+
+@pytest.mark.usefixtures("app_engine")
+@pytest.mark.parametrize(("ltp", "iv", "stored"), [
+    (ENTRY_SPOT, ENTRY_IV, (ENTRY_SPOT, D("150"), None, ENTRY_IV)),  # spot live, IV stated: all four stored
+    (ENTRY_SPOT, None, (ENTRY_SPOT, D("150"), None, None)),  # IV not readable: the facts without IV
+    (None, ENTRY_IV, None),  # spot not live: nothing written (as the paper route)
+])
+async def test_real_first_fill_stores_entry_facts_once(app_engine, admin_engine, monkeypatch, ltp, iv, stored):  # noqa: PLR0913
+    from ofo_app import adjustment_readers, entry_facts_store  # noqa: PLC0415
+    from ofo_app.routes import outcome  # noqa: PLC0415
+    from test_execute_route import _strategy_one  # noqa: PLC0415
+    from test_strategy_store import _user  # noqa: PLC0415
+
+    async def fake_iv(_ctx, underlying, expiry, spot):
+        assert (underlying, expiry, spot) == ("NIFTY", KEY[3], ltp)  # the sold leg's expiry, at the live spot
+        return iv
+    monkeypatch.setattr(adjustment_readers, "atm_iv_now", fake_iv)
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setenv("TEST_CATALOGUE_DATE", "2026-10-16")
+    async with admin_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            user = _user()
+            sid = await _strategy_one(conn, user, app_engine.url.username)
+            await _store_plan(conn, user, sid, ("ENTRY", "SELL", "5.45"))
+            reads = _Reads("122104", orders=_sold(_data("orders-122104")), trades=_sold(_data("trades-122104")))
+            app = _app_for(conn, user, reads)
+            app.dependency_overrides[outcome.get_market_context] = lambda: _market(ltp)
+            resp = await _post(app, sid)
+            assert resp.status_code == HTTPStatus.OK, resp.text
+            assert resp.json()["plans"][0]["state"] == "filled"
+            facts = await entry_facts_store.read(conn, sid)
+            got = None if facts is None else (facts.entry_spot, facts.call_distance, facts.put_distance,
+                                              facts.entry_atm_iv)
+            assert got == stored
+            # a replayed return closes nothing and writes nothing (record_first never rewrites)
+            app.dependency_overrides[outcome.get_market_context] = lambda: _market(D("24000"))
+            assert (await _post(app, sid)).status_code == HTTPStatus.OK
+            assert await entry_facts_store.read(conn, sid) == facts
+        finally:
+            await trans.rollback()

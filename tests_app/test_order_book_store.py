@@ -555,3 +555,4 @@ async def test_core_adopted_average_7_025_survives_a_restart_exactly(app_engine,
             _fill(price=D("7.005"))
     finally:
         await _remove_own_fills_and_rows(admin_engine, ids, user)
+

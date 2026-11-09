@@ -97,7 +97,9 @@ BROKER_ADAPTER_PATHS = {
     "ofo/broker/kite_http.py": "the urllib Kite door: checks every call against ALLOWED_CALLS - REQ-073 AC-4",
     "ofo_app/kite_http.py": "the httpx Kite door: its client classes check every request - REQ-073 AC-4",
     "ofo_app/kite_history.py": "Kite's minute-candle client, through the urllib door - REQ-073 AC-4",
+    "ofo_app/daily_candles.py": "250-session day-candle cache over KiteHistory, the urllib door - REQ-073 AC-4",
     "ofo_app/kite_margin.py": "Kite's margin client, through the urllib door - REQ-073 AC-4",
+    "ofo_app/regime_inputs.py": "ADR-280 margin / VIX / day candles through the Kite clients above - REQ-073 AC-4",
     "ofo_app/kite_reads.py": "Kite's orders/trades/positions read client, through the urllib door - REQ-073 AC-4",
     "ofo_app/kite_period_reads.py": "the per-user minimum-period reads (RD-063): calls the Kite read and margin "
                                     "clients through the one limiter's memo (REQ-118 AC-7) - REQ-063 AC-1",

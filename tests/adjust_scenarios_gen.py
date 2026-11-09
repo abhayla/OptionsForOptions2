@@ -81,6 +81,8 @@ NAKED = ["strangle", "straddle", "ratio", "other"]
 LONGS = ["longopt", "longvol"]
 DATA_NOTE = {"ok": "", "hist": "Needs price history (not in V1)", "vix": "Needs India VIX feed (owner: later)",
              "user": "You type the level"}
+#: ADR-277 (5): the families whose price-history triggers (T-11c, T-20b) are built and no longer greyed
+HIST_BUILT = ("ic",)
 # id, label, unit, cmp, weekly, monthly, on by default, data, fit (mode, families, reason) or None
 TRIGGERS = [
     ("T-01", "Spot within this % of a short strike", "%", "le", ["0.75", "0.5", "0.3"], ["1.5", "1.0", "0.5"], True, "ok", ("not", LONGS, "No short strike")),
@@ -89,7 +91,7 @@ TRIGGERS = [
     ("T-12", "Spot has moved this many expected moves (SD) since entry", "SD", "ge", ["1", "1", "1"], ["1", "1", "1"], False, "ok", None),
     ("T-13", "Gap at the open of at least this %", "%", "ge", ["0.75", "0.75", "0.5"], ["1", "1", "0.75"], True, "ok", None),
     ("T-20", "Spot crosses a level you set (support / resistance)", "pts", "", None, None, False, "user", None),
-    ("T-20b", "Market trending vs range-bound", "", "", None, None, False, "hist", None),
+    ("T-20b", "Market trending vs range-bound", "ADX", "ge", ["25", "25", "25"], ["25", "25", "25"], False, "hist", None),
     ("T-03", "Tested short's delta reaches", "delta", "ge", ["0.30", "0.35", "0.40"], ["0.25", "0.30", "0.35"], True, "ok", ("not", LONGS, "No short leg")),
     ("T-04", "Net delta beyond +/- this per lot", "delta/lot", "ge", ["0.15", "0.15", "0.20"], ["0.15", "0.15", "0.20"], False, "ok", None),
     ("T-14", "Loss from a 1% move (gamma) at least this % of margin", "%", "ge", ["3", "3", "2"], ["4", "3", "2"], True, "ok", None),
@@ -249,7 +251,7 @@ def playbooks() -> dict:
         trig_on, trig_greyed = [], []
         for tid, *_rest in TRIGGERS:
             on, data, fit = _rest[5], _rest[6], _rest[7]
-            why = _fit_reason(fit, fam) or (DATA_NOTE[data] if data in ("hist",) else "")
+            why = _fit_reason(fit, fam) or (DATA_NOTE[data] if data == "hist" and fam not in HIST_BUILT else "")
             if why:
                 trig_greyed.append({"id": tid, "reason": why})
             elif on:
@@ -1435,7 +1437,8 @@ def build(spec: dict, pb: dict) -> dict:  # noqa: C901, PLR0912, PLR0915 - one r
         "market": {"spot": spot, "prev_close": D(spec["prev_close"]) if "prev_close" in spec else None,
                    "day_open": D(spec["day_open"]) if "day_open" in spec else None,
                    "india_vix": spec.get("india_vix"), "atm_iv": atm, "rate": RATE,
-                   "futures": futures, "chains": chains},
+                   "futures": futures, "chains": chains,
+                   **({"vix": spec["vix"], "daily": daily_candles(clock.date(), spot)} if "vix" in spec else {})},
         "events": events,
         "data_state": data_state,
         "position": {
@@ -1547,6 +1550,27 @@ E3 = {"clock": "2026-10-28T10:00:00", "spot": "23020"}
 E9 = {"clock": "2026-11-03T10:00:00", "spot": "23100"}
 ICW = "IC weekly, NIFTY 2 lots"
 OTHER = "Other strategy types"
+
+
+DAILY_SESSIONS = 255  # 250 for the VIX percentile and ADX, inside DailyCandles' 380-day range
+
+
+def daily_candles(today: datetime.date, spot: Decimal) -> dict:
+    """ADR-280 (task 26): the sessions before ``today``, oldest first, as [date, high, low, close]. The underlying
+    trends up (+12 a session, a 3-session pull-back of 10) so ADX(14) is well above 25; India VIX closes cycle
+    10.0 .. 19.8 so today's VIX ranks inside the window (T-11c answers a percentile)."""
+    days = [today]
+    while len(days) <= DAILY_SESSIONS:
+        days.append(prev_session(days[-1]))
+    days = sorted(days[1:])
+    start = spot - 12 * DAILY_SESSIONS
+    under, vix = [], []
+    for i, d in enumerate(days):
+        c = start + 12 * i - 10 * (i % 3)
+        under.append([d.isoformat(), str(c + 30), str(c - 30), str(c)])
+        v = Decimal(10) + Decimal(i % 50) / 5
+        vix.append([d.isoformat(), str(v + Decimal("0.4")), str(v - Decimal("0.4")), str(v)])
+    return {"underlying": under, "vix": vix}
 
 
 def ic_spec(sid: str, title: str, refs: list[str], clock: str, spot: str, **kw) -> dict:
@@ -1700,6 +1724,11 @@ def scenarios() -> list[dict]:  # noqa: PLR0915 - a flat list of scenario specs
                      notes=["Monday 9 Nov 2026 (the moved weekly expiry): the next calendar weekday, Tuesday 10 Nov, is a "
                             "listed NSE F&O holiday, so before-holiday fires; the next session is Wednesday 11 Nov."]))
     # GC-IC1 6a (REQ-159 AC-5, ADR-240 (3)): S-02 trending day and S-12 big win early as rules
+    s.append(ic_spec("ADJ-60", "Volatility jump on a trending day: India VIX up 12% today, ADX above 25",
+                     ["T-11b", "T-11c", "T-20b", "ADR-280", "ADR-277"], "2026-11-06T11:40:00", "23420", legs=IC9,
+                     entry=E9, next_expiry="2026-11-17", vix={"last": "16.8", "prev_close": "15.0"},
+                     notes=["Same position and market as ADJ-02 plus India VIX and 255 daily candles; T-11b, T-11c "
+                            "and T-20b are off in the playbook, the test switches them on."]))
     s.append(ic_spec("ADJ-56", "Trending day: net delta per lot beyond 0.15, the playbook's rolls offered",
                      ["S-02", "ADR-240"], "2026-11-06T11:40:00", "23420", legs=IC9, entry=E9, next_expiry="2026-11-17",
                      situation_rules={"sit.S-02": True, "sit.S-12": None}))

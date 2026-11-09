@@ -39,6 +39,11 @@ INDEX_ROWS: dict[tuple[str, int], tuple[str, str]] = {
     (NSE_INDEX, 1001): ("NIFTY 50", "NIFTY"),
     (BSE_INDEX, 1): ("SENSEX", "SENSEX"),
 }
+#: India VIX (NSE index, Kite instrument token 264969): a trigger input only (T-11b / T-11c, ADR-277), never an
+#: underlying, so it is NOT an index row (the catalogue parser takes only INDEX_ROWS)
+#: Kite index name -> its Kite instrument token, for the quote door only
+QUOTE_ONLY_INDEXES: dict[str, int] = {"INDIA VIX": 264969}
+VIX_NAME = next(iter(QUOTE_ONLY_INDEXES))
 
 # One broker code vocabulary (REQ-054 AC-3). V1 has only Zerodha (REQ-054 AC-2).
 ZERODHA = "zerodha"

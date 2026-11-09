@@ -59,17 +59,17 @@ def live(monkeypatch):
     assert scenario_mode.current() is None
 
 
-def test_live_mode_t14_answers_exactly_as_before_on_the_screen_and_worker_state(live):
-    """Review F1: in live mode T-14 is NOT evaluated: no figures, and the answer is 9e8e4eae's T14_PENDING."""
+def test_live_mode_t14_is_evaluated_on_the_screen_and_worker_state(live):
+    """ADR-278 (supersedes ADR-253): in live mode T-14 IS evaluated: figures on the state, never T14_PENDING."""
     state = check.with_gamma(state_of(SC), body_of(SC), _tracked(), _market())
-    assert state.gamma is None
+    assert state.gamma is not None and state.gamma.reason is None
     t = [r for r in evaluate(body_of(SC), state, {}, None).results if r.trigger_id == "T-14"]
-    assert t == [pe.NotChecked("T-14", "T-14", pe.T14_PENDING)], t
+    assert t and not any(isinstance(r, pe.NotChecked) for r in t), t
 
 
-def test_live_mode_margin_needed_is_unchanged_by_t14(live):
-    t14_only = {"triggers": {"T-16": {"on": False}, "T-14": {"on": True}}}
-    assert background.margin_needed(t14_only) is False  # as at 9e8e4eae: no live margin read for T-14
+def test_live_mode_margin_is_read_for_t14(live):
+    assert background.margin_needed({"triggers": {"T-16": {"on": False}, "T-14": {"on": True}}}) is True
+    assert background.margin_needed({"triggers": {"T-16": {"on": False}, "T-14": {"on": False}}}) is False
 
 
 def test_scenario_mode_margin_is_read_for_t14(scenario):

@@ -159,6 +159,9 @@ REVIEWED_RAW_IDENTITY = {
     # ofo_dev / ofo_test. One read-only SELECT of LIVE rows (not retired, not delisted) by Zerodha broker symbol, so a
     # scenario contract that is a real contract gets its real tokens: key -> live row, never a stored id -> key.
     "backend/ofo_app/scenario_mode.py": "dev/test only: live rows by broker symbol (key -> row); no stored id read",
+    # GC-ICTRACK task 4 (ADR-276): a real strategy's stored plan / adopted key -> LIVE holder -> its stored id, so the
+    # real book nets on the same contract ids as the paper book (as leg_edit.py): never id -> key
+    "backend/ofo_app/tracked_book.py": "plan / adopted key -> LIVE holder -> stored id (live_contract_ids)",
 }
 #: Paths that must never be in the reviewed list: the callers issue #500 moved onto resolve.
 MUST_USE_RESOLVE = ("backend/ofo_app/routes/strategies.py", "backend/ofo_app/routes/execute.py",

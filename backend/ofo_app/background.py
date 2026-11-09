@@ -149,6 +149,7 @@ from ofo.timeutil import IST
 from ofo_app import adjustment_check as check
 from ofo_app import calc_speeds, feed_bus, roles, settings_cache
 from ofo_app.db_gate import GATE_POLL, GATE_REBUILD, GATE_WRITER, DbGate, held
+from ofo_app.regime_inputs import RegimePerList
 from ofo_app.routes.adjustment import MarketInputs
 
 log = logging.getLogger("ofo_app.background")
@@ -226,6 +227,9 @@ class Watched:
     #: background (REQ-165). None = no rates source or none readable: no approach is priced, T-19 is not checked with
     #: that reason (never a guessed cost)
     charge_rates: Any = None
+    #: ADR-280: the market-wide inputs (``regime_inputs.RegimeInputs``), read by the lister ONCE per underlying per
+    #: list, never per check (the worker checks every minute). None = not read: those triggers answer not checked
+    regime: Any = None
 
 
 def _seconds(delta: datetime.timedelta) -> Decimal:
@@ -388,7 +392,7 @@ def market_inputs(watched: Watched, read: PriceRead, shared: FeedScope, now: dat
                         fwd, leg_ivs, index_day_open(read.day, now),
                         carry_gap_pct=values.get(settings_calc.CARRY_GAP_PERCENT),  # absent -> no figures, named reason
                         s02_delta_per_lot=values.get(settings_calc.SITUATION_NET_DELTA_PER_LOT),  # absent: not checked
-                        s12_percent=values.get(settings_calc.SITUATION_BIG_WIN_PERCENT))
+                        s12_percent=values.get(settings_calc.SITUATION_BIG_WIN_PERCENT), regime=watched.regime)
 
 
 def background_state(watched: Watched, read: PriceRead, shared: FeedScope, now: datetime.datetime,  # noqa: PLR0913
@@ -447,11 +451,10 @@ def margin_needed(body: Mapping | None, resolved: Any = None) -> bool:
 
 
 def t14_on(body: Mapping | None) -> bool:
-    """T-14 (ic-e2e-paper design decision 8) on AND scenario mode (review F1: T-14 is evaluated only there, so a live
-    plan never gains a margin read): its value is a % of the margin blocked, so it needs the margin read."""
+    """T-14 (ic-e2e-paper design decision 8) on, in live and test-data mode alike (ADR-278): its value is a % of the
+    margin blocked, so it needs the margin read."""
     t = ((body.get("triggers") if isinstance(body, Mapping) else None) or {}).get("T-14")
-    from ofo_app import scenario_mode  # noqa: PLC0415 - the single mode reader, read at check time
-    return isinstance(t, Mapping) and t.get("on") is True and scenario_mode.current() is not None
+    return isinstance(t, Mapping) and t.get("on") is True
 
 
 @dataclass(frozen=True)
@@ -696,6 +699,37 @@ class DbGateStore:
 
 Lister = Callable[[], Awaitable[list[Watched]]]
 Recorder = Callable[[Watched, pe.StrategyState, Preferences], Awaitable[Any]]
+#: (underlying, IST trading day, expiry, ATM IV) -> stored (ADR-277 (4)); ``record_daily_iv`` is the real one
+DailyIvRecorder = Callable[[str, datetime.date, datetime.date, Decimal], Awaitable[Any]]
+
+
+async def record_daily_iv(underlying: str, day: datetime.date, expiry: datetime.date, atm_iv: Decimal) -> bool:
+    """ADR-277 (4): the app's own ATM IV of the day (``daily_atm_iv_store.record``: the first value of the day kept)."""
+    from ofo_app import daily_atm_iv_store  # noqa: PLC0415 - the database layer only when a write runs
+    from ofo_app.db import get_sessionmaker  # noqa: PLC0415
+    async with get_sessionmaker()() as db:
+        stored = await daily_atm_iv_store.record(db, underlying, day, expiry, atm_iv)
+        await db.commit()
+    return stored
+
+
+def daily_iv_of(w: Watched, read: PriceRead, market: MarketInputs,
+                now: datetime.datetime) -> tuple[str, datetime.date, datetime.date, Decimal] | None:
+    """ADR-277 (4): what today's ATM IV row of the strategy's underlying would be from this check, or None. Only LIVE
+    mode (scenario data never enters the real history), only a fresh read (the market is open: ``_check_unpaused``
+    checks nothing else), only when the check's ATM IV (``market.vol``) is stated and its expiry is the NEAREST listed
+    option expiry of the underlying (one tenor per day, whichever strategy gives it first)."""
+    from ofo_app import scenario_mode  # noqa: PLC0415 - read at check time (the screen's own scenario switch)
+    if scenario_mode.current() is not None or market.vol is None or read.state is not PriceState.FRESH:
+        return None
+    day = now.astimezone(IST).date()
+    position = w.tracked.position
+    expiry = position.legs[0].expiry
+    listed = [lc.contract.expiry for lc in read.listed
+              if lc.contract.expiry is not None and lc.contract.expiry >= day]
+    if not listed or expiry != min(listed):
+        return None
+    return position.underlying, day, expiry, market.vol
 #: every registry setting in force at the worker clock, from MEMORY (``settings_cache.SettingsCache.at``; #636 r4)
 SettingsAt = Callable[[datetime.datetime], Mapping[str, Decimal]]
 PreferencesRead = Callable[[str], Awaitable[Preferences]]  # one user's preferences in force now (REQ-168)
@@ -717,7 +751,8 @@ class Worker:
                  side_tasks: tuple[Callable[[], Coroutine[Any, Any, None]], ...] = (),
                  gate_store: Any = None, user_values: UserValuesRead | None = None,
                  margin_of: MarginOf | None = None,
-                 before_cycle: Callable[[], Awaitable[None]] | None = None) -> None:
+                 before_cycle: Callable[[], Awaitable[None]] | None = None,
+                 daily_iv: DailyIvRecorder | None = None) -> None:
         if max_per_cycle < 1:
             raise ValueError("max_per_cycle must be at least 1")
         self._provider_for, self._lister, self._clock = provider_for, lister, clock
@@ -794,6 +829,11 @@ class Worker:
         self._style: dict[int, str] = {}  # strategy -> the trading style of its last check (its check interval)
         self.user_paused_until: dict[int, datetime.datetime] = {}  # strategy -> the end of its user pause in force
         self.margins = MarginCache(margin_of)  # T-16's margin, refreshed on its own task (module docstring, step 3)
+        #: ADR-277 (4): the day's ATM IV per underlying, written by the writer once per IST day (``daily_iv_of``);
+        #: None = no daily write (only the live role wires ``record_daily_iv``: scenario data never enters the history)
+        self._daily_iv_recorder = daily_iv
+        self._daily_iv_done: set[tuple[str, datetime.date]] = set()  # (underlying, day) stored or already there
+        self._daily_iv_pending: dict[tuple[str, datetime.date], tuple[datetime.date, Decimal]] = {}
 
     async def rebuild(self) -> None:
         """REQ-115 AC-3: the monitors from the database (the lister); a strategy's memory stays in the store."""
@@ -1149,6 +1189,7 @@ class Worker:
             self._pause(sid, PriceState.CHECK_FAILED, now)
             return False
         market = market_inputs(w, read, FeedScope(self.cache, w.feed_owner), now, self._values)
+        self._queue_daily_iv(daily_iv_of(w, read, market, now))
         # ADR-245: the carry gap in force (plan, else the user's own, else the admin default) is resolved inside
         # state_of; with no user read path there is no user layer (None), never the admin values posing as the user's
         own = None if self._user_values_read is None else user_values
@@ -1360,6 +1401,31 @@ class Worker:
                 log.exception("background: strategy %s alert close failed", sid)
                 _keep_recent(self.errors, (sid, type(exc).__name__))
 
+    def _queue_daily_iv(self, row: tuple[str, datetime.date, datetime.date, Decimal] | None) -> None:
+        """Queues today's ATM IV row for the writer unless the day is done or already queued (no DB call per minute)."""
+        if row is None or self._daily_iv_recorder is None:
+            return
+        key = (row[0], row[1])
+        if key in self._daily_iv_done or key in self._daily_iv_pending:
+            return
+        self._daily_iv_pending[key] = (row[2], row[3])
+        self._write_wake.set()
+
+    async def _write_daily_ivs(self) -> None:
+        """Each queued day's ATM IV, holding the gate. Stored, or the day already stored -> done for the day; a failing
+        write is logged and dropped (the next check queues it again: no retry of the same call)."""
+        recorder = self._daily_iv_recorder
+        for key in list(self._daily_iv_pending) if recorder is not None else ():
+            expiry, atm_iv = self._daily_iv_pending.pop(key)
+            try:
+                async with held(self.db_gate, GATE_WRITER):
+                    await recorder(key[0], key[1], expiry, atm_iv)
+            except Exception as exc:  # contained: the checks' writes go on
+                log.exception("background: writing the daily ATM IV of %s %s failed", *key)
+                _keep_recent(self.errors, (0, type(exc).__name__))
+                continue
+            self._daily_iv_done.add(key)
+
     async def drain_writes(self) -> None:
         """The writer's pass (tests call it after a cycle): every queued gate event first, each strategy's in step
         order; then every queued rule-memory state, oldest strategy first. A strategy whose event write raised is not
@@ -1373,6 +1439,7 @@ class Worker:
                     failed.add(ready[0])
                 continue
             if not self._pending:
+                await self._write_daily_ivs()
                 return
             await self._write_one(next(iter(self._pending)))
 
@@ -1606,7 +1673,8 @@ def listable(marker: str | None, mode: str | None) -> bool:
 
 async def owner_lister(provider: Any, gate: Any = None,
                        rates_of: Callable[[], Awaitable[Any]] | None = None) -> Listed:
-    """Every strategy of the V1 owner (ADR-051) that is tracked (open paper legs) and has a playbook; its type is read
+    """Every strategy of the V1 owner (ADR-051) that is tracked (open paper legs, or real Zerodha trades and adopted
+    holdings when it has no paper order: ADR-276) and has a playbook; its type is read
     against the provider's instrument list and spot (as the screen's check). ``gate`` (the role's ``db_gate``) is held
     for the list read, then once per strategy's reads, never for the whole list (#636 r6): a write waits one hold.
     ``rates_of`` (#661 item 1): the charge rates source, read once per list (None: no rates, T-19 not checked); a
@@ -1634,6 +1702,7 @@ async def owner_lister(provider: Any, gate: Any = None,
             log.exception("background: reading the charge rates failed; T-19 is not checked this list")
     from ofo_app import scenario_mode  # noqa: PLC0415 - the process mode, read at list time
     mode = scenario_mode.current_id()
+    regimes = RegimePerList()
     for s in strategies:
         if not listable(getattr(s, "scenario_id", None), mode):  # a row read without the column is a real one
             continue  # IC e2e decision 4: a live worker never checks a scenario strategy, and the reverse
@@ -1661,7 +1730,8 @@ async def owner_lister(provider: Any, gate: Any = None,
             continue
         if resolved.body is not None:
             out.append(Watched(OWNER_REF, s.id, tracked, resolved.body, resolved.is_system, OWNER_REF,
-                               resolved.strategy_layer, facts, resolved=resolved, charge_rates=rates))
+                               resolved.strategy_layer, facts, resolved=resolved, charge_rates=rates,
+                               regime=await regimes.read(tracked.position.underlying)))
     return Listed(out, unread)
 
 
@@ -1764,7 +1834,8 @@ async def _serve_live() -> int:  # pragma: no cover - the process wiring; each p
     worker = Worker(provider_for=lambda _owner: provider, lister=lister,
                     clock=clock, settings=cache.at, preferences=preferences, want_client=bus, db_gate=gate,
                     side_tasks=(cache.poll_loop,), user_values=user_values,
-                    margin_of=screen_margin_reader(get_approach_margin(margin_ctx, margin_source())))
+                    margin_of=screen_margin_reader(get_approach_margin(margin_ctx, margin_source())),
+                    daily_iv=record_daily_iv)  # ADR-277 (4): the live role only
     feed = asyncio.create_task(socket.run(), name="background-feed")
     try:
         await worker.run()
