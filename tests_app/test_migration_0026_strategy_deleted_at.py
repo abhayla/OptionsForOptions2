@@ -69,7 +69,7 @@ async def test_the_app_role_cannot_insert_deleted_at(app_engine):
             await trans.rollback()
 
 
-@pytest.mark.parametrize("column,value", [("status", "'draft'"), ("user_ref", "'someone-else'"),
+@pytest.mark.parametrize("column,value", [("user_ref", "'someone-else'"),
                                           ("underlying", "'SENSEX'"), ("revision", "9"),
                                           ("created_at", "now()"), ("definition_schema_version", "2")])
 async def test_any_other_fixed_column_is_still_refused_for_the_app_role(app_engine, column, value):

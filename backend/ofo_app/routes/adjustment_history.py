@@ -276,3 +276,39 @@ async def adjustment_history(  # noqa: PLR0913 - FastAPI dependencies, one per i
                                                 "rows": [_row(r, found, [] if r.step in ah.OWN_KINDS else
                                                               list(by_batch.get(r.at, {}).values()))
                                                          for r in history.rows], "totals": totals})
+
+
+async def closed_figures(db: Any, user_ref: str, strategy_id: int, rates: ChargeRates | None) -> dict:
+    """GC-ICGUIDE g23 (contract task 23): the Completed list's figures of one CLOSED strategy - final P&L, adjustments
+    made (the history page's ADR-255 counter) and their cost (charges of the adjustment rows) - from the same engine
+    call as the history page, with no open contract (so no price is read). Each figure the engine cannot give is None
+    and the reply carries the catalogue reason; a failed read never shows 0 (savepoint, logged)."""
+    none = {"final_pnl": None, "final_pnl_text": None, "adjustments_made": None, "adjustment_cost": None,
+            "adjustment_cost_text": None, "completed_reason_text": render_explanation("completed_figures_unavailable")}
+    try:
+        async with db.begin_nested():
+            orders = await paper_book.load_owned(db, user_ref, strategy_id)
+            if not orders:
+                return none
+            found = {c.contract_id: c for c in await tracked_contracts.resolve(
+                db, sorted({o.order.contract_id for o in orders}))}
+            underlying = paper.identity(found[orders[0].order.contract_id])[0]
+            per_order, charges_reason = _per_order_charges(orders, found, underlying, rates)
+            t = ah.adjustment_history(
+                [ah.HistoryOrder(str(o.order.contract_id), o.order.side,  # type: ignore[arg-type]
+                                 o.order.quantity, o.order.price, o.order.kind,  # type: ignore[arg-type]
+                                 o.order.placed_at,
+                                 is_option=paper.identity(found[o.order.contract_id])[1] is not Instrument.FUT)
+                 for o in orders], {}, adjustments_max=None, per_order_charges=per_order).totals
+    except Exception:  # noqa: BLE001 - any read failure only costs these figures
+        log.warning("closed strategy %s figures could not be read", strategy_id, exc_info=True)
+        return none
+    cost = None if t.adjustment_charges is None else to_paise_up(t.adjustment_charges)
+    reason = None
+    if cost is None:
+        reason = reason_text(charges_reason) if charges_reason else render_explanation("completed_figures_unavailable")
+    elif t.pnl is None:
+        reason = render_explanation("completed_figures_unavailable")
+    return {"final_pnl": paper.exact(t.pnl), "final_pnl_text": _money_text(t.pnl),
+            "adjustments_made": t.adjustments_used, "adjustment_cost": paper.exact(cost),
+            "adjustment_cost_text": None if cost is None else _money_text(cost), "completed_reason_text": reason}

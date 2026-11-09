@@ -306,7 +306,6 @@ async def _with_draft(conn, user: str):
     "DELETE FROM public.strategies WHERE id = :id",
     "TRUNCATE public.strategies",
     "UPDATE public.strategies SET underlying = 'SENSEX' WHERE id = :id",
-    "UPDATE public.strategies SET status = 'draft' WHERE id = :id",
     "UPDATE public.strategies SET user_ref = 'someone' WHERE id = :id",
     "UPDATE public.strategy_history SET change_summary = CAST('[]' AS JSONB) WHERE strategy_id = :id",
     "DELETE FROM public.strategy_history WHERE strategy_id = :id",

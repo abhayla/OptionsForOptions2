@@ -36,6 +36,7 @@ from types import MappingProxyType
 from typing import Annotated, Any, Literal, Optional
 
 from fastapi import APIRouter, Depends, Query
+from ofo.charges import ChargeRates
 from ofo.engine.legs import Action
 from ofo.engine.legs import Leg as EngineLeg
 from ofo.errors import LegValue, render
@@ -51,7 +52,7 @@ from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure, refuse_request
 from ofo_app.routes import adjustment_opportunities as opportunities
 from ofo_app.routes.broker import current_user_ref
-from ofo_app.routes.outcome import get_settings_reader
+from ofo_app.routes.outcome import get_settings_reader, load_charge_rates
 from ofo_app.strategy_refused import StrategyRefused
 from ofo_app.tracked_contracts import ContractState
 from ofo_app.underlying import Underlying
@@ -211,6 +212,13 @@ class SummaryOut(ApiModel):
     has_paper_order: bool  # ADR-271: True once a paper order was placed (the refusal says "paper orders")
     open_opportunities: Optional[int]  # noqa: UP045 - GC-MU A3: open adjustment records; None = could not be read
     open_opportunities_text: Optional[CatalogueText]  # noqa: UP045 - "N adjustment opportunities"; None at 0 or unread
+    # GC-ICGUIDE g23 (Completed tab): set only for a closed strategy, all from the engine; None + reason when unreadable
+    final_pnl: Optional[Money]  # noqa: UP045
+    final_pnl_text: Optional[CatalogueText]  # noqa: UP045
+    adjustments_made: Optional[int]  # noqa: UP045 - the history page's ADR-255 counter
+    adjustment_cost: Optional[Money]  # noqa: UP045 - charges of the adjustment rows
+    adjustment_cost_text: Optional[CatalogueText]  # noqa: UP045
+    completed_reason_text: Optional[CatalogueText]  # noqa: UP045 - why a figure is absent
 
 
 class RenamedOut(ApiModel):
@@ -418,9 +426,13 @@ async def save_draft(body: StrategyCreateIn, today_of: Annotated[elig.TodayReade
 
 
 @router.get("/strategies", response_model=StrategyListOut)
-async def list_strategies(db: Any = Depends(get_db), user_ref: str = Depends(current_user_ref)) -> StrategyListOut:
+async def list_strategies(db: Annotated[Any, Depends(get_db)], user_ref: Annotated[str, Depends(current_user_ref)],
+                          rates: Annotated[Any, Depends(load_charge_rates)]) -> StrategyListOut:
     async def work():
         rows = await store.list_strategies(db, user_ref)
+        from ofo_app.routes.adjustment_history import closed_figures  # noqa: PLC0415 - it imports routes.paper
+        rates_ok = rates if isinstance(rates, ChargeRates) else None
+        closed = {r.id: await closed_figures(db, user_ref, r.id, rates_ok) for r in rows if r.status == "closed"}
         tracked = await _tracked_ids(db, [r.id for r in rows])
         opened = await _open_opportunities(db, user_ref)
         return StrategyListOut.model_validate({"strategies": [
@@ -431,9 +443,14 @@ async def list_strategies(db: Any = Depends(get_db), user_ref: str = Depends(cur
              "tracked": None if tracked is None else r.id in tracked, "can_delete": r.can_delete,
              "has_paper_order": r.has_paper_order,
              "open_opportunities": None if opened is None else opened.get(r.id, 0),
-             "open_opportunities_text": None if opened is None else opportunities.open_mark(opened.get(r.id, 0))}
+             "open_opportunities_text": None if opened is None else opportunities.open_mark(opened.get(r.id, 0)),
+             **closed.get(r.id, _NO_FIGURES)}
             for r in rows]})
     return await _run(db, work, form_status=409)
+
+
+_NO_FIGURES = {"final_pnl": None, "final_pnl_text": None, "adjustments_made": None, "adjustment_cost": None,
+               "adjustment_cost_text": None, "completed_reason_text": None}
 
 
 async def _open_opportunities(db: Any, user_ref: str) -> dict[int, int] | None:

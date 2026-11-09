@@ -51,7 +51,7 @@ from __future__ import annotations
 
 import datetime
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal
 from typing import Final, Literal
 
@@ -127,6 +127,7 @@ class HistoryTotals:
     charges: Decimal | None
     open_reason: Reason | None = None  # why open P&L and P&L are None
     premium_reason: Reason | None = None  # why premium left is None
+    adjustment_charges: Decimal | None = None  # GC-ICGUIDE g23: charges of the adjustment rows (None: any unknown)
 
 
 @dataclass(frozen=True)
@@ -237,7 +238,10 @@ def adjustment_history(orders: Sequence[HistoryOrder], live_prices: Mapping[str,
                                charges, fill,
                                _row_rule(part)))
     options = {o.instrument_id for o in orders if o.is_option}
-    return History(tuple(rows), _totals(rows, filled, live_prices, adjustments_max, options))
+    totals = _totals(rows, filled, live_prices, adjustments_max, options)
+    adjusting = [r.charges for r in rows if r.step == "adjustment" and not r.pending]
+    cost = None if any(c is None for c in adjusting) else sum((c for c in adjusting if c is not None), Decimal(0))
+    return History(tuple(rows), replace(totals, adjustment_charges=cost))
 
 
 def _totals(rows: Sequence[HistoryRow], filled: Sequence[PaperOrder],

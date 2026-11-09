@@ -1946,6 +1946,8 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         "From an adjustment opportunity whose condition could not be read"),
     ExplanationTemplate("adjust_history_pending", "values_seen", "pending"),
     ExplanationTemplate("adjust_history_no_plan_max", "values_seen", "No plan maximum is set for this strategy."),
+    ExplanationTemplate("completed_figures_unavailable", "values_seen",
+                        "Not available: this strategy's orders could not be read right now."),
     ExplanationTemplate("adjust_history_fill_confirmed", "values_seen", "Filled - confirmed by Zerodha"),
     ExplanationTemplate("adjust_history_fill_unconfirmed", "values_seen", "Not yet confirmed by Zerodha"),
     ExplanationTemplate("adjust_history_fill_failed", "values_seen", "Could not read Zerodha's answer; check this order in Kite"),
