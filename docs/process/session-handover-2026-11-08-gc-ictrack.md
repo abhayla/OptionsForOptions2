@@ -21,9 +21,8 @@ under the owner's strategy delegation).
   proof is status row 2r (open an IC in Kite, adopt it read-only, compare with Kite positions).
 - Kite reads on Sunday 20:05 IST, owner's stored session: the margin read answered (value not recorded here: public repo); India VIX last 18.43, quote
   previous close 17.47; 250 NIFTY and 250 VIX daily rows (2025-11-04 .. 2026-11-06); VIX percentile 84.8; NIFTY
-  ADX(14) 33.49. **Open question, not yet a finding:** on a closed day the quote's previous close (17.47) equals
-  Friday's own daily close while last is 18.43, so T-11b would read "+5.5 % today" when the market is shut. Check the
-  quote's `ohlc.close` at Monday's session (task 37) before trusting T-11b on a non-session read.
+  ADX(14) 33.49. The 'previous close equals Friday' puzzle was resolved on 11-09: Sunday 8 Nov was the Diwali Muhurat session
+  (in Kite's daily candles); the quote was correct.
 - The live playbook is read from `system_playbook_versions`, not the JSON file: un-greying needed migration 0048 (row
   21m). On a fresh DB 0048 writes nothing (0031 seeds the regenerated file, already built); on ofo_dev it appends one
   ic version.
@@ -47,3 +46,20 @@ under the owner's strategy delegation).
 - Status times are read from `date` in the same step; two rows were first stamped from memory and corrected.
 - The 0044 DB test needs > 280 s with setup; a short timeout killed one run (its throwaway DB is left for
   `db_run_fresh.py --sweep` after 24 h).
+
+## Two checkers side by side (task 31, 2026-11-09 08:12 IST, ADR-279)
+ofo_dev migrated 0045 -> 0048 (`D:\Abhay\scratch\gctp\migrate_dev.py <main> upgrade head`). From the main checkout,
+each under Desktop Commander, `cmd` shell (variables live in no .env):
+- feed: `set FEED_MODE=bus&& set REDIS_URL=redis://127.0.0.1:6380/0&& set LIVE_MARKET=1&& python scripts\orchestrator\dev_run.py <main> python -m ofo_app.liveprices`
+- API 8765: the same three + `set DB_POOL_SIZE=4&&`, then `dev_run.py <main> python -m uvicorn --factory ofo_app.main:create_app --app-dir backend --loop ofo_app.event_loop:selector_loop --host 127.0.0.1 --port 8765`
+- live checker: the same three, then `dev_run.py <main> python -m ofo_app.background` ("4 strategies monitored")
+- vite 5173: `set OFO_API_TARGET=http://127.0.0.1:8765&& node_modules\.bin\vite --port 5173 --strictPort` (in frontend\)
+- test-data checker: `set APP_ENV=development&& set OFO_SCENARIO=ADJ-60&& dev_run.py <main> python -m ofo_app.background`
+  ("scenario ADJ-60 (test data, no Kite) ... 1 strategies monitored": only test strategy 118, seeded with
+  `scripts/seed_scenario.py ADJ-60`). No LIVE_MARKET, no feed: it never reads Kite.
+
+## Close (2026-11-09 09:25 IST)
+All status rows done. PR #675 merged (c3f93087); live record in `gc-ictrack-27-trigger-proof-2026-11-09.md`. Owner
+accepted T-13..T-16 as completed though the background checker cannot check them yet (#627, #676). Next: #627 (the
+worker's own Kite session: margin, previous close, day open). Builder worktrees -mig/-trig/-plumb/-iv and -gc-ictrack
+expire at TTL (their work is on main; wt-rm needs an identical tree).

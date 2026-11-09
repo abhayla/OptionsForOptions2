@@ -632,6 +632,8 @@ issues:
   "#672": S6.7  # held_units is a second netting path beside the tracking netter (GC-ICTRACK deferred)
   "#673": S6.7  # Adopted Zerodha average finer than a paisa makes a real strategy untrackable (GC-ICTRACK deferred)
   "#674": S6.7  # Two paper-only readers left outside tracking: adjustment history page and booked P&L (GC-ICTRACK deferred)
+  "#676": S6.7  # Test-data checker has no margin reader: T-14 / T-15 never checked on test data (GC-ICTRACK proof)
+  "#678": S6.7  # Playbook test route lists scenario test strategies in live mode (GC-ICTRACK live record)
 
 # Work items whose status is not done.
 work_items:

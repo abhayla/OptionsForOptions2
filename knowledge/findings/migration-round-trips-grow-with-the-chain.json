@@ -1,0 +1,28 @@
+{
+ "id": "migration-round-trips-grow-with-the-chain",
+ "scope": "generic",
+ "class": "A per-migration round-trip test that steps down to before its migration and back up to head replays every LATER migration, so each new migration adds its up+down cost to every earlier migration's tests: the suite's time grows with the square of the chain, and a fixed CI time cap is crossed by a change that adds migrations without any test getting slower on its own.",
+ "mechanism": "GC-ICTRACK PR #675 added 0046-0048 (each rebuilds and post-checks the app-role allow-list function). The api job's migration round-trip window (tests 3097-3240: the 0024-0044 round-trip files, e.g. 73 tests in test_migration_0025_strategy_name.py) took 32 min instead of 9 min, and the job was cancelled at its 75-min cap at 92 % with 0 failures.",
+ "first_seen": {
+  "date": "2026-11-09",
+  "where": "CI api job on PR #675, run 42531099467, job 128885278229",
+  "evidence": "progress 49 % at 22:58:22Z, 50 % at 23:06:15Z, 51 % at 23:30:07Z (3096 -> 3240 tests); main's last green api run 42461489030 job 128671526525: 49 % 08:19:09Z, 51 % 08:28:14Z and the whole app-test step 33 min (08:07:16Z-08:40:06Z). The rest of this run was ~1.7x slower than main's (runner speed), which the cap also has to absorb."
+ },
+ "fix": "Stopgap 44863868 (merged in #675): api job cap 75 -> 120 min. Class fix not done: run each migration's full down-to-before-N round trip once per file, not once per test.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "Nothing measures the round-trip window's growth before CI. Candidate: a test that counts migrations x round-trip tests and fails past a budget, naming the files."
+ },
+ "spec_ref": [
+  "docs/process/runbook.md",
+  ".github/workflows/app-tests.yml"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-11-09",
+   "where": "CI api job, PR #675",
+   "evidence": "cancelled at 75 min at 92 %, 0 failures; round-trip window 9 -> 32 min after 3 new migrations; re-run cancelled too; passed with the cap at 120 min (merged c3f93087)."
+  }
+ ]
+}

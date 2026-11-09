@@ -2,7 +2,7 @@
 
 # Findings index
 
-160 finding(s), generated from `knowledge/findings/*.json`.
+161 finding(s), generated from `knowledge/findings/*.json`.
 
 | id | class | detection status | other fields |
 |---|---|---|---|
@@ -96,6 +96,7 @@
 | measure-file-list-misses-shared-registries | A row's planned file list, built from a grep of its own call chain, leaves out the shared registry files that every change of its kind must also edit (the user-text catalogue, the committed OpenAPI document, the response-door model sweep, the template pins), so two rows measured as disjoint both edit the same registries and the overlap is found only after both are built. | unguarded | occurrences, scope, spec_ref |
 | merge-gate-local-git-honours-grafts | A gate that rebuilds a review-coverage file list from LOCAL git history trusts repository-local history rewrites (grafts, replace refs, shallow boundaries) that any process with write access to the shared .git folder can plant; a planted rewrite can make the changed-file list come back empty, and a gate that reads an empty list as 'nothing changed' passes instead of refusing. | guarded | occurrences, scope, spec_ref |
 | merge-leaves-conflict-markers | A merge that auto-resolves most files can still leave conflict markers in one of them; an audit that only LISTS the files changed on both sides for a human to read lets the markers be committed and pushed, because nobody reads a list while other checks are green. | guarded | occurrences, scope, spec_ref |
+| migration-round-trips-grow-with-the-chain | A per-migration round-trip test that steps down to before its migration and back up to head replays every LATER migration, so each new migration adds its up+down cost to every earlier migration's tests: the suite's time grows with the square of the chain, and a fixed CI time cap is crossed by a change that adds migrations without any test getting slower on its own. | unguarded | occurrences, scope, spec_ref |
 | money-parsed-through-float | Any adapter that reads a JSON reply with the default number parser turns every price, margin and charge into a binary float before it becomes a Decimal, so values like 291444.67000000004 enter the money path and rupee totals pick up representation error. | unguarded | occurrences, scope, spec_ref |
 | money-value-computed-outside-engine | Any money value (premium, P&L, value) that a consumer module re-computes from leg prices instead of reading it from the one calculation engine can silently drop a factor the engine applies (quantity, sign, instrument kind), so the consumer and the engine disagree. | guarded | scope, spec_ref |
 | net-only-read-misses-roundtrip | Any reconciliation that decides what happened from an end-of-period NET quantity alone treats every round trip inside that period (buy then sell of the same contract, or the reverse) as 'nothing happened': the trades, their fills and their P&L vanish. Wider shape: a summary number cannot prove the absence of the events it sums. | unguarded | occurrences, scope, spec_ref |
