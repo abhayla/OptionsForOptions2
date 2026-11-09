@@ -63,3 +63,13 @@ All status rows done. PR #675 merged (c3f93087); live record in `gc-ictrack-27-t
 accepted T-13..T-16 as completed though the background checker cannot check them yet (#627, #676). Next: #627 (the
 worker's own Kite session: margin, previous close, day open). Builder worktrees -mig/-trig/-plumb/-iv and -gc-ictrack
 expire at TTL (their work is on main; wt-rm needs an identical tree).
+
+## Owner-accepted deviations at close (2026-11-09, question tool: "Accept, close it")
+- §0 rule 1: the status page was republished once (version 2, layout only; rows untouched) on a stop-hook request.
+- §0 rule 5: three PRs, #675 (code, one squashed commit), #677 (docs, planned in #675's body) and the docs PR that adds
+  this section.
+- Rows that meet their done line only in part: t0 (44 rows, not 45: the contract's total line miscounts); t2 (real
+  position proof dropped by the owner, ADR-276 (6), replaced by 27p); t11 (margin read from the stored session, not
+  through the worker's margin seam, #627); t14 and t21m (the background-worker DB test and the 0044 re-run were
+  covered only by the full gate and CI on #675); t26 (ADJ-60 fires on synthetic history, real values in t27/t37);
+  t39 (recorded 0 problems without flagging these). A done-line re-check of all 49 rows on 2026-11-09 found these.
