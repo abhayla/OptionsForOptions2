@@ -13,6 +13,7 @@ Example (issue #497, empty catalogue):
 import asyncio
 import datetime
 import functools
+import hashlib
 import os
 import re
 import secrets
@@ -28,6 +29,12 @@ import db_run  # (reuse its env reading and GLOBAL.env location)
 # the optional _f<n> is a per-test-file copy made by tests_app/conftest.py (GC-MERGE1, #649); sweep and drop find it too
 NAME_RE = re.compile(r"ofo_test_tmp_[0-9]{14}_[0-9a-f]{4}(_f[0-9]+(_[0-9]+)?)?")
 PREFIX = "ofo_test_tmp_"
+# template database: <prefix><head revision [a-z0-9_] <=32 chars>_<sha256[:8] of every migration file>; copy source
+TPL_PREFIX = "ofo_test_tpl_"
+TPL_RE = re.compile(r"ofo_test_tpl_[0-9a-z_]{1,32}_[0-9a-f]{8}")
+TPL_READY = "ofo_tpl_ready "  # COMMENT ON DATABASE marker + STAMP; no marker = half built
+TPL_LOCK_KEY = 7406120911  # fixed pg_advisory_lock key: one build-or-copy at a time
+VERSIONS = os.path.join("backend", "ofo_app", "alembic", "versions")
 SWEEP_AGE = datetime.timedelta(hours=24)
 APP_ROLE = "ofo_app"
 EXIT_REFUSED = 2
@@ -44,6 +51,28 @@ class Refused(Exception):
 def is_tool_name(name):
     """Exact match, fail closed: only a name this tool could have made."""
     return isinstance(name, str) and NAME_RE.fullmatch(name) is not None
+
+
+def is_template_name(name):
+    return isinstance(name, str) and TPL_RE.fullmatch(name) is not None
+
+
+def template_name(checkout):
+    """Head revision + hash of every migration file, so any migration change names a new template."""
+    d = os.path.join(checkout, VERSIONS)
+    files = sorted(f for f in os.listdir(d) if f.endswith(".py"))
+    h, revs, downs = hashlib.sha256(), set(), set()
+    for f in files:
+        with open(os.path.join(d, f), "rb") as fh:
+            raw = fh.read()
+        h.update(f.encode() + b"\0" + raw + b"\0")
+        for line in raw.decode("utf-8").splitlines():
+            if line.startswith(("revision", "down_revision")):
+                (downs if line.startswith("down") else revs).update(re.findall(r"[\"']([^\"']+)[\"']", line))
+    heads = sorted(revs - downs)
+    if not files or len(heads) != 1:
+        raise ValueError(f"cannot find a single alembic head in {d}")
+    return f"{TPL_PREFIX}{re.sub('[^0-9a-z]', '_', heads[0].lower())[:32]}_{h.hexdigest()[:8]}"
 
 
 def make_name(now=None, rand=None):
@@ -71,7 +100,7 @@ def scrub(text, secret_list):
 
 async def drop_database(conn, name):
     """Drop `name` only if the allow-list accepts it; terminate that database's own connections first."""
-    if not is_tool_name(name):
+    if not (is_tool_name(name) or is_template_name(name)):
         raise Refused(f"refusing to drop {name!r}: not a name made by this tool")
     await conn.execute(
         "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()", name)
@@ -86,10 +115,21 @@ async def drop_with_copies(conn, name):
     await drop_database(conn, name)
 
 
+async def copy_database(conn, name, template, on_created=None):
+    """CREATE `name` as a server-side copy of `template`, then the same grants as create_database."""
+    if not (is_tool_name(name) and is_template_name(template)):
+        raise Refused(f"refusing to copy {template!r} to {name!r}")
+    await conn.execute(f'CREATE DATABASE "{name}" TEMPLATE "{template}"')
+    if on_created is not None:
+        on_created()
+    await conn.execute(f'REVOKE CONNECT ON DATABASE "{name}" FROM PUBLIC')
+    await conn.execute(f'GRANT CONNECT ON DATABASE "{name}" TO {APP_ROLE}')
+
+
 async def create_database(conn, name, on_created=None):
     """CREATE, then the grants; `on_created` is called right after the CREATE succeeds, so a CREATE that failed (e.g.
     the name already exists: another run's database) is never dropped by this run."""
-    if not is_tool_name(name):
+    if not (is_tool_name(name) or is_template_name(name)):
         raise Refused(f"refusing to create {name!r}")
     await conn.execute(f'CREATE DATABASE "{name}"')
     if on_created is not None:
@@ -98,7 +138,28 @@ async def create_database(conn, name, on_created=None):
     await conn.execute(f'GRANT CONNECT ON DATABASE "{name}" TO {APP_ROLE}')
 
 
-async def sweep(conn, now=None, out=print):
+async def sweep_templates(conn, keep, now, out):
+    """Drop template databases other than `keep` whose ready-stamp is older than SWEEP_AGE (no stamp: kept)."""
+    rows = await conn.fetch("SELECT datname, shobj_description(oid, 'pg_database') AS comment FROM pg_database "
+                            "WHERE datname LIKE 'ofo\\_test\\_tpl\\_%'")
+    dropped = []
+    for r in sorted(rows, key=lambda r: r["datname"]):
+        n, c = r["datname"], r.get("comment") or ""
+        try:
+            t = datetime.datetime.strptime(c[len(TPL_READY):], STAMP).replace(tzinfo=datetime.UTC) \
+                if c.startswith(TPL_READY) else None
+        except ValueError:
+            t = None
+        if not is_template_name(n) or n == keep or t is None or now - t < SWEEP_AGE:
+            out(f"sweep: {n} kept")
+            continue
+        await drop_database(conn, n)
+        out(f"sweep: dropped {n}")
+        dropped.append(n)
+    return dropped
+
+
+async def sweep(conn, now=None, out=print, keep_template=None):
     now = now or datetime.datetime.now(datetime.UTC)
     rows = await conn.fetch("SELECT datname FROM pg_database WHERE datname LIKE 'ofo\\_test\\_tmp\\_%'")
     old = []
@@ -111,7 +172,7 @@ async def sweep(conn, now=None, out=print):
     for n in old:
         await drop_database(conn, n)
         out(f"sweep: dropped {n}")
-    return old
+    return old + await sweep_templates(conn, keep_template, now, out)
 
 
 def with_database(url, name):
@@ -143,6 +204,8 @@ async def _connect_and(connect, url, action):
 class Fresh:
     """One run: its own database name, the owner URL, the fakes-able connect and runner."""
 
+    use_template = True  # tests switch it off per instance
+
     def __init__(self, settings, connect, runner=subprocess.run, name=None, err=None):
         self.admin, self.app_url, self.secrets = settings
         self.connect = connect
@@ -169,8 +232,8 @@ class Fresh:
         try:
             code = self._setup_and_run(checkout, command)
         finally:
-            # Drop only what THIS run created (the CREATE succeeded, even if a grant then failed); a CREATE that failed -
-            # e.g. the name exists because another run picked it - is never dropped here. Allow-list in drop_database.
+            # Drop only what THIS run created (the CREATE succeeded, even if a grant then failed); a CREATE that
+            # failed - e.g. the name exists because another run picked it - is never dropped here. Allow-list in drop_database.
             if self.created:
                 code = self._drop_own(code)
         return code
@@ -185,9 +248,48 @@ class Fresh:
             return code or EXIT_SETUP
         return code
 
+    async def _copy_from_template(self, conn, checkout):
+        """Under the advisory lock: build the template if it has no ready marker, then copy it to this run's name."""
+        tpl = template_name(checkout)
+        await conn.execute("SELECT pg_advisory_lock($1)", TPL_LOCK_KEY)
+        try:
+            if await conn.fetchval("SELECT shobj_description(oid, 'pg_database') FROM pg_database WHERE datname = $1",
+                                   tpl) is None:
+                await drop_database(conn, tpl)  # a half-built one (no marker); we hold the lock, nobody else builds
+                await create_database(conn, tpl)
+                tpl_url = with_database(self.admin, tpl)
+                res = self.runner(ALEMBIC, cwd=checkout, env=dict(self.env, ALEMBIC_DATABASE_URL=tpl_url),
+                                  capture_output=True, text=True)
+                if res.returncode != 0:
+                    await drop_database(conn, tpl)
+                    raise RuntimeError("template migrate failed: " + scrub(res.stderr or "", self.secrets)[-300:])
+                stamp = datetime.datetime.now(datetime.UTC).strftime(STAMP)
+                await conn.execute(f'COMMENT ON DATABASE "{tpl}" IS \'{TPL_READY}{stamp}\'')
+            await copy_database(conn, self.name, tpl, on_created=self._mark_created)
+        finally:
+            await conn.execute("SELECT pg_advisory_unlock($1)", TPL_LOCK_KEY)
+
+    def _try_template(self, checkout):
+        """True when self.name is a ready copy. Any template error is logged, this run's database dropped, and False
+        returned so the caller falls back to the full migration path."""
+        if not self.use_template:
+            return False
+        try:
+            asyncio.run(_connect_and(self.connect, self.admin, lambda c: self._copy_from_template(c, checkout)))
+            return True
+        except Exception as e:  # noqa: BLE001 - never fail a run because of the template
+            self.err(f"db_run_fresh: template unavailable, full migration instead: {type(e).__name__}: "
+                     f"{scrub(e, self.secrets)}")
+            if self.created:
+                self._drop_own(0)
+                self.created = False
+            return False
+
     def _setup_and_run(self, checkout, command):
         step = "create"
         try:
+            if self._try_template(checkout):
+                return self.runner(command, cwd=checkout, env=self.env).returncode
             self._admin_do(functools.partial(create_database, on_created=self._mark_created))
             step = "migrate"
             res = self.runner(ALEMBIC, cwd=checkout, env=self.env, capture_output=True, text=True)
@@ -222,7 +324,8 @@ def main(argv=None, connect=real_connect, settings_loader=load_settings, runner=
     argv = sys.argv[1:] if argv is None else argv
     if argv == ["--sweep"]:
         settings = settings_loader()
-        return _guarded(_Action(connect, sweep), settings, "sweep")
+        keep = template_name(db_run.ROOT)
+        return _guarded(_Action(connect, functools.partial(sweep, keep_template=keep)), settings, "sweep")
     if len(argv) == MIN_ARGS and argv[0] == "--drop":  # the allow-list runs inside drop_database, before any DROP
         t = name_time(argv[1])
         if t is not None and datetime.datetime.now(datetime.UTC) - t < SWEEP_AGE:

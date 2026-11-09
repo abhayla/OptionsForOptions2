@@ -80,6 +80,7 @@ def drops(log):
 def go(log, runner, **kw):
     errs = []
     fr = fresh.Fresh(SETTINGS, make_connect(log, **kw), runner, name="ofo_test_tmp_20261022120000_ab12", err=errs.append)
+    fr.use_template = False
     code = fr.run(".", ["cmd"])
     return code, errs
 
@@ -257,3 +258,150 @@ def test_drop_with_copies_drops_the_copies_before_the_parent():
     log = []
     asyncio.run(fresh.drop_with_copies(FakeConn(log, rows=[old + "_f1", old + "_f2"]), old))
     assert drops(log) == [f'DROP DATABASE IF EXISTS "{n}"' for n in (old + "_f1", old + "_f2", old)]
+
+
+# ---- template database (copy instead of replaying every migration) ----
+TPL = "ofo_test_tpl_0048_ic_t11c_t20b_built_0123abcd"
+
+
+class TplConn(FakeConn):
+    """fetchval answers the ready-marker lookup: None = template missing/half built, a string = ready."""
+
+    def __init__(self, log, marker=None, **kw):
+        super().__init__(log, **kw)
+        self.marker = marker
+
+    async def fetchval(self, sql, *args):
+        self.log.append(sql)
+        return self.marker
+
+    async def fetch(self, sql, *args):
+        self.log.append(sql)
+        return self.rows
+
+
+def tpl_go(log, runner, marker=None, **kw):
+    errs = []
+
+    async def connect(url):
+        log.append(("connect", url))
+        return TplConn(log, marker=marker, **kw)
+    fr = fresh.Fresh(SETTINGS, connect, runner, name="ofo_test_tmp_20261022120000_ab12", err=errs.append)
+    fresh.template_name = lambda _c: TPL
+    return fr.run(".", ["cmd"]), errs
+
+
+@pytest.fixture(autouse=True)
+def _restore_template_name():
+    orig = fresh.template_name
+    yield
+    fresh.template_name = orig
+
+
+def fake_versions(tmp_path, extra=""):
+    d = tmp_path / fresh.VERSIONS
+    d.mkdir(parents=True)
+    (d / "0001_a.py").write_text("revision = '0001_a'\ndown_revision = None\n")
+    (d / "0002_b.py").write_text("revision = '0002_b'\ndown_revision = '0001_a'\n" + extra)
+    return str(tmp_path)
+
+
+def test_template_name_is_head_plus_hash_and_changes_with_any_migration_change(tmp_path):
+    n1 = fresh.template_name(fake_versions(tmp_path))
+    assert n1.startswith("ofo_test_tpl_0002_b_") and fresh.is_template_name(n1)
+    (tmp_path / fresh.VERSIONS / "0001_a.py").write_text("revision = '0001_a'\ndown_revision = None\n# edit\n")
+    n2 = fresh.template_name(str(tmp_path))
+    assert n2 != n1 and n2.startswith("ofo_test_tpl_0002_b_")
+
+
+def test_real_migrations_give_a_valid_template_name():
+    assert fresh.is_template_name(fresh.template_name(str(Path(__file__).resolve().parents[2])))
+
+
+@pytest.mark.parametrize("name", ["ofo_test", "ofo_dev", "ipodhan_prod", "postgres", "algochanakya",
+                                  "ofo_test_tpl_", "ofo_test_tpl_x", TPL + "x", TPL.upper(),
+                                  TPL + '"; DROP DATABASE ofo_test; --'])
+def test_guard_refuses_every_other_database_even_with_the_template_path(name):
+    assert not fresh.is_template_name(name) and not fresh.is_tool_name(name)
+    log = []
+    for coro in (fresh.drop_database(FakeConn(log), name), fresh.create_database(FakeConn(log), name),
+                 fresh.copy_database(FakeConn(log), name, TPL), fresh.copy_database(FakeConn(log), GOOD, name)):
+        with pytest.raises(fresh.Refused):
+            asyncio.run(coro)
+    assert sql(log) == []
+
+
+def test_guard_accepts_tmp_and_template_names():
+    log = []
+    asyncio.run(fresh.drop_database(FakeConn(log), TPL))
+    asyncio.run(fresh.drop_database(FakeConn(log), GOOD))
+    asyncio.run(fresh.copy_database(FakeConn(log), GOOD, TPL))
+    assert f'CREATE DATABASE "{GOOD}" TEMPLATE "{TPL}"' in sql(log)
+
+
+def test_ready_template_is_copied_without_migrating():
+    log, runner = [], Runner()
+    code, errs = tpl_go(log, runner, marker="ofo_tpl_ready 20261022100000")
+    assert code == 0 and errs == []
+    assert any(s.startswith("CREATE DATABASE") and f'TEMPLATE "{TPL}"' in s for s in sql(log))
+    assert [c[0] for c in runner.calls] == [["cmd"]]  # no alembic run
+    assert len(drops(log)) == 1 and TPL not in drops(log)[0]  # only the run's own database is dropped
+    s = sql(log)
+    copy = s.index(next(x for x in s if "TEMPLATE" in x))
+    assert s.index("SELECT pg_advisory_lock($1)") < copy < s.index("SELECT pg_advisory_unlock($1)")
+
+
+def test_missing_template_is_built_marked_then_copied():
+    log, runner = [], Runner()
+    code, _ = tpl_go(log, runner)
+    assert code == 0
+    assert [c[0] for c in runner.calls] == [fresh.ALEMBIC, ["cmd"]]
+    assert runner.calls[0][1]["env"]["ALEMBIC_DATABASE_URL"].endswith("/" + TPL)
+    s = sql(log)
+    assert any(x.startswith(f'COMMENT ON DATABASE "{TPL}" IS') for x in s)
+    comment = s.index(next(x for x in s if x.startswith("COMMENT")))
+    assert s.index(f'CREATE DATABASE "{TPL}"') < comment < s.index(next(x for x in s if "TEMPLATE" in x))
+
+
+def test_template_error_falls_back_to_full_migration_and_run_still_succeeds():
+    log, runner = [], Runner()
+    code, errs = tpl_go(log, runner, marker="ofo_tpl_ready 20261022100000", fail_on="TEMPLATE")
+    assert code == 0 and any("template unavailable" in e for e in errs)
+    assert [c[0] for c in runner.calls] == [fresh.ALEMBIC, ["cmd"]]  # today's path ran
+    assert all(SECRET not in e for e in errs)
+
+
+def test_template_migrate_failure_drops_the_half_built_template_and_falls_back():
+    log, runner = [], Runner(migrate_rc=1)
+    code, errs = tpl_go(log, runner)
+    assert code == SETUP and any("template unavailable" in e for e in errs)
+    assert f'DROP DATABASE IF EXISTS "{TPL}"' in sql(log)
+
+
+def test_sweep_drops_stale_templates_and_keeps_the_current_one():
+    stale, cur = "ofo_test_tpl_0047_x_aaaaaaaa", TPL
+    rows = [{"datname": stale, "comment": "ofo_tpl_ready 20261020000000"},
+            {"datname": cur, "comment": "ofo_tpl_ready 20261020000000"},
+            {"datname": "ofo_test_tpl_0046_x_bbbbbbbb", "comment": "ofo_tpl_ready 20261022110000"},
+            {"datname": "ofo_test_tpl_0045_x_cccccccc", "comment": None},
+            {"datname": "ofo_test", "comment": "ofo_tpl_ready 20200101000000"}]
+    log = []
+    dropped = asyncio.run(fresh.sweep_templates(TplConn(log, rows=rows), cur, NOW, lambda _m: None))
+    assert dropped == [stale]
+    assert drops(log) == [f'DROP DATABASE IF EXISTS "{stale}"']
+
+
+def test_name_guard_mutants_are_caught_by_the_refusal_list():
+    """Three mutants of the template-name guard (scratch copies, no server): each lets a name through that the real
+    guard refuses, so the refusal list would fail if the real guard were changed that way."""
+    import re
+    real = fresh.TPL_RE.pattern
+    refused = ["ofo_test", "ofo_dev", "ipodhan_prod", "postgres", "algochanakya", TPL + "x", "xofo_test_tpl_a_01234567"]
+    mutants = {
+        "match_not_fullmatch": lambda n: re.match(real, n) is not None,
+        "prefix_widened": lambda n: re.fullmatch(real.replace("ofo_test_tpl_", "[a-z_]+"), n) is not None,
+        "hash_part_loose": lambda n: re.fullmatch(real.replace("[0-9a-f]{8}", ".*"), n) is not None,
+    }
+    assert not any(fresh.is_template_name(n) for n in refused)
+    for label, guard in mutants.items():
+        assert any(guard(n) for n in refused), label
