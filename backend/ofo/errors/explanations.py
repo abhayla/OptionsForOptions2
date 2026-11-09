@@ -1524,6 +1524,12 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                          "threshold": PlaybookField}),
     ExplanationTemplate("adjust_condition_line_plain", "values_seen", "{label}: {value} (rule {threshold})",
                         {"label": PlaybookTriggerLabel, "value": PlaybookField, "threshold": PlaybookField}),
+    # #650: a trigger whose value is rupees (T-02: the expiry P&L at spot) or a count (T-18: adjustments used) has no
+    # unit word in its playbook row; its value is shown in its own unit, not as a 4-decimal number
+    ExplanationTemplate("adjust_condition_line_rupees", "values_seen", "{label}: {value} (rule {threshold})",
+                        {"label": PlaybookTriggerLabel, "value": Rupees, "threshold": Rupees}),
+    ExplanationTemplate("adjust_condition_line_count", "values_seen", "{label}: {value} (rule {threshold})",
+                        {"label": PlaybookTriggerLabel, "value": Count, "threshold": Count}),
     # a clock trigger (unit "time", T-10b): its value and threshold are clock times, no unit word
     ExplanationTemplate("adjust_condition_line_time", "values_seen", "{label}: {value} (rule {threshold})",
                         {"label": PlaybookTriggerLabel, "value": ClockTime, "threshold": ClockTime}),

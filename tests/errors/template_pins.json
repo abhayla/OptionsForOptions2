@@ -3934,5 +3934,13 @@
   "adjust_trigger_adx_unusable": {
     "sha256": "fd660b673f276e307b00bbe0a14cb8280be7ad5bc8790549a7ee8d9a523683d1",
     "reviewed": "owner read 2026-11-08 (GC-ICTRACK 21b, approved all 24 in the question tool)"
+  },
+  "explanation:adjust_condition_line_rupees": {
+    "sha256": "1184fe1a615bffeefe1063275c220e3fcda784c51ca3ff13ad10e645368cc042",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_condition_line_count": {
+    "sha256": "1184fe1a615bffeefe1063275c220e3fcda784c51ca3ff13ad10e645368cc042",
+    "reviewed": "pending owner read"
   }
 }

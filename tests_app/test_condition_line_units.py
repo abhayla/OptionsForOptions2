@@ -31,7 +31,33 @@ def test_every_trigger_of_the_table_renders_a_line_with_its_value(tid):
     t = PLAYBOOKS["triggers"][tid]
     value, threshold = SAMPLE.get(t["unit"], ("0.5000", "1.0000"))
     text = str(condition_line(tid, t["label"], t["unit"], value, threshold))
+    if tid in OWN_UNIT:  # #650: shown in its own unit, not as a 4-decimal number
+        value, threshold = OWN_UNIT[tid]
     assert value in text and threshold in text, (tid, t["unit"], text)
+
+
+#: #650: the triggers whose row has no unit but whose value is rupees (T-02) or a count (T-18): the line shows
+#: the sample 0.5 / 1.0 in that unit
+OWN_UNIT = {"T-02": ("₹0.50", "₹1.00"), "T-18": ("0", "1")}
+
+
+def test_t02_value_is_rupees_with_a_real_minus_never_four_decimals():
+    """#650: 'Spot crosses a breakeven: -1065.0000 (rule 0.0000)' was rupees of expiry P&L shown as a bare number."""
+    t = PLAYBOOKS["triggers"]["T-02"]
+    line = str(condition_line("T-02", t["label"], t["unit"], "-1065.0000", "0.0000"))
+    assert line == f"{t['label']}: −₹1,065.00 (rule ₹0.00)", line
+
+
+def test_t18_value_is_a_whole_count():
+    t = PLAYBOOKS["triggers"]["T-18"]
+    line = str(condition_line("T-18", t["label"], t["unit"], "2.0000", "2.0000"))
+    assert line == f"{t['label']}: 2 (rule 2)", line
+
+
+@pytest.mark.parametrize("tid", ["T-02", "T-18"])
+def test_an_unreadable_own_unit_value_still_returns_a_line_never_raises(tid):
+    t = PLAYBOOKS["triggers"][tid]
+    assert str(condition_line(tid, t["label"], t["unit"], "@@", "0.0000")) == tid
 
 
 @pytest.mark.parametrize("value", ["@@ not a value", "15:00:00", "", "x" * 200])
