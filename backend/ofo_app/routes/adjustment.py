@@ -59,7 +59,14 @@ from ofo.engine.legs import Action, Instrument, Leg
 from ofo.engine.metrics import UNLIMITED, MultiExpiryError
 from ofo.engine.pop import Why
 from ofo.engine.strategy import Strategy
-from ofo.engine.whole_trade import WholeTradeAfter, WholeTradeFigures, whole_trade_after
+from ofo.engine.whole_trade import (
+    FarLegNoIV,
+    NearExpiryAfter,
+    WholeTradeAfter,
+    WholeTradeFigures,
+    near_expiry_after,
+    whole_trade_after,
+)
 from ofo.errors.explanations import EXPLANATIONS, approach_about_id, approach_name_id, render_explanation
 from ofo.marketdata.spot_source import SourceReading, SpotAnswer, feed_reading
 from ofo.money import PAISE
@@ -391,6 +398,9 @@ class Priced:
     #: the approach's own charges when the After spans two expiries (A-04, ADR-239 (2)): the Compare's cost needs
     #: only the trades; None otherwise or when charges are unknown
     adjustment_charges: Decimal | None = None
+    #: C12 (REQ-148): the After valued at the nearer expiry when its legs span two expiries; None otherwise or when a
+    #: later leg cannot be valued (``reason`` then says why)
+    near: NearExpiryAfter | None = None
 
 
 def price_after(legs: Sequence[PositionLeg], position: Position, booked: Decimal | None, paid: Decimal | None,  # noqa: PLR0913
@@ -416,8 +426,35 @@ def price_after(legs: Sequence[PositionLeg], position: Position, booked: Decimal
                                   open_exit_charges=exits if known else Decimal(0),
                                   forward=market.forward, years=market.years, vol=market.vol)
     except MultiExpiryError:
-        return Priced(None, known, render_explanation("adjust_needs_one_expiry"), adjustment if known else None)
+        near, why = _near_after(legs, position, booked, paid, adjustment, exits, known, market)
+        return Priced(None, known, why, adjustment if known else None, near)
     return Priced(after, known)
+
+
+def _near_after(legs: Sequence[PositionLeg], position: Position, booked: Decimal, paid: Decimal | None,  # noqa: PLR0913
+                adjustment: Decimal, exits: Decimal, known: bool,
+                market: MarketInputs) -> tuple[NearExpiryAfter | None, Any]:
+    """C12 (REQ-148): the two-expiry After valued at the nearer expiry close (``whole_trade.near_expiry_after``) with
+    the catalogue's at-expiry reason (no single maximum, ADR-143), or None with why: a later leg with no current price,
+    no IV, or no rate to value it with."""
+    near = min(x.expiry for x in legs)
+    rows = {r.tradingsymbol: r for r in market.chain}
+    for x in legs:
+        if x.expiry > near and (rows.get(x.tradingsymbol) is None or rows[x.tradingsymbol].ltp is None):
+            return None, render_explanation("adjust_cmp_no_price", leg=x.tradingsymbol)
+    rate = getattr(market.forward_model, "rate", None)  # the read's one rate (ExpiryForward.rate); None: not read
+    if rate is None:
+        return None, render_explanation("adjust_cmp_near_no_rate")
+    zero = Decimal(0)
+    try:
+        after = near_expiry_after(_strategy(legs, position.lot), booked_pnl=booked.quantize(PAISE),
+                                  paid_charges=paid if known else zero,  # type: ignore[arg-type]
+                                  adjustment_charges=adjustment if known else zero,
+                                  open_exit_charges=exits if known else zero, rate=rate,
+                                  ivs=tuple(market.leg_ivs.get(x.tradingsymbol) for x in legs))
+    except FarLegNoIV as e:
+        return None, render_explanation("adjust_cmp_near_no_iv", leg=legs[e.index].tradingsymbol)
+    return after, render_explanation("adjust_needs_one_expiry")
 
 
 def as_of_market(tracked: Tracked, market: MarketInputs) -> Tracked:
@@ -564,7 +601,7 @@ async def adjustment_approaches(  # noqa: PLR0913, PLR0915 - FastAPI dependencie
             item["liquidity_flags"] = strike_flags(built, position, market.chain, limits)
             if built is not None and built.refusal_message is None:
                 columns.append(Column(built, priced[a].after, priced[a].reason, priced[a].charges_known,
-                                      _margin_read(item["margin"]), priced[a].adjustment_charges))
+                                      _margin_read(item["margin"]), priced[a].adjustment_charges, priced[a].near))
             out.append(item)
         reply["approaches"] = out
         from ofo_app import delta_neutral_reply  # noqa: PLC0415 - A-23 figures, no trade (GC-IC1 4a)
@@ -684,7 +721,7 @@ async def _compare_reply(columns: list[Column], tracked: Tracked, spot: Decimal,
     warn_pct, warn_off = warn_threshold(guards)  # REQ-159 AC-6: no playbook / no level -> no warning and a reason
     ctx = Context(position, spot, market.chain, rates, pop_on, before_margin, market.leg_greeks,
                   tracked.adjustments_used, prefs.compare, limits, plan_max(guards), warn_pct, warn_off)
-    return _compare_block(compare(columns, ctx, before.after, before.charges_known))
+    return _compare_block(compare(columns, ctx, before.after, before.charges_known, before.near))
 
 
 def _margin_read(block: Mapping[str, Any]) -> MarginRead:
@@ -705,7 +742,10 @@ def _compare_block(cmp: Any) -> dict:
                                 "warning": v.warning, "warning_off": v.warning_off}  # REQ-159 AC-6
                             for a, v in c.values.items()}} for c in cmp.criteria]
     return {"criteria": criteria, "leads": {a: {"n": n, "m": m} for a, (n, m) in cmp.leads.items()},
-            "curves": {k: [[level, pnl] for level, pnl in points] for k, points in cmp.curves.items()}}
+            "curves": {k: [[level, pnl] for level, pnl in points] for k, points in cmp.curves.items()},
+            # C12: a curve valued at the nearer expiry close (legs on two expiries) is an estimate, labelled so the
+            # screen never draws it as an at-expiry line
+            "curves_estimated": {k: render_explanation("adjust_cmp_curve_estimated") for k in cmp.estimated}}
 
 
 async def _margin(margin_of: ApproachMargin, built: ApproachLegs, market: MarketInputs) -> dict:

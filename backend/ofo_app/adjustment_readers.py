@@ -581,8 +581,9 @@ async def read_market(tracked: Tracked, ctx: Any, *, extra_ids: Iterable[str] = 
             g = later_model.greeks.get(iid)
             return None if g is None else Greeks(g.delta, g.gamma if g.gamma_exact is None else g.gamma_exact,
                                                  g.theta, g.vega)
-        later_rows, later_symbols, _ = chain_rows(listed, later, frozen.later, later_greeks, scn, closed)
-        ids = {**ids, **later_symbols}
+        later_rows, later_symbols, later_leg_greeks = chain_rows(listed, later, frozen.later, later_greeks, scn, closed)
+        # C12: a two-expiry After's later legs get their Greeks after and their engine IV (``leg_ivs``)
+        ids, leg_greeks = {**ids, **later_symbols}, {**later_leg_greeks, **leg_greeks}
     forward = fwd_model = None
     try:
         fwd_model = parity_forward(list(quotes.values()), spot_q, expiry, now, ctx.rate, ctx.forward_quality)
@@ -591,6 +592,8 @@ async def read_market(tracked: Tracked, ctx: Any, *, extra_ids: Iterable[str] = 
         forward = fwd_model = None
     leg_ivs = {sym: model.greeks[iid].iv for sym, iid in ids.items()  # the chain model's IV of each own leg (1b)
                if iid in model.greeks and sym in {x.tradingsymbol for x in position.legs}}
+    leg_ivs |= {} if later is None else {sym: later_model.greeks[iid].iv for sym, iid in later_symbols.items()
+                                         if iid in later_model.greeks}
     try:
         years = year_fraction(now, expiry)
     except ValueError:

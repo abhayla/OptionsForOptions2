@@ -68,8 +68,9 @@ from ofo.engine.metrics import UNLIMITED
 from ofo.engine.model import live_book
 from ofo.engine.pop import Why
 from ofo.engine.strategy import Strategy
-from ofo.engine.whole_trade import WholeTradeAfter, whole_pnl_at, whole_trade_after
+from ofo.engine.whole_trade import NearExpiryAfter, WholeTradeAfter, near_pnl_at, whole_pnl_at, whole_trade_after
 from ofo.errors.explanations import (
+    _TOKEN_MAX,
     ADJUSTMENT_CRITERION_LABEL_TEXT,
     ExplanationText,
     render_explanation,
@@ -122,6 +123,9 @@ class Column:
     #: this approach's own charges when no whole trade exists because the After spans two expiries (A-04, ADR-239
     #: (2)): the cost needs only the trades, never the After; None = not known (the reason above stands)
     adjustment_charges: Decimal | None = None
+    #: C12 (REQ-148): the After valued at the nearer expiry when it spans two expiries (``whole`` is then None); the
+    #: spot moves and the curve are estimates from it, the single at-expiry figures stay "-" with ADR-143's reason
+    near: NearExpiryAfter | None = None
 
 
 @dataclass(frozen=True)
@@ -169,6 +173,7 @@ class Comparison:
     criteria: tuple[Criterion, ...]
     leads: Mapping[str, tuple[int, int]]  # approach id -> (rows it leads, rows with a leader)
     curves: Mapping[str, tuple[tuple[Decimal, Decimal], ...]]  # "before" / approach id -> (level, P&L after charges)
+    estimated: tuple[str, ...] = ()  # C12: the curves valued at the nearer expiry close (legs on two expiries)
 
 
 # ---- cells -------------------------------------------------------------------------------------------------------
@@ -300,6 +305,16 @@ def _pnl_at(legs: Sequence[PositionLeg], lot: int, whole: WholeTradeAfter, level
     return whole_pnl_at(_strategy(legs, lot) if legs else None, whole, level)
 
 
+def joined_token(items: Sequence[str], sep: str = "/") -> str:
+    """#654 / #623 class: a list shown in a one-token ``Recorded`` slot (at most ``_TOKEN_MAX`` characters): as many
+    items as fit, then ``+Nmore`` for the rest, so a long list never raises."""
+    for n in range(len(items), 0, -1):
+        token = sep.join(items[:n]) + ("" if n == len(items) else f"{sep}+{len(items) - n}more")
+        if len(token) <= _TOKEN_MAX:
+            return token
+    return f"+{len(items)}more"
+
+
 def _move_level(spot: Decimal, percent: Decimal) -> Decimal:
     return (spot * (100 + percent) / 100).quantize(PAISE, rounding=ROUND_HALF_EVEN)
 
@@ -318,11 +333,15 @@ class _Rows:
 
     def _after_reason(self) -> ExplanationText | None:
         """Why no after-charges figure exists (no whole trade, or charges unknown); None when it does."""
-        if self.col.whole is None:
+        if self.col.whole is None and (self.col.near is None or self.col.charges_known):
             return self.col.no_whole_reason
-        if not self.col.charges_known:
+        if not self.col.charges_known:  # C12: a nearer-expiry value exists, only the charges are missing
             return render_explanation("adjust_charges_unknown")
         return None
+
+    def _no_single(self, key: str) -> ExplanationText | None:
+        """ADR-143 / REQ-148 AC-4: legs on two expiries have no single at-expiry figure; the catalogue's reason."""
+        return render_explanation(key) if self.col.whole is None and self.col.near is not None else None
 
     def credit(self) -> Cell:
         return _rupees(adjust_money.trade_credit((t.action, t.price, t.quantity) for t in self.b.trades))
@@ -356,6 +375,8 @@ class _Rows:
                        warning_off=self.ctx.warn_cost_off if self.ctx.warn_cost_pct is None else None)
 
     def max_profit_change(self) -> Cell:
+        if (single := self._no_single("summary_make_mixed_expiry")) is not None:
+            return _dash(single)
         after = None if self._after_reason() is not None else self.col.whole.after_charges.max_profit  # type: ignore[union-attr]
         return _from(compare_cost_rows.max_profit_change(after, self.before_top, self._after_reason(),
                                                          self.before_top is not None))
@@ -369,7 +390,7 @@ class _Rows:
         return _rupees(adjust_money.margin_change(after.value, before.value))
 
     def max_loss(self) -> Cell:
-        reason = self._after_reason()
+        reason = self._no_single("mixed_expiry_worst_case") or self._after_reason()
         if reason is not None:
             return _dash(reason)
         loss = self.col.whole.after_charges.max_loss  # type: ignore[union-attr]
@@ -378,13 +399,17 @@ class _Rows:
         return _rupees(loss)  # type: ignore[arg-type]
 
     def move(self, p: Decimal) -> Cell:
+        near = self.col.near
+        if self.col.whole is None and near is not None and self.col.charges_known:  # C12: valued at the nearer expiry
+            v = near_pnl_at(near, _move_level(self.ctx.spot, p))
+            return Cell(render_explanation("adjust_cmp_rupees_estimated", amount=v), v, None, v)
         reason = self._after_reason()
         if reason is not None:
             return _dash(reason)
         return _rupees(_pnl_at(self.b.after, self.lot, self.col.whole, _move_level(self.ctx.spot, p)))  # type: ignore[arg-type]
 
     def breakevens(self) -> Cell:
-        reason = self._after_reason()
+        reason = self._no_single("summary_start_mixed_expiry") or self._after_reason()
         if reason is not None:
             return _dash(reason)
         f = self.col.whole.after_charges  # type: ignore[union-attr]
@@ -394,12 +419,12 @@ class _Rows:
                 return Cell(render_explanation("adjust_cmp_no_breakeven_loss"), Decimal(0), None, Decimal(0))
             return Cell(render_explanation("adjust_cmp_no_breakeven_profit"), None, None, INFINITE)
         width = levels[-1] - levels[0] if len(levels) > 1 else abs(levels[0] - self.ctx.spot)
-        text = render_explanation("adjust_cmp_breakevens", levels="/".join(format(x, "f") for x in levels),
+        text = render_explanation("adjust_cmp_breakevens", levels=joined_token([format(x, "f") for x in levels]),
                                   width=width)
         return Cell(text, width, None, width)
 
     def max_profit(self) -> Cell:
-        reason = self._after_reason()
+        reason = self._no_single("summary_make_mixed_expiry") or self._after_reason()
         if reason is not None:
             return _dash(reason)
         top = self.col.whole.after_charges.max_profit  # type: ignore[union-attr]
@@ -420,7 +445,7 @@ class _Rows:
         if not self.ctx.pop_on:
             return _dash(render_explanation("adjust_pop_held"))
         if self.col.whole is None:
-            return _dash(self.col.no_whole_reason)
+            return _dash(self._no_single("adjust_pop_different_expiries") or self.col.no_whole_reason)
         if not self.col.charges_known:
             return _dash(render_explanation("adjust_charges_unknown"))
         if self.col.whole.pop is None:
@@ -557,9 +582,10 @@ def _curve_levels(ctx: Context, cols: Sequence[Column]) -> list[Decimal]:
 
 
 def compare(columns: Sequence[Column], ctx: Context, before: WholeTradeAfter | None = None,
-            before_charges_known: bool = False) -> Comparison:
+            before_charges_known: bool = False, before_near: NearExpiryAfter | None = None) -> Comparison:
     """The criteria rows, each column's leads and the payoff curves of the built approaches (refused ones are never
-    passed in: AC-1). ``before`` = the current legs' whole-trade answer, for the Before curve only."""
+    passed in: AC-1). ``before`` = the current legs' whole-trade answer, for the Before curve only; ``before_near`` its
+    nearer-expiry value when the current legs span two expiries (C12)."""
     ids = [c.built.id for c in columns]
     if len(set(ids)) != len(ids):
         raise ValueError(f"an approach appears twice in the compare: {ids}")
@@ -587,20 +613,30 @@ def compare(columns: Sequence[Column], ctx: Context, before: WholeTradeAfter | N
                                cells[row]) for row, group, direction in ROWS)
     m = sum(1 for c in criteria if c.leaders)
     leads = {a: (sum(1 for c in criteria if a in c.leaders), m) for a in order}
-    return Comparison(criteria, leads, _curves(columns, ctx, before, before_charges_known))
+    curves, estimated = _curves(columns, ctx, before, before_charges_known, before_near)
+    return Comparison(criteria, leads, curves, estimated)
 
 
-def _curves(columns: Sequence[Column], ctx: Context, before: WholeTradeAfter | None,
-            before_charges_known: bool) -> dict[str, tuple[tuple[Decimal, Decimal], ...]]:
-    """At-expiry whole-trade P&L after charges on one grid; a column with no after-charges figure has no curve."""
+def _curves(columns: Sequence[Column], ctx: Context, before: WholeTradeAfter | None, before_charges_known: bool,
+            before_near: NearExpiryAfter | None = None) -> tuple[dict[str, tuple[tuple[Decimal, Decimal], ...]],
+                                                                 tuple[str, ...]]:
+    """At-expiry whole-trade P&L after charges on one grid; a column with no after-charges figure has no curve. Legs on
+    two expiries (C12): the nearer-expiry estimate instead, its id listed in the second value."""
     levels = _curve_levels(ctx, columns)
     out: dict[str, tuple[tuple[Decimal, Decimal], ...]] = {}
+    estimated: list[str] = []
     if before is not None and before_charges_known:
         out["before"] = tuple((k, _pnl_at(ctx.position.legs, ctx.position.lot, before, k)) for k in levels)
+    elif before_near is not None and before_charges_known:
+        out["before"] = tuple((k, near_pnl_at(before_near, k)) for k in levels)
+        estimated.append("before")
     for c in columns:
         if c.whole is not None and c.charges_known:
             out[c.built.id] = tuple((k, _pnl_at(c.built.after, ctx.position.lot, c.whole, k)) for k in levels)
-    return out
+        elif c.near is not None and c.charges_known:
+            out[c.built.id] = tuple((k, near_pnl_at(c.near, k)) for k in levels)
+            estimated.append(c.built.id)
+    return out, tuple(estimated)
 
 
 __all__ = ["NO_APPROACH_OFFERED", "NO_APPROACH_PRICED", "POP_TEXT", "Cell", "Cheapest", "Column", "Comparison",
