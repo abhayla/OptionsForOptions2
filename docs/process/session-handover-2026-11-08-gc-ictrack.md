@@ -66,7 +66,8 @@ expire at TTL (their work is on main; wt-rm needs an identical tree).
 
 ## Owner-accepted deviations at close (2026-11-09, question tool: "Accept, close it")
 - §0 rule 1: the status page was republished once (version 2, layout only; rows untouched) on a stop-hook request.
-- §0 rule 5: two PRs, #675 (code, one squashed commit) and #677 (docs), the docs PR planned in #675's body.
+- §0 rule 5: three PRs, #675 (code, one squashed commit), #677 (docs, planned in #675's body) and the docs PR that adds
+  this section.
 - Rows that meet their done line only in part: t0 (44 rows, not 45: the contract's total line miscounts); t2 (real
   position proof dropped by the owner, ADR-276 (6), replaced by 27p); t11 (margin read from the stored session, not
   through the worker's margin seam, #627); t14 and t21m (the background-worker DB test and the 0044 re-run were
