@@ -1,6 +1,7 @@
 """db_run_fresh.py with a fake connection and a fake runner: no real database is ever created or dropped."""
 import asyncio
 import datetime
+import re
 import subprocess
 import sys
 import urllib.parse
@@ -79,7 +80,8 @@ def drops(log):
 
 def go(log, runner, **kw):
     errs = []
-    fr = fresh.Fresh(SETTINGS, make_connect(log, **kw), runner, name="ofo_test_tmp_20261022120000_ab12", err=errs.append)
+    fr = fresh.Fresh(SETTINGS, make_connect(log, **kw), runner, name="ofo_test_tmp_20261022120000_ab12",
+                     err=errs.append)
     fr.use_template = False
     code = fr.run(".", ["cmd"])
     return code, errs
@@ -264,6 +266,9 @@ def test_drop_with_copies_drops_the_copies_before_the_parent():
 TPL = "ofo_test_tpl_0048_ic_t11c_t20b_built_0123abcd"
 
 
+READY = "ofo_tpl_ready 20261022100000"
+
+
 class TplConn(FakeConn):
     """fetchval answers the ready-marker lookup: None = template missing/half built, a string = ready."""
 
@@ -271,9 +276,11 @@ class TplConn(FakeConn):
         super().__init__(log, **kw)
         self.marker = marker
 
+    lock_ok = True
+
     async def fetchval(self, sql, *args):
         self.log.append(sql)
-        return self.marker
+        return self.lock_ok if "pg_try_advisory_lock" in sql else self.marker
 
     async def fetch(self, sql, *args):
         self.log.append(sql)
@@ -341,14 +348,14 @@ def test_guard_accepts_tmp_and_template_names():
 
 def test_ready_template_is_copied_without_migrating():
     log, runner = [], Runner()
-    code, errs = tpl_go(log, runner, marker="ofo_tpl_ready 20261022100000")
+    code, errs = tpl_go(log, runner, marker=READY)
     assert code == 0 and errs == []
     assert any(s.startswith("CREATE DATABASE") and f'TEMPLATE "{TPL}"' in s for s in sql(log))
     assert [c[0] for c in runner.calls] == [["cmd"]]  # no alembic run
     assert len(drops(log)) == 1 and TPL not in drops(log)[0]  # only the run's own database is dropped
     s = sql(log)
     copy = s.index(next(x for x in s if "TEMPLATE" in x))
-    assert s.index("SELECT pg_advisory_lock($1)") < copy < s.index("SELECT pg_advisory_unlock($1)")
+    assert s.index("SELECT pg_try_advisory_lock($1)") < copy < s.index("SELECT pg_advisory_unlock($1)")
 
 
 def test_missing_template_is_built_marked_then_copied():
@@ -365,7 +372,7 @@ def test_missing_template_is_built_marked_then_copied():
 
 def test_template_error_falls_back_to_full_migration_and_run_still_succeeds():
     log, runner = [], Runner()
-    code, errs = tpl_go(log, runner, marker="ofo_tpl_ready 20261022100000", fail_on="TEMPLATE")
+    code, errs = tpl_go(log, runner, marker=READY, fail_on="TEMPLATE")
     assert code == 0 and any("template unavailable" in e for e in errs)
     assert [c[0] for c in runner.calls] == [fresh.ALEMBIC, ["cmd"]]  # today's path ran
     assert all(SECRET not in e for e in errs)
@@ -394,7 +401,6 @@ def test_sweep_drops_stale_templates_and_keeps_the_current_one():
 def test_name_guard_mutants_are_caught_by_the_refusal_list():
     """Three mutants of the template-name guard (scratch copies, no server): each lets a name through that the real
     guard refuses, so the refusal list would fail if the real guard were changed that way."""
-    import re
     real = fresh.TPL_RE.pattern
     refused = ["ofo_test", "ofo_dev", "ipodhan_prod", "postgres", "algochanakya", TPL + "x", "xofo_test_tpl_a_01234567"]
     mutants = {
@@ -405,3 +411,102 @@ def test_name_guard_mutants_are_caught_by_the_refusal_list():
     assert not any(fresh.is_template_name(n) for n in refused)
     for label, guard in mutants.items():
         assert any(guard(n) for n in refused), label
+
+
+# ---- review round 2 ----
+MIG = Path(__file__).resolve().parents[2] / "backend" / "ofo_app" / "alembic" / "versions"
+VERSIONS_2 = Path(fresh.VERSIONS) / "0002_b.py"
+
+
+def test_copy_reapplies_every_database_level_revoke_migration_0001_issues():
+    src = (MIG / "0001_baseline_ledger_clock.py").read_text(encoding="utf-8")
+    privs = re.search(r"REVOKE ([A-Z, ]+) ON DATABASE %I FROM PUBLIC", src).group(1)
+    log = []
+    asyncio.run(fresh.copy_database(FakeConn(log), GOOD, TPL))
+    revoke = next(x for x in sql(log) if x.startswith("REVOKE") and "ON DATABASE" in x)
+    assert all(p.strip() in revoke for p in privs.split(","))  # 0001's CREATE, TEMPORARY
+    assert "CONNECT" in revoke and revoke.endswith("FROM PUBLIC")  # plus CI's CONNECT
+    assert any(x.startswith("GRANT CONNECT ON DATABASE") and x.endswith("TO ofo_app") for x in sql(log))
+    assert sql(log).index(next(x for x in sql(log) if "TEMPLATE" in x)) < sql(log).index(revoke)
+
+
+def test_template_key_changes_with_only_the_seed_json_an_imported_module_or_the_role(tmp_path, monkeypatch):
+    root = Path(fake_versions(tmp_path))
+    seed = root / fresh.SEED_FILES[0]
+    seed.parent.mkdir(parents=True)
+    seed.write_text("[]")
+    mod = root / "backend" / "ofo_app" / "audit_allowlist.py"
+    mod.write_text("X = 1\n")
+    (root / VERSIONS_2).write_text(
+        "from ofo_app.audit_allowlist import X\nrevision = '0002_b'\ndown_revision = '0001_a'\n")
+    monkeypatch.delenv("OFO_APP_DB_ROLE", raising=False)
+    base = fresh.template_name(str(root))
+    seed.write_text("[1]")
+    n_seed = fresh.template_name(str(root))
+    mod.write_text("X = 2\n")
+    n_mod = fresh.template_name(str(root))
+    monkeypatch.setenv("OFO_APP_DB_ROLE", "other")
+    n_role = fresh.template_name(str(root))
+    assert len({base, n_seed, n_mod, n_role}) == len([base, n_seed, n_mod, n_role])
+
+
+def test_real_inputs_include_the_files_the_review_named():
+    root = str(Path(__file__).resolve().parents[2])
+    names = {Path(f).as_posix().split("backend/")[-1] for f in fresh.input_files(root)}
+    for need in ("ofo/adjustment/system_playbooks.json", "ofo_app/audit_allowlist.py", "ofo/execution/basket.py"):
+        assert need in names
+
+
+def test_sweep_with_no_single_head_still_sweeps_tmp_and_keeps_every_template(monkeypatch, capsys):
+    def boom(_c):
+        raise ValueError("no single head")
+    monkeypatch.setattr(fresh, "template_name", boom)
+    old = "ofo_test_tmp_20200101000000_aaaa"
+    log = []
+
+    class C(TplConn):
+        async def fetch(self, sql, *args):
+            self.log.append(sql)
+            if "tpl" in sql:
+                return [{"datname": TPL, "comment": "ofo_tpl_ready 20200101000000"}]
+            return [{"datname": old}]
+
+    async def connect(_url):
+        return C(log)
+    assert fresh.main(["--sweep"], connect=connect, settings_loader=lambda: SETTINGS) == 0
+    assert drops(log) == [f'DROP DATABASE IF EXISTS "{old}"']
+    assert "keeps every template" in capsys.readouterr().err
+
+
+def test_a_building_marker_is_not_ready_so_the_template_is_rebuilt():
+    log, runner = [], Runner()
+    code, _ = tpl_go(log, runner, marker="ofo_tpl_building 20261022100000")
+    assert code == 0 and [c[0] for c in runner.calls] == [fresh.ALEMBIC, ["cmd"]]
+    assert fresh._comment_time(READY) == fresh._comment_time("ofo_tpl_building 20261022100000")
+
+
+def test_sweep_drops_old_half_built_templates_but_never_the_current_key():
+    stale = "ofo_test_tpl_0047_x_aaaaaaaa"
+    rows = [{"datname": stale, "comment": "ofo_tpl_building 20261020000000"},
+            {"datname": TPL, "comment": "ofo_tpl_building 20261020000000"}]
+    log = []
+    assert asyncio.run(fresh.sweep_templates(TplConn(log, rows=rows), TPL, NOW, lambda _m: None)) == [stale]
+    assert drops(log) == [f'DROP DATABASE IF EXISTS "{stale}"']
+
+
+def test_lock_wait_times_out_then_falls_back_to_full_migration(monkeypatch):
+    monkeypatch.setattr(fresh, "LOCK_WAIT", 0)
+    monkeypatch.setattr(fresh, "LOCK_POLL", 0)
+    log, runner, errs = [], Runner(), []
+
+    async def connect(url):
+        log.append(("connect", url))
+        c = TplConn(log, marker=READY)
+        c.lock_ok = False
+        return c
+    fr = fresh.Fresh(SETTINGS, connect, runner, name="ofo_test_tmp_20261022120000_ab12", err=errs.append)
+    monkeypatch.setattr(fresh, "template_name", lambda _c: TPL)
+    assert fr.run(".", ["cmd"]) == 0
+    assert any("template unavailable" in e and "TimeoutError" in e for e in errs)
+    assert [c[0] for c in runner.calls] == [fresh.ALEMBIC, ["cmd"]]
+    assert "SELECT pg_advisory_unlock($1)" not in sql(log)  # never acquired
