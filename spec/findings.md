@@ -1313,3 +1313,16 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   correctness needs a structural split (two hand-offs gated on the first's fills), never a list order.
 - Bears on ADR-054, ADR-100, ADR-117 and ADR-281 (automatic placement is a future SPEC CHANGE). Status: **read from
   sources; unguarded, work held by ADR-281**.
+
+## F-103 - The market calendar holds one year; outside it every day reads as closed
+- Measured 2026-11-09 on test data (GC-ICGUIDE task 30, scenario PATH-64, strategy 126): at 2027-01-04 11:30 IST, an
+  ordinary Monday session, `GET /api/market/indices` answered `"market_closed": true`, state `NOT_CONNECTED`, and the
+  adjustment check withheld every rule ("prices stale or missing"); 16 Dec 2026 on the same path was checked normally.
+  `backend/ofo/market_calendar.json` (NSE F&O trading holidays, fetched 2026-10-19) lists 2026 only, and the code
+  fails closed for a date it cannot place.
+- Consequence: from 2027-01-01, unless NSE's 2027 F&O holiday list is loaded, the live app treats every day as closed
+  (no checks, no paper fills, no warnings). NSE publishes the next year's list in December.
+- Class (knowledge/findings/market-calendar-runs-out-at-year-end.json): a dated reference list loaded once with no
+  expiry check makes every behaviour that depends on it fail closed on the first day past its end. Status: **unguarded**;
+  issue filed with a proposed check (warn 30 days before the last listed date; refuse start-up without next year's
+  list from 1 Dec). Bears on ADR-119 (market calendar) and ADR-212 (no fill outside hours).

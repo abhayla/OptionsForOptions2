@@ -1,0 +1,27 @@
+{
+ "id": "market-calendar-runs-out-at-year-end",
+ "scope": "project",
+ "class": "A dated reference list loaded once (the NSE F&O holiday calendar) with no check on how far it reaches makes every behaviour that depends on it fail closed on the first day past its end: from that day the app reads every session as closed - no rule checks, no paper fills, no warnings - and nothing warns before it happens.",
+ "mechanism": "backend/ofo/market_calendar.json holds the 2026 NSE F&O trading holidays (fetched 2026-10-19); a date outside the listed year cannot be placed and the market state fails closed (NOT_CONNECTED, market_closed true).",
+ "first_seen": {
+  "date": "2026-11-09",
+  "where": "GC-ICGUIDE task 30, test data PATH-64 (NIFTY monthly 25 Jan 2027), strategy 126",
+  "evidence": "GET /api/market/indices at scenario clock 2027-01-04T11:30+05:30 -> {\"state\":\"NOT_CONNECTED\",...,\"market_closed\":true}; adjustment check withheld 'prices stale or missing' at 2027-01-04 11:00 and 11:30; 2026-12-16 11:00 on the same path checked normally (T-01 1.4015%)."
+ },
+ "fix": "Not fixed in GC-ICGUIDE (deferred issue). Proposed: load the next year's NSE list when published (December); a daily check warns 30 days before the last listed date and the app refuses to start in live mode on or after 1 Dec without the next year's list.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "No check reads how far the calendar reaches. Unguarded until the 30-day warning and the start-up refusal exist with tests."
+ },
+ "spec_ref": [
+  "spec/findings.md (F-103)"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-11-09",
+   "where": "test data PATH-64",
+   "evidence": "market_closed true on a 2027 Monday"
+  }
+ ]
+}
