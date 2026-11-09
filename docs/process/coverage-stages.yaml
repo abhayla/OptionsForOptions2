@@ -440,6 +440,9 @@ decisions:
   ADR-278: S6.7         # T-14 computed and switched on for live strategies
   ADR-279: S6.7         # two checkers on one code: live always on, test data on demand
   ADR-280: S6.7         # what each of the 12 new IC triggers measures
+  ADR-281: S6.7         # Kite order placement on hold for the IC guidance round (paper only)
+  ADR-282: S6.7         # IC proof matrix: NIFTY, 5 condor types, test data then live
+  ADR-283: S6.7         # rule starting point stored at every fill; time-of-day rules never already true
 
 questions:
   Q210: 4a              # external: Zerodha's written answer; ADR-051 covers the owner's own account
@@ -870,6 +873,8 @@ findings:
   F-99: S6.7      # stopping a second feed process blanks the API chain for a minute
   F-100: S6.4      # no feed supplies IV or Greeks; every app computes its own
   F-101: S6.7      # live alert discipline cut suggestion noise by three quarters (4 Nov)
+  F-102: S6.7      # Kite Publisher basket order not guaranteed; Kite web basket is sequential
+  F-103: S6.7      # market calendar holds 2026 only; every 2027 day reads closed
 
 hypotheses:
   H1: done
