@@ -173,11 +173,11 @@ def test_worker_and_screen_give_the_same_answer_after_an_adjustment(monkeypatch)
 
 def test_already_true_after_adjustment_n_reads_the_adr258_wording():
     """ADR-258: a rule true at basket N's fill reads "Already true after adjustment N." (entry: unchanged)."""
-    _scn, position, now, body = _adj02()
+    _scn, _position, now, body = _adj02()
     state = _after_basket(now, 2)
     ev = pe.evaluate(body, state, {}, state, gap_until="09:30")  # every rule true now held: shown quietly
     held = next(r for r in ev.results if isinstance(r, pe.AlreadyTrue))
-    assert held.after == 2
+    assert held.after == 2  # noqa: PLR2004 - the basket number set above
     assert "Already true after adjustment 2." == result_out(held, None)["wording"].what_happened
     entry = dataclasses.replace(held, after=0)
     assert "Already true when tracking started." == result_out(entry, None)["wording"].what_happened

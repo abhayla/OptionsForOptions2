@@ -2663,6 +2663,10 @@
     "sha256": "a302f1a18c152c30fee3f254c262ac437884182ce482e6bb79cef7313c250fc8",
     "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"
   },
+  "adjust_trigger_already_true_after": {
+    "sha256": "ac40477e9222edb4f74f941c1c8d3057103d02889a741e9cdf4382ded3284251",
+    "reviewed": "pending owner read"
+  },
   "playbook_name_taken": {
     "sha256": "39a05e6cb525b7fba379a30fac08609b2527577e8b0c4431a4a5a34f824e10e2",
     "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"

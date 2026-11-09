@@ -143,13 +143,13 @@ def test_entry_facts_with_no_iv_solve_each_short_from_its_entry_premium():
     assert ev.memory["T-03"]["held_at_entry"] is False and ev.memory["T-09"]["held_at_entry"] is False
 
 
-def test_known_gap_no_entry_facts_the_first_check_is_the_entry():
-    """The named gap (finding rule-entry-baseline-taken-at-first-check): no scenario and no stored facts -> None; the
-    caller then evaluates the first check as its own entry, so a rule true now is 'already true'."""
+def test_no_entry_facts_hold_nothing_never_the_first_check():
+    """ADR-283 (gap closed): no scenario and no stored facts -> None, passed to ``pe.evaluate`` as it is (the callers'
+    ``base or state`` is deleted), so nothing is held and a rule true now flags."""
     _scn, position, now, body = _adj02()
     assert check.entry_baseline(None, now, position, None, 0) is None
-    ev = pe.evaluate(body, now, {}, now, gap_until="09:30")
-    assert ev.memory["T-03"]["held_at_entry"] is True
+    ev = pe.evaluate(body, now, {}, None, gap_until="09:30")
+    assert ev.memory["T-03"]["held_at_entry"] is False
 
 
 def _scenario(name: str):
@@ -259,7 +259,7 @@ async def test_g04b_the_worker_path_gives_the_screen_answer(monkeypatch):
     worker = types.SimpleNamespace(_gate_load={}, _memory={}, _written={}, _pending={},
                                    _write_wake=types.SimpleNamespace(set=lambda: None),
                                    _count_outcomes=lambda _ev: None)
-    watched = types.SimpleNamespace(strategy_id=1, body=body, entry_facts=OWN_FACTS,
+    watched = types.SimpleNamespace(strategy_id=1, body=body, entry_facts=OWN_FACTS, basket_facts={},
                                     tracked=types.SimpleNamespace(position=position))
     ev = await bg.Worker._evaluate_and_write(worker, watched, now, types.SimpleNamespace(gap_until="09:30"))
     assert isinstance(_t01_of(ev), pe.Flag), _t01_of(ev)
