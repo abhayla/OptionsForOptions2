@@ -153,7 +153,8 @@ def result_out(r: pe.Result, flag_wording: Any, opened: dict[str, int] | None = 
                 "note": render_explanation("suggestion_outcome_dismissed") if r.rule_id in dismissed else None}
     if isinstance(r, pe.AlreadyTrue):
         return {"kind": "already_true", "rule_id": r.rule_id, "trigger_id": r.trigger_id, "cmp": r.cmp,
-                "value": _num(r.value), "threshold": _num(r.threshold), "reason": None, "wording": render(r.code),
+                "value": _num(r.value), "threshold": _num(r.threshold), "reason": None,
+                "wording": render("adjust_trigger_already_true_after", n=r.after) if r.after else render(r.code),
                 "condition": _condition(r, body, cheapest)}
     return {"kind": "not_checked", "rule_id": r.rule_id, "trigger_id": r.trigger_id, "cmp": None, "value": None,
             "threshold": None, "reason": render(r.code, **dict(r.slots)), "wording": None}

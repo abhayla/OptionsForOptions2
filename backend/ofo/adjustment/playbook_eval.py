@@ -247,6 +247,8 @@ class AlreadyTrue:
     cmp: Cmp | None = None  # GC-ADJ2 step 5: the lead trigger's comparison, as a Flag carries it
     #: ADR-268 (2): (short kind, strike, points spot is past it) when spot is at/beyond a short; the line names it
     beyond: tuple[str, Decimal, Decimal] | None = None
+    #: ADR-258: the adjustment basket whose fill is the starting point (0 = the entry: "when tracking started")
+    after: int = 0
 
 
 def reason_text(code: str, slots: tuple[tuple[str, object], ...] = ()) -> str:
@@ -577,6 +579,16 @@ def _t13(c: _Ctx) -> Hit:
 #: Rules that count the strategy's own adjustments (the playbook row has cmp ""): the baseline restarts at each
 #: adjustment (ADR-258), so the check that reaches the count is itself the baseline and "already true" would hide it.
 COUNTER_RULES = frozenset({"T-18"})
+TIME_TRIGGERS = frozenset({"T-10b"})  # ADR-283 (2): a clock-time rule is never "already true"
+
+
+def never_held(body: Mapping) -> frozenset[str]:
+    """Rule ids never held at a starting point: the counter rules (#662) and every rule with a clock-time trigger
+    (ADR-283 (2): T-10b, or a playbook trigger whose unit is "time"): once its time has passed it warns."""
+    trigs = body.get("triggers") or {}
+    timed = TIME_TRIGGERS | {t for t, v in trigs.items() if isinstance(v, Mapping) and v.get("unit") == "time"}
+    return COUNTER_RULES | {r["id"] for r in body.get("rules", [])
+                            if timed & set(r.get("any_of") or r.get("all_of") or ())}
 
 
 def _t18(c: _Ctx) -> Hit:
@@ -1034,12 +1046,13 @@ def evaluate(body: Mapping, state: StrategyState, memory: Mapping[str, Mapping[s
     clear = []
     values: list[RuleValue] = []
     rules = {r["id"]: r for r in body.get("rules", [])}
+    never = never_held(body)
     for o in outcomes:
         if o.rule_id not in new:
             if entry is None:
                 entry = _entry_held(body, entry_state, gap_until)
             # #662: a counter rule's crossing is the event, whatever the baseline held (never held at entry)
-            new[o.rule_id] = {"held_at_entry": bool(entry.get(o.rule_id, False)) and o.rule_id not in COUNTER_RULES,
+            new[o.rule_id] = {"held_at_entry": bool(entry.get(o.rule_id, False)) and o.rule_id not in never,
                               "seen_clear": False}
         mem = new[o.rule_id]
         if o.reason is not None:
@@ -1052,9 +1065,9 @@ def evaluate(body: Mapping, state: StrategyState, memory: Mapping[str, Mapping[s
                 values.append(rv)
         else:
             lead = next((h for h in o.hits if h.trigger_id == o.lead), o.hits[0])
-            if mem["held_at_entry"] and not mem["seen_clear"] and o.rule_id not in COUNTER_RULES:
+            if mem["held_at_entry"] and not mem["seen_clear"] and o.rule_id not in never:
                 results.append(AlreadyTrue(o.rule_id, lead.trigger_id, lead.value, lead.threshold, cmp=lead.cmp,
-                                               beyond=lead.beyond))
+                                               beyond=lead.beyond, after=_after(state)))
             else:
                 results.append(Flag(o.rule_id, lead.trigger_id, c.stage_name, lead.value, lead.threshold, lead.cmp,
                                     o.hits, lead.beyond))
@@ -1066,6 +1079,12 @@ def evaluate(body: Mapping, state: StrategyState, memory: Mapping[str, Mapping[s
     _add_situation_rules(body, state, why, c.stage_name, (results, clear, values), (new, entry_state))
     _add_watch_rules(state, why, c.stage_name, (results, clear, values))
     return Evaluation(c.stage_name, c.stage, tuple(results), new, tuple(clear), why, values=tuple(values))
+
+
+def _after(state: StrategyState) -> int:
+    """The adjustment basket a held rule's starting point belongs to (ADR-258 wording); 0 = the entry or unread."""
+    n = state.adjustments_used
+    return n if isinstance(n, int) and not isinstance(n, bool) and n > 0 else 0
 
 
 def _entry_held(body: Mapping, entry_state: StrategyState | None, gap_until: str) -> dict[str, bool]:

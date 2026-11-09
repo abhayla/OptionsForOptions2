@@ -710,6 +710,58 @@ async def entry_facts_now(ctx: Any, underlying: str, sold: Iterable[Any]) -> Ent
     return dataclasses.replace(facts, entry_atm_iv=iv)
 
 
+async def record_basket_facts(db: Any, ctx: Any, feed: Any, strategy_id: int,
+                              basket: tuple[str, Any, Any, Mapping[int, Decimal]]) -> None:
+    """ADR-283 (1): stores the market state at this basket's fill, in the fill's transaction. ``basket`` = (underlying,
+    every order of the book after the fill, the order clock, contract id -> this basket's fill price). Basket number =
+    the adjustments made so far after it (ADR-255, ``history_count``; 0 = the entry). Answer states: not connected / no
+    positive spot -> nothing stored (no rule held); the count unreadable -> nothing stored (the checks keep the newest
+    starting point); no open leg (the basket closed the strategy) -> nothing stored (no check); a kept leg's price
+    not read live -> stored as None (its rules not held); the ATM IV unreadable -> None."""
+    from ofo.tracking import paper  # noqa: PLC0415 - the paper screen's prices
+
+    from ofo_app import entry_facts_store  # noqa: PLC0415 - write path only
+    from ofo_app.routes.tracking import _snapshot  # noqa: PLC0415 - the paper screen's own market read
+
+    underlying, book, clock, filled = basket
+    quote = None if ctx is None or not ctx.provider.status().connected else ctx.provider.underlying_quote(underlying)
+    spot = None if quote is None else quote.ltp
+    if not isinstance(spot, Decimal) or spot <= 0:
+        return
+    found = {c.contract_id: c for c in await tracked_contracts.resolve(db, sorted({o.order.contract_id
+                                                                                 for o in book}))}
+
+    def is_option(cid: int) -> bool:
+        tc = found.get(cid)
+        return tc is not None and tc.stored is not None and tc.stored.listed.contract.instrument_type in _OPTION_TYPES
+
+    used = history_count(book, is_option)
+    open_ = [(int(p.instrument_id), p.net_quantity) for p in net_positions([o.order.as_paper() for o in book],
+                                                                           {}).positions if p.net_quantity != 0]
+    if used is None or not open_ or not all(is_option(cid) for cid, _ in open_):
+        return
+    kept = [cid for cid, _ in open_ if cid not in filled and found[cid].identity is not None]
+    prices: dict[int, Decimal | None] = dict(filled)
+    if kept:
+        try:
+            snapshot = await _snapshot(ctx, feed, underlying, sorted({found[c].identity for c in kept}))
+            got = {c: paper.display_price(snapshot, found[c].identity) for c in kept}
+            prices.update({c: p.price if paper.is_live(p) else None for c, p in got.items()})
+        except Exception:
+            log.exception("basket facts: kept legs' prices not read")
+    legs = {}
+    for cid, qty in open_:
+        c = found[cid].stored.listed.contract
+        legs[(c.instrument_type, c.strike, c.expiry, "BUY" if qty > 0 else "SELL")] = prices.get(cid)
+    try:
+        iv = await atm_iv_now(ctx, underlying, min(k[2] for k in legs), spot)
+    except Exception as exc:  # noqa: BLE001 - an unreadable IV is "not known at the fill", never a failed fill
+        log.warning("basket ATM IV unreadable (%s)", type(exc).__name__)
+        iv = None
+    await entry_facts_store.record_basket(db, strategy_id, used,
+                                          entry_facts_store.BasketFacts(clock, spot, iv, legs))
+
+
 def _atm_vol(rows: list[ChainRow], ids: dict[str, str], greeks: Any, level: Decimal | None) -> Decimal | None:
     """The implied volatility of the call nearest the forward (the ATM IV); None when nothing gives one."""
     if level is None:

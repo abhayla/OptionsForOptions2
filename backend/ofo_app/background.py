@@ -230,6 +230,10 @@ class Watched:
     #: ADR-280: the market-wide inputs (``regime_inputs.RegimeInputs``), read by the lister ONCE per underlying per
     #: list, never per check (the worker checks every minute). None = not read: those triggers answer not checked
     regime: Any = None
+    #: ADR-283 (1): basket number -> the market state stored at that basket's fill
+    #: (``entry_facts_store.read_baskets``), read on the rebuild with the position (so with its adjustment count).
+    #: {} = none stored or unreadable: no rule is held at a starting point, a true rule warns
+    basket_facts: Any = dataclasses.field(default_factory=dict)
 
 
 def _seconds(delta: datetime.timedelta) -> Decimal:
@@ -1239,8 +1243,9 @@ class Worker:
         from ofo_app import scenario_mode  # noqa: PLC0415 - read at check time (the screen's own scenario switch)
         scn = scenario_mode.current()
         state = check.with_entry_iv(scn, state, w.tracked.position, w.entry_facts)  # T-11, same choice as the baseline
-        base = check.entry_baseline(scn, state, w.tracked.position, w.entry_facts, marker)
-        ev = pe.evaluate(w.body, state, known, base or state, gap_until=prefs.gap_until)
+        base = check.entry_baseline(scn, state, w.tracked.position, w.entry_facts, marker,
+                                    w.basket_facts.get(marker))
+        ev = pe.evaluate(w.body, state, known, base, gap_until=prefs.gap_until)
         self._count_outcomes(ev)
         if memory is not None and _write_key(ev) == self._written.get(sid):
             return ev  # nothing a write would change (rule memory, flagged ids, clear ids): no DB call
@@ -1722,6 +1727,7 @@ async def owner_lister(provider: Any, gate: Any = None,
                 async with get_sessionmaker()() as db:
                     resolved = await check.resolve(db, OWNER_REF, s.id, stype)
                     facts = await entry_facts_in(db, s.id) if resolved.body is not None else None
+                    baskets = await _baskets_in(db, s.id) if resolved.body is not None else {}
         except (TrackedExited, _NothingTraded) as gone:  # all legs exited (REQ-112 AC-2; one writer, ADR-237 (6))
             async with held(gate, GATE_REBUILD), get_sessionmaker()() as db:  # one session at a time (#636 r4)
                 await _lapse_exited(db, OWNER_REF, s.id, getattr(gone, "lapse_reason", None))
@@ -1736,9 +1742,19 @@ async def owner_lister(provider: Any, gate: Any = None,
         if resolved.body is not None:
             out.append(Watched(OWNER_REF, s.id, tracked, resolved.body, resolved.is_system, OWNER_REF,
                                resolved.strategy_layer, facts, resolved=resolved, charge_rates=rates,
-                               regime=await regimes.read(tracked.position.underlying)))
+                               regime=await regimes.read(tracked.position.underlying), basket_facts=baskets))
     await _lapse_deleted(gate, {s.id for s in strategies})
     return Listed(out, unread)
+
+
+async def _baskets_in(db: Any, sid: int) -> dict:
+    """ADR-283: the strategy's stored basket facts; unreadable -> {} (logged: no rule held, never a guessed start)."""
+    from ofo_app import entry_facts_store  # noqa: PLC0415 - read path only
+    try:
+        return await entry_facts_store.read_baskets(db, sid)
+    except entry_facts_store.EntryFactsUnreadable as exc:
+        log.warning("background: %s: no rule held", exc)
+        return {}
 
 
 async def _lapse_not_monitored(gate: Any, sid: int) -> None:

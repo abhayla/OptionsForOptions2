@@ -784,6 +784,11 @@ async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR
         for suggestion_id in dict.fromkeys(body.suggestion_ids):  # REQ-163 AC-1: same transaction, or nothing
             await playbook_store.link_orders(db, user_ref, strategy_id, suggestion_id, new_ids,
                                            body.basket_legs)
+        # ADR-283 (1): the market at this basket's fill = every rule's starting point, in this transaction
+        from ofo_app.adjustment_readers import record_basket_facts  # noqa: PLC0415 - the readers import the routes
+        await record_basket_facts(db, ctx, feed, strategy_id, (
+            stored.saved.definition.underlying, book, placed_at,
+            {o.contract_id: exit_prices.get(i, o.price) for i, o in enumerate(body.orders)}))
         await db.commit()
     except store.StrategyStoreError as exc:
         await db.rollback()
