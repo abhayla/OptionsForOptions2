@@ -732,3 +732,61 @@ async def test_an_escalation_lapses_the_old_record_as_superseded_by_worse_and_a_
     assert (recs[opened["T-03"]].outcome, recs[opened["T-03"]].lapse_reason) == ("lapsed", "condition_stopped")
     shown = render_explanation("suggestion_lapsed_" + recs[old].lapse_reason)
     assert str(shown) == "A worse reading of the same rule replaced it"
+
+
+async def _states_after_list(app_db_url, monkeypatch, *, listed=None, read=None) -> list[tuple]:
+    """(outcome, lapse_reason) of every record of the seeded strategy after one lister pass with the stated change."""
+    from ofo_app import adjustment_readers, strategy_store  # noqa: PLC0415
+    w, rec = await _watched_and_fresh_t03(app_db_url, monkeypatch)
+    scn = scenario_mode.current()
+    if listed is not None:
+        real_list = strategy_store.list_strategies
+
+        async def list_strategies(conn, user_ref):
+            return listed(await real_list(conn, user_ref), w.strategy_id)
+        monkeypatch.setattr(strategy_store, "list_strategies", list_strategies)
+    if read is not None:
+        monkeypatch.setattr(adjustment_readers, "read_tracked", read)
+    await background.owner_lister(scn.provider)
+    async with app_db_url.connect() as conn:
+        recs = [s for s in await playbook_store.suggestions(conn, "owner", w.strategy_id) if s.id == rec]
+    return [(s.outcome, s.lapse_reason) for s in recs]
+
+
+async def test_a_deleted_strategys_open_record_lapses_as_no_longer_monitored(app_db_url, monkeypatch):
+    """#652: the strategy is gone from the owner's list (deleted): its open record lapses, in the catalogue's words."""
+    from ofo.errors.explanations import render_explanation  # noqa: PLC0415
+    got = await _states_after_list(app_db_url, monkeypatch, listed=lambda rows, sid: [r for r in rows if r.id != sid])
+    assert got == [("lapsed", "not_monitored")]
+    assert str(render_explanation("suggestion_lapsed_not_monitored")) == "The strategy is no longer monitored"
+
+
+async def test_a_strategy_with_nothing_traded_lapses_its_open_record_as_no_longer_monitored(app_db_url, monkeypatch):
+    async def nothing(_sid, _rates):
+        return None
+    assert background._NothingTraded.lapse_reason == playbook_store.LAPSE_NOT_MONITORED
+    assert await _states_after_list(app_db_url, monkeypatch, read=nothing) == [("lapsed", "not_monitored")]
+
+
+@pytest.mark.parametrize("failure", ["unreadable", "raises"])
+async def test_a_briefly_unreadable_strategy_keeps_its_open_record(app_db_url, monkeypatch, failure):
+    """#652: a read failure is not a leave: the record stays open (the next list reads it again)."""
+    from ofo_app import adjustment_readers  # noqa: PLC0415
+
+    async def broken(_sid, _rates):
+        raise adjustment_readers.TrackedUnreadable("price missing") if failure == "unreadable" \
+            else RuntimeError("database blip")
+    assert await _states_after_list(app_db_url, monkeypatch, read=broken) == [("open", None)]
+
+
+async def test_a_failed_strategy_list_lapses_nothing(app_db_url, monkeypatch):
+    from ofo_app import strategy_store  # noqa: PLC0415
+
+    async def failed(_conn, _user_ref):
+        raise RuntimeError("list read failed")
+    w, rec = await _watched_and_fresh_t03(app_db_url, monkeypatch)
+    monkeypatch.setattr(strategy_store, "list_strategies", failed)
+    with pytest.raises(RuntimeError):
+        await background.owner_lister(scenario_mode.current().provider)
+    async with app_db_url.connect() as conn:
+        assert [s.id for s in await playbook_store.open_suggestions(conn, "owner", w.strategy_id)] == [rec]

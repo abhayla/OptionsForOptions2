@@ -1642,18 +1642,25 @@ def _keep_recent(kept: list, item: object) -> None:
 
 _GONE = object()  # a strategy no longer listed (``_drop_stale_writes``)
 
+
+class _NothingTraded(Exception):
+    """``read_tracked`` answered None: the strategy has no order at all (#652); lapses as not_monitored."""
+
+    lapse_reason = "not_monitored"  # = playbook_store.LAPSE_NOT_MONITORED (a test asserts it)
+
 #: Review round 2, finding 4: how many exited strategies' lapse writes failed in this process (each logged once).
 LISTER_LAPSE_FAILURES: dict[int, int] = {}
 
 
-async def _lapse_exited(db: Any, user_ref: str, sid: int) -> None:
-    """Lapse an exited strategy's open records, contained to that strategy: a failing write (a record no longer open,
+async def _lapse_exited(db: Any, user_ref: str, sid: int, reason: str | None = None) -> None:
+    """Lapse an exited strategy's open records (``reason`` default strategy_closed; #652 not_monitored for a strategy
+    that dropped out of the list for good), contained to that strategy: a failing write (a record no longer open,
     the database refusing) is rolled back, counted and logged once per strategy, and never drops the other strategies
     from the list or skips their gate read (the whole lister failing kept the old list; at start-up 0 monitored)."""
     from ofo_app import playbook_store  # noqa: PLC0415 - database layer at run time only
     try:
         if await playbook_store.open_suggestions(db, user_ref, sid):
-            await playbook_store.lapse_all(db, user_ref, sid, playbook_store.LAPSE_STRATEGY_CLOSED)
+            await playbook_store.lapse_all(db, user_ref, sid, reason or playbook_store.LAPSE_STRATEGY_CLOSED)
             await db.commit()
     except Exception:  # contained per strategy; retried at the next re-list
         await db.rollback()
@@ -1707,17 +1714,17 @@ async def owner_lister(provider: Any, gate: Any = None,
         try:
             async with held(gate, GATE_REBUILD):  # one strategy's reads per hold
                 tracked = await read_tracked(s.id, rates)
-                if tracked is None:
-                    continue
+                if tracked is None:  # nothing traded: a definite answer, not a failed read (those raise below)
+                    raise _NothingTraded  # handled outside the hold (the lapse takes its own)
                 spot = provider.underlying_quote(tracked.position.underlying)
                 stype = check.strategy_type(tracked.position, None if spot is None else spot.ltp,
                                             provider.instrument_master())
                 async with get_sessionmaker()() as db:
                     resolved = await check.resolve(db, OWNER_REF, s.id, stype)
                     facts = await entry_facts_in(db, s.id) if resolved.body is not None else None
-        except TrackedExited:  # every leg exited: its open records lapse (REQ-112 AC-2; one writer, ADR-237 (6))
+        except (TrackedExited, _NothingTraded) as gone:  # all legs exited (REQ-112 AC-2; one writer, ADR-237 (6))
             async with held(gate, GATE_REBUILD), get_sessionmaker()() as db:  # one session at a time (#636 r4)
-                await _lapse_exited(db, OWNER_REF, s.id)
+                await _lapse_exited(db, OWNER_REF, s.id, getattr(gone, "lapse_reason", None))
             continue
         except TrackedUnreadable:
             unread.add(s.id)
@@ -1730,10 +1737,39 @@ async def owner_lister(provider: Any, gate: Any = None,
             out.append(Watched(OWNER_REF, s.id, tracked, resolved.body, resolved.is_system, OWNER_REF,
                                resolved.strategy_layer, facts, resolved=resolved, charge_rates=rates,
                                regime=await regimes.read(tracked.position.underlying)))
+    await _lapse_deleted(gate, {s.id for s in strategies})
     return Listed(out, unread)
 
 
-async def _serve() -> int:  # pragma: no cover - the process wiring; each part is tested on its own
+async def _lapse_not_monitored(gate: Any, sid: int) -> None:
+    """#652: a strategy that left the list for good lapses its open records as "no longer monitored". Leave reasons:
+    every leg exited -> strategy_closed (above); nothing traded, or deleted -> this. NOT a leave, nothing lapsed: a
+    read failure (TrackedUnreadable / any exception), a spot or type not read this cycle (no playbook resolved), and
+    a strategy of the other mode (scenario vs live), which this worker never lists."""
+    from ofo_app.db import get_sessionmaker  # noqa: PLC0415
+    from ofo_app.live_market import OWNER_REF  # noqa: PLC0415
+    from ofo_app.playbook_store import LAPSE_NOT_MONITORED  # noqa: PLC0415
+    async with held(gate, GATE_REBUILD), get_sessionmaker()() as db:
+        await _lapse_exited(db, OWNER_REF, sid, LAPSE_NOT_MONITORED)
+
+
+async def _lapse_deleted(gate: Any, listed_ids: set[int]) -> None:
+    """#652: open records of a strategy that is no longer in the owner's strategy list (deleted). The list read
+    succeeded when this runs (a failed list raised before), so absence is definite. A failing sweep is contained."""
+    from ofo_app import playbook_store  # noqa: PLC0415
+    from ofo_app.db import get_sessionmaker  # noqa: PLC0415
+    from ofo_app.live_market import OWNER_REF  # noqa: PLC0415
+    try:
+        async with held(gate, GATE_REBUILD), get_sessionmaker()() as db:
+            gone = [i for i in await playbook_store.open_strategy_ids(db, OWNER_REF) if i not in listed_ids]
+    except Exception:  # the others stay listed; retried at the next re-list
+        log.exception("background: reading the strategies with open records failed; deleted ones are swept next list")
+        return
+    for sid in gone:
+        await _lapse_not_monitored(gate, sid)
+
+
+async def _serve()-> int:  # pragma: no cover - the process wiring; each part is tested on its own
     from ofo_app import scenario_mode  # noqa: PLC0415
     if scenario_mode.scenario_requested():  # provider by PROCESS mode only (IC e2e decision 7)
         return await _serve_scenario()

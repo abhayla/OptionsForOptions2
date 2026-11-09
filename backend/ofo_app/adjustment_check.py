@@ -711,6 +711,23 @@ def trigger_words(body: Mapping | None, trigger_id: str | None) -> tuple[str | N
     return (label if isinstance(label, str) else None), (unit if isinstance(unit, str) else None)
 
 
+#: #650: triggers whose playbook row has no unit but whose value is not a plain number: rupees / a count
+RUPEE_TRIGGERS = frozenset({"T-02"})
+COUNT_TRIGGERS = frozenset({"T-18"})
+
+
+def _own_unit_line(trigger_id: str, label: str, value: str, threshold: str) -> Any:
+    """The line with the value in its own unit (rupees with a real minus, or a whole count); None when this trigger has
+    no such unit. A value the slot refuses raises like any render (the caller falls back to the plain line)."""
+    if trigger_id in RUPEE_TRIGGERS:
+        return render_explanation("adjust_condition_line_rupees", label=label, value=Decimal(value),
+                                  threshold=Decimal(threshold))
+    if trigger_id in COUNT_TRIGGERS:
+        return render_explanation("adjust_condition_line_count", label=label, value=int(Decimal(value)),
+                                  threshold=int(Decimal(threshold)))
+    return None
+
+
 def condition_line(trigger_id: str, label: str | None, unit: str | None, value: str, threshold: str,  # noqa: PLR0913
                    beyond: tuple[str, Decimal, Decimal] | None = None) -> Any:
     """GC-ADJ2 item 1: "Spot within this % of a short strike: 0.3416 % (rule 0.5000 %)" from the trigger's own label
@@ -731,8 +748,9 @@ def condition_line(trigger_id: str, label: str | None, unit: str | None, value: 
         except (TypeError, ValueError):  # a refused slot: the plain line below (fail visible)
             pass
     try:
-        return line(label if label is not None else trigger_id, unit)
-    except (TypeError, ValueError):  # the slot refused the label or the unit: the id, with no unit (fail visible)
+        own = _own_unit_line(trigger_id, label if label is not None else trigger_id, value, threshold)
+        return own if own is not None else line(label if label is not None else trigger_id, unit)
+    except (TypeError, ValueError, ArithmeticError):  # a slot refused label, unit or value: id, no unit
         pass
     try:
         return line(trigger_id, None)
