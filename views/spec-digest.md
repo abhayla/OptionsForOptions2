@@ -4,10 +4,9 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (269)
+## Decisions (270)
 
-- Older decisions: 229 rows, ADR-1..ADR-242 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
-- ADR-243 2026-11-04: Owner 2026-11-04 (question tool, "Target delta"): when an adjustment approach rolls a short strike… [Supersedes REQ-046 Q255 (placement basis); matche…]
+- Older decisions: 230 rows, ADR-1..ADR-243 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
 - ADR-244 2026-11-04: Owner 2026-11-04 (question tool, "Add both as Guidance"): the iron condor system playbook lists S-0… [Extends ADR-240 (situations: rules vs guidance) t…]
 - ADR-245 2026-11-04: Owner 2026-11-04 (question tool, "Yes, 3 layers for all"; and "always act as an expert option trade… [Extends REQ-168 (user preferences) and REQ-161 (p…]
 - ADR-246 2026-11-04: Owner 2026-11-04 ~12:5x IST (question tool, "Keep presets for now"): the REQ-170 style presets stay… [No preset value changes. Adds F-101 (live counts)…]
@@ -47,6 +46,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-280 2026-11-08: Owner delegation 2026-11-05: decided under "go with your recommendation" (strategy behaviour), GC-I… [Fixes the measures behind 12 playbook triggers th…]
 - ADR-281 2026-11-09: Owner answer 2026-11-09 (question tool, GC-ICGUIDE planning). [Holds live order placement for GC-ICGUIDE; record…]
 - ADR-282 2026-11-09: Owner answer 2026-11-09 (question tool, GC-ICGUIDE planning). [Fixes what "iron condor adjustments proven" means…]
+- ADR-283 2026-11-09: Decided under the owner's strategy delegation (owner 2026-11-09 ~15:00 IST: "Wherever you have ques… [Implements ADR-258 (starting point at the fill, n…]
 
 ## Requirements (161)
 
