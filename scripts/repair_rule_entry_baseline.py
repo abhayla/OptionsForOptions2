@@ -60,6 +60,14 @@ def _entry_state(position: Any, spot: Any, at: datetime.datetime) -> pe.Strategy
     return check._entry_state(at, spot, None, _base_state(position), position)  # the worker's own builder
 
 
+async def _entry_of(conn: Any, sid: int, position: Any, first: Any) -> Any:
+    """ADR-283: the stored basket-0 fill, as the checks read it; an older strategy with none -> the entry-facts row."""
+    basket = await entry_facts_store.read_basket(conn, sid, 0)
+    if basket is None:
+        return _entry_state(position, first.entry_spot, first.created_at)
+    return check.entry_baseline(None, _base_state(position), position, None, 0, basket)
+
+
 async def repair(conn: Any, read_position: Callable[[int], Awaitable[Any]], *, apply: bool) -> dict[str, int]:
     """The class counted (and, with ``apply``, repaired) on ``conn``; ``read_position(strategy_id)`` -> the open
     ``Position`` or None. Returns the counts (``KEYS``)."""
@@ -85,11 +93,7 @@ async def repair(conn: Any, read_position: Callable[[int], Awaitable[Any]], *, a
             counts[NO_BODY] += len(rows)
             continue
         gap_until = prefs_from_values(await user_preferences_store.values_for(conn, first.user_ref)).gap_until
-        basket = await entry_facts_store.read_basket(conn, sid, 0)  # ADR-283: the stored fill, as the checks read it
-        if basket is None:
-            entry = _entry_state(position, first.entry_spot, first.created_at)
-        else:
-            entry = check.entry_baseline(None, _base_state(position), position, None, 0, basket)
+        entry = await _entry_of(conn, sid, position, first)
         ev = pe.evaluate(resolved.body, entry, None, entry, gap_until=gap_until)
         clear = set(ev.clear)
         fired = {r.rule_id for r in ev.results if isinstance(r, (pe.Flag, pe.AlreadyTrue))}
