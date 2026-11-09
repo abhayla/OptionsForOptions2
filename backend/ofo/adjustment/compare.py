@@ -333,9 +333,9 @@ class _Rows:
 
     def _after_reason(self) -> ExplanationText | None:
         """Why no after-charges figure exists (no whole trade, or charges unknown); None when it does."""
-        if self.col.whole is None:
+        if self.col.whole is None and (self.col.near is None or self.col.charges_known):
             return self.col.no_whole_reason
-        if not self.col.charges_known:
+        if not self.col.charges_known:  # C12: a nearer-expiry value exists, only the charges are missing
             return render_explanation("adjust_charges_unknown")
         return None
 

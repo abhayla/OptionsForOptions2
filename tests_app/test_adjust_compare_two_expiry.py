@@ -95,7 +95,8 @@ def test_core_a04_compare_has_after_moves_and_curve_valued_at_the_nearer_expiry(
         level = (D(sc["market"]["spot"]) * (100 + D(p)) / 100).quantize(D("0.01"), rounding=ROUND_HALF_EVEN)
         want = _hand_move(sc, after, sc["expected"]["approach_after"]["A-04"]["booked_pnl"], level, charges)
         assert abs(D(cell["value"]) - want) <= D("0.01"), (row, cell["value"], want)
-    assert "A-04" not in body["curves"] and "before" in body["curves"]  # an estimate curve waits for its label
+    assert "A-04" in body["curves"] and "before" in body["curves"]
+    assert body["curves_estimated"] == {"A-04": "estimated at the nearer expiry"}  # the condor itself: an exact curve
 
 
 def test_single_figures_say_not_available_with_adr143_reason():

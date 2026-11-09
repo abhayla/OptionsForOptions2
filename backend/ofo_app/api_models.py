@@ -606,6 +606,8 @@ class AdjustApproachesOut(ApiModel):
     criteria: list[AdjustCriterionOut] = []  # REQ-156 AC-2/AC-3; refused approaches take no part
     leads: dict[Identifier, AdjustLeadsOut] = {}  # REQ-156 AC-4 "Leads on N of M"
     curves: dict[Identifier, list[list[Money]]] = {}  # "before" / approach id -> [[level, P&L after charges], ...]
+    #: C12 (REQ-148): the curves valued at the nearer expiry close (legs on two expiries) -> their estimate label
+    curves_estimated: dict[Identifier, CatalogueText] = {}
     timing: AdjustTimingOut | None = None
     available: list[AdjustAvailableOut] = []  # every generic approach, whatever was asked (no figures)
     days_to_expiry: int | None = None  # whole days from the reply's own market day to the nearest open leg's expiry

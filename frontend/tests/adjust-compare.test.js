@@ -114,6 +114,20 @@ describe('REQ-156 compare display on the real reply', () => {
     }
   })
 
+  it('C12: a curve the reply marks estimated (legs on two expiries) is dotted and named with the server\'s label, never an at-expiry line', async () => {
+    const r = clone(adj02)
+    const id = OTHERS[0]
+    r.curves_estimated = { [id]: 'estimated at the nearer expiry' }
+    const { w } = await show(r)
+    const sets = drawn[drawn.length - 1].data.datasets
+    const est = sets.find((d) => d.id === id)
+    expect(est.borderDash).toEqual([2, 3])
+    expect(est.label.endsWith('(estimated at the nearer expiry)')).toBe(true)
+    expect(t(w, `adjust-legend-${id}`).text()).toContain('(estimated at the nearer expiry)')
+    expect(sets.find((d) => d.id === OTHERS[1]).borderDash).toEqual([]) // the others stay solid at-expiry lines
+    expect(sets.find((d) => d.id === 'before').borderDash).toEqual([6, 4])
+  })
+
   it('AC-5: the Before is a dashed line, each approach its own line with the reply\'s own texts; hiding one removes only its line', async () => {
     const { w } = await show(adj02)
     const sets = drawn[drawn.length - 1].data.datasets

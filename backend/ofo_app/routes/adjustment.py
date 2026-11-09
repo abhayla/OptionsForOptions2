@@ -742,10 +742,10 @@ def _compare_block(cmp: Any) -> dict:
                                 "warning": v.warning, "warning_off": v.warning_off}  # REQ-159 AC-6
                             for a, v in c.values.items()}} for c in cmp.criteria]
     return {"criteria": criteria, "leads": {a: {"n": n, "m": m} for a, (n, m) in cmp.leads.items()},
-            # C12: a nearer-expiry estimate curve is held back until the reply can label it (the screen draws every curve
-            # as at expiry); its spot-move cells carry the "estimated" words
-            "curves": {k: [[level, pnl] for level, pnl in points] for k, points in cmp.curves.items()
-                       if k not in cmp.estimated}}
+            "curves": {k: [[level, pnl] for level, pnl in points] for k, points in cmp.curves.items()},
+            # C12: a curve valued at the nearer expiry close (legs on two expiries) is an estimate, labelled so the
+            # screen never draws it as an at-expiry line
+            "curves_estimated": {k: render_explanation("adjust_cmp_curve_estimated") for k in cmp.estimated}}
 
 
 async def _margin(margin_of: ApproachMargin, built: ApproachLegs, market: MarketInputs) -> dict:

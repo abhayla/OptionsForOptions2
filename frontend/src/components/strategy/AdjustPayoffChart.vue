@@ -10,7 +10,7 @@
         :class="hidden.includes(l.id) ? 'text-ink-muted line-through' : 'text-ink'" :aria-pressed="hidden.includes(l.id) ? 'false' : 'true'"
         :data-testid="`adjust-legend-${l.id}`" @click="emit('toggle', l.id)"
       >
-        <span class="inline-block h-0.5 w-4" :style="{ background: l.colour, borderTop: l.dashed ? `2px dashed ${l.colour}` : 'none', height: l.dashed ? '0' : '2px' }"></span>{{ l.name }}
+        <span class="inline-block h-0.5 w-4" :style="{ background: l.colour, borderTop: l.estimate ? `2px dotted ${l.colour}` : l.dashed ? `2px dashed ${l.colour}` : 'none', height: l.dashed || l.estimate ? '0' : '2px' }"></span>{{ l.name }}
       </button>
     </div>
     <div class="relative h-72 w-full" data-testid="adjust-plot"><canvas ref="canvas" role="img" :aria-label="`Payoff at expiry, whole trade: ${shown.length} lines`"></canvas></div>
@@ -22,7 +22,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import Chart from 'chart.js/auto'
 
 const props = defineProps({
-  lines: { type: Array, default: () => [] }, // [{ id, name, colour, dashed, points: [[level, pnl], ...] }] as the reply sent them
+  lines: { type: Array, default: () => [] }, // [{ id, name, colour, dashed, estimate, points: [[level, pnl], ...] }] as the reply sent them
   hidden: { type: Array, default: () => [] }, // ids the user hid
 })
 const emit = defineEmits(['toggle'])
@@ -38,7 +38,7 @@ function draw() {
     type: 'line',
     data: {
       datasets: shown.value.map((l) => ({
-        label: l.name, id: l.id, borderColor: l.colour, backgroundColor: l.colour, borderWidth: 2, borderDash: l.dashed ? [6, 4] : [], pointRadius: 0,
+        label: l.name, id: l.id, borderColor: l.colour, backgroundColor: l.colour, borderWidth: 2, borderDash: l.estimate ? [2, 3] : l.dashed ? [6, 4] : [], // an estimate: dotted, never an at-expiry line pointRadius: 0,
         data: l.points.map(([x, y]) => ({ x, y })), // texts as sent; chart.js coerces them to pixels
       })),
     },
