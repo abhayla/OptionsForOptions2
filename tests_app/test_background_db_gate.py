@@ -314,6 +314,12 @@ async def test_the_owner_lister_opens_each_session_inside_its_own_gate_hold(scn,
 
         async def __aexit__(self, *_a):
             return False
+
+        async def execute(self, *_a, **_k):  # #652: the lapse reads and the deleted sweep find no open records
+            return SimpleNamespace(all=list)
+
+        async def rollback(self):
+            return None
     monkeypatch.setattr(db, "get_sessionmaker", lambda: _S)
 
     async def list_strategies(_db, _owner):
@@ -332,7 +338,7 @@ async def test_the_owner_lister_opens_each_session_inside_its_own_gate_hold(scn,
     out = await background.owner_lister(Prov(scn), gate=gate)
     assert [w.strategy_id for w in out] == [1, 2, 3]
     assert seen and all(seen)  # every session opened while the gate was held
-    assert holds[0] == 1 + 3  # the list read, then one hold per strategy
+    assert holds[0] == 1 + 3 + 1  # the list read, one hold per strategy, then the deleted-strategy sweep (#652)
 
 
 # ---- #636 r6 review follow-up (Tier A review, 5 MINOR findings) ------------------------------------------------------
@@ -428,6 +434,22 @@ def _ev_stub():
     return SimpleNamespace(memory={}, results=(), clear=())
 
 
+class _IdleSession:
+    """A session whose reads find no rows (#652: no open records to lapse)."""
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *_a):
+        return False
+
+    async def execute(self, *_a, **_k):
+        return SimpleNamespace(all=list)
+
+    async def rollback(self):
+        return None
+
+
 async def test_a_strategy_whose_list_read_failed_keeps_its_queued_events_and_one_that_left_drops_them(
         scn, monkeypatch, caplog):
     """A lister read that raised for one strategy (database down, a bad row) is not the strategy leaving: its queued
@@ -444,13 +466,7 @@ async def test_a_strategy_whose_list_read_failed_keeps_its_queued_events_and_one
         w._gate_events[m.strategy_id] = collections.deque([background.GateBatch(
             m, (background.alert_gate.Lapsed("T-01", now[0], None),), None, now[0])])
 
-    class _S:
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, *_a):
-            return False
-    monkeypatch.setattr(db, "get_sessionmaker", lambda: _S)
+    monkeypatch.setattr(db, "get_sessionmaker", lambda: _IdleSession)
 
     async def list_strategies(_db, _owner):
         return [SimpleNamespace(id=i) for i in (ok, failing, left)]

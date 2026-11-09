@@ -15,7 +15,7 @@
   "note": "No check reads how far the calendar reaches. Unguarded until the 30-day warning and the start-up refusal exist with tests."
  },
  "spec_ref": [
-  "spec/findings.md (F-103)"
+  "spec/findings.md"
  ],
  "occurrences": [
   {

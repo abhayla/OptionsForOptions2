@@ -80,6 +80,12 @@ PRIVATE_ALLOWED: dict[str, tuple[frozenset[str], str]] = {
     "ofo/strategy/modification.py": (frozenset({"ofo.engine.metrics._Unlimited"}), "the engine's unlimited marker"),
     "ofo_app/catalogue_store.py": (frozenset({"ofo.instruments.catalogue.Catalogue._in_scope"}),
                                    "the domain catalogue's own scope rule, reused so the store and domain agree"),
+    "ofo/adjustment/compare.py": (frozenset({"ofo.errors.explanations._TOKEN_MAX"}),
+                                  "the explanation module's one-token slot limit, so Compare joins legs the same way"),
+    "ofo_app/adjustment_readers.py": (frozenset({"ofo_app.routes.tracking._snapshot"}),
+                                      "the paper screen's own market read, reused so both screens price alike"),
+    "ofo_app/routes/paper.py": (frozenset({"ofo_app.routes.tracking._snapshot"}),
+                                "the tracking screen's own market read, reused so both screens price alike"),
     "ofo_app/entitlement_store.py": (frozenset({"ofo.entitlements.ledger._restore"}),
                                      "rebuilds a ledger from stored rows (the ledger's own restore)"),
 }

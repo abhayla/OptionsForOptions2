@@ -15,6 +15,8 @@ from ofo.errors.explanations import render_explanation
 from test_approach_compare import build_columns
 from test_approach_compare import row as compare_row
 
+pytestmark = pytest.mark.repo_scan
+
 
 def _new_legs():
     _, cols, ctx = build_columns("ADJ-02")
