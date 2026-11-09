@@ -21,3 +21,32 @@ privacy, account data); nearest rule: CLAUDE.md "never copy ... into this public
   the PR's commit list shows the old commit permanently.
 
 Why A: B leaves the figure on a permanent public page; A costs one gate run.
+
+# GC-ICGUIDE (2026-11-09 afternoon): parked questions and decisions taken for the owner
+
+The owner said at about 15:00 IST: "Do not wait for my inputs. Wherever you have question, go with your
+recommendation." Items below were decided that way, or are parked here for a later read. None blocks the run.
+
+## Parked for the owner (non-blocking)
+
+1. **Task 25: read the 23 new texts** in `docs/process/gc-icguide-new-texts-2026-11-09.md`.
+   Recommendation: accept as written. Until read, their pins stay "pending owner read" (not "owner read").
+   Also there: the proposed wording "Already true when adjustment {n} was placed." for the after-adjustment line.
+
+## Owner answers given in the question tool today (process, not product: no decision row)
+
+1. Instrument list refused by the 10 % guard (Zerodha narrowed NIFTY strike ranges): force one load on ofo_dev.
+   Done: added 350, delisted 2,261 (`apply_update(force=True, reason, actor)`). Guard gap: issue #680.
+2. DB role `ofo_app` limit 10 cannot hold the live stack plus a test-data stack: stop the live stack (feed, API
+   8765, live checker, started 08:10) for the test-data work; restart it from the main checkout before the live
+   tasks 35-37. Issue #682.
+
+## Decided under the owner's delegation (spec-conformant; also in the PR body)
+
+1. Paper exit price (C10): the server prices every paper exit at the price the paper screen shows - live in market
+   hours, the last close after hours (ADR-212). An exit is refused only when the server has no price at all.
+2. C6 real-leg settlement: the settlement source answers "no price" until an exchange-sourced settlement price is
+   stored (ADR-083: the source is unproven), so an expired real leg shows "awaiting settlement" by name instead of
+   looking open. Never a guessed price.
+3. Weekly test-data type (ADR-282 (2)) uses expiry 17 Nov, entered 11 Nov (6 days): in Zerodha's real list 23 Nov is
+   the November monthly, so no weekly 23 Nov contract exists.
