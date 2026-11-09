@@ -65,9 +65,11 @@ async def test_core_exiting_every_leg_through_the_route_stores_closed(db):
 
 async def test_a_partial_exit_leaves_the_strategy_a_draft(db):
     app, stored, c0, _ = await _two_legs(db)
+    # two lots on the first leg, so half of it can leave in whole lots (the limit's tracked read refuses a broken lot)
+    await paper_store.place(db, stored.user_ref, stored.id, [_new(c0, "SELL", 65, "100.00", "add")])
     async with _client(app) as c:
         reply = await c.post(f"/paper/strategies/{stored.id}/orders", json={"orders": [
-            _order(c0, "BUY", 30, "80.00", "exit")]})
+            _order(c0, "BUY", 65, "80.00", "exit")]})
     assert reply.status_code == HTTPStatus.CREATED, reply.text
     assert await _status(db, stored.id) == "draft"
 
