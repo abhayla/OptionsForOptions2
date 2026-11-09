@@ -1238,9 +1238,7 @@ class Worker:
             k: {"held_at_entry": h, "seen_clear": c} for k, (h, c) in stored.get(marker, {}).items()}
         from ofo_app import scenario_mode  # noqa: PLC0415 - read at check time (the screen's own scenario switch)
         scn = scenario_mode.current()
-        entry = check.scenario_entry(scn, state, w.tracked.position) if scn is not None else None
-        if entry is not None:  # T-11: the scenario's own entry IV, as the screen's check does (adjustment_check:500)
-            state = dataclasses.replace(state, entry_atm_iv=entry.atm_iv)
+        state = check.with_entry_iv(scn, state, w.tracked.position, w.entry_facts)  # T-11, same choice as the baseline
         base = check.entry_baseline(scn, state, w.tracked.position, w.entry_facts, marker)
         ev = pe.evaluate(w.body, state, known, base or state, gap_until=prefs.gap_until)
         self._count_outcomes(ev)

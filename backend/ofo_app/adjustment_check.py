@@ -584,7 +584,7 @@ def _entry_state(clock: datetime.datetime, spot: Decimal, atm_iv: Decimal | None
 
 def scenario_entry(scn: Any, state: pe.StrategyState, position: Position) -> pe.StrategyState | None:
     """The scenario's ``position.entry`` as the F-71 entry state (None: the scenario states none)."""
-    entry = (scn.data.get("position") or {}).get("entry") if scn is not None else None
+    entry = (scn.data.get("position") or {}).get("entry") if scn is not None and position.legs else None
     if not entry:
         return None
     return _entry_state(datetime.datetime.fromisoformat(entry["clock"]), Decimal(str(entry["spot"])),
@@ -600,24 +600,36 @@ def rule_marker(adjustments_used: int | None, stored: Mapping[int, Any]) -> int:
     return max(stored, default=0)
 
 
+def _own_facts(facts: Any, position: Position) -> bool:
+    """The strategy has its OWN readable entry facts with a time (stated); anything else is not a baseline."""
+    return isinstance(facts, EntryFacts) and isinstance(facts.at, datetime.datetime) and bool(position.legs)
+
+
 def entry_baseline(scn: Any, state: pe.StrategyState, position: Position, facts: Any,
                    marker: int) -> pe.StrategyState | None:
     """The ONE entry baseline of a rule with no stored memory (issue 65, finding rule-entry-baseline-taken-at-first-
-    check; screen, recorder and worker all call it). Answer states:
-    - after an adjustment basket (``marker`` > 0, ADR-258) -> None: the first check after the basket is the new
-      starting point ("already true after adjustment N");
-    - scenario mode with a stated entry -> the scenario's entry;
-    - stored entry facts with their time (``EntryFacts.at``) -> the spot and clock of the first fill;
-    - no facts (a fill before 0039), unreadable facts, facts with no time -> None: the first check is the baseline
-      (the known gap, named in the finding; test_rule_entry_baseline::test_known_gap_no_entry_facts...).
+    check; screen, recorder, worker and playbook test all call it). The source follows what the strategy HAS, never the
+    process mode (GC-ICGUIDE g04b: a builder-entered strategy checked in scenario mode took the file's entry). Order:
+    - after an adjustment basket (``marker`` > 0, ADR-258) -> None: the first check is the new starting point;
+    - stored entry facts with their time (``EntryFacts.at``) -> the spot and clock of the first fill, in any mode;
+    - scenario mode with a stated file entry -> the file's entry (a seeded strategy has no facts of its own);
+    - else (absent, unreadable, no time, no legs, no stated entry) -> None: the first check is the baseline
+      (the known gap, test_rule_entry_baseline::test_known_gap_no_entry_facts...).
     The caller passes ``None`` -> this check's state."""
     if marker > 0:
         return None
-    if scn is not None:
-        return scenario_entry(scn, state, position)
-    if isinstance(facts, EntryFacts) and isinstance(facts.at, datetime.datetime) and position.legs:
+    if _own_facts(facts, position):
         return _entry_state(facts.at, facts.entry_spot, None, state, position)
-    return None
+    return scenario_entry(scn, state, position)
+
+
+def with_entry_iv(scn: Any, state: pe.StrategyState, position: Position, facts: Any) -> pe.StrategyState:
+    """T-11's entry ATM IV follows the same choice as ``entry_baseline``: a strategy with its own facts keeps the
+    facts' IV (``state_of`` set it; None when the facts carry none); only one without them takes the file's IV."""
+    if _own_facts(facts, position):
+        return state
+    entry = scenario_entry(scn, state, position)
+    return state if entry is None else dataclasses.replace(state, entry_atm_iv=entry.atm_iv)
 
 
 async def _evaluate_stored(conn: Any, user_ref: str, strategy_id: int, body: Mapping,  # noqa: PLR0913
@@ -626,13 +638,11 @@ async def _evaluate_stored(conn: Any, user_ref: str, strategy_id: int, body: Map
     stored = await playbook_store.rule_states(conn, user_ref, strategy_id)
     marker = rule_marker(state.adjustments_used, stored)
     memory = {k: {"held_at_entry": h, "seen_clear": s} for k, (h, s) in stored.get(marker, {}).items()}
-    entry = scenario_entry(scn, state, position)
-    if scn is not None and entry is not None:  # T-11: the scenario's own entry IV
-        state = dataclasses.replace(state, entry_atm_iv=entry.atm_iv)
     facts = None
-    if not memory and marker == 0 and scn is None:
+    if scn is not None or (not memory and marker == 0):
         from ofo_app.adjustment_readers import entry_facts_in  # noqa: PLC0415 - read path only
         facts = await entry_facts_in(conn, strategy_id)
+    state = with_entry_iv(scn, state, position, facts)
     base = entry_baseline(scn, state, position, facts, marker)
     ev = pe.evaluate(body, state, memory, base or state, gap_until=gap_until)
     return ev, memory, marker
