@@ -139,7 +139,8 @@ def _tracked_reader_on(maker, user_ref: str):
     from ofo_app import adjustment_readers  # noqa: PLC0415
 
     async def read(strategy_id, rates):
-        with patch.object(adjustment_readers, "get_sessionmaker", lambda: maker),                 patch.object(adjustment_readers, "current_user_ref", lambda: user_ref):
+        with (patch.object(adjustment_readers, "get_sessionmaker", lambda: maker),
+              patch.object(adjustment_readers, "current_user_ref", lambda: user_ref)):
             return await adjustment_readers.read_tracked(strategy_id, rates)
     return read
 
