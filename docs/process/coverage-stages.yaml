@@ -634,6 +634,10 @@ issues:
   "#674": S6.7  # Two paper-only readers left outside tracking: adjustment history page and booked P&L (GC-ICTRACK deferred)
   "#676": S6.7  # Test-data checker has no margin reader: T-14 / T-15 never checked on test data (GC-ICTRACK proof)
   "#678": S6.7  # Playbook test route lists scenario test strategies in live mode (GC-ICTRACK live record)
+  "#680": S6.7  # Instrument-list guard refuses a complete list whose strike range was trimmed; builder shows no expiries (GC-ICGUIDE)
+  "#681": S6.7  # Builder expiry picker shows real-clock days left in test-data mode (GC-ICGUIDE)
+  "#682": S6.7  # API routes take a second DB connection while holding one: deadlock at pool 1-2; role cap 10 cannot host two stacks (GC-ICGUIDE)
+  "#683": S6.7  # Adjustment opportunities list shows live strategies in test-data mode (GC-ICGUIDE)
 
 # Work items whose status is not done.
 work_items:
