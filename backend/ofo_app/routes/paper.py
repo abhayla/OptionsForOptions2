@@ -54,10 +54,11 @@ from ofo.tracking.orderbook import NetPosition, PaperOrder, is_typed_price, net_
 from ofo.tracking.paper_alert import restore_alert_body
 from pydantic import BaseModel, ConfigDict, Field
 
-from ofo_app import paper_monitor, paper_store, paper_trigger_store, playbook_store, tracked_contracts
+from ofo_app import paper_limit, paper_monitor, paper_store, paper_trigger_store, playbook_store, tracked_contracts
 from ofo_app import strategy_store as store
 from ofo_app.api_models import ApiModel, CatalogueText, Money
 from ofo_app.db import get_db
+from ofo_app.routes.adjustment import TrackedReader, get_tracked_reader
 from ofo_app.errors import ClosedRoute, Failure
 from ofo_app.live_push import POLL_SECONDS, LiveFeed, hold_and_read
 from ofo_app.paper_reasons import breakevens_reason_text, extremes_reason_text, greeks_reason_text, reason_text
@@ -706,6 +707,31 @@ def _check_price(price: Decimal) -> None:
         raise StrategyRefused("paper_price_invalid")
 
 
+async def _server_exit_prices(ctx: MarketContext | None, feed: LiveFeed | None, underlying: str,
+                              orders: Sequence[Any], state: Mapping[int, tracked_contracts.TrackedContract]
+                              ) -> dict[int, Decimal]:
+    """C10 (REQ-109 AC-4, ADR-008): order index -> the price the SERVER reads now for every `exit` order: the
+    price the paper screen shows for that leg (``paper.display_price``, ADR-212: live in market hours, the last
+    close after hours). Answer states: no exit -> {} and no read; no market context -> tracking_not_connected;
+    no price at all for a leg (missing, failed read) -> tracking_exit_prices_not_live; nothing is written on any
+    refusal. The browser's price is never used."""
+    from ofo_app.routes.tracking import _snapshot  # noqa: PLC0415 - the exit route's own market read
+    exits = [(i, state[o.contract_id].identity) for i, o in enumerate(orders) if o.kind == "exit"]
+    if not exits:
+        return {}
+    if ctx is None or any(iid is None for _, iid in exits):
+        raise StrategyRefused("tracking_not_connected", Failure.CONFLICT)
+    try:
+        snapshot = await _snapshot(ctx, feed, underlying, sorted({iid for _, iid in exits}))
+        prices = {i: paper.display_price(snapshot, iid) for i, iid in exits}  # ADR-212: what the paper screen shows
+    except Exception:  # noqa: BLE001 - any failed read is "no price": refused by name, nothing written
+        _LOG.exception("paper exit price read failed")
+        raise StrategyRefused("tracking_exit_prices_not_live", Failure.CONFLICT) from None
+    if not all(paper.is_live(p) and p.price is not None for p in prices.values()):
+        raise StrategyRefused("tracking_exit_prices_not_live", Failure.CONFLICT)
+    return {i: p.price for i, p in prices.items()}  # type: ignore[misc] - priced: price set
+
+
 async def entry_facts(ctx: MarketContext | None, underlying: str, orders: Sequence[Any],
                       state: Mapping[int, tracked_contracts.TrackedContract]) -> EntryFacts | None:
     """ADR-243 + ADR-270 (1): the entry facts this fill would store if it is the strategy's first
@@ -726,10 +752,12 @@ async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR
                              ctx: Annotated[MarketContext | None, Depends(get_market_context)],
                              feed: Annotated[LiveFeed | None, Depends(get_live_feed)],
                              now: Annotated[AnswerClock, Depends(get_answer_clock)],
-                             rates: Annotated[ChargeRates | None, Depends(load_charge_rates)]) -> PaperBookOut:
+                             rates: Annotated[ChargeRates | None, Depends(load_charge_rates)],
+                             tracked_reader: Annotated[TrackedReader, Depends(get_tracked_reader)]) -> PaperBookOut:
     stored = await _load_strategy(db, user_ref, strategy_id)
     for order in body.orders:
-        _check_price(order.price)
+        if order.kind != "exit":  # C10: an exit's price is the server's (below); a browser-sent one is ignored
+            _check_price(order.price)
     contracts = await tracked_contracts.resolve(db, sorted({o.contract_id for o in body.orders}))
     state = {c.contract_id: c for c in contracts}
     # a contract unknown to the catalogue never reaches the store; a new position needs a live contract (an exit of one
@@ -738,13 +766,20 @@ async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR
            for o in body.orders):
         raise StrategyRefused("paper_contract_not_tradable")
     placed_at = now()
+    exit_prices = await _server_exit_prices(ctx, feed, stored.saved.definition.underlying, body.orders, state)
     # only a strategy with no paper order yet can be at its first fill (a book never shrinks): a later fill reads no IV
     first = not await paper_store.tracked_ids(db, [strategy_id])
     entry = await entry_facts(ctx, stored.saved.definition.underlying, body.orders, state) if first else None
     try:
         book = await paper_store.place(db, user_ref, strategy_id, [
-            paper_store.NewOrder(o.contract_id, o.side, o.quantity, o.price, o.kind, placed_at) for o in body.orders],
+            paper_store.NewOrder(o.contract_id, o.side, o.quantity, exit_prices.get(i, o.price), o.kind, placed_at)
+            for i, o in enumerate(body.orders)],
             entry=entry)  # ADR-243: stored only if this is the strategy's first fill
+        # C9: the plan's most adjustments, once the store has accepted the orders (its own refusals come first); a
+        # refusal rolls the whole call back below
+        await paper_limit.check_adjustment_limit(
+            db, user_ref, strategy_id, book[:-len(body.orders)], [o.order for o in book[-len(body.orders):]],
+            tracked_reader, rates, None if ctx is None else ctx.provider.instrument_master())
         new_ids = [o.id for o in book][-len(body.orders):]  # place inserts in order under the strategy's row lock
         for suggestion_id in dict.fromkeys(body.suggestion_ids):  # REQ-163 AC-1: same transaction, or nothing
             await playbook_store.link_orders(db, user_ref, strategy_id, suggestion_id, new_ids,

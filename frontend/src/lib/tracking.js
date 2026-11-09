@@ -35,6 +35,8 @@ export const paperLotsOk = (text) => /^[1-9]\d{0,5}$/.test(String(text ?? '').tr
 export const PAPER_PLACED_NOT_REFRESHED_TEXT = 'Placed on paper. The screen could not refresh: reload to see it.'
 export const PAPER_UNKNOWN_TEXT = 'We could not confirm the order. Check Orderbook before trying again.'
 export const PAPER_OPEN_ORDERBOOK_LABEL = 'Open Orderbook'
+/** An exit's price is read by the server when the order is placed (live in market hours, the last close after hours). */
+export const PAPER_EXIT_PRICED_BY_SERVER_TEXT = 'the server sets the exit price when you confirm'
 export const PAPER_PLANNED_PRICE_NOTE = 'planned price, no live quote'
 /** How long Confirm stays locked after an answer of unknown outcome (the user checks the Orderbook first). */
 export const PAPER_UNKNOWN_HOLD_MS = 5000

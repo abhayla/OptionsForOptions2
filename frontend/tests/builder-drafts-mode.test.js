@@ -132,21 +132,19 @@ describe('Drafts Mode edits are pending paper orders until Confirm', () => {
     await flushPromises()
     const posts = calls.filter((c) => c.method === 'POST' && c.url === '/paper/strategies/63/orders')
     expect(posts).toHaveLength(1)
-    expect(posts[0].body).toEqual({ orders: [{ contract_id: 5576, side: 'BUY', quantity: 65, price: '86.35', kind: 'exit' }] })
+    expect(posts[0].body).toEqual({ orders: [{ contract_id: 5576, side: 'BUY', quantity: 65, price: '0', kind: 'exit' }] }) // GC-ICGUIDE g21: the server prices an exit; the sent price is ignored
     expect(got(PAPER)).toBe(2)
     expect(legCount(w)).toBe(3)
     expect(t(w, 'paper-pending-count').text()).toBe('0 pending changes')
   })
-  it('after hours (no live LTP): the exit price box is empty, marked "last close", and Confirm stays refused until typed', async () => {
+  it('after hours (no live LTP): the exit row has no price box, says the server sets the price (last close, ADR-212) and Confirm is allowed', async () => {
     answers[PAPER] = { ...BOOK, positions: BOOK.positions.map((p) => ({ ...p, price_state: 'closed', ltp: null, ltp_text: null })) }
     const w = await openBuilder()
     await removeLeg(w, '22700.00')
     await t(w, 'paper-review').trigger('click')
     await flushPromises()
-    expect(dialogRows(w)[0]).toMatchObject({ price: '', price_note: LAST_CLOSE_LABEL })
-    expect(t(w, 'paper-price-note').text()).toBe('last close')
-    expect(t(w, 'paper-confirm-button').attributes('disabled')).toBeDefined()
-    await t(w, 'paper-price').setValue('85.00')
+    expect(w.find('[data-testid="paper-price"]').exists()).toBe(false)
+    expect(t(w, 'paper-exit-price').text()).toContain('the server sets the exit price when you confirm')
     expect(t(w, 'paper-confirm-button').attributes('disabled')).toBeUndefined()
   })
 })

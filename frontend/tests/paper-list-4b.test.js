@@ -154,13 +154,14 @@ describe('Paper tab from GET /paper/strategies (the real reply)', () => {
     const row = all(w, 'paper-order')[0]
     expect(row.get('[data-testid="paper-order-kind"]').text()).toBe('Exit')
     expect(row.get('[data-testid="paper-lots"]').element.value).toBe('1')
-    expect(row.get('[data-testid="paper-price"]').element.value).toBe(p.ltp_text)
+    expect(row.find('[data-testid="paper-price"]').exists()).toBe(false) // GC-ICGUIDE g21: the server prices an exit
+    expect(row.get('[data-testid="paper-exit-price"]').text()).toContain(`about ${p.ltp_text}`)
     expect(t(w, 'paper-not-real').exists()).toBe(true)
     await t(w, 'paper-confirm-button').trigger('click')
     await flushPromises()
     const post = calls.find((c) => c[0] === 'POST')
     expect(post[1]).toBe('/paper/strategies/1/orders')
-    expect(post[2]).toEqual({ orders: [{ contract_id: 784, side: 'BUY', quantity: 65, price: p.ltp_text, kind: 'exit' }] })
+    expect(post[2]).toEqual({ orders: [{ contract_id: 784, side: 'BUY', quantity: 65, price: '0', kind: 'exit' }] })
     expect(has(w, 'paper-confirm')).toBe(false)
   })
 
@@ -222,7 +223,7 @@ describe('Paper tab from GET /paper/strategies (the real reply)', () => {
     expect(has(w, 'paper-confirm')).toBe(true)
   })
 
-  it('an open contract without an ltp shows a dash; its exit row has an empty price marked "last close" that must be typed', async () => {
+  it('an open contract without an ltp shows a dash; its exit row has no price box: the server sets the price (last close after hours)', async () => {
     const d = clone()
     Object.assign(d.strategies[2].positions[0], { ltp: null, ltp_text: null, price_state: 'stale' })
     answers['GET /paper/strategies'] = ok(d)
@@ -233,9 +234,9 @@ describe('Paper tab from GET /paper/strategies (the real reply)', () => {
     await all(w, 'paper-group')[1].get(`[data-testid="select-leg-${d.strategies[2].strategy_id}-${id}"]`).setValue(true)
     await t(w, `exit-selected-${d.strategies[2].strategy_id}`).trigger('click')
     await flushPromises()
-    expect(t(w, 'paper-price').element.value).toBe('')
-    expect(t(w, 'paper-price-note').text()).toBe('last close')
-    expect(t(w, 'paper-confirm-button').element.disabled).toBe(true)
+    expect(w.find('[data-testid="paper-price"]').exists()).toBe(false)
+    expect(t(w, 'paper-exit-price').text()).toContain('the server sets the exit price when you confirm')
+    expect(t(w, 'paper-confirm-button').element.disabled).toBe(false)
   })
 
   it('totals_reason replaces a missing figure with the server reason', async () => {
