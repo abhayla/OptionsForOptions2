@@ -34,7 +34,7 @@ NOT_FOUND_TEXT = "This adjustment opportunity was not found."
 #: reads it back from the inbox, so the two readers must agree)
 EXPECTED_T03 = "Tested short's delta reaches: 0.4103 delta (rule 0.3500 delta)"
 _TICKS = itertools.count(1)
-_BASE = datetime.datetime(2026, 11, 3, 10, 0, tzinfo=datetime.UTC)  # after every scenario's entry clock
+_BASE = datetime.datetime(2026, 11, 3, 9, 0, tzinfo=datetime.UTC)  # 14:30 IST: after every scenario entry clock, inside market hours (ADR-212)
 
 
 def _stepping_clock() -> Any:
