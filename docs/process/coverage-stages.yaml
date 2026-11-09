@@ -638,6 +638,7 @@ issues:
   "#681": S6.7  # Builder expiry picker shows real-clock days left in test-data mode (GC-ICGUIDE)
   "#682": S6.7  # API routes take a second DB connection while holding one: deadlock at pool 1-2; role cap 10 cannot host two stacks (GC-ICGUIDE)
   "#683": S6.7  # Adjustment opportunities list shows live strategies in test-data mode (GC-ICGUIDE)
+  "#684": S6.7  # Real-leg expiry settlement: settle row and on-screen 'awaiting settlement' not built (C6 remainder, GC-ICGUIDE)
 
 # Work items whose status is not done.
 work_items:
