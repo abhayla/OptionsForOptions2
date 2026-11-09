@@ -52,7 +52,7 @@ from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure, refuse_request
 from ofo_app.routes import adjustment_opportunities as opportunities
 from ofo_app.routes.broker import current_user_ref
-from ofo_app.routes.outcome import get_settings_reader, load_charge_rates
+from ofo_app.routes.outcome import AnswerClock, get_answer_clock, get_settings_reader, load_charge_rates
 from ofo_app.strategy_refused import StrategyRefused
 from ofo_app.tracked_contracts import ContractState
 from ofo_app.underlying import Underlying
@@ -337,11 +337,10 @@ async def _strategy_out(db: Any, stored: store.StoredStrategy) -> StrategyOut:
                      for v, d in zip(stored.versions, version_docs, strict=True)]})
 
 
-async def _definition(db: Any, body: StrategyIn) -> sf.SavedDefinition:
+async def _definition(db: Any, body: StrategyIn, now: datetime.datetime) -> sf.SavedDefinition:
     sf.check_map_names(risk_limits=list(body.risk_limits), preferences=list(body.preferences))  # ADR-064, before any query
     sf.check_setting_values(rules_ref=body.rules_ref, preferences=body.preferences)  # ADR-069, before any query
     limits = {name: sf.limit_from_text(value, f"risk_limit.{name!r}") for name, value in body.risk_limits.items()}
-    now = datetime.datetime.now(datetime.timezone.utc)
     entries = [None if leg.planned_entry is None and leg.captured_at is None
                else sf.entry_from_input(leg.planned_entry, leg.captured_at, now, f"leg_{i + 1}",
                                         leg.entry_source or sf.SOURCE_CAPTURED)
@@ -417,9 +416,10 @@ async def _run(db: Any, work: Callable, *, form_status: int) -> Any:
 
 @router.post("/strategies", status_code=201, response_model=StrategyOut, response_model_exclude_unset=True)
 async def save_draft(body: StrategyCreateIn, today_of: Annotated[elig.TodayReader, Depends(elig.get_eligibility_today)],
+                     now: Annotated[AnswerClock, Depends(get_answer_clock)],
                      db: Any = Depends(get_db), user_ref: str = Depends(current_user_ref)) -> StrategyOut:
     async def work():
-        saved = await _definition(db, body)
+        saved = await _definition(db, body, now())
         await _check_eligible(db, saved, today_of, None)
         return await _strategy_out(db, await store.save_draft(db, user_ref, saved, body.name))
     return await _run(db, work, form_status=422)
@@ -518,12 +518,13 @@ async def get_strategy(strategy_id: int, db: Any = Depends(get_db),
 
 
 @router.put("/strategies/{strategy_id}", response_model=StrategyOut, response_model_exclude_unset=True)
-async def update_strategy(strategy_id: int, body: StrategyUpdateIn,
+async def update_strategy(strategy_id: int, body: StrategyUpdateIn,  # noqa: PLR0913 - FastAPI dependencies
                           today_of: Annotated[elig.TodayReader, Depends(elig.get_eligibility_today)],
+                          now: Annotated[AnswerClock, Depends(get_answer_clock)],
                           db: Any = Depends(get_db), user_ref: str = Depends(current_user_ref)) -> StrategyOut:
     async def work():
         store.check_strategy_id(strategy_id)  # before the catalogue is read
-        saved = await _definition(db, body)
+        saved = await _definition(db, body, now())
         await _check_eligible(db, saved, today_of, (await store.load(db, user_ref, strategy_id)).saved)
         return await _strategy_out(db, await store.update(db, user_ref, strategy_id, saved,
                                                           expected_revision=body.expected_revision))
@@ -594,9 +595,9 @@ def get_future_finder() -> Any:
     return nearest_future
 
 
-def get_history_now() -> datetime.datetime:
+def get_history_now(clock: Annotated[AnswerClock, Depends(get_answer_clock)]) -> datetime.datetime:
     from ofo.timeutil import IST  # noqa: PLC0415
-    return datetime.datetime.now(IST)
+    return clock().astimezone(IST)
 
 
 class PriceValueOut(ApiModel):
