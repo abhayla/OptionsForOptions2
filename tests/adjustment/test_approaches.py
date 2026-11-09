@@ -294,6 +294,16 @@ def test_a29_one_lot_is_refused_and_two_lots_halve():
     assert sorted((x.type, x.lots) for x in two.after) == [("CE", 1), ("CE", 1), ("PE", 2), ("PE", 2)]
 
 
+def test_a29_two_lots_with_divisor_three_is_refused_not_a_zero_lot_trade():
+    """GC-ICGUIDE g12 (audit C11): 2 // 3 = 0, so the trade would close 0 lots; refused by name, nothing proposed."""
+    position, chain, spot = inputs(load("ADJ-20a"))
+    result = build_approach(position, chain, spot, "A-29", replace(CFG, reduce_divisor=3))
+    assert result.refusal == ("Dividing Leg 3 (SELL NIFTY 23,450 CE, expiry 03 Nov 2026) or its wing by 3 leaves less "
+                              "than one whole lot to close.")
+    assert not result.trades
+    assert all(t.lots >= 1 for t in build_approach(position, chain, spot, "A-29", CFG).trades)
+
+
 def test_sensex_uses_its_500_point_step_and_lot_20():
     """Attack 4 + 5: SENSEX (ADJ-21) with no delta on the chain rolls 500 points, quantities in SENSEX lots of 20."""
     position, chain, spot = inputs(load("ADJ-21"))
