@@ -32,7 +32,7 @@ C5, C6, C4).
   build order was paper first.
 - **Risk while open:** if the user saves the after-legs from the builder as a new strategy, its ENTRY could open a
   second full condor (unverified).
-- **Decision:** _open_
+- **Decision:** on hold, ADR-281 (owner 2026-11-09: no order placement on Kite this round).
 
 #### C1 deep dive (2026-11-07, code read at ebefb113)
 
@@ -87,7 +87,7 @@ the basket is split into a buy step and a sell step.
   (`sorted(held.items())`); `ofo/execution/sequence.py` is imported only by `partial.py` and `review.py`, which no
   route uses.
 - **Why not done:** unknown. The sequencer was written and never connected.
-- **Decision:** _open_
+- **Decision:** on hold, ADR-281 (owner 2026-11-09: no order placement on Kite this round).
 
 ### C4: no split above the freeze limit
 - **Path:** live
@@ -97,7 +97,7 @@ the basket is split into a buy step and a sell step.
 - **How found:** `backend/ofo/execution/freeze.py:9` ("never splits a leg"), `:73-77`; grep `slice_quantity` in
   `backend/ofo_app` gives 0 hits.
 - **Why not done:** a design choice to block rather than split.
-- **Decision:** _open_
+- **Decision:** on hold, ADR-281 (owner 2026-11-09: no order placement on Kite this round).
 
 ### C5: partial fill or one rejected leg has no next step
 - **Path:** live
@@ -109,7 +109,7 @@ the basket is split into a buy step and a sell step.
   grep `choice|partial` in `frontend/src/components/execution/ReturnCheck.vue` gives 0 hits;
   `TwoBasketStepper.vue` is used by no page.
 - **Why not done:** work stopped mid-way (commit beea6cdb, "W-096 WIP").
-- **Decision:** _open_
+- **Decision:** on hold, ADR-281 (owner 2026-11-09: no order placement on Kite this round).
 
 ### C6: live expiry settlement is not wired
 - **Path:** live
@@ -119,7 +119,7 @@ the basket is split into a buy step and a sell step.
 - **How found:** grep `settle_expired_legs|settle_legs` in `backend/ofo_app` gives 0 hits;
   `backend/ofo/reconciliation/settlement.py:11-12` ("Not here: the scheduler"); `backend/ofo_app/main.py:96`.
 - **Why not done:** the scheduler step was never added.
-- **Decision:** _open_
+- **Decision:** fix in GC-ICGUIDE (owner 2026-11-09, ADR-282).
 
 ## Paper and live gaps
 
@@ -148,7 +148,7 @@ the basket is split into a buy step and a sell step.
 - **How found:** `backend/ofo/adjustment/offered.py:33-40`; `backend/ofo_app/routes/paper.py:726-760`; no limit check
   in `backend/ofo_app/paper_store.py`.
 - **Why not done:** unknown.
-- **Decision:** _open_
+- **Decision:** fix in GC-ICGUIDE (owner 2026-11-09, ADR-282).
 
 ### C10: the paper fill and exit price comes from the browser
 - **Path:** paper
@@ -159,7 +159,7 @@ the basket is split into a buy step and a sell step.
   `frontend/src/lib/paperDrafts.js:128-131`; `backend/ofo_app/routes/tracking.py:425`; grep `tracking/exit` in
   `frontend/src` gives 0 hits.
 - **Why not done:** unknown.
-- **Decision:** _open_
+- **Decision:** fix in GC-ICGUIDE (owner 2026-11-09, ADR-282).
 
 ### C11: adjustment A-29 (reduce size) can propose a 0-lot trade
 - **Path:** both
@@ -168,7 +168,7 @@ the basket is split into a buy step and a sell step.
 - **Why critical:** wrong quantity. Example: 2 lots with divisor 3 shows a "reduce" that trades 0 lots.
 - **How found:** `backend/ofo/adjustment/approaches.py:714-726`.
 - **Why not done:** missed edge case.
-- **Decision:** _open_
+- **Decision:** fix in GC-ICGUIDE (owner 2026-11-09, ADR-282).
 
 ### C12: adjustment A-04 (roll to next expiry) shows no after-adjustment payoff
 - **Path:** both
@@ -176,7 +176,7 @@ the basket is split into a buy step and a sell step.
 - **Why critical:** no screen for the step's risk. The user picks the roll without seeing its risk.
 - **How found:** `backend/ofo_app/routes/adjustment.py:415-416`.
 - **Why not done:** the payoff engine prices one expiry only.
-- **Decision:** _open_
+- **Decision:** fix in GC-ICGUIDE (owner 2026-11-09, ADR-282).
 
 ### C13: no screen shows a finished strategy
 - **Path:** both
@@ -186,7 +186,7 @@ the basket is split into a buy step and a sell step.
 - **How found:** `frontend/src/pages/MyStrategiesPage.vue:6,24` (`COMPLETED_STATUSES = []`); paper "EXITED" is worked
   out on the fly (`backend/ofo_app/routes/paper.py:428`).
 - **Why not done:** the strategy store only ever had the "draft" status.
-- **Decision:** _open_
+- **Decision:** fix in GC-ICGUIDE (owner 2026-11-09, ADR-282).
 
 ### C14: the paper confirm list puts every exit before every add
 - **Path:** paper, blocks live (C1)
@@ -196,7 +196,7 @@ the basket is split into a buy step and a sell step.
 - **How found:** `frontend/src/lib/paperDrafts.js:118` (`return [...exits, ...adds]`); seen on paper strategy 89
   ("S Add 24950 CE ... B Add 25050 CE").
 - **Why not done:** unknown.
-- **Decision:** _open_
+- **Decision:** on hold, ADR-281 (owner 2026-11-09: no order placement on Kite this round).
 
 ---
 
