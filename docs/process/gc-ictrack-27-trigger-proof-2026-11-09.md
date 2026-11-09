@@ -45,3 +45,25 @@ Not proven on test data: T-14 and T-15 (the test-data checker has no margin read
 09:30, scenario clocks are later); T-16 (switched off in the IC defaults; margin-based, so also #676); T-19
 (no approach priced in this harness, cause not proven; covered by the worker's own T-19 tests, ADR-254); T-21 (a
 suggestion gate, not a firing trigger). The live record (task 37) covers T-13, T-14, T-15 and T-19 on real prices.
+
+## Live data (task 37, 2026-11-09 09:16 IST, owner's Kite session)
+
+India VIX 18.29, previous close 18.43 (the close of the Diwali Muhurat session on Sunday 8 Nov, present in Kite's daily
+candles; last night's "previous close equals Friday" puzzle was correct data, not a defect). VIX percentile (250
+sessions) 83.2; NIFTY ADX(14) 35.16. The live checker wrote the daily ATM IV row (NIFTY, 2026-11-09, 0.407059, 09:15:06).
+
+`POST /api/playbooks/test` (the one state build `state_of`, live prices), iron condor body with all 27 triggers on,
+strategy 92 "UT IC 9Nov G" (paper IC on real contracts, expiry today): 23 of 27 checked. Fired: T-01 (spot beyond the
+sold 24,950 CE by 24.75 points), T-01b 24.75 vs 70, T-03 0.537 vs 0.40, T-11c 84 vs 80, T-15 99.7 vs 80 (paper margin
+against the account's free margin), T-20b 35.16 vs 25. Clear (checked): T-02, T-04, T-05, T-06, T-06b, T-07, T-08, T-09,
+T-10b, T-11b, T-14, T-14t, T-14v, T-16, T-18, T-19, T-21. Not checked: T-11 and T-12 (no entry IV: entered 11-06,
+before the entry-IV writer), T-20 (no level set), T-13 (previous close absent in market hours, ADR-212).
+
+**Background checker (the one that alerts by itself), live:** checking (fresh reads, flags raised) but T-13, T-14,
+T-15 and T-16 answer missing_prev_close / missing_margin: its process holds no Kite session of its own (#627).
+
+**Owner decision (2026-11-09 ~09:2x):** "Consider T13 to T16 as completed." Recorded as accepted by the owner, not
+proven in the background checker; #627 (live) and #676 (test data) stay open.
+
+Also found: the playbook-test route lists scenario test strategies (23 of 24 tested) in live mode; the background
+checker keeps them apart.
