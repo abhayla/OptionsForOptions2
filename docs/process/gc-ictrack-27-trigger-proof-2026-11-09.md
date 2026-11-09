@@ -65,5 +65,5 @@ T-15 and T-16 answer missing_prev_close / missing_margin: its process holds no K
 **Owner decision (2026-11-09 ~09:2x):** "Consider T13 to T16 as completed." Recorded as accepted by the owner, not
 proven in the background checker; #627 (live) and #676 (test data) stay open.
 
-Also found: the playbook-test route lists scenario test strategies (23 of 24 tested) in live mode; the background
+Also found (issue #678): the playbook-test route lists scenario test strategies (23 of 24 tested) in live mode; the background
 checker keeps them apart.
