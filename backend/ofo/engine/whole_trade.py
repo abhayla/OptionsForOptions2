@@ -36,10 +36,12 @@ naming the argument.
 """
 from __future__ import annotations
 
+import datetime
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import ROUND_HALF_EVEN, Decimal
 
-from ofo.engine.legs import require_price
+from ofo.engine.black_scholes import bs_price, forward_price, year_fraction
+from ofo.engine.legs import Instrument, expiry_pnl, position_pnl, require_price
 from ofo.engine.metrics import (
     UNLIMITED,
     LossRegion,
@@ -52,8 +54,10 @@ from ofo.engine.metrics import (
 from ofo.engine.pop import Unavailable, Why, probability_of_profit
 from ofo.engine.strategy import Strategy
 from ofo.money import PAISE
+from ofo.timeutil import EXPIRY_CLOSE
 
-__all__ = ["MultiExpiryError", "WholeTradeAfter", "WholeTradeFigures", "whole_pnl_at", "whole_trade_after"]
+__all__ = ["FarLegNoIV", "MultiExpiryError", "NearExpiryAfter", "WholeTradeAfter", "WholeTradeFigures",
+           "near_expiry_after", "near_pnl_at", "whole_pnl_at", "whole_trade_after"]
 
 
 @dataclass(frozen=True)
@@ -156,3 +160,73 @@ def whole_pnl_at(strategy: Strategy | None, after: WholeTradeAfter, level: Decim
     require_price(level, "level")
     open_pnl = strategy.expiry_pnl_at(level) if strategy is not None else Decimal(0)
     return open_pnl + after.booked_pnl - after.total_charges
+
+
+# ---- legs on two or more expiries: valued at the NEARER expiry close (REQ-148, C12 / GC-ICGUIDE g13) ----------------
+
+class FarLegNoIV(ValueError):
+    """A leg on a later expiry has no implied volatility, so it cannot be valued at the nearer expiry close."""
+
+    def __init__(self, index: int) -> None:
+        super().__init__(f"leg {index} is on a later expiry and has no IV")
+        self.index = index
+
+
+@dataclass(frozen=True)
+class NearExpiryAfter:
+    """The whole trade of a strategy whose legs span expiries, valued at the nearer expiry's close: the nearer legs at
+    their expiry value, every later leg at its Black-Scholes price at that moment (its own IV, time left to its own
+    close, q = 0), through the one sign convention (``legs.position_pnl``). An ESTIMATE, never an exact at-expiry
+    figure: no single maximum loss, maximum profit or breakeven exists (ADR-143, REQ-148 AC-4), so none is given.
+    shortcut: q = 0 for the later legs (the spot fallback of ADR-061); pass each expiry's parity q when the Compare
+    reads it."""
+
+    strategy: Strategy
+    near: datetime.date
+    rate: Decimal
+    ivs: tuple[Decimal | None, ...]  # one per leg; required for every option leg after ``near``
+    booked_pnl: Decimal
+    paid_charges: Decimal
+    adjustment_charges: Decimal
+    open_exit_charges: Decimal
+    total_charges: Decimal
+
+
+def near_expiry_after(strategy: Strategy, *, booked_pnl: Decimal, paid_charges: Decimal,  # noqa: PLR0913
+                      adjustment_charges: Decimal, open_exit_charges: Decimal, rate: Decimal,
+                      ivs: tuple[Decimal | None, ...]) -> NearExpiryAfter:
+    """The :class:`NearExpiryAfter` of ``strategy`` (legs on 2+ expiries; a single expiry -> ValueError, use
+    :func:`whole_trade_after`). A later option leg without an IV -> :class:`FarLegNoIV` naming the leg's index."""
+    if strategy.is_single_expiry:
+        raise ValueError("a single-expiry strategy has an exact After: use whole_trade_after")
+    if len(ivs) != len(strategy.legs):
+        raise ValueError("ivs needs one entry per leg")
+    if not isinstance(rate, Decimal) or not rate.is_finite():
+        raise ValueError(f"rate must be a finite decimal.Decimal, got {rate!r}")
+    near = min(x.expiry for x in strategy.legs)
+    for i, (leg, iv) in enumerate(zip(strategy.legs, ivs, strict=True)):
+        if leg.expiry > near and leg.instrument is not Instrument.FUT and iv is None:
+            raise FarLegNoIV(i)
+    booked = _signed_paise(booked_pnl, "booked_pnl")
+    paid = require_price(paid_charges, "paid_charges")
+    adjustment = require_price(adjustment_charges, "adjustment_charges")
+    exits = require_price(open_exit_charges, "open_exit_charges")
+    return NearExpiryAfter(strategy, near, rate, tuple(ivs), booked, paid, adjustment, exits, paid + adjustment + exits)
+
+
+def near_pnl_at(after: NearExpiryAfter, level: Decimal) -> Decimal:
+    """The estimated whole-trade P&L after every charge line if the index is at ``level`` at the nearer expiry close:
+    the open legs as :class:`NearExpiryAfter` values them, plus the booked P&L less the total charges (the same flat
+    shift as :func:`whole_pnl_at`), rounded half-even to the paisa once."""
+    require_price(level, "level", allow_zero=False)
+    at = datetime.datetime.combine(after.near, EXPIRY_CLOSE)
+    total = Decimal(0)
+    for leg, iv in zip(after.strategy.legs, after.ivs, strict=True):
+        if leg.expiry == after.near:
+            total += expiry_pnl(leg, level)
+            continue
+        years = year_fraction(at, leg.expiry)
+        mark = (forward_price(level, years, after.rate) if leg.instrument is Instrument.FUT
+                else bs_price(leg.instrument, level, leg.strike, years, after.rate, iv))  # type: ignore[arg-type]
+        total += position_pnl(leg, mark)
+    return (total + after.booked_pnl - after.total_charges).quantize(PAISE, rounding=ROUND_HALF_EVEN)
