@@ -86,3 +86,16 @@ def test_path13_t11_value_per_frame_and_one_escalation_by_design():
         4: [(0, D("3.00"), None)],  # frame 3's close (3 pts = the stage line), seen at frame 4
         5: [(1, D("4.00"), "last")],  # frame 4's close (4 pts = the later-stage rung): one escalation
     }
+
+
+def test_t18_is_never_already_true_at_the_baseline_taken_after_the_adjustment_that_reaches_the_limit():
+    """#662 (RCA): after adjustment N the rule memory restarts and the first check is the baseline (ADR-258). T-18 is
+    true at exactly that check (used == max), so it was held "already true" and never raised a record. A guard-only
+    rule counts adjustments: reaching the limit is its crossing, however the baseline is taken."""
+    (body, s), _clock = _frames(p50.PATH, p50.F_QUIET)
+    at_limit = replace(s, adjustments_used=MAX_ADJUSTMENTS)
+    flags = lambda ev: [r.rule_id for r in ev.results if isinstance(r, pe.Flag) and r.rule_id == "T-18"]  # noqa: E731
+    ev = pe.evaluate(body, at_limit, {}, at_limit, gap_until=p50.GAP_UNTIL)  # baseline = this very check
+    assert flags(ev) == ["T-18"]
+    stored = {"T-18": {"held_at_entry": True, "seen_clear": False}}  # memory written before the fix
+    assert flags(pe.evaluate(body, at_limit, stored, at_limit, gap_until=p50.GAP_UNTIL)) == ["T-18"]

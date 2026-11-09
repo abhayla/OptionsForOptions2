@@ -574,6 +574,11 @@ def _t13(c: _Ctx) -> Hit:
     return _compare(c, "T-13", abs(_need(c.state.day_open, "day_open") - prev) * _HUNDRED, prev)
 
 
+#: Rules that count the strategy's own adjustments (the playbook row has cmp ""): the baseline restarts at each
+#: adjustment (ADR-258), so the check that reaches the count is itself the baseline and "already true" would hide it.
+COUNTER_RULES = frozenset({"T-18"})
+
+
 def _t18(c: _Ctx) -> Hit:
     used = _need(c.state.adjustments_used, "adjustments_used")
     mx = c.body.get("guards", {}).get("max_adjustments")
@@ -1035,6 +1040,8 @@ def evaluate(body: Mapping, state: StrategyState, memory: Mapping[str, Mapping[s
                 entry = _entry_held(body, entry_state, gap_until)
             new[o.rule_id] = {"held_at_entry": bool(entry.get(o.rule_id, False)), "seen_clear": False}
         mem = new[o.rule_id]
+        if o.rule_id in COUNTER_RULES:
+            mem["held_at_entry"] = False  # #662: its crossing is the event, whatever the baseline held
         if o.reason is not None:
             results.append(NotChecked(o.rule_id, o.lead, o.reason, o.slots))
         elif not o.fired:
