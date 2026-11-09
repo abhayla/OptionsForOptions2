@@ -43,7 +43,8 @@ from ofo.tracking import book, paper
 from ofo.tracking.orderbook import PaperOrder, net_positions
 from pydantic import BaseModel, ConfigDict, Field
 
-from ofo_app import paper_limit, paper_store, tracked_contracts
+from ofo_app import paper_limit
+from ofo_app import paper_store, tracked_contracts
 from ofo_app import strategy_store as store
 from ofo_app.api_models import ApiModel, CatalogueText, InstrumentId, Money
 from ofo_app.db import get_db
