@@ -29,6 +29,7 @@ from typing import Annotated, Any, Literal
 from fastapi import APIRouter, Depends
 from ofo.adjustment.detection import PLATFORM_DETECTION, check_threshold
 from ofo.adjustment.strategy_type import strike_gap_of, type_of
+from ofo.charges import ChargeRates
 from ofo.engine.legs import Action, Instrument, Leg
 from ofo.engine.orderbook import BookView
 from ofo.errors.explanations import render_explanation
@@ -42,18 +43,26 @@ from ofo.tracking import book, paper
 from ofo.tracking.orderbook import PaperOrder, net_positions
 from pydantic import BaseModel, ConfigDict, Field
 
-from ofo_app import paper_store, tracked_contracts
-from ofo_app.scenario_guard import guard_paper_order  # dev/test scenario guard; reaches no Execute code
+from ofo_app import paper_limit, paper_store, tracked_contracts
 from ofo_app import strategy_store as store
 from ofo_app.api_models import ApiModel, CatalogueText, InstrumentId, Money
 from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure
 from ofo_app.live_push import LiveFeed
+from ofo_app.routes.adjustment import TrackedReader, get_tracked_reader
 from ofo_app.routes.adjustment_preferences import UserPreferences
 from ofo_app.routes.broker import current_user_ref
-from ofo_app.routes.outcome import AnswerClock, MarketContext, feed_scope, get_answer_clock, get_market_context
+from ofo_app.routes.outcome import (
+    AnswerClock,
+    MarketContext,
+    feed_scope,
+    get_answer_clock,
+    get_market_context,
+    load_charge_rates,
+)
 from ofo_app.routes.planned_entry import get_live_feed, hold_until_priced
 from ofo_app.routes.strategies import StrategyRefused, refused_answer
+from ofo_app.scenario_guard import guard_paper_order  # dev/test scenario guard; reaches no Execute code
 from ofo_app.underlying import Underlying
 
 router = APIRouter(route_class=ClosedRoute)
@@ -429,7 +438,9 @@ async def exit_tracking(strategy_id: int, body: TrackingExitIn,  # noqa: PLR0913
                         ctx: Annotated[MarketContext | None, Depends(get_market_context)],
                         feed: Annotated[LiveFeed | None, Depends(get_live_feed)],
                         now: Annotated[AnswerClock, Depends(get_answer_clock)],
-                        threshold: Annotated[Decimal, Depends(get_near_level_threshold)]) -> TrackingOut:
+                        threshold: Annotated[Decimal, Depends(get_near_level_threshold)],
+                        rates: Annotated[ChargeRates | None, Depends(load_charge_rates)],
+                        tracked_reader: Annotated[TrackedReader, Depends(get_tracked_reader)]) -> TrackingOut:
     """REQ-109 AC-4 / AC-5 (GC-BP step 5): paper-exit the named legs at their live price now, read by the server from
     the same market context as the start: one `exit` order per named leg for its whole open quantity. Any named leg
     not live refuses the whole exit (nothing stored): a contract no longer live answers
@@ -440,6 +451,8 @@ async def exit_tracking(strategy_id: int, body: TrackingExitIn,  # noqa: PLR0913
     bk = await _load_book(db, strategy_id)
     if bk is None:
         raise StrategyRefused("user_input_request_not_available", Failure.NOT_FOUND)
+    answered = now()
+    paper_limit.refuse_when_closed(ctx, answered)  # ADR-212: no fill outside market hours, before any price read
     if len(set(body.legs)) != len(body.legs) or any(i >= len(bk.legs) for i in body.legs):
         raise StrategyRefused("tracking_exit_legs_invalid")
     if set(body.legs) & set(bk.exit_prices):
@@ -457,12 +470,13 @@ async def exit_tracking(strategy_id: int, body: TrackingExitIn,  # noqa: PLR0913
         prices = paper.exit_prices_now(snapshot, named)
     except paper.PricesNotLive:
         raise StrategyRefused("tracking_exit_prices_not_live", Failure.CONFLICT) from None
-    answered = now()
     orders = [paper_store.NewOrder(bk.contract_ids[i], _opposite(bk.legs[i].side), bk.legs[i].quantity,
                                    p.price, "exit", p.at or answered)  # type: ignore[arg-type] - live: price set
               for i, p in zip(body.legs, prices, strict=True)]
     # a racing exit that closed the leg first makes this one exceed the open quantity: refused as already exited
-    after = await _write(db, strategy_id, paper_store.place(db, user_ref, strategy_id, orders, entry=None),  # an exit
+    after = await _write(db, strategy_id, paper_limit.place_checked(db, user_ref, strategy_id, orders, entry=None,
+                                                   ctx=ctx, at=answered, reader=tracked_reader,
+                                                   rates=rates),  # an exit
                          paper_store.EXIT_EXCEEDS_OPEN, "tracking_leg_already_exited")
     return await _answer(db, stored, after, ctx, feed, threshold, answered)
 

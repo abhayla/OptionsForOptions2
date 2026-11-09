@@ -294,21 +294,24 @@ async def closed_figures(db: Any, user_ref: str, strategy_id: int, rates: Charge
                 db, sorted({o.order.contract_id for o in orders}))}
             underlying = paper.identity(found[orders[0].order.contract_id])[0]
             per_order, charges_reason = _per_order_charges(orders, found, underlying, rates)
-            t = ah.adjustment_history(
+            h = ah.adjustment_history(
                 [ah.HistoryOrder(str(o.order.contract_id), o.order.side,  # type: ignore[arg-type]
                                  o.order.quantity, o.order.price, o.order.kind,  # type: ignore[arg-type]
                                  o.order.placed_at,
                                  is_option=paper.identity(found[o.order.contract_id])[1] is not Instrument.FUT)
-                 for o in orders], {}, adjustments_max=None, per_order_charges=per_order).totals
+                 for o in orders], {}, adjustments_max=None, per_order_charges=per_order)
+            t = h.totals
     except Exception:  # noqa: BLE001 - any read failure only costs these figures
         log.warning("closed strategy %s figures could not be read", strategy_id, exc_info=True)
         return none
-    cost = None if t.adjustment_charges is None else to_paise_up(t.adjustment_charges)
+    made = t.adjustments_before_exit  # the engine drops the closing batch: it is the exit, not an adjustment
+    cost = None if t.adjustment_charges_before_exit is None else to_paise_up(t.adjustment_charges_before_exit)
     reason = None
     if cost is None:
         reason = reason_text(charges_reason) if charges_reason else render_explanation("completed_figures_unavailable")
     elif t.pnl is None:
         reason = render_explanation("completed_figures_unavailable")
     return {"final_pnl": paper.exact(t.pnl), "final_pnl_text": _money_text(t.pnl),
-            "adjustments_made": t.adjustments_used, "adjustment_cost": paper.exact(cost),
-            "adjustment_cost_text": None if cost is None else _money_text(cost), "completed_reason_text": reason}
+            "adjustments_made": made, "adjustment_cost": paper.exact(cost),
+            "adjustment_cost_text": None if cost is None else _money_text(cost.copy_negate()),  # a cost reads as a cost
+            "completed_reason_text": reason}

@@ -28,9 +28,11 @@ from sqlalchemy import text
 
 from ofo_app import entry_facts_store
 from ofo_app import strategy_store as store
+from ofo_app.errors import Failure
 from ofo_app.paper_book import COLUMNS as _COLUMNS
 from ofo_app.paper_book import NewOrder, StoredOrder, UserBook
 from ofo_app.paper_book import order_from_row as _row
+from ofo_app.strategy_refused import StrategyRefused
 
 EXIT_EXCEEDS_OPEN = "exit_exceeds_open"
 REDUCING_KINDS = frozenset({"exit", "settle", "stop"})
@@ -40,6 +42,7 @@ _INSERT = text(
     "trigger_id) VALUES (:strategy_id, :contract_id, :side, :quantity, :price, :kind, :placed_at, :reason, "
     ":trigger_id)")
 _CLOSE = text("UPDATE public.strategies SET status = 'closed' WHERE id = :id AND status = 'draft'")
+_STATUS = text("SELECT status FROM public.strategies WHERE id = :id")
 _SELECT = text(f"SELECT {_COLUMNS} FROM public.paper_orders "  # noqa: S608 constant columns
                "WHERE strategy_id = :id ORDER BY id")
 _SELECT_TRACKED = text("SELECT DISTINCT strategy_id FROM public.paper_orders "
@@ -75,6 +78,9 @@ async def place(conn: Any, user_ref: str, strategy_id: int, orders: Sequence[New
     paper = [o.as_paper() for o in orders]  # refuses a bad side, kind, quantity or price before any write
     async with conn.begin_nested():
         await store.lock_strategy(conn, user_ref, strategy_id)  # NOT_FOUND for a missing or another user's strategy
+        if any(o.kind not in REDUCING_KINDS for o in paper) and (
+                await conn.execute(_STATUS, {"id": strategy_id})).scalar_one() == "closed":
+            raise StrategyRefused("paper_strategy_closed", Failure.CONFLICT)  # a closed strategy never reopens
         book = [o.order.as_paper() for o in await load(conn, strategy_id)]
         first_fill = not book
         for new in paper:
