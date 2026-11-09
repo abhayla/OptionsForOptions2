@@ -8,9 +8,9 @@ then checks the limit, so neither path can skip a check. The offered approaches 
 entry batch never). A batch that closes the whole strategy is always allowed, before any history or plan is read.
 
 Answer states of the plan read: its own plan -> its ``guards.max_adjustments``; no plan -> the active playbook of the
-position's type (the plan sheet's pre-fill); a readable plan or playbook that sets no maximum -> no limit; no plan and
-no type, a read error, or a maximum that is not a whole number >= 0 -> refused by name
-(``paper_adjustment_limit_unread``), never allowed.
+position's type (the plan sheet's pre-fill); a readable plan or playbook that sets no maximum, or no plan and no
+playbook for the shape (nothing sets a maximum) -> no limit; a read error or a maximum that is not a whole number
+>= 0 -> refused by name (``paper_adjustment_limit_unread``), never allowed.
 """
 from __future__ import annotations
 
@@ -71,7 +71,7 @@ async def check_adjustment_limit(db: Any, user_ref: str, strategy_id: int,  # no
         return
     try:
         body = await _plan_body(db, user_ref, strategy_id, reader, rates, listed)
-        guards = None if body is None else body.get("guards", {})
+        guards = {} if body is None else body.get("guards", {})  # no plan and no playbook: nothing sets a maximum
     except Exception as exc:  # noqa: BLE001 - any failure of the read is "unreadable", never a silent allow
         log.warning("paper adjustment limit: strategy %s plan unreadable (%s)", strategy_id, type(exc).__name__)
         raise _unread() from None
