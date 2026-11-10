@@ -19,6 +19,43 @@ read from the clock.
   printed or stored. Limit of this proof: it used the margin reader's Kite client, not the whole
   `screen_margin_reader` chain with a strategy basket; c40 proves the whole chain on a live day.
 
+- c20, c21 20:45: demo-ready checklist draft and the approval question (Q1). F-31 holds TEN asks by count of the
+  ticket text; the contract said nine.
+- c22, c31, c35 20:54: cause notes posted on #627, #680, #682. c30 20:56: calendar note N1 and the #686 comment.
+- c32, c33 20:57: #680 fixed by builder sha 3d12c1cd, merged after a diff read and my own re-run (99 passed in
+  tests/instruments). ADR-284 records the rule change.
+- c41 20:56: Tier A review of PR #688: FIX-LIST (1 MAJOR, 4 MINOR). Fix round dispatched (c42); leftovers filed as
+  deferred issue #691.
+- c25 21:00: the Notifier's public health door answers from this PC (HTTP 200, 0.95 s). This app has no Notifier
+  project entry or key; registering one is a change on the production server, so it is owner question Q2 and c25
+  stays PARTIAL until answered.
+- c43 20:56: old branches. Test used: would merging the branch into main change main's files?
+
+  | Branch | Last commit | Result | Action |
+  |---|---|---|---|
+  | build/gc-ictrack-pr-cap | 2026-11-09 | ancestor of main | local branch deleted (was 44863868) |
+  | docs/adr-275-one-code-path | 2026-11-08 | merge adds nothing (content is on main), but its 4 commits are not on main by id | kept; safe to delete, owner's call |
+  | build/gc-ictrack | 2026-11-09 | merge would change 14 files (+79) with conflicts | kept, listed |
+  | build/gc-ictrack-iv | 2026-11-08 | 19 files (+289 -5), conflicts | kept, listed |
+  | build/gc-ictrack-mig | 2026-11-08 | 10 files (+233 -5), conflicts | kept, listed |
+  | build/gc-ictrack-plumb | 2026-11-08 | 17 files (+359 -5), conflicts | kept, listed |
+  | build/gc-ictrack-trig | 2026-11-08 | 11 files (+322 -5), conflicts | kept, listed |
+
+  The five "kept, listed" branches were merged to main through a combined branch, so their differences are most
+  likely older versions of files main has since changed; that is not proven line by line, so nothing was deleted.
+
+### Deviations from the contract (so far)
+
+1. Started 2026-11-10 20:39 on a holiday evening, not on a trading-day morning. Live rows moved to 11 Nov.
+2. c12 (core proof) run on 10 Nov evening with the day's still-valid login, and with a funds read through the margin
+   reader's Kite client rather than the whole reader chain.
+3. #682: the contract named three readers as the cause; the code shows other readers open the second connection.
+4. #686 c29: no new state was written; `MarketStatus.NO_CALENDAR` already existed.
+5. Heartbeat threshold: the contract says 180 s; REQ-115 AC-6 says "no heartbeat for 2 minutes". The requirement
+   wins: 120 s is built.
+6. Builder briefs were hand-written and dispatched without running `check_brief.py` / `copy_from_check.py` first.
+7. F-31 asks: ten, not nine.
+
 ## Reuse map (c06). Every build brief quotes its line.
 
 Corrections to the contract's section 2, found by reading the code on 0fac11d3:
