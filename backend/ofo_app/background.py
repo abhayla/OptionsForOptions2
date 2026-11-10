@@ -743,8 +743,17 @@ class DbGateStore:
             await db.commit()
         return opened
 
+    async def lapse_open(self, w: Watched) -> None:
+        """#685 item 3: every open record of the strategy lapses, its position changed. A failure raises (the rebuild
+        keeps its last list and tries again), unlike the contained lapse of an exited strategy."""
+        from ofo_app import playbook_store  # noqa: PLC0415 - database layer at run time
+        from ofo_app.db import get_sessionmaker  # noqa: PLC0415
+        async with get_sessionmaker()() as db:
+            await playbook_store.lapse_all(db, w.user_ref, w.strategy_id, playbook_store.LAPSE_POSITION_CHANGED)
+            await db.commit()
 
-Lister = Callable[[], Awaitable[list[Watched]]]
+
+Lister =Callable[[], Awaitable[list[Watched]]]
 Recorder = Callable[[Watched, pe.StrategyState, Preferences], Awaitable[Any]]
 #: (underlying, IST trading day, expiry, ATM IV) -> stored (ADR-277 (4)); ``record_daily_iv`` is the real one
 DailyIvRecorder = Callable[[str, datetime.date, datetime.date, Decimal], Awaitable[Any]]
@@ -891,6 +900,13 @@ class Worker:
             if w.strategy_id in before and before[w.strategy_id] != w.body:
                 self._signature.pop(w.strategy_id, None)
                 self._tick.pop(w.strategy_id, None)
+        for w in monitors:
+            if _position_changed(next((o for o in self.monitors if o.strategy_id == w.strategy_id), None), w):
+                async with held(self.db_gate, GATE_REBUILD):  # a raise keeps the last list: re-found next re-read
+                    await self._gate_store.lapse_open(w)
+                # the old position's records and queued events are gone; the gate restores from the store next check
+                self._gate.pop(w.strategy_id, None)
+                self._gate_events.pop(w.strategy_id, None)
         self._drop_stale_writes(monitors)
         self.monitors = monitors
         self._rebuilt_at = self._clock()
@@ -1689,6 +1705,13 @@ def _keep_recent(kept: list, item: object) -> None:
 
 
 _GONE = object()  # a strategy no longer listed (``_drop_stale_writes``)
+
+
+def _position_changed(old: Watched | None, new: Watched) -> bool:
+    """A basket was booked since ``old`` was read: both adjustment counts known and different (an unreadable count
+    lapses nothing, never a guess)."""
+    a, b = (getattr(x, "adjustments_used", None) for x in (old and old.tracked, new.tracked))
+    return all(isinstance(n, int) and not isinstance(n, bool) for n in (a, b)) and a != b
 
 
 class _NothingTraded(Exception):

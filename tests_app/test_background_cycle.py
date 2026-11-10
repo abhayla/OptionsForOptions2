@@ -1331,7 +1331,7 @@ async def _rebuilt_with(before, after, gate, queued=False):
 
 async def test_path_60_records_raised_for_the_position_before_the_2nd_adjustment_lapse_when_it_is_booked():
     gate = OpenRecordsGate(["T-07", "S-12"])
-    assert len(gate.open) == 2  # the class before: open records of a strategy whose position changed
+    assert len(gate.open) == SECOND  # the class before: open records of a strategy whose position changed
     await _rebuilt_with(1, 2, gate)
     assert gate.open == []  # after
 
@@ -1360,7 +1360,7 @@ async def test_a_failed_lapse_keeps_the_last_list_and_is_retried_at_the_next_re_
     w, _sid = await _rebuilt_with(1, 2, gate)
     assert gate.open == ["T-07"] and w.monitors[0].tracked.adjustments_used == 1 and w.errors
     await w._rebuild_safely()
-    assert gate.open == [] and w.monitors[0].tracked.adjustments_used == 2
+    assert gate.open == [] and w.monitors[0].tracked.adjustments_used == SECOND
 
 
 async def test_the_db_gate_store_lapses_every_open_record_as_position_changed(monkeypatch):

@@ -58,7 +58,10 @@ LAPSE_STRATEGY_CLOSED = "strategy_closed"
 LAPSE_SUPERSEDED_BY_WORSE = "superseded_by_worse"
 #: #652: the strategy dropped out of the worker's list for good (deleted, or nothing traded any more), records open.
 LAPSE_NOT_MONITORED = "not_monitored"
-LAPSE_REASONS = (LAPSE_CONDITION_STOPPED, LAPSE_STRATEGY_CLOSED, LAPSE_SUPERSEDED_BY_WORSE, LAPSE_NOT_MONITORED)
+#: #685 item 3: a basket was booked, so the record was raised for a position the strategy no longer holds.
+LAPSE_POSITION_CHANGED = "position_changed"
+LAPSE_REASONS = (LAPSE_CONDITION_STOPPED, LAPSE_STRATEGY_CLOSED, LAPSE_SUPERSEDED_BY_WORSE, LAPSE_NOT_MONITORED,
+                 LAPSE_POSITION_CHANGED)
 WORSE_MARKS = (None, "last", "dismissed")  # = migration 0036 WORSE plus none (a test asserts it)
 HELD_REASONS = ("daily_limit", "quiet_time")  # = alert_gate.HELD_DAILY_LIMIT / HELD_QUIET_TIME
 SOURCE_SYSTEM = "system"  # "Adjustment opportunity detected" (a system playbook's flag)
