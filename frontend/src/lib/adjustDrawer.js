@@ -32,7 +32,7 @@ export function cardRows(body) {
 
 // The compare criteria that describe the CURRENT position (No change = the position as it stands).
 const REPLY_ROWS = Object.freeze([
-  ['max_profit', 'Max profit'], ['max_loss', 'Max loss'], ['breakevens', 'Breakevens'],
+  ['max_profit', 'Max profit'], ['breakevens', 'Breakevens'],
   ['delta', 'Net delta'], ['gamma', 'Gamma'], ['theta', 'Theta'], ['vega', 'Vega'],
 ])
 
@@ -44,8 +44,16 @@ export function replyRows(reply) {
     return v && v.unavailable_reason == null ? text(v.text) : NONE
   }
   const margin = reply?.approaches?.find((a) => a.id === NO_CHANGE_ID)?.margin
+  // GC-ICGUIDE g16/g20: max loss, margin utilisation and each option's IV / OI / LTP are the server's `current` texts
+  // (one sign, every missing figure worded there as "not available: <reason>"); nothing in the reply reads "-"
+  const cur = reply?.current
+  const fig = (f) => text(f?.text ?? f?.reason)
   return [
-    ...REPLY_ROWS.map(([id, label]) => ({ id, label, value: cell(id) })),
+    ...REPLY_ROWS.slice(0, 1).map(([id, label]) => ({ id, label, value: cell(id) })),
+    { id: 'max_loss', label: 'Max loss', value: fig(cur?.max_loss) },
+    ...REPLY_ROWS.slice(1).map(([id, label]) => ({ id, label, value: cell(id) })),
+    { id: 'margin_utilisation', label: 'Margin utilisation', value: fig(cur?.margin_utilisation) },
+    ...(Array.isArray(cur?.legs) ? cur.legs : []).map((l) => ({ id: `leg-${l.tradingsymbol}`, label: text(l.label), value: text(l.text) })),
     { id: 'margin', label: 'Margin needed', value: margin?.state === 'stated' ? rupeesText(text(margin.value)) : NONE },
     { id: 'days_left', label: 'Days to expiry', value: Number.isInteger(reply?.days_to_expiry) ? String(reply.days_to_expiry) : NONE },
   ]

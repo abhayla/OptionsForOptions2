@@ -36,6 +36,7 @@ from types import MappingProxyType
 from typing import Annotated, Any, Literal, Optional
 
 from fastapi import APIRouter, Depends, Query
+from ofo.charges import ChargeRates
 from ofo.engine.legs import Action
 from ofo.engine.legs import Leg as EngineLeg
 from ofo.errors import LegValue, render
@@ -51,7 +52,7 @@ from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure, refuse_request
 from ofo_app.routes import adjustment_opportunities as opportunities
 from ofo_app.routes.broker import current_user_ref
-from ofo_app.routes.outcome import get_settings_reader
+from ofo_app.routes.outcome import AnswerClock, get_answer_clock, get_settings_reader, load_charge_rates
 from ofo_app.strategy_refused import StrategyRefused
 from ofo_app.tracked_contracts import ContractState
 from ofo_app.underlying import Underlying
@@ -211,6 +212,13 @@ class SummaryOut(ApiModel):
     has_paper_order: bool  # ADR-271: True once a paper order was placed (the refusal says "paper orders")
     open_opportunities: Optional[int]  # noqa: UP045 - GC-MU A3: open adjustment records; None = could not be read
     open_opportunities_text: Optional[CatalogueText]  # noqa: UP045 - "N adjustment opportunities"; None at 0 or unread
+    # GC-ICGUIDE g23 (Completed tab): set only for a closed strategy, all from the engine; None + reason when unreadable
+    final_pnl: Optional[Money]  # noqa: UP045
+    final_pnl_text: Optional[CatalogueText]  # noqa: UP045
+    adjustments_made: Optional[int]  # noqa: UP045 - the history page's ADR-255 counter
+    adjustment_cost: Optional[Money]  # noqa: UP045 - charges of the adjustment rows
+    adjustment_cost_text: Optional[CatalogueText]  # noqa: UP045
+    completed_reason_text: Optional[CatalogueText]  # noqa: UP045 - why a figure is absent
 
 
 class RenamedOut(ApiModel):
@@ -329,11 +337,10 @@ async def _strategy_out(db: Any, stored: store.StoredStrategy) -> StrategyOut:
                      for v, d in zip(stored.versions, version_docs, strict=True)]})
 
 
-async def _definition(db: Any, body: StrategyIn) -> sf.SavedDefinition:
+async def _definition(db: Any, body: StrategyIn, now: datetime.datetime) -> sf.SavedDefinition:
     sf.check_map_names(risk_limits=list(body.risk_limits), preferences=list(body.preferences))  # ADR-064, before any query
     sf.check_setting_values(rules_ref=body.rules_ref, preferences=body.preferences)  # ADR-069, before any query
     limits = {name: sf.limit_from_text(value, f"risk_limit.{name!r}") for name, value in body.risk_limits.items()}
-    now = datetime.datetime.now(datetime.timezone.utc)
     entries = [None if leg.planned_entry is None and leg.captured_at is None
                else sf.entry_from_input(leg.planned_entry, leg.captured_at, now, f"leg_{i + 1}",
                                         leg.entry_source or sf.SOURCE_CAPTURED)
@@ -409,18 +416,23 @@ async def _run(db: Any, work: Callable, *, form_status: int) -> Any:
 
 @router.post("/strategies", status_code=201, response_model=StrategyOut, response_model_exclude_unset=True)
 async def save_draft(body: StrategyCreateIn, today_of: Annotated[elig.TodayReader, Depends(elig.get_eligibility_today)],
+                     now: Annotated[AnswerClock, Depends(get_answer_clock)],
                      db: Any = Depends(get_db), user_ref: str = Depends(current_user_ref)) -> StrategyOut:
     async def work():
-        saved = await _definition(db, body)
+        saved = await _definition(db, body, now())
         await _check_eligible(db, saved, today_of, None)
         return await _strategy_out(db, await store.save_draft(db, user_ref, saved, body.name))
     return await _run(db, work, form_status=422)
 
 
 @router.get("/strategies", response_model=StrategyListOut)
-async def list_strategies(db: Any = Depends(get_db), user_ref: str = Depends(current_user_ref)) -> StrategyListOut:
+async def list_strategies(db: Annotated[Any, Depends(get_db)], user_ref: Annotated[str, Depends(current_user_ref)],
+                          rates: Annotated[Any, Depends(load_charge_rates)]) -> StrategyListOut:
     async def work():
         rows = await store.list_strategies(db, user_ref)
+        from ofo_app.routes.adjustment_history import closed_figures  # noqa: PLC0415 - it imports routes.paper
+        rates_ok = rates if isinstance(rates, ChargeRates) else None
+        closed = {r.id: await closed_figures(db, user_ref, r.id, rates_ok) for r in rows if r.status == "closed"}
         tracked = await _tracked_ids(db, [r.id for r in rows])
         opened = await _open_opportunities(db, user_ref)
         return StrategyListOut.model_validate({"strategies": [
@@ -431,9 +443,14 @@ async def list_strategies(db: Any = Depends(get_db), user_ref: str = Depends(cur
              "tracked": None if tracked is None else r.id in tracked, "can_delete": r.can_delete,
              "has_paper_order": r.has_paper_order,
              "open_opportunities": None if opened is None else opened.get(r.id, 0),
-             "open_opportunities_text": None if opened is None else opportunities.open_mark(opened.get(r.id, 0))}
+             "open_opportunities_text": None if opened is None else opportunities.open_mark(opened.get(r.id, 0)),
+             **closed.get(r.id, _NO_FIGURES)}
             for r in rows]})
     return await _run(db, work, form_status=409)
+
+
+_NO_FIGURES = {"final_pnl": None, "final_pnl_text": None, "adjustments_made": None, "adjustment_cost": None,
+               "adjustment_cost_text": None, "completed_reason_text": None}
 
 
 async def _open_opportunities(db: Any, user_ref: str) -> dict[int, int] | None:
@@ -501,12 +518,13 @@ async def get_strategy(strategy_id: int, db: Any = Depends(get_db),
 
 
 @router.put("/strategies/{strategy_id}", response_model=StrategyOut, response_model_exclude_unset=True)
-async def update_strategy(strategy_id: int, body: StrategyUpdateIn,
+async def update_strategy(strategy_id: int, body: StrategyUpdateIn,  # noqa: PLR0913 - FastAPI dependencies
                           today_of: Annotated[elig.TodayReader, Depends(elig.get_eligibility_today)],
+                          now: Annotated[AnswerClock, Depends(get_answer_clock)],
                           db: Any = Depends(get_db), user_ref: str = Depends(current_user_ref)) -> StrategyOut:
     async def work():
         store.check_strategy_id(strategy_id)  # before the catalogue is read
-        saved = await _definition(db, body)
+        saved = await _definition(db, body, now())
         await _check_eligible(db, saved, today_of, (await store.load(db, user_ref, strategy_id)).saved)
         return await _strategy_out(db, await store.update(db, user_ref, strategy_id, saved,
                                                           expected_revision=body.expected_revision))
@@ -577,9 +595,9 @@ def get_future_finder() -> Any:
     return nearest_future
 
 
-def get_history_now() -> datetime.datetime:
+def get_history_now(clock: Annotated[AnswerClock, Depends(get_answer_clock)]) -> datetime.datetime:
     from ofo.timeutil import IST  # noqa: PLC0415
-    return datetime.datetime.now(IST)
+    return clock().astimezone(IST)
 
 
 class PriceValueOut(ApiModel):

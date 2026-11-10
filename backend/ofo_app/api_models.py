@@ -570,6 +570,31 @@ class AdjustPricesOut(ApiModel):
     checks_text: CatalogueText | None  # the Pause box line while the check is withheld on stale prices
 
 
+class AdjustFigureOut(ApiModel):
+    """GC-ICGUIDE g16/g20: one figure as the server's text, or the reason it is not available (exactly one is set)."""
+
+    text: CatalogueText | None = None
+    reason: CatalogueText | None = None
+
+
+class AdjustCurrentLegOut(ApiModel):
+    tradingsymbol: Identifier
+    label: CatalogueText
+    iv: CatalogueText
+    oi: CatalogueText
+    ltp: CatalogueText
+    text: CatalogueText
+
+
+class AdjustCurrentOut(ApiModel):
+    """REQ-046 AC-2 (#647, #651): the current position's signed max loss, margin utilisation, and each held option's
+    IV / OI / LTP, all as texts."""
+
+    max_loss: AdjustFigureOut
+    margin_utilisation: AdjustFigureOut
+    legs: list[AdjustCurrentLegOut]
+
+
 class AdjustApproachesOut(ApiModel):
     strategy_id: int
     view: Literal["at_expiry", "estimated_now"]
@@ -581,8 +606,11 @@ class AdjustApproachesOut(ApiModel):
     criteria: list[AdjustCriterionOut] = []  # REQ-156 AC-2/AC-3; refused approaches take no part
     leads: dict[Identifier, AdjustLeadsOut] = {}  # REQ-156 AC-4 "Leads on N of M"
     curves: dict[Identifier, list[list[Money]]] = {}  # "before" / approach id -> [[level, P&L after charges], ...]
+    #: C12 (REQ-148): the curves valued at the nearer expiry close (legs on two expiries) -> their estimate label
+    curves_estimated: dict[Identifier, CatalogueText] = {}
     timing: AdjustTimingOut | None = None
     available: list[AdjustAvailableOut] = []  # every generic approach, whatever was asked (no figures)
     days_to_expiry: int | None = None  # whole days from the reply's own market day to the nearest open leg's expiry
     prices: AdjustPricesOut | None = None  # ADR-272; None = no prices were read (the reply is empty)
     delta_neutral: AdjustDeltaNeutralOut | None = None  # A-23 figures; None when there is no spot
+    current: AdjustCurrentOut | None = None  # the drawer's current-position figures; None when there is no spot

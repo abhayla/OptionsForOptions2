@@ -45,6 +45,7 @@ ALLOWED_IMPORTERS = frozenset({
     "ofo_app.strategy_price_history",  # the chart's reads (KiteHistory) for GET /strategies/{id}/price-history
     "ofo_app.price_history_source",    # S5-1: wires kite_history.owner_minute_reader to that route (adapter side)
     "ofo_app.paper_settlement",        # GC-TP 5b: the index's day close (KiteHistory.day_close) prices expiry settles
+    "ofo_app.real_settlement",         # GC-ICGUIDE g22: schedule helpers of paper_settlement only
     "ofo_app.daily_candles",           # ADR-277: day candles feed T-11c / T-20b inputs only; no screen shows them
 })
 # frontend/src may request or import no history at all.
@@ -86,7 +87,7 @@ ROUTE_DOOR: dict[str, frozenset[str]] = {
     # GC-TP 5b (REQ-109 AC-7, F-72): the app lifespan starts the settlement job, which reads one index's official
     # close to price paper settle orders. An internal job (out of this guard's threat model, ADR-066): no route or
     # page shows history through it.
-    "ofo_app.main": frozenset({"ofo_app.paper_settlement"}),
+    "ofo_app.main": frozenset({"ofo_app.paper_settlement", "ofo_app.real_settlement"}),
     # GC-ICTRACK 14b (ADR-280): the screen check's and the worker's market builds read the regime inputs (a VIX
     # percentile and an ADX number computed from day candles); no candle reaches a reply or a page through them.
     "ofo_app.adjustment_readers": frozenset({"ofo_app.regime_inputs"}),
@@ -389,7 +390,7 @@ def test_no_route_or_app_entry_is_allow_listed_and_the_list_has_no_stale_entry()
     # GC-TP 5b: plus the app lifespan's settlement job (REQ-109 AC-7), an internal job showing no history.
     named = {"ofo_app.routes.strategies": frozenset(
         {"ofo_app.strategy_price_history", "ofo_app.price_history_source", "ofo.outcome.price_history"}),
-        "ofo_app.main": frozenset({"ofo_app.paper_settlement"}),
+        "ofo_app.main": frozenset({"ofo_app.paper_settlement", "ofo_app.real_settlement"}),
         "ofo_app.adjustment_readers": frozenset({"ofo_app.regime_inputs"}),  # ADR-280 inputs, numbers only
         "ofo_app.background": frozenset({"ofo_app.regime_inputs"})}
     assert named == ROUTE_DOOR

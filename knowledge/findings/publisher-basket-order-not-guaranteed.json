@@ -1,0 +1,28 @@
+{
+ "id": "publisher-basket-order-not-guaranteed",
+ "scope": "project",
+ "class": "A multi-order hand-off whose execution order the vendor does not guarantee can place a dependent order (a sell) before the order it depends on (its hedge): margin is then computed on a naked short, and a far wing BUY can be refused outright. Correctness needs a structural split - two hand-offs, the second gated on the first's confirmed fills - never the order of a list.",
+ "mechanism": "Kite Publisher baskets (kite.zerodha.com/connect/basket, used by backend/ofo_app/basket.py:57) are placed by parallel API calls (Zerodha staff, 2018); Kite's own web basket is sequential but is not our path. The Publisher returns no per-order status.",
+ "first_seen": {
+  "date": "2026-11-09",
+  "where": "GC-ICGUIDE planning, web research for the owner's automatic two-basket question",
+  "evidence": "https://kite.trade/forum/discussion/4917/basket-order-execution-order ('order of execution is not guaranteed'); https://kite.trade/docs/kite/orders/ (web basket sequential, buys first); https://kite.trade/forum/discussion/10230/basket-orders-execution-documentation-missing (far wing BUY refused until the sell was placed). spec/findings.md F-102."
+ },
+ "fix": "None this round: ADR-281 holds order placement. The future automatic-placement round must split each adjustment or exit into two hand-offs (hedges first, then the rest after the first's fills are read from the order book), per ADR-117, and prove the order with 2 non-filling LIMIT orders if the vendor statement is still unverified.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "No check: no code places orders automatically today (the user presses Execute on Kite, ADR-054/ADR-100). Unguarded until the two-hand-off split exists with a test."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-281.md",
+  "spec/decisions/ADR-117.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-11-09",
+   "where": "web research",
+   "evidence": "F-102 (a)-(d)"
+  }
+ ]
+}

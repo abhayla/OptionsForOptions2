@@ -226,10 +226,10 @@ async def test_post_stores_all_orders_in_one_call_and_answers_the_book(db):
     assert reply.status_code == HTTPStatus.CREATED, reply.text
     body = reply.json()
     assert [(o["side"], o["quantity"], o["price"], o["price_text"], o["kind"]) for o in body["orders"]] == [
-        ("SELL", 65, "100.00", "100.00", "open"), ("BUY", 65, "80.00", "80.00", "exit"),
+        ("SELL", 65, "100.00", "100.00", "open"), ("BUY", 65, "39.15", "39.15", "exit"),
         ("SELL", 65, "60.05", "60.05", "open")]
     assert all(o["contract_text"] and o["placed_at"] for o in body["orders"])
-    assert D(body["booked"]) == D("1300.00")
+    assert D(body["booked"]) == D("3955.25")
     assert await _count(db, stored.id) == 3  # noqa: PLR2004 - three orders sent
 
 
@@ -297,7 +297,12 @@ async def test_an_unknown_contract_and_a_new_position_on_a_dead_contract_are_422
             _order(c0, "SELL", 65, "12.00", "exit")]})
     assert unknown.status_code == opened.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
     assert "not a live contract" in unknown.text and "not a live contract" in opened.text
-    assert closed.status_code == HTTPStatus.CREATED, closed.text  # an exit only closes what is open
+    # GC-ICGUIDE g32 (Tier B finding 1): an exit is priced by the server from the contract's live feed key only; a dead
+    # contract has none, so the exit is refused by name and nothing is stored (an expired leg is closed by expiry
+    # settlement instead; a NIFTY option delisted before expiry stays open - accepted edge, issue #685).
+    assert closed.status_code == HTTPStatus.CONFLICT, closed.text
+    assert "no longer a live contract" in closed.text
+    assert await _count(db, stored.id) == 1  # only the earlier open order
 
 
 # --- display rule (step 1a) -------------------------------------------------------------------------------------------

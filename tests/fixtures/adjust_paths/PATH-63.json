@@ -1,0 +1,95 @@
+{
+ "id": "PATH-63",
+ "base": "ADJ-63",
+ "title": "Next-month NIFTY iron condor, December monthly Tue 29 Dec 2026, entered 11 Nov, 48 days left: Early warning, stale-data frame, 2nd Early crossing, Middle crossings around the Christmas holiday, Last-stage frames, 14:20 / 14:31 around the 14:30 rule, expiry",
+ "notes": "ADR-282 type 4 (next month's monthly) on the MONTHLY stage table. Test plan: 1st adjustment after f1, 2nd after f3 (f4 quiet), T-18 from f5. Fri 25 Dec is a holiday (f6 is the last session before it).",
+ "entry_atm_iv": "0.10",
+ "legs": [
+  {
+   "side": "BUY",
+   "type": "PE",
+   "strike": "22000",
+   "lots": 2
+  },
+  {
+   "side": "SELL",
+   "type": "PE",
+   "strike": "22200",
+   "lots": 2
+  },
+  {
+   "side": "SELL",
+   "type": "CE",
+   "strike": "24200",
+   "lots": 2
+  },
+  {
+   "side": "BUY",
+   "type": "CE",
+   "strike": "24400",
+   "lots": 2
+  }
+ ],
+ "frames": [
+  {
+   "clock": "2026-11-11T10:00:00",
+   "spot": "23200",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2026-11-25T11:00:00",
+   "spot": "23900",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2026-11-25T11:20:00",
+   "spot": "23905",
+   "atm_iv": "0.10",
+   "data_state": {
+    "prices": "stale",
+    "age_seconds": 60,
+    "feed": "stale"
+   }
+  },
+  {
+   "clock": "2026-12-14T11:00:00",
+   "spot": "24000",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2026-12-14T11:30:00",
+   "spot": "23600",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2026-12-21T11:00:00",
+   "spot": "24100",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2026-12-24T15:00:00",
+   "spot": "24120",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2026-12-28T11:00:00",
+   "spot": "24140",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2026-12-29T14:20:00",
+   "spot": "24130",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2026-12-29T14:31:00",
+   "spot": "24130",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2026-12-29T15:25:00",
+   "spot": "24250",
+   "atm_iv": "0.10"
+  }
+ ]
+}

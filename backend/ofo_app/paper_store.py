@@ -9,6 +9,8 @@
   facts as the caller read them (``entry_facts_of``: the spot at this fill and each side's short distance; None when
   no spot could be read, or for an exit / settle / stop, which can never be a first fill); written ONCE, only when the
   book was empty before this call, through ``entry_facts_store.record_first``; never on a later fill.
+  GC-ICGUIDE g23 (audit C13): when a reducing order leaves every contract flat, the same transaction stores the
+  strategy's status 'closed' (draft -> closed only; migration 0049). Every last exit (route, settlement) passes here.
 - tracked_ids: which of the given strategies have at least one paper order (REQ-134 AC-4).
 - load: the orders of one strategy the caller already loaded for its user, in placement order (the id).
 - load_all: every order of ONE user's visible strategies with name and underlying, in ONE query whatever the count
@@ -26,9 +28,11 @@ from sqlalchemy import text
 
 from ofo_app import entry_facts_store
 from ofo_app import strategy_store as store
+from ofo_app.errors import Failure
 from ofo_app.paper_book import COLUMNS as _COLUMNS
 from ofo_app.paper_book import NewOrder, StoredOrder, UserBook
 from ofo_app.paper_book import order_from_row as _row
+from ofo_app.strategy_refused import StrategyRefused
 
 EXIT_EXCEEDS_OPEN = "exit_exceeds_open"
 REDUCING_KINDS = frozenset({"exit", "settle", "stop"})
@@ -37,6 +41,8 @@ _INSERT = text(
     "INSERT INTO public.paper_orders (strategy_id, contract_id, side, quantity, price, kind, placed_at, reason, "
     "trigger_id) VALUES (:strategy_id, :contract_id, :side, :quantity, :price, :kind, :placed_at, :reason, "
     ":trigger_id)")
+_CLOSE = text("UPDATE public.strategies SET status = 'closed' WHERE id = :id AND status = 'draft'")
+_STATUS = text("SELECT status FROM public.strategies WHERE id = :id")
 _SELECT = text(f"SELECT {_COLUMNS} FROM public.paper_orders "  # noqa: S608 constant columns
                "WHERE strategy_id = :id ORDER BY id")
 _SELECT_TRACKED = text("SELECT DISTINCT strategy_id FROM public.paper_orders "
@@ -72,6 +78,9 @@ async def place(conn: Any, user_ref: str, strategy_id: int, orders: Sequence[New
     paper = [o.as_paper() for o in orders]  # refuses a bad side, kind, quantity or price before any write
     async with conn.begin_nested():
         await store.lock_strategy(conn, user_ref, strategy_id)  # NOT_FOUND for a missing or another user's strategy
+        if any(o.kind not in REDUCING_KINDS for o in paper) and (
+                await conn.execute(_STATUS, {"id": strategy_id})).scalar_one() == "closed":
+            raise StrategyRefused("paper_strategy_closed", Failure.CONFLICT)  # a closed strategy never reopens
         book = [o.order.as_paper() for o in await load(conn, strategy_id)]
         first_fill = not book
         for new in paper:
@@ -81,6 +90,9 @@ async def place(conn: Any, user_ref: str, strategy_id: int, orders: Sequence[New
             await conn.execute(_INSERT, {"strategy_id": strategy_id, "contract_id": o.contract_id, "side": o.side,
                                          "quantity": o.quantity, "price": o.price, "kind": o.kind,
                                          "placed_at": o.placed_at, "reason": o.reason, "trigger_id": o.trigger_id})
+        if any(o.kind in REDUCING_KINDS for o in paper) and not any(
+                p.net_quantity for p in net_positions(book, {}).positions):
+            await conn.execute(_CLOSE, {"id": strategy_id})  # GC-ICGUIDE g23: last open leg went
         if first_fill and entry is not None:  # written once; a later fill never reaches here (ADR-243)
             await entry_facts_store.record_first(conn, strategy_id, entry)
     return await load(conn, strategy_id)

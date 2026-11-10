@@ -94,7 +94,7 @@ async def test_core_2_a_name_only_update_by_the_app_role_passes_the_guard_and_le
             await trans.rollback()
 
 
-@pytest.mark.parametrize("column,value", [("status", "'draft'"), ("user_ref", "'someone-else'"),
+@pytest.mark.parametrize("column,value", [("user_ref", "'someone-else'"),
                                           ("underlying", "'SENSEX'"), ("revision", "9"),
                                           ("created_at", "now()"), ("definition_schema_version", "2")])
 async def test_core_3_an_update_of_any_other_column_is_still_refused_for_the_app_role(app_engine, column, value):

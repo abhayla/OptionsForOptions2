@@ -4,12 +4,9 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (267)
+## Decisions (270)
 
-- Older decisions: 227 rows, ADR-1..ADR-240 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
-- ADR-241 2026-11-03: Owner 2026-11-03 (question tool, "Mid when spread is live"): every planned trade of an adjustment a… [Amends ADR-068 (1) for adjustment approach trades…]
-- ADR-242 2026-11-03: Technical decision for GC-IC1 step 4c, made by the orchestrator under the owner's standing rule tha… [REQ-155 AC-1 (A-37 offered as an alert, not a tra…]
-- ADR-243 2026-11-04: Owner 2026-11-04 (question tool, "Target delta"): when an adjustment approach rolls a short strike… [Supersedes REQ-046 Q255 (placement basis); matche…]
+- Older decisions: 230 rows, ADR-1..ADR-243 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
 - ADR-244 2026-11-04: Owner 2026-11-04 (question tool, "Add both as Guidance"): the iron condor system playbook lists S-0… [Extends ADR-240 (situations: rules vs guidance) t…]
 - ADR-245 2026-11-04: Owner 2026-11-04 (question tool, "Yes, 3 layers for all"; and "always act as an expert option trade… [Extends REQ-168 (user preferences) and REQ-161 (p…]
 - ADR-246 2026-11-04: Owner 2026-11-04 ~12:5x IST (question tool, "Keep presets for now"): the REQ-170 style presets stay… [No preset value changes. Adds F-101 (live counts)…]
@@ -47,6 +44,9 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-278 2026-11-08: Owner 2026-11-08 ~18:00 IST (GC-ICTRACK, answer A3). [Supersedes ADR-253 in full (ADR-270 superseded it…]
 - ADR-279 2026-11-08: Owner 2026-11-08 ~18:00 IST (GC-ICTRACK, answer A4). [Makes the price source (ADR-275 (3)) a property o…]
 - ADR-280 2026-11-08: Owner delegation 2026-11-05: decided under "go with your recommendation" (strategy behaviour), GC-I… [Fixes the measures behind 12 playbook triggers th…]
+- ADR-281 2026-11-09: Owner answer 2026-11-09 (question tool, GC-ICGUIDE planning). [Holds live order placement for GC-ICGUIDE; record…]
+- ADR-282 2026-11-09: Owner answer 2026-11-09 (question tool, GC-ICGUIDE planning). [Fixes what "iron condor adjustments proven" means…]
+- ADR-283 2026-11-09: Decided under the owner's strategy delegation (owner 2026-11-09 ~15:00 IST: "Wherever you have ques… [Implements ADR-258 (starting point at the fill, n…]
 
 ## Requirements (161)
 
@@ -212,7 +212,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - REQ-169 [Approved]: The admin edits a system playbook in the same playbook editor and saves it as a new version with history and…
 - REQ-170 [Approved]: An adjustment suggestion is raised once per crossing, confirmed on a candle close, then held quiet until it r…
 
-## Spec sections (264)
+## Spec sections (266)
 
 ### spec/SPEC-DEVIATION.md
 
@@ -368,6 +368,8 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ## F-99 - Stopping a second Kite feed process blanks the API's chain for…
 - ## F-100 - No feed we use supplies IV or Greeks; every app studied compu…
 - ## F-101 - Live alert discipline cut suggestion noise by three quarters;…
+- ## F-102 - Kite's own basket runs in sequence; the Kite Publisher basket…
+- ## F-103 - The market calendar holds one year; outside it every day read…
 
 ### spec/open-questions.md
 

@@ -35,6 +35,7 @@ from ofo_app import strategy_store as store
 from ofo_app.catalogue_store import apply_update, parse_rows_naming_the_row
 from ofo_app.db import get_db
 from ofo_app.eligibility_from_zerodha import get_eligibility_today
+from ofo_app.routes.adjustment import get_tracked_reader
 from ofo_app.main import create_app
 from ofo_app.routes import strategies as strategy_routes
 from sqlalchemy import text
@@ -126,7 +127,22 @@ def _app(maker, user_ref: str):
     app.dependency_overrides[get_db] = _db
     app.dependency_overrides[strategy_routes.current_user_ref] = lambda: user_ref
     app.dependency_overrides[get_eligibility_today] = lambda: fixture_today
+    app.dependency_overrides[get_tracked_reader] = lambda: _tracked_reader_on(maker, user_ref)
     return app
+
+
+def _tracked_reader_on(maker, user_ref: str):
+    """The paper save path's tracked reader (``paper_limit``) opens its own session from the environment; a test app
+    has no DATABASE_URL, so it reads through the test's session factory and user instead (the same function)."""
+    from unittest.mock import patch  # noqa: PLC0415
+
+    from ofo_app import adjustment_readers  # noqa: PLC0415
+
+    async def read(strategy_id, rates):
+        with (patch.object(adjustment_readers, "get_sessionmaker", lambda: maker),
+              patch.object(adjustment_readers, "current_user_ref", lambda: user_ref)):
+            return await adjustment_readers.read_tracked(strategy_id, rates)
+    return read
 
 
 async def fixture_today(_db) -> date:
@@ -306,7 +322,6 @@ async def _with_draft(conn, user: str):
     "DELETE FROM public.strategies WHERE id = :id",
     "TRUNCATE public.strategies",
     "UPDATE public.strategies SET underlying = 'SENSEX' WHERE id = :id",
-    "UPDATE public.strategies SET status = 'draft' WHERE id = :id",
     "UPDATE public.strategies SET user_ref = 'someone' WHERE id = :id",
     "UPDATE public.strategy_history SET change_summary = CAST('[]' AS JSONB) WHERE strategy_id = :id",
     "DELETE FROM public.strategy_history WHERE strategy_id = :id",

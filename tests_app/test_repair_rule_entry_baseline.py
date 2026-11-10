@@ -9,6 +9,7 @@ cannot compute (T-07, P&L: not known at entry -> left, counted; T-03 now has its
 from __future__ import annotations
 
 import importlib.util
+import datetime
 from decimal import Decimal
 from pathlib import Path
 
@@ -38,7 +39,7 @@ async def _rows(conn, sid: int) -> dict:
 
 async def test_dry_run_counts_and_apply_repairs_only_rows_false_at_the_real_entry(app_db_url, monkeypatch):  # noqa: F811
     tool = _tool()
-    sid, _scn = await bw._seeded(app_db_url, monkeypatch)
+    sid, scn = await bw._seeded(app_db_url, monkeypatch)
 
     async def position_of(strategy_id: int):
         tracked = await read_tracked(strategy_id, None)
@@ -46,6 +47,13 @@ async def test_dry_run_counts_and_apply_repairs_only_rows_false_at_the_real_entr
 
     async with app_db_url.begin() as conn:
         await entry_facts_store.record_first(conn, sid, EntryFacts(FAR_SPOT, None, None))
+        # ADR-283: the fill is stored with the scenario's clock (the facts row's created_at is the DB clock, days past
+        # the scenario's expiry: days_left -1 made every rule "no stage")
+        legs = (await read_tracked(sid, None)).position.legs
+        entry = scn.data["position"]["entry"]
+        await entry_facts_store.record_basket(conn, sid, 0, entry_facts_store.BasketFacts(
+            datetime.datetime.fromisoformat(entry["clock"]), FAR_SPOT, None,
+            {(x.type, x.strike, x.expiry, x.side): x.entry for x in legs}))
         for rule in ("T-01", "T-07"):
             await playbook_store.put_rule_state(conn, "owner", sid, rule, held_at_entry=True, seen_clear=False)
     async with app_db_url.begin() as conn:

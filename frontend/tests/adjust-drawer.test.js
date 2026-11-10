@@ -54,6 +54,13 @@ const openDrawer = async (w) => { await t(w, 'review-adjustment').trigger('click
 const boxes = () => [...document.body.querySelectorAll('[data-testid^="drawer-approach-"]')]
 const idOf = (b) => b.getAttribute('data-testid').replace('drawer-approach-', '')
 const DETECTION_LINE = 'Adjustment opportunity detected: Index is near a short strike: 23500, 80.00 points (0.34%) away'
+// the server's `current` block (GC-ICGUIDE g16/g20), in the shape of its reply: one signed max loss, margin utilisation, each option's figures
+const CURRENT = {
+  max_loss: { text: '−₹20,500.39', reason: null },
+  margin_utilisation: { text: '25.0%', reason: null },
+  legs: [{ tradingsymbol: 'NIFTY23500CE', label: 'SELL 23500.00 CE', iv: '11.34%', oi: '62,075', ltp: '₹120.00', text: 'IV 11.34%, OI 62,075, LTP ₹120.00' },
+    { tradingsymbol: 'NIFTY23800CE', label: 'BUY 23800.00 CE', iv: 'x', oi: 'not available: no live source gave open interest for this option', ltp: 'x', text: 'IV 12.00%, OI not available: no live source gave open interest for this option, LTP ₹40.00' }],
+}
 const cellText = (reply, id) => reply.criteria.find((c) => c.id === id).values['A-36'].text
 
 describe('REQ-046 AC-1: the button exists only with a detection', () => {
@@ -91,7 +98,7 @@ describe('REQ-046 AC-1..AC-3: the drawer layers', () => {
     expect(why).toContain('Threshold: 0.6%')
     const v = (id) => d.querySelector(`[data-testid="drawer-state-${id}"]`).textContent
     expect([v('pnl'), v('booked'), v('unbooked'), v('index'), v('open_legs')]).toEqual(['+195.00', '0.00', '+195.00', '23420.00', '4'])
-    expect([v('max_profit'), v('max_loss'), v('breakevens')]).toEqual([cellText(adj02, 'max_profit'), cellText(adj02, 'max_loss'), cellText(adj02, 'breakevens')])
+    expect([v('max_profit'), v('breakevens')]).toEqual([cellText(adj02, 'max_profit'), cellText(adj02, 'breakevens')])
     expect([v('delta'), v('gamma'), v('theta'), v('vega')]).toEqual(['delta', 'gamma', 'theta', 'vega'].map((id) => cellText(adj02, id)))
     expect(adj02.approaches[0].margin.value).toBe('100000.00')
     expect(v('margin')).toBe('₹1,00,000.00') // the raw decimal text printed in the app's money form, not as sent
@@ -143,6 +150,31 @@ describe('REQ-046 AC-1..AC-3: the drawer layers', () => {
     for (const b of boxes().filter((x) => !x.disabled)) { b.click(); await flushPromises() }
     document.body.querySelector('[data-testid="drawer-compare"]').click()
     expect(push).toHaveBeenCalledWith('/strategy/builder?adjust=72&pick=A-36')
+  })
+})
+
+describe('GC-ICGUIDE g16 / g20: the server current-position texts, shown as sent', () => {
+  it('g16 (#651): Max loss is the server signed text, not the unsigned magnitude of the compare cell', async () => {
+    expect(cellText(adj02, 'max_loss')).not.toMatch(/^[−-]/) // the compare cell is a magnitude ("at most")
+    const w = await card({}, { ...adj02, current: CURRENT })
+    await openDrawer(w)
+    expect(drawerOf().querySelector('[data-testid="drawer-state-max_loss"]').textContent).toBe(CURRENT.max_loss.text)
+  })
+
+  it('g20 (#647): margin utilisation and each held option IV / OI / LTP read as the server sent them', async () => {
+    const w = await card({}, { ...adj02, current: CURRENT })
+    await openDrawer(w)
+    const v = (id) => drawerOf().querySelector(`[data-testid="drawer-state-${id}"]`).textContent
+    expect(v('margin_utilisation')).toBe('25.0%')
+    expect(v('leg-NIFTY23500CE')).toBe(CURRENT.legs[0].text)
+    expect(v('leg-NIFTY23800CE')).toBe(CURRENT.legs[1].text)
+  })
+
+  it('g20: a missing figure shows the server reason; no current block reads "-"', () => {
+    const rows = (current) => Object.fromEntries(replyRows({ current }).map((r) => [r.id, r.value]))
+    expect(rows({ max_loss: { text: null, reason: 'not available: why' }, margin_utilisation: { text: null, reason: 'not available: funds' }, legs: [] }))
+      .toMatchObject({ max_loss: 'not available: why', margin_utilisation: 'not available: funds' })
+    expect(rows(undefined)).toMatchObject({ max_loss: '-', margin_utilisation: '-' })
   })
 })
 

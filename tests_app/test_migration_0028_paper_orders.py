@@ -165,11 +165,11 @@ async def test_upgrade_copies_every_leg_and_exit_exactly_in_leg_order(admin_engi
 
 
 async def test_upgrade_refuses_a_strategy_tracking_one_contract_on_two_legs(admin_engine):
-    own_down, own_up, _, _ = round_trip_sql(MIGRATION)
+    _, own_up, down, _ = round_trip_sql(MIGRATION)  # down = the later migrations too: the post-check pins THIS era
     async with admin_engine.connect() as conn:
         trans = await conn.begin()
         try:
-            for sql in own_down:
+            for sql in down:
                 await conn.execute(text(sql))
             await _seed_old(conn, [(0, "SELL", 65, "39.15"), (0, "BUY", 65, "40.00")], [])
             with pytest.raises(DBAPIError, match="a strategy tracks one contract on two legs"):

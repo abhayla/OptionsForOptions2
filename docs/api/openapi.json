@@ -261,6 +261,16 @@
             "title": "Criteria",
             "type": "array"
           },
+          "current": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AdjustCurrentOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "curves": {
             "default": {},
             "patternProperties": {
@@ -275,6 +285,14 @@
               }
             },
             "title": "Curves",
+            "type": "object"
+          },
+          "curves_estimated": {
+            "default": {},
+            "patternProperties": {
+              "^[A-Za-z0-9_\\-.]{1,64}$": {}
+            },
+            "title": "Curves Estimated",
             "type": "object"
           },
           "days_to_expiry": {
@@ -684,6 +702,67 @@
         "title": "AdjustCriterionOut",
         "type": "object"
       },
+      "AdjustCurrentLegOut": {
+        "additionalProperties": false,
+        "properties": {
+          "iv": {
+            "title": "Iv"
+          },
+          "label": {
+            "title": "Label"
+          },
+          "ltp": {
+            "title": "Ltp"
+          },
+          "oi": {
+            "title": "Oi"
+          },
+          "text": {
+            "title": "Text"
+          },
+          "tradingsymbol": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Tradingsymbol",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tradingsymbol",
+          "label",
+          "iv",
+          "oi",
+          "ltp",
+          "text"
+        ],
+        "title": "AdjustCurrentLegOut",
+        "type": "object"
+      },
+      "AdjustCurrentOut": {
+        "additionalProperties": false,
+        "description": "REQ-046 AC-2 (#647, #651): the current position's signed max loss, margin utilisation, and each held option's\nIV / OI / LTP, all as texts.",
+        "properties": {
+          "legs": {
+            "items": {
+              "$ref": "#/components/schemas/AdjustCurrentLegOut"
+            },
+            "title": "Legs",
+            "type": "array"
+          },
+          "margin_utilisation": {
+            "$ref": "#/components/schemas/AdjustFigureOut"
+          },
+          "max_loss": {
+            "$ref": "#/components/schemas/AdjustFigureOut"
+          }
+        },
+        "required": [
+          "max_loss",
+          "margin_utilisation",
+          "legs"
+        ],
+        "title": "AdjustCurrentOut",
+        "type": "object"
+      },
       "AdjustDeltaNeutralOut": {
         "additionalProperties": false,
         "description": "A-23 (GC-IC1 4a): figures only, no trade, no After (``ofo.adjustment.delta_neutral``). Lots are signed: + long,\n- short. ``known`` False -> every figure None and ``missing_leg`` names the leg with no delta.",
@@ -803,6 +882,32 @@
           "known"
         ],
         "title": "AdjustDeltaNeutralOut",
+        "type": "object"
+      },
+      "AdjustFigureOut": {
+        "additionalProperties": false,
+        "description": "GC-ICGUIDE g16/g20: one figure as the server's text, or the reason it is not available (exactly one is set).",
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          }
+        },
+        "title": "AdjustFigureOut",
         "type": "object"
       },
       "AdjustFiguresOut": {
@@ -14892,14 +14997,74 @@
       "ofo_app__routes__strategies__SummaryOut": {
         "additionalProperties": false,
         "properties": {
+          "adjustment_cost": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Adjustment Cost"
+          },
+          "adjustment_cost_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Adjustment Cost Text"
+          },
+          "adjustments_made": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Adjustments Made"
+          },
           "can_delete": {
             "title": "Can Delete",
             "type": "boolean"
+          },
+          "completed_reason_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed Reason Text"
           },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
             "type": "string"
+          },
+          "final_pnl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Final Pnl"
+          },
+          "final_pnl_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Final Pnl Text"
           },
           "first_leg": {
             "$ref": "#/components/schemas/FirstLegOut"
@@ -14982,7 +15147,13 @@
           "can_delete",
           "has_paper_order",
           "open_opportunities",
-          "open_opportunities_text"
+          "open_opportunities_text",
+          "final_pnl",
+          "final_pnl_text",
+          "adjustments_made",
+          "adjustment_cost",
+          "adjustment_cost_text",
+          "completed_reason_text"
         ],
         "title": "SummaryOut",
         "type": "object"

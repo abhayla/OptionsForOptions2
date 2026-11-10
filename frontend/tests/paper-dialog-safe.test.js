@@ -139,7 +139,7 @@ describe('CORE: a stored paper order is never offered again (the live case, buil
     expect(confirmBtn(w).attributes('disabled')).toBeDefined()
     await click(w)
     expect(posts()).toHaveLength(1)
-    await w.findAll('[data-testid="paper-price"]')[0].setValue('45.00')
+    await w.findAll('[data-testid="paper-lots"]')[0].setValue('2') // an exit has no price box (the server prices it): edit the lots
     expect(confirmBtn(w).attributes('disabled')).toBeUndefined()
   })
 

@@ -13,6 +13,7 @@ as ``<exchange_segment>:<exchange_token>``; the segment and token are separate f
 from __future__ import annotations
 
 import datetime
+from collections.abc import Awaitable, Callable
 from typing import Any, Literal, Optional
 
 from fastapi import APIRouter, Depends, Query
@@ -61,6 +62,13 @@ async def get_today(db: Any = Depends(get_db)) -> datetime.date:
     return await picker.database_today(db)
 
 
+def get_shown_now() -> Callable[[Any, datetime.date], Awaitable[datetime.datetime]]:
+    """The reader of the instant the picker SHOWS days-left and the default expiry from (#681): the database instant;
+    scenario mode overrides it with the scenario clock. A reader, so no query runs before the underlying is checked.
+    The list-currency judgement (``today``) stays on the database clock."""
+    return picker.judging_instant
+
+
 def _todays_expiry_spent(now: datetime.datetime) -> bool:
     """Whether an expiry dated today can no longer trade at ``now`` (IST). Answer states: OPEN -> no; closed hours ->
     only from the close (before the open it is still today's); weekend or holiday -> yes (nothing trades today); no
@@ -75,11 +83,13 @@ def _todays_expiry_spent(now: datetime.datetime) -> bool:
 
 @router.get("/api/catalogue/{underlying}/expiries", response_model=ExpiriesOut)
 async def expiries(underlying: str, db: Any = Depends(get_db),
-                   today: datetime.date = Depends(get_today)) -> ExpiriesOut:
+                   today: datetime.date = Depends(get_today),
+                   shown_now: Any = Depends(get_shown_now)) -> ExpiriesOut:
     require_supported(underlying)
-    listed = await picker.pickable_expiries(db, underlying, today)
-    now = (await picker.judging_instant(db, today)).astimezone(IST)
-    closed = now.date() == today and _todays_expiry_spent(now)  # ADR-199 (1)(4), market calendar (ADR-119)
+    listed = await picker.pickable_expiries(db, underlying, today)  # list currency: the real database date
+    now = (await shown_now(db, today)).astimezone(IST)
+    today = now.date()  # from here on only what is shown: days left and the default (scenario clock in scenario mode)
+    closed = _todays_expiry_spent(now)  # ADR-199 (1)(4), market calendar (ADR-119)
     usable = [e for e in listed if not (closed and e <= today)]  # ADR-199 (2): it stays LISTED, just never the default
     return ExpiriesOut.model_validate({
         "underlying": underlying, "expiries": listed, "default_expiry": usable[0] if usable else None,
