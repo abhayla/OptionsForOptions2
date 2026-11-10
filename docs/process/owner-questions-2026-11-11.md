@@ -71,6 +71,18 @@ is an irreversible act this run may not take on its own.
 Spec basis: none: the spec says nothing about work folders (searched: worktree, work folder); the rule is in the
 run's hard stops.
 
+## N3. Please keep this PC unlocked while the screen checks run (11 Nov)
+
+**What happened (11 Nov 01:45):** I started the test-data screens to do the three screen re-checks (rows c17, c18,
+c19). The pages loaded, but Chrome could not take a single picture: the PC was locked, and a locked screen draws
+nothing. Every screen row needs pictures as its evidence, so none could be done. The servers were stopped again.
+
+**What I need:** when you log in to Kite from 09:00, leave the PC unlocked (screen on, no lock) while I run the live
+checks (c10, c11) and, after 15:30, the three test-data screens. I never type your Windows password.
+
+**Why this matters beyond tonight:** the session of 10 Nov morning reported "Chrome stopped drawing any tab" and
+blamed low memory. It was very likely this same cause. Two sessions lost time on it.
+
 ## N2. For your information: the faster test database (PR #688) is reviewed and will merge when its checks are green
 
 The earlier session told you this would not merge before you had seen it. This is that notice; nothing to answer.
