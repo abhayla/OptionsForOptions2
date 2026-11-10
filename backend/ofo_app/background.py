@@ -572,6 +572,26 @@ class StoredLogin:
         return read
 
 
+def stored_login(clock: Callable[[], datetime.datetime]) -> StoredLogin:
+    """The worker's login reader. Broker settings that cannot be loaded mean no login (T-16 "not checked"), never a
+    worker that stops: every other rule check keeps running."""
+    from ofo_app.broker_config import BrokerConfigError, load_broker_config  # noqa: PLC0415
+    from ofo_app.broker_crypto import TokenCipher  # noqa: PLC0415
+    from ofo_app.db import get_engine  # noqa: PLC0415
+    from ofo_app.feed_main import store_readers  # noqa: PLC0415
+
+    async def no_session(_user: str) -> None:
+        return None
+
+    try:
+        broker = load_broker_config()
+    except BrokerConfigError as exc:  # the message may carry secrets: the type only
+        log.warning("background: the broker settings are unusable, T-16 is not checked: %s", type(exc).__name__)
+        return StoredLogin(no_session, clock)
+    _users, read_session = store_readers(lambda: get_engine().connect(), TokenCipher(broker.token_key), broker.api_key)
+    return StoredLogin(read_session, clock)
+
+
 @dataclass(frozen=True)
 class Recorded:
     """What ``record_check`` wrote: rule id -> open record id of each flagged rule, and the evaluation it stored (its
@@ -1950,16 +1970,10 @@ async def _serve_live() -> int:  # pragma: no cover - the process wiring; each p
     # this process has no live Kite session, so the app's ``margin_source`` would answer "not checked" for ever (#627).
     from ofo.settings import defaults  # noqa: PLC0415
 
-    from ofo_app.broker_config import load_broker_config  # noqa: PLC0415
-    from ofo_app.broker_crypto import TokenCipher  # noqa: PLC0415
-    from ofo_app.feed_main import store_readers  # noqa: PLC0415
     from ofo_app.outcome_margin import OutcomeMargin  # noqa: PLC0415
     from ofo_app.routes.adjustment import get_approach_margin  # noqa: PLC0415
     from ofo_app.routes.outcome import MarketContext, load_charge_rates, server_now  # noqa: PLC0415
-    broker = load_broker_config()
-    _users, read_session = store_readers(lambda: get_engine().connect(), TokenCipher(broker.token_key),
-                                         broker.api_key)
-    login = StoredLogin(read_session, clock)
+    login = stored_login(clock)
     margin_source = OutcomeMargin(login.session, login.open_client, clock=server_now)
     margin_ctx = MarketContext(provider, clock, defaults()[RISK_FREE_RATE], OWNER_REF)
     gate = DbGate()  # the role's one database gate: writer, settings poll and rebuild, served in that order
