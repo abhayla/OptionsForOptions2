@@ -649,6 +649,7 @@ issues:
   "#686": S6.7  # Market calendar holds 2026 only: from 1 Jan 2027 every day reads as closed (F-103)
   "#689": S6.7  # New-adjustment toast uses the browser's native confirm(): the whole page freezes until clicked
   "#691": S6.7  # Test-database template tool: hash inputs, sweep without lock, idle admin connection while waiting (review leftovers of PR 688)
+  "#692": S6.7  # GC-ICSAFE leftovers: max-profit label on two more screens, old-position record window, adopted strategies never lapse, failed alert not retried
 
 # Work items whose status is not done.
 work_items:
