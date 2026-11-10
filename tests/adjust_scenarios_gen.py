@@ -1749,7 +1749,7 @@ def scenarios() -> list[dict]:  # noqa: PLR0915 - a flat list of scenario specs
                      entry={"clock": "2026-11-09T10:00:00", "spot": "23200"}, extra_strikes=["22100", "24300"]))
     s.append(ic_spec("ADJ-63", "Path base, next month: December monthly 29 Dec 2026, entered 48 days before",
                      ["ADR-282", "PATH-63"], "2026-11-12T11:00:00", "23200", expiry_kind="monthly",
-                     legs=ic_at("2026-12-29", [22000, 22200, 24200, 24400]),
+                     legs=ic_at("2026-12-29", [22000, 22200, 24200, 24400]), next_expiry="2027-01-25",
                      entry={"clock": "2026-11-11T10:00:00", "spot": "23200"}, extra_strikes=["21600", "24800"]))
     s.append(ic_spec("ADJ-64", "Path base, two months out: January monthly 25 Jan 2027, entered 75 days before",
                      ["ADR-282", "PATH-64"], "2026-11-12T11:00:00", "23200", expiry_kind="monthly",
