@@ -45,6 +45,11 @@ class Settings(BaseSettings):
     #: The e2e job starts three processes with 1 + 0 each.
     DB_POOL_SIZE: int = Field(default=2, ge=1)
     DB_MAX_OVERFLOW: int = Field(default=0, ge=0)
+    #: ADR-286: the shared Notifier for owner alerts. Any of the three empty = nothing is sent. The egress gate reads
+    #: NOTIFIER_URL itself at import (ofo_app/__init__.py); the key is never logged.
+    NOTIFIER_URL: str = ""
+    NOTIFIER_PROJECT: str = ""
+    NOTIFIER_KEY: str = ""
 
     @model_validator(mode="after")
     def _replay_is_test_only(self) -> "Settings":
