@@ -67,7 +67,7 @@ read from the clock.
 12. `c53` was run three times as a rehearsal before the live day. Run 1 failed at the preflight scans, run 2 at the
     app tests and frontend unit tests, run 3: TOTAL PASS for 64576e81 at 01:38 on 11 Nov.
 
-13. 11 Nov 01:38-01:50: the test-data stack was started from the run's folder (API 8766, checker, page 5174; the
+13. 11 Nov 01:38-01:42: the test-data stack was started from the run's folder (API 8766, checker, page 5174; the
     page answered, the test market read 6 Nov 11:40, NIFTY 23,420, 1 strategy monitored), but every Chrome
     screenshot timed out. Cause, measured: the Windows session was locked (the lock-screen process was running).
     c17..c19 wait for an unlocked PC (owner note N3). The stack's eight processes were stopped by PID.
