@@ -50,8 +50,8 @@ async def guard_paper_order(strategy_id: int, db: Annotated[Any, Depends(get_db)
     try:
         marker = await read_marker(db, user_ref, strategy_id)
     except Exception:  # noqa: BLE001 - an unreadable marker is never "the same scenario" (fail closed)
-        await _rollback(db)
         marker = _ABSENT
+    await _rollback(db)  # the read holds the request's connection; the settings read after this guard opens its own
     if marker is _ABSENT or marker != current:
         raise StrategyRefused(scenario_mode.TEMPLATE, Failure.CONFLICT)
 
