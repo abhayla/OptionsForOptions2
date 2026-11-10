@@ -43,6 +43,7 @@ TPL_LOCK_KEY = 7406120911  # fixed pg_advisory_lock key: one build-or-copy at a 
 VERSIONS = os.path.join("backend", "ofo_app", "alembic", "versions")
 SWEEP_AGE = datetime.timedelta(hours=24)
 APP_ROLE = "ofo_app"
+ALLOWLIST_FUNCTION = "public.ofo_assert_app_role_allowlist"  # created by migration 0001; the copy carries it
 EXIT_REFUSED = 2
 EXIT_SETUP = 3
 STAMP = "%Y%m%d%H%M%S"
@@ -180,7 +181,15 @@ async def create_database(conn, name, on_created=None):
     if on_created is not None:
         on_created()
     await conn.execute(f'REVOKE CONNECT ON DATABASE "{name}" FROM PUBLIC')
-    await conn.execute(f'GRANT CONNECT ON DATABASE "{name}" TO {APP_ROLE}')
+    if is_tool_name(name):  # a template is never connected to by the app role; each copy gets its own grant
+        await conn.execute(f'GRANT CONNECT ON DATABASE "{name}" TO {APP_ROLE}')
+
+
+async def check_app_role(conn):
+    """Run migration 0001's own allowlist check, both phases, in the database `conn` is connected to."""
+    role = os.environ.get("OFO_APP_DB_ROLE", APP_ROLE)  # as 0001 and template_name read it
+    for phase in ("pre", "post"):
+        await conn.execute(f"SELECT {ALLOWLIST_FUNCTION}($1, $2)", role, phase)
 
 
 def _comment_time(comment):
@@ -327,6 +336,7 @@ class Fresh:
                 stamp = datetime.datetime.now(datetime.UTC).strftime(STAMP)
                 await conn.execute(f'COMMENT ON DATABASE "{tpl}" IS \'{TPL_READY}{stamp}\'')
             await copy_database(conn, self.name, tpl, on_created=self._mark_created)
+            await _connect_and(self.connect, with_database(self.admin, self.name), check_app_role)
         finally:
             await conn.execute("SELECT pg_advisory_unlock($1)", TPL_LOCK_KEY)
 
@@ -341,9 +351,8 @@ class Fresh:
         except Exception as e:  # noqa: BLE001 - never fail a run because of the template
             self.err(f"db_run_fresh: template unavailable, full migration instead: {type(e).__name__}: "
                      f"{scrub(e, self.secrets)}")
-            if self.created:
-                self._drop_own(0)
-                self.created = False
+            if self.created and self._drop_own(0) == 0:
+                self.created = False  # an undroppable copy stays ours: _setup_and_run stops and run() retries the drop
             return False
 
     def _setup_and_run(self, checkout, command):
@@ -351,6 +360,8 @@ class Fresh:
         try:
             if self._try_template(checkout):
                 return self.runner(command, cwd=checkout, env=self.env).returncode
+            if self.created:  # the copy failed its check and could not be dropped: never create over it or run on it
+                return EXIT_SETUP
             self._admin_do(functools.partial(create_database, on_created=self._mark_created))
             step = "migrate"
             res = self.runner(ALEMBIC, cwd=checkout, env=self.env, capture_output=True, text=True)

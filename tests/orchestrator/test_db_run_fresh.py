@@ -267,6 +267,7 @@ TPL = "ofo_test_tpl_0048_ic_t11c_t20b_built_0123abcd"
 
 
 READY = "ofo_tpl_ready 20261022100000"
+RUN_DB = "ofo_test_tmp_20261022120000_ab12"
 
 
 class TplConn(FakeConn):
@@ -382,7 +383,31 @@ def test_template_migrate_failure_drops_the_half_built_template_and_falls_back()
     log, runner = [], Runner(migrate_rc=1)
     code, errs = tpl_go(log, runner)
     assert code == SETUP and any("template unavailable" in e for e in errs)
-    assert f'DROP DATABASE IF EXISTS "{TPL}"' in sql(log)
+    # two drops of the template: the clean-up before the build and the one after the failed migrate
+    s, drop_tpl = sql(log), f'DROP DATABASE IF EXISTS "{TPL}"'
+    assert [x for x in s if x == drop_tpl] == [drop_tpl, drop_tpl]
+    assert s.index(drop_tpl) < s.index(f'CREATE DATABASE "{TPL}"') < s.index(drop_tpl, s.index(drop_tpl) + 1)
+
+
+@pytest.mark.parametrize("fail_on", ["REVOKE", "GRANT"])
+def test_grant_failure_on_a_copy_drops_the_copy_and_never_reports_green(fail_on):
+    log, runner = [], Runner()
+    code, errs = tpl_go(log, runner, marker=READY, fail_on=fail_on)
+    assert code == SETUP and any("template unavailable" in e for e in errs)
+    assert runner.calls == []  # fell back; the fall-back's own grant failed too: no migration, no command
+    own = [x for x in sql(log) if RUN_DB in x and x.startswith(("CREATE", "DROP"))]
+    assert [x.split()[0] for x in own] == ["CREATE", "DROP", "CREATE", "DROP"]
+    assert "TEMPLATE" in own[0] and "TEMPLATE" not in own[2]
+
+
+def test_template_gets_no_connect_grant_but_a_copy_does():
+    log = []
+    asyncio.run(fresh.create_database(FakeConn(log), TPL))
+    asyncio.run(fresh.create_database(FakeConn(log), GOOD))
+    asyncio.run(fresh.copy_database(FakeConn(log), GOOD, TPL))
+    grants = [x for x in sql(log) if x.startswith("GRANT")]
+    assert grants == [f'GRANT CONNECT ON DATABASE "{GOOD}" TO ofo_app'] * 2  # tmp create + copy; none for the template
+    assert f'REVOKE CONNECT ON DATABASE "{TPL}" FROM PUBLIC' in sql(log)
 
 
 def test_sweep_drops_stale_templates_and_keeps_the_current_one():
@@ -510,3 +535,80 @@ def test_lock_wait_times_out_then_falls_back_to_full_migration(monkeypatch):
     assert any("template unavailable" in e and "TimeoutError" in e for e in errs)
     assert [c[0] for c in runner.calls] == [fresh.ALEMBIC, ["cmd"]]
     assert "SELECT pg_advisory_unlock($1)" not in sql(log)  # never acquired
+
+
+# ---- review round 3: the copy path runs 0001's role check (both phases) on every copy ----
+CHECK = "ofo_assert_app_role_allowlist"
+
+
+class RoleConn(TplConn):
+    """Records each role-check call as ("check", database, args); refuses or errors in `bad_phase`."""
+
+    def __init__(self, log, url, bad_phase=None, exc=None, fail_drop=False, **kw):
+        super().__init__(log, marker=READY, **kw)
+        self.url, self.bad_phase, self.exc, self.fail_drop = url, bad_phase, exc, fail_drop
+
+    async def execute(self, sql, *args):
+        if CHECK in sql:
+            self.log.append(("check", self.url.rsplit("/", 1)[1], args))
+            if args[1] == self.bad_phase:
+                raise self.exc or RuntimeError("app role allowlist refused for ofo_app: has CREATE on the database")
+        if self.fail_drop and sql.startswith("DROP") and RUN_DB in sql:
+            raise RuntimeError(f"drop said no using {SECRET}")
+        await super().execute(sql, *args)
+
+
+def role_go(log, runner, **kw):
+    errs = []
+
+    async def connect(url):
+        log.append(("connect", url))
+        return RoleConn(log, url, **kw)
+    fr = fresh.Fresh(SETTINGS, connect, runner, name=RUN_DB, err=errs.append)
+    fresh.template_name = lambda _c: TPL
+    return fr.run(".", ["cmd"]), errs
+
+
+def checks(log):
+    return [x for x in log if isinstance(x, tuple) and x[0] == "check"]
+
+
+def test_function_name_is_the_one_migration_0001_creates():
+    src = (MIG / "0001_baseline_ledger_clock.py").read_text(encoding="utf-8")
+    assert re.search(rf'^ALLOWLIST_FUNCTION = "{re.escape(fresh.ALLOWLIST_FUNCTION)}"$', src, re.M)
+
+
+def test_role_check_passes_on_a_copy_both_phases_after_the_grants_and_the_copy_is_used():
+    log, runner = [], Runner()
+    code, errs = role_go(log, runner)
+    assert code == 0 and errs == [] and [c[0] for c in runner.calls] == [["cmd"]]
+    assert checks(log) == [("check", RUN_DB, ("ofo_app", "pre")), ("check", RUN_DB, ("ofo_app", "post"))]
+    s = sql(log)
+    grant = s.index(next(x for x in s if x.startswith("GRANT")))
+    assert grant < s.index(next(x for x in s if CHECK in x))  # the check sees the copy's final privileges
+
+
+@pytest.mark.parametrize("phase", ["pre", "post"])
+@pytest.mark.parametrize("exc", [None, ConnectionError("lost")], ids=["refused", "unexpected-error"])
+def test_role_check_failure_drops_the_copy_and_falls_back_to_full_migration(phase, exc):
+    log, runner = [], Runner()
+    code, errs = role_go(log, runner, bad_phase=phase, exc=exc)
+    assert code == 0 and any("template unavailable" in e for e in errs)
+    assert [c[0] for c in runner.calls] == [fresh.ALEMBIC, ["cmd"]]  # never the command on the copy
+    own = [x.split()[0] for x in sql(log) if RUN_DB in x and x.startswith(("CREATE", "DROP"))]
+    assert own == ["CREATE", "DROP", "CREATE", "DROP"]  # copy, drop it, full path's create, final drop
+    assert all(SECRET not in e for e in errs)
+
+
+def test_fallback_refusal_decides_the_exit_after_a_refused_copy():
+    log, runner = [], Runner(migrate_rc=1)
+    code, errs = role_go(log, runner, bad_phase="post")
+    assert code == SETUP and [c[0] for c in runner.calls] == [fresh.ALEMBIC]
+    assert any("step migrate failed" in e for e in errs)
+
+
+def test_refused_copy_that_cannot_be_dropped_is_exit_3_and_nothing_runs():
+    log, runner = [], Runner()
+    code, errs = role_go(log, runner, bad_phase="pre", fail_drop=True)
+    assert code == SETUP and runner.calls == []
+    assert any("step drop failed" in e for e in errs) and all(SECRET not in e for e in errs)
