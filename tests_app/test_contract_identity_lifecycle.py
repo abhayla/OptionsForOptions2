@@ -27,6 +27,7 @@ inside a transaction that is rolled back.
 
 from __future__ import annotations
 
+import dataclasses
 from datetime import UTC, date, datetime, timedelta, timezone
 from decimal import Decimal
 from types import SimpleNamespace
@@ -659,8 +660,6 @@ async def test_ac3_downgrade_of_0005_refuses_while_rows_exist(admin_engine: Asyn
 def _fillers(n: int, name: str = "NIFTY", first_token: int = 100001,
              expiry: date = date(2027, 12, 28)) -> list[ListedContract]:
     """n live contracts of one index with future expiries (synthetic: only their COUNT matters to the guard)."""
-    import dataclasses
-
     rows = []
     for i in range(n):
         row = _row(first_token + i, expiry, str(10000 + 50 * i), "CE", f"{name}27DEC{10000 + 50 * i}CE",
@@ -675,8 +674,6 @@ def _fillers(n: int, name: str = "NIFTY", first_token: int = 100001,
 def _fillers_with_lone_put(n: int, **kw) -> list[ListedContract]:
     """_fillers, but the FIRST contract is the only put: a list that cuts it away loses a whole (expiry, type) group,
     as a real cut-off file does (ADR-284), so the ADR-058/059 counts run."""
-    import dataclasses
-
     rows = _fillers(n, **kw)
     rows[0] = ListedContract(contract=dataclasses.replace(rows[0].contract, instrument_type="PE"),
                              broker_refs=rows[0].broker_refs)
