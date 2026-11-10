@@ -6,6 +6,7 @@ Clocks are injected; nothing sleeps for real.
 from __future__ import annotations
 
 import asyncio
+import collections
 import dataclasses
 import datetime
 import itertools
@@ -20,6 +21,7 @@ from ofo.adjustment import playbook_eval as pe
 from ofo.adjustment.approaches import Position, PositionLeg
 from ofo.adjustment.preferences import from_values
 from ofo.charges import ChargeRates
+from ofo.errors.explanations import render_explanation
 from ofo.marketdata.shared_compute import FeedScope
 from ofo.marketdata.spot_source import resolve_spot
 from ofo.outcome import service as outcome_service
@@ -34,6 +36,7 @@ from ofo_app import (
     background,
     calc_speeds,
     db,
+    playbook_store,
     regime_inputs,
     scenario_mode,
     strategy_store,
@@ -1280,3 +1283,94 @@ async def test_t19_the_worker_prices_with_the_listed_rates_and_checks_t19(scn, s
     assert states["zero"].adjustment_cost < states["stated"].adjustment_cost  # the charges are in the cost
     assert states["none"].adjustment_cost is None
     assert states["none"].adjustment_cost_reason == "adjust_trigger_no_approach_priced"
+
+
+# ---- GC-ICSAFE c13/c14 (#685 item 3): records of a position the user has since changed -----------------------------
+class OpenRecordsGate(FakeGate):
+    """FakeGate plus the open records of the strategy (rule ids) and the lapse seam the rebuild calls."""
+
+    def __init__(self, open_rules=(), fail_lapse: int = 0) -> None:
+        super().__init__()
+        self.open, self.fail_lapse = list(open_rules), fail_lapse
+
+    async def lapse_open(self, _w):
+        if self.fail_lapse:
+            self.fail_lapse -= 1
+            raise ConnectionError("database blip")
+        self.open.clear()
+
+
+class _CommitSession(_Session):
+    async def commit(self):
+        return None
+
+
+def _with_count(listed, used):
+    return [dataclasses.replace(w, tracked=dataclasses.replace(w.tracked, adjustments_used=used)) for w in listed]
+
+
+async def _rebuilt_with(before, after, gate, queued=False):
+    """A worker holding a position with ``before`` adjustments, then re-listed with ``after`` (a basket was booked)."""
+    scn = scenario_mode.load("ADJ-60")  # PATH-60: records for T-07 and S-12 stayed open after the 2nd adjustment
+    listed = [_with_count(_watched(scn), before)]
+    prov, now, calls = Prov(scn), [scn.clock_at], Calls()
+
+    async def lister():
+        return listed[0]
+    w = Draining(provider_for=lambda _o: prov, lister=lister, clock=lambda: now[0], settings=_settings(),
+                 preferences=_prefs, recorder=calls, observe=calls.seen, gate_store=gate)
+    await w.rebuild()
+    sid = listed[0][0].strategy_id
+    if queued:
+        w._gate[sid] = object()
+        w._gate_events[sid] = collections.deque([background.GateBatch(listed[0][0], (), None)])
+    listed[0] = _with_count(listed[0], after)
+    await w._rebuild_safely()
+    return w, sid
+
+
+async def test_path_60_records_raised_for_the_position_before_the_2nd_adjustment_lapse_when_it_is_booked():
+    gate = OpenRecordsGate(["T-07", "S-12"])
+    assert len(gate.open) == 2  # the class before: open records of a strategy whose position changed
+    await _rebuilt_with(1, 2, gate)
+    assert gate.open == []  # after
+
+
+async def test_an_unchanged_position_keeps_its_open_records():
+    gate = OpenRecordsGate(["T-07"])
+    await _rebuilt_with(2, 2, gate)
+    assert gate.open == ["T-07"]
+
+
+@pytest.mark.parametrize(("before", "after"), [(None, 2), (2, None), (None, None)])
+async def test_an_unreadable_adjustment_count_lapses_nothing(before, after):
+    gate = OpenRecordsGate(["T-07"])
+    await _rebuilt_with(before, after, gate)
+    assert gate.open == ["T-07"]
+
+
+async def test_two_baskets_booked_between_two_re_lists_lapse_once_and_reset_the_strategys_gate():
+    gate = OpenRecordsGate(["T-07", "S-12"])
+    w, sid = await _rebuilt_with(0, 2, gate, queued=True)
+    assert gate.open == [] and sid not in w._gate_events and sid not in w._gate  # stale events dropped, gate restored
+
+
+async def test_a_failed_lapse_keeps_the_last_list_and_is_retried_at_the_next_re_list():
+    gate = OpenRecordsGate(["T-07"], fail_lapse=1)
+    w, _sid = await _rebuilt_with(1, 2, gate)
+    assert gate.open == ["T-07"] and w.monitors[0].tracked.adjustments_used == 1 and w.errors
+    await w._rebuild_safely()
+    assert gate.open == [] and w.monitors[0].tracked.adjustments_used == 2
+
+
+async def test_the_db_gate_store_lapses_every_open_record_as_position_changed(monkeypatch):
+    seen = []
+
+    async def lapse_all(_db, user_ref, sid, reason):
+        seen.append((user_ref, sid, reason))
+    monkeypatch.setattr(db, "get_sessionmaker", lambda: _CommitSession)
+    monkeypatch.setattr(playbook_store, "lapse_all", lapse_all)
+    w = _watched(scenario_mode.load("ADJ-60"))[0]
+    await background.DbGateStore().lapse_open(w)
+    assert seen == [("owner", w.strategy_id, "position_changed")]
+    assert str(render_explanation("suggestion_lapsed_position_changed")) == "The position changed"
