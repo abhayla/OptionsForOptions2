@@ -243,15 +243,18 @@ def feed_scope(ctx: MarketContext) -> FeedScope | None:
     return FeedScope(SHARED_COMPUTE, ctx.feed_owner) if ctx.feed_owner else None
 
 
-SettingsReader = Callable[[], Awaitable[Mapping[str, Decimal]]]
+SettingsReader = Callable[..., Awaitable[Mapping[str, Decimal]]]  # optional argument: the request's own session
 
 
-async def _settings_in_force_now() -> Mapping[str, Decimal]:
+async def _settings_in_force_now(session: Any = None) -> Mapping[str, Decimal]:
     """Every registry setting in force NOW (the database clock, ADR-023), read in its own short session that is
-    closed before the route body runs. SettingsError (a stored value the registry refuses) and any database error
+    closed before the route body runs. A route handler that already holds its request session passes it as ``session``
+    (a request uses ONE connection, #682). SettingsError (a stored value the registry refuses) and any database error
     propagate: the caller fails closed."""
-    async with db.get_sessionmaker()() as session:
+    if session is not None:
         return await settings_store.settings_in_force(session)
+    async with db.get_sessionmaker()() as own:
+        return await settings_store.settings_in_force(own)
 
 
 def get_settings_reader() -> SettingsReader:

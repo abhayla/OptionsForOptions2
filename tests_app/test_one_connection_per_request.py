@@ -47,12 +47,12 @@ async def _pool_of_one(monkeypatch) -> None:
     assert app_db.get_engine().pool.size() == 1
 
 
-async def _ask(want: int, call) -> str:
+async def _ask(want: int, call, within: float = ANSWER_WITHIN_SECONDS) -> str:
     started = time.monotonic()
     try:
         r = await call()
         took = time.monotonic() - started
-        ok = r.status_code == want and took < ANSWER_WITHIN_SECONDS
+        ok = r.status_code == want and took < within
         return f"{'ok' if ok else 'BAD'} status={r.status_code} took={took:.2f}s {r.text[:200]}"
     except Exception as exc:  # noqa: BLE001 - the pool timeout is the failure this test names
         return f"BAD {type(exc).__name__}: {str(exc)[:200]}"
@@ -85,8 +85,9 @@ async def test_execute_answers_with_a_pool_of_one_connection(app_engine, admin_e
         entry = _Replay(funds="1003", basket_total="354.25", orders=None, positions="positions-151006")
         app.dependency_overrides[route.get_kite_session] = lambda: _session_for(entry)
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as ac:
+            # a pool timeout here is a 500; the cold start of the recorded Kite session is not the route's time
             answer = await _ask(200, lambda: ac.post(f"/strategies/{sid}/execute",
-                                                     json={"action": "ENTRY", "revision": 1}))
+                                                     json={"action": "ENTRY", "revision": 1}), within=30)
         assert answer.startswith("ok"), answer
         assert "QueuePool" not in caplog.text
     finally:
