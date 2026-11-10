@@ -44,6 +44,8 @@ KEY_PREFIX = "ofo:feed"
 STREAM_MAXLEN = 20_000  # entries kept per user (about a minute of a busy feed); older ones are dropped
 WANT_TTL_MS = 10_000  # the API refreshes the snapshot every WANT_REFRESH_S; a dead API's wishes lapse after this
 WANT_REFRESH_S = 1.0
+HEARTBEAT_STALE_S = 120  # REQ-115 AC-6: no heartbeat for 2 minutes = the workers are down or late
+FRESH, STALE, UNREADABLE = "fresh", "stale", "unreadable"
 CONTROL_MAXLEN = 100  # a wake-up stream: a lost or trimmed entry is rebuilt by the feed's fixed re-check
 STATUS_TTL_MS = 5_000  # the feed refreshes every STATUS_EVERY_S; a dead feed's status lapses after this
 STATUS_EVERY_S = 0.5
@@ -174,6 +176,36 @@ def background_want_key(user_ref: str) -> str:
 async def write_background_want(client: Any, user_ref: str, tokens: list[int]) -> None:
     """Write the background role's FULL wanted set (same snapshot and expiry rule as the API's)."""
     await client.set(background_want_key(user_ref), encode_want(user_ref, tokens), px=WANT_TTL_MS)
+
+
+def heartbeat_key() -> str:
+    """The background role's cycle time (ADR-286): one key, no expiry, so a dead worker reads as old (stale), not absent."""
+    return f"{KEY_PREFIX}:background:heartbeat"
+
+
+async def write_heartbeat(client: Any, at: datetime.datetime) -> None:
+    await client.set(heartbeat_key(), at.isoformat())
+
+
+def judge_heartbeat(raw: Any, now: datetime.datetime) -> str:
+    """``stale`` when older than HEARTBEAT_STALE_S, ``fresh`` otherwise; ``unreadable`` when it is missing, not text, or
+    not a time with a zone (never read as fresh)."""
+    text = _text(raw)
+    try:
+        at = datetime.datetime.fromisoformat(text) if text else None
+    except ValueError:
+        at = None
+    if at is None or at.utcoffset() is None:
+        return UNREADABLE
+    return STALE if (now - at).total_seconds() > HEARTBEAT_STALE_S else FRESH
+
+
+async def read_heartbeat_state(client: Any, now: datetime.datetime) -> str:
+    try:
+        return judge_heartbeat(await client.get(heartbeat_key()), now)
+    except Exception as exc:  # noqa: BLE001 - a store that cannot answer is "cannot read", never "fine"; the type only
+        log.warning("worker heartbeat could not be read: %s", type(exc).__name__)
+        return UNREADABLE
 
 
 def encode_want(user_ref: str, tokens: list[int]) -> str:
