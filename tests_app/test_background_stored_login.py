@@ -193,6 +193,30 @@ async def test_a_failing_store_read_is_not_checked_keeps_the_worker_running_and_
     assert "password" not in caplog.text
 
 
+async def test_a_store_read_that_fails_after_a_good_login_drops_the_old_login(monkeypatch, gap_scn) -> None:
+    rig = Rig(monkeypatch, gap_scn, Store(session(), RuntimeError("db down")))
+    await rig.start()
+    assert (await rig.at(1)).margin == NEEDED
+    assert_not_checked(rig, await rig.at(1 + STEP))
+    assert rig.login.session() is None
+
+
+async def test_unusable_broker_settings_do_not_stop_the_worker_and_t16_is_not_checked(
+        monkeypatch, gap_scn, caplog) -> None:
+    from ofo_app import broker_config  # noqa: PLC0415
+
+    def broken():
+        raise broker_config.BrokerConfigError(f"KITE_API_KEY {FAKE_ACCESS} missing")
+
+    monkeypatch.setattr(broker_config, "load_broker_config", broken)
+    with caplog.at_level(logging.DEBUG):
+        login = background.stored_login(lambda: _gap_time(Prov(gap_scn)))
+    await login.reload()
+    assert login.session() is None
+    assert "BrokerConfigError" in caplog.text
+    assert FAKE_ACCESS not in caplog.text
+
+
 # ---- c24: the other answer states ---------------------------------------------------------------------------------
 EMPTY = '{"status": "success", "data": {}}'
 
