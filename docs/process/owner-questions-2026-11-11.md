@@ -53,6 +53,24 @@ Business call: only the owner approves a change on the production server and whe
 Spec basis: REQ-115 AC-6 (heartbeat and Notifier alert), ADR-285 (1) (calendar warning through the shared
 notifier); the Notifier onboarding steps in the owner's private notes.
 
+## Q3. OK to delete one old work folder that still holds unsaved notes? (clean-up, not urgent)
+
+**What:** the folder `OptionsForOptions2-OptionsForOptions2-gc-icguide` (the finished GC-ICGUIDE run, merged as PR
+#687) has 13 unsaved lines in `owner-questions-2026-11-09.md`. The safe removal tool refused it for that reason, and
+this run's rules forbid deleting a folder with unsaved work.
+
+**Checked (10 Nov 21:06):** all 10 non-empty lines of those notes are already saved on this run's branch, word for
+word (0 missing). Nothing would be lost.
+
+1. **Yes, delete it (my recommendation).** Why: its work is on main, its notes are saved elsewhere, and it holds
+   about 5,400 files of disk for nothing.
+2. Keep it.
+
+Until you answer it stays. Business call: none in the product sense; it is asked only because deleting unsaved work
+is an irreversible act this run may not take on its own.
+Spec basis: none: the spec says nothing about work folders (searched: worktree, work folder); the rule is in the
+run's hard stops.
+
 ## N1. To do in December: load the 2027 market holiday list (nothing to answer now)
 
 **What a user would see without it:** from 1 Jan 2027 the app treats every day as "no market": no prices checked, no
