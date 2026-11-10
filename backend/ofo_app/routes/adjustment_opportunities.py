@@ -136,7 +136,8 @@ def condition_text(s: store.Suggestion) -> Any:
     if s.trigger_id == "T-19" and s.approach is not None and s.approach_cost is not None:  # ADR-221: as the check
         return condition_line_t19(s.label, format(s.value, "f"), format(s.threshold, "f"), s.approach,
                                   s.approach_cost, s.unpriced)
-    return condition_line(s.trigger_id, s.label, s.unit, format(s.value, "f"), format(s.threshold, "f"), s.beyond)
+    shown = s.threshold if s.limit is None else s.limit
+    return condition_line(s.trigger_id, s.label, s.unit, format(s.value, "f"), format(shown, "f"), s.beyond)
 
 
 def _record(s: store.Suggestion, paper: bool) -> dict:

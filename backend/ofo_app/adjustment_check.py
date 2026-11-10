@@ -727,10 +727,10 @@ RUPEE_TRIGGERS = frozenset({"T-02"})
 COUNT_TRIGGERS = frozenset({"T-18"})
 
 
-def _own_unit_line(trigger_id: str, label: str, value: str, threshold: str) -> Any:
+def _own_unit_line(trigger_id: str, unit: str | None, label: str, value: str, threshold: str) -> Any:
     """The line with the value in its own unit (rupees with a real minus, or a whole count); None when this trigger has
     no such unit. A value the slot refuses raises like any render (the caller falls back to the plain line)."""
-    if trigger_id in RUPEE_TRIGGERS:
+    if trigger_id in RUPEE_TRIGGERS or unit == "Rs":
         return render_explanation("adjust_condition_line_rupees", label=label, value=Decimal(value),
                                   threshold=Decimal(threshold))
     if trigger_id in COUNT_TRIGGERS:
@@ -759,7 +759,7 @@ def condition_line(trigger_id: str, label: str | None, unit: str | None, value: 
         except (TypeError, ValueError):  # a refused slot: the plain line below (fail visible)
             pass
     try:
-        own = _own_unit_line(trigger_id, label if label is not None else trigger_id, value, threshold)
+        own = _own_unit_line(trigger_id, unit, label if label is not None else trigger_id, value, threshold)
         return own if own is not None else line(label if label is not None else trigger_id, unit)
     except (TypeError, ValueError, ArithmeticError):  # a slot refused label, unit or value: id, no unit
         pass
