@@ -445,6 +445,7 @@ decisions:
   ADR-283: S6.7         # rule starting point stored at every fill; time-of-day rules never already true
   ADR-284: 4a           # truncation guard judges by stored expiries still carried; strike-grid change accepted (#680)
   ADR-285: 4b           # calendar end: warning from 30 days before; uncovered date reads no calendar (#686)
+  ADR-286: S6.4         # Notifier endpoint allowed by the egress gate; watcher heartbeat in the bus store, 2 minutes (#627)
 
 questions:
   Q210: 4a              # external: Zerodha's written answer; ADR-051 covers the owner's own account
