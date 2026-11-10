@@ -141,7 +141,10 @@ def test_core_update_refuses_dropping_more_than_half_of_one_expiry(catalogue: Ca
     """AC-2 as changed by ADR-058/ADR-059 (W-057): removing more than half of one unexpired NIFTY expiry's contracts is
     refused, naming the expiry; nothing changes. (The old Q244 rule refused ONE removal; ADR-058 replaced it.)"""
     far = [c for c in contracts if c.contract.name == "NIFTY" and c.contract.expiry == NIFTY_FAR_EXPIRY]
-    gone = {c.id for c in far[: len(far) // 2 + 1]}
+    # the whole CE group plus one PE: a group is missing, so this is no strike-grid change (#680)
+    ce = [c for c in far if c.contract.instrument_type == "CE"]
+    pe = [c for c in far if c.contract.instrument_type == "PE"]
+    gone = {c.id for c in ce + pe[: max(0, len(far) // 2 + 1 - len(ce))]}
     before = _snapshot(catalogue)
     with pytest.raises(ValueError, match=f"of expiry {NIFTY_FAR_EXPIRY}, more than half"):
         # the index-wide 10% guard is set to 100 here so the per-expiry guard alone must refuse
@@ -152,7 +155,8 @@ def test_core_update_refuses_dropping_more_than_half_of_one_expiry(catalogue: Ca
 def test_update_refuses_the_verifier_75_percent_truncation(catalogue: Catalogue, contracts: list[Contract]) -> None:
     """AC-2: the W-006 verifier's truncation (first 75% of NIFTY rows, all else kept) was ACCEPTED
     under the old 50% rule; it must now be refused."""
-    nifty = [c for c in contracts if c.contract.name == "NIFTY"]
+    nifty = sorted((c for c in contracts if c.contract.name == "NIFTY"),
+                   key=lambda c: (c.contract.expiry, c.contract.strike, c.contract.instrument_type))
     kept_nifty = {c.id for c in nifty[: len(nifty) * 3 // 4]}
     truncated = [c for c in contracts if c.contract.name != "NIFTY" or c.id in kept_nifty]
     before = _snapshot(catalogue)
@@ -178,10 +182,13 @@ def test_update_accepts_roll_off_of_an_expired_expiry_never_deletes(
     assert all(e.currently_listed for e in catalogue.all_entries() if e.contract.expiry != NIFTY_NEAR_EXPIRY)
 
 
-def test_update_refuses_roll_off_on_the_expiry_day_itself(catalogue: Catalogue, contracts: list[Contract]) -> None:
-    """AC-2: a contract expiring on the update date has NOT yet passed; dropping it that day is
-    refused (boundary), even at 23:59 IST."""
-    expired = {c.id for c in contracts if c.contract.expiry == NIFTY_NEAR_EXPIRY}
+def test_update_refuses_roll_off_on_the_expiry_day_itself_when_a_later_group_is_missing(
+    catalogue: Catalogue, contracts: list[Contract]
+) -> None:
+    """AC-2: a contract expiring on the update date has NOT yet passed; dropping it that day together with a later
+    expiry's contracts is refused (boundary), even at 23:59 IST. The expiry day alone is a grid change (#680)."""
+    expired = {c.id for c in contracts if c.contract.name == "NIFTY"
+               and c.contract.expiry in (NIFTY_NEAR_EXPIRY, NIFTY_FAR_EXPIRY)}
     late = datetime(2026, 9, 29, 23, 59, tzinfo=IST)
     with pytest.raises(ValueError):
         catalogue.update([c for c in contracts if c.id not in expired], as_of=late, max_delist_percent=_MAX_DELIST)

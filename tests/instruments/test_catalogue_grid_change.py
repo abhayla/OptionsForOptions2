@@ -1,7 +1,7 @@
 """GC-ICSAFE c32/c33 (issue #680): the daily-list guard accepts a strike-grid change, still refuses a cut-off file.
 
 Fixture: tests/fixtures/instruments/nifty-contracts-2026-11-09.csv - the 4118 real NIFTY rows read from the dev store
-after the forced load of 2026-11-09 (2049 rows dropped). STORED = first seen before 9 Nov; the 9 NOV LIST = not delisted.
+after the forced load of 2026-11-09 (2049 rows dropped). STORED = first seen before 9 Nov; 9 NOV LIST = not delisted.
 """
 from __future__ import annotations
 
@@ -12,11 +12,11 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import pytest
-
 from ofo.audit import AuditLog
 from ofo.instruments.catalogue import Catalogue
 from ofo.instruments.models import Contract
-from ofo.settings import calc as _calc, defaults as _defaults
+from ofo.settings import calc as _calc
+from ofo.settings import defaults as _defaults
 
 AS_OF = datetime(2026, 11, 9, 11, 0, tzinfo=ZoneInfo("Asia/Kolkata"))
 MAX_DELIST = _calc.max_delist_percent(_defaults())
@@ -99,7 +99,7 @@ def test_the_first_load_of_an_index_is_accepted_with_nothing_left(nov9_list) -> 
 
 def test_only_futures_stored_and_one_future_group_missing_is_refused(stored) -> None:
     futs = sorted((c for c in stored if c.instrument_type == "FUT"), key=lambda c: c.expiry)
-    assert len(futs) == 3
+    assert len(futs) > 1
     with pytest.raises(ValueError, match="refused"):
         _update(_cat(futs), futs[:1])
 

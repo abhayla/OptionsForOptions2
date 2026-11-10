@@ -34,7 +34,7 @@ _NOW = text("SELECT clock_timestamp()")
 def format_counts(result: StoreUpdateResult) -> str:
     return (f"catalogue updated: added={result.added} seen={result.seen} revised={result.revised} "
             f"newly_unlisted={result.newly_unlisted} retired={result.retired} delisted={result.delisted} "
-            f"reinstated={result.reinstated}")
+            f"reinstated={result.reinstated} grid_change_left={result.domain.grid_change_left}")
 
 
 async def run(conn: Any, csv_text: str, out: TextIO | None = None, *,
