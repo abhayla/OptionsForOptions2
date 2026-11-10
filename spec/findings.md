@@ -1288,3 +1288,41 @@ work, no decision needed yet), **unverified** (secondary source only; the row sa
   30 s worker stall. Observed once: after a limit was tightened while the rule was already true under the old limit,
   the new crossing opened inside its candle (record 142, 12:09:01, no confirming close) - deferred issue.
 - Bears on REQ-170 presets; owner decision ADR-246: presets kept, intraday reviewed after two more expiry days.
+
+## F-102 - Kite's own basket runs in sequence; the Kite Publisher basket (our path) does not guarantee order
+- Read 2026-11-09 by web research (GC-ICGUIDE planning, owner question on automatic two-basket placement).
+  (a) Kite's own basket (Kite web/app) is sequential: "The orders are placed in the same sequence as in the basket",
+  drag to reorder; for F&O "place the buy option orders first so that the required margin is lower"; the final margin
+  is the same whatever the order; at most 20 orders per basket (https://kite.trade/docs/kite/orders/). Z-Connect:
+  "tiny delays of a few milliseconds between each order ... Without this delay, margin calculations might not keep
+  up, and orders could get rejected"
+  (https://zerodha.com/z-connect/featured/advanced-order-features-on-kite-a-comprehensive-guide).
+  (b) The Kite Publisher basket (`kite.zerodha.com/connect/basket`, our path, `backend/ofo_app/basket.py:57`) does not
+  guarantee order: Zerodha staff, Oct 2018, "The Kite Publisher will just make API call in parallel, the order of
+  execution is not guaranteed"; the asker's own 2-order test "seems random"
+  (https://kite.trade/forum/discussion/4917/basket-order-execution-order). No newer official statement found:
+  unverified for 2026. Cheap proof if ever needed: 2 non-filling LIMIT orders in market hours, read the exchange
+  timestamps, cancel.
+  (c) A far OTM wing BUY can be refused: Jan 2023, an iron condor wing 350 points from spot was refused under
+  Zerodha's member OI limits until the sell was placed first; staff: "there is no way to enter the buy leg without
+  entering the sell leg first if the strike is outside the range"
+  (https://kite.trade/forum/discussion/10230/basket-orders-execution-documentation-missing).
+  (d) The Publisher returns no per-order status; the order book has to be read afterwards (Check with Zerodha).
+- Class (knowledge/findings/publisher-basket-order-not-guaranteed.json): a multi-order hand-off whose execution order
+  the vendor does not guarantee can place a dependent order (a sell) before the order it depends on (its hedge);
+  correctness needs a structural split (two hand-offs gated on the first's fills), never a list order.
+- Bears on ADR-054, ADR-100, ADR-117 and ADR-281 (automatic placement is a future SPEC CHANGE). Status: **read from
+  sources; unguarded, work held by ADR-281**.
+
+## F-103 - The market calendar holds one year; outside it every day reads as closed
+- Measured 2026-11-09 on test data (GC-ICGUIDE task 30, scenario PATH-64, strategy 126): at 2027-01-04 11:30 IST, an
+  ordinary Monday session, `GET /api/market/indices` answered `"market_closed": true`, state `NOT_CONNECTED`, and the
+  adjustment check withheld every rule ("prices stale or missing"); 16 Dec 2026 on the same path was checked normally.
+  `backend/ofo/market_calendar.json` (NSE F&O trading holidays, fetched 2026-10-19) lists 2026 only, and the code
+  fails closed for a date it cannot place.
+- Consequence: from 2027-01-01, unless NSE's 2027 F&O holiday list is loaded, the live app treats every day as closed
+  (no checks, no paper fills, no warnings). NSE publishes the next year's list in December.
+- Class (knowledge/findings/market-calendar-runs-out-at-year-end.json): a dated reference list loaded once with no
+  expiry check makes every behaviour that depends on it fail closed on the first day past its end. Status: **unguarded**;
+  issue filed with a proposed check (warn 30 days before the last listed date; refuse start-up without next year's
+  list from 1 Dec). Bears on ADR-119 (market calendar) and ADR-212 (no fill outside hours).

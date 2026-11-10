@@ -24,9 +24,10 @@ from ofo.engine.black_scholes import year_fraction
 from ofo.marketdata.spot_source import SourceReading, SourceState
 from ofo.outcome.service import MARGIN_CHECKED, Margin, margin_empty, margin_unreadable
 from ofo.rules.inputs import DataHealth
-from ofo_app import adjustment_check, paper_store, scenario_mode
+from ofo_app import adjust_current, adjustment_check, paper_store, scenario_mode
 from ofo_app import adjustment_readers as readers
 from ofo_app.main import create_app
+from ofo_app.regime_inputs import RegimeInputs
 from ofo_app.routes import adjustment as route
 from ofo_app.routes import outcome
 
@@ -723,3 +724,35 @@ def test_s11_below_the_limit_or_no_limit_known_the_route_still_offers_every_appr
     """Attack 4: below the maximum, an unread count, or no maximum set -> every approach, as before."""
     reply = post(client_for(_at_used("ADJ-02", used), guards=guards, rates=RATES)).json()
     assert [a["id"] for a in reply["approaches"]] == list(APPROACH_IDS)
+
+
+def test_gcicguide_g16_current_max_loss_is_signed_like_the_paper_book_and_compare_is_its_magnitude():
+    body = post(client_for(load("ADJ-02"), rates=RATES), body={"approaches": ["A-36"]}).json()
+    cell = next(c for c in body["criteria"] if c["id"] == "max_loss")["values"]["A-36"]
+    shown = body["current"]["max_loss"]["text"]
+    assert shown.startswith("\N{MINUS SIGN}") and cell["value"] in shown.replace(",", "")  # minus, same number
+
+
+def test_gcicguide_g20_current_figures_name_each_state():
+    sc = load("ADJ-02")
+    cur = post(client_for(sc, rates=RATES), body={"approaches": ["A-36"]}).json()["current"]
+    assert len(cur["legs"]) == len(sc["position"]["legs"])
+    for leg in cur["legs"]:  # no live IV source in this harness: IV named absent
+        assert leg["iv"].startswith("not available: ")
+        assert leg["text"] == f"IV {leg['iv']}, OI {leg['oi']}, LTP {leg['ltp']}"
+    # funds were not read in this harness: utilisation absent with its reason, never a guessed figure
+    assert cur["margin_utilisation"] == {
+        "text": None, "reason": "not available: Zerodha's available funds were not read"}
+
+
+def test_gcicguide_g20_margin_utilisation_is_t15s_measure_and_stale_prices_are_said():
+    sc = load("ADJ-02")
+    tracked, market = tracked_of(sc), market_of(sc)
+    sym = tracked.position.legs[0].tradingsymbol
+    market = route.dataclasses.replace(market, regime=RegimeInputs(available_margin=D("300000")),
+                                       leg_ivs={sym: D("0.1134")}, prices_stale=True)
+    item = {"id": "A-36", "margin": {"state": "stated", "value": D("100000"), "reason": None}}
+    out = adjust_current.block(tracked.position, market, route.Priced(None, False), [item])
+    assert out["margin_utilisation"]["text"] == "25.0%"  # 100000 x 100 / (100000 + 300000)
+    assert out["legs"][0]["iv"] == "11.34% (older price)"
+    assert out["max_loss"]["text"] is None and out["max_loss"]["reason"]

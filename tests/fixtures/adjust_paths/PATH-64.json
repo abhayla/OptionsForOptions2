@@ -1,0 +1,100 @@
+{
+ "id": "PATH-64",
+ "base": "ADJ-64",
+ "title": "Two-months-out NIFTY iron condor, January monthly Mon 25 Jan 2027 (holiday-moved), entered 11 Nov, 75 days left: Early crossings, stale-data frame, Middle crossings, Last-day 14:20 / 14:29 / 14:31 around the 14:30 rule, expiry",
+ "notes": "ADR-282 type 5 (the monthly 2 months out) on the MONTHLY stage table. Test plan: 1st adjustment after f1, 2nd after f3 (f4 quiet), T-18 from f5. Tue 26 Jan 2027 (Republic Day) moves the expiry to Mon 25 Jan; the generator carries that holiday itself because the app calendar lists 2026 only.",
+ "entry_atm_iv": "0.10",
+ "legs": [
+  {
+   "side": "BUY",
+   "type": "PE",
+   "strike": "21600",
+   "lots": 2
+  },
+  {
+   "side": "SELL",
+   "type": "PE",
+   "strike": "21800",
+   "lots": 2
+  },
+  {
+   "side": "SELL",
+   "type": "CE",
+   "strike": "24600",
+   "lots": 2
+  },
+  {
+   "side": "BUY",
+   "type": "CE",
+   "strike": "24800",
+   "lots": 2
+  }
+ ],
+ "frames": [
+  {
+   "clock": "2026-11-11T10:00:00",
+   "spot": "23200",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2026-12-16T11:00:00",
+   "spot": "24260",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2026-12-16T11:20:00",
+   "spot": "24265",
+   "atm_iv": "0.10",
+   "data_state": {
+    "prices": "stale",
+    "age_seconds": 60,
+    "feed": "stale"
+   }
+  },
+  {
+   "clock": "2027-01-04T11:00:00",
+   "spot": "24350",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2027-01-04T11:30:00",
+   "spot": "23800",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2027-01-14T11:00:00",
+   "spot": "24400",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2027-01-18T11:00:00",
+   "spot": "24450",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2027-01-22T11:00:00",
+   "spot": "24500",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2027-01-25T14:20:00",
+   "spot": "24550",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2027-01-25T14:29:00",
+   "spot": "24550",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2027-01-25T14:31:00",
+   "spot": "24550",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2027-01-25T15:25:00",
+   "spot": "24680",
+   "atm_iv": "0.10"
+  }
+ ]
+}

@@ -548,32 +548,38 @@ def roll_basis_of(admin: Decimal | None, user_values: Mapping[str, Decimal] | No
     return RollBasis(code, got.source, spot, None, call, put)
 
 
-def _entry_greeks(leg: Any, clock: datetime.datetime, spot: Decimal, atm_iv: Decimal | None) -> Any:
-    """An open leg's per-unit engine Greeks AT ENTRY (ADR-008): entry spot and clock, the entry ATM IV, else the vol the
-    engine solves from the leg's own entry (fill) price. Not an option, past expiry, or no vol -> None (not checked)."""
+def _entry_greeks(leg: Any, clock: datetime.datetime, spot: Decimal, atm_iv: Decimal | None,
+                  price: Decimal | None) -> Any:
+    """An open leg's per-unit engine Greeks AT THE STARTING POINT (ADR-008): its spot and clock, its ATM IV, else the
+    vol the engine solves from the leg's price then. Not an option, no price, past expiry, or no vol -> None."""
     from ofo import settings  # noqa: PLC0415 - the checked-in registry
     from ofo.engine.model import greeks_at_price  # noqa: PLC0415 - the engine's one pricing door
 
-    if leg.type not in ("CE", "PE"):
+    if leg.type not in ("CE", "PE") or price is None:
         return None
     # shortcut: the registry's default interest rate, not a per-user override; delta moves ~0.001 per 1 % of rate
     rate = settings.defaults()[settings.RISK_FREE_RATE]
     try:
-        return greeks_at_price(Instrument(leg.type), spot, leg.strike, leg.expiry, clock, rate, leg.entry, atm_iv)
+        return greeks_at_price(Instrument(leg.type), spot, leg.strike, leg.expiry, clock, rate, price, atm_iv)
     except ValueError:  # the engine's refusals (no IV for this price, expiry passed): the rule is not checked at entry
         return None
 
 
-def _entry_state(clock: datetime.datetime, spot: Decimal, atm_iv: Decimal | None, state: pe.StrategyState,
-                 position: Position) -> pe.StrategyState:
-    """An F-71 entry state (round 3, finding rule-entry-baseline-taken-at-first-check): the entry's clock and spot,
-    each short with its engine delta AT ENTRY and its entry premium as its price, every open leg with its engine
-    Greeks (S-02), the entry ATM IV as both IVs. A
-    rule still not computable here (no P&L, no margin at entry) counts as not held, never as the first check."""
+def _entry_state(clock: datetime.datetime, spot: Decimal, atm_iv: Decimal | None, state: pe.StrategyState,  # noqa: PLR0913
+                 position: Position, prices: Mapping | None = None) -> pe.StrategyState:
+    """An F-71 starting-point state (round 3, finding rule-entry-baseline-taken-at-first-check): the clock and spot
+    then, each short with its engine delta then and its price then, every open leg with its engine Greeks (S-02), the
+    ATM IV then as both IVs. ``prices`` (ADR-283: a basket's stored leg prices, keyed (type, strike, expiry, side))
+    -> each leg's price at that fill (a kept leg's entry price is NOT its price at basket N; a leg not stored -> None,
+    its rules not held); None -> each leg's own entry (fill) price. A rule still not computable here (no P&L, no
+    margin at the fill) counts as not held, never as the first check."""
     clock = clock.astimezone(IST)
     expiry = min(x.expiry for x in position.legs)
-    greeks = {id(x): _entry_greeks(x, clock, spot, atm_iv) for x in position.legs}
-    shorts = tuple(pe.ShortLeg(x.strike, None if greeks[id(x)] is None else abs(greeks[id(x)].delta), x.entry, x.type)
+    price = {id(x): x.entry if prices is None else prices.get((x.type, x.strike, x.expiry, x.side))
+             for x in position.legs}
+    greeks = {id(x): _entry_greeks(x, clock, spot, atm_iv, price[id(x)]) for x in position.legs}
+    shorts = tuple(pe.ShortLeg(x.strike, None if greeks[id(x)] is None else abs(greeks[id(x)].delta), price[id(x)],
+                               x.type)
                    for x in position.legs if x.side == Action.SELL.value)
     held = tuple(pe.HeldLeg(greeks[id(x)], x.side, x.lots) for x in position.legs)  # F-71: every leg, S-02 reads them
     return pe.StrategyState(stops=None, expiry_kind=state.expiry_kind, days_left=(expiry - clock.date()).days,
@@ -584,7 +590,7 @@ def _entry_state(clock: datetime.datetime, spot: Decimal, atm_iv: Decimal | None
 
 def scenario_entry(scn: Any, state: pe.StrategyState, position: Position) -> pe.StrategyState | None:
     """The scenario's ``position.entry`` as the F-71 entry state (None: the scenario states none)."""
-    entry = (scn.data.get("position") or {}).get("entry") if scn is not None else None
+    entry = (scn.data.get("position") or {}).get("entry") if scn is not None and position.legs else None
     if not entry:
         return None
     return _entry_state(datetime.datetime.fromisoformat(entry["clock"]), Decimal(str(entry["spot"])),
@@ -600,24 +606,41 @@ def rule_marker(adjustments_used: int | None, stored: Mapping[int, Any]) -> int:
     return max(stored, default=0)
 
 
-def entry_baseline(scn: Any, state: pe.StrategyState, position: Position, facts: Any,
-                   marker: int) -> pe.StrategyState | None:
-    """The ONE entry baseline of a rule with no stored memory (issue 65, finding rule-entry-baseline-taken-at-first-
-    check; screen, recorder and worker all call it). Answer states:
-    - after an adjustment basket (``marker`` > 0, ADR-258) -> None: the first check after the basket is the new
-      starting point ("already true after adjustment N");
-    - scenario mode with a stated entry -> the scenario's entry;
-    - stored entry facts with their time (``EntryFacts.at``) -> the spot and clock of the first fill;
-    - no facts (a fill before 0039), unreadable facts, facts with no time -> None: the first check is the baseline
-      (the known gap, named in the finding; test_rule_entry_baseline::test_known_gap_no_entry_facts...).
-    The caller passes ``None`` -> this check's state."""
+def _own_facts(facts: Any, position: Position) -> bool:
+    """The strategy has its OWN readable entry facts with a time (stated); anything else is not a baseline."""
+    return isinstance(facts, EntryFacts) and isinstance(facts.at, datetime.datetime) and bool(position.legs)
+
+
+def entry_baseline(scn: Any, state: pe.StrategyState, position: Position, facts: Any,  # noqa: PLR0913
+                   marker: int, basket: Any = None) -> pe.StrategyState | None:
+    """The ONE starting point of a rule with no stored memory (ADR-283 (1); finding rule-entry-baseline-taken-at-
+    first-check; the worker, the screen and the playbook test all call it). Never the state of the first check.
+    The source follows what the strategy HAS, never the process mode (GC-ICGUIDE g04b). Order:
+    - ``basket`` = the stored facts of basket ``marker`` (``entry_facts_store.BasketFacts``) -> the market at that
+      fill: its order clock, spot, ATM IV and each open leg's price then;
+    - after an adjustment basket (``marker`` > 0) with no stored facts -> None: nothing held, a true rule warns;
+    - stored entry facts with their time (``EntryFacts.at``) -> the spot and clock of the first fill, in any mode;
+    - scenario mode with a stated file entry -> the file's entry (a seeded strategy has no facts of its own);
+    - else (absent, unreadable, no time, no legs, no stated entry) -> None: nothing held.
+    The caller passes the answer to ``pe.evaluate`` as it is (None holds nothing), never ``base or state``."""
+    from ofo_app.entry_facts_store import BasketFacts  # noqa: PLC0415 - the store imports the DB layer
+
+    if isinstance(basket, BasketFacts) and position.legs:
+        return _entry_state(basket.clock, basket.spot, basket.atm_iv, state, position, basket.prices)
     if marker > 0:
         return None
-    if scn is not None:
-        return scenario_entry(scn, state, position)
-    if isinstance(facts, EntryFacts) and isinstance(facts.at, datetime.datetime) and position.legs:
+    if _own_facts(facts, position):
         return _entry_state(facts.at, facts.entry_spot, None, state, position)
-    return None
+    return scenario_entry(scn, state, position)
+
+
+def with_entry_iv(scn: Any, state: pe.StrategyState, position: Position, facts: Any) -> pe.StrategyState:
+    """T-11's entry ATM IV follows the same choice as ``entry_baseline``: a strategy with its own facts keeps the
+    facts' IV (``state_of`` set it; None when the facts carry none); only one without them takes the file's IV."""
+    if _own_facts(facts, position):
+        return state
+    entry = scenario_entry(scn, state, position)
+    return state if entry is None else dataclasses.replace(state, entry_atm_iv=entry.atm_iv)
 
 
 async def _evaluate_stored(conn: Any, user_ref: str, strategy_id: int, body: Mapping,  # noqa: PLR0913
@@ -626,15 +649,13 @@ async def _evaluate_stored(conn: Any, user_ref: str, strategy_id: int, body: Map
     stored = await playbook_store.rule_states(conn, user_ref, strategy_id)
     marker = rule_marker(state.adjustments_used, stored)
     memory = {k: {"held_at_entry": h, "seen_clear": s} for k, (h, s) in stored.get(marker, {}).items()}
-    entry = scenario_entry(scn, state, position)
-    if scn is not None and entry is not None:  # T-11: the scenario's own entry IV
-        state = dataclasses.replace(state, entry_atm_iv=entry.atm_iv)
-    facts = None
-    if not memory and marker == 0 and scn is None:
-        from ofo_app.adjustment_readers import entry_facts_in  # noqa: PLC0415 - read path only
-        facts = await entry_facts_in(conn, strategy_id)
-    base = entry_baseline(scn, state, position, facts, marker)
-    ev = pe.evaluate(body, state, memory, base or state, gap_until=gap_until)
+    from ofo_app import entry_facts_store  # noqa: PLC0415 - read path only
+    from ofo_app.adjustment_readers import entry_facts_in  # noqa: PLC0415 - read path only
+    facts = await entry_facts_in(conn, strategy_id)
+    basket = await entry_facts_store.read_basket(conn, strategy_id, marker)
+    state = with_entry_iv(scn, state, position, facts)
+    base = entry_baseline(scn, state, position, facts, marker, basket)
+    ev = pe.evaluate(body, state, memory, base, gap_until=gap_until)
     return ev, memory, marker
 
 
@@ -701,6 +722,23 @@ def trigger_words(body: Mapping | None, trigger_id: str | None) -> tuple[str | N
     return (label if isinstance(label, str) else None), (unit if isinstance(unit, str) else None)
 
 
+#: #650: triggers whose playbook row has no unit but whose value is not a plain number: rupees / a count
+RUPEE_TRIGGERS = frozenset({"T-02"})
+COUNT_TRIGGERS = frozenset({"T-18"})
+
+
+def _own_unit_line(trigger_id: str, label: str, value: str, threshold: str) -> Any:
+    """The line with the value in its own unit (rupees with a real minus, or a whole count); None when this trigger has
+    no such unit. A value the slot refuses raises like any render (the caller falls back to the plain line)."""
+    if trigger_id in RUPEE_TRIGGERS:
+        return render_explanation("adjust_condition_line_rupees", label=label, value=Decimal(value),
+                                  threshold=Decimal(threshold))
+    if trigger_id in COUNT_TRIGGERS:
+        return render_explanation("adjust_condition_line_count", label=label, value=int(Decimal(value)),
+                                  threshold=int(Decimal(threshold)))
+    return None
+
+
 def condition_line(trigger_id: str, label: str | None, unit: str | None, value: str, threshold: str,  # noqa: PLR0913
                    beyond: tuple[str, Decimal, Decimal] | None = None) -> Any:
     """GC-ADJ2 item 1: "Spot within this % of a short strike: 0.3416 % (rule 0.5000 %)" from the trigger's own label
@@ -721,8 +759,9 @@ def condition_line(trigger_id: str, label: str | None, unit: str | None, value: 
         except (TypeError, ValueError):  # a refused slot: the plain line below (fail visible)
             pass
     try:
-        return line(label if label is not None else trigger_id, unit)
-    except (TypeError, ValueError):  # the slot refused the label or the unit: the id, with no unit (fail visible)
+        own = _own_unit_line(trigger_id, label if label is not None else trigger_id, value, threshold)
+        return own if own is not None else line(label if label is not None else trigger_id, unit)
+    except (TypeError, ValueError, ArithmeticError):  # a slot refused label, unit or value: id, no unit
         pass
     try:
         return line(trigger_id, None)

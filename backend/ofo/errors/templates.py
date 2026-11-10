@@ -991,6 +991,21 @@ _STRATEGY_DRAFT_TEMPLATES: tuple[MessageTemplate, ...] = (
           "belongs to another contract).",
           "No order was stored; a paper order is never placed on a contract that is not live.",
           "Placing these paper orders.", "Choose a contract that is still live, then place the orders again."),
+    # GC-ICGUIDE g10 (audit C9; ADR-255): the plan's most adjustments, enforced when the orders are saved.
+    _gate("paper_adjustment_limit", _SV, 505,
+          "This plan allows at most {limit} adjustments, and these orders would make adjustment {number}.",
+          "No order was stored; a partial exit counts as an adjustment, the entry does not.",
+          "Placing these paper orders.",
+          "Exit the whole strategy, or raise the plan's most adjustments, then place the orders again.",
+          {"limit": Count, "number": Count}),
+    _gate("paper_adjustment_limit_unread", _SV, 506,
+          "The plan's most adjustments could not be read, so these orders cannot be checked against it.",
+          "No order was stored; an adjustment is never saved without checking the plan's limit.",
+          "Placing these paper orders.", "Place the orders again in a moment."),
+    _gate("paper_strategy_closed", _SV, 507,
+          "This strategy is closed: every leg was exited, so it takes no new position.",
+          "No order was stored; a closed strategy is never reopened.",
+          "Placing these paper orders.", "Build a new strategy for a new position."),
     # GC-TP step 7a (REQ-109 AC-8; ADR-207 (5)): paper stop triggers.
     _gate("paper_trigger_level_invalid", _SV, 440,
           "A stop level must be above 0 and a multiple of 0.05.",
@@ -1207,6 +1222,9 @@ _ADJUSTMENT_TEMPLATES: tuple[MessageTemplate, ...] = (
     _gate("adjust_reduce_needs_two_lots", _UI, 110,
           "{leg} or its wing holds only one lot, so it cannot be halved into whole lots.",
           _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {"leg": LegRef}),
+    _gate("adjust_reduce_below_one_lot", _UI, 195,  # GC-ICGUIDE g12 (audit C11): never a 0-lot trade
+          "Dividing {leg} or its wing by {divisor} leaves less than one whole lot to close.",
+          _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {"leg": LegRef, "divisor": Count}),
     _gate("adjust_recentre_days_left", _UI, 111,
           "This approach needs at least {need} days left; days left now: {days}.",
           _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {"need": Count, "days": Count}),
@@ -1359,6 +1377,10 @@ _TRIGGER_TEMPLATES: tuple[MessageTemplate, ...] = (
     _gate("adjust_trigger_already_true", _UI, 152, "Already true when tracking started.",
           "It is shown, not flagged, until a check finds it false.", "Nothing.",
           "Watch it: it flags if it clears and then comes back.", {}),
+    # ADR-258 / ADR-283: true at the fill of adjustment basket N (pending owner read)
+    _gate("adjust_trigger_already_true_after", _UI, 196, "Already true after adjustment {n}.",
+          "It is shown, not flagged, until a check finds it false.", "Nothing.",
+          "Watch it: it flags if it clears and then comes back.", {"n": Count}),
 )
 
 # GC-ADJ2 step 1A (REQ-158 AC-3, AC-6): the playbook store's refusals. Nothing is written on any of them.

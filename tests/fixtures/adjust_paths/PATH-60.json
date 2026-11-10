@@ -1,0 +1,87 @@
+{
+ "id": "PATH-60",
+ "base": "ADJ-65",
+ "title": "Intraday NIFTY iron condor, entered 09:20 and closed on expiry day Tue 17 Nov 2026: morning move toward the short call, spot-missing frame, 1st and 2nd adjustment, 14:20 / 14:29 / 14:31 around the 14:30 rule, 15:25 expiry",
+ "notes": "ADR-282 type 1 (intraday): 0 days left all day, so the Last-day stage values apply from the first frame. Same condor class as PATH-40/50.",
+ "entry_atm_iv": "0.10",
+ "legs": [
+  {
+   "side": "BUY",
+   "type": "PE",
+   "strike": "22900",
+   "lots": 2
+  },
+  {
+   "side": "SELL",
+   "type": "PE",
+   "strike": "23100",
+   "lots": 2
+  },
+  {
+   "side": "SELL",
+   "type": "CE",
+   "strike": "23300",
+   "lots": 2
+  },
+  {
+   "side": "BUY",
+   "type": "CE",
+   "strike": "23500",
+   "lots": 2
+  }
+ ],
+ "frames": [
+  {
+   "clock": "2026-11-17T09:20:00",
+   "spot": "23200",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2026-11-17T10:30:00",
+   "spot": "23245",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2026-11-17T10:32:00",
+   "spot": "23245",
+   "atm_iv": "0.10",
+   "data_state": {
+    "prices": "fresh",
+    "age_seconds": 1,
+    "spot_source": "none",
+    "feed": "missing",
+    "rest": "failed"
+   }
+  },
+  {
+   "clock": "2026-11-17T11:30:00",
+   "spot": "23270",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2026-11-17T12:30:00",
+   "spot": "23290",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2026-11-17T14:20:00",
+   "spot": "23240",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2026-11-17T14:29:00",
+   "spot": "23240",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2026-11-17T14:31:00",
+   "spot": "23240",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2026-11-17T15:25:00",
+   "spot": "23320",
+   "atm_iv": "0.10"
+  }
+ ]
+}

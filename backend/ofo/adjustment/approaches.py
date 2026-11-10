@@ -718,6 +718,8 @@ def build_approach(position: Position, chain: Sequence[ChainRow], spot: Decimal,
             short = legs[found.index[(tested, "short")]]
             if min(legs[i].lots for i in cut) < 2:  # noqa: PLR2004 - half of one lot is not a whole lot
                 raise _refusal("adjust_reduce_needs_two_lots", leg=b.ref(short))
+            if min(legs[i].lots for i in cut) // config.reduce_divisor < 1:  # C11: never a 0-lot trade
+                raise _refusal("adjust_reduce_below_one_lot", leg=b.ref(short), divisor=config.reduce_divisor)
             after = []
             for i, x in enumerate(legs):
                 if i in cut:

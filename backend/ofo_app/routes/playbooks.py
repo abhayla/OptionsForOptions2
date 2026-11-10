@@ -46,7 +46,7 @@ from ofo.strategy.stored_form import shown_name
 from pydantic import BaseModel, ConfigDict
 
 from ofo_app import adjustment_check as check
-from ofo_app import paper_store, scenario_mode, strategy_store
+from ofo_app import entry_facts_store, paper_store, scenario_mode, strategy_store
 from ofo_app import playbook_store as store
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier
 from ofo_app.db import get_db
@@ -523,9 +523,11 @@ async def _tested(db: Any, user_ref: str, data: TestIn, seams: _Seams) -> list[d
                                # step 3: the stops of the playbook under test, followed as the user's own copy
                                resolved=check.Resolved("active", data.body, None, None, False,
                                                        saved_before_adr247=False))
-        entry = check.scenario_entry(scenario_mode.current(), state, tracked.position)
-        if entry is not None:
-            state = dataclasses.replace(state, entry_atm_iv=entry.atm_iv)
+        scn, facts = scenario_mode.current(), await entry_facts_in(db, row.id)
+        state = check.with_entry_iv(scn, state, tracked.position, facts)
+        marker = check.rule_marker(state.adjustments_used, {})  # ADR-283: the same starting point as the worker's
+        entry = check.entry_baseline(scn, state, tracked.position, facts, marker,
+                                     await entry_facts_store.read_basket(db, row.id, marker))
         ev = pe.evaluate(data.body, state, {}, entry, gap_until=seams.prefs.gap_until)  # empty memory; the returned memory is dropped
         strategies.append({"strategy_id": row.id, "name": shown_name(row.name),
                            "stage": check.stage_out(ev.stage_name, ev.stage_index),

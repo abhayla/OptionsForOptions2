@@ -21,7 +21,10 @@ from pathlib import Path
 import test_background_worker as bw
 from ofo.adjustment import playbook_eval as pe
 from ofo.adjustment.approaches import EntryFacts, Position, PositionLeg
+from ofo.settings import layers
 from ofo_app import adjustment_check as check
+from ofo_app import adjustment_readers
+from ofo_app import background as bg
 from ofo_app import playbook_store, scenario_mode
 from test_background_worker import app_db_url  # noqa: F401 - the fixture
 
@@ -140,13 +143,13 @@ def test_entry_facts_with_no_iv_solve_each_short_from_its_entry_premium():
     assert ev.memory["T-03"]["held_at_entry"] is False and ev.memory["T-09"]["held_at_entry"] is False
 
 
-def test_known_gap_no_entry_facts_the_first_check_is_the_entry():
-    """The named gap (finding rule-entry-baseline-taken-at-first-check): no scenario and no stored facts -> None; the
-    caller then evaluates the first check as its own entry, so a rule true now is 'already true'."""
+def test_no_entry_facts_hold_nothing_never_the_first_check():
+    """ADR-283 (gap closed): no scenario and no stored facts -> None, passed to ``pe.evaluate`` as it is (the callers'
+    ``base or state`` is deleted), so nothing is held and a rule true now flags."""
     _scn, position, now, body = _adj02()
     assert check.entry_baseline(None, now, position, None, 0) is None
-    ev = pe.evaluate(body, now, {}, now, gap_until="09:30")
-    assert ev.memory["T-03"]["held_at_entry"] is True
+    ev = pe.evaluate(body, now, {}, None, gap_until="09:30")
+    assert ev.memory["T-03"]["held_at_entry"] is False
 
 
 def _scenario(name: str):
@@ -178,3 +181,88 @@ def test_round4_adj42_s02_held_at_entry_all_legs_carry_entry_greeks():
 def test_round4_adj02_s02_not_held_at_entry_net_delta_below_limit():
     """ADJ-02 entry net delta per lot -0.0159 (< 0.15) -> S-02 not held at entry, so it flags."""
     assert _s02_at_entry("ADJ-02") == ({"held_at_entry": False, "seen_clear": True}, [])  # clear now, nothing to flag
+
+
+# ---- GC-ICGUIDE g04b: the baseline follows what the strategy HAS stored, not the process mode -----------------------
+def _path40_frame6():
+    """PATH-40 frame 6 (spot 23390, 0.47 % from the 23500 short call; the file's own entry is 3 Nov, spot 23100,
+    0.22 % from the 23150 short put, so T-01 'held at entry' on the FILE's entry)."""
+    data = scenario_mode.read("PATH-40", 6)
+    playbooks = json.loads((FIXTURES / "_playbooks.json").read_text(encoding="utf-8"), parse_float=Decimal)
+    legs = tuple(PositionLeg(x["side"], x["type"], Decimal(x["strike"]), datetime.date.fromisoformat(x["expiry"]),
+                             x["lots"], Decimal(x["entry"]), x["tradingsymbol"]) for x in data["position"]["legs"])
+    position = Position(data["underlying"], 65, data["expiry_kind"], datetime.date(2026, 11, 6), legs)
+    now = pe.StrategyState(stops=None, expiry_kind=data["expiry_kind"], days_left=3, hhmm="11:40",
+                           spot=Decimal("23390"),
+                           shorts=(pe.ShortLeg(Decimal("23150"), Decimal("0.20"), Decimal("40.00"), "PE"),
+                                   pe.ShortLeg(Decimal("23500"), Decimal("0.30"), Decimal("30.00"), "CE")),
+                           atm_iv=Decimal("0.10"), prices_fresh=True, adjustments_used=0)
+    return types.SimpleNamespace(data=data), position, now, pe.body_from_fixture(playbooks, data["family"])
+
+
+OWN_FACTS = EntryFacts(Decimal("23290"), Decimal("210"), Decimal("140"),
+                       at=datetime.datetime(2026, 11, 6, 11, 28, tzinfo=IST))
+
+
+def _t01_of(ev):
+    return next(r for r in ev.results if r.rule_id == "T-01")
+
+
+async def _screen(monkeypatch, facts):
+    """The screen path (``evaluate_stored``) with the two reads replaced by the stored answers."""
+    async def no_memory(*_a):
+        return {}
+
+    async def read_facts(*_a):
+        return facts
+
+    monkeypatch.setattr(playbook_store, "rule_states", no_memory)
+    monkeypatch.setattr(adjustment_readers, "entry_facts_in", read_facts)
+    scn, position, now, body = _path40_frame6()
+    ev, _memory = await check.evaluate_stored(None, "owner", 1, body, now, scn, position, gap_until="09:30")
+    return _t01_of(ev)
+
+
+async def test_g04b_a_builder_entered_strategy_in_scenario_mode_flags_t01(monkeypatch):
+    """The measured case: stored facts (spot 23290, 6 Nov 11:28) beat the file's entry; T-01 was false at that entry."""
+    got = await _screen(monkeypatch, OWN_FACTS)
+    assert isinstance(got, pe.Flag), got
+
+
+async def test_g04b_no_stored_facts_keeps_the_file_entry(monkeypatch):
+    assert isinstance(await _screen(monkeypatch, None), pe.AlreadyTrue)
+
+
+async def test_g04b_unreadable_facts_use_the_file_entry_without_raising(monkeypatch):
+    assert isinstance(await _screen(monkeypatch, layers.Unreadable("entry_facts_read_failed")), pe.AlreadyTrue)
+
+
+def test_g04b_facts_with_no_time_or_a_position_with_no_legs_fall_to_the_file_entry_and_no_legs_to_none():
+    scn, position, now, _body = _path40_frame6()
+    file_entry = check.scenario_entry(scn, now, position)
+    no_time = EntryFacts(Decimal("23290"), None, None)
+    assert check.entry_baseline(scn, now, position, no_time, 0) == file_entry
+    assert check.entry_baseline(scn, now, dataclasses.replace(position, legs=()), OWN_FACTS, 0) is None  # no legs
+    assert check.entry_baseline(scn, now, position, OWN_FACTS, 1) is None  # after a basket: unchanged
+
+
+def test_g04b_t11_entry_iv_follows_the_same_choice():
+    scn, position, now, _body = _path40_frame6()
+    own = dataclasses.replace(now, entry_atm_iv=None)  # facts carry no IV: none, never the file's 0.10
+    assert check.with_entry_iv(scn, own, position, OWN_FACTS).entry_atm_iv is None
+    assert check.with_entry_iv(scn, own, position, None).entry_atm_iv == Decimal("0.10")  # the file's IV
+
+
+async def test_g04b_the_worker_path_gives_the_screen_answer(monkeypatch):
+    scn, position, now, body = _path40_frame6()
+    monkeypatch.setattr(scenario_mode, "current", lambda: scn)
+    worker = types.SimpleNamespace(_gate_load={}, _memory={}, _written={}, _pending={},
+                                   _write_wake=types.SimpleNamespace(set=lambda: None),
+                                   _count_outcomes=lambda _ev: None)
+    watched = types.SimpleNamespace(strategy_id=1, body=body, entry_facts=OWN_FACTS, basket_facts={},
+                                    tracked=types.SimpleNamespace(position=position))
+    ev = await bg.Worker._evaluate_and_write(worker, watched, now, types.SimpleNamespace(gap_until="09:30"))
+    assert isinstance(_t01_of(ev), pe.Flag), _t01_of(ev)
+    watched.entry_facts = None
+    ev = await bg.Worker._evaluate_and_write(worker, watched, now, types.SimpleNamespace(gap_until="09:30"))
+    assert isinstance(_t01_of(ev), pe.AlreadyTrue)

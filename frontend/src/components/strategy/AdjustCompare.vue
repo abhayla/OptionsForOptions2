@@ -271,10 +271,12 @@ watch(pickable, (list) => { if (!list.some((x) => x.a.id === pick.value)) pick.v
 
 const chartLines = computed(() => {
   const curves = reply.value?.curves ?? {}
+  const estimated = reply.value?.curves_estimated ?? {} // C12: id -> the server's label for a nearer-expiry estimate
+  const named = (id, name) => (estimated[id] ? `${name} (${estimated[id]})` : name)
   const out = []
-  if (curves.before) out.push({ id: 'before', name: 'Before', colour: '#6b7280', dashed: true, points: curves.before })
+  if (curves.before) out.push({ id: 'before', name: named('before', 'Before'), colour: '#6b7280', dashed: true, estimate: !!estimated.before, points: curves.before })
   kept.value.forEach((x, i) => {
-    if (curves[x.a.id]) out.push({ id: x.a.id, name: x.a.name ?? x.a.id, colour: PALETTE[i % PALETTE.length], dashed: false, points: curves[x.a.id] })
+    if (curves[x.a.id]) out.push({ id: x.a.id, name: named(x.a.id, x.a.name ?? x.a.id), colour: PALETTE[i % PALETTE.length], dashed: false, estimate: !!estimated[x.a.id], points: curves[x.a.id] })
   })
   return out
 })

@@ -305,6 +305,9 @@ def holidays() -> dict[datetime.date, str]:
 
 
 HOLIDAYS = holidays()
+# shortcut: backend/ofo/market_calendar.json lists 2026 only; Zerodha's list (nfo.csv, 2026-11-09) expires the January 2027
+# monthly on Mon 25 Jan, so Tue 26 Jan (Republic Day) is a holiday here too, test data only; drop when the calendar has 2027.
+HOLIDAYS.setdefault(datetime.date(2027, 1, 26), "Republic Day (generator-local)")
 
 
 def is_session(day: datetime.date) -> bool:
@@ -757,6 +760,10 @@ def hand_approaches(u: str, lot: int, kind: str, today: datetime.date, spot: Dec
                 if min(legs[i]["lots"] for i in cut) < 2:
                     short = legs[pos[(tested, "short")]]
                     raise HandRefused(f"{name(short)} or its wing holds only one lot, so it cannot be halved into whole lots.")
+                if min(legs[i]["lots"] for i in cut) // APPROACH_CONFIG["reduce_divisor"] < 1:  # C11: never 0 lots
+                    short = legs[pos[(tested, "short")]]
+                    raise HandRefused(f"Dividing {name(short)} or its wing by {APPROACH_CONFIG['reduce_divisor']} leaves "
+                                      "less than one whole lot to close.")
                 after = []
                 for i, x in enumerate(legs):
                     if i in cut:
@@ -1729,6 +1736,28 @@ def scenarios() -> list[dict]:  # noqa: PLR0915 - a flat list of scenario specs
                      entry=E9, next_expiry="2026-11-17", vix={"last": "16.8", "prev_close": "15.0"},
                      notes=["Same position and market as ADJ-02 plus India VIX and 255 daily candles; T-11b, T-11c "
                             "and T-20b are off in the playbook, the test switches them on."]))
+    # GC-ICGUIDE g05-g09 (ADR-282): bases for the five NIFTY iron condor types of PATH-60..PATH-64 (the path moves clock, spot, IV)
+    def ic_at(expiry: str, p: list[int]) -> list[dict]:
+        return [L("BUY", "PE", p[0], expiry, 2), L("SELL", "PE", p[1], expiry, 2), L("SELL", "CE", p[2], expiry, 2),
+                L("BUY", "CE", p[3], expiry, 2)]
+    s.append(ic_spec("ADJ-61", "Path base, weekly: 17 Nov 2026 expiry, entered 6 days before", ["ADR-282", "PATH-61"],
+                     "2026-11-12T11:00:00", "23200", legs=ic_at("2026-11-17", [22800, 23000, 23400, 23600]),
+                     entry={"clock": "2026-11-11T10:00:00", "spot": "23200"}, extra_strikes=["22200", "24200"]))
+    s.append(ic_spec("ADJ-62", "Path base, this month: November monthly 23 Nov 2026, entered 14 days before",
+                     ["ADR-282", "PATH-62"], "2026-11-11T11:00:00", "23200", expiry_kind="monthly",
+                     legs=ic_at("2026-11-23", [22500, 22800, 23600, 23900]),
+                     entry={"clock": "2026-11-09T10:00:00", "spot": "23200"}, extra_strikes=["22100", "24300"]))
+    s.append(ic_spec("ADJ-63", "Path base, next month: December monthly 29 Dec 2026, entered 48 days before",
+                     ["ADR-282", "PATH-63"], "2026-11-12T11:00:00", "23200", expiry_kind="monthly",
+                     legs=ic_at("2026-12-29", [22000, 22200, 24200, 24400]),
+                     entry={"clock": "2026-11-11T10:00:00", "spot": "23200"}, extra_strikes=["21600", "24800"]))
+    s.append(ic_spec("ADJ-64", "Path base, two months out: January monthly 25 Jan 2027, entered 75 days before",
+                     ["ADR-282", "PATH-64"], "2026-11-12T11:00:00", "23200", expiry_kind="monthly",
+                     legs=ic_at("2027-01-25", [21600, 21800, 24600, 24800]),
+                     entry={"clock": "2026-11-11T10:00:00", "spot": "23200"}, extra_strikes=["21400", "25200"]))
+    s.append(ic_spec("ADJ-65", "Path base, intraday: entered 09:20 on expiry day 17 Nov 2026", ["ADR-282", "PATH-60"],
+                     "2026-11-17T09:45:00", "23200", legs=ic_at("2026-11-17", [22900, 23100, 23300, 23500]),
+                     entry={"clock": "2026-11-17T09:20:00", "spot": "23200"}, extra_strikes=["22700", "23700"]))
     s.append(ic_spec("ADJ-56", "Trending day: net delta per lot beyond 0.15, the playbook's rolls offered",
                      ["S-02", "ADR-240"], "2026-11-06T11:40:00", "23420", legs=IC9, entry=E9, next_expiry="2026-11-17",
                      situation_rules={"sit.S-02": True, "sit.S-12": None}))

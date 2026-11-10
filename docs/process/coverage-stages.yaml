@@ -440,6 +440,9 @@ decisions:
   ADR-278: S6.7         # T-14 computed and switched on for live strategies
   ADR-279: S6.7         # two checkers on one code: live always on, test data on demand
   ADR-280: S6.7         # what each of the 12 new IC triggers measures
+  ADR-281: S6.7         # Kite order placement on hold for the IC guidance round (paper only)
+  ADR-282: S6.7         # IC proof matrix: NIFTY, 5 condor types, test data then live
+  ADR-283: S6.7         # rule starting point stored at every fill; time-of-day rules never already true
 
 questions:
   Q210: 4a              # external: Zerodha's written answer; ADR-051 covers the owner's own account
@@ -634,6 +637,13 @@ issues:
   "#674": S6.7  # Two paper-only readers left outside tracking: adjustment history page and booked P&L (GC-ICTRACK deferred)
   "#676": S6.7  # Test-data checker has no margin reader: T-14 / T-15 never checked on test data (GC-ICTRACK proof)
   "#678": S6.7  # Playbook test route lists scenario test strategies in live mode (GC-ICTRACK live record)
+  "#680": S6.7  # Instrument-list guard refuses a complete list whose strike range was trimmed; builder shows no expiries (GC-ICGUIDE)
+  "#681": S6.7  # Builder expiry picker shows real-clock days left in test-data mode (GC-ICGUIDE)
+  "#682": S6.7  # API routes take a second DB connection while holding one: deadlock at pool 1-2; role cap 10 cannot host two stacks (GC-ICGUIDE)
+  "#683": S6.7  # Adjustment opportunities list shows live strategies in test-data mode (GC-ICGUIDE)
+  "#684": S6.7  # Real-leg expiry settlement: settle row and on-screen 'awaiting settlement' not built (C6 remainder, GC-ICGUIDE)
+  "#685": S6.7  # GC-ICGUIDE screen findings: real-clock leg days, Completed tab, stale records after acting, threshold mismatch, wording, test-data gaps
+  "#686": S6.7  # Market calendar holds 2026 only: from 1 Jan 2027 every day reads as closed (F-103)
 
 # Work items whose status is not done.
 work_items:
@@ -863,6 +873,8 @@ findings:
   F-99: S6.7      # stopping a second feed process blanks the API chain for a minute
   F-100: S6.4      # no feed supplies IV or Greeks; every app computes its own
   F-101: S6.7      # live alert discipline cut suggestion noise by three quarters (4 Nov)
+  F-102: S6.7      # Kite Publisher basket order not guaranteed; Kite web basket is sequential
+  F-103: S6.7      # market calendar holds 2026 only; every 2027 day reads closed
 
 hypotheses:
   H1: done

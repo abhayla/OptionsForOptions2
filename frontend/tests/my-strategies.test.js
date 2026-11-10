@@ -95,11 +95,23 @@ describe('My Strategies page', () => {
     expect(w.find('[data-testid="strategy-list"]').exists()).toBe(false)
   })
 
-  it('the Completed page lists only completed statuses; none exist today, so it is empty', async () => {
+  it('the Completed page with no closed strategy is empty', async () => {
     answer = () => Promise.resolve({ data: { strategies: [row(7, 'draft')] } })
     const w = await open({ title: 'Completed Strategies', parent: 'Strategies', completedOnly: true })
     expect(w.find('[data-testid="strategy-row"]').exists()).toBe(false)
     expect(w.get('[data-testid="list-empty"]').text()).toContain('No strategy is completed')
+  })
+
+  it('the Completed page lists a closed strategy with the server-worded final P&L, adjustments and cost', async () => {
+    const closed = { ...row(9, 'closed'), final_pnl_text: '+1,950.00', adjustments_made: 2, adjustment_cost: null, adjustment_cost_text: null, completed_reason_text: 'Not available: charge rates unreadable' }
+    answer = () => Promise.resolve({ data: { strategies: [row(7, 'draft'), closed] } })
+    const w = await open({ title: 'Completed Strategies', parent: 'Strategies', completedOnly: true })
+    const rows = w.findAll('[data-testid="strategy-row"]')
+    expect(rows).toHaveLength(1)
+    expect(rows[0].attributes('data-strategy-id')).toBe('9')
+    expect(rows[0].get('[data-testid="row-final-pnl"]').text()).toBe('Final P&L +1,950.00')
+    expect(rows[0].get('[data-testid="row-adjustments"]').text()).toContain('Adjustments made 2')
+    expect(rows[0].get('[data-testid="row-adjustment-cost"]').text()).toContain('Adjustment cost Not available: charge rates unreadable')
   })
 
   // REQ-134 AC-5: Open in Builder names the saved strategy in the URL; the Builder reads the saved copy itself, so every leg

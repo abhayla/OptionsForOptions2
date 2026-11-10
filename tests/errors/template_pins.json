@@ -1835,6 +1835,22 @@
     "sha256": "ac0864a1f7e5b02f71bd04887f451c301a025c5d025ae495bd527f3a0a17b06e",
     "reviewed": "owner read 2026-11-02 (accepted after independent screen, not read line by line)"
   },
+  "adjust_reduce_below_one_lot": {
+    "sha256": "03945f8843e7bd956c86aac59a367ba22c5abb5f286b48d87c2f9cbee9744446",
+    "reviewed": "pending owner read"
+  },
+  "paper_adjustment_limit": {
+    "sha256": "f6471626f2d68eb6666cc043fa9f44b241e3ecdf1c257f03809e36d5eb060eb3",
+    "reviewed": "pending owner read"
+  },
+  "paper_adjustment_limit_unread": {
+    "sha256": "eaf8f950b6a51b506b2cff7f6b540090ff3f2f5ef3d41876e10c5b92263db080",
+    "reviewed": "pending owner read"
+  },
+  "paper_strategy_closed": {
+    "sha256": "374af50e0c56fed03b6807a9f9be697dac42c28245918f6996c337be9cf59cec",
+    "reviewed": "pending owner read"
+  },
   "paper_trigger_level_invalid": {
     "sha256": "70d659d3bb7cc64629eb6a29787a54ae9b6c91a6d72288d24247ea4183026709",
     "reviewed": "owner read 2026-11-02 (accepted after independent screen, not read line by line)"
@@ -2170,6 +2186,22 @@
   "explanation:adjust_cmp_no_price": {
     "sha256": "b47173a5d7ebd1c1ea29680ebcdca1658e2af8bdd77d1191c897ea737b1821a3",
     "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"
+  },
+  "explanation:adjust_cmp_rupees_estimated": {
+    "sha256": "94d0716a7a89ab0f32462c652414cfcaf4a8dcd95acda7614e1d248414f25819",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_near_no_iv": {
+    "sha256": "d8e35195a4ad3d9b8daf3c2d32beed39dd822c6d138a608ab797f9c7eea2bfbd",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_curve_estimated": {
+    "sha256": "36146ae642de7a9bb59dc2f1a0fb7bad6b4420043c6029e310f24a35bad7c6a3",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_cmp_near_no_rate": {
+    "sha256": "732cbda4ad837989f49b5b103d0e9372598cc942d02fa9fe8c1fa2098ea8eb25",
+    "reviewed": "pending owner read"
   },
   "explanation:adjust_cmp_no_bid_ask": {
     "sha256": "5b9d3d6b183c1ba29ab5a35d87551f0e7ef9cf4daf84626a5782c9bba6939dac",
@@ -2634,6 +2666,10 @@
   "adjust_trigger_already_true": {
     "sha256": "a302f1a18c152c30fee3f254c262ac437884182ce482e6bb79cef7313c250fc8",
     "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"
+  },
+  "adjust_trigger_already_true_after": {
+    "sha256": "ac40477e9222edb4f74f941c1c8d3057103d02889a741e9cdf4382ded3284251",
+    "reviewed": "pending owner read"
   },
   "playbook_name_taken": {
     "sha256": "39a05e6cb525b7fba379a30fac08609b2527577e8b0c4431a4a5a34f824e10e2",
@@ -3162,6 +3198,10 @@
   "explanation:adjust_history_no_plan_max": {
     "sha256": "7c1f019c44218093420445c551d9163d893ae275202ae611c6de0d82c14054d7",
     "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"
+  },
+  "explanation:completed_figures_unavailable": {
+    "sha256": "6694b0586d14cca9e698bb872c9a6af443bea112ed11dea87dd9015134e504bd",
+    "reviewed": "pending owner read"
   },
   "explanation:adjust_history_fill_confirmed": {
     "sha256": "a0cab6bf4307ef7422d0f0e99bbf48dfd6ee46bb6e5ba876b914310200fc3b1a",
@@ -3934,5 +3974,61 @@
   "adjust_trigger_adx_unusable": {
     "sha256": "fd660b673f276e307b00bbe0a14cb8280be7ad5bc8790549a7ee8d9a523683d1",
     "reviewed": "owner read 2026-11-08 (GC-ICTRACK 21b, approved all 24 in the question tool)"
+  },
+  "explanation:adjust_current_na": {
+    "sha256": "e6ff65d2089ee828d745a3128d17a79d552be92a3d5a3e8e1cbd1e1ce622db1d",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_current_older": {
+    "sha256": "2215a48a6f173e009a90384d9a7dabd8a5a1660acec7427318b8309be7f8329b",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_current_leg": {
+    "sha256": "1a01d46ac93feb147e1eef456eab0fd60f02dedeff3f54786e728581b180b363",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_current_leg_line": {
+    "sha256": "67732a9d7f8fd45cf622be894089a705d4e4650bd9b9c80d6939293d509bd15b",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_current_util_no_margin": {
+    "sha256": "3b379a52af06cd783497bf99eb84ee6a76225326a7c80dd1de7d9ef642e4ddc6",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_current_util_no_funds": {
+    "sha256": "f7ec654971ff40a93f9fb51f2f924552734e998721de219cbff8889628132089",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_current_util_no_room": {
+    "sha256": "63989a3198f47b371c079be8e01c919754c9b6c9dfd68a18895da8c38d69e6af",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_current_iv_absent": {
+    "sha256": "5d223970c4375a9de890cd96e27a2427980c4268e3d291902af785c242bece61",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_current_oi_absent": {
+    "sha256": "d62d81e7f60fcfb368ac2dada796c67ad5b84bd7103de86c8e42d2dc98a739fc",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_current_ltp_absent": {
+    "sha256": "e67b106bdf47a6303ca8afa3bc1c31eb1cc2fbf5658b8cc6037fc1b7525cc6c8",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_current_loss_absent": {
+    "sha256": "841a686a5aa886ea4267ff46321a06a25814a12807925025f4e281097c399bf1",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_condition_line_rupees": {
+    "sha256": "1184fe1a615bffeefe1063275c220e3fcda784c51ca3ff13ad10e645368cc042",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_condition_line_count": {
+    "sha256": "1184fe1a615bffeefe1063275c220e3fcda784c51ca3ff13ad10e645368cc042",
+    "reviewed": "pending owner read"
+  },
+  "explanation:suggestion_lapsed_not_monitored": {
+    "sha256": "896306f8fc4dd4558c5c779697ab0df8e966ec6ba97a77e8ca419f1bf1be01ab",
+    "reviewed": "pending owner read"
   }
 }

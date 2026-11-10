@@ -11,6 +11,10 @@ Known bypass (out of the threat model): live (Zerodha) fills are not written her
 """
 from __future__ import annotations
 
+import datetime
+import json
+import logging
+from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
 
@@ -23,6 +27,31 @@ _INSERT = text(
     "ON CONFLICT (strategy_id) DO NOTHING")
 _SELECT = text("SELECT entry_spot, call_distance, put_distance, entry_atm_iv, created_at "
                "FROM public.strategy_entry_facts WHERE strategy_id = :id")
+
+
+log = logging.getLogger(__name__)
+
+#: ADR-283 (1), migration 0050: the market state at every basket's fill (basket_no 0 = the entry)
+_INSERT_BASKET = text(
+    "INSERT INTO public.strategy_basket_facts (strategy_id, basket_no, clock, spot, atm_iv, legs) "
+    "VALUES (:strategy_id, :basket_no, :clock, :spot, :atm_iv, CAST(:legs AS JSONB)) "
+    "ON CONFLICT (strategy_id, basket_no) DO NOTHING")
+_SELECT_BASKETS = text("SELECT basket_no, clock, spot, atm_iv, legs FROM public.strategy_basket_facts "
+                       "WHERE strategy_id = :id")
+
+LegKey = tuple[str, Decimal, datetime.date, str]  # (type, strike, expiry, side)
+
+
+@dataclass(frozen=True)
+class BasketFacts:
+    """A strategy's market state at a basket's fill (ADR-283 (1)): the order clock (the scenario clock in test-data
+    mode), the spot, the ATM IV (None = not read) and every open leg's price then, keyed (type, strike, expiry,
+    side); a price None = not read at the fill (the rules on that leg are not held)."""
+
+    clock: datetime.datetime
+    spot: Decimal
+    atm_iv: Decimal | None
+    prices: dict[LegKey, Decimal | None]
 
 
 class EntryFactsUnreadable(Exception):
@@ -56,3 +85,46 @@ async def read(conn: Any, strategy_id: int) -> EntryFacts | None:
     if not isinstance(row.entry_spot, Decimal) or not exact:
         raise EntryFactsUnreadable(f"strategy {strategy_id}: a stored entry fact is not an exact Decimal")
     return EntryFacts(row.entry_spot, row.call_distance, row.put_distance, row.entry_atm_iv, at=row.created_at)
+
+
+async def record_basket(conn: Any, strategy_id: int, basket_no: int, facts: BasketFacts) -> None:
+    """Writes the basket's facts in the caller's transaction (a savepoint: a failed write, e.g. before migration 0050,
+    is logged and never fails the fill); a row already stored for this basket number is kept (never rewritten)."""
+    legs = [{"type": t, "strike": str(k), "expiry": e.isoformat(), "side": sd, "price": None if p is None else str(p)}
+            for (t, k, e, sd), p in facts.prices.items()]
+    try:
+        async with conn.begin_nested():
+            await conn.execute(_INSERT_BASKET, {"strategy_id": strategy_id, "basket_no": basket_no,
+                                                "clock": facts.clock, "spot": facts.spot,
+                                                "atm_iv": usable_iv(facts.atm_iv), "legs": json.dumps(legs)})
+    except Exception as exc:  # noqa: BLE001 - no stored facts = nothing held (warns), never a refused fill
+        log.warning("basket facts not stored (strategy %s, basket %s): %s", strategy_id, basket_no,
+                    type(exc).__name__)
+
+
+def _basket(row: Any) -> BasketFacts:
+    legs = row.legs if isinstance(row.legs, list) else json.loads(row.legs)
+    prices = {(x["type"], Decimal(x["strike"]), datetime.date.fromisoformat(x["expiry"]), x["side"]):
+              None if x["price"] is None else Decimal(x["price"]) for x in legs}
+    if not isinstance(row.spot, Decimal) or not isinstance(row.clock, datetime.datetime):
+        raise TypeError("spot or clock")
+    return BasketFacts(row.clock, row.spot, row.atm_iv if isinstance(row.atm_iv, Decimal) else None, prices)
+
+
+async def read_baskets(conn: Any, strategy_id: int) -> dict[int, BasketFacts]:
+    """Basket number -> its stored facts ({} = none stored); ``EntryFactsUnreadable`` when they cannot be read."""
+    try:
+        rows = (await conn.execute(_SELECT_BASKETS, {"id": strategy_id})).all()
+        return {int(r.basket_no): _basket(r) for r in rows}
+    except Exception as exc:  # noqa: BLE001 - a failed read or a malformed row is "unreadable", named
+        raise EntryFactsUnreadable(f"strategy {strategy_id} basket facts: {type(exc).__name__}") from None
+
+
+async def read_basket(conn: Any, strategy_id: int, marker: int) -> BasketFacts | None:
+    """The stored facts of basket ``marker`` (the rule starting point, ADR-283); None when none are stored or they
+    cannot be read (logged: read as absent, so no rule is held)."""
+    try:
+        return (await read_baskets(conn, strategy_id)).get(marker)
+    except EntryFactsUnreadable as exc:
+        log.warning("%s: no rule held", exc)
+        return None

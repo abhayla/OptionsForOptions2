@@ -1,0 +1,90 @@
+{
+ "id": "PATH-62",
+ "base": "ADJ-62",
+ "title": "This-month NIFTY iron condor, November monthly Mon 23 Nov 2026 (holiday-moved), entered 9 Nov, 14 days left: Early warning, stale-data frame, Middle crossing, 1st adjustment, Last-stage crossing, 2nd adjustment, 14:30 rule, expiry",
+ "notes": "ADR-282 type 3 (this month's monthly) on the MONTHLY stage table (Early 10+, Middle 3-9, Last 0-2). Tue 24 Nov is a holiday so the expiry is Mon 23 Nov.",
+ "entry_atm_iv": "0.10",
+ "legs": [
+  {
+   "side": "BUY",
+   "type": "PE",
+   "strike": "22500",
+   "lots": 2
+  },
+  {
+   "side": "SELL",
+   "type": "PE",
+   "strike": "22800",
+   "lots": 2
+  },
+  {
+   "side": "SELL",
+   "type": "CE",
+   "strike": "23600",
+   "lots": 2
+  },
+  {
+   "side": "BUY",
+   "type": "CE",
+   "strike": "23900",
+   "lots": 2
+  }
+ ],
+ "frames": [
+  {
+   "clock": "2026-11-09T10:00:00",
+   "spot": "23200",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2026-11-12T11:00:00",
+   "spot": "23440",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2026-11-12T11:20:00",
+   "spot": "23445",
+   "atm_iv": "0.10",
+   "data_state": {
+    "prices": "stale",
+    "age_seconds": 60,
+    "feed": "stale"
+   }
+  },
+  {
+   "clock": "2026-11-16T11:00:00",
+   "spot": "23520",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2026-11-16T11:30:00",
+   "spot": "23300",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2026-11-20T11:00:00",
+   "spot": "23545",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2026-11-20T11:30:00",
+   "spot": "23560",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2026-11-23T14:20:00",
+   "spot": "23400",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2026-11-23T14:31:00",
+   "spot": "23570",
+   "atm_iv": "0.10"
+  },
+  {
+   "clock": "2026-11-23T15:25:00",
+   "spot": "23640",
+   "atm_iv": "0.10"
+  }
+ ]
+}

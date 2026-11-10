@@ -43,8 +43,9 @@ Answer states of each scenario source (standing item d):
 
 Known bypasses (out of the threat model: dev must not be protected from a developer editing code):
 - a route that reads ``datetime.now`` itself instead of ``outcome.get_answer_clock`` / the context clock shows the real
-  time; listed in the work report (``catalogue_picker.database_today`` reads the DATABASE clock, so the stored
-  catalogue routes ``/api/catalogue/*`` still show the real catalogue, not the scenario's contracts).
+  time; listed in the work report. The stored catalogue routes ``/api/catalogue/*`` still show the real catalogue,
+  not the scenario's contracts, and judge list currency on the DATABASE clock (a real-world fact); only their shown
+  days-left and default expiry follow the scenario clock (``catalogue.get_shown_now``, #681).
 - the chain / index sockets and the strategy socket serve the scenario snapshot, not a moving market.
 """
 from __future__ import annotations
@@ -728,7 +729,7 @@ def overrides(scn: Scenario) -> dict[Any, Any]:
     from ofo_app.kite_margin import KiteMargin  # noqa: PLC0415
     from ofo_app.live_push import LiveFeed, no_listener  # noqa: PLC0415
     from ofo_app.outcome_margin import OutcomeMargin  # noqa: PLC0415
-    from ofo_app.routes import chain, leg_picker, live, outcome, planned_entry  # noqa: PLC0415
+    from ofo_app.routes import catalogue, chain, leg_picker, live, outcome, planned_entry  # noqa: PLC0415
 
     ctx = outcome.MarketContext(scn.provider, scn.clock, scn.rate)
 
@@ -775,12 +776,16 @@ def overrides(scn: Scenario) -> dict[Any, Any]:
         return KiteMargin(api_key="scenario", access_token="scenario",  # noqa: S106 - no real token: the
                           transport=scn.margin_transport)  # scenario transport never reaches Kite
 
+    async def shown_now(_db: Any, _today: datetime.date) -> datetime.datetime:
+        return scn.clock()
+
     margin = OutcomeMargin(lambda: ("scenario", scn.scenario_id), open_client, clock=scn.clock)
     live.set_replay_feed(lambda: feed)
     return {
         outcome.get_market_context: scenario_context,
         outcome.get_answer_clock: lambda: scn.clock,
         outcome.get_streaming: lambda: None,
+        catalogue.get_shown_now: lambda: shown_now,  # #681: days-left from the scenario clock; list currency stays real
         outcome.get_margin_source: lambda: margin,
         chain.get_chain_reader: lambda: chain_reader,
         leg_picker.get_picker_reader: lambda: chain_reader,
