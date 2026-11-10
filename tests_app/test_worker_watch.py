@@ -213,7 +213,7 @@ def test_alert_texts_carry_no_figures_ids_symbols_or_slots_left_unfilled():
         assert not any(w in text.lower() for w in ("nifty", "sensex", "strategy id", "rs ", "₹", "token", "key"))
 
 
-async def test_it_starts_only_with_a_live_market_and_the_bus(monkeypatch, caplog):
+async def test_it_starts_only_with_a_live_market_and_the_bus(monkeypatch):
     class Client:
         closed = False
 
@@ -221,6 +221,8 @@ async def test_it_starts_only_with_a_live_market_and_the_bus(monkeypatch, caplog
             Client.closed = True
 
     monkeypatch.setattr(feed_bus, "new_client", lambda _url: Client())
+    monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://u@127.0.0.1:5432/x")  # the start-up line reads settings
+    notifier.get_settings.cache_clear()
     monkeypatch.setenv("REDIS_URL", "redis://127.0.0.1:6379/0")
     monkeypatch.setenv("FEED_MODE", "bus")
     assert worker_watch.start_if(None) is None  # no live market
@@ -235,3 +237,4 @@ async def test_it_starts_only_with_a_live_market_and_the_bus(monkeypatch, caplog
     await worker_watch.stop(task)
     assert Client.closed  # the bus client is closed with the task
     await worker_watch.stop(None)
+    notifier.get_settings.cache_clear()  # the settings read for the start-up line must not outlive the test env

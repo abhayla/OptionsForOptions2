@@ -6,7 +6,7 @@ import os
 from functools import lru_cache
 from urllib.parse import urlsplit
 
-from pydantic import Field, model_validator
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 #: ADR-078: the database only the test suites write to. A live run (LIVE_MARKET) must never use it.
@@ -46,10 +46,10 @@ class Settings(BaseSettings):
     DB_POOL_SIZE: int = Field(default=2, ge=1)
     DB_MAX_OVERFLOW: int = Field(default=0, ge=0)
     #: ADR-286: the shared Notifier for owner alerts. Any of the three empty = nothing is sent. The egress gate reads
-    #: NOTIFIER_URL itself at import (ofo_app/__init__.py); the key is never logged.
+    #: NOTIFIER_URL itself at import (ofo_app/__init__.py); the key is a secret type, never logged.
     NOTIFIER_URL: str = ""
     NOTIFIER_PROJECT: str = ""
-    NOTIFIER_KEY: str = ""
+    NOTIFIER_KEY: SecretStr = SecretStr("")
 
     @model_validator(mode="after")
     def _replay_is_test_only(self) -> "Settings":

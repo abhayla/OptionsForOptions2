@@ -156,7 +156,7 @@ class _Server:
         owner = self
 
         class Handler(http.server.BaseHTTPRequestHandler):
-            def do_POST(self):  # noqa: N802 - the stdlib's name
+            def do_POST(self):
                 owner.paths.append(self.path)
                 owner.keys.append(self.headers.get("X-Api-Key"))
                 self.rfile.read(int(self.headers.get("Content-Length", 0)))
@@ -170,7 +170,7 @@ class _Server:
                 self.send_header("Content-Length", "0")
                 self.end_headers()
 
-            do_GET = do_POST  # noqa: N815 - a followed redirect would arrive as a GET
+            do_GET = do_POST  # a followed redirect would arrive as a GET
 
             def log_message(self, *_args):
                 pass
