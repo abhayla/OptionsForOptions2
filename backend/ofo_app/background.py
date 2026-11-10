@@ -529,6 +529,49 @@ def screen_margin_reader(margin_of: Any) -> MarginOf:
     return read
 
 
+class StoredLogin:
+    """The day's stored broker login as this process's margin read needs it (#627). The process holds no live Kite
+    session (``live_market.current_session`` is None here), so the stored one is read again at the start of each margin
+    read: a login that arrives later, a re-login and an expiry are each seen with no restart. Memory only, never the
+    token in a log, a repr or a return value."""
+
+    def __init__(self, read_session: Callable[[str], Awaitable[Any]], clock: Callable[[], datetime.datetime]) -> None:
+        self._read = read_session
+        self._clock = clock
+        self._found: Any = None  # the StoredSession read this round, or None
+
+    def __repr__(self) -> str:
+        return "StoredLogin()"
+
+    async def reload(self) -> None:
+        from ofo_app.live_market import OWNER_REF  # noqa: PLC0415
+        try:
+            found = await self._read(OWNER_REF)
+            if found is not None and found.expires_at is not None and found.expires_at <= self._clock():
+                found = None
+        except Exception as exc:  # noqa: BLE001 - no readable login = not checked; the message may carry secrets
+            log.warning("background: the stored broker login is unreadable: %s", type(exc).__name__)
+            found = None
+        self._found = found
+
+    def session(self) -> tuple[str, bytes] | None:
+        from ofo_app.live_market import OWNER_REF  # noqa: PLC0415
+        return None if self._found is None else (OWNER_REF, self._found.fingerprint)
+
+    async def open_client(self) -> Any:
+        from ofo_app.live_market import margin_client  # noqa: PLC0415
+        found = self._found
+        return None if found is None else margin_client(found.api_key, found.access_token)
+
+    def reading(self, margin_of: MarginOf) -> MarginOf:
+        """``margin_of`` preceded by one fresh read of the stored login (each strategy's read is at most every
+        ``MARGIN_REFRESH_S``)."""
+        async def read(w: Watched, market: MarketInputs) -> Mapping | None:
+            await self.reload()
+            return await margin_of(w, market)
+        return read
+
+
 @dataclass(frozen=True)
 class Recorded:
     """What ``record_check`` wrote: rule id -> open record id of each flagged rule, and the evaluation it stored (its
@@ -1867,14 +1910,21 @@ async def _serve_live() -> int:  # pragma: no cover - the process wiring; each p
     async def preferences(user_ref: str) -> Preferences:
         return prefs_from_values(await user_values(user_ref))
 
-    # T-16 (GC-IC1 5b): the screen's own margin read (``get_approach_margin`` over the app's margin source). Named
-    # gap (#627): this process holds no Kite session of its own yet (``live_market.current_session`` answers None
-    # here), so the read answers "not checked" and T-16 stays ``missing_margin`` until the session is shared.
+    # T-16 (GC-IC1 5b): the screen's own margin read (``get_approach_margin``), over the STORED login (``StoredLogin``):
+    # this process has no live Kite session, so the app's ``margin_source`` would answer "not checked" for ever (#627).
     from ofo.settings import defaults  # noqa: PLC0415
 
-    from ofo_app.live_market import margin_source  # noqa: PLC0415
+    from ofo_app.broker_config import load_broker_config  # noqa: PLC0415
+    from ofo_app.broker_crypto import TokenCipher  # noqa: PLC0415
+    from ofo_app.feed_main import store_readers  # noqa: PLC0415
+    from ofo_app.outcome_margin import OutcomeMargin  # noqa: PLC0415
     from ofo_app.routes.adjustment import get_approach_margin  # noqa: PLC0415
-    from ofo_app.routes.outcome import MarketContext, load_charge_rates  # noqa: PLC0415
+    from ofo_app.routes.outcome import MarketContext, load_charge_rates, server_now  # noqa: PLC0415
+    broker = load_broker_config()
+    _users, read_session = store_readers(lambda: get_engine().connect(), TokenCipher(broker.token_key),
+                                         broker.api_key)
+    login = StoredLogin(read_session, clock)
+    margin_source = OutcomeMargin(login.session, login.open_client, clock=server_now)
     margin_ctx = MarketContext(provider, clock, defaults()[RISK_FREE_RATE], OWNER_REF)
     gate = DbGate()  # the role's one database gate: writer, settings poll and rebuild, served in that order
     cache = settings_cache.SettingsCache(lambda: get_engine().connect(), gate=gate)
@@ -1884,7 +1934,7 @@ async def _serve_live() -> int:  # pragma: no cover - the process wiring; each p
     worker = Worker(provider_for=lambda _owner: provider, lister=lister,
                     clock=clock, settings=cache.at, preferences=preferences, want_client=bus, db_gate=gate,
                     side_tasks=(cache.poll_loop,), user_values=user_values,
-                    margin_of=screen_margin_reader(get_approach_margin(margin_ctx, margin_source())),
+                    margin_of=login.reading(screen_margin_reader(get_approach_margin(margin_ctx, margin_source))),
                     daily_iv=record_daily_iv)  # ADR-277 (4): the live role only
     feed = asyncio.create_task(socket.run(), name="background-feed")
     try:

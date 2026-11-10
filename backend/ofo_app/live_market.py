@@ -416,6 +416,12 @@ def current_session() -> tuple[str, bytes | None] | None:
     return OWNER_REF, fingerprint
 
 
+def margin_client(api_key: str, access_token: str) -> KiteMargin:
+    """A margin client with each call bounded so the worker thread never outlives the outcome read timeout."""
+    transport = functools.partial(urllib_transport, timeout=CALL_TIMEOUT_SECONDS)
+    return KiteMargin(api_key=api_key, access_token=access_token, transport=transport)
+
+
 async def owner_margin_client() -> KiteMargin | None:
     """ADR-099: the owner's margin client from the stored session (the same read the socket start uses), or None."""
     market = _current
@@ -424,9 +430,7 @@ async def owner_margin_client() -> KiteMargin | None:
     token = await market._stored_token(market._config)
     if token is None:
         return None
-    # each call bounded so the worker thread never outlives the outcome read timeout
-    transport = functools.partial(urllib_transport, timeout=CALL_TIMEOUT_SECONDS)
-    return KiteMargin(api_key=market._config.api_key, access_token=token, transport=transport)
+    return margin_client(market._config.api_key, token)
 
 
 async def owner_kite_reads() -> tuple[str, KiteReads] | None:
