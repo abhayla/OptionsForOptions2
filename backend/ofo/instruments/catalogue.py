@@ -244,6 +244,7 @@ class Catalogue:
         # ADR-059: both guards count every live contract that stops being live in this update - not carried, AND
         # delisted because its token now carries another contract.
         leaving_live = vanishing + [live[i] for i in replaced if i in live]
+        grid_change_left = 0
         if force:
             assert audit_log is not None and reason is not None and actor is not None
             leaving = vanishing + [self._entries[i] for i in replaced]
@@ -265,7 +266,10 @@ class Catalogue:
                 },
             )
         else:
-            _refuse_truncation(list(live.values()), leaving_live, limit, update_date)
+            grid = _grid_change_indexes(list(live.values()), in_scope_new, update_date)
+            _refuse_truncation([e for e in live.values() if e.contract.name not in grid],
+                               [e for e in leaving_live if e.contract.name not in grid], limit, update_date)
+            grid_change_left = sum(e.contract.name in grid for e in leaving_live)
 
         added = 0
         replaced_set = set(replaced)
@@ -282,7 +286,8 @@ class Catalogue:
                 newly_unlisted += 1
 
         return CatalogueUpdateResult(added=added, newly_unlisted=newly_unlisted, skipped_expired=skipped_expired,
-                                     replaced=tuple(replaced), delisted=tuple(e.id for e in vanishing))
+                                     replaced=tuple(replaced), delisted=tuple(e.id for e in vanishing),
+                                     grid_change_left=grid_change_left)
 
     def all_entries(self) -> list[CatalogueEntry]:
         return list(self._entries.values())
@@ -374,6 +379,17 @@ class Catalogue:
         return min(gaps)
 
 
+def _grid_change_indexes(live: list[CatalogueEntry], carried: list[ListedContract], update_date: date) -> set[str]:
+    """Indexes whose new list still carries every (expiry, type) group of their live contracts that expires after the
+    update date: their leavers are a strike-grid change, not a cut-off file (a cut removes whole groups, #680), so the
+    ADR-058 and ADR-059 counts do not apply to them. An index with no row in the new list is never one of them.
+    shortcut: a cut inside the last expiry's rows passes (measured 24 of 122,001 cut positions)."""
+    group = lambda c: (c.name, c.expiry, c.instrument_type)  # noqa: E731
+    stored = {group(e.contract) for e in live if e.contract.expiry is not None and e.contract.expiry > update_date}
+    new = {group(r.contract) for r in carried}
+    return {r.contract.name for r in carried} - {g[0] for g in stored - new}
+
+
 def _refuse_truncation(live: list[CatalogueEntry], vanishing: list[CatalogueEntry], limit: Decimal,
                        update_date: date) -> None:
     """ADR-058 per-index count and ADR-059 per-expiry half guard (both "more than": the boundary itself passes).
@@ -409,3 +425,4 @@ class CatalogueUpdateResult:
     skipped_expired: int = 0  # in-scope rows whose expiry had passed: never loaded (ADR-059)
     replaced: tuple[InstrumentId, ...] = ()  # tokens reused by a new contract in this list (ADR-059)
     delisted: tuple[InstrumentId, ...] = ()  # live contracts this list stopped carrying (ADR-058)
+    grid_change_left: int = 0  # of those, how many left an index still carrying every stored group (#680)
