@@ -48,6 +48,9 @@ class _Store:
     async def load(self, _w, _today):
         return background.GateLoad(background.alert_gate.GateRows((), 0))
 
+    async def lapse_changed(self, _w):
+        return False
+
     async def apply(self, w, events, _ctx):
         await asyncio.sleep(0)
         if self.fail:
@@ -375,6 +378,9 @@ class _IdStore:
 
     async def load(self, _w, _today):
         return background.GateLoad(background.alert_gate.GateRows((), 0))
+
+    async def lapse_changed(self, _w):
+        return False
 
     async def apply(self, w, events, _ctx):
         self.order.append(("gate", w.strategy_id))
