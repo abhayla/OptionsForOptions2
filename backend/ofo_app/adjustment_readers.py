@@ -1,8 +1,8 @@
 """The real readers behind POST /api/strategies/{id}/adjustment-approaches (REQ-155, W-196): the default seams.
 
 - ``read_tracked``: the paper strategy from the paper book, owner-checked in the query (``paper_book.load_owned``);
-  each open contract's identity from ``tracked_contracts.resolve``; entry = the paper fills' average; booked P&L via
-  ``routes.outcome.read_booked`` (None = could not be read, never 0); paid so far via ``paper_charges`` (None when the
+  each open contract's identity from ``tracked_contracts.resolve``; entry = the paper fills' average; booked P&L
+  from the same orders' net book (an unreadable book raises, never 0); paid so far via ``paper_charges`` (None when the
   rates are unreadable or the orders cannot be priced, never 0). A contract that cannot be resolved, a non-option leg
   or a quantity that is not whole lots raises ``TrackedUnreadable`` (the route answers "not available"; it is not a
   "not found", and no leg is guessed).
@@ -60,7 +60,7 @@ from ofo_app.live_push import hold_and_read
 from ofo_app.outcome_oi import oi_of
 from ofo_app.routes.adjustment import MarketInputs, Tracked
 from ofo_app.routes.broker import current_user_ref
-from ofo_app.routes.outcome import feed_windows_of, market_state, read_booked, server_now, spot_judging_now
+from ofo_app.routes.outcome import feed_windows_of, market_state, server_now, spot_judging_now
 
 log = logging.getLogger(__name__)
 _OPTION_TYPES = (Instrument.CE.value, Instrument.PE.value)
@@ -119,15 +119,23 @@ def index_name(underlying: str) -> str | None:
 
 # ---- strategy ---------------------------------------------------------------------------------------------------
 
-async def read_tracked(strategy_id: int, rates: ChargeRates | None) -> Tracked | None:
-    async with get_sessionmaker()() as db:
-        paper = await paper_book.load_owned(db, current_user_ref(), strategy_id)  # owner check in the query
-        real = not paper  # ADR-276: no paper order -> the real Zerodha book (fills + adopted holdings), same netter
-        orders: Any = paper or await _real_rows(db, strategy_id)
-        if not orders:
-            return None  # not this user's, no such strategy, or nothing traded
-        found = {c.contract_id: c for c in await tracked_contracts.resolve(db, sorted({o.order.contract_id
-                                                                                         for o in orders}))}
+async def read_tracked(strategy_id: int, rates: ChargeRates | None, db: Any = None) -> Tracked | None:
+    """``db``: the request's own session (a request uses ONE connection, #682); None for the worker, which has no
+    request and reads on a session of its own."""
+    if db is not None:
+        return await _tracked_on(db, strategy_id, rates)
+    async with get_sessionmaker()() as own:
+        return await _tracked_on(own, strategy_id, rates)
+
+
+async def _tracked_on(db: Any, strategy_id: int, rates: ChargeRates | None) -> Tracked | None:
+    paper = await paper_book.load_owned(db, current_user_ref(), strategy_id)  # owner check in the query
+    real = not paper  # ADR-276: no paper order -> the real Zerodha book (fills + adopted holdings), same netter
+    orders: Any = paper or await _real_rows(db, strategy_id)
+    if not orders:
+        return None  # not this user's, no such strategy, or nothing traded
+    found = {c.contract_id: c for c in await tracked_contracts.resolve(db, sorted({o.order.contract_id
+                                                                                   for o in orders}))}
     book = net_positions([o.order.as_paper() for o in orders], {})
     legs: list[PositionLeg] = []
     underlying = lot = None
@@ -157,7 +165,7 @@ async def read_tracked(strategy_id: int, rates: ChargeRates | None) -> Tracked |
             paid = paper_charges(fills, underlying, rates).shown
         except ChargesNotComputable:
             paid = None
-    booked = await read_booked(strategy_id)  # None: could not be read (never 0)
+    booked = book.booked  # the same paper orders ``read_booked`` would read again on a second session
     # expiry kind and today are set by the route from the market reader (the calendar and clock live there)
     # adjustments_used: the engine's adjustment history over the stored orders (the count the history page shows);
     # None when the history cannot be read (the compare's "-" with that reason, never 0)

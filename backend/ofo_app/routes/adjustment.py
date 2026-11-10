@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import dataclasses
 import datetime
+import functools
 import logging
 import time
 from collections.abc import Awaitable, Callable, Mapping, Sequence
@@ -77,6 +78,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from ofo_app import held_switches
 from ofo_app.api_models import AdjustApproachesOut
 from ofo_app.config import app_env
+from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure
 from ofo_app.outcome_margin import OutcomeMargin, PlannedOrderIn, margin_answer
 from ofo_app.routes.adjustment_preferences import UserPreferences, UserValuesIn
@@ -174,10 +176,11 @@ ApproachMargin = Callable[[list[PlannedOrderIn]], Awaitable[Margin]]
 GuardsReader = Callable[[int, Position, Decimal | None, list | None], Awaitable[Any]]
 
 
-def get_tracked_reader() -> TrackedReader:
-    """The paper book reader (``adjustment_readers.read_tracked``); tests override it."""
+def get_tracked_reader(db: Annotated[Any, Depends(get_db)] = None) -> TrackedReader:
+    """The paper book reader (``adjustment_readers.read_tracked``) on the request's own session: a request uses ONE
+    database connection (#682). Called outside a request (no session) it opens its own; tests override it."""
     from ofo_app.adjustment_readers import read_tracked  # noqa: PLC0415 - it imports this module's dataclasses
-    return read_tracked
+    return read_tracked if db is None else functools.partial(read_tracked, db=db)
 
 
 #: ADR-243: strategy id -> (its plan's settings layer, its entry facts), each possibly ``layers.Unreadable``
