@@ -425,4 +425,4 @@ class CatalogueUpdateResult:
     skipped_expired: int = 0  # in-scope rows whose expiry had passed: never loaded (ADR-059)
     replaced: tuple[InstrumentId, ...] = ()  # tokens reused by a new contract in this list (ADR-059)
     delisted: tuple[InstrumentId, ...] = ()  # live contracts this list stopped carrying (ADR-058)
-    grid_change_left: int = 0  # of those, how many left an index still carrying every stored group (#680)
+    grid_change_left: int = 0  # leavers (delisted + token reuse) of indexes carrying every stored group (#680)

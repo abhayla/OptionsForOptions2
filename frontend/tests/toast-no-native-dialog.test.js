@@ -13,12 +13,23 @@ function sources(dir) {
   })
 }
 
+// a CALL of the browser's dialog (bare, via window/globalThis/self, or `?.(`), not a function of the same name being
+// defined, nor a comment. Known limit: the comment stripper also eats the rest of a line after a string holding //.
+const call = /(?:\b(?:window|globalThis|self)\.|(?<![\w.$]|function\s|async\s))(alert|confirm|prompt)(?:\s*\?\.)?\s*\([^)]*\)(?!\s*\{)/
+
 describe('toasts never use a native dialog (#689)', () => {
+  it('the scan regex matches the call shapes and not a definition or a method of another object', () => {
+    for (const hit of ["confirm('x')", "window.confirm('x')", "globalThis.confirm('x')", "self.confirm('x')", "confirm?.('x')", 'alert (1)']) {
+      expect(call.test(hit), hit).toBe(true)
+    }
+    for (const miss of ['function confirm(x) {', 'async prompt(x) {', 'dialog.confirm(x)', 'myself.confirm(x)', 'const confirmed = 1']) {
+      expect(call.test(miss), miss).toBe(false)
+    }
+  })
+
   afterEach(() => toasts.splice(0))
 
   it('no alert(), confirm() or prompt() call anywhere in frontend/src', () => {
-    // a CALL of the browser's dialog (bare or window.), not a function of the same name being defined, nor a comment
-    const call = /(?:\bwindow\.|(?<![\w.$]|function\s|async\s))(alert|confirm|prompt)\s*\([^)]*\)(?!\s*\{)/
     const offenders = sources(join(__dirname, '..', 'src')).filter((p) =>
       call.test(readFileSync(p, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')))
     expect(offenders).toEqual([])
@@ -45,5 +56,18 @@ describe('toasts never use a native dialog (#689)', () => {
     await w.get('[data-testid="toast-dismiss"]').trigger('click')
     expect(onClick).not.toHaveBeenCalled()
     expect(toasts).toHaveLength(0)
+  })
+  it('an identical toast (same message and type) is not added again; a different type is', () => {
+    const { showToast } = useToast()
+    showToast('same', 'info')
+    showToast('same', 'info')
+    showToast('same', 'warning')
+    expect(toasts.map((t) => t.type)).toEqual(['info', 'warning'])
+  })
+
+  it('at most 5 stay on screen: the sixth drops the oldest', () => {
+    const { showToast } = useToast()
+    for (let i = 1; i <= 6; i++) showToast(`m${i}`, 'info')
+    expect(toasts.map((t) => t.message)).toEqual(['m2', 'm3', 'm4', 'm5', 'm6'])
   })
 })

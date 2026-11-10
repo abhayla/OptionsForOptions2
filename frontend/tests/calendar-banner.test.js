@@ -1,6 +1,6 @@
 // ADR-285 (1)(2): a banner on every screen when the market calendar ends within 30 days or has no dates for the year;
 // the closed-market banner never shows then. Reply shapes are the real GET /api/market/indices ones.
-import { beforeEach, describe, it, expect, vi } from "vitest";
+import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
 import CalendarBanner from "@/components/layout/CalendarBanner.vue";
 import MarketClosedBanner from "@/components/states/MarketClosedBanner.vue";
@@ -66,5 +66,35 @@ describe("calendar banner", () => {
     reply = answer({ calendar_missing_year: null, calendar_ends_on: "2026-12-31" });
     await shown();
     expect(closed().find('[data-testid="market-closed-banner"]').exists()).toBe(true);
+  });
+
+  describe("re-reads on a slow timer", () => {
+    beforeEach(() => vi.useFakeTimers());
+    afterEach(() => vi.useRealTimers());
+    const THIRTY_MIN = 30 * 60 * 1000;
+
+    it("shows the year notice after the calendar loses its dates, and drops it once the list is loaded", async () => {
+      reply = answer({ calendar_missing_year: null, calendar_ends_on: null });
+      const w = mount(CalendarBanner);
+      await flushPromises();
+      expect(w.find('[data-testid="calendar-banner"]').exists()).toBe(false);
+      expect(calendarMissingYear.value).toBeNull();
+
+      reply = answer({ calendar_missing_year: 2027, calendar_ends_on: "2026-12-31" });
+      await vi.advanceTimersByTimeAsync(THIRTY_MIN);
+      expect(w.find('[data-testid="calendar-banner"]').text()).toContain("no dates for 2027");
+      expect(calendarMissingYear.value).toBe(2027);
+
+      reply = answer({ calendar_missing_year: null, calendar_ends_on: null });
+      await vi.advanceTimersByTimeAsync(THIRTY_MIN);
+      expect(w.find('[data-testid="calendar-banner"]').exists()).toBe(false);
+      expect(calendarMissingYear.value).toBeNull();
+
+      const calls = vi.fn(reply);
+      reply = calls;
+      w.unmount();
+      await vi.advanceTimersByTimeAsync(THIRTY_MIN);
+      expect(calls).not.toHaveBeenCalled();
+    });
   });
 });

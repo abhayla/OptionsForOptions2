@@ -8,6 +8,7 @@ const ICON = { success: '✓', error: '✗', warning: '⚠', info: 'ℹ' }
 /** The toasts on screen, oldest first; ToastHost.vue renders them. */
 export const toasts = reactive([])
 let nextId = 1
+const MAX_ON_SCREEN = 5
 
 export function dismissToast(id) {
   const i = toasts.findIndex((t) => t.id === id)
@@ -28,6 +29,9 @@ export function useToast() {
    * @param {string} type - success | error | warning | info
    */
   const showToast = (message, type = 'info', { onClick } = {}) => {
+    // never expires (a warning must not vanish unread), so an identical one is not stacked and the oldest makes room
+    if (toasts.some((t) => t.message === message && t.type === type)) return
+    if (toasts.length >= MAX_ON_SCREEN) toasts.shift()
     toasts.push({ id: nextId++, message, type, icon: ICON[type] || ICON.info, onClick: onClick || null })
   }
 

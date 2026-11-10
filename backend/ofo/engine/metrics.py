@@ -222,7 +222,8 @@ def strategy_metrics(strategy: Strategy) -> StrategyMetrics:
     breakevens = _breakeven_levels(zeros)
     return StrategyMetrics(max_profit=max_profit, min_pnl=min_pnl, max_loss=max_loss, breakevens=breakevens,
                            loss_regions=_loss_regions(points, values, upper_slope, zeros),
-                           max_profit_at_zero=max_profit is not UNLIMITED and all(values[0] > v for v in values[1:]))
+                           max_profit_at_zero=max_profit is not UNLIMITED and (len(values) > 1 or upper_slope < 0)
+                           and all(values[0] > v for v in values[1:]))
 
 
 def loss_regions_after_charges(strategy: Strategy, charges: Decimal) -> tuple[LossRegion, ...]:
