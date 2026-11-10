@@ -5,7 +5,8 @@ Every CHANGE of that judged state is logged, and sent as one alert: fresh -> sta
 fresh "running again", any -> unreadable "cannot be read". An alert counts as delivered only when the Notifier client
 answers ``sent``; a send that failed is tried again each later minute while that state still holds (a Notifier that is
 not configured, or whose address is refused up front, cannot get better until a restart: logged once, not retried).
-At most MAX_SENDS Notifier sends a day for worker changes: the last one says the rest are logged only. Outside market
+At most MAX_SENDS - 1 DELIVERED worker alerts a day (failed tries do not count); the next change sends one notice
+that the rest are logged only. Outside market
 hours and on days the calendar does not open nothing is sent and the state does not move. Separately, once a day from 30
 days before the market calendar's last covered date, one log line and one alert (retried the same way). The alert texts
 are fixed words: no account figure, strategy id, symbol or token ever reaches the Notifier. A Notifier that fails never
@@ -27,7 +28,7 @@ from ofo_app import feed_bus, feed_mode, notifier
 log = logging.getLogger("ofo_app.worker_watch")
 
 POLL_SECONDS = 60
-MAX_SENDS = 6  # a day; the sixth is the "logged only" notice, so a flapping worker cannot flood the owner
+MAX_SENDS = 6  # a day: 5 delivered alerts + the "logged only" notice, so a flapping worker cannot flood the owner
 
 #: kind -> (severity, title, body); the kind is the alert's ``type`` and the start of its dedupe key
 TEXTS = {
@@ -62,7 +63,8 @@ class WorkerWatch:
     def _new_day(self) -> None:
         self._judged: str | None = None  # the last judged state; None = none yet today, so the first one counts
         self._owed: tuple[str, int] | None = None  # (kind, change number) of the alert not yet delivered
-        self._changes = self._sends = 0
+        self._changes = self._delivered = 0
+        self._capped = False  # the "further changes are logged only" notice has been answered
         self._calendar_logged = self._calendar_done = False
 
     async def check(self) -> None:
@@ -79,8 +81,9 @@ class WorkerWatch:
             if not self._calendar_logged:
                 self._calendar_logged = True
                 log.warning("the market calendar ends on %s; the next year's list must be loaded", end)
-            self._calendar_done = await self._attempt("calendar-ends", f"calendar-ends-{today.isoformat()}",
-                                                      end=f"{end:%d %B %Y}")
+            result = await self._attempt("calendar-ends", f"calendar-ends-{today.isoformat()}",
+                                         end=f"{end:%d %B %Y}")
+            self._calendar_done = result not in _RETRY
 
     def _judge(self, state: str) -> None:
         if state not in (feed_bus.FRESH, feed_bus.STALE):  # unreadable, or any answer this code does not know
@@ -100,24 +103,25 @@ class WorkerWatch:
         if self._owed is None:
             return
         kind, number = self._owed
-        if self._sends >= MAX_SENDS:  # the notice went out; the change is in the log
-            self._owed = None
-            return
-        self._sends += 1
-        if self._sends == MAX_SENDS:
-            self._owed = None
-            await self._attempt("worker-capped", f"worker-capped-{today.isoformat()}")
-        elif await self._attempt(kind, f"{kind}-{today.isoformat()}-{number}"):
-            self._owed = None
+        key = f"{kind}-{today.isoformat()}-{number}"
+        if self._delivered >= MAX_SENDS - 1:  # the cap counts DELIVERED alerts: a failed try does not use it up
+            if self._capped:  # the notice went out; the change is in the log
+                self._owed = None
+                return
+            kind, key = "worker-capped", f"worker-capped-{today.isoformat()}"
+        result = await self._attempt(kind, key)
+        self._delivered += result == notifier.SENT and kind != "worker-capped"
+        if result not in _RETRY:
+            self._owed, self._capped = None, self._capped or kind == "worker-capped"
 
-    async def _attempt(self, kind: str, dedupe_key: str, **words: str) -> bool:
-        """One send. True when it needs no retry: delivered, or an answer that a later minute cannot change."""
+    async def _attempt(self, kind: str, dedupe_key: str, **words: str) -> str:
+        """One send; the client's answer (``sent`` or the named reason it was not)."""
         severity, title, body = TEXTS[kind]
         result = await self._notify(severity, title.format(**words), body.format(**words), type=kind,
                                     dedupe_key=dedupe_key)
         if result != notifier.SENT:
             log.warning("worker watch: the %s alert was not sent: %s", kind, result)
-        return result not in _RETRY
+        return result
 
     async def run_forever(self, sleep: Callable[[float], Awaitable[object]] = asyncio.sleep) -> None:
         while True:

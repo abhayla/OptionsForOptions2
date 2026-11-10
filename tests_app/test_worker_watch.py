@@ -154,6 +154,30 @@ async def test_at_most_six_sends_a_day_the_last_one_says_the_rest_are_logged_onl
     assert rig.kinds()[-1] == STOPPED and len(rig.sent) == 7  # noqa: PLR2004
 
 
+async def test_failed_attempts_do_not_use_up_the_cap_so_the_stopped_alert_is_still_delivered():
+    rig = Rig()
+    rig.answers = [notifier.UNREACHABLE] * 5
+    await rig.run(*[feed_bus.STALE] * 7)
+    assert rig.kinds() == [STOPPED] * 6  # five failures, then the delivery; never the "logged only" notice
+    assert rig.sent[-1][3] == STOPPED
+
+
+async def test_after_five_delivered_alerts_the_sixth_change_sends_one_capped_notice_then_nothing(caplog):
+    rig = Rig()
+    caplog.set_level(logging.WARNING)
+    await rig.run(*[feed_bus.STALE, feed_bus.FRESH] * 4, feed_bus.STALE, feed_bus.FRESH, feed_bus.STALE)
+    assert rig.kinds().count(CAPPED) == 1 and rig.kinds()[-1] == CAPPED and len(rig.sent) == 6  # noqa: PLR2004
+    assert caplog.text.count("background worker: Background watcher") == 11  # noqa: PLR2004 - all changes logged
+
+
+async def test_a_capped_notice_that_fails_is_tried_again_until_delivered():
+    rig = Rig()
+    await rig.run(*[feed_bus.STALE, feed_bus.FRESH] * 2, feed_bus.STALE)  # five delivered
+    rig.answers = [notifier.UNREACHABLE]
+    await rig.run(feed_bus.FRESH, feed_bus.FRESH, feed_bus.FRESH)  # the sixth change; its notice fails once
+    assert rig.kinds()[5:] == [CAPPED, CAPPED]
+
+
 async def test_a_notifier_that_raises_does_not_stop_the_next_minutes_check():
     rig = Rig()
     rig.fail = True
