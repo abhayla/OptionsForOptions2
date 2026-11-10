@@ -1126,6 +1126,16 @@ class Worker:
                           feed_bus.MAX_WANTED_TOKENS)
                 _keep_recent(self.errors, (0, "WindowTooLarge"))
 
+    async def _beat(self, now: datetime.datetime) -> None:
+        """ADR-286 / REQ-115 AC-6: the cycle time, for the API's once-a-minute watcher; never raises."""
+        if self._want_client is None:
+            return
+        try:
+            await feed_bus.write_heartbeat(self._want_client, now)
+        except Exception as exc:  # noqa: BLE001 - the watcher then reads stale, which is the point; the cycle goes on
+            log.warning("background: writing the heartbeat failed: %s", type(exc).__name__)
+            _keep_recent(self.errors, (0, type(exc).__name__))
+
     async def _write_wants(self, now: datetime.datetime) -> None:
         """Step 4c: one snapshot per feed owner (module docstring); never raises."""
         if self._want_client is None:
@@ -1617,6 +1627,7 @@ class Worker:
                 _keep_recent(self.errors, (0, type(exc).__name__))
                 return
         now = self._clock()
+        await self._beat(now)
         self._roll_minute(now)
         self._cycles += 1
         if not self._rebuild_tried:  # the first list only; every later re-read runs on its own task (``run``)

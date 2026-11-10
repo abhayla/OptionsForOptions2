@@ -30,7 +30,8 @@ class FakeRedis:
     async def set(self, key, value, px=None):
         if self.down:
             raise RedisConnectionError("down")
-        self.sets += 1
+        if key != feed_bus.heartbeat_key():  # ADR-286: written every cycle; ``sets`` counts want writes only
+            self.sets += 1
         self.data[key] = value
 
     async def mget(self, *keys):

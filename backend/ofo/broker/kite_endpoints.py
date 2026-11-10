@@ -58,6 +58,7 @@ NETWORK_DOORS: Final[dict[str, frozenset[str]]] = {
     "ofo/broker/kite_http.py": frozenset({"urllib.request"}),
     "ofo_app/kite_http.py": frozenset({"httpx", "httpcore", "anyio", "h11", "sniffio", "socket"}),  # W-080 r9: own last hop
     "ofo_app/kite_ws.py": frozenset({"websockets"}),
+    "ofo_app/notifier.py": frozenset({"urllib.request"}),  # ADR-286: not Kite; the one configured Notifier address
     "ofo/broker/egress.py": frozenset({"socket"}),  # the gate itself: address-family constants and one getaddrinfo
 }
 
