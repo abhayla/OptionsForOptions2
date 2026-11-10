@@ -56,10 +56,10 @@ class IndicesOut(ApiModel):
     market_closed: bool
     #: when the feed's last price frame arrived (None: none yet); the market-closed and reconnecting texts show it
     last_price_at: datetime.datetime | None
-    #: GC-ICSAFE c29: the year the market calendar has no dates for when ``answered_at`` falls in one (the market then
+    #: ADR-285 (2): the year the market calendar has no dates for when ``answered_at`` falls in one (the market then
     #: reads closed, fail closed, but for this reason, not a holiday); None otherwise
     calendar_missing_year: int | None
-    #: GC-ICSAFE c28: the calendar's last covered date, from 30 days before it on; None while it is further away
+    #: ADR-285 (1): the calendar's last covered date, from 30 days before it on; None while it is further away
     calendar_ends_on: datetime.date | None
 
 
