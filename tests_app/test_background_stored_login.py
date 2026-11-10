@@ -21,8 +21,9 @@ from test_background_day_open_margin import GAP_SCENARIO, _gap_time, _ic_watched
 from test_outcome_margin import BASKET_TEXT, CHECKED_AT, CTX, FUNDS_TEXT, plan
 
 NEEDED = Decimal("7065.50")  # the recorded reply's required total (test_outcome_margin)
-TOKEN = "tok-SECRET-STORED-456"
+FAKE_ACCESS = "tok-SECRET-STORED-456"
 FP1, FP2 = b"fingerprint-1", b"fingerprint-2"
+TWO_READS = 2
 STEP = int(background.MARGIN_REFRESH_S)
 ORDERS = outcome_margin.basket_orders(CTX.provider, plan())
 
@@ -61,7 +62,7 @@ class Zerodha:
 
 
 def session(fp: bytes = FP1, expires_at: datetime.datetime | None = None) -> StoredSession:
-    return StoredSession("key", TOKEN, fp, expires_at)
+    return StoredSession("key", FAKE_ACCESS, fp, expires_at)
 
 
 class Rig:
@@ -162,7 +163,7 @@ async def test_a_login_that_arrives_after_the_worker_started_is_used_at_the_next
     assert rig.zerodha.calls == []
     state = await rig.at(1 + STEP)
     assert state.margin == NEEDED
-    assert store.reads == 2
+    assert store.reads == TWO_READS
 
 
 async def test_a_relogin_never_serves_the_old_sessions_figure(monkeypatch, gap_scn) -> None:
@@ -174,21 +175,21 @@ async def test_a_relogin_never_serves_the_old_sessions_figure(monkeypatch, gap_s
     assert (await rig.at(1 + STEP)).margin == NEEDED  # same login: the plan-keyed cache answers, no new call
     assert rig.zerodha.baskets() == 1
     assert (await rig.at(1 + 2 * STEP)).margin == NEEDED  # new fingerprint: a new read, not the old key's figure
-    assert rig.zerodha.baskets() == 2
+    assert rig.zerodha.baskets() == TWO_READS
     assert_not_checked(rig, await rig.at(1 + 3 * STEP))  # the login is gone: the cached figure is not used
-    assert rig.zerodha.baskets() == 2
+    assert rig.zerodha.baskets() == TWO_READS
 
 
 async def test_a_failing_store_read_is_not_checked_keeps_the_worker_running_and_logs_only_the_type(
         monkeypatch, gap_scn, caplog) -> None:
-    store = Store(RuntimeError(f"db password {TOKEN}"), session())
+    store = Store(RuntimeError(f"db password {FAKE_ACCESS}"), session())
     rig = Rig(monkeypatch, gap_scn, store)
     await rig.start()
     with caplog.at_level(logging.DEBUG):
         assert_not_checked(rig, await rig.at(1))
         assert (await rig.at(1 + STEP)).margin == NEEDED  # the worker kept running and the next round recovers
     assert "RuntimeError" in caplog.text
-    assert TOKEN not in caplog.text
+    assert FAKE_ACCESS not in caplog.text
     assert "password" not in caplog.text
 
 
@@ -224,7 +225,7 @@ async def test_ten_checks_a_minute_make_one_zerodha_read_and_one_store_read(monk
 
 # ---- c24: token hygiene -------------------------------------------------------------------------------------------
 async def test_the_token_appears_in_no_log_and_no_repr(monkeypatch, gap_scn, caplog) -> None:
-    store = Store(session(), session(), RuntimeError(TOKEN))
+    store = Store(session(), session(), RuntimeError(FAKE_ACCESS))
     rig = Rig(monkeypatch, gap_scn, store)
     failing = Rig(monkeypatch, gap_scn, Store(session()), Zerodha(status=HTTPStatus.FORBIDDEN))
     with caplog.at_level(logging.DEBUG):
@@ -234,7 +235,7 @@ async def test_the_token_appears_in_no_log_and_no_repr(monkeypatch, gap_scn, cap
         await rig.at(1 + 2 * STEP)
         await failing.start()
         await failing.at(1)
-    assert TOKEN not in caplog.text
+    assert FAKE_ACCESS not in caplog.text
     await rig.login.reload()
     for shown in (repr(rig.login), repr(session()), repr(await failing.login.open_client())):
-        assert TOKEN not in shown
+        assert FAKE_ACCESS not in shown
