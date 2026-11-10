@@ -187,17 +187,19 @@ def get_tracked_reader(db: Annotated[Any, Depends(get_db)] = None) -> TrackedRea
 RollInputsReader = Callable[[int], Awaitable[tuple[Any, Any]]]
 
 
-def get_roll_inputs_reader() -> RollInputsReader:
-    """The strategy's roll-basis inputs (``adjustment_readers.read_roll_inputs``), looked up at call time; tests
-    override it."""
+def get_roll_inputs_reader(db: Annotated[Any, Depends(get_db)] = None) -> RollInputsReader:
+    """The strategy's roll-basis inputs (``adjustment_readers.read_roll_inputs``) on the request's own session (#682),
+    looked up at call time; tests override it."""
     from ofo_app import adjustment_readers  # noqa: PLC0415 - it imports this module's dataclasses
-    return adjustment_readers.read_roll_inputs
+    reader = adjustment_readers.read_roll_inputs
+    return reader if db is None else functools.partial(reader, db=db)
 
 
-def get_guards_reader() -> GuardsReader:
-    """The playbook guards of the strategy (``adjustment_readers.read_guards``); tests override it (ADR-230 (1))."""
+def get_guards_reader(db: Annotated[Any, Depends(get_db)] = None) -> GuardsReader:
+    """The playbook guards of the strategy (``adjustment_readers.read_guards``) on the request's own session (#682);
+    tests override it (ADR-230 (1))."""
     from ofo_app.adjustment_readers import read_guards  # noqa: PLC0415 - as above
-    return read_guards
+    return read_guards if db is None else functools.partial(read_guards, db=db)
 
 
 def _before_max_profit(before: Any) -> Decimal | None:
