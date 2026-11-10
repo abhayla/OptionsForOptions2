@@ -7,6 +7,7 @@ adjustment check. Guards the class: any new reader that opens a second session i
 """
 from __future__ import annotations
 
+import contextlib
 import importlib.util
 import logging
 import pathlib
@@ -35,20 +36,20 @@ def _reset_engine() -> None:
     get_settings.cache_clear()
 
 
-async def test_each_route_answers_with_a_pool_of_one_connection(app_engine, monkeypatch):
+async def test_each_route_answers_with_a_pool_of_one_connection(app_engine, monkeypatch, caplog):
     monkeypatch.setenv("DATABASE_URL", app_engine.url.render_as_string(hide_password=False))
     monkeypatch.setenv("APP_ENV", "test")
     monkeypatch.setenv("OFO_SCENARIO", PATH_ID)
     _reset_engine()
     try:
-        await _walk(app_engine, monkeypatch)
+        await _walk(app_engine, monkeypatch, caplog)
     finally:
         await app_db.close_db()
         _reset_engine()
         scenario_mode._loaded.clear()
 
 
-async def _walk(app_engine, monkeypatch) -> None:
+async def _walk(app_engine, monkeypatch, caplog) -> None:
     await load_library(app_engine)
     await app_engine.dispose()
     sid = await seed_mod.seed(PATH_ID)  # a stored paper strategy, built on the default pool
@@ -74,6 +75,8 @@ async def _walk(app_engine, monkeypatch) -> None:
     app = create_app()
     answers: dict[str, str] = {}
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as ac:
+        with contextlib.suppress(Exception):  # untimed warm-up: the scenario's cold start is not the route's time
+            await ac.get(f"/api/strategies/{sid}/adjustment-check")
         for name, want, call in (
                 ("adjustment-check", 200, lambda: ac.get(f"/api/strategies/{sid}/adjustment-check")),
                 ("paper order", 201, lambda: ac.post(f"/paper/strategies/{sid}/orders", json={"orders": [leg_exit]}))):
@@ -87,4 +90,5 @@ async def _walk(app_engine, monkeypatch) -> None:
                 answers[name] = f"BAD {type(exc).__name__}: {str(exc)[:200]}"
     bad = {k: v for k, v in answers.items() if not v.startswith("ok")}
     assert not bad, f"answers: {answers}"
+    assert "QueuePool" not in caplog.text
     log.info("answers: %s", answers)
