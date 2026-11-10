@@ -39,7 +39,7 @@ describe("calendar banner", () => {
   it("warns when the calendar ends soon", async () => {
     reply = answer({ calendar_missing_year: null, calendar_ends_on: "2026-12-31" });
     expect(await shown()).toBe(
-      "The market calendar ends on 31 Dec 2026. Load the 2027 holiday list before then.",
+      "The market calendar ends on 31 Dec 2026. Load next year's holiday list before then.",
     );
   });
 

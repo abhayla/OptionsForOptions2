@@ -268,9 +268,10 @@ class Catalogue:
         else:
             grid = _grid_change_indexes(list(live.values()), in_scope_new, update_date)
             # ADR-284 item 5: only a contract the list no longer carries can be a grid change; token reuse always counts
-            excused = [e for e in vanishing if e.contract.name in grid]
-            _refuse_truncation(list(live.values()), [e for e in leaving_live if e not in excused], limit, update_date)
-            grid_change_left = len(excused)
+            excused_ids = {e.id for e in vanishing if e.contract.name in grid}
+            _refuse_truncation(list(live.values()), [e for e in leaving_live if e.id not in excused_ids], limit,
+                               update_date)
+            grid_change_left = len(excused_ids)
 
         added = 0
         replaced_set = set(replaced)
