@@ -30,6 +30,7 @@ from ofo_app import (
     real_settlement,
     replay_mode,
     scenario_mode,
+    worker_watch,
 )
 from ofo_app.broker_config import BrokerConfig, load_broker_config
 from ofo_app.config import Settings, app_env
@@ -97,7 +98,9 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     monitor = paper_monitor.start() if market is not None else None  # GC-TP 7a: paper stops, live only
     settlement = paper_settlement.start() if market is not None else None  # GC-TP 5b: expiry settlement, live only
     real_task = real_settlement.start_if(market)  # GC-ICGUIDE g22 (C6): live only
+    watch = worker_watch.start_if(market)  # ADR-286: live + bus only; tells the owner when the worker stops
     yield
+    await worker_watch.stop(watch)
     await real_settlement.stop(real_task)
     await paper_settlement.stop(settlement)  # a strategy's settle in flight is cancelled and rolls back
     await paper_monitor.stop(monitor)  # a fire in flight is cancelled and rolls back
