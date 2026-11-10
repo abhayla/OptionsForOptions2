@@ -1,5 +1,5 @@
 // Copied/adapted from abhayla/algochanakya@bf9faf7:frontend/src/composables/useToast.js (ADR-047)
-// #689: an in-page toast list. Never the browser's native dialogs: one freezes the whole tab (live prices, later
+// Issue 689: an in-page toast list. Never the browser's native dialogs: one freezes the whole tab (live prices, later
 // warnings) until someone clicks it.
 import { reactive } from 'vue'
 

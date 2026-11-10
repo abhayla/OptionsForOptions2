@@ -1,5 +1,5 @@
 <script setup>
-// #689: the in-page toasts (useToast); never a native dialog, so the page keeps updating while a toast is shown
+// Issue 689: the in-page toasts (useToast); never a native dialog, so the page keeps updating while a toast is shown
 import { dismissToast, openToast, toasts } from '@/composables/useToast'
 </script>
 
