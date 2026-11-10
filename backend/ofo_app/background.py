@@ -753,7 +753,7 @@ class DbGateStore:
             await db.commit()
 
 
-Lister =Callable[[], Awaitable[list[Watched]]]
+Lister = Callable[[], Awaitable[list[Watched]]]
 Recorder = Callable[[Watched, pe.StrategyState, Preferences], Awaitable[Any]]
 #: (underlying, IST trading day, expiry, ATM IV) -> stored (ADR-277 (4)); ``record_daily_iv`` is the real one
 DailyIvRecorder = Callable[[str, datetime.date, datetime.date, Decimal], Awaitable[Any]]
@@ -900,8 +900,9 @@ class Worker:
             if w.strategy_id in before and before[w.strategy_id] != w.body:
                 self._signature.pop(w.strategy_id, None)
                 self._tick.pop(w.strategy_id, None)
+        old = {w.strategy_id: w for w in self.monitors}
         for w in monitors:
-            if _position_changed(next((o for o in self.monitors if o.strategy_id == w.strategy_id), None), w):
+            if _position_changed(old.get(w.strategy_id), w):
                 async with held(self.db_gate, GATE_REBUILD):  # a raise keeps the last list: re-found next re-read
                     await self._gate_store.lapse_open(w)
                 # the old position's records and queued events are gone; the gate restores from the store next check
