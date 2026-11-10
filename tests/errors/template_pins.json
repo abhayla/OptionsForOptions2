@@ -4034,5 +4034,9 @@
   "explanation:suggestion_lapsed_not_monitored": {
     "sha256": "896306f8fc4dd4558c5c779697ab0df8e966ec6ba97a77e8ca419f1bf1be01ab",
     "reviewed": "pending owner read"
+  },
+  "explanation:suggestion_lapsed_position_changed": {
+    "sha256": "bcce190e9d83fd95c26a4e70ee24bab20f36f0012f8b4aac5af6d092939efb83",
+    "reviewed": "pending owner read"
   }
 }
