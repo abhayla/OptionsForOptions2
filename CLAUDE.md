@@ -3,6 +3,8 @@
 OptionsForOptions2: NIFTY/SENSEX options strategy platform (`spec/vision/vision.md`), built on the Startup-Factory kit.
 
 ## Read first
+0. `docs/process/standing-direction.md` (owner, 2026-11-10) sets the order of work. Name its step before starting;
+   start nothing outside it. Only the owner's explicit words change it.
 1. `spec/decisions/ADR-*.md` win over everything; `views/spec-digest.md` lists them.
 2. Newest `docs/process/session-handover-*.md`, then `docs/HANDOVER.md`; open items in `spec/open-questions.md`.
 3. `knowledge/findings/` before designing a mechanism.
