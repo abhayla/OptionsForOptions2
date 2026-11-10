@@ -71,6 +71,21 @@ is an irreversible act this run may not take on its own.
 Spec basis: none: the spec says nothing about work folders (searched: worktree, work folder); the rule is in the
 run's hard stops.
 
+## N2. For your information: the faster test database (PR #688) is reviewed and will merge when its checks are green
+
+The earlier session told you this would not merge before you had seen it. This is that notice; nothing to answer.
+
+**What it is:** a tooling change only. Each test run used to build a fresh test database in about 3 minutes; it now
+copies a ready-made one in about 5 seconds (measured tonight on the real server: first run 293 s, second run 5 s).
+
+**What the strict independent review found (10 Nov, two rounds):** one real problem and seven small ones. The real
+one: the fast path skipped a safety check that the slow path runs every time (it confirms the app's database login
+has not been given extra powers on the server shared with the other production app). That is fixed, re-checked by a
+second independent review (verdict: pass) and proven on the real server. Three small leftovers are filed as issue
+#691; none can touch a database the tool did not create.
+
+**Not done:** the clean-up of the 8 old throwaway test databases still waits for your OK from the 9 Nov notes.
+
 ## N1. To do in December: load the 2027 market holiday list (nothing to answer now)
 
 **What a user would see without it:** from 1 Jan 2027 the app treats every day as "no market": no prices checked, no
