@@ -56,6 +56,31 @@ read from the clock.
 6. Builder briefs were hand-written and dispatched without running `check_brief.py` / `copy_from_check.py` first.
 7. F-31 asks: ten, not nine.
 
+8. Tomorrow's one live day serves as both contract "market days": the core proof and the whole watcher fix were
+   done on 10 Nov, so c10, c11 and c40 can share 11 Nov, with the live stack run from the run's work folder.
+9. Five reviews were run, not four: the migration and the engine flag got their own strict (Opus) review.
+10. The main checkout carries ONE uncommitted file, `views/status-page.json`, identical to this branch's version.
+    Restoring it at c05 (as the contract said) re-enabled a hook that asks to overwrite the owner's status page
+    with the generated page; the owner's rule is "one page only, never replace". Nothing was published over it.
+11. Screen re-checks c17..c19 were not run on the night of 10 Nov (2.8 to 3.7 GB free memory; the system was
+    stopping background commands). They move to 11 Nov after the market closes.
+12. `c53` was run three times as a rehearsal before the live day. Run 1 failed at the preflight scans, run 2 at the
+    app tests and frontend unit tests, run 3: TOTAL PASS for 64576e81 at 01:38 on 11 Nov.
+
+### What the checks caught (10 Nov night), for the row review
+
+| Caught by | Count | Examples |
+|---|---|---|
+| Five independent reviews | 6 real, about 20 small | practice-order limit check read the position after the new orders; second watcher outage on one day sent nothing; alert-left-open fix lost on restart |
+| My read of a returned fix | 1 real | the alert cap counted failed tries |
+| The full local gate (pre-push) | 2 real, 6 registrations | a list reassigning most contract tokens was accepted as a grid change (my rule); a toast kept the old record's action |
+| Builders' own narrow test runs | 0 of the above | each reported green |
+
+Lessons: (1) finish merges and pushes before dispatching reviewers (the guard blocks git writes while one runs);
+(2) a relaxed guard needs each thing the old guard counted decided one by one; (3) run the whole no-database app
+set and the whole frontend unit set once before reviews, not after; (4) "where does the running app read this
+from?" before accepting a text or data fix (seed file vs versioned rows).
+
 ## Reuse map (c06). Every build brief quotes its line.
 
 Corrections to the contract's section 2, found by reading the code on 0fac11d3:
