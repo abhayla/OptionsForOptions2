@@ -644,6 +644,7 @@ issues:
   "#684": S6.7  # Real-leg expiry settlement: settle row and on-screen 'awaiting settlement' not built (C6 remainder, GC-ICGUIDE)
   "#685": S6.7  # GC-ICGUIDE screen findings: real-clock leg days, Completed tab, stale records after acting, threshold mismatch, wording, test-data gaps
   "#686": S6.7  # Market calendar holds 2026 only: from 1 Jan 2027 every day reads as closed (F-103)
+  "#689": S6.7  # New-adjustment toast uses the browser's native confirm(): the whole page freezes until clicked
 
 # Work items whose status is not done.
 work_items:

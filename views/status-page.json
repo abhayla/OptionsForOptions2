@@ -1,6 +1,5 @@
 {
-  "url": "https://claude.ai/artifact/LcMTSr5xx8LvAYVniotkxK",
-  "contract": "GC-ICTRACK",
-  "published": "2026-11-08 18:19 IST",
+  "page": "https://claude.ai/artifact/LcMTSr5xx8LvAYVniotkxK",
+  "note": "Owner 2026-11-09: one page only, add to it, never replace. No 'url' key on purpose: the status_page_due hook would otherwise ask to overwrite this page with the generated whole-project page. Content lives in the page's db collection 'tasks' (run rows; kind=feature rows = iron condor feature tracker).",
   "db_collection": "tasks"
 }
