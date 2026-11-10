@@ -9,7 +9,6 @@ import logging
 import urllib.error
 
 import pytest
-
 from ofo_app import notifier
 
 KEY = "k-secret-0123456789"
@@ -17,7 +16,7 @@ URL = "https://notifier.example.test:8443"
 
 
 def _env(monkeypatch, url=URL, project="ofo", key=KEY) -> None:
-    monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://u@127.0.0.1:5432/placeholder")  # Settings needs one; no connect
+    monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://u@127.0.0.1:5432/x")  # Settings needs one; no connect
     for name, value in (("NOTIFIER_URL", url), ("NOTIFIER_PROJECT", project), ("NOTIFIER_KEY", key)):
         monkeypatch.setenv(name, value)
     notifier.get_settings.cache_clear()

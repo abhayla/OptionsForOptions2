@@ -1,5 +1,5 @@
 """GC-ICSAFE (ADR-286, REQ-115 AC-6, ADR-285 (1)): the API's once-a-minute watch of the background worker and of the
-market calendar's end. Non-DB, no network: the clock, the heartbeat read, the market and the Notifier are all injected."""
+market calendar's end. Non-DB, no network: the clock, the heartbeat read, the market and the Notifier are injected."""
 from __future__ import annotations
 
 import asyncio
@@ -26,7 +26,7 @@ class Rig:
     async def _read(self, _now):
         return self.state
 
-    async def _notify(self, severity, title, body, *, type, dedupe_key):  # noqa: A002
+    async def _notify(self, severity, title, body, *, type, dedupe_key):
         self.sent.append((severity, title, body, type, dedupe_key))
         if self.fail:
             raise RuntimeError("notifier down")

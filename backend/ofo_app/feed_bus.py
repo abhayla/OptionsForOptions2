@@ -179,7 +179,7 @@ async def write_background_want(client: Any, user_ref: str, tokens: list[int]) -
 
 
 def heartbeat_key() -> str:
-    """The background role's cycle time (ADR-286): one key, no expiry, so a dead worker reads as old (stale), not absent."""
+    """The background role's cycle time (ADR-286): no expiry, so a dead worker reads as old (stale), not absent."""
     return f"{KEY_PREFIX}:background:heartbeat"
 
 
@@ -188,8 +188,8 @@ async def write_heartbeat(client: Any, at: datetime.datetime) -> None:
 
 
 def judge_heartbeat(raw: Any, now: datetime.datetime) -> str:
-    """``stale`` when older than HEARTBEAT_STALE_S, ``fresh`` otherwise; ``unreadable`` when it is missing, not text, or
-    not a time with a zone (never read as fresh)."""
+    """``stale`` when older than HEARTBEAT_STALE_S, ``fresh`` otherwise; ``unreadable`` when missing, not text, or not a
+    time with a zone (never read as fresh)."""
     text = _text(raw)
     try:
         at = datetime.datetime.fromisoformat(text) if text else None
@@ -203,7 +203,7 @@ def judge_heartbeat(raw: Any, now: datetime.datetime) -> str:
 async def read_heartbeat_state(client: Any, now: datetime.datetime) -> str:
     try:
         return judge_heartbeat(await client.get(heartbeat_key()), now)
-    except Exception as exc:  # noqa: BLE001 - a store that cannot answer is "cannot read", never "fine"; the type only
+    except Exception as exc:  # noqa: BLE001 - a store that cannot answer is "cannot read", never "fine"
         log.warning("worker heartbeat could not be read: %s", type(exc).__name__)
         return UNREADABLE
 

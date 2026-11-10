@@ -41,8 +41,9 @@ TEXTS = {
 
 
 class WorkerWatch:
-    def __init__(self, *, read_state: Callable[[datetime.datetime], Awaitable[str]], notify: Callable[..., Awaitable[str]],
-                 clock: Callable[[], datetime.datetime], market_open: Callable[[datetime.datetime], bool]) -> None:
+    def __init__(self, *, read_state: Callable[[datetime.datetime], Awaitable[str]],
+                 notify: Callable[..., Awaitable[str]], clock: Callable[[], datetime.datetime],
+                 market_open: Callable[[datetime.datetime], bool]) -> None:
         self._read_state, self._notify, self._clock, self._market_open = read_state, notify, clock, market_open
         self._day: datetime.date | None = None
         self._sent: set[str] = set()  # the kinds already sent today

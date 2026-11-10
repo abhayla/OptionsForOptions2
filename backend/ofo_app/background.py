@@ -1115,7 +1115,7 @@ class Worker:
             return
         try:
             await feed_bus.write_heartbeat(self._want_client, now)
-        except Exception as exc:  # the watcher then reads stale: that is the point; the cycle goes on
+        except Exception as exc:  # noqa: BLE001 - the watcher then reads stale, which is the point; the cycle goes on
             log.warning("background: writing the heartbeat failed: %s", type(exc).__name__)
             _keep_recent(self.errors, (0, type(exc).__name__))
 

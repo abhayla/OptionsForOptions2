@@ -43,7 +43,7 @@ def _urllib_transport(method: str, url: str, headers: dict[str, str], body: byte
         return exc.code
 
 
-async def notify(severity: str, title: str, body: str, *, type: str, dedupe_key: str,  # noqa: A002 - the API's field
+async def notify(severity: str, title: str, body: str, *, type: str, dedupe_key: str,  # noqa: PLR0913 - the Notifier's field names
                  transport: Transport = _urllib_transport) -> str:
     """Send one alert; the returned state is one of the module constants. A 3xx is not a 2xx: it is ``refused``."""
     cfg = get_settings()
@@ -60,7 +60,7 @@ async def notify(severity: str, title: str, body: str, *, type: str, dedupe_key:
         status = await asyncio.to_thread(transport, "POST", cfg.NOTIFIER_URL.rstrip("/") + "/notify", headers,
                                          payload, TIMEOUT_S)
     except Exception as exc:  # noqa: BLE001 - never raises to the caller; the type only, the message may carry the URL
-        log.warning("alert not sent: %s (%s)", UNREACHABLE, exc.__class__.__name__)  # not type(): the parameter shadows it
+        log.warning("alert not sent: %s (%s)", UNREACHABLE, exc.__class__.__name__)  # type(): shadowed by the parameter
         return UNREACHABLE
     state = SENT if 200 <= status < 300 else SERVER_ERROR if status >= 500 else REFUSED  # noqa: PLR2004
     if state != SENT:
