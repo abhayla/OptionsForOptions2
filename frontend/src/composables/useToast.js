@@ -29,8 +29,13 @@ export function useToast() {
    * @param {string} type - success | error | warning | info
    */
   const showToast = (message, type = 'info', { onClick } = {}) => {
-    // never expires (a warning must not vanish unread), so an identical one is not stacked and the oldest makes room
-    if (toasts.some((t) => t.message === message && t.type === type)) return
+    // never expires (a warning must not vanish unread), so an identical one is not stacked and the oldest makes room;
+    // the one box on screen takes the NEWEST action, or its Open would go to the old record
+    const same = toasts.find((t) => t.message === message && t.type === type)
+    if (same) {
+      same.onClick = onClick || null
+      return
+    }
     if (toasts.length >= MAX_ON_SCREEN) toasts.shift()
     toasts.push({ id: nextId++, message, type, icon: ICON[type] || ICON.info, onClick: onClick || null })
   }

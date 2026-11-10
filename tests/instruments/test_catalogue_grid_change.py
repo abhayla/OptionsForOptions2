@@ -6,7 +6,8 @@ after the forced load of 2026-11-09 (2049 rows dropped). STORED = first seen bef
 from __future__ import annotations
 
 import csv
-from datetime import date, datetime
+import dataclasses
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -86,6 +87,20 @@ def test_a_group_expiring_on_the_update_date_that_is_absent_is_not_a_cut_off(sto
     assert not any(c.expiry == date(2026, 11, 9) for c in nov9_list)
     assert any(c.expiry == date(2026, 11, 9) for c in stored)
     assert _update(_cat(stored), nov9_list).grid_change_left > 0
+
+
+def test_every_group_carried_but_most_tokens_reassigned_is_refused(stored, nov9_list) -> None:
+    """ADR-284 item 5: a token that now carries another contract always counts, even when no group is missing."""
+    groups: dict = {}
+    for c in nov9_list:
+        groups.setdefault((c.expiry, c.instrument_type), []).append(c)
+    rows = []
+    for members in groups.values():
+        rows += members[-1:]  # the group stays carried
+        rows += [dataclasses.replace(c, expiry=c.expiry + timedelta(days=30), strike=c.strike + 1)
+                 for c in members[:-1]]  # same token, another contract (ADR-059)
+    with pytest.raises(ValueError, match=r"\(ADR-05[89]\)"):
+        _update(_cat(stored), rows)
 
 
 def test_an_index_absent_from_the_new_list_is_refused(stored) -> None:

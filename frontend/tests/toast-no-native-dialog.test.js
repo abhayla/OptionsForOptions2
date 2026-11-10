@@ -65,6 +65,20 @@ describe('toasts never use a native dialog (#689)', () => {
     expect(toasts.map((t) => t.type)).toEqual(['info', 'warning'])
   })
 
+  it('two identical toasts with different actions make one box and Open runs only the second action', async () => {
+    const first = vi.fn()
+    const second = vi.fn()
+    const { showToast } = useToast()
+    showToast('same', 'info', { onClick: first })
+    showToast('same', 'info', { onClick: second })
+    const w = mount(ToastHost)
+    await w.vm.$nextTick()
+    expect(w.findAll('[data-testid="toast"]')).toHaveLength(1)
+    await w.get('[data-testid="toast-open"]').trigger('click')
+    expect(first).not.toHaveBeenCalled()
+    expect(second).toHaveBeenCalledOnce()
+  })
+
   it('at most 5 stay on screen: the sixth drops the oldest', () => {
     const { showToast } = useToast()
     for (let i = 1; i <= 6; i++) showToast(`m${i}`, 'info')
