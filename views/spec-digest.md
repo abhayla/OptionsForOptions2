@@ -4,12 +4,9 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (270)
+## Decisions (273)
 
-- Older decisions: 230 rows, ADR-1..ADR-243 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
-- ADR-244 2026-11-04: Owner 2026-11-04 (question tool, "Add both as Guidance"): the iron condor system playbook lists S-0… [Extends ADR-240 (situations: rules vs guidance) t…]
-- ADR-245 2026-11-04: Owner 2026-11-04 (question tool, "Yes, 3 layers for all"; and "always act as an expert option trade… [Extends REQ-168 (user preferences) and REQ-161 (p…]
-- ADR-246 2026-11-04: Owner 2026-11-04 ~12:5x IST (question tool, "Keep presets for now"): the REQ-170 style presets stay… [No preset value changes. Adds F-101 (live counts)…]
+- Older decisions: 233 rows, ADR-1..ADR-246 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
 - ADR-247 2026-11-05: Owner 2026-11-05 ~00:3x IST (question tool, "50% max loss or 2x credit (Recommended)"): the iron co… [SPEC CHANGE to ADR-216: its stop line "a loss of…]
 - ADR-248 2026-11-05: Owner 2026-11-05 ~00:4x IST (question tool, "Cost / credit (Recommended)"): the default ranking key… [New: fills the gap the spec left on ranking sugge…]
 - ADR-249 2026-11-05: Owner 2026-11-05 ~00:5x IST (question tool, "A now, B later (Recommended)"), answering what "adjust… [New: settles the open question in the mockup owne…]
@@ -47,6 +44,9 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-281 2026-11-09: Owner answer 2026-11-09 (question tool, GC-ICGUIDE planning). [Holds live order placement for GC-ICGUIDE; record…]
 - ADR-282 2026-11-09: Owner answer 2026-11-09 (question tool, GC-ICGUIDE planning). [Fixes what "iron condor adjustments proven" means…]
 - ADR-283 2026-11-09: Decided under the owner's strategy delegation (owner 2026-11-09 ~15:00 IST: "Wherever you have ques… [Implements ADR-258 (starting point at the fill, n…]
+- ADR-284 2026-11-10: SPEC CHANGE of ADR-058 ("refuse the whole update, writing nothing, if more than 10% of an index's l… [amends ADR-058; amends ADR-059]
+- ADR-285 2026-11-10: Decided by the GC-ICSAFE plan review as a technical call under the owner's approval of that contrac… [extends ADR-119 (2): says what happens after the…]
+- ADR-286 2026-11-10: Technical call under the owner's approval of the GC-ICSAFE contract (2026-11-10), for the alert hal… [amends the egress rule of REQ-073 as built in ofo…]
 
 ## Requirements (161)
 

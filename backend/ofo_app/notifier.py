@@ -70,6 +70,10 @@ def _not_sent(state: str, reason: str) -> str:
     return state
 
 
+def _type_name(exc: BaseException) -> str:
+    return type(exc).__name__  # a helper because notify() has a parameter called type
+
+
 async def notify(severity: str, title: str, body: str, *, type: str, dedupe_key: str,  # noqa: PLR0913 - the Notifier's field names
                  transport: Transport = _urllib_transport) -> str:
     """Send one alert; the returned state is one of the module constants. A 3xx is not a 2xx: it is ``refused``."""
@@ -89,7 +93,7 @@ async def notify(severity: str, title: str, body: str, *, type: str, dedupe_key:
         status = await asyncio.to_thread(transport, "POST", cfg.NOTIFIER_URL.rstrip("/") + "/notify", headers,
                                          payload, TIMEOUT_S)
     except Exception as exc:  # noqa: BLE001 - never raises to the caller; the type only, the message may carry the URL
-        return _not_sent(UNREACHABLE, exc.__class__.__name__)  # type(): shadowed by the parameter
+        return _not_sent(UNREACHABLE, _type_name(exc))
     if 200 <= status < 300:  # noqa: PLR2004
         return SENT
     return _not_sent(SERVER_ERROR if status >= 500 else REFUSED, f"HTTP {status}")  # noqa: PLR2004

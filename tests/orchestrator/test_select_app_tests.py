@@ -64,6 +64,7 @@ PR241_SELECTION = {
     "tests_app/test_strategy_delete_app.py",
     "tests_app/test_strategy_planned_entry.py", "tests_app/test_strategy_store.py",
     "tests_app/test_exit_adopted_313b.py",  # imports StrategyRefused from ofo_app.routes.strategies
+    "tests_app/test_background_cycle.py",  # imports ofo.errors.explanations (changed here)
     "tests_app/test_times_settings.py",  # GC-SET 5a2: calls catalogue_picker.publish_time / loaded_before
     "tests_app/test_pinned_clock.py",  # calls the /api/catalogue/{underlying}/... routes
     "tests_app/test_strategy_tracking.py",  # W-122: GET /strategies/{strategy_id}

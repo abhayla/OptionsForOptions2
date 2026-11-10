@@ -6,7 +6,11 @@ import { readAnswer } from '@/composables/useIndexLive'
 // the year the calendar has no dates for, or null; MarketClosedBanner reads it (ADR-285 (2): never "market closed" then)
 export const calendarMissingYear = ref(null)
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+// keyed by the two-digit month text of the date, so no number is computed
+const MONTHS = {
+  '01': 'Jan', '02': 'Feb', '03': 'Mar', '04': 'Apr', '05': 'May', '06': 'Jun',
+  '07': 'Jul', '08': 'Aug', '09': 'Sep', '10': 'Oct', '11': 'Nov', '12': 'Dec',
+}
 
 export function calendarNoticeText(answer) {
   const year = answer?.calendar_missing_year
@@ -14,7 +18,7 @@ export function calendarNoticeText(answer) {
     return `The market calendar has no dates for ${year}. Prices, checks and practice fills are paused until the ${year} holiday list is loaded.`
   }
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(answer?.calendar_ends_on ?? '')
-  const month = m ? MONTHS[Number(m[2]) - 1] : undefined
+  const month = m ? MONTHS[m[2]] : undefined
   if (!month) return null
   return `The market calendar ends on ${Number(m[3])} ${month} ${m[1]}. Load the ${Number(m[1]) + 1} holiday list before then.`
 }
