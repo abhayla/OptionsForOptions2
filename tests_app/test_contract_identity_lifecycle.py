@@ -672,6 +672,16 @@ def _fillers(n: int, name: str = "NIFTY", first_token: int = 100001,
         rows.append(row)
     return rows
 
+def _fillers_with_lone_put(n: int, **kw) -> list[ListedContract]:
+    """_fillers, but the FIRST contract is the only put: a list that cuts it away loses a whole (expiry, type) group,
+    as a real cut-off file does (ADR-284), so the ADR-058/059 counts run."""
+    import dataclasses
+
+    rows = _fillers(n, **kw)
+    rows[0] = ListedContract(contract=dataclasses.replace(rows[0].contract, instrument_type="PE"),
+                             broker_refs=rows[0].broker_refs)
+    return rows
+
 
 def _stored_all(rows: list[ListedContract]) -> list[SimpleNamespace]:
     return [_stored(r, i + 1) for i, r in enumerate(rows)]
@@ -723,7 +733,7 @@ async def test_adr058_the_store_result_feeds_the_book_block_end_to_end() -> None
 
 async def test_ac3_r2_a_truncated_list_is_refused_with_nothing_written() -> None:
     """AC-3 / ADR-058: the same 1,832 NIFTY contracts and a list missing 733 of them (40.0%) -> refused, no write."""
-    live = _fillers(1832)
+    live = _fillers_with_lone_put(1832)
     conn = _FakeConn(_stored_all(live))
     with pytest.raises(ValueError, match=r"refused: would drop 733 of 1832 live NIFTY contracts"):
         await apply_update(conn, live[733:], as_of=_as_of(date(2026, 10, 7)), max_delist_percent=_MAX_DELIST)
@@ -733,7 +743,7 @@ async def test_ac3_r2_a_truncated_list_is_refused_with_nothing_written() -> None
 @pytest.mark.parametrize("missing, refused", [(183, False), (184, True)], ids=["exactly-10pct", "just-over-10pct"])
 async def test_ac3_r2_the_boundary_is_more_than_ten_percent(missing: int, refused: bool) -> None:
     """ADR-058 "more than 10%": 183 of 1,830 is exactly 10% -> accepted; 184 (10.05%) -> refused."""
-    live = _fillers(1830)
+    live = _fillers_with_lone_put(1830)
     conn = _FakeConn(_stored_all(live))
     if refused:
         with pytest.raises(ValueError, match="refused: would drop 184 of 1830"):
@@ -753,7 +763,7 @@ async def test_ac3_r2_the_threshold_is_a_setting_with_default_ten() -> None:
     assert calc.max_delist_percent(defaults()) == Decimal("10")  # the registry's default
     with pytest.raises(TypeError, match="max_delist_percent"):  # no default in the function (ADR-222 (1))
         await apply_update(_FakeConn(), [], as_of=_as_of(date(2026, 10, 7)))
-    live = _fillers(1830)
+    live = _fillers_with_lone_put(1830)
     conn = _FakeConn(_stored_all(live))
     with pytest.raises(ValueError, match=r"refused: would drop 92 of 1830 .*more than 5%"):
         await apply_update(conn, live[92:], as_of=_as_of(date(2026, 10, 7)), max_delist_percent=Decimal("5"))
@@ -768,7 +778,7 @@ async def test_ac3_r2_the_threshold_is_a_setting_with_default_ten() -> None:
 async def test_ac3_r2_each_index_is_counted_on_its_own() -> None:
     """ADR-058 "an index's live contracts": dropping 3 of 10 SENSEX contracts (30%) is refused even though that is
     0.16% of all 1,842 live contracts; dropping 1 of 10 SENSEX (10%) is accepted."""
-    nifty, sensex = _fillers(1832), _fillers(10, name="SENSEX", first_token=900001)
+    nifty, sensex = _fillers(1832), _fillers_with_lone_put(10, name="SENSEX", first_token=900001)
     stored = _stored_all(nifty + sensex)
     conn = _FakeConn(stored)
     with pytest.raises(ValueError, match="refused: would drop 3 of 10 live SENSEX contracts"):
@@ -929,7 +939,7 @@ async def test_ac3_fix2_a_partial_list_heals_on_the_next_full_list(app_engine: A
 async def test_ac3_fix3_one_expiry_losing_more_than_half_is_refused(missing: int, refused: bool) -> None:
     """ADR-059: 1,000 live NIFTY contracts of 2027-12-28 plus 10 of 2026-10-13. Losing 5 of the 10 (exactly half, 0.5%
     of the index) is accepted; losing 6 (more than half) is refused with nothing written."""
-    big, weekly = _fillers(1000), _fillers(10, first_token=400001, expiry=date(2026, 10, 13))
+    big, weekly = _fillers(1000), _fillers_with_lone_put(10, first_token=400001, expiry=date(2026, 10, 13))
     conn = _FakeConn(_stored_all(big + weekly))
     if refused:
         with pytest.raises(ValueError, match="would drop 6 of 10 live NIFTY contracts of expiry 2026-10-13"):
