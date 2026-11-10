@@ -117,3 +117,16 @@ def test_multi_expiry_strategy_refuses_exact_metrics():
     with pytest.raises(MultiExpiryError, match="one expiry"):
         strategy_metrics(calendar)
     assert issubclass(MultiExpiryError, ValueError)
+
+
+def test_max_profit_at_zero_only_when_the_top_is_the_value_at_index_zero():
+    """#685 item 5c: a remaining long put's top is its payoff if the index falls to 0; a bounded top is not."""
+    assert strategy_metrics(Strategy((leg(BUY, PE, "23000", "80"),))).max_profit_at_zero is True
+    condor = Strategy((leg(SELL, PE, "22000", "40"), leg(BUY, PE, "21800", "20"),
+                       leg(SELL, CE, "24000", "40"), leg(BUY, CE, "24200", "20")))
+    assert strategy_metrics(condor).max_profit_at_zero is False
+    call_spread = Strategy((leg(SELL, CE, "23000", "100"), leg(BUY, CE, "23200", "50")))
+    assert strategy_metrics(call_spread).max_profit_at_zero is False  # flat from 0 to 23,000: not "only at 0"
+    # unlimited upside: the unlimited figure wins, the new flag stays false
+    long_call = strategy_metrics(Strategy((leg(BUY, CE, "23000", "100"),)))
+    assert (long_call.max_profit is UNLIMITED, long_call.max_profit_at_zero) == (True, False)

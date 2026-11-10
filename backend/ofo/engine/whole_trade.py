@@ -69,6 +69,7 @@ class WholeTradeFigures:
     max_loss: Decimal | _Unlimited
     breakevens: tuple[Decimal, ...]
     loss_regions: tuple[LossRegion, ...]
+    max_profit_at_zero: bool = False  # ``max_profit`` is the payoff at index 0 only (metrics.max_profit_at_zero)
 
 
 @dataclass(frozen=True)
@@ -99,7 +100,7 @@ def _figures(strategy: Strategy, shift: Decimal) -> WholeTradeFigures:
         max_loss = -low if low < 0 else Decimal(0)
     # a flat shift of +s is a charge of -s: the same region walk as the outcome's net-of-charges P&L
     return WholeTradeFigures(max_profit, max_loss, breakevens_with_shift(strategy, shift),
-                             loss_regions_after_charges(strategy, -shift))
+                             loss_regions_after_charges(strategy, -shift), metrics.max_profit_at_zero)
 
 
 def _flat(amount: Decimal) -> WholeTradeFigures:

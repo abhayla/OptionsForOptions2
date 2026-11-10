@@ -742,7 +742,8 @@ def _compare_block(cmp: Any) -> dict:
                  "leaders": list(c.leaders),
                  "values": {a: {"text": v.text, "value": v.value, "unavailable_reason": v.unavailable_reason,
                                 **({"breakdown": breakdown_lines(v.breakdown)} if v.breakdown else {}),  # ADR-230 (3)
-                                "warning": v.warning, "warning_off": v.warning_off}  # REQ-159 AC-6
+                                "warning": v.warning, "warning_off": v.warning_off,  # REQ-159 AC-6
+                                "at_index_zero": v.at_index_zero}
                             for a, v in c.values.items()}} for c in cmp.criteria]
     return {"criteria": criteria, "leads": {a: {"n": n, "m": m} for a, (n, m) in cmp.leads.items()},
             "curves": {k: [[level, pnl] for level, pnl in points] for k, points in cmp.curves.items()},

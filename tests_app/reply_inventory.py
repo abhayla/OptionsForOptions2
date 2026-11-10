@@ -151,6 +151,7 @@ INVENTORY = (
     'FIELD AdjustApproachesOut.criteria[].label: CatalogueText',
     'FIELD AdjustApproachesOut.criteria[].leader_label: CatalogueText',
     'FIELD AdjustApproachesOut.criteria[].leaders[]: Identifier',
+    'FIELD AdjustApproachesOut.criteria[].values{}.at_index_zero: bool',
     'FIELD AdjustApproachesOut.criteria[].values{}.breakdown: None',
     'FIELD AdjustApproachesOut.criteria[].values{}.breakdown[].id: Identifier',
     'FIELD AdjustApproachesOut.criteria[].values{}.breakdown[].label: CatalogueText',

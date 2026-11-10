@@ -9,6 +9,8 @@ import { rupeesText, percentFromFraction } from '@/lib/displayFormat'
 export const NO_CHANGE_ID = 'A-36'
 export const UNAVAILABLE_FOR_FILTER = 'not available for this filter'
 export const UNAVAILABLE_VALUE = '-'
+// #685 item 5c: the server flags a Max profit that is the payoff if the index falls to 0 (unhedged long puts)
+export const MAX_PROFIT_AT_ZERO_LABEL = 'Max profit (if the index falls to 0)'
 
 // The criteria the filters read when the approach itself does not carry the figure (ids as the route's `criteria` names them).
 export const CRITERION = Object.freeze({ cash: 'credit', cost: 'cost' })

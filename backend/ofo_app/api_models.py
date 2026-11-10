@@ -512,6 +512,7 @@ class AdjustCellOut(ApiModel):
     breakdown: list[AdjustBreakdownLineOut] | None = None  # only the cost cell of a known cost with rates (ADR-230 (3))
     warning: CatalogueText | None = None  # REQ-159 AC-6: the cost % row only, above the playbook's warning level
     warning_off: CatalogueText | None = None  # REQ-159 AC-6: why no warning was judged
+    at_index_zero: bool = False  # #685 item 5c: the max profit row only; the figure is the payoff if the index falls to 0
 
 
 class AdjustCriterionOut(ApiModel):

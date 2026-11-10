@@ -458,6 +458,11 @@
         "additionalProperties": false,
         "description": "One approach's value on one compare criterion (REQ-156 AC-3): ``text`` always shown; ``value`` the exact\nnumber when there is one; ``unavailable_reason`` beside a \"-\".",
         "properties": {
+          "at_index_zero": {
+            "default": false,
+            "title": "At Index Zero",
+            "type": "boolean"
+          },
           "breakdown": {
             "anyOf": [
               {

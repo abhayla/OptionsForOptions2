@@ -118,6 +118,7 @@
                 <td v-for="x in kept" :key="x.a.id" class="p-2 align-top" :class="isLeader(c, x.a.id) ? 'bg-profit-soft' : ''" :data-leader="isLeader(c, x.a.id) ? 'true' : 'false'" :data-testid="`adjust-cell-${c.id}-${x.a.id}`">
                   <template v-if="cellOf(c, x.a.id)?.text != null && cellOf(c, x.a.id)?.unavailable_reason == null">
                     <div>{{ cellOf(c, x.a.id).text }}</div>
+                    <div v-if="cellOf(c, x.a.id).at_index_zero" class="text-xs text-ink-muted" data-testid="adjust-cell-at-zero">{{ MAX_PROFIT_AT_ZERO_LABEL }}</div>
                     <div v-if="stale && c.group === 'money_now' && prices.as_of_note" class="text-xs text-ink-muted" data-testid="adjust-cell-asof">{{ prices.as_of_note }}</div>
                     <div v-if="isLeader(c, x.a.id)" class="text-xs text-ink-muted" data-testid="adjust-leader-label">{{ c.leader_label }}</div>
                     <!-- REQ-159 AC-6: the server's judgement of the cost % against the playbook's warning level (numbers only) -->
@@ -183,7 +184,7 @@ import { plainName } from '@/lib/saveDraft'
 import { readTracking } from '@/lib/tracking'
 import { stateRows } from '@/lib/adjustDrawer'
 import {
-  EMPTY_FILTERS, GROUP_TITLES, KIND_TITLES, NO_CHANGE_ID, RANGES, SIDE_TITLES, UNAVAILABLE_FOR_FILTER, UNAVAILABLE_VALUE,
+  EMPTY_FILTERS, GROUP_TITLES, KIND_TITLES, MAX_PROFIT_AT_ZERO_LABEL, NO_CHANGE_ID, RANGES, SIDE_TITLES, UNAVAILABLE_FOR_FILTER, UNAVAILABLE_VALUE,
   applyFilters, buildFacets, cmpDecimal, isNoChange, exitLegsFromApproach, isFullExit, legsFromApproach, rangeEndText, refusalText, refusedApproaches, showingText, tableApproaches,
 } from '@/lib/adjustCompare'
 
