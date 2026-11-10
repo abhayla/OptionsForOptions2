@@ -10,8 +10,8 @@ Example (issue #497, empty catalogue):
   python scripts/orchestrator/db_run_fresh.py . python -m pytest -q -p no:cacheprovider -c pytest-app.ini \
       tests_app/test_catalogue_refresh.py
 """
-import asyncio
 import ast
+import asyncio
 import datetime
 import functools
 import hashlib
