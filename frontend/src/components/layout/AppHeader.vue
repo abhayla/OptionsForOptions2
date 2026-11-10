@@ -11,6 +11,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import Icon from '@/components/common/Icon.vue'
+import ToastHost from '@/components/layout/ToastHost.vue'
 import { useToast } from '@/composables/useToast'
 import { compareUrl } from '@/lib/adjustDrawer'
 import { bellCount, dropAlerts, openRecords, readOpportunities, readPaperAlerts, takeAlerts, takeOpportunities } from '@/lib/paperAlerts'
@@ -396,5 +397,6 @@ onBeforeUnmount(() => {
       </div>
       <p v-if="openSection.note" class="mt-1 border-t border-line px-3 pt-2 text-xs text-ink-muted" data-testid="nav-menu-note">{{ openSection.note }}</p>
     </div>
+    <ToastHost />
   </header>
 </template>
