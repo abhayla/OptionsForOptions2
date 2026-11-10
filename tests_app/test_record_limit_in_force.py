@@ -18,6 +18,7 @@ from ofo_app.routes import adjustment_check as check_route
 from ofo_app.routes.adjustment_opportunities import condition_text
 
 AT = datetime.datetime(2026, 11, 12, 11, 0, tzinfo=datetime.UTC)
+BOOKED = 2  # adjustments booked in the position
 TIMELINE = {"cmp": "ge", "label": "Tested short's delta reaches", "unit": "delta"}
 
 
@@ -64,8 +65,16 @@ async def test_the_worker_stamps_the_limit_in_force_beside_the_gate_rung(monkeyp
     rv = SimpleNamespace(rule_id="T-03", trigger_id="T-03", value=D("0.3537"), threshold=D("0.30"), cmp="ge",
                          beyond=None, approaches=(), carry=None)
     ctx = background.GateContext(SimpleNamespace(values=[rv], results=[], stage_name="Early"), None)
-    watched = SimpleNamespace(user_ref="owner", strategy_id=123, body={}, is_system=True)
+    watched = SimpleNamespace(user_ref="owner", strategy_id=123, body={}, is_system=True,
+                              tracked=SimpleNamespace(adjustments_used=BOOKED))
     event = alert_gate.Opened("T-03", AT, 1, D("0.35"), D("0.3537"), None)
     await background.DbGateStore().apply(watched, [event], ctx)
     assert stamped["threshold"] == D("0.3500")
     assert stamped["limit"] == D("0.3000")
+    assert stamped["adjustments"] == BOOKED  # the position the record was raised for (#685 item 3)
+
+
+def test_a_record_reads_its_stored_adjustment_count_and_an_older_one_has_none():
+    assert _record(adjustments=BOOKED).adjustments == BOOKED
+    assert _record().adjustments is None
+    assert _record(adjustments=None).adjustments is None

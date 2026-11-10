@@ -759,19 +759,21 @@ class DbGateStore:
                     group=gate_group(w.strategy_id, e.at), source=source,
                     cmp=None if rv is None else rv.cmp, label=label, unit=unit, worse=e.worse,
                     beyond=None if rv is None else rv.beyond, limit=None if rv is None else _quantized(rv.threshold),
-                    **t19)
+                    adjustments=_count_of(w.tracked), **t19)
                 opened[e.rule_id] = rec.id
             await db.commit()
         return opened
 
-    async def lapse_open(self, w: Watched) -> None:
-        """#685 item 3: every open record of the strategy lapses, its position changed. A failure raises (the rebuild
-        keeps its last list and tries again), unlike the contained lapse of an exited strategy."""
+    async def lapse_changed(self, w: Watched) -> bool:
+        """#685 item 3: the open records raised at another adjustment count than the strategy holds now lapse as
+        position_changed (``playbook_store.lapse_changed``); True when any did. A failure raises (the rebuild keeps
+        its last list and tries again), unlike the contained lapse of an exited strategy."""
         from ofo_app import playbook_store  # noqa: PLC0415 - database layer at run time
         from ofo_app.db import get_sessionmaker  # noqa: PLC0415
         async with get_sessionmaker()() as db:
-            await playbook_store.lapse_all(db, w.user_ref, w.strategy_id, playbook_store.LAPSE_POSITION_CHANGED)
+            lapsed = await playbook_store.lapse_changed(db, w.user_ref, w.strategy_id, _count_of(w.tracked))
             await db.commit()
+        return bool(lapsed)
 
 
 Lister = Callable[[], Awaitable[list[Watched]]]
@@ -923,9 +925,11 @@ class Worker:
                 self._tick.pop(w.strategy_id, None)
         old = {w.strategy_id: w for w in self.monitors}
         for w in monitors:
-            if _position_changed(old.get(w.strategy_id), w):
-                async with held(self.db_gate, GATE_REBUILD):  # a raise keeps the last list: re-found next re-read
-                    await self._gate_store.lapse_open(w)
+            if _count_of(w.tracked) is None:  # an unreadable count lapses nothing (and resets nothing)
+                continue
+            async with held(self.db_gate, GATE_REBUILD):  # a raise keeps the last list: re-found next re-read
+                lapsed = await self._gate_store.lapse_changed(w)
+            if lapsed or _position_changed(old.get(w.strategy_id), w):
                 # the old position's records and queued events are gone; the gate restores from the store next check
                 self._gate.pop(w.strategy_id, None)
                 self._gate_events.pop(w.strategy_id, None)
@@ -1740,11 +1744,17 @@ def _keep_recent(kept: list, item: object) -> None:
 _GONE = object()  # a strategy no longer listed (``_drop_stale_writes``)
 
 
+def _count_of(tracked: Any) -> int | None:
+    """The strategy's adjustment count when readable, else None (never a guess)."""
+    n = getattr(tracked, "adjustments_used", None)
+    return n if isinstance(n, int) and not isinstance(n, bool) else None
+
+
 def _position_changed(old: Watched | None, new: Watched) -> bool:
-    """A basket was booked since ``old`` was read: both adjustment counts known and different (an unreadable count
-    lapses nothing, never a guess)."""
-    a, b = (getattr(x, "adjustments_used", None) for x in (old and old.tracked, new.tracked))
-    return all(isinstance(n, int) and not isinstance(n, bool) for n in (a, b)) and a != b
+    """A basket was booked since ``old`` was read, seen in this process: it resets the strategy's gate memory even
+    when no record was open (the records themselves are judged by their stored count, ``DbGateStore.lapse_changed``)."""
+    a, b = _count_of(old and old.tracked), _count_of(new.tracked)
+    return a is not None and b is not None and a != b
 
 
 class _NothingTraded(Exception):
