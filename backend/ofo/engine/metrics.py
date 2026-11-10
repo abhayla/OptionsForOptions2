@@ -78,7 +78,7 @@ class StrategyMetrics:
     breakevens: tuple[Decimal, ...]
     #: Expiry loss regions (P&L below zero), ordered and never touching (ADR-072); see ``LossRegion``.
     loss_regions: tuple[LossRegion, ...] = ()
-    #: #685 item 5c: the finite max profit is reached only at index 0 (unhedged long puts, short futures), never elsewhere
+    #: #685 item 5c: the finite max profit is reached only at index 0 (unhedged long puts, short futures)
     max_profit_at_zero: bool = False
 
 
