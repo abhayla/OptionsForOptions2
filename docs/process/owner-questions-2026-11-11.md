@@ -26,6 +26,33 @@ decisions on host, spend and lifting the paper-only rule (ADR-281).
 Spec basis: finding F-31 (`spec/findings.md`), ADR-060, `docs/process/standing-direction.md` step 2 ("The owner has
 approved the list").
 
+## Q2. OK to register this app with the shared Notifier on the server? (needed for the warnings to your phone)
+
+**What you get:** a message on your phone when the background watcher stops during market hours, when it comes back,
+and once a day in December until the 2027 holiday list is loaded.
+
+**What is checked (10 Nov 21:00):** the Notifier's public door answers from this PC (`notifier-health`: HTTP 200 in
+0.95 s). What is missing is this app's own entry: the Notifier only accepts messages from apps it knows, each with
+its own key. This app has none yet.
+
+**What I need your OK for, because it is a change on the production server and creates a new secret:**
+one new project block in the Notifier's `config.yaml` on the server, one new key in its `.env`, and a reload of the
+Notifier process (`pm2 reload notifier`, the documented onboarding step, about 5 minutes; other apps' alerts are
+not touched). The key then goes into this project's local `.env`, never into the repo.
+
+1. **Yes, register it; "watcher stopped" goes to WhatsApp, the daily calendar reminder to Telegram or email (my
+   recommendation).** Why: a stopped watcher means no loss alarm, so it should reach you at once; the calendar
+   reminder is not urgent and should not use up WhatsApp messages.
+2. Yes, but everything to one channel: say which.
+3. Not now: the warning code stays built and unit-tested, and nothing is sent until you say so.
+
+Until you answer, option 3 is what happens: the client and the watcher check are built and tested against a fake
+Notifier, and row c25 ("one real test warning on your phone") stays PARTIAL.
+
+Business call: only the owner approves a change on the production server and where his own alerts go.
+Spec basis: REQ-115 AC-6 (heartbeat and Notifier alert), ADR-285 (1) (calendar warning through the shared
+notifier); the Notifier onboarding steps in the owner's private notes.
+
 ## N1. To do in December: load the 2027 market holiday list (nothing to answer now)
 
 **What a user would see without it:** from 1 Jan 2027 the app treats every day as "no market": no prices checked, no
