@@ -4,6 +4,7 @@
 # W-080 round 7 (REQ-073 AC-4): the runtime egress gate allows the database endpoints named in the environment, set
 # once here, before any engine is built (``ofo.broker.egress``; every later call is refused).
 import os as _os
+from urllib.parse import urlsplit as _urlsplit
 
 from ofo.broker import egress as _egress
 
@@ -11,4 +12,7 @@ from ofo_app import redaction as _redaction  # noqa: F401
 
 _DB_URL_VARS = ("DATABASE_URL", "TEST_DATABASE_URL", "TEST_ADMIN_DATABASE_URL", "ALEMBIC_DATABASE_URL",
                 "DEV_DATABASE_URL")
-_egress._allow_endpoints(v for v in (_os.environ.get(n, "") for n in _DB_URL_VARS) if v.strip())
+# ADR-286: plus the ONE configured Notifier address, only when it is https (a loopback one needs no entry); empty = none
+_NOTIFIER_URL = _os.environ.get("NOTIFIER_URL", "").strip()
+_egress._allow_endpoints([v for v in (_os.environ.get(n, "") for n in _DB_URL_VARS) if v.strip()]
+                         + ([_NOTIFIER_URL] if _urlsplit(_NOTIFIER_URL).scheme == "https" else []))
