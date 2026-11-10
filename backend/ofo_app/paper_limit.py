@@ -42,6 +42,24 @@ async def _plan_body(db: Any, user_ref: str, strategy_id: int, reader: Any,  # n
     return (await check.resolve(db, user_ref, strategy_id, stype)).body
 
 
+async def _read_before(reader: Any, strategy_id: int, rates: Any) -> Any:
+    """The position as it stands BEFORE this request's orders are stored, as a reader the check calls later. The
+    request's session sees its own inserts (#682), so a read after them would type the position after the batch and
+    pick another playbook's limit. A failed read is kept and raised when the check asks, so it still refuses by name."""
+    failure: Exception | None = None
+    tracked = None
+    try:
+        tracked = await reader(strategy_id, rates)
+    except Exception as exc:  # noqa: BLE001 - raised again where the check reads it
+        failure = exc
+
+    async def read(_strategy_id: int, _rates: Any) -> Any:
+        if failure is not None:
+            raise failure
+        return tracked
+    return read
+
+
 def _unread() -> StrategyRefused:
     return StrategyRefused("paper_adjustment_limit_unread")
 
@@ -107,6 +125,7 @@ async def place_checked(db: Any, user_ref: str, strategy_id: int, orders: Sequen
     (``gate_market_closed``; no market context fails closed by the calendar), then ``paper_store.place``, then the
     adjustment limit on the stored book. The caller commits, or rolls back on any raise. Returns the whole book."""
     refuse_when_closed(ctx, at)
+    reader = await _read_before(reader, strategy_id, rates)
     book = await paper_store.place(db, user_ref, strategy_id, orders, entry=entry)
     await check_adjustment_limit(db, user_ref, strategy_id, book[:-len(orders)], [o.order for o in book[-len(orders):]],
                                  reader, rates, None if ctx is None else ctx.provider.instrument_master())

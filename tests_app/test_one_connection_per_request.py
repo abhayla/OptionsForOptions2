@@ -1,10 +1,12 @@
-"""GC-ICSAFE c36, c38 (issue #682): a request uses ONE database connection.
+"""GC-ICSAFE c36, c38, c50 (issue #682): a request uses ONE database connection.
 
 The pool is cut to one connection (no overflow, 2 s wait). A request that holds its own session while a reader opens a
 second one waits for a connection that never frees up, so it times out ("QueuePool limit of size 1 overflow 0
-reached"). Every route below must answer: the paper order (a stored paper strategy's open leg is exited), the
-adjustment check, the adjustment approaches and Execute. Guards the class: any new reader that opens a second session
-inside these requests turns this red.
+reached"). Both tests undo the conftest's "no database" stubs, so the settings read and the charge-rates read are the
+real ones. Routes called: Execute (ENTRY), and in scenario mode the adjustment check, approaches, history, plan read,
+alert style read and the paper order. Not called here (need a body or a state of their own): the plan save and edit,
+the alert style pin, the playbook test route and the tracking exit. Any new reader that opens a second session inside
+a called route turns this red.
 """
 from __future__ import annotations
 
@@ -96,20 +98,29 @@ async def test_execute_answers_with_a_pool_of_one_connection(app_engine, admin_e
         await _remove_own_rows(admin_engine, [int(cid)], user)
 
 
-async def test_each_route_answers_with_a_pool_of_one_connection(app_engine, monkeypatch, caplog):
+async def test_each_route_answers_with_a_pool_of_one_connection(app_engine, admin_engine, monkeypatch, caplog):
+    """Scenario mode (the paper-order route's scenario guard runs first), with the REAL settings and charge-rates reads:
+    the conftest's two "no database" stubs are undone, and the rates cache is emptied before every call."""
+    monkeypatch.undo()
     monkeypatch.setenv("DATABASE_URL", app_engine.url.render_as_string(hide_password=False))
     monkeypatch.setenv("APP_ENV", "test")
     monkeypatch.setenv("OFO_SCENARIO", PATH_ID)
     _reset_engine()
+    seeded: dict[str, int] = {}
     try:
-        await _walk(app_engine, monkeypatch, caplog)
+        await _walk(app_engine, monkeypatch, caplog, seeded)
     finally:
         await app_db.close_db()
         _reset_engine()
         scenario_mode._loaded.clear()
+        if seeded:  # the seed is idempotent and stays; the order the paper-order call placed does not
+            async with admin_engine.begin() as conn:
+                await conn.execute(text("SET LOCAL session_replication_role = replica"))
+                await conn.execute(text("DELETE FROM public.paper_orders WHERE strategy_id = :s AND id > :after"),
+                                   seeded)
 
 
-async def _walk(app_engine, monkeypatch, caplog) -> None:
+async def _walk(app_engine, monkeypatch, caplog, seeded: dict[str, int]) -> None:
     await load_library(app_engine)
     await app_engine.dispose()
     sid = await seed_mod.seed(PATH_ID)  # a stored paper strategy, built on the default pool
@@ -120,11 +131,14 @@ async def _walk(app_engine, monkeypatch, caplog) -> None:
         net = {int(c): int(n) for c, n in (await conn.execute(text(
             "SELECT contract_id, sum(CASE WHEN side = 'BUY' THEN quantity ELSE -quantity END) "
             "FROM public.paper_orders WHERE strategy_id = :s GROUP BY contract_id"), {"s": sid})).all()}
+        seeded.update(s=sid, after=(await conn.execute(text("SELECT max(id) FROM public.paper_orders WHERE "
+                                                            "strategy_id = :s"), {"s": sid})).scalar_one())
     cid, held = next((c, n) for c, n in net.items() if n != 0)
     leg_exit = {"contract_id": cid, "side": "SELL" if held > 0 else "BUY", "quantity": abs(held), "price": "1.00",
                 "kind": "exit"}
 
     from ofo_app.main import create_app  # noqa: PLC0415 - after the environment above
+    from ofo_app.routes import outcome  # noqa: PLC0415 - after the placeholders of the conftest
     scenario_mode._loaded.clear()
     app = create_app()
     answers: dict[str, str] = {}
@@ -135,7 +149,11 @@ async def _walk(app_engine, monkeypatch, caplog) -> None:
                 ("adjustment-check", 200, lambda: ac.get(f"/api/strategies/{sid}/adjustment-check")),
                 ("adjustment-approaches", 200, lambda: ac.post(f"/api/strategies/{sid}/adjustment-approaches",
                                                                json={})),
+                ("adjustment-history", 200, lambda: ac.get(f"/api/strategies/{sid}/adjustment-history")),
+                ("adjustment-plan", 200, lambda: ac.get(f"/api/strategies/{sid}/adjustment-plan")),
+                ("alert-style", 200, lambda: ac.get(f"/api/strategies/{sid}/alert-style")),
                 ("paper order", 201, lambda: ac.post(f"/paper/strategies/{sid}/orders", json={"orders": [leg_exit]}))):
+            outcome._rates_cache.update(until=0.0, value=None, flight=None)  # the real charge-rates read, every call
             answers[name] = await _ask(want, call)
     bad = {k: v for k, v in answers.items() if not v.startswith("ok")}
     assert not bad, f"answers: {answers}"
