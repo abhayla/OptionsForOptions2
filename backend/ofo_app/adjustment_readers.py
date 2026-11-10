@@ -68,24 +68,30 @@ _SATURDAY = 5
 _CLOSE = SESSION_CLOSE  # one home: ofo.timeutil
 
 
-async def read_roll_inputs(strategy_id: int) -> tuple[Any, Any]:
+async def read_roll_inputs(strategy_id: int, db: Any = None) -> tuple[Any, Any]:
     """ADR-243: the strategy's roll-basis inputs, read ONCE per request: (its plan's settings layer, its entry facts).
     Answer states, each fail closed with a named reason (never a default): plan absent -> None (follow the user); plan
     read failed -> ``layers.Unreadable("plan_read_failed")``; entry facts stored -> ``EntryFacts``; none stored ->
     None; unreadable -> ``layers.Unreadable``. The caller (``adjustment_check.roll_basis_of``) turns both into the
-    basis in force; an unreadable plan refuses every roll, missing entry facts refuse only "Entry distance" rolls."""
+    basis in force; an unreadable plan refuses every roll, missing entry facts refuse only "Entry distance" rolls.
+    ``db``: the request's own session (a request uses ONE connection, #682); None for a caller with no request."""
+    if db is not None:
+        return await _roll_inputs_on(db, strategy_id)
+    async with get_sessionmaker()() as own:
+        return await _roll_inputs_on(own, strategy_id)
+
+
+async def _roll_inputs_on(db: Any, strategy_id: int) -> tuple[Any, Any]:
     from ofo.settings import layers  # noqa: PLC0415 - read path only
 
     from ofo_app import playbook_store  # noqa: PLC0415 - read path only
-    async with get_sessionmaker()() as db:
-        try:
-            plan = await playbook_store.plan_for(db, current_user_ref(), strategy_id)
-            layer: Any = None if plan is None else layers.strategy_layer(plan.body)
-        except Exception:
-            log.exception("roll basis: the plan of strategy %s could not be read", strategy_id)
-            layer = layers.Unreadable("plan_read_failed")
-        facts = await entry_facts_in(db, strategy_id)
-    return layer, facts
+    try:
+        plan = await playbook_store.plan_for(db, current_user_ref(), strategy_id)
+        layer: Any = None if plan is None else layers.strategy_layer(plan.body)
+    except Exception:
+        log.exception("roll basis: the plan of strategy %s could not be read", strategy_id)
+        layer = layers.Unreadable("plan_read_failed")
+    return layer, await entry_facts_in(db, strategy_id)
 
 
 async def entry_facts_in(db: Any, strategy_id: int) -> Any:
@@ -221,19 +227,27 @@ GUARDS_UNREADABLE = _GuardsUnreadable()
 
 
 async def read_guards(strategy_id: int, position: Position, spot: Decimal | None,
-                      listed: list | None) -> dict[str, Any] | None | _GuardsUnreadable:
+                      listed: list | None, db: Any = None) -> dict[str, Any] | None | _GuardsUnreadable:
     """The ``guards`` of the strategy playbook (its own plan, else the active playbook of its type; ADR-230 (1)).
     Answer states: a mapping (limits; empty = none set), None (the shape matches no playbook), ``GUARDS_UNREADABLE``
-    (store error or malformed body: logged by its class only; the route says the limits were not applied)."""
-    from ofo_app import adjustment_check  # noqa: PLC0415 - it imports the route module's dataclasses
+    (store error or malformed body: logged by its class only; the route says the limits were not applied).
+    ``db``: the request's own session (a request uses ONE connection, #682); None for a caller with no request."""
     try:
-        async with get_sessionmaker()() as db:
-            stype = adjustment_check.strategy_type(position, spot, listed)
-            resolved = await adjustment_check.resolve(db, current_user_ref(), strategy_id, stype)
-        return adjustment_check.guards_of_body(resolved.body)
+        if db is not None:
+            return await _guards_on(db, strategy_id, position, spot, listed)
+        async with get_sessionmaker()() as own:
+            return await _guards_on(own, strategy_id, position, spot, listed)
     except Exception as exc:  # noqa: BLE001 - any failure of the read is "unreadable", never a silent skip
         log.warning("adjustment guards: strategy %s playbook unreadable (%s)", strategy_id, type(exc).__name__)
         return GUARDS_UNREADABLE
+
+
+async def _guards_on(db: Any, strategy_id: int, position: Position, spot: Decimal | None,
+                     listed: list | None) -> dict[str, Any] | None:
+    from ofo_app import adjustment_check  # noqa: PLC0415 - it imports the route module's dataclasses
+    stype = adjustment_check.strategy_type(position, spot, listed)
+    resolved = await adjustment_check.resolve(db, current_user_ref(), strategy_id, stype)
+    return adjustment_check.guards_of_body(resolved.body)
 
 
 # ---- market -----------------------------------------------------------------------------------------------------
