@@ -20,7 +20,7 @@ export function calendarNoticeText(answer) {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(answer?.calendar_ends_on ?? '')
   const month = m ? MONTHS[m[2]] : undefined
   if (!month) return null
-  return `The market calendar ends on ${Number(m[3])} ${month} ${m[1]}. Load the ${Number(m[1]) + 1} holiday list before then.`
+  return `The market calendar ends on ${m[3].replace(/^0/, '')} ${month} ${m[1]}. Load the ${+m[1] + 1} holiday list before then.`
 }
 
 /** One read of the index reply; sets calendarMissingYear and returns the banner text (null when there is nothing to say). */
