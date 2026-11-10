@@ -210,7 +210,7 @@
    "data": "ok"
   },
   "T-14t": {
-   "label": "Theta per day falls below this % of premium left",
+   "label": "Theta per day falls to this % of premium left or below",
    "unit": "%",
    "cmp": "le",
    "weekly": [
@@ -261,7 +261,7 @@
    "data": "vix"
   },
   "T-11c": {
-   "label": "IV percentile above",
+   "label": "IV percentile reaches",
    "unit": "%",
    "cmp": "ge",
    "weekly": [
@@ -363,7 +363,7 @@
    "data": "ok"
   },
   "T-09": {
-   "label": "A short leg's premium falls below Rs (close for pennies)",
+   "label": "A short leg's premium falls to Rs or below (close for pennies)",
    "unit": "Rs",
    "cmp": "le",
    "weekly": [
@@ -380,7 +380,7 @@
    "data": "ok"
   },
   "T-19": {
-   "label": "Premium still left to earn is below this many x the adjustment's cost",
+   "label": "Premium still left to earn is this many x the adjustment's cost or below",
    "unit": "x",
    "cmp": "le",
    "weekly": [

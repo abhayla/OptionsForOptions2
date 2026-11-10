@@ -35,7 +35,7 @@ const REASONS = [{ id: 'expected_within_plan', text: 'Expected and within my pla
   { id: 'not_relevant', text: 'Not relevant' }, { id: 'other', text: 'Other' }]
 const COUNTS = (open, dismissed = 0) => [['open', 'Open', open], ['dismissed', 'You dismissed this', dismissed], ['acted_on', 'Acted on', 0],
   ['completed', 'Completed', 0], ['partly_completed', 'Partly completed', 0], ['lapsed', 'Lapsed', 0]].map(([outcome, text, count]) => ({ outcome, text, count }))
-const WORDS = { 'T-01': "Spot within this % of a short strike: 0.3416 % (rule 0.5000 %)", 'T-03': "Tested short's delta reaches: 0.4103 delta (rule 0.3500 delta)", 'T-09': "A short leg's premium falls below Rs (close for pennies): 2.7000 Rs (rule 3.0000 Rs)" }
+const WORDS = { 'T-01': "Spot within this % of a short strike: 0.3416 % (rule 0.5000 %)", 'T-03': "Tested short's delta reaches: 0.4103 delta (rule 0.3500 delta)", 'T-09': "A short leg's premium falls to Rs or below (close for pennies): 2.7000 Rs (rule 3.0000 Rs)" }
 const record = (id, rule, value, threshold, outcome = 'open', text = 'Open', detail = null) => ({
   id, rule_id: rule, trigger_id: rule, stage: 'Middle', value, threshold, condition: WORDS[rule],
   shown_at: '2026-10-31T07:47:04.204218Z', outcome, outcome_text: text, detail, can_act: outcome === 'open' })

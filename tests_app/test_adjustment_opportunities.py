@@ -357,7 +357,7 @@ async def test_t19_list_line_names_the_same_approach_and_cost_as_the_check(app_d
     # Measured 2026-11-05 (t19_support.cheapest on ADJ-43, the same cheapest_offered): A-26 "Close the untested side
     # for profit" (built since GC-IC1 s2, c899dccb) costs 26.86 < A-28's, 2 offered approaches unpriced; premium left
     # 19.50 / 26.86 = 0.7260, the flag's value. The #629 wording (9ab9aabf) reads "we could price".
-    assert flag["condition"] == ("Premium still left to earn is below this many x the adjustment's cost: 0.7260 "
+    assert flag["condition"] == ("Premium still left to earn is this many x the adjustment's cost or below: 0.7260 "
                                  "(rule 1.0000); cheapest adjustment we could price: Close the untested side for "
                                  "profit, cost ₹26.86. 2 could not be priced.")
     rec = next(r for r in await _records(app_db_url, sid) if r.rule_id == "T-19")

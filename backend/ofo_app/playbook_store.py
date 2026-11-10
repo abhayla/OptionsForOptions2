@@ -141,6 +141,13 @@ class Suggestion:
         return self.timeline[0].get("label") if self.timeline else None
 
     @property
+    def limit(self) -> Decimal | None:
+        """The limit in force at the stage when it was shown, the one the check screen prints; ``threshold`` is the
+        alert gate's rung (its memory). None on an older record: its words use the threshold."""
+        raw = self.timeline[0].get("limit") if self.timeline else None
+        return None if raw is None else Decimal(raw)
+
+    @property
     def approach(self) -> str | None:
         """ADR-221: the T-19 record's cheapest priced approach when it was shown (None: not T-19, or older)."""
         return self.timeline[0].get("approach") if self.timeline else None
@@ -278,7 +285,7 @@ _INSERT_SUGGESTION = text(
     "'group', CAST(:group AS TEXT), 'source', CAST(:source AS TEXT), 'cmp', CAST(:cmp AS TEXT), "
     "'label', CAST(:label AS TEXT), 'unit', CAST(:unit AS TEXT), 'approach', CAST(:approach AS TEXT), "
     "'approach_cost', CAST(:approach_cost AS TEXT), 'unpriced', CAST(:unpriced AS INTEGER), "
-    "'carry', CAST(:carry AS JSONB), 'beyond', CAST(:beyond AS JSONB)))) "
+    "'carry', CAST(:carry AS JSONB), 'beyond', CAST(:beyond AS JSONB), 'limit', CAST(:limit AS TEXT)))) "
     f"RETURNING {_SG_COLUMNS}")
 _CLOSE_SUGGESTION = text(
     "UPDATE public.adjustment_suggestions AS g SET outcome = CAST(:outcome AS TEXT), "  # noqa: S608
@@ -685,8 +692,10 @@ async def open_suggestion(conn: Any, user_ref: str, strategy_id: int, rule_id: s
                           unit: str | None = None, approach: str | None = None,
                           approach_cost: Decimal | None = None, unpriced: int | None = None,
                           worse: str | None = None, carry: Mapping[str, str | None] | None = None,
-                          beyond: tuple[str, Decimal, Decimal] | None = None) -> Suggestion:
+                          beyond: tuple[str, Decimal, Decimal] | None = None,
+                          limit: Decimal | None = None) -> Suggestion:
     """REQ-112 AC-1: one open record per (strategy, rule); a rule still open returns its existing record.
+    ``limit``: the limit in force at the stage (``Suggestion.limit``), beside the gate's rung ``threshold``.
     ``carry``: a carry check's content (GC-IC1 1b; money as strings, None = not known with its reason code).
     ``worse``: None / 'last' / 'dismissed' (REQ-170 AC-3, ADR-237 (5)), written once at insert."""
     if worse not in WORSE_MARKS:
@@ -701,6 +710,7 @@ async def open_suggestion(conn: Any, user_ref: str, strategy_id: int, rule_id: s
                                                    "source": source, "cmp": cmp, "label": label,
                                                    "unit": unit, "approach": approach, "unpriced": unpriced,
                                                    "worse": worse,
+                                                   "limit": None if limit is None else format(limit, "f"),
                                                    "carry": None if carry is None else json.dumps(carry),
                                                    "beyond": None if beyond is None else json.dumps(
                                                        {"kind": beyond[0], "strike": format(beyond[1], "f"),
