@@ -188,8 +188,8 @@ async def write_heartbeat(client: Any, at: datetime.datetime) -> None:
 
 
 def judge_heartbeat(raw: Any, now: datetime.datetime) -> str:
-    """``stale`` when older than HEARTBEAT_STALE_S, ``fresh`` otherwise; ``unreadable`` when missing, not text, or not a
-    time with a zone (never read as fresh)."""
+    """``stale`` when older than HEARTBEAT_STALE_S, ``fresh`` otherwise; ``unreadable`` when missing, not text, not a
+    time with a zone, or more than HEARTBEAT_STALE_S ahead of ``now`` (never read as fresh)."""
     text = _text(raw)
     try:
         at = datetime.datetime.fromisoformat(text) if text else None
@@ -197,7 +197,10 @@ def judge_heartbeat(raw: Any, now: datetime.datetime) -> str:
         at = None
     if at is None or at.utcoffset() is None:
         return UNREADABLE
-    return STALE if (now - at).total_seconds() > HEARTBEAT_STALE_S else FRESH
+    age = (now - at).total_seconds()
+    if age < -HEARTBEAT_STALE_S:  # a time far ahead of now is a wrong clock or a simulated one, not a live worker
+        return UNREADABLE
+    return STALE if age > HEARTBEAT_STALE_S else FRESH
 
 
 async def read_heartbeat_state(client: Any, now: datetime.datetime) -> str:

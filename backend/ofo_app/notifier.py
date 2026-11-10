@@ -2,8 +2,8 @@
 
 One POST to ``<NOTIFIER_URL>/notify`` with the key in ``X-Api-Key``. Never a user's data, an account figure, a position,
 a symbol list or a token: callers pass fixed texts. The egress gate allows exactly this one address
-(``ofo_app/__init__.py``). ``notify`` never raises: every answer state is a named result, and the log carries the state
-and the exception type only, never the key.
+(``ofo_app/__init__.py``). ``notify`` never raises: every answer state is a named result, every result but ``sent`` is
+logged once with its state and reason, and the log carries the state and the exception type only, never the key.
 """
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ import asyncio
 import ipaddress
 import json
 import logging
+import os
 import urllib.request
 from collections.abc import Callable
 from urllib.error import HTTPError
@@ -34,36 +35,61 @@ def _loopback(host: str) -> bool:
         return host == "localhost"
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """A redirect would be followed as a GET with the key header to an address the guard never saw: any 3xx is an
+    answer, not a road."""
+
+    def redirect_request(self, *_args: object, **_kwargs: object) -> None:
+        return None
+
+
+_OPENER = urllib.request.build_opener(_NoRedirect)
+
+
 def _urllib_transport(method: str, url: str, headers: dict[str, str], body: bytes, timeout: float) -> int:
     request = urllib.request.Request(url, data=body, headers=headers, method=method)  # noqa: S310 - scheme checked by notify
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310
+        with _OPENER.open(request, timeout=timeout) as response:
             return response.status
     except HTTPError as exc:
         return exc.code
+
+
+def warn_if_guard_mismatch() -> None:
+    """The outbound guard reads NOTIFIER_URL from the process environment at import; the settings may also read a
+    ``.env`` file. A https address the guard does not hold would be refused on every send: say so once, at start."""
+    url = get_settings().NOTIFIER_URL.strip()
+    if url and not (urlsplit(url).scheme == "http" and _loopback(urlsplit(url).hostname or "")) \
+            and os.environ.get("NOTIFIER_URL", "").strip() != url:
+        log.warning("NOTIFIER_URL is set in the settings but not in the process environment (or is not https): the "
+                    "outbound guard will refuse every alert")
+
+
+def _not_sent(state: str, reason: str) -> str:
+    log.warning("alert not sent: %s (%s)", state, reason)
+    return state
 
 
 async def notify(severity: str, title: str, body: str, *, type: str, dedupe_key: str,  # noqa: PLR0913 - the Notifier's field names
                  transport: Transport = _urllib_transport) -> str:
     """Send one alert; the returned state is one of the module constants. A 3xx is not a 2xx: it is ``refused``."""
     cfg = get_settings()
-    if not (cfg.NOTIFIER_URL and cfg.NOTIFIER_PROJECT and cfg.NOTIFIER_KEY):
-        return NOT_CONFIGURED
+    key = cfg.NOTIFIER_KEY.get_secret_value()
+    empty = [n for n, v in (("NOTIFIER_URL", cfg.NOTIFIER_URL), ("NOTIFIER_PROJECT", cfg.NOTIFIER_PROJECT),
+                            ("NOTIFIER_KEY", key)) if not v]
+    if empty:
+        return _not_sent(NOT_CONFIGURED, "empty: " + ", ".join(empty))
     parts = urlsplit(cfg.NOTIFIER_URL)
     if not (parts.scheme == "https" or (parts.scheme == "http" and _loopback(parts.hostname or ""))):
-        log.warning("alert not sent: %s", BAD_URL)
-        return BAD_URL
+        return _not_sent(BAD_URL, "not https and not loopback")
     payload = json.dumps({"project": cfg.NOTIFIER_PROJECT, "severity": severity, "title": title, "body": body,
                           "type": type, "dedupeKey": dedupe_key}).encode("utf-8")
-    headers = {"Content-Type": "application/json", "X-Api-Key": cfg.NOTIFIER_KEY}
+    headers = {"Content-Type": "application/json", "X-Api-Key": key}
     try:
         status = await asyncio.to_thread(transport, "POST", cfg.NOTIFIER_URL.rstrip("/") + "/notify", headers,
                                          payload, TIMEOUT_S)
     except Exception as exc:  # noqa: BLE001 - never raises to the caller; the type only, the message may carry the URL
-        log.warning("alert not sent: %s (%s)", UNREACHABLE, exc.__class__.__name__)  # type(): shadowed by the parameter
-        return UNREACHABLE
-    state = SENT if 200 <= status < 300 else SERVER_ERROR if status >= 500 else REFUSED  # noqa: PLR2004
-    if state != SENT:
-        log.warning("alert not sent: %s (HTTP %d)", state, status)
-    return state
-
+        return _not_sent(UNREACHABLE, exc.__class__.__name__)  # type(): shadowed by the parameter
+    if 200 <= status < 300:  # noqa: PLR2004
+        return SENT
+    return _not_sent(SERVER_ERROR if status >= 500 else REFUSED, f"HTTP {status}")  # noqa: PLR2004
