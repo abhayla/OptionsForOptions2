@@ -25,8 +25,10 @@ from typing import Any, Literal
 
 from ofo.errors import render
 from ofo.instruments.catalogue import SUPPORTED_UNDERLYINGS
+from ofo.market_calendar import MarketStatus, calendar_end_warning, market_status
 from ofo.marketdata.quote import is_live_price
 from ofo.money import PAISE  # money leaves the API as a 2-decimal string
+from ofo.timeutil import IST
 
 from ofo_app.api_models import ApiModel, InstrumentId, Money
 from ofo_app.live_push import POLL_SECONDS, Channel, ChannelClosed, LiveFeed, PushInterval
@@ -54,6 +56,18 @@ class IndicesOut(ApiModel):
     market_closed: bool
     #: when the feed's last price frame arrived (None: none yet); the market-closed and reconnecting texts show it
     last_price_at: datetime.datetime | None
+    #: GC-ICSAFE c29: the year the market calendar has no dates for when ``answered_at`` falls in one (the market then
+    #: reads closed, fail closed, but for this reason, not a holiday); None otherwise
+    calendar_missing_year: int | None
+    #: GC-ICSAFE c28: the calendar's last covered date, from 30 days before it on; None while it is further away
+    calendar_ends_on: datetime.date | None
+
+
+def _calendar_fields(answered_at: datetime.datetime) -> dict[str, Any]:
+    local = answered_at.astimezone(IST)
+    missing = market_status(answered_at) is MarketStatus.NO_CALENDAR
+    return {"calendar_missing_year": local.year if missing else None,
+            "calendar_ends_on": calendar_end_warning(local.date())}
 
 
 def index_ids(ctx: MarketContext) -> dict[str, str | None]:
@@ -95,7 +109,7 @@ def indices_answer(ctx: MarketContext | None, *, live: bool,
         answered_at = now()
         state = market_state(None, answered_at)
         return IndicesOut(state="NOT_CONNECTED", indices=rows, answered_at=answered_at, market_closed=state.closed,
-                          last_price_at=state.last_price_at)
+                          last_price_at=state.last_price_at, **_calendar_fields(answered_at))
     answered_at = ctx.clock()
     state = market_state(ctx, answered_at)
     # ADR-015 / REQ-114 AC-7: the ONE place the index answer decides "live" - held by the page's socket AND the market
@@ -105,12 +119,13 @@ def indices_answer(ctx: MarketContext | None, *, live: bool,
     rows = [_row(ctx, u, i, live or fill, state.closed) for u, i in index_ids(ctx).items()]
     # ADR-200 (4): closed, the banner's time is the index quotes' own last-price time, never a reconnect frame's
     return IndicesOut(state="LIVE" if shown_live else "NOT_CONNECTED", indices=rows, answered_at=answered_at,
-                      market_closed=state.closed, last_price_at=label_time(state, (r.at for r in rows)))
+                      market_closed=state.closed, last_price_at=label_time(state, (r.at for r in rows)),
+                      **_calendar_fields(answered_at))
 
 
 def _shown_state(body: IndicesOut) -> tuple:
     """What the page shows: the state and each row (never ``answered_at``, which moves on every read)."""
-    return (body.state, body.market_closed, body.last_price_at,
+    return (body.state, body.market_closed, body.last_price_at, body.calendar_missing_year, body.calendar_ends_on,
             tuple((r.underlying, r.instrument_id, r.value, r.at, r.health) for r in body.indices))
 
 

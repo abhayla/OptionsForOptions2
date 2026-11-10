@@ -269,6 +269,18 @@ def test_entry_without_a_computable_value_counts_as_not_held():
 
 
 # ---- missing inputs ---------------------------------------------------------------------------------------------------
+@pytest.mark.parametrize(("day", "code"), [
+    (datetime.date(2027, 1, 4), "adjust_trigger_withheld_no_calendar"),  # a year the calendar lacks: named, not "stale"
+    (datetime.date(2026, 10, 20), "adjust_trigger_withheld_stale")])  # a listed holiday: the stale reason as before
+def test_no_calendar_year_names_the_calendar_in_the_withheld_reason(day, code):
+    sc = load("ADJ-19")
+    ev = evaluate(body_of(sc), replace(state_of(sc), today=day), {}, None)
+    assert not flags(ev) and ev.withheld == code
+    if day.year == 2027:
+        assert reason_text(ev.withheld) == "No adjustment opportunity checked: the market calendar has no dates for " \
+                                           "the day being checked."
+
+
 @pytest.mark.parametrize("sid", ["ADJ-24b", "ADJ-19"])
 def test_no_spot_or_stale_prices_never_flag(sid):
     sc = load(sid)

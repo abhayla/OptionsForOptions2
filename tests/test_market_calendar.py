@@ -8,11 +8,14 @@ import datetime
 import json
 
 import pytest
+from ofo import market_calendar
 from ofo.market_calendar import (
     DATA_FILE,
     MarketStatus,
+    calendar_end_warning,
     is_market_open,
     last_close,
+    last_covered_date,
     market_status,
     next_open,
     price_time,
@@ -110,3 +113,46 @@ def test_last_close_and_price_time_without_calendar_data_are_none() -> None:
     jan = datetime.datetime(2027, 1, 4, 7, 46, tzinfo=IST)
     assert last_close(jan) is None and price_time(jan) is None
     assert price_time(at(28, 10)) == at(28, 10)  # in hours: the time itself
+
+
+# ---- GC-ICSAFE c28 / c29 (issue #686): the calendar warns before it runs out, and names a year it lacks ------------
+END_2026 = datetime.date(2026, 12, 31)
+
+
+def test_c28_the_real_calendar_ends_on_the_last_day_of_its_last_year() -> None:
+    assert last_covered_date() == END_2026
+
+
+@pytest.mark.parametrize(("today", "warns"), [
+    (datetime.date(2026, 11, 11), False),
+    (datetime.date(2026, 11, 30), False),  # 31 days before the end
+    (datetime.date(2026, 12, 1), True),  # exactly 30 days before the end
+    (datetime.date(2026, 12, 2), True),
+    (END_2026, True),
+    (datetime.date(2027, 1, 1), True),  # past the end: still answers
+    (datetime.date(2027, 1, 4), True),
+])
+def test_c28_warning_window_boundaries(today: datetime.date, warns: bool) -> None:
+    assert calendar_end_warning(today) == (END_2026 if warns else None)
+
+
+def test_c28_an_empty_calendar_has_no_end_and_does_not_raise() -> None:
+    """No years listed: no end to warn about (every date already reads NO_CALENDAR)."""
+    assert last_covered_date({}) is None
+    assert calendar_end_warning(datetime.date(2026, 12, 2), {}) is None
+
+
+def test_c28_an_unreadable_calendar_file_has_no_end_and_does_not_raise(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(market_calendar, "DATA_FILE", tmp_path / "absent.json")
+    market_calendar._load.cache_clear()
+    try:
+        assert last_covered_date() is None
+        assert calendar_end_warning(datetime.date(2026, 12, 2)) is None
+    finally:
+        market_calendar._load.cache_clear()
+
+
+def test_c29_a_date_after_the_listed_year_reads_no_calendar_not_closed() -> None:
+    when = datetime.datetime(2027, 1, 4, 11, 30, tzinfo=IST)
+    assert market_status(when) is MarketStatus.NO_CALENDAR
+    assert market_status(when) is not MarketStatus.CLOSED_HOLIDAY
