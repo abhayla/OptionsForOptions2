@@ -25,3 +25,23 @@ decisions on host, spend and lifting the paper-only rule (ADR-281).
 
 Spec basis: finding F-31 (`spec/findings.md`), ADR-060, `docs/process/standing-direction.md` step 2 ("The owner has
 approved the list").
+
+## N1. To do in December: load the 2027 market holiday list (nothing to answer now)
+
+**What a user would see without it:** from 1 Jan 2027 the app treats every day as "no market": no prices checked, no
+practice fills, no warnings. The holiday list in the app covers 2026 only.
+
+**Why it cannot be done today:** NSE publishes the next year's list in December.
+
+**What to do, once NSE has published (a 10-minute step; a session can do it when you say "load the 2027 holidays"):**
+add the 2027 F&O holidays to `backend/ofo/market_calendar.json` from the same source the 2026 list came from. The
+file names it: NSE's holiday page https://www.nseindia.com/resources/exchange-communication-holidays (its data
+address is in the file's `source` line), section "Equity Derivatives (F&O)".
+
+**What this run adds so it cannot be missed:** from 1 Dec 2026 the app shows a banner on every screen and sends you
+one phone alert a day until the list is loaded; and a date with no list reads "the market calendar has no dates for
+2027", not "market closed".
+
+**One change from what issue 686 proposed, told as information:** the issue wanted the app to refuse to start from
+1 Dec without the 2027 list. I did not build that: it would stop a working app in December on days the calendar
+still covers, before NSE has even published. A loud daily warning does the same job without stopping you.

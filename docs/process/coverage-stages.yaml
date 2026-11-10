@@ -443,6 +443,8 @@ decisions:
   ADR-281: S6.7         # Kite order placement on hold for the IC guidance round (paper only)
   ADR-282: S6.7         # IC proof matrix: NIFTY, 5 condor types, test data then live
   ADR-283: S6.7         # rule starting point stored at every fill; time-of-day rules never already true
+  ADR-284: 4a           # truncation guard judges by stored expiries still carried; strike-grid change accepted (#680)
+  ADR-285: 4b           # calendar end: warning from 30 days before; uncovered date reads no calendar (#686)
 
 questions:
   Q210: 4a              # external: Zerodha's written answer; ADR-051 covers the owner's own account
