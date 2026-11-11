@@ -127,3 +127,21 @@ still covers, before NSE has even published. A loud daily warning does the same 
   word for word (0 missing); the edited file is backed up outside the repo.
 - Step 4 host: "Hostinger VPS, Redis there" (ADR-288, decides Q273). Real order: "Yes, one order, I press Execute"
   and second person: "Demo login, owner's order" (ADR-289).
+
+## Q4. Who is the second test user for GC-TRACK1? (asked 2026-11-11 night; the question tool is blocked after 22:00)
+
+**What:** the core proof of the new goal (ADR-290) is two app users tracked at once, each on prices from their own
+Kite login. Only the owner's Kite Connect app is known.
+
+1. **Owner live + a test user on practice data (my recommendation, and what GC-TRACK1 is written for).** User A = the
+   owner on his own Kite app; user B = a second app account with no Kite app, tracked on recorded practice data and
+   labelled "Sample · Not Live". Everything is proven except "a second real Kite app"; that gap is named, not hidden.
+2. A real second person with their own Zerodha account and Kite Connect app joins on a market day.
+3. The owner creates a second Kite Connect app on his own account (about Rs 500 a month).
+
+Why 1: it follows ADR-060 as written, needs no spend and no other person, so the run cannot stall. Answer 2 or 3
+before the run starts and stage A's proof widens to a second live login.
+Business call: another person's account or a monthly spend. Spec basis: ADR-290, ADR-060, ADR-289 (1).
+
+**Q4 answer (owner, 2026-11-12 ~00:1x, chat):** moot. Current work serves only the owner's own Kite account
+(ADR-291); no second test user.
