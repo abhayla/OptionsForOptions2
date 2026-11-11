@@ -105,6 +105,19 @@ from?" before accepting a text or data fix (seed file vs versioned rows).
   after the live stack stops, then the row is closed.
 - 10:1x: the system stopped a background timer of this session for low memory (2.3 to 2.5 GB free; the live API
   process holds 1.8 GB). The 13 live processes were not touched.
+- 10:30: owner chose "Stop now" for the live stack (asked with the question tool: every remaining row needs it
+  stopped; memory 2.3 GB). 13 PIDs stopped at 10:31, ports free, 5.3 GB free. Deviation 15: the contract and the
+  morning handover planned the stop for after 15:30; the watcher proof is the 30-minute window, not a whole session.
+- c17, c19 10:49: PATH-60 (strategy 133) and PATH-61 (strategy 134) built by hand on the practice-data stack run from
+  this folder. First warnings raised (alerts 241, 242; 251, 252); at 14:31 `T-10b` and `day.expiry.1430.5` flag on
+  both (absent one frame earlier), alerts 249, 250 and 256, 257. In-page new-alert box seen three times, native
+  dialog counter 0. Alert 252 reads "0.3537 delta (rule 0.3000 delta)" (the c15 fix, on screen).
+  First attempt failed for a set-up reason: the practice checker starts at the frame the previous session stored
+  (frame 7), so a move to frame 1 was a backwards move; fixed by storing frame 0 and restarting (`scn.ps1`).
+- c18 10:57: PATH-63 (strategy 135, 22000/22200/24200/24400, 29 Dec): diagonal roll into January offered at the entry
+  frame (credit Rs 156.00, charges plus bid-ask Rs 349.37), refused over the Rs 500 limit at the 25 Nov frame
+  (Rs 2,063.75).
+- c39 11:03: `tests_app/test_one_connection_per_request.py` on a fresh test database: 2 passed in 59.35 s.
 - Deviation 14: c40's done line asked for "count of checked T-16 lines > 0". No such line exists in the watcher log;
   the row is closed on 89 checks of margin-stop-on strategies with zero missing-margin outcomes, limit written in the row.
 
