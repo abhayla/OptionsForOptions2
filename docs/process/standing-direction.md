@@ -21,7 +21,7 @@ the broker. Until that is true the product is not ready to show Zerodha (ADR-060
 | 1 | Finish the open iron condor run GC-ICGUIDE (live tasks g35, g36 on 11 Nov; g37 on 17 Nov; g38). Then the freeze below is on. | D-01 | Every row of that run is DONE or PARKED in its handover. |
 | 2 | Write the demo-ready checklist: every item of finding F-31 plus the screens ADR-060 names; status, proof and owner per item. | D-02 | The owner has approved the list. |
 | 3 | Fix the four first-user failures: #627 (worker reads margin so T-16 is checked; heartbeat alert when the worker stops), #686 (calendar for 2027), #680 (daily instrument refresh with no forced override), #682 (one database connection per request). | D-03 | One live market day where the worker log shows T-16 checked on every open strategy, the counter named; a 2027 date reads open in a test; three days of refresh with no manual force. |
-| 4 | Make the whole journey work for iron condor: a host and a deploy path (Q273), a real signed-in user in place of the constant owner, real order placing at 1 lot. | D-05, D-06 | The goal sentence above is true; every leg of one real iron condor is submitted, executed and reconciled with 0 mismatches. |
+| 4 | Make the whole journey work for iron condor: a host and a deploy path (Q273), a real signed-in user in place of the constant owner, real order placing at 1 lot. Host: the Hostinger Linux VPS with Redis there (ADR-288). The second person signs in with their own app login and works on paper; the one real order is on the owner's account, placed by the owner (ADR-289). | D-05, D-06 | The goal sentence above is true; every leg of one real iron condor is submitted, executed and reconciled with 0 mismatches. |
 | Side test | Beside step 3 or 4: a short strangle (2 legs, no wings) on paper and scenario data. A test, not a build. | D-04 | A written answer: does "other strategies are minor changes" hold, and how big is the repair. Stop and report after 3 working days of session time, finished or not. |
 | 5 | Only after step 4: add strategy types one at a time. | not written | The owner picks the order when step 4 is done. |
 
@@ -55,10 +55,12 @@ tree, worktrees inside their limit). D-12 (structural debts) waits until step 4 
 
 ## Still needs the owner
 
-Approving the direction did not approve these: the content of the checklist (step 2); the host and any spend
+Approving the direction did not approve these (status 2026-11-11: the checklist is approved, ADR-287; the host is
+decided, ADR-288; one real order is approved, ADR-289): the content of the checklist (step 2); the host and any spend
 (step 4); reopening the Zerodha ticket and questions Q258 to Q261 (step 4); any real order (ADR-281 stays in force
 until the owner lifts it, and the owner presses Execute); closing or merging any issue in the triage (D-07).
 
 ## Change log
 
-- 2026-11-10 13:07 IST: approved by the owner as written by the 2026-11-10 review. No change since.
+- 2026-11-10 13:07 IST: approved by the owner as written by the 2026-11-10 review.
+- 2026-11-11 (owner, question tool): step 2 done, the checklist approved as written (ADR-287). Step 4 made exact, not changed in order: host = Hostinger Linux VPS with Redis there (ADR-288); the second person works on paper with their own app login, and ONE real 1-lot iron condor is placed on the owner's account by the owner, lifting ADR-281 for that order only (ADR-289).

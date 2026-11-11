@@ -117,3 +117,13 @@ one phone alert a day until the list is loaded; and a date with no list reads "t
 **One change from what issue 686 proposed, told as information:** the issue wanted the app to refuse to start from
 1 Dec without the 2027 list. I did not build that: it would stop a working app in December on days the calendar
 still covers, before NSE has even published. A loud daily warning does the same job without stopping you.
+
+## Answers (owner, 2026-11-11, question tool)
+
+- Q1: "Approve as written". Recorded as ADR-287.
+- Q2: "Not now". Nothing is registered with the Notifier and nothing is sent; issue #695 stays parked. A watcher
+  that stops in market hours is not reported to the owner's phone until this is reopened.
+- Q3: "Yes, delete it". The folder was removed on 2026-11-11 after its 10 non-empty unsaved lines were found on main
+  word for word (0 missing); the edited file is backed up outside the repo.
+- Step 4 host: "Hostinger VPS, Redis there" (ADR-288, decides Q273). Real order: "Yes, one order, I press Execute"
+  and second person: "Demo login, owner's order" (ADR-289).
