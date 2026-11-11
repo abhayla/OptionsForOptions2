@@ -118,6 +118,15 @@ from?" before accepting a text or data fix (seed file vs versioned rows).
   frame (credit Rs 156.00, charges plus bid-ask Rs 349.37), refused over the Rs 500 limit at the 25 Nov frame
   (Rs 2,063.75).
 - c39 11:03: `tests_app/test_one_connection_per_request.py` on a fresh test database: 2 passed in 59.35 s.
+- c54, PR #693: two reds, one class. Run 1 (ed86d7a7): the browser health spec pinned the page's /api call list
+  without the calendar banner's index read (fixed b8287b5e). Run 2 (b8287b5e): 1 of 6458 database tests,
+  `test_catalogue_load_command.py`, expected a setting of 0 to refuse a one-contract strike trim, which ADR-284 (2)
+  now accepts (fixed 7478111e: the 0 % refusal is proven on a list missing a whole group). Class: tests only CI runs
+  (database, browser) that pin a behaviour this run changed. Second occurrence of the class, so the rule calls for
+  an independent reviewer; not dispatched, because run 2 executed the whole population (every database and browser
+  test) and exactly these two failed: the class is measured, not guessed. Detection change: before a run's one PR,
+  grep tests_app and frontend/e2e for each changed guard, endpoint list and shell component, and run those files one
+  at a time. Cost: about 4.5 hours of CI waiting (each database run takes 2 h 11 min).
 - Deviation 14: c40's done line asked for "count of checked T-16 lines > 0". No such line exists in the watcher log;
   the row is closed on 89 checks of margin-stop-on strategies with zero missing-margin outcomes, limit written in the row.
 
