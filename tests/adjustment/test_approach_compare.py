@@ -32,6 +32,7 @@ from ofo.adjustment.compare import (
     Column,
     Context,
     MarginRead,
+    _Rows,
     column_order,
     compare,
     leaders,
@@ -389,3 +390,15 @@ def test_adr215_nothing_open_shows_no_position_left_and_cannot_lead_the_greeks_r
     led = [c.id for c in cmp.criteria if "A-31" in c.leaders]
     assert led == ["margin_change", "max_loss"]
     assert cmp.leads["A-31"][0] == 2
+
+
+def test_max_profit_cell_says_when_the_top_is_the_value_at_index_zero():
+    """#685 item 5c: the issue's case (one long put left after an adjustment) flags its Max profit cell; a bounded
+    whole trade does not."""
+    _sc, cols, ctx = build_columns("ADJ-02")
+    long_put = Strategy((Leg(Action.BUY, Instrument.PE, D("23000"), datetime.date(2026, 10, 27), 75, D("80")),))
+    put_whole = whole_trade_after(long_put, booked_pnl=D(0), paid_charges=D(0), adjustment_charges=D(0),
+                                  open_exit_charges=D(0))
+    flagged = _Rows(replace(cols[0], whole=put_whole), ctx).max_profit()
+    assert flagged.at_index_zero is True and flagged.value == D("1719000")
+    assert _Rows(cols[0], ctx).max_profit().at_index_zero is False

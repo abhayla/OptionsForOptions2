@@ -11,6 +11,7 @@ This file is standard library only (the kit CI); the httpx / websocket bypasses 
 from __future__ import annotations
 
 import http.client
+import os
 import socket
 import ssl
 import subprocess
@@ -294,6 +295,36 @@ def test_the_database_endpoint_is_set_once_in_a_fresh_process() -> None:
             "try:\n    e._allow_endpoints(['postgresql://example@203.0.113.1:443/x'])\n"
             "except e.EgressRefused:\n    print('sealed')\n")
     assert _fresh(code) == ["True", "False", "sealed"]
+
+
+NOTIFIER_HOST = "192.0.2.7"  # TEST-NET-1 as well: the "configured Notifier" of these probes; never connected to
+
+
+def _notifier_probe(url: str) -> list[str]:
+    """ADR-286: a fresh process whose environment names ``url`` as the Notifier; reports what the gate decides. The one
+    connect attempted is to TEST-NET (an address nobody configured), expected refused by the installed gate."""
+    code = ("import socket\nimport ofo_app\nfrom ofo.broker import egress as e\ne.install()\n"
+            "ok = lambda h, p: e._address_allowed(socket.AF_INET, (h, p))\n"
+            f"print(ok('{NOTIFIER_HOST}', 8443), ok('{NOTIFIER_HOST}', 443), ok('192.0.2.8', 8443))\n"
+            f"try:\n    socket.create_connection(('{TEST_NET}', 443), timeout=2)\n"
+            "except e.EgressRefused:\n    print('other-host-refused')\n")
+    env = {**os.environ, "NOTIFIER_URL": url}
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=60, cwd=BACKEND, env=env)  # noqa: PLW1510, S603
+    assert out.returncode == 0, out.stderr
+    return out.stdout.split()
+
+
+def test_the_configured_https_notifier_is_allowed_and_nothing_else() -> None:
+    assert _notifier_probe(f"https://{NOTIFIER_HOST}:8443") == ["True", "False", "False", "other-host-refused"]
+
+
+def test_an_https_notifier_without_a_port_means_443() -> None:
+    assert _notifier_probe(f"https://{NOTIFIER_HOST}") == ["False", "True", "False", "other-host-refused"]
+
+
+@pytest.mark.parametrize("url", ["", f"http://{NOTIFIER_HOST}:8443", f"ftp://{NOTIFIER_HOST}:8443", "not a url"])
+def test_an_empty_or_non_https_notifier_allows_nothing(url: str) -> None:
+    assert _notifier_probe(url) == ["False", "False", "False", "other-host-refused"]
 
 
 @pytest.mark.parametrize("module", ["ofo.broker.kite_http"])

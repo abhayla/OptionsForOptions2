@@ -454,7 +454,7 @@ async def _gate(req: _Request, priced: ep.PricedPlan, context: ExecutionContext,
 async def _basket(req: _Request, priced: ep.PricedPlan, catalogue: Any, plan_number: int) -> Any:
     limits = await review_freeze_limits(req.db, priced.plan)
     today = req.now.astimezone(IST).date()
-    stale_days = calc.freeze_stale_days(await get_settings_reader()())  # REQ-167 AC-4: the value in force now
+    stale_days = calc.freeze_stale_days(await get_settings_reader()(req.db))  # REQ-167 AC-4: the value in force now
     frozen = freeze_check(priced.plan, limits, today=today, stale_after_days=stale_days)
     if frozen.blocks:
         raise _refuse_with(frozen.blocks[0].message)

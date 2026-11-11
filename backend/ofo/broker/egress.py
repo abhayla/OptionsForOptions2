@@ -15,7 +15,8 @@ connection kind                             what the gate does
 loopback (127.0.0.0/8, ::1, ::ffff:127.x)   allowed (local test fakes, a database tunnel, the dev servers)
 unix socket (AF_UNIX)                       allowed (local only)
 the configured database endpoint            allowed: ``_allow_endpoints`` is called ONCE by ``ofo_app`` at import with
-                                            the database URLs from the environment (resolved once); later calls refused
+and the one https Notifier address           the database URLs from the environment, plus NOTIFIER_URL when it is
+(ADR-286)                                   https (resolved once); later calls refused
 inside a Kite door, after its URL check     allowed only for the door's own call chain: the door's permission is a
                                             token (thread, asyncio task, nonce, door frame) live only around the send;
                                             the connect must come from that thread and task, the nonce must be live,
@@ -172,7 +173,8 @@ def _door_permits(frame: FrameType | None) -> bool:
 
 
 def _allow_endpoints(urls: Iterable[str]) -> None:
-    """Called once, by ``ofo_app`` at import, with the database URLs. Every later call is refused."""
+    """Called once, by ``ofo_app`` at import, with the database URLs and the https Notifier URL. Every later call is
+    refused."""
     if _state["sealed"]:
         raise EgressRefused("the egress endpoint list is already set; it is set once, at app import")
     allowed: set[tuple[str, int]] = set()
@@ -180,7 +182,7 @@ def _allow_endpoints(urls: Iterable[str]) -> None:
         parts = urlsplit(url)
         if not parts.hostname:
             continue
-        port = parts.port or 5432
+        port = parts.port or (443 if parts.scheme == "https" else 5432)
         allowed.add((parts.hostname, port))
         with contextlib.suppress(OSError):  # resolved once, here (no connection); unresolvable: only the name
             allowed.update((info[4][0], port) for info in socket.getaddrinfo(parts.hostname, port))

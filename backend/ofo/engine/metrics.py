@@ -78,6 +78,8 @@ class StrategyMetrics:
     breakevens: tuple[Decimal, ...]
     #: Expiry loss regions (P&L below zero), ordered and never touching (ADR-072); see ``LossRegion``.
     loss_regions: tuple[LossRegion, ...] = ()
+    #: #685 item 5c: the finite max profit is reached only at index 0 (unhedged long puts, short futures)
+    max_profit_at_zero: bool = False
 
 
 def _upper_tail_slope(leg: Leg) -> int:
@@ -219,7 +221,9 @@ def strategy_metrics(strategy: Strategy) -> StrategyMetrics:
     zeros = _breakevens(points, values, upper_slope)
     breakevens = _breakeven_levels(zeros)
     return StrategyMetrics(max_profit=max_profit, min_pnl=min_pnl, max_loss=max_loss, breakevens=breakevens,
-                           loss_regions=_loss_regions(points, values, upper_slope, zeros))
+                           loss_regions=_loss_regions(points, values, upper_slope, zeros),
+                           max_profit_at_zero=max_profit is not UNLIMITED and (len(values) > 1 or upper_slope < 0)
+                           and all(values[0] > v for v in values[1:]))
 
 
 def loss_regions_after_charges(strategy: Strategy, charges: Decimal) -> tuple[LossRegion, ...]:

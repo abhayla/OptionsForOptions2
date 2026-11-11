@@ -156,6 +156,7 @@ class Cell:
     breakdown: tuple[tuple[str, Decimal], ...] | None = None  # the cost cell's charge lines (ADR-230 (3))
     warning: ExplanationText | None = None  # REQ-159 AC-6: cost % above the playbook's warning level (numbers only)
     warning_off: ExplanationText | None = None  # why no warning could be judged (level missing / unreadable)
+    at_index_zero: bool = False  # #685 item 5c: the max profit cell's figure is the payoff if the index falls to 0
 
 
 @dataclass(frozen=True)
@@ -427,10 +428,10 @@ class _Rows:
         reason = self._no_single("summary_make_mixed_expiry") or self._after_reason()
         if reason is not None:
             return _dash(reason)
-        top = self.col.whole.after_charges.max_profit  # type: ignore[union-attr]
-        if top is UNLIMITED:
+        figures = self.col.whole.after_charges  # type: ignore[union-attr]
+        if figures.max_profit is UNLIMITED:
             return Cell(render_explanation("adjust_cmp_unlimited"), None, None, INFINITE)
-        return _rupees(top)  # type: ignore[arg-type]
+        return replace(_rupees(figures.max_profit), at_index_zero=figures.max_profit_at_zero)  # type: ignore[arg-type]
 
     def premium_left(self) -> Cell:
         legs = []

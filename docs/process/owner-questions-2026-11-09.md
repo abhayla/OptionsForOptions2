@@ -70,3 +70,30 @@ than 24 h remain (`ofo_test_tmp_202611070...` / `202611080...`); dropping them w
 permanent delete on the production database server): the owner can run
 `python D:/Abhay/Ventures/OptionsForOptions2/scripts/orchestrator/db_run_fresh.py --sweep`. Proposed speed fix (separate
 PR): build each test database as a copy of a pre-migrated template instead of running 50 migrations over the tunnel.
+
+## Morning, 10 Nov (needed for tasks 35-36, live prices; only the owner can do it)
+
+1. **Kite login once, from 09:00 IST**, through the app's own login (the token is per day; yesterday's expired at
+   about 06:00). Everything else for the live passes is mine: restart the live stack from the main checkout (after PR
+   #687 merges), build the weekly (17 Nov) and this-month (23 Nov) condors on paper at live prices (task 35), then
+   next-month (29 Dec) and 2-months-out (25 Jan 2027) (task 36), watch, adjust once each through the screens.
+   Paper only: no Kite order page, no order panel (ADR-281).
+2. Optional: OK the test-database sweep (above), and the task 25 text read.
+
+Status at 04:4x: PR #687 at 54536bf6, gate TOTAL PASS, CI running (api job ~2 h); merge on green. A separate small
+tooling PR (template database for the test runner, the speed fix you asked for) is being built; it will not merge
+before you have seen it.
+
+## 10 Nov, 10:0x IST: live day moved to Wed 11 Nov (my miss)
+
+10 Nov is an NSE F&O holiday (Diwali-Balipratipada, `backend/ofo/market_calendar.json`). The live day was planned
+without checking the calendar; the owner's Kite login at 09:39 connected, but the market was closed, so tasks 35-36 move
+to Wed 11 Nov (a trading day). Needed from the owner on 11 Nov from 09:00 IST: one Kite login at
+`http://127.0.0.1:5173/api/broker/zerodha/login` (the page link given first was wrong).
+
+Done meanwhile on test data: task 38 part 1 (no FAIL; rows 26, 27, 29 set PARTIAL with named remainders, #685 items
+8-9; #686 labelled parked); PATH-63 given the January chain (branch `testdata/path63-jan-chain` 58b49b57; the Compare
+now prices the roll into January and refuses it by the playbook's Rs 500 roll limit); #689 filed and fixed on branch
+`fix/toast-no-native-dialog` 853dffe2 (the new-warning toast was a native confirm() that froze the page). Not pushed:
+one PR for both after the live day. Re-screens left (rows 26, 27 and the roll picture): blocked by Chrome no longer
+drawing any tab (screenshots time out; about 3 GB free memory).

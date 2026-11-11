@@ -458,6 +458,11 @@
         "additionalProperties": false,
         "description": "One approach's value on one compare criterion (REQ-156 AC-3): ``text`` always shown; ``value`` the exact\nnumber when there is one; ``unavailable_reason`` beside a \"-\".",
         "properties": {
+          "at_index_zero": {
+            "default": false,
+            "title": "At Index Zero",
+            "type": "boolean"
+          },
           "breakdown": {
             "anyOf": [
               {
@@ -5762,6 +5767,29 @@
             "title": "Answered At",
             "type": "string"
           },
+          "calendar_ends_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Calendar Ends On"
+          },
+          "calendar_missing_year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Calendar Missing Year"
+          },
           "indices": {
             "items": {
               "$ref": "#/components/schemas/IndexOut"
@@ -5799,7 +5827,9 @@
           "indices",
           "answered_at",
           "market_closed",
-          "last_price_at"
+          "last_price_at",
+          "calendar_missing_year",
+          "calendar_ends_on"
         ],
         "title": "IndicesOut",
         "type": "object"

@@ -71,28 +71,50 @@ async def test_load_prints_the_counts_and_writes_the_slice(app_engine: AsyncEngi
             await trans.rollback()
 
 
-async def test_a_setting_of_zero_refuses_a_one_contract_delisting_and_writes_nothing(app_engine: AsyncEngine) -> None:
+def _without_one_nifty_group(csv_text: str) -> str:
+    """A cut-off shape (ADR-284 (3)): every NIFTY call of one expiry is gone, so a stored group is wholly missing."""
+    dropped = set(_lines_where(csv_text, name="NIFTY", expiry="2026-09-29", type="CE"))
+    return "".join(line for line in csv_text.splitlines(True) if line.rstrip("\r\n") not in dropped)
+
+
+async def _state(conn) -> tuple:
+    return tuple((await conn.execute(text(
+        f"SELECT count(*), count(*) FILTER (WHERE delisted), count(*) FILTER (WHERE currently_listed) "
+        f"FROM {TABLE}"))).one())
+
+
+async def test_a_setting_of_zero_refuses_a_list_missing_a_group_and_writes_nothing(app_engine: AsyncEngine) -> None:
+    """The admin setting reaches the guard: at 0 % a list with a whole stored group missing is refused (ADR-058,
+    judged as before for that shape by ADR-284 (3))."""
+    cut = _without_one_nifty_group(_csv())
+    assert len(cut) < len(_csv())
+    async with app_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            await catalogue_load.run(conn, _csv(), io.StringIO(), as_of=AS_OF)
+            before = await _state(conn)
+            out = io.StringIO()
+            await _set_percent(conn, "0")
+            code = await catalogue_load.run(conn, cut, out, as_of=AS_OF)
+            assert code == 1 and "REFUSED, nothing written" in out.getvalue(), out.getvalue()
+            assert await _state(conn) == before and before[1] == 0
+        finally:
+            await trans.rollback()
+
+
+async def test_a_setting_of_zero_accepts_a_one_contract_strike_trim_as_a_grid_change(app_engine: AsyncEngine) -> None:
+    """ADR-284 (2): one contract gone while every stored group is still carried is a strike-grid change, accepted
+    with its count whatever the 10 % setting says (it was refused before #680)."""
     shorter = _without_one_nifty_call(_csv())
     async with app_engine.connect() as conn:
         trans = await conn.begin()
         try:
             await catalogue_load.run(conn, _csv(), io.StringIO(), as_of=AS_OF)
-            before = (await conn.execute(text(
-                f"SELECT count(*), count(*) FILTER (WHERE delisted), count(*) FILTER (WHERE currently_listed) "
-                f"FROM {TABLE}"))).one()
             out = io.StringIO()
             await _set_percent(conn, "0")
-            code = await catalogue_load.run(conn, shorter, out, as_of=AS_OF)
-            assert code == 1 and "REFUSED, nothing written" in out.getvalue(), out.getvalue()
-            after = (await conn.execute(text(
-                f"SELECT count(*), count(*) FILTER (WHERE delisted), count(*) FILTER (WHERE currently_listed) "
-                f"FROM {TABLE}"))).one()
-            assert tuple(after) == tuple(before) and before[1] == 0
-            # the same list under the default setting (10%) is one delisting of ~290 NIFTY contracts: accepted
-            out = io.StringIO()
-            await _set_percent(conn, "10")
-            assert await catalogue_load.run(conn, shorter, out, as_of=AS_OF) == 0
-            assert "delisted=1" in out.getvalue(), out.getvalue()
+            assert await catalogue_load.run(conn, shorter, out, as_of=AS_OF) == 0, out.getvalue()
+            assert "delisted=1" in out.getvalue() and "grid_change_left=1" in out.getvalue(), out.getvalue()
+            assert (await _state(conn))[1] == 1
         finally:
             await trans.rollback()
 

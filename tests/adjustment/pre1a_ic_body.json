@@ -479,7 +479,7 @@
   "T-09": {
    "cmp": "le",
    "data": "ok",
-   "label": "A short leg's premium falls below Rs (close for pennies)",
+   "label": "A short leg's premium falls to Rs or below (close for pennies)",
    "monthly": [
     "3",
     "3",
@@ -548,7 +548,7 @@
    "cmp": "ge",
    "data": "hist",
    "greyed": "Needs price history (not in V1)",
-   "label": "IV percentile above",
+   "label": "IV percentile reaches",
    "monthly": [
     "80",
     "80",
@@ -616,7 +616,7 @@
   "T-14t": {
    "cmp": "le",
    "data": "ok",
-   "label": "Theta per day falls below this % of premium left",
+   "label": "Theta per day falls to this % of premium left or below",
    "monthly": [
     "3",
     "3",
@@ -693,7 +693,7 @@
   "T-19": {
    "cmp": "le",
    "data": "ok",
-   "label": "Premium still left to earn is below this many x the adjustment's cost",
+   "label": "Premium still left to earn is this many x the adjustment's cost or below",
    "monthly": [
     "1",
     "1",

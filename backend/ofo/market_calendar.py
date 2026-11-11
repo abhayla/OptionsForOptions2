@@ -24,6 +24,8 @@ _LOOKAHEAD_DAYS: Final = 14
 _SATURDAY: Final = 5
 _YEAR_DIGITS: Final = 4
 _ROW_LEN: Final = 2  # [date, name]
+#: How many days before the calendar's last day the end-of-calendar warning starts.
+_END_WARNING_DAYS: Final = 30
 
 Holidays = dict[int, frozenset[datetime.date]]
 
@@ -101,6 +103,21 @@ def _day_status(day: datetime.date, holidays: Holidays) -> MarketStatus | None:
     return None
 
 
+def last_covered_date(holidays: Holidays | None = None) -> datetime.date | None:
+    """31 December of the last year the calendar lists; None when it lists none (empty or unreadable file)."""
+    table = _table(holidays)
+    return datetime.date(max(table), 12, 31) if table else None
+
+
+def calendar_end_warning(today: datetime.date, holidays: Holidays | None = None) -> datetime.date | None:
+    """The calendar's last covered date when ``today`` is within 30 days of it or past it, else None. None also when
+    the calendar lists no year: every date then reads ``NO_CALENDAR`` already, so there is no end to warn about."""
+    end = last_covered_date(holidays)
+    if end is None or (end - today).days > _END_WARNING_DAYS:
+        return None
+    return end
+
+
 def _local(now: datetime.datetime) -> datetime.datetime:
     if not isinstance(now, datetime.datetime) or now.utcoffset() is None:
         raise ValueError(f"now must be a timezone-aware datetime, got {now!r}")
@@ -160,5 +177,5 @@ def price_time(at: datetime.datetime, holidays: Holidays | None = None) -> datet
     return last_close(at, holidays)
 
 
-__all__ = ["DATA_FILE", "CalendarError", "MarketStatus", "is_market_open", "last_close", "market_status", "next_open",
-           "price_time"]
+__all__ = ["DATA_FILE", "CalendarError", "MarketStatus", "calendar_end_warning", "is_market_open", "last_close",
+           "last_covered_date", "market_status", "next_open", "price_time"]

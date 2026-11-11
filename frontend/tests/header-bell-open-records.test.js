@@ -18,6 +18,7 @@ import AppHeader from '@/components/layout/AppHeader.vue'
 import { resetPaperAlerts } from '@/lib/paperAlerts'
 import { resetOpenRecords } from '@/lib/paperAlerts'
 import { TRACKING_REFRESH_MS } from '@/lib/tracking'
+import { dismissToast, openToast, toasts } from '@/composables/useToast'
 
 const alertRow = (id) => ({ id, strategy_id: 48, trigger_id: id + 10, created_at: '2026-10-29T05:00:00Z', title: `t${id}`, body: `b${id}`, read: false })
 const paper = (n) => () => Promise.resolve({ data: { alerts: Array.from({ length: n }, (_, i) => alertRow(i + 1)), unread: n } })
@@ -25,7 +26,6 @@ const rec = (id, outcome = 'open') => ({ id, outcome })
 const opp = (...recs) => () => Promise.resolve({ data: { groups: [{ group: 'g', strategy_id: 7, records: recs }] } })
 const OPEN3 = [rec(1), rec(2), rec(3)]
 
-let confirmSpy
 let r
 async function header() {
   r = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { template: '<div/>' } }, { path: '/:p(.*)*', component: { template: '<div/>' } }] })
@@ -43,10 +43,9 @@ beforeEach(() => {
   resetPaperAlerts()
   resetOpenRecords()
   vi.useFakeTimers()
-  confirmSpy = vi.fn(() => true)
-  vi.stubGlobal('confirm', confirmSpy)
+  toasts.splice(0)
 })
-afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals() })
+afterEach(() => { vi.useRealTimers() })
 
 describe('bell counts paper unread + open records', () => {
   it('2 paper unread + 3 open records shows 5', async () => {
@@ -75,7 +74,7 @@ describe('bell counts paper unread + open records', () => {
     await tick()
     await tick()
     expect(badge(w).text()).toBe('2')
-    expect(confirmSpy).not.toHaveBeenCalled()
+    expect(toasts).toHaveLength(0)
   })
   it('open records alone count when the paper read fails', async () => {
     answers['GET /adjustment-opportunities'] = opp(...OPEN3)
@@ -89,7 +88,7 @@ describe('toast on a new open record', () => {
     answers['GET /paper/alerts'] = paper(0)
     answers['GET /adjustment-opportunities'] = opp(...OPEN3)
     await header()
-    expect(confirmSpy).not.toHaveBeenCalled()
+    expect(toasts).toHaveLength(0)
   })
   it('a new id on a later poll toasts once; the same id on the next poll does not toast again', async () => {
     answers['GET /paper/alerts'] = paper(0)
@@ -97,9 +96,10 @@ describe('toast on a new open record', () => {
     await header()
     answers['GET /adjustment-opportunities'] = opp(...OPEN3, rec(4))
     await tick()
-    expect(confirmSpy).toHaveBeenCalledTimes(1)
+    expect(toasts).toHaveLength(1)
+    dismissToast(toasts[0].id)
     await tick()
-    expect(confirmSpy).toHaveBeenCalledTimes(1)
+    expect(toasts).toHaveLength(0)
   })
   it('clicking the toast routes to the strategy compare with the open records', async () => {
     answers['GET /paper/alerts'] = paper(0)
@@ -107,16 +107,19 @@ describe('toast on a new open record', () => {
     await header()
     answers['GET /adjustment-opportunities'] = opp(rec(1), rec(2))
     await tick()
+    openToast(toasts[0].id)
+    await flushPromises()
     expect(r.currentRoute.value.fullPath).toContain('/strategy/builder?adjust=7')
     expect(r.currentRoute.value.query.opp).toBe('1,2')
   })
-  it('a declined toast does not route', async () => {
-    confirmSpy.mockReturnValue(false)
+  it('a dismissed toast does not route', async () => {
     answers['GET /paper/alerts'] = paper(0)
     answers['GET /adjustment-opportunities'] = opp(rec(1))
     await header()
     answers['GET /adjustment-opportunities'] = opp(rec(1), rec(2))
     await tick()
+    dismissToast(toasts[0].id)
+    await flushPromises()
     expect(r.currentRoute.value.fullPath).toBe('/')
   })
 })

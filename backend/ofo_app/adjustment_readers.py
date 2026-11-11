@@ -1,8 +1,8 @@
 """The real readers behind POST /api/strategies/{id}/adjustment-approaches (REQ-155, W-196): the default seams.
 
 - ``read_tracked``: the paper strategy from the paper book, owner-checked in the query (``paper_book.load_owned``);
-  each open contract's identity from ``tracked_contracts.resolve``; entry = the paper fills' average; booked P&L via
-  ``routes.outcome.read_booked`` (None = could not be read, never 0); paid so far via ``paper_charges`` (None when the
+  each open contract's identity from ``tracked_contracts.resolve``; entry = the paper fills' average; booked P&L
+  from the same orders' net book (an unreadable book raises, never 0); paid so far via ``paper_charges`` (None when the
   rates are unreadable or the orders cannot be priced, never 0). A contract that cannot be resolved, a non-option leg
   or a quantity that is not whole lots raises ``TrackedUnreadable`` (the route answers "not available"; it is not a
   "not found", and no leg is guessed).
@@ -60,7 +60,7 @@ from ofo_app.live_push import hold_and_read
 from ofo_app.outcome_oi import oi_of
 from ofo_app.routes.adjustment import MarketInputs, Tracked
 from ofo_app.routes.broker import current_user_ref
-from ofo_app.routes.outcome import feed_windows_of, market_state, read_booked, server_now, spot_judging_now
+from ofo_app.routes.outcome import feed_windows_of, market_state, server_now, spot_judging_now
 
 log = logging.getLogger(__name__)
 _OPTION_TYPES = (Instrument.CE.value, Instrument.PE.value)
@@ -68,24 +68,30 @@ _SATURDAY = 5
 _CLOSE = SESSION_CLOSE  # one home: ofo.timeutil
 
 
-async def read_roll_inputs(strategy_id: int) -> tuple[Any, Any]:
+async def read_roll_inputs(strategy_id: int, db: Any = None) -> tuple[Any, Any]:
     """ADR-243: the strategy's roll-basis inputs, read ONCE per request: (its plan's settings layer, its entry facts).
     Answer states, each fail closed with a named reason (never a default): plan absent -> None (follow the user); plan
     read failed -> ``layers.Unreadable("plan_read_failed")``; entry facts stored -> ``EntryFacts``; none stored ->
     None; unreadable -> ``layers.Unreadable``. The caller (``adjustment_check.roll_basis_of``) turns both into the
-    basis in force; an unreadable plan refuses every roll, missing entry facts refuse only "Entry distance" rolls."""
+    basis in force; an unreadable plan refuses every roll, missing entry facts refuse only "Entry distance" rolls.
+    ``db``: the request's own session (a request uses ONE connection, #682); None for a caller with no request."""
+    if db is not None:
+        return await _roll_inputs_on(db, strategy_id)
+    async with get_sessionmaker()() as own:
+        return await _roll_inputs_on(own, strategy_id)
+
+
+async def _roll_inputs_on(db: Any, strategy_id: int) -> tuple[Any, Any]:
     from ofo.settings import layers  # noqa: PLC0415 - read path only
 
     from ofo_app import playbook_store  # noqa: PLC0415 - read path only
-    async with get_sessionmaker()() as db:
-        try:
-            plan = await playbook_store.plan_for(db, current_user_ref(), strategy_id)
-            layer: Any = None if plan is None else layers.strategy_layer(plan.body)
-        except Exception:
-            log.exception("roll basis: the plan of strategy %s could not be read", strategy_id)
-            layer = layers.Unreadable("plan_read_failed")
-        facts = await entry_facts_in(db, strategy_id)
-    return layer, facts
+    try:
+        plan = await playbook_store.plan_for(db, current_user_ref(), strategy_id)
+        layer: Any = None if plan is None else layers.strategy_layer(plan.body)
+    except Exception:
+        log.exception("roll basis: the plan of strategy %s could not be read", strategy_id)
+        layer = layers.Unreadable("plan_read_failed")
+    return layer, await entry_facts_in(db, strategy_id)
 
 
 async def entry_facts_in(db: Any, strategy_id: int) -> Any:
@@ -119,15 +125,23 @@ def index_name(underlying: str) -> str | None:
 
 # ---- strategy ---------------------------------------------------------------------------------------------------
 
-async def read_tracked(strategy_id: int, rates: ChargeRates | None) -> Tracked | None:
-    async with get_sessionmaker()() as db:
-        paper = await paper_book.load_owned(db, current_user_ref(), strategy_id)  # owner check in the query
-        real = not paper  # ADR-276: no paper order -> the real Zerodha book (fills + adopted holdings), same netter
-        orders: Any = paper or await _real_rows(db, strategy_id)
-        if not orders:
-            return None  # not this user's, no such strategy, or nothing traded
-        found = {c.contract_id: c for c in await tracked_contracts.resolve(db, sorted({o.order.contract_id
-                                                                                         for o in orders}))}
+async def read_tracked(strategy_id: int, rates: ChargeRates | None, db: Any = None) -> Tracked | None:
+    """``db``: the request's own session (a request uses ONE connection, #682); None for the worker, which has no
+    request and reads on a session of its own."""
+    if db is not None:
+        return await _tracked_on(db, strategy_id, rates)
+    async with get_sessionmaker()() as own:
+        return await _tracked_on(own, strategy_id, rates)
+
+
+async def _tracked_on(db: Any, strategy_id: int, rates: ChargeRates | None) -> Tracked | None:
+    paper = await paper_book.load_owned(db, current_user_ref(), strategy_id)  # owner check in the query
+    real = not paper  # ADR-276: no paper order -> the real Zerodha book (fills + adopted holdings), same netter
+    orders: Any = paper or await _real_rows(db, strategy_id)
+    if not orders:
+        return None  # not this user's, no such strategy, or nothing traded
+    found = {c.contract_id: c for c in await tracked_contracts.resolve(db, sorted({o.order.contract_id
+                                                                                   for o in orders}))}
     book = net_positions([o.order.as_paper() for o in orders], {})
     legs: list[PositionLeg] = []
     underlying = lot = None
@@ -157,7 +171,7 @@ async def read_tracked(strategy_id: int, rates: ChargeRates | None) -> Tracked |
             paid = paper_charges(fills, underlying, rates).shown
         except ChargesNotComputable:
             paid = None
-    booked = await read_booked(strategy_id)  # None: could not be read (never 0)
+    booked = book.booked  # the same paper orders ``read_booked`` would read again on a second session
     # expiry kind and today are set by the route from the market reader (the calendar and clock live there)
     # adjustments_used: the engine's adjustment history over the stored orders (the count the history page shows);
     # None when the history cannot be read (the compare's "-" with that reason, never 0)
@@ -213,19 +227,27 @@ GUARDS_UNREADABLE = _GuardsUnreadable()
 
 
 async def read_guards(strategy_id: int, position: Position, spot: Decimal | None,
-                      listed: list | None) -> dict[str, Any] | None | _GuardsUnreadable:
+                      listed: list | None, db: Any = None) -> dict[str, Any] | None | _GuardsUnreadable:
     """The ``guards`` of the strategy playbook (its own plan, else the active playbook of its type; ADR-230 (1)).
     Answer states: a mapping (limits; empty = none set), None (the shape matches no playbook), ``GUARDS_UNREADABLE``
-    (store error or malformed body: logged by its class only; the route says the limits were not applied)."""
-    from ofo_app import adjustment_check  # noqa: PLC0415 - it imports the route module's dataclasses
+    (store error or malformed body: logged by its class only; the route says the limits were not applied).
+    ``db``: the request's own session (a request uses ONE connection, #682); None for a caller with no request."""
     try:
-        async with get_sessionmaker()() as db:
-            stype = adjustment_check.strategy_type(position, spot, listed)
-            resolved = await adjustment_check.resolve(db, current_user_ref(), strategy_id, stype)
-        return adjustment_check.guards_of_body(resolved.body)
+        if db is not None:
+            return await _guards_on(db, strategy_id, position, spot, listed)
+        async with get_sessionmaker()() as own:
+            return await _guards_on(own, strategy_id, position, spot, listed)
     except Exception as exc:  # noqa: BLE001 - any failure of the read is "unreadable", never a silent skip
         log.warning("adjustment guards: strategy %s playbook unreadable (%s)", strategy_id, type(exc).__name__)
         return GUARDS_UNREADABLE
+
+
+async def _guards_on(db: Any, strategy_id: int, position: Position, spot: Decimal | None,
+                     listed: list | None) -> dict[str, Any] | None:
+    from ofo_app import adjustment_check  # noqa: PLC0415 - it imports the route module's dataclasses
+    stype = adjustment_check.strategy_type(position, spot, listed)
+    resolved = await adjustment_check.resolve(db, current_user_ref(), strategy_id, stype)
+    return adjustment_check.guards_of_body(resolved.body)
 
 
 # ---- market -----------------------------------------------------------------------------------------------------

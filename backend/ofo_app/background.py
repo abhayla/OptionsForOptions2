@@ -529,6 +529,69 @@ def screen_margin_reader(margin_of: Any) -> MarginOf:
     return read
 
 
+class StoredLogin:
+    """The day's stored broker login as this process's margin read needs it (#627). The process holds no live Kite
+    session (``live_market.current_session`` is None here), so the stored one is read again at the start of each margin
+    read: a login that arrives later, a re-login and an expiry are each seen with no restart. Memory only, never the
+    token in a log, a repr or a return value."""
+
+    def __init__(self, read_session: Callable[[str], Awaitable[Any]], clock: Callable[[], datetime.datetime]) -> None:
+        self._read = read_session
+        self._clock = clock
+        self._found: Any = None  # the StoredSession read this round, or None
+
+    def __repr__(self) -> str:
+        return "StoredLogin()"
+
+    async def reload(self) -> None:
+        from ofo_app.live_market import OWNER_REF  # noqa: PLC0415
+        try:
+            found = await self._read(OWNER_REF)
+            if found is not None and found.expires_at is not None and found.expires_at <= self._clock():
+                found = None
+        except Exception as exc:  # noqa: BLE001 - no readable login = not checked; the message may carry secrets
+            log.warning("background: the stored broker login is unreadable: %s", type(exc).__name__)
+            found = None
+        self._found = found
+
+    def session(self) -> tuple[str, bytes] | None:
+        from ofo_app.live_market import OWNER_REF  # noqa: PLC0415
+        return None if self._found is None else (OWNER_REF, self._found.fingerprint)
+
+    async def open_client(self) -> Any:
+        from ofo_app.live_market import margin_client  # noqa: PLC0415
+        found = self._found
+        return None if found is None else margin_client(found.api_key, found.access_token)
+
+    def reading(self, margin_of: MarginOf) -> MarginOf:
+        """``margin_of`` preceded by one fresh read of the stored login (each strategy's read is at most every
+        ``MARGIN_REFRESH_S``)."""
+        async def read(w: Watched, market: MarketInputs) -> Mapping | None:
+            await self.reload()
+            return await margin_of(w, market)
+        return read
+
+
+def stored_login(clock: Callable[[], datetime.datetime]) -> StoredLogin:
+    """The worker's login reader. Broker settings that cannot be loaded mean no login (T-16 "not checked"), never a
+    worker that stops: every other rule check keeps running."""
+    from ofo_app.broker_config import BrokerConfigError, load_broker_config  # noqa: PLC0415
+    from ofo_app.broker_crypto import TokenCipher  # noqa: PLC0415
+    from ofo_app.db import get_engine  # noqa: PLC0415
+    from ofo_app.feed_main import store_readers  # noqa: PLC0415
+
+    async def no_session(_user: str) -> None:
+        return None
+
+    try:
+        broker = load_broker_config()
+    except BrokerConfigError as exc:  # the message may carry secrets: the type only
+        log.warning("background: the broker settings are unusable, T-16 is not checked: %s", type(exc).__name__)
+        return StoredLogin(no_session, clock)
+    _users, read_session = store_readers(lambda: get_engine().connect(), TokenCipher(broker.token_key), broker.api_key)
+    return StoredLogin(read_session, clock)
+
+
 @dataclass(frozen=True)
 class Recorded:
     """What ``record_check`` wrote: rule id -> open record id of each flagged rule, and the evaluation it stored (its
@@ -695,10 +758,22 @@ class DbGateStore:
                     stage=flag.stage_name if flag is not None else stage, value=value, threshold=threshold,
                     group=gate_group(w.strategy_id, e.at), source=source,
                     cmp=None if rv is None else rv.cmp, label=label, unit=unit, worse=e.worse,
-                    beyond=None if rv is None else rv.beyond, **t19)
+                    beyond=None if rv is None else rv.beyond, limit=None if rv is None else _quantized(rv.threshold),
+                    adjustments=_count_of(w.tracked), **t19)
                 opened[e.rule_id] = rec.id
             await db.commit()
         return opened
+
+    async def lapse_changed(self, w: Watched) -> bool:
+        """#685 item 3: the open records raised at another adjustment count than the strategy holds now lapse as
+        position_changed (``playbook_store.lapse_changed``); True when any did. A failure raises (the rebuild keeps
+        its last list and tries again), unlike the contained lapse of an exited strategy."""
+        from ofo_app import playbook_store  # noqa: PLC0415 - database layer at run time
+        from ofo_app.db import get_sessionmaker  # noqa: PLC0415
+        async with get_sessionmaker()() as db:
+            lapsed = await playbook_store.lapse_changed(db, w.user_ref, w.strategy_id, _count_of(w.tracked))
+            await db.commit()
+        return bool(lapsed)
 
 
 Lister = Callable[[], Awaitable[list[Watched]]]
@@ -848,6 +923,16 @@ class Worker:
             if w.strategy_id in before and before[w.strategy_id] != w.body:
                 self._signature.pop(w.strategy_id, None)
                 self._tick.pop(w.strategy_id, None)
+        old = {w.strategy_id: w for w in self.monitors}
+        for w in monitors:
+            if _count_of(w.tracked) is None:  # an unreadable count lapses nothing (and resets nothing)
+                continue
+            async with held(self.db_gate, GATE_REBUILD):  # a raise keeps the last list: re-found next re-read
+                lapsed = await self._gate_store.lapse_changed(w)
+            if lapsed or _position_changed(old.get(w.strategy_id), w):
+                # the old position's records and queued events are gone; the gate restores from the store next check
+                self._gate.pop(w.strategy_id, None)
+                self._gate_events.pop(w.strategy_id, None)
         self._drop_stale_writes(monitors)
         self.monitors = monitors
         self._rebuilt_at = self._clock()
@@ -1065,6 +1150,16 @@ class Worker:
                 log.error("background: the strike windows of %s exceed the cap of %s; legs and index only", owner,
                           feed_bus.MAX_WANTED_TOKENS)
                 _keep_recent(self.errors, (0, "WindowTooLarge"))
+
+    async def _beat(self, now: datetime.datetime) -> None:
+        """ADR-286 / REQ-115 AC-6: the cycle time, for the API's once-a-minute watcher; never raises."""
+        if self._want_client is None:
+            return
+        try:
+            await feed_bus.write_heartbeat(self._want_client, now)
+        except Exception as exc:  # noqa: BLE001 - the watcher then reads stale, which is the point; the cycle goes on
+            log.warning("background: writing the heartbeat failed: %s", type(exc).__name__)
+            _keep_recent(self.errors, (0, type(exc).__name__))
 
     async def _write_wants(self, now: datetime.datetime) -> None:
         """Step 4c: one snapshot per feed owner (module docstring); never raises."""
@@ -1557,6 +1652,7 @@ class Worker:
                 _keep_recent(self.errors, (0, type(exc).__name__))
                 return
         now = self._clock()
+        await self._beat(now)
         self._roll_minute(now)
         self._cycles += 1
         if not self._rebuild_tried:  # the first list only; every later re-read runs on its own task (``run``)
@@ -1646,6 +1742,19 @@ def _keep_recent(kept: list, item: object) -> None:
 
 
 _GONE = object()  # a strategy no longer listed (``_drop_stale_writes``)
+
+
+def _count_of(tracked: Any) -> int | None:
+    """The strategy's adjustment count when readable, else None (never a guess)."""
+    n = getattr(tracked, "adjustments_used", None)
+    return n if isinstance(n, int) and not isinstance(n, bool) else None
+
+
+def _position_changed(old: Watched | None, new: Watched) -> bool:
+    """A basket was booked since ``old`` was read, seen in this process: it resets the strategy's gate memory even
+    when no record was open (the records themselves are judged by their stored count, ``DbGateStore.lapse_changed``)."""
+    a, b = _count_of(old and old.tracked), _count_of(new.tracked)
+    return a is not None and b is not None and a != b
 
 
 class _NothingTraded(Exception):
@@ -1867,14 +1976,15 @@ async def _serve_live() -> int:  # pragma: no cover - the process wiring; each p
     async def preferences(user_ref: str) -> Preferences:
         return prefs_from_values(await user_values(user_ref))
 
-    # T-16 (GC-IC1 5b): the screen's own margin read (``get_approach_margin`` over the app's margin source). Named
-    # gap (#627): this process holds no Kite session of its own yet (``live_market.current_session`` answers None
-    # here), so the read answers "not checked" and T-16 stays ``missing_margin`` until the session is shared.
+    # T-16 (GC-IC1 5b): the screen's own margin read (``get_approach_margin``), over the STORED login (``StoredLogin``):
+    # this process has no live Kite session, so the app's ``margin_source`` would answer "not checked" for ever (#627).
     from ofo.settings import defaults  # noqa: PLC0415
 
-    from ofo_app.live_market import margin_source  # noqa: PLC0415
+    from ofo_app.outcome_margin import OutcomeMargin  # noqa: PLC0415
     from ofo_app.routes.adjustment import get_approach_margin  # noqa: PLC0415
-    from ofo_app.routes.outcome import MarketContext, load_charge_rates  # noqa: PLC0415
+    from ofo_app.routes.outcome import MarketContext, load_charge_rates, server_now  # noqa: PLC0415
+    login = stored_login(clock)
+    margin_source = OutcomeMargin(login.session, login.open_client, clock=server_now)
     margin_ctx = MarketContext(provider, clock, defaults()[RISK_FREE_RATE], OWNER_REF)
     gate = DbGate()  # the role's one database gate: writer, settings poll and rebuild, served in that order
     cache = settings_cache.SettingsCache(lambda: get_engine().connect(), gate=gate)
@@ -1884,7 +1994,7 @@ async def _serve_live() -> int:  # pragma: no cover - the process wiring; each p
     worker = Worker(provider_for=lambda _owner: provider, lister=lister,
                     clock=clock, settings=cache.at, preferences=preferences, want_client=bus, db_gate=gate,
                     side_tasks=(cache.poll_loop,), user_values=user_values,
-                    margin_of=screen_margin_reader(get_approach_margin(margin_ctx, margin_source())),
+                    margin_of=login.reading(screen_margin_reader(get_approach_margin(margin_ctx, margin_source))),
                     daily_iv=record_daily_iv)  # ADR-277 (4): the live role only
     feed = asyncio.create_task(socket.run(), name="background-feed")
     try:

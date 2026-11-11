@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import dataclasses
 import datetime
+import functools
 import logging
 import time
 from collections.abc import Awaitable, Callable, Mapping, Sequence
@@ -77,6 +78,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from ofo_app import held_switches
 from ofo_app.api_models import AdjustApproachesOut
 from ofo_app.config import app_env
+from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure
 from ofo_app.outcome_margin import OutcomeMargin, PlannedOrderIn, margin_answer
 from ofo_app.routes.adjustment_preferences import UserPreferences, UserValuesIn
@@ -174,27 +176,30 @@ ApproachMargin = Callable[[list[PlannedOrderIn]], Awaitable[Margin]]
 GuardsReader = Callable[[int, Position, Decimal | None, list | None], Awaitable[Any]]
 
 
-def get_tracked_reader() -> TrackedReader:
-    """The paper book reader (``adjustment_readers.read_tracked``); tests override it."""
+def get_tracked_reader(db: Annotated[Any, Depends(get_db)] = None) -> TrackedReader:
+    """The paper book reader (``adjustment_readers.read_tracked``) on the request's own session: a request uses ONE
+    database connection (#682). Called outside a request (no session) it opens its own; tests override it."""
     from ofo_app.adjustment_readers import read_tracked  # noqa: PLC0415 - it imports this module's dataclasses
-    return read_tracked
+    return read_tracked if db is None else functools.partial(read_tracked, db=db)
 
 
 #: ADR-243: strategy id -> (its plan's settings layer, its entry facts), each possibly ``layers.Unreadable``
 RollInputsReader = Callable[[int], Awaitable[tuple[Any, Any]]]
 
 
-def get_roll_inputs_reader() -> RollInputsReader:
-    """The strategy's roll-basis inputs (``adjustment_readers.read_roll_inputs``), looked up at call time; tests
-    override it."""
+def get_roll_inputs_reader(db: Annotated[Any, Depends(get_db)] = None) -> RollInputsReader:
+    """The strategy's roll-basis inputs (``adjustment_readers.read_roll_inputs``) on the request's own session (#682),
+    looked up at call time; tests override it."""
     from ofo_app import adjustment_readers  # noqa: PLC0415 - it imports this module's dataclasses
-    return adjustment_readers.read_roll_inputs
+    reader = adjustment_readers.read_roll_inputs
+    return reader if db is None else functools.partial(reader, db=db)
 
 
-def get_guards_reader() -> GuardsReader:
-    """The playbook guards of the strategy (``adjustment_readers.read_guards``); tests override it (ADR-230 (1))."""
+def get_guards_reader(db: Annotated[Any, Depends(get_db)] = None) -> GuardsReader:
+    """The playbook guards of the strategy (``adjustment_readers.read_guards``) on the request's own session (#682);
+    tests override it (ADR-230 (1))."""
     from ofo_app.adjustment_readers import read_guards  # noqa: PLC0415 - as above
-    return read_guards
+    return read_guards if db is None else functools.partial(read_guards, db=db)
 
 
 def _before_max_profit(before: Any) -> Decimal | None:
@@ -739,7 +744,8 @@ def _compare_block(cmp: Any) -> dict:
                  "leaders": list(c.leaders),
                  "values": {a: {"text": v.text, "value": v.value, "unavailable_reason": v.unavailable_reason,
                                 **({"breakdown": breakdown_lines(v.breakdown)} if v.breakdown else {}),  # ADR-230 (3)
-                                "warning": v.warning, "warning_off": v.warning_off}  # REQ-159 AC-6
+                                "warning": v.warning, "warning_off": v.warning_off,  # REQ-159 AC-6
+                                "at_index_zero": v.at_index_zero}
                             for a, v in c.values.items()}} for c in cmp.criteria]
     return {"criteria": criteria, "leads": {a: {"n": n, "m": m} for a, (n, m) in cmp.leads.items()},
             "curves": {k: [[level, pnl] for level, pnl in points] for k, points in cmp.curves.items()},

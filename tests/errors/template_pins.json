@@ -2651,6 +2651,10 @@
     "sha256": "8ac3a57645684e47945b4cceef012194ad9e1928beacba1572bca919646139bd",
     "reviewed": "owner read 2026-10-31 (decided in chat)"
   },
+  "adjust_trigger_withheld_no_calendar": {
+    "sha256": "24d00a6acc084c01410c60753d7054349684714fc6a295ab05a6336a7843ac8d",
+    "reviewed": "pending owner read"
+  },
   "adjust_trigger_withheld_fresh_unknown": {
     "sha256": "36bccff0f9f54a3f09f90c8d7d4ffd7fb11b29584221b8c12f4dbee88390b3a0",
     "reviewed": "owner read 2026-10-31 (decided in chat)"
@@ -4029,6 +4033,10 @@
   },
   "explanation:suggestion_lapsed_not_monitored": {
     "sha256": "896306f8fc4dd4558c5c779697ab0df8e966ec6ba97a77e8ca419f1bf1be01ab",
+    "reviewed": "pending owner read"
+  },
+  "explanation:suggestion_lapsed_position_changed": {
+    "sha256": "bcce190e9d83fd95c26a4e70ee24bab20f36f0012f8b4aac5af6d092939efb83",
     "reviewed": "pending owner read"
   }
 }

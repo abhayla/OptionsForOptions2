@@ -4,6 +4,7 @@
 import { computed } from 'vue'
 import { istTime } from '@/lib/displayFormat'
 import { marketClosedText } from '@/lib/sharedStateText'
+import { calendarMissingYear } from '@/lib/calendarNotice'
 
 const props = defineProps({
   pricesAt: { type: String, default: null },
@@ -13,7 +14,7 @@ const text = computed(() => marketClosedText(istTime(props.pricesAt)))
 </script>
 
 <template>
-  <div role="status" class="rounded border border-line bg-surface p-3 text-sm" data-testid="market-closed-banner" :data-disables-execute="disablesExecute ? 'true' : 'false'">
+  <div v-if="!calendarMissingYear" role="status" class="rounded border border-line bg-surface p-3 text-sm" data-testid="market-closed-banner" :data-disables-execute="disablesExecute ? 'true' : 'false'">
     <span class="font-medium" data-testid="market-closed-text">{{ text }}</span>
   </div>
 </template>

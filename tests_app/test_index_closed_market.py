@@ -216,3 +216,25 @@ async def test_socket_push_follows_the_market_state(start, state):
                      now=clock, poll=0.01)
     await asyncio.wait_for(push.run(), timeout=5)
     assert [b.state for b in channel.sent] == [state]
+
+
+# ---- GC-ICSAFE c29 (issue #686): "no calendar for <year>" is told from "closed"; a warning before the end ----
+def test_past_the_calendar_the_answer_names_the_missing_year_and_stays_closed():
+    provider, clock = _index_fed(datetime.datetime(2027, 1, 4, 11, 30, tzinfo=IST))
+    body = indices_answer(MarketContext(provider, clock, Decimal("0.065")), live=True, now=clock)
+    assert (body.state, body.market_closed) == ("NOT_CONNECTED", True)
+    assert (body.calendar_missing_year, body.calendar_ends_on) == (2027, datetime.date(2026, 12, 31))
+
+
+def test_a_holiday_is_closed_but_not_a_missing_calendar():
+    provider, clock = _index_fed(HOLIDAY)
+    body = indices_answer(MarketContext(provider, clock, Decimal("0.065")), live=True, now=clock)
+    assert (body.market_closed, body.calendar_missing_year, body.calendar_ends_on) == (True, None, None)
+
+
+@pytest.mark.parametrize(("day", "ends_on"), [(datetime.date(2026, 11, 30), None),
+                                              (datetime.date(2026, 12, 1), datetime.date(2026, 12, 31))])
+def test_within_thirty_days_of_the_calendar_end_the_answer_carries_the_end_date(day, ends_on):
+    clock = Clock(datetime.datetime.combine(day, datetime.time(11, 0), IST))
+    body = indices_answer(None, live=False, now=clock)  # no live feed: the same fields on this path
+    assert (body.calendar_missing_year, body.calendar_ends_on) == (None, ends_on)

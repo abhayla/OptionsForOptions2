@@ -32,7 +32,7 @@ def test_adj02_conditions_read_in_words_with_units_and_no_trigger_id():
         ("T-01", "0.34159", "0.5", "le"), ("T-03", "0.4103", "0.35", "ge"), ("T-09", "2.7", "3", "le"))}
     assert out["T-01"] == T01
     assert out["T-03"] == "Tested short's delta reaches: 0.4103 delta (rule 0.3500 delta)"
-    assert out["T-09"] == "A short leg's premium falls below Rs (close for pennies): 2.7000 Rs (rule 3.0000 Rs)"
+    assert out["T-09"] == "A short leg's premium falls to Rs or below (close for pennies): ₹2.70 (rule ₹3.00)"
     for line in out.values():
         assert not re.search(r"\bT-\d", line) and "at or below" not in line and "at or above" not in line
 

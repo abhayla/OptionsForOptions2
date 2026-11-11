@@ -2,7 +2,7 @@
 // Pure helpers. Display only: every figure is a text the server sent, "-" when absent. Nothing is computed here.
 // The generic approaches carry NO figure (REQ-045 AC-5): the numbers appear only in the compare, after a pick. Their names,
 // one-line texts and whether each applies come from the server (`available`); no approach text is kept in the browser.
-import { NO_CHANGE_ID } from '@/lib/adjustCompare'
+import { MAX_PROFIT_AT_ZERO_LABEL, NO_CHANGE_ID } from '@/lib/adjustCompare'
 import { rupeesText } from '@/lib/displayFormat'
 
 export const REVIEW_BUTTON_TEXT = 'Review adjustment'
@@ -43,13 +43,16 @@ export function replyRows(reply) {
     const v = reply?.criteria?.find((c) => c.id === id)?.values?.[NO_CHANGE_ID]
     return v && v.unavailable_reason == null ? text(v.text) : NONE
   }
+  const atZero = reply?.criteria?.find((c) => c.id === 'max_profit')?.values?.[NO_CHANGE_ID]?.at_index_zero === true
   const margin = reply?.approaches?.find((a) => a.id === NO_CHANGE_ID)?.margin
   // GC-ICGUIDE g16/g20: max loss, margin utilisation and each option's IV / OI / LTP are the server's `current` texts
   // (one sign, every missing figure worded there as "not available: <reason>"); nothing in the reply reads "-"
   const cur = reply?.current
   const fig = (f) => text(f?.text ?? f?.reason)
   return [
-    ...REPLY_ROWS.slice(0, 1).map(([id, label]) => ({ id, label, value: cell(id) })),
+    ...REPLY_ROWS.slice(0, 1).map(([id, label]) => ({
+      id, label: atZero ? MAX_PROFIT_AT_ZERO_LABEL : label, value: cell(id),
+    })),
     { id: 'max_loss', label: 'Max loss', value: fig(cur?.max_loss) },
     ...REPLY_ROWS.slice(1).map(([id, label]) => ({ id, label, value: cell(id) })),
     { id: 'margin_utilisation', label: 'Margin utilisation', value: fig(cur?.margin_utilisation) },

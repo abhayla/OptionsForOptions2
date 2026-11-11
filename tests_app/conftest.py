@@ -75,7 +75,7 @@ def _settings_defaults_by_default(monkeypatch):
     from ofo import settings  # noqa: PLC0415 - import order: env placeholders are set after this module's top
     from ofo_app.routes import outcome  # noqa: PLC0415
 
-    async def defaults():
+    async def defaults(_session=None):
         return settings.defaults()
 
     monkeypatch.setattr(outcome, "_settings_in_force_now", defaults)
@@ -114,7 +114,7 @@ def _preferences_defaults_by_default(request, monkeypatch):
     def sessionmaker():
         return _NoSession
 
-    async def no_plan_no_entry_facts(strategy_id):
+    async def no_plan_no_entry_facts(strategy_id, db=None):
         return None, None  # ADR-243: no plan override, no stored entry facts (Target delta is unaffected)
 
     from ofo_app import adjustment_readers  # noqa: PLC0415

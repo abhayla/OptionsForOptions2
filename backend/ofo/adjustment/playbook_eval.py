@@ -891,6 +891,8 @@ def _context(body: Mapping, state: StrategyState) -> _Ctx:
 
 
 def _withheld(state: StrategyState) -> str | None:
+    if state.today is not None and _status(state.today, None) is mc.MarketStatus.NO_CALENDAR:
+        return f"{P}withheld_no_calendar"  # before the stale reason: a year the calendar lacks reads stale too
     if state.prices_fresh is not True:
         return f"{P}withheld_stale" if state.prices_fresh is False else f"{P}withheld_fresh_unknown"
     if state.spot is None:

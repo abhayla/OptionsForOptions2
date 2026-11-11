@@ -36,9 +36,9 @@ def test_every_trigger_of_the_table_renders_a_line_with_its_value(tid):
     assert value in text and threshold in text, (tid, t["unit"], text)
 
 
-#: #650: the triggers whose row has no unit but whose value is rupees (T-02) or a count (T-18): the line shows
+#: #650: the triggers whose value is rupees (T-02; T-09 by its Rs unit) or a count (T-18): the line shows
 #: the sample 0.5 / 1.0 in that unit
-OWN_UNIT = {"T-02": ("₹0.50", "₹1.00"), "T-18": ("0", "1")}
+OWN_UNIT = {"T-02": ("₹0.50", "₹1.00"), "T-09": ("₹0.50", "₹1.00"), "T-18": ("0", "1")}
 
 
 def test_t02_value_is_rupees_with_a_real_minus_never_four_decimals():

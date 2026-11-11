@@ -141,7 +141,10 @@ def test_core_update_refuses_dropping_more_than_half_of_one_expiry(catalogue: Ca
     """AC-2 as changed by ADR-058/ADR-059 (W-057): removing more than half of one unexpired NIFTY expiry's contracts is
     refused, naming the expiry; nothing changes. (The old Q244 rule refused ONE removal; ADR-058 replaced it.)"""
     far = [c for c in contracts if c.contract.name == "NIFTY" and c.contract.expiry == NIFTY_FAR_EXPIRY]
-    gone = {c.id for c in far[: len(far) // 2 + 1]}
+    # the whole CE group plus one PE: a group is missing, so this is no strike-grid change (#680)
+    ce = [c for c in far if c.contract.instrument_type == "CE"]
+    pe = [c for c in far if c.contract.instrument_type == "PE"]
+    gone = {c.id for c in ce + pe[: max(0, len(far) // 2 + 1 - len(ce))]}
     before = _snapshot(catalogue)
     with pytest.raises(ValueError, match=f"of expiry {NIFTY_FAR_EXPIRY}, more than half"):
         # the index-wide 10% guard is set to 100 here so the per-expiry guard alone must refuse
@@ -152,7 +155,8 @@ def test_core_update_refuses_dropping_more_than_half_of_one_expiry(catalogue: Ca
 def test_update_refuses_the_verifier_75_percent_truncation(catalogue: Catalogue, contracts: list[Contract]) -> None:
     """AC-2: the W-006 verifier's truncation (first 75% of NIFTY rows, all else kept) was ACCEPTED
     under the old 50% rule; it must now be refused."""
-    nifty = [c for c in contracts if c.contract.name == "NIFTY"]
+    nifty = sorted((c for c in contracts if c.contract.name == "NIFTY"),
+                   key=lambda c: (c.contract.expiry, c.contract.strike, c.contract.instrument_type))
     kept_nifty = {c.id for c in nifty[: len(nifty) * 3 // 4]}
     truncated = [c for c in contracts if c.contract.name != "NIFTY" or c.id in kept_nifty]
     before = _snapshot(catalogue)
@@ -178,13 +182,30 @@ def test_update_accepts_roll_off_of_an_expired_expiry_never_deletes(
     assert all(e.currently_listed for e in catalogue.all_entries() if e.contract.expiry != NIFTY_NEAR_EXPIRY)
 
 
-def test_update_refuses_roll_off_on_the_expiry_day_itself(catalogue: Catalogue, contracts: list[Contract]) -> None:
-    """AC-2: a contract expiring on the update date has NOT yet passed; dropping it that day is
-    refused (boundary), even at 23:59 IST."""
-    expired = {c.id for c in contracts if c.contract.expiry == NIFTY_NEAR_EXPIRY}
+def test_update_refuses_roll_off_on_the_expiry_day_itself_when_a_later_group_is_missing(
+    catalogue: Catalogue, contracts: list[Contract]
+) -> None:
+    """AC-2: a contract expiring on the update date has NOT yet passed, so it counts as live in the guards. Dropping
+    all 277 of them plus the one later FUT group (a missing later group, so no grid change, #680) is 278 of 481 live
+    NIFTY contracts; had the expiry-day contracts not counted, it would be 1 of 204 (under the 10% limit) and pass."""
+    dropped = {c.id for c in contracts if c.contract.name == "NIFTY"
+               and (c.contract.expiry == NIFTY_NEAR_EXPIRY
+                    or (c.contract.expiry == date(2026, 10, 27) and c.contract.instrument_type == "FUT"))}
     late = datetime(2026, 9, 29, 23, 59, tzinfo=IST)
-    with pytest.raises(ValueError):
-        catalogue.update([c for c in contracts if c.id not in expired], as_of=late, max_delist_percent=_MAX_DELIST)
+    with pytest.raises(ValueError, match="drop 278 of 481 live NIFTY"):
+        catalogue.update([c for c in contracts if c.id not in dropped], as_of=late, max_delist_percent=_MAX_DELIST)
+
+
+def test_update_accepts_when_every_live_contract_of_an_index_expires_on_the_update_date(
+    contracts: list[Contract],
+) -> None:
+    """ADR-284 (2): all stored live NIFTY contracts expire today and the new list carries NIFTY rows: accepted."""
+    nifty = [c for c in contracts if c.contract.name == "NIFTY"]
+    cat = Catalogue()
+    cat.load([c for c in nifty if c.contract.expiry == NIFTY_NEAR_EXPIRY])
+    fresh = [c for c in nifty if c.contract.expiry == NIFTY_FAR_EXPIRY]
+    result = cat.update(fresh, as_of=datetime(2026, 9, 29, 9, 0, tzinfo=IST), max_delist_percent=_MAX_DELIST)
+    assert (len(result.delisted), result.added) == (277, 202)
 
 
 def test_update_date_is_judged_in_ist_not_utc(catalogue: Catalogue, contracts: list[Contract]) -> None:

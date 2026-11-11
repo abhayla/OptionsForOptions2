@@ -7,6 +7,7 @@ posted through the route. The route's clock is fixed, so it differs from the see
 from __future__ import annotations
 
 import copy
+import dataclasses
 import datetime
 from decimal import Decimal
 from http import HTTPStatus
@@ -140,4 +141,64 @@ async def test_a_plan_with_no_maximum_does_not_limit(db, monkeypatch):
     monkeypatch.setattr(paper_limit, "_plan_body", no_max)
     async with _client(app) as c:
         reply = await c.post(f"/paper/strategies/{stored.id}/orders", json={"orders": [_post(ids[2], "BUY")]})
+    assert reply.status_code == HTTPStatus.CREATED, reply.text
+
+
+@pytest.fixture
+def only_the_condor_is_limited(monkeypatch):
+    """No plan of its own: the active playbook of the position's type gives the maximum. The system condor playbook
+    keeps its maximum (2); every other type gets 99, so a wrong type read after the batch shows as an allowed save."""
+    real = playbook_store.active_for
+
+    async def active_for(conn, user_ref, strategy_type):
+        found = await real(conn, user_ref, strategy_type)
+        if strategy_type == "ic":
+            return found
+        guards = {**found.body["guards"], "max_adjustments": 99}
+        return dataclasses.replace(found, body={**found.body, "guards": guards})
+    monkeypatch.setattr(playbook_store, "active_for", active_for)
+
+
+async def _condor(db, adjustments: int):
+    """A four-leg condor with NO plan of its own that has used ``adjustments``: each takes the first leg out and puts
+    it back in one batch, so the four legs stay open."""
+    app, stored, *_ = await _setup(db)
+    ids = stored.saved.contract_ids
+    await paper_store.place(db, stored.user_ref, stored.id, [_new(ids[i], s, p, "open", T0)
+                                                             for i, (s, p) in enumerate(ENTRY)])
+    for n in range(adjustments):
+        at = T0 + datetime.timedelta(hours=n + 1)
+        await paper_store.place(db, stored.user_ref, stored.id, [_new(ids[0], "BUY", "50.00", "exit", at),
+                                                                 _new(ids[0], "SELL", "50.00", "open", at)])
+    return app, stored, ids
+
+
+async def test_the_limit_judges_the_condor_as_it_was_before_the_batch(db, only_the_condor_is_limited):
+    """The batch takes one whole spread out; judged AFTER it the position is a two-leg spread (another type's limit).
+    Judged before it, the position is the condor that has used its two adjustments, so the third is refused."""
+    app, stored, ids = await _condor(db, adjustments=2)
+    before = await _count(db, stored.id)
+    async with _client(app) as c:
+        reply = await c.post(f"/paper/strategies/{stored.id}/orders",
+                             json={"orders": [_post(ids[0], "BUY"), _post(ids[1], "SELL")]})
+    assert reply.status_code == HTTPStatus.UNPROCESSABLE_ENTITY, reply.text
+    assert "at most 2 adjustments" in reply.text
+    assert await _count(db, stored.id) == before
+
+
+async def test_the_tracking_exit_judges_the_condor_as_it_was_before_the_batch(db, only_the_condor_is_limited):
+    app, stored, _ids = await _condor(db, adjustments=2)
+    before = await _count(db, stored.id)
+    async with _client(app) as c:
+        reply = await c.post(f"/strategies/{stored.id}/tracking/exit", json={"legs": [0, 1]})
+    assert reply.status_code == HTTPStatus.UNPROCESSABLE_ENTITY, reply.text
+    assert "at most 2 adjustments" in reply.text
+    assert await _count(db, stored.id) == before
+
+
+async def test_the_second_adjustment_of_a_condor_is_not_counted_twice(db, only_the_condor_is_limited):
+    app, stored, ids = await _condor(db, adjustments=1)
+    async with _client(app) as c:
+        reply = await c.post(f"/paper/strategies/{stored.id}/orders",
+                             json={"orders": [_post(ids[0], "BUY"), _post(ids[1], "SELL")]})
     assert reply.status_code == HTTPStatus.CREATED, reply.text

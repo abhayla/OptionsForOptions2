@@ -57,7 +57,7 @@ export const INDEX_KEYS = Object.keys(INDEX_NAMES)
 export const NOT_LIVE_LABEL = 'Index values unavailable.'
 export const VALUE_UNAVAILABLE = 'Not available'
 
-async function readAnswer(fallback) {
+export async function readAnswer(fallback) {
   try {
     const { data } = await api.get(INDEX_REST_PATH, { params: fallback ? { fallback: true } : {} })
     return isIndicesAnswer(data) ? data : null
