@@ -64,6 +64,14 @@ remaining step needs it stopped and memory was at 2.3 GB). The practice-data sta
   then: the "watcher stopped" alert is built and unit-proven, but cannot reach a phone). Q3 one old work folder.
 - Read the new texts listed in the 10 Nov handover. December: load the 2027 holiday list (note N1).
 
+## CLOSED 2026-11-11 16:49 (added after the merge)
+
+- PR #693 merged to main as b8b467de (all 8 checks green on the third run). The run's work folders are removed.
+- Contract closed PARTIAL with two rows PARKED: c56 -> issue #694 (expiry day only, Tue 17 Nov), c25 -> issue #695
+  (waits for owner answer Q2). Every other row c01..c57 is done.
+- Two CI reds before the merge, one class (tests only CI runs pinned behaviour this run changed); the detection step
+  is in the run log.
+
 ## NOT DONE, by date
 
 - c56: the same-day condor on live prices can only run on Tue 17 Nov (an expiry day). Until then the contract

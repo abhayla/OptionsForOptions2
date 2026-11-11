@@ -650,6 +650,8 @@ issues:
   "#689": S6.7  # New-adjustment toast uses the browser's native confirm(): the whole page freezes until clicked
   "#691": S6.7  # Test-database template tool: hash inputs, sweep without lock, idle admin connection while waiting (review leftovers of PR 688)
   "#692": S6.7  # GC-ICSAFE leftovers: max-profit label on two more screens, old-position record window, adopted strategies never lapse, failed alert not retried
+  "#694": S6.7  # GC-ICSAFE c56: same-day iron condor on live prices, only possible on an expiry day (Tue 17 Nov)
+  "#695": S6.7  # GC-ICSAFE c25: one real test message through the shared Notifier (waits for owner question Q2)
 
 # Work items whose status is not done.
 work_items:
