@@ -4,12 +4,9 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (273)
+## Decisions (276)
 
-- Older decisions: 233 rows, ADR-1..ADR-246 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
-- ADR-247 2026-11-05: Owner 2026-11-05 ~00:3x IST (question tool, "50% max loss or 2x credit (Recommended)"): the iron co… [SPEC CHANGE to ADR-216: its stop line "a loss of…]
-- ADR-248 2026-11-05: Owner 2026-11-05 ~00:4x IST (question tool, "Cost / credit (Recommended)"): the default ranking key… [New: fills the gap the spec left on ranking sugge…]
-- ADR-249 2026-11-05: Owner 2026-11-05 ~00:5x IST (question tool, "A now, B later (Recommended)"), answering what "adjust… [New: settles the open question in the mockup owne…]
+- Older decisions: 236 rows, ADR-1..ADR-249 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
 - ADR-250 2026-11-05: Owner 2026-11-05 ~09:3x IST (question tool, "New plans only (Recommended)"), answering what happens… [Narrows ADR-247 to new plans; the step 3 live-che…]
 - ADR-251 2026-11-05: Owner 2026-11-05 ~09:4x IST (question tool, "Net credit so far (Recommended)"), defining the credit… [Defines a term ADR-247 left open; the step 3 live…]
 - ADR-252 2026-11-05: Orchestrator 2026-11-05 ~11:2x IST, decided under the owner's delegation ("For all the strategy rel… [Clarifies ADR-247 (the 50 % is the per-stage T-06…]
@@ -47,6 +44,9 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-284 2026-11-10: SPEC CHANGE of ADR-058 ("refuse the whole update, writing nothing, if more than 10% of an index's l… [amends ADR-058; amends ADR-059]
 - ADR-285 2026-11-10: Decided by the GC-ICSAFE plan review as a technical call under the owner's approval of that contrac… [extends ADR-119 (2): says what happens after the…]
 - ADR-286 2026-11-10: Technical call under the owner's approval of the GC-ICSAFE contract (2026-11-10), for the alert hal… [amends the egress rule of REQ-073 as built in ofo…]
+- ADR-287 2026-11-11: Owner answer 2026-11-11 (question tool, after GC-ICSAFE): "Approve as written". [closes standing direction step 2 ("The owner has…]
+- ADR-288 2026-11-11: Owner answer 2026-11-11 (question tool, standing direction step 4): "Hostinger VPS, Redis there". [decides Q273 (option a); applies REQ-113 AC-3 and…]
+- ADR-289 2026-11-11: Owner answers 2026-11-11 (question tool, standing direction step 4): "Yes, one order, I press Execu… [amends ADR-281 (one exception, step 4 only); stat…]
 
 ## Requirements (161)
 
@@ -447,7 +447,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ## Q270 — DECIDED → ADR-084 (owner, 2026-10-15) — Existing-position grou…
 - ## Q271 — DECIDED (expert role, 2026-10-17; spec silent - REQ-060 F-08 c…
 - ## Q272 — DECIDED (owner, 2026-10-21, ADR-149: re-specify AC-5 to the th…
-- ## Q273 — OPEN (business: production host; due before the first deploy t…
+- ## Q273 — DECIDED → ADR-288 (owner, 2026-11-11: "Hostinger VPS, Redis th…
 - ## Q283 — DECIDED → ADR-178 (owner, 2026-10-23: approve all three loosen…
 - ## Q281 — DECIDED → ADR-177 (owner, 2026-10-23: the banner wording every…
 - ## Q280 — DECIDED → ADR-176 (owner, 2026-10-23: register + gates, refere…

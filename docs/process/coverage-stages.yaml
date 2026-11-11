@@ -446,6 +446,9 @@ decisions:
   ADR-284: 4a           # truncation guard judges by stored expiries still carried; strike-grid change accepted (#680)
   ADR-285: 4b           # calendar end: warning from 30 days before; uncovered date reads no calendar (#686)
   ADR-286: S6.4         # Notifier endpoint allowed by the egress gate; watcher heartbeat in the bus store, 2 minutes (#627)
+  ADR-287: S6.7         # demo-ready checklist approved as written (owner 2026-11-11)
+  ADR-288: S6.7         # host: Hostinger Linux VPS, Redis there, database on the Windows VPS (decides Q273)
+  ADR-289: S6.7         # step 4: second person on paper with own login; one real 1-lot condor on the owner's account
 
 questions:
   Q210: 4a              # external: Zerodha's written answer; ADR-051 covers the owner's own account
@@ -454,7 +457,6 @@ questions:
   Q260: S8              # external: Zerodha compliance on AP rules (owner action); ADR-055 default
   Q261: S6.2            # legal review; ADR-055 default
   Q271: 4b              # decided (expert role, GC-2e): external orders' trades not audited
-  Q273: S6.7            # open: where Redis runs in production (ask at the first two-process deploy brief)
 
 # The "Open areas with no question yet" list; each `text` must appear in spec/open-questions.md.
 open_areas:
