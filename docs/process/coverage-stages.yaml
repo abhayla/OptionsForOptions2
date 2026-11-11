@@ -451,6 +451,7 @@ decisions:
   ADR-289: S6.7         # step 4: second person on paper with own login; one real 1-lot condor on the owner's account
   ADR-290: S6.7         # goal is tracking, not order placing; hand entry of a held iron condor (GC-TRACK1)
   ADR-291: S6.7         # current work serves one user, the owner's own Kite account
+  ADR-292: S6.7         # held condor typed in by hand: label, stated entry time, rules start at save, order screens hidden
 
 questions:
   Q210: 4a              # external: Zerodha's written answer; ADR-051 covers the owner's own account
