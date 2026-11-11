@@ -86,6 +86,28 @@ Lessons: (1) finish merges and pushes before dispatching reviewers (the guard bl
 set and the whole frontend unit set once before reviews, not after; (4) "where does the running app read this
 from?" before accepting a text or data fix (seed file vs versioned rows).
 
+## 2026-11-11 (Wed, live day), second session from 09:50
+
+- c11 09:54: two-months-out practice condor, strategy 131 (25 Jan 2027, 75 days): four legs picked by hand in the leg
+  picker at live prices (captured 09:52:13, net credit 48.50 per unit), "Add to Paper", plan accepted on the playbook
+  with the margin stop on, then one adjustment through Compare (7 approaches offered; "Roll the tested spread out":
+  put spread 25150/25100 -> 24600/24550; the screen read "0 pending changes").
+- c40 10:28: clean window 09:58 to 10:27, 30 minute lines, no position change. Margin stop ON (read from each plan
+  reply): strategies 128, 129, 131 = 59 + 15 + 15 = 89 checks, `adjust_trigger_missing_margin` = 0. The counter is
+  live, not stuck: 8 such outcomes in the minutes right after a first check or a leg change, 22 per minute on 4 Nov.
+  Limits: the log has no per-strategy "T-16 checked" line (proof is by the reason being absent); strategies 91 and
+  130 follow the system default playbook, whose margin stop is off by ADR-247, and are not counted; after a leg change
+  the alarm reads "not checked" for one to two checks (up to about 4 minutes at the 2-minute monthly speed).
+- 10:00: `origin/main` merged into the branch (f3d34dff): two test-tool files of PR #688, nothing the running stack
+  reads. Its 71 tool tests pass.
+- Live-day leftovers filed on #692 (items 19 to 25).
+- Row c39 was still "waiting" although the 10 Nov handover listed it done: its guard file is re-run on the final code
+  after the live stack stops, then the row is closed.
+- 10:1x: the system stopped a background timer of this session for low memory (2.3 to 2.5 GB free; the live API
+  process holds 1.8 GB). The 13 live processes were not touched.
+- Deviation 14: c40's done line asked for "count of checked T-16 lines > 0". No such line exists in the watcher log;
+  the row is closed on 89 checks of margin-stop-on strategies with zero missing-margin outcomes, limit written in the row.
+
 ## Reuse map (c06). Every build brief quotes its line.
 
 Corrections to the contract's section 2, found by reading the code on 0fac11d3:
