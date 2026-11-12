@@ -17,6 +17,7 @@
 
     <!-- GC-TP step 8b (REQ-109 AC-10; Sensibull Drafts Mode 278-279): the strategy's Charges beside its P&L, each the book reply's
          text as sent; the Charges are never added to or taken from the P&L, and an absent one is a dash (never 0). -->
+    <HeldNote class="mt-2" :held="book.held" note />
     <dl class="mt-2 flex gap-6 text-xs" data-testid="book-strip">
       <div><dt class="text-ink-muted">Total P&amp;L</dt><dd class="num text-sm font-semibold" data-testid="book-total">{{ book.total_text ?? '-' }}</dd></div>
       <div>
@@ -78,6 +79,7 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 import { istClock } from '@/lib/displayFormat'
+import HeldNote from '@/components/strategy/HeldNote.vue'
 import { EXIT_ALL_LABEL, EXIT_LABEL, NET_POSITIONS_LABEL, ORDERBOOK_LABEL, exitLotsFrom, exitLotsOk, openLots, paperKindLabel } from '@/lib/paperDrafts'
 
 const props = defineProps({
