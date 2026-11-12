@@ -30,6 +30,7 @@ async def _state(conn) -> tuple:
     return tuple((await conn.execute(_STATE)).one())
 
 
+@pytest.mark.full_chain
 async def test_round_trip_adds_marker_and_key_and_downgrade_restores_0031(admin_engine):
     own_down, own_up, down, up = round_trip_sql(MIGRATION)
     assert "'pre'" in own_up[0] and "'post'" in own_up[-1] and "'post'" in own_down[-1]

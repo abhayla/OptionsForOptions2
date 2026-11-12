@@ -125,6 +125,7 @@ async def test_read_since_unreadable_on_a_failed_read_or_a_non_decimal():
         await store.read_since(_Float(), "NIFTY", DAY)
 
 
+@pytest.mark.full_chain
 async def test_round_trip_drops_and_restores_the_table_with_the_allowlist_passing(owner):
     own_down, own_up, down, up = round_trip_sql(MIGRATION)
     assert "'pre'" in own_up[0] and "'post'" in own_up[-1] and "'post'" in own_down[-1]

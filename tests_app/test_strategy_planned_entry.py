@@ -369,6 +369,7 @@ async def test_ac5_the_database_takes_the_repriced_summary_kind_and_no_extra_key
 # ---------------------------------------------------------------------------------------------------------------
 
 
+@pytest.mark.full_chain
 async def test_0011_downgrade_refuses_with_an_entry_then_round_trips_without_one(admin_engine):
     """Down (0010's validators): refused while a stored leg holds a planned entry; with none, the pair is refused
     after the downgrade and accepted again after the upgrade; the allowlist 'post' check passes both ways."""

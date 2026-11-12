@@ -41,6 +41,7 @@ async def _run(conn, sqls) -> None:
         await conn.execute(text(sql))
 
 
+@pytest.mark.full_chain
 async def test_upgrade_writes_new_version_with_new_s06_and_downgrade_removes_only_it(admin_engine):
     own_down, own_up, down, up = round_trip_sql(MIGRATION)
     assert "'post'" in own_up[-1] and "'post'" in own_down[-1]  # both end with the allow-list post check
@@ -77,6 +78,7 @@ async def test_upgrade_twice_is_a_no_op(admin_engine):
             await trans.rollback()
 
 
+@pytest.mark.full_chain
 async def test_admin_version_after_0042_is_the_base_and_keeps_its_other_keys(admin_engine):
     _own_down, own_up, down, _up = round_trip_sql(MIGRATION)
     async with admin_engine.connect() as conn:

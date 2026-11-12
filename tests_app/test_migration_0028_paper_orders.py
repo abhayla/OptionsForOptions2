@@ -103,6 +103,7 @@ async def _orders(conn, strategy_id: int) -> list[tuple]:
     return [(int(r[0]), r[1], int(r[2]), r[3], r[4], r[5]) for r in rows]
 
 
+@pytest.mark.full_chain
 async def test_upgrade_creates_table_guard_grants_and_old_tables_read_only_downgrade_restores(admin_engine):
     _own_down, own_up, down, up = round_trip_sql(MIGRATION)
     assert "'post'" in own_up[-1] and "'pre'" in own_up[0]
@@ -131,6 +132,7 @@ async def test_upgrade_creates_table_guard_grants_and_old_tables_read_only_downg
             await trans.rollback()
 
 
+@pytest.mark.full_chain
 async def test_upgrade_copies_every_leg_and_exit_exactly_in_leg_order(admin_engine):
     _, _, down, up = round_trip_sql(MIGRATION)
     async with admin_engine.connect() as conn:
@@ -164,6 +166,7 @@ async def test_upgrade_copies_every_leg_and_exit_exactly_in_leg_order(admin_engi
             await trans.rollback()
 
 
+@pytest.mark.full_chain
 async def test_upgrade_refuses_a_strategy_tracking_one_contract_on_two_legs(admin_engine):
     _, own_up, down, _ = round_trip_sql(MIGRATION)  # down = the later migrations too: the post-check pins THIS era
     async with admin_engine.connect() as conn:

@@ -55,6 +55,7 @@ async def _state(conn) -> dict:
     }
 
 
+@pytest.mark.full_chain
 async def test_upgrade_creates_the_table_guard_and_grants_downgrade_restores_and_upgrade_replays(admin_engine):
     _own_down, own_up, down, up = round_trip_sql(MIGRATION)
     assert "'post'" in own_up[-1] and "'pre'" in own_up[0]

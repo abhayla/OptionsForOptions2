@@ -178,6 +178,7 @@ async def test_ac4_downgrade_is_refused_naming_the_table_while_a_marked_leg_is_s
             await trans.rollback()
 
 
+@pytest.mark.full_chain
 async def test_ac4_downgrade_without_a_typed_leg_restores_0011s_validator_and_upgrade_restores_0024(admin_engine):
     """AC-4 (attack items 4 and 5): with no mark stored the downgrade succeeds and the 0011 validator is back (8-key leg
     accepted, 9-key leg refused); the upgrade brings 0024 back; the application role's grants are identical in the

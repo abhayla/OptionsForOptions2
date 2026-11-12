@@ -34,6 +34,7 @@ async def _zero_settle(conn) -> None:
                             "(:s, :c, 'BUY', 65, 0, 'settle', now())"), {"s": stored.id, "c": contract})
 
 
+@pytest.mark.full_chain
 async def test_upgrade_relaxes_the_check_for_settle_only_and_adds_the_index_downgrade_restores(admin_engine):
     own_down, own_up, down, up = round_trip_sql(MIGRATION)
     assert "'pre'" in own_up[0] and "'post'" in own_up[-1] and "'post'" in own_down[-1]

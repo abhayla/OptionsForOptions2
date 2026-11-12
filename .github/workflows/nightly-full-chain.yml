@@ -1,0 +1,107 @@
+# Nightly full migration chain (finding migration-round-trips-grow-with-the-chain). Tests marked `full_chain` replay every
+# later migration down to N and back to head; they cost minutes each, so pull requests skip them (app-tests.yml runs
+# `-m "not full_chain"`) and this workflow runs them once a day on main. Same services and setup as the `api` job there.
+name: Nightly full migration chain
+
+on:
+  schedule:
+    - cron: '30 21 * * *'  # 21:30 UTC, after the day's merges
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  full-chain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      PGHOST: localhost
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: postgres_ci_dummy_pw
+      PGDATABASE: ofo_test
+      APP_ROLE_PW: ofo_app_test_pw
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres_ci_dummy_pw
+          POSTGRES_DB: ofo_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      # REQ-113: the bus between the market-data process and the API (Redis Streams). The bus tests FAIL, never skip,
+      # when OFO_REQUIRE_DB_TESTS=1 and this service is missing.
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: requirements-app.txt
+
+      # W-058: the broker routes refuse to start without these. Placeholders and a key generated per run, never a
+      # real secret; nothing in CI talks to Kite.
+      - name: Throwaway broker settings
+        run: |
+          echo "KITE_API_KEY=ci_placeholder_key" >> "$GITHUB_ENV"
+          echo "KITE_API_SECRET=ci_placeholder_secret" >> "$GITHUB_ENV"
+          echo "KITE_REDIRECT_URL=http://127.0.0.1:8000/kite/callback" >> "$GITHUB_ENV"
+          echo "FRONTEND_ORIGIN=http://127.0.0.1:4173" >> "$GITHUB_ENV"
+          echo "KITE_EXPECTED_USER_ID=ZZ0000" >> "$GITHUB_ENV"
+          echo "BROKER_TOKEN_KEY=$(python -c 'import base64,os;print(base64.urlsafe_b64encode(os.urandom(32)).decode())')" >> "$GITHUB_ENV"
+
+      # Standard library only, so it may run before the install step.
+      - name: Guard against empty Alembic migrations
+        run: python scripts/alembic_migration_guard.py
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-app.txt
+          pip install -r requirements-dev.txt
+
+      # Imports ruff, so it runs after the install step. Fails when any rule's count rises above the baseline.
+      - name: Ruff ratchet (lint counts may fall, never rise)
+        run: python scripts/ruff_ratchet.py
+
+      # Timeouts, the TEMPORARY/CREATE revokes and the privilege allowlist live in migration 0001 (every host).
+      - name: Create the application role (ADR-048 attributes)
+        run: |
+          psql -v ON_ERROR_STOP=1 \
+            -c "CREATE ROLE ofo_app LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS CONNECTION LIMIT 5 PASSWORD '${APP_ROLE_PW}'" \
+            -c "REVOKE CONNECT ON DATABASE ofo_test FROM PUBLIC" \
+            -c "GRANT CONNECT ON DATABASE ofo_test TO ofo_app"
+
+      - name: Run database migrations as the owner role
+        env:
+          ALEMBIC_DATABASE_URL: postgresql+asyncpg://postgres:${{ env.PGPASSWORD }}@localhost:5432/ofo_test
+        run: alembic -c backend/ofo_app/alembic.ini upgrade head
+
+      - name: Run the full-chain migration tests (database tests as ofo_app)
+        env:
+          OFO_REQUIRE_DB_TESTS: '1'
+          TEST_DATABASE_URL: postgresql+asyncpg://ofo_app:${{ env.APP_ROLE_PW }}@localhost:5432/ofo_test
+          TEST_ADMIN_DATABASE_URL: postgresql+asyncpg://postgres:${{ env.PGPASSWORD }}@localhost:5432/ofo_test
+          REDIS_URL: redis://localhost:6379/0
+        run: python -m pytest -c pytest-app.ini -q -rs --durations=30 -p no:cacheprovider -m full_chain

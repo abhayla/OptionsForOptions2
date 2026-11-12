@@ -151,6 +151,7 @@ async def test_closed_never_reopens_and_no_other_status_exists(app_engine, sql):
             await trans.rollback()
 
 
+@pytest.mark.full_chain
 async def test_migration_downgrade_is_refused_while_a_strategy_is_closed_and_round_trips_when_none(admin_engine):
     own_down, _, down, up = round_trip_sql(MIGRATION)
     async with admin_engine.connect() as conn:

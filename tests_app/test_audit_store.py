@@ -816,6 +816,7 @@ async def _db_allowlist(conn: AsyncConnection) -> dict:
     return json.loads((await conn.execute(text("SELECT public.ofo_audit_payload_allowlist()::text"))).scalar_one())
 
 
+@pytest.mark.full_chain
 async def test_ac5_0017_downgrade_removes_order_prepared_and_upgrade_restores_it(admin_engine: AsyncEngine) -> None:
     """AC-5: 0017 down -> the database allowlist and CHECK are 0016's (no order_prepared; an order_prepared append is
     refused by the database), the allowlist function's 'post' check passes; up -> equal to the code again and the

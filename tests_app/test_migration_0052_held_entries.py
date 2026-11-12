@@ -80,6 +80,7 @@ async def test_a_second_row_for_one_strategy_is_refused(db):
             await db.execute(_INSERT, {"i": sid, "b": None})
 
 
+@pytest.mark.full_chain
 async def test_downgrade_is_refused_with_a_row_and_round_trips_without_one(admin_engine):
     own_down = recorded(MIGRATION, "downgrade")
     _, own_up, down, up = round_trip_sql(MIGRATION)

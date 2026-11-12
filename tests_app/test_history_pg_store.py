@@ -283,6 +283,7 @@ def test_a_store_that_cannot_reach_the_database_never_disturbs_the_feed():
 from _migration_replay import round_trip_sql  # noqa: E402  (works wherever 0009 sits in the chain)
 
 
+@pytest.mark.full_chain
 def test_downgrade_then_upgrade_round_trips_and_downgrade_refuses_while_bars_exist():
     admin_url = _url("TEST_ADMIN_DATABASE_URL")
     own_down, own_up, down, up = round_trip_sql("0009_minute_history.py")
