@@ -283,6 +283,36 @@ def test_a_store_that_cannot_reach_the_database_never_disturbs_the_feed():
 from _migration_replay import round_trip_sql  # noqa: E402  (works wherever 0009 sits in the chain)
 
 
+def test_downgrade_refuses_while_bars_exist():
+    """Runs on every pull request: the refusal is in 0009's own downgrade, no later migration is replayed."""
+    from _migration_replay import own_step_sql  # noqa: PLC0415
+    admin_url = _url("TEST_ADMIN_DATABASE_URL")
+    own_down, _ = own_step_sql("0009_minute_history.py")
+
+    async def run():
+        engine = create_async_engine(admin_url, poolclass=NullPool)
+        try:
+            async with engine.connect() as conn:
+                trans = await conn.begin()
+                try:
+                    await conn.execute(text("TRUNCATE " + ", ".join(f"public.{t}" for t in TABLES)))
+                    await conn.execute(text(
+                        "INSERT INTO public.history_minute_bars (instrument_id, minute, trade_date, open, high, "
+                        "low, close, volume, oi, source, removed) VALUES ('X:1', '2026-10-08 10:00+05:30', "
+                        "'2026-10-08', 1, 1, 1, 1, 1, 1, 'live', FALSE)"))
+                    with pytest.raises(DBAPIError, match="refusing to downgrade 0009_minute_history"):
+                        async with conn.begin_nested():
+                            for sql in own_down:
+                                await conn.execute(text(sql))
+                finally:
+                    await trans.rollback()
+        finally:
+            await engine.dispose()
+
+    asyncio.run(run())
+
+
+@pytest.mark.full_chain
 def test_downgrade_then_upgrade_round_trips_and_downgrade_refuses_while_bars_exist():
     admin_url = _url("TEST_ADMIN_DATABASE_URL")
     own_down, own_up, down, up = round_trip_sql("0009_minute_history.py")

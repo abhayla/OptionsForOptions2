@@ -14,7 +14,7 @@ import pathlib
 from types import SimpleNamespace
 
 import pytest
-from _migration_replay import round_trip_sql
+from _migration_replay import own_step_sql, round_trip_sql
 from httpx import ASGITransport, AsyncClient
 from ofo.adjustment import alert_presets
 from ofo.errors.explanations import render_explanation
@@ -412,7 +412,7 @@ async def test_the_post_allowlist_check_fails_when_the_app_role_may_update_style
 
 
 async def test_downgrade_is_refused_while_rows_exist(admin_engine):
-    own_down, _, _, _ = round_trip_sql("0035_strategy_alert_style.py")
+    own_down, _ = own_step_sql("0035_strategy_alert_style.py")
     async with admin_engine.connect() as conn:
         trans = await conn.begin()
         try:

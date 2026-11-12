@@ -369,6 +369,24 @@ async def test_ac5_the_database_takes_the_repriced_summary_kind_and_no_extra_key
 # ---------------------------------------------------------------------------------------------------------------
 
 
+async def test_0011_downgrade_refuses_with_an_entry_stored(admin_engine):
+    """Runs on every pull request: the refusal is in 0011's own downgrade, no later migration is replayed."""
+    from _migration_replay import own_step_sql  # noqa: PLC0415
+    own_down, _ = own_step_sql("0011_strategy_planned_entry.py")
+    async with admin_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            ids = await _catalogue(conn)
+            await _stored_document(conn, ids)  # a row WITH entries now exists in this transaction
+            with pytest.raises(DBAPIError, match="holds a planned entry"):
+                async with conn.begin_nested():
+                    for sql in own_down:
+                        await conn.execute(text(sql))
+        finally:
+            await trans.rollback()
+
+
+@pytest.mark.full_chain
 async def test_0011_downgrade_refuses_with_an_entry_then_round_trips_without_one(admin_engine):
     """Down (0010's validators): refused while a stored leg holds a planned entry; with none, the pair is refused
     after the downgrade and accepted again after the upgrade; the allowlist 'post' check passes both ways."""

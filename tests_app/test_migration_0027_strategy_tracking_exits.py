@@ -15,7 +15,7 @@ import datetime
 from decimal import Decimal
 
 import pytest
-from _migration_replay import round_trip_sql
+from _migration_replay import own_step_sql, round_trip_sql
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from test_strategy_store import _ids, _user, _with_draft
@@ -55,6 +55,7 @@ async def _state(conn) -> dict:
     }
 
 
+@pytest.mark.full_chain
 async def test_upgrade_creates_the_table_guard_and_grants_downgrade_restores_and_upgrade_replays(admin_engine):
     _own_down, own_up, down, up = round_trip_sql(MIGRATION)
     assert "'post'" in own_up[-1] and "'pre'" in own_up[0]
@@ -120,7 +121,7 @@ async def test_the_guard_refuses_update_and_delete_even_for_the_owner(admin_engi
 
 
 async def test_downgrade_is_refused_while_any_exit_row_is_stored(admin_engine):
-    own_down, _, _, _ = round_trip_sql(MIGRATION)
+    own_down, _ = own_step_sql(MIGRATION)
     async with admin_engine.connect() as conn:
         trans = await conn.begin()
         try:

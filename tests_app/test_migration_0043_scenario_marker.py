@@ -35,6 +35,7 @@ async def _state(conn) -> tuple:
     return tuple((await conn.execute(_STATE)).one())
 
 
+@pytest.mark.full_chain
 async def test_round_trip_creates_frames_marker_and_grants_and_downgrade_removes_them(admin_engine):
     _own_down, own_up, down, up = round_trip_sql(MIGRATION)
     assert "'pre'" in own_up[0] and "'post'" in own_up[-1]  # ends with the allow-list post check
@@ -62,6 +63,7 @@ BACKFILL_NAMES = {  # name -> marker after the back-fill (by reason: the seed's 
 }
 
 
+@pytest.mark.full_chain
 async def test_backfill_marks_exactly_the_seed_named_strategies(admin_engine):
     _own_down, _own_up, down, up = round_trip_sql(MIGRATION)
     user = _user()

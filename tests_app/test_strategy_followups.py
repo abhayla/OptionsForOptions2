@@ -410,6 +410,7 @@ async def _volatility(conn) -> str:
                                     "WHERE proname LIKE 'ofo_strategy_%_valid'"))).scalar_one()
 
 
+@pytest.mark.full_chain
 async def test_0010_downgrade_then_upgrade_round_trips_on_the_real_database(admin_engine):
     """Downgrade (0008's validators): version 2 is storable again; upgrade: refused again, version 1 still stores; the
     allowlist function's 'post' check (md5 pins, no EXECUTE for ofo_app) passes both ways. Rolled back."""

@@ -10,7 +10,7 @@ Every test rolls back.
 from __future__ import annotations
 
 import pytest
-from _migration_replay import round_trip_sql
+from _migration_replay import own_step_sql, round_trip_sql
 from ofo_app import playbook_store as pb
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
@@ -30,6 +30,7 @@ async def _state(conn) -> tuple:
     return tuple((await conn.execute(_STATE)).one())
 
 
+@pytest.mark.full_chain
 async def test_round_trip_adds_marker_and_key_and_downgrade_restores_0031(admin_engine):
     own_down, own_up, down, up = round_trip_sql(MIGRATION)
     assert "'pre'" in own_up[0] and "'post'" in own_up[-1] and "'post'" in own_down[-1]
@@ -51,7 +52,7 @@ async def test_round_trip_adds_marker_and_key_and_downgrade_restores_0031(admin_
 
 
 async def test_downgrade_is_refused_with_a_count_while_a_marked_row_exists(admin_engine):
-    own_down, _, _, _ = round_trip_sql(MIGRATION)
+    own_down, _ = own_step_sql(MIGRATION)
     user = _user()
     async with admin_engine.connect() as conn:
         trans = await conn.begin()

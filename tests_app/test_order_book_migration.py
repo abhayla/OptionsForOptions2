@@ -285,6 +285,7 @@ async def test_downgrade_is_refused_while_a_holding_is_stored(admin_engine):
                 await tx.conn.execute(text(own_down[0]))
 
 
+@pytest.mark.full_chain
 async def test_downgrade_then_upgrade_round_trips(admin_engine):
     """0020 down leaves no table of the store; up restores it and the allow-list post check passes. Rolled back."""
     from _migration_replay import round_trip_sql  # noqa: PLC0415

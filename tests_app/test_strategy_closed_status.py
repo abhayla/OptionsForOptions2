@@ -11,7 +11,7 @@ from decimal import Decimal as D
 from http import HTTPStatus
 
 import pytest
-from _migration_replay import round_trip_sql
+from _migration_replay import own_step_sql, round_trip_sql
 from ofo_app import paper_store
 from ofo_app.routes.outcome import load_charge_rates
 from sqlalchemy import text
@@ -151,8 +151,9 @@ async def test_closed_never_reopens_and_no_other_status_exists(app_engine, sql):
             await trans.rollback()
 
 
-async def test_migration_downgrade_is_refused_while_a_strategy_is_closed_and_round_trips_when_none(admin_engine):
-    own_down, _, down, up = round_trip_sql(MIGRATION)
+async def test_migration_downgrade_is_refused_while_a_strategy_is_closed(admin_engine):
+    """Runs on every pull request: the refusal is in the migration's own downgrade, no later migration is replayed."""
+    own_down, _ = own_step_sql(MIGRATION)
     async with admin_engine.connect() as conn:
         trans = await conn.begin()
         try:
@@ -163,6 +164,11 @@ async def test_migration_downgrade_is_refused_while_a_strategy_is_closed_and_rou
                     await conn.execute(text(own_down[0]))
         finally:
             await trans.rollback()
+
+
+@pytest.mark.full_chain
+async def test_migration_round_trips_down_and_up_when_no_strategy_is_closed(admin_engine):
+    _, _, down, up = round_trip_sql(MIGRATION)
     async with admin_engine.connect() as conn:
         trans = await conn.begin()
         try:

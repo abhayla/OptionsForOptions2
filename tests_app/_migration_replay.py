@@ -7,6 +7,7 @@ later upgrade (oldest first), so the database ends at head again.
 """
 from __future__ import annotations
 
+import functools
 import importlib.util
 from pathlib import Path
 from types import SimpleNamespace
@@ -14,9 +15,12 @@ from types import SimpleNamespace
 VERSIONS = Path(__file__).resolve().parents[1] / "backend" / "ofo_app" / "alembic" / "versions"
 
 
-def recorded(name: str, phase: str) -> list[str]:
-    """The SQL migration `name` (a file name like '0009_minute_history.py') executes in `phase` ('upgrade' or
-    'downgrade'), with the app role fixed to ofo_app."""
+# Only the FINAL recorded SQL text is cached, keyed by the file name and the file's own text (and the phase), so an edit
+# to the file is a cache miss. No module object or its globals is shared between recordings: a shared module keeps its
+# first globals, so a later recording that sets `module.op = ...` on a cached earlier migration missed (0002 recorded,
+# then 0003 -> NameError, 2026-11-13).
+@functools.cache
+def _recorded_text(name: str, text: str, phase: str) -> tuple[str, ...]:
     found = importlib.util.spec_from_file_location(f"ofo_replay_{name[:-3]}_{phase}", VERSIONS / name)
     migration = importlib.util.module_from_spec(found)
     found.loader.exec_module(migration)  # type: ignore[union-attr]
@@ -25,12 +29,23 @@ def recorded(name: str, phase: str) -> list[str]:
     if hasattr(migration, "_BASE"):
         migration._BASE._app_role = lambda: "ofo_app"
     getattr(migration, phase)()
-    return out
+    return tuple(out)
+
+
+def recorded(name: str, phase: str) -> list[str]:
+    """The SQL migration `name` (a file name like '0009_minute_history.py') executes in `phase` ('upgrade' or
+    'downgrade'), with the app role fixed to ofo_app."""
+    return list(_recorded_text(name, (VERSIONS / name).read_text(encoding="utf-8"), phase))
 
 
 def later_than(name: str) -> list[str]:
     """Migration files above `name`, oldest first."""
     return sorted(p.name for p in VERSIONS.glob("[0-9][0-9][0-9][0-9]_*.py") if p.name > name)
+
+
+def own_step_sql(name: str) -> tuple[list[str], list[str]]:
+    """(own_down, own_up): only the migration's own SQL; round_trip_sql also records every later migration."""
+    return recorded(name, "downgrade"), recorded(name, "upgrade")
 
 
 def round_trip_sql(name: str) -> tuple[list[str], list[str], list[str], list[str]]:

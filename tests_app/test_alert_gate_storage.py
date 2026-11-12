@@ -244,6 +244,7 @@ async def test_the_downgrade_refuses_while_held_rows_or_worse_marks_exist(admin,
     assert _sqlstate(info) == _migration().SQLSTATE
 
 
+@pytest.mark.full_chain
 async def test_the_downgrade_restores_the_0031_guard_and_the_0035_allowlist_chain(admin):
     """On a database with no held row and no worse mark the whole downgrade runs (rolled back after): the held table
     and the worse column are gone, the suggestion guard is 0031's again and the allowlist post check (0035's chain,

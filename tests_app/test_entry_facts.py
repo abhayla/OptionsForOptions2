@@ -373,6 +373,7 @@ async def test_a_stored_iv_that_is_not_an_exact_decimal_is_unreadable():
         await entry_facts_store.read(_Conn(), 1)
 
 
+@pytest.mark.full_chain
 async def test_0046_round_trip_drops_and_restores_the_column_with_the_allowlist_passing(admin_engine):
     from _migration_replay import round_trip_sql  # noqa: PLC0415
     from sqlalchemy import text  # noqa: PLC0415

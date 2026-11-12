@@ -14,7 +14,7 @@ from __future__ import annotations
 import json
 
 import pytest
-from _migration_replay import round_trip_sql
+from _migration_replay import own_step_sql
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 
@@ -59,7 +59,7 @@ async def _run(conn, sqls) -> None:
 
 
 async def test_head_has_one_built_version_and_downgrade_removes_only_it(admin_engine):
-    own_down, own_up, _down, _up = round_trip_sql(MIGRATION)
+    own_down, own_up = own_step_sql(MIGRATION)
     assert "'post'" in own_up[-1] and "'post'" in own_down[-1]
     async with admin_engine.connect() as conn:
         trans = await conn.begin()
@@ -81,7 +81,7 @@ async def test_head_has_one_built_version_and_downgrade_removes_only_it(admin_en
 
 
 async def test_upgrade_twice_is_a_no_op(admin_engine):
-    _d, own_up, _down, _up = round_trip_sql(MIGRATION)
+    _d, own_up = own_step_sql(MIGRATION)
     async with admin_engine.connect() as conn:
         trans = await conn.begin()
         try:
@@ -95,7 +95,7 @@ async def test_upgrade_twice_is_a_no_op(admin_engine):
 
 
 async def test_admin_version_is_the_base_and_keeps_its_other_keys(admin_engine):
-    _own_down, own_up, _down, _up = round_trip_sql(MIGRATION)
+    _own_down, own_up = own_step_sql(MIGRATION)
     async with admin_engine.connect() as conn:
         trans = await conn.begin()
         try:
@@ -117,7 +117,7 @@ async def test_admin_version_is_the_base_and_keeps_its_other_keys(admin_engine):
 
 
 async def test_downgrade_refuses_when_a_newer_version_was_saved_on_top(admin_engine):
-    own_down, _u, _down, _up = round_trip_sql(MIGRATION)
+    own_down, _u = own_step_sql(MIGRATION)
     async with admin_engine.connect() as conn:
         trans = await conn.begin()
         try:

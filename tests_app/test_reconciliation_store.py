@@ -431,6 +431,7 @@ _LEFTOVERS = text(
     "(SELECT count(*) FROM information_schema.role_table_grants WHERE table_name LIKE 'reconciliation\\_%')")
 
 
+@pytest.mark.full_chain
 async def test_ac6_downgrade_leaves_nothing_and_upgrade_restores_the_store(admin_engine):
     """AC-6: 0019 down -> no table, function, trigger or grant of the store is left and the old close-reason CHECK
     refuses the new reason; up -> the allow-list post check passes (inside upgrade) and the store works. Rolled

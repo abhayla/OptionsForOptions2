@@ -47,6 +47,7 @@ def _expected(inserts: set[str], updates: set[str], every: set[str]) -> tuple[li
                                + [("SELECT", c) for c in every]))
 
 
+@pytest.mark.full_chain
 async def test_upgrade_creates_tables_guards_grants_downgrade_restores(admin_engine):
     _own_down, own_up, down, up = round_trip_sql(MIGRATION)
     assert "'post'" in own_up[-1] and "'pre'" in own_up[0]
