@@ -495,9 +495,12 @@ class MarginCache:
         e = self._entries.get(w.strategy_id)
         return e is None or e.legs != w.tracked.position.legs or _seconds(now - e.read_at) >= MARGIN_REFRESH_S
 
-    async def refresh(self, monitors: Iterable[Watched], clock: Callable[[], datetime.datetime]) -> None:
-        """One pass: each due strategy read once (one strategy's failure is its own ``None``, never the old figure)."""
+    async def refresh(self, monitors: Iterable[Watched], clock: Callable[[], datetime.datetime]) -> list[int]:
+        """One pass: each due strategy read once (one strategy's failure is its own ``None``, never the old figure).
+        Returns the strategies whose margin is now STATED for legs that had none (first read or new legs; k16): the
+        worker re-checks them at the next cycle. A failed read, or a plain re-read of the same legs, is not returned."""
         live = set()
+        fresh: list[int] = []
         for w in monitors:
             sid = w.strategy_id
             live.add(sid)
@@ -508,15 +511,19 @@ class MarginCache:
             if legs != w.tracked.position.legs:
                 continue  # the position changed since its last check: refreshed after the next check
             self.calls[sid] = self.calls.get(sid, 0) + 1
+            old = self._entries.get(sid)
             try:
                 block = await self._margin_of(w, market)  # type: ignore[misc]
             except Exception as exc:  # noqa: BLE001 - a failed read is "margin not known", retried next window
                 log.warning("background: margin of strategy %s unreadable: %s", sid, type(exc).__name__)
                 block = None
             self._entries[sid] = MarginEntry(legs, block, now)
+            if block is not None and (old is None or old.legs != legs):
+                fresh.append(sid)
         for gone in [k for k in self._entries if k not in live]:
             self._entries.pop(gone, None)
             self._markets.pop(gone, None)
+        return fresh
 
 
 def screen_margin_reader(margin_of: Any) -> MarginOf:
@@ -1724,7 +1731,11 @@ class Worker:
 
     async def refresh_margins(self) -> None:
         """One margin refresh pass (``MarginCache.refresh``); never inside a check (B4 (a))."""
-        await self.margins.refresh(list(self.monitors), self._clock)
+        for sid in await self.margins.refresh(list(self.monitors), self._clock):
+            # k16: its first check had no margin; check again at the next cycle, not after one own-speed interval
+            self._signature.pop(sid, None)
+            self._tick.pop(sid, None)
+            self._last_check.pop(sid, None)
 
     async def _margin_loop(self) -> None:
         while not self._stop:
