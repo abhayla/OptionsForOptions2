@@ -764,8 +764,9 @@ async def record_basket_facts(db: Any, ctx: Any, feed: Any, strategy_id: int,
     """ADR-283 (1): stores the market state at this basket's fill, in the fill's transaction. ``basket`` = (underlying,
     every order of the book after the fill, the order clock, contract id -> this basket's fill price). Basket number =
     the adjustments made so far after it (ADR-255, ``history_count``; 0 = the entry). Answer states: not connected / no
-    positive spot (after the index is held, ``_index_spot_held``) -> REFUSED, nothing stored; the count unreadable -> nothing stored (the checks keep the newest
-    starting point); no open leg (the basket closed the strategy) -> nothing stored (no check); a kept leg's price
+    positive spot (after the index is held, ``_index_spot_held``) -> REFUSED, nothing stored; the count unreadable ->
+    nothing stored (the checks keep the newest starting point); no open leg (the basket closed the strategy) ->
+    nothing stored (no check); a kept leg's price
     not read live -> stored as None (its rules not held); the ATM IV unreadable -> None."""
     from ofo.tracking import paper  # noqa: PLC0415 - the paper screen's prices
 

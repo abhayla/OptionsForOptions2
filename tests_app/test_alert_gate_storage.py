@@ -287,6 +287,15 @@ async def test_gate_rows_none_rows_and_restore(db):
     assert state.opened_today == 3 and state.rule("T-03").record.level == 1  # noqa: PLR2004
 
 
+async def test_gate_rows_does_not_count_watch_or_day_records_toward_the_cap(db):
+    user, sid = await _strategy(db)
+    today = (await db.execute(text("SELECT (clock_timestamp() AT TIME ZONE 'Asia/Kolkata')::date"))).scalar_one()
+    for rule in ("watch.level.above", "day.after.1500.exit", "T-01"):
+        await _open(db, user, sid, rule, threshold=D("0.5"))
+    got = await pb.gate_rows(db, user, sid, today)
+    assert got.opened_today == 1  # only the automatic T-01; the restart keeps ADR-267's exemption
+
+
 async def test_gate_rows_another_users_or_a_missing_strategy_is_not_found(db):
     user, sid = await _strategy(db)
     today = datetime.date(2026, 11, 2)

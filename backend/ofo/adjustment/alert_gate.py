@@ -12,7 +12,7 @@ adjustment suggestions only. The screen check and the background check share thi
 """
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
@@ -254,7 +254,7 @@ def _close(state: GateState, rule_id: str, pend: _Pending, preset: Preset) -> tu
     return state, lapsed + events
 
 
-def _cap_exempt(rule_id: object) -> bool:
+def cap_exempt(rule_id: object) -> bool:
     """ADR-267 and its amendment: a user's level watch and a day rule (new or legacy id) are never held by the daily
     cap. Any other id, empty or not a string is capped (fail closed). Imported here: playbook_eval imports a lot."""
     from ofo.adjustment import level_watch  # noqa: PLC0415
@@ -262,6 +262,12 @@ def _cap_exempt(rule_id: object) -> bool:
 
     return isinstance(rule_id, str) and rule_id.startswith((level_watch.RULE_PREFIX, DAY_RULE_PREFIX,
                                                             LEGACY_DAY_RULE_PREFIX))
+
+
+def count_capped(rule_ids: Iterable[object]) -> int:
+    """How many stored records count toward the daily cap: every one whose rule id is not exempt (a NULL or empty id
+    counts: fail closed). The worker restores ``opened_today`` from this, so a restart keeps the exemption."""
+    return sum(1 for r in rule_ids if not cap_exempt(r))
 
 
 def _decide(  # noqa: PLR0913 - one close's inputs
@@ -282,7 +288,7 @@ def _decide(  # noqa: PLR0913 - one close's inputs
     reason = None
     if t.time() <= preset.quiet_until:
         reason = HELD_QUIET_TIME
-    elif state.opened_today >= preset.daily_cap and not _cap_exempt(rule_id):
+    elif state.opened_today >= preset.daily_cap and not cap_exempt(rule_id):
         reason = HELD_DAILY_LIMIT
     if reason is not None:
         if hold is not None and hold.reason == reason and level <= hold.level:
@@ -291,7 +297,7 @@ def _decide(  # noqa: PLR0913 - one close's inputs
         return state.with_rule(rule_id, rule), [Held(rule_id, t, reason, value, level)]
     rule = replace(rule, record=_Record(level, threshold, t, ladder=_ladder_key(spec)), cleared=False, hold=None)
     state = state.with_rule(rule_id, rule)
-    if not _cap_exempt(rule_id):  # ADR-267: a watch / day rule is not counted against the cap
+    if not cap_exempt(rule_id):  # ADR-267: a watch / day rule is not counted against the cap
         state = replace(state, opened_today=state.opened_today + 1)
     return state, [Opened(rule_id, t, level, threshold, value, worse)]
 

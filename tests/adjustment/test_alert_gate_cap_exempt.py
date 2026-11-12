@@ -54,4 +54,26 @@ def test_other_rule_still_held_by_cap(rule_id):
 
 @pytest.mark.parametrize("rule_id", ["", None, 5])
 def test_empty_or_non_string_id_is_capped(rule_id):
-    assert ag._cap_exempt(rule_id) is False
+    assert ag.cap_exempt(rule_id) is False
+
+
+def _after_restart(stored_ids):
+    """The worker restarts: today's stored rule ids -> the count -> restore; then `T-03` crosses at once."""
+    state = ag.restore(ag.GateRows((), ag.count_capped(stored_ids)), DAY, {})
+    state, ev = ag.step(state, now=at("10:43:30"), preset=PRESET, readings={"T-03": (_spec("T-03"), D("11"))})
+    state, ev2 = ag.step(state, now=at("10:44:05"), preset=PRESET, readings={"T-03": (_spec("T-03"), D("11"))})
+    return [e for e in ev + ev2 if e.rule_id == "T-03"]
+
+
+def test_restart_with_only_exempt_records_stored_still_opens_an_automatic_rule():
+    got = _after_restart(["watch.level.above", "day.after.1500.exit"])
+    assert [type(e) for e in got] == [ag.Opened]
+
+
+def test_restart_with_capped_records_stored_still_holds_the_next_automatic_rule():
+    got = _after_restart(["T-01", "T-02", "watch.level.above"])
+    assert [(type(e), e.reason) for e in got] == [(ag.Held, ag.HELD_DAILY_LIMIT)]
+
+
+def test_count_capped_counts_null_and_empty_ids():
+    assert ag.count_capped([None, "", "T-01", "watch.level.below", "day:after:1500:exit"]) == 3  # noqa: PLR2004
