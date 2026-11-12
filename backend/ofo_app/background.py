@@ -934,8 +934,6 @@ class Worker:
                 self._gate.pop(w.strategy_id, None)
                 self._gate_events.pop(w.strategy_id, None)
         self._drop_stale_writes(monitors)
-        self.monitors = monitors
-        self._rebuilt_at = self._clock()
         for user in dict.fromkeys(w.user_ref for w in monitors):  # once per user, never per check (finding 3)
             try:
                 async with held(self.db_gate, GATE_REBUILD):  # one user's reads per hold
@@ -946,7 +944,11 @@ class Worker:
                 log.exception("background: reading the preferences of %s failed; keeping the last good read", user)
                 _keep_recent(self.errors, (0, type(exc).__name__))
         await self._load_gates(monitors)
-        log.info("background: %s strategies monitored", len(monitors))
+        # k23: published only now, so a check in the awaits above never meets a listed strategy without its gate (it was
+        # paused silently and its candle lost); a NEW strategy whose gate read failed waits for the next rebuild
+        self.monitors = [w for w in monitors if w.strategy_id in old or w.strategy_id in self._gate_load]
+        self._rebuilt_at = self._clock()
+        log.info("background: %s strategies monitored", len(self.monitors))
 
     def _drop_stale_writes(self, monitors: list[Watched]) -> None:
         """#636 r5 finding 2: a queued write whose strategy left the list (exited, deleted, no playbook) or whose plan
