@@ -613,6 +613,12 @@ def shown_name(stored: object):
     return render_explanation("strategy_name_shown", name=user_words(stored))
 
 
+def shown_broker(stored: str) -> object:
+    """GC-TRACK1 k07: a held entry's broker text (already trimmed, one line, 1 to 40 characters when stored) as the
+    API shows it: quoted user text, like a strategy name. Same quoted slot, so no new sentence."""
+    return render_explanation("strategy_name_shown", name=user_words(stored))
+
+
 def rename_summary(old: str, new: str) -> str:
     """The history summary of a rename (REQ-134 AC-3): one closed ``renamed`` item holding the two names as typed."""
     return summary_text([{"kind": "renamed", "from": old, "to": new}])

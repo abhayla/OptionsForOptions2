@@ -17,3 +17,18 @@ _INSERT = text("INSERT INTO public.strategy_held_entries (strategy_id, entry_at,
 
 async def record(conn: Any, strategy_id: int, entry_at: datetime.datetime, broker_text: str | None) -> None:
     await conn.execute(_INSERT, {"strategy_id": strategy_id, "entry_at": entry_at, "broker_text": broker_text})
+
+
+#: ADR-292 (3): the rules of a held entry start from the market at the user's SAVE = the basket-0 fill clock (ADR-283);
+#: no facts row -> NULL (never a guess)
+_READ = text("SELECT h.strategy_id, h.entry_at, h.broker_text, f.clock AS rules_start_at "
+             "FROM public.strategy_held_entries h LEFT JOIN public.strategy_basket_facts f "
+             "ON f.strategy_id = h.strategy_id AND f.basket_no = 0 WHERE h.strategy_id = ANY(:ids)")
+
+
+async def read_many(conn: Any, strategy_ids: list[int]) -> dict[int, Any]:
+    """strategy_id -> row (entry_at, broker_text, rules_start_at) of each held strategy among ``strategy_ids``; a
+    strategy that is not held is absent. A read failure raises: the reply fails, a held strategy is never hidden."""
+    if not strategy_ids:
+        return {}
+    return {int(r.strategy_id): r for r in await conn.execute(_READ, {"ids": list(strategy_ids)})}

@@ -118,7 +118,7 @@ class HeldIn(BaseModel):
     """
     model_config = ConfigDict(extra="forbid")
     entry_at: AwareDatetime
-    broker: str | None = Field(default=None, max_length=40, pattern=r"^[^\r\n]*$")
+    broker: str | None = Field(default=None, max_length=40, pattern=r"^[^\r\n\x0b\x0c\x85\u2028\u2029]*$")
 
     @field_validator("broker", mode="before")
     @classmethod
@@ -262,6 +262,23 @@ class PaperGreeksBlock(ApiModel):
     greeks_reason_text: CatalogueText | None = None  # ADR-210: the sentence beside the dash
 
 
+class HeldEntryOut(ApiModel):
+    """ADR-292 (3): a strategy entered "held at my broker": the stated entry time, the broker's name as typed, and the
+    moment its rules start (the stored basket-0 fill clock; None when no fill facts were stored)."""
+    source: Literal["held_elsewhere"]
+    entry_at: datetime.datetime
+    broker: CatalogueText | None
+    rules_start_at: datetime.datetime | None
+
+
+def _held_out(row: Any) -> dict | None:
+    if row is None:
+        return None
+    broker = None if row.broker_text is None else sf.shown_broker(row.broker_text)
+    return {"source": "held_elsewhere", "entry_at": row.entry_at, "broker": broker,
+            "rules_start_at": row.rules_start_at}
+
+
 class PaperBookOut(PaperFigures, PaperExtremes, PaperBreakevens, PaperGreeksBlock):
     """GET /paper/strategies/{id} and the answer of POST .../orders."""
     strategy_id: int
@@ -269,12 +286,14 @@ class PaperBookOut(PaperFigures, PaperExtremes, PaperBreakevens, PaperGreeksBloc
     underlying: Underlying
     answered_at: datetime.datetime
     orders: list[PaperOrderOut]
+    held: HeldEntryOut | None = None  # GC-TRACK1 k07
 
 
 class PaperStrategyOut(PaperFigures, PaperExtremes, PaperBreakevens, PaperGreeksBlock):
     strategy_id: int
     name: CatalogueText
     underlying: Underlying
+    held: HeldEntryOut | None = None  # GC-TRACK1 k07
     open_count: int  # GC-TP step 4a: positions with a non-zero net quantity ("N of M positions")
     position_count: int
 
@@ -627,7 +646,8 @@ async def _book(db: Any, stored: Any, orders: Sequence[paper_store.StoredOrder],
                | _charges(orders, found, underlying, rates))
     return PaperBookOut.model_validate(figures | {
         "strategy_id": stored.id, "name": sf.shown_name(stored.name), "underlying": underlying,
-        "answered_at": answered_at, "orders": _order_rows(orders, found)})
+        "answered_at": answered_at, "orders": _order_rows(orders, found),
+        "held": _held_out((await held_entry_store.read_many(db, [stored.id])).get(stored.id))})
 
 
 @router.get("/paper/strategies/{strategy_id}", response_model=PaperBookOut)
@@ -667,6 +687,7 @@ async def list_paper_strategies(db: Annotated[Any, Depends(get_db)],  # noqa: PL
     if connected:
         for underlying, wanted in keys.items():
             snapshots[underlying] = await _snapshot(ctx, feed, underlying, wanted)  # type: ignore[arg-type]
+    held_rows = await held_entry_store.read_many(db, [b.strategy_id for b in books])
     out, decays = [], []
     for b in sorted(books, key=_newest_first, reverse=True):
         snapshot = snapshots.get(b.underlying)
@@ -674,10 +695,11 @@ async def list_paper_strategies(db: Annotated[Any, Depends(get_db)],  # noqa: PL
         figures = _figures(b.orders, found, prices, connected)
         summary = _summary(b.orders, found, prices, figures, snapshot, b.underlying, exited_absent=True, rates=rates)
         decays.append(_decay(figures, found, snapshot, b.underlying))
-        held = sum(1 for p in figures["positions"] if p["net_quantity"] != 0)
+        open_legs = sum(1 for p in figures["positions"] if p["net_quantity"] != 0)
         figures |= _charges(b.orders, found, b.underlying, rates) | summary
         out.append(figures | {"strategy_id": b.strategy_id, "name": sf.shown_name(b.name), "underlying": b.underlying,
-                              "open_count": held, "position_count": len(figures["positions"])})
+                              "held": _held_out(held_rows.get(b.strategy_id)),
+                              "open_count": open_legs, "position_count": len(figures["positions"])})
     return PaperListOut.model_validate({"strategies": out, "totals": _totals(out, decays), "answered_at": now()})
 
 
@@ -835,6 +857,8 @@ async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR
         await record_basket_facts(db, ctx, feed, strategy_id, (
             stored.saved.definition.underlying, book, placed_at,
             {o.contract_id: exit_prices.get(i, o.price) for i, o in enumerate(body.orders)}))
+        if body.held is not None and len(book) != len(body.orders):  # the store's own first-fill view, under its lock
+            raise StrategyRefused("held_entry_not_a_first_open_basket")  # rolled back below: nothing stored
         await _record_held(db, strategy_id, body.held)  # ADR-292: the held row and its first basket: one transaction
         await db.commit()
     except store.StrategyStoreError as exc:

@@ -9,6 +9,7 @@ The saved strategy is test_strategy_store's iron condor (65 units a leg, expiry 
 from __future__ import annotations
 
 import datetime
+from decimal import Decimal as D
 from http import HTTPStatus
 
 import pytest
@@ -151,3 +152,122 @@ async def test_a_failing_held_insert_rolls_the_whole_basket_back(db, monkeypatch
     reply = await _post(app, stored, _held_body(stored, {"entry_at": ENTERED.isoformat()}))
     assert reply.status_code == HTTPStatus.INTERNAL_SERVER_ERROR, reply.text  # the error boundary answers
     assert await _stored(db, stored.id) == (0, [])
+
+
+# ---- GC-TRACK1 k07 read side: the paper replies say a strategy is held, and when its rules start ----
+_CLOCK0 = text("SELECT clock FROM public.strategy_basket_facts WHERE strategy_id = :i AND basket_no = 0")
+
+
+async def _get(app, path):
+    async with _client(app) as c:
+        return await c.get(path)
+
+
+async def _listed(app, strategy_id):
+    reply = await _get(app, "/paper/strategies")
+    assert reply.status_code == HTTPStatus.OK, reply.text
+    return next(s for s in reply.json()["strategies"] if s["strategy_id"] == strategy_id)
+
+
+async def test_held_shows_in_the_book_and_the_list_with_the_stored_rules_start(db):
+    app, stored, *_ = await _setup(db)
+    assert (await _post(app, stored, _held_body(stored, {"entry_at": ENTERED.isoformat(), "broker": "Upstox"}))
+            ).status_code == HTTPStatus.CREATED
+    clock = (await db.execute(_CLOCK0, {"i": stored.id})).scalar_one()  # read from the database, not the reply
+    book = await _get(app, f"/paper/strategies/{stored.id}")
+    assert book.status_code == HTTPStatus.OK, book.text
+    for held in (book.json()["held"], (await _listed(app, stored.id))["held"]):
+        assert held["source"] == "held_elsewhere"
+        assert datetime.datetime.fromisoformat(held["entry_at"]) == ENTERED
+        assert held["broker"] == '"Upstox"'  # quoted user text, like a strategy name
+        assert datetime.datetime.fromisoformat(held["rules_start_at"]) == clock
+
+
+async def test_a_plain_paper_strategy_has_held_null(db):
+    app, stored, *_ = await _setup(db)
+    assert (await _post(app, stored, _held_body(stored, None))).status_code == HTTPStatus.CREATED
+    assert (await _get(app, f"/paper/strategies/{stored.id}")).json()["held"] is None
+    assert (await _listed(app, stored.id))["held"] is None
+
+
+async def test_held_without_a_facts_row_has_rules_start_null(db, monkeypatch):
+    app, stored, *_ = await _setup(db)
+
+    async def no_facts(*_a, **_k):  # the fill facts are skipped (finding: entry-facts-skipped-when-no-index-quote)
+        return None
+
+    monkeypatch.setattr("ofo_app.adjustment_readers.record_basket_facts", no_facts)
+    assert (await _post(app, stored, _held_body(stored, {"entry_at": ENTERED.isoformat()}))
+            ).status_code == HTTPStatus.CREATED
+    assert (await db.execute(_CLOCK0, {"i": stored.id})).first() is None
+    held = (await _get(app, f"/paper/strategies/{stored.id}")).json()["held"]
+    assert held["rules_start_at"] is None
+    assert held["broker"] is None
+
+
+async def test_a_failing_held_read_fails_the_reply(db, monkeypatch):
+    app, stored, *_ = await _setup(db)
+    assert (await _post(app, stored, _held_body(stored, {"entry_at": ENTERED.isoformat()}))
+            ).status_code == HTTPStatus.CREATED
+
+    async def boom(*_a, **_k):
+        raise RuntimeError("held read failed")
+
+    monkeypatch.setattr(held_entry_store, "read_many", boom)
+    assert (await _get(app, f"/paper/strategies/{stored.id}")).status_code == HTTPStatus.INTERNAL_SERVER_ERROR
+
+
+# ---- k07 review fixes ----
+async def test_a_basket_landing_second_never_gets_the_held_row(db, monkeypatch):
+    """(a) the route's first-basket check ran before the store's lock: simulate the race (the route sees an empty
+    book, the store sees the first basket already there)."""
+    app, stored, *_ = await _setup(db)
+    assert (await _post(app, stored, _held_body(stored, None))).status_code == HTTPStatus.CREATED
+
+    async def empty(*_a, **_k):
+        return set()
+
+    monkeypatch.setattr("ofo_app.routes.paper.paper_store.tracked_ids", empty)
+    reply = await _post(app, stored, _held_body(stored, {"entry_at": ENTERED.isoformat()}))
+    assert reply.status_code == HTTPStatus.UNPROCESSABLE_ENTITY, reply.text
+    assert await _stored(db, stored.id) == (4, [])  # the second basket was rolled back too
+
+
+@pytest.mark.parametrize("char", [chr(0x2028), chr(0x2029), chr(0x85), chr(0x0B), chr(0x0C)])
+async def test_other_line_break_characters_in_the_broker_are_422(db, char):
+    app, stored, *_ = await _setup(db)
+    reply = await _post(app, stored, _held_body(stored, {"entry_at": ENTERED.isoformat(), "broker": f"Up{char}stox"}))
+    assert reply.status_code == HTTPStatus.UNPROCESSABLE_ENTITY, reply.text
+    assert await _stored(db, stored.id) == (0, [])
+
+
+async def test_an_add_order_with_a_held_block_is_422(db):
+    app, stored, *_ = await _setup(db)
+    body = _held_body(stored, {"entry_at": ENTERED.isoformat()})
+    body["orders"][0]["kind"] = "add"  # the store accepts an add of a new side; only the held kind check refuses it
+    reply = await _post(app, stored, body)
+    assert reply.status_code == HTTPStatus.UNPROCESSABLE_ENTITY, reply.text
+    assert await _stored(db, stored.id) == (0, [])
+
+
+# ---- GC-TRACK1 k09: broker changes are recorded with the existing exit and add forms (no new code) ----
+async def test_exit_and_add_orders_on_a_held_condor_move_the_figures_and_leave_the_held_row(db):
+    app, stored, *_ = await _setup(db)
+    assert (await _post(app, stored, _held_body(stored, {"entry_at": ENTERED.isoformat(), "broker": "Upstox"}))
+            ).status_code == HTTPStatus.CREATED
+    held_before = (await _stored(db, stored.id))[1]
+    sold_call, bought_call = stored.saved.contract_ids[:2]
+    leg = {"side": "BUY", "quantity": 65}
+    out = await _post(app, stored, {"orders": [{"contract_id": sold_call, "kind": "exit", "price": "1.00", **leg}]})
+    assert out.status_code == HTTPStatus.CREATED, out.text
+    exit_price = D(out.json()["orders"][-1]["price"])  # an exit's price is the server's, as for any paper book
+    pos = {p["contract_id"]: p for p in out.json()["positions"]}[sold_call]
+    assert pos["net_quantity"] == 0
+    assert D(pos["booked"]) == (D(ENTRY_PRICES[0]) - exit_price) * 65  # sold at the entry price, bought back
+    added = await _post(app, stored, {"orders": [{"contract_id": bought_call, "kind": "add", "price": "13.00",
+                                                  **leg}]})
+    assert added.status_code == HTTPStatus.CREATED, added.text
+    assert {p["contract_id"]: p["net_quantity"] for p in added.json()["positions"]}[bought_call] == 130  # noqa: PLR2004
+    assert added.json()["orders"][-1]["price"] == "13.00"  # the typed price is the stored price
+    assert await _stored(db, stored.id) == (6, held_before)  # four legs + exit + add; the held row is unchanged
+    assert added.json()["held"]["broker"] is not None

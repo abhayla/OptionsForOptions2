@@ -5091,6 +5091,51 @@
         "title": "HealthOut",
         "type": "object"
       },
+      "HeldEntryOut": {
+        "additionalProperties": false,
+        "description": "ADR-292 (3): a strategy entered \"held at my broker\": the stated entry time, the broker's name as typed, and the\nmoment its rules start (the stored basket-0 fill clock; None when no fill facts were stored).",
+        "properties": {
+          "broker": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Broker"
+          },
+          "entry_at": {
+            "format": "date-time",
+            "title": "Entry At",
+            "type": "string"
+          },
+          "rules_start_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rules Start At"
+          },
+          "source": {
+            "const": "held_elsewhere",
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "entry_at",
+          "broker",
+          "rules_start_at"
+        ],
+        "title": "HeldEntryOut",
+        "type": "object"
+      },
       "HeldIn": {
         "additionalProperties": false,
         "description": "ADR-292 (2): a position the user already holds at their own broker. ``entry_at`` carries an offset (a naive\ntime is refused); ``broker`` is optional free text, trimmed, blank -> None, at most 40 characters, one line.",
@@ -5099,7 +5144,7 @@
             "anyOf": [
               {
                 "maxLength": 40,
-                "pattern": "^[^\\r\\n]*$",
+                "pattern": "^[^\\r\\n\\x0b\\x0c\\x85\\u2028\\u2029]*$",
                 "type": "string"
               },
               {
@@ -7303,6 +7348,16 @@
             ],
             "title": "Greeks Reason Text"
           },
+          "held": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HeldEntryOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "loss_left": {
             "anyOf": [
               {
@@ -8238,6 +8293,16 @@
               }
             ],
             "title": "Greeks Reason Text"
+          },
+          "held": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HeldEntryOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "loss_left": {
             "anyOf": [
