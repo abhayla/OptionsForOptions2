@@ -112,8 +112,9 @@ jobs:
         run: python -m pytest -c pytest-app.ini -q -rs --durations=30 -p no:cacheprovider -m full_chain
 
       # A red nightly must be acted on: one open `nightly-red` issue at a time; a later red night comments on it.
+      # cancelled() too: a run that hits timeout-minutes is reported as cancelled, not failed (Tier A review, 13 Nov)
       - name: Open or update the nightly-red issue
-        if: failure()
+        if: failure() || cancelled()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
