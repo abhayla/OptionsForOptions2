@@ -13,7 +13,10 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
+import pytest
 from _migration_replay import later_than
+
+pytestmark = pytest.mark.repo_scan  # reads the test sources (tests/test_repo_scan_marked.py)
 
 HERE = Path(__file__).resolve().parent
 MIN_MARKED = 10  # a parser that finds none would pass the main test for nothing
