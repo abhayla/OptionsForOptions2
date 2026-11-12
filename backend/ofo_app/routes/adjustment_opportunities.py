@@ -21,6 +21,7 @@ from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends
 from ofo.adjustment.held_reasons import HELD_TEXT_IDS
+from ofo.adjustment.playbook_eval import is_day_rule_id
 from ofo.errors import render
 from ofo.errors.explanations import render_explanation
 from ofo.strategy.stored_form import shown_name
@@ -132,6 +133,12 @@ def _detail(s: store.Suggestion) -> Any:
 def condition_text(s: store.Suggestion) -> Any:
     """A record's condition in the catalogue's words (the inbox line; the adjustment history's Why, REQ-163 AC-1)."""
     if s.cmp not in ("le", "ge", "lt") or s.trigger_id is None or s.value is None or s.threshold is None:
+        if is_day_rule_id(s.rule_id):  # ADR-267 amendment: a day rule names itself, never an empty "What happened"
+            for name in (s.label, s.rule_id):  # the rule's action words; a refused slot -> the rule's own id
+                try:
+                    return render_explanation("adjust_condition_line_id", label=name)
+                except (TypeError, ValueError):
+                    continue
         return None
     if s.trigger_id == "T-19" and s.approach is not None and s.approach_cost is not None:  # ADR-221: as the check
         return condition_line_t19(s.label, format(s.value, "f"), format(s.threshold, "f"), s.approach,
