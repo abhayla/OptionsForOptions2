@@ -15,3 +15,13 @@ is ready.
 
 **If you cannot log in before 09:15:** the core proof moves to the first hour after your login; the night work (fix
 list sorting, no code) is unaffected.
+
+## A2 (12 Nov ~13:00, owner away: PC locked since ~11:40) - may migration 0052 be applied to ofo_dev?
+- What: the held condor screens (k10) are built and unit-tested (16 vitest), but seeing them live needs the app run from
+  the build branch, and that needs migration 0052 (new table `strategy_held_entries`, insert-only) applied to `ofo_dev`.
+  `ofo_dev` lives in the VPS PostgreSQL; the contract says "No VPS work", so I did not apply it.
+- Recommendation: allow it. It is an additive table on the dev database only (no prod data, no host change, no SSH);
+  its downgrade is allowed while the table is empty. Then k10's screenshot and k19 can run on the new code.
+- Business call: only you can say whether a dev-database migration counts as the VPS work the contract forbids.
+- Until answered: k10 stays PARTIAL (built + tests, no screenshot); k19 runs on main's code on strategy 136 if the
+  PC is unlocked before 15:30.
