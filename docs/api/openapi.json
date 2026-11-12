@@ -5091,6 +5091,35 @@
         "title": "HealthOut",
         "type": "object"
       },
+      "HeldIn": {
+        "additionalProperties": false,
+        "description": "ADR-292 (2): a position the user already holds at their own broker. ``entry_at`` carries an offset (a naive\ntime is refused); ``broker`` is optional free text, trimmed, blank -> None, at most 40 characters, one line.",
+        "properties": {
+          "broker": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "pattern": "^[^\\r\\n]*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Broker"
+          },
+          "entry_at": {
+            "format": "date-time",
+            "title": "Entry At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "entry_at"
+        ],
+        "title": "HeldIn",
+        "type": "object"
+      },
       "HeldOut": {
         "additionalProperties": false,
         "description": "REQ-170 AC-4: a crossing the alert gate held (daily limit / quiet time). Not a record: no outcome, nothing to\nact on, no compare link.",
@@ -7954,6 +7983,16 @@
               }
             ],
             "title": "Basket Legs"
+          },
+          "held": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HeldIn"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "orders": {
             "items": {
