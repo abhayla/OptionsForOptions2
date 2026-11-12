@@ -10,6 +10,8 @@ from __future__ import annotations
 
 UI = 'user-facing wording or a fixed broker URL: V1 is Zerodha only and its texts/links name Zerodha/Kite (ADR-002, REQ-073 wording); no branch on the broker'
 REASONS: dict[str, str] = {
+    'frontend/src/lib/tracking.js':
+        "ADR-292 (2): shows the broker name the user typed for a held condor (free text, 'shown and never used'); no branch on the broker",
     'backend/ofo_app/routes/broker.py':
         'Zerodha login/callback route: it is the broker connection endpoint itself, with its own fix and refusal codes (REQ-015)',
     'backend/ofo_app/routes/broker_capabilities.py':
@@ -174,6 +176,9 @@ LINES: dict[str, tuple[str, ...]] = {
     'backend/ofo/outcome/service.py': (
         'from ofo.instruments.models import ZERODHA',
         'symbol = listed.ref(ZERODHA).broker_symbol if listed.broker_refs else None',
+    ),
+    'frontend/src/lib/tracking.js': (
+        "return { label: HELD_LABEL, entry: `Entry ${entry}`, rules: rules === null ? null : `Rules start from ${rules}`, broker: typeof held.broker === 'string' && held.broker !== '' ? held.broker : null }",
     ),
     'frontend/src/components/execution/BasketForm.vue': (
         'function placeOnKite() {',

@@ -1,0 +1,22 @@
+{
+  "id": "entry-facts-skipped-when-the-api-holds-no-index-quote",
+  "class": "Any paper basket (entry or adjustment, held or paper) saved while the API process holds no live quote for the strategy's index - no page with a live socket subscribing that index is open (an API client, a script, a page opened only after the save, a page on another index): ADR-283's fill-time market facts are not stored, so every rule that needs them (entry ATM IV, entry spot) is never checked for that basket, and the save answers 201 as if nothing was missing.",
+  "mechanism": "record_basket_facts (backend/ofo_app/adjustment_readers.py:749-752) reads the spot from the API process's own provider (ctx.provider.underlying_quote); in bus mode that provider holds only what a connected page socket subscribed, so with no such socket the spot is None and the function returns before storing anything (its docstring lists 'not connected / no positive spot -> nothing stored'). The background worker meanwhile reads the same index FRESH over the feed bus, so the market was known to the app, only not to the API process.",
+  "first_seen": {
+    "date": "2026-11-12",
+    "where": "GC-TRACK1 k04 core proof on ofo_dev: held condor strategy 136 saved 10:44:58 IST through POST /strategies + /paper/strategies/136/orders with no app page open",
+    "evidence": "public.strategy_basket_facts: 0 rows for strategy 136; public.paper_orders: 4 rows; public.adjustment_rule_state: 16 rows, held_at_entry false on all; worker minute lines 10:47-10:54: strategy 136 recomputed 2 per minute on 4 legs with reads FRESH 300-318, outcomes include 'not_checked adjust_trigger_missing_entry_atm_iv' | the same minute lines show the worker's own reads FRESH, so the index was live on the bus while the API process had none (GET /api/market/chain answered NOT_CONNECTED, by design without a socket: chain_push.py:454)"
+  },
+  "fix": "proposed (GC-TRACK1 k08): the save reads the index the way the worker does (the feed bus / a one-shot subscribe of the index for the save), or the save refuses with a named reason instead of storing a basket whose rules cannot start; never a silent 201 without the facts.",
+  "detection": {
+    "status": "unguarded",
+    "checks": [],
+    "why": "no test saves a basket with the provider holding no index quote and asserts the facts row or a refusal; the existing tests run with a fake provider that always has the spot"
+  },
+  "spec_ref": [
+    "spec/decisions/ADR-283.md",
+    "spec/decisions/ADR-292.md"
+  ],
+  "occurrences": 1,
+  "scope": "project"
+}

@@ -451,6 +451,7 @@ decisions:
   ADR-289: S6.7         # step 4: second person on paper with own login; one real 1-lot condor on the owner's account
   ADR-290: S6.7         # goal is tracking, not order placing; hand entry of a held iron condor (GC-TRACK1)
   ADR-291: S6.7         # current work serves one user, the owner's own Kite account
+  ADR-292: S6.7         # held condor typed in by hand: label, stated entry time, rules start at save, order screens hidden
 
 questions:
   Q210: 4a              # external: Zerodha's written answer; ADR-051 covers the owner's own account
@@ -656,6 +657,10 @@ issues:
   "#692": S6.7  # GC-ICSAFE leftovers: max-profit label on two more screens, old-position record window, adopted strategies never lapse, failed alert not retried
   "#694": S6.7  # GC-ICSAFE c56: same-day iron condor on live prices, only possible on an expiry day (Tue 17 Nov)
   "#695": S6.7  # GC-ICSAFE c25: one real test message through the shared Notifier (waits for owner question Q2)
+  "#699": S6.7  # GC-TRACK1 k26: one order per contract and side (ADR-274) parked after 2 rounds
+  "#700": S6.7  # A changed plan waits one speed interval before its background re-check (_last_check not cleared)
+  "#701": S6.7  # GC-TRACK1 k28: remaining iron-condor defects and the frozen DEPTH list
+  "#702": S6.7  # GC-TRACK1 k22: daily cap count restored on worker start includes exempt records (parked after 2 rounds)
 
 # Work items whose status is not done.
 work_items:

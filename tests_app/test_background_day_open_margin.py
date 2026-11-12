@@ -25,6 +25,7 @@ from test_background_cycle import (
     RATE,
     Calls,
     Prov,
+    _all_styles,
     _background_state,
     _followed,
     _system_body,
@@ -261,3 +262,28 @@ async def test_a_margin_older_than_its_window_or_after_a_failed_refresh_is_never
     worker._clock = lambda: later
     await worker.refresh_margins()
     assert worker.margins.block_for(w, later) is None
+
+
+@pytest.mark.parametrize("fail", [False, True])
+async def test_k16_a_margin_stated_after_the_first_check_is_checked_at_the_next_cycle_not_after_one_speed_interval(
+        gap, fail):
+    """#692 item 19: at a 2-minute speed the check after the margin read ran 2 minutes later ("not checked" meanwhile).
+    Stated -> the next cycle re-checks; a failed read forces nothing (no loop on a failing read)."""
+    prov = Prov(gap)
+    at = _gap_time(prov)
+    w = _ic_watched(gap)
+    fake = FakeMargin(at, RuntimeError("down") if fail else None)
+    now, calls = [at], Calls()
+    two_minutes = lambda _at: {**DEFAULTS, **_all_styles(Decimal(120))}  # noqa: E731
+    worker = _worker(prov, [w], now, calls, settings=two_minutes, margin_of=background.screen_margin_reader(fake))
+    await worker.cycle()
+    assert calls.states[0][1].margin is None  # no margin yet: missing_margin, correct
+    await worker.refresh_margins()
+    now[0] = at + datetime.timedelta(seconds=1)
+    prov.move_spot(prov.spot.ltp + 1, now[0])
+    await worker.cycle()
+    assert fake.calls == 1  # the reader is called once either way
+    if fail:
+        assert len(calls.states) == 1  # failed read: no forced re-check, the next window retries
+    else:
+        assert len(calls.states) == 2 and calls.states[-1][1].margin == MARGIN_X  # noqa: PLR2004 - check 1 + the forced re-check

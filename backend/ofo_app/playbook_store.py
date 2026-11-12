@@ -346,7 +346,7 @@ _SUGGESTION_OF_STRATEGY = text(
 _INBOX = text(f"SELECT {', '.join('g.' + c for c in _SG_COLUMNS.split(', '))}, s.name, "  # noqa: S608 constant
               "EXISTS (SELECT 1 FROM public.paper_orders o WHERE o.strategy_id = s.id) "
               "FROM public.adjustment_suggestions g JOIN public.strategies s ON s.id = g.strategy_id "
-              "WHERE s.user_ref = :user_ref ORDER BY g.shown_at DESC, g.id DESC")
+              "WHERE s.user_ref = :user_ref AND s.deleted_at IS NULL ORDER BY g.shown_at DESC, g.id DESC")
 _LIST_SUGGESTIONS = text(f"SELECT {', '.join('g.' + c for c in _SG_COLUMNS.split(', '))} "  # noqa: S608 constant
                          "FROM public.adjustment_suggestions g JOIN public.strategies s ON s.id = g.strategy_id "
                          "WHERE g.strategy_id = :strategy_id AND s.user_ref = :user_ref ORDER BY g.id")
@@ -925,7 +925,7 @@ class HeldToday:
 _HELD_INBOX = text(
     "SELECT h.id, h.strategy_id, h.rule_id, h.trigger_id, h.reason, h.held_at, s.name "
     "FROM public.adjustment_held_crossings h JOIN public.strategies s ON s.id = h.strategy_id "
-    "WHERE s.user_ref = :user_ref ORDER BY h.held_at DESC, h.id DESC")
+    "WHERE s.user_ref = :user_ref AND s.deleted_at IS NULL ORDER BY h.held_at DESC, h.id DESC")
 
 
 @dataclass(frozen=True)

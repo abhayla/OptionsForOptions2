@@ -1006,6 +1006,30 @@ _STRATEGY_DRAFT_TEMPLATES: tuple[MessageTemplate, ...] = (
           "This strategy is closed: every leg was exited, so it takes no new position.",
           "No order was stored; a closed strategy is never reopened.",
           "Placing these paper orders.", "Build a new strategy for a new position."),
+    # GC-TRACK1 k07 (ADR-292 (2)): a strategy typed in as held at the user's own broker.
+    _gate("held_entry_later_than_now", _SV, 508,
+          "The time you entered this position is later than now.",
+          "No order was stored; a position you already hold cannot have been entered in the future.",
+          "Saving this position as held at your broker.",
+          "Type the time you really entered it, which is now or earlier, then save again."),
+    _gate("held_entry_after_expiry", _SV, 509,
+          "The time you entered this position is after the expiry of one of its legs ({expiry}).",
+          "No order was stored; a leg cannot be entered after its contract has expired.",
+          "Saving this position as held at your broker.",
+          "Type an entry time on or before {expiry}, then save again.", {"expiry": Date}),
+    _gate("held_entry_not_a_first_open_basket", _SV, 510,
+          "A position held at your broker can only be saved as the first orders of a strategy, all of them opening "
+          "orders.",
+          "No order was stored; a strategy that already has orders, or an exit, is not an entry.",
+          "Saving this position as held at your broker.",
+          "Save it on a new strategy with opening orders only, or save these orders without the held entry time."),
+    # GC-TRACK1 k08 (ADR-283 (1)): a basket is saved only with its rule starting point, the index price at the fill.
+    _gate("paper_index_price_unavailable", _SV, 511,
+          "The live index price is not available, so these orders cannot be saved with their starting point.",
+          "No order was stored; your rules start from the market at the moment you save, so a basket is never saved "
+          "without it.",
+          "Placing these paper orders.",
+          "Check that the live price feed is connected during market hours, then place the orders again."),
     # GC-TP step 7a (REQ-109 AC-8; ADR-207 (5)): paper stop triggers.
     _gate("paper_trigger_level_invalid", _SV, 440,
           "A stop level must be above 0 and a multiple of 0.05.",

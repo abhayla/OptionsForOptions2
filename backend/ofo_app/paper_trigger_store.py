@@ -51,9 +51,9 @@ _ALERT = text("INSERT INTO public.paper_alerts (strategy_id, trigger_id, title, 
               "VALUES (:sid, :tid, :title, :body) RETURNING id")
 _ALERTS = text("SELECT a.id, a.strategy_id, a.trigger_id, a.created_at, a.title, a.body, a.read_at, s.name "
                "FROM public.paper_alerts AS a JOIN public.strategies AS s ON s.id = a.strategy_id "
-               "WHERE s.user_ref = :user_ref ORDER BY a.id DESC LIMIT :limit")
+               "WHERE s.user_ref = :user_ref AND s.deleted_at IS NULL ORDER BY a.id DESC LIMIT :limit")
 _UNREAD = text("SELECT count(*) FROM public.paper_alerts AS a JOIN public.strategies AS s ON s.id = a.strategy_id "
-               "WHERE s.user_ref = :user_ref AND a.read_at IS NULL")
+               "WHERE s.user_ref = :user_ref AND s.deleted_at IS NULL AND a.read_at IS NULL")
 _READ_ALL = text("UPDATE public.paper_alerts AS a SET read_at = clock_timestamp() FROM public.strategies AS s "
                  "WHERE s.id = a.strategy_id AND s.user_ref = :user_ref AND a.read_at IS NULL")
 

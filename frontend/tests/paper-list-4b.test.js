@@ -270,9 +270,28 @@ describe('the builder compact Paper list (same reply)', () => {
     const rows = c.findAll('[data-testid="paper-compact-row"]')
     expect(rows).toHaveLength(2)
     expect(rows[0].get('[data-testid="paper-total"]').text()).toBe(REAL.strategies[1].total_text)
-    expect(rows[0].get('[data-testid="paper-compact-legs"]').text()).toBe('4 legs')
+    expect(rows[0].get('[data-testid="paper-compact-legs"]').text()).toBe('3 open legs') // k27: the fixture book has 4 positions, 3 open
     expect(rows[0].get('a').attributes('href')).toBe('/positions/current-positions?tab=paper&strategy=1')
     expect(c.find('table').exists()).toBe(false)
+  })
+
+  it('GC-TRACK1 k27: a book of 6 positions with 4 open shows "4 open legs"; all open stays "N legs"; open_count unreadable shows no count (the reader fails the row closed)', async () => {
+    const mk = (open, total) => {
+      const d = clone(); const s = d.strategies[1]
+      s.open_count = open; s.position_count = total
+      return d
+    }
+    const legsText = async (d) => {
+      answers['GET /paper/strategies'] = ok(d)
+      const w = await show(PaperStrategies, '/', {})
+      const c = mount(PaperStrategies, { props: { compact: true }, global: { plugins: [w.vm.$router] } }); await flushPromises()
+      const el = c.findAll('[data-testid="paper-compact-row"]')[0].find('[data-testid="paper-compact-legs"]')
+      return el.exists() ? el.text() : ''
+    }
+    expect(await legsText(mk(4, 6))).toBe('4 open legs')
+    expect(await legsText(mk(4, 4))).toBe('4 legs')
+    expect(await legsText(mk(null, 6))).toBe('')
+    expect(await legsText(mk('4', 6))).toBe('')
   })
 
   it('fix1: the compact list carries the Show closed positions switch, and turning it on lists the exited strategy', async () => {

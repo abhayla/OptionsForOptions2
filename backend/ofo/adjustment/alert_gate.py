@@ -254,6 +254,16 @@ def _close(state: GateState, rule_id: str, pend: _Pending, preset: Preset) -> tu
     return state, lapsed + events
 
 
+def _cap_exempt(rule_id: object) -> bool:
+    """ADR-267 and its amendment: a user's level watch and a day rule (new or legacy id) are never held by the daily
+    cap. Any other id, empty or not a string is capped (fail closed). Imported here: playbook_eval imports a lot."""
+    from ofo.adjustment import level_watch  # noqa: PLC0415
+    from ofo.adjustment.playbook_eval import DAY_RULE_PREFIX, LEGACY_DAY_RULE_PREFIX  # noqa: PLC0415
+
+    return isinstance(rule_id, str) and rule_id.startswith((level_watch.RULE_PREFIX, DAY_RULE_PREFIX,
+                                                            LEGACY_DAY_RULE_PREFIX))
+
+
 def _decide(  # noqa: PLR0913 - one close's inputs
     state: GateState, rule_id: str, rule: _Rule, pend: _Pending, level: int, preset: Preset,
 ) -> tuple[GateState, list[Event]]:
@@ -272,7 +282,7 @@ def _decide(  # noqa: PLR0913 - one close's inputs
     reason = None
     if t.time() <= preset.quiet_until:
         reason = HELD_QUIET_TIME
-    elif state.opened_today >= preset.daily_cap:
+    elif state.opened_today >= preset.daily_cap and not _cap_exempt(rule_id):
         reason = HELD_DAILY_LIMIT
     if reason is not None:
         if hold is not None and hold.reason == reason and level <= hold.level:
@@ -280,7 +290,9 @@ def _decide(  # noqa: PLR0913 - one close's inputs
         rule = replace(rule, hold=_Hold(reason, level, threshold, ladder=_ladder_key(spec)))
         return state.with_rule(rule_id, rule), [Held(rule_id, t, reason, value, level)]
     rule = replace(rule, record=_Record(level, threshold, t, ladder=_ladder_key(spec)), cleared=False, hold=None)
-    state = replace(state.with_rule(rule_id, rule), opened_today=state.opened_today + 1)
+    state = state.with_rule(rule_id, rule)
+    if not _cap_exempt(rule_id):  # ADR-267: a watch / day rule is not counted against the cap
+        state = replace(state, opened_today=state.opened_today + 1)
     return state, [Opened(rule_id, t, level, threshold, value, worse)]
 
 

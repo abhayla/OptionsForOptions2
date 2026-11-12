@@ -111,6 +111,7 @@ export function readPaperStrategy(s, index = 0) {
     charges: text(s.charges_text), // GC-TP step 8b: beside the P&L, never subtracted from it (REQ-109 AC-10)
     chargesReason: text(s.charges_reason_text),
     pauseReason: s.state === 'PAUSED' ? withAsOf(text(s.pause_reason_text), s.as_of) : text(s.pause_reason_text),
+    held: s.held ?? null, // GC-TRACK1 k10: shown by HeldNote, which reads nothing it cannot parse
     ...readSummary(s),
     positions,
   }

@@ -31,7 +31,7 @@
           <RouterLink v-else :to="{ path: '/positions/current-positions', query: { tab: 'paper', strategy: String(g.id) } }" class="flex items-center gap-2" :data-testid="`paper-compact-link-${g.id}`">
             <span class="min-w-0 flex-1">
               <span class="block truncate font-medium" data-testid="paper-group-name">{{ g.name ?? `Strategy ${g.id}` }}</span>
-              <span class="block text-xs text-ink-muted" data-testid="paper-compact-legs">{{ g.positionCount }} {{ g.positionCount === 1 ? 'leg' : 'legs' }}</span>
+              <span class="block text-xs text-ink-muted" data-testid="paper-compact-legs">{{ legsText(g) }}</span>
             </span>
             <span class="shrink-0 text-right">
               <span class="block font-semibold" :class="toneOf(g.total)" data-testid="paper-total">{{ g.total ?? '-' }}</span>
@@ -49,6 +49,7 @@
                 <h2 class="font-semibold" data-testid="paper-group-name">{{ g.name ?? `Strategy ${g.id}` }}</h2>
                 <span class="text-ink-muted" data-testid="paper-group-underlying">{{ g.underlying }}</span>
                 <p class="text-xs text-ink-muted" data-testid="paper-count">{{ g.openCount }} of {{ g.positionCount }} positions</p>
+                <HeldNote :held="g.held" />
               </div>
               <dl class="flex flex-wrap gap-6" data-testid="paper-figures">
                 <div v-for="f in figures" :key="f.field" class="text-right">
@@ -108,6 +109,7 @@
               <!-- D-C50 / Sensibull 090-092: the action column. No Convert To Real Trades (ADR-165). Add orders opens the builder on
                    the strategy, where its paper position is Drafts Mode (GC-TP step 3c). -->
               <div class="flex w-36 shrink-0 flex-col gap-2" data-testid="paper-actions">
+                <HeldNote :held="g.held" note-only />
                 <RouterLink :to="builderLink(g)" class="rounded border border-line px-2 py-1 text-center text-accent" data-testid="paper-open-builder">Open in Builder</RouterLink>
                 <RouterLink :to="builderLink(g)" class="rounded border border-line px-2 py-1 text-center text-accent" data-testid="paper-add-orders">Add orders</RouterLink>
                 <button v-if="g.openCount" type="button" class="rounded border border-line px-2 py-1" :aria-expanded="!!stopsOpen[g.id]" :data-testid="`stops-open-${g.id}`" @click="stopsOpen = { ...stopsOpen, [g.id]: !stopsOpen[g.id] }">Stops</button>
@@ -130,6 +132,7 @@ import api, { NEUTRAL_ERROR, NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import PaperStops from '@/components/strategy/PaperStops.vue'
 import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
+import HeldNote from '@/components/strategy/HeldNote.vue'
 import { ALL_CLOSED_TEXT, GREEK_COLUMNS, PAPER_NO_FIGURE, SHOW_CLOSED_LABEL, exitRowsFor, readPaperList, visibleGroups } from '@/lib/paperList'
 import { usePaperRefresh } from '@/lib/usePaperRefresh'
 import { PAPER_STATE, paperPostOutcome } from '@/lib/tracking'
@@ -137,6 +140,13 @@ import { useRouter } from 'vue-router'
 import { signOf } from '@/lib/chartCard'
 
 defineProps({ compact: { type: Boolean, default: false } })
+// GC-TRACK1 k27: the OPEN leg count; an unreadable open_count shows nothing (never the total). "open" only when closed ones exist.
+const legsText = (g) => {
+  const n = g.openCount
+  if (!Number.isInteger(n) || n < 0) return ''
+  const word = n === 1 ? 'leg' : 'legs'
+  return n === g.positionCount ? `${n} ${word}` : `${n} open ${word}`
+}
 const NO_TOTAL = 'No paper total yet: prices are not live'
 const BANNER = 'Paper trades - not real money'
 const EMPTY = 'No paper strategies yet. Build a strategy, then press Add to Paper.'

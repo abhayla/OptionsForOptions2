@@ -62,12 +62,32 @@ export function entryPriceFor(leg, livePriceById = {}) {
 }
 
 /** POST the confirmed orders in ONE request (the server stores them in one transaction or none). Throws the client error. */
-export async function addToPaper(client, strategyId, orders, suggestionIds = [], basketLegs = null) {
+export async function addToPaper(client, strategyId, orders, suggestionIds = [], basketLegs = null, held = null) {
   // REQ-163 AC-1: the acted-on records this basket answers (Compare -> Open in builder); omitted when none
   const body = suggestionIds.length ? { orders, suggestion_ids: suggestionIds } : { orders }
   if (suggestionIds.length && basketLegs) body.basket_legs = basketLegs // REQ-112: the prepared basket's size
+  if (held) body.held = held // GC-TRACK1 k10: only on the first basket, only when the user ticked "Held at my broker"
   const { data } = await client.post(`/paper/strategies/${strategyId}/orders`, body)
   return data
+}
+// GC-TRACK1 k10 (ADR-292 (1), (3), (4)): the texts of a condor typed in as held at the user's broker.
+export const HELD_LABEL = 'Held at my broker'
+export const HELD_NOTE = 'Changes you make at your broker are not seen by the app. Record them here.'
+const SHORT_IST = /^(\d{1,2} [A-Za-z]{3}) \d{4}, (\d{2}:\d{2}):\d{2} IST$/
+const shortIst = (iso) => { const m = SHORT_IST.exec(istTime(iso)); return m ? `${m[1]} ${m[2]}` : null }
+/** The reply's `held` as the lines to show, or null (plain paper strategy, a missing key, a non-object or an unreadable
+ *  entry_at show nothing held, never a guess). rules_start_at null/unreadable -> no "Rules start" line. */
+export function heldView(held) {
+  if (!held || typeof held !== 'object' || Array.isArray(held)) return null
+  const entry = shortIst(held.entry_at)
+  if (entry === null) return null
+  const rules = shortIst(held.rules_start_at)
+  return { label: HELD_LABEL, entry: `Entry ${entry}`, rules: rules === null ? null : `Rules start from ${rules}`, broker: typeof held.broker === 'string' && held.broker !== '' ? held.broker : null }
+}
+/** The POST's held block from the form: entry time typed as 'YYYY-MM-DDTHH:mm' (India time), broker optional. */
+export function heldBlock(entryAt, broker) {
+  const b = (broker ?? '').trim()
+  return { entry_at: `${entryAt}:00+05:30`, broker: b === '' ? null : b }
 }
 /** GC-BP F-1: a tracked strategy's paper P&L is re-read this often while it is on screen (the strike picker's rate). */
 export const TRACKING_REFRESH_MS = 5000

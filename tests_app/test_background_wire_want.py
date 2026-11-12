@@ -119,7 +119,7 @@ async def test_no_monitored_strategy_writes_an_empty_snapshot_only_for_a_written
     await w.cycle()
     assert await _relay_wants(client)
     watched.clear()
-    w._rebuilt_at = None  # the lister now returns nothing
+    await w.rebuild()  # the lister now returns nothing (k23: the rebuild publishes its own list)
     now[0] += datetime.timedelta(seconds=1)
     await w.cycle()
     assert await _relay_wants(client) == []  # the stale wishes lapse at once, not after the TTL

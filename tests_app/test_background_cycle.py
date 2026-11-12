@@ -1436,3 +1436,35 @@ async def test_the_db_gate_store_lapses_the_records_of_an_earlier_count_as_posit
     assert await background.DbGateStore().lapse_changed(w) is True
     assert seen == [("owner", w.strategy_id, 2)]
     assert str(render_explanation("suggestion_lapsed_position_changed")) == "The position changed"
+
+
+# ---- k23: a new strategy's first check is not lost in the rebuild's gap ---------------------------------------------
+class GapGate(FakeGate):
+    """A gate store whose read yields to a full cycle: the cycle that runs in the rebuild's gap (before the gates)."""
+
+    def __init__(self, worker_of, fail=False) -> None:
+        super().__init__()
+        self.worker_of, self.fail, self.in_gap = worker_of, fail, False
+
+    async def load(self, w, today):
+        if not self.in_gap:
+            self.in_gap = True
+            await self.worker_of().cycle()
+        if self.fail:
+            raise RuntimeError("gate read failed")
+        return await super().load(w, today)
+
+
+@pytest.mark.parametrize("fail", [False, True])
+async def test_a_cycle_in_the_rebuild_gap_never_pauses_or_loses_the_new_strategy(scn, fail):
+    prov, now, calls = Prov(scn), [scn.clock_at], Calls()
+    gate = GapGate(lambda: w, fail)
+    w = _worker(prov, _watched(scn), now, calls, gate_store=gate)
+    w._rebuild_tried = True  # the first cycle would start a rebuild itself; this test is the rebuild task
+    await w.rebuild()
+    assert gate.in_gap and FIRST_ID not in w.status and calls.states == []  # not listed yet: not paused, not lost
+    if fail:
+        assert w.monitors == []  # load failed: never published as checkable
+        return
+    await w.cycle()  # the next cycle samples it normally
+    assert [s for s, _ in calls.states] == [FIRST_ID] and w.status[FIRST_ID] is background.MonitoringStatus.ACTIVE

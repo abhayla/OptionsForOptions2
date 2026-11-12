@@ -56,6 +56,7 @@ from ofo_app import (
     tracked_contracts,
 )
 from ofo_app.db import get_sessionmaker
+from ofo_app.errors import Failure
 from ofo_app.live_push import hold_and_read
 from ofo_app.outcome_oi import oi_of
 from ofo_app.routes.adjustment import MarketInputs, Tracked
@@ -732,24 +733,47 @@ async def entry_facts_now(ctx: Any, underlying: str, sold: Iterable[Any]) -> Ent
     return dataclasses.replace(facts, entry_atm_iv=iv)
 
 
+async def _index_spot_held(ctx: Any, feed: Any, underlying: str) -> Decimal:
+    """The index's live spot for the fill's starting point (ADR-283 (1)). The API process holds only what a page
+    socket subscribed, so an index nobody holds is held on the shared fan-out until its first quote or ``LEG_WAIT_S``
+    passes (``hold_and_read``, the paper book's own hold). Answer states: held / quoted within the wait -> the spot; no
+    context / not connected / never quoted / not a positive price -> ``StrategyRefused`` (nothing stored)."""
+    from ofo_app.chain_push import index_id_of  # noqa: PLC0415 - chain_push imports the app layer
+    from ofo_app.strategy_refused import StrategyRefused  # noqa: PLC0415 - write path only
+
+    spot = None
+    if ctx is not None and ctx.provider.status().connected:
+        provider = ctx.provider
+        index_id = index_id_of(ctx, underlying)
+
+        def read() -> Any:
+            return provider.underlying_quote(underlying)
+        quote = read()
+        if quote is None and feed is not None and index_id is not None:
+            held = await hold_and_read(feed.fanout, [index_id], read, lambda q: q is not None,
+                                       lambda: provider.status().connected, LEG_WAIT_S, LEG_POLL_S)
+            quote = quote if held is None else held
+        spot = None if quote is None else quote.ltp
+    if not isinstance(spot, Decimal) or spot <= 0:
+        raise StrategyRefused("paper_index_price_unavailable", Failure.CONFLICT)
+    return spot
+
+
 async def record_basket_facts(db: Any, ctx: Any, feed: Any, strategy_id: int,
                               basket: tuple[str, Any, Any, Mapping[int, Decimal]]) -> None:
     """ADR-283 (1): stores the market state at this basket's fill, in the fill's transaction. ``basket`` = (underlying,
     every order of the book after the fill, the order clock, contract id -> this basket's fill price). Basket number =
     the adjustments made so far after it (ADR-255, ``history_count``; 0 = the entry). Answer states: not connected / no
-    positive spot -> nothing stored (no rule held); the count unreadable -> nothing stored (the checks keep the newest
-    starting point); no open leg (the basket closed the strategy) -> nothing stored (no check); a kept leg's price
-    not read live -> stored as None (its rules not held); the ATM IV unreadable -> None."""
+    positive spot (after the index is held, ``_index_spot_held``) -> REFUSED, nothing stored; the count unreadable ->
+    nothing stored (the checks keep the newest starting point); no open leg (the basket closed the strategy) ->
+    nothing stored (no check); a kept leg's price not read live -> stored as None (its rules not held); the ATM IV
+    unreadable -> None."""
     from ofo.tracking import paper  # noqa: PLC0415 - the paper screen's prices
 
     from ofo_app import entry_facts_store  # noqa: PLC0415 - write path only
     from ofo_app.routes.tracking import _snapshot  # noqa: PLC0415 - the paper screen's own market read
 
     underlying, book, clock, filled = basket
-    quote = None if ctx is None or not ctx.provider.status().connected else ctx.provider.underlying_quote(underlying)
-    spot = None if quote is None else quote.ltp
-    if not isinstance(spot, Decimal) or spot <= 0:
-        return
     found = {c.contract_id: c for c in await tracked_contracts.resolve(db, sorted({o.order.contract_id
                                                                                  for o in book}))}
 
@@ -762,6 +786,7 @@ async def record_basket_facts(db: Any, ctx: Any, feed: Any, strategy_id: int,
                                                                            {}).positions if p.net_quantity != 0]
     if used is None or not open_ or not all(is_option(cid) for cid, _ in open_):
         return
+    spot = await _index_spot_held(ctx, feed, underlying)  # after the no-facts returns: an exit needs no spot
     kept = [cid for cid, _ in open_ if cid not in filled and found[cid].identity is not None]
     prices: dict[int, Decimal | None] = dict(filled)
     if kept:

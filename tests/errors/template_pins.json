@@ -4038,5 +4038,21 @@
   "explanation:suggestion_lapsed_position_changed": {
     "sha256": "bcce190e9d83fd95c26a4e70ee24bab20f36f0012f8b4aac5af6d092939efb83",
     "reviewed": "pending owner read"
+  },
+  "held_entry_later_than_now": {
+    "sha256": "645007af1f030a22b2771a2873ab70642b76cf43cb71c3fdf0c220c459be7f60",
+    "reviewed": "pending owner read"
+  },
+  "held_entry_after_expiry": {
+    "sha256": "3665a82447bdf4845f84f1037c7d674d08858cc53901e268f72743075fe8eee0",
+    "reviewed": "pending owner read"
+  },
+  "held_entry_not_a_first_open_basket": {
+    "sha256": "f73727f6b94c4b1964fab2b9521fecddee28a45f2c62044594203b5e9cfc373d",
+    "reviewed": "pending owner read"
+  },
+  "paper_index_price_unavailable": {
+    "sha256": "104987f4caf316dd4eddb4927c478d5fb7f8526b0a4d5b82ef81ee71f5eaa016",
+    "reviewed": "pending owner read"
   }
 }
