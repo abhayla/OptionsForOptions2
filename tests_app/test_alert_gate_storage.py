@@ -287,6 +287,17 @@ async def test_gate_rows_none_rows_and_restore(db):
     assert state.opened_today == 3 and state.rule("T-03").record.level == 1  # noqa: PLR2004
 
 
+async def test_gate_rows_restored_count_does_not_count_watch_and_day_records(db):
+    """#702 (ADR-267 and its amendment): after a worker restart the cap count is the automatic records only."""
+    user, sid = await _strategy(db)
+    today = (await db.execute(text("SELECT (clock_timestamp() AT TIME ZONE 'Asia/Kolkata')::date"))).scalar_one()
+    for rule in ("watch.level.above", "day.after.1500.exit", "day:after:1500:exit", "T-01"):
+        await _open(db, user, sid, rule)
+    got = await pb.gate_rows(db, user, sid, today)
+    assert got.opened_today == 1  # only T-01 counts
+    assert ag.restore(got, today, {}).opened_today == 1
+
+
 async def test_gate_rows_another_users_or_a_missing_strategy_is_not_found(db):
     user, sid = await _strategy(db)
     today = datetime.date(2026, 11, 2)
