@@ -49,12 +49,21 @@ from ofo.outcome.snapshot import forward_strike_ids
 from ofo.strategy import stored_form as sf
 from ofo.strategy.definition import describe_contract
 from ofo.table.model import display_number
+from ofo.timeutil import IST
 from ofo.tracking import paper, paper_decay, paper_greeks
 from ofo.tracking.orderbook import NetPosition, PaperOrder, is_typed_price, net_positions
 from ofo.tracking.paper_alert import restore_alert_body
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
 
-from ofo_app import paper_limit, paper_monitor, paper_store, paper_trigger_store, playbook_store, tracked_contracts
+from ofo_app import (
+    held_entry_store,
+    paper_limit,
+    paper_monitor,
+    paper_store,
+    paper_trigger_store,
+    playbook_store,
+    tracked_contracts,
+)
 from ofo_app import strategy_store as store
 from ofo_app.api_models import ApiModel, CatalogueText, Money
 from ofo_app.db import get_db
@@ -103,8 +112,24 @@ class PaperOrderIn(BaseModel):
     kind: RequestKind
 
 
+class HeldIn(BaseModel):
+    """ADR-292 (2): a position the user already holds at their own broker. ``entry_at`` carries an offset (a naive
+    time is refused); ``broker`` is optional free text, trimmed, blank -> None, at most 40 characters, one line.
+    """
+    model_config = ConfigDict(extra="forbid")
+    entry_at: AwareDatetime
+    broker: str | None = Field(default=None, max_length=40, pattern=r"^[^\r\n]*$")
+
+    @field_validator("broker", mode="before")
+    @classmethod
+    def _trim(cls, value: object) -> object:
+        return (value.strip() or None) if isinstance(value, str) else value
+
+
 class PaperOrdersIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    #: ADR-292: the first basket only, every order `open`; stored with the basket (one held row, same transaction)
+    held: HeldIn | None = None
     orders: list[PaperOrderIn] = Field(min_length=1, max_length=64)
     #: REQ-163 AC-1: the acted-on suggestion records this basket answers (Compare -> Open in builder); each must be
     #: of this strategy and user, acted on and not yet linked, or the whole basket is refused (nothing stored)
@@ -748,6 +773,26 @@ async def entry_facts(ctx: MarketContext | None, underlying: str, orders: Sequen
     return await entry_facts_now(ctx, underlying, sold)
 
 
+async def _record_held(db: Any, strategy_id: int, held: HeldIn | None) -> None:
+    if held is not None:
+        await held_entry_store.record(db, strategy_id, held.entry_at, held.broker)
+
+
+def _check_held(held: HeldIn | None, first: bool, orders: Sequence[Any], state: Mapping[int, Any],
+                placed_at: datetime.datetime) -> None:
+    """ADR-292 (2): a held entry is the first basket and all `open`; its time is not after now and not after the
+    earliest leg expiry (its date in IST). Refused by name; nothing is stored. No held block: nothing to check."""
+    if held is None:
+        return
+    if not first or any(o.kind != "open" for o in orders):
+        raise StrategyRefused("held_entry_not_a_first_open_basket")
+    if held.entry_at > placed_at:
+        raise StrategyRefused("held_entry_later_than_now")
+    earliest = min(state[o.contract_id].stored.listed.contract.expiry for o in orders)
+    if held.entry_at.astimezone(IST).date() > earliest:
+        raise StrategyRefused("held_entry_after_expiry", message=render("held_entry_after_expiry", expiry=earliest))
+
+
 @router.post("/paper/strategies/{strategy_id}/orders", status_code=201, response_model=PaperBookOut,
              dependencies=[Depends(guard_paper_order)])  # IC e2e 5: scenario mode = own scenario only
 async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR0913 - FastAPI dependencies
@@ -773,6 +818,7 @@ async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR
     exit_prices = await _server_exit_prices(ctx, feed, stored.saved.definition.underlying, body.orders, state)
     # only a strategy with no paper order yet can be at its first fill (a book never shrinks): a later fill reads no IV
     first = not await paper_store.tracked_ids(db, [strategy_id])
+    _check_held(body.held, first, body.orders, state, placed_at)
     entry = await entry_facts(ctx, stored.saved.definition.underlying, body.orders, state) if first else None
     try:
         book = await paper_limit.place_checked(
@@ -789,6 +835,7 @@ async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR
         await record_basket_facts(db, ctx, feed, strategy_id, (
             stored.saved.definition.underlying, book, placed_at,
             {o.contract_id: exit_prices.get(i, o.price) for i, o in enumerate(body.orders)}))
+        await _record_held(db, strategy_id, body.held)  # ADR-292: the held row and its first basket: one transaction
         await db.commit()
     except store.StrategyStoreError as exc:
         await db.rollback()
