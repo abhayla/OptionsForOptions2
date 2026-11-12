@@ -15,48 +15,15 @@ from types import SimpleNamespace
 VERSIONS = Path(__file__).resolve().parents[1] / "backend" / "ofo_app" / "alembic" / "versions"
 
 
-_PREDECESSORS: dict[str, dict] = {}
-
-
-def _cached_spec_from_file_location(real):
-    """Migrations load their predecessors by file (0047 loads 0046 loads ... 0002), so recording one migration
-    re-executed the whole chain below it, and 0025's unicode class build (~3.6 s) ran in each copy: ~10 s per
-    migration, ~5 min for one round_trip_sql call (measured 2026-11-13). Predecessors are used only for their pure
-    SQL builders, so each file is executed once per process and shared."""
-    def spec_from_file_location(name, location=None, **kw):
-        found = real(name, location, **kw)
-        if found is None or location is None:
-            return found
-        key = str(location)
-        loader = found.loader
-
-        class Once:
-            def create_module(self, spec):
-                return None
-
-            def exec_module(self, module):
-                done = _PREDECESSORS.get(key)
-                if done is None:
-                    loader.exec_module(module)
-                    _PREDECESSORS[key] = dict(module.__dict__)
-                else:
-                    module.__dict__.update(done)
-        found.loader = Once()
-        return found
-    return spec_from_file_location
-
-
-# Cached values are pure functions of the migration file text, so they cannot leak between tests.
+# Only the FINAL recorded SQL text is cached, keyed by the file name and the file's own text (and the phase), so an edit
+# to the file is a cache miss. No module object or its globals is shared between recordings: a shared module keeps its
+# first globals, so a later recording that sets `module.op = ...` on a cached earlier migration missed (0002 recorded,
+# then 0003 -> NameError, 2026-11-13).
 @functools.cache
-def _recorded(name: str, phase: str) -> tuple[str, ...]:
-    real = importlib.util.spec_from_file_location
-    importlib.util.spec_from_file_location = _cached_spec_from_file_location(real)
-    try:
-        found = real(f"ofo_replay_{name[:-3]}_{phase}", VERSIONS / name)
-        migration = importlib.util.module_from_spec(found)
-        found.loader.exec_module(migration)  # type: ignore[union-attr]
-    finally:
-        importlib.util.spec_from_file_location = real
+def _recorded_text(name: str, text: str, phase: str) -> tuple[str, ...]:
+    found = importlib.util.spec_from_file_location(f"ofo_replay_{name[:-3]}_{phase}", VERSIONS / name)
+    migration = importlib.util.module_from_spec(found)
+    found.loader.exec_module(migration)  # type: ignore[union-attr]
     out: list[str] = []
     migration.op = SimpleNamespace(execute=lambda sql, *a, **k: out.append(str(sql)))
     if hasattr(migration, "_BASE"):
@@ -68,7 +35,7 @@ def _recorded(name: str, phase: str) -> tuple[str, ...]:
 def recorded(name: str, phase: str) -> list[str]:
     """The SQL migration `name` (a file name like '0009_minute_history.py') executes in `phase` ('upgrade' or
     'downgrade'), with the app role fixed to ofo_app."""
-    return list(_recorded(name, phase))
+    return list(_recorded_text(name, (VERSIONS / name).read_text(encoding="utf-8"), phase))
 
 
 def later_than(name: str) -> list[str]:
