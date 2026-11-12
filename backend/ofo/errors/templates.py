@@ -1023,6 +1023,13 @@ _STRATEGY_DRAFT_TEMPLATES: tuple[MessageTemplate, ...] = (
           "No order was stored; a strategy that already has orders, or an exit, is not an entry.",
           "Saving this position as held at your broker.",
           "Save it on a new strategy with opening orders only, or save these orders without the held entry time."),
+    # GC-TRACK1 k08 (ADR-283 (1)): a basket is saved only with its rule starting point, the index price at the fill.
+    _gate("paper_index_price_unavailable", _SV, 511,
+          "The live index price is not available, so these orders cannot be saved with their starting point.",
+          "No order was stored; your rules start from the market at the moment you save, so a basket is never saved "
+          "without it.",
+          "Placing these paper orders.",
+          "Check that the live price feed is connected during market hours, then place the orders again."),
     # GC-TP step 7a (REQ-109 AC-8; ADR-207 (5)): paper stop triggers.
     _gate("paper_trigger_level_invalid", _SV, 440,
           "A stop level must be above 0 and a multiple of 0.05.",
