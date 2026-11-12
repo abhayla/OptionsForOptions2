@@ -30,6 +30,14 @@
         <span v-if="reasons[i]" class="w-full text-xs text-warn" data-testid="paper-reason">{{ reasons[i] }}</span>
       </li>
     </ul>
+    <!-- GC-TRACK1 k10 (ADR-292): the strategy's first basket may be a condor already held at the user's broker -->
+    <div v-if="firstBasket && rows.length && rows.every((r) => r.kind === 'open')" class="mt-3 text-sm" data-testid="held-form">
+      <label class="flex items-center gap-2"><input v-model="heldOn" type="checkbox" data-testid="held-toggle" /> {{ HELD_LABEL }}</label>
+      <div v-if="heldOn" class="mt-2 flex flex-wrap items-center gap-3">
+        <label class="flex items-center gap-1"><span class="text-ink-muted">Entry date and time</span><input v-model="heldAt" type="datetime-local" class="h-9 rounded border border-line px-2" data-testid="held-entry-at" /></label>
+        <label class="flex items-center gap-1"><span class="text-ink-muted">Broker</span><input v-model="heldBroker" type="text" maxlength="40" class="h-9 w-40 rounded border border-line px-2" data-testid="held-broker" /></label>
+      </div>
+    </div>
     <p class="mt-3 text-xs text-ink-muted" data-testid="paper-not-real">{{ PAPER_NOT_REAL_TEXT }}</p>
     <!-- fix/paper-dialog-safe (ADR-017): a stored order is never offered again; an answer of unknown outcome sends the user to the
          Orderbook first and keeps Confirm locked for PAPER_UNKNOWN_HOLD_MS; a refusal (4xx: nothing stored) unlocks after an edit -->
@@ -52,7 +60,7 @@ import Chip from '@/components/common/Chip.vue'
 import Modal from '@/components/common/Modal.vue'
 import {
   PAPER_EXIT_PRICED_BY_SERVER_TEXT, PAPER_NOT_REAL_TEXT, PAPER_OPEN_ORDERBOOK_LABEL, PAPER_PLACED_NOT_REFRESHED_TEXT, PAPER_PRICE_REASON, PAPER_LOTS_REASON, PAPER_UNKNOWN_HOLD_MS,
-  PAPER_UNKNOWN_TEXT, paperLotsOk, paperPriceOk,
+  PAPER_UNKNOWN_TEXT, HELD_LABEL, heldBlock, paperLotsOk, paperPriceOk,
 } from '@/lib/tracking'
 import { paperDialogTitle, paperKindLabel } from '@/lib/paperDrafts'
 
@@ -64,6 +72,7 @@ const props = defineProps({
   // fix/paper-dialog-safe: '' ready | 'refused' (4xx, shown in `error`) | 'unknown' (no answer / 5xx) | 'placed' (stored, refresh failed)
   state: { type: String, default: '' },
   holdMs: { type: Number, default: PAPER_UNKNOWN_HOLD_MS },
+  firstBasket: { type: Boolean, default: false }, // GC-TRACK1 k10: offer "Held at my broker" (the strategy's first basket only)
 })
 const emit = defineEmits(['confirm', 'cancel', 'orderbook'])
 
@@ -75,7 +84,11 @@ watch(() => [props.open, props.orders], () => {
 // GC-TP step 3b2: the title says what the list holds (adds, exits or both)
 const title = computed(() => paperDialogTitle(props.orders))
 const reasons = computed(() => rows.value.map((r) => (!paperLotsOk(r.lots) ? PAPER_LOTS_REASON : (r.kind !== 'exit' && !paperPriceOk(r.price)) ? PAPER_PRICE_REASON : '')))
-const ready = computed(() => rows.value.length > 0 && reasons.value.every((r) => r === ''))
+const heldOn = ref(false)
+const heldAt = ref('')
+const heldBroker = ref('')
+const heldActive = computed(() => props.firstBasket && heldOn.value && rows.value.every((r) => r.kind === 'open'))
+const ready = computed(() => rows.value.length > 0 && reasons.value.every((r) => r === '') && (!heldActive.value || heldAt.value !== ''))
 
 // the quantity is a count of units (whole lots x the lot size the order carries), not money
 const unitsOf = (r) => r.lots * r.lot_size
@@ -100,6 +113,7 @@ const canConfirm = computed(() => {
 
 function confirm() {
   if (!canConfirm.value) return
-  emit('confirm', rows.value.map(orderOf))
+  if (heldActive.value) emit('confirm', rows.value.map(orderOf), heldBlock(heldAt.value, heldBroker.value))
+  else emit('confirm', rows.value.map(orderOf))
 }
 </script>

@@ -352,13 +352,13 @@ async function startPaper() {
   paperOpen.value = true
 }
 
-async function confirmPaper(orders) {
+async function confirmPaper(orders, held = null) {
   if (paperBusy.value) return
   paperBusy.value = true
   paperError.value = ''
   paperState.value = PAPER_STATE.READY
   try {
-    await addToPaper(api, paperTarget.value, orders)
+    await addToPaper(api, paperTarget.value, orders, [], null, held)
   } catch (e) {
     const outcome = paperPostOutcome(e)
     if (outcome === PAPER_STATE.REFUSED) paperError.value = (e?.parts ?? NEUTRAL_PARTS).what_happened || NEUTRAL_PARTS.what_happened // 4xx: nothing stored
@@ -449,7 +449,7 @@ id="strategy-name" ref="nameInput" v-model="nameText" data-testid="name-input" t
         <button type="submit" form="strategy-name-form" data-testid="name-confirm" class="h-10 rounded-lg bg-accent px-3 font-medium text-white disabled:opacity-50" :disabled="busy">Save</button>
       </template>
     </Modal>
-    <PaperConfirmDialog :open="paperOpen" :orders="paperOrders" :busy="paperBusy" :error="paperError" :state="paperState" @confirm="confirmPaper" @cancel="paperOpen = false" @orderbook="openPaperOrderbook" />
+    <PaperConfirmDialog first-basket :open="paperOpen" :orders="paperOrders" :busy="paperBusy" :error="paperError" :state="paperState" @confirm="confirmPaper" @cancel="paperOpen = false" @orderbook="openPaperOrderbook" />
     <AdjustPlanSheet :open="planFor !== null" :strategy-id="planFor" @close="planFor = null" />
     <!-- GC-TP step 3b2 (R-6): the toast is FIXED to the viewport (bottom centre), not inline under the action row. Inline it sat inside
          the left column's own scroll (sticky, overflow-y-auto at 1100 px and up; `contents` below), so after the save-first path
