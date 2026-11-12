@@ -31,7 +31,7 @@
           <RouterLink v-else :to="{ path: '/positions/current-positions', query: { tab: 'paper', strategy: String(g.id) } }" class="flex items-center gap-2" :data-testid="`paper-compact-link-${g.id}`">
             <span class="min-w-0 flex-1">
               <span class="block truncate font-medium" data-testid="paper-group-name">{{ g.name ?? `Strategy ${g.id}` }}</span>
-              <span class="block text-xs text-ink-muted" data-testid="paper-compact-legs">{{ g.positionCount }} {{ g.positionCount === 1 ? 'leg' : 'legs' }}</span>
+              <span class="block text-xs text-ink-muted" data-testid="paper-compact-legs">{{ legsText(g) }}</span>
             </span>
             <span class="shrink-0 text-right">
               <span class="block font-semibold" :class="toneOf(g.total)" data-testid="paper-total">{{ g.total ?? '-' }}</span>
@@ -137,6 +137,13 @@ import { useRouter } from 'vue-router'
 import { signOf } from '@/lib/chartCard'
 
 defineProps({ compact: { type: Boolean, default: false } })
+// GC-TRACK1 k27: the OPEN leg count; an unreadable open_count shows nothing (never the total). "open" only when closed ones exist.
+const legsText = (g) => {
+  const n = g.openCount
+  if (!Number.isInteger(n) || n < 0) return ''
+  const word = n === 1 ? 'leg' : 'legs'
+  return n === g.positionCount ? `${n} ${word}` : `${n} open ${word}`
+}
 const NO_TOTAL = 'No paper total yet: prices are not live'
 const BANNER = 'Paper trades - not real money'
 const EMPTY = 'No paper strategies yet. Build a strategy, then press Add to Paper.'
