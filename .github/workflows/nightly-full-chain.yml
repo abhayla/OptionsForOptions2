@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: read
+  issues: write  # the failure step opens or comments on the `nightly-red` issue
 
 jobs:
   full-chain:
@@ -104,4 +105,25 @@ jobs:
           TEST_DATABASE_URL: postgresql+asyncpg://ofo_app:${{ env.APP_ROLE_PW }}@localhost:5432/ofo_test
           TEST_ADMIN_DATABASE_URL: postgresql+asyncpg://postgres:${{ env.PGPASSWORD }}@localhost:5432/ofo_test
           REDIS_URL: redis://localhost:6379/0
+          # Same as the api job in app-tests.yml (W-067 r2): the full-day finalize scale test.
+          OFO_HISTORY_SCALE_INSTRUMENTS: '1603'
+          OFO_HISTORY_SCALE_BOUND_S: '600'
+          OFO_HISTORY_SCALE_BATCH_BOUND_S: '45'
         run: python -m pytest -c pytest-app.ini -q -rs --durations=30 -p no:cacheprovider -m full_chain
+
+      # A red nightly must be acted on: one open `nightly-red` issue at a time; a later red night comments on it.
+      - name: Open or update the nightly-red issue
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          gh label create nightly-red --color B60205 --description "The nightly full migration chain failed" 2>/dev/null || true
+          existing=$(gh issue list --label nightly-red --state open --json number --jq '.[0].number // empty')
+          body="The nightly full migration chain failed on ${GITHUB_SHA}. Run: ${RUN_URL}"
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "$body"
+          else
+            gh issue create --label nightly-red --title "Nightly full migration chain is red" --body "$body"
+          fi
