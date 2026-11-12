@@ -25,3 +25,5 @@ list sorting, no code) is unaffected.
 - Business call: only you can say whether a dev-database migration counts as the VPS work the contract forbids.
 - Until answered: k10 stays PARTIAL (built + tests, no screenshot); k19 runs on main's code on strategy 136 if the
   PC is unlocked before 15:30.
+- A2 ANSWERED 2026-11-12 ~15:10 (owner in chat: "Wherever you have question, go with your recommendations"):
+  allowed; 0052 applied to ofo_dev, k10 screenshot taken on held condor strategy 137.
