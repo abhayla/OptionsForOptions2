@@ -9,7 +9,7 @@ from __future__ import annotations
 import importlib.util
 
 import pytest
-from _migration_replay import VERSIONS, round_trip_sql
+from _migration_replay import VERSIONS, own_step_sql, round_trip_sql
 from ofo.adjustment import playbook_types
 from ofo.errors import gate_slots
 from sqlalchemy import text
@@ -79,7 +79,7 @@ async def test_upgrade_creates_and_seeds_downgrade_drops_and_upgrade_again_resto
 
 
 async def test_downgrade_is_refused_with_a_count_while_a_user_playbook_exists(admin_engine):
-    own_down, _, _, _ = round_trip_sql(MIGRATION)
+    own_down, _ = own_step_sql(MIGRATION)
     async with admin_engine.connect() as conn:
         trans = await conn.begin()
         try:

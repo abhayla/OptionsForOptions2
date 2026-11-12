@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 
 import pytest
-from _migration_replay import round_trip_sql
+from _migration_replay import own_step_sql, round_trip_sql
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 
@@ -152,7 +152,7 @@ async def test_ac4_downgrade_is_refused_naming_the_table_while_a_marked_leg_is_s
     naming the table; the same for such a leg only in strategy_history (append-only) and only in strategy_versions
     (0022: never deleted, definition frozen): the 0011 validator would refuse to load any of them, so the refusal does
     not depend on the value."""
-    own_down, _, _, _ = round_trip_sql(MIGRATION)
+    own_down, _ = own_step_sql(MIGRATION)
     async with admin_engine.connect() as conn:
         trans = await conn.begin()
         try:

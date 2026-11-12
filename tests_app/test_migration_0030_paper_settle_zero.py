@@ -8,7 +8,7 @@ of its index that day". Real PostgreSQL only; every test rolls back. The round t
 from __future__ import annotations
 
 import pytest
-from _migration_replay import round_trip_sql
+from _migration_replay import own_step_sql, round_trip_sql
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from test_migration_0028_paper_orders import _contracts, _privileges, _scalar
@@ -57,7 +57,7 @@ async def test_upgrade_relaxes_the_check_for_settle_only_and_adds_the_index_down
 
 
 async def test_downgrade_is_refused_while_a_zero_price_settle_exists(admin_engine):
-    own_down, _, _, _ = round_trip_sql(MIGRATION)
+    own_down, _ = own_step_sql(MIGRATION)
     async with admin_engine.connect() as conn:
         trans = await conn.begin()
         try:

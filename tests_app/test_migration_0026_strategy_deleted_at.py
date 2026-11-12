@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 
 import pytest
-from _migration_replay import later_than, recorded, round_trip_sql
+from _migration_replay import later_than, own_step_sql, recorded
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 
@@ -110,7 +110,7 @@ async def _grants(conn) -> list[tuple]:
 
 
 async def test_the_app_role_gains_exactly_update_on_deleted_at(admin_engine):
-    own_down, own_up, _, _ = round_trip_sql(MIGRATION)
+    own_down, own_up = own_step_sql(MIGRATION)
     assert "'post'" in own_up[-1] and "'post'" in own_down[-1]
     later_down = [sql for n in reversed(later_than(MIGRATION)) for sql in recorded(n, "downgrade")]
     later_up = [sql for n in later_than(MIGRATION) for sql in recorded(n, "upgrade")]
@@ -135,7 +135,7 @@ async def test_the_app_role_gains_exactly_update_on_deleted_at(admin_engine):
 
 
 async def test_downgrade_is_refused_while_a_row_is_hidden(admin_engine):
-    own_down, _, _, _ = round_trip_sql(MIGRATION)
+    own_down, _ = own_step_sql(MIGRATION)
     async with admin_engine.connect() as conn:
         trans = await conn.begin()
         try:

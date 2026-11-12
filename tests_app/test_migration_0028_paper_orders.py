@@ -15,7 +15,7 @@ import datetime
 from decimal import Decimal
 
 import pytest
-from _migration_replay import round_trip_sql
+from _migration_replay import own_step_sql, round_trip_sql
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from test_strategy_store import _user, _with_draft
@@ -228,7 +228,7 @@ async def test_one_trigger_writes_one_order_per_contract_never_two_for_one_contr
 
 
 async def test_downgrade_is_refused_while_an_order_placed_after_the_copy_is_stored(admin_engine):
-    own_down, _, _, _ = round_trip_sql(MIGRATION)
+    own_down, _ = own_step_sql(MIGRATION)
     async with admin_engine.connect() as conn:
         trans = await conn.begin()
         try:

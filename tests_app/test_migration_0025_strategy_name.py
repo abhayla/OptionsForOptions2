@@ -17,7 +17,7 @@ import json
 from pathlib import Path
 
 import pytest
-from _migration_replay import VERSIONS, later_than, recorded, round_trip_sql
+from _migration_replay import VERSIONS, later_than, own_step_sql, recorded
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 
@@ -214,7 +214,7 @@ async def _grants(conn) -> list:
 async def test_the_app_role_gains_exactly_insert_and_update_on_name(admin_engine):
     """ADR-048: against the state before 0025, the only new grants are INSERT and UPDATE on strategies.name (plus the
     table-level SELECT every column inherits); the allow-list 'post' check inside each step passes."""
-    own_down, own_up, _, _ = round_trip_sql(MIGRATION)
+    own_down, own_up = own_step_sql(MIGRATION)
     assert "'post'" in own_up[-1] and "'post'" in own_down[-1]
     later_down = [sql for n in reversed(later_than(MIGRATION)) for sql in recorded(n, "downgrade")]
     down = own_down
@@ -241,7 +241,7 @@ async def test_the_app_role_gains_exactly_insert_and_update_on_name(admin_engine
 async def test_downgrade_is_refused_while_a_chosen_name_or_a_rename_entry_is_stored(admin_engine):
     """The downgrade refuses (naming the table) while a strategy holds a name other than the default, and while
     a history entry holds a renamed item."""
-    own_down, _, _, _ = round_trip_sql(MIGRATION)
+    own_down, _ = own_step_sql(MIGRATION)
     async with admin_engine.connect() as conn:
         trans = await conn.begin()
         try:
