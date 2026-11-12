@@ -228,6 +228,31 @@ async def test_core_carry_check_friday_opens_one_record_at_the_1501_close_with_g
         _reset_engine()
 
 
+async def test_k24_day_rule_record_carries_its_what_happened_text(app_engine, monkeypatch):
+    """GC-TRACK1 k24 (ADR-267 amendment, case 2026-11-06 record 158): the carry check's record has a non-empty condition
+    that names the rule, read through the inbox the owner sees."""
+    from ofo_app.routes.adjustment_opportunities import InboxOut, inbox_body  # noqa: PLC0415
+    sid, scn = await _seeded(app_engine, monkeypatch, "ADJ-53")
+    try:
+        now = [FRI_1459]
+        worker = _worker(scn, lambda now=now: now[0])
+        t1500 = FRI_1459 + datetime.timedelta(minutes=1)
+        await _run(worker, now, scn, "23100", t1500, 75)
+        assert len(await _carry_rows(app_engine, sid)) == 1 and worker.errors == [], worker.errors
+        async with app_engine.connect() as conn:
+            rows = await playbook_store.inbox(conn, "owner")
+        carry_rows = [r for r in rows if r.suggestion.rule_id == CARRY_RID]
+        out = InboxOut.model_validate(inbox_body(carry_rows)).model_dump(mode="json")
+        records = [r for g in out["groups"] for r in g["records"]]
+        assert len(records) == 1, out
+        cond = records[0]["condition"]
+        assert isinstance(cond, str) and cond.strip(), records[0]
+        assert PLAYBOOK_DAY_RULE_ACTION_TEXT["0"] in cond, cond
+    finally:
+        await app_db.close_db()
+        _reset_engine()
+
+
 async def test_carry_check_wednesday_opens_no_record(app_engine, monkeypatch):
     sid, scn = await _seeded(app_engine, monkeypatch, "ADJ-54")
     try:

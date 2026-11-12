@@ -479,3 +479,41 @@ async def test_accepting_an_own_playbook_of_another_type_answers_a_named_refusal
     assert render(refused.value.code, **refused.value.slots).what_happened == (
         "The playbook value strategy_type is not valid.")
     assert await pb.plan_for(db, user, stored.id) == first
+
+
+# ---- GC-TRACK1 k25 (item 11): the alert list and the bell leave a soft-deleted strategy's alerts -----------------
+async def _set_deleted(db, sid: int, deleted: bool) -> None:
+    sql = "UPDATE public.strategies SET deleted_at = clock_timestamp() WHERE id = :i" if deleted else (
+        "UPDATE public.strategies SET deleted_at = NULL WHERE id = :i")
+    await db.execute(text(sql), {"i": sid})
+
+
+async def test_k25_a_deleted_strategys_open_record_leaves_the_inbox_and_comes_back_on_restore(db):
+    user = _user()
+    opened = await _open(db, user)
+    other = await _open(db, user)  # a second, never-deleted strategy: unchanged throughout
+    assert {r.suggestion.id for r in await pb.inbox(db, user)} == {opened.id, other.id}
+    await _set_deleted(db, opened.strategy_id, True)
+    assert {r.suggestion.id for r in await pb.inbox(db, user)} == {other.id}, "deleted strategy's record still listed"
+    await _set_deleted(db, opened.strategy_id, False)
+    assert {r.suggestion.id for r in await pb.inbox(db, user)} == {opened.id, other.id}
+
+
+async def test_k25_a_deleted_strategys_paper_alert_leaves_the_list_and_the_unread_count(db):
+    from ofo_app import paper_trigger_store as pts  # noqa: PLC0415
+    user = _user()
+    _, stored = await _with_draft(db, user)
+    kept_s = (await _with_draft(db, user))[1]
+    for s in (stored, kept_s):
+        tid = int(await _scalar(db, "INSERT INTO public.paper_triggers (strategy_id, kind, underlying, direction, "
+                                    "level) VALUES (:s, 'conditional_exit', 'NIFTY', 'below', 22850.00) "
+                                    "RETURNING id", s=s.id))
+        await pts.add_alert(db, s.id, tid, "a", "b")
+    rows, unread = await pts.alerts(db, user)
+    assert len(rows) == unread == len((stored, kept_s))
+    await _set_deleted(db, stored.id, True)
+    rows, unread = await pts.alerts(db, user)
+    assert [r.strategy_id for r in rows] == [kept_s.id] and unread == 1, (rows, unread)
+    await _set_deleted(db, stored.id, False)
+    rows, unread = await pts.alerts(db, user)
+    assert len(rows) == unread == len((stored, kept_s))
