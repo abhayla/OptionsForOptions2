@@ -29,6 +29,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
+from ofo.adjustment.cap_scope import count_capped
 from ofo.adjustment.gate_rows import GateRow, GateRows
 from ofo.adjustment.playbook_eval import validate_body
 from ofo.adjustment.playbook_types import BODY_SCHEMA, NAME_MAX, SHOWN_NAMES
@@ -861,7 +862,7 @@ _GATE_LAST = text(
     "FROM public.adjustment_suggestions g JOIN public.strategies s ON s.id = g.strategy_id "
     "WHERE g.strategy_id = :strategy_id AND s.user_ref = :user_ref ORDER BY g.rule_id, g.id DESC")
 _GATE_TODAY = text(
-    "SELECT count(*) FROM public.adjustment_suggestions g JOIN public.strategies s ON s.id = g.strategy_id "  # noqa: S608 constant zone fragment
+    "SELECT g.rule_id FROM public.adjustment_suggestions g JOIN public.strategies s ON s.id = g.strategy_id "  # noqa: S608 constant zone fragment
     "WHERE g.strategy_id = :strategy_id AND s.user_ref = :user_ref "
     f"AND (g.shown_at {IST_SQL_ZONE})::date = :today")
 
@@ -902,10 +903,10 @@ async def gate_rows(conn: Any, user_ref: str, strategy_id: int, today: date) -> 
     await _owned(conn, user_ref, strategy_id)
     params = {"strategy_id": strategy_id, "user_ref": user_ref}
     last = (await conn.execute(_GATE_LAST, params)).all()
-    count = (await conn.execute(_GATE_TODAY, {**params, "today": today})).scalar_one()
+    today_ids = (await conn.execute(_GATE_TODAY, {**params, "today": today})).scalars().all()
     rows = tuple(GateRow(r[0], r[1], r[2], dismissed=r[3] == "dismissed", open=r[3] == "open", id=r[4])
                  for r in last)
-    return GateRows(rows, int(count))
+    return GateRows(rows, count_capped(today_ids))  # ADR-267: watch / day records are not counted
 
 
 _HELD_TODAY = text(

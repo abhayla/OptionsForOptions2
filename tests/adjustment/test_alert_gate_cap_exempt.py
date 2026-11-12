@@ -8,6 +8,7 @@ from decimal import Decimal
 
 import pytest
 from ofo.adjustment import alert_gate as ag
+from ofo.adjustment.cap_scope import cap_exempt, count_capped
 
 DAY = date(2026, 11, 2)
 D = Decimal
@@ -54,4 +55,29 @@ def test_other_rule_still_held_by_cap(rule_id):
 
 @pytest.mark.parametrize("rule_id", ["", None, 5])
 def test_empty_or_non_string_id_is_capped(rule_id):
-    assert ag._cap_exempt(rule_id) is False
+    assert cap_exempt(rule_id) is False
+
+
+def test_count_capped_skips_only_exempt_ids_and_fails_closed():
+    ids = ["watch.level.above", "day.after.1500.exit", "day:x", "T-01", "sit.S-03", "", None, 5]
+    assert count_capped(ids) == 5  # noqa: PLR2004 - T-01, sit.S-03, "", None, 5
+
+
+def _restored_cross(stored, rule_id):
+    state = ag.restore(ag.GateRows((), count_capped(stored)), DAY, {})
+    ev = []
+    for hhmm, v in (("10:40:30", D("1")), ("10:41:30", D("11")), ("10:42:30", D("11"))):
+        state, ev = ag.step(state, now=at(hhmm), preset=PRESET, readings={rule_id: (_spec(rule_id), v)})
+    return state, [e for e in ev if e.rule_id == rule_id]
+
+
+def test_restore_with_two_exempt_records_still_opens_an_automatic_rule():
+    state, _ = _restored_cross(["watch.level.above", "day.after.1500.exit"], "T-01")
+    assert state.opened_today == 1
+    assert state.rule("T-01").record is not None
+
+
+def test_restore_with_two_automatic_and_one_watch_still_holds_the_next_automatic():
+    state, _ = _restored_cross(["T-01", "T-02", "watch.level.above"], "T-03")
+    assert state.opened_today == CAP
+    assert state.rule("T-03").hold is not None and state.rule("T-03").hold.reason == ag.HELD_DAILY_LIMIT

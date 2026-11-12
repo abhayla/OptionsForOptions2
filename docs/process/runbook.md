@@ -114,7 +114,7 @@ regenerated file its `--check`. Red CI: read `gh run view <id> --log-failed`, fi
   (exit 3 = diff not parsed; fails closed). Tests marked `network` hit Zerodha's public instrument list.
 - Background worker (REQ-115 AC-6, ADR-286): start it through the supervisor, which restarts it when it dies (1, 2, 4 .. 60 s
   backoff; gives up after 5 restarts in 10 minutes so the heartbeat watch says "stopped"; a clean exit 0 is not restarted):
-  `python scripts/orchestrator/supervise_worker.py` (same as `-- python -m ofo_app.background`; run it with the env the worker needs).
+  `python scripts/orchestrator/supervise_worker.py` (same as `-- python -m ofo_app.background`; run it with the env the worker needs). Stop the supervisor with `taskkill /PID <pid> /T /F`: without /T the worker it started keeps running (measured 12 Nov: the child outlived `taskkill /PID <supervisor> /F`).
 - `python scripts/alembic_migration_guard.py` (no empty migrations); `python scripts/generate_openapi.py --out <file>`.
 - Frontend, in `frontend/`: `npm run lint`, `npm run format:check`, `npm run test:run`, `npm run build`,
   `npx playwright test` (needs the API and preview servers `app-tests.yml` starts). Stop every server you start.
