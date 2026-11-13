@@ -75,7 +75,7 @@ async def test_the_rule_check_route_flags_t07_at_the_plan_target(app_db_url, mon
     out = await _check(sid)
     t07 = next(x for x in out["results"] if x["trigger_id"] == "T-07")
     assert (t07["kind"], t07["threshold"]) == ("flag", "0.5000"), t07  # before the fix: threshold 50, no flag
-    assert "(rule 0.5000 %)" in t07["condition"] and "before charges" in t07["condition"]  # item C: value + basis
+    assert "target of 0.5%" in t07["condition"] and "before charges" in t07["condition"]  # item C: value + basis
 
 
 async def test_the_watcher_lister_hands_the_evaluator_the_plan_target(app_db_url, monkeypatch):
