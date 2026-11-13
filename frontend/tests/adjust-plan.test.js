@@ -4,7 +4,7 @@
 // proven on the ADJ-02 scenario in tests_app/test_adjustment_plan.py). Every expected string is the answer's own text.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
-import { createMemoryHistory, createRouter } from 'vue-router'
+import { createMemoryHistory, createRouter, routerKey } from 'vue-router'
 import StrategyBuilderPage from '@/pages/StrategyBuilderPage.vue'
 import { netLegsFromBook } from '@/lib/paperDrafts'
 import REAL from './fixtures/paper-book-63.json'
@@ -353,5 +353,22 @@ describe('REQ-161 AC-1: the sheet opens after the paper orders are placed, never
     await flushPromises()
     expect(calls.filter((c) => c.url === PATH)).toHaveLength(0)
     expect(document.body.querySelector('[data-testid="plan-sheet"]')).toBeNull()
+  })
+})
+
+// GC-ICFIX u161/u162 (issue 7, REQ-158 AC-6): Customise triggers opens THIS trade's own rules, never a shared playbook.
+describe('Customise triggers works on this trade only', () => {
+  it.each([[9], [1]])('playbook %i (own shared / system): opens the trade\'s own rules, never a playbook link', async (playbookId) => {
+    answers[`GET ${PATH}`] = sheetAnswer({ prefill: { ...PREFILL_9, playbook_id: playbookId } })
+    const push = vi.fn()
+    const w = mount(AdjustPlanSheet, { attachTo: document.body, props: { open: true, strategyId: 70 }, global: { provide: { [routerKey]: { push } } } })
+    await flushPromises()
+    mounted.push(w)
+    await t(w, 'plan-customise').trigger('click')
+    expect(push).toHaveBeenCalledTimes(1)
+    expect(push.mock.calls[0][0]).toBe('/strategies/adjustments?trade=70')
+    expect(push.mock.calls[0][0]).not.toContain('playbook=')
+    expect(calls.filter((c) => c.method !== 'GET')).toEqual([]) // nothing is written by opening the editor
+    expect(w.emitted('close')).toHaveLength(1)
   })
 })

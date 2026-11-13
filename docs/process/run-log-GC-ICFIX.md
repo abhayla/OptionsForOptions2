@@ -12,3 +12,10 @@
 - 2026-11-13 17:22 IST u002b ADR-300 written (assistant call: guided builder warns on a condor outside the entry guide). Time exit: no row (ADR-238).
 - 2026-11-13 17:22 IST u002b REQ-109 AC-10 aligned with ADR-263; "Start tracking" replaced by "Add to Paper" in REQ-161 and REQ-109 (ADR-207 (1)); stage rows added for ADR-294..300.
 - 2026-11-13 17:22 IST u002b Decision rows written under the owner-approved contract of 13 Nov (standing-direction freeze: owner's explicit words, defect repair).
+- 2026-11-13 18:59 IST ADR-301 written (owner Q1: Profit left / Loss left after all charges; REQ-109 AC-9 corrected).
+- 2026-11-13 18:59 IST ADR-302 written (owner Q2: Profit left not capped at Max profit; one explaining line).
+- 2026-11-13 18:59 IST ADR-303 written (owner Q3: paid charges in Booked, close cost in Unbooked; Booked + Unbooked = Total).
+- 2026-11-13 18:59 IST ADR-304 written (assistant call: a saved plan Target acts, equal value included; screen limits come from the rule check itself; basis of "% of max profit" recorded as it stands).
+- 2026-11-13 18:59 IST u124's plan line "never above max profit" is replaced by ADR-302 (owner, 13 Nov).
+- 2026-11-13 18:59 IST Issue 2 red twice (card derived limits beside the rule check); independent Opus review done; round 3 reads the rule check's own limits (ADR-304 (3)).
+- 2026-11-13 20:13 IST Branch tidy after merging issues 1, 3/4 (server + screens + split), 6, 7: openapi regenerated (no diff, the merge was right), inventory checked (no repeated keys; the generator's --check passes), ADR-305 stage row added, lint ratchet: main OK (3748) -> branch 5 rules rose (E501, F821, PLR0913, PLR2004, RUF059) -> fixed, OK (3748).

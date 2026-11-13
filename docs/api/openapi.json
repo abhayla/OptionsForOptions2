@@ -7353,6 +7353,26 @@
             "title": "Booked",
             "type": "string"
           },
+          "booked_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked After"
+          },
+          "booked_after_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked After Text"
+          },
           "booked_text": {
             "title": "Booked Text"
           },
@@ -7609,6 +7629,30 @@
             ],
             "title": "Loss Left"
           },
+          "loss_left_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "const": "unlimited",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Loss Left After"
+          },
+          "loss_left_after_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Loss Left After Text"
+          },
           "loss_left_text": {
             "anyOf": [
               {},
@@ -7728,6 +7772,30 @@
             ],
             "title": "Profit Left"
           },
+          "profit_left_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "const": "unlimited",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profit Left After"
+          },
+          "profit_left_after_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profit Left After Text"
+          },
           "profit_left_text": {
             "anyOf": [
               {},
@@ -7736,6 +7804,26 @@
               }
             ],
             "title": "Profit Left Text"
+          },
+          "recover": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recover"
+          },
+          "recover_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recover Text"
           },
           "state": {
             "enum": [
@@ -7801,6 +7889,26 @@
               }
             ],
             "title": "Unbooked"
+          },
+          "unbooked_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unbooked After"
+          },
+          "unbooked_after_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unbooked After Text"
           },
           "unbooked_text": {
             "anyOf": [
@@ -8375,6 +8483,26 @@
             "title": "Booked",
             "type": "string"
           },
+          "booked_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked After"
+          },
+          "booked_after_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked After Text"
+          },
           "booked_text": {
             "title": "Booked Text"
           },
@@ -8631,6 +8759,30 @@
             ],
             "title": "Loss Left"
           },
+          "loss_left_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "const": "unlimited",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Loss Left After"
+          },
+          "loss_left_after_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Loss Left After Text"
+          },
           "loss_left_text": {
             "anyOf": [
               {},
@@ -8751,6 +8903,30 @@
             ],
             "title": "Profit Left"
           },
+          "profit_left_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "const": "unlimited",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profit Left After"
+          },
+          "profit_left_after_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profit Left After Text"
+          },
           "profit_left_text": {
             "anyOf": [
               {},
@@ -8759,6 +8935,26 @@
               }
             ],
             "title": "Profit Left Text"
+          },
+          "recover": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recover"
+          },
+          "recover_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recover Text"
           },
           "state": {
             "enum": [
@@ -8824,6 +9020,26 @@
               }
             ],
             "title": "Unbooked"
+          },
+          "unbooked_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unbooked After"
+          },
+          "unbooked_after_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unbooked After Text"
           },
           "unbooked_text": {
             "anyOf": [
@@ -8908,6 +9124,26 @@
           "booked": {
             "title": "Booked",
             "type": "string"
+          },
+          "booked_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked After"
+          },
+          "booked_after_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked After Text"
           },
           "booked_text": {
             "title": "Booked Text"
@@ -9126,6 +9362,26 @@
               }
             ],
             "title": "Unbooked"
+          },
+          "unbooked_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unbooked After"
+          },
+          "unbooked_after_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unbooked After Text"
           },
           "unbooked_text": {
             "anyOf": [
@@ -10991,6 +11247,21 @@
           "cells"
         ],
         "title": "RowOut",
+        "type": "object"
+      },
+      "RulesIn": {
+        "additionalProperties": false,
+        "properties": {
+          "body": {
+            "additionalProperties": true,
+            "title": "Body",
+            "type": "object"
+          }
+        },
+        "required": [
+          "body"
+        ],
+        "title": "RulesIn",
         "type": "object"
       },
       "SaveIn": {
@@ -13249,6 +13520,26 @@
             "title": "Booked",
             "type": "string"
           },
+          "booked_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked After"
+          },
+          "booked_after_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked After Text"
+          },
           "booked_text": {
             "anyOf": [
               {},
@@ -13389,6 +13680,26 @@
               }
             ],
             "title": "Unbooked"
+          },
+          "unbooked_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unbooked After"
+          },
+          "unbooked_after_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unbooked After Text"
           },
           "unbooked_text": {
             "anyOf": [
@@ -13784,6 +14095,26 @@
             "title": "Booked",
             "type": "string"
           },
+          "booked_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked After"
+          },
+          "booked_after_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked After Text"
+          },
           "booked_text": {
             "anyOf": [
               {},
@@ -13957,6 +14288,26 @@
               }
             ],
             "title": "Unbooked"
+          },
+          "unbooked_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unbooked After"
+          },
+          "unbooked_after_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unbooked After Text"
           },
           "unbooked_text": {
             "anyOf": [
@@ -17832,6 +18183,94 @@
           }
         },
         "summary": "Edit Plan"
+      }
+    },
+    "/api/strategies/{strategy_id}/adjustment-plan/rules": {
+      "get": {
+        "description": "Issue 7 (REQ-158 AC-6): \"Customise triggers\" from a trade opens THIS trade's rules: its plan copy, else a copy of\nthe type's active playbook that is written only when the user saves. Never a playbook row.",
+        "operationId": "read_rules_api_strategies__strategy_id__adjustment_plan_rules_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_id",
+            "required": true,
+            "schema": {
+              "title": "Strategy Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybookFullOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Rules"
+      },
+      "put": {
+        "description": "Save this trade's rules: the strategy's plan body only (``accept_plan`` writes the plan row; no playbook row).",
+        "operationId": "save_rules_api_strategies__strategy_id__adjustment_plan_rules_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_id",
+            "required": true,
+            "schema": {
+              "title": "Strategy Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RulesIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybookFullOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Save Rules"
       }
     },
     "/api/strategies/{strategy_id}/alert-style": {

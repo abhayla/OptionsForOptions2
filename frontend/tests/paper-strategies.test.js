@@ -194,7 +194,7 @@ describe('lib/tracking readers', () => {
   it('readTracking reads EXITED with booked and unbooked', () => {
     const v = readTracking({ state: 'EXITED', paper_pnl: '55.00', paper_pnl_text: '+55.00', booked: '55.00', booked_text: '+55.00', unbooked: '0.00', unbooked_text: '0.00', legs: [], detections: [] })
     expect(v.kind).toBe('exited')
-    expect(v.text).toBe('Paper P&L (not real): +55.00 - exited')
+    expect(v.text).toBe('Paper P&L (not real): +55.00 (before charges) - exited')
     expect(v.figure).toBe('+55.00')
     expect(v.booked).toBe('+55.00')
     expect(v.unbooked).toBe('0.00')

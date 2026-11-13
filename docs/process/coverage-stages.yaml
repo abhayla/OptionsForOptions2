@@ -460,6 +460,11 @@ decisions:
   ADR-298: S6.7         # practice behaves exactly like a real trade; Not enough funds stays as a message
   ADR-299: S6.7         # status words Draft / Running / Completed
   ADR-300: S6.7         # guided builder shows a condor outside the entry guide with a warning line
+  ADR-301: S6.7         # profit left and loss left are after all charges, same basis as max profit
+  ADR-302: S6.7         # profit left is not capped at max profit; one line explains the recovery of the current loss
+  ADR-303: S6.7         # paid charges sit in booked P&L, estimated close cost in unbooked; they add up to total
+  ADR-304: S6.7         # a saved plan Target acts (T-07 on); screen limits come from the rule check itself
+  ADR-305: S6.7         # the plan box is what the app does; an empty Target means no target alert
 
 questions:
   Q210: 4a              # external: Zerodha's written answer; ADR-051 covers the owner's own account

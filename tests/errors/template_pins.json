@@ -2695,6 +2695,10 @@
     "sha256": "482b4c8189ccdd9a09c8e439465e8f71ba9411cdfe10617eaa5c98692278f8f5",
     "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"
   },
+  "explanation:plan_rules_name": {
+    "sha256": "a7443cee90caf5dbdb13992d8f64599688a3589e4cbe5f14ab77a7f956d85567",
+    "reviewed": "pending owner read"
+  },
   "explanation:playbook_system_active_again": {
     "sha256": "b05d679bd3cad8ed24a09e7232020044fae2c27bb5f181e152afda16dfeab4a8",
     "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"
