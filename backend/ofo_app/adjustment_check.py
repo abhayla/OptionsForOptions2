@@ -120,7 +120,7 @@ class CheckAnswer:
 
 
 def _engine_legs(position: Position) -> tuple[Leg, ...]:
-    return tuple(Leg(Action(x.side), Instrument(x.type), x.strike, x.expiry, x.lots * position.lot, x.entry)
+    return tuple(Leg(Action(x.side), Instrument(x.type), x.strike, x.expiry, x.lots * position.lot, x.entry, exact_entry=True)
                  for x in position.legs)
 
 
