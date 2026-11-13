@@ -366,3 +366,19 @@ async def test_t19_list_line_names_the_same_approach_and_cost_as_the_check(app_d
     g = _mine(await _inbox(), sid)[0]
     listed = next(r for r in g["records"] if r["rule_id"] == "T-19")
     assert listed["condition"] == flag["condition"]
+
+
+async def test_a_record_stored_with_its_target_figures_reads_back_as_the_target_sentence(app_db_url, monkeypatch):
+    """ADR-294 (2) (u103 round 2): the `target` key of the record's timeline survives the INSERT and the list prints the
+    sentence; a record stored without it keeps the percent line. Real case: strategy 143, +61.75 before, -218.85 after."""
+    sid = await _clean(app_db_url, await _seeded(app_db_url, monkeypatch, "ADJ-02"))
+    async with app_db_url.begin() as conn:
+        await playbook_store.open_suggestion(
+            conn, "owner", sid, "T-07", trigger_id="T-07", stage="Early", value=Decimal("1.7700"),
+            threshold=Decimal("1.0000"), group=f"{sid}-g1", source=playbook_store.SOURCE_SYSTEM, cmp="ge",
+            label="Profit reaches this % of max profit", unit="%", limit=Decimal("1.0000"),
+            target={"before": "61.75", "after": "-218.85", "reason": None})
+    rec = next(r for r in await _records(app_db_url, sid) if r.rule_id == "T-07")
+    assert rec.target == (Decimal("61.75"), Decimal("-218.85"), None)
+    listed = next(r for r in _mine(await _inbox(), sid)[0]["records"] if r["rule_id"] == "T-07")
+    assert listed["condition"] == "Profit before charges +Rs 61.75 reached your target of 1%; after charges \u2212Rs 218.85"

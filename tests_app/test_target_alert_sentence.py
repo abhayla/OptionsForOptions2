@@ -8,13 +8,16 @@ Spec basis: ADR-294 (2); ADR-008; ADR-263; ADR-245 (the value actually used); AD
 """
 from __future__ import annotations
 
+import dataclasses
 import datetime
+import inspect
 import json
 import pathlib
 from decimal import Decimal as D
 from types import SimpleNamespace
 
 import pytest
+import t19_support as s
 from ofo.adjustment import alert_gate
 from ofo.adjustment import playbook_eval as pe
 from ofo.adjustment.approaches import Position, PositionLeg
@@ -184,3 +187,73 @@ async def test_the_worker_stores_both_figures_with_the_record(monkeypatch):
                               tracked=SimpleNamespace(adjustments_used=0))
     await background.DbGateStore().apply(watched, [alert_gate.Opened("T-07", AT, 1, D("1"), D("1.77"), None)], ctx)
     assert stamped["target"] == {"before": "61.75", "after": "-218.85", "reason": None}
+
+
+# ---- round 2 ----
+NOT_READ = "Charges paid on broker orders are not read by this app, so the result after charges is not shown."
+
+
+def test_a_real_book_strategy_gets_its_own_true_reason_not_a_false_could_not_be_worked_out():
+    got = check.after_charges_of(D("61.75"), _position(), LIVE, None, RATES, real_book=True)
+    assert got == (None, "charges_not_read")
+    line = check.condition_line("T-07", LABEL, "%", "1.7700", "1.0000", target=check.TargetFigures(D("61.75"), None, got[1]))
+    assert str(line) == f"Profit before charges +Rs 61.75 reached your target of 1%; after charges not available: {NOT_READ}"
+    assert "could not be worked out" not in str(line)
+
+
+def test_the_paper_reasons_are_unchanged_and_a_paper_book_is_not_marked_real():
+    assert check.after_charges_of(D("61.75"), _position(), LIVE, None, RATES) == (None, "not_priced")
+    assert check.after_charges_of(D("61.75"), _position(), LIVE, None, None) == (None, "rates_unavailable")
+    assert check.after_charges_of(D("1056.25"), _position(), LIVE, _paid(), RATES)[1] is None
+    assert s.inputs(s.load("ADJ-02"))[0].real_book is False  # the field that tells them apart: Tracked.real_book
+
+
+def _adj02_state(tracked=None, **kw) -> pe.StrategyState:
+    from ofo.marketdata.spot_source import SpotAnswer
+    sc = s.load("ADJ-02")
+    base, m, spot = s.inputs(sc)
+    return check.state_of(tracked or base, m, SpotAnswer(spot, "feed", m.now), None, s.RATES, True, s.body_of(sc),
+                          config=s.PREFS.approach, user_values=None, strategy_layer=None, entry_facts=None,
+                          resolved=None, **kw)
+
+
+def test_state_of_wiring_reaches_the_sentence_for_paper_and_real_book():
+    st = _adj02_state()
+    assert st.pnl is not None and st.pnl_after is not None and st.pnl_after_reason is None
+    assert str(check.condition_line("T-07", LABEL, "%", "1", "1", target=check.target_of(st))).startswith("Profit before charges ")
+    assert "; after charges " in str(check.condition_line("T-07", LABEL, "%", "1", "1", target=check.target_of(st)))
+    real = _adj02_state(dataclasses.replace(s.inputs(s.load("ADJ-02"))[0], paid_charges=None, real_book=True))
+    assert (real.pnl_after, real.pnl_after_reason) == (None, "charges_not_read")
+    assert NOT_READ in str(check.condition_line("T-07", LABEL, "%", "1", "1", target=check.target_of(real)))
+
+
+@pytest.mark.parametrize("boom", [KeyError("side"), ValueError("bad"), AttributeError("rates")])
+def test_a_failure_in_the_optional_figure_never_stops_the_rule_check(monkeypatch, boom):
+    def fail(*a, **k):
+        raise boom
+    monkeypatch.setattr(check, "open_exit_charges", fail)
+    st = _adj02_state()
+    assert st.pnl is not None and st.pnl_after is None and st.pnl_after_reason == "not_priced"
+    body = s.body_of(s.load("ADJ-02"))
+    for tid in ("T-06", "T-07"):
+        body["triggers"][tid]["on"] = True
+        body["triggers"][tid].pop("greyed", None)
+        body["rules"].append({"id": tid, "any_of": [tid]})
+    ev = pe.evaluate(body, st, gap_until="09:30")
+    assert {"T-06", "T-07"} <= {r.rule_id for r in ev.results} | {v.rule_id for v in ev.values}
+    assert "after charges not available: " in str(check.condition_line("T-07", LABEL, "%", "1", "1", target=check.target_of(st)))
+
+
+@pytest.mark.parametrize("bad", [{"before": "61.75", "after": [1]}, {"before": "61.75", "after": "abc"},
+                                 {"before": ["61.75"], "after": "1"}, {"before": "61.75", "after": {"x": 1}}])
+def test_a_malformed_stored_target_falls_back_to_the_percent_line_for_that_row_only(bad):
+    rec = playbook_store.Suggestion(9, 143, "T-07", "T-07", "Early", D("1.7700"), D("1.0000"), AT, "open", None,
+                                    [{"cmp": "ge", "label": LABEL, "unit": "%", "limit": "1.0000", "target": bad}])
+    assert rec.target is None
+    assert str(condition_text(rec)) == f"{LABEL}: 1.7700 % before charges (rule 1.0000 %)"
+
+
+def test_the_playbook_test_route_passes_the_target_figures_too():
+    from ofo_app.routes import playbooks
+    src = inspect.getsource(playbooks)
+    assert src.count("target=check.target_of(state)") == 1 and "result_out(r, None, target=" in src
