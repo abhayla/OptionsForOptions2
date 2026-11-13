@@ -260,6 +260,8 @@ describe('trade mode: the trade\'s own rules (issue 7)', () => {
   it('a refused save shows the server\'s sentence and writes nothing else', async () => {
     const w = await openTrade()
     answers[`PUT ${RULES}`] = refusal('The rules could not be saved.')
+    await w.get('[data-testid=pb-step-when]').trigger('click')
+    await w.get('[data-testid=pb-value-T-01-1]').setValue('0.2')
     await w.get('[data-testid=pb-trade-save]').trigger('click')
     await flushPromises()
     expect(w.get('[data-testid=pb-refusal]').text()).toContain('The rules could not be saved.')

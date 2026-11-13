@@ -29,6 +29,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query
+from ofo.adjustment import playbook_stages as stages
 from ofo.adjustment.playbook_text import name_shown
 from ofo.adjustment.playbook_types import SHOWN_NAMES
 from ofo.charges import ChargeRates
@@ -43,6 +44,8 @@ from ofo_app import settings_in_force as in_force_mod
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier, Money
 from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure
+from ofo_app.playbook_body_out import PlaybookBody
+from ofo_app.routes import playbooks as pb_routes
 from ofo_app.routes.adjustment import (
     MarketReader,
     RestSpotReader,
@@ -481,6 +484,74 @@ async def _write(strategy_id: int, data: PlanIn, edit: bool, db: Any, user_ref: 
         body = with_overrides(plan.body if keep and plan is not None else source.body, data, _kind_of(tracked, money))
         saved = await store.accept_plan(db, user_ref, strategy_id, source.id, body)
         return await _sheet(db, user_ref, strategy_id, stype, saved, None, user_values, money, _kind_of(tracked, money))
+    return await _run(db, work)
+
+
+class RulesIn(_In):
+    body: dict[str, Any]
+
+
+def _rules_out(stype: str, body: dict, at: datetime.datetime) -> Any:
+    """The trade's own rules in the editor's shape. ``id`` is 0 on purpose: this is no playbook row, so nothing
+    can address a shared playbook through it (issue 7)."""
+    return pb_routes.PlaybookFullOut.model_validate({
+        "id": 0, "name": render_explanation("plan_rules_name", type=SHOWN_NAMES[stype]), "type": stype,
+        "type_name": render_explanation("adjust_check_type_name", name=SHOWN_NAMES[stype]), "is_system": False,
+        "status": None, "draft": False, "active": False, "version": 1, "updated_at": at,
+        "body": PlaybookBody.of(body), "situation_kinds": pb_routes.situation_kinds(body)})
+
+
+async def _rules_scope(strategy_id: int, db: Any, user_ref: str, tracked_reader: TrackedReader,  # noqa: PLR0913
+                       market_reader: MarketReader, rest_reader: RestSpotReader, ctx: MarketContext | None,
+                       rates: ChargeRates | None) -> tuple[str, store.Plan | None]:
+    tracked = await _own_strategy(strategy_id, tracked_reader, rates if isinstance(rates, ChargeRates) else None)
+    stype, plan = await _type_of(db, user_ref, strategy_id, tracked, market_reader, rest_reader, ctx)
+    if stype is None:
+        raise StrategyRefused(_GENERIC, Failure.CONFLICT)
+    return stype, plan
+
+
+@router.get("/api/strategies/{strategy_id}/adjustment-plan/rules", response_model=pb_routes.PlaybookFullOut)
+async def read_rules(  # noqa: PLR0913 - FastAPI dependencies, one per input
+        strategy_id: int, db: Annotated[Any, Depends(get_db)], user_ref: Annotated[str, Depends(current_user_ref)],
+        tracked_reader: Annotated[TrackedReader, Depends(get_tracked_reader)],
+        market_reader: Annotated[MarketReader, Depends(get_market_reader)],
+        rest_reader: Annotated[RestSpotReader, Depends(get_rest_spot_reader)],
+        ctx: Annotated[MarketContext | None, Depends(get_market_context)],
+        rates: Annotated[ChargeRates | None, Depends(load_charge_rates)]) -> Any:
+    """Issue 7 (REQ-158 AC-6): "Customise triggers" from a trade opens THIS trade's rules: its plan copy, else a copy of
+    the type's active playbook that is written only when the user saves. Never a playbook row."""
+    stype, plan = await _rules_scope(strategy_id, db, user_ref, tracked_reader, market_reader, rest_reader, ctx, rates)
+
+    async def work() -> Any:
+        if plan is not None:
+            return _rules_out(stype, plan.body, plan.accepted_at)
+        active = await store.active_for(db, user_ref, stype)
+        return _rules_out(stype, active.body, active.updated_at)
+    return await _run(db, work)
+
+
+@router.put("/api/strategies/{strategy_id}/adjustment-plan/rules", response_model=pb_routes.PlaybookFullOut)
+async def save_rules(  # noqa: PLR0913 - FastAPI dependencies, one per input
+        strategy_id: int, data: RulesIn, db: Annotated[Any, Depends(get_db)],
+        user_ref: Annotated[str, Depends(current_user_ref)],
+        tracked_reader: Annotated[TrackedReader, Depends(get_tracked_reader)],
+        market_reader: Annotated[MarketReader, Depends(get_market_reader)],
+        rest_reader: Annotated[RestSpotReader, Depends(get_rest_spot_reader)],
+        ctx: Annotated[MarketContext | None, Depends(get_market_context)],
+        rates: Annotated[ChargeRates | None, Depends(load_charge_rates)]) -> Any:
+    """Save this trade's rules: the strategy's plan body only (``accept_plan`` writes the plan row; no playbook row)."""
+    stype, plan = await _rules_scope(strategy_id, db, user_ref, tracked_reader, market_reader, rest_reader, ctx, rates)
+
+    async def work() -> Any:
+        try:
+            pb_routes.precheck(stype, data.body)  # the editor's own check: body shape, keys, stage coverage
+        except stages.StageProblem as exc:
+            raise pb_routes.refused(exc) from None
+        keep = plan is not None and plan.playbook_id is not None
+        source_id = plan.playbook_id if keep and plan is not None else (await store.active_for(db, user_ref, stype)).id
+        saved = await store.accept_plan(db, user_ref, strategy_id, source_id, data.body)
+        return _rules_out(stype, saved.body, saved.accepted_at)
     return await _run(db, work)
 
 

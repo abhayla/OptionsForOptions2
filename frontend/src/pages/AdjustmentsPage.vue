@@ -12,7 +12,10 @@
       <PreferencesTab />
     </div>
     <div v-show="screenTab === 'playbooks'" id="adj-panel-playbooks" role="tabpanel" aria-labelledby="adj-tab-playbooks">
-    <header class="flex flex-wrap items-end gap-3 rounded-lg border border-line bg-surface p-3">
+    <header v-if="tradeId" class="rounded-lg border border-line bg-surface p-3">
+      <p v-if="current" class="text-sm font-medium" data-testid="pb-trade-note">{{ current.name }}</p>
+    </header>
+    <header v-else class="flex flex-wrap items-end gap-3 rounded-lg border border-line bg-surface p-3">
       <label class="flex flex-col gap-1 text-xs font-medium text-ink-muted">Strategy type
         <select :value="typeKey" class="h-9 min-w-48 rounded-lg border border-line bg-surface px-2 text-sm text-ink" data-testid="pb-type" @change="pickType($event.target.value)">
           <option v-for="t in types" :key="t.key" :value="t.key">{{ t.name }}</option>
@@ -35,7 +38,11 @@
     <p v-if="refusal" class="mt-3 rounded-lg border border-error bg-error-soft px-3 py-2 text-sm text-error" role="alert" data-testid="pb-refusal">{{ refusal }}</p>
     <p v-if="notice" class="mt-3 rounded-lg border border-line bg-surface-muted px-3 py-2 text-sm" data-testid="pb-notice">{{ notice }}</p>
 
-    <div v-if="current && work" class="mt-3 flex flex-wrap items-end gap-2">
+    <div v-if="current && work && tradeId" class="mt-3 flex flex-wrap items-end gap-2">
+      <button type="button" class="btn btn-primary" data-testid="pb-trade-save" :disabled="!dirty" @click="saveTrade">Save changes</button>
+      <span v-if="dirty" class="chip border-warn bg-warn-soft text-warn text-xs font-semibold" data-testid="pb-dirty">Unsaved changes</span>
+    </div>
+    <div v-else-if="current && work" class="mt-3 flex flex-wrap items-end gap-2">
       <button v-if="!current.active" type="button" class="btn" data-testid="pb-activate" @click="activate">Make active</button>
       <button v-if="!current.is_system" type="button" class="btn" data-testid="pb-save" :disabled="!dirty" @click="saveInPlace">Save changes</button>
       <button v-if="!current.is_system" type="button" class="btn" data-testid="pb-delete" @click="remove">Delete</button>
@@ -186,7 +193,10 @@ import { STEPS, EXPIRY_KINDS, addStage, clone, dayRuleNotChecked, isDirty, label
   testRow, valuesOf } from '@/lib/playbookEditor'
 
 const route = useRoute()
-const SCREEN_TABS = [{ key: 'playbooks', label: 'Playbooks' }, { key: 'preferences', label: 'Adjustment settings' }]
+const tradeQuery = route?.query?.trade
+const tradeId = typeof tradeQuery === 'string' && /^[0-9]+$/.test(tradeQuery) ? tradeQuery : null
+const tradeRules = () => `/strategies/${tradeId}/adjustment-plan/rules`
+const SCREEN_TABS =[{ key: 'playbooks', label: 'Playbooks' }, { key: 'preferences', label: 'Adjustment settings' }]
 const screenTab = ref('playbooks')
 const types = ref([])
 const labels = ref(labelMaps(null)) // every word the body does not carry (GET /playbooks/labels)
@@ -308,6 +318,8 @@ async function act(call, after) {
 const activate = () => act(() => api.post(`/playbooks/${current.value.id}/activate`), async (pb) => { show(pb); await loadList(pb.id) })
 const saveInPlace = () => act(() => api.put(`/playbooks/${current.value.id}`, { body: work.value, version: current.value.version }), async (pb) => { show(pb); await loadList(pb.id) })
 const saveAsNew = () => act(() => api.post('/playbooks', { type: typeKey.value, name: newName.value, body: work.value }), async (pb) => { newName.value = ''; show(pb); await loadList(pb.id) })
+// issue 7: from a trade, the rules are the trade's own plan copy; the only write is this one, to that trade's plan
+const saveTrade = () => act(() => api.put(tradeRules(), { body: work.value }), (pb) => show(pb))
 const remove = () => act(() => api.delete(`/playbooks/${current.value.id}`), async (out) => { await loadList(); notice.value = out.message ? said(out.message) : null })
 
 async function runTest() {
@@ -345,8 +357,22 @@ async function openFromLink(id) {
   }
 }
 
+/** ?trade=<strategy id> (the plan sheet's Customise triggers): that trade's own rules; no playbook list, no shared row. */
+async function openTrade() {
+  const seq = ++readSeq
+  try {
+    const res = await api.get(tradeRules())
+    if (seq !== readSeq) return
+    typeKey.value = res.data.type
+    show(res.data)
+  } catch (err) {
+    if (seq === readSeq) fail(err) // the editor stays closed; the server's sentence says why
+  }
+}
+
 onMounted(async () => {
   await loadLabels()
+  if (tradeId) { await openTrade(); return }
   const linked = route?.query?.playbook
   if (typeof linked === 'string' && /^[0-9]+$/.test(linked)) {
     try { types.value = (await api.get('/playbooks/types')).data.types } catch (err) { fail(err); return }

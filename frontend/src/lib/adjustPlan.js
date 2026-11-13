@@ -70,5 +70,5 @@ export async function sendPlan(client, strategyId, body, edit) {
   return readPlan(data)
 }
 
-/** "Customise triggers": the playbook editor route, opening that playbook. */
-export const customiseUrl = (playbookId) => `/strategies/adjustments?playbook=${playbookId}`
+/** "Customise triggers": the editor opened on THIS trade's own rules (issue 7), never on a playbook other trades follow. */
+export const customiseUrl = (strategyId) => `/strategies/adjustments?trade=${strategyId}`

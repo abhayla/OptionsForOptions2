@@ -100,6 +100,7 @@ async def test_a_trade_with_no_plan_customises_its_own_copy_and_nothing_shared_m
     b = await _seeded(app_db_url, monkeypatch, "ADJ-02")
     assert a != b and await _plan_count(app_db_url, a) == 0 and await _plan_count(app_db_url, b) == 0
     playbooks, b_resolved = await _playbook_rows(app_db_url), await _resolved(app_db_url, b)
+    monkeypatch.setenv("OFO_SCENARIO", "ADJ-01")  # the market the app reads is the trade's own scenario
     status, read = await _call("GET", rules_path(a))
     assert status == 200, read
     assert read["is_system"] is False and read["active"] is False  # the target is the trade's own copy, never a shared row
@@ -118,10 +119,12 @@ async def test_core_two_trades_customised_differently_keep_their_own_rules(app_d
     b = await _seeded(app_db_url, monkeypatch, "ADJ-02")
     async with app_db_url.connect() as conn:
         active = await playbook_store.active_for(conn, USER, "ic")
+    monkeypatch.setenv("OFO_SCENARIO", "ADJ-02")
     status, out = await _call("POST", plan_path(b), json={"playbook_id": active.id})  # B: "Use playbook as is"
     assert status == 200, out
     b_row, b_resolved, playbooks = await _plan_row(app_db_url, b), await _resolved(app_db_url, b), await _playbook_rows(app_db_url)
     _, read_b = await _call("GET", rules_path(b))
+    monkeypatch.setenv("OFO_SCENARIO", "ADJ-01")
     status, read_a = await _call("GET", rules_path(a))
     assert status == 200 and _t01(read_a["body"]) == "0.2" and _t01(read_b["body"]) != "0.2"  # each shows its own values
     status, saved = await _call("PUT", rules_path(a), json={"body": _changed(read_a["body"], "0.25")})
