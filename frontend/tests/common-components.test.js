@@ -162,6 +162,26 @@ describe('Modal tall content (GC-ICFIX Issue 6)', () => {
   })
 })
 
+describe('Modal status slot (GC-ICFIX Issue 6 round 2)', () => {
+  const tall = '<p data-testid="line">x</p>'
+  it('a status line is outside the scrolling body, before the actions, with a small own scroll; short and tall bodies alike', () => {
+    for (const body of ['<p>short</p>', `<ul>${'<li>o</li>'.repeat(8)}</ul>`]) {
+      const w = mount(Modal, { props: { open: true, title: 'T' }, slots: { default: body, status: tall, actions: '<button>Go</button>' }, attachTo: document.body })
+      const st = w.get('[data-testid="modal-status"]')
+      expect(w.get('[data-testid="modal-body"]').element.contains(st.element)).toBe(false)
+      expect(st.classes()).toEqual(expect.arrayContaining(['shrink-0', 'overflow-y-auto']))
+      expect(st.classes().join(' ')).toMatch(/max-h-/)
+      expect(st.element.compareDocumentPosition(w.get('[data-testid="modal-actions"]').element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+      w.unmount()
+    }
+  })
+  it('no status slot: no status area', () => {
+    const w = mount(Modal, { props: { open: true, title: 'T' }, slots: { default: 'x', actions: '<button>Go</button>' }, attachTo: document.body })
+    expect(w.find('[data-testid="modal-status"]').exists()).toBe(false)
+    w.unmount()
+  })
+})
+
 describe('Drawer (UI-016)', () => {
   const mountDrawer = () =>
     mount(
