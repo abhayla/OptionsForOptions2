@@ -37,6 +37,7 @@ from ofo.engine.book_totals import book_totals
 from ofo.engine.extremes import UNLIMITED, ContractTerms, ExtremesReason, book_breakevens, book_extremes
 from ofo.engine.extremes_charges import (
     BookAfterCharges,
+    after_split,
     book_after_charges,
     open_exit_charges,
     open_round_trip_charges,
@@ -220,6 +221,12 @@ class PaperFigures(ApiModel):
     charges_to_close_text: CatalogueText | None = None
     after_charges_reason: AfterChargesReason | None = None
     after_charges_reason_text: CatalogueText | None = None
+    # GC-ICFIX u123 (ADR-303): Booked after = booked - ALL charges paid; Unbooked after = open-leg P&L - the estimated
+    # charges to close; the two add up to ``total_after`` exactly. Absent with ``after_charges_reason`` (never 0).
+    booked_after: Money | None = None
+    booked_after_text: CatalogueText | None = None
+    unbooked_after: Money | None = None
+    unbooked_after_text: CatalogueText | None = None
 
 
 #: GC-TP R-19b: a figure the list leaves out because the whole strategy is exited (the Paper card says Exited).
@@ -243,6 +250,14 @@ class PaperExtremes(ApiModel):
     # F-94 (ADR-082 (2)): the round-trip charges inside Max Profit / Max Loss, and the sentence that says so
     extremes_charges: Money | None = None
     extremes_charges_text: CatalogueText | None = None
+    # GC-ICFIX u124 (ADR-301, ADR-302): Profit left / Loss left AFTER all charges, not capped; ``recover`` = Profit left
+    # after - Max profit after, only when above it. Absent when the book has no after total (see after_charges_reason).
+    profit_left_after: Extreme = None
+    loss_left_after: Extreme = None
+    profit_left_after_text: CatalogueText | None = None
+    loss_left_after_text: CatalogueText | None = None
+    recover: Money | None = None
+    recover_text: CatalogueText | None = None
 
 
 class PaperBreakevens(ApiModel):
@@ -327,6 +342,10 @@ class PaperTotalsOut(ApiModel):
     charges_to_close_text: CatalogueText | None = None
     after_charges_reason: AfterChargesReason | None = None
     after_charges_reason_text: CatalogueText | None = None
+    booked_after: Money | None = None  # GC-ICFIX u123: the sum of every booked_after; None (never partial) if one absent
+    booked_after_text: CatalogueText | None = None
+    unbooked_after: Money | None = None
+    unbooked_after_text: CatalogueText | None = None
     booked: Money
     booked_text: CatalogueText
     unbooked: Money | None  # None (never a partial sum) when any strategy's unbooked is absent (REQ-109 AC-5)
@@ -680,12 +699,28 @@ def after_charges(view: Any, terms: Mapping[str, ContractTerms], live: Mapping[s
     return book_after_charges(view, paid, open_exit, paid_reason if paid is None else exit_reason)
 
 
+def split_fields(got: AfterSplit) -> dict:
+    """The reply fields of Booked after / Unbooked after (paper book, list and tracking)."""
+    return {"booked_after": _exact(got.booked_after), "booked_after_text": _signed(got.booked_after),
+            "unbooked_after": _exact(got.unbooked_after), "unbooked_after_text": _signed(got.unbooked_after)}
+
+
+def left_fields(got: AfterSplit) -> dict:
+    """The reply fields of Profit left / Loss left after charges and ``recover``."""
+    out = {"recover": _exact(got.recover), "recover_text": _signed(got.recover)}
+    for name, value in (("profit_left_after", got.profit_left_after), ("loss_left_after", got.loss_left_after)):
+        out[name], out[f"{name}_text"] = _extreme(value)
+    return out
+
+
 def _after(orders: Sequence[paper_store.StoredOrder], found: dict[int, tracked_contracts.TrackedContract],  # noqa: PLR0913
            prices: dict[int, paper.Price], charges: dict, underlying: str, rates: ChargeRates | None) -> dict:
     live = {str(cid): p.price for cid, p in prices.items() if paper.is_live(p) and p.price is not None}
     view = net_positions(_paper(orders), live)
-    return after_charges_fields(after_charges(view, terms_of(orders, found), live, charges["charges"],
-                                              charges["charges_reason"], underlying, rates))
+    terms = terms_of(orders, found)
+    got = after_charges(view, terms, live, charges["charges"], charges["charges_reason"], underlying, rates)
+    split = after_split(view, terms, live, underlying, rates, got)
+    return after_charges_fields(got) | split_fields(split) | left_fields(split)
 
 
 async def _load_strategy(db: Any, user_ref: str, strategy_id: int):
@@ -813,7 +848,11 @@ def _after_total(strategies: Sequence[dict]) -> dict:
     absent strategy's reason, never partial."""
     got = sum_after_charges([BookAfterCharges(s["total"], s["total_after"], s["charges_paid"], s["charges_to_close"],
                                               s["after_charges_reason"]) for s in strategies])
+    parts = {k: None if any(s[k] is None for s in strategies) else sum((Decimal(s[k]) for s in strategies), Decimal(0))
+             for k in ("booked_after", "unbooked_after")}  # never a partial sum
     return {"total_after": _exact(got.total_after), "total_after_text": _signed(got.total_after),
+            "booked_after": _exact(parts["booked_after"]), "booked_after_text": _signed(parts["booked_after"]),
+            "unbooked_after": _exact(parts["unbooked_after"]), "unbooked_after_text": _signed(parts["unbooked_after"]),
             "charges_to_close": _exact(got.open_exit),
             "charges_to_close_text": None if got.open_exit is None else render_explanation(PAPER_CHARGES,
                                                                                             amount=got.open_exit),
