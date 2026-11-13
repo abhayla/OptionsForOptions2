@@ -32,6 +32,7 @@ from ofo.adjustment.strategy_type import strike_gap_of, type_of
 from ofo.charges import ChargeRates
 from ofo.charges.paper_charges import PaperFill
 from ofo.engine.extremes import ContractTerms
+from ofo.engine.extremes_charges import after_split
 from ofo.engine.legs import Action, Instrument, Leg
 from ofo.engine.orderbook import BookView
 from ofo.errors.explanations import render_explanation
@@ -62,7 +63,7 @@ from ofo_app.routes.outcome import (
     get_market_context,
     load_charge_rates,
 )
-from ofo_app.routes.paper import AfterChargesReason, after_charges, after_charges_fields, paid_charges
+from ofo_app.routes.paper import AfterChargesReason, after_charges, after_charges_fields, paid_charges, split_fields
 from ofo_app.routes.planned_entry import get_live_feed, hold_until_priced
 from ofo_app.routes.strategies import StrategyRefused, refused_answer
 from ofo_app.scenario_guard import guard_paper_order  # dev/test scenario guard; reaches no Execute code
@@ -146,6 +147,10 @@ class AfterCharges(ApiModel):
     charges_to_close_text: CatalogueText | None = None
     after_charges_reason: AfterChargesReason | None = None
     after_charges_reason_text: CatalogueText | None = None
+    booked_after: Money | None = None  # ADR-303: booked - ALL charges paid; with unbooked_after = total_after
+    booked_after_text: CatalogueText | None = None
+    unbooked_after: Money | None = None
+    unbooked_after_text: CatalogueText | None = None
 
 
 class TrackingOut(AfterCharges):
@@ -269,7 +274,8 @@ def _after(bk: _Book, legs: list[paper.TrackedLeg], figures: BookView,  # noqa: 
     option = {i: t.instrument is not Instrument.FUT for i, t in terms.items()}
     paid, why = paid_charges([PaperFill(o.kind, o.side, o.quantity, o.price, option[o.instrument_id])  # type: ignore[arg-type]
                               for o in bk.orders], underlying, rates)
-    return after_charges_fields(after_charges(figures, terms, live, paid, why, underlying, rates))
+    got = after_charges(figures, terms, live, paid, why, underlying, rates)
+    return after_charges_fields(got) | split_fields(after_split(figures, terms, live, underlying, rates, got))
 
 
 def _book_figures(bk: _Book, view: paper.TrackingView | None

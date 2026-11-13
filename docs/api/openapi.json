@@ -7249,6 +7249,26 @@
             "title": "Booked",
             "type": "string"
           },
+          "booked_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked After"
+          },
+          "booked_after_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked After Text"
+          },
           "booked_text": {
             "title": "Booked Text"
           },
@@ -7505,6 +7525,30 @@
             ],
             "title": "Loss Left"
           },
+          "loss_left_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "const": "unlimited",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Loss Left After"
+          },
+          "loss_left_after_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Loss Left After Text"
+          },
           "loss_left_text": {
             "anyOf": [
               {},
@@ -7624,6 +7668,30 @@
             ],
             "title": "Profit Left"
           },
+          "profit_left_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "const": "unlimited",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profit Left After"
+          },
+          "profit_left_after_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profit Left After Text"
+          },
           "profit_left_text": {
             "anyOf": [
               {},
@@ -7632,6 +7700,26 @@
               }
             ],
             "title": "Profit Left Text"
+          },
+          "recover": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recover"
+          },
+          "recover_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recover Text"
           },
           "state": {
             "enum": [
@@ -7697,6 +7785,26 @@
               }
             ],
             "title": "Unbooked"
+          },
+          "unbooked_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unbooked After"
+          },
+          "unbooked_after_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unbooked After Text"
           },
           "unbooked_text": {
             "anyOf": [
@@ -8271,6 +8379,26 @@
             "title": "Booked",
             "type": "string"
           },
+          "booked_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked After"
+          },
+          "booked_after_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked After Text"
+          },
           "booked_text": {
             "title": "Booked Text"
           },
@@ -8527,6 +8655,30 @@
             ],
             "title": "Loss Left"
           },
+          "loss_left_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "const": "unlimited",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Loss Left After"
+          },
+          "loss_left_after_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Loss Left After Text"
+          },
           "loss_left_text": {
             "anyOf": [
               {},
@@ -8647,6 +8799,30 @@
             ],
             "title": "Profit Left"
           },
+          "profit_left_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "const": "unlimited",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profit Left After"
+          },
+          "profit_left_after_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profit Left After Text"
+          },
           "profit_left_text": {
             "anyOf": [
               {},
@@ -8655,6 +8831,26 @@
               }
             ],
             "title": "Profit Left Text"
+          },
+          "recover": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recover"
+          },
+          "recover_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recover Text"
           },
           "state": {
             "enum": [
@@ -8720,6 +8916,26 @@
               }
             ],
             "title": "Unbooked"
+          },
+          "unbooked_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unbooked After"
+          },
+          "unbooked_after_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unbooked After Text"
           },
           "unbooked_text": {
             "anyOf": [
@@ -8804,6 +9020,26 @@
           "booked": {
             "title": "Booked",
             "type": "string"
+          },
+          "booked_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked After"
+          },
+          "booked_after_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked After Text"
           },
           "booked_text": {
             "title": "Booked Text"
@@ -9022,6 +9258,26 @@
               }
             ],
             "title": "Unbooked"
+          },
+          "unbooked_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unbooked After"
+          },
+          "unbooked_after_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unbooked After Text"
           },
           "unbooked_text": {
             "anyOf": [
@@ -13145,6 +13401,26 @@
             "title": "Booked",
             "type": "string"
           },
+          "booked_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked After"
+          },
+          "booked_after_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked After Text"
+          },
           "booked_text": {
             "anyOf": [
               {},
@@ -13285,6 +13561,26 @@
               }
             ],
             "title": "Unbooked"
+          },
+          "unbooked_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unbooked After"
+          },
+          "unbooked_after_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unbooked After Text"
           },
           "unbooked_text": {
             "anyOf": [
@@ -13680,6 +13976,26 @@
             "title": "Booked",
             "type": "string"
           },
+          "booked_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked After"
+          },
+          "booked_after_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked After Text"
+          },
           "booked_text": {
             "anyOf": [
               {},
@@ -13853,6 +14169,26 @@
               }
             ],
             "title": "Unbooked"
+          },
+          "unbooked_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unbooked After"
+          },
+          "unbooked_after_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unbooked After Text"
           },
           "unbooked_text": {
             "anyOf": [
