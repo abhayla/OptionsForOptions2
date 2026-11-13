@@ -25,7 +25,7 @@
           <dl class="mt-1 grid grid-cols-2 gap-x-3 gap-y-1 text-sm">
             <template v-for="r in rows" :key="r.id">
               <dt class="text-ink-muted">{{ r.label }}</dt>
-              <dd class="text-right tabular-nums" :data-testid="`drawer-state-${r.id}`">{{ r.value }}</dd>
+              <dd class="text-right tabular-nums" :data-testid="`drawer-state-${r.id}`"><AfterChargesTap :breakdown="r.breakdown ?? null">{{ r.value }}</AfterChargesTap></dd>
             </template>
           </dl>
         </section>
@@ -72,6 +72,7 @@ import { computed, nextTick, ref, watch } from 'vue'
 import api, { NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import { NO_CHANGE_ID, refusalText } from '@/lib/adjustCompare'
+import AfterChargesTap from '@/components/common/AfterChargesTap.vue'
 import { CURRENT_STATE_BODY, LAPSED_TEXT, LOADING_TEXT, PICK_NOTE, availableOf, compareUrl, replyRows } from '@/lib/adjustDrawer'
 
 const props = defineProps({

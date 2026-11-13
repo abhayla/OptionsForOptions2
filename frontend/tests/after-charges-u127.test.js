@@ -129,7 +129,7 @@ describe('u127 AfterChargesTap component', () => {
 
 describe('u127 each screen offers the breakdown', () => {
   const open = async (tap) => { await tap.trigger('click'); return tap.element.closest('[data-testid="after-tap"]') ? tap : tap }
-  const tapAround = (root, figId) => root.findAll('[data-testid="after-tap"]').find((x) => x.find(`[data-testid="${figId}"]`).exists())
+  const tapAround = (root, figId) => root.find(`[data-testid="${figId}"] [data-testid="after-tap"]`) // the tap sits inside the figure's own element
 
   it('trade page book panel: closed 141 and the open sold position', async () => {
     const book = (over) => ({ ...clone().strategies.find((s) => s.state === 'LIVE'), orders: [], ...over })
@@ -140,7 +140,7 @@ describe('u127 each screen offers the breakdown', () => {
     await open(t(w, 'after-tap'))
     expect(t(w, 'breakdown-paid').text()).toBe('Charges paid: 36.09')
     expect(t(w, 'breakdown-close').text()).toBe('Estimated charges to close: 25.95')
-    expect(t(w, 'book-total').text()).toBe('+1,237.96')
+    expect(t(w, 'after-tap').text()).toBe('+1,237.96')
   })
   it('trade page book panel: no after figure -> before + reason; paused and older reply -> no tap', async () => {
     const book = (over) => ({ ...clone().strategies.find((s) => s.state === 'LIVE'), orders: [], total_text: '-32.50', ...over })
@@ -194,14 +194,14 @@ describe('u127 each screen offers the breakdown', () => {
     answers['GET /paper/strategies'] = ok(p)
     w = await show()
     card = w.get(`[data-testid="paper-group"][data-strategy="${liveId}"]`)
-    expect(tapAround(card, 'paper-total')).toBeUndefined()
+    expect(tapAround(card, 'paper-total').exists()).toBe(false)
   })
 
   it('Profit left / Loss left: before and after rows only', async () => {
     const w = mount(SummaryCards, { props: { left: paperLeftOf({ profit_left_text: '+2,900.00', loss_left_text: '-3,600.00', profit_left_after_text: '+2,764.83', loss_left_after_text: '-3,735.17', total_after_text: '-10.00', after_charges_reason: null, charges_paid: '30.00' }), maxProfit: '+6,437.38', maxLoss: '-1,000.00' } })
     await tapAround(w, 'profit-left').trigger('click')
     expect(w.findAll('[data-testid^="breakdown-"]').map((x) => x.text())).toEqual(['Before charges: +2,900.00', 'After charges: +2,764.83'])
-    expect(t(w, 'profit-left').text()).toBe('+2,764.83')
+    expect(t(w, 'after-tap').text()).toBe('+2,764.83')
   })
 
   it('tracking box headline', async () => {

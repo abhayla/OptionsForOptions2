@@ -25,7 +25,7 @@ export function cardRows(body) {
   // GC-ICFIX (ADR-263): the after-charges figure, labelled; else the before figure, labelled (no label on a dash)
   const pnl = afterFigure(body, typeof body?.paper_pnl_text === 'string' && body.paper_pnl_text.trim() !== '' ? body.paper_pnl_text.trim() : null)
   return [
-    { id: 'pnl', label: `Paper P&L (not real) ${pnl.label}`.trim(), value: text(pnl.text) },
+    { id: 'pnl', label: `Paper P&L (not real) ${pnl.label}`.trim(), value: text(pnl.text), breakdown: pnl.breakdown },
     { id: 'booked', label: 'Booked', value: text(body?.booked_text) },
     { id: 'unbooked', label: 'Not yet booked', value: text(body?.unbooked_text) },
     { id: 'index', label: 'Index', value: text(body?.index?.level) },

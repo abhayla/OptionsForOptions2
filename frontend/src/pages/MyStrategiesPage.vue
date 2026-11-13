@@ -20,6 +20,9 @@ import { afterFigure } from '@/lib/tracking'
 // u125: the server's sentence for why charges / the net are absent (an older server sends none: the Completed reason, else a plain word)
 // the net counts only when the helper calls it an after figure (a reply that also sends a reason is not trusted)
 const net = (s) => { const a = afterFigure(s, null); return a.kind === 'after' ? a.text : null }
+// u127 (ADR-263): one tap on the net opens the breakdown (before = the Final P&L text as sent)
+const netBreakdown = (s) => afterFigure(s, typeof s.final_pnl_text === 'string' && s.final_pnl_text.trim() !== '' ? s.final_pnl_text.trim() : null).breakdown
+import AfterChargesTap from '@/components/common/AfterChargesTap.vue'
 const notAvailable = (s) => s.after_charges_reason_text ?? s.completed_reason_text ?? 'the server sent no figure'
 import { STRATEGY_NAME_MAX, legsLine, noMatchText, plainName, renameStrategy, searchStrategies, strategyLabel, trackedText } from '@/lib/saveDraft'
 import { useOrderPath } from '@/lib/orderPath'
@@ -154,7 +157,7 @@ async function confirmRename(row) {
             <span data-testid="row-final-pnl">Final P&amp;L {{ s.final_pnl_text ?? s.completed_reason_text }}</span>
             <!-- GC-ICFIX u125 (ADR-259, ADR-263): charges paid and the net after charges, the server's fields as sent; absent -> "not available: <its reason>", never 0 -->
             <span data-testid="row-charges"> · Charges {{ s.charges_paid ?? `not available: ${notAvailable(s)}` }}</span>
-            <span data-testid="row-net-after"> · Net after charges {{ net(s) ?? `not available: ${notAvailable(s)}` }}</span>
+            <span data-testid="row-net-after"> · Net after charges <AfterChargesTap :breakdown="netBreakdown(s)">{{ net(s) ?? `not available: ${notAvailable(s)}` }}</AfterChargesTap></span>
             <span data-testid="row-adjustments"> · Adjustments made {{ s.adjustments_made ?? s.completed_reason_text }}</span>
             <span data-testid="row-adjustment-cost"> · Adjustment cost {{ s.adjustment_cost_text ?? s.completed_reason_text }}</span>
           </p>

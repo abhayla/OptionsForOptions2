@@ -30,12 +30,12 @@
                  and the reason; prices not live: no number. Not capped: a larger Profit left carries the server's recover line. -->
             <div class="min-w-0">
               <span class="text-xs text-ink-muted" data-testid="profit-left-label">{{ `${PROFIT_LEFT_LABEL} ${left.profit.label}`.trim() }}</span>
-              <div class="num mt-0.5 whitespace-nowrap rounded bg-profit-soft px-1.5 py-0.5 text-sm font-semibold text-profit" data-testid="profit-left">{{ left.profit.text ?? '-' }}</div>
+              <div class="num mt-0.5 whitespace-nowrap rounded bg-profit-soft px-1.5 py-0.5 text-sm font-semibold text-profit" data-testid="profit-left"><AfterChargesTap :breakdown="left.profit.breakdown ?? null">{{ left.profit.text ?? '-' }}</AfterChargesTap></div>
               <p v-if="left.recover" class="max-w-[14rem] text-xs text-ink-muted" data-testid="profit-left-recover">{{ left.recover }}</p>
             </div>
             <div class="min-w-0">
               <span class="text-xs text-ink-muted" data-testid="loss-left-label">{{ `${LOSS_LEFT_LABEL} ${left.loss.label}`.trim() }}</span>
-              <div class="num mt-0.5 whitespace-nowrap rounded bg-loss-soft px-1.5 py-0.5 text-sm font-semibold text-loss" data-testid="loss-left">{{ left.loss.text ?? '-' }}</div>
+              <div class="num mt-0.5 whitespace-nowrap rounded bg-loss-soft px-1.5 py-0.5 text-sm font-semibold text-loss" data-testid="loss-left"><AfterChargesTap :breakdown="left.loss.breakdown ?? null">{{ left.loss.text ?? '-' }}</AfterChargesTap></div>
             </div>
             <p v-if="left.profit.reason || left.loss.reason" class="max-w-xs text-xs text-ink-muted" data-testid="left-after-reason">{{ left.profit.reason ?? left.loss.reason }}</p>
           </template>
@@ -122,6 +122,7 @@
 
 <script setup>
 import { computed } from 'vue'
+import AfterChargesTap from '@/components/common/AfterChargesTap.vue'
 import { istTime, groupMoney } from '@/lib/displayFormat'
 import { displayOrDash, exactLine } from '@/lib/summaryFigures'
 import FigureHint from '@/components/common/FigureHint.vue'

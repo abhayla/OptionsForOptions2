@@ -25,7 +25,7 @@
       <!-- GC-ICFIX u123 (ADR-263): the headline total is the server's after-charges text, labelled; else the before text, labelled, with the reason -->
       <div>
         <dt class="text-ink-muted" data-testid="book-total-label">Total P&amp;L {{ total.label }}</dt>
-        <dd class="num text-sm font-semibold" data-testid="book-total">{{ total.text ?? '-' }}</dd>
+        <dd class="num text-sm font-semibold" data-testid="book-total"><AfterChargesTap :breakdown="total.breakdown">{{ total.text ?? '-' }}</AfterChargesTap></dd>
         <p v-if="total.reason" class="max-w-xs text-ink-muted" data-testid="book-after-reason">{{ total.reason }}</p>
       </div>
       <div>
@@ -89,6 +89,7 @@ import { computed, ref, watch } from 'vue'
 import api from '@/services/api'
 import { istClock } from '@/lib/displayFormat'
 import { afterFigure, pausedText } from '@/lib/tracking'
+import AfterChargesTap from '@/components/common/AfterChargesTap.vue'
 import { withAsOf } from '@/lib/paperList'
 import { usePaperRefresh } from '@/lib/usePaperRefresh'
 import HeldNote from '@/components/strategy/HeldNote.vue'

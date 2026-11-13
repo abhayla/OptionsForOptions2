@@ -180,7 +180,7 @@ const serverText = (v) => (typeof v === 'string' && v.trim() !== '' ? v.trim() :
  *  `reason` = extremes_reason_text. Nothing is added up, capped or compared here (ADR-008). */
 export function paperLeftOf(book, pausedText = null) {
   if (!book) return null
-  const one = (k) => afterFigure(book, serverText(book[`${k}_left_text`]), pausedText, `${k}_left_after_text`)
+  const one = (k) => afterFigure(book, serverText(book[`${k}_left_text`]), pausedText, `${k}_left_after_text`, []) // u127: a left figure's breakdown is before / after only
   const profit = one('profit')
   const recover = serverText(book.recover_text)
   return {
