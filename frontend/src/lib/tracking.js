@@ -135,12 +135,12 @@ export const BEFORE_CHARGES = '(before charges)'
  *  `pausedText` the screen's own paused sentence (REQ-109 AC-5). kind 'after': the server's total_after_text, only when it
  *  sent no reason with it. 'paused': prices not live, no number. Else 'before': the before text with the server's reason
  *  sentence; an older server (no after fields) lands here too, so a before figure is never shown under an "after" label. */
-export function afterFigure(src, before, pausedText = null) {
+export function afterFigure(src, before, pausedText = null, afterKey = 'total_after_text') {
   const reason = src?.after_charges_reason ?? null
   const raw = src?.after_charges_reason_text // a sentence, or {what_happened} on the replies that word it as an explanation
   const why = serverText(raw && typeof raw === 'object' ? raw.what_happened : raw)
   if (reason === 'prices_not_live') return { kind: 'paused', text: null, label: '', reason: pausedText ?? why }
-  const after = serverText(src?.total_after_text)
+  const after = serverText(src?.[afterKey]) // u124: the same rule for booked_after_text / profit_left_after_text / ...
   if (after !== null && reason === null) return { kind: 'after', text: after, label: AFTER_CHARGES, reason: null }
   return { kind: 'before', text: before, label: before === null ? '' : BEFORE_CHARGES, reason: why ?? (before === null ? pausedText : null) }
 }

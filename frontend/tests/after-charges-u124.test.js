@@ -105,7 +105,8 @@ describe('u124 Booked / Unbooked P&L (practice list: card and totals strip)', ()
     await flushPromises()
     return w
   }
-  const live = (d) => d.strategies.find((s) => s.state === 'LIVE')
+  const liveId = REAL.strategies.find((s) => s.state === 'LIVE').strategy_id // fixed before a test changes the state
+  const live = (d) => d.strategies.find((s) => s.strategy_id === liveId)
   const cardOf = (w, d) => w.get(`[data-testid="paper-group"][data-strategy="${live(d).strategy_id}"]`)
   const labels = (c) => c.findAll('[data-testid="paper-figure-label"]').map((x) => x.text())
 
@@ -155,7 +156,7 @@ describe('u124 Booked / Unbooked P&L (practice list: card and totals strip)', ()
   })
   it('E: a closed trade (strategy 141): booked -435.95 and a real Unbooked 0.00 are figures', async () => {
     const d = clone()
-    Object.assign(live(d), { state: 'EXITED', total_after_text: '-435.95', booked_after_text: '-435.95', unbooked_after_text: '0.00', after_charges_reason: null, after_charges_reason_text: null })
+    Object.assign(live(d), { total_after_text: '-435.95', booked_after_text: '-435.95', unbooked_after_text: '0.00', after_charges_reason: null, after_charges_reason_text: null })
     answers['GET /paper/strategies'] = ok(d)
     const w = await show()
     const c = cardOf(w, d)

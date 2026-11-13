@@ -26,14 +26,18 @@
              The Max Profit / Max Loss below are then the book's original figures (the page passes them). -->
         <div v-if="left" class="mb-2 flex flex-nowrap items-start gap-x-3" data-testid="summary-left-row">
           <template v-if="!left.reason">
+            <!-- GC-ICFIX u124 (ADR-301, ADR-302): the after-charges text with "(after charges)", else the before text with "(before charges)"
+                 and the reason; prices not live: no number. Not capped: a larger Profit left carries the server's recover line. -->
             <div class="min-w-0">
-              <span class="text-xs text-ink-muted">{{ PROFIT_LEFT_LABEL }}</span>
-              <div class="num mt-0.5 whitespace-nowrap rounded bg-profit-soft px-1.5 py-0.5 text-sm font-semibold text-profit" data-testid="profit-left">{{ left.profit ?? '-' }}</div>
+              <span class="text-xs text-ink-muted" data-testid="profit-left-label">{{ `${PROFIT_LEFT_LABEL} ${left.profit.label}`.trim() }}</span>
+              <div class="num mt-0.5 whitespace-nowrap rounded bg-profit-soft px-1.5 py-0.5 text-sm font-semibold text-profit" data-testid="profit-left">{{ left.profit.text ?? '-' }}</div>
+              <p v-if="left.recover" class="max-w-[14rem] text-xs text-ink-muted" data-testid="profit-left-recover">{{ left.recover }}</p>
             </div>
             <div class="min-w-0">
-              <span class="text-xs text-ink-muted">{{ LOSS_LEFT_LABEL }}</span>
-              <div class="num mt-0.5 whitespace-nowrap rounded bg-loss-soft px-1.5 py-0.5 text-sm font-semibold text-loss" data-testid="loss-left">{{ left.loss ?? '-' }}</div>
+              <span class="text-xs text-ink-muted" data-testid="loss-left-label">{{ `${LOSS_LEFT_LABEL} ${left.loss.label}`.trim() }}</span>
+              <div class="num mt-0.5 whitespace-nowrap rounded bg-loss-soft px-1.5 py-0.5 text-sm font-semibold text-loss" data-testid="loss-left">{{ left.loss.text ?? '-' }}</div>
             </div>
+            <p v-if="left.profit.reason || left.loss.reason" class="max-w-xs text-xs text-ink-muted" data-testid="left-after-reason">{{ left.profit.reason ?? left.loss.reason }}</p>
           </template>
           <p v-else class="text-xs text-ink-muted" data-testid="extremes-reason">{{ left.reason }}</p>
         </div>
@@ -144,8 +148,8 @@ const props = defineProps({
   valueReason: { type: String, default: null },
   fundsShare: { type: Object, default: null }, // summary.funds_share as sent (null unless the margin needed was read)
   estimateLabel: { type: String, default: null }, // the reply's output_label ("estimated from spot", ADR-061)
-  // GC-TP step 3b2: Drafts Mode only - { profit, loss, reason }: the paper book's profit_left_text / loss_left_text as sent, or
-  // the words for its extremes_reason; null outside Drafts Mode (the summary is then unchanged)
+  // GC-TP step 3b2: Drafts Mode only - paperLeftOf(book): { profit, loss } (afterFigure results), recover line, and the words for
+  // extremes_reason; null outside Drafts Mode (the summary is then unchanged)
   left: { type: Object, default: null },
 })
 // REQ-081 AC-10 (basis changed by ADR-207 (8)): the margin needed the percentages are of and when Zerodha was read, in
