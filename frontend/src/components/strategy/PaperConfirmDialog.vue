@@ -41,12 +41,15 @@
     <p class="mt-3 text-xs text-ink-muted" data-testid="paper-not-real">{{ PAPER_NOT_REAL_TEXT }}</p>
     <!-- fix/paper-dialog-safe (ADR-017): a stored order is never offered again; an answer of unknown outcome sends the user to the
          Orderbook first and keeps Confirm locked for PAPER_UNKNOWN_HOLD_MS; a refusal (4xx: nothing stored) unlocks after an edit -->
-    <p v-if="state === 'placed'" class="mt-2 text-sm font-medium" role="status" data-testid="paper-placed">{{ PAPER_PLACED_NOT_REFRESHED_TEXT }}</p>
-    <p v-else-if="state === 'unknown'" class="mt-2 text-sm text-red-700" role="alert" data-testid="paper-unknown">
-      {{ PAPER_UNKNOWN_TEXT }}
-      <button type="button" class="ml-1 font-semibold text-accent underline" data-testid="paper-open-orderbook" @click="emit('orderbook')">{{ PAPER_OPEN_ORDERBOOK_LABEL }}</button>
-    </p>
-    <p v-else-if="error" class="mt-2 text-sm text-red-700" role="alert" data-testid="paper-error">{{ error }}</p>
+    <!-- GC-ICFIX Issue 6: these result lines sit in the frame's pinned status area (not the scrolling body), so they show with the buttons -->
+    <template v-if="state === 'placed' || state === 'unknown' || error" #status>
+      <p v-if="state === 'placed'" class="text-sm font-medium" role="status" data-testid="paper-placed">{{ PAPER_PLACED_NOT_REFRESHED_TEXT }}</p>
+      <p v-else-if="state === 'unknown'" class="text-sm text-red-700" role="alert" data-testid="paper-unknown">
+        {{ PAPER_UNKNOWN_TEXT }}
+        <button type="button" class="ml-1 font-semibold text-accent underline" data-testid="paper-open-orderbook" @click="emit('orderbook')">{{ PAPER_OPEN_ORDERBOOK_LABEL }}</button>
+      </p>
+      <p v-else-if="error" class="text-sm text-red-700" role="alert" data-testid="paper-error">{{ error }}</p>
+    </template>
     <template #actions>
       <button type="button" class="h-10 rounded-lg border border-line px-3 font-medium" data-testid="paper-cancel" @click="emit('cancel')">{{ state === 'placed' ? 'Close' : 'Cancel' }}</button>
       <button v-if="state !== 'placed'" type="button" class="h-10 rounded-lg bg-accent px-3 font-medium text-white disabled:opacity-50" :disabled="!canConfirm" data-testid="paper-confirm-button" @click="confirm">Confirm</button>
