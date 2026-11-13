@@ -1040,7 +1040,7 @@ PLAN_SHEET_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
     "title": "When tracking starts: this strategy's plan", "playbook": "Playbook", "target": "Target",
     "stop": "Stop", "max_adjustments": "Max adjustments", "time_exit": "Time exit",
     "customise": "Customise triggers", "use_as_is": "Use playbook as is", "save": "Save plan", "close": "Close",
-    "plan_entry": "Plan", "edit": "Edit plan", "no_plan": "No plan saved yet", "hour": "Hour", "minute": "Minute",
+    "plan_entry": "Plan", "edit": "Edit plan", "no_plan": "No plan saved yet: default rules apply", "set_plan": "Set plan", "hour": "Hour", "minute": "Minute",
 })
 
 #: Why a table cell has no value (the cell's `reason`), by key. Each is one reviewed template `table_reason_<key>`.

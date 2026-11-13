@@ -2780,8 +2780,8 @@
     "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"
   },
   "explanation:plan_sheet_no_plan": {
-    "sha256": "47af597af302a866e22bb37b97bfb67ce6a42851e98852fd81b54d0ba3eb03fe",
-    "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"
+    "sha256": "938b83a211dc4f58e824dfc2c99b25cb039b52e434c7beb4ed7aaa9cd3244791",
+    "reviewed": "pending owner read"
   },
   "explanation:plan_sheet_hour": {
     "sha256": "b6eefc6e750190f5fb6ce6eaa55cd1530fdc38f50a7cdb07787b94a73bcb2b4a",
@@ -2792,8 +2792,8 @@
     "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"
   },
   "labels:plan_sheet": {
-    "sha256": "82d557c98a1e3b546679565d3792e1249baf82e22a43f3b134cf1298951ab638",
-    "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"
+    "sha256": "8faede64c95388a6ba142bf9d4b27b1e7c7b0e982e12821ef48b1abf05a24cfe",
+    "reviewed": "pending owner read"
   },
   "explanation:playbook_test_no_strategy": {
     "sha256": "a83e6e666655fcf1e74989f7b4d9e7caf9efda46eb91f20ffb0361d11ed03384",
@@ -4053,6 +4053,10 @@
   },
   "paper_index_price_unavailable": {
     "sha256": "104987f4caf316dd4eddb4927c478d5fb7f8526b0a4d5b82ef81ee71f5eaa016",
+    "reviewed": "pending owner read"
+  },
+  "explanation:plan_sheet_set_plan": {
+    "sha256": "161bdbe021d2945a5f3029df2fe94dc76eae65098c4c9ef456747157b29bac75",
     "reviewed": "pending owner read"
   }
 }

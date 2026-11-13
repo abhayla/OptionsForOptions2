@@ -1,7 +1,10 @@
 // ADR-247 (replaces GC-MU A4's browser table): the stops are worded once, by the server (settings_in_force.stops_of ->
 // `stop_words` on GET /api/strategies/{id}/adjustment-plan). The browser shows that text and never builds it from the
 // playbook body's guards; the editor's draft preview leaves the stop out.
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
+
+// the card reads its plan itself (GC-ICFIX u112): the reply below is what the mocked read answers
+vi.mock('@/services/api', () => ({ default: { get: () => Promise.resolve({ data: globalThis.__PLAN_REPLY }) } }))
 import { mount, flushPromises } from '@vue/test-utils'
 import { planLine, summaryLines, labelMaps } from '../src/lib/playbookEditor.js'
 import { readPlan } from '../src/lib/adjustPlan.js'
@@ -20,8 +23,8 @@ const REPLY = {
 
 describe('the plan stop line is the server words, never a browser reading of the guards', () => {
   it('a reply with stop_words and a body with only a max-loss guard shows the server words', async () => {
+    globalThis.__PLAN_REPLY = REPLY
     const w = mount(PlanEntry, { props: { strategyId: 70 }, global: { stubs: { AdjustPlanSheet: true } } })
-    w.vm.read = readPlan(REPLY)
     await flushPromises()
     expect(w.get('[data-testid=plan-entry-guards]').text()).toContain(SERVER_WORDS)
     // the editor's preview of a body holding only a max-loss guard words no stop of its own

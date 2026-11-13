@@ -44,9 +44,13 @@ export function readPlan(body) {
   }
 }
 
+/** The plan read's own limit (GC-ICFIX issue 2: under load it took 12-18 s); the client's global 10 s stays for every other request. */
+export const PLAN_READ_TIMEOUT_MS = 30000
+
 /** GET the sheet; `pickId` refills every field from that playbook (REQ-161 AC-2). Throws the client error. */
 export async function fetchPlan(client, strategyId, pickId = null) {
-  const { data } = await client.get(pickId === null ? planPath(strategyId) : `${planPath(strategyId)}?playbook_id=${pickId}`)
+  const { data } = await client.get(pickId === null ? planPath(strategyId) : `${planPath(strategyId)}?playbook_id=${pickId}`,
+    { timeout: PLAN_READ_TIMEOUT_MS })
   return readPlan(data)
 }
 
