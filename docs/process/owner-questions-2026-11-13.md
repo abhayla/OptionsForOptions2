@@ -38,6 +38,32 @@ booked + unbooked = total after charges, and a closed trade shows its full cost 
 Waits: the booked / unbooked lines of u123 (the total itself does not wait).
 ANSWERED 13 Nov 2026 (question tool): Paid in booked, close cost in unbooked (Recommended) -> ADR-303.
 
+## Q4. The "needed to recover the current loss" line shows on every trade from the moment it is placed. Keep it so?
+
+Parked 13 Nov 23:2x IST (after 22:00: no question box). Nothing waits on it.
+Business call: it changes a line the user reads on every fresh trade.
+Spec basis: ADR-306 (4): the line shows X = the current loss = minus the Total P&L after charges. ADR-302: the line
+appears when Profit left is larger than Max profit. Neither says anything about a loss that is only the charges.
+Real case: an iron condor just placed has Total P&L after charges -241.43 (charges paid plus the estimated cost to
+close, no price move). Max profit 2,764.83, Profit left 3,006.26, and the line reads "includes Rs 241.43 needed to
+recover the current loss". True, and it adds up, but it appears before the market has moved at all.
+Why a user reads the line: to understand why Profit left is bigger than Max profit.
+Recommendation: keep it as built. It is the truth, and hiding it below some size would bring back a Profit left that
+looks larger than Max profit with no explanation. If the wording reads oddly on a fresh trade, change the words for
+that case only ("includes Rs 241.43 of charges to earn back"), not the rule.
+Options: (a) keep as built (recommended); (b) different words when the loss is only charges; (c) hide the line below
+a threshold (not recommended: an unexplained gap returns).
+
+## Q5. Profit left and Loss left: answered
+
+ANSWERED 13 Nov 2026 (question tool): Make it add up (Recommended) -> ADR-306 (Profit left = Max profit - Total;
+Loss left = Max loss - Total; all after charges). This replaced the profit-left part of ADR-301.
+
+## Q6. Plan box against the rule set: answered
+
+ANSWERED 13 Nov 2026 (chat): the plan box wins; an empty Target means no target alert -> ADR-305. Sentence for an
+emptied Target approved ("Target: no target is set for this trade").
+
 ## Notes decided by the run (information, not questions)
 
 - Target rule and the adjustment count "3 of 2": see the run log.
