@@ -561,7 +561,8 @@ SPLIT_KEYS = ("booked_after", "unbooked_after", "profit_left_after", "loss_left_
 
 
 async def _one_put(db, orders: list[tuple[str, int, str, str]], live: str | None, rates=RATES, stale: bool = False):
-    """The single reply and the list row of a one-contract book; ``stale``: the quote is 10 minutes old (REQ-109 AC-5)."""
+    """The single reply and the list row of a one-contract book; ``stale``: the quote is 10 minutes old (REQ-109
+    AC-5)."""
     app, stored, provider, _clock, last = await _setup(db)
     c0 = stored.saved.contract_ids[0]
     await paper_store.place(db, stored.user_ref, stored.id, [_new(c0, side, qty, price, kind)
@@ -592,7 +593,8 @@ async def test_core_closed_book_booked_after_is_booked_minus_all_charges_and_unb
 async def test_open_book_split_adds_up_and_left_figures_are_after_all_charges(db):
     # SELL 65 @ 100, now 80: Booked after = 0 - 36.09 = -36.09; Unbooked after = 1,300.00 - 25.95 = 1,274.05;
     # sum 1,237.96. Profit left before 5,200.00 (80 x 65) -> 5,200.00 - 36.09 - 25.95 = 5,137.96 (Max profit after
-    # 6,437.38: no recover). Loss left is "unlimited" for this short put (no number to take charges from), so it stays so.
+    # 6,437.38: no recover). Loss left is "unlimited" for this short put (no number to take charges from), so it
+    # stays so.
     body, row, totals = await _one_put(db, [("SELL", 65, "100.00", "open")], "80.00")
     for reply in (body, row):
         assert (D(reply["booked_after"]), D(reply["unbooked_after"]), D(reply["total_after"])) == (

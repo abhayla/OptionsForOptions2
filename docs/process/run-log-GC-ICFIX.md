@@ -18,3 +18,4 @@
 - 2026-11-13 18:59 IST ADR-304 written (assistant call: a saved plan Target acts, equal value included; screen limits come from the rule check itself; basis of "% of max profit" recorded as it stands).
 - 2026-11-13 18:59 IST u124's plan line "never above max profit" is replaced by ADR-302 (owner, 13 Nov).
 - 2026-11-13 18:59 IST Issue 2 red twice (card derived limits beside the rule check); independent Opus review done; round 3 reads the rule check's own limits (ADR-304 (3)).
+- 2026-11-13 20:13 IST Branch tidy after merging issues 1, 3/4 (server + screens + split), 6, 7: openapi regenerated (no diff, the merge was right), inventory checked (no repeated keys; the generator's --check passes), ADR-305 stage row added, lint ratchet: main OK (3748) -> branch 5 rules rose (E501, F821, PLR0913, PLR2004, RUF059) -> fixed, OK (3748).

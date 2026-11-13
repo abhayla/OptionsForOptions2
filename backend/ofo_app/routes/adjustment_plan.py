@@ -507,7 +507,8 @@ def _t07_of(body: Any) -> Any:
 
 
 def _rules_to_save(base: dict, submitted: dict, is_plan: bool) -> dict:
-    """ADR-304, "the last save wins": the editor showed ``with_plan_target(base)`` (a plan's Target overrides T-07's early
+    """ADR-304, "the last save wins": the editor showed ``with_plan_target(base)`` (a plan's Target overrides T-07's
+    early
     and middle stages). T-07 as shown, unchanged -> the base's own T-07 and Target are kept (the Target keeps acting).
     T-07 changed (values or on/off) -> the user's T-07 is saved and the Target guard is left out (the form
     ``with_plan_target`` and ``_values`` already read as "no Target typed"), so the saved T-07 is what the check acts on
@@ -572,7 +573,8 @@ async def save_rules(  # noqa: PLR0913 - FastAPI dependencies, one per input
         keep = plan is not None and plan.playbook_id is not None
         source_id = plan.playbook_id if keep and plan is not None else (await store.active_for(db, user_ref, stype)).id
         base = plan.body if plan is not None else (await store.active_for(db, user_ref, stype)).body
-        saved = await store.accept_plan(db, user_ref, strategy_id, source_id, _rules_to_save(base, data.body, plan is not None))
+        saved = await store.accept_plan(
+            db, user_ref, strategy_id, source_id, _rules_to_save(base, data.body, plan is not None))
         return _rules_out(stype, dict(check.with_plan_target(saved.body)), saved.accepted_at)
     return await _run(db, work)
 

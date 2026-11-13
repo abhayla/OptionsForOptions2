@@ -1,3 +1,4 @@
+# ruff: noqa: E501, PLR2004 - exact status codes are the assertion; long lines carry the check's reason
 """GC-ICFIX u161/u162 (issue 7, REQ-045, REQ-158 AC-5/AC-6, ADR-214 (4b)): "Customise triggers" from ONE trade edits
 that trade's own plan copy, never a playbook other trades follow. Routes: GET / PUT /api/strategies/{id}/adjustment-plan/rules.
 Class: every path from a trade's screen into editing rule values. The database is shared by this file's tests and the

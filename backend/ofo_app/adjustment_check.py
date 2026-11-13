@@ -164,7 +164,8 @@ def with_plan_target(body: Mapping) -> Mapping:
     """ADR-252 for T-07: the plan sheet's Target (guard ``profit_target_pct_of_max_profit``) is the T-07 value the check
     reads. Per expiry kind, a Target that differs from that row's early-stage value sets the early and middle stages to
     it and the last stage to min(Target, its value) (never looser); an equal, absent or unusable (not a number,
-    <= 0, > 100) Target changes nothing. Read at check time, so earlier plans count too. A copy. A Target that is applied
+    <= 0, > 100) Target changes nothing. Read at check time, so earlier plans count too. A copy. A Target that is
+    applied
     also switches T-07 ON for this trade (as the plan's Stop does T-06); otherwise on/off is kept."""
     guards, trig = body.get("guards"), (body.get("triggers") or {}).get("T-07")
     raw = guards.get("profit_target_pct_of_max_profit") if isinstance(guards, Mapping) else None
@@ -782,7 +783,8 @@ def condition_line(trigger_id: str, label: str | None, unit: str | None, value: 
         if un == CLOCK_UNIT:  # a clock trigger: HH:MM value and threshold, no unit word
             return render_explanation("adjust_condition_line_time", label=lab, value=value, threshold=threshold)
         if un:
-            if trigger_id == "T-07" and _is_number(threshold):  # ADR-294: says which figure it used; no number, no claim
+            # ADR-294: says which figure it used; no number, no claim
+            if trigger_id == "T-07" and _is_number(threshold):
                 return render_explanation("adjust_condition_line_before_charges", label=lab, value=value, unit=un,
                                           threshold=threshold)
             return render_explanation("adjust_condition_line", label=lab, value=value, unit=un, threshold=threshold)

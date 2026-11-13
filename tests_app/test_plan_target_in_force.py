@@ -100,7 +100,8 @@ async def test_last_stage_is_never_looser_and_other_triggers_are_untouched(monke
         {k: v for k, v in BODY["triggers"].items() if k != "T-07"}
 
 
-# --- item A: a typed Target switches T-07 ON for the trade, as the plan's Stop does for T-06 (orchestrator decision) ---
+# --- item A: a typed Target switches T-07 ON for the trade, as the plan's Stop does for T-06
+# (orchestrator decision) ---
 
 def plan_body_off(target, **trig) -> dict:
     body = plan_body(target)

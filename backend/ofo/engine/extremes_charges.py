@@ -18,8 +18,8 @@ from ofo.engine.extremes import UNLIMITED, BookExtremes, ContractTerms, Figure, 
 from ofo.engine.legs import Action, Instrument, Leg
 from ofo.engine.orderbook import BookView
 
-__all__ = ["AfterSplit", "BookAfterCharges", "after_split", "book_after_charges", "open_exit_charges", "open_round_trip_charges",
-           "sum_after_charges", "with_charges"]
+__all__ = ["AfterSplit", "BookAfterCharges", "after_split", "book_after_charges", "open_exit_charges",
+           "open_round_trip_charges", "sum_after_charges", "with_charges"]
 
 RATES_UNAVAILABLE = "rates_unavailable"
 NOT_PRICED = "not_priced"
@@ -128,8 +128,9 @@ class AfterSplit:
     recover: Decimal | None
 
 
-def after_split(view: BookView, terms: Mapping[str, ContractTerms], live: Mapping[str, Decimal], underlying: str,
-                rates: ChargeRates | None, after: BookAfterCharges) -> AfterSplit:
+def after_split(  # noqa: PLR0913 - the book, its terms, live prices, underlying, rates and the after-charges total
+        view: BookView, terms: Mapping[str, ContractTerms], live: Mapping[str, Decimal], underlying: str,
+        rates: ChargeRates | None, after: BookAfterCharges) -> AfterSplit:
     """The one place Booked / Unbooked / Profit left / Loss left are put after charges. Booked after = booked - ALL
     charges paid; Unbooked after = open-leg P&L - the estimated charges to close, so the two add up to
     ``after.total_after`` exactly (ADR-303). Profit left / Loss left after = the figure from now - paid - close

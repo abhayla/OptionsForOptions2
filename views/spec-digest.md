@@ -4,10 +4,9 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (291)
+## Decisions (292)
 
-- Older decisions: 251 rows, ADR-1..ADR-264 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
-- ADR-265 2026-11-06: Owner 2026-11-06 ~14:4x IST (question tool, "Mid, LTP only if no quote"). [SPEC CHANGE: REQ-077 AC-5 capture basis LTP -> mi…]
+- Older decisions: 252 rows, ADR-1..ADR-265 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
 - ADR-266 2026-11-06: Decided under the owner's standing delegation for strategy behaviour ("go with your recommendation"… [Extends ADR-265 (capture) to marking for paper P&…]
 - ADR-267 2026-11-06: Decided under the owner's standing delegation for strategy behaviour ("go with your recommendation"… [Exempts A-37 user level watches from the alert-st…]
 - ADR-268 2026-11-06: Decided under the owner's standing delegation for strategy behaviour ("go with your recommendation"… [Fills the intrinsic-value gap for delta-based rul…]
@@ -47,6 +46,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-302 2026-11-13: Owner decision 2026-11-13 ~18:50-19:00 IST (question tool, picked "Drop the cap (Recommended)"). [Replaces the goal contract task u124 line "Profit…]
 - ADR-303 2026-11-13: Owner decision 2026-11-13 ~18:50-19:00 IST (question tool, picked "Paid in booked, close cost in un… [Fills the gap in ADR-263, which lists "total / bo…]
 - ADR-304 2026-11-13: Decided by the assistant on 2026-11-13 under the owner's standing rule that strategy calls are the… [Extends ADR-252 (the plan Stop switches the stop…]
+- ADR-305 2026-11-13: Owner decision 2026-11-13 ~20:00 IST (chat, after the question was explained: "go with your recomme… [narrows ADR-304 (1): "any usable saved Target act…]
 
 ## Requirements (161)
 

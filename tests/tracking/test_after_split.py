@@ -1,5 +1,6 @@
 """GC-ICFIX u123/u124 (ADR-301, ADR-302, ADR-303, ADR-008): the one engine function ``after_split`` gives Booked after,
-Unbooked after, Profit left after, Loss left after and ``recover`` of a paper book. Exact Decimal; hand sums in comments.
+Unbooked after, Profit left after, Loss left after and ``recover`` of a paper book. Exact Decimal; hand sums in
+comments.
 
 Readings taken (ADR text leaves them open; all live in ``after_split`` so each is one line to change):
 - Profit left / Loss left after = the before-charges figure (measured from now) minus ALL charges paid minus the
@@ -60,7 +61,7 @@ def test_open_book_just_opened_has_booked_minus_the_charges_paid_and_unbooked_mi
     # SELL 65 @ 100, live 80: before +1,300.00. Paid 36.09 (hand sum in test_extremes_charges), exit estimate 25.95.
     # Booked after = 0 - 36.09 = -36.09 (the cost the owner accepted); Unbooked after = 1,300.00 - 25.95 = 1,274.05;
     # sum = 1,237.96 = Total after.
-    view, after, got = _split([PaperOrder("1", "SELL", LOT, D("100"), "open", T0)], PUT, {"1": D("80")}, "36.09")
+    _view, after, got = _split([PaperOrder("1", "SELL", LOT, D("100"), "open", T0)], PUT, {"1": D("80")}, "36.09")
     assert after.total_after == D("1237.96")
     assert (got.booked_after, got.unbooked_after) == (D("-36.09"), D("1274.05"))
     assert got.booked_after + got.unbooked_after == D("1237.96")
@@ -87,14 +88,15 @@ def test_profit_left_and_loss_left_after_charges_of_an_iron_condor_at_entry_equa
     terms = {cid: ContractTerms(kind, strike, EXPIRY) for cid, kind, strike, _, _ in LEGS}
     orders = [PaperOrder(cid, side, LOT, price, "open", T0) for cid, _, _, side, price in LEGS]
     live = {cid: price for cid, _, _, _, price in LEGS}
-    view, after, got = _split(orders, terms, live, "122.91")
+    _view, after, got = _split(orders, terms, live, "122.91")
     assert after.open_exit == D("118.51")
     assert (got.profit_left_after, got.loss_left_after) == (D("2764.83"), D("-3735.17"))
     assert got.recover is None  # at or below Max profit after: absent, not 0
 
 
 def test_losing_book_profit_left_after_is_not_capped_and_recover_is_the_excess_over_max_profit() -> None:
-    # SELL 65 @ 100 (put), live 150: total before = (100 - 150) x 65 = -3,250.00. Profit left before = 150 x 65 = 9,750.00
+    # SELL 65 @ 100 (put), live 150: total before = (100 - 150) x 65 = -3,250.00. Profit left before = 150 x 65 =
+    # 9,750.00
     # (expiry worthless); Max profit before = 100 x 65 = 6,500.00; round trip at 100: 36.082821 + 26.528821 = 62.611642
     # -> 62.62, so Max profit after = 6,437.38. Paid 36.09, exit BUY 65 @ 150 = 28.00.
     # Profit left after = 9,750.00 - 36.09 - 28.00 = 9,685.91, ABOVE Max profit after: not capped.

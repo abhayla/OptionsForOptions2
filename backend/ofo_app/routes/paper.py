@@ -36,6 +36,7 @@ from ofo.charges.round_trip import ChargesNotComputable
 from ofo.engine.book_totals import book_totals
 from ofo.engine.extremes import UNLIMITED, ContractTerms, ExtremesReason, book_breakevens, book_extremes
 from ofo.engine.extremes_charges import (
+    AfterSplit,
     BookAfterCharges,
     after_split,
     book_after_charges,
@@ -342,7 +343,8 @@ class PaperTotalsOut(ApiModel):
     charges_to_close_text: CatalogueText | None = None
     after_charges_reason: AfterChargesReason | None = None
     after_charges_reason_text: CatalogueText | None = None
-    booked_after: Money | None = None  # GC-ICFIX u123: the sum of every booked_after; None (never partial) if one absent
+    # GC-ICFIX u123: the sum of every booked_after; None (never partial) if one absent
+    booked_after: Money | None = None
     booked_after_text: CatalogueText | None = None
     unbooked_after: Money | None = None
     unbooked_after_text: CatalogueText | None = None
