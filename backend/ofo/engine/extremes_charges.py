@@ -125,7 +125,7 @@ def with_charges(got: BookExtremes, charges: Decimal | None) -> BookExtremes:
 @dataclass(frozen=True)
 class AfterSplit:
     """ADR-303 / ADR-306: the after-charges parts of a paper book. All None when the book has no after total
-    (``BookAfterCharges.reason`` says why); ``recover`` is the loss on screen (minus Total after), None unless negative."""
+    (``BookAfterCharges.reason`` says why); ``recover`` is the loss on screen (minus Total after), else None."""
 
     booked_after: Decimal | None
     unbooked_after: Decimal | None

@@ -500,6 +500,18 @@ async def test_an_open_book_at_live_prices_is_after_charges_paid_and_estimated_e
     assert body["after_charges_reason"] is None
 
 
+async def test_f7_charges_paid_text_is_sent_wherever_charges_paid_is_and_the_list_totals_carry_both(db):
+    # Same book as above: paid 36.09. The text is the money text form of the sibling charges_to_close_text.
+    body, row, totals = await _one_put(db, [("SELL", 65, "100.00", "open")], "80.00")
+    for reply in (body, row, totals):
+        assert D(reply["charges_paid"]) == D("36.09")
+        assert "36.09" in reply["charges_paid_text"]
+        assert "25.95" in reply["charges_to_close_text"] and "36.09" not in reply["charges_to_close_text"]
+    body, row, totals = await _one_put(db, [("SELL", 65, "100.00", "open")], "80.00", rates=None)
+    for reply in (body, row, totals):  # rates unknown: nothing paid can be given, no text either
+        assert (reply["charges_paid"], reply["charges_paid_text"]) == (None, None)
+
+
 async def test_unknown_charge_rates_send_no_after_figure_with_the_reason_and_keep_the_before_figure(db):
     app, stored = await _closed_141_like(db)
     app.dependency_overrides[load_charge_rates] = lambda: None

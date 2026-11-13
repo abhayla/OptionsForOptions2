@@ -123,6 +123,7 @@ class HistoryTotalsOut(ApiModel):
     total_after: Money | None = None
     total_after_text: CatalogueText | None = None
     charges_paid: Money | None = None
+    charges_paid_text: CatalogueText | None = None
     charges_to_close: Money | None = None
     charges_to_close_text: CatalogueText | None = None
     after_charges_reason: paper.AfterChargesReason | None = None
@@ -288,8 +289,8 @@ async def adjustment_history(  # noqa: PLR0913 - FastAPI dependencies, one per i
                                                          for r in history.rows], "totals": totals})
 
 
-AFTER_KEYS = ("total_after", "total_after_text", "charges_paid", "charges_to_close", "charges_to_close_text",
-              "after_charges_reason", "after_charges_reason_text")
+AFTER_KEYS = ("total_after", "total_after_text", "charges_paid", "charges_paid_text", "charges_to_close",
+              "charges_to_close_text", "after_charges_reason", "after_charges_reason_text")
 
 
 def _after(orders: Any, found: dict, live: dict, t: Any, underlying: str,  # noqa: PLR0913

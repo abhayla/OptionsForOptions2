@@ -223,6 +223,7 @@ class SummaryOut(ApiModel):
     total_after: Optional[Money] = None  # noqa: UP045
     total_after_text: Optional[CatalogueText] = None  # noqa: UP045
     charges_paid: Optional[Money] = None  # noqa: UP045
+    charges_paid_text: Optional[CatalogueText] = None  # noqa: UP045
     charges_to_close: Optional[Money] = None  # noqa: UP045
     charges_to_close_text: Optional[CatalogueText] = None  # noqa: UP045
     after_charges_reason: Optional[Literal["rates_unavailable", "not_priced", "prices_not_live"]] = None  # noqa: UP045
