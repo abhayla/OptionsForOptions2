@@ -48,8 +48,8 @@ def test_reviewer_case_two_sells_at_different_prices_gives_figures() -> None:
     # Before: (100.025 - 101) x 130 = -126.75. Total after = -126.75 - 72.18 - 29.52 = -228.45.
     # Booked after = 0 - 72.18; Unbooked after = -126.75 - 29.52 = -156.27; sum -228.45.
     # Round trip at the average (turnover 13,003.25): SELL 48.5718834105 + BUY 29.4571059105 = 78.028989321 -> 78.03;
-    #   Max profit after = 13,003.25 - 78.03 = 12,925.22. Profit left after = 13,130 - 72.18 - 29.52 = 13,028.30;
-    #   recover = 13,028.30 - 12,925.22 = 103.08.
+    #   Max profit after = 13,003.25 - 78.03 = 12,925.22. ADR-306: Profit left after = 12,925.22 - (-228.45) =
+    #   13,153.67; recover = 228.45 (the loss on screen); check -228.45 + 13,153.67 = 12,925.22.
     orders = [PaperOrder("1", "SELL", LOT, D("100.00"), "open", T0), PaperOrder("1", "SELL", LOT, D("100.05"), "add", T0)]
     live = {"1": D("101")}
     view, after, got = _figures(orders, PUT, live)
@@ -58,7 +58,7 @@ def test_reviewer_case_two_sells_at_different_prices_gives_figures() -> None:
     assert (got.booked_after, got.unbooked_after) == (D("-72.18"), D("-156.27"))
     assert open_round_trip_charges(view, PUT, "NIFTY", RATES) == D("78.03")
     assert with_charges(book_extremes(view, PUT, live), D("78.03")).max_profit == D("12925.22")
-    assert (got.profit_left_after, got.recover) == (D("13028.30"), D("103.08"))
+    assert (got.profit_left_after, got.recover) == (D("13153.67"), D("228.45"))
 
 
 def _book(prices: list[str], side: str, kind_first: str = "open") -> list[PaperOrder]:
@@ -87,6 +87,20 @@ def test_grid_of_averaged_books_never_raises_and_booked_plus_unbooked_is_total_a
         assert after.total_after is not None, label
         assert got.booked_after + got.unbooked_after == after.total_after, label
         assert after.total_after == view.total - after.paid - after.open_exit, label
+
+
+def test_grid_adr_306_total_plus_profit_left_is_max_profit_and_total_plus_loss_left_is_max_loss_exactly() -> None:
+    cases = _grid()
+    for orders, live_price in cases:
+        live = {"1": live_price}
+        view, after, got = _figures(orders, PUT, live)
+        label = f"{orders[0].side} {[str(o.price) for o in orders]} live {live_price}"
+        net = with_charges(book_extremes(view, PUT, live), open_round_trip_charges(view, PUT, "NIFTY", RATES))
+        assert got.profit_left_after is not None and got.loss_left_after is not None, label
+        assert after.total_after + got.profit_left_after == net.max_profit, label
+        assert after.total_after + got.loss_left_after == net.max_loss, label
+        assert (got.recover == -after.total_after) if after.total_after < 0 else got.recover is None, label
+    assert len(cases) >= 30
 
 
 def test_an_average_that_is_exactly_two_decimals_prices_like_the_old_single_leg() -> None:
