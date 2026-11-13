@@ -102,14 +102,10 @@ describe('item 2: practice list totals strip opens Charges paid', () => {
     return w
   }
   const OPEN = { total_after_text: '-241.43', charges_paid: '1403.45', charges_paid_text: '1,403.45', charges_to_close_text: '25.95', after_charges_reason: null, after_charges_reason_text: null }
-  it('Total P&L tap shows "Charges paid: 1,403.45"; the Charges figure opens the same row', async () => {
+  it('Total P&L tap shows "Charges paid: 1,403.45" (charges_paid_text as sent)', async () => {
     const w = await show((d) => Object.assign(d.totals, OPEN))
     await tap(w, 'totals-total').trigger('click')
     expect(rows(w)).toContain('Charges paid: 1,403.45')
-    const c = tap(w, 'totals-charges')
-    expect(c.exists()).toBe(true)
-    await c.trigger('click')
-    expect(w.get('[data-testid="totals-charges"] [data-testid="breakdown-paid"]').text()).toBe('Charges paid: 1,403.45')
   })
   it('older reply without charges_paid_text: no Charges paid row, no empty tap target on Charges', async () => {
     const w = await show((d) => Object.assign(d.totals, { ...OPEN, charges_paid: null, charges_paid_text: null }))

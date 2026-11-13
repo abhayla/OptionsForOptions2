@@ -178,15 +178,30 @@ const serverText = (v) => (typeof v === 'string' && v.trim() !== '' ? v.trim() :
 /** Drafts Mode summary: { profit, loss } as afterFigure results (the server's after text labelled, else the before text labelled with
  *  the reason, else the paused sentence), `recover` = the fixed line around the server's amount (its leading "+" dropped: text only),
  *  `reason` = extremes_reason_text. Nothing is added up, capped or compared here (ADR-008). */
+export const LEFT_BREAKDOWN_LABELS = Object.freeze({
+  maxProfit: 'Max profit (after charges)', maxLoss: 'Max loss (after charges)', total: 'Total P&L so far (after charges)',
+})
 export function paperLeftOf(book, pausedText = null) {
   if (!book) return null
-  const one = (k) => afterFigure(book, serverText(book[`${k}_left_text`]), pausedText, `${k}_left_after_text`, []) // u127: a left figure's breakdown is before / after only
-  const profit = one('profit')
+  // ADR-306: Profit left = Max profit - Total P&L so far (both after charges): the tap shows those two server texts, never a sum
+  // made here. Only an "after" figure with both texts opens; a reason or a paused figure opens nothing (the reason is on screen).
+  const one = (k, maxLabel) => {
+    const f = afterFigure(book, serverText(book[`${k}_left_text`]), pausedText, `${k}_left_after_text`, [])
+    const max = serverText(book[`max_${k}_text`])
+    const total = serverText(book.total_after_text)
+    const rows = f.kind === 'after' && max !== null && total !== null
+      ? [{ id: 'max', label: maxLabel, text: max }, { id: 'total', label: LEFT_BREAKDOWN_LABELS.total, text: total }] : null
+    return { ...f, breakdown: rows && { rows, reason: null } }
+  }
+  const profit = one('profit', LEFT_BREAKDOWN_LABELS.maxProfit)
   const recover = serverText(book.recover_text)
   return {
-    profit, loss: one('loss'),
+    profit, loss: one('loss', LEFT_BREAKDOWN_LABELS.maxLoss),
     recover: recover !== null && profit.kind === 'after' ? `${RECOVER_LINE_PREFIX}${recover.replace(/^\+/, '')}${RECOVER_LINE_SUFFIX}` : null,
     reason: serverText(book.extremes_reason_text), // R-20: the server's sentence for extremes_reason, never written here
+    // F-94: the server's sentence on whether the round-trip charges are inside Max Profit / Max Loss; `after` = the server sent the
+    // charges amount (its presence, not a number made here). Nothing beside a paused figure.
+    extremes: profit.kind === 'paused' ? null : { text: serverText(book.extremes_charges_text), after: serverText(book.extremes_charges) !== null },
   }
 }
 export const EXIT_ALL_LABEL = 'Exit all'

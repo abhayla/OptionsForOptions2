@@ -45,20 +45,21 @@
              second line INSIDE its pill, so each pill is only as wide as its figure -->
         <div class="flex flex-nowrap items-start gap-x-3" data-testid="summary-pills-row">
           <div class="min-w-0">
-            <span class="flex items-center text-xs text-ink-muted">Max Profit<FigureHint id="max_profit" :lines="[whatCanIMake, fundsLine, exactLine(maxProfitExact)]" /></span>
+            <span class="flex items-center text-xs text-ink-muted">Max Profit<span v-if="left?.extremes?.after" class="ml-1" data-testid="max-profit-basis">{{ AFTER_CHARGES }}</span><FigureHint id="max_profit" :lines="[whatCanIMake, fundsLine, exactLine(maxProfitExact)]" /></span>
             <div class="mt-0.5 inline-flex flex-col items-start whitespace-nowrap rounded bg-profit-soft px-1.5 py-0.5 leading-tight text-profit" data-testid="max-profit-pill">
               <span class="num text-sm font-semibold" data-testid="max-profit">{{ maxProfit }}</span>
               <span v-if="fundsShare?.max_profit_text" class="text-[11px]">(<span data-testid="max-profit-percent">{{ fundsShare.max_profit_text }}</span>)</span>
             </div>
           </div>
           <div class="min-w-0">
-            <span class="flex items-center text-xs text-ink-muted">Max Loss<FigureHint id="max_loss" :lines="[whatCanILose, fundsLine, exactLine(maxLossExact)]" /></span>
+            <span class="flex items-center text-xs text-ink-muted">Max Loss<span v-if="left?.extremes?.after" class="ml-1" data-testid="max-loss-basis">{{ AFTER_CHARGES }}</span><FigureHint id="max_loss" :lines="[whatCanILose, fundsLine, exactLine(maxLossExact)]" /></span>
             <div class="mt-0.5 inline-flex flex-col items-start whitespace-nowrap rounded bg-loss-soft px-1.5 py-0.5 leading-tight text-loss" data-testid="max-loss-pill">
               <span class="num text-sm font-semibold" data-testid="max-loss">{{ maxLoss }}</span>
               <span v-if="fundsShare?.max_loss_text" class="text-[11px]">(<span data-testid="max-loss-percent">{{ fundsShare.max_loss_text }}</span>)</span>
             </div>
           </div>
         </div>
+        <p v-if="left?.extremes?.text" class="mt-1 max-w-xs text-xs text-ink-muted" data-testid="extremes-charges-text">{{ left.extremes.text }}</p>
         <div class="mt-2 flex flex-wrap items-center gap-2" data-testid="breakeven-row">
           <span class="text-xs text-ink-muted">Breakeven</span>
           <div class="inline-flex rounded-md border border-line text-xs" role="group" aria-label="Breakeven at">
@@ -128,6 +129,7 @@ import { displayOrDash, exactLine } from '@/lib/summaryFigures'
 import FigureHint from '@/components/common/FigureHint.vue'
 import Tooltip from '@/components/common/Tooltip.vue'
 import { LOSS_LEFT_LABEL, PROFIT_LEFT_LABEL } from '@/lib/paperDrafts'
+import { AFTER_CHARGES } from '@/lib/tracking'
 const props = defineProps({
   maxProfit: { type: String, default: '-' }, // summaryFigure(summary, 'profit'): the server's display string
   maxLoss: { type: String, default: '-' },
