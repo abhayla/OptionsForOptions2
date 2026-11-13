@@ -309,7 +309,8 @@ async def closed_figures(db: Any, user_ref: str, strategy_id: int, rates: Charge
     and the reply carries the catalogue reason; a failed read never shows 0 (savepoint, logged)."""
     none = {"final_pnl": None, "final_pnl_text": None, "adjustments_made": None, "adjustment_cost": None,
             "adjustment_cost_text": None, "completed_reason_text": render_explanation("completed_figures_unavailable"),
-            **dict.fromkeys(AFTER_KEYS)}
+            **dict.fromkeys(AFTER_KEYS),
+            "after_charges_reason": "not_priced", "after_charges_reason_text": reason_text("not_priced")}
     try:
         async with db.begin_nested():
             orders = await paper_book.load_owned(db, user_ref, strategy_id)

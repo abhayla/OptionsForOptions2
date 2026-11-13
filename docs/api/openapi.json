@@ -8774,6 +8774,7 @@
       },
       "PaperTotalsOut": {
         "additionalProperties": false,
+        "description": "GC-TP step 4a (screens 050-053 totals strip): the sums over every paper strategy of the user, from the server.",
         "properties": {
           "after_charges_reason": {
             "anyOf": [
@@ -8850,6 +8851,26 @@
               }
             ],
             "title": "Charges Text"
+          },
+          "charges_to_close": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges To Close"
+          },
+          "charges_to_close_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges To Close Text"
           },
           "decay": {
             "anyOf": [

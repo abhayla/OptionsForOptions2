@@ -7,7 +7,7 @@ price, so there is one charges formula; nothing is re-derived here.
 """
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from decimal import Decimal
 
@@ -18,7 +18,8 @@ from ofo.engine.extremes import UNLIMITED, BookExtremes, ContractTerms
 from ofo.engine.legs import Action, Instrument, Leg
 from ofo.engine.orderbook import BookView
 
-__all__ = ["BookAfterCharges", "book_after_charges", "open_exit_charges", "open_round_trip_charges", "with_charges"]
+__all__ = ["BookAfterCharges", "book_after_charges", "open_exit_charges", "open_round_trip_charges",
+           "sum_after_charges", "with_charges"]
 
 RATES_UNAVAILABLE = "rates_unavailable"
 NOT_PRICED = "not_priced"
@@ -70,6 +71,21 @@ def book_after_charges(view: BookView, paid: Decimal | None, open_exit: Decimal 
     if paid is None or open_exit is None:
         return BookAfterCharges(before, None, paid, open_exit, reason or RATES_UNAVAILABLE)
     return BookAfterCharges(before, before - paid - open_exit, paid, open_exit, None)
+
+
+def sum_after_charges(rows: Sequence[BookAfterCharges]) -> BookAfterCharges:
+    """The sum of several books' figures. Never a partial sum: when any row has no after figure the answer has none
+    either, carrying that first row's reason."""
+    absent = next((r for r in rows if r.total_after is None), None)
+    if absent is not None:
+        return BookAfterCharges(None, None, None, None, absent.reason or RATES_UNAVAILABLE)
+    zero = Decimal(0)
+
+    def total(values: list[Decimal | None]) -> Decimal:
+        return sum((v or zero for v in values), zero)
+
+    return BookAfterCharges(total([r.total_before for r in rows]), total([r.total_after for r in rows]),
+                            total([r.paid for r in rows]), total([r.open_exit for r in rows]), None)
 
 
 def open_round_trip_charges(view: BookView, terms: Mapping[str, ContractTerms], underlying: str,

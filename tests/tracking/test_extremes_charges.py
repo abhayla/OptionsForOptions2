@@ -14,6 +14,7 @@ from ofo.engine.extremes_charges import (
     book_after_charges,
     open_exit_charges,
     open_round_trip_charges,
+    sum_after_charges,
     with_charges,
 )
 from ofo.engine.legs import Action, Instrument, Leg
@@ -153,3 +154,86 @@ def test_one_of_two_open_legs_without_a_price_is_prices_not_live() -> None:
 def test_an_empty_book_is_refused_by_the_engine_not_given_a_zero() -> None:
     with pytest.raises(ValueError, match="at least one order"):
         net_positions([], {})
+
+
+# --- round 2: every money behaviour of the after figure has a test that fails when it is broken ---------------------
+def _after_of(orders: list[PaperOrder], terms: dict[str, ContractTerms], live: dict[str, Decimal], paid: str):
+    view = net_positions(orders, live)
+    exit_, why = open_exit_charges(view, terms, live, "NIFTY", RATES)
+    assert why is None
+    return view, exit_, book_after_charges(view, D(paid), exit_)
+
+
+_PUT = {"1": ContractTerms(Instrument.PE, D("22700"), EXPIRY)}
+_CALL = {"2": ContractTerms(Instrument.CE, D("22950"), EXPIRY)}
+
+
+def test_a_long_leg_exits_with_a_sell_so_the_exit_carries_stt_not_stamp_duty() -> None:
+    # BUY 65 @ 100 now 120: unbooked (120 - 100) x 65 = +1,300.00.
+    # Paid, the BUY (premium 6,500): 20 + transaction 2.30945 + SEBI 0.0065 + stamp 0.195 + GST (20 + 0.0065 + 2.30945)
+    #   x 0.18 = 4.016871 -> 26.528821 -> 26.53.
+    # Exit, SELL 65 @ 120 (premium 7,800): 20 + STT 11.70 + transaction 2.77134 + SEBI 0.0078 + GST (20 + 0.0078 +
+    #   2.77134) x 0.18 = 4.1002452 -> 38.5793852 -> 38.58 (a BUY exit would be 26.9 and have no STT).
+    # After = 1,300.00 - 26.53 - 38.58 = 1,234.89.
+    _, exit_, got = _after_of([PaperOrder("1", "BUY", LOT, D("100"), "open", T0)], _PUT, {"1": D("120")}, "26.53")
+    assert exit_ == D("38.58")
+    assert (got.total_before, got.total_after) == (D("1300"), D("1234.89"))
+
+
+def test_the_exit_is_priced_on_the_open_quantity_only_not_a_lot_of_65() -> None:
+    # SELL 130 @ 100 now 80: unbooked 20 x 130 = +2,600.00.
+    # Exit BUY 130 @ 80 (premium 10,400): 20 + transaction 3.69512 + SEBI 0.0104 + stamp 0.312 + GST (20 + 0.0104 +
+    #   3.69512) x 0.18 = 4.2669936 -> 28.2845136 -> 28.29 (65 units would be 25.95).
+    # Paid, the SELL (premium 13,000): 20 + STT 19.50 + 4.6189 + 0.013 + GST (20 + 0.013 + 4.6189) x 0.18 = 4.433742
+    #   -> 48.565642 -> 48.57. After = 2,600.00 - 48.57 - 28.29 = 2,523.14.
+    _, exit_, got = _after_of([PaperOrder("1", "SELL", 2 * LOT, D("100"), "open", T0)], _PUT, {"1": D("80")}, "48.57")
+    assert exit_ == D("28.29")
+    assert got.total_after == D("2523.14")
+
+
+def test_a_partly_closed_book_prices_the_exit_on_what_is_still_open() -> None:
+    # SELL 130 @ 100, BUY 65 @ 90 (exit): booked (100 - 90) x 65 = 650;
+    # open 65 now 80: unbooked 20 x 65 = 1,300; total 1,950.
+    # Paid = SELL 130 @ 100 (48.565642) + BUY 65 @ 90 (premium 5,850: 20 + 2.078505 + 0.00585 + stamp 0.1755 + GST
+    #   3.9751839 = 26.2350389) = 74.8006809 -> 74.81. Exit BUY 65 @ 80 = 25.95.
+    # After = 1,950.00 - 74.81 - 25.95 = 1,849.24.
+    orders = [PaperOrder("1", "SELL", 2 * LOT, D("100"), "open", T0), PaperOrder("1", "BUY", LOT, D("90"), "exit", T0)]
+    view, exit_, got = _after_of(orders, _PUT, {"1": D("80")}, "74.81")
+    assert (view.booked, exit_, got.total_before, got.total_after) == (D("650"), D("25.95"), D("1950"), D("1849.24"))
+
+
+def test_a_reopened_leg_is_priced_at_its_new_open_position() -> None:
+    # SELL 65 @ 100, BUY 65 @ 90 (exit), SELL 65 @ 95 (reopen); now 80.
+    # Booked 650; unbooked (95 - 80) x 65 = 975; total 1,625.
+    # Paid = 36.082821 + 26.2350389 + SELL 65 @ 95 (premium 6,175: 20 + STT 9.2625 + 2.1939775 + 0.006175 + GST
+    #   3.99602745 = 35.45867995) = 97.77653985 -> 97.78. Exit BUY 65 @ 80 = 25.95.
+    # After = 1,625.00 - 97.78 - 25.95 = 1,501.27.
+    orders = [PaperOrder("1", "SELL", LOT, D("100"), "open", T0), PaperOrder("1", "BUY", LOT, D("90"), "exit", T0),
+              PaperOrder("1", "SELL", LOT, D("95"), "open", T0)]
+    _, exit_, got = _after_of(orders, _PUT, {"1": D("80")}, "97.78")
+    assert (exit_, got.total_before, got.total_after) == (D("25.95"), D("1625"), D("1501.27"))
+
+
+def test_a_mixed_long_and_short_book_rounds_the_exit_once_over_both_legs() -> None:
+    # SELL 65 @ 100 (put, now 80) +1,300 and BUY 65 @ 100 (call, now 120) +1,300: total 2,600.
+    # Paid = 36.082821 + 26.528821 = 62.611642 -> 62.62. Exit = BUY 65 @ 80 (25.9422568) + SELL 65 @ 120 (38.5793852)
+    #   = 64.521642 -> 64.53 (rounded once). After = 2,600.00 - 62.62 - 64.53 = 2,472.85.
+    orders = [PaperOrder("1", "SELL", LOT, D("100"), "open", T0), PaperOrder("2", "BUY", LOT, D("100"), "open", T0)]
+    _, exit_, got = _after_of(orders, _PUT | _CALL, {"1": D("80"), "2": D("120")}, "62.62")
+    assert (exit_, got.total_after) == (D("64.53"), D("2472.85"))
+
+
+def test_the_exit_is_priced_at_the_live_price_not_the_entry_price() -> None:
+    # SELL 65 @ 100 now 150: exit BUY 65 @ 150 (premium 9,750): 20 + 3.464175 + 0.00975 + stamp 0.2925 + GST (20 +
+    # 0.00975 + 3.464175) x 0.18 = 4.2253065 -> 27.9917315 -> 28.00; at the entry price 100 it would be 26.55.
+    view, terms = _one_short_put({"1": D("150")})
+    assert open_exit_charges(view, terms, {"1": D("150")}, "NIFTY", RATES)[0] == D("28.00")
+
+
+def test_the_sum_of_books_is_exact_and_never_partial() -> None:
+    a = BookAfterCharges(D("-32.50"), D("-95.13"), D("62.63"), D("0"), None)
+    b = BookAfterCharges(D("1300"), D("1237.96"), D("36.09"), D("25.95"), None)
+    assert sum_after_charges([a, b]) == BookAfterCharges(D("1267.50"), D("1142.83"), D("98.72"), D("25.95"), None)
+    # hand: -95.13 + 1,237.96 = 1,142.83; 62.63 + 36.09 = 98.72
+    none = BookAfterCharges(D("5"), None, D("1"), None, "prices_not_live")
+    assert sum_after_charges([a, none, b]) == BookAfterCharges(None, None, None, None, "prices_not_live")

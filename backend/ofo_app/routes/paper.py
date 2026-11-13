@@ -40,6 +40,7 @@ from ofo.engine.extremes_charges import (
     book_after_charges,
     open_exit_charges,
     open_round_trip_charges,
+    sum_after_charges,
     with_charges,
 )
 from ofo.engine.legs import Instrument
@@ -319,11 +320,13 @@ TotalsReason = paper.PauseReason | paper_decay.DecayReason
 
 
 class PaperTotalsOut(ApiModel):
+    """GC-TP step 4a (screens 050-053 totals strip): the sums over every paper strategy of the user, from the server."""
     total_after: Money | None = None  # GC-ICFIX: sum of every total_after; None (never partial) if one is absent
     total_after_text: CatalogueText | None = None
+    charges_to_close: Money | None = None  # the sum of every strategy's estimated charges to close what is open
+    charges_to_close_text: CatalogueText | None = None
     after_charges_reason: AfterChargesReason | None = None
     after_charges_reason_text: CatalogueText | None = None
-    """GC-TP step 4a (screens 050-053 totals strip): the sums over every paper strategy of the user, from the server."""
     booked: Money
     booked_text: CatalogueText
     unbooked: Money | None  # None (never a partial sum) when any strategy's unbooked is absent (REQ-109 AC-5)
@@ -806,12 +809,15 @@ def _totals(strategies: Sequence[dict], decays: Sequence[paper_decay.Decay]) -> 
 
 
 def _after_total(strategies: Sequence[dict]) -> dict:
-    """The sum of every strategy's total_after; absent with the first absent strategy's reason (never partial)."""
-    absent = next((s for s in strategies if s["total_after"] is None), None)
-    total = None if absent else sum((s["total_after"] for s in strategies), Decimal(0))
-    reason = None if absent is None else absent["after_charges_reason"]
-    return {"total_after": _exact(total), "total_after_text": _signed(total),
-            "after_charges_reason": reason, "after_charges_reason_text": reason_text(reason)}
+    """The sum of every strategy's after figure (ofo.engine.extremes_charges.sum_after_charges): absent with the first
+    absent strategy's reason, never partial."""
+    got = sum_after_charges([BookAfterCharges(s["total"], s["total_after"], s["charges_paid"], s["charges_to_close"],
+                                              s["after_charges_reason"]) for s in strategies])
+    return {"total_after": _exact(got.total_after), "total_after_text": _signed(got.total_after),
+            "charges_to_close": _exact(got.open_exit),
+            "charges_to_close_text": None if got.open_exit is None else render_explanation(PAPER_CHARGES,
+                                                                                            amount=got.open_exit),
+            "after_charges_reason": got.reason, "after_charges_reason_text": reason_text(got.reason)}
 
 
 def _charges_total(strategies: Sequence[dict]) -> dict:

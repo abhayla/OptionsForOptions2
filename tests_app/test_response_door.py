@@ -530,6 +530,7 @@ APP_MODELS = (
     "ofo_app.routes.strategy_templates.TemplatesOut",
     "ofo_app.routes.system_playbooks.SystemHistoryOut",
     "ofo_app.routes.system_playbooks.SystemVersionOut",
+    "ofo_app.routes.tracking.AfterCharges",
     "ofo_app.routes.tracking.DetectionOut",
     "ofo_app.routes.tracking.TrackedStrategyOut",
     "ofo_app.routes.tracking.TrackingIndexOut",
