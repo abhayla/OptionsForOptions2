@@ -453,6 +453,13 @@ decisions:
   ADR-291: S6.7         # current work serves one user, the owner's own Kite account
   ADR-292: S6.7         # held condor typed in by hand: label, stated entry time, rules start at save, order screens hidden
   ADR-293: S6.7         # a strategy with only paper orders can be deleted; real-order strategies stay refused
+  ADR-294: S6.7         # profit target compares profit before charges and says so; Take profit shows the after-charges result beside it
+  ADR-295: S6.7         # a trade may have no plan, but the page says so, shows the default rules and a Set plan button
+  ADR-296: S6.7         # after an adjustment the stop goes quiet (grey line) until it clears and crosses again
+  ADR-297: S6.7         # at the adjustment limit only exit and reduce are offered; the rest listed as not offered
+  ADR-298: S6.7         # practice behaves exactly like a real trade; Not enough funds stays as a message
+  ADR-299: S6.7         # status words Draft / Running / Completed
+  ADR-300: S6.7         # guided builder shows a condor outside the entry guide with a warning line
 
 questions:
   Q210: 4a              # external: Zerodha's written answer; ADR-051 covers the owner's own account

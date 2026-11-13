@@ -31,7 +31,7 @@ Requirements: 161; sections: 20
 | REQ-158 | Adjustment playbooks - one read-only system playbook per strategy type, any number of named user playbooks, one active | feature | Approved |
 | REQ-159 | What a playbook holds - user-defined stages, triggers per stage, day-and-date rules, situations, limits and guards | feature | Approved |
 | REQ-160 | Playbook editor is one step-by-step flow with a plain-words summary, and Test shows what the playbook would flag today | feature | Approved |
-| REQ-161 | Start tracking opens a strategy plan sheet pre-filled from the type's active playbook, accepted in one click | feature | Approved |
+| REQ-161 | Add to Paper opens a strategy plan sheet pre-filled from the type's active playbook, accepted in one click | feature | Approved |
 | REQ-162 | Positions > Adjustment opportunities lists every opportunity across strategies with its label and outcome | feature | Approved |
 | REQ-163 | A strategy's adjustment history shows the entry, every adjustment and the whole-trade totals | feature | Approved |
 | REQ-165 | Adjustment playbook triggers are checked by the background workers on fresh prices, at most once per the strategy style's check interval (intraday 10 s, weekly 30 s, monthly 2 min; ADR-235), with no screen open | feature | Approved |

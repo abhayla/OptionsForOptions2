@@ -4,16 +4,9 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (280)
+## Decisions (287)
 
-- Older decisions: 240 rows, ADR-1..ADR-253 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
-- ADR-254 2026-11-06: Owner 2026-11-06 ~02:0x IST (question tool, "Live too"). [Extends REQ-165 to T-19 in the worker; leaves ADR…]
-- ADR-255 2026-11-06: Owner 2026-11-06 ~14:0x IST (question tool, "Partial exits count, Exit all doesn't"). [Refines REQ-161 / REQ-163 / ADR-214 "adjustments…]
-- ADR-256 2026-11-06: Owner 2026-11-06 ~14:0x IST (question tool, "Warn, user confirms"). [Adds a warning to the paper exit confirm list (AD…]
-- ADR-257 2026-11-06: Owner 2026-11-06 ~14:1x IST (question tool, "Ask when arming"). [Extends ADR-207 (5) per-leg stops with an optiona…]
-- ADR-258 2026-11-06: Owner 2026-11-06 ~14:1x IST (question tool, "Reset after each adjustment"). [Extends REQ-159 / F-71 from entry to every adjust…]
-- ADR-259 2026-11-06: Owner 2026-11-06 ~14:1x IST (question tool, "Yes, with final totals"). [Defines "completed" for the Completed Strategies…]
-- ADR-260 2026-11-06: Owner 2026-11-06 ~14:2x IST (question tool, "One list in Alerts"). [Joins REQ-162 alerts into Alerts > Active; define…]
+- Older decisions: 247 rows, ADR-1..ADR-260 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
 - ADR-261 2026-11-06: Owner 2026-11-06 ~14:2x IST (question tool, "Yes, 'Compare approaches' always"). [Adds an always-available entry to the compare bes…]
 - ADR-262 2026-11-06: Owner 2026-11-06 ~14:2x IST (question tool, "This should be based on each user preference", then "D… [Replaces the fixed placement rule in the ready-ma…]
 - ADR-263 2026-11-06: Owner 2026-11-06 ~14:3x IST (question tool, "After charges everywhere, labelled"). [Defines the charges basis of every headline money…]
@@ -47,6 +40,13 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-291 2026-11-12: Owner, 2026-11-12 ~00:1x IST (chat): "It is mandatory that whoever connects to kite should have kit… [narrows the current scope of ADR-290 to the owner…]
 - ADR-292 2026-11-12: How ADR-290 (2) works for the one user of ADR-291, as approved with the GC-TRACK1 contract (owner 2… [adds the held_elsewhere source to the strategy st…]
 - ADR-293 2026-11-13: Owner decision 2026-11-13 ~09:15 IST (question tool, picked "Allow delete for paper (Recommended)"). [supersedes ADR-271 parts (1), (2) and (3); ADR-27…]
+- ADR-294 2026-11-13: Owner decision 2026-11-13 (planning session, answer D1: profit target = before charges). [extends ADR-238 (6) (names the basis of "in profi…]
+- ADR-295 2026-11-13: Owner decision 2026-11-13 (planning session, answer D2: a trade may have no plan, but the page must… [answers the open owner question in ADR-214 conseq…]
+- ADR-296 2026-11-13: Owner decision 2026-11-13 (planning session, answer D3: after the user adjusts a stopped trade the… [extends ADR-258 to the stop (ADR-258 says each ru…]
+- ADR-297 2026-11-13: Owner decision 2026-11-13 (planning session, answer D4: at the adjustment limit, exit and reduce on… [extends ADR-240 (2) (rule S-11 "only exit and red…]
+- ADR-298 2026-11-13: Owner decision 2026-11-13 (planning session, answer D5: practice behaves exactly like a real trade). [confirms ADR-202 (4) for practice trades; adds th…]
+- ADR-299 2026-11-13: Owner decision 2026-11-13 (planning session, answer D6: status words Draft / Running / Completed). [names the status words for ADR-259 (Completed Str…]
+- ADR-300 2026-11-13: Decided by the assistant on 2026-11-13 under the owner's standing rule that strategy calls are not… [applies ADR-216 (entry guide numbers) to the disp…]
 
 ## Requirements (161)
 
@@ -201,7 +201,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - REQ-158 [Approved]: Adjustment playbooks - one read-only system playbook per strategy type, any number of named user playbooks, o…
 - REQ-159 [Approved]: What a playbook holds - user-defined stages, triggers per stage, day-and-date rules, situations, limits and g…
 - REQ-160 [Approved]: Playbook editor is one step-by-step flow with a plain-words summary, and Test shows what the playbook would f…
-- REQ-161 [Approved]: Start tracking opens a strategy plan sheet pre-filled from the type's active playbook, accepted in one click
+- REQ-161 [Approved]: Add to Paper opens a strategy plan sheet pre-filled from the type's active playbook, accepted in one click
 - REQ-162 [Approved]: Positions > Adjustment opportunities lists every opportunity across strategies with its label and outcome
 - REQ-163 [Approved]: A strategy's adjustment history shows the entry, every adjustment and the whole-trade totals
 - REQ-164 [Approved]: The API runs as several copies; no request depends on the memory of one copy, and one copy stopping cuts no u…
