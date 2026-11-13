@@ -2,7 +2,36 @@
 
 Contract: `docs/process/goal-contract-GC-ICFIX-2026-11-13.md`. Branch `fix/gc-icfix` in `D:\Abhay\Ventures\OptionsForOptions2-gc-icfix`.
 NOTHING IS PUSHED. Tracker: https://claude.ai/artifact/LcMTSr5xx8LvAYVniotkxK (rows u001..u611).
-Status in one line: the repairs are built and checked on the branch; the screen proofs and the phase 1 close are not done.
+Status in one line: the repairs are built and checked on the branch; the full local check is green; the SCREEN PROOFS are not done, so phase 1 is PARTIAL.
+
+## STATE AT THE END OF THE SESSION (14 Nov 2026, 02:50 IST) - read this first, it corrects the sections below
+- Full local pre-merge check: `TOTAL PASS 1980.6s` on head `be8f438427ba5c02f75ed03cd413d8dea69d8c29` (89 commits ahead of main). It took four runs:
+  run 1 stopped at the interface gate (2 call mismatches), run 2 at the scans gate (4 structure guards), run 3 at the
+  app tests (3 stale tests), run 4 passed. A full run is about 34 minutes on this PC. It skips the 898 tests that need the
+  database: those run in CI at the single push, and builders ran only the database files near their changes.
+- Backup: `D:\Abhay\scratch\gc-icfix-backup\gc-icfix-p0-be8f4384.bundle` (270,535 bytes, `git bundle verify`: okay).
+- Not pushed: the branch has no upstream; `gh pr list --head fix/gc-icfix` is empty; no branch of that name on origin.
+- Merged AFTER the sections below were written: the Opus re-check passed (issues 3 and 4: issue 4 rated REPAIRED; the
+  adjustment-route crash fix: PASS) and `build/gc-icfix-avg` is merged; Profit left / Loss left follow ADR-306.
+- The live dev copy runs from the branch folder but from head cb7e2500: it predates the last merges (one read for the
+  three totals, the adjustment crash fix). RESTART it from the branch before any screen proof. The test-data copy is
+  stopped.
+- Phase 1 rows still OPEN: u104, u116, u130, u145, u154, u165 (screen proofs: blocked, see BLOCKED), u129 (Opus money
+  check: its last four screen leftovers are not built), u006 (core proof: mechanism proven by a background alert record,
+  screenshot missing).
+- Next session, in this order: (1) owner wakes the laptop screen and brings Chrome to the front; (2) restart the live
+  copy and start the test-data copy from the branch; (3) the six screen proofs; (4) the four screen leftovers of
+  issues 3 and 4 plus the Rs amount and after-charges figure in the target alert (ADR-294 (2)); (5) a full local check
+  and a new backup; then phase 2 (P1).
+- The 12 builder worktrees are NOT removed (`OptionsForOptions2-gc-icfix-u102`, `-u111`, `-u122`, `-u123f`, `-u124`,
+  `-u126`, `-u127`, `-u129r`, `-u130f`, `-u151`, `-u161`, `-avg`). All 12 are clean and every one's head is contained in
+  `fix/gc-icfix` (checked), but the removal tool `wt-rm.ps1` refuses work that is not on origin: exit 3 "not in main,
+  unpushed", and `-Discard` needs a sha on origin/main (exit 7). With one push at the very end, the tool cannot remove
+  them before that push. They were not removed by any other means. Owner question Q7. After the push:
+  `wt-rm.ps1 -Discard -MergedSha <merge sha>` per folder (launcher kept: `wtclean_run.ps1` in the session scratch folder).
+  Main checkout unchanged by this session: 4282 tracked files, 206 entries in `frontend\node_modules`.
+- Before launching the full check: run its gates directly (interface gate, both `repo_scan` suites, the whole
+  `app_tests` step, the whole frontend suite). `tools/ci_local.py` runs none of them.
 
 ## DONE (built, independently checked, merged on the branch)
 - Setup u001-u005.

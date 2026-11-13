@@ -54,6 +54,21 @@ that case only ("includes Rs 241.43 of charges to earn back"), not the rule.
 Options: (a) keep as built (recommended); (b) different words when the loss is only charges; (c) hide the line below
 a threshold (not recommended: an unexplained gap returns).
 
+## Q7. The 12 finished builder folders cannot be removed until the branch is pushed. Leave them, or allow another way?
+
+Parked 14 Nov 02:5x IST. Nothing waits on it; it costs disk space only (each folder links to the main checkout's
+installed packages, so the space is small).
+Business call: none; this is a process rule of yours meeting a delivery instruction of yours, so it is yours to weigh.
+Spec basis: none: the spec says nothing about work folders. Your standing rules: (1) a work folder is removed in the
+session its use ends, only with the removal tool, never by a plain delete; (2) 13 Nov: one branch, ONE push at the very
+end. The tool refuses to remove a folder whose commits are not on origin (exit 3; `-Discard` needs a sha on
+origin/main: exit 7). All 12 folders are clean and fully contained in `fix/gc-icfix` (checked one by one).
+Recommendation: (a) leave them until the single push, then remove all 12 with the tool. It keeps both rules intact and
+loses nothing. Options: (b) push the integration branch to origin now as a backup-only branch (no pull request, no
+CI): then the tool can remove them, and the work is also safe off this PC; it bends "nothing leaves this PC before the
+push"; (c) authorise removal outside the tool: not recommended, the tool exists because plain deletes twice wiped the
+main checkout through its links.
+
 ## Q5. Profit left and Loss left: answered
 
 ANSWERED 13 Nov 2026 (question tool): Make it add up (Recommended) -> ADR-306 (Profit left = Max profit - Total;
