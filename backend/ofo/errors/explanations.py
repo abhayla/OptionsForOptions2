@@ -1933,6 +1933,10 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     # GC-ADJ2 step 1A (REQ-158 AC-4): deleting the active playbook says the system one is active again
     ExplanationTemplate("playbook_system_active_again", "values_seen", "{type}: the system playbook is active again",
                         {"type": PlaybookTypeName}),
+    # GC-ICFIX issue 7 (REQ-158 AC-6): "Customise triggers" from a trade edits that trade's own rules only
+    ExplanationTemplate("plan_rules_name", "values_seen",
+                        "Rules for this trade only ({type}). Your other trades and your playbooks are not changed.",
+                        {"type": PlaybookTypeName}),
     # GC-ADJ2 step 3 (REQ-160 AC-3, AC-4): the playbook Test step's two fixed sentences
     ExplanationTemplate("playbook_test_no_strategy", "values_seen", "No current {type} strategy to test against",
                         {"type": PlaybookTypeName}),

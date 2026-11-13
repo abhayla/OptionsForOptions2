@@ -121,7 +121,7 @@ async function send(body) {
 const useAsIs = () => send(asIsBody(form.value.playbookId))
 const save = () => send(saveBody(form.value))
 function customise() {
-  const url = customiseUrl(form.value.playbookId)
+  const url = customiseUrl(props.strategyId)
   emit('close')
   router?.push(url)
 }
