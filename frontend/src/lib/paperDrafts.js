@@ -3,7 +3,7 @@
 // position, and every leg edit reaches the server ONLY as the paper orders paperOrdersFor(net, edited) returns, reviewed in
 // the confirm list first. Quantities only (units = lots x lot size, a count): no price or money is formed here (ADR-008);
 // prices are the server's texts or what the user types in the dialog.
-import { entryPriceFor } from '@/lib/tracking'
+import { entryPriceFor, afterFigure } from '@/lib/tracking'
 
 /** The Drafts Mode frame's label (Sensibull 274-279; RD-121: paper trades said plainly as not real). */
 export const PAPER_MODE_LABEL = 'Paper mode - not real trades'
@@ -171,6 +171,24 @@ export async function readPaperBook(client, id) {
 export const PAPER_AVERAGE_LABEL = 'Paper average'
 export const PROFIT_LEFT_LABEL = 'Profit left'
 export const LOSS_LEFT_LABEL = 'Loss left'
+// ADR-302: when Profit left (after charges) is larger than Max profit the server sends `recover_text`; this one sentence says why
+export const RECOVER_LINE_PREFIX = 'includes Rs '
+export const RECOVER_LINE_SUFFIX = ' needed to recover the current loss'
+const serverText = (v) => (typeof v === 'string' && v.trim() !== '' ? v.trim() : null)
+/** Drafts Mode summary: { profit, loss } as afterFigure results (the server's after text labelled, else the before text labelled with
+ *  the reason, else the paused sentence), `recover` = the fixed line around the server's amount (its leading "+" dropped: text only),
+ *  `reason` = extremes_reason_text. Nothing is added up, capped or compared here (ADR-008). */
+export function paperLeftOf(book, pausedText = null) {
+  if (!book) return null
+  const one = (k) => afterFigure(book, serverText(book[`${k}_left_text`]), pausedText, `${k}_left_after_text`)
+  const profit = one('profit')
+  const recover = serverText(book.recover_text)
+  return {
+    profit, loss: one('loss'),
+    recover: recover !== null && profit.kind === 'after' ? `${RECOVER_LINE_PREFIX}${recover.replace(/^\+/, '')}${RECOVER_LINE_SUFFIX}` : null,
+    reason: serverText(book.extremes_reason_text), // R-20: the server's sentence for extremes_reason, never written here
+  }
+}
 export const EXIT_ALL_LABEL = 'Exit all'
 export const EXIT_LABEL = 'Exit'
 export const ADD_KIND_LABEL = 'Add'

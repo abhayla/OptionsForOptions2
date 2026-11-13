@@ -30,8 +30,9 @@ import { ADD_TO_PAPER_LABEL, PAPER_PLACED_NOT_REFRESHED_TEXT, PAPER_STATE, addTo
 import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
 import {
   DISCARD_LABEL, PAPER_BOOK_UNREADABLE, PAPER_MODE_LABEL, PAPER_PENDING_UNREADABLE, REVIEW_AND_ADD_LABEL, confirmRowsFor, paperOrdersFor, pendingText, readPaperBook,
-  legsAfterExit, paperFillKey,
+  legsAfterExit, paperFillKey, paperLeftOf,
 } from '@/lib/paperDrafts'
+import { withAsOf } from '@/lib/paperList'
 import PaperBookPanel from '@/components/strategy/PaperBookPanel.vue'
 import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
 import AdjustCompare from '@/components/strategy/AdjustCompare.vue'
@@ -428,10 +429,9 @@ function exitPaper(contractId, lots) {
 }
 // Drafts Mode summary: the book's Profit left / Loss left first (or the words for its extremes_reason), its original Max Profit /
 // Max Loss below; every figure the book reply's text as sent. Null outside Drafts Mode: the summary is unchanged.
-const paperLeft = computed(() => {
+const paperLeft = computed(() => { // GC-ICFIX u124: after-charges forms, labelled (lib/paperDrafts paperLeftOf)
   const b = paper.value?.book
-  if (!b) return null
-  return { profit: b.profit_left_text ?? null, loss: b.loss_left_text ?? null, reason: b.extremes_reason_text ?? null } // R-20: the server's sentence for extremes_reason, never written here
+  return b ? paperLeftOf(b, withAsOf(typeof b.pause_reason_text === 'string' && b.pause_reason_text.trim() !== '' ? b.pause_reason_text.trim() : null, b.as_of)) : null
 })
 // R-11: legs still carrying the entry and time the book loaded are paper fills ("Paper average", no time)
 const paperFills = computed(() => (paper.value ? paper.value.net.map(paperFillKey) : []))
@@ -913,7 +913,7 @@ const pricesStamp = computed(() => {
           <button v-if="!paperStale && pendingOrders?.length" type="button" class="h-9 rounded-lg bg-accent px-3 font-medium text-white" data-testid="paper-review" @click="reviewPending">{{ REVIEW_AND_ADD_LABEL }}</button>
           <button v-if="pendingOrders === null || pendingOrders.length" type="button" class="h-9 rounded-lg border border-line px-3 font-medium" data-testid="paper-discard" @click="discardPending">{{ DISCARD_LABEL }}</button>
         </div>
-        <PaperBookPanel v-if="paper" :book="paper.book" :net="paper.net" :show-orders="showOrdersTick" @exit="exitPaper" @exit-all="exitAllPaper" />
+        <PaperBookPanel v-if="paper" :book="paper.book" :net="paper.net" :show-orders="showOrdersTick" @exit="exitPaper" @exit-all="exitAllPaper" @book="(b) => { if (paper && !paperStale) paper = { ...paper, book: b } }" />
         </div>
         <PaperConfirmDialog :open="paperDialog" :orders="paperRows" :busy="paperBusy" :error="paperError" :state="paperState" @confirm="confirmPending" @cancel="paperDialog = false" @orderbook="openPaperOrderbook" />
         <SaveDraftBar :legs="legs" :rules-ref="String(route.query.rules_ref || '')" :current="openStrategy" :shown-name="shapeName ?? ''" :paper-mode="paper !== null" :live-price-by-id="livePriceById" class="max-[1099px]:contents" @open="openFromBar" @saved="onSaved" @paper-added="onPaperAdded" @renamed="onRenamed" @deleted="onDeleted">

@@ -155,7 +155,7 @@ const EMPTY = 'No paper strategies yet. Build a strategy, then press Add to Pape
 const figures = [
   { field: 'total', label: 'Total P&L', testid: 'paper-total', reason: 'pauseReason', reasonId: 'paper-total-reason' },
   { field: 'unbooked', label: 'Unbooked P&L', testid: 'paper-unbooked', reason: 'pauseReason', reasonId: 'paper-unbooked-reason' },
-  { field: 'booked', label: 'Booked P&L', testid: 'paper-booked' },
+  { field: 'booked', label: 'Booked P&L', testid: 'paper-booked', reasonId: 'paper-booked-reason' },
   { field: 'charges', label: 'Charges', testid: 'paper-charges', reason: 'chargesReason', reasonId: 'paper-charges-reason' }, // beside, never subtracted
 ]
 // GC-TP R-19b: the card's summary line; each reads one server text and says why when it is absent
@@ -176,9 +176,10 @@ const totalFigures = [
 // the server's text, printed as sent (a missing figure is a dash); the colour follows the server's sign, read from its text
 // GC-ICFIX u123 (ADR-263): the Total P&L figure is the reply's after-charges text with "(after charges)", or the before text with
 // "(before charges)" and the reason (lib/tracking afterFigure); every other figure is its own text and reason, unchanged
+const AFTER_OF = { total: 'totalAfter', booked: 'bookedAfter', unbooked: 'unbookedAfter' } // u124: Booked / Unbooked follow the same rule
 const shownFig = (src, f) => {
-  if (f.field === 'total') {
-    const a = src.totalAfter
+  if (AFTER_OF[f.field]) {
+    const a = src[AFTER_OF[f.field]]
     return { label: `${f.label} ${a.label}`.trim(), text: a.text, reason: a.reason }
   }
   return { label: f.label, text: src[f.field], reason: f.reason && src[f.field] === null ? src[f.reason] : null }
