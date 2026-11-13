@@ -110,6 +110,12 @@ async def test_the_list_carries_final_pnl_adjustments_and_their_cost_for_a_close
     assert (row["final_pnl"], row["final_pnl_text"]) == ("1950.00", "+1,950.00")  # 65 x 20.00 + 65 x 10.00
     assert row["adjustments_made"] == 1  # the first exit; entry and closing exit do not count
     assert D(row["adjustment_cost"]) > 0 and row["adjustment_cost_text"] and row["completed_reason_text"] is None
+    # GC-ICFIX ADR-259: charges and the net after charges beside the final P&L. Hand charges (RATES) of the four orders:
+    # SELL 65 @ 100.00 36.082821 + SELL 65 @ 60.05 31.0959340105 + BUY 65 @ 80.00 25.9422568 + BUY 65 @ 50.05
+    # 25.0653744105 = 118.186386221, shown rounded up 118.19; net = 1,950.00 - 118.19 - 0 = 1,831.81.
+    assert (D(row["total_after"]), D(row["charges_paid"]), D(row["charges_to_close"])) == (
+        D("1831.81"), D("118.19"), D("0"))
+    assert row["total_after_text"] == "+1,831.81" and row["after_charges_reason"] is None
 
 
 async def test_unreadable_charge_rates_say_not_available_with_a_reason_never_zero(db):
@@ -121,6 +127,7 @@ async def test_unreadable_charge_rates_say_not_available_with_a_reason_never_zer
     assert row["final_pnl"] == "1950.00"
     assert row["adjustment_cost"] is None and row["adjustment_cost_text"] is None
     assert row["completed_reason_text"]
+    assert (row["total_after"], row["charges_paid"], row["after_charges_reason"]) == (None, None, "rates_unavailable")
 
 
 async def test_a_draft_row_carries_no_completed_figures(db):

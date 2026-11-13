@@ -219,6 +219,14 @@ class SummaryOut(ApiModel):
     adjustment_cost: Optional[Money]  # noqa: UP045 - charges of the adjustment rows
     adjustment_cost_text: Optional[CatalogueText]  # noqa: UP045
     completed_reason_text: Optional[CatalogueText]  # noqa: UP045 - why a figure is absent
+    # GC-ICFIX (ADR-259, ADR-263): the final P&L after charges = final_pnl - charges_paid (nothing open to close)
+    total_after: Optional[Money] = None  # noqa: UP045
+    total_after_text: Optional[CatalogueText] = None  # noqa: UP045
+    charges_paid: Optional[Money] = None  # noqa: UP045
+    charges_to_close: Optional[Money] = None  # noqa: UP045
+    charges_to_close_text: Optional[CatalogueText] = None  # noqa: UP045
+    after_charges_reason: Optional[Literal["rates_unavailable", "not_priced", "prices_not_live"]] = None  # noqa: UP045
+    after_charges_reason_text: Optional[CatalogueText] = None  # noqa: UP045
 
 
 class RenamedOut(ApiModel):
