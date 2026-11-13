@@ -50,6 +50,9 @@ PINNED_SLOT_TYPES = frozenset({
         "SignedPaisa", "SignedRupeesPaisa", "SignedWholeRupees",
         # GC-TP step 7a / 6a (reviewed 2026-10-29 session 2: both validate through Rupees / HourMinute, format only)
         "IndexLevel", "TargetValue",
+        # GC-ICFIX u113 (ADR-304 (3)): takes only a render() result (type UserFacingError, fail-closed), prints its
+        # first part: a catalogue sentence of ours, never user text
+        "Reason",
         "ColumnLabel", "HealthLabel", "ScenarioViewLabel",
         # W-117 (Learn): only a text the loaded strategy catalogue holds (name/description). The W-117 verifier
         # attacked it on 2026-10-19 (forged, empty, 1M-char, lookalike, NFD, str subclass, bytes: all refused);
