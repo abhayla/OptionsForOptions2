@@ -3,7 +3,7 @@
 // figure the before figure is shown labelled "(before charges)" with the server's reason; prices not live is the paused
 // text and no number. When the server sends `recover_text` one fixed line says so. Nothing is added up or capped here.
 // Real values from the server's tests: open sold position booked_after -36.09, unbooked_after 1,274.05, total 1,237.96;
-// losing position profit_left_after 9,685.91 beside Max profit 6,437.38, recover 3,248.53; condor at entry 2,764.83 / -3,735.17.
+// losing position profit_left_after 9,751.47 beside Max profit 6,437.38, recover 3,314.09; condor at entry Total -241.43, Max profit 2,764.83, Profit left 3,006.26, Max loss -3,735.17, Loss left -3,493.74.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createRouter, createMemoryHistory } from 'vue-router'
@@ -35,15 +35,15 @@ const NO_AFTER = (reason, text) => ({ total_after: null, total_after_text: null,
 beforeEach(() => { answers = {}; resetPaperAlerts(); vi.useFakeTimers() })
 afterEach(() => vi.useRealTimers())
 
-const LOSING = { profit_left_text: '+14,00.00', loss_left_text: '-5,00.00', profit_left_after_text: '+9,685.91', loss_left_after_text: '-1,111.11', recover_text: '+3,248.53', total_after_text: '-100.00', after_charges_reason: null }
-const CONDOR = { profit_left_text: '+2,900.00', loss_left_text: '-3,600.00', profit_left_after_text: '+2,764.83', loss_left_after_text: '-3,735.17', recover_text: null, total_after_text: '-10.00', after_charges_reason: null }
+const LOSING = { profit_left_text: '+14,00.00', loss_left_text: '-5,00.00', profit_left_after_text: '+9,751.47', loss_left_after_text: '-1,111.11', recover_text: '+3,314.09', total_after_text: '-3,314.09', max_profit_text: '+6,437.38', max_loss_text: '-1,000.00', after_charges_reason: null }
+const CONDOR = { profit_left_text: '+2,900.00', loss_left_text: '-3,600.00', profit_left_after_text: '+3,006.26', loss_left_after_text: '-3,493.74', recover_text: null, total_after_text: '-241.43', max_profit_text: '+2,764.83', max_loss_text: '-3,735.17', after_charges_reason: null }
 
 describe('u124 Profit left / Loss left (the trade page summary)', () => {
   const card = (book, paused = null) => mount(SummaryCards, { props: { left: paperLeftOf(book, paused), maxProfit: '+6,437.38', maxLoss: '-1,000.00' } })
 
-  it('A: the after texts as sent, labelled "(after charges)", not capped (9,685.91 beside Max profit 6,437.38)', () => {
+  it('A: the after texts as sent, labelled "(after charges)", not capped (9,751.47 beside Max profit 6,437.38)', () => {
     const w = card(LOSING)
-    expect(t(w, 'profit-left').text()).toBe('+9,685.91')
+    expect(t(w, 'profit-left').text()).toBe('+9,751.47')
     expect(t(w, 'loss-left').text()).toBe('-1,111.11')
     expect(t(w, 'profit-left-label').text()).toBe('Profit left (after charges)')
     expect(t(w, 'loss-left-label').text()).toBe('Loss left (after charges)')
@@ -51,13 +51,13 @@ describe('u124 Profit left / Loss left (the trade page summary)', () => {
   })
   it('B: recover_text present: the fixed ADR-302 line with the server amount', () => {
     const w = card(LOSING)
-    expect(t(w, 'profit-left-recover').text()).toBe('includes Rs 3,248.53 needed to recover the current loss')
-    expect(RECOVER_LINE_PREFIX + '3,248.53' + RECOVER_LINE_SUFFIX).toBe('includes Rs 3,248.53 needed to recover the current loss')
+    expect(t(w, 'profit-left-recover').text()).toBe('includes Rs 3,314.09 needed to recover the current loss')
+    expect(RECOVER_LINE_PREFIX + '3,314.09' + RECOVER_LINE_SUFFIX).toBe('includes Rs 3,314.09 needed to recover the current loss')
   })
   it('C: condor at entry (no recover): both figures, no recover line', () => {
     const w = card(CONDOR)
-    expect(t(w, 'profit-left').text()).toBe('+2,764.83')
-    expect(t(w, 'loss-left').text()).toBe('-3,735.17')
+    expect(t(w, 'profit-left').text()).toBe('+3,006.26')
+    expect(t(w, 'loss-left').text()).toBe('-3,493.74')
     expect(w.find('[data-testid="profit-left-recover"]').exists()).toBe(false)
   })
   it('D: no after figure with a reason: the before figure, "(before charges)", the reason sentence', () => {

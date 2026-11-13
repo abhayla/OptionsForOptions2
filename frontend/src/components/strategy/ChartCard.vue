@@ -26,6 +26,7 @@ import {
   COMPACT_COLUMNS, GREEK_COLUMNS, PAYOFF_STEPS, compactRows, greekModeHeading, greekRows, greekText, payoffLevelRows, payoffStepTable, signOf,
 } from '@/lib/chartCard'
 import { BOOKED_SWITCH_LABEL } from '@/lib/targetBlock'
+import { BEFORE_CHARGES } from '@/lib/tracking'
 
 const props = defineProps({
   points: { type: Array, default: () => [] },
@@ -61,7 +62,11 @@ const emit = defineEmits(['zoom', 'payoff-step'])
 
 // the TOTAL row's P&L is the page's one paper read (after charges, labelled; no number when prices are not live); every other cell is the reply's
 const cellText = (r, c) => (r.isTotal && c.id === 'unrealized_pnl' && props.paperTotal
-  ? (props.paperTotal.text === null ? '—' : `${props.paperTotal.text} ${props.paperTotal.label}`.trim()) : r.values[c.id].display)
+  ? (props.paperTotal.text === null ? '—' : `${props.paperTotal.text} ${props.paperTotal.label}`.trim())
+  // the shared read has no percent form: a dash, never the socket's before-charges percent beside an after-charges total
+  : r.isTotal && c.id === 'pnl_percent' && props.paperTotal ? '—' : r.values[c.id].display)
+// a paper trade's per-row P&L cells are before charges: said once, in the column header (the TOTAL cell carries its own label)
+const headText = (c) => (c.id === 'unrealized_pnl' && props.paperTotal ? `${c.label} ${BEFORE_CHARGES}` : c.label)
 const TABS = [
   { key: 'payoff', label: 'Payoff Graph' }, // GC-UI b1 D-B01 (Sensibull 012 tab labels)
   { key: 'pnl', label: 'P&L Table' },
@@ -224,7 +229,7 @@ const toneOf = (v) => ({ profit: 'text-profit', loss: 'text-loss' })[signOf(v)] 
           <thead>
             <tr class="border-b border-line text-left text-ink-muted">
               <th scope="col" class="py-2 font-medium">Instrument</th>
-              <th v-for="c in COMPACT_COLUMNS" :key="c.id" scope="col" class="py-2 text-right font-medium" data-testid="compact-head">{{ c.label }}</th>
+              <th v-for="c in COMPACT_COLUMNS" :key="c.id" scope="col" class="py-2 text-right font-medium" data-testid="compact-head">{{ headText(c) }}</th>
             </tr>
           </thead>
           <tbody>

@@ -197,11 +197,11 @@ describe('u127 each screen offers the breakdown', () => {
     expect(tapAround(card, 'paper-total').exists()).toBe(false)
   })
 
-  it('Profit left / Loss left: before and after rows only', async () => {
-    const w = mount(SummaryCards, { props: { left: paperLeftOf({ profit_left_text: '+2,900.00', loss_left_text: '-3,600.00', profit_left_after_text: '+2,764.83', loss_left_after_text: '-3,735.17', total_after_text: '-10.00', after_charges_reason: null, charges_paid: '30.00' }), maxProfit: '+6,437.38', maxLoss: '-1,000.00' } })
+  it('Profit left / Loss left: Max (after charges) and Total P&L so far (after charges), ADR-306', async () => {
+    const w = mount(SummaryCards, { props: { left: paperLeftOf({ profit_left_text: '+2,900.00', loss_left_text: '-3,600.00', profit_left_after_text: '+3,006.26', loss_left_after_text: '-3,493.74', max_profit_text: '+2,764.83', total_after_text: '-241.43', after_charges_reason: null, charges_paid: '30.00' }), maxProfit: '+2,764.83', maxLoss: '-3,735.17' } })
     await tapAround(w, 'profit-left').trigger('click')
-    expect(w.findAll('[data-testid^="breakdown-"]').map((x) => x.text())).toEqual(['Before charges: +2,900.00', 'After charges: +2,764.83'])
-    expect(t(w, 'after-tap').text()).toBe('+2,764.83')
+    expect(w.findAll('[data-testid^="breakdown-"]').map((x) => x.text())).toEqual(['Max profit (after charges): +2,764.83', 'Total P&L so far (after charges): -241.43'])
+    expect(t(w, 'after-tap').text()).toBe('+3,006.26')
   })
 
   it('tracking box headline', async () => {
