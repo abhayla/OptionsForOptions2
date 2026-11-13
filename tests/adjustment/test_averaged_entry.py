@@ -1,4 +1,3 @@
-# ruff: noqa: PLR2004 - exact hand amounts are the assertions
 """GC-ICFIX issues 3 and 4 (ADR-008, ADR-263, ADR-298): a leg filled in two orders at different prices has an AVERAGE
 entry with more than two decimals (38.85 and 38.90 -> 38.875). The adjustment offer / compare / prepare readers build
 the engine's ``Leg`` from that average; the engine's price guard refused it, so every approach answered with an error.
@@ -21,9 +20,9 @@ from decimal import Decimal as D
 
 import pytest
 import test_approach_compare as t
-from ofo.charges import ChargeRates
 from ofo.adjustment.approaches import APPROACH_IDS, build_approach
 from ofo.adjustment.compare import _strategy
+from ofo.charges import ChargeRates
 from ofo.engine.adjust_money import closed_booked
 from ofo.engine.metrics import strategy_metrics
 from ofo_app.routes import adjustment as route
@@ -48,7 +47,8 @@ def _max_profit(position) -> D:
 
 
 def _market() -> route.MarketInputs:
-    return route.MarketInputs((), {}, None, None, None, None, None, datetime.datetime(2026, 11, 2, 5, 0, tzinfo=datetime.UTC))
+    now = datetime.datetime(2026, 11, 2, 5, 0, tzinfo=datetime.UTC)
+    return route.MarketInputs((), {}, None, None, None, None, None, now)
 
 
 def _all_approaches(position, chain, spot) -> list[str]:
@@ -81,7 +81,7 @@ def test_two_fill_long_leg_prices_exactly() -> None:
 
 
 def test_offer_money_lines_from_the_exact_average() -> None:
-    position, chain, spot = _position({1: D("38.875")})
+    position, _chain, _spot = _position({1: D("38.875")})
     leg = position.legs[1]
     assert closed_booked([(leg.side, leg.entry, D("30.00"), 130)]) == D("1153.75")  # the docstring's hand sum
     priced = route.price_after(position.legs, position, D("0"), D("0"), [], RATES, _market())
@@ -99,13 +99,13 @@ def test_partly_closed_two_fill_leg() -> None:
 
 
 def test_exactly_two_decimals_is_unchanged() -> None:
-    position, chain, spot = _position({1: D("38.90")})
+    position, _chain, _spot = _position({1: D("38.90")})
     assert _max_profit(position) == D("40.20") * 130 == D("5226.00")
 
 
 def test_a_leg_the_charge_engine_cannot_price_gives_the_existing_answer_not_an_exception() -> None:
     # entry 0 on a long leg: the calculator refuses a zero price; price_after keeps the figures and says charges unknown
-    position, chain, spot = _position({0: D("0")})
+    position, _chain, _spot = _position({0: D("0")})
     priced = route.price_after(position.legs, position, D("0"), D("0"), [], RATES, _market())
     assert priced.charges_known is False and priced.after is not None
 

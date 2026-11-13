@@ -382,8 +382,8 @@ def _spot_block(answer: SpotAnswer) -> dict:
 # ---- pricing (engine time) ----------------------------------------------------------------------------------------
 
 def _strategy(legs: Sequence[PositionLeg], lot: int) -> Strategy:
-    return Strategy(tuple(Leg(Action(x.side), Instrument(x.type), x.strike, x.expiry, x.lots * lot, x.entry, exact_entry=True)
-                          for x in legs))
+    return Strategy(tuple(Leg(Action(x.side), Instrument(x.type), x.strike, x.expiry, x.lots * lot, x.entry,
+                              exact_entry=True) for x in legs))
 
 
 def _charges(orders: Sequence[ChargeOrder], rates: ChargeRates) -> Decimal:
