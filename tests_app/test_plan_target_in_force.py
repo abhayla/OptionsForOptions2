@@ -123,11 +123,12 @@ async def test_t07_off_with_a_typed_target_flags_at_the_target(monkeypatch):
     assert isinstance(got, pe.Flag) and got.threshold == D("1")
 
 
-async def test_t07_off_with_a_target_equal_to_the_playbook_stays_silent(monkeypatch):
+async def test_t07_off_with_a_target_equal_to_the_playbook_switches_on(monkeypatch):
+    """Round 3 (orchestrator decision): ANY usable Target switches T-07 on, the equal case included (was: stayed off)."""
     body = (await resolved(monkeypatch, plan_body_off("50", on=False))).body
-    assert body["triggers"]["T-07"]["on"] is False
-    got = t07_result(body, "2000")  # 72 % of max profit, still no flag: the playbook has it off
-    assert isinstance(got, pe.NotChecked) and got.code == "adjust_trigger_switched_off"
+    assert body["triggers"]["T-07"]["on"] is True
+    got = t07_result(body, "2000")  # 72 % of max profit
+    assert isinstance(got, pe.Flag) and got.threshold == D("50")
 
 
 @pytest.mark.parametrize("raw", ["", "abc", "0", "-5", "101", None, 7])
