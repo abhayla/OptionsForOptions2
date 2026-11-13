@@ -16,9 +16,9 @@
       <!-- Sensibull 050-053: the totals sit above the rows. A figure the reply omits is a dash with the server's reason. -->
       <dl v-if="totals && !compact" class="mt-2 flex flex-wrap gap-6 rounded bg-surface-muted px-3 py-2" data-testid="paper-totals">
         <div v-for="f in totalFigures" :key="f.id" class="text-right">
-          <dt class="text-xs text-ink-muted">{{ f.label }}</dt>
-          <dd class="text-lg font-semibold" :class="f.id === 'charges' ? '' : toneOf(totals[f.field])" :data-testid="`totals-${f.id}`">{{ pnlText(totals[f.field]) }}</dd>
-          <p v-if="totals[f.field] === null && totals[f.reason]" class="text-xs text-ink-muted" :data-testid="f.reasonId">{{ totals[f.reason] }}</p>
+          <dt class="text-xs text-ink-muted" :data-testid="`totals-${f.id}-label`">{{ shownFig(totals, f).label }}</dt>
+          <dd class="text-lg font-semibold" :class="f.id === 'charges' ? '' : toneOf(shownFig(totals, f).text)" :data-testid="`totals-${f.id}`">{{ pnlText(shownFig(totals, f).text) }}</dd>
+          <p v-if="shownFig(totals, f).reason" class="text-xs text-ink-muted" :data-testid="f.reasonId">{{ shownFig(totals, f).reason }}</p>
         </div>
       </dl>
       <label class="mt-2 flex items-center gap-2"><input v-model="showClosed" type="checkbox" data-testid="show-closed" /> {{ SHOW_CLOSED_LABEL }}</label>
@@ -34,8 +34,10 @@
               <span class="block text-xs text-ink-muted" data-testid="paper-compact-legs">{{ legsText(g) }}</span>
             </span>
             <span class="shrink-0 text-right">
-              <span class="block font-semibold" :class="toneOf(g.total)" data-testid="paper-total">{{ g.total ?? '-' }}</span>
-              <span v-if="g.total === null" class="block text-xs text-ink-muted" data-testid="paper-compact-reason">{{ g.stateText || NO_TOTAL }}</span>
+              <span class="block font-semibold" :class="toneOf(g.totalAfter.text)" data-testid="paper-total">{{ g.totalAfter.text ?? '-' }}</span>
+              <span v-if="g.totalAfter.label" class="block text-xs text-ink-muted" data-testid="paper-total-label">{{ g.totalAfter.label }}</span>
+              <span v-if="g.totalAfter.reason" class="block text-xs text-ink-muted" data-testid="paper-total-reason">{{ g.totalAfter.reason }}</span>
+              <span v-if="g.totalAfter.text === null" class="block text-xs text-ink-muted" data-testid="paper-compact-reason">{{ g.stateText || NO_TOTAL }}</span>
             </span>
           </RouterLink>
         </li>
@@ -53,9 +55,9 @@
               </div>
               <dl class="flex flex-wrap gap-6" data-testid="paper-figures">
                 <div v-for="f in figures" :key="f.field" class="text-right">
-                  <dt class="text-xs text-ink-muted" data-testid="paper-figure-label">{{ f.label }}</dt>
-                  <dd class="text-lg font-semibold" :class="f.field === 'charges' ? '' : toneOf(g[f.field])" :data-testid="f.testid">{{ pnlText(g[f.field]) }}</dd>
-                  <p v-if="f.reason && g[f.field] === null && g[f.reason]" class="text-xs text-ink-muted" :data-testid="f.reasonId">{{ g[f.reason] }}</p>
+                  <dt class="text-xs text-ink-muted" :data-testid="f.field === 'total' ? 'paper-total-label' : 'paper-figure-label'">{{ shownFig(g, f).label }}</dt>
+                  <dd class="text-lg font-semibold" :class="f.field === 'charges' ? '' : toneOf(shownFig(g, f).text)" :data-testid="f.testid">{{ pnlText(shownFig(g, f).text) }}</dd>
+                  <p v-if="shownFig(g, f).reason" class="text-xs text-ink-muted" :data-testid="f.reasonId">{{ shownFig(g, f).reason }}</p>
                 </div>
               </dl>
             </div>
@@ -172,6 +174,15 @@ const totalFigures = [
   { id: 'charges', field: 'charges', reason: 'chargesReason', reasonId: 'totals-charges-reason', label: 'Charges' },
 ]
 // the server's text, printed as sent (a missing figure is a dash); the colour follows the server's sign, read from its text
+// GC-ICFIX u123 (ADR-263): the Total P&L figure is the reply's after-charges text with "(after charges)", or the before text with
+// "(before charges)" and the reason (lib/tracking afterFigure); every other figure is its own text and reason, unchanged
+const shownFig = (src, f) => {
+  if (f.field === 'total') {
+    const a = src.totalAfter
+    return { label: `${f.label} ${a.label}`.trim(), text: a.text, reason: a.reason }
+  }
+  return { label: f.label, text: src[f.field], reason: f.reason && src[f.field] === null ? src[f.reason] : null }
+}
 const pnlText = (v) => (v === null || v === undefined ? PAPER_NO_FIGURE : v)
 const toneOf = (v) => ({ profit: 'text-profit', loss: 'text-loss' })[signOf(String(v ?? '').replace(/,/g, '').replace('−', '-'))] ?? ''
 const builderLink = (g) => ({ path: '/strategy/builder', query: { strategy: String(g.id) } })

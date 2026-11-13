@@ -4,6 +4,7 @@
 // one-line texts and whether each applies come from the server (`available`); no approach text is kept in the browser.
 import { MAX_PROFIT_AT_ZERO_LABEL, NO_CHANGE_ID } from '@/lib/adjustCompare'
 import { rupeesText } from '@/lib/displayFormat'
+import { afterFigure } from '@/lib/tracking'
 
 export const REVIEW_BUTTON_TEXT = 'Review adjustment'
 export const PICK_NOTE = 'Pick any to compare. No change is always included.'
@@ -21,8 +22,10 @@ export const CURRENT_STATE_BODY = Object.freeze({ approaches: [NO_CHANGE_ID] })
 /** REQ-046 AC-2 Layer 2, the part the card already has (tracking reply). A value it does not have reads "-". */
 export function cardRows(body) {
   const open = Array.isArray(body?.legs) ? body.legs.filter(isOpen).length : null
+  // GC-ICFIX (ADR-263): the after-charges figure, labelled; else the before figure, labelled (no label on a dash)
+  const pnl = afterFigure(body, typeof body?.paper_pnl_text === 'string' && body.paper_pnl_text.trim() !== '' ? body.paper_pnl_text.trim() : null)
   return [
-    { id: 'pnl', label: 'Paper P&L (not real)', value: text(body?.paper_pnl_text) },
+    { id: 'pnl', label: `Paper P&L (not real) ${pnl.label}`.trim(), value: text(pnl.text) },
     { id: 'booked', label: 'Booked', value: text(body?.booked_text) },
     { id: 'unbooked', label: 'Not yet booked', value: text(body?.unbooked_text) },
     { id: 'index', label: 'Index', value: text(body?.index?.level) },

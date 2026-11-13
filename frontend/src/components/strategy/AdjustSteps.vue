@@ -52,6 +52,7 @@
 import { computed, ref } from 'vue'
 import api, { NEUTRAL_ERROR } from '@/services/api'
 import { istTime } from '@/lib/displayFormat'
+import { afterFigure } from '@/lib/tracking'
 
 const props = defineProps({ strategyId: { type: Number, required: true } })
 const COLUMNS = ['When', 'Step', 'Orders', 'Cash', 'Booked', 'Why'] // the fill-state header is the server's text
@@ -68,8 +69,9 @@ const tiles = computed(() => {
   const t = data.value?.totals
   if (!t) return []
   const reasonOf = (v) => (v && typeof v === 'object' ? v.what_happened : v)
+  const pnl = afterFigure(t, t.pnl_text ?? null, reasonOf(t.open_reason_text)) // GC-ICFIX (ADR-263): the whole-trade P&L after charges, labelled
   return [
-    { id: 'pnl', label: 'Whole-trade P&L', value: t.pnl_text ?? DASH, reason: t.pnl_text ? null : reasonOf(t.open_reason_text) },
+    { id: 'pnl', label: `Whole-trade P&L ${pnl.label}`.trim(), value: pnl.text ?? DASH, reason: pnl.reason },
     { id: 'booked', label: 'Booked so far', value: t.booked_text },
     { id: 'open', label: 'Open legs now', value: t.open_pnl_text ?? DASH, reason: t.open_pnl_text ? null : reasonOf(t.open_reason_text) },
     { id: 'credit', label: 'Total credit collected', value: t.credit_text },
