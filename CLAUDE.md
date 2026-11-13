@@ -19,6 +19,9 @@ OptionsForOptions2: NIFTY/SENSEX options strategy platform (`spec/vision/vision.
 - DB test, one file only (host serves prod): `python scripts/orchestrator/db_run.py . python -m pytest -c pytest-app.ini tests_app/<file>.py`
 
 ## Hard rules
+- The task picks the model, never the session's default (owner 2026-11-13): the main session only asks, splits, routes,
+  verifies and reports; all other work of any kind goes to a helper (Haiku: mechanical; Sonnet: building, test runs,
+  browser walk-throughs; Opus: Tier A only). An unlisted task type is routed by the same questions, not kept.
 - Every order belongs to a strategy; no standalone order entry (ADR-002).
 - One engine owns every P&L/payoff number; money is exact decimal, never float (ADR-008).
 - Zerodha is the authority; submitted is not executed; no auto retry, no silent substitution; an unresolved

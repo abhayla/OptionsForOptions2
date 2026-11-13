@@ -4,10 +4,9 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (279)
+## Decisions (280)
 
-- Older decisions: 239 rows, ADR-1..ADR-252 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
-- ADR-253 2026-11-06: Owner 2026-11-06 ~01:2x IST (question tool, "Keep test-data only for now"). [Limits goal contract ic-e2e-paper design decision…]
+- Older decisions: 240 rows, ADR-1..ADR-253 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
 - ADR-254 2026-11-06: Owner 2026-11-06 ~02:0x IST (question tool, "Live too"). [Extends REQ-165 to T-19 in the worker; leaves ADR…]
 - ADR-255 2026-11-06: Owner 2026-11-06 ~14:0x IST (question tool, "Partial exits count, Exit all doesn't"). [Refines REQ-161 / REQ-163 / ADR-214 "adjustments…]
 - ADR-256 2026-11-06: Owner 2026-11-06 ~14:0x IST (question tool, "Warn, user confirms"). [Adds a warning to the paper exit confirm list (AD…]
@@ -47,6 +46,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-290 2026-11-11: Owner, 2026-11-11 (chat, then question tool "Both: by hand now, Zerodha later"): "I don't want to p… [withdraws ADR-289 part (2); restates the standing…]
 - ADR-291 2026-11-12: Owner, 2026-11-12 ~00:1x IST (chat): "It is mandatory that whoever connects to kite should have kit… [narrows the current scope of ADR-290 to the owner…]
 - ADR-292 2026-11-12: How ADR-290 (2) works for the one user of ADR-291, as approved with the GC-TRACK1 contract (owner 2… [adds the held_elsewhere source to the strategy st…]
+- ADR-293 2026-11-13: Owner decision 2026-11-13 ~09:15 IST (question tool, picked "Allow delete for paper (Recommended)"). [supersedes ADR-271 parts (1), (2) and (3); ADR-27…]
 
 ## Requirements (161)
 
