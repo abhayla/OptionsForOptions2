@@ -25,6 +25,9 @@
             <LoadFailed v-else :text="LIMITS_LOAD_FAILED_TEXT" :prefix="`plan-entry-limit-${row.id}`" @retry="$emit('retry-check')" />
           </template>
         </template>
+        <!-- GC-ICFIX u141: the check's own read time (the server's text; an older server sends none -> nothing shown) -->
+        <p v-if="limits && check.as_of_text" class="text-xs text-ink-muted" data-testid="plan-entry-limits-as-of">{{ check.as_of_text }}</p>
+        <p v-if="limits && checkStale" class="text-xs text-red-700" data-testid="plan-entry-limits-stale">{{ CHECK_STALE_TEXT }}</p>
         <p v-if="read.plan" data-testid="plan-entry-guards">
           {{ read.labels.max_adjustments }}: {{ read.plan.maxAdjustments }} / {{ read.labels.time_exit }}: {{ read.plan.timeExit }}
         </p>
@@ -43,13 +46,14 @@ import AdjustPlanSheet from '@/components/strategy/AdjustPlanSheet.vue'
 import LoadFailed from '@/components/common/LoadFailed.vue'
 import api from '@/services/api'
 import { fetchPlan } from '@/lib/adjustPlan'
-import { LIMITS_LOADING_TEXT, LIMITS_LOAD_FAILED_TEXT, LIMITS_NONE_TEXT, PLAN_LOADING_TEXT, PLAN_LOAD_FAILED_TEXT } from '@/lib/sharedStateText'
+import { CHECK_STALE_TEXT, LIMITS_LOADING_TEXT, LIMITS_LOAD_FAILED_TEXT, LIMITS_NONE_TEXT, PLAN_LOADING_TEXT, PLAN_LOAD_FAILED_TEXT } from '@/lib/sharedStateText'
 
 // the rule check's reply and the state of the panel's one read of it: 'loading' | 'ok' | 'failed'
 const props = defineProps({
   strategyId: { type: Number, default: null },
   check: { type: Object, default: null },
   checkStatus: { type: String, default: 'loading' },
+  checkStale: { type: Boolean, default: false }, // a background re-read failed: the lines are the last good ones
 })
 defineEmits(['retry-check'])
 const read = ref(null)
@@ -61,7 +65,9 @@ const KNOWN_STATES = ['checked', 'not_checked', 'already_true']
 const limits = computed(() => {
   const c = props.check
   if (props.checkStatus !== 'ok' || !c || !Array.isArray(c.limits)) return null
-  if (c.paused) return { paused: c.paused.text || c.paused, rows: [] }
+  if (c.paused) return typeof c.paused.text === 'string' && c.paused.text ? { paused: c.paused.text, rows: [] } : null // never an object
+  // an empty list means "no rules" only where the server says there is no playbook; any other empty answer is not one we can read
+  if (!c.limits.length && c.playbook?.source !== 'none') return null
   const rows = c.limits.map((l) => ({ id: l.rule_id, text: KNOWN_STATES.includes(l.state) && typeof l.text === 'string' ? l.text : null,
     muted: l.state === 'already_true' })) // ADR-296: an already-true line is grey, never red
   return { paused: null, rows }

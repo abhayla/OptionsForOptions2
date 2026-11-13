@@ -44,15 +44,20 @@
       <div v-for="f in flags" :key="f.rule_id" class="mt-2 flex flex-wrap items-center gap-2 rounded bg-warn-soft px-2 py-1.5 text-sm" data-testid="playbook-flag">
         <Chip kind="state" :label="f.wording" data-testid="playbook-flag-label" />
         <span data-testid="playbook-flag-condition">{{ f.condition }}</span>
+        <!-- GC-ICFIX u142: a fired stop's loss now / stop line in rupees and percent and the time it fired, the server's sentence -->
+        <span v-if="f.stop_text" data-testid="playbook-flag-stop">{{ f.stop_text }}</span>
       </div>
       <!-- ADR-272 (3): the check's withheld state, in the server's words, instead of silence -->
       <p v-if="typed && check.withheld" class="mt-1 text-xs text-ink-muted" data-testid="check-withheld">{{ check.withheld }}</p>
+      <!-- GC-ICFIX u141: the check's own read time; a background re-read that failed keeps the last lines and says so -->
+      <p v-if="typed && check.as_of_text" class="mt-1 text-xs text-ink-muted" data-testid="check-as-of">{{ check.as_of_text }}</p>
+      <p v-if="typed && checkStale" class="mt-1 text-xs text-red-700" data-testid="check-stale">{{ CHECK_STALE_TEXT }}</p>
       <p v-for="a in alreadyTrue" :key="a.rule_id" class="mt-1 text-xs text-ink-muted" data-testid="playbook-already-true">{{ a.wording?.what_happened }} {{ a.condition }}</p>
       <button v-if="view.detections.length || flags.length" ref="reviewBtn" type="button" class="mt-2 rounded border border-line bg-surface px-2 py-1 text-xs font-medium" data-testid="review-adjustment" @click="openDrawer">{{ REVIEW_BUTTON_TEXT }}</button>
     </div>
     <!-- GC-ADJ2 step 6 (REQ-163): the entry, every adjustment and the whole-trade totals; read when opened -->
     <AdjustSteps :strategy-id="savedId" />
-    <PlanEntry v-if="status === 'tracked'" :strategy-id="savedId" :check="check" :check-status="checkStatus" @retry-check="retryCheck" />
+    <PlanEntry v-if="status === 'tracked'" :strategy-id="savedId" :check="check" :check-status="checkStatus" :check-stale="checkStale" @retry-check="retryCheck" />
     <AdjustDrawer
       :open="drawerOpen" :strategy-id="savedId" :lines="drawerLines" :detected="!!view?.detections?.length || flags.length > 0" :card-rows="cardRows(raw)"
       :suggestion-ids="flagIds"
@@ -72,6 +77,7 @@ import Chip from '@/components/common/Chip.vue'
 import FigureHint from '@/components/common/FigureHint.vue'
 import api, { NEUTRAL_ERROR } from '@/services/api'
 import { readTracking } from '@/lib/tracking'
+import { CHECK_STALE_TEXT } from '@/lib/sharedStateText'
 import { usePaperRefresh } from '@/lib/usePaperRefresh'
 
 const props = defineProps({
@@ -97,13 +103,22 @@ const flags = computed(() => (typed.value ? (check.value.results ?? []) : [])
 const alreadyTrue = computed(() => (typed.value ? (check.value.results ?? []) : []).filter((r) => r.kind === 'already_true'))
 const flagIds = computed(() => flags.value.map((f) => f.suggestion_id).filter((x) => x !== null && x !== undefined))
 const checkStatus = ref('loading') // the plan card's limit lines read this one check: 'loading' | 'ok' | 'failed' (ADR-304 (3))
-async function readCheck(id) {
-  checkStatus.value = 'loading'
+const checkStale = ref(false) // GC-ICFIX u141: a background re-read failed after a good read: the last lines stay, marked
+let checkReading = false // one check read at a time (a tick while one is out does nothing)
+// `background` = the re-read inside the page's refresh: it never flips the status to loading and never blanks a good reply.
+async function readCheck(id, background = false) {
+  if (background && checkReading) return
+  checkReading = true
+  if (!background) checkStatus.value = 'loading'
   try {
     const { data } = await api.get(`/strategies/${id}/adjustment-check`)
-    if (id === props.savedId) { check.value = data; checkStatus.value = 'ok' }
+    if (id === props.savedId) { check.value = data; checkStatus.value = 'ok'; checkStale.value = false }
   } catch {
-    if (id === props.savedId) { check.value = null; checkStatus.value = 'failed' }
+    if (id !== props.savedId) return
+    if (background && check.value) checkStale.value = true
+    else if (!background) { check.value = null; checkStatus.value = 'failed' }
+  } finally {
+    checkReading = false
   }
 }
 const retryCheck = () => readCheck(props.savedId)
@@ -139,6 +154,7 @@ async function load(id) {
   raw.value = null
   check.value = null
   checkStatus.value = 'loading'
+  checkStale.value = false
   dismissed.value = []
   drawerOpen.value = false
   error.value = ''
@@ -166,6 +182,8 @@ usePaperRefresh({
     error.value = ''
     view.value = readTracking(data, props.legs)
     raw.value = data
+    // GC-ICFIX u141: the rule check rides the same rhythm (no second timer); a closed trade's check is not re-read (as before)
+    if (view.value?.kind !== 'exited') readCheck(props.savedId, true)
   },
   onError: failed,
 })

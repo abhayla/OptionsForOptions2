@@ -34,6 +34,7 @@ export const PLAN_LOADING_TEXT = 'Loading the plan…'
 // pending owner read (13 Nov 2026), GC-ICFIX u113 round 3 (ADR-304 (3)): the states of the plan card's limit lines, read from the rule check
 export const LIMITS_LOADING_TEXT = 'Loading the rules in force…'
 export const LIMITS_LOAD_FAILED_TEXT = 'Could not load the rules in force. Nothing was changed.'
+export const CHECK_STALE_TEXT = 'Could not refresh the rule check. Showing the last answer, as of the time shown.'
 export const LIMITS_NONE_TEXT = 'No rules are being checked for this trade'
 export const RETURN_DONE_TEXT = 'Zerodha confirmed your orders.' // ADR-129
 

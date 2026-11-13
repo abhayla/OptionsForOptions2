@@ -301,6 +301,7 @@ class LimitNow:
     state: Literal["checked", "not_checked", "already_true"]
     reason: str | None
     slots: tuple[tuple[str, object], ...] = ()  # the reason's values, for its catalogue text
+    after: int = 0  # ADR-296: an "already_true" row's adjustment number (the result's own ``after``; 0 = the entry)
 
 
 @dataclass(frozen=True)
@@ -1120,7 +1121,7 @@ def _rule_of(body: Mapping, tid: str) -> str:
     return next((r["id"] for r in body.get("rules", []) if tid in (r.get("any_of") or r.get("all_of") or ())), tid)
 
 
-def _limit_row(rid: str, tid: str, why: str | None, held: frozenset[str], reason: str | None,  # noqa: PLR0913
+def _limit_row(rid: str, tid: str, why: str | None, held: Mapping[str, int], reason: str | None,  # noqa: PLR0913
                figures: tuple = (None, None, (), None), slots: tuple = ()) -> LimitNow:
     state: Literal["checked", "not_checked", "already_true"] = "checked"
     reason = why or reason  # the withheld reason first, as ``_outcomes`` does
@@ -1129,7 +1130,7 @@ def _limit_row(rid: str, tid: str, why: str | None, held: frozenset[str], reason
         state = "not_checked"
     elif rid in held:
         state = "already_true"
-    return LimitNow(rid, tid, *figures, state, reason, slots)
+    return LimitNow(rid, tid, *figures, state, reason, slots, held[rid] if state == "already_true" else 0)
 
 
 def limits_now(body: Mapping, state: StrategyState, results: tuple[Result, ...] = ()) -> tuple[LimitNow, ...]:
@@ -1139,7 +1140,7 @@ def limits_now(body: Mapping, state: StrategyState, results: tuple[Result, ...] 
     evaluation's) marks a rule true since tracking started ``already_true``. A trigger the body lacks has no row."""
     c = _context(body, state)
     why = _withheld(state)
-    held = frozenset(r.rule_id for r in results if isinstance(r, AlreadyTrue))
+    held = {r.rule_id: r.after for r in results if isinstance(r, AlreadyTrue)}
     out: list[LimitNow] = []
     for tid in ("T-07", sl.TRIGGER_MAX_LOSS):
         t = body.get("triggers", {}).get(tid)
