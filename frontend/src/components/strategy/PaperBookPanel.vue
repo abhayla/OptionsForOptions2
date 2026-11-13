@@ -38,6 +38,8 @@
     <div v-if="view === 'net'" class="mt-2 overflow-x-auto">
       <table class="w-full text-xs" data-testid="net-table">
         <thead class="text-ink-muted">
+          <!-- GC-ICFIX round 2 (F2): the server sends no after-charges form per contract: Booked / Unbooked / P&L are before charges, said once -->
+          <tr><th colspan="4"></th><th colspan="3" class="font-normal" data-testid="net-basis">(before charges)</th><th></th></tr>
           <tr><th class="text-left font-normal">Contract</th><th class="font-normal">Lots</th><th class="font-normal">Avg</th><th class="font-normal">LTP</th><th class="font-normal">Booked</th><th class="font-normal">Unbooked</th><th class="font-normal">P&amp;L</th><th></th></tr>
         </thead>
         <tbody>
@@ -59,7 +61,8 @@
           </tr>
         </tbody>
       </table>
-      <ul v-if="closed.length" class="mt-2 text-xs text-ink-muted" data-testid="closed-list">
+      <p v-if="closed.length" class="mt-2 text-xs text-ink-muted" data-testid="closed-basis">Closed contracts: booked P&amp;L (before charges)</p>
+      <ul v-if="closed.length" class="text-xs text-ink-muted" data-testid="closed-list">
         <li v-for="p in closed" :key="p.contract_id" class="flex gap-2" data-testid="closed-row">
           <span class="flex-1" data-testid="closed-contract">{{ p.contract_text }}</span>
           <span>Closed, booked</span><span class="num" data-testid="closed-booked">{{ p.booked_text }}</span>

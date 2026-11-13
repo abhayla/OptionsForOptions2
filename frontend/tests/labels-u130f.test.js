@@ -62,11 +62,11 @@ describe('item 3: the server charges_paid_text, never the raw string', () => {
     expect(t(w, 'row-charges').text()).toContain('Charges paid: 1,403.45')
     expect(t(w, 'row-charges').text()).not.toContain('1403.45')
   })
-  it('the breakdown row uses charges_paid_text; a reply with only the raw string leaves the row out', () => {
+  it('the breakdown row uses charges_paid_text; no text at all leaves the row out', () => {
     const src = { total_after_text: '-511.65', charges_paid: '1403.45', charges_paid_text: '1,403.45', charges_to_close_text: '0.00' }
     expect(afterFigure(src, '-159.25').breakdown.rows.find((r) => r.id === 'paid').text).toBe('1,403.45')
-    const raw = { total_after_text: '-511.65', charges_paid: '1403.45' }
-    expect(afterFigure(raw, '-159.25').breakdown.rows.find((r) => r.id === 'paid')).toBeUndefined()
+    const none = { total_after_text: '-511.65' }
+    expect(afterFigure(none, '-159.25').breakdown.rows.find((r) => r.id === 'paid')).toBeUndefined()
   })
 })
 

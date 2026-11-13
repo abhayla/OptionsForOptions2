@@ -96,7 +96,7 @@ describe('TrackingPanel', () => {
     expect(rows).toEqual([['S 1 x 3 Nov 22800 CE', '39.15', '45.15'], ['S 1 x 3 Nov 22400 PE', '82.75', '-']])
     // D-B51: the price stored by Add to Paper is the Paper entry (the P&L Table's column is the Planned entry)
     // GC-UI b2 D-B48: the per-leg P&L column; these legs carry no pnl_text, so it prints the em dash (never a browser sum)
-    expect(w.findAll('[data-testid="tracking-view"] th').map((h) => h.text())).toEqual(['Leg', 'Paper entry', 'LTP', 'P&L'])
+    expect(w.findAll('[data-testid="tracking-view"] th').map((h) => h.text())).toEqual(['Leg', 'Paper entry', 'LTP', 'P&L (before charges)'])
     expect(w.findAll('[data-testid="tracking-leg-pnl"]').map((c) => c.text())).toEqual(['—', '—'])
   })
 

@@ -15,7 +15,7 @@
             <th scope="col" class="py-1.5 text-left font-medium">Leg</th>
             <th scope="col" class="py-1.5 pl-6 text-right font-medium">Paper entry</th>
             <th scope="col" class="py-1.5 pl-6 text-right font-medium">LTP</th>
-            <th scope="col" class="py-1.5 pl-6 text-right font-medium">P&amp;L</th>
+            <th scope="col" class="py-1.5 pl-6 text-right font-medium" data-testid="tracking-leg-pnl-head">P&amp;L (before charges)</th>
           </tr>
         </thead>
         <tbody>

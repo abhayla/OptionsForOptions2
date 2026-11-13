@@ -62,7 +62,7 @@ describe('u123 trade page book panel: Total P&L after charges', () => {
     const w = mountBook(book({ ...NO_AFTER('prices_not_live', PAUSED), state: 'PAUSED', total: null, total_text: null, pause_reason: 'prices_not_live', pause_reason_text: PAUSED }))
     expect(t(w, 'book-total').text()).toBe('-')
     expect(t(w, 'book-after-reason').text()).toBe(PAUSED)
-    expect(w.text()).not.toMatch(/\(after charges\)|\(before charges\)/)
+    expect(t(w, 'book-total-label').text() + t(w, 'book-total').text()).not.toMatch(/\(after charges\)|\(before charges\)/) // round 2: the per-contract columns carry their own "(before charges)" caption
   })
   it('D: a closed trade shows its final after-charges figure (strategy 141: -32.50 before, -435.95 after)', () => {
     const w = mountBook(book({ ...AFTER, state: 'EXITED' }))
