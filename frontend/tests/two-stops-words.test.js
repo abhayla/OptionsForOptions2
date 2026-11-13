@@ -17,18 +17,20 @@ const BODY = { stages: [], looks: [], rules: [], day_rules: [], approaches: { ap
 const REPLY = {
   strategy_id: 70, type: 'ic', type_name: 'Iron condor', generic: false, generic_text: null, prefill: { playbook_id: 9 },
   playbooks: [{ id: 9, name: 'Mine', type: 'ic', type_name: 'Iron condor', is_system: false, draft: false, active: true }],
-  labels: { plan_entry: 'Plan', playbook: 'Playbook', target: 'Target', stop: 'Stop', max_adjustments: 'Max', time_exit: 'Exit', edit: 'Edit', no_plan: 'none',
-    of_max_profit: '% of max profit', of_max_loss: '% of max loss', at_stage: '% at', not_checked: 'off' },
-  rules_in_force: { target: { on: true, stages: [{ name: 'Early', value: '50' }] }, stop: { on: true, stages: [{ name: 'Early', value: '50' }] } },
+  labels: { plan_entry: 'Plan', playbook: 'Playbook', target: 'Target', stop: 'Stop', max_adjustments: 'Max', time_exit: 'Exit', edit: 'Edit', no_plan: 'none' },
   plan: { playbook_id: 9, playbook_name: 'Mine', target: '50', stop: '50', stop_words: SERVER_WORDS, max_adjustments: 2, time_exit: null },
 }
 
 describe('the plan stop line is the server words, never a browser reading of the guards', () => {
-  it('a reply with stop_words and a body with only a max-loss guard shows the server words', async () => {
+  it('the card words each stop once, from the rule check\'s rows; the plan\'s own stop words are not repeated beside them', async () => {
     globalThis.__PLAN_REPLY = REPLY
-    const w = mount(PlanEntry, { props: { strategyId: 70 }, global: { stubs: { AdjustPlanSheet: true } } })
+    const limits = [{ rule_id: 'T-06', text: 'Stop: loss of 50 % of max loss (₹11,948.52)', state: 'checked' },
+      { rule_id: 'credit_stop', text: 'Stop: loss of 2 x credit (₹17,836.00), whichever comes first', state: 'checked' }]
+    const w = mount(PlanEntry, { props: { strategyId: 70, checkStatus: 'ok', check: { limits, paused: null, playbook: { source: 'plan' } } },
+      global: { stubs: { AdjustPlanSheet: true } } })
     await flushPromises()
-    expect(w.get('[data-testid=plan-entry-guards]').text()).toContain(SERVER_WORDS)
+    expect(w.text()).toContain('Stop: loss of 2 x credit (₹17,836.00), whichever comes first')
+    expect(w.text()).not.toContain(SERVER_WORDS)
     // the editor's preview of a body holding only a max-loss guard words no stop of its own
     const body = { ...BODY, guards: { stop_line_pct_of_max_loss: '50' } }
     expect(summaryLines(body, 'Iron condor', 'monthly', labelMaps(LABELS)).find((l) => l.key === 'plan')).toBeUndefined()

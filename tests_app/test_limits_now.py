@@ -179,3 +179,76 @@ def test_the_route_sends_the_rows():
                                              "playbook": {"source": "system", "id": 1, "status": None, "draft": False},
                                              "stage": {"name": None, "index": None}, "withheld": None, "results": [],
                                              "limits": route.limits_out(ev.limits)})
+
+
+# --- the sentence each row carries (ADR-304 (3): the card prints it, no glue text in the browser) ---------------------------
+def texts(ev):
+    return {x["rule_id"]: (None if x["text"] is None else str(x["text"])) for x in route.limits_out(ev.limits)}
+
+
+def rupees(v):
+    from ofo.engine.display import format_rupees
+    return format_rupees(v)
+
+
+def test_text_iron_condor_weekly_early_stage_target_stop_and_the_credit_line():
+    got = texts(run(IC, stage=0)[1])
+    assert got["T-07"] == "Target: profit of 50 % of max profit, before charges; 80 % nearer expiry"
+    assert got["T-06"] == f"Stop: loss of 50 % of max loss ({rupees(D('11948.52'))}); 40 % nearer expiry"
+    assert got[sl.CREDIT_RULE] == f"Stop: loss of 2 x credit ({rupees(D('17836.00'))}), whichever comes first"
+
+
+def test_text_last_stage_has_no_later_note():
+    got = texts(run(IC, stage=2)[1])
+    assert got["T-07"] == "Target: profit of 80 % of max profit, before charges"
+    assert got["T-06"] == f"Stop: loss of 40 % of max loss ({rupees(adjust_money.stop_at_pct(MAX_LOSS, D(40)))})"
+
+
+def test_text_t06_off_says_not_checked_with_the_reason_and_no_number_and_the_credit_line_stands_alone():
+    body = copy.deepcopy(IC)
+    body["triggers"]["T-06"]["on"] = False
+    _, ev = run(body)
+    got = texts(ev)
+    reason = next(x for x in route.limits_out(ev.limits) if x["rule_id"] == "T-06")["reason"].what_happened
+    assert got["T-06"] == f"Stop: not being checked: {reason}"
+    assert got[sl.CREDIT_RULE] == f"Stop: loss of 2 x credit ({rupees(D('17836.00'))})"  # no percent stop to race: no closing words
+
+
+def test_text_a_plan_saved_before_adr247_has_no_credit_line_and_no_closing_words():
+    got = texts(run(IC, plan=True, before=True)[1])
+    assert set(got) == {"T-07", "T-06"} and "whichever" not in got["T-06"]
+
+
+def test_text_strangle_expiry_day_tightened_by_20():
+    got = texts(run(STRANGLE, stage=2, hhmm="13:00", days=0, tighten=D(20))[1])
+    assert got["T-07"] == "Target: profit of 64 % of max profit, before charges; tightened by 20 % today"
+    assert got["T-06"].startswith("Stop: loss of 32 % of max loss (") and got["T-06"].endswith("); tightened by 20 % today")
+    assert rupees(adjust_money.stop_at_pct(MAX_LOSS, D("32.0"))) in got["T-06"]
+
+
+def test_text_unlimited_max_loss_stop_is_not_checked_with_its_reason():
+    _, ev = run(STRANGLE, stage=0, max_loss=pe.UNLIMITED)
+    reason = next(x for x in route.limits_out(ev.limits) if x["rule_id"] == "T-06")["reason"].what_happened
+    assert texts(ev)["T-06"] == f"Stop: not being checked: {reason}"
+
+
+def test_text_a_not_checked_row_that_still_carries_numbers_prints_none_of_them():
+    _, ev = run(IC, pnl="-30000")  # a loss larger than the max loss: inconsistent prices
+    row_ = row(ev, "T-06")
+    assert row_.state == "not_checked" and row_.threshold == D(50) and row_.amount == D("11948.52")
+    text = texts(ev)["T-06"]
+    assert text.startswith("Stop: not being checked: ") and not any(ch.isdigit() for ch in text.replace("2x", ""))
+
+
+def test_text_already_true_keeps_the_limit_and_says_so_in_the_adr296_words():
+    memory = {"T-07": {"held_at_entry": True, "seen_clear": False}}
+    _, ev = run(IC, pnl="2000", memory=memory)
+    text = texts(ev)["T-07"]
+    assert text.startswith("Target: profit of 50 % of max profit, before charges") and text.endswith(
+        "Already true: alerts after it clears and crosses again")
+
+
+def test_text_an_unknown_state_or_a_checked_row_with_nothing_to_compare_has_no_text():
+    for state, threshold in (("weird", D(50)), ("checked", None)):
+        bad = pe.LimitNow("T-07", "T-07", threshold, None, (), None, state, None)
+        assert route.limits_out((bad,))[0]["text"] is None
