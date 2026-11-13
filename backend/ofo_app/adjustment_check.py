@@ -160,10 +160,35 @@ async def plan_saved_before_adr247(conn: Any, plan: Any) -> bool:
     return cutoff is None or plan.accepted_at < cutoff
 
 
+def with_plan_target(body: Mapping) -> Mapping:
+    """ADR-252 for T-07: the plan sheet's Target (guard ``profit_target_pct_of_max_profit``) is the T-07 value the check
+    reads. Per expiry kind, a Target that differs from that row's early-stage value sets the early and middle stages to
+    it and the last stage to min(Target, its value) (never looser); an equal, absent or unusable (not a number,
+    <= 0, > 100) Target changes nothing. Read at check time, so earlier plans count too. A copy; T-07 on/off kept."""
+    guards, trig = body.get("guards"), (body.get("triggers") or {}).get("T-07")
+    raw = guards.get("profit_target_pct_of_max_profit") if isinstance(guards, Mapping) else None
+    try:
+        target = Decimal(raw)
+        if not isinstance(raw, str) or not 0 < target <= 100 or not isinstance(trig, Mapping):  # noqa: PLR2004
+            return body
+        out = {**body, "triggers": {**body["triggers"], "T-07": {**trig}}}
+        for kind in ("weekly", "monthly"):
+            values = list(trig.get(kind) or ())
+            filled = [n for n, x in enumerate(values) if x not in (None, "")]
+            if not filled or Decimal(values[filled[0]]) == target:
+                continue
+            for n in filled:
+                values[n] = format(min(target, Decimal(values[n])) if n == filled[-1] else target, "f")
+            out["triggers"]["T-07"][kind] = values
+    except (ArithmeticError, TypeError, ValueError):  # not a number: the playbook's own value stands
+        return body
+    return out
+
+
 async def resolve(conn: Any, user_ref: str, strategy_id: int, stype: str | None) -> Resolved:
     plan = await playbook_store.plan_for(conn, user_ref, strategy_id)
     if plan is not None:
-        return Resolved("plan", plan.body, plan.playbook_id, None, False,
+        return Resolved("plan", with_plan_target(plan.body), plan.playbook_id, None, False,
                         saved_before_adr247=await plan_saved_before_adr247(conn, plan))
     if stype is None:
         return Resolved("none", None, None, None, False, saved_before_adr247=False)
