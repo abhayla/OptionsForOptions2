@@ -6,7 +6,7 @@
   <section v-if="savedId" class="mt-4 rounded-lg border border-line bg-surface p-4" data-testid="tracking-panel">
     <p v-if="error" class="text-sm text-red-700" data-testid="tracking-error">{{ error }}</p>
     <div v-if="view" class="border-2 border-dashed rounded-lg p-3" data-testid="tracking-view">
-      <p class="font-semibold" data-testid="paper-pnl" :data-kind="view.kind">{{ view.text }}</p>
+      <AfterChargesTap :breakdown="view.breakdown ?? null"><p class="font-semibold" data-testid="paper-pnl" :data-kind="view.kind">{{ view.text }}</p></AfterChargesTap>
       <p v-if="view.afterReason" class="text-xs text-ink-muted" data-testid="tracking-after-reason">{{ view.afterReason }}</p>
       <table v-if="view.legs.length" class="mt-2 w-full text-sm">
         <thead>
@@ -65,6 +65,7 @@
 import { computed, inject, nextTick, ref, watch } from 'vue'
 import { routerKey } from 'vue-router'
 import AdjustDrawer from '@/components/strategy/AdjustDrawer.vue'
+import AfterChargesTap from '@/components/common/AfterChargesTap.vue'
 import AdjustSteps from '@/components/strategy/AdjustSteps.vue'
 import PlanEntry from '@/components/strategy/PlanEntry.vue'
 import { REVIEW_BUTTON_TEXT, cardRows } from '@/lib/adjustDrawer'

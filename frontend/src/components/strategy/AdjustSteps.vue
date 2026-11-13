@@ -12,7 +12,7 @@
         <dl class="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4" data-testid="steps-totals">
           <div v-for="tile in tiles" :key="tile.id" :data-testid="`steps-total-${tile.id}`">
             <dt class="text-ink-muted">{{ tile.label }}</dt>
-            <dd class="font-semibold tabular-nums">{{ tile.value }}</dd>
+            <dd class="font-semibold tabular-nums"><AfterChargesTap :breakdown="tile.breakdown ?? null">{{ tile.value }}</AfterChargesTap></dd>
             <dd v-if="tile.reason" class="text-xs text-ink-muted" :data-testid="`steps-reason-${tile.id}`">{{ tile.reason }}</dd>
           </div>
         </dl>
@@ -53,6 +53,7 @@ import { computed, ref } from 'vue'
 import api, { NEUTRAL_ERROR } from '@/services/api'
 import { istTime } from '@/lib/displayFormat'
 import { afterFigure } from '@/lib/tracking'
+import AfterChargesTap from '@/components/common/AfterChargesTap.vue'
 
 const props = defineProps({ strategyId: { type: Number, required: true } })
 const COLUMNS = ['When', 'Step', 'Orders', 'Cash', 'Booked', 'Why'] // the fill-state header is the server's text
@@ -71,7 +72,7 @@ const tiles = computed(() => {
   const reasonOf = (v) => (v && typeof v === 'object' ? v.what_happened : v)
   const pnl = afterFigure(t, t.pnl_text ?? null, reasonOf(t.open_reason_text)) // GC-ICFIX (ADR-263): the whole-trade P&L after charges, labelled
   return [
-    { id: 'pnl', label: `Whole-trade P&L ${pnl.label}`.trim(), value: pnl.text ?? DASH, reason: pnl.reason },
+    { id: 'pnl', label: `Whole-trade P&L ${pnl.label}`.trim(), value: pnl.text ?? DASH, reason: pnl.reason, breakdown: pnl.breakdown },
     { id: 'booked', label: 'Booked so far', value: t.booked_text },
     { id: 'open', label: 'Open legs now', value: t.open_pnl_text ?? DASH, reason: t.open_pnl_text ? null : reasonOf(t.open_reason_text) },
     { id: 'credit', label: 'Total credit collected', value: t.credit_text },
