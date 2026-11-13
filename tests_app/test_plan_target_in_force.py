@@ -185,3 +185,66 @@ def test_other_triggers_keep_their_line():
 
 async def test_t07_on_stays_on_with_an_equal_target(monkeypatch):
     assert (await resolved(monkeypatch, plan_body("50"))).body["triggers"]["T-07"]["on"] is True
+
+
+# --- ADR-305: an EMPTY Target (guard "") means no target alert for this trade; the box is what the app does ---
+
+def limit_row(body: dict, pnl: str = "48.75"):
+    state = pe.StrategyState(expiry_kind="weekly", days_left=7, hhmm="11:00", pnl=D(pnl), max_profit=MAX_PROFIT,
+                             prices_fresh=True, spot=D("24000"), stops=None)
+    return next(x for x in pe.evaluate(body, state, None, None, gap_until="09:30").limits if x.rule_id == "T-07")
+
+
+async def test_empty_target_with_the_rule_on_switches_t07_off_for_this_trade(monkeypatch):
+    body = (await resolved(monkeypatch, plan_body(""))).body
+    assert body["triggers"]["T-07"]["on"] is False and t07_result(body, "2000") is None  # 72 %: no alert
+    row = limit_row(body)
+    assert (row.state, row.threshold, row.reason) == ("not_checked", None, "adjust_check_not_checked_switched_off") or         (row.state, row.threshold) == ("not_checked", None)  # the evaluator's own reason code, no number
+
+
+async def test_empty_target_with_the_rule_off_stays_off(monkeypatch):
+    body = (await resolved(monkeypatch, plan_body_off("", on=False))).body
+    assert body["triggers"]["T-07"]["on"] is False and limit_row(body).state == "not_checked"
+
+
+async def test_target_50_with_the_rule_off_is_checked_at_50(monkeypatch):
+    row = limit_row((await resolved(monkeypatch, plan_body_off("50", on=False))).body, "2000")
+    assert (row.state, row.threshold) == ("checked", D("50"))
+
+
+async def test_absent_target_key_follows_the_rule_set(monkeypatch):
+    body = plan_body("50")
+    del body["guards"][KEY]
+    assert limit_row((await resolved(monkeypatch, body)).body).state == "checked"  # rule on: as the playbook
+    body = plan_body_off("50", on=False)
+    del body["guards"][KEY]
+    assert limit_row((await resolved(monkeypatch, body)).body).state == "not_checked"  # rule off: not checked
+
+
+async def test_old_plan_with_the_copied_default_and_the_rule_off_still_alerts_at_it(monkeypatch):
+    """ADR-305 cost, accepted: a plan saved before the decision holds "50" with the rule off and alerts at 50 until the
+    user empties the box. Pinned so nobody 'fixes' it silently."""
+    got = t07_result((await resolved(monkeypatch, plan_body_off("50", on=False))).body, "2000")
+    assert isinstance(got, pe.Flag) and got.threshold == D("50")
+
+
+def test_sheet_save_stores_empty_as_the_empty_guard_and_refuses_unusable_numbers():
+    from ofo_app.routes import adjustment_plan as route  # noqa: PLC0415
+    out = route.with_overrides(plan_body("50"), route.PlanIn(playbook_id=3, target=""))
+    assert out["guards"][KEY] == "" and route._values(out, False)["target"] is None
+    assert route.with_overrides(plan_body("50"), route.PlanIn(playbook_id=3, target="50"))["guards"][KEY] == "50"
+    for bad in ("0", "-5", "101", "abc", " "):
+        with pytest.raises(Exception, match="target"):
+            route.with_overrides(plan_body("50"), route.PlanIn(playbook_id=3, target=bad))
+
+
+def test_editor_after_an_empty_save_shows_t07_off_and_an_unchanged_save_keeps_the_empty_guard():
+    from ofo_app.routes import adjustment_plan as route  # noqa: PLC0415
+    base = plan_body("")
+    shown = check.with_plan_target(base)
+    assert shown["triggers"]["T-07"]["on"] is False  # what the editor shows = what the check acts on
+    kept = route._rules_to_save(base, shown, True)
+    assert kept["guards"][KEY] == "" and kept["triggers"]["T-07"] == base["triggers"]["T-07"]
+    changed = copy.deepcopy(shown)
+    changed["triggers"]["T-07"]["on"] = True  # a profit-trigger change saved in the editor wins: the Target guard goes
+    assert KEY not in route._rules_to_save(base, changed, True)["guards"]
