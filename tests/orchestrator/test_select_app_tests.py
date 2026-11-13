@@ -91,6 +91,7 @@ PR241_SELECTION = {
     "tests_app/test_paper_save_paths_fx2.py",  # GC-ICGUIDE: imports ofo_app.routes.outcome
     "tests_app/test_scenario_clock_routes.py",  # GC-ICGUIDE: imports routes.catalogue, outcome
     "tests_app/test_strategy_closed_status.py",  # GC-ICGUIDE: imports ofo_app.routes.outcome (load_charge_rates)
+    "tests_app/test_limits_now.py",  # GC-ICFIX u113: imports ofo.errors.explanations (changed here)
     "tests_app/test_outcome_open_interest.py",  # GC-UI D-B16: imports ofo_app.routes.outcome / live_push (explanations)
     "tests_app/test_strategy_tracking_list.py",  # GC-BP: calls /strategies/{id}/tracking routes (same reason as test_strategy_tracking)  # noqa: E501 - long line kept whole
     "tests_app/test_strategy_price_history_route.py",  # GC-UI step 5: imports ofo_app.routes.strategies (key measured)

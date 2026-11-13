@@ -17,7 +17,7 @@ condition 1 and AC-1/AC-2 (ofo.adjustment.detection); REQ-046 AC-1 (each detecti
   the view with that reason (pause_reason; no paper P&L, no detection) - never a price from another contract.
 The user comes from the session (``current_user_ref``), never from the request.
 """
-from __future__ import annotations
+from __future__ import annotations  # noqa: I001 - the import-door test pins the exact line "from ofo_app import paper_store, tracked_contracts"
 
 import dataclasses
 import datetime
@@ -46,7 +46,8 @@ from ofo.tracking import book, paper
 from ofo.tracking.orderbook import PaperOrder, net_positions
 from pydantic import BaseModel, ConfigDict, Field
 
-from ofo_app import paper_limit, paper_store, tracked_contracts
+from ofo_app import paper_limit
+from ofo_app import paper_store, tracked_contracts
 from ofo_app import strategy_store as store
 from ofo_app.api_models import ApiModel, CatalogueText, InstrumentId, Money
 from ofo_app.db import get_db

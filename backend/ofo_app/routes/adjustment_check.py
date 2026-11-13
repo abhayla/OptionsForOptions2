@@ -26,6 +26,7 @@ from ofo.adjustment.playbook_types import SHOWN_NAMES
 from ofo.charges import ChargeRates
 from ofo.errors import render
 from ofo.errors.explanations import render_explanation
+from ofo.money import PAISE
 from ofo.timeutil import IST
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -253,7 +254,7 @@ def stop_text(
     lim = next((x for x in limits if x.rule_id == r.rule_id and (credit or x.trigger_id == sl.TRIGGER_MAX_LOSS)), None)
     if lim is None or not all(isinstance(v, Decimal) for v in (lim.amount, lim.threshold, pnl, r.value, r.threshold)):
         return None
-    loss = max(-pnl, Decimal(0)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    loss = max(-pnl, Decimal(0)).quantize(PAISE, rounding=ROUND_HALF_UP)
     try:
         if credit:
             line = render_explanation(
