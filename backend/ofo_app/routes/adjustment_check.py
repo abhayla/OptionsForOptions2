@@ -21,6 +21,7 @@ from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends
 from ofo.adjustment import playbook_eval as pe
+from ofo.adjustment import stop_lines as sl
 from ofo.adjustment.playbook_types import SHOWN_NAMES
 from ofo.charges import ChargeRates
 from ofo.errors import render
@@ -82,8 +83,29 @@ class CheckResultOut(ApiModel):
     reason: CatalogueText | None
     wording: CatalogueText | None
     condition: CatalogueText | None = None  # the condition in words, from the body's label and unit
+    #: GC-ICFIX u142: a fired stop's loss now and stop line in rupees and percent, and the time it fired
+    #: (all server text)
+    stop_text: CatalogueText | None = None
     suggestion_id: int | None = None  # a flag's open REQ-112 record (Dismiss / acted on name it)
     note: CatalogueText | None = None  # ADR-217: "You dismissed this" on a flag whose dismissed record still holds
+
+
+class CheckLimitOut(ApiModel):
+    """ADR-304: the limit a rule acts on for this trade now, the evaluator's own number (``playbook_eval.limits_now``)."""  # noqa: E501
+
+    rule_id: Identifier
+    trigger_id: Identifier
+    threshold: Money | None  # the % now (the credit line: the multiple); None = nothing to compare
+    amount: Money | None  # a stop's rupee loss, where there is one
+    later: list[Money]  # the later stages' values
+    tightened_by: Money | None  # the expiry-day tightening X % when it is applied now
+    state: Literal["checked", "not_checked", "already_true"]
+    reason: CatalogueText | None  # the evaluator's reason text when not checked
+    text: CatalogueText | None  # the one sentence the card prints for this limit; None -> the card says could-not-load
+    # ADR-296: "already_true" only: the adjustment number it has been true since (None = the entry)
+    after: int | None = None
+    # why a not-checked row is not (e.g. target_unset: the trade's Target was emptied)
+    reason_code: Identifier | None = None
 
 
 class CheckPauseOut(ApiModel):
@@ -93,12 +115,17 @@ class CheckPauseOut(ApiModel):
 
 class AdjustmentCheckOut(ApiModel):
     strategy_id: int
+    #: GC-ICFIX u141: the time this check was evaluated, and its display text ("As of 10:42:17 AM IST")
+    as_of: datetime.datetime
+    as_of_text: CatalogueText
     strategy_type: Identifier | None
     type_name: CatalogueText | None
     playbook: CheckPlaybookOut
     stage: CheckStageOut
     withheld: CatalogueText | None
     results: list[CheckResultOut]
+    # ADR-304: the limits the target / stop rules act on now (empty: no playbook / paused)
+    limits: list[CheckLimitOut] = []  # noqa: RUF012
     #: A-38 (GC-IC1 4a): the user's pause in force at the check's own time -> {until, text} and no evaluation (the
     #: worker skips it too); none, cleared or expired -> None
     paused: CheckPauseOut | None = None
@@ -160,6 +187,86 @@ def result_out(r: pe.Result, flag_wording: Any, opened: dict[str, int] | None = 
             "threshold": None, "reason": render(r.code, **dict(r.slots)), "wording": None}
 
 
+def limit_text(x: pe.LimitNow, reason: Any, percent_stop_checked: bool, target_unset: bool = False) -> Any:  # noqa: C901 - one sentence per answer state
+    """ADR-304 (3): the one sentence for a limit row, from the evaluator's own numbers
+    (the card prints it, derives nothing).
+    A rule that is not checked says why and shows NO number, even when the row still carries one; a row the card cannot
+    state (an unknown state, a checked row with nothing to compare) -> None."""
+    if x.state not in ("checked", "not_checked", "already_true"):
+        return None
+    target, credit = x.trigger_id == "T-07", x.rule_id == sl.CREDIT_RULE
+    if x.state == "not_checked":
+        # ADR-305: the Target was emptied for this trade; not "switched off in the rule set"
+        if target and target_unset:
+            return render_explanation("limit_target_none")
+        return None if reason is None else render_explanation("limit_target_off" if target else "limit_stop_off", reason=reason)  # noqa: E501
+    if not isinstance(x.threshold, Decimal):
+        return None
+    pct = x.threshold.normalize()
+    money = isinstance(x.amount, Decimal)
+    if target:
+        line = render_explanation("limit_target", pct=pct)
+    elif credit:
+        line = render_explanation("limit_stop_credit", multiple=pct, amount=x.amount) if money else \
+            render_explanation("limit_stop_credit_plain", multiple=pct)
+    else:
+        line = render_explanation("limit_stop_loss", pct=pct, amount=x.amount) if money else \
+            render_explanation("limit_stop_loss_plain", pct=pct)
+    if not credit and x.later and isinstance(x.later[-1], Decimal) and x.later[-1] != x.threshold:
+        line = render_explanation("limit_later", line=line, pct=x.later[-1].normalize())
+    if isinstance(x.tightened_by, Decimal):
+        line = render_explanation("limit_tightened", line=line, pct=x.tightened_by.normalize())
+    if x.state == "already_true":
+        line = (render_explanation("limit_already_true_after", line=line, n=x.after) if x.after > 0
+                else render_explanation("limit_already_true", line=line))
+    if credit and percent_stop_checked:  # two stops race: the first to be reached acts (ADR-247)
+        line = render_explanation("plan_stop_words_first", words=line)
+    return line
+
+
+def limits_out(limits: tuple[pe.LimitNow, ...], target_unset: bool = False) -> list[dict]:
+    """The limits now as the reply states them: numbers in the reply's shown scale, the reason as its catalogue text."""
+    race = any(x.trigger_id == sl.TRIGGER_MAX_LOSS and x.state != "not_checked" for x in limits)
+    out = []
+    for x in limits:
+        reason = None if x.reason is None else render(x.reason, **dict(x.slots))
+        out.append({"rule_id": x.rule_id, "trigger_id": x.trigger_id, "threshold": _num(x.threshold), "amount": _num(x.amount),  # noqa: E501
+                    "later": [_num(v) for v in x.later], "tightened_by": _num(x.tightened_by), "state": x.state,
+                    "reason": reason, "text": limit_text(x, reason, race, target_unset),
+                    "after": x.after if x.state == "already_true" and x.after > 0 else None,
+                    "reason_code": ("target_unset"
+                                    if target_unset and x.trigger_id == "T-07" and x.state == "not_checked" else None)})
+    return out
+
+
+def stop_text(
+    r: pe.Result, limits: tuple[pe.LimitNow, ...], pnl: Any, fired_at: Mapping[str, datetime.datetime],
+) -> Any:
+    """GC-ICFIX u142: a fired stop's warning detail, all from the evaluator's numbers: the loss now and the stop line in
+    rupees and percent (the credit stop: rupees and the multiple), and when its record opened.
+    Any figure missing -> None."""
+    if not isinstance(r, pe.Flag):
+        return None
+    credit = r.rule_id == sl.CREDIT_RULE
+    if not credit and r.trigger_id != sl.TRIGGER_MAX_LOSS:
+        return None
+    lim = next((x for x in limits if x.rule_id == r.rule_id and (credit or x.trigger_id == sl.TRIGGER_MAX_LOSS)), None)
+    if lim is None or not all(isinstance(v, Decimal) for v in (lim.amount, lim.threshold, pnl, r.value, r.threshold)):
+        return None
+    loss = max(-pnl, Decimal(0)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    try:
+        if credit:
+            line = render_explanation(
+                "stop_fired_credit", loss=loss, stop=lim.amount, multiple=lim.threshold.normalize())
+        else:
+            line = render_explanation("stop_fired_loss", loss=loss, loss_pct=_num(r.value).normalize(), stop=lim.amount,
+                                      stop_pct=_num(r.threshold).normalize())
+        at = fired_at.get(r.rule_id)
+        return line if at is None else render_explanation("stop_fired_at", line=line, time=at)
+    except (TypeError, ValueError):
+        return None
+
+
 def t19_record(trigger_id: str, cheapest: tuple[str, Decimal, int] | None) -> dict:
     """ADR-221: a T-19 record keeps the approach, cost and unpriced count it was shown with (the list draws them)."""
     if trigger_id != "T-19" or cheapest is None:
@@ -175,7 +282,7 @@ def cheapest(state: pe.StrategyState) -> tuple[str, Decimal, int] | None:
 
 
 async def stored_records(db: Any, user_ref: str, strategy_id: int,
-                         ev: pe.Evaluation) -> tuple[dict[str, int], frozenset[str]]:
+                         ev: pe.Evaluation) -> tuple[dict[str, int], frozenset[str], dict[str, datetime.datetime]]:
     """ADR-237 (6): the screen READS the records; only the background worker opens and lapses them, through the one
     gate (``ofo.adjustment.alert_gate``, stored by ``background.DbGateStore``). Returns (rule id -> id of its open
     record, for each flagged rule that has one; the flagged rules whose latest record is dismissed and none is open,
@@ -183,13 +290,15 @@ async def stored_records(db: Any, user_ref: str, strategy_id: int,
     ``StrategyRefused`` (never an empty answer that would read as "nothing is open")."""
     flagged = {r.rule_id for r in ev.results if isinstance(r, pe.Flag)}
     try:
-        open_now = {rec.rule_id: rec.id for rec in await playbook_store.open_suggestions(db, user_ref, strategy_id)}
+        open_recs = await playbook_store.open_suggestions(db, user_ref, strategy_id)
+        open_now = {rec.rule_id: rec.id for rec in open_recs}
         held = await playbook_store.dismissed_holding(db, user_ref, strategy_id)
     except SQLAlchemyError as exc:
         log.warning("adjustment check: records of strategy %s unreadable: %s", strategy_id, type(exc).__name__)
         raise StrategyRefused(_NOT_AVAILABLE, Failure.UPSTREAM_BUSY) from None
     opened = {rid: sid for rid, sid in open_now.items() if rid in flagged}
-    return opened, frozenset(rid for rid in held if rid in flagged and rid not in opened)
+    fired = {rec.rule_id: rec.shown_at for rec in open_recs if rec.rule_id in opened}
+    return opened, frozenset(rid for rid in held if rid in flagged and rid not in opened), fired
 
 
 async def current_margin(margin_of: ApproachMargin, tracked: Any, market: Any) -> dict | None:
@@ -239,7 +348,9 @@ async def adjustment_check(  # noqa: PLR0913 - FastAPI dependencies, one per inp
     stype = check.strategy_type(tracked.position, spot.value if spot.available else None, listed)
     resolved = await check.resolve(db, user_ref, strategy_id, stype)
     reply: dict[str, Any] = {
-        "strategy_id": strategy_id, "strategy_type": stype,
+        "strategy_id": strategy_id, "as_of": market.now,
+        "as_of_text": render_explanation("check_as_of", time=market.now),
+        "strategy_type": stype,
         "type_name": None if stype is None else render_explanation("adjust_check_type_name", name=SHOWN_NAMES[stype]),
         "playbook": {"source": resolved.source, "id": resolved.playbook_id, "status": resolved.status,
                      "draft": resolved.draft},
@@ -257,10 +368,17 @@ async def adjustment_check(  # noqa: PLR0913 - FastAPI dependencies, one per inp
     # worker is the one writer of rule memory and records (ADR-237 (6)), so the two never disagree about a dip
     ev, _memory = await check.evaluate_stored(db, user_ref, strategy_id, resolved.body, state, scenario_mode.current(),
                                               tracked.position, gap_until=prefs.gap_until)
-    opened, dismissed = await stored_records(db, user_ref, strategy_id, ev)
+    opened, dismissed, fired_at = await stored_records(db, user_ref, strategy_id, ev)
     wording = render_explanation("adjust_check_flag_system" if resolved.is_system else "adjust_check_flag_user")
+    guards = resolved.body.get("guards")
+    # ADR-305: emptied for this trade
+    target_unset = (resolved.source == "plan" and isinstance(guards, Mapping)
+                    and guards.get("profit_target_pct_of_max_profit") == "")
     reply |= {"stage": check.stage_out(ev.stage_name, ev.stage_index),
               "withheld": None if ev.withheld is None else render(ev.withheld),
               "results": [result_out(r, wording, opened, dismissed=dismissed, body=resolved.body,
-                                    cheapest=cheapest(state)) for r in ev.results]}
+                                    cheapest=cheapest(state))
+                              | {"stop_text": stop_text(r, ev.limits, state.pnl, fired_at)}
+                          for r in ev.results],
+              "limits": limits_out(ev.limits, target_unset)}
     return AdjustmentCheckOut.model_validate(reply)

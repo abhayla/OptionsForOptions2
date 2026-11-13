@@ -112,6 +112,22 @@ class Explained(SlotType):
         return str.__str__(value)
 
 
+class Reason(SlotType):
+    """A catalogue sentence of the evaluator's own (a `render()` result), printed as its first part (what happened):
+    the reason a rule is not being checked, carried into the one line the card shows (GC-ICFIX u113, ADR-304 (3))."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        from ofo.errors.model import UserFacingError  # late: the model module imports this one
+
+        if type(value) is not UserFacingError:
+            raise TypeError(f"Reason slot takes a render() result, got {type(value).__name__}")
+
+    @staticmethod
+    def format(value: object) -> str:
+        return value.what_happened  # type: ignore[attr-defined]
+
+
 class Quoted(SlotType):
     """Recorded text (the user's rule text, a source name, a broker answer), printed quoted: never our wording. A
     platform line stored as that text (an `ExplanationText`) is accepted and quoted the same way."""
@@ -1040,7 +1056,8 @@ PLAN_SHEET_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
     "title": "When tracking starts: this strategy's plan", "playbook": "Playbook", "target": "Target",
     "stop": "Stop", "max_adjustments": "Max adjustments", "time_exit": "Time exit",
     "customise": "Customise triggers", "use_as_is": "Use playbook as is", "save": "Save plan", "close": "Close",
-    "plan_entry": "Plan", "edit": "Edit plan", "no_plan": "No plan saved yet", "hour": "Hour", "minute": "Minute",
+    "plan_entry": "Plan", "edit": "Edit plan", "no_plan": "No plan saved yet: default rules apply", "set_plan": "Set plan",
+    "hour": "Hour", "minute": "Minute",
 })
 
 #: Why a table cell has no value (the cell's `reason`), by key. Each is one reviewed template `table_reason_<key>`.
@@ -1593,6 +1610,39 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         {"a": Explained, "b": Explained, "c": Explained}),
     ExplanationTemplate("plan_stop_words_first", "values_seen", "{words}, whichever comes first",
                         {"words": Explained}),
+    # GC-ICFIX u113 round 3 (ADR-304 (3), ADR-294, ADR-296): the one sentence each limit row of the rule check carries.
+    # The percent and the rupee amount are the evaluator's own numbers; a rule that is not checked prints its reason and no number.
+    ExplanationTemplate("limit_target", "values_seen", "Target: profit of {pct} % of max profit, before charges",
+                        {"pct": Amount}),
+    ExplanationTemplate("limit_stop_loss", "values_seen", "Stop: loss of {pct} % of max loss ({amount})",
+                        {"pct": Amount, "amount": Rupees}),
+    ExplanationTemplate("limit_stop_loss_plain", "values_seen", "Stop: loss of {pct} % of max loss", {"pct": Amount}),
+    ExplanationTemplate("limit_stop_credit", "values_seen", "Stop: loss of {multiple} x credit ({amount})",
+                        {"multiple": Amount, "amount": Rupees}),
+    ExplanationTemplate("limit_stop_credit_plain", "values_seen", "Stop: loss of {multiple} x credit",
+                        {"multiple": Amount}),
+    ExplanationTemplate("limit_later", "values_seen", "{line}; {pct} % nearer expiry", {"line": Explained, "pct": Amount}),
+    ExplanationTemplate("limit_tightened", "values_seen", "{line}; tightened by {pct} % today",
+                        {"line": Explained, "pct": Amount}),
+    ExplanationTemplate("limit_already_true", "values_seen",
+                        "{line}. Already true: alerts after it clears and crosses again", {"line": Explained}),
+    ExplanationTemplate("limit_target_off", "values_seen", "Target: not being checked: {reason}", {"reason": Reason}),
+    ExplanationTemplate("limit_stop_off", "values_seen", "Stop: not being checked: {reason}", {"reason": Reason}),
+    # GC-ICFIX u141-u143 (ADR-304 (3), ADR-296, ADR-305): the check's own read time, the stop warning's rupee lines and the two
+    # limit sentences that name their cause (no Target typed for this trade; already true after adjustment N).
+    ExplanationTemplate("limit_target_none", "values_seen", "Target: no target is set for this trade"),
+    ExplanationTemplate("limit_already_true_after", "values_seen",
+                        "{line}. Already true after adjustment {n}: alerts after it clears and crosses again",
+                        {"line": Explained, "n": Amount}),
+    ExplanationTemplate("check_as_of", "values_seen", "As of {time} IST", {"time": ClockSeconds}),
+    ExplanationTemplate("stop_fired_loss", "values_seen",
+                        "Stop reached: loss now {loss} ({loss_pct} % of max loss); stop line {stop} ({stop_pct} % of max loss)",
+                        {"loss": Rupees, "loss_pct": Amount, "stop": Rupees, "stop_pct": Amount}),
+    ExplanationTemplate("stop_fired_credit", "values_seen",
+                        "Stop reached: loss now {loss}; stop line {stop} ({multiple} x credit)",
+                        {"loss": Rupees, "stop": Rupees, "multiple": Amount}),
+    ExplanationTemplate("stop_fired_at", "values_seen", "{line}; reached at {time} IST",
+                        {"line": Explained, "time": HourMinute}),
     ExplanationTemplate("adjust_spot_from_feed", "values_seen", "Spot from the live feed"),
     ExplanationTemplate("adjust_spot_from_rest_quote", "values_seen", "Spot from a one-time price request"),
     ExplanationTemplate("adjust_spot_from_last_close", "values_seen", "Spot from the last close"),

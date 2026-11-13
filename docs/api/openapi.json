@@ -1463,6 +1463,22 @@
       "AdjustmentCheckOut": {
         "additionalProperties": false,
         "properties": {
+          "as_of": {
+            "format": "date-time",
+            "title": "As Of",
+            "type": "string"
+          },
+          "as_of_text": {
+            "title": "As Of Text"
+          },
+          "limits": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/CheckLimitOut"
+            },
+            "title": "Limits",
+            "type": "array"
+          },
           "paused": {
             "anyOf": [
               {
@@ -1523,6 +1539,8 @@
         },
         "required": [
           "strategy_id",
+          "as_of",
+          "as_of_text",
           "strategy_type",
           "type_name",
           "playbook",
@@ -2826,6 +2844,125 @@
         "title": "ChargesOut",
         "type": "object"
       },
+      "CheckLimitOut": {
+        "additionalProperties": false,
+        "description": "ADR-304: the limit a rule acts on for this trade now, the evaluator's own number (``playbook_eval.limits_now``).",
+        "properties": {
+          "after": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After"
+          },
+          "amount": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount"
+          },
+          "later": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Later",
+            "type": "array"
+          },
+          "reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "reason_code": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason Code"
+          },
+          "rule_id": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Rule Id",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "checked",
+              "not_checked",
+              "already_true"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          },
+          "threshold": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Threshold"
+          },
+          "tightened_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tightened By"
+          },
+          "trigger_id": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Trigger Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "rule_id",
+          "trigger_id",
+          "threshold",
+          "amount",
+          "later",
+          "tightened_by",
+          "state",
+          "reason",
+          "text"
+        ],
+        "title": "CheckLimitOut",
+        "type": "object"
+      },
       "CheckPauseOut": {
         "additionalProperties": false,
         "properties": {
@@ -2957,6 +3094,15 @@
             "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
             "title": "Rule Id",
             "type": "string"
+          },
+          "stop_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop Text"
           },
           "suggestion_id": {
             "anyOf": [

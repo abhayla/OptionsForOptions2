@@ -7,7 +7,8 @@
 <template>
   <Modal :open="open" :title="labels.title || ' '" @close="emit('close')">
     <div data-testid="plan-sheet">
-      <p v-if="loadError" class="text-sm text-red-700" data-testid="plan-sheet-error">{{ loadError }}</p>
+      <LoadFailed v-if="loadError" :text="loadError" prefix="plan-sheet" @retry="load()" />
+      <p v-else-if="loading && !sheet" class="text-sm text-ink-muted" data-testid="plan-sheet-loading">{{ PLAN_LOADING_TEXT }}</p>
       <template v-else-if="sheet && sheet.kind === 'generic'">
         <p class="text-sm" data-testid="plan-sheet-generic">{{ sheet.text }}</p>
       </template>
@@ -55,9 +56,11 @@
 import { computed, inject, ref, watch } from 'vue'
 import { routerKey } from 'vue-router'
 import Modal from '@/components/common/Modal.vue'
+import LoadFailed from '@/components/common/LoadFailed.vue'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import AlertStylePicker from '@/components/strategy/AlertStylePicker.vue'
 import api, { NEUTRAL_PARTS } from '@/services/api'
+import { PLAN_LOADING_TEXT, PLAN_LOAD_FAILED_TEXT } from '@/lib/sharedStateText'
 import { asIsBody, customiseUrl, fetchPlan, formOf, saveBody, sendPlan } from '@/lib/adjustPlan'
 
 const props = defineProps({
@@ -73,6 +76,7 @@ const sheet = ref(null)
 const form = ref(formOf(null))
 const busy = ref(false)
 const loadError = ref('')
+const loading = ref(false)
 const errorParts = ref(null)
 const labels = computed(() => sheet.value?.labels ?? {})
 
@@ -80,12 +84,13 @@ async function load(pickId = null) {
   const id = props.strategyId
   loadError.value = ''
   errorParts.value = null
+  loading.value = true
   try {
     const read = await fetchPlan(api, id, pickId)
     if (id !== props.strategyId) return // another strategy was opened while this read was out
     if (read.kind === 'invalid') {
       sheet.value = null
-      loadError.value = NEUTRAL_PARTS.what_happened
+      loadError.value = PLAN_LOAD_FAILED_TEXT
       return
     }
     sheet.value = read
@@ -93,7 +98,9 @@ async function load(pickId = null) {
   } catch (e) {
     if (id !== props.strategyId) return
     sheet.value = null
-    loadError.value = (e?.parts ?? NEUTRAL_PARTS).what_happened || NEUTRAL_PARTS.what_happened
+    loadError.value = PLAN_LOAD_FAILED_TEXT
+  } finally {
+    if (id === props.strategyId) loading.value = false
   }
 }
 function pick(value) {

@@ -10,16 +10,18 @@ import { netLegsFromBook } from '@/lib/paperDrafts'
 import REAL from './fixtures/paper-book-63.json'
 
 const calls = []
+const getConfigs = [] // the second argument of each GET (a per-request limit rides here)
 let answers = {}
 vi.mock('@/services/api', async (importActual) => {
   const actual = await importActual()
-  const respond = (method, url, body) => {
+  const respond = (method, url, body, config) => {
     calls.push({ method, url, body })
+    if (method === 'GET') getConfigs.push({ url, config })
     const a = answers[`${method} ${url}`]
     if (a === undefined) return Promise.reject({ message: 'no answer', parts: null, status: 404 })
     return typeof a === 'function' ? a(body) : Promise.resolve({ data: a })
   }
-  return { ...actual, default: { get: (u) => respond('GET', u), post: (u, b) => respond('POST', u, b), put: (u, b) => respond('PUT', u, b) } }
+  return { ...actual, default: { get: (u, c) => respond('GET', u, undefined, c), post: (u, b) => respond('POST', u, b), put: (u, b) => respond('PUT', u, b) } }
 })
 import AdjustPlanSheet from '@/components/strategy/AdjustPlanSheet.vue'
 import PlanEntry from '@/components/strategy/PlanEntry.vue'
@@ -27,7 +29,7 @@ import PlanEntry from '@/components/strategy/PlanEntry.vue'
 const LABELS = {
   title: "When tracking starts: this strategy's plan", playbook: 'Playbook', target: 'Target', stop: 'Stop', max_adjustments: 'Max adjustments',
   time_exit: 'Time exit', customise: 'Customise triggers', use_as_is: 'Use playbook as is', save: 'Save plan', close: 'Close',
-  plan_entry: 'Plan', edit: 'Edit plan', no_plan: 'No plan saved yet', hour: 'Hour', minute: 'Minute',
+  plan_entry: 'Plan', edit: 'Edit plan', no_plan: 'No plan saved yet: default rules apply', set_plan: 'Set plan', hour: 'Hour', minute: 'Minute',
 }
 const PLAYBOOKS = [
   { id: 1, name: 'Iron condor (system)', type: 'ic', type_name: 'Iron condor', is_system: true, draft: false, active: false },
@@ -52,7 +54,7 @@ const ALERT_STYLE = '/strategies/70/alert-style'
 const t = (w, id) => w.find(`[data-testid="${id}"]`)
 const mounted = []
 afterEach(() => { mounted.splice(0).forEach((w) => w.unmount()); vi.useRealTimers() })
-beforeEach(() => { calls.length = 0; answers = {} })
+beforeEach(() => { calls.length = 0; getConfigs.length = 0; answers = {} })
 async function sheet(props = {}) {
   const w = mount(AdjustPlanSheet, { attachTo: document.body, props: { open: true, strategyId: 70, ...props } })
   await flushPromises()
@@ -168,7 +170,7 @@ describe('REQ-161 AC-3: the Plan entry on the tracking panel', () => {
     const w = await entry()
     expect(t(w, 'plan-entry-title').text()).toBe('Plan')
     expect(t(w, 'plan-entry-playbook').text()).toBe('Playbook: "Mine"')
-    expect(t(w, 'plan-entry-guards').text()).toBe('Target: 60 / Stop: 40 / Max adjustments: 3 / Time exit: 14:45')
+    expect(t(w, 'plan-entry-guards').text()).toBe('Max adjustments: 3 / Time exit: 14:45') // the limit lines come from the rule check (plan-card-limits.test.js)
     expect(document.body.querySelector('[data-testid="plan-sheet"]')).toBeNull()
     await t(w, 'plan-entry-edit').trigger('click')
     await flushPromises()
@@ -177,14 +179,14 @@ describe('REQ-161 AC-3: the Plan entry on the tracking panel', () => {
     await t(w, 'plan-save').trigger('click')
     await flushPromises()
     expect(calls.filter((c) => c.method === 'PUT')).toHaveLength(1)
-    expect(t(w, 'plan-entry-guards').text()).toContain('Target: 55')
+    expect(t(w, 'plan-entry-guards').text()).toContain('Max adjustments: 3')
   })
 
   it('a strategy without a plan says so and the button opens the sheet to accept one (POST)', async () => {
     answers[`GET ${PATH}`] = sheetAnswer()
     answers[`POST ${PATH}`] = sheetAnswer({ plan: PLAN })
     const w = await entry()
-    expect(t(w, 'plan-entry-none').text()).toBe('No plan saved yet')
+    expect(t(w, 'plan-entry-none').text()).toBe('No plan saved yet: default rules apply')
     await t(w, 'plan-entry-edit').trigger('click')
     await flushPromises()
     await t(w, 'plan-use-as-is').trigger('click')
@@ -193,12 +195,119 @@ describe('REQ-161 AC-3: the Plan entry on the tracking panel', () => {
     expect(t(w, 'plan-entry-playbook').text()).toBe('Playbook: "Mine"')
   })
 
-  it('a generic shape shows the server text; a failed read shows nothing', async () => {
+  it('a generic shape shows the server text', async () => {
     answers[`GET ${PATH}`] = GENERIC
     expect((await entry()).find('[data-testid="plan-entry-generic"]').text()).toBe(GENERIC.generic_text.what_happened)
-    mounted.splice(0).forEach((w) => w.unmount())
-    answers = {}
-    expect((await entry()).find('[data-testid="plan-entry"]').exists()).toBe(false)
+  })
+})
+
+// GC-ICFIX u111-u114 (ADR-295, issue 2): every answer state of the plan read has a visible result.
+describe('ADR-295: the plan card and the plan box never show nothing', () => {
+  const COULD_NOT = 'Could not load the plan. Nothing was changed.'
+  const entry = async () => {
+    const w = mount(PlanEntry, { attachTo: document.body, props: { strategyId: 70 } })
+    await flushPromises()
+    mounted.push(w)
+    return w
+  }
+  const failing = (n) => { let left = n; return () => (left-- > 0 ? Promise.reject({ message: 'x', parts: null, status: 503 }) : Promise.resolve({ data: sheetAnswer({ plan: PLAN }) })) }
+
+  it('card: a failed read says could-not-load with Retry, never an empty space', async () => {
+    answers[`GET ${PATH}`] = failing(99)
+    const w = await entry()
+    expect(t(w, 'plan-entry-error').text()).toBe(COULD_NOT)
+    expect(t(w, 'plan-entry-retry').text()).toBe('Retry')
+    expect(t(w, 'plan-entry-none').exists()).toBe(false)
+  })
+
+  it('card: a read that timed out (the client limit) is the same state', async () => {
+    answers[`GET ${PATH}`] = () => Promise.reject({ message: 'x', parts: null, status: null, code: 'ECONNABORTED' })
+    expect((await entry()).find('[data-testid="plan-entry-error"]').exists()).toBe(true)
+  })
+
+  it('card: a malformed or empty reply fails closed, no plan is drawn from it', async () => {
+    for (const bad of [{ strategy_id: 70 }, null, '', { generic: false, labels: {}, plan: PLAN }]) {
+      answers[`GET ${PATH}`] = bad
+      const w = await entry()
+      expect(t(w, 'plan-entry-error').exists()).toBe(true)
+      expect(t(w, 'plan-entry-playbook').exists()).toBe(false)
+      mounted.splice(0).forEach((x) => x.unmount())
+    }
+  })
+
+  it('card: while the read is out it says loading, not nothing', async () => {
+    answers[`GET ${PATH}`] = () => new Promise(() => {})
+    const w = await entry()
+    expect(t(w, 'plan-entry-loading').text()).toBe('Loading the plan…')
+    expect(t(w, 'plan-entry-error').exists()).toBe(false)
+  })
+
+  it('card: Retry re-reads and on success shows the plan', async () => {
+    answers[`GET ${PATH}`] = failing(1)
+    const w = await entry()
+    await t(w, 'plan-entry-retry').trigger('click')
+    await flushPromises()
+    expect(calls.filter((c) => c.method === 'GET')).toHaveLength(2)
+    expect(t(w, 'plan-entry-error').exists()).toBe(false)
+    expect(t(w, 'plan-entry-playbook').text()).toBe('Playbook: "Mine"')
+  })
+
+  it('card: Retry that fails again stays failed and the button works again', async () => {
+    answers[`GET ${PATH}`] = failing(2)
+    const w = await entry()
+    await t(w, 'plan-entry-retry').trigger('click')
+    await flushPromises()
+    expect(t(w, 'plan-entry-error').exists()).toBe(true)
+    await t(w, 'plan-entry-retry').trigger('click')
+    await flushPromises()
+    expect(t(w, 'plan-entry-playbook').exists()).toBe(true)
+  })
+
+  it('card: the plan request alone carries its own 30 s limit', async () => {
+    answers[`GET ${PATH}`] = sheetAnswer()
+    await entry()
+    expect(getConfigs[0]).toEqual({ url: PATH, config: { timeout: 30000 } })
+  })
+
+  it('card: no plan -> the ADR-295 card with the default target and stop and a Set plan button; nothing is saved', async () => {
+    answers[`GET ${PATH}`] = sheetAnswer()
+    const w = await entry()
+    expect(t(w, 'plan-entry-none').text()).toBe('No plan saved yet: default rules apply')
+    expect(t(w, 'plan-entry-defaults').exists()).toBe(false) // the limit lines come from the rule check, not the plan read
+    expect(t(w, 'plan-entry-edit').text()).toBe('Set plan')
+    expect(t(w, 'plan-entry-error').exists()).toBe(false)
+    await t(w, 'plan-entry-edit').trigger('click')
+    await flushPromises()
+    expect(t(w, 'plan-sheet').exists()).toBe(true)
+    expect(calls.filter((c) => c.method !== 'GET')).toHaveLength(0)
+  })
+
+  it('box: a failed read says could-not-load with Retry; Retry re-reads and shows the fields', async () => {
+    answers[`GET ${PATH}`] = (() => { let n = 0; return () => (n++ === 0 ? Promise.reject({ message: 'x', parts: null, status: null, code: 'ECONNABORTED' }) : Promise.resolve({ data: sheetAnswer() })) })()
+    const w = await sheet()
+    expect(t(w, 'plan-sheet-error').exists()).toBe(true)
+    expect(t(w, 'plan-sheet-retry').text()).toBe('Retry')
+    expect(t(w, 'plan-use-as-is').exists()).toBe(false)
+    await t(w, 'plan-sheet-retry').trigger('click')
+    await flushPromises()
+    expect(t(w, 'plan-sheet-error').exists()).toBe(false)
+    expect(t(w, 'plan-use-as-is').exists()).toBe(true)
+  })
+
+  it('box: an unreadable reply has Retry too, and a second failure keeps it usable', async () => {
+    answers[`GET ${PATH}`] = { strategy_id: 70 }
+    const w = await sheet()
+    await t(w, 'plan-sheet-retry').trigger('click')
+    await flushPromises()
+    expect(t(w, 'plan-sheet-error').exists()).toBe(true)
+    expect(t(w, 'plan-sheet-retry').attributes('disabled')).toBeUndefined()
+  })
+
+  it('box: its read carries the 30 s limit; while loading it says so', async () => {
+    answers[`GET ${PATH}`] = () => new Promise(() => {})
+    const w = await sheet()
+    expect(t(w, 'plan-sheet-loading').text()).toBe('Loading the plan…')
+    expect(getConfigs[0].config).toEqual({ timeout: 30000 })
   })
 })
 

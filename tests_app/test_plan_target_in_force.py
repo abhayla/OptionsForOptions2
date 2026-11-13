@@ -1,3 +1,4 @@
+# ruff: noqa: E501, PLC0415
 """The plan sheet's Target is the T-07 value the live check reads (ADR-252 pattern, for T-07). No DB.
 
 Real case, paper strategy 141 (13 Nov 2026): plan Target 1 on playbook 3 "Iron condor: system default" (T-07 weekly
@@ -84,7 +85,7 @@ async def test_no_plan_follows_the_playbook(monkeypatch):
     assert t07(body, "48.75") is None
 
 
-@pytest.mark.parametrize("raw", ["", "abc", "0", "-5", "101", None, 7])
+@pytest.mark.parametrize("raw", ["abc", "0", "-5", "101", None, 7])
 async def test_unusable_target_leaves_the_playbook_value(monkeypatch, raw):
     body = (await resolved(monkeypatch, plan_body(raw))).body
     assert body["triggers"]["T-07"] == BODY["triggers"]["T-07"]
@@ -124,11 +125,12 @@ async def test_t07_off_with_a_typed_target_flags_at_the_target(monkeypatch):
     assert isinstance(got, pe.Flag) and got.threshold == D("1")
 
 
-async def test_t07_off_with_a_target_equal_to_the_playbook_stays_silent(monkeypatch):
+async def test_t07_off_with_a_target_equal_to_the_playbook_switches_on(monkeypatch):
+    """Round 3 (orchestrator decision): ANY usable Target switches T-07 on, the equal case included (was: stayed off)."""
     body = (await resolved(monkeypatch, plan_body_off("50", on=False))).body
-    assert body["triggers"]["T-07"]["on"] is False
-    got = t07_result(body, "2000")  # 72 % of max profit, still no flag: the playbook has it off
-    assert isinstance(got, pe.NotChecked) and got.code == "adjust_trigger_switched_off"
+    assert body["triggers"]["T-07"]["on"] is True
+    got = t07_result(body, "2000")  # 72 % of max profit
+    assert isinstance(got, pe.Flag) and got.threshold == D("50")
 
 
 @pytest.mark.parametrize("raw", ["", "abc", "0", "-5", "101", None, 7])
@@ -183,3 +185,77 @@ def test_other_triggers_keep_their_line():
 
 async def test_t07_on_stays_on_with_an_equal_target(monkeypatch):
     assert (await resolved(monkeypatch, plan_body("50"))).body["triggers"]["T-07"]["on"] is True
+
+
+# --- ADR-305: an EMPTY Target (guard "") means no target alert for this trade; the box is what the app does ---
+
+def limit_row(body: dict, pnl: str = "48.75"):
+    state = pe.StrategyState(expiry_kind="weekly", days_left=7, hhmm="11:00", pnl=D(pnl), max_profit=MAX_PROFIT,
+                             prices_fresh=True, spot=D("24000"), stops=None)
+    return next(x for x in pe.evaluate(body, state, None, None, gap_until="09:30").limits if x.rule_id == "T-07")
+
+
+async def test_empty_target_with_the_rule_on_switches_t07_off_for_this_trade(monkeypatch):
+    body = (await resolved(monkeypatch, plan_body(""))).body
+    assert body["triggers"]["T-07"]["on"] is False
+    assert not isinstance(t07_result(body, "2000"), pe.Flag)  # 72 % of max profit: no alert
+    row = limit_row(body)
+    assert (row.state, row.threshold, row.reason) == ("not_checked", None, "adjust_trigger_switched_off")  # no number
+
+
+async def test_empty_target_with_the_rule_off_stays_off(monkeypatch):
+    body = (await resolved(monkeypatch, plan_body_off("", on=False))).body
+    assert body["triggers"]["T-07"]["on"] is False and limit_row(body).state == "not_checked"
+
+
+async def test_target_50_with_the_rule_off_is_checked_at_50(monkeypatch):
+    row = limit_row((await resolved(monkeypatch, plan_body_off("50", on=False))).body, "2000")
+    assert (row.state, row.threshold) == ("checked", D("50"))
+
+
+async def test_absent_target_key_follows_the_rule_set(monkeypatch):
+    body = plan_body("50")
+    del body["guards"][KEY]
+    assert limit_row((await resolved(monkeypatch, body)).body).state == "checked"  # rule on: as the playbook
+    body = plan_body_off("50", on=False)
+    del body["guards"][KEY]
+    assert limit_row((await resolved(monkeypatch, body)).body).state == "not_checked"  # rule off: not checked
+
+
+async def test_old_plan_with_the_copied_default_and_the_rule_off_still_alerts_at_it(monkeypatch):
+    """ADR-305 cost, accepted: a plan saved before the decision holds "50" with the rule off and alerts at 50 until the
+    user empties the box. Pinned so nobody 'fixes' it silently."""
+    got = t07_result((await resolved(monkeypatch, plan_body_off("50", on=False))).body, "2000")
+    assert isinstance(got, pe.Flag) and got.threshold == D("50")
+
+
+def test_sheet_save_stores_empty_as_the_empty_guard_and_refuses_unusable_numbers():
+    from ofo_app.routes import adjustment_plan as route
+    out = route.with_overrides(plan_body("50"), route.PlanIn(playbook_id=3, target=""))
+    assert out["guards"][KEY] == "" and route._values(out, False)["target"] is None
+    assert route.with_overrides(plan_body("50"), route.PlanIn(playbook_id=3, target="50"))["guards"][KEY] == "50"
+    for bad in ("0", "-5", "101", "abc", " "):
+        with pytest.raises(Exception, match="target"):
+            route.with_overrides(plan_body("50"), route.PlanIn(playbook_id=3, target=bad))
+
+
+def test_editor_after_an_empty_save_shows_t07_off_and_an_unchanged_save_keeps_the_empty_guard():
+    from ofo_app.routes import adjustment_plan as route
+    base = plan_body("")
+    shown = check.with_plan_target(base)
+    assert shown["triggers"]["T-07"]["on"] is False  # what the editor shows = what the check acts on
+    kept = route._rules_to_save(base, shown, True)
+    assert kept["guards"][KEY] == "" and kept["triggers"]["T-07"] == base["triggers"]["T-07"]
+    changed = copy.deepcopy(shown)
+    changed["triggers"]["T-07"]["on"] = True  # a profit-trigger change saved in the editor wins: the Target guard goes
+    assert KEY not in route._rules_to_save(base, changed, True)["guards"]
+
+
+async def test_plan_card_limit_line_for_an_emptied_target_says_not_being_checked(monkeypatch):
+    """ADR-305 (2): the card's limit line reads the rule check; no new sentence is needed (reason = the evaluator's)."""
+    from ofo_app.routes import adjustment_check as route
+    state = pe.StrategyState(expiry_kind="weekly", days_left=7, hhmm="11:00", pnl=D("48.75"), max_profit=MAX_PROFIT,
+                             prices_fresh=True, spot=D("24000"), stops=None)
+    ev = pe.evaluate((await resolved(monkeypatch, plan_body(""))).body, state, None, None, gap_until="09:30")
+    text = next(x["text"] for x in route.limits_out(ev.limits) if x["rule_id"] == "T-07")
+    assert str(text) == "Target: not being checked: This trigger is switched off in this playbook."

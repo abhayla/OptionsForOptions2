@@ -281,7 +281,7 @@ def with_overrides(body: dict, data: PlanIn, kind: str | None = None) -> dict:
     out = copy.deepcopy(body)
     guards = out.setdefault("guards", {})
     if data.target is not None:
-        guards[TARGET_KEY] = _percent(data.target, "target")
+        guards[TARGET_KEY] = _percent(data.target, "target") if data.target != "" else ""  # ADR-305: "" = no Target
     if data.stop is not None:
         _set_stop(out, data.stop, kind)
     if data.max_adjustments is not None:
@@ -418,6 +418,8 @@ async def _sheet(db: Any, user_ref: str, strategy_id: int, stype: str | None, pl
         source_id = plan.playbook_id if plan.playbook_id is not None else active.id
     else:
         values, source_id = _values(chosen.body, False, kind), chosen.id  # a playbook, not a saved plan
+        if (_t07_of(chosen.body) or {}).get("on") is False:  # ADR-305: the profit rule is off -> the box opens empty
+            values |= {"target": None, "target_words": None}
     reply |= {"type_name": render_explanation("adjust_check_type_name", name=SHOWN_NAMES[stype]),
               "playbooks": [_playbook_row(p, active.id) for p in listed],
               "plan": None if plan is None else await _plan_out(db, user_ref, plan, kind),
