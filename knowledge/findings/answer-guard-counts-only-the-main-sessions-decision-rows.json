@@ -1,25 +1,27 @@
 {
- "id": "answer-guard-counts-only-the-main-sessions-decision-rows",
- "scope": "generic",
- "class": "The answer-writeback guard counts only decision rows written by the main session, so it fires when a helper wrote them.",
- "mechanism": "The guard inspects the main session's writes.",
- "first_seen": {
-  "date": "2026-11-13",
-  "where": "GC-ICFIX 13 Nov (ADR-294 to ADR-306 written by helpers)",
-  "evidence": "Not measured: the count of false firings is not in the facts given to this task."
- },
- "fix": "none yet (proposed: the guard accepts a decision row written by a helper).",
- "detection": {
-  "status": "unguarded",
-  "checks": [],
-  "note": "Open. Touches no spec section (process class)."
- },
- "spec_ref": [],
- "occurrences": [
-  {
-   "date": "2026-11-13",
-   "where": "GC-ICFIX 13 Nov (ADR-294 to ADR-306 written by helpers)",
-   "evidence": "Not measured: the count of false firings is not in the facts given to this task."
-  }
- ]
+  "id": "answer-guard-counts-only-the-main-sessions-decision-rows",
+  "scope": "generic",
+  "class": "The answer-writeback guard counts only decision rows written by the main session, so it fires when a helper wrote them.",
+  "mechanism": "The guard inspects the main session's writes.",
+  "first_seen": {
+    "date": "2026-11-13",
+    "where": "GC-ICFIX 13 Nov (ADR-294 to ADR-306 written by helpers)",
+    "evidence": "Not measured: the count of false firings is not in the facts given to this task."
+  },
+  "fix": "none yet (proposed: the guard accepts a decision row written by a helper).",
+  "detection": {
+    "status": "unguarded",
+    "checks": [],
+    "note": "Open. Touches no spec section (process class)."
+  },
+  "spec_ref": [
+    "docs/process/goal-contract-GC-ICFIX-2026-11-13.md"
+  ],
+  "occurrences": [
+    {
+      "date": "2026-11-13",
+      "where": "GC-ICFIX 13 Nov (ADR-294 to ADR-306 written by helpers)",
+      "evidence": "Not measured: the count of false firings is not in the facts given to this task."
+    }
+  ]
 }

@@ -1,25 +1,27 @@
 {
- "id": "builder-writes-test-after-code-when-told-failing-test-first",
- "scope": "generic",
- "class": "A brief that says 'failing test first' is read as a wish: the builder writes the code, then a test that already passes, so the test has never been seen to fail.",
- "mechanism": "A sentence in a brief is not an order of events.",
- "first_seen": {
-  "date": "2026-11-13",
-  "where": "GC-ICFIX builders, 13 Nov",
-  "evidence": "Builders wrote tests after the code; fixed by demanding two commits in order (test first, red; then code)."
- },
- "fix": "Briefs demand two commits in order.",
- "detection": {
-  "status": "unguarded",
-  "checks": [],
-  "note": "A prose rule; nothing checks commit order. Touches no spec section (process class)."
- },
- "spec_ref": [],
- "occurrences": [
-  {
-   "date": "2026-11-13",
-   "where": "GC-ICFIX builders, 13 Nov",
-   "evidence": "Builders wrote tests after the code; fixed by demanding two commits in order (test first, red; then code)."
-  }
- ]
+  "id": "builder-writes-test-after-code-when-told-failing-test-first",
+  "scope": "generic",
+  "class": "A brief that says 'failing test first' is read as a wish: the builder writes the code, then a test that already passes, so the test has never been seen to fail.",
+  "mechanism": "A sentence in a brief is not an order of events.",
+  "first_seen": {
+    "date": "2026-11-13",
+    "where": "GC-ICFIX builders, 13 Nov",
+    "evidence": "Builders wrote tests after the code; fixed by demanding two commits in order (test first, red; then code)."
+  },
+  "fix": "Briefs demand two commits in order.",
+  "detection": {
+    "status": "unguarded",
+    "checks": [],
+    "note": "A prose rule; nothing checks commit order. Touches no spec section (process class)."
+  },
+  "spec_ref": [
+    "docs/process/goal-contract-GC-ICFIX-2026-11-13.md"
+  ],
+  "occurrences": [
+    {
+      "date": "2026-11-13",
+      "where": "GC-ICFIX builders, 13 Nov",
+      "evidence": "Builders wrote tests after the code; fixed by demanding two commits in order (test first, red; then code)."
+    }
+  ]
 }
