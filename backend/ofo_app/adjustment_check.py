@@ -766,6 +766,13 @@ def _own_unit_line(trigger_id: str, unit: str | None, label: str, value: str, th
     return None
 
 
+def _is_number(shown: str) -> bool:
+    try:
+        return Decimal(shown).is_finite()
+    except (ArithmeticError, TypeError, ValueError):
+        return False
+
+
 def condition_line(trigger_id: str, label: str | None, unit: str | None, value: str, threshold: str,  # noqa: PLR0913
                    beyond: tuple[str, Decimal, Decimal] | None = None) -> Any:
     """GC-ADJ2 item 1: "Spot within this % of a short strike: 0.3416 % (rule 0.5000 %)" from the trigger's own label
@@ -775,6 +782,9 @@ def condition_line(trigger_id: str, label: str | None, unit: str | None, value: 
         if un == CLOCK_UNIT:  # a clock trigger: HH:MM value and threshold, no unit word
             return render_explanation("adjust_condition_line_time", label=lab, value=value, threshold=threshold)
         if un:
+            if trigger_id == "T-07" and _is_number(threshold):  # ADR-294: says which figure it used; no number, no claim
+                return render_explanation("adjust_condition_line_before_charges", label=lab, value=value, unit=un,
+                                          threshold=threshold)
             return render_explanation("adjust_condition_line", label=lab, value=value, unit=un, threshold=threshold)
         return render_explanation("adjust_condition_line_plain", label=lab, value=value, threshold=threshold)
 
