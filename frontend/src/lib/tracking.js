@@ -1,7 +1,7 @@
 // W-122 (REQ-109 AC-1, AC-2, AC-5; REQ-045 AC-1; REQ-046 AC-1; ADR-166): the paper-tracking panel's words and the one
 // reading of the tracking answer. The browser computes no money: every figure is the server's Decimal string, only
 // re-grouped for display. An answer this module cannot read shows no figure (fail closed).
-import { instrumentText, istTime, strikeLabel } from '@/lib/displayFormat'
+import { instrumentText, istClock, istTime, strikeLabel } from '@/lib/displayFormat'
 
 /** GC-UI b2 D-B48 (REQ-109 AC-1, REQ-152): one leg's paper P&L as the server wrote it (`pnl_text`, signed, to the paisa),
  *  "booked" added for a leg the server marks booked (paper-exited); no text -> "—", never a browser figure (ADR-008). */
@@ -156,6 +156,20 @@ export function afterFigure(src, before, pausedText = null, afterKey = 'total_af
   const after = serverText(src?.[afterKey]) // u124: the same rule for booked_after_text / profit_left_after_text / ...
   if (after !== null && reason === null) return { kind: 'after', text: after, label: AFTER_CHARGES, reason: null, breakdown: breakdownOf(src, before, after, null, parts) }
   return { kind: 'before', text: before, label: before === null ? '' : BEFORE_CHARGES, reason: why ?? (before === null ? pausedText : null), breakdown: breakdownOf(src, before, null, why, parts) }
+}
+
+/** GC-ICFIX round 2 (F4, ADR-008, ADR-306): the ONE total of a practice trade, from the page's one read of /paper/strategies/{id}.
+ *  The paper panel, the tracking box and the P&L table TOTAL row all show this: the reply's total_after_text (or the labelled
+ *  before text with the server's reason; no number when prices are not live) and the same line under it: "As of HH:MM:SS IST"
+ *  from the reply's answered_at, or the paused sentence when the last read failed / the prices are not live (REQ-109 AC-5). */
+export const CONTRACTS_CHANGED_TEXT = 'The open contracts changed, so the screen could not refresh them: reload to see them.'
+export function sharedTotal(book, failed = false) {
+  if (!book || typeof book !== 'object') return null
+  const notLive = book.state === 'PAUSED' || book.state === 'NOT_CONNECTED'
+  const shown = afterFigure(book, serverText(book.total_text), pausedText(book.as_of ?? null))
+  const at = istClock(book.answered_at ?? null)
+  const line = failed ? pausedText(book.answered_at ?? null) : notLive ? pausedText(book.as_of ?? null) : at === null ? null : `As of ${at} IST`
+  return { kind: shown.kind, text: shown.text, label: shown.label, reason: shown.reason, breakdown: shown.breakdown, line }
 }
 
 const STATES = new Set(['LIVE', 'PAUSED', 'NOT_CONNECTED', 'EXITED'])

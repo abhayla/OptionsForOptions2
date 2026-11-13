@@ -106,7 +106,7 @@ describe('one read feeds the paper panel, the tracking box and the P&L table TOT
     expect(panelTotal(w)).not.toMatch(FIG)
     expect(boxTotal(w)).not.toMatch(FIG)
     expect(tableTotal(w)).not.toMatch(FIG)
-    for (const id of ['book-as-of', 'paper-shared-line', 'total-line']) expect(t(w, id).text()).toContain('prices not live')
+    for (const id of ['book-as-of', 'paper-pnl', 'total-line']) expect(t(w, id).text()).toContain('prices not live') // the box's headline IS the paused sentence
   })
   it('the open contracts changed: the new reply is taken (not dropped) and the reload prompt shows', async () => {
     const w = await page(book())

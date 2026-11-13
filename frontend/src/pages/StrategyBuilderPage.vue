@@ -26,7 +26,7 @@ import MarginLine from '@/components/strategy/MarginLine.vue'
 import ProjectionsNote from '@/components/strategy/ProjectionsNote.vue'
 import StrategyActions from '@/components/strategy/StrategyActions.vue'
 import TrackingPanel from '@/components/strategy/TrackingPanel.vue'
-import { ADD_TO_PAPER_LABEL, PAPER_PLACED_NOT_REFRESHED_TEXT, PAPER_STATE, addToPaper as postPaperOrders, paperPostOutcome } from '@/lib/tracking'
+import { ADD_TO_PAPER_LABEL, PAPER_PLACED_NOT_REFRESHED_TEXT, PAPER_STATE, addToPaper as postPaperOrders, paperPostOutcome, sharedTotal } from '@/lib/tracking'
 import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
 import {
   DISCARD_LABEL, PAPER_BOOK_UNREADABLE, PAPER_MODE_LABEL, PAPER_PENDING_UNREADABLE, REVIEW_AND_ADD_LABEL, confirmRowsFor, paperOrdersFor, pendingText, readPaperBook,
@@ -34,6 +34,7 @@ import {
 } from '@/lib/paperDrafts'
 import { withAsOf } from '@/lib/paperList'
 import PaperBookPanel from '@/components/strategy/PaperBookPanel.vue'
+import { usePaperBookRead } from '@/lib/usePaperBookRead'
 import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
 import AdjustCompare from '@/components/strategy/AdjustCompare.vue'
 import { opportunitiesFromQuery, picksFromQuery } from '@/lib/adjustDrawer'
@@ -405,6 +406,14 @@ function enterDrafts(id, read) {
   openSaved(copyLegs(read.net), id, null, read.book.name ?? null)
 }
 const leaveDrafts = () => { paper.value = null; paperStale.value = false }
+// GC-ICFIX round 2 (F4): the page's ONE read of the paper book per refresh; its reply feeds the paper panel, the tracking box's total and
+// the P&L table TOTAL row (one moment, one text). An orders re-read (paperStale) is not overwritten by it.
+const { readFailed: paperReadFailed, contractsChanged: paperContractsChanged } = usePaperBookRead({
+  key: () => paper.value?.book?.strategy_id ?? null,
+  book: () => paper.value?.book ?? null,
+  onBook: (b) => { if (paper.value && !paperStale.value) paper.value = { ...paper.value, book: b } },
+})
+const paperTotal = computed(() => (paper.value ? sharedTotal(paper.value.book, paperReadFailed.value) : null))
 function reviewPending() {
   if (!paper.value || paperStale.value || !pendingOrders.value?.length) return
   paperError.value = ''
@@ -913,7 +922,7 @@ const pricesStamp = computed(() => {
           <button v-if="!paperStale && pendingOrders?.length" type="button" class="h-9 rounded-lg bg-accent px-3 font-medium text-white" data-testid="paper-review" @click="reviewPending">{{ REVIEW_AND_ADD_LABEL }}</button>
           <button v-if="pendingOrders === null || pendingOrders.length" type="button" class="h-9 rounded-lg border border-line px-3 font-medium" data-testid="paper-discard" @click="discardPending">{{ DISCARD_LABEL }}</button>
         </div>
-        <PaperBookPanel v-if="paper" :book="paper.book" :net="paper.net" :show-orders="showOrdersTick" @exit="exitPaper" @exit-all="exitAllPaper" @book="(b) => { if (paper && !paperStale) paper = { ...paper, book: b } }" />
+        <PaperBookPanel v-if="paper" :book="paper.book" :net="paper.net" :read-failed="paperReadFailed" :contracts-changed="paperContractsChanged" :show-orders="showOrdersTick" @exit="exitPaper" @exit-all="exitAllPaper" />
         </div>
         <PaperConfirmDialog :open="paperDialog" :orders="paperRows" :busy="paperBusy" :error="paperError" :state="paperState" @confirm="confirmPending" @cancel="paperDialog = false" @orderbook="openPaperOrderbook" />
         <SaveDraftBar :legs="legs" :rules-ref="String(route.query.rules_ref || '')" :current="openStrategy" :shown-name="shapeName ?? ''" :paper-mode="paper !== null" :live-price-by-id="livePriceById" class="max-[1099px]:contents" @open="openFromBar" @saved="onSaved" @paper-added="onPaperAdded" @renamed="onRenamed" @deleted="onDeleted">
@@ -1069,6 +1078,7 @@ const pricesStamp = computed(() => {
             :zoom="zoomGrid"
             :payoff-table="data.payoff_table ?? null"
             :saved-id="savedId"
+            :paper-total="paperTotal"
             :saved-revision="savedRevision"
             @zoom="zoomTo"
             @update:include-booked="pickBooked"
@@ -1093,7 +1103,7 @@ const pricesStamp = computed(() => {
           </ChartCard>
           <LowerCard :table="data.table" :legs="data.legs ?? null" :sd="data.standard_deviation ?? null" />
           <StrategyActions :saved-id="savedId" :execute-refusal="refusal" />
-          <TrackingPanel :saved-id="savedId" :legs="data.legs ?? null" />
+          <TrackingPanel :saved-id="savedId" :legs="data.legs ?? null" :shared="paper?.book ?? null" :shared-failed="paperReadFailed" />
         </div>
       </div>
     </div>

@@ -13,6 +13,7 @@ vi.mock('@/services/api', async (importActual) => {
 })
 
 import PaperBookPanel from '@/components/strategy/PaperBookPanel.vue'
+import { usePaperBookRead } from '@/lib/usePaperBookRead'
 import { TRACKING_REFRESH_MS } from '@/lib/tracking'
 
 const pos = (id, ltp, unbooked, total) => ({
@@ -26,12 +27,13 @@ const book = (over = {}) => ({
 const t = (w, id) => w.get(`[data-testid="${id}"]`)
 const texts = (w, id) => w.findAll(`[data-testid="${id}"]`).map((x) => x.text())
 
-// the page's role: hold the book, take the panel's 'book' event
+// the page's role (round 2, F4): hold the book, make the ONE read (usePaperBookRead), hand the reply to the panel
 const Host = defineComponent({
   props: { first: { type: Object, required: true } },
   setup(p) {
     const b = ref(p.first)
-    return () => h(PaperBookPanel, { book: b.value, net: [], onBook: (nb) => { b.value = nb } })
+    const { readFailed, contractsChanged } = usePaperBookRead({ key: () => b.value.strategy_id, book: () => b.value, onBook: (nb) => { b.value = nb } })
+    return () => h(PaperBookPanel, { book: b.value, net: [], readFailed: readFailed.value, contractsChanged: contractsChanged.value })
   },
 })
 const tick = async () => { await vi.advanceTimersByTimeAsync(TRACKING_REFRESH_MS); await flushPromises() }

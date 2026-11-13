@@ -6,8 +6,9 @@
   <section v-if="savedId" class="mt-4 rounded-lg border border-line bg-surface p-4" data-testid="tracking-panel">
     <p v-if="error" class="text-sm text-red-700" data-testid="tracking-error">{{ error }}</p>
     <div v-if="view" class="border-2 border-dashed rounded-lg p-3" data-testid="tracking-view">
-      <AfterChargesTap :breakdown="view.breakdown ?? null"><p class="font-semibold" data-testid="paper-pnl" :data-kind="view.kind">{{ view.text }}</p></AfterChargesTap>
-      <p v-if="view.afterReason" class="text-xs text-ink-muted" data-testid="tracking-after-reason">{{ view.afterReason }}</p>
+      <AfterChargesTap :breakdown="headline.breakdown ?? null"><p class="font-semibold" data-testid="paper-pnl" :data-kind="headline.kind">{{ headline.text }}</p></AfterChargesTap>
+      <p v-if="headline.afterReason" class="text-xs text-ink-muted" data-testid="tracking-after-reason">{{ headline.afterReason }}</p>
+      <p v-if="headline.line" class="text-xs text-ink-muted" data-testid="paper-shared-line">{{ headline.line }}</p>
       <table v-if="view.legs.length" class="mt-2 w-full text-sm">
         <thead>
           <tr class="border-b border-line text-ink-muted">
@@ -77,12 +78,14 @@ import { REVIEW_BUTTON_TEXT, cardRows } from '@/lib/adjustDrawer'
 import Chip from '@/components/common/Chip.vue'
 import FigureHint from '@/components/common/FigureHint.vue'
 import api, { NEUTRAL_ERROR } from '@/services/api'
-import { readTracking } from '@/lib/tracking'
+import { NOT_CONNECTED_TEXT, PAPER_PNL_PREFIX, readTracking, sharedTotal } from '@/lib/tracking'
 import { CHECK_STALE_TEXT } from '@/lib/sharedStateText'
 import { usePaperRefresh } from '@/lib/usePaperRefresh'
 
 const props = defineProps({
   savedId: { type: Number, default: null },
+  shared: { type: Object, default: null }, // GC-ICFIX round 2 (F4): the page's ONE read of /paper/strategies/{id}: the profit figure and its As of come from it
+  sharedFailed: { type: Boolean, default: false }, // the last shared read failed: the last figure stays, with the paused sentence
   legs: { type: Array, default: null }, // the builder reply's legs: their whole-lot count names each paper leg in lots (D-B39)
 })
 
@@ -92,6 +95,16 @@ const error = ref('')
 const raw = ref(null) // the last tracking reply, for the drawer's layer 2 (display only)
 const router = inject(routerKey, null) // absent in a panel mounted without a router: Compare then goes nowhere
 const reviewBtn = ref(null)
+// The headline total: from the page's shared paper read when there is one (so it equals the paper panel and the P&L table TOTAL
+// row); what still comes from the tracking read: legs, per-leg P&L, detections, the rule check, and the headline when no shared read.
+// Prices not live = the paused sentence, no number (REQ-109 AC-5).
+const headline = computed(() => {
+  const v = view.value
+  const s = props.shared && v ? sharedTotal(props.shared, props.sharedFailed) : null
+  if (!s) return { ...v, line: null }
+  const text = s.text === null ? (s.line ?? NOT_CONNECTED_TEXT) : `${PAPER_PNL_PREFIX}${s.text} ${s.label}${v.kind === 'exited' ? ' - exited' : ''}`.replace(/ +$/, '')
+  return { text, kind: s.kind, breakdown: s.breakdown, afterReason: s.reason, line: s.text === null ? null : s.line }
+})
 const drawerOpen = ref(false)
 const drawerLines = ref([]) // layer 1: the detection's own text; kept when the detection lapses while the drawer is open
 // GC-ADJ2 step 5: the playbook check answer. A typed strategy (strategy_type set) shows its flags; an untyped one keeps

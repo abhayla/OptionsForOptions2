@@ -52,12 +52,16 @@ const props = defineProps({
   payoffTable: { type: Object, default: null },
   // GC-UI step 5 (D-B40 / D-B41): the saved strategy's id, which the Strategy Chart tab asks the server about (null = unsaved)
   savedId: { type: Number, default: null },
+  paperTotal: { type: Object, default: null }, // GC-ICFIX round 2 (F4): sharedTotal() of the page's one paper read; the TOTAL row's P&L shows it, not the socket's figure
   savedRevision: { type: [Number, String], default: null }, // changes on every re-save: the Strategy Chart re-asks
 })
 // D-B10: the graph's Zoom asks the page for a new range; D-B24: the interval menu asks for a new payoff_step (the server
 // makes the rows)
 const emit = defineEmits(['zoom', 'payoff-step'])
 
+// the TOTAL row's P&L is the page's one paper read (after charges, labelled; no number when prices are not live); every other cell is the reply's
+const cellText = (r, c) => (r.isTotal && c.id === 'unrealized_pnl' && props.paperTotal
+  ? (props.paperTotal.text === null ? '—' : `${props.paperTotal.text} ${props.paperTotal.label}`.trim()) : r.values[c.id].display)
 const TABS = [
   { key: 'payoff', label: 'Payoff Graph' }, // GC-UI b1 D-B01 (Sensibull 012 tab labels)
   { key: 'pnl', label: 'P&L Table' },
@@ -238,11 +242,12 @@ const toneOf = (v) => ({ profit: 'text-profit', loss: 'text-loss' })[signOf(v)] 
                 :class="['py-1.5 text-right tabular-nums', c.id === 'unrealized_pnl' || c.id === 'pnl_percent' ? toneOf(r.values[c.id].value) : '']"
                 :data-field="c.id"
                 data-testid="compact-cell"
-              >{{ r.values[c.id].display }}</td>
+              >{{ cellText(r, c) }}</td>
             </tr>
           </tbody>
         </table>
         <EmptyState v-else message="The per-leg P&L is not in this answer. Open the full table to see every column." data-testid="compact-empty" />
+        <p v-if="paperTotal?.line" class="mt-1 text-xs text-ink-muted" data-testid="total-line">{{ paperTotal.line }}</p>
       </div>
       <div v-show="fullTable" data-testid="full-view">
         <StrategyTable :table="table" :max-profit="maxProfit" :max-loss="maxLoss" />
