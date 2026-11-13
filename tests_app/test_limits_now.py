@@ -10,6 +10,7 @@ type, stage, tightening, finite/unlimited max loss, and rule memory.
 from __future__ import annotations
 
 import copy
+import datetime
 import json
 import pathlib
 from decimal import Decimal as D
@@ -18,6 +19,7 @@ import pytest
 from ofo.adjustment import playbook_eval as pe
 from ofo.adjustment import stop_lines as sl
 from ofo.engine import adjust_money
+from ofo.errors.explanations import render_explanation
 from ofo.engine.metrics import UNLIMITED as ENGINE_UNLIMITED
 
 from ofo_app import adjustment_check as check
@@ -30,6 +32,8 @@ BODIES = {e["strategy_type"]: e["body"] for e in PLAYBOOKS}
 IC, STRANGLE = BODIES["ic"], BODIES["strangle"]
 MAX_PROFIT, MAX_LOSS, CREDIT = D("2753"), D("23897.04"), D("8918")
 KEY = "profit_target_pct_of_max_profit"
+NOW = datetime.datetime(2026, 11, 13, 7, 35, tzinfo=datetime.UTC)
+AS_OF_TEXT = render_explanation("check_as_of", time=NOW)
 
 
 def days_of_stage(body, kind, stage):
@@ -37,7 +41,7 @@ def days_of_stage(body, kind, stage):
 
 
 def run(body, *, kind="weekly", stage=0, days=None, hhmm="11:00", pnl="100", max_profit=MAX_PROFIT, max_loss=MAX_LOSS,
-        credit=CREDIT, tighten=None, fresh=True, spot="24000", plan=False, before=False, memory=None):
+        credit=CREDIT, tighten=None, fresh=True, spot="24000", plan=False, before=False, memory=None, used=0):
     """(state, evaluation) over the resolved body and the stop lines the settings in force give it."""
     resolved = check.Resolved("plan" if plan else "system", check.with_plan_target(body) if plan else body, 1, None,
                               not plan, saved_before_adr247=before)
@@ -46,7 +50,7 @@ def run(body, *, kind="weekly", stage=0, days=None, hhmm="11:00", pnl="100", max
     stops = sif.stops_of(resolved, sif.MoneyInputs(money_loss, credit, None), sif.StageAt(kind, days))
     state = pe.StrategyState(expiry_kind=kind, days_left=days, hhmm=hhmm, spot=None if spot is None else D(spot),
                              pnl=None if pnl is None else D(pnl), max_profit=max_profit, max_loss=max_loss,
-                             prices_fresh=fresh, tighten_percent=tighten, stops=stops)
+                             prices_fresh=fresh, tighten_percent=tighten, stops=stops, adjustments_used=used)
     return state, pe.evaluate(resolved.body, state, memory, None, gap_until="09:30")
 
 
@@ -176,7 +180,8 @@ def test_the_route_sends_the_rows():
     assert t07["reason"] is None and t07["later"] == []
     _, ev = run(IC, pnl=None)
     assert next(x for x in route.limits_out(ev.limits) if x["rule_id"] == "T-07")["reason"] is not None
-    route.AdjustmentCheckOut.model_validate({"strategy_id": 1, "strategy_type": "ic", "type_name": None,
+    route.AdjustmentCheckOut.model_validate({"strategy_id": 1, "as_of": NOW, "as_of_text": AS_OF_TEXT,
+                                             "strategy_type": "ic", "type_name": None,
                                              "playbook": {"source": "system", "id": 1, "status": None, "draft": False},
                                              "stage": {"name": None, "index": None}, "withheld": None, "results": [],
                                              "limits": route.limits_out(ev.limits)})
@@ -253,3 +258,66 @@ def test_text_an_unknown_state_or_a_checked_row_with_nothing_to_compare_has_no_t
     for state, threshold in (("weird", D(50)), ("checked", None)):
         bad = pe.LimitNow("T-07", "T-07", threshold, None, (), None, state, None)
         assert route.limits_out((bad,))[0]["text"] is None
+
+
+# --- GC-ICFIX u141-u143 (Issue 5): the read time, the stop warning's rupee sentence, "after adjustment N", an emptied Target ----
+def test_u141_the_reply_carries_the_checks_own_time_in_both_forms_and_refuses_a_reply_without_it():
+
+
+    assert AS_OF_TEXT == "As of 01:05:00 PM IST"
+    body = {"strategy_id": 1, "strategy_type": None, "type_name": None, "playbook": {"source": "none", "id": None, "status": None, "draft": False},
+            "stage": {"name": None, "index": None}, "withheld": None, "results": []}
+    with pytest.raises(ValueError):
+        route.AdjustmentCheckOut.model_validate(body)
+    out = route.AdjustmentCheckOut.model_validate({**body, "as_of": NOW, "as_of_text": AS_OF_TEXT})
+    assert out.as_of == NOW and out.as_of_text == "As of 01:05:00 PM IST"
+
+
+def test_u143_an_already_true_row_carries_its_adjustment_number_and_the_decision_is_unchanged():
+    memory = {"T-07": {"held_at_entry": True, "seen_clear": False}}
+    _, ev = run(IC, pnl="2000", memory=memory, used=2)
+    assert isinstance(result(ev, "T-07"), pe.AlreadyTrue) and result(ev, "T-07").after == 2
+    assert row(ev, "T-07").state == "already_true" and row(ev, "T-07").after == 2
+    out = route.limits_out(ev.limits)
+    t07 = next(x for x in out if x["rule_id"] == "T-07")
+    assert t07["after"] == 2
+    assert t07["text"] == ("Target: profit of 50 % of max profit, before charges; 80 % nearer expiry. Already true after adjustment 2: "
+                           "alerts after it clears and crosses again")
+    _, entry = run(IC, pnl="2000", memory=memory, used=0)  # N not known (the entry): the generic sentence stays
+    assert next(x for x in route.limits_out(entry.limits) if x["rule_id"] == "T-07")["after"] is None
+    assert row(entry, "T-07").after == 0
+
+
+def test_u142_a_fired_stop_states_the_loss_and_the_stop_line_in_rupees_and_percent_and_when_it_fired():
+    state, ev = run(IC, pnl="-12000")
+    flag = next(r for r in ev.results if isinstance(r, pe.Flag) and r.trigger_id == "T-06")
+    at = {flag.rule_id: datetime.datetime(2026, 11, 13, 7, 28, tzinfo=datetime.UTC)}
+    text = route.stop_text(flag, ev.limits, state.pnl, at)
+    assert text == ("Stop reached: loss now \u20b912,000.00 (50.2154 % of max loss); stop line \u20b911,948.52 (50 % of max loss); "
+                    "reached at 12:58 IST")
+    assert route.stop_text(flag, ev.limits, state.pnl, {}) == text.removesuffix("; reached at 12:58 IST")  # no record yet: no time invented
+    assert route.stop_text(flag, ev.limits, None, at) is None  # a figure missing: no sentence
+    target = next(r for r in run(IC, pnl="2000")[1].results if isinstance(r, pe.Flag))
+    assert route.stop_text(target, run(IC, pnl="2000")[1].limits, D("2000"), at) is None  # a target flag is not a stop
+
+
+def test_u142_the_stop_sentence_follows_the_value_between_two_checks():
+    texts_ = []
+    for pnl in ("-12000", "-17000"):
+        state, ev = run(IC, pnl=pnl)
+        flag = next(r for r in ev.results if isinstance(r, pe.Flag) and r.trigger_id == "T-06")
+        texts_.append(route.stop_text(flag, ev.limits, state.pnl, {}))
+    assert texts_[0] != texts_[1] and "12,000.00" in texts_[0] and "17,000.00" in texts_[1]
+
+
+def test_u145_an_emptied_target_has_its_own_sentence_and_reason_code_the_playbook_off_case_keeps_its_own():
+    body = copy.deepcopy(IC)
+    body.setdefault("guards", {})[KEY] = ""
+    _, ev = run(body, plan=True)
+    assert row(ev, "T-07").state == "not_checked"
+    emptied = next(x for x in route.limits_out(ev.limits, True) if x["rule_id"] == "T-07")
+    assert emptied["text"] == "Target: no target is set for this trade" and emptied["reason_code"] == "target_unset"
+    other = next(x for x in route.limits_out(ev.limits) if x["rule_id"] == "T-07")
+    assert other["reason_code"] is None and other["text"].startswith("Target: not being checked:")
+    stop = next(x for x in route.limits_out(ev.limits, True) if x["rule_id"] != "T-07" and x["state"] != "not_checked")
+    assert stop["reason_code"] is None
