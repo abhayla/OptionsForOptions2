@@ -156,7 +156,7 @@ def _num(v: Decimal | str | None) -> Decimal | None:
 
 
 def _condition(r: pe.Flag | pe.AlreadyTrue, body: Mapping | None,
-               cheapest: tuple[str, Decimal, int] | None = None) -> Any:
+               cheapest: tuple[str, Decimal, int] | None = None, target: check.TargetFigures | None = None) -> Any:
     """The condition in words from the evaluated body's own label and unit; None without a comparison. T-19 also names
     the cheapest offered approach and its cost (``cheapest``, ADR-221)."""
     if r.cmp is None:
@@ -167,23 +167,23 @@ def _condition(r: pe.Flag | pe.AlreadyTrue, body: Mapping | None,
     limit = str(r.threshold) if threshold is None else str(threshold)
     if r.trigger_id == "T-19" and cheapest is not None:
         return check.condition_line_t19(label, shown, limit, *cheapest)
-    return check.condition_line(r.trigger_id, label, unit, shown, limit, r.beyond)
+    return check.condition_line(r.trigger_id, label, unit, shown, limit, r.beyond, target)
 
 
 def result_out(r: pe.Result, flag_wording: Any, opened: dict[str, int] | None = None, *,  # noqa: PLR0913
                dismissed: frozenset[str] = frozenset(), body: Mapping | None = None,
-               cheapest: tuple[str, Decimal, int] | None = None) -> dict:
+               cheapest: tuple[str, Decimal, int] | None = None, target: check.TargetFigures | None = None) -> dict:
     # dismissed and body are keyword-only: a positional body once landed in dismissed (TypeError on a None body)
     if isinstance(r, pe.Flag):
         return {"kind": "flag", "rule_id": r.rule_id, "trigger_id": r.trigger_id, "cmp": r.cmp, "value": _num(r.value),
                 "threshold": _num(r.threshold), "reason": None, "wording": flag_wording,
-                "condition": _condition(r, body, cheapest), "suggestion_id": (opened or {}).get(r.rule_id),
+                "condition": _condition(r, body, cheapest, target), "suggestion_id": (opened or {}).get(r.rule_id),
                 "note": render_explanation("suggestion_outcome_dismissed") if r.rule_id in dismissed else None}
     if isinstance(r, pe.AlreadyTrue):
         return {"kind": "already_true", "rule_id": r.rule_id, "trigger_id": r.trigger_id, "cmp": r.cmp,
                 "value": _num(r.value), "threshold": _num(r.threshold), "reason": None,
                 "wording": render("adjust_trigger_already_true_after", n=r.after) if r.after else render(r.code),
-                "condition": _condition(r, body, cheapest)}
+                "condition": _condition(r, body, cheapest, target)}
     return {"kind": "not_checked", "rule_id": r.rule_id, "trigger_id": r.trigger_id, "cmp": None, "value": None,
             "threshold": None, "reason": render(r.code, **dict(r.slots)), "wording": None}
 
@@ -273,6 +273,17 @@ def t19_record(trigger_id: str, cheapest: tuple[str, Decimal, int] | None) -> di
     if trigger_id != "T-19" or cheapest is None:
         return {}
     return {"approach": cheapest[0], "approach_cost": cheapest[1], "unpriced": cheapest[2]}
+
+
+def target_record(trigger_id: str, state: pe.StrategyState | None) -> dict:
+    """ADR-294 (2): a T-07 record keeps the two figures it was shown with (exact text; the record's own timeline entry,
+    no new column), so the inbox and the history draw the same sentence as the check screen. Others: nothing."""
+    figures = check.target_of(state) if trigger_id == "T-07" else None
+    if figures is None:
+        return {}
+    return {"target": {"before": format(figures.before, "f"),
+                       "after": None if figures.after is None else format(figures.after, "f"),
+                       "reason": figures.reason}}
 
 
 def cheapest(state: pe.StrategyState) -> tuple[str, Decimal, int] | None:
@@ -378,7 +389,7 @@ async def adjustment_check(  # noqa: PLR0913 - FastAPI dependencies, one per inp
     reply |= {"stage": check.stage_out(ev.stage_name, ev.stage_index),
               "withheld": None if ev.withheld is None else render(ev.withheld),
               "results": [result_out(r, wording, opened, dismissed=dismissed, body=resolved.body,
-                                    cheapest=cheapest(state))
+                                    cheapest=cheapest(state), target=check.target_of(state))
                               | {"stop_text": stop_text(r, ev.limits, state.pnl, fired_at)}
                           for r in ev.results],
               "limits": limits_out(ev.limits, target_unset)}

@@ -728,7 +728,11 @@ class DbGateStore:
         previous record of the rule is still open lapses that one first (REQ-112: one open record per rule)."""
         from ofo_app import playbook_store  # noqa: PLC0415 - database layer at run time
         from ofo_app.db import get_sessionmaker  # noqa: PLC0415
-        from ofo_app.routes.adjustment_check import cheapest, t19_record  # noqa: PLC0415 - the screen's T-19 words
+        from ofo_app.routes.adjustment_check import (  # noqa: PLC0415 - the screen's T-19 and target words
+            cheapest,
+            t19_record,
+            target_record,
+        )
         values = {} if ctx is None else {v.rule_id: v for v in ctx.evaluation.values}
         flags = {} if ctx is None else {r.rule_id: r for r in ctx.evaluation.results if isinstance(r, pe.Flag)}
         stage = None if ctx is None else ctx.evaluation.stage_name
@@ -766,7 +770,8 @@ class DbGateStore:
                     group=gate_group(w.strategy_id, e.at), source=source,
                     cmp=None if rv is None else rv.cmp, label=label, unit=unit, worse=e.worse,
                     beyond=None if rv is None else rv.beyond, limit=None if rv is None else _quantized(rv.threshold),
-                    adjustments=_count_of(w.tracked), **t19)
+                    adjustments=_count_of(w.tracked), **t19,
+                    **({} if ctx is None else target_record(trigger or "", ctx.state)))
                 opened[e.rule_id] = rec.id
             await db.commit()
         return opened

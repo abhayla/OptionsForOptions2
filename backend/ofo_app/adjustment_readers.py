@@ -165,7 +165,7 @@ async def _tracked_on(db: Any, strategy_id: int, rates: ChargeRates | None) -> T
     paid: Decimal | None = None
     if real:  # paid charges and adjustments used before the app saw it: not readable yet ("not checked", ADR-276 (4))
         return Tracked(Position(underlying, lot, "", datetime.date.min, tuple(legs)), book.booked, None,
-                       adjustments_used=None, entered_at=entered_at(orders))
+                       adjustments_used=None, entered_at=entered_at(orders), real_book=True)
     if rates is not None:
         fills = [PaperFill(o.order.kind, o.order.side, o.order.quantity, o.order.price, True) for o in orders]
         try:

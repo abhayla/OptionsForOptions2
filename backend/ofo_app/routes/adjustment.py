@@ -109,6 +109,8 @@ class Tracked:
     adjustments_used: int | None = None  # None: the count could not be read (the compare shows "-" with the reason)
     #: GC-IC1 6a (S-12, ADR-240 (3)): when the strategy was entered (its first stored order); None = not known
     entered_at: datetime.datetime | None = None
+    #: ADR-276: the strategy is a real (broker) book: the app reads no charges paid on it, so ``paid_charges`` is None
+    real_book: bool = False
 
 
 @dataclasses.dataclass(frozen=True)

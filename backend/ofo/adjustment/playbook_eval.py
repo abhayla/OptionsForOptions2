@@ -143,6 +143,10 @@ class StrategyState:
     spot: Decimal | None = None
     shorts: tuple[ShortLeg, ...] = ()
     pnl: Decimal | None = None  # whole trade, open legs at LTP plus booked
+    #: ADR-294 (2): ``pnl`` after charges, from ``extremes_charges.book_after_charges`` only (the app fills it); None +
+    #: a reason code = not available. No rule reads it: it is words for the target alert.
+    pnl_after: Decimal | None = None
+    pnl_after_reason: str | None = None
     max_loss: Decimal | str | None = None  # Decimal, UNLIMITED or None
     max_profit: Decimal | str | None = None
     margin: Decimal | None = None  # None = the broker did not state it

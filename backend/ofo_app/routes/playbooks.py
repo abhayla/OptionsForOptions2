@@ -532,7 +532,7 @@ async def _tested(db: Any, user_ref: str, data: TestIn, seams: _Seams) -> list[d
         strategies.append({"strategy_id": row.id, "name": shown_name(row.name),
                            "stage": check.stage_out(ev.stage_name, ev.stage_index),
                            "withheld": None if ev.withheld is None else render(ev.withheld),
-                           "results": [result_out(r, None) for r in ev.results]})
+                           "results": [result_out(r, None, target=check.target_of(state)) for r in ev.results]})
     return strategies
 
 

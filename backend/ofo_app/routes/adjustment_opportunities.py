@@ -28,7 +28,7 @@ from ofo.strategy.stored_form import shown_name
 from pydantic import BaseModel, ConfigDict
 
 from ofo_app import playbook_store as store
-from ofo_app.adjustment_check import condition_line, condition_line_t19, stage_name_text
+from ofo_app.adjustment_check import TargetFigures, condition_line, condition_line_t19, stage_name_text
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier, Money
 from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure
@@ -144,7 +144,9 @@ def condition_text(s: store.Suggestion) -> Any:
         return condition_line_t19(s.label, format(s.value, "f"), format(s.threshold, "f"), s.approach,
                                   s.approach_cost, s.unpriced)
     shown = s.threshold if s.limit is None else s.limit
-    return condition_line(s.trigger_id, s.label, s.unit, format(s.value, "f"), format(shown, "f"), s.beyond)
+    found = s.target if s.trigger_id == "T-07" else None  # ADR-294 (2): the figures it was shown with
+    figures = None if found is None else TargetFigures(*found)
+    return condition_line(s.trigger_id, s.label, s.unit, format(s.value, "f"), format(shown, "f"), s.beyond, figures)
 
 
 def _record(s: store.Suggestion, paper: bool) -> dict:

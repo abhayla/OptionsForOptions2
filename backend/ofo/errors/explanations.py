@@ -1566,6 +1566,13 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         "{label}: {value} {unit} before charges (rule {threshold} {unit})",
                         {"label": PlaybookTriggerLabel, "value": PlaybookField, "unit": PlaybookUnit,
                          "threshold": PlaybookField}),
+    # ADR-294 (2) (GC-ICFIX u103): the target alert's sentence, the figure it used and the after-charges result beside it
+    ExplanationTemplate("adjust_target_reached", "values_seen",
+                        "Profit before charges {before} reached your target of {pct}%; after charges {after}",
+                        {"before": SignedRupeesPaisa, "pct": Amount, "after": SignedRupeesPaisa}),
+    ExplanationTemplate("adjust_target_reached_no_after", "values_seen",
+                        "Profit before charges {before} reached your target of {pct}%; after charges not available: "
+                        "{reason}", {"before": SignedRupeesPaisa, "pct": Amount, "reason": Explained}),
     ExplanationTemplate("adjust_condition_line_plain", "values_seen", "{label}: {value} (rule {threshold})",
                         {"label": PlaybookTriggerLabel, "value": PlaybookField, "threshold": PlaybookField}),
     # #650: a trigger whose value is rupees (T-02: the expiry P&L at spot) or a count (T-18: adjustments used) has no
@@ -1875,6 +1882,10 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("execute_cost_charges_not_included", "values_seen",
                         "Charges and taxes are not included: the charge rates could not be read."),
     # GC-TP R-20 / R-15 (ADR-210, owner-approved 2026-10-29): why a paper or what-if figure is a dash; one per reason code
+    # GC-ICFIX u103 round 2 (ADR-276 (4), ADR-294 (2)): a real-book strategy: no charges paid on broker orders are read
+    ExplanationTemplate("paper_reason_charges_not_read", "values_seen",
+                        "Charges paid on broker orders are not read by this app, so the result after charges "
+                        "is not shown."),
     ExplanationTemplate("paper_reason_not_priced", "values_seen",
                         "Charges not shown: an order's value could not be worked out."),
     ExplanationTemplate("paper_reason_model_refused", "values_seen",
