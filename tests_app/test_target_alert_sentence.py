@@ -1,4 +1,4 @@
-# ruff: noqa: E501, PLC0415
+# ruff: noqa: E501
 """GC-ICFIX u103 (ADR-294 (2)): the target alert says which figure it used, in words, with the after-charges result
 beside it: "Profit before charges +Rs X reached your target of Y%; after charges -Rs Z". No database.
 
@@ -78,7 +78,7 @@ def _engine_after() -> tuple[D, D | None]:
 # (a) both figures known -> the sentence of ADR-294 (2), exact text
 def test_t07_fired_with_both_figures_says_before_and_after_in_words():
     line = check.condition_line("T-07", LABEL, "%", "1.7700", "1.0000", target=check.TargetFigures(D("61.75"), D("-218.85"), None))
-    assert str(line) == "Profit before charges +Rs 61.75 reached your target of 1%; after charges −Rs 218.85"
+    assert str(line) == "Profit before charges +Rs 61.75 reached your target of 1%; after charges \u2212Rs 218.85"
 
 
 def test_the_after_charges_figure_is_the_paper_books_own_number_for_the_same_trade():

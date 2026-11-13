@@ -368,7 +368,8 @@ def state_of(tracked: Tracked, market: MarketInputs, spot: SpotAnswer, margin: M
     return with_gamma(with_carry(pe.StrategyState(stops=stops,
         expiry_kind=market.expiry_kind or position.expiry_kind or "weekly",  # type: ignore[arg-type]
         days_left=(expiry - now.date()).days, hhmm=hhmm, spot=value, shorts=shorts, pnl=pnl,
-        pnl_after=pnl_after, pnl_after_reason=pnl_after_reason, max_loss=None if gross is None else _limit_value(gross.max_loss),
+        pnl_after=pnl_after, pnl_after_reason=pnl_after_reason,
+        max_loss=None if gross is None else _limit_value(gross.max_loss),
         max_profit=None if gross is None else _limit_value(gross.max_profit),
         margin=stated_margin, margin_unreadable=margin_unreadable, premium_left=left, adjustment_cost=cheap.cost,
         adjustment_approach=cheap.approach,
@@ -833,16 +834,20 @@ def _target_line(trigger_id: str, threshold: str, target: TargetFigures | None) 
 
 def condition_line(trigger_id: str, label: str | None, unit: str | None, value: str, threshold: str,  # noqa: PLR0913
                    beyond: tuple[str, Decimal, Decimal] | None = None, target: TargetFigures | None = None) -> Any:
-    """GC-ADJ2 item 1: "Spot within this % of a short strike: 0.3416 % (rule 0.5000 %)" from the trigger's own label
-    and unit. A label the slot refuses or a body without one -> the trigger id (fail visible); a unit that is empty
-    or not a plain unit -> the line without it. ADR-294 (2): T-07 with ``target`` figures -> the target sentence."""
+    """The condition in words. ADR-294 (2): T-07 with ``target`` figures -> the target sentence (profit before charges,
+    the target, the after-charges result); anything else, or a figure the slots refuse -> the percent line."""
     try:
         sentence = _target_line(trigger_id, threshold, target)
-    except (TypeError, ValueError, ArithmeticError):  # a refused figure: the percent line below (fail visible)
+    except (TypeError, ValueError, ArithmeticError):  # a refused figure: the percent line (fail visible)
         sentence = None
-    if sentence is not None:
-        return sentence
+    return sentence if sentence is not None else _percent_line(trigger_id, label, unit, value, threshold, beyond)
 
+
+def _percent_line(trigger_id: str, label: str | None, unit: str | None, value: str, threshold: str,  # noqa: PLR0913
+                  beyond: tuple[str, Decimal, Decimal] | None) -> Any:
+    """GC-ADJ2 item 1: "Spot within this % of a short strike: 0.3416 % (rule 0.5000 %)" from the trigger's own label
+    and unit. A label the slot refuses or a body without one -> the trigger id (fail visible); a unit that is empty
+    or not a plain unit -> the line without it."""
     def line(lab: str, un: str | None) -> Any:
         if un == CLOCK_UNIT:  # a clock trigger: HH:MM value and threshold, no unit word
             return render_explanation("adjust_condition_line_time", label=lab, value=value, threshold=threshold)
