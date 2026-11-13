@@ -67,7 +67,7 @@ function onKey(e) {
         aria-modal="true"
         :aria-label="title"
         tabindex="-1"
-        class="relative w-[420px] max-w-full rounded-xl bg-surface p-8 shadow-drawer focus:outline-none"
+        class="relative flex max-h-[calc(100dvh-2rem)] w-[420px] max-w-full flex-col rounded-xl bg-surface p-8 shadow-drawer focus:outline-none"
         data-testid="modal"
       >
         <button
@@ -79,13 +79,14 @@ function onKey(e) {
         >
           <Icon name="close" :size="18" />
         </button>
-        <h2 class="pr-8 text-xl font-semibold text-ink" data-testid="modal-title">
+        <h2 class="shrink-0 pr-8 text-xl font-semibold text-ink" data-testid="modal-title">
           {{ title }}
         </h2>
-        <div class="mt-4 text-sm text-ink"><slot /></div>
+        <!-- GC-ICFIX Issue 6: the frame is capped to the window; only this body scrolls, the actions below stay pinned -->
+        <div class="mt-4 min-h-0 flex-1 overflow-y-auto text-sm text-ink" data-testid="modal-body"><slot /></div>
         <div
           v-if="$slots.actions"
-          class="mt-6 grid grid-cols-2 gap-3"
+          class="mt-6 grid shrink-0 grid-cols-2 gap-3"
           data-testid="modal-actions"
         >
           <slot name="actions" />
