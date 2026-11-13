@@ -14,6 +14,7 @@ import datetime
 from decimal import Decimal
 
 from ofo.charges import ChargeRates
+from ofo.charges.paper_charges import PaperFill, paper_charges
 from ofo.engine.extremes import ContractTerms
 from ofo.engine.extremes_charges import (
     AfterSplit,
@@ -82,22 +83,29 @@ def test_profit_left_and_loss_left_after_charges_of_an_iron_condor_at_entry_equa
     #   brokerage 4 x 20 = 80, STT 0.0015 x 9,594 = 14.391, transaction 0.0003553 x 22,194.25 = 7.885617025,
     #   SEBI 0.02219425, stamp 0.00003 x 12,600.25 = 0.3780075, GST 0.18 x (80 + 7.885617025 + 0.02219425)
     #   = 15.8234060295 -> 118.5002248045 -> rounded up 118.51.
-    # Paid (given) 122.91, chosen so paid + exit = 241.42, the round-trip charges inside Max profit / Max loss.
-    # Profit left after = 3,006.25 - 122.91 - 118.51 = 2,764.83 (= Max profit after 3,006.25 - 241.42, so no recover);
-    # Loss left after = -3,493.75 - 122.91 - 118.51 = -3,735.17 (= Max loss after).
+    # Paid = the engine's own figure for the four entry fills: 122.9194123045 -> 122.92 (rounded up once). The round
+    # trip inside Max profit / Max loss is 241.42 (rounded up once); paid + exit shown = 241.43, because the pieces
+    # are each rounded up on their own, so they can differ from the round trip by a paisa.
+    # Profit left after = 3,006.25 - 122.92 - 118.51 = 2,764.82, one paisa BELOW Max profit after
+    # 3,006.25 - 241.42 = 2,764.83: no recover. Loss left after = -3,493.75 - 122.92 - 118.51 = -3,735.18.
     terms = {cid: ContractTerms(kind, strike, EXPIRY) for cid, kind, strike, _, _ in LEGS}
     orders = [PaperOrder(cid, side, LOT, price, "open", T0) for cid, _, _, side, price in LEGS]
     live = {cid: price for cid, _, _, _, price in LEGS}
-    _view, after, got = _split(orders, terms, live, "122.91")
+    _view, after, got = _split(orders, terms, live, "122.92")
     assert after.open_exit == D("118.51")
-    assert (got.profit_left_after, got.loss_left_after) == (D("2764.83"), D("-3735.17"))
+    assert (got.profit_left_after, got.loss_left_after) == (D("2764.82"), D("-3735.18"))
     assert got.recover is None  # at or below Max profit after: absent, not 0
+    # paper_charges' own paid figure for these fills is 122.92 (not a hand-picked number): the test reflects the engine
+    paid = paper_charges([PaperFill("open", side, LOT, price, True) for _, _, _, side, price in LEGS], "NIFTY", RATES)
+    assert paid.shown == D("122.92")
+    top = D("3006.25") - D("241.42")
+    assert top - got.profit_left_after == D("0.01")  # a paisa of rounding is never a recover line
 
 
 def test_losing_book_profit_left_after_is_not_capped_and_recover_is_the_excess_over_max_profit() -> None:
     # SELL 65 @ 100 (put), live 150: total before = (100 - 150) x 65 = -3,250.00. Profit left before = 150 x 65 =
     # 9,750.00
-    # (expiry worthless); Max profit before = 100 x 65 = 6,500.00; round trip at 100: 36.082821 + 26.528821 = 62.611642
+    # (expiry worthless); Max profit before = 100 x 65 = 6,500.00; round trip at 100: 36.082821 + 26.527821 = 62.610642
     # -> 62.62, so Max profit after = 6,437.38. Paid 36.09, exit BUY 65 @ 150 = 28.00.
     # Profit left after = 9,750.00 - 36.09 - 28.00 = 9,685.91, ABOVE Max profit after: not capped.
     # recover = 9,685.91 - 6,437.38 = 3,248.53 (the 3,250.00 loss, less the 1.47 by which paid + exit 64.09 is

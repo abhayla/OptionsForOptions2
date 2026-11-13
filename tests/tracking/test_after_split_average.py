@@ -99,7 +99,7 @@ def test_an_average_that_is_exactly_two_decimals_prices_like_the_old_single_leg(
 
 def test_one_fill_round_trip_is_unchanged_to_the_paisa() -> None:
     view = net_positions(_book(["100.00"], "SELL"), {"1": D("90")})
-    assert open_round_trip_charges(view, PUT, "NIFTY", RATES) == D("62.62")  # 36.082821 + 26.528821 = 62.611642 -> up
+    assert open_round_trip_charges(view, PUT, "NIFTY", RATES) == D("62.62")  # 36.082821 + 26.527821 = 62.610642 -> up
 
 
 def test_long_leg_with_an_averaged_entry() -> None:
