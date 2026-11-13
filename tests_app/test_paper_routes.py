@@ -647,3 +647,38 @@ async def test_tracking_replies_carry_the_split_from_the_same_function(db):
     for body in (tracked, listed):
         assert (D(body["booked_after"]), D(body["unbooked_after"])) == (D("-95.13"), D("0"))
         assert body["booked_after_text"] == MINUS + "95.13" and D(body["booked"]) == D("-32.50")
+
+
+# --- GC-ICFIX u129 round 2 (F1): an AVERAGE entry price with more than two decimals must not crash any route -------------
+
+async def test_f1_averaged_entry_answers_200_with_the_same_figures_on_paper_and_tracking_routes(db):
+    # SELL 65 @ 100.00 + SELL 65 @ 100.05 (average 100.025), now 101. Hand sums in tests/tracking/test_after_split_average:
+    # paid 72.18 (two real fills), exit BUY 130 @ 101 = 29.52, before (100.025 - 101) x 130 = -126.75, total after
+    # -228.45, Booked after -72.18, Unbooked after -156.27.
+    app, stored, provider, _clock, last = await _setup(db)
+    c0 = stored.saved.contract_ids[0]
+    await paper_store.place(db, stored.user_ref, stored.id,
+                            [_new(c0, "SELL", 65, "100.00"), _new(c0, "SELL", 65, "100.05", "add")])
+    provider.on_frame(_frame(provider, IDS[0], "101.00"), last)
+    app.dependency_overrides[load_charge_rates] = lambda: RATES
+    async with _client(app) as c:
+        replies = {"paper": await c.get(f"/paper/strategies/{stored.id}"),
+                   "paper_list": await c.get("/paper/strategies"),
+                   "tracking": await c.get(f"/strategies/{stored.id}/tracking"), "tracking_list": await c.get("/tracking")}
+    assert {k: r.status_code for k, r in replies.items()} == dict.fromkeys(replies, HTTPStatus.OK)
+    rows = [next(s for s in replies[k].json()["strategies"] if s["strategy_id"] == stored.id)
+            for k in ("paper_list", "tracking_list")]
+    for body in (replies["paper"].json(), replies["tracking"].json(), *rows):
+        assert (D(body["total_after"]), D(body["charges_paid"]), D(body["charges_to_close"])) == (
+            D("-228.45"), D("72.18"), D("29.52"))
+        assert (D(body["booked_after"]), D(body["unbooked_after"])) == (D("-72.18"), D("-156.27"))
+    assert D(replies["paper_list"].json()["totals"]["total_after"]) == D("-228.45")
+
+
+async def test_f1_a_list_row_the_engine_cannot_price_keeps_its_reason_and_the_list_still_answers(db):
+    # the paper list answers 200 for an averaged book whose quote is stale: that row carries prices_not_live, no number.
+    body, row, totals = await _one_put(db, [("SELL", 65, "100.00", "open"), ("SELL", 65, "100.05", "add")], "101.00",
+                                       stale=True)
+    for reply in (body, row):
+        assert reply["total_after"] is None and reply["after_charges_reason"] == "prices_not_live"
+    assert totals["total_after"] is None

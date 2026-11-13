@@ -2,8 +2,9 @@
 
 ``book_extremes`` gives the figures before charges. The builder and Compare show them net of the strategy's round-trip
 charges (``outcome.service._summary``: max profit - charges, max loss + charges magnitude). The paper book uses the SAME
-function for the charges (``charges.round_trip.round_trip_charges``) over its open contracts at their exact average
-price, so there is one charges formula; nothing is re-derived here.
+calculator (``charges.calculator``, the formula ``round_trip_charges`` uses) over its open contracts at their exact
+average price, so there is one charges formula; nothing is re-derived here. The average can have more than two
+decimals (a contract filled at two prices): it is priced as it is, never rounded to a price nobody traded at.
 """
 from __future__ import annotations
 
@@ -13,9 +14,9 @@ from decimal import Decimal
 
 from ofo.charges import ChargeRates
 from ofo.charges.calculator import ChargeOrder, charges_for_orders
-from ofo.charges.round_trip import ChargesNotComputable, charge_segment, round_trip_charges, to_paise_up
+from ofo.charges.round_trip import ChargesNotComputable, charge_segment, to_paise_up
 from ofo.engine.extremes import UNLIMITED, BookExtremes, ContractTerms, Figure, book_extremes
-from ofo.engine.legs import Action, Instrument, Leg
+from ofo.engine.legs import Instrument
 from ofo.engine.orderbook import BookView
 
 __all__ = ["AfterSplit", "BookAfterCharges", "after_split", "book_after_charges", "open_exit_charges",
@@ -95,13 +96,18 @@ def open_round_trip_charges(view: BookView, terms: Mapping[str, ContractTerms], 
     open_ = [p for p in view.positions if p.net_quantity != 0 and p.average is not None]
     if rates is None or not open_:
         return None
-    legs = [Leg(Action.BUY if p.net_quantity > 0 else Action.SELL, terms[p.instrument_id].instrument,
-                terms[p.instrument_id].strike, terms[p.instrument_id].expiry, abs(p.net_quantity), p.average)
-            for p in open_]
+    if any(terms[p.instrument_id].instrument is Instrument.FUT or p.average <= 0 for p in open_):  # type: ignore[operator]
+        return None
     try:
-        return round_trip_charges(legs, underlying, rates)
+        segment = charge_segment(underlying)
     except ChargesNotComputable:
         return None
+    orders = []
+    for p in open_:  # ChargeOrder takes any price above 0; only the strategy ``Leg`` demands two decimals
+        side, other = ("BUY", "SELL") if p.net_quantity > 0 else ("SELL", "BUY")
+        orders += [ChargeOrder(segment, side, abs(p.net_quantity), p.average),  # type: ignore[arg-type]
+                   ChargeOrder(segment, other, abs(p.net_quantity), p.average)]  # type: ignore[arg-type]
+    return to_paise_up(charges_for_orders(orders, rates).total)
 
 
 def with_charges(got: BookExtremes, charges: Decimal | None) -> BookExtremes:
@@ -150,7 +156,8 @@ def after_split(  # noqa: PLR0913 - the book, its terms, live prices, underlying
         return value if value is UNLIMITED else value - charges  # type: ignore[operator]
 
     profit_left = left(got.profit_left)
-    top = with_charges(got, open_round_trip_charges(view, terms, underlying, rates)).max_profit
+    round_trip = open_round_trip_charges(view, terms, underlying, rates)
+    top = None if round_trip is None else with_charges(got, round_trip).max_profit  # no mixing of bases (F5)
     recover = None
     if profit_left is not UNLIMITED and top is not None and top is not UNLIMITED and profit_left > top:  # type: ignore[operator]
         recover = profit_left - top  # type: ignore[operator]
