@@ -501,6 +501,27 @@ def _rules_out(stype: str, body: dict, at: datetime.datetime) -> Any:
         "body": PlaybookBody.of(body), "situation_kinds": pb_routes.situation_kinds(body)})
 
 
+def _t07_of(body: Any) -> Any:
+    triggers = body.get("triggers") if isinstance(body, dict) else None
+    return triggers.get("T-07") if isinstance(triggers, dict) else None
+
+
+def _rules_to_save(base: dict, submitted: dict, is_plan: bool) -> dict:
+    """ADR-304, "the last save wins": the editor showed ``with_plan_target(base)`` (a plan's Target overrides T-07's early
+    and middle stages). T-07 as shown, unchanged -> the base's own T-07 and Target are kept (the Target keeps acting).
+    T-07 changed (values or on/off) -> the user's T-07 is saved and the Target guard is left out (the form
+    ``with_plan_target`` and ``_values`` already read as "no Target typed"), so the saved T-07 is what the check acts on
+    and a T-07 switched off stays off. A Target typed later in the plan sheet wins again (``with_overrides``)."""
+    shown = check.with_plan_target(base) if is_plan else base
+    out = copy.deepcopy(submitted)
+    if _t07_of(out) == _t07_of(shown):
+        if _t07_of(base) is not None and isinstance(out.get("triggers"), dict):
+            out["triggers"]["T-07"] = copy.deepcopy(_t07_of(base))
+    elif isinstance(out.get("guards"), dict):
+        out["guards"].pop(TARGET_KEY, None)
+    return out
+
+
 async def _rules_scope(strategy_id: int, db: Any, user_ref: str, tracked_reader: TrackedReader,  # noqa: PLR0913
                        market_reader: MarketReader, rest_reader: RestSpotReader, ctx: MarketContext | None,
                        rates: ChargeRates | None) -> tuple[str, store.Plan | None]:
@@ -524,8 +545,8 @@ async def read_rules(  # noqa: PLR0913 - FastAPI dependencies, one per input
     stype, plan = await _rules_scope(strategy_id, db, user_ref, tracked_reader, market_reader, rest_reader, ctx, rates)
 
     async def work() -> Any:
-        if plan is not None:
-            return _rules_out(stype, plan.body, plan.accepted_at)
+        if plan is not None:  # the applied view: what the rule check reads (ADR-304), via the one function
+            return _rules_out(stype, dict(check.with_plan_target(plan.body)), plan.accepted_at)
         active = await store.active_for(db, user_ref, stype)
         return _rules_out(stype, active.body, active.updated_at)
     return await _run(db, work)
@@ -550,8 +571,9 @@ async def save_rules(  # noqa: PLR0913 - FastAPI dependencies, one per input
             raise pb_routes.refused(exc) from None
         keep = plan is not None and plan.playbook_id is not None
         source_id = plan.playbook_id if keep and plan is not None else (await store.active_for(db, user_ref, stype)).id
-        saved = await store.accept_plan(db, user_ref, strategy_id, source_id, data.body)
-        return _rules_out(stype, saved.body, saved.accepted_at)
+        base = plan.body if plan is not None else (await store.active_for(db, user_ref, stype)).body
+        saved = await store.accept_plan(db, user_ref, strategy_id, source_id, _rules_to_save(base, data.body, plan is not None))
+        return _rules_out(stype, dict(check.with_plan_target(saved.body)), saved.accepted_at)
     return await _run(db, work)
 
 
