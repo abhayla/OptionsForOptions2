@@ -416,51 +416,6 @@ def sheet_stop(body: Mapping, kind: str | None = None) -> Decimal | None:
     return None if line is None or not line.active else line.figure
 
 
-#: GC-ICFIX u113 (ADR-295, ADR-252): the two rules the plan card states, each the trigger the live check reads per stage
-RULE_TRIGGERS: Final = {"target": "T-07", "stop": sl.TRIGGER_MAX_LOSS}
-
-
-@dataclasses.dataclass(frozen=True)
-class RuleInForce:
-    """One rule as the live check reads it: ``on`` is the trigger's switch; ``stages`` the stages of the trade's expiry
-    kind that hold a value, as (the playbook's stage name, the value text). Off -> no stages (nothing acts on a number)."""
-
-    on: bool
-    stages: tuple[tuple[str | None, Decimal], ...]
-
-
-def rule_of(resolved: check.Resolved, tid: str, kind: str | None) -> RuleInForce | None:
-    """The ONE read of a rule in force for the card: from ``resolved.body`` (the body the check uses, with the plan's
-    Target already applied by ``with_plan_target``), the trigger ``tid`` per stage of the expiry ``kind`` (anything but
-    "monthly" -> weekly). Trigger absent -> off; an unreadable body, switch or value -> None (fail closed). All stages
-    are returned; the current stage is never guessed. A stage without a value is left out (the check names it missing)."""
-    body = resolved.body
-    if resolved.source == "none" or not isinstance(body, Mapping):
-        return None
-    trig, readable = _trigger(body, tid)
-    if not readable:
-        return None
-    if trig is None or trig.get("on") is False:
-        return RuleInForce(False, ())
-    if trig.get("on") is not True:
-        return None
-    row = "monthly" if kind == "monthly" else "weekly"
-    stages, values = (body.get("stages") or {}).get(row), trig.get(row)
-    if not isinstance(stages, list) or not isinstance(values, list) or len(stages) != len(values):
-        return None
-    out = []
-    for stage, raw in zip(stages, values, strict=True):
-        if raw in (None, ""):
-            continue
-        try:
-            value = _decimal_text(raw)
-        except ValueError:
-            return None
-        name = stage.get("name") if isinstance(stage, Mapping) else None
-        out.append((name if isinstance(name, str) else None, value))
-    return RuleInForce(True, tuple(out)) if out else None
-
-
 def check_stop_values(body: Mapping) -> str | None:
     """Save-time range check (the check itself never raises on these): the field out of range, or None."""
     guards = body.get("guards")

@@ -20,25 +20,6 @@ export const formOf = (src) => ({
   targetWords: text(src?.target_words), stopWords: text(src?.stop_words), // what the numbers are, the server's words
 })
 
-const readRule = (r) => {
-  if (!r || typeof r !== 'object' || typeof r.on !== 'boolean' || !Array.isArray(r.stages)) return null
-  const stages = r.stages.map((s) => ({ name: text(s?.name), value: decimal(s?.value) }))
-  if (stages.some((s) => !s.name || !s.value) || (r.on && stages.length === 0)) return null // fail closed: a number nothing names is not shown
-  return { on: r.on, stages: r.on ? stages : [] }
-}
-/** The target and stop rules in force as the server's check reads them (per stage); a rule that cannot be read is null. */
-const readRules = (b) => (b && typeof b === 'object' ? { target: readRule(b.target), stop: readRule(b.stop) } : { target: null, stop: null })
-
-/** One rule as a sentence from the server's words: "50 % of max profit (80 % at Last day)", or "not being checked" when it is off.
- *  `unitKey` is the label holding the unit words. null when the rule or a word it needs is missing (the caller then says could-not-load). */
-export function ruleText(rule, labels, unitKey) {
-  if (!rule) return null
-  if (!rule.on) return labels.not_checked || null
-  if (!labels[unitKey] || !labels.at_stage) return null
-  const later = rule.stages.slice(1).filter((s, i) => s.value !== rule.stages[i].value).map((s) => `${s.value} ${labels.at_stage} ${s.name}`)
-  return `${rule.stages[0].value} ${labels[unitKey]}${later.length ? ` (${later.join(', ')})` : ''}`
-}
-
 /** The one reading of the answer: { kind: 'generic', text } | { kind: 'sheet', ... } | { kind: 'invalid' }. */
 export function readPlan(body) {
   if (!body || typeof body !== 'object' || typeof body.generic !== 'boolean' || !body.labels || typeof body.labels !== 'object') {
@@ -60,7 +41,6 @@ export function readPlan(body) {
       maxAdjustments: count(body.plan.max_adjustments), timeExit: clockText(body.plan.time_exit),
     } : null,
     prefill: formOf(body.prefill),
-    rules: readRules(body.rules_in_force),
   }
 }
 

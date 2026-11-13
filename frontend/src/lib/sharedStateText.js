@@ -31,6 +31,10 @@ export const RETRY_LABEL = 'Retry'
 // ADR-295 (3), GC-ICFIX u112: a panel whose read failed or timed out says so and offers Retry; never an empty space.
 export const PLAN_LOAD_FAILED_TEXT = 'Could not load the plan. Nothing was changed.'
 export const PLAN_LOADING_TEXT = 'Loading the plan…'
+// pending owner read (13 Nov 2026), GC-ICFIX u113 round 3 (ADR-304 (3)): the states of the plan card's limit lines, read from the rule check
+export const LIMITS_LOADING_TEXT = 'Loading the rules in force…'
+export const LIMITS_LOAD_FAILED_TEXT = 'Could not load the rules in force. Nothing was changed.'
+export const LIMITS_NONE_TEXT = 'No rules are being checked for this trade'
 export const RETURN_DONE_TEXT = 'Zerodha confirmed your orders.' // ADR-129
 
 export const EMPTY_S4_MESSAGE = 'No saved strategies yet.'

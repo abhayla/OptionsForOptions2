@@ -1621,16 +1621,6 @@
               }
             ]
           },
-          "rules_in_force": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/RulesInForceOut"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
           "settings": {
             "items": {
               "$ref": "#/components/schemas/SettingInForceOut"
@@ -1699,8 +1689,7 @@
           "settings",
           "triggers",
           "triggers_reason",
-          "stops",
-          "rules_in_force"
+          "stops"
         ],
         "title": "AdjustmentPlanOut",
         "type": "object"
@@ -2890,6 +2879,15 @@
             "title": "State",
             "type": "string"
           },
+          "text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          },
           "threshold": {
             "anyOf": [
               {
@@ -2926,7 +2924,8 @@
           "later",
           "tightened_by",
           "state",
-          "reason"
+          "reason",
+          "text"
         ],
         "title": "CheckLimitOut",
         "type": "object"
@@ -10992,85 +10991,6 @@
           "cells"
         ],
         "title": "RowOut",
-        "type": "object"
-      },
-      "RuleOut": {
-        "additionalProperties": false,
-        "description": "One rule as the live check reads it (GC-ICFIX u113): ``on`` false -> not checked, no stages.",
-        "properties": {
-          "on": {
-            "title": "On",
-            "type": "boolean"
-          },
-          "stages": {
-            "items": {
-              "$ref": "#/components/schemas/RuleStageOut"
-            },
-            "title": "Stages",
-            "type": "array"
-          }
-        },
-        "required": [
-          "on",
-          "stages"
-        ],
-        "title": "RuleOut",
-        "type": "object"
-      },
-      "RuleStageOut": {
-        "additionalProperties": false,
-        "properties": {
-          "name": {
-            "anyOf": [
-              {},
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Name"
-          },
-          "value": {
-            "title": "Value",
-            "type": "string"
-          }
-        },
-        "required": [
-          "name",
-          "value"
-        ],
-        "title": "RuleStageOut",
-        "type": "object"
-      },
-      "RulesInForceOut": {
-        "additionalProperties": false,
-        "description": "The target (T-07) and stop (T-06) per stage; a rule that cannot be read is None (the card then says so).",
-        "properties": {
-          "stop": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/RuleOut"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "target": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/RuleOut"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "required": [
-          "target",
-          "stop"
-        ],
-        "title": "RulesInForceOut",
         "type": "object"
       },
       "SaveIn": {

@@ -51,7 +51,7 @@
     </div>
     <!-- GC-ADJ2 step 6 (REQ-163): the entry, every adjustment and the whole-trade totals; read when opened -->
     <AdjustSteps :strategy-id="savedId" />
-    <PlanEntry v-if="status === 'tracked'" :strategy-id="savedId" />
+    <PlanEntry v-if="status === 'tracked'" :strategy-id="savedId" :check="check" :check-status="checkStatus" @retry-check="retryCheck" />
     <AdjustDrawer
       :open="drawerOpen" :strategy-id="savedId" :lines="drawerLines" :detected="!!view?.detections?.length || flags.length > 0" :card-rows="cardRows(raw)"
       :suggestion-ids="flagIds"
@@ -95,14 +95,17 @@ const flags = computed(() => (typed.value ? (check.value.results ?? []) : [])
   .filter((r) => r.kind === 'flag' && !dismissed.value.includes(r.suggestion_id)))
 const alreadyTrue = computed(() => (typed.value ? (check.value.results ?? []) : []).filter((r) => r.kind === 'already_true'))
 const flagIds = computed(() => flags.value.map((f) => f.suggestion_id).filter((x) => x !== null && x !== undefined))
+const checkStatus = ref('loading') // the plan card's limit lines read this one check: 'loading' | 'ok' | 'failed' (ADR-304 (3))
 async function readCheck(id) {
+  checkStatus.value = 'loading'
   try {
     const { data } = await api.get(`/strategies/${id}/adjustment-check`)
-    if (id === props.savedId) check.value = data
+    if (id === props.savedId) { check.value = data; checkStatus.value = 'ok' }
   } catch {
-    if (id === props.savedId) check.value = null
+    if (id === props.savedId) { check.value = null; checkStatus.value = 'failed' }
   }
 }
+const retryCheck = () => readCheck(props.savedId)
 function onDismissed({ ids }) {
   dismissed.value = [...dismissed.value, ...ids]
   closeDrawer()
@@ -134,6 +137,7 @@ async function load(id) {
   view.value = null
   raw.value = null
   check.value = null
+  checkStatus.value = 'loading'
   dismissed.value = []
   drawerOpen.value = false
   error.value = ''

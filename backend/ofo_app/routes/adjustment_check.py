@@ -21,6 +21,7 @@ from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends
 from ofo.adjustment import playbook_eval as pe
+from ofo.adjustment import stop_lines as sl
 from ofo.adjustment.playbook_types import SHOWN_NAMES
 from ofo.charges import ChargeRates
 from ofo.errors import render
@@ -97,6 +98,7 @@ class CheckLimitOut(ApiModel):
     tightened_by: Money | None  # the expiry-day tightening X % when it is applied now
     state: Literal["checked", "not_checked", "already_true"]
     reason: CatalogueText | None  # the evaluator's reason text when not checked
+    text: CatalogueText | None  # the one sentence the card prints for this limit; None -> the card says could-not-load
 
 
 class CheckPauseOut(ApiModel):
@@ -174,11 +176,48 @@ def result_out(r: pe.Result, flag_wording: Any, opened: dict[str, int] | None = 
             "threshold": None, "reason": render(r.code, **dict(r.slots)), "wording": None}
 
 
+def limit_text(x: pe.LimitNow, reason: Any, percent_stop_checked: bool) -> Any:
+    """ADR-304 (3): the one sentence for a limit row, from the evaluator's own numbers (the card prints it, derives nothing).
+    A rule that is not checked says why and shows NO number, even when the row still carries one; a row the card cannot
+    state (an unknown state, a checked row with nothing to compare) -> None."""
+    if x.state not in ("checked", "not_checked", "already_true"):
+        return None
+    target, credit = x.trigger_id == "T-07", x.rule_id == sl.CREDIT_RULE
+    if x.state == "not_checked":
+        return None if reason is None else render_explanation("limit_target_off" if target else "limit_stop_off", reason=reason)
+    if not isinstance(x.threshold, Decimal):
+        return None
+    pct = x.threshold.normalize()
+    money = isinstance(x.amount, Decimal)
+    if target:
+        line = render_explanation("limit_target", pct=pct)
+    elif credit:
+        line = render_explanation("limit_stop_credit", multiple=pct, amount=x.amount) if money else \
+            render_explanation("limit_stop_credit_plain", multiple=pct)
+    else:
+        line = render_explanation("limit_stop_loss", pct=pct, amount=x.amount) if money else \
+            render_explanation("limit_stop_loss_plain", pct=pct)
+    if not credit and x.later and isinstance(x.later[-1], Decimal) and x.later[-1] != x.threshold:
+        line = render_explanation("limit_later", line=line, pct=x.later[-1].normalize())
+    if isinstance(x.tightened_by, Decimal):
+        line = render_explanation("limit_tightened", line=line, pct=x.tightened_by.normalize())
+    if x.state == "already_true":
+        line = render_explanation("limit_already_true", line=line)
+    if credit and percent_stop_checked:  # two stops race: the first to be reached acts (ADR-247)
+        line = render_explanation("plan_stop_words_first", words=line)
+    return line
+
+
 def limits_out(limits: tuple[pe.LimitNow, ...]) -> list[dict]:
     """The limits now as the reply states them: numbers in the reply's shown scale, the reason as its catalogue text."""
-    return [{"rule_id": x.rule_id, "trigger_id": x.trigger_id, "threshold": _num(x.threshold), "amount": _num(x.amount),
-             "later": [_num(v) for v in x.later], "tightened_by": _num(x.tightened_by), "state": x.state,
-             "reason": None if x.reason is None else render(x.reason, **dict(x.slots))} for x in limits]
+    race = any(x.trigger_id == sl.TRIGGER_MAX_LOSS and x.state != "not_checked" for x in limits)
+    out = []
+    for x in limits:
+        reason = None if x.reason is None else render(x.reason, **dict(x.slots))
+        out.append({"rule_id": x.rule_id, "trigger_id": x.trigger_id, "threshold": _num(x.threshold), "amount": _num(x.amount),
+                    "later": [_num(v) for v in x.later], "tightened_by": _num(x.tightened_by), "state": x.state,
+                    "reason": reason, "text": limit_text(x, reason, race)})
+    return out
 
 
 def t19_record(trigger_id: str, cheapest: tuple[str, Decimal, int] | None) -> dict:

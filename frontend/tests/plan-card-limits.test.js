@@ -79,7 +79,7 @@ describe('the no-plan card: the rule check\'s own limit lines, nothing derived i
     const w = await card({ check: check([row('T-07', txt, 'already_true')]), checkStatus: 'ok' })
     const el = t(w, 'plan-entry-limit-T-07')
     expect(el.text()).toBe(txt)
-    expect(el.classes()).toContain('text-muted')
+    expect(el.classes()).toContain('text-ink-muted')
     expect(el.classes().join(' ')).not.toMatch(/red|danger|warn/)
   })
 })
@@ -131,13 +131,13 @@ describe('every answer state of the check read has a visible result', () => {
   it('a row with an unknown state fails closed for that line only', async () => {
     const w = await card({ check: check([row('T-07', T07), row('T-06', T06, 'weird')]), checkStatus: 'ok' })
     expect(lines(w)[0]).toBe(T07)
-    expect(t(w, 'plan-entry-limit-error-T-06').exists()).toBe(true)
+    expect(t(w, 'plan-entry-limit-T-06-error').exists()).toBe(true)
     expect(w.text()).not.toContain('11,948.52')
   })
 
   it('a row without its sentence fails closed the same way', async () => {
     const w = await card({ check: check([row('T-07', null)]), checkStatus: 'ok' })
-    expect(t(w, 'plan-entry-limit-error-T-07').exists()).toBe(true)
+    expect(t(w, 'plan-entry-limit-T-07-error').exists()).toBe(true)
   })
 
   it('the card reads the plan once and never asks for the check itself (one read, owned by the panel)', async () => {
