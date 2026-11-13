@@ -171,3 +171,12 @@ def test_f5_when_the_round_trip_cannot_be_priced_recover_fails_closed() -> None:
 def test_a_fill_finer_than_a_paisa_is_still_refused_at_the_order_door(price: str) -> None:
     with pytest.raises(ValueError):
         PaperOrder("1", "SELL", LOT, D(price), "open", T0)
+
+
+def test_list_sum_keeps_the_priceable_row_and_gives_the_reason_for_the_one_that_cannot_be_priced() -> None:
+    from ofo.engine.extremes_charges import BookAfterCharges, sum_after_charges  # noqa: PLC0415
+    orders = _book(["100.00", "100.05"], "SELL")
+    _, good, _ = _figures(orders, PUT, {"1": D("101")})
+    bad = book_after_charges(net_positions(orders, {"1": D("101")}), D("72.18"), None, "not_priced")
+    assert good.total_after == D("-228.45") and bad.reason == "not_priced"  # the good row is untouched by the bad one
+    assert sum_after_charges([good, bad]) == BookAfterCharges(None, None, None, None, "not_priced")
