@@ -137,11 +137,12 @@ export const BEFORE_CHARGES = '(before charges)'
  *  sentence; an older server (no after fields) lands here too, so a before figure is never shown under an "after" label. */
 export function afterFigure(src, before, pausedText = null) {
   const reason = src?.after_charges_reason ?? null
-  const why = serverText(src?.after_charges_reason_text)
+  const raw = src?.after_charges_reason_text // a sentence, or {what_happened} on the replies that word it as an explanation
+  const why = serverText(raw && typeof raw === 'object' ? raw.what_happened : raw)
   if (reason === 'prices_not_live') return { kind: 'paused', text: null, label: '', reason: pausedText ?? why }
   const after = serverText(src?.total_after_text)
   if (after !== null && reason === null) return { kind: 'after', text: after, label: AFTER_CHARGES, reason: null }
-  return { kind: 'before', text: before, label: BEFORE_CHARGES, reason: why ?? (before === null ? pausedText : null) }
+  return { kind: 'before', text: before, label: before === null ? '' : BEFORE_CHARGES, reason: why ?? (before === null ? pausedText : null) }
 }
 
 const STATES = new Set(['LIVE', 'PAUSED', 'NOT_CONNECTED', 'EXITED'])
