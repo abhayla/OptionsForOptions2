@@ -113,10 +113,10 @@ describe('u123 practice strategies list: rows and totals', () => {
     const w = await show()
     expect(t(w, 'totals-total-label').text()).toBe('Total P&L (before charges)')
     expect(t(w, 'totals-total').text()).toBe(d.totals.total_text)
-    expect(t(w, 'totals-total-after-reason').text()).toBe(NOT_PRICED)
+    expect(t(w, 'totals-reason').text()).toBe(NOT_PRICED)
     const card = w.get(`[data-testid="paper-group"][data-strategy="${live(d).strategy_id}"]`)
     expect(card.get('[data-testid="paper-total-label"]').text()).toBe('Total P&L (before charges)')
-    expect(card.get('[data-testid="paper-total-after-reason"]').text()).toBe(NOT_PRICED)
+    expect(card.get('[data-testid="paper-total-reason"]').text()).toBe(NOT_PRICED)
   })
   it('C: prices not live: the paused sentence, no number, in the totals strip', async () => {
     const d = clone()
@@ -125,7 +125,7 @@ describe('u123 practice strategies list: rows and totals', () => {
     answers['GET /paper/strategies'] = ok(d)
     const w = await show()
     expect(t(w, 'totals-total').text()).toBe('—')
-    expect(t(w, 'totals-total-after-reason').text()).toBe(PAUSED)
+    expect(t(w, 'totals-reason').text()).toBe(PAUSED)
     expect(t(w, 'totals-total-label').text()).toBe('Total P&L')
   })
   it('E: an older server: the before totals labelled "(before charges)"', async () => {

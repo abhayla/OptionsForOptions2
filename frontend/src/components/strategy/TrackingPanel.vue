@@ -7,6 +7,7 @@
     <p v-if="error" class="text-sm text-red-700" data-testid="tracking-error">{{ error }}</p>
     <div v-if="view" class="border-2 border-dashed rounded-lg p-3" data-testid="tracking-view">
       <p class="font-semibold" data-testid="paper-pnl" :data-kind="view.kind">{{ view.text }}</p>
+      <p v-if="view.afterReason" class="text-xs text-ink-muted" data-testid="tracking-after-reason">{{ view.afterReason }}</p>
       <table v-if="view.legs.length" class="mt-2 w-full text-sm">
         <thead>
           <tr class="border-b border-line text-ink-muted">

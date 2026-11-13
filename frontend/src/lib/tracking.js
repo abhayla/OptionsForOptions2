@@ -129,6 +129,21 @@ const isExited = (leg) => (leg?.exited_at !== null && leg?.exited_at !== undefin
 /** A money figure as the server wrote it (REQ-152 AC-4); no text -> null (shown as a dash). Nothing is formed here. */
 const serverText = (v) => (typeof v === 'string' && v.trim() !== '' ? v.trim() : null)
 
+export const AFTER_CHARGES = '(after charges)'
+export const BEFORE_CHARGES = '(before charges)'
+/** GC-ICFIX u123 (ADR-263, ADR-008): which total a screen shows. `src` is a reply object, `before` its before-charges text,
+ *  `pausedText` the screen's own paused sentence (REQ-109 AC-5). kind 'after': the server's total_after_text, only when it
+ *  sent no reason with it. 'paused': prices not live, no number. Else 'before': the before text with the server's reason
+ *  sentence; an older server (no after fields) lands here too, so a before figure is never shown under an "after" label. */
+export function afterFigure(src, before, pausedText = null) {
+  const reason = src?.after_charges_reason ?? null
+  const why = serverText(src?.after_charges_reason_text)
+  if (reason === 'prices_not_live') return { kind: 'paused', text: null, label: '', reason: pausedText ?? why }
+  const after = serverText(src?.total_after_text)
+  if (after !== null && reason === null) return { kind: 'after', text: after, label: AFTER_CHARGES, reason: null }
+  return { kind: 'before', text: before, label: BEFORE_CHARGES, reason: why ?? (before === null ? pausedText : null) }
+}
+
 const STATES = new Set(['LIVE', 'PAUSED', 'NOT_CONNECTED', 'EXITED'])
 const CONDITIONS = new Set(Object.keys(CONDITION_TEXT))
 
@@ -195,8 +210,13 @@ export function readTracking(body, replyLegs = null) {
   if (signed === null) return INVALID
   const booked = serverText(body.booked_text)
   const unbooked = serverText(body.unbooked_text)
-  if (body.state === 'EXITED') return { kind: 'exited', text: `${PAPER_PNL_PREFIX}${signed} - exited`, figure: signed, booked, unbooked, legs, detections }
-  return { kind: 'live', text: `${PAPER_PNL_PREFIX}${signed}`, figure: signed, booked, unbooked, legs, detections }
+  // GC-ICFIX u123 (ADR-263): the headline is the after-charges figure, labelled; no after figure -> the before figure, labelled
+  const shown = afterFigure(body, signed)
+  if (shown.kind === 'paused') return { kind: 'paused', text: pausedText(body.as_of), figure: null, legs, detections }
+  const text = `${PAPER_PNL_PREFIX}${shown.text} ${shown.label}`
+  const base = { figure: shown.text, afterReason: shown.reason, booked, unbooked, legs, detections }
+  if (body.state === 'EXITED') return { kind: 'exited', text: `${text} - exited`, ...base }
+  return { kind: 'live', text, ...base }
 }
 
 export const EXITED_TEXT = 'Exited'

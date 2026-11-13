@@ -90,7 +90,7 @@ describe('TrackingPanel', () => {
   it('AC-2: a live answer shows the paper figure, each leg entry and LTP; a stale leg shows no LTP', async () => {
     answers['GET /strategies/7/tracking'] = () => Promise.resolve({ data: body({ paper_pnl: '1240.50', paper_pnl_text: '+1,240.50' }) })
     const w = await panel()
-    expect(w.get('[data-testid="paper-pnl"]').text()).toBe(`${PAPER_PNL_PREFIX}+1,240.50`)
+    expect(w.get('[data-testid="paper-pnl"]').text()).toBe(`${PAPER_PNL_PREFIX}+1,240.50 (before charges)`)
     const rows = legRows(w)
     // GC-UI D-B49 / D-B39: one value per column, the instrument as "<lots> x <D Mon> <strike> <type>" (no ".00"), prices as sent
     expect(rows).toEqual([['S 1 x 3 Nov 22800 CE', '39.15', '45.15'], ['S 1 x 3 Nov 22400 PE', '82.75', '-']])
@@ -199,11 +199,11 @@ describe('TrackingPanel refresh (GC-BP F-1)', () => {
     answers['GET /strategies/7/tracking'] = () => Promise.resolve({ data: body({ paper_pnl: pnl }) })
     const w = await panel()
     expect(TRACKING_REFRESH_MS).toBe(5000)
-    expect(w.get('[data-testid="paper-pnl"]').text()).toBe('Paper P&L (not real): +195.00')
+    expect(w.get('[data-testid="paper-pnl"]').text()).toBe('Paper P&L (not real): +195.00 (before charges)')
     pnl = '-188.50'
     await vi.advanceTimersByTimeAsync(TRACKING_REFRESH_MS)
     expect(gets()).toBe(2)
-    expect(w.get('[data-testid="paper-pnl"]').text()).toBe('Paper P&L (not real): −188.50')
+    expect(w.get('[data-testid="paper-pnl"]').text()).toBe('Paper P&L (not real): −188.50 (before charges)')
   })
 
   it('fail closed: a failed refresh shows no figure (never the old one as if current); the next one restores it', async () => {
@@ -218,7 +218,7 @@ describe('TrackingPanel refresh (GC-BP F-1)', () => {
     expect(w.get('[data-testid="tracking-error"]').text()).toBe('Prices could not be read.')
     fail = false
     await vi.advanceTimersByTimeAsync(TRACKING_REFRESH_MS)
-    expect(w.get('[data-testid="paper-pnl"]').text()).toBe('Paper P&L (not real): +10.00')
+    expect(w.get('[data-testid="paper-pnl"]').text()).toBe('Paper P&L (not real): +10.00 (before charges)')
     expect(w.find('[data-testid="tracking-error"]').exists()).toBe(false)
   })
 
@@ -259,7 +259,7 @@ describe('TrackingPanel refresh (GC-BP F-1)', () => {
     await flushPromises()
     releaseOld()
     await flushPromises()
-    expect(w.get('[data-testid="paper-pnl"]').text()).toBe('Paper P&L (not real): +2.00')
+    expect(w.get('[data-testid="paper-pnl"]').text()).toBe('Paper P&L (not real): +2.00 (before charges)')
   })
 })
 
@@ -282,7 +282,7 @@ describe('TrackingPanel first read (GC-BP step 8 R1-2)', () => {
 describe('live #603 item 1: one minus character on the panel (REQ-152 AC-4, ADR-008)', () => {
   it('the total, booked and unbooked print the server texts as sent (U+2212), never an ASCII hyphen of the browser', () => {
     const r = readTracking(body({ paper_pnl: '-19.50', paper_pnl_text: '−19.50', booked: '0.00', booked_text: '0.00', unbooked: '-19.50', unbooked_text: '−19.50' }))
-    expect(r.text).toBe(`${PAPER_PNL_PREFIX}−19.50`)
+    expect(r.text).toBe(`${PAPER_PNL_PREFIX}−19.50 (before charges)`)
     expect([r.figure, r.booked, r.unbooked]).toEqual(['−19.50', '0.00', '−19.50'])
     expect(JSON.stringify([r.text, r.figure, r.unbooked])).not.toContain('-')
   })

@@ -19,7 +19,12 @@
          text as sent; the Charges are never added to or taken from the P&L, and an absent one is a dash (never 0). -->
     <HeldNote class="mt-2" :held="book.held" note />
     <dl class="mt-2 flex gap-6 text-xs" data-testid="book-strip">
-      <div><dt class="text-ink-muted">Total P&amp;L</dt><dd class="num text-sm font-semibold" data-testid="book-total">{{ book.total_text ?? '-' }}</dd></div>
+      <!-- GC-ICFIX u123 (ADR-263): the headline total is the server's after-charges text, labelled; else the before text, labelled, with the reason -->
+      <div>
+        <dt class="text-ink-muted" data-testid="book-total-label">Total P&amp;L {{ total.label }}</dt>
+        <dd class="num text-sm font-semibold" data-testid="book-total">{{ total.text ?? '-' }}</dd>
+        <p v-if="total.reason" class="max-w-xs text-ink-muted" data-testid="book-after-reason">{{ total.reason }}</p>
+      </div>
       <div>
         <dt class="text-ink-muted">Charges</dt>
         <dd class="num text-sm font-semibold" data-testid="book-charges">{{ book.charges_text ?? '-' }}</dd>
@@ -79,6 +84,8 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 import { istClock } from '@/lib/displayFormat'
+import { afterFigure } from '@/lib/tracking'
+import { withAsOf } from '@/lib/paperList'
 import HeldNote from '@/components/strategy/HeldNote.vue'
 import { EXIT_ALL_LABEL, EXIT_LABEL, NET_POSITIONS_LABEL, ORDERBOOK_LABEL, exitLotsFrom, exitLotsOk, openLots, paperKindLabel } from '@/lib/paperDrafts'
 
@@ -88,6 +95,9 @@ const props = defineProps({
   showOrders: { type: Number, default: 0 }, // fix/paper-dialog-safe: a bump switches to the Orderbook view (the unknown-outcome link)
 })
 const emit = defineEmits(['exit', 'exit-all'])
+
+const pausedSentence = () => { const s = props.book.pause_reason_text; return typeof s === 'string' && s.trim() !== '' ? withAsOf(s.trim(), props.book.as_of) : null }
+const total = computed(() => afterFigure(props.book, props.book.total_text ?? null, pausedSentence()))
 
 const view = ref(props.showOrders > 0 ? 'orders' : 'net')
 watch(() => props.showOrders, (n) => { if (n > 0) view.value = 'orders' })
