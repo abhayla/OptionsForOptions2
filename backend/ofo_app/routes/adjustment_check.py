@@ -86,6 +86,19 @@ class CheckResultOut(ApiModel):
     note: CatalogueText | None = None  # ADR-217: "You dismissed this" on a flag whose dismissed record still holds
 
 
+class CheckLimitOut(ApiModel):
+    """ADR-304: the limit a rule acts on for this trade now, the evaluator's own number (``playbook_eval.limits_now``)."""
+
+    rule_id: Identifier
+    trigger_id: Identifier
+    threshold: Money | None  # the % now (the credit line: the multiple); None = nothing to compare
+    amount: Money | None  # a stop's rupee loss, where there is one
+    later: list[Money]  # the later stages' values
+    tightened_by: Money | None  # the expiry-day tightening X % when it is applied now
+    state: Literal["checked", "not_checked", "already_true"]
+    reason: CatalogueText | None  # the evaluator's reason text when not checked
+
+
 class CheckPauseOut(ApiModel):
     until: Identifier  # HHMM IST, e.g. 1030 (an Identifier has no ':')
     text: CatalogueText
@@ -99,6 +112,7 @@ class AdjustmentCheckOut(ApiModel):
     stage: CheckStageOut
     withheld: CatalogueText | None
     results: list[CheckResultOut]
+    limits: list[CheckLimitOut] = []  # ADR-304: the limits the target / stop rules act on now (empty: no playbook / paused)
     #: A-38 (GC-IC1 4a): the user's pause in force at the check's own time -> {until, text} and no evaluation (the
     #: worker skips it too); none, cleared or expired -> None
     paused: CheckPauseOut | None = None
@@ -158,6 +172,13 @@ def result_out(r: pe.Result, flag_wording: Any, opened: dict[str, int] | None = 
                 "condition": _condition(r, body, cheapest)}
     return {"kind": "not_checked", "rule_id": r.rule_id, "trigger_id": r.trigger_id, "cmp": None, "value": None,
             "threshold": None, "reason": render(r.code, **dict(r.slots)), "wording": None}
+
+
+def limits_out(limits: tuple[pe.LimitNow, ...]) -> list[dict]:
+    """The limits now as the reply states them: numbers in the reply's shown scale, the reason as its catalogue text."""
+    return [{"rule_id": x.rule_id, "trigger_id": x.trigger_id, "threshold": _num(x.threshold), "amount": _num(x.amount),
+             "later": [_num(v) for v in x.later], "tightened_by": _num(x.tightened_by), "state": x.state,
+             "reason": None if x.reason is None else render(x.reason, **dict(x.slots))} for x in limits]
 
 
 def t19_record(trigger_id: str, cheapest: tuple[str, Decimal, int] | None) -> dict:
@@ -262,5 +283,6 @@ async def adjustment_check(  # noqa: PLR0913 - FastAPI dependencies, one per inp
     reply |= {"stage": check.stage_out(ev.stage_name, ev.stage_index),
               "withheld": None if ev.withheld is None else render(ev.withheld),
               "results": [result_out(r, wording, opened, dismissed=dismissed, body=resolved.body,
-                                    cheapest=cheapest(state)) for r in ev.results]}
+                                    cheapest=cheapest(state)) for r in ev.results],
+              "limits": limits_out(ev.limits)}
     return AdjustmentCheckOut.model_validate(reply)

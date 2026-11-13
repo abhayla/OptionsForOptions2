@@ -161,6 +161,12 @@ def test_threshold_equals_the_one_the_evaluator_compared_for_every_real_playbook
 
 
 # --- the reply carries it --------------------------------------------------------------------------------------------------
+def test_a_reason_with_values_renders_in_the_reply():
+    _, ev = run(IC, days=-1)  # no stage covers -1 days left: the reason names the days
+    out = route.limits_out(ev.limits)
+    assert out and all(x["state"] == "not_checked" and x["reason"] for x in out if x["rule_id"] == "T-07")
+
+
 def test_the_route_sends_the_rows():
     _, ev = run(STRANGLE, stage=2, hhmm="13:00", days=0, tighten=D(20))
     out = route.limits_out(ev.limits)
