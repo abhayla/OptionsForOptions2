@@ -30,7 +30,7 @@ def _live_view(**extra) -> SimpleNamespace:
 
 def test_the_tracking_leg_carries_two_decimal_price_texts() -> None:
     bk, leg = _one_open()
-    row = _figures(bk, [leg], _live_view(), [None])["legs"][0]
+    row = _figures(bk, [leg], _live_view(), [None], "NIFTY", None)["legs"][0]
     assert row["entry_price_display"] == "187.35"
     assert row["current_price_display"] == "186.10"
     assert row["exit_price_display"] is None

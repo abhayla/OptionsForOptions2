@@ -1122,8 +1122,11 @@ def _rule_of(body: Mapping, tid: str) -> str:
     return next((r["id"] for r in body.get("rules", []) if tid in (r.get("any_of") or r.get("all_of") or ())), tid)
 
 
+_LimitFigures = tuple[Decimal | None, Decimal | None, tuple[Decimal, ...], Decimal | None]  # LimitNow threshold, amount, later, tightened_by
+
+
 def _limit_row(rid: str, tid: str, why: str | None, held: Mapping[str, int], reason: str | None,  # noqa: PLR0913
-               figures: tuple = (None, None, (), None), slots: tuple = ()) -> LimitNow:
+               figures: _LimitFigures = (None, None, (), None), slots: tuple = ()) -> LimitNow:
     state: Literal["checked", "not_checked", "already_true"] = "checked"
     reason = why or reason  # the withheld reason first, as ``_outcomes`` does
     slots = () if why else slots
@@ -1131,7 +1134,9 @@ def _limit_row(rid: str, tid: str, why: str | None, held: Mapping[str, int], rea
         state = "not_checked"
     elif rid in held:
         state = "already_true"
-    return LimitNow(rid, tid, *figures, state, reason, slots, held[rid] if state == "already_true" else 0)
+    threshold, amount, later, tightened_by = figures
+    return LimitNow(rid, tid, threshold, amount, later, tightened_by, state, reason, slots,
+                    held[rid] if state == "already_true" else 0)
 
 
 def limits_now(body: Mapping, state: StrategyState, results: tuple[Result, ...] = ()) -> tuple[LimitNow, ...]:
