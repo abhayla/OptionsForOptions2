@@ -2,7 +2,7 @@
 // StrategyBuilderPage on ?strategy=63 with the REAL strategy 63 book after its roll (tests/fixtures/paper/strategy-63-roll.json,
 // measured live 2026-10-29). It opens as the NET position, every edit is a pending paper order from paperOrdersFor, nothing
 // reaches the server before Confirm, and Save / Save As / Add to Paper are not offered.
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import StrategyBuilderPage from '@/pages/StrategyBuilderPage.vue'
@@ -30,7 +30,11 @@ const CATALOGUE = { underlying: 'NIFTY', contracts: BOOK.positions.map((p) => ({
 const never = () => new Promise(() => {}) // the numbers' requests stay out: this file is about the legs and the orders
 const got = (key) => calls.filter((c) => `${c.method} ${c.url}` === key).length
 
+// u126: the paper panel re-reads the book on a real interval; under load a slow run let one tick land inside a test and made
+// "Confirm posts ... re-reads the book" count 3 reads instead of 2. Only the interval is faked, so this file's reads are its own.
+afterEach(() => vi.useRealTimers())
 beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
   calls.length = 0
   answers = {
     [PAPER]: BOOK,

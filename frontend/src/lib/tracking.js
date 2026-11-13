@@ -135,14 +135,27 @@ export const BEFORE_CHARGES = '(before charges)'
  *  `pausedText` the screen's own paused sentence (REQ-109 AC-5). kind 'after': the server's total_after_text, only when it
  *  sent no reason with it. 'paused': prices not live, no number. Else 'before': the before text with the server's reason
  *  sentence; an older server (no after fields) lands here too, so a before figure is never shown under an "after" label. */
-export function afterFigure(src, before, pausedText = null) {
+export const BREAKDOWN_LABELS = Object.freeze({ before: 'Before charges', paid: 'Charges paid', close: 'Estimated charges to close', after: 'After charges' })
+/** GC-ICFIX u127 (ADR-263, ADR-008, REQ-109 AC-10): what one tap on the figure opens. Every text is a server field as sent; a row
+ *  whose text the reply lacks is left out (never formatted here); `parts` says which charge rows apply to this figure (Booked
+ *  -> paid, Unbooked -> close, Profit / Loss left -> none). Null = nothing to open (paused, or an older reply with no new field). */
+function breakdownOf(src, before, after, why, parts) {
+  const row = (id, text) => (text === null ? [] : [{ id, label: BREAKDOWN_LABELS[id], text }])
+  if (after !== null) {
+    const paid = parts.includes('paid') ? row('paid', serverText(src?.charges_paid_text ?? src?.charges_paid)) : []
+    const close = parts.includes('close') ? row('close', serverText(src?.charges_to_close_text)) : []
+    return { rows: [...row('before', before), ...paid, ...close, ...row('after', after)], reason: null }
+  }
+  return why !== null && before !== null ? { rows: row('before', before), reason: why } : null
+}
+export function afterFigure(src, before, pausedText = null, afterKey = 'total_after_text', parts = ['paid', 'close']) {
   const reason = src?.after_charges_reason ?? null
   const raw = src?.after_charges_reason_text // a sentence, or {what_happened} on the replies that word it as an explanation
   const why = serverText(raw && typeof raw === 'object' ? raw.what_happened : raw)
-  if (reason === 'prices_not_live') return { kind: 'paused', text: null, label: '', reason: pausedText ?? why }
-  const after = serverText(src?.total_after_text)
-  if (after !== null && reason === null) return { kind: 'after', text: after, label: AFTER_CHARGES, reason: null }
-  return { kind: 'before', text: before, label: before === null ? '' : BEFORE_CHARGES, reason: why ?? (before === null ? pausedText : null) }
+  if (reason === 'prices_not_live') return { kind: 'paused', text: null, label: '', reason: pausedText ?? why, breakdown: null }
+  const after = serverText(src?.[afterKey]) // u124: the same rule for booked_after_text / profit_left_after_text / ...
+  if (after !== null && reason === null) return { kind: 'after', text: after, label: AFTER_CHARGES, reason: null, breakdown: breakdownOf(src, before, after, null, parts) }
+  return { kind: 'before', text: before, label: before === null ? '' : BEFORE_CHARGES, reason: why ?? (before === null ? pausedText : null), breakdown: breakdownOf(src, before, null, why, parts) }
 }
 
 const STATES = new Set(['LIVE', 'PAUSED', 'NOT_CONNECTED', 'EXITED'])
@@ -215,7 +228,7 @@ export function readTracking(body, replyLegs = null) {
   const shown = afterFigure(body, signed)
   if (shown.kind === 'paused') return { kind: 'paused', text: pausedText(body.as_of), figure: null, legs, detections }
   const text = `${PAPER_PNL_PREFIX}${shown.text} ${shown.label}`
-  const base = { figure: shown.text, afterReason: shown.reason, booked, unbooked, legs, detections }
+  const base = { figure: shown.text, afterReason: shown.reason, breakdown: shown.breakdown, booked, unbooked, legs, detections }
   if (body.state === 'EXITED') return { kind: 'exited', text: `${text} - exited`, ...base }
   return { kind: 'live', text, ...base }
 }

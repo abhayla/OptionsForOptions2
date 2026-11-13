@@ -18,11 +18,14 @@
     <!-- GC-TP step 8b (REQ-109 AC-10; Sensibull Drafts Mode 278-279): the strategy's Charges beside its P&L, each the book reply's
          text as sent; the Charges are never added to or taken from the P&L, and an absent one is a dash (never 0). -->
     <HeldNote class="mt-2" :held="book.held" note />
+    <p v-if="asOfLine" class="mt-2 text-xs text-ink-muted" data-testid="book-as-of">{{ asOfLine }}</p>
+    <!-- u126 (REQ-109 AC-5): the read time of the answer these figures come from (the reply's answered_at, never the browser clock) -->
+    <p v-if="readAt" class="mt-2 text-xs text-ink-muted" data-testid="book-read-at">As of {{ readAt }} IST</p>
     <dl class="mt-2 flex gap-6 text-xs" data-testid="book-strip">
       <!-- GC-ICFIX u123 (ADR-263): the headline total is the server's after-charges text, labelled; else the before text, labelled, with the reason -->
       <div>
         <dt class="text-ink-muted" data-testid="book-total-label">Total P&amp;L {{ total.label }}</dt>
-        <dd class="num text-sm font-semibold" data-testid="book-total">{{ total.text ?? '-' }}</dd>
+        <dd class="num text-sm font-semibold" data-testid="book-total"><AfterChargesTap :breakdown="total.breakdown">{{ total.text ?? '-' }}</AfterChargesTap></dd>
         <p v-if="total.reason" class="max-w-xs text-ink-muted" data-testid="book-after-reason">{{ total.reason }}</p>
       </div>
       <div>
@@ -83,9 +86,12 @@
 
 <script setup>
 import { computed, ref, watch } from 'vue'
+import api from '@/services/api'
 import { istClock } from '@/lib/displayFormat'
-import { afterFigure } from '@/lib/tracking'
+import { afterFigure, pausedText } from '@/lib/tracking'
+import AfterChargesTap from '@/components/common/AfterChargesTap.vue'
 import { withAsOf } from '@/lib/paperList'
+import { usePaperRefresh } from '@/lib/usePaperRefresh'
 import HeldNote from '@/components/strategy/HeldNote.vue'
 import { EXIT_ALL_LABEL, EXIT_LABEL, NET_POSITIONS_LABEL, ORDERBOOK_LABEL, exitLotsFrom, exitLotsOk, openLots, paperKindLabel } from '@/lib/paperDrafts'
 
@@ -94,7 +100,30 @@ const props = defineProps({
   net: { type: Array, required: true }, // the net legs (netLegsFromBook): whole lots per open contract
   showOrders: { type: Number, default: 0 }, // fix/paper-dialog-safe: a bump switches to the Orderbook view (the unknown-outcome link)
 })
-const emit = defineEmits(['exit', 'exit-all'])
+const emit = defineEmits(['exit', 'exit-all', 'book'])
+
+// Live figures: the same shared re-read loop as the tracking views (usePaperRefresh, TRACKING_REFRESH_MS); the server prices the
+// book on every GET, so each answer's texts are shown as sent. The page takes the fresh book ('book') and hands it back as the
+// prop. The timer is cleared on unmount by the loop. An answer whose open contracts differ from the screen's is not taken: the
+// net legs (and a pending edit) belong to the book the page loaded (shortcut: such a change shows on the next reopen).
+const readFailed = ref(false)
+const openKey = (b) => (b.positions ?? []).filter((p) => p.net_quantity !== 0).map((p) => `${p.contract_id}:${p.net_quantity}`).join(',')
+usePaperRefresh({
+  key: () => props.book.strategy_id,
+  read: async (id) => (await api.get(`/paper/strategies/${id}`)).data,
+  onData: (b) => {
+    readFailed.value = false
+    if (Array.isArray(b?.positions) && openKey(b) === openKey(props.book)) emit('book', b)
+  },
+  onError: () => { readFailed.value = true }, // the last values stay; the line below says they are old
+})
+// the paused sentence (REQ-109 AC-5) from the book's as_of; a failed read says the same with the last good answer's time
+const asOfLine = computed(() => {
+  if (readFailed.value) return pausedText(props.book.answered_at ?? null)
+  return props.book.state === 'PAUSED' || props.book.state === 'NOT_CONNECTED' ? pausedText(props.book.as_of ?? null) : null
+})
+
+const readAt = computed(() => istClock(props.book.answered_at ?? null))
 
 const pausedSentence = () => { const s = props.book.pause_reason_text; return typeof s === 'string' && s.trim() !== '' ? withAsOf(s.trim(), props.book.as_of) : null }
 const total = computed(() => afterFigure(props.book, props.book.total_text ?? null, pausedSentence()))
