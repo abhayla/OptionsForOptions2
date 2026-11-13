@@ -143,6 +143,7 @@ class AfterCharges(ApiModel):
     total_after: Money | None = None
     total_after_text: CatalogueText | None = None
     charges_paid: Money | None = None
+    charges_paid_text: CatalogueText | None = None
     charges_to_close: Money | None = None
     charges_to_close_text: CatalogueText | None = None
     after_charges_reason: AfterChargesReason | None = None

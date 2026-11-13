@@ -5510,6 +5510,15 @@
             ],
             "title": "Charges Paid"
           },
+          "charges_paid_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges Paid Text"
+          },
           "charges_reason": {
             "anyOf": [
               {
@@ -7348,6 +7357,15 @@
             ],
             "title": "Charges Paid"
           },
+          "charges_paid_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges Paid Text"
+          },
           "charges_reason": {
             "anyOf": [
               {
@@ -8478,6 +8496,15 @@
             ],
             "title": "Charges Paid"
           },
+          "charges_paid_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges Paid Text"
+          },
           "charges_reason": {
             "anyOf": [
               {
@@ -9054,6 +9081,26 @@
               }
             ],
             "title": "Charges"
+          },
+          "charges_paid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges Paid"
+          },
+          "charges_paid_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges Paid Text"
           },
           "charges_reason": {
             "anyOf": [
@@ -13456,6 +13503,15 @@
             ],
             "title": "Charges Paid"
           },
+          "charges_paid_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges Paid Text"
+          },
           "charges_to_close": {
             "anyOf": [
               {
@@ -14044,6 +14100,15 @@
               }
             ],
             "title": "Charges Paid"
+          },
+          "charges_paid_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges Paid Text"
           },
           "charges_to_close": {
             "anyOf": [
@@ -15997,6 +16062,15 @@
               }
             ],
             "title": "Charges Paid"
+          },
+          "charges_paid_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges Paid Text"
           },
           "charges_to_close": {
             "anyOf": [

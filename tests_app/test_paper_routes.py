@@ -500,6 +500,18 @@ async def test_an_open_book_at_live_prices_is_after_charges_paid_and_estimated_e
     assert body["after_charges_reason"] is None
 
 
+async def test_f7_charges_paid_text_is_sent_wherever_charges_paid_is_and_the_list_totals_carry_both(db):
+    # Same book as above: paid 36.09. The text is the money text form of the sibling charges_to_close_text.
+    body, row, totals = await _one_put(db, [("SELL", 65, "100.00", "open")], "80.00")
+    for reply in (body, row, totals):
+        assert D(reply["charges_paid"]) == D("36.09")
+        assert "36.09" in reply["charges_paid_text"]
+        assert "25.95" in reply["charges_to_close_text"] and "36.09" not in reply["charges_to_close_text"]
+    body, row, totals = await _one_put(db, [("SELL", 65, "100.00", "open")], "80.00", rates=None)
+    for reply in (body, row, totals):  # rates unknown: nothing paid can be given, no text either
+        assert (reply["charges_paid"], reply["charges_paid_text"]) == (None, None)
+
+
 async def test_unknown_charge_rates_send_no_after_figure_with_the_reason_and_keep_the_before_figure(db):
     app, stored = await _closed_141_like(db)
     app.dependency_overrides[load_charge_rates] = lambda: None
@@ -592,17 +604,16 @@ async def test_core_closed_book_booked_after_is_booked_minus_all_charges_and_unb
 
 async def test_open_book_split_adds_up_and_left_figures_are_after_all_charges(db):
     # SELL 65 @ 100, now 80: Booked after = 0 - 36.09 = -36.09; Unbooked after = 1,300.00 - 25.95 = 1,274.05;
-    # sum 1,237.96. Profit left before 5,200.00 (80 x 65) -> 5,200.00 - 36.09 - 25.95 = 5,137.96 (Max profit after
-    # 6,437.38: no recover). Loss left is "unlimited" for this short put (no number to take charges from), so it
-    # stays so.
+    # sum 1,237.96. ADR-306: Profit left after = Max profit after 6,437.38 - Total after 1,237.96 = 5,199.42 (in profit:
+    # no recover). Loss left is "unlimited" for this short put (no number to take charges from), so it stays so.
     body, row, totals = await _one_put(db, [("SELL", 65, "100.00", "open")], "80.00")
     for reply in (body, row):
         assert (D(reply["booked_after"]), D(reply["unbooked_after"]), D(reply["total_after"])) == (
             D("-36.09"), D("1274.05"), D("1237.96"))
         assert D(reply["profit_left"]) == D("5200.00")  # the old field keeps its meaning (before charges)
-        assert D(reply["profit_left_after"]) == D("5137.96")
+        assert D(reply["profit_left_after"]) == D("5199.42")
         assert reply["loss_left"] == reply["loss_left_after"] == "unlimited"
-        assert reply["recover"] is None and reply["profit_left_after_text"] == "+5,137.96"
+        assert reply["recover"] is None and reply["profit_left_after_text"] == "+5,199.42"
     assert (D(totals["booked_after"]), D(totals["unbooked_after"])) == (D("-36.09"), D("1274.05"))
 
 
@@ -615,13 +626,14 @@ async def test_partly_closed_book_split_adds_up_to_total_after(db):
 
 
 async def test_losing_book_profit_left_is_not_capped_and_recover_is_sent(db):
-    # SELL 65 @ 100, now 150: Profit left before 9,750.00; after 9,750.00 - 36.09 - 28.00 = 9,685.91; Max profit (after
-    # charges, existing field) 6,437.38; recover = 9,685.91 - 6,437.38 = 3,248.53 (ADR-302 reading in the engine test).
+    # SELL 65 @ 100, now 150: Total after = -3,250.00 - 36.09 - 28.00 = -3,314.09; Max profit after 6,437.38; ADR-306:
+    # Profit left after = 6,437.38 + 3,314.09 = 9,751.47; recover = 3,314.09 (the loss shown as Total P&L).
     body, row, _ = await _one_put(db, [("SELL", 65, "100.00", "open")], "150.00")
     for reply in (body, row):
-        assert D(reply["max_profit"]) == D("6437.38")
-        assert (D(reply["profit_left_after"]), D(reply["recover"])) == (D("9685.91"), D("3248.53"))
-        assert reply["recover_text"] == "+3,248.53"
+        assert D(reply["max_profit"]) == D("6437.38") and D(reply["total_after"]) == D("-3314.09")
+        assert (D(reply["profit_left_after"]), D(reply["recover"])) == (D("9751.47"), D("3314.09"))
+        assert D(reply["total_after"]) + D(reply["profit_left_after"]) == D(reply["max_profit"])
+        assert reply["recover_text"] == "+3,314.09"
 
 
 async def test_unknown_rates_keep_the_before_figures_and_send_no_after_figure(db):
@@ -649,10 +661,10 @@ async def test_tracking_replies_carry_the_split_from_the_same_function(db):
         assert body["booked_after_text"] == MINUS + "95.13" and D(body["booked"]) == D("-32.50")
 
 
-# --- GC-ICFIX u129 round 2 (F1): an AVERAGE entry price with more than two decimals must not crash any route -------------
+# --- GC-ICFIX u129 round 2 (F1): an AVERAGE entry price with more than two decimals must not crash any route ---------
 
 async def test_f1_averaged_entry_answers_200_with_the_same_figures_on_paper_and_tracking_routes(db):
-    # SELL 65 @ 100.00 + SELL 65 @ 100.05 (average 100.025), now 101. Hand sums in tests/tracking/test_after_split_average:
+    # SELL 65 @ 100.00 + SELL 65 @ 100.05 (average 100.025), now 101. Hand sums: test_after_split_average.
     # paid 72.18 (two real fills), exit BUY 130 @ 101 = 29.52, before (100.025 - 101) x 130 = -126.75, total after
     # -228.45, Booked after -72.18, Unbooked after -156.27.
     app, stored, provider, _clock, last = await _setup(db)
@@ -664,7 +676,8 @@ async def test_f1_averaged_entry_answers_200_with_the_same_figures_on_paper_and_
     async with _client(app) as c:
         replies = {"paper": await c.get(f"/paper/strategies/{stored.id}"),
                    "paper_list": await c.get("/paper/strategies"),
-                   "tracking": await c.get(f"/strategies/{stored.id}/tracking"), "tracking_list": await c.get("/tracking")}
+                   "tracking": await c.get(f"/strategies/{stored.id}/tracking"),
+                   "tracking_list": await c.get("/tracking")}
     assert {k: r.status_code for k, r in replies.items()} == dict.fromkeys(replies, HTTPStatus.OK)
     rows = [next(s for s in replies[k].json()["strategies"] if s["strategy_id"] == stored.id)
             for k in ("paper_list", "tracking_list")]

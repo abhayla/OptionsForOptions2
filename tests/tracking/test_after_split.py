@@ -2,11 +2,10 @@
 Unbooked after, Profit left after, Loss left after and ``recover`` of a paper book. Exact Decimal; hand sums in
 comments.
 
-Readings taken (ADR text leaves them open; all live in ``after_split`` so each is one line to change):
-- Profit left / Loss left after = the before-charges figure (measured from now) minus ALL charges paid minus the
-  estimated charges to close what is open (the brief's wording of ADR-301); never capped (ADR-302).
-- ``recover`` = Profit left after - Max profit after, only when that is above zero: the amount that makes
-  "Max profit + recover = Profit left" true on the screen (ADR-302 real case: 5,173.50 = 4,673.50 + 500, the loss).
+ADR-306 (owner, 13 Nov): Profit left after = Max profit after - Total after; Loss left after = Max loss after - Total
+after; so Total + Profit left = Max profit and Total + Loss left = Max loss, exactly.
+``recover`` = minus Total after when Total after is negative (the loss on screen), else None. Never capped
+(ADR-302). A closed book gives 0 and 0.
 """
 from __future__ import annotations
 
@@ -15,9 +14,10 @@ from decimal import Decimal
 
 from ofo.charges import ChargeRates
 from ofo.charges.paper_charges import PaperFill, paper_charges
-from ofo.engine.extremes import ContractTerms
+from ofo.engine.extremes import UNLIMITED, ContractTerms
 from ofo.engine.extremes_charges import (
     AfterSplit,
+    BookAfterCharges,
     after_split,
     book_after_charges,
     open_exit_charges,
@@ -77,8 +77,8 @@ def test_partly_closed_book_split_adds_up_to_total_after() -> None:
     assert got.booked_after + got.unbooked_after == after.total_after == D("1849.24")
 
 
-def test_profit_left_and_loss_left_after_charges_of_an_iron_condor_at_entry_equal_max_profit_and_loss_after() -> None:
-    # Condor of test_extremes_charges at live = entry: before-charges left = 3,006.25 / -3,493.75 (total 0).
+def test_iron_condor_at_entry_total_plus_profit_left_is_max_profit_and_total_plus_loss_left_is_max_loss() -> None:
+    # ADR-306. Condor of test_extremes_charges at live = entry: total before 0, Max profit 3,006.25, Max loss -3,493.75.
     # Exit estimate (SELL 60.65 and 86.95, BUY 86.35 and 107.50, x 65): sell premium 9,594.00, buy premium 12,600.25,
     #   brokerage 4 x 20 = 80, STT 0.0015 x 9,594 = 14.391, transaction 0.0003553 x 22,194.25 = 7.885617025,
     #   SEBI 0.02219425, stamp 0.00003 x 12,600.25 = 0.3780075, GST 0.18 x (80 + 7.885617025 + 0.02219425)
@@ -86,41 +86,66 @@ def test_profit_left_and_loss_left_after_charges_of_an_iron_condor_at_entry_equa
     # Paid = the engine's own figure for the four entry fills: 122.9194123045 -> 122.92 (rounded up once). The round
     # trip inside Max profit / Max loss is 241.42 (rounded up once); paid + exit shown = 241.43, because the pieces
     # are each rounded up on their own, so they can differ from the round trip by a paisa.
-    # Profit left after = 3,006.25 - 122.92 - 118.51 = 2,764.82, one paisa BELOW Max profit after
-    # 3,006.25 - 241.42 = 2,764.83: no recover. Loss left after = -3,493.75 - 122.92 - 118.51 = -3,735.18.
+    # Total after = 0 - 122.92 - 118.51 = -241.43. Max profit after = 3,006.25 - 241.42 = 2,764.83; Max loss after =
+    # -3,493.75 - 241.42 = -3,735.17.
+    # Profit left after = 2,764.83 - (-241.43) = 3,006.26; check -241.43 + 3,006.26 = 2,764.83.
+    # Loss left after = -3,735.17 - (-241.43) = -3,493.74; check -241.43 + -3,493.74 = -3,735.17.
+    # recover = 241.43 (the loss on screen).
     terms = {cid: ContractTerms(kind, strike, EXPIRY) for cid, kind, strike, _, _ in LEGS}
     orders = [PaperOrder(cid, side, LOT, price, "open", T0) for cid, _, _, side, price in LEGS]
     live = {cid: price for cid, _, _, _, price in LEGS}
     _view, after, got = _split(orders, terms, live, "122.92")
-    assert after.open_exit == D("118.51")
-    assert (got.profit_left_after, got.loss_left_after) == (D("2764.82"), D("-3735.18"))
-    assert got.recover is None  # at or below Max profit after: absent, not 0
+    assert (after.open_exit, after.total_after) == (D("118.51"), D("-241.43"))
+    assert (got.profit_left_after, got.loss_left_after) == (D("3006.26"), D("-3493.74"))
+    assert after.total_after + got.profit_left_after == D("2764.83")
+    assert after.total_after + got.loss_left_after == D("-3735.17")
+    assert got.recover == D("241.43")
     # paper_charges' own paid figure for these fills is 122.92 (not a hand-picked number): the test reflects the engine
     paid = paper_charges([PaperFill("open", side, LOT, price, True) for _, _, _, side, price in LEGS], "NIFTY", RATES)
     assert paid.shown == D("122.92")
-    top = D("3006.25") - D("241.42")
-    assert top - got.profit_left_after == D("0.01")  # a paisa of rounding is never a recover line
 
 
-def test_losing_book_profit_left_after_is_not_capped_and_recover_is_the_excess_over_max_profit() -> None:
-    # SELL 65 @ 100 (put), live 150: total before = (100 - 150) x 65 = -3,250.00. Profit left before = 150 x 65 =
-    # 9,750.00
-    # (expiry worthless); Max profit before = 100 x 65 = 6,500.00; round trip at 100: 36.082821 + 26.527821 = 62.610642
-    # -> 62.62, so Max profit after = 6,437.38. Paid 36.09, exit BUY 65 @ 150 = 28.00.
-    # Profit left after = 9,750.00 - 36.09 - 28.00 = 9,685.91, ABOVE Max profit after: not capped.
-    # recover = 9,685.91 - 6,437.38 = 3,248.53 (the 3,250.00 loss, less the 1.47 by which paid + exit 64.09 is
-    # above the round trip 62.62): Max profit after + recover = Profit left after, exactly.
-    _, _, got = _split([PaperOrder("1", "SELL", LOT, D("100"), "open", T0)], PUT, {"1": D("150")}, "36.09")
-    assert got.profit_left_after == D("9685.91")
-    assert got.recover == D("3248.53")
-    assert D("6437.38") + got.recover == got.profit_left_after
+def test_losing_book_profit_left_after_is_not_capped_and_recover_is_the_loss_on_screen() -> None:
+    # SELL 65 @ 100 (put), live 150: total before -3,250.00; paid 36.09; exit BUY 65 @ 150 = 28.00;
+    # Total after = -3,250.00 - 36.09 - 28.00 = -3,314.09. Max profit after = 6,500.00 - 62.62 = 6,437.38.
+    # Profit left after = 6,437.38 - (-3,314.09) = 9,751.47 (above Max profit: not capped); recover = 3,314.09.
+    # Check -3,314.09 + 9,751.47 = 6,437.38. Max loss after = -1,469,000 - 62.62 = -1,469,062.62;
+    # Loss left after = -1,469,062.62 + 3,314.09 = -1,465,748.53.
+    _, after, got = _split([PaperOrder("1", "SELL", LOT, D("100"), "open", T0)], PUT, {"1": D("150")}, "36.09")
+    assert after.total_after == D("-3314.09")
+    assert got.profit_left_after == D("9751.47")
+    assert got.loss_left_after == D("-1465748.53")
+    assert got.recover == D("3314.09")
+    assert after.total_after + got.profit_left_after == D("6437.38")
 
 
-def test_profit_left_at_or_below_max_profit_has_no_recover() -> None:
-    # SELL 65 @ 100, live 80 (winning): Profit left before 5,200.00; after 5,200.00 - 36.09 - 25.95 = 5,137.96;
-    # Max profit after 6,437.38: below it, so recover is absent.
-    _, _, got = _split([PaperOrder("1", "SELL", LOT, D("100"), "open", T0)], PUT, {"1": D("80")}, "36.09")
-    assert got.profit_left_after == D("5137.96")
+def test_winning_open_position_profit_left_is_max_profit_less_total_and_recover_is_absent() -> None:
+    # SELL 65 @ 100, live 80: Total after = 1,300.00 - 36.09 - 25.95 = 1,237.96. Max profit after 6,437.38, Max loss
+    # after -1,469,062.62. Profit left after = 6,437.38 - 1,237.96 = 5,199.42;
+    # Loss left after = -1,469,062.62 - 1,237.96 = -1,470,300.58. In profit: no recover.
+    _, after, got = _split([PaperOrder("1", "SELL", LOT, D("100"), "open", T0)], PUT, {"1": D("80")}, "36.09")
+    assert after.total_after == D("1237.96")
+    assert got.profit_left_after == D("5199.42")
+    assert got.loss_left_after == D("-1470300.58")
+    assert got.recover is None
+
+
+def test_total_exactly_zero_has_no_recover_and_profit_left_is_max_profit() -> None:
+    # Total after exactly 0.00 (paid and exit given as 0): Profit left after = Max profit after 6,437.38 - 0.00.
+    view = net_positions([PaperOrder("1", "SELL", LOT, D("100"), "open", T0)], {"1": D("100")})
+    after = BookAfterCharges(D("0"), D("0"), D("0"), D("0"), None)
+    got = after_split(view, PUT, {"1": D("100")}, "NIFTY", RATES, after)
+    assert got.profit_left_after == D("6437.38")
+    assert got.recover is None
+
+
+def test_unlimited_max_loss_gives_unlimited_loss_left_and_a_finite_profit_left() -> None:
+    # SELL 65 @ 100 call (Max loss UNLIMITED), live 80: Profit left after = 6,437.38 - 1,237.96 = 5,199.42; "unlimited"
+    # in code is the UNLIMITED marker, the same one Max loss carries.
+    terms = {"1": ContractTerms(Instrument.CE, D("22700"), EXPIRY)}
+    _, _, got = _split([PaperOrder("1", "SELL", LOT, D("100"), "open", T0)], terms, {"1": D("80")}, "36.09")
+    assert got.profit_left_after == D("5199.42")
+    assert got.loss_left_after is UNLIMITED
     assert got.recover is None
 
 

@@ -218,6 +218,7 @@ class PaperFigures(ApiModel):
     total_after: Money | None = None
     total_after_text: CatalogueText | None = None
     charges_paid: Money | None = None
+    charges_paid_text: CatalogueText | None = None
     charges_to_close: Money | None = None
     charges_to_close_text: CatalogueText | None = None
     after_charges_reason: AfterChargesReason | None = None
@@ -251,8 +252,8 @@ class PaperExtremes(ApiModel):
     # F-94 (ADR-082 (2)): the round-trip charges inside Max Profit / Max Loss, and the sentence that says so
     extremes_charges: Money | None = None
     extremes_charges_text: CatalogueText | None = None
-    # GC-ICFIX u124 (ADR-301, ADR-302): Profit left / Loss left AFTER all charges, not capped; ``recover`` = Profit left
-    # after - Max profit after, only when above it. Absent when the book has no after total (see after_charges_reason).
+    # ADR-306: Profit left / Loss left after = Max profit / Max loss after - Total after, not capped (ADR-302);
+    # ``recover`` = minus Total after when negative. Absent when the book has no after total (see after_charges_reason).
     profit_left_after: Extreme = None
     loss_left_after: Extreme = None
     profit_left_after_text: CatalogueText | None = None
@@ -339,6 +340,8 @@ class PaperTotalsOut(ApiModel):
     """GC-TP step 4a (screens 050-053 totals strip): the sums over every paper strategy of the user, from the server."""
     total_after: Money | None = None  # GC-ICFIX: sum of every total_after; None (never partial) if one is absent
     total_after_text: CatalogueText | None = None
+    charges_paid: Money | None = None  # the sum of every strategy's charges paid; None (never partial) if one absent
+    charges_paid_text: CatalogueText | None = None
     charges_to_close: Money | None = None  # the sum of every strategy's estimated charges to close what is open
     charges_to_close_text: CatalogueText | None = None
     after_charges_reason: AfterChargesReason | None = None
@@ -687,10 +690,16 @@ def after_charges_fields(got: BookAfterCharges) -> dict:
     """The reply fields of one ``BookAfterCharges`` (shared by the paper book, tracking and the history routes)."""
     reason = got.reason
     return {"total_after": _exact(got.total_after), "total_after_text": _signed(got.total_after),
-            "charges_paid": _exact(got.paid), "charges_to_close": _exact(got.open_exit),
+            "charges_paid": _exact(got.paid), "charges_paid_text": _paid_text(got.paid),
+            "charges_to_close": _exact(got.open_exit),
             "charges_to_close_text": None if got.open_exit is None else render_explanation(PAPER_CHARGES,
                                                                                             amount=got.open_exit),
             "after_charges_reason": reason, "after_charges_reason_text": reason_text(reason)}
+
+
+def _paid_text(paid: Decimal | None) -> str | None:
+    """The sentence beside Charges paid: the same form as ``charges_to_close_text`` (one catalogue entry)."""
+    return None if paid is None else render_explanation(PAPER_CHARGES, amount=paid)
 
 
 def after_charges(view: Any, terms: Mapping[str, ContractTerms], live: Mapping[str, Decimal],  # noqa: PLR0913
@@ -855,6 +864,7 @@ def _after_total(strategies: Sequence[dict]) -> dict:
     return {"total_after": _exact(got.total_after), "total_after_text": _signed(got.total_after),
             "booked_after": _exact(parts["booked_after"]), "booked_after_text": _signed(parts["booked_after"]),
             "unbooked_after": _exact(parts["unbooked_after"]), "unbooked_after_text": _signed(parts["unbooked_after"]),
+            "charges_paid": _exact(got.paid), "charges_paid_text": _paid_text(got.paid),
             "charges_to_close": _exact(got.open_exit),
             "charges_to_close_text": None if got.open_exit is None else render_explanation(PAPER_CHARGES,
                                                                                             amount=got.open_exit),

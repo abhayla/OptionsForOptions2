@@ -48,9 +48,10 @@ def test_reviewer_case_two_sells_at_different_prices_gives_figures() -> None:
     # Before: (100.025 - 101) x 130 = -126.75. Total after = -126.75 - 72.18 - 29.52 = -228.45.
     # Booked after = 0 - 72.18; Unbooked after = -126.75 - 29.52 = -156.27; sum -228.45.
     # Round trip at the average (turnover 13,003.25): SELL 48.5718834105 + BUY 29.4571059105 = 78.028989321 -> 78.03;
-    #   Max profit after = 13,003.25 - 78.03 = 12,925.22. Profit left after = 13,130 - 72.18 - 29.52 = 13,028.30;
-    #   recover = 13,028.30 - 12,925.22 = 103.08.
-    orders = [PaperOrder("1", "SELL", LOT, D("100.00"), "open", T0), PaperOrder("1", "SELL", LOT, D("100.05"), "add", T0)]
+    #   Max profit after = 13,003.25 - 78.03 = 12,925.22. ADR-306: Profit left after = 12,925.22 - (-228.45) =
+    #   13,153.67; recover = 228.45 (the loss on screen); check -228.45 + 13,153.67 = 12,925.22.
+    orders = [PaperOrder("1", "SELL", LOT, D("100.00"), "open", T0),
+              PaperOrder("1", "SELL", LOT, D("100.05"), "add", T0)]
     live = {"1": D("101")}
     view, after, got = _figures(orders, PUT, live)
     assert view.positions[0].average == D("100.025")
@@ -58,7 +59,7 @@ def test_reviewer_case_two_sells_at_different_prices_gives_figures() -> None:
     assert (got.booked_after, got.unbooked_after) == (D("-72.18"), D("-156.27"))
     assert open_round_trip_charges(view, PUT, "NIFTY", RATES) == D("78.03")
     assert with_charges(book_extremes(view, PUT, live), D("78.03")).max_profit == D("12925.22")
-    assert (got.profit_left_after, got.recover) == (D("13028.30"), D("103.08"))
+    assert (got.profit_left_after, got.recover) == (D("13153.67"), D("228.45"))
 
 
 def _book(prices: list[str], side: str, kind_first: str = "open") -> list[PaperOrder]:
@@ -71,7 +72,7 @@ def _grid() -> list[tuple[list[PaperOrder], D]]:
         for delta in ("0.01", "0.05", "0.15"):
             for side in ("SELL", "BUY"):
                 for live in ("85.35", "112.70"):
-                    cases.append((_book(["100.00"] * (n - 1) + [str(D("100.00") + D(delta))], side), D(live)))
+                    cases.append((_book(["100.00"] * (n - 1) + [str(D("100.00") + D(delta))], side), D(live)))  # noqa: PERF401
     cases.append((_book(["33.33", "33.34", "33.35"], "SELL"), D("20.05")))
     cases.append((_book(["77.77", "77.70", "77.71"], "BUY"), D("90.10")))
     return cases
@@ -79,7 +80,7 @@ def _grid() -> list[tuple[list[PaperOrder], D]]:
 
 def test_grid_of_averaged_books_never_raises_and_booked_plus_unbooked_is_total_after() -> None:
     cases = _grid()
-    assert len(cases) >= 30
+    assert len(cases) >= 30  # noqa: PLR2004
     for orders, live_price in cases:
         live = {"1": live_price}
         view, after, got = _figures(orders, PUT, live)
@@ -89,11 +90,26 @@ def test_grid_of_averaged_books_never_raises_and_booked_plus_unbooked_is_total_a
         assert after.total_after == view.total - after.paid - after.open_exit, label
 
 
+def test_grid_adr_306_total_plus_profit_left_is_max_profit_and_total_plus_loss_left_is_max_loss_exactly() -> None:
+    cases = _grid()
+    for orders, live_price in cases:
+        live = {"1": live_price}
+        view, after, got = _figures(orders, PUT, live)
+        label = f"{orders[0].side} {[str(o.price) for o in orders]} live {live_price}"
+        net = with_charges(book_extremes(view, PUT, live), open_round_trip_charges(view, PUT, "NIFTY", RATES))
+        assert got.profit_left_after is not None and got.loss_left_after is not None, label
+        assert after.total_after + got.profit_left_after == net.max_profit, label
+        assert after.total_after + got.loss_left_after == net.max_loss, label
+        assert (got.recover == -after.total_after) if after.total_after < 0 else got.recover is None, label
+    assert cases
+
+
 def test_an_average_that_is_exactly_two_decimals_prices_like_the_old_single_leg() -> None:
     # SELL 65 @ 100.00 + SELL 65 @ 100.10: average 100.05 exactly. The round trip must equal the engine's own
     # round_trip_charges on one leg of 130 at 100.05 (the unchanged old path).
     view = net_positions(_book(["100.00", "100.10"], "SELL"), {"1": D("90")})
-    old = round_trip_charges([Leg(Action.SELL, Instrument.PE, D("22700"), EXPIRY, 2 * LOT, D("100.05"))], "NIFTY", RATES)
+    leg = Leg(Action.SELL, Instrument.PE, D("22700"), EXPIRY, 2 * LOT, D("100.05"))
+    old = round_trip_charges([leg], "NIFTY", RATES)
     assert open_round_trip_charges(view, PUT, "NIFTY", RATES) == old
 
 
@@ -113,7 +129,7 @@ def test_long_leg_with_an_averaged_entry() -> None:
 
 def test_partly_closed_position_built_from_several_fills() -> None:
     # SELL 65 @ 100.00, SELL 65 @ 100.05, SELL 65 @ 100.10 (average 100.05), BUY 65 @ 90 closes a third; 130 open.
-    orders = _book(["100.00", "100.05", "100.10"], "SELL") + [PaperOrder("1", "BUY", LOT, D("90"), "exit", T0)]
+    orders = [*_book(["100.00", "100.05", "100.10"], "SELL"), PaperOrder("1", "BUY", LOT, D("90"), "exit", T0)]
     view, after, got = _figures(orders, PUT, {"1": D("95")})
     assert view.positions[0].net_quantity == -2 * LOT
     assert got.booked_after + got.unbooked_after == after.total_after
@@ -121,7 +137,8 @@ def test_partly_closed_position_built_from_several_fills() -> None:
 
 def test_reopened_leg_flat_then_opened_again_at_two_prices() -> None:
     orders = [PaperOrder("1", "SELL", LOT, D("100"), "open", T0), PaperOrder("1", "BUY", LOT, D("90"), "exit", T0),
-              PaperOrder("1", "SELL", LOT, D("100.00"), "open", T0), PaperOrder("1", "SELL", LOT, D("100.05"), "add", T0)]
+              PaperOrder("1", "SELL", LOT, D("100.00"), "open", T0),
+              PaperOrder("1", "SELL", LOT, D("100.05"), "add", T0)]
     view, after, got = _figures(orders, PUT, {"1": D("101")})
     assert view.positions[0].average == D("100.025")
     assert got.booked_after + got.unbooked_after == after.total_after
