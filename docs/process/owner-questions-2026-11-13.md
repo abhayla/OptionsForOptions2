@@ -69,6 +69,21 @@ CI): then the tool can remove them, and the work is also safe off this PC; it be
 push"; (c) authorise removal outside the tool: not recommended, the tool exists because plain deletes twice wiped the
 main checkout through its links.
 
+## Q8. Information, with a choice for later: on a real (Zerodha) trade the target alert cannot show the after-charges result
+
+Recorded 14 Nov ~04:00 IST. Nothing waits on it.
+Business call: whether the app should read charges paid on real orders is a product and broker-data decision.
+Spec basis: ADR-294 (2): every target alert shows the after-charges result beside the before-charges profit, and
+calls that figure the protection against a target alert on a trade that loses after costs. ADR-276 (4): the app does
+not read charges paid on real orders. The two cannot both be met for a real trade.
+Real case: none yet in the app (real order placing is on hold, ADR-281); found by the Opus check of 14 Nov: every
+real-book strategy has no paid-charges figure, so the alert can only say the result after charges is not available.
+What the run built: for a real trade the alert gives a TRUE reason ("charges paid on broker orders are not read by
+this app"), where the first build gave a false one ("an order's value could not be worked out").
+Recommendation: leave it as built until real orders return; when they do, decide ADR-276 (4) again: either read the
+broker's contract-note charges, or estimate charges paid with the same engine used for practice trades and label the
+figure "estimated".
+
 ## Q5. Profit left and Loss left: answered
 
 ANSWERED 13 Nov 2026 (question tool): Make it add up (Recommended) -> ADR-306 (Profit left = Max profit - Total;
