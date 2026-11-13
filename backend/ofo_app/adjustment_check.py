@@ -166,9 +166,11 @@ def with_plan_target(body: Mapping) -> Mapping:
     it and the last stage to min(Target, its value) (never looser); an equal, absent or unusable (not a number,
     <= 0, > 100) Target changes no value. Read at check time, so earlier plans count too. A copy. ANY usable Target
     (an equal one included) also switches T-07 ON for this trade (as the plan's Stop does T-06); an unusable one keeps
-    on/off."""
+    on/off. An EMPTY Target (guard "", ADR-305: the box saved empty) switches T-07 OFF for this trade."""
     guards, trig = body.get("guards"), (body.get("triggers") or {}).get("T-07")
     raw = guards.get("profit_target_pct_of_max_profit") if isinstance(guards, Mapping) else None
+    if raw == "" and isinstance(trig, Mapping):
+        return {**body, "triggers": {**body["triggers"], "T-07": {**trig, "on": False}}}
     try:
         target = Decimal(raw)
         if not isinstance(raw, str) or not 0 < target <= 100 or not isinstance(trig, Mapping):  # noqa: PLR2004

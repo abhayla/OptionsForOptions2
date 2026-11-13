@@ -85,7 +85,7 @@ async def test_no_plan_follows_the_playbook(monkeypatch):
     assert t07(body, "48.75") is None
 
 
-@pytest.mark.parametrize("raw", ["", "abc", "0", "-5", "101", None, 7])
+@pytest.mark.parametrize("raw", ["abc", "0", "-5", "101", None, 7])
 async def test_unusable_target_leaves_the_playbook_value(monkeypatch, raw):
     body = (await resolved(monkeypatch, plan_body(raw))).body
     assert body["triggers"]["T-07"] == BODY["triggers"]["T-07"]
@@ -197,9 +197,10 @@ def limit_row(body: dict, pnl: str = "48.75"):
 
 async def test_empty_target_with_the_rule_on_switches_t07_off_for_this_trade(monkeypatch):
     body = (await resolved(monkeypatch, plan_body(""))).body
-    assert body["triggers"]["T-07"]["on"] is False and t07_result(body, "2000") is None  # 72 %: no alert
+    assert body["triggers"]["T-07"]["on"] is False
+    assert not isinstance(t07_result(body, "2000"), pe.Flag)  # 72 % of max profit: no alert
     row = limit_row(body)
-    assert (row.state, row.threshold, row.reason) == ("not_checked", None, "adjust_check_not_checked_switched_off") or         (row.state, row.threshold) == ("not_checked", None)  # the evaluator's own reason code, no number
+    assert (row.state, row.threshold, row.reason) == ("not_checked", None, "adjust_trigger_switched_off")  # no number
 
 
 async def test_empty_target_with_the_rule_off_stays_off(monkeypatch):
@@ -229,7 +230,7 @@ async def test_old_plan_with_the_copied_default_and_the_rule_off_still_alerts_at
 
 
 def test_sheet_save_stores_empty_as_the_empty_guard_and_refuses_unusable_numbers():
-    from ofo_app.routes import adjustment_plan as route  # noqa: PLC0415
+    from ofo_app.routes import adjustment_plan as route
     out = route.with_overrides(plan_body("50"), route.PlanIn(playbook_id=3, target=""))
     assert out["guards"][KEY] == "" and route._values(out, False)["target"] is None
     assert route.with_overrides(plan_body("50"), route.PlanIn(playbook_id=3, target="50"))["guards"][KEY] == "50"
@@ -239,7 +240,7 @@ def test_sheet_save_stores_empty_as_the_empty_guard_and_refuses_unusable_numbers
 
 
 def test_editor_after_an_empty_save_shows_t07_off_and_an_unchanged_save_keeps_the_empty_guard():
-    from ofo_app.routes import adjustment_plan as route  # noqa: PLC0415
+    from ofo_app.routes import adjustment_plan as route
     base = plan_body("")
     shown = check.with_plan_target(base)
     assert shown["triggers"]["T-07"]["on"] is False  # what the editor shows = what the check acts on
@@ -248,3 +249,13 @@ def test_editor_after_an_empty_save_shows_t07_off_and_an_unchanged_save_keeps_th
     changed = copy.deepcopy(shown)
     changed["triggers"]["T-07"]["on"] = True  # a profit-trigger change saved in the editor wins: the Target guard goes
     assert KEY not in route._rules_to_save(base, changed, True)["guards"]
+
+
+async def test_plan_card_limit_line_for_an_emptied_target_says_not_being_checked(monkeypatch):
+    """ADR-305 (2): the card's limit line reads the rule check; no new sentence is needed (reason = the evaluator's)."""
+    from ofo_app.routes import adjustment_check as route
+    state = pe.StrategyState(expiry_kind="weekly", days_left=7, hhmm="11:00", pnl=D("48.75"), max_profit=MAX_PROFIT,
+                             prices_fresh=True, spot=D("24000"), stops=None)
+    ev = pe.evaluate((await resolved(monkeypatch, plan_body(""))).body, state, None, None, gap_until="09:30")
+    text = next(x["text"] for x in route.limits_out(ev.limits) if x["rule_id"] == "T-07")
+    assert str(text) == "Target: not being checked: This trigger is switched off in this playbook."
