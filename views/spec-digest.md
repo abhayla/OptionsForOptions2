@@ -4,13 +4,9 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (287)
+## Decisions (291)
 
-- Older decisions: 247 rows, ADR-1..ADR-260 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
-- ADR-261 2026-11-06: Owner 2026-11-06 ~14:2x IST (question tool, "Yes, 'Compare approaches' always"). [Adds an always-available entry to the compare bes…]
-- ADR-262 2026-11-06: Owner 2026-11-06 ~14:2x IST (question tool, "This should be based on each user preference", then "D… [Replaces the fixed placement rule in the ready-ma…]
-- ADR-263 2026-11-06: Owner 2026-11-06 ~14:3x IST (question tool, "After charges everywhere, labelled"). [Defines the charges basis of every headline money…]
-- ADR-264 2026-11-06: Owner 2026-11-06 ~14:4x IST (question tool: "Yes: admin default, user can change" and "Yes, a lock… [Extends REQ-166 (admin settings) and REQ-138 / RE…]
+- Older decisions: 251 rows, ADR-1..ADR-264 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
 - ADR-265 2026-11-06: Owner 2026-11-06 ~14:4x IST (question tool, "Mid, LTP only if no quote"). [SPEC CHANGE: REQ-077 AC-5 capture basis LTP -> mi…]
 - ADR-266 2026-11-06: Decided under the owner's standing delegation for strategy behaviour ("go with your recommendation"… [Extends ADR-265 (capture) to marking for paper P&…]
 - ADR-267 2026-11-06: Decided under the owner's standing delegation for strategy behaviour ("go with your recommendation"… [Exempts A-37 user level watches from the alert-st…]
@@ -47,6 +43,10 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-298 2026-11-13: Owner decision 2026-11-13 (planning session, answer D5: practice behaves exactly like a real trade). [confirms ADR-202 (4) for practice trades; adds th…]
 - ADR-299 2026-11-13: Owner decision 2026-11-13 (planning session, answer D6: status words Draft / Running / Completed). [names the status words for ADR-259 (Completed Str…]
 - ADR-300 2026-11-13: Decided by the assistant on 2026-11-13 under the owner's standing rule that strategy calls are not… [applies ADR-216 (entry guide numbers) to the disp…]
+- ADR-301 2026-11-13: Owner decision 2026-11-13 ~18:50-19:00 IST (question tool, picked "After all charges (Recommended)"… [Settles the clash between REQ-109 AC-9 (no charge…]
+- ADR-302 2026-11-13: Owner decision 2026-11-13 ~18:50-19:00 IST (question tool, picked "Drop the cap (Recommended)"). [Replaces the goal contract task u124 line "Profit…]
+- ADR-303 2026-11-13: Owner decision 2026-11-13 ~18:50-19:00 IST (question tool, picked "Paid in booked, close cost in un… [Fills the gap in ADR-263, which lists "total / bo…]
+- ADR-304 2026-11-13: Decided by the assistant on 2026-11-13 under the owner's standing rule that strategy calls are the… [Extends ADR-252 (the plan Stop switches the stop…]
 
 ## Requirements (161)
 

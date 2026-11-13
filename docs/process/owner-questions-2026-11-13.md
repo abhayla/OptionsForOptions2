@@ -13,6 +13,7 @@ Real case: strategy 138 showed Profit left 4,644.25 (before charges) beside Max 
 Recommendation: follow ADR-263 as written (paid charges plus the estimated cost to close), so "left" and "max" are on
 one basis, and correct REQ-109 AC-9 to say so.
 Waits: u124.
+ANSWERED 13 Nov 2026 (question tool): After all charges (Recommended) -> ADR-301.
 
 ## Q2. "Profit left is never above max profit" is not true while a trade is losing. Keep the cap, or drop it?
 
@@ -24,6 +25,7 @@ before charges. The larger number is correct arithmetic: the trade must first wi
 Recommendation: drop the cap. Keep Profit left measured from now, on the same after-charges basis as Max Profit, and
 add one line when it is larger: "includes Rs X needed to recover the current loss". A cap would hide a true number.
 Waits: u124.
+ANSWERED 13 Nov 2026 (question tool): Drop the cap (Recommended) -> ADR-302.
 
 ## Q3. How do charges split between booked and unbooked P&L?
 
@@ -34,6 +36,7 @@ Real case: strategy 141 closed: booked -32.50, charges paid 403.45, after charge
 Recommendation: booked minus all charges already paid; unbooked minus the estimated cost to close what is open. Then
 booked + unbooked = total after charges, and a closed trade shows its full cost in booked.
 Waits: the booked / unbooked lines of u123 (the total itself does not wait).
+ANSWERED 13 Nov 2026 (question tool): Paid in booked, close cost in unbooked (Recommended) -> ADR-303.
 
 ## Notes decided by the run (information, not questions)
 
