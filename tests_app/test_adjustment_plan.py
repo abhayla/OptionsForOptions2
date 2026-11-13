@@ -107,6 +107,9 @@ async def test_get_without_a_plan_prefills_from_the_active_system_playbook_and_p
                               "time_exit": {"hour": 14, "minute": 30},  # ADR-216: the iron condor seed
                               "target_words": "50 % of max profit",
                               "stop_words": "50 % of max loss or 2x the credit received, whichever comes first"}
+    stages = lambda last: [{"name": "Early", "value": "50"}, {"name": "Middle", "value": "50"}, {"name": "Last day", "value": last}]  # noqa: E731
+    assert out["rules_in_force"] == {"target": {"on": True, "stages": stages("80")},  # GC-ICFIX u113: what the check reads per stage
+                                     "stop": {"on": True, "stages": stages("40")}}
     row = next(p for p in out["playbooks"] if p["id"] == system.id)
     assert (row["is_system"], row["active"], row["draft"]) == (True, True, False)
     assert out["labels"]["title"] == "When tracking starts: this strategy's plan"

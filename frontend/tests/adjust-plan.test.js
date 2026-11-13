@@ -29,7 +29,7 @@ import PlanEntry from '@/components/strategy/PlanEntry.vue'
 const LABELS = {
   title: "When tracking starts: this strategy's plan", playbook: 'Playbook', target: 'Target', stop: 'Stop', max_adjustments: 'Max adjustments',
   time_exit: 'Time exit', customise: 'Customise triggers', use_as_is: 'Use playbook as is', save: 'Save plan', close: 'Close',
-  plan_entry: 'Plan', edit: 'Edit plan', no_plan: 'No plan saved yet: default rules apply', set_plan: 'Set plan', hour: 'Hour', minute: 'Minute',
+  plan_entry: 'Plan', edit: 'Edit plan', no_plan: 'No plan saved yet: default rules apply', set_plan: 'Set plan', not_checked: 'not being checked', of_max_profit: '% of max profit', of_max_loss: '% of max loss', at_stage: '% at', hour: 'Hour', minute: 'Minute',
 }
 const PLAYBOOKS = [
   { id: 1, name: 'Iron condor (system)', type: 'ic', type_name: 'Iron condor', is_system: true, draft: false, active: false },
@@ -37,7 +37,10 @@ const PLAYBOOKS = [
 ]
 const PREFILL_9 = { playbook_id: 9, target: '50', stop: '50', max_adjustments: 2, time_exit: null,
   target_words: '50 % of max profit', stop_words: '50 % of max loss or 2x the credit received, whichever comes first' }
-const sheetAnswer = (over = {}) => ({
+const stagesOf = (a, b, c) => [{ name: 'Early', value: a }, { name: 'Middle', value: b }, { name: 'Last day', value: c }]
+// the system iron condor playbook, weekly row: T-07 50/50/80, T-06 50/50/40
+const RULES = { target: { on: true, stages: stagesOf('50', '50', '80') }, stop: { on: true, stages: stagesOf('50', '50', '40') } }
+const sheetAnswer = (over = {}) => ({ rules_in_force: RULES,
   strategy_id: 70, type: 'ic', type_name: 'Iron condor', generic: false, generic_text: null, playbooks: PLAYBOOKS, plan: null,
   prefill: PREFILL_9, labels: LABELS, ...over,
 })
@@ -170,7 +173,7 @@ describe('REQ-161 AC-3: the Plan entry on the tracking panel', () => {
     const w = await entry()
     expect(t(w, 'plan-entry-title').text()).toBe('Plan')
     expect(t(w, 'plan-entry-playbook').text()).toBe('Playbook: "Mine"')
-    expect(t(w, 'plan-entry-guards').text()).toBe('Target: 60 / Stop: 40 / Max adjustments: 3 / Time exit: 14:45')
+    expect(t(w, 'plan-entry-guards').text()).toBe('Target: 50 % of max profit (80 % at Last day) / Stop: 50 % of max loss (40 % at Last day) / Max adjustments: 3 / Time exit: 14:45')
     expect(document.body.querySelector('[data-testid="plan-sheet"]')).toBeNull()
     await t(w, 'plan-entry-edit').trigger('click')
     await flushPromises()
@@ -179,7 +182,7 @@ describe('REQ-161 AC-3: the Plan entry on the tracking panel', () => {
     await t(w, 'plan-save').trigger('click')
     await flushPromises()
     expect(calls.filter((c) => c.method === 'PUT')).toHaveLength(1)
-    expect(t(w, 'plan-entry-guards').text()).toContain('Target: 55')
+    expect(t(w, 'plan-entry-guards').text()).toContain('Target: 50 %')
   })
 
   it('a strategy without a plan says so and the button opens the sheet to accept one (POST)', async () => {
@@ -273,13 +276,58 @@ describe('ADR-295: the plan card and the plan box never show nothing', () => {
     answers[`GET ${PATH}`] = sheetAnswer()
     const w = await entry()
     expect(t(w, 'plan-entry-none').text()).toBe('No plan saved yet: default rules apply')
-    expect(t(w, 'plan-entry-defaults').text()).toBe('Target: 50 (50 % of max profit) / Stop: 50 (50 % of max loss or 2x the credit received, whichever comes first)')
+    expect(t(w, 'plan-entry-defaults').text()).toBe('Target: 50 % of max profit (80 % at Last day) / Stop: 50 % of max loss (40 % at Last day)')
     expect(t(w, 'plan-entry-edit').text()).toBe('Set plan')
     expect(t(w, 'plan-entry-error').exists()).toBe(false)
     await t(w, 'plan-entry-edit').trigger('click')
     await flushPromises()
     expect(t(w, 'plan-sheet').exists()).toBe(true)
     expect(calls.filter((c) => c.method !== 'GET')).toHaveLength(0)
+  })
+
+  const line = async (rules, plan = null) => {
+    answers[`GET ${PATH}`] = sheetAnswer({ rules_in_force: rules, plan })
+    const w = await entry()
+    return plan ? t(w, 'plan-entry-guards') : t(w, 'plan-entry-defaults')
+  }
+  const eq = (v) => ({ on: true, stages: stagesOf(v, v, v) })
+  const off = { on: false, stages: [] }
+
+  it('rules: all stages equal -> one number; the last stage differs -> the real 50/50/80 and 50/50/40 rows', async () => {
+    expect((await line({ target: eq('50'), stop: eq('50') })).text()).toBe('Target: 50 % of max profit / Stop: 50 % of max loss')
+    expect((await line(RULES)).text()).toBe('Target: 50 % of max profit (80 % at Last day) / Stop: 50 % of max loss (40 % at Last day)')
+  })
+
+  it('rules: a rule that is off says not being checked, never a number or an empty Stop:', async () => {
+    expect((await line({ ...RULES, target: off })).text()).toBe('Target: not being checked / Stop: 50 % of max loss (40 % at Last day)')
+    mounted.splice(0).forEach((x) => x.unmount())
+    expect((await line({ ...RULES, stop: off })).text()).toBe('Target: 50 % of max profit (80 % at Last day) / Stop: not being checked')
+    mounted.splice(0).forEach((x) => x.unmount())
+    expect((await line({ target: off, stop: off })).text()).toBe('Target: not being checked / Stop: not being checked')
+  })
+
+  it('rules: a plan with a typed Target above the last stage (min rule: 90/90/80) shows what the check reads', async () => {
+    const typed = { ...RULES, target: { on: true, stages: stagesOf('90', '90', '80') } }
+    expect((await line(typed, PLAN)).text()).toContain('Target: 90 % of max profit (80 % at Last day) / Stop: 50 % of max loss (40 % at Last day) /')
+  })
+
+  it('rules: an empty prefill target or stop no longer hides or blanks the line', async () => {
+    answers[`GET ${PATH}`] = sheetAnswer({ prefill: { ...PREFILL_9, target: null, stop: null } })
+    const w = await entry()
+    expect(t(w, 'plan-entry-defaults').text()).toBe('Target: 50 % of max profit (80 % at Last day) / Stop: 50 % of max loss (40 % at Last day)')
+  })
+
+  it('rules: a missing or malformed block is could-not-load for the line, never stale prefill numbers', async () => {
+    for (const bad of [undefined, null, 'x', { target: RULES.target }, { ...RULES, stop: { on: true, stages: [] } },
+      { ...RULES, target: { on: true, stages: [{ name: 'Early', value: '' }] } }]) {
+      answers[`GET ${PATH}`] = { ...sheetAnswer(), rules_in_force: bad }
+      const w = await entry()
+      expect(t(w, 'plan-entry-rules-error').exists()).toBe(true)
+      expect(t(w, 'plan-entry-rules-retry').exists()).toBe(true)
+      expect(t(w, 'plan-entry-defaults').exists()).toBe(false)
+      expect(w.text()).not.toContain('50 % of')
+      mounted.splice(0).forEach((x) => x.unmount())
+    }
   })
 
   it('box: a failed read says could-not-load with Retry; Retry re-reads and shows the fields', async () => {

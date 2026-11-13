@@ -27,6 +27,7 @@ export const CHECK_WITH_ZERODHA = 'Check with Zerodha' // wording fixed by REQ-0
 export const RETURN_CHECKING = 'Checking with Zerodha…'
 export const RETURN_NO_CHANGE = 'no change detected yet'
 export const RETRY_LABEL = 'Retry'
+// pending owner read (13 Nov 2026): the two sentences below are not yet owner-approved
 // ADR-295 (3), GC-ICFIX u112: a panel whose read failed or timed out says so and offers Retry; never an empty space.
 export const PLAN_LOAD_FAILED_TEXT = 'Could not load the plan. Nothing was changed.'
 export const PLAN_LOADING_TEXT = 'Loading the plan…'

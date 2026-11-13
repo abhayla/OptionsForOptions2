@@ -2792,7 +2792,7 @@
     "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"
   },
   "labels:plan_sheet": {
-    "sha256": "8faede64c95388a6ba142bf9d4b27b1e7c7b0e982e12821ef48b1abf05a24cfe",
+    "sha256": "2ca2663f47f929cb260d39d2e1e46e62fe5e5f86bca43f2e8a12ffd08428f7b7",
     "reviewed": "pending owner read"
   },
   "explanation:playbook_test_no_strategy": {
@@ -4057,6 +4057,22 @@
   },
   "explanation:plan_sheet_set_plan": {
     "sha256": "161bdbe021d2945a5f3029df2fe94dc76eae65098c4c9ef456747157b29bac75",
+    "reviewed": "pending owner read"
+  },
+  "explanation:plan_sheet_not_checked": {
+    "sha256": "d8c62541f0c825afcc336afe7b61b45bb1bf829aaf9b1743568dc5d7d73c24fd",
+    "reviewed": "pending owner read"
+  },
+  "explanation:plan_sheet_of_max_profit": {
+    "sha256": "20475d6ca6ddcc41ae540eb343f10410fee6be9ddeb985b96ee7bcb142cdd9c4",
+    "reviewed": "pending owner read"
+  },
+  "explanation:plan_sheet_of_max_loss": {
+    "sha256": "60f00c5cc4789ab99ef06208efea41edd8d3b9db1b70132627cdb6f762f76aa7",
+    "reviewed": "pending owner read"
+  },
+  "explanation:plan_sheet_at_stage": {
+    "sha256": "83d565b5a917d63a0bc4848b325e19a815b8392d350016396f421cbfcba36a04",
     "reviewed": "pending owner read"
   }
 }

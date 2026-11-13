@@ -17,7 +17,9 @@ const BODY = { stages: [], looks: [], rules: [], day_rules: [], approaches: { ap
 const REPLY = {
   strategy_id: 70, type: 'ic', type_name: 'Iron condor', generic: false, generic_text: null, prefill: { playbook_id: 9 },
   playbooks: [{ id: 9, name: 'Mine', type: 'ic', type_name: 'Iron condor', is_system: false, draft: false, active: true }],
-  labels: { plan_entry: 'Plan', playbook: 'Playbook', target: 'Target', stop: 'Stop', max_adjustments: 'Max', time_exit: 'Exit', edit: 'Edit', no_plan: 'none' },
+  labels: { plan_entry: 'Plan', playbook: 'Playbook', target: 'Target', stop: 'Stop', max_adjustments: 'Max', time_exit: 'Exit', edit: 'Edit', no_plan: 'none',
+    of_max_profit: '% of max profit', of_max_loss: '% of max loss', at_stage: '% at', not_checked: 'off' },
+  rules_in_force: { target: { on: true, stages: [{ name: 'Early', value: '50' }] }, stop: { on: true, stages: [{ name: 'Early', value: '50' }] } },
   plan: { playbook_id: 9, playbook_name: 'Mine', target: '50', stop: '50', stop_words: SERVER_WORDS, max_adjustments: 2, time_exit: null },
 }
 

@@ -175,6 +175,23 @@ class StopsOut(ApiModel):
     reason: Identifier | None
 
 
+class RuleStageOut(ApiModel):
+    name: CatalogueText | None  # the playbook's own stage name
+    value: Money
+
+
+class RuleOut(ApiModel):
+    """One rule as the live check reads it (GC-ICFIX u113): ``on`` false -> not checked, no stages."""
+    on: bool
+    stages: list[RuleStageOut]
+
+
+class RulesInForceOut(ApiModel):
+    """The target (T-07) and stop (T-06) per stage; a rule that cannot be read is None (the card then says so)."""
+    target: RuleOut | None
+    stop: RuleOut | None
+
+
 class AdjustmentPlanOut(ApiModel):
     strategy_id: int
     type: Identifier | None
@@ -190,6 +207,7 @@ class AdjustmentPlanOut(ApiModel):
     triggers: list[TriggerInForceOut]
     triggers_reason: Identifier | None
     stops: StopsOut
+    rules_in_force: RulesInForceOut | None  # None: no playbook (a generic shape)
 
 
 def _bad(field: str) -> store.PlaybookStoreError:
@@ -362,6 +380,17 @@ async def _plan_out(db: Any, user_ref: str, plan: store.Plan, kind: str | None =
             **_values(plan.body, await check.plan_saved_before_adr247(db, plan), kind)}
 
 
+def _rules_reply(resolved: check.Resolved, kind: str | None) -> dict[str, Any]:
+    """The card's rules in force: ``settings_in_force.rule_of`` per rule, stage names through the stage-name slot."""
+    def one(tid: str) -> dict[str, Any] | None:
+        rule = in_force_mod.rule_of(resolved, tid, kind)
+        return None if rule is None else {"on": rule.on, "stages": [
+            {"name": check.stage_name_text(n), "value": format(v, "f")} for n, v in rule.stages]}
+    if resolved.source == "none" or resolved.body is None:
+        return {"rules_in_force": None}
+    return {"rules_in_force": {k: one(t) for k, t in in_force_mod.RULE_TRIGGERS.items()}}
+
+
 def _in_force_reply(found: in_force_mod.InForce) -> dict[str, Any]:
     """The reply fields of the ONE settings-in-force read; every field is copied, nothing is recomputed here."""
     def trig_label(label: str | None) -> Any:
@@ -393,7 +422,7 @@ async def _sheet(db: Any, user_ref: str, strategy_id: int, stype: str | None, pl
     if stype is None:
         none = check.Resolved("none", None, None, None, False, saved_before_adr247=False)
         found = in_force_mod.in_force(user_values, none, money)
-        return AdjustmentPlanOut.model_validate(reply | _in_force_reply(found))
+        return AdjustmentPlanOut.model_validate(reply | _in_force_reply(found) | _rules_reply(none, kind))
     active = await store.active_for(db, user_ref, stype)
     # the playbook in force (as ``adjustment_check.resolve``): the plan copy, else the user's active / the system one
     resolved = check.Resolved("plan", check.with_plan_target(plan.body), plan.playbook_id, None, False,
@@ -401,7 +430,7 @@ async def _sheet(db: Any, user_ref: str, strategy_id: int, stype: str | None, pl
                                                                                        plan)) if plan is not None else \
         check.Resolved("system" if active.is_system else "active", active.body, active.id,
                        active.status if active.is_system else None, active.is_system, saved_before_adr247=False)
-    reply |= _in_force_reply(in_force_mod.in_force(user_values, resolved, money))
+    reply |= _in_force_reply(in_force_mod.in_force(user_values, resolved, money)) | _rules_reply(resolved, kind)
     listed = await store.list_for_type(db, user_ref, stype)
     chosen = active
     if pick is not None:

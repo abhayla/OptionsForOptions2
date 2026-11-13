@@ -1,7 +1,7 @@
 <!-- GC-ADJ2 step 4 (REQ-161 AC-3, REQ-158 AC-5): the "Plan" entry on a tracked strategy's panel: the accepted plan's playbook name
      and its guards as the server sent them, and an Edit action that reopens the plan sheet (PUT). GC-ICFIX u111-u114 (ADR-295):
-     a strategy with no plan says "No plan saved yet: default rules apply", shows the default target and stop (the server's prefill
-     for the type's active playbook, with its words) and a "Set plan" button that opens the sheet to accept one (POST); nothing is
+     a strategy with no plan says "No plan saved yet: default rules apply", shows the target and stop in force (the server's `rules_in_force`: the
+     same per-stage values its live check reads, or "not being checked") and a "Set plan" button that opens the sheet to accept one (POST); nothing is
      saved by showing this. A read that failed, timed out or cannot be read says so with Retry; while it is out the card says loading.
      A shape with no playbook shows the server's generic text. -->
 <template>
@@ -14,16 +14,16 @@
       <template v-else>
         <template v-if="read.plan">
           <p data-testid="plan-entry-playbook">{{ read.labels.playbook }}: {{ read.plan.playbookName }}</p>
-          <p data-testid="plan-entry-guards">
-            {{ read.labels.target }}: {{ read.plan.target }}<template v-if="read.plan.targetWords"> ({{ read.plan.targetWords }})</template> / {{ read.labels.stop }}: {{ read.plan.stop }}<template v-if="read.plan.stopWords"> ({{ read.plan.stopWords }})</template> /
+          <LoadFailed v-if="!ruleLine" :text="PLAN_LOAD_FAILED_TEXT" prefix="plan-entry-rules" @retry="reload" />
+          <p v-else data-testid="plan-entry-guards">
+            {{ ruleLine }}<template v-if="read.plan.stopWords"> ({{ read.plan.stopWords }})</template> /
             {{ read.labels.max_adjustments }}: {{ read.plan.maxAdjustments }} / {{ read.labels.time_exit }}: {{ read.plan.timeExit }}
           </p>
         </template>
         <template v-else>
           <p data-testid="plan-entry-none">{{ read.labels.no_plan }}</p>
-          <p v-if="read.prefill.target" data-testid="plan-entry-defaults">
-            {{ read.labels.target }}: {{ read.prefill.target }}<template v-if="read.prefill.targetWords"> ({{ read.prefill.targetWords }})</template> / {{ read.labels.stop }}: {{ read.prefill.stop }}<template v-if="read.prefill.stopWords"> ({{ read.prefill.stopWords }})</template>
-          </p>
+          <LoadFailed v-if="!ruleLine" :text="PLAN_LOAD_FAILED_TEXT" prefix="plan-entry-rules" @retry="reload" />
+          <p v-else data-testid="plan-entry-defaults">{{ ruleLine }}</p>
         </template>
         <button type="button" class="mt-2 rounded border border-line bg-surface px-2 py-1 text-xs font-medium" data-testid="plan-entry-edit" @click="sheetOpen = true">
           {{ read.plan ? read.labels.edit : read.labels.set_plan }}
@@ -35,11 +35,11 @@
 </template>
 
 <script setup>
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import AdjustPlanSheet from '@/components/strategy/AdjustPlanSheet.vue'
 import LoadFailed from '@/components/common/LoadFailed.vue'
 import api from '@/services/api'
-import { fetchPlan } from '@/lib/adjustPlan'
+import { fetchPlan, ruleText } from '@/lib/adjustPlan'
 import { PLAN_LOADING_TEXT, PLAN_LOAD_FAILED_TEXT } from '@/lib/sharedStateText'
 
 const props = defineProps({ strategyId: { type: Number, default: null } })
@@ -47,6 +47,13 @@ const read = ref(null)
 const loading = ref(false)
 const failed = ref(false)
 const sheetOpen = ref(false)
+// the target and stop in force, as the server's check reads them per stage (ADR-295 / ADR-252); null -> could-not-load for the line
+const ruleLine = computed(() => {
+  const r = read.value
+  const target = r?.rules && ruleText(r.rules.target, r.labels, 'of_max_profit')
+  const stop = r?.rules && ruleText(r.rules.stop, r.labels, 'of_max_loss')
+  return target && stop ? `${r.labels.target}: ${target} / ${r.labels.stop}: ${stop}` : null
+})
 
 async function reload() {
   const id = props.strategyId
