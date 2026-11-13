@@ -42,6 +42,7 @@ from ofo.errors.explanations import render_explanation
 from ofo.outcome.price_text import price_text
 from ofo.strategy.definition import describe_contract
 from ofo.tracking import paper as paper_prices
+from ofo.tracking.orderbook import net_positions
 
 from ofo_app import paper_book, playbook_store, tracked_contracts
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier, Money
@@ -118,6 +119,14 @@ class HistoryTotalsOut(ApiModel):
     charges_text: CatalogueText | None
     charges_reason: paper.ChargesReason | None
     charges_reason_text: CatalogueText | None
+    # GC-ICFIX (ADR-263): the whole-trade P&L after charges, from ``book_after_charges``; None + reason, never 0
+    total_after: Money | None = None
+    total_after_text: CatalogueText | None = None
+    charges_paid: Money | None = None
+    charges_to_close: Money | None = None
+    charges_to_close_text: CatalogueText | None = None
+    after_charges_reason: paper.AfterChargesReason | None = None
+    after_charges_reason_text: CatalogueText | None = None
 
 
 class AdjustmentHistoryOut(ApiModel):
@@ -270,12 +279,27 @@ async def adjustment_history(  # noqa: PLR0913 - FastAPI dependencies, one per i
               "charges_text": None if shown_charges is None else render_explanation(paper.PAPER_CHARGES,
                                                                                    amount=shown_charges),
               "charges_reason": None if t.charges is not None else charges_reason,
-              "charges_reason_text": None if t.charges is not None else reason_text(charges_reason)}
+              "charges_reason_text": None if t.charges is not None else reason_text(charges_reason),
+              **_after(orders, found, live, t, underlying, charges_reason, rates)}
     return AdjustmentHistoryOut.model_validate({"strategy_id": strategy_id,
                                                 "fill_column_text": render_explanation("adjust_history_col_fill"),
                                                 "rows": [_row(r, found, [] if r.step in ah.OWN_KINDS else
                                                               list(by_batch.get(r.at, {}).values()))
                                                          for r in history.rows], "totals": totals})
+
+
+AFTER_KEYS = ("total_after", "total_after_text", "charges_paid", "charges_to_close", "charges_to_close_text",
+              "after_charges_reason", "after_charges_reason_text")
+
+
+def _after(orders: Any, found: dict, live: dict, t: Any, underlying: str,  # noqa: PLR0913
+           charges_reason: str | None, rates: ChargeRates | None) -> dict:
+    """ADR-263 / ADR-259: the total after charges from the one engine function (``book_after_charges``); paid = the
+    history's own charges sum, shown rounded up to the paisa. Nothing is subtracted here."""
+    view = net_positions(paper.engine_orders(orders), live)
+    paid = None if t.charges is None else to_paise_up(t.charges)
+    return paper.after_charges_fields(paper.after_charges(view, paper.terms_of(orders, found), live, paid,
+                                                          charges_reason, underlying, rates))
 
 
 async def closed_figures(db: Any, user_ref: str, strategy_id: int, rates: ChargeRates | None) -> dict:
@@ -284,7 +308,9 @@ async def closed_figures(db: Any, user_ref: str, strategy_id: int, rates: Charge
     call as the history page, with no open contract (so no price is read). Each figure the engine cannot give is None
     and the reply carries the catalogue reason; a failed read never shows 0 (savepoint, logged)."""
     none = {"final_pnl": None, "final_pnl_text": None, "adjustments_made": None, "adjustment_cost": None,
-            "adjustment_cost_text": None, "completed_reason_text": render_explanation("completed_figures_unavailable")}
+            "adjustment_cost_text": None, "completed_reason_text": render_explanation("completed_figures_unavailable"),
+            **dict.fromkeys(AFTER_KEYS),
+            "after_charges_reason": "not_priced", "after_charges_reason_text": reason_text("not_priced")}
     try:
         async with db.begin_nested():
             orders = await paper_book.load_owned(db, user_ref, strategy_id)
@@ -301,6 +327,7 @@ async def closed_figures(db: Any, user_ref: str, strategy_id: int, rates: Charge
                                  is_option=paper.identity(found[o.order.contract_id])[1] is not Instrument.FUT)
                  for o in orders], {}, adjustments_max=None, per_order_charges=per_order)
             t = h.totals
+            after = _after(orders, found, {}, t, underlying, charges_reason, rates)  # closed: nothing open to price
     except Exception:  # noqa: BLE001 - any read failure only costs these figures
         log.warning("closed strategy %s figures could not be read", strategy_id, exc_info=True)
         return none
@@ -311,7 +338,7 @@ async def closed_figures(db: Any, user_ref: str, strategy_id: int, rates: Charge
         reason = reason_text(charges_reason) if charges_reason else render_explanation("completed_figures_unavailable")
     elif t.pnl is None:
         reason = render_explanation("completed_figures_unavailable")
-    return {"final_pnl": paper.exact(t.pnl), "final_pnl_text": _money_text(t.pnl),
+    return {"final_pnl": paper.exact(t.pnl), "final_pnl_text": _money_text(t.pnl), **after,
             "adjustments_made": made, "adjustment_cost": paper.exact(cost),
             "adjustment_cost_text": None if cost is None else _money_text(cost.copy_negate()),  # a cost reads as a cost
             "completed_reason_text": reason}

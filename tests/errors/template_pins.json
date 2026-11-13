@@ -2887,6 +2887,10 @@
     "sha256": "f8664b0e4ff9c137604daab8e6f3a764d6a858aa59646630f1d46ae8df31c0ce",
     "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"
   },
+  "explanation:adjust_condition_line_before_charges": {
+    "sha256": "70cfb4a34b27e3cde750c05761cbc616a6bbb16d20bc8f186be3ea5ad99bbb28",
+    "reviewed": "pending owner read"
+  },
   "explanation:adjust_condition_line_plain": {
     "sha256": "1184fe1a615bffeefe1063275c220e3fcda784c51ca3ff13ad10e645368cc042",
     "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"

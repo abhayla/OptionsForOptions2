@@ -204,3 +204,30 @@ describe('item 2: entry rows start at the live price the page holds, else the pl
     expect(rows.map((r) => [r.price, r.price_note])).toEqual([['129.05', ''], ['98.40', PAPER_PLANNED_PRICE_NOTE]])
   })
 })
+
+describe('GC-ICFIX Issue 6: result lines sit in the pinned status area, not the scrolling body', () => {
+  const orders = Array.from({ length: 8 }, (_, i) => ({ key: `k${i}`, contract_id: i, side: 'SELL', text: `NIFTY ${24000 + i} PE`, lots: 1, lot_size: 65, price: '10.00', kind: 'open' }))
+  const open = (props) => mount(PaperConfirmDialog, { props: { open: true, orders, ...props }, attachTo: document.body })
+  const check = (w, id) => {
+    const line = w.get(`[data-testid="${id}"]`).element
+    const body = w.get('[data-testid="modal-body"]').element
+    const status = w.get('[data-testid="modal-status"]').element
+    const actions = w.get('[data-testid="modal-actions"]').element
+    expect(body.contains(line)).toBe(false)
+    expect(status.contains(line)).toBe(true)
+    expect(status.compareDocumentPosition(actions) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  }
+  it.each([['placed', {}, 'paper-placed'], ['unknown', {}, 'paper-unknown'], [null, { error: 'Refused' }, 'paper-error']])('%s line with 8 orders', async (state, extra, id) => {
+    const w = open({ state, ...extra })
+    await flushPromises()
+    check(w, id)
+    if (id === 'paper-unknown') expect(w.find('[data-testid="paper-open-orderbook"]').exists()).toBe(true)
+    w.unmount()
+  })
+  it('no outcome: no status area at all (frame unchanged)', async () => {
+    const w = open({})
+    await flushPromises()
+    expect(w.find('[data-testid="modal-status"]').exists()).toBe(false)
+    w.unmount()
+  })
+})

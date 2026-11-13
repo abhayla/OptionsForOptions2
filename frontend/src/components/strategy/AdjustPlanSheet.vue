@@ -38,8 +38,10 @@
         <button type="button" class="mt-3 text-sm font-semibold text-accent underline" data-testid="plan-customise" :disabled="busy" @click="customise">{{ labels.customise }}</button>
       </template>
       <AlertStylePicker v-if="open && sheet" :strategy-id="strategyId" />
-      <ErrorMessage v-if="errorParts" class="mt-3" :parts="errorParts" compact prefix="plan-error" data-testid="plan-error" />
     </div>
+    <template v-if="errorParts" #status>
+      <ErrorMessage :parts="errorParts" compact prefix="plan-error" data-testid="plan-error" />
+    </template>
     <template #actions>
       <button type="button" class="h-10 rounded-lg border border-line px-3 font-medium" data-testid="plan-close" @click="emit('close')">{{ labels.close }}</button>
       <template v-if="sheet && sheet.kind === 'sheet'">

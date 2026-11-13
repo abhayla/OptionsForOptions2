@@ -1545,6 +1545,11 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("adjust_condition_line", "values_seen", "{label}: {value} {unit} (rule {threshold} {unit})",
                         {"label": PlaybookTriggerLabel, "value": PlaybookField, "unit": PlaybookUnit,
                          "threshold": PlaybookField}),
+    # ADR-294 / ADR-245: the profit target compares profit BEFORE charges; the line names the limit used and the basis
+    ExplanationTemplate("adjust_condition_line_before_charges", "values_seen",
+                        "{label}: {value} {unit} before charges (rule {threshold} {unit})",
+                        {"label": PlaybookTriggerLabel, "value": PlaybookField, "unit": PlaybookUnit,
+                         "threshold": PlaybookField}),
     ExplanationTemplate("adjust_condition_line_plain", "values_seen", "{label}: {value} (rule {threshold})",
                         {"label": PlaybookTriggerLabel, "value": PlaybookField, "threshold": PlaybookField}),
     # #650: a trigger whose value is rupees (T-02: the expiry P&L at spot) or a count (T-18: adjustments used) has no

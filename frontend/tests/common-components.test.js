@@ -115,6 +115,73 @@ describe('Modal keyboard (review round 2)', () => {
   })
 })
 
+// GC-ICFIX Issue 6 (u151/u152): an 8-order review box on a 639 px page area pushed its buttons off screen. jsdom has no layout, so
+// these assert the structure that guarantees it (bounded height, scrolling body, buttons outside it); pixels are proven in Chrome.
+describe('Modal tall content (GC-ICFIX Issue 6)', () => {
+  const eight = Array.from({ length: 8 }, (_, i) => `<li data-testid="row">order ${i}</li>`).join('')
+  const open = (slots) => mount(Modal, { props: { open: true, title: 'Review orders' }, slots, attachTo: document.body })
+
+  it('the frame height is bound to the window by a viewport unit, as a flex column', () => {
+    const w = open({ default: `<ul>${eight}</ul>`, actions: '<button>Cancel</button><button>Confirm</button>' })
+    const cls = w.get('[data-testid="modal"]').classes().join(' ')
+    expect(cls).toMatch(/max-h-\[calc\(100d?vh-/)
+    expect(cls).toContain('flex-col')
+    w.unmount()
+  })
+
+  it('the body scrolls (overflow-y auto, can shrink) and holds the content; the buttons are outside it', () => {
+    const w = open({ default: `<ul>${eight}</ul>`, actions: '<button data-testid="confirm">Confirm</button>' })
+    const body = w.get('[data-testid="modal-body"]')
+    expect(body.classes()).toEqual(expect.arrayContaining(['overflow-y-auto', 'min-h-0', 'flex-1']))
+    expect(body.findAll('[data-testid="row"]')).toHaveLength(8)
+    const actions = w.get('[data-testid="modal-actions"]')
+    expect(body.element.contains(actions.element)).toBe(false)
+    expect(actions.classes()).toContain('shrink-0')
+    expect(actions.element.parentElement).toBe(w.get('[data-testid="modal"]').element)
+    w.unmount()
+  })
+
+  it('buttons stay reachable by Tab and Esc still closes', async () => {
+    const w = open({ default: `<ul>${eight}</ul>`, actions: '<button data-testid="cancel">Cancel</button><button data-testid="confirm">Confirm</button>' })
+    await flushPromises()
+    const dialog = w.get('[data-testid="modal"]')
+    w.get('[data-testid="confirm"]').element.focus()
+    await dialog.trigger('keydown', { key: 'Tab' })
+    expect(document.activeElement).toBe(w.get('[data-testid="modal-close"]').element)
+    await w.get('[data-testid="modal-root"]').trigger('keydown', { key: 'Escape' })
+    expect(w.emitted('close')).toHaveLength(1)
+    w.unmount()
+  })
+
+  it('no actions slot: no actions box, body still scrolls; short content adds no fixed height', () => {
+    const w = open({ default: '<p>short</p>' })
+    expect(w.find('[data-testid="modal-actions"]').exists()).toBe(false)
+    expect(w.get('[data-testid="modal-body"]').classes()).toContain('overflow-y-auto')
+    expect(w.get('[data-testid="modal"]').classes().join(' ')).not.toMatch(/(^| )h-\[|(^| )h-\d/)
+    w.unmount()
+  })
+})
+
+describe('Modal status slot (GC-ICFIX Issue 6 round 2)', () => {
+  const tall = '<p data-testid="line">x</p>'
+  it('a status line is outside the scrolling body, before the actions, with a small own scroll; short and tall bodies alike', () => {
+    for (const body of ['<p>short</p>', `<ul>${'<li>o</li>'.repeat(8)}</ul>`]) {
+      const w = mount(Modal, { props: { open: true, title: 'T' }, slots: { default: body, status: tall, actions: '<button>Go</button>' }, attachTo: document.body })
+      const st = w.get('[data-testid="modal-status"]')
+      expect(w.get('[data-testid="modal-body"]').element.contains(st.element)).toBe(false)
+      expect(st.classes()).toEqual(expect.arrayContaining(['shrink-0', 'overflow-y-auto']))
+      expect(st.classes().join(' ')).toMatch(/max-h-/)
+      expect(st.element.compareDocumentPosition(w.get('[data-testid="modal-actions"]').element) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+      w.unmount()
+    }
+  })
+  it('no status slot: no status area', () => {
+    const w = mount(Modal, { props: { open: true, title: 'T' }, slots: { default: 'x', actions: '<button>Go</button>' }, attachTo: document.body })
+    expect(w.find('[data-testid="modal-status"]').exists()).toBe(false)
+    w.unmount()
+  })
+})
+
 describe('Drawer (UI-016)', () => {
   const mountDrawer = () =>
     mount(
