@@ -1120,7 +1120,7 @@ def _rule_of(body: Mapping, tid: str) -> str:
     return next((r["id"] for r in body.get("rules", []) if tid in (r.get("any_of") or r.get("all_of") or ())), tid)
 
 
-def _limit_row(rid: str, tid: str, why: str | None, held: frozenset[str], reason: str | None,
+def _limit_row(rid: str, tid: str, why: str | None, held: frozenset[str], reason: str | None,  # noqa: PLR0913
                figures: tuple = (None, None, (), None), slots: tuple = ()) -> LimitNow:
     state: Literal["checked", "not_checked", "already_true"] = "checked"
     reason = why or reason  # the withheld reason first, as ``_outcomes`` does
