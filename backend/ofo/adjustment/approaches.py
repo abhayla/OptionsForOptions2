@@ -391,7 +391,7 @@ class _Builder:
                       and ((x.expiry == leg.expiry and x.strike == leg.strike) or x.tradingsymbol == leg.tradingsymbol)
                       ) + 1
         engine = Leg(Action(leg.side), Instrument(leg.type), leg.strike, leg.expiry, leg.lots * self.p.lot,
-                     self.p.legs[number - 1].entry)
+                     self.p.legs[number - 1].entry, exact_entry=True)
         return LegValue(number, engine, self.p.underlying)
 
     def price_of(self, leg: PositionLeg) -> Decimal:
@@ -433,7 +433,7 @@ class _Builder:
         """The position as leg_edit reads it; ``moved`` puts a leg on another expiry (A-04) before it lands."""
         moved = moved or {}
         return [EditLeg(Leg(Action(x.side), Instrument(x.type), x.strike, moved.get(i, x.expiry), x.lots * self.p.lot,
-                            x.entry), x.lots, x.lots) for i, x in enumerate(self.p.legs)]
+                            x.entry, exact_entry=True), x.lots, x.lots) for i, x in enumerate(self.p.legs)]
 
     def land(self, targets: Mapping[int, Decimal], expiry: datetime.date | None = None) -> dict[int, Decimal]:
         """REQ-078's one landing rule: refuses (naming the leg) any target strike the listing does not hold.
@@ -621,7 +621,8 @@ def _untested_decayed(b: _Builder, legs: Sequence[PositionLeg], short_at: int, p
     if short.entry <= 0:
         raise _refusal("adjust_untested_no_entry", leg=b.ref(short))
     if not adjust_money.fell_at_least_pct(short.entry, price, percent):
-        raise _refusal("adjust_untested_not_decayed", leg=b.ref(short), entry=short.entry, now=price, percent=percent)
+        shown = short.entry.quantize(PAISE, rounding=ROUND_HALF_UP)  # shown only; the test used the exact entry
+        raise _refusal("adjust_untested_not_decayed", leg=b.ref(short), entry=shown, now=price, percent=percent)
     t, c = b.close(short, short.lots)
     return [t], [c], [x for i, x in enumerate(legs) if i != short_at]
 

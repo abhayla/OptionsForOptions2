@@ -298,7 +298,7 @@ def cheapest_approach(offered: Sequence[str], columns: Mapping[str, Column], cha
 
 def _strategy(legs: Sequence[PositionLeg], lot: int, price: Callable[[PositionLeg], Decimal] | None = None) -> Strategy:
     return Strategy(tuple(Leg(Action(x.side), Instrument(x.type), x.strike, x.expiry, x.lots * lot,
-                              x.entry if price is None else price(x)) for x in legs))
+                              x.entry if price is None else price(x), exact_entry=True) for x in legs))
 
 
 def _pnl_at(legs: Sequence[PositionLeg], lot: int, whole: WholeTradeAfter, level: Decimal) -> Decimal:
