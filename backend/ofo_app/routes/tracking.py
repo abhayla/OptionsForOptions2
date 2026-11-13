@@ -30,6 +30,8 @@ from fastapi import APIRouter, Depends
 from ofo.adjustment.detection import PLATFORM_DETECTION, check_threshold
 from ofo.adjustment.strategy_type import strike_gap_of, type_of
 from ofo.charges import ChargeRates
+from ofo.charges.paper_charges import PaperFill
+from ofo.engine.extremes import ContractTerms
 from ofo.engine.legs import Action, Instrument, Leg
 from ofo.engine.orderbook import BookView
 from ofo.errors.explanations import render_explanation
@@ -43,8 +45,7 @@ from ofo.tracking import book, paper
 from ofo.tracking.orderbook import PaperOrder, net_positions
 from pydantic import BaseModel, ConfigDict, Field
 
-from ofo_app import paper_limit
-from ofo_app import paper_store, tracked_contracts
+from ofo_app import paper_limit, paper_store, tracked_contracts
 from ofo_app import strategy_store as store
 from ofo_app.api_models import ApiModel, CatalogueText, InstrumentId, Money
 from ofo_app.db import get_db
@@ -61,6 +62,7 @@ from ofo_app.routes.outcome import (
     get_market_context,
     load_charge_rates,
 )
+from ofo_app.routes.paper import AfterChargesReason, after_charges, after_charges_fields, paid_charges
 from ofo_app.routes.planned_entry import get_live_feed, hold_until_priced
 from ofo_app.routes.strategies import StrategyRefused, refused_answer
 from ofo_app.scenario_guard import guard_paper_order  # dev/test scenario guard; reaches no Execute code
@@ -133,7 +135,20 @@ class DetectionOut(ApiModel):
 TrackingState = Literal["LIVE", "PAUSED", "NOT_CONNECTED", "EXITED"]
 
 
-class TrackingOut(ApiModel):
+class AfterCharges(ApiModel):
+    """GC-ICFIX (ADR-263): the total after charges = total - charges paid - estimated charges to close what is open,
+    from ``book_after_charges``. None (never 0) with ``after_charges_reason`` when a part is unknown; the before-charges
+    figures stay as they were."""
+    total_after: Money | None = None
+    total_after_text: CatalogueText | None = None
+    charges_paid: Money | None = None
+    charges_to_close: Money | None = None
+    charges_to_close_text: CatalogueText | None = None
+    after_charges_reason: AfterChargesReason | None = None
+    after_charges_reason_text: CatalogueText | None = None
+
+
+class TrackingOut(AfterCharges):
     strategy_id: int
     started_at: datetime.datetime
     prices_at: datetime.datetime
@@ -154,7 +169,7 @@ class TrackingOut(ApiModel):
     detections: list[DetectionOut]
 
 
-class TrackedStrategyOut(ApiModel):
+class TrackedStrategyOut(AfterCharges):
     """One row of GET /tracking (GC-BP step 4): the paper figures of one tracked strategy, no detections."""
     strategy_id: int
     name: CatalogueText  # REQ-134: quoted user text
@@ -244,7 +259,21 @@ def _money(value: Decimal | None) -> Decimal | None:
     return None if value is None else value.quantize(PAISE)
 
 
-def _book_figures(bk: _Book, view: paper.TrackingView | None) -> tuple[BookView, list[Decimal | None]]:
+def _after(bk: _Book, legs: list[paper.TrackedLeg], figures: BookView,  # noqa: PLR0913
+           live: dict[str, Decimal], underlying: str, rates: ChargeRates | None) -> dict:
+    """GC-ICFIX (ADR-263): the total after charges from the one engine function (``book_after_charges``). Paid = the
+    charges of every stored order (``ofo.charges.paper_charges``); the exit estimate prices each open leg at its live
+    price (``live`` is empty for a paused or unconnected book: no estimate, no total, the reason says so)."""
+    terms = {held.instrument_id: ContractTerms(leg.instrument, leg.strike, leg.expiry)
+             for leg, held in zip(legs, bk.legs, strict=True)}
+    option = {i: t.instrument is not Instrument.FUT for i, t in terms.items()}
+    paid, why = paid_charges([PaperFill(o.kind, o.side, o.quantity, o.price, option[o.instrument_id])  # type: ignore[arg-type]
+                              for o in bk.orders], underlying, rates)
+    return after_charges_fields(after_charges(figures, terms, live, paid, why, underlying, rates))
+
+
+def _book_figures(bk: _Book, view: paper.TrackingView | None
+                  ) -> tuple[BookView, list[Decimal | None], dict[str, Decimal]]:
     """REQ-109 AC-4: every figure from the one engine on the orders (ofo.engine.orderbook.net_positions), exact. The
     open legs are priced only when the view is live (not paused, connected): a paused or unconnected view gives no
     open leg a figure and no unbooked / total (AC-5); an exited leg keeps its booked figure."""
@@ -255,14 +284,15 @@ def _book_figures(bk: _Book, view: paper.TrackingView | None) -> tuple[BookView,
     by_id = {p.instrument_id: p for p in figures.positions}
     pnls: list[Decimal | None] = [by_id[leg.instrument_id].booked if leg.exited else by_id[leg.instrument_id].unbooked
                                   for leg in bk.legs]
-    return figures, pnls
+    return figures, pnls, live
 
 
-def _figures(bk: _Book, legs: list[paper.TrackedLeg], view: paper.TrackingView | None,
-             reasons: list[paper.ContractReason | None]) -> dict:
+def _figures(bk: _Book, legs: list[paper.TrackedLeg], view: paper.TrackingView | None,  # noqa: PLR0913
+             reasons: list[paper.ContractReason | None], underlying: str, rates: ChargeRates | None) -> dict:
     """The per-leg rows and the paper figures shared by GET /strategies/{id}/tracking and GET /tracking. ``view`` None
     = not connected: booked is still known (the closing orders are stored), unbooked and total are not."""
-    figures, pnls = _book_figures(bk, view)
+    figures, pnls, live = _book_figures(bk, view)
+    after = _after(bk, legs, figures, live, underlying, rates)
     rows = []
     for i, (leg, held) in enumerate(zip(legs, bk.legs, strict=True)):
         price = None if view is None else view.legs[i]
@@ -285,10 +315,11 @@ def _figures(bk: _Book, legs: list[paper.TrackedLeg], view: paper.TrackingView |
     if view is None:
         open_reasons = [r for i, r in enumerate(reasons) if not bk.legs[i].exited]
         return {"legs": rows, "state": "NOT_CONNECTED", "pause_reason": next((r for r in open_reasons if r), None),
-                "as_of": None, "total": None, "unbooked": None, "booked": _money(figures.booked)}
+                "as_of": None, "total": None, "unbooked": None, "booked": _money(figures.booked)} | after
     state = "EXITED" if view.exited else "PAUSED" if view.paused else "LIVE"
     return {"legs": rows, "state": state, "pause_reason": view.pause_reason, "as_of": view.as_of,
-            "total": _money(figures.total), "booked": _money(figures.booked), "unbooked": _money(figures.unbooked)}
+            "total": _money(figures.total), "booked": _money(figures.booked),
+            "unbooked": _money(figures.unbooked)} | after
 
 
 def _texts(figures: dict) -> dict:
@@ -309,8 +340,8 @@ def _plain(value: Decimal) -> str:
 
 def _view(bk: _Book, legs: list[paper.TrackedLeg], underlying: str,  # noqa: PLR0913
           view: paper.TrackingView | None, answered_at: datetime.datetime,
-          reasons: list[paper.ContractReason | None]) -> TrackingOut:
-    figures = _figures(bk, legs, view, reasons)
+          reasons: list[paper.ContractReason | None], rates: ChargeRates | None = None) -> TrackingOut:
+    figures = _figures(bk, legs, view, reasons, underlying, rates)
     texts = _texts(figures)
     texts["paper_pnl_text"] = texts.pop("total_text")
     body: dict = {"strategy_id": bk.strategy_id, "started_at": bk.started_at,
@@ -357,22 +388,23 @@ def _legs_of(bk: _Book, contracts: Sequence[tracked_contracts.TrackedContract]) 
 
 
 async def _answer(db: Any, stored, bk: _Book, ctx: MarketContext | None,  # noqa: PLR0913
-                  feed: LiveFeed | None, threshold: Decimal, answered_at: datetime.datetime) -> TrackingOut:
+                  feed: LiveFeed | None, threshold: Decimal, answered_at: datetime.datetime,
+                  rates: ChargeRates | None = None) -> TrackingOut:
     legs, reasons = await _entry_legs(db, bk)
     underlying = stored.saved.definition.underlying  # fixed for the strategy's life (strategy_store UNDERLYING_FIXED)
     exits = bk.exit_prices
     if len(exits) == len(legs):  # every leg exited: frozen at its exit prices, no market read (EXITED)
         return _view(bk, legs, underlying, paper.tracking_view(None, legs, threshold, reasons, exits),
-                     answered_at, reasons)
+                     answered_at, reasons, rates)
     if not _connected(ctx):
-        return _view(bk, legs, underlying, None, answered_at, reasons)
+        return _view(bk, legs, underlying, None, answered_at, reasons, rates)
     snapshot = await _snapshot(ctx, feed, underlying, _open_keys(bk, legs, reasons))
     view = paper.tracking_view(snapshot, legs, check_threshold(threshold), reasons, exits)
     if view.detections and _playbook_type(ctx, underlying, legs, bk, view) is not None:
         # F-71 / GC-ADJ2 1C: a strategy whose shape is a playbook type is checked by its playbook
         # (GET /api/strategies/{id}/adjustment-check); the fixed 0.5% level rule fires at entry for an iron condor
         view = dataclasses.replace(view, detections=())
-    return _view(bk, legs, underlying, view, answered_at, reasons)
+    return _view(bk, legs, underlying, view, answered_at, reasons, rates)
 
 
 def _playbook_type(ctx: MarketContext | None, underlying: str, legs: list[paper.TrackedLeg], bk: _Book,
@@ -424,12 +456,13 @@ async def get_tracking(strategy_id: int,  # noqa: PLR0913 - FastAPI dependencies
                        ctx: Annotated[MarketContext | None, Depends(get_market_context)],
                        feed: Annotated[LiveFeed | None, Depends(get_live_feed)],
                        now: Annotated[AnswerClock, Depends(get_answer_clock)],
-                       threshold: Annotated[Decimal, Depends(get_near_level_threshold)]) -> TrackingOut:
+                       threshold: Annotated[Decimal, Depends(get_near_level_threshold)],
+                       rates: Annotated[ChargeRates | None, Depends(load_charge_rates)]) -> TrackingOut:
     stored = await _load(db, user_ref, strategy_id)
     bk = await _load_book(db, strategy_id)
     if bk is None:
         raise StrategyRefused("user_input_request_not_available", Failure.NOT_FOUND)
-    return await _answer(db, stored, bk, ctx, feed, threshold, now())
+    return await _answer(db, stored, bk, ctx, feed, threshold, now(), rates)
 
 
 @router.post("/strategies/{strategy_id}/tracking/exit", response_model=TrackingOut,
@@ -479,7 +512,7 @@ async def exit_tracking(strategy_id: int, body: TrackingExitIn,  # noqa: PLR0913
                                                    ctx=ctx, at=answered, reader=tracked_reader,
                                                    rates=rates),  # an exit
                          paper_store.EXIT_EXCEEDS_OPEN, "tracking_leg_already_exited")
-    return await _answer(db, stored, after, ctx, feed, threshold, answered)
+    return await _answer(db, stored, after, ctx, feed, threshold, answered, rates)
 
 
 @router.get("/tracking", response_model=TrackingListOut)
@@ -488,7 +521,8 @@ async def list_tracking(db: Annotated[Any, Depends(get_db)],  # noqa: PLR0913 - 
                         ctx: Annotated[MarketContext | None, Depends(get_market_context)],
                         feed: Annotated[LiveFeed | None, Depends(get_live_feed)],
                         now: Annotated[AnswerClock, Depends(get_answer_clock)],
-                        threshold: Annotated[Decimal, Depends(get_near_level_threshold)]) -> TrackingListOut:
+                        threshold: Annotated[Decimal, Depends(get_near_level_threshold)],
+                        rates: Annotated[ChargeRates | None, Depends(load_charge_rates)]) -> TrackingListOut:
     """GC-BP step 4: every tracked strategy (one with paper orders) of the signed-in user (never another user's: the
     store filters by the strategies table's owner) with total / booked / unbooked and per-leg figures. Fixed cost
     whatever the count (finding F-3): one order query, one contract batch (two queries), and ONE market read per
@@ -524,7 +558,7 @@ async def list_tracking(db: Annotated[Any, Depends(get_db)],  # noqa: PLR0913 - 
             view = paper.tracking_view(snapshots[r.underlying], legs, checked, reasons, exits)
         else:
             view = None
-        figures = _figures(bk, legs, view, reasons)
+        figures = _figures(bk, legs, view, reasons, r.underlying, rates)
         out.append({"strategy_id": bk.strategy_id, "name": sf.shown_name(r.name), "underlying": r.underlying,
                     "started_at": bk.started_at} | figures | _texts(figures))
     return TrackingListOut.model_validate({"strategies": out, "answered_at": now()})

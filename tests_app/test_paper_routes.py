@@ -404,6 +404,97 @@ async def test_a_fully_exited_strategy_has_zero_left_and_booked_as_the_original(
     assert (body["max_profit_text"], body["loss_left_text"]) == ("+1,300.00", "0.00")
 
 
+# --- GC-ICFIX u122/u123: the total after charges (ADR-263), one engine function --------------------------------------
+
+async def _closed_141_like(db):
+    """SELL 65 @ 100.00 then BUY 65 @ 100.50: booked (100.00 - 100.50) x 65 = -32.50, the size of strategy 141's result.
+    Hand charges (RATES): SELL premium 6,500 -> 20 + STT 9.75 + 2.30945 + 0.0065 + GST 4.016871 = 36.082821; BUY premium
+    6,532.50 -> 20 + 2.32099725 + 0.0065325 + stamp 0.195975 + GST 4.019055355 = 26.542560105; sum 62.625381105 shown
+    rounded up 62.63. After = -32.50 - 62.63 - 0 = -95.13."""
+    app, stored, *_ = await _setup(db)
+    c0 = stored.saved.contract_ids[0]
+    await paper_store.place(db, stored.user_ref, stored.id, [_new(c0, "SELL", 65, "100.00"),
+                                                              _new(c0, "BUY", 65, "100.50", "exit")])
+    app.dependency_overrides[load_charge_rates] = lambda: RATES
+    return app, stored
+
+
+async def test_core_a_closed_book_sends_the_total_after_charges_beside_the_old_before_figure(db):
+    app, stored = await _closed_141_like(db)
+    async with _client(app) as c:
+        body = (await c.get(f"/paper/strategies/{stored.id}")).json()
+        listed = (await c.get("/paper/strategies")).json()
+    assert D(body["total"]) == D("-32.50")  # the old field keeps its meaning (before charges)
+    assert (D(body["total_after"]), D(body["charges_paid"]), D(body["charges_to_close"])) == (
+        D("-95.13"), D("62.63"), D("0"))
+    assert (body["total_after_text"], body["after_charges_reason"]) == (MINUS + "95.13", None)
+    row = next(s for s in listed["strategies"] if s["strategy_id"] == stored.id)
+    assert {f: row[f] for f in ("total_after", "charges_paid", "charges_to_close")} == {
+        f: body[f] for f in ("total_after", "charges_paid", "charges_to_close")}  # the list equals the single route
+    assert D(listed["totals"]["total_after"]) == D("-95.13")
+
+
+async def test_tracking_and_history_replies_carry_the_same_after_figure_from_the_same_function(db):
+    app, stored = await _closed_141_like(db)  # hand: -32.50 - 62.63 - 0 = -95.13 (see _closed_141_like)
+    async with _client(app) as c:
+        tracked = (await c.get(f"/strategies/{stored.id}/tracking")).json()
+        listed = next(s for s in (await c.get("/tracking")).json()["strategies"] if s["strategy_id"] == stored.id)
+        history = (await c.get(f"/api/strategies/{stored.id}/adjustment-history")).json()["totals"]
+    assert D(tracked["paper_pnl"]) == D("-32.50")  # before charges: unchanged field
+    for body in (tracked, listed, history):
+        assert (D(body["total_after"]), D(body["charges_paid"]), D(body["charges_to_close"])) == (
+            D("-95.13"), D("62.63"), D("0")), body
+        assert body["total_after_text"] == MINUS + "95.13" and body["after_charges_reason"] is None
+
+
+async def test_tracking_without_rates_keeps_the_before_figure_and_says_why_there_is_no_after_figure(db):
+    app, stored = await _closed_141_like(db)
+    app.dependency_overrides[load_charge_rates] = lambda: None
+    async with _client(app) as c:
+        tracked = (await c.get(f"/strategies/{stored.id}/tracking")).json()
+    assert D(tracked["paper_pnl"]) == D("-32.50")
+    assert (tracked["total_after"], tracked["after_charges_reason"]) == (None, "rates_unavailable")
+
+
+async def test_an_open_book_at_live_prices_is_after_charges_paid_and_estimated_exit(db):
+    # SELL 65 @ 100 now 80: +1,300.00 before; paid 36.09; exit BUY 65 @ 80 = 25.95 (sums in the engine test); 1,237.96.
+    app, stored, provider, _clock, last = await _setup(db)
+    c0 = stored.saved.contract_ids[0]
+    await paper_store.place(db, stored.user_ref, stored.id, [_new(c0, "SELL", 65, "100.00")])
+    provider.on_frame(_frame(provider, IDS[0], "80.00"), last)
+    app.dependency_overrides[load_charge_rates] = lambda: RATES
+    async with _client(app) as c:
+        body = (await c.get(f"/paper/strategies/{stored.id}")).json()
+    assert D(body["total"]) == D("1300.00")
+    assert (D(body["total_after"]), D(body["charges_paid"]), D(body["charges_to_close"])) == (
+        D("1237.96"), D("36.09"), D("25.95"))
+    assert body["after_charges_reason"] is None
+
+
+async def test_unknown_charge_rates_send_no_after_figure_with_the_reason_and_keep_the_before_figure(db):
+    app, stored = await _closed_141_like(db)
+    app.dependency_overrides[load_charge_rates] = lambda: None
+    async with _client(app) as c:
+        body = (await c.get(f"/paper/strategies/{stored.id}")).json()
+    assert D(body["total"]) == D("-32.50")
+    assert (body["total_after"], body["total_after_text"], body["charges_paid"]) == (None, None, None)
+    assert body["after_charges_reason"] == "rates_unavailable" and body["after_charges_reason_text"]
+
+
+async def test_prices_not_live_send_no_after_figure_and_the_reason(db):
+    app, stored, provider, clock, last = await _setup(db)
+    c0 = stored.saved.contract_ids[0]
+    await paper_store.place(db, stored.user_ref, stored.id, [_new(c0, "SELL", 65, "100.00")])
+    provider.on_frame(_frame(provider, IDS[0], "80.00"), last)
+    app.dependency_overrides[load_charge_rates] = lambda: RATES
+    clock.now = last + datetime.timedelta(minutes=10)  # REQ-109 AC-5: stale -> paused
+    async with _client(app) as c:
+        body = (await c.get(f"/paper/strategies/{stored.id}")).json()
+    assert (body["total"], body["total_after"], body["charges_to_close"]) == (None, None, None)
+    assert body["after_charges_reason"] == "prices_not_live"
+    assert D(body["charges_paid"]) == D("36.09")  # what was paid is still known and still sent
+
+
 # --- GC-TP step 4b round 2: lot_size on every position ------------------------------------------------------------
 
 async def _contract_lot(db, contract_id: int) -> int:
