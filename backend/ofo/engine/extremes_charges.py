@@ -124,8 +124,8 @@ def with_charges(got: BookExtremes, charges: Decimal | None) -> BookExtremes:
 
 @dataclass(frozen=True)
 class AfterSplit:
-    """ADR-301 / ADR-302 / ADR-303: the after-charges parts of a paper book. All None when the book has no after total
-    (``BookAfterCharges.reason`` says why); ``recover`` is None unless Profit left after is above Max profit after."""
+    """ADR-303 / ADR-306: the after-charges parts of a paper book. All None when the book has no after total
+    (``BookAfterCharges.reason`` says why); ``recover`` is the loss on screen (minus Total after), None unless negative."""
 
     booked_after: Decimal | None
     unbooked_after: Decimal | None
@@ -139,9 +139,9 @@ def after_split(  # noqa: PLR0913 - the book, its terms, live prices, underlying
         rates: ChargeRates | None, after: BookAfterCharges) -> AfterSplit:
     """The one place Booked / Unbooked / Profit left / Loss left are put after charges. Booked after = booked - ALL
     charges paid; Unbooked after = open-leg P&L - the estimated charges to close, so the two add up to
-    ``after.total_after`` exactly (ADR-303). Profit left / Loss left after = the figure from now - paid - close
-    estimate, NOT capped (ADR-302); a closed book has 0 left. ``recover`` (reading taken, ADR-302) = Profit left
-    after - Max profit after when positive, so "Max profit + recover = Profit left" holds on the screen."""
+    ``after.total_after`` exactly (ADR-303). ADR-306: Profit left after = Max profit after - Total after and Loss left
+    after = Max loss after - Total after (so Total + left = the extreme, exactly), NOT capped (ADR-302); a closed book
+    has 0 left. ``recover`` = minus Total after when Total after is negative (the loss on screen), else None."""
     if after.total_after is None or view.unbooked is None:
         return AfterSplit(None, None, None, None, None)
     booked_after, unbooked_after = view.booked - after.paid, view.unbooked - after.open_exit
@@ -150,15 +150,13 @@ def after_split(  # noqa: PLR0913 - the book, its terms, live prices, underlying
         return AfterSplit(booked_after, unbooked_after, None, None, None)
     if not any(p.net_quantity for p in view.positions):
         return AfterSplit(booked_after, unbooked_after, got.profit_left, got.loss_left, None)
-    charges = after.paid + after.open_exit
-
-    def left(value: Figure) -> Figure:
-        return value if value is UNLIMITED else value - charges  # type: ignore[operator]
-
-    profit_left = left(got.profit_left)
     round_trip = open_round_trip_charges(view, terms, underlying, rates)
-    top = None if round_trip is None else with_charges(got, round_trip).max_profit  # no mixing of bases (F5)
-    recover = None
-    if profit_left is not UNLIMITED and top is not None and top is not UNLIMITED and profit_left > top:  # type: ignore[operator]
-        recover = profit_left - top  # type: ignore[operator]
-    return AfterSplit(booked_after, unbooked_after, profit_left, left(got.loss_left), recover)
+    if round_trip is None:  # Max profit / Max loss after cannot be given: no mixing of bases (F5, ADR-306 (6))
+        return AfterSplit(booked_after, unbooked_after, None, None, None)
+    net, total = with_charges(got, round_trip), after.total_after
+
+    def left(extreme: Figure | None) -> Figure | None:
+        return extreme if extreme is None or extreme is UNLIMITED else extreme - total  # type: ignore[operator]
+
+    return AfterSplit(booked_after, unbooked_after, left(net.max_profit), left(net.max_loss),
+                      -total if total < 0 else None)

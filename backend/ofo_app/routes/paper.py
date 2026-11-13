@@ -251,8 +251,8 @@ class PaperExtremes(ApiModel):
     # F-94 (ADR-082 (2)): the round-trip charges inside Max Profit / Max Loss, and the sentence that says so
     extremes_charges: Money | None = None
     extremes_charges_text: CatalogueText | None = None
-    # GC-ICFIX u124 (ADR-301, ADR-302): Profit left / Loss left AFTER all charges, not capped; ``recover`` = Profit left
-    # after - Max profit after, only when above it. Absent when the book has no after total (see after_charges_reason).
+    # ADR-306: Profit left / Loss left after = Max profit / Max loss after - Total after, not capped (ADR-302);
+    # ``recover`` = minus Total after when negative. Absent when the book has no after total (see after_charges_reason).
     profit_left_after: Extreme = None
     loss_left_after: Extreme = None
     profit_left_after_text: CatalogueText | None = None
