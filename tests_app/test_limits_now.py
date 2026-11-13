@@ -19,9 +19,8 @@ import pytest
 from ofo.adjustment import playbook_eval as pe
 from ofo.adjustment import stop_lines as sl
 from ofo.engine import adjust_money
-from ofo.errors.explanations import render_explanation
 from ofo.engine.metrics import UNLIMITED as ENGINE_UNLIMITED
-
+from ofo.errors.explanations import render_explanation
 from ofo_app import adjustment_check as check
 from ofo_app import settings_in_force as sif
 from ofo_app.routes import adjustment_check as route

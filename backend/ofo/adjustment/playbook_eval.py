@@ -286,7 +286,8 @@ class RuleValue:
 
 @dataclass(frozen=True)
 class LimitNow:
-    """ADR-304 / GC-ICFIX u113: the limit a rule acts on for THIS trade now, from the evaluator's own path (``limits_now``).
+    """ADR-304 / GC-ICFIX u113: the limit a rule acts on for THIS trade now, from the evaluator's own path
+    (``limits_now``).
     ``threshold`` = the limit compared against now (stage, plan Target / Stop and expiry-day tightening applied; for the
     credit line the multiple); ``amount`` = a stop's rupee loss where the evaluator has one; ``later`` = the values of
     the later stages; ``tightened_by`` = the tightening X % when it is applied now; ``reason`` = the evaluator's own
@@ -476,7 +477,7 @@ def _limit(c: _Ctx, tid: str) -> Decimal | str:
 
 
 def _tighten_of(c: _Ctx, tid: str) -> Decimal | None:
-    """The due day rule's X % when ``tid`` is a tightened trigger (the one test ``_tightened`` and ``limits_now`` share)."""
+    """The due day rule's X % when ``tid`` is a tightened trigger (the test ``_tightened`` and ``limits_now`` share)."""
     pct = c.state.tighten_percent
     return pct if pct is not None and tid in c.body.get("tightened", ()) else None
 

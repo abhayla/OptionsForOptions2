@@ -83,7 +83,8 @@ class CheckResultOut(ApiModel):
     reason: CatalogueText | None
     wording: CatalogueText | None
     condition: CatalogueText | None = None  # the condition in words, from the body's label and unit
-    #: GC-ICFIX u142: a fired stop's loss now and stop line in rupees and percent, and the time it fired (all server text)
+    #: GC-ICFIX u142: a fired stop's loss now and stop line in rupees and percent, and the time it fired
+    #: (all server text)
     stop_text: CatalogueText | None = None
     suggestion_id: int | None = None  # a flag's open REQ-112 record (Dismiss / acted on name it)
     note: CatalogueText | None = None  # ADR-217: "You dismissed this" on a flag whose dismissed record still holds
@@ -101,8 +102,10 @@ class CheckLimitOut(ApiModel):
     state: Literal["checked", "not_checked", "already_true"]
     reason: CatalogueText | None  # the evaluator's reason text when not checked
     text: CatalogueText | None  # the one sentence the card prints for this limit; None -> the card says could-not-load
-    after: int | None = None  # ADR-296: "already_true" only: the adjustment number it has been true since (None = the entry)
-    reason_code: Identifier | None = None  # why a not-checked row is not (e.g. target_unset: the trade's Target was emptied)
+    # ADR-296: "already_true" only: the adjustment number it has been true since (None = the entry)
+    after: int | None = None
+    # why a not-checked row is not (e.g. target_unset: the trade's Target was emptied)
+    reason_code: Identifier | None = None
 
 
 class CheckPauseOut(ApiModel):
@@ -184,7 +187,7 @@ def result_out(r: pe.Result, flag_wording: Any, opened: dict[str, int] | None = 
             "threshold": None, "reason": render(r.code, **dict(r.slots)), "wording": None}
 
 
-def limit_text(x: pe.LimitNow, reason: Any, percent_stop_checked: bool, target_unset: bool = False) -> Any:
+def limit_text(x: pe.LimitNow, reason: Any, percent_stop_checked: bool, target_unset: bool = False) -> Any:  # noqa: C901 - one sentence per answer state
     """ADR-304 (3): the one sentence for a limit row, from the evaluator's own numbers
     (the card prints it, derives nothing).
     A rule that is not checked says why and shows NO number, even when the row still carries one; a row the card cannot
@@ -193,7 +196,8 @@ def limit_text(x: pe.LimitNow, reason: Any, percent_stop_checked: bool, target_u
         return None
     target, credit = x.trigger_id == "T-07", x.rule_id == sl.CREDIT_RULE
     if x.state == "not_checked":
-        if target and target_unset:  # ADR-305: the Target was emptied for this trade; not "switched off in the rule set"
+        # ADR-305: the Target was emptied for this trade; not "switched off in the rule set"
+        if target and target_unset:
             return render_explanation("limit_target_none")
         return None if reason is None else render_explanation("limit_target_off" if target else "limit_stop_off", reason=reason)  # noqa: E501
     if not isinstance(x.threshold, Decimal):
@@ -213,7 +217,8 @@ def limit_text(x: pe.LimitNow, reason: Any, percent_stop_checked: bool, target_u
     if isinstance(x.tightened_by, Decimal):
         line = render_explanation("limit_tightened", line=line, pct=x.tightened_by.normalize())
     if x.state == "already_true":
-        line = render_explanation("limit_already_true_after", line=line, n=x.after) if x.after > 0 else             render_explanation("limit_already_true", line=line)
+        line = (render_explanation("limit_already_true_after", line=line, n=x.after) if x.after > 0
+                else render_explanation("limit_already_true", line=line))
     if credit and percent_stop_checked:  # two stops race: the first to be reached acts (ADR-247)
         line = render_explanation("plan_stop_words_first", words=line)
     return line
@@ -229,13 +234,17 @@ def limits_out(limits: tuple[pe.LimitNow, ...], target_unset: bool = False) -> l
                     "later": [_num(v) for v in x.later], "tightened_by": _num(x.tightened_by), "state": x.state,
                     "reason": reason, "text": limit_text(x, reason, race, target_unset),
                     "after": x.after if x.state == "already_true" and x.after > 0 else None,
-                    "reason_code": "target_unset" if target_unset and x.trigger_id == "T-07" and x.state == "not_checked" else None})
+                    "reason_code": ("target_unset"
+                                    if target_unset and x.trigger_id == "T-07" and x.state == "not_checked" else None)})
     return out
 
 
-def stop_text(r: pe.Result, limits: tuple[pe.LimitNow, ...], pnl: Any, fired_at: Mapping[str, datetime.datetime]) -> Any:
+def stop_text(
+    r: pe.Result, limits: tuple[pe.LimitNow, ...], pnl: Any, fired_at: Mapping[str, datetime.datetime],
+) -> Any:
     """GC-ICFIX u142: a fired stop's warning detail, all from the evaluator's numbers: the loss now and the stop line in
-    rupees and percent (the credit stop: rupees and the multiple), and when its record opened. Any figure missing -> None."""
+    rupees and percent (the credit stop: rupees and the multiple), and when its record opened.
+    Any figure missing -> None."""
     if not isinstance(r, pe.Flag):
         return None
     credit = r.rule_id == sl.CREDIT_RULE
@@ -247,7 +256,8 @@ def stop_text(r: pe.Result, limits: tuple[pe.LimitNow, ...], pnl: Any, fired_at:
     loss = max(-pnl, Decimal(0)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     try:
         if credit:
-            line = render_explanation("stop_fired_credit", loss=loss, stop=lim.amount, multiple=lim.threshold.normalize())
+            line = render_explanation(
+                "stop_fired_credit", loss=loss, stop=lim.amount, multiple=lim.threshold.normalize())
         else:
             line = render_explanation("stop_fired_loss", loss=loss, loss_pct=_num(r.value).normalize(), stop=lim.amount,
                                       stop_pct=_num(r.threshold).normalize())
@@ -338,7 +348,8 @@ async def adjustment_check(  # noqa: PLR0913 - FastAPI dependencies, one per inp
     stype = check.strategy_type(tracked.position, spot.value if spot.available else None, listed)
     resolved = await check.resolve(db, user_ref, strategy_id, stype)
     reply: dict[str, Any] = {
-        "strategy_id": strategy_id, "as_of": market.now, "as_of_text": render_explanation("check_as_of", time=market.now),
+        "strategy_id": strategy_id, "as_of": market.now,
+        "as_of_text": render_explanation("check_as_of", time=market.now),
         "strategy_type": stype,
         "type_name": None if stype is None else render_explanation("adjust_check_type_name", name=SHOWN_NAMES[stype]),
         "playbook": {"source": resolved.source, "id": resolved.playbook_id, "status": resolved.status,
@@ -360,11 +371,14 @@ async def adjustment_check(  # noqa: PLR0913 - FastAPI dependencies, one per inp
     opened, dismissed, fired_at = await stored_records(db, user_ref, strategy_id, ev)
     wording = render_explanation("adjust_check_flag_system" if resolved.is_system else "adjust_check_flag_user")
     guards = resolved.body.get("guards")
-    target_unset = resolved.source == "plan" and isinstance(guards, Mapping) and         guards.get("profit_target_pct_of_max_profit") == ""  # ADR-305: emptied for this trade
+    # ADR-305: emptied for this trade
+    target_unset = (resolved.source == "plan" and isinstance(guards, Mapping)
+                    and guards.get("profit_target_pct_of_max_profit") == "")
     reply |= {"stage": check.stage_out(ev.stage_name, ev.stage_index),
               "withheld": None if ev.withheld is None else render(ev.withheld),
               "results": [result_out(r, wording, opened, dismissed=dismissed, body=resolved.body,
-                                    cheapest=cheapest(state)) | {"stop_text": stop_text(r, ev.limits, state.pnl, fired_at)}
+                                    cheapest=cheapest(state))
+                              | {"stop_text": stop_text(r, ev.limits, state.pnl, fired_at)}
                           for r in ev.results],
               "limits": limits_out(ev.limits, target_unset)}
     return AdjustmentCheckOut.model_validate(reply)
