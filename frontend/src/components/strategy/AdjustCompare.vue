@@ -77,7 +77,7 @@
             </fieldset>
             <div v-for="r in RANGES.filter((x) => facets.ranges[x.id])" :key="r.id" class="mt-2" :data-testid="`adjust-range-${r.id}`">
               <label class="flex flex-wrap items-center gap-2 text-xs">
-                <span class="font-semibold">{{ r.label }}</span>
+                <span class="font-semibold">{{ rangeLabel(reply, r) }}</span>
                 <span class="text-ink-muted" :data-testid="`adjust-range-${r.id}-min`">{{ rangeEndText(r, facets.ranges[r.id].min) }}</span>
                 <input
                   type="range" step="any" class="min-w-0 flex-1" :min="facets.ranges[r.id].min" :max="facets.ranges[r.id].max"
@@ -185,7 +185,7 @@ import { readTracking } from '@/lib/tracking'
 import { stateRows } from '@/lib/adjustDrawer'
 import {
   EMPTY_FILTERS, GROUP_TITLES, KIND_TITLES, MAX_PROFIT_AT_ZERO_LABEL, NO_CHANGE_ID, RANGES, SIDE_TITLES, UNAVAILABLE_FOR_FILTER, UNAVAILABLE_VALUE,
-  applyFilters, buildFacets, cmpDecimal, isNoChange, exitLegsFromApproach, isFullExit, legsFromApproach, rangeEndText, refusalText, refusedApproaches, showingText, tableApproaches,
+  applyFilters, buildFacets, cmpDecimal, rangeLabel, isNoChange, exitLegsFromApproach, isFullExit, legsFromApproach, rangeEndText, refusalText, refusedApproaches, showingText, tableApproaches,
 } from '@/lib/adjustCompare'
 
 const props = defineProps({

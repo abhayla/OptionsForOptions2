@@ -52,7 +52,7 @@
 import { computed, ref } from 'vue'
 import api, { NEUTRAL_ERROR } from '@/services/api'
 import { istTime } from '@/lib/displayFormat'
-import { afterFigure } from '@/lib/tracking'
+import { BEFORE_CHARGES, afterFigure } from '@/lib/tracking'
 import AfterChargesTap from '@/components/common/AfterChargesTap.vue'
 
 const props = defineProps({ strategyId: { type: Number, required: true } })
@@ -73,8 +73,8 @@ const tiles = computed(() => {
   const pnl = afterFigure(t, t.pnl_text ?? null, reasonOf(t.open_reason_text)) // GC-ICFIX (ADR-263): the whole-trade P&L after charges, labelled
   return [
     { id: 'pnl', label: `Whole-trade P&L ${pnl.label}`.trim(), value: pnl.text ?? DASH, reason: pnl.reason, breakdown: pnl.breakdown },
-    { id: 'booked', label: 'Booked so far', value: t.booked_text },
-    { id: 'open', label: 'Open legs now', value: t.open_pnl_text ?? DASH, reason: t.open_pnl_text ? null : reasonOf(t.open_reason_text) },
+    { id: 'booked', label: `Booked so far ${BEFORE_CHARGES}`, value: t.booked_text },
+    { id: 'open', label: `Open legs now ${BEFORE_CHARGES}`, value: t.open_pnl_text ?? DASH, reason: t.open_pnl_text ? null : reasonOf(t.open_reason_text) },
     { id: 'credit', label: 'Total credit collected', value: t.credit_text },
     { id: 'left', label: 'Premium still left to earn', value: t.premium_left_text ?? DASH, reason: t.premium_left_text ? null : reasonOf(t.premium_reason_text) },
     { id: 'used', label: 'Adjustments used', value: `${t.adjustments_used} of ${t.adjustments_max ?? DASH}`, reason: reasonOf(t.max_reason_text) },

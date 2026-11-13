@@ -20,6 +20,7 @@
     <HeldNote class="mt-2" :held="book.held" note />
     <p v-if="asOfLine" class="mt-2 text-xs text-ink-muted" data-testid="book-as-of">{{ asOfLine }}</p>
     <!-- u126 (REQ-109 AC-5): the read time of the answer these figures come from (the reply's answered_at, never the browser clock) -->
+    <p v-if="contractsChanged" class="mt-2 text-xs text-red-700" data-testid="book-contracts-changed">{{ CONTRACTS_CHANGED_TEXT }}</p>
     <p v-if="readAt" class="mt-2 text-xs text-ink-muted" data-testid="book-read-at">As of {{ readAt }} IST</p>
     <dl class="mt-2 flex gap-6 text-xs" data-testid="book-strip">
       <!-- GC-ICFIX u123 (ADR-263): the headline total is the server's after-charges text, labelled; else the before text, labelled, with the reason -->
@@ -37,6 +38,8 @@
     <div v-if="view === 'net'" class="mt-2 overflow-x-auto">
       <table class="w-full text-xs" data-testid="net-table">
         <thead class="text-ink-muted">
+          <!-- GC-ICFIX round 2 (F2): the server sends no after-charges form per contract: Booked / Unbooked / P&L are before charges, said once -->
+          <tr><th colspan="4"></th><th colspan="3" class="font-normal" data-testid="net-basis">(before charges)</th><th></th></tr>
           <tr><th class="text-left font-normal">Contract</th><th class="font-normal">Lots</th><th class="font-normal">Avg</th><th class="font-normal">LTP</th><th class="font-normal">Booked</th><th class="font-normal">Unbooked</th><th class="font-normal">P&amp;L</th><th></th></tr>
         </thead>
         <tbody>
@@ -58,7 +61,8 @@
           </tr>
         </tbody>
       </table>
-      <ul v-if="closed.length" class="mt-2 text-xs text-ink-muted" data-testid="closed-list">
+      <p v-if="closed.length" class="mt-2 text-xs text-ink-muted" data-testid="closed-basis">Closed contracts: booked P&amp;L (before charges)</p>
+      <ul v-if="closed.length" class="text-xs text-ink-muted" data-testid="closed-list">
         <li v-for="p in closed" :key="p.contract_id" class="flex gap-2" data-testid="closed-row">
           <span class="flex-1" data-testid="closed-contract">{{ p.contract_text }}</span>
           <span>Closed, booked</span><span class="num" data-testid="closed-booked">{{ p.booked_text }}</span>
@@ -86,40 +90,28 @@
 
 <script setup>
 import { computed, ref, watch } from 'vue'
-import api from '@/services/api'
 import { istClock } from '@/lib/displayFormat'
-import { afterFigure, pausedText } from '@/lib/tracking'
+import { CONTRACTS_CHANGED_TEXT, afterFigure, pausedText } from '@/lib/tracking'
 import AfterChargesTap from '@/components/common/AfterChargesTap.vue'
 import { withAsOf } from '@/lib/paperList'
-import { usePaperRefresh } from '@/lib/usePaperRefresh'
 import HeldNote from '@/components/strategy/HeldNote.vue'
 import { EXIT_ALL_LABEL, EXIT_LABEL, NET_POSITIONS_LABEL, ORDERBOOK_LABEL, exitLotsFrom, exitLotsOk, openLots, paperKindLabel } from '@/lib/paperDrafts'
 
 const props = defineProps({
   book: { type: Object, required: true }, // GET /paper/strategies/{id} as sent
   net: { type: Array, required: true }, // the net legs (netLegsFromBook): whole lots per open contract
+  readFailed: { type: Boolean, default: false },
+  contractsChanged: { type: Boolean, default: false },
   showOrders: { type: Number, default: 0 }, // fix/paper-dialog-safe: a bump switches to the Orderbook view (the unknown-outcome link)
 })
-const emit = defineEmits(['exit', 'exit-all', 'book'])
+const emit = defineEmits(['exit', 'exit-all'])
 
-// Live figures: the same shared re-read loop as the tracking views (usePaperRefresh, TRACKING_REFRESH_MS); the server prices the
-// book on every GET, so each answer's texts are shown as sent. The page takes the fresh book ('book') and hands it back as the
-// prop. The timer is cleared on unmount by the loop. An answer whose open contracts differ from the screen's is not taken: the
-// net legs (and a pending edit) belong to the book the page loaded (shortcut: such a change shows on the next reopen).
-const readFailed = ref(false)
-const openKey = (b) => (b.positions ?? []).filter((p) => p.net_quantity !== 0).map((p) => `${p.contract_id}:${p.net_quantity}`).join(',')
-usePaperRefresh({
-  key: () => props.book.strategy_id,
-  read: async (id) => (await api.get(`/paper/strategies/${id}`)).data,
-  onData: (b) => {
-    readFailed.value = false
-    if (Array.isArray(b?.positions) && openKey(b) === openKey(props.book)) emit('book', b)
-  },
-  onError: () => { readFailed.value = true }, // the last values stay; the line below says they are old
-})
+// GC-ICFIX round 2 (F4): this panel no longer reads. The page makes the ONE read (usePaperBookRead) and passes the reply as `book`,
+// the same reply the tracking box's total and the P&L table TOTAL row show. `readFailed`: the last read failed (the figures stay).
+// `contractsChanged`: the new reply's open contracts differ from the shown ones (it is taken; the net legs need a reload).
 // the paused sentence (REQ-109 AC-5) from the book's as_of; a failed read says the same with the last good answer's time
 const asOfLine = computed(() => {
-  if (readFailed.value) return pausedText(props.book.answered_at ?? null)
+  if (props.readFailed) return pausedText(props.book.answered_at ?? null)
   return props.book.state === 'PAUSED' || props.book.state === 'NOT_CONNECTED' ? pausedText(props.book.as_of ?? null) : null
 })
 

@@ -156,7 +156,7 @@ async function confirmRename(row) {
           <p v-if="s.status === 'closed'" class="col-span-full w-full text-ink-muted" data-testid="row-completed">
             <span data-testid="row-final-pnl">Final P&amp;L {{ s.final_pnl_text ?? s.completed_reason_text }}</span>
             <!-- GC-ICFIX u125 (ADR-259, ADR-263): charges paid and the net after charges, the server's fields as sent; absent -> "not available: <its reason>", never 0 -->
-            <span data-testid="row-charges"> · Charges {{ s.charges_paid ?? `not available: ${notAvailable(s)}` }}</span>
+            <span data-testid="row-charges"> · {{ s.charges_paid_text ?? (s.charges_paid != null ? `Charges ${s.charges_paid}` : `Charges not available: ${notAvailable(s)}`) }}</span>
             <span data-testid="row-net-after"> · Net after charges <AfterChargesTap :breakdown="netBreakdown(s)">{{ net(s) ?? `not available: ${notAvailable(s)}` }}</AfterChargesTap></span>
             <span data-testid="row-adjustments"> · Adjustments made {{ s.adjustments_made ?? s.completed_reason_text }}</span>
             <span data-testid="row-adjustment-cost"> · Adjustment cost {{ s.adjustment_cost_text ?? s.completed_reason_text }}</span>
