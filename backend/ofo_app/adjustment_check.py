@@ -164,7 +164,8 @@ def with_plan_target(body: Mapping) -> Mapping:
     """ADR-252 for T-07: the plan sheet's Target (guard ``profit_target_pct_of_max_profit``) is the T-07 value the check
     reads. Per expiry kind, a Target that differs from that row's early-stage value sets the early and middle stages to
     it and the last stage to min(Target, its value) (never looser); an equal, absent or unusable (not a number,
-    <= 0, > 100) Target changes nothing. Read at check time, so earlier plans count too. A copy; T-07 on/off kept."""
+    <= 0, > 100) Target changes nothing. Read at check time, so earlier plans count too. A copy. A Target that is applied
+    also switches T-07 ON for this trade (as the plan's Stop does T-06); otherwise on/off is kept."""
     guards, trig = body.get("guards"), (body.get("triggers") or {}).get("T-07")
     raw = guards.get("profit_target_pct_of_max_profit") if isinstance(guards, Mapping) else None
     try:
@@ -180,6 +181,7 @@ def with_plan_target(body: Mapping) -> Mapping:
             for n in filled:
                 values[n] = format(min(target, Decimal(values[n])) if n == filled[-1] else target, "f")
             out["triggers"]["T-07"][kind] = values
+            out["triggers"]["T-07"]["on"] = True
     except (ArithmeticError, TypeError, ValueError):  # not a number: the playbook's own value stands
         return body
     return out
