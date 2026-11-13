@@ -19,6 +19,8 @@
          text as sent; the Charges are never added to or taken from the P&L, and an absent one is a dash (never 0). -->
     <HeldNote class="mt-2" :held="book.held" note />
     <p v-if="asOfLine" class="mt-2 text-xs text-ink-muted" data-testid="book-as-of">{{ asOfLine }}</p>
+    <!-- u126 (REQ-109 AC-5): the read time of the answer these figures come from (the reply's answered_at, never the browser clock) -->
+    <p v-if="readAt" class="mt-2 text-xs text-ink-muted" data-testid="book-read-at">As of {{ readAt }} IST</p>
     <dl class="mt-2 flex gap-6 text-xs" data-testid="book-strip">
       <!-- GC-ICFIX u123 (ADR-263): the headline total is the server's after-charges text, labelled; else the before text, labelled, with the reason -->
       <div>
@@ -119,6 +121,8 @@ const asOfLine = computed(() => {
   if (readFailed.value) return pausedText(props.book.answered_at ?? null)
   return props.book.state === 'PAUSED' || props.book.state === 'NOT_CONNECTED' ? pausedText(props.book.as_of ?? null) : null
 })
+
+const readAt = computed(() => istClock(props.book.answered_at ?? null))
 
 const pausedSentence = () => { const s = props.book.pause_reason_text; return typeof s === 'string' && s.trim() !== '' ? withAsOf(s.trim(), props.book.as_of) : null }
 const total = computed(() => afterFigure(props.book, props.book.total_text ?? null, pausedSentence()))
