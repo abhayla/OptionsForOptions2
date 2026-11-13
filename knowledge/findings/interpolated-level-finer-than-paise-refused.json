@@ -1,25 +1,31 @@
 {
-  "id": "interpolated-level-finer-than-paise-refused",
-  "scope": "generic",
-  "class": "Any level the engine derives by interpolation or by subtracting a flat amount (a breakeven after charges, a zero crossing between two strikes) can carry more decimal places than paise; a downstream function that validates its input as a money value (at most 2 decimals) then refuses it and the whole figure fails. Tests built on round strikes and round charges never produce such a level, so the class stays hidden until real prices are used.",
-  "mechanism": "backend/ofo/engine/metrics.py:210-220 loss_regions_after_charges subtracts charges from expiry P&L and finds the zero crossing by interpolation, giving 22771.372; ofo.engine.pop probability_below refuses a level with more than 2 decimals ('a Decimal built from a float is refused').",
-  "first_seen": {
-    "date": "2026-10-30",
-    "where": "adjustments core proof (throwaway script, read-only, real NIFTY 3 Nov chain at 14:56:56 IST), approach A: iron condor put spread rolled up 200",
-    "evidence": "main3.log: 'POP unavailable: ValueError level must have at most 2 decimal places (a Decimal built from a float is refused), got 22771.372'; Before, B and C computed POP (87%, 92%, 94%) because their after-charge breakevens happened to fall on paise"
-  },
-  "fix": "Fixed 2026-10-30 (GC-ADJ1): every derived level is quantised half-even to 0.01 at its one producer (backend/ofo/engine/metrics.py _to_decimal, rule from spec/business-rules/scenario-calculations.md section 3); probability_of_profit maps non-finite inputs to a named reason; the adjustment route withholds POP when charges are unknown.",
-  "detection": {
-    "status": "guarded",
-    "checks": [
-      "tests/engine/test_pop_paise_levels.py::test_ac4_property_non_round_prices_and_charges_give_pop_or_unavailable_never_valueerror",
-      "tests/engine/test_pop_paise_levels.py::test_ac4_f75_level_22771_372_becomes_22771_37_at_the_producer"
-    ],
-    "note": "Property test feeds real-chain-shaped non-round entry prices and charges and asserts a POP or a named Unavailable, never ValueError; mutation gate 5/5 killed on the quantise."
-  },
-  "spec_ref": [
-    "spec/requirements/REQ-046.md",
-    "spec/findings.md"
+ "id": "interpolated-level-finer-than-paise-refused",
+ "scope": "generic",
+ "class": "Any level the engine derives by interpolation or by subtracting a flat amount (a breakeven after charges, a zero crossing between two strikes) can carry more decimal places than paise; a downstream function that validates its input as a money value (at most 2 decimals) then refuses it and the whole figure fails. Tests built on round strikes and round charges never produce such a level, so the class stays hidden until real prices are used.",
+ "mechanism": "backend/ofo/engine/metrics.py:210-220 loss_regions_after_charges subtracts charges from expiry P&L and finds the zero crossing by interpolation, giving 22771.372; ofo.engine.pop probability_below refuses a level with more than 2 decimals ('a Decimal built from a float is refused').",
+ "first_seen": {
+  "date": "2026-10-30",
+  "where": "adjustments core proof (throwaway script, read-only, real NIFTY 3 Nov chain at 14:56:56 IST), approach A: iron condor put spread rolled up 200",
+  "evidence": "main3.log: 'POP unavailable: ValueError level must have at most 2 decimal places (a Decimal built from a float is refused), got 22771.372'; Before, B and C computed POP (87%, 92%, 94%) because their after-charge breakevens happened to fall on paise"
+ },
+ "fix": "Fixed 2026-10-30 (GC-ADJ1): every derived level is quantised half-even to 0.01 at its one producer (backend/ofo/engine/metrics.py _to_decimal, rule from spec/business-rules/scenario-calculations.md section 3); probability_of_profit maps non-finite inputs to a named reason; the adjustment route withholds POP when charges are unknown.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [
+   "tests/engine/test_pop_paise_levels.py::test_ac4_property_non_round_prices_and_charges_give_pop_or_unavailable_never_valueerror",
+   "tests/engine/test_pop_paise_levels.py::test_ac4_f75_level_22771_372_becomes_22771_37_at_the_producer"
   ],
-  "occurrences": []
+  "note": "2026-11-13: new occurrence in a second place (Leg entry price); fix built, Opus check pending, so the class is unguarded until it lands. The earlier POP property test covers the POP path only."
+ },
+ "spec_ref": [
+  "spec/requirements/REQ-046.md",
+  "spec/findings.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-11-13",
+   "where": "Leg constructor refuses an entry price with more than 2 decimals (GC-ICFIX)",
+   "evidence": "A position filled in two orders (100.00 and 100.05 -> 100.025) crashed the after-charges figures (873 of 3,000 random books in a reviewer's probe; introduced and fixed on 13 Nov); pre-existing, the adjustment offer / compare routes crashed 99 times over the 12 standard scenarios with one averaged leg. Fix built (branch build/gc-icfix-avg), check pending, not merged."
+  }
+ ]
 }

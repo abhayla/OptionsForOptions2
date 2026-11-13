@@ -1,0 +1,27 @@
+{
+ "id": "panel-renders-nothing-when-its-read-fails",
+ "scope": "project",
+ "class": "Any panel that is drawn only when its data read succeeds: a slow or failed read removes the panel with no message, so the user cannot tell absent from broken.",
+ "mechanism": "The plan card was conditional on the plan response; a request over its time limit left it empty.",
+ "first_seen": {
+  "date": "2026-11-13",
+  "where": "plan card on 8 practice trades (GC-ICFIX issue 2)",
+  "evidence": "The card vanished on 4 of 8 practice trades when the plan request took 12-18 s against a 10 s limit."
+ },
+ "fix": "One shared could-not-load state with a Retry; the plan read alone has a 30 s limit.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "Unguarded: no named check is confirmed to cover the class; the proof was one real run, not a standing check. Pixels not proven (no screen proof yet)."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-295.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-11-13",
+   "where": "plan card on 8 practice trades (GC-ICFIX issue 2)",
+   "evidence": "The card vanished on 4 of 8 practice trades when the plan request took 12-18 s against a 10 s limit."
+  }
+ ]
+}

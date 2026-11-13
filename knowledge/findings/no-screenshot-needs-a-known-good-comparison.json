@@ -1,0 +1,25 @@
+{
+ "id": "no-screenshot-needs-a-known-good-comparison",
+ "scope": "generic",
+ "class": "A 'not found' or 'no screenshot' result read as the page's fault without a known-good comparison: the capture tool itself may be failing.",
+ "mechanism": "Chrome screenshots time out after the first frame while page text still reads; the PC is not locked, the window is likely not drawing.",
+ "first_seen": {
+  "date": "2026-11-13",
+  "where": "GC-ICFIX screen proofs u104, u116, u130, u145, u154, u165",
+  "evidence": "Screenshots time out after the first frame while page text reads; every screen proof is still open."
+ },
+ "fix": "Owner wakes the screen and brings the Chrome window to the front; compare with a page known to draw first.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "Open: blocks all screen proofs. Touches no spec section (process class)."
+ },
+ "spec_ref": [],
+ "occurrences": [
+  {
+   "date": "2026-11-13",
+   "where": "GC-ICFIX screen proofs u104, u116, u130, u145, u154, u165",
+   "evidence": "Screenshots time out after the first frame while page text reads; every screen proof is still open."
+  }
+ ]
+}

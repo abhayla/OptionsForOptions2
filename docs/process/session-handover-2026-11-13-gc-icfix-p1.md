@@ -1,0 +1,53 @@
+# Handover: GC-ICFIX phase 1, 13 Nov 2026
+
+Contract: `docs/process/goal-contract-GC-ICFIX-2026-11-13.md`. Branch `fix/gc-icfix` in `D:\Abhay\Ventures\OptionsForOptions2-gc-icfix`.
+NOTHING IS PUSHED. Tracker: https://claude.ai/artifact/LcMTSr5xx8LvAYVniotkxK (rows u001..u611).
+Status in one line: the repairs are built and checked on the branch; the screen proofs and the phase 1 close are not done.
+
+## DONE (built, independently checked, merged on the branch)
+- Setup u001-u005.
+- Issue 1: the plan Target is acted on; any saved Target acts; an empty Target per ADR-305.
+- Issue 2: plan card and plan box show could-not-load with Retry; limits are read from the rule check; re-read on refresh with an as-of time.
+- Issue 5: the stop warning follows the live check (rupees, percent, time); an already-true condition shows a grey line with the adjustment number.
+- Issue 6: the dialog frame (buttons pinned, body scrolls).
+- Issue 7: Customise edits the trade's own rules.
+- Issues 3 and 4: the after-charges figure comes from one engine function on every total; booked / unbooked split; profit left by ADR-306; breakdown one tap away; one read feeds the three totals.
+- Decision rows ADR-294 to ADR-306:
+  - 294 profit target is before charges, said out loud; 295 no plan is allowed, and it is stated; 296 the stop is quiet after an adjustment; 297 adjustment limit reached; 298 practice equals real; 299 Draft, Running, Completed; 300 a condor outside the entry guide is shown with a warning;
+  - 301 profit left and loss left are after all charges; 302 profit left has no cap; 303 where charges go between booked and unbooked; 304 the plan Target acts, limits on screen are the rule check's own; 305 the plan box is what the app does; 306 profit left and loss left add up.
+- Findings written today: 14 new files plus 3 extended, in `knowledge/findings/` (index regenerated).
+
+## PENDING in phase 1
+- The Opus re-check of issues 3 and 4 and of the adjustment-route crash fix (branch `build/gc-icfix-avg`, not merged).
+- Small screen leftovers of issues 3 and 4: P&L table rows unlabelled; the charge-rates sentence under Max profit / Max loss not shown; the totals strip's paid row; the Profit left breakdown not reworked to ADR-306.
+- The after-charges figure and the rupee amount in the target alert sentence (ADR-294 (2)).
+- EVERY screen proof (u104, u116, u130, u145, u154, u165): none done.
+- The P0 close: full local check u172, backup u173, findings u175 (done by this task, uncommitted), handover u176 (this note).
+
+## BLOCKED
+- Screen proofs: Chrome screenshots time out after the first frame although the PC is not locked. The owner must wake the screen and bring the Chrome window to the front.
+
+## PARKED / owner questions
+- `docs/process/owner-questions-2026-11-13.md`: Q4 open (the recover line shows on every fresh trade); Q1-Q3, Q5, Q6 answered.
+
+## Running state at hand-over
+- The LIVE dev copy runs from the branch folder (API 8765, vite 5173, Redis 6380, tunnel 5432).
+- The test-data copy is STOPPED. Start it for screen proofs with the launcher `scn_stack_icfix.py` in the session's scratch folder; PIDs are in `D:\Abhay\scratch\gc-icfix-backup\started-pids.txt`.
+- Backup bundle so far: `gc-icfix-setup-f2c69d8e.bundle` only; a new one is due at the close.
+
+## Worktrees to remove at the close
+Remove with `wt-rm.ps1` (never a plain delete), counting the main checkout's tracked files before and after: `OptionsForOptions2-gc-icfix-u102`, `-u111`, `-u122`, `-u123f`, `-u124`, `-u126`, `-u127`, `-u129r`, `-u130f`, `-u151`, `-u161`, `-avg`, plus the agent runtime's own folders under the main checkout's agent-worktrees directory created on 13 Nov. The integration folder `OptionsForOptions2-gc-icfix` is KEPT.
+
+## NEXT
+Later runs use `/goal D:\Abhay\Ventures\OptionsForOptions2-gc-icfix\docs\process\goal-contract-GC-ICFIX-2026-11-13.md`. First finish the phase 1 PENDING list, then phase 2 (P1). The single push happens only when the owner writes "push GC-ICFIX".
+
+## LESSONS (proposed, not applied)
+Each is a registry finding in `knowledge/findings/` (the product ones are listed there too).
+- A "green" fast-check total skipped the changed code's own test (16 passed, the Target test did not run, a changed JSON file was not a test target). Proposed: the fast check lists the tests it selected and fails if a changed file selects none.
+- Parallel helpers plus two app copies exhausted the shared database role's connections: three verdicts unusable (random 8-13 failures). Proposed: one database-test slot enforced by a lock file. (Extended finding `db-role-connection-limit-below-pool-size`.)
+- Builders wrote tests after the code when the brief only said "failing test first". Fixed in practice by demanding two commits in order; nothing checks it yet.
+- A step budget in a brief is not a stop: builders used 139, 113, 98 and 89 calls against limits of 65-80. Proposed: a hard turn limit on the helper type. (Extended `builder-budget-is-prose`.)
+- "No screenshot" needs a known-good comparison: Chrome screenshots time out after the first frame while page text still reads.
+- The answer guard counts only decision rows written by the main session, so it fires when a helper wrote them. Proposed: accept a decision row written by a helper.
+- Two helpers given one scratch folder with no file names overwrote each other's setup script. Proposed: one file name (or folder) per helper in the brief.
+- Money lesson: a money question to the owner carries a worked example that sums the figures (ADR-301 subtracted charges twice; ADR-306 repaired it).

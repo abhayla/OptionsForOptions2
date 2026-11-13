@@ -1,0 +1,27 @@
+{
+ "id": "definition-chosen-by-wording-not-worked-with-numbers",
+ "scope": "project",
+ "class": "A money definition approved from its wording, never summed with real figures: the pieces do not add up and nobody sees it until a screen shows them together.",
+ "mechanism": "ADR-301 subtracted the paid charges twice in 'Profit left after all charges'.",
+ "first_seen": {
+  "date": "2026-11-13",
+  "where": "Profit left / Max profit on the totals strip (GC-ICFIX issues 3 and 4)",
+  "evidence": "Total -3,314.09 + Profit left 9,685.91 = 6,371.82, which is 65.56 short of Max profit 6,437.38."
+ },
+ "fix": "ADR-306: Profit left = Max profit - Total. Lesson: a money question to the owner carries a worked example that sums the figures.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "Unguarded: no named check is confirmed to cover the class; the proof was one real run, not a standing check."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-306.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-11-13",
+   "where": "Profit left / Max profit on the totals strip (GC-ICFIX issues 3 and 4)",
+   "evidence": "Total -3,314.09 + Profit left 9,685.91 = 6,371.82, which is 65.56 short of Max profit 6,437.38."
+  }
+ ]
+}

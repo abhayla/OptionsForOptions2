@@ -1,0 +1,28 @@
+{
+ "id": "editor-reached-from-one-item-edits-a-shared-record",
+ "scope": "project",
+ "class": "An editor opened from one item (one trade) that writes a record shared by others: the clicked item is unchanged while items that have no copy yet, and all future ones, change.",
+ "mechanism": "'Customise triggers' opened the shared rule set; a trade that already holds its own copy never reads it again.",
+ "first_seen": {
+  "date": "2026-11-13",
+  "where": "a trade's plan box (GC-ICFIX issue 7)",
+  "evidence": "The clicked trade (own copy) was NOT changed; trades with no plan yet and all future plans were."
+ },
+ "fix": "New routes edit the trade's own plan body only; closed trades are refused.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "Unguarded: no named check is confirmed to cover the class; the proof was one real run, not a standing check."
+ },
+ "spec_ref": [
+  "spec/requirements/REQ-045.md",
+  "spec/requirements/REQ-158.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-11-13",
+   "where": "a trade's plan box (GC-ICFIX issue 7)",
+   "evidence": "The clicked trade (own copy) was NOT changed; trades with no plan yet and all future plans were."
+  }
+ ]
+}

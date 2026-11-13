@@ -1,0 +1,27 @@
+{
+ "id": "dialog-cannot-scroll-with-buttons-pinned",
+ "scope": "project",
+ "class": "A dialog taller than the window whose body and buttons scroll together: the confirm button, or the result lines after it (including a warning that the outcome is unknown), can scroll out of view.",
+ "mechanism": "The modal frame was not bound to the window height.",
+ "first_seen": {
+  "date": "2026-11-13",
+  "where": "8-order review box on a 1536x639 page area (GC-ICFIX issue 6)",
+  "evidence": "Confirm was pushed off screen; after the first repair the outcome lines, including the ADR-017 outcome-unknown warning, could still scroll out of view."
+ },
+ "fix": "The shared Modal.vue frame is bound to the window, its body scrolls, the buttons and a status slot are pinned.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "Unguarded: no named check is confirmed to cover the class; the proof was one real run, not a standing check. Pixels unproven: no screen proof yet (Chrome screenshots time out)."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-17.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-11-13",
+   "where": "8-order review box on a 1536x639 page area (GC-ICFIX issue 6)",
+   "evidence": "Confirm was pushed off screen; after the first repair the outcome lines, including the ADR-017 outcome-unknown warning, could still scroll out of view."
+  }
+ ]
+}

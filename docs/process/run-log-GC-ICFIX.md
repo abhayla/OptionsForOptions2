@@ -19,3 +19,19 @@
 - 2026-11-13 18:59 IST u124's plan line "never above max profit" is replaced by ADR-302 (owner, 13 Nov).
 - 2026-11-13 18:59 IST Issue 2 red twice (card derived limits beside the rule check); independent Opus review done; round 3 reads the rule check's own limits (ADR-304 (3)).
 - 2026-11-13 20:13 IST Branch tidy after merging issues 1, 3/4 (server + screens + split), 6, 7: openapi regenerated (no diff, the merge was right), inventory checked (no repeated keys; the generator's --check passes), ADR-305 stage row added, lint ratchet: main OK (3748) -> branch 5 rules rose (E501, F821, PLR0913, PLR2004, RUF059) -> fixed, OK (3748).
+- 2026-11-14 00:13 IST u175 finding written: knowledge/findings/saved-setting-with-no-reader-but-its-own-display.json
+- 2026-11-14 00:13 IST u175 finding written: knowledge/findings/screen-states-value-in-force-from-a-reader-beside-the-actor.json
+- 2026-11-14 00:13 IST u175 finding written: knowledge/findings/panel-renders-nothing-when-its-read-fails.json
+- 2026-11-14 00:13 IST u175 finding written: knowledge/findings/value-read-once-beside-values-that-refresh.json
+- 2026-11-14 00:13 IST u175 finding written: knowledge/findings/same-figure-fetched-separately-by-each-panel.json
+- 2026-11-14 00:13 IST u175 finding written: knowledge/findings/money-figure-shown-without-its-basis.json
+- 2026-11-14 00:13 IST u175 finding written: knowledge/findings/dialog-cannot-scroll-with-buttons-pinned.json
+- 2026-11-14 00:13 IST u175 finding written: knowledge/findings/editor-reached-from-one-item-edits-a-shared-record.json
+- 2026-11-14 00:13 IST u175 finding written: knowledge/findings/definition-chosen-by-wording-not-worked-with-numbers.json
+- 2026-11-14 00:13 IST u175 finding written: knowledge/findings/green-total-skips-the-changed-codes-own-test.json
+- 2026-11-14 00:13 IST u175 finding written: knowledge/findings/no-screenshot-needs-a-known-good-comparison.json
+- 2026-11-14 00:13 IST u175 finding written: knowledge/findings/answer-guard-counts-only-the-main-sessions-decision-rows.json
+- 2026-11-14 00:13 IST u175 finding written: knowledge/findings/helpers-share-one-scratch-folder-without-file-names.json
+- 2026-11-14 00:13 IST u175 finding written: knowledge/findings/builder-writes-test-after-code-when-told-failing-test-first.json
+- 2026-11-14 00:13 IST u175 findings extended: builder-budget-is-prose, db-role-connection-limit-below-pool-size, interpolated-level-finer-than-paise-refused
+- 2026-11-14 00:13 IST u176 Handover for phase 1 drafted (close steps still open)

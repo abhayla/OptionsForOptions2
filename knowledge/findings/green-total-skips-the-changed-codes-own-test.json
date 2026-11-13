@@ -1,0 +1,25 @@
+{
+ "id": "green-total-skips-the-changed-codes-own-test",
+ "scope": "generic",
+ "class": "A fast-check total that reports green while the changed code's own test did not run: a changed file type (a JSON file) is not recognised as a test target.",
+ "mechanism": "The test selector maps changed files to tests by file kind; a changed JSON file maps to nothing.",
+ "first_seen": {
+  "date": "2026-11-13",
+  "where": "GC-ICFIX fast check on the Target test",
+  "evidence": "16 passed while the Target test did not run."
+ },
+ "fix": "none yet (proposed: the fast check lists the tests it selected and fails when a changed file selects none).",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "Open. Touches no spec section (process class)."
+ },
+ "spec_ref": [],
+ "occurrences": [
+  {
+   "date": "2026-11-13",
+   "where": "GC-ICFIX fast check on the Target test",
+   "evidence": "16 passed while the Target test did not run."
+  }
+ ]
+}

@@ -1,0 +1,28 @@
+{
+ "id": "screen-states-value-in-force-from-a-reader-beside-the-actor",
+ "scope": "project",
+ "class": "Any screen that states 'the value in force' (a limit, a threshold, a rate) from its own derivation beside the code that acts on it: the two drift on every case the derivation does not copy (time of day, strategy shape, plan overrides).",
+ "mechanism": "Round 1 read the plan route's prefill; round 2 added a second derivation that missed expiry-day tightening, the 2x-credit stop and unlimited max loss; round 3 asked the evaluator itself.",
+ "first_seen": {
+  "date": "2026-11-13",
+  "where": "plan card, trade-rules editor (GC-ICFIX issue 2, red twice, then a third time)",
+  "evidence": "Round 1: card Target 50 / Stop 50 while the last day acts at 80 / 40. Round 2: strangle at 13:00, 80 -> 64.0 and 40 -> 32.0 missed. Third time: the trade-rules editor showed 30 while the check acted at 50 (plan Target over the profit trigger). Opus grid after the fix: 35,856 old-vs-new comparisons, 0 mismatches."
+ },
+ "fix": "limits_now inside the evaluator, sent on the rule-check reply; the screen shows that and derives nothing; the editor shows the applied view.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "Unguarded: no named check is confirmed to cover the class; the proof was one real run, not a standing check. The grid was a one-off review run."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-304.md",
+  "spec/decisions/ADR-305.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-11-13",
+   "where": "plan card, trade-rules editor (GC-ICFIX issue 2, red twice, then a third time)",
+   "evidence": "Round 1: card Target 50 / Stop 50 while the last day acts at 80 / 40. Round 2: strangle at 13:00, 80 -> 64.0 and 40 -> 32.0 missed. Third time: the trade-rules editor showed 30 while the check acted at 50 (plan Target over the profit trigger). Opus grid after the fix: 35,856 old-vs-new comparisons, 0 mismatches."
+  }
+ ]
+}

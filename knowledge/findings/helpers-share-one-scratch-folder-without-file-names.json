@@ -1,0 +1,25 @@
+{
+ "id": "helpers-share-one-scratch-folder-without-file-names",
+ "scope": "generic",
+ "class": "Two helpers given the same scratch folder with no distinct file names overwrite each other's files.",
+ "mechanism": "The brief named a folder, not a file name per helper.",
+ "first_seen": {
+  "date": "2026-11-13",
+  "where": "GC-ICFIX 13 Nov, two helpers",
+  "evidence": "One helper's setup script was overwritten by the other's."
+ },
+ "fix": "Brief names one file per helper (proposed: a folder per helper id).",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "Open. Touches no spec section (process class)."
+ },
+ "spec_ref": [],
+ "occurrences": [
+  {
+   "date": "2026-11-13",
+   "where": "GC-ICFIX 13 Nov, two helpers",
+   "evidence": "One helper's setup script was overwritten by the other's."
+  }
+ ]
+}

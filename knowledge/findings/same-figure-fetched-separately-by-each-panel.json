@@ -1,0 +1,28 @@
+{
+ "id": "same-figure-fetched-separately-by-each-panel",
+ "scope": "project",
+ "class": "Several panels on one screen each fetching or computing the same figure their own way: they show different numbers for one thing, at different ages.",
+ "mechanism": "A panel read once, a live-socket table total was taken before charges, and a tracking box ran its own 5 s read.",
+ "first_seen": {
+  "date": "2026-11-13",
+  "where": "strategy 138 (GC-ICFIX issues 3 and 4)",
+  "evidence": "One trade showed +29.25, +22.75 and +58.50; the gap 35.75 = 0.55 per unit x 65."
+ },
+ "fix": "One paper-book read per refresh feeds the panel, the tracking box headline and the table TOTAL row, with one as-of time.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "Unguarded: no named check is confirmed to cover the class; the proof was one real run, not a standing check."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-8.md",
+  "spec/decisions/ADR-263.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-11-13",
+   "where": "strategy 138 (GC-ICFIX issues 3 and 4)",
+   "evidence": "One trade showed +29.25, +22.75 and +58.50; the gap 35.75 = 0.55 per unit x 65."
+  }
+ ]
+}

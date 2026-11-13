@@ -1,0 +1,31 @@
+{
+ "id": "money-figure-shown-without-its-basis",
+ "scope": "project",
+ "class": "A money figure shown without saying whether charges are in it: two honest numbers for the same trade read as a contradiction or hide a loss.",
+ "mechanism": "Totals were computed in several places, some before charges, none labelled.",
+ "first_seen": {
+  "date": "2026-11-13",
+  "where": "strategies 141 and 139 (GC-ICFIX issues 3 and 4)",
+  "evidence": "Strategy 141 showed -32.50 while the result after charges was -435.95 (charges paid 403.45); strategy 139: -159.25 against -511.65."
+ },
+ "fix": "One engine function (book_after_charges) feeds every total; labels '(after charges)' / '(before charges)'; the breakdown is one tap away.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "Unguarded: no named check is confirmed to cover the class; the proof was one real run, not a standing check. Some screen leftovers (P&L table rows unlabelled, charge-rates sentence) are open."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-263.md",
+  "spec/decisions/ADR-301.md",
+  "spec/decisions/ADR-302.md",
+  "spec/decisions/ADR-303.md",
+  "spec/decisions/ADR-306.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-11-13",
+   "where": "strategies 141 and 139 (GC-ICFIX issues 3 and 4)",
+   "evidence": "Strategy 141 showed -32.50 while the result after charges was -435.95 (charges paid 403.45); strategy 139: -159.25 against -511.65."
+  }
+ ]
+}
