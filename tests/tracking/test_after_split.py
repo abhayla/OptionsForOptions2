@@ -3,8 +3,9 @@ Unbooked after, Profit left after, Loss left after and ``recover`` of a paper bo
 comments.
 
 ADR-306 (owner, 13 Nov): Profit left after = Max profit after - Total after; Loss left after = Max loss after - Total
-after; so Total + Profit left = Max profit and Total + Loss left = Max loss, exactly. ``recover`` = minus Total after when
-Total after is negative (the loss on screen), else None. Never capped (ADR-302). A closed book gives 0 and 0.
+after; so Total + Profit left = Max profit and Total + Loss left = Max loss, exactly.
+``recover`` = minus Total after when Total after is negative (the loss on screen), else None. Never capped
+(ADR-302). A closed book gives 0 and 0.
 """
 from __future__ import annotations
 
