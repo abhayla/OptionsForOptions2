@@ -396,7 +396,7 @@ async def _sheet(db: Any, user_ref: str, strategy_id: int, stype: str | None, pl
         return AdjustmentPlanOut.model_validate(reply | _in_force_reply(found))
     active = await store.active_for(db, user_ref, stype)
     # the playbook in force (as ``adjustment_check.resolve``): the plan copy, else the user's active / the system one
-    resolved = check.Resolved("plan", plan.body, plan.playbook_id, None, False,
+    resolved = check.Resolved("plan", check.with_plan_target(plan.body), plan.playbook_id, None, False,
                               saved_before_adr247=await check.plan_saved_before_adr247(db,
                                                                                        plan)) if plan is not None else \
         check.Resolved("system" if active.is_system else "active", active.body, active.id,
