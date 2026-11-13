@@ -4106,5 +4106,29 @@
   "explanation:limit_stop_off": {
     "sha256": "a4dbbb93003c3811f26c01e7524c1907661cf1adf6c0c67163ae30171b56dae1",
     "reviewed": "pending owner read"
+  },
+  "explanation:limit_target_none": {
+    "sha256": "bf6d69ee1c27bc75e6e81cc5322bb9842cf1c99429d8062e2fd95fb859fea67a",
+    "reviewed": "pending owner read"
+  },
+  "explanation:limit_already_true_after": {
+    "sha256": "0a889fb772b39744ea6be2e238e7b4d920dff3f1bcc3320e4460fb7111f04fc2",
+    "reviewed": "pending owner read"
+  },
+  "explanation:check_as_of": {
+    "sha256": "4dceb390e7c6eaf5d25f22fbe2cd041bc58e8a49d97378edcadaaeeef240fc1e",
+    "reviewed": "pending owner read"
+  },
+  "explanation:stop_fired_loss": {
+    "sha256": "b55a63f3891dc32a1a79663570812e01144f1d237ad7977911d3b6179f4c5717",
+    "reviewed": "pending owner read"
+  },
+  "explanation:stop_fired_credit": {
+    "sha256": "5e35e53d47e0e2d14c73467ba4f6e38ade3da1f41306a8d45bd8a4196b267447",
+    "reviewed": "pending owner read"
+  },
+  "explanation:stop_fired_at": {
+    "sha256": "3fb962be2b775e770e04eeaa3c23345534fed06523654926932fe550ce7d7673",
+    "reviewed": "pending owner read"
   }
 }
