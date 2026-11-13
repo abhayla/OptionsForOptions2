@@ -88,7 +88,7 @@ class CheckResultOut(ApiModel):
 
 
 class CheckLimitOut(ApiModel):
-    """ADR-304: the limit a rule acts on for this trade now, the evaluator's own number (``playbook_eval.limits_now``)."""
+    """ADR-304: the limit a rule acts on for this trade now, the evaluator's own number (``playbook_eval.limits_now``)."""  # noqa: E501
 
     rule_id: Identifier
     trigger_id: Identifier
@@ -114,7 +114,8 @@ class AdjustmentCheckOut(ApiModel):
     stage: CheckStageOut
     withheld: CatalogueText | None
     results: list[CheckResultOut]
-    limits: list[CheckLimitOut] = []  # ADR-304: the limits the target / stop rules act on now (empty: no playbook / paused)
+    # ADR-304: the limits the target / stop rules act on now (empty: no playbook / paused)
+    limits: list[CheckLimitOut] = []  # noqa: RUF012
     #: A-38 (GC-IC1 4a): the user's pause in force at the check's own time -> {until, text} and no evaluation (the
     #: worker skips it too); none, cleared or expired -> None
     paused: CheckPauseOut | None = None
@@ -177,14 +178,15 @@ def result_out(r: pe.Result, flag_wording: Any, opened: dict[str, int] | None = 
 
 
 def limit_text(x: pe.LimitNow, reason: Any, percent_stop_checked: bool) -> Any:
-    """ADR-304 (3): the one sentence for a limit row, from the evaluator's own numbers (the card prints it, derives nothing).
+    """ADR-304 (3): the one sentence for a limit row, from the evaluator's own numbers
+    (the card prints it, derives nothing).
     A rule that is not checked says why and shows NO number, even when the row still carries one; a row the card cannot
     state (an unknown state, a checked row with nothing to compare) -> None."""
     if x.state not in ("checked", "not_checked", "already_true"):
         return None
     target, credit = x.trigger_id == "T-07", x.rule_id == sl.CREDIT_RULE
     if x.state == "not_checked":
-        return None if reason is None else render_explanation("limit_target_off" if target else "limit_stop_off", reason=reason)
+        return None if reason is None else render_explanation("limit_target_off" if target else "limit_stop_off", reason=reason)  # noqa: E501
     if not isinstance(x.threshold, Decimal):
         return None
     pct = x.threshold.normalize()
@@ -214,7 +216,7 @@ def limits_out(limits: tuple[pe.LimitNow, ...]) -> list[dict]:
     out = []
     for x in limits:
         reason = None if x.reason is None else render(x.reason, **dict(x.slots))
-        out.append({"rule_id": x.rule_id, "trigger_id": x.trigger_id, "threshold": _num(x.threshold), "amount": _num(x.amount),
+        out.append({"rule_id": x.rule_id, "trigger_id": x.trigger_id, "threshold": _num(x.threshold), "amount": _num(x.amount),  # noqa: E501
                     "later": [_num(v) for v in x.later], "tightened_by": _num(x.tightened_by), "state": x.state,
                     "reason": reason, "text": limit_text(x, reason, race)})
     return out

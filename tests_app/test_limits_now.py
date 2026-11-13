@@ -1,3 +1,4 @@
+# ruff: noqa: E501, PLR0913, PLR2004, PLC0415, RUF059
 """GC-ICFIX u113 round 3 (ADR-252, ADR-295, ADR-304 pending): ``playbook_eval.limits_now`` is the ONE statement of the limit a rule
 acts on for this trade, taken from the evaluator's own path; ``evaluate()`` carries it (``Evaluation.limits``) and the route sends
 it. Real rows of ``system_playbooks.json`` (iron condor T-07 weekly 50/50/80, monthly 50/50/75, T-06 50/50/40, strangle day rule
@@ -32,7 +33,7 @@ KEY = "profit_target_pct_of_max_profit"
 
 
 def days_of_stage(body, kind, stage):
-    return next(d for d in range(0, 40) if pe.stage_of(body, kind, d) == stage)
+    return next(d for d in range(40) if pe.stage_of(body, kind, d) == stage)
 
 
 def run(body, *, kind="weekly", stage=0, days=None, hhmm="11:00", pnl="100", max_profit=MAX_PROFIT, max_loss=MAX_LOSS,

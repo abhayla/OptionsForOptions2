@@ -1,3 +1,4 @@
+# ruff: noqa: E501, PLC0415
 """The plan sheet's Target is the T-07 value the live check reads (ADR-252 pattern, for T-07). No DB.
 
 Real case, paper strategy 141 (13 Nov 2026): plan Target 1 on playbook 3 "Iron condor: system default" (T-07 weekly
