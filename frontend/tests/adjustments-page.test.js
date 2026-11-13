@@ -221,6 +221,52 @@ describe('playbook editor (REQ-160)', () => {
   })
 })
 
+// GC-ICFIX u161/u162 (issue 7, REQ-158 AC-6): ?trade=<strategy id> edits that trade's own plan copy (GET / PUT
+// /strategies/{id}/adjustment-plan/rules, PlaybookFullOut-shaped); no playbook is read, activated, saved, deleted or created.
+describe('trade mode: the trade\'s own rules (issue 7)', () => {
+  const RULES = '/strategies/70/adjustment-plan/rules'
+  const NOTE = 'Rules for this trade only (Iron condor). Your other trades and your playbooks are not changed.'
+  const mine = () => ({ ...row({ id: 1, name: NOTE, is_system: false, status: null, active: false }), body: JSON.parse(JSON.stringify(BODY)), situation_kinds: [] })
+  const openTrade = async () => {
+    answers['GET /playbooks/labels'] = LABELS
+    answers[`GET ${RULES}`] = mine()
+    return open(null, { trade: '70' })
+  }
+  const writes = () => calls.filter(([m]) => m !== 'GET')
+
+  it('opens the trade\'s rules with the one plain line, and offers no shared-playbook action', async () => {
+    const w = await openTrade()
+    expect(w.get('[data-testid=pb-trade-note]').text()).toBe(NOTE)
+    expect(calls.some(([m, u]) => m === 'GET' && u === RULES)).toBe(true)
+    expect(calls.some(([, u]) => /^\/playbooks(\/|$)/.test(u) && u !== '/playbooks/labels')).toBe(false)
+    for (const id of ['pb-activate', 'pb-delete', 'pb-save-as', 'pb-save', 'pb-pick', 'pb-type']) expect(w.find(`[data-testid=${id}]`).exists(), id).toBe(false)
+    expect(w.find('[data-testid=pb-trade-save]').exists()).toBe(true)
+    expect(writes()).toEqual([]) // open then leave: nothing saved (cancel)
+  })
+
+  it('Save sends the edited body to this trade\'s rules only', async () => {
+    const w = await openTrade()
+    await w.get('[data-testid=pb-step-when]').trigger('click')
+    await w.get('[data-testid=pb-value-T-01-1]').setValue('0.2')
+    answers[`PUT ${RULES}`] = (payload) => ({ ...mine(), body: payload.body })
+    await w.get('[data-testid=pb-trade-save]').trigger('click')
+    await flushPromises()
+    expect(writes()).toHaveLength(1)
+    const [method, url, payload] = writes()[0]
+    expect([method, url]).toEqual(['PUT', RULES])
+    expect(payload.body.triggers['T-01'].weekly[1]).toBe('0.2')
+  })
+
+  it('a refused save shows the server\'s sentence and writes nothing else', async () => {
+    const w = await openTrade()
+    answers[`PUT ${RULES}`] = refusal('The rules could not be saved.')
+    await w.get('[data-testid=pb-trade-save]').trigger('click')
+    await flushPromises()
+    expect(w.get('[data-testid=pb-refusal]').text()).toContain('The rules could not be saved.')
+    expect(writes().map(([m, u]) => `${m} ${u}`)).toEqual([`PUT ${RULES}`])
+  })
+})
+
 // GC-ADJ2 step 3 round 3 (owner's browser, 15:40 IST): every REAL system body, read from the shipped file at test time
 // (backend/ofo/adjustment/system_playbooks.json), never typed here. T-02, T-18, T-20 and T-21 carry a null value
 // list for both expiry kinds in all 12, which crashed step 2 and left every later handler dead.
