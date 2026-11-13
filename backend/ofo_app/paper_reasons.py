@@ -15,6 +15,7 @@ from ofo.errors.explanations import ExplanationText, render_explanation
 #: reason code -> explanation template id (ADR-210; no_iv, no_next_open, rates_unavailable reuse reviewed texts)
 TEMPLATE_OF: Mapping[str, str] = MappingProxyType({
     "not_priced": "paper_reason_not_priced",
+    "charges_not_read": "paper_reason_charges_not_read",  # real book (ADR-276 (4)); reaches the target alert only
     "model_refused": "paper_reason_model_refused",
     "contract_retired": "paper_reason_contract_retired",
     "contract_delisted": "paper_reason_contract_delisted",

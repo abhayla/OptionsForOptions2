@@ -198,7 +198,7 @@ class Suggestion:
             reason = raw.get("reason")
             return (Decimal(raw["before"]), None if after is None else Decimal(after),
                     reason if isinstance(reason, str) else None)
-        except (TypeError, ArithmeticError):
+        except (TypeError, ValueError, ArithmeticError):  # a malformed entry: the percent line for this row only
             return None
 
     @property

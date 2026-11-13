@@ -4138,5 +4138,9 @@
   "explanation:adjust_target_reached_no_after": {
     "sha256": "c4d4ddef1491617da3d9b410a57bcb9fd3df78af4149400cef0cd25cc773be28",
     "reviewed": "pending owner read"
+  },
+  "explanation:paper_reason_charges_not_read": {
+    "sha256": "a43fed308bc92cdb3dcf86c20aa47e44acf609fcd64fc09dd1d3ece4f30b2dc8",
+    "reviewed": "pending owner read"
   }
 }

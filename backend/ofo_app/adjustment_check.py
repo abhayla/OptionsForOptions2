@@ -340,7 +340,13 @@ def state_of(tracked: Tracked, market: MarketInputs, spot: SpotAnswer, margin: M
     booked = tracked.booked
     pnl = None if booked is None or not priced else adjust_money.pnl_now(
         booked, ((x.side, x.entry, ltp[x.tradingsymbol], qty[x.tradingsymbol]) for x in position.legs))
-    pnl_after, pnl_after_reason = after_charges_of(pnl, position, ltp, tracked.paid_charges, rates)  # ADR-294 (2)
+    try:
+        pnl_after, pnl_after_reason = after_charges_of(pnl, position, ltp, tracked.paid_charges, rates,
+                                                       real_book=getattr(tracked, "real_book", False))
+    except Exception:  # noqa: BLE001 - an optional display figure must never stop the rule check (stops are read below)
+        log.warning("adjustment check: the after-charges figure could not be worked out (%s)", position.underlying,
+                    exc_info=True)
+        pnl_after, pnl_after_reason = None, NOT_PRICED
     left = adjust_money.premium_left((x.side, ltp[x.tradingsymbol], qty[x.tradingsymbol])
                                      for x in position.legs) if priced else None
     before = price_after(position.legs, position, booked, tracked.paid_charges, (), rates, market)  # once per check
@@ -799,12 +805,17 @@ def target_of(state: pe.StrategyState | None) -> TargetFigures | None:
     return TargetFigures(before, after, None if after is not None else getattr(state, "pnl_after_reason", None))
 
 
-def after_charges_of(pnl: Decimal | None, position: Position, ltp: Mapping[str, Decimal | None],
-                     paid: Decimal | None, rates: Any) -> tuple[Decimal | None, str | None]:
+#: ADR-294 (2) / ADR-276 (4): the reason code of a real-book strategy (a paper reason code, ``paper_reasons``)
+CHARGES_NOT_READ: Final = "charges_not_read"
+
+
+def after_charges_of(pnl: Decimal | None, position: Position, ltp: Mapping[str, Decimal | None],  # noqa: PLR0913
+                     paid: Decimal | None, rates: Any, *, real_book: bool = False) -> tuple[Decimal | None, str | None]:
     """ADR-294 (2) / ADR-008: ``pnl`` (the number the rule compared) after charges, formed ONLY by the engine's
     ``book_after_charges`` and ``open_exit_charges`` (the paper book's own functions): the charges already ``paid``, and
     the estimate to close every open leg at its mark ``ltp`` (by trading symbol). Returns (after, None) or (None, reason
-    code); no pnl -> (None, None)."""
+    code); no pnl -> (None, None). ``real_book`` (``Tracked.real_book``): the app reads no charges paid on broker
+    orders (ADR-276 (4)), so ``paid`` is None for that reason and no other."""
     if pnl is None:
         return None, None
     sign = {Action.BUY.value: 1, Action.SELL.value: -1}
@@ -815,7 +826,7 @@ def after_charges_of(pnl: Decimal | None, position: Position, ltp: Mapping[str, 
     live = {k: v for k, v in ltp.items() if v is not None}
     open_exit, why = open_exit_charges(view, terms, live, position.underlying, rates)  # type: ignore[arg-type]
     if paid is None:
-        why = RATES_UNAVAILABLE if rates is None else NOT_PRICED
+        why = CHARGES_NOT_READ if real_book else RATES_UNAVAILABLE if rates is None else NOT_PRICED
     got = book_after_charges(view, paid, open_exit, why)  # type: ignore[arg-type]
     return got.total_after, got.reason
 

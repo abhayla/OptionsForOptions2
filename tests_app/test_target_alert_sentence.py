@@ -27,11 +27,13 @@ from ofo.engine.extremes import ContractTerms
 from ofo.engine.extremes_charges import book_after_charges, open_exit_charges
 from ofo.engine.legs import Instrument
 from ofo.engine.orderbook import PaperOrder, net_positions
+from ofo.marketdata.spot_source import SpotAnswer
 from ofo_app import adjustment_check as check
 from ofo_app import background, playbook_store
 from ofo_app import db as app_db
 from ofo_app.paper_reasons import reason_text
 from ofo_app.routes import adjustment_check as check_route
+from ofo_app.routes import playbooks
 from ofo_app.routes.adjustment_check import result_out
 from ofo_app.routes.adjustment_opportunities import condition_text
 
@@ -209,7 +211,6 @@ def test_the_paper_reasons_are_unchanged_and_a_paper_book_is_not_marked_real():
 
 
 def _adj02_state(tracked=None, **kw) -> pe.StrategyState:
-    from ofo.marketdata.spot_source import SpotAnswer
     sc = s.load("ADJ-02")
     base, m, spot = s.inputs(sc)
     return check.state_of(tracked or base, m, SpotAnswer(spot, "feed", m.now), None, s.RATES, True, s.body_of(sc),
@@ -254,6 +255,5 @@ def test_a_malformed_stored_target_falls_back_to_the_percent_line_for_that_row_o
 
 
 def test_the_playbook_test_route_passes_the_target_figures_too():
-    from ofo_app.routes import playbooks
     src = inspect.getsource(playbooks)
     assert src.count("target=check.target_of(state)") == 1 and "result_out(r, None, target=" in src

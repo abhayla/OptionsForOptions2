@@ -1882,6 +1882,10 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("execute_cost_charges_not_included", "values_seen",
                         "Charges and taxes are not included: the charge rates could not be read."),
     # GC-TP R-20 / R-15 (ADR-210, owner-approved 2026-10-29): why a paper or what-if figure is a dash; one per reason code
+    # GC-ICFIX u103 round 2 (ADR-276 (4), ADR-294 (2)): a real-book strategy: no charges paid on broker orders are read
+    ExplanationTemplate("paper_reason_charges_not_read", "values_seen",
+                        "Charges paid on broker orders are not read by this app, so the result after charges "
+                        "is not shown."),
     ExplanationTemplate("paper_reason_not_priced", "values_seen",
                         "Charges not shown: an order's value could not be worked out."),
     ExplanationTemplate("paper_reason_model_refused", "values_seen",
