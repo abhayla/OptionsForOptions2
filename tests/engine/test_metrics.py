@@ -19,7 +19,7 @@ def leg(action, instrument, strike, entry, qty=75, expiry=EXP):
 def test_legs_carry_no_breakeven_and_metrics_are_strategy_level():
     """AC-6: a leg has no breakeven / max profit / max loss; the strategy's come from its payoff."""
     field_names = {f.name for f in dataclasses.fields(Leg)}
-    assert field_names == {"action", "instrument", "strike", "expiry", "quantity", "entry_price", "ltp"}
+    assert field_names == {"action", "instrument", "strike", "expiry", "quantity", "entry_price", "ltp", "exact_entry"}
     single = leg(BUY, CE, "23000", "100")
     assert not any(hasattr(single, name) for name in ("breakeven", "breakevens", "max_profit", "max_loss"))
 
