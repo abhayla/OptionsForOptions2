@@ -1566,6 +1566,13 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         "{label}: {value} {unit} before charges (rule {threshold} {unit})",
                         {"label": PlaybookTriggerLabel, "value": PlaybookField, "unit": PlaybookUnit,
                          "threshold": PlaybookField}),
+    # ADR-294 (2) (GC-ICFIX u103): the target alert's sentence, the figure it used and the after-charges result beside it
+    ExplanationTemplate("adjust_target_reached", "values_seen",
+                        "Profit before charges {before} reached your target of {pct}%; after charges {after}",
+                        {"before": SignedRupeesPaisa, "pct": Amount, "after": SignedRupeesPaisa}),
+    ExplanationTemplate("adjust_target_reached_no_after", "values_seen",
+                        "Profit before charges {before} reached your target of {pct}%; after charges not available: "
+                        "{reason}", {"before": SignedRupeesPaisa, "pct": Amount, "reason": Explained}),
     ExplanationTemplate("adjust_condition_line_plain", "values_seen", "{label}: {value} (rule {threshold})",
                         {"label": PlaybookTriggerLabel, "value": PlaybookField, "threshold": PlaybookField}),
     # #650: a trigger whose value is rupees (T-02: the expiry P&L at spot) or a count (T-18: adjustments used) has no

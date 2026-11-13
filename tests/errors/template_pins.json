@@ -4130,5 +4130,13 @@
   "explanation:stop_fired_at": {
     "sha256": "3fb962be2b775e770e04eeaa3c23345534fed06523654926932fe550ce7d7673",
     "reviewed": "pending owner read"
+  },
+  "explanation:adjust_target_reached": {
+    "sha256": "c8122773d9727c5ec9b816dd0d0d349fe005c842cd87e8d269e1b4ae7da22f6e",
+    "reviewed": "pending owner read"
+  },
+  "explanation:adjust_target_reached_no_after": {
+    "sha256": "c4d4ddef1491617da3d9b410a57bcb9fd3df78af4149400cef0cd25cc773be28",
+    "reviewed": "pending owner read"
   }
 }
