@@ -287,6 +287,15 @@
             "title": "Curves",
             "type": "object"
           },
+          "curves_estimate_note": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Curves Estimate Note"
+          },
           "curves_estimated": {
             "default": {},
             "patternProperties": {
@@ -326,6 +335,16 @@
             "title": "Leads",
             "type": "object"
           },
+          "limit": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AdjustLimitOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "limits_reason": {
             "anyOf": [
               {},
@@ -334,6 +353,14 @@
               }
             ],
             "title": "Limits Reason"
+          },
+          "not_offered": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/AdjustNotOfferedOut"
+            },
+            "title": "Not Offered",
+            "type": "array"
           },
           "pop_switch_on": {
             "title": "Pop Switch On",
@@ -1049,6 +1076,30 @@
         "title": "AdjustLegOut",
         "type": "object"
       },
+      "AdjustLimitOut": {
+        "additionalProperties": false,
+        "description": "ADR-297 (D4): the plan's adjustment maximum is reached; catalogue sentence, the trade's own numbers.",
+        "properties": {
+          "max": {
+            "title": "Max",
+            "type": "integer"
+          },
+          "text": {
+            "title": "Text"
+          },
+          "used": {
+            "title": "Used",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "used",
+          "max",
+          "text"
+        ],
+        "title": "AdjustLimitOut",
+        "type": "object"
+      },
       "AdjustMarginOut": {
         "additionalProperties": false,
         "properties": {
@@ -1097,6 +1148,36 @@
           "reason"
         ],
         "title": "AdjustMarginOut",
+        "type": "object"
+      },
+      "AdjustNotOfferedOut": {
+        "additionalProperties": false,
+        "description": "ADR-297 (D4): an approach that applies but is withheld, with the reason id and its catalogue sentence.",
+        "properties": {
+          "id": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name"
+          },
+          "reason": {
+            "title": "Reason"
+          },
+          "reason_id": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Reason Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "reason_id",
+          "reason"
+        ],
+        "title": "AdjustNotOfferedOut",
         "type": "object"
       },
       "AdjustPopOut": {
@@ -3063,6 +3144,18 @@
             ],
             "title": "Condition"
           },
+          "fired_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fired At"
+          },
           "kind": {
             "enum": [
               "flag",
@@ -3071,6 +3164,26 @@
             ],
             "title": "Kind",
             "type": "string"
+          },
+          "live_as_of_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Live As Of Text"
+          },
+          "live_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Live Value"
           },
           "note": {
             "anyOf": [
@@ -4612,6 +4725,68 @@
           "cost"
         ],
         "title": "ExecuteOut",
+        "type": "object"
+      },
+      "ExitRiskOut": {
+        "additionalProperties": false,
+        "description": "ADR-256: the answer for a prepared basket in three states (``no`` only when proven), the book's Max Loss before /\nafter when the answer is yes and they are known, and the one factual warning line.",
+        "properties": {
+          "max_loss_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "const": "unlimited",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Loss After"
+          },
+          "max_loss_before": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "const": "unlimited",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Loss Before"
+          },
+          "state": {
+            "enum": [
+              "yes",
+              "no",
+              "cannot_tell"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "warning_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warning Text"
+          }
+        },
+        "required": [
+          "state",
+          "max_loss_before",
+          "max_loss_after",
+          "warning_text"
+        ],
+        "title": "ExitRiskOut",
         "type": "object"
       },
       "ExpiriesOut": {
@@ -16275,6 +16450,10 @@
           "first_leg": {
             "$ref": "#/components/schemas/FirstLegOut"
           },
+          "has_order": {
+            "title": "Has Order",
+            "type": "boolean"
+          },
           "has_paper_order": {
             "title": "Has Paper Order",
             "type": "boolean"
@@ -16372,6 +16551,7 @@
           "tracked",
           "can_delete",
           "has_paper_order",
+          "has_order",
           "open_opportunities",
           "open_opportunities_text",
           "final_pnl",
@@ -19187,6 +19367,56 @@
           }
         },
         "summary": "Get Paper Strategy"
+      }
+    },
+    "/paper/strategies/{strategy_id}/exit-risk": {
+      "get": {
+        "description": "Read only, nothing stored. The WHOLE prepared basket (exits and entries) is judged on the legs after all of it.\nBad input is refused (422), an engine error is cannot_tell, never \"no\". When an exit price cannot be read the\nanswer is judged without any Max Loss figure (never a stand-in price) and shows none.",
+        "operationId": "paper_exit_risk_paper_strategies__strategy_id__exit_risk_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_id",
+            "required": true,
+            "schema": {
+              "title": "Strategy Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "orders",
+            "required": true,
+            "schema": {
+              "maxLength": 8000,
+              "title": "Orders",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExitRiskOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Paper Exit Risk"
       }
     },
     "/paper/strategies/{strategy_id}/orders": {
