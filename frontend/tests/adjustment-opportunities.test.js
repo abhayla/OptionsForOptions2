@@ -81,7 +81,7 @@ describe('REQ-162: the Adjustment opportunities page', () => {
     const w = keep(mount(AdjustmentOpportunitiesPage, stub))
     await flushPromises()
     expect(t(w, 'opp-compare').text()).toBe('Compare approaches')
-    expect(t(w, 'opp-compare').attributes('href')).toBe('/strategy/builder?adjust=1&pick=A-36&opp=1,2')
+    expect(t(w, 'opp-compare').attributes('href')).toBe('/strategy/builder?adjust=1&opp=1,2')
     expect(t(w, 'opp-scroll').classes()).toContain('overflow-x-auto') // scrolls in its own container at phone width
   })
 
