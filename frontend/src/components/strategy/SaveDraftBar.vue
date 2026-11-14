@@ -371,6 +371,7 @@ async function confirmPaper(orders, held = null) {
   // STORED (201): from here this plan never records again (paperRecorded); a failure below is not "not placed"
   paperRecorded.value = true
   try {
+    picked.value = 'tracked' // issue 18: the builder reopens on the Paper tab after practice orders
     paperOpen.value = false
     paperToast.value = paperTarget.value
     planFor.value = paperTarget.value // GC-ADJ2 step 4 (REQ-161 AC-1): the strategy exists now, so its plan sheet opens
@@ -399,6 +400,7 @@ function openInBuilder() {
 onBeforeUnmount(() => clearTimeout(paperToastTimer))
 
 onMounted(refresh)
+defineExpose({ showPaperTab: () => { picked.value = 'tracked' } }) // the page calls it after orders it placed itself
 </script>
 
 <template>

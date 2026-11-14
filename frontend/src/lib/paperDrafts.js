@@ -166,6 +166,10 @@ export async function readPaperBook(client, id) {
   return { kind: 'paper', book, net }
 }
 
+/** GC-ICFIX issue 18: waits (ms) before each read of the book after practice orders were stored: now, then two spaced retries.
+ *  Three tries in all, never a loop; after them the screen shows the shared "could not load" state with Retry. */
+export const PAPER_REREAD_DELAYS_MS = Object.freeze([0, 400, 1200])
+
 // GC-TP step 3b2 (REQ-109 AC-9; Sensibull Drafts Mode 274-279, Add to Drafts 166-173): the rest of Drafts Mode.
 /** R-11: a leg loaded from the book carries the paper fill's average, not a price the user typed (no time beside it). */
 export const PAPER_AVERAGE_LABEL = 'Paper average'
