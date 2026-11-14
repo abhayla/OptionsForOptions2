@@ -5,11 +5,12 @@
 import PageHeader from '@/components/common/PageHeader.vue'
 import EmptyState from '@/components/states/EmptyState.vue'
 import { computed, onMounted } from 'vue'
-import { useRoute } from 'vue-router'
+import { RouterLink, useRoute } from 'vue-router'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import { istTime } from '@/lib/displayFormat'
 import { plainName } from '@/lib/saveDraft'
-import { PAPER_ALERTS_EMPTY, dropAlerts, markPaperAlertsRead, paperAlerts, readPaperAlerts, takeAlerts } from '@/lib/paperAlerts'
+import { compareUrl } from '@/lib/adjustDrawer'
+import { PAPER_ALERTS_EMPTY, dropAlerts, openRecords, markPaperAlertsRead, paperAlerts, readPaperAlerts, takeAlerts } from '@/lib/paperAlerts'
 
 // U23: the title shows once; an older stored body still opens with it, so that repeat is dropped (display only)
 const alertBody = (a) => (a.body.startsWith(`${a.title}: `) ? a.body.slice(a.title.length + 2) : a.body)
@@ -38,7 +39,13 @@ onMounted(async () => {
     <template v-if="isActive && paperAlerts.parts">
       <ErrorMessage :parts="paperAlerts.parts" compact prefix="alerts-error" />
     </template>
-    <ul v-else-if="isActive && paperAlerts.alerts.length" class="divide-y divide-line overflow-hidden rounded-lg border border-line bg-surface" data-testid="alerts-list">
+    <ul v-else-if="isActive && (paperAlerts.alerts.length || openRecords.list.length)" class="divide-y divide-line overflow-hidden rounded-lg border border-line bg-surface" data-testid="alerts-list">
+      <!-- Issue 8 (ADR-260): the open adjustment records the bell counts, the same rows the pop-up announced -->
+      <li v-for="o in (isActive ? openRecords.list : [])" :key="`o${o.id}`" class="px-4 py-3 hover:bg-surface-muted" data-testid="open-record-row">
+        <p class="font-medium" data-testid="open-record-strategy">{{ plainName(o.strategy_name) ?? `Strategy ${o.strategy_id}` }}</p>
+        <p class="mt-1 text-sm" data-testid="open-record-text">{{ o.text }}</p>
+        <RouterLink :to="compareUrl(o.strategy_id, [], [o.id])" class="text-sm text-accent underline" data-testid="open-record-compare">Compare approaches</RouterLink>
+      </li>
       <li v-for="a in paperAlerts.alerts" :key="a.id" class="px-4 py-3 hover:bg-surface-muted" data-testid="alert-row">
         <p class="font-medium" data-testid="alert-title">{{ a.title }}</p>
         <p class="text-xs text-ink-muted"><span data-testid="alert-time">{{ istTime(a.created_at) }}</span> - <span data-testid="alert-strategy">{{ plainName(a.strategy_name) ?? `Strategy ${a.strategy_id}` }}</span></p>
