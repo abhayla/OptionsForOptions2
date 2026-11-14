@@ -8,8 +8,8 @@ const walk = (d) => readdirSync(d).flatMap((n) => (statSync(join(d, n)).isDirect
 const files = walk('src').filter((f) => /\.(vue|js)$/.test(f))
 
 describe('compare link callers', () => {
-  it('only AdjustDrawer.vue calls compareUrl (and the lib that defines it)', () => {
+  it('only AdjustDrawer.vue calls compareUrl', () => {
     const users = files.filter((f) => /\bcompareUrl\(/.test(readFileSync(f, 'utf8'))).map((f) => f.replaceAll('\\', '/'))
-    expect(users.sort()).toEqual(['src/components/strategy/AdjustDrawer.vue', 'src/lib/adjustDrawer.js'])
+    expect(users.sort()).toEqual(['src/components/strategy/AdjustDrawer.vue'])
   })
 })

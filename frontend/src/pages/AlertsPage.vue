@@ -9,7 +9,7 @@ import { RouterLink, useRoute } from 'vue-router'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import { istTime } from '@/lib/displayFormat'
 import { plainName } from '@/lib/saveDraft'
-import { compareUrl } from '@/lib/adjustDrawer'
+import { compareAllUrl } from '@/lib/adjustDrawer'
 import { EARLIER_HEADING, PAPER_ALERTS_EMPTY, attentionItems, dropAlerts, earlierAlerts, openRecords, markPaperAlertsRead, paperAlerts, readPaperAlerts, takeAlerts } from '@/lib/paperAlerts'
 
 // U23: the title shows once; an older stored body still opens with it, so that repeat is dropped (display only)
@@ -49,7 +49,7 @@ onMounted(async () => {
           <template v-if="i.kind === 'open'">
             <p class="font-medium" data-testid="open-record-strategy">{{ plainName(i.strategy_name) ?? `Strategy ${i.strategy_id}` }}</p>
             <p class="mt-1 text-sm" data-testid="open-record-text">{{ i.text }}</p>
-            <RouterLink :to="compareUrl(i.strategy_id, null, [i.id])" class="text-sm text-accent underline" data-testid="open-record-compare">Compare approaches</RouterLink>
+            <RouterLink :to="compareAllUrl(i.strategy_id, [i.id])" class="text-sm text-accent underline" data-testid="open-record-compare">Compare approaches</RouterLink>
           </template>
           <template v-else>
             <p class="font-medium" data-testid="alert-title">{{ i.title }}</p>

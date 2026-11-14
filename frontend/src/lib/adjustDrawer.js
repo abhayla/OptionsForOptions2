@@ -73,9 +73,12 @@ export const availableOf = (reply) => (Array.isArray(reply?.available) ? reply.a
 /** The compare address for a strategy and the ids picked in the drawer; No change is always among them. */
 const OPP_ID = /^[1-9]\d{0,17}$/ // a suggestion record id (BIGSERIAL)
 
-// ids = null: nothing was ticked (a link from the inbox or alerts), so no pick is sent and the compare shows every approach.
-export function compareUrl(strategyId, ids, opportunities = []) {
-  const picks = ids === null ? [] : [...new Set([NO_CHANGE_ID, ...ids])]
+// Only the drawer calls this: it knows what the user ticked. Every other link uses compareAllUrl (tests/compare-url-callers.test.js).
+export const compareUrl = (strategyId, ids, opportunities = []) => buildCompareUrl(strategyId, [...new Set([NO_CHANGE_ID, ...ids])], opportunities)
+/** A link with no ticks (inbox, Alerts, pop-up): no pick is sent, so the compare shows every approach (ADR-308 (4)). */
+export const compareAllUrl = (strategyId, opportunities = []) => buildCompareUrl(strategyId, [], opportunities)
+
+function buildCompareUrl(strategyId, picks, opportunities) {
   const opp = [...new Set(opportunities.map(String).filter((x) => OPP_ID.test(x)))]
   // GC-ADJ2 step 5: the open suggestion records this compare answers (REQ-162 AC-3); its prepare marks them acted on
   const tail = opp.length ? `&opp=${opp.join(',')}` : ''
