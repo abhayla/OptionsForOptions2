@@ -20,6 +20,7 @@ from ofo.marketdata.kite_provider import IST  # noqa: E402
 VALUATION = datetime.datetime(2026, 10, 8, 9, 20, 9, tzinfo=IST)
 RATE = Decimal("0.065")
 CONDOR = (("NSE_FO:44624", "SELL"), ("NSE_FO:44632", "BUY"), ("NSE_FO:44604", "SELL"), ("NSE_FO:44595", "BUY"))
+HTTP_OK = 200
 BOUGHT_ONLY = (("NSE_FO:44632", "BUY"), ("NSE_FO:44595", "BUY"))
 
 
@@ -32,8 +33,8 @@ def replayed():
 
 
 async def _post(provider, legs):
-    from ofo_app.main import create_app
-    from ofo_app.routes.outcome import MarketContext, get_market_context
+    from ofo_app.main import create_app  # noqa: PLC0415
+    from ofo_app.routes.outcome import MarketContext, get_market_context  # noqa: PLC0415
 
     body = {"underlying": "NIFTY", "legs": [
         {"instrument_id": iid, "action": action, "lots": 1,
@@ -48,7 +49,7 @@ async def _post(provider, legs):
 
 async def test_a_condor_answers_with_a_state_and_the_default_rule_sets_name(replayed) -> None:
     resp = await _post(replayed, CONDOR)
-    assert resp.status_code == 200, resp.text
+    assert resp.status_code == HTTP_OK, resp.text
     out = resp.json()
     assert out["entry_guide_state"] in {"breaks", "within"}, out["entry_guide_state"]  # a real delta was read
     if out["entry_guide_state"] == "breaks":
@@ -65,7 +66,7 @@ async def test_a_strategy_with_no_sold_leg_carries_neither_field(replayed) -> No
 
 
 async def test_an_answer_that_is_not_computed_carries_neither_field() -> None:
-    from ofo_app.main import create_app
+    from ofo_app.main import create_app  # noqa: PLC0415
 
     body = {"underlying": "NIFTY", "legs": [{"instrument_id": "NSE_FO:44624", "action": "SELL", "lots": 1,
                                              "planned_entry": "80.00", "captured_at": VALUATION.isoformat()}]}
@@ -75,6 +76,6 @@ async def test_an_answer_that_is_not_computed_carries_neither_field() -> None:
 
 
 def test_the_outcome_model_carries_the_sold_legs_deltas() -> None:
-    from ofo.outcome.service import Outcome
+    from ofo.outcome.service import Outcome  # noqa: PLC0415
 
     assert "sold_deltas" in Outcome.__dataclass_fields__

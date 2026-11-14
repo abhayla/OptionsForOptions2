@@ -239,6 +239,26 @@ class Outcome:
     target: Target | TargetOffer | None = None  # REQ-084 AC-4: the limits alone unless a target was sent (AC-6)
     # GC-LIVE: the dividend yield q each option expiry was priced with (read-only echo; the checker re-prices with it)
     dividend_yields: tuple[tuple[datetime.date, Decimal], ...] = ()
+    # ADR-300: each SOLD option leg's (kind "CE"/"PE", |per-unit engine delta|); None = no IV, so no delta. Empty when
+    # the answer is not computed or no option is sold. Read by the entry-guide line (``ofo.adjustment.entry_guide``).
+    sold_deltas: tuple[tuple[str, Decimal | None], ...] = ()
+
+
+def _sold_deltas(model: ModelInputs) -> tuple[tuple[str, Decimal | None], ...]:
+    """The entry-guide line's input: |delta| of every sold option leg, from the engine's own per-unit Greeks (the
+    function the table and the chain read), from the IV this answer already solved: no second pricing pass."""
+    out: list[tuple[str, Decimal | None]] = []
+    for leg in model.legs:
+        if leg.action is not Action.SELL or leg.instrument is Instrument.FUT:
+            continue
+        delta = None
+        if leg.iv is not None:
+            try:
+                delta = abs(greeks_unrounded(model.expiry_model(leg.expiry), leg.instrument, leg.strike, leg.iv).delta)
+            except (ValueError, ArithmeticError):
+                delta = None
+        out.append((leg.instrument.value, delta))
+    return tuple(out)
 
 
 @dataclass(frozen=True)
@@ -944,7 +964,7 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
         summary=_summary(_metrics_of(model.strategy), level_set, model, charges, charges is None,
                          spot=model.spot_level),
         charges_breakdown=breakdown, curves=curves, other_view=other, payoff_table=table_p,
-        standard_deviation=sd, dividend_yields=yields_of(model),
+        standard_deviation=sd, dividend_yields=yields_of(model), sold_deltas=_sold_deltas(model),
         target=(live_target(target, model, graph_levels, payoff_table_default_step(definition.underlying, settings),
                              calc.target_span(settings))
                 if target is not None and target.asked

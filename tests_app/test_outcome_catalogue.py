@@ -31,7 +31,8 @@ CONDOR = (("NSE_FO:44624", "SELL"), ("NSE_FO:44632", "BUY"), ("NSE_FO:44604", "S
 NOT_TEXT = {"state", "underlying", "kind", "view", "action", "instrument", "health", "side",
             "instrument_id", "symbol", "id", "row_id", "value", "per_unit", "vendor", "strike", "planned_entry", "ltp",
             "iv", "spot_level", "level", "pnl", "max_profit", "max_loss", "lower_be", "upper_be", "step", "start",
-            "end", "bid", "ask", "expiry", "captured_at", "valuation", "spot_at", "markers"}
+            "end", "bid", "ask", "expiry", "captured_at", "valuation", "spot_at", "markers",
+            "entry_guide_state"}
 
 LOSE = "At most ₹8,245.25 at expiry, before charges and taxes."
 MAKE = "At most ₹4,754.75 at expiry, before charges and taxes."

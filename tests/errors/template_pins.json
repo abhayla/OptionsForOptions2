@@ -3432,11 +3432,11 @@
     "reviewed": "owner read 2026-11-02 (accepted after independent screen, not read line by line)"
   },
   "explanation:entry_guide_breaks_call": {
-    "sha256": "aabf4429931768f1d6fe05e07c9c3b258a192d5d4922e1e495f745d0aa9c2c6a",
+    "sha256": "44de01e00cb1c054843fd6f5e033346a0589f0c3f774f48e61cd69643c7ddb65",
     "reviewed": "pending owner read"
   },
   "explanation:entry_guide_breaks_put": {
-    "sha256": "b6d7dcb4c320ac77a5bd6e27085b59f603e408bc891cebfce273f362a337dffa",
+    "sha256": "22fef95591926d83769e412f7b044e8b2ee6c67042c23bcb5ad110dba4fb84c1",
     "reviewed": "pending owner read"
   },
   "explanation:entry_guide_unchecked": {

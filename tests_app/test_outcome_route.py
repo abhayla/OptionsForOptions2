@@ -83,7 +83,7 @@ async def test_condor_outcome_has_every_ac1_part(replayed):
     assert set(out) == {"state", "underlying", "status_label", "reason", "output_label", "valuation",
                         "answered_at", "market_closed", "last_price_at", "spot_level", "spot_at", "legs", "margin",
                         "table", "scenario", "payoff", "summary", "leg_quotes", "charges_breakdown", "target",
-                        "dividend_yields", "entry_guide_state", "entry_guide_line"}  # GC-LIVE: the q priced with; ADR-300
+                        "dividend_yields", "entry_guide_state", "entry_guide_line"}  # GC-LIVE: q priced with; ADR-300
     assert (out["state"], out["underlying"]) == ("COMPUTED", "NIFTY")
     assert out["spot_level"] == "22533.25"
     assert out["margin"]["state"] == "NOT_AVAILABLE_YET" and isinstance(out["margin"]["reason"], str)

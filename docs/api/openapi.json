@@ -7295,6 +7295,31 @@
             ],
             "title": "Dividend Yields"
           },
+          "entry_guide_line": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entry Guide Line"
+          },
+          "entry_guide_state": {
+            "anyOf": [
+              {
+                "enum": [
+                  "breaks",
+                  "within",
+                  "cannot_tell"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entry Guide State"
+          },
           "last_price_at": {
             "anyOf": [
               {

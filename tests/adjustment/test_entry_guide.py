@@ -10,6 +10,7 @@ from decimal import Decimal as D
 import pytest
 from ofo.adjustment import entry_guide as eg
 from ofo.adjustment import playbook_eval as pe
+from ofo.errors.explanations import render_explanation
 
 GUIDE = "shorts at 0.15 to 0.20 delta, wings 200 to 400 points out"  # the stored text, system_playbooks.json
 NAME = "Iron condor: system default"
@@ -17,6 +18,7 @@ PLAYBOOKS = pathlib.Path(__file__).parents[2] / "backend" / "ofo" / "adjustment"
 #: system playbooks whose entry_guide text states no delta range: each must answer "could not check". Empty today; a
 #: wording change that stops a text parsing must fail test_every_system_playbook_guide_reads_or_is_listed.
 NO_NUMERIC_GUIDE: frozenset[str] = frozenset()
+SYSTEM_PLAYBOOKS = 12
 
 
 def _short(kind: str, delta: D | None) -> pe.ShortLeg:
@@ -29,7 +31,7 @@ def _entries() -> list[dict]:
 
 def test_every_system_playbook_guide_reads_or_is_listed() -> None:
     entries = _entries()
-    assert len(entries) == 12
+    assert len(entries) == SYSTEM_PLAYBOOKS
     for p in entries:
         text = p["body"]["guards"].get("entry_guide")
         got = eg.parse_entry_guide(text)
@@ -82,8 +84,6 @@ def test_one_function_gives_the_sold_leg_delta_to_the_entry_line_and_to_t03() ->
 
 
 def test_the_lines_carry_no_advice_words() -> None:
-    from ofo.errors.explanations import render_explanation
-
     for line in (eg.entry_guide_line((_short("CE", D("0.46")),), GUIDE, NAME), eg.entry_guide_line((), GUIDE, NAME)):
         assert line and "should" not in line.lower() and "recommend" not in line.lower()
     assert render_explanation("entry_guide_unchecked") == "Could not check against the entry guide."

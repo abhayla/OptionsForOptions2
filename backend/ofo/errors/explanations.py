@@ -1540,11 +1540,13 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("adjust_check_stage_name", "values_seen", "{name}", {"name": PlaybookName}),
     # ADR-300 (applies ADR-216; GC-ICFIX P2): the guided builder's entry-guide line, a fact with both numbers
     ExplanationTemplate("entry_guide_breaks_call", "values_seen",
-                        "Sold call delta {delta}; the entry guide is {low} to {high}.",
-                        {"delta": Amount, "low": Amount, "high": Amount}),
+                        "Sold call delta {delta}; the entry guide of the default rule set ({rule_set}) "
+                        "is {low} to {high}.",
+                        {"delta": Amount, "rule_set": PlaybookName, "low": Amount, "high": Amount}),
     ExplanationTemplate("entry_guide_breaks_put", "values_seen",
-                        "Sold put delta {delta}; the entry guide is {low} to {high}.",
-                        {"delta": Amount, "low": Amount, "high": Amount}),
+                        "Sold put delta {delta}; the entry guide of the default rule set ({rule_set}) "
+                        "is {low} to {high}.",
+                        {"delta": Amount, "rule_set": PlaybookName, "low": Amount, "high": Amount}),
     ExplanationTemplate("entry_guide_unchecked", "values_seen", "Could not check against the entry guide."),
     # GC-ADJ2 step 5 (REQ-112 AC-2/AC-6, REQ-162): suggestion outcomes, dismiss reasons and the inbox's fixed words
     ExplanationTemplate("suggestion_outcome_open", "values_seen", "Open"),

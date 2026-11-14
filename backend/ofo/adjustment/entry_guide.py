@@ -3,20 +3,28 @@
 The guide is the playbook's own ``guards.entry_guide`` text ("shorts at 0.15 to 0.20 delta, wings ..."); its delta range
 is read from that text, never typed here. The sold-leg delta is ``playbook_eval.sold_leg_delta`` (T-03's own measure).
 A strategy that breaks the guide still shows and still saves: the line is a fact with both numbers, no advice.
+The rule set a strategy with no stored plan yet would get is the system playbook of its shape's type
+(``system_rule_set``). shortcut: a user's own edited playbook text is not read here (no database in the outcome route);
+read it through ``playbook_store.active_for`` when the route gains a database reader.
 Pure: no database, no clock.
 """
 from __future__ import annotations
 
+import functools
+import json
 import re
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
+from pathlib import Path
 from typing import Literal
 
 from ofo.adjustment.playbook_eval import ShortLeg, sold_leg_delta
 from ofo.errors.explanations import render_explanation
 
 _RANGE = re.compile(r"\bshorts at (\d+(?:\.\d+)?) to (\d+(?:\.\d+)?) delta\b")
+_SEED = Path(__file__).with_name("system_playbooks.json")
+State = Literal["breaks", "within", "cannot_tell"]
 
 
 def parse_entry_guide(text: str | None) -> tuple[Decimal, Decimal] | None:
@@ -30,7 +38,7 @@ def parse_entry_guide(text: str | None) -> tuple[Decimal, Decimal] | None:
 
 @dataclass(frozen=True)
 class EntryGuideCheck:
-    state: Literal["breaks", "within", "unknown"]
+    state: State
     kind: str | None = None  # "CE" / "PE": the side whose delta is shown
     delta: Decimal | None = None
     low: Decimal | None = None
@@ -38,23 +46,59 @@ class EntryGuideCheck:
 
 
 def check_entry_guide(shorts: Sequence[ShortLeg], guide_text: str | None) -> EntryGuideCheck:
-    """breaks / within / unknown (a missing delta, no sold leg, or a guide with no readable range)."""
+    """breaks / within / cannot_tell (a missing delta, no sold leg, or a guide with no readable range)."""
     shorts = tuple(shorts)
     rng = parse_entry_guide(guide_text)
     delta = sold_leg_delta(shorts)
-    worst = max(shorts, key=lambda x: x.abs_delta, default=None) if delta is not None else None  # the leg read
-    if rng is None or delta is None or worst.kind not in ("CE", "PE"):
-        return EntryGuideCheck("unknown")
-    state = "within" if rng[0] <= delta <= rng[1] else "breaks"
+    worst = max(shorts, key=lambda x: x.abs_delta) if delta is not None else None  # the leg sold_leg_delta read
+    if rng is None or worst is None or worst.kind not in ("CE", "PE"):
+        return EntryGuideCheck("cannot_tell")
+    state: State = "within" if rng[0] <= delta <= rng[1] else "breaks"
     return EntryGuideCheck(state, worst.kind, delta, *rng)
 
 
-def entry_guide_line(shorts: Sequence[ShortLeg], guide_text: str | None) -> str | None:
-    """The one plain line for the screen: the breaking fact, "could not check", or None when within the guide."""
-    c = check_entry_guide(shorts, guide_text)
+def _line(c: EntryGuideCheck, rule_set: str):
     if c.state == "within":
         return None
-    if c.state == "unknown":
-        return str(render_explanation("entry_guide_unchecked"))
+    if c.state == "cannot_tell":
+        return render_explanation("entry_guide_unchecked")
     side = "entry_guide_breaks_put" if c.kind == "PE" else "entry_guide_breaks_call"
-    return str(render_explanation(side, delta=c.delta, low=c.low, high=c.high))
+    return render_explanation(side, delta=c.delta, rule_set=rule_set, low=c.low, high=c.high)
+
+
+def entry_guide_line(shorts: Sequence[ShortLeg], guide_text: str | None, rule_set: str):
+    """The one plain line for the screen: the breaking fact, "could not check", or None when within the guide."""
+    return _line(check_entry_guide(shorts, guide_text), rule_set)
+
+
+@functools.cache
+def _system() -> dict[str, tuple[str, str | None]]:
+    rows = json.loads(_SEED.read_text("utf-8"))["playbooks"]
+    return {r["strategy_type"]: (r["name"], r["body"].get("guards", {}).get("entry_guide")) for r in rows}
+
+
+def system_rule_set(strategy_type: str | None) -> tuple[str, str | None] | None:
+    """(name, entry-guide text) of the system playbook of ``strategy_type``; None for a shape that has none."""
+    return None if strategy_type is None else _system().get(strategy_type)
+
+
+@dataclass(frozen=True)
+class EntryGuide:
+    state: State
+    line: object  # an ExplanationText (catalogue text) or None
+
+
+RuleSets = Callable[[str | None], "tuple[str, str | None] | None"]
+
+
+def entry_guide_for(sold: Sequence[tuple[str, Decimal | None]], strategy_type: str | None,
+                    rule_sets: RuleSets = system_rule_set) -> EntryGuide | None:
+    """The whole answer for a priced strategy. ``sold``: (kind, |delta|) of each sold option leg; None when there is no
+    sold option leg (the guide speaks of shorts only). A shape with no rule set, or a guide text that states no range,
+    is "cannot tell": never silence, never a guessed range."""
+    if not sold:
+        return None
+    shorts = tuple(ShortLeg(Decimal(0), d, None, k) for k, d in sold)
+    name, text = rule_sets(strategy_type) or (None, None)
+    c = check_entry_guide(shorts, text)
+    return EntryGuide(c.state, _line(c, name or ""))
