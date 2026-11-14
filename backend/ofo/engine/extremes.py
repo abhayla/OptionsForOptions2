@@ -125,7 +125,7 @@ def exit_risk(book: Sequence[PaperOrder], exits: Sequence[PaperOrder], terms: Ma
     widens = (floor_before is not None and floor_after is not None and floor_before is not UNLIMITED
               and (floor_after is UNLIMITED or floor_after < floor_before))
     loss_before, loss_after = book_extremes(before, terms, {}).max_loss, book_extremes(after, terms, {}).max_loss
-    # one result: the figures are shown only when they themselves read worse after (or unlimited), else the flag stands alone
+    # one result: figures show only when they themselves read worse after (or unlimited); else the flag stands alone
     agree = widens and loss_before is not None and loss_before is not UNLIMITED and (
         loss_after is UNLIMITED or (loss_after is not None and loss_after < loss_before))
     return ExitRisk(loss_before if agree else None, loss_after if agree else None, widens)
