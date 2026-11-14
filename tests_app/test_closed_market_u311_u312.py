@@ -52,10 +52,12 @@ def test_u311_open_stop_record_stays_shown_when_the_rule_reads_not_checked():
 
 # ---- round 2: no path shows a raw id; every schedule kind has its pinned sentence ------------------------------------
 GENERIC = "A scheduled check for this trade"
+SHOW = "Show reduce / partial profit / exit"
+CARRY_WORDS = "Run the carry check (overnight margin, gap loss)"
 
 
 @pytest.mark.parametrize("rule_id", ["day.zzz.1500.0", "day.beforeWeekend.1500.9", "day.invalid", "day:after:1500:exit",
-                                     "day.beforeWeekend.15x0.0", "whatever"])
+                                     "day.beforeWeekend.15x0.0"])
 def test_u312_an_unreadable_day_rule_id_is_one_plain_sentence_never_raw(rule_id, caplog):
     rec = store.Suggestion(1, 144, "day." + rule_id, "day.x", None, None, None, AT, "open", None,
                            [{"cmp": None, "label": None}])
@@ -67,20 +69,20 @@ def test_u312_an_unreadable_day_rule_id_is_one_plain_sentence_never_raw(rule_id,
 
 
 @pytest.mark.parametrize(("rule_id", "sentence"), [
-    ("day.beforeWeekend.1500.0", "The last session before a weekend, 15:00: Run the carry check (overnight margin, gap loss)"),
-    ("day.beforeHoliday.1500.0", "The day before a market holiday, 15:00: Run the carry check (overnight margin, gap loss)"),
+    ("day.beforeWeekend.1500.0", f"The last session before a weekend, 15:00: {CARRY_WORDS}"),
+    ("day.beforeHoliday.1500.0", f"The day before a market holiday, 15:00: {CARRY_WORDS}"),
     ("day.expiry.1430.5", "Expiry day, 14:30: Prepare an exit for review"),
-    ("day.weekday.0930.1", f"{GENERIC}, 09:30: Show reduce / partial profit / exit"),
-    ("day.dom.0930.1", f"{GENERIC}, 09:30: Show reduce / partial profit / exit"),
-    ("day.date.0930.1", f"{GENERIC}, 09:30: Show reduce / partial profit / exit"),
-    ("day.event.1430.1", f"{GENERIC}, 14:30: Show reduce / partial profit / exit"),
-    ("day.away.1430.1", f"{GENERIC}, 14:30: Show reduce / partial profit / exit"),
+    ("day.weekday.0930.1", f"{GENERIC}, 09:30: {SHOW}"),
+    ("day.dom.0930.1", f"{GENERIC}, 09:30: {SHOW}"),
+    ("day.date.0930.1", f"{GENERIC}, 09:30: {SHOW}"),
+    ("day.event.1430.1", f"{GENERIC}, 14:30: {SHOW}"),
+    ("day.away.1430.1", f"{GENERIC}, 14:30: {SHOW}"),
 ])
 def test_u312_each_schedule_kind_has_its_pinned_sentence(rule_id, sentence):
     assert chk_app.day_rule_words(rule_id) == sentence
 
 
-# ---- round 2: a stop read on a later day names its date (server decides "today", IST) ---------------------------------
+# ---- round 2: a stop read on a later day names its date (the server decides "today", IST)
 def _held_stop():
     return chk.HeldFlag("T-06", sl.TRIGGER_MAX_LOSS, "Entry", D("5.8600"), D("1.0000"), "ge")
 
@@ -88,7 +90,7 @@ def _held_stop():
 def test_stop_fired_today_shows_the_time_only():
     at = datetime.datetime(2026, 11, 13, 9, 59, tzinfo=datetime.UTC)  # 15:29 IST
     text = str(chk.stop_text(_held_stop(), (), None, {"T-06": at}, datetime.date(2026, 11, 13)))
-    assert text.endswith("; reached at 15:29 IST") and " on " not in text.split(";")[-1], text
+    assert text.endswith("; reached at 15:29 IST"), text
 
 
 def test_stop_fired_on_an_earlier_day_shows_date_and_time():

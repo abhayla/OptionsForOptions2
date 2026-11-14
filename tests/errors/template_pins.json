@@ -4174,5 +4174,9 @@
   "explanation:stop_held_credit": {
     "sha256": "3b18c83de053e0342d6b1148c133e270d24a68a400f4b7d066bcde3ce8892a79",
     "reviewed": "pending owner read"
+  },
+  "explanation:stop_fired_on": {
+    "sha256": "51a72f82532dab91f0bd18c21516cbbf2538a704ece713ce1c1f1d9db8a41875",
+    "reviewed": "pending owner read"
   }
 }

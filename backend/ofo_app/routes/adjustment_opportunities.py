@@ -17,13 +17,14 @@ UPDATE, guarded by the database). Suggest-only (ADR-003): no route here reaches 
 from __future__ import annotations
 
 import datetime
+import logging
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends
 from ofo.adjustment.held_reasons import HELD_TEXT_IDS
 from ofo.adjustment.playbook_eval import is_day_rule_id
 from ofo.errors import render
-from ofo.errors.explanations import render_explanation
+from ofo.errors.explanations import DAY_RULE_GENERIC_TEXT, render_explanation
 from ofo.strategy.stored_form import shown_name
 from pydantic import BaseModel, ConfigDict
 
@@ -36,6 +37,7 @@ from ofo_app.routes.broker import current_user_ref
 from ofo_app.strategy_refused import StrategyRefused
 from ofo_app.strategy_store import StrategyStoreError
 
+log = logging.getLogger(__name__)
 router = APIRouter(route_class=ClosedRoute)
 ID_MAX = 9_223_372_036_854_775_807  # BIGSERIAL: a larger number is simply not there
 OUTCOMES = ("open", "dismissed", "acted_on", "completed", "partly_completed", "lapsed")
@@ -134,8 +136,11 @@ def condition_text(s: store.Suggestion) -> Any:
     """A record's condition in the catalogue's words (the inbox line; the adjustment history's Why, REQ-163 AC-1)."""
     if s.cmp not in ("le", "ge", "lt") or s.trigger_id is None or s.value is None or s.threshold is None:
         if is_day_rule_id(s.rule_id):  # ADR-267 amendment: a day rule names itself, never an empty "What happened"
-            # the rule's action words; the id as a label is no wording: the id's own sentence (never the raw id)
-            for name in (None if s.label == s.rule_id else s.label, day_rule_words(s.rule_id), s.rule_id):
+            # the rule's action words; the id as a label is no wording: the id's own sentence, never the raw id
+            names = (None if s.label == s.rule_id else s.label, day_rule_words(s.rule_id), DAY_RULE_GENERIC_TEXT)
+            if names[1].startswith(DAY_RULE_GENERIC_TEXT):
+                log.warning("day rule id with no wording: %s", s.rule_id)  # the raw id goes to the log only
+            for name in names:
                 if name is None:
                     continue
                 try:

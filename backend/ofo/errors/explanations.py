@@ -26,6 +26,7 @@ from types import MappingProxyType
 from ofo import wording as _wording
 from ofo.errors.gate_slots import (
     ClockTime,
+    Date,
     PlaybookField,
     PlaybookName,
     PlaybookTriggerLabel,
@@ -346,6 +347,8 @@ PLAYBOOK_DAY_RULE_ACTION_TEXT: Mapping[str, str] = MappingProxyType({
     "5": "Prepare an exit for review",
     "6": "Do not suggest rolls",
 })
+#: GC-ICFIX issue 19: the one plain sentence for a day rule whose id the code cannot read (the raw id is never shown)
+DAY_RULE_GENERIC_TEXT: str = "A scheduled check for this trade"
 #: GC-IC1 4c (A-37, ADR-242): a level-watch record's words by direction (pending owner read).
 LEVEL_WATCH_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
     "above": "Watched level reached (at or above)",
@@ -1657,6 +1660,9 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         {"loss": Rupees, "stop": Rupees}),
     ExplanationTemplate("stop_fired_at", "values_seen", "{line}; reached at {time} IST",
                         {"line": Explained, "time": HourMinute}),
+    # issue 19: a stop read on a later day than the one it was reached on names that day (the server decides "today")
+    ExplanationTemplate("stop_fired_on", "values_seen", "{line}; reached on {date} at {time} IST",
+                        {"line": Explained, "date": Date, "time": HourMinute}),
     ExplanationTemplate("adjust_spot_from_feed", "values_seen", "Spot from the live feed"),
     ExplanationTemplate("adjust_spot_from_rest_quote", "values_seen", "Spot from a one-time price request"),
     ExplanationTemplate("adjust_spot_from_last_close", "values_seen", "Spot from the last close"),
