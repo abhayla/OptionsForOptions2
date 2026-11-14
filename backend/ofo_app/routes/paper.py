@@ -28,7 +28,7 @@ from collections.abc import Mapping, Sequence
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Annotated, Any, Literal, get_args
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from ofo.adjustment.approaches import EntryFacts
 from ofo.charges import ChargeRates
 from ofo.charges.paper_charges import PaperFill, charges_sum, paper_charges
@@ -84,7 +84,7 @@ from ofo_app import (
 from ofo_app import strategy_store as store
 from ofo_app.api_models import ApiModel, CatalogueText, Money
 from ofo_app.db import get_db
-from ofo_app.errors import ClosedRoute, Failure
+from ofo_app.errors import ClosedRoute, Failure, refuse_request
 from ofo_app.live_push import POLL_SECONDS, LiveFeed, hold_and_read
 from ofo_app.paper_reasons import breakevens_reason_text, extremes_reason_text, greeks_reason_text, reason_text
 from ofo_app.routes.adjustment import TrackedReader, get_tracked_reader
@@ -1077,7 +1077,7 @@ async def paper_exit_risk(strategy_id: int, orders: Annotated[str, Query(max_len
     try:  # the prepared orders as JSON, the same shape the order route takes
         basket = PaperOrdersIn.model_validate_json('{"orders":' + orders + "}").orders
     except ValueError:
-        raise HTTPException(status_code=422, detail="invalid_orders") from None
+        refuse_request(("query", "orders"), "invalid_orders")
     booked = await paper_store.load(db, strategy_id)
     if not booked:  # nothing is open: an exit is larger than what is open; a first basket leaves nothing unprotected
         return _exit_risk_answer("cannot_tell" if any(o.kind == "exit" for o in basket) else "no")
