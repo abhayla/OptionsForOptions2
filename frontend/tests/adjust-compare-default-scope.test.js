@@ -6,7 +6,7 @@ import adj02 from './fixtures/adjust-approaches-adj02.json'
 
 vi.mock('chart.js/auto', () => ({ default: class { constructor() {} destroy() {} } }))
 import AdjustCompare from '@/components/strategy/AdjustCompare.vue'
-import { compareUrl, picksFromQuery } from '@/lib/adjustDrawer'
+import { compareAllUrl, compareUrl, picksFromQuery } from '@/lib/adjustDrawer'
 
 const N = adj02.approaches.length
 const client = { post: vi.fn(async () => ({ data: adj02 })), get: vi.fn(async () => { throw Object.assign(new Error('x'), { status: 404 }) }) }
@@ -21,7 +21,7 @@ const ids = adj02.approaches.map((a) => a.id)
 
 describe('issue 14: default scope of the offer screen', () => {
   it('a link with no ticks carries no pick, and the compare opens on every approach', async () => {
-    const url = compareUrl(72, null, ['11'])
+    const url = compareAllUrl(72, ['11'])
     expect(url).toBe('/strategy/builder?adjust=72&opp=11')
     const w = await open(new URL(url, 'http://x').searchParams.get('pick') ?? undefined)
     expect(cols(w)).toBe(N)
