@@ -106,7 +106,7 @@ def entry_guide_for(sold: Sequence[tuple[str, Decimal | None]], strategy_type: s
                     rule_sets: RuleSets = system_rule_set) -> EntryGuide | None:
     """The whole answer for a priced strategy. ``sold``: (kind, |delta|) of each sold option leg; None when there is no
     sold option leg, or when the shape is unknown or one the guide does not suit (``GUIDE_APPLIES``). For a shape it
-    suits, a missing delta or a guide text that states no range is "cannot tell": never silence, never a guessed range."""
+    suits, a missing delta or a guide text that states no range is "cannot tell": never silence, never a guess."""
     if not sold or not GUIDE_APPLIES.get(strategy_type or "", False):
         return None
     shorts = tuple(ShortLeg(Decimal(0), d, None, k) for k, d in sold)

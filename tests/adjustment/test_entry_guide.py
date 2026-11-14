@@ -127,7 +127,7 @@ NOT_APPLY = {"straddle", "ifly", "dirfly", "calendar", "debit", "longopt", "long
 
 
 def test_every_shape_type_is_classified_deliberately() -> None:
-    assert APPLIES | NOT_APPLY == set(TYPE_KEYS) and not APPLIES & NOT_APPLY  # new type: fails until classified
+    assert set(TYPE_KEYS) == APPLIES | NOT_APPLY and not APPLIES & NOT_APPLY  # new type: fails until classified
     assert set(eg.GUIDE_APPLIES) == set(TYPE_KEYS)
 
 
