@@ -36,14 +36,16 @@ const t = (w, id) => w.find(`[data-testid="${id}"]`)
 async function panel(results, records = []) {
   CHECK = results instanceof Error ? results : check(results)
   resetOpenRecords()
-  seed(records)
+  if (records === null) takeOpportunities(null) // the header's records read failed
+  else if (records !== 'not-run') seed(records) // 'not-run': the header has not read yet
   const w = mount(TrackingPanel, { props: { savedId: 7, legs: [] } })
   mounted.push(w)
   await flushPromises()
   return w
 }
-beforeEach(() => { resetOpenRecords() })
-afterEach(() => { mounted.splice(0).forEach((w) => w.unmount()) })
+// "today" is 13 Nov 2026 in India for every test below (only Date is faked: promises and timers run for real)
+beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2026-11-13T09:30:00Z')); resetOpenRecords() })
+afterEach(() => { mounted.splice(0).forEach((w) => w.unmount()); vi.useRealTimers() })
 
 describe('the trade page rules line (issue 12)', () => {
   it('quiet: a rule that has not fired and is checked adds no rules line', async () => {
@@ -88,5 +90,36 @@ describe('the trade page rules line (issue 12)', () => {
   it('the rule check read fails: the line says the rules could not be read, never silence', async () => {
     const w = await panel(Object.assign(new Error('x'), { status: 500, parts: null }))
     expect(t(w, 'rules-load-failed').text()).toContain('Could not read')
+  })
+
+  it('fired yesterday: the date comes with the time', async () => {
+    const w = await panel([flag({ fired_at: '2026-11-12T08:44:00Z' })])
+    expect(t(w, 'playbook-flag-time').text()).toBe('Fired at 12 Nov 2026, 14:14:00 IST')
+  })
+
+  it('a record from last week in the earlier list shows its date and time', async () => {
+    const w = await panel([], [earlier(5, { shown_at: '2026-11-06T08:20:00Z' })])
+    expect(t(w, 'rules-earlier').text()).toContain('fired 6 Nov 2026, 13:50:00 IST')
+  })
+
+  it('the earlier list is this trade only, newest first, at most 5, with "and N earlier" for the rest', async () => {
+    const days = [1, 2, 3, 4, 5, 6, 7].map((d) => earlier(20 + d, { shown_at: `2026-11-0${d}T08:20:00Z`, condition: `Rule value day ${d}` }))
+    const w = await panel([], [...days.reverse().slice(0, 4), ...days.slice(4), earlier(99, { condition: 'other trade' })]) // order scrambled
+    const rows = w.findAll('[data-testid="rules-earlier"]').map((r) => r.text())
+    expect(rows).toHaveLength(5)
+    expect(rows[0]).toContain('Rule value day 7')
+    expect(rows[4]).toContain('Rule value day 3')
+    expect(t(w, 'rules-earlier-more').text()).toBe('and 2 earlier')
+  })
+
+  it('the records read failed: the earlier part says it could not be read, never looks like nothing fired', async () => {
+    const w = await panel([], null)
+    expect(t(w, 'rules-earlier-failed').text()).toContain('Could not read')
+  })
+
+  it('the records read has not run yet: nothing misleading is shown', async () => {
+    const w = await panel([], 'not-run')
+    expect(t(w, 'rules-earlier-failed').exists()).toBe(false)
+    expect(t(w, 'rules-line').exists()).toBe(false)
   })
 })
