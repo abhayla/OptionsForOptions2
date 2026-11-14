@@ -101,7 +101,7 @@ def test_a_future_leg_cannot_be_counted_but_an_unlimited_result_is_still_proven(
 
 
 def test_an_exit_larger_than_what_is_open_is_never_no() -> None:
-    assert _ask(IC, _x("4", "SELL", "170.00", lots=2)).state != "no"
+    assert _ask(IC, _x("4", "SELL", "170.00", lots=2)).state == "cannot_tell"
 
 
 def test_sold_leg_alone_warns_only_when_the_max_loss_more_than_doubles() -> None:

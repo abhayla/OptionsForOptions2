@@ -1068,7 +1068,8 @@ async def paper_exit_risk(strategy_id: int, orders: Annotated[str, Query(max_len
     names = {}
     for cid, found in state.items():
         if found.stored is not None:
-            names[str(cid)], instrument, strike, expiry = _identity(found)
+            name, instrument, strike, expiry = _identity(found)
+            names[str(cid)] = describe_contract((stored.saved.definition.underlying, instrument, strike, expiry))
             terms[str(cid)] = ContractTerms(instrument, strike, expiry)
     try:
         legs = [PaperOrder(str(o.contract_id), o.side, o.quantity,
@@ -1085,7 +1086,10 @@ async def paper_exit_risk(strategy_id: int, orders: Annotated[str, Query(max_len
     warning = render_explanation("paper_exit_widens_loss", before=before_text if priced else na,
                                  after=after_text if priced else na)
     if risk.exposed:
-        warning += " " + render_explanation("paper_exit_less_protected", legs=", ".join(names[i] for i in risk.exposed))
+        legs_text = names[risk.exposed[0]]
+        for other in risk.exposed[1:]:
+            legs_text = render_explanation("paper_alert_legs", rest=legs_text, leg=names[other])
+        warning += " " + render_explanation("paper_exit_less_protected", legs=legs_text)
     return ExitRiskOut(state="yes", max_loss_before=before if priced else None,
                        max_loss_after=after if priced else None, warning_text=warning)
 

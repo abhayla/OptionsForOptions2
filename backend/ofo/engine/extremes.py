@@ -148,6 +148,12 @@ def exit_risk(book: Sequence[PaperOrder], basket: Sequence[PaperOrder], terms: M
     Anything unproven (a future leg, two expiries, an order the book cannot take) is cannot_tell, never no."""
     try:
         before, after = net_positions(list(book), {}), net_positions([*book, *basket], {})
+        held = {p.instrument_id: p.net_quantity for p in before.positions}
+        for o in basket:  # an exit may only close what is open on the other side (a larger one is not judged)
+            if o.kind == "exit":
+                held[o.instrument_id] = held.get(o.instrument_id, 0) + (o.quantity if o.side == "BUY" else -o.quantity)
+                if held[o.instrument_id] * (1 if o.side == "BUY" else -1) > 0:
+                    return ExitRisk("cannot_tell", None, None, ())
         n0, n1 = _naked(before, terms), _naked(after, terms)
         loss0, loss1 = book_extremes(before, terms, {}).max_loss, book_extremes(after, terms, {}).max_loss
     except (ValueError, KeyError):
