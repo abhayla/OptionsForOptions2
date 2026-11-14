@@ -45,7 +45,22 @@ def test_closing_everything_does_not_warn() -> None:
     assert got.widens is False
 
 
-def test_closing_one_whole_spread_at_a_loss_does_not_warn() -> None:
-    # the remaining put spread is unchanged; the loss booked on the closed call spread is not a wider structure
+def test_closing_one_whole_spread_at_a_loss_does_not_warn_and_shows_no_figures() -> None:
+    # the remaining put spread is unchanged; the loss booked on the closed call spread makes the book's Max Loss figure
+    # fall, which is not a wider structure: the flag and the figures come from one result, so no figures either
     got = exit_risk(BOOK, _exit(("3", "BUY", "260.00"), ("4", "SELL", "120.00")), TERMS)
     assert got.widens is False
+    assert got.max_loss_before is None and got.max_loss_after is None
+
+
+def test_a_warning_always_carries_figures_that_agree_with_it() -> None:
+    got = exit_risk(BOOK, _exit(("1", "SELL", "150.00")), TERMS)  # the bought put closed alone: wider, not unlimited
+    assert got.widens is True
+    assert got.max_loss_after is not UNLIMITED and got.max_loss_after < got.max_loss_before < 0
+
+
+def test_a_flag_whose_figures_would_disagree_shows_no_figures() -> None:
+    # absurd 30000 sale price: the booked gain outweighs the wider structure, so "after" would not read worse
+    got = exit_risk(BOOK, _exit(("1", "SELL", "30000.00")), TERMS)
+    assert got.widens is True
+    assert got.max_loss_before is None and got.max_loss_after is None
