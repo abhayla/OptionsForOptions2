@@ -3,7 +3,7 @@ import { beforeEach, describe, it, expect, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import {
   STRATEGY_NAME_DEFAULT, buildSaveBody, buildUpdateBody, canSaveLegs, fetchSavedDraft, legsFromSaved, legsLine, noMatchText, plainName,
-  saveAsName, searchStrategies, strategyLabel, trackedText,
+  saveAsName, searchStrategies, strategyLabel,
 } from '@/lib/saveDraft'
 import SaveDraftBar from '@/components/strategy/SaveDraftBar.vue'
 
@@ -193,8 +193,8 @@ describe('REQ-134: the name as the API sends it (quoted user words, ADR-003)', (
     expect(legsLine({ id: 7, underlying: 'NIFTY' })).toBeNull() // an older server
     expect(legsLine(LIST_ROW(7, 'x', { first_leg: { instrument: 'CE', strike: null, expiry: '2026-10-13' } }))).toBe('Contract details not available')
   })
-  it('trackedText: true, false, unknown (null) and absent are four different answers', () => {
-    expect([true, false, null, undefined].map(trackedText)).toEqual(['Tracked', 'Not tracked', 'Tracking not known', null])
+  it('ADR-299: the tracked words are retired; saveDraft no longer exports trackedText', async () => {
+    expect((await import('@/lib/saveDraft')).trackedText).toBeUndefined()
   })
   it('searchStrategies is case-insensitive on the shown name; an unmatched text keeps nothing; no-match text names the typed text', () => {
     const rows = [LIST_ROW(1, 'NIFTY Oct CONDOR'), LIST_ROW(2, 'Straddle')]

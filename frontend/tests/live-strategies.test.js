@@ -15,6 +15,14 @@ vi.mock('@/services/api', async (importActual) => {
   const actual = await importActual()
   const get = (url) => {
     if (url === '/strategies') return typeof listAnswer === 'function' ? listAnswer() : Promise.resolve({ data: listAnswer })
+    // ADR-299 / issue 16: the book of a running trade (only the contract held now, one leg already closed)
+    const book = /^\/paper\/strategies\/(\d+)$/.exec(url)
+    if (book) {
+      paperGets.push(Number(book[1]))
+      return Promise.resolve({ data: { strategy_id: Number(book[1]), underlying: 'NIFTY', answered_at: '2026-10-19T10:00:00+05:30',
+        orders: [{ id: 1 }, { id: 2 }], positions: [{ contract_id: 5, net_quantity: -65, average: '88.50', expiry: '2026-10-13', price_at: '2026-10-19T10:00:00+05:30' },
+          { contract_id: 6, net_quantity: 0, average: '90.00', expiry: '2026-10-13' }] } })
+    }
     const detail = /^\/strategies\/(\d+)$/.exec(url)
     if (detail) {
       const id = Number(detail[1])
@@ -97,11 +105,13 @@ async function answerNext(body) {
   return s
 }
 const detailGets = []
+const paperGets = []
 
 beforeEach(() => {
   FakeSocket.all = []
   posts.length = 0
   detailGets.length = 0
+  paperGets.length = 0
   vi.useRealTimers()
   vi.spyOn(Math, 'random').mockReturnValue(0) // no reconnect spread here: it has its own tests (reconnect-forever.test.js)
   failDetailFor = new Set()
@@ -504,13 +514,13 @@ describe('start queue: one card loading at a time (F-45, db-role-limit-below-poo
     expect(detailGets).toEqual([3])
   })
 
-  it('AC-4: executed and draft strategies sit under two headings, newest first', async () => {
-    listAnswer = { strategies: [row(1, '2026-10-17T10:00:00+05:30'), { ...row(2, '2026-10-18T10:00:00+05:30'), status: 'executed' }, row(3, '2026-10-19T10:00:00+05:30')] }
+  it('ADR-299: running and draft strategies sit under two headings that are the status words, newest first', async () => {
+    listAnswer = { strategies: [row(1, '2026-10-17T10:00:00+05:30'), { ...row(2, '2026-10-18T10:00:00+05:30'), has_paper_order: true }, row(3, '2026-10-19T10:00:00+05:30')] }
     const w = await mountPage()
     const ex = w.find('[data-testid="live-group-executed"]')
     const dr = w.find('[data-testid="live-group-drafts"]')
-    expect(ex.find('h2').text()).toBe('Executed')
-    expect(dr.find('h2').text()).toBe('Saved drafts (live prices)')
+    expect(ex.find('h2').text()).toBe('Running')
+    expect(dr.find('h2').text()).toBe('Draft')
     expect(ex.findAll('[data-testid="live-strategy-card"]').map((c) => c.attributes('data-strategy-id'))).toEqual(['2'])
     expect(dr.findAll('[data-testid="live-strategy-card"]').map((c) => c.attributes('data-strategy-id'))).toEqual(['3', '1'])
   })
@@ -530,6 +540,36 @@ describe('REQ-134 reader sweep: the card title is the strategy name (quoted user
     expect(titles).toContain('<b>NIFTY</b> Oct condor, NIFTY')
     expect(titles).toContain('Draft 2, NIFTY')
     expect(w.find('[data-testid="live-strategy-title"] b').exists()).toBe(false)
+  })
+})
+
+// ADR-299 + ADR-259, user test 2026-11-13 (#22, #77, N-3, X-1): status words and what Live Strategies lists.
+describe('issue 16: status words and closed trades on Live Strategies', () => {
+  it('a fully closed trade is absent; Draft and Running cards carry the one set of words, never "Waiting to start"', async () => {
+    listAnswer = { strategies: [row(1, '2026-10-17T10:00:00+05:30'), { ...row(2, '2026-10-18T10:00:00+05:30'), status: 'closed', has_paper_order: true },
+      { ...row(3, '2026-10-19T10:00:00+05:30'), has_paper_order: true }] }
+    const w = await mountPage()
+    expect(w.find('[data-strategy-id="2"]').exists()).toBe(false)
+    expect(w.find('[data-strategy-id="1"] [data-testid="live-strategy-status"]').text()).toBe('Draft')
+    expect(w.find('[data-strategy-id="3"] [data-testid="live-strategy-status"]').text()).toBe('Running')
+    expect(w.text()).not.toContain('Waiting to start')
+    expect(detailGets).not.toContain(2) // a completed trade starts no card and no socket
+  })
+  it('only closed trades: no card and the empty line is not a "no saved strategies" lie', async () => {
+    listAnswer = { strategies: [{ ...row(2), status: 'closed', has_paper_order: true }] }
+    const w = await mountPage()
+    expect(cards(w)).toHaveLength(0)
+    expect(FakeSocket.all).toHaveLength(0)
+  })
+  it('a partly closed running trade follows the legs it holds NOW (the book), not the legs it was saved with', async () => {
+    listAnswer = { strategies: [{ ...row(7), has_paper_order: true }] }
+    const w = await mountPage()
+    expect(paperGets).toEqual([7])
+    expect(detailGets).not.toContain(7)
+    const sent = JSON.parse(FakeSocket.all[0].sent[0])
+    expect(sent.legs).toHaveLength(1)
+    expect(sent.legs[0]).toMatchObject({ action: 'SELL', lots: 1, planned_entry: '88.50' })
+    expect(w.find('[data-strategy-id="7"]').exists()).toBe(true)
   })
 })
 

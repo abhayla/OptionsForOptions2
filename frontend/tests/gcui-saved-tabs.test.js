@@ -116,7 +116,7 @@ describe('D-C12 row actions', () => {
     expect(row.find('[data-testid="delete-2"]').exists()).toBe(false)
     expect(row.get('[data-testid="delete-refused"]').attributes('title')).toBe("Orders were already sent for this strategy, so it cannot be deleted.")
     expect(row.text()).not.toMatch(/Not tracked/)
-    expect(row.get('[data-testid="saved-draft-tracked"]').text()).toBe('Tracking not known')
+    expect(row.find('[data-testid="saved-draft-tracked"]').exists()).toBe(false) // ADR-299: no tracking words anywhere
   })
   it('the pencil on the open strategy opens the rename dialog "Update Strategy Name" with its name', async () => {
     const w = await bar([summary(2)], { current: { id: 2, revision: 3, name: '"Plan 2"' } })
