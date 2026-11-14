@@ -111,7 +111,7 @@ class Tracked:
     entered_at: datetime.datetime | None = None
     #: ADR-276: the strategy is a real (broker) book: the app reads no charges paid on it, so ``paid_charges`` is None
     real_book: bool = False
-    #: the charges already paid, exact (``paper_charges(...).total``); ``paid_charges`` is this rounded up. None = not known
+    #: the charges already paid, exact (``paper_charges(...).total``); ``paid_charges`` is it rounded up; None = unknown
     paid_exact: Decimal | None = None
 
 
@@ -415,9 +415,10 @@ class Priced:
 def price_after(legs: Sequence[PositionLeg], position: Position, booked: Decimal | None, paid: Decimal | None,  # noqa: PLR0913
                 own_orders: Sequence[ChargeOrder], rates: ChargeRates | None, market: MarketInputs,
                 paid_exact: Decimal | None = None) -> Priced:
-    """The whole-trade After of ``legs`` (``booked`` already includes the legs this approach closes). With ``paid_exact``
-    the three charge lines add up to the exact total rounded UP ONCE (F-35), the figure the trade page shows: the
-    exit line takes the rounding remainder, so Max profit / Max loss agree to the paisa (GC-ICFIX issue 3)."""
+    """The whole-trade After of ``legs`` (``booked`` already includes the legs this approach
+    closes). With ``paid_exact`` the three charge lines add up to the exact total rounded UP ONCE (F-35), the figure
+    the trade page shows: the exit line takes the rounding remainder, so Max profit / Max loss agree to the paisa
+    (GC-ICFIX issue 3)."""
     if booked is None:
         return Priced(None, False, render_explanation("adjust_booked_unknown"))
     segment = charge_segment(position.underlying)
