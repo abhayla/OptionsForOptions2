@@ -26,7 +26,7 @@ def _read(rule_id: str, value: str):
 @pytest.mark.parametrize("preset", STYLES)
 @pytest.mark.parametrize("rule_id", STOPS)
 def test_stop_beyond_its_line_is_raised_mid_candle(preset, rule_id):
-    state, ev = ag.step(ag.initial_state(), now=at("10:40:30"), preset=preset, readings=_read(rule_id, "11"))
+    _, ev = ag.step(ag.initial_state(), now=at("10:40:30"), preset=preset, readings=_read(rule_id, "11"))
     assert [(type(e), e.rule_id, e.at) for e in ev] == [(ag.Opened, rule_id, at("10:40:30"))]
 
 

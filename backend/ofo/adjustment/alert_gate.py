@@ -8,7 +8,8 @@ AND the cool-down from the record has passed; one ladder level worse opens at on
 quiet time after the open turn a would-be record into a `Held` event, never a silent drop.
 
 Risk exits (stop-loss, conditional exits, REQ-041 / paper triggers) never pass through this gate (AC-5): it applies to
-adjustment suggestions only. The screen check and the background check share this one gate.
+adjustment suggestions only. The screen check and the background check share this one gate. A stop rule
+(``stop_lines.is_stop_rule``) is judged on the first check that sees it beyond its line, not at the candle close.
 """
 from __future__ import annotations
 
@@ -21,6 +22,7 @@ from typing import Literal, Union
 from ofo.adjustment.cap_scope import cap_exempt
 from ofo.adjustment.gate_rows import GateRow, GateRows, Preset  # noqa: F401 - re-exported for callers
 from ofo.adjustment.held_reasons import HELD_DAILY_LIMIT, HELD_QUIET_TIME, HELD_TEXT_IDS  # noqa: F401 - re-exported
+from ofo.adjustment.stop_lines import is_stop_rule
 from ofo.timeutil import IST
 from ofo.timeutil import SESSION_OPEN as MARKET_OPEN
 
@@ -317,7 +319,13 @@ def step(
         if value is None:
             continue
         rule = state.rule(rule_id)
-        state = state.with_rule(rule_id, replace(rule, pending=_Pending(end, value, spec)))
+        pending = _Pending(end, value, spec)
+        state = state.with_rule(rule_id, replace(rule, pending=pending))
+        if is_stop_rule(rule_id) and _level(spec, value) >= 0:
+            # REQ-170 AC-5: a stop beyond its line is judged now; its sample stays for the candle close
+            state, evs = _close(state, rule_id, _Pending(now, value, spec), preset)
+            events.extend(evs)
+            state = state.with_rule(rule_id, replace(state.rule(rule_id), pending=pending))
     return state, events
 
 
