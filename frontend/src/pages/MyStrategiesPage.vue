@@ -33,8 +33,8 @@ import { useSettingsValues } from '@/stores/settingsValues'
 
 // Owner 2026-10-30 (Sensibull 117): one column grid shared by the header row and every strategy row, so columns line up
 // User test 2026-10-30 round 2 widths: last saved 16rem holds "last saved 30 Oct 2026, 08:28:55 IST" on one line
-const COLS = 'lg:grid lg:grid-cols-[minmax(0,1fr)_4rem_minmax(0,2.4fr)_3.5rem_16rem_5.5rem_14rem]'
-const HEADS = ['Name', 'Index', 'Legs', 'Status', 'Last saved', 'Tracking', '']
+const COLS = 'lg:grid lg:grid-cols-[minmax(0,1fr)_4rem_minmax(0,2.4fr)_8rem_16rem_14rem]'
+const HEADS = ['Name', 'Index', 'Legs', 'Status', 'Last saved', ''] // ADR-299: the Tracking column is gone (its words are retired)
 
 // W-121 (REQ-073 AC-6, ADR-165): the Execute link is absent (not disabled) unless the server said the order path is on.
 const orderPathOn = useOrderPath()
@@ -52,7 +52,7 @@ const errorParts = ref(null)
 
 // User test 2026-10-30 (U2): newest save first, as Home's "Recent strategies" lists them (ISO times sort as text)
 const newestFirst = (list) => [...list].sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)))
-const shown = computed(() => newestFirst(completedOnly.value ? rows.value.filter(isCompleted) : rows.value))
+const shown = computed(() => newestFirst(completedOnly.value ? rows.value.filter(isCompleted) : rows.value.filter((r) => !isCompleted(r)))) // ADR-259: a closed trade leaves this list
 const visible = computed(() => searchStrategies(shown.value, query.value))
 
 async function loadList() {
@@ -145,7 +145,6 @@ async function confirmRename(row) {
           <span v-else class="hidden lg:block" aria-hidden="true"></span>
           <span data-testid="row-status">{{ strategyStatusWord(s) }}</span>
           <span class="num whitespace-nowrap text-ink-muted" data-testid="row-saved">last saved {{ istTime(s.updated_at) }}</span>
-          <span aria-hidden="true"></span>
           <span class="flex flex-wrap items-center justify-end gap-x-3 gap-y-1" data-testid="row-actions">
           <button type="button" class="link" :disabled="busy" :data-testid="`open-builder-${s.id}`" @click="openInBuilder(s.id)">Open in Builder</button>
           <button v-if="'name' in s" type="button" class="link" :disabled="busy" :data-testid="`rename-${s.id}`" @click="startRename(s)">Rename</button>

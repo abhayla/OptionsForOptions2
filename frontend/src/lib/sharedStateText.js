@@ -31,8 +31,17 @@ export const RETRY_LABEL = 'Retry'
 export const STATUS_DRAFT = 'Draft'
 export const STATUS_RUNNING = 'Running'
 export const STATUS_COMPLETED = 'Completed'
-// a Live Strategies card waiting in the page's start queue (ADR-299 (2): "Waiting to start" is retired); a card-state sentence, not a status
+// pending owner read (15 Nov 2026), issue 16 round 2: a status the server never sends is said plainly, never guessed as Draft
+export const STATUS_UNKNOWN = 'Status not available'
+// pending owner read (15 Nov 2026): a Live Strategies card waiting in the page's start queue (ADR-299 (2): "Waiting to start" is retired)
 export const CARD_QUEUED_TEXT = 'Loading next...'
+// pending owner read (15 Nov 2026): a real trade has no practice book, so its card follows the saved legs and says so
+export const CARD_LEGS_AS_SAVED_TEXT = 'Legs as saved'
+// pending owner read (15 Nov 2026): Live Strategies when only completed trades exist
+export const LIVE_NOTHING_RUNNING_TEXT = 'Nothing is running.'
+// pending owner read (15 Nov 2026): the builder's lower tab that used to read "No tracked strategies here"
+export const RUNNING_TAB_EMPTY_TITLE = 'No running strategies here'
+export const RUNNING_TAB_EMPTY_MESSAGE = 'A strategy with an order placed shows as Running in My Strategies.'
 // pending owner read (13 Nov 2026): the two sentences below are not yet owner-approved
 // ADR-295 (3), GC-ICFIX u112: a panel whose read failed or timed out says so and offers Retry; never an empty space.
 export const PLAN_LOAD_FAILED_TEXT = 'Could not load the plan. Nothing was changed.'

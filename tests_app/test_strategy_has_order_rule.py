@@ -1,5 +1,5 @@
-"""Issue 16 round 2 (ADR-299, ADR-298): ``has_order`` is ONE field, computed in ONE place, true when the strategy has any
-placed order, practice (paper_orders) OR real (an execution_plans row: a basket was sent). No database: the rule is
+"""Issue 16 round 2 (ADR-299, ADR-298): ``has_order`` is ONE field, computed in ONE place, true when the strategy has
+any placed order, practice (paper_orders) OR real (an execution_plans row: a basket was sent). No database: the rule is
 read from the one SQL fragment the list uses, and the reply models carry the field. The rows themselves are proven by
 tests_app/test_strategy_delete_app.py (database, run one file at a time)."""
 from __future__ import annotations

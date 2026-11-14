@@ -8,7 +8,7 @@ import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import LiveStrategyCard from '@/components/live/LiveStrategyCard.vue'
 import MarketClosedBanner from '@/components/states/MarketClosedBanner.vue'
-import { STATUS_DRAFT, STATUS_RUNNING } from '@/lib/sharedStateText'
+import { LIVE_NOTHING_RUNNING_TEXT, STATUS_DRAFT, STATUS_RUNNING } from '@/lib/sharedStateText'
 import { isCompleted, isRunning } from '@/lib/strategyStatus'
 
 const MAX_CARDS = 20
@@ -60,7 +60,8 @@ onMounted(async () => {
     <p v-if="state === 'loading'" class="text-sm text-ink-muted" data-testid="live-list-loading">Loading your strategies...</p>
     <ErrorMessage v-else-if="state === 'error'" :parts="errorParts" data-testid="state-error" />
     <p v-else-if="!followed.length" class="rounded-lg border border-line bg-surface px-4 py-8 text-center text-sm text-ink-muted" data-testid="live-empty">
-      No saved strategies yet. Build one in the <router-link to="/strategy/builder" class="link">Strategy Builder</router-link>.
+      <template v-if="all.length">{{ LIVE_NOTHING_RUNNING_TEXT }} Finished trades are on <router-link to="/strategies/completed-strategies" class="link">Completed Strategies</router-link>.</template>
+      <template v-else>No saved strategies yet. Build one in the <router-link to="/strategy/builder" class="link">Strategy Builder</router-link>.</template>
     </p>
     <template v-else>
       <p v-if="capped" class="text-xs text-ink-muted" data-testid="live-capped">Showing the 20 most recent</p>

@@ -11,7 +11,7 @@ import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import { LEG_NOT_LIVE_LABEL, NOT_CONNECTED_LABEL, buildDraft } from '@/lib/legPicker'
 import { fetchSavedLegs, strategyLabel } from '@/lib/saveDraft'
 import { readPaperBook } from '@/lib/paperDrafts'
-import { CARD_QUEUED_TEXT } from '@/lib/sharedStateText'
+import { CARD_LEGS_AS_SAVED_TEXT, CARD_QUEUED_TEXT } from '@/lib/sharedStateText'
 import { isRunning, strategyStatusWord } from '@/lib/strategyStatus'
 import { istTime, maxLine, nameFromPool } from '@/lib/displayFormat'
 import { RouterLink } from 'vue-router'
@@ -25,6 +25,7 @@ const props = defineProps({ strategy: { type: Object, required: true }, start: {
 const emit = defineEmits(['settled', 'closed'])
 
 const state = ref(props.start ? 'loading' : 'queued') // queued | loading | ready | unpriced | error
+const legsAsSaved = ref(false)
 let begun = false
 let settledSent = false
 const settle = () => {
@@ -75,6 +76,8 @@ async function begin() {
     const read = isRunning(props.strategy) ? await readPaperBook(api, props.strategy.id) : { kind: 'plan' }
     const legs = read.kind === 'paper' ? read.net : await fetchSavedLegs(api, props.strategy.id)
     if (gone) return
+    // a real trade has no practice book and the server sends no current-legs field for it: the saved legs, said plainly
+    legsAsSaved.value = isRunning(props.strategy) && read.kind !== 'paper'
     draft = buildDraft(legs)
     if (!draft) {
       notLive.value = legs.some((l) => l.not_live)
@@ -146,6 +149,7 @@ class="rounded border border-line bg-surface p-4" data-testid="live-strategy-car
       <p v-if="state === 'ready' && data" class="ml-auto text-xs text-ink-muted" data-testid="live-checked-at">Checked at {{ checkedAt }}</p>
     </header>
 
+    <p v-if="legsAsSaved" class="mt-2 text-xs text-ink-muted" data-testid="live-legs-as-saved">{{ CARD_LEGS_AS_SAVED_TEXT }}</p>
     <p v-if="live.reconnecting.value" class="mt-2 text-sm font-medium" data-testid="live-reconnecting">{{ live.reconnectingText.value }}</p>
     <p v-if="state === 'queued'" class="mt-2 text-sm text-ink-muted" data-testid="live-queued">{{ CARD_QUEUED_TEXT }}</p>
     <p v-else-if="state === 'loading'" class="mt-2 text-sm text-ink-muted" data-testid="live-loading">Loading this strategy...</p>
