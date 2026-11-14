@@ -26,7 +26,10 @@
             <tbody>
               <tr v-for="(r, i) in data.rows" :key="i" class="border-b border-line align-top" data-testid="steps-row">
                 <td class="py-1.5 pr-3 tabular-nums">{{ istTime(r.at) }}</td>
-                <td class="py-1.5 pr-3 font-semibold" data-testid="steps-step">{{ stepText(r) }}</td>
+                <td class="py-1.5 pr-3 font-semibold">
+                  <span data-testid="steps-step">{{ stepText(r) }}</span>
+                  <span v-if="r.approach_text" class="block text-xs font-normal" data-testid="steps-approach">{{ r.approach_text }}</span>
+                </td>
                 <td class="py-1.5 pr-3">
                   <span v-for="(o, j) in r.orders" :key="j" class="block" data-testid="steps-order">
                     {{ o.side === 'BUY' ? 'B' : 'S' }} {{ o.contract_text }} x {{ o.quantity }} @ {{ o.price_text }}

@@ -38,7 +38,7 @@ from ofo.charges.round_trip import ChargesNotComputable, to_paise_up
 from ofo.engine import adjust_history as ah
 from ofo.engine.legs import Instrument
 from ofo.errors import render
-from ofo.errors.explanations import render_explanation
+from ofo.errors.explanations import approach_name_id, render_explanation
 from ofo.outcome.price_text import price_text
 from ofo.strategy.definition import describe_contract
 from ofo.tracking import paper as paper_prices
@@ -61,6 +61,7 @@ log = logging.getLogger(__name__)
 router = APIRouter(route_class=ClosedRoute)
 _NOT_AVAILABLE = "user_input_request_not_available"  # the adjustment-check route's not-found answer
 NO_PLAN_MAX = "no_plan_max"
+NOT_RECORDED = "adjust_history_approach_not_recorded"
 #: REQ-163 AC-1 / REQ-112 AC-3: the words of each fill state (a paper row: in place of a fill state)
 FILL_TEXT = {"paper": "adjust_history_paper_fill", "confirmed": "adjust_history_fill_confirmed",
              "unconfirmed": "adjust_history_fill_unconfirmed", "failed": "adjust_history_fill_failed"}
@@ -90,6 +91,7 @@ class HistoryRowOut(ApiModel):
     rule_ids: list[Identifier]  # every rule of the records that placed the row ([] = own change)
     why_text: CatalogueText  # the record's condition / the group count / "Your own change"
     why_lines: list[CatalogueText]  # each record's condition when several records placed the row
+    approach_text: CatalogueText | None = None  # ADR-273: an adjustment row's approach name (None: other steps)
     fill: Literal["paper", "confirmed", "unconfirmed", "failed"]
     fill_text: CatalogueText  # every state worded by the server (paper: in place of a fill state)
 
@@ -204,7 +206,19 @@ def _why(records: list[playbook_store.Suggestion]) -> dict:
             "why_lines": [_why_line(s) for s in ordered]}
 
 
+def approach_text(approach_id: str | None) -> Any:
+    """ADR-273: the Compare screen's own name of the approach (one source: ``approach_name_id``); no stored approach,
+    or an id the catalogue does not know -> "Approach not recorded", never blank and never a raw id."""
+    try:
+        return render_explanation(approach_name_id(approach_id)) if approach_id else render_explanation(NOT_RECORDED)
+    except ValueError:
+        return render_explanation(NOT_RECORDED)
+
+
 def _row(r: ah.HistoryRow, found: dict, records: list[playbook_store.Suggestion]) -> dict:
+    # shortcut: no applied approach is stored with a placed basket yet (ADR-273 write side), so every adjustment row
+    # says "not recorded"; pass the stored id here once the placement stores it.
+    approach = approach_text(None) if r.step == "adjustment" else None
     return {"step": r.step, "number": r.number, "at": r.at,
             "orders": [{"side": o.side,
                         "contract_text": describe_contract(paper.identity(found[int(o.instrument_id)])),
@@ -213,7 +227,7 @@ def _row(r: ah.HistoryRow, found: dict, records: list[playbook_store.Suggestion]
             "cash": r.cash, "cash_text": _money_text(r.cash),
             "booked": paper.exact(r.booked), "booked_text": _money_text(r.booked),
             "booked_pending": render_explanation("adjust_history_pending") if r.booked is None else None,
-            "charges": paper.exact(r.charges), "rule_id": r.rule_id, **_why(records),
+            "charges": paper.exact(r.charges), "rule_id": r.rule_id, **_why(records), "approach_text": approach,
             "fill": r.fill, "fill_text": render_explanation(FILL_TEXT[r.fill])}
 
 

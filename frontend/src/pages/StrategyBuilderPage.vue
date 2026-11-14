@@ -26,6 +26,7 @@ import MarginLine from '@/components/strategy/MarginLine.vue'
 import ProjectionsNote from '@/components/strategy/ProjectionsNote.vue'
 import StrategyActions from '@/components/strategy/StrategyActions.vue'
 import TrackingPanel from '@/components/strategy/TrackingPanel.vue'
+import AdjustSteps from '@/components/strategy/AdjustSteps.vue'
 import { ADD_TO_PAPER_LABEL, PAPER_PLACED_NOT_REFRESHED_TEXT, PAPER_STATE, addToPaper as postPaperOrders, paperPostOutcome, sharedTotal } from '@/lib/tracking'
 import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
 import LoadFailed from '@/components/common/LoadFailed.vue'
@@ -1027,6 +1028,7 @@ const pricesStamp = computed(() => {
 
         <p v-else-if="state === 'no-draft'" class="mt-4 text-ink-muted" data-testid="state-no-draft">No draft strategy is open. Add a leg to start one.</p>
 
+
         <div v-else-if="state === 'unpriced'" class="mt-4 rounded border border-line bg-surface p-4" data-testid="state-unpriced">
           <p class="font-medium">{{ NOT_CONNECTED_LABEL }}</p>
           <p class="mt-1 text-sm text-ink-muted">No numbers are shown because not every leg has a planned entry from live market data.</p>
@@ -1058,6 +1060,9 @@ const pricesStamp = computed(() => {
           <p class="mt-1 text-sm text-ink-muted">No numbers are shown for this draft.</p>
           <p class="mt-1 text-sm text-ink-muted" data-testid="checked-at">Checked at {{ checkedAt }}</p>
         </div>
+
+        <!-- GC-ICFIX 21 (X-7, ADR-259): a strategy with orders and no open leg (Completed) has no tracking panel; its history stays readable -->
+        <AdjustSteps v-if="paper && savedId && !showNumbers && state === 'no-draft'" :strategy-id="savedId" />
 
         <div v-if="showNumbers" :class="updating || keptWhileLoading ? 'opacity-60' : ''" :data-updating="updating || keptWhileLoading ? 'true' : 'false'" data-testid="numbers">
           <!-- UI study Region E: the data-health strip at the top of the summary, now only for stale legs and the

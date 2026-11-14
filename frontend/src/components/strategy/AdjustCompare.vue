@@ -10,7 +10,11 @@
     <!-- ADR-272: stale prices are said once at the top, in the server's words -->
     <p v-if="stale" role="alert" class="rounded-lg border border-line bg-surface-muted p-3 text-sm font-semibold text-warn" data-testid="adjust-stale-banner">{{ prices.banner }}</p>
     <p v-else-if="prices?.label" class="text-xs text-ink-muted" data-testid="adjust-prices-label">{{ prices.label }}</p>
-    <ErrorMessage v-if="state === 'error'" :parts="errorParts" compact prefix="adjust-error" data-testid="adjust-error" />
+    <template v-if="state === 'error'">
+      <ErrorMessage :parts="errorParts" compact prefix="adjust-error" data-testid="adjust-error" />
+      <!-- GC-ICFIX 21 (X-7, ADR-259): a closed trade has nothing to compare; its history is still there, never a dead end -->
+      <a :href="`/strategy/builder?strategy=${strategyId}`" class="text-sm underline" data-testid="adjust-steps-link">See this strategy's adjustment history</a>
+    </template>
     <p v-else-if="state === 'loading'" class="text-sm text-ink-muted" data-testid="adjust-loading">Working out the approaches...</p>
 
     <!-- REQ-156 AC-1 / REQ-155 AC-5: no usable spot -> nothing is priced, so only this and each source's reason (no figures) -->

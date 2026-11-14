@@ -46,7 +46,7 @@ describe('the Compare link of a closed trade is not a dead end', () => {
     const client = { post: () => Promise.reject(refused), get: () => Promise.reject(refused) }
     const w = mount(AdjustCompare, { props: { strategyId: '141', client } })
     await flushPromises()
-    const link = w.get('[data-testid="adjust-history-link"]')
+    const link = w.get('[data-testid="adjust-steps-link"]')
     expect(link.attributes('href')).toBe('/strategy/builder?strategy=141')
     expect(link.text()).not.toBe('')
   })

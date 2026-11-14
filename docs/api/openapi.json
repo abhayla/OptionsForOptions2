@@ -5616,6 +5616,15 @@
       "HistoryRowOut": {
         "additionalProperties": false,
         "properties": {
+          "approach_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approach Text"
+          },
           "at": {
             "format": "date-time",
             "title": "At",

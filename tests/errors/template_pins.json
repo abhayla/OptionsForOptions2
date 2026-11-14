@@ -3203,6 +3203,10 @@
     "sha256": "62620e0c11f5c9ec28d1ef7d1e8609e4f952073671de2ff07e599ab5254afc4f",
     "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"
   },
+  "explanation:adjust_history_approach_not_recorded": {
+    "sha256": "2f3dd3ef8611976b86c2ec6d8caee15fbed3336768f0e8ead989ef7790df732e",
+    "reviewed": "pending owner read"
+  },
   "explanation:adjust_history_own_change": {
     "sha256": "6e34eb4c5ce9a0a21c37304968d35447c72dad82fc9492bffa232fc0544f8ac3",
     "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"
