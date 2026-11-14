@@ -84,6 +84,13 @@ def test_a_plan_target_of_1_is_1_at_every_stage_and_90_is_80_on_the_last_day():
     assert row(last, "T-07").threshold == D(80)
 
 
+def test_a_plan_target_equal_to_the_playbook_early_value_is_50_on_the_last_day_with_its_sentence():
+    for kind in ("weekly", "monthly"):
+        _, ev = run(with_target(IC, "50"), kind=kind, stage=2, plan=True)
+        assert row(ev, "T-07").threshold == D(50)
+    assert texts(ev)["T-07"] == "Target: profit of 50 % of max profit, before charges"
+
+
 def with_target(body, target):
     out = copy.deepcopy(body)
     out["guards"][KEY] = target

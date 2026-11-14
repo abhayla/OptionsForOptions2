@@ -74,9 +74,26 @@ async def test_core_plan_target_1_is_clear_at_0_73_percent(monkeypatch):
     assert got is None  # 0.73 % < 1 %
 
 
-async def test_target_equal_to_the_playbook_early_value_rewrites_nothing(monkeypatch):
+async def test_target_equal_to_the_playbook_early_value_applies_at_the_last_stage_too(monkeypatch):
+    """Was (old): rewrites nothing, last stage kept 80 / 75. Now: 50 / 50 / 50 (weekly) and 50 / 50 / 50 (monthly)."""
+    trig = (await resolved(monkeypatch, plan_body("50"))).body["triggers"]["T-07"]
+    assert trig["weekly"] == ["50", "50", "50"] and trig["monthly"] == ["50", "50", "50"]
+
+
+async def test_equal_target_flags_t07_at_60_percent_on_the_last_day(monkeypatch):
     body = (await resolved(monkeypatch, plan_body("50"))).body
-    assert body["triggers"]["T-07"] == BODY["triggers"]["T-07"]  # last stage keeps 80 / 75
+    days = next(d for d in range(40) if pe.stage_of(body, "weekly", d) == len(body["triggers"]["T-07"]["weekly"]) - 1)
+    state = pe.StrategyState(expiry_kind="weekly", days_left=days, hhmm="11:00", pnl=MAX_PROFIT * D("0.6"),
+                             max_profit=MAX_PROFIT, prices_fresh=True, spot=D("24000"), stops=None)
+    got = next((r for r in pe.evaluate(body, state, None, None, gap_until="09:30").results if r.rule_id == "T-07"), None)
+    assert isinstance(got, pe.Flag) and got.threshold == D("50")  # before: 60 < 80, no flag
+
+
+async def test_empty_and_absent_target_keep_their_meaning(monkeypatch):
+    assert (await resolved(monkeypatch, plan_body(""))).body["triggers"]["T-07"]["on"] is False
+    old = plan_body("1")
+    del old["guards"][KEY]
+    assert (await resolved(monkeypatch, old)).body["triggers"]["T-07"] == BODY["triggers"]["T-07"]
 
 
 async def test_no_plan_follows_the_playbook(monkeypatch):
