@@ -34,7 +34,15 @@ from ofo.charges import ChargeRates
 from ofo.charges.paper_charges import PaperFill, charges_sum, paper_charges
 from ofo.charges.round_trip import ChargesNotComputable
 from ofo.engine.book_totals import book_totals
-from ofo.engine.extremes import UNLIMITED, ContractTerms, ExtremesReason, book_breakevens, book_extremes, exit_risk
+from ofo.engine.extremes import (
+    UNLIMITED,
+    ContractTerms,
+    ExitRisk,
+    ExtremesReason,
+    book_breakevens,
+    book_extremes,
+    exit_risk,
+)
 from ofo.engine.extremes_charges import (
     AfterSplit,
     BookAfterCharges,
@@ -1037,6 +1045,23 @@ def _exit_risk_answer(state: Literal["yes", "no", "cannot_tell"]) -> ExitRiskOut
     return ExitRiskOut(state=state, max_loss_before=None, max_loss_after=None, warning_text=None)
 
 
+def _exit_warning(risk: ExitRisk, names: Mapping[str, Any], priced: bool) -> ExitRiskOut:
+    """The yes answer: the figures when the engine gave them and the exit prices were read, else "not available"."""
+    priced = priced and risk.max_loss_before is not None
+    (before, before_text), (after, after_text) = _extreme(risk.max_loss_before), _extreme(risk.max_loss_after)
+    na = render_explanation("paper_exit_loss_not_available")
+    warning = render_explanation("paper_exit_widens_loss", before=before_text if priced else na,
+                                 after=after_text if priced else na)
+    if risk.exposed:
+        legs_text = names[risk.exposed[0]]
+        for other in risk.exposed[1:]:
+            legs_text = render_explanation("paper_alert_legs", rest=legs_text, leg=names[other])
+        warning = render_explanation("paper_exit_warning_join", first=warning,
+                                     second=render_explanation("paper_exit_less_protected", legs=legs_text))
+    return ExitRiskOut(state="yes", max_loss_before=before if priced else None,
+                       max_loss_after=after if priced else None, warning_text=warning)
+
+
 @router.get("/paper/strategies/{strategy_id}/exit-risk", response_model=ExitRiskOut)
 async def paper_exit_risk(strategy_id: int, orders: Annotated[str, Query(max_length=8000)],  # noqa: PLR0913
                           db: Annotated[Any, Depends(get_db)], user_ref: Annotated[str, Depends(current_user_ref)],
@@ -1068,7 +1093,7 @@ async def paper_exit_risk(strategy_id: int, orders: Annotated[str, Query(max_len
     names = {}
     for cid, found in state.items():
         if found.stored is not None:
-            name, instrument, strike, expiry = _identity(found)
+            _, instrument, strike, expiry = _identity(found)
             names[str(cid)] = describe_contract((stored.saved.definition.underlying, instrument, strike, expiry))
             terms[str(cid)] = ContractTerms(instrument, strike, expiry)
     try:
@@ -1080,19 +1105,7 @@ async def paper_exit_risk(strategy_id: int, orders: Annotated[str, Query(max_len
     risk = exit_risk(_paper(booked), legs, terms)
     if risk.state != "yes":
         return _exit_risk_answer(risk.state)
-    priced = len(prices) == exits and risk.max_loss_before is not None  # engine: figures only if they agree
-    (before, before_text), (after, after_text) = _extreme(risk.max_loss_before), _extreme(risk.max_loss_after)
-    na = render_explanation("paper_exit_loss_not_available")
-    warning = render_explanation("paper_exit_widens_loss", before=before_text if priced else na,
-                                 after=after_text if priced else na)
-    if risk.exposed:
-        legs_text = names[risk.exposed[0]]
-        for other in risk.exposed[1:]:
-            legs_text = render_explanation("paper_alert_legs", rest=legs_text, leg=names[other])
-        warning = render_explanation("paper_exit_warning_join", first=warning,
-                                     second=render_explanation("paper_exit_less_protected", legs=legs_text))
-    return ExitRiskOut(state="yes", max_loss_before=before if priced else None,
-                       max_loss_after=after if priced else None, warning_text=warning)
+    return _exit_warning(risk, names, len(prices) == exits)
 
 
 # --- stop triggers and alerts (GC-TP step 7a; REQ-109 AC-8; ADR-207 (5); screens 221-224) -----------------------------
