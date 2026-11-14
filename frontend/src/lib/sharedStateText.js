@@ -27,6 +27,12 @@ export const CHECK_WITH_ZERODHA = 'Check with Zerodha' // wording fixed by REQ-0
 export const RETURN_CHECKING = 'Checking with Zerodha…'
 export const RETURN_NO_CHANGE = 'no change detected yet'
 export const RETRY_LABEL = 'Retry'
+// ADR-299 (D6, owner 2026-11-13): the only three status words of a strategy; lib/strategyStatus.js is the only place that picks one
+export const STATUS_DRAFT = 'Draft'
+export const STATUS_RUNNING = 'Running'
+export const STATUS_COMPLETED = 'Completed'
+// a Live Strategies card waiting in the page's start queue (ADR-299 (2): "Waiting to start" is retired); a card-state sentence, not a status
+export const CARD_QUEUED_TEXT = 'Loading next...'
 // pending owner read (13 Nov 2026): the two sentences below are not yet owner-approved
 // ADR-295 (3), GC-ICFIX u112: a panel whose read failed or timed out says so and offers Retry; never an empty space.
 export const PLAN_LOAD_FAILED_TEXT = 'Could not load the plan. Nothing was changed.'

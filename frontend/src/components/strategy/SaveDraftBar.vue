@@ -26,8 +26,9 @@ import { useRouter } from 'vue-router'
 import { CLEAR_UNDO_SECONDS_KEY } from '@/lib/legEdit'
 import { useSettingsValues } from '@/stores/settingsValues'
 import { newestEntry, newestSeq, restoreEntry, useDeleteFlow } from '@/lib/strategyActivity'
+import { strategyStatusWord } from '@/lib/strategyStatus'
 import {
-  STRATEGY_NAME_DEFAULT, STRATEGY_NAME_MAX, buildSaveBody, buildUpdateBody, canSaveLegs, fetchSavedDraft, legsLine, plainName, renameStrategy, saveAsName, strategyLabel, trackedText,
+  STRATEGY_NAME_DEFAULT, STRATEGY_NAME_MAX, buildSaveBody, buildUpdateBody, canSaveLegs, fetchSavedDraft, legsLine, plainName, renameStrategy, saveAsName, strategyLabel,
 } from '@/lib/saveDraft'
 
 const props = defineProps({
@@ -487,7 +488,7 @@ v-for="d in recentDrafts" :key="d.id" class="group flex min-h-14 cursor-pointer 
               <span class="block truncate" :class="current?.id === d.id ? 'font-medium text-accent' : ''" data-testid="saved-draft-name">{{ strategyLabel(d, `Draft ${d.id}`) }}</span>
               <span v-if="legsLine(d)" class="block truncate text-xs text-ink-muted" data-testid="saved-draft-legs">{{ legsLine(d) }}</span>
             </button>
-            <span v-if="trackedText(d.tracked)" class="shrink-0 text-xs text-ink-muted" data-testid="saved-draft-tracked">{{ trackedText(d.tracked) }}</span>
+            <span class="shrink-0 text-xs text-ink-muted" data-testid="saved-draft-status">{{ strategyStatusWord(d) }}</span>
             <span
 class="flex shrink-0 items-center gap-1 opacity-100 md:opacity-0 md:focus-within:opacity-100 md:group-hover:opacity-100" :class="deleteFlow.confirming === d.id ? '!opacity-100' : ''"
                   :data-testid="`actions-${d.id}`" @click.stop @keydown.enter.stop>

@@ -8,20 +8,23 @@ import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import LiveStrategyCard from '@/components/live/LiveStrategyCard.vue'
 import MarketClosedBanner from '@/components/states/MarketClosedBanner.vue'
+import { STATUS_DRAFT, STATUS_RUNNING } from '@/lib/sharedStateText'
+import { isCompleted, isRunning } from '@/lib/strategyStatus'
 
 const MAX_CARDS = 20
 const RELEASE_MS = 8000 // a card that gives no answer in this time lets the next one start
-const DRAFT = 'draft'
 const state = ref('loading') // loading | ready | error
 const all = ref([])
 const errorParts = ref(NEUTRAL_PARTS)
 const closedAt = ref(null) // the last-price time a card reported while the market is closed (one banner per screen)
 
 const stamp = (s) => Date.parse(s.updated_at) || 0 // sort key only
-const shown = computed(() => [...all.value].sort((a, b) => stamp(b) - stamp(a)).slice(0, MAX_CARDS))
+// ADR-259 / ADR-299: a completed trade is not followed here (it is listed on Completed Strategies); the rest is Running or Draft
+const followed = computed(() => all.value.filter((s) => !isCompleted(s)))
+const shown = computed(() => [...followed.value].sort((a, b) => stamp(b) - stamp(a)).slice(0, MAX_CARDS))
 // Two groups, newest first inside each; an empty group is not shown. Start order is the order on screen.
-const executed = computed(() => shown.value.filter((s) => s.status !== DRAFT))
-const drafts = computed(() => shown.value.filter((s) => s.status === DRAFT))
+const executed = computed(() => shown.value.filter(isRunning))
+const drafts = computed(() => shown.value.filter((s) => !isRunning(s)))
 const queue = computed(() => [...executed.value, ...drafts.value])
 const startIndex = (s) => queue.value.indexOf(s)
 // Cards start one at a time (the database role allows few connections): card i may start once i <= current.
@@ -34,7 +37,7 @@ watch(current, (i) => {
   clearTimeout(timer)
   if (i < queue.value.length) timer = setTimeout(() => release(i), RELEASE_MS)
 })
-const capped = computed(() => all.value.length > MAX_CARDS)
+const capped = computed(() => followed.value.length > MAX_CARDS)
 
 onBeforeUnmount(() => clearTimeout(timer))
 onMounted(async () => {
@@ -56,19 +59,19 @@ onMounted(async () => {
     <MarketClosedBanner v-if="closedAt" class="mb-4" :prices-at="closedAt" />
     <p v-if="state === 'loading'" class="text-sm text-ink-muted" data-testid="live-list-loading">Loading your strategies...</p>
     <ErrorMessage v-else-if="state === 'error'" :parts="errorParts" data-testid="state-error" />
-    <p v-else-if="!all.length" class="rounded-lg border border-line bg-surface px-4 py-8 text-center text-sm text-ink-muted" data-testid="live-empty">
+    <p v-else-if="!followed.length" class="rounded-lg border border-line bg-surface px-4 py-8 text-center text-sm text-ink-muted" data-testid="live-empty">
       No saved strategies yet. Build one in the <router-link to="/strategy/builder" class="link">Strategy Builder</router-link>.
     </p>
     <template v-else>
       <p v-if="capped" class="text-xs text-ink-muted" data-testid="live-capped">Showing the 20 most recent</p>
       <section v-if="executed.length" class="mt-4" data-testid="live-group-executed">
-        <h2 class="text-sm font-semibold text-ink-muted">Executed</h2>
+        <h2 class="text-sm font-semibold text-ink-muted">{{ STATUS_RUNNING }}</h2>
         <div class="mt-2 grid grid-cols-1 gap-4 lg:grid-cols-2">
           <LiveStrategyCard v-for="s in executed" :key="s.id" :strategy="s" :start="startIndex(s) <= current" @settled="release(startIndex(s))" @closed="(at) => { closedAt = at }" />
         </div>
       </section>
       <section v-if="drafts.length" class="mt-4" data-testid="live-group-drafts">
-        <h2 class="text-sm font-semibold text-ink-muted">Saved drafts (live prices)</h2>
+        <h2 class="text-sm font-semibold text-ink-muted">{{ STATUS_DRAFT }}</h2>
         <div class="mt-2 grid grid-cols-1 gap-4 lg:grid-cols-2">
           <LiveStrategyCard v-for="s in drafts" :key="s.id" :strategy="s" :start="startIndex(s) <= current" @settled="release(startIndex(s))" @closed="(at) => { closedAt = at }" />
         </div>

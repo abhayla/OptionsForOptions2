@@ -29,7 +29,8 @@ function sources(dir) {
   })
 }
 describe('no other source computes or prints a status word', () => {
-  const OWNERS = ['lib/strategyStatus.js', 'lib/sharedStateText.js']
+  // strategyActivity.js only picks the Delete refusal sentence from has_paper_order; it prints no status word
+  const OWNERS = ['lib/strategyStatus.js', 'lib/sharedStateText.js', 'lib/strategyActivity.js']
   const files = sources('src').filter((f) => !OWNERS.some((o) => f.replaceAll('\\', '/').endsWith(o)))
   const banned = [
     [/Waiting to start/, 'retired word (ADR-299 (2))'],

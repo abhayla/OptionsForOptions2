@@ -2,8 +2,8 @@
      user's saved strategies from GET /api/strategies: name (quoted user words, shown without the API quotes, as text), underlying,
      first leg + "and N more", status, last saved and the tracked state (copies Sensibull screen 117's list line); a search box
      filters by name as typed; Rename calls PATCH /api/strategies/{id}/name; each row links to the Strategy Builder
-     (`?strategy=<id>`) and to Execute Strategy for that id. No money figure is computed or shown. A status the page does not know is shown
-     as the API sent it. The Completed page lists only statuses in COMPLETED_STATUSES ('closed', stored when the last open leg is
+     (`?strategy=<id>`) and to Execute Strategy for that id. No money figure is computed or shown. The status word is lib/strategyStatus (ADR-299).
+     The Completed page lists only completed strategies (stored 'closed' when the last open leg is
      exited, alembic 0049) and shows each one's final P&L, adjustments made and their cost exactly as the server worded them
      (a figure the server could not give shows the server's reason, never 0; no money arithmetic here). -->
 <script setup>
@@ -24,13 +24,13 @@ const net = (s) => { const a = afterFigure(s, null); return a.kind === 'after' ?
 const netBreakdown = (s) => afterFigure(s, typeof s.final_pnl_text === 'string' && s.final_pnl_text.trim() !== '' ? s.final_pnl_text.trim() : null).breakdown
 import AfterChargesTap from '@/components/common/AfterChargesTap.vue'
 const notAvailable = (s) => s.after_charges_reason_text ?? s.completed_reason_text ?? 'the server sent no figure'
-import { STRATEGY_NAME_MAX, legsLine, noMatchText, plainName, renameStrategy, searchStrategies, strategyLabel, trackedText } from '@/lib/saveDraft'
+import { STRATEGY_NAME_MAX, legsLine, noMatchText, plainName, renameStrategy, searchStrategies, strategyLabel } from '@/lib/saveDraft'
+import { isCompleted, strategyStatusWord } from '@/lib/strategyStatus'
 import { useOrderPath } from '@/lib/orderPath'
 import { useDeleteFlow } from '@/lib/strategyActivity'
 import { CLEAR_UNDO_SECONDS_KEY } from '@/lib/legEdit'
 import { useSettingsValues } from '@/stores/settingsValues'
 
-const COMPLETED_STATUSES = ['closed'] // alembic 0049: stored when the last open leg is exited (audit C13)
 // Owner 2026-10-30 (Sensibull 117): one column grid shared by the header row and every strategy row, so columns line up
 // User test 2026-10-30 round 2 widths: last saved 16rem holds "last saved 30 Oct 2026, 08:28:55 IST" on one line
 const COLS = 'lg:grid lg:grid-cols-[minmax(0,1fr)_4rem_minmax(0,2.4fr)_3.5rem_16rem_5.5rem_14rem]'
@@ -52,7 +52,7 @@ const errorParts = ref(null)
 
 // User test 2026-10-30 (U2): newest save first, as Home's "Recent strategies" lists them (ISO times sort as text)
 const newestFirst = (list) => [...list].sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)))
-const shown = computed(() => newestFirst(completedOnly.value ? rows.value.filter((r) => COMPLETED_STATUSES.includes(r.status)) : rows.value))
+const shown = computed(() => newestFirst(completedOnly.value ? rows.value.filter(isCompleted) : rows.value))
 const visible = computed(() => searchStrategies(shown.value, query.value))
 
 async function loadList() {
@@ -143,17 +143,16 @@ async function confirmRename(row) {
           <span data-testid="row-underlying">{{ s.underlying }}</span>
           <span v-if="legsLine(s)" class="min-w-0 max-w-full truncate text-ink-muted" :title="legsLine(s)" data-testid="row-legs">{{ legsLine(s) }}</span>
           <span v-else class="hidden lg:block" aria-hidden="true"></span>
-          <span data-testid="row-status">{{ s.status }}</span>
+          <span data-testid="row-status">{{ strategyStatusWord(s) }}</span>
           <span class="num whitespace-nowrap text-ink-muted" data-testid="row-saved">last saved {{ istTime(s.updated_at) }}</span>
-          <span v-if="trackedText(s.tracked)" class="max-w-full truncate text-ink-muted" data-testid="row-tracked">{{ trackedText(s.tracked) }}</span>
-          <span v-else aria-hidden="true"></span>
+          <span aria-hidden="true"></span>
           <span class="flex flex-wrap items-center justify-end gap-x-3 gap-y-1" data-testid="row-actions">
           <button type="button" class="link" :disabled="busy" :data-testid="`open-builder-${s.id}`" @click="openInBuilder(s.id)">Open in Builder</button>
           <button v-if="'name' in s" type="button" class="link" :disabled="busy" :data-testid="`rename-${s.id}`" @click="startRename(s)">Rename</button>
           <DraftDelete :row="s" :flow="deleteFlow" />
           <router-link v-if="orderPathOn" :to="`/strategy/${s.id}/execute`" class="link" :data-testid="`open-execute-${s.id}`">Execute Strategy</router-link>
           </span>
-          <p v-if="s.status === 'closed'" class="col-span-full w-full text-ink-muted" data-testid="row-completed">
+          <p v-if="isCompleted(s)" class="col-span-full w-full text-ink-muted" data-testid="row-completed">
             <span data-testid="row-final-pnl">Final P&amp;L {{ s.final_pnl_text ?? s.completed_reason_text }}</span>
             <!-- GC-ICFIX u125 (ADR-259, ADR-263): charges paid and the net after charges, the server's fields as sent; absent -> "not available: <its reason>", never 0 -->
             <span data-testid="row-charges"> · {{ s.charges_paid_text != null ? `Charges ${s.charges_paid_text}` : (s.charges_paid != null ? `Charges ${s.charges_paid}` : `Charges not available: ${notAvailable(s)}`) }}</span>

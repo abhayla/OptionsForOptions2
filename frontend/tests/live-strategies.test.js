@@ -566,6 +566,7 @@ describe('issue 16: status words and closed trades on Live Strategies', () => {
     const w = await mountPage()
     expect(paperGets).toEqual([7])
     expect(detailGets).not.toContain(7)
+    openAll()
     const sent = JSON.parse(FakeSocket.all[0].sent[0])
     expect(sent.legs).toHaveLength(1)
     expect(sent.legs[0]).toMatchObject({ action: 'SELL', lots: 1, planned_entry: '88.50' })
