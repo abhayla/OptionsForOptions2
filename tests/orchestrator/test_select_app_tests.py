@@ -114,6 +114,8 @@ PR241_SELECTION = {
     # GC-ALERT1 (REQ-170, ADR-236/237): names ofo.errors.explanations (the alert-style refusal / lapse texts) and the
     # strategy routes/store the #241 diff changes, in its route and worker checks
     "tests_app/test_strategy_alert_style.py", "tests_app/test_background_worker.py",
+    # GC-ICFIX merges: imports ofo_app.strategy_refused / the routes.strategies list model the diff changes
+    "tests_app/test_fired_state_follows_record.py", "tests_app/test_strategy_has_order_rule.py",
 }
 
 
