@@ -256,6 +256,8 @@ NOW = datetime.datetime(2026, 11, 6, 11, 40, tzinfo=IST)
 
 @pytest.mark.parametrize(("expiries", "kind", "want"), [
     ((datetime.date(2026, 11, 9),), "weekly", ("weekly", None)),
+    ((datetime.date(2026, 11, 6),), "weekly", ("intraday", None)),  # expiry TODAY (issue 15): the fastest style, ADR-235 (2)
+    ((datetime.date(2026, 11, 6),), "monthly", ("intraday", None)),
     ((datetime.date(2026, 11, 7),), "weekly", ("intraday", None)),  # 1 day to expiry: intraday rules
     ((datetime.date(2026, 11, 26),), "monthly", ("monthly", None)),
     ((datetime.date(2026, 11, 9), datetime.date(2026, 11, 26)), "weekly", (None, route.SEVERAL)),
