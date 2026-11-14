@@ -354,11 +354,16 @@ def shown_results(ev: pe.Evaluation, open_recs: Any) -> list[pe.Result]:
     when the value clears the re-arm band. A rule not evaluated (not checked, already true) is left as the evaluator
     says it: nothing is invented from a record."""
     cmp_of = {v.rule_id: v.cmp for v in ev.values}
+    # GC-ICFIX issue 19: a close (prices not live) reads the rule "not checked", which is not "cleared": the open record
+    # stays shown as fired with its own figures, the not-checked line beside it (the stop must not vanish at 15:30)
+    unread = {r.rule_id for r in ev.results if isinstance(r, pe.NotChecked)}
     return [*ev.results,
-            *(HeldFlag(rec.rule_id, rec.trigger_id, rec.stage, rec.value, rec.threshold, cmp_of[rec.rule_id])
+            *(HeldFlag(rec.rule_id, rec.trigger_id, rec.stage, rec.value, rec.threshold,
+                       cmp_of.get(rec.rule_id) or rec.cmp)
               for rec in open_recs
-              if rec.rule_id in ev.clear and rec.rule_id in cmp_of and rec.trigger_id is not None
-              and rec.value is not None and rec.threshold is not None)]
+              if ((rec.rule_id in ev.clear and rec.rule_id in cmp_of) or rec.rule_id in unread)
+              and rec.trigger_id is not None and rec.value is not None and rec.threshold is not None
+              and (cmp_of.get(rec.rule_id) or rec.cmp) is not None)]
 
 
 def live_values(ev: pe.Evaluation) -> dict[str, Decimal]:

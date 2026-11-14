@@ -62,6 +62,7 @@ from ofo.engine.model import delta_at_intrinsic
 from ofo.errors.explanations import (
     LEVEL_WATCH_LABEL_TEXT,
     PLAYBOOK_DAY_RULE_ACTION_TEXT,
+    PLAYBOOK_DAY_RULE_KIND_TEXT,
     STOP_LABEL_TEXT,
     render_explanation,
 )
@@ -762,6 +763,16 @@ def trigger_words(body: Mapping | None, trigger_id: str | None) -> tuple[str | N
         return None, None
     label, unit = trig.get("label"), trig.get("unit")
     return (label if isinstance(label, str) else None), (unit if isinstance(unit, str) else None)
+
+
+def day_rule_words(rule_id: str) -> str | None:
+    """ADR-267 amendment: a day rule id (``day.<when>.<HHMM>.<action>``) in the catalogue's words, "The last session
+    before a weekend, 15:00: Run the carry check"; None when it is not that shape or a part has no catalogue words."""
+    parts = rule_id.split(".")
+    if len(parts) != 4 or parts[0] != "day" or len(parts[2]) != 4 or not parts[2].isdigit():  # noqa: PLR2004 - HHMM
+        return None
+    kind, action = PLAYBOOK_DAY_RULE_KIND_TEXT.get(parts[1]), PLAYBOOK_DAY_RULE_ACTION_TEXT.get(parts[3])
+    return None if kind is None or action is None else f"{kind}, {parts[2][:2]}:{parts[2][2:]}: {action}"
 
 
 #: #650: triggers whose playbook row has no unit but whose value is not a plain number: rupees / a count
