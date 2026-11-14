@@ -165,8 +165,8 @@ async def plan_saved_before_adr247(conn: Any, plan: Any) -> bool:
 
 def with_plan_target(body: Mapping) -> Mapping:
     """ADR-252 for T-07: the plan sheet's Target (guard ``profit_target_pct_of_max_profit``) is the T-07 value the check
-    reads. Per expiry kind, a Target that differs from that row's early-stage value sets the early and middle stages to
-    it and the last stage to min(Target, its value) (never looser); an equal, absent or unusable (not a number,
+    reads. Per expiry kind, a usable Target (an equal one included) sets the early and middle stages to
+    it and the last stage to min(Target, its value) (never looser); an absent or unusable (not a number,
     <= 0, > 100) Target changes no value. Read at check time, so earlier plans count too. A copy. ANY usable Target
     (an equal one included) also switches T-07 ON for this trade (as the plan's Stop does T-06); an unusable one keeps
     on/off. An EMPTY Target (guard "", ADR-305: the box saved empty) switches T-07 OFF for this trade."""
@@ -182,7 +182,7 @@ def with_plan_target(body: Mapping) -> Mapping:
         for kind in ("weekly", "monthly"):
             values = list(trig.get(kind) or ())
             filled = [n for n, x in enumerate(values) if x not in (None, "")]
-            if not filled or Decimal(values[filled[0]]) == target:
+            if not filled:
                 continue
             for n in filled:
                 values[n] = format(min(target, Decimal(values[n])) if n == filled[-1] else target, "f")
