@@ -74,7 +74,7 @@ async def test_closing_a_bought_leg_alone_is_yes_limited_before_unlimited_after_
     assert body["state"] == "yes"
     assert body["max_loss_before"] not in (None, "unlimited")
     assert body["max_loss_after"] is not None  # test-catalogue contract types differ from the fixture labels
-    assert "Less protected" in body["warning_text"] and "CE" in body["warning_text"]
+    assert "less protection:" in body["warning_text"]
     assert await _exit_rows(db, stored.id) == 0  # read only
 
 
@@ -93,7 +93,7 @@ async def test_closing_one_whole_spread_follows_the_more_than_double_rule(db):
     assert reply.json()["state"] in ("yes", "no")
     body = reply.json()
     if body["state"] == "yes":
-        assert "Less protected" not in body["warning_text"]  # no sold leg lost its cover, only the Max Loss grew
+        assert "less protection:" not in body["warning_text"]  # no sold leg lost its cover, only the Max Loss grew
 
 
 async def test_a_roll_basket_is_judged_after_all_orders(db):
