@@ -9,7 +9,7 @@ const calls = []
 let answer = null
 vi.mock('@/services/api', async (importActual) => {
   const actual = await importActual()
-  return { ...actual, default: { post: (url, body) => { calls.push({ url, body }); return answer instanceof Error ? Promise.reject(answer) : Promise.resolve({ data: answer }) } } }
+  return { ...actual, default: { get: (url, cfg) => { calls.push({ url, orders: JSON.parse(cfg.params.orders) }); return answer instanceof Error ? Promise.reject(answer) : Promise.resolve({ data: answer }) } } }
 })
 
 const t = (w, id) => w.find(`[data-testid="${id}"]`)
@@ -23,7 +23,7 @@ describe('exit confirm list warning (ADR-256)', () => {
     answer = { widens: true, warning_text: WARNING }
     const w = mount(PaperConfirmDialog, { props: { open: true, orders: [EXIT], strategyId: 139 } })
     await flushPromises()
-    expect(calls).toEqual([{ url: '/paper/strategies/139/exit-risk', body: { orders: [{ contract_id: 4, side: 'SELL', quantity: 65, price: '0', kind: 'exit' }] } }])
+    expect(calls).toEqual([{ url: '/paper/strategies/139/exit-risk', orders: [{ contract_id: 4, side: 'SELL', quantity: 65, price: '0', kind: 'exit' }] }])
     expect(t(w, 'paper-exit-warning').text()).toBe(WARNING)
     expect(t(w, 'paper-confirm-button').attributes('disabled')).toBeUndefined()
     w.unmount()

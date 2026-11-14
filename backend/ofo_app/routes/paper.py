@@ -28,13 +28,13 @@ from collections.abc import Mapping, Sequence
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Annotated, Any, Literal, get_args
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from ofo.adjustment.approaches import EntryFacts
 from ofo.charges import ChargeRates
 from ofo.charges.paper_charges import PaperFill, charges_sum, paper_charges
 from ofo.charges.round_trip import ChargesNotComputable
 from ofo.engine.book_totals import book_totals
-from ofo.engine.extremes import UNLIMITED, ContractTerms, ExtremesReason, book_breakevens, book_extremes
+from ofo.engine.extremes import UNLIMITED, ContractTerms, ExtremesReason, book_breakevens, book_extremes, exit_risk
 from ofo.engine.extremes_charges import (
     AfterSplit,
     BookAfterCharges,
@@ -1019,6 +1019,62 @@ async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR
         await db.rollback()
         raise
     return await _book(db, stored, await paper_store.load(db, strategy_id), ctx, feed, placed_at, rates)
+
+
+class ExitRiskOut(ApiModel):
+    """ADR-256: Max Loss before / after the prepared exit orders (the one engine) and the one factual warning line."""
+    widens: bool
+    max_loss_before: Extreme
+    max_loss_after: Extreme
+    warning_text: CatalogueText | None
+
+
+_UNPRICED = Decimal("0.05")  # placeholder fill when no live price is readable; the flag does not use prices
+
+
+@router.get("/paper/strategies/{strategy_id}/exit-risk", response_model=ExitRiskOut)
+async def paper_exit_risk(strategy_id: int, orders: Annotated[str, Query(max_length=8000)],  # noqa: PLR0913
+                          db: Annotated[Any, Depends(get_db)], user_ref: Annotated[str, Depends(current_user_ref)],
+                          ctx: Annotated[MarketContext | None, Depends(get_market_context)],
+                          feed: Annotated[LiveFeed | None, Depends(get_live_feed)],
+                          now: Annotated[AnswerClock, Depends(get_answer_clock)]) -> ExitRiskOut:
+    """Read only, nothing stored. Needs no live price for the warning itself; the before / after figures say "not
+    available" (never 0) when the exit prices cannot be read."""
+    stored = await _load_strategy(db, user_ref, strategy_id)
+    try:  # the prepared orders as JSON, the same shape the order route takes
+        exits = [o for o in PaperOrdersIn.model_validate_json('{"orders":' + orders + "}").orders if o.kind == "exit"]
+    except ValueError:
+        exits = []
+    orders = await paper_store.load(db, strategy_id)
+    if not orders or not exits:
+        return ExitRiskOut(widens=False, max_loss_before=None, max_loss_after=None, warning_text=None)
+    state = {c.contract_id: c for c in await tracked_contracts.resolve(
+        db, sorted({o.order.contract_id for o in orders} | {o.contract_id for o in exits}))}
+    if any(state[o.contract_id].stored is None for o in exits):
+        raise StrategyRefused("paper_contract_not_tradable")
+    try:
+        prices = await _server_exit_prices(ctx, feed, stored.saved.definition.underlying, exits, state)
+    except StrategyRefused:
+        prices = {}
+    at = now()
+    legs = [PaperOrder(str(o.contract_id), o.side, o.quantity, prices.get(i, _UNPRICED), "exit", at)
+            for i, o in enumerate(exits)]
+    terms = {}
+    for cid, found in state.items():
+        if found.stored is not None:
+            _, instrument, strike, expiry = _identity(found)
+            terms[str(cid)] = ContractTerms(instrument, strike, expiry)
+    try:
+        risk = exit_risk(_paper(orders), legs, terms)
+    except ValueError:  # the exit is larger than what is open: the order route refuses it by name, not this read
+        return ExitRiskOut(widens=False, max_loss_before=None, max_loss_after=None, warning_text=None)
+    priced = len(prices) == len(exits)
+    (before, before_text), (after, after_text) = _extreme(risk.max_loss_before), _extreme(risk.max_loss_after)
+    na = render_explanation("paper_exit_loss_not_available")
+    warning = render_explanation("paper_exit_widens_loss", before=before_text if priced else na,
+                                 after=after_text if priced else na) if risk.widens else None
+    return ExitRiskOut(widens=risk.widens, max_loss_before=before if priced else None,
+                       max_loss_after=after if priced else None, warning_text=warning)
 
 
 # --- stop triggers and alerts (GC-TP step 7a; REQ-109 AC-8; ADR-207 (5); screens 221-224) -----------------------------

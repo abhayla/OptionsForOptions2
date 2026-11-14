@@ -38,6 +38,8 @@
         <label class="flex items-center gap-1"><span class="text-ink-muted">Broker</span><input v-model="heldBroker" type="text" maxlength="40" class="h-9 w-40 rounded border border-line px-2" data-testid="held-broker" /></label>
       </div>
     </div>
+    <!-- GC-ICFIX Issue 10 (ADR-256): the server's one factual line when this exit leaves a sold leg unprotected; Confirm stays enabled -->
+    <p v-if="exitWarning" class="mt-3 text-sm font-medium text-warn" role="status" data-testid="paper-exit-warning">{{ exitWarning }}</p>
     <p class="mt-3 text-xs text-ink-muted" data-testid="paper-not-real">{{ PAPER_NOT_REAL_TEXT }}</p>
     <!-- fix/paper-dialog-safe (ADR-017): a stored order is never offered again; an answer of unknown outcome sends the user to the
          Orderbook first and keeps Confirm locked for PAPER_UNKNOWN_HOLD_MS; a refusal (4xx: nothing stored) unlocks after an edit -->
@@ -66,6 +68,7 @@ import {
   PAPER_UNKNOWN_TEXT, HELD_LABEL, heldBlock, paperLotsOk, paperPriceOk,
 } from '@/lib/tracking'
 import { paperDialogTitle, paperKindLabel } from '@/lib/paperDrafts'
+import api from '@/services/api'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
@@ -76,6 +79,7 @@ const props = defineProps({
   state: { type: String, default: '' },
   holdMs: { type: Number, default: PAPER_UNKNOWN_HOLD_MS },
   firstBasket: { type: Boolean, default: false }, // GC-TRACK1 k10: offer "Held at my broker" (the strategy's first basket only)
+  strategyId: { type: [Number, String], default: '' }, // GC-ICFIX Issue 10: with it, exit rows ask the server whether the exit widens the maximum loss
 })
 const emit = defineEmits(['confirm', 'cancel', 'orderbook'])
 
@@ -96,6 +100,22 @@ const ready = computed(() => rows.value.length > 0 && reasons.value.every((r) =>
 // the quantity is a count of units (whole lots x the lot size the order carries), not money
 const unitsOf = (r) => r.lots * r.lot_size
 const orderOf = (r) => ({ contract_id: r.contract_id, side: r.side, quantity: unitsOf(r), price: r.kind === 'exit' ? '0' : String(r.price).trim(), kind: r.kind }) // price: as typed; an exit's is the server's (ignored)
+
+// GC-ICFIX Issue 10 (ADR-256): the screen compares nothing; it shows the server's line when `widens` is true, and nothing when the read fails
+const exitWarning = ref('')
+let askSeq = 0
+async function askExitRisk() {
+  const seq = ++askSeq
+  const exits = props.open && props.strategyId ? rows.value.filter((r) => r.kind === 'exit' && paperLotsOk(r.lots)) : []
+  if (!exits.length) { exitWarning.value = ''; return }
+  let line = ''
+  try {
+    const { data } = await api.get(`/paper/strategies/${props.strategyId}/exit-risk`, { params: { orders: JSON.stringify(exits.map(orderOf)) } })
+    line = data?.widens === true && typeof data.warning_text === 'string' ? data.warning_text : ''
+  } catch { line = '' }
+  if (seq === askSeq) exitWarning.value = line
+}
+watch(() => [props.open, props.orders, props.strategyId, rows.value.map((r) => r.lots).join()], askExitRisk, { immediate: true })
 
 // the rows as they were when the server refused them: Confirm unlocks only once the user has changed something
 const snapshot = () => JSON.stringify(rows.value.map((r) => [r.lots, r.price]))

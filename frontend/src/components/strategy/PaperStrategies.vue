@@ -124,7 +124,7 @@
       </template>
     </template>
     <!-- GC-TP step 4b round 2 (REQ-109 AC-4; Sensibull 166-173): every exit goes through the shared confirm list, in lots -->
-    <PaperConfirmDialog :open="!!confirm" :orders="confirm ? confirm.orders : []" :busy="busy" :error="dialogError" :state="dialogState" @confirm="doExit" @cancel="cancelExit" @orderbook="openOrderbook" />
+    <PaperConfirmDialog :open="!!confirm" :orders="confirm ? confirm.orders : []" :strategy-id="confirm ? confirm.id : ''" :busy="busy" :error="dialogError" :state="dialogState" @confirm="doExit" @cancel="cancelExit" @orderbook="openOrderbook" />
   </section>
 </template>
 

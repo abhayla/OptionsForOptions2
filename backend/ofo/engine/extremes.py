@@ -24,14 +24,14 @@ Max Loss is the signed lowest figure (a loss is negative), not a magnitude: Prof
 from __future__ import annotations
 
 import datetime
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Literal
 
 from ofo.engine.legs import Action, Instrument, Leg
 from ofo.engine.metrics import UNLIMITED, MultiExpiryError, breakevens_with_shift, strategy_metrics
-from ofo.engine.orderbook import BookView, NetPosition
+from ofo.engine.orderbook import BookView, NetPosition, PaperOrder, net_positions
 from ofo.engine.strategy import Strategy
 
 ExtremesReason = Literal["prices_not_live", "multi_expiry"]
@@ -40,7 +40,7 @@ MULTI_EXPIRY: ExtremesReason = "multi_expiry"
 Figure = Decimal | object  # a Decimal, or the engine's UNLIMITED sentinel (its class is private to metrics.py)
 
 __all__ = ["MULTI_EXPIRY", "PRICES_NOT_LIVE", "UNLIMITED", "BookBreakevens", "BookExtremes", "ContractTerms",
-           "ExtremesReason", "book_breakevens", "book_extremes"]
+           "ExitRisk", "ExtremesReason", "book_breakevens", "book_extremes", "exit_risk"]
 
 
 @dataclass(frozen=True)
@@ -96,6 +96,35 @@ def book_extremes(view: BookView, terms: Mapping[str, ContractTerms],
         return BookExtremes(None, None, max_profit, max_loss, PRICES_NOT_LIVE)
     profit_left, loss_left = _range(_strategy(open_, terms, live), Decimal(0))
     return BookExtremes(profit_left, loss_left, max_profit, max_loss, None)
+
+
+@dataclass(frozen=True)
+class ExitRisk:
+    """ADR-256: Max Loss before / after prepared exit orders; ``widens`` = the legs left open can lose more."""
+    max_loss_before: Figure | None
+    max_loss_after: Figure | None
+    widens: bool
+
+
+def _open_floor(view: BookView, terms: Mapping[str, ContractTerms]) -> Figure | None:
+    """The lowest expiry P&L of the open legs alone at entry 0 (premium and booked P&L left out): the loss the structure
+    itself allows. 0 when nothing is open; None across several expiries (the engine does not price those)."""
+    open_ = [p for p in view.positions if p.net_quantity != 0]
+    if not open_:
+        return Decimal(0)
+    if len({terms[p.instrument_id].expiry for p in open_}) > 1:
+        return None
+    return _range(_strategy(open_, terms, {p.instrument_id: Decimal(0) for p in open_}), Decimal(0))[1]
+
+
+def exit_risk(book: Sequence[PaperOrder], exits: Sequence[PaperOrder], terms: Mapping[str, ContractTerms]) -> ExitRisk:
+    """Max Loss before / after ``exits`` (ADR-008: the one engine). ``widens`` compares the open legs' own structure, so
+    a loss booked by closing a whole spread never reads as wider; closing everything or a sold leg never widens."""
+    before, after = net_positions(list(book), {}), net_positions([*book, *exits], {})
+    floor_before, floor_after = _open_floor(before, terms), _open_floor(after, terms)
+    widens = (floor_before is not None and floor_after is not None and floor_before is not UNLIMITED
+              and (floor_after is UNLIMITED or floor_after < floor_before))
+    return ExitRisk(book_extremes(before, terms, {}).max_loss, book_extremes(after, terms, {}).max_loss, widens)
 
 
 @dataclass(frozen=True)
