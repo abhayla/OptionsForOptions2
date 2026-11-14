@@ -256,10 +256,10 @@ describe('GC-ADJ1 step 3: picks from the drawer and the hand-off', () => {
     expect(colIds(w)).toEqual(ORDER)
   })
 
-  it('attack 2: only No change picked still opens the compare, "Showing 1 of 1"', async () => {
+  it('attack 2: only No change picked still opens the compare, "Showing 1 of 7" (ADR-308: M = every approach that applies)', async () => {
     const { w } = await show(adj02, { picked: ['A-36'] })
     expect(colIds(w)).toEqual(['A-36'])
-    expect(t(w, 'adjust-showing').text()).toBe('Showing 1 of 1 approaches')
+    expect(t(w, 'adjust-showing').text()).toBe('Showing 1 of 7 approaches')
   })
 
   it('attack 4: a refused approach the user picked is listed with its reason; a refused one nobody picked is not mentioned', async () => {

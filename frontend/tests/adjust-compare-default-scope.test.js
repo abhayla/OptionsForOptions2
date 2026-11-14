@@ -35,9 +35,9 @@ describe('issue 14: default scope of the offer screen', () => {
   it('untick two -> N-2 columns; tick one back -> N-1 (the pick is what the compare shows)', async () => {
     const w2 = await open(ids.slice(0, N - 2).join(','))
     expect(cols(w2)).toBe(N - 2)
-    expect(showing(w2)).toBe(`Showing ${N - 2} of ${N - 2} approaches`)
+    expect(showing(w2)).toBe(`Showing ${N - 2} of ${N} approaches`)
     const w1 = await open(ids.slice(0, N - 1).join(','))
     expect(cols(w1)).toBe(N - 1)
-    expect(showing(w1)).toBe(`Showing ${N - 1} of ${N - 1} approaches`)
+    expect(showing(w1)).toBe(`Showing ${N - 1} of ${N} approaches`)
   })
 })
