@@ -11,8 +11,8 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tests_app"))
-import t19_support as t  # noqa: E402 - the scenario -> route inputs helper
-from ofo_app.routes.adjustment import as_of_market, priced_approach  # noqa: E402
+import t19_support as t
+from ofo_app.routes.adjustment import as_of_market, priced_approach
 
 
 def _whole_at_planned(sid: str) -> D:
