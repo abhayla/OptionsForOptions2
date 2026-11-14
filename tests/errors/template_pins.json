@@ -4166,5 +4166,13 @@
   "explanation:paper_reason_charges_not_read": {
     "sha256": "a43fed308bc92cdb3dcf86c20aa47e44acf609fcd64fc09dd1d3ece4f30b2dc8",
     "reviewed": "pending owner read"
+  },
+  "explanation:stop_held_loss": {
+    "sha256": "70930a96d1a463bce8cf9e667cfa4e82795d14c3f767427a6a755749aa92cb65",
+    "reviewed": "pending owner read"
+  },
+  "explanation:stop_held_credit": {
+    "sha256": "3b18c83de053e0342d6b1148c133e270d24a68a400f4b7d066bcde3ce8892a79",
+    "reviewed": "pending owner read"
   }
 }

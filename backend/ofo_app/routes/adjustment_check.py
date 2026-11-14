@@ -16,6 +16,7 @@ from __future__ import annotations
 import datetime
 import logging
 from collections.abc import Mapping
+from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Annotated, Any, Literal
 
@@ -88,6 +89,10 @@ class CheckResultOut(ApiModel):
     #: (all server text)
     stop_text: CatalogueText | None = None
     fired_at: datetime.datetime | None = None  # issue 12: when its open record was shown
+    #: ADR-309: the rule's value at this check and that check's time text; `value` of a held fired rule is the value
+    #: that fired it
+    live_value: Money | None = None
+    live_as_of_text: CatalogueText | None = None
     suggestion_id: int | None = None  # a flag's open REQ-112 record (Dismiss / acted on name it)
     note: CatalogueText | None = None  # ADR-217: "You dismissed this" on a flag whose dismissed record still holds
 
@@ -241,6 +246,16 @@ def limits_out(limits: tuple[pe.LimitNow, ...], target_unset: bool = False) -> l
     return out
 
 
+def _held_stop_line(r: pe.Flag, credit: bool) -> Any:
+    """ADR-309: a stop kept fired from its record: the record's loss and line only; None if not numbers."""
+    if not all(isinstance(v, Decimal) for v in (r.value, r.threshold)):
+        return None
+    if credit:
+        return render_explanation("stop_held_credit", loss=_num(r.value), stop=_num(r.threshold))
+    return render_explanation("stop_held_loss", loss_pct=_num(r.value).normalize(),
+                              stop_pct=_num(r.threshold).normalize())
+
+
 def stop_text(
     r: pe.Result, limits: tuple[pe.LimitNow, ...], pnl: Any, fired_at: Mapping[str, datetime.datetime],
 ) -> Any:
@@ -252,6 +267,10 @@ def stop_text(
     credit = r.rule_id == sl.CREDIT_RULE
     if not credit and r.trigger_id != sl.TRIGGER_MAX_LOSS:
         return None
+    at = fired_at.get(r.rule_id)
+    if isinstance(r, HeldFlag):  # ADR-309: the record's own figures, never the loss now beside them
+        line = _held_stop_line(r, credit)
+        return line if line is None or at is None else render_explanation("stop_fired_at", line=line, time=at)
     lim = next((x for x in limits if x.rule_id == r.rule_id and (credit or x.trigger_id == sl.TRIGGER_MAX_LOSS)), None)
     if lim is None or not all(isinstance(v, Decimal) for v in (lim.amount, lim.threshold, pnl, r.value, r.threshold)):
         return None
@@ -263,7 +282,6 @@ def stop_text(
         else:
             line = render_explanation("stop_fired_loss", loss=loss, loss_pct=_num(r.value).normalize(), stop=lim.amount,
                                       stop_pct=_num(r.threshold).normalize())
-        at = fired_at.get(r.rule_id)
         return line if at is None else render_explanation("stop_fired_at", line=line, time=at)
     except (TypeError, ValueError):
         return None
@@ -295,13 +313,13 @@ def cheapest(state: pe.StrategyState) -> tuple[str, Decimal, int] | None:
 
 
 async def stored_records(db: Any, user_ref: str, strategy_id: int,
-                         ev: pe.Evaluation) -> tuple[dict[str, int], frozenset[str], dict[str, datetime.datetime]]:
+                         ev: pe.Evaluation,
+                         ) -> tuple[dict[str, int], frozenset[str], dict[str, datetime.datetime], list[pe.Result]]:
     """ADR-237 (6): the screen READS the records; only the background worker opens and lapses them, through the one
     gate (``ofo.adjustment.alert_gate``, stored by ``background.DbGateStore``). Returns (rule id -> id of its open
     record, for each flagged rule that has one; the flagged rules whose latest record is dismissed and none is open,
     for the ADR-217 "You dismissed this" note). Writes nothing. A store read that fails raises
     ``StrategyRefused`` (never an empty answer that would read as "nothing is open")."""
-    flagged = {r.rule_id for r in ev.results if isinstance(r, pe.Flag)}
     try:
         open_recs = await playbook_store.open_suggestions(db, user_ref, strategy_id)
         open_now = {rec.rule_id: rec.id for rec in open_recs}
@@ -309,9 +327,43 @@ async def stored_records(db: Any, user_ref: str, strategy_id: int,
     except SQLAlchemyError as exc:
         log.warning("adjustment check: records of strategy %s unreadable: %s", strategy_id, type(exc).__name__)
         raise StrategyRefused(_NOT_AVAILABLE, Failure.UPSTREAM_BUSY) from None
+    results = shown_results(ev, open_recs)
+    flagged = {r.rule_id for r in results if isinstance(r, pe.Flag)}
     opened = {rid: sid for rid, sid in open_now.items() if rid in flagged}
     fired = {rec.rule_id: rec.shown_at for rec in open_recs if rec.rule_id in opened}
-    return opened, frozenset(rid for rid in held if rid in flagged and rid not in opened), fired
+    return opened, frozenset(rid for rid in held if rid in flagged and rid not in opened), fired, results
+
+
+@dataclass(frozen=True)
+class HeldFlag(pe.Flag):
+    """ADR-309: a rule shown fired from its open record while the check reads it clear; the figures are the record's."""
+
+
+def live_fields(rule_id: str, live: Mapping[str, Decimal], fired_at: Mapping[str, datetime.datetime],
+                as_of_text: Any) -> dict:
+    """The per-rule fields beside the evaluator's answer: when its record opened, and the value now WITH the check's own
+    time (ADR-309)."""
+    value = live.get(rule_id)
+    return {"fired_at": fired_at.get(rule_id), "live_value": value,
+            "live_as_of_text": None if value is None else as_of_text}
+
+
+def shown_results(ev: pe.Evaluation, open_recs: Any) -> list[pe.Result]:
+    """ADR-309: the shown fired state follows the gate's open RECORD. A rule the check evaluated false (``ev.clear``)
+    that still has an open record is shown as fired, with the value that fired it; the gate (never the screen) ends it
+    when the value clears the re-arm band. A rule not evaluated (not checked, already true) is left as the evaluator
+    says it: nothing is invented from a record."""
+    cmp_of = {v.rule_id: v.cmp for v in ev.values}
+    return [*ev.results,
+            *(HeldFlag(rec.rule_id, rec.trigger_id, rec.stage, rec.value, rec.threshold, cmp_of[rec.rule_id])
+              for rec in open_recs
+              if rec.rule_id in ev.clear and rec.rule_id in cmp_of and rec.trigger_id is not None
+              and rec.value is not None and rec.threshold is not None)]
+
+
+def live_values(ev: pe.Evaluation) -> dict[str, Decimal]:
+    """The rule's value at this check (its own as-of is the reply's ``as_of``), shown beside a held fired state."""
+    return {v.rule_id: q for v in ev.values if (q := _num(v.value)) is not None}
 
 
 async def current_margin(margin_of: ApproachMargin, tracked: Any, market: Any) -> dict | None:
@@ -381,7 +433,8 @@ async def adjustment_check(  # noqa: PLR0913 - FastAPI dependencies, one per inp
     # worker is the one writer of rule memory and records (ADR-237 (6)), so the two never disagree about a dip
     ev, _memory = await check.evaluate_stored(db, user_ref, strategy_id, resolved.body, state, scenario_mode.current(),
                                               tracked.position, gap_until=prefs.gap_until)
-    opened, dismissed, fired_at = await stored_records(db, user_ref, strategy_id, ev)
+    opened, dismissed, fired_at, shown = await stored_records(db, user_ref, strategy_id, ev)
+    live = live_values(ev)
     wording = render_explanation("adjust_check_flag_system" if resolved.is_system else "adjust_check_flag_user")
     guards = resolved.body.get("guards")
     # ADR-305: emptied for this trade
@@ -391,8 +444,8 @@ async def adjustment_check(  # noqa: PLR0913 - FastAPI dependencies, one per inp
               "withheld": None if ev.withheld is None else render(ev.withheld),
               "results": [result_out(r, wording, opened, dismissed=dismissed, body=resolved.body,
                                     cheapest=cheapest(state), target=check.target_of(state))
-                              | {"stop_text": stop_text(r, ev.limits, state.pnl, fired_at),
-                                 "fired_at": fired_at.get(r.rule_id)}
-                          for r in ev.results],
+                              | {"stop_text": stop_text(r, ev.limits, state.pnl, fired_at)}
+                              | live_fields(r.rule_id, live, fired_at, reply["as_of_text"])
+                          for r in shown],
               "limits": limits_out(ev.limits, target_unset)}
     return AdjustmentCheckOut.model_validate(reply)

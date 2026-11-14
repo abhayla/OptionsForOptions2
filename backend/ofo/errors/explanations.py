@@ -1648,6 +1648,13 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("stop_fired_credit", "values_seen",
                         "Stop reached: loss now {loss}; stop line {stop} ({multiple} x credit)",
                         {"loss": Rupees, "stop": Rupees, "multiple": Amount}),
+    ExplanationTemplate("stop_held_loss", "values_seen",
+                        "Stop was reached earlier: loss then {loss_pct} % of max loss; "
+                        "stop line {stop_pct} % of max loss",
+                        {"loss_pct": Amount, "stop_pct": Amount}),
+    ExplanationTemplate("stop_held_credit", "values_seen",
+                        "Stop was reached earlier: loss then {loss}; stop line {stop}",
+                        {"loss": Rupees, "stop": Rupees}),
     ExplanationTemplate("stop_fired_at", "values_seen", "{line}; reached at {time} IST",
                         {"line": Explained, "time": HourMinute}),
     ExplanationTemplate("adjust_spot_from_feed", "values_seen", "Spot from the live feed"),
