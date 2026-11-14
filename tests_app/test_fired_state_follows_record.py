@@ -95,3 +95,39 @@ def test_e_a_stop_follows_its_record_the_same_way(monkeypatch):
 def test_f_a_failed_record_read_is_the_could_not_read_state_never_quiet(monkeypatch):
     with pytest.raises(StrategyRefused):
         _read(monkeypatch, SQLAlchemyError("down"), _ev())
+
+
+# --- round 2: a held-over stop's sentence is the RECORD's own figures, never mixed with the live loss ---
+def _stop_limits(rule_id="T-06"):
+    return (pe.LimitNow(rule_id, "T-06" if rule_id == "T-06" else rule_id, D("50"), D("11948.52"), (), None,
+                        "checked", None),)
+
+
+def test_r2_held_over_stop_sentence_uses_the_record_figures_only(monkeypatch):
+    rec = _rec("T-06", "T-06", "52.0000", "50.0000")
+    _o, _d, fired_at, results = _read(monkeypatch, [rec], _ev("T-06", live="45"))
+    (held,) = results
+    text = route.stop_text(held, _stop_limits(), D("-5000"), fired_at)  # the live loss is far inside the line
+    assert "52" in text and "50" in text and "loss now" not in text and "5,000" not in text
+    assert text.endswith("IST") and "reached at" in text
+
+
+def test_r2_held_over_credit_stop_sentence_uses_the_record_loss(monkeypatch):
+    rec = _rec("stop.credit_x", "stop.credit_x", "12000", "11948.52")
+    ev = _ev("stop.credit_x", live="100")
+    _o, _d, fired_at, results = _read(monkeypatch, [rec], ev)
+    text = route.stop_text(results[0], _stop_limits("stop.credit_x"), D("-100"), fired_at)
+    assert "12,000" in text and "loss now" not in text and "100.00" not in text
+
+
+def test_r2_a_stop_firing_right_now_keeps_its_sentence():
+    flag = pe.Flag("T-06", "T-06", "Middle", D("52.0000"), D("50.0000"), "ge")
+    text = route.stop_text(flag, _stop_limits(), D("-12000"), {})
+    assert text.startswith("Stop reached: loss now") and "12,000.00" in text
+
+
+def test_r2_live_fields_carry_the_live_value_with_the_checks_own_time():
+    out = route.live_fields("T-01", {"T-01": D("0.3510")}, {"T-01": SHOWN}, "As of 01:49:00 PM IST")
+    assert out == {"fired_at": SHOWN, "live_value": D("0.3510"), "live_as_of_text": "As of 01:49:00 PM IST"}
+    none = route.live_fields("T-09", {"T-01": D("0.3510")}, {}, "As of 01:49:00 PM IST")
+    assert none == {"fired_at": None, "live_value": None, "live_as_of_text": None}
