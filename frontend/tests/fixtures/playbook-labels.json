@@ -371,7 +371,7 @@
   },
   {
    "key": "time_exit",
-   "text": "Time exit"
+   "text": "Time exit (on expiry day)"
   },
   {
    "key": "warn_cost_pct_of_premium_left",

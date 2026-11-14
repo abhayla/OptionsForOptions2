@@ -4,10 +4,9 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (296)
+## Decisions (297)
 
-- Older decisions: 256 rows, ADR-1..ADR-269 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
-- ADR-270 2026-11-06: Owner 2026-11-06 ~16:2x IST (question tool, after the reason was explained): "Test both and all rel… [SPEC CHANGE: ADR-253 superseded for live; adds th…]
+- Older decisions: 257 rows, ADR-1..ADR-270 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
 - ADR-271 2026-11-06: Decided under the owner's standing delegation for strategy and behaviour calls (owner 2026-11-06 ~1… [clarifies ADR-118 (paper orders were not named);…]
 - ADR-272 2026-11-07: Decided under the owner's standing delegation for strategy and behaviour calls (owner 2026-11-06 ~1… [applies ADR-015 to REQ-156 (compare) and REQ-045…]
 - ADR-273 2026-11-07: Decided under the owner's standing delegation for strategy and behaviour calls (owner 2026-11-06 ~1… [SPEC CHANGE REQ-163 AC-1 (adds the approach as a…]
@@ -47,6 +46,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-307 2026-11-14: Decided by the run on 2026-11-14 under the owner rule of that day ("whenever you have question, go… [No requirement is reversed. Adds to REQ-148 AC-5…]
 - ADR-308 2026-11-14: Decided by the run on 2026-11-14 under the owner rule of that day ("whenever you have question, go… [Clarifies ADR-214 ("Showing N of M"); no reversal…]
 - ADR-309 2026-11-15: Decided by the run on 2026-11-15 under the owner rule of 14 Nov ("whenever you have question, go wi… [No reversal. Extends decision row 304 (limits on…]
+- ADR-310 2026-11-15: Decided by the run on 2026-11-15 under the owner rule of 14 Nov ("whenever you have question, go wi… [SPEC CHANGE, narrow: ADR-283 (2) said a clock rul…]
 
 ## Requirements (161)
 

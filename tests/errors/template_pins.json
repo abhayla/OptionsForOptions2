@@ -2760,8 +2760,8 @@
     "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"
   },
   "explanation:plan_sheet_time_exit": {
-    "sha256": "3da7b1b276527a6ece178561b4c942351b9a3bc4ed6888a4e4a2973029ce9cda",
-    "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"
+    "sha256": "f69b827c104abe0efc40696c8852a186b6583604f1fd5ab91043adc24f093617",
+    "reviewed": "pending owner read"
   },
   "explanation:plan_sheet_customise": {
     "sha256": "23c1249727362aeaf208ec8618b19276f64364e86a308d2a9b806c051a4ad978",
@@ -2800,7 +2800,7 @@
     "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"
   },
   "labels:plan_sheet": {
-    "sha256": "8faede64c95388a6ba142bf9d4b27b1e7c7b0e982e12821ef48b1abf05a24cfe",
+    "sha256": "c0b3ca36cd3c2e8b27592cbb47d0f6da1567de9097c664f841a8f4eac697d9af",
     "reviewed": "pending owner read"
   },
   "explanation:playbook_test_no_strategy": {
@@ -3280,16 +3280,16 @@
     "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"
   },
   "explanation:playbook_guard_time_exit": {
-    "sha256": "3da7b1b276527a6ece178561b4c942351b9a3bc4ed6888a4e4a2973029ce9cda",
-    "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"
+    "sha256": "f69b827c104abe0efc40696c8852a186b6583604f1fd5ab91043adc24f093617",
+    "reviewed": "pending owner read"
   },
   "explanation:playbook_guard_warn_cost_pct_of_premium_left": {
     "sha256": "4c0313242d60ce91a2ad2437be7ec13fa0ac4413a5b1f92aba29ff378d164b36",
     "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"
   },
   "labels:playbook_guard": {
-    "sha256": "549ee2e2d6d7f4df36ed728953fc2dee7265ad74090e41a9decba553040168f9",
-    "reviewed": "owner read 2026-10-31 (decided in chat)"
+    "sha256": "f959b311738817ca3883e0fc0e3d374c6ae9e74cd66aba3f7b65a65a15861be5",
+    "reviewed": "pending owner read"
   },
   "explanation:playbook_summary_plan_target": {
     "sha256": "eac719d1ae6d37126c84baa3420a34773f994a36cf83c81407be92487bfb1653",
@@ -4177,6 +4177,14 @@
   },
   "explanation:stop_fired_on": {
     "sha256": "51a72f82532dab91f0bd18c21516cbbf2538a704ece713ce1c1f1d9db8a41875",
+    "reviewed": "pending owner read"
+  },
+  "adjust_trigger_waits_expiry_day": {
+    "sha256": "5115b9649573cfb13dab46c4582809e9729cfe6c652334161028273e69106374",
+    "reviewed": "pending owner read"
+  },
+  "adjust_trigger_missing_today": {
+    "sha256": "4f80c638b4181eb2a79a79e4c470ef86fbec7ac06d806a504fa96d2bf13e5b98",
     "reviewed": "pending owner read"
   }
 }

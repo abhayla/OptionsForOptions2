@@ -1808,6 +1808,10 @@
    {
     "id": "T-14",
     "reason": "The loss-from-a-1%-move rule is not checked yet in this version."
+   },
+   {
+    "id": "T-10b",
+    "reason": "Waiting: this rule acts on expiry day only (03 Nov 2026)."
    }
   ],
   "day_rules": [],

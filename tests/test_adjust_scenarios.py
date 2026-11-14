@@ -225,7 +225,7 @@ def recompute_fired(sc: dict) -> set[str]:  # noqa: C901, PLR0912 - one trigger 
             value = max(pnl, D(0)) / D(whole["max_profit"]) * 100
         elif tid == "T-09" and shorts and not ({x["tradingsymbol"] for x in shorts} & unpriced):
             value = min(D(_row(sc, x)["ltp"]) for x in shorts)
-        elif tid == "T-10b" and lim != "" and hhmm >= lim:
+        elif tid == "T-10b" and lim != "" and hhmm >= lim and clock.date().isoformat() == sc["expiry"]:  # ADR-310
             fired.add(tid)
         elif tid == "T-11":
             value = abs(D(sc["market"]["atm_iv"]) - D(sc["position"]["entry"]["atm_iv"])) * 100
