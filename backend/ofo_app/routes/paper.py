@@ -1089,7 +1089,8 @@ async def paper_exit_risk(strategy_id: int, orders: Annotated[str, Query(max_len
         legs_text = names[risk.exposed[0]]
         for other in risk.exposed[1:]:
             legs_text = render_explanation("paper_alert_legs", rest=legs_text, leg=names[other])
-        warning += " " + render_explanation("paper_exit_less_protected", legs=legs_text)
+        warning = render_explanation("paper_exit_warning_join", first=warning,
+                                     second=render_explanation("paper_exit_less_protected", legs=legs_text))
     return ExitRiskOut(state="yes", max_loss_before=before if priced else None,
                        max_loss_after=after if priced else None, warning_text=warning)
 

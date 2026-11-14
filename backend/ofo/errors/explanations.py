@@ -1807,6 +1807,8 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         {"before": Explained, "after": Explained}),
     ExplanationTemplate("paper_exit_less_protected", "values_seen",
                         "Sold option with less protection: {legs}.", {"legs": Explained}),
+    ExplanationTemplate("paper_exit_warning_join", "values_seen", "{first} {second}",
+                        {"first": Explained, "second": Explained}),
     ExplanationTemplate("paper_exit_loss_not_available", "values_seen", "not available"),
     ExplanationTemplate("paper_trigger_level", "values_seen", "{level}", {"level": IndexLevel}),
     ExplanationTemplate("paper_alert_title", "what_triggered", "Paper strategy — {name}", {"name": Explained}),
