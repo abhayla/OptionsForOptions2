@@ -4,10 +4,9 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (295)
+## Decisions (296)
 
-- Older decisions: 255 rows, ADR-1..ADR-268 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
-- ADR-269 2026-11-06: Owner 2026-11-06 ~16:1x IST (question tool, during the live iron condor test): "Consider rollover a… [SPEC CHANGE: ADR-207 (2) no longer covers expiry-…]
+- Older decisions: 256 rows, ADR-1..ADR-269 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
 - ADR-270 2026-11-06: Owner 2026-11-06 ~16:2x IST (question tool, after the reason was explained): "Test both and all rel… [SPEC CHANGE: ADR-253 superseded for live; adds th…]
 - ADR-271 2026-11-06: Decided under the owner's standing delegation for strategy and behaviour calls (owner 2026-11-06 ~1… [clarifies ADR-118 (paper orders were not named);…]
 - ADR-272 2026-11-07: Decided under the owner's standing delegation for strategy and behaviour calls (owner 2026-11-06 ~1… [applies ADR-015 to REQ-156 (compare) and REQ-045…]
@@ -47,6 +46,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-306 2026-11-13: Owner decision 2026-11-13 ~21:15 IST (question tool, picked "Make it add up (Recommended)"). [SPEC CHANGE: replaces the profit left / loss left…]
 - ADR-307 2026-11-14: Decided by the run on 2026-11-14 under the owner rule of that day ("whenever you have question, go… [No requirement is reversed. Adds to REQ-148 AC-5…]
 - ADR-308 2026-11-14: Decided by the run on 2026-11-14 under the owner rule of that day ("whenever you have question, go… [Clarifies ADR-214 ("Showing N of M"); no reversal…]
+- ADR-309 2026-11-15: Decided by the run on 2026-11-15 under the owner rule of 14 Nov ("whenever you have question, go wi… [No reversal. Extends decision row 304 (limits on…]
 
 ## Requirements (161)
 

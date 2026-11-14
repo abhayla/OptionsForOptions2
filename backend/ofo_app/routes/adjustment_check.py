@@ -88,6 +88,8 @@ class CheckResultOut(ApiModel):
     #: (all server text)
     stop_text: CatalogueText | None = None
     fired_at: datetime.datetime | None = None  # issue 12: when its open record was shown
+    #: ADR-309: the rule's value at this check (as_of); `value` of a held fired rule is the value that fired it
+    live_value: Money | None = None
     suggestion_id: int | None = None  # a flag's open REQ-112 record (Dismiss / acted on name it)
     note: CatalogueText | None = None  # ADR-217: "You dismissed this" on a flag whose dismissed record still holds
 
@@ -301,7 +303,6 @@ async def stored_records(db: Any, user_ref: str, strategy_id: int,
     record, for each flagged rule that has one; the flagged rules whose latest record is dismissed and none is open,
     for the ADR-217 "You dismissed this" note). Writes nothing. A store read that fails raises
     ``StrategyRefused`` (never an empty answer that would read as "nothing is open")."""
-    flagged = {r.rule_id for r in ev.results if isinstance(r, pe.Flag)}
     try:
         open_recs = await playbook_store.open_suggestions(db, user_ref, strategy_id)
         open_now = {rec.rule_id: rec.id for rec in open_recs}
@@ -309,9 +310,29 @@ async def stored_records(db: Any, user_ref: str, strategy_id: int,
     except SQLAlchemyError as exc:
         log.warning("adjustment check: records of strategy %s unreadable: %s", strategy_id, type(exc).__name__)
         raise StrategyRefused(_NOT_AVAILABLE, Failure.UPSTREAM_BUSY) from None
+    results = shown_results(ev, open_recs)
+    flagged = {r.rule_id for r in results if isinstance(r, pe.Flag)}
     opened = {rid: sid for rid, sid in open_now.items() if rid in flagged}
     fired = {rec.rule_id: rec.shown_at for rec in open_recs if rec.rule_id in opened}
-    return opened, frozenset(rid for rid in held if rid in flagged and rid not in opened), fired
+    return opened, frozenset(rid for rid in held if rid in flagged and rid not in opened), fired, results
+
+
+def shown_results(ev: pe.Evaluation, open_recs: Any) -> list[pe.Result]:
+    """ADR-309: the shown fired state follows the gate's open RECORD. A rule the check evaluated false (``ev.clear``)
+    that still has an open record is shown as fired, with the value that fired it; the gate (never the screen) ends it
+    when the value clears the re-arm band. A rule not evaluated (not checked, already true) is left as the evaluator
+    says it: nothing is invented from a record."""
+    cmp_of = {v.rule_id: v.cmp for v in ev.values}
+    return [*ev.results,
+            *(pe.Flag(rec.rule_id, rec.trigger_id, rec.stage, rec.value, rec.threshold, cmp_of[rec.rule_id])
+              for rec in open_recs
+              if rec.rule_id in ev.clear and rec.rule_id in cmp_of and rec.trigger_id is not None
+              and rec.value is not None and rec.threshold is not None)]
+
+
+def live_values(ev: pe.Evaluation) -> dict[str, Decimal]:
+    """The rule's value at this check (its own as-of is the reply's ``as_of``), shown beside a held fired state."""
+    return {v.rule_id: q for v in ev.values if (q := _num(v.value)) is not None}
 
 
 async def current_margin(margin_of: ApproachMargin, tracked: Any, market: Any) -> dict | None:
@@ -381,7 +402,8 @@ async def adjustment_check(  # noqa: PLR0913 - FastAPI dependencies, one per inp
     # worker is the one writer of rule memory and records (ADR-237 (6)), so the two never disagree about a dip
     ev, _memory = await check.evaluate_stored(db, user_ref, strategy_id, resolved.body, state, scenario_mode.current(),
                                               tracked.position, gap_until=prefs.gap_until)
-    opened, dismissed, fired_at = await stored_records(db, user_ref, strategy_id, ev)
+    opened, dismissed, fired_at, shown = await stored_records(db, user_ref, strategy_id, ev)
+    live = live_values(ev)
     wording = render_explanation("adjust_check_flag_system" if resolved.is_system else "adjust_check_flag_user")
     guards = resolved.body.get("guards")
     # ADR-305: emptied for this trade
@@ -392,7 +414,7 @@ async def adjustment_check(  # noqa: PLR0913 - FastAPI dependencies, one per inp
               "results": [result_out(r, wording, opened, dismissed=dismissed, body=resolved.body,
                                     cheapest=cheapest(state), target=check.target_of(state))
                               | {"stop_text": stop_text(r, ev.limits, state.pnl, fired_at),
-                                 "fired_at": fired_at.get(r.rule_id)}
-                          for r in ev.results],
+                                 "fired_at": fired_at.get(r.rule_id), "live_value": live.get(r.rule_id)}
+                          for r in shown],
               "limits": limits_out(ev.limits, target_unset)}
     return AdjustmentCheckOut.model_validate(reply)

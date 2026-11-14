@@ -42,7 +42,8 @@ export const checkStaleLine = (refusal) => (refusal ? `${CHECK_STALE_TEXT} ${ref
 // pending owner read (14 Nov 2026), GC-ICFIX issue 12 (ADR-272 (3)): the trade page's rules line; the time and the reason are the server's
 export const RULES_LOAD_FAILED_TEXT = 'Could not read which rules have fired. Nothing was changed.'
 export const firedAtText = (stamp) => `Fired at ${stamp}` // the stamp is today's time, or the date and time (istStamp)
-export const ruleNotCheckedText = (reason) => `Rule not checked: ${reason}`
+export const liveNowText = (value) => `Now ${value}` // ADR-309: the rule's value at the check, beside the one that fired it
+export const ruleNotCheckedText =(reason) => `Rule not checked: ${reason}`
 export const ruleEarlierText = (text, outcome, stamp) => `${text} - ${outcome}${stamp ? `, fired ${stamp}` : ''}`
 export const EARLIER_SHOWN_MAX = 5
 export const earlierMoreText = (n) => `and ${n} earlier`

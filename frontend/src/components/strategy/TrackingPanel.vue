@@ -49,6 +49,8 @@
         <span v-if="f.stop_text" data-testid="playbook-flag-stop">{{ f.stop_text }}</span>
         <!-- GC-ICFIX issue 12 (u241): any other fired rule shows the time its record opened, the server's stamp in India time -->
         <span v-else-if="firedClock(f)" data-testid="playbook-flag-time">{{ firedAtText(firedClock(f)) }}</span>
+        <!-- ADR-309: a fired rule stays fired until its record clears; the value now is shown beside the one that fired it -->
+        <span v-if="f.live_value != null && f.live_value !== f.value" data-testid="playbook-flag-live">{{ liveNowText(f.live_value) }}</span>
       </div>
       <!-- ADR-272 (3): the check's withheld state, in the server's words, instead of silence -->
       <!-- GC-ICFIX issue 12 (u241, ADR-272 (3), ADR-245): the rules line. A rule that is not checked says so with the server's reason;
@@ -90,7 +92,7 @@ import Chip from '@/components/common/Chip.vue'
 import FigureHint from '@/components/common/FigureHint.vue'
 import api, { NEUTRAL_PARTS } from '@/services/api'
 import { NOT_CONNECTED_TEXT, PAPER_PNL_PREFIX, readTracking, sharedTotal } from '@/lib/tracking'
-import { EARLIER_SHOWN_MAX, RULES_LOAD_FAILED_TEXT, checkStaleLine, earlierMoreText, firedAtText, ruleEarlierText, ruleNotCheckedText } from '@/lib/sharedStateText'
+import { EARLIER_SHOWN_MAX, RULES_LOAD_FAILED_TEXT, checkStaleLine, earlierMoreText, firedAtText, liveNowText, ruleEarlierText, ruleNotCheckedText } from '@/lib/sharedStateText'
 import { istStamp } from '@/lib/displayFormat'
 import { settledRecords } from '@/lib/paperAlerts'
 import { said } from '@/lib/playbookEditor'

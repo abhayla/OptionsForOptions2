@@ -25,8 +25,9 @@ def _rec(rule_id="T-01", trigger="T-01", value="0.3482", threshold="0.3500") -> 
                                      dismiss_reason=None, timeline=[])
 
 
-def _ev(rule_id="T-01", trigger="T-01", live="0.3510", fired=False, cmp="le", results=(), clear=True):
-    rv = pe.RuleValue(rule_id, trigger, D(live), D("0.3500"), cmp, fired)
+def _ev(rule_id="T-01", live="0.3510", fired=False, results=(), clear=True):
+    cmp = "ge" if rule_id == "T-06" else "le"  # T-06 is a stop (loss at or above its line)
+    rv = pe.RuleValue(rule_id, rule_id, D(live), D("0.3500"), cmp, fired)
     return pe.Evaluation("Middle", 1, tuple(results), {}, clear=(rule_id,) if clear else (), values=(rv,))
 
 
@@ -84,7 +85,7 @@ def test_a_rule_the_check_could_not_evaluate_is_never_invented_from_the_record(m
 
 def test_e_a_stop_follows_its_record_the_same_way(monkeypatch):
     rec = _rec("T-06", "T-06", "10.5", "10")
-    ev = _ev("T-06", "T-06", live="9.5", cmp="ge")
+    ev = _ev("T-06", live="9.5")
     opened, _d, fired_at, results = _read(monkeypatch, [rec], ev)
     (out,) = _shown(results, opened)
     assert (out["kind"], out["rule_id"], out["value"]) == ("flag", "T-06", D("10.5000"))
