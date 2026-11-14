@@ -100,8 +100,10 @@ def open_round_trip_charges(view: BookView, terms: Mapping[str, ContractTerms], 
     ``paper_charges(...).total``) plus the estimated charges to close the open contracts at their average price, so a
     leg filled in two orders and the legs closed by an adjustment are counted as paid."""
     open_ = [p for p in view.positions if p.net_quantity != 0 and p.average is not None]
-    if rates is None or not open_:
+    if rates is None:
         return None
+    if not open_:  # a fully closed placed book: what was paid, nothing left to close (ADR-263, ADR-306 (5))
+        return None if paid_exact is None or any(p.net_quantity for p in view.positions) else to_paise_up(paid_exact)
     if any(terms[p.instrument_id].instrument is Instrument.FUT or p.average <= 0 for p in open_):  # type: ignore[operator]
         return None
     try:

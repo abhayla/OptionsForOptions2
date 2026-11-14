@@ -559,7 +559,7 @@ def _extremes(orders: Sequence[paper_store.StoredOrder], found: dict[int, tracke
     out: dict[str, Any] = {"extremes_reason": got.reason, "extremes_reason_text": extremes_reason_text(got.reason)}
     for name, value in figures.items():
         out[name], out[f"{name}_text"] = _extreme(value)
-    is_open = got.max_profit is not None and any(p.net_quantity for p in view.positions)
+    is_open = got.max_profit is not None  # open or fully closed: both carry the charges (or say "before charges")
     out["extremes_charges"] = charges if is_open else None
     out["extremes_charges_text"] = (
         None if not is_open else render_explanation("paper_extremes_before_charges") if charges is None else
