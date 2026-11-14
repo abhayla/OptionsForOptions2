@@ -50,7 +50,7 @@
 
 <script setup>
 import { computed, ref } from 'vue'
-import api, { NEUTRAL_ERROR } from '@/services/api'
+import api, { NEUTRAL_PARTS } from '@/services/api'
 import { istTime } from '@/lib/displayFormat'
 import { BEFORE_CHARGES, afterFigure } from '@/lib/tracking'
 import AfterChargesTap from '@/components/common/AfterChargesTap.vue'
@@ -89,7 +89,7 @@ async function onToggle(e) {
     data.value = (await api.get(`/strategies/${props.strategyId}/adjustment-history`)).data
   } catch (err) {
     loaded = false
-    error.value = err?.parts?.what_happened ?? NEUTRAL_ERROR
+    error.value = (err?.parts ?? NEUTRAL_PARTS).what_happened
   }
 }
 </script>

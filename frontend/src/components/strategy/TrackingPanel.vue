@@ -49,16 +49,16 @@
         <span v-if="f.stop_text" data-testid="playbook-flag-stop">{{ f.stop_text }}</span>
       </div>
       <!-- ADR-272 (3): the check's withheld state, in the server's words, instead of silence -->
-      <p v-if="typed && check.withheld" class="mt-1 text-xs text-ink-muted" data-testid="check-withheld">{{ check.withheld }}</p>
+      <p v-if="typed && withheldText" class="mt-1 text-xs text-ink-muted" data-testid="check-withheld">{{ withheldText }}</p>
       <!-- GC-ICFIX u141: the check's own read time; a background re-read that failed keeps the last lines and says so -->
       <p v-if="typed && check.as_of_text" class="mt-1 text-xs text-ink-muted" data-testid="check-as-of">{{ check.as_of_text }}</p>
-      <p v-if="typed && checkStale" class="mt-1 text-xs text-red-700" data-testid="check-stale">{{ CHECK_STALE_TEXT }}</p>
+      <p v-if="typed && checkStale" class="mt-1 text-xs text-red-700" data-testid="check-stale">{{ checkStaleLine(checkRefusal) }}</p>
       <p v-for="a in alreadyTrue" :key="a.rule_id" class="mt-1 text-xs text-ink-muted" data-testid="playbook-already-true">{{ a.wording?.what_happened }} {{ a.condition }}</p>
       <button v-if="view.detections.length || flags.length" ref="reviewBtn" type="button" class="mt-2 rounded border border-line bg-surface px-2 py-1 text-xs font-medium" data-testid="review-adjustment" @click="openDrawer">{{ REVIEW_BUTTON_TEXT }}</button>
     </div>
     <!-- GC-ADJ2 step 6 (REQ-163): the entry, every adjustment and the whole-trade totals; read when opened -->
     <AdjustSteps :strategy-id="savedId" />
-    <PlanEntry v-if="status === 'tracked'" :strategy-id="savedId" :check="check" :check-status="checkStatus" :check-stale="checkStale" @retry-check="retryCheck" />
+    <PlanEntry v-if="status === 'tracked'" :strategy-id="savedId" :check="check" :check-status="checkStatus" :check-stale="checkStale" :check-refusal="checkRefusal" @retry-check="retryCheck" />
     <AdjustDrawer
       :open="drawerOpen" :strategy-id="savedId" :lines="drawerLines" :detected="!!view?.detections?.length || flags.length > 0" :card-rows="cardRows(raw)"
       :suggestion-ids="flagIds"
@@ -77,9 +77,10 @@ import PlanEntry from '@/components/strategy/PlanEntry.vue'
 import { REVIEW_BUTTON_TEXT, cardRows } from '@/lib/adjustDrawer'
 import Chip from '@/components/common/Chip.vue'
 import FigureHint from '@/components/common/FigureHint.vue'
-import api, { NEUTRAL_ERROR } from '@/services/api'
+import api, { NEUTRAL_PARTS } from '@/services/api'
 import { NOT_CONNECTED_TEXT, PAPER_PNL_PREFIX, readTracking, sharedTotal } from '@/lib/tracking'
-import { CHECK_STALE_TEXT } from '@/lib/sharedStateText'
+import { checkStaleLine } from '@/lib/sharedStateText'
+import { said } from '@/lib/playbookEditor'
 import { usePaperRefresh } from '@/lib/usePaperRefresh'
 
 const props = defineProps({
@@ -111,6 +112,7 @@ const drawerLines = ref([]) // layer 1: the detection's own text; kept when the 
 // the platform detection of the tracking answer. A failed read shows no flag (nothing is invented here).
 const check = ref(null)
 const dismissed = ref([]) // record ids dismissed from the drawer: their flags leave the card at once
+const withheldText = computed(() => said(check.value?.withheld)) // the server sends the withheld note as its error parts: only the sentence is shown
 const typed = computed(() => !!check.value?.strategy_type)
 const flags = computed(() => (typed.value ? (check.value.results ?? []) : [])
   .filter((r) => r.kind === 'flag' && !dismissed.value.includes(r.suggestion_id)))
@@ -118,6 +120,7 @@ const alreadyTrue = computed(() => (typed.value ? (check.value.results ?? []) : 
 const flagIds = computed(() => flags.value.map((f) => f.suggestion_id).filter((x) => x !== null && x !== undefined))
 const checkStatus = ref('loading') // the plan card's limit lines read this one check: 'loading' | 'ok' | 'failed' (ADR-304 (3))
 const checkStale = ref(false) // GC-ICFIX u141: a background re-read failed after a good read: the last lines stay, marked
+const checkRefusal = ref('') // the server's sentence when the last check read was refused (a catalogue body); '' = no usable body
 let checkReading = false // one check read at a time (a tick while one is out does nothing)
 // `background` = the re-read inside the page's refresh: it never flips the status to loading and never blanks a good reply.
 async function readCheck(id, background = false) {
@@ -126,9 +129,10 @@ async function readCheck(id, background = false) {
   if (!background) checkStatus.value = 'loading'
   try {
     const { data } = await api.get(`/strategies/${id}/adjustment-check`)
-    if (id === props.savedId) { check.value = data; checkStatus.value = 'ok'; checkStale.value = false }
-  } catch {
+    if (id === props.savedId) { check.value = data; checkStatus.value = 'ok'; checkStale.value = false; checkRefusal.value = '' }
+  } catch (e) {
     if (id !== props.savedId) return
+    checkRefusal.value = e?.parts?.what_happened ?? ''
     if (background && check.value) checkStale.value = true
     else if (!background) { check.value = null; checkStatus.value = 'failed' }
   } finally {
@@ -159,7 +163,7 @@ function goCompare({ url }) {
 
 function failed(e) {
   view.value = null
-  error.value = e?.parts?.what_happened || NEUTRAL_ERROR
+  error.value = (e?.parts ?? NEUTRAL_PARTS).what_happened
 }
 
 async function load(id) {
@@ -169,6 +173,7 @@ async function load(id) {
   check.value = null
   checkStatus.value = 'loading'
   checkStale.value = false
+  checkRefusal.value = ''
   dismissed.value = []
   drawerOpen.value = false
   error.value = ''

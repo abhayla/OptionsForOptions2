@@ -35,6 +35,8 @@ export const PLAN_LOADING_TEXT = 'Loading the plan…'
 export const LIMITS_LOADING_TEXT = 'Loading the rules in force…'
 export const LIMITS_LOAD_FAILED_TEXT = 'Could not load the rules in force. Nothing was changed.'
 export const CHECK_STALE_TEXT = 'Could not refresh the rule check. Showing the last answer, as of the time shown.'
+// one mark, never two: the refusal's sentence (the server's words) follows the could-not-refresh text on the same line
+export const checkStaleLine = (refusal) => (refusal ? `${CHECK_STALE_TEXT} ${refusal}` : CHECK_STALE_TEXT)
 export const LIMITS_NONE_TEXT = 'No rules are being checked for this trade'
 export const RETURN_DONE_TEXT = 'Zerodha confirmed your orders.' // ADR-129
 
