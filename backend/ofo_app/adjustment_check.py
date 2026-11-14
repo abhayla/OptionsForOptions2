@@ -286,8 +286,7 @@ def cheapest_offered(body: Mapping | None, tracked: Tracked, market: MarketInput
     tracked = as_of_market(tracked, market)  # as the approaches route builds (market day, listed expiry kind)
     position = tracked.position  # the route's Before and guards, through the same helpers (#633, ADR-230 (1))
     if before is None:
-        before = price_after(position.legs, position, tracked.booked, tracked.paid_charges, (), rates, market,
-                             tracked.paid_exact)
+        before = price_after(position.legs, position, tracked.booked, tracked.paid_charges, (), rates, market)
     guards = guards_of_body(body)
     limits, max_profit = liquidity_inputs(guards, before)
     exits = exit_inputs_of(guards, position, market.now)  # ADR-238: A-27 / A-35 read the same playbook
@@ -350,8 +349,7 @@ def state_of(tracked: Tracked, market: MarketInputs, spot: SpotAnswer, margin: M
         pnl_after, pnl_after_reason = None, NOT_PRICED
     left = adjust_money.premium_left((x.side, ltp[x.tradingsymbol], qty[x.tradingsymbol])
                                      for x in position.legs) if priced else None
-    before = price_after(position.legs, position, booked, tracked.paid_charges, (), rates, market,
-                         tracked.paid_exact)  # once per check
+    before = price_after(position.legs, position, booked, tracked.paid_charges, (), rates, market)  # once per check
     cheap = cheapest_offered(body, tracked, market, value, rates, config, roll_basis=basis, before=before)
     gross = None if before.after is None else before.after.gross
     expiry_pnl = None

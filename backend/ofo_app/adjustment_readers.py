@@ -163,15 +163,13 @@ async def _tracked_on(db: Any, strategy_id: int, rates: ChargeRates | None) -> T
     if not legs or underlying is None or lot is None:
         raise TrackedExited("no open option leg")
     paid: Decimal | None = None
-    paid_exact: Decimal | None = None
     if real:  # paid charges and adjustments used before the app saw it: not readable yet ("not checked", ADR-276 (4))
         return Tracked(Position(underlying, lot, "", datetime.date.min, tuple(legs)), book.booked, None,
                        adjustments_used=None, entered_at=entered_at(orders), real_book=True)
     if rates is not None:
         fills = [PaperFill(o.order.kind, o.order.side, o.order.quantity, o.order.price, True) for o in orders]
         try:
-            got = paper_charges(fills, underlying, rates)
-            paid, paid_exact = got.shown, got.total
+            paid = paper_charges(fills, underlying, rates).shown
         except ChargesNotComputable:
             paid = None
     booked = book.booked  # the same paper orders ``read_booked`` would read again on a second session
@@ -181,7 +179,7 @@ async def _tracked_on(db: Any, strategy_id: int, rates: ChargeRates | None) -> T
     used = history_count(orders, lambda cid: found[cid].stored is not None
                          and found[cid].stored.listed.contract.instrument_type in _OPTION_TYPES)
     return Tracked(Position(underlying, lot, "", datetime.date.min, tuple(legs)), booked, paid,
-                   adjustments_used=used, entered_at=entered_at(orders), paid_exact=paid_exact)
+                   adjustments_used=used, entered_at=entered_at(orders))
 
 
 async def _real_rows(db: Any, strategy_id: int) -> list[Any]:

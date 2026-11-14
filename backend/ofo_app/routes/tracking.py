@@ -30,7 +30,7 @@ from fastapi import APIRouter, Depends
 from ofo.adjustment.detection import PLATFORM_DETECTION, check_threshold
 from ofo.adjustment.strategy_type import strike_gap_of, type_of
 from ofo.charges import ChargeRates
-from ofo.charges.paper_charges import PaperFill, paper_charges
+from ofo.charges.paper_charges import PaperFill
 from ofo.engine.extremes import ContractTerms
 from ofo.engine.extremes_charges import after_split
 from ofo.engine.legs import Action, Instrument, Leg
@@ -274,12 +274,10 @@ def _after(bk: _Book, legs: list[paper.TrackedLeg], figures: BookView,  # noqa: 
     terms = {held.instrument_id: ContractTerms(leg.instrument, leg.strike, leg.expiry)
              for leg, held in zip(legs, bk.legs, strict=True)}
     option = {i: t.instrument is not Instrument.FUT for i, t in terms.items()}
-    fills = [PaperFill(o.kind, o.side, o.quantity, o.price, option[o.instrument_id])  # type: ignore[arg-type]
-             for o in bk.orders]
-    paid, why = paid_charges(fills, underlying, rates)
+    paid, why = paid_charges([PaperFill(o.kind, o.side, o.quantity, o.price, option[o.instrument_id])  # type: ignore[arg-type]
+                              for o in bk.orders], underlying, rates)
     got = after_charges(figures, terms, live, paid, why, underlying, rates)
-    exact = None if paid is None or rates is None else paper_charges(fills, underlying, rates).total
-    return after_charges_fields(got) | split_fields(after_split(figures, terms, live, underlying, rates, got, exact))
+    return after_charges_fields(got) | split_fields(after_split(figures, terms, live, underlying, rates, got))
 
 
 def _book_figures(bk: _Book, view: paper.TrackingView | None

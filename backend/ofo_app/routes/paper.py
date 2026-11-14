@@ -40,10 +40,10 @@ from ofo.engine.extremes_charges import (
     BookAfterCharges,
     after_split,
     book_after_charges,
-    max_after_charges,
     open_exit_charges,
     open_round_trip_charges,
     sum_after_charges,
+    with_charges,
 )
 from ofo.engine.legs import Instrument
 from ofo.errors import render
@@ -550,16 +550,15 @@ def _extremes(orders: Sequence[paper_store.StoredOrder], found: dict[int, tracke
         _, instrument, strike, expiry = _identity(found[cid])
         terms[str(cid)] = ContractTerms(instrument, strike, expiry)
     view = net_positions(_paper(orders), live)
-    paid = paid_exact_of(orders, found, underlying, rates)  # ADR-263: the charges really paid on every filled order
-    got = max_after_charges(view, terms, live, underlying, rates, paid) if paid is not None else \
-        book_extremes(view, terms, live)  # unpriced: before charges, and says so
-    charges = None if paid is None else open_round_trip_charges(view, terms, underlying, rates, paid)
+    got = book_extremes(view, terms, live)
+    charges = open_round_trip_charges(view, terms, underlying, rates)  # F-94: one charges function, as the builder
+    got = with_charges(got, charges)
     figures = {"profit_left": got.profit_left, "loss_left": got.loss_left, "max_profit": got.max_profit,
                "max_loss": got.max_loss}
     out: dict[str, Any] = {"extremes_reason": got.reason, "extremes_reason_text": extremes_reason_text(got.reason)}
     for name, value in figures.items():
         out[name], out[f"{name}_text"] = _extreme(value)
-    is_open = got.max_profit is not None  # open or fully closed: both carry the charges (or say "before charges")
+    is_open = got.max_profit is not None and any(p.net_quantity for p in view.positions)
     out["extremes_charges"] = charges if is_open else None
     out["extremes_charges_text"] = (
         None if not is_open else render_explanation("paper_extremes_before_charges") if charges is None else
@@ -665,20 +664,6 @@ def _charges(orders: Sequence[paper_store.StoredOrder], found: dict[int, tracked
             "charges_reason_text": None}
 
 
-def paid_exact_of(orders: Sequence[paper_store.StoredOrder], found: dict[int, tracked_contracts.TrackedContract],
-                  underlying: str, rates: ChargeRates | None) -> Decimal | None:
-    """The EXACT charges paid on every stored order (``paper_charges(...).total``, not yet rounded); None when no rates
-    are set or an order cannot be priced. ``shown`` of the same call is the Charges figure."""
-    if rates is None or not orders:
-        return None
-    fills = [PaperFill(o.order.kind, o.order.side, o.order.quantity, o.order.price,
-                       _identity(found[o.order.contract_id])[1] is not Instrument.FUT) for o in orders]
-    try:
-        return paper_charges(fills, underlying, rates).total
-    except ChargesNotComputable:
-        return None
-
-
 def paid_charges(fills: Sequence[PaperFill], underlying: str,
                  rates: ChargeRates | None) -> tuple[Decimal | None, ChargesReason | None]:
     """The charges already paid on ``fills`` (ofo.charges.paper_charges), shown rounded up; (None, reason) when no rates
@@ -745,7 +730,7 @@ def _after(orders: Sequence[paper_store.StoredOrder], found: dict[int, tracked_c
     view = net_positions(_paper(orders), live)
     terms = terms_of(orders, found)
     got = after_charges(view, terms, live, charges["charges"], charges["charges_reason"], underlying, rates)
-    split = after_split(view, terms, live, underlying, rates, got, paid_exact_of(orders, found, underlying, rates))
+    split = after_split(view, terms, live, underlying, rates, got)
     return after_charges_fields(got) | split_fields(split) | left_fields(split)
 
 
