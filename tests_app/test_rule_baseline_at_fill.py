@@ -118,7 +118,8 @@ def test_t10b_after_its_time_is_never_held_even_from_a_basket_after_it():
     _scn, position, now, body = _adj02()
     body = _with_time_exit(body)
     assert "T-10b" in pe.never_held(body)
-    check_at = dataclasses.replace(_after_basket(now), hhmm="14:31")
+    expiry = datetime.date(2026, 11, 6)  # ADR-310: the time exit acts on expiry day, so the check is on expiry day
+    check_at = dataclasses.replace(_after_basket(now), hhmm="14:31", today=expiry, expiry=expiry, days_left=0)
     fill = dataclasses.replace(_facts(position), clock=AT_FILL.replace(hour=14, minute=40))  # placed AFTER 14:30
     ev = pe.evaluate(body, check_at, {}, check.entry_baseline(None, check_at, position, None, 1, fill),
                      gap_until="09:30")
@@ -127,6 +128,18 @@ def test_t10b_after_its_time_is_never_held_even_from_a_basket_after_it():
     stale = pe.evaluate(body, check_at, {"T-10b": {"held_at_entry": True, "seen_clear": False}}, None,
                         gap_until="09:30")
     assert _kind(stale, "T-10b") == "Flag"
+
+
+def test_t10b_before_expiry_day_waits_with_its_date_and_never_flags():
+    """ADR-310 (2): the same basket and clock on an ordinary day: no Flag, the waiting answer with the expiry date."""
+    _scn, _position, now, body = _adj02()
+    body = _with_time_exit(body)
+    check_at = dataclasses.replace(_after_basket(now), hhmm="14:31", today=datetime.date(2026, 11, 3),
+                                   expiry=datetime.date(2026, 11, 6))
+    ev = pe.evaluate(body, check_at, {}, None, gap_until="09:30")
+    mine = next(r for r in ev.results if r.rule_id == "T-10b")
+    assert isinstance(mine, pe.NotChecked) and mine.code == "adjust_trigger_waits_expiry_day"
+    assert dict(mine.slots) == {"day": datetime.date(2026, 11, 6)}
 
 
 def _screen(monkeypatch, facts, stored=None):
