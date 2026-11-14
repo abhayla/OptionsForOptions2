@@ -130,6 +130,15 @@ export function istClock(iso) {
   return t === TIME_UNAVAILABLE ? null : t.slice(-12, -4)
 }
 
+/** Issue 12: a stamp for a line that may be days old: 'HH:MM:SS IST' when the instant is on today's India date, else the
+ *  whole istTime ('6 Nov 2026, 13:50:00 IST'); null when unreadable. Same today test as capturedCaption; `now` only names today. */
+export function istStamp(iso, now = new Date().toISOString()) {
+  const t = istTime(iso)
+  if (t === TIME_UNAVAILABLE) return null
+  const day = (x) => x.slice(0, x.indexOf(','))
+  return day(t) === day(istTime(now)) ? `${t.slice(-12, -4)} IST` : t
+}
+
 /** ADR-197: the caption word of an entry captured from the last close ("Close, 27 Oct 2026, 15:30:00 IST"). */
 export const CLOSE_CAPTION_PREFIX = 'Close, '
 

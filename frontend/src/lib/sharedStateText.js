@@ -41,9 +41,11 @@ export const CHECK_STALE_TEXT = 'Could not refresh the rule check. Showing the l
 export const checkStaleLine = (refusal) => (refusal ? `${CHECK_STALE_TEXT} ${refusal}` : CHECK_STALE_TEXT)
 // pending owner read (14 Nov 2026), GC-ICFIX issue 12 (ADR-272 (3)): the trade page's rules line; the time and the reason are the server's
 export const RULES_LOAD_FAILED_TEXT = 'Could not read which rules have fired. Nothing was changed.'
-export const firedAtText = (clock) => `Fired at ${clock} IST`
+export const firedAtText = (stamp) => `Fired at ${stamp}` // the stamp is today's time, or the date and time (istStamp)
 export const ruleNotCheckedText = (reason) => `Rule not checked: ${reason}`
-export const ruleEarlierText = (text, outcome, clock) => `${text} - ${outcome}${clock ? `, fired ${clock} IST` : ''}`
+export const ruleEarlierText = (text, outcome, stamp) => `${text} - ${outcome}${stamp ? `, fired ${stamp}` : ''}`
+export const EARLIER_SHOWN_MAX = 5
+export const earlierMoreText = (n) => `and ${n} earlier`
 export const LIMITS_NONE_TEXT = 'No rules are being checked for this trade'
 export const RETURN_DONE_TEXT = 'Zerodha confirmed your orders.' // ADR-129
 

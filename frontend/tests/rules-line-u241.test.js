@@ -29,7 +29,7 @@ const check = (results) => ({ strategy_id: 7, as_of: '2026-11-13T08:45:00Z', as_
   playbook: { source: 'system', id: 1, status: null, draft: false }, stage: { name: null, index: null }, withheld: null, results, limits: [], paused: null })
 const earlier = (id, over = {}) => ({ id, rule_id: 'R-spot', trigger_id: 'T-01', condition: 'Spot distance from the short strike: 0.3482 % (rule 0.5000 %)',
   shown_at: '2026-11-13T08:20:00Z', outcome: 'lapsed', outcome_text: 'Lapsed: the rule is no longer true', ...over })
-const seed = (records) => takeOpportunities({ groups: [{ strategy_id: 7, strategy_name: 'IC', label: 'x', records }] })
+const seed = (records) => takeOpportunities({ groups: [7, 8].map((id) => ({ strategy_id: id, strategy_name: 'IC', label: 'x', records: records.filter((r) => (r.strategy_id ?? 7) === id) })) })
 
 const mounted = []
 const t = (w, id) => w.find(`[data-testid="${id}"]`)
@@ -104,7 +104,7 @@ describe('the trade page rules line (issue 12)', () => {
 
   it('the earlier list is this trade only, newest first, at most 5, with "and N earlier" for the rest', async () => {
     const days = [1, 2, 3, 4, 5, 6, 7].map((d) => earlier(20 + d, { shown_at: `2026-11-0${d}T08:20:00Z`, condition: `Rule value day ${d}` }))
-    const w = await panel([], [...days.reverse().slice(0, 4), ...days.slice(4), earlier(99, { condition: 'other trade' })]) // order scrambled
+    const w = await panel([], [...days.reverse().slice(0, 4), ...days.slice(4), { ...earlier(99, { condition: 'other trade' }), strategy_id: 8 }]) // order scrambled
     const rows = w.findAll('[data-testid="rules-earlier"]').map((r) => r.text())
     expect(rows).toHaveLength(5)
     expect(rows[0]).toContain('Rule value day 7')

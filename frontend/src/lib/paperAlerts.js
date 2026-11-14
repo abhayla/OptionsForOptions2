@@ -55,13 +55,14 @@ function takeAlertsKeepRows(data) {
 // so the pop-up and Alerts > Active show the same record the bell counts.
 export const openRecords = reactive({ list: [] }) // [{ id, strategy_id, strategy_name, text }] in the server's order
 // Issue 12 (u241): the SAME read's settled records (not open), per strategy, for the trade page's rules line: a rule that fired and cleared.
-export const settledRecords = reactive({ byStrategy: {} }) // { [strategy_id]: [{ id, text, outcome_text, shown_at }] }
+export const settledRecords = reactive({ byStrategy: {}, state: 'loading' }) // state: 'loading' (not read yet) | 'ok' | 'failed' // { [strategy_id]: [{ id, text, outcome_text, shown_at }] }
 const announced = new Set()
 let opportunitiesLoaded = false
 
 export function resetOpenRecords() {
   openRecords.list = []
   settledRecords.byStrategy = {}
+  settledRecords.state = 'loading'
   announced.clear()
   opportunitiesLoaded = false
 }
@@ -85,6 +86,7 @@ export function takeOpportunities(data) {
   if (!groups) {
     openRecords.list = []
     settledRecords.byStrategy = {}
+    settledRecords.state = 'failed'
     return []
   }
   const open = []
@@ -100,6 +102,7 @@ export function takeOpportunities(data) {
   }
   openRecords.list = open
   settledRecords.byStrategy = settled
+  settledRecords.state = 'ok'
   const fresh = open.filter((r) => !announced.has(r.id))
   open.forEach((r) => announced.add(r.id))
   const first = !opportunitiesLoaded
