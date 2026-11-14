@@ -47,7 +47,9 @@ function takeAlertsKeepRows(data) {
 // IC e2e stage B4 (design decision 10): the bell also counts the OPEN adjustment records of GET /adjustment-opportunities,
 // read on the SAME tick as the paper alerts (no timer, no seen-state store beyond the ids already announced this page load).
 // The browser counts nothing but list lengths of the server's own rows; a failed read leaves NO open records (paper count only).
-export const openRecords = reactive({ list: [] }) // [{ id, strategy_id }] in the server's order
+// Issue 8 (ADR-260): each open record also carries the trade's name and the rule's words (the server's own text, printed as sent)
+// so the pop-up and Alerts > Active show the same record the bell counts.
+export const openRecords = reactive({ list: [] }) // [{ id, strategy_id, strategy_name, text }] in the server's order
 const announced = new Set()
 let opportunitiesLoaded = false
 
@@ -69,7 +71,9 @@ export function takeOpportunities(data) {
   const open = []
   for (const g of groups) {
     for (const r of Array.isArray(g?.records) ? g.records : []) {
-      if (r && r.outcome === 'open' && Number.isInteger(r.id)) open.push({ id: r.id, strategy_id: g.strategy_id })
+      if (r && r.outcome === 'open' && Number.isInteger(r.id)) {
+        open.push({ id: r.id, strategy_id: g.strategy_id, strategy_name: g.strategy_name ?? null, text: r.condition || g.label || '' })
+      }
     }
   }
   openRecords.list = open
