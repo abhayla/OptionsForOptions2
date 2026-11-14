@@ -83,6 +83,7 @@ class StrategySummary:
     can_delete: bool = False  # REQ-070 AC-6: no plan row and no version row; False (fail closed) unless proven
     scenario_id: str | None = None  # IC e2e decision 3: the scenario marker (None = a real strategy)
     has_paper_order: bool = False  # ADR-271: picks the refusal wording ("paper orders were placed")
+    has_order: bool = False  # ADR-299: any placed order, practice or real (the status word's one input)
 
 
 @dataclass(frozen=True)
@@ -118,6 +119,9 @@ _CAN_DELETE_SQL = ("(NOT EXISTS (SELECT 1 FROM public.execution_plans p WHERE p.
                    "AND NOT EXISTS (SELECT 1 FROM public.strategy_versions v WHERE v.strategy_id = s.id) "
                    "AND NOT EXISTS (SELECT 1 FROM public.paper_orders o WHERE o.strategy_id = s.id))")  # ADR-271
 _HAS_PAPER_SQL = "EXISTS (SELECT 1 FROM public.paper_orders o WHERE o.strategy_id = s.id)"
+#: ADR-299 / ADR-298: "an order was placed", practice OR real, in ONE place: a paper order, or an execution plan
+#: (a basket was sent to the broker). The one status word on every screen reads this (Draft = no order yet).
+_HAS_ORDER_SQL = (f"({_HAS_PAPER_SQL} OR EXISTS (SELECT 1 FROM public.execution_plans xp WHERE xp.strategy_id = s.id))")
 _CAN_DELETE = text(f"SELECT {_CAN_DELETE_SQL} AS can_delete FROM public.strategies AS s WHERE s.id = :id")  # noqa: S608
 _PAPER_ONLY = text(f"SELECT ({_HAS_PAPER_SQL} AND NOT EXISTS (SELECT 1 FROM public.execution_plans p WHERE p.strategy_id = s.id) "  # noqa: S608
                    "AND NOT EXISTS (SELECT 1 FROM public.strategy_versions v WHERE v.strategy_id = s.id)) AS paper_only "
@@ -137,6 +141,7 @@ _SELECT_FOR_UPDATE = text(
 _LIST = text(
     "SELECT s.id, s.underlying, s.status, s.created_at, s.updated_at, s.name, s.scenario_id, "
     f"{_CAN_DELETE_SQL} AS can_delete, {_HAS_PAPER_SQL} AS has_paper_order, "
+    f"{_HAS_ORDER_SQL} AS has_order, "
     "d.definition -> 'legs' AS legs "
     "FROM public.strategies AS s "
     "CROSS JOIN LATERAL (SELECT coalesce((SELECT v.definition FROM public.strategy_versions AS v "
@@ -736,7 +741,7 @@ async def list_strategies(conn: Any, user_ref: str) -> list[StrategySummary]:
     rows = (await conn.execute(_LIST, {"user_ref": user_ref})).all()
     return [StrategySummary(int(r.id), r.underlying, r.status, r.created_at, r.updated_at, r.name,
                             len(r.legs), _first_leg(r.legs), r.can_delete is True, r.scenario_id,
-                            r.has_paper_order is True) for r in rows]
+                            r.has_paper_order is True, r.has_order is True) for r in rows]
 
 
 def _first_leg(legs: Sequence[Mapping[str, Any]]) -> FirstLeg:

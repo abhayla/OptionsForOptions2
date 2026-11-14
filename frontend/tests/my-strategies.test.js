@@ -61,12 +61,13 @@ describe('My Strategies page', () => {
     expect(w.find('[data-testid="list-error"]').exists()).toBe(false)
   })
 
-  it('lists each row with underlying, status as sent (unknown status kept) and both links', async () => {
+  it('lists each row with underlying, one of the three status words (an unknown status reads Draft: never placed) and both links', async () => {
     answer = () => Promise.resolve({ data: { strategies: [row(7, 'draft'), row(8, 'some_future_status')] } })
     const w = await open()
     const rows = w.findAll('[data-testid="strategy-row"]')
     expect(rows).toHaveLength(2)
-    expect(rows[1].get('[data-testid="row-status"]').text()).toBe('some_future_status')
+    expect(rows[0].get('[data-testid="row-status"]').text()).toBe('Draft')
+    expect(rows[1].get('[data-testid="row-status"]').text()).toBe('Status not available')
     expect(w.get('[data-testid="open-execute-7"]').attributes('href')).toBe('/strategy/7/execute')
     expect(w.find('[data-testid="open-builder-8"]').exists()).toBe(true)
   })
@@ -160,13 +161,27 @@ describe('REQ-134 AC-4: each row shows its name, underlying, first leg and "and 
     expect(r.get('[data-testid="row-underlying"]').text()).toBe('NIFTY')
     expect(r.get('[data-testid="row-legs"]').text()).toBe('NIFTY 13 Oct 22800 CE and 3 more')
     expect(r.get('[data-testid="row-saved"]').text()).toContain('last saved')
-    expect(r.get('[data-testid="row-tracked"]').text()).toBe('Tracked')
+    expect(r.get('[data-testid="row-status"]').text()).toBe('Draft') // ADR-299: tracked is not a state, "Tracked" is never shown
+    expect(r.text()).not.toMatch(/Tracked|Not tracked/)
     expect(r.text()).not.toContain('"')
   })
-  it('tracked false reads "Not tracked", null reads "Tracking not known" (never "Not tracked")', async () => {
-    list(named(7, 'A', { tracked: false }), named(8, 'B', { tracked: null }))
+  it('ADR-299 + ADR-259: the status column says Draft / Running from the row (tracked changes nothing) and a closed trade is NOT on this list (it leaves it, ADR-259); the old expectation that it stays is corrected', async () => {
+    list(named(7, 'A', { tracked: false }), named(8, 'B', { tracked: true, has_order: true }), named(9, 'C', { status: 'closed', has_order: true }))
     const w = await open()
-    expect(w.findAll('[data-testid="row-tracked"]').map((n) => n.text())).toEqual(['Not tracked', 'Tracking not known'])
+    expect(w.findAll('[data-testid="row-status"]').map((n) => n.text())).toEqual(['Draft', 'Running'])
+    expect(w.find('[data-strategy-id="9"]').exists()).toBe(false)
+    expect(w.find('[data-testid="row-tracked"]').exists()).toBe(false)
+  })
+  it('ADR-299: the column header is "Status" and no "Tracking" column is left over an empty cell', async () => {
+    list(named(7, 'A'))
+    const w = await open()
+    expect(w.text()).not.toContain('Tracking')
+    expect(w.findAll('[data-testid="strategy-row"] > span[aria-hidden="true"]')).toHaveLength(0)
+  })
+  it('a status the server never sends reads "Status not available" and the row is still listed (never hidden)', async () => {
+    list(named(7, 'A', { status: 'some_future_status' }))
+    const w = await open()
+    expect(w.get('[data-testid="row-status"]').text()).toBe('Status not available')
   })
   it('an older server (no name, no leg fields): the old "Strategy <id>" text stays, no legs line, no tracked text, no Rename', async () => {
     list(row(7, 'draft'))
@@ -230,7 +245,7 @@ describe('REQ-134 AC-3 (attack 5): rename in the list changes only the name', ()
     const r = w.get('[data-testid="strategy-row"]')
     expect(r.text().replace('Condor wider', '')).toBe(before) // status, legs line, last saved, tracked: untouched
     expect(r.get('[data-testid="row-legs"]').text()).toBe('NIFTY 13 Oct 22800 CE and 3 more')
-    expect(r.get('[data-testid="row-status"]').text()).toBe('draft')
+    expect(r.get('[data-testid="row-status"]').text()).toBe('Draft')
   })
   it('an empty name is refused by the API; its message is shown and the row keeps its old name', async () => {
     serve()

@@ -26,8 +26,10 @@ import { useRouter } from 'vue-router'
 import { CLEAR_UNDO_SECONDS_KEY } from '@/lib/legEdit'
 import { useSettingsValues } from '@/stores/settingsValues'
 import { newestEntry, newestSeq, restoreEntry, useDeleteFlow } from '@/lib/strategyActivity'
+import { isCompleted, strategyStatusWord } from '@/lib/strategyStatus'
+import { RUNNING_TAB_EMPTY_MESSAGE, RUNNING_TAB_EMPTY_TITLE } from '@/lib/sharedStateText'
 import {
-  STRATEGY_NAME_DEFAULT, STRATEGY_NAME_MAX, buildSaveBody, buildUpdateBody, canSaveLegs, fetchSavedDraft, legsLine, plainName, renameStrategy, saveAsName, strategyLabel, trackedText,
+  STRATEGY_NAME_DEFAULT, STRATEGY_NAME_MAX, buildSaveBody, buildUpdateBody, canSaveLegs, fetchSavedDraft, legsLine, plainName, renameStrategy, saveAsName, strategyLabel,
 } from '@/lib/saveDraft'
 
 const props = defineProps({
@@ -84,7 +86,7 @@ const recentDrafts = computed(() => {
     return Number.isFinite(ms) ? ms : -Infinity // an unreadable time sorts last, never first
   }
   const newestFirst = (a, b) => (at(b) - at(a)) || (b.id - a.id)
-  return drafts.value.filter(hit).slice().sort(newestFirst).slice(0, SAVED_TAB_ROWS)
+  return drafts.value.filter((d) => !isCompleted(d) && hit(d)).slice().sort(newestFirst).slice(0, SAVED_TAB_ROWS) // ADR-259: a closed trade leaves the Saved tab
 })
 const menuDo = (fn) => {
   closeMenu()
@@ -487,7 +489,7 @@ v-for="d in recentDrafts" :key="d.id" class="group flex min-h-14 cursor-pointer 
               <span class="block truncate" :class="current?.id === d.id ? 'font-medium text-accent' : ''" data-testid="saved-draft-name">{{ strategyLabel(d, `Draft ${d.id}`) }}</span>
               <span v-if="legsLine(d)" class="block truncate text-xs text-ink-muted" data-testid="saved-draft-legs">{{ legsLine(d) }}</span>
             </button>
-            <span v-if="trackedText(d.tracked)" class="shrink-0 text-xs text-ink-muted" data-testid="saved-draft-tracked">{{ trackedText(d.tracked) }}</span>
+            <span class="shrink-0 text-xs text-ink-muted" data-testid="saved-draft-status">{{ strategyStatusWord(d) }}</span>
             <span
 class="flex shrink-0 items-center gap-1 opacity-100 md:opacity-0 md:focus-within:opacity-100 md:group-hover:opacity-100" :class="deleteFlow.confirming === d.id ? '!opacity-100' : ''"
                   :data-testid="`actions-${d.id}`" @click.stop @keydown.enter.stop>
@@ -499,7 +501,7 @@ class="flex shrink-0 items-center gap-1 opacity-100 md:opacity-0 md:focus-within
         <p v-else class="mt-2 text-ink-muted" data-testid="saved-empty">{{ search.trim() ? 'No saved strategy matches.' : 'No saved strategies yet.' }}</p>
         <router-link to="/strategies/my-strategies" class="mt-2 inline-block text-accent" data-testid="saved-show-all">Show all in My Strategies</router-link>
       </div>
-      <div v-show="tab === 'tracked'" class="mt-3" data-testid="tab-panel-tracked"><slot name="tracked" :active="tab === 'tracked'"><EmptyState icon="pulse" title="No tracked strategies here" message="Strategies you track appear in My Strategies." /></slot></div>
+      <div v-show="tab === 'tracked'" class="mt-3" data-testid="tab-panel-tracked"><slot name="tracked" :active="tab === 'tracked'"><EmptyState icon="pulse" :title="RUNNING_TAB_EMPTY_TITLE" :message="RUNNING_TAB_EMPTY_MESSAGE" /></slot></div>
     </div>
     <DraftDeleteStatus :flow="deleteFlow" />
   </section>

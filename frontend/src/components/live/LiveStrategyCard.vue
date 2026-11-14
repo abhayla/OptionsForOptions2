@@ -10,6 +10,9 @@ import api, { NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import { LEG_NOT_LIVE_LABEL, NOT_CONNECTED_LABEL, buildDraft } from '@/lib/legPicker'
 import { fetchSavedLegs, strategyLabel } from '@/lib/saveDraft'
+import { readPaperBook } from '@/lib/paperDrafts'
+import { CARD_LEGS_AS_SAVED_TEXT, CARD_QUEUED_TEXT } from '@/lib/sharedStateText'
+import { isRunning, strategyStatusWord } from '@/lib/strategyStatus'
 import { istTime, maxLine, nameFromPool } from '@/lib/displayFormat'
 import { RouterLink } from 'vue-router'
 import Chip from '@/components/common/Chip.vue'
@@ -22,6 +25,7 @@ const props = defineProps({ strategy: { type: Object, required: true }, start: {
 const emit = defineEmits(['settled', 'closed'])
 
 const state = ref(props.start ? 'loading' : 'queued') // queued | loading | ready | unpriced | error
+const legsAsSaved = ref(false)
 let begun = false
 let settledSent = false
 const settle = () => {
@@ -68,8 +72,12 @@ async function begin() {
   begun = true
   state.value = 'loading'
   try {
-    const legs = await fetchSavedLegs(api, props.strategy.id)
+    // issue 16: a running trade follows the legs it holds NOW (its paper book's net position), not the legs it was saved with
+    const read = isRunning(props.strategy) ? await readPaperBook(api, props.strategy.id) : { kind: 'plan' }
+    const legs = read.kind === 'paper' ? read.net : await fetchSavedLegs(api, props.strategy.id)
     if (gone) return
+    // a real trade has no practice book and the server sends no current-legs field for it: the saved legs, said plainly
+    legsAsSaved.value = isRunning(props.strategy) && read.kind !== 'paper'
     draft = buildDraft(legs)
     if (!draft) {
       notLive.value = legs.some((l) => l.not_live)
@@ -131,7 +139,7 @@ class="rounded border border-line bg-surface p-4" data-testid="live-strategy-car
            :data-state="state" :data-paused="paused ? 'true' : 'false'" :data-live="live.status.value">
     <header class="flex flex-wrap items-baseline gap-2">
       <h2 class="text-base font-semibold" data-testid="live-strategy-title">{{ strategyLabel(strategy, `Draft ${strategy.id}`) }}, {{ strategy.underlying }}</h2>
-      <span class="rounded bg-gray-100 px-1.5 text-xs text-ink-muted" data-testid="live-strategy-status">{{ strategy.status }}</span>
+      <span class="rounded bg-gray-100 px-1.5 text-xs text-ink-muted" data-testid="live-strategy-status">{{ strategyStatusWord(strategy) }}</span>
       <!-- GC-MU A3 (ADR-230 (2)): the server's words for the open adjustment records; none at 0 or when unread -->
       <RouterLink v-if="strategy.open_opportunities_text" :to="{ path: '/positions/adjustment-opportunities', query: { strategy: String(strategy.id) } }" class="text-sm text-accent underline" data-testid="live-opportunity-mark">{{ strategy.open_opportunities_text }}</RouterLink>
       <span v-if="paused" class="text-sm" data-testid="live-paused-badge">⏸ Monitoring paused</span>
@@ -141,8 +149,9 @@ class="rounded border border-line bg-surface p-4" data-testid="live-strategy-car
       <p v-if="state === 'ready' && data" class="ml-auto text-xs text-ink-muted" data-testid="live-checked-at">Checked at {{ checkedAt }}</p>
     </header>
 
+    <p v-if="legsAsSaved" class="mt-2 text-xs text-ink-muted" data-testid="live-legs-as-saved">{{ CARD_LEGS_AS_SAVED_TEXT }}</p>
     <p v-if="live.reconnecting.value" class="mt-2 text-sm font-medium" data-testid="live-reconnecting">{{ live.reconnectingText.value }}</p>
-    <p v-if="state === 'queued'" class="mt-2 text-sm text-ink-muted" data-testid="live-queued">Waiting to start...</p>
+    <p v-if="state === 'queued'" class="mt-2 text-sm text-ink-muted" data-testid="live-queued">{{ CARD_QUEUED_TEXT }}</p>
     <p v-else-if="state === 'loading'" class="mt-2 text-sm text-ink-muted" data-testid="live-loading">Loading this strategy...</p>
     <ErrorMessage v-else-if="state === 'error'" class="mt-2" :parts="errorParts" compact prefix="live-error" data-testid="live-error" />
     <p v-else-if="state === 'unpriced'" class="mt-2 text-sm" data-testid="live-status-label" :data-not-live="notLive ? 'true' : 'false'">{{ notLive ? LEG_NOT_LIVE_LABEL : NOT_CONNECTED_LABEL }}</p>

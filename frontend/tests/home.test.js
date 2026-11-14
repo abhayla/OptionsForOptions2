@@ -100,9 +100,9 @@ describe('Home states from GET /strategies', () => {
     expect(actions[0].attributes('href')).toBe('/strategies/my-strategies')
     const rows = w.findAll('[data-testid="recent-row"]')
     expect(rows).toHaveLength(3)
-    expect(rows[0].text()).toContain('SENSEX, draft, last saved 18 Oct 2026, 10:00:00 IST')
-    expect(rows[1].text()).toContain('NIFTY, draft, last saved 17 Oct 2026, 10:00:00 IST')
-    expect(rows[2].text()).toContain('NIFTY, draft, last saved 16 Oct 2026, 10:00:00 IST')
+    expect(rows[0].text()).toContain('SENSEX, Draft, last saved 18 Oct 2026, 10:00:00 IST') // ADR-299: the status word, never the stored 'draft'
+    expect(rows[1].text()).toContain('NIFTY, Draft, last saved 17 Oct 2026, 10:00:00 IST')
+    expect(rows[2].text()).toContain('NIFTY, Draft, last saved 16 Oct 2026, 10:00:00 IST')
     expect(w.find('[data-testid="recent-open-1"]').exists()).toBe(false) // the oldest is not shown
     expect(hrefs(w, 'recent-strategies')).toEqual(['/strategy/builder', '/strategy/builder', '/strategy/builder'])
     expect(w.text()).not.toContain('Welcome')
@@ -189,6 +189,13 @@ describe('REQ-134 reader sweep: a recent row shows the strategy name (quoted use
     const rows = w.findAll('[data-testid="recent-row"]')
     expect(rows[0].get('[data-testid="recent-name"]').text()).toBe('NIFTY Oct condor')
     expect(rows[1].find('[data-testid="recent-name"]').exists()).toBe(false)
-    expect(rows[1].text()).toContain('NIFTY, draft, last saved 17 Oct 2026')
+    expect(rows[1].text()).toContain('NIFTY, Draft, last saved 17 Oct 2026')
+  })
+  it('ADR-299: a recent row says Running for a placed trade (practice or real) and the unknown words for a status it does not know', async () => {
+    strategiesAnswer = [{ ...draft(1, 'NIFTY', '2026-10-18T10:00:00+05:30'), has_order: true }, { ...draft(2, 'NIFTY', '2026-10-17T10:00:00+05:30'), status: 'weird' }]
+    const w = await mountHome()
+    const rows = w.findAll('[data-testid="recent-row"]')
+    expect(rows[0].text()).toContain('NIFTY, Running, last saved')
+    expect(rows[1].text()).toContain('NIFTY, Status not available, last saved')
   })
 })
