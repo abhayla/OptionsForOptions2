@@ -77,8 +77,11 @@ def _two_fill_partly_closed() -> list[PaperOrder]:
                          ids=["fully open", "one spread closed", "fully closed", "two fills then partly closed"])
 def test_review_and_page_give_the_identical_figure(orders) -> None:
     page, review = _both(orders)
-    assert page.max_profit == review.max_profit  # exact Decimal equality, never rounded here
+    assert page.max_profit == review.max_profit  # exact Decimal equality of the engine figures
     assert page.max_loss == -review.max_loss
+    text = lambda v: format(route._rupees(v), "f")  # noqa: E731 - the reply text of one figure
+    assert text(page.max_profit) == text(review.max_profit)  # and the same reply text, string for string
+    assert text(page.max_loss) == text(-review.max_loss)
 
 
 def test_partly_closed_two_fill_book_really_has_a_third_decimal() -> None:

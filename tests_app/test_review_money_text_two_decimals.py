@@ -11,7 +11,7 @@ from decimal import Decimal as D
 import pytest
 from ofo.adjustment.approaches import Position, PositionLeg
 from ofo.charges import ChargeRates
-from ofo_app.api_models import AdjustChargesOut, AdjustAfterOut
+from ofo_app.api_models import AdjustAfterOut, AdjustChargesOut
 from ofo_app.routes import adjustment as route
 
 EXPIRY = datetime.date(2026, 11, 3)
@@ -58,7 +58,7 @@ def test_every_money_text_has_exactly_two_decimals(booked: D) -> None:
     reply = _reply(booked, D("100.00"))
     assert reply["known"]
     texts = _texts(reply)
-    assert len(texts) >= 8, texts
+    assert len(texts) >= 8, texts  # noqa: PLR2004 - gross + after-charges figures, booked, charge lines
     assert [t for t in texts if not TWO_DECIMALS.match(t)] == []
 
 
@@ -67,3 +67,10 @@ def test_charges_not_computable_still_gives_a_two_decimal_booked_and_gross() -> 
     assert not reply["known"]
     assert reply["after"]["after_charges"] is None
     assert [t for t in _texts(reply) if not TWO_DECIMALS.match(t)] == []
+
+
+@pytest.mark.parametrize(("value", "text"), [(D("962.005"), "962.00"), (D("962.015"), "962.02"),
+                                             (D("-962.005"), "-962.00")])
+def test_half_paisa_rounds_half_even_and_review_text_equals_the_tracking_text(value: D, text: str) -> None:
+    from ofo_app.routes import tracking  # noqa: PLC0415
+    assert format(route._rupees(value), "f") == format(tracking._money(value), "f") == text

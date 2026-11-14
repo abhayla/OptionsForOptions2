@@ -38,7 +38,7 @@ from ofo.engine.orderbook import BookView
 from ofo.errors.explanations import render_explanation
 from ofo.instruments.models import FUTURE_TYPE
 from ofo.limits import INTEGER_MAX
-from ofo.money import PAISE
+from ofo.money import PAISE, to_paise
 from ofo.outcome import read_snapshot
 from ofo.outcome.price_text import price_text
 from ofo.strategy import stored_form as sf
@@ -263,7 +263,7 @@ async def _load_book(db: Any, strategy_id: int) -> _Book | None:
 
 
 def _money(value: Decimal | None) -> Decimal | None:
-    return None if value is None else value.quantize(PAISE)
+    return None if value is None else to_paise(value)
 
 
 def _after(bk: _Book, legs: list[paper.TrackedLeg], figures: BookView,  # noqa: PLR0913

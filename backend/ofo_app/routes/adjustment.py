@@ -71,6 +71,7 @@ from ofo.engine.whole_trade import (
 )
 from ofo.errors.explanations import EXPLANATIONS, approach_about_id, approach_name_id, render_explanation
 from ofo.marketdata.spot_source import SourceReading, SpotAnswer, feed_reading
+from ofo.money import to_paise
 from ofo.outcome.service import MARGIN_CHECKED, Margin
 from ofo.timeutil import IST
 from pydantic import BaseModel, ConfigDict, Field
@@ -317,8 +318,13 @@ def _money(value: Decimal | object) -> str:
     return "UNLIMITED" if value is UNLIMITED else value  # type: ignore[return-value]  # Money serializes as text
 
 
+def _rupees(value: Decimal | object) -> Any:
+    """A rupee figure at the reply boundary: rounded once, as the trade page does (UNLIMITED stays)."""
+    return "UNLIMITED" if value is UNLIMITED else to_paise(value)  # type: ignore[arg-type]
+
+
 def _figures(f: WholeTradeFigures) -> dict:
-    return {"max_profit": _money(f.max_profit), "max_loss": _money(f.max_loss),
+    return {"max_profit": _rupees(f.max_profit), "max_loss": _rupees(f.max_loss),
             "breakevens": [_money(b) for b in f.breakevens],
             "loss_regions": [[None if x is None else _money(x) for x in r[:2]] for r in f.loss_regions]}
 
@@ -509,12 +515,12 @@ def _after_block(priced: Priced, pop_on: bool) -> dict:
     if priced.after is None:
         return {"after": None, "charges": None, "pop": None, "after_reason": priced.reason}
     a = priced.after
-    charges = ({"this_adjustment": _money(a.adjustment_charges), "paid_so_far": _money(a.paid_charges),
-                "open_exit": _money(a.open_exit_charges), "not_available": None} if priced.charges_known else
+    charges = ({"this_adjustment": _rupees(a.adjustment_charges), "paid_so_far": _rupees(a.paid_charges),
+                "open_exit": _rupees(a.open_exit_charges), "not_available": None} if priced.charges_known else
                {"this_adjustment": None, "paid_so_far": None, "open_exit": None,
                 "not_available": render_explanation("adjust_charges_unknown")})
     return {"after": {"gross": _figures(a.gross), "after_charges": _figures(a.after_charges)
-                      if priced.charges_known else None, "booked_pnl": _money(a.booked_pnl)},
+                      if priced.charges_known else None, "booked_pnl": _rupees(a.booked_pnl)},
             "charges": charges, "pop": pop_block(a, pop_on, priced.charges_known), "after_reason": None}
 
 
