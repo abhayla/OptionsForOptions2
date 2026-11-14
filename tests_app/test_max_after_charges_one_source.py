@@ -62,7 +62,7 @@ def _paid(orders):
 
 
 def _page(orders, live, terms, rates=RATES):
-    """The trade page's Max profit / Max loss: the one engine function, with the charges really paid (as paper._extremes)."""
+    """The trade page's Max profit / Max loss: the one engine function, with the charges paid (as paper._extremes)."""
     view = net_positions(orders, live)
     return view, max_after_charges(view, terms, live, "NIFTY", rates, _paid(orders).total)
 
@@ -100,7 +100,7 @@ def test_grid_one_fill_and_two_fill_books_agree_to_the_paisa(lots, base, premium
 
 
 def test_closed_put_spread_and_two_open_legs_agree_and_count_the_closed_leg_charges() -> None:
-    # After an adjustment the put spread (legs 1, 2) was closed, the call spread (legs 3, 4) stays open (closing one leg of a
+    # After an adjustment the put spread (legs 1, 2) was closed, the call spread (3, 4) stays open (closing one leg of a
     # condor would leave a naked leg: unlimited loss). Hand sum, charges: paid = the 6 orders'
     # exact charges, exit estimate = the 2 open legs' closing orders at their average price; shown = ceil(paid +
     # exit) once. Max profit = (open legs' credit + booked of the closed leg) - that total.

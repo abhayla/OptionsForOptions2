@@ -19,7 +19,8 @@ from ofo.engine.extremes import UNLIMITED, BookExtremes, ContractTerms, Figure, 
 from ofo.engine.legs import Instrument
 from ofo.engine.orderbook import BookView
 
-__all__ = ["AfterSplit", "BookAfterCharges", "after_split", "book_after_charges", "open_exit_charges",
+__all__ = ["AfterSplit", "BookAfterCharges", "after_split", "book_after_charges", "max_after_charges",
+           "open_exit_charges",
            "open_round_trip_charges", "sum_after_charges", "with_charges"]
 
 RATES_UNAVAILABLE = "rates_unavailable"
@@ -90,9 +91,14 @@ def sum_after_charges(rows: Sequence[BookAfterCharges]) -> BookAfterCharges:
 
 
 def open_round_trip_charges(view: BookView, terms: Mapping[str, ContractTerms], underlying: str,
-                            rates: ChargeRates | None) -> Decimal | None:
-    """Round-trip charges of the open contracts at their average price; None when nothing is open, no rates are set,
-    or a contract cannot be priced (a futures leg): the figures then stay before charges and say so."""
+                            rates: ChargeRates | None, paid_exact: Decimal | None = None) -> Decimal | None:
+    """The charges inside Max profit / Max loss, rounded UP once; None when nothing is open, no rates are set, or a
+    contract cannot be priced (a futures leg): the figures then stay before charges and say so.
+
+    Without ``paid_exact`` (a trade not yet placed, the builder): the ESTIMATE, a round trip of the open contracts at
+    their average price. With it (a PLACED book, ADR-263): the charges really paid on every filled order (exact,
+    ``paper_charges(...).total``) plus the estimated charges to close the open contracts at their average price, so a
+    leg filled in two orders and the legs closed by an adjustment are counted as paid."""
     open_ = [p for p in view.positions if p.net_quantity != 0 and p.average is not None]
     if rates is None or not open_:
         return None
@@ -105,9 +111,10 @@ def open_round_trip_charges(view: BookView, terms: Mapping[str, ContractTerms], 
     orders = []
     for p in open_:  # ChargeOrder takes any price above 0; only the strategy ``Leg`` demands two decimals
         side, other = ("BUY", "SELL") if p.net_quantity > 0 else ("SELL", "BUY")
-        orders += [ChargeOrder(segment, side, abs(p.net_quantity), p.average),  # type: ignore[arg-type]
-                   ChargeOrder(segment, other, abs(p.net_quantity), p.average)]  # type: ignore[arg-type]
-    return to_paise_up(charges_for_orders(orders, rates).total)
+        if paid_exact is None:
+            orders.append(ChargeOrder(segment, side, abs(p.net_quantity), p.average))  # type: ignore[arg-type]
+        orders.append(ChargeOrder(segment, other, abs(p.net_quantity), p.average))  # type: ignore[arg-type]
+    return to_paise_up((paid_exact or Decimal(0)) + charges_for_orders(orders, rates).total)
 
 
 def with_charges(got: BookExtremes, charges: Decimal | None) -> BookExtremes:
@@ -120,6 +127,16 @@ def with_charges(got: BookExtremes, charges: Decimal | None) -> BookExtremes:
         return value if value is None or value is UNLIMITED else value - charges  # type: ignore[operator]
 
     return replace(got, max_profit=net(got.max_profit), max_loss=net(got.max_loss))
+
+
+def max_after_charges(  # noqa: PLR0913 - the book, its terms, live prices, underlying, rates and the exact paid
+        view: BookView, terms: Mapping[str, ContractTerms], live: Mapping[str, Decimal], underlying: str,
+        rates: ChargeRates | None, paid_exact: Decimal | None = None) -> BookExtremes:
+    """THE one function for Max profit / Max loss after charges (ADR-263, ADR-008): the trade page, the practice list
+    and Profit left / Loss left (``after_split``) read it; the adjustment review reaches the same figure through
+    ``routes.adjustment.price_after``, which rounds the same total once."""
+    return with_charges(book_extremes(view, terms, live),
+                        open_round_trip_charges(view, terms, underlying, rates, paid_exact))
 
 
 @dataclass(frozen=True)
@@ -136,7 +153,7 @@ class AfterSplit:
 
 def after_split(  # noqa: PLR0913 - the book, its terms, live prices, underlying, rates and the after-charges total
         view: BookView, terms: Mapping[str, ContractTerms], live: Mapping[str, Decimal], underlying: str,
-        rates: ChargeRates | None, after: BookAfterCharges) -> AfterSplit:
+        rates: ChargeRates | None, after: BookAfterCharges, paid_exact: Decimal | None = None) -> AfterSplit:
     """The one place Booked / Unbooked / Profit left / Loss left are put after charges. Booked after = booked - ALL
     charges paid; Unbooked after = open-leg P&L - the estimated charges to close, so the two add up to
     ``after.total_after`` exactly (ADR-303). ADR-306: Profit left after = Max profit after - Total after and Loss left
@@ -150,10 +167,9 @@ def after_split(  # noqa: PLR0913 - the book, its terms, live prices, underlying
         return AfterSplit(booked_after, unbooked_after, None, None, None)
     if not any(p.net_quantity for p in view.positions):
         return AfterSplit(booked_after, unbooked_after, got.profit_left, got.loss_left, None)
-    round_trip = open_round_trip_charges(view, terms, underlying, rates)
-    if round_trip is None:  # Max profit / Max loss after cannot be given: no mixing of bases (F5, ADR-306 (6))
+    if open_round_trip_charges(view, terms, underlying, rates, paid_exact) is None:  # no mixing of bases (ADR-306 (6))
         return AfterSplit(booked_after, unbooked_after, None, None, None)
-    net, total = with_charges(got, round_trip), after.total_after
+    net, total = max_after_charges(view, terms, live, underlying, rates, paid_exact), after.total_after
 
     def left(extreme: Figure | None) -> Figure | None:
         return extreme if extreme is None or extreme is UNLIMITED else extreme - total  # type: ignore[operator]
