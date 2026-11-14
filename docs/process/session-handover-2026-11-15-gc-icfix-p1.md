@@ -1,4 +1,4 @@
-Stamp: 2026-11-15 02:47 (from the system clock). DRAFT handover, GC-ICFIX after phase 2 (P1), work branch fix/gc-icfix, head a1b398a5. NOTHING IS PUSHED.
+Stamp: 2026-11-15 02:47 (from the system clock). Handover, GC-ICFIX after phase 2 (P1), work branch fix/gc-icfix. Written at head a1b398a5; small commits followed (two leftover tests repaired: f816355a, 57a54fbe; then this note). Full local check: run 9 on a1b398a5 passed 8 of 10 gates and failed on those two tests; run 10 on the final head was started after this note was committed: read its result in `D:\Abhay\scratch\gc-icfix-backup\prepush-run10.log` before trusting the branch. NOTHING IS PUSHED.
 Tracker: https://claude.ai/artifact/LcMTSr5xx8LvAYVniotkxK (rows u001..u611). Newest older handover: docs/process/session-handover-2026-11-13-gc-icfix-p1.md (its top block covers P0).
 
 ## DONE
