@@ -49,7 +49,7 @@ from ofo.adjustment.approaches import (
 )
 from ofo.adjustment.compare import POP_TEXT, Column, Context, MarginRead, compare
 from ofo.adjustment.compare_cost_rows import breakdown_lines, warn_threshold
-from ofo.adjustment.offered import limit_filter
+from ofo.adjustment.offered import EXIT_REDUCE, limit_filter, limit_notice
 from ofo.adjustment.preferences import Preferences
 from ofo.charges import ChargeRates
 from ofo.charges.calculator import ChargeOrder
@@ -588,6 +588,7 @@ async def adjustment_approaches(  # noqa: PLR0913, PLR0915 - FastAPI dependencie
         # goal contract decision 14 / catalogue S-11: at the plan maximum only exit and reduce approaches are offered,
         # through THE filter the check's T-19 pick uses (offered.limit_filter), never a second copy
         asked = list(limit_filter(asked, guards, tracked.adjustments_used))
+        reply["limit"] = limit_notice(guards, tracked.adjustments_used)  # ADR-297: the sentence
         exits = check.exit_inputs_of(guards, position, market.now)  # ADR-238: the same playbook read
 
         def price_all(m: MarketInputs) -> tuple[Priced, liquidity.Limits | None, Decimal | None, list]:
@@ -630,6 +631,7 @@ async def adjustment_approaches(  # noqa: PLR0913, PLR0915 - FastAPI dependencie
     reply["available"] = _available(position, market.chain, spot.value if spot.available else None, dict(built_list),
                                     cfg, limits, max_profit, exits)
     reply["days_to_expiry"] = _days_to_expiry(position)
+    reply["not_offered"] = _not_offered_by_limit(reply.get("limit"), reply["available"])
     total = time.perf_counter() - started
     log.info("adjustment approaches strategy=%s approaches=%s engine_s=%.4f total_s=%.4f",
              strategy_id, len(built_list), engine, total)
@@ -695,6 +697,17 @@ def _available(position: Position, chain: Sequence[ChainRow], spot: Decimal | No
         out.append(item | {"applicable": b.refusal_message is None, "reason": b.refusal_message,
                            "liquidity_flags": strike_flags(b, position, chain, limits)})
     return out
+
+
+def _not_offered_by_limit(limit: Mapping[str, Any] | None,
+                          available: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    """ADR-297 (3): at the limit each approach that applies but is not exit / reduce is listed as not offered with the
+    limit reason (never silently dropped). Not in ``approaches``, so "Showing N of M" counts only what is offered."""
+    if limit is None:
+        return []
+    reason = render_explanation("adjust_limit_reason")
+    return [{"id": a["id"], "name": a["name"], "reason_id": "adjustment_limit_reached", "reason": reason}
+            for a in available if a["applicable"] and a["id"] not in EXIT_REDUCE]
 
 
 def _days_to_expiry(position: Position) -> int | None:

@@ -22,6 +22,8 @@
     </div>
 
     <template v-else-if="reply">
+      <!-- ADR-297 (D4): the server's sentence at the plan's adjustment maximum; only exit and reduce are offered then -->
+      <p v-if="reply.limit" role="status" class="rounded-lg border border-line bg-surface-muted p-3 text-sm font-semibold text-warn" data-testid="adjust-limit">{{ reply.limit.text }}</p>
       <div v-if="picked.length" class="flex flex-wrap items-center gap-2 text-sm" data-testid="adjust-scope">
         <label class="flex min-w-0 max-w-full flex-wrap items-center gap-2">Approaches in the compare
           <select v-model="scope" class="h-9 max-w-full rounded border border-line px-2" data-testid="adjust-scope-select">
@@ -151,9 +153,10 @@
         </table>
       </div>
 
-      <div v-if="refused.length" class="rounded-lg border border-line bg-surface p-3" data-testid="adjust-refused">
+      <div v-if="refused.length || notOffered.length" class="rounded-lg border border-line bg-surface p-3" data-testid="adjust-refused">
         <h3 class="text-sm font-semibold">Not offered for this strategy now</h3>
         <ul class="mt-1 text-sm">
+          <li v-for="a in notOffered" :key="a.id" :data-testid="`adjust-not-offered-${a.id}`"><span class="font-semibold">{{ a.name ?? a.id }}</span>: {{ a.reason }}</li>
           <li v-for="a in refused" :key="a.id" :data-testid="`adjust-refused-${a.id}`"><span class="font-semibold">{{ a.name ?? a.id }}</span>: {{ refusalText(a) }}<span v-if="a.refusal?.next_action" class="text-ink-muted"> {{ a.refusal.next_action }}</span></li>
         </ul>
       </div>
@@ -268,6 +271,8 @@ const kept = computed(() => (view.value ? applyFilters(view.value, filters.value
 // ADR-308: M in "Showing N of M" = every approach the server says applies (No change counts, as a column), not the ticked set
 const allCount = computed(() => (reply.value ? tableApproaches(reply.value).length : 0))
 const refused = computed(() => (view.value ? refusedApproaches(view.value) : []))
+// ADR-297: approaches withheld at the adjustment limit; they are not in the table, so they take no part in "Showing N of M"
+const notOffered = computed(() => reply.value?.not_offered ?? [])
 const pickable = computed(() => kept.value.filter((x) => !isNoChange(x.a)))
 watch(pickable, (list) => { if (!list.some((x) => x.a.id === pick.value)) pick.value = list[0]?.a.id ?? '' }, { immediate: true })
 

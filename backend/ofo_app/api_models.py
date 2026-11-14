@@ -596,6 +596,21 @@ class AdjustCurrentOut(ApiModel):
     legs: list[AdjustCurrentLegOut]
 
 
+class AdjustLimitOut(ApiModel):
+    """ADR-297 (D4): the plan's adjustment maximum is reached; catalogue sentence, the trade's own numbers."""
+    used: int
+    max: int
+    text: CatalogueText
+
+
+class AdjustNotOfferedOut(ApiModel):
+    """ADR-297 (D4): an approach that applies but is withheld, with the reason id and its catalogue sentence."""
+    id: Identifier
+    name: CatalogueText
+    reason_id: Identifier
+    reason: CatalogueText
+
+
 class AdjustApproachesOut(ApiModel):
     strategy_id: int
     view: Literal["at_expiry", "estimated_now"]
@@ -604,6 +619,8 @@ class AdjustApproachesOut(ApiModel):
     before: AdjustWholeOut | None
     approaches: list[AdjustApproachOut]
     limits_reason: CatalogueText | None = None  # #624: "limits not applied: playbook unreadable"; None otherwise
+    limit: AdjustLimitOut | None = None  # ADR-297: set at the plan's adjustment maximum, else None
+    not_offered: list[AdjustNotOfferedOut] = []  # ADR-297: withheld at the limit (not in `approaches`)
     criteria: list[AdjustCriterionOut] = []  # REQ-156 AC-2/AC-3; refused approaches take no part
     leads: dict[Identifier, AdjustLeadsOut] = {}  # REQ-156 AC-4 "Leads on N of M"
     curves: dict[Identifier, list[list[Money]]] = {}  # "before" / approach id -> [[level, P&L after charges], ...]

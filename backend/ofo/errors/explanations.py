@@ -1953,6 +1953,10 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("adjust_flag_oi_unknown", "values_seen", "OI not known"),
     # #624 item 1: the playbook's limits could not be read, so none was applied (said in the reply, never a silent skip)
     ExplanationTemplate("adjust_limits_not_applied", "values_seen", "limits not applied: playbook unreadable"),
+    # ADR-297 (D4): at the plan's adjustment maximum the offer screen says so, and each withheld approach carries the reason
+    ExplanationTemplate("adjust_limit_reached", "values_seen", "Adjustment limit reached ({used} of {max})",
+                        {"used": Recorded, "max": Recorded}),
+    ExplanationTemplate("adjust_limit_reason", "values_seen", "Adjustment limit reached"),
     # ADR-272 / issues 79, 87, 77: how old the prices behind a Compare reply are (a stale reply names its age and is not ranked)
     ExplanationTemplate("adjust_prices_stale", "values_seen",
                         "Prices are {minutes} min old (last update {time} IST): figures below are not live.",

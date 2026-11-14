@@ -16,6 +16,7 @@ from collections.abc import Iterable, Mapping
 from typing import Final
 
 from ofo.adjustment.compare import offered_approaches
+from ofo.errors.explanations import render_explanation
 
 #: catalogue S-11 "Only exit and reduce are offered": the exit and reduce approaches (same list as the generator's)
 EXIT_REDUCE: Final = frozenset({"A-23", "A-24", "A-25", "A-26", "A-27", "A-28", "A-29", "A-31", "A-35", "A-36",
@@ -38,6 +39,16 @@ def limit_filter(ids: Iterable[str], guards: Mapping | None, adjustments_used: i
     if guards_at_limit(guards, adjustments_used):
         return tuple(a for a in ids if a in EXIT_REDUCE)
     return ids
+
+
+def limit_notice(guards: Mapping | None, adjustments_used: int | None) -> dict | None:
+    """ADR-297 (D4): at the limit, the sentence the offer screen opens with and the trade's own numbers (a count above
+    the maximum, from old data, is shown as it is); None below the limit. The same test as the S-11 filter."""
+    if not guards_at_limit(guards, adjustments_used):
+        return None
+    mx = guards["max_adjustments"]  # type: ignore[index]  # guards_at_limit proved a mapping with an int maximum
+    return {"used": adjustments_used, "max": mx,
+            "text": render_explanation("adjust_limit_reached", used=adjustments_used, max=mx)}
 
 
 def limit_reached(body: Mapping | None, adjustments_used: int | None) -> bool:
