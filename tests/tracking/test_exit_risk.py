@@ -134,3 +134,22 @@ def test_roll_basket_is_judged_on_the_legs_after_all_orders() -> None:
     assert got.exposed == ()
     assert got.max_loss_after == D("-2541.50")
     assert _ask(IC, _x("4", "SELL", "170.00")).exposed == ("3",)  # without the entry the same exit does expose it
+
+
+def test_unpriced_exit_never_lets_a_stand_in_price_reach_a_max_loss_figure() -> None:
+    # c2: S2 24950 CE / B2 25050 CE, one sold lot out
+    # not read, the double rule cannot be judged: cannot_tell, never "no" from a made-up price
+    book = [_o("11", "SELL", "160.00", lots=2), _o("12", "BUY", "100.00", lots=2)]
+    priced = exit_risk(book, [_x("11", "BUY", "300.00")], TERMS, priced=True)
+    assert priced.state == "yes" and priced.max_loss_after == D("-18200")
+    unpriced = exit_risk(book, [_x("11", "BUY", "0.05")], TERMS, priced=False)
+    assert unpriced.state == "cannot_tell" and unpriced.max_loss_before is None and unpriced.max_loss_after is None
+
+
+def test_unpriced_answers_that_need_no_price_still_answer() -> None:
+    got = exit_risk(IC, [_x("4", "SELL", "0.05")], TERMS, priced=False)   # the cover count proves it
+    assert got.state == "yes" and got.exposed == ("3",) and got.max_loss_after is None
+    everything = [_x("1", "SELL", "0.05"), _x("2", "BUY", "0.05"), _x("3", "BUY", "0.05"), _x("4", "SELL", "0.05")]
+    assert exit_risk(IC, everything, TERMS, priced=False).state == "no"   # nothing left open
+    flat = [_o("11", "SELL", "100.00", lots=2), _o("12", "BUY", "95.00", lots=2)]
+    assert exit_risk(flat, [_x("11", "BUY", "0.05")], TERMS, priced=False).state == "cannot_tell"  # needs prices

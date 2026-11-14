@@ -132,7 +132,7 @@ async def test_unreadable_exit_prices_say_not_available_and_the_state_is_still_y
     body = reply.json()
     assert body["state"] == "yes"
     assert body["max_loss_before"] is None and body["max_loss_after"] is None  # never 0
-    assert "not available" in body["warning_text"]
+    assert "less protection:" in body["warning_text"] and "Maximum loss" not in body["warning_text"]
 
 
 async def test_another_users_or_a_missing_strategy_answers_not_found(db):
@@ -141,3 +141,12 @@ async def test_another_users_or_a_missing_strategy_answers_not_found(db):
     orders = _exit_of(ids, legs, [_bought_call(legs)])
     assert (await _ask(other, stored.id, orders)).status_code == HTTPStatus.NOT_FOUND  # never another user's book
     assert (await _ask(app, 999999999, orders)).status_code == HTTPStatus.NOT_FOUND
+
+
+async def test_an_exit_when_nothing_is_open_is_cannot_tell_never_no(db):
+    app, stored, *_ = await _setup(db)
+    legs = _strategy_48()["legs"]
+    ids = stored.saved.contract_ids
+    reply = await _ask(app, stored.id, _exit_of(ids, legs, [0]))
+    assert reply.status_code == HTTPStatus.OK, reply.text
+    assert reply.json()["state"] == "cannot_tell"
