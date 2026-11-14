@@ -82,7 +82,7 @@ async def test_target_equal_to_the_playbook_early_value_applies_at_the_last_stag
 
 async def test_equal_target_flags_t07_at_60_percent_on_the_last_day(monkeypatch):
     body = (await resolved(monkeypatch, plan_body("50"))).body
-    days = next(d for d in range(40) if pe.stage_of(body, "weekly", d) == 2)
+    days = next(d for d in range(40) if pe.stage_of(body, "weekly", d) == len(body["triggers"]["T-07"]["weekly"]) - 1)
     state = pe.StrategyState(expiry_kind="weekly", days_left=days, hhmm="11:00", pnl=MAX_PROFIT * D("0.6"),
                              max_profit=MAX_PROFIT, prices_fresh=True, spot=D("24000"), stops=None)
     got = next((r for r in pe.evaluate(body, state, None, None, gap_until="09:30").results if r.rule_id == "T-07"), None)
