@@ -87,6 +87,7 @@ class CheckResultOut(ApiModel):
     #: GC-ICFIX u142: a fired stop's loss now and stop line in rupees and percent, and the time it fired
     #: (all server text)
     stop_text: CatalogueText | None = None
+    fired_at: datetime.datetime | None = None  # issue 12: when its open record was shown
     suggestion_id: int | None = None  # a flag's open REQ-112 record (Dismiss / acted on name it)
     note: CatalogueText | None = None  # ADR-217: "You dismissed this" on a flag whose dismissed record still holds
 
@@ -390,7 +391,8 @@ async def adjustment_check(  # noqa: PLR0913 - FastAPI dependencies, one per inp
               "withheld": None if ev.withheld is None else render(ev.withheld),
               "results": [result_out(r, wording, opened, dismissed=dismissed, body=resolved.body,
                                     cheapest=cheapest(state), target=check.target_of(state))
-                              | {"stop_text": stop_text(r, ev.limits, state.pnl, fired_at)}
+                              | {"stop_text": stop_text(r, ev.limits, state.pnl, fired_at),
+                                 "fired_at": fired_at.get(r.rule_id)}
                           for r in ev.results],
               "limits": limits_out(ev.limits, target_unset)}
     return AdjustmentCheckOut.model_validate(reply)

@@ -47,8 +47,17 @@
         <span data-testid="playbook-flag-condition">{{ f.condition }}</span>
         <!-- GC-ICFIX u142: a fired stop's loss now / stop line in rupees and percent and the time it fired, the server's sentence -->
         <span v-if="f.stop_text" data-testid="playbook-flag-stop">{{ f.stop_text }}</span>
+        <!-- GC-ICFIX issue 12 (u241): any other fired rule shows the time its record opened, the server's stamp in India time -->
+        <span v-else-if="firedClock(f)" data-testid="playbook-flag-time">{{ firedAtText(firedClock(f)) }}</span>
       </div>
       <!-- ADR-272 (3): the check's withheld state, in the server's words, instead of silence -->
+      <!-- GC-ICFIX issue 12 (u241, ADR-272 (3), ADR-245): the rules line. A rule that is not checked says so with the server's reason;
+           a rule that fired earlier and cleared keeps its line; a failed rule-check read says so; a quiet rule adds nothing. -->
+      <p v-if="checkStatus === 'failed'" class="mt-1 text-xs text-red-700" data-testid="rules-load-failed">{{ RULES_LOAD_FAILED_TEXT }}</p>
+      <ul v-if="notChecked.length || earlier.length" class="mt-1 space-y-0.5 text-xs text-ink-muted" data-testid="rules-line">
+        <li v-for="n in notChecked" :key="n.rule_id" data-testid="rules-not-checked">{{ ruleNotCheckedText(n.reason) }}</li>
+        <li v-for="e in earlier" :key="e.id" data-testid="rules-earlier">{{ ruleEarlierText(e.text, e.outcome_text, istClock(e.shown_at)) }}</li>
+      </ul>
       <p v-if="typed && withheldText" class="mt-1 text-xs text-ink-muted" data-testid="check-withheld">{{ withheldText }}</p>
       <!-- GC-ICFIX u141: the check's own read time; a background re-read that failed keeps the last lines and says so -->
       <p v-if="typed && check.as_of_text" class="mt-1 text-xs text-ink-muted" data-testid="check-as-of">{{ check.as_of_text }}</p>
@@ -79,7 +88,9 @@ import Chip from '@/components/common/Chip.vue'
 import FigureHint from '@/components/common/FigureHint.vue'
 import api, { NEUTRAL_PARTS } from '@/services/api'
 import { NOT_CONNECTED_TEXT, PAPER_PNL_PREFIX, readTracking, sharedTotal } from '@/lib/tracking'
-import { checkStaleLine } from '@/lib/sharedStateText'
+import { RULES_LOAD_FAILED_TEXT, checkStaleLine, firedAtText, ruleEarlierText, ruleNotCheckedText } from '@/lib/sharedStateText'
+import { istClock } from '@/lib/displayFormat'
+import { settledRecords } from '@/lib/paperAlerts'
 import { said } from '@/lib/playbookEditor'
 import { usePaperRefresh } from '@/lib/usePaperRefresh'
 
@@ -117,6 +128,9 @@ const typed = computed(() => !!check.value?.strategy_type)
 const flags = computed(() => (typed.value ? (check.value.results ?? []) : [])
   .filter((r) => r.kind === 'flag' && !dismissed.value.includes(r.suggestion_id)))
 const alreadyTrue = computed(() => (typed.value ? (check.value.results ?? []) : []).filter((r) => r.kind === 'already_true'))
+const notChecked = computed(() => (typed.value ? (check.value.results ?? []) : []).filter((r) => r.kind === 'not_checked' && r.reason))
+const earlier = computed(() => settledRecords.byStrategy[props.savedId] ?? []) // the app's one read of the records (header), never a second fetch
+const firedClock = (f) => istClock(f.fired_at)
 const flagIds = computed(() => flags.value.map((f) => f.suggestion_id).filter((x) => x !== null && x !== undefined))
 const checkStatus = ref('loading') // the plan card's limit lines read this one check: 'loading' | 'ok' | 'failed' (ADR-304 (3))
 const checkStale = ref(false) // GC-ICFIX u141: a background re-read failed after a good read: the last lines stay, marked

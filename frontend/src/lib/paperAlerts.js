@@ -50,11 +50,14 @@ function takeAlertsKeepRows(data) {
 // Issue 8 (ADR-260): each open record also carries the trade's name and the rule's words (the server's own text, printed as sent)
 // so the pop-up and Alerts > Active show the same record the bell counts.
 export const openRecords = reactive({ list: [] }) // [{ id, strategy_id, strategy_name, text }] in the server's order
+// Issue 12 (u241): the SAME read's settled records (not open), per strategy, for the trade page's rules line: a rule that fired and cleared.
+export const settledRecords = reactive({ byStrategy: {} }) // { [strategy_id]: [{ id, text, outcome_text, shown_at }] }
 const announced = new Set()
 let opportunitiesLoaded = false
 
 export function resetOpenRecords() {
   openRecords.list = []
+  settledRecords.byStrategy = {}
   announced.clear()
   opportunitiesLoaded = false
 }
@@ -66,17 +69,22 @@ export function takeOpportunities(data) {
   const groups = data && Array.isArray(data.groups) ? data.groups : null
   if (!groups) {
     openRecords.list = []
+    settledRecords.byStrategy = {}
     return []
   }
   const open = []
+  const settled = {}
   for (const g of groups) {
     for (const r of Array.isArray(g?.records) ? g.records : []) {
       if (r && r.outcome === 'open' && Number.isInteger(r.id)) {
         open.push({ id: r.id, strategy_id: g.strategy_id, strategy_name: g.strategy_name ?? null, text: r.condition || g.label || '' })
+      } else if (r && Number.isInteger(r.id) && r.outcome !== 'open') {
+        (settled[g.strategy_id] ??= []).push({ id: r.id, text: r.condition || g.label || '', outcome_text: r.outcome_text ?? '', shown_at: r.shown_at ?? null })
       }
     }
   }
   openRecords.list = open
+  settledRecords.byStrategy = settled
   const fresh = open.filter((r) => !announced.has(r.id))
   open.forEach((r) => announced.add(r.id))
   const first = !opportunitiesLoaded
