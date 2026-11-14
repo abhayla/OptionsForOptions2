@@ -84,6 +84,26 @@ Recommendation: leave it as built until real orders return; when they do, decide
 broker's contract-note charges, or estimate charges paid with the same engine used for practice trades and label the
 figure "estimated".
 
+## Q9. Should Max profit assume the options simply expire, with no closing orders and so no closing charges?
+
+Recorded 14 Nov 07:16 IST. Nothing waits on it; the app keeps today's behaviour until you say otherwise.
+Business call: it moves the Max profit figure on every trade page by roughly one set of closing charges.
+Spec basis: ADR-263 says Max profit and Max loss are shown after "charges already paid plus the estimated charges to
+close what is open"; ADR-082 (2) says "at its planned prices (entry and exit)". So the written rule is: a closing
+order is assumed. The app does exactly that, and did before this run. Not a clash; raised because the Opus money check
+of 14 Nov pointed out what the rule implies.
+Real case (from the check): a sold leg filled in two orders: charges paid 99.29, estimated closing charges 68.04, Max
+profit after charges 5,035.92. If the options were assumed to expire worthless with no closing order, Max profit would
+read 5,103.96 (68.04 more). Letting an out-of-the-money option expire costs nothing in the app's charge rules.
+Why a user reads Max profit: to know the most the trade can end with, to judge whether it is worth taking and when to
+take profit.
+Recommendation: keep it as it is. It follows the written decisions, it errs on the low side (the user is never promised
+more than they can get), and most trades are closed before expiry, which does cost the closing charges. If you prefer
+the expiry view, the label should then say "if held to expiry", and Max loss needs its own rule (an in-the-money option
+at expiry has settlement costs).
+Options: (a) keep: closing charges assumed (recommended); (b) expiry view for Max profit only, labelled "if held to
+expiry"; (c) show both figures.
+
 ## Q5. Profit left and Loss left: answered
 
 ANSWERED 13 Nov 2026 (question tool): Make it add up (Recommended) -> ADR-306 (Profit left = Max profit - Total;
