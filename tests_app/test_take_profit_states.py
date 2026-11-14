@@ -3,14 +3,10 @@ after ``as_of_market``), one test per state of the trade. The profit test is BEF
 approach carries the after-charges figure. Case 141: booked -32.50, charges paid 403.45, after charges -435.95."""
 from __future__ import annotations
 
-import sys
 from dataclasses import replace
 from decimal import Decimal as D
-from pathlib import Path
 
 import pytest
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tests_app"))
 import t19_support as t
 from ofo_app.routes.adjustment import as_of_market, priced_approach
 
