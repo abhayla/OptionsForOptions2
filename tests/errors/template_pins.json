@@ -2199,6 +2199,10 @@
     "sha256": "36146ae642de7a9bb59dc2f1a0fb7bad6b4420043c6029e310f24a35bad7c6a3",
     "reviewed": "pending owner read"
   },
+  "explanation:adjust_cmp_curve_estimate_note": {
+    "sha256": "94a5cb0432867ed5459baeaecd88ac9e70b5a2869af00618b53bb8fef47fbe35",
+    "reviewed": "pending owner read"
+  },
   "explanation:adjust_cmp_near_no_rate": {
     "sha256": "732cbda4ad837989f49b5b103d0e9372598cc942d02fa9fe8c1fa2098ea8eb25",
     "reviewed": "pending owner read"

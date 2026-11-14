@@ -42,6 +42,7 @@
         <div class="min-w-0 rounded-lg border border-line bg-surface p-3" data-testid="adjust-chart-card">
           <h3 class="mb-1 text-sm font-semibold">Payoff at expiry, whole trade</h3>
           <AdjustPayoffChart :lines="chartLines" :hidden="hiddenLines" @toggle="toggleLine" />
+          <p v-if="reply.curves_estimate_note" class="mt-1 text-xs text-ink-muted" data-testid="adjust-estimate-note">{{ reply.curves_estimate_note }}</p>
           <p class="mt-1 text-xs text-ink-muted" data-testid="adjust-chart-note">Dashed grey = no change. Tap a name to hide or show its line.</p>
           <p class="mt-1 text-xs text-ink-muted" data-testid="adjust-spot">{{ spotLine }}</p>
         </div>

@@ -128,6 +128,17 @@ describe('REQ-156 compare display on the real reply', () => {
     expect(sets.find((d) => d.id === 'before').borderDash).toEqual([6, 4])
   })
 
+  it('ADR-307: the estimate sentence from the server is shown beside the chart when an estimate curve is drawn, and not otherwise', async () => {
+    const NOTE = 'This curve is an estimate at the nearer expiry only. The later leg stays open after that date, so the loss shown is not a limit, and the maximum loss cannot be estimated.'
+    const r = clone(adj02)
+    r.curves_estimated = { [OTHERS[0]]: 'estimated at the nearer expiry' }
+    r.curves_estimate_note = NOTE
+    const { w } = await show(r)
+    expect(t(w, 'adjust-estimate-note').text()).toBe(NOTE)
+    const plain = await show(clone(adj02))
+    expect(t(plain.w, 'adjust-estimate-note').exists()).toBe(false)
+  })
+
   it('AC-5: the Before is a dashed line, each approach its own line with the reply\'s own texts; hiding one removes only its line', async () => {
     const { w } = await show(adj02)
     const sets = drawn[drawn.length - 1].data.datasets
