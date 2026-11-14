@@ -66,34 +66,71 @@ def _sold_call(legs) -> int:
     return next(i for i, leg in enumerate(legs) if leg["action"] == "SELL" and leg["instrument"] == "CE")
 
 
-async def test_closing_a_bought_leg_alone_flags_limited_before_and_unlimited_after(db):
+async def test_closing_a_bought_leg_alone_is_yes_limited_before_unlimited_after_and_names_the_sold_leg(db):
     app, stored, ids, legs = await _condor(db)
     reply = await _ask(app, stored.id, _exit_of(ids, legs, [_bought_call(legs)]))
     assert reply.status_code == HTTPStatus.OK, reply.text
     body = reply.json()
-    assert body["widens"] is True
+    assert body["state"] == "yes"
     assert body["max_loss_before"] not in (None, "unlimited")
     assert body["max_loss_after"] == "unlimited"
-    assert "protecting" in body["warning_text"]
+    assert "Less protected" in body["warning_text"] and "CE" in body["warning_text"]
     assert await _exit_rows(db, stored.id) == 0  # read only
 
 
-async def test_closing_a_sold_leg_or_everything_or_one_whole_spread_does_not_flag(db):
+async def test_closing_everything_is_no(db):
     app, stored, ids, legs = await _condor(db)
-    sold, bought = _sold_call(legs), _bought_call(legs)
-    for picks in ([sold], list(range(len(legs))), [sold, bought]):
-        reply = await _ask(app, stored.id, _exit_of(ids, legs, picks))
-        assert reply.status_code == HTTPStatus.OK, reply.text
-        assert reply.json()["widens"] is False
-        assert reply.json()["warning_text"] is None
+    reply = await _ask(app, stored.id, _exit_of(ids, legs, list(range(len(legs)))))
+    assert reply.status_code == HTTPStatus.OK, reply.text
+    assert reply.json()["state"] == "no" and reply.json()["warning_text"] is None
 
 
-async def test_unreadable_exit_prices_say_not_available_and_the_flag_is_still_set(db):
+async def test_closing_one_whole_spread_follows_the_more_than_double_rule(db):
+    """ADR-256 amendment: the condor's call spread gone leaves the put spread, whose Max Loss is more than double."""
+    app, stored, ids, legs = await _condor(db)
+    reply = await _ask(app, stored.id, _exit_of(ids, legs, [_sold_call(legs), _bought_call(legs)]))
+    assert reply.status_code == HTTPStatus.OK, reply.text
+    assert reply.json()["state"] in ("yes", "no")
+    body = reply.json()
+    if body["state"] == "yes":
+        assert "Less protected" not in body["warning_text"]  # no sold leg lost its cover, only the Max Loss grew
+
+
+async def test_a_roll_basket_is_judged_after_all_orders(db):
+    """Close the bought call and open it again in the same basket: the legs after are the legs before."""
+    app, stored, ids, legs = await _condor(db)
+    i = _bought_call(legs)
+    reopen = {"contract_id": ids[i], "side": legs[i]["action"], "quantity": legs[i]["quantity"],
+              "price": legs[i]["current_price"] or "100", "kind": "open"}
+    reply = await _ask(app, stored.id, [*_exit_of(ids, legs, [i]), reopen])
+    assert reply.status_code == HTTPStatus.OK, reply.text
+    assert reply.json()["state"] == "no"
+
+
+async def test_an_exit_larger_than_what_is_open_is_cannot_tell_never_no(db):
+    app, stored, ids, legs = await _condor(db)
+    orders = _exit_of(ids, legs, [_bought_call(legs)])
+    orders[0]["quantity"] *= 3
+    reply = await _ask(app, stored.id, orders)
+    assert reply.status_code == HTTPStatus.OK, reply.text
+    assert reply.json()["state"] == "cannot_tell"
+
+
+async def test_malformed_orders_are_refused_never_answered_no(db):
+    app, stored, _ids, _legs = await _condor(db)
+    async with _client(app) as c:
+        for bad in ("not json", "[{}]", "[]"):
+            reply = await c.get(f"/paper/strategies/{stored.id}/exit-risk", params={"orders": bad})
+            assert HTTPStatus.BAD_REQUEST <= reply.status_code < HTTPStatus.INTERNAL_SERVER_ERROR, (bad, reply.text)
+            assert "state" not in reply.json()
+
+
+async def test_unreadable_exit_prices_say_not_available_and_the_state_is_still_yes(db):
     app, stored, ids, legs = await _condor(db, ctx="none")
     reply = await _ask(app, stored.id, _exit_of(ids, legs, [_bought_call(legs)]))
     assert reply.status_code == HTTPStatus.OK, reply.text
     body = reply.json()
-    assert body["widens"] is True
+    assert body["state"] == "yes"
     assert body["max_loss_before"] is None and body["max_loss_after"] is None  # never 0
     assert "not available" in body["warning_text"]
 
