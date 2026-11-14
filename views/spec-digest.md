@@ -4,10 +4,9 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (294)
+## Decisions (295)
 
-- Older decisions: 254 rows, ADR-1..ADR-267 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
-- ADR-268 2026-11-06: Decided under the owner's standing delegation for strategy behaviour ("go with your recommendation"… [Fills the intrinsic-value gap for delta-based rul…]
+- Older decisions: 255 rows, ADR-1..ADR-268 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
 - ADR-269 2026-11-06: Owner 2026-11-06 ~16:1x IST (question tool, during the live iron condor test): "Consider rollover a… [SPEC CHANGE: ADR-207 (2) no longer covers expiry-…]
 - ADR-270 2026-11-06: Owner 2026-11-06 ~16:2x IST (question tool, after the reason was explained): "Test both and all rel… [SPEC CHANGE: ADR-253 superseded for live; adds th…]
 - ADR-271 2026-11-06: Decided under the owner's standing delegation for strategy and behaviour calls (owner 2026-11-06 ~1… [clarifies ADR-118 (paper orders were not named);…]
@@ -47,6 +46,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-305 2026-11-13: Owner decision 2026-11-13 ~20:00 IST (chat, after the question was explained: "go with your recomme… [narrows ADR-304 (1): "any usable saved Target act…]
 - ADR-306 2026-11-13: Owner decision 2026-11-13 ~21:15 IST (question tool, picked "Make it add up (Recommended)"). [SPEC CHANGE: replaces the profit left / loss left…]
 - ADR-307 2026-11-14: Decided by the run on 2026-11-14 under the owner rule of that day ("whenever you have question, go… [No requirement is reversed. Adds to REQ-148 AC-5…]
+- ADR-308 2026-11-14: Decided by the run on 2026-11-14 under the owner rule of that day ("whenever you have question, go… [Clarifies ADR-214 ("Showing N of M"); no reversal…]
 
 ## Requirements (161)
 
