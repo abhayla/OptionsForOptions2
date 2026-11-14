@@ -288,11 +288,15 @@ describe('Delete with Undo', () => {
     postAnswer = () => Promise.resolve({ data: { id: 7, revision: 2 } })
   })
 
-  it('ADR-271: a strategy with a paper order shows the paper refusal; a real-order one keeps the sent-orders text', async () => {
-    answer = () => Promise.resolve({ data: { strategies: [{ ...withDelete(8, false), has_paper_order: true }, withDelete(9, false)] } })
+  it('ADR-293: a practice-only row (has_paper_order, can_delete true) shows Delete and a confirm that names the practice orders; a refused row never says "paper orders were placed"', async () => {
+    answer = () => Promise.resolve({ data: { strategies: [{ ...withDelete(8, true), has_paper_order: true, has_order: true }, { ...withDelete(9, false), has_paper_order: true, has_order: true }, withDelete(10, false)] } })
     const w = await open()
-    expect(w.get('[data-strategy-id="8"] [data-testid="delete-refused"]').text()).toBe("Can't delete: paper orders were placed")
-    expect(w.get('[data-strategy-id="9"] [data-testid="delete-refused"]').text()).toBe("Orders were already sent for this strategy, so it cannot be deleted.")
+    await w.get('[data-testid="delete-8"]').trigger('click')
+    expect(w.get('[data-testid="delete-confirm-box"]').text()).toContain('Practice orders were placed')
+    for (const id of [9, 10]) {
+      expect(w.find(`[data-testid="delete-${id}"]`).exists()).toBe(false)
+      expect(w.get(`[data-strategy-id="${id}"] [data-testid="delete-refused"]`).text()).toBe("Orders were already sent for this strategy, so it cannot be deleted.")
+    }
   })
 
   it('Delete only when can_delete is true; the refusal text replaces it otherwise; a missing field counts as false', async () => {
