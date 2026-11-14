@@ -28,8 +28,10 @@ import StrategyActions from '@/components/strategy/StrategyActions.vue'
 import TrackingPanel from '@/components/strategy/TrackingPanel.vue'
 import { ADD_TO_PAPER_LABEL, PAPER_PLACED_NOT_REFRESHED_TEXT, PAPER_STATE, addToPaper as postPaperOrders, paperPostOutcome, sharedTotal } from '@/lib/tracking'
 import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
+import LoadFailed from '@/components/common/LoadFailed.vue'
+import { PAPER_REREAD_FAILED_TEXT } from '@/lib/sharedStateText'
 import {
-  DISCARD_LABEL, PAPER_BOOK_UNREADABLE, PAPER_MODE_LABEL, PAPER_PENDING_UNREADABLE, REVIEW_AND_ADD_LABEL, confirmRowsFor, paperOrdersFor, pendingText, readPaperBook,
+  DISCARD_LABEL, PAPER_BOOK_UNREADABLE, PAPER_MODE_LABEL, PAPER_PENDING_UNREADABLE, PAPER_REREAD_DELAYS_MS, REVIEW_AND_ADD_LABEL, confirmRowsFor, paperOrdersFor, pendingText, readPaperBook,
   legsAfterExit, paperFillKey, paperLeftOf,
 } from '@/lib/paperDrafts'
 import { withAsOf } from '@/lib/paperList'
@@ -470,16 +472,51 @@ async function confirmPending(orders) {
   paperStale.value = true
   try {
     await dropActed() // one basket answers the records once
-    const read = await readPaperBook(api, id) // the server's book after the orders: the new net position
-    if (read.kind !== 'paper') throw new Error('unreadable paper book')
-    enterDrafts(id, read)
-    paperDialog.value = false
-  } catch {
-    paperState.value = PAPER_STATE.PLACED // the dialog stays, says it was placed, and has no Confirm
+  } catch { /* the ids may stay in the URL: the stored orders are never offered again (paperStale) */ }
+  try {
+    // the dialog stays, says it was placed, and has no Confirm, while the book is read again (issue 18: bounded retries, then Retry)
+    await rereadAfterPlace(id, () => { paperState.value = PAPER_STATE.PLACED; paperBusy.value = false })
   } finally {
     paperBusy.value = false
   }
 }
+// GC-ICFIX issue 18 (ADR-202; finding panel-renders-nothing-when-its-read-fails): the book right after practice orders were stored may
+// not be readable yet. Read it up to PAPER_REREAD_DELAYS_MS tries; the first failure calls `onFirstFail` (what the path says meanwhile),
+// the last one shows the shared "could not load" state with Retry. What is on screen is never replaced by a failed read.
+const rereadFailed = ref(false)
+const barRef = ref(null)
+let rereadId = null
+let rereadFirstFail = null
+let leaving = false
+onBeforeUnmount(() => { leaving = true })
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+async function rereadAfterPlace(id, onFirstFail) {
+  rereadId = id
+  rereadFirstFail = onFirstFail
+  rereadFailed.value = false
+  let failedOnce = false
+  for (const wait of PAPER_REREAD_DELAYS_MS) {
+    if (wait) await sleep(wait)
+    if (leaving) return false
+    try {
+      const read = await readPaperBook(api, id)
+      if (read.kind === 'paper') {
+        enterDrafts(id, read)
+        openError.value = null
+        paperDialog.value = false
+        paperState.value = PAPER_STATE.READY
+        barRef.value?.showPaperTab()
+        return true
+      }
+    } catch { /* not ready yet: tried again below */ }
+    if (!failedOnce) { failedOnce = true; onFirstFail?.() }
+  }
+  openError.value = null
+  paperDialog.value = false
+  rereadFailed.value = true
+  return false
+}
+const retryReread = () => rereadAfterPlace(rereadId, rereadFirstFail)
 // the unknown-outcome link: re-read the book (the server's truth) and show its Orderbook; a failed read is said plainly
 async function openPaperOrderbook() {
   if (!paper.value) return
@@ -512,13 +549,7 @@ async function openFromBar(next, id, revision, name) {
 // GC-TP step 3c: after Add to Paper confirms, the strategy is a paper strategy: re-read the book and enter Drafts Mode through the same
 // enterDrafts as opening ?strategy=N. A failed read is said plainly (the bar keeps Add to Paper locked); the plan is not left live.
 async function onPaperAdded(id) {
-  try {
-    const read = await readPaperBook(api, id)
-    if (read.kind === 'paper') return enterDrafts(id, read)
-    openError.value = unreadableParts(null)
-  } catch (e) {
-    openError.value = unreadableParts(e)
-  }
+  await rereadAfterPlace(id, () => { openError.value = unreadableParts(null) })
 }
 async function openFromUrl() {
   const id = String(route.query.strategy ?? '')
@@ -902,6 +933,7 @@ const pricesStamp = computed(() => {
           </span>
         </div>
 
+        <LoadFailed v-if="rereadFailed" :text="PAPER_REREAD_FAILED_TEXT" prefix="paper-reread" @retry="retryReread" />
         <ErrorMessage v-if="openError" :parts="openError" compact prefix="open-error" data-testid="open-error" />
         <!-- Region B (UI-104..UI-108) -->
         <!-- GC-TP step 3b1 (Sensibull Drafts Mode 274-279): a paper strategy's legs are its net position, in a dashed frame -->
@@ -925,7 +957,7 @@ const pricesStamp = computed(() => {
         <PaperBookPanel v-if="paper" :book="paper.book" :net="paper.net" :read-failed="paperReadFailed" :contracts-changed="paperContractsChanged" :show-orders="showOrdersTick" @exit="exitPaper" @exit-all="exitAllPaper" />
         </div>
         <PaperConfirmDialog :open="paperDialog" :orders="paperRows" :strategy-id="route.query.strategy" :busy="paperBusy" :error="paperError" :state="paperState" @confirm="confirmPending" @cancel="paperDialog = false" @orderbook="openPaperOrderbook" />
-        <SaveDraftBar :legs="legs" :rules-ref="String(route.query.rules_ref || '')" :current="openStrategy" :shown-name="shapeName ?? ''" :paper-mode="paper !== null" :live-price-by-id="livePriceById" class="max-[1099px]:contents" @open="openFromBar" @saved="onSaved" @paper-added="onPaperAdded" @renamed="onRenamed" @deleted="onDeleted">
+        <SaveDraftBar ref="barRef" :legs="legs" :rules-ref="String(route.query.rules_ref || '')" :current="openStrategy" :shown-name="shapeName ?? ''" :paper-mode="paper !== null" :live-price-by-id="livePriceById" class="max-[1099px]:contents" @open="openFromBar" @saved="onSaved" @paper-added="onPaperAdded" @renamed="onRenamed" @deleted="onDeleted">
           <template #add-edit>
             <button type="button" class="h-10 flex-1 basis-0 rounded-lg border border-line font-medium" aria-haspopup="dialog" :aria-expanded="pickerOpen ? 'true' : 'false'" data-testid="add-edit" @click="pickerOpen = !pickerOpen">Add/Edit</button>
           </template>
