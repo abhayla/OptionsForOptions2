@@ -60,8 +60,10 @@ from ofo.engine.legs import Action, Instrument, Leg
 from ofo.engine.metrics import UNLIMITED
 from ofo.engine.model import delta_at_intrinsic
 from ofo.errors.explanations import (
+    DAY_RULE_GENERIC_TEXT,
     LEVEL_WATCH_LABEL_TEXT,
     PLAYBOOK_DAY_RULE_ACTION_TEXT,
+    PLAYBOOK_DAY_RULE_KIND_TEXT,
     STOP_LABEL_TEXT,
     render_explanation,
 )
@@ -762,6 +764,26 @@ def trigger_words(body: Mapping | None, trigger_id: str | None) -> tuple[str | N
         return None, None
     label, unit = trig.get("label"), trig.get("unit")
     return (label if isinstance(label, str) else None), (unit if isinstance(unit, str) else None)
+
+
+#: the day rule kinds whose id says the whole day (the other kinds also need a weekday, day of the month or date,
+#: which the id does not carry, or are admin-only: they get the generic sentence, never a half-named day)
+_DAY_KINDS_NAMED_BY_ID: Final = frozenset({"beforeWeekend", "beforeHoliday", "afterBreak", "expiry", "beforeExpiry",
+                                           "monthlyWeek"})
+
+
+def day_rule_words(rule_id: str) -> str:
+    """ADR-267 amendment: a day rule id (``day.<when>.<HHMM>.<action>``; the old ``day:`` form too) as one plain
+    sentence, "The last session before a weekend, 15:00: Run the carry check (...)". Never the raw id: an id the code
+    cannot read, or an action without catalogue words, is the one generic sentence."""
+    parts = rule_id.replace(":", ".").split(".")
+    if len(parts) != 4 or parts[0] != "day" or len(parts[2]) != 4 or not parts[2].isdigit():  # noqa: PLR2004 - HHMM
+        return DAY_RULE_GENERIC_TEXT
+    action = PLAYBOOK_DAY_RULE_ACTION_TEXT.get(parts[3])
+    if action is None:
+        return DAY_RULE_GENERIC_TEXT
+    kind = PLAYBOOK_DAY_RULE_KIND_TEXT[parts[1]] if parts[1] in _DAY_KINDS_NAMED_BY_ID else DAY_RULE_GENERIC_TEXT
+    return f"{kind}, {parts[2][:2]}:{parts[2][2:]}: {action}"
 
 
 #: #650: triggers whose playbook row has no unit but whose value is not a plain number: rupees / a count

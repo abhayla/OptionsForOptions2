@@ -76,10 +76,19 @@ def test_a_flag_with_its_record_is_unchanged(monkeypatch):
     assert route.live_values(ev)["T-01"] == D("0.3482")
 
 
-def test_a_rule_the_check_could_not_evaluate_is_never_invented_from_the_record(monkeypatch):
-    nc = pe.NotChecked("T-01", "T-01", "x")
+def test_a_rule_not_checked_with_an_open_record_stays_fired_from_the_record_and_says_not_checked(monkeypatch):
+    # ADR-309 (1) (issue 19): an open record stays fired also while its rule is not checked (closed market)
+    nc = pe.NotChecked("T-01", "T-01", pe.DAY_RULE_NOT_CHECKED)
     ev = _ev(results=(nc,), clear=False)
-    _o, _d, _f, results = _read(monkeypatch, [_rec()], ev)
+    opened, _d, _f, results = _read(monkeypatch, [_rec()], ev)
+    shown = _shown(results, opened)
+    assert [(o["kind"], o["value"]) for o in shown] == [("not_checked", None), ("flag", D("0.3482"))]
+    assert shown[1]["suggestion_id"] == _rec().id
+
+
+def test_a_rule_not_checked_with_no_record_is_not_checked_only_nothing_invented(monkeypatch):
+    nc = pe.NotChecked("T-01", "T-01", "x")
+    _o, _d, _f, results = _read(monkeypatch, [], _ev(results=(nc,), clear=False))
     assert list(results) == [nc]
 
 

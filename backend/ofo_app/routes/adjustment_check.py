@@ -256,8 +256,18 @@ def _held_stop_line(r: pe.Flag, credit: bool) -> Any:
                               stop_pct=_num(r.threshold).normalize())
 
 
+def _reached(line: Any, at: datetime.datetime, today: datetime.date | None) -> Any:
+    """The stop sentence with when it was reached: the time, and the date too when that was not today (IST, the server's
+    day; ``today`` None = the time only)."""
+    day = at.astimezone(IST).date()
+    if today is None or day == today:
+        return render_explanation("stop_fired_at", line=line, time=at)
+    return render_explanation("stop_fired_on", line=line, date=day, time=at)
+
+
 def stop_text(
     r: pe.Result, limits: tuple[pe.LimitNow, ...], pnl: Any, fired_at: Mapping[str, datetime.datetime],
+    today: datetime.date | None = None,
 ) -> Any:
     """GC-ICFIX u142: a fired stop's warning detail, all from the evaluator's numbers: the loss now and the stop line in
     rupees and percent (the credit stop: rupees and the multiple), and when its record opened.
@@ -270,7 +280,7 @@ def stop_text(
     at = fired_at.get(r.rule_id)
     if isinstance(r, HeldFlag):  # ADR-309: the record's own figures, never the loss now beside them
         line = _held_stop_line(r, credit)
-        return line if line is None or at is None else render_explanation("stop_fired_at", line=line, time=at)
+        return line if line is None or at is None else _reached(line, at, today)
     lim = next((x for x in limits if x.rule_id == r.rule_id and (credit or x.trigger_id == sl.TRIGGER_MAX_LOSS)), None)
     if lim is None or not all(isinstance(v, Decimal) for v in (lim.amount, lim.threshold, pnl, r.value, r.threshold)):
         return None
@@ -282,7 +292,7 @@ def stop_text(
         else:
             line = render_explanation("stop_fired_loss", loss=loss, loss_pct=_num(r.value).normalize(), stop=lim.amount,
                                       stop_pct=_num(r.threshold).normalize())
-        return line if at is None else render_explanation("stop_fired_at", line=line, time=at)
+        return line if at is None else _reached(line, at, today)
     except (TypeError, ValueError):
         return None
 
@@ -349,16 +359,22 @@ def live_fields(rule_id: str, live: Mapping[str, Decimal], fired_at: Mapping[str
 
 
 def shown_results(ev: pe.Evaluation, open_recs: Any) -> list[pe.Result]:
-    """ADR-309: the shown fired state follows the gate's open RECORD. A rule the check evaluated false (``ev.clear``)
-    that still has an open record is shown as fired, with the value that fired it; the gate (never the screen) ends it
-    when the value clears the re-arm band. A rule not evaluated (not checked, already true) is left as the evaluator
-    says it: nothing is invented from a record."""
+    """ADR-309 (1): the shown fired state follows the gate's open RECORD. A rule the check evaluated false
+    (``ev.clear``), or could not check at all (market closed, prices not live: ``NotChecked``), that still has an open
+    record is shown as fired, with the figures that fired it; a not-checked rule keeps its not-checked line beside it.
+    The gate (never the screen) ends the record. A rule with NO open record is left as the evaluator says it (not
+    checked, already true): nothing is invented where no record exists."""
     cmp_of = {v.rule_id: v.cmp for v in ev.values}
+    # GC-ICFIX issue 19: a close (prices not live) reads the rule "not checked", which is not "cleared": the open record
+    # stays shown as fired with its own figures, the not-checked line beside it (the stop must not vanish at 15:30)
+    unread = {r.rule_id for r in ev.results if isinstance(r, pe.NotChecked)}
     return [*ev.results,
-            *(HeldFlag(rec.rule_id, rec.trigger_id, rec.stage, rec.value, rec.threshold, cmp_of[rec.rule_id])
+            *(HeldFlag(rec.rule_id, rec.trigger_id, rec.stage, rec.value, rec.threshold,
+                       cmp_of.get(rec.rule_id) or rec.cmp)
               for rec in open_recs
-              if rec.rule_id in ev.clear and rec.rule_id in cmp_of and rec.trigger_id is not None
-              and rec.value is not None and rec.threshold is not None)]
+              if ((rec.rule_id in ev.clear and rec.rule_id in cmp_of) or rec.rule_id in unread)
+              and rec.trigger_id is not None and rec.value is not None and rec.threshold is not None
+              and (cmp_of.get(rec.rule_id) or rec.cmp) is not None)]
 
 
 def live_values(ev: pe.Evaluation) -> dict[str, Decimal]:
@@ -444,7 +460,8 @@ async def adjustment_check(  # noqa: PLR0913 - FastAPI dependencies, one per inp
               "withheld": None if ev.withheld is None else render(ev.withheld),
               "results": [result_out(r, wording, opened, dismissed=dismissed, body=resolved.body,
                                     cheapest=cheapest(state), target=check.target_of(state))
-                              | {"stop_text": stop_text(r, ev.limits, state.pnl, fired_at)}
+                              | {"stop_text": stop_text(r, ev.limits, state.pnl, fired_at,
+                                                           market.now.astimezone(IST).date())}
                               | live_fields(r.rule_id, live, fired_at, reply["as_of_text"])
                           for r in shown],
               "limits": limits_out(ev.limits, target_unset)}
