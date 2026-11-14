@@ -115,7 +115,7 @@ async def test_a_draft_with_no_plan_and_no_version_lists_can_delete_true(app_eng
 async def test_an_unreadable_plan_table_refuses_the_delete_and_leaves_the_row_visible(app_engine, monkeypatch):
     """Attack 5: the decision query raises -> DELETE_AFTER_BASKET, nothing hidden."""
     async with _Tx(app_engine) as tx:
-        monkeypatch.setattr(store, "_CAN_DELETE", text("SELECT 1 / 0"))
+        monkeypatch.setattr(store, "_DELETABLE", text("SELECT 1 / 0"))
         with pytest.raises(store.StrategyStoreError) as err:
             await store.delete_draft(tx.conn, tx.user, tx.strategy_id, expected_revision=1)
         assert err.value.code == store.DELETE_AFTER_BASKET
@@ -411,18 +411,17 @@ async def _paper_order(conn, strategy_id: int) -> None:
                        {"s": strategy_id, "c": contract})
 
 
-async def test_a_strategy_with_a_paper_order_is_never_deleted_and_says_paper(app_engine):
-    """ADR-271: list says can_delete false + has_paper_order true; DELETE refuses with the paper wording."""
+async def test_a_strategy_with_only_paper_orders_is_deleted_and_undone(app_engine):
+    """ADR-293: list says can_delete true + has_paper_order true; DELETE hides it; Undo brings it back."""
     async with _Tx(app_engine) as tx:
         revision = await _revision(tx.conn, tx.strategy_id)
-        async with _client(_app(_ConnMaker(tx.conn), tx.user)) as ac:
-            before = (await ac.get("/strategies")).json()["strategies"]
-            assert [(s["can_delete"], s["has_paper_order"]) for s in before] == [(True, False)]
         await _paper_order(tx.conn, tx.strategy_id)
         async with _client(_app(_ConnMaker(tx.conn), tx.user)) as ac:
             listed = (await ac.get("/strategies")).json()["strategies"]
-            assert [(s["can_delete"], s["has_paper_order"]) for s in listed] == [(False, True)]
-            refused = await ac.delete(f"/strategies/{tx.strategy_id}", params={"expected_revision": revision})
-            assert (refused.status_code, refused.json()["code"]) == (HTTPStatus.CONFLICT, "STRATEGY_VALIDATION_504")
-            assert refused.json()["what_happened"] == "Can't delete: paper orders were placed for this strategy."
+            assert [(s["can_delete"], s["has_paper_order"]) for s in listed] == [(True, True)]
+            done = await ac.delete(f"/strategies/{tx.strategy_id}", params={"expected_revision": revision})
+            assert done.status_code == HTTPStatus.OK
+            assert (await ac.get("/strategies")).json()["strategies"] == []
+            back = await ac.post(f"/strategies/{tx.strategy_id}/undelete", params={"expected_revision": revision})
+            assert back.status_code == HTTPStatus.OK
         assert (await tx.conn.execute(RAW_ROW, {"id": tx.strategy_id})).one().deleted_at is None

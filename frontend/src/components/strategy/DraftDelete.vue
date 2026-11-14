@@ -6,7 +6,7 @@ import Icon from "@/components/common/Icon.vue";
 import { computed } from "vue";
 import { strategyLabel } from "@/lib/saveDraft";
 import {
-  DELETE_CONFIRM_TEXT,
+  confirmText,
   canDelete,
   refusedText,
 } from "@/lib/strategyActivity";
@@ -62,7 +62,7 @@ const rowName = computed(() => strategyLabel(props.row, `Draft ${props.row.id}`)
     class="flex flex-wrap items-center gap-2"
     data-testid="delete-confirm-box"
   >
-    <span>{{ DELETE_CONFIRM_TEXT }}</span>
+    <span>{{ confirmText(row) }}</span>
     <button
       type="button"
       class="link"

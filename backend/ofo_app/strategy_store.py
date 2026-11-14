@@ -118,14 +118,15 @@ _INSERT = text(
 _CAN_DELETE_SQL = ("(NOT EXISTS (SELECT 1 FROM public.execution_plans p WHERE p.strategy_id = s.id) "
                    "AND NOT EXISTS (SELECT 1 FROM public.strategy_versions v WHERE v.strategy_id = s.id) "
                    "AND NOT EXISTS (SELECT 1 FROM public.paper_orders o WHERE o.strategy_id = s.id))")  # ADR-271
+#: ADR-293: Delete is offered unless a REAL basket was sent (a plan row or a version row); practice orders never block it.
+_DELETABLE_SQL = ("(NOT EXISTS (SELECT 1 FROM public.execution_plans p WHERE p.strategy_id = s.id) "
+                  "AND NOT EXISTS (SELECT 1 FROM public.strategy_versions v WHERE v.strategy_id = s.id))")
+_DELETABLE = text(f"SELECT {_DELETABLE_SQL} AS can_delete FROM public.strategies AS s WHERE s.id = :id")  # noqa: S608
 _HAS_PAPER_SQL = "EXISTS (SELECT 1 FROM public.paper_orders o WHERE o.strategy_id = s.id)"
 #: ADR-299 / ADR-298: "an order was placed", practice OR real, in ONE place: a paper order, or an execution plan
 #: (a basket was sent to the broker). The one status word on every screen reads this (Draft = no order yet).
 _HAS_ORDER_SQL = (f"({_HAS_PAPER_SQL} OR EXISTS (SELECT 1 FROM public.execution_plans xp WHERE xp.strategy_id = s.id))")
 _CAN_DELETE = text(f"SELECT {_CAN_DELETE_SQL} AS can_delete FROM public.strategies AS s WHERE s.id = :id")  # noqa: S608
-_PAPER_ONLY = text(f"SELECT ({_HAS_PAPER_SQL} AND NOT EXISTS (SELECT 1 FROM public.execution_plans p WHERE p.strategy_id = s.id) "  # noqa: S608
-                   "AND NOT EXISTS (SELECT 1 FROM public.strategy_versions v WHERE v.strategy_id = s.id)) AS paper_only "
-                   "FROM public.strategies AS s WHERE s.id = :id")
 _SELECT_HIDDEN = text(f"SELECT {_COLUMNS} FROM public.strategies WHERE id = :id AND user_ref = :user_ref "  # noqa: S608
                       "AND deleted_at IS NOT NULL FOR UPDATE")
 _SET_DELETED = text("UPDATE public.strategies SET deleted_at = clock_timestamp() WHERE id = :id AND deleted_at IS NULL")
@@ -140,7 +141,7 @@ _SELECT_FOR_UPDATE = text(
 #: row's), only for the signed-in user's rows (REQ-134 AC-6).
 _LIST = text(
     "SELECT s.id, s.underlying, s.status, s.created_at, s.updated_at, s.name, s.scenario_id, "
-    f"{_CAN_DELETE_SQL} AS can_delete, {_HAS_PAPER_SQL} AS has_paper_order, "
+    f"{_DELETABLE_SQL} AS can_delete, {_HAS_PAPER_SQL} AS has_paper_order, "
     f"{_HAS_ORDER_SQL} AS has_order, "
     "d.definition -> 'legs' AS legs "
     "FROM public.strategies AS s "
@@ -304,13 +305,12 @@ async def never_sent(conn: Any, strategy_id: int) -> bool:
         return False
 
 
-async def _paper_only(conn: Any, strategy_id: int) -> bool:
-    """ADR-271: the refusal wording. True when a paper order exists and no real basket did; unreadable -> False
-    (the real-orders wording, the stricter one)."""
+async def _deletable(conn: Any, strategy_id: int) -> bool:
+    """ADR-293: no real basket was sent (practice orders do not count). Unreadable -> False (fail closed)."""
     try:
         async with conn.begin_nested():
-            return (await conn.execute(_PAPER_ONLY, {"id": strategy_id})).scalar_one() is True
-    except Exception:  # noqa: BLE001
+            return (await conn.execute(_DELETABLE, {"id": strategy_id})).scalar_one() is True
+    except Exception:  # noqa: BLE001 - an unreadable answer is "a basket may have been sent"
         return False
 
 
@@ -321,9 +321,7 @@ async def delete_draft(conn: Any, user_ref: str, strategy_id: int, *, expected_r
     async with conn.begin_nested():
         row = await _locked(conn, user_ref, strategy_id)
         _check_revision(row, expected_revision)
-        if not await never_sent(conn, row.id):
-            if await _paper_only(conn, row.id):
-                raise StrategyStoreError(DELETE_AFTER_PAPER, f"strategy {strategy_id} has paper orders")
+        if not await _deletable(conn, row.id):
             raise StrategyStoreError(DELETE_AFTER_BASKET, f"strategy {strategy_id} sent a basket or may have")
         await conn.execute(_SET_DELETED, {"id": row.id})
 
