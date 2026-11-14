@@ -25,7 +25,7 @@ from ofo.engine.extremes_charges import (
     open_round_trip_charges,
 )
 from ofo.engine.legs import Instrument
-from ofo.engine.orderbook import PaperOrder, net_positions
+from ofo.engine.orderbook import BookView, PaperOrder, net_positions
 from ofo_app.routes import adjustment as route
 
 EXPIRY = datetime.date(2026, 11, 3)
@@ -153,13 +153,28 @@ def test_prices_not_live_keeps_the_reason_and_the_after_charges_max() -> None:
     assert got.max_profit < book_extremes(view, terms, {}).max_profit
 
 
-def test_fully_closed_book_is_unchanged_and_nothing_is_left() -> None:
-    orders = [PaperOrder("1", "SELL", LOT, D("100"), "open", T0), PaperOrder("1", "BUY", LOT, D("90"), "exit", T0)]
-    terms = {"1": ContractTerms(Instrument.PE, D("22700"), EXPIRY)}
-    view = net_positions(orders, {})
-    got = max_after_charges(view, terms, {}, "NIFTY", RATES, _paid(orders).total)
-    assert got == book_extremes(view, terms, {})
-    assert (got.max_profit, got.max_loss) == (D("650.00"), D("650.00"))
+CLOSED = BookView((), D("-32.50"), D(0), D("-32.50"), D(0))  # booked -32.50, nothing open (strategy 141)
+
+
+def test_fully_closed_book_max_is_booked_minus_the_charges_paid() -> None:
+    # Strategy 141: booked -32.50, paid 403.45, nothing open (exit estimate 0): -32.50 - 403.45 = -435.95 = Total after
+    got = max_after_charges(CLOSED, {}, {}, "NIFTY", RATES, D("403.45"))
+    assert (got.max_profit, got.max_loss) == (D("-435.95"), D("-435.95"))
+    after = book_after_charges(CLOSED, D("403.45"), D("0"))
+    assert after.total_after == D("-435.95")
+    split = after_split(CLOSED, {}, {}, "NIFTY", RATES, after, D("403.45"))
+    assert (split.profit_left_after, split.loss_left_after) == (D("0"), D("0"))  # ADR-306 (5)
+    # reviewer's probe: booked -32.50, paid 62.63 -> -95.13
+    probe = max_after_charges(CLOSED, {}, {}, "NIFTY", RATES, D("62.63"))
+    assert (probe.max_profit, probe.max_loss) == (D("-95.13"), D("-95.13"))
+
+
+def test_fully_closed_book_without_rates_keeps_the_before_figure_and_says_no_charges() -> None:
+    got = max_after_charges(CLOSED, {}, {}, "NIFTY", None, D("403.45"))
+    assert (got.max_profit, got.max_loss) == (D("-32.50"), D("-32.50"))
+    assert open_round_trip_charges(CLOSED, {}, "NIFTY", None, D("403.45")) is None
+    after = book_after_charges(CLOSED, None, D("0"), "rates_unavailable")
+    assert (after.total_after, after.reason) == (None, "rates_unavailable")
 
 
 def test_unlimited_max_loss_stays_unlimited() -> None:

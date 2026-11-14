@@ -357,7 +357,7 @@ async def test_core_strategy_48_extremes_equal_the_hand_figures_with_their_texts
     assert body["profit_left_text"] == "+14,26,792.25"  # Indian grouping, read from the run of 2026-10-29
 
 
-async def test_f94_max_profit_and_loss_include_the_round_trip_charges_and_say_so(db):
+async def test_f94_max_profit_and_loss_include_the_charges_paid_and_the_cost_to_close_and_say_so(db):
     app, stored, *_ = await _seed_fixture(db)
     async with _client(app) as c:
         gross = (await c.get(f"/paper/strategies/{stored.id}")).json()
@@ -369,7 +369,11 @@ async def test_f94_max_profit_and_loss_include_the_round_trip_charges_and_say_so
                 datetime.date.fromisoformat(p["expiry"]), abs(p["net_quantity"]), D(p["average"]))
             for p in gross["positions"] if p["net_quantity"] != 0]
     charges = round_trip_charges(legs, stored.saved.definition.underlying, RATES)
-    assert charges > 0
+    assert charges == D("201.79")  # the three open legs' round trip (201.786262)
+    # ADR-263: charges really PAID on every order + the estimate to close what is open. The one closed leg has two real
+    # orders: SELL 65 @ 166.90 = 44.433828 and BUY 65 @ 190.05 = 29.164324 -> 73.598152; 201.786262 + 73.598152 =
+    # 275.384414, shown 275.39 (rounded up once). Old expectation: before - 201.79.
+    charges = D("275.39")
     assert D(body["max_profit"]) == D(gross["max_profit"]) - charges
     assert D(body["max_loss"]) == D(gross["max_loss"]) - charges
     assert (body["profit_left"], body["loss_left"]) == (gross["profit_left"], gross["loss_left"])
