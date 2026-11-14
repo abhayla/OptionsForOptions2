@@ -555,11 +555,20 @@ def _t02(c: _Ctx) -> Hit:
     return Hit("T-02", pnl, Decimal(0), "lt", pnl < 0)
 
 
+def sold_leg_delta(shorts: tuple[ShortLeg, ...]) -> Decimal | None:
+    """T-03's measure, the sold legs' delta: the largest absolute delta (ambiguous, two shorts); None when no short is
+    held or any short has no delta (never a partial answer). One function: T-03 and the guided builder's entry-guide
+    line (ADR-300) both read it, so the entry warning and the later rule agree on the same number."""
+    if not shorts or any(x.abs_delta is None for x in shorts):
+        return None
+    return max(x.abs_delta for x in shorts)
+
+
 def _t03(c: _Ctx) -> Hit:
-    deltas = [x.abs_delta for x in _shorts(c.state)]
-    if any(d is None for d in deltas):
+    delta = sold_leg_delta(_shorts(c.state))
+    if delta is None:
         raise _Missing(f"{P}missing_short_delta")
-    return _compare(c, "T-03", max(deltas))  # ambiguous (two shorts): the largest absolute delta
+    return _compare(c, "T-03", delta)
 
 
 def _finite(value, what: str) -> Decimal:

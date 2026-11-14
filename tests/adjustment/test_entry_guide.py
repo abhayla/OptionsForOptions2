@@ -8,7 +8,6 @@ import pathlib
 from decimal import Decimal as D
 
 import pytest
-
 from ofo.adjustment import entry_guide as eg
 from ofo.adjustment import playbook_eval as pe
 

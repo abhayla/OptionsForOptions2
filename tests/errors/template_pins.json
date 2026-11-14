@@ -3431,6 +3431,18 @@
     "sha256": "6812d4f9f2a54353f3930dcd5eac870ebb5e421e25baa6c61dd616426750e8d8",
     "reviewed": "owner read 2026-11-02 (accepted after independent screen, not read line by line)"
   },
+  "explanation:entry_guide_breaks_call": {
+    "sha256": "aabf4429931768f1d6fe05e07c9c3b258a192d5d4922e1e495f745d0aa9c2c6a",
+    "reviewed": "pending owner read"
+  },
+  "explanation:entry_guide_breaks_put": {
+    "sha256": "b6d7dcb4c320ac77a5bd6e27085b59f603e408bc891cebfce273f362a337dffa",
+    "reviewed": "pending owner read"
+  },
+  "explanation:entry_guide_unchecked": {
+    "sha256": "c68f5cb1ad069c5eb3f74a1b40ed3f916ba6617c1372eb148376e92b0842c6c9",
+    "reviewed": "pending owner read"
+  },
   "explanation:settings_registry_text": {
     "sha256": "a528dd1d122ebb0c37e0e53f81aead1e586bb6fab3efbcafaa6357af9620b5c4",
     "reviewed": "owner read 2026-11-02 (accepted after independent screen, not read line by line)"
