@@ -4,6 +4,16 @@ Contract: `docs/process/goal-contract-GC-ICFIX-2026-11-13.md`. Branch `fix/gc-ic
 NOTHING IS PUSHED. Tracker: https://claude.ai/artifact/LcMTSr5xx8LvAYVniotkxK (rows u001..u611).
 Status in one line: the repairs are built and checked on the branch; the full local check is green; the SCREEN PROOFS are not done, so phase 1 is PARTIAL.
 
+## LATEST STATE (14 Nov 2026, 08:49 IST) - read this first
+- DONE since 05:41: screen proofs u104, u006, u116, u130, u165 done on the test-data copy; a saved Target equal to the default applies on the last day (390c5034); a refused rule check shows its sentence, never the raw error object (bc583b5f); owner question Q9 recorded (4c787395).
+- PENDING: sixth full local check started 08:5x on 27fc677e (log `D:\Abhay\scratch\gc-icfix-backup\prepush-run6-27fc677e.log`), result not known when this was written; a new backup bundle after it; the live app copy (API 8765, vite 5173) still serves an older head and needs a restart from the branch.
+- BLOCKED on a market day and the owner's Kite login: u145 (a stop firing on screen) and u154 (the 8-order Confirm box): Monday 16 Nov if the exchange is open (check the calendar first).
+- PARKED: "Max profit / Max loss after the charges really paid" = issue #707, branch `build/gc-icfix-paisa` head 15245e87. It was merged as d9c62ee2 and REVERTED as 27fc677e (08:47), so this branch no longer has it. Four rounds; a database test failed (`'962' == '962.00'`). Left: format money text once at the reply boundary, a database-path test with a stored futures row, re-run the four database files one at a time. Finding: `guard-removal-drops-the-value-shape-it-also-gave`.
+- Consequence meanwhile: Max profit / Max loss after charges still estimate a full round trip; a closed practice trade's Max figures do not equal its Total; the review can differ from the page by a paisa; the Completed row lacks the word "Charges".
+- OWNER: questions Q4, Q7, Q8, Q9 open in `docs/process/owner-questions-2026-11-13.md`; builder folders now 17 (the 12 named below plus `-left`, `-alert`, `-paisa`, `-eq`, `-raw`); nothing pushed; the push happens only on the owner's words "push GC-ICFIX".
+- CORRECTION: an earlier note called "a futures leg priced as an option in the review" unconfirmed; it IS real at `adjustment_readers.py` ~171 (past fills), repaired only on the parked branch.
+- Test-data copy: STOPPED (07:2x). A user-level usage monitor was built this session outside the repo (plan: the owner's Claude plans folder, `usage-monitor-plan-2026-11-14.md`); not part of this contract.
+
 ## LATEST STATE (14 Nov 2026, 05:41 IST) - read this first; it supersedes the 02:50 block below where they differ
 - Full local pre-merge check, fifth run: `TOTAL PASS 3302.1s` on head `b28de7f92d0bc59791cd14c038710006eb25928d`
   (the PC was low on memory, 1.7 GB free, so it took 55 minutes; a normal run is about 34).

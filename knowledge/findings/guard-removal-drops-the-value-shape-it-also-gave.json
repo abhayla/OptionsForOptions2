@@ -1,0 +1,20 @@
+{
+  "id": "guard-removal-drops-the-value-shape-it-also-gave",
+  "scope": "generic",
+  "class": "A guard that refuses a value often also gives that value its shape (its type, precision or text format) because every accepted value had to pass through it; removing or loosening the guard for one reason silently drops the second job, and the output changes shape for every value, not only the newly accepted ones.",
+  "mechanism": "The whole-paise demand in whole_trade._signed_paise refused any amount finer than a paisa, and as a side effect every accepted amount reached the reply as exact two-decimal text. Round 4 of the charges-paid work loosened it to accept finer amounts (needed for charges really paid) and replaced the test that refused them; nothing else formatted money text, so the reply began to send '962' for '962.00' and a 28-digit tail (19175.81000000000000000000033 for 19175.81) for three fills at 100.00 / 100.00 / 100.05.",
+  "first_seen": {
+    "date": "2026-11-14",
+    "where": "branch build/gc-icfix-paisa @ 15245e87, whole_trade._signed_paise (parked issue #707)",
+    "evidence": "tests_app/test_adjustment_approaches_route.py::test_ac2_adj13_booked_pnl_is_in_the_after FAILED on 15245e87: assert ('962' == '962.00'. Caught only by a database test the builder had been told not to run; the fast gates and the Opus check 2 (verdict PASS) did not see it. The same Opus check listed the 28-digit tail as a minor."
+  },
+  "fix": "Not fixed (parked, issue #707). Planned: format money text once at the reply boundary (2 decimals, same point as the trade page), so the shape no longer depends on a guard upstream.",
+  "detection": {
+    "status": "unguarded",
+    "checks": [],
+    "note": "When a brief loosens or removes a guard, it must list what the guard also did (shape, precision, ordering, defaults) and name the test that pins each; a changed guard's brief carries the database tests that read the shape, run one file at a time. A structural fix is a single formatting function at the reply boundary with a test that feeds it unformatted values (run-discipline B8)."
+  },
+  "spec_ref": [
+    "spec/decisions/ADR-008.md"
+  ]
+}

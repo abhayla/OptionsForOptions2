@@ -675,6 +675,7 @@ issues:
   "#700": S6.7  # A changed plan waits one speed interval before its background re-check (_last_check not cleared)
   "#701": S6.7  # GC-TRACK1 k28: remaining iron-condor defects and the frozen DEPTH list
   "#702": S6.7  # GC-TRACK1 k22: daily cap count restored on worker start includes exempt records (parked after 2 rounds)
+  "#707": S6.7  # PARKED: Max profit and Max loss after the charges really paid (GC-ICFIX, 4 rounds)
 
 # Work items whose status is not done.
 work_items:
