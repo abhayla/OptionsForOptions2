@@ -39,7 +39,10 @@
       </div>
     </div>
     <!-- GC-ICFIX Issue 10 (ADR-256): the server's one factual line when this exit leaves a sold leg unprotected; Confirm stays enabled -->
-    <p v-if="exitWarning" class="mt-3 text-sm font-medium text-warn" role="status" data-testid="paper-exit-warning">{{ exitWarning }}</p>
+    <p v-if="exitState === 'risk'" class="mt-3 text-sm font-medium text-warn" role="status" data-testid="paper-exit-warning">{{ exitWarning }}</p>
+    <!-- fail closed: a check that could not run is said so, never shown as "no risk"; Confirm is not locked by either line -->
+    <p v-else-if="exitState === 'unchecked'" class="mt-3 text-sm font-medium text-warn" role="status" data-testid="paper-exit-unchecked">{{ PAPER_EXIT_UNCHECKED_TEXT }}</p>
+    <p v-else-if="exitState === 'checking'" class="mt-3 text-sm text-ink-muted" role="status" data-testid="paper-exit-checking">{{ PAPER_EXIT_CHECKING_TEXT }}</p>
     <p class="mt-3 text-xs text-ink-muted" data-testid="paper-not-real">{{ PAPER_NOT_REAL_TEXT }}</p>
     <!-- fix/paper-dialog-safe (ADR-017): a stored order is never offered again; an answer of unknown outcome sends the user to the
          Orderbook first and keeps Confirm locked for PAPER_UNKNOWN_HOLD_MS; a refusal (4xx: nothing stored) unlocks after an edit -->
@@ -64,7 +67,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import Chip from '@/components/common/Chip.vue'
 import Modal from '@/components/common/Modal.vue'
 import {
-  PAPER_EXIT_PRICED_BY_SERVER_TEXT, PAPER_NOT_REAL_TEXT, PAPER_OPEN_ORDERBOOK_LABEL, PAPER_PLACED_NOT_REFRESHED_TEXT, PAPER_PRICE_REASON, PAPER_LOTS_REASON, PAPER_UNKNOWN_HOLD_MS,
+  PAPER_EXIT_CHECKING_TEXT, PAPER_EXIT_PRICED_BY_SERVER_TEXT, PAPER_EXIT_UNCHECKED_TEXT, PAPER_NOT_REAL_TEXT, PAPER_OPEN_ORDERBOOK_LABEL, PAPER_PLACED_NOT_REFRESHED_TEXT, PAPER_PRICE_REASON, PAPER_LOTS_REASON, PAPER_UNKNOWN_HOLD_MS,
   PAPER_UNKNOWN_TEXT, HELD_LABEL, heldBlock, paperLotsOk, paperPriceOk,
 } from '@/lib/tracking'
 import { paperDialogTitle, paperKindLabel } from '@/lib/paperDrafts'
@@ -101,19 +104,24 @@ const ready = computed(() => rows.value.length > 0 && reasons.value.every((r) =>
 const unitsOf = (r) => r.lots * r.lot_size
 const orderOf = (r) => ({ contract_id: r.contract_id, side: r.side, quantity: unitsOf(r), price: r.kind === 'exit' ? '0' : String(r.price).trim(), kind: r.kind }) // price: as typed; an exit's is the server's (ignored)
 
-// GC-ICFIX Issue 10 (ADR-256): the screen compares nothing; it shows the server's line when `widens` is true, and nothing when the read fails
+// GC-ICFIX Issue 10 (ADR-256): the screen compares nothing; it shows the server's line when `widens` is true. Fail closed: a read that fails or answers
+// something unusable shows "could not check" (exitState 'unchecked'); while it runs, 'checking'; no exit row: '' (nothing).
 const exitWarning = ref('')
+const exitState = ref('')
 let askSeq = 0
 async function askExitRisk() {
   const seq = ++askSeq
   const exits = props.open && props.strategyId ? rows.value.filter((r) => r.kind === 'exit' && paperLotsOk(r.lots)) : []
-  if (!exits.length) { exitWarning.value = ''; return }
+  if (!exits.length) { exitState.value = ''; exitWarning.value = ''; return }
+  exitState.value = 'checking'
+  let state = 'unchecked'
   let line = ''
   try {
     const { data } = await api.get(`/paper/strategies/${props.strategyId}/exit-risk`, { params: { orders: JSON.stringify(exits.map(orderOf)) } })
-    line = data?.widens === true && typeof data.warning_text === 'string' ? data.warning_text : ''
-  } catch { line = '' }
-  if (seq === askSeq) exitWarning.value = line
+    if (data?.widens === false) state = ''
+    else if (data?.widens === true && typeof data.warning_text === 'string' && data.warning_text) { state = 'risk'; line = data.warning_text }
+  } catch { state = 'unchecked' }
+  if (seq === askSeq) { exitState.value = state; exitWarning.value = line }
 }
 watch(() => [props.open, props.orders, props.strategyId, rows.value.map((r) => r.lots).join()], askExitRisk, { immediate: true })
 

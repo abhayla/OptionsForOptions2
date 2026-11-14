@@ -1068,7 +1068,7 @@ async def paper_exit_risk(strategy_id: int, orders: Annotated[str, Query(max_len
         risk = exit_risk(_paper(orders), legs, terms)
     except ValueError:  # the exit is larger than what is open: the order route refuses it by name, not this read
         return ExitRiskOut(widens=False, max_loss_before=None, max_loss_after=None, warning_text=None)
-    priced = len(prices) == len(exits)
+    priced = len(prices) == len(exits) and risk.max_loss_before is not None  # the engine shows figures only when they agree
     (before, before_text), (after, after_text) = _extreme(risk.max_loss_before), _extreme(risk.max_loss_after)
     na = render_explanation("paper_exit_loss_not_available")
     warning = render_explanation("paper_exit_widens_loss", before=before_text if priced else na,

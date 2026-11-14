@@ -16,6 +16,8 @@ import { plainName } from '@/lib/saveDraft'
 /** GC-TP step 2 (ADR-207 (1)): the builder's action replaces "Start tracking". REQ-109 AC-1's footer, said plainly. */
 export const ADD_TO_PAPER_LABEL = 'Add to Paper'
 export const PAPER_NOT_REAL_TEXT = 'This is not a real trade. Paper orders use no real money.'
+export const PAPER_EXIT_CHECKING_TEXT = 'Checking whether this exit leaves a sold option without protection...'
+export const PAPER_EXIT_UNCHECKED_TEXT = 'The app could not check whether this exit leaves a sold option without protection. You can still confirm.'
 export const PAPER_PRICE_REASON = 'Enter a price in steps of 0.05'
 export const PAPER_LOTS_REASON = 'Enter whole lots, 1 or more'
 export const PAPER_ADDED_TEXT = 'Added to Paper'
