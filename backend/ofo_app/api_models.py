@@ -609,6 +609,7 @@ class AdjustApproachesOut(ApiModel):
     curves: dict[Identifier, list[list[Money]]] = {}  # "before" / approach id -> [[level, P&L after charges], ...]
     #: C12 (REQ-148): the curves valued at the nearer expiry close (legs on two expiries) -> their estimate label
     curves_estimated: dict[Identifier, CatalogueText] = {}
+    curves_estimate_note: CatalogueText | None = None  # ADR-307 (2): "not a limit" sentence beside an estimate curve
     timing: AdjustTimingOut | None = None
     available: list[AdjustAvailableOut] = []  # every generic approach, whatever was asked (no figures)
     days_to_expiry: int | None = None  # whole days from the reply's own market day to the nearest open leg's expiry

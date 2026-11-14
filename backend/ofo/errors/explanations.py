@@ -1931,6 +1931,10 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         "Not available: {leg} has no implied volatility to value it at the nearer expiry.",
                         {"leg": LegRef}),
     ExplanationTemplate("adjust_cmp_curve_estimated", "values_seen", "estimated at the nearer expiry"),
+    # ADR-307 (2): beside every nearer-expiry estimate curve; the flat ends are not the most that can be lost
+    ExplanationTemplate("adjust_cmp_curve_estimate_note", "values_seen",
+                        "This curve is an estimate at the nearer expiry only. The later leg stays open after that date, "
+                        "so the loss shown is not a limit, and the maximum loss cannot be estimated."),
     ExplanationTemplate("adjust_cmp_near_no_rate", "values_seen",
                         "Not available: no interest rate was read to value the later expiry's legs."),
     ExplanationTemplate("adjust_cmp_no_bid_ask", "values_seen", "Not available: {leg} has no bid or no ask.",

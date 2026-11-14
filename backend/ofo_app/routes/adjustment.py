@@ -753,7 +753,9 @@ def _compare_block(cmp: Any) -> dict:
             "curves": {k: [[level, pnl] for level, pnl in points] for k, points in cmp.curves.items()},
             # C12: a curve valued at the nearer expiry close (legs on two expiries) is an estimate, labelled so the
             # screen never draws it as an at-expiry line
-            "curves_estimated": {k: render_explanation("adjust_cmp_curve_estimated") for k in cmp.estimated}}
+            "curves_estimated": {k: render_explanation("adjust_cmp_curve_estimated") for k in cmp.estimated},
+            # ADR-307 (2): one sentence whenever such a curve is drawn: the loss shown is not a limit
+            "curves_estimate_note": render_explanation("adjust_cmp_curve_estimate_note") if cmp.estimated else None}
 
 
 async def _margin(margin_of: ApproachMargin, built: ApproachLegs, market: MarketInputs) -> dict:
