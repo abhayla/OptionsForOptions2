@@ -1061,7 +1061,7 @@ const pricesStamp = computed(() => {
           <p class="mt-1 text-sm text-ink-muted" data-testid="checked-at">Checked at {{ checkedAt }}</p>
         </div>
 
-        <!-- GC-ICFIX 21 (X-7, ADR-259): a strategy with orders and no open leg (Completed) has no tracking panel; its history stays readable -->
+        <!-- GC-ICFIX 21 (X-7, ADR-259): a strategy with orders and no open leg (Completed) has no tracking panel; its history stays readable. Not strategyStatus.js: a practice strategy opens from GET /paper/strategies/{id}, which carries no status. -->
         <AdjustSteps v-if="paper && savedId && !showNumbers && state === 'no-draft'" :strategy-id="savedId" />
 
         <div v-if="showNumbers" :class="updating || keptWhileLoading ? 'opacity-60' : ''" :data-updating="updating || keptWhileLoading ? 'true' : 'false'" data-testid="numbers">

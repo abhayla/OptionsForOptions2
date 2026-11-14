@@ -61,7 +61,6 @@ log = logging.getLogger(__name__)
 router = APIRouter(route_class=ClosedRoute)
 _NOT_AVAILABLE = "user_input_request_not_available"  # the adjustment-check route's not-found answer
 NO_PLAN_MAX = "no_plan_max"
-NOT_RECORDED = "adjust_history_approach_not_recorded"
 #: REQ-163 AC-1 / REQ-112 AC-3: the words of each fill state (a paper row: in place of a fill state)
 FILL_TEXT = {"paper": "adjust_history_paper_fill", "confirmed": "adjust_history_fill_confirmed",
              "unconfirmed": "adjust_history_fill_unconfirmed", "failed": "adjust_history_fill_failed"}
@@ -208,16 +207,18 @@ def _why(records: list[playbook_store.Suggestion]) -> dict:
 
 def approach_text(approach_id: str | None) -> Any:
     """ADR-273: the Compare screen's own name of the approach (one source: ``approach_name_id``); no stored approach,
-    or an id the catalogue does not know -> "Approach not recorded", never blank and never a raw id."""
+    or an id the catalogue does not know -> None (the row shows no approach line; never a filler, never a raw id)."""
+    if not approach_id:
+        return None
     try:
-        return render_explanation(approach_name_id(approach_id)) if approach_id else render_explanation(NOT_RECORDED)
+        return render_explanation(approach_name_id(approach_id))
     except ValueError:
-        return render_explanation(NOT_RECORDED)
+        return None
 
 
 def _row(r: ah.HistoryRow, found: dict, records: list[playbook_store.Suggestion]) -> dict:
-    # shortcut: no applied approach is stored with a placed basket yet (ADR-273 write side), so every adjustment row
-    # says "not recorded"; pass the stored id here once the placement stores it.
+    # shortcut: no applied approach is stored with a placed basket yet (ADR-273 write side, parked): always None here;
+    # pass the stored id once the placement stores it.
     approach = approach_text(None) if r.step == "adjustment" else None
     return {"step": r.step, "number": r.number, "at": r.at,
             "orders": [{"side": o.side,
