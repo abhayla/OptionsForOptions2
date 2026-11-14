@@ -289,7 +289,6 @@ _STORE_REFUSAL = MappingProxyType({
     store.VERSION_PENDING: ("strategy_version_pending", Failure.CONFLICT),  # W-144, ADR-019 Q191
     store.RECONCILIATION_REQUIRED: ("strategy_reconciliation_required", Failure.CONFLICT),  # ADR-018, Q222
     store.DELETE_AFTER_BASKET: ("strategy_delete_after_basket", Failure.CONFLICT),  # REQ-070 AC-6, ADR-118
-    store.DELETE_AFTER_PAPER: ("strategy_delete_after_paper_order", Failure.CONFLICT),  # ADR-271
 })
 
 

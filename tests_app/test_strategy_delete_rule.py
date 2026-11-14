@@ -30,10 +30,11 @@ def _deletable(placed: tuple[str, ...]) -> bool:
     db.execute("CREATE TABLE public.strategies (id INTEGER)")
     db.execute("INSERT INTO public.strategies VALUES (1)")
     for t in _TABLES:
-        db.execute(f"CREATE TABLE public.{t} (strategy_id INTEGER)")
-        if t in placed:
-            db.execute(f"INSERT INTO public.{t} VALUES (1)")
-    return db.execute(f"SELECT {store._DELETABLE_SQL} FROM public.strategies AS s").fetchone()[0] == 1  # noqa: S608
+        db.execute("CREATE TABLE public." + t + " (strategy_id INTEGER)")
+    for t in placed:
+        db.execute("INSERT INTO public." + t + " VALUES (1)")  # noqa: S608
+    sql = " ".join(("SELECT", store._DELETABLE_SQL, "FROM public.strategies AS s"))
+    return db.execute(sql).fetchone()[0] == 1
 
 
 @pytest.mark.parametrize(("placed", "expected"), [

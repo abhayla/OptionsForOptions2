@@ -47,7 +47,6 @@ VERSION_NOT_FOUND = "version_not_found"
 RECONCILIATION_REQUIRED = "reconciliation_required"
 #: W-156 (REQ-070 AC-6, ADR-118): a strategy that sent a basket (any plan row or version row) is never deleted.
 DELETE_AFTER_BASKET = "delete_after_basket"
-DELETE_AFTER_PAPER = "delete_after_paper_order"  # ADR-271
 
 
 class StrategyStoreError(ValueError):
@@ -120,7 +119,9 @@ _CAN_DELETE_SQL = ("(NOT EXISTS (SELECT 1 FROM public.execution_plans p WHERE p.
                    "AND NOT EXISTS (SELECT 1 FROM public.paper_orders o WHERE o.strategy_id = s.id))")  # ADR-271
 #: ADR-293: Delete is offered unless a REAL basket was sent (a plan row or a version row); practice orders never block it.
 _DELETABLE_SQL = ("(NOT EXISTS (SELECT 1 FROM public.execution_plans p WHERE p.strategy_id = s.id) "
-                  "AND NOT EXISTS (SELECT 1 FROM public.strategy_versions v WHERE v.strategy_id = s.id))")
+                  "AND NOT EXISTS (SELECT 1 FROM public.strategy_versions v WHERE v.strategy_id = s.id) "
+                  # ADR-292: a condor held at the broker is a REAL position stored as practice orders: never deletable
+                  "AND NOT EXISTS (SELECT 1 FROM public.strategy_held_entries h WHERE h.strategy_id = s.id))")
 _DELETABLE = text(f"SELECT {_DELETABLE_SQL} AS can_delete FROM public.strategies AS s WHERE s.id = :id")  # noqa: S608
 _HAS_PAPER_SQL = "EXISTS (SELECT 1 FROM public.paper_orders o WHERE o.strategy_id = s.id)"
 #: ADR-299 / ADR-298: "an order was placed", practice OR real, in ONE place: a paper order, or an execution plan
@@ -296,8 +297,9 @@ async def rename(conn: Any, user_ref: str, strategy_id: int, new_name: str, *,
 
 
 async def never_sent(conn: Any, strategy_id: int) -> bool:
-    """REQ-070 AC-6: True only when the strategy never sent a basket (``_CAN_DELETE_SQL``, the list's can_delete).
-    The ONE reader of that rule for delete, history and restore. An unreadable answer is False (fail closed)."""
+    """REQ-070 AC-6 / ADR-293 (5): True only when the strategy has no plan, no version and no practice order
+    (``_CAN_DELETE_SQL``). The ONE reader of that rule for history and restore (Delete uses ``_deletable``).
+    An unreadable answer is False (fail closed)."""
     try:
         async with conn.begin_nested():
             return (await conn.execute(_CAN_DELETE, {"id": strategy_id})).scalar_one() is True

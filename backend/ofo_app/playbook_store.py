@@ -818,11 +818,13 @@ async def open_suggestions(conn: Any, user_ref: str, strategy_id: int) -> list[S
 
 _OPEN_STRATEGY_IDS = text("SELECT DISTINCT g.strategy_id FROM public.adjustment_suggestions g "
                           "JOIN public.strategies s ON s.id = g.strategy_id "
-                          "WHERE s.user_ref = :user_ref AND g.outcome = 'open' ORDER BY g.strategy_id")
+                          "WHERE s.user_ref = :user_ref AND s.deleted_at IS NULL AND g.outcome = 'open' "
+                          "ORDER BY g.strategy_id")
 
 
 async def open_strategy_ids(conn: Any, user_ref: str) -> list[int]:
-    """#652: the ids of the user's strategies with at least one open record (deleted strategies included)."""
+    """#652: the ids of the user's strategies with at least one open record (a hidden one is left out:
+    its records stay open for Undo, ADR-293 (3))."""
     return [int(r[0]) for r in (await conn.execute(_OPEN_STRATEGY_IDS, {"user_ref": user_ref})).all()]
 
 
