@@ -16,6 +16,7 @@
         <p v-if="read.plan" data-testid="plan-entry-playbook">{{ read.labels.playbook }}: {{ read.plan.playbookName }}</p>
         <p v-else data-testid="plan-entry-none">{{ read.labels.no_plan }}</p>
         <p v-if="checkStatus === 'loading'" data-testid="plan-entry-limits-loading">{{ LIMITS_LOADING_TEXT }}</p>
+        <p v-else-if="!limits && checkRefusal" data-testid="plan-entry-limits-refused">{{ checkRefusal }}</p>
         <LoadFailed v-else-if="!limits" :text="LIMITS_LOAD_FAILED_TEXT" prefix="plan-entry-limits" @retry="$emit('retry-check')" />
         <p v-else-if="limits.paused" data-testid="plan-entry-limits-paused">{{ limits.paused }}</p>
         <p v-else-if="!limits.rows.length" data-testid="plan-entry-limits-none">{{ LIMITS_NONE_TEXT }}</p>
@@ -27,7 +28,7 @@
         </template>
         <!-- GC-ICFIX u141: the check's own read time (the server's text; an older server sends none -> nothing shown) -->
         <p v-if="limits && check.as_of_text" class="text-xs text-ink-muted" data-testid="plan-entry-limits-as-of">{{ check.as_of_text }}</p>
-        <p v-if="limits && checkStale" class="text-xs text-red-700" data-testid="plan-entry-limits-stale">{{ CHECK_STALE_TEXT }}</p>
+        <p v-if="limits && checkStale" class="text-xs text-red-700" data-testid="plan-entry-limits-stale">{{ checkStaleLine(checkRefusal) }}</p>
         <p v-if="read.plan" data-testid="plan-entry-guards">
           {{ read.labels.max_adjustments }}: {{ read.plan.maxAdjustments }} / {{ read.labels.time_exit }}: {{ read.plan.timeExit }}
         </p>
@@ -46,13 +47,14 @@ import AdjustPlanSheet from '@/components/strategy/AdjustPlanSheet.vue'
 import LoadFailed from '@/components/common/LoadFailed.vue'
 import api from '@/services/api'
 import { fetchPlan } from '@/lib/adjustPlan'
-import { CHECK_STALE_TEXT, LIMITS_LOADING_TEXT, LIMITS_LOAD_FAILED_TEXT, LIMITS_NONE_TEXT, PLAN_LOADING_TEXT, PLAN_LOAD_FAILED_TEXT } from '@/lib/sharedStateText'
+import { checkStaleLine, LIMITS_LOADING_TEXT, LIMITS_LOAD_FAILED_TEXT, LIMITS_NONE_TEXT, PLAN_LOADING_TEXT, PLAN_LOAD_FAILED_TEXT } from '@/lib/sharedStateText'
 
 // the rule check's reply and the state of the panel's one read of it: 'loading' | 'ok' | 'failed'
 const props = defineProps({
   strategyId: { type: Number, default: null },
   check: { type: Object, default: null },
   checkStatus: { type: String, default: 'loading' },
+  checkRefusal: { type: String, default: '' }, // the server's sentence when the last check read was refused
   checkStale: { type: Boolean, default: false }, // a background re-read failed: the lines are the last good ones
 })
 defineEmits(['retry-check'])
