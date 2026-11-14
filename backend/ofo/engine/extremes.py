@@ -98,37 +98,77 @@ def book_extremes(view: BookView, terms: Mapping[str, ContractTerms],
     return BookExtremes(profit_left, loss_left, max_profit, max_loss, None)
 
 
+ExitState = Literal["yes", "no", "cannot_tell"]
+
+
 @dataclass(frozen=True)
 class ExitRisk:
-    """ADR-256: Max Loss before / after prepared exit orders; ``widens`` = the legs left open can lose more."""
+    """ADR-256: the answer to "does this basket leave the legs open with less protection?" in THREE states; ``no`` only
+    when proven. The figures (book Max Loss before / after) show only when the answer is yes and they read worse."""
+    state: ExitState
     max_loss_before: Figure | None
     max_loss_after: Figure | None
-    widens: bool
+    exposed: tuple[str, ...]  # the sold legs left open with less cover (instrument ids)
 
 
-def _open_floor(view: BookView, terms: Mapping[str, ContractTerms]) -> Figure | None:
-    """The lowest expiry P&L of the open legs alone at entry 0 (premium and booked P&L left out): the loss the structure
-    itself allows. 0 when nothing is open; None across several expiries (the engine does not price those)."""
+def _naked(view: BookView, terms: Mapping[str, ContractTerms]) -> dict[Instrument, int] | None:
+    """Sold units with no bought unit of the same option type covering them, per type; a bought leg covers a sold leg
+    with the same or a later expiry. None when it cannot be counted (a future leg)."""
     open_ = [p for p in view.positions if p.net_quantity != 0]
-    if not open_:
-        return Decimal(0)
-    if len({terms[p.instrument_id].expiry for p in open_}) > 1:
+    if any(terms[p.instrument_id].instrument not in (Instrument.CE, Instrument.PE) for p in open_):
         return None
-    return _range(_strategy(open_, terms, {p.instrument_id: Decimal(0) for p in open_}), Decimal(0))[1]
+    out = {}
+    for kind in (Instrument.CE, Instrument.PE):
+        legs = [(terms[p.instrument_id].expiry, p.net_quantity) for p in open_
+                if terms[p.instrument_id].instrument is kind]
+        cover = [[e, q] for e, q in legs if q > 0]
+        naked = 0
+        for expiry, sold in sorted(((e, -q) for e, q in legs if q < 0), reverse=True):  # latest sold expiry first
+            left = sold
+            for bought in cover:
+                take = min(left, bought[1]) if bought[0] >= expiry else 0
+                bought[1] -= take
+                left -= take
+            naked += left
+        out[kind] = naked
+    return out
 
 
-def exit_risk(book: Sequence[PaperOrder], exits: Sequence[PaperOrder], terms: Mapping[str, ContractTerms]) -> ExitRisk:
-    """Max Loss before / after ``exits`` (ADR-008: the one engine). ``widens`` compares the open legs' own structure, so
-    a loss booked by closing a whole spread never reads as wider; closing everything or a sold leg never widens."""
-    before, after = net_positions(list(book), {}), net_positions([*book, *exits], {})
-    floor_before, floor_after = _open_floor(before, terms), _open_floor(after, terms)
-    widens = (floor_before is not None and floor_after is not None and floor_before is not UNLIMITED
-              and (floor_after is UNLIMITED or floor_after < floor_before))
-    loss_before, loss_after = book_extremes(before, terms, {}).max_loss, book_extremes(after, terms, {}).max_loss
-    # one result: figures show only when they themselves read worse after (or unlimited); else the flag stands alone
-    agree = widens and loss_before is not None and loss_before is not UNLIMITED and (
-        loss_after is UNLIMITED or (loss_after is not None and loss_after < loss_before))
-    return ExitRisk(loss_before if agree else None, loss_after if agree else None, widens)
+def _worse(after: Figure | None, before: Figure | None) -> bool:
+    """ADR-256 amendment: Max Loss after unlimited, or more than double the Max Loss before (a loss is negative)."""
+    if after is None or before is None or before is UNLIMITED:
+        return False
+    return after is UNLIMITED or (after < 0 and after < 2 * before)
+
+
+def exit_risk(book: Sequence[PaperOrder], basket: Sequence[PaperOrder], terms: Mapping[str, ContractTerms]) -> ExitRisk:
+    """Judge a whole basket (exits and entries together) on the legs after ALL its orders (ADR-008: the one engine).
+    yes: naked sold units of an option type grow, or the book Max Loss after is unlimited / more than double while legs
+    stay open. no: proven (nothing left open, or both counts and both Max Loss figures known and neither rule fires).
+    Anything unproven (a future leg, two expiries, an order the book cannot take) is cannot_tell, never no."""
+    try:
+        before, after = net_positions(list(book), {}), net_positions([*book, *basket], {})
+        n0, n1 = _naked(before, terms), _naked(after, terms)
+        loss0, loss1 = book_extremes(before, terms, {}).max_loss, book_extremes(after, terms, {}).max_loss
+    except (ValueError, KeyError):
+        return ExitRisk("cannot_tell", None, None, ())
+    grew = {k for k in (n1 or {}) if n0 is not None and n1[k] > n0[k]}
+    left_open = any(p.net_quantity != 0 for p in after.positions)
+    if grew:
+        state: ExitState = "yes"
+    elif not left_open:
+        state = "no"
+    elif _worse(loss1, loss0):
+        state = "yes"
+    elif n0 is None or n1 is None or loss0 is None or loss1 is None:
+        state = "cannot_tell"
+    else:
+        state = "no"
+    exposed = tuple(p.instrument_id for p in after.positions
+                    if p.net_quantity < 0 and terms[p.instrument_id].instrument in grew)
+    shown = state == "yes" and loss0 is not None and loss1 is not None and loss0 is not UNLIMITED and (
+        loss1 is UNLIMITED or loss1 < loss0)
+    return ExitRisk(state, loss0 if shown else None, loss1 if shown else None, exposed)
 
 
 @dataclass(frozen=True)

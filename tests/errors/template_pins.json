@@ -3548,7 +3548,11 @@
     "reviewed": "owner read 2026-11-02 (decided in session under owner delegation, independent screen)"
   },
   "explanation:paper_exit_widens_loss": {
-    "sha256": "894f7fcf206bc84b98f133d7bb3fdbbff08a2ed91f7b51582d3467e0c1a8aca4",
+    "sha256": "9364577f9e8b3a0a67832368e177a21633caf0c39db29655bd584db1ada69b25",
+    "reviewed": "pending owner read"
+  },
+  "explanation:paper_exit_less_protected": {
+    "sha256": "b9db345fcaf2adcb022a79b957f2e9ff7dd2dbaf6e86e9b4a01a608776a769bb",
     "reviewed": "pending owner read"
   },
   "explanation:paper_exit_loss_not_available": {

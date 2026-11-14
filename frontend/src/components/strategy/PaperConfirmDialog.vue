@@ -111,19 +111,21 @@ const exitState = ref('')
 let askSeq = 0
 async function askExitRisk() {
   const seq = ++askSeq
-  const exits = props.open && props.strategyId ? rows.value.filter((r) => r.kind === 'exit' && paperLotsOk(r.lots)) : []
-  if (!exits.length) { exitState.value = ''; exitWarning.value = ''; return }
+  // the WHOLE basket (exits and entries) is judged on the legs after all of it; rows not yet valid wait for the user's edit
+  const basket = props.open && props.strategyId && rows.value.some((r) => r.kind === 'exit') ? rows.value : []
+  if (!basket.length) { exitState.value = ''; exitWarning.value = ''; return }
+  if (basket.some((r) => !paperLotsOk(r.lots) || (r.kind !== 'exit' && !paperPriceOk(r.price)))) { exitState.value = 'checking'; exitWarning.value = ''; return }
   exitState.value = 'checking'
   let state = 'unchecked'
   let line = ''
   try {
-    const { data } = await api.get(`/paper/strategies/${props.strategyId}/exit-risk`, { params: { orders: JSON.stringify(exits.map(orderOf)) } })
-    if (data?.widens === false) state = ''
-    else if (data?.widens === true && typeof data.warning_text === 'string' && data.warning_text) { state = 'risk'; line = data.warning_text }
+    const { data } = await api.get(`/paper/strategies/${props.strategyId}/exit-risk`, { params: { orders: JSON.stringify(basket.map(orderOf)) } })
+    if (data?.state === 'no') state = ''
+    else if (data?.state === 'yes' && typeof data.warning_text === 'string' && data.warning_text) { state = 'risk'; line = data.warning_text }
   } catch { state = 'unchecked' }
   if (seq === askSeq) { exitState.value = state; exitWarning.value = line }
 }
-watch(() => [props.open, props.orders, props.strategyId, rows.value.map((r) => r.lots).join()], askExitRisk, { immediate: true })
+watch(() => [props.open, props.orders, props.strategyId, rows.value.map((r) => `${r.lots}/${r.price}`).join()], askExitRisk, { immediate: true })
 
 // the rows as they were when the server refused them: Confirm unlocks only once the user has changed something
 const snapshot = () => JSON.stringify(rows.value.map((r) => [r.lots, r.price]))

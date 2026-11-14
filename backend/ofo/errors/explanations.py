@@ -1803,8 +1803,10 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         "priced."),
     # ADR-256: the exit confirm list, when the legs left open can lose more than before (a sold option lost its bought one)
     ExplanationTemplate("paper_exit_widens_loss", "values_seen",
-                        "After this exit, a sold option has no bought option protecting it. Maximum loss: {before} "
-                        "before, {after} after.", {"before": Explained, "after": Explained}),
+                        "After these orders the maximum loss changes. Maximum loss: {before} before, {after} after.",
+                        {"before": Explained, "after": Explained}),
+    ExplanationTemplate("paper_exit_less_protected", "values_seen",
+                        "Sold option with less protection: {legs}.", {"legs": Explained}),
     ExplanationTemplate("paper_exit_loss_not_available", "values_seen", "not available"),
     ExplanationTemplate("paper_trigger_level", "values_seen", "{level}", {"level": IndexLevel}),
     ExplanationTemplate("paper_alert_title", "what_triggered", "Paper strategy — {name}", {"name": Explained}),

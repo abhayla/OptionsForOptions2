@@ -94,9 +94,10 @@ def test_condor_plus_an_unrelated_later_expiry_long_cannot_be_judged() -> None:
     assert _ask([*IC, LATER_LONG], _x("4", "SELL", "170.00")).state == "cannot_tell"
 
 
-def test_a_future_leg_cannot_be_counted() -> None:
+def test_a_future_leg_cannot_be_counted_but_an_unlimited_result_is_still_proven() -> None:
     covered_call = [_o("10", "BUY", "25000.00"), _o("13", "SELL", "100.00")]
-    assert _ask(covered_call, _x("10", "SELL", "25010.00")).state == "cannot_tell"
+    assert _ask(covered_call, _x("13", "BUY", "90.00")).state == "cannot_tell"      # a future leg is left: not counted
+    assert _ask(covered_call, _x("10", "SELL", "25010.00")).state == "yes"             # the call is naked: unlimited
 
 
 def test_an_exit_larger_than_what_is_open_is_never_no() -> None:
