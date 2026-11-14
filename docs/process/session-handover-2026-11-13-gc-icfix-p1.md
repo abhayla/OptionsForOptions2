@@ -4,7 +4,31 @@ Contract: `docs/process/goal-contract-GC-ICFIX-2026-11-13.md`. Branch `fix/gc-ic
 NOTHING IS PUSHED. Tracker: https://claude.ai/artifact/LcMTSr5xx8LvAYVniotkxK (rows u001..u611).
 Status in one line: the repairs are built and checked on the branch; the full local check is green; the SCREEN PROOFS are not done, so phase 1 is PARTIAL.
 
-## STATE AT THE END OF THE SESSION (14 Nov 2026, 02:50 IST) - read this first, it corrects the sections below
+## LATEST STATE (14 Nov 2026, 05:41 IST) - read this first; it supersedes the 02:50 block below where they differ
+- Full local pre-merge check, fifth run: `TOTAL PASS 3302.1s` on head `b28de7f92d0bc59791cd14c038710006eb25928d`
+  (the PC was low on memory, 1.7 GB free, so it took 55 minutes; a normal run is about 34).
+- Built and merged AFTER the 02:50 block: the four screen leftovers of issues 3 and 4 (`aa7bb84c`: Profit left
+  breakdown by ADR-306, the charge-rates sentence under Max profit / Max loss, after-charges labels, "P&L (before
+  charges)" table header, a dash in the TOTAL row's percent cell); the target alert sentence of ADR-294 (2)
+  (`935ac140`, 2 rounds, Opus check: "Profit before charges +Rs 61.75 reached your target of 1%; after charges
+  -Rs 218.85"; a real (broker) trade gets a true reason because charges paid on broker orders are not read: Q8; the
+  optional figure cannot stop the rule check). So NOTHING buildable is left in phase 1.
+- Still OPEN in phase 1, both waiting on the owner: (1) the six screen proofs u104, u116, u130, u145, u154, u165 and
+  the screenshot half of u006; (2) removal of the builder worktrees (Q7): now 14 folders: the 12 named below plus
+  `OptionsForOptions2-gc-icfix-left` and `OptionsForOptions2-gc-icfix-alert`.
+- Screen proofs, exact diagnosis (measured 03:10): the PC was NOT locked (`OpenInputDesktop` succeeds; a LogonUI process
+  exists anyway); the Chrome window was MINIMISED; after restoring it (`ShowWindow`, 9) the first screenshot works
+  (1536x695) and every screenshot after a scroll or click times out. Not tested: window not in the foreground or
+  covered, display asleep. The real page area is 1536x695, NOT the 1536x639 the contract assumes: record the measured
+  size in u154. Do the proofs with the owner at the laptop, screen on, Chrome in front.
+- Known small gaps, none blocking: the rule-set test screens' use of the new alert sentence is pinned by a source-text
+  test only; the guard's warning log names the instrument, not the trade; "1%" in the alert against "1 %" elsewhere
+  (u501); the list-total function reads each trade's figures by name with no fallback; a slow rule check is re-asked
+  0-5 s after each answer with no back-off (issue 26); `tests_app/test_background_worker.py` took 20 minutes under
+  load; a builder raised the whole-suite run limit for one command (`FULL_SUITE_BUDGET=9`) because the brief told it
+  to run the whole suite.
+
+## STATE AT 02:50 IST (earlier block; still right except where the block above says otherwise)
 - Full local pre-merge check: `TOTAL PASS 1980.6s` on head `be8f438427ba5c02f75ed03cd413d8dea69d8c29` (89 commits ahead of main). It took four runs:
   run 1 stopped at the interface gate (2 call mismatches), run 2 at the scans gate (4 structure guards), run 3 at the
   app tests (3 stale tests), run 4 passed. A full run is about 34 minutes on this PC. It skips the 898 tests that need the
