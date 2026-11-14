@@ -158,7 +158,6 @@ def test_bad_amounts_are_refused_by_name(kwargs, name):
 
 
 @pytest.mark.parametrize(("kwargs", "name"), [
-    ({"booked": D("962.005")}, "booked_pnl"),
     ({"paid": D("0.001")}, "paid_charges"),
     ({"adjustment": D("92.405")}, "adjustment_charges"),
     ({"exits": D("60.1000001")}, "open_exit_charges"),
@@ -222,7 +221,11 @@ def test_ac2_no_open_leg_is_the_flat_booked_amount_less_charges(booked, charges,
     assert bool(w.after_charges.loss_regions) is (D(profit) < 0)
 
 
-def test_no_open_leg_still_refuses_bad_amounts_by_name():
+def test_booked_stays_exact_finer_than_paise_but_must_be_a_finite_decimal():
+    # ADR-008: a leg filled at two prices and part closed books a third decimal; the trade page keeps it, so does this
+    assert whole_trade_after(None, booked_pnl=D("1.001"), paid_charges=ZERO, adjustment_charges=ZERO,
+                             open_exit_charges=ZERO).booked_pnl == D("1.001")
+    assert _after(_strategy(_load("ADJ-13")), booked=D("962.005")).booked_pnl == D("962.005")
     with pytest.raises(ValueError, match="booked_pnl"):
-        whole_trade_after(None, booked_pnl=D("1.001"), paid_charges=ZERO, adjustment_charges=ZERO,
+        whole_trade_after(None, booked_pnl=D("NaN"), paid_charges=ZERO, adjustment_charges=ZERO,
                           open_exit_charges=ZERO)

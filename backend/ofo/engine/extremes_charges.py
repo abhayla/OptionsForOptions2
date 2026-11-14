@@ -21,7 +21,7 @@ from ofo.engine.orderbook import BookView
 
 __all__ = ["AfterSplit", "BookAfterCharges", "after_split", "book_after_charges", "max_after_charges",
            "open_exit_charges",
-           "open_round_trip_charges", "sum_after_charges", "with_charges"]
+           "open_round_trip_charges", "review_charge_lines", "sum_after_charges", "with_charges"]
 
 RATES_UNAVAILABLE = "rates_unavailable"
 NOT_PRICED = "not_priced"
@@ -119,7 +119,22 @@ def open_round_trip_charges(view: BookView, terms: Mapping[str, ContractTerms], 
     return to_paise_up((paid_exact or Decimal(0)) + charges_for_orders(orders, rates).total)
 
 
-def with_charges(got: BookExtremes, charges: Decimal | None) -> BookExtremes:
+def review_charge_lines(paid: Decimal, paid_exact: Decimal | None, own: Sequence[ChargeOrder],
+                        closing: Sequence[ChargeOrder], rates: ChargeRates) -> tuple[Decimal, Decimal]:
+    """The adjustment review's two charge lines beside ``paid``: (the approach's own orders, the closing of what stays
+    open), each rounded up. With the exact paid total the three lines add up to the exact sum rounded UP ONCE, the
+    figure :func:`open_round_trip_charges` gives the trade page: the exit line takes the rounding remainder.
+    Raises ``ValueError`` when the calculator refuses an order (the caller then shows the figures before charges)."""
+    zero = Decimal(0)
+    adjustment = to_paise_up(charges_for_orders(list(own), rates).total) if own else zero
+    exits = to_paise_up(charges_for_orders(list(closing), rates).total) if closing else zero
+    if paid_exact is not None and closing and to_paise_up(paid_exact) == paid:
+        exact = paid_exact + (charges_for_orders(list(own), rates).total if own else zero)
+        exits = max(to_paise_up(exact + charges_for_orders(list(closing), rates).total) - paid - adjustment, zero)
+    return adjustment, exits
+
+
+def with_charges(got: BookExtremes,charges: Decimal | None) -> BookExtremes:
     """``got`` with the charges inside Max Profit and Max Loss (both move down by them); Profit left / Loss left are the
     open position's own range from the live price and stay as they are."""
     if charges is None:
@@ -136,7 +151,8 @@ def max_after_charges(  # noqa: PLR0913 - the book, its terms, live prices, unde
         rates: ChargeRates | None, paid_exact: Decimal | None = None) -> BookExtremes:
     """THE one function for Max profit / Max loss after charges (ADR-263, ADR-008): the trade page, the practice list
     and Profit left / Loss left (``after_split``) read it; the adjustment review reaches the same figure through
-    ``routes.adjustment.price_after``, which rounds the same total once."""
+    ``routes.adjustment.price_after``, whose charge lines come from :func:`review_charge_lines` (the same total, rounded
+    once) and whose booked figure stays exact."""
     return with_charges(book_extremes(view, terms, live),
                         open_round_trip_charges(view, terms, underlying, rates, paid_exact))
 

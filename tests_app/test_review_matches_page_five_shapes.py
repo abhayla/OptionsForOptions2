@@ -1,5 +1,5 @@
-"""GC-ICFIX (ADR-008, ADR-263, ADR-306): the adjustment review's current-state Max profit / Max loss after charges is the
-trade page's figure, EXACTLY (Decimal equality, no rounding in the test), for five book shapes. No database.
+"""GC-ICFIX (ADR-008, ADR-263, ADR-306): the adjustment review's current-state Max profit / Max loss after charges is
+the trade page's figure, EXACTLY (Decimal equality, no rounding in the test), for five book shapes. No database.
 
 Hand sum for the two-fill-then-partly-closed shape: a leg SOLD 65 at 100.00 then 65 at 100.15 -> average 100.075; 65
 bought back at 98.00 -> booked = (100.075 - 98.00) * 65 = 134.875 (a third decimal: the review used to round it to
@@ -109,7 +109,8 @@ def test_an_unknown_contract_type_is_not_computable_either() -> None:
 
 
 def test_an_options_only_book_gets_the_charges_of_the_page() -> None:
-    rows, found = _rows({"1": "CE", "2": "PE"}, [("1", "open", "SELL", "90.00", ""), ("2", "open", "SELL", "80.00", "")])
+    rows, found = _rows({"1": "CE", "2": "PE"},
+                        [("1", "open", "SELL", "90.00", ""), ("2", "open", "SELL", "80.00", "")])
     got = paper_charges([PaperFill(r.order.kind, r.order.side, r.order.quantity, r.order.price, True) for r in rows],
                         "NIFTY", RATES)
     assert adjustment_readers.paid_of(rows, found, "NIFTY", RATES) == (got.shown, got.total)
