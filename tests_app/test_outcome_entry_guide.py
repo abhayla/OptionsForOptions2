@@ -47,17 +47,47 @@ async def _post(provider, legs):
         return await ac.post("/api/strategies/outcome", json=body)
 
 
-async def test_a_condor_answers_with_a_state_and_the_default_rule_sets_name(replayed) -> None:
+def _fix_deltas(monkeypatch, call, put):
+    """A fixed sold-leg delta pair in place of the engine's (the route and the rule set stay real)."""
+    monkeypatch.setattr("ofo.outcome.service._sold_deltas", lambda _model: (("CE", call), ("PE", put)))
+
+
+async def test_the_138_condor_breaks_with_delta_0_46_exactly(replayed, monkeypatch) -> None:
+    _fix_deltas(monkeypatch, Decimal("0.46"), Decimal("0.44"))
     resp = await _post(replayed, CONDOR)
     assert resp.status_code == HTTP_OK, resp.text
     out = resp.json()
-    assert out["entry_guide_state"] in {"breaks", "within"}, out["entry_guide_state"]  # a real delta was read
+    assert out["entry_guide_state"] == "breaks"
+    assert out["entry_guide_line"] == ("Sold call delta 0.46; the entry guide of the default rule set "
+                                       "(Iron condor: system default) is 0.15 to 0.20.")
+
+
+async def test_the_condor_is_within_with_delta_0_18_exactly(replayed, monkeypatch) -> None:
+    _fix_deltas(monkeypatch, Decimal("0.18"), Decimal("0.17"))
+    out = (await _post(replayed, CONDOR)).json()
+    assert out["entry_guide_state"] == "within" and out["entry_guide_line"] is None
+
+
+async def test_a_missing_delta_cannot_tell(replayed, monkeypatch) -> None:
+    _fix_deltas(monkeypatch, None, Decimal("0.17"))
+    out = (await _post(replayed, CONDOR)).json()
+    assert out["entry_guide_state"] == "cannot_tell"
+    assert out["entry_guide_line"] == "Could not check against the entry guide."
+
+
+@pytest.mark.parametrize("stype", ["straddle", "ifly", None])  # a shape the guide does not suit; an unknown shape
+async def test_a_shape_the_guide_does_not_suit_carries_neither_field(replayed, monkeypatch, stype) -> None:
+    _fix_deltas(monkeypatch, Decimal("0.50"), Decimal("0.50"))
+    monkeypatch.setattr("ofo_app.routes.outcome.type_of", lambda *_a, **_k: stype)
+    out = (await _post(replayed, CONDOR)).json()
+    assert out["state"] == "COMPUTED" and "entry_guide_state" not in out and "entry_guide_line" not in out
+
+
+async def test_the_real_replay_condor_resolves_to_the_iron_condor_rule_set(replayed) -> None:
+    out = (await _post(replayed, CONDOR)).json()
+    assert out["entry_guide_state"] in {"breaks", "within"}  # a real delta was read for the real shape
     if out["entry_guide_state"] == "breaks":
-        line = out["entry_guide_line"]
-        assert "the entry guide of the default rule set (" in line and line.endswith("is 0.15 to 0.20.")
-        assert line.startswith(("Sold call delta 0.", "Sold put delta 0."))
-    else:
-        assert out["entry_guide_line"] is None  # within the guide: no line
+        assert "(Iron condor: system default)" in out["entry_guide_line"]
 
 
 async def test_a_strategy_with_no_sold_leg_carries_neither_field(replayed) -> None:

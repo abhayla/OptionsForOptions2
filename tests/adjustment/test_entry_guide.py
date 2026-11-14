@@ -10,6 +10,7 @@ from decimal import Decimal as D
 import pytest
 from ofo.adjustment import entry_guide as eg
 from ofo.adjustment import playbook_eval as pe
+from ofo.adjustment.playbook_types import TYPE_KEYS
 from ofo.errors.explanations import render_explanation
 
 GUIDE = "shorts at 0.15 to 0.20 delta, wings 200 to 400 points out"  # the stored text, system_playbooks.json
@@ -98,19 +99,42 @@ def test_the_default_rule_set_of_a_shape_is_the_system_playbook_of_its_type() ->
 
 
 def test_the_138_numbers_through_the_whole_answer() -> None:
-    ans = eg.entry_guide_for((("CE", D("0.46")), ("PE", D("0.44"))), "strangle")
+    ans = eg.entry_guide_for((("CE", D("0.46")), ("PE", D("0.44"))), "ic")
     assert ans.state == "breaks" and ans.line == (
-        "Sold call delta 0.46; the entry guide of the default rule set (Short strangle: system default) "
-        "is 0.15 to 0.20.")
-    assert eg.entry_guide_for((("CE", D("0.18")), ("PE", D("0.17"))), "strangle").state == "within"
-    assert eg.entry_guide_for((("CE", D("0.18")), ("PE", D("0.17"))), "strangle").line is None
+        "Sold call delta 0.46; the entry guide of the default rule set (Iron condor: system default) is 0.15 to 0.20.")
+    assert eg.entry_guide_for((("CE", D("0.18")), ("PE", D("0.17"))), "ic").state == "within"
+    assert eg.entry_guide_for((("CE", D("0.18")), ("PE", D("0.17"))), "ic").line is None
 
 
-def test_the_whole_answer_cannot_tell_for_a_missing_delta_or_an_unmapped_shape() -> None:
-    assert eg.entry_guide_for((("CE", None), ("PE", D("0.17"))), "strangle").state == "cannot_tell"
-    unmapped = eg.entry_guide_for((("CE", D("0.46")),), None)  # the shape matches no playbook: no guide, never a guess
-    assert unmapped.state == "cannot_tell" and unmapped.line == "Could not check against the entry guide."
+def test_an_applicable_shape_with_a_missing_delta_cannot_tell() -> None:
+    ans = eg.entry_guide_for((("CE", None), ("PE", D("0.17"))), "ic")
+    assert ans.state == "cannot_tell" and ans.line == "Could not check against the entry guide."
 
 
 def test_a_shape_with_no_sold_option_leg_has_no_answer() -> None:
-    assert eg.entry_guide_for((), "strangle") is None
+    assert eg.entry_guide_for((), "ic") is None
+
+
+def test_an_unknown_shape_has_no_line_and_no_state() -> None:
+    assert eg.entry_guide_for((("CE", D("0.46")),), None) is None
+    assert eg.entry_guide_for((("CE", D("0.46")),), "a_new_type") is None
+
+
+#: ADR-300 is about a condor outside its entry guide: the guide applies to shapes whose sold legs are meant to be out of
+#: the money (iron condor, short strangle, credit spreads) and to no other. Decided per type from what the shape IS.
+APPLIES = {"ic", "strangle", "credit"}
+NOT_APPLY = {"straddle", "ifly", "dirfly", "calendar", "debit", "longopt", "longvol", "ratio", "other"}
+
+
+def test_every_shape_type_is_classified_deliberately() -> None:
+    assert APPLIES | NOT_APPLY == set(TYPE_KEYS) and not APPLIES & NOT_APPLY  # new type: fails until classified
+    assert set(eg.GUIDE_APPLIES) == set(TYPE_KEYS)
+
+
+@pytest.mark.parametrize("stype", sorted(APPLIES | NOT_APPLY))
+def test_the_line_applies_or_not_per_shape_type(stype: str) -> None:
+    ans = eg.entry_guide_for((("CE", D("0.46")), ("PE", D("0.44"))), stype)
+    if stype in APPLIES:
+        assert ans is not None and ans.state == "breaks"
+    else:
+        assert ans is None
