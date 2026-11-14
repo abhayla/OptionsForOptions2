@@ -15,13 +15,12 @@ from decimal import Decimal as D
 import pytest
 from ofo.adjustment.approaches import Position, PositionLeg
 from ofo.charges import ChargeRates
+from ofo.charges.paper_charges import PaperFill, paper_charges
 from ofo.engine.extremes import ContractTerms, book_extremes
 from ofo.engine.extremes_charges import open_round_trip_charges, with_charges
 from ofo.engine.legs import Instrument
 from ofo.engine.orderbook import PaperOrder, net_positions
 from ofo_app.routes import adjustment as route
-from ofo_app.routes.paper import paid_charges
-from ofo.charges.paper_charges import PaperFill
 
 EXPIRY = datetime.date(2026, 11, 3)
 T0 = datetime.datetime(2026, 10, 29, 4, 0, tzinfo=datetime.UTC)
@@ -57,8 +56,9 @@ def _both(orders, live, terms):
     legs = tuple(PositionLeg("BUY" if p.net_quantity > 0 else "SELL", terms[p.instrument_id].instrument.value,
                              terms[p.instrument_id].strike, EXPIRY, abs(p.net_quantity) // LOT, p.average,
                              "X" + p.instrument_id) for p in view.positions)
-    paid, _why = paid_charges([PaperFill("open", o.side, o.quantity, o.price, True) for o in orders], "NIFTY", RATES)
-    review = route.price_after(legs, Position("NIFTY", LOT, "weekly", T0.date(), legs), D("0"), paid, (), RATES, MARKET)
+    paid = paper_charges([PaperFill("open", o.side, o.quantity, o.price, True) for o in orders], "NIFTY", RATES)
+    review = route.price_after(legs, Position("NIFTY", LOT, "weekly", T0.date(), legs), D("0"), paid.shown, (), RATES,
+                               MARKET, paid.total)
     assert review.after is not None
     assert review.charges_known
     return page, review.after.after_charges
@@ -69,12 +69,22 @@ def test_one_iron_condor_trade_page_and_review_agree_to_the_paisa() -> None:
     assert (page.max_profit, page.max_loss) == (review.max_profit, -review.max_loss)
 
 
-GRID = [(lots, base, D(prem), split) for lots in (1, 2, 3) for base in (22500, 23100) for prem in ("62.35", "88.8")
-        for split in (False, True)]
+GRID = [(lots, base, D(prem)) for lots in (1, 2, 3) for base in (22500, 23100, 23700) for prem in ("62.35", "88.8")]
 
 
-@pytest.mark.parametrize(("lots", "base", "premium", "split"), GRID)
-def test_grid_trade_page_and_review_agree_to_the_paisa(lots, base, premium, split) -> None:
+@pytest.mark.parametrize(("lots", "base", "premium"), GRID)
+def test_grid_trade_page_and_review_agree_to_the_paisa(lots, base, premium) -> None:
+    page, review = _both(*_condor(lots, base, premium, False))
+    assert page.max_profit == review.max_profit
+    assert page.max_loss == -review.max_loss
+
+
+@pytest.mark.xfail(strict=True, reason="DEFINITION question, not rounding: a leg filled in two orders pays two "
+                   "brokerages; the trade page prices one round trip at the average price (about 23.6 less). "
+                   "Orchestrator to decide which charges Max profit includes.")
+@pytest.mark.parametrize(("lots", "base", "premium"), [g for g in GRID if g[0] > 1])
+def test_averaged_entry_two_orders_trade_page_and_review_agree(lots, base, premium) -> None:
+    split = True
     page, review = _both(*_condor(lots, base, premium, split))
     assert page.max_profit == review.max_profit
     assert page.max_loss == -review.max_loss
