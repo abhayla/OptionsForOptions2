@@ -111,6 +111,8 @@ class Tracked:
     entered_at: datetime.datetime | None = None
     #: ADR-276: the strategy is a real (broker) book: the app reads no charges paid on it, so ``paid_charges`` is None
     real_book: bool = False
+    #: the charges already paid, exact (``paper_charges(...).total``); ``paid_charges`` is it rounded up; None = unknown
+    paid_exact: Decimal | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -411,8 +413,12 @@ class Priced:
 
 
 def price_after(legs: Sequence[PositionLeg], position: Position, booked: Decimal | None, paid: Decimal | None,  # noqa: PLR0913
-                own_orders: Sequence[ChargeOrder], rates: ChargeRates | None, market: MarketInputs) -> Priced:
-    """The whole-trade After of ``legs`` (``booked`` already includes the legs this approach closes)."""
+                own_orders: Sequence[ChargeOrder], rates: ChargeRates | None, market: MarketInputs,
+                paid_exact: Decimal | None = None) -> Priced:
+    """The whole-trade After of ``legs`` (``booked`` already includes the legs this approach
+    closes). With ``paid_exact`` the three charge lines add up to the exact total rounded UP ONCE (F-35), the figure
+    the trade page shows: the exit line takes the rounding remainder, so Max profit / Max loss agree to the paisa
+    (GC-ICFIX issue 3)."""
     if booked is None:
         return Priced(None, False, render_explanation("adjust_booked_unknown"))
     segment = charge_segment(position.underlying)
@@ -421,8 +427,13 @@ def price_after(legs: Sequence[PositionLeg], position: Position, booked: Decimal
     if known:
         try:
             adjustment = _charges(own_orders, rates)  # type: ignore[arg-type]
-            exits = _charges([ChargeOrder(segment, "SELL" if x.side == "BUY" else "BUY", x.lots * position.lot,
-                                          x.entry) for x in legs], rates)  # type: ignore[arg-type]
+            closing = [ChargeOrder(segment, "SELL" if x.side == "BUY" else "BUY", x.lots * position.lot, x.entry)
+                       for x in legs]
+            exits = _charges(closing, rates)  # type: ignore[arg-type]
+            if paid_exact is not None and closing and to_paise_up(paid_exact) == paid:
+                exact = paid_exact + charges_for_orders(list(own_orders), rates).total if own_orders else paid_exact
+                exact += charges_for_orders(closing, rates).total  # type: ignore[arg-type]
+                exits = max(to_paise_up(exact) - paid - adjustment, Decimal(0))  # type: ignore[operator]
         except ValueError:
             known = False
     try:
@@ -500,7 +511,7 @@ def priced_approach(a: str, tracked: Tracked, market: MarketInputs, spot: Decima
         return built, None
     booked = None if tracked.booked is None else tracked.booked + _closed_booked(built)
     return built, price_after(built.after, position, booked, tracked.paid_charges,
-                              _trade_orders(built, position.underlying), rates, market)
+                              _trade_orders(built, position.underlying), rates, market, tracked.paid_exact)
 
 
 def _after_block(priced: Priced, pop_on: bool) -> dict:
@@ -583,7 +594,8 @@ async def adjustment_approaches(  # noqa: PLR0913, PLR0915 - FastAPI dependencie
         exits = check.exit_inputs_of(guards, position, market.now)  # ADR-238: the same playbook read
 
         def price_all(m: MarketInputs) -> tuple[Priced, liquidity.Limits | None, Decimal | None, list]:
-            b = price_after(position.legs, position, tracked.booked, tracked.paid_charges, (), rates, m)
+            b = price_after(position.legs, position, tracked.booked, tracked.paid_charges, (), rates, m,
+                            tracked.paid_exact)
             lim, mp = liquidity_inputs(guards, b)  # no playbook, no limits
             return b, lim, mp, [(a, priced_approach(a, tracked, m, spot.value, rates,  # type: ignore[arg-type]
                                                     cfg, roll_basis=basis, limits=lim, max_profit=mp,

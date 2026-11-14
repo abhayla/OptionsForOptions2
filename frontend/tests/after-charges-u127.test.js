@@ -217,6 +217,17 @@ describe('u127 each screen offers the breakdown', () => {
     expect(t(w, 'paper-pnl').text()).toContain('(after charges)')
   })
 
+  it('Completed row: the server charges_paid_text is only the figure, so the row adds the word Charges (strategy 143)', async () => {
+    const closed = { ...CLOSED, total_after: '-305.24', total_after_text: '-305.24', charges_paid: '279.24', charges_paid_text: '₹279.24' }
+    answer = () => Promise.resolve({ data: { strategies: [{ id: 143, underlying: 'NIFTY', status: 'closed', created_at: '2026-10-18T04:00:00Z', updated_at: '2026-10-18T04:00:00Z', final_pnl_text: '-26.00', ...closed }] } })
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/s', component: MyStrategiesPage, meta: { title: 'Completed Strategies', parent: 'Strategies', completedOnly: true } }, { path: '/strategy/builder', component: { template: '<div/>' } }] })
+    await router.push('/s')
+    await router.isReady()
+    const w = mount(MyStrategiesPage, { global: { plugins: [router] } })
+    await flushPromises()
+    expect(t(w, 'row-completed').text()).toContain('Final P&L -26.00 · Charges ₹279.24 · Net after charges -305.24')
+  })
+
   it('Completed row: Net after charges opens the breakdown; the Charges figure stays its own number', async () => {
     answer = () => Promise.resolve({ data: { strategies: [{ id: 141, underlying: 'NIFTY', status: 'closed', created_at: '2026-10-18T04:00:00Z', updated_at: '2026-10-18T04:00:00Z', final_pnl_text: '-32.50', ...CLOSED }] } })
     const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/s', component: MyStrategiesPage, meta: { title: 'Completed Strategies', parent: 'Strategies', completedOnly: true } }, { path: '/strategy/builder', component: { template: '<div/>' } }] })
