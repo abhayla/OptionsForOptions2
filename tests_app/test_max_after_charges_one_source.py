@@ -1,5 +1,5 @@
 """GC-ICFIX issue 3 (ADR-008, ADR-263, REQ-109 AC-10): Max profit / Max loss after charges is ONE figure. The trade page
-(``extremes_charges.with_charges`` over ``open_round_trip_charges``) and the adjustment review's "current state"
+(``extremes_charges.max_after_charges``) and the adjustment review's "current state"
 (``routes.adjustment.price_after``) must agree to the paisa. Real case, strategy 148 (PATH-61): 8,116.22 / -17,883.78
 on the review against 8,116.23 / -17,883.77 on the trade page. No database.
 
@@ -16,8 +16,14 @@ import pytest
 from ofo.adjustment.approaches import Position, PositionLeg
 from ofo.charges import ChargeRates
 from ofo.charges.paper_charges import PaperFill, paper_charges
-from ofo.engine.extremes import ContractTerms, book_extremes
-from ofo.engine.extremes_charges import open_round_trip_charges, with_charges
+from ofo.engine.extremes import UNLIMITED, ContractTerms, book_extremes
+from ofo.engine.extremes_charges import (
+    after_split,
+    book_after_charges,
+    max_after_charges,
+    open_exit_charges,
+    open_round_trip_charges,
+)
 from ofo.engine.legs import Instrument
 from ofo.engine.orderbook import PaperOrder, net_positions
 from ofo_app.routes import adjustment as route
@@ -49,19 +55,34 @@ def _condor(lots: int, base: int, premium: D, split: bool):
     return orders, {str(i): D("50") for i in range(1, 5)}, terms
 
 
-def _both(orders, live, terms):
-    """(trade page extremes, review's after-charges figures) for the same open book."""
+
+
+def _paid(orders):
+    return paper_charges([PaperFill(o.kind, o.side, o.quantity, o.price, True) for o in orders], "NIFTY", RATES)
+
+
+def _page(orders, live, terms, rates=RATES):
+    """The trade page's Max profit / Max loss: the one engine function, with the charges really paid (as paper._extremes)."""
     view = net_positions(orders, live)
-    page = with_charges(book_extremes(view, terms, live), open_round_trip_charges(view, terms, "NIFTY", RATES))
+    return view, max_after_charges(view, terms, live, "NIFTY", rates, _paid(orders).total)
+
+
+def _both(orders, live, terms):
+    """(trade page extremes, review's after-charges figures) for the same book."""
+    view, page = _page(orders, live, terms)
     legs = tuple(PositionLeg("BUY" if p.net_quantity > 0 else "SELL", terms[p.instrument_id].instrument.value,
                              terms[p.instrument_id].strike, EXPIRY, abs(p.net_quantity) // LOT, p.average,
-                             "X" + p.instrument_id) for p in view.positions)
-    paid = paper_charges([PaperFill("open", o.side, o.quantity, o.price, True) for o in orders], "NIFTY", RATES)
-    review = route.price_after(legs, Position("NIFTY", LOT, "weekly", T0.date(), legs), D("0"), paid.shown, (), RATES,
-                               MARKET, paid.total)
+                             "X" + p.instrument_id) for p in view.positions if p.net_quantity)
+    paid = _paid(orders)
+    review = route.price_after(legs, Position("NIFTY", LOT, "weekly", T0.date(), legs), view.booked, paid.shown, (),
+                               RATES, MARKET, paid.total)
     assert review.after is not None
     assert review.charges_known
     return page, review.after.after_charges
+
+
+GRID = [(lots, base, D(prem), split) for lots in (1, 2, 3) for base in (22500, 23100, 23700)
+        for prem in ("62.35", "88.8") for split in (False, True) if lots > 1 or not split]
 
 
 def test_one_iron_condor_trade_page_and_review_agree_to_the_paisa() -> None:
@@ -69,22 +90,82 @@ def test_one_iron_condor_trade_page_and_review_agree_to_the_paisa() -> None:
     assert (page.max_profit, page.max_loss) == (review.max_profit, -review.max_loss)
 
 
-GRID = [(lots, base, D(prem)) for lots in (1, 2, 3) for base in (22500, 23100, 23700) for prem in ("62.35", "88.8")]
-
-
-@pytest.mark.parametrize(("lots", "base", "premium"), GRID)
-def test_grid_trade_page_and_review_agree_to_the_paisa(lots, base, premium) -> None:
-    page, review = _both(*_condor(lots, base, premium, False))
-    assert page.max_profit == review.max_profit
-    assert page.max_loss == -review.max_loss
-
-
-@pytest.mark.xfail(strict=True, reason="DEFINITION question, not rounding: a leg filled in two orders pays two "
-                   "brokerages; the trade page prices one round trip at the average price (about 23.6 less). "
-                   "Orchestrator to decide which charges Max profit includes.")
-@pytest.mark.parametrize(("lots", "base", "premium"), [g for g in GRID if g[0] > 1])
-def test_averaged_entry_two_orders_trade_page_and_review_agree(lots, base, premium) -> None:
-    split = True
+@pytest.mark.parametrize(("lots", "base", "premium", "split"), GRID)
+def test_grid_one_fill_and_two_fill_books_agree_to_the_paisa(lots, base, premium, split) -> None:
+    # ADR-263: the charges are what was really paid (every filled order) + the estimate to close: a two-fill leg pays
+    # two brokerages (20 + 20 + their GST), not one.
     page, review = _both(*_condor(lots, base, premium, split))
     assert page.max_profit == review.max_profit
     assert page.max_loss == -review.max_loss
+
+
+def test_closed_put_spread_and_two_open_legs_agree_and_count_the_closed_leg_charges() -> None:
+    # After an adjustment the put spread (legs 1, 2) was closed, the call spread (legs 3, 4) stays open (closing one leg of a
+    # condor would leave a naked leg: unlimited loss). Hand sum, charges: paid = the 6 orders'
+    # exact charges, exit estimate = the 2 open legs' closing orders at their average price; shown = ceil(paid +
+    # exit) once. Max profit = (open legs' credit + booked of the closed leg) - that total.
+    orders, live, terms = _condor(1, 22800, D("90"), False)
+    orders += [PaperOrder("1", "SELL", LOT, orders[0].price + D("3.40"), "exit", T0),
+               PaperOrder("2", "BUY", LOT, orders[1].price - D("2.10"), "exit", T0)]
+    page, review = _both(orders, live, terms)
+    assert page.max_profit == review.max_profit
+    assert page.max_loss == -review.max_loss
+    one_fill_estimate = open_round_trip_charges(net_positions(orders, live), terms, "NIFTY", RATES)
+    assert one_fill_estimate is not None
+    assert open_round_trip_charges(net_positions(orders, live), terms, "NIFTY", RATES, _paid(orders).total) \
+        != one_fill_estimate  # the closed leg's charges are inside the placed-book figure
+
+
+@pytest.mark.parametrize(("lots", "base", "premium", "split"), GRID)
+def test_adr306_identities_hold_exactly(lots, base, premium, split) -> None:
+    orders, live, terms = _condor(lots, base, premium, split)
+    view, page = _page(orders, live, terms)
+    paid = _paid(orders)
+    exit_, why = open_exit_charges(view, terms, live, "NIFTY", RATES)
+    after = book_after_charges(view, paid.shown, exit_, why)
+    got = after_split(view, terms, live, "NIFTY", RATES, after, paid.total)
+    assert after.total_after + got.profit_left_after == page.max_profit
+    assert after.total_after + got.loss_left_after == page.max_loss
+
+
+def test_no_rates_gives_the_before_figures() -> None:
+    orders, live, terms = _condor(2, 22800, D("90"), True)
+    view = net_positions(orders, live)
+    before = book_extremes(view, terms, live)
+    assert max_after_charges(view, terms, live, "NIFTY", None, D("100")) == before
+    assert open_round_trip_charges(view, terms, "NIFTY", None, D("100")) is None
+
+
+def test_a_futures_leg_cannot_be_priced_gives_the_before_figures() -> None:
+    terms = {"1": ContractTerms(Instrument.FUT, None, EXPIRY)}
+    live = {"1": D("22800")}
+    view = net_positions([PaperOrder("1", "BUY", LOT, D("22800"), "open", T0)], live)
+    assert open_round_trip_charges(view, terms, "NIFTY", RATES, D("10")) is None
+    assert max_after_charges(view, terms, live, "NIFTY", RATES, D("10")) == book_extremes(view, terms, live)
+
+
+def test_prices_not_live_keeps_the_reason_and_the_after_charges_max() -> None:
+    orders, _live, terms = _condor(1, 22800, D("90"), False)
+    view = net_positions(orders, {})
+    got = max_after_charges(view, terms, {}, "NIFTY", RATES, _paid(orders).total)
+    assert got.reason == "prices_not_live"
+    assert got.max_profit is not None
+    assert got.max_profit < book_extremes(view, terms, {}).max_profit
+
+
+def test_fully_closed_book_is_unchanged_and_nothing_is_left() -> None:
+    orders = [PaperOrder("1", "SELL", LOT, D("100"), "open", T0), PaperOrder("1", "BUY", LOT, D("90"), "exit", T0)]
+    terms = {"1": ContractTerms(Instrument.PE, D("22700"), EXPIRY)}
+    view = net_positions(orders, {})
+    got = max_after_charges(view, terms, {}, "NIFTY", RATES, _paid(orders).total)
+    assert got == book_extremes(view, terms, {})
+    assert (got.max_profit, got.max_loss) == (D("650.00"), D("650.00"))
+
+
+def test_unlimited_max_loss_stays_unlimited() -> None:
+    terms = {"1": ContractTerms(Instrument.CE, D("23000"), EXPIRY)}
+    live = {"1": D("90")}
+    orders = [PaperOrder("1", "SELL", LOT, D("100"), "open", T0)]
+    _view, got = _page(orders, live, terms)
+    assert got.max_loss is UNLIMITED
+    assert got.max_profit == D("6500.00") - open_round_trip_charges(net_positions(orders, live), terms, "NIFTY", RATES)
