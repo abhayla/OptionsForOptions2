@@ -1,5 +1,6 @@
 """GC-ICFIX (ADR-008, ADR-263, ADR-306): the adjustment review's current-state Max profit / Max loss after charges is
-the trade page's figure, EXACTLY (Decimal equality, no rounding in the test), for five book shapes. No database.
+the trade page's figure at the engine level (exact Decimal equality of the engine figures, before the reply boundary
+rounds them); two-decimal reply text is proven in test_review_money_text_two_decimals.py. No database.
 
 Hand sum for the two-fill-then-partly-closed shape: a leg SOLD 65 at 100.00 then 65 at 100.15 -> average 100.075; 65
 bought back at 98.00 -> booked = (100.075 - 98.00) * 65 = 134.875 (a third decimal: the review used to round it to
@@ -116,7 +117,7 @@ def test_an_options_only_book_gets_the_charges_of_the_page() -> None:
     assert adjustment_readers.paid_of(rows, found, "NIFTY", RATES) == (got.shown, got.total)
 
 
-def test_review_of_a_futures_book_is_the_pages_before_charges_figure() -> None:
+def test_review_with_charges_not_computable_is_the_pages_before_charges_figure() -> None:  # CE legs, paid None
     view = net_positions([_o("3", "SELL", "40.40"), _o("4", "BUY", "22.30")], LIVE)
     page = book_extremes(view, TERMS, LIVE)  # the page: paid None -> before charges
     legs = tuple(PositionLeg("BUY" if p.net_quantity > 0 else "SELL", TERMS[p.instrument_id].instrument.value,
