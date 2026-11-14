@@ -111,9 +111,10 @@ def _flat(amount: Decimal) -> WholeTradeFigures:
 
 
 def _signed_paise(value: object, name: str) -> Decimal:
-    """A signed rupee amount (booked P&L can be a loss): a finite Decimal of whole paise, else ValueError by name."""
-    if not isinstance(value, Decimal) or not value.is_finite() or value.quantize(PAISE) != value:
-        raise ValueError(f"{name} must be a finite decimal.Decimal of whole paise, got {value!r}")
+    """A signed rupee amount (booked P&L can be a loss): a finite Decimal, else ValueError by name. NOT rounded: a leg
+    filled at two prices and part closed books a third decimal, and the trade page keeps it exact (ADR-008)."""
+    if not isinstance(value, Decimal) or not value.is_finite():
+        raise ValueError(f"{name} must be a finite decimal.Decimal, got {value!r}")
     return value
 
 

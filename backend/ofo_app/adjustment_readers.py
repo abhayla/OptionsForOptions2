@@ -162,18 +162,10 @@ async def _tracked_on(db: Any, strategy_id: int, rates: ChargeRates | None) -> T
                                 abs(p.net_quantity) // c.lot_size, p.average, lc.broker_refs[0].broker_symbol))
     if not legs or underlying is None or lot is None:
         raise TrackedExited("no open option leg")
-    paid: Decimal | None = None
-    paid_exact: Decimal | None = None
     if real:  # paid charges and adjustments used before the app saw it: not readable yet ("not checked", ADR-276 (4))
         return Tracked(Position(underlying, lot, "", datetime.date.min, tuple(legs)), book.booked, None,
                        adjustments_used=None, entered_at=entered_at(orders), real_book=True)
-    if rates is not None:
-        fills = [PaperFill(o.order.kind, o.order.side, o.order.quantity, o.order.price, True) for o in orders]
-        try:
-            got = paper_charges(fills, underlying, rates)
-            paid, paid_exact = got.shown, got.total
-        except ChargesNotComputable:
-            paid = None
+    paid, paid_exact = paid_of(orders, found, underlying, rates) if rates is not None else (None, None)
     booked = book.booked  # the same paper orders ``read_booked`` would read again on a second session
     # expiry kind and today are set by the route from the market reader (the calendar and clock live there)
     # adjustments_used: the engine's adjustment history over the stored orders (the count the history page shows);
@@ -182,6 +174,26 @@ async def _tracked_on(db: Any, strategy_id: int, rates: ChargeRates | None) -> T
                          and found[cid].stored.listed.contract.instrument_type in _OPTION_TYPES)
     return Tracked(Position(underlying, lot, "", datetime.date.min, tuple(legs)), booked, paid,
                    adjustments_used=used, entered_at=entered_at(orders), paid_exact=paid_exact)
+
+
+def paid_of(orders: Any, found: Mapping[int, Any], underlying: str,
+            rates: ChargeRates) -> tuple[Decimal | None, Decimal | None]:
+    """(shown, exact) charges paid on every stored order, read the way the trade page reads them
+    (``paper.paid_exact_of``): the option flag is the contract's own type. A futures fill, or a contract with no
+    stored row, has no rate here: (None, None), so the review says "before charges" like the page,
+    never a figure built from option rates."""
+
+    def is_option(contract_id: int) -> bool:
+        stored = found[contract_id].stored
+        return stored is not None and stored.listed.contract.instrument_type in _OPTION_TYPES
+
+    fills = [PaperFill(o.order.kind, o.order.side, o.order.quantity, o.order.price, is_option(o.order.contract_id))
+             for o in orders]
+    try:
+        got = paper_charges(fills, underlying, rates)
+    except ChargesNotComputable:
+        return None, None
+    return got.shown, got.total
 
 
 async def _real_rows(db: Any, strategy_id: int) -> list[Any]:

@@ -15,6 +15,11 @@ HUNDREDTH: Final = Decimal("0.01")
 PAISE: Final = HUNDREDTH
 
 
+def to_paise(value: Decimal) -> Decimal:
+    """The single rounding point for money leaving the server on the trade page totals and the adjustment review."""
+    return value.quantize(PAISE)
+
+
 def zerodha_paise(value: Decimal | int) -> Decimal:
     """One Kite money figure rounded HALF-UP to the paisa (ADR-099, ADR-101), where the figure is parsed.
 

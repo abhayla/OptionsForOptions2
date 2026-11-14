@@ -52,10 +52,11 @@ from ofo.adjustment.compare_cost_rows import breakdown_lines, warn_threshold
 from ofo.adjustment.offered import limit_filter
 from ofo.adjustment.preferences import Preferences
 from ofo.charges import ChargeRates
-from ofo.charges.calculator import ChargeOrder, charges_for_orders
-from ofo.charges.round_trip import charge_segment, to_paise_up
+from ofo.charges.calculator import ChargeOrder
+from ofo.charges.round_trip import charge_segment
 from ofo.engine import adjust_money
 from ofo.engine.black_scholes import Greeks
+from ofo.engine.extremes_charges import review_charge_lines
 from ofo.engine.legs import Action, Instrument, Leg
 from ofo.engine.metrics import UNLIMITED, MultiExpiryError
 from ofo.engine.pop import Why
@@ -70,7 +71,7 @@ from ofo.engine.whole_trade import (
 )
 from ofo.errors.explanations import EXPLANATIONS, approach_about_id, approach_name_id, render_explanation
 from ofo.marketdata.spot_source import SourceReading, SpotAnswer, feed_reading
-from ofo.money import PAISE
+from ofo.money import to_paise
 from ofo.outcome.service import MARGIN_CHECKED, Margin
 from ofo.timeutil import IST
 from pydantic import BaseModel, ConfigDict, Field
@@ -317,8 +318,13 @@ def _money(value: Decimal | object) -> str:
     return "UNLIMITED" if value is UNLIMITED else value  # type: ignore[return-value]  # Money serializes as text
 
 
+def _rupees(value: Decimal | object) -> Any:
+    """A rupee figure at the reply boundary: rounded once, as the trade page does (UNLIMITED stays)."""
+    return "UNLIMITED" if value is UNLIMITED else to_paise(value)  # type: ignore[arg-type]
+
+
 def _figures(f: WholeTradeFigures) -> dict:
-    return {"max_profit": _money(f.max_profit), "max_loss": _money(f.max_loss),
+    return {"max_profit": _rupees(f.max_profit), "max_loss": _rupees(f.max_loss),
             "breakevens": [_money(b) for b in f.breakevens],
             "loss_regions": [[None if x is None else _money(x) for x in r[:2]] for r in f.loss_regions]}
 
@@ -390,10 +396,6 @@ def _strategy(legs: Sequence[PositionLeg], lot: int) -> Strategy:
                               exact_entry=True) for x in legs))
 
 
-def _charges(orders: Sequence[ChargeOrder], rates: ChargeRates) -> Decimal:
-    return to_paise_up(charges_for_orders(list(orders), rates).total) if orders else Decimal(0)
-
-
 def _closed_booked(built: ApproachLegs) -> Decimal:
     """The booked P&L of the legs this approach closes, at the planned exit: the engine's figure (ADR-008)."""
     return adjust_money.closed_booked((c.side, c.entry, c.exit, c.quantity) for c in built.closed)
@@ -426,19 +428,14 @@ def price_after(legs: Sequence[PositionLeg], position: Position, booked: Decimal
     adjustment = exits = Decimal(0)
     if known:
         try:
-            adjustment = _charges(own_orders, rates)  # type: ignore[arg-type]
             closing = [ChargeOrder(segment, "SELL" if x.side == "BUY" else "BUY", x.lots * position.lot, x.entry)
                        for x in legs]
-            exits = _charges(closing, rates)  # type: ignore[arg-type]
-            if paid_exact is not None and closing and to_paise_up(paid_exact) == paid:
-                exact = paid_exact + charges_for_orders(list(own_orders), rates).total if own_orders else paid_exact
-                exact += charges_for_orders(closing, rates).total  # type: ignore[arg-type]
-                exits = max(to_paise_up(exact) - paid - adjustment, Decimal(0))  # type: ignore[operator]
+            adjustment, exits = review_charge_lines(paid, paid_exact, own_orders, closing, rates)  # type: ignore[arg-type]
         except ValueError:
             known = False
     try:
         open_legs = _strategy(legs, position.lot) if legs else None  # None: every leg exited (A-31)
-        after = whole_trade_after(open_legs, booked_pnl=booked.quantize(PAISE),
+        after = whole_trade_after(open_legs, booked_pnl=booked,
                                   paid_charges=paid if known else Decimal(0),  # type: ignore[arg-type]
                                   adjustment_charges=adjustment if known else Decimal(0),
                                   open_exit_charges=exits if known else Decimal(0),
@@ -465,7 +462,7 @@ def _near_after(legs: Sequence[PositionLeg], position: Position, booked: Decimal
         return None, render_explanation("adjust_cmp_near_no_rate")
     zero = Decimal(0)
     try:
-        after = near_expiry_after(_strategy(legs, position.lot), booked_pnl=booked.quantize(PAISE),
+        after = near_expiry_after(_strategy(legs, position.lot), booked_pnl=booked,
                                   paid_charges=paid if known else zero,  # type: ignore[arg-type]
                                   adjustment_charges=adjustment if known else zero,
                                   open_exit_charges=exits if known else zero, rate=rate,
@@ -518,12 +515,12 @@ def _after_block(priced: Priced, pop_on: bool) -> dict:
     if priced.after is None:
         return {"after": None, "charges": None, "pop": None, "after_reason": priced.reason}
     a = priced.after
-    charges = ({"this_adjustment": _money(a.adjustment_charges), "paid_so_far": _money(a.paid_charges),
-                "open_exit": _money(a.open_exit_charges), "not_available": None} if priced.charges_known else
+    charges = ({"this_adjustment": _rupees(a.adjustment_charges), "paid_so_far": _rupees(a.paid_charges),
+                "open_exit": _rupees(a.open_exit_charges), "not_available": None} if priced.charges_known else
                {"this_adjustment": None, "paid_so_far": None, "open_exit": None,
                 "not_available": render_explanation("adjust_charges_unknown")})
     return {"after": {"gross": _figures(a.gross), "after_charges": _figures(a.after_charges)
-                      if priced.charges_known else None, "booked_pnl": _money(a.booked_pnl)},
+                      if priced.charges_known else None, "booked_pnl": _rupees(a.booked_pnl)},
             "charges": charges, "pop": pop_block(a, pop_on, priced.charges_known), "after_reason": None}
 
 
