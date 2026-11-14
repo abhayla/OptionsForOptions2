@@ -19,6 +19,7 @@
             <option v-for="p in sheet.playbooks" :key="p.id" :value="p.id">{{ p.name }}</option>
           </select>
         </label>
+        <p v-if="refilledFrom" class="mt-1 text-xs text-ink-muted" data-testid="plan-refilled">{{ PLAN_REFILLED_TEXT(refilledFrom) }}</p>
         <div class="mt-3 grid grid-cols-2 gap-3">
           <label class="block text-sm font-medium">{{ labels.target }}
             <input v-model="form.target" class="mt-1 h-10 w-full rounded border border-line px-2" inputmode="decimal" data-testid="plan-target" />
@@ -60,7 +61,7 @@ import LoadFailed from '@/components/common/LoadFailed.vue'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import AlertStylePicker from '@/components/strategy/AlertStylePicker.vue'
 import api, { NEUTRAL_PARTS } from '@/services/api'
-import { PLAN_LOADING_TEXT, PLAN_LOAD_FAILED_TEXT } from '@/lib/sharedStateText'
+import { PLAN_LOADING_TEXT, PLAN_LOAD_FAILED_TEXT, PLAN_REFILLED_TEXT } from '@/lib/sharedStateText'
 import { asIsBody, customiseUrl, fetchPlan, formOf, saveBody, sendPlan } from '@/lib/adjustPlan'
 
 const props = defineProps({
@@ -79,10 +80,12 @@ const loadError = ref('')
 const loading = ref(false)
 const errorParts = ref(null)
 const labels = computed(() => sheet.value?.labels ?? {})
+const refilledFrom = ref('') // the playbook name the fields were just refilled from; empty on open, reopen and failed reads
 
-async function load(pickId = null) {
+async function load(pickId = null, pickName = '') {
   const id = props.strategyId
   loadError.value = ''
+  refilledFrom.value = ''
   errorParts.value = null
   loading.value = true
   try {
@@ -94,8 +97,11 @@ async function load(pickId = null) {
       return
     }
     sheet.value = read
-    if (read.kind === 'sheet') form.value = { ...read.prefill }
-  } catch (e) {
+    if (read.kind === 'sheet') {
+      form.value = { ...read.prefill }
+      if (pickId !== null) refilledFrom.value = pickName
+    }
+  } catch {
     if (id !== props.strategyId) return
     sheet.value = null
     loadError.value = PLAN_LOAD_FAILED_TEXT
@@ -105,7 +111,7 @@ async function load(pickId = null) {
 }
 function pick(value) {
   const chosen = sheet.value?.playbooks.find((p) => String(p.id) === value)
-  if (chosen) load(chosen.id) // every field refills from the server's prefill for that playbook (REQ-161 AC-2)
+  if (chosen) load(chosen.id, chosen.name) // every field refills from the server's prefill for that playbook (REQ-161 AC-2)
 }
 async function send(body) {
   if (busy.value) return
