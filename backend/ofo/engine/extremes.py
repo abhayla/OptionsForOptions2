@@ -141,11 +141,14 @@ def _worse(after: Figure | None, before: Figure | None) -> bool:
     return after is UNLIMITED or (after < 0 and after < 2 * before)
 
 
-def exit_risk(book: Sequence[PaperOrder], basket: Sequence[PaperOrder], terms: Mapping[str, ContractTerms]) -> ExitRisk:
+def exit_risk(book: Sequence[PaperOrder], basket: Sequence[PaperOrder], terms: Mapping[str, ContractTerms],
+              priced: bool = True) -> ExitRisk:
     """Judge a whole basket (exits and entries together) on the legs after ALL its orders (ADR-008: the one engine).
     yes: naked sold units of an option type grow, or the book Max Loss after is unlimited / more than double while legs
     stay open. no: proven (nothing left open, or both counts and both Max Loss figures known and neither rule fires).
-    Anything unproven (a future leg, two expiries, an order the book cannot take) is cannot_tell, never no."""
+    Anything unproven (a future leg, two expiries, an order the book cannot take) is cannot_tell, never no.
+    ``priced`` False = an exit price was not read (the orders carry a stand-in): no Max Loss figure is used or shown
+    except "unlimited after", which needs no price; the double rule and the final no become cannot_tell."""
     try:
         before, after = net_positions(list(book), {}), net_positions([*book, *basket], {})
         held = {p.instrument_id: p.net_quantity for p in before.positions}
@@ -164,15 +167,15 @@ def exit_risk(book: Sequence[PaperOrder], basket: Sequence[PaperOrder], terms: M
         state: ExitState = "yes"
     elif not left_open:
         state = "no"
-    elif _worse(loss1, loss0):
+    elif _worse(loss1, loss0) if priced else (loss1 is UNLIMITED and loss0 is not None and loss0 is not UNLIMITED):
         state = "yes"
-    elif n0 is None or n1 is None or loss0 is None or loss1 is None:
+    elif not priced or n0 is None or n1 is None or loss0 is None or loss1 is None:
         state = "cannot_tell"
     else:
         state = "no"
     exposed = tuple(p.instrument_id for p in after.positions
                     if p.net_quantity < 0 and terms[p.instrument_id].instrument in grew)
-    shown = state == "yes" and loss0 is not None and loss1 is not None and loss0 is not UNLIMITED and (
+    shown = priced and state == "yes" and loss0 is not None and loss1 is not None and loss0 is not UNLIMITED and (
         loss1 is UNLIMITED or loss1 < loss0)
     return ExitRisk(state, loss0 if shown else None, loss1 if shown else None, exposed)
 

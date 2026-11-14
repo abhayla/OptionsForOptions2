@@ -1038,28 +1038,30 @@ class ExitRiskOut(ApiModel):
     warning_text: CatalogueText | None
 
 
-_UNPRICED = Decimal("0.05")  # placeholder fill when no live price is readable; the answer does not use it
+_UNPRICED = Decimal("0.05")  # placeholder order price only; the engine is told priced=False
 
 
 def _exit_risk_answer(state: Literal["yes", "no", "cannot_tell"]) -> ExitRiskOut:
     return ExitRiskOut(state=state, max_loss_before=None, max_loss_after=None, warning_text=None)
 
 
-def _exit_warning(risk: ExitRisk, names: Mapping[str, Any], priced: bool) -> ExitRiskOut:
-    """The yes answer: the figures when the engine gave them and the exit prices were read, else "not available"."""
-    priced = priced and risk.max_loss_before is not None
+def _exit_warning(risk: ExitRisk, names: Mapping[str, Any]) -> ExitRiskOut:
+    """The yes answer says only what is known: the Max Loss figures (the catalogue's "No fixed maximum" when unlimited)
+    when the engine gave them, and the sold legs left with less cover. Nothing known to say -> cannot_tell."""
     (before, before_text), (after, after_text) = _extreme(risk.max_loss_before), _extreme(risk.max_loss_after)
-    na = render_explanation("paper_exit_loss_not_available")
-    warning = render_explanation("paper_exit_widens_loss", before=before_text if priced else na,
-                                 after=after_text if priced else na)
+    lines = []
+    if before is not None and after is not None:
+        lines.append(render_explanation("paper_exit_widens_loss", before=before_text, after=after_text))
     if risk.exposed:
         legs_text = names[risk.exposed[0]]
         for other in risk.exposed[1:]:
             legs_text = render_explanation("paper_alert_legs", rest=legs_text, leg=names[other])
-        warning = render_explanation("paper_exit_warning_join", first=warning,
-                                     second=render_explanation("paper_exit_less_protected", legs=legs_text))
-    return ExitRiskOut(state="yes", max_loss_before=before if priced else None,
-                       max_loss_after=after if priced else None, warning_text=warning)
+        lines.append(render_explanation("paper_exit_less_protected", legs=legs_text))
+    if not lines:
+        return _exit_risk_answer("cannot_tell")
+    warning = lines[0] if len(lines) == 1 else render_explanation("paper_exit_warning_join", first=lines[0],
+                                                                  second=lines[1])
+    return ExitRiskOut(state="yes", max_loss_before=before, max_loss_after=after, warning_text=warning)
 
 
 @router.get("/paper/strategies/{strategy_id}/exit-risk", response_model=ExitRiskOut)
@@ -1069,16 +1071,16 @@ async def paper_exit_risk(strategy_id: int, orders: Annotated[str, Query(max_len
                           feed: Annotated[LiveFeed | None, Depends(get_live_feed)],
                           now: Annotated[AnswerClock, Depends(get_answer_clock)]) -> ExitRiskOut:
     """Read only, nothing stored. The WHOLE prepared basket (exits and entries) is judged on the legs after all of it.
-    Bad input is refused (422), an engine error is cannot_tell, never "no". The before / after figures say "not
-    available" (never 0) when the exit prices cannot be read."""
+    Bad input is refused (422), an engine error is cannot_tell, never "no". When an exit price cannot be read the
+    answer is judged without any Max Loss figure (never a stand-in price) and shows none."""
     stored = await _load_strategy(db, user_ref, strategy_id)
     try:  # the prepared orders as JSON, the same shape the order route takes
         basket = PaperOrdersIn.model_validate_json('{"orders":' + orders + "}").orders
     except ValueError:
         raise HTTPException(status_code=422, detail="invalid_orders") from None
     booked = await paper_store.load(db, strategy_id)
-    if not booked:
-        return _exit_risk_answer("no")  # nothing is open: nothing a first basket could leave unprotected
+    if not booked:  # nothing is open: an exit is larger than what is open; a first basket leaves nothing unprotected
+        return _exit_risk_answer("cannot_tell" if any(o.kind == "exit" for o in basket) else "no")
     state = {c.contract_id: c for c in await tracked_contracts.resolve(
         db, sorted({o.order.contract_id for o in booked} | {o.contract_id for o in basket}))}
     if any(state[o.contract_id].stored is None for o in basket):
@@ -1102,10 +1104,10 @@ async def paper_exit_risk(strategy_id: int, orders: Annotated[str, Query(max_len
                 for i, o in enumerate(basket)]
     except ValueError:
         return _exit_risk_answer("cannot_tell")
-    risk = exit_risk(_paper(booked), legs, terms)
+    risk = exit_risk(_paper(booked), legs, terms, priced=len(prices) == exits)
     if risk.state != "yes":
         return _exit_risk_answer(risk.state)
-    return _exit_warning(risk, names, len(prices) == exits)
+    return _exit_warning(risk, names)
 
 
 # --- stop triggers and alerts (GC-TP step 7a; REQ-109 AC-8; ADR-207 (5); screens 221-224) -----------------------------
