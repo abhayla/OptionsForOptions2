@@ -960,7 +960,7 @@ class OutcomeResponse(ApiModel):
 def entry_guide_fields(out: Outcome, ctx: MarketContext | None) -> dict:
     """ADR-300: the entry-guide state and line of a computed answer (``ofo.adjustment.entry_guide``, the one function),
     from the sold legs' delta this answer's model holds and the default rule set of the legs' shape. A shape that cannot
-    be read (no listing, no spot) is "cannot tell"."""
+    be read (no listing, no spot) is an unknown shape: no line."""
     if out.state is not OutcomeState.COMPUTED or not out.sold_deltas:
         return {}
     stype = None
@@ -973,6 +973,8 @@ def entry_guide_fields(out: Outcome, ctx: MarketContext | None) -> dict:
     except (AttributeError, ArithmeticError, TypeError, ValueError):
         stype = None  # the shape could not be read: the line says it could not check
     found = entry_guide_for(out.sold_deltas, stype)
+    if found is None:  # a shape the guide does not suit, or an unknown one: no line, no state
+        return {}
     return {"entry_guide_state": found.state, "entry_guide_line": found.line}
 
 

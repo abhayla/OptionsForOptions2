@@ -82,6 +82,17 @@ def system_rule_set(strategy_type: str | None) -> tuple[str, str | None] | None:
     return None if strategy_type is None else _system().get(strategy_type)
 
 
+#: ADR-300 is about a condor outside its entry guide. The guide speaks of shorts out of the money, so it applies only to
+#: the shapes whose sold legs are meant to be there; a shape that sells at the money by design (straddle, iron
+#: butterfly, butterflies, calendars, ratios, naked shorts) would get a false alarm on every trade. Every playbook type
+#: is classified here on purpose (a test fails for an unclassified one); an unknown shape (None) gets no line.
+GUIDE_APPLIES: dict[str, bool] = {
+    "ic": True, "strangle": True, "credit": True,
+    "straddle": False, "ifly": False, "dirfly": False, "calendar": False, "debit": False, "longopt": False,
+    "longvol": False, "ratio": False, "other": False,
+}
+
+
 @dataclass(frozen=True)
 class EntryGuide:
     state: State
@@ -94,9 +105,9 @@ RuleSets = Callable[[str | None], "tuple[str, str | None] | None"]
 def entry_guide_for(sold: Sequence[tuple[str, Decimal | None]], strategy_type: str | None,
                     rule_sets: RuleSets = system_rule_set) -> EntryGuide | None:
     """The whole answer for a priced strategy. ``sold``: (kind, |delta|) of each sold option leg; None when there is no
-    sold option leg (the guide speaks of shorts only). A shape with no rule set, or a guide text that states no range,
-    is "cannot tell": never silence, never a guessed range."""
-    if not sold:
+    sold option leg, or when the shape is unknown or one the guide does not suit (``GUIDE_APPLIES``). For a shape it
+    suits, a missing delta or a guide text that states no range is "cannot tell": never silence, never a guessed range."""
+    if not sold or not GUIDE_APPLIES.get(strategy_type or "", False):
         return None
     shorts = tuple(ShortLeg(Decimal(0), d, None, k) for k, d in sold)
     name, text = rule_sets(strategy_type) or (None, None)
