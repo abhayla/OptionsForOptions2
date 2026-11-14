@@ -78,11 +78,12 @@ describe('AdjustSteps', () => {
 
   it('GC-ICFIX 21 (ADR-273): an adjustment row is named by its approach, the server text; an unrecorded one says so', async () => {
     const rows = [row(), row({ step: 'adjustment', number: 1, approach_text: 'Roll the untested spread toward spot' }),
-      row({ step: 'adjustment', number: 2, approach_text: 'Approach not recorded' })]
+      row({ step: 'adjustment', number: 2, approach_text: null })]
     const w = await open(body(totals(), rows))
     const r = w.findAll('[data-testid="steps-row"]')
     expect(r[1].get('[data-testid="steps-approach"]').text()).toBe('Roll the untested spread toward spot')
-    expect(r[2].get('[data-testid="steps-approach"]').text()).toBe('Approach not recorded')
+    expect(r[2].find('[data-testid="steps-approach"]').exists()).toBe(false) // none stored: no approach line, no filler
+    expect(r[2].get('[data-testid="steps-step"]').text()).toBe('Adjustment 2')
     expect(r[0].find('[data-testid="steps-approach"]').exists()).toBe(false) // the entry row names no approach
   })
 
