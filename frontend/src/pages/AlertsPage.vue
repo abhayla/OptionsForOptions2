@@ -44,7 +44,7 @@ onMounted(async () => {
       <li v-for="o in (isActive ? openRecords.list : [])" :key="`o${o.id}`" class="px-4 py-3 hover:bg-surface-muted" data-testid="open-record-row">
         <p class="font-medium" data-testid="open-record-strategy">{{ plainName(o.strategy_name) ?? `Strategy ${o.strategy_id}` }}</p>
         <p class="mt-1 text-sm" data-testid="open-record-text">{{ o.text }}</p>
-        <RouterLink :to="compareUrl(o.strategy_id, [], [o.id])" class="text-sm text-accent underline" data-testid="open-record-compare">Compare approaches</RouterLink>
+        <RouterLink :to="compareUrl(o.strategy_id, null,[o.id])" class="text-sm text-accent underline" data-testid="open-record-compare">Compare approaches</RouterLink>
       </li>
       <li v-for="a in paperAlerts.alerts" :key="a.id" class="px-4 py-3 hover:bg-surface-muted" data-testid="alert-row">
         <p class="font-medium" data-testid="alert-title">{{ a.title }}</p>
