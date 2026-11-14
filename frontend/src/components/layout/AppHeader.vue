@@ -13,7 +13,7 @@ import { useRoute, useRouter } from 'vue-router'
 import Icon from '@/components/common/Icon.vue'
 import ToastHost from '@/components/layout/ToastHost.vue'
 import { useToast } from '@/composables/useToast'
-import { compareUrl } from '@/lib/adjustDrawer'
+import { compareAllUrl } from '@/lib/adjustDrawer'
 import { bellCount, dropAlerts, openRecords, readOpportunities, readPaperAlerts, takeAlerts, takeOpportunities } from '@/lib/paperAlerts'
 import { plainName } from '@/lib/saveDraft'
 import { usePaperRefresh } from '@/lib/usePaperRefresh'
@@ -45,7 +45,7 @@ function announce(fresh) {
     const mine = fresh.filter((r) => r.strategy_id === sid)
     const ids = openRecords.list.filter((r) => r.strategy_id === sid).map((r) => r.id)
     const what = [plainName(mine[0].strategy_name), mine.map((r) => r.text).filter(Boolean).join('; ')].filter(Boolean).join(': ')
-    showToast(`New adjustment opportunity${what ? ` - ${what}` : ''}. Open it?`, 'info', { onClick: () => router.push(compareUrl(sid, [], ids)) })
+    showToast(`New adjustment opportunity${what ? ` - ${what}` : ''}. Open it?`, 'info', { onClick: () => router.push(compareAllUrl(sid, ids)) })
   }
 }
 // GC-TP step 7b: the bell's count is the server's unread number, re-read on the paper refresh tick (no timer of its own);

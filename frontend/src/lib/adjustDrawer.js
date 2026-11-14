@@ -73,12 +73,17 @@ export const availableOf = (reply) => (Array.isArray(reply?.available) ? reply.a
 /** The compare address for a strategy and the ids picked in the drawer; No change is always among them. */
 const OPP_ID = /^[1-9]\d{0,17}$/ // a suggestion record id (BIGSERIAL)
 
-export function compareUrl(strategyId, ids, opportunities = []) {
-  const picks = [...new Set([NO_CHANGE_ID, ...ids])]
+// Only the drawer calls this: it knows what the user ticked. Every other link uses compareAllUrl (tests/compare-url-callers.test.js).
+export const compareUrl = (strategyId, ids, opportunities = []) => buildCompareUrl(strategyId, [...new Set([NO_CHANGE_ID, ...ids])], opportunities)
+/** A link with no ticks (inbox, Alerts, pop-up): no pick is sent, so the compare shows every approach (ADR-308 (4)). */
+export const compareAllUrl = (strategyId, opportunities = []) => buildCompareUrl(strategyId, [], opportunities)
+
+function buildCompareUrl(strategyId, picks, opportunities) {
   const opp = [...new Set(opportunities.map(String).filter((x) => OPP_ID.test(x)))]
   // GC-ADJ2 step 5: the open suggestion records this compare answers (REQ-162 AC-3); its prepare marks them acted on
   const tail = opp.length ? `&opp=${opp.join(',')}` : ''
-  return `/strategy/builder?adjust=${encodeURIComponent(String(strategyId))}&pick=${picks.map(encodeURIComponent).join(',')}${tail}`
+  const pickPart = picks.length ? `&pick=${picks.map(encodeURIComponent).join(',')}` : ''
+  return `/strategy/builder?adjust=${encodeURIComponent(String(strategyId))}${pickPart}${tail}`
 }
 
 // GC-ADJ2 step 5: the `opp` address part back to suggestion ids (whole positive numbers only; anything else dropped)

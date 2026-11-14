@@ -250,16 +250,16 @@ describe('GC-ADJ1 step 3: picks from the drawer and the hand-off', () => {
   it('the scope select defaults to the picked ones: No change + the picks only; "All 7 that apply" brings the rest back', async () => {
     const { w } = await show(adj02, { picked: PICKS })
     expect(colIds(w)).toEqual(PICKS)
-    expect(t(w, 'adjust-showing').text()).toBe('Showing 5 of 5 approaches')
+    expect(t(w, 'adjust-showing').text()).toBe('Showing 5 of 7 approaches') // ADR-308
     expect(w.findAll('[data-testid="adjust-scope-select"] option').map((o) => o.text())).toEqual(['All 7 that apply', 'Only the ones picked in the drawer'])
     await t(w, 'adjust-scope-select').setValue('all')
     expect(colIds(w)).toEqual(ORDER)
   })
 
-  it('attack 2: only No change picked still opens the compare, "Showing 1 of 1"', async () => {
+  it('attack 2: only No change picked still opens the compare, "Showing 1 of 7" (ADR-308: M = every approach that applies)', async () => {
     const { w } = await show(adj02, { picked: ['A-36'] })
     expect(colIds(w)).toEqual(['A-36'])
-    expect(t(w, 'adjust-showing').text()).toBe('Showing 1 of 1 approaches')
+    expect(t(w, 'adjust-showing').text()).toBe('Showing 1 of 7 approaches')
   })
 
   it('attack 4: a refused approach the user picked is listed with its reason; a refused one nobody picked is not mentioned', async () => {
