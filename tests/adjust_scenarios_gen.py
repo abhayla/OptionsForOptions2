@@ -1325,6 +1325,10 @@ def build(spec: dict, pb: dict) -> dict:  # noqa: C901, PLR0912, PLR0915 - one r
                 else:
                     value = min(prices)
             elif tid == "T-10b":
+                if clock.date() != expiry:  # ADR-310: the time exit acts on expiry day only; before it, waiting
+                    skipped.append({"id": tid, "reason": reason_text("adjust_trigger_waits_expiry_day",
+                                                                     (("day", expiry),))})
+                    continue
                 if clock.time().strftime("%H:%M") >= raw:
                     fired.append({"id": tid, "value": clock.time().strftime("%H:%M"), "limit": raw, "cmp": "ge"})
                 continue
