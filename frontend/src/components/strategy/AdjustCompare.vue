@@ -51,7 +51,7 @@
           <div class="rounded-lg border border-line bg-surface p-3" data-testid="adjust-filters">
             <div class="flex flex-wrap items-center justify-between gap-2">
               <h3 class="text-sm font-semibold">Filter approaches</h3>
-              <span class="text-sm" data-testid="adjust-showing">{{ showingText(kept.length, total) }}</span>
+              <span class="text-sm" data-testid="adjust-showing">{{ showingText(kept.length, allCount) }}</span>
               <button type="button" class="rounded border border-line px-2 py-0.5 text-xs" data-testid="adjust-clear" @click="clearFilters">Clear filters</button>
             </div>
             <p class="mt-1 text-xs text-ink-muted" data-testid="adjust-filter-note">{{ FILTER_NOTE }}</p>
@@ -265,8 +265,8 @@ watch(facets, (f) => {
 
 const all = computed(() => (view.value ? tableApproaches(view.value) : []))
 const kept = computed(() => (view.value ? applyFilters(view.value, filters.value) : []))
+// ADR-308: M in "Showing N of M" = every approach the server says applies (No change counts, as a column), not the ticked set
 const allCount = computed(() => (reply.value ? tableApproaches(reply.value).length : 0))
-const total = computed(() => all.value.length)
 const refused = computed(() => (view.value ? refusedApproaches(view.value) : []))
 const pickable = computed(() => kept.value.filter((x) => !isNoChange(x.a)))
 watch(pickable, (list) => { if (!list.some((x) => x.a.id === pick.value)) pick.value = list[0]?.a.id ?? '' }, { immediate: true })

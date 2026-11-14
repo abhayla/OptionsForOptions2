@@ -467,6 +467,7 @@ decisions:
   ADR-305: S6.7         # the plan box is what the app does; an empty Target means no target alert
   ADR-306: S6.7         # profit left and loss left add up: Max minus Total, all after charges
   ADR-307: S6.7         # a two-expiry compare chart keeps its nearer-expiry estimate and says it is not a limit; max loss stays "cannot be estimated"
+  ADR-308: S6.7         # "Showing N of M" counts M as every approach that applies, not the ticked set; a link with no ticks shows all
 
 questions:
   Q210: 4a              # external: Zerodha's written answer; ADR-051 covers the owner's own account
