@@ -44,7 +44,7 @@ function announce(fresh) {
   for (const sid of new Set(fresh.map((r) => r.strategy_id))) {
     const mine = fresh.filter((r) => r.strategy_id === sid)
     const ids = openRecords.list.filter((r) => r.strategy_id === sid).map((r) => r.id)
-    const what = [plainName(mine[0].strategy_name), mine[0].text].filter(Boolean).join(': ')
+    const what = [plainName(mine[0].strategy_name), mine.map((r) => r.text).filter(Boolean).join('; ')].filter(Boolean).join(': ')
     showToast(`New adjustment opportunity${what ? ` - ${what}` : ''}. Open it?`, 'info', { onClick: () => router.push(compareUrl(sid, [], ids)) })
   }
 }
