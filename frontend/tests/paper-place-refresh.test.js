@@ -190,3 +190,60 @@ describe('first basket (Add to Paper on a plan)', () => {
     expect(t(w, 'paper-reread-error').exists()).toBe(false)
   })
 })
+
+// round 2 (review): a re-read answer belongs to the strategy it was started for
+const other = () => {
+  const book = { ...REAL, strategy_id: 87, name: '"Other"' }
+  answers['GET /paper/strategies/87'] = book
+}
+const shown = (w) => w.vm.$.setupState.paper?.id ?? null
+
+describe('a re-read never lands on another strategy', () => {
+  it('another strategy opened while the retry loop sleeps: the old answer changes nothing', async () => {
+    const w = await exitDialog()
+    other()
+    notReady = 1
+    await confirm(w) // first read failed, the loop is now waiting
+    await w.vm.$router.push('/strategy/builder?strategy=87')
+    await later(100)
+    expect(shown(w)).toBe(87)
+    await later(3000)
+    expect(shown(w)).toBe(87)
+  })
+
+  it('another strategy opened after the final failure: the notice is gone and no Retry is offered for the old one', async () => {
+    const w = await exitDialog()
+    other()
+    notReady = 1000
+    await confirm(w)
+    await later(10000)
+    expect(t(w, 'paper-reread-error').exists()).toBe(true)
+    notReady = 0
+    await w.vm.$router.push('/strategy/builder?strategy=87')
+    await later(100)
+    expect(t(w, 'paper-reread-error').exists()).toBe(false)
+    expect(t(w, 'paper-reread-retry').exists()).toBe(false)
+    expect(shown(w)).toBe(87)
+  })
+})
+
+describe('round 2 smaller states', () => {
+  it('a "contracts changed" mark left by a poll is cleared once the re-read succeeds', async () => {
+    const w = await exitDialog()
+    w.vm.$.setupState.paperContractsChanged = true
+    await flushPromises()
+    expect(t(w, 'book-contracts-changed').exists()).toBe(true)
+    await confirm(w)
+    await later(100)
+    expect(t(w, 'book-contracts-changed').exists()).toBe(false)
+  })
+
+  it('after the loop gives up the "Loading the position again" line is gone (nothing is loading)', async () => {
+    const w = await exitDialog()
+    notReady = 1000
+    await confirm(w)
+    await later(10000)
+    expect(t(w, 'paper-reread-error').exists()).toBe(true)
+    expect(t(w, 'paper-pending-stale').exists()).toBe(false)
+  })
+})
