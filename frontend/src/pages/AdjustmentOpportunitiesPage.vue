@@ -93,7 +93,7 @@ const errorParts = ref(NEUTRAL_PARTS)
 
 // GC-MU A3: the Live Strategies card links here with ?strategy=<id>; that strategy's first row is scrolled into view
 const picked = inject(routeLocationKey, null)?.query?.strategy ?? null
-const linkOf = (g) => compareUrl(g.strategy_id, null,g.records.filter((r) => r.can_act).map((r) => r.id))
+const linkOf = (g) => compareUrl(g.strategy_id, null, g.records.filter((r) => r.can_act).map((r) => r.id))
 
 async function load() {
   try {

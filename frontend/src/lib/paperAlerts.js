@@ -41,7 +41,11 @@ export async function markPaperAlertsRead() {
 }
 // after marking read the rows on screen stay (the user is looking at them); only the unread number follows the server
 function takeAlertsKeepRows(data) {
-  if (data && Number.isInteger(data.unread) && data.unread >= 0) paperAlerts.unread = data.unread
+  if (!data || !Number.isInteger(data.unread) || data.unread < 0) return
+  paperAlerts.unread = data.unread
+  // the rows stay, but each takes the server's read flag so the page can move read stops under "Earlier"
+  const flags = new Map((Array.isArray(data.alerts) ? data.alerts : []).map((a) => [a?.id, a?.read]))
+  for (const a of paperAlerts.alerts) if (flags.has(a.id)) a.read = Boolean(flags.get(a.id))
 }
 
 // IC e2e stage B4 (design decision 10): the bell also counts the OPEN adjustment records of GET /adjustment-opportunities,
@@ -60,6 +64,17 @@ export function resetOpenRecords() {
 }
 
 export const bellCount = () => paperAlerts.unread + openRecords.list.length
+
+export const EARLIER_HEADING = 'Earlier'
+
+/** ADR-260: the items needing attention = open records, then stops not yet read. The bell counts these; Active lists these on top. */
+export const attentionItems = () => [
+  ...openRecords.list.map((o) => ({ kind: 'open', ...o })),
+  ...paperAlerts.alerts.filter((a) => !a.read).map((a) => ({ kind: 'stop', ...a })),
+]
+
+/** Stops already read: listed under "Earlier", never counted. */
+export const earlierAlerts = () => paperAlerts.alerts.filter((a) => a.read)
 
 /** Take one answer of GET /adjustment-opportunities. Returns the NEW open records (never on the first good read). */
 export function takeOpportunities(data) {
