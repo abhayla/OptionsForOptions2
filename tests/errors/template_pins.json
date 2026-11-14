@@ -3555,6 +3555,18 @@
     "sha256": "012eb237633a48d2399516716c1fd959a6366aff7fa0c18ef13b9fe70016ef22",
     "reviewed": "owner read 2026-11-02 (decided in session under owner delegation, independent screen)"
   },
+  "explanation:paper_exit_widens_loss": {
+    "sha256": "51530ddf6cf5747c1fc37616b65f1f9adcc66a66f3b4d03a7a4862cace881b6a",
+    "reviewed": "pending owner read"
+  },
+  "explanation:paper_exit_less_protected": {
+    "sha256": "b9db345fcaf2adcb022a79b957f2e9ff7dd2dbaf6e86e9b4a01a608776a769bb",
+    "reviewed": "pending owner read"
+  },
+  "explanation:paper_exit_warning_join": {
+    "sha256": "832eae6213c539b76e62e086c9b7997e4369dbaf63616826b903e6d53792ea56",
+    "reviewed": "pending owner read"
+  },
   "explanation:paper_alert_body_one": {
     "sha256": "a86cc60dab51c807df30ef6265163fe0c3232ae4e0f1801125bb34dc83f33817",
     "reviewed": "owner read 2026-11-02 (accepted after independent screen, not read line by line)"

@@ -28,13 +28,21 @@ from collections.abc import Mapping, Sequence
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Annotated, Any, Literal, get_args
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Query
 from ofo.adjustment.approaches import EntryFacts
 from ofo.charges import ChargeRates
 from ofo.charges.paper_charges import PaperFill, charges_sum, paper_charges
 from ofo.charges.round_trip import ChargesNotComputable
 from ofo.engine.book_totals import book_totals
-from ofo.engine.extremes import UNLIMITED, ContractTerms, ExtremesReason, book_breakevens, book_extremes
+from ofo.engine.extremes import (
+    UNLIMITED,
+    ContractTerms,
+    ExitRisk,
+    ExtremesReason,
+    book_breakevens,
+    book_extremes,
+    exit_risk,
+)
 from ofo.engine.extremes_charges import (
     AfterSplit,
     BookAfterCharges,
@@ -1019,6 +1027,87 @@ async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR
         await db.rollback()
         raise
     return await _book(db, stored, await paper_store.load(db, strategy_id), ctx, feed, placed_at, rates)
+
+
+class ExitRiskOut(ApiModel):
+    """ADR-256: the answer for a prepared basket in three states (``no`` only when proven), the book's Max Loss before /
+    after when the answer is yes and they are known, and the one factual warning line."""
+    state: Literal["yes", "no", "cannot_tell"]
+    max_loss_before: Extreme
+    max_loss_after: Extreme
+    warning_text: CatalogueText | None
+
+
+_UNPRICED = Decimal("0.05")  # placeholder order price only; the engine is told priced=False
+
+
+def _exit_risk_answer(state: Literal["yes", "no", "cannot_tell"]) -> ExitRiskOut:
+    return ExitRiskOut(state=state, max_loss_before=None, max_loss_after=None, warning_text=None)
+
+
+def _exit_warning(risk: ExitRisk, names: Mapping[str, Any]) -> ExitRiskOut:
+    """The yes answer says only what is known: the Max Loss figures (the catalogue's "No fixed maximum" when unlimited)
+    when the engine gave them, and the sold legs left with less cover. Nothing known to say -> cannot_tell."""
+    (before, before_text), (after, after_text) = _extreme(risk.max_loss_before), _extreme(risk.max_loss_after)
+    lines = []
+    if before is not None and after is not None:
+        lines.append(render_explanation("paper_exit_widens_loss", before=before_text, after=after_text))
+    if risk.exposed:
+        legs_text = names[risk.exposed[0]]
+        for other in risk.exposed[1:]:
+            legs_text = render_explanation("paper_alert_legs", rest=legs_text, leg=names[other])
+        lines.append(render_explanation("paper_exit_less_protected", legs=legs_text))
+    if not lines:
+        return _exit_risk_answer("cannot_tell")
+    warning = lines[0] if len(lines) == 1 else render_explanation("paper_exit_warning_join", first=lines[0],
+                                                                  second=lines[1])
+    return ExitRiskOut(state="yes", max_loss_before=before, max_loss_after=after, warning_text=warning)
+
+
+@router.get("/paper/strategies/{strategy_id}/exit-risk", response_model=ExitRiskOut)
+async def paper_exit_risk(strategy_id: int, orders: Annotated[str, Query(max_length=8000)],  # noqa: PLR0913
+                          db: Annotated[Any, Depends(get_db)], user_ref: Annotated[str, Depends(current_user_ref)],
+                          ctx: Annotated[MarketContext | None, Depends(get_market_context)],
+                          feed: Annotated[LiveFeed | None, Depends(get_live_feed)],
+                          now: Annotated[AnswerClock, Depends(get_answer_clock)]) -> ExitRiskOut:
+    """Read only, nothing stored. The WHOLE prepared basket (exits and entries) is judged on the legs after all of it.
+    Bad input is refused (422), an engine error is cannot_tell, never "no". When an exit price cannot be read the
+    answer is judged without any Max Loss figure (never a stand-in price) and shows none."""
+    stored = await _load_strategy(db, user_ref, strategy_id)
+    try:  # the prepared orders as JSON, the same shape the order route takes
+        basket = PaperOrdersIn.model_validate_json('{"orders":' + orders + "}").orders
+    except ValueError:
+        raise HTTPException(status_code=422, detail="invalid_orders") from None
+    booked = await paper_store.load(db, strategy_id)
+    if not booked:  # nothing is open: an exit is larger than what is open; a first basket leaves nothing unprotected
+        return _exit_risk_answer("cannot_tell" if any(o.kind == "exit" for o in basket) else "no")
+    state = {c.contract_id: c for c in await tracked_contracts.resolve(
+        db, sorted({o.order.contract_id for o in booked} | {o.contract_id for o in basket}))}
+    if any(state[o.contract_id].stored is None for o in basket):
+        raise StrategyRefused("paper_contract_not_tradable")
+    try:
+        prices = await _server_exit_prices(ctx, feed, stored.saved.definition.underlying, basket, state)
+    except StrategyRefused:
+        prices = {}
+    at = now()
+    exits = sum(1 for o in basket if o.kind == "exit")
+    terms = {}
+    names = {}
+    for cid, found in state.items():
+        if found.stored is not None:
+            _, instrument, strike, expiry = _identity(found)
+            names[str(cid)] = describe_contract((stored.saved.definition.underlying, instrument, strike, expiry))
+            terms[str(cid)] = ContractTerms(instrument, strike, expiry)
+    try:
+        legs = [PaperOrder(str(o.contract_id), o.side, o.quantity,
+                           prices.get(i, _UNPRICED if o.kind == "exit" else o.price), o.kind, at)
+                for i, o in enumerate(basket)]
+    except ValueError:
+        return _exit_risk_answer("cannot_tell")
+    risk = exit_risk(_paper(booked), legs, terms, priced=len(prices) == exits)
+    if risk.state != "yes":
+        return _exit_risk_answer(risk.state)
+    return _exit_warning(risk, names)
 
 
 # --- stop triggers and alerts (GC-TP step 7a; REQ-109 AC-8; ADR-207 (5); screens 221-224) -----------------------------

@@ -38,6 +38,11 @@
         <label class="flex items-center gap-1"><span class="text-ink-muted">Broker</span><input v-model="heldBroker" type="text" maxlength="40" class="h-9 w-40 rounded border border-line px-2" data-testid="held-broker" /></label>
       </div>
     </div>
+    <!-- GC-ICFIX Issue 10 (ADR-256): the server's one factual line when this exit leaves a sold leg unprotected; Confirm stays enabled -->
+    <p v-if="exitState === 'risk'" class="mt-3 text-sm font-medium text-warn" role="status" data-testid="paper-exit-warning">{{ exitWarning }}</p>
+    <!-- fail closed: a check that could not run is said so, never shown as "no risk"; Confirm is not locked by either line -->
+    <p v-else-if="exitState === 'unchecked'" class="mt-3 text-sm font-medium text-warn" role="status" data-testid="paper-exit-unchecked">{{ PAPER_EXIT_UNCHECKED_TEXT }}</p>
+    <p v-else-if="exitState === 'checking'" class="mt-3 text-sm text-ink-muted" role="status" data-testid="paper-exit-checking">{{ PAPER_EXIT_CHECKING_TEXT }}</p>
     <p class="mt-3 text-xs text-ink-muted" data-testid="paper-not-real">{{ PAPER_NOT_REAL_TEXT }}</p>
     <!-- fix/paper-dialog-safe (ADR-017): a stored order is never offered again; an answer of unknown outcome sends the user to the
          Orderbook first and keeps Confirm locked for PAPER_UNKNOWN_HOLD_MS; a refusal (4xx: nothing stored) unlocks after an edit -->
@@ -62,10 +67,11 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import Chip from '@/components/common/Chip.vue'
 import Modal from '@/components/common/Modal.vue'
 import {
-  PAPER_EXIT_PRICED_BY_SERVER_TEXT, PAPER_NOT_REAL_TEXT, PAPER_OPEN_ORDERBOOK_LABEL, PAPER_PLACED_NOT_REFRESHED_TEXT, PAPER_PRICE_REASON, PAPER_LOTS_REASON, PAPER_UNKNOWN_HOLD_MS,
+  PAPER_EXIT_CHECKING_TEXT, PAPER_EXIT_PRICED_BY_SERVER_TEXT, PAPER_EXIT_UNCHECKED_TEXT, PAPER_NOT_REAL_TEXT, PAPER_OPEN_ORDERBOOK_LABEL, PAPER_PLACED_NOT_REFRESHED_TEXT, PAPER_PRICE_REASON, PAPER_LOTS_REASON, PAPER_UNKNOWN_HOLD_MS,
   PAPER_UNKNOWN_TEXT, HELD_LABEL, heldBlock, paperLotsOk, paperPriceOk,
 } from '@/lib/tracking'
 import { paperDialogTitle, paperKindLabel } from '@/lib/paperDrafts'
+import api from '@/services/api'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
@@ -76,6 +82,7 @@ const props = defineProps({
   state: { type: String, default: '' },
   holdMs: { type: Number, default: PAPER_UNKNOWN_HOLD_MS },
   firstBasket: { type: Boolean, default: false }, // GC-TRACK1 k10: offer "Held at my broker" (the strategy's first basket only)
+  strategyId: { type: [Number, String], default: '' }, // GC-ICFIX Issue 10: with it, exit rows ask the server whether the exit widens the maximum loss
 })
 const emit = defineEmits(['confirm', 'cancel', 'orderbook'])
 
@@ -96,6 +103,29 @@ const ready = computed(() => rows.value.length > 0 && reasons.value.every((r) =>
 // the quantity is a count of units (whole lots x the lot size the order carries), not money
 const unitsOf = (r) => r.lots * r.lot_size
 const orderOf = (r) => ({ contract_id: r.contract_id, side: r.side, quantity: unitsOf(r), price: r.kind === 'exit' ? '0' : String(r.price).trim(), kind: r.kind }) // price: as typed; an exit's is the server's (ignored)
+
+// GC-ICFIX Issue 10 (ADR-256): the screen compares nothing; it shows the server's line when `widens` is true. Fail closed: a read that fails or answers
+// something unusable shows "could not check" (exitState 'unchecked'); while it runs, 'checking'; no exit row: '' (nothing).
+const exitWarning = ref('')
+const exitState = ref('')
+let askSeq = 0
+async function askExitRisk() {
+  const seq = ++askSeq
+  // the WHOLE basket (exits and entries) is judged on the legs after all of it; rows not yet valid wait for the user's edit
+  const basket = props.open && props.strategyId && rows.value.some((r) => r.kind === 'exit') ? rows.value : []
+  if (!basket.length) { exitState.value = ''; exitWarning.value = ''; return }
+  if (basket.some((r) => !paperLotsOk(r.lots) || (r.kind !== 'exit' && !paperPriceOk(r.price)))) { exitState.value = 'checking'; exitWarning.value = ''; return }
+  exitState.value = 'checking'
+  let state = 'unchecked'
+  let line = ''
+  try {
+    const { data } = await api.get(`/paper/strategies/${props.strategyId}/exit-risk`, { params: { orders: JSON.stringify(basket.map(orderOf)) } })
+    if (data?.state === 'no') state = ''
+    else if (data?.state === 'yes' && typeof data.warning_text === 'string' && data.warning_text) { state = 'risk'; line = data.warning_text }
+  } catch { state = 'unchecked' }
+  if (seq === askSeq) { exitState.value = state; exitWarning.value = line }
+}
+watch(() => [props.open, props.orders, props.strategyId, rows.value.map((r) => `${r.lots}/${r.price}`).join()], askExitRisk, { immediate: true })
 
 // the rows as they were when the server refused them: Confirm unlocks only once the user has changed something
 const snapshot = () => JSON.stringify(rows.value.map((r) => [r.lots, r.price]))

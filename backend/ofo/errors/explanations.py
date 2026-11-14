@@ -1801,6 +1801,14 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("paper_extremes_before_charges", "values_seen",
                         "Maximum profit and maximum loss are before charges and taxes: the charges could not be "
                         "priced."),
+    # ADR-256: the exit confirm list, when the legs left open can lose more than before (a sold option lost its bought one)
+    ExplanationTemplate("paper_exit_widens_loss", "values_seen",
+                        "After these orders, maximum loss: {before} before, {after} after.",
+                        {"before": Explained, "after": Explained}),
+    ExplanationTemplate("paper_exit_less_protected", "values_seen",
+                        "Sold option with less protection: {legs}.", {"legs": Explained}),
+    ExplanationTemplate("paper_exit_warning_join", "values_seen", "{first} {second}",
+                        {"first": Explained, "second": Explained}),
     ExplanationTemplate("paper_trigger_level", "values_seen", "{level}", {"level": IndexLevel}),
     ExplanationTemplate("paper_alert_title", "what_triggered", "Paper strategy — {name}", {"name": Explained}),
     ExplanationTemplate("paper_alert_leg", "values_seen", "{contract} at {price}",
