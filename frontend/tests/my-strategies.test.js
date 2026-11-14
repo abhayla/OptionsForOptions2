@@ -66,7 +66,8 @@ describe('My Strategies page', () => {
     const w = await open()
     const rows = w.findAll('[data-testid="strategy-row"]')
     expect(rows).toHaveLength(2)
-    expect(rows[1].get('[data-testid="row-status"]').text()).toBe('Draft')
+    expect(rows[0].get('[data-testid="row-status"]').text()).toBe('Draft')
+    expect(rows[1].get('[data-testid="row-status"]').text()).toBe('Status not available')
     expect(w.get('[data-testid="open-execute-7"]').attributes('href')).toBe('/strategy/7/execute')
     expect(w.find('[data-testid="open-builder-8"]').exists()).toBe(true)
   })
@@ -164,11 +165,23 @@ describe('REQ-134 AC-4: each row shows its name, underlying, first leg and "and 
     expect(r.text()).not.toMatch(/Tracked|Not tracked/)
     expect(r.text()).not.toContain('"')
   })
-  it('ADR-299: the status column says Draft / Running / Completed from the row (tracked true or false changes nothing)', async () => {
-    list(named(7, 'A', { tracked: false }), named(8, 'B', { tracked: true, has_paper_order: true }), named(9, 'C', { status: 'closed', has_paper_order: true }))
+  it('ADR-299 + ADR-259: the status column says Draft / Running from the row (tracked changes nothing) and a closed trade is NOT on this list (it leaves it, ADR-259); the old expectation that it stays is corrected', async () => {
+    list(named(7, 'A', { tracked: false }), named(8, 'B', { tracked: true, has_order: true }), named(9, 'C', { status: 'closed', has_order: true }))
     const w = await open()
-    expect(w.findAll('[data-testid="row-status"]').map((n) => n.text())).toEqual(['Draft', 'Running', 'Completed'])
+    expect(w.findAll('[data-testid="row-status"]').map((n) => n.text())).toEqual(['Draft', 'Running'])
+    expect(w.find('[data-strategy-id="9"]').exists()).toBe(false)
     expect(w.find('[data-testid="row-tracked"]').exists()).toBe(false)
+  })
+  it('ADR-299: the column header is "Status" and no "Tracking" column is left over an empty cell', async () => {
+    list(named(7, 'A'))
+    const w = await open()
+    expect(w.text()).not.toContain('Tracking')
+    expect(w.findAll('[data-testid="strategy-row"] > span[aria-hidden="true"]')).toHaveLength(0)
+  })
+  it('a status the server never sends reads "Status not available" and the row is still listed (never hidden)', async () => {
+    list(named(7, 'A', { status: 'some_future_status' }))
+    const w = await open()
+    expect(w.get('[data-testid="row-status"]').text()).toBe('Status not available')
   })
   it('an older server (no name, no leg fields): the old "Strategy <id>" text stays, no legs line, no tracked text, no Rename', async () => {
     list(row(7, 'draft'))

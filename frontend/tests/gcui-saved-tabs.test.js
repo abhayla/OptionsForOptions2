@@ -77,6 +77,17 @@ describe('D-C11 Saved Strategies rows', () => {
     expect(rows[1].get('[data-testid="saved-draft-legs"]').text()).toBe('NIFTY 27 Oct 22500 PE')
     expect(rows[1].text()).not.toContain(' and ')
   })
+  it('ADR-259 + ADR-299: a closed trade leaves the Saved tab; each row shows its status word; an unknown status is still listed', async () => {
+    const w = await bar([summary(1), summary(2, { has_order: true }), summary(3, { status: 'closed', has_order: true }), summary(4, { status: 'weird' })])
+    const rows = w.findAll('[data-testid="saved-draft-row"]')
+    expect(rows.map((r) => r.get('[data-testid="saved-draft-name"]').text())).toEqual(['Plan 4', 'Plan 2', 'Plan 1'])
+    expect(rows.map((r) => r.get('[data-testid="saved-draft-status"]').text())).toEqual(['Status not available', 'Running', 'Draft'])
+  })
+  it('the Tracked tab empty text uses no retired word', async () => {
+    const w = await bar([])
+    expect(t(w, 'tab-panel-tracked').text()).not.toMatch(/No tracked strategies|Tracked/)
+    expect(t(w, 'tab-panel-tracked').text()).toContain('Running')
+  })
   it('leg_count 0 or a missing first_leg: no second line, never "undefined"', async () => {
     const w = await bar([summary(2, { leg_count: 0 }), summary(1, { first_leg: undefined })])
     expect(w.findAll('[data-testid="saved-draft-legs"]')).toHaveLength(0)
