@@ -14,12 +14,14 @@ SELECT on both tables and passes through none of the store's filters.
 
 from __future__ import annotations
 
+from decimal import Decimal
 from http import HTTPStatus
 from types import SimpleNamespace
 
 import pytest
 from ofo_app import execution_plan_store as plans
 from ofo_app import strategy_store as store
+from ofo_app import paper_store, playbook_store
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 from test_execution_plan_store import _close, _order, _Tx
@@ -425,3 +427,51 @@ async def test_a_strategy_with_only_paper_orders_is_deleted_and_undone(app_engin
             back = await ac.post(f"/strategies/{tx.strategy_id}/undelete", params={"expected_revision": revision})
             assert back.status_code == HTTPStatus.OK
         assert (await tx.conn.execute(RAW_ROW, {"id": tx.strategy_id})).one().deleted_at is None
+
+
+async def test_a_strategy_with_practice_orders_and_a_plan_row_is_refused(app_engine):
+    """ADR-293 (2): a real basket was sent as well, so Delete is refused with the sent-orders sentence."""
+    async with _Tx(app_engine) as tx:
+        await _paper_order(tx.conn, tx.strategy_id)
+        await _send_basket(tx.conn, tx.user, tx.strategy_id, "open")
+        revision = await _revision(tx.conn, tx.strategy_id)
+        async with _client(_app(_ConnMaker(tx.conn), tx.user)) as ac:
+            assert [s["can_delete"] for s in (await ac.get("/strategies")).json()["strategies"]] == [False]
+            refused = await ac.delete(f"/strategies/{tx.strategy_id}", params={"expected_revision": revision})
+            assert refused.status_code == HTTPStatus.CONFLICT
+            assert refused.json()["what_happened"] == "Orders were already sent for this strategy, so it cannot be deleted."
+        assert (await tx.conn.execute(RAW_ROW, {"id": tx.strategy_id})).one().deleted_at is None
+
+
+async def test_a_condor_held_at_the_broker_is_refused_with_the_sent_orders_sentence(app_engine):
+    """ADR-292: a held entry is a REAL position stored as practice orders; it is never deletable."""
+    async with _Tx(app_engine) as tx:
+        await _paper_order(tx.conn, tx.strategy_id)
+        await tx.conn.execute(text("INSERT INTO public.strategy_held_entries (strategy_id, entry_at, broker_text) "
+                                   "VALUES (:s, now(), NULL)"), {"s": tx.strategy_id})
+        revision = await _revision(tx.conn, tx.strategy_id)
+        async with _client(_app(_ConnMaker(tx.conn), tx.user)) as ac:
+            assert [s["can_delete"] for s in (await ac.get("/strategies")).json()["strategies"]] == [False]
+            refused = await ac.delete(f"/strategies/{tx.strategy_id}", params={"expected_revision": revision})
+            assert refused.status_code == HTTPStatus.CONFLICT
+            assert refused.json()["what_happened"] == "Orders were already sent for this strategy, so it cannot be deleted."
+        assert (await tx.conn.execute(RAW_ROW, {"id": tx.strategy_id})).one().deleted_at is None
+
+
+async def test_undo_of_a_practice_strategy_brings_back_the_book_the_row_and_the_open_records(app_engine):
+    """ADR-293 (3): while hidden the strategy has no practice book and no list row, but its open adjustment records
+    stay OPEN (the worker does not lapse a hidden strategy); Undo shows all three again."""
+    async with _Tx(app_engine) as tx:
+        await _paper_order(tx.conn, tx.strategy_id)
+        await playbook_store.open_suggestion(tx.conn, tx.user, tx.strategy_id, "T-01", trigger_id="T-01", stage="Middle",
+                                             value=Decimal("0.36"), threshold=Decimal("0.30"))
+        revision = await _revision(tx.conn, tx.strategy_id)
+        async with _client(_app(_ConnMaker(tx.conn), tx.user)) as ac:
+            assert (await ac.delete(f"/strategies/{tx.strategy_id}", params={"expected_revision": revision})).status_code == HTTPStatus.OK
+            assert await paper_store.load_all(tx.conn, tx.user) == []
+            assert await playbook_store.open_strategy_ids(tx.conn, tx.user) == []  # hidden: not offered to the worker's lapse sweep
+            assert (await ac.get("/strategies")).json()["strategies"] == []
+            assert (await ac.post(f"/strategies/{tx.strategy_id}/undelete", params={"expected_revision": revision})).status_code == HTTPStatus.OK
+            assert [b.strategy_id for b in await paper_store.load_all(tx.conn, tx.user)] == [tx.strategy_id]
+            assert await playbook_store.open_strategy_ids(tx.conn, tx.user) == [tx.strategy_id]
+            assert len((await ac.get("/strategies")).json()["strategies"]) == 1
