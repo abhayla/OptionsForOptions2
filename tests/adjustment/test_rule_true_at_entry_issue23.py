@@ -5,7 +5,8 @@ notes (ISSUES.md lines 66, 194, 221). Every behaviour below is a decision, not a
 - trade 138 (spot 25,185, short CE 25,200, delta 0.49): level rules true at entry are held, grey line, no alert (F-71,
   ADR-258); they flag after a check finds them clear.
 - trade 142 (T-03 0.4008 at the check): the baseline is the fill's own value (ADR-283 (1)); a fill value of
-  0.3490 (under the 0.35 limit of this body) is not true at entry, so 0.4008 at the check flags; 0.4008 at the fill is held.
+  0.3490 (under the 0.35 limit of this body) is not true at entry, so 0.4008 at the check flags;
+  0.4008 at the fill is held.
 - trades 142 / 143 (clock rule 13:56 passed 2 minutes after entry): the clock rule is never "already true" (ADR-283 (2))
   and acts on expiry day only (ADR-310).
 

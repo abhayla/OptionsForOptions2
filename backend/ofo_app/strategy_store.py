@@ -117,7 +117,8 @@ _INSERT = text(
 _CAN_DELETE_SQL = ("(NOT EXISTS (SELECT 1 FROM public.execution_plans p WHERE p.strategy_id = s.id) "
                    "AND NOT EXISTS (SELECT 1 FROM public.strategy_versions v WHERE v.strategy_id = s.id) "
                    "AND NOT EXISTS (SELECT 1 FROM public.paper_orders o WHERE o.strategy_id = s.id))")  # ADR-271
-#: ADR-293: Delete is offered unless a REAL basket was sent (a plan row or a version row); practice orders never block it.
+#: ADR-293: Delete is offered unless a REAL basket was sent (a plan row or a version row);
+#: practice orders never block it.
 _DELETABLE_SQL = ("(NOT EXISTS (SELECT 1 FROM public.execution_plans p WHERE p.strategy_id = s.id) "
                   "AND NOT EXISTS (SELECT 1 FROM public.strategy_versions v WHERE v.strategy_id = s.id) "
                   # ADR-292: a condor held at the broker is a REAL position stored as practice orders: never deletable

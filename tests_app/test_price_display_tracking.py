@@ -23,7 +23,8 @@ def _one_open() -> tuple[_Book, paper.TrackedLeg]:
 
 
 def _live_view() -> paper.TrackingView:
-    """The REAL view type (a hand-made stub forgot ``unpriced``): one leg live at 186.1, (186.1 - 187.35) x 65 = -81.25."""
+    """The REAL view type (a hand-made stub forgot ``unpriced``): one leg live at 186.1,
+    (186.1 - 187.35) x 65 = -81.25."""
     loss, price = Decimal("-81.25"), paper.Price("NSE_FO:1", "live", Decimal("186.1"), NOW)
     return paper.TrackingView(False, None, loss, NOW, (price,), None, None, (), Decimal(0), loss, False, (loss,), ())
 
