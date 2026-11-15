@@ -10,7 +10,7 @@
   },
   {
    "key": "A-05",
-   "text": "Roll the tested spread out (same width)"
+   "text": "Roll the tested spread away from spot (same width, same expiry)"
   },
   {
    "key": "A-29",
@@ -42,7 +42,7 @@
   },
   {
    "key": "A-06",
-   "text": "Shift a leg by +/- N strikes"
+   "text": "Shift the tested spread away from spot by N strikes"
   },
   {
    "key": "A-07",
@@ -118,7 +118,7 @@
   },
   {
    "key": "A-26",
-   "text": "Close the untested side for profit"
+   "text": "Buy back the decayed untested short (its wing stays)"
   },
   {
    "key": "A-27",

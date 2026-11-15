@@ -1,4 +1,5 @@
-"""GC-ICFIX u509 (ADR-214, ADR-238, ADR-239, ADR-003): the name a user is shown for an approach states what the built legs do.
+# ruff: noqa: PLR2004 - leg counts of the approaches
+"""GC-ICFIX u509 (ADR-214, ADR-238, ADR-239, ADR-003): the shown name of an approach states what its built legs do.
 
 Each rule reads the key words of the shown name and checks them against the builder's own trades (no name is typed here
 beyond the word rules). Also: the name table, the built-id list and the kinds table hold the same ids
@@ -11,8 +12,7 @@ from collections import Counter
 import pytest
 from ofo.adjustment import approaches as ap
 from ofo.errors.explanations import BUILT_APPROACH_NAMES
-
-from test_approaches import CFG, IC_IDS, inputs, load  # noqa: I001 - the scenario helpers of the builder tests
+from test_approaches import CFG, IC_IDS, inputs, load  # the scenario helpers of the builder tests
 
 
 def _width(legs, kind):
@@ -61,7 +61,7 @@ def test_every_shown_name_states_what_its_built_legs_do():
 @pytest.mark.parametrize("aid,rule", [
     ("A-05", "out/next expiry"), ("A-06", "a leg"), ("A-26", "side")])
 def test_names_that_made_a_false_claim_are_gone(aid, rule):
-    """The three names the user-test notes (V-10, N-5, ADR-238 (3), ADR-239 (3)) found misleading no longer carry the claim."""
+    """The three names the user-test notes and ADR-238 (3) / ADR-239 (3) found misleading no longer carry the claim."""
     name = BUILT_APPROACH_NAMES[aid]
     assert not any(r.startswith(rule) for r, _ in _false_claims(name)), name
 

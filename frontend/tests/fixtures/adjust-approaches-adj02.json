@@ -344,7 +344,7 @@
   },
   {
    "id": "A-05",
-   "name": "Roll the tested spread out (same width)",
+   "name": "Roll the tested spread away from spot (same width, same expiry)",
    "kind": "roll",
    "side": "call",
    "step_basis": "delta",
