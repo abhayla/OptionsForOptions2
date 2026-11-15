@@ -417,3 +417,27 @@ def test_a_yes_no_rule_record_names_the_rule(rule_id, label, expected):
 def test_an_unnameable_yes_no_record_stays_none_and_invents_no_name(rule_id, label):
     from ofo_app.routes.adjustment_opportunities import condition_text
     assert condition_text(_yes_no_record(rule_id, label)) is None
+
+
+# ---- GC-ICFIX defect G: the expiry-day time-exit record (clock value, stored as None) names the rule ----
+# Class: every record whose trigger's value is a clock time (unit "time"; the playbook catalogue has only T-10b).
+def _clock_record(trigger_id: str, label: str | None, unit: str | None):
+    import datetime as dt
+
+    from ofo_app import playbook_store as store
+    return store.Suggestion(1, 143, trigger_id, trigger_id, "Last day", None, None,
+                            dt.datetime(2026, 11, 14, 9, 30, tzinfo=dt.UTC), "open", None,
+                            [{"cmp": "ge", "label": label, "unit": unit, "group": "g"}])
+
+
+def test_a_clock_time_record_with_no_stored_value_names_the_rule():
+    from ofo_app.routes.adjustment_opportunities import condition_text
+    label = "Clock time reached (checked in this stage)"
+    text = condition_text(_clock_record("T-10b", label, "time"))
+    assert text is not None and str(text) == label, text
+
+
+def test_an_unknown_trigger_with_no_stored_value_stays_none():
+    from ofo_app.routes.adjustment_opportunities import condition_text
+    assert condition_text(_clock_record("T-99", "Whatever", None)) is None
+    assert condition_text(_clock_record("T-10b", "T-10b", "time")) is None  # the id is no wording
