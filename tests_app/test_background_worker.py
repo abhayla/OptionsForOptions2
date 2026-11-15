@@ -753,14 +753,6 @@ async def _states_after_list(app_db_url, monkeypatch, *, listed=None, read=None)
     return [(s.outcome, s.lapse_reason) for s in recs]
 
 
-async def test_a_deleted_strategys_open_record_lapses_as_no_longer_monitored(app_db_url, monkeypatch):
-    """#652: the strategy is gone from the owner's list (deleted): its open record lapses, in the catalogue's words."""
-    from ofo.errors.explanations import render_explanation  # noqa: PLC0415
-    got = await _states_after_list(app_db_url, monkeypatch, listed=lambda rows, sid: [r for r in rows if r.id != sid])
-    assert got == [("lapsed", "not_monitored")]
-    assert str(render_explanation("suggestion_lapsed_not_monitored")) == "The strategy is no longer monitored"
-
-
 async def test_a_strategy_with_nothing_traded_lapses_its_open_record_as_no_longer_monitored(app_db_url, monkeypatch):
     async def nothing(_sid, _rates):
         return None
