@@ -41,6 +41,30 @@ describe('u506: the toast pop-up never covers the page', () => {
     w.unmount()
   })
 
+  // Coordinator round: a pop-up that moves the page while the user is about to click is a hazard (a click could land on a
+  // Confirm). The slot is always there with a fixed height, so a toast appearing changes nothing around it.
+  it('the toast slot has the same fixed height with 0, 1 and 3 toasts, so the page content never moves', async () => {
+    const { showToast } = useToast()
+    const slotOf = async () => {
+      const w = await layout()
+      const host = w.get('[data-testid="toast-host"]')
+      const out = { cls: host.classes().filter((c) => /^(h-|min-h-|max-h-|overflow)/.test(c)).sort(), count: w.findAll('[data-testid="toast"]').length }
+      w.unmount()
+      return out
+    }
+    const none = await slotOf()
+    showToast('First one', 'info')
+    const one = await slotOf()
+    showToast('Second one', 'info')
+    showToast('Third one', 'info')
+    const three = await slotOf()
+    expect([none.count, one.count, three.count]).toEqual([0, 1, 3])
+    expect(none.cls.find((c) => /^h-/.test(c))).toBeTruthy() // an explicit fixed height, not content-sized
+    expect(none.cls.some((c) => /^overflow-y-/.test(c))).toBe(true) // extra toasts scroll inside the slot
+    expect(one.cls).toEqual(none.cls)
+    expect(three.cls).toEqual(none.cls)
+  })
+
   it('a toast is dismissible', async () => {
     useToast().showToast('Only one', 'info')
     const w = await layout()
