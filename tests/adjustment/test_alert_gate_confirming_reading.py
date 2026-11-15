@@ -83,3 +83,43 @@ def test_gate_readings_put_the_numbers_of_a_yes_no_rule_on_its_spec():
     clock = RuleValue("T-10b", "T-10b", "14:00", "14:30", "ge", False)
     spec, _ = gate_readings.reading(clock)
     assert (spec.shown_value, spec.shown_threshold) == (None, None)
+
+
+# ---- GC-ICFIX round 2: a held ladder row keeps its rung; an opened record's limit is the confirming sample's ----------
+
+
+def test_a_held_ladder_rule_carries_the_rung_of_its_own_sample():
+    spec = ag.RuleSpec("T-07", "ge", (D("80"), D("90")))
+    state, _ = _step(ag.initial_state(), "09:16:30", spec, D("85"))  # before the 09:20 quiet time
+    _, ev = _step(state, "09:17:30", spec, D("85"))
+    [h] = [e for e in ev if isinstance(e, ag.Held)]
+    assert (h.level, h.threshold) == (0, D("80"))
+
+
+def test_a_restored_held_ladder_row_ends_by_the_band_after_a_restart():
+    spec = ag.RuleSpec("T-07", "ge", (D("80"),))
+    state, _ = _step(ag.initial_state(), "09:16:30", spec, D("85"))
+    _, ev = _step(state, "09:17:30", spec, D("85"))
+    [h] = [e for e in ev if isinstance(e, ag.Held)]
+    capped = ag.restore(ag.GateRows((), 0), DAY, {})
+    restored = ag.restore_held(capped, "T-07", h.reason, h.threshold, spec)
+    assert restored.rule("T-07").hold.threshold == D("80")
+    restored, _ = _step(restored, "10:40:30", spec, D("60"))  # well inside the band (80 - 20% of 80 = 64)
+    restored, _ = _step(restored, "10:41:30", spec, D("60"))
+    assert restored.rule("T-07").hold is None
+
+
+def test_an_opened_ladder_record_carries_the_limit_of_its_own_sample():
+    first = ag.RuleSpec("T-07", "ge", (D("80"), D("90")))
+    moved = ag.RuleSpec("T-07", "ge", (D("85"), D("90")))  # the stage moved on before the next check
+    state, _ = _step(ag.initial_state(), "10:40:30", first, D("81"))
+    _, ev = _step(state, "10:41:30", moved, D("81"))
+    [o] = [e for e in ev if isinstance(e, ag.Opened)]
+    assert o.limit == D("80")
+
+
+def test_an_opened_yes_no_record_carries_its_samples_number_as_the_limit():
+    state, _ = _step(ag.initial_state(), "10:40:30", _t02("-500", "0"), True)
+    _, ev = _step(state, "10:41:30", _t02("9", "1"), True)
+    [o] = [e for e in ev if isinstance(e, ag.Opened)]
+    assert o.limit == D("0")
