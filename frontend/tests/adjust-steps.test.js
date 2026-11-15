@@ -76,6 +76,17 @@ describe('AdjustSteps', () => {
     expect(why[1].text()).not.toContain('T-03') // the rule id is never shown in place of words
   })
 
+  it('GC-ICFIX 21 (ADR-273): an adjustment row is named by its approach, the server text; an unrecorded one says so', async () => {
+    const rows = [row(), row({ step: 'adjustment', number: 1, approach_text: 'Roll the untested spread toward spot' }),
+      row({ step: 'adjustment', number: 2, approach_text: null })]
+    const w = await open(body(totals(), rows))
+    const r = w.findAll('[data-testid="steps-row"]')
+    expect(r[1].get('[data-testid="steps-approach"]').text()).toBe('Roll the untested spread toward spot')
+    expect(r[2].find('[data-testid="steps-approach"]').exists()).toBe(false) // none stored: no approach line, no filler
+    expect(r[2].get('[data-testid="steps-step"]').text()).toBe('Adjustment 2')
+    expect(r[0].find('[data-testid="steps-approach"]').exists()).toBe(false) // the entry row names no approach
+  })
+
   it('AC-2: totals tiles are the server texts as given', async () => {
     const w = await open(body())
     expect(tid(w, 'steps-total-pnl').text()).toContain('-2,015.00')
