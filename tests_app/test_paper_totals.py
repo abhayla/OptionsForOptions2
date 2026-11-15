@@ -217,7 +217,15 @@ async def test_a_fully_exited_strategy_counts_in_booked_and_decays_nothing(db):
                               # ADR-210: each reason code carries its sentence (GC-TPD); a None code, None text
                               "totals_reason_text": None, "decay_reason_text": None,
                               "charges_reason_text": str(reason_text("rates_unavailable")),
-                              "totals_as_of": None}  # GC-LIVE L3a: no paused book, no pause time
+                              "totals_as_of": None,  # GC-LIVE L3a: no paused book, no pause time
+                              # ADR-301 to ADR-311: the after-charges figures wait for the same missing rates
+                              "total_after": None, "total_after_text": None, "booked_after": None,
+                              "booked_after_text": None, "unbooked_after": None, "unbooked_after_text": None,
+                              "charges_paid": None, "charges_paid_text": None, "charges_to_close": None,
+                              "charges_to_close_text": None, "after_charges_reason": "rates_unavailable",
+                              "booked_after_reason": "rates_unavailable",
+                              "after_charges_reason_text": str(reason_text("rates_unavailable")),
+                              "booked_after_reason_text": str(reason_text("rates_unavailable"))}
 
 
 async def test_no_paper_strategies_answers_an_empty_list_and_zero_totals(db):
@@ -231,7 +239,16 @@ async def test_no_paper_strategies_answers_an_empty_list_and_zero_totals(db):
                               "decay_text": zero, "decay_reason": None, "charges": "0.00",
                               "charges_text": str(render_explanation("paper_charges", amount=D("0"))),
                               "charges_reason": None, "totals_reason_text": None, "decay_reason_text": None,
-                              "charges_reason_text": None, "totals_as_of": None}
+                              "charges_reason_text": None, "totals_as_of": None,
+                              # ADR-301 to ADR-311: nothing traded, so every after-charges figure is zero
+                              "total_after": "0.00", "total_after_text": zero, "booked_after": "0.00",
+                              "booked_after_text": zero, "unbooked_after": "0.00", "unbooked_after_text": zero,
+                              "charges_paid": "0.00",
+                              "charges_paid_text": str(render_explanation("paper_charges", amount=D("0"))),
+                              "charges_to_close": "0.00",
+                              "charges_to_close_text": str(render_explanation("paper_charges", amount=D("0"))),
+                              "after_charges_reason": None, "booked_after_reason": None,
+                              "after_charges_reason_text": None, "booked_after_reason_text": None}
 
 
 # --- alerts carry the strategy name -----------------------------------------------------------------------------------
