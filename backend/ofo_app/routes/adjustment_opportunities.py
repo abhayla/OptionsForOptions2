@@ -23,14 +23,21 @@ from typing import Annotated, Any, Literal
 from fastapi import APIRouter, Depends
 from ofo.adjustment import level_watch
 from ofo.adjustment.held_reasons import HELD_TEXT_IDS
-from ofo.adjustment.playbook_eval import is_day_rule_id, is_situation_rule_id
+from ofo.adjustment.playbook_eval import TIME_TRIGGERS, is_day_rule_id, is_situation_rule_id
 from ofo.errors import render
 from ofo.errors.explanations import DAY_RULE_GENERIC_TEXT, LEVEL_WATCH_LABEL_TEXT, render_explanation
 from ofo.strategy.stored_form import shown_name
 from pydantic import BaseModel, ConfigDict
 
 from ofo_app import playbook_store as store
-from ofo_app.adjustment_check import TargetFigures, condition_line, condition_line_t19, day_rule_words, stage_name_text
+from ofo_app.adjustment_check import (
+    CLOCK_UNIT,
+    TargetFigures,
+    condition_line,
+    condition_line_t19,
+    day_rule_words,
+    stage_name_text,
+)
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier, Money
 from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure
@@ -134,10 +141,12 @@ def _detail(s: store.Suggestion) -> Any:
 
 
 def _yes_no_name(s: store.Suggestion) -> str | None:
-    """The stored label of a situation rule or level watch, else a watch's catalogue label; never an invented name."""
+    """The stored label of a clock-time rule, situation rule or level watch, else a watch's catalogue label."""
+    own = None if s.label == s.rule_id else s.label
+    if s.unit == CLOCK_UNIT or s.trigger_id in TIME_TRIGGERS:  # a clock-time rule stores no value: its own label
+        return own
     if not (is_situation_rule_id(s.rule_id) or level_watch.is_rule_id(s.rule_id)):
         return None
-    own = None if s.label == s.rule_id else s.label
     return own or LEVEL_WATCH_LABEL_TEXT.get(level_watch.direction_of(s.rule_id) or "")
 
 
