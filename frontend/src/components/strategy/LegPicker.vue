@@ -11,7 +11,7 @@ import api, { NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import DepthPopup from '@/components/strategy/DepthPopup.vue'
 import MarketClosedBanner from '@/components/states/MarketClosedBanner.vue'
-import { capturedCaption, contractName, daysByExpiry, expiryText, expiryWithDays, istTime, strikeLabel } from '@/lib/displayFormat'
+import { capturedCaption, contractName, daysByExpiry, expiryText, expiryWithDays, istTime, setShownDate, strikeLabel } from '@/lib/displayFormat'
 import { marketClosedText } from '@/lib/sharedStateText'
 import { healthSentence } from '@/lib/dataHealthText'
 import { oiBarMax, oiBarWidth as barWidthOf } from '@/lib/oiBars'
@@ -112,6 +112,7 @@ async function loadExpiries(preselect = true) {
     serverDefault.value = res.data.default_expiry ?? ''
     expiryDays.value = daysByExpiry(res.data.expiry_days)
     shownToday.value = res.data.today ?? null
+    setShownDate(shownToday.value)
     errorParts.value = null
     // F-13: a shut drawer reads no strikes or contracts; the opening watcher picks the expiry and reads them on open
     if (preselect && props.active) {

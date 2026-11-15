@@ -20,7 +20,7 @@ import { UNAVAILABLE_LABEL, isPermitted, reasonLine } from '@/lib/chainUnavailab
 import { UNDERLYINGS } from '@/lib/underlyings'
 import api from '@/services/api'
 import { healthSentence, missingCode, missingReason, shownHealth } from '@/lib/dataHealthText'
-import { strikeLabel } from '@/lib/displayFormat'
+import { setShownDate, strikeLabel } from '@/lib/displayFormat'
 import MarketClosedBanner from '@/components/states/MarketClosedBanner.vue'
 import { useSettingsValues } from '@/stores/settingsValues'
 import { strikeRangesOf } from '@/lib/settingsValues'
@@ -65,6 +65,7 @@ async function loadExpiries() {
     const res = await api.get(`/catalogue/${underlying.value}/expiries`)
     if (mine !== expirySeq) return
     expiries.value = [...res.data.expiries].sort()
+    setShownDate(res.data.today)
     expiry.value = expiries.value[0] ?? ''
     if (!expiry.value) catalogueFailed.value = true
   } catch {

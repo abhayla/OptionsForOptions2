@@ -11,6 +11,7 @@ import api, { NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import { UNDERLYINGS } from '@/lib/legPicker'
+import { setShownDate } from '@/lib/displayFormat'
 import { useSettingsValues } from '@/stores/settingsValues'
 import {
   CARDS_SHOWN, MARKET_VIEWS, OBJECTIVES, PATHS, RANGE_READINGS, expandTemplate, expiryLabels, matchTemplates, RANGE_STEP_KEY, rangeCapKey, rangeLists, readingFromRange,
@@ -110,6 +111,7 @@ async function loadExpiries() {
   ])
   expiries.value = Array.isArray(ex?.expiries) ? ex.expiries : []
   shownToday.value = ex?.today ?? null
+  setShownDate(shownToday.value)
   current.value = Array.isArray(idx) ? (idx.find((i) => i.underlying === underlying.value)?.value ?? null) : null
   expiry.value = ''
   contracts.value = []

@@ -7,14 +7,21 @@ export const TIME_UNAVAILABLE = 'Time not available'
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 const MONTH_BY_TEXT = Object.fromEntries(MONTHS.map((m, i) => [String(i + 1).padStart(2, '0'), m])) // '01' -> 'Jan'
 
-/** '2026-10-19' -> '19 Oct', or null when it is not a calendar date string. */
-export function expiryText(expiry, today) {
+let shownDate = null
+/** u510: the server's shown date ('2026-11-15', from an expiries reply), kept once so every expiry text can leave the year
+ *  off for the current year. Null (never set, or an older reply without it) = every expiry prints its year. */
+export function setShownDate(today) {
+  shownDate = /^\d{4}-\d{2}-\d{2}/.test(String(today ?? '')) ? String(today) : null
+}
+
+/** THE one expiry-text rule (u510): '2026-10-19' -> '19 Oct 2026', or '19 Oct' only when the expiry is known to be in the
+ *  year of the shown date (`today`, else the one set by setShownDate); text compare, no clock. Null when not a date. */
+export function expiryText(expiry, today = shownDate) {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(expiry ?? ''))
   if (!m) return null
   const month = MONTH_BY_TEXT[m[2]]
   const day = m[3].replace(/^0/, '')
-  // u510: the year shows only when it differs from the SERVER's shown date (`today`, text compare, no clock here)
-  const year = /^\d{4}-/.test(String(today ?? '')) && !String(today).startsWith(`${m[1]}-`) ? ` ${m[1]}` : ''
+  const year = /^\d{4}-/.test(String(today ?? '')) && String(today).startsWith(`${m[1]}-`) ? '' : ` ${m[1]}`
   return month && /^([1-9]|[12]\d|3[01])$/.test(day) ? `${day} ${month}${year}` : null
 }
 

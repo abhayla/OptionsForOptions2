@@ -22,7 +22,7 @@ vi.mock('@/services/api', async (importActual) => {
         gets.push(url)
         if (url === '/features') return Promise.resolve({ data: { order_path: 'off', held } })
         if (url === '/strategy-templates') return Promise.resolve({ data: { templates: TEMPLATES } })
-        if (url.endsWith('/expiries')) return Promise.resolve({ data: { expiries: ['2026-10-27', '2026-11-03'], ...expiryReply } })
+        if (url.endsWith('/expiries')) return Promise.resolve({ data: { today: '2026-10-10', expiries: ['2026-10-27', '2026-11-03'], ...expiryReply } })
         return Promise.reject(new Error(url))
       },
       post: (url, body) => { posts.push([url, body]); return loadAnswer(url, body) },

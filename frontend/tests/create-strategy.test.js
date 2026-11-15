@@ -39,7 +39,7 @@ vi.mock('@/services/api', async (importActual) => {
     get: (url) => {
       if (url === '/settings') return settingsReply ?? Promise.resolve({ data: { groups: [{ name: 'Limits', settings: Object.entries(SERVED).map(([key, value]) => ({ key, value })) }], charges: null } })
       if (url === '/strategy-templates') return templatesReply ?? Promise.resolve({ data: TEMPLATES })
-      if (url === '/catalogue/NIFTY/expiries') return Promise.resolve({ data: { underlying: 'NIFTY', expiries: ['2026-10-13', '2026-10-20', '2026-10-27'] } })
+      if (url === '/catalogue/NIFTY/expiries') return Promise.resolve({ data: { underlying: 'NIFTY', today: '2026-10-10', expiries: ['2026-10-13', '2026-10-20', '2026-10-27'] } })
       if (url.startsWith('/catalogue/NIFTY/contracts')) return Promise.resolve({ data: { underlying: 'NIFTY', contracts: contractsNow ?? CONTRACTS } })
       if (url === '/market/indices') return Promise.resolve({ data: { state: 'LIVE', indices: [{ underlying: 'NIFTY', value: level }] } })
       return Promise.reject(new Error(url))

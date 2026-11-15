@@ -12,7 +12,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import api, { NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
-import { daysByExpiry, expiryWithDays } from '@/lib/displayFormat'
+import { daysByExpiry, expiryWithDays, setShownDate } from '@/lib/displayFormat'
 import { useHeldFeature } from '@/lib/heldFeatures'
 import { instrumentId } from '@/lib/legPicker'
 import { LEARN_LINK_TEXT, LEARN_PATH, READY_MADE_HINT, VIEW_GROUPS, builderLeg, replacePrompt, templatesInGroup } from '@/lib/readyMade'
@@ -46,6 +46,7 @@ async function start() {
     expiries.value = reply?.expiries ?? []
     expiryDays.value = daysByExpiry(reply?.expiry_days)
     shownToday.value = reply?.today ?? null
+    setShownDate(shownToday.value)
     const own = props.legs.find((l) => l.expiry && expiries.value.includes(l.expiry))?.expiry // the draft's own expiry, when it has legs
     const server = expiries.value.includes(reply?.default_expiry) ? reply.default_expiry : null // ADR-199 (4): the server's default, never list position
     expiry.value = own ?? server ?? expiries.value[0] ?? '' // an older reply without the field falls back to the first listed
