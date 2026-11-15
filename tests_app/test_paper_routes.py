@@ -648,10 +648,16 @@ async def test_unknown_rates_keep_the_before_figures_and_send_no_after_figure(db
     assert (totals["booked_after"], totals["unbooked_after"]) == (None, None)
 
 
-async def test_an_open_leg_without_a_live_price_has_no_after_number(db):
+async def test_a_missing_price_pauses_total_and_unbooked_after_but_booked_after_is_booked_minus_paid(db):
+    # ADR-311 (4): Total / Unbooked / Profit left / Loss left after charges stay absent with the price reason; Booked
+    # after = booked (0.00: nothing closed) - ALL charges paid, a figure that needs no price.
     body, row, totals = await _one_put(db, [("SELL", 65, "100.00", "open")], "80.00", stale=True)
     for reply in (body, row):
-        assert all(reply[k] is None for k in SPLIT_KEYS) and reply["after_charges_reason"] == "prices_not_live"
+        assert all(reply[k] is None for k in SPLIT_KEYS if k != "booked_after")
+        assert reply["total_after"] is None and reply["after_charges_reason"] == "prices_not_live"
+        assert reply["charges_paid"] is not None and D(reply["booked"]) == D("0")
+        assert D(reply["booked_after"]) == D("0") - D(reply["charges_paid"]) and D(reply["booked_after"]) < 0
+        assert reply["booked_after_reason"] is None
     assert (totals["booked_after"], totals["unbooked_after"]) == (None, None)
 
 
