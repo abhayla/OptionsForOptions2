@@ -1,0 +1,21 @@
+{
+ "id": "scenario-replay-not-repeatable-while-alert-records-exist",
+ "scope": "project",
+ "class": "A scenario replay cannot be run twice: frames go forward only and each rule writes one alert per trade per day, so alert fixes cannot be seen again on screen until the stored test records are cleared. A fixture whose frames skip a candle close also makes an on-time alert look late.",
+ "mechanism": "The fixture stores its last frame and the rules store their one alert per day; the fixture jumps from 14:31 to 15:25, and rules fire at the candle close (ADR-237).",
+ "first_seen": {
+  "date": "2026-11-15",
+  "where": "GC-ICFIX close-out proofs u607 and the re-proof, test-data copy PATH-61",
+  "evidence": "Re-proof: POST frame 1 returned last frame 9, no new record after 3 minutes (max id stayed 347), so four alert fixes (yes/no name, T-10b name, T-02 line, stored limit) were NOT REACHABLE on screen. u607: the clock rule wrote its record at frame 9 (15:25), not frame 8 (14:31); the 'late' alert was the fixture jumping over the candle close."
+ },
+ "fix": "None yet. Needs a fixture reset, a frame just after a candle close (14:36), and the morning's test alert rows cleared (owner word needed for deleting rows).",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "Unguarded: no check. Related fixture gaps: no path that hits a stop twice (u608), no margin figure (u605), no two-expiry trade (i17)."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-237.md",
+  "spec/decisions/ADR-310.md"
+ ]
+}

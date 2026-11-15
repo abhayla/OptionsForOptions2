@@ -4,12 +4,9 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (300)
+## Decisions (303)
 
-- Older decisions: 260 rows, ADR-1..ADR-273 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
-- ADR-274 2026-11-07: Owner 2026-11-07 ~00:5x IST (question tool): "of course send one combined order". [adds a basket rule for adjustments; REQ-030 AC-11…]
-- ADR-275 2026-11-08: Owner 2026-11-08 ~16:2x IST, verbatim: "the fix or the code changes that we do should work for both… [Reframes the 2026-11-07 IC audit gaps C1-C14 as f…]
-- ADR-276 2026-11-08: Owner 2026-11-08 ~18:00 IST (GC-ICTRACK plan approval, answer A1). [Extends ADR-275 to monitoring of real strategies;…]
+- Older decisions: 263 rows, ADR-1..ADR-276 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
 - ADR-277 2026-11-08: Owner 2026-11-08 ~18:00 IST (GC-ICTRACK, answer A2). [Un-greys T-11c and T-20b in the iron condor playb…]
 - ADR-278 2026-11-08: Owner 2026-11-08 ~18:00 IST (GC-ICTRACK, answer A3). [Supersedes ADR-253 in full (ADR-270 superseded it…]
 - ADR-279 2026-11-08: Owner 2026-11-08 ~18:00 IST (GC-ICTRACK, answer A4). [Makes the price source (ADR-275 (3)) a property o…]
@@ -47,6 +44,9 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-311 2026-11-15: Decided by the run on 2026-11-15 under the owner rule of 14 Nov ("whenever you have question, go wi… [SPEC CHANGE, narrow: REQ-109 AC-5 said a paused v…]
 - ADR-312 2026-11-15: Decided by the run on 2026-11-15 under the owner rule of 14 Nov ("whenever you have question, go wi… [adds to ADR-293 (2); ADR-293 text is not edited.]
 - ADR-313 2026-11-15: Decided by the run on 2026-11-15 under the owner rule of 14 Nov ("whenever you have question, go wi… [SPEC CHANGE: REQ-009 lists every item of the menu…]
+- ADR-314 2026-11-15: Decided by the run on 2026-11-15 under the owner rule of 14 Nov ("whenever you have question, go wi… [Narrows ADR-237 (3) and ADR-309 (1): both say a r…]
+- ADR-315 2026-11-15: Decided by the run on 2026-11-15 under the owner rule of 14 Nov ("whenever you have question, go wi… [Extends ADR-259 (a strategy with no open leg is C…]
+- ADR-316 2026-11-15: Decided by the run on 2026-11-15 under the owner rule of 14 Nov ("whenever you have question, go wi… [Refines ADR-310 (the clock rule, named "Time exit…]
 
 ## Requirements (161)
 

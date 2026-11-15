@@ -473,6 +473,9 @@ decisions:
   ADR-311: S6.7         # one open leg with no price: every total stays paused, the leg is named (expired called expired), priced legs keep their figure
   ADR-312: S6.7         # a strategy with a position held at the broker cannot be deleted (same refusal as real orders)
   ADR-313: S6.7         # menus list built pages only; "/" opens My Strategies; unbuilt pages open by address with the empty state
+  ADR-314: S6.7         # a stored alert record keeps the value, threshold and limit of the sample that confirmed it, never the latest check's
+  ADR-315: S6.7         # a draft whose paper book is flat after a reducing order is closed (migration 0053), deleted rows included, real-order strategies excluded
+  ADR-316: S6.7         # yes/no and clock rule alerts show the rule's own label; the clock time follows once stored; the breakeven line names its figure
 
 questions:
   Q210: 4a              # external: Zerodha's written answer; ADR-051 covers the owner's own account
@@ -685,6 +688,14 @@ issues:
   "#707": S6.7  # PARKED: Max profit and Max loss after the charges really paid (GC-ICFIX, 4 rounds)
   "#708": S6.7  # Roll and shift approaches can move a breached short toward spot (three findings, GC-ICFIX u509 trace)
   "#709": S6.7  # GC-ICFIX: items that need a stored-data change (six parked)
+  "#710": S6.7  # GC-ICFIX: the T-09 alert label reads 'falls to Rs or below' with no amount; Rs and the rupee sign are mixed
+  "#711": S6.7  # GC-ICFIX: a trade page shows a raw instrument id ('NSE_FO:45392 cannot be used')
+  "#712": S6.7  # GC-ICFIX: 'Rule not checked: No adjustment opportunity checked: ...' repeats once per rule (16 times) with a doubled label
+  "#713": S6.7  # GC-ICFIX: cards show a negative Max Profit; expected (closing charges assumed) but unverified on these two cards
+  "#714": S6.7  # GC-ICFIX: scenario fixture gaps stop five screen proofs (candle close, double stop, margin, two expiries, replay)
+  "#715": S6.7  # GC-ICFIX: add a nightly audit query for flat draft strategies; list route loops once per closed row; migration 0053 exclusion narrower than the delete rule
+  "#716": S6.7  # GC-ICFIX: Paper tab opens on a real server error when broker state is 'partial'; adjustments marker goes N, N+1, N around an exit
+  "#717": S6.7  # GC-ICFIX: checks not reachable on screen so far, and not done (u404 clear-out, issue 26 measurement, live-day items)
 
 # Work items whose status is not done.
 work_items:

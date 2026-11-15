@@ -1,0 +1,20 @@
+{
+ "id": "test-leftover-in-a-rates-table",
+ "scope": "project",
+ "class": "A test run leaves a row in a live settings or rates table that overrides the real value, and the app uses the leftover.",
+ "mechanism": "The brokerage-per-order rate has a row set by a test step that was never removed; the newer row wins over the value read from the broker's page.",
+ "first_seen": {
+  "date": "2026-11-15",
+  "where": "GC-ICFIX data read (dev database, read-only), 15 Nov 2026",
+  "evidence": "The stored brokerage-per-order rate has a leftover row of 25 from 1 Nov ('GC-SET step 2 proof') over the 20 read from the broker's public page on 15 Oct. The user test of 13 Nov showed 25 per order."
+ },
+ "fix": "None yet. Open for owner decision: put the rate back to 20.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "Unguarded: no check compares the stored rate with the published one."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-082.md"
+ ]
+}

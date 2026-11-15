@@ -1,0 +1,22 @@
+{
+ "id": "server-field-string-or-message-object-printed-raw",
+ "scope": "project",
+ "class": "A server field that may be either a plain string or a message object, put straight into a sentence on screen: the object prints as '[object Object]'.",
+ "mechanism": "The not-checked reason was interpolated without turning a message object into its sentence.",
+ "first_seen": {
+  "date": "2026-11-15",
+  "where": "GC-ICFIX walk-through, strategy 149 trade page",
+  "evidence": "Three lines read exactly 'Rule not checked: [object Object]'. Re-proof on the new head, frame 2: the text '[object Object]' appears nowhere on the page; 16 lines read 'Rule not checked: No adjustment opportunity checked: prices stale or missing.'"
+ },
+ "fix": "One helper turns null, string or message object into text (2b1788a6, sharedStateText.js said()).",
+ "detection": {
+  "status": "unguarded",
+  "checks": [
+   "frontend/tests/rules-line-u241.test.js"
+  ],
+  "note": "The test pins this reader only. Other places that interpolate a server field raw were not searched."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-309.md"
+ ]
+}

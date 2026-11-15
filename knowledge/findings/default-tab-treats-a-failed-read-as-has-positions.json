@@ -1,0 +1,22 @@
+{
+ "id": "default-tab-treats-a-failed-read-as-has-positions",
+ "scope": "project",
+ "class": "A rule that picks a page's first tab from 'did the read succeed' treats a failed read as 'the user has positions', so a user with no broker connection lands on an empty Positions tab.",
+ "mechanism": "The positions page opened on Positions whenever its read ended, whatever the reason.",
+ "first_seen": {
+  "date": "2026-11-15",
+  "where": "GC-ICFIX walk-through, /positions/current-positions with no broker",
+  "evidence": "Paper tab was second and Positions selected, showing 'Connect your Zerodha account to continue.' Re-proof on the new head: Paper tab selected; with ?tab=positions the Positions tab is selected."
+ },
+ "fix": "A not-connected user with an open paper strategy opens on Paper; other read failures stay on Positions (38abea1e).",
+ "detection": {
+  "status": "unguarded",
+  "checks": [
+   "frontend/tests/paper-tabs.test.js"
+  ],
+  "note": "Pinned for the not-connected case. Open: broker state 'partial' with a real server error also opens on Paper (Sonnet review MINOR)."
+ },
+ "spec_ref": [
+  "spec/requirements/REQ-109.md"
+ ]
+}

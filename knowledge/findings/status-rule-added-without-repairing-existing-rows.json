@@ -1,0 +1,25 @@
+{
+ "id": "status-rule-added-without-repairing-existing-rows",
+ "scope": "generic",
+ "class": "Any new rule that sets a stored status (here: a strategy is 'closed' when its paper book is flat) is applied only to events after it ships, so every row that finished before it keeps the old status and is read wrongly by every screen.",
+ "mechanism": "Migration 0049 made the store write 'closed' at the last exit but did not touch rows that were already flat; the settle job never revisits a row with nothing left to settle.",
+ "first_seen": {
+  "date": "2026-11-15",
+  "where": "GC-ICFIX, dev database read-only queries (rv3/rv4/rv5), 15 Nov 2026",
+  "evidence": "39 flat draft strategies on the dev database (27 not deleted, 12 deleted) read 'Running'. 26 more not-deleted expired-unsettled strategies are scenario ones, skipped by design. Close-on-last-exit landed 9 Nov 17:46 (47ff1776), after the settle job's runs of 29 Oct, 3, 5 and 9 Nov. Opus Tier A hand-checked 8 of the 27 flat per contract."
+ },
+ "fix": "Migration 0053 closes drafts whose paper book is flat after a reducing order, deleted rows included, real-order strategies excluded (93d35106, b33b3a52). NOT applied to any database yet.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [
+   "tests_app/test_migration_0053_close_finished_strategies.py",
+   "tests_app/test_paper_settlement.py::test_detection_the_real_settle_job_leaves_a_fully_settled_strategy_closed"
+  ],
+  "note": "Forward path guarded by the settle-job test. Existing rows are repaired only once 0053 is applied. No stored-data audit exists for 'draft, flat, has a reducing order' (Opus suggested a nightly audit query): unguarded there."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-259.md",
+  "spec/decisions/ADR-293.md",
+  "spec/requirements/REQ-109.md"
+ ]
+}
