@@ -1,7 +1,7 @@
-"""ADR-311 (4), the all-strategies totals row: Booked after charges is the exact sum of every book's Booked after ONLY
-when every book gives one (each after charges); if any book's is missing or fell back to before charges, the row has none,
-with that book's reason - never a sum over some books, never a mix of bases. Total and Unbooked stay absent while any book
-is paused (``sum_after_charges``)."""
+"""ADR-311 (4), the all-strategies totals row: Booked after charges is the exact sum of every book's Booked after
+ONLY when every book gives one (each after charges); if any book's is missing or fell back to before charges, the row
+has none, with that book's reason - never a sum over some books, never a mix of bases. Total and Unbooked stay absent
+while any book is paused (``sum_after_charges``)."""
 from __future__ import annotations
 
 from decimal import Decimal
@@ -16,7 +16,8 @@ def test_every_book_gives_booked_after_the_row_is_their_exact_sum() -> None:
 
 
 def test_a_book_with_no_booked_after_makes_the_row_absent_with_its_reason_never_a_partial_sum() -> None:
-    assert sum_booked_after([(D("-36.09"), None), (None, "rates_unavailable"), (D("5"), None)]) == (None, "rates_unavailable")
+    rows = [(D("-36.09"), None), (None, "rates_unavailable"), (D("5"), None)]
+    assert sum_booked_after(rows) == (None, "rates_unavailable")
 
 
 def test_a_book_on_the_before_charges_fallback_makes_the_row_absent_no_mixed_sum() -> None:

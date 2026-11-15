@@ -52,6 +52,7 @@ from ofo.engine.extremes_charges import (
     open_exit_charges,
     open_round_trip_charges,
     sum_after_charges,
+    sum_booked_after,
 )
 from ofo.engine.legs import Instrument
 from ofo.errors import render
@@ -378,9 +379,11 @@ class PaperTotalsOut(ApiModel):
     charges_to_close_text: CatalogueText | None = None
     after_charges_reason: AfterChargesReason | None = None
     after_charges_reason_text: CatalogueText | None = None
-    # GC-ICFIX u123: the sum of every booked_after; None (never partial) if one absent
+    # GC-ICFIX u123: the sum of every booked_after; None (never partial) if one absent, with its reason
     booked_after: Money | None = None
     booked_after_text: CatalogueText | None = None
+    booked_after_reason: AfterChargesReason | None = None
+    booked_after_reason_text: CatalogueText | None = None
     unbooked_after: Money | None = None
     unbooked_after_text: CatalogueText | None = None
     booked: Money
@@ -921,11 +924,15 @@ def _after_total(strategies: Sequence[dict]) -> dict:
     absent strategy's reason, never partial."""
     got = sum_after_charges([BookAfterCharges(s["total"], s["total_after"], s["charges_paid"], s["charges_to_close"],
                                               s["after_charges_reason"]) for s in strategies])
-    parts = {k: None if any(s[k] is None for s in strategies) else sum((Decimal(s[k]) for s in strategies), Decimal(0))
-             for k in ("booked_after", "unbooked_after")}  # never a partial sum
+    unbooked = None if any(s["unbooked_after"] is None for s in strategies) else sum(
+        (Decimal(s["unbooked_after"]) for s in strategies), Decimal(0))  # never a partial sum
+    booked, booked_why = sum_booked_after([
+        (None if s["booked_after"] is None else Decimal(s["booked_after"]),
+         s.get("booked_after_reason") or s["after_charges_reason"]) for s in strategies])
     return {"total_after": _exact(got.total_after), "total_after_text": _signed(got.total_after),
-            "booked_after": _exact(parts["booked_after"]), "booked_after_text": _signed(parts["booked_after"]),
-            "unbooked_after": _exact(parts["unbooked_after"]), "unbooked_after_text": _signed(parts["unbooked_after"]),
+            "booked_after": _exact(booked), "booked_after_text": _signed(booked),
+            "booked_after_reason": booked_why, "booked_after_reason_text": reason_text(booked_why),
+            "unbooked_after": _exact(unbooked), "unbooked_after_text": _signed(unbooked),
             "charges_paid": _exact(got.paid), "charges_paid_text": _paid_text(got.paid),
             "charges_to_close": _exact(got.open_exit),
             "charges_to_close_text": None if got.open_exit is None else render_explanation(PAPER_CHARGES,

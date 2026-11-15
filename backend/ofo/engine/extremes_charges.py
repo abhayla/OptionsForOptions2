@@ -20,8 +20,8 @@ from ofo.engine.legs import Instrument
 from ofo.engine.orderbook import BookView
 
 __all__ = ["AfterSplit", "BookAfterCharges", "after_split", "book_after_charges", "max_after_charges",
-           "open_exit_charges",
-           "open_round_trip_charges", "review_charge_lines", "sum_after_charges", "with_charges"]
+           "open_exit_charges", "open_round_trip_charges", "review_charge_lines", "sum_after_charges",
+           "sum_booked_after", "with_charges"]
 
 RATES_UNAVAILABLE = "rates_unavailable"
 NOT_PRICED = "not_priced"
@@ -73,6 +73,16 @@ def book_after_charges(view: BookView, paid: Decimal | None, open_exit: Decimal 
     if paid is None or open_exit is None:
         return BookAfterCharges(before, None, paid, open_exit, reason or RATES_UNAVAILABLE)
     return BookAfterCharges(before, before - paid - open_exit, paid, open_exit, None)
+
+
+def sum_booked_after(rows: Sequence[tuple[Decimal | None, str | None]]) -> tuple[Decimal | None, str | None]:
+    """ADR-311 (4), the all-strategies row: the exact sum of every book's Booked after (figure, reason) - or (None, the
+    first absent book's reason) when any book has none or fell back to before charges. Never a sum over some books,
+    never a mix of bases; a reason is never blank."""
+    absent = next((r for r in rows if r[0] is None), None)
+    if absent is not None:
+        return None, absent[1] or RATES_UNAVAILABLE
+    return sum((value for value, _ in rows if value is not None), Decimal(0)), None
 
 
 def sum_after_charges(rows: Sequence[BookAfterCharges]) -> BookAfterCharges:
