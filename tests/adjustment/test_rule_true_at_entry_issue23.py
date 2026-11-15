@@ -5,7 +5,7 @@ notes (ISSUES.md lines 66, 194, 221). Every behaviour below is a decision, not a
 - trade 138 (spot 25,185, short CE 25,200, delta 0.49): level rules true at entry are held, grey line, no alert (F-71,
   ADR-258); they flag after a check finds them clear.
 - trade 142 (T-03 0.4008 at the check): the baseline is the fill's own value (ADR-283 (1)); a fill value of
-  0.3490 (under the 0.35 limit of this body) is not true at entry, so 0.4008 at the check flags; a fill value of 0.4008 is held.
+  0.3490 (under the 0.35 limit of this body) is not true at entry, so 0.4008 at the check flags; 0.4008 at the fill is held.
 - trades 142 / 143 (clock rule 13:56 passed 2 minutes after entry): the clock rule is never "already true" (ADR-283 (2))
   and acts on expiry day only (ADR-310).
 
@@ -60,7 +60,7 @@ def test_138_held_rules_stay_quiet_on_the_next_check_and_flag_only_after_a_clear
 
 
 def _t142(entry_delta):
-    """Trade 142: delta 0.4008 at the check (the stage's T-03 limit in this body is 0.35); the fill's own is ``entry_delta``."""
+    """Trade 142: delta 0.4008 at the check (this body's T-03 limit is 0.35); the fill's own is ``entry_delta``."""
     sc = load("ADJ-42")
     body = body_of(sc)
     state = replace(state_of(sc), shorts=(_short("25200", "0.4008"),))
@@ -90,8 +90,8 @@ def test_142_t03_with_no_computable_fill_value_is_not_held_never_the_first_check
 
 
 def test_142_143_the_clock_rule_past_its_time_at_entry_waits_before_expiry_day_and_warns_on_it():
-    """143: NIFTY 17 Nov expiry, checked the day before, clock rule 13:56 already past at entry. Before expiry day: waiting, no alert; on
-    expiry day past the time: a Flag, never 'already true', even when the entry was also past the time."""
+    """143: NIFTY 17 Nov expiry, clock rule 13:56 already past at entry. The day before: waiting, no alert; on expiry
+    day past the time: a Flag, never 'already true', even when the entry was also past the time."""
     sc = load("ADJ-14")
     expiry = datetime.date(2026, 11, 17)
     body = body_of(sc)

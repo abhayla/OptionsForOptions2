@@ -1293,7 +1293,7 @@ def _expiry_close(t09: tuple[Decimal, Cmp] | None, rule: Mapping, rid: str,  # n
         return DayAnswer(rid, DAY_ACTION_PREPARE_EXIT, reason=DAY_RULE_INCOMPLETE)
     if state.days_left is None:
         return DayAnswer(rid, DAY_ACTION_PREPARE_EXIT, reason=f"{P}missing_days_left")
-    if state.days_left != 0:
+    if state.days_left != 0:  # = is_expiry_day (ADR-310 (4)); on days_left: the exit-input state has no dates
         return None
     if state.hhmm is None:
         return DayAnswer(rid, DAY_ACTION_PREPARE_EXIT, reason=f"{P}missing_clock")
