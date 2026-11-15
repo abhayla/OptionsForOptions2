@@ -123,3 +123,14 @@ def test_an_opened_yes_no_record_carries_its_samples_number_as_the_limit():
     _, ev = _step(state, "10:41:30", _t02("9", "1"), True)
     [o] = [e for e in ev if isinstance(e, ag.Opened)]
     assert o.limit == D("0")
+
+
+def test_a_situation_or_watch_alert_keeps_its_name_when_the_latest_check_no_longer_values_it():
+    # GC-ICFIX sit.S-02 frame 9: the record opened on a later check that could not read the rule (no RuleValue)
+    from ofo_app.adjustment_check import record_words
+    body = {"situations": [{"id": "S-02", "name": "Trending day"}]}
+    assert record_words(body, "sit.S-02", None) == ("sit.S-02", "ge", "Trending day", None)
+    assert record_words(body, "watch.level.below", None)[:2] == ("watch.level.below", "le")
+    valued = RuleValue("sit.S-02", "sit.S-02", D("0.2"), D("0.15"), "ge", True, yes_no=True)
+    assert record_words(body, "sit.S-02", valued) == ("sit.S-02", "ge", "Trending day", None)
+    assert record_words(body, "T-02", None) == (None, None, None, None)

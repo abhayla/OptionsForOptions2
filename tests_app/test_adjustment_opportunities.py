@@ -443,3 +443,31 @@ def test_an_unknown_trigger_with_no_stored_value_stays_none():
     from ofo_app.routes.adjustment_opportunities import condition_text
     assert condition_text(_clock_record("T-99", "Whatever", None)) is None
     assert condition_text(_clock_record("T-10b", "T-10b", "time")) is None  # the id is no wording
+
+
+# ---- GC-ICFIX defect: a situation record opened when the latest check no longer valued the rule ----
+# Real record 370 (strategy 134, sit.S-02, frame 9): value 0.2101, limit 0.1500, trigger/cmp/label stored NULL.
+# Class: stored records with a value and a limit but NULL trigger/cmp/label. Records 352/363 (same rule, valued) read
+# "Trending day: 0.2951 (rule 0.1500)".
+def _record_370_as_written(trigger_id, cmp, label):
+    import datetime as dt
+
+    from ofo_app import playbook_store as store
+    return store.Suggestion(370, 134, "sit.S-02", trigger_id, "Last day", Decimal("0.2101"), Decimal("0.1500"),
+                            dt.datetime(2026, 11, 15, 12, 15, 13, tzinfo=dt.UTC), "open", None,
+                            [{"cmp": cmp, "label": label, "limit": "0.1500", "group": "g"}])
+
+
+def test_record_370_as_the_store_writes_it_names_the_rule_with_its_figures():
+    from ofo_app.adjustment_check import record_words
+    from ofo_app.routes.adjustment_opportunities import condition_text
+    body = {"situations": [{"id": "S-02", "name": "Trending day"}]}
+    trigger, cmp, label, _unit = record_words(body, "sit.S-02", None)  # the latest check did not value the rule
+    text = condition_text(_record_370_as_written(trigger, cmp, label))
+    assert text is not None and str(text) == "Trending day: 0.2101 (rule 0.1500)", text
+
+
+def test_a_rule_the_playbook_does_not_name_still_returns_none():
+    from ofo_app.adjustment_check import record_words
+    assert record_words({"situations": []}, "sit.S-02", None) == (None, None, None, None)
+    assert record_words({}, "zzz.unknown", None) == (None, None, None, None)
