@@ -31,6 +31,7 @@ const SUMMARY = { what_can_i_lose: 'L', what_can_i_make: 'M', where_do_i_start_l
 const SERVED = { 'limits.range_step': '100', 'limits.range_cap_nifty': '3000', 'limits.range_cap_sensex': '9000' }
 const LIMITS = { step: 100, cap: 3000 }
 let settingsReply = null
+let entryGuideReply = {} // ADR-300: the outcome reply's entry_guide_state / entry_guide_line (the server's own words)
 
 vi.mock('@/services/api', async (importActual) => {
   const actual = await importActual()
@@ -49,7 +50,7 @@ vi.mock('@/services/api', async (importActual) => {
         return Promise.resolve({ data: { entries: body.instrument_ids.map((id) => ({ exchange_segment: 'NSE_FO', exchange_token: Number(id.split(':')[1]),
           planned_entry: plannedPrice, captured_at: plannedPrice ? '2026-10-13T09:20:00+05:30' : null })) } })
       }
-      return Promise.resolve({ data: { summary: SUMMARY, margin: null } })
+      return Promise.resolve({ data: { summary: SUMMARY, margin: null, ...entryGuideReply } })
     },
   } }
 })
@@ -75,7 +76,36 @@ async function toResults(w, objective, view) {
   await flushPromises()
 }
 
-beforeEach(() => { posts.length = 0; plannedPrice = '120.50'; level = '22812.40'; contractsNow = null; templatesReply = null; settingsReply = null })
+beforeEach(() => { posts.length = 0; plannedPrice = '120.50'; level = '22812.40'; contractsNow = null; templatesReply = null; settingsReply = null; entryGuideReply = {} })
+
+// ADR-300 (GC-ICFIX P2): the card prints the server's entry-guide line when the condor breaks the guide, and the server's
+// "could not check" line when it cannot tell; nothing when within. The page compares nothing; Save-path buttons stay on.
+describe('the guided card shows the server entry-guide line', () => {
+  const BREAKS = 'Sold call delta 0.46; the entry guide of the default rule set (Iron condor: system default) is 0.15 to 0.20.'
+  const CANNOT = 'Could not check against the entry guide.'
+  const card = (w) => w.find('[data-testid="strategy-card"][data-template-id="iron_condor"]')
+
+  it.each([
+    ['breaks', BREAKS, BREAKS],
+    ['cannot_tell', CANNOT, CANNOT],
+    ['within', null, null],
+  ])('state %s', async (state, line, shown) => {
+    entryGuideReply = { entry_guide_state: state, entry_guide_line: line }
+    const { w } = await mountPage()
+    await toResults(w, 'earn-premium', 'neutral')
+    const el = card(w).find('[data-testid="card-entry-guide"]')
+    if (shown === null) expect(el.exists()).toBe(false)
+    else expect(el.text()).toBe(shown)
+    expect(card(w).find('[data-testid="open-in-builder"]').attributes('disabled')).toBeUndefined()
+    expect(card(w).find('[data-testid="card-details-toggle"]').attributes('disabled')).toBeUndefined()
+  })
+
+  it('an older reply without the fields shows no line and breaks nothing', async () => {
+    const { w } = await mountPage()
+    await toResults(w, 'earn-premium', 'neutral')
+    expect(card(w).find('[data-testid="card-entry-guide"]').exists()).toBe(false)
+  })
+})
 
 // Main red 2026-10-21 (CI run 39652948521): the templates route answered 220-1010 ms after mount, the e2e clicked Show
 // strategies before that, and the page built its cards from the still-empty template list: "No strategy in the library

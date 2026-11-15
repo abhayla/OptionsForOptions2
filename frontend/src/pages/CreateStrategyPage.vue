@@ -122,7 +122,7 @@ async function chooseExpiry() {
 }
 
 async function priceCard(template, legs) {
-  const card = { id: template.id, name: template.name, level: template.level, views: template.views, legs, summary: null, margin: null, priced: false }
+  const card = { id: template.id, name: template.name, level: template.level, views: template.views, legs, summary: null, margin: null, entryGuideLine: null, priced: false }
   const entries = await read(async () => (await api.post('/strategies/planned-entry', { underlying: underlying.value, instrument_ids: legs.map((l) => l.instrument_id) })).data?.entries)
   if (!Array.isArray(entries)) return card
   const byId = Object.fromEntries(entries.map((e) => [`${e.exchange_segment}:${e.exchange_token}`, e]))
@@ -132,7 +132,7 @@ async function priceCard(template, legs) {
     underlying: underlying.value,
     legs: card.legs.map((l) => ({ instrument_id: l.instrument_id, action: l.action, lots: l.lots, planned_entry: l.planned_entry, captured_at: l.captured_at })),
   })).data)
-  if (out?.summary) { card.summary = out.summary; card.margin = out.margin ?? null; card.priced = true }
+  if (out?.summary) { card.summary = out.summary; card.margin = out.margin ?? null; card.entryGuideLine = out.entry_guide_line ?? null; card.priced = true }
   return card
 }
 
@@ -256,6 +256,8 @@ v-for="c in shownCards" :key="c.id" class="flex flex-col rounded-lg border borde
               <p class="mt-3 flex justify-between border-t border-line pt-2 text-sm"><span class="text-ink-muted">Max profit:</span> <span class="num font-medium" data-testid="card-max-profit">{{ money(c.summary.max_profit_display, c.summary.max_profit, c.summary.max_profit_unlimited) }}</span></p>
               <p class="mt-1 flex justify-between text-sm"><span class="text-ink-muted">Max loss:</span> <span class="num font-medium" data-testid="card-max-loss">{{ money(c.summary.max_loss_display, c.summary.max_loss, c.summary.max_loss_unlimited) }}</span></p>
               <p class="mt-1 flex justify-between gap-3 text-sm"><span class="text-ink-muted">Breakevens:</span> <span class="num text-right font-medium" data-testid="card-breakevens">{{ levels(c.summary) }}</span></p>
+              <!-- ADR-300: the server's own line (breaks the entry guide / could not check); none when within. Never blocks. -->
+              <p v-if="c.entryGuideLine" class="mt-1 text-xs text-warn" data-testid="card-entry-guide">{{ c.entryGuideLine }}</p>
               <button
 type="button" class="link mt-1 min-h-[44px] self-start text-sm" data-testid="card-details-toggle"
                       @click="details[c.id] = !details[c.id]">View details</button>

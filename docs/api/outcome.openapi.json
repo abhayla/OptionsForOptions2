@@ -1602,6 +1602,31 @@
               }
             ],
             "title": "Seq"
+          },
+          "entry_guide_state": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "breaks",
+                  "within",
+                  "cannot_tell"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entry Guide State"
+          },
+          "entry_guide_line": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entry Guide Line"
           }
         },
         "additionalProperties": false,
