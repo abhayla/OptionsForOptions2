@@ -972,7 +972,7 @@
   },
   {
    "id": "A-11",
-   "name": "Convert to an iron butterfly: move both shorts to the money",
+   "name": "Convert to an iron butterfly: move both shorts to the money, wings keep their distance",
    "explanation": "Move both short strikes to the strike nearest spot, keeping each wing's distance.",
    "applicable": true,
    "reason": null

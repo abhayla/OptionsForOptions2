@@ -785,7 +785,7 @@
   },
   {
    "id": "A-11",
-   "name": "Convert to an iron butterfly: move both shorts to the money",
+   "name": "Convert to an iron butterfly: move both shorts to the money, wings keep their distance",
    "kind": "convert",
    "side": "both",
    "step_basis": null,

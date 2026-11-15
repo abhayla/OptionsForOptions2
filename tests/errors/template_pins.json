@@ -2048,7 +2048,7 @@
     "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"
   },
   "labels:adjustment_approach": {
-    "sha256": "a8cadadc2efc6bcd1daafa62999311b3232f35b9305d0f14db96b3fcc0a20299",
+    "sha256": "5ef2c52776bef3ad3c852d380df558e48aa58073ba85708b4bc26296f0a46750",
     "reviewed": "pending owner read"
   },
   "explanation:adjust_pop_held": {
@@ -2128,8 +2128,8 @@
     "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"
   },
   "explanation:adjust_approach_name_a_11": {
-    "sha256": "55c4760d4a92959b413a5c4c5bd93fa93ec44b05730cba5cc8e5092541fb4e8a",
-    "reviewed": "owner read 2026-10-31 (decided in chat)"
+    "sha256": "37ff9656397269500c33f489df1942d00e30e526cd6dabaa5d7349fdaebb831a",
+    "reviewed": "pending owner read"
   },
   "explanation:adjust_approach_name_a_31": {
     "sha256": "58793e4311540977fa93aa22d0e45b15a9a514419efa66483dc0ddf7b42867ed",
