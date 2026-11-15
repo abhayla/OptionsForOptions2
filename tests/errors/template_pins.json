@@ -3439,6 +3439,18 @@
     "sha256": "22fef95591926d83769e412f7b044e8b2ee6c67042c23bcb5ad110dba4fb84c1",
     "reviewed": "pending owner read"
   },
+  "explanation:entry_guide_breaks_call_partial": {
+    "sha256": "fe8e6857207c514d1e94eb9184ec5cf75076cf5601ecd8ebeecddba34a7079fa",
+    "reviewed": "pending owner read"
+  },
+  "explanation:entry_guide_breaks_put_partial": {
+    "sha256": "a5a3eb95912c93cdba8acffb17bebdf747e6a2b995d06d0e9714e61bd1cb9a01",
+    "reviewed": "pending owner read"
+  },
+  "explanation:entry_guide_breaks_both": {
+    "sha256": "98f178c43ee7c8fc7f2b5ea0eda913e0d4da9ef685548180bcfc03a4b9794c5a",
+    "reviewed": "pending owner read"
+  },
   "explanation:entry_guide_unchecked": {
     "sha256": "c68f5cb1ad069c5eb3f74a1b40ed3f916ba6617c1372eb148376e92b0842c6c9",
     "reviewed": "pending owner read"

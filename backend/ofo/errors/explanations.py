@@ -1547,6 +1547,18 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         "Sold put delta {delta}; the entry guide of the default rule set ({rule_set}) "
                         "is {low} to {high}.",
                         {"delta": Amount, "rule_set": PlaybookName, "low": Amount, "high": Amount}),
+    ExplanationTemplate("entry_guide_breaks_call_partial", "values_seen",
+                        "Sold call delta {delta}; the entry guide of the default rule set ({rule_set}) "
+                        "is {low} to {high}. The other sold leg could not be checked.",
+                        {"delta": Amount, "rule_set": PlaybookName, "low": Amount, "high": Amount}),
+    ExplanationTemplate("entry_guide_breaks_put_partial", "values_seen",
+                        "Sold put delta {delta}; the entry guide of the default rule set ({rule_set}) "
+                        "is {low} to {high}. The other sold leg could not be checked.",
+                        {"delta": Amount, "rule_set": PlaybookName, "low": Amount, "high": Amount}),
+    ExplanationTemplate("entry_guide_breaks_both", "values_seen",
+                        "Sold put delta {put} and sold call delta {call}; the entry guide of the default rule set "
+                        "({rule_set}) is {low} to {high}.",
+                        {"put": Amount, "call": Amount, "rule_set": PlaybookName, "low": Amount, "high": Amount}),
     ExplanationTemplate("entry_guide_unchecked", "values_seen", "Could not check against the entry guide."),
     # GC-ADJ2 step 5 (REQ-112 AC-2/AC-6, REQ-162): suggestion outcomes, dismiss reasons and the inbox's fixed words
     ExplanationTemplate("suggestion_outcome_open", "values_seen", "Open"),

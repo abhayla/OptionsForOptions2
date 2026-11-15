@@ -15,46 +15,66 @@ import json
 import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 from typing import Literal
 
 from ofo.adjustment.playbook_eval import ShortLeg, sold_leg_delta
 from ofo.errors.explanations import render_explanation
 
+_TWO_DP = Decimal("0.01")
 _RANGE = re.compile(r"\bshorts at (\d+(?:\.\d+)?) to (\d+(?:\.\d+)?) delta\b")
 _SEED = Path(__file__).with_name("system_playbooks.json")
 State = Literal["breaks", "within", "cannot_tell"]
 
 
+def shown_delta(delta: Decimal) -> Decimal:
+    """The ONE rounding rule: a delta is shown at 2 decimals, half up, exact Decimal (no float). The state is decided on
+    this same figure, so a user never reads "0.20" beside a guide of "0.15 to 0.20" and a warning."""
+    return delta.quantize(_TWO_DP, rounding=ROUND_HALF_UP)
+
+
 def parse_entry_guide(text: str | None) -> tuple[Decimal, Decimal] | None:
-    """The (low, high) delta range the guide text states; None when it states none (or a reversed one)."""
+    """The (low, high) delta range the guide text states; None when it states none, a reversed one, or a value outside
+    0 (exclusive) to 1 (a delta): "shorts at 15 to 20 delta" must read as no range, never as a ceiling of 20."""
     m = _RANGE.search(text or "")
     if m is None:
         return None
     low, high = Decimal(m.group(1)), Decimal(m.group(2))
-    return (low, high) if low <= high else None
+    return (low, high) if 0 < low <= high <= 1 else None
 
 
 @dataclass(frozen=True)
 class EntryGuideCheck:
     state: State
-    kind: str | None = None  # "CE" / "PE": the side whose delta is shown
-    delta: Decimal | None = None
+    above: tuple[tuple[str, Decimal], ...] = ()  # ("PE" / "CE", shown delta) of the worst sold leg of each side above
+    unchecked: bool = False  # a sold leg whose delta (or side) is not known
+    delta: Decimal | None = None  # ``sold_leg_delta`` (T-03's measure), unrounded
     low: Decimal | None = None
     high: Decimal | None = None
 
 
 def check_entry_guide(shorts: Sequence[ShortLeg], guide_text: str | None) -> EntryGuideCheck:
-    """breaks / within / cannot_tell (a missing delta, no sold leg, or a guide with no readable range)."""
+    """ADR-300: the guide's upper end is a CEILING (a condor TOO CLOSE to the index). A sold leg breaks it only when its
+    shown delta is above the high end; a lower delta, below the low end too, is not a breach. Per sold leg: ``breaks``
+    when any sold leg is above; else ``cannot_tell`` when any sold leg (or the guide) cannot be checked; else
+    ``within``."""
     shorts = tuple(shorts)
     rng = parse_entry_guide(guide_text)
-    delta = sold_leg_delta(shorts)
-    worst = max(shorts, key=lambda x: x.abs_delta) if delta is not None else None  # the leg sold_leg_delta read
-    if rng is None or worst is None or worst.kind not in ("CE", "PE"):
+    if rng is None or not shorts:
         return EntryGuideCheck("cannot_tell")
-    state: State = "within" if rng[0] <= delta <= rng[1] else "breaks"
-    return EntryGuideCheck(state, worst.kind, delta, *rng)
+    worst: dict[str, Decimal] = {}
+    unchecked = False
+    for x in shorts:
+        if x.abs_delta is None or x.kind not in ("CE", "PE"):
+            unchecked = True
+            continue
+        d = shown_delta(x.abs_delta)
+        if d > rng[1]:
+            worst[x.kind] = max(d, worst.get(x.kind, d))
+    above = tuple((k, worst[k]) for k in ("PE", "CE") if k in worst)
+    state: State = "breaks" if above else "cannot_tell" if unchecked else "within"
+    return EntryGuideCheck(state, above, unchecked, sold_leg_delta(shorts), *rng)
 
 
 def _line(c: EntryGuideCheck, rule_set: str):
@@ -62,12 +82,17 @@ def _line(c: EntryGuideCheck, rule_set: str):
         return None
     if c.state == "cannot_tell":
         return render_explanation("entry_guide_unchecked")
-    side = "entry_guide_breaks_put" if c.kind == "PE" else "entry_guide_breaks_call"
-    return render_explanation(side, delta=c.delta, rule_set=rule_set, low=c.low, high=c.high)
+    shown = {"rule_set": rule_set, "low": c.low, "high": c.high}
+    if len(c.above) == 2:  # noqa: PLR2004 - both sides
+        return render_explanation("entry_guide_breaks_both", put=c.above[0][1], call=c.above[1][1], **shown)
+    kind, delta = c.above[0]
+    side = "put" if kind == "PE" else "call"
+    suffix = "_partial" if c.unchecked else ""
+    return render_explanation(f"entry_guide_breaks_{side}{suffix}", delta=delta, **shown)
 
 
 def entry_guide_line(shorts: Sequence[ShortLeg], guide_text: str | None, rule_set: str):
-    """The one plain line for the screen: the breaking fact, "could not check", or None when within the guide."""
+    """The one plain line for the screen: the breaking facts, "could not check", or None when within the guide."""
     return _line(check_entry_guide(shorts, guide_text), rule_set)
 
 
