@@ -42,7 +42,8 @@ async def _post(provider, legs):
         for iid, action in legs]}
     app = create_app()
     if provider is not None:
-        app.dependency_overrides[get_market_context] = lambda: MarketContext(provider, lambda: VALUATION, RATE, feed_owner="owner")  # a real user has a feed owner (shared compute)
+        app.dependency_overrides[get_market_context] = lambda: MarketContext(provider, lambda: VALUATION, RATE,
+                                                                   feed_owner="owner")
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         return await ac.post("/api/strategies/outcome", json=body)
 

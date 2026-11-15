@@ -341,7 +341,7 @@ async def test_the_owner_lister_opens_each_session_inside_its_own_gate_hold(scn,
     out = await background.owner_lister(Prov(scn), gate=gate)
     assert [w.strategy_id for w in out] == [1, 2, 3]
     assert seen and all(seen)  # every session opened while the gate was held
-    assert holds[0] == 1 + 3  # the list read, then one hold per strategy (the deleted-strategy sweep was removed, clean-up B1)
+    assert holds[0] == 1 + 3  # the list read, then one hold per strategy (sweep removed, B1)
 
 
 # ---- #636 r6 review follow-up (Tier A review, 5 MINOR findings) ------------------------------------------------------
