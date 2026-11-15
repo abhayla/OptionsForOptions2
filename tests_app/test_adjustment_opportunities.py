@@ -387,3 +387,33 @@ async def test_a_record_stored_with_its_target_figures_reads_back_as_the_target_
     listed = next(r for r in _mine(await _inbox(), sid)[0]["records"] if r["rule_id"] == "T-07")
     assert listed["condition"] == (
         "Profit before charges +Rs 61.75 reached your target of 1%; after charges \u2212Rs 218.85")
+
+
+# ---- GC-ICFIX defect C: a yes/no rule's record (situation rule, level watch) names itself, never an empty line ----
+# No database: pure record -> text. The yes/no families in the code: ``yes_no=True`` is set for day rules
+# (playbook_eval ``_add_day_rules``), situation rules (``sit.<S-id>``) and level watches (``watch.level.<direction>``).
+def _yes_no_record(rule_id: str, label: str | None):
+    import datetime as dt
+
+    from ofo_app import playbook_store as store
+    return store.Suggestion(1, 143, rule_id, rule_id, None, None, None, dt.datetime(2026, 11, 15, 9, 30, tzinfo=dt.UTC),
+                            "open", None, [{"cmp": None, "label": label, "group": "g"}])
+
+
+@pytest.mark.parametrize(("rule_id", "label", "expected"), [
+    ("sit.S-02", "Trending day", "Trending day"),
+    ("sit:S-02", "Trending day", "Trending day"),  # the legacy prefix
+    ("watch.level.above", None, "Watched level reached (at or above)"),  # the watch's own catalogue label, no stored label
+    ("watch.level.below", "Watched level reached (at or below)", "Watched level reached (at or below)"),
+])
+def test_a_yes_no_rule_record_names_the_rule(rule_id, label, expected):
+    from ofo_app.routes.adjustment_opportunities import condition_text
+    text = condition_text(_yes_no_record(rule_id, label))
+    assert text is not None and str(text) == expected, text
+
+
+@pytest.mark.parametrize(("rule_id", "label"), [("sit.S-02", None), ("sit.S-02", "sit.S-02"), ("watch.level.sideways", None),
+                                               ("zzz.unknown", "Whatever")])
+def test_an_unnameable_yes_no_record_stays_none_and_invents_no_name(rule_id, label):
+    from ofo_app.routes.adjustment_opportunities import condition_text
+    assert condition_text(_yes_no_record(rule_id, label)) is None
