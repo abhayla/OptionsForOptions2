@@ -57,6 +57,7 @@ function readPosition(p, underlying) {
     ltpReason: p.price_state === 'live' ? null : text(p.price_state_text), // ADR-210: the server's sentence for a retired / delisted contract
     booked: text(p.booked_text),
     unbooked: text(p.unbooked_text),
+    noPrice: open && text(p.unbooked_text) === null ? text(p.no_price_text) : null, // ADR-311: "no price", never 0 or blank
     total: text(p.total_text),
   }
 }
@@ -112,6 +113,7 @@ export function readPaperStrategy(s, index = 0) {
     charges: text(s.charges_text), // GC-TP step 8b: beside the P&L, never subtracted from it (REQ-109 AC-10)
     chargesReason: text(s.charges_reason_text),
     pauseReason,
+    unpricedText: text(s.unpriced_text), // ADR-311: the open legs with no price, named by the server
     totalAfter: afterFigure(s, text(s.total_text), pauseReason), // GC-ICFIX u123: the headline total, labelled
     bookedAfter: afterFigure(s, text(s.booked_text), pauseReason, 'booked_after_text', ['paid']), // u124 (ADR-303): the same rule per figure; u127: Booked carries the charges paid
     unbookedAfter: afterFigure(s, text(s.unbooked_text), pauseReason, 'unbooked_after_text', ['close']), // ... Unbooked the estimate to close

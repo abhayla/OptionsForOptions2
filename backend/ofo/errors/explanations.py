@@ -1923,6 +1923,13 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         "Stale: this target figure uses prices older than expected and may be out of date."),
     # words that were already in the product (moved from the browser, unchanged): the paused book and the extremes
     ExplanationTemplate("paper_reason_prices_not_live", "values_seen", "Paper P&L paused - prices not live"),
+    # ADR-311: an open leg with no live price - its cell, and the line naming it (an expired contract is called expired)
+    ExplanationTemplate("leg_no_price", "values_seen", "no price"),
+    ExplanationTemplate("unpriced_leg", "values_seen", "{contract}", {"contract": Explained}),
+    ExplanationTemplate("unpriced_leg_expired", "values_seen", "{contract} (expired)", {"contract": Explained}),
+    ExplanationTemplate("unpriced_legs", "values_seen", "No price for: {legs}.", {"legs": Explained}),
+    ExplanationTemplate("unpriced_legs_expired", "values_seen", "Expired contracts have no price: {legs}.",
+                        {"legs": Explained}),
     ExplanationTemplate("paper_reason_multi_expiry", "values_seen",
                         "Profit left and Loss left are not worked out: the open contracts have different expiries."),
     ExplanationTemplate("paper_extremes_prices_not_live", "values_seen",

@@ -9,6 +9,8 @@
       <AfterChargesTap :breakdown="headline.breakdown ?? null"><p class="font-semibold" data-testid="paper-pnl" :data-kind="headline.kind">{{ headline.text }}</p></AfterChargesTap>
       <p v-if="headline.afterReason" class="text-xs text-ink-muted" data-testid="tracking-after-reason">{{ headline.afterReason }}</p>
       <p v-if="headline.line" class="text-xs text-ink-muted" data-testid="paper-shared-line">{{ headline.line }}</p>
+      <!-- ADR-311: the open legs with no price, named by the server; the total above stays paused -->
+      <p v-if="headline.unpriced" class="text-xs text-ink-muted" data-testid="tracking-unpriced">{{ headline.unpriced }}</p>
       <table v-if="view.legs.length" class="mt-2 w-full text-sm">
         <thead>
           <tr class="border-b border-line text-ink-muted">
@@ -117,9 +119,9 @@ const reviewBtn = ref(null)
 const headline = computed(() => {
   const v = view.value
   const s = props.shared && v ? sharedTotal(props.shared, props.sharedFailed) : null
-  if (!s) return { ...v, line: null }
+  if (!s) return { ...v, line: null, unpriced: v?.unpriced ?? null }
   const text = s.text === null ? (s.line ?? NOT_CONNECTED_TEXT) : `${PAPER_PNL_PREFIX}${s.text} ${s.label}${v.kind === 'exited' ? ' - exited' : ''}`.replace(/ +$/, '')
-  return { text, kind: s.kind, breakdown: s.breakdown, afterReason: s.reason, line: s.text === null ? null : s.line }
+  return { text, kind: s.kind, breakdown: s.breakdown, afterReason: s.reason, line: s.text === null ? null : s.line, unpriced: s.unpriced ?? v.unpriced ?? null }
 })
 const drawerOpen = ref(false)
 const drawerLines = ref([]) // layer 1: the detection's own text; kept when the detection lapses while the drawer is open

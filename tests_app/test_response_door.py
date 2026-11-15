@@ -485,6 +485,8 @@ APP_MODELS = (
     "ofo_app.routes.paper.PaperTotalsOut",
     "ofo_app.routes.paper.TriggerOut",
     "ofo_app.routes.paper.TriggersOut",
+    "ofo_app.routes.paper.UnpricedFields",
+    "ofo_app.routes.paper.UnpricedLegOut",
     "ofo_app.routes.planned_entry.PlannedEntriesOut",
     "ofo_app.routes.planned_entry.PlannedEntryOut",
     "ofo_app.routes.playbooks.DayPairOut",

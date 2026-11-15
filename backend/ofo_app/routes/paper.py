@@ -64,7 +64,7 @@ from ofo.outcome.price_text import price_text
 from ofo.outcome.serialize import breakevens_display
 from ofo.outcome.snapshot import forward_strike_ids
 from ofo.strategy import stored_form as sf
-from ofo.strategy.definition import describe_contract
+from ofo.strategy.definition import describe_contract, display_contract
 from ofo.table.model import display_number
 from ofo.timeutil import IST
 from ofo.tracking import paper, paper_decay, paper_greeks
@@ -86,7 +86,14 @@ from ofo_app.api_models import ApiModel, CatalogueText, Money
 from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure, refuse_request
 from ofo_app.live_push import POLL_SECONDS, LiveFeed, hold_and_read
-from ofo_app.paper_reasons import breakevens_reason_text, extremes_reason_text, greeks_reason_text, reason_text
+from ofo_app.paper_reasons import (
+    breakevens_reason_text,
+    extremes_reason_text,
+    greeks_reason_text,
+    no_price_text,
+    reason_text,
+    unpriced_text,
+)
 from ofo_app.routes.adjustment import TrackedReader, get_tracked_reader
 from ofo_app.routes.broker import current_user_ref
 from ofo_app.routes.outcome import (
@@ -178,6 +185,21 @@ class PaperNetOut(ApiModel):
     unbooked_text: CatalogueText | None
     total: Money | None
     total_text: CatalogueText | None
+    no_price_text: CatalogueText | None = None  # ADR-311: "no price" on an open contract with no live price
+
+
+class UnpricedLegOut(ApiModel):
+    """ADR-311: an open leg with no live price, named by its contract; ``expired`` says the contract has expired."""
+    leg_index: int
+    contract_text: CatalogueText
+    expired: bool
+
+
+class UnpricedFields(ApiModel):
+    """ADR-311: which open legs have no price. Totals stay paused whenever this is not empty; ``unpriced_text`` is the
+    one line naming them (reviewed templates), absent when every open leg has a price."""
+    unpriced_legs: list[UnpricedLegOut] = Field(default_factory=list)
+    unpriced_text: CatalogueText | None = None
 
 
 class PaperOrderOut(ApiModel):
@@ -202,7 +224,7 @@ PAPER_CHARGES = "paper_charges"
 AfterChargesReason = Literal["rates_unavailable", "not_priced", "prices_not_live"]
 
 
-class PaperFigures(ApiModel):
+class PaperFigures(UnpricedFields):
     state: BookState
     pause_reason: paper.PauseReason | None
     as_of: datetime.datetime | None = None  # REQ-109 AC-5: PAUSED only: oldest known quote time of a contract not live
@@ -490,7 +512,8 @@ def _position(p: NetPosition, found: tracked_contracts.TrackedContract, price: p
             "price_at": None if price is None else price.at,
             "booked": _exact(p.booked), "booked_text": _signed(p.booked),
             "unbooked": _exact(p.unbooked), "unbooked_text": _signed(p.unbooked),
-            "total": _exact(p.total), "total_text": _signed(p.total)}
+            "total": _exact(p.total), "total_text": _signed(p.total),
+            "no_price_text": no_price_text() if p.net_quantity != 0 and not live else None}
 
 
 def _state_text(price: paper.Price | None) -> Any:
@@ -534,7 +557,13 @@ def _figures(orders: Sequence[paper_store.StoredOrder], found: dict[int, tracked
         as_of = paper.paused_as_of(prices.values())  # the engine's own rule (ofo.tracking.paper), not a second way
     else:
         state, pause = "LIVE", None
-    return {"state": state, "pause_reason": pause, "pause_reason_text": reason_text(pause), "as_of": as_of,
+    # ADR-311: a paused book names the contracts with no price (every total stays paused); expired = retired contract
+    gone = paper.unpriced_legs([(n, str(c), _identity(found[c])[3], prices[c]) for n, c in enumerate(prices)], None) \
+        if state == "PAUSED" else ()
+    names = [(display_contract(_identity(found[list(prices)[u.index]])), u.expired) for u in gone]
+    return {"unpriced_legs": [{"leg_index": u.index, "contract_text": n, "expired": u.expired}
+                              for u, (n, _) in zip(gone, names, strict=True)], "unpriced_text": unpriced_text(names),
+            "state": state, "pause_reason": pause, "pause_reason_text": reason_text(pause), "as_of": as_of,
             "booked": _exact(view.booked), "unbooked": _exact(view.unbooked),
             "total": _exact(view.total), "booked_text": _signed(view.booked), "unbooked_text": _signed(view.unbooked),
             "total_text": _signed(view.total), "positions": positions}

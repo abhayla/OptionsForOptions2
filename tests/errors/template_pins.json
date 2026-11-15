@@ -4182,5 +4182,25 @@
   "adjust_trigger_missing_today": {
     "sha256": "4f80c638b4181eb2a79a79e4c470ef86fbec7ac06d806a504fa96d2bf13e5b98",
     "reviewed": "pending owner read"
+  },
+  "explanation:leg_no_price": {
+    "sha256": "70d4bc6d28c289056a69ff4c57b29fe6d5f2f8d12ace5dedb7df333db2a0a835",
+    "reviewed": "pending owner read"
+  },
+  "explanation:unpriced_leg": {
+    "sha256": "bebe436ce36c66d3b34f99ad1967b69c3419467fb82fe0a43c5f8cb9d5c45542",
+    "reviewed": "pending owner read"
+  },
+  "explanation:unpriced_leg_expired": {
+    "sha256": "cf545036ef0dee84ff72468952fb9132642771c4989adb05e00002b9d1a9cef7",
+    "reviewed": "pending owner read"
+  },
+  "explanation:unpriced_legs": {
+    "sha256": "211dc50fd275336b534e8137487f58929fce5e5ad528a02d433ceb2ac41f5359",
+    "reviewed": "pending owner read"
+  },
+  "explanation:unpriced_legs_expired": {
+    "sha256": "720c8f1f185dd5f5b47401cdb6e0fd1043d099ad4ec5e013fc041fd3a2b4e686",
+    "reviewed": "pending owner read"
   }
 }

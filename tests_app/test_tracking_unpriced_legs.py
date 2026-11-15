@@ -1,4 +1,4 @@
-"""GC-ICFIX issue 24 (ADR-311, REQ-109 AC-5 as narrowed; ADR-008): when an open leg of a practice book has no live price,
+"""GC-ICFIX issue 24 (ADR-311, REQ-109 AC-5 as narrowed; ADR-008): when an open leg of a practice book has no price,
 the reply keeps every TOTAL paused (and the after-charges figures with it), shows each priced leg's own unbooked figure,
 marks the unpriced leg "no price" (never 0, never blank), and names it, calling an expired contract expired.
 
@@ -62,8 +62,9 @@ def test_after_charges_figures_stay_paused_with_the_total():
 
 def test_several_unpriced_and_an_expired_one_are_each_named_and_called_expired():
     now = [None, D("12.00"), None, None]
-    got = _paused((paper.UnpricedLeg(0, KEYS[0], "stale", False), paper.UnpricedLeg(2, KEYS[2], "contract_retired", True),
-                   paper.UnpricedLeg(3, KEYS[3], "missing", False)), now)
+    left = (paper.UnpricedLeg(0, KEYS[0], "stale", False), paper.UnpricedLeg(2, KEYS[2], "contract_retired", True),
+            paper.UnpricedLeg(3, KEYS[3], "missing", False))
+    got = _paused(left, now)
     assert [r["pnl"] for r in got["legs"]] == [None, D("-61.75"), None, None]  # BUY 23000 CE (12.00 - 12.95) x 65
     assert [u["leg_index"] for u in got["unpriced_legs"]] == [0, 2, 3] and got["unpriced_legs"][1]["expired"] is True
     assert got["unpriced_text"] == ("No price for: NIFTY 13 Oct 22800 CE, NIFTY 13 Oct 22400 PE (expired), "
@@ -77,7 +78,8 @@ def test_when_every_unpriced_leg_is_expired_the_reason_is_that_they_expired():
 
 def test_wording_the_five_new_texts():
     r = render_explanation
-    assert r("leg_no_price") == "no price"
-    assert r("unpriced_leg", contract="X") == "X" and r("unpriced_leg_expired", contract="X") == "X (expired)"
-    assert r("unpriced_legs", legs="X") == "No price for: X."
-    assert r("unpriced_legs_expired", legs="X") == "Expired contracts have no price: X."
+    x = r("leg_no_price")  # any finished explanation text stands in for a contract name
+    assert x == "no price"
+    assert r("unpriced_leg", contract=x) == "no price" and r("unpriced_leg_expired", contract=x) == "no price (expired)"
+    assert r("unpriced_legs", legs=x) == "No price for: no price."
+    assert r("unpriced_legs_expired", legs=x) == "Expired contracts have no price: no price."

@@ -194,7 +194,7 @@ def test_ac5_a_stale_quote_that_still_carries_a_price_pauses_and_refuses_on_its_
     exited = paper.tracking_view(snap, entry, D("0.5"), ALL_LIVE, {1: D("14.95")})  # open leg 0 still pauses
     assert (exited.paused, exited.paper_pnl, exited.unbooked) == (True, None, None)
     # ADR-311: an unpriced open leg has no figure (never 0); the exited leg keeps its booked figure
-    live = [paper.leg_price(snap, IDS[i]).price for i in (2, 3)]  # ADR-311: the legs that have a price keep their figure
+    live = [paper.leg_price(snap, IDS[i]).price for i in (2, 3)]  # ADR-311: priced legs keep their figure
     assert exited.leg_pnls == (None, (D("14.95") - entry[1].entry_price) * 65, paper.leg_pnl(entry[2], live[0]),
                                paper.leg_pnl(entry[3], live[1]))
 
@@ -243,7 +243,7 @@ def test_adr212_display_price_uses_the_held_close_after_hours_but_fills_still_re
         paper.exit_prices_now(closed, entry[:1])
 
 
-# ---- ADR-311 / issue 24: an open leg with no live price pauses every TOTAL, is named, and every other leg keeps its figure
+# ---- ADR-311 / issue 24: an open leg with no live price pauses every TOTAL, is named; the other legs keep their figure
 def _no_quote(snap, *ids):
     legs = dict(snap.legs)
     for iid in ids:
@@ -270,7 +270,7 @@ def test_adr311_all_priced_nothing_is_unpriced(replayed):
 
 def test_adr311_the_notes_case_one_far_leg_without_a_price_pauses_the_total_and_names_that_leg(replayed):
     """The user test: a four-leg condor, the far BUY 23000 CE (leg 1) has no price. Totals stay paused (never a sum of
-    three), the other three legs keep their own figure, leg 1 has the 'no figure' marker (None, never 0), and it is named."""
+    three), the other three legs keep their own figure, leg 1 has no figure (None, never 0), and it is named."""
     snap, entry = _fresh(*replayed)
     view = paper.tracking_view(_no_quote(snap, IDS[1]), entry, D("0.5"), ALL_LIVE)
     assert (view.paused, view.paper_pnl, view.unbooked) == (True, None, None)
