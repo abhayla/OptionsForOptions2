@@ -167,6 +167,8 @@ def _condition(r: pe.Flag | pe.AlreadyTrue, body: Mapping | None,
     the cheapest offered approach and its cost (``cheapest``, ADR-221)."""
     if r.cmp is None:
         return None
+    if isinstance(r, HeldFlag):  # ADR-309: the record's own figures, never the live ones beside them
+        target = None if r.target is None else check.TargetFigures(*r.target)
     value, threshold = _num(r.value), _num(r.threshold)
     label, unit = check.trigger_words(body, r.trigger_id)
     shown = str(r.value) if value is None else str(value)
@@ -346,7 +348,10 @@ async def stored_records(db: Any, user_ref: str, strategy_id: int,
 
 @dataclass(frozen=True)
 class HeldFlag(pe.Flag):
-    """ADR-309: a rule shown fired from its open record while the check reads it clear; the figures are the record's."""
+    """ADR-309: a rule shown fired from its open record while the check reads it clear; the figures are the record's.
+    ``target`` = the T-07 record's own (before, after, reason) shown when it fired; None when none was stored."""
+
+    target: tuple[Decimal, Decimal | None, str | None] | None = None
 
 
 def live_fields(rule_id: str, live: Mapping[str, Decimal], fired_at: Mapping[str, datetime.datetime],
@@ -370,7 +375,7 @@ def shown_results(ev: pe.Evaluation, open_recs: Any) -> list[pe.Result]:
     unread = {r.rule_id for r in ev.results if isinstance(r, pe.NotChecked)}
     return [*ev.results,
             *(HeldFlag(rec.rule_id, rec.trigger_id, rec.stage, rec.value, rec.threshold,
-                       cmp_of.get(rec.rule_id) or rec.cmp)
+                       cmp_of.get(rec.rule_id) or rec.cmp, target=getattr(rec, "target", None))
               for rec in open_recs
               if ((rec.rule_id in ev.clear and rec.rule_id in cmp_of) or rec.rule_id in unread)
               and rec.trigger_id is not None and rec.value is not None and rec.threshold is not None
