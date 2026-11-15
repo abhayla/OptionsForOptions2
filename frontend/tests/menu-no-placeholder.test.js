@@ -51,6 +51,28 @@ describe('u504: no menu entry leads to the placeholder page', () => {
     w.unmount()
   })
 
+  // ADR-313 (6): no built page loses its menu entry. "A page a user is meant to open" = every item the menus listed before
+  // u504, i.e. every SECTIONS item and every ACCOUNT_ITEMS item of nav.js (detail pages, redirects and pages reached from a
+  // screen, like the execute and broker-return pages, are not menu pages).
+  it('every nav item whose page is built is in the menus, and every item left out really is the placeholder', async () => {
+    const { SECTIONS, ACCOUNT_ITEMS, MENU_SECTIONS, ACCOUNT_MENU_ITEMS } = await import('@/router/nav')
+    const router = createRouter({ history: createMemoryHistory(), routes })
+    const inMenu = new Set([
+      ...MENU_SECTIONS.flatMap((s) => s.items.map(([slug]) => `/${s.key}/${slug}`)),
+      ...ACCOUNT_MENU_ITEMS.map(([slug]) => `/settings/${slug}`),
+    ])
+    const all = [...SECTIONS.flatMap((s) => s.items.map(([slug]) => `/${s.key}/${slug}`)), ...ACCOUNT_ITEMS.map(([slug]) => `/settings/${slug}`)]
+    const lost = []
+    const wronglyHidden = []
+    for (const path of all) {
+      const { page } = await landedComponent(router, path)
+      if (page !== PlaceholderPage && !inMenu.has(path)) lost.push(path)
+      if (page === PlaceholderPage && inMenu.has(path)) wronglyHidden.push(path)
+    }
+    expect(lost).toEqual([])
+    expect(wronglyHidden).toEqual([])
+  })
+
   it('a section with no built page (Orders) is not in the top bar; its pages still open by address', async () => {
     const router = createRouter({ history: createMemoryHistory(), routes })
     await router.push('/orders/pending')

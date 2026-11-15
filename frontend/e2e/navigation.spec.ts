@@ -13,47 +13,48 @@ const SECTIONS: Record<string, { label: string; items: string[] }> = {
     items: ['Current positions', 'Strategy-linked positions', 'Adjustment opportunities'],
   },
   'AC-4': { label: 'Market', items: ['Option Chain', 'Underlying/index view', 'Market context'] },
-  'AC-5': { label: 'Orders', items: ['Pending', 'Executed', 'Failed/partial', 'Execution history'] },
   'AC-6': { label: 'Alerts', items: ['Active', 'History', 'Notification settings'] },
   'AC-7': { label: 'Learn', items: ['Strategy education', 'Options concepts', 'Platform guidance'] },
 }
 
-// u504: the menus offer built pages only (nav.js UNBUILT_ITEMS); Orders has none, so it is not in the bar. NOT RUN here (needs the e2e stack):
-// the section-page based checks below (openSection -> subItems, the href count) need a manager pass.
+// ADR-313 (u504): the menus list built pages only (nav.js UNBUILT_ITEMS). Orders has no built page, so it is not in the bar; the
+// unbuilt items below still open by address (AC-5 test). EDITED WITHOUT RUNNING (needs the e2e stack): the menu checks open each
+// section's menu button and read its items; a section link opens the section's first built page, not a section page.
 const SECTION_ORDER = ['Home', 'Strategies', 'Positions', 'Market', 'Alerts', 'Learn']
 
 const ACCOUNT_ITEMS = [
-  'Profile',
-  'Zerodha connection',
   'Subscription & Billing',
   'Free Eligibility',
   'Referrals',
-  'Notifications',
-  'Security',
-  'Preferences',
-  'Strategy Preferences',
   'Broker & Market Data',
   'Settings', // GC-SET (REQ-167), nav.js app-settings
 ]
 
-test('the seven sections are the primary nav, in order (REQ-009 statement)', async ({ page }) => {
+test('the built sections are the primary nav, in order (REQ-009 statement; Orders is not built, ADR-313)', async ({ page }) => {
   await page.goto('/')
   const nav = new NavPage(page)
   await expect(nav.navLinks).toHaveText(SECTION_ORDER)
 })
 
+test('"/" opens My Strategies, a built page (ADR-313 (3))', async ({ page }) => {
+  await page.goto('/')
+  await expect(page).toHaveURL(/\/strategies\/my-strategies$/)
+  await expect(new NavPage(page).title).toHaveText('My Strategies')
+})
+
 for (const [ac, { label, items }] of Object.entries(SECTIONS)) {
-  test(`${ac}: ${label} lists ${items.join(', ')}`, async ({ page }) => {
+  test(`${ac}: ${label} menu lists ${items.join(', ')}`, async ({ page }) => {
     await page.goto('/')
     const nav = new NavPage(page)
-    await nav.openSection(label)
-    await expect(nav.title).toHaveText(label)
-    await expect(nav.subItems).toHaveText(items)
-    // each sub-item resolves to its own page titled with the exact label
+    const toggle = page.getByTestId(`nav-menu-toggle-${label.toLowerCase()}`)
+    const titles = page.getByTestId('nav-menu-item').locator('span.font-medium')
+    await toggle.click()
+    expect([...(await titles.allTextContents())].sort()).toEqual([...items].sort())
+    // each menu item opens its own page titled with the exact label
     for (const item of items) {
-      await nav.subItems.filter({ hasText: new RegExp(`^${item.replace(/[/&]/g, '\\$&')}$`) }).click()
+      await page.getByTestId('nav-menu-item').filter({ has: page.getByText(item, { exact: true }) }).click()
       await expect(nav.title).toHaveText(item)
-      await nav.openSection(label)
+      await toggle.click()
     }
   })
 }
@@ -92,25 +93,27 @@ test('AC-8: the avatar menu opens Account & Settings with its built items', asyn
   }
 })
 
-test('every nav link, sub-item link and account link resolves to a real page (fail closed)', async ({ page }) => {
+test('every nav link, menu item and account link resolves to a real page (fail closed)', async ({ page }) => {
   await page.goto('/')
   const nav = new NavPage(page)
   const hrefs = new Set<string>()
   for (const href of await nav.navLinks.evaluateAll((els) => els.map((e) => e.getAttribute('href') as string))) hrefs.add(href)
+  // menu items: open each section's menu (a section link opens its first item, so it adds no new address)
+  for (const label of SECTION_ORDER) {
+    const toggle = page.getByTestId(`nav-menu-toggle-${label.toLowerCase()}`)
+    await toggle.click()
+    for (const href of await page.getByTestId('nav-menu-item').evaluateAll((els) => els.map((e) => e.getAttribute('href') as string))) hrefs.add(href)
+    await toggle.click()
+  }
   await nav.openAccountMenu()
   for (const href of await page
     .getByTestId('account-menu')
     .getByRole('link')
     .evaluateAll((els) => els.map((e) => e.getAttribute('href') as string)))
     hrefs.add(href)
-  // sub-item links from each section page
-  for (const section of [...hrefs].filter((h) => SECTION_ORDER.map((s) => `/${s.toLowerCase()}`).includes(h) || h === '/settings')) {
-    await page.goto(section)
-    for (const href of await nav.subItems.evaluateAll((els) => els.map((e) => e.getAttribute('href') as string))) hrefs.add(href)
-  }
-  // 7 sections + every sub-item + /settings + its eleven items, derived from the spec strings above
+  // every built menu item + /settings (the account title link) + its built items; section links equal their first item
   const subItemCount = Object.values(SECTIONS).reduce((n, s) => n + s.items.length, 0)
-  expect(hrefs.size).toBe(SECTION_ORDER.length + subItemCount + 1 + ACCOUNT_ITEMS.length)
+  expect(hrefs.size).toBe(subItemCount + 1 + ACCOUNT_ITEMS.length)
   for (const href of hrefs) {
     await page.goto(href)
     await expect(nav.title, href).toBeVisible()
