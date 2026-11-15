@@ -2,7 +2,7 @@
 
 # Findings index
 
-179 finding(s), generated from `knowledge/findings/*.json`.
+180 finding(s), generated from `knowledge/findings/*.json`.
 
 | id | class | detection status | other fields |
 |---|---|---|---|
@@ -150,6 +150,7 @@
 | row-ahead-dispatched-without-overlap-gate | A builder for a younger row is dispatched into its own worktree without running the binding overlap gate (ADR-171 rule 3) against every older open row, so two rows in flight edit the same file and the older row's fix round collides with the younger row's work. | unguarded | occurrences, scope, spec_ref |
 | rule-entry-baseline-taken-at-first-check | Any playbook rule (T-01, T-03, T-07, T-09, T-11, T-13 and every other F-71 crossing rule) on any tracked strategy, live or test data, whose FIRST background check, or a screen check made before that first check, happens after the rule has already crossed: the rule is stored and shown as 'Already true when tracking started' and never flags until it clears, although it was false at the real entry. | guarded | fix_attempt_2026_11_07, fix_attempt_2026_11_09, live_example, occurrences, scope, spec_ref |
 | rule-over-tables-as-typed-list | A rule that must hold for every table holding a kind of data (every table that stores a strategy definition, every table with a money column) is written as a hand-typed list of table names; a table added by an earlier or later migration is silently left out, and the rule's own test only exercises the tables it names. | unguarded | occurrences, scope, spec_ref |
+| rule-true-at-entry-held-or-warns-by-kind | A playbook rule that is already true when tracking starts behaves by its KIND, on every strategy type: a level rule (spot near a short strike, delta, premium, IV move, gap) true at the fill is held (grey 'Already true when tracking started', no alert) until a check finds it clear; a clock rule is never held and warns on its day (expiry day only). Two trades that look alike can differ because the starting point is the fill's own value, not the value at the first check or the value the user reads later. | guarded | occurrences, scope, spec_ref |
 | same-figure-fetched-separately-by-each-panel | Several panels on one screen each fetching or computing the same figure their own way: they show different numbers for one thing, at different ages. | unguarded | occurrences, scope, spec_ref |
 | saved-setting-with-no-reader-but-its-own-display | Any value a user saves that only the screen showing it reads back, while the code that acts (a rule, a worker, a job) reads a different source, so the setting looks honoured and changes nothing. | unguarded | occurrences, scope, spec_ref |
 | screen-states-value-in-force-from-a-reader-beside-the-actor | Any screen that states 'the value in force' (a limit, a threshold, a rate) from its own derivation beside the code that acts on it: the two drift on every case the derivation does not copy (time of day, strategy shape, plan overrides). | unguarded | occurrences, scope, spec_ref |
