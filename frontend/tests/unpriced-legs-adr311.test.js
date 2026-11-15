@@ -42,6 +42,28 @@ describe('ADR-311: the builder legs table', () => {
   })
 })
 
+describe('ADR-311: Booked shows while the totals are paused (the reason applies per figure)', () => {
+  const book = () => {
+    const d = JSON.parse(JSON.stringify(REAL.strategies[0]))
+    Object.assign(d, { state: 'PAUSED', booked_text: '0.00', booked_after_text: '-36.09', booked_after_reason: null, total_text: null,
+      total_after_text: null, unbooked_text: null, unbooked_after_text: null, after_charges_reason: 'prices_not_live', after_charges_reason_text: null })
+    return d
+  }
+  it('Booked keeps its after-charges figure; Total and Unbooked show the paused state, no number', () => {
+    const g = readPaperStrategy(book())
+    expect([g.bookedAfter.kind, g.bookedAfter.text]).toEqual(['after', '-36.09'])
+    expect([g.totalAfter.kind, g.totalAfter.text]).toEqual(['paused', null])
+    expect([g.unbookedAfter.kind, g.unbookedAfter.text]).toEqual(['paused', null])
+  })
+  it('charges paid unknown: Booked says its OWN reason, not the price pause', () => {
+    const d = book()
+    Object.assign(d, { booked_after_text: null, booked_after_reason: 'rates_unavailable', booked_after_reason_text: 'Charges could not be read' })
+    const g = readPaperStrategy(d)
+    expect(g.bookedAfter.kind).toBe('before')
+    expect(g.bookedAfter.reason).toBe('Charges could not be read')
+  })
+})
+
 describe('ADR-311: the one shared total and the Paper tab', () => {
   it('sharedTotal: paused = no number, the as-of line, and the named legs', () => {
     const t = sharedTotal({ ...paused(), state: 'PAUSED', total_text: null, answered_at: AT })

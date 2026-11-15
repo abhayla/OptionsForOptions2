@@ -11,6 +11,7 @@ from __future__ import annotations
 import datetime
 from decimal import Decimal
 
+from ofo.charges import ChargeRates
 from ofo.engine.legs import Action, Instrument
 from ofo.errors.explanations import render_explanation
 from ofo.tracking import book, paper
@@ -24,22 +25,29 @@ KEYS = ["NSE_FO:44624", "NSE_FO:44632", "NSE_FO:44604", "NSE_FO:44595"]
 SPEC = [("SELL", Action.SELL, Instrument.CE, "22800", "39.15"), ("BUY", Action.BUY, Instrument.CE, "23000", "12.95"),
         ("SELL", Action.SELL, Instrument.PE, "22400", "82.75"), ("BUY", Action.BUY, Instrument.PE, "22200", "35.80")]
 NOW = [D("45.15"), None, D("70.75"), D("30.80")]
+RATES = ChargeRates(
+    brokerage_per_order=D("20"), stt_sell_rate=D("0.0015"), stt_exercise_rate=D("0.0015"),
+    transaction_rates={"NSE_FO": D("0.0003553"), "BSE_FO": D("0.000325")}, sebi_rate=D("0.000001"),
+    stamp_buy_rate=D("0.00003"), gst_rate=D("0.18"), read_on=datetime.date(2026, 10, 15),
+    source_url="https://zerodha.com/charges")
 
 
-def _book():
+def _book(closed_first=False):
     orders = tuple(PaperOrder(str(i + 1), side, 65, D(price), "open", AT) for i, (side, *_, price) in enumerate(SPEC))
+    if closed_first:  # leg 0 (SELL 22800 CE at 39.15) is bought back at 30.00: booked (39.15 - 30.00) x 65 = +594.75
+        orders = (*orders, PaperOrder("1", "BUY", 65, D("30.00"), "exit", AT))
     legs = [paper.TrackedLeg(KEYS[i], act, inst, D(strike), EXPIRY, 65, D(price), AT)
             for i, (_, act, inst, strike, price) in enumerate(SPEC)]
     return T._Book(1, orders, book.contract_legs(orders)), legs
 
 
-def _paused(unpriced, now=NOW):
+def _paused(unpriced, now=NOW, rates=None):
     bk, legs = _book()
     prices = tuple(paper.Price(KEYS[i], "live", p, AT) if p is not None else paper.Price(KEYS[i], "missing", None, None)
                    for i, p in enumerate(now))
     view = paper.TrackingView(True, "prices_not_live", None, AT, prices, None, None, (), D(0), None, False,
                               (None,) * 4, unpriced)
-    return T._figures(bk, legs, view, [None] * 4, "NIFTY", None)
+    return T._figures(bk, legs, view, [None] * 4, "NIFTY", rates)
 
 
 def test_core_the_notes_case_totals_stay_paused_priced_legs_keep_their_figure_the_unpriced_leg_is_named():
@@ -56,8 +64,31 @@ def test_core_the_notes_case_totals_stay_paused_priced_legs_keep_their_figure_th
 
 def test_after_charges_figures_stay_paused_with_the_total():
     got = _paused((paper.UnpricedLeg(1, KEYS[1], "missing", False),))
-    assert (got["total_after"], got["booked_after"], got["unbooked_after"]) == (None, None, None)
-    assert got["after_charges_reason"] is not None  # no number, with a reason (no rates in this test: any reason)
+    assert (got["total_after"], got["unbooked_after"]) == (None, None)
+    assert got["after_charges_reason"] == "prices_not_live"
+    # no rates here: the charges paid are unknown, so Booked after is absent with ITS OWN reason, not the price reason
+    assert got["booked_after"] is None and got["booked_after_reason"] == "rates_unavailable"
+
+
+def test_booked_after_is_shown_while_paused_when_the_charges_paid_are_known():
+    got = _paused((paper.UnpricedLeg(1, KEYS[1], "missing", False),), rates=RATES)
+    assert (got["total_after"], got["unbooked_after"], got["after_charges_reason"]) == (None, None, "prices_not_live")
+    assert got["charges_paid"] is not None and got["booked_after_reason"] is None
+    assert got["booked_after"] == got["booked"] - got["charges_paid"]  # booked 0.00 here: minus ALL charges paid
+
+
+def test_a_closed_leg_before_an_open_one_the_figure_and_the_name_land_on_the_same_row():
+    bk, legs = _book(closed_first=True)
+    prices = (paper.Price(KEYS[0], "exited", None, None), paper.Price(KEYS[1], "live", D("12.00"), AT),
+              paper.Price(KEYS[2], "missing", None, None), paper.Price(KEYS[3], "live", D("30.80"), AT))
+    view = paper.TrackingView(True, "prices_not_live", None, AT, prices, None, None, (), D("594.75"), None, False,
+                              (D("594.75"), D("-61.75"), None, D("-325.00")),
+                              (paper.UnpricedLeg(2, KEYS[2], "missing", False),))
+    got = T._figures(bk, legs, view, [None] * 4, "NIFTY", None)
+    assert [r["pnl"] for r in got["legs"]] == [D("594.75"), D("-61.75"), None, D("-325.00")]
+    assert [r["no_price_text"] for r in got["legs"]] == [None, None, "no price", None]
+    assert got["unpriced_legs"] == [{"leg_index": 2, "contract_text": "NIFTY 13 Oct 22400 PE", "expired": False}]
+    assert got["booked"] == D("594.75") and got["total"] is None
 
 
 def test_several_unpriced_and_an_expired_one_are_each_named_and_called_expired():
