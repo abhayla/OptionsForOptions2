@@ -34,7 +34,7 @@ from ofo.errors.explanations import ExplanationText, render_explanation
 from ofo.money import PAISE
 from ofo.scenario.levels import LevelSet
 from ofo.scenario.views import ScenarioValues, View, scenario_values
-from ofo.table.model import FUTURES_PER_UNIT_GREEKS, position_greeks, round_greek
+from ofo.table.model import FUTURES_PER_UNIT_GREEKS, display_number, position_greeks, round_greek
 from ofo.timeutil import IST
 
 ClampCode = Literal["before_now", "after_first_expiry"]
@@ -87,6 +87,17 @@ class TargetGreeks:
     # the dividend yield q the engine priced each option expiry with (read-only echo, ADR-008: one engine; an
     # independent re-computation must use this q, not re-solve one from rounded IVs and prices of other instants)
     dividend_yields: tuple[tuple[datetime.date, Decimal], ...] = ()
+    #: u507: the units every leg carries (None: the legs differ) and the total as text at the Greeks card's own places,
+    #: made from the UNROUNDED total so it is rounded once (delta, theta, vega 2; gamma 4)
+    units: int | None = None
+    total_display: dict[str, str] | None = None
+
+    @property
+    def basis_text(self) -> ExplanationText:
+        """u507: what the figures are per, as the Greeks card's column head says it ("Per position, 65 units")."""
+        if self.units is None:
+            return render_explanation("target_greeks_basis")
+        return render_explanation("target_greeks_basis_units", count=self.units)
 
     @property
     def unavailable_text(self) -> ExplanationText | None:
@@ -194,7 +205,12 @@ def _greeks(model: ModelInputs, level: Decimal, at: datetime.datetime) -> Target
     yields = yields_of(model)
     if len(raw) != len(rows):
         return TargetGreeks(tuple(rows), None, "no_time_left", yields)
-    return TargetGreeks(tuple(rows), _rounded(greeks_total(raw)), None, yields)
+    total = greeks_total(raw)
+    quantities = {leg.quantity for leg in model.legs}
+    shown = {"delta": display_number(total.delta, 2), "gamma": display_number(total.gamma, 4),
+             "theta": display_number(total.theta, 2), "vega": display_number(total.vega, 2)}
+    return TargetGreeks(tuple(rows), _rounded(total), None, yields,
+                        quantities.pop() if len(quantities) == 1 else None, shown)
 
 
 def yields_of(model: ModelInputs) -> tuple[tuple[datetime.date, Decimal], ...]:

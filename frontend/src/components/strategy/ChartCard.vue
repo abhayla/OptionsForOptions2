@@ -285,7 +285,7 @@ const toneOf = (v) => ({ profit: 'text-profit', loss: 'text-loss' })[signOf(v)] 
         <thead>
           <tr class="border-b border-line text-left text-ink-muted">
             <th scope="col" class="py-2 font-medium">Instrument</th>
-            <th v-for="c in GREEK_COLUMNS" :key="c.id" scope="col" class="py-2 text-right font-medium" data-testid="greeks-head">{{ c.label }}<FigureHint v-if="c.id === 'decay'" id="decay" /></th>
+            <th v-for="c in GREEK_COLUMNS" :key="c.id" scope="col" class="py-2 text-right font-medium" data-testid="greeks-head">{{ c.label }}<FigureHint v-if="c.id === 'decay' || c.id === 'theta'" :id="c.id" /></th>
           </tr>
         </thead>
         <tbody>

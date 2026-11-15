@@ -103,8 +103,9 @@ const onBox = (e) => {
         </div>
         <div v-if="t.greeks">
           <div class="text-ink-muted">Greeks at target</div>
+          <div v-if="t.greeks.basis_text && t.greeks.total" class="text-xs text-ink-muted" data-testid="target-greeks-basis">{{ t.greeks.basis_text }}</div>
           <div v-if="t.greeks.total" class="flex flex-wrap gap-3 tabular-nums" data-testid="target-greeks-total">
-            <span v-for="g in GREEKS" :key="g"><span class="text-ink-muted">{{ g }}</span> {{ t.greeks.total[g] }}</span>
+            <span v-for="g in GREEKS" :key="g"><span class="text-ink-muted">{{ g }}</span> {{ t.greeks.total_display?.[g] ?? t.greeks.total[g] }}</span>
           </div>
           <div v-else-if="t.greeks.unavailable_text" class="text-xs text-ink-muted" data-testid="target-greeks-unavailable">{{ t.greeks.unavailable_text }}</div>
         </div>
