@@ -354,15 +354,16 @@ function nameInUrl(id) {
   const { draft: _link, ...rest } = route.query
   router.replace({ path: route.path, query: { ...rest, strategy: String(id) } })
 }
-const takeStrategy = (id, revision, name) => {
-  openStrategy.value = Number.isInteger(id) ? { id, revision: revision ?? null, name: name ?? null } : null
+// u502: serverLegs = the legs the server holds for it (a successful load, or the legs a successful Save sent); null = not known, and Save then stays on
+const takeStrategy = (id, revision, name, serverLegs = null) => {
+  openStrategy.value = Number.isInteger(id) ? { id, revision: revision ?? null, name: name ?? null, serverLegs } : null
   if (openStrategy.value) nameInUrl(id)
 }
 const openSaved = (next, id, revision, name) => {
   setLegs(next)
   savedId.value = Number.isInteger(id) ? id : null
   savedRevision.value = savedId.value === null ? null : revision ?? null
-  takeStrategy(id, revision, name)
+  takeStrategy(id, revision, name, legs.value.map((l) => ({ ...l })))
 }
 // REQ-134 AC-3: a rename from the bar changes only the shown name (the revision stays the one the page loaded).
 const onRenamed = (id, name) => {
@@ -379,10 +380,10 @@ const onDeleted = (id) => {
   const { strategy: _gone, ...rest } = route.query
   router.replace({ path: route.path, query: rest })
 }
-const onSaved = (id, revision, name) => {
+const onSaved = (id, revision, name, sent = null) => {
   savedId.value = id
   savedRevision.value = revision ?? null
-  takeStrategy(id, revision, name)
+  takeStrategy(id, revision, name, Array.isArray(sent) ? sent : null)
 }
 // AC-5: a reload of /strategy/builder?strategy=<id> reads the saved copy (legs and planned entries as saved, never today's prices).
 const STRATEGY_ID = /^[1-9]\d{0,17}$/
@@ -969,7 +970,8 @@ const pricesStamp = computed(() => {
             <div v-if="showNumbers" :class="updating ? 'opacity-60' : ''"><MoneySummary class="!mt-0 !px-0" :net-premium="data.summary.net_premium ?? null" :charges="data.charges_breakdown ?? null" /></div>
           </template>
         </LegList>
-        <div v-if="paper" class="mt-2 flex flex-wrap items-center gap-2 text-sm" data-testid="paper-pending">
+        <!-- GC-ICFIX P3 u513: while the confirm dialog is open its list is a preview, not "N pending changes" the user made -->
+        <div v-if="paper && !paperDialog" class="mt-2 flex flex-wrap items-center gap-2 text-sm" data-testid="paper-pending">
           <span v-if="paperStale && rereadBusy" class="flex-1" data-testid="paper-pending-stale">{{ PAPER_PLACED_NOT_REFRESHED_TEXT }}</span>
           <span v-else class="flex-1" data-testid="paper-pending-count">{{ pendingOrders === null ? PAPER_PENDING_UNREADABLE : pendingText(pendingOrders.length) }}</span>
           <button v-if="!paperStale && pendingOrders?.length" type="button" class="h-9 rounded-lg bg-accent px-3 font-medium text-white" data-testid="paper-review" @click="reviewPending">{{ REVIEW_AND_ADD_LABEL }}</button>

@@ -130,6 +130,22 @@ const hasLegs = computed(() => !props.paperMode && canSaveLegs(props.legs)) // S
 // The "..." button is disabled only when the menu would be empty (nothing to save, no saved strategy); each item shows by its own condition.
 const hasMenu = computed(() => hasLegs.value || !!props.current)
 const canSave = computed(() => !props.paperMode && !busy.value && canSaveLegs(props.legs))
+// GC-ICFIX P3 u502 (REQ-134 AC-2): Save is on only when there is something to save. The comparison is against the legs the SERVER holds
+// for the open strategy (current.serverLegs: set by the page only from a successful load and from the legs a successful Save SENT).
+// FAIL-SAFE: when the page cannot tell whether the legs differ (no server legs, an unreadable value, a comparison error) Save is ON:
+// a needless save costs nothing, a blocked save loses work. (rules_ref is not compared: it only comes from the page URL, no in-page action changes it.)
+const legsDiffer = () => {
+  try {
+    const server = props.current?.serverLegs
+    return !Array.isArray(server) || sentLegs(props.legs) !== sentLegs(server)
+  } catch {
+    return true
+  }
+}
+const canSaveNow = computed(() => canSave.value && (!props.current || legsDiffer()))
+const snapshot = (legs) => legs.map((l) => ({ ...l })) // the legs a request carries, copied before the await so a later edit is not part of them
+// an edit makes the "<name> saved." line out of date
+watch(() => sentLegs(props.legs), () => { savedId.value = null })
 
 async function refresh() {
   try {
@@ -148,22 +164,23 @@ function done(data) {
 
 // Save: an open saved strategy is updated with the revision the page loaded (read BEFORE the await); a never-saved one asks a name first.
 async function save() {
-  if (!canSave.value) return
+  if (!canSaveNow.value) return
   if (!props.current) {
     asking.value = 'save'
     nameText.value = STRATEGY_NAME_DEFAULT
     return
   }
   const { id, revision } = props.current
+  const sent = snapshot(props.legs)
   busy.value = true
   savedId.value = null
   errorParts.value = null
   dropSaveUndo()
   try {
     const before = await newestSeq(api, id) // null = unreadable: no Undo is offered
-    const res = await api.put(`/strategies/${id}`, buildUpdateBody(props.legs, props.rulesRef, revision))
+    const res = await api.put(`/strategies/${id}`, buildUpdateBody(sent, props.rulesRef, revision))
     const next = done(res.data)
-    emit('saved', res.data.id, next, savedName.value)
+    emit('saved', res.data.id, next, savedName.value, sent)
     await offerUndo(id, before, next)
     await refresh()
   } catch (e) {
@@ -271,7 +288,7 @@ async function confirmName() {
   if (asking.value === 'rename' && props.current && !busy.value) return confirmRename()
   if (props.paperMode || busy.value || !asking.value || !canSaveLegs(props.legs)) return
   const mode = asking.value
-  const legs = props.legs
+  const legs = snapshot(props.legs)
   busy.value = true
   savedId.value = null
   errorParts.value = null
@@ -280,7 +297,7 @@ async function confirmName() {
     const revision = done(res.data)
     asking.value = null
     if (mode === 'save-as') emit('open', legs, res.data.id, revision, savedName.value)
-    else emit('saved', res.data.id, revision, savedName.value)
+    else emit('saved', res.data.id, revision, savedName.value, legs)
     await refresh()
   } catch (e) {
     errorParts.value = e?.parts ?? NEUTRAL_PARTS
@@ -329,14 +346,15 @@ async function startPaper() {
   paperError.value = ''
   errorParts.value = null
   let id = props.current?.id ?? null
+  const sentNow = snapshot(props.legs)
   if (id === null) {
     busy.value = true
     try {
       const name = props.shownName.length >= 1 && props.shownName.length <= STRATEGY_NAME_MAX ? props.shownName : STRATEGY_NAME_DEFAULT
-      const res = await api.post('/strategies', buildSaveBody(props.legs, props.rulesRef, name))
+      const res = await api.post('/strategies', buildSaveBody(sentNow, props.rulesRef, name))
       const revision = done(res.data)
       id = res.data.id
-      emit('saved', id, revision, savedName.value)
+      emit('saved', id, revision, savedName.value, sentNow)
       await refresh()
     } catch (e) {
       errorParts.value = e?.parts ?? NEUTRAL_PARTS
@@ -411,7 +429,7 @@ defineExpose({ showPaperTab: () => { picked.value = 'tracked' } }) // the page c
       <slot name="add-edit" />
       <button
 v-if="!paperMode" type="button" data-testid="save-draft" class="h-10 flex-1 basis-0 rounded-lg bg-accent px-3 font-medium text-white disabled:opacity-50"
-              :disabled="!canSave" @click="save">Save</button>
+              :disabled="!canSaveNow" @click="save">Save</button>
       <button
 v-if="!paperMode" type="button" data-testid="add-to-paper" class="h-10 flex-1 basis-0 rounded-lg border border-line px-3 font-medium disabled:opacity-50"
               :disabled="!canAddToPaper" @click="startPaper">{{ ADD_TO_PAPER_LABEL }}</button>
@@ -422,7 +440,7 @@ ref="menuButton" type="button" class="flex h-10 w-12 shrink-0 items-center justi
         <span v-show="menuOpen" role="menu" class="absolute left-0 top-full z-20 mt-1 flex w-44 flex-col items-start gap-1 rounded border border-line bg-surface p-2 shadow" data-testid="more-menu-panel">
           <button
 v-if="hasLegs" type="button" role="menuitem" data-testid="menu-save"
-                  :disabled="!canSave" @click="menuDo(save)">Save</button>
+                  :disabled="!canSaveNow" @click="menuDo(save)">Save</button>
           <button
 v-if="hasLegs" type="button" role="menuitem" data-testid="save-as"
                   :disabled="!canSave" @click="menuDo(saveAs)">Save As</button>

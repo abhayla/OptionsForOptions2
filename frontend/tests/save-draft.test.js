@@ -224,6 +224,7 @@ const CONFLICT = { what_happened: 'This strategy was changed by another action a
   what_is_blocked: 'Applying your change to the newer version.', next_action: 'Reload the strategy and make the change again.' }
 const t = (w, id) => w.find(`[data-testid="${id}"]`)
 const LEGS = [leg()]
+const EDITED = [leg({ lots: 9 })] // GC-ICFIX P3 u502: Save is on only after an edit of a saved strategy
 async function bar(props = {}) {
   answers['GET /strategies'] = { strategies: [] }
   const w = mount(SaveDraftBar, { props: { legs: LEGS, rulesRef: '', current: null, ...props } })
@@ -251,7 +252,7 @@ describe('REQ-134 AC-1: the first Save of a never-saved strategy asks for a name
     expect(calls.filter((c) => c.method === 'POST').map((c) => c.body.name)).toEqual(['NIFTY Oct condor'])
     expect(t(w, 'save-status').text()).toBe('NIFTY Oct condor saved.')
     expect(t(w, 'save-status').attributes('data-saved-id')).toBe('7')
-    expect(w.emitted('saved')).toEqual([[7, 1, quoted('NIFTY Oct condor')]])
+    expect(w.emitted('saved').map((e) => e.slice(0, 3))).toEqual([[7, 1, quoted('NIFTY Oct condor')]])
     expect(t(w, 'name-form').exists()).toBe(false)
   })
   it('an empty name is sent as typed and the API refusal "The strategy has no name." is shown; nothing is saved and the field stays', async () => {
@@ -290,6 +291,7 @@ describe('REQ-134 AC-2 (attack 1): Save on a saved strategy updates it with the 
   it('Save sends PUT /strategies/7 with expected_revision 3, no name field, no POST', async () => {
     answers['PUT /strategies/7'] = STRATEGY_OUT(7, 'NIFTY Oct condor', 4)
     const w = await bar({ current })
+    await w.setProps({ legs: EDITED })
     await t(w, 'save-draft').trigger('click')
     await flushPromises()
     expect(t(w, 'name-form').exists()).toBe(false)
@@ -297,20 +299,22 @@ describe('REQ-134 AC-2 (attack 1): Save on a saved strategy updates it with the 
     const put = calls.find((c) => c.method === 'PUT') // the Undo check reads the history first (row 28f), so the PUT is not calls[0]
     expect(put.body.expected_revision).toBe(3)
     expect(Object.keys(put.body)).not.toContain('name')
-    expect(w.emitted('saved')).toEqual([[7, 4, quoted('NIFTY Oct condor')]])
+    expect(w.emitted('saved').map((e) => e.slice(0, 3))).toEqual([[7, 4, quoted('NIFTY Oct condor')]])
   })
   it('a stale revision (409) shows the conflict message, emits nothing and the legs stay as given', async () => {
     answers['PUT /strategies/7'] = () => Promise.reject({ status: 409, parts: CONFLICT })
     const w = await bar({ current })
+    await w.setProps({ legs: EDITED })
     await t(w, 'save-draft').trigger('click')
     await flushPromises()
     expect(t(w, 'save-error-what').text()).toBe(CONFLICT.what_happened)
     expect(w.emitted('saved')).toBeUndefined()
-    expect(w.props('legs')).toEqual(LEGS)
+    expect(w.props('legs')).toEqual(EDITED)
   })
   it('a request failure shows the neutral message and nothing is reported saved', async () => {
     answers['PUT /strategies/7'] = () => Promise.reject(new Error('down'))
     const w = await bar({ current })
+    await w.setProps({ legs: EDITED })
     await t(w, 'save-draft').trigger('click')
     await flushPromises()
     expect(t(w, 'save-error').exists()).toBe(true)
@@ -320,6 +324,7 @@ describe('REQ-134 AC-2 (attack 1): Save on a saved strategy updates it with the 
   it('an answer without an id is refused (fail closed)', async () => {
     answers['PUT /strategies/7'] = { revision: 4 }
     const w = await bar({ current })
+    await w.setProps({ legs: EDITED })
     await t(w, 'save-draft').trigger('click')
     await flushPromises()
     expect(w.emitted('saved')).toBeUndefined()
@@ -463,6 +468,7 @@ describe('G-024: the "..." menu lists only the items that apply, never an empty 
     answers['PUT /strategies/7'] = STRATEGY_OUT(7, 'NIFTY Oct condor', 4)
     const w = await bar({ legs: FOUR, current })
     expect(items(w)).toEqual(['menu-save', 'save-as', 'rename-open'])
+    await w.setProps({ legs: [leg({ id: 1, lots: 9 }), ...FOUR.slice(1)] })
     await t(w, 'menu-save').trigger('click')
     await flushPromises()
     expect(calls.find((c) => c.method === 'PUT').body.expected_revision).toBe(3)
