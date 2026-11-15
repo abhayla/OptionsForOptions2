@@ -374,7 +374,8 @@ def shown_results(ev: pe.Evaluation, open_recs: Any) -> list[pe.Result]:
     # stays shown as fired with its own figures, the not-checked line beside it (the stop must not vanish at 15:30)
     unread = {r.rule_id for r in ev.results if isinstance(r, pe.NotChecked)}
     return [*ev.results,
-            *(HeldFlag(rec.rule_id, rec.trigger_id, rec.stage, rec.value, rec.threshold,
+            *(HeldFlag(rec.rule_id, rec.trigger_id, rec.stage, rec.value,
+                       rec.threshold if rec.limit is None else rec.limit,
                        cmp_of.get(rec.rule_id) or rec.cmp, target=getattr(rec, "target", None))
               for rec in open_recs
               if ((rec.rule_id in ev.clear and rec.rule_id in cmp_of) or rec.rule_id in unread)
