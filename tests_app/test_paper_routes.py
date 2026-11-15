@@ -658,7 +658,10 @@ async def test_a_missing_price_pauses_total_and_unbooked_after_but_booked_after_
         assert reply["charges_paid"] is not None and D(reply["booked"]) == D("0")
         assert D(reply["booked_after"]) == D("0") - D(reply["charges_paid"]) and D(reply["booked_after"]) < 0
         assert reply["booked_after_reason"] is None
-    assert (totals["booked_after"], totals["unbooked_after"]) == (None, None)
+    # the all-strategies row: Booked after = the sum over every book (one book here: its own figure, minus the charges
+    # paid on its one order); Unbooked after and Total after stay absent while a book is paused
+    assert D(totals["booked_after"]) == D(body["booked_after"]) == D("0") - D(body["charges_paid"])
+    assert (totals["unbooked_after"], totals["total_after"], totals["booked_after_reason"]) == (None, None, None)
 
 
 async def test_tracking_replies_carry_the_split_from_the_same_function(db):

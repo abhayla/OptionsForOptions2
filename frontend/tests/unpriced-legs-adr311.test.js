@@ -4,7 +4,7 @@
 import { describe, it, expect } from 'vitest'
 import REAL from './fixtures/paper-list-r19b/paused.json'
 import { readTracking, sharedTotal } from '@/lib/tracking'
-import { readPaperStrategy } from '@/lib/paperList'
+import { readPaperStrategy, readPaperList } from '@/lib/paperList'
 
 const AT = '2026-10-08T03:49:00Z'
 const NAMED = 'No price for: NIFTY 13 Oct 23000 CE.'
@@ -61,6 +61,20 @@ describe('ADR-311: Booked shows while the totals are paused (the reason applies 
     const g = readPaperStrategy(d)
     expect(g.bookedAfter.kind).toBe('before')
     expect(g.bookedAfter.reason).toBe('Charges could not be read')
+  })
+})
+
+describe('ADR-311: the all-strategies row shows the server Booked after, or its reason (no sum here)', () => {
+  const row = (extra) => ({ booked_text: '0.00', total_text: null, unbooked_text: null, total_after_text: null, unbooked_after_text: null,
+    after_charges_reason: 'prices_not_live', booked_after_text: null, booked_after_reason: null, ...extra })
+  it('given: shown as sent while total and unbooked show the paused state', () => {
+    const t = readPaperList({ strategies: [], totals: row({ booked_after_text: '-36.09' }) }).totals
+    expect([t.bookedAfter.kind, t.bookedAfter.text]).toEqual(['after', '-36.09'])
+    expect([t.totalAfter.kind, t.unbookedAfter.kind]).toEqual(['paused', 'paused'])
+  })
+  it('absent: its own reason, not the price pause', () => {
+    const t = readPaperList({ strategies: [], totals: row({ booked_after_reason: 'not_priced', booked_after_reason_text: 'Some charges could not be priced' }) }).totals
+    expect([t.bookedAfter.kind, t.bookedAfter.reason]).toEqual(['before', 'Some charges could not be priced'])
   })
 })
 
