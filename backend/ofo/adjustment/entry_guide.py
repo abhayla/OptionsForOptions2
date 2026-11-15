@@ -21,8 +21,9 @@ from typing import Literal
 
 from ofo.adjustment.playbook_eval import ShortLeg, sold_leg_delta
 from ofo.errors.explanations import render_explanation
+from ofo.money import PAISE
 
-_TWO_DP = Decimal("0.01")
+_TWO_DP = PAISE  # a delta shows at 2 decimals, the same step as a paise
 _RANGE = re.compile(r"\bshorts at (\d+(?:\.\d+)?) to (\d+(?:\.\d+)?) delta\b")
 _SEED = Path(__file__).with_name("system_playbooks.json")
 State = Literal["breaks", "within", "cannot_tell"]

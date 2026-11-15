@@ -45,6 +45,7 @@ from ofo.marketdata.quote import NormalizedQuote, is_live_price, planning_price_
 from ofo.money import PAISE
 from ofo.outcome.snapshot import MarketSnapshot
 from ofo.rules.inputs import DataHealth
+from ofo.timeutil import IST_UNNAMED
 
 PriceState = Literal["live", "stale", "missing"]
 ContractReason = Literal["contract_retired", "contract_delisted", "token_reassigned", "contract_missing"]
@@ -258,7 +259,7 @@ class UnpricedLeg:
     expired: bool  # a retired contract, or its expiry date is past
 
 
-IST = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
+IST = IST_UNNAMED  # the one home of the offset (ofo.timeutil)
 
 
 def unpriced_legs(entries: Iterable[tuple[int, str, datetime.date, Price]],
