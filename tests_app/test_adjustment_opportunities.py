@@ -353,7 +353,9 @@ async def test_t19_list_line_names_the_same_approach_and_cost_as_the_check(app_d
     # ADR-310: ADJ-43 is the day BEFORE expiry, so the 14:30 clock rule waits for expiry day and raises no flag
     clock = next(x for x in first["results"] if x["trigger_id"] == "T-10b")
     assert clock["kind"] == "not_checked"
-    assert clock["reason"] == "Waiting: this rule acts on expiry day only (03 Nov 2026)."
+    assert clock["reason"]["code"] == "USER_INPUT_566"  # template number 566 = adjust_trigger_waits_expiry_day
+    assert clock["reason"]["what_happened"] == "Waiting: this rule acts on expiry day only (03 Nov 2026)."
+    assert clock["reason"]["impact"] == "It raises no alert before then."
     flag = next((x for x in first["results"] if x["kind"] == "flag" and x["trigger_id"] == "T-19"), None)
     assert flag is not None, [(x["kind"], str(x["reason"])[:400]) for x in first["results"] if x["trigger_id"] == "T-19"]
     # Measured 2026-11-05 (t19_support.cheapest on ADJ-43, the same cheapest_offered): A-26 "Close the untested side
