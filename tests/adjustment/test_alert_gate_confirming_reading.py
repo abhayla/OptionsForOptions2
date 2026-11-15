@@ -85,7 +85,7 @@ def test_gate_readings_put_the_numbers_of_a_yes_no_rule_on_its_spec():
     assert (spec.shown_value, spec.shown_threshold) == (None, None)
 
 
-# ---- GC-ICFIX round 2: a held ladder row keeps its rung; an opened record's limit is the confirming sample's ----------
+# ---- GC-ICFIX round 2: a held ladder row keeps its rung; an opened record's limit is the confirming sample's ---
 
 
 def test_a_held_ladder_rule_carries_the_rung_of_its_own_sample():
