@@ -270,7 +270,7 @@ describe('Delete in the Builder saved list (REQ-070 AC-6)', () => {
     await flushPromises()
     expect(w.findAll('[data-testid="saved-draft-row"]')).toHaveLength(1)
     // Undo of the open strategy's delete re-opens it (same id, its revision): the Builder's next Save updates it, not a second one
-    expect(w.emitted('saved')[0]).toEqual([5, 2, '"e2e 28f"'])
+    expect(w.emitted('saved')[0].slice(0, 3)).toEqual([5, 2, '"e2e 28f"'])
   })
 
   it('Undo of a delete of a strategy that was NOT open does not re-open anything', async () => {

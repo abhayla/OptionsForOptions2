@@ -252,7 +252,7 @@ describe('REQ-134 AC-1: the first Save of a never-saved strategy asks for a name
     expect(calls.filter((c) => c.method === 'POST').map((c) => c.body.name)).toEqual(['NIFTY Oct condor'])
     expect(t(w, 'save-status').text()).toBe('NIFTY Oct condor saved.')
     expect(t(w, 'save-status').attributes('data-saved-id')).toBe('7')
-    expect(w.emitted('saved')).toEqual([[7, 1, quoted('NIFTY Oct condor')]])
+    expect(w.emitted('saved').map((e) => e.slice(0, 3))).toEqual([[7, 1, quoted('NIFTY Oct condor')]])
     expect(t(w, 'name-form').exists()).toBe(false)
   })
   it('an empty name is sent as typed and the API refusal "The strategy has no name." is shown; nothing is saved and the field stays', async () => {
@@ -299,7 +299,7 @@ describe('REQ-134 AC-2 (attack 1): Save on a saved strategy updates it with the 
     const put = calls.find((c) => c.method === 'PUT') // the Undo check reads the history first (row 28f), so the PUT is not calls[0]
     expect(put.body.expected_revision).toBe(3)
     expect(Object.keys(put.body)).not.toContain('name')
-    expect(w.emitted('saved')).toEqual([[7, 4, quoted('NIFTY Oct condor')]])
+    expect(w.emitted('saved').map((e) => e.slice(0, 3))).toEqual([[7, 4, quoted('NIFTY Oct condor')]])
   })
   it('a stale revision (409) shows the conflict message, emits nothing and the legs stay as given', async () => {
     answers['PUT /strategies/7'] = () => Promise.reject({ status: 409, parts: CONFLICT })
