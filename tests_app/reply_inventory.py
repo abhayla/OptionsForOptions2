@@ -338,6 +338,7 @@ INVENTORY = (
     'FIELD AdjustmentHistoryOut.rows[].charges: None',
     "FIELD AdjustmentHistoryOut.rows[].fill: Literal['paper','confirmed','unconfirmed','failed']",
     'FIELD AdjustmentHistoryOut.rows[].fill_text: CatalogueText',
+    'FIELD AdjustmentHistoryOut.rows[].is_exit: bool',
     'FIELD AdjustmentHistoryOut.rows[].number: None',
     'FIELD AdjustmentHistoryOut.rows[].number: int',
     'FIELD AdjustmentHistoryOut.rows[].orders[].contract_text: CatalogueText',

@@ -90,6 +90,7 @@ class HistoryRowOut(ApiModel):
     rule_ids: list[Identifier]  # every rule of the records that placed the row ([] = own change)
     why_text: CatalogueText  # the record's condition / the group count / "Your own change"
     why_lines: list[CatalogueText]  # each record's condition when several records placed the row
+    is_exit: bool = False  # ADR-255: the closing Exit all, labelled "Exit" (not "adjustment N")
     approach_text: CatalogueText | None = None  # ADR-273: an adjustment row's approach name (None: other steps)
     fill: Literal["paper", "confirmed", "unconfirmed", "failed"]
     fill_text: CatalogueText  # every state worded by the server (paper: in place of a fill state)
@@ -220,7 +221,7 @@ def _row(r: ah.HistoryRow, found: dict, records: list[playbook_store.Suggestion]
     # shortcut: no applied approach is stored with a placed basket yet (ADR-273 write side, parked): always None here;
     # pass the stored id once the placement stores it.
     approach = approach_text(None) if r.step == "adjustment" else None
-    return {"step": r.step, "number": r.number, "at": r.at,
+    return {"step": r.step, "number": r.number, "is_exit": r.is_exit, "at": r.at,
             "orders": [{"side": o.side,
                         "contract_text": describe_contract(paper.identity(found[int(o.instrument_id)])),
                         "quantity": o.quantity, "price": o.price, "price_text": price_text(o.price), "kind": o.kind}

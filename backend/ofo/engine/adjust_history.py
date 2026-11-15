@@ -109,6 +109,7 @@ class HistoryRow:
     charges: Decimal | None
     fill: FillState
     rule_id: str | None  # None = "Your own change"
+    is_exit: bool = False  # ADR-255: the closing Exit all (the trade's end, not an adjustment); the screen says "Exit"
 
     @property
     def pending(self) -> bool:
@@ -248,9 +249,12 @@ def adjustment_history(orders: Sequence[HistoryOrder], live_prices: Mapping[str,
     last = rows[-1] if rows else None
     closing = (last is not None and last.step == "adjustment" and not last.pending
                and all(p.net_quantity == 0 for p in net_positions(filled, {}).positions))
-    made = totals.adjustments_used - (1 if closing else 0)
+    made = totals.adjustments_used - (1 if closing else 0)  # ADR-255: one count for the page, the limit and Completed
+    if closing:
+        rows[-1] = replace(rows[-1], is_exit=True)
     before_exit = cost if not closing or cost is None else (None if last.charges is None else cost - last.charges)
     return History(tuple(rows), replace(totals, adjustment_charges=cost, adjustments_before_exit=made,
+                                        adjustments_used=made,
                                         adjustment_charges_before_exit=before_exit))
 
 
