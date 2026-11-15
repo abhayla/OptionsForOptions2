@@ -21,8 +21,8 @@ import logging
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends
-from ofo.adjustment.held_reasons import HELD_TEXT_IDS
 from ofo.adjustment import level_watch
+from ofo.adjustment.held_reasons import HELD_TEXT_IDS
 from ofo.adjustment.playbook_eval import is_day_rule_id, is_situation_rule_id
 from ofo.errors import render
 from ofo.errors.explanations import DAY_RULE_GENERIC_TEXT, LEVEL_WATCH_LABEL_TEXT, render_explanation
@@ -133,6 +133,14 @@ def _detail(s: store.Suggestion) -> Any:
     return None
 
 
+def _yes_no_name(s: store.Suggestion) -> str | None:
+    """The stored label of a situation rule or level watch, else a watch's catalogue label; never an invented name."""
+    if not (is_situation_rule_id(s.rule_id) or level_watch.is_rule_id(s.rule_id)):
+        return None
+    own = None if s.label == s.rule_id else s.label
+    return own or LEVEL_WATCH_LABEL_TEXT.get(level_watch.direction_of(s.rule_id) or "")
+
+
 def condition_text(s: store.Suggestion) -> Any:
     """A record's condition in the catalogue's words (the inbox line; the adjustment history's Why, REQ-163 AC-1)."""
     if s.cmp not in ("le", "ge", "lt") or s.trigger_id is None or s.value is None or s.threshold is None:
@@ -148,14 +156,11 @@ def condition_text(s: store.Suggestion) -> Any:
                     return render_explanation("adjust_condition_line_id", label=name)
                 except (TypeError, ValueError):
                     continue
-        elif is_situation_rule_id(s.rule_id) or level_watch.is_rule_id(s.rule_id):  # the other yes/no rules: own name
-            name = None if s.label == s.rule_id else s.label  # a watch has its catalogue label; never an invented name
-            name = name or LEVEL_WATCH_LABEL_TEXT.get(level_watch.direction_of(s.rule_id) or "")
-            if name is not None:
-                try:
-                    return render_explanation("adjust_condition_line_id", label=name)
-                except (TypeError, ValueError):
-                    return None
+        elif (name := _yes_no_name(s)) is not None:  # situation rule / level watch: its own name
+            try:
+                return render_explanation("adjust_condition_line_id", label=name)
+            except (TypeError, ValueError):
+                return None
         return None
     if s.trigger_id == "T-19" and s.approach is not None and s.approach_cost is not None:  # ADR-221: as the check
         return condition_line_t19(s.label, format(s.value, "f"), format(s.threshold, "f"), s.approach,
