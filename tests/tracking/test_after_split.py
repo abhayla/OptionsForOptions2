@@ -154,9 +154,7 @@ def test_unknown_charge_rates_give_no_after_figure_for_any_part() -> None:
     exit_, why = open_exit_charges(view, PUT, {"1": D("80")}, "NIFTY", None)
     after = book_after_charges(view, D("36.09"), exit_, why)
     assert (after.total_after, after.reason) == (None, "rates_unavailable")
-    # ADR-311 (4): booked and the charges paid are known, so Booked after is given whatever the total does
-    only_booked = AfterSplit(D("-36.09"), None, None, None, None)
-    assert after_split(view, PUT, {"1": D("80")}, "NIFTY", None, after) == only_booked
+    assert after_split(view, PUT, {"1": D("80")}, "NIFTY", None, after) == NONE_SPLIT
 
 
 def test_a_leg_the_charges_engine_cannot_price_gives_no_after_figure_not_priced() -> None:
@@ -165,8 +163,7 @@ def test_a_leg_the_charges_engine_cannot_price_gives_no_after_figure_not_priced(
     exit_, why = open_exit_charges(view, terms, {"1": D("101")}, "NIFTY", RATES)
     after = book_after_charges(view, D("20"), exit_, why)
     assert (after.total_after, after.reason) == (None, "not_priced")
-    only_booked = AfterSplit(D("-20"), None, None, None, None)
-    assert after_split(view, terms, {"1": D("101")}, "NIFTY", RATES, after) == only_booked
+    assert after_split(view, terms, {"1": D("101")}, "NIFTY", RATES, after) == NONE_SPLIT
 
 
 def test_an_open_leg_without_a_live_price_gives_no_number() -> None:
@@ -174,6 +171,7 @@ def test_an_open_leg_without_a_live_price_gives_no_number() -> None:
     exit_, why = open_exit_charges(view, PUT, {}, "NIFTY", RATES)
     after = book_after_charges(view, D("36.09"), exit_, why)
     assert (after.total_after, after.reason) == (None, "prices_not_live")
+    # ADR-311 (4): ONLY a missing price pauses the total with no number at all, so only then Booked after stands alone
     assert after_split(view, PUT, {}, "NIFTY", RATES, after) == AfterSplit(D("-36.09"), None, None, None, None)
 
 
@@ -192,12 +190,41 @@ def test_adr311_booked_after_is_given_while_an_open_leg_has_no_price_total_and_u
 
 def test_adr311_charges_paid_unknown_booked_after_has_its_own_reason_not_the_price_reason() -> None:
     view = net_positions(CLOSED_AND_OPEN, {})
-    after = book_after_charges(view, None, None, "rates_unavailable")  # as the route does
-    assert after.reason == "prices_not_live" and after.paid_reason == "rates_unavailable"
-    got = after_split(view, PUT, {}, "NIFTY", RATES, after)
+    after = book_after_charges(view, None, None, "whatever the caller passes")
+    assert after.reason == "prices_not_live"
+    got = after_split(view, PUT, {}, "NIFTY", None, after)  # no rates: the function itself says why paid is unknown
     assert (got.booked_after, got.unbooked_after, got.booked_reason) == (None, None, "rates_unavailable")
+    got = after_split(view, PUT, {}, "NIFTY", RATES, after)  # rates read but the orders cannot be priced
+    assert got.booked_reason == "not_priced"
 
 
 def test_adr311_when_every_figure_is_given_booked_plus_unbooked_still_equals_the_total() -> None:
     _, after, got = _split(CLOSED_AND_OPEN, PUT, {"1": D("80")}, "36.09")
     assert got.booked_reason is None and got.booked_after + got.unbooked_after == after.total_after
+
+
+def test_adr311_in_every_state_all_three_figures_share_a_basis_or_only_booked_carries_a_number() -> None:
+    """Decision row 303 says Booked + Unbooked = Total on one screen. Whatever the state, either Booked after, Unbooked
+    after and Total after are all given (they add up), or Booked after is absent (all three fall back to before
+    charges together), or Booked after is the ONLY number and the reason is that a price is missing (Total and Unbooked
+    then show no number at all, so nothing can be added up wrongly)."""
+    fut = {"1": ContractTerms(Instrument.FUT, None, EXPIRY)}
+    cases = [
+        (CLOSED_AND_OPEN, PUT, {"1": D("80")}, "36.09", RATES),  # everything known
+        (CLOSED_AND_OPEN, PUT, {}, "36.09", RATES),  # a leg has no price
+        (CLOSED_AND_OPEN, PUT, {}, None, RATES),  # no price and charges paid unknown
+        (CLOSED_AND_OPEN, PUT, {"1": D("80")}, "36.09", None),  # no rates: exit charges unknown
+        (CLOSED_AND_OPEN, fut, {"1": D("80")}, "36.09", RATES),  # a leg the charges engine cannot price
+        (CLOSED_AND_OPEN, PUT, {"1": D("80")}, None, RATES),  # paid unknown, prices live
+    ]
+    for orders, terms, live, paid, rates in cases:
+        view = net_positions(orders, live)
+        exit_, why = open_exit_charges(view, terms, live, "NIFTY", rates)
+        after = book_after_charges(view, None if paid is None else D(paid), exit_, why)
+        got = after_split(view, terms, live, "NIFTY", rates, after)
+        all_given = None not in (got.booked_after, got.unbooked_after, after.total_after)
+        only_booked = (got.booked_after is not None and got.unbooked_after is None and after.total_after is None
+                       and after.reason == "prices_not_live")
+        assert all_given or got.booked_after is None or only_booked, (paid, live, rates, got, after)
+        if all_given:
+            assert got.booked_after + got.unbooked_after == after.total_after

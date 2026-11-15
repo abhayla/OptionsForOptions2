@@ -153,8 +153,7 @@ def test_unpriceable_leg_with_an_averaged_entry_is_none_not_priced_and_never_rai
     exit_, why = open_exit_charges(view, terms, live, "NIFTY", RATES)
     after = book_after_charges(view, D("20"), exit_, why)
     assert (after.total_after, after.reason) == (None, "not_priced")
-    got = after_split(view, terms, live, "NIFTY", RATES, after)
-    assert (got.booked_after, got.unbooked_after) == (D("-20"), None)  # ADR-311 (4): booked 0 - paid 20
+    assert after_split(view, terms, live, "NIFTY", RATES, after).booked_after is None
 
 
 def test_averaged_entry_without_a_live_price_is_none_prices_not_live() -> None:
