@@ -7599,6 +7599,31 @@
             ],
             "title": "Booked After"
           },
+          "booked_after_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "rates_unavailable",
+                  "not_priced",
+                  "prices_not_live"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked After Reason"
+          },
+          "booked_after_reason_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked After Reason Text"
+          },
           "booked_after_text": {
             "anyOf": [
               {},
@@ -8762,6 +8787,31 @@
               }
             ],
             "title": "Booked After"
+          },
+          "booked_after_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "rates_unavailable",
+                  "not_priced",
+                  "prices_not_live"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked After Reason"
+          },
+          "booked_after_reason_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked After Reason Text"
           },
           "booked_after_text": {
             "anyOf": [
@@ -13845,6 +13895,31 @@
             ],
             "title": "Booked After"
           },
+          "booked_after_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "rates_unavailable",
+                  "not_priced",
+                  "prices_not_live"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked After Reason"
+          },
+          "booked_after_reason_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked After Reason Text"
+          },
           "booked_after_text": {
             "anyOf": [
               {},
@@ -14453,6 +14528,31 @@
               }
             ],
             "title": "Booked After"
+          },
+          "booked_after_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "rates_unavailable",
+                  "not_priced",
+                  "prices_not_live"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked After Reason"
+          },
+          "booked_after_reason_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked After Reason Text"
           },
           "booked_after_text": {
             "anyOf": [

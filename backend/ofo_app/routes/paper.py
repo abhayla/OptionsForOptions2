@@ -257,6 +257,8 @@ class PaperFigures(UnpricedFields):
     # charges to close; the two add up to ``total_after`` exactly. Absent with ``after_charges_reason`` (never 0).
     booked_after: Money | None = None
     booked_after_text: CatalogueText | None = None
+    booked_after_reason: AfterChargesReason | None = None  # ADR-311: why it is absent (charges paid unknown)
+    booked_after_reason_text: CatalogueText | None = None
     unbooked_after: Money | None = None
     unbooked_after_text: CatalogueText | None = None
 
@@ -539,8 +541,13 @@ def _prices(open_ids: Sequence[int], found: dict[int, tracked_contracts.TrackedC
     return out
 
 
+def _today(snapshot: Any) -> datetime.date | None:
+    """The snapshot's India date (the tracking page's rule), None without a snapshot."""
+    return None if snapshot is None else snapshot.valuation.astimezone(paper.IST).date()
+
+
 def _figures(orders: Sequence[paper_store.StoredOrder], found: dict[int, tracked_contracts.TrackedContract],
-             prices: dict[int, paper.Price], connected: bool) -> dict:
+             prices: dict[int, paper.Price], connected: bool, today: datetime.date | None = None) -> dict:
     """The strategy's figures from the one engine at the live prices of its open contracts."""
     live = {str(cid): p.price for cid, p in prices.items() if paper.is_live(p) and p.price is not None}
     view = net_positions(_paper(orders), live)
@@ -558,9 +565,11 @@ def _figures(orders: Sequence[paper_store.StoredOrder], found: dict[int, tracked
     else:
         state, pause = "LIVE", None
     # ADR-311: a paused book names the contracts with no price (every total stays paused); expired = retired contract
-    gone = paper.unpriced_legs([(n, str(c), _identity(found[c])[3], prices[c]) for n, c in enumerate(prices)], None) \
-        if state == "PAUSED" else ()
-    names = [(display_contract(_identity(found[list(prices)[u.index]])), u.expired) for u in gone]
+    # leg_index = the leg's place among ALL the book's legs (closed ones count), as on the tracking page
+    cids = [int(p.instrument_id) for p in view.positions]
+    open_ = [(n, str(c), _identity(found[c])[3], prices[c]) for n, c in enumerate(cids) if c in prices]
+    gone = paper.unpriced_legs(open_, today) if state == "PAUSED" else ()
+    names = [(display_contract(_identity(found[cids[u.index]])), u.expired) for u in gone]
     return {"unpriced_legs": [{"leg_index": u.index, "contract_text": n, "expired": u.expired}
                               for u, (n, _) in zip(gone, names, strict=True)], "unpriced_text": unpriced_text(names),
             "state": state, "pause_reason": pause, "pause_reason_text": reason_text(pause), "as_of": as_of,
@@ -765,6 +774,7 @@ def after_charges(view: Any, terms: Mapping[str, ContractTerms], live: Mapping[s
 def split_fields(got: AfterSplit) -> dict:
     """The reply fields of Booked after / Unbooked after (paper book, list and tracking)."""
     return {"booked_after": _exact(got.booked_after), "booked_after_text": _signed(got.booked_after),
+            "booked_after_reason": got.booked_reason, "booked_after_reason_text": reason_text(got.booked_reason),
             "unbooked_after": _exact(got.unbooked_after), "unbooked_after_text": _signed(got.unbooked_after)}
 
 
@@ -806,7 +816,7 @@ async def _book(db: Any, stored: Any, orders: Sequence[paper_store.StoredOrder],
     if connected and keys:
         snapshot = await _snapshot(ctx, feed, underlying, keys)  # type: ignore[arg-type]
     prices = _prices(open_ids, found, snapshot)
-    base = _figures(orders, found, prices, connected)
+    base = _figures(orders, found, prices, connected, _today(snapshot))
     charges = _charges(orders, found, underlying, rates)
     figures = (base | _summary(orders, found, prices, base, snapshot, underlying, exited_absent=False, rates=rates)
                | charges | _after(orders, found, prices, charges, underlying, rates))
@@ -858,7 +868,7 @@ async def list_paper_strategies(db: Annotated[Any, Depends(get_db)],  # noqa: PL
     for b in sorted(books, key=_newest_first, reverse=True):
         snapshot = snapshots.get(b.underlying)
         prices = _prices(_open_ids(b.orders), found, snapshot)
-        figures = _figures(b.orders, found, prices, connected)
+        figures = _figures(b.orders, found, prices, connected, _today(snapshot))
         summary = _summary(b.orders, found, prices, figures, snapshot, b.underlying, exited_absent=True, rates=rates)
         decays.append(_decay(figures, found, snapshot, b.underlying))
         open_legs = sum(1 for p in figures["positions"] if p["net_quantity"] != 0)

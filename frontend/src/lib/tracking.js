@@ -152,8 +152,10 @@ function breakdownOf(src, before, after, why, parts) {
   return why !== null && before !== null ? { rows: row('before', before), reason: why } : null
 }
 export function afterFigure(src, before, pausedText = null, afterKey = 'total_after_text', parts = ['paid', 'close']) {
-  const reason = src?.after_charges_reason ?? null
-  const raw = src?.after_charges_reason_text // a sentence, or {what_happened} on the replies that word it as an explanation
+  // ADR-311: Booked after has its OWN reason (the charges paid are unknown); every other figure follows the book's reason
+  const own = afterKey === 'booked_after_text' && src !== null && typeof src === 'object' && 'booked_after_reason' in src // the totals row has none: unchanged
+  const reason = (own ? src?.booked_after_reason : src?.after_charges_reason) ?? null
+  const raw = own ? src?.booked_after_reason_text : src?.after_charges_reason_text // a sentence, or {what_happened} on the replies that word it as an explanation
   const why = serverText(raw && typeof raw === 'object' ? raw.what_happened : raw)
   if (reason === 'prices_not_live') return { kind: 'paused', text: null, label: '', reason: pausedText ?? why, breakdown: null }
   const after = serverText(src?.[afterKey]) // u124: the same rule for booked_after_text / profit_left_after_text / ...

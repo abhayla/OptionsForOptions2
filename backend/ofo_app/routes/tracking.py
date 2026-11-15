@@ -160,6 +160,8 @@ class AfterCharges(ApiModel):
     after_charges_reason_text: CatalogueText | None = None
     booked_after: Money | None = None  # ADR-303: booked - ALL charges paid; with unbooked_after = total_after
     booked_after_text: CatalogueText | None = None
+    booked_after_reason: AfterChargesReason | None = None  # ADR-311: why it is absent (charges paid unknown)
+    booked_after_reason_text: CatalogueText | None = None
     unbooked_after: Money | None = None
     unbooked_after_text: CatalogueText | None = None
 

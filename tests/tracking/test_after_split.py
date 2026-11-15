@@ -155,7 +155,8 @@ def test_unknown_charge_rates_give_no_after_figure_for_any_part() -> None:
     after = book_after_charges(view, D("36.09"), exit_, why)
     assert (after.total_after, after.reason) == (None, "rates_unavailable")
     # ADR-311 (4): booked and the charges paid are known, so Booked after is given whatever the total does
-    assert after_split(view, PUT, {"1": D("80")}, "NIFTY", None, after) == AfterSplit(D("-36.09"), None, None, None, None)
+    only_booked = AfterSplit(D("-36.09"), None, None, None, None)
+    assert after_split(view, PUT, {"1": D("80")}, "NIFTY", None, after) == only_booked
 
 
 def test_a_leg_the_charges_engine_cannot_price_gives_no_after_figure_not_priced() -> None:
@@ -164,7 +165,8 @@ def test_a_leg_the_charges_engine_cannot_price_gives_no_after_figure_not_priced(
     exit_, why = open_exit_charges(view, terms, {"1": D("101")}, "NIFTY", RATES)
     after = book_after_charges(view, D("20"), exit_, why)
     assert (after.total_after, after.reason) == (None, "not_priced")
-    assert after_split(view, terms, {"1": D("101")}, "NIFTY", RATES, after) == AfterSplit(D("-20"), None, None, None, None)
+    only_booked = AfterSplit(D("-20"), None, None, None, None)
+    assert after_split(view, terms, {"1": D("101")}, "NIFTY", RATES, after) == only_booked
 
 
 def test_an_open_leg_without_a_live_price_gives_no_number() -> None:
@@ -190,12 +192,12 @@ def test_adr311_booked_after_is_given_while_an_open_leg_has_no_price_total_and_u
 
 def test_adr311_charges_paid_unknown_booked_after_has_its_own_reason_not_the_price_reason() -> None:
     view = net_positions(CLOSED_AND_OPEN, {})
-    after = book_after_charges(view, None, None, "rates_unavailable")  # the route passes the paid reason when paid is None
+    after = book_after_charges(view, None, None, "rates_unavailable")  # as the route does
     assert after.reason == "prices_not_live" and after.paid_reason == "rates_unavailable"
     got = after_split(view, PUT, {}, "NIFTY", RATES, after)
     assert (got.booked_after, got.unbooked_after, got.booked_reason) == (None, None, "rates_unavailable")
 
 
 def test_adr311_when_every_figure_is_given_booked_plus_unbooked_still_equals_the_total() -> None:
-    view, after, got = _split(CLOSED_AND_OPEN, PUT, {"1": D("80")}, "36.09")
+    _, after, got = _split(CLOSED_AND_OPEN, PUT, {"1": D("80")}, "36.09")
     assert got.booked_reason is None and got.booked_after + got.unbooked_after == after.total_after

@@ -38,6 +38,7 @@ class BookAfterCharges:
     paid: Decimal | None
     open_exit: Decimal | None
     reason: str | None
+    paid_reason: str | None = None  # why ``paid`` is absent (None when it is known): Booked after's own reason
 
 
 def open_exit_charges(view: BookView, terms: Mapping[str, ContractTerms], live: Mapping[str, Decimal],
@@ -68,10 +69,11 @@ def book_after_charges(view: BookView, paid: Decimal | None, open_exit: Decimal 
     """The one place the after-charges total is formed. ``reason`` says why ``paid`` / ``open_exit`` is absent (the
     caller knows: rates, not priced); without one an absent input still gives a reason, never a bare None."""
     before = view.total
+    paid_reason = None if paid is not None else (reason or RATES_UNAVAILABLE)
     if before is None:
-        return BookAfterCharges(None, None, paid, open_exit, PRICES_NOT_LIVE)
+        return BookAfterCharges(None, None, paid, open_exit, PRICES_NOT_LIVE, paid_reason)
     if paid is None or open_exit is None:
-        return BookAfterCharges(before, None, paid, open_exit, reason or RATES_UNAVAILABLE)
+        return BookAfterCharges(before, None, paid, open_exit, reason or RATES_UNAVAILABLE, paid_reason)
     return BookAfterCharges(before, before - paid - open_exit, paid, open_exit, None)
 
 
@@ -167,6 +169,7 @@ class AfterSplit:
     profit_left_after: Figure | None
     loss_left_after: Figure | None
     recover: Decimal | None
+    booked_reason: str | None = None  # ADR-311: why booked_after is absent (the charges paid are unknown), else None
 
 
 def after_split(  # noqa: PLR0913 - the book, its terms, live prices, underlying, rates and the after-charges total
@@ -176,10 +179,16 @@ def after_split(  # noqa: PLR0913 - the book, its terms, live prices, underlying
     charges paid; Unbooked after = open-leg P&L - the estimated charges to close, so the two add up to
     ``after.total_after`` exactly (ADR-303). ADR-306: Profit left after = Max profit after - Total after and Loss left
     after = Max loss after - Total after (so Total + left = the extreme, exactly), NOT capped (ADR-302); a closed book
-    has 0 left. ``recover`` = minus Total after when Total after is negative (the loss on screen), else None."""
+    has 0 left. ``recover`` = minus Total after when Total after is negative (the loss on screen), else None.
+    ADR-311 (4): Booked after needs only the booked P&L and the charges paid, so it is given WHENEVER both are known,
+    even while the total is paused (an open leg with no price, unreadable exit charges); then every other part is None,
+    so the sum rule (booked + unbooked = total after) holds whenever all three are given, and a lone Booked after is
+    never a total.
+    ``booked_reason`` says why Booked after is absent (the charges paid are unknown), apart from the total's reason."""
+    booked_after = None if after.paid is None else view.booked - after.paid
     if after.total_after is None or view.unbooked is None:
-        return AfterSplit(None, None, None, None, None)
-    booked_after, unbooked_after = view.booked - after.paid, view.unbooked - after.open_exit
+        return AfterSplit(booked_after, None, None, None, None, after.paid_reason if after.paid is None else None)
+    unbooked_after = view.unbooked - after.open_exit
     got = book_extremes(view, terms, live)
     if got.profit_left is None or got.loss_left is None:  # multi expiry: no left figure, the extremes reason says so
         return AfterSplit(booked_after, unbooked_after, None, None, None)
