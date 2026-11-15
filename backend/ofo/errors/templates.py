@@ -1395,6 +1395,11 @@ _TRIGGER_TEMPLATES: tuple[MessageTemplate, ...] = (
     _trig("margin_room_not_positive", 562, "The margin blocked plus the available margin is zero or less, so the "
           "share in use cannot be worked out."),
     _trig("no_level_watch", 563, "No level is set to watch.", None, "Set a level to watch on this strategy."),
+    # ADR-310: a clock-time rule acts on expiry day only; before it, it waits and raises no alert (pending owner read)
+    _gate("adjust_trigger_waits_expiry_day", _UI, 566, "Waiting: this rule acts on expiry day only ({day}).",
+          "It raises no alert before then.", _TRIG_BLOCKED, "Nothing to do; it is checked again at the next check.",
+          {"day": Date}),
+    _trig("missing_today", 567, "Today's date not available."),
     _trig("missing_adx", 564, "Trend strength (ADX) not available."),
     _trig("adx_unusable", 565, "Trend strength (ADX) is not between 0 and 100."),
     _gate("adjust_trigger_already_true", _UI, 152, "Already true when tracking started.",

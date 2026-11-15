@@ -32,7 +32,7 @@ from typing import Final, Literal
 from ofo import market_calendar as mc
 from ofo.adjustment import level_watch
 from ofo.adjustment import stop_lines as sl
-from ofo.adjustment.approaches import KINDS, ExitInputs
+from ofo.adjustment.approaches import KINDS, ExitInputs, is_expiry_day
 from ofo.adjustment.offered import offered_now
 from ofo.engine import adjust_money
 from ofo.engine import adjust_ratios as ratios
@@ -590,6 +590,9 @@ def _t09(c: _Ctx) -> Hit:
 def _t10b(c: _Ctx) -> Hit:
     hhmm = _need(c.state.hhmm, "clock")
     lim = _limit(c, "T-10b")
+    today, expiry = _need(c.state.today, "today"), _need(c.state.expiry, "expiry")
+    if not is_expiry_day(today, expiry):  # ADR-310: the time exit acts on expiry day only; before it, waiting
+        raise _Missing(f"{P}waits_expiry_day", day=expiry)
     return Hit("T-10b", hhmm, lim, "ge", hhmm >= lim)
 
 

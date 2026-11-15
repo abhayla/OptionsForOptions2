@@ -370,7 +370,7 @@ PLAYBOOK_GUARD_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
     "stop_line_pct_of_margin": "Stop line (% of margin)",
     "stop_line_pct_of_max_loss": "Stop line (% of max loss)",
     "stop_line_rule": "Stop line rule",
-    "time_exit": "Time exit",
+    "time_exit": "Time exit (on expiry day)",
     "warn_cost_pct_of_premium_left": "Warn when an adjustment costs more than this % of the premium left",
 })
 #: GC-ADJ2 step 3 (REQ-160 AC-1): the plain-words summary's sentences. A doubled brace is a slot the editor fills from the body ({name} after rendering); the words are the catalogue's.
@@ -1057,7 +1057,7 @@ PLAYBOOK_TYPE_LABEL_TEXT: Mapping[str, str] = MappingProxyType(
 #: panel's Plan entry, by key. Each is one reviewed template `plan_sheet_<key>`; the browser prints what the server sends.
 PLAN_SHEET_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
     "title": "When tracking starts: this strategy's plan", "playbook": "Playbook", "target": "Target",
-    "stop": "Stop", "max_adjustments": "Max adjustments", "time_exit": "Time exit",
+    "stop": "Stop", "max_adjustments": "Max adjustments", "time_exit": "Time exit (on expiry day)",
     "customise": "Customise triggers", "use_as_is": "Use playbook as is", "save": "Save plan", "close": "Close",
     "plan_entry": "Plan", "edit": "Edit plan", "no_plan": "No plan saved yet: default rules apply", "set_plan": "Set plan",
     "hour": "Hour", "minute": "Minute",

@@ -1525,6 +1525,10 @@
    {
     "id": "T-19",
     "reason": "no premium to earn (net long premium)"
+   },
+   {
+    "id": "T-10b",
+    "reason": "Waiting: this rule acts on expiry day only (03 Nov 2026)."
    }
   ],
   "already_true_at_entry": [

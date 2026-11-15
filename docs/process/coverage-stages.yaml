@@ -469,6 +469,7 @@ decisions:
   ADR-307: S6.7         # a two-expiry compare chart keeps its nearer-expiry estimate and says it is not a limit; max loss stays "cannot be estimated"
   ADR-308: S6.7         # "Showing N of M" counts M as every approach that applies, not the ticked set; a link with no ticks shows all
   ADR-309: S6.7         # a rule shown as fired stays fired until its alert record clears; the page reads the gate, not each poll
+  ADR-310: S6.7         # a clock-time rule alerts only on a day its action can be taken; the plan calls it "Time exit (on expiry day)"
 
 questions:
   Q210: 4a              # external: Zerodha's written answer; ADR-051 covers the owner's own account
