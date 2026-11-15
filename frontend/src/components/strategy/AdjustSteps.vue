@@ -67,7 +67,7 @@ const data = ref(null)
 const error = ref('')
 let loaded = false
 
-const stepText = (r) => (r.step === 'adjustment' ? `Adjustment ${r.number}` : STEP_WORDS[r.step])
+const stepText = (r) => (r.is_exit === true ? 'Exit' : r.step === 'adjustment' ? `Adjustment ${r.number}` : STEP_WORDS[r.step])
 
 const tiles = computed(() => {
   const t = data.value?.totals
