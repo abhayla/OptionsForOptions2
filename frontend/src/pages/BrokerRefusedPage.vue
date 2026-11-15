@@ -8,6 +8,7 @@ import { onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import api, { catalogueParts, NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
+import { BROKER_BACK_LINK_TEXT } from '@/lib/sharedStateText'
 
 const NEUTRAL = { ...NEUTRAL_PARTS, what_happened: 'The Zerodha login was not completed.' }
 const CODE_SHAPE = /^[a-z_]{1,64}$/
@@ -36,6 +37,6 @@ onMounted(async () => {
     <PageHeader parent="Settings" title="Zerodha login not completed" />
     <p v-if="loading" class="text-sm text-ink-muted" data-testid="refused-loading">Loading the details.</p>
     <ErrorMessage v-else :parts="parts || NEUTRAL" />
-    <router-link to="/settings/zerodha-connection" class="mt-4 inline-block rounded border border-line bg-surface px-3 py-2 hover:bg-accent-soft" data-testid="to-connection">Back to the Zerodha connection page</router-link>
+    <router-link to="/settings/broker-market-data" class="mt-4 inline-block rounded border border-line bg-surface px-3 py-2 hover:bg-accent-soft" data-testid="to-connection">{{ BROKER_BACK_LINK_TEXT }}</router-link>
   </section>
 </template>

@@ -9,24 +9,18 @@ import AppHeader from '@/components/layout/AppHeader.vue'
 import AppLayout from '@/components/layout/AppLayout.vue'
 
 const SECTIONS = {
-  home: ['Home', ['Overview', 'Important alerts', 'Active strategies', 'Account status']],
+  home: ['Home', ['Overview']], // u504: only built pages are offered; the other spec items open by address
   strategies: ['Strategies', ['My Strategies', 'Create Strategy', 'Strategy Builder', 'Live Strategies', 'Adjustments', 'Completed Strategies']],
-  positions: ['Positions', ['Current positions', 'Strategy-linked positions', 'Adjustment opportunities', 'P&L/risk']],
+  positions: ['Positions', ['Current positions', 'Strategy-linked positions', 'Adjustment opportunities']],
   market: ['Market', ['Option Chain', 'Underlying/index view', 'Market context']],
-  orders: ['Orders', ['Pending', 'Executed', 'Failed/partial', 'Execution history']],
   alerts: ['Alerts', ['Active', 'History', 'Notification settings']],
   learn: ['Learn', ['Strategy education', 'Options concepts', 'Platform guidance']],
 }
+const FIRST = { home: 'overview', strategies: 'my-strategies', positions: 'current-positions', market: 'option-chain', alerts: 'active', learn: 'strategy-education' }
 const ACCOUNT_ITEMS = [
-  'Profile',
-  'Zerodha connection',
   'Subscription & Billing',
   'Free Eligibility',
   'Referrals',
-  'Notifications',
-  'Security',
-  'Preferences',
-  'Strategy Preferences',
   'Broker & Market Data',
   'Settings', // GC-SET (REQ-167): the eleventh item; REQ-009 AC-8 lists ten and needs this line added
 ]
@@ -48,11 +42,11 @@ afterEach(() => {
 })
 
 describe('top bar sections (REQ-009 statement, AC-1..AC-7)', () => {
-  it('the primary nav holds exactly the seven section links, in order, each to its section page', async () => {
+  it('the primary nav holds the six built section links, in order, each to its first built page (u504: Orders has none)', async () => {
     const { w } = await mountAt('/home')
     const links = w.get('[data-testid="primary-nav"]').findAll('a')
     expect(links.map((a) => a.text())).toEqual(Object.values(SECTIONS).map(([label]) => label))
-    expect(links.map((a) => a.attributes('href'))).toEqual(Object.keys(SECTIONS).map((k) => `/${k}`))
+    expect(links.map((a) => a.attributes('href'))).toEqual(Object.keys(SECTIONS).map((k) => `/${k}/${FIRST[k]}`))
     w.unmount()
   })
 
@@ -102,14 +96,14 @@ describe('top bar sections (REQ-009 statement, AC-1..AC-7)', () => {
 describe('menu focus and aria-current (review round 2)', () => {
   it('an open menu closes when focus moves to another section control, but not into its own items', async () => {
     const { w } = await mountAt('/home')
-    const toggle = w.get('[data-testid="nav-menu-toggle-orders"]')
+    const toggle = w.get('[data-testid="nav-menu-toggle-alerts"]')
     await toggle.trigger('click')
     await flushPromises()
     expect(w.find('[data-testid="nav-menu"]').exists()).toBe(true)
     const item = w.get('[data-testid="nav-menu-item"]').element
     await toggle.trigger('focusout', { relatedTarget: item })
     expect(w.find('[data-testid="nav-menu"]').exists()).toBe(true)
-    await toggle.trigger('focusout', { relatedTarget: w.get('[data-testid="nav-alerts"]').element })
+    await toggle.trigger('focusout', { relatedTarget: w.get('[data-testid="nav-learn"]').element })
     await flushPromises()
     expect(w.find('[data-testid="nav-menu"]').exists()).toBe(false)
     w.unmount()
@@ -118,7 +112,7 @@ describe('menu focus and aria-current (review round 2)', () => {
   it('links carry aria-current="page" only on their own page; never "true"', async () => {
     const { w } = await mountAt('/home')
     expect(w.get('[data-testid="nav-home"]').attributes('aria-current')).toBe('page')
-    expect(w.get('[data-testid="nav-orders"]').attributes('aria-current')).toBeUndefined()
+    expect(w.get('[data-testid="nav-learn"]').attributes('aria-current')).toBeUndefined()
     w.unmount()
     const again = await mountAt('/strategies/my-strategies')
     expect(again.w.get('[data-testid="nav-strategies"]').attributes('aria-current')).not.toBe('true')
@@ -129,7 +123,7 @@ describe('menu focus and aria-current (review round 2)', () => {
 describe('menu keyboard and hover (UI-002)', () => {
   it('ArrowDown on the menu button opens it and focuses the first item; arrows move; Esc closes and returns focus', async () => {
     const { w } = await mountAt('/home')
-    const toggle = w.get('[data-testid="nav-menu-toggle-orders"]')
+    const toggle = w.get('[data-testid="nav-menu-toggle-alerts"]')
     expect(toggle.element.tagName).toBe('BUTTON')
     expect(toggle.attributes('aria-expanded')).toBe('false')
     toggle.element.focus()
@@ -177,13 +171,13 @@ describe('menu keyboard and hover (UI-002)', () => {
 
 describe('active section, breadcrumb and page width (UI-001, UI-004)', () => {
   it('the active section is marked with accent text and the 3 px bar; the breadcrumb shows the page title', async () => {
-    const { w } = await mountAt('/market/option-chain')
+    const { w } = await mountAt('/market/market-context')
     const link = w.get('[data-testid="nav-market"]')
     expect(link.classes()).toContain('text-accent')
     expect(link.attributes('aria-current')).toBeUndefined() // the section link is not the current page (review round 2)
     expect(w.findAll('[data-testid="nav-active-bar"]')).toHaveLength(1)
     expect(w.get('[data-testid="nav-active-bar"]').classes()).toContain('h-[3px]')
-    expect(w.get('[data-testid="breadcrumb-title"]').text()).toBe('Option Chain')
+    expect(w.get('[data-testid="breadcrumb-title"]').text()).toBe('Market context')
     w.unmount()
   })
 

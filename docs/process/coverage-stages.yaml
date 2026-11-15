@@ -472,6 +472,7 @@ decisions:
   ADR-310: S6.7         # a clock-time rule alerts only on a day its action can be taken; the plan calls it "Time exit (on expiry day)"
   ADR-311: S6.7         # one open leg with no price: every total stays paused, the leg is named (expired called expired), priced legs keep their figure
   ADR-312: S6.7         # a strategy with a position held at the broker cannot be deleted (same refusal as real orders)
+  ADR-313: S6.7         # menus list built pages only; "/" opens My Strategies; unbuilt pages open by address with the empty state
 
 questions:
   Q210: 4a              # external: Zerodha's written answer; ADR-051 covers the owner's own account

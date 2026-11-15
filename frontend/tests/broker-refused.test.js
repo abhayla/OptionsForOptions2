@@ -38,6 +38,13 @@ const text = (w, id) => w.get(`[data-testid="${id}"]`).text()
 describe('/broker/refused', () => {
   beforeEach(() => { calls.length = 0 })
 
+  it('the back link names the page it opens (Broker & Market Data), not "the Zerodha connection page"', async () => {
+    answer = () => Promise.reject(new Error('x'))
+    const w = await open({})
+    expect(text(w, 'to-connection')).toBe('Back to Broker & Market Data')
+    expect(w.get('[data-testid="to-connection"]').attributes('href')).toBe('/settings/broker-market-data')
+  })
+
   it('fetches the message for the code and shows its four parts, not the code', async () => {
     answer = () => Promise.resolve({ data: { code: 'broker_login_not_completed', message: MESSAGE } })
     const w = await open({ code: 'broker_login_not_completed' })

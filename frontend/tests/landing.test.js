@@ -39,7 +39,7 @@ describe('public landing page', () => {
     expect(calls).toEqual([])
     expect(fetchSpy).not.toHaveBeenCalled()
     expect(routes.find((r) => r.name === 'landing').meta.public).toBe(true)
-    expect(routes.find((r) => r.path === '/').redirect).toBe('/home')
+    expect(routes.find((r) => r.path === '/').redirect).toBe('/strategies/my-strategies')
   })
 
   it('AC-1: the page has no live-value elements, only the fixed sample numbers', async () => {

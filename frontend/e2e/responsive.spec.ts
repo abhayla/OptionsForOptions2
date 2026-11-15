@@ -8,7 +8,7 @@ import { findClippedElements, describeClipped, SCROLLER_ATTR } from './clipping-
 // @ts-expect-error plain JS module, no type declarations
 import { routes } from '../src/router/routes.js'
 // @ts-expect-error plain JS module, no type declarations
-import { SECTIONS, ACCOUNT_ITEMS } from '../src/router/nav.js'
+import { SECTIONS, ACCOUNT_ITEMS, MENU_SECTIONS } from '../src/router/nav.js'
 
 type RouteRecord = { path: string; redirect?: unknown; meta?: { responsiveSample?: string; public?: boolean } }
 
@@ -37,10 +37,11 @@ const PATHS = visitPaths()
 // clipping checks, and must NOT show the logged-in navigation.
 const PUBLIC_PATHS = new Set((routes as RouteRecord[]).filter((r) => r.meta?.public && !r.redirect).map((r) => r.path))
 
-test('the route list covers every nav.js section, sub-item, account item, /settings, /health-status and not-found', () => {
-  const expected = new Set<string>(['/settings', '/health-status', '/this-address-does-not-exist'])
+test('the route list covers every nav.js sub-item, account item, /health-status and not-found, and a section page only where it is not a redirect (ADR-313)', () => {
+  const expected = new Set<string>(['/health-status', '/this-address-does-not-exist'])
   for (const s of SECTIONS) {
-    expected.add(`/${s.key}`)
+    // a section address with a built page redirects (visitPaths skips redirects); only a section with none (Orders) is a page
+    if (!(MENU_SECTIONS as { key: string }[]).some((m) => m.key === s.key)) expected.add(`/${s.key}`)
     for (const [slug] of s.items) expected.add(`/${s.key}/${slug}`)
   }
   for (const [slug] of ACCOUNT_ITEMS) expected.add(`/settings/${slug}`)
@@ -73,7 +74,7 @@ for (const path of PATHS) {
     await expect(nav, `${where}: primary navigation not visible`).toBeVisible()
     const links = nav.getByRole('link')
     const count = await links.count()
-    expect(count, `${where}: primary navigation has no links`).toBe(SECTIONS.length)
+    expect(count, `${where}: primary navigation has no links`).toBe(MENU_SECTIONS.length)
     for (let i = 0; i < count; i++) {
       await links.nth(i).scrollIntoViewIfNeeded()
       const box = await links.nth(i).boundingBox()
