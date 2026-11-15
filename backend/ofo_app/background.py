@@ -1870,7 +1870,6 @@ async def owner_lister(provider: Any, gate: Any = None,
             out.append(Watched(OWNER_REF, s.id, tracked, resolved.body, resolved.is_system, OWNER_REF,
                                resolved.strategy_layer, facts, resolved=resolved, charge_rates=rates,
                                regime=await regimes.read(tracked.position.underlying), basket_facts=baskets))
-    await _lapse_deleted(gate, {s.id for s in strategies})
     return Listed(out, unread)
 
 
@@ -1886,7 +1885,7 @@ async def _baskets_in(db: Any, sid: int) -> dict:
 
 async def _lapse_not_monitored(gate: Any, sid: int) -> None:
     """#652: a strategy that left the list for good lapses its open records as "no longer monitored". Leave reasons:
-    every leg exited -> strategy_closed (above); nothing traded, or deleted -> this. NOT a leave, nothing lapsed: a
+    every leg exited -> strategy_closed (above); nothing traded -> this. NOT a leave, nothing lapsed: a
     read failure (TrackedUnreadable / any exception), a spot or type not read this cycle (no playbook resolved), and
     a strategy of the other mode (scenario vs live), which this worker never lists."""
     from ofo_app.db import get_sessionmaker  # noqa: PLC0415
@@ -1894,22 +1893,6 @@ async def _lapse_not_monitored(gate: Any, sid: int) -> None:
     from ofo_app.playbook_store import LAPSE_NOT_MONITORED  # noqa: PLC0415
     async with held(gate, GATE_REBUILD), get_sessionmaker()() as db:
         await _lapse_exited(db, OWNER_REF, sid, LAPSE_NOT_MONITORED)
-
-
-async def _lapse_deleted(gate: Any, listed_ids: set[int]) -> None:
-    """#652: open records of a strategy that is no longer in the owner's strategy list (deleted). The list read
-    succeeded when this runs (a failed list raised before), so absence is definite. A failing sweep is contained."""
-    from ofo_app import playbook_store  # noqa: PLC0415
-    from ofo_app.db import get_sessionmaker  # noqa: PLC0415
-    from ofo_app.live_market import OWNER_REF  # noqa: PLC0415
-    try:
-        async with held(gate, GATE_REBUILD), get_sessionmaker()() as db:
-            gone = [i for i in await playbook_store.open_strategy_ids(db, OWNER_REF) if i not in listed_ids]
-    except Exception:  # the others stay listed; retried at the next re-list
-        log.exception("background: reading the strategies with open records failed; deleted ones are swept next list")
-        return
-    for sid in gone:
-        await _lapse_not_monitored(gate, sid)
 
 
 async def _serve()-> int:  # pragma: no cover - the process wiring; each part is tested on its own

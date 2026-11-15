@@ -49,7 +49,15 @@ from typing import Any, Final
 
 from ofo.adjustment import level_watch
 from ofo.adjustment import playbook_eval as pe
-from ofo.adjustment.approaches import BASIS_CODES, Config, EntryFacts, ExitInputs, Position, RollBasis
+from ofo.adjustment.approaches import (
+    BASIS_CODES,
+    Config,
+    EntryFacts,
+    ExitInputs,
+    Position,
+    RollBasis,
+    is_expiry_day,
+)
 from ofo.adjustment.compare import Cheapest, Column, MarginRead, cheapest_approach
 from ofo.adjustment.offered import offered_now
 from ofo.adjustment.strategy_type import strike_gap_of, type_of
@@ -214,7 +222,7 @@ def _tighten(body: Mapping, today: datetime.date, expiry: datetime.date, hhmm: s
     """The due "Tighten every trigger by X%" day rule (``when: expiry``) on expiry day from its time on."""
     for rule in body.get("day_rules", []):
         if rule.get("on") and pe.day_rule_acts(rule) and rule.get("action") == pe.DAY_ACTION_TIGHTEN \
-                and rule.get("when") == "expiry" and rule.get("percent") and today == expiry \
+                and rule.get("when") == "expiry" and rule.get("percent") and is_expiry_day(today, expiry) \
                 and hhmm >= rule.get("at", "99:99"):
             return Decimal(rule["percent"])
     return None

@@ -1,0 +1,36 @@
+{
+  "id": "rule-true-at-entry-held-or-warns-by-kind",
+  "scope": "project",
+  "class": "A playbook rule that is already true when tracking starts behaves by its KIND, on every strategy type: a level rule (spot near a short strike, delta, premium, IV move, gap) true at the fill is held (grey 'Already true when tracking started', no alert) until a check finds it clear; a clock rule is never held and warns on its day (expiry day only). Two trades that look alike can differ because the starting point is the fill's own value, not the value at the first check or the value the user reads later.",
+  "mechanism": "playbook_eval.evaluate stores held_at_entry per rule from the entry state (ADR-258, ADR-283 (1)); never_held() exempts clock-time rules and the counter rule (ADR-283 (2)); the clock rule answers 'waits' off expiry day (ADR-310). The entry state is the stored fill (adjustment_check.entry_baseline), with each short's model delta at the fill price, so a delta that reads 0.42 minutes later was not necessarily true at the fill.",
+  "first_seen": {
+    "date": "2026-11-13",
+    "where": "IC user test, trades 138, 142, 143 (ISSUES.md lines 66, 194, 221)",
+    "evidence": "138: spot 25,185, short CE 25,200 (0.0596 %), delta 0.49: T-01 and T-03 grey 'Already true', no alert (F-71, as decided). 142: T-03 value 0.4008 flagged at 13:48 (held_at_entry was not true at the fill; the stored row was not re-read here). 142 and 143: clock rule 13:56 alerted 2 minutes after entry on a non-expiry day (before ADR-310; now waits)."
+  },
+  "fix": "No code change (GC-ICFIX issue 23). Behaviours pinned by tests/adjustment/test_rule_true_at_entry_issue23.py (138 held then flags after a clear; 142 judged on the fill's own delta, and an incomputable fill value is not held; 143 clock rule waits before expiry day and flags on it) with the existing tests/adjustment/test_rule_baseline_adr268.py, test_clock_rule_expiry_day.py and tests_app/test_rule_baseline_at_fill.py. 'Alert once anyway when sitting on the sold strike' is a product change of F-71 and was not made; the guided-builder entry line covers 'too close at entry'.",
+  "detection": {
+    "status": "guarded",
+    "checks": [
+      "tests/adjustment/test_rule_true_at_entry_issue23.py",
+      "tests/adjustment/test_clock_rule_expiry_day.py",
+      "tests_app/test_rule_baseline_at_fill.py"
+    ],
+    "note": "Unmeasured: the stored held_at_entry row of strategy 142 (database read not done in this issue); the pure tests prove the rule, not that row."
+  },
+  "spec_ref": [
+    "spec/requirements/REQ-159.md",
+    "spec/requirements/REQ-170.md",
+    "spec/decisions/ADR-258.md",
+    "spec/decisions/ADR-283.md",
+    "spec/decisions/ADR-296.md",
+    "spec/decisions/ADR-310.md"
+  ],
+  "occurrences": [
+    {
+      "date": "2026-11-13",
+      "where": "IC user test, trades 138, 142, 143",
+      "evidence": "three different behaviours, each as decided"
+    }
+  ]
+}

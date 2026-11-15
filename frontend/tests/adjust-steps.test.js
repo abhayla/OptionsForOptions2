@@ -76,7 +76,7 @@ describe('AdjustSteps', () => {
     expect(why[1].text()).not.toContain('T-03') // the rule id is never shown in place of words
   })
 
-  it('GC-ICFIX 21 (ADR-273): an adjustment row is named by its approach, the server text; an unrecorded one says so', async () => {
+  it('GC-ICFIX 21 (ADR-273): an adjustment row is named by its approach, the server text; an unrecorded one shows no approach line', async () => {
     const rows = [row(), row({ step: 'adjustment', number: 1, approach_text: 'Roll the untested spread toward spot' }),
       row({ step: 'adjustment', number: 2, approach_text: null })]
     const w = await open(body(totals(), rows))
