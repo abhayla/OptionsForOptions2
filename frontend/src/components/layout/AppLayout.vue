@@ -8,6 +8,7 @@ import { useRoute } from 'vue-router'
 import AppHeader from './AppHeader.vue'
 import ScenarioBanner from './ScenarioBanner.vue'
 import CalendarBanner from './CalendarBanner.vue'
+import ToastHost from './ToastHost.vue'
 
 const route = useRoute()
 const fullWidth = computed(() => Boolean(route.meta?.fullWidth))
@@ -18,6 +19,7 @@ const fullWidth = computed(() => Boolean(route.meta?.fullWidth))
     <ScenarioBanner />
     <CalendarBanner />
     <AppHeader />
+    <ToastHost />
     <main
       class="px-4 py-6"
       :class="fullWidth ? 'w-full' : 'mx-auto max-w-[1200px]'"
