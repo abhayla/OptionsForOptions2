@@ -193,8 +193,10 @@ def test_ac5_a_stale_quote_that_still_carries_a_price_pauses_and_refuses_on_its_
         paper.exit_prices_now(snap, entry[:1])
     exited = paper.tracking_view(snap, entry, D("0.5"), ALL_LIVE, {1: D("14.95")})  # open leg 0 still pauses
     assert (exited.paused, exited.paper_pnl, exited.unbooked) == (True, None, None)
-    # GC-UI D-B48: paused = no open leg's figure (never 0); the exited leg keeps its booked figure
-    assert exited.leg_pnls == (None, (D("14.95") - entry[1].entry_price) * 65, None, None)
+    # ADR-311: an unpriced open leg has no figure (never 0); the exited leg keeps its booked figure
+    live = [paper.leg_price(snap, IDS[i]).price for i in (2, 3)]  # ADR-311: the legs that have a price keep their figure
+    assert exited.leg_pnls == (None, (D("14.95") - entry[1].entry_price) * 65, paper.leg_pnl(entry[2], live[0]),
+                               paper.leg_pnl(entry[3], live[1]))
 
 
 def test_d_b48_view_leg_pnls_live_exited_at_exit_price_and_they_add_to_the_total(replayed):
@@ -239,3 +241,79 @@ def test_adr212_display_price_uses_the_held_close_after_hours_but_fills_still_re
     assert not paper.is_live(paper.leg_price(closed, IDS[0]))
     with pytest.raises(paper.PricesNotLive):
         paper.exit_prices_now(closed, entry[:1])
+
+
+# ---- ADR-311 / issue 24: an open leg with no live price pauses every TOTAL, is named, and every other leg keeps its figure
+def _no_quote(snap, *ids):
+    legs = dict(snap.legs)
+    for iid in ids:
+        legs[iid] = dataclasses.replace(legs[iid], quote=None)
+    return dataclasses.replace(snap, legs=legs)
+
+
+def _fresh(provider, last):
+    """The condor at the last frame's prices, entered at those prices (every leg's own figure is then exactly 0.00)."""
+    snap = _snapshot(provider, last)
+    return snap, _entry(snap)
+
+
+def _own_figure(entry, snap, i):
+    return paper.leg_pnl(entry[i], paper.leg_price(snap, IDS[i]).price)
+
+
+def test_adr311_all_priced_nothing_is_unpriced(replayed):
+    snap, entry = _fresh(*replayed)
+    view = paper.tracking_view(snap, entry, D("0.5"), ALL_LIVE)
+    assert (view.paused, view.unpriced) == (False, ())
+    assert all(isinstance(x, D) for x in view.leg_pnls) and view.paper_pnl is not None
+
+
+def test_adr311_the_notes_case_one_far_leg_without_a_price_pauses_the_total_and_names_that_leg(replayed):
+    """The user test: a four-leg condor, the far BUY 23000 CE (leg 1) has no price. Totals stay paused (never a sum of
+    three), the other three legs keep their own figure, leg 1 has the 'no figure' marker (None, never 0), and it is named."""
+    snap, entry = _fresh(*replayed)
+    view = paper.tracking_view(_no_quote(snap, IDS[1]), entry, D("0.5"), ALL_LIVE)
+    assert (view.paused, view.paper_pnl, view.unbooked) == (True, None, None)
+    assert [(u.index, u.instrument_id, u.state, u.expired) for u in view.unpriced] == [(1, IDS[1], "missing", False)]
+    assert view.leg_pnls[1] is None
+    assert [view.leg_pnls[i] for i in (0, 2, 3)] == [_own_figure(entry, snap, i) for i in (0, 2, 3)]
+    assert not any(f in dir(view) for f in ("partial_total", "priced_total"))  # a partial total is never produced
+
+
+def test_adr311_several_unpriced_one_missing_one_stale_both_named_in_leg_order(replayed):
+    snap, entry = _fresh(*replayed)
+    snap = _with_quote(_no_quote(snap, IDS[2]), IDS[0], health=DataHealth.STALE)
+    view = paper.tracking_view(snap, entry, D("0.5"), ALL_LIVE)
+    assert [(u.index, u.state) for u in view.unpriced] == [(0, "stale"), (2, "missing")]  # ADR-272: stale = not priced
+    assert (view.leg_pnls[0], view.leg_pnls[2]) == (None, None)
+    assert (view.leg_pnls[1], view.leg_pnls[3]) == (_own_figure(entry, snap, 1), _own_figure(entry, snap, 3))
+    assert view.paper_pnl is None
+
+
+def test_adr311_an_expired_contract_is_called_expired_by_its_catalogue_state_or_by_its_date(replayed):
+    snap, entry = _fresh(*replayed)
+    by_state = paper.tracking_view(snap, entry, D("0.5"), (None, None, None, "contract_retired"))
+    assert [(u.index, u.state, u.expired) for u in by_state.unpriced] == [(3, "contract_retired", True)]
+    assert by_state.leg_pnls[3] is None and by_state.pause_reason == "contract_retired"
+    old = tuple(dataclasses.replace(e, expiry=datetime.date(2026, 10, 1)) if i == 0 else e for i, e in enumerate(entry))
+    by_date = paper.tracking_view(_no_quote(snap, IDS[0]), old, D("0.5"), ALL_LIVE)  # valuation is 8 Oct 2026
+    assert [(u.index, u.expired) for u in by_date.unpriced] == [(0, True)]
+    live_old = paper.tracking_view(_no_quote(snap, IDS[1]), entry, D("0.5"), ALL_LIVE)
+    assert [u.expired for u in live_old.unpriced] == [False]  # expiry 13 Oct is not past on 8 Oct
+
+
+def test_adr311_every_leg_unpriced_no_figure_anywhere_and_all_four_named(replayed):
+    snap, entry = _fresh(*replayed)
+    view = paper.tracking_view(_no_quote(snap, *IDS), entry, D("0.5"), ALL_LIVE)
+    assert (view.paused, view.paper_pnl, view.leg_pnls) == (True, None, (None, None, None, None))
+    assert [u.index for u in view.unpriced] == [0, 1, 2, 3]
+
+
+def test_adr311_a_stale_quote_that_still_carries_a_price_is_unpriced_not_shown(replayed, monkeypatch):
+    snap, entry = _fresh(*replayed)
+    real = paper.leg_price
+    monkeypatch.setattr(paper, "leg_price", lambda s, i: paper.Price(i, "stale", D("45.15"), real(s, i).at)
+                        if i == IDS[0] else real(s, i))
+    view = paper.tracking_view(snap, entry, D("0.5"), ALL_LIVE)
+    assert view.leg_pnls[0] is None and [u.index for u in view.unpriced] == [0]
+    assert view.leg_pnls[1:] == tuple(_own_figure(entry, snap, i) for i in (1, 2, 3))
