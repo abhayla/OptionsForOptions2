@@ -71,6 +71,26 @@ describe('u511: the opportunities list pages by 25', () => {
     expect(range(w0).exists()).toBe(false)
   })
 
+  it('one row reads in the singular: "Showing 1 of 1 row" (the server sends every row, no cap: playbook_store.py _INBOX has no LIMIT)', async () => {
+    const w = await page(1)
+    expect(range(w).text()).toBe('Showing 1 of 1 row')
+  })
+
+  it('the page goes back to the first when the list is replaced: shrink to 10 rows from page 3, then grow to 60', async () => {
+    const w = await page(60)
+    await w.get('[data-testid="opp-next"]').trigger('click')
+    await w.get('[data-testid="opp-next"]').trigger('click')
+    expect(range(w).text()).toBe('Showing 51-60 of 60 rows')
+    answers['GET /adjustment-opportunities'] = inbox(10)
+    await w.vm.load()
+    await flushPromises()
+    expect(range(w).text()).toBe('Showing 1-10 of 10 rows')
+    answers['GET /adjustment-opportunities'] = inbox(60)
+    await w.vm.load()
+    await flushPromises()
+    expect(range(w).text()).toBe('Showing 1-25 of 60 rows') // not left on a later page
+  })
+
   it('a row older than today carries its date', async () => {
     const w = await page(1)
     expect(w.get('[data-testid="opp-time"]').text()).toBe('6 Nov 2026, 13:17:04 IST')
