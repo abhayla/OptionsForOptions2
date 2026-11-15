@@ -43,7 +43,7 @@ const GRID = {
 }
 
 async function seedCatalogue(page: Page) {
-  await page.route('**/api/catalogue/NIFTY/expiries', (r) => r.fulfill({ json: { underlying: 'NIFTY', expiries: ['2026-10-13'] } }))
+  await page.route('**/api/catalogue/NIFTY/expiries', (r) => r.fulfill({ json: { underlying: 'NIFTY', expiries: ['2026-10-13'], today: '2026-10-08' } }))
   await page.route('**/api/catalogue/NIFTY/contracts?expiry=2026-10-13', (r) => r.fulfill({ json: CONTRACTS }))
   await page.route('**/api/leg-picker/strikes**', (r) => r.fulfill({ json: GRID }))
 }

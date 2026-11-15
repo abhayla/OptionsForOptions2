@@ -18,7 +18,7 @@ const SECTIONS: Record<string, { label: string; items: string[] }> = {
 }
 
 // ADR-313 (u504): the menus list built pages only (nav.js UNBUILT_ITEMS). Orders has no built page, so it is not in the bar; the
-// unbuilt items below still open by address (AC-5 test). EDITED WITHOUT RUNNING (needs the e2e stack): the menu checks open each
+// unbuilt items below still open by address (AC-5 test). The menu checks open each
 // section's menu button and read its items; a section link opens the section's first built page, not a section page.
 const SECTION_ORDER = ['Home', 'Strategies', 'Positions', 'Market', 'Alerts', 'Learn']
 
@@ -54,7 +54,8 @@ for (const [ac, { label, items }] of Object.entries(SECTIONS)) {
     for (const item of items) {
       await page.getByTestId('nav-menu-item').filter({ has: page.getByText(item, { exact: true }) }).click()
       await expect(nav.title).toHaveText(item)
-      await toggle.click()
+      // a menu item that opens the page already shown ('/' lands on My Strategies) is no route change, so its menu stays open
+      if (!(await page.getByTestId('nav-menu').isVisible())) await toggle.click()
     }
   })
 }

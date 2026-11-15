@@ -14,8 +14,9 @@ for (const [name, size] of [
     test('the nav item opens the Builder page', async ({ page }) => {
       await page.goto('/')
       const nav = new NavPage(page)
-      await nav.openSection('Strategies')
-      await nav.subItems.filter({ hasText: new RegExp(`^${TITLE}$`) }).click()
+      // ADR-313: a section link opens the section's first built page; the other pages are reached through its menu
+      await page.getByTestId('nav-menu-toggle-strategies').click()
+      await page.getByTestId('nav-menu-item').filter({ has: page.getByText(TITLE, { exact: true }) }).click()
       await expect(nav.title).toHaveText(TITLE)
       await expect(page.getByTestId('strategy-builder')).toBeVisible()
     })
