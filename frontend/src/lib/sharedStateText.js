@@ -1,4 +1,5 @@
 import { TIME_UNAVAILABLE } from '@/lib/displayFormat'
+import { said } from '@/lib/playbookEditor'
 // One home for the owner-approved texts of the shared screen states (GC-6; docs/design/screens-research-2026-10-19-part2.md,
 // "Shared states and screen rules"). Screens import these, never retype them. Character for character as approved.
 export const MARKET_CLOSED_PREFIX = 'Market closed. Prices are from '
@@ -60,7 +61,8 @@ export const checkStaleLine = (refusal) => (refusal ? `${CHECK_STALE_TEXT} ${ref
 export const RULES_LOAD_FAILED_TEXT = 'Could not read which rules have fired. Nothing was changed.'
 export const firedAtText = (stamp) => `Fired at ${stamp}` // the stamp is today's time, or the date and time (istStamp)
 export const liveNowText = (value, asOf) => (asOf ? `Now ${value} (${asOf})` : `Now ${value}`) // ADR-309: the value at the check, with its own time (the server's "As of ..." text)
-export const ruleNotCheckedText = (reason) => `Rule not checked: ${reason}`
+// the reason is the server's sentence or its four-part message object: said() takes the sentence; none -> no dangling colon
+export const ruleNotCheckedText = (reason) => (said(reason) ? `Rule not checked: ${said(reason)}` : 'Rule not checked')
 export const ruleEarlierText = (text, outcome, stamp) => `${text} - ${outcome}${stamp ? `, fired ${stamp}` : ''}`
 export const OPPORTUNITY_PAGE_SIZE = 25
 // u511: N counts every row the server returned in its one read (the list has no server paging)
