@@ -229,3 +229,30 @@ def test_mixed_naive_and_aware_times_are_refused():
 def test_a_live_price_none_or_not_above_zero_is_refused(price):
     with pytest.raises(ValueError, match="live_prices"):
         adjustment_history(seeded_orders(), {"PE22700": price}, adjustments_max=None)  # type: ignore[dict-item]
+
+
+# ---- GC-ICFIX defect B (ADR-255): the closing Exit-all is the end of the trade, not an adjustment ----
+def _closed_trade_orders() -> list[HistoryOrder]:
+    at = [CLOCK + HOUR * i for i in range(4)]
+    return [HistoryOrder("C1", "SELL", 65, Decimal("100"), "open", at[0]),
+            HistoryOrder("C2", "SELL", 65, Decimal("50"), "add", at[1]),  # adjustment 1
+            HistoryOrder("C2", "BUY", 65, Decimal("40"), "exit", at[2]),  # adjustment 2 (part exit: C1 stays open)
+            HistoryOrder("C1", "BUY", 65, Decimal("90"), "exit", at[3])]  # Exit all: closes the last open leg
+
+
+def test_a_closed_trade_counts_its_adjustments_without_the_closing_exit():
+    h = adjustment_history(_closed_trade_orders(), {}, adjustments_max=2)
+    assert [r.step for r in h.rows] == ["entry", "adjustment", "adjustment", "adjustment"]
+    assert h.totals.adjustments_used == h.totals.adjustments_before_exit == 2  # was 3: "3 of 2"
+    assert [r.is_exit for r in h.rows] == [False, False, False, True]  # the screen labels the last row "Exit"
+
+
+def test_the_limit_check_reads_the_same_count_so_a_trade_is_not_blocked_by_its_own_exit():
+    from types import SimpleNamespace
+
+    from ofo_app.adjustment_readers import history_count
+    rows = [SimpleNamespace(order=SimpleNamespace(contract_id=o.instrument_id, side=o.side, quantity=o.quantity,
+                                                  price=o.price, kind=o.kind, placed_at=o.placed_at))
+            for o in _closed_trade_orders()]
+    assert history_count(rows, lambda cid: True) == 2
+    assert history_count(rows[:3], lambda cid: True) == 2  # before the exit: still 2 (a part exit counts)
