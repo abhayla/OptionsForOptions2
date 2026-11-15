@@ -356,6 +356,9 @@ describe('guided helpers', () => {
   it('REQ-026 AC-2: expiry labels are real dates with This Week / Next Week / Monthly / Next Monthly', () => {
     expect(expiryLabels(['2026-10-13', '2026-10-20', '2026-10-27', '2026-11-24']).map((e) => e.label))
       .toEqual(['This Week — 13 Oct', 'Next Week — 20 Oct', 'Monthly — 27 Oct', 'Next Monthly — 24 Nov'])
+    // u510: the real 17 / 23 Nov 2026 list (24 Nov is an exchange holiday, so 23 Nov is the month's last) and a next-year date
+    expect(expiryLabels(['2026-11-17', '2026-11-23', '2027-01-28'], '2026-11-15').map((e) => e.label))
+      .toEqual(['This Week — 17 Nov', 'Monthly — 23 Nov', 'Next Monthly — 28 Jan 2027'])
   })
 
   it('REQ-026 AC-3/AC-5/AC-6: lists start at the current level, 100-point listed strikes only, lower below / upper above', () => {

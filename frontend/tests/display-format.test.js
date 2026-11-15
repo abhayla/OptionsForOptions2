@@ -83,6 +83,19 @@ describe('REQ-135 AC-2: expiryWithDays prints the server\'s count and counts not
   })
 })
 
+describe('u510: an expiry in another year than the server\'s shown date carries its year', () => {
+  const today = '2026-11-15' // the server's shown date (the expiries reply's `today`)
+  it('same-year dates keep the plain form; next-year dates print the year', () => {
+    expect(expiryWithDays('2026-11-17', 2, today)).toBe('17 Nov (2 days)')
+    expect(expiryWithDays('2026-11-23', 8, today)).toBe('23 Nov (8 days)')
+    expect(expiryWithDays('2027-01-28', 74, today)).toBe('28 Jan 2027 (74 days)')
+    expect(expiryWithDays('2027-01-28', null, today)).toBe('28 Jan 2027')
+  })
+  it('no shown date means no year is guessed', () => {
+    expect(expiryWithDays('2027-01-28', 74)).toBe('28 Jan (74 days)')
+  })
+})
+
 describe('strikeLabel (#582 item 8: strikes print as Sensibull prints them)', () => {
   it("drops a whole-number strike's decimals and keeps a real fraction", () => {
     expect(strikeLabel('22150.00')).toBe('22150')
