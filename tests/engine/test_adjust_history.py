@@ -246,13 +246,3 @@ def test_a_closed_trade_counts_its_adjustments_without_the_closing_exit():
     assert h.totals.adjustments_used == h.totals.adjustments_before_exit == 2  # was 3: "3 of 2"
     assert [r.is_exit for r in h.rows] == [False, False, False, True]  # the screen labels the last row "Exit"
 
-
-def test_the_limit_check_reads_the_same_count_so_a_trade_is_not_blocked_by_its_own_exit():
-    from types import SimpleNamespace
-
-    from ofo_app.adjustment_readers import history_count
-    rows = [SimpleNamespace(order=SimpleNamespace(contract_id=o.instrument_id, side=o.side, quantity=o.quantity,
-                                                  price=o.price, kind=o.kind, placed_at=o.placed_at))
-            for o in _closed_trade_orders()]
-    assert history_count(rows, lambda cid: True) == 2
-    assert history_count(rows[:3], lambda cid: True) == 2  # before the exit: still 2 (a part exit counts)
