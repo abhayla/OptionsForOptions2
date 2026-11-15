@@ -750,6 +750,20 @@ def stage_out(name: str | None, index: int | None) -> dict[str, Any]:
 SIT_S12 = pe.situation_rule_id(pe.BIG_WIN_EARLY)  # its value is a % of max profit
 
 
+def record_words(body: Mapping | None, rule_id: str, rv: Any) -> tuple[str | None, str | None, str | None, str | None]:
+    """(trigger_id, cmp, label, unit) a stored record carries. ``rv`` is the rule's value in the LATEST check; a
+    situation rule or level watch that check did not value (a later check could not read it) is its own trigger
+    (``RuleValue(rid, rid, ...)``), so the record still names the rule and shows its figures (GC-ICFIX, sit.S-02)."""
+    if rv is not None:
+        return (rv.trigger_id, rv.cmp, *trigger_words(body, rv.trigger_id))
+    watched = level_watch.direction_of(rule_id)
+    if watched is not None:
+        return rule_id, level_watch.CMP[watched], *trigger_words(body, rule_id)
+    if pe.situation_of(body, rule_id) is not None:
+        return rule_id, "ge", *trigger_words(body, rule_id)  # every situation rule reads "at or above"
+    return None, None, None, None
+
+
 def trigger_words(body: Mapping | None, trigger_id: str | None) -> tuple[str | None, str | None]:
     """(label, unit) of a trigger as the evaluated body holds them; (None, None) for a body or trigger without them.
     A day rule (GC-IC1 1a, ``day.<when>.<HHMM>.<n>``): its action's catalogue words and "%" (its value is a distance

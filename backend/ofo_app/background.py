@@ -744,7 +744,7 @@ class DbGateStore:
                     await _lapse_open_of(db, w, e.rule_id, playbook_store.LAPSE_CONDITION_STOPPED)
                     continue
                 rv = values.get(e.rule_id)
-                trigger = None if rv is None else rv.trigger_id
+                trigger, cmp, label, unit = check.record_words(w.body, e.rule_id, rv)
                 # GC-ICFIX: the event's own numbers (the confirming sample's), never the latest check's
                 value = _quantized(e.value if isinstance(e.value, Decimal) else e.shown_value)
                 threshold = _quantized(getattr(e, "threshold", None))
@@ -757,7 +757,6 @@ class DbGateStore:
                 if e.worse is not None:
                     await _lapse_open_of(db, w, e.rule_id, playbook_store.LAPSE_SUPERSEDED_BY_WORSE)  # finding 5
                 flag = flags.get(e.rule_id)
-                label, unit = check.trigger_words(w.body, trigger)
                 t19 = {} if ctx is None else t19_record(trigger or "", cheapest(ctx.state))
                 if not t19 and rv is not None and rv.approaches:  # a day rule names its approaches (GC-IC1 1a)
                     t19 = {"approach": DAY_APPROACH_SEPARATOR.join(rv.approaches)}
@@ -767,7 +766,7 @@ class DbGateStore:
                     db, w.user_ref, w.strategy_id, e.rule_id, trigger_id=trigger,
                     stage=flag.stage_name if flag is not None else stage, value=value, threshold=threshold,
                     group=gate_group(w.strategy_id, e.at), source=source,
-                    cmp=None if rv is None else rv.cmp, label=label, unit=unit, worse=e.worse,
+                    cmp=cmp, label=label, unit=unit, worse=e.worse,
                     beyond=None if rv is None else rv.beyond, limit=_quantized(e.limit),
                     adjustments=_count_of(w.tracked), **t19,
                     **({} if ctx is None else target_record(trigger or "", ctx.state)))
