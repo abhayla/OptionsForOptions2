@@ -470,6 +470,7 @@ decisions:
   ADR-308: S6.7         # "Showing N of M" counts M as every approach that applies, not the ticked set; a link with no ticks shows all
   ADR-309: S6.7         # a rule shown as fired stays fired until its alert record clears; the page reads the gate, not each poll
   ADR-310: S6.7         # a clock-time rule alerts only on a day its action can be taken; the plan calls it "Time exit (on expiry day)"
+  ADR-312: S6.7         # a strategy with a position held at the broker cannot be deleted (same refusal as real orders)
 
 questions:
   Q210: 4a              # external: Zerodha's written answer; ADR-051 covers the owner's own account
