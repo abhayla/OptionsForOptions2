@@ -25,7 +25,7 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="g in reply.groups" :key="g.group" class="border-b border-line align-top" data-testid="opp-row" :data-strategy-id="g.strategy_id" :data-picked="picked === String(g.strategy_id) ? 'true' : 'false'">
+            <tr v-for="g in current" :key="g.group" class="border-b border-line align-top" data-testid="opp-row" :data-strategy-id="g.strategy_id" :data-picked="picked === String(g.strategy_id) ? 'true' : 'false'">
               <td class="py-1.5 tabular-nums" data-testid="opp-time">{{ istTime(g.shown_at) }}</td>
               <td class="py-1.5" data-testid="opp-strategy">{{ plainName(g.strategy_name) }}</td>
               <td class="py-1.5" data-testid="opp-what">
@@ -57,6 +57,13 @@
           </tbody>
         </table>
       </div>
+      <div v-if="!reply.empty_text" class="mt-2 flex items-center gap-2 text-sm" data-testid="opp-paging">
+        <p class="text-ink-muted" data-testid="opp-range">{{ rangeText }}</p>
+        <template v-if="pages.length > 1">
+          <button type="button" class="h-9 rounded-lg border border-line px-3 font-medium" :disabled="current === pages[0]" data-testid="opp-prev" @click="goTo(pages.indexOf(current) - 1)">Previous</button>
+          <button type="button" class="h-9 rounded-lg border border-line px-3 font-medium" :disabled="current === pages.at(-1)" data-testid="opp-next" @click="goTo(pages.indexOf(current) + 1)">Next</button>
+        </template>
+      </div>
       <!-- GC-IC1 step 10 fix (REQ-170 AC-4): crossings the alert gate held, in the server's words with their time; never a
            record, so no Compare and no Dismiss -->
       <section v-if="reply.held && reply.held.length" class="mt-4" data-testid="opp-held">
@@ -74,7 +81,7 @@
 </template>
 
 <script setup>
-import { inject, nextTick, onMounted, reactive, ref } from 'vue'
+import { computed, inject, nextTick, onMounted, reactive, ref } from 'vue'
 import { RouterLink, routeLocationKey } from 'vue-router'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import PageHeader from '@/components/common/PageHeader.vue'
@@ -82,6 +89,7 @@ import api, { NEUTRAL_PARTS } from '@/services/api'
 import { compareAllUrl } from '@/lib/adjustDrawer'
 import { istTime } from '@/lib/displayFormat'
 import { plainName } from '@/lib/saveDraft'
+import { OPPORTUNITY_PAGE_SIZE, rowsRangeText } from '@/lib/sharedStateText'
 
 const props = defineProps({
   client: { type: [Object, Function], default: () => api }, // the api module; a test passes a stand-in
@@ -90,6 +98,20 @@ const state = ref('loading') // loading | ready | error
 const reply = ref(null)
 const root = ref(null)
 const errorParts = ref(NEUTRAL_PARTS)
+
+// u511: pages of 25 cut from the one reply (the server's order, newest first); no arithmetic: a page is a chunk, and the
+// range comes from where the page's first and last rows sit in the whole list.
+const pageAt = ref(0)
+const all = computed(() => reply.value?.groups ?? [])
+const pages = computed(() => all.value.reduce((acc, g) => {
+  const last = acc.at(-1)
+  if (last && last.length < OPPORTUNITY_PAGE_SIZE) last.push(g)
+  else acc.push([g])
+  return acc
+}, []))
+const current = computed(() => pages.value[pageAt.value] ?? pages.value.at(-1) ?? [])
+const rangeText = computed(() => rowsRangeText(all.value.indexOf(current.value[0]) + 1, all.value.indexOf(current.value.at(-1)) + 1, all.value.length))
+const goTo = (i) => { pageAt.value = i }
 
 // GC-MU A3: the Live Strategies card links here with ?strategy=<id>; that strategy's first row is scrolled into view
 const picked = inject(routeLocationKey, null)?.query?.strategy ?? null

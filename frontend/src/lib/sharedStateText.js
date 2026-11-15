@@ -62,6 +62,9 @@ export const firedAtText = (stamp) => `Fired at ${stamp}` // the stamp is today'
 export const liveNowText = (value, asOf) => (asOf ? `Now ${value} (${asOf})` : `Now ${value}`) // ADR-309: the value at the check, with its own time (the server's "As of ..." text)
 export const ruleNotCheckedText = (reason) => `Rule not checked: ${reason}`
 export const ruleEarlierText = (text, outcome, stamp) => `${text} - ${outcome}${stamp ? `, fired ${stamp}` : ''}`
+export const OPPORTUNITY_PAGE_SIZE = 25
+// u511: N counts every row the server returned in its one read (the list has no server paging)
+export const rowsRangeText = (from, to, total) => `Showing ${from}-${to} of ${total} rows`
 export const EARLIER_SHOWN_MAX = 5
 export const earlierMoreText = (n) => `and ${n} earlier`
 export const LIMITS_NONE_TEXT = 'No rules are being checked for this trade'
