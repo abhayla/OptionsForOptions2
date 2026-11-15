@@ -1,0 +1,21 @@
+{
+  "id": "second-computation-of-shared-figure-passes-local-tests",
+  "scope": "generic",
+  "class": "A change that recomputes a figure which a shared computation already produces passes every local test and a reviewer's 'cost unchanged' reading, because the result is identical; only a test that counts how many times the work is done sees it.",
+  "mechanism": "The entry-guide line computed option deltas a second time instead of reading the shared computation; outputs matched, so correctness tests stayed green, and the cost doubled until a performance test failed on the whole check.",
+  "first_seen": {
+    "date": "2026-11-15",
+    "where": "GC-ICFIX guided builder change, repaired in 0ebcdaea",
+    "evidence": "a performance regression failed in the full local check on the combined head; the repair reads the deltas from the shared computation"
+  },
+  "fix": "Give a shared figure one computation and assert by a counting test (work done, not seconds) that a new reader does not repeat it; answer a reviewer's 'cost unchanged' with that test.",
+  "detection": {
+    "status": "unguarded",
+    "checks": [],
+    "note": "Caught only by the existing performance test on the whole check; no per-figure count test exists yet."
+  },
+  "spec_ref": [
+    "spec/decisions/ADR-008.md"
+  ],
+  "occurrences": []
+}

@@ -74,6 +74,25 @@ export const SECTIONS = [
   },
 ]
 
+// u504: items whose page is not built (their route is still the placeholder, ADR-193 (4)). SECTIONS keeps the spec's full
+// list and the routes stay reachable by address; the menus offer only built pages, because a link to an empty page reads as
+// broken. When a page is built, delete its entry here (tests/menu-no-placeholder.test.js fails if the two disagree).
+export const UNBUILT_ITEMS = [
+  'home/important-alerts', 'home/active-strategies', 'home/account-status', 'positions/pnl-risk',
+  'orders/pending', 'orders/executed', 'orders/failed-partial', 'orders/execution-history',
+  'settings/profile', 'settings/zerodha-connection', 'settings/notifications', 'settings/security', 'settings/preferences',
+  'settings/strategy-preferences',
+]
+// ADR-193 (4) names no landing page: "/" opens the strategies list, the first page a trader needs.
+export const LANDING_PATH = '/strategies/my-strategies'
+const built = (key, items) => items.filter(([slug]) => !UNBUILT_ITEMS.includes(`${key}/${slug}`))
+export const MENU_SECTIONS = SECTIONS.map((s) => ({ ...s, items: built(s.key, s.items) })).filter((s) => s.items.length)
+// Where a section's own link goes: its first built item, or null when it has none.
+export const firstBuiltPath = (key) => {
+  const [slug] = built(key, SECTIONS.find((s) => s.key === key)?.items ?? ACCOUNT_ITEMS)[0] ?? []
+  return slug ? `/${key}/${slug}` : null
+}
+
 export const ACCOUNT_LABEL = 'Account & Settings'
 
 export const ACCOUNT_ITEMS = [
@@ -89,6 +108,7 @@ export const ACCOUNT_ITEMS = [
   ['broker-market-data', 'Broker & Market Data'],
   ['app-settings', 'Settings'], // GC-SET (REQ-167): the app-wide settings page for the admin
 ]
+export const ACCOUNT_MENU_ITEMS = built('settings', ACCOUNT_ITEMS)
 
 // ADR-193 / UI study UI-002: how the top bar presents each section. The labels above are untouched (REQ-009); this
 // only says which sections open a mega menu (Sensibull "Trade" S-002, "Analyse" S-003) and how their items group.

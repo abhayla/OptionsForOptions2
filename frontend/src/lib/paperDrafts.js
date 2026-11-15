@@ -3,7 +3,7 @@
 // position, and every leg edit reaches the server ONLY as the paper orders paperOrdersFor(net, edited) returns, reviewed in
 // the confirm list first. Quantities only (units = lots x lot size, a count): no price or money is formed here (ADR-008);
 // prices are the server's texts or what the user types in the dialog.
-import { entryPriceFor } from '@/lib/tracking'
+import { entryPriceFor, afterFigure } from '@/lib/tracking'
 
 /** The Drafts Mode frame's label (Sensibull 274-279; RD-121: paper trades said plainly as not real). */
 export const PAPER_MODE_LABEL = 'Paper mode - not real trades'
@@ -166,11 +166,48 @@ export async function readPaperBook(client, id) {
   return { kind: 'paper', book, net }
 }
 
+/** GC-ICFIX issue 18: waits (ms) before each read of the book after practice orders were stored: now, then two spaced retries.
+ *  Three tries in all, never a loop; after them the screen shows the shared "could not load" state with Retry. */
+export const PAPER_REREAD_DELAYS_MS = Object.freeze([0, 400, 1200])
+
 // GC-TP step 3b2 (REQ-109 AC-9; Sensibull Drafts Mode 274-279, Add to Drafts 166-173): the rest of Drafts Mode.
 /** R-11: a leg loaded from the book carries the paper fill's average, not a price the user typed (no time beside it). */
 export const PAPER_AVERAGE_LABEL = 'Paper average'
 export const PROFIT_LEFT_LABEL = 'Profit left'
 export const LOSS_LEFT_LABEL = 'Loss left'
+// ADR-302: when Profit left (after charges) is larger than Max profit the server sends `recover_text`; this one sentence says why
+export const RECOVER_LINE_PREFIX = 'includes Rs '
+export const RECOVER_LINE_SUFFIX = ' needed to recover the current loss'
+const serverText = (v) => (typeof v === 'string' && v.trim() !== '' ? v.trim() : null)
+/** Drafts Mode summary: { profit, loss } as afterFigure results (the server's after text labelled, else the before text labelled with
+ *  the reason, else the paused sentence), `recover` = the fixed line around the server's amount (its leading "+" dropped: text only),
+ *  `reason` = extremes_reason_text. Nothing is added up, capped or compared here (ADR-008). */
+export const LEFT_BREAKDOWN_LABELS = Object.freeze({
+  maxProfit: 'Max profit (after charges)', maxLoss: 'Max loss (after charges)', total: 'Total P&L so far (after charges)',
+})
+export function paperLeftOf(book, pausedText = null) {
+  if (!book) return null
+  // ADR-306: Profit left = Max profit - Total P&L so far (both after charges): the tap shows those two server texts, never a sum
+  // made here. Only an "after" figure with both texts opens; a reason or a paused figure opens nothing (the reason is on screen).
+  const one = (k, maxLabel) => {
+    const f = afterFigure(book, serverText(book[`${k}_left_text`]), pausedText, `${k}_left_after_text`, [])
+    const max = serverText(book[`max_${k}_text`])
+    const total = serverText(book.total_after_text)
+    const rows = f.kind === 'after' && max !== null && total !== null
+      ? [{ id: 'max', label: maxLabel, text: max }, { id: 'total', label: LEFT_BREAKDOWN_LABELS.total, text: total }] : null
+    return { ...f, breakdown: rows && { rows, reason: null } }
+  }
+  const profit = one('profit', LEFT_BREAKDOWN_LABELS.maxProfit)
+  const recover = serverText(book.recover_text)
+  return {
+    profit, loss: one('loss', LEFT_BREAKDOWN_LABELS.maxLoss),
+    recover: recover !== null && profit.kind === 'after' ? `${RECOVER_LINE_PREFIX}${recover.replace(/^\+/, '')}${RECOVER_LINE_SUFFIX}` : null,
+    reason: serverText(book.extremes_reason_text), // R-20: the server's sentence for extremes_reason, never written here
+    // F-94: the server's sentence on whether the round-trip charges are inside Max Profit / Max Loss; `after` = the server sent the
+    // charges amount (its presence, not a number made here). Nothing beside a paused figure.
+    extremes: profit.kind === 'paused' ? null : { text: serverText(book.extremes_charges_text), after: serverText(book.extremes_charges) !== null },
+  }
+}
 export const EXIT_ALL_LABEL = 'Exit all'
 export const EXIT_LABEL = 'Exit'
 export const ADD_KIND_LABEL = 'Add'

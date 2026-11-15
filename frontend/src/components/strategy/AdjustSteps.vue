@@ -12,7 +12,7 @@
         <dl class="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4" data-testid="steps-totals">
           <div v-for="tile in tiles" :key="tile.id" :data-testid="`steps-total-${tile.id}`">
             <dt class="text-ink-muted">{{ tile.label }}</dt>
-            <dd class="font-semibold tabular-nums">{{ tile.value }}</dd>
+            <dd class="font-semibold tabular-nums"><AfterChargesTap :breakdown="tile.breakdown ?? null">{{ tile.value }}</AfterChargesTap></dd>
             <dd v-if="tile.reason" class="text-xs text-ink-muted" :data-testid="`steps-reason-${tile.id}`">{{ tile.reason }}</dd>
           </div>
         </dl>
@@ -26,7 +26,10 @@
             <tbody>
               <tr v-for="(r, i) in data.rows" :key="i" class="border-b border-line align-top" data-testid="steps-row">
                 <td class="py-1.5 pr-3 tabular-nums">{{ istTime(r.at) }}</td>
-                <td class="py-1.5 pr-3 font-semibold" data-testid="steps-step">{{ stepText(r) }}</td>
+                <td class="py-1.5 pr-3 font-semibold">
+                  <span data-testid="steps-step">{{ stepText(r) }}</span>
+                  <span v-if="r.approach_text" class="block text-xs font-normal" data-testid="steps-approach">{{ r.approach_text }}</span>
+                </td>
                 <td class="py-1.5 pr-3">
                   <span v-for="(o, j) in r.orders" :key="j" class="block" data-testid="steps-order">
                     {{ o.side === 'BUY' ? 'B' : 'S' }} {{ o.contract_text }} x {{ o.quantity }} @ {{ o.price_text }}
@@ -50,8 +53,10 @@
 
 <script setup>
 import { computed, ref } from 'vue'
-import api, { NEUTRAL_ERROR } from '@/services/api'
+import api, { NEUTRAL_PARTS } from '@/services/api'
 import { istTime } from '@/lib/displayFormat'
+import { BEFORE_CHARGES, afterFigure } from '@/lib/tracking'
+import AfterChargesTap from '@/components/common/AfterChargesTap.vue'
 
 const props = defineProps({ strategyId: { type: Number, required: true } })
 const COLUMNS = ['When', 'Step', 'Orders', 'Cash', 'Booked', 'Why'] // the fill-state header is the server's text
@@ -62,16 +67,17 @@ const data = ref(null)
 const error = ref('')
 let loaded = false
 
-const stepText = (r) => (r.step === 'adjustment' ? `Adjustment ${r.number}` : STEP_WORDS[r.step])
+const stepText = (r) => (r.is_exit === true ? 'Exit' : r.step === 'adjustment' ? `Adjustment ${r.number}` : STEP_WORDS[r.step])
 
 const tiles = computed(() => {
   const t = data.value?.totals
   if (!t) return []
   const reasonOf = (v) => (v && typeof v === 'object' ? v.what_happened : v)
+  const pnl = afterFigure(t, t.pnl_text ?? null, reasonOf(t.open_reason_text)) // GC-ICFIX (ADR-263): the whole-trade P&L after charges, labelled
   return [
-    { id: 'pnl', label: 'Whole-trade P&L', value: t.pnl_text ?? DASH, reason: t.pnl_text ? null : reasonOf(t.open_reason_text) },
-    { id: 'booked', label: 'Booked so far', value: t.booked_text },
-    { id: 'open', label: 'Open legs now', value: t.open_pnl_text ?? DASH, reason: t.open_pnl_text ? null : reasonOf(t.open_reason_text) },
+    { id: 'pnl', label: `Whole-trade P&L ${pnl.label}`.trim(), value: pnl.text ?? DASH, reason: pnl.reason, breakdown: pnl.breakdown },
+    { id: 'booked', label: `Booked so far ${BEFORE_CHARGES}`, value: t.booked_text },
+    { id: 'open', label: `Open legs now ${BEFORE_CHARGES}`, value: t.open_pnl_text ?? DASH, reason: t.open_pnl_text ? null : reasonOf(t.open_reason_text) },
     { id: 'credit', label: 'Total credit collected', value: t.credit_text },
     { id: 'left', label: 'Premium still left to earn', value: t.premium_left_text ?? DASH, reason: t.premium_left_text ? null : reasonOf(t.premium_reason_text) },
     { id: 'used', label: 'Adjustments used', value: `${t.adjustments_used} of ${t.adjustments_max ?? DASH}`, reason: reasonOf(t.max_reason_text) },
@@ -86,7 +92,7 @@ async function onToggle(e) {
     data.value = (await api.get(`/strategies/${props.strategyId}/adjustment-history`)).data
   } catch (err) {
     loaded = false
-    error.value = err?.parts?.what_happened ?? NEUTRAL_ERROR
+    error.value = (err?.parts ?? NEUTRAL_PARTS).what_happened
   }
 }
 </script>

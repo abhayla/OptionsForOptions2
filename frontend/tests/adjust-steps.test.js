@@ -65,6 +65,13 @@ describe('AdjustSteps', () => {
     expect(rows.map((r) => r.get('[data-testid="steps-fill"]').text())).toEqual(['Paper - not sent to Zerodha', 'Paper - not sent to Zerodha'])
   })
 
+  it('GC-ICFIX ADR-255: the closing Exit all row (is_exit true) is labelled "Exit", not "Adjustment N"; the tile counts 2 of 2', async () => {
+    const rows = [row(), row({ step: 'adjustment', number: 1 }), row({ step: 'adjustment', number: 2 }), row({ step: 'adjustment', number: 3, is_exit: true })]
+    const w = await open(body(totals({ adjustments_used: 2, adjustments_max: 2 }), rows))
+    expect(w.findAll('[data-testid="steps-step"]').map((x) => x.text())).toEqual(['Entry', 'Adjustment 1', 'Adjustment 2', 'Exit'])
+    expect(tid(w, 'steps-total-used').text()).toContain('2 of 2')
+  })
+
   it('AC-1 (GC-IC1 10): a row made from opportunities shows the server\'s Why and each record\'s line', async () => {
     const rows = [row(), row({ step: 'adjustment', number: 1, rule_id: 'T-03', rule_ids: ['T-03'], why_text: 'Short call delta 0.32, at or above 0.30', why_lines: [] }),
       row({ step: 'adjustment', number: 2, rule_id: null, rule_ids: ['T-01', 'T-09'], why_text: '2 adjustment conditions triggered', why_lines: ['line one', 'line two'] })]
@@ -74,6 +81,17 @@ describe('AdjustSteps', () => {
     expect(why[2].text().startsWith('2 adjustment conditions triggered')).toBe(true)
     expect(why[2].findAll('[data-testid="steps-why-line"]').map((x) => x.text())).toEqual(['line one', 'line two'])
     expect(why[1].text()).not.toContain('T-03') // the rule id is never shown in place of words
+  })
+
+  it('GC-ICFIX 21 (ADR-273): an adjustment row is named by its approach, the server text; an unrecorded one shows no approach line', async () => {
+    const rows = [row(), row({ step: 'adjustment', number: 1, approach_text: 'Roll the untested spread toward spot' }),
+      row({ step: 'adjustment', number: 2, approach_text: null })]
+    const w = await open(body(totals(), rows))
+    const r = w.findAll('[data-testid="steps-row"]')
+    expect(r[1].get('[data-testid="steps-approach"]').text()).toBe('Roll the untested spread toward spot')
+    expect(r[2].find('[data-testid="steps-approach"]').exists()).toBe(false) // none stored: no approach line, no filler
+    expect(r[2].get('[data-testid="steps-step"]').text()).toBe('Adjustment 2')
+    expect(r[0].find('[data-testid="steps-approach"]').exists()).toBe(false) // the entry row names no approach
   })
 
   it('AC-2: totals tiles are the server texts as given', async () => {

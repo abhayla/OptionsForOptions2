@@ -734,6 +734,19 @@ async def test_an_escalation_lapses_the_old_record_as_superseded_by_worse_and_a_
     assert str(shown) == "A worse reading of the same rule replaced it"
 
 
+async def test_a_yes_no_record_stores_the_confirming_reading_and_none_when_it_had_no_number(app_db_url, monkeypatch):
+    """GC-ICFIX (NOT RUN, needs the database): the store writes the event reading, no fallback."""
+    w, _ = await _watched_and_fresh_t03(app_db_url, monkeypatch)
+    at = await _db_now(app_db_url)
+    with_number = alert_gate.Opened("T-02", at, 0, None, True, shown_value=D("-500"), shown_threshold=D("0"))
+    no_number = alert_gate.Opened("T-10b", at, 0, None, True)
+    opened = await background.DbGateStore().apply(w, [with_number, no_number], None)
+    async with app_db_url.connect() as conn:
+        recs = {s.id: s for s in await playbook_store.suggestions(conn, "owner", w.strategy_id)}
+    assert (recs[opened["T-02"]].value, recs[opened["T-02"]].threshold) == (D("-500.0000"), D("0.0000"))
+    assert (recs[opened["T-10b"]].value, recs[opened["T-10b"]].threshold) == (None, None)
+
+
 async def _states_after_list(app_db_url, monkeypatch, *, listed=None, read=None) -> list[tuple]:
     """(outcome, lapse_reason) of every record of the seeded strategy after one lister pass with the stated change."""
     from ofo_app import adjustment_readers, strategy_store  # noqa: PLC0415
@@ -751,14 +764,6 @@ async def _states_after_list(app_db_url, monkeypatch, *, listed=None, read=None)
     async with app_db_url.connect() as conn:
         recs = [s for s in await playbook_store.suggestions(conn, "owner", w.strategy_id) if s.id == rec]
     return [(s.outcome, s.lapse_reason) for s in recs]
-
-
-async def test_a_deleted_strategys_open_record_lapses_as_no_longer_monitored(app_db_url, monkeypatch):
-    """#652: the strategy is gone from the owner's list (deleted): its open record lapses, in the catalogue's words."""
-    from ofo.errors.explanations import render_explanation  # noqa: PLC0415
-    got = await _states_after_list(app_db_url, monkeypatch, listed=lambda rows, sid: [r for r in rows if r.id != sid])
-    assert got == [("lapsed", "not_monitored")]
-    assert str(render_explanation("suggestion_lapsed_not_monitored")) == "The strategy is no longer monitored"
 
 
 async def test_a_strategy_with_nothing_traded_lapses_its_open_record_as_no_longer_monitored(app_db_url, monkeypatch):

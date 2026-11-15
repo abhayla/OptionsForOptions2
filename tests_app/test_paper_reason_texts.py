@@ -94,6 +94,11 @@ def test_the_old_contract_price_stale_sentence_is_not_the_what_if_text() -> None
     assert not paper_reasons.reason_text("whatif_stale").startswith("Stale: the latest price")
 
 
+# every route strategy also carries the after-charges fields (GC-ICFIX u122/u123); absent here
+AFTER_ABSENT = {"total": None, "total_after": None, "charges_paid": None, "charges_to_close": None,
+                "after_charges_reason": "not_priced", "booked_after": None, "unbooked_after": None}
+
+
 def test_the_routes_put_the_text_beside_every_reason() -> None:
     """The reply carries the text next to each code: charges, totals, decay and a contract state."""
 
@@ -102,13 +107,13 @@ def test_the_routes_put_the_text_beside_every_reason() -> None:
 
     d = Decimal
     strategies = [{"booked": d("1"), "unbooked": None, "pause_reason": "contract_retired", "charges": None,
-                   "charges_reason": "not_priced"}]
+                   "charges_reason": "not_priced", **AFTER_ABSENT}]
     out = paper_routes._totals(strategies, [Decay(None, "model_refused")])
     assert out["totals_reason_text"] == paper_reasons.reason_text("contract_retired")
     assert out["decay_reason_text"] == paper_reasons.reason_text("model_refused")
     assert out["charges_reason_text"] == paper_reasons.reason_text("not_priced")
     ok = paper_routes._totals([{"booked": d("1"), "unbooked": d("2"), "pause_reason": None, "charges": d("3"),
-                                "charges_reason": None}], [Decay(d("1"), None)])
+                                "charges_reason": None, **AFTER_ABSENT}], [Decay(d("1"), None)])
     assert ok["totals_reason_text"] is None and ok["decay_reason_text"] is None and ok["charges_reason_text"] is None
     price = paper.Price("k", "token_reassigned", None, None)
     assert paper_routes._state_text(price) == paper_reasons.reason_text("token_reassigned")

@@ -187,6 +187,21 @@ class Suggestion:
             return None
 
     @property
+    def target(self) -> tuple[Decimal, Decimal | None, str | None] | None:
+        """ADR-294 (2): a T-07 record's (profit before charges, after charges or None, why none) when it was shown;
+        None on an older record or a malformed entry (the percent line then, never a guessed figure)."""
+        raw = self.timeline[0].get("target") if self.timeline else None
+        if not isinstance(raw, dict) or not isinstance(raw.get("before"), str):
+            return None
+        try:
+            after = raw.get("after")
+            reason = raw.get("reason")
+            return (Decimal(raw["before"]), None if after is None else Decimal(after),
+                    reason if isinstance(reason, str) else None)
+        except (TypeError, ValueError, ArithmeticError):  # a malformed entry: the percent line for this row only
+            return None
+
+    @property
     def unit(self) -> str | None:
         """The trigger's unit as the evaluated body held it when the flag was shown (None on an older record)."""
         return self.timeline[0].get("unit") if self.timeline else None
@@ -297,7 +312,7 @@ _INSERT_SUGGESTION = text(
     "'label', CAST(:label AS TEXT), 'unit', CAST(:unit AS TEXT), 'approach', CAST(:approach AS TEXT), "
     "'approach_cost', CAST(:approach_cost AS TEXT), 'unpriced', CAST(:unpriced AS INTEGER), "
     "'carry', CAST(:carry AS JSONB), 'beyond', CAST(:beyond AS JSONB), 'limit', CAST(:limit AS TEXT), "
-    "'adjustments', CAST(:adjustments AS INTEGER)))) "
+    "'adjustments', CAST(:adjustments AS INTEGER), 'target', CAST(:target AS JSONB)))) "
     f"RETURNING {_SG_COLUMNS}")
 _CLOSE_SUGGESTION = text(
     "UPDATE public.adjustment_suggestions AS g SET outcome = CAST(:outcome AS TEXT), "  # noqa: S608
@@ -705,7 +720,8 @@ async def open_suggestion(conn: Any, user_ref: str, strategy_id: int, rule_id: s
                           approach_cost: Decimal | None = None, unpriced: int | None = None,
                           worse: str | None = None, carry: Mapping[str, str | None] | None = None,
                           beyond: tuple[str, Decimal, Decimal] | None = None,
-                          limit: Decimal | None = None, adjustments: int | None = None) -> Suggestion:
+                          limit: Decimal | None = None, adjustments: int | None = None,
+                          target: Mapping[str, str | None] | None = None) -> Suggestion:
     """REQ-112 AC-1: one open record per (strategy, rule); a rule still open returns its existing record.
     ``limit``: the limit in force at the stage (``Suggestion.limit``), beside the gate's rung ``threshold``.
     ``adjustments``: the strategy's adjustment count now (``Suggestion.adjustments``, ``lapse_changed``).
@@ -725,6 +741,7 @@ async def open_suggestion(conn: Any, user_ref: str, strategy_id: int, rule_id: s
                                                    "worse": worse, "adjustments": adjustments,
                                                    "limit": None if limit is None else format(limit, "f"),
                                                    "carry": None if carry is None else json.dumps(carry),
+                                                   "target": None if target is None else json.dumps(target),
                                                    "beyond": None if beyond is None else json.dumps(
                                                        {"kind": beyond[0], "strike": format(beyond[1], "f"),
                                                         "points": format(beyond[2], "f")}),
@@ -801,11 +818,13 @@ async def open_suggestions(conn: Any, user_ref: str, strategy_id: int) -> list[S
 
 _OPEN_STRATEGY_IDS = text("SELECT DISTINCT g.strategy_id FROM public.adjustment_suggestions g "
                           "JOIN public.strategies s ON s.id = g.strategy_id "
-                          "WHERE s.user_ref = :user_ref AND g.outcome = 'open' ORDER BY g.strategy_id")
+                          "WHERE s.user_ref = :user_ref AND s.deleted_at IS NULL AND g.outcome = 'open' "
+                          "ORDER BY g.strategy_id")
 
 
 async def open_strategy_ids(conn: Any, user_ref: str) -> list[int]:
-    """#652: the ids of the user's strategies with at least one open record (deleted strategies included)."""
+    """#652: the ids of the user's strategies with at least one open record (a hidden one is left out:
+    its records stay open for Undo, ADR-293 (3))."""
     return [int(r[0]) for r in (await conn.execute(_OPEN_STRATEGY_IDS, {"user_ref": user_ref})).all()]
 
 

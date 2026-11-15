@@ -256,7 +256,6 @@ LINES: dict[str, tuple[str, ...]] = {
         # #611 restyle (ADR-193): the same user-facing wording on its new lines
         '<PageHeader parent="Settings" title="Zerodha login not completed" />',
         "const NEUTRAL = { ...NEUTRAL_PARTS, what_happened: 'The Zerodha login was not completed.' }",
-        '<router-link to="/settings/zerodha-connection" class="mt-4 inline-block rounded border border-line bg-surface px-3 py-2 hover:bg-accent-soft" data-testid="to-connection">Back to the Zerodha connection page</router-link>',
     ),
     'frontend/src/pages/BrokerSettingsPage.vue': (
         # #611 restyle (ADR-193): the same user-facing wording on its new lines
@@ -313,6 +312,8 @@ LINES: dict[str, tuple[str, ...]] = {
     ),
     'frontend/src/router/nav.js': (
         "['zerodha-connection', 'Zerodha connection'],",
+        # u504: the menu route key of that same settings page in the unbuilt list, a path not a comparison
+        "'settings/profile', 'settings/zerodha-connection', 'settings/notifications', 'settings/security', 'settings/preferences',",
     ),
     'frontend/src/router/routes.js': (
         "{ path: '/execution/returned', name: 'execution-returned', beforeEnter: requireOrderPath, component: () => import('../pages/ExecutionReturnedPage.vue'), meta: { title: 'Back from Kite', section: 'strategies' } },",

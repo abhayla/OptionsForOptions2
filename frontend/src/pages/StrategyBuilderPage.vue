@@ -26,13 +26,18 @@ import MarginLine from '@/components/strategy/MarginLine.vue'
 import ProjectionsNote from '@/components/strategy/ProjectionsNote.vue'
 import StrategyActions from '@/components/strategy/StrategyActions.vue'
 import TrackingPanel from '@/components/strategy/TrackingPanel.vue'
-import { ADD_TO_PAPER_LABEL, PAPER_PLACED_NOT_REFRESHED_TEXT, PAPER_STATE, addToPaper as postPaperOrders, paperPostOutcome } from '@/lib/tracking'
+import AdjustSteps from '@/components/strategy/AdjustSteps.vue'
+import { ADD_TO_PAPER_LABEL, PAPER_PLACED_NOT_REFRESHED_TEXT, PAPER_STATE, addToPaper as postPaperOrders, paperPostOutcome, sharedTotal } from '@/lib/tracking'
 import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
+import LoadFailed from '@/components/common/LoadFailed.vue'
+import { PAPER_REREAD_FAILED_TEXT } from '@/lib/sharedStateText'
 import {
-  DISCARD_LABEL, PAPER_BOOK_UNREADABLE, PAPER_MODE_LABEL, PAPER_PENDING_UNREADABLE, REVIEW_AND_ADD_LABEL, confirmRowsFor, paperOrdersFor, pendingText, readPaperBook,
-  legsAfterExit, paperFillKey,
+  DISCARD_LABEL, PAPER_BOOK_UNREADABLE, PAPER_MODE_LABEL, PAPER_PENDING_UNREADABLE, PAPER_REREAD_DELAYS_MS, REVIEW_AND_ADD_LABEL, confirmRowsFor, paperOrdersFor, pendingText, readPaperBook,
+  legsAfterExit, paperFillKey, paperLeftOf,
 } from '@/lib/paperDrafts'
+import { withAsOf } from '@/lib/paperList'
 import PaperBookPanel from '@/components/strategy/PaperBookPanel.vue'
+import { usePaperBookRead } from '@/lib/usePaperBookRead'
 import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
 import AdjustCompare from '@/components/strategy/AdjustCompare.vue'
 import { opportunitiesFromQuery, picksFromQuery } from '@/lib/adjustDrawer'
@@ -349,15 +354,16 @@ function nameInUrl(id) {
   const { draft: _link, ...rest } = route.query
   router.replace({ path: route.path, query: { ...rest, strategy: String(id) } })
 }
-const takeStrategy = (id, revision, name) => {
-  openStrategy.value = Number.isInteger(id) ? { id, revision: revision ?? null, name: name ?? null } : null
+// u502: serverLegs = the legs the server holds for it (a successful load, or the legs a successful Save sent); null = not known, and Save then stays on
+const takeStrategy = (id, revision, name, serverLegs = null) => {
+  openStrategy.value = Number.isInteger(id) ? { id, revision: revision ?? null, name: name ?? null, serverLegs } : null
   if (openStrategy.value) nameInUrl(id)
 }
 const openSaved = (next, id, revision, name) => {
   setLegs(next)
   savedId.value = Number.isInteger(id) ? id : null
   savedRevision.value = savedId.value === null ? null : revision ?? null
-  takeStrategy(id, revision, name)
+  takeStrategy(id, revision, name, legs.value.map((l) => ({ ...l })))
 }
 // REQ-134 AC-3: a rename from the bar changes only the shown name (the revision stays the one the page loaded).
 const onRenamed = (id, name) => {
@@ -374,10 +380,10 @@ const onDeleted = (id) => {
   const { strategy: _gone, ...rest } = route.query
   router.replace({ path: route.path, query: rest })
 }
-const onSaved = (id, revision, name) => {
+const onSaved = (id, revision, name, sent = null) => {
   savedId.value = id
   savedRevision.value = revision ?? null
-  takeStrategy(id, revision, name)
+  takeStrategy(id, revision, name, Array.isArray(sent) ? sent : null)
 }
 // AC-5: a reload of /strategy/builder?strategy=<id> reads the saved copy (legs and planned entries as saved, never today's prices).
 const STRATEGY_ID = /^[1-9]\d{0,17}$/
@@ -399,11 +405,21 @@ const showOrdersTick = ref(0) // bumped to switch the book panel to its Orderboo
 const unreadableParts = (e) => ({ ...(e?.parts ?? NEUTRAL_PARTS), what_happened: PAPER_BOOK_UNREADABLE })
 const copyLegs = (net) => net.map((l) => ({ ...l }))
 function enterDrafts(id, read) {
+  if (String(id) !== String(rereadId)) cancelReread() // another strategy opens: a re-read of the old one ends here
+  paperContractsChanged.value = false // a good read of the book: a poll's earlier "contracts changed" mark is out of date
   paperStale.value = false
   paper.value = { id, book: read.book, net: read.net }
   openSaved(copyLegs(read.net), id, null, read.book.name ?? null)
 }
-const leaveDrafts = () => { paper.value = null; paperStale.value = false }
+const leaveDrafts = () => { paper.value = null; paperStale.value = false; cancelReread() }
+// GC-ICFIX round 2 (F4): the page's ONE read of the paper book per refresh; its reply feeds the paper panel, the tracking box's total and
+// the P&L table TOTAL row (one moment, one text). An orders re-read (paperStale) is not overwritten by it.
+const { readFailed: paperReadFailed, contractsChanged: paperContractsChanged } = usePaperBookRead({
+  key: () => paper.value?.book?.strategy_id ?? null,
+  book: () => paper.value?.book ?? null,
+  onBook: (b) => { if (paper.value && !paperStale.value) paper.value = { ...paper.value, book: b } },
+})
+const paperTotal = computed(() => (paper.value ? sharedTotal(paper.value.book, paperReadFailed.value) : null))
 function reviewPending() {
   if (!paper.value || paperStale.value || !pendingOrders.value?.length) return
   paperError.value = ''
@@ -428,10 +444,9 @@ function exitPaper(contractId, lots) {
 }
 // Drafts Mode summary: the book's Profit left / Loss left first (or the words for its extremes_reason), its original Max Profit /
 // Max Loss below; every figure the book reply's text as sent. Null outside Drafts Mode: the summary is unchanged.
-const paperLeft = computed(() => {
+const paperLeft = computed(() => { // GC-ICFIX u124: after-charges forms, labelled (lib/paperDrafts paperLeftOf)
   const b = paper.value?.book
-  if (!b) return null
-  return { profit: b.profit_left_text ?? null, loss: b.loss_left_text ?? null, reason: b.extremes_reason_text ?? null } // R-20: the server's sentence for extremes_reason, never written here
+  return b ? paperLeftOf(b, withAsOf(typeof b.pause_reason_text === 'string' && b.pause_reason_text.trim() !== '' ? b.pause_reason_text.trim() : null, b.as_of)) : null
 })
 // R-11: legs still carrying the entry and time the book loaded are paper fills ("Paper average", no time)
 const paperFills = computed(() => (paper.value ? paper.value.net.map(paperFillKey) : []))
@@ -461,16 +476,68 @@ async function confirmPending(orders) {
   paperStale.value = true
   try {
     await dropActed() // one basket answers the records once
-    const read = await readPaperBook(api, id) // the server's book after the orders: the new net position
-    if (read.kind !== 'paper') throw new Error('unreadable paper book')
-    enterDrafts(id, read)
-    paperDialog.value = false
-  } catch {
-    paperState.value = PAPER_STATE.PLACED // the dialog stays, says it was placed, and has no Confirm
+  } catch { /* the ids may stay in the URL: the stored orders are never offered again (paperStale) */ }
+  try {
+    // the dialog stays, says it was placed, and has no Confirm, while the book is read again (issue 18: bounded retries, then Retry)
+    await rereadAfterPlace(id, () => { paperState.value = PAPER_STATE.PLACED; paperBusy.value = false })
   } finally {
     paperBusy.value = false
   }
 }
+// GC-ICFIX issue 18 (finding panel-renders-nothing-when-its-read-fails): the book right after practice orders were stored may
+// not be readable yet. Read it up to PAPER_REREAD_DELAYS_MS tries; the first failure calls `onFirstFail` (what the path says meanwhile),
+// the last one shows the shared "could not load" state with Retry. What is on screen is never replaced by a failed read.
+const rereadFailed = ref(false)
+const rereadBusy = ref(false) // a read of the book is in flight (or waiting for its next try)
+const barRef = ref(null)
+let rereadId = null
+let rereadFirstFail = null
+let rereadRun = null // the one run whose answer still counts; another strategy opening ends it
+let leaving = false
+onBeforeUnmount(() => { leaving = true })
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+function cancelReread() {
+  rereadRun = null
+  rereadId = null
+  rereadFailed.value = false
+  rereadBusy.value = false
+}
+async function rereadAfterPlace(id, onFirstFail) {
+  const run = {}
+  rereadRun = run
+  rereadId = id
+  rereadFirstFail = onFirstFail
+  rereadFailed.value = false
+  rereadBusy.value = true
+  let failedOnce = false
+  for (const wait of PAPER_REREAD_DELAYS_MS) {
+    if (wait) await sleep(wait)
+    if (leaving || rereadRun !== run) return false
+    let read = null
+    try { read = await readPaperBook(api, id) } catch { read = null } // only a failed READ is "not ready yet"
+    if (leaving || rereadRun !== run) return false
+    if (read?.kind === 'paper') {
+      try {
+        enterDrafts(id, read)
+        openError.value = null
+        paperDialog.value = false
+        paperState.value = PAPER_STATE.READY
+        barRef.value?.showPaperTab()
+        rereadBusy.value = false
+        return true
+      } catch {
+        break // any other error is not a reason to read again: straight to the failure state
+      }
+    }
+    if (!failedOnce) { failedOnce = true; onFirstFail?.() }
+  }
+  rereadBusy.value = false
+  openError.value = null
+  paperDialog.value = false
+  rereadFailed.value = true
+  return false
+}
+const retryReread = () => (rereadId === null ? null : rereadAfterPlace(rereadId, rereadFirstFail))
 // the unknown-outcome link: re-read the book (the server's truth) and show its Orderbook; a failed read is said plainly
 async function openPaperOrderbook() {
   if (!paper.value) return
@@ -503,13 +570,7 @@ async function openFromBar(next, id, revision, name) {
 // GC-TP step 3c: after Add to Paper confirms, the strategy is a paper strategy: re-read the book and enter Drafts Mode through the same
 // enterDrafts as opening ?strategy=N. A failed read is said plainly (the bar keeps Add to Paper locked); the plan is not left live.
 async function onPaperAdded(id) {
-  try {
-    const read = await readPaperBook(api, id)
-    if (read.kind === 'paper') return enterDrafts(id, read)
-    openError.value = unreadableParts(null)
-  } catch (e) {
-    openError.value = unreadableParts(e)
-  }
+  await rereadAfterPlace(id, () => { openError.value = unreadableParts(null) })
 }
 async function openFromUrl() {
   const id = String(route.query.strategy ?? '')
@@ -540,6 +601,7 @@ async function openFromUrl() {
 // already, so it is not read again. Unsaved edits are replaced, exactly as the Saved tab's Open does (openSaved, no prompt).
 watch(() => route.query.strategy, (v) => {
   if (!v || String(openStrategy.value?.id) === String(v)) return
+  if (String(v) !== String(rereadId)) cancelReread()
   openError.value = null
   openFromUrl()
 })
@@ -893,6 +955,7 @@ const pricesStamp = computed(() => {
           </span>
         </div>
 
+        <LoadFailed v-if="rereadFailed" :text="PAPER_REREAD_FAILED_TEXT" prefix="paper-reread" @retry="retryReread" />
         <ErrorMessage v-if="openError" :parts="openError" compact prefix="open-error" data-testid="open-error" />
         <!-- Region B (UI-104..UI-108) -->
         <!-- GC-TP step 3b1 (Sensibull Drafts Mode 274-279): a paper strategy's legs are its net position, in a dashed frame -->
@@ -907,16 +970,17 @@ const pricesStamp = computed(() => {
             <div v-if="showNumbers" :class="updating ? 'opacity-60' : ''"><MoneySummary class="!mt-0 !px-0" :net-premium="data.summary.net_premium ?? null" :charges="data.charges_breakdown ?? null" /></div>
           </template>
         </LegList>
-        <div v-if="paper" class="mt-2 flex flex-wrap items-center gap-2 text-sm" data-testid="paper-pending">
-          <span v-if="paperStale" class="flex-1" data-testid="paper-pending-stale">{{ PAPER_PLACED_NOT_REFRESHED_TEXT }}</span>
+        <!-- GC-ICFIX P3 u513: while the confirm dialog is open its list is a preview, not "N pending changes" the user made -->
+        <div v-if="paper && !paperDialog" class="mt-2 flex flex-wrap items-center gap-2 text-sm" data-testid="paper-pending">
+          <span v-if="paperStale && rereadBusy" class="flex-1" data-testid="paper-pending-stale">{{ PAPER_PLACED_NOT_REFRESHED_TEXT }}</span>
           <span v-else class="flex-1" data-testid="paper-pending-count">{{ pendingOrders === null ? PAPER_PENDING_UNREADABLE : pendingText(pendingOrders.length) }}</span>
           <button v-if="!paperStale && pendingOrders?.length" type="button" class="h-9 rounded-lg bg-accent px-3 font-medium text-white" data-testid="paper-review" @click="reviewPending">{{ REVIEW_AND_ADD_LABEL }}</button>
           <button v-if="pendingOrders === null || pendingOrders.length" type="button" class="h-9 rounded-lg border border-line px-3 font-medium" data-testid="paper-discard" @click="discardPending">{{ DISCARD_LABEL }}</button>
         </div>
-        <PaperBookPanel v-if="paper" :book="paper.book" :net="paper.net" :show-orders="showOrdersTick" @exit="exitPaper" @exit-all="exitAllPaper" />
+        <PaperBookPanel v-if="paper" :book="paper.book" :net="paper.net" :read-failed="paperReadFailed" :contracts-changed="paperContractsChanged" :show-orders="showOrdersTick" @exit="exitPaper" @exit-all="exitAllPaper" />
         </div>
-        <PaperConfirmDialog :open="paperDialog" :orders="paperRows" :busy="paperBusy" :error="paperError" :state="paperState" @confirm="confirmPending" @cancel="paperDialog = false" @orderbook="openPaperOrderbook" />
-        <SaveDraftBar :legs="legs" :rules-ref="String(route.query.rules_ref || '')" :current="openStrategy" :shown-name="shapeName ?? ''" :paper-mode="paper !== null" :live-price-by-id="livePriceById" class="max-[1099px]:contents" @open="openFromBar" @saved="onSaved" @paper-added="onPaperAdded" @renamed="onRenamed" @deleted="onDeleted">
+        <PaperConfirmDialog :open="paperDialog" :orders="paperRows" :strategy-id="route.query.strategy" :busy="paperBusy" :error="paperError" :state="paperState" @confirm="confirmPending" @cancel="paperDialog = false" @orderbook="openPaperOrderbook" />
+        <SaveDraftBar ref="barRef" :legs="legs" :rules-ref="String(route.query.rules_ref || '')" :current="openStrategy" :shown-name="shapeName ?? ''" :paper-mode="paper !== null" :live-price-by-id="livePriceById" class="max-[1099px]:contents" @open="openFromBar" @saved="onSaved" @paper-added="onPaperAdded" @renamed="onRenamed" @deleted="onDeleted">
           <template #add-edit>
             <button type="button" class="h-10 flex-1 basis-0 rounded-lg border border-line font-medium" aria-haspopup="dialog" :aria-expanded="pickerOpen ? 'true' : 'false'" data-testid="add-edit" @click="pickerOpen = !pickerOpen">Add/Edit</button>
           </template>
@@ -966,6 +1030,7 @@ const pricesStamp = computed(() => {
 
         <p v-else-if="state === 'no-draft'" class="mt-4 text-ink-muted" data-testid="state-no-draft">No draft strategy is open. Add a leg to start one.</p>
 
+
         <div v-else-if="state === 'unpriced'" class="mt-4 rounded border border-line bg-surface p-4" data-testid="state-unpriced">
           <p class="font-medium">{{ NOT_CONNECTED_LABEL }}</p>
           <p class="mt-1 text-sm text-ink-muted">No numbers are shown because not every leg has a planned entry from live market data.</p>
@@ -997,6 +1062,9 @@ const pricesStamp = computed(() => {
           <p class="mt-1 text-sm text-ink-muted">No numbers are shown for this draft.</p>
           <p class="mt-1 text-sm text-ink-muted" data-testid="checked-at">Checked at {{ checkedAt }}</p>
         </div>
+
+        <!-- GC-ICFIX 21 (X-7, ADR-259): a strategy with orders and no open leg (Completed) has no tracking panel; its history stays readable. Not strategyStatus.js: a practice strategy opens from GET /paper/strategies/{id}, which carries no status. -->
+        <AdjustSteps v-if="paper && savedId && !showNumbers && state === 'no-draft'" :strategy-id="savedId" />
 
         <div v-if="showNumbers" :class="updating || keptWhileLoading ? 'opacity-60' : ''" :data-updating="updating || keptWhileLoading ? 'true' : 'false'" data-testid="numbers">
           <!-- UI study Region E: the data-health strip at the top of the summary, now only for stale legs and the
@@ -1069,6 +1137,7 @@ const pricesStamp = computed(() => {
             :zoom="zoomGrid"
             :payoff-table="data.payoff_table ?? null"
             :saved-id="savedId"
+            :paper-total="paperTotal"
             :saved-revision="savedRevision"
             @zoom="zoomTo"
             @update:include-booked="pickBooked"
@@ -1093,7 +1162,7 @@ const pricesStamp = computed(() => {
           </ChartCard>
           <LowerCard :table="data.table" :legs="data.legs ?? null" :sd="data.standard_deviation ?? null" />
           <StrategyActions :saved-id="savedId" :execute-refusal="refusal" />
-          <TrackingPanel :saved-id="savedId" :legs="data.legs ?? null" />
+          <TrackingPanel :saved-id="savedId" :legs="data.legs ?? null" :shared="paper?.book ?? null" :shared-failed="paperReadFailed" />
         </div>
       </div>
     </div>

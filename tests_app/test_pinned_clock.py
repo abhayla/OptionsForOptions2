@@ -140,7 +140,8 @@ async def test_seed_then_routes_offer_the_fixture_only_under_the_pin(app_engine:
                     assert got == {"underlying": "NIFTY", "expiries": ["2026-10-13", "2026-10-19"],
                                    "expiry_days": [{"expiry": "2026-10-13", "days": 5},
                                                    {"expiry": "2026-10-19", "days": 11}],
-                                   "default_expiry": "2026-10-13"}  # REQ-135 AC-2, ADR-199 (4), pin 10-08
+                                   "default_expiry": "2026-10-13",
+                                   "today": "2026-10-08"}  # REQ-135 AC-2, ADR-199 (4), pin 10-08; today since c39eb5a8
                     for expiry, n in expected.items():
                         body = (await ac.get("/api/catalogue/NIFTY/contracts", params={"expiry": expiry})).json()
                         assert len(body["contracts"]) == n

@@ -26,6 +26,7 @@ from types import MappingProxyType
 from ofo import wording as _wording
 from ofo.errors.gate_slots import (
     ClockTime,
+    Date,
     PlaybookField,
     PlaybookName,
     PlaybookTriggerLabel,
@@ -110,6 +111,22 @@ class Explained(SlotType):
     @staticmethod
     def format(value: str) -> str:
         return str.__str__(value)
+
+
+class Reason(SlotType):
+    """A catalogue sentence of the evaluator's own (a `render()` result), printed as its first part (what happened):
+    the reason a rule is not being checked, carried into the one line the card shows (GC-ICFIX u113, ADR-304 (3))."""
+
+    @staticmethod
+    def validate(value: object) -> None:
+        from ofo.errors.model import UserFacingError  # late: the model module imports this one
+
+        if type(value) is not UserFacingError:
+            raise TypeError(f"Reason slot takes a render() result, got {type(value).__name__}")
+
+    @staticmethod
+    def format(value: object) -> str:
+        return value.what_happened  # type: ignore[attr-defined]
 
 
 class Quoted(SlotType):
@@ -252,8 +269,8 @@ _SHAPE_WORD_NAMES: Mapping[str, str] = MappingProxyType(json.loads(_APPROACH_NAM
 #: W-196 (REQ-155, ADR-214): the names of the iron condor adjustment approaches, by catalogue A-id (decision support).
 ADJUSTMENT_APPROACH_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
     "A-36": "No change",
-    "A-01": "Roll the untested spread toward spot",
-    "A-05": "Roll the tested spread out (same width)",
+    "A-01": "Roll the untested spread to the strikes your roll setting picks (same width, same expiry)",
+    "A-05": "Roll the tested spread to the strikes your roll setting picks (same width, same expiry)",
     "A-29": "Reduce the tested side",
     "A-28": "Close the tested spread",
     "A-11": _SHAPE_WORD_NAMES["A-11"],
@@ -266,10 +283,10 @@ EXIT_REDUCE_BUILT: tuple[str, ...] = ("A-24", "A-25", "A-26", "A-27", "A-35")
 ROLL_BUILT: tuple[str, ...] = ("A-02", "A-04", "A-06")
 #: GC-ADJ2 step 3 (REQ-159 AC-5, REQ-160 AC-1): the playbook editor's names of the approaches NOT in ADJUSTMENT_APPROACH_LABEL_TEXT (that table stays the one home of its ids; a test holds the two disjoint). Source: tests/fixtures/adjust_scenarios/_playbooks.json approaches.
 PLAYBOOK_APPROACH_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
-    "A-02": "Roll the tested short away",
+    "A-02": "Roll the tested short to the strike your roll setting picks",
     "A-03": "Roll out in time (same strikes, next expiry)",
     "A-04": "Roll up/down and out (diagonal roll)",
-    "A-06": "Shift a leg by +/- N strikes",
+    "A-06": "Shift the tested spread by N strikes: a call spread up, a put spread down",
     "A-07": "Re-centre / reset around spot",
     "A-08": "Straddle-ise (move the untested short to the tested strike)",
     "A-09": "Add wings (buy far options on each side)",
@@ -288,7 +305,7 @@ PLAYBOOK_APPROACH_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
     "A-23": "Delta-neutral helper (calculator)",
     "A-24": "Take profit, whole strategy",
     "A-25": "Take partial profit (close X%)",
-    "A-26": "Close the untested side for profit",
+    "A-26": "Buy back the decayed untested short (its wing stays)",
     "A-27": "Buy back cheap shorts",
     "A-35": "Time exit",
     "A-32": "Stop-loss per leg",
@@ -330,6 +347,8 @@ PLAYBOOK_DAY_RULE_ACTION_TEXT: Mapping[str, str] = MappingProxyType({
     "5": "Prepare an exit for review",
     "6": "Do not suggest rolls",
 })
+#: GC-ICFIX issue 19: the one plain sentence for a day rule whose id the code cannot read (the raw id is never shown)
+DAY_RULE_GENERIC_TEXT: str = "A scheduled check for this trade"
 #: GC-IC1 4c (A-37, ADR-242): a level-watch record's words by direction (pending owner read).
 LEVEL_WATCH_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
     "above": "Watched level reached (at or above)",
@@ -351,7 +370,7 @@ PLAYBOOK_GUARD_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
     "stop_line_pct_of_margin": "Stop line (% of margin)",
     "stop_line_pct_of_max_loss": "Stop line (% of max loss)",
     "stop_line_rule": "Stop line rule",
-    "time_exit": "Time exit",
+    "time_exit": "Time exit (on expiry day)",
     "warn_cost_pct_of_premium_left": "Warn when an adjustment costs more than this % of the premium left",
 })
 #: GC-ADJ2 step 3 (REQ-160 AC-1): the plain-words summary's sentences. A doubled brace is a slot the editor fills from the body ({name} after rendering); the words are the catalogue's.
@@ -1038,9 +1057,10 @@ PLAYBOOK_TYPE_LABEL_TEXT: Mapping[str, str] = MappingProxyType(
 #: panel's Plan entry, by key. Each is one reviewed template `plan_sheet_<key>`; the browser prints what the server sends.
 PLAN_SHEET_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
     "title": "When tracking starts: this strategy's plan", "playbook": "Playbook", "target": "Target",
-    "stop": "Stop", "max_adjustments": "Max adjustments", "time_exit": "Time exit",
+    "stop": "Stop", "max_adjustments": "Max adjustments", "time_exit": "Time exit (on expiry day)",
     "customise": "Customise triggers", "use_as_is": "Use playbook as is", "save": "Save plan", "close": "Close",
-    "plan_entry": "Plan", "edit": "Edit plan", "no_plan": "No plan saved yet", "hour": "Hour", "minute": "Minute",
+    "plan_entry": "Plan", "edit": "Edit plan", "no_plan": "No plan saved yet: default rules apply", "set_plan": "Set plan",
+    "hour": "Hour", "minute": "Minute",
 })
 
 #: Why a table cell has no value (the cell's `reason`), by key. Each is one reviewed template `table_reason_<key>`.
@@ -1426,6 +1446,9 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         "Estimate from the pricing model at your target, not a forecast."),
     ExplanationTemplate("target_clamped", "values_seen", "Target moved to the nearest allowed value: {value}.",
                         {"value": TargetValue}),
+    # u507: the basis the "Greeks at target" figures are on, the same words as the Greeks card's column head
+    ExplanationTemplate("target_greeks_basis", "values_seen", "Per position"),
+    ExplanationTemplate("target_greeks_basis_units", "values_seen", "Per position, {count} units", {"count": Count}),
     ExplanationTemplate("target_greeks_no_time_left", "values_seen",
                         "No Greeks at expiry: the options have no time left."),
     # GC-TP R-19a (REQ-144 AC-1..AC-4, Sensibull 020): the Projected badge and the Target block's two captions
@@ -1518,6 +1541,28 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("adjust_check_type_name", "values_seen", "{name}", {"name": PlaybookTypeName}),
     # a playbook stage's name as the user typed it ("Last day"): it has spaces, so it is catalogue text, not an id
     ExplanationTemplate("adjust_check_stage_name", "values_seen", "{name}", {"name": PlaybookName}),
+    # ADR-300 (applies ADR-216; GC-ICFIX P2): the guided builder's entry-guide line, a fact with both numbers
+    ExplanationTemplate("entry_guide_breaks_call", "values_seen",
+                        "Sold call delta {delta}; the entry guide of the default rule set ({rule_set}) "
+                        "is {low} to {high}.",
+                        {"delta": Amount, "rule_set": PlaybookName, "low": Amount, "high": Amount}),
+    ExplanationTemplate("entry_guide_breaks_put", "values_seen",
+                        "Sold put delta {delta}; the entry guide of the default rule set ({rule_set}) "
+                        "is {low} to {high}.",
+                        {"delta": Amount, "rule_set": PlaybookName, "low": Amount, "high": Amount}),
+    ExplanationTemplate("entry_guide_breaks_call_partial", "values_seen",
+                        "Sold call delta {delta}; the entry guide of the default rule set ({rule_set}) "
+                        "is {low} to {high}. The other sold leg could not be checked.",
+                        {"delta": Amount, "rule_set": PlaybookName, "low": Amount, "high": Amount}),
+    ExplanationTemplate("entry_guide_breaks_put_partial", "values_seen",
+                        "Sold put delta {delta}; the entry guide of the default rule set ({rule_set}) "
+                        "is {low} to {high}. The other sold leg could not be checked.",
+                        {"delta": Amount, "rule_set": PlaybookName, "low": Amount, "high": Amount}),
+    ExplanationTemplate("entry_guide_breaks_both", "values_seen",
+                        "Sold put delta {put} and sold call delta {call}; the entry guide of the default rule set "
+                        "({rule_set}) is {low} to {high}.",
+                        {"put": Amount, "call": Amount, "rule_set": PlaybookName, "low": Amount, "high": Amount}),
+    ExplanationTemplate("entry_guide_unchecked", "values_seen", "Could not check against the entry guide."),
     # GC-ADJ2 step 5 (REQ-112 AC-2/AC-6, REQ-162): suggestion outcomes, dismiss reasons and the inbox's fixed words
     ExplanationTemplate("suggestion_outcome_open", "values_seen", "Open"),
     ExplanationTemplate("suggestion_outcome_dismissed", "values_seen", "You dismissed this"),
@@ -1544,11 +1589,29 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("adjust_condition_line", "values_seen", "{label}: {value} {unit} (rule {threshold} {unit})",
                         {"label": PlaybookTriggerLabel, "value": PlaybookField, "unit": PlaybookUnit,
                          "threshold": PlaybookField}),
+    # ADR-294 / ADR-245: the profit target compares profit BEFORE charges; the line names the limit used and the basis
+    ExplanationTemplate("adjust_condition_line_before_charges", "values_seen",
+                        "{label}: {value} {unit} before charges (rule {threshold} {unit})",
+                        {"label": PlaybookTriggerLabel, "value": PlaybookField, "unit": PlaybookUnit,
+                         "threshold": PlaybookField}),
+    # ADR-294 (2) (GC-ICFIX u103): the target alert's sentence, the figure it used and the after-charges result beside it
+    ExplanationTemplate("adjust_target_reached", "values_seen",
+                        "Profit before charges {before} reached your target of {pct}%; after charges {after}",
+                        {"before": SignedRupeesPaisa, "pct": Amount, "after": SignedRupeesPaisa}),
+    ExplanationTemplate("adjust_target_reached_no_after", "values_seen",
+                        "Profit before charges {before} reached your target of {pct}%; after charges not available: "
+                        "{reason}", {"before": SignedRupeesPaisa, "pct": Amount, "reason": Explained}),
     ExplanationTemplate("adjust_condition_line_plain", "values_seen", "{label}: {value} (rule {threshold})",
                         {"label": PlaybookTriggerLabel, "value": PlaybookField, "threshold": PlaybookField}),
     # #650: a trigger whose value is rupees (T-02: the expiry P&L at spot) or a count (T-18: adjustments used) has no
     # unit word in its playbook row; its value is shown in its own unit, not as a 4-decimal number
     ExplanationTemplate("adjust_condition_line_rupees", "values_seen", "{label}: {value} (rule {threshold})",
+                        {"label": PlaybookTriggerLabel, "value": Rupees, "threshold": Rupees}),
+    # GC-ICFIX H: T-02's figure is the whole trade's profit or loss at expiry if the index stays at its current level,
+    # compared with zero; the label alone ("Spot crosses a breakeven") read as a spot price
+    ExplanationTemplate("adjust_condition_line_t02", "values_seen",
+                        "{label}: profit or loss at expiry if the index stays at its current level {value} "
+                        "(rule: below {threshold})",
                         {"label": PlaybookTriggerLabel, "value": Rupees, "threshold": Rupees}),
     ExplanationTemplate("adjust_condition_line_count", "values_seen", "{label}: {value} (rule {threshold})",
                         {"label": PlaybookTriggerLabel, "value": Count, "threshold": Count}),
@@ -1588,6 +1651,49 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         {"a": Explained, "b": Explained, "c": Explained}),
     ExplanationTemplate("plan_stop_words_first", "values_seen", "{words}, whichever comes first",
                         {"words": Explained}),
+    # GC-ICFIX u113 round 3 (ADR-304 (3), ADR-294, ADR-296): the one sentence each limit row of the rule check carries.
+    # The percent and the rupee amount are the evaluator's own numbers; a rule that is not checked prints its reason and no number.
+    ExplanationTemplate("limit_target", "values_seen", "Target: profit of {pct} % of max profit, before charges",
+                        {"pct": Amount}),
+    ExplanationTemplate("limit_stop_loss", "values_seen", "Stop: loss of {pct} % of max loss ({amount})",
+                        {"pct": Amount, "amount": Rupees}),
+    ExplanationTemplate("limit_stop_loss_plain", "values_seen", "Stop: loss of {pct} % of max loss", {"pct": Amount}),
+    ExplanationTemplate("limit_stop_credit", "values_seen", "Stop: loss of {multiple} x credit ({amount})",
+                        {"multiple": Amount, "amount": Rupees}),
+    ExplanationTemplate("limit_stop_credit_plain", "values_seen", "Stop: loss of {multiple} x credit",
+                        {"multiple": Amount}),
+    ExplanationTemplate("limit_later", "values_seen", "{line}; {pct} % nearer expiry", {"line": Explained, "pct": Amount}),
+    ExplanationTemplate("limit_tightened", "values_seen", "{line}; tightened by {pct} % today",
+                        {"line": Explained, "pct": Amount}),
+    ExplanationTemplate("limit_already_true", "values_seen",
+                        "{line}. Already true: alerts after it clears and crosses again", {"line": Explained}),
+    ExplanationTemplate("limit_target_off", "values_seen", "Target: not being checked: {reason}", {"reason": Reason}),
+    ExplanationTemplate("limit_stop_off", "values_seen", "Stop: not being checked: {reason}", {"reason": Reason}),
+    # GC-ICFIX u141-u143 (ADR-304 (3), ADR-296, ADR-305): the check's own read time, the stop warning's rupee lines and the two
+    # limit sentences that name their cause (no Target typed for this trade; already true after adjustment N).
+    ExplanationTemplate("limit_target_none", "values_seen", "Target: no target is set for this trade"),
+    ExplanationTemplate("limit_already_true_after", "values_seen",
+                        "{line}. Already true after adjustment {n}: alerts after it clears and crosses again",
+                        {"line": Explained, "n": Amount}),
+    ExplanationTemplate("check_as_of", "values_seen", "As of {time} IST", {"time": ClockSeconds}),
+    ExplanationTemplate("stop_fired_loss", "values_seen",
+                        "Stop reached: loss now {loss} ({loss_pct} % of max loss); stop line {stop} ({stop_pct} % of max loss)",
+                        {"loss": Rupees, "loss_pct": Amount, "stop": Rupees, "stop_pct": Amount}),
+    ExplanationTemplate("stop_fired_credit", "values_seen",
+                        "Stop reached: loss now {loss}; stop line {stop} ({multiple} x credit)",
+                        {"loss": Rupees, "stop": Rupees, "multiple": Amount}),
+    ExplanationTemplate("stop_held_loss", "values_seen",
+                        "Stop was reached earlier: loss then {loss_pct} % of max loss; "
+                        "stop line {stop_pct} % of max loss",
+                        {"loss_pct": Amount, "stop_pct": Amount}),
+    ExplanationTemplate("stop_held_credit", "values_seen",
+                        "Stop was reached earlier: loss then {loss}; stop line {stop}",
+                        {"loss": Rupees, "stop": Rupees}),
+    ExplanationTemplate("stop_fired_at", "values_seen", "{line}; reached at {time} IST",
+                        {"line": Explained, "time": HourMinute}),
+    # issue 19: a stop read on a later day than the one it was reached on names that day (the server decides "today")
+    ExplanationTemplate("stop_fired_on", "values_seen", "{line}; reached on {date} at {time} IST",
+                        {"line": Explained, "date": Date, "time": HourMinute}),
     ExplanationTemplate("adjust_spot_from_feed", "values_seen", "Spot from the live feed"),
     ExplanationTemplate("adjust_spot_from_rest_quote", "values_seen", "Spot from a one-time price request"),
     ExplanationTemplate("adjust_spot_from_last_close", "values_seen", "Spot from the last close"),
@@ -1739,6 +1845,14 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("paper_extremes_before_charges", "values_seen",
                         "Maximum profit and maximum loss are before charges and taxes: the charges could not be "
                         "priced."),
+    # ADR-256: the exit confirm list, when the legs left open can lose more than before (a sold option lost its bought one)
+    ExplanationTemplate("paper_exit_widens_loss", "values_seen",
+                        "After these orders, maximum loss: {before} before, {after} after.",
+                        {"before": Explained, "after": Explained}),
+    ExplanationTemplate("paper_exit_less_protected", "values_seen",
+                        "Sold option with less protection: {legs}.", {"legs": Explained}),
+    ExplanationTemplate("paper_exit_warning_join", "values_seen", "{first} {second}",
+                        {"first": Explained, "second": Explained}),
     ExplanationTemplate("paper_trigger_level", "values_seen", "{level}", {"level": IndexLevel}),
     ExplanationTemplate("paper_alert_title", "what_triggered", "Paper strategy — {name}", {"name": Explained}),
     ExplanationTemplate("paper_alert_leg", "values_seen", "{contract} at {price}",
@@ -1820,6 +1934,10 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("execute_cost_charges_not_included", "values_seen",
                         "Charges and taxes are not included: the charge rates could not be read."),
     # GC-TP R-20 / R-15 (ADR-210, owner-approved 2026-10-29): why a paper or what-if figure is a dash; one per reason code
+    # GC-ICFIX u103 round 2 (ADR-276 (4), ADR-294 (2)): a real-book strategy: no charges paid on broker orders are read
+    ExplanationTemplate("paper_reason_charges_not_read", "values_seen",
+                        "Charges paid on broker orders are not read by this app, so the result after charges "
+                        "is not shown."),
     ExplanationTemplate("paper_reason_not_priced", "values_seen",
                         "Charges not shown: an order's value could not be worked out."),
     ExplanationTemplate("paper_reason_model_refused", "values_seen",
@@ -1836,6 +1954,13 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         "Stale: this target figure uses prices older than expected and may be out of date."),
     # words that were already in the product (moved from the browser, unchanged): the paused book and the extremes
     ExplanationTemplate("paper_reason_prices_not_live", "values_seen", "Paper P&L paused - prices not live"),
+    # ADR-311: an open leg with no live price - its cell, and the line naming it (an expired contract is called expired)
+    ExplanationTemplate("leg_no_price", "values_seen", "no price"),
+    ExplanationTemplate("unpriced_leg", "values_seen", "{contract}", {"contract": Explained}),
+    ExplanationTemplate("unpriced_leg_expired", "values_seen", "{contract} (expired)", {"contract": Explained}),
+    ExplanationTemplate("unpriced_legs", "values_seen", "No price for: {legs}.", {"legs": Explained}),
+    ExplanationTemplate("unpriced_legs_expired", "values_seen", "Expired contracts have no price: {legs}.",
+                        {"legs": Explained}),
     ExplanationTemplate("paper_reason_multi_expiry", "values_seen",
                         "Profit left and Loss left are not worked out: the open contracts have different expiries."),
     ExplanationTemplate("paper_extremes_prices_not_live", "values_seen",
@@ -1865,6 +1990,10 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         "Not available: {leg} has no implied volatility to value it at the nearer expiry.",
                         {"leg": LegRef}),
     ExplanationTemplate("adjust_cmp_curve_estimated", "values_seen", "estimated at the nearer expiry"),
+    # ADR-307 (2): beside every nearer-expiry estimate curve; the flat ends are not the most that can be lost
+    ExplanationTemplate("adjust_cmp_curve_estimate_note", "values_seen",
+                        "This curve is an estimate at the nearer expiry only. The later leg stays open after that date, "
+                        "so the loss shown is not a limit, and the maximum loss cannot be estimated."),
     ExplanationTemplate("adjust_cmp_near_no_rate", "values_seen",
                         "Not available: no interest rate was read to value the later expiry's legs."),
     ExplanationTemplate("adjust_cmp_no_bid_ask", "values_seen", "Not available: {leg} has no bid or no ask.",
@@ -1883,6 +2012,10 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("adjust_flag_oi_unknown", "values_seen", "OI not known"),
     # #624 item 1: the playbook's limits could not be read, so none was applied (said in the reply, never a silent skip)
     ExplanationTemplate("adjust_limits_not_applied", "values_seen", "limits not applied: playbook unreadable"),
+    # ADR-297 (D4): at the plan's adjustment maximum the offer screen says so, and each withheld approach carries the reason
+    ExplanationTemplate("adjust_limit_reached", "values_seen", "Adjustment limit reached ({used} of {max})",
+                        {"used": Recorded, "max": Recorded}),
+    ExplanationTemplate("adjust_limit_reason", "values_seen", "Adjustment limit reached"),
     # ADR-272 / issues 79, 87, 77: how old the prices behind a Compare reply are (a stale reply names its age and is not ranked)
     ExplanationTemplate("adjust_prices_stale", "values_seen",
                         "Prices are {minutes} min old (last update {time} IST): figures below are not live.",
@@ -1927,6 +2060,10 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("paper_extremes_unknown", "values_seen", "Profit left and Loss left could not be calculated."),
     # GC-ADJ2 step 1A (REQ-158 AC-4): deleting the active playbook says the system one is active again
     ExplanationTemplate("playbook_system_active_again", "values_seen", "{type}: the system playbook is active again",
+                        {"type": PlaybookTypeName}),
+    # GC-ICFIX issue 7 (REQ-158 AC-6): "Customise triggers" from a trade edits that trade's own rules only
+    ExplanationTemplate("plan_rules_name", "values_seen",
+                        "Rules for this trade only ({type}). Your other trades and your playbooks are not changed.",
                         {"type": PlaybookTypeName}),
     # GC-ADJ2 step 3 (REQ-160 AC-3, AC-4): the playbook Test step's two fixed sentences
     ExplanationTemplate("playbook_test_no_strategy", "values_seen", "No current {type} strategy to test against",

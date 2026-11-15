@@ -19,6 +19,7 @@ from ofo.adjustment.approaches import (
     planned_price,
 )
 from ofo.adjustment.preferences import from_values
+from ofo.engine.adjust_history import HistoryOrder
 from ofo.marketdata.spot_source import SourceState
 from ofo.settings import defaults
 from ofo_app import adjustment_readers as readers
@@ -673,3 +674,19 @@ def test_gcic1_r5_second_pass_ids_answer_states():
     assert with_reach[0] == ids[f"N{NEAR:%m%d}23750CE"] and len(with_reach) > 1
     no_model = dataclasses.replace(market, reach={})
     assert route.second_pass_ids([gap], no_model, _ic(), cfg) == [ids[f"N{NEAR:%m%d}23750CE"]]
+
+
+def test_the_limit_check_reads_the_same_count_so_a_trade_is_not_blocked_by_its_own_exit():
+    """Moved from tests/engine/test_adjust_history.py (a domain test may not import ofo_app): same assertions."""
+    clock = datetime.datetime(2026, 1, 5, 10, 0, tzinfo=datetime.UTC)
+    two = 2
+    at = [clock + datetime.timedelta(hours=i) for i in range(4)]
+    orders = [HistoryOrder("C1", "SELL", 65, D("100"), "open", at[0]),
+              HistoryOrder("C2", "SELL", 65, D("50"), "add", at[1]),  # adjustment 1
+              HistoryOrder("C2", "BUY", 65, D("40"), "exit", at[2]),  # adjustment 2 (part exit: C1 stays open)
+              HistoryOrder("C1", "BUY", 65, D("90"), "exit", at[3])]  # Exit all: closes the last open leg
+    rows = [types.SimpleNamespace(order=types.SimpleNamespace(contract_id=o.instrument_id, side=o.side,
+                                                              quantity=o.quantity, price=o.price, kind=o.kind,
+                                                              placed_at=o.placed_at)) for o in orders]
+    assert readers.history_count(rows, lambda cid: True) == two
+    assert readers.history_count(rows[:3], lambda cid: True) == two  # before the exit: still 2 (a part exit counts)

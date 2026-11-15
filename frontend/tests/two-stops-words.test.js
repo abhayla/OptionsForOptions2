@@ -1,7 +1,10 @@
 // ADR-247 (replaces GC-MU A4's browser table): the stops are worded once, by the server (settings_in_force.stops_of ->
 // `stop_words` on GET /api/strategies/{id}/adjustment-plan). The browser shows that text and never builds it from the
 // playbook body's guards; the editor's draft preview leaves the stop out.
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
+
+// the card reads its plan itself (GC-ICFIX u112): the reply below is what the mocked read answers
+vi.mock('@/services/api', () => ({ default: { get: () => Promise.resolve({ data: globalThis.__PLAN_REPLY }) } }))
 import { mount, flushPromises } from '@vue/test-utils'
 import { planLine, summaryLines, labelMaps } from '../src/lib/playbookEditor.js'
 import { readPlan } from '../src/lib/adjustPlan.js'
@@ -19,11 +22,15 @@ const REPLY = {
 }
 
 describe('the plan stop line is the server words, never a browser reading of the guards', () => {
-  it('a reply with stop_words and a body with only a max-loss guard shows the server words', async () => {
-    const w = mount(PlanEntry, { props: { strategyId: 70 }, global: { stubs: { AdjustPlanSheet: true } } })
-    w.vm.read = readPlan(REPLY)
+  it('the card words each stop once, from the rule check\'s rows; the plan\'s own stop words are not repeated beside them', async () => {
+    globalThis.__PLAN_REPLY = REPLY
+    const limits = [{ rule_id: 'T-06', text: 'Stop: loss of 50 % of max loss (₹11,948.52)', state: 'checked' },
+      { rule_id: 'credit_stop', text: 'Stop: loss of 2 x credit (₹17,836.00), whichever comes first', state: 'checked' }]
+    const w = mount(PlanEntry, { props: { strategyId: 70, checkStatus: 'ok', check: { limits, paused: null, playbook: { source: 'plan' } } },
+      global: { stubs: { AdjustPlanSheet: true } } })
     await flushPromises()
-    expect(w.get('[data-testid=plan-entry-guards]').text()).toContain(SERVER_WORDS)
+    expect(w.text()).toContain('Stop: loss of 2 x credit (₹17,836.00), whichever comes first')
+    expect(w.text()).not.toContain(SERVER_WORDS)
     // the editor's preview of a body holding only a max-loss guard words no stop of its own
     const body = { ...BODY, guards: { stop_line_pct_of_max_loss: '50' } }
     expect(summaryLines(body, 'Iron condor', 'monthly', labelMaps(LABELS)).find((l) => l.key === 'plan')).toBeUndefined()

@@ -65,7 +65,7 @@ describe('istTime', () => {
   })
 })
 
-import { daysByExpiry, expiryWithDays } from '@/lib/displayFormat'
+import { daysByExpiry, expiryText, expiryWithDays, instrumentText, setShownDate } from '@/lib/displayFormat'
 describe('REQ-135 AC-2: expiryWithDays prints the server\'s count and counts nothing', () => {
   it('prints the day count as sent, "Today (0 days)" for 0, the date as sent for a missing or unreadable count', () => {
     expect(expiryWithDays('2026-10-27', 6)).toBe('27 Oct (6 days)')
@@ -80,6 +80,35 @@ describe('REQ-135 AC-2: expiryWithDays prints the server\'s count and counts not
     expect(expiryWithDays(null, 3)).toBe('')
     expect(daysByExpiry([{ expiry: '2026-10-27', days: 6 }, { days: 1 }])).toEqual({ '2026-10-27': 6 })
     expect(daysByExpiry(undefined)).toEqual({})
+  })
+})
+
+describe('u510: an expiry in another year than the server\'s shown date carries its year', () => {
+  const today = '2026-11-15' // the server's shown date (the expiries reply's `today`)
+  it('same-year dates keep the plain form; next-year dates print the year', () => {
+    expect(expiryWithDays('2026-11-17', 2, today)).toBe('17 Nov (2 days)')
+    expect(expiryWithDays('2026-11-23', 8, today)).toBe('23 Nov (8 days)')
+    expect(expiryWithDays('2027-01-28', 74, today)).toBe('28 Jan 2027 (74 days)')
+    expect(expiryWithDays('2027-01-28', null, today)).toBe('28 Jan 2027')
+  })
+  it('no shown date: the year is ALWAYS printed, never a year-less expiry that may be a different year', () => {
+    setShownDate(null) // the setup sets one for every test; here none is known
+    expect(expiryWithDays('2027-01-28', 74)).toBe('28 Jan 2027 (74 days)')
+    expect(expiryWithDays('2026-12-31', null)).toBe('31 Dec 2026')
+    expect(expiryText('2030-12-31')).toBe('31 Dec 2030')
+  })
+  it('every expiry text goes through the one helper: names, instrument text, the shown date set once', () => {
+    const leg = { underlying: 'NIFTY', expiry: '2030-12-31', instrument_type: 'CE', strike: '23000.00' }
+    setShownDate(null) // the setup sets one for every test; here none is known
+    expect(contractName({ ...leg, expiry: '2026-12-31' })).toBe('NIFTY 31 Dec 2026 23000 CE')
+    expect(contractName(leg)).toBe('NIFTY 31 Dec 2030 23000 CE')
+    expect(instrumentText({ quantity: '65', expiry: '2030-12-31', strike: '23000', instrument: 'CE' }, 1)).toBe('1 x 31 Dec 2030 23000 CE')
+    setShownDate('2026-11-15')
+    try {
+      expect(contractName({ ...leg, expiry: '2026-12-31' })).toBe('NIFTY 31 Dec 23000 CE')
+      expect(contractName(leg)).toBe('NIFTY 31 Dec 2030 23000 CE')
+      expect(expiryText('2026-11-17')).toBe('17 Nov')
+    } finally { setShownDate(null) }
   })
 })
 

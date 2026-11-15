@@ -11,12 +11,12 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import Icon from '@/components/common/Icon.vue'
-import ToastHost from '@/components/layout/ToastHost.vue'
 import { useToast } from '@/composables/useToast'
-import { compareUrl } from '@/lib/adjustDrawer'
+import { compareAllUrl } from '@/lib/adjustDrawer'
 import { bellCount, dropAlerts, openRecords, readOpportunities, readPaperAlerts, takeAlerts, takeOpportunities } from '@/lib/paperAlerts'
+import { plainName } from '@/lib/saveDraft'
 import { usePaperRefresh } from '@/lib/usePaperRefresh'
-import { ACCOUNT_ITEMS, ACCOUNT_LABEL, ITEM_DESCRIPTIONS, MEGA_MENUS, SECTIONS } from '@/router/nav'
+import { ACCOUNT_LABEL, ACCOUNT_MENU_ITEMS, ITEM_DESCRIPTIONS, MEGA_MENUS, MENU_SECTIONS, firstBuiltPath } from '@/router/nav'
 
 const HOVER_DELAY_MS = 150
 const SMALL_MENU_WIDTH = 256
@@ -38,11 +38,14 @@ const router = useRouter()
 const { showToast } = useToast()
 const total = computed(() => bellCount())
 // IC e2e B4: a new OPEN adjustment record shows one toast; clicking it opens the strategy's compare (suggestion drawer)
+// Issue 8: one toast per trade with a new record, naming the trade and the rule (the server's words) and opening THAT trade's offer
 function announce(fresh) {
-  if (!fresh.length) return
-  const first = fresh[0]
-  const ids = openRecords.list.filter((r) => r.strategy_id === first.strategy_id).map((r) => r.id)
-  showToast('New adjustment opportunity. Open it?', 'info', { onClick: () => router.push(compareUrl(first.strategy_id, [], ids)) })
+  for (const sid of new Set(fresh.map((r) => r.strategy_id))) {
+    const mine = fresh.filter((r) => r.strategy_id === sid)
+    const ids = openRecords.list.filter((r) => r.strategy_id === sid).map((r) => r.id)
+    const what = [plainName(mine[0].strategy_name), mine.map((r) => r.text).filter(Boolean).join('; ')].filter(Boolean).join(': ')
+    showToast(`New adjustment opportunity${what ? ` - ${what}` : ''}. Open it?`, 'info', { onClick: () => router.push(compareAllUrl(sid, ids)) })
+  }
 }
 // GC-TP step 7b: the bell's count is the server's unread number, re-read on the paper refresh tick (no timer of its own);
 // IC e2e B4: the open adjustment records are read on that same tick; a failed read of them leaves the paper count alone
@@ -73,7 +76,7 @@ let openedByHover = false
 
 const pageTitle = computed(() => route.meta?.title ?? '')
 const activeSection = computed(() => route.meta?.section ?? null)
-const openSection = computed(() => SECTIONS.find((s) => s.key === openKey.value) ?? null)
+const openSection = computed(() => MENU_SECTIONS.find((s) => s.key === openKey.value) ?? null)
 const isMega = computed(() => Boolean(openKey.value && MEGA_MENUS[openKey.value]))
 
 function item(section, slug) {
@@ -250,7 +253,7 @@ onBeforeUnmount(() => {
       <nav class="min-w-0 flex-1 overflow-x-auto" aria-label="Primary" data-testid="primary-nav">
         <ul class="mx-auto flex h-full w-max items-stretch whitespace-nowrap">
           <li
-            v-for="s in SECTIONS"
+            v-for="s in MENU_SECTIONS"
             :key="s.key"
             :ref="(el) => (sectionItems[s.key] = el)"
             class="relative flex items-stretch"
@@ -258,7 +261,7 @@ onBeforeUnmount(() => {
             @pointerleave="onSectionLeave"
           >
             <router-link
-              :to="`/${s.key}`"
+              :to="firstBuiltPath(s.key)"
               class="flex items-center pl-3 text-[15px] leading-5 font-medium"
               :class="activeSection === s.key ? 'text-accent' : 'text-ink hover:text-accent'"
               :data-testid="`nav-${s.key}`"
@@ -331,7 +334,7 @@ onBeforeUnmount(() => {
               >{{ ACCOUNT_LABEL }}</router-link
             >
             <ul class="border-t border-line py-1">
-              <li v-for="[slug, label] in ACCOUNT_ITEMS" :key="slug">
+              <li v-for="[slug, label] in ACCOUNT_MENU_ITEMS" :key="slug">
                 <router-link
                   :to="`/settings/${slug}`"
                   class="flex h-10 items-center px-3 text-sm text-ink-muted hover:bg-surface-muted hover:text-ink"
@@ -397,6 +400,5 @@ onBeforeUnmount(() => {
       </div>
       <p v-if="openSection.note" class="mt-1 border-t border-line px-3 pt-2 text-xs text-ink-muted" data-testid="nav-menu-note">{{ openSection.note }}</p>
     </div>
-    <ToastHost />
   </header>
 </template>

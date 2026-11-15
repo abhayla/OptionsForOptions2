@@ -49,13 +49,14 @@ from ofo.adjustment.approaches import (
 )
 from ofo.adjustment.compare import POP_TEXT, Column, Context, MarginRead, compare
 from ofo.adjustment.compare_cost_rows import breakdown_lines, warn_threshold
-from ofo.adjustment.offered import limit_filter
+from ofo.adjustment.offered import EXIT_REDUCE, limit_filter, limit_notice
 from ofo.adjustment.preferences import Preferences
 from ofo.charges import ChargeRates
-from ofo.charges.calculator import ChargeOrder, charges_for_orders
-from ofo.charges.round_trip import charge_segment, to_paise_up
+from ofo.charges.calculator import ChargeOrder
+from ofo.charges.round_trip import charge_segment
 from ofo.engine import adjust_money
 from ofo.engine.black_scholes import Greeks
+from ofo.engine.extremes_charges import review_charge_lines
 from ofo.engine.legs import Action, Instrument, Leg
 from ofo.engine.metrics import UNLIMITED, MultiExpiryError
 from ofo.engine.pop import Why
@@ -70,7 +71,7 @@ from ofo.engine.whole_trade import (
 )
 from ofo.errors.explanations import EXPLANATIONS, approach_about_id, approach_name_id, render_explanation
 from ofo.marketdata.spot_source import SourceReading, SpotAnswer, feed_reading
-from ofo.money import PAISE
+from ofo.money import to_paise
 from ofo.outcome.service import MARGIN_CHECKED, Margin
 from ofo.timeutil import IST
 from pydantic import BaseModel, ConfigDict, Field
@@ -109,6 +110,10 @@ class Tracked:
     adjustments_used: int | None = None  # None: the count could not be read (the compare shows "-" with the reason)
     #: GC-IC1 6a (S-12, ADR-240 (3)): when the strategy was entered (its first stored order); None = not known
     entered_at: datetime.datetime | None = None
+    #: ADR-276: the strategy is a real (broker) book: the app reads no charges paid on it, so ``paid_charges`` is None
+    real_book: bool = False
+    #: the charges already paid, exact (``paper_charges(...).total``); ``paid_charges`` is it rounded up; None = unknown
+    paid_exact: Decimal | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -313,8 +318,13 @@ def _money(value: Decimal | object) -> str:
     return "UNLIMITED" if value is UNLIMITED else value  # type: ignore[return-value]  # Money serializes as text
 
 
+def _rupees(value: Decimal | object) -> Any:
+    """A rupee figure at the reply boundary: rounded once, as the trade page does (UNLIMITED stays)."""
+    return "UNLIMITED" if value is UNLIMITED else to_paise(value)  # type: ignore[arg-type]
+
+
 def _figures(f: WholeTradeFigures) -> dict:
-    return {"max_profit": _money(f.max_profit), "max_loss": _money(f.max_loss),
+    return {"max_profit": _rupees(f.max_profit), "max_loss": _rupees(f.max_loss),
             "breakevens": [_money(b) for b in f.breakevens],
             "loss_regions": [[None if x is None else _money(x) for x in r[:2]] for r in f.loss_regions]}
 
@@ -382,12 +392,8 @@ def _spot_block(answer: SpotAnswer) -> dict:
 # ---- pricing (engine time) ----------------------------------------------------------------------------------------
 
 def _strategy(legs: Sequence[PositionLeg], lot: int) -> Strategy:
-    return Strategy(tuple(Leg(Action(x.side), Instrument(x.type), x.strike, x.expiry, x.lots * lot, x.entry)
-                          for x in legs))
-
-
-def _charges(orders: Sequence[ChargeOrder], rates: ChargeRates) -> Decimal:
-    return to_paise_up(charges_for_orders(list(orders), rates).total) if orders else Decimal(0)
+    return Strategy(tuple(Leg(Action(x.side), Instrument(x.type), x.strike, x.expiry, x.lots * lot, x.entry,
+                              exact_entry=True) for x in legs))
 
 
 def _closed_booked(built: ApproachLegs) -> Decimal:
@@ -409,8 +415,12 @@ class Priced:
 
 
 def price_after(legs: Sequence[PositionLeg], position: Position, booked: Decimal | None, paid: Decimal | None,  # noqa: PLR0913
-                own_orders: Sequence[ChargeOrder], rates: ChargeRates | None, market: MarketInputs) -> Priced:
-    """The whole-trade After of ``legs`` (``booked`` already includes the legs this approach closes)."""
+                own_orders: Sequence[ChargeOrder], rates: ChargeRates | None, market: MarketInputs,
+                paid_exact: Decimal | None = None) -> Priced:
+    """The whole-trade After of ``legs`` (``booked`` already includes the legs this approach
+    closes). With ``paid_exact`` the three charge lines add up to the exact total rounded UP ONCE (F-35), the figure
+    the trade page shows: the exit line takes the rounding remainder, so Max profit / Max loss agree to the paisa
+    (GC-ICFIX issue 3)."""
     if booked is None:
         return Priced(None, False, render_explanation("adjust_booked_unknown"))
     segment = charge_segment(position.underlying)
@@ -418,14 +428,14 @@ def price_after(legs: Sequence[PositionLeg], position: Position, booked: Decimal
     adjustment = exits = Decimal(0)
     if known:
         try:
-            adjustment = _charges(own_orders, rates)  # type: ignore[arg-type]
-            exits = _charges([ChargeOrder(segment, "SELL" if x.side == "BUY" else "BUY", x.lots * position.lot,
-                                          x.entry) for x in legs], rates)  # type: ignore[arg-type]
+            closing = [ChargeOrder(segment, "SELL" if x.side == "BUY" else "BUY", x.lots * position.lot, x.entry)
+                       for x in legs]
+            adjustment, exits = review_charge_lines(paid, paid_exact, own_orders, closing, rates)  # type: ignore[arg-type]
         except ValueError:
             known = False
     try:
         open_legs = _strategy(legs, position.lot) if legs else None  # None: every leg exited (A-31)
-        after = whole_trade_after(open_legs, booked_pnl=booked.quantize(PAISE),
+        after = whole_trade_after(open_legs, booked_pnl=booked,
                                   paid_charges=paid if known else Decimal(0),  # type: ignore[arg-type]
                                   adjustment_charges=adjustment if known else Decimal(0),
                                   open_exit_charges=exits if known else Decimal(0),
@@ -452,7 +462,7 @@ def _near_after(legs: Sequence[PositionLeg], position: Position, booked: Decimal
         return None, render_explanation("adjust_cmp_near_no_rate")
     zero = Decimal(0)
     try:
-        after = near_expiry_after(_strategy(legs, position.lot), booked_pnl=booked.quantize(PAISE),
+        after = near_expiry_after(_strategy(legs, position.lot), booked_pnl=booked,
                                   paid_charges=paid if known else zero,  # type: ignore[arg-type]
                                   adjustment_charges=adjustment if known else zero,
                                   open_exit_charges=exits if known else zero, rate=rate,
@@ -498,19 +508,19 @@ def priced_approach(a: str, tracked: Tracked, market: MarketInputs, spot: Decima
         return built, None
     booked = None if tracked.booked is None else tracked.booked + _closed_booked(built)
     return built, price_after(built.after, position, booked, tracked.paid_charges,
-                              _trade_orders(built, position.underlying), rates, market)
+                              _trade_orders(built, position.underlying), rates, market, tracked.paid_exact)
 
 
 def _after_block(priced: Priced, pop_on: bool) -> dict:
     if priced.after is None:
         return {"after": None, "charges": None, "pop": None, "after_reason": priced.reason}
     a = priced.after
-    charges = ({"this_adjustment": _money(a.adjustment_charges), "paid_so_far": _money(a.paid_charges),
-                "open_exit": _money(a.open_exit_charges), "not_available": None} if priced.charges_known else
+    charges = ({"this_adjustment": _rupees(a.adjustment_charges), "paid_so_far": _rupees(a.paid_charges),
+                "open_exit": _rupees(a.open_exit_charges), "not_available": None} if priced.charges_known else
                {"this_adjustment": None, "paid_so_far": None, "open_exit": None,
                 "not_available": render_explanation("adjust_charges_unknown")})
     return {"after": {"gross": _figures(a.gross), "after_charges": _figures(a.after_charges)
-                      if priced.charges_known else None, "booked_pnl": _money(a.booked_pnl)},
+                      if priced.charges_known else None, "booked_pnl": _rupees(a.booked_pnl)},
             "charges": charges, "pop": pop_block(a, pop_on, priced.charges_known), "after_reason": None}
 
 
@@ -578,10 +588,12 @@ async def adjustment_approaches(  # noqa: PLR0913, PLR0915 - FastAPI dependencie
         # goal contract decision 14 / catalogue S-11: at the plan maximum only exit and reduce approaches are offered,
         # through THE filter the check's T-19 pick uses (offered.limit_filter), never a second copy
         asked = list(limit_filter(asked, guards, tracked.adjustments_used))
+        reply["limit"] = limit_notice(guards, tracked.adjustments_used)  # ADR-297: the sentence
         exits = check.exit_inputs_of(guards, position, market.now)  # ADR-238: the same playbook read
 
         def price_all(m: MarketInputs) -> tuple[Priced, liquidity.Limits | None, Decimal | None, list]:
-            b = price_after(position.legs, position, tracked.booked, tracked.paid_charges, (), rates, m)
+            b = price_after(position.legs, position, tracked.booked, tracked.paid_charges, (), rates, m,
+                            tracked.paid_exact)
             lim, mp = liquidity_inputs(guards, b)  # no playbook, no limits
             return b, lim, mp, [(a, priced_approach(a, tracked, m, spot.value, rates,  # type: ignore[arg-type]
                                                     cfg, roll_basis=basis, limits=lim, max_profit=mp,
@@ -619,6 +631,7 @@ async def adjustment_approaches(  # noqa: PLR0913, PLR0915 - FastAPI dependencie
     reply["available"] = _available(position, market.chain, spot.value if spot.available else None, dict(built_list),
                                     cfg, limits, max_profit, exits)
     reply["days_to_expiry"] = _days_to_expiry(position)
+    reply["not_offered"] = _not_offered_by_limit(reply.get("limit"), reply["available"])
     total = time.perf_counter() - started
     log.info("adjustment approaches strategy=%s approaches=%s engine_s=%.4f total_s=%.4f",
              strategy_id, len(built_list), engine, total)
@@ -686,6 +699,17 @@ def _available(position: Position, chain: Sequence[ChainRow], spot: Decimal | No
     return out
 
 
+def _not_offered_by_limit(limit: Mapping[str, Any] | None,
+                          available: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    """ADR-297 (3): at the limit each approach that applies but is not exit / reduce is listed as not offered with the
+    limit reason (never silently dropped). Not in ``approaches``, so "Showing N of M" counts only what is offered."""
+    if limit is None:
+        return []
+    reason = render_explanation("adjust_limit_reason")
+    return [{"id": a["id"], "name": a["name"], "reason_id": "adjustment_limit_reached", "reason": reason}
+            for a in available if a["applicable"] and a["id"] not in EXIT_REDUCE]
+
+
 def _days_to_expiry(position: Position) -> int | None:
     """Whole days from the reply's market day (``position.today``) to the nearest open leg's expiry; None: no leg."""
     if not position.legs:
@@ -751,7 +775,9 @@ def _compare_block(cmp: Any) -> dict:
             "curves": {k: [[level, pnl] for level, pnl in points] for k, points in cmp.curves.items()},
             # C12: a curve valued at the nearer expiry close (legs on two expiries) is an estimate, labelled so the
             # screen never draws it as an at-expiry line
-            "curves_estimated": {k: render_explanation("adjust_cmp_curve_estimated") for k in cmp.estimated}}
+            "curves_estimated": {k: render_explanation("adjust_cmp_curve_estimated") for k in cmp.estimated},
+            # ADR-307 (2): one sentence whenever such a curve is drawn: the loss shown is not a limit
+            "curves_estimate_note": render_explanation("adjust_cmp_curve_estimate_note") if cmp.estimated else None}
 
 
 async def _margin(margin_of: ApproachMargin, built: ApproachLegs, market: MarketInputs) -> dict:

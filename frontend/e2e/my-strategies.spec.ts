@@ -53,12 +53,12 @@ test('a saved draft is listed after a reload and its Builder and Execute links o
   const row = page.locator(`[data-testid="strategy-row"][data-strategy-id="${id}"]`)
   await expect(row).toBeVisible()
   await expect(row.getByTestId('row-underlying')).toHaveText(/NIFTY|SENSEX/)
-  await expect(row.getByTestId('row-status')).toHaveText('draft')
-  // REQ-134 AC-4: name, first leg (one leg: no "and N more"), last saved and the tracked state, from the real list read
+  await expect(row.getByTestId('row-status')).toHaveText('Draft')
+  // REQ-134 AC-4: name, first leg (one leg: no "and N more"), last saved (no tracked state, ADR-299), from the real list read
   await expect(row.getByTestId('row-name')).toHaveText(NAME)
-  await expect(row.getByTestId('row-legs')).toHaveText(/^(NIFTY|SENSEX) \d{1,2} [A-Z][a-z]{2} \d+ (CE|PE)$/)
+  await expect(row.getByTestId('row-legs')).toHaveText(/^(NIFTY|SENSEX) \d{1,2} [A-Z][a-z]{2} \d{4} \d+ (CE|PE)$/) // u510: this page has read no expiries reply, so no shown date: the year prints
   await expect(row.getByTestId('row-saved')).toContainText('last saved')
-  await expect(row.getByTestId('row-tracked')).toHaveText(/^(Not tracked|Tracked|Tracking not known)$/)
+  await expect(row.getByTestId('row-tracked')).toHaveCount(0) // ADR-299 (2): "Tracked" is no longer shown anywhere
 
   // REQ-134 AC-4: the search is case-insensitive as typed; an unmatched text shows the no-match line
   await page.getByTestId('strategy-search').fill(NAME.toUpperCase())

@@ -1,0 +1,23 @@
+{
+ "id": "count-includes-the-closing-exit",
+ "scope": "project",
+ "class": "A count of 'adjustments used' that includes the final Exit all, so a finished trade reads over its own limit.",
+ "mechanism": "Every post-entry basket was counted; the closing basket that ends the trade is not an adjustment (ADR-255).",
+ "first_seen": {
+  "date": "2026-11-15",
+  "where": "GC-ICFIX walk-through, Completed trade 143, history page",
+  "evidence": "'Adjustments used 3 of 2' while the list row said 'Adjustments made 2'. Re-proof on the new head: 'Adjustments used 2 of 2', rows Entry, Adjustment 1, Adjustment 2, Exit."
+ },
+ "fix": "One history_count excludes the closing Exit all; the history row carries is_exit and the screen labels it 'Exit' (93df7dfa, 180aac00).",
+ "detection": {
+  "status": "guarded",
+  "checks": [
+   "tests/engine/test_adjust_history.py",
+   "frontend/tests/adjust-steps.test.js"
+  ],
+  "note": "All readers (limit filter, compare, T-18, rule marker, background, history page) read the same history_count (Sonnet review, YES). Known open: while the Exit basket is pending the marker goes N, N+1, N."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-255.md"
+ ]
+}

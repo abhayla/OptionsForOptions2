@@ -11,6 +11,7 @@ import Card from '@/components/common/Card.vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import { istTime } from '@/lib/displayFormat'
 import { plainName } from '@/lib/saveDraft'
+import { strategyStatusWord } from '@/lib/strategyStatus'
 import { SECTIONS } from '@/router/nav'
 
 const RECENT_COUNT = 3
@@ -80,7 +81,7 @@ onMounted(async () => {
           >
             <span v-if="plainName(s.name)" class="min-w-0 truncate font-medium" data-testid="recent-name">{{ plainName(s.name) }}</span>
             <span v-else class="text-ink-subtle" aria-hidden="true">—</span>
-            <span class="min-w-0 truncate text-ink-muted">{{ s.underlying }}, {{ s.status }}, last saved {{ istTime(s.updated_at) }}</span>
+            <span class="min-w-0 truncate text-ink-muted">{{ s.underlying }}, {{ strategyStatusWord(s) }}, last saved {{ istTime(s.updated_at) }}</span>
             <router-link to="/strategy/builder" class="text-accent hover:underline" :data-testid="`recent-open-${s.id}`">Open in Strategy Builder</router-link>
           </li>
         </ul>

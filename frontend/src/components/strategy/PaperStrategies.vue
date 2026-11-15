@@ -16,9 +16,9 @@
       <!-- Sensibull 050-053: the totals sit above the rows. A figure the reply omits is a dash with the server's reason. -->
       <dl v-if="totals && !compact" class="mt-2 flex flex-wrap gap-6 rounded bg-surface-muted px-3 py-2" data-testid="paper-totals">
         <div v-for="f in totalFigures" :key="f.id" class="text-right">
-          <dt class="text-xs text-ink-muted">{{ f.label }}</dt>
-          <dd class="text-lg font-semibold" :class="f.id === 'charges' ? '' : toneOf(totals[f.field])" :data-testid="`totals-${f.id}`">{{ pnlText(totals[f.field]) }}</dd>
-          <p v-if="totals[f.field] === null && totals[f.reason]" class="text-xs text-ink-muted" :data-testid="f.reasonId">{{ totals[f.reason] }}</p>
+          <dt class="text-xs text-ink-muted" :data-testid="`totals-${f.id}-label`">{{ shownFig(totals, f).label }}</dt>
+          <dd class="text-lg font-semibold" :class="f.id === 'charges' ? '' : toneOf(shownFig(totals, f).text)" :data-testid="`totals-${f.id}`"><AfterChargesTap :breakdown="shownFig(totals, f).breakdown ?? null">{{ pnlText(shownFig(totals, f).text) }}</AfterChargesTap></dd>
+          <p v-if="shownFig(totals, f).reason" class="text-xs text-ink-muted" :data-testid="f.reasonId">{{ shownFig(totals, f).reason }}</p>
         </div>
       </dl>
       <label class="mt-2 flex items-center gap-2"><input v-model="showClosed" type="checkbox" data-testid="show-closed" /> {{ SHOW_CLOSED_LABEL }}</label>
@@ -34,8 +34,10 @@
               <span class="block text-xs text-ink-muted" data-testid="paper-compact-legs">{{ legsText(g) }}</span>
             </span>
             <span class="shrink-0 text-right">
-              <span class="block font-semibold" :class="toneOf(g.total)" data-testid="paper-total">{{ g.total ?? '-' }}</span>
-              <span v-if="g.total === null" class="block text-xs text-ink-muted" data-testid="paper-compact-reason">{{ g.stateText || NO_TOTAL }}</span>
+              <span class="block font-semibold" :class="toneOf(g.totalAfter.text)" data-testid="paper-total">{{ g.totalAfter.text ?? '-' }}</span>
+              <span v-if="g.totalAfter.label" class="block text-xs text-ink-muted" data-testid="paper-total-label">{{ g.totalAfter.label }}</span>
+              <span v-if="g.totalAfter.reason" class="block text-xs text-ink-muted" data-testid="paper-total-reason">{{ g.totalAfter.reason }}</span>
+              <span v-if="g.totalAfter.text === null" class="block text-xs text-ink-muted" data-testid="paper-compact-reason">{{ g.stateText || NO_TOTAL }}</span>
             </span>
           </RouterLink>
         </li>
@@ -53,9 +55,9 @@
               </div>
               <dl class="flex flex-wrap gap-6" data-testid="paper-figures">
                 <div v-for="f in figures" :key="f.field" class="text-right">
-                  <dt class="text-xs text-ink-muted" data-testid="paper-figure-label">{{ f.label }}</dt>
-                  <dd class="text-lg font-semibold" :class="f.field === 'charges' ? '' : toneOf(g[f.field])" :data-testid="f.testid">{{ pnlText(g[f.field]) }}</dd>
-                  <p v-if="f.reason && g[f.field] === null && g[f.reason]" class="text-xs text-ink-muted" :data-testid="f.reasonId">{{ g[f.reason] }}</p>
+                  <dt class="text-xs text-ink-muted" :data-testid="f.field === 'total' ? 'paper-total-label' : 'paper-figure-label'">{{ shownFig(g, f).label }}</dt>
+                  <dd class="text-lg font-semibold" :class="f.field === 'charges' ? '' : toneOf(shownFig(g, f).text)" :data-testid="f.testid"><AfterChargesTap :breakdown="shownFig(g, f).breakdown ?? null">{{ pnlText(shownFig(g, f).text) }}</AfterChargesTap></dd>
+                  <p v-if="shownFig(g, f).reason" class="text-xs text-ink-muted" :data-testid="f.reasonId">{{ shownFig(g, f).reason }}</p>
                 </div>
               </dl>
             </div>
@@ -86,6 +88,8 @@
               </table>
             </div>
             <p v-if="g.stateText" class="mt-1" data-testid="paper-state">{{ g.stateText }}</p>
+            <!-- ADR-311: the open legs with no price, named by the server; the totals above stay paused -->
+            <p v-if="g.unpricedText" class="mt-1 text-xs text-ink-muted" data-testid="paper-unpriced">{{ g.unpricedText }}</p>
             <div class="mt-2 flex gap-3">
               <table v-if="g.positions.length" class="w-full min-w-0 flex-1 text-left">
                 <thead>
@@ -101,7 +105,7 @@
                     <td data-testid="paper-avg">{{ pnlText(p.averageText) }}</td>
                     <td data-testid="paper-ltp">{{ pnlText(p.ltpText) }}<span v-if="p.ltpReason && p.ltpText === null" class="block text-xs text-ink-muted" data-testid="paper-ltp-reason">{{ p.ltpReason }}</span></td>
                     <td data-testid="paper-leg-booked">{{ pnlText(p.booked) }}</td>
-                    <td data-testid="paper-leg-unbooked" :class="toneOf(p.unbooked)">{{ pnlText(p.unbooked) }}</td>
+                    <td data-testid="paper-leg-unbooked" :class="toneOf(p.unbooked)">{{ p.noPrice ?? pnlText(p.unbooked) }}</td>
                     <td data-testid="paper-leg-pnl" :class="toneOf(p.total)">{{ pnlText(p.total) }}</td>
                   </tr>
                 </tbody>
@@ -122,7 +126,7 @@
       </template>
     </template>
     <!-- GC-TP step 4b round 2 (REQ-109 AC-4; Sensibull 166-173): every exit goes through the shared confirm list, in lots -->
-    <PaperConfirmDialog :open="!!confirm" :orders="confirm ? confirm.orders : []" :busy="busy" :error="dialogError" :state="dialogState" @confirm="doExit" @cancel="cancelExit" @orderbook="openOrderbook" />
+    <PaperConfirmDialog :open="!!confirm" :orders="confirm ? confirm.orders : []" :strategy-id="confirm ? confirm.id : ''" :busy="busy" :error="dialogError" :state="dialogState" @confirm="doExit" @cancel="cancelExit" @orderbook="openOrderbook" />
   </section>
 </template>
 
@@ -131,6 +135,7 @@ import { computed, onMounted, ref } from 'vue'
 import api, { NEUTRAL_ERROR, NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import PaperStops from '@/components/strategy/PaperStops.vue'
+import AfterChargesTap from '@/components/common/AfterChargesTap.vue'
 import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
 import HeldNote from '@/components/strategy/HeldNote.vue'
 import { ALL_CLOSED_TEXT, GREEK_COLUMNS, PAPER_NO_FIGURE, SHOW_CLOSED_LABEL, exitRowsFor, readPaperList, visibleGroups } from '@/lib/paperList'
@@ -153,7 +158,7 @@ const EMPTY = 'No paper strategies yet. Build a strategy, then press Add to Pape
 const figures = [
   { field: 'total', label: 'Total P&L', testid: 'paper-total', reason: 'pauseReason', reasonId: 'paper-total-reason' },
   { field: 'unbooked', label: 'Unbooked P&L', testid: 'paper-unbooked', reason: 'pauseReason', reasonId: 'paper-unbooked-reason' },
-  { field: 'booked', label: 'Booked P&L', testid: 'paper-booked' },
+  { field: 'booked', label: 'Booked P&L', testid: 'paper-booked', reasonId: 'paper-booked-reason' },
   { field: 'charges', label: 'Charges', testid: 'paper-charges', reason: 'chargesReason', reasonId: 'paper-charges-reason' }, // beside, never subtracted
 ]
 // GC-TP R-19b: the card's summary line; each reads one server text and says why when it is absent
@@ -172,6 +177,16 @@ const totalFigures = [
   { id: 'charges', field: 'charges', reason: 'chargesReason', reasonId: 'totals-charges-reason', label: 'Charges' },
 ]
 // the server's text, printed as sent (a missing figure is a dash); the colour follows the server's sign, read from its text
+// GC-ICFIX u123 (ADR-263): the Total P&L figure is the reply's after-charges text with "(after charges)", or the before text with
+// "(before charges)" and the reason (lib/tracking afterFigure); every other figure is its own text and reason, unchanged
+const AFTER_OF = { total: 'totalAfter', booked: 'bookedAfter', unbooked: 'unbookedAfter' } // u124: Booked / Unbooked follow the same rule
+const shownFig = (src, f) => {
+  if (AFTER_OF[f.field]) {
+    const a = src[AFTER_OF[f.field]]
+    return { label: `${f.label} ${a.label}`.trim(), text: a.text, reason: a.reason, breakdown: a.breakdown }
+  }
+  return { label: f.label, text: src[f.field], reason: f.reason && src[f.field] === null ? src[f.reason] : null }
+}
 const pnlText = (v) => (v === null || v === undefined ? PAPER_NO_FIGURE : v)
 const toneOf = (v) => ({ profit: 'text-profit', loss: 'text-loss' })[signOf(String(v ?? '').replace(/,/g, '').replace('−', '-'))] ?? ''
 const builderLink = (g) => ({ path: '/strategy/builder', query: { strategy: String(g.id) } })

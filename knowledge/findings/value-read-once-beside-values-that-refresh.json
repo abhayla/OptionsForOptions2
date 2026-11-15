@@ -1,0 +1,28 @@
+{
+ "id": "value-read-once-beside-values-that-refresh",
+ "scope": "project",
+ "class": "A value fetched once when the page opens and shown beside values that refresh on a timer: it goes stale while the page looks live.",
+ "mechanism": "The rule check was read once per page open; the live figures refreshed.",
+ "first_seen": {
+  "date": "2026-11-13",
+  "where": "strategy 144 stop warning (GC-ICFIX issue 5)",
+  "evidence": "The stop warning showed 2.07 % for 5 minutes while the real figure was 7.46 %; the plan card would show a pre-tightening limit after 13:00."
+ },
+ "fix": "The rule check is re-read on the page's one refresh and shows the server's as-of time; a failed re-read keeps the old lines with a could-not-refresh mark.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "Unguarded: no named check is confirmed to cover the class; the proof was one real run, not a standing check."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-296.md",
+  "spec/decisions/ADR-304.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-11-13",
+   "where": "strategy 144 stop warning (GC-ICFIX issue 5)",
+   "evidence": "The stop warning showed 2.07 % for 5 minutes while the real figure was 7.46 %; the plan card would show a pre-tightening limit after 13:00."
+  }
+ ]
+}

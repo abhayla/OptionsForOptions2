@@ -20,6 +20,7 @@ import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
 import { istTime } from '@/lib/displayFormat'
 import { KITE_POSITIONS_URL } from '@/lib/execute'
 import { useOrderPath } from '@/lib/orderPath'
+import { brokerIsConnected } from '@/lib/brokerConnected'
 
 const route = useRoute()
 const POSITION_TABS = [{ key: 'positions', label: 'Positions' }, { key: 'paper', label: 'Paper' }]
@@ -32,7 +33,8 @@ let moving = false
 watch(tab, () => { if (!moving) chosen = true }, { flush: 'sync' })
 const paperOpenText = (n) => `${n} paper ${n === 1 ? 'strategy is' : 'strategies are'} open - see Paper.`
 const NO_ZERODHA = 'No open Zerodha positions.'
-const noReal = () => !!result.value && !result.value.strategies.length && !result.value.has_outside
+const notConnected = ref(false) // the read was refused AND the connection read says not connected (any other failure stays on Positions)
+const noReal = () => notConnected.value || (!!result.value && !result.value.strategies.length && !result.value.has_outside)
 // W-121 (REQ-073 AC-6, ADR-165): a link to the strategy's Execute screen is absent (not disabled) unless the server said
 // the order path is on; off, the strategy is named in plain text.
 const orderPathOn = useOrderPath()
@@ -65,6 +67,8 @@ onMounted(async () => {
         result.value = (await api.get('/positions')).data
       } catch (e) {
         errorParts.value = e?.parts ?? NEUTRAL_PARTS
+        // fail closed: only a connection read that succeeded and says not connected moves the tab; an unreadable one keeps Positions
+        try { notConnected.value = !brokerIsConnected((await api.get('/broker/status')).data) } catch { notConnected.value = false }
       } finally {
         loading.value = false
       }

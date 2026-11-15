@@ -54,7 +54,7 @@ const show = (v) => (String(v ?? '').trim() || '—')
         </div>
         <dl v-if="totalRow" class="text-sm">
           <div v-for="c in names" :key="c.id" class="flex items-center justify-between border-b border-line py-1.5">
-            <dt data-testid="lower-greek-name">{{ c.label }}<FigureHint v-if="c.id === 'decay'" id="decay" /></dt>
+            <dt data-testid="lower-greek-name">{{ c.label }}<FigureHint v-if="c.id === 'decay' || c.id === 'theta'" :id="c.id" /></dt>
             <dd class="tabular-nums" :data-field="c.id" data-testid="lower-greek-value">{{ greekText(totalRow.values[c.id], c.id, mode) }}</dd>
           </div>
         </dl>

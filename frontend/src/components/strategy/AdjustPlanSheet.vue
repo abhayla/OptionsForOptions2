@@ -7,7 +7,8 @@
 <template>
   <Modal :open="open" :title="labels.title || ' '" @close="emit('close')">
     <div data-testid="plan-sheet">
-      <p v-if="loadError" class="text-sm text-red-700" data-testid="plan-sheet-error">{{ loadError }}</p>
+      <LoadFailed v-if="loadError" :text="loadError" prefix="plan-sheet" @retry="load()" />
+      <p v-else-if="loading && !sheet" class="text-sm text-ink-muted" data-testid="plan-sheet-loading">{{ PLAN_LOADING_TEXT }}</p>
       <template v-else-if="sheet && sheet.kind === 'generic'">
         <p class="text-sm" data-testid="plan-sheet-generic">{{ sheet.text }}</p>
       </template>
@@ -18,6 +19,7 @@
             <option v-for="p in sheet.playbooks" :key="p.id" :value="p.id">{{ p.name }}</option>
           </select>
         </label>
+        <p v-if="refilledFrom" class="mt-1 text-xs text-ink-muted" data-testid="plan-refilled">{{ PLAN_REFILLED_TEXT(refilledFrom) }}</p>
         <div class="mt-3 grid grid-cols-2 gap-3">
           <label class="block text-sm font-medium">{{ labels.target }}
             <input v-model="form.target" class="mt-1 h-10 w-full rounded border border-line px-2" inputmode="decimal" data-testid="plan-target" />
@@ -37,8 +39,10 @@
         <button type="button" class="mt-3 text-sm font-semibold text-accent underline" data-testid="plan-customise" :disabled="busy" @click="customise">{{ labels.customise }}</button>
       </template>
       <AlertStylePicker v-if="open && sheet" :strategy-id="strategyId" />
-      <ErrorMessage v-if="errorParts" class="mt-3" :parts="errorParts" compact prefix="plan-error" data-testid="plan-error" />
     </div>
+    <template v-if="errorParts" #status>
+      <ErrorMessage :parts="errorParts" compact prefix="plan-error" data-testid="plan-error" />
+    </template>
     <template #actions>
       <button type="button" class="h-10 rounded-lg border border-line px-3 font-medium" data-testid="plan-close" @click="emit('close')">{{ labels.close }}</button>
       <template v-if="sheet && sheet.kind === 'sheet'">
@@ -53,9 +57,11 @@
 import { computed, inject, ref, watch } from 'vue'
 import { routerKey } from 'vue-router'
 import Modal from '@/components/common/Modal.vue'
+import LoadFailed from '@/components/common/LoadFailed.vue'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import AlertStylePicker from '@/components/strategy/AlertStylePicker.vue'
 import api, { NEUTRAL_PARTS } from '@/services/api'
+import { PLAN_LOADING_TEXT, PLAN_LOAD_FAILED_TEXT, PLAN_REFILLED_TEXT } from '@/lib/sharedStateText'
 import { asIsBody, customiseUrl, fetchPlan, formOf, saveBody, sendPlan } from '@/lib/adjustPlan'
 
 const props = defineProps({
@@ -71,32 +77,41 @@ const sheet = ref(null)
 const form = ref(formOf(null))
 const busy = ref(false)
 const loadError = ref('')
+const loading = ref(false)
 const errorParts = ref(null)
 const labels = computed(() => sheet.value?.labels ?? {})
+const refilledFrom = ref('') // the playbook name the fields were just refilled from; empty on open, reopen and failed reads
 
-async function load(pickId = null) {
+async function load(pickId = null, pickName = '') {
   const id = props.strategyId
   loadError.value = ''
+  refilledFrom.value = ''
   errorParts.value = null
+  loading.value = true
   try {
     const read = await fetchPlan(api, id, pickId)
     if (id !== props.strategyId) return // another strategy was opened while this read was out
     if (read.kind === 'invalid') {
       sheet.value = null
-      loadError.value = NEUTRAL_PARTS.what_happened
+      loadError.value = PLAN_LOAD_FAILED_TEXT
       return
     }
     sheet.value = read
-    if (read.kind === 'sheet') form.value = { ...read.prefill }
-  } catch (e) {
+    if (read.kind === 'sheet') {
+      form.value = { ...read.prefill }
+      if (pickId !== null) refilledFrom.value = pickName
+    }
+  } catch {
     if (id !== props.strategyId) return
     sheet.value = null
-    loadError.value = (e?.parts ?? NEUTRAL_PARTS).what_happened || NEUTRAL_PARTS.what_happened
+    loadError.value = PLAN_LOAD_FAILED_TEXT
+  } finally {
+    if (id === props.strategyId) loading.value = false
   }
 }
 function pick(value) {
   const chosen = sheet.value?.playbooks.find((p) => String(p.id) === value)
-  if (chosen) load(chosen.id) // every field refills from the server's prefill for that playbook (REQ-161 AC-2)
+  if (chosen) load(chosen.id, chosen.name) // every field refills from the server's prefill for that playbook (REQ-161 AC-2)
 }
 async function send(body) {
   if (busy.value) return
@@ -119,7 +134,7 @@ async function send(body) {
 const useAsIs = () => send(asIsBody(form.value.playbookId))
 const save = () => send(saveBody(form.value))
 function customise() {
-  const url = customiseUrl(form.value.playbookId)
+  const url = customiseUrl(props.strategyId)
   emit('close')
   router?.push(url)
 }

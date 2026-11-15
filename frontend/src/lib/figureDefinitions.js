@@ -99,9 +99,16 @@ export const FIGURES = {
   // REQ-145 AC-5 (GC-UI b2): the Decay head's info mark. Worded from REQ-145's statement; not yet read by the owner.
   decay: {
     label: "Decay",
-    text: "The time value change, in rupees, between now and the next market open if everything else stays the same.",
+    text: "The time value change, in rupees, between now and the next market open if everything else stays the same. Unlike Theta, which is one calendar day, it covers the whole time to the next open, so it is larger over a weekend.",
     source:
       "REQ-145 statement and AC-5 (Decay definition); Sensibull bundle-findings.md line 335 tooltip, reworded",
+    reviewed: "pending owner read",
+  },
+  // u507 (ISSUES.md 17, 43): Theta beside Decay needs its own words; theta in the engine is per calendar day
+  theta: {
+    label: "Theta",
+    text: "The time value an option loses in one calendar day, if everything else stays the same. Decay is the change up to the next market open, which can be more than one day.",
+    source: "black_scholes.py theta (per calendar day); REQ-145 AC-5 (Decay definition); ISSUES.md 17 and 43",
     reviewed: "pending owner read",
   },
   probability_of_profit: {

@@ -210,6 +210,7 @@ class SummaryOut(ApiModel):
     tracked: Optional[bool]  # noqa: UP045 - True/False from the tracking store; None = could not be read (never "no")
     can_delete: bool  # REQ-070 AC-6: False once a basket was sent (or when that could not be read)
     has_paper_order: bool  # ADR-271: True once a paper order was placed (the refusal says "paper orders")
+    has_order: bool  # ADR-299: True once ANY order was placed, practice or real (the one status word reads it)
     open_opportunities: Optional[int]  # noqa: UP045 - GC-MU A3: open adjustment records; None = could not be read
     open_opportunities_text: Optional[CatalogueText]  # noqa: UP045 - "N adjustment opportunities"; None at 0 or unread
     # GC-ICGUIDE g23 (Completed tab): set only for a closed strategy, all from the engine; None + reason when unreadable
@@ -219,6 +220,15 @@ class SummaryOut(ApiModel):
     adjustment_cost: Optional[Money]  # noqa: UP045 - charges of the adjustment rows
     adjustment_cost_text: Optional[CatalogueText]  # noqa: UP045
     completed_reason_text: Optional[CatalogueText]  # noqa: UP045 - why a figure is absent
+    # GC-ICFIX (ADR-259, ADR-263): the final P&L after charges = final_pnl - charges_paid (nothing open to close)
+    total_after: Optional[Money] = None  # noqa: UP045
+    total_after_text: Optional[CatalogueText] = None  # noqa: UP045
+    charges_paid: Optional[Money] = None  # noqa: UP045
+    charges_paid_text: Optional[CatalogueText] = None  # noqa: UP045
+    charges_to_close: Optional[Money] = None  # noqa: UP045
+    charges_to_close_text: Optional[CatalogueText] = None  # noqa: UP045
+    after_charges_reason: Optional[Literal["rates_unavailable", "not_priced", "prices_not_live"]] = None  # noqa: UP045
+    after_charges_reason_text: Optional[CatalogueText] = None  # noqa: UP045
 
 
 class RenamedOut(ApiModel):
@@ -279,7 +289,6 @@ _STORE_REFUSAL = MappingProxyType({
     store.VERSION_PENDING: ("strategy_version_pending", Failure.CONFLICT),  # W-144, ADR-019 Q191
     store.RECONCILIATION_REQUIRED: ("strategy_reconciliation_required", Failure.CONFLICT),  # ADR-018, Q222
     store.DELETE_AFTER_BASKET: ("strategy_delete_after_basket", Failure.CONFLICT),  # REQ-070 AC-6, ADR-118
-    store.DELETE_AFTER_PAPER: ("strategy_delete_after_paper_order", Failure.CONFLICT),  # ADR-271
 })
 
 
@@ -441,7 +450,7 @@ async def list_strategies(db: Annotated[Any, Depends(get_db)], user_ref: Annotat
              "first_leg": {"instrument": r.first_leg.instrument, "strike": r.first_leg.strike,
                            "expiry": r.first_leg.expiry},
              "tracked": None if tracked is None else r.id in tracked, "can_delete": r.can_delete,
-             "has_paper_order": r.has_paper_order,
+             "has_paper_order": r.has_paper_order, "has_order": r.has_order,
              "open_opportunities": None if opened is None else opened.get(r.id, 0),
              "open_opportunities_text": None if opened is None else opportunities.open_mark(opened.get(r.id, 0)),
              **closed.get(r.id, _NO_FIGURES)}

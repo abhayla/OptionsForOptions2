@@ -8,12 +8,13 @@ AND the cool-down from the record has passed; one ladder level worse opens at on
 quiet time after the open turn a would-be record into a `Held` event, never a silent drop.
 
 Risk exits (stop-loss, conditional exits, REQ-041 / paper triggers) never pass through this gate (AC-5): it applies to
-adjustment suggestions only. The screen check and the background check share this one gate.
+adjustment suggestions only. The screen check and the background check share this one gate. A stop rule
+(``stop_lines.is_stop_rule``) is judged on the first check that sees it beyond its line, not at the candle close.
 """
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from typing import Literal, Union
@@ -21,6 +22,7 @@ from typing import Literal, Union
 from ofo.adjustment.cap_scope import cap_exempt
 from ofo.adjustment.gate_rows import GateRow, GateRows, Preset  # noqa: F401 - re-exported for callers
 from ofo.adjustment.held_reasons import HELD_DAILY_LIMIT, HELD_QUIET_TIME, HELD_TEXT_IDS  # noqa: F401 - re-exported
+from ofo.adjustment.stop_lines import is_stop_rule
 from ofo.timeutil import IST
 from ofo.timeutil import SESSION_OPEN as MARKET_OPEN
 
@@ -46,6 +48,10 @@ class RuleSpec:
     rule_id: str
     cmp: Cmp
     ladder: tuple[Decimal, ...]
+    #: GC-ICFIX: the numbers of THIS sample for a yes/no rule (its value is a bool), carried to the record it confirms
+    #: so the store never reads them from a later check; None when the sample had no number (a clock rule).
+    shown_value: Decimal | None = field(default=None, compare=False)
+    shown_threshold: Decimal | None = field(default=None, compare=False)
 
 
 def _more_severe(cmp: Cmp, a: Decimal, b: Decimal) -> bool:
@@ -76,6 +82,9 @@ class Opened:
     threshold: Decimal | None
     value: Value
     worse: Literal["last", "dismissed"] | None = None
+    shown_value: Decimal | None = None  # GC-ICFIX: the confirming sample's own numbers (see RuleSpec)
+    shown_threshold: Decimal | None = None
+    limit: Decimal | None = None  # the limit of the confirming sample (ladder[0], or a yes/no rule's own number)
 
 
 @dataclass(frozen=True)
@@ -85,6 +94,9 @@ class Held:
     reason: str
     value: Value
     level: int
+    shown_value: Decimal | None = None
+    shown_threshold: Decimal | None = None
+    threshold: Decimal | None = None  # the rung of the held sample (a ladder rule); None for a yes/no rule
 
 
 @dataclass(frozen=True)
@@ -279,12 +291,15 @@ def _decide(  # noqa: PLR0913 - one close's inputs
         if hold is not None and hold.reason == reason and level <= hold.level:
             return state.with_rule(rule_id, rule), []
         rule = replace(rule, hold=_Hold(reason, level, threshold, ladder=_ladder_key(spec)))
-        return state.with_rule(rule_id, rule), [Held(rule_id, t, reason, value, level)]
+        return state.with_rule(rule_id, rule), [Held(rule_id, t, reason, value, level, spec.shown_value,
+                                                    spec.shown_threshold, threshold)]
     rule = replace(rule, record=_Record(level, threshold, t, ladder=_ladder_key(spec)), cleared=False, hold=None)
     state = state.with_rule(rule_id, rule)
     if not cap_exempt(rule_id):  # ADR-267: a watch / day rule is not counted against the cap
         state = replace(state, opened_today=state.opened_today + 1)
-    return state, [Opened(rule_id, t, level, threshold, value, worse)]
+    limit = spec.ladder[0] if spec.ladder else spec.shown_threshold
+    return state, [Opened(rule_id, t, level, threshold, value, worse, spec.shown_value,
+                                spec.shown_threshold, limit)]
 
 
 def step(
@@ -317,7 +332,13 @@ def step(
         if value is None:
             continue
         rule = state.rule(rule_id)
-        state = state.with_rule(rule_id, replace(rule, pending=_Pending(end, value, spec)))
+        pending = _Pending(end, value, spec)
+        state = state.with_rule(rule_id, replace(rule, pending=pending))
+        if is_stop_rule(rule_id) and _level(spec, value) >= 0:
+            # REQ-170 AC-5: a stop beyond its line is judged now; its sample stays for the candle close
+            state, evs = _close(state, rule_id, _Pending(now, value, spec), preset)
+            events.extend(evs)
+            state = state.with_rule(rule_id, replace(state.rule(rule_id), pending=pending))
     return state, events
 
 

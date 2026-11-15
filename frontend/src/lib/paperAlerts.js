@@ -41,38 +41,68 @@ export async function markPaperAlertsRead() {
 }
 // after marking read the rows on screen stay (the user is looking at them); only the unread number follows the server
 function takeAlertsKeepRows(data) {
-  if (data && Number.isInteger(data.unread) && data.unread >= 0) paperAlerts.unread = data.unread
+  if (!data || !Number.isInteger(data.unread) || data.unread < 0) return
+  paperAlerts.unread = data.unread
+  // the rows stay, but each takes the server's read flag so the page can move read stops under "Earlier"
+  const flags = new Map((Array.isArray(data.alerts) ? data.alerts : []).map((a) => [a?.id, a?.read]))
+  for (const a of paperAlerts.alerts) if (flags.has(a.id)) a.read = Boolean(flags.get(a.id))
 }
 
 // IC e2e stage B4 (design decision 10): the bell also counts the OPEN adjustment records of GET /adjustment-opportunities,
 // read on the SAME tick as the paper alerts (no timer, no seen-state store beyond the ids already announced this page load).
 // The browser counts nothing but list lengths of the server's own rows; a failed read leaves NO open records (paper count only).
-export const openRecords = reactive({ list: [] }) // [{ id, strategy_id }] in the server's order
+// Issue 8 (ADR-260): each open record also carries the trade's name and the rule's words (the server's own text, printed as sent)
+// so the pop-up and Alerts > Active show the same record the bell counts.
+export const openRecords = reactive({ list: [] }) // [{ id, strategy_id, strategy_name, text }] in the server's order
+// Issue 12 (u241): the SAME read's settled records (not open), per strategy, for the trade page's rules line: a rule that fired and cleared.
+export const settledRecords = reactive({ byStrategy: {}, state: 'loading' }) // state: 'loading' (not read yet) | 'ok' | 'failed' // { [strategy_id]: [{ id, text, outcome_text, shown_at }] }
 const announced = new Set()
 let opportunitiesLoaded = false
 
 export function resetOpenRecords() {
   openRecords.list = []
+  settledRecords.byStrategy = {}
+  settledRecords.state = 'loading'
   announced.clear()
   opportunitiesLoaded = false
 }
 
 export const bellCount = () => paperAlerts.unread + openRecords.list.length
 
+export const EARLIER_HEADING = 'Earlier'
+
+/** ADR-260: the items needing attention = open records, then stops not yet read. The bell counts these; Active lists these on top. */
+export const attentionItems = () => [
+  ...openRecords.list.map((o) => ({ kind: 'open', ...o })),
+  ...paperAlerts.alerts.filter((a) => !a.read).map((a) => ({ kind: 'stop', ...a })),
+]
+
+/** Stops already read: listed under "Earlier", never counted. */
+export const earlierAlerts = () => paperAlerts.alerts.filter((a) => a.read)
+
 /** Take one answer of GET /adjustment-opportunities. Returns the NEW open records (never on the first good read). */
 export function takeOpportunities(data) {
   const groups = data && Array.isArray(data.groups) ? data.groups : null
   if (!groups) {
     openRecords.list = []
+    settledRecords.byStrategy = {}
+    settledRecords.state = 'failed'
     return []
   }
   const open = []
+  const settled = {}
   for (const g of groups) {
     for (const r of Array.isArray(g?.records) ? g.records : []) {
-      if (r && r.outcome === 'open' && Number.isInteger(r.id)) open.push({ id: r.id, strategy_id: g.strategy_id })
+      if (r && r.outcome === 'open' && Number.isInteger(r.id)) {
+        open.push({ id: r.id, strategy_id: g.strategy_id, strategy_name: g.strategy_name ?? null, text: r.condition || g.label || '' })
+      } else if (r && Number.isInteger(r.id) && r.outcome !== 'open') {
+        (settled[g.strategy_id] ??= []).push({ id: r.id, text: r.condition || g.label || '', outcome_text: r.outcome_text ?? '', shown_at: r.shown_at ?? null })
+      }
     }
   }
   openRecords.list = open
+  settledRecords.byStrategy = settled
+  settledRecords.state = 'ok'
   const fresh = open.filter((r) => !announced.has(r.id))
   open.forEach((r) => announced.add(r.id))
   const first = !opportunitiesLoaded

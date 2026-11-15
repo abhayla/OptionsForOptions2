@@ -26,14 +26,18 @@
              The Max Profit / Max Loss below are then the book's original figures (the page passes them). -->
         <div v-if="left" class="mb-2 flex flex-nowrap items-start gap-x-3" data-testid="summary-left-row">
           <template v-if="!left.reason">
+            <!-- GC-ICFIX u124 (ADR-301, ADR-302): the after-charges text with "(after charges)", else the before text with "(before charges)"
+                 and the reason; prices not live: no number. Not capped: a larger Profit left carries the server's recover line. -->
             <div class="min-w-0">
-              <span class="text-xs text-ink-muted">{{ PROFIT_LEFT_LABEL }}</span>
-              <div class="num mt-0.5 whitespace-nowrap rounded bg-profit-soft px-1.5 py-0.5 text-sm font-semibold text-profit" data-testid="profit-left">{{ left.profit ?? '-' }}</div>
+              <span class="text-xs text-ink-muted" data-testid="profit-left-label">{{ `${PROFIT_LEFT_LABEL} ${left.profit.label}`.trim() }}</span>
+              <div class="num mt-0.5 whitespace-nowrap rounded bg-profit-soft px-1.5 py-0.5 text-sm font-semibold text-profit" data-testid="profit-left"><AfterChargesTap :breakdown="left.profit.breakdown ?? null">{{ left.profit.text ?? '-' }}</AfterChargesTap></div>
+              <p v-if="left.recover" class="max-w-[14rem] text-xs text-ink-muted" data-testid="profit-left-recover">{{ left.recover }}</p>
             </div>
             <div class="min-w-0">
-              <span class="text-xs text-ink-muted">{{ LOSS_LEFT_LABEL }}</span>
-              <div class="num mt-0.5 whitespace-nowrap rounded bg-loss-soft px-1.5 py-0.5 text-sm font-semibold text-loss" data-testid="loss-left">{{ left.loss ?? '-' }}</div>
+              <span class="text-xs text-ink-muted" data-testid="loss-left-label">{{ `${LOSS_LEFT_LABEL} ${left.loss.label}`.trim() }}</span>
+              <div class="num mt-0.5 whitespace-nowrap rounded bg-loss-soft px-1.5 py-0.5 text-sm font-semibold text-loss" data-testid="loss-left"><AfterChargesTap :breakdown="left.loss.breakdown ?? null">{{ left.loss.text ?? '-' }}</AfterChargesTap></div>
             </div>
+            <p v-if="left.profit.reason || left.loss.reason" class="max-w-xs text-xs text-ink-muted" data-testid="left-after-reason">{{ left.profit.reason ?? left.loss.reason }}</p>
           </template>
           <p v-else class="text-xs text-ink-muted" data-testid="extremes-reason">{{ left.reason }}</p>
         </div>
@@ -41,20 +45,21 @@
              second line INSIDE its pill, so each pill is only as wide as its figure -->
         <div class="flex flex-nowrap items-start gap-x-3" data-testid="summary-pills-row">
           <div class="min-w-0">
-            <span class="flex items-center text-xs text-ink-muted">Max Profit<FigureHint id="max_profit" :lines="[whatCanIMake, fundsLine, exactLine(maxProfitExact)]" /></span>
+            <span class="flex items-center text-xs text-ink-muted">Max Profit<span v-if="left?.extremes?.after" class="ml-1" data-testid="max-profit-basis">{{ AFTER_CHARGES }}</span><FigureHint id="max_profit" :lines="[whatCanIMake, fundsLine, exactLine(maxProfitExact)]" /></span>
             <div class="mt-0.5 inline-flex flex-col items-start whitespace-nowrap rounded bg-profit-soft px-1.5 py-0.5 leading-tight text-profit" data-testid="max-profit-pill">
               <span class="num text-sm font-semibold" data-testid="max-profit">{{ maxProfit }}</span>
               <span v-if="fundsShare?.max_profit_text" class="text-[11px]">(<span data-testid="max-profit-percent">{{ fundsShare.max_profit_text }}</span>)</span>
             </div>
           </div>
           <div class="min-w-0">
-            <span class="flex items-center text-xs text-ink-muted">Max Loss<FigureHint id="max_loss" :lines="[whatCanILose, fundsLine, exactLine(maxLossExact)]" /></span>
+            <span class="flex items-center text-xs text-ink-muted">Max Loss<span v-if="left?.extremes?.after" class="ml-1" data-testid="max-loss-basis">{{ AFTER_CHARGES }}</span><FigureHint id="max_loss" :lines="[whatCanILose, fundsLine, exactLine(maxLossExact)]" /></span>
             <div class="mt-0.5 inline-flex flex-col items-start whitespace-nowrap rounded bg-loss-soft px-1.5 py-0.5 leading-tight text-loss" data-testid="max-loss-pill">
               <span class="num text-sm font-semibold" data-testid="max-loss">{{ maxLoss }}</span>
               <span v-if="fundsShare?.max_loss_text" class="text-[11px]">(<span data-testid="max-loss-percent">{{ fundsShare.max_loss_text }}</span>)</span>
             </div>
           </div>
         </div>
+        <p v-if="left?.extremes?.text" class="mt-1 max-w-xs text-xs text-ink-muted" data-testid="extremes-charges-text">{{ left.extremes.text }}</p>
         <div class="mt-2 flex flex-wrap items-center gap-2" data-testid="breakeven-row">
           <span class="text-xs text-ink-muted">Breakeven</span>
           <div class="inline-flex rounded-md border border-line text-xs" role="group" aria-label="Breakeven at">
@@ -118,11 +123,13 @@
 
 <script setup>
 import { computed } from 'vue'
+import AfterChargesTap from '@/components/common/AfterChargesTap.vue'
 import { istTime, groupMoney } from '@/lib/displayFormat'
 import { displayOrDash, exactLine } from '@/lib/summaryFigures'
 import FigureHint from '@/components/common/FigureHint.vue'
 import Tooltip from '@/components/common/Tooltip.vue'
 import { LOSS_LEFT_LABEL, PROFIT_LEFT_LABEL } from '@/lib/paperDrafts'
+import { AFTER_CHARGES } from '@/lib/tracking'
 const props = defineProps({
   maxProfit: { type: String, default: '-' }, // summaryFigure(summary, 'profit'): the server's display string
   maxLoss: { type: String, default: '-' },
@@ -144,8 +151,8 @@ const props = defineProps({
   valueReason: { type: String, default: null },
   fundsShare: { type: Object, default: null }, // summary.funds_share as sent (null unless the margin needed was read)
   estimateLabel: { type: String, default: null }, // the reply's output_label ("estimated from spot", ADR-061)
-  // GC-TP step 3b2: Drafts Mode only - { profit, loss, reason }: the paper book's profit_left_text / loss_left_text as sent, or
-  // the words for its extremes_reason; null outside Drafts Mode (the summary is then unchanged)
+  // GC-TP step 3b2: Drafts Mode only - paperLeftOf(book): { profit, loss } (afterFigure results), recover line, and the words for
+  // extremes_reason; null outside Drafts Mode (the summary is then unchanged)
   left: { type: Object, default: null },
 })
 // REQ-081 AC-10 (basis changed by ADR-207 (8)): the margin needed the percentages are of and when Zerodha was read, in

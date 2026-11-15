@@ -332,3 +332,14 @@ async def test_run_forever_schedules_from_the_settings_read_after_each_run(monke
 def test_settle_price_is_the_intrinsic_value(instrument, strike, close, price):
     from ofo.engine.legs import Instrument  # noqa: PLC0415
     assert ps.settle_price(Instrument(instrument), D(strike), D(close)) == D(price)
+
+
+async def test_detection_the_real_settle_job_leaves_a_fully_settled_strategy_closed(db):
+    """GC-ICFIX detection: the settle job's own path (settle_expired -> place) must end in status 'closed'; before
+    this test only ``place`` was pinned, so rows exited before 0049 stayed 'draft' unseen (0053 repairs them)."""
+    ids = await _catalogue(db)
+    sid = await _real(db, ids, 52)
+    status = text("SELECT status FROM public.strategies WHERE id = :s")
+    assert (await db.execute(status, {"s": sid})).scalar_one() == "draft"
+    await ps.settle_expired(db, AFTER, _close_of())
+    assert (await db.execute(status, {"s": sid})).scalar_one() == "closed"

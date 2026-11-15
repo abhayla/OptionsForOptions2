@@ -130,6 +130,15 @@ export function filterValue(reply, a, rangeId) {
   }
 }
 
+/** GC-ICFIX round 2 (F9): a range's label says which charges basis its figure is. filterValue falls back from the after-charges
+ *  figure to the gross one; the fallback value is kept, but the label says "(before charges)" unless every figure is after charges. */
+export function rangeLabel(reply, r) {
+  if (r.id !== 'max_loss') return r.label
+  const list = (reply?.approaches ?? []).filter((a) => a.after && (a.after.after_charges || a.after.gross))
+  const basis = list.length && list.every((a) => a.after.after_charges) ? '(after charges)' : '(before charges)'
+  return `${r.label} ${basis}`
+}
+
 /** 'capped' | 'uncapped' | undefined, and 'credit' | 'debit' | undefined, from the reply's own figures. */
 export function riskFacts(reply, a) {
   const whole = a.after?.after_charges ?? a.after?.gross

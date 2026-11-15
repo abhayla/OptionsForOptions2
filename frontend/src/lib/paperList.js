@@ -5,7 +5,7 @@
 // exit order is built, and its price is the reply's own ltp string.
 import { plainName } from '@/lib/saveDraft'
 import { contractName, CONTRACT_UNAVAILABLE } from '@/lib/displayFormat'
-import { UNREADABLE_TEXT, EXITED_TEXT } from '@/lib/tracking'
+import { UNREADABLE_TEXT, EXITED_TEXT, afterFigure } from '@/lib/tracking'
 import { istTime } from '@/lib/displayFormat'
 import { LAST_CLOSE_LABEL } from '@/lib/paperDrafts'
 
@@ -57,6 +57,7 @@ function readPosition(p, underlying) {
     ltpReason: p.price_state === 'live' ? null : text(p.price_state_text), // ADR-210: the server's sentence for a retired / delisted contract
     booked: text(p.booked_text),
     unbooked: text(p.unbooked_text),
+    noPrice: open && text(p.unbooked_text) === null ? text(p.no_price_text) : null, // ADR-311: "no price", never 0 or blank
     total: text(p.total_text),
   }
 }
@@ -96,6 +97,7 @@ export function readPaperStrategy(s, index = 0) {
   if (s.state === 'PAUSED') stateText = withAsOf(PAPER_PAUSED, s.as_of)
   else if (s.state === 'NOT_CONNECTED') stateText = PAPER_NOT_CONNECTED
   else if (s.state === 'EXITED') stateText = EXITED_TEXT
+  const pauseReason = s.state === 'PAUSED' ? withAsOf(text(s.pause_reason_text), s.as_of) : text(s.pause_reason_text)
   return {
     readable: true,
     id,
@@ -110,7 +112,11 @@ export function readPaperStrategy(s, index = 0) {
     unbooked: text(s.unbooked_text),
     charges: text(s.charges_text), // GC-TP step 8b: beside the P&L, never subtracted from it (REQ-109 AC-10)
     chargesReason: text(s.charges_reason_text),
-    pauseReason: s.state === 'PAUSED' ? withAsOf(text(s.pause_reason_text), s.as_of) : text(s.pause_reason_text),
+    pauseReason,
+    unpricedText: text(s.unpriced_text), // ADR-311: the open legs with no price, named by the server
+    totalAfter: afterFigure(s, text(s.total_text), pauseReason), // GC-ICFIX u123: the headline total, labelled
+    bookedAfter: afterFigure(s, text(s.booked_text), pauseReason, 'booked_after_text', ['paid']), // u124 (ADR-303): the same rule per figure; u127: Booked carries the charges paid
+    unbookedAfter: afterFigure(s, text(s.unbooked_text), pauseReason, 'unbooked_after_text', ['close']), // ... Unbooked the estimate to close
     held: s.held ?? null, // GC-TRACK1 k10: shown by HeldNote, which reads nothing it cannot parse
     ...readSummary(s),
     positions,
@@ -119,10 +125,14 @@ export function readPaperStrategy(s, index = 0) {
 
 function readTotals(t) {
   if (!t || typeof t !== 'object') return null
+  const totalReason = withAsOf(text(t.totals_reason_text), t.totals_as_of)
   return {
+    totalAfter: afterFigure(t, text(t.total_text), totalReason), // GC-ICFIX u123: one total from the engine's sum, never a partial one
+    bookedAfter: afterFigure(t, text(t.booked_text), totalReason, 'booked_after_text', ['paid']),
+    unbookedAfter: afterFigure(t, text(t.unbooked_text), totalReason, 'unbooked_after_text', ['close']),
     total: text(t.total_text), booked: text(t.booked_text), unbooked: text(t.unbooked_text), decay: text(t.decay_text),
     charges: text(t.charges_text), chargesReason: text(t.charges_reason_text),
-    totalReason: withAsOf(text(t.totals_reason_text), t.totals_as_of), decayReason: t.decay_reason === 'prices_not_live' ? withAsOf(text(t.decay_reason_text), t.totals_as_of) : text(t.decay_reason_text),
+    totalReason, decayReason: t.decay_reason === 'prices_not_live' ? withAsOf(text(t.decay_reason_text), t.totals_as_of) : text(t.decay_reason_text),
   }
 }
 

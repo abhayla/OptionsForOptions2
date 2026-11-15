@@ -235,8 +235,11 @@ function setMultiplier(index) {
             </span>
             <button type="button" class="leg-line2" data-testid="remove-leg" :aria-label="`Remove ${legName(leg)}`" title="Remove" @click="emit('remove', i)"><Icon name="trash" :size="14" /></button>
           </div>
-          <div v-if="showsCaption(leg)" class="leg-grid grid text-xs text-ink-muted" :style="gridStyle" data-testid="leg-caption-line">
-            <span class="whitespace-nowrap text-right [grid-column:1/8] max-[639px]:[grid-column:1/-1] max-[639px]:text-left" data-testid="leg-caption" :title="capturedText(leg)">{{ caption(leg) }}</span>
+          <!-- GC-ICFIX P3 u505: the line's height (h-4 = one text-xs line) is reserved whether or not it shows, so a re-capture never moves the rows below -->
+          <div v-if="!unpriced(leg) && leg.typed !== true" class="h-4" data-testid="leg-caption-slot">
+            <div v-if="showsCaption(leg)" class="leg-grid grid text-xs text-ink-muted" :style="gridStyle" data-testid="leg-caption-line">
+              <span class="whitespace-nowrap text-right [grid-column:1/8] max-[639px]:[grid-column:1/-1] max-[639px]:text-left" data-testid="leg-caption" :title="capturedText(leg)">{{ caption(leg) }}</span>
+            </div>
           </div>
           <span class="sr-only" data-testid="leg-name">{{ legName(leg) }}</span>
           <span v-if="leg.planned_entry != null" class="sr-only" data-testid="leg-entry">{{ entryLabel(leg) }} {{ leg.planned_entry_display ?? priceTextById[leg.instrument_id]?.planned_entry_display ?? '—' }}</span>

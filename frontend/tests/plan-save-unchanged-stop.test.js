@@ -17,3 +17,16 @@ describe('saveBody and the stop', () => {
     expect(saveBody({ ...shown, stop: ' 50 ' }).stop).toBeUndefined()
   })
 })
+
+describe('saveBody and an empty Target (ADR-305)', () => {
+  const empty = { playbookId: 3, target: '', stop: '', stopShown: '', maxAdjustments: '2', timeExit: '' }
+
+  it('an emptied Target is sent as "" so the server stores "no target alert"', () => {
+    expect(saveBody(empty)).toEqual({ playbook_id: 3, target: '', max_adjustments: '2' })
+    expect(saveBody({ ...empty, target: '  ' }).target).toBe('')
+  })
+
+  it('a typed number is sent as typed', () => {
+    expect(saveBody({ ...empty, target: ' 50 ' }).target).toBe('50')
+  })
+})

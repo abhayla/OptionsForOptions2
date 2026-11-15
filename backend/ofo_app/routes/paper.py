@@ -28,14 +28,32 @@ from collections.abc import Mapping, Sequence
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Annotated, Any, Literal, get_args
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from ofo.adjustment.approaches import EntryFacts
 from ofo.charges import ChargeRates
 from ofo.charges.paper_charges import PaperFill, charges_sum, paper_charges
 from ofo.charges.round_trip import ChargesNotComputable
 from ofo.engine.book_totals import book_totals
-from ofo.engine.extremes import UNLIMITED, ContractTerms, ExtremesReason, book_breakevens, book_extremes
-from ofo.engine.extremes_charges import open_round_trip_charges, with_charges
+from ofo.engine.extremes import (
+    UNLIMITED,
+    ContractTerms,
+    ExitRisk,
+    ExtremesReason,
+    book_breakevens,
+    book_extremes,
+    exit_risk,
+)
+from ofo.engine.extremes_charges import (
+    AfterSplit,
+    BookAfterCharges,
+    after_split,
+    book_after_charges,
+    max_after_charges,
+    open_exit_charges,
+    open_round_trip_charges,
+    sum_after_charges,
+    sum_booked_after,
+)
 from ofo.engine.legs import Instrument
 from ofo.errors import render
 from ofo.errors.explanations import render_explanation, restore_explanation
@@ -47,7 +65,7 @@ from ofo.outcome.price_text import price_text
 from ofo.outcome.serialize import breakevens_display
 from ofo.outcome.snapshot import forward_strike_ids
 from ofo.strategy import stored_form as sf
-from ofo.strategy.definition import describe_contract
+from ofo.strategy.definition import describe_contract, display_contract
 from ofo.table.model import display_number
 from ofo.timeutil import IST
 from ofo.tracking import paper, paper_decay, paper_greeks
@@ -67,9 +85,16 @@ from ofo_app import (
 from ofo_app import strategy_store as store
 from ofo_app.api_models import ApiModel, CatalogueText, Money
 from ofo_app.db import get_db
-from ofo_app.errors import ClosedRoute, Failure
+from ofo_app.errors import ClosedRoute, Failure, refuse_request
 from ofo_app.live_push import POLL_SECONDS, LiveFeed, hold_and_read
-from ofo_app.paper_reasons import breakevens_reason_text, extremes_reason_text, greeks_reason_text, reason_text
+from ofo_app.paper_reasons import (
+    breakevens_reason_text,
+    extremes_reason_text,
+    greeks_reason_text,
+    no_price_text,
+    reason_text,
+    unpriced_text,
+)
 from ofo_app.routes.adjustment import TrackedReader, get_tracked_reader
 from ofo_app.routes.broker import current_user_ref
 from ofo_app.routes.outcome import (
@@ -161,6 +186,21 @@ class PaperNetOut(ApiModel):
     unbooked_text: CatalogueText | None
     total: Money | None
     total_text: CatalogueText | None
+    no_price_text: CatalogueText | None = None  # ADR-311: "no price" on an open contract with no live price
+
+
+class UnpricedLegOut(ApiModel):
+    """ADR-311: an open leg with no live price, named by its contract; ``expired`` says the contract has expired."""
+    leg_index: int
+    contract_text: CatalogueText
+    expired: bool
+
+
+class UnpricedFields(ApiModel):
+    """ADR-311: which open legs have no price. Totals stay paused whenever this is not empty; ``unpriced_text`` is the
+    one line naming them (reviewed templates), absent when every open leg has a price."""
+    unpriced_legs: list[UnpricedLegOut] = Field(default_factory=list)
+    unpriced_text: CatalogueText | None = None
 
 
 class PaperOrderOut(ApiModel):
@@ -182,9 +222,10 @@ ChargesReason = Literal["rates_unavailable", "not_priced"]
 RATES_UNAVAILABLE: ChargesReason = "rates_unavailable"
 NOT_PRICED: ChargesReason = "not_priced"
 PAPER_CHARGES = "paper_charges"
+AfterChargesReason = Literal["rates_unavailable", "not_priced", "prices_not_live"]
 
 
-class PaperFigures(ApiModel):
+class PaperFigures(UnpricedFields):
     state: BookState
     pause_reason: paper.PauseReason | None
     as_of: datetime.datetime | None = None  # REQ-109 AC-5: PAUSED only: oldest known quote time of a contract not live
@@ -202,6 +243,25 @@ class PaperFigures(ApiModel):
     charges_reason: ChargesReason | None = None
     pause_reason_text: CatalogueText | None = None  # ADR-210: the sentence for ``pause_reason`` / ``charges_reason``
     charges_reason_text: CatalogueText | None = None
+    # GC-ICFIX u122/u123 (ADR-263, ADR-008): the total AFTER charges = total - charges paid - estimated charges to close
+    # what is open (ofo.engine.extremes_charges.book_after_charges); ``total`` above stays the before-charges figure.
+    # Absent, with ``after_charges_reason``, when any part is unknown (never 0).
+    total_after: Money | None = None
+    total_after_text: CatalogueText | None = None
+    charges_paid: Money | None = None
+    charges_paid_text: CatalogueText | None = None
+    charges_to_close: Money | None = None
+    charges_to_close_text: CatalogueText | None = None
+    after_charges_reason: AfterChargesReason | None = None
+    after_charges_reason_text: CatalogueText | None = None
+    # GC-ICFIX u123 (ADR-303): Booked after = booked - ALL charges paid; Unbooked after = open-leg P&L - the estimated
+    # charges to close; the two add up to ``total_after`` exactly. Absent with ``after_charges_reason`` (never 0).
+    booked_after: Money | None = None
+    booked_after_text: CatalogueText | None = None
+    booked_after_reason: AfterChargesReason | None = None  # ADR-311: why it is absent (charges paid unknown)
+    booked_after_reason_text: CatalogueText | None = None
+    unbooked_after: Money | None = None
+    unbooked_after_text: CatalogueText | None = None
 
 
 #: GC-TP R-19b: a figure the list leaves out because the whole strategy is exited (the Paper card says Exited).
@@ -225,6 +285,14 @@ class PaperExtremes(ApiModel):
     # F-94 (ADR-082 (2)): the round-trip charges inside Max Profit / Max Loss, and the sentence that says so
     extremes_charges: Money | None = None
     extremes_charges_text: CatalogueText | None = None
+    # ADR-306: Profit left / Loss left after = Max profit / Max loss after - Total after, not capped (ADR-302);
+    # ``recover`` = minus Total after when negative. Absent when the book has no after total (see after_charges_reason).
+    profit_left_after: Extreme = None
+    loss_left_after: Extreme = None
+    profit_left_after_text: CatalogueText | None = None
+    loss_left_after_text: CatalogueText | None = None
+    recover: Money | None = None
+    recover_text: CatalogueText | None = None
 
 
 class PaperBreakevens(ApiModel):
@@ -303,6 +371,21 @@ TotalsReason = paper.PauseReason | paper_decay.DecayReason
 
 class PaperTotalsOut(ApiModel):
     """GC-TP step 4a (screens 050-053 totals strip): the sums over every paper strategy of the user, from the server."""
+    total_after: Money | None = None  # GC-ICFIX: sum of every total_after; None (never partial) if one is absent
+    total_after_text: CatalogueText | None = None
+    charges_paid: Money | None = None  # the sum of every strategy's charges paid; None (never partial) if one absent
+    charges_paid_text: CatalogueText | None = None
+    charges_to_close: Money | None = None  # the sum of every strategy's estimated charges to close what is open
+    charges_to_close_text: CatalogueText | None = None
+    after_charges_reason: AfterChargesReason | None = None
+    after_charges_reason_text: CatalogueText | None = None
+    # GC-ICFIX u123: the sum of every booked_after; None (never partial) if one absent, with its reason
+    booked_after: Money | None = None
+    booked_after_text: CatalogueText | None = None
+    booked_after_reason: AfterChargesReason | None = None
+    booked_after_reason_text: CatalogueText | None = None
+    unbooked_after: Money | None = None
+    unbooked_after_text: CatalogueText | None = None
     booked: Money
     booked_text: CatalogueText
     unbooked: Money | None  # None (never a partial sum) when any strategy's unbooked is absent (REQ-109 AC-5)
@@ -434,7 +517,8 @@ def _position(p: NetPosition, found: tracked_contracts.TrackedContract, price: p
             "price_at": None if price is None else price.at,
             "booked": _exact(p.booked), "booked_text": _signed(p.booked),
             "unbooked": _exact(p.unbooked), "unbooked_text": _signed(p.unbooked),
-            "total": _exact(p.total), "total_text": _signed(p.total)}
+            "total": _exact(p.total), "total_text": _signed(p.total),
+            "no_price_text": no_price_text() if p.net_quantity != 0 and not live else None}
 
 
 def _state_text(price: paper.Price | None) -> Any:
@@ -460,8 +544,13 @@ def _prices(open_ids: Sequence[int], found: dict[int, tracked_contracts.TrackedC
     return out
 
 
+def _today(snapshot: Any) -> datetime.date | None:
+    """The snapshot's India date (the tracking page's rule), None without a snapshot."""
+    return None if snapshot is None else snapshot.valuation.astimezone(paper.IST).date()
+
+
 def _figures(orders: Sequence[paper_store.StoredOrder], found: dict[int, tracked_contracts.TrackedContract],
-             prices: dict[int, paper.Price], connected: bool) -> dict:
+             prices: dict[int, paper.Price], connected: bool, today: datetime.date | None = None) -> dict:
     """The strategy's figures from the one engine at the live prices of its open contracts."""
     live = {str(cid): p.price for cid, p in prices.items() if paper.is_live(p) and p.price is not None}
     view = net_positions(_paper(orders), live)
@@ -478,7 +567,15 @@ def _figures(orders: Sequence[paper_store.StoredOrder], found: dict[int, tracked
         as_of = paper.paused_as_of(prices.values())  # the engine's own rule (ofo.tracking.paper), not a second way
     else:
         state, pause = "LIVE", None
-    return {"state": state, "pause_reason": pause, "pause_reason_text": reason_text(pause), "as_of": as_of,
+    # ADR-311: a paused book names the contracts with no price (every total stays paused); expired = retired contract
+    # leg_index = the leg's place among ALL the book's legs (closed ones count), as on the tracking page
+    cids = [int(p.instrument_id) for p in view.positions]
+    open_ = [(n, str(c), _identity(found[c])[3], prices[c]) for n, c in enumerate(cids) if c in prices]
+    gone = paper.unpriced_legs(open_, today) if state == "PAUSED" else ()
+    names = [(display_contract(_identity(found[cids[u.index]])), u.expired) for u in gone]
+    return {"unpriced_legs": [{"leg_index": u.index, "contract_text": n, "expired": u.expired}
+                              for u, (n, _) in zip(gone, names, strict=True)], "unpriced_text": unpriced_text(names),
+            "state": state, "pause_reason": pause, "pause_reason_text": reason_text(pause), "as_of": as_of,
             "booked": _exact(view.booked), "unbooked": _exact(view.unbooked),
             "total": _exact(view.total), "booked_text": _signed(view.booked), "unbooked_text": _signed(view.unbooked),
             "total_text": _signed(view.total), "positions": positions}
@@ -502,15 +599,16 @@ def _extremes(orders: Sequence[paper_store.StoredOrder], found: dict[int, tracke
         _, instrument, strike, expiry = _identity(found[cid])
         terms[str(cid)] = ContractTerms(instrument, strike, expiry)
     view = net_positions(_paper(orders), live)
-    got = book_extremes(view, terms, live)
-    charges = open_round_trip_charges(view, terms, underlying, rates)  # F-94: one charges function, as the builder
-    got = with_charges(got, charges)
+    paid = paid_exact_of(orders, found, underlying, rates)  # ADR-263: the charges really paid on every filled order
+    got = max_after_charges(view, terms, live, underlying, rates, paid) if paid is not None else \
+        book_extremes(view, terms, live)  # unpriced: before charges, and says so
+    charges = None if paid is None else open_round_trip_charges(view, terms, underlying, rates, paid)
     figures = {"profit_left": got.profit_left, "loss_left": got.loss_left, "max_profit": got.max_profit,
                "max_loss": got.max_loss}
     out: dict[str, Any] = {"extremes_reason": got.reason, "extremes_reason_text": extremes_reason_text(got.reason)}
     for name, value in figures.items():
         out[name], out[f"{name}_text"] = _extreme(value)
-    is_open = got.max_profit is not None and any(p.net_quantity for p in view.positions)
+    is_open = got.max_profit is not None  # open or fully closed: both carry the charges (or say "before charges")
     out["extremes_charges"] = charges if is_open else None
     out["extremes_charges_text"] = (
         None if not is_open else render_explanation("paper_extremes_before_charges") if charges is None else
@@ -607,18 +705,98 @@ def _order_rows(orders: Sequence[paper_store.StoredOrder], found: dict[int, trac
 def _charges(orders: Sequence[paper_store.StoredOrder], found: dict[int, tracked_contracts.TrackedContract],
              underlying: str, rates: ChargeRates | None) -> dict:
     """The strategy's Charges (ofo.charges.paper_charges), shown rounded up to the paisa; absent with its reason."""
-    if rates is None:
-        return {"charges": None, "charges_text": None, "charges_reason": RATES_UNAVAILABLE,
-                "charges_reason_text": reason_text(RATES_UNAVAILABLE)}
+    fills = [PaperFill(o.order.kind, o.order.side, o.order.quantity, o.order.price,
+                       _identity(found[o.order.contract_id])[1] is not Instrument.FUT) for o in orders]
+    shown, why = paid_charges(fills, underlying, rates)
+    if shown is None:
+        return {"charges": None, "charges_text": None, "charges_reason": why, "charges_reason_text": reason_text(why)}
+    return {"charges": shown, "charges_text": render_explanation(PAPER_CHARGES, amount=shown), "charges_reason": None,
+            "charges_reason_text": None}
+
+
+def paid_exact_of(orders: Sequence[paper_store.StoredOrder], found: dict[int, tracked_contracts.TrackedContract],
+                  underlying: str, rates: ChargeRates | None) -> Decimal | None:
+    """The EXACT charges paid on every stored order (``paper_charges(...).total``, not yet rounded); None when no rates
+    are set or an order cannot be priced. ``shown`` of the same call is the Charges figure."""
+    if rates is None or not orders:
+        return None
     fills = [PaperFill(o.order.kind, o.order.side, o.order.quantity, o.order.price,
                        _identity(found[o.order.contract_id])[1] is not Instrument.FUT) for o in orders]
     try:
-        shown = paper_charges(fills, underlying, rates).shown
+        return paper_charges(fills, underlying, rates).total
     except ChargesNotComputable:
-        return {"charges": None, "charges_text": None, "charges_reason": NOT_PRICED,
-                "charges_reason_text": reason_text(NOT_PRICED)}
-    return {"charges": shown, "charges_text": render_explanation(PAPER_CHARGES, amount=shown), "charges_reason": None,
-            "charges_reason_text": None}
+        return None
+
+
+def paid_charges(fills: Sequence[PaperFill], underlying: str,
+                 rates: ChargeRates | None) -> tuple[Decimal | None, ChargesReason | None]:
+    """The charges already paid on ``fills`` (ofo.charges.paper_charges), shown rounded up; (None, reason) when no rates
+    are set or an order cannot be priced."""
+    if rates is None:
+        return None, RATES_UNAVAILABLE
+    try:
+        return paper_charges(list(fills), underlying, rates).shown, None
+    except ChargesNotComputable:
+        return None, NOT_PRICED
+
+
+def terms_of(orders: Sequence[paper_store.StoredOrder],
+             found: dict[int, tracked_contracts.TrackedContract]) -> dict[str, ContractTerms]:
+    """The instrument, strike and expiry of every contract the orders touch, keyed by the engine's instrument id."""
+    out = {}
+    for cid in {o.order.contract_id for o in orders}:
+        _, instrument, strike, expiry = _identity(found[cid])
+        out[str(cid)] = ContractTerms(instrument, strike, expiry)
+    return out
+
+
+def after_charges_fields(got: BookAfterCharges) -> dict:
+    """The reply fields of one ``BookAfterCharges`` (shared by the paper book, tracking and the history routes)."""
+    reason = got.reason
+    return {"total_after": _exact(got.total_after), "total_after_text": _signed(got.total_after),
+            "charges_paid": _exact(got.paid), "charges_paid_text": _paid_text(got.paid),
+            "charges_to_close": _exact(got.open_exit),
+            "charges_to_close_text": None if got.open_exit is None else render_explanation(PAPER_CHARGES,
+                                                                                            amount=got.open_exit),
+            "after_charges_reason": reason, "after_charges_reason_text": reason_text(reason)}
+
+
+def _paid_text(paid: Decimal | None) -> str | None:
+    """The sentence beside Charges paid: the same form as ``charges_to_close_text`` (one catalogue entry)."""
+    return None if paid is None else render_explanation(PAPER_CHARGES, amount=paid)
+
+
+def after_charges(view: Any, terms: Mapping[str, ContractTerms], live: Mapping[str, Decimal],  # noqa: PLR0913
+                  paid: Decimal | None, paid_reason: str | None, underlying: str,
+                  rates: ChargeRates | None) -> BookAfterCharges:
+    """The one after-charges total of a book view: ``paid`` is the shown Charges (None + its reason when absent)."""
+    open_exit, exit_reason = open_exit_charges(view, terms, live, underlying, rates)
+    return book_after_charges(view, paid, open_exit, paid_reason if paid is None else exit_reason)
+
+
+def split_fields(got: AfterSplit) -> dict:
+    """The reply fields of Booked after / Unbooked after (paper book, list and tracking)."""
+    return {"booked_after": _exact(got.booked_after), "booked_after_text": _signed(got.booked_after),
+            "booked_after_reason": got.booked_reason, "booked_after_reason_text": reason_text(got.booked_reason),
+            "unbooked_after": _exact(got.unbooked_after), "unbooked_after_text": _signed(got.unbooked_after)}
+
+
+def left_fields(got: AfterSplit) -> dict:
+    """The reply fields of Profit left / Loss left after charges and ``recover``."""
+    out = {"recover": _exact(got.recover), "recover_text": _signed(got.recover)}
+    for name, value in (("profit_left_after", got.profit_left_after), ("loss_left_after", got.loss_left_after)):
+        out[name], out[f"{name}_text"] = _extreme(value)
+    return out
+
+
+def _after(orders: Sequence[paper_store.StoredOrder], found: dict[int, tracked_contracts.TrackedContract],  # noqa: PLR0913
+           prices: dict[int, paper.Price], charges: dict, underlying: str, rates: ChargeRates | None) -> dict:
+    live = {str(cid): p.price for cid, p in prices.items() if paper.is_live(p) and p.price is not None}
+    view = net_positions(_paper(orders), live)
+    terms = terms_of(orders, found)
+    got = after_charges(view, terms, live, charges["charges"], charges["charges_reason"], underlying, rates)
+    split = after_split(view, terms, live, underlying, rates, got, paid_exact_of(orders, found, underlying, rates))
+    return after_charges_fields(got) | split_fields(split) | left_fields(split)
 
 
 async def _load_strategy(db: Any, user_ref: str, strategy_id: int):
@@ -641,9 +819,10 @@ async def _book(db: Any, stored: Any, orders: Sequence[paper_store.StoredOrder],
     if connected and keys:
         snapshot = await _snapshot(ctx, feed, underlying, keys)  # type: ignore[arg-type]
     prices = _prices(open_ids, found, snapshot)
-    base = _figures(orders, found, prices, connected)
+    base = _figures(orders, found, prices, connected, _today(snapshot))
+    charges = _charges(orders, found, underlying, rates)
     figures = (base | _summary(orders, found, prices, base, snapshot, underlying, exited_absent=False, rates=rates)
-               | _charges(orders, found, underlying, rates))
+               | charges | _after(orders, found, prices, charges, underlying, rates))
     return PaperBookOut.model_validate(figures | {
         "strategy_id": stored.id, "name": sf.shown_name(stored.name), "underlying": underlying,
         "answered_at": answered_at, "orders": _order_rows(orders, found),
@@ -692,11 +871,12 @@ async def list_paper_strategies(db: Annotated[Any, Depends(get_db)],  # noqa: PL
     for b in sorted(books, key=_newest_first, reverse=True):
         snapshot = snapshots.get(b.underlying)
         prices = _prices(_open_ids(b.orders), found, snapshot)
-        figures = _figures(b.orders, found, prices, connected)
+        figures = _figures(b.orders, found, prices, connected, _today(snapshot))
         summary = _summary(b.orders, found, prices, figures, snapshot, b.underlying, exited_absent=True, rates=rates)
         decays.append(_decay(figures, found, snapshot, b.underlying))
         open_legs = sum(1 for p in figures["positions"] if p["net_quantity"] != 0)
-        figures |= _charges(b.orders, found, b.underlying, rates) | summary
+        charges = _charges(b.orders, found, b.underlying, rates)
+        figures |= charges | summary | _after(b.orders, found, prices, charges, b.underlying, rates)
         out.append(figures | {"strategy_id": b.strategy_id, "name": sf.shown_name(b.name), "underlying": b.underlying,
                               "held": _held_out(held_rows.get(b.strategy_id)),
                               "open_count": open_legs, "position_count": len(figures["positions"])})
@@ -736,7 +916,28 @@ def _totals(strategies: Sequence[dict], decays: Sequence[paper_decay.Decay]) -> 
             "totals_reason": totals_reason, "totals_reason_text": reason_text(totals_reason),
             "decay": decay, "decay_text": _signed(decay), "decay_reason": decay_reason,
             "decay_reason_text": reason_text(decay_reason),
-            **_charges_total(strategies)}
+            **_charges_total(strategies), **_after_total(strategies)}
+
+
+def _after_total(strategies: Sequence[dict]) -> dict:
+    """The sum of every strategy's after figure (ofo.engine.extremes_charges.sum_after_charges): absent with the first
+    absent strategy's reason, never partial."""
+    got = sum_after_charges([BookAfterCharges(s["total"], s["total_after"], s["charges_paid"], s["charges_to_close"],
+                                              s["after_charges_reason"]) for s in strategies])
+    unbooked = None if any(s["unbooked_after"] is None for s in strategies) else sum(
+        (Decimal(s["unbooked_after"]) for s in strategies), Decimal(0))  # never a partial sum
+    booked, booked_why = sum_booked_after([
+        (None if s["booked_after"] is None else Decimal(s["booked_after"]),
+         s.get("booked_after_reason") or s["after_charges_reason"]) for s in strategies])
+    return {"total_after": _exact(got.total_after), "total_after_text": _signed(got.total_after),
+            "booked_after": _exact(booked), "booked_after_text": _signed(booked),
+            "booked_after_reason": booked_why, "booked_after_reason_text": reason_text(booked_why),
+            "unbooked_after": _exact(unbooked), "unbooked_after_text": _signed(unbooked),
+            "charges_paid": _exact(got.paid), "charges_paid_text": _paid_text(got.paid),
+            "charges_to_close": _exact(got.open_exit),
+            "charges_to_close_text": None if got.open_exit is None else render_explanation(PAPER_CHARGES,
+                                                                                            amount=got.open_exit),
+            "after_charges_reason": got.reason, "after_charges_reason_text": reason_text(got.reason)}
 
 
 def _charges_total(strategies: Sequence[dict]) -> dict:
@@ -872,6 +1073,87 @@ async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR
         await db.rollback()
         raise
     return await _book(db, stored, await paper_store.load(db, strategy_id), ctx, feed, placed_at, rates)
+
+
+class ExitRiskOut(ApiModel):
+    """ADR-256: the answer for a prepared basket in three states (``no`` only when proven), the book's Max Loss before /
+    after when the answer is yes and they are known, and the one factual warning line."""
+    state: Literal["yes", "no", "cannot_tell"]
+    max_loss_before: Extreme
+    max_loss_after: Extreme
+    warning_text: CatalogueText | None
+
+
+_UNPRICED = Decimal("0.05")  # placeholder order price only; the engine is told priced=False
+
+
+def _exit_risk_answer(state: Literal["yes", "no", "cannot_tell"]) -> ExitRiskOut:
+    return ExitRiskOut(state=state, max_loss_before=None, max_loss_after=None, warning_text=None)
+
+
+def _exit_warning(risk: ExitRisk, names: Mapping[str, Any]) -> ExitRiskOut:
+    """The yes answer says only what is known: the Max Loss figures (the catalogue's "No fixed maximum" when unlimited)
+    when the engine gave them, and the sold legs left with less cover. Nothing known to say -> cannot_tell."""
+    (before, before_text), (after, after_text) = _extreme(risk.max_loss_before), _extreme(risk.max_loss_after)
+    lines = []
+    if before is not None and after is not None:
+        lines.append(render_explanation("paper_exit_widens_loss", before=before_text, after=after_text))
+    if risk.exposed:
+        legs_text = names[risk.exposed[0]]
+        for other in risk.exposed[1:]:
+            legs_text = render_explanation("paper_alert_legs", rest=legs_text, leg=names[other])
+        lines.append(render_explanation("paper_exit_less_protected", legs=legs_text))
+    if not lines:
+        return _exit_risk_answer("cannot_tell")
+    warning = lines[0] if len(lines) == 1 else render_explanation("paper_exit_warning_join", first=lines[0],
+                                                                  second=lines[1])
+    return ExitRiskOut(state="yes", max_loss_before=before, max_loss_after=after, warning_text=warning)
+
+
+@router.get("/paper/strategies/{strategy_id}/exit-risk", response_model=ExitRiskOut)
+async def paper_exit_risk(strategy_id: int, orders: Annotated[str, Query(max_length=8000)],  # noqa: PLR0913
+                          db: Annotated[Any, Depends(get_db)], user_ref: Annotated[str, Depends(current_user_ref)],
+                          ctx: Annotated[MarketContext | None, Depends(get_market_context)],
+                          feed: Annotated[LiveFeed | None, Depends(get_live_feed)],
+                          now: Annotated[AnswerClock, Depends(get_answer_clock)]) -> ExitRiskOut:
+    """Read only, nothing stored. The WHOLE prepared basket (exits and entries) is judged on the legs after all of it.
+    Bad input is refused (422), an engine error is cannot_tell, never "no". When an exit price cannot be read the
+    answer is judged without any Max Loss figure (never a stand-in price) and shows none."""
+    stored = await _load_strategy(db, user_ref, strategy_id)
+    try:  # the prepared orders as JSON, the same shape the order route takes
+        basket = PaperOrdersIn.model_validate_json('{"orders":' + orders + "}").orders
+    except ValueError:
+        refuse_request(("query", "orders"), "invalid_orders")
+    booked = await paper_store.load(db, strategy_id)
+    if not booked:  # nothing is open: an exit is larger than what is open; a first basket leaves nothing unprotected
+        return _exit_risk_answer("cannot_tell" if any(o.kind == "exit" for o in basket) else "no")
+    state = {c.contract_id: c for c in await tracked_contracts.resolve(
+        db, sorted({o.order.contract_id for o in booked} | {o.contract_id for o in basket}))}
+    if any(state[o.contract_id].stored is None for o in basket):
+        raise StrategyRefused("paper_contract_not_tradable")
+    try:
+        prices = await _server_exit_prices(ctx, feed, stored.saved.definition.underlying, basket, state)
+    except StrategyRefused:
+        prices = {}
+    at = now()
+    exits = sum(1 for o in basket if o.kind == "exit")
+    terms = {}
+    names = {}
+    for cid, found in state.items():
+        if found.stored is not None:
+            _, instrument, strike, expiry = _identity(found)
+            names[str(cid)] = describe_contract((stored.saved.definition.underlying, instrument, strike, expiry))
+            terms[str(cid)] = ContractTerms(instrument, strike, expiry)
+    try:
+        legs = [PaperOrder(str(o.contract_id), o.side, o.quantity,
+                           prices.get(i, _UNPRICED if o.kind == "exit" else o.price), o.kind, at)
+                for i, o in enumerate(basket)]
+    except ValueError:
+        return _exit_risk_answer("cannot_tell")
+    risk = exit_risk(_paper(booked), legs, terms, priced=len(prices) == exits)
+    if risk.state != "yes":
+        return _exit_risk_answer(risk.state)
+    return _exit_warning(risk, names)
 
 
 # --- stop triggers and alerts (GC-TP step 7a; REQ-109 AC-8; ADR-207 (5); screens 221-224) -----------------------------
@@ -1054,4 +1336,5 @@ connected = _connected
 market_snapshot = _snapshot
 open_prices = _prices
 exact = _exact
+engine_orders = _paper
 signed = _signed

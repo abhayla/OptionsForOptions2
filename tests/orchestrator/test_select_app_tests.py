@@ -91,6 +91,10 @@ PR241_SELECTION = {
     "tests_app/test_paper_save_paths_fx2.py",  # GC-ICGUIDE: imports ofo_app.routes.outcome
     "tests_app/test_scenario_clock_routes.py",  # GC-ICGUIDE: imports routes.catalogue, outcome
     "tests_app/test_strategy_closed_status.py",  # GC-ICGUIDE: imports ofo_app.routes.outcome (load_charge_rates)
+    "tests_app/test_limits_now.py",  # GC-ICFIX u113: imports ofo.errors.explanations (changed here)
+    # GC-ICFIX u4xx/u5xx: each imports render_explanation from ofo.errors.explanations (changed here)
+    "tests_app/test_adjustment_history_approach.py", "tests_app/test_target_greeks_basis.py",
+    "tests_app/test_tracking_unpriced_legs.py",
     "tests_app/test_outcome_open_interest.py",  # GC-UI D-B16: imports ofo_app.routes.outcome / live_push (explanations)
     "tests_app/test_strategy_tracking_list.py",  # GC-BP: calls /strategies/{id}/tracking routes (same reason as test_strategy_tracking)  # noqa: E501 - long line kept whole
     "tests_app/test_strategy_price_history_route.py",  # GC-UI step 5: imports ofo_app.routes.strategies (key measured)
@@ -113,6 +117,9 @@ PR241_SELECTION = {
     # GC-ALERT1 (REQ-170, ADR-236/237): names ofo.errors.explanations (the alert-style refusal / lapse texts) and the
     # strategy routes/store the #241 diff changes, in its route and worker checks
     "tests_app/test_strategy_alert_style.py", "tests_app/test_background_worker.py",
+    # GC-ICFIX merges: imports ofo_app.strategy_refused / the routes.strategies list model the diff changes
+    "tests_app/test_fired_state_follows_record.py", "tests_app/test_strategy_has_order_rule.py",
+    "tests_app/test_compare_estimate_note.py",  # moved from tests/: imports ofo.errors.explanations (changed here)
 }
 
 

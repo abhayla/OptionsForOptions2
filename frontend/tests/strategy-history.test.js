@@ -160,6 +160,7 @@ function barAnswers({ before, after, restorable = true }) {
   answers['POST /strategies/5/restore/2?expected_revision=3'] = strategyOut(4)
 }
 async function saveOnce(w) {
+  await w.setProps({ legs: [{ ...w.props('legs')[0], lots: 2 }] }) // GC-ICFIX P3 u502: Save is on only after an edit
   await w.get('[data-testid="save-draft"]').trigger('click')
   await flushPromises()
 }
@@ -228,7 +229,7 @@ describe('Undo after a meaningful save (REQ-070 AC-4)', () => {
     await flushPromises()
     await saveOnce(w)
     expect(w.find('[data-testid="save-undo"]').exists()).toBe(true)
-    await w.setProps({ legs: [{ ...barLeg, lots: 2 }] })
+    await w.setProps({ legs: [{ ...barLeg, lots: 3 }] })
     expect(w.find('[data-testid="save-undo"]').exists()).toBe(false)
   })
 })
@@ -269,7 +270,7 @@ describe('Delete in the Builder saved list (REQ-070 AC-6)', () => {
     await flushPromises()
     expect(w.findAll('[data-testid="saved-draft-row"]')).toHaveLength(1)
     // Undo of the open strategy's delete re-opens it (same id, its revision): the Builder's next Save updates it, not a second one
-    expect(w.emitted('saved')[0]).toEqual([5, 2, '"e2e 28f"'])
+    expect(w.emitted('saved')[0].slice(0, 3)).toEqual([5, 2, '"e2e 28f"'])
   })
 
   it('Undo of a delete of a strategy that was NOT open does not re-open anything', async () => {

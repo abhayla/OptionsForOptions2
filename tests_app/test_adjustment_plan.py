@@ -107,6 +107,7 @@ async def test_get_without_a_plan_prefills_from_the_active_system_playbook_and_p
                               "time_exit": {"hour": 14, "minute": 30},  # ADR-216: the iron condor seed
                               "target_words": "50 % of max profit",
                               "stop_words": "50 % of max loss or 2x the credit received, whichever comes first"}
+    assert "rules_in_force" not in out  # GC-ICFIX u113 round 3: the limits come from the rule check only (ADR-304 (3))
     row = next(p for p in out["playbooks"] if p["id"] == system.id)
     assert (row["is_system"], row["active"], row["draft"]) == (True, True, False)
     assert out["labels"]["title"] == "When tracking starts: this strategy's plan"
@@ -282,3 +283,37 @@ async def test_plan_settings_accepted_refused_with_a_named_reason_and_removable(
     status, out = await _call("PUT", _plan_path(sid), json={"playbook_id": system.id, "settings": {}})
     assert status == OK, out
     assert stored(await _plan_row(app_db_url, sid)) == {}
+
+
+# --- ADR-305: the box opens empty when the rule set has the profit rule (T-07) off; an empty Target saves ------------
+
+
+async def test_prefill_target_is_empty_when_the_rule_set_has_t07_off_and_the_rule_set_value_when_on(
+        app_db_url, monkeypatch):
+    sid = await _seeded(app_db_url, monkeypatch, "ADJ-01")
+    system = await _system_ic(app_db_url)
+    body = copy.deepcopy(system.body)
+    body["triggers"]["T-07"]["on"] = False
+    async with app_db_url.begin() as conn:
+        off = await playbook_store.create(conn, USER, "ic", "Rule off", body)
+        on = await playbook_store.create(conn, USER, "ic", "Rule on", copy.deepcopy(system.body))
+    status, out = await _call("GET", _plan_path(sid) + f"?playbook_id={off.id}")
+    assert status == OK and out["prefill"]["target"] is None and out["prefill"]["target_words"] is None, out
+    status, out = await _call("GET", _plan_path(sid) + f"?playbook_id={on.id}")
+    assert status == OK and out["prefill"]["target"] == "50", out  # T-07 on 50/50/80: as today
+
+
+async def test_saving_the_box_with_an_empty_target_stores_no_target_and_t07_is_not_checked(app_db_url, monkeypatch):
+    sid = await _seeded(app_db_url, monkeypatch, "ADJ-02")
+    system = await _system_ic(app_db_url)
+    status, out = await _call("POST", _plan_path(sid), json={"playbook_id": system.id, "target": "50", "stop": "40"})
+    assert status == OK and out["plan"]["target"] == "50", out
+    status, out = await _call("PUT", _plan_path(sid), json={"playbook_id": system.id, "target": ""})  # emptied
+    assert status == OK and out["plan"]["target"] is None and out["plan"]["target_words"] is None, out
+    assert out["plan"]["stop"] == "40"  # the other fields are kept
+    body = json.loads((await _plan_row(app_db_url, sid)).body)
+    assert body["guards"]["profit_target_pct_of_max_profit"] == ""  # no number stored
+    assert adjustment_check.with_plan_target(body)["triggers"]["T-07"]["on"] is False  # the check does not act on it
+    for bad in ("0", "-5", "101", "abc"):  # an unusable number is still refused, naming the field
+        status, refused = await _call("PUT", _plan_path(sid), json={"playbook_id": system.id, "target": bad})
+        assert status == UNPROCESSABLE and "target" in json.dumps(refused), refused

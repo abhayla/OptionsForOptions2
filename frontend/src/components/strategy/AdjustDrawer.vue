@@ -25,24 +25,26 @@
           <dl class="mt-1 grid grid-cols-2 gap-x-3 gap-y-1 text-sm">
             <template v-for="r in rows" :key="r.id">
               <dt class="text-ink-muted">{{ r.label }}</dt>
-              <dd class="text-right tabular-nums" :data-testid="`drawer-state-${r.id}`">{{ r.value }}</dd>
+              <dd class="text-right tabular-nums" :data-testid="`drawer-state-${r.id}`"><AfterChargesTap :breakdown="r.breakdown ?? null">{{ r.value }}</AfterChargesTap></dd>
             </template>
           </dl>
         </section>
         <section class="mt-4" data-testid="drawer-approaches">
           <h3 class="text-sm font-semibold">3 · Possible approaches</h3>
           <p class="mt-1 text-xs text-ink-muted" data-testid="drawer-pick-note">{{ PICK_NOTE }}</p>
+          <p v-if="reply?.limit" class="mt-1 text-sm font-semibold text-warn" data-testid="drawer-limit">{{ reply.limit.text }}</p>
           <p v-if="state === 'loading'" class="mt-2 text-sm text-ink-muted" data-testid="drawer-loading">{{ LOADING_TEXT }}</p>
           <ErrorMessage v-else-if="state === 'error'" :parts="errorParts" compact prefix="drawer-error" data-testid="drawer-error" />
           <ul class="mt-2 flex flex-col gap-2">
             <li v-for="a in approaches" :key="a.id" class="rounded border border-line p-2" :data-applicable="a.applicable ? 'true' : 'false'">
               <label class="flex items-start gap-2">
-                <input v-model="ticked" type="checkbox" :value="a.id" :disabled="a.id === NO_CHANGE_ID || !a.applicable" class="mt-1 h-4 w-4" :data-testid="`drawer-approach-${a.id}`" />
+                <input v-model="ticked" type="checkbox" :value="a.id" :disabled="a.id === NO_CHANGE_ID || !a.applicable || withheld.has(a.id)" class="mt-1 h-4 w-4" :data-testid="`drawer-approach-${a.id}`" />
                 <span>
                   <span class="block text-sm font-medium">{{ a.name }}</span>
                   <span class="block text-xs text-ink-muted">{{ a.explanation }}</span>
                   <span v-for="f in (a.liquidity_flags ?? [])" :key="f" class="block text-xs text-ink-muted" :data-testid="`drawer-flag-${a.id}`">{{ f }}</span>
-                  <span v-if="!a.applicable" class="block text-xs text-ink-muted" :data-testid="`drawer-reason-${a.id}`">{{ refusalText({ refusal: a.reason }) }}</span>
+                  <span v-if="withheld.has(a.id)" class="block text-xs text-ink-muted" :data-testid="`drawer-reason-${a.id}`">{{ withheld.get(a.id) }}</span>
+                  <span v-else-if="!a.applicable" class="block text-xs text-ink-muted" :data-testid="`drawer-reason-${a.id}`">{{ refusalText({ refusal: a.reason }) }}</span>
                 </span>
               </label>
             </li>
@@ -72,6 +74,7 @@ import { computed, nextTick, ref, watch } from 'vue'
 import api, { NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import { NO_CHANGE_ID, refusalText } from '@/lib/adjustCompare'
+import AfterChargesTap from '@/components/common/AfterChargesTap.vue'
 import { CURRENT_STATE_BODY, LAPSED_TEXT, LOADING_TEXT, PICK_NOTE, availableOf, compareUrl, replyRows } from '@/lib/adjustDrawer'
 
 const props = defineProps({
@@ -92,6 +95,8 @@ const reply = ref(null)
 const errorParts = ref(NEUTRAL_PARTS)
 const approaches = computed(() => availableOf(reply.value))
 const rows = computed(() => [...props.cardRows, ...replyRows(reply.value)])
+// ADR-297: at the adjustment limit the server withholds some approaches; id -> its reason (shown, not selectable)
+const withheld = computed(() => new Map((reply.value?.not_offered ?? []).map((n) => [n.id, n.reason])))
 
 async function load() {
   state.value = 'loading'
@@ -101,7 +106,7 @@ async function load() {
     const res = await props.client.post(`/strategies/${props.strategyId}/adjustment-approaches`, CURRENT_STATE_BODY)
     reply.value = res.data
     state.value = 'ready'
-    ticked.value = approaches.value.filter((a) => a.applicable).map((a) => a.id) // every applicable approach starts ticked
+    ticked.value = approaches.value.filter((a) => a.applicable && !withheld.value.has(a.id)).map((a) => a.id) // every applicable approach starts ticked
     if (!ticked.value.includes(NO_CHANGE_ID)) ticked.value.unshift(NO_CHANGE_ID)
   } catch (e) {
     errorParts.value = e?.parts ?? NEUTRAL_PARTS

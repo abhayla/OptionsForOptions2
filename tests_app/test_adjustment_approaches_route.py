@@ -726,6 +726,33 @@ def test_s11_below_the_limit_or_no_limit_known_the_route_still_offers_every_appr
     assert [a["id"] for a in reply["approaches"]] == list(APPROACH_IDS)
 
 
+@pytest.mark.parametrize("used", [2, 3])
+def test_d4_at_the_limit_the_reply_states_it_and_lists_each_withheld_approach_with_the_reason(used):
+    """ADR-297 (D4): 2 of 2 (and 3 of 2 by old data) -> the sentence with the trade's own numbers, closing approaches
+    offered, every OTHER approach that applies listed as not offered with the limit reason. A withheld approach is not
+    an offered one, so it takes no part in "Showing N of M" (ADR-308: M counts what is offered)."""
+    from ofo.adjustment.offered import EXIT_REDUCE  # noqa: PLC0415
+    reply = post(client_for(_at_used("ADJ-02", used), guards={"max_adjustments": 2}, rates=RATES)).json()
+    assert reply["limit"] == {"used": used, "max": 2, "text": f"Adjustment limit reached ({used} of 2)"}
+    offered_ids = {a["id"] for a in reply["approaches"]}
+    assert offered_ids <= EXIT_REDUCE
+    held = [a["id"] for a in reply["available"] if a["applicable"] and a["id"] not in EXIT_REDUCE]
+    assert held, "the scenario must have applicable non-closing approaches to withhold"
+    assert [n["id"] for n in reply["not_offered"]] == held
+    assert not offered_ids & set(held)
+    for n in reply["not_offered"]:
+        assert n["reason_id"] == "adjustment_limit_reached" and n["reason"] == "Adjustment limit reached"
+        assert n["name"]
+
+
+@pytest.mark.parametrize(("used", "guards"), [(1, {"max_adjustments": 2}), (None, {"max_adjustments": 2}),
+                                              (2, {}), (2, None)])
+def test_d4_below_the_limit_or_no_limit_the_reply_has_no_notice_and_nothing_withheld(used, guards):
+    reply = post(client_for(_at_used("ADJ-02", used), guards=guards, rates=RATES)).json()
+    assert reply["limit"] is None and reply["not_offered"] == []
+    assert [a["id"] for a in reply["approaches"]] == list(APPROACH_IDS)
+
+
 def test_gcicguide_g16_current_max_loss_is_signed_like_the_paper_book_and_compare_is_its_magnitude():
     body = post(client_for(load("ADJ-02"), rates=RATES), body={"approaches": ["A-36"]}).json()
     cell = next(c for c in body["criteria"] if c["id"] == "max_loss")["values"]["A-36"]

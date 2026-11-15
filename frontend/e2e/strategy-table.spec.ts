@@ -56,6 +56,9 @@ test('every number on the screen equals the API response text for the condor', a
   await expect(page.getByTestId('strategy-builder')).toHaveAttribute('data-state', 'computed')
   expect(api.state).toBe('COMPUTED')
   await openFullTable(page) // ADR-194: the full table sits behind the P&L Table tab's Full table switch
+  // u510: the page prints an expiry's year only when it is not in the year of the server's shown date, which the page
+  // read from this same reply; the expected text is built with that same date, never with the clock of this test
+  const shown = (await (await request.get(`${REPLAY_URL}/api/catalogue/NIFTY/expiries`)).json()).today
 
   // 1. every rendered table cell is the API's display text, for every row and every visible column
   const visible = api.table.columns.filter((c: { visible: boolean }) => c.visible)
@@ -65,7 +68,7 @@ test('every number on the screen equals the API response text for the condor', a
       const sent = (row.cells[col.id] as Cell | undefined)?.display ?? ''
       // GC-UI b2 (REQ-146 AC-5, REQ-151 AC-1/AC-2): the two text-only re-spellings of src/lib/strategyTable.js cellText,
       // through the same displayFormat functions; every other cell must equal the API's display text exactly
-      const want = col.id === 'expiry' ? (expiryText(sent) ?? sent)
+      const want = col.id === 'expiry' ? (expiryText(sent, shown) ?? sent)
         : col.id === 'strike' ? strikeLabel(String(sent).replace(/,/g, '')) : sent
       const cell = page.locator(`[data-testid="cell"][data-row="${row.row_id}"][data-col="${col.id}"]`)
       await expect(cell, `row ${row.row_id} column ${col.id}`).toHaveText(want)

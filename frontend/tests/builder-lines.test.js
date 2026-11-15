@@ -18,6 +18,7 @@ import SaveDraftBar from '@/components/strategy/SaveDraftBar.vue'
 import AdvancedDetails from '@/components/strategy/AdvancedDetails.vue'
 import LegPicker from '@/components/strategy/LegPicker.vue'
 import { TIME_UNAVAILABLE, istTime, nameFromPool } from '@/lib/displayFormat'
+import { RUNNING_TAB_EMPTY_MESSAGE } from '@/lib/sharedStateText'
 
 const t = (w, id) => w.find(`[data-testid="${id}"]`)
 const LEG = {
@@ -100,7 +101,7 @@ describe('Save Draft bar', () => {
     expect(pos.find('[data-testid="empty-state"]').exists()).toBe(true)
     expect(trk.find('[data-testid="empty-state"]').exists()).toBe(true)
     expect(pos.get('[data-testid="empty-state-message"]').text()).toBe('Open positions you hold will appear here, to analyse in the Builder.')
-    expect(trk.get('[data-testid="empty-state-message"]').text()).toBe('Strategies you track appear in My Strategies.')
+    expect(trk.get('[data-testid="empty-state-message"]').text()).toBe(RUNNING_TAB_EMPTY_MESSAGE)
     for (const p of [pos, trk]) expect(p.text()).not.toMatch(/zerodha|kite|upstox|dhan|angel|broker/i)
   })
 
@@ -128,8 +129,8 @@ describe('contract names in the advanced details and the picker', () => {
   })
 
   it('the Edit form shows the lot-size line with the contract name', async () => {
-    answers['GET /catalogue/NIFTY/expiries'] = { underlying: 'NIFTY', expiries: ['2026-10-13'] }
-    answers['GET /catalogue/SENSEX/expiries'] = { underlying: 'SENSEX', expiries: [] }
+    answers['GET /catalogue/NIFTY/expiries'] = { underlying: 'NIFTY', today: '2026-10-10', expiries: ['2026-10-13'] }
+    answers['GET /catalogue/SENSEX/expiries'] = { underlying: 'SENSEX', today: '2026-10-10', expiries: [] }
     answers['GET /catalogue/NIFTY/contracts?expiry=2026-10-13'] = {
       underlying: 'NIFTY',
       contracts: [{ exchange_segment: 'NSE_FO', exchange_token: 44624, instrument_type: 'CE', expiry: '2026-10-13', strike: '22800.00', lot_size: 65, symbol: 'NIFTY26O1322800CE' }],

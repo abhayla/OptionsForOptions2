@@ -287,6 +287,15 @@
             "title": "Curves",
             "type": "object"
           },
+          "curves_estimate_note": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Curves Estimate Note"
+          },
           "curves_estimated": {
             "default": {},
             "patternProperties": {
@@ -326,6 +335,16 @@
             "title": "Leads",
             "type": "object"
           },
+          "limit": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AdjustLimitOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "limits_reason": {
             "anyOf": [
               {},
@@ -334,6 +353,14 @@
               }
             ],
             "title": "Limits Reason"
+          },
+          "not_offered": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/AdjustNotOfferedOut"
+            },
+            "title": "Not Offered",
+            "type": "array"
           },
           "pop_switch_on": {
             "title": "Pop Switch On",
@@ -1049,6 +1076,30 @@
         "title": "AdjustLegOut",
         "type": "object"
       },
+      "AdjustLimitOut": {
+        "additionalProperties": false,
+        "description": "ADR-297 (D4): the plan's adjustment maximum is reached; catalogue sentence, the trade's own numbers.",
+        "properties": {
+          "max": {
+            "title": "Max",
+            "type": "integer"
+          },
+          "text": {
+            "title": "Text"
+          },
+          "used": {
+            "title": "Used",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "used",
+          "max",
+          "text"
+        ],
+        "title": "AdjustLimitOut",
+        "type": "object"
+      },
       "AdjustMarginOut": {
         "additionalProperties": false,
         "properties": {
@@ -1097,6 +1148,36 @@
           "reason"
         ],
         "title": "AdjustMarginOut",
+        "type": "object"
+      },
+      "AdjustNotOfferedOut": {
+        "additionalProperties": false,
+        "description": "ADR-297 (D4): an approach that applies but is withheld, with the reason id and its catalogue sentence.",
+        "properties": {
+          "id": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name"
+          },
+          "reason": {
+            "title": "Reason"
+          },
+          "reason_id": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Reason Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "reason_id",
+          "reason"
+        ],
+        "title": "AdjustNotOfferedOut",
         "type": "object"
       },
       "AdjustPopOut": {
@@ -1463,6 +1544,22 @@
       "AdjustmentCheckOut": {
         "additionalProperties": false,
         "properties": {
+          "as_of": {
+            "format": "date-time",
+            "title": "As Of",
+            "type": "string"
+          },
+          "as_of_text": {
+            "title": "As Of Text"
+          },
+          "limits": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/CheckLimitOut"
+            },
+            "title": "Limits",
+            "type": "array"
+          },
           "paused": {
             "anyOf": [
               {
@@ -1523,6 +1620,8 @@
         },
         "required": [
           "strategy_id",
+          "as_of",
+          "as_of_text",
           "strategy_type",
           "type_name",
           "playbook",
@@ -2826,6 +2925,125 @@
         "title": "ChargesOut",
         "type": "object"
       },
+      "CheckLimitOut": {
+        "additionalProperties": false,
+        "description": "ADR-304: the limit a rule acts on for this trade now, the evaluator's own number (``playbook_eval.limits_now``).",
+        "properties": {
+          "after": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After"
+          },
+          "amount": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount"
+          },
+          "later": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Later",
+            "type": "array"
+          },
+          "reason": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "reason_code": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason Code"
+          },
+          "rule_id": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Rule Id",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "checked",
+              "not_checked",
+              "already_true"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          },
+          "threshold": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Threshold"
+          },
+          "tightened_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tightened By"
+          },
+          "trigger_id": {
+            "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+            "title": "Trigger Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "rule_id",
+          "trigger_id",
+          "threshold",
+          "amount",
+          "later",
+          "tightened_by",
+          "state",
+          "reason",
+          "text"
+        ],
+        "title": "CheckLimitOut",
+        "type": "object"
+      },
       "CheckPauseOut": {
         "additionalProperties": false,
         "properties": {
@@ -2926,6 +3144,18 @@
             ],
             "title": "Condition"
           },
+          "fired_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fired At"
+          },
           "kind": {
             "enum": [
               "flag",
@@ -2934,6 +3164,26 @@
             ],
             "title": "Kind",
             "type": "string"
+          },
+          "live_as_of_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Live As Of Text"
+          },
+          "live_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Live Value"
           },
           "note": {
             "anyOf": [
@@ -2957,6 +3207,15 @@
             "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
             "title": "Rule Id",
             "type": "string"
+          },
+          "stop_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stop Text"
           },
           "suggestion_id": {
             "anyOf": [
@@ -4468,6 +4727,68 @@
         "title": "ExecuteOut",
         "type": "object"
       },
+      "ExitRiskOut": {
+        "additionalProperties": false,
+        "description": "ADR-256: the answer for a prepared basket in three states (``no`` only when proven), the book's Max Loss before /\nafter when the answer is yes and they are known, and the one factual warning line.",
+        "properties": {
+          "max_loss_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "const": "unlimited",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Loss After"
+          },
+          "max_loss_before": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "const": "unlimited",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Loss Before"
+          },
+          "state": {
+            "enum": [
+              "yes",
+              "no",
+              "cannot_tell"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "warning_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warning Text"
+          }
+        },
+        "required": [
+          "state",
+          "max_loss_before",
+          "max_loss_after",
+          "warning_text"
+        ],
+        "title": "ExitRiskOut",
+        "type": "object"
+      },
       "ExpiriesOut": {
         "additionalProperties": false,
         "properties": {
@@ -4498,6 +4819,11 @@
             "title": "Expiry Days",
             "type": "array"
           },
+          "today": {
+            "format": "date",
+            "title": "Today",
+            "type": "string"
+          },
           "underlying": {
             "enum": [
               "NIFTY",
@@ -4510,7 +4836,8 @@
         "required": [
           "underlying",
           "expiries",
-          "expiry_days"
+          "expiry_days",
+          "today"
         ],
         "title": "ExpiriesOut",
         "type": "object"
@@ -5295,6 +5622,15 @@
       "HistoryRowOut": {
         "additionalProperties": false,
         "properties": {
+          "approach_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approach Text"
+          },
           "at": {
             "format": "date-time",
             "title": "At",
@@ -5359,6 +5695,11 @@
           },
           "fill_text": {
             "title": "Fill Text"
+          },
+          "is_exit": {
+            "default": false,
+            "title": "Is Exit",
+            "type": "boolean"
           },
           "number": {
             "anyOf": [
@@ -5456,6 +5797,31 @@
             "title": "Adjustments Used",
             "type": "integer"
           },
+          "after_charges_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "rates_unavailable",
+                  "not_priced",
+                  "prices_not_live"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After Charges Reason"
+          },
+          "after_charges_reason_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After Charges Reason Text"
+          },
           "booked": {
             "title": "Booked",
             "type": "string"
@@ -5473,6 +5839,26 @@
               }
             ],
             "title": "Charges"
+          },
+          "charges_paid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges Paid"
+          },
+          "charges_paid_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges Paid Text"
           },
           "charges_reason": {
             "anyOf": [
@@ -5506,6 +5892,26 @@
               }
             ],
             "title": "Charges Text"
+          },
+          "charges_to_close": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges To Close"
+          },
+          "charges_to_close_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges To Close Text"
           },
           "credit": {
             "title": "Credit",
@@ -5676,6 +6082,26 @@
               }
             ],
             "title": "Prices Reason Text"
+          },
+          "total_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total After"
+          },
+          "total_after_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total After Text"
           }
         },
         "required": [
@@ -6889,6 +7315,31 @@
             ],
             "title": "Dividend Yields"
           },
+          "entry_guide_line": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entry Guide Line"
+          },
+          "entry_guide_state": {
+            "anyOf": [
+              {
+                "enum": [
+                  "breaks",
+                  "within",
+                  "cannot_tell"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entry Guide State"
+          },
           "last_price_at": {
             "anyOf": [
               {
@@ -7127,6 +7578,31 @@
         "additionalProperties": false,
         "description": "GET /paper/strategies/{id} and the answer of POST .../orders.",
         "properties": {
+          "after_charges_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "rates_unavailable",
+                  "not_priced",
+                  "prices_not_live"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After Charges Reason"
+          },
+          "after_charges_reason_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After Charges Reason Text"
+          },
           "answered_at": {
             "format": "date-time",
             "title": "Answered At",
@@ -7147,6 +7623,51 @@
           "booked": {
             "title": "Booked",
             "type": "string"
+          },
+          "booked_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked After"
+          },
+          "booked_after_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "rates_unavailable",
+                  "not_priced",
+                  "prices_not_live"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked After Reason"
+          },
+          "booked_after_reason_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked After Reason Text"
+          },
+          "booked_after_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked After Text"
           },
           "booked_text": {
             "title": "Booked Text"
@@ -7216,6 +7737,26 @@
             ],
             "title": "Charges"
           },
+          "charges_paid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges Paid"
+          },
+          "charges_paid_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges Paid Text"
+          },
           "charges_reason": {
             "anyOf": [
               {
@@ -7248,6 +7789,26 @@
               }
             ],
             "title": "Charges Text"
+          },
+          "charges_to_close": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges To Close"
+          },
+          "charges_to_close_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges To Close Text"
           },
           "extremes_charges": {
             "anyOf": [
@@ -7373,6 +7934,30 @@
             ],
             "title": "Loss Left"
           },
+          "loss_left_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "const": "unlimited",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Loss Left After"
+          },
+          "loss_left_after_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Loss Left After Text"
+          },
           "loss_left_text": {
             "anyOf": [
               {},
@@ -7492,6 +8077,30 @@
             ],
             "title": "Profit Left"
           },
+          "profit_left_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "const": "unlimited",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profit Left After"
+          },
+          "profit_left_after_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profit Left After Text"
+          },
           "profit_left_text": {
             "anyOf": [
               {},
@@ -7500,6 +8109,26 @@
               }
             ],
             "title": "Profit Left Text"
+          },
+          "recover": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recover"
+          },
+          "recover_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recover Text"
           },
           "state": {
             "enum": [
@@ -7526,6 +8155,26 @@
             ],
             "title": "Total"
           },
+          "total_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total After"
+          },
+          "total_after_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total After Text"
+          },
           "total_text": {
             "anyOf": [
               {},
@@ -7546,6 +8195,26 @@
             ],
             "title": "Unbooked"
           },
+          "unbooked_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unbooked After"
+          },
+          "unbooked_after_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unbooked After Text"
+          },
           "unbooked_text": {
             "anyOf": [
               {},
@@ -7562,6 +8231,22 @@
             ],
             "title": "Underlying",
             "type": "string"
+          },
+          "unpriced_legs": {
+            "items": {
+              "$ref": "#/components/schemas/UnpricedLegOut"
+            },
+            "title": "Unpriced Legs",
+            "type": "array"
+          },
+          "unpriced_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unpriced Text"
           }
         },
         "required": [
@@ -7774,6 +8459,15 @@
           "net_quantity": {
             "title": "Net Quantity",
             "type": "integer"
+          },
+          "no_price_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "No Price Text"
           },
           "price_at": {
             "anyOf": [
@@ -8078,6 +8772,31 @@
       "PaperStrategyOut": {
         "additionalProperties": false,
         "properties": {
+          "after_charges_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "rates_unavailable",
+                  "not_priced",
+                  "prices_not_live"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After Charges Reason"
+          },
+          "after_charges_reason_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After Charges Reason Text"
+          },
           "as_of": {
             "anyOf": [
               {
@@ -8093,6 +8812,51 @@
           "booked": {
             "title": "Booked",
             "type": "string"
+          },
+          "booked_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked After"
+          },
+          "booked_after_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "rates_unavailable",
+                  "not_priced",
+                  "prices_not_live"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked After Reason"
+          },
+          "booked_after_reason_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked After Reason Text"
+          },
+          "booked_after_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked After Text"
           },
           "booked_text": {
             "title": "Booked Text"
@@ -8162,6 +8926,26 @@
             ],
             "title": "Charges"
           },
+          "charges_paid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges Paid"
+          },
+          "charges_paid_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges Paid Text"
+          },
           "charges_reason": {
             "anyOf": [
               {
@@ -8194,6 +8978,26 @@
               }
             ],
             "title": "Charges Text"
+          },
+          "charges_to_close": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges To Close"
+          },
+          "charges_to_close_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges To Close Text"
           },
           "extremes_charges": {
             "anyOf": [
@@ -8319,6 +9123,30 @@
             ],
             "title": "Loss Left"
           },
+          "loss_left_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "const": "unlimited",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Loss Left After"
+          },
+          "loss_left_after_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Loss Left After Text"
+          },
           "loss_left_text": {
             "anyOf": [
               {},
@@ -8439,6 +9267,30 @@
             ],
             "title": "Profit Left"
           },
+          "profit_left_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "const": "unlimited",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profit Left After"
+          },
+          "profit_left_after_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profit Left After Text"
+          },
           "profit_left_text": {
             "anyOf": [
               {},
@@ -8447,6 +9299,26 @@
               }
             ],
             "title": "Profit Left Text"
+          },
+          "recover": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recover"
+          },
+          "recover_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recover Text"
           },
           "state": {
             "enum": [
@@ -8473,6 +9345,26 @@
             ],
             "title": "Total"
           },
+          "total_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total After"
+          },
+          "total_after_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total After Text"
+          },
           "total_text": {
             "anyOf": [
               {},
@@ -8493,6 +9385,26 @@
             ],
             "title": "Unbooked"
           },
+          "unbooked_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unbooked After"
+          },
+          "unbooked_after_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unbooked After Text"
+          },
           "unbooked_text": {
             "anyOf": [
               {},
@@ -8509,6 +9421,22 @@
             ],
             "title": "Underlying",
             "type": "string"
+          },
+          "unpriced_legs": {
+            "items": {
+              "$ref": "#/components/schemas/UnpricedLegOut"
+            },
+            "title": "Unpriced Legs",
+            "type": "array"
+          },
+          "unpriced_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unpriced Text"
           }
         },
         "required": [
@@ -8548,9 +9476,79 @@
         "additionalProperties": false,
         "description": "GC-TP step 4a (screens 050-053 totals strip): the sums over every paper strategy of the user, from the server.",
         "properties": {
+          "after_charges_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "rates_unavailable",
+                  "not_priced",
+                  "prices_not_live"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After Charges Reason"
+          },
+          "after_charges_reason_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After Charges Reason Text"
+          },
           "booked": {
             "title": "Booked",
             "type": "string"
+          },
+          "booked_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked After"
+          },
+          "booked_after_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "rates_unavailable",
+                  "not_priced",
+                  "prices_not_live"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked After Reason"
+          },
+          "booked_after_reason_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked After Reason Text"
+          },
+          "booked_after_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked After Text"
           },
           "booked_text": {
             "title": "Booked Text"
@@ -8565,6 +9563,26 @@
               }
             ],
             "title": "Charges"
+          },
+          "charges_paid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges Paid"
+          },
+          "charges_paid_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges Paid Text"
           },
           "charges_reason": {
             "anyOf": [
@@ -8598,6 +9616,26 @@
               }
             ],
             "title": "Charges Text"
+          },
+          "charges_to_close": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges To Close"
+          },
+          "charges_to_close_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges To Close Text"
           },
           "decay": {
             "anyOf": [
@@ -8668,6 +9706,26 @@
             ],
             "title": "Total"
           },
+          "total_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total After"
+          },
+          "total_after_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total After Text"
+          },
           "total_text": {
             "anyOf": [
               {},
@@ -8729,6 +9787,26 @@
               }
             ],
             "title": "Unbooked"
+          },
+          "unbooked_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unbooked After"
+          },
+          "unbooked_after_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unbooked After Text"
           },
           "unbooked_text": {
             "anyOf": [
@@ -10596,6 +11674,21 @@
         "title": "RowOut",
         "type": "object"
       },
+      "RulesIn": {
+        "additionalProperties": false,
+        "properties": {
+          "body": {
+            "additionalProperties": true,
+            "title": "Body",
+            "type": "object"
+          }
+        },
+        "required": [
+          "body"
+        ],
+        "title": "RulesIn",
+        "type": "object"
+      },
       "SaveIn": {
         "additionalProperties": false,
         "properties": {
@@ -12142,6 +13235,9 @@
         "additionalProperties": false,
         "description": "Position Greeks at the target, one row per leg in leg order (null: that leg has no time left) and the total\n(null unless every leg has a value; ``unavailable`` names why).",
         "properties": {
+          "basis_text": {
+            "title": "Basis Text"
+          },
           "dividend_yields": {
             "default": {},
             "patternProperties": {
@@ -12176,6 +13272,20 @@
               }
             ]
           },
+          "total_display": {
+            "anyOf": [
+              {
+                "patternProperties": {
+                  "^[A-Za-z0-9_\\-.]{1,64}$": {}
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Display"
+          },
           "unavailable": {
             "anyOf": [
               {
@@ -12202,7 +13312,8 @@
           "legs",
           "total",
           "unavailable",
-          "unavailable_text"
+          "unavailable_text",
+          "basis_text"
         ],
         "title": "TargetGreeksOut",
         "type": "object"
@@ -12811,6 +13922,31 @@
         "additionalProperties": false,
         "description": "One row of GET /tracking (GC-BP step 4): the paper figures of one tracked strategy, no detections.",
         "properties": {
+          "after_charges_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "rates_unavailable",
+                  "not_priced",
+                  "prices_not_live"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After Charges Reason"
+          },
+          "after_charges_reason_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After Charges Reason Text"
+          },
           "as_of": {
             "anyOf": [
               {
@@ -12827,6 +13963,51 @@
             "title": "Booked",
             "type": "string"
           },
+          "booked_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked After"
+          },
+          "booked_after_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "rates_unavailable",
+                  "not_priced",
+                  "prices_not_live"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked After Reason"
+          },
+          "booked_after_reason_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked After Reason Text"
+          },
+          "booked_after_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked After Text"
+          },
           "booked_text": {
             "anyOf": [
               {},
@@ -12835,6 +14016,46 @@
               }
             ],
             "title": "Booked Text"
+          },
+          "charges_paid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges Paid"
+          },
+          "charges_paid_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges Paid Text"
+          },
+          "charges_to_close": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges To Close"
+          },
+          "charges_to_close_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges To Close Text"
           },
           "legs": {
             "items": {
@@ -12897,6 +14118,26 @@
             ],
             "title": "Total"
           },
+          "total_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total After"
+          },
+          "total_after_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total After Text"
+          },
           "total_text": {
             "anyOf": [
               {},
@@ -12917,6 +14158,26 @@
             ],
             "title": "Unbooked"
           },
+          "unbooked_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unbooked After"
+          },
+          "unbooked_after_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unbooked After Text"
+          },
           "unbooked_text": {
             "anyOf": [
               {},
@@ -12933,6 +14194,22 @@
             ],
             "title": "Underlying",
             "type": "string"
+          },
+          "unpriced_legs": {
+            "items": {
+              "$ref": "#/components/schemas/UnpricedLegOut"
+            },
+            "title": "Unpriced Legs",
+            "type": "array"
+          },
+          "unpriced_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unpriced Text"
           }
         },
         "required": [
@@ -13127,6 +14404,15 @@
             "title": "Leg Index",
             "type": "integer"
           },
+          "no_price_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "No Price Text"
+          },
           "pnl": {
             "anyOf": [
               {
@@ -13265,6 +14551,31 @@
       "TrackingOut": {
         "additionalProperties": false,
         "properties": {
+          "after_charges_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "rates_unavailable",
+                  "not_priced",
+                  "prices_not_live"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After Charges Reason"
+          },
+          "after_charges_reason_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After Charges Reason Text"
+          },
           "answered_at": {
             "format": "date-time",
             "title": "Answered At",
@@ -13285,6 +14596,51 @@
           "booked": {
             "title": "Booked",
             "type": "string"
+          },
+          "booked_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked After"
+          },
+          "booked_after_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "rates_unavailable",
+                  "not_priced",
+                  "prices_not_live"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked After Reason"
+          },
+          "booked_after_reason_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked After Reason Text"
+          },
+          "booked_after_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked After Text"
           },
           "booked_text": {
             "anyOf": [
@@ -13308,6 +14664,46 @@
               }
             ],
             "title": "Breakevens"
+          },
+          "charges_paid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges Paid"
+          },
+          "charges_paid_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges Paid Text"
+          },
+          "charges_to_close": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges To Close"
+          },
+          "charges_to_close_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges To Close Text"
           },
           "detections": {
             "items": {
@@ -13398,6 +14794,26 @@
             "title": "Strategy Id",
             "type": "integer"
           },
+          "total_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total After"
+          },
+          "total_after_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total After Text"
+          },
           "unbooked": {
             "anyOf": [
               {
@@ -13409,6 +14825,26 @@
             ],
             "title": "Unbooked"
           },
+          "unbooked_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unbooked After"
+          },
+          "unbooked_after_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unbooked After Text"
+          },
           "unbooked_text": {
             "anyOf": [
               {},
@@ -13417,6 +14853,22 @@
               }
             ],
             "title": "Unbooked Text"
+          },
+          "unpriced_legs": {
+            "items": {
+              "$ref": "#/components/schemas/UnpricedLegOut"
+            },
+            "title": "Unpriced Legs",
+            "type": "array"
+          },
+          "unpriced_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unpriced Text"
           }
         },
         "required": [
@@ -13838,6 +15290,30 @@
           "types"
         ],
         "title": "TypesOut",
+        "type": "object"
+      },
+      "UnpricedLegOut": {
+        "additionalProperties": false,
+        "description": "ADR-311: an open leg with no live price, named by its contract; ``expired`` says the contract has expired.",
+        "properties": {
+          "contract_text": {
+            "title": "Contract Text"
+          },
+          "expired": {
+            "title": "Expired",
+            "type": "boolean"
+          },
+          "leg_index": {
+            "title": "Leg Index",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "leg_index",
+          "contract_text",
+          "expired"
+        ],
+        "title": "UnpricedLegOut",
         "type": "object"
       },
       "ValidationError": {
@@ -15162,9 +16638,74 @@
             ],
             "title": "Adjustments Made"
           },
+          "after_charges_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "rates_unavailable",
+                  "not_priced",
+                  "prices_not_live"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After Charges Reason"
+          },
+          "after_charges_reason_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After Charges Reason Text"
+          },
           "can_delete": {
             "title": "Can Delete",
             "type": "boolean"
+          },
+          "charges_paid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges Paid"
+          },
+          "charges_paid_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges Paid Text"
+          },
+          "charges_to_close": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges To Close"
+          },
+          "charges_to_close_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Charges To Close Text"
           },
           "completed_reason_text": {
             "anyOf": [
@@ -15202,6 +16743,10 @@
           },
           "first_leg": {
             "$ref": "#/components/schemas/FirstLegOut"
+          },
+          "has_order": {
+            "title": "Has Order",
+            "type": "boolean"
           },
           "has_paper_order": {
             "title": "Has Paper Order",
@@ -15243,6 +16788,26 @@
             "title": "Status",
             "type": "string"
           },
+          "total_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total After"
+          },
+          "total_after_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total After Text"
+          },
           "tracked": {
             "anyOf": [
               {
@@ -15280,6 +16845,7 @@
           "tracked",
           "can_delete",
           "has_paper_order",
+          "has_order",
           "open_opportunities",
           "open_opportunities_text",
           "final_pnl",
@@ -17209,6 +18775,94 @@
         "summary": "Edit Plan"
       }
     },
+    "/api/strategies/{strategy_id}/adjustment-plan/rules": {
+      "get": {
+        "description": "Issue 7 (REQ-158 AC-6): \"Customise triggers\" from a trade opens THIS trade's rules: its plan copy, else a copy of\nthe type's active playbook that is written only when the user saves. Never a playbook row.",
+        "operationId": "read_rules_api_strategies__strategy_id__adjustment_plan_rules_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_id",
+            "required": true,
+            "schema": {
+              "title": "Strategy Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybookFullOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Rules"
+      },
+      "put": {
+        "description": "Save this trade's rules: the strategy's plan body only (``accept_plan`` writes the plan row; no playbook row).",
+        "operationId": "save_rules_api_strategies__strategy_id__adjustment_plan_rules_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_id",
+            "required": true,
+            "schema": {
+              "title": "Strategy Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RulesIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybookFullOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Save Rules"
+      }
+    },
     "/api/strategies/{strategy_id}/alert-style": {
       "get": {
         "operationId": "read_alert_style_api_strategies__strategy_id__alert_style_get",
@@ -18007,6 +19661,56 @@
           }
         },
         "summary": "Get Paper Strategy"
+      }
+    },
+    "/paper/strategies/{strategy_id}/exit-risk": {
+      "get": {
+        "description": "Read only, nothing stored. The WHOLE prepared basket (exits and entries) is judged on the legs after all of it.\nBad input is refused (422), an engine error is cannot_tell, never \"no\". When an exit price cannot be read the\nanswer is judged without any Max Loss figure (never a stand-in price) and shows none.",
+        "operationId": "paper_exit_risk_paper_strategies__strategy_id__exit_risk_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_id",
+            "required": true,
+            "schema": {
+              "title": "Strategy Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "orders",
+            "required": true,
+            "schema": {
+              "maxLength": 8000,
+              "title": "Orders",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExitRiskOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Paper Exit Risk"
       }
     },
     "/paper/strategies/{strategy_id}/orders": {

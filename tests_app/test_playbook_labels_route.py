@@ -35,7 +35,7 @@ async def test_labels_answer_names_actions_kinds_and_summary_sentences():
     out = await _labels()
     names = {x["key"]: x["text"] for x in out["approaches"]}
     assert names["A-36"] == "No change"  # the compare's table
-    assert names["A-01"] == "Roll the untested spread toward spot"
+    assert names["A-01"] == "Roll the untested spread to the strikes your roll setting picks (same width, same expiry)"
     assert names["A-09"] == "Add wings (buy far options on each side)"
     actions = {x["key"]: x["text"] for x in out["day_actions"]}
     assert actions["0"] == "Run the carry check (overnight margin, gap loss)"

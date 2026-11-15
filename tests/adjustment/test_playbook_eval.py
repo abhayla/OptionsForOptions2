@@ -123,7 +123,8 @@ def state_of(sc: dict) -> StrategyState:
         atm_iv=D(sc["market"]["atm_iv"]), entry_atm_iv=D(sc["position"]["entry"]["atm_iv"]),
         day_open=_dec(sc["market"]["day_open"]), prev_close=_dec(sc["market"]["prev_close"]),
         adjustments_used=sc["position"]["adjustments_used"], expiry_pnl_at_spot=expiry_pnl, tighten_percent=tighten,
-        prices_fresh=sc["data_state"]["prices"] == "fresh")
+        prices_fresh=sc["data_state"]["prices"] == "fresh",
+        today=clock.date(), expiry=datetime.date.fromisoformat(sc["expiry"]))  # ADR-310: T-10b reads the day
     return replace(state, stops=_stops(body_of(sc), state))
 
 

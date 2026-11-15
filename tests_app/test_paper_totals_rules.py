@@ -63,9 +63,15 @@ def test_an_option_without_a_solvable_iv_has_no_decay_and_no_open_contract_decay
     assert paper_decay.book_decay(snap, "NIFTY", []) == paper_decay.Decay(D(0), None)
 
 
+# every route strategy also carries the after-charges fields (GC-ICFIX u122/u123); absent here, so the sums are absent
+AFTER_ABSENT = {"total": None, "total_after": None, "charges_paid": None, "charges_to_close": None,
+                "after_charges_reason": "not_priced", "booked_after": None, "unbooked_after": None}
+
+
 def _strategy(booked: str, unbooked: str | None, reason: str | None = None) -> dict:
     return {"booked": D(booked), "unbooked": None if unbooked is None else D(unbooked), "pause_reason": reason,
-            "charges": D("1.00"), "charges_reason": None}  # every route strategy carries its Charges (step 8a)
+            "charges": D("1.00"), "charges_reason": None,  # every route strategy carries its Charges (step 8a)
+            **AFTER_ABSENT}
 
 
 def test_one_strategy_without_unbooked_makes_the_totals_absent_never_a_partial_sum():

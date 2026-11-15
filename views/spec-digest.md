@@ -4,33 +4,9 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (279)
+## Decisions (303)
 
-- Older decisions: 239 rows, ADR-1..ADR-252 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
-- ADR-253 2026-11-06: Owner 2026-11-06 ~01:2x IST (question tool, "Keep test-data only for now"). [Limits goal contract ic-e2e-paper design decision…]
-- ADR-254 2026-11-06: Owner 2026-11-06 ~02:0x IST (question tool, "Live too"). [Extends REQ-165 to T-19 in the worker; leaves ADR…]
-- ADR-255 2026-11-06: Owner 2026-11-06 ~14:0x IST (question tool, "Partial exits count, Exit all doesn't"). [Refines REQ-161 / REQ-163 / ADR-214 "adjustments…]
-- ADR-256 2026-11-06: Owner 2026-11-06 ~14:0x IST (question tool, "Warn, user confirms"). [Adds a warning to the paper exit confirm list (AD…]
-- ADR-257 2026-11-06: Owner 2026-11-06 ~14:1x IST (question tool, "Ask when arming"). [Extends ADR-207 (5) per-leg stops with an optiona…]
-- ADR-258 2026-11-06: Owner 2026-11-06 ~14:1x IST (question tool, "Reset after each adjustment"). [Extends REQ-159 / F-71 from entry to every adjust…]
-- ADR-259 2026-11-06: Owner 2026-11-06 ~14:1x IST (question tool, "Yes, with final totals"). [Defines "completed" for the Completed Strategies…]
-- ADR-260 2026-11-06: Owner 2026-11-06 ~14:2x IST (question tool, "One list in Alerts"). [Joins REQ-162 alerts into Alerts > Active; define…]
-- ADR-261 2026-11-06: Owner 2026-11-06 ~14:2x IST (question tool, "Yes, 'Compare approaches' always"). [Adds an always-available entry to the compare bes…]
-- ADR-262 2026-11-06: Owner 2026-11-06 ~14:2x IST (question tool, "This should be based on each user preference", then "D… [Replaces the fixed placement rule in the ready-ma…]
-- ADR-263 2026-11-06: Owner 2026-11-06 ~14:3x IST (question tool, "After charges everywhere, labelled"). [Defines the charges basis of every headline money…]
-- ADR-264 2026-11-06: Owner 2026-11-06 ~14:4x IST (question tool: "Yes: admin default, user can change" and "Yes, a lock… [Extends REQ-166 (admin settings) and REQ-138 / RE…]
-- ADR-265 2026-11-06: Owner 2026-11-06 ~14:4x IST (question tool, "Mid, LTP only if no quote"). [SPEC CHANGE: REQ-077 AC-5 capture basis LTP -> mi…]
-- ADR-266 2026-11-06: Decided under the owner's standing delegation for strategy behaviour ("go with your recommendation"… [Extends ADR-265 (capture) to marking for paper P&…]
-- ADR-267 2026-11-06: Decided under the owner's standing delegation for strategy behaviour ("go with your recommendation"… [Exempts A-37 user level watches from the alert-st…]
-- ADR-268 2026-11-06: Decided under the owner's standing delegation for strategy behaviour ("go with your recommendation"… [Fills the intrinsic-value gap for delta-based rul…]
-- ADR-269 2026-11-06: Owner 2026-11-06 ~16:1x IST (question tool, during the live iron condor test): "Consider rollover a… [SPEC CHANGE: ADR-207 (2) no longer covers expiry-…]
-- ADR-270 2026-11-06: Owner 2026-11-06 ~16:2x IST (question tool, after the reason was explained): "Test both and all rel… [SPEC CHANGE: ADR-253 superseded for live; adds th…]
-- ADR-271 2026-11-06: Decided under the owner's standing delegation for strategy and behaviour calls (owner 2026-11-06 ~1… [clarifies ADR-118 (paper orders were not named);…]
-- ADR-272 2026-11-07: Decided under the owner's standing delegation for strategy and behaviour calls (owner 2026-11-06 ~1… [applies ADR-015 to REQ-156 (compare) and REQ-045…]
-- ADR-273 2026-11-07: Decided under the owner's standing delegation for strategy and behaviour calls (owner 2026-11-06 ~1… [SPEC CHANGE REQ-163 AC-1 (adds the approach as a…]
-- ADR-274 2026-11-07: Owner 2026-11-07 ~00:5x IST (question tool): "of course send one combined order". [adds a basket rule for adjustments; REQ-030 AC-11…]
-- ADR-275 2026-11-08: Owner 2026-11-08 ~16:2x IST, verbatim: "the fix or the code changes that we do should work for both… [Reframes the 2026-11-07 IC audit gaps C1-C14 as f…]
-- ADR-276 2026-11-08: Owner 2026-11-08 ~18:00 IST (GC-ICTRACK plan approval, answer A1). [Extends ADR-275 to monitoring of real strategies;…]
+- Older decisions: 263 rows, ADR-1..ADR-276 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
 - ADR-277 2026-11-08: Owner 2026-11-08 ~18:00 IST (GC-ICTRACK, answer A2). [Un-greys T-11c and T-20b in the iron condor playb…]
 - ADR-278 2026-11-08: Owner 2026-11-08 ~18:00 IST (GC-ICTRACK, answer A3). [Supersedes ADR-253 in full (ADR-270 superseded it…]
 - ADR-279 2026-11-08: Owner 2026-11-08 ~18:00 IST (GC-ICTRACK, answer A4). [Makes the price source (ADR-275 (3)) a property o…]
@@ -47,6 +23,30 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-290 2026-11-11: Owner, 2026-11-11 (chat, then question tool "Both: by hand now, Zerodha later"): "I don't want to p… [withdraws ADR-289 part (2); restates the standing…]
 - ADR-291 2026-11-12: Owner, 2026-11-12 ~00:1x IST (chat): "It is mandatory that whoever connects to kite should have kit… [narrows the current scope of ADR-290 to the owner…]
 - ADR-292 2026-11-12: How ADR-290 (2) works for the one user of ADR-291, as approved with the GC-TRACK1 contract (owner 2… [adds the held_elsewhere source to the strategy st…]
+- ADR-293 2026-11-13: Owner decision 2026-11-13 ~09:15 IST (question tool, picked "Allow delete for paper (Recommended)"). [supersedes ADR-271 parts (1), (2) and (3); ADR-27…]
+- ADR-294 2026-11-13: Owner decision 2026-11-13 (planning session, answer D1: profit target = before charges). [extends ADR-238 (6) (names the basis of "in profi…]
+- ADR-295 2026-11-13: Owner decision 2026-11-13 (planning session, answer D2: a trade may have no plan, but the page must… [answers the open owner question in ADR-214 conseq…]
+- ADR-296 2026-11-13: Owner decision 2026-11-13 (planning session, answer D3: after the user adjusts a stopped trade the… [extends ADR-258 to the stop (ADR-258 says each ru…]
+- ADR-297 2026-11-13: Owner decision 2026-11-13 (planning session, answer D4: at the adjustment limit, exit and reduce on… [extends ADR-240 (2) (rule S-11 "only exit and red…]
+- ADR-298 2026-11-13: Owner decision 2026-11-13 (planning session, answer D5: practice behaves exactly like a real trade). [confirms ADR-202 (4) for practice trades; adds th…]
+- ADR-299 2026-11-13: Owner decision 2026-11-13 (planning session, answer D6: status words Draft / Running / Completed). [names the status words for ADR-259 (Completed Str…]
+- ADR-300 2026-11-13: Decided by the assistant on 2026-11-13 under the owner's standing rule that strategy calls are not… [applies ADR-216 (entry guide numbers) to the disp…]
+- ADR-301 2026-11-13: Owner decision 2026-11-13 ~18:50-19:00 IST (question tool, picked "After all charges (Recommended)"… [Settles the clash between REQ-109 AC-9 (no charge…]
+- ADR-302 2026-11-13: Owner decision 2026-11-13 ~18:50-19:00 IST (question tool, picked "Drop the cap (Recommended)"). [Replaces the goal contract task u124 line "Profit…]
+- ADR-303 2026-11-13: Owner decision 2026-11-13 ~18:50-19:00 IST (question tool, picked "Paid in booked, close cost in un… [Fills the gap in ADR-263, which lists "total / bo…]
+- ADR-304 2026-11-13: Decided by the assistant on 2026-11-13 under the owner's standing rule that strategy calls are the… [Extends ADR-252 (the plan Stop switches the stop…]
+- ADR-305 2026-11-13: Owner decision 2026-11-13 ~20:00 IST (chat, after the question was explained: "go with your recomme… [narrows ADR-304 (1): "any usable saved Target act…]
+- ADR-306 2026-11-13: Owner decision 2026-11-13 ~21:15 IST (question tool, picked "Make it add up (Recommended)"). [SPEC CHANGE: replaces the profit left / loss left…]
+- ADR-307 2026-11-14: Decided by the run on 2026-11-14 under the owner rule of that day ("whenever you have question, go… [No requirement is reversed. Adds to REQ-148 AC-5…]
+- ADR-308 2026-11-14: Decided by the run on 2026-11-14 under the owner rule of that day ("whenever you have question, go… [Clarifies ADR-214 ("Showing N of M"); no reversal…]
+- ADR-309 2026-11-15: Decided by the run on 2026-11-15 under the owner rule of 14 Nov ("whenever you have question, go wi… [No reversal. Extends decision row 304 (limits on…]
+- ADR-310 2026-11-15: Decided by the run on 2026-11-15 under the owner rule of 14 Nov ("whenever you have question, go wi… [SPEC CHANGE, narrow: ADR-283 (2) said a clock rul…]
+- ADR-311 2026-11-15: Decided by the run on 2026-11-15 under the owner rule of 14 Nov ("whenever you have question, go wi… [SPEC CHANGE, narrow: REQ-109 AC-5 said a paused v…]
+- ADR-312 2026-11-15: Decided by the run on 2026-11-15 under the owner rule of 14 Nov ("whenever you have question, go wi… [adds to ADR-293 (2); ADR-293 text is not edited.]
+- ADR-313 2026-11-15: Decided by the run on 2026-11-15 under the owner rule of 14 Nov ("whenever you have question, go wi… [SPEC CHANGE: REQ-009 lists every item of the menu…]
+- ADR-314 2026-11-15: Decided by the run on 2026-11-15 under the owner rule of 14 Nov ("whenever you have question, go wi… [Narrows ADR-237 (3) and ADR-309 (1): both say a r…]
+- ADR-315 2026-11-15: Decided by the run on 2026-11-15 under the owner rule of 14 Nov ("whenever you have question, go wi… [Extends ADR-259 (a strategy with no open leg is C…]
+- ADR-316 2026-11-15: Decided by the run on 2026-11-15 under the owner rule of 14 Nov ("whenever you have question, go wi… [Refines ADR-310 (the clock rule, named "Time exit…]
 
 ## Requirements (161)
 
@@ -201,7 +201,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - REQ-158 [Approved]: Adjustment playbooks - one read-only system playbook per strategy type, any number of named user playbooks, o…
 - REQ-159 [Approved]: What a playbook holds - user-defined stages, triggers per stage, day-and-date rules, situations, limits and g…
 - REQ-160 [Approved]: Playbook editor is one step-by-step flow with a plain-words summary, and Test shows what the playbook would f…
-- REQ-161 [Approved]: Start tracking opens a strategy plan sheet pre-filled from the type's active playbook, accepted in one click
+- REQ-161 [Approved]: Add to Paper opens a strategy plan sheet pre-filled from the type's active playbook, accepted in one click
 - REQ-162 [Approved]: Positions > Adjustment opportunities lists every opportunity across strategies with its label and outcome
 - REQ-163 [Approved]: A strategy's adjustment history shows the entry, every adjustment and the whole-trade totals
 - REQ-164 [Approved]: The API runs as several copies; no request depends on the memory of one copy, and one copy stopping cuts no u…

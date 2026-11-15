@@ -452,6 +452,30 @@ decisions:
   ADR-290: S6.7         # goal is tracking, not order placing; hand entry of a held iron condor (GC-TRACK1)
   ADR-291: S6.7         # current work serves one user, the owner's own Kite account
   ADR-292: S6.7         # held condor typed in by hand: label, stated entry time, rules start at save, order screens hidden
+  ADR-293: S6.7         # a strategy with only paper orders can be deleted; real-order strategies stay refused
+  ADR-294: S6.7         # profit target compares profit before charges and says so; Take profit shows the after-charges result beside it
+  ADR-295: S6.7         # a trade may have no plan, but the page says so, shows the default rules and a Set plan button
+  ADR-296: S6.7         # after an adjustment the stop goes quiet (grey line) until it clears and crosses again
+  ADR-297: S6.7         # at the adjustment limit only exit and reduce are offered; the rest listed as not offered
+  ADR-298: S6.7         # practice behaves exactly like a real trade; Not enough funds stays as a message
+  ADR-299: S6.7         # status words Draft / Running / Completed
+  ADR-300: S6.7         # guided builder shows a condor outside the entry guide with a warning line
+  ADR-301: S6.7         # profit left and loss left are after all charges, same basis as max profit
+  ADR-302: S6.7         # profit left is not capped at max profit; one line explains the recovery of the current loss
+  ADR-303: S6.7         # paid charges sit in booked P&L, estimated close cost in unbooked; they add up to total
+  ADR-304: S6.7         # a saved plan Target acts (T-07 on); screen limits come from the rule check itself
+  ADR-305: S6.7         # the plan box is what the app does; an empty Target means no target alert
+  ADR-306: S6.7         # profit left and loss left add up: Max minus Total, all after charges
+  ADR-307: S6.7         # a two-expiry compare chart keeps its nearer-expiry estimate and says it is not a limit; max loss stays "cannot be estimated"
+  ADR-308: S6.7         # "Showing N of M" counts M as every approach that applies, not the ticked set; a link with no ticks shows all
+  ADR-309: S6.7         # a rule shown as fired stays fired until its alert record clears; the page reads the gate, not each poll
+  ADR-310: S6.7         # a clock-time rule alerts only on a day its action can be taken; the plan calls it "Time exit (on expiry day)"
+  ADR-311: S6.7         # one open leg with no price: every total stays paused, the leg is named (expired called expired), priced legs keep their figure
+  ADR-312: S6.7         # a strategy with a position held at the broker cannot be deleted (same refusal as real orders)
+  ADR-313: S6.7         # menus list built pages only; "/" opens My Strategies; unbuilt pages open by address with the empty state
+  ADR-314: S6.7         # a stored alert record keeps the value, threshold and limit of the sample that confirmed it, never the latest check's
+  ADR-315: S6.7         # a draft whose paper book is flat after a reducing order is closed (migration 0053), deleted rows included, real-order strategies excluded
+  ADR-316: S6.7         # yes/no and clock rule alerts show the rule's own label; the clock time follows once stored; the breakeven line names its figure
 
 questions:
   Q210: 4a              # external: Zerodha's written answer; ADR-051 covers the owner's own account
@@ -661,6 +685,17 @@ issues:
   "#700": S6.7  # A changed plan waits one speed interval before its background re-check (_last_check not cleared)
   "#701": S6.7  # GC-TRACK1 k28: remaining iron-condor defects and the frozen DEPTH list
   "#702": S6.7  # GC-TRACK1 k22: daily cap count restored on worker start includes exempt records (parked after 2 rounds)
+  "#707": S6.7  # PARKED: Max profit and Max loss after the charges really paid (GC-ICFIX, 4 rounds)
+  "#708": S6.7  # Roll and shift approaches can move a breached short toward spot (three findings, GC-ICFIX u509 trace)
+  "#709": S6.7  # GC-ICFIX: items that need a stored-data change (six parked)
+  "#710": S6.7  # GC-ICFIX: the T-09 alert label reads 'falls to Rs or below' with no amount; Rs and the rupee sign are mixed
+  "#711": S6.7  # GC-ICFIX: a trade page shows a raw instrument id ('NSE_FO:45392 cannot be used')
+  "#712": S6.7  # GC-ICFIX: 'Rule not checked: No adjustment opportunity checked: ...' repeats once per rule (16 times) with a doubled label
+  "#713": S6.7  # GC-ICFIX: cards show a negative Max Profit; expected (closing charges assumed) but unverified on these two cards
+  "#714": S6.7  # GC-ICFIX: scenario fixture gaps stop five screen proofs (candle close, double stop, margin, two expiries, replay)
+  "#715": S6.7  # GC-ICFIX: add a nightly audit query for flat draft strategies; list route loops once per closed row; migration 0053 exclusion narrower than the delete rule
+  "#716": S6.7  # GC-ICFIX: Paper tab opens on a real server error when broker state is 'partial'; adjustments marker goes N, N+1, N around an exit
+  "#717": S6.7  # GC-ICFIX: checks not reachable on screen so far, and not done (u404 clear-out, issue 26 measurement, live-day items)
 
 # Work items whose status is not done.
 work_items:

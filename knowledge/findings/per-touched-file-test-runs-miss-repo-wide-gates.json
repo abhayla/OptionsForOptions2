@@ -1,0 +1,20 @@
+{
+ "id": "per-touched-file-test-runs-miss-repo-wide-gates",
+ "scope": "generic",
+ "class": "Running only the tests of the files a change touched, per batch, misses the repo-wide gates (structure scans, import rules, the generated API description): they fail late and all at once.",
+ "mechanism": "Each batch ran its own files' tests; the gates that read the whole tree ran only at the end.",
+ "first_seen": {
+  "date": "2026-11-15",
+  "where": "GC-ICFIX final gate run, 15 Nov 2026, head f8bd1957 and earlier",
+  "evidence": "Three gate failures found about 28 commits after their cause: a domain test that imports the app (test_no_app_imports, 1 failed 1468 passed in gate-repo_scan_tests.log), a test fake without the limit property, and a stale docs/api/openapi.json. Repaired in ce584493, f8bd1957, 874aacd5; then ci_local 16 passed and repo_scan 1469 passed."
+ },
+ "fix": "Run the repo-wide gates (ci_local first gate, repo_scan, interface check) after every merge batch, not at the end.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "Process finding: only a habit and the earlier lesson (run its first gate after every merge batch). No mechanism enforces it."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-189.md"
+ ]
+}

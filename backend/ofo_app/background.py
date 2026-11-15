@@ -728,7 +728,11 @@ class DbGateStore:
         previous record of the rule is still open lapses that one first (REQ-112: one open record per rule)."""
         from ofo_app import playbook_store  # noqa: PLC0415 - database layer at run time
         from ofo_app.db import get_sessionmaker  # noqa: PLC0415
-        from ofo_app.routes.adjustment_check import cheapest, t19_record  # noqa: PLC0415 - the screen's T-19 words
+        from ofo_app.routes.adjustment_check import (  # noqa: PLC0415 - the screen's T-19 and target words
+            cheapest,
+            t19_record,
+            target_record,
+        )
         values = {} if ctx is None else {v.rule_id: v for v in ctx.evaluation.values}
         flags = {} if ctx is None else {r.rule_id: r for r in ctx.evaluation.results if isinstance(r, pe.Flag)}
         stage = None if ctx is None else ctx.evaluation.stage_name
@@ -740,13 +744,12 @@ class DbGateStore:
                     await _lapse_open_of(db, w, e.rule_id, playbook_store.LAPSE_CONDITION_STOPPED)
                     continue
                 rv = values.get(e.rule_id)
-                trigger = None if rv is None else rv.trigger_id
-                value = _quantized(e.value)
-                if value is None and rv is not None:
-                    value = _quantized(rv.value)
+                trigger, cmp, label, unit = check.record_words(w.body, e.rule_id, rv)
+                # GC-ICFIX: the event's own numbers (the confirming sample's), never the latest check's
+                value = _quantized(e.value if isinstance(e.value, Decimal) else e.shown_value)
                 threshold = _quantized(getattr(e, "threshold", None))
-                if threshold is None and rv is not None:
-                    threshold = _quantized(rv.threshold)
+                if threshold is None:  # 0 is a real threshold (T-02), so no `or`
+                    threshold = _quantized(e.shown_threshold)
                 if isinstance(e, alert_gate.Held):
                     await playbook_store.record_held(db, w.user_ref, w.strategy_id, e.rule_id, trigger_id=trigger,
                                                      stage=stage, value=value, threshold=threshold, reason=e.reason)
@@ -754,7 +757,6 @@ class DbGateStore:
                 if e.worse is not None:
                     await _lapse_open_of(db, w, e.rule_id, playbook_store.LAPSE_SUPERSEDED_BY_WORSE)  # finding 5
                 flag = flags.get(e.rule_id)
-                label, unit = check.trigger_words(w.body, trigger)
                 t19 = {} if ctx is None else t19_record(trigger or "", cheapest(ctx.state))
                 if not t19 and rv is not None and rv.approaches:  # a day rule names its approaches (GC-IC1 1a)
                     t19 = {"approach": DAY_APPROACH_SEPARATOR.join(rv.approaches)}
@@ -764,9 +766,10 @@ class DbGateStore:
                     db, w.user_ref, w.strategy_id, e.rule_id, trigger_id=trigger,
                     stage=flag.stage_name if flag is not None else stage, value=value, threshold=threshold,
                     group=gate_group(w.strategy_id, e.at), source=source,
-                    cmp=None if rv is None else rv.cmp, label=label, unit=unit, worse=e.worse,
-                    beyond=None if rv is None else rv.beyond, limit=None if rv is None else _quantized(rv.threshold),
-                    adjustments=_count_of(w.tracked), **t19)
+                    cmp=cmp, label=label, unit=unit, worse=e.worse,
+                    beyond=None if rv is None else rv.beyond, limit=_quantized(e.limit),
+                    adjustments=_count_of(w.tracked), **t19,
+                    **({} if ctx is None else target_record(trigger or "", ctx.state)))
                 opened[e.rule_id] = rec.id
             await db.commit()
         return opened
@@ -1865,7 +1868,6 @@ async def owner_lister(provider: Any, gate: Any = None,
             out.append(Watched(OWNER_REF, s.id, tracked, resolved.body, resolved.is_system, OWNER_REF,
                                resolved.strategy_layer, facts, resolved=resolved, charge_rates=rates,
                                regime=await regimes.read(tracked.position.underlying), basket_facts=baskets))
-    await _lapse_deleted(gate, {s.id for s in strategies})
     return Listed(out, unread)
 
 
@@ -1881,7 +1883,7 @@ async def _baskets_in(db: Any, sid: int) -> dict:
 
 async def _lapse_not_monitored(gate: Any, sid: int) -> None:
     """#652: a strategy that left the list for good lapses its open records as "no longer monitored". Leave reasons:
-    every leg exited -> strategy_closed (above); nothing traded, or deleted -> this. NOT a leave, nothing lapsed: a
+    every leg exited -> strategy_closed (above); nothing traded -> this. NOT a leave, nothing lapsed: a
     read failure (TrackedUnreadable / any exception), a spot or type not read this cycle (no playbook resolved), and
     a strategy of the other mode (scenario vs live), which this worker never lists."""
     from ofo_app.db import get_sessionmaker  # noqa: PLC0415
@@ -1889,22 +1891,6 @@ async def _lapse_not_monitored(gate: Any, sid: int) -> None:
     from ofo_app.playbook_store import LAPSE_NOT_MONITORED  # noqa: PLC0415
     async with held(gate, GATE_REBUILD), get_sessionmaker()() as db:
         await _lapse_exited(db, OWNER_REF, sid, LAPSE_NOT_MONITORED)
-
-
-async def _lapse_deleted(gate: Any, listed_ids: set[int]) -> None:
-    """#652: open records of a strategy that is no longer in the owner's strategy list (deleted). The list read
-    succeeded when this runs (a failed list raised before), so absence is definite. A failing sweep is contained."""
-    from ofo_app import playbook_store  # noqa: PLC0415
-    from ofo_app.db import get_sessionmaker  # noqa: PLC0415
-    from ofo_app.live_market import OWNER_REF  # noqa: PLC0415
-    try:
-        async with held(gate, GATE_REBUILD), get_sessionmaker()() as db:
-            gone = [i for i in await playbook_store.open_strategy_ids(db, OWNER_REF) if i not in listed_ids]
-    except Exception:  # the others stay listed; retried at the next re-list
-        log.exception("background: reading the strategies with open records failed; deleted ones are swept next list")
-        return
-    for sid in gone:
-        await _lapse_not_monitored(gate, sid)
 
 
 async def _serve()-> int:  # pragma: no cover - the process wiring; each part is tested on its own

@@ -45,6 +45,7 @@ from ofo.marketdata.quote import NormalizedQuote, is_live_price, planning_price_
 from ofo.money import PAISE
 from ofo.outcome.snapshot import MarketSnapshot
 from ofo.rules.inputs import DataHealth
+from ofo.timeutil import IST_UNNAMED
 
 PriceState = Literal["live", "stale", "missing"]
 ContractReason = Literal["contract_retired", "contract_delisted", "token_reassigned", "contract_missing"]
@@ -244,7 +245,29 @@ class TrackingView:
     booked: Decimal = Decimal(0)  # REQ-109 AC-4: exited legs at their exit prices
     unbooked: Decimal | None = None  # open legs at live prices; None when paused
     exited: bool = False  # every leg exited: paper_pnl == booked, frozen
-    leg_pnls: tuple[Decimal | None, ...] = ()  # GC-UI D-B48, per leg in order; None = no figure (paused / not live)
+    leg_pnls: tuple[Decimal | None, ...] = ()  # GC-UI D-B48, per leg in order; None = no figure (this leg has no price)
+    unpriced: tuple[UnpricedLeg, ...] = ()  # ADR-311: the open legs with no live price, in leg order; empty = none
+
+
+@dataclass(frozen=True)
+class UnpricedLeg:
+    """ADR-311: an open leg that has no live price (the reason it pauses every total), named for the user."""
+
+    index: int
+    instrument_id: str
+    state: LegState
+    expired: bool  # a retired contract, or its expiry date is past
+
+
+IST = IST_UNNAMED  # the one home of the offset (ofo.timeutil)
+
+
+def unpriced_legs(entries: Iterable[tuple[int, str, datetime.date, Price]],
+                  today: datetime.date | None) -> tuple[UnpricedLeg, ...]:
+    """ADR-311: each (index, id, expiry, price answer) of an OPEN leg that is not live. Expired = the catalogue says the
+    contract is retired, or (``today`` known) its expiry is before today. The one rule behind "no price"."""
+    return tuple(UnpricedLeg(i, iid, p.state, p.state == "contract_retired" or (today is not None and expiry < today))
+                 for i, iid, expiry, p in entries if not is_live(p))
 
 
 def tracking_view(snapshot: MarketSnapshot | None, legs: Sequence[TrackedLeg],
@@ -277,10 +300,13 @@ def tracking_view(snapshot: MarketSnapshot | None, legs: Sequence[TrackedLeg],
                                         index_level=index.price, threshold_percent=threshold_percent)
     reason = contract_reason if contract_reason is not None else (PRICES_NOT_LIVE if paused else None)
     as_of = paused_as_of(prices[i] for i in open_legs) if paused else None
-    # D-B48: a paused view (REQ-109 AC-5) shows no open leg's figure, so no half-known set; exited legs stay booked.
-    live_open = {} if paused else {i: prices[i].price for i in open_legs}
+    # ADR-311: every TOTAL stays paused (split.* above), but a leg that has a live price keeps its own figure and a leg
+    # without one has none (None, never 0) and is named; exited legs stay booked.
+    live_open = {i: prices[i].price for i in open_legs if is_live(prices[i])}
+    today = snapshot.valuation.astimezone(IST).date()
+    unpriced = unpriced_legs(((i, legs[i].instrument_id, legs[i].expiry, prices[i]) for i in open_legs), today)
     return TrackingView(paused, reason, split.total, as_of, prices, index, breakevens, detections, split.booked,
-                        split.unbooked, not open_legs, leg_pnls(legs, live_open, exits))
+                        split.unbooked, not open_legs, leg_pnls(legs, live_open, exits), unpriced)
 
 
 def _leg_answer(snapshot: MarketSnapshot | None, leg: TrackedLeg, reason: ContractReason | None,

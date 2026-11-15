@@ -17,18 +17,27 @@ UPDATE, guarded by the database). Suggest-only (ADR-003): no route here reaches 
 from __future__ import annotations
 
 import datetime
+import logging
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends
+from ofo.adjustment import level_watch
 from ofo.adjustment.held_reasons import HELD_TEXT_IDS
-from ofo.adjustment.playbook_eval import is_day_rule_id
+from ofo.adjustment.playbook_eval import TIME_TRIGGERS, is_day_rule_id, is_situation_rule_id
 from ofo.errors import render
-from ofo.errors.explanations import render_explanation
+from ofo.errors.explanations import DAY_RULE_GENERIC_TEXT, LEVEL_WATCH_LABEL_TEXT, render_explanation
 from ofo.strategy.stored_form import shown_name
 from pydantic import BaseModel, ConfigDict
 
 from ofo_app import playbook_store as store
-from ofo_app.adjustment_check import condition_line, condition_line_t19, stage_name_text
+from ofo_app.adjustment_check import (
+    CLOCK_UNIT,
+    TargetFigures,
+    condition_line,
+    condition_line_t19,
+    day_rule_words,
+    stage_name_text,
+)
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier, Money
 from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure
@@ -36,6 +45,7 @@ from ofo_app.routes.broker import current_user_ref
 from ofo_app.strategy_refused import StrategyRefused
 from ofo_app.strategy_store import StrategyStoreError
 
+log = logging.getLogger(__name__)
 router = APIRouter(route_class=ClosedRoute)
 ID_MAX = 9_223_372_036_854_775_807  # BIGSERIAL: a larger number is simply not there
 OUTCOMES = ("open", "dismissed", "acted_on", "completed", "partly_completed", "lapsed")
@@ -130,21 +140,44 @@ def _detail(s: store.Suggestion) -> Any:
     return None
 
 
+def _yes_no_name(s: store.Suggestion) -> str | None:
+    """The stored label of a clock-time rule, situation rule or level watch, else a watch's catalogue label."""
+    own = None if s.label == s.rule_id else s.label
+    if s.unit == CLOCK_UNIT or s.trigger_id in TIME_TRIGGERS:  # a clock-time rule stores no value: its own label
+        return own
+    if not (is_situation_rule_id(s.rule_id) or level_watch.is_rule_id(s.rule_id)):
+        return None
+    return own or LEVEL_WATCH_LABEL_TEXT.get(level_watch.direction_of(s.rule_id) or "")
+
+
 def condition_text(s: store.Suggestion) -> Any:
     """A record's condition in the catalogue's words (the inbox line; the adjustment history's Why, REQ-163 AC-1)."""
     if s.cmp not in ("le", "ge", "lt") or s.trigger_id is None or s.value is None or s.threshold is None:
         if is_day_rule_id(s.rule_id):  # ADR-267 amendment: a day rule names itself, never an empty "What happened"
-            for name in (s.label, s.rule_id):  # the rule's action words; a refused slot -> the rule's own id
+            # the rule's action words; the id as a label is no wording: the id's own sentence, never the raw id
+            names = (None if s.label == s.rule_id else s.label, day_rule_words(s.rule_id), DAY_RULE_GENERIC_TEXT)
+            if names[1].startswith(DAY_RULE_GENERIC_TEXT):
+                log.warning("day rule id with no wording: %s", s.rule_id)  # the raw id goes to the log only
+            for name in names:
+                if name is None:
+                    continue
                 try:
                     return render_explanation("adjust_condition_line_id", label=name)
                 except (TypeError, ValueError):
                     continue
+        elif (name := _yes_no_name(s)) is not None:  # situation rule / level watch: its own name
+            try:
+                return render_explanation("adjust_condition_line_id", label=name)
+            except (TypeError, ValueError):
+                return None
         return None
     if s.trigger_id == "T-19" and s.approach is not None and s.approach_cost is not None:  # ADR-221: as the check
         return condition_line_t19(s.label, format(s.value, "f"), format(s.threshold, "f"), s.approach,
                                   s.approach_cost, s.unpriced)
     shown = s.threshold if s.limit is None else s.limit
-    return condition_line(s.trigger_id, s.label, s.unit, format(s.value, "f"), format(shown, "f"), s.beyond)
+    found = s.target if s.trigger_id == "T-07" else None  # ADR-294 (2): the figures it was shown with
+    figures = None if found is None else TargetFigures(*found)
+    return condition_line(s.trigger_id, s.label, s.unit, format(s.value, "f"), format(shown, "f"), s.beyond, figures)
 
 
 def _record(s: store.Suggestion, paper: bool) -> dict:

@@ -239,6 +239,22 @@ class Outcome:
     target: Target | TargetOffer | None = None  # REQ-084 AC-4: the limits alone unless a target was sent (AC-6)
     # GC-LIVE: the dividend yield q each option expiry was priced with (read-only echo; the checker re-prices with it)
     dividend_yields: tuple[tuple[datetime.date, Decimal], ...] = ()
+    # ADR-300: each SOLD option leg's (kind "CE"/"PE", |per-unit engine delta|); None = no IV, so no delta. Empty when
+    # the answer is not computed or no option is sold. Read by the entry-guide line (``ofo.adjustment.entry_guide``).
+    sold_deltas: tuple[tuple[str, Decimal | None], ...] = ()
+
+
+def _sold_deltas(model: ModelInputs, leg_greeks) -> tuple[tuple[str, Decimal | None], ...]:
+    """The entry-guide line's input: |delta| of every sold option leg, read from the per-unit Greeks the table already
+    took through the shared compute (``_shared_leg_greeks``, parallel to ``model.legs``): no second Greeks computation.
+    shortcut: with no shared scope (no feed owner: a test or replay) nothing is computed here, so the delta is None."""
+    out: list[tuple[str, Decimal | None]] = []
+    for i, leg in enumerate(model.legs):
+        if leg.action is not Action.SELL or leg.instrument is Instrument.FUT:
+            continue
+        g = None if leg_greeks is None else leg_greeks[i]
+        out.append((leg.instrument.value, None if g is None else abs(g.delta)))
+    return tuple(out)
 
 
 @dataclass(frozen=True)
@@ -929,8 +945,8 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
     if sd_bands:  # the same expected move as the range, on the fixed horizon (D-B20)
         sd = standard_deviation(model.spot_level, _expected_move(inputs, snapshot, valuation, shared, solved,
                                                                  horizon=calc.sd_horizon_days(settings)))
-    table = build_table(model, level_set=level_set, scenario=values,
-                        leg_greeks=_shared_leg_greeks(model, snapshot, shared))
+    leg_greeks = _shared_leg_greeks(model, snapshot, shared)
+    table = build_table(model, level_set=level_set, scenario=values, leg_greeks=leg_greeks)
     points = _graph_points(graph)
     # Issue 297: a leg's own notice stays on `legs[].label`; the page prints it once under the leg's contract name.
     # The answer-level label carries only the data/model label (never a raw trading symbol, never a notice twice).
@@ -944,7 +960,7 @@ def build_outcome(definition: StrategyDefinition, snapshot: MarketSnapshot | Non
         summary=_summary(_metrics_of(model.strategy), level_set, model, charges, charges is None,
                          spot=model.spot_level),
         charges_breakdown=breakdown, curves=curves, other_view=other, payoff_table=table_p,
-        standard_deviation=sd, dividend_yields=yields_of(model),
+        standard_deviation=sd, dividend_yields=yields_of(model), sold_deltas=_sold_deltas(model, leg_greeks),
         target=(live_target(target, model, graph_levels, payoff_table_default_step(definition.underlying, settings),
                              calc.target_span(settings))
                 if target is not None and target.asked

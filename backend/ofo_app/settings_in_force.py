@@ -217,7 +217,8 @@ def money_inputs(tracked: Any, market: Any, rates: Any) -> MoneyInputs:
     credit = net_credit(tracked)
     if market is None:
         return MoneyInputs(None, credit)
-    before = price_after(position.legs, position, tracked.booked, tracked.paid_charges, (), rates, market)
+    before = price_after(position.legs, position, tracked.booked, tracked.paid_charges, (), rates, market,
+                         tracked.paid_exact)
     gross = None if before.after is None else before.after.gross
     expiry = min(x.expiry for x in position.legs)  # the live check's stage read (``adjustment_check.state_of``)
     at = StageAt(market.expiry_kind or position.expiry_kind or "weekly",

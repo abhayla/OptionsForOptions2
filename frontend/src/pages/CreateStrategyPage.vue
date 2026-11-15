@@ -11,6 +11,7 @@ import api, { NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import { UNDERLYINGS } from '@/lib/legPicker'
+import { setShownDate } from '@/lib/displayFormat'
 import { useSettingsValues } from '@/stores/settingsValues'
 import {
   CARDS_SHOWN, MARKET_VIEWS, OBJECTIVES, PATHS, RANGE_READINGS, expandTemplate, expiryLabels, matchTemplates, RANGE_STEP_KEY, rangeCapKey, rangeLists, readingFromRange,
@@ -53,7 +54,8 @@ const lists = computed(() => {
   const limit = { step: settingsValues.integer(RANGE_STEP_KEY), cap: settingsValues.integer(rangeCapKey(underlying.value)) }
   try { return rangeLists(current.value, contracts.value, limit) } catch { return null }
 })
-const expiryLabel = computed(() => expiryLabels(expiries.value).find((e) => e.value === expiry.value)?.label ?? '')
+const shownToday = ref(null) // u510: the server's shown date; a far expiry prints its year against it
+const expiryLabel = computed(() => expiryLabels(expiries.value, shownToday.value).find((e) => e.value === expiry.value)?.label ?? '')
 const derivedReading = computed(() => {
   if (!notSure.value || current.value === null || lower.value === null || upper.value === null) return null
   try { return RANGE_READINGS.find((r) => r.key === readingFromRange(current.value, lower.value, upper.value)) } catch { return null }
@@ -104,10 +106,12 @@ function chooseView(key) {
 async function loadExpiries() {
   errorParts.value = null
   const [ex, idx] = await Promise.all([
-    read(async () => (await api.get(`/catalogue/${underlying.value}/expiries`)).data?.expiries),
+    read(async () => (await api.get(`/catalogue/${underlying.value}/expiries`)).data),
     read(async () => (await api.get('/market/indices')).data?.indices),
   ])
-  expiries.value = Array.isArray(ex) ? ex : []
+  expiries.value = Array.isArray(ex?.expiries) ? ex.expiries : []
+  shownToday.value = ex?.today ?? null
+  setShownDate(shownToday.value)
   current.value = Array.isArray(idx) ? (idx.find((i) => i.underlying === underlying.value)?.value ?? null) : null
   expiry.value = ''
   contracts.value = []
@@ -122,7 +126,7 @@ async function chooseExpiry() {
 }
 
 async function priceCard(template, legs) {
-  const card = { id: template.id, name: template.name, level: template.level, views: template.views, legs, summary: null, margin: null, priced: false }
+  const card = { id: template.id, name: template.name, level: template.level, views: template.views, legs, summary: null, margin: null, entryGuideLine: null, priced: false }
   const entries = await read(async () => (await api.post('/strategies/planned-entry', { underlying: underlying.value, instrument_ids: legs.map((l) => l.instrument_id) })).data?.entries)
   if (!Array.isArray(entries)) return card
   const byId = Object.fromEntries(entries.map((e) => [`${e.exchange_segment}:${e.exchange_token}`, e]))
@@ -132,7 +136,7 @@ async function priceCard(template, legs) {
     underlying: underlying.value,
     legs: card.legs.map((l) => ({ instrument_id: l.instrument_id, action: l.action, lots: l.lots, planned_entry: l.planned_entry, captured_at: l.captured_at })),
   })).data)
-  if (out?.summary) { card.summary = out.summary; card.margin = out.margin ?? null; card.priced = true }
+  if (out?.summary) { card.summary = out.summary; card.margin = out.margin ?? null; card.entryGuideLine = out.entry_guide_line ?? null; card.priced = true }
   return card
 }
 
@@ -211,7 +215,7 @@ v-for="v in MARKET_VIEWS" :key="v.key" type="button" class="min-h-[44px] w-full 
         <label class="field-label grid gap-1">Expiry
           <select v-model="expiry" class="field min-h-[44px] w-64" data-testid="pick-expiry" @change="chooseExpiry">
             <option value="" disabled>Choose an expiry</option>
-            <option v-for="e in expiryLabels(expiries)" :key="e.value" :value="e.value">{{ e.label }}</option>
+            <option v-for="e in expiryLabels(expiries, shownToday)" :key="e.value" :value="e.value">{{ e.label }}</option>
           </select>
         </label>
         <p v-if="current === null" class="text-sm" data-testid="no-level"><span class="font-semibold text-danger">Not available:</span> {{ NO_LEVEL }}</p>
@@ -256,6 +260,8 @@ v-for="c in shownCards" :key="c.id" class="flex flex-col rounded-lg border borde
               <p class="mt-3 flex justify-between border-t border-line pt-2 text-sm"><span class="text-ink-muted">Max profit:</span> <span class="num font-medium" data-testid="card-max-profit">{{ money(c.summary.max_profit_display, c.summary.max_profit, c.summary.max_profit_unlimited) }}</span></p>
               <p class="mt-1 flex justify-between text-sm"><span class="text-ink-muted">Max loss:</span> <span class="num font-medium" data-testid="card-max-loss">{{ money(c.summary.max_loss_display, c.summary.max_loss, c.summary.max_loss_unlimited) }}</span></p>
               <p class="mt-1 flex justify-between gap-3 text-sm"><span class="text-ink-muted">Breakevens:</span> <span class="num text-right font-medium" data-testid="card-breakevens">{{ levels(c.summary) }}</span></p>
+              <!-- ADR-300: the server's own line (breaks the entry guide / could not check); none when within. Never blocks. -->
+              <p v-if="c.entryGuideLine" class="mt-1 text-xs text-warn" data-testid="card-entry-guide">{{ c.entryGuideLine }}</p>
               <button
 type="button" class="link mt-1 min-h-[44px] self-start text-sm" data-testid="card-details-toggle"
                       @click="details[c.id] = !details[c.id]">View details</button>

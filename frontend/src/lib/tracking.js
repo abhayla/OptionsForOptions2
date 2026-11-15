@@ -1,14 +1,15 @@
 // W-122 (REQ-109 AC-1, AC-2, AC-5; REQ-045 AC-1; REQ-046 AC-1; ADR-166): the paper-tracking panel's words and the one
 // reading of the tracking answer. The browser computes no money: every figure is the server's Decimal string, only
 // re-grouped for display. An answer this module cannot read shows no figure (fail closed).
-import { instrumentText, istTime, strikeLabel } from '@/lib/displayFormat'
+import { instrumentText, istClock, istTime, strikeLabel } from '@/lib/displayFormat'
 
 /** GC-UI b2 D-B48 (REQ-109 AC-1, REQ-152): one leg's paper P&L as the server wrote it (`pnl_text`, signed, to the paisa),
  *  "booked" added for a leg the server marks booked (paper-exited); no text -> "—", never a browser figure (ADR-008). */
 export const LEG_PNL_MISSING = '—'
 const legPnlText = (leg) => {
   const text = typeof leg?.pnl_text === 'string' ? leg.pnl_text.trim() : ''
-  if (!text) return LEG_PNL_MISSING
+  // ADR-311: an open leg with no live price says so in the server's words ("no price"), never 0 and never a blank
+  if (!text) return (typeof leg?.no_price_text === 'string' && leg.no_price_text.trim()) || LEG_PNL_MISSING
   return leg.pnl_kind === 'booked' ? `${text} booked` : text
 }
 import { plainName } from '@/lib/saveDraft'
@@ -16,6 +17,8 @@ import { plainName } from '@/lib/saveDraft'
 /** GC-TP step 2 (ADR-207 (1)): the builder's action replaces "Start tracking". REQ-109 AC-1's footer, said plainly. */
 export const ADD_TO_PAPER_LABEL = 'Add to Paper'
 export const PAPER_NOT_REAL_TEXT = 'This is not a real trade. Paper orders use no real money.'
+export const PAPER_EXIT_CHECKING_TEXT = 'Checking whether this exit leaves a sold option without protection...'
+export const PAPER_EXIT_UNCHECKED_TEXT = 'The app could not check whether this exit leaves a sold option without protection. You can still confirm.'
 export const PAPER_PRICE_REASON = 'Enter a price in steps of 0.05'
 export const PAPER_LOTS_REASON = 'Enter whole lots, 1 or more'
 export const PAPER_ADDED_TEXT = 'Added to Paper'
@@ -32,7 +35,7 @@ export const paperLotsOk = (text) => /^[1-9]\d{0,5}$/.test(String(text ?? '').tr
 // fix/paper-dialog-safe (ADR-017: no automatic retry; submitted is not executed): what a paper-order dialog does with each
 // answer to its ONE POST. Before this, every failure read as "not placed" and Confirm came back, so a POST the server had
 // stored (201) but whose answer or follow-up read was lost could be sent a second time (live 2026-11-06, strategy 86).
-export const PAPER_PLACED_NOT_REFRESHED_TEXT = 'Placed on paper. The screen could not refresh: reload to see it.'
+export const PAPER_PLACED_NOT_REFRESHED_TEXT = 'Placed on paper. Loading the position again.' // pending owner read (15 Nov 2026), issue 18: no "reload" dead end
 export const PAPER_UNKNOWN_TEXT = 'We could not confirm the order. Check Orderbook before trying again.'
 export const PAPER_OPEN_ORDERBOOK_LABEL = 'Open Orderbook'
 /** An exit's price is read by the server when the order is placed (live in market hours, the last close after hours). */
@@ -129,6 +132,54 @@ const isExited = (leg) => (leg?.exited_at !== null && leg?.exited_at !== undefin
 /** A money figure as the server wrote it (REQ-152 AC-4); no text -> null (shown as a dash). Nothing is formed here. */
 const serverText = (v) => (typeof v === 'string' && v.trim() !== '' ? v.trim() : null)
 
+export const AFTER_CHARGES = '(after charges)'
+export const BEFORE_CHARGES = '(before charges)'
+/** GC-ICFIX u123 (ADR-263, ADR-008): which total a screen shows. `src` is a reply object, `before` its before-charges text,
+ *  `pausedText` the screen's own paused sentence (REQ-109 AC-5). kind 'after': the server's total_after_text, only when it
+ *  sent no reason with it. 'paused': prices not live, no number. Else 'before': the before text with the server's reason
+ *  sentence; an older server (no after fields) lands here too, so a before figure is never shown under an "after" label. */
+export const BREAKDOWN_LABELS = Object.freeze({ before: 'Before charges', paid: 'Charges paid', close: 'Estimated charges to close', after: 'After charges' })
+/** GC-ICFIX u127 (ADR-263, ADR-008, REQ-109 AC-10): what one tap on the figure opens. Every text is a server field as sent; a row
+ *  whose text the reply lacks is left out (never formatted here); `parts` says which charge rows apply to this figure (Booked
+ *  -> paid, Unbooked -> close, Profit / Loss left -> none). Null = nothing to open (paused, or an older reply with no new field). */
+function breakdownOf(src, before, after, why, parts) {
+  const row = (id, text) => (text === null ? [] : [{ id, label: BREAKDOWN_LABELS[id], text }])
+  if (after !== null) {
+    const paid = parts.includes('paid') ? row('paid', serverText(src?.charges_paid_text ?? src?.charges_paid)) : []
+    const close = parts.includes('close') ? row('close', serverText(src?.charges_to_close_text)) : []
+    return { rows: [...row('before', before), ...paid, ...close, ...row('after', after)], reason: null }
+  }
+  return why !== null && before !== null ? { rows: row('before', before), reason: why } : null
+}
+export function afterFigure(src, before, pausedText = null, afterKey = 'total_after_text', parts = ['paid', 'close']) {
+  // ADR-311: Booked after has its OWN reason (the charges paid are unknown); every other figure follows the book's reason
+  const own = afterKey === 'booked_after_text' && src !== null && typeof src === 'object' && 'booked_after_reason' in src // the totals row has none: unchanged
+  const ownReason = own ? (src.booked_after_reason ?? null) : null
+  // a Booked figure the server gave stands even while the total is paused; otherwise its own reason, else the book's
+  const reason = ownReason ?? (own && serverText(src[afterKey]) !== null ? null : (src?.after_charges_reason ?? null))
+  const raw = ownReason !== null ? src.booked_after_reason_text : src?.after_charges_reason_text // a sentence, or {what_happened} on the replies that word it as an explanation
+  const why = serverText(raw && typeof raw === 'object' ? raw.what_happened : raw)
+  if (reason === 'prices_not_live') return { kind: 'paused', text: null, label: '', reason: pausedText ?? why, breakdown: null }
+  const after = serverText(src?.[afterKey]) // u124: the same rule for booked_after_text / profit_left_after_text / ...
+  if (after !== null && reason === null) return { kind: 'after', text: after, label: AFTER_CHARGES, reason: null, breakdown: breakdownOf(src, before, after, null, parts) }
+  return { kind: 'before', text: before, label: before === null ? '' : BEFORE_CHARGES, reason: why ?? (before === null ? pausedText : null), breakdown: breakdownOf(src, before, null, why, parts) }
+}
+
+/** GC-ICFIX round 2 (F4, ADR-008, ADR-306): the ONE total of a practice trade, from the page's one read of /paper/strategies/{id}.
+ *  The paper panel, the tracking box and the P&L table TOTAL row all show this: the reply's total_after_text (or the labelled
+ *  before text with the server's reason; no number when prices are not live) and the same line under it: "As of HH:MM:SS IST"
+ *  from the reply's answered_at, or the paused sentence when the last read failed / the prices are not live (REQ-109 AC-5). */
+export const CONTRACTS_CHANGED_TEXT = 'The open contracts changed, so the screen could not refresh them: reload to see them.'
+export function sharedTotal(book, failed = false) {
+  if (!book || typeof book !== 'object') return null
+  const notLive = book.state === 'PAUSED' || book.state === 'NOT_CONNECTED'
+  const shown = afterFigure(book, serverText(book.total_text), pausedText(book.as_of ?? null))
+  const at = istClock(book.answered_at ?? null)
+  const line = failed ? pausedText(book.answered_at ?? null) : notLive ? pausedText(book.as_of ?? null) : at === null ? null : `As of ${at} IST`
+  // ADR-311: the legs that pause the total, named by the server (null when none); a paused total is never a number
+  return { kind: shown.kind, text: shown.text, label: shown.label, reason: shown.reason, breakdown: shown.breakdown, line, unpriced: serverText(book.unpriced_text) }
+}
+
 const STATES = new Set(['LIVE', 'PAUSED', 'NOT_CONNECTED', 'EXITED'])
 const CONDITIONS = new Set(Object.keys(CONDITION_TEXT))
 
@@ -188,15 +239,20 @@ export function readTracking(body, replyLegs = null) {
       }
     })
   if (body.state === 'NOT_CONNECTED') return { kind: 'not_connected', text: NOT_CONNECTED_TEXT, figure: null, legs, detections }
-  if (body.state === 'PAUSED') return { kind: 'paused', text: pausedText(body.as_of), figure: null, legs, detections }
+  if (body.state === 'PAUSED') return { kind: 'paused', text: pausedText(body.as_of), figure: null, legs, detections, unpriced: serverText(body.unpriced_text) }
   // live #603 item 1 (REQ-152 AC-4, ADR-008): the total, booked and unbooked are the server's signed texts as sent (one
   // minus character with the leg figures); a live / exited answer without the total's text is unreadable
   const signed = serverText(body.paper_pnl_text)
   if (signed === null) return INVALID
   const booked = serverText(body.booked_text)
   const unbooked = serverText(body.unbooked_text)
-  if (body.state === 'EXITED') return { kind: 'exited', text: `${PAPER_PNL_PREFIX}${signed} - exited`, figure: signed, booked, unbooked, legs, detections }
-  return { kind: 'live', text: `${PAPER_PNL_PREFIX}${signed}`, figure: signed, booked, unbooked, legs, detections }
+  // GC-ICFIX u123 (ADR-263): the headline is the after-charges figure, labelled; no after figure -> the before figure, labelled
+  const shown = afterFigure(body, signed)
+  if (shown.kind === 'paused') return { kind: 'paused', text: pausedText(body.as_of), figure: null, legs, detections, unpriced: serverText(body.unpriced_text) }
+  const text = `${PAPER_PNL_PREFIX}${shown.text} ${shown.label}`
+  const base = { figure: shown.text, afterReason: shown.reason, breakdown: shown.breakdown, booked, unbooked, legs, detections }
+  if (body.state === 'EXITED') return { kind: 'exited', text: `${text} - exited`, ...base }
+  return { kind: 'live', text, ...base }
 }
 
 export const EXITED_TEXT = 'Exited'

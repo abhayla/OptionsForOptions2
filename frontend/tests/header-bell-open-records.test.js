@@ -111,6 +111,7 @@ describe('toast on a new open record', () => {
     await flushPromises()
     expect(r.currentRoute.value.fullPath).toContain('/strategy/builder?adjust=7')
     expect(r.currentRoute.value.query.opp).toBe('1,2')
+    expect(r.currentRoute.value.query.pick).toBeUndefined() // ADR-308 (4): the pop-up opens with every approach shown
   })
   it('a dismissed toast does not route', async () => {
     answers['GET /paper/alerts'] = paper(0)

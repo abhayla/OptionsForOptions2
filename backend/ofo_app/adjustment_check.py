@@ -44,21 +44,34 @@ import datetime
 import logging
 from collections.abc import Mapping
 from decimal import Decimal
+from types import SimpleNamespace
 from typing import Any, Final
 
 from ofo.adjustment import level_watch
 from ofo.adjustment import playbook_eval as pe
-from ofo.adjustment.approaches import BASIS_CODES, Config, EntryFacts, ExitInputs, Position, RollBasis
+from ofo.adjustment.approaches import (
+    BASIS_CODES,
+    Config,
+    EntryFacts,
+    ExitInputs,
+    Position,
+    RollBasis,
+    is_expiry_day,
+)
 from ofo.adjustment.compare import Cheapest, Column, MarginRead, cheapest_approach
 from ofo.adjustment.offered import offered_now
 from ofo.adjustment.strategy_type import strike_gap_of, type_of
 from ofo.engine import adjust_money
+from ofo.engine.extremes import ContractTerms
+from ofo.engine.extremes_charges import NOT_PRICED, RATES_UNAVAILABLE, book_after_charges, open_exit_charges
 from ofo.engine.legs import Action, Instrument, Leg
 from ofo.engine.metrics import UNLIMITED
 from ofo.engine.model import delta_at_intrinsic
 from ofo.errors.explanations import (
+    DAY_RULE_GENERIC_TEXT,
     LEVEL_WATCH_LABEL_TEXT,
     PLAYBOOK_DAY_RULE_ACTION_TEXT,
+    PLAYBOOK_DAY_RULE_KIND_TEXT,
     STOP_LABEL_TEXT,
     render_explanation,
 )
@@ -120,8 +133,8 @@ class CheckAnswer:
 
 
 def _engine_legs(position: Position) -> tuple[Leg, ...]:
-    return tuple(Leg(Action(x.side), Instrument(x.type), x.strike, x.expiry, x.lots * position.lot, x.entry)
-                 for x in position.legs)
+    return tuple(Leg(Action(x.side), Instrument(x.type), x.strike, x.expiry, x.lots * position.lot, x.entry,
+                     exact_entry=True) for x in position.legs)
 
 
 def reference_spot(position: Position, spot: Decimal | None, gap: Decimal | None) -> Decimal | None:
@@ -160,10 +173,39 @@ async def plan_saved_before_adr247(conn: Any, plan: Any) -> bool:
     return cutoff is None or plan.accepted_at < cutoff
 
 
+def with_plan_target(body: Mapping) -> Mapping:
+    """ADR-252 for T-07: the plan sheet's Target (guard ``profit_target_pct_of_max_profit``) is the T-07 value the check
+    reads. Per expiry kind, a usable Target (an equal one included) sets the early and middle stages to
+    it and the last stage to min(Target, its value) (never looser); an absent or unusable (not a number,
+    <= 0, > 100) Target changes no value. Read at check time, so earlier plans count too. A copy. ANY usable Target
+    (an equal one included) also switches T-07 ON for this trade (as the plan's Stop does T-06); an unusable one keeps
+    on/off. An EMPTY Target (guard "", ADR-305: the box saved empty) switches T-07 OFF for this trade."""
+    guards, trig = body.get("guards"), (body.get("triggers") or {}).get("T-07")
+    raw = guards.get("profit_target_pct_of_max_profit") if isinstance(guards, Mapping) else None
+    if raw == "" and isinstance(trig, Mapping):
+        return {**body, "triggers": {**body["triggers"], "T-07": {**trig, "on": False}}}
+    try:
+        target = Decimal(raw)
+        if not isinstance(raw, str) or not 0 < target <= 100 or not isinstance(trig, Mapping):  # noqa: PLR2004
+            return body
+        out = {**body, "triggers": {**body["triggers"], "T-07": {**trig, "on": True}}}
+        for kind in ("weekly", "monthly"):
+            values = list(trig.get(kind) or ())
+            filled = [n for n, x in enumerate(values) if x not in (None, "")]
+            if not filled:
+                continue
+            for n in filled:
+                values[n] = format(min(target, Decimal(values[n])) if n == filled[-1] else target, "f")
+            out["triggers"]["T-07"][kind] = values
+    except (ArithmeticError, TypeError, ValueError):  # not a number: the playbook's own value stands
+        return body
+    return out
+
+
 async def resolve(conn: Any, user_ref: str, strategy_id: int, stype: str | None) -> Resolved:
     plan = await playbook_store.plan_for(conn, user_ref, strategy_id)
     if plan is not None:
-        return Resolved("plan", plan.body, plan.playbook_id, None, False,
+        return Resolved("plan", with_plan_target(plan.body), plan.playbook_id, None, False,
                         saved_before_adr247=await plan_saved_before_adr247(conn, plan))
     if stype is None:
         return Resolved("none", None, None, None, False, saved_before_adr247=False)
@@ -180,7 +222,7 @@ def _tighten(body: Mapping, today: datetime.date, expiry: datetime.date, hhmm: s
     """The due "Tighten every trigger by X%" day rule (``when: expiry``) on expiry day from its time on."""
     for rule in body.get("day_rules", []):
         if rule.get("on") and pe.day_rule_acts(rule) and rule.get("action") == pe.DAY_ACTION_TIGHTEN \
-                and rule.get("when") == "expiry" and rule.get("percent") and today == expiry \
+                and rule.get("when") == "expiry" and rule.get("percent") and is_expiry_day(today, expiry) \
                 and hhmm >= rule.get("at", "99:99"):
             return Decimal(rule["percent"])
     return None
@@ -254,7 +296,8 @@ def cheapest_offered(body: Mapping | None, tracked: Tracked, market: MarketInput
     tracked = as_of_market(tracked, market)  # as the approaches route builds (market day, listed expiry kind)
     position = tracked.position  # the route's Before and guards, through the same helpers (#633, ADR-230 (1))
     if before is None:
-        before = price_after(position.legs, position, tracked.booked, tracked.paid_charges, (), rates, market)
+        before = price_after(position.legs, position, tracked.booked, tracked.paid_charges, (), rates, market,
+                             tracked.paid_exact)
     guards = guards_of_body(body)
     limits, max_profit = liquidity_inputs(guards, before)
     exits = exit_inputs_of(guards, position, market.now)  # ADR-238: A-27 / A-35 read the same playbook
@@ -308,9 +351,17 @@ def state_of(tracked: Tracked, market: MarketInputs, spot: SpotAnswer, margin: M
     booked = tracked.booked
     pnl = None if booked is None or not priced else adjust_money.pnl_now(
         booked, ((x.side, x.entry, ltp[x.tradingsymbol], qty[x.tradingsymbol]) for x in position.legs))
+    try:
+        pnl_after, pnl_after_reason = after_charges_of(pnl, position, ltp, tracked.paid_charges, rates,
+                                                       real_book=getattr(tracked, "real_book", False))
+    except Exception:  # noqa: BLE001 - an optional display figure must never stop the rule check (stops are read below)
+        log.warning("adjustment check: the after-charges figure could not be worked out (%s)", position.underlying,
+                    exc_info=True)
+        pnl_after, pnl_after_reason = None, NOT_PRICED
     left = adjust_money.premium_left((x.side, ltp[x.tradingsymbol], qty[x.tradingsymbol])
                                      for x in position.legs) if priced else None
-    before = price_after(position.legs, position, booked, tracked.paid_charges, (), rates, market)  # once per check
+    before = price_after(position.legs, position, booked, tracked.paid_charges, (), rates, market,
+                         tracked.paid_exact)  # once per check
     cheap = cheapest_offered(body, tracked, market, value, rates, config, roll_basis=basis, before=before)
     gross = None if before.after is None else before.after.gross
     expiry_pnl = None
@@ -335,6 +386,7 @@ def state_of(tracked: Tracked, market: MarketInputs, spot: SpotAnswer, margin: M
     return with_gamma(with_carry(pe.StrategyState(stops=stops,
         expiry_kind=market.expiry_kind or position.expiry_kind or "weekly",  # type: ignore[arg-type]
         days_left=(expiry - now.date()).days, hhmm=hhmm, spot=value, shorts=shorts, pnl=pnl,
+        pnl_after=pnl_after, pnl_after_reason=pnl_after_reason,
         max_loss=None if gross is None else _limit_value(gross.max_loss),
         max_profit=None if gross is None else _limit_value(gross.max_profit),
         margin=stated_margin, margin_unreadable=margin_unreadable, premium_left=left, adjustment_cost=cheap.cost,
@@ -698,6 +750,20 @@ def stage_out(name: str | None, index: int | None) -> dict[str, Any]:
 SIT_S12 = pe.situation_rule_id(pe.BIG_WIN_EARLY)  # its value is a % of max profit
 
 
+def record_words(body: Mapping | None, rule_id: str, rv: Any) -> tuple[str | None, str | None, str | None, str | None]:
+    """(trigger_id, cmp, label, unit) a stored record carries. ``rv`` is the rule's value in the LATEST check; a
+    situation rule or level watch that check did not value (a later check could not read it) is its own trigger
+    (``RuleValue(rid, rid, ...)``), so the record still names the rule and shows its figures (GC-ICFIX, sit.S-02)."""
+    if rv is not None:
+        return (rv.trigger_id, rv.cmp, *trigger_words(body, rv.trigger_id))
+    watched = level_watch.direction_of(rule_id)
+    if watched is not None:
+        return rule_id, level_watch.CMP[watched], *trigger_words(body, rule_id)
+    if pe.situation_of(body, rule_id) is not None:
+        return rule_id, "ge", *trigger_words(body, rule_id)  # every situation rule reads "at or above"
+    return None, None, None, None
+
+
 def trigger_words(body: Mapping | None, trigger_id: str | None) -> tuple[str | None, str | None]:
     """(label, unit) of a trigger as the evaluated body holds them; (None, None) for a body or trigger without them.
     A day rule (GC-IC1 1a, ``day.<when>.<HHMM>.<n>``): its action's catalogue words and "%" (its value is a distance
@@ -722,6 +788,26 @@ def trigger_words(body: Mapping | None, trigger_id: str | None) -> tuple[str | N
     return (label if isinstance(label, str) else None), (unit if isinstance(unit, str) else None)
 
 
+#: the day rule kinds whose id says the whole day (the other kinds also need a weekday, day of the month or date,
+#: which the id does not carry, or are admin-only: they get the generic sentence, never a half-named day)
+_DAY_KINDS_NAMED_BY_ID: Final = frozenset({"beforeWeekend", "beforeHoliday", "afterBreak", "expiry", "beforeExpiry",
+                                           "monthlyWeek"})
+
+
+def day_rule_words(rule_id: str) -> str:
+    """ADR-267 amendment: a day rule id (``day.<when>.<HHMM>.<action>``; the old ``day:`` form too) as one plain
+    sentence, "The last session before a weekend, 15:00: Run the carry check (...)". Never the raw id: an id the code
+    cannot read, or an action without catalogue words, is the one generic sentence."""
+    parts = rule_id.replace(":", ".").split(".")
+    if len(parts) != 4 or parts[0] != "day" or len(parts[2]) != 4 or not parts[2].isdigit():  # noqa: PLR2004 - HHMM
+        return DAY_RULE_GENERIC_TEXT
+    action = PLAYBOOK_DAY_RULE_ACTION_TEXT.get(parts[3])
+    if action is None:
+        return DAY_RULE_GENERIC_TEXT
+    kind = PLAYBOOK_DAY_RULE_KIND_TEXT[parts[1]] if parts[1] in _DAY_KINDS_NAMED_BY_ID else DAY_RULE_GENERIC_TEXT
+    return f"{kind}, {parts[2][:2]}:{parts[2][2:]}: {action}"
+
+
 #: #650: triggers whose playbook row has no unit but whose value is not a plain number: rupees / a count
 RUPEE_TRIGGERS = frozenset({"T-02"})
 COUNT_TRIGGERS = frozenset({"T-18"})
@@ -730,6 +816,9 @@ COUNT_TRIGGERS = frozenset({"T-18"})
 def _own_unit_line(trigger_id: str, unit: str | None, label: str, value: str, threshold: str) -> Any:
     """The line with the value in its own unit (rupees with a real minus, or a whole count); None when this trigger has
     no such unit. A value the slot refuses raises like any render (the caller falls back to the plain line)."""
+    if trigger_id == "T-02":  # GC-ICFIX H: says what the figure is (expiry profit or loss against zero)
+        return render_explanation("adjust_condition_line_t02", label=label, value=Decimal(value),
+                                  threshold=Decimal(threshold))
     if trigger_id in RUPEE_TRIGGERS or unit == "Rs":
         return render_explanation("adjust_condition_line_rupees", label=label, value=Decimal(value),
                                   threshold=Decimal(threshold))
@@ -739,8 +828,83 @@ def _own_unit_line(trigger_id: str, unit: str | None, label: str, value: str, th
     return None
 
 
+def _is_number(shown: str) -> bool:
+    try:
+        return Decimal(shown).is_finite()
+    except (ArithmeticError, TypeError, ValueError):
+        return False
+
+
+@dataclasses.dataclass(frozen=True)
+class TargetFigures:
+    """ADR-294 (2): the two figures beside the target alert. ``before`` = the profit the rule compared (``state.pnl``);
+    ``after`` = the same position after charges, None with ``reason`` (a paper reason code) when it cannot be given."""
+
+    before: Decimal
+    after: Decimal | None
+    reason: str | None
+
+
+def target_of(state: pe.StrategyState | None) -> TargetFigures | None:
+    """The figures of ``state`` for the target alert; None when the rule's own profit is not known (the old line)."""
+    before = getattr(state, "pnl", None)  # a test seam's state may carry no figures at all
+    if not isinstance(before, Decimal):
+        return None
+    after = getattr(state, "pnl_after", None)
+    return TargetFigures(before, after, None if after is not None else getattr(state, "pnl_after_reason", None))
+
+
+#: ADR-294 (2) / ADR-276 (4): the reason code of a real-book strategy (a paper reason code, ``paper_reasons``)
+CHARGES_NOT_READ: Final = "charges_not_read"
+
+
+def after_charges_of(pnl: Decimal | None, position: Position, ltp: Mapping[str, Decimal | None],  # noqa: PLR0913
+                     paid: Decimal | None, rates: Any, *, real_book: bool = False) -> tuple[Decimal | None, str | None]:
+    """ADR-294 (2) / ADR-008: ``pnl`` (the number the rule compared) after charges, formed ONLY by the engine's
+    ``book_after_charges`` and ``open_exit_charges`` (the paper book's own functions): the charges already ``paid``, and
+    the estimate to close every open leg at its mark ``ltp`` (by trading symbol). Returns (after, None) or (None, reason
+    code); no pnl -> (None, None). ``real_book`` (``Tracked.real_book``): the app reads no charges paid on broker
+    orders (ADR-276 (4)), so ``paid`` is None for that reason and no other."""
+    if pnl is None:
+        return None, None
+    sign = {Action.BUY.value: 1, Action.SELL.value: -1}
+    legs = [SimpleNamespace(instrument_id=x.tradingsymbol, net_quantity=sign[x.side] * x.lots * position.lot)
+            for x in position.legs]
+    view = SimpleNamespace(positions=legs, total=pnl)  # the two attributes the engine reads; total = the rule's number
+    terms = {x.tradingsymbol: ContractTerms(Instrument(x.type), x.strike, x.expiry) for x in position.legs}
+    live = {k: v for k, v in ltp.items() if v is not None}
+    open_exit, why = open_exit_charges(view, terms, live, position.underlying, rates)  # type: ignore[arg-type]
+    if paid is None:
+        why = CHARGES_NOT_READ if real_book else RATES_UNAVAILABLE if rates is None else NOT_PRICED
+    got = book_after_charges(view, paid, open_exit, why)  # type: ignore[arg-type]
+    return got.total_after, got.reason
+
+
+def _target_line(trigger_id: str, threshold: str, target: TargetFigures | None) -> Any:
+    """The ADR-294 (2) sentence for T-07, or None (the percent line stands): another trigger, no figures, no number."""
+    if trigger_id != "T-07" or target is None or not _is_number(threshold):
+        return None
+    pct = Decimal(threshold).normalize()
+    if target.after is not None:
+        return render_explanation("adjust_target_reached", before=target.before, pct=pct, after=target.after)
+    from ofo_app.paper_reasons import reason_text  # noqa: PLC0415 - the paper reasons' one sentence per code
+    return render_explanation("adjust_target_reached_no_after", before=target.before, pct=pct,
+                              reason=reason_text(target.reason))
+
+
 def condition_line(trigger_id: str, label: str | None, unit: str | None, value: str, threshold: str,  # noqa: PLR0913
-                   beyond: tuple[str, Decimal, Decimal] | None = None) -> Any:
+                   beyond: tuple[str, Decimal, Decimal] | None = None, target: TargetFigures | None = None) -> Any:
+    """The condition in words. ADR-294 (2): T-07 with ``target`` figures -> the target sentence (profit before charges,
+    the target, the after-charges result); anything else, or a figure the slots refuse -> the percent line."""
+    try:
+        sentence = _target_line(trigger_id, threshold, target)
+    except (TypeError, ValueError, ArithmeticError):  # a refused figure: the percent line (fail visible)
+        sentence = None
+    return sentence if sentence is not None else _percent_line(trigger_id, label, unit, value, threshold, beyond)
+
+
+def _percent_line(trigger_id: str, label: str | None, unit: str | None, value: str, threshold: str,  # noqa: PLR0913
+                  beyond: tuple[str, Decimal, Decimal] | None) -> Any:
     """GC-ADJ2 item 1: "Spot within this % of a short strike: 0.3416 % (rule 0.5000 %)" from the trigger's own label
     and unit. A label the slot refuses or a body without one -> the trigger id (fail visible); a unit that is empty
     or not a plain unit -> the line without it."""
@@ -748,6 +912,10 @@ def condition_line(trigger_id: str, label: str | None, unit: str | None, value: 
         if un == CLOCK_UNIT:  # a clock trigger: HH:MM value and threshold, no unit word
             return render_explanation("adjust_condition_line_time", label=lab, value=value, threshold=threshold)
         if un:
+            # ADR-294: says which figure it used; no number, no claim
+            if trigger_id == "T-07" and _is_number(threshold):
+                return render_explanation("adjust_condition_line_before_charges", label=lab, value=value, unit=un,
+                                          threshold=threshold)
             return render_explanation("adjust_condition_line", label=lab, value=value, unit=un, threshold=threshold)
         return render_explanation("adjust_condition_line_plain", label=lab, value=value, threshold=threshold)
 

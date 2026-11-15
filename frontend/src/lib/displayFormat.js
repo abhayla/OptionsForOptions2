@@ -7,13 +7,22 @@ export const TIME_UNAVAILABLE = 'Time not available'
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 const MONTH_BY_TEXT = Object.fromEntries(MONTHS.map((m, i) => [String(i + 1).padStart(2, '0'), m])) // '01' -> 'Jan'
 
-/** '2026-10-19' -> '19 Oct', or null when it is not a calendar date string. */
-export function expiryText(expiry) {
+let shownDate = null
+/** u510: the server's shown date ('2026-11-15', from an expiries reply), kept once so every expiry text can leave the year
+ *  off for the current year. Null (never set, or an older reply without it) = every expiry prints its year. */
+export function setShownDate(today) {
+  shownDate = /^\d{4}-\d{2}-\d{2}/.test(String(today ?? '')) ? String(today) : null
+}
+
+/** THE one expiry-text rule (u510): '2026-10-19' -> '19 Oct 2026', or '19 Oct' only when the expiry is known to be in the
+ *  year of the shown date (`today`, else the one set by setShownDate); text compare, no clock. Null when not a date. */
+export function expiryText(expiry, today = shownDate) {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(expiry ?? ''))
   if (!m) return null
   const month = MONTH_BY_TEXT[m[2]]
   const day = m[3].replace(/^0/, '')
-  return month && /^([1-9]|[12]\d|3[01])$/.test(day) ? `${day} ${month}` : null
+  const year = /^\d{4}-/.test(String(today ?? '')) && String(today).startsWith(`${m[1]}-`) ? '' : ` ${m[1]}`
+  return month && /^([1-9]|[12]\d|3[01])$/.test(day) ? `${day} ${month}${year}` : null
 }
 
 /** '23200.00' -> '23200'; a strike with a real fraction keeps it, minus trailing zeros ('23212.50' -> '23212.5'). Text only,
@@ -34,8 +43,8 @@ export function strikeLabel(text) {
 /** REQ-135 AC-2: an expiry with the days left the SERVER counted (IST): '27 Oct (6 days)', 'Today (0 days)'. The browser
  *  counts nothing: a missing or non-integer day count shows the date alone, '9 Nov' (never a guessed number, and never
  *  the raw '2026-11-09', REQ-148 AC-2); text that is not a date comes back as it was sent. */
-export function expiryWithDays(expiry, days) {
-  const day = expiryText(expiry)
+export function expiryWithDays(expiry, days, today) {
+  const day = expiryText(expiry, today)
   if (!day) return expiry ?? ''
   if (!Number.isInteger(days) || days < 0) return day
   return days === 0 ? 'Today (0 days)' : `${day} (${days} days)`
@@ -128,6 +137,15 @@ export function istTime(iso) {
 export function istClock(iso) {
   const t = istTime(iso)
   return t === TIME_UNAVAILABLE ? null : t.slice(-12, -4)
+}
+
+/** Issue 12: a stamp for a line that may be days old: 'HH:MM:SS IST' when the instant is on today's India date, else the
+ *  whole istTime ('6 Nov 2026, 13:50:00 IST'); null when unreadable. Same today test as capturedCaption; `now` only names today. */
+export function istStamp(iso, now = new Date().toISOString()) {
+  const t = istTime(iso)
+  if (t === TIME_UNAVAILABLE) return null
+  const day = (x) => x.slice(0, x.indexOf(','))
+  return day(t) === day(istTime(now)) ? `${t.slice(-12, -4)} IST` : t
 }
 
 /** ADR-197: the caption word of an entry captured from the last close ("Close, 27 Oct 2026, 15:30:00 IST"). */

@@ -71,6 +71,8 @@ ALLOWED_FRONTEND_PATHS = frozenset({
     ("components/strategy/StrategyPriceChart.vue", "/strategies/${props.strategyId}/price-history"),
     # REQ-163 adjustment history: the user's own strategy steps, not market data, so ADR-066 does not apply
     ("components/strategy/AdjustSteps.vue", "/strategies/${props.strategyId}/adjustment-history"),
+    # u504: the UNBUILT_ITEMS key of the user's own executed-order history page (REQ-009), not market data
+    ("router/nav.js", "orders/execution-history"),
 })
 
 # F2 (GC-UI step 9 review): the guard is TRANSITIVE. Every allow-listed module reaches history, so importing one counts
@@ -601,7 +603,8 @@ def test_removing_the_exemption_makes_the_repo_scan_fail_on_the_activity_file(mo
     gone both real files are flagged."""
     chart = ("components/strategy/StrategyPriceChart.vue", "/strategies/${props.strategyId}/price-history")
     steps = ("components/strategy/AdjustSteps.vue", "/strategies/${props.strategyId}/adjustment-history")  # REQ-163
-    assert {(_ACTIVITY_FILE, _ACTIVITY_LITERAL), chart, steps} == ALLOWED_FRONTEND_PATHS
+    unbuilt = ("router/nav.js", "orders/execution-history")  # u504: the user's own executed-order history page key
+    assert {(_ACTIVITY_FILE, _ACTIVITY_LITERAL), chart, steps, unbuilt} == ALLOWED_FRONTEND_PATHS
     monkeypatch.setattr(sys.modules[__name__], "ALLOWED_FRONTEND_PATHS", frozenset())
     flagged = scan_frontend(FRONTEND_SRC)
     assert _ACTIVITY_FILE in flagged

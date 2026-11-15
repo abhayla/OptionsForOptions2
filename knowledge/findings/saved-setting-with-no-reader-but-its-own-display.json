@@ -1,0 +1,29 @@
+{
+ "id": "saved-setting-with-no-reader-but-its-own-display",
+ "scope": "project",
+ "class": "Any value a user saves that only the screen showing it reads back, while the code that acts (a rule, a worker, a job) reads a different source, so the setting looks honoured and changes nothing.",
+ "mechanism": "The profit rule (T-07) read only the rule set's value; the trade's saved plan Target was read by the plan screen alone.",
+ "first_seen": {
+  "date": "2026-11-13",
+  "where": "paper trades, strategy 141 and strategy 148 (GC-ICFIX issue 1)",
+  "evidence": "Strategy 141: plan target 1 %, profit Rs 32-49, nothing fired. After the fix, background alert record 303 on generated prices: strategy 148, T-07, value 21.0526, threshold 1.0000."
+ },
+ "fix": "with_plan_target at the one door resolve (backend/ofo_app/adjustment_check.py), used by the page route and the background watcher; any saved Target acts; an empty Target per ADR-305.",
+ "detection": {
+  "status": "unguarded",
+  "checks": [],
+  "note": "Unguarded: no named check is confirmed to cover the class; the proof was one real run, not a standing check. Record 303 is the proof run."
+ },
+ "spec_ref": [
+  "spec/decisions/ADR-252.md",
+  "spec/decisions/ADR-304.md",
+  "spec/decisions/ADR-305.md"
+ ],
+ "occurrences": [
+  {
+   "date": "2026-11-13",
+   "where": "paper trades, strategy 141 and strategy 148 (GC-ICFIX issue 1)",
+   "evidence": "Strategy 141: plan target 1 %, profit Rs 32-49, nothing fired. After the fix, background alert record 303 on generated prices: strategy 148, T-07, value 21.0526, threshold 1.0000."
+  }
+ ]
+}

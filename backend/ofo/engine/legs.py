@@ -56,6 +56,9 @@ def require_price(value: object, name: str, *, allow_zero: bool = True) -> Decim
     return checked
 
 
+EXACT_DIGITS = 28  # the Decimal context's own precision: what one division of exact fills can give
+
+
 @dataclass(frozen=True)
 class Leg:
     """One leg of a strategy. A leg carries no breakeven (strategy-level only, §3)."""
@@ -67,6 +70,9 @@ class Leg:
     quantity: int
     entry_price: Decimal
     ltp: Decimal | None = None
+    #: a held contract's AVERAGE entry (filled in several orders at different prices) can have more than two decimals
+    #: (65 at 100.00 + 65 at 100.05 -> 100.025); with this set it is priced as it is, never rounded (ADR-008)
+    exact_entry: bool = False
 
     def __post_init__(self) -> None:
         if not isinstance(self.action, Action):
@@ -82,7 +88,12 @@ class Leg:
             raise ValueError(f"expiry must be a datetime.date, got {self.expiry!r}")
         if isinstance(self.quantity, bool) or not isinstance(self.quantity, int) or self.quantity <= 0:
             raise ValueError(f"quantity must be a positive integer number of units, got {self.quantity!r}")
-        require_price(self.entry_price, "entry_price")
+        if self.exact_entry:
+            if len(require_decimal(self.entry_price, "entry_price").as_tuple().digits) > EXACT_DIGITS:
+                raise ValueError(f"entry_price must be an exact average (at most {EXACT_DIGITS} digits), "
+                                 f"got {self.entry_price}")  # a float-built Decimal has 50+ digits: still refused
+        else:
+            require_price(self.entry_price, "entry_price")
         if self.ltp is not None:
             require_price(self.ltp, "ltp")
 

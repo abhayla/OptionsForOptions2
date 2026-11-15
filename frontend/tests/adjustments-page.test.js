@@ -189,7 +189,7 @@ describe('playbook editor (REQ-160)', () => {
     const w = await open()
     await w.get('[data-testid=pb-step-show]').trigger('click')
     const shown = w.get('[data-testid=pb-body]').text()
-    expect(shown).toContain('Roll the untested spread toward spot')
+    expect(shown).toContain('Roll the untested spread to the strikes your roll setting picks (same width, same expiry)')
     expect(shown).toContain(LABELS.approaches.find((a) => a.key === 'A-09').text)
     expect(shown).not.toMatch(/A-01|A-09/)
     await w.get('[data-testid=pb-step-days]').trigger('click')
@@ -218,6 +218,54 @@ describe('playbook editor (REQ-160)', () => {
   it('the summary plan line reads the target and max of the body, not the stop (ADR-247)', () => {
     const lines = summaryLines(BODY, 'Iron condor', 'monthly', labelMaps(LABELS))
     expect(lines.find((l) => l.key === 'plan').text).toBe('Plan: target 50 % of max profit, at most 2 adjustments.')
+  })
+})
+
+// GC-ICFIX u161/u162 (issue 7, REQ-158 AC-6): ?trade=<strategy id> edits that trade's own plan copy (GET / PUT
+// /strategies/{id}/adjustment-plan/rules, PlaybookFullOut-shaped); no playbook is read, activated, saved, deleted or created.
+describe('trade mode: the trade\'s own rules (issue 7)', () => {
+  const RULES = '/strategies/70/adjustment-plan/rules'
+  const NOTE = 'Rules for this trade only (Iron condor). Your other trades and your playbooks are not changed.'
+  const mine = () => ({ ...row({ id: 1, name: NOTE, is_system: false, status: null, active: false }), body: JSON.parse(JSON.stringify(BODY)), situation_kinds: [] })
+  const openTrade = async () => {
+    answers['GET /playbooks/labels'] = LABELS
+    answers[`GET ${RULES}`] = mine()
+    return open(null, { trade: '70' })
+  }
+  const writes = () => calls.filter(([m]) => m !== 'GET')
+
+  it('opens the trade\'s rules with the one plain line, and offers no shared-playbook action', async () => {
+    const w = await openTrade()
+    expect(w.get('[data-testid=pb-trade-note]').text()).toBe(NOTE)
+    expect(calls.some(([m, u]) => m === 'GET' && u === RULES)).toBe(true)
+    expect(calls.some(([, u]) => /^\/playbooks(\/|$)/.test(u) && u !== '/playbooks/labels')).toBe(false)
+    for (const id of ['pb-activate', 'pb-delete', 'pb-save-as', 'pb-save', 'pb-pick', 'pb-type']) expect(w.find(`[data-testid=${id}]`).exists(), id).toBe(false)
+    expect(w.find('[data-testid=pb-trade-save]').exists()).toBe(true)
+    expect(writes()).toEqual([]) // open then leave: nothing saved (cancel)
+  })
+
+  it('Save sends the edited body to this trade\'s rules only', async () => {
+    const w = await openTrade()
+    await w.get('[data-testid=pb-step-when]').trigger('click')
+    await w.get('[data-testid=pb-value-T-01-1]').setValue('0.2')
+    answers[`PUT ${RULES}`] = (payload) => ({ ...mine(), body: payload.body })
+    await w.get('[data-testid=pb-trade-save]').trigger('click')
+    await flushPromises()
+    expect(writes()).toHaveLength(1)
+    const [method, url, payload] = writes()[0]
+    expect([method, url]).toEqual(['PUT', RULES])
+    expect(payload.body.triggers['T-01'].weekly[1]).toBe('0.2')
+  })
+
+  it('a refused save shows the server\'s sentence and writes nothing else', async () => {
+    const w = await openTrade()
+    answers[`PUT ${RULES}`] = refusal('The rules could not be saved.')
+    await w.get('[data-testid=pb-step-when]').trigger('click')
+    await w.get('[data-testid=pb-value-T-01-1]').setValue('0.2')
+    await w.get('[data-testid=pb-trade-save]').trigger('click')
+    await flushPromises()
+    expect(w.get('[data-testid=pb-refusal]').text()).toContain('The rules could not be saved.')
+    expect(writes().map(([m, u]) => `${m} ${u}`)).toEqual([`PUT ${RULES}`])
   })
 })
 

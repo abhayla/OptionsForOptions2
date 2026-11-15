@@ -32,8 +32,9 @@ from typing import Final, Literal
 from ofo import market_calendar as mc
 from ofo.adjustment import level_watch
 from ofo.adjustment import stop_lines as sl
-from ofo.adjustment.approaches import KINDS, ExitInputs
+from ofo.adjustment.approaches import KINDS, ExitInputs, is_expiry_day
 from ofo.adjustment.offered import offered_now
+from ofo.engine import adjust_money
 from ofo.engine import adjust_ratios as ratios
 from ofo.engine.black_scholes import Greeks
 from ofo.engine.legs import Action
@@ -142,6 +143,10 @@ class StrategyState:
     spot: Decimal | None = None
     shorts: tuple[ShortLeg, ...] = ()
     pnl: Decimal | None = None  # whole trade, open legs at LTP plus booked
+    #: ADR-294 (2): ``pnl`` after charges, from ``extremes_charges.book_after_charges`` only (the app fills it); None +
+    #: a reason code = not available. No rule reads it: it is words for the target alert.
+    pnl_after: Decimal | None = None
+    pnl_after_reason: str | None = None
     max_loss: Decimal | str | None = None  # Decimal, UNLIMITED or None
     max_profit: Decimal | str | None = None
     margin: Decimal | None = None  # None = the broker did not state it
@@ -284,6 +289,27 @@ class RuleValue:
 
 
 @dataclass(frozen=True)
+class LimitNow:
+    """ADR-304 / GC-ICFIX u113: the limit a rule acts on for THIS trade now, from the evaluator's own path
+    (``limits_now``).
+    ``threshold`` = the limit compared against now (stage, plan Target / Stop and expiry-day tightening applied; for the
+    credit line the multiple); ``amount`` = a stop's rupee loss where the evaluator has one; ``later`` = the values of
+    the later stages; ``tightened_by`` = the tightening X % when it is applied now; ``reason`` = the evaluator's own
+    NotChecked code (``state`` "not_checked"); "already_true" = the rule is true but held since tracking started."""
+
+    rule_id: str
+    trigger_id: str
+    threshold: Decimal | None
+    amount: Decimal | None
+    later: tuple[Decimal, ...]
+    tightened_by: Decimal | None
+    state: Literal["checked", "not_checked", "already_true"]
+    reason: str | None
+    slots: tuple[tuple[str, object], ...] = ()  # the reason's values, for its catalogue text
+    after: int = 0  # ADR-296: an "already_true" row's adjustment number (the result's own ``after``; 0 = the entry)
+
+
+@dataclass(frozen=True)
 class Evaluation:
     stage_name: str | None
     stage_index: int | None
@@ -293,6 +319,7 @@ class Evaluation:
     withheld: str | None = None  # T-21: why no suggestion is made
     notes: tuple[str, ...] = field(default=())
     values: tuple[RuleValue, ...] = ()  # every checked rule's value, true and false (additive, GC-ALERT1)
+    limits: tuple[LimitNow, ...] = ()  # the limits now of the target and stop rules, on EVERY path (``limits_now``)
 
 
 # ---- body ------------------------------------------------------------------------------------------------------------
@@ -453,11 +480,17 @@ def _limit(c: _Ctx, tid: str) -> Decimal | str:
     return _tightened(c, tid, Decimal(raw), t["cmp"])
 
 
+def _tighten_of(c: _Ctx, tid: str) -> Decimal | None:
+    """The due day rule's X % when ``tid`` is a tightened trigger (the test ``_tightened`` and ``limits_now`` share)."""
+    pct = c.state.tighten_percent
+    return pct if pct is not None and tid in c.body.get("tightened", ()) else None
+
+
 def _tightened(c: _Ctx, tid: str, lim: Decimal, cmp: str) -> Decimal:
     """``lim`` tightened by the due day rule's X % when ``tid`` is a tightened trigger (one rule for every trigger
     and for the stop lines in force)."""
-    pct = c.state.tighten_percent
-    if pct is not None and tid in c.body.get("tightened", ()):
+    pct = _tighten_of(c, tid)
+    if pct is not None:
         with localcontext(_EXACT):
             lim = lim * (1 + pct / _HUNDRED) if cmp == "le" else lim * (1 - pct / _HUNDRED)
     return lim
@@ -522,11 +555,20 @@ def _t02(c: _Ctx) -> Hit:
     return Hit("T-02", pnl, Decimal(0), "lt", pnl < 0)
 
 
+def sold_leg_delta(shorts: tuple[ShortLeg, ...]) -> Decimal | None:
+    """T-03's measure, the sold legs' delta: the largest absolute delta (ambiguous, two shorts); None when no short is
+    held or any short has no delta (never a partial answer). One function: T-03 and the guided builder's entry-guide
+    line (ADR-300) both read it, so the entry warning and the later rule agree on the same number."""
+    if not shorts or any(x.abs_delta is None for x in shorts):
+        return None
+    return max(x.abs_delta for x in shorts)
+
+
 def _t03(c: _Ctx) -> Hit:
-    deltas = [x.abs_delta for x in _shorts(c.state)]
-    if any(d is None for d in deltas):
+    delta = sold_leg_delta(_shorts(c.state))
+    if delta is None:
         raise _Missing(f"{P}missing_short_delta")
-    return _compare(c, "T-03", max(deltas))  # ambiguous (two shorts): the largest absolute delta
+    return _compare(c, "T-03", delta)
 
 
 def _finite(value, what: str) -> Decimal:
@@ -557,6 +599,9 @@ def _t09(c: _Ctx) -> Hit:
 def _t10b(c: _Ctx) -> Hit:
     hhmm = _need(c.state.hhmm, "clock")
     lim = _limit(c, "T-10b")
+    today, expiry = _need(c.state.today, "today"), _need(c.state.expiry, "expiry")
+    if not is_expiry_day(today, expiry):  # ADR-310: the time exit acts on expiry day only; before it, waiting
+        raise _Missing(f"{P}waits_expiry_day", day=expiry)
     return Hit("T-10b", hhmm, lim, "ge", hhmm >= lim)
 
 
@@ -969,7 +1014,13 @@ def _stop_hit(c: _Ctx, tid: str, line: sl.StopInForce) -> Hit:
         num, den = ratios.loss_pct_of_max_loss(pnl, _finite(c.state.max_loss, "max_loss"))
         if num > den * 100:  # ADR-266: a marked loss above max loss is not real: never flagged
             raise _Missing(f"{P}inconsistent_prices")
-    return _exact(tid, num, den, _tightened(c, tid, line.figure, "ge"), "ge")  # type: ignore[arg-type]
+    return _exact(tid, num, den, _stop_threshold(c, tid, line), "ge")
+
+
+def _stop_threshold(c: _Ctx, tid: str, line: sl.StopInForce) -> Decimal:
+    """The % a stop is compared against: the line's figure tightened by the due day rule (the comparison and
+    ``limits_now`` both read it here)."""
+    return _tightened(c, tid, line.figure, "ge")  # type: ignore[arg-type]
 
 
 def _stop_answer(c: _Ctx, tid: str) -> Hit | _Missing:  # noqa: PLR0911 - one answer per reason a stop is not checked
@@ -1016,8 +1067,7 @@ def _stop_rule(c: _Ctx, rule: Mapping, why: str | None) -> _Outcome:
 def _credit_outcome(state: StrategyState, why: str | None) -> list[_Outcome]:
     """ADR-247/251: the 2x-credit line (new plans only, ADR-250): the loss (``max(-pnl, 0)``) against the line's rupee
     amount, exact and inclusive; no amount -> "not checked" with its reason (fail closed)."""
-    line = next((x for x in (state.stops.lines if state.stops is not None else ()) if x.kind == sl.STOP_CREDIT),
-                None)
+    line = _credit_line_of(state)
     if line is None or not line.active:
         return []
     rid = sl.CREDIT_RULE
@@ -1080,7 +1130,80 @@ def evaluate(body: Mapping, state: StrategyState, memory: Mapping[str, Mapping[s
                    _t09_now(c))
     _add_situation_rules(body, state, why, c.stage_name, (results, clear, values), (new, entry_state))
     _add_watch_rules(state, why, c.stage_name, (results, clear, values))
-    return Evaluation(c.stage_name, c.stage, tuple(results), new, tuple(clear), why, values=tuple(values))
+    return Evaluation(c.stage_name, c.stage, tuple(results), new, tuple(clear), why, values=tuple(values),
+                      limits=limits_now(body, state, results))
+
+
+def _rule_of(body: Mapping, tid: str) -> str:
+    return next((r["id"] for r in body.get("rules", []) if tid in (r.get("any_of") or r.get("all_of") or ())), tid)
+
+
+_LimitFigures = tuple[Decimal | None, Decimal | None, tuple[Decimal, ...], Decimal | None]  # LimitNow threshold, amount, later, tightened_by
+
+
+def _limit_row(rid: str, tid: str, why: str | None, held: Mapping[str, int], reason: str | None,  # noqa: PLR0913
+               figures: _LimitFigures = (None, None, (), None), slots: tuple = ()) -> LimitNow:
+    state: Literal["checked", "not_checked", "already_true"] = "checked"
+    reason = why or reason  # the withheld reason first, as ``_outcomes`` does
+    slots = () if why else slots
+    if reason is not None:
+        state = "not_checked"
+    elif rid in held:
+        state = "already_true"
+    threshold, amount, later, tightened_by = figures
+    return LimitNow(rid, tid, threshold, amount, later, tightened_by, state, reason, slots,
+                    held[rid] if state == "already_true" else 0)
+
+
+def limits_now(body: Mapping, state: StrategyState, results: tuple[Result, ...] = ()) -> tuple[LimitNow, ...]:
+    """ADR-304: the limits the target (T-07), the % of max loss stop (T-06) and the 2x-credit stop act on for this trade
+    NOW, taken from the evaluator's own pieces (``_limit`` / ``_tightened`` / ``_stop_threshold`` / ``_stop_answer`` /
+    ``_credit_outcome``) so a screen can never state another number than the one compared. ``results`` (the
+    evaluation's) marks a rule true since tracking started ``already_true``. A trigger the body lacks has no row."""
+    c = _context(body, state)
+    why = _withheld(state)
+    held = {r.rule_id: r.after for r in results if isinstance(r, AlreadyTrue)}
+    out: list[LimitNow] = []
+    for tid in ("T-07", sl.TRIGGER_MAX_LOSS):
+        t = body.get("triggers", {}).get(tid)
+        line = _line(state, tid) if tid in sl.STOP_TRIGGERS else None
+        if t is None and line is None:
+            continue
+        ans = _trigger(c, tid)
+        hit = ans if isinstance(ans, Hit) else None
+        amount = None
+        if tid in sl.STOP_TRIGGERS:
+            usable = line is not None and line.active and line.figure is not None
+            threshold = hit.threshold if hit else (_stop_threshold(c, tid, line) if usable else None)  # type: ignore[arg-type]
+            amount = line.amount if usable else None  # type: ignore[union-attr]
+            if amount is not None and _tighten_of(c, tid) is not None and isinstance(state.max_loss, Decimal):
+                amount = adjust_money.stop_at_pct(state.max_loss, threshold)  # type: ignore[arg-type]
+        else:
+            threshold = hit.threshold if hit else None
+            if hit is None and t.get("on") and not t.get("greyed"):  # type: ignore[union-attr]
+                try:
+                    threshold = _limit(c, tid)
+                except _Missing:
+                    threshold = None
+        if not isinstance(threshold, Decimal):
+            threshold = None
+        later = () if threshold is None else tuple(x for x in _later(c, tid) if isinstance(x, Decimal))
+        tight = None if threshold is None else _tighten_of(c, tid)
+        out.append(_limit_row(_rule_of(body, tid), tid, why, held, ans.code if isinstance(ans, _Missing) else None,
+                              (threshold, amount, later, tight), ans.slots if isinstance(ans, _Missing) else ()))
+    credit = _credit_outcome(state, why)
+    for o in credit:
+        line = _credit_line_of(state)
+        hit = o.hits[0] if o.hits else None
+        out.append(_limit_row(o.rule_id, o.rule_id, None, held, o.reason,
+                              (line.figure if line is not None and line.amount is not None else None,
+                               hit.threshold if hit and isinstance(hit.threshold, Decimal) else
+                               (line.amount if line is not None else None), (), None), o.slots))
+    return tuple(out)
+
+
+def _credit_line_of(state: StrategyState) -> sl.StopInForce | None:
+    return next((x for x in (state.stops.lines if state.stops is not None else ()) if x.kind == sl.STOP_CREDIT), None)
 
 
 def _after(state: StrategyState) -> int:
@@ -1179,7 +1302,7 @@ def _expiry_close(t09: tuple[Decimal, Cmp] | None, rule: Mapping, rid: str,  # n
         return DayAnswer(rid, DAY_ACTION_PREPARE_EXIT, reason=DAY_RULE_INCOMPLETE)
     if state.days_left is None:
         return DayAnswer(rid, DAY_ACTION_PREPARE_EXIT, reason=f"{P}missing_days_left")
-    if state.days_left != 0:
+    if state.days_left != 0:  # = is_expiry_day (ADR-310 (4)); on days_left: the exit-input state has no dates
         return None
     if state.hhmm is None:
         return DayAnswer(rid, DAY_ACTION_PREPARE_EXIT, reason=f"{P}missing_clock")

@@ -218,7 +218,7 @@ async def test_catalogue_routes_offer_only_pickable_contracts_with_string_strike
                         "expiry_days": [{"expiry": "2026-10-08", "days": 1}, {"expiry": "2026-10-15", "days": 8},
                                         {"expiry": "2026-10-29", "days": 22}, {"expiry": "2026-11-26", "days": 50},
                                         {"expiry": "2026-12-31", "days": 85}],
-                        "default_expiry": "2026-10-08"}  # REQ-135 AC-2, ADR-199 (4)
+                        "default_expiry": "2026-10-08", "today": TODAY.isoformat()}  # REQ-135 AC-2, ADR-199 (4); u510
                     resp = await ac.get("/api/catalogue/SENSEX/contracts", params={"expiry": "2026-10-08"})
                     assert resp.status_code == 200, resp.text
                     body = resp.json()

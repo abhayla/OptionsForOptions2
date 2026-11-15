@@ -32,7 +32,7 @@ test('AC-2: three drafts -> My Strategies first, rows newest first', async ({ pa
   await expect(page.getByTestId('home-actions').getByRole('link')).toHaveText(['My Strategies', 'Create Strategy'])
   const rows = page.getByTestId('recent-row')
   await expect(rows).toHaveCount(3)
-  await expect(rows.first()).toContainText('SENSEX, draft, last saved 18 Oct 2026')
+  await expect(rows.first()).toContainText('SENSEX, Draft, last saved 18 Oct 2026')
 })
 
 test('AC-4: the strip shows NIFTY 50 and SENSEX from the index socket pushes', async ({ page }) => {

@@ -505,7 +505,7 @@
    "note": ""
   },
   "A-02": {
-   "label": "Roll the tested short away",
+   "label": "Roll the tested short to the strike your roll setting picks",
    "on_by_default": true,
    "note": ""
   },
@@ -525,7 +525,7 @@
    "note": ""
   },
   "A-06": {
-   "label": "Shift a leg by +/- N strikes",
+   "label": "Shift the tested spread by N strikes: a call spread up, a put spread down",
    "on_by_default": true,
    "note": "Building block for every roll"
   },
@@ -625,7 +625,7 @@
    "note": ""
   },
   "A-26": {
-   "label": "Close the untested side for profit",
+   "label": "Buy back the decayed untested short (its wing stays)",
    "on_by_default": true,
    "note": ""
   },

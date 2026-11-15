@@ -2,6 +2,8 @@
 // Nothing here computes money: index levels and strikes are only SELECTED from the catalogue (grid values come from the
 // grid), and every max profit / max loss / breakeven comes from the server engine (POST /api/strategies/outcome).
 
+import { expiryText } from '@/lib/displayFormat'
+
 /** REQ-024 AC-6, verbatim. */
 export const PATHS = Object.freeze([
   { key: 'guided', title: 'Guided Strategy Builder', subtitle: 'Help me build a strategy' },
@@ -35,12 +37,11 @@ export const rangeCapKey = (underlying) => `limits.range_cap_${String(underlying
 /** How many cards show before 'See more' (REQ-024 AC-8: 2-4). */
 export const CARDS_SHOWN = 4
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-const dayMonth = (iso) => `${Number(iso.slice(8, 10))} ${MONTHS[Number(iso.slice(5, 7)) - 1]}`
+const dayMonth = (iso, today) => expiryText(iso, today) ?? iso
 
 /** REQ-026 AC-2: expiries as real dates with labels ('This Week — 24 Sep', 'Next Week', 'Monthly', 'Next Monthly').
  *  An expiry is monthly when no later expiry falls in the same month. `isoDates` are sorted ascending. */
-export function expiryLabels(isoDates) {
+export function expiryLabels(isoDates, today) {
   let monthlySeen = 0
   return isoDates.map((iso, i) => {
     const monthly = !isoDates.some((o) => o > iso && o.slice(0, 7) === iso.slice(0, 7))
@@ -51,7 +52,7 @@ export function expiryLabels(isoDates) {
     } else {
       label = i === 0 ? 'This Week' : i === 1 ? 'Next Week' : null
     }
-    return { value: iso, label: label ? `${label} — ${dayMonth(iso)}` : dayMonth(iso) }
+    return { value: iso, label: label ? `${label} — ${dayMonth(iso, today)}` : dayMonth(iso, today) }
   })
 }
 

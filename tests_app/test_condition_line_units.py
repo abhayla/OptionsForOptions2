@@ -41,11 +41,20 @@ def test_every_trigger_of_the_table_renders_a_line_with_its_value(tid):
 OWN_UNIT = {"T-02": ("₹0.50", "₹1.00"), "T-09": ("₹0.50", "₹1.00"), "T-18": ("0", "1")}
 
 
-def test_t02_value_is_rupees_with_a_real_minus_never_four_decimals():
-    """#650: 'Spot crosses a breakeven: -1065.0000 (rule 0.0000)' was rupees of expiry P&L shown as a bare number."""
+@pytest.mark.parametrize(("value", "shown"), [("-1065.0000", "−₹1,065.00"), ("1816.7500", "₹1,816.75")])  # noqa: RUF001 - the catalogue prints a real minus
+def test_t02_names_the_figure_as_the_expiry_profit_or_loss_against_zero(value, shown):
+    """#650 + GC-ICFIX H: 'Spot crosses a breakeven: Rs 1,816.75 (rule Rs 0.00)' printed the trade's expiry P&L at the
+    current index level as if it were a spot price; the line says what it is, true for a loss and a profit."""
     t = PLAYBOOKS["triggers"]["T-02"]
-    line = str(condition_line("T-02", t["label"], t["unit"], "-1065.0000", "0.0000"))
-    assert line == f"{t['label']}: \u2212₹1,065.00 (rule ₹0.00)", line
+    line = str(condition_line("T-02", t["label"], t["unit"], value, "0.0000"))
+    assert line == (f"{t['label']}: profit or loss at expiry if the index stays at its current level {shown} "
+                    "(rule: below ₹0.00)"), line
+
+
+def test_t09_rupee_line_is_unchanged():
+    t = PLAYBOOKS["triggers"]["T-09"]
+    assert str(condition_line("T-09", t["label"], t["unit"], "-500.0000", "1000.0000")) == (
+        f"{t['label']}: −₹500.00 (rule ₹1,000.00)")  # noqa: RUF001 - the catalogue prints a real minus
 
 
 def test_t18_value_is_a_whole_count():

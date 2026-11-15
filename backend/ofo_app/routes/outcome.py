@@ -21,19 +21,21 @@ from decimal import Decimal
 from typing import Annotated, Any, Awaitable, Callable, Iterable, Literal, Mapping, Union
 
 from fastapi import APIRouter, Depends
+from ofo.adjustment.entry_guide import entry_guide_for
+from ofo.adjustment.strategy_type import strike_gap_of, type_of
 from ofo.charges import ChargeRates
+from ofo.engine.legs import Action, Leg
 from ofo.errors import render
 from ofo.errors.slots import INT_ABS_MAX
-from ofo.engine.legs import Action
 from ofo.instruments.models import InstrumentId as ContractKey
 from ofo.instruments.models import ListedContract
 from ofo.limits import INTEGER_MAX
-from ofo.marketdata.forward import ForwardQuality
 from ofo.marketdata.feed_health import FeedWindows, awaiting_first_price_for, market_closed_for
+from ofo.marketdata.forward import ForwardQuality
 from ofo.marketdata.provider import MarketDataProvider
 from ofo.marketdata.quote import NormalizedQuote
-from ofo.marketdata.spot_source import resolve_spot
 from ofo.marketdata.shared_compute import FeedScope, SharedCompute
+from ofo.marketdata.spot_source import resolve_spot
 from ofo.outcome import (
     OutcomeState,
     PlannedLeg,
@@ -47,7 +49,7 @@ from ofo.outcome import (
 from ofo.outcome.money import with_funds
 from ofo.outcome.price_text import price_text
 from ofo.outcome.serialize import outcome_to_dict
-from ofo.outcome.service import Margin, waiting_first_price
+from ofo.outcome.service import Margin, Outcome, waiting_first_price
 from ofo.outcome.target import TargetAsk
 from ofo.scenario.config import ScenarioConfig, ScenarioSettings
 from ofo.scenario.levels import RangeOverride, resolve_range
@@ -856,6 +858,8 @@ class TargetGreeksOut(ApiModel):
     total: GreeksOut | None
     unavailable: Literal["no_time_left"] | None
     unavailable_text: CatalogueText | None  # REQ-084 AC-2: "No Greeks at expiry: the options have no time left."
+    basis_text: CatalogueText  # u507: "Per position, 65 units" ("Per position": legs differ)
+    total_display: dict[Identifier, CatalogueText] | None = None  # u507: total as text: 2 places, gamma 4
     dividend_yields: dict[Identifier, Money] = {}  # expiry date -> the q the engine priced it with (checker input, not shown)
 
 
@@ -949,6 +953,31 @@ class OutcomeResponse(ApiModel):
     target: TargetOut | None = None  # REQ-084 AC-1/AC-4: limits alone unless target_level or target_at
     #: REQ-119 AC-1 / REQ-133 AC-2: the request's (or the socket follow message's) ``seq``, unchanged; absent when none
     seq: int | None = None
+    #: ADR-300: present only for a computed answer with a sold option leg. ``breaks`` / ``within`` / ``cannot_tell``;
+    #: the line is the server's own sentence (null when within the guide). Absent otherwise: the guide speaks of shorts.
+    entry_guide_state: Literal["breaks", "within", "cannot_tell"] | None = None
+    entry_guide_line: CatalogueText | None = None
+
+
+def entry_guide_fields(out: Outcome, ctx: MarketContext | None) -> dict:
+    """ADR-300: the entry-guide state and line of a computed answer (``ofo.adjustment.entry_guide``, the one function),
+    from the sold legs' delta this answer's model holds and the default rule set of the legs' shape. A shape that cannot
+    be read (no listing, no spot) is an unknown shape: no line."""
+    if out.state is not OutcomeState.COMPUTED or not out.sold_deltas:
+        return {}
+    stype = None
+    try:
+        if ctx is not None and out.spot_level is not None:
+            legs = tuple(Leg(x.action, x.instrument, x.strike, x.expiry, x.quantity, x.planned_entry, exact_entry=True)
+                         for x in out.legs)
+            gap = strike_gap_of(ctx.provider.instrument_master(), out.underlying, {x.expiry for x in out.legs})
+            stype = type_of(legs, out.spot_level, gap)
+    except (AttributeError, ArithmeticError, TypeError, ValueError):
+        stype = None  # the shape could not be read: the line says it could not check
+    found = entry_guide_for(out.sold_deltas, stype)
+    if found is None:  # a shape the guide does not suit, or an unknown one: no line, no state
+        return {}
+    return {"entry_guide_state": found.state, "entry_guide_line": found.line}
 
 
 def _leg_quotes(snapshot, definition: StrategyDefinition, symbols: dict[str, str | None]) -> list[dict]:
@@ -1090,6 +1119,7 @@ def outcome_response(req: OutcomeRequest, ctx: MarketContext | None,  # noqa: PL
         out = dataclasses.replace(out, margin=margin, summary=with_funds(out.summary, margin))  # REQ-081 AC-9, AC-10
     body = outcome_to_dict(out, today=answered_at.astimezone(IST).date())  # REQ-135 AC-2
     body["answered_at"] = answered_at
+    body.update(entry_guide_fields(out, ctx))  # ADR-300
     state = market_state(ctx, answered_at)
     body["market_closed"] = state.closed
     body["last_price_at"] = label_time(state, (q.price_at for q in used_quotes if q is not None))

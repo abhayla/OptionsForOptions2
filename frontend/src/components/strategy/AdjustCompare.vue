@@ -10,7 +10,12 @@
     <!-- ADR-272: stale prices are said once at the top, in the server's words -->
     <p v-if="stale" role="alert" class="rounded-lg border border-line bg-surface-muted p-3 text-sm font-semibold text-warn" data-testid="adjust-stale-banner">{{ prices.banner }}</p>
     <p v-else-if="prices?.label" class="text-xs text-ink-muted" data-testid="adjust-prices-label">{{ prices.label }}</p>
-    <ErrorMessage v-if="state === 'error'" :parts="errorParts" compact prefix="adjust-error" data-testid="adjust-error" />
+    <template v-if="state === 'error'">
+      <ErrorMessage :parts="errorParts" compact prefix="adjust-error" data-testid="adjust-error" />
+      <!-- GC-ICFIX 21 (X-7, ADR-259): a closed trade has nothing to compare; its history is still there, never a dead end. The link shows only when the
+           strategy itself reads back (the refusal text carries no code, so the strategy read tells exists-and-yours) -->
+      <router-link v-if="isMine" :to="{ path: '/strategy/builder', query: { strategy: String(strategyId) } }" class="text-sm underline" data-testid="adjust-steps-link">See this strategy's adjustment history</router-link>
+    </template>
     <p v-else-if="state === 'loading'" class="text-sm text-ink-muted" data-testid="adjust-loading">Working out the approaches...</p>
 
     <!-- REQ-156 AC-1 / REQ-155 AC-5: no usable spot -> nothing is priced, so only this and each source's reason (no figures) -->
@@ -22,6 +27,8 @@
     </div>
 
     <template v-else-if="reply">
+      <!-- ADR-297 (D4): the server's sentence at the plan's adjustment maximum; only exit and reduce are offered then -->
+      <p v-if="reply.limit" role="status" class="rounded-lg border border-line bg-surface-muted p-3 text-sm font-semibold text-warn" data-testid="adjust-limit">{{ reply.limit.text }}</p>
       <div v-if="picked.length" class="flex flex-wrap items-center gap-2 text-sm" data-testid="adjust-scope">
         <label class="flex min-w-0 max-w-full flex-wrap items-center gap-2">Approaches in the compare
           <select v-model="scope" class="h-9 max-w-full rounded border border-line px-2" data-testid="adjust-scope-select">
@@ -42,6 +49,7 @@
         <div class="min-w-0 rounded-lg border border-line bg-surface p-3" data-testid="adjust-chart-card">
           <h3 class="mb-1 text-sm font-semibold">Payoff at expiry, whole trade</h3>
           <AdjustPayoffChart :lines="chartLines" :hidden="hiddenLines" @toggle="toggleLine" />
+          <p v-if="reply.curves_estimate_note" class="mt-1 text-xs text-ink-muted" data-testid="adjust-estimate-note">{{ reply.curves_estimate_note }}</p>
           <p class="mt-1 text-xs text-ink-muted" data-testid="adjust-chart-note">Dashed grey = no change. Tap a name to hide or show its line.</p>
           <p class="mt-1 text-xs text-ink-muted" data-testid="adjust-spot">{{ spotLine }}</p>
         </div>
@@ -50,7 +58,7 @@
           <div class="rounded-lg border border-line bg-surface p-3" data-testid="adjust-filters">
             <div class="flex flex-wrap items-center justify-between gap-2">
               <h3 class="text-sm font-semibold">Filter approaches</h3>
-              <span class="text-sm" data-testid="adjust-showing">{{ showingText(kept.length, total) }}</span>
+              <span class="text-sm" data-testid="adjust-showing">{{ showingText(kept.length, allCount) }}</span>
               <button type="button" class="rounded border border-line px-2 py-0.5 text-xs" data-testid="adjust-clear" @click="clearFilters">Clear filters</button>
             </div>
             <p class="mt-1 text-xs text-ink-muted" data-testid="adjust-filter-note">{{ FILTER_NOTE }}</p>
@@ -77,7 +85,7 @@
             </fieldset>
             <div v-for="r in RANGES.filter((x) => facets.ranges[x.id])" :key="r.id" class="mt-2" :data-testid="`adjust-range-${r.id}`">
               <label class="flex flex-wrap items-center gap-2 text-xs">
-                <span class="font-semibold">{{ r.label }}</span>
+                <span class="font-semibold">{{ rangeLabel(reply, r) }}</span>
                 <span class="text-ink-muted" :data-testid="`adjust-range-${r.id}-min`">{{ rangeEndText(r, facets.ranges[r.id].min) }}</span>
                 <input
                   type="range" step="any" class="min-w-0 flex-1" :min="facets.ranges[r.id].min" :max="facets.ranges[r.id].max"
@@ -150,9 +158,10 @@
         </table>
       </div>
 
-      <div v-if="refused.length" class="rounded-lg border border-line bg-surface p-3" data-testid="adjust-refused">
+      <div v-if="refused.length || notOffered.length" class="rounded-lg border border-line bg-surface p-3" data-testid="adjust-refused">
         <h3 class="text-sm font-semibold">Not offered for this strategy now</h3>
         <ul class="mt-1 text-sm">
+          <li v-for="a in notOffered" :key="a.id" :data-testid="`adjust-not-offered-${a.id}`"><span class="font-semibold">{{ a.name ?? a.id }}</span>: {{ a.reason }}</li>
           <li v-for="a in refused" :key="a.id" :data-testid="`adjust-refused-${a.id}`"><span class="font-semibold">{{ a.name ?? a.id }}</span>: {{ refusalText(a) }}<span v-if="a.refusal?.next_action" class="text-ink-muted"> {{ a.refusal.next_action }}</span></li>
         </ul>
       </div>
@@ -185,7 +194,7 @@ import { readTracking } from '@/lib/tracking'
 import { stateRows } from '@/lib/adjustDrawer'
 import {
   EMPTY_FILTERS, GROUP_TITLES, KIND_TITLES, MAX_PROFIT_AT_ZERO_LABEL, NO_CHANGE_ID, RANGES, SIDE_TITLES, UNAVAILABLE_FOR_FILTER, UNAVAILABLE_VALUE,
-  applyFilters, buildFacets, cmpDecimal, isNoChange, exitLegsFromApproach, isFullExit, legsFromApproach, rangeEndText, refusalText, refusedApproaches, showingText, tableApproaches,
+  applyFilters, buildFacets, cmpDecimal, rangeLabel, isNoChange, exitLegsFromApproach, isFullExit, legsFromApproach, rangeEndText, refusalText, refusedApproaches, showingText, tableApproaches,
 } from '@/lib/adjustCompare'
 
 const props = defineProps({
@@ -215,6 +224,7 @@ const reply = ref(null)
 const name = ref(null)
 const underlying = ref(null)
 const errorParts = ref(NEUTRAL_PARTS)
+const isMine = ref(false) // the refused compare's strategy reads back for this user
 const prepareError = ref(null)
 const filters = ref(EMPTY_FILTERS())
 const hiddenLines = ref([])
@@ -231,6 +241,7 @@ async function load() {
   } catch (e) {
     errorParts.value = e?.parts ?? NEUTRAL_PARTS
     state.value = 'error'
+    try { await props.client.get(`/strategies/${props.strategyId}`); isMine.value = true } catch { isMine.value = false }
     return
   }
   try { // layers 1-2 again (display only); a strategy that is not tracked simply shows no card
@@ -264,9 +275,11 @@ watch(facets, (f) => {
 
 const all = computed(() => (view.value ? tableApproaches(view.value) : []))
 const kept = computed(() => (view.value ? applyFilters(view.value, filters.value) : []))
+// ADR-308: M in "Showing N of M" = every approach the server says applies (No change counts, as a column), not the ticked set
 const allCount = computed(() => (reply.value ? tableApproaches(reply.value).length : 0))
-const total = computed(() => all.value.length)
 const refused = computed(() => (view.value ? refusedApproaches(view.value) : []))
+// ADR-297: approaches withheld at the adjustment limit; they are not in the table, so they take no part in "Showing N of M"
+const notOffered = computed(() => reply.value?.not_offered ?? [])
 const pickable = computed(() => kept.value.filter((x) => !isNoChange(x.a)))
 watch(pickable, (list) => { if (!list.some((x) => x.a.id === pick.value)) pick.value = list[0]?.a.id ?? '' }, { immediate: true })
 

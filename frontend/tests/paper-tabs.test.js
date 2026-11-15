@@ -103,6 +103,56 @@ describe('Positions page tabs', () => {
   })
 })
 
+// GC-ICFIX defect E (F-69): which tab the page opens on, per answer state of the real-positions read.
+describe('Positions page opening tab by the state of the Zerodha read', () => {
+  const selected = (w) => (t(w, 'tab-paper').attributes('aria-selected') === 'true' ? 'paper' : 'positions')
+  const refused = () => Promise.reject({ status: 409, parts: { what_happened: 'Connect your Zerodha account to continue.', impact: 'i', what_is_blocked: 'b', next_action: 'n' } })
+  const status = (state) => () => Promise.resolve({ data: { account_connection: { state } } })
+  const withPaper = () => { answers['GET /tracking'] = () => Promise.resolve({ data: TRACKING }) }
+  it('connected with real positions and an open paper strategy: stays on Positions', async () => {
+    answers['GET /positions'] = () => Promise.resolve({ data: { ...POSITIONS, has_outside: true, outside_lots: 2 } })
+    withPaper()
+    expect(selected(await page('/p'))).toBe('positions')
+  })
+  it('connected with no real position and an open paper strategy: opens on Paper', async () => {
+    answers['GET /positions'] = () => Promise.resolve({ data: POSITIONS })
+    withPaper()
+    expect(selected(await page('/p'))).toBe('paper')
+  })
+  it('NOT connected (the read is refused) and an open paper strategy: opens on Paper', async () => {
+    answers['GET /positions'] = refused
+    answers['GET /broker/status'] = status('disconnected')
+    withPaper()
+    expect(selected(await page('/p'))).toBe('paper')
+  })
+  it('not connected and no open paper strategy: stays on Positions and shows the refusal', async () => {
+    answers['GET /positions'] = refused
+    answers['GET /broker/status'] = status('disconnected')
+    const w = await page('/p')
+    expect(selected(w)).toBe('positions')
+    expect(t(w, 'positions-error-what').text()).toContain('Connect your Zerodha account')
+  })
+  it('the read failed for another reason (server error, broker connected): stays on Positions and shows the error', async () => {
+    answers['GET /positions'] = () => Promise.reject({ status: 500, parts: { what_happened: 'Server error', impact: 'i', what_is_blocked: 'b', next_action: 'n' } })
+    answers['GET /broker/status'] = status('connected')
+    withPaper()
+    const w = await page('/p')
+    expect(selected(w)).toBe('positions')
+    expect(t(w, 'positions-error-what').text()).toBe('Server error')
+  })
+  it('the read failed and the connection state cannot be read either: stays on Positions (fail closed)', async () => {
+    answers['GET /positions'] = () => Promise.reject({ status: 500, parts: null })
+    withPaper()
+    expect(selected(await page('/p'))).toBe('positions')
+  })
+  it('?tab=positions in the URL always wins, even when not connected with an open paper strategy', async () => {
+    answers['GET /positions'] = refused
+    answers['GET /broker/status'] = status('disconnected')
+    withPaper()
+    expect(selected(await page('/p?tab=positions'))).toBe('positions')
+  })
+})
+
 describe('Builder Tracked tab', () => {
   async function bar() {
     const router = createRouter({

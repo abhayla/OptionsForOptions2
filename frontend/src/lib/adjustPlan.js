@@ -44,9 +44,13 @@ export function readPlan(body) {
   }
 }
 
+/** The plan read's own limit (GC-ICFIX issue 2: under load it took 12-18 s); the client's global 10 s stays for every other request. */
+export const PLAN_READ_TIMEOUT_MS = 30000
+
 /** GET the sheet; `pickId` refills every field from that playbook (REQ-161 AC-2). Throws the client error. */
 export async function fetchPlan(client, strategyId, pickId = null) {
-  const { data } = await client.get(pickId === null ? planPath(strategyId) : `${planPath(strategyId)}?playbook_id=${pickId}`)
+  const { data } = await client.get(pickId === null ? planPath(strategyId) : `${planPath(strategyId)}?playbook_id=${pickId}`,
+    { timeout: PLAN_READ_TIMEOUT_MS })
   return readPlan(data)
 }
 
@@ -56,7 +60,7 @@ export const asIsBody = (playbookId) => ({ playbook_id: playbookId })
 /** The body for Save: the playbook and every field as typed; the server checks each and names the one that is not valid. */
 export function saveBody(form) {
   const body = { playbook_id: form.playbookId }
-  if (form.target.trim() !== '') body.target = form.target.trim()
+  body.target = form.target.trim() // ADR-305: an empty Target is sent as "" = no target alert for this trade
   // ADR-252 addendum: a stop left as the sheet showed it is not sent (the server also compares; this is the first layer)
   if (form.stop.trim() !== '' && form.stop.trim() !== (form.stopShown ?? '').trim()) body.stop = form.stop.trim()
   if (form.maxAdjustments.trim() !== '') body.max_adjustments = form.maxAdjustments.trim()
@@ -70,5 +74,5 @@ export async function sendPlan(client, strategyId, body, edit) {
   return readPlan(data)
 }
 
-/** "Customise triggers": the playbook editor route, opening that playbook. */
-export const customiseUrl = (playbookId) => `/strategies/adjustments?playbook=${playbookId}`
+/** "Customise triggers": the editor opened on THIS trade's own rules (issue 7), never on a playbook other trades follow. */
+export const customiseUrl = (strategyId) => `/strategies/adjustments?trade=${strategyId}`

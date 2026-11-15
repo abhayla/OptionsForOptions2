@@ -4,6 +4,7 @@
 // one-line texts and whether each applies come from the server (`available`); no approach text is kept in the browser.
 import { MAX_PROFIT_AT_ZERO_LABEL, NO_CHANGE_ID } from '@/lib/adjustCompare'
 import { rupeesText } from '@/lib/displayFormat'
+import { afterFigure } from '@/lib/tracking'
 
 export const REVIEW_BUTTON_TEXT = 'Review adjustment'
 export const PICK_NOTE = 'Pick any to compare. No change is always included.'
@@ -21,8 +22,10 @@ export const CURRENT_STATE_BODY = Object.freeze({ approaches: [NO_CHANGE_ID] })
 /** REQ-046 AC-2 Layer 2, the part the card already has (tracking reply). A value it does not have reads "-". */
 export function cardRows(body) {
   const open = Array.isArray(body?.legs) ? body.legs.filter(isOpen).length : null
+  // GC-ICFIX (ADR-263): the after-charges figure, labelled; else the before figure, labelled (no label on a dash)
+  const pnl = afterFigure(body, typeof body?.paper_pnl_text === 'string' && body.paper_pnl_text.trim() !== '' ? body.paper_pnl_text.trim() : null)
   return [
-    { id: 'pnl', label: 'Paper P&L (not real)', value: text(body?.paper_pnl_text) },
+    { id: 'pnl', label: `Paper P&L (not real) ${pnl.label}`.trim(), value: text(pnl.text), breakdown: pnl.breakdown },
     { id: 'booked', label: 'Booked', value: text(body?.booked_text) },
     { id: 'unbooked', label: 'Not yet booked', value: text(body?.unbooked_text) },
     { id: 'index', label: 'Index', value: text(body?.index?.level) },
@@ -70,12 +73,17 @@ export const availableOf = (reply) => (Array.isArray(reply?.available) ? reply.a
 /** The compare address for a strategy and the ids picked in the drawer; No change is always among them. */
 const OPP_ID = /^[1-9]\d{0,17}$/ // a suggestion record id (BIGSERIAL)
 
-export function compareUrl(strategyId, ids, opportunities = []) {
-  const picks = [...new Set([NO_CHANGE_ID, ...ids])]
+// Only the drawer calls this: it knows what the user ticked. Every other link uses compareAllUrl (tests/compare-url-callers.test.js).
+export const compareUrl = (strategyId, ids, opportunities = []) => buildCompareUrl(strategyId, [...new Set([NO_CHANGE_ID, ...ids])], opportunities)
+/** A link with no ticks (inbox, Alerts, pop-up): no pick is sent, so the compare shows every approach (ADR-308 (4)). */
+export const compareAllUrl = (strategyId, opportunities = []) => buildCompareUrl(strategyId, [], opportunities)
+
+function buildCompareUrl(strategyId, picks, opportunities) {
   const opp = [...new Set(opportunities.map(String).filter((x) => OPP_ID.test(x)))]
   // GC-ADJ2 step 5: the open suggestion records this compare answers (REQ-162 AC-3); its prepare marks them acted on
   const tail = opp.length ? `&opp=${opp.join(',')}` : ''
-  return `/strategy/builder?adjust=${encodeURIComponent(String(strategyId))}&pick=${picks.map(encodeURIComponent).join(',')}${tail}`
+  const pickPart = picks.length ? `&pick=${picks.map(encodeURIComponent).join(',')}` : ''
+  return `/strategy/builder?adjust=${encodeURIComponent(String(strategyId))}${pickPart}${tail}`
 }
 
 // GC-ADJ2 step 5: the `opp` address part back to suggestion ids (whole positive numbers only; anything else dropped)

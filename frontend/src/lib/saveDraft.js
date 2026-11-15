@@ -77,14 +77,6 @@ export function legsLine(row) {
   return row.leg_count > 1 ? `${name} and ${row.leg_count - 1} more` : name
 }
 
-/** REQ-134 AC-4: the tracked state as the server sent it: true, false, null (could not be read: never 'Not tracked'),
- *  or absent (an older server: nothing shown). */
-export function trackedText(tracked) {
-  if (tracked === true) return 'Tracked'
-  if (tracked === false) return 'Not tracked'
-  return tracked === null ? 'Tracking not known' : null
-}
-
 /** REQ-134 AC-4: the rows whose name contains `text`, case-insensitive, as typed (a row with no name never matches a typed
  *  text; an empty text keeps every row). */
 export function searchStrategies(rows, text) {
