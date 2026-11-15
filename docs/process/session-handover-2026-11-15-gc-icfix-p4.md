@@ -113,3 +113,31 @@ Earlier parked and deferred lists are unchanged: #708 (roll logic), #709 (stored
 2. Take the owner's answers (a) to (f). Then, on his word only, push.
 3. Monday live items u145, u154, u214, u609: check the exchange calendar first; they need his broker login.
 4. After the push, remove the builder work folders with the removal tool; start the next group.
+
+## Addendum, evening of 15 Nov
+Written 18:03 IST on 15 Nov 2026 (system clock). Source: the replay notes and `git log` of that evening.
+
+Fresh-trade replay
+- A fresh practice condor (strategy 150, "Scenario PATH-61") was seeded with `scripts/seed_scenario.py PATH-61` through the dev runner. Nothing was deleted. Frames 0 to 9 wrote 31 new alert records (ids 348 to 378).
+- Clock rule T-10b names itself on screen: PASS.
+- The held profit-target sentence keeps the figures of the firing and the trade's own target: PASS.
+- A ladder record's value and the rule figure agree: PASS.
+- Situation rule sit.S-02 is named at frames 4 and 6, but three records at frame 9 (370, 373, 378) had no trigger, comparison or label: FAIL.
+- Breakeven rule T-02 never fired on this trade: NOT REACHABLE. It needs a trade entered at other prices (spot never went below the breakeven here).
+
+Frame-9 failure and its fix
+- Cause: the store took trigger, comparison, label and unit from the latest check's value for the rule. When the latest check no longer valued the rule, they were lost. Older than today; made visible by today's 871d0baa.
+- Fix: commits 8fffa322 (failing test), d452c37a (fix), 4db7b0ba (test moved to tests_app). The fix writes them from the event and the rule itself.
+- Records 370, 373 and 378 already stored stay generic.
+- NOT re-proven by a replay. Next step: seed a fresh PATH-61 trade and step to frame 9.
+
+Lesson for the next replay
+- A replay on trades that already have that day's alert records writes nothing. Seed a fresh scenario trade instead.
+
+Leftover
+- One git stash entry (stash@{0}) was made by a helper and not dropped (stash drop is blocked in this worktree). The owner may drop it. Unverified this turn: `git stash list` is blocked here.
+
+Pace note from the owner (15 Nov evening)
+- Scope is frozen. A defect outside the goal's list becomes an issue.
+
+Open proofs: (1) T-02 on screen; (2) the frame-9 fix on a fresh PATH-61 trade. The full local check on the final head runs after this commit (result in the scratch log, not here).
