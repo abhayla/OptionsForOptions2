@@ -54,8 +54,9 @@ describe('u502: Save needs something to save', () => {
     expect(saveOff(w)).toBe(true)
   })
   it('after Save the "saved." line shows and Save stays off; the next edit removes the line and turns Save on', async () => {
-    const w = open({ legs: [leg({ lots: 3 })] })
+    const w = open()
     await flushPromises()
+    await w.setProps({ legs: [leg({ lots: 3 })] })
     await t(w, 'save-draft').trigger('click')
     await flushPromises()
     expect(calls.filter((c) => c.method === 'PUT')).toHaveLength(1)

@@ -160,6 +160,7 @@ function barAnswers({ before, after, restorable = true }) {
   answers['POST /strategies/5/restore/2?expected_revision=3'] = strategyOut(4)
 }
 async function saveOnce(w) {
+  await w.setProps({ legs: [{ ...w.props('legs')[0], lots: 2 }] }) // GC-ICFIX P3 u502: Save is on only after an edit
   await w.get('[data-testid="save-draft"]').trigger('click')
   await flushPromises()
 }
@@ -228,7 +229,7 @@ describe('Undo after a meaningful save (REQ-070 AC-4)', () => {
     await flushPromises()
     await saveOnce(w)
     expect(w.find('[data-testid="save-undo"]').exists()).toBe(true)
-    await w.setProps({ legs: [{ ...barLeg, lots: 2 }] })
+    await w.setProps({ legs: [{ ...barLeg, lots: 3 }] })
     expect(w.find('[data-testid="save-undo"]').exists()).toBe(false)
   })
 })

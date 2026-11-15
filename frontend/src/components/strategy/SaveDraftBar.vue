@@ -130,6 +130,13 @@ const hasLegs = computed(() => !props.paperMode && canSaveLegs(props.legs)) // S
 // The "..." button is disabled only when the menu would be empty (nothing to save, no saved strategy); each item shows by its own condition.
 const hasMenu = computed(() => hasLegs.value || !!props.current)
 const canSave = computed(() => !props.paperMode && !busy.value && canSaveLegs(props.legs))
+// GC-ICFIX P3 u502 (REQ-134 AC-2): Save is on only when there is something to save: a never-saved draft, or legs that differ from the
+// ones the page loaded / saved (the baseline is taken whenever the open strategy or its revision changes, so a rename keeps it).
+const baseline = ref(null)
+watch(() => [props.current?.id ?? null, props.current?.revision ?? null], () => { baseline.value = props.current ? sentLegs(props.legs) : null }, { immediate: true, flush: 'post' })
+const canSaveNow = computed(() => canSave.value && (!props.current || sentLegs(props.legs) !== baseline.value))
+// an edit makes the "<name> saved." line out of date
+watch(() => sentLegs(props.legs), () => { savedId.value = null })
 
 async function refresh() {
   try {
@@ -148,7 +155,7 @@ function done(data) {
 
 // Save: an open saved strategy is updated with the revision the page loaded (read BEFORE the await); a never-saved one asks a name first.
 async function save() {
-  if (!canSave.value) return
+  if (!canSaveNow.value) return
   if (!props.current) {
     asking.value = 'save'
     nameText.value = STRATEGY_NAME_DEFAULT
@@ -411,7 +418,7 @@ defineExpose({ showPaperTab: () => { picked.value = 'tracked' } }) // the page c
       <slot name="add-edit" />
       <button
 v-if="!paperMode" type="button" data-testid="save-draft" class="h-10 flex-1 basis-0 rounded-lg bg-accent px-3 font-medium text-white disabled:opacity-50"
-              :disabled="!canSave" @click="save">Save</button>
+              :disabled="!canSaveNow" @click="save">Save</button>
       <button
 v-if="!paperMode" type="button" data-testid="add-to-paper" class="h-10 flex-1 basis-0 rounded-lg border border-line px-3 font-medium disabled:opacity-50"
               :disabled="!canAddToPaper" @click="startPaper">{{ ADD_TO_PAPER_LABEL }}</button>
@@ -422,7 +429,7 @@ ref="menuButton" type="button" class="flex h-10 w-12 shrink-0 items-center justi
         <span v-show="menuOpen" role="menu" class="absolute left-0 top-full z-20 mt-1 flex w-44 flex-col items-start gap-1 rounded border border-line bg-surface p-2 shadow" data-testid="more-menu-panel">
           <button
 v-if="hasLegs" type="button" role="menuitem" data-testid="menu-save"
-                  :disabled="!canSave" @click="menuDo(save)">Save</button>
+                  :disabled="!canSaveNow" @click="menuDo(save)">Save</button>
           <button
 v-if="hasLegs" type="button" role="menuitem" data-testid="save-as"
                   :disabled="!canSave" @click="menuDo(saveAs)">Save As</button>
