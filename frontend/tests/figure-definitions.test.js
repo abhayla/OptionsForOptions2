@@ -29,6 +29,7 @@ const IDS = [
   "estimated_now",
   "expected_move_bands",
   "decay",
+  "theta",
   "probability_of_profit",
 ];
 

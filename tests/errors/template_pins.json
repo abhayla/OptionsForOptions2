@@ -1899,6 +1899,14 @@
     "sha256": "faee1f97b0d4de0249c891c0553f948d6462e365696333e5fc8270dbc95c6412",
     "reviewed": "owner read 2026-10-29 (REQ-084 AC-2/AC-5, question tool \"Approve all three\")"
   },
+  "explanation:target_greeks_basis": {
+    "sha256": "7015f7413653b4f57b4bb09deadefcb74755685c9e3e30c2e912c5163bbb23cb",
+    "reviewed": "pending owner read"
+  },
+  "explanation:target_greeks_basis_units": {
+    "sha256": "b2dee759f0f654bbb7f394e11f6502d1e897545c10fe38def55fda625557e7e3",
+    "reviewed": "pending owner read"
+  },
   "explanation:target_greeks_no_time_left": {
     "sha256": "c2953c2545362ec3e5eb1a08e70a8de30e731e2514362eec1bec00afa69abb7f",
     "reviewed": "owner read 2026-10-29 (REQ-084 AC-2/AC-5, question tool \"Approve all three\")"

@@ -1446,6 +1446,9 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         "Estimate from the pricing model at your target, not a forecast."),
     ExplanationTemplate("target_clamped", "values_seen", "Target moved to the nearest allowed value: {value}.",
                         {"value": TargetValue}),
+    # u507: the basis the "Greeks at target" figures are on, the same words as the Greeks card's column head
+    ExplanationTemplate("target_greeks_basis", "values_seen", "Per position"),
+    ExplanationTemplate("target_greeks_basis_units", "values_seen", "Per position, {count} units", {"count": Count}),
     ExplanationTemplate("target_greeks_no_time_left", "values_seen",
                         "No Greeks at expiry: the options have no time left."),
     # GC-TP R-19a (REQ-144 AC-1..AC-4, Sensibull 020): the Projected badge and the Target block's two captions
