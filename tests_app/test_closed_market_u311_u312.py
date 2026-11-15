@@ -42,7 +42,7 @@ def test_u312_a_real_label_is_kept():
 
 def test_u311_open_stop_record_stays_shown_when_the_rule_reads_not_checked():
     rec = SimpleNamespace(rule_id="T-06", trigger_id="T-06", stage="Entry", value=D("9.7450"), threshold=D("1"),
-                          cmp="ge")
+                          cmp="ge", limit=None)
     ev = pe.Evaluation(None, None, (pe.NotChecked("T-06", "T-06", "check_prices_not_live"),), {})
     shown = chk.shown_results(ev, [rec])
     held = [r for r in shown if isinstance(r, chk.HeldFlag)]
