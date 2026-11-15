@@ -64,7 +64,9 @@ export const ruleNotCheckedText = (reason) => `Rule not checked: ${reason}`
 export const ruleEarlierText = (text, outcome, stamp) => `${text} - ${outcome}${stamp ? `, fired ${stamp}` : ''}`
 export const OPPORTUNITY_PAGE_SIZE = 25
 // u511: N counts every row the server returned in its one read (the list has no server paging)
-export const rowsRangeText = (from, to, total) => `Showing ${from}-${to} of ${total} rows`
+export const ROWS_ONE_TEXT = 'Showing 1 of 1 row'
+export const rowsRangeText = (from, to, total) => (total === 1 ? ROWS_ONE_TEXT : `Showing ${from}-${to} of ${total} rows`)
+export const BROKER_BACK_LINK_TEXT = 'Back to Broker & Market Data' // the page /settings/broker-market-data is titled so
 export const EARLIER_SHOWN_MAX = 5
 export const earlierMoreText = (n) => `and ${n} earlier`
 export const LIMITS_NONE_TEXT = 'No rules are being checked for this trade'

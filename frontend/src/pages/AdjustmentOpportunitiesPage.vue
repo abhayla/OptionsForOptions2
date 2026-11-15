@@ -123,6 +123,7 @@ const linkOf = (g) => compareAllUrl(g.strategy_id, g.records.filter((r) => r.can
 async function load() {
   try {
     reply.value = (await props.client.get('/adjustment-opportunities')).data
+    pageAt.value = 0 // the list was replaced: start at its first page, never on a page that may not exist now
     state.value = 'ready'
     return true
   } catch (e) {
