@@ -292,3 +292,25 @@ def test_a_held_target_flag_with_no_stored_figures_shows_no_live_figure():
 def test_a_live_target_flag_keeps_the_live_sentence():
     text = str(result_out(_flag(), "w", None, body=BODY, target=_live_target())["condition"])
     assert text.startswith("Profit before charges −Rs 2,275.00 reached your target of 1%")
+
+
+# ---- GC-ICFIX round 2: a held target flag says the user's stored target (limit), not the gate's rung ----
+def _held_rung(threshold, limit):
+    stamp = {} if limit is None else {"limit": limit}
+    rec = playbook_store.Suggestion(9, 143, "T-07", "T-07", "Early", D("1.7700"), D(threshold), AT, "open", None,
+                                    [{"cmp": "ge", "label": LABEL, "unit": "%", **stamp,
+                                      "target": {"before": "61.75", "after": "-218.85", "reason": None}}])
+    ev = pe.Evaluation(None, None, (pe.NotChecked("T-07", "T-07", "check_prices_not_live"),), {})
+    return next(r for r in check_route.shown_results(ev, [rec]) if isinstance(r, check_route.HeldFlag))
+
+
+def test_a_held_target_flag_says_the_users_target_not_the_gates_rung():
+    held = _held_rung("25.0000", "50.0000")
+    text = str(result_out(held, "w", None, body=BODY, target=_live_target())["condition"])
+    assert "target of 50%" in text and "25" not in text
+
+
+def test_a_held_target_flag_of_an_old_record_with_no_limit_keeps_the_rung():
+    held = _held_rung("25.0000", None)
+    text = str(result_out(held, "w", None, body=BODY, target=_live_target())["condition"])
+    assert "target of 25%" in text
