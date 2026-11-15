@@ -1,0 +1,21 @@
+{
+  "id": "display-position-moved-without-locating-what-it-covers",
+  "scope": "generic",
+  "class": "A pop-up, banner or panel is moved to a new position without first locating the control or text it must not cover, so each move trades one overlap for another and the position ends where it started.",
+  "mechanism": "The pop-ups were moved three times in GC-ICFIX; no step named the element each position had to leave clear, so every move was judged only by the overlap it removed.",
+  "first_seen": {
+    "date": "2026-11-15",
+    "where": "GC-ICFIX u506 pop-up placement (bottom right below dialogs, 4af67664)",
+    "evidence": "three position changes for the same pop-up ended at the original position; the final rule names the layer order (below dialogs) and the corner"
+  },
+  "fix": "Before moving any overlay, list the controls and text it must not cover in each screen state, locate them on the screen, then choose the position and the layer order from that list.",
+  "detection": {
+    "status": "unguarded",
+    "checks": [],
+    "note": "Needs a screen check of each state; no automatic test locates covered controls, and no on-screen proof exists yet for the fourth group."
+  },
+  "spec_ref": [
+    "spec/decisions/ADR-313.md"
+  ],
+  "occurrences": []
+}

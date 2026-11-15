@@ -1,0 +1,21 @@
+{
+  "id": "branches-green-alone-sum-red",
+  "scope": "generic",
+  "class": "Several branches or builder changes that each pass their own tests can fail together once merged (duplicated constants, a scan broken by another file's comment, a second computation of a shared figure); a hand-picked test list after a merge batch misses this, and only the full check's first gate on the combined head sees it.",
+  "mechanism": "Each builder ran targeted tests green. After the merge batch the structure tests found two real duplicated constants and one apostrophe in a comment that made a scan give up on its file, failing three tests, and a performance regression appeared that no single diff showed.",
+  "first_seen": {
+    "date": "2026-11-15",
+    "where": "GC-ICFIX third and fourth priority groups, merged branch before b3b2911a",
+    "evidence": "the full local check failed twice on the combined head (seven structure tests, then a performance test) while every branch had passed alone; run 13 passed on b3b2911a with TOTAL PASS 2138.6s"
+  },
+  "fix": "After every merge batch run the full check's own first gate on the combined head, never a hand-picked list; merge the next batch only when it is green.",
+  "detection": {
+    "status": "unguarded",
+    "checks": [],
+    "note": "A rule in the runbook step, not yet a mechanism; the full local check catches it only when it is run after each batch."
+  },
+  "spec_ref": [
+    "spec/decisions/ADR-008.md"
+  ],
+  "occurrences": []
+}
