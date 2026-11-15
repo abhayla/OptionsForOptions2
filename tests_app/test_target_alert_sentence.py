@@ -257,3 +257,38 @@ def test_a_malformed_stored_target_falls_back_to_the_percent_line_for_that_row_o
 def test_the_playbook_test_route_passes_the_target_figures_too():
     src = inspect.getsource(playbooks)
     assert src.count("target=check.target_of(state)") == 1 and "result_out(r, None, target=" in src
+
+
+# ---- GC-ICFIX defect A: a held (stored, already fired) target flag is worded with the record's own figures ----
+LIVE_LOSS = D("-2275.00")
+
+
+def _held_shown(timeline_target):
+    stamp = {} if timeline_target is None else {"target": timeline_target}
+    rec = playbook_store.Suggestion(9, 143, "T-07", "T-07", "Early", D("1.7700"), D("1.0000"), AT, "open", None,
+                                    [{"cmp": "ge", "label": LABEL, "unit": "%", "limit": "1.0000", **stamp}])
+    ev = pe.Evaluation(None, None, (pe.NotChecked("T-07", "T-07", "check_prices_not_live"),), {})
+    return next(r for r in check_route.shown_results(ev, [rec]) if isinstance(r, check_route.HeldFlag))
+
+
+def _live_target() -> check.TargetFigures:
+    return check.target_of(pe.StrategyState(expiry_kind="weekly", pnl=LIVE_LOSS, pnl_after=D("-2400.00"), stops=None))
+
+
+def test_a_held_target_flag_says_the_records_figures_never_the_live_loss():
+    held = _held_shown({"before": "61.75", "after": "-218.85", "reason": None})
+    text = str(result_out(held, "w", None, body=BODY, target=_live_target())["condition"])
+    assert text == "Profit before charges +Rs 61.75 reached your target of 1%; after charges −Rs 218.85"
+    assert "2,275" not in text and "2,400" not in text
+
+
+def test_a_held_target_flag_with_no_stored_figures_shows_no_live_figure():
+    held = _held_shown(None)
+    text = str(result_out(held, "w", None, body=BODY, target=_live_target())["condition"])
+    assert "2,275" not in text and "reached your target" not in text
+    assert text == f"{LABEL}: 1.7700 % before charges (rule 1.0000 %)"  # the record's own value and rule
+
+
+def test_a_live_target_flag_keeps_the_live_sentence():
+    text = str(result_out(_flag(), "w", None, body=BODY, target=_live_target())["condition"])
+    assert text.startswith("Profit before charges −Rs 2,275.00 reached your target of 1%")
