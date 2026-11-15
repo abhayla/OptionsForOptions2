@@ -13,6 +13,7 @@ from typing import Any
 import pytest
 import test_adjustment_check as check_test
 from httpx import ASGITransport, AsyncClient
+from ofo.errors.explanations import BUILT_APPROACH_NAMES
 from ofo_app import adjustment_check as chk
 from ofo_app import db as app_db
 from ofo_app import playbook_store
@@ -358,12 +359,13 @@ async def test_t19_list_line_names_the_same_approach_and_cost_as_the_check(app_d
     assert clock["reason"]["impact"] == "It raises no alert before then."
     flag = next((x for x in first["results"] if x["kind"] == "flag" and x["trigger_id"] == "T-19"), None)
     assert flag is not None, [(x["kind"], str(x["reason"])[:400]) for x in first["results"] if x["trigger_id"] == "T-19"]
-    # Measured 2026-11-05 (t19_support.cheapest on ADJ-43, the same cheapest_offered): A-26 "Close the untested side
-    # for profit" (built since GC-IC1 s2, c899dccb) costs 26.86 < A-28's, 2 offered approaches unpriced; premium left
-    # 19.50 / 26.86 = 0.7260, the flag's value. The #629 wording (9ab9aabf) reads "we could price".
+    # Measured 2026-11-05 (t19_support.cheapest on ADJ-43, the same cheapest_offered): A-26 (named by the catalogue,
+    # so a rename cannot break this line; built since GC-IC1 s2, c899dccb) costs 26.86 < A-28's, 2 offered
+    # approaches unpriced; premium left 19.50 / 26.86 = 0.7260, the flag's value. The #629 wording (9ab9aabf)
+    # reads "we could price".
     assert flag["condition"] == ("Premium still left to earn is this many x the adjustment's cost or below: 0.7260 "
-                                 "(rule 1.0000); cheapest adjustment we could price: Close the untested side for "
-                                 "profit, cost ₹26.86. 2 could not be priced.")
+                                 "(rule 1.0000); cheapest adjustment we could price: "
+                                 f"{BUILT_APPROACH_NAMES['A-26']}, cost ₹26.86. 2 could not be priced.")
     rec = next(r for r in await _records(app_db_url, sid) if r.rule_id == "T-19")
     assert (rec.approach, rec.approach_cost, rec.unpriced) == ("A-26", Decimal("26.86"), 2)
     assert f"₹{rec.approach_cost}" in flag["condition"]
