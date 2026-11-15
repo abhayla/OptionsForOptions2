@@ -104,7 +104,7 @@ export const FIGURES = {
       "REQ-145 statement and AC-5 (Decay definition); Sensibull bundle-findings.md line 335 tooltip, reworded",
     reviewed: "pending owner read",
   },
-  // u507 (ISSUES.md 17, 43): Theta beside Decay needs its own words; the engine's theta is per calendar day
+  // u507 (ISSUES.md 17, 43): Theta beside Decay needs its own words; theta in the engine is per calendar day
   theta: {
     label: "Theta",
     text: "The time value an option loses in one calendar day, if everything else stays the same. Decay is the change up to the next market open, which can be more than one day.",
