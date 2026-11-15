@@ -6,7 +6,7 @@ contract flat). 0049 widened the CHECK and the guard but did not touch rows that
 (the list reads that as "Running"), and the settle job never revisits them because nothing is left to settle.
 
 Change (data only, one transaction, one UPDATE): status 'draft' -> 'closed' for every strategy that
-- is not deleted (the list never shows a deleted row; it is left exactly as it is),
+- is deleted or not (ADR-293 Undo brings a deleted strategy back; a finished one must not return as "Running"),
 - has at least one paper order of a reducing kind (exit / settle / stop: ``paper_store.REDUCING_KINDS``) and a net
   quantity of 0 on every contract (BUY +quantity, SELL -quantity; the same sum ``net_positions`` makes), and
 - has no real broker order: no ``execution_plans`` row and no ``adopted_holdings`` row (real positions are closed by the
@@ -57,7 +57,7 @@ _KINDS = ", ".join(f"'{k}'" for k in REDUCING_KINDS)
 def close_sql() -> str:
     return f"""
         UPDATE public.strategies AS s SET status = 'closed'
-        WHERE s.status = 'draft' AND s.deleted_at IS NULL
+        WHERE s.status = 'draft'
           AND EXISTS (SELECT 1 FROM public.paper_orders AS r WHERE r.strategy_id = s.id AND r.kind IN ({_KINDS}))
           AND NOT EXISTS (SELECT 1 FROM public.paper_orders AS o WHERE o.strategy_id = s.id
                           GROUP BY o.contract_id
