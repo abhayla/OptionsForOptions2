@@ -84,6 +84,7 @@ class Opened:
     worse: Literal["last", "dismissed"] | None = None
     shown_value: Decimal | None = None  # GC-ICFIX: the confirming sample's own numbers (see RuleSpec)
     shown_threshold: Decimal | None = None
+    limit: Decimal | None = None  # the limit of the confirming sample (ladder[0], or a yes/no rule's own number)
 
 
 @dataclass(frozen=True)
@@ -95,6 +96,7 @@ class Held:
     level: int
     shown_value: Decimal | None = None
     shown_threshold: Decimal | None = None
+    threshold: Decimal | None = None  # the rung of the held sample (a ladder rule); None for a yes/no rule
 
 
 @dataclass(frozen=True)
@@ -290,13 +292,14 @@ def _decide(  # noqa: PLR0913 - one close's inputs
             return state.with_rule(rule_id, rule), []
         rule = replace(rule, hold=_Hold(reason, level, threshold, ladder=_ladder_key(spec)))
         return state.with_rule(rule_id, rule), [Held(rule_id, t, reason, value, level, spec.shown_value,
-                                                    spec.shown_threshold)]
+                                                    spec.shown_threshold, threshold)]
     rule = replace(rule, record=_Record(level, threshold, t, ladder=_ladder_key(spec)), cleared=False, hold=None)
     state = state.with_rule(rule_id, rule)
     if not cap_exempt(rule_id):  # ADR-267: a watch / day rule is not counted against the cap
         state = replace(state, opened_today=state.opened_today + 1)
+    limit = spec.ladder[0] if spec.ladder else spec.shown_threshold
     return state, [Opened(rule_id, t, level, threshold, value, worse, spec.shown_value,
-                                spec.shown_threshold)]
+                                spec.shown_threshold, limit)]
 
 
 def step(

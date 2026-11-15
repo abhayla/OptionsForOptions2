@@ -768,7 +768,7 @@ class DbGateStore:
                     stage=flag.stage_name if flag is not None else stage, value=value, threshold=threshold,
                     group=gate_group(w.strategy_id, e.at), source=source,
                     cmp=None if rv is None else rv.cmp, label=label, unit=unit, worse=e.worse,
-                    beyond=None if rv is None else rv.beyond, limit=None if rv is None else _quantized(rv.threshold),
+                    beyond=None if rv is None else rv.beyond, limit=_quantized(e.limit),
                     adjustments=_count_of(w.tracked), **t19,
                     **({} if ctx is None else target_record(trigger or "", ctx.state)))
                 opened[e.rule_id] = rec.id
