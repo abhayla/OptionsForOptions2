@@ -22,23 +22,24 @@ def _model(*legs):
     return SimpleNamespace(legs=legs, expiry_model=lambda _expiry: object())
 
 
-def test_the_real_sold_deltas_are_absolute_sold_options_only_and_not_scaled_by_lots(monkeypatch) -> None:
-    monkeypatch.setattr(service, "greeks_unrounded",
-                        lambda _em, _kind, strike, _iv: SimpleNamespace(delta=DELTAS[strike]))
+def _g(delta):
+    return None if delta is None else SimpleNamespace(delta=D(delta))
+
+
+def test_the_real_sold_deltas_are_absolute_sold_options_only_and_not_scaled_by_lots() -> None:
     model = _model(_leg(Action.SELL, Instrument.PE, "24000", 130),  # a sold put: engine delta negative, two lots
                    _leg(Action.SELL, Instrument.CE, "25000", 65),  # a sold call, one lot
                    _leg(Action.BUY, Instrument.CE, "24500", 65),  # a bought leg: not read
                    _leg(Action.SELL, Instrument.FUT, "24500", 65))  # a future: not an option
-    got = service._sold_deltas(model)
+    greeks = [_g("-0.4600000000000012"), _g("0.1812345678901234"), _g("0.5"), None]  # the table's shared per-leg Greeks
+    got = service._sold_deltas(model, greeks)
     assert got == (("PE", D("0.4600000000000012")), ("CE", D("0.1812345678901234")))
     assert all(isinstance(d, D) and d >= 0 for _, d in got)
-    one_lot = service._sold_deltas(_model(_leg(Action.SELL, Instrument.PE, "24000", 65)))
+    one_lot = service._sold_deltas(_model(_leg(Action.SELL, Instrument.PE, "24000", 65)), [_g("-0.4600000000000012")])
     assert one_lot == (("PE", D("0.4600000000000012")),)  # 65 or 130 units: the same per-unit delta
 
 
-def test_a_sold_leg_with_no_iv_has_no_delta_and_is_still_listed(monkeypatch) -> None:
-    def no_call(*_a):
-        raise AssertionError("no IV: the engine is not called")
-
-    monkeypatch.setattr(service, "greeks_unrounded", no_call)
-    assert service._sold_deltas(_model(_leg(Action.SELL, Instrument.CE, "25000", 65, iv=None))) == (("CE", None),)
+def test_a_sold_leg_with_no_iv_or_no_shared_scope_has_no_delta_and_is_still_listed() -> None:
+    no_iv = _model(_leg(Action.SELL, Instrument.CE, "25000", 65, iv=None))
+    assert service._sold_deltas(no_iv, [None]) == (("CE", None),)
+    assert service._sold_deltas(no_iv, None) == (("CE", None),)  # no feed owner: nothing computed here

@@ -49,7 +49,7 @@ async def _post(provider, legs):
 
 def _fix_deltas(monkeypatch, call, put):
     """A fixed sold-leg delta pair in place of the engine's (the route and the rule set stay real)."""
-    monkeypatch.setattr("ofo.outcome.service._sold_deltas", lambda _model: (("CE", call), ("PE", put)))
+    monkeypatch.setattr("ofo.outcome.service._sold_deltas", lambda _model, _greeks: (("CE", call), ("PE", put)))
 
 
 async def test_the_138_condor_breaks_with_delta_0_46_exactly(replayed, monkeypatch) -> None:
