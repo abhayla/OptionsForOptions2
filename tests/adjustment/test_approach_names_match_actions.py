@@ -40,6 +40,11 @@ def _checks(name, position, built):
         yield "a leg: exactly one leg is closed", len(closed) == 1
     if re.match(r"Close the (un)?tested side", name):
         yield "side: the short and its wing are both closed", len(closed) == 2
+    if "move both shorts" in name and "wings keep their distance" not in name:
+        # a name that says only the shorts move must not be built with orders on the wings
+        yield "only shorts move: no wing is closed", all(c.side == "SELL" for c in closed)
+    if "wings keep their distance" in name:
+        yield "wings move with the shorts: a wing is closed too", any(c.side == "BUY" for c in closed)
     if "wing stays" in name:
         yield "wing stays: one short closed, nothing else", len(closed) == 1 and closed[0].side == "SELL"
 
