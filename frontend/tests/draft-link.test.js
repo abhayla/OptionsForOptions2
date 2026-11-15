@@ -174,7 +174,11 @@ describe('REQ-134 AC-2 core on the page: Save, edit a leg, Save again is ONE str
   it('after Save (revision 3 -> 4) the next Save sends the page\'s newest loaded revision 4', async () => {
     answers['PUT /strategies/7'] = OUT(7, 4)
     const { w } = await openBuilder({ strategy: '7' })
+    await t(w, 'remove-leg').trigger('click') // GC-ICFIX P3 u502: Save is on only after an edit
+    await flushPromises()
     await t(w, 'save-draft').trigger('click')
+    await flushPromises()
+    await t(w, 'remove-leg').trigger('click') // GC-ICFIX P3 u502: Save is on only after an edit
     await flushPromises()
     await t(w, 'save-draft').trigger('click')
     await flushPromises()
@@ -193,6 +197,8 @@ describe('REQ-134 AC-2 core on the page: Save, edit a leg, Save again is ONE str
     await t(w, 'name-form').trigger('submit')
     await flushPromises()
     expect(router.currentRoute.value.query).toEqual({ strategy: '8' })
+    await t(w, 'remove-leg').trigger('click') // GC-ICFIX P3 u502: Save is on only after an edit
+    await flushPromises()
     await t(w, 'save-draft').trigger('click')
     await flushPromises()
     expect(writes()).toEqual(['POST /strategies', 'PUT /strategies/8'])
@@ -211,6 +217,8 @@ describe('REQ-134 AC-2 core on the page: Save, edit a leg, Save again is ONE str
     await t(w, 'clear-undo').trigger('click')
     await flushPromises()
     expect(t(w, 'save-as').exists()).toBe(true)
+    await t(w, 'remove-leg').trigger('click') // GC-ICFIX P3 u502: Save is on only after an edit
+    await flushPromises()
     await t(w, 'save-draft').trigger('click')
     await flushPromises()
     expect(writes()).toEqual(['PUT /strategies/7'])

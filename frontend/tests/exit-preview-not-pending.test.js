@@ -6,7 +6,6 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import StrategyBuilderPage from '@/pages/StrategyBuilderPage.vue'
 import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
-import { PAPER_AVERAGE_LABEL } from '@/lib/paperDrafts'
 import REAL from './fixtures/paper-book-63.json'
 import OUTCOME from './fixtures/outcome-condor.json'
 
@@ -24,11 +23,9 @@ vi.mock('@/services/api', async (importActual) => {
 })
 
 const t = (w, id) => w.find(`[data-testid="${id}"]`)
-const all = (w, id) => w.findAll(`[data-testid="${id}"]`)
 const PAPER = 'GET /paper/strategies/63'
 const catalogue = (book) => ({ underlying: 'NIFTY', contracts: book.positions.map((p) => ({ contract_id: p.contract_id, exchange_segment: 'NSE_FO', exchange_token: p.contract_id,
   instrument_type: p.instrument, expiry: p.expiry, strike: p.strike, lot_size: 65, symbol: `NIFTY${p.strike}${p.instrument}` })) })
-const copy = () => JSON.parse(JSON.stringify(REAL))
 const OPEN = REAL.positions.filter((p) => p.net_quantity !== 0)
 
 beforeEach(() => {
