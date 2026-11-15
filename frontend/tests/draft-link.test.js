@@ -270,3 +270,52 @@ describe('F-4: a new ?strategy= while the builder is mounted opens that strategy
     w.unmount()
   })
 })
+
+// ---- GC-ICFIX P3 u502 round 2: the Save baseline is the legs the SERVER holds, never "the legs when the open strategy changes" ----
+describe('u502 round 2: Save is off only when the screen equals the server copy of the open strategy', () => {
+  const saveOff = (w) => t(w, 'save-draft').attributes('disabled') !== undefined
+  it('edit, Clear all, Undo: Save is ENABLED and sends the edited legs (no lost work)', async () => {
+    setActivePinia(createPinia())
+    answers['GET /settings'] = { groups: [{ name: 'Other', settings: [{ key: 'other.undo_clear_all_seconds', value: '10' }] }] }
+    answers['PUT /strategies/7'] = OUT(7, 4)
+    const { w } = await openBuilder({ strategy: '7' })
+    expect(saveOff(w)).toBe(true) // opened, unchanged
+    await t(w, 'remove-leg').trigger('click')
+    await flushPromises()
+    await t(w, 'clear-all-legs').trigger('click')
+    await t(w, 'clear-confirm-yes').trigger('click')
+    await flushPromises()
+    await t(w, 'clear-undo').trigger('click')
+    await flushPromises()
+    expect(saveOff(w)).toBe(false)
+    await t(w, 'save-draft').trigger('click')
+    await flushPromises()
+    expect(calls.find((c) => c.method === 'PUT').body.legs).toHaveLength(3)
+    w.unmount()
+  })
+  it('open A, edit, open B: the second strategy Save state follows its server legs (off), and an edit of B turns it on', async () => {
+    answers['GET /strategies/54'] = other(54, 4)
+    answers['GET /strategies/49'] = other(49, 2)
+    const { w, router } = await openBuilder({ strategy: '54' })
+    await t(w, 'remove-leg').trigger('click')
+    await flushPromises()
+    expect(saveOff(w)).toBe(false)
+    await router.push({ path: '/strategy/builder', query: { strategy: '49' } })
+    await flushPromises()
+    expect(w.findAll('[data-testid="leg-row"]')).toHaveLength(2)
+    expect(saveOff(w)).toBe(true)
+    await t(w, 'remove-leg').trigger('click')
+    await flushPromises()
+    expect(saveOff(w)).toBe(false)
+    w.unmount()
+  })
+  it('a load that fails leaves no baseline: Save follows the never-saved rule (on, with savable legs)', async () => {
+    answers['GET /strategies/99'] = () => Promise.reject(new Error('down'))
+    const { w, router } = await openBuilder({ draft: JSON.stringify(DRAFT_LINK4) })
+    expect(saveOff(w)).toBe(false)
+    await router.push({ path: '/strategy/builder', query: { strategy: '99' } })
+    await flushPromises()
+    expect(saveOff(w)).toBe(false)
+    w.unmount()
+  })
+})

@@ -24,7 +24,9 @@ const leg = (over = {}) => ({
 })
 const t = (w, id) => w.find(`[data-testid="${id}"]`)
 const saveOff = (w) => t(w, 'save-draft').attributes('disabled') !== undefined
-const open = (props) => mount(SaveDraftBar, { props: { legs: [leg()], current: { id: 7, revision: 1, name: 'IC test' }, ...props }, global: { stubs: { RouterLink: true } } })
+// the page hands the bar the legs the SERVER holds for the open strategy (current.serverLegs); the bar never guesses them
+const SRV = { id: 7, revision: 1, name: 'IC test', serverLegs: [leg()] }
+const open = (props) => mount(SaveDraftBar, { props: { legs: [leg()], current: SRV, ...props }, global: { stubs: { RouterLink: true } } })
 
 beforeEach(() => {
   calls.length = 0
@@ -53,18 +55,42 @@ describe('u502: Save needs something to save', () => {
     await w.setProps({ legs: [leg()] })
     expect(saveOff(w)).toBe(true)
   })
-  it('after Save the "saved." line shows and Save stays off; the next edit removes the line and turns Save on', async () => {
+  it('FAIL-SAFE (round 2): when the page cannot tell whether the legs differ (no server legs, or an unreadable value) Save is ON', async () => {
+    for (const serverLegs of [undefined, null, {}, 'x']) {
+      const w = open({ current: { id: 7, revision: 1, name: 'IC test', serverLegs } })
+      await flushPromises()
+      expect(saveOff(w), String(serverLegs)).toBe(false)
+    }
+  })
+  it('after Save the "saved." line shows; the saved event carries the legs that were SENT; the next edit removes the line and turns Save on', async () => {
     const w = open()
     await flushPromises()
     await w.setProps({ legs: [leg({ lots: 3 })] })
     await t(w, 'save-draft').trigger('click')
     await flushPromises()
     expect(calls.filter((c) => c.method === 'PUT')).toHaveLength(1)
-    await w.setProps({ current: { id: 7, revision: 2, name: 'IC test' } }) // the page takes the saved revision
+    const sent = w.emitted('saved')[0][3]
+    expect(sent.map((l) => l.lots)).toEqual([3])
+    await w.setProps({ current: { id: 7, revision: 2, name: 'IC test', serverLegs: sent } }) // what the page does with the event
     expect(t(w, 'save-status').text()).toContain('saved.')
     expect(saveOff(w)).toBe(true)
     await w.setProps({ legs: [leg({ lots: 4 })] })
     expect(t(w, 'save-status').text()).toBe('')
+    expect(saveOff(w)).toBe(false)
+  })
+  it('an edit made while the Save is in flight is NOT absorbed: the baseline is what was sent, so Save is on for the edit', async () => {
+    let answer
+    answers['PUT /strategies/7'] = () => new Promise((r) => { answer = () => r({ data: { id: 7, revision: 2, name: 'IC test' } }) })
+    const w = open()
+    await flushPromises()
+    await w.setProps({ legs: [leg({ lots: 3 })] })
+    await t(w, 'save-draft').trigger('click')
+    await w.setProps({ legs: [leg({ lots: 5 })] }) // edited before the answer
+    answer()
+    await flushPromises()
+    const sent = w.emitted('saved')[0][3]
+    expect(sent.map((l) => l.lots)).toEqual([3])
+    await w.setProps({ current: { id: 7, revision: 2, name: 'IC test', serverLegs: sent } })
     expect(saveOff(w)).toBe(false)
   })
 })
