@@ -1,7 +1,8 @@
 """Migration 0053 (GC-ICFIX; ADR-259, REQ-109 AC-7): a strategy fully exited or settled BEFORE 0049 made the store
 write 'closed' still reads 'draft' (shown as "Running"); the settle job never revisits it (nothing left to settle).
 0053 stores 'closed' for exactly those rows, by the same rule as ``paper_store.place``: at least one reducing order and
-a net quantity of 0 on every contract. Rows with real broker orders, deleted rows and closed rows stay as they are.
+a net quantity of 0 on every contract. Rows with real broker orders and closed rows stay as they are; deleted rows are
+closed too (ADR-293 Undo brings a deleted strategy back, and a finished one must not come back as "Running").
 
 Real PostgreSQL as the owner role, every test rolls back. One row per case; the test asserts the exact ids that change,
 and that the SQL rule equals the Python rule on every non-excluded case.
@@ -84,6 +85,10 @@ async def _cases(c) -> dict[str, int]:
     await c.execute(text("SELECT set_config('ofo.scenario_id', 'TEST-0053', true)"))
     await make("j_scenario", lambda a, b: [(a, "SELL", 65, "open"), (a, "BUY", 65, "exit")])
     await c.execute(text("SELECT set_config('ofo.scenario_id', '', true)"))
+    # (m) open legs that cancel ACROSS contracts (c0 -65, c1 +65) with a reducing order somewhere: still open -> draft
+    await make("m_open_legs_cancel_across_contracts", lambda a, b: [(a, "SELL", 130, "open"), (a, "BUY", 65, "exit"),
+                                                                    (b, "BUY", 65, "open")])
+    await make("n_ends_on_stop", lambda a, b: [(a, "SELL", 65, "open"), (a, "BUY", 65, "stop")])
     sid, *_ = await make("k_real_orders", lambda a, b: [(a, "SELL", 65, "open"), (a, "BUY", 65, "exit")])
     await c.execute(text("INSERT INTO public.execution_plans (strategy_id, plan_number, action) "
                          "VALUES (:s, 1, 'ENTRY')"), {"s": sid})
@@ -105,10 +110,11 @@ async def test_exactly_the_finished_paper_strategies_become_closed_and_a_second_
     before_closed = (await conn.execute(_ROW, {"s": cases["f_already_closed"]})).one()
     up = own_step_sql(MIGRATION)[1]
     changed = (await conn.execute(text(up[0]))).rowcount
-    # (a) settled (b) hand-exited (h) a leg never opened (j) scenario; everything else is untouched
-    assert await _closed(conn, cases) == {"a_settled", "b_hand_exited", "h_one_leg_never_opened", "j_scenario",
-                                          "f_already_closed"}
-    assert changed == 4  # noqa: PLR2004 - the fresh test database holds only this test's rows
+    # (a) settled (b) hand-exited (h) a leg never opened (i) deleted (j) scenario (n) stop; the rest is untouched
+    assert await _closed(conn, cases) == {"a_settled", "b_hand_exited", "h_one_leg_never_opened", "i_deleted",
+                                          "j_scenario", "n_ends_on_stop", "f_already_closed"}
+    assert "m_open_legs_cancel_across_contracts" not in await _closed(conn, cases)
+    assert changed == 6  # noqa: PLR2004 - the fresh test database holds only this test's rows
     assert (await conn.execute(_ROW, {"s": cases["f_already_closed"]})).one() == before_closed  # (f) untouched
     again = (await conn.execute(text(up[0]))).rowcount
     assert again == 0  # (l) idempotent
@@ -118,11 +124,11 @@ async def test_the_sql_rule_equals_the_python_rule_on_every_case_without_an_excl
     cases = await _cases(conn)
     await conn.execute(text(own_step_sql(MIGRATION)[1][0]))
     closed = await _closed(conn, cases)
-    excluded = {"f_already_closed", "i_deleted", "k_real_orders", "k2_adopted_holding"}
+    excluded = {"f_already_closed", "k_real_orders", "k2_adopted_holding"}
     for name, sid in cases.items():
         if name not in excluded:
             assert (name in closed) == await _python_rule(conn, sid), name
-    assert closed.isdisjoint({"i_deleted", "k_real_orders", "k2_adopted_holding"})  # (i) (k) kept as they were
+    assert closed.isdisjoint({"k_real_orders", "k2_adopted_holding"})  # (k) kept as they were
 
 
 def test_the_migration_names_the_same_reducing_kinds_as_the_store():
