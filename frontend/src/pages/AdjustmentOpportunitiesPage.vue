@@ -103,12 +103,15 @@ const errorParts = ref(NEUTRAL_PARTS)
 // range comes from where the page's first and last rows sit in the whole list.
 const pageAt = ref(0)
 const all = computed(() => reply.value?.groups ?? [])
-const pages = computed(() => all.value.reduce((acc, g) => {
-  const last = acc.at(-1)
-  if (last && last.length < OPPORTUNITY_PAGE_SIZE) last.push(g)
-  else acc.push([g])
-  return acc
-}, []))
+const pages = computed(() => {
+  const out = []
+  for (const g of all.value) {
+    const last = out.at(-1)
+    if (last && last.length < OPPORTUNITY_PAGE_SIZE) last.push(g)
+    else out.push([g])
+  }
+  return out
+})
 const current = computed(() => pages.value[pageAt.value] ?? pages.value.at(-1) ?? [])
 const rangeText = computed(() => rowsRangeText(all.value.indexOf(current.value[0]) + 1, all.value.indexOf(current.value.at(-1)) + 1, all.value.length))
 const goTo = (i) => { pageAt.value = i }

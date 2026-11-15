@@ -336,10 +336,14 @@ describe('Positions page default tab (F-69) and Alerts names (R-8)', () => {
     const w = await show(PositionsPage, '/p')
     expect(t(w, 'positions-empty').text()).toContain('No open positions')
   })
-  it('REQ-009 AC-3: the bare /positions route stays the section page (no redirect), so all four sub-items stay reachable', () => {
-    // GC-CLEAN 2026-10-30: GC-TP 4b's redirect hid Strategy-linked positions, Adjustment opportunities and P&L/risk
-    // from navigation (e2e navigation.spec 41 links, not 45); owner question filed, no decision row changed REQ-009.
-    expect(routes.find((x) => x.path === '/positions' && x.redirect)).toBeUndefined()
+  it('u504: the bare /positions route opens the first built Positions page; every sub-item page stays reachable by its own address', () => {
+    // GC-CLEAN 2026-10-30 kept the section page so the menu listed all four sub-items. u504 (2026-11-15) changed that: a
+    // menu entry for a page that is not built reads as broken, so the menus offer built pages only (nav.js UNBUILT_ITEMS)
+    // and the section link opens Current positions; Positions > P&L/risk still opens by its address.
+    expect(routes.find((x) => x.path === '/positions').redirect).toBe('/positions/current-positions')
+    for (const slug of ['current-positions', 'strategy-linked-positions', 'adjustment-opportunities', 'pnl-risk']) {
+      expect(routes.find((x) => x.path === `/positions/${slug}`)).toBeDefined()
+    }
   })
   it('an alert row shows the strategy name from the reply, not "Strategy 64"', async () => {
     answers['GET /paper/alerts'] = ok({ unread: 0, alerts: [{ id: 1, strategy_id: 64, strategy_name: '"Iron Fly"', trigger_id: 3, created_at: '2026-10-29T05:00:00Z', title: 'Stop hit', body: 'b', read: true }] })
