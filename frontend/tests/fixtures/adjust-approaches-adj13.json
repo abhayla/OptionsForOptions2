@@ -173,7 +173,7 @@
   },
   {
    "id": "A-01",
-   "name": "Roll the untested spread toward spot",
+   "name": "Roll the untested spread to the strikes your roll setting picks (same width, same expiry)",
    "kind": "roll",
    "side": "put",
    "step_basis": "delta",
@@ -344,7 +344,7 @@
   },
   {
    "id": "A-05",
-   "name": "Roll the tested spread out (same width)",
+   "name": "Roll the tested spread to the strikes your roll setting picks (same width, same expiry)",
    "kind": "roll",
    "side": "call",
    "step_basis": "delta",
@@ -787,7 +787,7 @@
   },
   {
    "id": "A-11",
-   "name": "Convert to an iron butterfly: move both shorts to the money",
+   "name": "Convert to an iron butterfly: move both shorts to the money, wings keep their distance",
    "kind": "convert",
    "side": "both",
    "step_basis": null,
@@ -3941,14 +3941,14 @@
   },
   {
    "id": "A-01",
-   "name": "Roll the untested spread toward spot",
+   "name": "Roll the untested spread to the strikes your roll setting picks (same width, same expiry)",
    "explanation": "Move the side that spot is moving away from closer to spot, keeping its width.",
    "applicable": true,
    "reason": null
   },
   {
    "id": "A-05",
-   "name": "Roll the tested spread out (same width)",
+   "name": "Roll the tested spread to the strikes your roll setting picks (same width, same expiry)",
    "explanation": "Move the side that spot is pressing on further out, keeping its width.",
    "applicable": true,
    "reason": null
@@ -3969,7 +3969,7 @@
   },
   {
    "id": "A-11",
-   "name": "Convert to an iron butterfly: move both shorts to the money",
+   "name": "Convert to an iron butterfly: move both shorts to the money, wings keep their distance",
    "explanation": "Move both short strikes to the strike nearest spot, keeping each wing's distance.",
    "applicable": true,
    "reason": null

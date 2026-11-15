@@ -189,7 +189,7 @@ describe('playbook editor (REQ-160)', () => {
     const w = await open()
     await w.get('[data-testid=pb-step-show]').trigger('click')
     const shown = w.get('[data-testid=pb-body]').text()
-    expect(shown).toContain('Roll the untested spread toward spot')
+    expect(shown).toContain('Roll the untested spread to the strikes your roll setting picks (same width, same expiry)')
     expect(shown).toContain(LABELS.approaches.find((a) => a.key === 'A-09').text)
     expect(shown).not.toMatch(/A-01|A-09/)
     await w.get('[data-testid=pb-step-days]').trigger('click')

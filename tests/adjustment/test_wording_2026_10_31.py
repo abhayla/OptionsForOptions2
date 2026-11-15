@@ -71,7 +71,7 @@ def test_catalogue_words_of_the_owner_list():
     app = LABEL_TABLES["playbook_approach"]
     adj = LABEL_TABLES["adjustment_approach"]
     assert app["A-13"] == "Convert to a jade lizard: sell a put and a call spread"
-    assert adj["A-11"] == "Convert to an iron butterfly: move both shorts to the money"
+    assert adj["A-11"] == "Convert to an iron butterfly: move both shorts to the money, wings keep their distance"
     assert EXPLANATIONS["adjust_approach_name_a_11"].text == adj["A-11"]
     assert app["A-09"] == "Add wings (buy far options on each side)"
     assert app["A-10"] == "Inverted strangle (short call strike below short put strike)"

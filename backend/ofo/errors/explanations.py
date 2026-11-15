@@ -269,8 +269,8 @@ _SHAPE_WORD_NAMES: Mapping[str, str] = MappingProxyType(json.loads(_APPROACH_NAM
 #: W-196 (REQ-155, ADR-214): the names of the iron condor adjustment approaches, by catalogue A-id (decision support).
 ADJUSTMENT_APPROACH_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
     "A-36": "No change",
-    "A-01": "Roll the untested spread toward spot",
-    "A-05": "Roll the tested spread out (same width)",
+    "A-01": "Roll the untested spread to the strikes your roll setting picks (same width, same expiry)",
+    "A-05": "Roll the tested spread to the strikes your roll setting picks (same width, same expiry)",
     "A-29": "Reduce the tested side",
     "A-28": "Close the tested spread",
     "A-11": _SHAPE_WORD_NAMES["A-11"],
@@ -283,10 +283,10 @@ EXIT_REDUCE_BUILT: tuple[str, ...] = ("A-24", "A-25", "A-26", "A-27", "A-35")
 ROLL_BUILT: tuple[str, ...] = ("A-02", "A-04", "A-06")
 #: GC-ADJ2 step 3 (REQ-159 AC-5, REQ-160 AC-1): the playbook editor's names of the approaches NOT in ADJUSTMENT_APPROACH_LABEL_TEXT (that table stays the one home of its ids; a test holds the two disjoint). Source: tests/fixtures/adjust_scenarios/_playbooks.json approaches.
 PLAYBOOK_APPROACH_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
-    "A-02": "Roll the tested short away",
+    "A-02": "Roll the tested short to the strike your roll setting picks",
     "A-03": "Roll out in time (same strikes, next expiry)",
     "A-04": "Roll up/down and out (diagonal roll)",
-    "A-06": "Shift a leg by +/- N strikes",
+    "A-06": "Shift the tested spread by N strikes: a call spread up, a put spread down",
     "A-07": "Re-centre / reset around spot",
     "A-08": "Straddle-ise (move the untested short to the tested strike)",
     "A-09": "Add wings (buy far options on each side)",
@@ -305,7 +305,7 @@ PLAYBOOK_APPROACH_LABEL_TEXT: Mapping[str, str] = MappingProxyType({
     "A-23": "Delta-neutral helper (calculator)",
     "A-24": "Take profit, whole strategy",
     "A-25": "Take partial profit (close X%)",
-    "A-26": "Close the untested side for profit",
+    "A-26": "Buy back the decayed untested short (its wing stays)",
     "A-27": "Buy back cheap shorts",
     "A-35": "Time exit",
     "A-32": "Stop-loss per leg",
