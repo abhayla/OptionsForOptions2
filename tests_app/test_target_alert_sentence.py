@@ -278,7 +278,7 @@ def _live_target() -> check.TargetFigures:
 def test_a_held_target_flag_says_the_records_figures_never_the_live_loss():
     held = _held_shown({"before": "61.75", "after": "-218.85", "reason": None})
     text = str(result_out(held, "w", None, body=BODY, target=_live_target())["condition"])
-    assert text == "Profit before charges +Rs 61.75 reached your target of 1%; after charges −Rs 218.85"
+    assert text == "Profit before charges +Rs 61.75 reached your target of 1%; after charges \u2212Rs 218.85"
     assert "2,275" not in text and "2,400" not in text
 
 
@@ -291,7 +291,7 @@ def test_a_held_target_flag_with_no_stored_figures_shows_no_live_figure():
 
 def test_a_live_target_flag_keeps_the_live_sentence():
     text = str(result_out(_flag(), "w", None, body=BODY, target=_live_target())["condition"])
-    assert text.startswith("Profit before charges −Rs 2,275.00 reached your target of 1%")
+    assert text.startswith("Profit before charges \u2212Rs 2,275.00 reached your target of 1%")
 
 
 # ---- GC-ICFIX round 2: a held target flag says the user's stored target (limit), not the gate's rung ----

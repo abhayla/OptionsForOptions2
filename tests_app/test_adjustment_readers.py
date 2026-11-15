@@ -19,6 +19,7 @@ from ofo.adjustment.approaches import (
     planned_price,
 )
 from ofo.adjustment.preferences import from_values
+from ofo.engine.adjust_history import HistoryOrder
 from ofo.marketdata.spot_source import SourceState
 from ofo.settings import defaults
 from ofo_app import adjustment_readers as readers
@@ -677,9 +678,8 @@ def test_gcic1_r5_second_pass_ids_answer_states():
 
 def test_the_limit_check_reads_the_same_count_so_a_trade_is_not_blocked_by_its_own_exit():
     """Moved from tests/engine/test_adjust_history.py (a domain test may not import ofo_app): same assertions."""
-    from ofo.engine.adjust_history import HistoryOrder
-
-    clock = datetime.datetime(2026, 1, 5, 10, 0)
+    clock = datetime.datetime(2026, 1, 5, 10, 0, tzinfo=datetime.UTC)
+    two = 2
     at = [clock + datetime.timedelta(hours=i) for i in range(4)]
     orders = [HistoryOrder("C1", "SELL", 65, D("100"), "open", at[0]),
               HistoryOrder("C2", "SELL", 65, D("50"), "add", at[1]),  # adjustment 1
@@ -688,5 +688,5 @@ def test_the_limit_check_reads_the_same_count_so_a_trade_is_not_blocked_by_its_o
     rows = [types.SimpleNamespace(order=types.SimpleNamespace(contract_id=o.instrument_id, side=o.side,
                                                               quantity=o.quantity, price=o.price, kind=o.kind,
                                                               placed_at=o.placed_at)) for o in orders]
-    assert readers.history_count(rows, lambda cid: True) == 2
-    assert readers.history_count(rows[:3], lambda cid: True) == 2  # before the exit: still 2 (a part exit counts)
+    assert readers.history_count(rows, lambda cid: True) == two
+    assert readers.history_count(rows[:3], lambda cid: True) == two  # before the exit: still 2 (a part exit counts)

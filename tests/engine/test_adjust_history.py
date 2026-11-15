@@ -241,8 +241,9 @@ def _closed_trade_orders() -> list[HistoryOrder]:
 
 
 def test_a_closed_trade_counts_its_adjustments_without_the_closing_exit():
-    h = adjustment_history(_closed_trade_orders(), {}, adjustments_max=2)
+    two = 2
+    h = adjustment_history(_closed_trade_orders(), {}, adjustments_max=two)
     assert [r.step for r in h.rows] == ["entry", "adjustment", "adjustment", "adjustment"]
-    assert h.totals.adjustments_used == h.totals.adjustments_before_exit == 2  # was 3: "3 of 2"
+    assert h.totals.adjustments_used == h.totals.adjustments_before_exit == two  # was 3: "3 of 2"
     assert [r.is_exit for r in h.rows] == [False, False, False, True]  # the screen labels the last row "Exit"
 

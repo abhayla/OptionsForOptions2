@@ -7,17 +7,20 @@ check; the screen's check (GET /api/strategies/{id}/adjustment-check) only names
 Strategies come from the scenario library (seed_scenario)."""
 from __future__ import annotations
 
+import datetime as dt
 from decimal import Decimal
 from typing import Any
 
 import pytest
 import test_adjustment_check as check_test
 from httpx import ASGITransport, AsyncClient
+from ofo.adjustment.playbook_eval import RuleValue
 from ofo.errors.explanations import BUILT_APPROACH_NAMES
 from ofo_app import adjustment_check as chk
 from ofo_app import db as app_db
 from ofo_app import playbook_store
 from ofo_app.adjustment_readers import TrackedExited
+from ofo_app.routes.adjustment_opportunities import condition_text
 from test_adjustment_check import _reset_engine, _seeded, seed_mod
 from worker_records import lapse_through_worker, open_flags
 
@@ -395,52 +398,44 @@ async def test_a_record_stored_with_its_target_figures_reads_back_as_the_target_
 # No database: pure record -> text. The yes/no families in the code: ``yes_no=True`` is set for day rules
 # (playbook_eval ``_add_day_rules``), situation rules (``sit.<S-id>``) and level watches (``watch.level.<direction>``).
 def _yes_no_record(rule_id: str, label: str | None):
-    import datetime as dt
-
-    from ofo_app import playbook_store as store
-    return store.Suggestion(1, 143, rule_id, rule_id, None, None, None, dt.datetime(2026, 11, 15, 9, 30, tzinfo=dt.UTC),
-                            "open", None, [{"cmp": None, "label": label, "group": "g"}])
+    return playbook_store.Suggestion(
+        1, 143, rule_id, rule_id, None, None, None, dt.datetime(2026, 11, 15, 9, 30, tzinfo=dt.UTC),
+        "open", None, [{"cmp": None, "label": label, "group": "g"}])
 
 
 @pytest.mark.parametrize(("rule_id", "label", "expected"), [
     ("sit.S-02", "Trending day", "Trending day"),
     ("sit:S-02", "Trending day", "Trending day"),  # the legacy prefix
-    ("watch.level.above", None, "Watched level reached (at or above)"),  # the watch's own catalogue label, no stored label
+    # the watch's own catalogue label, no stored label
+    ("watch.level.above", None, "Watched level reached (at or above)"),
     ("watch.level.below", "Watched level reached (at or below)", "Watched level reached (at or below)"),
 ])
 def test_a_yes_no_rule_record_names_the_rule(rule_id, label, expected):
-    from ofo_app.routes.adjustment_opportunities import condition_text
     text = condition_text(_yes_no_record(rule_id, label))
     assert text is not None and str(text) == expected, text
 
 
-@pytest.mark.parametrize(("rule_id", "label"), [("sit.S-02", None), ("sit.S-02", "sit.S-02"), ("watch.level.sideways", None),
-                                               ("zzz.unknown", "Whatever")])
+@pytest.mark.parametrize(("rule_id", "label"), [
+    ("sit.S-02", None), ("sit.S-02", "sit.S-02"), ("watch.level.sideways", None), ("zzz.unknown", "Whatever")])
 def test_an_unnameable_yes_no_record_stays_none_and_invents_no_name(rule_id, label):
-    from ofo_app.routes.adjustment_opportunities import condition_text
     assert condition_text(_yes_no_record(rule_id, label)) is None
 
 
 # ---- GC-ICFIX defect G: the expiry-day time-exit record (clock value, stored as None) names the rule ----
 # Class: every record whose trigger's value is a clock time (unit "time"; the playbook catalogue has only T-10b).
 def _clock_record(trigger_id: str, label: str | None, unit: str | None):
-    import datetime as dt
-
-    from ofo_app import playbook_store as store
-    return store.Suggestion(1, 143, trigger_id, trigger_id, "Last day", None, None,
+    return playbook_store.Suggestion(1, 143, trigger_id, trigger_id, "Last day", None, None,
                             dt.datetime(2026, 11, 14, 9, 30, tzinfo=dt.UTC), "open", None,
                             [{"cmp": "ge", "label": label, "unit": unit, "group": "g"}])
 
 
 def test_a_clock_time_record_with_no_stored_value_names_the_rule():
-    from ofo_app.routes.adjustment_opportunities import condition_text
     label = "Clock time reached (checked in this stage)"
     text = condition_text(_clock_record("T-10b", label, "time"))
     assert text is not None and str(text) == label, text
 
 
 def test_an_unknown_trigger_with_no_stored_value_stays_none():
-    from ofo_app.routes.adjustment_opportunities import condition_text
     assert condition_text(_clock_record("T-99", "Whatever", None)) is None
     assert condition_text(_clock_record("T-10b", "T-10b", "time")) is None  # the id is no wording
 
@@ -450,36 +445,28 @@ def test_an_unknown_trigger_with_no_stored_value_stays_none():
 # Class: stored records with a value and a limit but NULL trigger/cmp/label. Records 352/363 (same rule, valued) read
 # "Trending day: 0.2951 (rule 0.1500)".
 def _record_370_as_written(trigger_id, cmp, label):
-    import datetime as dt
-
-    from ofo_app import playbook_store as store
-    return store.Suggestion(370, 134, "sit.S-02", trigger_id, "Last day", Decimal("0.2101"), Decimal("0.1500"),
+    return playbook_store.Suggestion(370, 134, "sit.S-02", trigger_id, "Last day", Decimal("0.2101"), Decimal("0.1500"),
                             dt.datetime(2026, 11, 15, 12, 15, 13, tzinfo=dt.UTC), "open", None,
                             [{"cmp": cmp, "label": label, "limit": "0.1500", "group": "g"}])
 
 
 def test_record_370_as_the_store_writes_it_names_the_rule_with_its_figures():
-    from ofo_app.adjustment_check import record_words
-    from ofo_app.routes.adjustment_opportunities import condition_text
     body = {"situations": [{"id": "S-02", "name": "Trending day"}]}
-    trigger, cmp, label, _unit = record_words(body, "sit.S-02", None)  # the latest check did not value the rule
+    trigger, cmp, label, _unit = chk.record_words(body, "sit.S-02", None)  # the latest check did not value the rule
     text = condition_text(_record_370_as_written(trigger, cmp, label))
     assert text is not None and str(text) == "Trending day: 0.2101 (rule 0.1500)", text
 
 
 def test_a_rule_the_playbook_does_not_name_still_returns_none():
-    from ofo_app.adjustment_check import record_words
-    assert record_words({"situations": []}, "sit.S-02", None) == (None, None, None, None)
-    assert record_words({}, "zzz.unknown", None) == (None, None, None, None)
+    assert chk.record_words({"situations": []}, "sit.S-02", None) == (None, None, None, None)
+    assert chk.record_words({}, "zzz.unknown", None) == (None, None, None, None)
 
 
 def test_a_situation_or_watch_alert_keeps_its_name_when_the_latest_check_no_longer_values_it():
     # GC-ICFIX sit.S-02 frame 9: the record opened on a later check that could not read the rule (no RuleValue)
-    from ofo.adjustment.playbook_eval import RuleValue
-    from ofo_app.adjustment_check import record_words
     body = {"situations": [{"id": "S-02", "name": "Trending day"}]}
-    assert record_words(body, "sit.S-02", None) == ("sit.S-02", "ge", "Trending day", None)
-    assert record_words(body, "watch.level.below", None)[:2] == ("watch.level.below", "le")
+    assert chk.record_words(body, "sit.S-02", None) == ("sit.S-02", "ge", "Trending day", None)
+    assert chk.record_words(body, "watch.level.below", None)[:2] == ("watch.level.below", "le")
     valued = RuleValue("sit.S-02", "sit.S-02", Decimal("0.2"), Decimal("0.15"), "ge", True, yes_no=True)
-    assert record_words(body, "sit.S-02", valued) == ("sit.S-02", "ge", "Trending day", None)
-    assert record_words(body, "T-02", None) == (None, None, None, None)
+    assert chk.record_words(body, "sit.S-02", valued) == ("sit.S-02", "ge", "Trending day", None)
+    assert chk.record_words(body, "T-02", None) == (None, None, None, None)
