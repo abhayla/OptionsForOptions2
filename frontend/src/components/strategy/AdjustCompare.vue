@@ -12,8 +12,9 @@
     <p v-else-if="prices?.label" class="text-xs text-ink-muted" data-testid="adjust-prices-label">{{ prices.label }}</p>
     <template v-if="state === 'error'">
       <ErrorMessage :parts="errorParts" compact prefix="adjust-error" data-testid="adjust-error" />
-      <!-- GC-ICFIX 21 (X-7, ADR-259): a closed trade has nothing to compare; its history is still there, never a dead end -->
-      <a :href="`/strategy/builder?strategy=${strategyId}`" class="text-sm underline" data-testid="adjust-steps-link">See this strategy's adjustment history</a>
+      <!-- GC-ICFIX 21 (X-7, ADR-259): a closed trade has nothing to compare; its history is still there, never a dead end. The link shows only when the
+           strategy itself reads back (the refusal text carries no code, so the strategy read tells exists-and-yours) -->
+      <router-link v-if="isMine" :to="{ path: '/strategy/builder', query: { strategy: String(strategyId) } }" class="text-sm underline" data-testid="adjust-steps-link">See this strategy's adjustment history</router-link>
     </template>
     <p v-else-if="state === 'loading'" class="text-sm text-ink-muted" data-testid="adjust-loading">Working out the approaches...</p>
 
@@ -223,6 +224,7 @@ const reply = ref(null)
 const name = ref(null)
 const underlying = ref(null)
 const errorParts = ref(NEUTRAL_PARTS)
+const isMine = ref(false) // the refused compare's strategy reads back for this user
 const prepareError = ref(null)
 const filters = ref(EMPTY_FILTERS())
 const hiddenLines = ref([])
@@ -239,6 +241,7 @@ async function load() {
   } catch (e) {
     errorParts.value = e?.parts ?? NEUTRAL_PARTS
     state.value = 'error'
+    try { await props.client.get(`/strategies/${props.strategyId}`); isMine.value = true } catch { isMine.value = false }
     return
   }
   try { // layers 1-2 again (display only); a strategy that is not tracked simply shows no card
