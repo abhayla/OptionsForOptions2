@@ -38,6 +38,7 @@ class ExpiriesOut(ApiModel):
     underlying: Underlying
     expiries: list[datetime.date]
     expiry_days: list[ExpiryDaysOut]  # REQ-135 AC-2: the same expiries, 1:1 and in the same order, with days left
+    today: datetime.date  # u510: the date the days-left are counted from (IST, scenario clock in scenario mode); a far expiry prints its year against it
     default_expiry: Optional[datetime.date] = None  # ADR-199 (4): the server's default; null when the list is empty
 
 
@@ -92,7 +93,7 @@ async def expiries(underlying: str, db: Any = Depends(get_db),
     closed = _todays_expiry_spent(now)  # ADR-199 (1)(4), market calendar (ADR-119)
     usable = [e for e in listed if not (closed and e <= today)]  # ADR-199 (2): it stays LISTED, just never the default
     return ExpiriesOut.model_validate({
-        "underlying": underlying, "expiries": listed, "default_expiry": usable[0] if usable else None,
+        "underlying": underlying, "expiries": listed, "today": today, "default_expiry": usable[0] if usable else None,
         "expiry_days": [{"expiry": e, "days": days_to_expiry(e, today)} for e in listed]})  # REQ-135 AC-2
 
 

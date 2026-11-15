@@ -8,12 +8,14 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
 const MONTH_BY_TEXT = Object.fromEntries(MONTHS.map((m, i) => [String(i + 1).padStart(2, '0'), m])) // '01' -> 'Jan'
 
 /** '2026-10-19' -> '19 Oct', or null when it is not a calendar date string. */
-export function expiryText(expiry) {
+export function expiryText(expiry, today) {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(expiry ?? ''))
   if (!m) return null
   const month = MONTH_BY_TEXT[m[2]]
   const day = m[3].replace(/^0/, '')
-  return month && /^([1-9]|[12]\d|3[01])$/.test(day) ? `${day} ${month}` : null
+  // u510: the year shows only when it differs from the SERVER's shown date (`today`, text compare, no clock here)
+  const year = /^\d{4}-/.test(String(today ?? '')) && !String(today).startsWith(`${m[1]}-`) ? ` ${m[1]}` : ''
+  return month && /^([1-9]|[12]\d|3[01])$/.test(day) ? `${day} ${month}${year}` : null
 }
 
 /** '23200.00' -> '23200'; a strike with a real fraction keeps it, minus trailing zeros ('23212.50' -> '23212.5'). Text only,
@@ -34,8 +36,8 @@ export function strikeLabel(text) {
 /** REQ-135 AC-2: an expiry with the days left the SERVER counted (IST): '27 Oct (6 days)', 'Today (0 days)'. The browser
  *  counts nothing: a missing or non-integer day count shows the date alone, '9 Nov' (never a guessed number, and never
  *  the raw '2026-11-09', REQ-148 AC-2); text that is not a date comes back as it was sent. */
-export function expiryWithDays(expiry, days) {
-  const day = expiryText(expiry)
+export function expiryWithDays(expiry, days, today) {
+  const day = expiryText(expiry, today)
   if (!day) return expiry ?? ''
   if (!Number.isInteger(days) || days < 0) return day
   return days === 0 ? 'Today (0 days)' : `${day} (${days} days)`

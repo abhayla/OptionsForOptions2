@@ -63,7 +63,8 @@ const underlying = ref(props.legs[0]?.underlying ?? 'NIFTY')
 const expiries = ref([])
 const expiry = ref('')
 const expiryDays = ref({}) // REQ-135 AC-2: the server's day count by expiry (the same reply as the expiries)
-const expiryLabel = (e) => expiryWithDays(e, expiryDays.value[e])
+const shownToday = ref(null) // u510: the server's shown date (same reply); a far expiry prints its year against it
+const expiryLabel = (e) => expiryWithDays(e, expiryDays.value[e], shownToday.value)
 const contracts = ref([])
 const type = ref('')
 const strike = ref('')
@@ -110,6 +111,7 @@ async function loadExpiries(preselect = true) {
     expiries.value = res.data.expiries
     serverDefault.value = res.data.default_expiry ?? ''
     expiryDays.value = daysByExpiry(res.data.expiry_days)
+    shownToday.value = res.data.today ?? null
     errorParts.value = null
     // F-13: a shut drawer reads no strikes or contracts; the opening watcher picks the expiry and reads them on open
     if (preselect && props.active) {

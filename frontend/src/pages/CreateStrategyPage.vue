@@ -53,7 +53,8 @@ const lists = computed(() => {
   const limit = { step: settingsValues.integer(RANGE_STEP_KEY), cap: settingsValues.integer(rangeCapKey(underlying.value)) }
   try { return rangeLists(current.value, contracts.value, limit) } catch { return null }
 })
-const expiryLabel = computed(() => expiryLabels(expiries.value).find((e) => e.value === expiry.value)?.label ?? '')
+const shownToday = ref(null) // u510: the server's shown date; a far expiry prints its year against it
+const expiryLabel = computed(() => expiryLabels(expiries.value, shownToday.value).find((e) => e.value === expiry.value)?.label ?? '')
 const derivedReading = computed(() => {
   if (!notSure.value || current.value === null || lower.value === null || upper.value === null) return null
   try { return RANGE_READINGS.find((r) => r.key === readingFromRange(current.value, lower.value, upper.value)) } catch { return null }
@@ -104,10 +105,11 @@ function chooseView(key) {
 async function loadExpiries() {
   errorParts.value = null
   const [ex, idx] = await Promise.all([
-    read(async () => (await api.get(`/catalogue/${underlying.value}/expiries`)).data?.expiries),
+    read(async () => (await api.get(`/catalogue/${underlying.value}/expiries`)).data),
     read(async () => (await api.get('/market/indices')).data?.indices),
   ])
-  expiries.value = Array.isArray(ex) ? ex : []
+  expiries.value = Array.isArray(ex?.expiries) ? ex.expiries : []
+  shownToday.value = ex?.today ?? null
   current.value = Array.isArray(idx) ? (idx.find((i) => i.underlying === underlying.value)?.value ?? null) : null
   expiry.value = ''
   contracts.value = []
@@ -211,7 +213,7 @@ v-for="v in MARKET_VIEWS" :key="v.key" type="button" class="min-h-[44px] w-full 
         <label class="field-label grid gap-1">Expiry
           <select v-model="expiry" class="field min-h-[44px] w-64" data-testid="pick-expiry" @change="chooseExpiry">
             <option value="" disabled>Choose an expiry</option>
-            <option v-for="e in expiryLabels(expiries)" :key="e.value" :value="e.value">{{ e.label }}</option>
+            <option v-for="e in expiryLabels(expiries, shownToday)" :key="e.value" :value="e.value">{{ e.label }}</option>
           </select>
         </label>
         <p v-if="current === null" class="text-sm" data-testid="no-level"><span class="font-semibold text-danger">Not available:</span> {{ NO_LEVEL }}</p>

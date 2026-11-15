@@ -744,6 +744,7 @@ INVENTORY = (
     'FIELD ExpiriesOut.expiry_days[].days: None',
     'FIELD ExpiriesOut.expiry_days[].days: int',
     'FIELD ExpiriesOut.expiry_days[].expiry: date',
+    'FIELD ExpiriesOut.today: date',
     "FIELD ExpiriesOut.underlying: Literal['NIFTY','SENSEX']",
     "FIELD FeaturesOut.held[]: Literal['platform_strikes','probability_of_profit','delayed_prices','history_charts','events_calendar','fii_dii','market_event_warning','strategy_price_history']",
     "FIELD FeaturesOut.order_path: Literal['on','off']",

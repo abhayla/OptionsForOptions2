@@ -31,6 +31,7 @@ const templates = ref([])
 const expiries = ref([])
 const expiry = ref('')
 const expiryDays = ref({}) // REQ-135 AC-2: the server's day count by expiry
+const shownToday = ref(null) // u510: the server's shown date; a far expiry prints its year against it
 const group = ref(VIEW_GROUPS[0].key)
 const pending = ref(null) // the request waiting for the Replace / Cancel answer
 const errorParts = ref(null)
@@ -44,6 +45,7 @@ async function start() {
     const reply = (await api.get(`/catalogue/${underlying.value}/expiries`)).data
     expiries.value = reply?.expiries ?? []
     expiryDays.value = daysByExpiry(reply?.expiry_days)
+    shownToday.value = reply?.today ?? null
     const own = props.legs.find((l) => l.expiry && expiries.value.includes(l.expiry))?.expiry // the draft's own expiry, when it has legs
     const server = expiries.value.includes(reply?.default_expiry) ? reply.default_expiry : null // ADR-199 (4): the server's default, never list position
     expiry.value = own ?? server ?? expiries.value[0] ?? '' // an older reply without the field falls back to the first listed
@@ -129,7 +131,7 @@ onMounted(async () => {
       </nav>
       <label class="ml-auto flex items-center gap-1 text-ink-muted">Expiry
         <select v-model="expiry" class="h-8 rounded border border-line px-1 text-ink" data-testid="rm-expiry">
-          <option v-for="e in expiries" :key="e" :value="e">{{ expiryWithDays(e, expiryDays[e]) }}</option>
+          <option v-for="e in expiries" :key="e" :value="e">{{ expiryWithDays(e, expiryDays[e], shownToday) }}</option>
         </select>
       </label>
     </div>
