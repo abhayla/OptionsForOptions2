@@ -336,7 +336,7 @@ def test_settle_price_is_the_intrinsic_value(instrument, strike, close, price):
 
 async def test_detection_the_real_settle_job_leaves_a_fully_settled_strategy_closed(db):
     """GC-ICFIX detection: the settle job's own path (settle_expired -> place) must end in status 'closed'; before
-    this test only ``place`` was pinned, so rows exited before 0049 stayed 'draft' unseen (migration 0053 repairs them)."""
+    this test only ``place`` was pinned, so rows exited before 0049 stayed 'draft' unseen (0053 repairs them)."""
     ids = await _catalogue(db)
     sid = await _real(db, ids, 52)
     status = text("SELECT status FROM public.strategies WHERE id = :s")

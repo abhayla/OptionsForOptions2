@@ -1,7 +1,7 @@
-"""Migration 0053 (GC-ICFIX; ADR-259, REQ-109 AC-7): a strategy that was fully exited or settled BEFORE 0049 made the store
+"""Migration 0053 (GC-ICFIX; ADR-259, REQ-109 AC-7): a strategy fully exited or settled BEFORE 0049 made the store
 write 'closed' still reads 'draft' (shown as "Running"); the settle job never revisits it (nothing left to settle).
 0053 stores 'closed' for exactly those rows, by the same rule as ``paper_store.place``: at least one reducing order and
-a net quantity of 0 on every contract. Rows with real broker orders, deleted rows and rows already closed stay as they are.
+a net quantity of 0 on every contract. Rows with real broker orders, deleted rows and closed rows stay as they are.
 
 Real PostgreSQL as the owner role, every test rolls back. One row per case; the test asserts the exact ids that change,
 and that the SQL rule equals the Python rule on every non-excluded case.
@@ -19,7 +19,7 @@ from ofo_app import strategy_store as store
 from sqlalchemy import text
 from test_strategy_store import _saved_in, _user, _with_draft
 
-MIGRATION = "0053_close_finished_paper_strategies.py"
+MIGRATION = "0053_close_finished_strategies.py"
 AT = datetime.datetime(2026, 11, 3, 15, 30, tzinfo=datetime.UTC)
 _ORDER = text("INSERT INTO public.paper_orders (strategy_id, contract_id, side, quantity, price, kind, placed_at) "
               "VALUES (:s, :c, :side, :q, 10.00, :k, :t)")
@@ -108,8 +108,7 @@ async def test_exactly_the_finished_paper_strategies_become_closed_and_a_second_
     # (a) settled (b) hand-exited (h) a leg never opened (j) scenario; everything else is untouched
     assert await _closed(conn, cases) == {"a_settled", "b_hand_exited", "h_one_leg_never_opened", "j_scenario",
                                           "f_already_closed"}
-    # rows the dev database may hold beyond this test's own are not asserted; the test's four are the only change here
-    assert changed >= 4  # noqa: PLR2004
+    assert changed == 4  # noqa: PLR2004 - the fresh test database holds only this test's rows
     assert (await conn.execute(_ROW, {"s": cases["f_already_closed"]})).one() == before_closed  # (f) untouched
     again = (await conn.execute(text(up[0]))).rowcount
     assert again == 0  # (l) idempotent
