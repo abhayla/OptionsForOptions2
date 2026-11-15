@@ -87,6 +87,18 @@ describe('the trade page rules line (issue 12)', () => {
     expect(t(w, 'rules-not-checked').text()).toContain('No adjustment opportunity checked: prices stale or missing')
   })
 
+  it('not being checked: the reason as the server sends it (a four-part message object) prints its sentence, never [object Object]', async () => {
+    const msg = { error_class: 'WARNING', code: 'ADJ-PRICES-STALE', what_happened: 'Prices are stale, so this rule was not checked.', impact: 'x', what_is_blocked: 'y', next_action: 'z', external_text: null }
+    const w = await panel([notChecked({ reason: msg })])
+    expect(t(w, 'rules-not-checked').text()).toBe('Rule not checked: Prices are stale, so this rule was not checked.')
+  })
+
+  it('not being checked: an empty message object or a missing sentence never prints undefined or [object Object]', async () => {
+    const w = await panel([notChecked({ reason: { code: 'X' } }), notChecked({ rule_id: 'R-2', reason: { code: 'Y' } })])
+    const text = w.findAll('[data-testid="rules-not-checked"]').map((n) => n.text()).join('|')
+    expect(text).not.toMatch(/undefined|\[object Object\]/)
+  })
+
   it('the rule check read fails: the line says the rules could not be read, never silence', async () => {
     const w = await panel(Object.assign(new Error('x'), { status: 500, parts: null }))
     expect(t(w, 'rules-load-failed').text()).toContain('Could not read')
