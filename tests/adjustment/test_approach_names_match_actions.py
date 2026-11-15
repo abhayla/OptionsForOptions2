@@ -36,6 +36,10 @@ def _checks(name, position, built):
             now = [t for t in opened if t.type == kind]
             if len(before) == 2 and len(now) == 2:
                 yield "same width: the spread's width is unchanged", _width(before, kind) == _width(now, kind)
+    yield from _closed_leg_checks(name, closed)
+
+
+def _closed_leg_checks(name, closed):
     if re.search(r"\ba leg\b", name):
         yield "a leg: exactly one leg is closed", len(closed) == 1
     if re.match(r"Close the (un)?tested side", name):
