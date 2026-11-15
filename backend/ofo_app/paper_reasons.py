@@ -7,7 +7,7 @@ routes can send is missing from ``TEMPLATE_OF``.
 """
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from types import MappingProxyType
 
 from ofo.errors.explanations import ExplanationText, render_explanation
@@ -50,6 +50,25 @@ def reason_text(code: str | None) -> ExplanationText | None:
     if code is None:
         return None
     return render_explanation(TEMPLATE_OF.get(code, GENERIC))
+
+
+def unpriced_text(legs: Sequence[tuple[str, bool]]) -> ExplanationText | None:
+    """ADR-311: the line naming each open leg with no price, (contract text, expired) in leg order; every one expired
+    = the reason is that they expired; None when none is unpriced."""
+    if not legs:
+        return None
+    every = all(g for _, g in legs)  # the sentence then says "expired", so a leg is not marked again
+    named = [render_explanation("unpriced_leg_expired" if gone and not every else "unpriced_leg", contract=name)
+             for name, gone in legs]
+    joined = named[0]
+    for one in named[1:]:
+        joined = render_explanation("paper_alert_legs", rest=joined, leg=one)  # the reviewed ", " join
+    return render_explanation("unpriced_legs_expired" if every else "unpriced_legs", legs=joined)
+
+
+def no_price_text() -> ExplanationText:
+    """ADR-311: the cell of an open leg that has no live price (never 0, never blank)."""
+    return render_explanation("leg_no_price")
 
 
 def extremes_reason_text(code: str | None) -> ExplanationText | None:

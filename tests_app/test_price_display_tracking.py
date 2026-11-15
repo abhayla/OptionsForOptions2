@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import datetime
 from decimal import Decimal
-from types import SimpleNamespace
 
 from ofo.engine.legs import Action, Instrument
 from ofo.tracking import book, paper
@@ -23,9 +22,10 @@ def _one_open() -> tuple[_Book, paper.TrackedLeg]:
     return _Book(1, orders, book.contract_legs(orders)), leg
 
 
-def _live_view(**extra) -> SimpleNamespace:
-    return SimpleNamespace(legs=[SimpleNamespace(price=Decimal("186.1"), state="live", at=NOW)], exited=False,
-                           paused=False, pause_reason=None, as_of=NOW, **extra)
+def _live_view() -> paper.TrackingView:
+    """The REAL view type (a hand-made stub forgot ``unpriced``): one leg live at 186.1, (186.1 - 187.35) x 65 = -81.25."""
+    loss, price = Decimal("-81.25"), paper.Price("NSE_FO:1", "live", Decimal("186.1"), NOW)
+    return paper.TrackingView(False, None, loss, NOW, (price,), None, None, (), Decimal(0), loss, False, (loss,), ())
 
 
 def test_the_tracking_leg_carries_two_decimal_price_texts() -> None:
@@ -40,7 +40,6 @@ def test_the_tracking_reply_carries_the_servers_signed_text_of_each_total() -> N
     """Live #603 item 1 (REQ-152 AC-4): the total / booked / unbooked texts come from the same template as each leg's
     pnl_text (U+2212 on a loss), so the panel never forms a sign of its own. (186.10 - 187.35) x 65 = -81.25."""
     bk, leg = _one_open()
-    out = _view(bk, [leg], "NIFTY", _live_view(index=None, breakevens=None, detections=[]), NOW,
-                [None]).model_dump(mode="json")
+    out = _view(bk, [leg], "NIFTY", _live_view(), NOW, [None]).model_dump(mode="json")
     assert out["paper_pnl_text"] == chr(0x2212) + "81.25" == out["unbooked_text"] and out["booked_text"] == "0.00"
     assert out["legs"][0]["pnl_text"] == out["paper_pnl_text"]

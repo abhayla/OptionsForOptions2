@@ -88,6 +88,8 @@
               </table>
             </div>
             <p v-if="g.stateText" class="mt-1" data-testid="paper-state">{{ g.stateText }}</p>
+            <!-- ADR-311: the open legs with no price, named by the server; the totals above stay paused -->
+            <p v-if="g.unpricedText" class="mt-1 text-xs text-ink-muted" data-testid="paper-unpriced">{{ g.unpricedText }}</p>
             <div class="mt-2 flex gap-3">
               <table v-if="g.positions.length" class="w-full min-w-0 flex-1 text-left">
                 <thead>
@@ -103,7 +105,7 @@
                     <td data-testid="paper-avg">{{ pnlText(p.averageText) }}</td>
                     <td data-testid="paper-ltp">{{ pnlText(p.ltpText) }}<span v-if="p.ltpReason && p.ltpText === null" class="block text-xs text-ink-muted" data-testid="paper-ltp-reason">{{ p.ltpReason }}</span></td>
                     <td data-testid="paper-leg-booked">{{ pnlText(p.booked) }}</td>
-                    <td data-testid="paper-leg-unbooked" :class="toneOf(p.unbooked)">{{ pnlText(p.unbooked) }}</td>
+                    <td data-testid="paper-leg-unbooked" :class="toneOf(p.unbooked)">{{ p.noPrice ?? pnlText(p.unbooked) }}</td>
                     <td data-testid="paper-leg-pnl" :class="toneOf(p.total)">{{ pnlText(p.total) }}</td>
                   </tr>
                 </tbody>

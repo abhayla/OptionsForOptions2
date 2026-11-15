@@ -42,11 +42,12 @@ from ofo.money import PAISE, to_paise
 from ofo.outcome import read_snapshot
 from ofo.outcome.price_text import price_text
 from ofo.strategy import stored_form as sf
+from ofo.strategy.definition import display_contract
 from ofo.tracking import book, paper
 from ofo.tracking.orderbook import PaperOrder, net_positions
 from pydantic import BaseModel, ConfigDict, Field
 
-from ofo_app import paper_limit
+from ofo_app import paper_limit, paper_reasons
 from ofo_app import paper_store, tracked_contracts
 from ofo_app import strategy_store as store
 from ofo_app.api_models import ApiModel, CatalogueText, InstrumentId, Money
@@ -64,7 +65,14 @@ from ofo_app.routes.outcome import (
     get_market_context,
     load_charge_rates,
 )
-from ofo_app.routes.paper import AfterChargesReason, after_charges, after_charges_fields, paid_charges, split_fields
+from ofo_app.routes.paper import (
+    AfterChargesReason,
+    UnpricedFields,
+    after_charges,
+    after_charges_fields,
+    paid_charges,
+    split_fields,
+)
 from ofo_app.routes.planned_entry import get_live_feed, hold_until_priced
 from ofo_app.routes.strategies import StrategyRefused, refused_answer
 from ofo_app.scenario_guard import guard_paper_order  # dev/test scenario guard; reaches no Execute code
@@ -112,6 +120,7 @@ class TrackingLegOut(ApiModel):
     pnl: Money | None
     pnl_text: CatalogueText | None  # REQ-152 text of pnl: to the paisa, signed ("+5,053.75")
     pnl_kind: Literal["booked", "unbooked"] | None
+    no_price_text: CatalogueText | None = None  # ADR-311: "no price" on an open leg with no figure
 
 
 class TrackingIndexOut(ApiModel):
@@ -151,11 +160,13 @@ class AfterCharges(ApiModel):
     after_charges_reason_text: CatalogueText | None = None
     booked_after: Money | None = None  # ADR-303: booked - ALL charges paid; with unbooked_after = total_after
     booked_after_text: CatalogueText | None = None
+    booked_after_reason: AfterChargesReason | None = None  # ADR-311: why it is absent (charges paid unknown)
+    booked_after_reason_text: CatalogueText | None = None
     unbooked_after: Money | None = None
     unbooked_after_text: CatalogueText | None = None
 
 
-class TrackingOut(AfterCharges):
+class TrackingOut(AfterCharges, UnpricedFields):
     strategy_id: int
     started_at: datetime.datetime
     prices_at: datetime.datetime
@@ -176,7 +187,7 @@ class TrackingOut(AfterCharges):
     detections: list[DetectionOut]
 
 
-class TrackedStrategyOut(AfterCharges):
+class TrackedStrategyOut(AfterCharges, UnpricedFields):
     """One row of GET /tracking (GC-BP step 4): the paper figures of one tracked strategy, no detections."""
     strategy_id: int
     name: CatalogueText  # REQ-134: quoted user text
@@ -287,11 +298,12 @@ def _book_figures(bk: _Book, view: paper.TrackingView | None
     """REQ-109 AC-4: every figure from the one engine on the orders (ofo.engine.orderbook.net_positions), exact. The
     open legs are priced only when the view is live (not paused, connected): a paused or unconnected view gives no
     open leg a figure and no unbooked / total (AC-5); an exited leg keeps its booked figure."""
-    live = {} if view is None or view.paused else {
+    priced = {} if view is None else {
         leg.instrument_id: view.legs[i].price for i, leg in enumerate(bk.legs)
-        if not leg.exited and view.legs[i].price is not None}
-    figures = net_positions(bk.orders, live)
-    by_id = {p.instrument_id: p for p in figures.positions}
+        if not leg.exited and paper.is_live(view.legs[i]) and view.legs[i].price is not None}
+    live = {} if view is None or view.paused else priced
+    figures = net_positions(bk.orders, live)  # every TOTAL (and the after-charges figures) stays paused, never a mix
+    by_id = {p.instrument_id: p for p in net_positions(bk.orders, priced).positions}  # ADR-311: per leg
     pnls: list[Decimal | None] = [by_id[leg.instrument_id].booked if leg.exited else by_id[leg.instrument_id].unbooked
                                   for leg in bk.legs]
     return figures, pnls, live
@@ -321,15 +333,21 @@ def _figures(bk: _Book, legs: list[paper.TrackedLeg], view: paper.TrackingView |
                      "pnl": _money(pnls[i]),
                      "pnl_text": None if pnls[i] is None else
                      render_explanation("summary_paisa_signed", amount=pnls[i]),
-                     "pnl_kind": None if pnls[i] is None else "booked" if done else "unbooked"})
+                     "pnl_kind": None if pnls[i] is None else "booked" if done else "unbooked",
+                     "no_price_text": paper_reasons.no_price_text() if pnls[i] is None and not done else None})
     if view is None:
         open_reasons = [r for i, r in enumerate(reasons) if not bk.legs[i].exited]
         return {"legs": rows, "state": "NOT_CONNECTED", "pause_reason": next((r for r in open_reasons if r), None),
                 "as_of": None, "total": None, "unbooked": None, "booked": _money(figures.booked)} | after
     state = "EXITED" if view.exited else "PAUSED" if view.paused else "LIVE"
+    named = [(display_contract((underlying, legs[u.index].instrument, legs[u.index].strike, legs[u.index].expiry)),
+              u.expired) for u in view.unpriced]  # ADR-311: the legs that pause the totals, by contract
+    unpriced = {"unpriced_legs": [{"leg_index": u.index, "contract_text": n, "expired": u.expired}
+                                  for u, (n, _) in zip(view.unpriced, named, strict=True)],
+                "unpriced_text": paper_reasons.unpriced_text(named)}
     return {"legs": rows, "state": state, "pause_reason": view.pause_reason, "as_of": view.as_of,
             "total": _money(figures.total), "booked": _money(figures.booked),
-            "unbooked": _money(figures.unbooked)} | after
+            "unbooked": _money(figures.unbooked)} | after | unpriced
 
 
 def _texts(figures: dict) -> dict:

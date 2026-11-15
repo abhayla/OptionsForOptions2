@@ -7624,6 +7624,31 @@
             ],
             "title": "Booked After"
           },
+          "booked_after_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "rates_unavailable",
+                  "not_priced",
+                  "prices_not_live"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked After Reason"
+          },
+          "booked_after_reason_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked After Reason Text"
+          },
           "booked_after_text": {
             "anyOf": [
               {},
@@ -8195,6 +8220,22 @@
             ],
             "title": "Underlying",
             "type": "string"
+          },
+          "unpriced_legs": {
+            "items": {
+              "$ref": "#/components/schemas/UnpricedLegOut"
+            },
+            "title": "Unpriced Legs",
+            "type": "array"
+          },
+          "unpriced_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unpriced Text"
           }
         },
         "required": [
@@ -8407,6 +8448,15 @@
           "net_quantity": {
             "title": "Net Quantity",
             "type": "integer"
+          },
+          "no_price_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "No Price Text"
           },
           "price_at": {
             "anyOf": [
@@ -8762,6 +8812,31 @@
               }
             ],
             "title": "Booked After"
+          },
+          "booked_after_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "rates_unavailable",
+                  "not_priced",
+                  "prices_not_live"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked After Reason"
+          },
+          "booked_after_reason_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked After Reason Text"
           },
           "booked_after_text": {
             "anyOf": [
@@ -9335,6 +9410,22 @@
             ],
             "title": "Underlying",
             "type": "string"
+          },
+          "unpriced_legs": {
+            "items": {
+              "$ref": "#/components/schemas/UnpricedLegOut"
+            },
+            "title": "Unpriced Legs",
+            "type": "array"
+          },
+          "unpriced_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unpriced Text"
           }
         },
         "required": [
@@ -9413,6 +9504,31 @@
               }
             ],
             "title": "Booked After"
+          },
+          "booked_after_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "rates_unavailable",
+                  "not_priced",
+                  "prices_not_live"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked After Reason"
+          },
+          "booked_after_reason_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked After Reason Text"
           },
           "booked_after_text": {
             "anyOf": [
@@ -13829,6 +13945,31 @@
             ],
             "title": "Booked After"
           },
+          "booked_after_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "rates_unavailable",
+                  "not_priced",
+                  "prices_not_live"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked After Reason"
+          },
+          "booked_after_reason_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked After Reason Text"
+          },
           "booked_after_text": {
             "anyOf": [
               {},
@@ -14024,6 +14165,22 @@
             ],
             "title": "Underlying",
             "type": "string"
+          },
+          "unpriced_legs": {
+            "items": {
+              "$ref": "#/components/schemas/UnpricedLegOut"
+            },
+            "title": "Unpriced Legs",
+            "type": "array"
+          },
+          "unpriced_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unpriced Text"
           }
         },
         "required": [
@@ -14217,6 +14374,15 @@
           "leg_index": {
             "title": "Leg Index",
             "type": "integer"
+          },
+          "no_price_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "No Price Text"
           },
           "pnl": {
             "anyOf": [
@@ -14412,6 +14578,31 @@
               }
             ],
             "title": "Booked After"
+          },
+          "booked_after_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "rates_unavailable",
+                  "not_priced",
+                  "prices_not_live"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked After Reason"
+          },
+          "booked_after_reason_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Booked After Reason Text"
           },
           "booked_after_text": {
             "anyOf": [
@@ -14633,6 +14824,22 @@
               }
             ],
             "title": "Unbooked Text"
+          },
+          "unpriced_legs": {
+            "items": {
+              "$ref": "#/components/schemas/UnpricedLegOut"
+            },
+            "title": "Unpriced Legs",
+            "type": "array"
+          },
+          "unpriced_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unpriced Text"
           }
         },
         "required": [
@@ -15054,6 +15261,30 @@
           "types"
         ],
         "title": "TypesOut",
+        "type": "object"
+      },
+      "UnpricedLegOut": {
+        "additionalProperties": false,
+        "description": "ADR-311: an open leg with no live price, named by its contract; ``expired`` says the contract has expired.",
+        "properties": {
+          "contract_text": {
+            "title": "Contract Text"
+          },
+          "expired": {
+            "title": "Expired",
+            "type": "boolean"
+          },
+          "leg_index": {
+            "title": "Leg Index",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "leg_index",
+          "contract_text",
+          "expired"
+        ],
+        "title": "UnpricedLegOut",
         "type": "object"
       },
       "ValidationError": {

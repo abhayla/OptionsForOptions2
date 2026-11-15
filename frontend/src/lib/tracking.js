@@ -8,7 +8,8 @@ import { instrumentText, istClock, istTime, strikeLabel } from '@/lib/displayFor
 export const LEG_PNL_MISSING = '—'
 const legPnlText = (leg) => {
   const text = typeof leg?.pnl_text === 'string' ? leg.pnl_text.trim() : ''
-  if (!text) return LEG_PNL_MISSING
+  // ADR-311: an open leg with no live price says so in the server's words ("no price"), never 0 and never a blank
+  if (!text) return (typeof leg?.no_price_text === 'string' && leg.no_price_text.trim()) || LEG_PNL_MISSING
   return leg.pnl_kind === 'booked' ? `${text} booked` : text
 }
 import { plainName } from '@/lib/saveDraft'
@@ -151,8 +152,12 @@ function breakdownOf(src, before, after, why, parts) {
   return why !== null && before !== null ? { rows: row('before', before), reason: why } : null
 }
 export function afterFigure(src, before, pausedText = null, afterKey = 'total_after_text', parts = ['paid', 'close']) {
-  const reason = src?.after_charges_reason ?? null
-  const raw = src?.after_charges_reason_text // a sentence, or {what_happened} on the replies that word it as an explanation
+  // ADR-311: Booked after has its OWN reason (the charges paid are unknown); every other figure follows the book's reason
+  const own = afterKey === 'booked_after_text' && src !== null && typeof src === 'object' && 'booked_after_reason' in src // the totals row has none: unchanged
+  const ownReason = own ? (src.booked_after_reason ?? null) : null
+  // a Booked figure the server gave stands even while the total is paused; otherwise its own reason, else the book's
+  const reason = ownReason ?? (own && serverText(src[afterKey]) !== null ? null : (src?.after_charges_reason ?? null))
+  const raw = ownReason !== null ? src.booked_after_reason_text : src?.after_charges_reason_text // a sentence, or {what_happened} on the replies that word it as an explanation
   const why = serverText(raw && typeof raw === 'object' ? raw.what_happened : raw)
   if (reason === 'prices_not_live') return { kind: 'paused', text: null, label: '', reason: pausedText ?? why, breakdown: null }
   const after = serverText(src?.[afterKey]) // u124: the same rule for booked_after_text / profit_left_after_text / ...
@@ -171,7 +176,8 @@ export function sharedTotal(book, failed = false) {
   const shown = afterFigure(book, serverText(book.total_text), pausedText(book.as_of ?? null))
   const at = istClock(book.answered_at ?? null)
   const line = failed ? pausedText(book.answered_at ?? null) : notLive ? pausedText(book.as_of ?? null) : at === null ? null : `As of ${at} IST`
-  return { kind: shown.kind, text: shown.text, label: shown.label, reason: shown.reason, breakdown: shown.breakdown, line }
+  // ADR-311: the legs that pause the total, named by the server (null when none); a paused total is never a number
+  return { kind: shown.kind, text: shown.text, label: shown.label, reason: shown.reason, breakdown: shown.breakdown, line, unpriced: serverText(book.unpriced_text) }
 }
 
 const STATES = new Set(['LIVE', 'PAUSED', 'NOT_CONNECTED', 'EXITED'])
@@ -233,7 +239,7 @@ export function readTracking(body, replyLegs = null) {
       }
     })
   if (body.state === 'NOT_CONNECTED') return { kind: 'not_connected', text: NOT_CONNECTED_TEXT, figure: null, legs, detections }
-  if (body.state === 'PAUSED') return { kind: 'paused', text: pausedText(body.as_of), figure: null, legs, detections }
+  if (body.state === 'PAUSED') return { kind: 'paused', text: pausedText(body.as_of), figure: null, legs, detections, unpriced: serverText(body.unpriced_text) }
   // live #603 item 1 (REQ-152 AC-4, ADR-008): the total, booked and unbooked are the server's signed texts as sent (one
   // minus character with the leg figures); a live / exited answer without the total's text is unreadable
   const signed = serverText(body.paper_pnl_text)
@@ -242,7 +248,7 @@ export function readTracking(body, replyLegs = null) {
   const unbooked = serverText(body.unbooked_text)
   // GC-ICFIX u123 (ADR-263): the headline is the after-charges figure, labelled; no after figure -> the before figure, labelled
   const shown = afterFigure(body, signed)
-  if (shown.kind === 'paused') return { kind: 'paused', text: pausedText(body.as_of), figure: null, legs, detections }
+  if (shown.kind === 'paused') return { kind: 'paused', text: pausedText(body.as_of), figure: null, legs, detections, unpriced: serverText(body.unpriced_text) }
   const text = `${PAPER_PNL_PREFIX}${shown.text} ${shown.label}`
   const base = { figure: shown.text, afterReason: shown.reason, breakdown: shown.breakdown, booked, unbooked, legs, detections }
   if (body.state === 'EXITED') return { kind: 'exited', text: `${text} - exited`, ...base }
