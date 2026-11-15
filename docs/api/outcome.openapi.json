@@ -2704,6 +2704,23 @@
             ],
             "title": "Unavailable Text"
           },
+          "basis_text": {
+            "title": "Basis Text"
+          },
+          "total_display": {
+            "anyOf": [
+              {
+                "patternProperties": {
+                  "^[A-Za-z0-9_\\-.]{1,64}$": {}
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Display"
+          },
           "dividend_yields": {
             "patternProperties": {
               "^[A-Za-z0-9_\\-.]{1,64}$": {
@@ -2721,7 +2738,8 @@
           "legs",
           "total",
           "unavailable",
-          "unavailable_text"
+          "unavailable_text",
+          "basis_text"
         ],
         "title": "TargetGreeksOut",
         "description": "Position Greeks at the target, one row per leg in leg order (null: that leg has no time left) and the total\n(null unless every leg has a value; ``unavailable`` names why)."
