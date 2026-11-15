@@ -128,11 +128,11 @@ CROSSING = ["T-01"]
 # id, label, on by default, note, fit
 APPROACHES = [
     ("A-01", "Roll the untested side toward spot", True, "", ("only", TWO_SIDED, "Needs two sides")),
-    ("A-02", "Roll the tested short away", True, "", ("only", SHORTS, "No short leg")),
+    ("A-02", "Roll the tested short to the strike your roll setting picks", True, "", ("only", SHORTS, "No short leg")),
     ("A-05", "Roll the tested spread (keep width)", True, "", ("only", ["ic", "ifly", "credit", "debit", "dirfly"], "No spread to roll")),
     ("A-03", "Roll out in time (same strikes, next expiry)", False, "Avoid if an event falls before the new expiry", None),
     ("A-04", "Roll up/down and out (diagonal roll)", True, "", ("only", SHORTS, "No short leg")),
-    ("A-06", "Shift the tested spread away from spot by N strikes", True, "Building block for every roll", None),
+    ("A-06", "Shift the tested spread by N strikes: a call spread up, a put spread down", True, "Building block for every roll", None),
     ("A-07", "Re-centre / reset around spot", False, "Max once per expiry", ("only", ["straddle", "ifly", "ic", "strangle", "calendar", "dirfly"], "Not a range trade")),
     ("A-08", "Straddle-ise (move the untested short to the tested strike)", False, "", ("only", ["strangle"], "Strangles only")),
     ("A-09", "Add wings (cap the loss)", True, "Before an event or overnight", ("only", NAKED, "Loss already capped")),

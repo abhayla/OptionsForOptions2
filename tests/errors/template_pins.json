@@ -2048,7 +2048,7 @@
     "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"
   },
   "labels:adjustment_approach": {
-    "sha256": "5ef2c52776bef3ad3c852d380df558e48aa58073ba85708b4bc26296f0a46750",
+    "sha256": "3ed2ae40509b6a94dc48986d3755d76dfb0f1da1c2f7fe81127d0f81dbe773de",
     "reviewed": "pending owner read"
   },
   "explanation:adjust_pop_held": {
@@ -2112,11 +2112,11 @@
     "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"
   },
   "explanation:adjust_approach_name_a_01": {
-    "sha256": "1357a5d71be58578fe59f26d94db0ee0b487c9225e6e1e49a8f7a1d6bbc72918",
-    "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"
+    "sha256": "e899308f01c7cd97523a35574ecaec9805a362c886147ce38175c7611c2f4e5c",
+    "reviewed": "pending owner read"
   },
   "explanation:adjust_approach_name_a_05": {
-    "sha256": "5329e3e6fb1419ffb11b88993cc9029a1d382bc9cce628b35daf4c57f4b81f09",
+    "sha256": "03c861faea76aac1cb093b2e68dd2eebd7771be8ecab7c3d27926fad03ac3103",
     "reviewed": "pending owner read"
   },
   "explanation:adjust_approach_name_a_29": {
@@ -2916,8 +2916,8 @@
     "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"
   },
   "explanation:playbook_approach_a_02": {
-    "sha256": "f79740f70fcad87e7ad48ca386d6a0670a87b3c15e7e5e4e13ff23e84c68b84c",
-    "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"
+    "sha256": "63ddadb702a0de162cd82968f77226af3c05851ea955b1c2bbf5994472cb356a",
+    "reviewed": "pending owner read"
   },
   "explanation:playbook_approach_a_03": {
     "sha256": "7536f2e49e7d146011d9916816ccf876761f5f91a9acf73a4f4cbab0d48066f9",
@@ -2928,7 +2928,7 @@
     "reviewed": "owner read 2026-10-31 (accepted after independent screen, not read line by line)"
   },
   "explanation:playbook_approach_a_06": {
-    "sha256": "2cc185cc373eb7803adad9a6401ee263dcde4c8f52ee48330246d8a81e7803da",
+    "sha256": "96a698aea182286a11b7732e35eae6605b43ff1383ee345cb54d68548e92f231",
     "reviewed": "pending owner read"
   },
   "explanation:playbook_approach_a_07": {
@@ -3180,7 +3180,7 @@
     "reviewed": "owner read 2026-10-31 (decided in chat)"
   },
   "labels:playbook_approach": {
-    "sha256": "c05531024fca16294fd319063b1f142eee83c057da254cbd05bb6fc0e1e93443",
+    "sha256": "98f2695e801d946e2b8206ed6c562ab6874256aca9d7f524ab4c2e477ad01303",
     "reviewed": "pending owner read"
   },
   "labels:playbook_day_kind": {
@@ -3764,7 +3764,7 @@
     "reviewed": "pending owner read"
   },
   "explanation:adjust_approach_name_a_02": {
-    "sha256": "f79740f70fcad87e7ad48ca386d6a0670a87b3c15e7e5e4e13ff23e84c68b84c",
+    "sha256": "63ddadb702a0de162cd82968f77226af3c05851ea955b1c2bbf5994472cb356a",
     "reviewed": "pending owner read"
   },
   "explanation:adjust_approach_name_a_04": {
@@ -3772,7 +3772,7 @@
     "reviewed": "pending owner read"
   },
   "explanation:adjust_approach_name_a_06": {
-    "sha256": "2cc185cc373eb7803adad9a6401ee263dcde4c8f52ee48330246d8a81e7803da",
+    "sha256": "96a698aea182286a11b7732e35eae6605b43ff1383ee345cb54d68548e92f231",
     "reviewed": "pending owner read"
   },
   "explanation:adjust_approach_about_a_02": {

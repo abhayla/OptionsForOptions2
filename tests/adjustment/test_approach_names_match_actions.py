@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import re
 from collections import Counter
+from dataclasses import replace
+from decimal import Decimal as D
 
 import pytest
 from ofo.adjustment import approaches as ap
@@ -70,9 +72,10 @@ def test_every_shown_name_states_what_its_built_legs_do():
 def _direction_checks(name, position, spot, built):
     """A direction claim in the name ("away from spot", "toward spot", "call spread up, put spread down") must hold
     for every short the approach re-places, whatever side of spot the short sits on."""
-    old = {c.type: c.strike for c in built.closed if c.side == "SELL"}
-    new = {t.type: t.strike for t in built.trades if t.action == "SELL"}
-    for kind in old.keys() & new.keys():
+    old = {x.type: x.strike for x in position.legs if x.side == "SELL"}
+    new = {x.type: x.strike for x in built.after if x.side == "SELL"}
+    moved = {c.type for c in built.closed if c.side == "SELL"}  # shorts the approach really re-places
+    for kind in old.keys() & new.keys() & moved:
         was, now = abs(old[kind] - spot), abs(new[kind] - spot)
         if re.search(r"\baway\b", name):
             yield "away from spot: the short ends farther from spot", now > was
@@ -101,17 +104,28 @@ def _spots(position, spot):
     return [spot, short + sign * 300, short, short - sign * 300]
 
 
+def _configs(spot):
+    """The roll rule by target delta, and by stored entry distance (0.5 %, 1.5 % and 4 % of spot, both sides)."""
+    out = [CFG]
+    for pct in (D("0.005"), D("0.015"), D("0.04")):
+        far = (spot * pct).to_integral_value()
+        basis = ap.RollBasis(ap.ROLL_ENTRY_DISTANCE, "strategy", call_distance=far, put_distance=far)
+        out.append(replace(CFG, roll_basis=basis))
+    return out
+
+
 def test_direction_claims_hold_out_of_at_and_in_the_money():
     seen: Counter = Counter()
     for sid in IC_IDS:
         position, chain, spot0 = inputs(load(sid))
         for spot in _spots(position, spot0):
-            for built in ap.applicable_approaches(position, chain, spot, CFG):
-                if built.refusal is not None:
-                    continue
-                for rule, ok in _direction_checks(built.name, position, spot, built):
-                    seen[(built.id, rule)] += 1
-                    assert ok, (sid, spot, built.id, built.name, rule)
+            for cfg in _configs(spot):
+                for built in ap.applicable_approaches(position, chain, spot, cfg):
+                    if built.refusal is not None:
+                        continue
+                    for rule, ok in _direction_checks(built.name, position, spot, built):
+                        seen[(built.id, rule)] += 1
+                        assert ok, (sid, spot, cfg.roll_basis.code, built.id, built.name, rule)
     assert {r for _, r in seen} >= {"wings keep their distance: wing - short unchanged"}, seen
 
 
