@@ -5696,6 +5696,11 @@
           "fill_text": {
             "title": "Fill Text"
           },
+          "is_exit": {
+            "default": false,
+            "title": "Is Exit",
+            "type": "boolean"
+          },
           "number": {
             "anyOf": [
               {
