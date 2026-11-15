@@ -14,5 +14,7 @@
   "checks": [],
   "note": "Process finding: only a habit and the earlier lesson (run its first gate after every merge batch). No mechanism enforces it."
  },
- "spec_ref": []
+ "spec_ref": [
+  "spec/decisions/ADR-189.md"
+ ]
 }
