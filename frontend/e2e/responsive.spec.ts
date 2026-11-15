@@ -8,7 +8,7 @@ import { findClippedElements, describeClipped, SCROLLER_ATTR } from './clipping-
 // @ts-expect-error plain JS module, no type declarations
 import { routes } from '../src/router/routes.js'
 // @ts-expect-error plain JS module, no type declarations
-import { SECTIONS, ACCOUNT_ITEMS } from '../src/router/nav.js'
+import { MENU_SECTIONS as SECTIONS, ACCOUNT_MENU_ITEMS as ACCOUNT_ITEMS } from '../src/router/nav.js'
 
 type RouteRecord = { path: string; redirect?: unknown; meta?: { responsiveSample?: string; public?: boolean } }
 

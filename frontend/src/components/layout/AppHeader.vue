@@ -17,7 +17,7 @@ import { compareAllUrl } from '@/lib/adjustDrawer'
 import { bellCount, dropAlerts, openRecords, readOpportunities, readPaperAlerts, takeAlerts, takeOpportunities } from '@/lib/paperAlerts'
 import { plainName } from '@/lib/saveDraft'
 import { usePaperRefresh } from '@/lib/usePaperRefresh'
-import { ACCOUNT_ITEMS, ACCOUNT_LABEL, ITEM_DESCRIPTIONS, MEGA_MENUS, SECTIONS } from '@/router/nav'
+import { ACCOUNT_LABEL, ACCOUNT_MENU_ITEMS, ITEM_DESCRIPTIONS, MEGA_MENUS, MENU_SECTIONS, firstBuiltPath } from '@/router/nav'
 
 const HOVER_DELAY_MS = 150
 const SMALL_MENU_WIDTH = 256
@@ -77,7 +77,7 @@ let openedByHover = false
 
 const pageTitle = computed(() => route.meta?.title ?? '')
 const activeSection = computed(() => route.meta?.section ?? null)
-const openSection = computed(() => SECTIONS.find((s) => s.key === openKey.value) ?? null)
+const openSection = computed(() => MENU_SECTIONS.find((s) => s.key === openKey.value) ?? null)
 const isMega = computed(() => Boolean(openKey.value && MEGA_MENUS[openKey.value]))
 
 function item(section, slug) {
@@ -254,7 +254,7 @@ onBeforeUnmount(() => {
       <nav class="min-w-0 flex-1 overflow-x-auto" aria-label="Primary" data-testid="primary-nav">
         <ul class="mx-auto flex h-full w-max items-stretch whitespace-nowrap">
           <li
-            v-for="s in SECTIONS"
+            v-for="s in MENU_SECTIONS"
             :key="s.key"
             :ref="(el) => (sectionItems[s.key] = el)"
             class="relative flex items-stretch"
@@ -262,7 +262,7 @@ onBeforeUnmount(() => {
             @pointerleave="onSectionLeave"
           >
             <router-link
-              :to="`/${s.key}`"
+              :to="firstBuiltPath(s.key)"
               class="flex items-center pl-3 text-[15px] leading-5 font-medium"
               :class="activeSection === s.key ? 'text-accent' : 'text-ink hover:text-accent'"
               :data-testid="`nav-${s.key}`"
@@ -335,7 +335,7 @@ onBeforeUnmount(() => {
               >{{ ACCOUNT_LABEL }}</router-link
             >
             <ul class="border-t border-line py-1">
-              <li v-for="[slug, label] in ACCOUNT_ITEMS" :key="slug">
+              <li v-for="[slug, label] in ACCOUNT_MENU_ITEMS" :key="slug">
                 <router-link
                   :to="`/settings/${slug}`"
                   class="flex h-10 items-center px-3 text-sm text-ink-muted hover:bg-surface-muted hover:text-ink"

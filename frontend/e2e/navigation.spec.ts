@@ -3,14 +3,14 @@ import { test, expect } from '@playwright/test'
 import { NavPage } from './pages/nav.page'
 
 const SECTIONS: Record<string, { label: string; items: string[] }> = {
-  'AC-1': { label: 'Home', items: ['Overview', 'Important alerts', 'Active strategies', 'Account status'] },
+  'AC-1': { label: 'Home', items: ['Overview'] },
   'AC-2': {
     label: 'Strategies',
     items: ['My Strategies', 'Create Strategy', 'Strategy Builder', 'Live Strategies', 'Adjustments', 'Completed Strategies'],
   },
   'AC-3': {
     label: 'Positions',
-    items: ['Current positions', 'Strategy-linked positions', 'Adjustment opportunities', 'P&L/risk'],
+    items: ['Current positions', 'Strategy-linked positions', 'Adjustment opportunities'],
   },
   'AC-4': { label: 'Market', items: ['Option Chain', 'Underlying/index view', 'Market context'] },
   'AC-5': { label: 'Orders', items: ['Pending', 'Executed', 'Failed/partial', 'Execution history'] },
@@ -18,7 +18,9 @@ const SECTIONS: Record<string, { label: string; items: string[] }> = {
   'AC-7': { label: 'Learn', items: ['Strategy education', 'Options concepts', 'Platform guidance'] },
 }
 
-const SECTION_ORDER = ['Home', 'Strategies', 'Positions', 'Market', 'Orders', 'Alerts', 'Learn']
+// u504: the menus offer built pages only (nav.js UNBUILT_ITEMS); Orders has none, so it is not in the bar. NOT RUN here (needs the e2e stack):
+// the section-page based checks below (openSection -> subItems, the href count) need a manager pass.
+const SECTION_ORDER = ['Home', 'Strategies', 'Positions', 'Market', 'Alerts', 'Learn']
 
 const ACCOUNT_ITEMS = [
   'Profile',
@@ -77,7 +79,7 @@ test('AC-5: Orders offers strategy-linked orders only, never an order-entry form
   }
 })
 
-test('AC-8: the avatar menu opens Account & Settings with its eleven items', async ({ page }) => {
+test('AC-8: the avatar menu opens Account & Settings with its built items', async ({ page }) => {
   await page.goto('/')
   const nav = new NavPage(page)
   await nav.openAccountMenu()
