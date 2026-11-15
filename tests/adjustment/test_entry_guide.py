@@ -48,19 +48,62 @@ def test_a_guide_text_with_no_readable_range_reads_as_none(text: str | None) -> 
 
 
 def test_sold_delta_0_46_against_the_guide_warns_with_both_numbers_and_the_rule_set() -> None:
-    line = eg.entry_guide_line((_short("CE", D("0.46")), _short("PE", D("0.44"))), GUIDE, NAME)
+    line = eg.entry_guide_line((_short("CE", D("0.46")), _short("PE", D("0.12"))), GUIDE, NAME)
     assert line == ("Sold call delta 0.46; the entry guide of the default rule set (Iron condor: system default) "
                     "is 0.15 to 0.20.")
+
+
+def test_every_sold_leg_above_the_ceiling_is_named_with_its_own_delta() -> None:
+    line = eg.entry_guide_line((_short("CE", D("0.46")), _short("PE", D("0.41"))), GUIDE, NAME)
+    assert line == ("Sold put delta 0.41 and sold call delta 0.46; the entry guide of the default rule set "
+                    "(Iron condor: system default) is 0.15 to 0.20.")
+
+
+def test_one_leg_above_and_one_missing_breaks_and_says_the_other_could_not_be_checked() -> None:
+    shorts = (_short("CE", D("0.46")), _short("PE", None))
+    assert eg.check_entry_guide(shorts, GUIDE).state == "breaks"
+    assert eg.entry_guide_line(shorts, GUIDE, NAME) == (
+        "Sold call delta 0.46; the entry guide of the default rule set (Iron condor: system default) is 0.15 to 0.20. "
+        "The other sold leg could not be checked.")
+
+
+def test_a_leg_above_the_ceiling_and_a_known_within_leg_is_one_named_leg() -> None:
+    assert eg.entry_guide_line((_short("CE", D("0.30")), _short("PE", D("0.16"))), GUIDE, NAME) == (
+        "Sold call delta 0.30; the entry guide of the default rule set (Iron condor: system default) is 0.15 to 0.20.")
+
+
+# The ceiling rule: the guide's upper end is a CEILING (ADR-300: a condor TOO CLOSE to the index). Below the low end is
+# a lower-credit choice, not a breach. ONE rounding rule: the delta is shown at 2 decimals, half up, exact Decimal, and
+# the state is decided on that same shown figure, so "0.20 ... guide 0.15 to 0.20" never sits beside a warning.
+@pytest.mark.parametrize("delta", ["0.02", "0.10", "0.15", "0.20", "0.204", "0.2049999999999"])
+def test_a_sold_delta_at_or_below_the_ceiling_has_no_line(delta: str) -> None:
+    shorts = (_short("PE", D(delta)), _short("CE", D("0.15")))
+    assert eg.check_entry_guide(shorts, GUIDE).state == "within"
+    assert eg.entry_guide_line(shorts, GUIDE, NAME) is None
+
+
+@pytest.mark.parametrize("delta, shown", [("0.205", "0.21"), ("0.21", "0.21"), ("0.46", "0.46"),
+                                          ("0.4600000000000012", "0.46")])
+def test_a_sold_delta_above_the_ceiling_breaks_with_the_figure_as_shown(delta: str, shown: str) -> None:
+    line = eg.entry_guide_line((_short("CE", D(delta)), _short("PE", D("0.15"))), GUIDE, NAME)
+    assert line == (f"Sold call delta {shown}; the entry guide of the default rule set "
+                    "(Iron condor: system default) is 0.15 to 0.20.")
+
+
+@pytest.mark.parametrize("text", ["shorts at 15 to 20 delta", "shorts at 0 to 0.2 delta", "shorts at 0.15 to 1.5 delta",
+                                  "shorts at 0.15 to 20 delta"])
+def test_a_guide_outside_zero_to_one_reads_as_none(text: str) -> None:
+    assert eg.parse_entry_guide(text) is None
+    assert eg.check_entry_guide((_short("CE", D("0.46")),), text).state == "cannot_tell"
+
+
+def test_a_guide_up_to_one_is_read() -> None:
+    assert eg.parse_entry_guide("shorts at 0.15 to 1 delta") == (D("0.15"), D("1"))
 
 
 def test_the_put_side_is_named_when_it_is_the_larger() -> None:
     assert eg.entry_guide_line((_short("CE", D("0.12")), _short("PE", D("0.33"))), GUIDE, NAME) == (
         "Sold put delta 0.33; the entry guide of the default rule set (Iron condor: system default) is 0.15 to 0.20.")
-
-
-@pytest.mark.parametrize("delta", ["0.15", "0.18", "0.20"])
-def test_a_sold_delta_within_the_guide_has_no_line(delta: str) -> None:
-    assert eg.entry_guide_line((_short("CE", D(delta)), _short("PE", D("0.16"))), GUIDE, NAME) is None
 
 
 def test_the_worst_leg_not_the_first_decides() -> None:
@@ -101,7 +144,8 @@ def test_the_default_rule_set_of_a_shape_is_the_system_playbook_of_its_type() ->
 def test_the_138_numbers_through_the_whole_answer() -> None:
     ans = eg.entry_guide_for((("CE", D("0.46")), ("PE", D("0.44"))), "ic")
     assert ans.state == "breaks" and ans.line == (
-        "Sold call delta 0.46; the entry guide of the default rule set (Iron condor: system default) is 0.15 to 0.20.")
+        "Sold put delta 0.44 and sold call delta 0.46; the entry guide of the default rule set "
+        "(Iron condor: system default) is 0.15 to 0.20.")
     assert eg.entry_guide_for((("CE", D("0.18")), ("PE", D("0.17"))), "ic").state == "within"
     assert eg.entry_guide_for((("CE", D("0.18")), ("PE", D("0.17"))), "ic").line is None
 

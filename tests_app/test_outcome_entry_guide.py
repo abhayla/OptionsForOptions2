@@ -58,8 +58,8 @@ async def test_the_138_condor_breaks_with_delta_0_46_exactly(replayed, monkeypat
     assert resp.status_code == HTTP_OK, resp.text
     out = resp.json()
     assert out["entry_guide_state"] == "breaks"
-    assert out["entry_guide_line"] == ("Sold call delta 0.46; the entry guide of the default rule set "
-                                       "(Iron condor: system default) is 0.15 to 0.20.")
+    assert out["entry_guide_line"] == ("Sold put delta 0.44 and sold call delta 0.46; the entry guide of the default "
+                                       "rule set (Iron condor: system default) is 0.15 to 0.20.")
 
 
 async def test_the_condor_is_within_with_delta_0_18_exactly(replayed, monkeypatch) -> None:
