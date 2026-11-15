@@ -4087,6 +4087,10 @@
     "sha256": "1184fe1a615bffeefe1063275c220e3fcda784c51ca3ff13ad10e645368cc042",
     "reviewed": "pending owner read"
   },
+  "explanation:adjust_condition_line_t02": {
+    "sha256": "8f33ae329fe99ef5cf1fe306e6e24f2ced2c4045d9abb380839bafc4835673ef",
+    "reviewed": "pending owner read"
+  },
   "explanation:adjust_condition_line_count": {
     "sha256": "1184fe1a615bffeefe1063275c220e3fcda784c51ca3ff13ad10e645368cc042",
     "reviewed": "pending owner read"

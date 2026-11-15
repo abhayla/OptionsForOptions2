@@ -802,6 +802,9 @@ COUNT_TRIGGERS = frozenset({"T-18"})
 def _own_unit_line(trigger_id: str, unit: str | None, label: str, value: str, threshold: str) -> Any:
     """The line with the value in its own unit (rupees with a real minus, or a whole count); None when this trigger has
     no such unit. A value the slot refuses raises like any render (the caller falls back to the plain line)."""
+    if trigger_id == "T-02":  # GC-ICFIX H: says what the figure is (expiry profit or loss against zero)
+        return render_explanation("adjust_condition_line_t02", label=label, value=Decimal(value),
+                                  threshold=Decimal(threshold))
     if trigger_id in RUPEE_TRIGGERS or unit == "Rs":
         return render_explanation("adjust_condition_line_rupees", label=label, value=Decimal(value),
                                   threshold=Decimal(threshold))

@@ -1607,6 +1607,12 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     # unit word in its playbook row; its value is shown in its own unit, not as a 4-decimal number
     ExplanationTemplate("adjust_condition_line_rupees", "values_seen", "{label}: {value} (rule {threshold})",
                         {"label": PlaybookTriggerLabel, "value": Rupees, "threshold": Rupees}),
+    # GC-ICFIX H: T-02's figure is the whole trade's profit or loss at expiry if the index stays at its current level,
+    # compared with zero; the label alone ("Spot crosses a breakeven") read as a spot price
+    ExplanationTemplate("adjust_condition_line_t02", "values_seen",
+                        "{label}: profit or loss at expiry if the index stays at its current level {value} "
+                        "(rule: below {threshold})",
+                        {"label": PlaybookTriggerLabel, "value": Rupees, "threshold": Rupees}),
     ExplanationTemplate("adjust_condition_line_count", "values_seen", "{label}: {value} (rule {threshold})",
                         {"label": PlaybookTriggerLabel, "value": Count, "threshold": Count}),
     # a clock trigger (unit "time", T-10b): its value and threshold are clock times, no unit word
