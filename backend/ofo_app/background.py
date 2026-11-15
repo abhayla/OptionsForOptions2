@@ -745,12 +745,11 @@ class DbGateStore:
                     continue
                 rv = values.get(e.rule_id)
                 trigger = None if rv is None else rv.trigger_id
-                value = _quantized(e.value)
-                if value is None and rv is not None:
-                    value = _quantized(rv.value)
+                # GC-ICFIX: the event's own numbers (the confirming sample's), never the latest check's
+                value = _quantized(e.value if isinstance(e.value, Decimal) else e.shown_value)
                 threshold = _quantized(getattr(e, "threshold", None))
-                if threshold is None and rv is not None:
-                    threshold = _quantized(rv.threshold)
+                if threshold is None:  # 0 is a real threshold (T-02), so no `or`
+                    threshold = _quantized(e.shown_threshold)
                 if isinstance(e, alert_gate.Held):
                     await playbook_store.record_held(db, w.user_ref, w.strategy_id, e.rule_id, trigger_id=trigger,
                                                      stage=stage, value=value, threshold=threshold, reason=e.reason)

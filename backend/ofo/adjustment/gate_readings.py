@@ -26,7 +26,8 @@ Reading = tuple[gate.RuleSpec, gate.Value | None]
 
 
 def _yes_no(v: RuleValue) -> Reading:
-    return gate.RuleSpec(v.rule_id, "bool", ()), v.fired
+    value, thr = (x if isinstance(x, Decimal) else None for x in (v.value, v.threshold))
+    return gate.RuleSpec(v.rule_id, "bool", (), value, thr), v.fired
 
 
 def reading(v: RuleValue) -> Reading:
