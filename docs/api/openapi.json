@@ -4819,6 +4819,11 @@
             "title": "Expiry Days",
             "type": "array"
           },
+          "today": {
+            "format": "date",
+            "title": "Today",
+            "type": "string"
+          },
           "underlying": {
             "enum": [
               "NIFTY",
@@ -4831,7 +4836,8 @@
         "required": [
           "underlying",
           "expiries",
-          "expiry_days"
+          "expiry_days",
+          "today"
         ],
         "title": "ExpiriesOut",
         "type": "object"

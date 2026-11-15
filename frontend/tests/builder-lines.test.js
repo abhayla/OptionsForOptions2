@@ -129,8 +129,8 @@ describe('contract names in the advanced details and the picker', () => {
   })
 
   it('the Edit form shows the lot-size line with the contract name', async () => {
-    answers['GET /catalogue/NIFTY/expiries'] = { underlying: 'NIFTY', expiries: ['2026-10-13'] }
-    answers['GET /catalogue/SENSEX/expiries'] = { underlying: 'SENSEX', expiries: [] }
+    answers['GET /catalogue/NIFTY/expiries'] = { underlying: 'NIFTY', today: '2026-10-10', expiries: ['2026-10-13'] }
+    answers['GET /catalogue/SENSEX/expiries'] = { underlying: 'SENSEX', today: '2026-10-10', expiries: [] }
     answers['GET /catalogue/NIFTY/contracts?expiry=2026-10-13'] = {
       underlying: 'NIFTY',
       contracts: [{ exchange_segment: 'NSE_FO', exchange_token: 44624, instrument_type: 'CE', expiry: '2026-10-13', strike: '22800.00', lot_size: 65, symbol: 'NIFTY26O1322800CE' }],

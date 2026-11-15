@@ -3,6 +3,7 @@
 import { vi, beforeEach } from 'vitest'
 import { config } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
+import { setShownDate } from '@/lib/displayFormat'
 
 // Mock localStorage, so a test can prove the app never writes a token to it.
 const localStorageMock = {
@@ -21,6 +22,7 @@ const localStorageMock = {
 global.localStorage = localStorageMock
 
 beforeEach(() => {
+  setShownDate('2026-11-15') // u510: as the app has after an expiries reply; the fixtures' 2026 expiries stay short. A test of the unset rule calls setShownDate(null)
   setActivePinia(createPinia()) // a page that reads the served settings store needs one, like the app's main.js
   localStorageMock.store = {}
   localStorageMock.getItem.mockClear()

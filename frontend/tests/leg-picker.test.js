@@ -66,8 +66,8 @@ beforeEach(() => {
   calls.length = 0
   answers = {
     'GET /settings': settingsData(),
-    'GET /catalogue/NIFTY/expiries': { underlying: 'NIFTY', expiries: ['2026-10-13', '2026-10-27'] },
-    'GET /catalogue/SENSEX/expiries': { underlying: 'SENSEX', expiries: ['2026-10-15'] },
+    'GET /catalogue/NIFTY/expiries': { underlying: 'NIFTY', today: '2026-10-10', expiries: ['2026-10-13', '2026-10-27'] },
+    'GET /catalogue/SENSEX/expiries': { underlying: 'SENSEX', today: '2026-10-10', expiries: ['2026-10-15'] },
     'GET /catalogue/NIFTY/contracts?expiry=2026-10-13': NIFTY_13,
     'GET /catalogue/NIFTY/contracts?expiry=2026-10-27': NIFTY_27,
     'GET /leg-picker/strikes?underlying=NIFTY&expiry=2026-10-13': pkStrikes(),
@@ -1265,14 +1265,14 @@ describe('REQ-080 futures tab (W-147)', () => {
 
 describe('ADR-199 (4): the drawer opens on the reply\'s default_expiry', () => {
   it('with no legs it opens on default_expiry, not the first listed expiry', async () => {
-    answers['GET /catalogue/NIFTY/expiries'] = { underlying: 'NIFTY', expiries: ['2026-10-13', '2026-10-27'], default_expiry: '2026-10-27' }
+    answers['GET /catalogue/NIFTY/expiries'] = { underlying: 'NIFTY', today: '2026-10-10', expiries: ['2026-10-13', '2026-10-27'], default_expiry: '2026-10-27' }
     const w = mountPicker()
     await flushPromises()
     expect(t(w, 'pick-expiry').element.value).toBe('2026-10-27')
   })
 
   it('with legs it opens on the legs\' expiry even when the default differs', async () => {
-    answers['GET /catalogue/NIFTY/expiries'] = { underlying: 'NIFTY', expiries: ['2026-10-13', '2026-10-27'], default_expiry: '2026-10-27' }
+    answers['GET /catalogue/NIFTY/expiries'] = { underlying: 'NIFTY', today: '2026-10-10', expiries: ['2026-10-13', '2026-10-27'], default_expiry: '2026-10-27' }
     const legs = [{ id: 1, underlying: 'NIFTY', instrument_id: 'NSE_FO:44624', contract_id: 1, symbol: 'NIFTY26O1322800CE', expiry: '2026-10-13', instrument_type: 'CE', strike: '22800.00', lot_size: 65, action: 'SELL', lots: 1, planned_entry: null, captured_at: null, reason_code: 'needs_reprice' }]
     const w = mountPicker(legs)
     await flushPromises()
@@ -1284,7 +1284,7 @@ describe('REQ-135 AC-2: days beside every expiry in the picker (the server\'s co
   const DAYS = [{ expiry: '2026-10-13', days: 0 }, { expiry: '2026-10-27', days: 14 }]
   // GC-UI 6c D-C21: the select shows the short date (never clipped); the server's day count sits beside it
   it('the expiry select shows "13 Oct" / "27 Oct" with the chosen expiry\'s "0 days" beside it, and keeps ISO values', async () => {
-    answers['GET /catalogue/NIFTY/expiries'] = { underlying: 'NIFTY', expiries: ['2026-10-13', '2026-10-27'], expiry_days: DAYS }
+    answers['GET /catalogue/NIFTY/expiries'] = { underlying: 'NIFTY', today: '2026-10-10', expiries: ['2026-10-13', '2026-10-27'], expiry_days: DAYS }
     const w = mountPicker()
     await flushPromises()
     expect(t(w, 'pick-expiry').findAll('option').filter((o) => o.element.value).map((o) => o.text())).toEqual(['13 Oct', '27 Oct'])
@@ -1305,7 +1305,7 @@ describe('REQ-135 AC-2: days beside every expiry in the picker (the server\'s co
   })
 
   it('the Futures tab rows and forward rows take their label from the expiries reply', async () => {
-    answers['GET /catalogue/NIFTY/expiries'] = { underlying: 'NIFTY', expiries: ['2026-10-13', '2026-10-27'], expiry_days: DAYS }
+    answers['GET /catalogue/NIFTY/expiries'] = { underlying: 'NIFTY', today: '2026-10-10', expiries: ['2026-10-13', '2026-10-27'], expiry_days: DAYS }
     answers['GET /leg-picker/futures?underlying=NIFTY'] = {
       underlying: 'NIFTY',
       futures: [{ expiry: '2026-10-27', instrument_id: 'NSE_FO:48704', ltp: '22610.40', reason: null }],
@@ -1560,7 +1560,7 @@ describe('G-070: the drawer opens on the nearest expiry with its strikes', () =>
   })
 
   it('an empty expiry list: nothing chosen, no strikes requested', async () => {
-    answers['GET /catalogue/NIFTY/expiries'] = { underlying: 'NIFTY', expiries: [] }
+    answers['GET /catalogue/NIFTY/expiries'] = { underlying: 'NIFTY', today: '2026-10-10', expiries: [] }
     const w = mountPicker()
     await flushPromises()
     expect(t(w, 'pick-expiry').element.value).toBe('')
@@ -1576,7 +1576,7 @@ describe('F-12: the drawer opens on the strategy expiry every time it is opened'
   const strikeReads = () => calls.filter((x) => x.url.startsWith('/leg-picker/strikes')).map((x) => x.url)
   const leg = (id, expiry) => ({ id, underlying: 'NIFTY', expiry, instrument_type: 'CE', strike: '22800.00', action: 'SELL', lots: 1, instrument_id: `NSE_FO:${id}` })
   beforeEach(() => {
-    answers['GET /catalogue/NIFTY/expiries'] = { underlying: 'NIFTY', expiries: ['2026-10-27', NOV3, NOV9] }
+    answers['GET /catalogue/NIFTY/expiries'] = { underlying: 'NIFTY', today: '2026-10-10', expiries: ['2026-10-27', NOV3, NOV9] }
     for (const e of ['2026-10-27', NOV3, NOV9]) {
       answers[`GET /catalogue/NIFTY/contracts?expiry=${e}`] = { underlying: 'NIFTY', contracts: [] }
       answers[`GET /leg-picker/strikes?underlying=NIFTY&expiry=${e}`] = { state: 'LIVE', rows: [], underlying: 'NIFTY', expiry: e }
@@ -1633,7 +1633,7 @@ describe('F-12: the drawer opens on the strategy expiry every time it is opened'
 
   it('5: the underlying switched while shut, then opened: that underlying nearest expiry', async () => {
     const w = await shutPicker()
-    answers['GET /catalogue/SENSEX/expiries'] = { underlying: 'SENSEX', expiries: ['2026-10-29', '2026-11-05'] }
+    answers['GET /catalogue/SENSEX/expiries'] = { underlying: 'SENSEX', today: '2026-10-10', expiries: ['2026-10-29', '2026-11-05'] }
     answers['GET /catalogue/SENSEX/contracts?expiry=2026-10-29'] = { underlying: 'SENSEX', contracts: [] }
     answers['GET /leg-picker/strikes?underlying=SENSEX&expiry=2026-10-29'] = { state: 'LIVE', rows: [], underlying: 'SENSEX', expiry: '2026-10-29' }
     await t(w, 'pick-underlying').setValue('SENSEX')
@@ -1687,10 +1687,10 @@ describe('F-14: the drawer opens on the strategy underlying', () => {
   const strikeReads = () => calls.filter((x) => x.url.startsWith('/leg-picker/strikes')).map((x) => x.url)
   const sxStrikes = `/leg-picker/strikes?underlying=SENSEX&expiry=${OCT29}`
   beforeEach(() => {
-    answers['GET /catalogue/NIFTY/expiries'] = { underlying: 'NIFTY', expiries: ['2026-10-27', '2026-11-03'] }
+    answers['GET /catalogue/NIFTY/expiries'] = { underlying: 'NIFTY', today: '2026-10-10', expiries: ['2026-10-27', '2026-11-03'] }
     answers['GET /catalogue/NIFTY/contracts?expiry=2026-10-27'] = { underlying: 'NIFTY', contracts: [] }
     answers['GET /leg-picker/strikes?underlying=NIFTY&expiry=2026-10-27'] = { state: 'LIVE', rows: [], underlying: 'NIFTY', expiry: '2026-10-27' }
-    answers['GET /catalogue/SENSEX/expiries'] = { underlying: 'SENSEX', expiries: [OCT29, '2026-11-05'] }
+    answers['GET /catalogue/SENSEX/expiries'] = { underlying: 'SENSEX', today: '2026-10-10', expiries: [OCT29, '2026-11-05'] }
     answers[`GET /catalogue/SENSEX/contracts?expiry=${OCT29}`] = { underlying: 'SENSEX', contracts: [] }
     answers[`GET ${sxStrikes}`] = { state: 'LIVE', rows: [], underlying: 'SENSEX', expiry: OCT29 }
   })
@@ -1777,7 +1777,7 @@ describe('oiCompact', () => {
 // recorded NIFTY 2026-10-08 09:20:09 IST answer above (strikesAnswer: spot 22533.25, server ATM 22550). ----
 describe('GC-UI 6c drawer layout (D-C20, D-C21, D-C22, D-C23, D-C28)', () => {
   beforeEach(() => {
-    answers['GET /catalogue/NIFTY/expiries'] = { underlying: 'NIFTY', expiries: ['2026-10-13', '2026-10-27'], expiry_days: [{ expiry: '2026-10-13', days: 5 }, { expiry: '2026-10-27', days: 19 }] }
+    answers['GET /catalogue/NIFTY/expiries'] = { underlying: 'NIFTY', today: '2026-10-10', expiries: ['2026-10-13', '2026-10-27'], expiry_days: [{ expiry: '2026-10-13', days: 5 }, { expiry: '2026-10-27', days: 19 }] }
     answers['GET /catalogue/NIFTY/contracts?expiry=2026-10-13'] = catalogue13
     answers[STRIKES_URL()] = strikesAnswer()
   })
