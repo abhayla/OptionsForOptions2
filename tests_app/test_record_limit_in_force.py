@@ -78,3 +78,21 @@ def test_a_record_reads_its_stored_adjustment_count_and_an_older_one_has_none():
     assert _record(adjustments=BOOKED).adjustments == BOOKED
     assert _record().adjustments is None
     assert _record(adjustments=None).adjustments is None
+
+
+@pytest.mark.asyncio
+async def test_an_event_with_no_check_still_stores_the_writers_adjustment_count(monkeypatch):
+    """Review MINOR: no sample leaves the words empty, but the count keeps the record lapsing on a position change."""
+    stamped: dict = {}
+
+    async def open_suggestion(db, user, sid, rule, **fields):
+        stamped.update(fields)
+        return SimpleNamespace(id=1)
+
+    monkeypatch.setattr(playbook_store, "open_suggestion", open_suggestion)
+    monkeypatch.setattr(app_db, "get_sessionmaker", lambda: _Session)
+    watched = SimpleNamespace(user_ref="owner", strategy_id=123, body={}, is_system=True,
+                              tracked=SimpleNamespace(adjustments_used=BOOKED))
+    event = alert_gate.Opened("T-03", AT, 1, D("0.35"), D("0.3537"), None)  # no sample
+    await background.DbGateStore().apply(watched, [event])
+    assert stamped["trigger_id"] is None and stamped["adjustments"] == BOOKED

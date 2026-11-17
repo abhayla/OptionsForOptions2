@@ -797,7 +797,8 @@ class DbGateStore:
                     db, w.user_ref, w.strategy_id, e.rule_id, trigger_id=f.trigger, stage=f.stage, value=value,
                     threshold=threshold, group=gate_group(w.strategy_id, e.at), source=source,
                     cmp=f.cmp, label=f.label, unit=f.unit, worse=e.worse, beyond=f.beyond,
-                    limit=_quantized(e.limit), adjustments=f.adjustments, **f.extra)
+                    limit=_quantized(e.limit),
+                    adjustments=_count_of(w.tracked) if f.adjustments is None else f.adjustments, **f.extra)
                 opened[e.rule_id] = rec.id
             await db.commit()
         return opened
