@@ -1445,7 +1445,7 @@ class Worker:
         ev = await self._evaluate_and_write(w, state, prefs)
         self._style[sid], self._preset[sid] = style, preset
         ctx = self._gate_ctx[sid] = GateContext(ev, state, w)
-        # the check travels with each rule's sample: the event that sample confirms takes its words from it (#709 item 7)
+        # the check travels with each rule's sample: the event it confirms takes its words from it (#709 item 7)
         sampled = {rid: (dataclasses.replace(spec, sample=ctx), v)
                    for rid, (spec, v) in gate_readings.readings(ev).items()}
         await self._gate_step(w, now, preset, sampled)
