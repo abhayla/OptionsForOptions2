@@ -1,6 +1,6 @@
-"""My Strategies list speed: ``closed_figures_many`` gives the figures of many CLOSED strategies from ONE order read and
-ONE contract resolve, and each figure equals the per-strategy answer. Closed strategies are the seeded ADJ scenarios plus
-an exit batch placed here (price 10.00 per unit); the expected final P&L is plain arithmetic over the stored orders
+"""My Strategies list speed: ``closed_figures_many`` gives the figures of many CLOSED strategies from ONE order read
+and ONE contract resolve, and each figure equals the per-strategy answer. Closed strategies are the seeded ADJ scenarios
+plus an exit batch placed here (price 10.00 per unit); the expected final P&L is plain arithmetic over the stored orders
 (sell adds quantity x price, buy subtracts it), never read back from the code under test.
 """
 from __future__ import annotations
@@ -23,8 +23,9 @@ _spec = importlib.util.spec_from_file_location("seed_scenario", ROOT / "scripts"
 seed_mod = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(seed_mod)
 SCENARIOS = ("ADJ-13", "ADJ-14", "ADJ-15")
-EXIT_AT = datetime.datetime(2026, 11, 2, 15, 0, tzinfo=datetime.timezone.utc)
+EXIT_AT = datetime.datetime(2026, 11, 2, 15, 0, tzinfo=datetime.UTC)
 EXIT_PRICE = Decimal("10.00")
+FAIL_ON_CALL = 2  # the engine step that is made to fail
 
 
 def _reset_engine() -> None:
@@ -57,8 +58,9 @@ async def _closed(app_engine, monkeypatch) -> dict[int, Decimal]:
         async with app_engine.connect() as conn:
             book = await paper_book.load_owned(conn, "owner", sid)
             held = net_positions([o.order.as_paper() for o in book], {}).positions
-            exits = [paper_store.NewOrder(int(p.instrument_id), "SELL" if p.net_quantity > 0 else "BUY", abs(p.net_quantity),
-                                          EXIT_PRICE, "exit", EXIT_AT) for p in held if p.net_quantity]
+            exits = [paper_store.NewOrder(int(p.instrument_id), "SELL" if p.net_quantity > 0 else "BUY",
+                                          abs(p.net_quantity), EXIT_PRICE, "exit", EXIT_AT)
+                     for p in held if p.net_quantity]
             placed = await paper_store.place(conn, "owner", sid, exits) if exits else book  # some seeds are flat
             await conn.commit()
         out[sid] = _pnl(placed)
@@ -113,7 +115,7 @@ async def test_one_strategy_whose_engine_step_raises_gets_none_and_the_others_ke
 
     def boom_on_second(orders, found, underlying, rates):
         calls.append(1)
-        if len(calls) == 2:
+        if len(calls) == FAIL_ON_CALL:
             raise RuntimeError("engine step failed")
         return real(orders, found, underlying, rates)
 
