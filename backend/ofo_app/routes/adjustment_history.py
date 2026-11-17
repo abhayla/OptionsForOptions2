@@ -319,35 +319,56 @@ def _after(orders: Any, found: dict, live: dict, t: Any, underlying: str,  # noq
                                                           charges_reason, underlying, rates))
 
 
-async def closed_figures(db: Any, user_ref: str, strategy_id: int, rates: ChargeRates | None) -> dict:
-    """GC-ICGUIDE g23 (contract task 23): the Completed list's figures of one CLOSED strategy - final P&L, adjustments
-    made (the history page's ADR-255 counter) and their cost (charges of the adjustment rows) - from the same engine
-    call as the history page, with no open contract (so no price is read). Each figure the engine cannot give is None
-    and the reply carries the catalogue reason; a failed read never shows 0 (savepoint, logged)."""
-    none = {"final_pnl": None, "final_pnl_text": None, "adjustments_made": None, "adjustment_cost": None,
+def _none_figures() -> dict:
+    return {"final_pnl": None, "final_pnl_text": None, "adjustments_made": None, "adjustment_cost": None,
             "adjustment_cost_text": None, "completed_reason_text": render_explanation("completed_figures_unavailable"),
             **dict.fromkeys(AFTER_KEYS),
             "after_charges_reason": "not_priced", "after_charges_reason_text": reason_text("not_priced")}
+
+
+async def closed_figures(db: Any, user_ref: str, strategy_id: int, rates: ChargeRates | None) -> dict:
+    """One strategy's Completed-list figures: ``closed_figures_many`` with one id (one code path)."""
+    return (await closed_figures_many(db, user_ref, [strategy_id], rates))[strategy_id]
+
+
+async def closed_figures_many(db: Any, user_ref: str, strategy_ids: list[int], rates: ChargeRates | None
+                              ) -> dict[int, dict]:
+    """GC-ICGUIDE g23 (contract task 23): the Completed list's figures of CLOSED strategies - final P&L, adjustments
+    made (the history page's ADR-255 counter) and their cost (charges of the adjustment rows) - from the same engine
+    call as the history page, with no open contract (so no price is read). The orders of every id are read in ONE
+    query and every contract resolved in ONE call, however many strategies (the list's time must not grow with the
+    closed count). Each figure the engine cannot give is None and the reply carries the catalogue reason; a failed
+    read never shows 0 (savepoint, logged): a failed batched read gives every id the ``none`` figures, an engine step
+    that raises only its own strategy."""
+    ids = list(dict.fromkeys(strategy_ids))
     try:
         async with db.begin_nested():
-            orders = await paper_book.load_owned(db, user_ref, strategy_id)
-            if not orders:
-                return none
+            by_id = await paper_book.load_owned_many(db, user_ref, ids)
             found = {c.contract_id: c for c in await tracked_contracts.resolve(
-                db, sorted({o.order.contract_id for o in orders}))}
-            underlying = paper.identity(found[orders[0].order.contract_id])[0]
-            per_order, charges_reason = _per_order_charges(orders, found, underlying, rates)
-            h = ah.adjustment_history(
-                [ah.HistoryOrder(str(o.order.contract_id), o.order.side,  # type: ignore[arg-type]
-                                 o.order.quantity, o.order.price, o.order.kind,  # type: ignore[arg-type]
-                                 o.order.placed_at,
-                                 is_option=paper.identity(found[o.order.contract_id])[1] is not Instrument.FUT)
-                 for o in orders], {}, adjustments_max=None, per_order_charges=per_order)
-            t = h.totals
-            after = _after(orders, found, {}, t, underlying, charges_reason, rates)  # closed: nothing open to price
+                db, sorted({o.order.contract_id for orders in by_id.values() for o in orders}))}
     except Exception:  # noqa: BLE001 - any read failure only costs these figures
+        log.warning("closed strategies %s figures could not be read", ids, exc_info=True)
+        return {i: _none_figures() for i in ids}
+    return {i: _closed_one(i, by_id.get(i, ()), found, rates) for i in ids}
+
+
+def _closed_one(strategy_id: int, orders: Any, found: dict, rates: ChargeRates | None) -> dict:
+    if not orders:
+        return _none_figures()
+    try:
+        underlying = paper.identity(found[orders[0].order.contract_id])[0]
+        per_order, charges_reason = _per_order_charges(orders, found, underlying, rates)
+        h = ah.adjustment_history(
+            [ah.HistoryOrder(str(o.order.contract_id), o.order.side,  # type: ignore[arg-type]
+                             o.order.quantity, o.order.price, o.order.kind,  # type: ignore[arg-type]
+                             o.order.placed_at,
+                             is_option=paper.identity(found[o.order.contract_id])[1] is not Instrument.FUT)
+             for o in orders], {}, adjustments_max=None, per_order_charges=per_order)
+        t = h.totals
+        after = _after(orders, found, {}, t, underlying, charges_reason, rates)  # closed: nothing open to price
+    except Exception:  # noqa: BLE001 - any engine failure only costs this strategy's figures
         log.warning("closed strategy %s figures could not be read", strategy_id, exc_info=True)
-        return none
+        return _none_figures()
     made = t.adjustments_before_exit  # the engine drops the closing batch: it is the exit, not an adjustment
     cost = None if t.adjustment_charges_before_exit is None else to_paise_up(t.adjustment_charges_before_exit)
     reason = None

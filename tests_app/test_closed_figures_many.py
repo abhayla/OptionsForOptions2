@@ -44,7 +44,7 @@ async def app_db_url(app_engine, monkeypatch):
 
 
 def _pnl(orders) -> Decimal:
-    return sum((o.order.quantity * o.order.price * (1 if o.order.side == "sell" else -1) for o in orders), Decimal(0))
+    return sum((o.order.quantity * o.order.price * (1 if o.order.side == "SELL" else -1) for o in orders), Decimal(0))
 
 
 async def _closed(app_engine, monkeypatch) -> dict[int, Decimal]:
@@ -57,10 +57,9 @@ async def _closed(app_engine, monkeypatch) -> dict[int, Decimal]:
         async with app_engine.connect() as conn:
             book = await paper_book.load_owned(conn, "owner", sid)
             held = net_positions([o.order.as_paper() for o in book], {}).positions
-            exits = [paper_store.NewOrder(int(p.key), "sell" if p.net_quantity > 0 else "buy", abs(p.net_quantity),
+            exits = [paper_store.NewOrder(int(p.instrument_id), "SELL" if p.net_quantity > 0 else "BUY", abs(p.net_quantity),
                                           EXIT_PRICE, "exit", EXIT_AT) for p in held if p.net_quantity]
-            assert exits
-            placed = await paper_store.place(conn, "owner", sid, exits)
+            placed = await paper_store.place(conn, "owner", sid, exits) if exits else book  # some seeds are flat
             await conn.commit()
         out[sid] = _pnl(placed)
     return out
