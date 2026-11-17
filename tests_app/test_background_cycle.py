@@ -167,7 +167,7 @@ class FakeGate:
     async def load(self, _w, _today):
         return background.GateLoad(alert_gate.GateRows((), 0))
 
-    async def apply(self, w, events, _ctx):
+    async def apply(self, w, events):
         self.events.extend((w.strategy_id, e) for e in events)
         return {}
 
@@ -1344,7 +1344,7 @@ async def _rebuilt_with(before, after, gate, queued=False):
     sid = listed[0][0].strategy_id
     if queued:
         w._gate[sid] = object()
-        w._gate_events[sid] = collections.deque([background.GateBatch(listed[0][0], (), None)])
+        w._gate_events[sid] = collections.deque([background.GateBatch(listed[0][0], ())])
     listed.append(_with_count(listed[0], after))
     await w._rebuild_safely()
     return w, sid

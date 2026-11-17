@@ -292,9 +292,9 @@ async def test_an_escalation_of_an_open_record_lapses_it_and_opens_the_worse_one
     with monkeypatch.context() as m:
         m.setattr(playbook_store, "open_suggestion", refused)
         with pytest.raises(RuntimeError, match="insert refused"):
-            await background.DbGateStore().apply(w, [worse], None)
+            await background.DbGateStore().apply(w, [worse])
     assert await _t03_rows(app_db_url, w.strategy_id, old) == [(old, "open", None, D("0.35"))]  # rolled back
-    opened = await background.DbGateStore().apply(w, [worse], None)
+    opened = await background.DbGateStore().apply(w, [worse])
     rows = await _t03_rows(app_db_url, w.strategy_id, old)
     assert rows == [(old, "lapsed", None, D("0.35")), (opened["T-03"], "open", "last", D("0.40"))], rows
 
@@ -313,7 +313,7 @@ async def test_a_record_acted_on_mid_session_makes_no_lapse_call_when_the_band_c
         return await real(*a, **k)
     monkeypatch.setattr(playbook_store, "lapse", counted)
     at = await _db_now(app_db_url)
-    assert await background.DbGateStore().apply(w, [alert_gate.Lapsed("T-03", at, D("0.20"))], None) == {}
+    assert await background.DbGateStore().apply(w, [alert_gate.Lapsed("T-03", at, D("0.20"))]) == {}
     assert calls == [] and await _t03_rows(app_db_url, w.strategy_id, old) == [(old, "acted_on", None, D("0.35"))]
 
 
@@ -723,9 +723,8 @@ async def test_an_escalation_lapses_the_old_record_as_superseded_by_worse_and_a_
     from ofo.errors.explanations import render_explanation  # noqa: PLC0415
     w, old = await _watched_and_fresh_t03(app_db_url, monkeypatch)
     at = await _db_now(app_db_url)
-    opened = await background.DbGateStore().apply(w, [alert_gate.Opened("T-03", at, 2, D("0.40"), D("0.41"), "last")],
-                                                  None)
-    await background.DbGateStore().apply(w, [alert_gate.Lapsed("T-03", at, D("0.20"))], None)
+    opened = await background.DbGateStore().apply(w, [alert_gate.Opened("T-03", at, 2, D("0.40"), D("0.41"), "last")])
+    await background.DbGateStore().apply(w, [alert_gate.Lapsed("T-03", at, D("0.20"))])
     async with app_db_url.connect() as conn:
         recs = {s.id: s for s in await playbook_store.suggestions(conn, "owner", w.strategy_id)}
     assert (recs[old].outcome, recs[old].lapse_reason) == ("lapsed", "superseded_by_worse")
@@ -740,7 +739,7 @@ async def test_a_yes_no_record_stores_the_confirming_reading_and_none_when_it_ha
     at = await _db_now(app_db_url)
     with_number = alert_gate.Opened("T-02", at, 0, None, True, shown_value=D("-500"), shown_threshold=D("0"))
     no_number = alert_gate.Opened("T-10b", at, 0, None, True)
-    opened = await background.DbGateStore().apply(w, [with_number, no_number], None)
+    opened = await background.DbGateStore().apply(w, [with_number, no_number])
     async with app_db_url.connect() as conn:
         recs = {s.id: s for s in await playbook_store.suggestions(conn, "owner", w.strategy_id)}
     assert (recs[opened["T-02"]].value, recs[opened["T-02"]].threshold) == (D("-500.0000"), D("0.0000"))

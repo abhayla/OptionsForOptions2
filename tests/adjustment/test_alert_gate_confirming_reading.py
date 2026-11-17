@@ -123,3 +123,19 @@ def test_an_opened_yes_no_record_carries_its_samples_number_as_the_limit():
     _, ev = _step(state, "10:41:30", _t02("9", "1"), True)
     [o] = [e for e in ev if isinstance(e, ag.Opened)]
     assert o.limit == D("0")
+
+
+def _tagged(sample: str) -> ag.RuleSpec:
+    return ag.RuleSpec("T-03", "ge", (D("0.30"),), sample=sample)
+
+
+def test_the_opened_and_held_events_carry_their_own_samples_context():
+    # #709 item 7: the record's words come from the check whose sample confirmed it, so the sample travels with it
+    state, _ = _step(ag.initial_state(), "10:04:30", _tagged("A"), D("0.35"))
+    state, ev = _step(state, "10:06:30", _tagged("B"), D("0.36"))
+    [o] = [e for e in ev if isinstance(e, ag.Opened)]
+    assert o.sample == "A"
+    state, _ = _step(ag.initial_state(), "09:16:30", _tagged("A"), D("0.35"))  # before the 09:20 quiet time
+    _, ev = _step(state, "09:17:30", _tagged("B"), D("0.36"))
+    [h] = [e for e in ev if isinstance(e, ag.Held)]
+    assert h.sample == "A"

@@ -648,20 +648,21 @@ class GateLoad:
 
 @dataclass(frozen=True)
 class GateContext:
-    """The last check's evaluation and state: an event processed on a later empty step takes its words from it."""
+    """One check's evaluation, state and strategy. It rides on each rule's sample (``RuleSpec.sample``) through the
+    gate, so an event takes its words from the check whose sample confirmed it, never from a later one (#709 item 7)."""
 
     evaluation: pe.Evaluation
     state: pe.StrategyState
+    watched: Watched
 
 
 @dataclass(frozen=True)
 class GateBatch:
-    """One gate step's events for one strategy, queued for the writer in step order (#636 r6): ``ctx`` is the check
-    the events take their words from, as at the step."""
+    """One gate step's events for one strategy, queued for the writer in step order (#636 r6). Each event carries its
+    own check (``event.sample``)."""
 
     watched: Watched
     events: tuple
-    ctx: GateContext | None
     queued_at: datetime.datetime | None = None  # the worker clock at the step (the oldest one's age is logged)
 
 
@@ -703,6 +704,49 @@ async def _lapse_open_of(db: Any, w: Watched, rule_id: str, reason: str) -> None
             await playbook_store.lapse(db, w.user_ref, rec.id, reason)
 
 
+@dataclass(frozen=True)
+class RecordFields:
+    """Every snapshot field of a stored record, from ONE check (the event's own sample); all None without one."""
+
+    trigger: str | None = None
+    stage_name: str | None = None
+    stage: str | None = None
+    cmp: str | None = None
+    label: str | None = None
+    unit: str | None = None
+    beyond: tuple | None = None
+    adjustments: int | None = None
+    extra: Mapping = dataclasses.field(default_factory=dict)  # approach / cost / unpriced, carry, target
+
+
+def record_fields(e: alert_gate.Opened | alert_gate.Held) -> RecordFields:
+    """#709 item 7: the record's words and figures from ``e.sample`` alone, the check whose sample confirmed it. A
+    sample that is not a ``GateContext`` (an event built with none) gives NO fields, never a guess from a later check:
+    a record with no condition words is visible, a record with another check's figures is wrong and looks right."""
+    from ofo_app.routes.adjustment_check import (  # noqa: PLC0415 - the screen's T-19 and target words
+        cheapest,
+        t19_record,
+        target_record,
+    )
+    ctx = e.sample
+    if not isinstance(ctx, GateContext):
+        log.warning("background: the %s event of %s carries no check; its record fields are left empty",
+                    type(e).__name__, e.rule_id)
+        return RecordFields()
+    ev, w = ctx.evaluation, ctx.watched
+    rv = next((v for v in ev.values if v.rule_id == e.rule_id), None)
+    flag = next((r for r in ev.results if isinstance(r, pe.Flag) and r.rule_id == e.rule_id), None)
+    trigger, cmp, label, unit = check.record_words(w.body, e.rule_id, rv)
+    t19 = t19_record(trigger or "", cheapest(ctx.state))
+    if not t19 and rv is not None and rv.approaches:  # a day rule names its approaches (GC-IC1 1a)
+        t19 = {"approach": DAY_APPROACH_SEPARATOR.join(rv.approaches)}
+    if rv is not None and rv.carry is not None:  # the carry check's content (GC-IC1 1b)
+        t19 = {**t19, "carry": check.carry_record(rv.carry)}
+    return RecordFields(trigger, ev.stage_name, flag.stage_name if flag is not None else ev.stage_name, cmp, label,
+                        unit, None if rv is None else rv.beyond, _count_of(w.tracked),
+                        {**t19, **target_record(trigger or "", ctx.state)})
+
+
 class DbGateStore:
     """The real gate store: ``playbook_store`` and the pin store, one session per call."""
 
@@ -723,19 +767,12 @@ class DbGateStore:
             memory = await playbook_store.rule_states(db, w.user_ref, w.strategy_id)
         return GateLoad(rows, held, pin.style, until, watches, memory)
 
-    async def apply(self, w: Watched, events: Iterable[alert_gate.Event], ctx: GateContext | None) -> dict[str, int]:
+    async def apply(self, w: Watched, events: Iterable[alert_gate.Event]) -> dict[str, int]:
         """The gate's events in ONE transaction; rule id -> id of each record opened. An escalation while the
-        previous record of the rule is still open lapses that one first (REQ-112: one open record per rule)."""
+        previous record of the rule is still open lapses that one first (REQ-112: one open record per rule). Every
+        field of a record's snapshot comes from the event's own sample (``record_fields``)."""
         from ofo_app import playbook_store  # noqa: PLC0415 - database layer at run time
         from ofo_app.db import get_sessionmaker  # noqa: PLC0415
-        from ofo_app.routes.adjustment_check import (  # noqa: PLC0415 - the screen's T-19 and target words
-            cheapest,
-            t19_record,
-            target_record,
-        )
-        values = {} if ctx is None else {v.rule_id: v for v in ctx.evaluation.values}
-        flags = {} if ctx is None else {r.rule_id: r for r in ctx.evaluation.results if isinstance(r, pe.Flag)}
-        stage = None if ctx is None else ctx.evaluation.stage_name
         source = playbook_store.SOURCE_SYSTEM if w.is_system else playbook_store.SOURCE_OWN
         opened: dict[str, int] = {}
         async with get_sessionmaker()() as db:
@@ -743,33 +780,25 @@ class DbGateStore:
                 if isinstance(e, alert_gate.Lapsed):
                     await _lapse_open_of(db, w, e.rule_id, playbook_store.LAPSE_CONDITION_STOPPED)
                     continue
-                rv = values.get(e.rule_id)
-                trigger, cmp, label, unit = check.record_words(w.body, e.rule_id, rv)
+                f = record_fields(e)
                 # GC-ICFIX: the event's own numbers (the confirming sample's), never the latest check's
                 value = _quantized(e.value if isinstance(e.value, Decimal) else e.shown_value)
                 threshold = _quantized(getattr(e, "threshold", None))
                 if threshold is None:  # 0 is a real threshold (T-02), so no `or`
                     threshold = _quantized(e.shown_threshold)
                 if isinstance(e, alert_gate.Held):
-                    await playbook_store.record_held(db, w.user_ref, w.strategy_id, e.rule_id, trigger_id=trigger,
-                                                     stage=stage, value=value, threshold=threshold, reason=e.reason)
+                    await playbook_store.record_held(db, w.user_ref, w.strategy_id, e.rule_id, trigger_id=f.trigger,
+                                                     stage=f.stage_name, value=value, threshold=threshold,
+                                                     reason=e.reason)
                     continue
                 if e.worse is not None:
                     await _lapse_open_of(db, w, e.rule_id, playbook_store.LAPSE_SUPERSEDED_BY_WORSE)  # finding 5
-                flag = flags.get(e.rule_id)
-                t19 = {} if ctx is None else t19_record(trigger or "", cheapest(ctx.state))
-                if not t19 and rv is not None and rv.approaches:  # a day rule names its approaches (GC-IC1 1a)
-                    t19 = {"approach": DAY_APPROACH_SEPARATOR.join(rv.approaches)}
-                if rv is not None and rv.carry is not None:  # the carry check's content (GC-IC1 1b)
-                    t19 = {**t19, "carry": check.carry_record(rv.carry)}
                 rec = await playbook_store.open_suggestion(
-                    db, w.user_ref, w.strategy_id, e.rule_id, trigger_id=trigger,
-                    stage=flag.stage_name if flag is not None else stage, value=value, threshold=threshold,
-                    group=gate_group(w.strategy_id, e.at), source=source,
-                    cmp=cmp, label=label, unit=unit, worse=e.worse,
-                    beyond=None if rv is None else rv.beyond, limit=_quantized(e.limit),
-                    adjustments=_count_of(w.tracked), **t19,
-                    **({} if ctx is None else target_record(trigger or "", ctx.state)))
+                    db, w.user_ref, w.strategy_id, e.rule_id, trigger_id=f.trigger, stage=f.stage, value=value,
+                    threshold=threshold, group=gate_group(w.strategy_id, e.at), source=source,
+                    cmp=f.cmp, label=f.label, unit=f.unit, worse=e.worse, beyond=f.beyond,
+                    limit=_quantized(e.limit),
+                    adjustments=_count_of(w.tracked) if f.adjustments is None else f.adjustments, **f.extra)
                 opened[e.rule_id] = rec.id
             await db.commit()
         return opened
@@ -1415,8 +1444,11 @@ class Worker:
             return False
         ev = await self._evaluate_and_write(w, state, prefs)
         self._style[sid], self._preset[sid] = style, preset
-        self._gate_ctx[sid] = GateContext(ev, state)
-        await self._gate_step(w, now, preset, gate_readings.readings(ev))
+        ctx = self._gate_ctx[sid] = GateContext(ev, state, w)
+        # the check travels with each rule's sample: the event it confirms takes its words from it (#709 item 7)
+        sampled = {rid: (dataclasses.replace(spec, sample=ctx), v)
+                   for rid, (spec, v) in gate_readings.readings(ev).items()}
+        await self._gate_step(w, now, preset, sampled)
         return True
 
     async def _gate_step(self, w: Watched, now: datetime.datetime, preset: alert_gate.Preset,
@@ -1438,7 +1470,7 @@ class Worker:
         self._gate[sid] = new
         if events:  # #636 r6: queued in step order for the ONE writer; the check never waits for the database
             self._gate_events.setdefault(sid, collections.deque()).append(
-                GateBatch(w, tuple(events), self._gate_ctx.get(sid), now))
+                GateBatch(w, tuple(events), now))
             self._write_wake.set()
 
     async def _write_gate_batch(self, sid: int) -> bool:
@@ -1449,7 +1481,7 @@ class Worker:
         batch = queue[0]
         try:
             async with held(self.db_gate, GATE_WRITER):
-                opened = await self._gate_store.apply(batch.watched, batch.events, batch.ctx)
+                opened = await self._gate_store.apply(batch.watched, batch.events)
         except Exception as exc:  # contained: retried in order at the next wake, never dropped, never merged
             fails = self._gate_fails[sid] = self._gate_fails.get(sid, 0) + 1
             if fails == 1:  # one traceback per strategy per outage; the retries every wake are counted
