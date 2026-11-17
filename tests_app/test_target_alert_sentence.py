@@ -314,3 +314,62 @@ def test_a_held_target_flag_of_an_old_record_with_no_limit_keeps_the_rung():
     held = _held_rung("25.0000", None)
     text = str(result_out(held, "w", None, body=BODY, target=_live_target())["condition"])
     assert "target of 25%" in text
+
+
+# ---- #709 item 7: the record's fields come from the confirming sample ----
+def _ctx(tag: str, stage: str, adjustments: int, approach: str, before: str, beyond_kind: str, up: str):
+    label = f"Label {tag}"
+    body = {"triggers": {t: {"label": label, "unit": "%"} for t in ("T-03", "T-07", "T-19")}}
+    rvs = [SimpleNamespace(rule_id=t, trigger_id=t, value=D("1.7700"), threshold=D("1.0000"), cmp="ge",
+                           beyond=(beyond_kind, D("23000"), D("5")), approaches=(),
+                           carry=check.pe.CarryFigures(D(up), D("-" + up))) for t in ("T-03", "T-07", "T-19")]
+    state = pe.StrategyState(expiry_kind="weekly", pnl=D(before), pnl_after=D("-1"), stops=None,
+                             adjustment_approach=approach, adjustment_cost=D("12.50"), adjustment_unpriced=0)
+    watched = SimpleNamespace(user_ref="owner", strategy_id=143, body=body, is_system=True,
+                              tracked=SimpleNamespace(adjustments_used=adjustments))
+    return background.GateContext(SimpleNamespace(values=rvs, results=[], stage_name=stage), state, watched)
+
+
+@pytest.mark.asyncio
+async def test_the_record_takes_its_fields_from_the_confirming_check(monkeypatch):
+    stamped: dict = {}
+
+    async def open_suggestion(db, user, sid, rule, **fields):
+        stamped[rule] = fields
+        return SimpleNamespace(id=1)
+
+    monkeypatch.setattr(playbook_store, "open_suggestion", open_suggestion)
+    monkeypatch.setattr(app_db, "get_sessionmaker", lambda: _Session)
+    first = _ctx("A", "Early", 1, "A-27", "61.75", "CE", "100")
+    later = _ctx("B", "Late", 2, "A-28", "99.00", "PE", "5")
+    at = lambda hhmm: datetime.datetime.combine(AT.date(), datetime.time.fromisoformat(hhmm), tzinfo=alert_gate.IST)  # noqa: E731
+    specs = lambda ctx: {t: (alert_gate.RuleSpec(t, "ge", (D("1"),), sample=ctx), D("1.77")) for t in ("T-03", "T-07", "T-19")}  # noqa: E731
+    state, _ = alert_gate.step(alert_gate.initial_state(), now=at("10:04:30"), preset=alert_gate.INTRADAY, readings=specs(first))
+    _, events = alert_gate.step(state, now=at("10:06:30"), preset=alert_gate.INTRADAY, readings=specs(later))
+    assert len(events) == 3
+    watched = later.watched  # the later check's strategy, as the writer holds it
+    await background.DbGateStore().apply(watched, events)
+    for rule in ("T-03", "T-07", "T-19"):
+        f = stamped[rule]
+        assert (f["label"], f["stage"], f["adjustments"], f["cmp"], f["unit"]) == ("Label A", "Early", 1, "ge", "%")
+        assert f["beyond"] == ("CE", D("23000"), D("5"))
+        assert f["carry"] == check.carry_record(first.evaluation.values[0].carry)
+    assert (stamped["T-19"]["approach"], stamped["T-19"]["approach_cost"]) == ("A-27", D("12.50"))
+    assert stamped["T-07"]["target"]["before"] == "61.75"
+
+
+def test_the_store_apply_takes_no_context_parameter():
+    assert list(inspect.signature(background.DbGateStore.apply).parameters) == ["self", "w", "events"]
+    assert "ctx" not in {f.name for f in dataclasses.fields(background.GateBatch)}
+
+
+def test_a_held_t19_flag_names_its_records_approach_not_the_live_one():
+    rec = playbook_store.Suggestion(11, 143, "T-19", "T-19", "Early", D("0.9"), D("0.5"), AT, "open", None,
+                                    [{"cmp": "ge", "label": "Record label", "unit": "x", "approach": "A-27",
+                                      "approach_cost": "12.50", "unpriced": 0}])
+    ev = SimpleNamespace(values=[SimpleNamespace(rule_id="T-19", cmp="ge")], results=[], clear={"T-19"})
+    [held] = [r for r in check_route.shown_results(ev, [rec]) if isinstance(r, check_route.HeldFlag)]
+    live = {"triggers": {"T-19": {"label": "Live label", "unit": "y"}}}
+    text = str(result_out(held, None, body=live, cheapest=("A-28", D("99"), 0))["condition"])
+    assert "12.50" in text and "99.00" not in text  # the record's approach and cost, not the live check's (A-28)
+    assert "Record label" in text and "Live label" not in text
