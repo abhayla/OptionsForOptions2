@@ -23,6 +23,11 @@ _SELECT_OWNED = text(
     "SELECT o.id, o.strategy_id, o.contract_id, o.side, o.quantity, o.price, o.kind, o.placed_at, o.created_at, "
     "o.reason, o.trigger_id FROM public.paper_orders AS o JOIN public.strategies AS s ON s.id = o.strategy_id "
     "WHERE o.strategy_id = :id AND s.user_ref = :user_ref AND s.deleted_at IS NULL ORDER BY o.id")
+_SELECT_OWNED_MANY = text(
+    "SELECT o.id, o.strategy_id, o.contract_id, o.side, o.quantity, o.price, o.kind, o.placed_at, o.created_at, "
+    "o.reason, o.trigger_id FROM public.paper_orders AS o JOIN public.strategies AS s ON s.id = o.strategy_id "
+    "WHERE o.strategy_id = ANY(CAST(:ids AS BIGINT[])) AND s.user_ref = :user_ref AND s.deleted_at IS NULL "
+    "ORDER BY o.id")
 
 
 @dataclass(frozen=True)
@@ -66,3 +71,15 @@ def order_from_row(r: Any) -> StoredOrder:
 async def load_owned(conn: Any, user_ref: str, strategy_id: int) -> tuple[StoredOrder, ...]:
     rows = (await conn.execute(_SELECT_OWNED, {"id": strategy_id, "user_ref": user_ref})).all()
     return tuple(order_from_row(r) for r in rows)
+
+
+async def load_owned_many(conn: Any, user_ref: str, strategy_ids: list[int]) -> dict[int, tuple[StoredOrder, ...]]:
+    """``load_owned`` for many strategies in ONE query: same owner filter, same order (by order id) within each
+    strategy. Ids that are not ``user_ref``'s, deleted, missing or without orders are absent from the result."""
+    if not strategy_ids:
+        return {}
+    rows = (await conn.execute(_SELECT_OWNED_MANY, {"ids": list(strategy_ids), "user_ref": user_ref})).all()
+    out: dict[int, list[StoredOrder]] = {}
+    for r in rows:
+        out.setdefault(int(r.strategy_id), []).append(order_from_row(r))
+    return {sid: tuple(v) for sid, v in out.items()}

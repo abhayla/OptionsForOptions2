@@ -439,9 +439,9 @@ async def list_strategies(db: Annotated[Any, Depends(get_db)], user_ref: Annotat
                           rates: Annotated[Any, Depends(load_charge_rates)]) -> StrategyListOut:
     async def work():
         rows = await store.list_strategies(db, user_ref)
-        from ofo_app.routes.adjustment_history import closed_figures  # noqa: PLC0415 - it imports routes.paper
+        from ofo_app.routes.adjustment_history import closed_figures_many  # noqa: PLC0415 - it imports routes.paper
         rates_ok = rates if isinstance(rates, ChargeRates) else None
-        closed = {r.id: await closed_figures(db, user_ref, r.id, rates_ok) for r in rows if r.status == "closed"}
+        closed = await closed_figures_many(db, user_ref, [r.id for r in rows if r.status == "closed"], rates_ok)
         tracked = await _tracked_ids(db, [r.id for r in rows])
         opened = await _open_opportunities(db, user_ref)
         return StrategyListOut.model_validate({"strategies": [
