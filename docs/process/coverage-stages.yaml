@@ -696,6 +696,7 @@ issues:
   "#715": S6.7  # GC-ICFIX: add a nightly audit query for flat draft strategies; list route loops once per closed row; migration 0053 exclusion narrower than the delete rule
   "#716": S6.7  # GC-ICFIX: Paper tab opens on a real server error when broker state is 'partial'; adjustments marker goes N, N+1, N around an exit
   "#717": S6.7  # GC-ICFIX: checks not reachable on screen so far, and not done (u404 clear-out, issue 26 measurement, live-day items)
+  "#719": S6.7  # Broker status shows live prices 'partial / feed idle' while prices flow to the background watcher
 
 # Work items whose status is not done.
 work_items:
