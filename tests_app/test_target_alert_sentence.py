@@ -184,10 +184,10 @@ async def test_the_worker_stores_both_figures_with_the_record(monkeypatch):
     monkeypatch.setattr(check_route, "cheapest", lambda state: None)
     rv = SimpleNamespace(rule_id="T-07", trigger_id="T-07", value=D("1.7700"), threshold=D("1.0000"), cmp="ge",
                          beyond=None, approaches=(), carry=None)
-    ctx = background.GateContext(SimpleNamespace(values=[rv], results=[], stage_name="Early"), _state())
     watched = SimpleNamespace(user_ref="owner", strategy_id=143, body=BODY, is_system=True,
                               tracked=SimpleNamespace(adjustments_used=0))
-    await background.DbGateStore().apply(watched, [alert_gate.Opened("T-07", AT, 1, D("1"), D("1.77"), None)], ctx)
+    ctx = background.GateContext(SimpleNamespace(values=[rv], results=[], stage_name="Early"), _state(), watched)
+    await background.DbGateStore().apply(watched, [alert_gate.Opened("T-07", AT, 1, D("1"), D("1.77"), None, sample=ctx)])
     assert stamped["target"] == {"before": "61.75", "after": "-218.85", "reason": None}
 
 

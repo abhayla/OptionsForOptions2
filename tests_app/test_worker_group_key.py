@@ -27,7 +27,7 @@ async def test_a_worker_opened_record_renders_in_the_inbox(app_db_url, monkeypat
     w = Watched(user_ref="owner", strategy_id=sid, tracked=None, body={}, is_system=True, feed_owner="owner",
                 strategy_layer=None, entry_facts=None, resolved=None)
     opened = await DbGateStore().apply(
-        w, [alert_gate.Opened("T-01", AT, 0, Decimal("0.5000"), Decimal("0.3416"))], None)
+        w, [alert_gate.Opened("T-01", AT, 0, Decimal("0.5000"), Decimal("0.3416"))])
     assert list(opened) == ["T-01"]
     status, body = await _call("GET", "/api/adjustment-opportunities")
     assert status == OK, body

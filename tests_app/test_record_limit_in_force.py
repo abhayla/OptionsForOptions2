@@ -64,11 +64,11 @@ async def test_the_worker_stamps_the_limit_in_force_beside_the_gate_rung(monkeyp
     monkeypatch.setattr(check_route, "t19_record", lambda trigger, cheap: {})
     rv = SimpleNamespace(rule_id="T-03", trigger_id="T-03", value=D("0.3537"), threshold=D("0.32"), cmp="ge",
                          beyond=None, approaches=(), carry=None)
-    ctx = background.GateContext(SimpleNamespace(values=[rv], results=[], stage_name="Early"), None)
     watched = SimpleNamespace(user_ref="owner", strategy_id=123, body={}, is_system=True,
                               tracked=SimpleNamespace(adjustments_used=BOOKED))
-    event = alert_gate.Opened("T-03", AT, 1, D("0.35"), D("0.3537"), None, limit=D("0.30"))
-    await background.DbGateStore().apply(watched, [event], ctx)
+    ctx = background.GateContext(SimpleNamespace(values=[rv], results=[], stage_name="Early"), None, watched)
+    event = alert_gate.Opened("T-03", AT, 1, D("0.35"), D("0.3537"), None, limit=D("0.30"), sample=ctx)
+    await background.DbGateStore().apply(watched, [event])
     assert stamped["threshold"] == D("0.3500")
     assert stamped["limit"] == D("0.3000")
     assert stamped["adjustments"] == BOOKED  # the position the record was raised for (#685 item 3)

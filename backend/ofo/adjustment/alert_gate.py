@@ -52,6 +52,9 @@ class RuleSpec:
     #: so the store never reads them from a later check; None when the sample had no number (a clock rule).
     shown_value: Decimal | None = field(default=None, compare=False)
     shown_threshold: Decimal | None = field(default=None, compare=False)
+    #: #709 item 7: what the check that took THIS sample knew (the worker's ``GateContext``); the gate never reads it,
+    #: it only carries it onto the event the sample confirms, so a record's words never come from a later check
+    sample: object = field(default=None, compare=False)
 
 
 def _more_severe(cmp: Cmp, a: Decimal, b: Decimal) -> bool:
@@ -85,6 +88,7 @@ class Opened:
     shown_value: Decimal | None = None  # GC-ICFIX: the confirming sample's own numbers (see RuleSpec)
     shown_threshold: Decimal | None = None
     limit: Decimal | None = None  # the limit of the confirming sample (ladder[0], or a yes/no rule's own number)
+    sample: object = field(default=None, compare=False)  # RuleSpec.sample of the confirming sample
 
 
 @dataclass(frozen=True)
@@ -97,6 +101,7 @@ class Held:
     shown_value: Decimal | None = None
     shown_threshold: Decimal | None = None
     threshold: Decimal | None = None  # the rung of the held sample (a ladder rule); None for a yes/no rule
+    sample: object = field(default=None, compare=False)  # RuleSpec.sample of the held sample
 
 
 @dataclass(frozen=True)
@@ -292,14 +297,14 @@ def _decide(  # noqa: PLR0913 - one close's inputs
             return state.with_rule(rule_id, rule), []
         rule = replace(rule, hold=_Hold(reason, level, threshold, ladder=_ladder_key(spec)))
         return state.with_rule(rule_id, rule), [Held(rule_id, t, reason, value, level, spec.shown_value,
-                                                    spec.shown_threshold, threshold)]
+                                                    spec.shown_threshold, threshold, spec.sample)]
     rule = replace(rule, record=_Record(level, threshold, t, ladder=_ladder_key(spec)), cleared=False, hold=None)
     state = state.with_rule(rule_id, rule)
     if not cap_exempt(rule_id):  # ADR-267: a watch / day rule is not counted against the cap
         state = replace(state, opened_today=state.opened_today + 1)
     limit = spec.ladder[0] if spec.ladder else spec.shown_threshold
     return state, [Opened(rule_id, t, level, threshold, value, worse, spec.shown_value,
-                                spec.shown_threshold, limit)]
+                                spec.shown_threshold, limit, spec.sample)]
 
 
 def step(

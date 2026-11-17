@@ -51,7 +51,7 @@ class _Store:
     async def lapse_changed(self, _w):
         return False
 
-    async def apply(self, w, events, _ctx):
+    async def apply(self, w, events):
         await asyncio.sleep(0)
         if self.fail:
             self.fail -= 1
@@ -382,7 +382,7 @@ class _IdStore:
     async def lapse_changed(self, _w):
         return False
 
-    async def apply(self, w, events, _ctx):
+    async def apply(self, w, events):
         self.order.append(("gate", w.strategy_id))
         return {e.rule_id: next(self.ids) for e in events if isinstance(e, background.alert_gate.Opened)}
 
@@ -401,8 +401,8 @@ async def test_a_record_id_goes_to_its_own_record_and_a_dismiss_of_it_never_sile
     first = ag.Opened("T-01", at, 0, None, None)
     worse = ag.Opened("T-01", at + datetime.timedelta(minutes=1), 1, None, None, worse="last")
     w._gate[sid] = ag.initial_state().with_rule("T-01", ag._Rule(record=ag._Record(1, None, worse.at)))  # the worse
-    w._gate_events[sid] = collections.deque([background.GateBatch(wd, (first,), None, at),
-                                             background.GateBatch(wd, (worse,), None, at)])
+    w._gate_events[sid] = collections.deque([background.GateBatch(wd, (first,), at),
+                                             background.GateBatch(wd, (worse,), at)])
     assert await w._write_gate_batch(sid) is True  # 101 written
     assert w._gate[sid].rule("T-01").record.record_id is None  # not put on the worse record
     after_dismiss = ag.dismiss(w._gate[sid], "T-01", 101)  # the rebuild read record 101 as dismissed
@@ -425,13 +425,13 @@ async def test_alert_events_are_written_before_rule_memory_writes_at_every_step(
         order.append(("memory", wd.strategy_id))
         if len([o for o in order if o[0] == "memory"]) == 1:  # a close lands while the memory writes run
             w._gate_events.setdefault(s2, collections.deque()).append(
-                background.GateBatch(memory[1], (background.alert_gate.Lapsed("T-01", now[0], None),), None, now[0]))
+                background.GateBatch(memory[1], (background.alert_gate.Lapsed("T-01", now[0], None),), now[0]))
     w._recorder = recorder
     w._pending.clear()
     for m in memory:
         w._pending[m.strategy_id] = (m, None, None, _ev_stub())
     w._gate_events[s1] = collections.deque([background.GateBatch(memory[0], (background.alert_gate.Lapsed(
-        "T-01", now[0], None),), None, now[0])])
+        "T-01", now[0], None),), now[0])])
     await w.drain_writes()
     assert order == [("gate", s1), ("memory", s1), ("gate", s2), ("memory", s2)], order
 
@@ -470,7 +470,7 @@ async def test_a_strategy_whose_list_read_failed_keeps_its_queued_events_and_one
     ok, failing, left = (m.strategy_id for m in w.monitors)
     for m in w.monitors:
         w._gate_events[m.strategy_id] = collections.deque([background.GateBatch(
-            m, (background.alert_gate.Lapsed("T-01", now[0], None),), None, now[0])])
+            m, (background.alert_gate.Lapsed("T-01", now[0], None),), now[0])])
 
     monkeypatch.setattr(db, "get_sessionmaker", lambda: _IdleSession)
 
