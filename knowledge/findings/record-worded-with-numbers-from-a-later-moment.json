@@ -2,21 +2,25 @@
  "id": "record-worded-with-numbers-from-a-later-moment",
  "scope": "project",
  "class": "A record of a past event (a stored alert, a held rule row) that is worded or stored with figures read at a later moment: the figure and the event no longer belong together, so the text can contradict the record's own numbers.",
- "mechanism": "The sentence or the stored field fell back to the latest check's value, threshold or limit instead of the sample that confirmed the event, and a held ladder row stored no rung of its own.",
+ "mechanism": "The sentence or the stored field fell back to the latest check's value, threshold or limit instead of the sample that confirmed the event, and a held ladder row stored no rung of its own. Second instance (2026-11-17, #709 item 7): the record's first timeline entry WAS a write-once snapshot, but the writer filled it from the GateContext of the check that processed the candle close (background.py set _gate_ctx before alert_gate.step closed an earlier check's pending sample), so eight fields came from one check too late; the shape is 'right storage, wrong moment', not missing storage.",
  "first_seen": {
   "date": "2026-11-15",
   "where": "GC-ICFIX screen walk-through, strategy 149 trade page (test-data copy), then code review of commits 870a3170..871d0baa",
   "evidence": "Screen: 'Profit before charges -Rs 2,275.00 reached your target of 50%' (a loss that 'reached' a target; the held sentence used the live loss). Review (Sonnet, Tier B): background.py stored limit from the latest check; a Held row for a ladder rule stored threshold None (restore_held then could not end the hold by the band). Opus Tier A confirmed the in-branch regression was fixed in 15967796."
  },
- "fix": "Held target sentence uses the record's own figures and the user's stored target (5eac813a, 13649f51); a stored yes/no alert keeps the confirming sample's value, threshold and limit (871d0baa); a held ladder row keeps its rung (15967796).",
+ "fix": "Held target sentence uses the record's own figures and the user's stored target (5eac813a, 13649f51); a stored yes/no alert keeps the confirming sample's value, threshold and limit (871d0baa); a held ladder row keeps its rung (15967796). 2026-11-17: the confirming check travels with the sample (alert_gate RuleSpec/Opened/Held carry it; background.record_fields reads only e.sample; GateBatch/apply lost ctx); the check screen's held flag is worded only from its stored record (branch fix/record-fields-confirming-sample, 4bc6dc59, 775953a9, b0a3bfa0, 5194c75b).",
  "detection": {
-  "status": "unguarded",
+  "status": "guarded",
   "checks": [
    "tests_app/test_target_alert_sentence.py",
    "tests_app/test_alert_gate_confirming_reading.py",
-   "tests_app/test_background_worker.py::test_a_yes_no_record_stores_the_confirming_reading_and_none_when_it_had_no_number"
+   "tests_app/test_background_worker.py::test_a_yes_no_record_stores_the_confirming_reading_and_none_when_it_had_no_number",
+   "tests/adjustment/test_alert_gate_confirming_reading.py::test_the_opened_and_held_events_carry_their_own_samples_context",
+   "tests_app/test_target_alert_sentence.py::test_the_record_takes_its_fields_from_the_confirming_check",
+   "tests_app/test_worker_attaches_confirming_check.py",
+   "tests_app/test_record_limit_in_force.py"
   ],
-  "note": "Guarded for the figures those tests name (held target sentence, yes/no value, limit, held rung). NOT guarded for eight more record fields that still read the latest check: target figures, T-19 approach and cost, approaches, carry, beyond, label/unit, stage, adjustments; and a held T-19 flag still gets the live cheapest approach. Parked as an issue."
+  "note": "Guarded for every record field and the held flag (2026-11-17): mutations 'gate closes with the newest sample', 'fields from the writer's strategy' and 'worker attaches no sample' each fail a test (Opus Tier A review + fix round). Not guarded: records stored before 2026-11-17 keep their later-check figures (no sample to restore); the clock alert's time (T-10b, #709 item 8) is still not stored."
  },
  "spec_ref": [
   "spec/decisions/ADR-237.md",
