@@ -317,12 +317,16 @@ def test_a_held_target_flag_of_an_old_record_with_no_limit_keeps_the_rung():
 
 
 # ---- #709 item 7: the record's fields come from the confirming sample ----
-def _ctx(tag: str, stage: str, adjustments: int, approach: str, before: str, beyond_kind: str, up: str):
+RULES = ("T-03", "T-07", "T-19")
+
+
+def _ctx(tag: str, stage: str, adjustments: int, figures: tuple[str, str, str, str]):
+    approach, before, beyond_kind, up = figures
     label = f"Label {tag}"
-    body = {"triggers": {t: {"label": label, "unit": "%"} for t in ("T-03", "T-07", "T-19")}}
+    body = {"triggers": {t: {"label": label, "unit": "%"} for t in RULES}}
     rvs = [SimpleNamespace(rule_id=t, trigger_id=t, value=D("1.7700"), threshold=D("1.0000"), cmp="ge",
                            beyond=(beyond_kind, D("23000"), D("5")), approaches=(),
-                           carry=check.pe.CarryFigures(D(up), D("-" + up))) for t in ("T-03", "T-07", "T-19")]
+                           carry=check.pe.CarryFigures(D(up), D("-" + up))) for t in RULES]
     state = pe.StrategyState(expiry_kind="weekly", pnl=D(before), pnl_after=D("-1"), stops=None,
                              adjustment_approach=approach, adjustment_cost=D("12.50"), adjustment_unpriced=0)
     watched = SimpleNamespace(user_ref="owner", strategy_id=143, body=body, is_system=True,
@@ -340,16 +344,16 @@ async def test_the_record_takes_its_fields_from_the_confirming_check(monkeypatch
 
     monkeypatch.setattr(playbook_store, "open_suggestion", open_suggestion)
     monkeypatch.setattr(app_db, "get_sessionmaker", lambda: _Session)
-    first = _ctx("A", "Early", 1, "A-27", "61.75", "CE", "100")
-    later = _ctx("B", "Late", 2, "A-28", "99.00", "PE", "5")
+    first = _ctx("A", "Early", 1, ("A-27", "61.75", "CE", "100"))
+    later = _ctx("B", "Late", 2, ("A-28", "99.00", "PE", "5"))
     at = lambda hhmm: datetime.datetime.combine(AT.date(), datetime.time.fromisoformat(hhmm), tzinfo=alert_gate.IST)  # noqa: E731
-    specs = lambda ctx: {t: (alert_gate.RuleSpec(t, "ge", (D("1"),), sample=ctx), D("1.77")) for t in ("T-03", "T-07", "T-19")}  # noqa: E731
+    specs = lambda ctx: {t: (alert_gate.RuleSpec(t, "ge", (D("1"),), sample=ctx), D("1.77")) for t in RULES}  # noqa: E731
     state, _ = alert_gate.step(alert_gate.initial_state(), now=at("10:04:30"), preset=alert_gate.INTRADAY, readings=specs(first))
     _, events = alert_gate.step(state, now=at("10:06:30"), preset=alert_gate.INTRADAY, readings=specs(later))
-    assert len(events) == 3
+    assert len(events) == len(RULES)
     watched = later.watched  # the later check's strategy, as the writer holds it
     await background.DbGateStore().apply(watched, events)
-    for rule in ("T-03", "T-07", "T-19"):
+    for rule in RULES:
         f = stamped[rule]
         assert (f["label"], f["stage"], f["adjustments"], f["cmp"], f["unit"]) == ("Label A", "Early", 1, "ge", "%")
         assert f["beyond"] == ("CE", D("23000"), D("5"))
