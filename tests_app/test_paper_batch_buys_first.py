@@ -173,3 +173,20 @@ async def test_an_exit_that_needs_an_add_of_the_same_batch_is_refused_and_nothin
     with pytest.raises(Exception, match=r"exit_exceeds_open|EXIT_EXCEEDS_OPEN|exit of BUY"):
         await paper_store.place(db, user, sid, [_new(c[1], "SELL", 65, "9.00", "open"), _new(c[1], "BUY", 130, "8.00", "exit")])
     assert len(await _book(db, sid)) == 4
+
+
+async def test_place_checked_records_a_mixed_batch_buys_first(db, monkeypatch):
+    """D-02 review: the batch goes through the one write both user routes use, against an open position."""
+    from ofo_app import paper_limit  # noqa: PLC0415
+
+    async def no_max(*_a, **_k):
+        return {"guards": {}}
+
+    async def reader(*_a, **_k):
+        return None
+    monkeypatch.setattr(paper_limit, "_plan_body", no_max)
+    user, sid, c = await _held(db)
+    await paper_limit.place_checked(
+        db, user, sid, [_new(c[0], "SELL", 65, "11.00", "exit"), _new(c[1], "BUY", 65, "19.00", "exit")],
+        entry=None, ctx=None, at=AT, reader=reader, rates=None)
+    assert (await _book(db, sid))[4:] == [(c[1], "BUY", "exit"), (c[0], "SELL", "exit")]

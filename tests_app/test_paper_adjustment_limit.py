@@ -41,6 +41,10 @@ def _post(cid: int, side: str, price: str = "50.00") -> dict:
     return {"contract_id": cid, "side": side, "quantity": 65, "price": price, "kind": "exit"}
 
 
+def _open(cid: int, side: str) -> dict:
+    return {"contract_id": cid, "side": side, "quantity": 65, "price": "50.00", "kind": "open"}
+
+
 async def _book(db, *, max_adjustments: int | None, adjustments: int = 2):
     """A condor with its entry and ``adjustments`` one-leg exits already stored, and a plan with the given maximum."""
     app, stored, *_ = await _setup(db)
@@ -68,9 +72,9 @@ async def test_a_third_adjustment_is_refused_when_the_plans_maximum_is_two(db):
     app, stored, ids = await _book(db, max_adjustments=2)
     before = await _count(db, stored.id)
     async with _client(app) as c:
-        reply = await c.post(f"/paper/strategies/{stored.id}/orders", json={"orders": [_post(ids[2], "BUY")]})
+        reply = await c.post(f"/paper/strategies/{stored.id}/orders", json={"orders": [_open(ids[0], "SELL")]})
     assert reply.status_code == HTTPStatus.UNPROCESSABLE_ENTITY, reply.text
-    assert "at most 2 adjustments" in reply.text
+    assert "plan maximum of 2 reached" in reply.text
     assert await _count(db, stored.id) == before
 
 
@@ -128,9 +132,9 @@ async def test_no_plan_uses_the_playbook_default_the_plan_sheet_prefills(db, mon
         return body
     monkeypatch.setattr(paper_limit, "_plan_body", default_body)
     async with _client(app) as c:
-        reply = await c.post(f"/paper/strategies/{stored.id}/orders", json={"orders": [_post(ids[2], "BUY")]})
+        reply = await c.post(f"/paper/strategies/{stored.id}/orders", json={"orders": [_open(ids[0], "SELL")]})
     assert reply.status_code == HTTPStatus.UNPROCESSABLE_ENTITY, reply.text
-    assert "at most 2 adjustments" in reply.text
+    assert "plan maximum of 2 reached" in reply.text
 
 
 async def test_a_plan_with_no_maximum_does_not_limit(db, monkeypatch):
@@ -180,9 +184,9 @@ async def test_the_limit_judges_the_condor_as_it_was_before_the_batch(db, only_t
     before = await _count(db, stored.id)
     async with _client(app) as c:
         reply = await c.post(f"/paper/strategies/{stored.id}/orders",
-                             json={"orders": [_post(ids[0], "BUY"), _post(ids[1], "SELL")]})
+                             json={"orders": [_post(ids[0], "BUY"), _post(ids[1], "SELL"), _open(ids[0], "SELL")]})
     assert reply.status_code == HTTPStatus.UNPROCESSABLE_ENTITY, reply.text
-    assert "at most 2 adjustments" in reply.text
+    assert "plan maximum of 2 reached" in reply.text
     assert await _count(db, stored.id) == before
 
 
@@ -191,9 +195,8 @@ async def test_the_tracking_exit_judges_the_condor_as_it_was_before_the_batch(db
     before = await _count(db, stored.id)
     async with _client(app) as c:
         reply = await c.post(f"/strategies/{stored.id}/tracking/exit", json={"legs": [0, 1]})
-    assert reply.status_code == HTTPStatus.UNPROCESSABLE_ENTITY, reply.text
-    assert "at most 2 adjustments" in reply.text
-    assert await _count(db, stored.id) == before
+    assert reply.status_code == HTTPStatus.OK, reply.text  # exits only: allowed at the maximum (ADR-318 (5))
+    assert await _count(db, stored.id) == before + 2
 
 
 async def test_the_second_adjustment_of_a_condor_is_not_counted_twice(db, only_the_condor_is_limited):
@@ -202,3 +205,73 @@ async def test_the_second_adjustment_of_a_condor_is_not_counted_twice(db, only_t
         reply = await c.post(f"/paper/strategies/{stored.id}/orders",
                              json={"orders": [_post(ids[0], "BUY"), _post(ids[1], "SELL")]})
     assert reply.status_code == HTTPStatus.CREATED, reply.text
+
+
+# D-04 / ADR-318 (5): at or over the plan maximum a basket that only closes or reduces open legs is accepted; a basket
+# that opens or adds to a leg is refused with the reason the approaches list shows.
+def _leg(cid: int, side: str, kind: str, qty: int = 65) -> dict:
+    return {"contract_id": cid, "side": side, "quantity": qty, "price": "50.00", "kind": kind}
+
+
+async def _used(db, strategy_id: int) -> int:
+    from ofo_app.adjustment_readers import history_count  # noqa: PLC0415 - it imports the route layer
+    return history_count(await paper_store.load(db, strategy_id), lambda _cid: True)
+
+
+async def _post_orders(app, strategy_id: int, orders: list[dict]):
+    async with _client(app) as c:
+        return await c.post(f"/paper/strategies/{strategy_id}/orders", json={"orders": orders})
+
+
+async def test_at_the_maximum_closing_the_tested_spread_is_stored_and_counts(db, only_the_condor_is_limited):
+    app, stored, ids = await _condor(db, adjustments=2)
+    before, used = await _count(db, stored.id), await _used(db, stored.id)
+    reply = await _post_orders(app, stored.id, [_leg(ids[0], "BUY", "exit"), _leg(ids[1], "SELL", "exit")])
+    assert reply.status_code == HTTPStatus.CREATED, reply.text
+    assert await _count(db, stored.id) == before + 2
+    assert (used, await _used(db, stored.id)) == (2, 3)
+
+
+async def test_at_the_maximum_a_part_exit_and_a_buy_back_of_one_short_are_stored(db, only_the_condor_is_limited):
+    app, stored, ids = await _condor(db, adjustments=2)
+    reduce = await _post_orders(app, stored.id, [_leg(ids[0], "BUY", "exit", 30)])
+    buy_back = await _post_orders(app, stored.id, [_leg(ids[2], "BUY", "exit")])
+    assert (reduce.status_code, buy_back.status_code) == (HTTPStatus.CREATED, HTTPStatus.CREATED), (reduce.text,
+                                                                                                    buy_back.text)
+
+
+async def test_at_the_maximum_a_roll_is_refused_with_the_approaches_reason_and_nothing_is_stored(
+        db, only_the_condor_is_limited):
+    app, stored, ids = await _condor(db, adjustments=2)
+    before = await _count(db, stored.id)
+    reply = await _post_orders(app, stored.id, [_leg(ids[0], "BUY", "exit"), _leg(ids[0], "SELL", "open")])
+    assert reply.status_code == HTTPStatus.UNPROCESSABLE_ENTITY, reply.text
+    assert "plan maximum of 2 reached" in reply.text
+    assert await _count(db, stored.id) == before
+
+
+async def test_at_the_maximum_an_added_leg_is_refused(db, only_the_condor_is_limited):
+    app, stored, ids = await _condor(db, adjustments=2)
+    before = await _count(db, stored.id)
+    reply = await _post_orders(app, stored.id, [_leg(ids[0], "SELL", "open", 65)])
+    assert reply.status_code == HTTPStatus.UNPROCESSABLE_ENTITY, reply.text
+    assert "plan maximum of 2 reached" in reply.text
+    assert await _count(db, stored.id) == before
+
+
+async def test_at_the_maximum_exit_all_is_stored_and_is_not_an_adjustment(db, only_the_condor_is_limited):
+    app, stored, ids = await _condor(db, adjustments=2)
+    used = await _used(db, stored.id)
+    reply = await _post_orders(app, stored.id, [_leg(ids[0], "BUY", "exit"), _leg(ids[1], "SELL", "exit"),
+                                                _leg(ids[2], "BUY", "exit"), _leg(ids[3], "SELL", "exit")])
+    assert reply.status_code == HTTPStatus.CREATED, reply.text
+    assert used == 2
+
+
+async def test_a_maximum_of_zero_accepts_a_reduce_and_refuses_an_add(db):
+    app, stored, ids = await _book(db, max_adjustments=0, adjustments=0)
+    added = await _post_orders(app, stored.id, [_leg(ids[0], "SELL", "open")])
+    reduced = await _post_orders(app, stored.id, [_leg(ids[0], "BUY", "exit", 30)])
+    assert added.status_code == HTTPStatus.UNPROCESSABLE_ENTITY, added.text
+    assert "plan maximum of 0 reached" in added.text
+    assert reduced.status_code == HTTPStatus.CREATED, reduced.text
