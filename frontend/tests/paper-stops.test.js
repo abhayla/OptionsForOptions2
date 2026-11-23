@@ -121,6 +121,15 @@ describe('Stops panel', () => {
     expect(t(w, 'stops-error').text()).toContain('straight away')
     expect(t(w, 'ce-above').element.value).toBe('22500')
   })
+  it('D-01: a crossed-level refusal reads exactly the approved line and keeps the typed level', async () => {
+    const w = await open()
+    await t(w, 'ce-above').setValue('22500')
+    answers[`POST ${TRIG}`] = refuse('The live price is already at or beyond this level, so this exit would close the trade straight away. To close now, use Exit.')
+    await t(w, 'ce-save').trigger('click')
+    await flushPromises()
+    expect(t(w, 'stops-error').text()).toBe('Not saved: the live price is already at or beyond this level, so this exit would close the trade straight away. To close now, use Exit.')
+    expect(t(w, 'ce-above').element.value).toBe('22500')
+  })
   it('a saved leg stop is confirmed with its direction and level', async () => {
     const w = await open()
     const level = w.get('[data-testid^="stop-level-"]')

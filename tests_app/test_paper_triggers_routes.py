@@ -497,3 +497,61 @@ async def test_d05_two_identical_saves_at_one_instant_on_two_connections_store_o
     finally:
         if user:
             await _remove_committed(admin_engine, user, ids)
+
+
+# ---- D-01 (ADR-317 (1), (2)): the crossed-level refusal wording and every answer state -----------------------------
+CE_SENTENCE = ("The live price is already at or beyond this level, so this exit would close the trade straight away. "
+               "To close now, use Exit.")
+LEG_SENTENCE = ("The live price is already at or beyond this level, so this stop would close the leg straight away. "
+                "To close now, use Exit.")
+
+
+@pytest.mark.parametrize("body, stored_rows", [
+    ({"kind": "conditional_exit", "above": "22533.25"}, 0),  # at the level: refused
+    ({"kind": "conditional_exit", "below": "22533.25"}, 0),
+    ({"kind": "conditional_exit", "above": "22533.30"}, 1),  # one tick on the safe side: stored
+    ({"kind": "conditional_exit", "below": "22533.20"}, 1),
+    ({"kind": "conditional_exit", "above": "22533.20"}, 0),  # price above the level: refused
+    ({"kind": "conditional_exit", "below": "22533.30"}, 0),  # price below the level: refused
+])
+async def test_d01_at_the_level_refuses_one_tick_safe_stores(db, notified, body, stored_rows):
+    app, stored, _ids = await _open(db)
+    async with _client(app) as c:
+        reply = await c.post(_url(stored), json=body)
+    assert reply.status_code == (HTTPStatus.CREATED if stored_rows else HTTPStatus.UNPROCESSABLE_ENTITY), reply.text
+    assert len(await _stored(db, stored.id)) == stored_rows
+
+
+async def test_d01_the_reply_says_the_approved_sentence_for_an_exit_and_for_a_leg_stop(db, notified):
+    app, stored, ids = await _open(db)
+    async with _client(app) as c:
+        ce = await c.post(_url(stored), json={"kind": "conditional_exit", "above": "22500"})
+        ls = await c.post(_url(stored), json={"kind": "leg_stop", "contract_id": ids[0], "direction": "above",
+                                              "level": "35.00"})
+    assert CE_SENTENCE in ce.text
+    assert LEG_SENTENCE in ls.text and CE_SENTENCE not in ls.text
+    assert await _stored(db, stored.id) == [] and notified == []
+
+
+async def test_d01_a_crossed_side_with_a_safe_side_refuses_the_whole_request(db, notified):
+    app, stored, _ids = await _open(db)
+    async with _client(app) as c:
+        reply = await c.post(_url(stored), json={"kind": "conditional_exit", "above": "22500", "below": "22000"})
+    assert reply.status_code == HTTPStatus.UNPROCESSABLE_ENTITY and CE_SENTENCE in reply.text
+    assert await _stored(db, stored.id) == [] and notified == []  # the safe "below" half is not stored
+
+
+async def test_d01_a_price_that_is_not_live_is_never_used_to_refuse(db, notified, monkeypatch):
+    from ofo.rules.inputs import DataHealth
+    app, stored, _ids = await _open(db)
+    real = paper_routes.read_snapshot
+
+    def stale(*a, **k):
+        snap = real(*a, **k)
+        return dataclasses.replace(snap, spot=dataclasses.replace(snap.spot, health=DataHealth.STALE))
+
+    monkeypatch.setattr(paper_routes, "read_snapshot", stale)
+    async with _client(app) as c:
+        reply = await c.post(_url(stored), json={"kind": "conditional_exit", "above": "22500"})
+    assert reply.status_code == HTTPStatus.CREATED, reply.text
+    assert len(await _stored(db, stored.id)) == 1
