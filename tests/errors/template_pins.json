@@ -4240,7 +4240,11 @@
     "reviewed": "pending owner read"
   },
   "paper_trigger_already_crossed": {
-    "sha256": "0c2b619e750fb112ca4ec3fa03a9f3055dc74e54f64fc47f806c797d5eac621a",
+    "sha256": "b11755307cd46c6123940c654ce3d647f3821500d9b683351cf7c89155ea3c27",
+    "reviewed": "pending owner read"
+  },
+  "paper_trigger_leg_already_crossed": {
+    "sha256": "aa867b7776ff64e7e365cb7dcfe189a322c0ea22a161a73e16df20434bde9793",
     "reviewed": "pending owner read"
   }
 }

@@ -97,7 +97,7 @@ describe('Stops panel', () => {
     answers[`POST ${TRIG}`] = refuse('That level is not valid.')
     await t(w, 'ce-save').trigger('click')
     await flushPromises()
-    expect(t(w, 'stops-error').text()).toContain('That level is not valid.')
+    expect(t(w, 'stops-error').text()).toContain('that level is not valid.')
     expect(t(w, 'ce-above').element.value).toBe('24500')
     answers[`POST ${TRIG}`] = () => Promise.reject({ message: 'net', status: null, parts: null })
     await t(w, 'ce-save').trigger('click')

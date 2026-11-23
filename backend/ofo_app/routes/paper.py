@@ -1262,28 +1262,28 @@ def _new_triggers(body: TriggerIn, underlying: str, open_ids: Sequence[int]) -> 
 
 
 async def _already_crossed(db: Any, ctx: MarketContext | None, underlying: str,
-                           new: Sequence[paper_trigger_store.NewTrigger]) -> bool:
-    """ADR-317 (1): True when the live price the monitor would compare against has already crossed a new level (the
+                           new: Sequence[paper_trigger_store.NewTrigger]) -> str | None:
+    """ADR-317 (1): the refusal code when the live price the monitor would compare against has already crossed a new level (the
     same ``stops.crossed``: at the level counts). Answer states: no market context, the market closed, a read that
-    fails, or a price that is not live -> False (saved, arms at the next live tick: REQ-109 AC-8)."""
+    fails, or a price that is not live -> None (saved, arms at the next live tick: REQ-109 AC-8)."""
     if ctx is None:
-        return False
+        return None
     keys = {c.contract_id: c.feed_key for c in await tracked_contracts.resolve(
         db, sorted({n.contract_id for n in new if n.contract_id is not None}))}
     try:
         snapshot = read_snapshot(ctx.provider, underlying, sorted({k for k in keys.values() if k is not None}),
                                  ctx.clock(), ctx.rate, feed_scope(ctx), quality=ctx.forward_quality)
         if snapshot.market_closed:
-            return False
+            return None
         for n in new:
             price = (paper.leg_price(snapshot, keys[n.contract_id]) if n.contract_id is not None
                      and keys.get(n.contract_id) else paper.price_of(snapshot.spot, underlying))
             if stops.crossed(stops.Trigger(0, 0, n.kind, n.direction, n.level, n.contract_id, n.underlying),  # type: ignore[arg-type]
                              price):
-                return True
+                return "paper_trigger_already_crossed" if n.contract_id is None else "paper_trigger_leg_already_crossed"
     except Exception:  # noqa: BLE001 - any failed read is "no price": the trigger is saved as before
         _LOG.exception("paper trigger price read failed")
-    return False
+    return None
 
 
 @router.post("/paper/strategies/{strategy_id}/triggers", status_code=201, response_model=TriggersOut,
@@ -1297,8 +1297,8 @@ async def add_paper_triggers(strategy_id: int, body: TriggerIn, db: Annotated[An
     if not open_ids:
         raise StrategyRefused("paper_trigger_nothing_open")
     new = _new_triggers(body, stored.saved.definition.underlying, open_ids)
-    if await _already_crossed(db, ctx, stored.saved.definition.underlying, new):
-        raise StrategyRefused("paper_trigger_already_crossed")
+    if crossed := await _already_crossed(db, ctx, stored.saved.definition.underlying, new):
+        raise StrategyRefused(crossed)
     # ADR-317 (3): the same armed trigger is not stored twice (read under the strategy's row lock taken above)
     armed = {(r.trigger.kind, r.trigger.direction, r.trigger.level, r.trigger.contract_id)
              for r in await paper_trigger_store.list_for(db, strategy_id) if _state(r) == "armed"}
