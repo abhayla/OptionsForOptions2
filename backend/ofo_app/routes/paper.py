@@ -55,7 +55,8 @@ from ofo.engine.extremes_charges import (
     sum_after_charges,
     sum_booked_after,
 )
-from ofo.engine.legs import Instrument
+from ofo.engine.legs import Action, Instrument, Leg
+from ofo.execution.safety import paper_duplicate_leg
 from ofo.errors import render
 from ofo.errors.explanations import render_explanation, restore_explanation
 from ofo.instruments.models import FUTURE_TYPE
@@ -1017,6 +1018,20 @@ def _check_held(held: HeldIn | None, first: bool, orders: Sequence[Any], state: 
         raise StrategyRefused("held_entry_after_expiry", message=render("held_entry_after_expiry", expiry=earliest))
 
 
+def _refuse_duplicate_legs(underlying: str, orders: Sequence[PaperOrderIn], state: Mapping[int, Any]) -> None:
+    """ADR-319 (3): two opening orders on one contract and side are a kept duplicate leg; refused with the gate's own sentence
+    (safety.paper_duplicate_leg). A buy and a sell of one contract stay two legs (REQ-030 AC-11). Exits never count."""
+    legs = []
+    for o in orders:
+        if o.kind == "exit":
+            continue
+        c = state[o.contract_id].stored.listed.contract
+        legs.append(Leg(Action(o.side), Instrument(c.instrument_type), c.strike, c.expiry, o.quantity, o.price))
+    failure = paper_duplicate_leg(legs, underlying)
+    if failure is not None:
+        raise StrategyRefused("gate_duplicate_leg", message=failure.message)
+
+
 @router.post("/paper/strategies/{strategy_id}/orders", status_code=201, response_model=PaperBookOut,
              dependencies=[Depends(guard_paper_order)])  # IC e2e 5: scenario mode = own scenario only
 async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR0913 - FastAPI dependencies
@@ -1037,6 +1052,7 @@ async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR
     if any(state[o.contract_id].stored is None or (o.kind != "exit" and state[o.contract_id].state != "live")
            for o in body.orders):
         raise StrategyRefused("paper_contract_not_tradable")
+    _refuse_duplicate_legs(stored.saved.definition.underlying, body.orders, state)  # ADR-319 (3)
     placed_at = now()
     paper_limit.refuse_when_closed(ctx, placed_at)  # ADR-212: before any price read
     exit_prices = await _server_exit_prices(ctx, feed, stored.saved.definition.underlying, body.orders, state)

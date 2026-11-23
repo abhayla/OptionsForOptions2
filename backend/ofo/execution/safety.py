@@ -386,6 +386,23 @@ def _context_failures(ctx: ExecutionContext, pro_reason: ProReason | None, strat
     return out
 
 
+def duplicate_leg_failure(number: int, value: LegValue, other: int) -> CheckFailure:
+    """The one duplicate-leg failure and its sentence (gate_duplicate_leg), for the real-order gate and Add to Paper."""
+    return _fail(CheckCode.DUPLICATE_LEG, "gate_duplicate_leg", leg_number=number, leg=value, other=other)
+
+
+def paper_duplicate_leg(legs: Sequence[Leg], underlying: str) -> CheckFailure | None:
+    """Add to Paper (ADR-319 (3), REQ-030 AC-11): the first leg that repeats an earlier leg's contract AND action. The
+    gate's own key is used, but a buy and a sell of one contract stay two legs here; the live gate is unchanged."""
+    seen: dict[tuple[_Key, object], int] = {}
+    for number, leg in enumerate(legs, start=1):
+        key = (_key(leg.expiry, leg.instrument.value, leg.strike), leg.action)
+        if key in seen:
+            return duplicate_leg_failure(number, LegValue(number, leg, underlying), seen[key])
+        seen[key] = number
+    return None
+
+
 def _leg_failures(
     strategy: Strategy, ctx: ExecutionContext, catalogue: Catalogue, eligibility: ZerodhaEligibility
 ) -> list[CheckFailure]:
@@ -398,8 +415,7 @@ def _leg_failures(
         value = LegValue(number, leg, underlying)
         key = _key(leg.expiry, leg.instrument.value, leg.strike)
         if key in seen:
-            out.append(_fail(CheckCode.DUPLICATE_LEG, "gate_duplicate_leg", leg_number=number, leg=value,
-                             other=seen[key]))
+            out.append(duplicate_leg_failure(number, value, seen[key]))
         else:
             seen[key] = number
         try:
