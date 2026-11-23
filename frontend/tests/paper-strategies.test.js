@@ -244,6 +244,22 @@ describe('PaperStrategies: review 1 minors (GC-BP step 8)', () => {
     expect(has(w, 'paper-confirm')).toBe(false)
     expect(has(w, 'paper-error')).toBe(false)
   })
+  it('D-05 r5: an unreadable 2xx refresh closes an open confirm dialog; confirming then posts nothing and the reason shows', async () => {
+    let bad = false
+    answers['GET /tracking'] = () => Promise.resolve({ data: bad ? { unreadable: true } : REAL_REPLY })
+    answers['POST /paper/strategies/48/orders'] = ok({})
+    const w = await show()
+    await exitLeg(w, 0)
+    const orders = w.findComponent(PaperConfirmDialog).props('orders')
+    expect(w.findComponent(PaperConfirmDialog).props('open')).toBe(true)
+    bad = true
+    await vi.advanceTimersByTimeAsync(TRACKING_REFRESH_MS)
+    expect(w.findComponent(PaperConfirmDialog).props('open')).toBe(false)
+    w.findComponent(PaperConfirmDialog).vm.$emit('confirm', orders)
+    await flushPromises()
+    expect(calls.filter((c) => c[0] === 'POST')).toHaveLength(0)
+    expect(t(w, 'paper-exit-reason').text()).toBe('Prices are not live; try again when they update')
+  })
   it('R1-4: Cancel clears that group\'s exit error', async () => {
     answers['GET /tracking'] = ok(REAL_REPLY)
     answers['POST /paper/strategies/48/orders'] = () => Promise.reject({ status: 409, parts: { what_happened: 'Prices are not live' } })
