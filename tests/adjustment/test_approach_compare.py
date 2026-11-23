@@ -218,10 +218,11 @@ def test_f93_adjustments_row_shows_the_plan_maximum_as_used_of_max():
     """F-93: a plan that sets a maximum shows "0 of 2" (+1 when the approach trades); 0 shows "0 of 0";
     no maximum keeps the "no plan maximum set" words; the leader is still the fewest used."""
     _, cols, ctx = build_columns("ADJ-02")
-    for mx, first, trading in ((2, "0 of 2", "1 of 2"), (0, "0 of 0", "1 of 0")):
+    for mx, first, trading in ((2, "0 of 2", "1 of 2"), (0, "0 of 0", "0 of 0")):  # at the limit: never above the maximum
         adj = row(compare(cols, replace(ctx, adjustments_max=mx)), "adjustments")
         assert adj.values["A-36"].text == first and adj.values["A-05"].text == trading, mx
-        assert adj.values["A-05"].value == 1 and adj.leaders == ("A-36",)
+        assert adj.values["A-05"].value == (1 if mx else 0)
+        assert (adj.leaders == ("A-36",)) == bool(mx)
     none = row(compare(cols, replace(ctx, adjustments_max=None)), "adjustments")
     assert none.values["A-36"].text == "0 used; no plan maximum set"
 
@@ -402,3 +403,30 @@ def test_max_profit_cell_says_when_the_top_is_the_value_at_index_zero():
     flagged = _Rows(replace(cols[0], whole=put_whole), ctx).max_profit()
     assert flagged.at_index_zero is True and flagged.value == D("1719000")
     assert _Rows(cols[0], ctx).max_profit().at_index_zero is False
+
+
+def _rows_at(used, mx):
+    _, cols, ctx = build_columns("ADJ-02")
+    return row(compare(cols, replace(ctx, adjustments_used=used, adjustments_max=mx)), "adjustments")
+
+
+def test_limit_notice_and_compare_row_agree_at_limit():
+    """At the limit the header (offered.limit_notice) says "2 of 2" and every row shows the same stored count, never 3 of 2;
+    above the limit (old data) the row shows the stored count too, as the header does."""
+    from ofo.adjustment import offered
+    for used in (2, 3):
+        notice = offered.limit_notice({"max_adjustments": 2}, used)
+        adj = _rows_at(used, 2)
+        assert {c.text for c in adj.values.values()} == {f"{used} of 2"} == {f"{notice['used']} of {notice['max']}"}
+
+
+def test_compare_row_below_the_limit_counts_the_proposed_adjustment():
+    adj = _rows_at(0, 2)
+    assert adj.values["A-36"].text == "0 of 2" and adj.values["A-05"].text == "1 of 2"
+    adj = _rows_at(1, 2)  # one used, this would be the 2nd: "2 of 2", still the maximum, not above it
+    assert adj.values["A-05"].text == "2 of 2"
+
+
+def test_compare_row_with_no_maximum_keeps_counting_the_proposed_adjustment():
+    adj = _rows_at(5, None)
+    assert adj.values["A-36"].text == "5 used; no plan maximum set" and adj.values["A-05"].text == "6 used; no plan maximum set"

@@ -476,8 +476,9 @@ class _Rows:
     def adjustments(self) -> Cell:
         if self.ctx.adjustments_used is None:
             return _dash(render_explanation("adjust_cmp_adjustments_unknown"))
-        used = self.ctx.adjustments_used + (1 if self.b.trades else 0)
         mx = self.ctx.adjustments_max  # F-93: the accepted plan's maximum, shown as "used of max"
+        at_limit = mx is not None and self.ctx.adjustments_used >= mx  # the header's stored count; a row never exceeds the maximum
+        used = self.ctx.adjustments_used + (1 if self.b.trades and not at_limit else 0)
         text = (render_explanation("adjust_cmp_adjustments", used=used) if mx is None
                 else render_explanation("adjust_cmp_adjustments_of", used=used, max=mx))
         return Cell(text, Decimal(used), None, Decimal(used))

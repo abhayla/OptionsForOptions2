@@ -84,8 +84,8 @@ const order = (contractId, side, units, lotSize, kind, leg) => ({
 /** THE one diff of Drafts Mode: the paper orders that turn the net position (`net`, builder legs) into the edited legs.
  *  Per contract, comparing signed units: same side and larger -> one `add` (the position's side); same side and smaller ->
  *  one `exit` (opposite side) of the difference; to zero -> `exit` of the whole held quantity; crossing zero -> `exit` of the
- *  held quantity + `add` of the rest on the new side; a new contract -> `add`. Exits first, then adds, each in the order
- *  the contracts first appear (net, then edited). Each order carries the leg it came from (`leg`) for the dialog's text and
+ *  held quantity + `add` of the rest on the new side; a new contract -> `add`. Listed BUY exits, BUY adds, SELL exits, SELL adds (REQ-159 AC-6: hedge
+ *  first on entry, short buy-backs before long sales), each group in the order the contracts first appear (net, then edited). Each order carries the leg it came from (`leg`) for the dialog's text and
  *  default price. Null (fail closed) when any leg cannot be read: no orders are offered from an unreadable list. */
 export function paperOrdersFor(net, edited) {
   const before = signedByContract(net)
@@ -115,7 +115,9 @@ export function paperOrdersFor(net, edited) {
       exits.push(order(id, opposite(held), size(held) - size(want), lotSize, 'exit', heldLeg))
     }
   }
-  return [...exits, ...adds]
+  // REQ-159 AC-6 / REQ-058: buy legs first, whatever the diff produced: short buy-backs, new hedges, old-hedge sales, new shorts.
+  const rank = (o) => (o.side === 'BUY' ? 0 : 2) + (o.kind === 'exit' ? 0 : 1)
+  return [...exits, ...adds].sort((a, b) => rank(a) - rank(b)) // stable (ES2019)
 }
 
 /** The confirm list's rows for `orders` (PaperConfirmDialog props). Default price: an exit at the contract's live LTP text from
