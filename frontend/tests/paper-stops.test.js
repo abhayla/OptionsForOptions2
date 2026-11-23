@@ -194,3 +194,24 @@ describe('Stops panel: a save is never silent (D-05)', () => {
     expect(t(w, 'stops-saved').text().startsWith('Already set:')).toBe(true)
   })
 })
+
+describe('Stops panel: a mixed save says which level is which (D-05 r2)', () => {
+  it('one level already armed, the other new: "Saved: ... Already set: ..."', async () => {
+    const w = await open({ triggers: [trig(1, { direction: 'above', level: '29990.00' })] })
+    await t(w, 'ce-above').setValue('29990')
+    await t(w, 'ce-below').setValue('20010')
+    answers[`POST ${TRIG}`] = ok({ triggers: [trig(2, { direction: 'below', level: '20010.00' }), trig(1, { direction: 'above', level: '29990.00' })], already_set: false })
+    await t(w, 'ce-save').trigger('click')
+    await flushPromises()
+    expect(t(w, 'stops-saved').text()).toBe('Saved: exit below 20010. Already set: exit above 29990')
+  })
+  it('both levels already armed: "Already set: exit above X and below Y"', async () => {
+    const w = await open({ triggers: [trig(1, { direction: 'above', level: '29990.00' }), trig(2, { direction: 'below', level: '20010.00' })] })
+    await t(w, 'ce-above').setValue('29990.00')
+    await t(w, 'ce-below').setValue('20010')
+    answers[`POST ${TRIG}`] = ok({ triggers: [trig(1, { direction: 'above', level: '29990.00' }), trig(2, { direction: 'below', level: '20010.00' })], already_set: true })
+    await t(w, 'ce-save').trigger('click')
+    await flushPromises()
+    expect(t(w, 'stops-saved').text()).toBe('Already set: exit above 29990.00 and below 20010')
+  })
+})

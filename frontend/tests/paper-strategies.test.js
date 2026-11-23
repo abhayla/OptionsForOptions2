@@ -106,13 +106,34 @@ describe('PaperStrategies: answer states', () => {
     expect(has(w, 'paper-group')).toBe(false)
     expect(has(w, 'paper-total')).toBe(false)
   })
-  it('a refresh failure after a good read shows no figures; the next good read restores them', async () => {
+  it('D-05 r2: a failed refresh keeps the loaded list, an open Stops panel and its typed level, and shows an error banner', async () => {
+    let fail = false
+    answers['GET /tracking'] = () => (fail ? Promise.reject({ status: null, parts: null }) : Promise.resolve({ data: REAL_REPLY }))
+    answers['GET /paper/strategies/48/triggers'] = ok({ triggers: [] })
+    const w = await show()
+    await t(w, 'stops-open-48').trigger('click')
+    await flushPromises()
+    await t(w, 'ce-above').setValue('29980')
+    fail = true
+    await vi.advanceTimersByTimeAsync(TRACKING_REFRESH_MS)
+    expect(has(w, 'paper-error-what')).toBe(true)
+    expect(has(w, 'paper-group')).toBe(true)
+    expect(has(w, 'paper-stops')).toBe(true)
+    expect(t(w, 'ce-above').element.value).toBe('29980')
+    expect(t(w, 'paper-stale-note').text()).toContain('last loaded')
+    fail = false
+    await vi.advanceTimersByTimeAsync(TRACKING_REFRESH_MS)
+    expect(has(w, 'paper-error-what')).toBe(false)
+    expect(has(w, 'paper-stale-note')).toBe(false)
+    expect(t(w, 'ce-above').element.value).toBe('29980')
+  })
+  it('a refresh failure after a good read keeps the list under an error banner; the next good read clears the banner', async () => {
     let fail = false
     answers['GET /tracking'] = () => (fail ? Promise.reject({ status: 503, parts: null }) : Promise.resolve({ data: REAL_REPLY }))
     const w = await show()
     fail = true
     await vi.advanceTimersByTimeAsync(TRACKING_REFRESH_MS)
-    expect(has(w, 'paper-total')).toBe(false)
+    expect(has(w, 'paper-total')).toBe(true)
     expect(has(w, 'paper-error-what')).toBe(true)
     fail = false
     await vi.advanceTimersByTimeAsync(TRACKING_REFRESH_MS)
