@@ -502,9 +502,9 @@ async def test_d05_two_identical_saves_at_one_instant_on_two_connections_store_o
 
 
 # ---- D-01 (ADR-317 (1), (2)): the crossed-level refusal wording and every answer state -----------------------------
-CE_SENTENCE = ("The live price is already at or beyond this level, so this exit would close the trade straight away. "
+CE_SENTENCE = ("the live price is already at or beyond this level, so this exit would close the trade straight away. "
                "To close now, use Exit.")
-LEG_SENTENCE = ("The live price is already at or beyond this level, so this stop would close the leg straight away. "
+LEG_SENTENCE = ("the live price is already at or beyond this level, so this stop would close the leg straight away. "
                 "To close now, use Exit.")
 
 
