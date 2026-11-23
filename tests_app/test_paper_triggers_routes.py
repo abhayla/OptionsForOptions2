@@ -268,6 +268,7 @@ async def test_f1_a_failed_price_read_saves_as_before(db, notified, monkeypatch)
     async with _client(app) as c:
         reply = await c.post(_url(stored), json={"kind": "conditional_exit", "above": "22500"})
     assert reply.status_code == HTTPStatus.CREATED, reply.text
+    assert len(await _stored(db, stored.id)) == 1
 
 
 async def test_f1_a_closed_market_saves_as_before(db, notified, monkeypatch):
@@ -278,6 +279,7 @@ async def test_f1_a_closed_market_saves_as_before(db, notified, monkeypatch):
     async with _client(app) as c:
         reply = await c.post(_url(stored), json={"kind": "conditional_exit", "above": "22500"})
     assert reply.status_code == HTTPStatus.CREATED, reply.text
+    assert len(await _stored(db, stored.id)) == 1
 
 
 async def test_f2_the_same_armed_trigger_is_not_stored_twice(db, notified):
@@ -545,6 +547,10 @@ async def test_d01_a_price_that_is_not_live_is_never_used_to_refuse(db, notified
     from ofo.rules.inputs import DataHealth
     app, stored, _ids = await _open(db)
     real = paper_routes.read_snapshot
+    body = {"kind": "conditional_exit", "above": "22500"}
+    async with _client(app) as c:  # control: the live index price refuses this level, so the check really runs
+        control = await c.post(_url(stored), json=body)
+    assert control.status_code == HTTPStatus.UNPROCESSABLE_ENTITY and await _stored(db, stored.id) == []
 
     def stale(*a, **k):
         snap = real(*a, **k)
@@ -552,9 +558,63 @@ async def test_d01_a_price_that_is_not_live_is_never_used_to_refuse(db, notified
 
     monkeypatch.setattr(paper_routes, "read_snapshot", stale)
     async with _client(app) as c:
+        reply = await c.post(_url(stored), json=body)
+    assert reply.status_code == HTTPStatus.CREATED, reply.text
+    assert len(await _stored(db, stored.id)) == 1
+
+
+@pytest.mark.parametrize("direction, level", [("above", "35.00"), ("below", "35.00")])
+async def test_d01_a_leg_with_no_feed_key_is_never_judged_on_the_index_and_saves(db, notified, monkeypatch,
+                                                                              direction, level):
+    import types
+    app, stored, ids = await _open(db)
+    real = paper_routes.tracked_contracts.resolve
+
+    async def no_key(d, cids):
+        return [types.SimpleNamespace(contract_id=c.contract_id, feed_key=None) for c in await real(d, cids)]
+
+    monkeypatch.setattr(paper_routes.tracked_contracts, "resolve", no_key)
+    async with _client(app) as c:
+        reply = await c.post(_url(stored), json={"kind": "leg_stop", "contract_id": ids[0], "direction": direction,
+                                                 "level": level})
+    assert reply.status_code == HTTPStatus.CREATED, reply.text
+    assert [r[:4] for r in await _stored(db, stored.id)] == [("leg_stop", direction, D(level), ids[0])]
+
+
+async def test_d01_a_stale_leg_price_with_a_live_index_saves_but_a_live_leg_price_refuses(db, notified, monkeypatch):
+    from ofo.rules.inputs import DataHealth
+    app, stored, ids = await _open(db)
+    body = {"kind": "leg_stop", "contract_id": ids[0], "direction": "above", "level": "35.00"}
+    async with _client(app) as c:  # control: live leg price 39.15 is above 35 -> refused
+        control = await c.post(_url(stored), json=body)
+    assert control.status_code == HTTPStatus.UNPROCESSABLE_ENTITY and await _stored(db, stored.id) == []
+    real = paper_routes.read_snapshot
+
+    def stale_legs(*a, **k):
+        snap = real(*a, **k)
+        legs = {k2: dataclasses.replace(m, quote=dataclasses.replace(m.quote, health=DataHealth.STALE))
+                for k2, m in snap.legs.items()}
+        return dataclasses.replace(snap, legs=legs)
+
+    monkeypatch.setattr(paper_routes, "read_snapshot", stale_legs)
+    async with _client(app) as c:
+        reply = await c.post(_url(stored), json=body)
+    assert reply.status_code == HTTPStatus.CREATED, reply.text
+    assert len(await _stored(db, stored.id)) == 1
+
+
+async def test_d01_a_failed_price_read_saves_and_is_logged(db, notified, monkeypatch, caplog):
+    app, stored, _ids = await _open(db)
+
+    def boom(*_a, **_k):
+        raise RuntimeError("feed down")
+
+    monkeypatch.setattr(paper_routes, "read_snapshot", boom)
+    async with _client(app) as c:
         reply = await c.post(_url(stored), json={"kind": "conditional_exit", "above": "22500"})
     assert reply.status_code == HTTPStatus.CREATED, reply.text
     assert len(await _stored(db, stored.id)) == 1
+    assert any("paper trigger price read failed" in r.getMessage() for r in caplog.records)
 
 
 # ---- D-03 (ADR-317 (7)): an index exit set before an adjustment stays armed, is marked, and is never moved ----

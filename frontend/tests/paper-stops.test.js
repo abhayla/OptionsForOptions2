@@ -130,6 +130,18 @@ describe('Stops panel', () => {
     expect(t(w, 'stops-error').text()).toBe('Not saved: the live price is already at or beyond this level, so this exit would close the trade straight away. To close now, use Exit.')
     expect(t(w, 'ce-above').element.value).toBe('22500')
   })
+  it('D-01: a reason that starts with a name or capitals keeps its first letter in the Not saved line', async () => {
+    const w = await open()
+    await t(w, 'ce-above').setValue('22500')
+    for (const [reason, shown] of [['Zerodha shows no price for this leg.', 'Not saved: Zerodha shows no price for this leg.'],
+      ['NIFTY is closed.', 'Not saved: NIFTY is closed.'], ['NSE holiday today.', 'Not saved: NSE holiday today.'],
+      ['The live price is already at or beyond this level.', 'Not saved: the live price is already at or beyond this level.']]) {
+      answers[`POST ${TRIG}`] = refuse(reason)
+      await t(w, 'ce-save').trigger('click')
+      await flushPromises()
+      expect(t(w, 'stops-error').text()).toBe(shown)
+    }
+  })
   it('a saved leg stop is confirmed with its direction and level', async () => {
     const w = await open()
     const level = w.get('[data-testid^="stop-level-"]')
