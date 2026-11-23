@@ -503,6 +503,18 @@ async function capture(id, und) {
   }
 }
 
+/** D-60 (REQ-030 AC-12): a contract already in the strategy with the SAME action is never added silently. The dialog is one
+ *  promise: 'increase' | 'separate' | 'cancel'. The other action on the same contract is two legs, no question (AC-11). */
+const dup = ref(null)
+const DUP_QUESTION = (name) => `${name} is already in this strategy.`
+const sameLeg = (id, action, exceptId) => props.legs.find((l) => l.id !== exceptId && l.instrument_id === id && l.action === action)
+const askDuplicate = (name) => new Promise((resolve) => { dup.value = { name, resolve } })
+function answerDuplicate(choice) {
+  const d = dup.value
+  dup.value = null
+  d?.resolve(choice)
+}
+
 async function save() {
   if (!canSave.value) return
   busy.value = true
@@ -514,6 +526,18 @@ async function save() {
   const act = action.value
   const lotCount = lots.value
   const id = c ? instrumentId(c.exchange_segment, c.exchange_token) : old.instrument_id
+  const clash = sameLeg(id, act, old?.id)
+  if (clash) {
+    const choice = await askDuplicate(contractName(clash))
+    if (choice === 'cancel') { busy.value = false; return }
+    if (choice === 'increase') {
+      resetForm()
+      emit('update:legs', props.legs.filter((l) => l.id !== old?.id).map((l) => (l.id === clash.id ? { ...l, lots: l.lots + lotCount } : l)))
+      busy.value = false
+      emit('done')
+      return
+    }
+  }
   resetForm()
   try {
     // A priced leg keeps its captured entry while its contract is unchanged (only buy/sell or lots changed).
@@ -558,17 +582,36 @@ async function done() {
   }
   doneError.value = ''
   busy.value = true
+  const kept = await resolveDuplicates(chosen)
+  if (!kept) { busy.value = false; return } // Cancel: nothing changes, the picks stay selected
   picked.value = {} // picks made while the entries are captured belong to the next batch
   cellLots.value = {}
   pickedContracts.value = {}
-  await addChosen(chosen, underlying.value)
+  await addChosen(kept, underlying.value)
   emit('done')
+}
+
+/** Ask once per chosen contract already held with the same action. Increase quantity raises that row's lots now (one emit);
+ *  Keep separate leaves the contract in the list to be added as its own row; Cancel returns null (nothing changed). */
+async function resolveDuplicates(chosen) {
+  const keep = []
+  let legs = props.legs
+  for (const x of chosen) {
+    const clash = legs.find((l) => l.instrument_id === x.id && l.action === x.action)
+    const choice = clash ? await askDuplicate(contractName(clash)) : 'separate'
+    if (choice === 'cancel') return null
+    if (choice === 'increase') legs = legs.map((l) => (l.id === clash.id ? { ...l, lots: l.lots + x.lots } : l))
+    else keep.push(x)
+  }
+  if (legs !== props.legs) emit('update:legs', legs)
+  return keep
 }
 
 /** The one path that turns chosen contracts into legs (Done and a future's Buy/Sell): each is captured like a single add;
  *  a leg with no price is still added and carries the reprice prompt. Caller has set busy. */
 async function addChosen(chosen, und) {
   try {
+    if (!chosen.length) return
     const pricing = await Promise.all(chosen.map((x) => capture(x.id, und)))
     const added = chosen.map((x, i) => ({
       id: nextId++,
@@ -611,7 +654,9 @@ async function addFuture(f, side) {
     doneError.value = 'Contract details are not available for this future, so nothing was added.'
     return
   }
-  await addChosen([{ id: f.instrument_id, c, action: side, lots: 1 }], und)
+  const kept = await resolveDuplicates([{ id: f.instrument_id, c, action: side, lots: 1 }])
+  if (!kept) { busy.value = false; return }
+  await addChosen(kept, und)
 }
 
 const legName = (l) => contractName(l)
@@ -631,6 +676,14 @@ defineExpose({ startEdit, showStrikes })
   <section class="flex h-full min-h-0 flex-col gap-3 text-sm" data-testid="leg-picker">
     <!-- Compact and with its own test id: the page's ErrorMessage keeps error-what/impact/blocked/next to itself. -->
     <ErrorMessage v-if="errorParts" :parts="errorParts" compact prefix="picker-error" data-testid="picker-error" />
+    <div v-if="dup" role="alertdialog" class="rounded border border-line bg-surface p-2" data-testid="dup-dialog">
+      <p data-testid="dup-question">{{ DUP_QUESTION(dup.name) }}</p>
+      <span class="flex gap-2">
+        <button type="button" class="rounded border border-line px-2" data-testid="dup-increase" @click="answerDuplicate('increase')">Increase quantity</button>
+        <button type="button" class="rounded border border-line px-2" data-testid="dup-separate" @click="answerDuplicate('separate')">Keep separate</button>
+        <button type="button" class="rounded border border-line px-2" data-testid="dup-cancel" @click="answerDuplicate('cancel')">Cancel</button>
+      </span>
+    </div>
     <div class="flex flex-wrap items-center gap-2 pr-10" data-testid="picker-header">
       <select class="h-8 rounded border border-line px-1 font-semibold" aria-label="Underlying" data-testid="pick-underlying" :value="underlying" :disabled="underlyingLocked" @change="onUnderlying($event.target.value)">
         <option v-for="u in UNDERLYINGS" :key="u" :value="u">{{ u }}</option>

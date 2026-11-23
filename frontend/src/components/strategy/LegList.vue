@@ -75,6 +75,13 @@ const shown = computed(() => (someLeftOut.value || !props.hasReply ? null : prop
 const shownControls = computed(() => controlsForSelection(props.controls, props.legs))
 const tickState = computed(() => (selectedCount.value === props.legs.length ? 'all' : selectedCount.value === 0 ? 'none' : 'some'))
 const legName = (l) => contractName(l)
+/** D-60 (REQ-059 gate): two rows on one contract and action are never merged silently. The words are the gate's own
+ *  (gate_duplicate_leg in backend/ofo/errors/templates.py), shown on both rows. Index of the other row, or null. */
+const sameContractAs = (leg, i) => {
+  const j = props.legs.findIndex((o, k) => k !== i && o.instrument_id === leg.instrument_id && o.action === leg.action)
+  return j === -1 ? null : j
+}
+const duplicateLegText = (leg, other) => `Leg ${leg} is the same contract as leg ${other}. The legs have not been combined; edit the strategy to keep one or combine them yourself.`
 const replacedNotes = computed(() => props.legs.flatMap((l, i) => (l.replaced_typed === true ? [replacedPriceNote(i + 1, l)] : [])))
 const needsReprice = (l) => l.planned_entry == null && l.reason_code === 'needs_reprice'
 const moved = (l) => movedMarker(l, props.ltpById[l.instrument_id], props.priceTextById[l.instrument_id])
@@ -242,6 +249,7 @@ function setMultiplier(index) {
             </div>
           </div>
           <span class="sr-only" data-testid="leg-name">{{ legName(leg) }}</span>
+          <p v-if="sameContractAs(leg, i) !== null" class="pl-6 text-xs text-warn" data-testid="duplicate-leg-warning">{{ duplicateLegText(i + 1, sameContractAs(leg, i) + 1) }}</p>
           <span v-if="leg.planned_entry != null" class="sr-only" data-testid="leg-entry">{{ entryLabel(leg) }} {{ leg.planned_entry_display ?? priceTextById[leg.instrument_id]?.planned_entry_display ?? '—' }}</span>
           <div v-if="needsSecondLine(leg, i)" class="pl-6 text-xs text-ink-muted" data-testid="leg-second-line">
             <span v-if="leg.included === false" class="mr-2" data-testid="left-out-label">{{ LEFT_OUT_LABEL }}</span>
