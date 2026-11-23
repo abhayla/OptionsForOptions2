@@ -5,6 +5,7 @@ the alert rows the monitor wrote (written here with the store's own add_alert af
 """
 from __future__ import annotations
 
+import asyncio
 import datetime
 from decimal import Decimal
 from http import HTTPStatus
@@ -14,8 +15,9 @@ from ofo.errors.explanations import render_explanation
 from ofo.tracking.paper_alert import alert_body
 from ofo_app import paper_monitor, paper_store, paper_trigger_store
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from test_paper_routes import _new
-from test_strategy_store import _client
+from test_strategy_store import _app, _client, _remove_own_rows
 from test_strategy_tracking import _setup
 
 D = Decimal
@@ -402,3 +404,77 @@ async def test_d05_the_route_takes_the_strategy_row_lock_before_reading_the_arme
     async with _client(app) as c:
         reply = await c.post(_url(stored), json={"kind": "conditional_exit", "above": "23100"})
     assert reply.status_code == HTTPStatus.CREATED and seen[0] == "lock" and "list" in seen
+
+
+async def test_d05_a_cancelled_or_fired_identical_trigger_does_not_block_a_new_save(db, notified):
+    app, stored, _ = await _open(db)
+    ce = {"kind": "conditional_exit", "above": "23100"}
+    async with _client(app) as c:
+        first = (await c.post(_url(stored), json=ce)).json()["triggers"][0]["id"]
+        assert (await c.delete(_url(stored, f"/{first}"))).status_code == HTTPStatus.OK
+        again = await c.post(_url(stored), json=ce)
+        assert again.json()["already_set"] is False
+        second = [r for r in again.json()["triggers"] if r["state"] == "armed"][0]["id"]
+        assert await paper_trigger_store.claim_fire(db, second)
+        third = await c.post(_url(stored), json=ce)
+    assert third.json()["already_set"] is False
+    assert sorted(r["state"] for r in third.json()["triggers"]) == ["armed", "cancelled", "fired"]
+
+
+async def test_d05_the_same_level_typed_two_ways_is_one_trigger(db, notified):
+    app, stored, _ = await _open(db)
+    async with _client(app) as c:
+        first = await c.post(_url(stored), json={"kind": "conditional_exit", "above": "25720"})
+        again = await c.post(_url(stored), json={"kind": "conditional_exit", "above": "25720.00"})
+    assert first.json()["already_set"] is False and again.json()["already_set"] is True
+    assert len(await _stored(db, stored.id)) == 1
+
+
+async def _remove_committed(admin_engine, user: str, contract_ids: list[int]) -> None:
+    """Deletes exactly this test's committed rows: every row that names its strategies, then the strategies, contracts."""
+    async with admin_engine.connect() as conn:
+        async with conn.begin():
+            await conn.execute(text("SET LOCAL session_replication_role = replica"))
+            tables = [r[0] for r in await conn.execute(text(
+                "SELECT c.table_name FROM information_schema.columns c JOIN information_schema.tables t "
+                "ON t.table_schema = c.table_schema AND t.table_name = c.table_name AND t.table_type = 'BASE TABLE' "
+                "WHERE c.table_schema = 'public' AND c.column_name = 'strategy_id' ORDER BY 1"))]
+            for table in tables:
+                await conn.execute(text(f'DELETE FROM public."{table}" WHERE strategy_id IN '
+                                        "(SELECT id FROM public.strategies WHERE user_ref = :u)"), {"u": user})
+    await _remove_own_rows(admin_engine, contract_ids, user)
+
+
+async def test_d05_two_identical_saves_at_one_instant_on_two_connections_store_one_row(app_engine, admin_engine,
+                                                                                         notified):
+    """REAL concurrency: committed rows, two apps on two separate sessions/connections, both POSTs sent together.
+    Without the strategy row lock both read an empty armed set and both insert (run once with the lock line removed)."""
+    ids: list[int] = []
+    user = ""
+    try:
+        async with app_engine.connect() as conn:
+            async with conn.begin():
+                app, stored, *_ = await _setup(conn)
+                ids, user = list(stored.saved.contract_ids), stored.user_ref
+                await paper_store.place(conn, user, stored.id, [_new(ids[0], "SELL", 65, "39.15"),
+                                                                _new(ids[1], "BUY", 65, "12.95")])
+        apps = []
+        for _ in range(2):
+            fresh = _app(async_sessionmaker(app_engine, class_=AsyncSession, expire_on_commit=False), user)
+            fresh.dependency_overrides.update({k: v for k, v in app.dependency_overrides.items()
+                                               if k not in fresh.dependency_overrides})
+            apps.append(fresh)
+        rounds = ["23100", "23200", "23300", "23400", "23500"]
+        async with _client(apps[0]) as c1, _client(apps[1]) as c2:
+            for level in rounds:
+                body = {"kind": "conditional_exit", "above": level}
+                r1, r2 = await asyncio.gather(c1.post(_url(stored), json=body), c2.post(_url(stored), json=body))
+                assert (r1.status_code, r2.status_code) == (HTTPStatus.CREATED, HTTPStatus.CREATED)
+                assert sorted([r1.json()["already_set"], r2.json()["already_set"]]) == [False, True], level
+        async with app_engine.connect() as conn:
+            count = (await conn.execute(text("SELECT count(*) FROM public.paper_triggers WHERE strategy_id = :i"),
+                                        {"i": stored.id})).scalar_one()
+        assert count == len(rounds)
+    finally:
+        if user:
+            await _remove_committed(admin_engine, user, ids)
