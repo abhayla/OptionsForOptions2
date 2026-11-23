@@ -1895,6 +1895,22 @@
     "sha256": "4b181886ee1cd83f0e1668b9b398f1f611f46767c67b345f1628169a0eaba5b7",
     "reviewed": "pending owner read"
   },
+  "explanation:paper_exit_confirm_call": {
+    "sha256": "d5d0eb20fd1236ebafb0469361478562760a0d35b1c500ffa3ff860820bc8a8a",
+    "reviewed": "pending owner read"
+  },
+  "explanation:paper_exit_confirm_no_call": {
+    "sha256": "39a29a76c30786da400ec250e6a4615300248bc741e3f37fe7ed0fd7d9903ddb",
+    "reviewed": "pending owner read"
+  },
+  "explanation:paper_exit_confirm_put": {
+    "sha256": "78ac497c0e9fad8d5ce270f958d956eb2c74cf4b4778caa66cac3c688d778c52",
+    "reviewed": "pending owner read"
+  },
+  "explanation:paper_exit_confirm_no_put": {
+    "sha256": "20ddc7625d06aeeb68d59691fc7ae9e88e5c5c04de39b07de3f05129febee14f",
+    "reviewed": "pending owner read"
+  },
   "explanation:paper_alert_title": {
     "sha256": "96036badd17c6ec57ea45a3666a000afebc89321bf87c4e2977d35291f4d1855",
     "reviewed": "owner read 2026-11-02 (decided in session under owner delegation, independent screen)"

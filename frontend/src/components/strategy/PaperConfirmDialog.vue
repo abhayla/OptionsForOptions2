@@ -30,6 +30,10 @@
         <span v-if="reasons[i]" class="w-full text-xs text-warn" data-testid="paper-reason">{{ reasons[i] }}</span>
       </li>
     </ul>
+    <!-- D-03 part B (ADR-317 (7)): the server's one line per armed index exit, judged on the legs after these orders; nothing is moved -->
+    <ul v-if="armedLines.length" class="mt-3 text-sm text-ink-muted" data-testid="paper-armed-exits">
+      <li v-for="line in armedLines" :key="line" data-testid="paper-armed-exit">{{ line }}</li>
+    </ul>
     <!-- GC-TRACK1 k10 (ADR-292): the strategy's first basket may be a condor already held at the user's broker -->
     <div v-if="firstBasket && rows.length && rows.every((r) => r.kind === 'open')" class="mt-3 text-sm" data-testid="held-form">
       <label class="flex items-center gap-2"><input v-model="heldOn" type="checkbox" data-testid="held-toggle" /> {{ HELD_LABEL }}</label>
@@ -126,6 +130,24 @@ async function askExitRisk() {
   if (seq === askSeq) { exitState.value = state; exitWarning.value = line }
 }
 watch(() => [props.open, props.orders, props.strategyId, rows.value.map((r) => `${r.lots}/${r.price}`).join()], askExitRisk, { immediate: true })
+
+// D-03 part B: the lines naming each armed index exit against the legs after these orders (the server words them). A read that
+// fails, or rows not yet valid, show no lines; the exit stays armed either way and the panel marks it after the change.
+const armedLines = ref([])
+let armedSeq = 0
+async function askArmedExits() {
+  const seq = ++armedSeq
+  const basket = props.open && props.strategyId && rows.value.length && ready.value ? rows.value : []
+  let lines = []
+  if (basket.length) {
+    try {
+      const { data } = await api.get(`/paper/strategies/${props.strategyId}/armed-exits`, { params: { orders: JSON.stringify(basket.map(orderOf)) } })
+      if (Array.isArray(data?.lines)) lines = data.lines.filter((l) => typeof l === 'string' && l)
+    } catch { lines = [] }
+  }
+  if (seq === armedSeq) armedLines.value = lines
+}
+watch(() => [props.open, props.orders, props.strategyId, rows.value.map((r) => `${r.lots}/${r.price}`).join()], askArmedExits, { immediate: true })
 
 // the rows as they were when the server refused them: Confirm unlocks only once the user has changed something
 const snapshot = () => JSON.stringify(rows.value.map((r) => [r.lots, r.price]))

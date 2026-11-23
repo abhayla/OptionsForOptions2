@@ -1157,6 +1157,49 @@ async def paper_exit_risk(strategy_id: int, orders: Annotated[str, Query(max_len
     return _exit_warning(risk, names)
 
 
+class ArmedExitsOut(ApiModel):
+    lines: list[CatalogueText]  # one per armed index exit, in the order above, below
+
+
+@router.get("/paper/strategies/{strategy_id}/armed-exits", response_model=ArmedExitsOut)
+async def paper_armed_exits(strategy_id: int, orders: Annotated[str, Query(max_length=8000)],
+                            db: Annotated[Any, Depends(get_db)],
+                            user_ref: Annotated[str, Depends(current_user_ref)],
+                            now: Annotated[AnswerClock, Depends(get_answer_clock)]) -> ArmedExitsOut:
+    """D-03 part B (ADR-317 (7)): read only, nothing stored. For the prepared basket in the paper confirm list: one line per
+    armed index exit naming the short strike on its side AS IT WILL BE after the basket (the exit stays at its level).
+    No line when nothing is armed or the basket closes every leg (the exits are then cancelled)."""
+    stored = await _load_strategy(db, user_ref, strategy_id)
+    try:
+        basket = PaperOrdersIn.model_validate_json('{"orders":' + orders + "}").orders
+    except ValueError:
+        refuse_request(("query", "orders"), "invalid_orders")
+    armed = sorted((r.trigger for r in await paper_trigger_store.list_for(db, strategy_id)
+                    if _state(r) == "armed" and r.trigger.kind == "conditional_exit"), key=lambda t: t.direction)
+    if not armed:
+        return ArmedExitsOut(lines=[])
+    booked = await paper_store.load(db, strategy_id)
+    state = {c.contract_id: c for c in await tracked_contracts.resolve(
+        db, sorted({o.order.contract_id for o in booked} | {o.contract_id for o in basket}))}
+    if any(state[o.contract_id].stored is None for o in basket):
+        raise StrategyRefused("paper_contract_not_tradable")
+    at = now()
+    after = [*_paper(booked), *(PaperOrder(str(o.contract_id), o.side, o.quantity, _UNPRICED if o.kind == "exit" else o.price,
+                                           o.kind, at) for o in basket)]
+    positions = [p for p in net_positions(after, {}).positions if p.net_quantity]
+    if not positions:
+        return ArmedExitsOut(lines=[])
+    shorts = [_identity(state[int(p.instrument_id)])[1:3] for p in positions if p.net_quantity < 0]
+    calls = [k for kind, k in shorts if kind is Instrument.CE]
+    puts = [k for kind, k in shorts if kind is Instrument.PE]
+    lines = []
+    for t in armed:
+        side, strike = ("call", min(calls, default=None)) if t.direction == "above" else ("put", max(puts, default=None))
+        lines.append(render_explanation(f"paper_exit_confirm_no_{side}", level=t.level) if strike is None else
+                     render_explanation(f"paper_exit_confirm_{side}", level=t.level, strike=strike))
+    return ArmedExitsOut(lines=lines)
+
+
 # --- stop triggers and alerts (GC-TP step 7a; REQ-109 AC-8; ADR-207 (5); screens 221-224) -----------------------------
 TriggerKind = Literal["conditional_exit", "leg_stop"]
 Direction = Literal["above", "below"]
