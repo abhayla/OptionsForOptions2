@@ -1,6 +1,7 @@
 """D-02 (REQ-159 AC-6 "buy legs first in the order sequence"; REQ-058 Q238 "buy back the shorts first, then sell the
-longs"): every batch of paper orders is recorded BUY exits, BUY adds, SELL exits, SELL adds (stable inside each group),
-so a short option is never left without its protection between two fills.
+longs"): every batch of paper orders against an open position (the strategy already has orders) is recorded BUY exits, BUY adds, SELL exits, SELL adds (stable inside each group),
+so a short option is never left without its protection between two fills. An entry batch (empty book) is recorded
+exactly as sent, so the legs keep the order the trader built.
 
 Core proof: ``paper_store.place`` (the one writer) given the real case of strategy 155 on 23 Nov, a roll sent as
 "1. SELL the hedge, 2. BUY the short", records the BUY first; then one test per caller (route, stop-out, settlement,
@@ -77,7 +78,8 @@ async def test_place_orders_the_four_groups_and_keeps_order_inside_each(db):
 
 async def test_a_single_side_batch_and_a_one_order_batch_keep_their_order(db):
     user, sid, c = await _held(db)
-    await paper_store.place(db, user, sid, [_new(c[3], "BUY", 65, "7.00", "exit"), _new(c[1], "BUY", 65, "19.00", "exit")])
+    await paper_store.place(db, user, sid, [_new(c[3], "BUY", 65, "7.00", "exit"),
+                                            _new(c[1], "BUY", 65, "19.00", "exit")])
     await paper_store.place(db, user, sid, [_new(c[2], "SELL", 65, "5.50", "exit")])
     assert (await _book(db, sid))[4:] == [(c[3], "BUY", "exit"), (c[1], "BUY", "exit"), (c[2], "SELL", "exit")]
 
@@ -90,7 +92,7 @@ async def test_the_reordered_batch_shares_one_placed_at_and_the_figures_do_not_d
     booked = {p.instrument_id: p.booked for p in net_positions([o.order.as_paper() for o in stored], {}).positions}
     assert booked[str(c[0])] + booked[str(c[1])] == D("130.00")  # (11 - 10) x 65 + (20 - 19) x 65, any sequence
     rows = await paper_store.load_all(db, user)
-    assert [o.id for o in rows[0].orders] == sorted(o.id for o in rows[0].orders)  # the Orderbook's order is the id order
+    assert [o.id for o in rows[0].orders] == sorted(o.id for o in rows[0].orders)  # the Orderbook reads id order
 
 
 async def test_the_route_records_a_posted_roll_buy_first(db):
@@ -143,3 +145,31 @@ async def test_settlement_records_the_buy_back_before_the_sale(db):
     await ps.settle_expired(db, ps_t.AFTER, ps_t._close_of())
     settles = [o.order for o in await paper_store.load(db, sid) if o.order.kind == "settle"]
     assert [o.side for o in settles] == ["BUY", "SELL"]
+
+
+async def test_an_entry_batch_is_recorded_exactly_as_sent(db):
+    user = _user()
+    _, stored = await _with_draft(db, user)
+    c = sorted(stored.saved.contract_ids)
+    sent = [(c[1], "SELL", "open"), (c[0], "BUY", "open"), (c[3], "SELL", "open"), (c[2], "BUY", "open")]
+    await paper_store.place(db, user, stored.id, [_new(cid, side, 65, "10.00", kind) for cid, side, kind in sent])
+    assert await _book(db, stored.id) == sent  # SELL first stays first: the book was empty, nothing to protect
+
+
+async def test_leg_order_of_a_new_strategy_equals_the_order_the_legs_were_sent(db):
+    user = _user()
+    _, stored = await _with_draft(db, user)
+    c = sorted(stored.saved.contract_ids)
+    sent = [c[2], c[0], c[3], c[1]]
+    await paper_store.place(db, user, stored.id, [_new(cid, "SELL" if i % 2 == 0 else "BUY", 65, "10.00")
+                                                  for i, cid in enumerate(sent)])
+    first_seen = list(dict.fromkeys(o.order.contract_id for o in await paper_store.load(db, stored.id)))
+    assert first_seen == sent  # contract_legs numbers legs by each contract's first order
+
+
+async def test_an_exit_that_needs_an_add_of_the_same_batch_is_refused_and_nothing_is_stored(db):
+    user, sid, c = await _held(db)  # c[1] is held short 65
+    # "SELL c[1] 65 more, then BUY c[1] 130 back": buys first puts the 130 buy-back ahead of its own add -> refused whole
+    with pytest.raises(Exception, match=r"exit_exceeds_open|EXIT_EXCEEDS_OPEN|exit of BUY"):
+        await paper_store.place(db, user, sid, [_new(c[1], "SELL", 65, "9.00", "open"), _new(c[1], "BUY", 130, "8.00", "exit")])
+    assert len(await _book(db, sid)) == 4

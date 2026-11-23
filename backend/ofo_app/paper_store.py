@@ -1,6 +1,6 @@
 """PostgreSQL store of the paper order book (GC-TP step 1a; REQ-109 AC-4; ADR-207). Schema: migration 0028.
 
-- place: under the strategy's row lock (one writer per strategy), inserts the orders in the given order. Another user's
+- place: under the strategy's row lock (one writer per strategy), inserts the orders as given, except a batch against an open position, which goes in buys first (D-02). Another user's
   strategy answers NOT_FOUND exactly like a missing one. An order of kind exit / settle / stop must REDUCE the open
   quantity of its contract and never exceed it (EXIT_EXCEEDS_OPEN, nothing stored); the check runs on the book as
   stored plus the earlier orders of the same call, through the one engine (ofo.tracking.orderbook). Insert-only; the
@@ -78,6 +78,14 @@ def _check_reducing(book: list[PaperOrder], order: PaperOrder) -> None:
                                                           f"{order.side} {order.quantity} against an open {net}")
 
 
+def buys_first(orders: Sequence[NewOrder]) -> list[NewOrder]:
+    """D-02 (REQ-159 AC-6, REQ-058 Q238): BUY exits, BUY adds, SELL exits, SELL adds, stable inside each group. Every
+    BUY precedes every SELL, so a short is never naked between two fills; an exit stays before an add of its side so
+    the reducing check sees the book it reduces. ``place`` applies it only to a batch against an open position (an entry
+    on an empty book has nothing to protect and keeps the trader's leg order)."""
+    return sorted(orders, key=lambda o: (o.side != "BUY", o.kind not in REDUCING_KINDS))  # sorted is stable
+
+
 async def reconcile_triggers(conn: Any, strategy_id: int, book: Sequence[PaperOrder], *,
                              dry_run: bool = False) -> list[int]:
     """ADR-317 (4): cancels the strategy's armed triggers that cannot act on ``book`` (the whole order list, as it will
@@ -90,7 +98,7 @@ async def reconcile_triggers(conn: Any, strategy_id: int, book: Sequence[PaperOr
 
 async def place(conn: Any, user_ref: str, strategy_id: int, orders: Sequence[NewOrder], *,
                 entry: EntryFacts | None = None) -> tuple[StoredOrder, ...]:
-    """Stores ``orders`` in order (module docstring) and returns the whole book as stored; at the strategy's FIRST
+    """Stores ``orders`` as given on an empty book, buys first otherwise (D-02; module docstring) and returns the whole book as stored; at the strategy's FIRST
     fill (the book empty before this call) also its entry facts ``entry`` when known (ADR-243), same transaction."""
     if not orders:
         raise ValueError("place needs at least one order")
@@ -102,6 +110,9 @@ async def place(conn: Any, user_ref: str, strategy_id: int, orders: Sequence[New
             raise StrategyRefused("paper_strategy_closed", Failure.CONFLICT)  # a closed strategy never reopens
         book = [o.order.as_paper() for o in await load(conn, strategy_id)]
         first_fill = not book
+        if not first_fill:  # D-02: against an open position no short is ever without its protection between two fills
+            orders = buys_first(orders)
+            paper = [o.as_paper() for o in orders]
         for new in paper:
             _check_reducing(book, new)
             book.append(new)

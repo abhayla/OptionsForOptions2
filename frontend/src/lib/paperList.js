@@ -156,8 +156,10 @@ export function visibleGroups(groups, showClosed) {
  *  contract is not open or not in whole lots: no exit is offered for it. Quantities only: no price is formed here (ADR-008). */
 export function exitRowsFor(positions) {
   if (positions.some((p) => !p.open || p.lots === null)) return null
-  return positions.map((p, i) => ({
+  const rows = positions.map((p, i) => ({
     key: `exit-${p.contractId}-${i}`, contract_id: p.contractId, side: p.units > 0 ? 'SELL' : 'BUY', text: p.name,
     lots: p.lots, lot_size: p.lotSize, price: p.ltpText ?? '', kind: 'exit', price_note: p.ltpText ? '' : LAST_CLOSE_LABEL,
   }))
+  // D-02 (REQ-159 AC-6): buy-backs of shorts before sales of longs, the order the server records; stable (ES2019)
+  return rows.sort((a, b) => (a.side === 'BUY' ? 0 : 1) - (b.side === 'BUY' ? 0 : 1))
 }
