@@ -46,12 +46,12 @@ async def test_place_then_load_returns_the_orders_in_placement_order(db):
     await paper_store.place(db, user, sid, [_new(c[1], "BUY", 30, "70.00", "exit")])
     loaded = await paper_store.load(db, sid)
     assert [(o.order.contract_id, o.order.side, o.order.quantity, o.order.price, o.order.kind) for o in loaded] == [
-        (c[1], "SELL", 65, D("82.75"), "open"), (c[0], "BUY", 65, D("35.80"), "open"),
+        (c[0], "BUY", 65, D("35.80"), "open"), (c[1], "SELL", 65, D("82.75"), "open"),  # D-02: buys first
         (c[1], "BUY", 30, D("70.00"), "exit")]
     assert loaded[:2] == book
     view = net_positions([o.order.as_paper() for o in loaded], {})
     assert [(p.instrument_id, p.net_quantity, p.booked) for p in view.positions] == [
-        (str(c[1]), -35, D("382.50")), (str(c[0]), 65, D(0))]  # (82.75 - 70.00) x 30
+        (str(c[0]), 65, D(0)), (str(c[1]), -35, D("382.50"))]  # (82.75 - 70.00) x 30
 
 
 async def test_another_users_strategy_is_not_found_and_nothing_is_stored(db):

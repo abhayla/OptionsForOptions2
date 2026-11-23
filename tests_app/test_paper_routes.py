@@ -221,8 +221,11 @@ async def test_post_stores_all_orders_in_one_call_and_answers_the_book(db):
     app, stored, *_ = await _setup(db)
     c0, c1 = stored.saved.contract_ids[:2]
     async with _client(app) as c:
+        first = await c.post(f"/paper/strategies/{stored.id}/orders", json={"orders": [_order(c0, "SELL", 65, "100.00")]})
+        assert first.status_code == HTTPStatus.CREATED, first.text
+        # D-02: a batch is recorded buys first, so the exit of c0 must not depend on an open in the same batch
         reply = await c.post(f"/paper/strategies/{stored.id}/orders", json={"orders": [
-            _order(c0, "SELL", 65, "100.00"), _order(c0, "BUY", 65, "80.00", "exit"), _order(c1, "SELL", 65, "60.05")]})
+            _order(c1, "SELL", 65, "60.05"), _order(c0, "BUY", 65, "80.00", "exit")]})
     assert reply.status_code == HTTPStatus.CREATED, reply.text
     body = reply.json()
     assert [(o["side"], o["quantity"], o["price"], o["price_text"], o["kind"]) for o in body["orders"]] == [
