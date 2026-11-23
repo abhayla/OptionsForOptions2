@@ -2915,6 +2915,7 @@ INVENTORY = (
     'FIELD TrackingOut.unpriced_legs[].leg_index: int',
     'FIELD TrackingOut.unpriced_text: CatalogueText',
     'FIELD TrackingOut.unpriced_text: None',
+    "FIELD TriggersOut.already_armed[]: Literal['above','below']",
     'FIELD TriggersOut.already_set: bool',
     'FIELD TriggersOut.triggers[].cancelled_at: None',
     'FIELD TriggersOut.triggers[].cancelled_at: datetime',

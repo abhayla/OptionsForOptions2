@@ -73,12 +73,11 @@ async function saveExit() {
   const body = { kind: 'conditional_exit' }
   if (typed(above.value)) body.above = typed(above.value)
   if (typed(below.value)) body.below = typed(below.value)
-  // per level: already armed (identical kind, direction, level) in the list from BEFORE the press, or the server says nothing new was stored
-  const armed = (triggers.value ?? []).filter((x) => x.state === 'armed' && x.kind === 'conditional_exit')
-  const was = (dir, lvl) => armed.some((x) => x.direction === dir && Number(x.level) === Number(lvl))
   const data = await run(() => api.post(path, body), true)
   if (data) {
-    const lv = [['above', body.above], ['below', body.below]].filter(([, v]) => v).map(([d, v]) => ({ d, v, dup: data.already_set || was(d, v) }))
+    // D-05 r3: the line is built only from the server's answer: already_armed names the submitted levels it did NOT store
+    const dupDirs = data.already_set ? ['above', 'below'] : (data.already_armed ?? [])
+    const lv = [['above', body.above], ['below', body.below]].filter(([, v]) => v).map(([d, v]) => ({ d, v, dup: dupDirs.includes(d) }))
     const line = (list) => `exit ${list.map((x) => `${x.d} ${x.v}`).join(' and ')}`
     const fresh = lv.filter((x) => !x.dup)
     const dups = lv.filter((x) => x.dup)
@@ -92,7 +91,7 @@ async function saveStop(leg) {
   const s = stopOf(leg.index)
   const data = await run(() => api.post(path, { kind: 'leg_stop', contract_id: leg.contractId, direction: s.direction, level: typed(s.level) }), true)
   if (data) {
-    saved.value = `${data.already_set ? 'Already set' : 'Saved'}: stop ${s.direction} ${typed(s.level)}`
+    saved.value = `${data.already_set || data.already_armed?.length ? 'Already set' : 'Saved'}: stop ${s.direction} ${typed(s.level)}`
     setStop(leg.index, { level: '' })
   }
 }

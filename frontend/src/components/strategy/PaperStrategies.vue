@@ -3,16 +3,16 @@
      (Total P&L, Booked, Unbooked, Total Decay), a "Show closed positions" toggle (off), and per strategy a card with
      "N of M positions", Total / Booked / Unbooked and one row per contract (Lots, Avg, LTP, Booked, Unbooked, P&L) with
      Open in Builder, Add orders, Exit (n) and Stops. Shown in the Positions page's Paper tab and the builder's Tracked tab.
-     The browser computes no money (ADR-008): every figure is the server's text. A failed or unreadable read shows no figure.
+     The browser computes no money (ADR-008): every figure is the server's text. After a failed or unreadable refresh the list keeps its structure
+     and open panels but every price-derived figure is paused (a dash) and no exit can be opened from the old prices (REQ-109 AC-5).
      Nothing here reaches Execute (REQ-109 AC-3): an exit is a paper order and sends nothing to Zerodha. -->
 <template>
   <section class="rounded-lg border-2 border-dashed border-accent text-sm" :class="compact ? 'p-2' : 'p-3'" data-testid="paper-strategies">
     <p class="mb-2 rounded bg-accent-soft px-2 py-1 text-xs font-semibold text-accent" data-testid="paper-mode-header">Paper mode</p>
     <p class="rounded bg-amber-50 px-2 py-1 font-medium" data-testid="paper-banner">{{ BANNER }}</p>
     <p v-if="loading" class="mt-2" data-testid="paper-loading">Reading your paper strategies.</p>
-    <!-- D-05 r2: a failed refresh is a banner above the last loaded list (full-page error only when nothing ever loaded), so an open Stops panel and what was typed in it stay -->
+    <!-- D-05 r3: a failed refresh is a banner above the last loaded list, whose figures are paused (full-page error only when nothing ever loaded), so an open Stops panel and what was typed in it stay -->
     <ErrorMessage v-if="!loading && errorParts" class="mt-2" :parts="errorParts" compact prefix="paper-error" />
-    <p v-if="!loading && errorParts && items" class="mt-1 text-xs text-ink-muted" data-testid="paper-stale-note">{{ STALE_NOTE }}</p>
     <p v-if="!loading && items && !items.length" class="mt-2" data-testid="paper-empty">{{ EMPTY }}</p>
     <template v-else-if="!loading && items">
       <!-- Sensibull 050-053: the totals sit above the rows. A figure the reply omits is a dash with the server's reason. -->
@@ -36,10 +36,10 @@
               <span class="block text-xs text-ink-muted" data-testid="paper-compact-legs">{{ legsText(g) }}</span>
             </span>
             <span class="shrink-0 text-right">
-              <span class="block font-semibold" :class="toneOf(g.totalAfter.text)" data-testid="paper-total">{{ g.totalAfter.text ?? '-' }}</span>
-              <span v-if="g.totalAfter.label" class="block text-xs text-ink-muted" data-testid="paper-total-label">{{ g.totalAfter.label }}</span>
-              <span v-if="g.totalAfter.reason" class="block text-xs text-ink-muted" data-testid="paper-total-reason">{{ g.totalAfter.reason }}</span>
-              <span v-if="g.totalAfter.text === null" class="block text-xs text-ink-muted" data-testid="paper-compact-reason">{{ g.stateText || NO_TOTAL }}</span>
+              <span class="block font-semibold" :class="toneOf(g.totalAfter.text)" data-testid="paper-total">{{ stale ? '-' : g.totalAfter.text ?? '-' }}</span>
+              <span v-if="!stale && g.totalAfter.label" class="block text-xs text-ink-muted" data-testid="paper-total-label">{{ g.totalAfter.label }}</span>
+              <span v-if="!stale && g.totalAfter.reason" class="block text-xs text-ink-muted" data-testid="paper-total-reason">{{ g.totalAfter.reason }}</span>
+              <span v-if="stale || g.totalAfter.text === null" class="block text-xs text-ink-muted" data-testid="paper-compact-reason">{{ stale ? PAPER_PAUSED : g.stateText || NO_TOTAL }}</span>
             </span>
           </RouterLink>
         </li>
@@ -74,7 +74,7 @@
               <button type="button" class="rounded border border-line px-2 py-1" :aria-pressed="!!greeksOpen[g.id]" :data-testid="`greeks-toggle-${g.id}`" @click="greeksOpen = { ...greeksOpen, [g.id]: !greeksOpen[g.id] }">Greeks</button>
             </dl>
             <div v-if="greeksOpen[g.id]" class="mt-2" :data-testid="`paper-greeks-${g.id}`">
-              <p v-if="!g.greeks" class="text-xs text-ink-muted" data-testid="paper-greeks-reason">{{ PAPER_NO_FIGURE }} {{ g.greeksReason }}</p>
+              <p v-if="stale || !g.greeks" class="text-xs text-ink-muted" data-testid="paper-greeks-reason">{{ PAPER_NO_FIGURE }} {{ stale ? PAPER_PAUSED : g.greeksReason }}</p>
               <table v-else class="w-full text-left">
                 <thead><tr><th>Instrument</th><th v-for="c in GREEK_COLUMNS" :key="c.key">{{ c.label }}</th></tr></thead>
                 <tbody>
@@ -105,9 +105,9 @@
                     <td data-testid="paper-instrument"><span v-if="p.side" class="mr-1 rounded bg-surface-muted px-1 font-semibold">{{ p.side }}</span> <span>{{ p.name }}</span></td>
                     <td data-testid="paper-qty">{{ p.qtyText }}<span v-if="p.qtyNote" class="block text-xs text-ink-muted" data-testid="paper-qty-note">{{ p.qtyNote }}</span></td>
                     <td data-testid="paper-avg">{{ pnlText(p.averageText) }}</td>
-                    <td data-testid="paper-ltp">{{ pnlText(p.ltpText) }}<span v-if="p.ltpReason && p.ltpText === null" class="block text-xs text-ink-muted" data-testid="paper-ltp-reason">{{ p.ltpReason }}</span></td>
+                    <td data-testid="paper-ltp">{{ pnlText(p.ltpText) }}<span v-if="!stale && p.ltpReason && p.ltpText === null" class="block text-xs text-ink-muted" data-testid="paper-ltp-reason">{{ p.ltpReason }}</span></td>
                     <td data-testid="paper-leg-booked">{{ pnlText(p.booked) }}</td>
-                    <td data-testid="paper-leg-unbooked" :class="toneOf(p.unbooked)">{{ p.noPrice ?? pnlText(p.unbooked) }}</td>
+                    <td data-testid="paper-leg-unbooked" :class="toneOf(p.unbooked)">{{ stale ? pnlText(null) : p.noPrice ?? pnlText(p.unbooked) }}</td>
                     <td data-testid="paper-leg-pnl" :class="toneOf(p.total)">{{ pnlText(p.total) }}</td>
                   </tr>
                 </tbody>
@@ -119,7 +119,8 @@
                 <RouterLink :to="builderLink(g)" class="rounded border border-line px-2 py-1 text-center text-accent" data-testid="paper-open-builder">Open in Builder</RouterLink>
                 <RouterLink :to="builderLink(g)" class="rounded border border-line px-2 py-1 text-center text-accent" data-testid="paper-add-orders">Add orders</RouterLink>
                 <button v-if="g.openCount" type="button" class="rounded border border-line px-2 py-1" :aria-expanded="!!stopsOpen[g.id]" :data-testid="`stops-open-${g.id}`" @click="stopsOpen = { ...stopsOpen, [g.id]: !stopsOpen[g.id] }">Stops</button>
-                <button v-if="g.openCount" type="button" class="rounded border border-line px-2 py-1" :data-testid="`exit-selected-${g.id}`" :disabled="busy || !tickedOpen(g).length" @click="ask(g, tickedOpen(g))">Exit ({{ tickedOpen(g).length }})</button>
+                <button v-if="g.openCount" type="button" class="rounded border border-line px-2 py-1" :data-testid="`exit-selected-${g.id}`" :disabled="busy || stale || !tickedOpen(g).length" @click="ask(g, tickedOpen(g))">Exit ({{ tickedOpen(g).length }})</button>
+                <p v-if="stale && g.openCount" class="text-xs text-ink-muted" data-testid="paper-exit-reason">{{ NOT_LIVE_EXIT }}</p>
               </div>
             </div>
             <PaperStops v-if="stopsOpen[g.id]" :strategy-id="g.id" :underlying="g.underlying" :legs="stopLegs(g)" />
@@ -140,7 +141,7 @@ import PaperStops from '@/components/strategy/PaperStops.vue'
 import AfterChargesTap from '@/components/common/AfterChargesTap.vue'
 import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
 import HeldNote from '@/components/strategy/HeldNote.vue'
-import { ALL_CLOSED_TEXT, GREEK_COLUMNS, PAPER_NO_FIGURE, SHOW_CLOSED_LABEL, exitRowsFor, readPaperList, visibleGroups } from '@/lib/paperList'
+import { ALL_CLOSED_TEXT, GREEK_COLUMNS, PAPER_NO_FIGURE, PAPER_PAUSED, SHOW_CLOSED_LABEL, exitRowsFor, readPaperList, visibleGroups } from '@/lib/paperList'
 import { usePaperRefresh } from '@/lib/usePaperRefresh'
 import { PAPER_STATE, paperPostOutcome } from '@/lib/tracking'
 import { useRouter } from 'vue-router'
@@ -156,7 +157,7 @@ const legsText = (g) => {
 }
 const NO_TOTAL = 'No paper total yet: prices are not live'
 const BANNER = 'Paper trades - not real money'
-const STALE_NOTE = 'Showing the list as last loaded: prices and P&L may be out of date until the next good read.'
+const NOT_LIVE_EXIT = 'Prices are not live; try again when they update' // REQ-109 AC-5
 const EMPTY = 'No paper strategies yet. Build a strategy, then press Add to Paper.'
 const figures = [
   { field: 'total', label: 'Total P&L', testid: 'paper-total', reason: 'pauseReason', reasonId: 'paper-total-reason' },
@@ -184,14 +185,15 @@ const totalFigures = [
 // "(before charges)" and the reason (lib/tracking afterFigure); every other figure is its own text and reason, unchanged
 const AFTER_OF = { total: 'totalAfter', booked: 'bookedAfter', unbooked: 'unbookedAfter' } // u124: Booked / Unbooked follow the same rule
 const shownFig = (src, f) => {
+  if (stale.value) return { label: f.label, text: null, reason: PAPER_PAUSED, breakdown: null }
   if (AFTER_OF[f.field]) {
     const a = src[AFTER_OF[f.field]]
     return { label: `${f.label} ${a.label}`.trim(), text: a.text, reason: a.reason, breakdown: a.breakdown }
   }
   return { label: f.label, text: src[f.field], reason: f.reason && src[f.field] === null ? src[f.reason] : null }
 }
-const pnlText = (v) => (v === null || v === undefined ? PAPER_NO_FIGURE : v)
-const toneOf = (v) => ({ profit: 'text-profit', loss: 'text-loss' })[signOf(String(v ?? '').replace(/,/g, '').replace('−', '-'))] ?? ''
+const pnlText = (v) => (v === null || v === undefined || stale.value ? PAPER_NO_FIGURE : v)
+const toneOf = (v) => stale.value ? '' : ({ profit: 'text-profit', loss: 'text-loss' })[signOf(String(v ?? '').replace(/,/g, '').replace('−', '-'))] ?? ''
 const builderLink = (g) => ({ path: '/strategy/builder', query: { strategy: String(g.id) } })
 
 const items = ref(null)
@@ -199,6 +201,8 @@ const totals = ref(null)
 const showClosed = ref(false)
 const shown = computed(() => visibleGroups(items.value ?? [], showClosed.value))
 const errorParts = ref(null)
+// D-05 r3: a failed or unreadable refresh with a list on screen: figures paused, no exit from old prices
+const stale = computed(() => !!errorParts.value && !!items.value)
 const loading = ref(true)
 const stopsOpen = ref({})
 // R-10: a Stop row for each OPEN contract, keyed by the contract id the reply carries (a digit string sent as is)
@@ -264,7 +268,7 @@ function cancelExit() {
 
 function ask(g, rows) {
   const orders = exitRowsFor(rows)
-  if (busy.value || orders === null || !orders.length) return
+  if (busy.value || stale.value || orders === null || !orders.length) return
   dialogError.value = ''
   dialogState.value = PAPER_STATE.READY
   confirm.value = { id: g.id, orders, units: rows.map((p) => ({ id: p.contractId, units: p.units })) }

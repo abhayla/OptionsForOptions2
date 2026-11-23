@@ -1193,6 +1193,7 @@ class TriggerOut(ApiModel):
 class TriggersOut(ApiModel):
     triggers: list[TriggerOut]  # newest first
     already_set: bool = False  # D-05: true only on a save that stored NOTHING new (the identical trigger was armed)
+    already_armed: list[Direction] = []  # D-05 r3: directions of the submitted levels NOT stored (an identical armed trigger existed)
 
 
 class AlertOut(ApiModel):
@@ -1217,11 +1218,12 @@ def _state(row: paper_trigger_store.TriggerRow) -> TriggerState:
     return "armed" if row.cancelled_at is None else "cancelled"
 
 
-async def _triggers_out(db: Any, strategy_id: int, already_set: bool = False) -> TriggersOut:
+async def _triggers_out(db: Any, strategy_id: int, already_set: bool = False,
+                        already_armed: Sequence[Direction] = ()) -> TriggersOut:
     rows = list(reversed(await paper_trigger_store.list_for(db, strategy_id)))
     ids = sorted({r.trigger.contract_id for r in rows if r.trigger.contract_id is not None})
     found = {c.contract_id: c for c in await tracked_contracts.resolve(db, ids)}
-    return TriggersOut.model_validate({"already_set": already_set, "triggers": [{
+    return TriggersOut.model_validate({"already_set": already_set, "already_armed": list(already_armed), "triggers": [{
         "id": r.trigger.id, "strategy_id": r.trigger.strategy_id, "kind": r.trigger.kind,
         "direction": r.trigger.direction, "level": r.trigger.level,
         "level_text": render_explanation("paper_trigger_level", level=r.trigger.level),
@@ -1301,6 +1303,7 @@ async def add_paper_triggers(strategy_id: int, body: TriggerIn, db: Annotated[An
     armed = {(r.trigger.kind, r.trigger.direction, r.trigger.level, r.trigger.contract_id)
              for r in await paper_trigger_store.list_for(db, strategy_id) if _state(r) == "armed"}
     fresh = [n for n in new if (n.kind, n.direction, n.level, n.contract_id) not in armed]
+    duplicate = [n.direction for n in new if n not in fresh]
     try:
         for n in fresh:
             await paper_trigger_store.add(db, strategy_id, n)
@@ -1309,7 +1312,7 @@ async def add_paper_triggers(strategy_id: int, body: TriggerIn, db: Annotated[An
         await db.rollback()
         raise
     paper_monitor.notify()
-    return await _triggers_out(db, strategy_id, already_set=not fresh)
+    return await _triggers_out(db, strategy_id, already_set=not fresh, already_armed=duplicate)
 
 
 @router.delete("/paper/strategies/{strategy_id}/triggers/{trigger_id}", response_model=TriggersOut,
