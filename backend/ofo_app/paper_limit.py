@@ -5,7 +5,8 @@ Both user save paths (``routes.paper.place_paper_orders`` and ``routes.tracking.
 then checks the limit, so neither path can skip a check. The offered approaches were already filtered by the limit
 (``ofo.adjustment.offered``); this refuses a batch a user builds by hand beyond it. Counting is the history page's
 (``adjustment_readers.history_count``: every batch after the entry is one adjustment, a partial exit included, the
-entry batch never). A batch that closes the whole strategy is always allowed, before any history or plan is read.
+entry batch never). A batch that closes the whole strategy is always allowed, before any history or plan is read;
+over the maximum a batch made only of reducing orders (ADR-318 (5)) is allowed too, and still counts.
 
 Answer states of the plan read: its own plan -> its ``guards.max_adjustments``; no plan -> the active playbook of the
 position's type (the plan sheet's pre-fill); a readable plan or playbook that sets no maximum, or no plan and no
@@ -68,8 +69,9 @@ async def check_adjustment_limit(db: Any, user_ref: str, strategy_id: int,  # no
                                  existing: Sequence[Any], new: Sequence[Any], reader: Any, rates: Any,
                                  listed: Any) -> None:
     """Raises ``StrategyRefused`` when ``new`` (the batch just stored, ``.order`` rows' orders) would be adjustment
-    number > the plan's maximum over the ``existing`` stored rows. No stored order before (the entry) or a batch that
-    adds no adjustment -> returns without reading the plan."""
+    number > the plan's maximum and opens or adds to a leg (ADR-318 (5): a batch of reducing orders passes), over the
+    ``existing`` stored rows. No stored order before (the entry) or a batch that adds no adjustment -> returns without
+    reading the plan."""
     from ofo_app.adjustment_readers import history_count  # noqa: PLC0415 - it imports the route layer
     if not existing:
         return
@@ -94,9 +96,10 @@ async def check_adjustment_limit(db: Any, user_ref: str, strategy_id: int,  # no
         log.warning("paper adjustment limit: strategy %s plan unreadable (%s)", strategy_id, type(exc).__name__)
         raise _unread() from None
     limit = _limit_of(guards)
-    if limit is not None and after > limit:
-        raise StrategyRefused("paper_adjustment_limit",
-                              message=render("paper_adjustment_limit", limit=limit, number=after))
+    if limit is not None and after > limit and not all(o.kind in paper_store.REDUCING_KINDS for o in new):
+        # ADR-318 (5): at the maximum a basket of reducing orders is accepted (paper_store.place already refused any that
+        # exceeds the open quantity); one that opens or adds to a leg is refused with the approaches list's reason
+        raise StrategyRefused("paper_adjustment_limit", message=render("paper_adjustment_limit", limit=limit))
 
 
 def _limit_of(guards: Any) -> int | None:

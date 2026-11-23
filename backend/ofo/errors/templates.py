@@ -988,11 +988,12 @@ _STRATEGY_DRAFT_TEMPLATES: tuple[MessageTemplate, ...] = (
           "Placing these paper orders.", "Choose a contract that is still live, then place the orders again."),
     # GC-ICGUIDE g10 (audit C9; ADR-255): the plan's most adjustments, enforced when the orders are saved.
     _gate("paper_adjustment_limit", _SV, 505,
-          "This plan allows at most {limit} adjustments, and these orders would make adjustment {number}.",
+          "These orders open or add to a leg, and there is no room left: plan maximum of {limit} reached.",
           "No order was stored; a partial exit counts as an adjustment, the entry does not.",
           "Placing these paper orders.",
-          "Exit the whole strategy, or raise the plan's most adjustments, then place the orders again.",
-          {"limit": Count, "number": Count}),
+          "Close or reduce legs instead, exit the whole strategy, or raise the plan's most adjustments, then place "
+          "the orders again.",
+          {"limit": Count}),
     _gate("paper_adjustment_limit_unread", _SV, 506,
           "The plan's most adjustments could not be read, so these orders cannot be checked against it.",
           "No order was stored; an adjustment is never saved without checking the plan's limit.",
