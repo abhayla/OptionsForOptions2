@@ -1192,6 +1192,7 @@ class TriggerOut(ApiModel):
 
 class TriggersOut(ApiModel):
     triggers: list[TriggerOut]  # newest first
+    already_set: bool = False  # D-05: true only on a save that stored NOTHING new (the identical trigger was armed)
 
 
 class AlertOut(ApiModel):
@@ -1216,11 +1217,11 @@ def _state(row: paper_trigger_store.TriggerRow) -> TriggerState:
     return "armed" if row.cancelled_at is None else "cancelled"
 
 
-async def _triggers_out(db: Any, strategy_id: int) -> TriggersOut:
+async def _triggers_out(db: Any, strategy_id: int, already_set: bool = False) -> TriggersOut:
     rows = list(reversed(await paper_trigger_store.list_for(db, strategy_id)))
     ids = sorted({r.trigger.contract_id for r in rows if r.trigger.contract_id is not None})
     found = {c.contract_id: c for c in await tracked_contracts.resolve(db, ids)}
-    return TriggersOut.model_validate({"triggers": [{
+    return TriggersOut.model_validate({"already_set": already_set, "triggers": [{
         "id": r.trigger.id, "strategy_id": r.trigger.strategy_id, "kind": r.trigger.kind,
         "direction": r.trigger.direction, "level": r.trigger.level,
         "level_text": render_explanation("paper_trigger_level", level=r.trigger.level),
@@ -1289,26 +1290,26 @@ async def add_paper_triggers(strategy_id: int, body: TriggerIn, db: Annotated[An
                              user_ref: Annotated[str, Depends(current_user_ref)],
                              ctx: Annotated[MarketContext | None, Depends(get_market_context)]) -> TriggersOut:
     stored = await _load_strategy(db, user_ref, strategy_id)
+    await store.lock_strategy(db, user_ref, strategy_id)  # D-05: two saves at one instant cannot both pass the read below
     open_ids = _open_ids(await paper_store.load(db, strategy_id))
     if not open_ids:
         raise StrategyRefused("paper_trigger_nothing_open")
     new = _new_triggers(body, stored.saved.definition.underlying, open_ids)
     if await _already_crossed(db, ctx, stored.saved.definition.underlying, new):
         raise StrategyRefused("paper_trigger_already_crossed")
-    # ADR-317 (3): the same armed trigger is not stored twice (the strategy's row lock is not held: a double click
-    # that races past this read is the monitor's problem only until the next save returns the first one)
+    # ADR-317 (3): the same armed trigger is not stored twice (read under the strategy's row lock taken above)
     armed = {(r.trigger.kind, r.trigger.direction, r.trigger.level, r.trigger.contract_id)
              for r in await paper_trigger_store.list_for(db, strategy_id) if _state(r) == "armed"}
+    fresh = [n for n in new if (n.kind, n.direction, n.level, n.contract_id) not in armed]
     try:
-        for n in new:
-            if (n.kind, n.direction, n.level, n.contract_id) not in armed:
-                await paper_trigger_store.add(db, strategy_id, n)
+        for n in fresh:
+            await paper_trigger_store.add(db, strategy_id, n)
         await db.commit()
     except Exception:
         await db.rollback()
         raise
     paper_monitor.notify()
-    return await _triggers_out(db, strategy_id)
+    return await _triggers_out(db, strategy_id, already_set=not fresh)
 
 
 @router.delete("/paper/strategies/{strategy_id}/triggers/{trigger_id}", response_model=TriggersOut,

@@ -91,7 +91,7 @@ describe('Stops panel', () => {
     await flushPromises()
     expect(posts()).toEqual([['POST', TRIG, { kind: 'conditional_exit', below: '24000' }]])
   })
-  it('shows the server refusal text and keeps the typed values; a network failure shows the neutral line', async () => {
+  it('shows the server refusal text and keeps the typed values; a network failure shows the Not saved line (ADR-317 (5))', async () => {
     const w = await open()
     await t(w, 'ce-above').setValue('24500')
     answers[`POST ${TRIG}`] = refuse('That level is not valid.')
@@ -102,7 +102,7 @@ describe('Stops panel', () => {
     answers[`POST ${TRIG}`] = () => Promise.reject({ message: 'net', status: null, parts: null })
     await t(w, 'ce-save').trigger('click')
     await flushPromises()
-    expect(t(w, 'stops-error').text()).toBe('Something went wrong. Please try again.')
+    expect(t(w, 'stops-error').text()).toBe('Not saved: could not get an answer from the server. Your levels are still in the boxes, press Save again.')
   })
   it('a saved level is confirmed in one line; a refusal shows the server words, keeps the values and no confirmation', async () => {
     const w = await open()

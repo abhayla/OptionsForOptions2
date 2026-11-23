@@ -38,27 +38,29 @@ const ceReason = computed(() => {
 })
 const stopReason = (i) => (paperPriceOk(stopOf(i).level) ? '' : PAPER_PRICE_REASON)
 
-function take(data) {
-  if (data && Array.isArray(data.triggers)) {
-    triggers.value = data.triggers
-    return true
-  }
-  triggers.value = null
-  error.value = NEUTRAL_ERROR
-  return false
-}
+// D-05: a Save ends in exactly one line: "Saved: ...", "Already set: ..." or "Not saved: ..." (ADR-317 (5))
+const NO_ANSWER = 'Not saved: could not get an answer from the server. Your levels are still in the boxes, press Save again.'
 const refusal = (e) => e?.parts?.what_happened || NEUTRAL_ERROR
+const notSaved = (e) => (e?.status >= 400 && e.status < 500 && e?.parts?.what_happened ? `Not saved: ${e.parts.what_happened}` : NO_ANSWER)
 
-async function run(call) {
-  if (busy.value) return false
+// Returns the reply data on success (a reply without a triggers array is a failure), null otherwise.
+async function run(call, saving = false) {
+  if (busy.value) return null
   busy.value = true
   error.value = ''
   saved.value = ''
   try {
-    return take((await call()).data)
+    const data = (await call()).data
+    if (data && Array.isArray(data.triggers)) {
+      triggers.value = data.triggers
+      return data
+    }
+    triggers.value = null
+    error.value = saving ? NO_ANSWER : NEUTRAL_ERROR
+    return null
   } catch (e) {
-    error.value = refusal(e)
-    return false
+    error.value = saving ? notSaved(e) : refusal(e)
+    return null
   } finally {
     busy.value = false
   }
@@ -71,8 +73,9 @@ async function saveExit() {
   const body = { kind: 'conditional_exit' }
   if (typed(above.value)) body.above = typed(above.value)
   if (typed(below.value)) body.below = typed(below.value)
-  if (await run(() => api.post(path, body))) {
-    saved.value = `Saved: exit ${[body.above && `above ${body.above}`, body.below && `below ${body.below}`].filter(Boolean).join(' and ')}`
+  const data = await run(() => api.post(path, body), true)
+  if (data) {
+    saved.value = `${data.already_set ? 'Already set' : 'Saved'}: exit ${[body.above && `above ${body.above}`, body.below && `below ${body.below}`].filter(Boolean).join(' and ')}`
     above.value = ''
     below.value = ''
   }
@@ -80,8 +83,9 @@ async function saveExit() {
 async function saveStop(leg) {
   if (stopReason(leg.index)) return
   const s = stopOf(leg.index)
-  if (await run(() => api.post(path, { kind: 'leg_stop', contract_id: leg.contractId, direction: s.direction, level: typed(s.level) }))) {
-    saved.value = `Saved: stop ${s.direction} ${typed(s.level)}`
+  const data = await run(() => api.post(path, { kind: 'leg_stop', contract_id: leg.contractId, direction: s.direction, level: typed(s.level) }), true)
+  if (data) {
+    saved.value = `${data.already_set ? 'Already set' : 'Saved'}: stop ${s.direction} ${typed(s.level)}`
     setStop(leg.index, { level: '' })
   }
 }
@@ -98,7 +102,7 @@ const cancel = (t) => run(() => api.delete(`${path}/${t.id}`))
       <div class="mt-1 flex flex-wrap items-end gap-3">
         <label class="text-xs">Above<input v-model="above" type="text" inputmode="decimal" class="ml-1 w-28 rounded border border-line px-1 py-0.5 text-sm" data-testid="ce-above" /></label>
         <label class="text-xs">Below<input v-model="below" type="text" inputmode="decimal" class="ml-1 w-28 rounded border border-line px-1 py-0.5 text-sm" data-testid="ce-below" /></label>
-        <button type="button" class="rounded border border-line px-3 py-1" :disabled="busy || !!ceReason" data-testid="ce-save" @click="saveExit">Save</button>
+        <button type="button" class="rounded border border-line px-3 py-1" :disabled="busy || !!ceReason" data-testid="ce-save" @click="saveExit">{{ busy ? 'Saving...' : 'Save' }}</button>
       </div>
       <p v-if="ceReason" class="text-xs text-ink-muted" data-testid="ce-reason">{{ ceReason }}</p>
     </div>
@@ -112,7 +116,7 @@ const cancel = (t) => run(() => api.delete(`${path}/${t.id}`))
           <option value="below">Below</option>
         </select>
         <input :value="stopOf(l.index).level" type="text" inputmode="decimal" placeholder="Stop price" class="w-24 rounded border border-line px-1 py-0.5" :data-testid="`stop-level-${l.index}`" :aria-label="`Stop price for ${l.label}`" @input="setStop(l.index, { level: $event.target.value })" />
-        <button type="button" class="rounded border border-line px-3 py-1" :disabled="busy || !!stopReason(l.index)" :data-testid="`stop-save-${l.index}`" @click="saveStop(l)">Save</button>
+        <button type="button" class="rounded border border-line px-3 py-1" :disabled="busy || !!stopReason(l.index)" :data-testid="`stop-save-${l.index}`" @click="saveStop(l)">{{ busy ? 'Saving...' : 'Save' }}</button>
         <span v-if="stopReason(l.index) && typed(stopOf(l.index).level)" class="text-xs text-ink-muted" :data-testid="`stop-reason-${l.index}`">{{ stopReason(l.index) }}</span>
       </div>
     </div>
