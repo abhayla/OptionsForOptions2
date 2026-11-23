@@ -94,3 +94,35 @@ function byContractOrder(legs) {
   const at = (id) => legs.findIndex((l) => l.contract_id === id)
   return (a, b) => at(a.contract_id) - at(b.contract_id)
 }
+
+// REQ-159 AC-6 / REQ-058 (Q238): buy legs first. One rule on the whole basket: BUY exits (short buy-backs), BUY adds (new
+// hedges), SELL exits (old hedges), SELL adds (new shorts); stable within each group. Real shapes seen 2026-11-23.
+describe('paperOrdersFor puts every BUY before every SELL (REQ-159 AC-6)', () => {
+  const L = (contract_id, action, lots = 1) => ({ contract_id, action, lots, lot_size: 25 })
+  const seq = (orders) => orders.map((o) => `${o.side} ${o.contract_id} ${o.kind}`)
+  const buysFirst = (orders) => orders.findLastIndex((o) => o.side === 'BUY') < orders.findIndex((o) => o.side === 'SELL')
+  it('put-spread roll: BUY short buy-back, BUY new hedge, SELL old hedge, SELL new short', () => {
+    const got = paperOrdersFor([L(25300, 'BUY'), L(25400, 'SELL')], [L(25400, 'BUY'), L(25500, 'SELL')])
+    expect(seq(got)).toEqual(['BUY 25400 exit', 'BUY 25400 add', 'SELL 25300 exit', 'SELL 25500 add'])
+  })
+  it('call-spread shift: both BUYs before both SELLs', () => {
+    const got = paperOrdersFor([L(25600, 'SELL'), L(25700, 'BUY')], [L(25650, 'SELL'), L(25750, 'BUY')])
+    expect(seq(got)).toEqual(['BUY 25600 exit', 'BUY 25750 add', 'SELL 25700 exit', 'SELL 25650 add'])
+  })
+  it('close-tested-spread: the short is bought back before the hedge is sold', () => {
+    expect(seq(paperOrdersFor([L(25300, 'BUY'), L(25400, 'SELL')], []))).toEqual(['BUY 25400 exit', 'SELL 25300 exit'])
+  })
+  it('two-expiry diagonal roll: ids differ per expiry, same rule', () => {
+    const got = paperOrdersFor([L(2, 'BUY'), L(1, 'SELL')], [L(4, 'BUY'), L(3, 'SELL')])
+    expect(seq(got)).toEqual(['BUY 1 exit', 'BUY 4 add', 'SELL 2 exit', 'SELL 3 add'])
+  })
+  it('a plain entry of four adds lists the BUYs first', () => {
+    const got = paperOrdersFor([], [L(1, 'SELL'), L(2, 'SELL'), L(3, 'BUY'), L(4, 'BUY')])
+    expect(seq(got)).toEqual(['BUY 3 add', 'BUY 4 add', 'SELL 1 add', 'SELL 2 add'])
+    expect(buysFirst(got)).toBe(true)
+  })
+  it('is stable within a group (contract order is kept)', () => {
+    // net: short 9, short 7, long 8 -> exits: BUY 9, BUY 7 (their order kept), then SELL 8
+    expect(seq(paperOrdersFor([L(9, 'SELL'), L(7, 'SELL'), L(8, 'BUY')], []))).toEqual(['BUY 9 exit', 'BUY 7 exit', 'SELL 8 exit'])
+  })
+})
