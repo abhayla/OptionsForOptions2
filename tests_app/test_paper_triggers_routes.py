@@ -373,6 +373,7 @@ async def test_d05_an_identical_second_save_says_already_set_and_stores_one_row(
         first = await c.post(_url(stored), json=ce)
         again = await c.post(_url(stored), json=ce)
     assert first.json()["already_set"] is False and again.json()["already_set"] is True
+    assert first.json()["already_armed"] == [] and again.json()["already_armed"] == ["above"]
     assert len([r for r in again.json()["triggers"] if r["state"] == "armed"]) == 1
     assert len(await _stored(db, stored.id)) == 1
 
@@ -383,7 +384,17 @@ async def test_d05_a_save_with_one_new_side_stores_it_and_is_not_already_set(db,
         await c.post(_url(stored), json={"kind": "conditional_exit", "above": "23100"})
         both = await c.post(_url(stored), json={"kind": "conditional_exit", "above": "23100", "below": "22000"})
     assert both.json()["already_set"] is False
+    assert both.json()["already_armed"] == ["above"]  # D-05 r3: the server names which submitted level was not stored
     assert len(await _stored(db, stored.id)) == 2
+
+
+async def test_d05_r3_already_armed_names_every_duplicate_side_and_none_when_all_are_new(db, notified):
+    app, stored, _ = await _open(db)
+    async with _client(app) as c:
+        fresh = await c.post(_url(stored), json={"kind": "conditional_exit", "above": "23100", "below": "22000"})
+        same = await c.post(_url(stored), json={"kind": "conditional_exit", "above": "23100.00", "below": "22000"})
+    assert fresh.json()["already_armed"] == [] and fresh.json()["already_set"] is False
+    assert sorted(same.json()["already_armed"]) == ["above", "below"] and same.json()["already_set"] is True
 
 
 async def test_d05_the_route_takes_the_strategy_row_lock_before_reading_the_armed_set(db, notified, monkeypatch):
@@ -446,11 +457,19 @@ async def _remove_committed(admin_engine, user: str, contract_ids: list[int]) ->
 
 
 async def test_d05_two_identical_saves_at_one_instant_on_two_connections_store_one_row(app_engine, admin_engine,
-                                                                                         notified):
+                                                                                         notified, monkeypatch):
     """REAL concurrency: committed rows, two apps on two separate sessions/connections, both POSTs sent together.
     Without the strategy row lock both read an empty armed set and both insert (run once with the lock line removed)."""
     ids: list[int] = []
     user = ""
+    import test_strategy_tracking as tst
+    real_user = tst._user
+
+    def _remembered_user():  # the user is known before _setup commits, so a failing set-up is still cleaned up
+        nonlocal user
+        user = real_user()
+        return user
+    monkeypatch.setattr(tst, "_user", _remembered_user)
     try:
         async with app_engine.connect() as conn:
             async with conn.begin():
