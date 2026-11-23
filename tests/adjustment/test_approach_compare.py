@@ -211,7 +211,7 @@ def test_ac2_breakevens_and_margin_change_and_adjustments_rows():
     assert a29.text == "-" and "Zerodha returned no margin figure for this basket" in a29.unavailable_reason
     adj = row(cmp, "adjustments")
     assert adj.values["A-36"].text == "0 used; no plan maximum set" and adj.values["A-05"].value == 1
-    assert adj.leaders == ("A-36",)
+    assert adj.leaders == ("A-36", "A-31")  # D-04: Exit all adds no adjustment, so it ties the fewest
 
 
 def test_f93_adjustments_row_shows_the_plan_maximum_as_used_of_max():
@@ -221,7 +221,7 @@ def test_f93_adjustments_row_shows_the_plan_maximum_as_used_of_max():
     for mx, first, trading in ((2, "0 of 2", "1 of 2"), (0, "0 of 0", "1 of 0")):  # D-04: the true count, never capped
         adj = row(compare(cols, replace(ctx, adjustments_max=mx)), "adjustments")
         assert adj.values["A-36"].text == first and adj.values["A-05"].text.startswith(trading), mx
-        assert adj.values["A-05"].value == 1 and adj.leaders == ("A-36",)
+        assert adj.values["A-05"].value == 1 and adj.leaders == ("A-36", "A-31")  # Exit all adds none: a tie
     none = row(compare(cols, replace(ctx, adjustments_max=None)), "adjustments")
     assert none.values["A-36"].text == "0 used; no plan maximum set"
 
@@ -388,8 +388,8 @@ def test_adr215_nothing_open_shows_no_position_left_and_cannot_lead_the_greeks_r
         kept = crit.values["A-36"]
         assert kept.unavailable_reason is None and kept.rank is not None, rid
     led = [c.id for c in cmp.criteria if "A-31" in c.leaders]
-    assert led == ["margin_change", "max_loss"]
-    assert cmp.leads["A-31"][0] == 2
+    assert led == ["margin_change", "max_loss", "adjustments"]  # Exit all adds no adjustment (ADR-318)
+    assert cmp.leads["A-31"][0] == 3
 
 
 def test_max_profit_cell_says_when_the_top_is_the_value_at_index_zero():

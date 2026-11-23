@@ -705,7 +705,7 @@ def _not_offered_by_limit(limit: Mapping[str, Any] | None,
     limit reason (never silently dropped). Not in ``approaches``, so "Showing N of M" counts only what is offered."""
     if limit is None:
         return []
-    reason = render_explanation("adjust_limit_reason")
+    reason = render_explanation("adjust_limit_reason", max=limit["max"])
     return [{"id": a["id"], "name": a["name"], "reason_id": "adjustment_limit_reached", "reason": reason}
             for a in available if a["applicable"] and a["id"] not in EXIT_REDUCE]
 

@@ -476,11 +476,17 @@ class _Rows:
     def adjustments(self) -> Cell:
         if self.ctx.adjustments_used is None:
             return _dash(render_explanation("adjust_cmp_adjustments_unknown"))
+        stored = self.ctx.adjustments_used
+        if self.b.trades and not self.b.after:  # ADR-318 (3) / ADR-255: closing every open leg is not an adjustment
+            return Cell(render_explanation("adjust_cmp_adjustments_exit"), Decimal(stored), None, Decimal(stored))
         mx = self.ctx.adjustments_max  # F-93: the accepted plan's maximum, shown as "used of max"
-        at_limit = mx is not None and self.ctx.adjustments_used >= mx  # the header's stored count; a row never exceeds the maximum
-        used = self.ctx.adjustments_used + (1 if self.b.trades and not at_limit else 0)
-        text = (render_explanation("adjust_cmp_adjustments", used=used) if mx is None
-                else render_explanation("adjust_cmp_adjustments_of", used=used, max=mx))
+        used = stored + (1 if self.b.trades else 0)  # ADR-318 (2): the true count, never capped for display
+        if mx is None:
+            text = render_explanation("adjust_cmp_adjustments", used=used)
+        elif used > mx and self.b.trades:
+            text = render_explanation("adjust_cmp_adjustments_over", used=used, max=mx)
+        else:
+            text = render_explanation("adjust_cmp_adjustments_of", used=used, max=mx)
         return Cell(text, Decimal(used), None, Decimal(used))
 
     def liquidity(self) -> Cell:

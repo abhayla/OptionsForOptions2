@@ -2006,6 +2006,11 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         {"used": Recorded}),
     ExplanationTemplate("adjust_cmp_adjustments_of", "values_seen", "{used} of {max}",
                         {"used": Recorded, "max": Recorded}),
+    # ADR-318 (2): a trading row at or over the plan maximum shows its true count and says so; (3): Exit all shows none
+    ExplanationTemplate("adjust_cmp_adjustments_over", "values_seen",
+                        "{used} of {max}; this would be adjustment {used}, over your plan maximum of {max}",
+                        {"used": Recorded, "max": Recorded}),
+    ExplanationTemplate("adjust_cmp_adjustments_exit", "values_seen", "Not an adjustment: closes every open leg"),
     ExplanationTemplate("adjust_cmp_fresh", "values_seen", "Max profit {profit}, max loss {loss}",
                         {"profit": Explained, "loss": Explained}),
     ExplanationTemplate("adjust_cmp_no_price", "values_seen", "Not available: {leg} has no current price.",
@@ -2042,7 +2047,7 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     # ADR-297 (D4): at the plan's adjustment maximum the offer screen says so, and each withheld approach carries the reason
     ExplanationTemplate("adjust_limit_reached", "values_seen", "Adjustment limit reached ({used} of {max})",
                         {"used": Recorded, "max": Recorded}),
-    ExplanationTemplate("adjust_limit_reason", "values_seen", "Adjustment limit reached"),
+    ExplanationTemplate("adjust_limit_reason", "values_seen", "plan maximum of {max} reached", {"max": Recorded}),
     # ADR-272 / issues 79, 87, 77: how old the prices behind a Compare reply are (a stale reply names its age and is not ranked)
     ExplanationTemplate("adjust_prices_stale", "values_seen",
                         "Prices are {minutes} min old (last update {time} IST): figures below are not live.",
