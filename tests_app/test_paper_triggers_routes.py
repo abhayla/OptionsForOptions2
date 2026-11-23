@@ -566,12 +566,11 @@ async def test_d01_a_price_that_is_not_live_is_never_used_to_refuse(db, notified
 @pytest.mark.parametrize("direction, level", [("above", "35.00"), ("below", "35.00")])
 async def test_d01_a_leg_with_no_feed_key_is_never_judged_on_the_index_and_saves(db, notified, monkeypatch,
                                                                               direction, level):
-    import types
     app, stored, ids = await _open(db)
     real = paper_routes.tracked_contracts.resolve
 
     async def no_key(d, cids):
-        return [types.SimpleNamespace(contract_id=c.contract_id, feed_key=None) for c in await real(d, cids)]
+        return [dataclasses.replace(c, state="contract_retired") for c in await real(d, cids)]
 
     monkeypatch.setattr(paper_routes.tracked_contracts, "resolve", no_key)
     async with _client(app) as c:
