@@ -35,6 +35,7 @@ from ofo.charges.paper_charges import PaperFill, charges_sum, paper_charges
 from ofo.charges.round_trip import ChargesNotComputable
 from ofo.engine import adjust_history as ah
 from ofo.engine.book_totals import book_totals
+from ofo.engine.duplicate_leg import paper_duplicate_leg
 from ofo.engine.extremes import (
     UNLIMITED,
     ContractTerms,
@@ -55,7 +56,6 @@ from ofo.engine.extremes_charges import (
     sum_after_charges,
     sum_booked_after,
 )
-from ofo.engine.duplicate_leg import paper_duplicate_leg
 from ofo.engine.legs import Action, Instrument, Leg
 from ofo.errors import render
 from ofo.errors.explanations import render_explanation, restore_explanation
@@ -1019,8 +1019,9 @@ def _check_held(held: HeldIn | None, first: bool, orders: Sequence[Any], state: 
 
 
 def _refuse_duplicate_legs(underlying: str, orders: Sequence[PaperOrderIn], state: Mapping[int, Any]) -> None:
-    """ADR-319 (3): two opening orders on one contract and side are a kept duplicate leg; refused with the gate's own sentence
-    (engine.duplicate_leg.paper_duplicate_leg). A buy and a sell of one contract stay two legs (REQ-030 AC-11). Exits never count."""
+    """ADR-319 (3): two opening orders on one contract and side are a kept duplicate leg; refused with the gate's own
+    sentence (engine.duplicate_leg.paper_duplicate_leg). A buy and a sell of one contract stay two legs (REQ-030
+    AC-11). Exits never count."""
     legs = []
     for o in orders:
         if o.kind == "exit":
@@ -1182,10 +1183,10 @@ async def paper_armed_exits(strategy_id: int, orders: Annotated[str, Query(max_l
                             db: Annotated[Any, Depends(get_db)],
                             user_ref: Annotated[str, Depends(current_user_ref)],
                             now: Annotated[AnswerClock, Depends(get_answer_clock)]) -> ArmedExitsOut:
-    """D-03 part B (ADR-317 (7)): read only, nothing stored. For the prepared basket in the paper confirm list: one line per
-    armed index exit naming the short strike on its side AS IT WILL BE after the basket (the exit stays at its level).
-    No line when nothing is armed or the basket closes every leg (the exits are then cancelled)."""
-    stored = await _load_strategy(db, user_ref, strategy_id)
+    """D-03 part B (ADR-317 (7)): read only, nothing stored. For the prepared basket in the paper confirm list: one
+    line per armed index exit naming the short strike on its side AS IT WILL BE after the basket (the exit stays at
+    its level). No line when nothing is armed or the basket closes every leg (the exits are then cancelled)."""
+    await _load_strategy(db, user_ref, strategy_id)
     try:
         basket = PaperOrdersIn.model_validate_json('{"orders":' + orders + "}").orders
     except ValueError:
@@ -1200,8 +1201,8 @@ async def paper_armed_exits(strategy_id: int, orders: Annotated[str, Query(max_l
     if any(state[o.contract_id].stored is None for o in basket):
         raise StrategyRefused("paper_contract_not_tradable")
     at = now()
-    after = [*_paper(booked), *(PaperOrder(str(o.contract_id), o.side, o.quantity, _UNPRICED if o.kind == "exit" else o.price,
-                                           o.kind, at) for o in basket)]
+    after = [*_paper(booked), *(PaperOrder(str(o.contract_id), o.side, o.quantity,
+                                           _UNPRICED if o.kind == "exit" else o.price, o.kind, at) for o in basket)]
     positions = [p for p in net_positions(after, {}).positions if p.net_quantity]
     if not positions:
         return ArmedExitsOut(lines=[])
@@ -1210,7 +1211,8 @@ async def paper_armed_exits(strategy_id: int, orders: Annotated[str, Query(max_l
     puts = [k for kind, k in shorts if kind is Instrument.PE]
     lines = []
     for t in armed:
-        side, strike = ("call", min(calls, default=None)) if t.direction == "above" else ("put", max(puts, default=None))
+        side, strike = (("call", min(calls, default=None)) if t.direction == "above"
+                        else ("put", max(puts, default=None)))
         lines.append(render_explanation(f"paper_exit_confirm_no_{side}", level=t.level) if strike is None else
                      render_explanation(f"paper_exit_confirm_{side}", level=t.level, strike=strike))
     return ArmedExitsOut(lines=lines)
@@ -1255,7 +1257,8 @@ class TriggerOut(ApiModel):
 class TriggersOut(ApiModel):
     triggers: list[TriggerOut]  # newest first
     already_set: bool = False  # D-05: true only on a save that stored NOTHING new (the identical trigger was armed)
-    already_armed: list[Direction] = []  # D-05 r3: directions of the submitted levels NOT stored (an identical armed trigger existed)
+    # D-05 r3: directions of the submitted levels NOT stored (an identical armed trigger existed)
+    already_armed: list[Direction] = Field(default_factory=list)
 
 
 class AlertOut(ApiModel):
@@ -1323,7 +1326,8 @@ async def _adjustment_marks(db: Any, orders: Sequence[paper_store.StoredOrder],
                 "paper_exit_set_before_no_call" if up else "paper_exit_set_before_no_put", level=r.trigger.level)
         else:
             out[r.trigger.id] = render_explanation(
-                "paper_exit_set_before_call" if up else "paper_exit_set_before_put", level=r.trigger.level, strike=strike)
+                "paper_exit_set_before_call" if up else "paper_exit_set_before_put",
+                level=r.trigger.level, strike=strike)
     return out
 
 
@@ -1374,9 +1378,9 @@ def _new_triggers(body: TriggerIn, underlying: str, open_ids: Sequence[int]) -> 
 
 async def _already_crossed(db: Any, ctx: MarketContext | None, underlying: str,
                            new: Sequence[paper_trigger_store.NewTrigger]) -> str | None:
-    """ADR-317 (1): the refusal code when the live price the monitor would compare against has already crossed a new level (the
-    same ``stops.crossed``: at the level counts). Answer states: no market context, the market closed, a read that
-    fails, or a price that is not live -> None (saved, arms at the next live tick: REQ-109 AC-8)."""
+    """ADR-317 (1): the refusal code when the live price the monitor would compare against has already crossed a new
+    level (the same ``stops.crossed``: at the level counts). Answer states: no market context, the market closed, a
+    read that fails, or a price that is not live -> None (saved, arms at the next live tick: REQ-109 AC-8)."""
     if ctx is None:
         return None
     keys = {c.contract_id: c.feed_key for c in await tracked_contracts.resolve(
@@ -1407,7 +1411,8 @@ async def add_paper_triggers(strategy_id: int, body: TriggerIn, db: Annotated[An
                              user_ref: Annotated[str, Depends(current_user_ref)],
                              ctx: Annotated[MarketContext | None, Depends(get_market_context)]) -> TriggersOut:
     stored = await _load_strategy(db, user_ref, strategy_id)
-    await store.lock_strategy(db, user_ref, strategy_id)  # D-05: two saves at one instant cannot both pass the read below
+    # D-05: two saves at one instant cannot both pass the read below
+    await store.lock_strategy(db, user_ref, strategy_id)
     open_ids = _open_ids(await paper_store.load(db, strategy_id))
     if not open_ids:
         raise StrategyRefused("paper_trigger_nothing_open")

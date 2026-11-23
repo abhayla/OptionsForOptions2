@@ -174,7 +174,8 @@ def _legs_of(book: Any, found: Mapping[int, Any]) -> tuple[str | None, int | Non
             raise TrackedUnreadable(f"contract {p.instrument_id} has no stored row")
         lc = tc.stored.listed
         c = lc.contract
-        if c.instrument_type not in _OPTION_TYPES or p.average is None or c.lot_size <= 0                 or not is_lot_aligned(abs(p.net_quantity), c.lot_size):
+        if c.instrument_type not in _OPTION_TYPES or p.average is None or c.lot_size <= 0 \
+                or not is_lot_aligned(abs(p.net_quantity), c.lot_size):
             raise TrackedUnreadable(f"contract {p.instrument_id} is not a whole-lot option leg")
         underlying, lot = c.name, c.lot_size
         legs.append(PositionLeg("BUY" if p.net_quantity > 0 else "SELL", c.instrument_type, c.strike, c.expiry,

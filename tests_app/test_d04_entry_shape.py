@@ -32,11 +32,15 @@ CONTRACTS = {1: ("CE", D(24000)), 2: ("CE", D(24200)), 3: ("PE", D(23600)), 4: (
              5: ("PE", D(23600)), 6: ("PE", D(23400))}  # 5, 6: a put spread on the next expiry
 EXPIRY2 = datetime.date(2026, 12, 1)
 IC_MAX = 2
+LAST_FIRST_EXPIRY_ID = 4  # contracts 1-4 expire first, 5 and up on the second expiry
+SPREAD_LEGS = 2
+PLAN_MAX_ADJUSTMENTS = 5
 
 
 def _contract(cid: int) -> SimpleNamespace:
     kind, strike = CONTRACTS[cid]
-    c = SimpleNamespace(instrument_type=kind, strike=strike, expiry=EXPIRY2 if cid > 4 else EXPIRY, lot_size=LOT, name="NIFTY")
+    c = SimpleNamespace(instrument_type=kind, strike=strike, expiry=EXPIRY2 if cid > LAST_FIRST_EXPIRY_ID else EXPIRY,
+                        lot_size=LOT, name="NIFTY")
     listed = SimpleNamespace(contract=c, broker_refs=[SimpleNamespace(broker_symbol=f"NIFTY{kind}{strike}")])
     return SimpleNamespace(contract_id=cid, stored=SimpleNamespace(listed=listed), identity=str(cid))
 
@@ -93,7 +97,7 @@ def _playbook_of(store, tracked):
 
 def test_condor_reduced_to_a_put_spread_keeps_the_condor_playbook_and_its_maximum(seams):
     tracked = _read(seams, ENTRY + REDUCE_CALL_SIDE)
-    assert len(tracked.position.legs) == 2  # now a put spread ...
+    assert len(tracked.position.legs) == SPREAD_LEGS  # now a put spread ...
     assert check.strategy_type(tracked.position, SPOT, []) == "credit"  # ... which reads the credit playbook today
     stype, resolved = _playbook_of(seams, tracked)
     assert stype == "ic"
@@ -114,7 +118,7 @@ def test_a_strategy_with_its_own_plan_stays_on_its_plan_after_a_shape_change(sea
     seams.plan = SimpleNamespace(body=body, playbook_id=9, accepted_at=T0)
     tracked = _read(seams, ENTRY + REDUCE_CALL_SIDE)
     _, resolved = _playbook_of(seams, tracked)
-    assert resolved.source == "plan" and resolved.body["guards"]["max_adjustments"] == 5
+    assert resolved.source == "plan" and resolved.body["guards"]["max_adjustments"] == PLAN_MAX_ADJUSTMENTS
 
 
 def test_an_entry_shape_that_matches_no_playbook_falls_back_to_the_current_shape(seams):
@@ -160,9 +164,11 @@ def test_a_condor_reduced_twice_counts_two_of_two(seams):
 
 def test_an_entry_rule_that_cannot_be_read_on_the_current_legs_says_so(seams):
     from ofo.adjustment import playbook_eval as pe  # noqa: PLC0415
-    tracked = _read(seams, ENTRY + [_order(1, "BUY", "exit", T1), _order(3, "BUY", "exit", T1)])  # both shorts bought back
+    # both shorts bought back
+    tracked = _read(seams, [*ENTRY, _order(1, "BUY", "exit", T1), _order(3, "BUY", "exit", T1)])
     _, resolved = _playbook_of(seams, tracked)
-    state = pe.StrategyState(stops=None, expiry_kind="weekly", days_left=3, hhmm="11:00", spot=SPOT, shorts=(), prices_fresh=True)
+    state = pe.StrategyState(stops=None, expiry_kind="weekly", days_left=3, hhmm="11:00", spot=SPOT, shorts=(),
+                             prices_fresh=True)
     ev = pe.evaluate(resolved.body, state, {}, None, gap_until="09:15")
     t01 = [r for r in ev.results if r.trigger_id == "T-01"]
     assert t01 and all(isinstance(r, pe.NotChecked) and r.code.endswith("no_short_leg") for r in t01)

@@ -1,7 +1,8 @@
 """PostgreSQL store of the paper order book (GC-TP step 1a; REQ-109 AC-4; ADR-207). Schema: migration 0028.
 
-- place: under the strategy's row lock (one writer per strategy), inserts the orders as given, except a batch against an open position, which goes in buys first (D-02). Another user's
-  strategy answers NOT_FOUND exactly like a missing one. An order of kind exit / settle / stop must REDUCE the open
+- place: under the strategy's row lock (one writer per strategy), inserts the orders as given, except a batch against
+  an open position, which goes in buys first (D-02). Another user's strategy answers NOT_FOUND exactly like a missing
+  one. An order of kind exit / settle / stop must REDUCE the open
   quantity of its contract and never exceed it (EXIT_EXCEEDS_OPEN, nothing stored); the check runs on the book as
   stored plus the earlier orders of the same call, through the one engine (ofo.tracking.orderbook). Insert-only; the
   caller commits. ADR-243: ``entry`` is a keyword every app caller passes explicitly (a repo scan in
@@ -98,8 +99,9 @@ async def reconcile_triggers(conn: Any, strategy_id: int, book: Sequence[PaperOr
 
 async def place(conn: Any, user_ref: str, strategy_id: int, orders: Sequence[NewOrder], *,
                 entry: EntryFacts | None = None) -> tuple[StoredOrder, ...]:
-    """Stores ``orders`` as given on an empty book, buys first otherwise (D-02; module docstring) and returns the whole book as stored; at the strategy's FIRST
-    fill (the book empty before this call) also its entry facts ``entry`` when known (ADR-243), same transaction."""
+    """Stores ``orders`` as given on an empty book, buys first otherwise (D-02; module docstring) and returns the
+    whole book as stored; at the strategy's FIRST fill (the book empty before this call) also its entry facts
+    ``entry`` when known (ADR-243), same transaction."""
     if not orders:
         raise ValueError("place needs at least one order")
     paper = [o.as_paper() for o in orders]  # refuses a bad side, kind, quantity or price before any write

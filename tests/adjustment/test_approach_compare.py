@@ -447,7 +447,8 @@ def test_d04_max_zero_the_first_adjustment_is_already_over():
 
 def test_d04_no_plan_maximum_keeps_counting_the_proposed_adjustment_in_the_old_words():
     adj = _rows_at(5, None)
-    assert adj.values["A-36"].text == "5 used; no plan maximum set" and adj.values["A-05"].text == "6 used; no plan maximum set"
+    assert adj.values["A-36"].text == "5 used; no plan maximum set"
+    assert adj.values["A-05"].text == "6 used; no plan maximum set"
     assert adj.values["A-31"].text == EXIT_TEXT
 
 

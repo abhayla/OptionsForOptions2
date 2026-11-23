@@ -1,7 +1,7 @@
 """D-02 (REQ-159 AC-6 "buy legs first in the order sequence"; REQ-058 Q238 "buy back the shorts first, then sell the
-longs"): every batch of paper orders against an open position (the strategy already has orders) is recorded BUY exits, BUY adds, SELL exits, SELL adds (stable inside each group),
-so a short option is never left without its protection between two fills. An entry batch (empty book) is recorded
-exactly as sent, so the legs keep the order the trader built.
+longs"): every batch of paper orders against an open position (the strategy already has orders) is recorded BUY exits,
+BUY adds, SELL exits, SELL adds (stable inside each group), so a short option is never left without its protection
+between two fills. An entry batch (empty book) is recorded exactly as sent, so the legs keep the order the trader built.
 
 Core proof: ``paper_store.place`` (the one writer) given the real case of strategy 155 on 23 Nov, a roll sent as
 "1. SELL the hedge, 2. BUY the short", records the BUY first; then one test per caller (route, stop-out, settlement,
@@ -167,12 +167,17 @@ async def test_leg_order_of_a_new_strategy_equals_the_order_the_legs_were_sent(d
     assert first_seen == sent  # contract_legs numbers legs by each contract's first order
 
 
+BOOK_ROWS = 4  # orders on the book after the refused batch
+
+
 async def test_an_exit_that_needs_an_add_of_the_same_batch_is_refused_and_nothing_is_stored(db):
     user, sid, c = await _held(db)  # c[1] is held short 65
-    # "SELL c[1] 65 more, then BUY c[1] 130 back": buys first puts the 130 buy-back ahead of its own add -> refused whole
+    # "SELL c[1] 65 more, then BUY c[1] 130 back": buys first puts the 130 buy-back ahead of its own add -> refused
+    # whole
     with pytest.raises(Exception, match=r"exit_exceeds_open|EXIT_EXCEEDS_OPEN|exit of BUY"):
-        await paper_store.place(db, user, sid, [_new(c[1], "SELL", 65, "9.00", "open"), _new(c[1], "BUY", 130, "8.00", "exit")])
-    assert len(await _book(db, sid)) == 4
+        await paper_store.place(db, user, sid,
+                                [_new(c[1], "SELL", 65, "9.00", "open"), _new(c[1], "BUY", 130, "8.00", "exit")])
+    assert len(await _book(db, sid)) == BOOK_ROWS
 
 
 async def test_place_checked_records_a_mixed_batch_buys_first(db, monkeypatch):

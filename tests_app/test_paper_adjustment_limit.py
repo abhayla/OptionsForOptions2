@@ -259,13 +259,16 @@ async def test_at_the_maximum_an_added_leg_is_refused(db, only_the_condor_is_lim
     assert await _count(db, stored.id) == before
 
 
+ADJUSTMENTS_USED = 2  # adjustments counted before the limit test
+
+
 async def test_at_the_maximum_exit_all_is_stored_and_is_not_an_adjustment(db, only_the_condor_is_limited):
     app, stored, ids = await _condor(db, adjustments=2)
     used = await _used(db, stored.id)
     reply = await _post_orders(app, stored.id, [_leg(ids[0], "BUY", "exit"), _leg(ids[1], "SELL", "exit"),
                                                 _leg(ids[2], "BUY", "exit"), _leg(ids[3], "SELL", "exit")])
     assert reply.status_code == HTTPStatus.CREATED, reply.text
-    assert used == 2
+    assert used == ADJUSTMENTS_USED
 
 
 async def test_a_maximum_of_zero_accepts_a_reduce_and_refuses_an_add(db):

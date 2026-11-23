@@ -171,8 +171,10 @@ def entry_type(tracked: Tracked, spot: Decimal | None, listed: list | None) -> s
     paper orders, ``Tracked.entry_position``), so an adjustment that changes the shape keeps its rules and maximum.
     No entry shape readable (a real book, no order time), or one that cannot be classified (its contracts are no longer
     listed, so no strike gap) -> the current shape. The one door every playbook lookup by shape goes through."""
-    # the entry is the first basket of orders (ADR-255): a trade built in two separate confirms is typed by its first only
-    return (entry := tracked.entry_position) and strategy_type(entry, spot, listed) or strategy_type(tracked.position, spot, listed)
+    # the entry is the first basket of orders (ADR-255): a trade built in two separate confirms is typed by its
+    # first only
+    entry = tracked.entry_position
+    return (entry and strategy_type(entry, spot, listed)) or strategy_type(tracked.position, spot, listed)
 
 
 async def plan_saved_before_adr247(conn: Any, plan: Any) -> bool:

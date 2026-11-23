@@ -15262,7 +15262,6 @@
         "additionalProperties": false,
         "properties": {
           "already_armed": {
-            "default": [],
             "items": {
               "enum": [
                 "above",
@@ -19711,7 +19710,7 @@
     },
     "/paper/strategies/{strategy_id}/armed-exits": {
       "get": {
-        "description": "D-03 part B (ADR-317 (7)): read only, nothing stored. For the prepared basket in the paper confirm list: one line per\narmed index exit naming the short strike on its side AS IT WILL BE after the basket (the exit stays at its level).\nNo line when nothing is armed or the basket closes every leg (the exits are then cancelled).",
+        "description": "D-03 part B (ADR-317 (7)): read only, nothing stored. For the prepared basket in the paper confirm list: one\nline per armed index exit naming the short strike on its side AS IT WILL BE after the basket (the exit stays at\nits level). No line when nothing is armed or the basket closes every leg (the exits are then cancelled).",
         "operationId": "paper_armed_exits_paper_strategies__strategy_id__armed_exits_get",
         "parameters": [
           {

@@ -11,7 +11,9 @@ from decimal import Decimal
 from http import HTTPStatus
 
 import pytest
+import test_strategy_tracking as tst
 from ofo.errors.explanations import render_explanation
+from ofo.rules.inputs import DataHealth
 from ofo.tracking.paper_alert import alert_body
 from ofo_app import paper_monitor, paper_store, paper_trigger_store
 from sqlalchemy import text
@@ -366,7 +368,8 @@ async def test_f4_settling_the_expiring_legs_leaves_the_index_exits_of_the_open_
         ("leg_stop", ids[1], False)]
 
 
-# ---- D-05 / ADR-317 (3): the reply says when NOTHING new was stored; the armed set is read under the strategy lock ----
+# ---- D-05 / ADR-317 (3): the reply says when NOTHING new was stored; the armed set is read under the
+# strategy lock ----
 
 async def test_d05_an_identical_second_save_says_already_set_and_stores_one_row(db, notified):
     app, stored, _ = await _open(db)
@@ -380,6 +383,9 @@ async def test_d05_an_identical_second_save_says_already_set_and_stores_one_row(
     assert len(await _stored(db, stored.id)) == 1
 
 
+STORED_ROWS = 2  # rows stored before the refused save
+
+
 async def test_d05_a_save_with_one_new_side_stores_it_and_is_not_already_set(db, notified):
     app, stored, _ = await _open(db)
     async with _client(app) as c:
@@ -387,7 +393,7 @@ async def test_d05_a_save_with_one_new_side_stores_it_and_is_not_already_set(db,
         both = await c.post(_url(stored), json={"kind": "conditional_exit", "above": "23100", "below": "22000"})
     assert both.json()["already_set"] is False
     assert both.json()["already_armed"] == ["above"]  # D-05 r3: the server names which submitted level was not stored
-    assert len(await _stored(db, stored.id)) == 2
+    assert len(await _stored(db, stored.id)) == STORED_ROWS
 
 
 async def test_d05_r3_already_armed_names_every_duplicate_side_and_none_when_all_are_new(db, notified):
@@ -427,7 +433,7 @@ async def test_d05_a_cancelled_or_fired_identical_trigger_does_not_block_a_new_s
         assert (await c.delete(_url(stored, f"/{first}"))).status_code == HTTPStatus.OK
         again = await c.post(_url(stored), json=ce)
         assert again.json()["already_set"] is False
-        second = [r for r in again.json()["triggers"] if r["state"] == "armed"][0]["id"]
+        second = next(r for r in again.json()["triggers"] if r["state"] == "armed")["id"]
         assert await paper_trigger_store.claim_fire(db, second)
         third = await c.post(_url(stored), json=ce)
     assert third.json()["already_set"] is False
@@ -444,17 +450,17 @@ async def test_d05_the_same_level_typed_two_ways_is_one_trigger(db, notified):
 
 
 async def _remove_committed(admin_engine, user: str, contract_ids: list[int]) -> None:
-    """Deletes exactly this test's committed rows: every row that names its strategies, then the strategies, contracts."""
-    async with admin_engine.connect() as conn:
-        async with conn.begin():
-            await conn.execute(text("SET LOCAL session_replication_role = replica"))
-            tables = [r[0] for r in await conn.execute(text(
-                "SELECT c.table_name FROM information_schema.columns c JOIN information_schema.tables t "
-                "ON t.table_schema = c.table_schema AND t.table_name = c.table_name AND t.table_type = 'BASE TABLE' "
-                "WHERE c.table_schema = 'public' AND c.column_name = 'strategy_id' ORDER BY 1"))]
-            for table in tables:
-                await conn.execute(text(f'DELETE FROM public."{table}" WHERE strategy_id IN '
-                                        "(SELECT id FROM public.strategies WHERE user_ref = :u)"), {"u": user})
+    """Deletes exactly this test's committed rows: every row that names its strategies, then the strategies,
+    contracts."""
+    async with admin_engine.connect() as conn, conn.begin():
+        await conn.execute(text("SET LOCAL session_replication_role = replica"))
+        tables = [r[0] for r in await conn.execute(text(
+            "SELECT c.table_name FROM information_schema.columns c JOIN information_schema.tables t "
+            "ON t.table_schema = c.table_schema AND t.table_name = c.table_name AND t.table_type = 'BASE TABLE' "
+            "WHERE c.table_schema = 'public' AND c.column_name = 'strategy_id' ORDER BY 1"))]
+        for table in tables:
+            await conn.execute(text(f'DELETE FROM public."{table}" WHERE strategy_id IN '  # noqa: S608
+                                    "(SELECT id FROM public.strategies WHERE user_ref = :u)"), {"u": user})
     await _remove_own_rows(admin_engine, contract_ids, user)
 
 
@@ -464,7 +470,6 @@ async def test_d05_two_identical_saves_at_one_instant_on_two_connections_store_o
     Without the strategy row lock both read an empty armed set and both insert (run once with the lock line removed)."""
     ids: list[int] = []
     user = ""
-    import test_strategy_tracking as tst
     real_user = tst._user
 
     def _remembered_user():  # the user is known before _setup commits, so a failing set-up is still cleaned up
@@ -473,12 +478,11 @@ async def test_d05_two_identical_saves_at_one_instant_on_two_connections_store_o
         return user
     monkeypatch.setattr(tst, "_user", _remembered_user)
     try:
-        async with app_engine.connect() as conn:
-            async with conn.begin():
-                app, stored, *_ = await _setup(conn)
-                ids, user = list(stored.saved.contract_ids), stored.user_ref
-                await paper_store.place(conn, user, stored.id, [_new(ids[0], "SELL", 65, "39.15"),
-                                                                _new(ids[1], "BUY", 65, "12.95")])
+        async with app_engine.connect() as conn, conn.begin():
+            app, stored, *_ = await _setup(conn)
+            ids, user = list(stored.saved.contract_ids), stored.user_ref
+            await paper_store.place(conn, user, stored.id, [_new(ids[0], "SELL", 65, "39.15"),
+                                                            _new(ids[1], "BUY", 65, "12.95")])
         apps = []
         for _ in range(2):
             fresh = _app(async_sessionmaker(app_engine, class_=AsyncSession, expire_on_commit=False), user)
@@ -544,7 +548,6 @@ async def test_d01_a_crossed_side_with_a_safe_side_refuses_the_whole_request(db,
 
 
 async def test_d01_a_price_that_is_not_live_is_never_used_to_refuse(db, notified, monkeypatch):
-    from ofo.rules.inputs import DataHealth
     app, stored, _ids = await _open(db)
     real = paper_routes.read_snapshot
     body = {"kind": "conditional_exit", "above": "22500"}
@@ -581,7 +584,6 @@ async def test_d01_a_leg_with_no_feed_key_is_never_judged_on_the_index_and_saves
 
 
 async def test_d01_a_stale_leg_price_with_a_live_index_saves_but_a_live_leg_price_refuses(db, notified, monkeypatch):
-    from ofo.rules.inputs import DataHealth
     app, stored, ids = await _open(db)
     body = {"kind": "leg_stop", "contract_id": ids[0], "direction": "above", "level": "35.00"}
     async with _client(app) as c:  # control: live leg price 39.15 is above 35 -> refused
@@ -642,13 +644,16 @@ async def test_d03_an_exit_set_before_an_adjustment_is_marked_with_the_new_short
     async with _client(app) as c:
         await c.post(_url(stored), json={"kind": "conditional_exit", "above": "23100", "below": "22000"})
         rows = await _armed_exits(c, stored)
-        assert [(r["set_before_adjustment"], r["adjustment_note"]) for r in rows.values()] == [(False, None)] * 2  # no adjustment
+        # no adjustment
+        assert [(r["set_before_adjustment"], r["adjustment_note"]) for r in rows.values()] == [(False, None)] * 2
         await _adjust(db, stored, [_new(ids[2], "SELL", 65, "82.75"), _new(ids[3], "BUY", 65, "35.80")], 1)
         rows = await _armed_exits(c, stored)
     above, below = rows[("above", "armed")], rows[("below", "armed")]
     assert above["set_before_adjustment"] is True and below["set_before_adjustment"] is True
-    assert above["adjustment_note"] == "Exit above 23,100.00 was set before this change; your new short call is 22,800. Check this level."
-    assert below["adjustment_note"] == "Exit below 22,000.00 was set before this change; your new short put is 22,400. Check this level."
+    assert above["adjustment_note"] == (
+        "Exit above 23,100.00 was set before this change; your new short call is 22,800. Check this level.")
+    assert below["adjustment_note"] == (
+        "Exit below 22,000.00 was set before this change; your new short put is 22,400. Check this level.")
 
 
 async def test_d03_an_exit_set_after_the_adjustment_is_not_marked(db, notified):
@@ -667,20 +672,24 @@ async def test_d03_no_short_left_on_that_side_says_so(db, notified):
         await _adjust(db, stored, [_new(ids[0], "BUY", 65, "30", "exit"), _new(ids[1], "SELL", 65, "10", "exit"),
                                    _new(ids[2], "SELL", 65, "82.75"), _new(ids[3], "BUY", 65, "35.80")], 1)
         row = (await _armed_exits(c, stored))[("above", "armed")]
-    assert row["adjustment_note"] == "Exit above 23,100.00 was set before this change; you no longer hold a short call. Check this level."
+    assert row["adjustment_note"] == (
+        "Exit above 23,100.00 was set before this change; you no longer hold a short call. Check this level.")
 
 
 async def test_d03_the_mark_is_relative_to_the_latest_adjustment_and_a_kept_exit_is_marked_again(db, notified):
     app, stored, ids = await _open(db)
     async with _client(app) as c:
-        first = (await c.post(_url(stored), json={"kind": "conditional_exit", "above": "23100"})).json()["triggers"][0]["id"]
+        first = (await c.post(_url(stored),
+                              json={"kind": "conditional_exit", "above": "23100"})).json()["triggers"][0]["id"]
         await _adjust(db, stored, [_new(ids[2], "SELL", 65, "82.75"), _new(ids[3], "BUY", 65, "35.80")], 1)
         kept = await c.post(_url(stored, f"/{first}/keep"))
         assert kept.status_code == HTTPStatus.OK, kept.text
         rows = {r["id"]: r for r in kept.json()["triggers"]}
-        assert rows[first]["state"] == "cancelled"  # one transaction: the old row goes, a new armed row with the same level
+        # one transaction: the old row goes, a new armed row with the same level
+        assert rows[first]["state"] == "cancelled"
         [new] = [r for r in rows.values() if r["state"] == "armed"]
-        assert (new["id"] != first, new["level"], new["direction"], new["set_before_adjustment"]) == (True, "23100.00", "above", False)
+        assert (new["id"] != first, new["level"], new["direction"],
+                new["set_before_adjustment"]) == (True, "23100.00", "above", False)
         assert notified[-1] == 1
         await _adjust(db, stored, [_new(ids[3], "SELL", 65, "30", "exit")], 2)  # a second adjustment
         again = (await _armed_exits(c, stored))[("above", "armed")]
@@ -694,7 +703,8 @@ async def test_d03_cancelled_fired_and_leg_stops_are_never_marked_and_a_full_exi
     app, stored, ids = await _open(db)
     async with _client(app) as c:
         await c.post(_url(stored), json={"kind": "conditional_exit", "above": "23100", "below": "22000"})
-        await c.post(_url(stored), json={"kind": "leg_stop", "contract_id": ids[0], "direction": "above", "level": "60"})
+        await c.post(_url(stored),
+                     json={"kind": "leg_stop", "contract_id": ids[0], "direction": "above", "level": "60"})
         rows = (await c.get(_url(stored))).json()["triggers"]
         down = next(r["id"] for r in rows if r["direction"] == "below" and r["kind"] == "conditional_exit")
         fired = next(r["id"] for r in rows if r["direction"] == "above" and r["kind"] == "conditional_exit")
@@ -702,9 +712,12 @@ async def test_d03_cancelled_fired_and_leg_stops_are_never_marked_and_a_full_exi
         assert await paper_trigger_store.claim_fire(db, fired)
         await _adjust(db, stored, [_new(ids[2], "SELL", 65, "82.75"), _new(ids[3], "BUY", 65, "35.80")], 1)
         rows = (await c.get(_url(stored))).json()["triggers"]
-        assert [r["set_before_adjustment"] for r in rows if r["state"] != "armed" or r["kind"] == "leg_stop"] == [False] * 3
-        await _adjust(db, stored, [_new(ids[i], s, 65, "20", "exit") for i, s in ((0, "BUY"), (1, "SELL"), (2, "BUY"), (3, "SELL"))], 2)
-        assert [r["state"] for r in (await c.get(_url(stored))).json()["triggers"] if r["kind"] == "conditional_exit"] == ["cancelled", "fired"]
+        assert [r["set_before_adjustment"]
+                for r in rows if r["state"] != "armed" or r["kind"] == "leg_stop"] == [False] * 3
+        await _adjust(db, stored, [_new(ids[i], s, 65, "20", "exit")
+                                    for i, s in ((0, "BUY"), (1, "SELL"), (2, "BUY"), (3, "SELL"))], 2)
+        assert [r["state"] for r in (await c.get(_url(stored))).json()["triggers"]
+                if r["kind"] == "conditional_exit"] == ["cancelled", "fired"]
 
 
 # ---- D-03 review round 2: any change to the open legs marks an armed exit, whatever changed them ----
@@ -715,17 +728,20 @@ async def test_d03r2_a_fired_leg_stop_that_closes_the_short_call_marks_the_armed
     app, stored, ids = await _open(db)  # short call 22800 (ids[0]), long call 23000 (ids[1])
     async with _client(app) as c:
         await c.post(_url(stored), json={"kind": "conditional_exit", "above": "23100"})
-        await _adjust(db, stored, [_new(ids[0], "BUY", 65, "60", "stop")], 1)  # the leg stop fires: the short call closes
+        # the leg stop fires: the short call closes
+        await _adjust(db, stored, [_new(ids[0], "BUY", 65, "60", "stop")], 1)
         row = (await _armed_exits(c, stored))[("above", "armed")]
     assert (row["set_before_adjustment"], row["adjustment_note"]) == (True, _NO_CALL)
 
 
 async def test_d03r2_one_expiry_settling_in_a_two_expiry_trade_marks_the_remaining_exits(db, notified):
     app, stored, ids = await _open(db)
-    await _adjust(db, stored, [_new(ids[2], "SELL", 65, "82.75"), _new(ids[3], "BUY", 65, "35.80")], 1)  # puts: second expiry
+    # puts: second expiry
+    await _adjust(db, stored, [_new(ids[2], "SELL", 65, "82.75"), _new(ids[3], "BUY", 65, "35.80")], 1)
     async with _client(app) as c:
         await c.post(_url(stored), json={"kind": "conditional_exit", "above": "23100", "below": "22000"})
-        await _adjust(db, stored, [_new(ids[0], "BUY", 65, "0.05", "settle"), _new(ids[1], "SELL", 65, "0.05", "settle")], 2)
+        await _adjust(db, stored,
+                      [_new(ids[0], "BUY", 65, "0.05", "settle"), _new(ids[1], "SELL", 65, "0.05", "settle")], 2)
         rows = await _armed_exits(c, stored)
     assert rows[("above", "armed")]["adjustment_note"] == _NO_CALL
     assert rows[("below", "armed")]["adjustment_note"] == (
@@ -742,7 +758,8 @@ async def test_d03r2_a_manual_partial_exit_marks_the_armed_exit(db, notified):
         "Exit above 23,100.00 was set before this change; your new short call is 22,800. Check this level.")
 
 
-async def test_d03r2_a_mark_that_cannot_be_worked_out_marks_every_armed_exit_with_the_generic_line(db, notified, monkeypatch, caplog):
+async def test_d03r2_a_mark_that_cannot_be_worked_out_marks_every_armed_exit_with_the_generic_line(
+        db, notified, monkeypatch, caplog):
     app, stored, _ids = await _open(db)
 
     def boom(*_a, **_k):
@@ -760,7 +777,8 @@ async def test_d03r2_a_mark_that_cannot_be_worked_out_marks_every_armed_exit_wit
 async def test_d03r2_keep_on_an_exit_that_is_not_marked_answers_normally_and_stores_nothing(db, notified):
     app, stored, _ids = await _open(db)
     async with _client(app) as c:
-        first = (await c.post(_url(stored), json={"kind": "conditional_exit", "above": "23100"})).json()["triggers"][0]["id"]
+        first = (await c.post(_url(stored),
+                              json={"kind": "conditional_exit", "above": "23100"})).json()["triggers"][0]["id"]
         kept = await c.post(_url(stored, f"/{first}/keep"))
         rows = (await c.get(_url(stored))).json()["triggers"]
     assert kept.status_code == HTTPStatus.OK, kept.text
@@ -770,7 +788,8 @@ async def test_d03r2_keep_on_an_exit_that_is_not_marked_answers_normally_and_sto
 async def test_d03r2_keep_on_a_cancelled_exit_is_409(db, notified):
     app, stored, _ids = await _open(db)
     async with _client(app) as c:
-        first = (await c.post(_url(stored), json={"kind": "conditional_exit", "above": "23100"})).json()["triggers"][0]["id"]
+        first = (await c.post(_url(stored),
+                              json={"kind": "conditional_exit", "above": "23100"})).json()["triggers"][0]["id"]
         await c.delete(_url(stored, f"/{first}"))
         assert (await c.post(_url(stored, f"/{first}/keep"))).status_code == HTTPStatus.CONFLICT
 
@@ -778,7 +797,8 @@ async def test_d03r2_keep_on_a_cancelled_exit_is_409(db, notified):
 async def test_d03r2_keep_while_the_monitor_fires_the_old_row_stores_no_new_row(db, notified, monkeypatch):
     app, stored, ids = await _open(db)
     async with _client(app) as c:
-        first = (await c.post(_url(stored), json={"kind": "conditional_exit", "above": "23100"})).json()["triggers"][0]["id"]
+        first = (await c.post(_url(stored),
+                              json={"kind": "conditional_exit", "above": "23100"})).json()["triggers"][0]["id"]
         await _adjust(db, stored, [_new(ids[2], "SELL", 65, "82.75"), _new(ids[3], "BUY", 65, "35.80")], 1)
         real = paper_trigger_store.cancel
 
@@ -790,5 +810,6 @@ async def test_d03r2_keep_while_the_monitor_fires_the_old_row_stores_no_new_row(
         assert (await c.post(_url(stored, f"/{first}/keep"))).status_code == HTTPStatus.CONFLICT
         monkeypatch.setattr(paper_trigger_store, "cancel", real)
         rows = (await c.get(_url(stored))).json()["triggers"]
-    # no stray armed row on the book (the claim itself is rolled back with this test's shared transaction, so the old row's state is not asserted)
+    # no stray armed row on the book (the claim itself is rolled back with this test's shared transaction, so the old
+    # row's state is not asserted)
     assert [r["id"] for r in rows] == [first]
