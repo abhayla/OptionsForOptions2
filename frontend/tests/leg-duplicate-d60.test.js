@@ -25,6 +25,7 @@ vi.mock('@/services/api', async (importActual) => {
 import LegPicker from '@/components/strategy/LegPicker.vue'
 import LegList from '@/components/strategy/LegList.vue'
 import { settingsData } from './helpers/servedLots'
+import { admitLegs, lotsRangeText, sameContract } from '@/lib/legDoor'
 
 // the page passes the served lot caps down (REQ-167 AC-5); a picker mounted alone gets them as props
 const mount = (C, o = {}) => mountRaw(C, C === LegPicker ? { ...o, props: { maxLots: 10000, lotChoiceCount: 10, ...o.props } } : o)
@@ -193,5 +194,69 @@ describe('D-60: two rows on one contract and action carry the gate wording', () 
     ])
     const opposite = mount(LegList, { props: { legs: [leg(1, 'BUY'), leg(2, 'SELL')] } })
     expect(opposite.find('[data-testid="duplicate-leg-warning"]').exists()).toBe(false)
+  })
+})
+
+// ---- D-60 round 2 (ADR-319): ONE door, Increase quantity obeys the lots limits, the question is a real modal ----
+describe('D-60 r2: the one door (src/lib/legDoor.js)', () => {
+  const held = [{ id: 1, instrument_id: ID, action: 'BUY', lots: 8, underlying: 'NIFTY' }]
+  const incoming = (o = {}) => ({ id: 'x', instrument_id: ID, action: 'BUY', lots: 5, ...o })
+  it('same contract = same instrument id and same action; a leg with no instrument id never matches another', () => {
+    expect(sameContract(held[0], incoming())).toBe(true)
+    expect(sameContract(held[0], incoming({ action: 'SELL' }))).toBe(false)
+    expect(sameContract({ action: 'BUY' }, { action: 'BUY' })).toBe(false)
+    expect(sameContract({ instrument_id: null, action: 'BUY' }, { instrument_id: null, action: 'BUY' })).toBe(false)
+  })
+  it('Increase beyond the maximum is refused with the manual-edit sentence and changes nothing', async () => {
+    const r = await admitLegs(held, [incoming()], { ask: async () => 'increase', maxLots: 10 })
+    expect(r).toEqual({ error: lotsRangeText(10) })
+    expect(lotsRangeText(10)).toBe('Lots must be a whole number from 1 to 10.')
+  })
+  it('Increase inside the maximum raises the held row; Keep separate keeps the incoming; Cancel returns null', async () => {
+    expect((await admitLegs(held, [incoming({ lots: 2 })], { ask: async () => 'increase', maxLots: 10 })).legs[0].lots).toBe(10)
+    expect((await admitLegs(held, [incoming()], { ask: async () => 'separate', maxLots: 10 })).kept).toHaveLength(1)
+    expect(await admitLegs(held, [incoming()], { ask: async () => 'cancel', maxLots: 10 })).toBeNull()
+  })
+  it('several held contracts: one question each, in order; Cancel on the second aborts the whole batch', async () => {
+    const two = [...held, { id: 2, instrument_id: 'NSE_FO:2', action: 'SELL', lots: 1 }]
+    const asked = []
+    const r = await admitLegs(two, [incoming({ lots: 1 }), incoming({ id: 'y', instrument_id: 'NSE_FO:2', action: 'SELL', lots: 1 })], {
+      ask: async (leg) => { asked.push(leg.id); return asked.length === 1 ? 'increase' : 'cancel' }, maxLots: 10,
+    })
+    expect(asked).toEqual([1, 2])
+    expect(r).toBeNull()
+  })
+})
+
+describe('D-60 r2: the picker obeys the door', () => {
+  it('Increase quantity beyond the maximum shows the same lots sentence as a manual edit and adds nothing', async () => {
+    PRICES()
+    const w = mount(LegPicker, { props: { maxLots: 2, legs: [], 'onUpdate:legs': (v) => w.setProps({ legs: v }) } })
+    await flushPromises()
+    await addVia(w, { type: 'PE', strike: '22200.00', action: 'BUY', lots: '1' })
+    await addVia(w, { type: 'PE', strike: '22200.00', action: 'BUY', lots: '2' })
+    await t(w, 'dup-increase').trigger('click')
+    await flushPromises()
+    expect(rows(w)).toEqual([`BUY 1 ${ID}`])
+    expect(t(w, 'done-error').text()).toBe(lotsRangeText(2))
+  })
+  it('Escape on the question is Cancel; the picks stay; the dialog is a modal with the controls behind it covered', async () => {
+    PRICES()
+    const w = mountPicker()
+    await flushPromises()
+    await addVia(w, { type: 'PE', strike: '22200.00', action: 'BUY' })
+    await addVia(w, { type: 'PE', strike: '22200.00', action: 'BUY' })
+    expect(t(w, 'modal-overlay').exists()).toBe(true)
+    expect(t(w, 'modal').attributes('aria-modal')).toBe('true')
+    await t(w, 'modal-root').trigger('keydown', { key: 'Escape' })
+    await flushPromises()
+    expect(t(w, 'dup-dialog').exists()).toBe(false)
+    expect(rows(w)).toEqual([`BUY 1 ${ID}`])
+    expect(t(w, 'picker-count').text()).toBe('1 leg selected')
+  })
+  it('a leg row with no instrument id shows no duplicate warning against another such row', () => {
+    const bare = (id) => ({ id, underlying: 'NIFTY', action: 'BUY', lots: 1, symbol: 'X', expiry: '2026-10-13', instrument_type: 'PE', strike: '22200.00', lot_size: 65 })
+    const w = mount(LegList, { props: { legs: [bare(1), bare(2)] } })
+    expect(w.find('[data-testid="duplicate-leg-warning"]').exists()).toBe(false)
   })
 })
