@@ -28,13 +28,15 @@ LOT, GAP, SPOT = 75, D(50), D(23800)
 T0 = datetime.datetime(2026, 11, 23, 10, 0, tzinfo=datetime.UTC)
 T1, T2 = T0 + datetime.timedelta(hours=1), T0 + datetime.timedelta(hours=2)
 # contract id -> (type, strike): the iron condor's four legs
-CONTRACTS = {1: ("CE", D(24000)), 2: ("CE", D(24200)), 3: ("PE", D(23600)), 4: ("PE", D(23400))}
+CONTRACTS = {1: ("CE", D(24000)), 2: ("CE", D(24200)), 3: ("PE", D(23600)), 4: ("PE", D(23400)),
+             5: ("PE", D(23600)), 6: ("PE", D(23400))}  # 5, 6: a put spread on the next expiry
+EXPIRY2 = datetime.date(2026, 12, 1)
 IC_MAX = 2
 
 
 def _contract(cid: int) -> SimpleNamespace:
     kind, strike = CONTRACTS[cid]
-    c = SimpleNamespace(instrument_type=kind, strike=strike, expiry=EXPIRY, lot_size=LOT, name="NIFTY")
+    c = SimpleNamespace(instrument_type=kind, strike=strike, expiry=EXPIRY2 if cid > 4 else EXPIRY, lot_size=LOT, name="NIFTY")
     listed = SimpleNamespace(contract=c, broker_refs=[SimpleNamespace(broker_symbol=f"NIFTY{kind}{strike}")])
     return SimpleNamespace(contract_id=cid, stored=SimpleNamespace(listed=listed), identity=str(cid))
 
@@ -115,13 +117,35 @@ def test_a_strategy_with_its_own_plan_stays_on_its_plan_after_a_shape_change(sea
     assert resolved.source == "plan" and resolved.body["guards"]["max_adjustments"] == 5
 
 
-def test_an_entry_shape_that_matches_no_playbook_reads_no_playbook(seams):
+def test_an_entry_shape_that_matches_no_playbook_falls_back_to_the_current_shape(seams):
     odd = [_order(1, "SELL", "open", T0), _order(4, "BUY", "open", T0)]  # a short call with a long far put: no template
     odd_reduce = [_order(4, "SELL", "exit", T1)]
-    tracked = _read(seams, odd + odd_reduce)  # now one naked short call, which the current shape would map
-    assert check.entry_type(tracked, SPOT, []) is None
-    _, resolved = _playbook_of(seams, tracked)
-    assert resolved.source == "none" and resolved.body is None
+    tracked = _read(seams, odd + odd_reduce)  # now one naked short call, which the current shape maps
+    current = check.strategy_type(tracked.position, SPOT, [])
+    assert current is not None and check.entry_type(tracked, SPOT, []) == current
+
+
+def test_an_entry_whose_contracts_are_no_longer_listed_falls_back_to_the_current_shape(seams, monkeypatch):
+    """Core (D-04, ADR-318 (4)): the entry expiry has left the listed set (no strike gap, entry type None), the current
+    legs (a put spread on the next expiry) classify as a credit spread: its playbook is read, not "no playbook"."""
+    monkeypatch.setattr(check, "strike_gap_of", lambda _l, _u, expiries: None if EXPIRY in expiries else GAP)
+    close_all = [_order(1, "BUY", "exit", T1), _order(2, "SELL", "exit", T1),
+                 _order(3, "BUY", "exit", T1), _order(4, "SELL", "exit", T1)]
+    roll = [_order(5, "SELL", "open", T2), _order(6, "BUY", "open", T2)]
+    tracked = _read(seams, ENTRY + close_all + roll)
+    assert check.strategy_type(tracked.entry_position, SPOT, []) is None  # the entry shape cannot be classified
+    stype, resolved = _playbook_of(seams, tracked)
+    assert stype == "credit" == check.strategy_type(tracked.position, SPOT, [])
+    assert resolved.source == "system" and resolved.body is not None
+
+
+def test_a_trade_entered_in_two_confirms_is_classified_by_its_first_confirm_only(seams):
+    """Known limit (ADR-255: the entry is the first basket of orders): hedges first, shorts later -> the entry shape is
+    the hedges alone, never the condor."""
+    hedges, shorts = [_order(2, "BUY", "open", T0), _order(4, "BUY", "open", T0)], [_order(1, "SELL", "open", T1),
+                                                                                    _order(3, "SELL", "open", T1)]
+    tracked = _read(seams, hedges + shorts)
+    assert check.entry_type(tracked, SPOT, []) == check.strategy_type(tracked.entry_position, SPOT, []) != "ic"
 
 
 def test_a_condor_reduced_twice_counts_two_of_two(seams):
