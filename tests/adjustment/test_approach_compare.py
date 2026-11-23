@@ -218,11 +218,10 @@ def test_f93_adjustments_row_shows_the_plan_maximum_as_used_of_max():
     """F-93: a plan that sets a maximum shows "0 of 2" (+1 when the approach trades); 0 shows "0 of 0";
     no maximum keeps the "no plan maximum set" words; the leader is still the fewest used."""
     _, cols, ctx = build_columns("ADJ-02")
-    for mx, first, trading in ((2, "0 of 2", "1 of 2"), (0, "0 of 0", "0 of 0")):  # at the limit: never above the maximum
+    for mx, first, trading in ((2, "0 of 2", "1 of 2"), (0, "0 of 0", "1 of 0")):  # D-04: the true count, never capped
         adj = row(compare(cols, replace(ctx, adjustments_max=mx)), "adjustments")
-        assert adj.values["A-36"].text == first and adj.values["A-05"].text == trading, mx
-        assert adj.values["A-05"].value == (1 if mx else 0)
-        assert (adj.leaders == ("A-36",)) == bool(mx)
+        assert adj.values["A-36"].text == first and adj.values["A-05"].text.startswith(trading), mx
+        assert adj.values["A-05"].value == 1 and adj.leaders == ("A-36",)
     none = row(compare(cols, replace(ctx, adjustments_max=None)), "adjustments")
     assert none.values["A-36"].text == "0 used; no plan maximum set"
 
@@ -410,23 +409,50 @@ def _rows_at(used, mx):
     return row(compare(cols, replace(ctx, adjustments_used=used, adjustments_max=mx)), "adjustments")
 
 
-def test_limit_notice_and_compare_row_agree_at_limit():
-    """At the limit the header (offered.limit_notice) says "2 of 2" and every row shows the same stored count, never 3 of 2;
-    above the limit (old data) the row shows the stored count too, as the header does."""
-    from ofo.adjustment import offered
-    for used in (2, 3):
-        notice = offered.limit_notice({"max_adjustments": 2}, used)
-        adj = _rows_at(used, 2)
-        assert {c.text for c in adj.values.values()} == {f"{used} of 2"} == {f"{notice['used']} of {notice['max']}"}
+EXIT_TEXT = "Not an adjustment: closes every open leg"
 
 
-def test_compare_row_below_the_limit_counts_the_proposed_adjustment():
+def over(n, mx):
+    return f"{n} of {mx}; this would be adjustment {n}, over your plan maximum of {mx}"
+
+
+def test_d04_below_the_maximum_a_trading_row_counts_one_more_and_is_not_marked():
     adj = _rows_at(0, 2)
     assert adj.values["A-36"].text == "0 of 2" and adj.values["A-05"].text == "1 of 2"
-    adj = _rows_at(1, 2)  # one used, this would be the 2nd: "2 of 2", still the maximum, not above it
-    assert adj.values["A-05"].text == "2 of 2"
+    assert _rows_at(1, 2).values["A-05"].text == "2 of 2"  # the 2nd of 2: at the maximum, not over it
 
 
-def test_compare_row_with_no_maximum_keeps_counting_the_proposed_adjustment():
+@pytest.mark.parametrize("used", [2, 3])
+def test_d04_at_or_over_the_maximum_every_trading_row_shows_the_true_count_and_says_it_is_over(used):
+    """ADR-318 (2): never capped for display. Header and No change show the stored count; Reduce, Close tested spread
+    and every other trading row show stored + 1 with the sentence."""
+    adj = _rows_at(used, 2)
+    assert adj.values["A-36"].text == f"{used} of 2"
+    for a in ("A-29", "A-28", "A-05"):
+        assert adj.values[a].text == over(used + 1, 2), a
+        assert adj.values[a].value == used + 1
+
+
+@pytest.mark.parametrize(("used", "mx"), [(0, 2), (2, 2), (3, 2), (5, None), (0, 0)])
+def test_d04_exit_all_shows_no_count_at_every_state(used, mx):
+    """ADR-318 (3) / ADR-255: closing every open leg is not an adjustment, so no count and no marker."""
+    cell = _rows_at(used, mx).values["A-31"]
+    assert cell.text == EXIT_TEXT and cell.value == used
+
+
+def test_d04_max_zero_the_first_adjustment_is_already_over():
+    adj = _rows_at(0, 0)
+    assert adj.values["A-36"].text == "0 of 0" and adj.values["A-05"].text == over(1, 0)
+
+
+def test_d04_no_plan_maximum_keeps_counting_the_proposed_adjustment_in_the_old_words():
     adj = _rows_at(5, None)
     assert adj.values["A-36"].text == "5 used; no plan maximum set" and adj.values["A-05"].text == "6 used; no plan maximum set"
+    assert adj.values["A-31"].text == EXIT_TEXT
+
+
+def test_d04_a_strategy_with_no_open_leg_counts_nothing_it_does_not_trade():
+    _, cols, ctx = build_columns("ADJ-02")
+    empty = replace(cols[0], built=replace(cols[0].built, trades=(), after=(), closed=()))
+    adj = row(compare([empty], replace(ctx, adjustments_used=2, adjustments_max=2)), "adjustments")
+    assert adj.values["A-36"].text == "2 of 2"

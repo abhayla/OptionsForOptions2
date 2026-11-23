@@ -741,7 +741,7 @@ def test_d4_at_the_limit_the_reply_states_it_and_lists_each_withheld_approach_wi
     assert [n["id"] for n in reply["not_offered"]] == held
     assert not offered_ids & set(held)
     for n in reply["not_offered"]:
-        assert n["reason_id"] == "adjustment_limit_reached" and n["reason"] == "Adjustment limit reached"
+        assert n["reason_id"] == "adjustment_limit_reached" and n["reason"] == "plan maximum of 2 reached"
         assert n["name"]
 
 
