@@ -96,7 +96,15 @@ async function saveStop(leg) {
   }
 }
 const cancel = (t) => run(() => api.delete(`${path}/${t.id}`))
-const keep = (t) => run(() => api.post(`${path}/${t.id}/keep`)) // D-03: same level, stored again after the adjustment
+// D-03: same level, stored again after the change to the legs. Ends in one line: Kept / Already kept (the exit was not marked,
+// so the server stored nothing) / Not saved (same path as Save). The level is written as the row writes it.
+async function keep(t) {
+  const data = await run(() => api.post(`${path}/${t.id}/keep`), true)
+  if (!data) return
+  const level = String(t.level_text ?? '').match(/[\d,]+(?:\.\d+)?$/)?.[0] ?? t.level
+  const again = data.triggers.some((x) => x.id === t.id && x.state === 'armed')
+  saved.value = `${again ? 'Already kept' : 'Kept'}: exit ${t.direction} ${level}`
+}
 </script>
 
 <template>

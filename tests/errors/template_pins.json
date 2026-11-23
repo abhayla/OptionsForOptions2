@@ -1891,6 +1891,10 @@
     "sha256": "642bb9a03c05ebc44199e01beb06b9ac14dde38588dae4c382cdd3a25dd6c1b6",
     "reviewed": "pending owner read"
   },
+  "explanation:paper_exit_set_before_unchecked": {
+    "sha256": "4b181886ee1cd83f0e1668b9b398f1f611f46767c67b345f1628169a0eaba5b7",
+    "reviewed": "pending owner read"
+  },
   "explanation:paper_alert_title": {
     "sha256": "96036badd17c6ec57ea45a3666a000afebc89321bf87c4e2977d35291f4d1855",
     "reviewed": "owner read 2026-11-02 (decided in session under owner delegation, independent screen)"

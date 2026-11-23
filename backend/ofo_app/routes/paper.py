@@ -1223,10 +1223,11 @@ def _state(row: paper_trigger_store.TriggerRow) -> TriggerState:
 
 async def _adjustment_marks(db: Any, orders: Sequence[paper_store.StoredOrder],
                             rows: Sequence[paper_trigger_store.TriggerRow]) -> dict[int, Any]:
-    """D-03 (ADR-317 (7)): trigger id -> the sentence for each ARMED index exit created before the strategy's latest
-    adjustment (ADR-255's own rows, ``adjust_history``: not the entry, not the closing exit). Nothing is moved or
-    cancelled. The new short strike is the nearest-the-money open short on that side (lowest call / highest put). A
-    history that cannot be built marks nothing (logged): the exits stay armed either way."""
+    """D-03 (ADR-317 (7)): trigger id -> the sentence for each ARMED index exit created before the latest change to the
+    open legs: any ``adjust_history`` row that is not the entry and not the closing exit (an adjustment, a fired leg
+    stop, a settlement, a partial exit) while a leg is still open. Nothing is moved or cancelled. The short strike is
+    the nearest-the-money open short on that side (lowest call / highest put). A mark that cannot be worked out marks
+    EVERY armed exit with a generic line (logged): the exits stay armed either way."""
     exits = [r for r in rows if _state(r) == "armed" and r.trigger.kind == "conditional_exit"]
     if not exits or not orders:
         return {}
@@ -1239,15 +1240,17 @@ async def _adjustment_marks(db: Any, orders: Sequence[paper_store.StoredOrder],
                              o.order.kind, o.order.placed_at,  # type: ignore[arg-type]
                              is_option=who[o.order.contract_id][1] is not Instrument.FUT) for o in orders],
             {}, adjustments_max=None)
-        times = [r.at for r in history.rows if r.step == "adjustment" and not r.is_exit]
+        times = [r.at for r in history.rows if r.step != "entry" and not r.is_exit]
         if not times:
             return {}
         latest = max(o.created_at for o in orders if o.order.placed_at == max(times))
-        shorts = [(who[int(p.instrument_id)][1], who[int(p.instrument_id)][2])
-                  for p in net_positions(_paper(orders), {}).positions if p.net_quantity < 0]
-    except Exception:  # noqa: BLE001 - no marks, the exits stay armed
+        positions = [p for p in net_positions(_paper(orders), {}).positions if p.net_quantity]
+        if not positions:  # every leg closed: the exits are cancelled, nothing to mark
+            return {}
+        shorts = [(who[int(p.instrument_id)][1], who[int(p.instrument_id)][2]) for p in positions if p.net_quantity < 0]
+    except Exception:  # noqa: BLE001 - fail safe: every armed exit is marked, never silently unmarked
         _LOG.warning("trigger marks could not be read", exc_info=True)
-        return {}
+        return {r.trigger.id: render_explanation("paper_exit_set_before_unchecked") for r in exits}
     calls = [k for kind, k in shorts if kind is Instrument.CE]
     puts = [k for kind, k in shorts if kind is Instrument.PE]
     out: dict[int, Any] = {}
@@ -1260,10 +1263,8 @@ async def _adjustment_marks(db: Any, orders: Sequence[paper_store.StoredOrder],
             out[r.trigger.id] = render_explanation(
                 "paper_exit_set_before_no_call" if up else "paper_exit_set_before_no_put", level=r.trigger.level)
         else:
-            whole = strike == strike.to_integral_value()
             out[r.trigger.id] = render_explanation(
-                "paper_exit_set_before_call" if up else "paper_exit_set_before_put",
-                level=r.trigger.level, strike=int(strike) if whole else strike)
+                "paper_exit_set_before_call" if up else "paper_exit_set_before_put", level=r.trigger.level, strike=strike)
     return out
 
 
@@ -1408,7 +1409,8 @@ async def keep_paper_trigger(strategy_id: int, trigger_id: int, db: Annotated[An
         old = rows[trigger_id].trigger
         marks = await _adjustment_marks(db, await paper_store.load(db, strategy_id), [rows[trigger_id]])
         if trigger_id in marks:  # an exit that is not marked has nothing to keep: no churn
-            await paper_trigger_store.cancel(db, strategy_id, trigger_id)
+            if not await paper_trigger_store.cancel(db, strategy_id, trigger_id):  # the monitor fired it first
+                raise StrategyRefused("paper_trigger_already_fired", Failure.CONFLICT)
             await paper_trigger_store.add(db, strategy_id, paper_trigger_store.NewTrigger(
                 "conditional_exit", old.direction, old.level, underlying=old.underlying))
         await db.commit()
