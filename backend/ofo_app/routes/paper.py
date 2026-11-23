@@ -1327,8 +1327,12 @@ async def _already_crossed(db: Any, ctx: MarketContext | None, underlying: str,
         if snapshot.market_closed:
             return None
         for n in new:
-            price = (paper.leg_price(snapshot, keys[n.contract_id]) if n.contract_id is not None
-                     and keys.get(n.contract_id) else paper.price_of(snapshot.spot, underlying))
+            if n.contract_id is None:
+                price = paper.price_of(snapshot.spot, underlying)  # a conditional exit is judged on the index
+            elif keys.get(n.contract_id):
+                price = paper.leg_price(snapshot, keys[n.contract_id])  # a leg stop only on its own contract's price
+            else:
+                continue  # no feed key = no live leg price: saved, armed at the next live tick (never the index)
             if stops.crossed(stops.Trigger(0, 0, n.kind, n.direction, n.level, n.contract_id, n.underlying),  # type: ignore[arg-type]
                              price):
                 return "paper_trigger_already_crossed" if n.contract_id is None else "paper_trigger_leg_already_crossed"

@@ -41,7 +41,7 @@ const stopReason = (i) => (paperPriceOk(stopOf(i).level) ? '' : PAPER_PRICE_REAS
 // D-05: a Save ends in exactly one line: "Saved: ...", "Already set: ..." or "Not saved: ..." (ADR-317 (5))
 const NO_ANSWER = 'Not saved: could not get an answer from the server. Your levels are still in the boxes, press Save again.'
 const refusal = (e) => e?.parts?.what_happened || NEUTRAL_ERROR
-const notSaved = (e) => (e?.status >= 400 && e.status < 500 && e?.parts?.what_happened ? `Not saved: ${e.parts.what_happened.replace(/^([A-Z])(?=[a-z])/, (c) => c.toLowerCase())}` : NO_ANSWER)
+const notSaved = (e) => (e?.status >= 400 && e.status < 500 && e?.parts?.what_happened ? `Not saved: ${e.parts.what_happened.replace(/^(?!(?:Zerodha|Kite|Sensibull|Nifty|Sensex|Banknifty)\b)([A-Z])(?=[a-z])/, (c) => c.toLowerCase())}` : NO_ANSWER)
 
 // Returns the reply data on success (a reply without a triggers array is a failure), null otherwise.
 async function run(call, saving = false) {
