@@ -19,6 +19,7 @@ from enum import Enum
 from fractions import Fraction
 
 from ofo.engine import UNLIMITED, Action, Instrument, Leg, Strategy, strategy_metrics
+from ofo.engine.duplicate_leg import ContractKey, contract_key, duplicate_leg_message
 from ofo.engine.product import Product
 from ofo.engine.metrics import _Unlimited, _upper_tail_slope
 from ofo.execution.price_check import circuit_block
@@ -185,11 +186,10 @@ def _kind(leg: Leg) -> ContractKind:
     return ContractKind.FUTURE if leg.instrument is Instrument.FUT else ContractKind.OPTION
 
 
-_Key = tuple[datetime.date, str, Decimal | None]
+_Key = ContractKey
 
 
-def _key(expiry: datetime.date | None, instrument_type: str, strike: Decimal | None) -> _Key:
-    return (expiry, instrument_type, None if instrument_type == Instrument.FUT.value else strike)
+_key = contract_key
 
 
 def _index(catalogue: Catalogue, underlying: str) -> dict[_Key, list[CatalogueEntry]]:
@@ -387,20 +387,9 @@ def _context_failures(ctx: ExecutionContext, pro_reason: ProReason | None, strat
 
 
 def duplicate_leg_failure(number: int, value: LegValue, other: int) -> CheckFailure:
-    """The one duplicate-leg failure and its sentence (gate_duplicate_leg), for the real-order gate and Add to Paper."""
-    return _fail(CheckCode.DUPLICATE_LEG, "gate_duplicate_leg", leg_number=number, leg=value, other=other)
-
-
-def paper_duplicate_leg(legs: Sequence[Leg], underlying: str) -> CheckFailure | None:
-    """Add to Paper (ADR-319 (3), REQ-030 AC-11): the first leg that repeats an earlier leg's contract AND action. The
-    gate's own key is used, but a buy and a sell of one contract stay two legs here; the live gate is unchanged."""
-    seen: dict[tuple[_Key, object], int] = {}
-    for number, leg in enumerate(legs, start=1):
-        key = (_key(leg.expiry, leg.instrument.value, leg.strike), leg.action)
-        if key in seen:
-            return duplicate_leg_failure(number, LegValue(number, leg, underlying), seen[key])
-        seen[key] = number
-    return None
+    """The one duplicate-leg failure and its sentence (gate_duplicate_leg) for the real-order gate; Add to Paper shares
+    the sentence through ofo.engine.duplicate_leg."""
+    return CheckFailure(CheckCode.DUPLICATE_LEG, duplicate_leg_message(number, value, other), leg_number=number)
 
 
 def _leg_failures(

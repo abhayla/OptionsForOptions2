@@ -55,8 +55,8 @@ from ofo.engine.extremes_charges import (
     sum_after_charges,
     sum_booked_after,
 )
+from ofo.engine.duplicate_leg import paper_duplicate_leg
 from ofo.engine.legs import Action, Instrument, Leg
-from ofo.execution.safety import paper_duplicate_leg
 from ofo.errors import render
 from ofo.errors.explanations import render_explanation, restore_explanation
 from ofo.instruments.models import FUTURE_TYPE
@@ -1020,7 +1020,7 @@ def _check_held(held: HeldIn | None, first: bool, orders: Sequence[Any], state: 
 
 def _refuse_duplicate_legs(underlying: str, orders: Sequence[PaperOrderIn], state: Mapping[int, Any]) -> None:
     """ADR-319 (3): two opening orders on one contract and side are a kept duplicate leg; refused with the gate's own sentence
-    (safety.paper_duplicate_leg). A buy and a sell of one contract stay two legs (REQ-030 AC-11). Exits never count."""
+    (engine.duplicate_leg.paper_duplicate_leg). A buy and a sell of one contract stay two legs (REQ-030 AC-11). Exits never count."""
     legs = []
     for o in orders:
         if o.kind == "exit":
@@ -1029,7 +1029,7 @@ def _refuse_duplicate_legs(underlying: str, orders: Sequence[PaperOrderIn], stat
         legs.append(Leg(Action(o.side), Instrument(c.instrument_type), c.strike, c.expiry, o.quantity, o.price))
     failure = paper_duplicate_leg(legs, underlying)
     if failure is not None:
-        raise StrategyRefused("gate_duplicate_leg", message=failure.message)
+        raise StrategyRefused("gate_duplicate_leg", message=failure)
 
 
 @router.post("/paper/strategies/{strategy_id}/orders", status_code=201, response_model=PaperBookOut,
