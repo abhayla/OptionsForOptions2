@@ -97,7 +97,7 @@ describe('Stops panel', () => {
     answers[`POST ${TRIG}`] = refuse('That level is not valid.')
     await t(w, 'ce-save').trigger('click')
     await flushPromises()
-    expect(t(w, 'stops-error').text()).toContain('that level is not valid.')
+    expect(t(w, 'stops-error').text()).toContain('That level is not valid.')
     expect(t(w, 'ce-above').element.value).toBe('24500')
     answers[`POST ${TRIG}`] = () => Promise.reject({ message: 'net', status: null, parts: null })
     await t(w, 'ce-save').trigger('click')
@@ -124,22 +124,20 @@ describe('Stops panel', () => {
   it('D-01: a crossed-level refusal reads exactly the approved line and keeps the typed level', async () => {
     const w = await open()
     await t(w, 'ce-above').setValue('22500')
-    answers[`POST ${TRIG}`] = refuse('The live price is already at or beyond this level, so this exit would close the trade straight away. To close now, use Exit.')
+    answers[`POST ${TRIG}`] = refuse('the live price is already at or beyond this level, so this exit would close the trade straight away. To close now, use Exit.')
     await t(w, 'ce-save').trigger('click')
     await flushPromises()
     expect(t(w, 'stops-error').text()).toBe('Not saved: the live price is already at or beyond this level, so this exit would close the trade straight away. To close now, use Exit.')
     expect(t(w, 'ce-above').element.value).toBe('22500')
   })
-  it('D-01: a reason that starts with a name or capitals keeps its first letter in the Not saved line', async () => {
+  it('D-01: the Not saved line prints the server reason exactly as written, with no change to its first letter', async () => {
     const w = await open()
     await t(w, 'ce-above').setValue('22500')
-    for (const [reason, shown] of [['Zerodha shows no price for this leg.', 'Not saved: Zerodha shows no price for this leg.'],
-      ['NIFTY is closed.', 'Not saved: NIFTY is closed.'], ['NSE holiday today.', 'Not saved: NSE holiday today.'],
-      ['The live price is already at or beyond this level.', 'Not saved: the live price is already at or beyond this level.']]) {
+    for (const reason of ['Zerodha shows no price for this leg.', 'NIFTY is closed.', 'NSE holiday today.', 'the live price is already at or beyond this level.']) {
       answers[`POST ${TRIG}`] = refuse(reason)
       await t(w, 'ce-save').trigger('click')
       await flushPromises()
-      expect(t(w, 'stops-error').text()).toBe(shown)
+      expect(t(w, 'stops-error').text()).toBe(`Not saved: ${reason}`)
     }
   })
   it('a saved leg stop is confirmed with its direction and level', async () => {
@@ -200,7 +198,7 @@ describe('Stops panel', () => {
     answers['POST /paper/strategies/48/triggers/1/keep'] = refuse('That stop already fired.')
     await t(bad, 'trigger-keep-1').trigger('click')
     await flushPromises()
-    expect(t(bad, 'stops-error').text()).toBe('Not saved: that stop already fired.')
+    expect(t(bad, 'stops-error').text()).toBe('Not saved: That stop already fired.')
     expect(has(bad, 'stops-saved')).toBe(false)
   })
   it('a refused cancel shows the server text; an unreadable or failed triggers read shows a line and no rows', async () => {

@@ -4284,11 +4284,11 @@
     "reviewed": "pending owner read"
   },
   "paper_trigger_already_crossed": {
-    "sha256": "b11755307cd46c6123940c654ce3d647f3821500d9b683351cf7c89155ea3c27",
+    "sha256": "75f3b8659d6d4aa95d0f7dc8d3c4f9c8cfad4d72452461ed06c06cbc79c801be",
     "reviewed": "owner read 2026-11-23 (approved in session)"
   },
   "paper_trigger_leg_already_crossed": {
-    "sha256": "aa867b7776ff64e7e365cb7dcfe189a322c0ea22a161a73e16df20434bde9793",
+    "sha256": "9fce35fa22d13bba002ac14177014bd82174db1d4b1092d59c76cbc42ae21524",
     "reviewed": "pending owner read"
   }
 }
