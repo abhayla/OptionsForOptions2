@@ -360,3 +360,45 @@ async def test_f4_settling_the_expiring_legs_leaves_the_index_exits_of_the_open_
     assert [(r[0], r[3], r[4]) for r in await _stored(db, stored.id)] == [
         ("conditional_exit", None, True), ("conditional_exit", None, True), ("leg_stop", ids[0], False),
         ("leg_stop", ids[1], False)]
+
+
+# ---- D-05 / ADR-317 (3): the reply says when NOTHING new was stored; the armed set is read under the strategy lock ----
+
+async def test_d05_an_identical_second_save_says_already_set_and_stores_one_row(db, notified):
+    app, stored, _ = await _open(db)
+    ce = {"kind": "conditional_exit", "above": "23100"}
+    async with _client(app) as c:
+        first = await c.post(_url(stored), json=ce)
+        again = await c.post(_url(stored), json=ce)
+    assert first.json()["already_set"] is False and again.json()["already_set"] is True
+    assert len([r for r in again.json()["triggers"] if r["state"] == "armed"]) == 1
+    assert len(await _stored(db, stored.id)) == 1
+
+
+async def test_d05_a_save_with_one_new_side_stores_it_and_is_not_already_set(db, notified):
+    app, stored, _ = await _open(db)
+    async with _client(app) as c:
+        await c.post(_url(stored), json={"kind": "conditional_exit", "above": "23100"})
+        both = await c.post(_url(stored), json={"kind": "conditional_exit", "above": "23100", "below": "22000"})
+    assert both.json()["already_set"] is False
+    assert len(await _stored(db, stored.id)) == 2
+
+
+async def test_d05_the_route_takes_the_strategy_row_lock_before_reading_the_armed_set(db, notified, monkeypatch):
+    app, stored, _ = await _open(db)
+    seen: list[str] = []
+    real_lock, real_list = paper_routes.store.lock_strategy, paper_trigger_store.list_for
+
+    async def lock(*a, **k):
+        seen.append("lock")
+        return await real_lock(*a, **k)
+
+    async def listed(*a, **k):
+        seen.append("list")
+        return await real_list(*a, **k)
+
+    monkeypatch.setattr(paper_routes.store, "lock_strategy", lock)
+    monkeypatch.setattr(paper_trigger_store, "list_for", listed)
+    async with _client(app) as c:
+        reply = await c.post(_url(stored), json={"kind": "conditional_exit", "above": "23100"})
+    assert reply.status_code == HTTPStatus.CREATED and seen[0] == "lock" and "list" in seen
