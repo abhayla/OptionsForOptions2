@@ -226,6 +226,8 @@ const router = useRouter()
 function show(data) {
   const read = readPaperList(data)
   if (read === null) {
+    confirm.value = null // like fail(): no open exit from old prices
+    dialogError.value = ''
     errorParts.value = NEUTRAL_PARTS // an unreadable answer keeps the last loaded list, like a failed read
   } else {
     items.value = read.groups
@@ -278,6 +280,7 @@ function ask(g, rows) {
 async function doExit(orders) {
   const c = confirm.value
   if (!c || busy.value) return
+  if (stale.value) return cancelExit() // prices paused: no POST; the list's exit reason line says why
   busy.value = true
   dialogError.value = ''
   dialogState.value = PAPER_STATE.READY
