@@ -113,7 +113,9 @@ describe('CORE: Exit all and a partial exit go through paperOrdersFor and the on
     await t(w, 'paper-exit-all').trigger('click')
     await flushPromises()
     expect(dialog(w).props('open')).toBe(true)
-    expect(rowsOf(w)).toEqual(OPEN.map((p) => ({ side: p.net_quantity > 0 ? 'SELL' : 'BUY', contract_id: p.contract_id, lots: 1, lot_size: 65, price: p.ltp_text, kind: 'exit' })))
+    // REQ-159 AC-6: short buy-backs (BUY) are listed before the long sales (SELL), contract order kept within each
+    const buyBacksFirst = [...OPEN.filter((p) => p.net_quantity < 0), ...OPEN.filter((p) => p.net_quantity > 0)]
+    expect(rowsOf(w)).toEqual(buyBacksFirst.map((p) => ({ side: p.net_quantity > 0 ? 'SELL' : 'BUY', contract_id: p.contract_id, lots: 1, lot_size: 65, price: p.ltp_text, kind: 'exit' })))
     expect(dialog(w).find('[data-testid="modal-title"]').text()).toBe('Exit paper positions')
     expect(all(w, 'paper-order-kind').map((k) => k.text())).toEqual(OPEN.map(() => 'Exit'))
     expect(w.vm.$.setupState.legs).toEqual([]) // the edit is the legs, so the pending count / Discard see it too

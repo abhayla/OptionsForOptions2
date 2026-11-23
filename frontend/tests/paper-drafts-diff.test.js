@@ -35,9 +35,9 @@ describe('paperOrdersFor(net, edited) on the real strategy 63 book', () => {
   it('(a) stepping the short 22950 CE up onto the held long 23000 CE gives exactly two EXITS: BUY 65 22950 CE, SELL 65 23000 CE', () => {
     const edited = net().map((l) => (l.contract_id === ID.ce22950 ? { ...CATALOGUE_LEG(ID.ce23000), action: 'SELL', lots: 1 } : l))
     expect(strip(paperOrdersFor(net(), edited))).toEqual([
+      { side: 'BUY', contract_id: ID.ce22950, quantity: 65, kind: 'exit' }, // REQ-159 AC-6: the buy-back first
       { side: 'SELL', contract_id: ID.ce23000, quantity: 65, kind: 'exit' },
-      { side: 'BUY', contract_id: ID.ce22950, quantity: 65, kind: 'exit' },
-    ].sort(byContractOrder(net())))
+    ])
   })
   it('(b) lots 1 -> 2 on 22600 PE gives one BUY 65 add', () => {
     const edited = net().map((l) => (l.contract_id === ID.pe22600 ? { ...l, lots: 2 } : l))
@@ -58,14 +58,14 @@ describe('paperOrdersFor(net, edited) on the real strategy 63 book', () => {
       { side: 'SELL', contract_id: ID.pe22600, quantity: 130, kind: 'add' },
     ])
   })
-  it('a smaller same-side position is one exit of the difference; a new contract is an add; exits come before adds', () => {
+  it('a smaller same-side position is one exit of the difference; a new contract is an add; BUYs come before SELLs', () => {
     const two = net().map((l) => (l.contract_id === ID.pe22600 ? { ...l, lots: 3 } : l))
     const edited = [...two.map((l) => (l.contract_id === ID.pe22600 ? { ...l, lots: 1 } : l)), { ...CATALOGUE_LEG(ID.ce22900), action: 'BUY', lots: 2 }]
       .filter((l) => l.contract_id !== ID.ce22950)
     expect(strip(paperOrdersFor(two, edited))).toEqual([
-      { side: 'SELL', contract_id: ID.pe22600, quantity: 130, kind: 'exit' },
-      { side: 'BUY', contract_id: ID.ce22950, quantity: 65, kind: 'exit' },
+      { side: 'BUY', contract_id: ID.ce22950, quantity: 65, kind: 'exit' }, // REQ-159 AC-6: BUYs first, then the SELL
       { side: 'BUY', contract_id: ID.ce22900, quantity: 130, kind: 'add' },
+      { side: 'SELL', contract_id: ID.pe22600, quantity: 130, kind: 'exit' },
     ])
   })
   it('two edited legs on one contract are netted before the diff (BUY 2 + SELL 1 of 22600 PE = +65: no order)', () => {
@@ -88,11 +88,6 @@ describe('paperOrdersFor(net, edited) on the real strategy 63 book', () => {
 function CATALOGUE_LEG(contractId) {
   const c = CATALOGUE.find((x) => x.contract_id === contractId)
   return { id: `new-${contractId}`, contract_id: c.contract_id, lot_size: c.lot_size, instrument_id: `${c.exchange_segment}:${c.exchange_token}`, strike: c.strike, instrument_type: c.instrument_type, expiry: c.expiry }
-}
-// exits are listed in the order the contracts appear in the net position
-function byContractOrder(legs) {
-  const at = (id) => legs.findIndex((l) => l.contract_id === id)
-  return (a, b) => at(a.contract_id) - at(b.contract_id)
 }
 
 // REQ-159 AC-6 / REQ-058 (Q238): buy legs first. One rule on the whole basket: BUY exits (short buy-backs), BUY adds (new
