@@ -96,6 +96,7 @@ async function saveStop(leg) {
   }
 }
 const cancel = (t) => run(() => api.delete(`${path}/${t.id}`))
+const keep = (t) => run(() => api.post(`${path}/${t.id}/keep`)) // D-03: same level, stored again after the adjustment
 </script>
 
 <template>
@@ -140,6 +141,11 @@ const cancel = (t) => run(() => api.delete(`${path}/${t.id}`))
           <span data-testid="trigger-level">{{ t.level_text }}</span>
           <span class="rounded bg-surface-muted px-1" data-testid="trigger-state">{{ t.state }}</span>
           <button v-if="t.state === 'armed'" type="button" class="rounded border border-line px-2 py-0.5" :disabled="busy" :data-testid="`trigger-cancel-${t.id}`" @click="cancel(t)">Cancel</button>
+          <template v-if="t.state === 'armed' && t.set_before_adjustment">
+            <span class="rounded bg-surface-muted px-1 text-xs font-medium" data-testid="trigger-adjusted">set before the last adjustment</span>
+            <button type="button" class="rounded border border-line px-2 py-0.5" :disabled="busy" :data-testid="`trigger-keep-${t.id}`" @click="keep(t)">Keep this level</button>
+            <p class="w-full text-xs text-ink-muted" data-testid="trigger-adjustment-note">{{ t.adjustment_note }}</p>
+          </template>
         </li>
       </ul>
     </div>
