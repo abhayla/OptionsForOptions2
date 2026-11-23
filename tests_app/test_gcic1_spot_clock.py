@@ -131,7 +131,7 @@ async def test_check_route_judges_the_spot_at_the_later_clock(monkeypatch):
     monkeypatch.setattr(check, "strategy_type", stop)
 
     async def tracked(_sid, _rates):
-        return SimpleNamespace(position=SimpleNamespace(underlying="NIFTY"))
+        return SimpleNamespace(position=SimpleNamespace(underlying="NIFTY"), entry_position=None)
 
     async def market(_t, _c):
         return _market(T0, SourceReading(SourceState.ABSENT))
@@ -162,7 +162,7 @@ async def test_plan_route_judges_the_spot_at_the_later_clock(monkeypatch):
     async def market(_t, _c):
         return _market(T0, SourceReading(SourceState.ABSENT))
 
-    tracked = SimpleNamespace(position=SimpleNamespace(underlying="NIFTY"))
+    tracked = SimpleNamespace(position=SimpleNamespace(underlying="NIFTY"), entry_position=None)
     await plan_route._type_of(None, "u", 1, tracked, market, _rest_reader(clock, rest), None)
     assert seen["spot"] == SPOT
 
@@ -173,7 +173,7 @@ async def test_playbook_preview_judges_the_spot_at_the_later_clock(monkeypatch):
     _feed, rest = _readings(T0)
 
     async def tracked_reader(_id, _rates):
-        return SimpleNamespace(position=SimpleNamespace(underlying="NIFTY"))
+        return SimpleNamespace(position=SimpleNamespace(underlying="NIFTY"), entry_position=None)
 
     async def market_reader(_t, _c):
         return _market(T0, SourceReading(SourceState.ABSENT))
