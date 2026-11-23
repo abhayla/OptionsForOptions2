@@ -73,9 +73,16 @@ async function saveExit() {
   const body = { kind: 'conditional_exit' }
   if (typed(above.value)) body.above = typed(above.value)
   if (typed(below.value)) body.below = typed(below.value)
+  // per level: already armed (identical kind, direction, level) in the list from BEFORE the press, or the server says nothing new was stored
+  const armed = (triggers.value ?? []).filter((x) => x.state === 'armed' && x.kind === 'conditional_exit')
+  const was = (dir, lvl) => armed.some((x) => x.direction === dir && Number(x.level) === Number(lvl))
   const data = await run(() => api.post(path, body), true)
   if (data) {
-    saved.value = `${data.already_set ? 'Already set' : 'Saved'}: exit ${[body.above && `above ${body.above}`, body.below && `below ${body.below}`].filter(Boolean).join(' and ')}`
+    const lv = [['above', body.above], ['below', body.below]].filter(([, v]) => v).map(([d, v]) => ({ d, v, dup: data.already_set || was(d, v) }))
+    const line = (list) => `exit ${list.map((x) => `${x.d} ${x.v}`).join(' and ')}`
+    const fresh = lv.filter((x) => !x.dup)
+    const dups = lv.filter((x) => x.dup)
+    saved.value = !dups.length ? `Saved: ${line(fresh)}` : !fresh.length ? `Already set: ${line(dups)}` : `Saved: ${line(fresh)}. Already set: ${line(dups)}`
     above.value = ''
     below.value = ''
   }

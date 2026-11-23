@@ -10,9 +10,11 @@
     <p class="mb-2 rounded bg-accent-soft px-2 py-1 text-xs font-semibold text-accent" data-testid="paper-mode-header">Paper mode</p>
     <p class="rounded bg-amber-50 px-2 py-1 font-medium" data-testid="paper-banner">{{ BANNER }}</p>
     <p v-if="loading" class="mt-2" data-testid="paper-loading">Reading your paper strategies.</p>
-    <ErrorMessage v-else-if="errorParts" class="mt-2" :parts="errorParts" compact prefix="paper-error" />
-    <p v-else-if="!items.length" class="mt-2" data-testid="paper-empty">{{ EMPTY }}</p>
-    <template v-else>
+    <!-- D-05 r2: a failed refresh is a banner above the last loaded list (full-page error only when nothing ever loaded), so an open Stops panel and what was typed in it stay -->
+    <ErrorMessage v-if="!loading && errorParts" class="mt-2" :parts="errorParts" compact prefix="paper-error" />
+    <p v-if="!loading && errorParts && items" class="mt-1 text-xs text-ink-muted" data-testid="paper-stale-note">{{ STALE_NOTE }}</p>
+    <p v-if="!loading && items && !items.length" class="mt-2" data-testid="paper-empty">{{ EMPTY }}</p>
+    <template v-else-if="!loading && items">
       <!-- Sensibull 050-053: the totals sit above the rows. A figure the reply omits is a dash with the server's reason. -->
       <dl v-if="totals && !compact" class="mt-2 flex flex-wrap gap-6 rounded bg-surface-muted px-3 py-2" data-testid="paper-totals">
         <div v-for="f in totalFigures" :key="f.id" class="text-right">
@@ -154,6 +156,7 @@ const legsText = (g) => {
 }
 const NO_TOTAL = 'No paper total yet: prices are not live'
 const BANNER = 'Paper trades - not real money'
+const STALE_NOTE = 'Showing the list as last loaded: prices and P&L may be out of date until the next good read.'
 const EMPTY = 'No paper strategies yet. Build a strategy, then press Add to Paper.'
 const figures = [
   { field: 'total', label: 'Total P&L', testid: 'paper-total', reason: 'pauseReason', reasonId: 'paper-total-reason' },
@@ -219,9 +222,7 @@ const router = useRouter()
 function show(data) {
   const read = readPaperList(data)
   if (read === null) {
-    items.value = null
-    totals.value = null
-    errorParts.value = NEUTRAL_PARTS
+    errorParts.value = NEUTRAL_PARTS // an unreadable answer keeps the last loaded list, like a failed read
   } else {
     items.value = read.groups
     totals.value = read.totals
@@ -230,10 +231,8 @@ function show(data) {
   }
   loading.value = false
 }
-// a failed read shows no figure: the old list is dropped, never left on screen as if current
+// D-05 r2: a failed read keeps the last loaded list (and any open Stops panel) under an error banner marked as last loaded
 function fail(e) {
-  items.value = null
-  totals.value = null
   confirm.value = null
   dialogError.value = ''
   errorParts.value = e?.parts ?? NEUTRAL_PARTS
