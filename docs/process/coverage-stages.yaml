@@ -476,6 +476,10 @@ decisions:
   ADR-314: S6.7         # a stored alert record keeps the value, threshold and limit of the sample that confirmed it, never the latest check's
   ADR-315: S6.7         # a draft whose paper book is flat after a reducing order is closed (migration 0053), deleted rows included, real-order strategies excluded
   ADR-316: S6.7         # yes/no and clock rule alerts show the rule's own label; the clock time follows once stored; the breakeven line names its figure
+  ADR-317: S6.7         # a trigger is judged when it is saved, and follows the legs
+  ADR-318: S6.7         # at the adjustment limit, only risk-cutting routes, with the true count
+  ADR-319: S6.7         # a duplicate leg blocks until the user fixes it; legs are never merged silently
+  ADR-320: S6.7         # owner decisions for the remaining items of the 23 Nov live iron condor test
 
 questions:
   Q210: 4a              # external: Zerodha's written answer; ADR-051 covers the owner's own account
