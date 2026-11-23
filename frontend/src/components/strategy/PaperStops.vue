@@ -22,6 +22,7 @@ const path = `/paper/strategies/${props.strategyId}/triggers`
 const triggers = ref(null) // null = not read (or unreadable)
 const error = ref('')
 const busy = ref(false)
+const saved = ref('') // the one-line confirmation of the last save
 const above = ref('')
 const below = ref('')
 const stop = ref({}) // leg index -> { level, direction }
@@ -52,6 +53,7 @@ async function run(call) {
   if (busy.value) return false
   busy.value = true
   error.value = ''
+  saved.value = ''
   try {
     return take((await call()).data)
   } catch (e) {
@@ -70,6 +72,7 @@ async function saveExit() {
   if (typed(above.value)) body.above = typed(above.value)
   if (typed(below.value)) body.below = typed(below.value)
   if (await run(() => api.post(path, body))) {
+    saved.value = `Saved: exit ${[body.above && `above ${body.above}`, body.below && `below ${body.below}`].filter(Boolean).join(' and ')}`
     above.value = ''
     below.value = ''
   }
@@ -78,6 +81,7 @@ async function saveStop(leg) {
   if (stopReason(leg.index)) return
   const s = stopOf(leg.index)
   if (await run(() => api.post(path, { kind: 'leg_stop', contract_id: leg.contractId, direction: s.direction, level: typed(s.level) }))) {
+    saved.value = `Saved: stop ${s.direction} ${typed(s.level)}`
     setStop(leg.index, { level: '' })
   }
 }
@@ -114,6 +118,7 @@ const cancel = (t) => run(() => api.delete(`${path}/${t.id}`))
     </div>
 
     <p v-if="error" class="mt-2 text-red-700" role="alert" data-testid="stops-error">{{ error }}</p>
+    <p v-else-if="saved" class="mt-2 text-xs text-ink-muted" role="status" data-testid="stops-saved">{{ saved }}</p>
 
     <div class="mt-2" data-testid="triggers">
       <p class="font-medium">Stops on this strategy</p>

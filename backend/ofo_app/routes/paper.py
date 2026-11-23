@@ -68,7 +68,7 @@ from ofo.strategy import stored_form as sf
 from ofo.strategy.definition import describe_contract, display_contract
 from ofo.table.model import display_number
 from ofo.timeutil import IST
-from ofo.tracking import paper, paper_decay, paper_greeks
+from ofo.tracking import paper, paper_decay, paper_greeks, stops
 from ofo.tracking.orderbook import NetPosition, PaperOrder, is_typed_price, net_positions
 from ofo.tracking.paper_alert import restore_alert_body
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
@@ -1258,18 +1258,51 @@ def _new_triggers(body: TriggerIn, underlying: str, open_ids: Sequence[int]) -> 
     return new
 
 
+async def _already_crossed(db: Any, ctx: MarketContext | None, underlying: str,
+                           new: Sequence[paper_trigger_store.NewTrigger]) -> bool:
+    """ADR-317 (1): True when the live price the monitor would compare against has already crossed a new level (the
+    same ``stops.crossed``: at the level counts). Answer states: no market context, the market closed, a read that
+    fails, or a price that is not live -> False (saved, arms at the next live tick: REQ-109 AC-8)."""
+    if ctx is None:
+        return False
+    keys = {c.contract_id: c.feed_key for c in await tracked_contracts.resolve(
+        db, sorted({n.contract_id for n in new if n.contract_id is not None}))}
+    try:
+        snapshot = read_snapshot(ctx.provider, underlying, sorted({k for k in keys.values() if k is not None}),
+                                 ctx.clock(), ctx.rate, feed_scope(ctx), quality=ctx.forward_quality)
+        if snapshot.market_closed:
+            return False
+        for n in new:
+            price = (paper.leg_price(snapshot, keys[n.contract_id]) if n.contract_id is not None
+                     and keys.get(n.contract_id) else paper.price_of(snapshot.spot, underlying))
+            if stops.crossed(stops.Trigger(0, 0, n.kind, n.direction, n.level, n.contract_id, n.underlying),  # type: ignore[arg-type]
+                             price):
+                return True
+    except Exception:  # noqa: BLE001 - any failed read is "no price": the trigger is saved as before
+        _LOG.exception("paper trigger price read failed")
+    return False
+
+
 @router.post("/paper/strategies/{strategy_id}/triggers", status_code=201, response_model=TriggersOut,
              dependencies=[Depends(guard_paper_order)])  # IC e2e 5: scenario mode = own scenario only
 async def add_paper_triggers(strategy_id: int, body: TriggerIn, db: Annotated[Any, Depends(get_db)],
-                             user_ref: Annotated[str, Depends(current_user_ref)]) -> TriggersOut:
+                             user_ref: Annotated[str, Depends(current_user_ref)],
+                             ctx: Annotated[MarketContext | None, Depends(get_market_context)]) -> TriggersOut:
     stored = await _load_strategy(db, user_ref, strategy_id)
     open_ids = _open_ids(await paper_store.load(db, strategy_id))
     if not open_ids:
         raise StrategyRefused("paper_trigger_nothing_open")
     new = _new_triggers(body, stored.saved.definition.underlying, open_ids)
+    if await _already_crossed(db, ctx, stored.saved.definition.underlying, new):
+        raise StrategyRefused("paper_trigger_already_crossed")
+    # ADR-317 (3): the same armed trigger is not stored twice (the strategy's row lock is not held: a double click
+    # that races past this read is the monitor's problem only until the next save returns the first one)
+    armed = {(r.trigger.kind, r.trigger.direction, r.trigger.level, r.trigger.contract_id)
+             for r in await paper_trigger_store.list_for(db, strategy_id) if _state(r) == "armed"}
     try:
         for n in new:
-            await paper_trigger_store.add(db, strategy_id, n)
+            if (n.kind, n.direction, n.level, n.contract_id) not in armed:
+                await paper_trigger_store.add(db, strategy_id, n)
         await db.commit()
     except Exception:
         await db.rollback()

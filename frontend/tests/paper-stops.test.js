@@ -123,9 +123,11 @@ describe('Stops panel', () => {
   })
   it('a saved leg stop is confirmed with its direction and level', async () => {
     const w = await open()
-    await t(w, 'stop-level-0').setValue('120')
+    const level = w.get('[data-testid^="stop-level-"]')
+    const id = level.attributes('data-testid').replace('stop-level-', '')
+    await level.setValue('120')
     answers[`POST ${TRIG}`] = ok({ triggers: [trig(1, { kind: 'leg_stop', contract_id: 5000, contract_text: 'x' })] })
-    await t(w, 'stop-save-0').trigger('click')
+    await t(w, `stop-save-${id}`).trigger('click')
     await flushPromises()
     expect(t(w, 'stops-saved').text()).toBe('Saved: stop above 120')
   })

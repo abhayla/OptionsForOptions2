@@ -205,7 +205,8 @@ from ofo_app.routes import paper as paper_routes  # noqa: E402
 
 
 async def _stored(db, strategy_id: int) -> list[tuple]:
-    rows = await db.execute(text("SELECT kind, direction, level, contract_id, fired_at IS NULL AND cancelled_at IS NULL "
+    rows = await db.execute(text("SELECT kind, direction, level, contract_id, "
+                                 "fired_at IS NULL AND cancelled_at IS NULL "
                                  "FROM public.paper_triggers WHERE strategy_id = :i ORDER BY id"), {"i": strategy_id})
     return [tuple(r) for r in rows.all()]
 
@@ -237,7 +238,7 @@ async def test_f1_a_level_already_crossed_is_refused_and_nothing_is_stored(db, n
 
 
 async def test_f1_a_level_not_yet_crossed_is_saved(db, notified):
-    app, stored, ids = await _open(db)
+    app, stored, _ids = await _open(db)
     async with _client(app) as c:
         ok = await c.post(_url(stored), json={"kind": "conditional_exit", "above": "22550", "below": "22400"})
     assert ok.status_code == HTTPStatus.CREATED, ok.text
@@ -256,7 +257,7 @@ async def test_f1_no_market_context_saves_as_before_it_arms_at_the_next_live_tic
 
 
 async def test_f1_a_failed_price_read_saves_as_before(db, notified, monkeypatch):
-    app, stored, ids = await _open(db)
+    app, stored, _ids = await _open(db)
 
     def boom(*_a, **_k):
         raise RuntimeError("feed down")
@@ -268,7 +269,7 @@ async def test_f1_a_failed_price_read_saves_as_before(db, notified, monkeypatch)
 
 
 async def test_f1_a_closed_market_saves_as_before(db, notified, monkeypatch):
-    app, stored, ids = await _open(db)
+    app, stored, _ids = await _open(db)
     real = paper_routes.read_snapshot
     monkeypatch.setattr(paper_routes, "read_snapshot",
                         lambda *a, **k: dataclasses.replace(real(*a, **k), market_closed=True))

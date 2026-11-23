@@ -11,6 +11,8 @@
   book was empty before this call, through ``entry_facts_store.record_first``; never on a later fill.
   GC-ICGUIDE g23 (audit C13): when a reducing order leaves every contract flat, the same transaction stores the
   strategy's status 'closed' (draft -> closed only; migration 0049). Every last exit (route, settlement) passes here.
+- reconcile_triggers (ADR-317 (4)): inside ``place``, armed leg stops on a flat contract and every armed trigger of a
+  strategy with no open leg are cancelled, whoever placed the order (route, stop fire, settlement).
 - tracked_ids: which of the given strategies have at least one paper order (REQ-134 AC-4).
 - load: the orders of one strategy the caller already loaded for its user, in placement order (the id).
 - load_all: every order of ONE user's visible strategies with name and underlying, in ONE query whatever the count
@@ -43,6 +45,13 @@ _INSERT = text(
     ":trigger_id)")
 _CLOSE = text("UPDATE public.strategies SET status = 'closed' WHERE id = :id AND status = 'draft'")
 _STATUS = text("SELECT status FROM public.strategies WHERE id = :id")
+# ADR-317 (4): armed triggers of a strategy that no longer act: every one when no leg is open, else the leg stops on a
+# contract with no open quantity (an index exit stays armed while any leg is open)
+_STALE = ("FROM public.paper_triggers WHERE strategy_id = :sid AND fired_at IS NULL AND cancelled_at IS NULL "
+          "AND (CAST(:none AS BOOLEAN) OR (kind = 'leg_stop' AND NOT contract_id = ANY(CAST(:open AS BIGINT[]))))")
+_STALE_IDS = text("SELECT id " + _STALE + " ORDER BY id")
+_STALE_CANCEL = text("UPDATE public.paper_triggers SET cancelled_at = clock_timestamp() WHERE id IN (SELECT id "  # noqa: S608
+                     + _STALE + ") RETURNING id")
 _SELECT = text(f"SELECT {_COLUMNS} FROM public.paper_orders "  # noqa: S608 constant columns
                "WHERE strategy_id = :id ORDER BY id")
 _SELECT_TRACKED = text("SELECT DISTINCT strategy_id FROM public.paper_orders "
@@ -69,6 +78,16 @@ def _check_reducing(book: list[PaperOrder], order: PaperOrder) -> None:
                                                           f"{order.side} {order.quantity} against an open {net}")
 
 
+async def reconcile_triggers(conn: Any, strategy_id: int, book: Sequence[PaperOrder], *,
+                             dry_run: bool = False) -> list[int]:
+    """ADR-317 (4): cancels the strategy's armed triggers that cannot act on ``book`` (the whole order list, as it will
+    be stored): all of them when no leg is open, else the leg stops on a flat contract. Returns the ids; ``dry_run``
+    only names them. The one place every paper order passes (``place``) calls it; the caller commits."""
+    open_ids = [int(p.instrument_id) for p in net_positions(list(book), {}).positions if p.net_quantity]
+    params = {"sid": strategy_id, "none": not open_ids, "open": open_ids}
+    return [int(r.id) for r in (await conn.execute(_STALE_IDS if dry_run else _STALE_CANCEL, params)).all()]
+
+
 async def place(conn: Any, user_ref: str, strategy_id: int, orders: Sequence[NewOrder], *,
                 entry: EntryFacts | None = None) -> tuple[StoredOrder, ...]:
     """Stores ``orders`` in order (module docstring) and returns the whole book as stored; at the strategy's FIRST
@@ -93,6 +112,7 @@ async def place(conn: Any, user_ref: str, strategy_id: int, orders: Sequence[New
         if any(o.kind in REDUCING_KINDS for o in paper) and not any(
                 p.net_quantity for p in net_positions(book, {}).positions):
             await conn.execute(_CLOSE, {"id": strategy_id})  # GC-ICGUIDE g23: last open leg went
+        await reconcile_triggers(conn, strategy_id, book)  # ADR-317 (4): every leg change passes here
         if first_fill and entry is not None:  # written once; a later fill never reaches here (ADR-243)
             await entry_facts_store.record_first(conn, strategy_id, entry)
     return await load(conn, strategy_id)

@@ -4238,5 +4238,9 @@
   "explanation:unpriced_legs_expired": {
     "sha256": "720c8f1f185dd5f5b47401cdb6e0fd1043d099ad4ec5e013fc041fd3a2b4e686",
     "reviewed": "pending owner read"
+  },
+  "paper_trigger_already_crossed": {
+    "sha256": "0c2b619e750fb112ca4ec3fa03a9f3055dc74e54f64fc47f806c797d5eac621a",
+    "reviewed": "pending owner read"
   }
 }
