@@ -9,6 +9,8 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import api, { NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
+import Modal from '@/components/common/Modal.vue'
+import { DUP_QUESTION, admitLegs, lotsRangeText } from '@/lib/legDoor'
 import DepthPopup from '@/components/strategy/DepthPopup.vue'
 import MarketClosedBanner from '@/components/states/MarketClosedBanner.vue'
 import { capturedCaption, contractName, daysByExpiry, expiryText, expiryWithDays, istTime, setShownDate, strikeLabel } from '@/lib/displayFormat'
@@ -506,9 +508,7 @@ async function capture(id, und) {
 /** D-60 (REQ-030 AC-12): a contract already in the strategy with the SAME action is never added silently. The dialog is one
  *  promise: 'increase' | 'separate' | 'cancel'. The other action on the same contract is two legs, no question (AC-11). */
 const dup = ref(null)
-const DUP_QUESTION = (name) => `${name} is already in this strategy.`
-const sameLeg = (id, action, exceptId) => props.legs.find((l) => l.id !== exceptId && l.instrument_id === id && l.action === action)
-const askDuplicate = (name) => new Promise((resolve) => { dup.value = { name, resolve } })
+const askDuplicate = (leg) => new Promise((resolve) => { dup.value = { name: contractName(leg), resolve } })
 function answerDuplicate(choice) {
   const d = dup.value
   dup.value = null
@@ -526,17 +526,18 @@ async function save() {
   const act = action.value
   const lotCount = lots.value
   const id = c ? instrumentId(c.exchange_segment, c.exchange_token) : old.instrument_id
-  const clash = sameLeg(id, act, old?.id)
-  if (clash) {
-    const choice = await askDuplicate(contractName(clash))
-    if (choice === 'cancel') { busy.value = false; return }
-    if (choice === 'increase') {
-      resetForm()
-      emit('update:legs', props.legs.filter((l) => l.id !== old?.id).map((l) => (l.id === clash.id ? { ...l, lots: l.lots + lotCount } : l)))
-      busy.value = false
-      emit('done')
-      return
-    }
+  const admitted = await admitLegs(props.legs, [{ instrument_id: id, action: act, lots: lotCount }], { ask: askDuplicate, maxLots: maxLots.value, skipId: old?.id })
+  if (!admitted || admitted.error) { // Cancel keeps the form as it is; a refused Increase says why
+    busy.value = false
+    if (admitted) doneError.value = admitted.error
+    return
+  }
+  if (admitted.legs !== props.legs) { // Increase quantity: the clashing row took the lots, the edited row is gone
+    resetForm()
+    emit('update:legs', admitted.legs.filter((l) => l.id !== old?.id))
+    busy.value = false
+    emit('done')
+    return
   }
   resetForm()
   try {
@@ -591,20 +592,14 @@ async function done() {
   emit('done')
 }
 
-/** Ask once per chosen contract already held with the same action. Increase quantity raises that row's lots now (one emit);
- *  Keep separate leaves the contract in the list to be added as its own row; Cancel returns null (nothing changed). */
+/** Ask once per chosen contract already held with the same action (the one door, lib/legDoor.js). Returns the contracts to
+ *  add as their own rows, or null when nothing may change (Cancel, or an Increase past the lots limit: said in done-error). */
 async function resolveDuplicates(chosen) {
-  const keep = []
-  let legs = props.legs
-  for (const x of chosen) {
-    const clash = legs.find((l) => l.instrument_id === x.id && l.action === x.action)
-    const choice = clash ? await askDuplicate(contractName(clash)) : 'separate'
-    if (choice === 'cancel') return null
-    if (choice === 'increase') legs = legs.map((l) => (l.id === clash.id ? { ...l, lots: l.lots + x.lots } : l))
-    else keep.push(x)
-  }
-  if (legs !== props.legs) emit('update:legs', legs)
-  return keep
+  const admitted = await admitLegs(props.legs, chosen.map((x) => ({ ...x, instrument_id: x.id })), { ask: askDuplicate, maxLots: maxLots.value })
+  if (!admitted) return null
+  if (admitted.error) { doneError.value = admitted.error; return null }
+  if (admitted.legs !== props.legs) emit('update:legs', admitted.legs)
+  return admitted.kept
 }
 
 /** The one path that turns chosen contracts into legs (Done and a future's Buy/Sell): each is captured like a single add;
@@ -676,14 +671,14 @@ defineExpose({ startEdit, showStrikes })
   <section class="flex h-full min-h-0 flex-col gap-3 text-sm" data-testid="leg-picker">
     <!-- Compact and with its own test id: the page's ErrorMessage keeps error-what/impact/blocked/next to itself. -->
     <ErrorMessage v-if="errorParts" :parts="errorParts" compact prefix="picker-error" data-testid="picker-error" />
-    <div v-if="dup" role="alertdialog" class="rounded border border-line bg-surface p-2" data-testid="dup-dialog">
-      <p data-testid="dup-question">{{ DUP_QUESTION(dup.name) }}</p>
-      <span class="flex gap-2">
-        <button type="button" class="rounded border border-line px-2" data-testid="dup-increase" @click="answerDuplicate('increase')">Increase quantity</button>
-        <button type="button" class="rounded border border-line px-2" data-testid="dup-separate" @click="answerDuplicate('separate')">Keep separate</button>
-        <button type="button" class="rounded border border-line px-2" data-testid="dup-cancel" @click="answerDuplicate('cancel')">Cancel</button>
-      </span>
-    </div>
+    <Modal :open="dup !== null" title="Already in this strategy" @close="answerDuplicate('cancel')">
+      <div data-testid="dup-dialog"><p data-testid="dup-question">{{ dup ? DUP_QUESTION(dup.name) : '' }}</p></div>
+      <template #actions>
+        <button type="button" class="rounded border border-line px-2 py-1" data-testid="dup-increase" @click="answerDuplicate('increase')">Increase quantity</button>
+        <button type="button" class="rounded border border-line px-2 py-1" data-testid="dup-separate" @click="answerDuplicate('separate')">Keep separate</button>
+        <button type="button" class="col-span-2 rounded border border-line px-2 py-1" data-testid="dup-cancel" @click="answerDuplicate('cancel')">Cancel</button>
+      </template>
+    </Modal>
     <div class="flex flex-wrap items-center gap-2 pr-10" data-testid="picker-header">
       <select class="h-8 rounded border border-line px-1 font-semibold" aria-label="Underlying" data-testid="pick-underlying" :value="underlying" :disabled="underlyingLocked" @change="onUnderlying($event.target.value)">
         <option v-for="u in UNDERLYINGS" :key="u" :value="u">{{ u }}</option>
@@ -960,7 +955,7 @@ defineExpose({ startEdit, showStrikes })
         <button type="submit" data-testid="add-leg" :disabled="!canSave" class="rounded border border-line px-3 py-1" @click.prevent="save">Save leg</button>
         <button v-if="editing" type="button" data-testid="cancel-edit" class="rounded border border-line px-3 py-1" @click="resetForm">Cancel</button>
       </form>
-      <p v-if="!lotsOk" class="mt-1" data-testid="lots-error">Lots must be a whole number from 1 to 10000.</p>
+      <p v-if="!lotsOk" class="mt-1" data-testid="lots-error">{{ lotsRangeText(maxLots) }}</p>
       <p v-if="contract" class="mt-1 text-ink-muted" data-testid="lot-size">{{ contractName({ underlying, expiry: contract.expiry, instrument_type: contract.instrument_type, strike: contract.strike }) }}, lot size {{ contract.lot_size }}</p>
     </div>
 

@@ -4,10 +4,9 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (305)
+## Decisions (306)
 
-- Older decisions: 265 rows, ADR-1..ADR-278 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
-- ADR-279 2026-11-08: Owner 2026-11-08 ~18:00 IST (GC-ICTRACK, answer A4). [Makes the price source (ADR-275 (3)) a property o…]
+- Older decisions: 266 rows, ADR-1..ADR-279 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
 - ADR-280 2026-11-08: Owner delegation 2026-11-05: decided under "go with your recommendation" (strategy behaviour), GC-I… [Fixes the measures behind 12 playbook triggers th…]
 - ADR-281 2026-11-09: Owner answer 2026-11-09 (question tool, GC-ICGUIDE planning). [Holds live order placement for GC-ICGUIDE; record…]
 - ADR-282 2026-11-09: Owner answer 2026-11-09 (question tool, GC-ICGUIDE planning). [Fixes what "iron condor adjustments proven" means…]
@@ -47,6 +46,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-316 2026-11-15: Decided by the run on 2026-11-15 under the owner rule of 14 Nov ("whenever you have question, go wi… [Refines ADR-310 (the clock rule, named "Time exit…]
 - ADR-317 2026-11-23: Decided under the owner rule of 14 Nov ("whenever you have question, go with your recommendation"),… [Refines REQ-109 AC-8 (which covered firing at the…]
 - ADR-318 2026-11-23: Owner decided 23 Nov 2026 17:20 IST (question D-04 of the 23 Nov live test). [Refines ADR-255 and REQ-163 AC-2, which define th…]
+- ADR-319 2026-11-23: Decided by the lead on 23 Nov 2026 23:45 IST as conformant with REQ-030 AC-5, AC-11, AC-12 and the… [Applies REQ-030 AC-12 to the builder paths that s…]
 
 ## Requirements (161)
 

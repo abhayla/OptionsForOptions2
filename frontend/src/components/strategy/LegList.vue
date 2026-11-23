@@ -8,6 +8,7 @@
      (Settings popover, UI-103). -->
 <script setup>
 import { computed, nextTick, ref } from 'vue'
+import { sameContract } from '@/lib/legDoor'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import Tooltip from '@/components/common/Tooltip.vue'
 import Icon from '@/components/common/Icon.vue'
@@ -78,7 +79,7 @@ const legName = (l) => contractName(l)
 /** D-60 (REQ-059 gate): two rows on one contract and action are never merged silently. The words are the gate's own
  *  (gate_duplicate_leg in backend/ofo/errors/templates.py), shown on both rows. Index of the other row, or null. */
 const sameContractAs = (leg, i) => {
-  const j = props.legs.findIndex((o, k) => k !== i && o.instrument_id === leg.instrument_id && o.action === leg.action)
+  const j = props.legs.findIndex((o, k) => k !== i && sameContract(o, leg))
   return j === -1 ? null : j
 }
 const duplicateLegText = (leg, other) => `Leg ${leg} is the same contract as leg ${other}. The legs have not been combined; edit the strategy to keep one or combine them yourself.`
