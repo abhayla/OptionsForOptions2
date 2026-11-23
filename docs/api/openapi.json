@@ -1969,6 +1969,21 @@
         "title": "ApproachesIn",
         "type": "object"
       },
+      "ArmedExitsOut": {
+        "additionalProperties": false,
+        "properties": {
+          "lines": {
+            "items": {},
+            "title": "Lines",
+            "type": "array"
+          }
+        },
+        "required": [
+          "lines"
+        ],
+        "title": "ArmedExitsOut",
+        "type": "object"
+      },
       "BasketOrderOut": {
         "additionalProperties": false,
         "properties": {
@@ -15106,6 +15121,15 @@
       "TriggerOut": {
         "additionalProperties": false,
         "properties": {
+          "adjustment_note": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Adjustment Note"
+          },
           "cancelled_at": {
             "anyOf": [
               {
@@ -15182,6 +15206,11 @@
           "level_text": {
             "title": "Level Text"
           },
+          "set_before_adjustment": {
+            "default": false,
+            "title": "Set Before Adjustment",
+            "type": "boolean"
+          },
           "state": {
             "enum": [
               "armed",
@@ -15232,6 +15261,23 @@
       "TriggersOut": {
         "additionalProperties": false,
         "properties": {
+          "already_armed": {
+            "default": [],
+            "items": {
+              "enum": [
+                "above",
+                "below"
+              ],
+              "type": "string"
+            },
+            "title": "Already Armed",
+            "type": "array"
+          },
+          "already_set": {
+            "default": false,
+            "title": "Already Set",
+            "type": "boolean"
+          },
           "triggers": {
             "items": {
               "$ref": "#/components/schemas/TriggerOut"
@@ -19663,6 +19709,56 @@
         "summary": "Get Paper Strategy"
       }
     },
+    "/paper/strategies/{strategy_id}/armed-exits": {
+      "get": {
+        "description": "D-03 part B (ADR-317 (7)): read only, nothing stored. For the prepared basket in the paper confirm list: one line per\narmed index exit naming the short strike on its side AS IT WILL BE after the basket (the exit stays at its level).\nNo line when nothing is armed or the basket closes every leg (the exits are then cancelled).",
+        "operationId": "paper_armed_exits_paper_strategies__strategy_id__armed_exits_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_id",
+            "required": true,
+            "schema": {
+              "title": "Strategy Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "orders",
+            "required": true,
+            "schema": {
+              "maxLength": 8000,
+              "title": "Orders",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArmedExitsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Paper Armed Exits"
+      }
+    },
     "/paper/strategies/{strategy_id}/exit-risk": {
       "get": {
         "description": "Read only, nothing stored. The WHOLE prepared basket (exits and entries) is judged on the legs after all of it.\nBad input is refused (422), an engine error is cannot_tell, never \"no\". When an exit price cannot be read the\nanswer is judged without any Max Loss figure (never a stand-in price) and shows none.",
@@ -19894,6 +19990,55 @@
           }
         },
         "summary": "Cancel Paper Trigger"
+      }
+    },
+    "/paper/strategies/{strategy_id}/triggers/{trigger_id}/keep": {
+      "post": {
+        "description": "D-03 \"Keep this level\": the trader has read the mark and keeps the exit. The same exit is stored again as a new\narmed row (created after the adjustment, so it is no longer marked) and the old row is cancelled, in ONE\ntransaction under the strategy lock. The level is the same: nothing is moved (no silent substitution).",
+        "operationId": "keep_paper_trigger_paper_strategies__strategy_id__triggers__trigger_id__keep_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_id",
+            "required": true,
+            "schema": {
+              "title": "Strategy Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "trigger_id",
+            "required": true,
+            "schema": {
+              "title": "Trigger Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TriggersOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Keep Paper Trigger"
       }
     },
     "/positions": {
