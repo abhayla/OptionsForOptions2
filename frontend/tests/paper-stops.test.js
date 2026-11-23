@@ -151,6 +151,28 @@ describe('Stops panel', () => {
     expect(calls.filter((c) => c[0] === 'DELETE')).toHaveLength(1)
     expect(w.findAll('[data-testid^="trigger-cancel-"]')).toHaveLength(0)
   })
+  // D-03 (ADR-317 (7)): an index exit set before an adjustment stays armed; the row says so with the server's sentence
+  const NOTE = 'Exit above 25,645.00 was set before this change; your new short call is 25650. Check this level.'
+  it('D-03: a marked exit prints the server note and Keep this level; an unmarked one has neither', async () => {
+    const w = await open({ triggers: [trig(2, { direction: 'below', level_text: 'Index at or below 25,355.00', set_before_adjustment: false, adjustment_note: null }),
+      trig(1, { level_text: 'Index at or above 25,645.00', set_before_adjustment: true, adjustment_note: NOTE })] })
+    const rows = w.findAll('[data-testid="trigger-row"]')
+    expect(rows[0].find('[data-testid="trigger-adjusted"]').exists()).toBe(false)
+    expect(rows[0].find('[data-testid="trigger-keep-2"]').exists()).toBe(false)
+    expect(rows[1].get('[data-testid="trigger-adjusted"]').text()).toContain('set before the last adjustment')
+    expect(rows[1].get('[data-testid="trigger-adjustment-note"]').text()).toBe(NOTE)
+    expect(rows[1].find('[data-testid="trigger-cancel-1"]').exists()).toBe(true)
+  })
+  it('D-03: Keep this level POSTs keep for that trigger and the mark goes from the answer; cancelled rows are never marked', async () => {
+    const w = await open({ triggers: [trig(1, { set_before_adjustment: true, adjustment_note: NOTE }), trig(5, { state: 'cancelled', set_before_adjustment: true, adjustment_note: NOTE })] })
+    expect(w.findAll('[data-testid^="trigger-keep-"]').map((b) => b.attributes('data-testid'))).toEqual(['trigger-keep-1'])
+    answers['POST /paper/strategies/48/triggers/1/keep'] = ok({ triggers: [trig(6, { set_before_adjustment: false, adjustment_note: null }), trig(1, { state: 'cancelled' })] })
+    await t(w, 'trigger-keep-1').trigger('click')
+    await flushPromises()
+    expect(calls.filter((c) => c[0] === 'POST' && c[1].endsWith('/triggers/1/keep'))).toHaveLength(1)
+    expect(has(w, 'trigger-adjusted')).toBe(false)
+    expect(w.findAll('[data-testid^="trigger-keep-"]')).toHaveLength(0)
+  })
   it('a refused cancel shows the server text; an unreadable or failed triggers read shows a line and no rows', async () => {
     const w = await open({ triggers: [trig(1)] })
     answers['DELETE /paper/strategies/48/triggers/1'] = refuse('That stop already fired.')

@@ -555,3 +555,94 @@ async def test_d01_a_price_that_is_not_live_is_never_used_to_refuse(db, notified
         reply = await c.post(_url(stored), json={"kind": "conditional_exit", "above": "22500"})
     assert reply.status_code == HTTPStatus.CREATED, reply.text
     assert len(await _stored(db, stored.id)) == 1
+
+
+# ---- D-03 (ADR-317 (7)): an index exit set before an adjustment stays armed, is marked, and is never moved ----
+_LATER = datetime.timedelta(hours=1)
+
+
+def _later(n: int) -> datetime.datetime:
+    return datetime.datetime(2026, 10, 29, 5, 0, tzinfo=datetime.UTC) + n * _LATER
+
+
+def _at(order: paper_store.NewOrder, n: int) -> paper_store.NewOrder:
+    return paper_store.NewOrder(order.contract_id, order.side, order.quantity, order.price, order.kind, _later(n))
+
+
+async def _adjust(db, stored, orders, n):
+    await paper_store.place(db, stored.user_ref, stored.id, [_at(o, n) for o in orders])
+
+
+async def _armed_exits(c, stored):
+    rows = (await c.get(_url(stored))).json()["triggers"]
+    return {(r["direction"], r["state"]): r for r in rows}
+
+
+async def test_d03_an_exit_set_before_an_adjustment_is_marked_with_the_new_short_strike(db, notified):
+    app, stored, ids = await _open(db)  # entry: short call 22800, long call 23000
+    async with _client(app) as c:
+        await c.post(_url(stored), json={"kind": "conditional_exit", "above": "23100", "below": "22000"})
+        rows = await _armed_exits(c, stored)
+        assert [(r["set_before_adjustment"], r["adjustment_note"]) for r in rows.values()] == [(False, None)] * 2  # no adjustment
+        await _adjust(db, stored, [_new(ids[2], "SELL", 65, "82.75"), _new(ids[3], "BUY", 65, "35.80")], 1)
+        rows = await _armed_exits(c, stored)
+    above, below = rows[("above", "armed")], rows[("below", "armed")]
+    assert above["set_before_adjustment"] is True and below["set_before_adjustment"] is True
+    assert above["adjustment_note"] == "Exit above 23,100.00 was set before this change; your new short call is 22800. Check this level."
+    assert below["adjustment_note"] == "Exit below 22,000.00 was set before this change; your new short put is 22400. Check this level."
+
+
+async def test_d03_an_exit_set_after_the_adjustment_is_not_marked(db, notified):
+    app, stored, ids = await _open(db)
+    await _adjust(db, stored, [_new(ids[2], "SELL", 65, "82.75"), _new(ids[3], "BUY", 65, "35.80")], 1)
+    async with _client(app) as c:
+        await c.post(_url(stored), json={"kind": "conditional_exit", "above": "23100"})
+        row = (await _armed_exits(c, stored))[("above", "armed")]
+    assert (row["set_before_adjustment"], row["adjustment_note"]) == (False, None)
+
+
+async def test_d03_no_short_left_on_that_side_says_so(db, notified):
+    app, stored, ids = await _open(db)
+    async with _client(app) as c:
+        await c.post(_url(stored), json={"kind": "conditional_exit", "above": "23100"})
+        await _adjust(db, stored, [_new(ids[0], "BUY", 65, "30", "exit"), _new(ids[1], "SELL", 65, "10", "exit"),
+                                   _new(ids[2], "SELL", 65, "82.75"), _new(ids[3], "BUY", 65, "35.80")], 1)
+        row = (await _armed_exits(c, stored))[("above", "armed")]
+    assert row["adjustment_note"] == "Exit above 23,100.00 was set before this change; you no longer hold a short call. Check this level."
+
+
+async def test_d03_the_mark_is_relative_to_the_latest_adjustment_and_a_kept_exit_is_marked_again(db, notified):
+    app, stored, ids = await _open(db)
+    async with _client(app) as c:
+        first = (await c.post(_url(stored), json={"kind": "conditional_exit", "above": "23100"})).json()["triggers"][0]["id"]
+        await _adjust(db, stored, [_new(ids[2], "SELL", 65, "82.75"), _new(ids[3], "BUY", 65, "35.80")], 1)
+        kept = await c.post(_url(stored, f"/{first}/keep"))
+        assert kept.status_code == HTTPStatus.OK, kept.text
+        rows = {r["id"]: r for r in kept.json()["triggers"]}
+        assert rows[first]["state"] == "cancelled"  # one transaction: the old row goes, a new armed row with the same level
+        [new] = [r for r in rows.values() if r["state"] == "armed"]
+        assert (new["id"] != first, new["level"], new["direction"], new["set_before_adjustment"]) == (True, "23100.00", "above", False)
+        assert notified[-1] == 1
+        await _adjust(db, stored, [_new(ids[3], "SELL", 65, "30", "exit")], 2)  # a second adjustment
+        again = (await _armed_exits(c, stored))[("above", "armed")]
+        assert again["id"] == new["id"] and again["set_before_adjustment"] is True
+        # keeping an unmarked or a cancelled exit changes nothing for the first, and a missing one is 404
+        assert (await c.post(_url(stored, f"/{first}/keep"))).status_code == HTTPStatus.CONFLICT
+        assert (await c.post(_url(stored, "/999999999/keep"))).status_code == HTTPStatus.NOT_FOUND
+
+
+async def test_d03_cancelled_fired_and_leg_stops_are_never_marked_and_a_full_exit_cancels_the_exits(db, notified):
+    app, stored, ids = await _open(db)
+    async with _client(app) as c:
+        await c.post(_url(stored), json={"kind": "conditional_exit", "above": "23100", "below": "22000"})
+        await c.post(_url(stored), json={"kind": "leg_stop", "contract_id": ids[0], "direction": "above", "level": "60"})
+        rows = (await c.get(_url(stored))).json()["triggers"]
+        down = next(r["id"] for r in rows if r["direction"] == "below" and r["kind"] == "conditional_exit")
+        fired = next(r["id"] for r in rows if r["direction"] == "above" and r["kind"] == "conditional_exit")
+        await c.delete(_url(stored, f"/{down}"))
+        assert await paper_trigger_store.claim_fire(db, fired)
+        await _adjust(db, stored, [_new(ids[2], "SELL", 65, "82.75"), _new(ids[3], "BUY", 65, "35.80")], 1)
+        rows = (await c.get(_url(stored))).json()["triggers"]
+        assert [r["set_before_adjustment"] for r in rows if r["state"] != "armed" or r["kind"] == "leg_stop"] == [False] * 3
+        await _adjust(db, stored, [_new(ids[i], s, 65, "20", "exit") for i, s in ((0, "BUY"), (1, "SELL"), (2, "BUY"), (3, "SELL"))], 2)
+        assert [r["state"] for r in (await c.get(_url(stored))).json()["triggers"] if r["kind"] == "conditional_exit"] == ["cancelled", "fired"]

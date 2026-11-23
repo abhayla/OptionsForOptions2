@@ -4241,10 +4241,10 @@
   },
   "paper_trigger_already_crossed": {
     "sha256": "b11755307cd46c6123940c654ce3d647f3821500d9b683351cf7c89155ea3c27",
-    "reviewed": "pending owner read"
+    "reviewed": "owner read 2026-11-23 (approved in session)"
   },
   "paper_trigger_leg_already_crossed": {
     "sha256": "aa867b7776ff64e7e365cb7dcfe189a322c0ea22a161a73e16df20434bde9793",
-    "reviewed": "pending owner read"
+    "reviewed": "owner read 2026-11-23 (approved in session)"
   }
 }
