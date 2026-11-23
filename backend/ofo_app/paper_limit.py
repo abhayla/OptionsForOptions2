@@ -38,7 +38,7 @@ async def _plan_body(db: Any, user_ref: str, strategy_id: int, reader: Any,  # n
     if plan is not None:
         return plan.body
     tracked = await reader(strategy_id, rates)  # raises when the open legs cannot be read: refused by name
-    stype = check.strategy_type(tracked.position, None, listed)
+    stype = check.entry_type(tracked, None, listed)  # D-04
     return (await check.resolve(db, user_ref, strategy_id, stype)).body
 
 

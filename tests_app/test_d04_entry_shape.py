@@ -138,7 +138,7 @@ def test_an_entry_rule_that_cannot_be_read_on_the_current_legs_says_so(seams):
     from ofo.adjustment import playbook_eval as pe  # noqa: PLC0415
     tracked = _read(seams, ENTRY + [_order(1, "BUY", "exit", T1), _order(3, "BUY", "exit", T1)])  # both shorts bought back
     _, resolved = _playbook_of(seams, tracked)
-    state = pe.StrategyState(stops=None, expiry_kind="weekly", days_left=3, hhmm="11:00", spot=SPOT, shorts=())
-    ev = pe.evaluate(resolved.body, state, {}, None, gap_until="")
+    state = pe.StrategyState(stops=None, expiry_kind="weekly", days_left=3, hhmm="11:00", spot=SPOT, shorts=(), prices_fresh=True)
+    ev = pe.evaluate(resolved.body, state, {}, None, gap_until="09:15")
     t01 = [r for r in ev.results if r.trigger_id == "T-01"]
     assert t01 and all(isinstance(r, pe.NotChecked) and r.code.endswith("no_short_leg") for r in t01)

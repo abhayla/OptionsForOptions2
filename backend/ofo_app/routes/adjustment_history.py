@@ -164,7 +164,7 @@ async def _plan_max(db: Any, user_ref: str, strategy_id: int, reader: tuple[Trac
             tracked = None  # nothing open: no type, so no type playbook
         if tracked is not None:
             listed = None if ctx is None else ctx.provider.instrument_master()
-            stype = check.strategy_type(tracked.position, None, listed)
+            stype = check.entry_type(tracked, None, listed)  # D-04
             body = (await check.resolve(db, user_ref, strategy_id, stype)).body
     mx = None if body is None else body.get("guards", {}).get("max_adjustments")
     return mx if type(mx) is int and mx >= 0 else None

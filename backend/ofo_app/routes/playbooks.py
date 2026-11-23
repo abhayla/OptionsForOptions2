@@ -473,13 +473,13 @@ async def _read_bounded(row: Any, seams: _Seams, listed: Any, gate: asyncio.Sema
                       time.monotonic() - started)
             if read.tracked is None:
                 return None  # not even its legs are read: its type is not known
-            known = check.strategy_type(read.tracked.position, None, listed)
+            known = check.entry_type(read.tracked, None, listed)  # D-04
             return _not_checked(row, data.body) if known == data.type else None
         log.debug("playbook test: strategy %s read in %.2fs", row.id, time.monotonic() - started)
     if read.tracked is None:
         return None
     spot = read.spot
-    if check.strategy_type(read.tracked.position, spot.value if spot.available else None, listed) != data.type:
+    if check.entry_type(read.tracked, spot.value if spot.available else None, listed) != data.type:  # D-04
         return None
     return row, read
 

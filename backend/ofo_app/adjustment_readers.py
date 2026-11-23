@@ -144,22 +144,7 @@ async def _tracked_on(db: Any, strategy_id: int, rates: ChargeRates | None) -> T
     found = {c.contract_id: c for c in await tracked_contracts.resolve(db, sorted({o.order.contract_id
                                                                                    for o in orders}))}
     book = net_positions([o.order.as_paper() for o in orders], {})
-    legs: list[PositionLeg] = []
-    underlying = lot = None
-    for p in book.positions:
-        if p.net_quantity == 0:
-            continue
-        tc = found.get(int(p.instrument_id))
-        if tc is None or tc.stored is None:
-            raise TrackedUnreadable(f"contract {p.instrument_id} has no stored row")
-        lc = tc.stored.listed
-        c = lc.contract
-        if c.instrument_type not in _OPTION_TYPES or p.average is None or c.lot_size <= 0 \
-                or not is_lot_aligned(abs(p.net_quantity), c.lot_size):
-            raise TrackedUnreadable(f"contract {p.instrument_id} is not a whole-lot option leg")
-        underlying, lot = c.name, c.lot_size
-        legs.append(PositionLeg("BUY" if p.net_quantity > 0 else "SELL", c.instrument_type, c.strike, c.expiry,
-                                abs(p.net_quantity) // c.lot_size, p.average, lc.broker_refs[0].broker_symbol))
+    underlying, lot, legs = _legs_of(book, found)
     if not legs or underlying is None or lot is None:
         raise TrackedExited("no open option leg")
     if real:  # paid charges and adjustments used before the app saw it: not readable yet ("not checked", ADR-276 (4))
@@ -173,7 +158,45 @@ async def _tracked_on(db: Any, strategy_id: int, rates: ChargeRates | None) -> T
     used = history_count(orders, lambda cid: found[cid].stored is not None
                          and found[cid].stored.listed.contract.instrument_type in _OPTION_TYPES)
     return Tracked(Position(underlying, lot, "", datetime.date.min, tuple(legs)), booked, paid,
-                   adjustments_used=used, entered_at=entered_at(orders), paid_exact=paid_exact)
+                   adjustments_used=used, entered_at=entered_at(orders), paid_exact=paid_exact,
+                   entry_position=entry_position_of(orders, found))
+
+
+def _legs_of(book: Any, found: Mapping[int, Any]) -> tuple[str | None, int | None, list[PositionLeg]]:
+    """(underlying, lot, open option legs) of a netted book; a leg that is not a whole-lot option is refused by name."""
+    legs: list[PositionLeg] = []
+    underlying = lot = None
+    for p in book.positions:
+        if p.net_quantity == 0:
+            continue
+        tc = found.get(int(p.instrument_id))
+        if tc is None or tc.stored is None:
+            raise TrackedUnreadable(f"contract {p.instrument_id} has no stored row")
+        lc = tc.stored.listed
+        c = lc.contract
+        if c.instrument_type not in _OPTION_TYPES or p.average is None or c.lot_size <= 0                 or not is_lot_aligned(abs(p.net_quantity), c.lot_size):
+            raise TrackedUnreadable(f"contract {p.instrument_id} is not a whole-lot option leg")
+        underlying, lot = c.name, c.lot_size
+        legs.append(PositionLeg("BUY" if p.net_quantity > 0 else "SELL", c.instrument_type, c.strike, c.expiry,
+                                abs(p.net_quantity) // c.lot_size, p.average, lc.broker_refs[0].broker_symbol))
+    return underlying, lot, legs
+
+
+def entry_position_of(orders: Any, found: Mapping[int, Any]) -> Position | None:
+    """D-04: the position the first batch of orders opened (every order with the first order's ``placed_at``), read as
+    ``_tracked_on`` reads the book. None when no order states a time, the first batch is not whole-lot options, or it
+    nets to nothing: the caller then keeps the current shape (never a guess)."""
+    times = [getattr(o.order, "placed_at", None) for o in orders]
+    if not times or not all(isinstance(t, datetime.datetime) for t in times):
+        return None
+    first = min(times)
+    try:
+        underlying, lot, legs = _legs_of(net_positions([o.order.as_paper() for o in orders
+                                                        if o.order.placed_at == first], {}), found)
+    except TrackedUnreadable:
+        return None
+    return None if not legs or underlying is None or lot is None else Position(underlying, lot, "", datetime.date.min,
+                                                                                 tuple(legs))
 
 
 def paid_of(orders: Any, found: Mapping[int, Any], underlying: str,

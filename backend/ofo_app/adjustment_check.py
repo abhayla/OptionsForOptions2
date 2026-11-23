@@ -166,6 +166,14 @@ def strategy_type(position: Position, spot: Decimal | None, listed: list | None)
     return found
 
 
+def entry_type(tracked: Tracked, spot: Decimal | None, listed: list | None) -> str | None:
+    """D-04 (ADR-318 (4)): the playbook type of a strategy with no plan = the shape it had AT ENTRY (the first batch of
+    paper orders, ``Tracked.entry_position``), so an adjustment that changes the shape keeps its rules and maximum.
+    No entry shape readable (a real book, no order time) -> the current shape. The one door every playbook lookup by
+    shape goes through. shortcut: an entry expiry no longer listed gives no strike gap, so no type (the rule: none)."""
+    return strategy_type(tracked.entry_position or tracked.position, spot, listed)
+
+
 async def plan_saved_before_adr247(conn: Any, plan: Any) -> bool:
     """ADR-250: a plan accepted before the iron condor system version 2 (migration 0040) was saved (the plan's
     ``accepted_at`` survives every re-save). Version 2 absent -> True: keep its own stops."""

@@ -114,6 +114,9 @@ class Tracked:
     real_book: bool = False
     #: the charges already paid, exact (``paper_charges(...).total``); ``paid_charges`` is it rounded up; None = unknown
     paid_exact: Decimal | None = None
+    #: D-04 (ADR-318 (4)): the shape AT ENTRY = the first batch of paper orders (same ``placed_at`` as the first order),
+    #: netted like ``position``; None = not readable / a real book, so the current shape stands. It picks the playbook.
+    entry_position: Position | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -583,7 +586,8 @@ async def adjustment_approaches(  # noqa: PLR0913, PLR0915 - FastAPI dependencie
         built_list: list[tuple[str, ApproachLegs | None]] = []
     else:
         t0 = time.perf_counter()
-        guards = await guards_of(strategy_id, position, spot.value, check.listed_of(ctx))
+        # D-04: the playbook is found by the shape AT ENTRY (the reader types the position it is given)
+        guards = await guards_of(strategy_id, tracked.entry_position or position, spot.value, check.listed_of(ctx))
         guards = _guards_or_reason(guards, reply)
         # goal contract decision 14 / catalogue S-11: at the plan maximum only exit and reduce approaches are offered,
         # through THE filter the check's T-19 pick uses (offered.limit_filter), never a second copy

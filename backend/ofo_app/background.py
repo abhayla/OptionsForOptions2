@@ -1879,8 +1879,8 @@ async def owner_lister(provider: Any, gate: Any = None,
                 if tracked is None:  # nothing traded: a definite answer, not a failed read (those raise below)
                     raise _NothingTraded  # handled outside the hold (the lapse takes its own)
                 spot = provider.underlying_quote(tracked.position.underlying)
-                stype = check.strategy_type(tracked.position, None if spot is None else spot.ltp,
-                                            provider.instrument_master())
+                stype = check.entry_type(tracked, None if spot is None else spot.ltp,  # D-04
+                                         provider.instrument_master())
                 async with get_sessionmaker()() as db:
                     resolved = await check.resolve(db, OWNER_REF, s.id, stype)
                     facts = await entry_facts_in(db, s.id) if resolved.body is not None else None
