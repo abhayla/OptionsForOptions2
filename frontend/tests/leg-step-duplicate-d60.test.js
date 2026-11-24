@@ -287,3 +287,57 @@ describe('D-60 round 3: net-zero step closes the question; Increase keeps base l
     expect(lotsOf(w)).toEqual([1, 1, 1, 5])
   })
 })
+
+describe('D-60 round 4: replacing the legs closes the open question; an equal-content refresh keeps the answer', () => {
+  const step = (w, direction = 1) => w.vm.$.setupState.editLeg({ control: 'step', index: 0, direction })
+  const track = (p) => { const s = { done: false }; p.then(() => { s.done = true }); return s }
+  const openQuestion = async (w) => {
+    answers['POST /strategies/leg-edit'] = landing(SELL_PE)
+    const p = track(step(w, 1))
+    await flushPromises()
+    expect(all(w, 'dup-question')).toHaveLength(1)
+    return p
+  }
+
+  it('route change to another strategy (new ?draft=) closes the question and settles the edit', async () => {
+    const w = await openPage()
+    const p = await openQuestion(w)
+    const other = { underlying: 'NIFTY', legs: DRAFT.legs.slice(0, 2) }
+    await w.vm.$router.push({ path: '/strategy/builder', query: { draft: JSON.stringify(other) } })
+    await flushPromises()
+    expect(t(w, 'dup-question').exists()).toBe(false)
+    expect(p.done).toBe(true)
+    expect(ids(w)).toEqual(BEFORE.slice(0, 2))
+  })
+
+  it('Undo closes the question and settles the edit', async () => {
+    const w = await openPage()
+    const p = await openQuestion(w)
+    const s = w.vm.$.setupState
+    s.undoHeld = { legs: s.legs.map((l) => ({ ...l })), savedId: null, savedRevision: null, openStrategy: null }
+    s.undoClear()
+    await flushPromises()
+    expect(t(w, 'dup-question').exists()).toBe(false)
+    expect(p.done).toBe(true)
+    expect(ids(w)).toEqual(BEFORE)
+  })
+
+  it('legs reassigned with equal content (a names reply) keep the answer: Increase still applies', async () => {
+    const w = await openPage()
+    const p = await openQuestion(w)
+    const s = w.vm.$.setupState
+    s.legs = s.legs.map((l) => ({ ...l, days_to_expiry: 7 })) // new objects, same ids / contract / action / lots
+    await t(w, 'dup-increase').trigger('click')
+    await flushPromises()
+    expect(p.done).toBe(true)
+    expect(lotsOf(w)).toEqual([1, 2, 1])
+  })
+
+  it('unmounting with the question open settles the pending edit', async () => {
+    const w = await openPage()
+    const p = await openQuestion(w)
+    w.unmount()
+    await flushPromises()
+    expect(p.done).toBe(true)
+  })
+})
