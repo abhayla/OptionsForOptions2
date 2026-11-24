@@ -20,7 +20,7 @@ import { UNAVAILABLE_LABEL, isPermitted, reasonLine } from '@/lib/chainUnavailab
 import { UNDERLYINGS } from '@/lib/underlyings'
 import api from '@/services/api'
 import { healthSentence, missingCode, missingReason, shownHealth } from '@/lib/dataHealthText'
-import { istClock, setShownDate, strikeLabel } from '@/lib/displayFormat'
+import { istStamp, setShownDate, strikeLabel } from '@/lib/displayFormat'
 import MarketClosedBanner from '@/components/states/MarketClosedBanner.vue'
 import { useSettingsValues } from '@/stores/settingsValues'
 import { strikeRangesOf } from '@/lib/settingsValues'
@@ -155,7 +155,8 @@ const spotTime = computed(() => {
 const text = (v) => (typeof v === 'string' || typeof v === 'number' ? String(v) : VALUE_UNAVAILABLE)
 const healthWord = (cell) => shownHealth(cell?.health, view.value?.market_closed)
 // D-19: the time of the cell's last trade as the server gave it (HH:MM:SS, India time); nothing when the server sent none
-const lastTrade = (cell) => (cell?.last_trade_at ? istClock(cell.last_trade_at) : null)
+// a trade from another India day carries its date (istStamp); `at`, the cell's own quote time, names that day
+const lastTrade = (cell) => (cell?.last_trade_at ? istStamp(cell.last_trade_at, cell.at ?? undefined) : null)
 const socketStatus = computed(() => (view.value?.market_closed === true && status.value === 'live' ? '' : status.value))
 const isAtm = (row) => view.value?.atm_strike != null && row.strike === view.value.atm_strike
 const shownRows = computed(() => (view.value ? filterRows(view.value.rows, filters.value.moneyness) : []))
