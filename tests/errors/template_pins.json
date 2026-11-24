@@ -4298,5 +4298,13 @@
   "explanation:paper_breakevens_before_charges": {
     "sha256": "c2db81735f247b05c4f4f847c688e1dbbc6d6125378233f025b67dbe83fcfcdc",
     "reviewed": "pending owner read"
+  },
+  "explanation:paper_closed_result": {
+    "sha256": "0d769df378b59fbb9beb71a45a3db1bc401c08559f36cac68fca035081f81b7a",
+    "reviewed": "pending owner read"
+  },
+  "explanation:paper_greeks_across_expiries": {
+    "sha256": "a3ef617b13cba269483abb227032293f5d52f87ff661c350bdc59ad6b536e029",
+    "reviewed": "pending owner read"
   }
 }

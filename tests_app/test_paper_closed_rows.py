@@ -26,7 +26,8 @@ def _found(cid: int):
 
 def _order(n: int, side: str, qty: int, price: str, kind: str):
     paper_order = PaperOrder("7", side, qty, D(price), kind, AT + datetime.timedelta(minutes=n))
-    return SimpleNamespace(order=SimpleNamespace(contract_id=7, as_paper=lambda: paper_order))
+    return SimpleNamespace(order=SimpleNamespace(contract_id=7, as_paper=lambda: paper_order, side=side, quantity=qty,
+                                                  price=D(price), kind=kind, placed_at=paper_order.placed_at))
 
 
 def _figures(orders):
@@ -58,3 +59,30 @@ def test_no_closed_row_for_a_book_that_never_closed():
 def test_a_settled_leg_is_a_closed_row_with_exit_zero():
     got = _figures([_order(0, "SELL", 75, "12.00", "open"), _order(1, "BUY", 75, "0.00", "settle")])
     assert (got["closed"][0]["average_exit"], got["closed"][0]["booked"]) == (D("0.00"), D("900.00"))
+
+
+def test_a_fully_closed_book_says_closed_with_its_result_not_two_equal_maxima():
+    """D-10 (ADR-306 (5)): C3 158 closed, max profit = max loss = booked; the reply carries the sentence."""
+    orders = [_order(0, "SELL", 75, "50.00", "open"), _order(1, "BUY", 75, "48.74", "exit")]
+    got = P._extremes(orders, {7: _found(7)}, {}, "NIFTY")
+    assert got["closed_text"] == "Closed: result ₹94.50."  # (50.00 - 48.74) x 75
+
+
+def test_greeks_across_two_expiries_are_labelled_one_expiry_is_not():
+    held = [{"contract_id": 7, "net_quantity": 75, "expiry": datetime.date(2026, 11, 24),
+             "instrument": "PE", "strike": D("25400"), "ltp": D("10")},
+            {"contract_id": 8, "net_quantity": -75, "expiry": datetime.date(2026, 12, 1),
+             "instrument": "PE", "strike": D("25400"), "ltp": D("10")}]
+    figures = {"positions": held, "unbooked": D(1), "pause_reason": None}
+    snap = SimpleNamespace()
+    import ofo_app.routes.paper as mod
+    real = mod.paper_greeks.book_greeks
+    g = SimpleNamespace(delta=D(1), gamma=D(1), theta=D(1), vega=D(1))
+    mod.paper_greeks.book_greeks = lambda *a: SimpleNamespace(net=g, legs=[g] * len(a[2]), reason=None)
+    try:
+        two = P._greeks(figures, {7: _found(7), 8: _found(8)}, snap, "NIFTY")["greeks"]
+        one = P._greeks(figures | {"positions": held[:1]}, {7: _found(7)}, snap, "NIFTY")["greeks"]
+    finally:
+        mod.paper_greeks.book_greeks = real
+    assert (two["expiry_count"], two["basis_text"]) == (2, "Greeks are summed across 2 expiries.")
+    assert (one["expiry_count"], one["basis_text"]) == (1, None)

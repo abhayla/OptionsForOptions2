@@ -1852,6 +1852,11 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("paper_breakevens_before_charges", "values_seen",
                         "Breakevens include the booked P&L and are before charges and taxes: the charges could not be "
                         "priced."),
+    # D-10 (ADR-306 (5)): a fully closed trade shows its result, not two equal maxima
+    ExplanationTemplate("paper_closed_result", "values_seen", "Closed: result {result}.", {"result": Rupees}),
+    # D-63: the net Greeks of a two-expiry trade add legs of different expiries
+    ExplanationTemplate("paper_greeks_across_expiries", "values_seen", "Greeks are summed across {count} expiries.",
+                        {"count": Count}),
     # ADR-256: the exit confirm list, when the legs left open can lose more than before (a sold option lost its bought one)
     ExplanationTemplate("paper_exit_widens_loss", "values_seen",
                         "After these orders, maximum loss: {before} before, {after} after.",

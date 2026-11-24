@@ -474,6 +474,7 @@ APP_MODELS = (
     "ofo_app.routes.paper.HeldEntryOut",
     "ofo_app.routes.paper.PaperBookOut",
     "ofo_app.routes.paper.PaperBreakevens",
+    "ofo_app.routes.paper.PaperClosedOut",
     "ofo_app.routes.paper.PaperExtremes",
     "ofo_app.routes.paper.PaperFigures",
     "ofo_app.routes.paper.PaperGreeksBlock",

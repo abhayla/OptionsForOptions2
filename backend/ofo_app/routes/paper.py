@@ -311,6 +311,8 @@ class PaperExtremes(ApiModel):
     # F-94 (ADR-082 (2)): the round-trip charges inside Max Profit / Max Loss, and the sentence that says so
     extremes_charges: Money | None = None
     extremes_charges_text: CatalogueText | None = None
+    # D-10 (ADR-306 (5)): a fully closed book: "Closed: result Rs X." beside (in place of) the two equal maxima
+    closed_text: CatalogueText | None = None
     # ADR-306: Profit left / Loss left after = Max profit / Max loss after - Total after, not capped (ADR-302);
     # ``recover`` = minus Total after when negative. Absent when the book has no after total (see after_charges_reason).
     profit_left_after: Extreme = None
@@ -359,6 +361,8 @@ class PaperLegGreeks(GreekFigures):
 class PaperGreeksOut(ApiModel):
     legs: list[PaperLegGreeks]  # the open contracts, in the positions' order
     net: GreekFigures
+    expiry_count: int = 1  # D-63: the distinct expiries the net adds across
+    basis_text: CatalogueText | None = None  # D-63: "Greeks are summed across 2 expiries." only when expiry_count > 1
 
 
 class PaperGreeksBlock(ApiModel):
@@ -673,6 +677,8 @@ def _extremes(orders: Sequence[paper_store.StoredOrder], found: dict[int, tracke
     out["extremes_charges_text"] = (
         None if not is_open else render_explanation("paper_extremes_before_charges") if charges is None else
         render_explanation("paper_extremes_with_charges", charges=charges))
+    out["closed_text"] = (render_explanation("paper_closed_result", result=got.max_profit)
+                          if closed and isinstance(got.max_profit, Decimal) else None)
     held = None
     nearest = min((terms[p.instrument_id].expiry for p in view.positions if p.net_quantity), default=None)
     if today is not None and nearest == today and split.profit_left_after is not None:
@@ -736,7 +742,10 @@ def _greeks(figures: dict, found: dict[int, tracked_contracts.TrackedContract], 
     if got.net is None or got.legs is None:
         return {"greeks": None, "greeks_reason": got.reason, "greeks_reason_text": greeks_reason_text(got.reason)}
     legs = [{"contract_id": p["contract_id"]} | _greek_figures(g) for p, g in zip(held, got.legs, strict=True)]
-    return {"greeks": {"legs": legs, "net": _greek_figures(got.net)}, "greeks_reason": None,
+    expiries = len({p["expiry"] for p in held})
+    basis = render_explanation("paper_greeks_across_expiries", count=expiries) if expiries > 1 else None
+    return {"greeks": {"legs": legs, "net": _greek_figures(got.net), "expiry_count": expiries, "basis_text": basis},
+            "greeks_reason": None,
             "greeks_reason_text": None}
 
 
