@@ -108,12 +108,12 @@ async def test_booked_zero_shows_no_line_and_changes_nothing(provider):
     assert zero["target"].get("includes_booked_text") is None and zero["target"].get("booked_display") is None
 
 
-async def test_max_profit_loss_and_scenario_figures_do_not_move_with_the_switch(provider):
+async def test_the_summary_open_legs_figures_do_not_move_with_the_switch(provider):
     on = await _post(provider, D("962.00"), paper_strategy_id=63)
     off = await _post(provider, D("962.00"), paper_strategy_id=63, include_booked=False)
-    # D-11: the drawn curves now carry the booked P&L (test_outcome_booked_curves_d11)
-    for key in ("summary", "scenario", "table"):
-        assert on[key] == off[key], key
+    # D-11: the curves and every table row now carry the booked P&L (test_outcome_booked_curves_d11); the summary
+    # (open legs, labelled on the page) is the one block that stays
+    assert on["summary"] == off["summary"]
 
 
 async def test_unreadable_book_gives_open_legs_only_with_the_reason(provider):
