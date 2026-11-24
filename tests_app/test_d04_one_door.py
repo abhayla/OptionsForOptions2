@@ -86,6 +86,7 @@ def test_the_plan_route_reads_the_server_limits_type_whatever_the_live_spot(trac
     async def rest_reader(_underlying):
         return None
     monkeypatch.setattr(adjustment_plan.store, "plan_for", plan_for)
+    monkeypatch.setattr(adjustment_plan, "judge_spot", lambda *_a: SimpleNamespace(available=True, value=LIVE_SPOT))
     ctx = SimpleNamespace(provider=SimpleNamespace(instrument_master=list))
     stype, plan = asyncio.run(adjustment_plan._type_of(None, "u", 164, tracked, market_reader, rest_reader, ctx))
     assert (stype, plan) == ("strangle", None)
