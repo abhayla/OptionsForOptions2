@@ -68,19 +68,7 @@
       </table>
       <!-- D-10 (ADR-207 (2)): the Closed section: each closed lifecycle with its entry, exit and its own booked P&L (before charges);
            a contract bought back and opened again has a row here AND its open row above, whose Booked starts at 0 -->
-      <p v-if="closedRows.length" class="mt-2 text-xs text-ink-muted" data-testid="closed-basis">Closed: booked P&amp;L (before charges)</p>
-      <table v-if="closedRows.length" class="w-full text-xs text-ink-muted" data-testid="closed-list">
-        <thead><tr><th class="text-left font-normal">Contract</th><th class="font-normal">Lots</th><th class="font-normal">Entry</th><th class="font-normal">Exit</th><th class="font-normal">Booked</th></tr></thead>
-        <tbody>
-          <tr v-for="c in closedRows" :key="c.opened_at + c.contract_id" class="border-t border-line" data-testid="closed-row">
-            <td class="py-1 pr-2" data-testid="closed-contract"><span class="mr-1 font-semibold">{{ c.side === 'BUY' ? 'B' : 'S' }}</span>{{ c.contract_text }}</td>
-            <td class="num text-center" data-testid="closed-lots">{{ c.lots ?? c.quantity }}</td>
-            <td class="num text-right" data-testid="closed-entry">{{ c.average_entry_text }}</td>
-            <td class="num text-right" data-testid="closed-exit">{{ c.average_exit_text }}</td>
-            <td class="num text-right" data-testid="closed-booked">{{ c.booked_text }}</td>
-          </tr>
-        </tbody>
-      </table>
+      <ClosedRows :rows="closedRows" />
       <p v-if="book.closed_text" class="mt-2 text-xs font-semibold" data-testid="closed-result">{{ book.closed_text }}</p>
     </div>
 
@@ -108,6 +96,7 @@ import { istClock } from '@/lib/displayFormat'
 import { CONTRACTS_CHANGED_TEXT, afterFigure, pausedText } from '@/lib/tracking'
 import AfterChargesTap from '@/components/common/AfterChargesTap.vue'
 import { withAsOf } from '@/lib/paperList'
+import ClosedRows from '@/components/strategy/ClosedRows.vue'
 import HeldNote from '@/components/strategy/HeldNote.vue'
 import { EXIT_ALL_LABEL, EXIT_LABEL, NET_POSITIONS_LABEL, ORDERBOOK_LABEL, exitLotsFrom, exitLotsOk, openLots, paperKindLabel } from '@/lib/paperDrafts'
 

@@ -1220,6 +1220,7 @@ const pricesStamp = computed(() => {
             :payoff-table="data.payoff_table ?? null"
             :saved-id="savedId"
             :paper-total="paperTotal"
+            :closed="paper?.book?.closed ?? null"
             :saved-revision="savedRevision"
             @zoom="zoomTo"
             @update:include-booked="pickBooked"

@@ -22,6 +22,7 @@ import PayoffChart from './PayoffChart.vue'
 import TargetBadge from './TargetBadge.vue'
 import StrategyPriceChart from './StrategyPriceChart.vue'
 import StrategyTable from './StrategyTable.vue'
+import ClosedRows from './ClosedRows.vue'
 import {
   COMPACT_COLUMNS, GREEK_COLUMNS, PAYOFF_STEPS, compactRows, greekModeHeading, greekRows, greekText, payoffLevelRows, payoffStepTable, signOf,
 } from '@/lib/chartCard'
@@ -54,6 +55,7 @@ const props = defineProps({
   payoffTable: { type: Object, default: null },
   // GC-UI step 5 (D-B40 / D-B41): the saved strategy's id, which the Strategy Chart tab asks the server about (null = unsaved)
   savedId: { type: Number, default: null },
+  closed: { type: Array, default: null }, // D-63 (a): the paper reply's closed rows; its TOTAL includes their booked P&L, so they are listed under the table
   paperTotal: { type: Object, default: null }, // GC-ICFIX round 2 (F4): sharedTotal() of the page's one paper read; the TOTAL row's P&L shows it, not the socket's figure
   savedRevision: { type: [Number, String], default: null }, // changes on every re-save: the Strategy Chart re-asks
 })
@@ -242,7 +244,7 @@ const toneOf = (v) => ({ profit: 'text-profit', loss: 'text-loss' })[signOf(v)] 
           <tbody>
             <tr v-for="r in compact" :key="r.rowId" :class="['border-b border-line', r.isTotal ? 'font-semibold' : '']" :data-row="r.rowId" data-testid="compact-row">
               <td class="py-1.5">
-                <span v-if="r.isTotal" data-testid="greeks-total-label">{{ greeksTotalLabel }}</span>
+                <span v-if="r.isTotal">Total</span>
                 <span v-else class="inline-flex flex-wrap items-center gap-1.5">
                   <Chip :kind="chipKind(r.side)" :label="chipLabel(r.side)" />
                   <span data-testid="instrument-text">{{ r.text }}</span>
@@ -265,6 +267,8 @@ const toneOf = (v) => ({ profit: 'text-profit', loss: 'text-loss' })[signOf(v)] 
         <StrategyTable :table="table" :max-profit="maxProfit" :max-loss="maxLoss" />
         <slot name="details" />
       </div>
+      <!-- D-63 (a): the TOTAL above includes the booked P&L of closed legs; they are listed here, the reply's rows as sent (no sum) -->
+      <ClosedRows :rows="closed ?? []" prefix="pnl-closed" />
     </div>
 
     <!-- Greeks -->
@@ -298,7 +302,7 @@ const toneOf = (v) => ({ profit: 'text-profit', loss: 'text-loss' })[signOf(v)] 
         <tbody>
           <tr v-for="r in greeks" :key="r.rowId" :class="['border-b border-line', r.isTotal ? 'font-semibold' : '']" :data-row="r.rowId" data-testid="greeks-row">
             <td class="py-1.5">
-              <span v-if="r.isTotal">Total</span>
+              <span v-if="r.isTotal" data-testid="greeks-total-label">{{ greeksTotalLabel }}</span>
               <span v-else class="inline-flex flex-wrap items-center gap-1.5">
                 <Chip :kind="chipKind(r.side)" :label="chipLabel(r.side)" />
                 <span data-testid="instrument-text">{{ r.text }}</span>

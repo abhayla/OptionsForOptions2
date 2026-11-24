@@ -27,8 +27,8 @@ describe('Net Positions: closed lifecycles (D-10)', () => {
   })
 
   it('shows the server sentence for a fully closed book and no closed section when nothing closed', () => {
-    const w = mount(PaperBookPanel, { props: { book: book({ closed_text: 'Closed: result ₹94.50.' }), net: [] } })
-    expect(w.get('[data-testid="closed-result"]').text()).toBe('Closed: result ₹94.50.')
+    const w = mount(PaperBookPanel, { props: { book: book({ closed_text: 'Closed: result ₹94.50 after charges.' }), net: [] } })
+    expect(w.get('[data-testid="closed-result"]').text()).toBe('Closed: result ₹94.50 after charges.')
     const none = mount(PaperBookPanel, { props: { book: book({ closed: [] }), net: [] } })
     expect(none.find('[data-testid="closed-list"]').exists()).toBe(false)
   })

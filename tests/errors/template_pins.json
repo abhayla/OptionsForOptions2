@@ -4300,11 +4300,15 @@
     "reviewed": "pending owner read"
   },
   "explanation:paper_closed_result": {
-    "sha256": "0d769df378b59fbb9beb71a45a3db1bc401c08559f36cac68fca035081f81b7a",
+    "sha256": "c765d31855c6d587d03c729e0fbd90ee610371026a99e3b364b3e80b0bee6737",
     "reviewed": "pending owner read"
   },
   "explanation:paper_greeks_across_expiries": {
     "sha256": "a3ef617b13cba269483abb227032293f5d52f87ff661c350bdc59ad6b536e029",
+    "reviewed": "pending owner read"
+  },
+  "explanation:paper_closed_result_before": {
+    "sha256": "fa5fe597b9c22d034ef622b2f1213f9acff66fff7fad9a728fb8d5bdb6af5568",
     "reviewed": "pending owner read"
   }
 }
