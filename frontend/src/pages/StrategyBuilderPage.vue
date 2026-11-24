@@ -716,6 +716,7 @@ async function moveLeg(edit) {
   pendingSteps.value = { [key]: m.net }
   if (m.net === 0) { // the clicks cancel out: nothing to ask, the confirmed legs stand
     guard.cancel('leg-edit')
+    cancelDuplicate() // a question left open by the move that just netted out closes as Cancel
     endMove(m)
     return
   }
@@ -731,9 +732,11 @@ const dupAsk = ref(null)
 // Exactly one live question: a new ask, or a newer edit starting, settles the open one as Cancel and closes its dialog, so
 // every sendEdit settles and the answer on screen always belongs to the newest move.
 const askDuplicate = (leg) => new Promise((resolve) => {
-  answerDuplicate('cancel')
+  cancelDuplicate()
   dupAsk.value = { name: contractName(leg), resolve }
 })
+/** The one way to cancel a pending ask: closes the dialog and settles its edit as Cancel. */
+function cancelDuplicate() { answerDuplicate('cancel') }
 function answerDuplicate(choice) {
   const d = dupAsk.value
   dupAsk.value = null
@@ -766,7 +769,7 @@ async function sendEdit(edit, baseLegs, shiftTotal, owner) {
     return
   }
   const mine = guard.next('leg-edit') // aborts the edit still in flight (its reply would be stale)
-  answerDuplicate('cancel') // a question left open by the older move closes: the old edit settles as Cancel
+  cancelDuplicate() // a question left open by the older move closes: the old edit settles as Cancel
   editError.value = null
   editErrorIndex.value = null
   try {
@@ -783,13 +786,15 @@ async function sendEdit(edit, baseLegs, shiftTotal, owner) {
       return
     }
     const keep = edit.control === 'include'
-    let landed = applyEditReply(legs.value, reply)
+    const shown = legs.value // the legs the reply is computed against; the answer must still find them on screen
+    let landed = applyEditReply(shown, reply)
     let increased = false
     if (RELATIVE_CONTROLS.includes(edit.control)) {
       // D-60 (ADR-319, review finding 2): a move that lands a leg on a contract another leg holds with the same action asks
       // through the one shared door; Cancel keeps the legs as before the step, a refused Increase says why.
       const door = await askMovedDuplicates(baseLegs, landed)
       if (!guard.isNewest('leg-edit', mine)) return // a newer edit took over while the question was open
+      if (legs.value !== shown) return // the legs changed while the question was open: never overwrite them (Cancel)
       if (!door) return
       if (door.error) {
         editError.value = { ...NEUTRAL_PARTS, what_happened: door.error }

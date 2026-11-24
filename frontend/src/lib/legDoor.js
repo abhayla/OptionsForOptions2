@@ -24,7 +24,10 @@ export async function admitLegs(held, incoming, { ask, maxLots, skipId = null })
     if (choice !== 'increase') { kept.push(x); continue }
     const total = clash.lots + x.lots
     if (!lotsValid(String(total), maxLots)) return { error: lotsRangeText(maxLots) }
-    legs = legs.map((l) => (l.id === clash.id ? { ...l, lots: total } : l))
+    // the server computes lots = base_lots x multiplier (leg_edit.apply_multiplier): the base rises with the lots, or a later
+    // multiplier edit would drop the increase
+    const base = (clash.base_lots ?? clash.lots) + (x.base_lots ?? x.lots)
+    legs = legs.map((l) => (l.id === clash.id ? { ...l, lots: total, base_lots: base } : l))
   }
   return { legs, kept }
 }
