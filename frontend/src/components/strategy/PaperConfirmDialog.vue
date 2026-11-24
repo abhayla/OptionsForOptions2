@@ -19,7 +19,7 @@
         <!-- GC-ICGUIDE g21 (audit C10): the server prices an exit (live price, or the last close after hours), so it is text here -->
         <span v-if="row.kind === 'exit'" class="flex items-center gap-1" data-testid="paper-exit-price">
           <span class="text-ink-muted">Price</span>
-          <span class="text-xs text-ink-muted">{{ row.price ? `about ${row.price}, ` : '' }}{{ PAPER_EXIT_PRICED_BY_SERVER_TEXT }}</span>
+          <span class="text-xs text-ink-muted">{{ row.price ? `about ${row.price}${quoteClock(row) ? ', as of ' + quoteClock(row) : ''}, ` : '' }}{{ PAPER_EXIT_PRICED_BY_SERVER_TEXT }}</span>
         </span>
         <label v-else class="flex items-center gap-1">
           <span class="text-ink-muted">Price</span>
@@ -77,6 +77,7 @@ import {
 } from '@/lib/tracking'
 import { paperDialogTitle, paperKindLabel } from '@/lib/paperDrafts'
 import api from '@/services/api'
+import { istClock } from '@/lib/displayFormat'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
@@ -95,6 +96,9 @@ const rows = ref([])
 watch(() => [props.open, props.orders], () => {
   if (props.open) rows.value = props.orders.map((o) => ({ ...o, lots: String(o.lots), price: String(o.price ?? '') }))
 }, { immediate: true })
+
+// D-09: the time of the quote an exit row shows (its own quote time from the book, India time); '' when the server gave none
+const quoteClock = (row) => (row.price_at ? istClock(row.price_at) ?? '' : '')
 
 // GC-TP step 3b2: the title says what the list holds (adds, exits or both)
 const title = computed(() => paperDialogTitle(props.orders))

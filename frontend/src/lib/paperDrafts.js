@@ -161,6 +161,7 @@ export function confirmRowsFor(orders, book, nameOf, livePriceById = {}) {
       lots: o.lots,
       lot_size: o.lot_size,
       price,
+      price_at: o.kind === 'exit' && live && typeof p.price_at === 'string' ? p.price_at : null, // D-09: the shown quote's own time
       kind: o.kind,
       price_note: o.kind === 'exit' ? (live ? '' : LAST_CLOSE_LABEL) : entry.price_note,
     }

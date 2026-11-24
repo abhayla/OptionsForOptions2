@@ -54,6 +54,7 @@ function readPosition(p, underlying) {
     qtyNote: whole ? '' : NOT_WHOLE_LOTS_TEXT,
     averageText: text(p.average_text),
     ltpText: p.price_state === 'live' ? text(p.ltp_text) : null,
+    priceAt: p.price_state === 'live' && typeof p.price_at === 'string' ? p.price_at : null, // D-09: when that quote was made
     ltpReason: p.price_state === 'live' ? null : text(p.price_state_text), // ADR-210: the server's sentence for a retired / delisted contract
     booked: text(p.booked_text),
     unbooked: text(p.unbooked_text),
@@ -181,7 +182,7 @@ export function exitRowsFor(positions) {
   if (positions.some((p) => !p.open || p.lots === null)) return null
   const rows = positions.map((p, i) => ({
     key: `exit-${p.contractId}-${i}`, contract_id: p.contractId, side: p.units > 0 ? 'SELL' : 'BUY', text: p.name,
-    lots: p.lots, lot_size: p.lotSize, price: p.ltpText ?? '', kind: 'exit', price_note: p.ltpText ? '' : LAST_CLOSE_LABEL,
+    lots: p.lots, lot_size: p.lotSize, price: p.ltpText ?? '', price_at: p.ltpText ? p.priceAt ?? null : null, kind: 'exit', price_note: p.ltpText ? '' : LAST_CLOSE_LABEL,
   }))
   // D-02 (REQ-159 AC-6): buy-backs of shorts before sales of longs, the order the server records; stable (ES2019)
   return rows.sort((a, b) => (a.side === 'BUY' ? 0 : 1) - (b.side === 'BUY' ? 0 : 1))
