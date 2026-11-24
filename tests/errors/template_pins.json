@@ -4318,5 +4318,9 @@
   "explanation:decay_left_today_text": {
     "sha256": "e4f1f9e008dc41c281d75abcaa2dee7b2bfa1d1e72c525ab1eee4b2d91358694",
     "reviewed": "pending owner read"
+  },
+  "explanation:estimate_intrinsic_basis": {
+    "sha256": "b54ecf15a44b81bf0016cce376dbc42de7f0086c80d3872b3f87ae04178372d5",
+    "reviewed": "pending owner read"
   }
 }

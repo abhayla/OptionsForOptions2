@@ -63,12 +63,13 @@ def test_estimate_at_zero_time_left_is_the_hand_expiry_figure():
 
 
 def test_a_leg_at_intrinsic_with_no_iv_is_valued_at_intrinsic_not_dropped():
-    # 14:50, spot 25,280: the short 25300 PE is 20 in the money, quoted 19.85 (under its discounted intrinsic
-    # of about 19.87) -> no IV
+    # 15:25 (5 min left), spot 25,280: the short 25300 PE is 20 in the money, quoted 19.96: within one tick of its
+    # intrinsic 20.00 and under its discounted intrinsic (about 19.98) -> no IV (round 2: 19.85 is more than a tick
+    # under intrinsic and now keeps the refusal)
     legs = ((Action.BUY, Instrument.PE, "25200", "16.00", "0.40"),
-            (Action.SELL, Instrument.PE, "25300", "22.05", "19.85"),
+            (Action.SELL, Instrument.PE, "25300", "22.05", "19.96"),
             (Action.SELL, Instrument.CE, "25900", "4.10", "0.05"), (Action.BUY, Instrument.CE, "26000", "2.70", "0.05"))
-    when = datetime.datetime(2026, 11, 25, 14, 50, tzinfo=IST)
+    when = datetime.datetime(2026, 11, 25, 15, 25, tzinfo=IST)
     m = _model(legs, "25280", when)
     assert m.legs[1].iv is None
     assert legs_without_estimate(m) == []  # the now-curve is not "Estimate not available"
@@ -109,7 +110,7 @@ def test_other_days_unchanged():
     assert str(heading) == "Theta"
 
 
-# --- D-08 round 2: the tick rule only on the leg's own expiry day, only within one tick, and labelled -------------------
+# --- D-08 round 2: the tick rule only on the leg's own expiry day, only within one tick, and labelled ---
 from ofo.scenario.config import ScenarioSettings  # noqa: E402
 from ofo.scenario.levels import build_level_set  # noqa: E402
 from ofo.scenario.views import View, scenario_values  # noqa: E402

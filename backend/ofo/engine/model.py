@@ -433,16 +433,27 @@ INTRINSIC_TICK: Final = Decimal("0.05")
 
 
 def no_time_value(model: ModelInputs, leg: LegInput) -> bool:
-    """D-08 (ADR-268 (1), the nearest decision): an option leg whose IV is not solvable while its price is within one
-    tick of its intrinsic value at the live spot (or under it) holds no time value: the engine values it at its
-    intrinsic value (its At Expiry value at the level) instead of dropping the estimate. A leg with an IV, a futures
-    leg or a leg with no price: False (no guess)."""
+    """D-08 (ADR-268 (1), the nearest decision): ON THE LEG'S OWN EXPIRY DAY, before its 15:30 IST close, an option leg
+    whose IV is not solvable while its price is within one tick of its intrinsic value at the live spot (either side,
+    ``|ltp - intrinsic| <= 0.05``) holds no time value: the engine values it at its intrinsic value (its At Expiry
+    value at the level) instead of dropping the estimate, and every figure built so says it (:func:`intrinsic_basis`).
+    Any other day, a price more than a tick away from intrinsic (ADR-019: never substituted), a leg with an IV, a
+    futures leg or a leg with no price: False, so the estimate stays not available (no guess)."""
     m = _require(model)
     if leg.instrument is Instrument.FUT or leg.iv is not None or leg.ltp is None or leg.strike is None:
         return False
+    now = m.inputs.valuation_time
+    if now.astimezone(IST).date() != leg.expiry or now >= leg_close(leg):
+        return False
     spot = m.expiry_model(leg.expiry).level
     intrinsic = max(spot - leg.strike if leg.instrument is Instrument.CE else leg.strike - spot, Decimal(0))
-    return leg.ltp - intrinsic <= INTRINSIC_TICK
+    return abs(leg.ltp - intrinsic) <= INTRINSIC_TICK
+
+
+def intrinsic_basis(model: ModelInputs) -> ExplanationText | None:
+    """D-08: the basis line every estimate that valued a leg by :func:`no_time_value` carries; None when none did."""
+    m = _require(model)
+    return render_explanation("estimate_intrinsic_basis") if any(no_time_value(m, leg) for leg in m.legs) else None
 
 
 def legs_without_estimate(model: ModelInputs) -> list[str]:
@@ -457,13 +468,14 @@ def expiry_day_close(model: ModelInputs, at: datetime.datetime | None = None) ->
     (default: the valuation time) is before it; else None (another day, or after the close: no theta is replaced)."""
     m = _require(model)
     when = valued_at(m, at)
-    if not m.legs:
-        return None
-    today = when.astimezone(IST).date()
-    if min(leg.expiry for leg in m.legs) != today:
-        return None
-    close = datetime.datetime.combine(today, _bs.EXPIRY_CLOSE)
-    return close if when < close else None
+    return close_if_expiry_day(min(leg.expiry for leg in m.legs), when) if m.legs else None
+
+
+def close_if_expiry_day(nearest: datetime.date, at: datetime.datetime) -> datetime.datetime | None:
+    """THE expiry-day check of ADR-320 (1) (ADR-310 (4)): ``nearest``'s 15:30 IST close when ``nearest`` is ``at``'s IST
+    date and ``at`` is before that close; else None. :func:`expiry_day_close` and the adjustment drawer call it."""
+    close = datetime.datetime.combine(nearest, _bs.EXPIRY_CLOSE)
+    return close if at.astimezone(IST).date() == nearest and at < close else None
 
 
 def unit_decay_left_today(em: ExpiryModel, kind: Instrument, strike: Decimal, vol: Decimal,

@@ -32,6 +32,8 @@ from ofo.engine.model import (
     ModelInputs,
     estimate,
     expiry_day_close,
+    intrinsic_basis,
+    join_labels,
     leg_close,
     leg_decay_left_today,
     leg_greeks_at_unrounded,
@@ -288,6 +290,7 @@ def live_target(ask: TargetAsk, model: ModelInputs, graph_levels: LevelSet, step
     limits = dataclasses.replace(limits, at_min=model.inputs.valuation_time, at_max=first_close(model))
     at, clamp = clamp_at(ask.at, model.inputs.valuation_time, first_close(model))
     label = render_explanation("target_estimate_label")  # REQ-084 AC-5: every target figure, the curve included
+    label = join_labels(label, intrinsic_basis(model)) or label  # D-08: a leg valued at intrinsic says so
     curve = dataclasses.replace(scenario_values(graph_levels, model, View.ESTIMATED_NOW, at=at), output_label=label)
     single = model.strategy.is_single_expiry
     booked = _booked_of(ask)

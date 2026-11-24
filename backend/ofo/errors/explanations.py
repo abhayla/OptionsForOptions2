@@ -1825,6 +1825,9 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     # D-12 (ADR-320 (1)): on expiry day theta per day is replaced by the time value left until the close, in rupees
     ExplanationTemplate("table_column_decay_left_today", "values_seen", "Decay left today (Rs)", {}),
     ExplanationTemplate("decay_left_today_text", "values_seen", "Decay left today: {amount}", {"amount": Rupees}),
+    # D-08 (ADR-268 (1)): the basis of an estimate that valued an expiry-day leg at intrinsic (joined like a data label)
+    ExplanationTemplate("estimate_intrinsic_basis", "values_seen",
+                        "a leg with no time value left at the live price is valued at its intrinsic value", {}),
     ExplanationTemplate("scenario_header_plain", "values_seen", "{level}", {"level": Points}),
     ExplanationTemplate("scenario_header_current", "values_seen", "CURRENT {level}", {"level": Points}),
     ExplanationTemplate("scenario_header_zero_pnl", "values_seen", "0-P&L {level}", {"level": Points}),

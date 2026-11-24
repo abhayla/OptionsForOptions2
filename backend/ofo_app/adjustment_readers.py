@@ -38,13 +38,14 @@ from ofo.engine import adjust_history as ah
 from ofo.engine.black_scholes import Greeks, year_fraction
 from ofo.engine.chain_values import chain_model
 from ofo.engine.legs import Instrument
+from ofo.engine.model import close_if_expiry_day
 from ofo.instruments.models import INDEX_ROWS, is_lot_aligned
 from ofo.marketdata.day_open import index_day_open
 from ofo.marketdata.forward import ForwardUnavailable, parity_forward
 from ofo.marketdata.quote import planning_price_usable
 from ofo.marketdata.spot_source import SourceReading, SourceState, feed_is_live, feed_reading, resolve_spot
 from ofo.rules.inputs import DataHealth
-from ofo.timeutil import EXPIRY_CLOSE, IST, SESSION_CLOSE
+from ofo.timeutil import IST, SESSION_CLOSE
 from ofo.tracking.orderbook import net_positions
 
 from ofo_app import (
@@ -673,8 +674,7 @@ async def read_market(tracked: Tracked, ctx: Any, *, extra_ids: Iterable[str] = 
 
 def _today_close(expiry: datetime.date, now: datetime.datetime) -> datetime.datetime | None:
     """D-12 (ADR-320 (1)): the position's nearest expiry is today and its close is ahead -> today's close, else None."""
-    close = datetime.datetime.combine(expiry, EXPIRY_CLOSE)
-    return close if expiry == ist_today(now) and now < close else None
+    return close_if_expiry_day(expiry, now)  # the engine's one expiry-day check (expiry_day_close calls it too)
 
 
 def _decay_left(ids: Mapping[str, str], greeks: Mapping[str, Any], later_ids: Mapping[str, str],

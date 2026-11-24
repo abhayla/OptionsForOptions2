@@ -72,13 +72,13 @@ def book_greeks(snapshot: MarketSnapshot, underlying: str, contracts: Sequence[O
     try:
         positions = [position_greeks(FUTURES_PER_UNIT_GREEKS if leg.instrument is Instrument.FUT
                                      else leg_greeks_unrounded(model, leg), leg.action, leg.quantity) for leg in legs]
+        zero = Decimal(0)
+        left = None
+        if expiry_day_close(model) is not None:  # D-12: per unit x quantity x sign, the table's own signing
+            left = tuple(position_greeks(Greeks(zero, zero, leg_decay_left_today(model, leg), zero), leg.action,
+                                         leg.quantity).theta for leg in legs)
     except (ValueError, ArithmeticError):  # the model refusing a leg's inputs: no figure, never a partial net
         return BookGreeks(None, None, MODEL_REFUSED)
-    zero = Decimal(0)
-    left = None
-    if expiry_day_close(model) is not None:  # D-12: per unit x quantity x sign, the table's own signing
-        left = tuple(position_greeks(Greeks(zero, zero, leg_decay_left_today(model, leg), zero), leg.action,
-                                     leg.quantity).theta for leg in legs)
     net = Greeks(sum((g.delta for g in positions), zero), sum((g.gamma for g in positions), zero),
                  sum((g.theta for g in positions), zero), sum((g.vega for g in positions), zero))
     return BookGreeks(tuple(_rounded(g) for g in positions), _rounded(net), None, left,
