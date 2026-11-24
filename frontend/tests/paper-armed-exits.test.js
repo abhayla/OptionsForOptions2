@@ -30,6 +30,7 @@ describe('paper confirm list: armed exits (D-03 part B)', () => {
     expect(calls.filter((c) => c.url.endsWith('/armed-exits'))).toEqual([
       { url: '/paper/strategies/48/armed-exits', orders: [{ contract_id: 4, side: 'SELL', quantity: 65, price: '82.75', kind: 'open' }] }])
     expect(lines(w)).toEqual([LINE])
+    expect(w.find('[data-testid="paper-armed-exits-unchecked"]').exists()).toBe(false)
     w.unmount()
   })
   it('no armed exit, or a failed read: no lines and Confirm stays enabled', async () => {
@@ -43,5 +44,14 @@ describe('paper confirm list: armed exits (D-03 part B)', () => {
     expect(bad.find('[data-testid="paper-confirm-button"]').attributes('disabled')).toBeUndefined()
     w.unmount()
     bad.unmount()
+  })
+  it('a read that cannot be answered says so instead of showing nothing (D-03)', async () => {
+    armed = new Error('down')
+    const w = open()
+    await flushPromises()
+    expect(lines(w)).toEqual([])
+    expect(w.find('[data-testid="paper-armed-exits-unchecked"]').text()).toBe('Could not check your armed exits.')
+    expect(w.find('[data-testid="paper-confirm-button"]').attributes('disabled')).toBeUndefined()
+    w.unmount()
   })
 })

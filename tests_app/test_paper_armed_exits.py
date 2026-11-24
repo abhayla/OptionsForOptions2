@@ -8,7 +8,7 @@ import json
 from http import HTTPStatus
 
 from test_paper_routes import _new
-from test_paper_triggers_routes import _open, _url, db, notified  # noqa: F401 - fixtures
+from test_paper_triggers_routes import _open, _setup, _url, db, notified  # noqa: F401 - fixtures
 from test_strategy_store import _client
 
 KEEPS_CALL = ("Exit above 23,100 stays armed at its level; after this change your short call will be 22,800. "
@@ -59,3 +59,14 @@ async def test_no_line_without_an_armed_exit_or_for_a_full_exit(db, notified):
     both_close = [_new(ids[0], "BUY", 65, "30", "exit"), _new(ids[1], "SELL", 65, "10", "exit")]
     assert await _lines(app, stored, both_close) == []
     assert await _lines(app, stored, [_new(ids[2], "SELL", 65, "82.75")]) == [KEEPS_CALL]
+
+
+async def test_another_users_or_a_missing_strategy_is_refused_by_armed_exits(db, notified):
+    app, stored, ids = await _open(db)
+    other, *_ = await _setup(db)
+    params = {"orders": json.dumps([_order(_new(ids[2], "SELL", 65, "82.75"))])}
+    async with _client(other) as c:
+        reply = await c.get(f"/paper/strategies/{stored.id}/armed-exits", params=params)
+    assert reply.status_code == HTTPStatus.NOT_FOUND and "lines" not in reply.json()
+    async with _client(app) as c:
+        assert (await c.get("/paper/strategies/999999999/armed-exits", params=params)).status_code == HTTPStatus.NOT_FOUND
