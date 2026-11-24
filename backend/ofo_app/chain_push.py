@@ -382,9 +382,6 @@ def _greek_fields(quote: NormalizedQuote | None, model: ChainModel | None, instr
             "vega": g.vega.quantize(GREEK_STEP)}
 
 
-_IST = datetime.timezone(datetime.timedelta(hours=5, minutes=30))  # D-19: India time, stdlib only (AC-6 imports)
-
-
 def _last_trade_at(ctx: MarketContext, instrument_id: str, *, market_closed: bool) -> datetime.datetime | None:
     """D-19: the time of the contract's last trade from the feed's day stats (the one source the depth popup reads);
     closed, the held after-close day values. None for: no stats, a packet without day fields, no trade yet."""
@@ -394,7 +391,8 @@ def _last_trade_at(ctx: MarketContext, instrument_id: str, *, market_closed: boo
         held = ctx.provider.depth_after_close(instrument_id, now)
         stats = None if held is None else held[1]
     ts = None if stats is None else stats.last_trade_ts
-    return None if ts is None else datetime.datetime.fromtimestamp(ts, _IST)
+    zone = now.tzinfo or datetime.UTC  # the clock's own zone (India time in the app); the instant is exact
+    return None if ts is None else datetime.datetime.fromtimestamp(ts, zone)
 
 
 def _cell(contract: PickableContract, quote: NormalizedQuote | None, slow: SlowValues | None,  # noqa: PLR0913
