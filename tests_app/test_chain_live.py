@@ -1203,3 +1203,12 @@ async def test_d19_ltp_bid_ask_of_one_cell_come_from_the_same_quote():
     ce = next(r for r in channel.sent[0]["rows"] if r["strike"] == "25150.00")["ce"]
     assert (Decimal(ce["ltp"]), Decimal(ce["bid"]), Decimal(ce["ask"])) == (q.ltp, q.bid, q.ask)
     assert ce["at"] == q.timestamp.isoformat()
+
+
+async def test_d19_a_previous_session_last_trade_is_served_unchanged_with_its_own_date():
+    """D-19 round 2: an illiquid contract's last trade of the previous Friday (16 Oct 15:29:58 IST) is served exactly,
+    date included, so the screen can show the date; the server never rewrites it to today."""
+    trade = int(datetime.datetime(2026, 10, 16, 15, 29, 58, tzinfo=IST).timestamp())
+    ce = await _pushed_ce(_stats(trade))
+    assert ce["last_trade_at"] == "2026-10-16T15:29:58+05:30"
+    assert ce["at"] == T0.isoformat()

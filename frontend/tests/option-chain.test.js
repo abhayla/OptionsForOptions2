@@ -265,8 +265,21 @@ describe('Option Chain screen', () => {
     a.rows[1].pe = { ...a.rows[1].pe, last_trade_at: null }
     sock().serverPush({ ...a, expiry: '2026-10-20' })
     await flushPromises()
-    expect(w.findAll('[data-testid="ce-last-trade"]').map((x) => x.text())).toEqual(['Last trade 09:19:53'])
+    expect(w.findAll('[data-testid="ce-last-trade"]').map((x) => x.text())).toEqual(['Last trade 09:19:53 IST'])
     expect(w.find('[data-testid="pe-last-trade"]').exists()).toBe(false)
+  })
+
+  it('D-19 round 2: a last trade from an earlier day shows its date; one from the cell\'s own day shows the time only', async () => {
+    script({ chain: () => Promise.resolve({ data: notConnected() }) })
+    const w = await mountPage()
+    sock().serverOpen()
+    const a = answer('63.10') // every cell's `at` is 19 Oct 2026
+    a.rows[1].ce = { ...a.rows[1].ce, last_trade_at: '2026-10-16T15:29:58+05:30' }
+    a.rows[1].pe = { ...a.rows[1].pe, last_trade_at: '2026-10-19T09:19:53+05:30' }
+    sock().serverPush({ ...a, expiry: '2026-10-20' })
+    await flushPromises()
+    expect(w.get('[data-testid="ce-last-trade"]').text()).toBe('Last trade 16 Oct 2026, 15:29:58 IST')
+    expect(w.get('[data-testid="pe-last-trade"]').text()).toBe('Last trade 09:19:53 IST')
   })
 
   it('shows the reason when the server sends no rows, the cell health word, and the unreadable catalogue', async () => {
