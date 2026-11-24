@@ -31,6 +31,7 @@
       </li>
     </ul>
     <!-- D-03 part B (ADR-317 (7)): the server's one line per armed index exit, judged on the legs after these orders; nothing is moved -->
+    <p v-if="armedUnchecked" class="mt-3 text-sm text-ink-muted" data-testid="paper-armed-exits-unchecked">{{ ARMED_UNCHECKED }}</p>
     <ul v-if="armedLines.length" class="mt-3 text-sm text-ink-muted" data-testid="paper-armed-exits">
       <li v-for="line in armedLines" :key="line" data-testid="paper-armed-exit">{{ line }}</li>
     </ul>
@@ -132,20 +133,24 @@ async function askExitRisk() {
 watch(() => [props.open, props.orders, props.strategyId, rows.value.map((r) => `${r.lots}/${r.price}`).join()], askExitRisk, { immediate: true })
 
 // D-03 part B: the lines naming each armed index exit against the legs after these orders (the server words them). A read that
-// fails, or rows not yet valid, show no lines; the exit stays armed either way and the panel marks it after the change.
+// fails shows "Could not check your armed exits."; rows not yet valid show nothing; the exit stays armed either way and the panel marks it after the change.
+const ARMED_UNCHECKED = 'Could not check your armed exits.' // pending owner read (frontend text, pinned by paper-armed-exits.test.js)
 const armedLines = ref([])
+const armedUnchecked = ref(false)
 let armedSeq = 0
 async function askArmedExits() {
   const seq = ++armedSeq
   const basket = props.open && props.strategyId && rows.value.length && ready.value ? rows.value : []
   let lines = []
+  let unchecked = false
   if (basket.length) {
     try {
       const { data } = await api.get(`/paper/strategies/${props.strategyId}/armed-exits`, { params: { orders: JSON.stringify(basket.map(orderOf)) } })
       if (Array.isArray(data?.lines)) lines = data.lines.filter((l) => typeof l === 'string' && l)
-    } catch { lines = [] }
+      else unchecked = true
+    } catch { lines = []; unchecked = true }
   }
-  if (seq === armedSeq) armedLines.value = lines
+  if (seq === armedSeq) { armedLines.value = lines; armedUnchecked.value = unchecked }
 }
 watch(() => [props.open, props.orders, props.strategyId, rows.value.map((r) => `${r.lots}/${r.price}`).join()], askArmedExits, { immediate: true })
 
