@@ -172,3 +172,33 @@ def test_an_entry_rule_that_cannot_be_read_on_the_current_legs_says_so(seams):
     ev = pe.evaluate(resolved.body, state, {}, None, gap_until="09:15")
     t01 = [r for r in ev.results if r.trigger_id == "T-01"]
     assert t01 and all(isinstance(r, pe.NotChecked) and r.code.endswith("no_short_leg") for r in t01)
+
+
+def test_the_offer_path_reads_the_guards_with_the_servers_entry_shape_fallback(seams, monkeypatch):
+    """D-04 review MAJOR (ADR-318 (4)): the offer's guards reader classifies through ``check.entry_type`` (the function
+    paper_limit uses), so a condor entered on an expiry no longer listed, rolled and now at 2 of 2, reads the playbook
+    of its current shape (credit) instead of none. Real case: entry expiry unlisted, current legs a put spread."""
+    monkeypatch.setattr(check, "strike_gap_of", lambda _l, _u, expiries: None if EXPIRY in expiries else GAP)
+    close_all = [_order(1, "BUY", "exit", T1), _order(2, "SELL", "exit", T1),
+                 _order(3, "BUY", "exit", T1), _order(4, "SELL", "exit", T1)]
+    roll = [_order(5, "SELL", "open", T2), _order(6, "BUY", "open", T2)]
+    tracked = _read(seams, ENTRY + close_all + roll)
+    seen: list = []
+
+    async def resolve(_db, _user, _sid, stype):
+        seen.append(stype)
+        return check.Resolved("active", {"guards": {"max_adjustments": IC_MAX}}, 1, "active", False,
+                              saved_before_adr247=False)
+
+    class _Session:
+        async def __aenter__(self):
+            return object()
+
+        async def __aexit__(self, *_exc):
+            return False
+    monkeypatch.setattr(readers, "get_sessionmaker", lambda: _Session)
+    monkeypatch.setattr(readers, "current_user_ref", lambda: "u")
+    monkeypatch.setattr(check, "resolve", resolve)
+    guards = asyncio.run(readers.read_guards(164, tracked, None, []))  # the server's spot argument: None
+    assert seen == [check.entry_type(tracked, None, [])] == ["credit"]
+    assert guards == {"max_adjustments": IC_MAX}

@@ -91,3 +91,18 @@ def test_the_route_hands_the_guards_reader_the_market_context_listing():
 def test_listed_of_is_none_without_a_context():
     assert check.listed_of(None) is None
 
+
+
+def test_the_route_hands_the_guards_reader_the_tracked_strategy_and_no_spot():
+    """D-04 review MAJOR: offered == accepted. The reader gets the whole tracked strategy (so it classifies through
+    ``check.entry_type``, with its current-shape fallback) and spot None, exactly as paper_limit does."""
+    sc = rt.load("ADJ-50")
+    got: list = []
+
+    async def guards(_sid, tracked, spot, _listed):
+        got.append((tracked, spot))
+
+    client = rt.client_for(sc)
+    client.app.dependency_overrides[route.get_guards_reader] = lambda: guards
+    rt.post(client)
+    assert got and hasattr(got[0][0], "entry_position") and got[0][1] is None
