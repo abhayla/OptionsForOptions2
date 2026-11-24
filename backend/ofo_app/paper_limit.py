@@ -39,7 +39,7 @@ async def _plan_body(db: Any, user_ref: str, strategy_id: int, reader: Any,  # n
     if plan is not None:
         return plan.body
     tracked = await reader(strategy_id, rates)  # raises when the open legs cannot be read: refused by name
-    stype = check.entry_type(tracked, None, listed)  # D-04
+    stype = check.entry_type(tracked, listed)  # D-04
     return (await check.resolve(db, user_ref, strategy_id, stype)).body
 
 
@@ -127,9 +127,10 @@ async def place_checked(db: Any, user_ref: str, strategy_id: int, orders: Sequen
     """The ONE write both user save paths use (ADR-212, ADR-255): every fill outside market hours at ``at`` is refused
     (``gate_market_closed``; no market context fails closed by the calendar), then ``paper_store.place``, then the
     adjustment limit on the stored book. The caller commits, or rolls back on any raise. Returns the whole book."""
+    from ofo_app import adjustment_check as check  # noqa: PLC0415 - it imports the route layer
     refuse_when_closed(ctx, at)
     reader = await _read_before(reader, strategy_id, rates)
     book = await paper_store.place(db, user_ref, strategy_id, orders, entry=entry)
     await check_adjustment_limit(db, user_ref, strategy_id, book[:-len(orders)], [o.order for o in book[-len(orders):]],
-                                 reader, rates, None if ctx is None else ctx.provider.instrument_master())
+                                 reader, rates, check.listed_of(ctx))
     return book

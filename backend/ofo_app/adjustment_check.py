@@ -166,15 +166,16 @@ def strategy_type(position: Position, spot: Decimal | None, listed: list | None)
     return found
 
 
-def entry_type(tracked: Tracked, spot: Decimal | None, listed: list | None) -> str | None:
+def entry_type(tracked: Tracked, listed: list | None) -> str | None:
     """D-04 (ADR-318 (4)): the playbook type of a strategy with no plan = the shape it had AT ENTRY (the first batch of
     paper orders, ``Tracked.entry_position``), so an adjustment that changes the shape keeps its rules and maximum.
     No entry shape readable (a real book, no order time), or one that cannot be classified (its contracts are no longer
-    listed, so no strike gap) -> the current shape. The one door every playbook lookup by shape goes through."""
+    listed, so no strike gap) -> the current shape. The one door every playbook lookup by shape goes through. It takes NO spot (the server limit reads
+    the shape against the middle of its strikes): a caller cannot classify against another reference than the limit."""
     # the entry is the first basket of orders (ADR-255): a trade built in two separate confirms is typed by its
     # first only
     entry = tracked.entry_position
-    return (entry and strategy_type(entry, spot, listed)) or strategy_type(tracked.position, spot, listed)
+    return (entry and strategy_type(entry, None, listed)) or strategy_type(tracked.position, None, listed)
 
 
 async def plan_saved_before_adr247(conn: Any, plan: Any) -> bool:

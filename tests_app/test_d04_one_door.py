@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import ast
 import asyncio
+import inspect
 import pathlib
 from decimal import Decimal as D
 from types import SimpleNamespace
@@ -18,6 +19,7 @@ from ofo_app.routes import adjustment_plan, playbooks
 from test_d04_entry_shape import GAP, T0, _contract, _order
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
+STRATEGY_ID = 164
 LIVE_SPOT = D(24100)  # the middle of the strikes is 23800: the live spot reads this shape as no template
 SHAPE = [_order(1, "SELL", "open", T0), _order(3, "SELL", "open", T0)]  # a short strangle, no adjustment yet
 DOOR_CALLERS = ("backend/ofo_app/paper_limit.py", "backend/ofo_app/adjustment_readers.py",
@@ -74,7 +76,7 @@ def test_the_offer_path_reads_the_same_type_whatever_spot_it_is_given(tracked, a
     assert asked == ["strangle", "strangle"]
 
 
-def test_the_plan_route_reads_the_server_limits_type_with_a_live_spot(tracked, monkeypatch):
+def test_the_plan_route_reads_the_server_limits_type_whatever_the_live_spot(tracked, monkeypatch):
     async def plan_for(*_a):
         return None
 
@@ -84,7 +86,6 @@ def test_the_plan_route_reads_the_server_limits_type_with_a_live_spot(tracked, m
     async def rest_reader(_underlying):
         return None
     monkeypatch.setattr(adjustment_plan.store, "plan_for", plan_for)
-    monkeypatch.setattr(adjustment_plan, "judge_spot", lambda *_a: SimpleNamespace(available=True, value=LIVE_SPOT))
     ctx = SimpleNamespace(provider=SimpleNamespace(instrument_master=list))
     stype, plan = asyncio.run(adjustment_plan._type_of(None, "u", 164, tracked, market_reader, rest_reader, ctx))
     assert (stype, plan) == ("strangle", None)
@@ -95,8 +96,8 @@ def test_the_playbooks_test_route_reads_the_server_limits_type_with_a_live_spot(
         read.tracked, read.spot = tracked, SimpleNamespace(available=True, value=LIVE_SPOT)
     monkeypatch.setattr(playbooks, "_read_one", read_one)
     data = SimpleNamespace(type="strangle", body={"rules": []})
-    found = asyncio.run(playbooks._read_bounded(SimpleNamespace(id=164), None, [], asyncio.Semaphore(1), data))
-    assert found is not None and found[0].id == 164  # of the type the server's limit reads, so it is tested
+    found = asyncio.run(playbooks._read_bounded(SimpleNamespace(id=STRATEGY_ID), None, [], asyncio.Semaphore(1), data))
+    assert found is not None and found[0].id == STRATEGY_ID  # of the type the server's limit reads, so it is tested
 
 
 def _entry_type_calls(path: str) -> list[ast.Call]:
@@ -116,5 +117,4 @@ def test_no_caller_hands_the_door_a_spot():
 
 
 def test_the_door_has_no_spot_parameter():
-    import inspect
     assert list(inspect.signature(check.entry_type).parameters) == ["tracked", "listed"]

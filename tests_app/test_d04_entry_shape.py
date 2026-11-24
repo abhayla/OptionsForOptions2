@@ -91,7 +91,7 @@ def _read(store, orders):
 
 
 def _playbook_of(store, tracked):
-    stype = check.entry_type(tracked, SPOT, [])
+    stype = check.entry_type(tracked, [])
     return stype, asyncio.run(check.resolve(None, "u", 164, stype))
 
 
@@ -126,7 +126,7 @@ def test_an_entry_shape_that_matches_no_playbook_falls_back_to_the_current_shape
     odd_reduce = [_order(4, "SELL", "exit", T1)]
     tracked = _read(seams, odd + odd_reduce)  # now one naked short call, which the current shape maps
     current = check.strategy_type(tracked.position, SPOT, [])
-    assert current is not None and check.entry_type(tracked, SPOT, []) == current
+    assert current is not None and check.entry_type(tracked, []) == current
 
 
 def test_an_entry_whose_contracts_are_no_longer_listed_falls_back_to_the_current_shape(seams, monkeypatch):
@@ -149,7 +149,7 @@ def test_a_trade_entered_in_two_confirms_is_classified_by_its_first_confirm_only
     hedges, shorts = [_order(2, "BUY", "open", T0), _order(4, "BUY", "open", T0)], [_order(1, "SELL", "open", T1),
                                                                                     _order(3, "SELL", "open", T1)]
     tracked = _read(seams, hedges + shorts)
-    assert check.entry_type(tracked, SPOT, []) == check.strategy_type(tracked.entry_position, SPOT, []) != "ic"
+    assert check.entry_type(tracked, []) == check.strategy_type(tracked.entry_position, SPOT, []) != "ic"
 
 
 def test_a_condor_reduced_twice_counts_two_of_two(seams):
@@ -200,5 +200,5 @@ def test_the_offer_path_reads_the_guards_with_the_servers_entry_shape_fallback(s
     monkeypatch.setattr(readers, "current_user_ref", lambda: "u")
     monkeypatch.setattr(check, "resolve", resolve)
     guards = asyncio.run(readers.read_guards(164, tracked, None, []))  # the server's spot argument: None
-    assert seen == [check.entry_type(tracked, None, [])] == ["credit"]
+    assert seen == [check.entry_type(tracked, [])] == ["credit"]
     assert guards == {"max_adjustments": IC_MAX}

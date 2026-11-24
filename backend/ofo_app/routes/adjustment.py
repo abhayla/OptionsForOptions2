@@ -587,7 +587,7 @@ async def adjustment_approaches(  # noqa: PLR0913, PLR0915 - FastAPI dependencie
     else:
         t0 = time.perf_counter()
         # D-04 (ADR-318 (4)): the playbook is found by check.entry_type, the one function the server's limit uses
-        # (shape at entry, else the current shape), with the server's spot argument (None), so offered == accepted
+        # (shape at entry, else the current shape), with no spot at all, so offered == accepted
         guards = await guards_of(strategy_id, tracked, None, check.listed_of(ctx))
         guards = _guards_or_reason(guards, reply)
         # goal contract decision 14 / catalogue S-11: at the plan maximum only exit and reduce approaches are offered,

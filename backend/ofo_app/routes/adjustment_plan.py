@@ -59,7 +59,6 @@ from ofo_app.routes.broker import current_user_ref
 from ofo_app.routes.outcome import (
     MarketContext,
     get_market_context,
-    judge_spot,
     load_charge_rates,
 )
 from ofo_app.strategy_refused import StrategyRefused
@@ -341,11 +340,7 @@ async def _type_of(db: Any, user_ref: str, strategy_id: int, tracked: Any, marke
     plan = await store.plan_for(db, user_ref, strategy_id)
     if plan is not None:
         return plan.strategy_type, plan
-    if market is None:
-        market = await market_reader(tracked, ctx)
-    spot = judge_spot(market, await rest_reader(tracked.position.underlying), ctx)
-    listed = None if ctx is None else ctx.provider.instrument_master()
-    return check.entry_type(tracked, spot.value if spot.available else None, listed), None  # D-04
+    return check.entry_type(tracked, check.listed_of(ctx)), None  # D-04
 
 
 def _kind_of(tracked: Any, money: in_force_mod.MoneyInputs | None) -> str:
