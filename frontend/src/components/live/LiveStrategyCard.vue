@@ -10,7 +10,8 @@ import api, { NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import { LEG_NOT_LIVE_LABEL, NOT_CONNECTED_LABEL, buildDraft } from '@/lib/legPicker'
 import { fetchSavedLegs, strategyLabel } from '@/lib/saveDraft'
-import { readPaperBook } from '@/lib/paperDrafts'
+import { PAPER_BOOK_UNREADABLE, readPaperBook } from '@/lib/paperDrafts'
+import { sharedTotal } from '@/lib/tracking'
 import { CARD_LEGS_AS_SAVED_TEXT, CARD_QUEUED_TEXT } from '@/lib/sharedStateText'
 import { isRunning, strategyStatusWord } from '@/lib/strategyStatus'
 import { istTime, maxLine, nameFromPool } from '@/lib/displayFormat'
@@ -40,6 +41,28 @@ let draft = null
 const notLive = ref(false) // issue #500: a leg's stored contract is no longer live; nothing is priced
 const wasLive = ref(false) // a live push arrived at least once: from then on a socket that is not live pauses the card
 let seq = 0 // only the newest REST answer is shown
+// D-06/D-07 (ADR-008, ADR-263): a PAPER trade's max profit / max loss / breakevens / total are the paper reply's own figures (the
+// ones the builder tiles read), never a second computation from the open legs. `paperBook` = the newest GET /paper/strategies/{id}
+// answer; `bookFailed` = the newest read of it failed (dashes, never the open-legs outcome).
+const paperBook = ref(null)
+const bookFailed = ref(false)
+let bookBusy = false
+let bookReadAt = 0
+const BOOK_REREAD_MS = 5000
+async function rereadBook() {
+  if (gone || !paperBook.value || bookBusy || Date.now() - bookReadAt < BOOK_REREAD_MS) return
+  bookBusy = true
+  try {
+    const body = (await api.get(`/paper/strategies/${props.strategy.id}`)).data
+    if (gone) return
+    if (body && typeof body === 'object' && Array.isArray(body.orders)) { paperBook.value = body; bookFailed.value = false } else bookFailed.value = true
+  } catch {
+    if (!gone) bookFailed.value = true
+  } finally {
+    bookBusy = false
+    bookReadAt = Date.now()
+  }
+}
 
 const live = useStrategyLive({
   onPush: (body) => {
@@ -47,6 +70,7 @@ const live = useStrategyLive({
     seq++ // a REST answer still in flight is obsolete
     wasLive.value = true
     data.value = body
+    rereadBook()
     settle()
   },
   onDown: async () => {
@@ -77,6 +101,8 @@ async function begin() {
     const legs = read.kind === 'paper' ? read.net : await fetchSavedLegs(api, props.strategy.id)
     if (gone) return
     // a real trade has no practice book and the server sends no current-legs field for it: the saved legs, said plainly
+    paperBook.value = read.kind === 'paper' ? read.book : null
+    bookReadAt = Date.now()
     legsAsSaved.value = isRunning(props.strategy) && read.kind !== 'paper'
     draft = buildDraft(legs)
     if (!draft) {
@@ -118,13 +144,20 @@ const spotAt = computed(() => (data.value?.spot_at ? istTime(data.value.spot_at)
 const checkedAt = computed(() => istTime(data.value?.answered_at))
 // REQ-151/152: the server's display strings ("+7,114", "−5,886") when it sent them; the raw-string line otherwise (unlimited, no maximum)
 const moneyLine = (side) => data.value?.summary?.[`max_${side}_display`] ?? maxLine(data.value?.summary, side)
-const maxProfit = computed(() => moneyLine('profit'))
-const maxLoss = computed(() => moneyLine('loss'))
+const dash = '-'
+const serverText = (v) => (typeof v === 'string' && v.trim() !== '' ? v.trim() : v && typeof v === 'object' && typeof v.what_happened === 'string' ? v.what_happened : null)
+const maxProfit = computed(() => (paperBook.value ? (bookFailed.value ? dash : paperBook.value.max_profit_text ?? dash) : moneyLine('profit')))
+const maxLoss = computed(() => (paperBook.value ? (bookFailed.value ? dash : paperBook.value.max_loss_text ?? dash) : moneyLine('loss')))
+// the paper reply's own basis sentences and the reason beside a dash (builder tile = this card: one source)
+const figuresReason = computed(() => (!paperBook.value ? null : bookFailed.value ? PAPER_BOOK_UNREADABLE
+  : paperBook.value.max_profit_text == null ? serverText(paperBook.value.extremes_reason_text) : null))
+const figuresBasis = computed(() => (!paperBook.value || bookFailed.value ? [] : [serverText(paperBook.value.extremes_charges_text), serverText(paperBook.value.breakevens_basis_text)].filter(Boolean)))
+const paperTotal = computed(() => (paperBook.value && !bookFailed.value ? sharedTotal(paperBook.value) : null))
 // ADR-177 / ADR-200 (2): a closed market is one banner with the price's own time; the fetch time and the stale noise are not shown
 const closed = computed(() => data.value?.market_closed === true)
 // User test 2026-10-30: the page shows ONE market-closed banner (ADR-177); the card reports the closed state and price time
 watch(closed, (now) => { if (now) emit('closed', data.value.last_price_at) })
-const breakevens = computed(() => (data.value?.summary?.breakevens_display ?? []).join(', '))
+const breakevens = computed(() => ((paperBook.value ? (bookFailed.value ? [] : paperBook.value.breakevens_display) : data.value?.summary?.breakevens_display) ?? []).join(', '))
 const hasLots = computed(() => (data.value?.legs ?? []).some((l) => l.lots != null))
 const hasEntry = computed(() => (data.value?.legs ?? []).some((l) => (l.planned_entry_display ?? l.planned_entry) != null))
 const legName = (leg) => nameFromPool(leg, [], data.value?.underlying) // never the raw trading symbol (issue 297, REQ-151)
@@ -170,6 +203,9 @@ class="rounded border border-line bg-surface p-4" data-testid="live-strategy-car
         <p class="mt-1 text-xs text-ink-muted">
           <template v-if="breakevens"><span data-testid="live-breakevens">Breakeven: {{ breakevens }}</span> · </template>Max Profit: <span class="text-profit" data-testid="live-max-profit">{{ maxProfit }}</span> · Max Loss: <span class="text-loss" data-testid="live-max-loss">{{ maxLoss }}</span>
         </p>
+        <p v-if="figuresReason" class="text-xs text-ink-muted" data-testid="live-figures-reason">{{ figuresReason }}</p>
+        <p v-for="line in figuresBasis" :key="line" class="text-xs text-ink-muted" data-testid="live-figures-basis">{{ line }}</p>
+        <p v-if="paperTotal && paperTotal.text" class="mt-1 text-sm" data-testid="live-total">Total P&amp;L <span class="font-semibold" data-testid="live-total-figure">{{ paperTotal.text }}</span> {{ paperTotal.label }}<span v-if="paperTotal.line" class="text-xs text-ink-muted" data-testid="live-total-as-of"> · {{ paperTotal.line }}</span></p>
         <table class="mt-2 w-full text-sm" data-testid="live-legs">
           <thead class="text-xs text-ink-muted">
             <tr><th class="text-left font-normal">Instrument</th><th v-if="hasLots" class="text-right font-normal">Lots</th><th v-if="hasEntry" class="text-right font-normal">Planned entry</th><th class="text-right font-normal">LTP</th></tr>

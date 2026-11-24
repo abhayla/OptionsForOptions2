@@ -38,7 +38,9 @@ const book = (over = {}) => ({
     { contract_id: 6, net_quantity: 0, average: '90.00', expiry: '2026-11-25' }],
   max_profit_text: '+2,380.32', max_loss_text: '−4,119.68', max_profit: '2380.32', max_loss: '-4119.68',
   breakevens: ['25457.00', '25693.00'], breakevens_display: ['25,457 (−0.4%)', '25,693 (+0.5%)'], breakevens_reason: null,
-  extremes_reason_text: null, total_after_text: '+3.50', ...over,
+  extremes_reason_text: null, total_after_text: '+3.50', total_text: '+9.00', after_charges_reason: null,
+  extremes_charges_text: 'Maximum profit and maximum loss include about Rs 61.00 of charges and taxes.',
+  breakevens_basis_text: 'Breakevens include the booked P&L and about Rs 61.00 of charges and taxes.', ...over,
 })
 // what the outcome socket sends: the OPEN legs only, no booked +643.50
 const outcome = () => ({ state: 'COMPUTED', underlying: 'NIFTY', status_label: null, reason: null, output_label: null,
@@ -79,7 +81,10 @@ describe('D-06: the card of a paper trade reads the paper reply', () => {
   })
   it('labels the basis: booked P&L and charges', async () => {
     const c = await mountCard()
-    expect(c.get('[data-testid="live-figures-basis"]').text()).toMatch(/booked/i)
+    const lines = c.findAll('[data-testid="live-figures-basis"]').map((x) => x.text())
+    expect(lines).toEqual(['Maximum profit and maximum loss include about Rs 61.00 of charges and taxes.',
+      'Breakevens include the booked P&L and about Rs 61.00 of charges and taxes.'])
+    expect(c.get('[data-testid="live-total"]').text()).toContain('+3.50 (after charges)') // D-07: the one after-charges total, labelled
   })
   it('no maximum from the book (multi-expiry): dash and the server reason, not the outcome figure', async () => {
     bookAnswer = book({ max_profit_text: null, max_loss_text: null, max_profit: null, max_loss: null, extremes_reason_text: 'Legs on more than one expiry.',

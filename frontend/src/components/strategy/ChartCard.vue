@@ -42,6 +42,7 @@ const props = defineProps({
   breakevens: { type: Array, default: () => [] },
   targetCurve: { type: Object, default: null }, // GC-TP step 6b: the reply's target.curve (REQ-084), drawn beside the two curves
   targetBadge: { type: Object, default: null }, // GC-TP R-19a: the reply's target.badge (REQ-144), drawn on the graph
+  curveBookedText: { type: String, default: '' }, // D-11 (ADR-209): the reply's curve_includes_booked_text: the drawn curves include the booked P&L
   targetBookedText: { type: String, default: '' }, // R-18: the reply's target.includes_booked_text
   targetStale: { type: Boolean, default: false }, // the last target request failed: the badge shows no old amount
   targetStaleText: { type: String, default: '' }, // the reply's target.stale_text (ADR-210 (7)) shown when stale
@@ -112,6 +113,7 @@ const toneOf = (v) => ({ profit: 'text-profit', loss: 'text-loss' })[signOf(v)] 
       <label class="flex items-center gap-2 text-sm text-ink-muted">
         <input v-model="includeBooked" type="checkbox" role="switch" :aria-checked="includeBooked ? 'true' : 'false'" data-testid="add-booked-switch" />
         {{ BOOKED_SWITCH_LABEL }}
+        <span v-if="curveBookedText" class="text-xs" data-testid="curve-booked-text">({{ curveBookedText }})</span>
       </label>
     </div>
 

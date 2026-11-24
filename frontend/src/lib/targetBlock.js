@@ -54,6 +54,8 @@ export function targetFields(pick, stops) {
 /** GC-TP R-18 (ADR-209): the request fields of the chart card's "Add Booked P&L" switch. Only a paper strategy (Drafts Mode,
  *  `paperId` set) names itself; the server reads its booked P&L (nothing is computed here). A plan sends nothing. */
 export const BOOKED_SWITCH_LABEL = 'Add Booked P&L' // Sensibull screen 020, catalogue line 46
+/** D-11 (ADR-209): the line under the tiles of a paper trade with the Add Booked switch OFF: they are the open legs alone. */
+export const OPEN_LEGS_ONLY_TEXT = 'Open legs only: the booked P&L is not included'
 export function bookedFields(paperId, includeBooked) {
   if (!paperId) return {}
   return includeBooked ? { paper_strategy_id: paperId } : { paper_strategy_id: paperId, include_booked: false }

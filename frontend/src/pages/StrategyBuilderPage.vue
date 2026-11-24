@@ -63,7 +63,7 @@ import { matchesLegs } from '@/lib/liveMatch'
 import { INVALID_LINK_PARTS, canonicalLegs } from '@/lib/draftLink'
 import ScenarioControls from '@/components/strategy/ScenarioControls.vue'
 import TargetBlock from '@/components/strategy/TargetBlock.vue'
-import { bookedFields, dateStops, debounced, firstExpiry, targetFields } from '@/lib/targetBlock'
+import { OPEN_LEGS_ONLY_TEXT, bookedFields, dateStops, debounced, firstExpiry, targetFields } from '@/lib/targetBlock'
 import { CHART_FLAGS, DEFAULT_CHOICE, choiceFields, matchesChoice } from '@/lib/scenarioChoice'
 import { contractName, istClock, istTime, nameFromPool } from '@/lib/displayFormat'
 import { summaryFigure } from '@/lib/summaryFigures'
@@ -446,6 +446,9 @@ function exitPaper(contractId, lots) {
 }
 // Drafts Mode summary: the book's Profit left / Loss left first (or the words for its extremes_reason), its original Max Profit /
 // Max Loss below; every figure the book reply's text as sent. Null outside Drafts Mode: the summary is unchanged.
+// D-11: the tiles and the chart's marks are the WHOLE trade (booked in, the paper reply) with the switch ON, the open legs only (the
+// outcome's own summary) with it OFF; the server computes both, this only picks which served figure to show
+const wholeTrade = computed(() => !!paperLeft.value && includeBooked.value)
 const paperLeft = computed(() => { // GC-ICFIX u124: after-charges forms, labelled (lib/paperDrafts paperLeftOf)
   const b = paper.value?.book
   return b ? paperLeftOf(b, withAsOf(typeof b.pause_reason_text === 'string' && b.pause_reason_text.trim() !== '' ? b.pause_reason_text.trim() : null, b.as_of)) : null
@@ -1155,16 +1158,18 @@ const pricesStamp = computed(() => {
             </ul>
           </div>
 
+          <!-- D-11/D-16 (ADR-209): the tiles follow the Add Booked switch; this line says which basis they are on -->
+          <p v-if="paperLeft" class="mt-4 text-xs text-ink-muted" data-testid="tiles-basis">{{ wholeTrade ? (paper.book.breakevens_basis_text ?? '') : OPEN_LEGS_ONLY_TEXT }}</p>
           <SummaryCards
             v-model:flipped="ratioFlipped"
             class="mt-4"
             :left="paperLeft"
-            :max-profit="paperLeft ? paper.book.max_profit_text ?? '-' : summaryFigure(data.summary, 'profit')"
-            :max-loss="paperLeft ? paper.book.max_loss_text ?? '-' : summaryFigure(data.summary, 'loss')"
-            :max-profit-exact="paperLeft ? paper.book.max_profit ?? null : data.summary.max_profit ?? null"
-            :max-loss-exact="paperLeft ? paper.book.max_loss ?? null : data.summary.max_loss ?? null"
-            :breakevens="paperLeft ? paper.book.breakevens_display ?? [] : data.summary.breakevens_display ?? []"
-            :breakevens-exact="paperLeft ? paper.book.breakevens ?? [] : data.summary.breakevens ?? []"
+            :max-profit="wholeTrade ? paper.book.max_profit_text ?? '-' : summaryFigure(data.summary, 'profit')"
+            :max-loss="wholeTrade ? paper.book.max_loss_text ?? '-' : summaryFigure(data.summary, 'loss')"
+            :max-profit-exact="wholeTrade ? paper.book.max_profit ?? null : data.summary.max_profit ?? null"
+            :max-loss-exact="wholeTrade ? paper.book.max_loss ?? null : data.summary.max_loss ?? null"
+            :breakevens="wholeTrade ? paper.book.breakevens_display ?? [] : data.summary.breakevens_display ?? []"
+            :breakevens-exact="wholeTrade ? paper.book.breakevens ?? [] : data.summary.breakevens ?? []"
             :what-can-i-make="data.summary.what_can_i_make"
             :what-can-i-lose="data.summary.what_can_i_lose"
             :where-i-start-losing="data.summary.where_do_i_start_losing"
@@ -1198,14 +1203,15 @@ const pricesStamp = computed(() => {
             :spot="data.spot_level ?? ''"
             :table="data.table"
             :legs="data.legs ?? null"
-            :max-profit="data.summary.max_profit_unlimited ? null : data.summary.max_profit"
-            :max-loss="data.summary.max_loss_unlimited ? null : data.summary.max_loss"
+            :max-profit="wholeTrade ? (paper.book.max_profit === 'unlimited' ? null : paper.book.max_profit ?? null) : data.summary.max_profit_unlimited ? null : data.summary.max_profit"
+            :max-loss="wholeTrade ? (paper.book.max_loss === 'unlimited' ? null : paper.book.max_loss ?? null) : data.summary.max_loss_unlimited ? null : data.summary.max_loss"
             :curves="data.curves ?? null"
             :target-curve="targetShown?.curve ?? null"
             :include-booked="includeBooked"
             :target-booked-text="targetShown?.includes_booked_text ?? ''"
             :target-badge="targetShown?.badge ?? null" :target-stale="targetStale" :target-stale-text="targetShown?.stale_text ?? ''" :show-badge="!!targetShown"
-            :breakevens="data.summary.breakevens ?? []"
+            :breakevens="wholeTrade ? paper.book.breakevens ?? [] : data.summary.breakevens ?? []"
+            :curve-booked-text="data.curve_includes_booked_text ?? ''"
             :sd="data.standard_deviation ?? null"
             :oi="data.open_interest ?? null"
             :zoom="zoomGrid"
