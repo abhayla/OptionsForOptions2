@@ -22,6 +22,7 @@ import pytest
 from ofo.engine.legs import Instrument
 from ofo.errors import render
 from ofo.marketdata.fanout import FanOut
+from ofo.marketdata.provider import DayStats, DayStatsAnswer
 from ofo.marketdata.quote import NormalizedQuote, SourceMetadata
 from ofo.rules.inputs import DataHealth
 from ofo.settings import calc as _settings_calc
@@ -102,6 +103,7 @@ class FakeProvider:
         self.subscribe_calls: list[list[str]] = []
         self.unsubscribe_calls: list[list[str]] = []
         self.unknown: set[str] = set()
+        self.day_stats: dict[str, DayStatsAnswer] = {}  # D-19: the day values per contract (absent = NOT_HELD)
         self._listener = None
 
     def live_quote_stream(self, listener) -> None:
@@ -125,6 +127,9 @@ class FakeProvider:
 
     def option_chain_snapshot(self, underlying: str, expiry: datetime.date) -> list[NormalizedQuote]:
         return [q for q in self.quotes.values() if q.underlying == underlying and q.expiry == expiry]
+
+    def latest_day_stats(self, instrument_id: str, now=None) -> DayStatsAnswer:
+        return self.day_stats.get(instrument_id, DayStatsAnswer.unavailable("NOT_HELD"))
 
     def tick(self, q: NormalizedQuote) -> None:
         self.quotes[q.instrument_id] = q
@@ -1130,3 +1135,68 @@ def test_no_literal_fifteen_is_left_in_the_chain_modules():
     for path in (root / "chain_push.py", root / "routes" / "chain.py"):
         code = re.sub(r"#.*|\"\"\"[\s\S]*?\"\"\"", "", path.read_text(encoding="utf-8"))
         assert not re.search(r"(?<![\w.])15(?![\w.])", code), path.name
+
+
+def _stats(last_trade_ts):
+    return DayStatsAnswer(DayStats(Decimal("60"), Decimal("70"), Decimal("55"), Decimal("58"), last_trade_ts))
+
+
+def _one_cell_push(ce_stats=None, ce_quote=True):
+    """One CE cell of NIFTY 25150 (ltp 63.10, bid 63.90, ask 64.10), pushed once; returns the pushed ce dict."""
+    provider, _feed, channel, _mono, push = make_rig()
+    provider.tick(index_quote("25162.30"))
+    tick_window(provider)
+    ce_id = cid("25150", "CE")
+    if ce_quote:
+        provider.tick(option_quote(ce_id, "63.10", bid="63.90", ask="64.10"))
+    if ce_stats is not None:
+        provider.day_stats[ce_id] = ce_stats
+    return provider, channel, push, ce_id
+
+
+async def _pushed_ce(ce_stats=None, ce_quote=True):
+    provider, channel, push, _ce_id = _one_cell_push(ce_stats, ce_quote)
+    task = await start(push, channel)
+    await close(channel, task)
+    row = next(r for r in channel.sent[0]["rows"] if r["strike"] == "25150.00")
+    return row["ce"]
+
+
+async def test_d19_core_a_cell_carries_the_time_of_its_last_trade_seven_seconds_before_the_packet():
+    """D-19 core: ltp 63.10 sits below bid 63.90 (the last trade was before the book moved); the cell says WHEN the
+    last price was made: the packet time T0 (09:20:00) minus 7 s = 09:19:53 IST, from the feed's day stats."""
+    trade = int((T0 - datetime.timedelta(seconds=7)).timestamp())
+    ce = await _pushed_ce(_stats(trade))
+    assert (ce["ltp"], ce["bid"], ce["ask"]) == ("63.10", "63.90", "64.10")
+    assert ce["last_trade_at"] == "2026-10-19T09:19:53+05:30"
+
+
+@pytest.mark.parametrize("stats", [None, DayStatsAnswer.unavailable("PACKET_WITHOUT_DAY_FIELDS"), _stats(None)])
+async def test_d19_no_day_stats_or_no_trade_time_means_null_never_a_made_up_time(stats):
+    """Absent day stats, a packet without day fields, and last_trade_ts None all give null: the screen shows nothing."""
+    ce = await _pushed_ce(stats)
+    assert ce["ltp"] == "63.10"
+    assert ce["last_trade_at"] is None
+
+
+async def test_d19_a_missing_quote_has_no_last_trade_time_even_when_stats_are_held():
+    """The unavailable cell (no quote) carries no number and no time."""
+    provider, channel, push, ce_id = _one_cell_push(None, ce_quote=False)
+    provider.quotes.pop(ce_id, None)
+    provider.day_stats[ce_id] = _stats(int(T0.timestamp()))
+    task = await start(push, channel)
+    await close(channel, task)
+    ce = next(r for r in channel.sent[0]["rows"] if r["strike"] == "25150.00")["ce"]
+    assert ce["ltp"] is None and ce["last_trade_at"] is None
+
+
+async def test_d19_ltp_bid_ask_of_one_cell_come_from_the_same_quote():
+    """The no-mix claim: the pushed ltp, bid, ask and time are one quote's own values, so an ltp outside its bid/ask is
+    a market fact (last trade before the book moved), not a code mix."""
+    provider, channel, push, ce_id = _one_cell_push(_stats(int(T0.timestamp()) - 7))
+    q = provider.quotes[ce_id]
+    task = await start(push, channel)
+    await close(channel, task)
+    ce = next(r for r in channel.sent[0]["rows"] if r["strike"] == "25150.00")["ce"]
+    assert (Decimal(ce["ltp"]), Decimal(ce["bid"]), Decimal(ce["ask"])) == (q.ltp, q.bid, q.ask)
+    assert ce["at"] == q.timestamp.isoformat()
