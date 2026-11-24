@@ -17,7 +17,7 @@ vi.mock('@/services/api', async (importActual) => {
   return { ...actual, default: { get: reply('GET'), post: reply('POST'), delete: reply('DELETE') } }
 })
 
-import { TRACKING_REFRESH_MS } from '@/lib/tracking'
+import { TRACKING_REFRESH_MS, PAPER_PRICE_REASON } from '@/lib/tracking'
 import { withPriceTexts } from './_priceTexts'
 import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
 
@@ -380,7 +380,7 @@ describe('Stops panel: the Not saved line and the empty-level hint (D-05, ADR-31
     expect(t(w, 'stops-saved').text()).toBe('Saved: exit above 24500')
     expect(has(w, 'ce-reason')).toBe(false)
     await t(w, 'ce-above').setValue('24500.03')
-    expect(t(w, 'ce-reason').text()).toContain('multiple of 0.05')
+    expect(t(w, 'ce-reason').text()).toBe(PAPER_PRICE_REASON)
   })
   it('Save with both boxes empty shows the hint', async () => {
     const w = await open()

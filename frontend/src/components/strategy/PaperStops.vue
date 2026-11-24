@@ -13,8 +13,10 @@ const props = defineProps({
   underlying: { type: String, default: '' },
   // the strategy's open legs: { index, label, contractId }
   legs: { type: Array, default: () => [] },
-  // D-05: counts the parent list's good refreshes; a new count clears a "Not saved" line (a failed refresh does not move it)
-  goodReads: { type: Number, default: 0 },
+  // D-05: the parent list's reads started so far, and the start number of its last good read; a "Not saved" line clears only
+  // for a good read that started after the failure (a failed refresh does not move goodReadStart)
+  readsStarted: { type: Number, default: 0 },
+  goodReadStart: { type: Number, default: 0 },
 })
 
 const LABEL = 'Paper - exits are recorded in the app, not sent to Zerodha'
@@ -59,9 +61,11 @@ async function run(call, saving = false) {
     }
     triggers.value = null
     error.value = saving ? NO_ANSWER : NEUTRAL_ERROR
+    failedAtRead = props.readsStarted
     return null
   } catch (e) {
     error.value = saving ? notSaved(e) : refusal(e)
+    failedAtRead = props.readsStarted
     return null
   } finally {
     busy.value = false
@@ -69,7 +73,8 @@ async function run(call, saving = false) {
 }
 
 onMounted(() => run(() => api.get(path)))
-watch(() => props.goodReads, () => { if (!busy.value && error.value.startsWith('Not saved')) error.value = '' })
+let failedAtRead = 0 // reads started when the last save failed
+watch(() => props.goodReadStart, (n) => { if (!busy.value && error.value.startsWith('Not saved') && n > failedAtRead) error.value = '' })
 
 async function saveExit() {
   if (ceReason.value) return
@@ -122,7 +127,7 @@ async function keep(t) {
         <label class="text-xs">Below<input v-model="below" type="text" inputmode="decimal" class="ml-1 w-28 rounded border border-line px-1 py-0.5 text-sm" data-testid="ce-below" /></label>
         <button type="button" class="rounded border border-line px-3 py-1" :disabled="busy || !!ceReason" data-testid="ce-save" @click="saveExit">{{ busy ? 'Saving...' : 'Save' }}</button>
       </div>
-      <p v-if="ceReason && !saved" class="text-xs text-ink-muted" data-testid="ce-reason">{{ ceReason }}</p>
+      <p v-if="ceReason && !(saved && ceReason === AT_LEAST_ONE)" class="text-xs text-ink-muted" data-testid="ce-reason">{{ ceReason }}</p>
     </div>
 
     <div v-if="legs.length" class="mt-2" data-testid="leg-stops">

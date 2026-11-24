@@ -123,7 +123,7 @@
                 <p v-if="stale && g.openCount" class="text-xs text-ink-muted" data-testid="paper-exit-reason">{{ NOT_LIVE_EXIT }}</p>
               </div>
             </div>
-            <PaperStops v-if="stopsOpen[g.id]" :strategy-id="g.id" :underlying="g.underlying" :legs="stopLegs(g)" :good-reads="goodReads" />
+            <PaperStops v-if="stopsOpen[g.id]" :strategy-id="g.id" :underlying="g.underlying" :legs="stopLegs(g)" :reads-started="readsStarted" :good-read-start="goodReadStart" />
           </template>
         </div>
       </template>
@@ -204,7 +204,10 @@ const errorParts = ref(null)
 // D-05 r3: a failed or unreadable refresh with a list on screen: figures paused, no exit from old prices
 const stale = computed(() => !!errorParts.value && !!items.value)
 const loading = ref(true)
-const goodReads = ref(0) // D-05: counts good list refreshes, so an open Stops panel can drop its Not saved line
+// D-05: reads are one at a time; readsStarted counts the reads started, goodReadStart is the start number of the last good one,
+// so an open Stops panel drops its Not saved line only for a good read that started after the failure
+const readsStarted = ref(0)
+const goodReadStart = ref(0)
 const stopsOpen = ref({})
 // R-10: a Stop row for each OPEN contract, keyed by the contract id the reply carries (a digit string sent as is)
 const stopLegs = (g) => g.positions.filter((p) => p.open).map((p) => ({ index: p.contractId, label: p.name, contractId: String(p.contractId) }))
@@ -234,7 +237,7 @@ function show(data) {
     items.value = read.groups
     totals.value = read.totals
     errorParts.value = null
-    goodReads.value += 1
+    goodReadStart.value = readsStarted.value // reads never overlap: this answer is for the latest read started
     settle(items.value)
   }
   loading.value = false
@@ -249,7 +252,7 @@ function fail(e) {
 
 const { refresh, refreshNow } = usePaperRefresh({
   key: () => 'list',
-  read: async () => (await api.get('/paper/strategies')).data,
+  read: async () => { readsStarted.value += 1; return (await api.get('/paper/strategies')).data },
   onData: show,
   onError: fail,
 })
