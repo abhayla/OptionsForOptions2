@@ -575,7 +575,7 @@ def test_624_1_read_guards_answer_states(monkeypatch):
         monkeypatch.setattr(readers, "current_user_ref", lambda: "u")
         monkeypatch.setattr(adjustment_check, "resolve", resolve)
         monkeypatch.setattr(adjustment_check, "strategy_type", lambda *_a: "x")
-        return await readers.read_guards(72, tracked.position, market.forward, None)
+        return await readers.read_guards(72, tracked, market.forward, None)
     assert asyncio.run(run(raises=True)) is readers.GUARDS_UNREADABLE
     assert asyncio.run(run({"guards": LIMITS})) == LIMITS
     assert asyncio.run(run({"guards": {}})) == {}

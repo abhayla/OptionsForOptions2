@@ -181,7 +181,7 @@ RestSpotReader = Callable[[str], Awaitable[SourceReading]]
 ApproachMargin = Callable[[list[PlannedOrderIn]], Awaitable[Margin]]
 #: strategy id, position, spot -> the guards of the strategy's playbook (None: no playbook, so no limits)
 #: ``GUARDS_UNREADABLE`` (adjustment_readers): the playbook could not be read, so the reply says no limit was applied
-GuardsReader = Callable[[int, Position, Decimal | None, list | None], Awaitable[Any]]
+GuardsReader = Callable[[int, Tracked, Decimal | None, list | None], Awaitable[Any]]
 
 
 def get_tracked_reader(db: Annotated[Any, Depends(get_db)] = None) -> TrackedReader:
@@ -586,8 +586,9 @@ async def adjustment_approaches(  # noqa: PLR0913, PLR0915 - FastAPI dependencie
         built_list: list[tuple[str, ApproachLegs | None]] = []
     else:
         t0 = time.perf_counter()
-        # D-04: the playbook is found by the shape AT ENTRY (the reader types the position it is given)
-        guards = await guards_of(strategy_id, tracked.entry_position or position, spot.value, check.listed_of(ctx))
+        # D-04 (ADR-318 (4)): the playbook is found by check.entry_type, the one function the server's limit uses
+        # (shape at entry, else the current shape), with the server's spot argument (None), so offered == accepted
+        guards = await guards_of(strategy_id, tracked, None, check.listed_of(ctx))
         guards = _guards_or_reason(guards, reply)
         # goal contract decision 14 / catalogue S-11: at the plan maximum only exit and reduce approaches are offered,
         # through THE filter the check's T-19 pick uses (offered.limit_filter), never a second copy

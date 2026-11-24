@@ -265,7 +265,7 @@ class _GuardsUnreadable:
 GUARDS_UNREADABLE = _GuardsUnreadable()
 
 
-async def read_guards(strategy_id: int, position: Position, spot: Decimal | None,
+async def read_guards(strategy_id: int, tracked: Tracked, spot: Decimal | None,
                       listed: list | None, db: Any = None) -> dict[str, Any] | None | _GuardsUnreadable:
     """The ``guards`` of the strategy playbook (its own plan, else the active playbook of its type; ADR-230 (1)).
     Answer states: a mapping (limits; empty = none set), None (the shape matches no playbook), ``GUARDS_UNREADABLE``
@@ -273,18 +273,18 @@ async def read_guards(strategy_id: int, position: Position, spot: Decimal | None
     ``db``: the request's own session (a request uses ONE connection, #682); None for a caller with no request."""
     try:
         if db is not None:
-            return await _guards_on(db, strategy_id, position, spot, listed)
+            return await _guards_on(db, strategy_id, tracked, spot, listed)
         async with get_sessionmaker()() as own:
-            return await _guards_on(own, strategy_id, position, spot, listed)
+            return await _guards_on(own, strategy_id, tracked, spot, listed)
     except Exception as exc:  # noqa: BLE001 - any failure of the read is "unreadable", never a silent skip
         log.warning("adjustment guards: strategy %s playbook unreadable (%s)", strategy_id, type(exc).__name__)
         return GUARDS_UNREADABLE
 
 
-async def _guards_on(db: Any, strategy_id: int, position: Position, spot: Decimal | None,
+async def _guards_on(db: Any, strategy_id: int, tracked: Tracked, spot: Decimal | None,
                      listed: list | None) -> dict[str, Any] | None:
     from ofo_app import adjustment_check  # noqa: PLC0415 - it imports the route module's dataclasses
-    stype = adjustment_check.strategy_type(position, spot, listed)
+    stype = adjustment_check.entry_type(tracked, spot, listed)  # D-04: the one door the server's limit uses
     resolved = await adjustment_check.resolve(db, current_user_ref(), strategy_id, stype)
     return adjustment_check.guards_of_body(resolved.body)
 
