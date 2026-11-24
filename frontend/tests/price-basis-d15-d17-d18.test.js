@@ -48,13 +48,6 @@ describe('D-15 (c) the Add to Paper price says when it differs from the plan', (
   })
 })
 
-describe('D-17 the time value names the prices it is on', () => {
-  it('prints the server basis beside the Time value', () => {
-    const w = mount(SummaryCards, { props: { timeValue: '-3,439', timeValueExact: '-3439.00', intrinsicValue: '0', intrinsicValueExact: '0.00', priceBasis: 'At plan prices', valueLabel: 'value of the options, not P&L' } })
-    expect(t(w, 'value-basis').text()).toBe('At plan prices')
-  })
-})
-
 describe('D-18 each panel that shows a leg price says when it was quoted', () => {
   const leg = { id: 'a', instrument_id: 'NSE_FO:1', underlying: 'NIFTY', action: 'SELL', lots: 1, planned_entry: '7.00', captured_at: '2026-11-23T05:00:00Z', expiry: '2026-11-25', instrument_type: 'PE', strike: '25300.00' }
   it('the leg list: "Leg prices as of HH:MM:SS IST" from the outcome reply; none sent says so; no price shows no line', () => {

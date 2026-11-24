@@ -24,24 +24,11 @@ def test_c11_credit_at_fills_and_at_plan_by_hand():
     assert money.net_premium((sold_put("23.85"),)).amount == D("1550.25")  # 23.85 x 65
 
 
-def test_time_value_uses_the_credit_prices_not_the_live_price():
-    # spot 25400: the sold 25300 put has no intrinsic value, so time = -(entry) x 65 whatever the live price is
-    quiet = money.time_and_intrinsic((sold_put("23.70", ltp="30.00"),), D("25400"))
-    moved = money.time_and_intrinsic((sold_put("23.70", ltp="12.00"),), D("25400"))
-    assert (quiet.intrinsic, quiet.time) == (D("0.00"), D("-1540.50"))
-    assert (moved.intrinsic, moved.time) == (quiet.intrinsic, quiet.time)  # frozen with the credit beside it
-
-
-def test_time_value_needs_no_live_price_only_the_entry_price_and_the_spot():
-    v = money.time_and_intrinsic((sold_put("23.70"),), D("25400"))  # no ltp at all
-    assert (v.time, v.reason) == (D("-1540.50"), None)
-    assert money.time_and_intrinsic((sold_put("23.70"),), None).time is None  # no spot: absent, with its reason
-
-
-def test_time_value_is_entry_premium_minus_intrinsic_at_the_spot():
-    # spot 25250: intrinsic 50 per unit (sold, so -3,250.00); entry premium -1,540.50 - (-3,250.00) = +1,709.50
-    v = money.time_and_intrinsic((sold_put("23.70"),), D("25250"))
-    assert (v.intrinsic, v.time) == (D("-3250.00"), D("1709.50"))
+def test_time_value_stays_on_the_live_price_pending_the_owner_decision():
+    # D-17 is stopped (REQ-081 AC-3 "current premium minus intrinsic" against the contract line): live price, as before
+    v = money.time_and_intrinsic((sold_put("23.70", ltp="30.00"),), D("25400"))
+    assert (v.intrinsic, v.time) == (D("0.00"), D("-1950.00"))  # -(30.00 x 65)
+    assert money.time_and_intrinsic((sold_put("23.70"),), D("25400")).time is None  # no live price: absent
 
 
 def test_plan_line_states_the_plan_credit_beside_the_fill_credit():

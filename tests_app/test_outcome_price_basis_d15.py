@@ -61,10 +61,3 @@ async def test_paper_fills_without_plan_prices_has_no_plan_line(replayed):
     s = await _summary(replayed, price_basis="paper_fills")
     assert s["price_basis_text"] == "At paper fill prices"
     assert s["plan_line"] is None
-
-
-async def test_time_value_is_the_same_on_two_live_prices(replayed):
-    # the time value follows the credit's prices: asking twice with the same entry prices gives the same figure, and it
-    # equals the signed entry premium minus intrinsic (hand: time + intrinsic = -(credit) for a net seller)
-    s = await _summary(replayed)
-    assert Decimal(s["time_value"]) + Decimal(s["intrinsic_value"]) == -Decimal(s["net_premium"]["amount"])

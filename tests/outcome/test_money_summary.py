@@ -129,11 +129,12 @@ def test_a_sold_leg_flips_the_sign_and_a_put_uses_strike_minus_spot():
     assert (v.intrinsic, v.time) == (D("-3250.00"), D("-2600.00"))
 
 
-def test_no_spot_makes_both_absent_with_the_reason():
-    # D-17: a leg with an entry price and no live price still has its value split; no spot has none
-    v = money.time_and_intrinsic((leg(Action.BUY, Instrument.CE, "22900", "1", ltp="1"),), None)
-    assert (v.intrinsic, v.time, v.label) == (None, None, None)
-    assert v.reason == "a price is missing for at least one leg or for the index"
+def test_a_leg_with_no_ltp_or_no_spot_makes_both_absent_with_the_reason():
+    ltp_less = leg(Action.BUY, Instrument.CE, "22900", "150.00")
+    for given, spot in (((ltp_less,), D("22976.85")), ((leg(Action.BUY, Instrument.CE, "22900", "1", ltp="1"),), None)):
+        v = money.time_and_intrinsic(given, spot)
+        assert (v.intrinsic, v.time, v.label) == (None, None, None)
+        assert v.reason == "a live price is missing for at least one leg or for the index"
 
 
 def test_summary_of_the_real_replay_carries_the_split(replayed):
@@ -255,11 +256,19 @@ def test_ratio_is_never_taken_from_the_figures_before_charges(replayed):
 # --- M2 / M5 and the shares (attack 4, 5) ----------------------------------------------------------------------
 
 
-def test_time_value_uses_the_planned_entry_not_the_live_price():
+def test_one_priced_and_one_unpriced_leg_gives_no_partial_value_split():
+    priced = leg(Action.BUY, Instrument.CE, "22900", "150.00", ltp="150.00")
+    unpriced = leg(Action.SELL, Instrument.PE, "23000", "90.00")  # no live price
+    v = money.time_and_intrinsic((priced, unpriced), D("22976.85"))
+    assert (v.intrinsic, v.time, v.label) == (None, None, None)
+    assert v.reason == "a live price is missing for at least one leg or for the index"
+
+
+def test_time_value_uses_the_live_price_not_the_planned_entry():
     bought = leg(Action.BUY, Instrument.CE, "22900", "150.00", ltp="180.00")  # planned 150, live 180
     v = money.time_and_intrinsic((bought,), D("22976.85"))
-    # D-17: on the credit prices. per unit: intrinsic 76.85, time 150 - 76.85 = 73.15 (live 180 gives 103.15); x 65
-    assert (v.intrinsic, v.time) == (D("4995.25"), D("4754.75"))
+    # per unit: intrinsic 22976.85 - 22900 = 76.85, time 180 - 76.85 = 103.15 (planned 150 would give 73.15); x 65
+    assert (v.intrinsic, v.time) == (D("4995.25"), D("6704.75"))
 
 
 def test_a_share_under_a_tenth_of_a_percent_sends_percent_null_with_the_text():

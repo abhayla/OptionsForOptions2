@@ -69,13 +69,11 @@ class ValueSplit:
 
 
 def time_and_intrinsic(legs: Sequence[Any], spot: Any) -> ValueSplit:
-    """GC-ICLIVE-B D-17: on the legs' ENTRY prices, the same prices as the net premium beside them (a live price would
-    move the time value every second beside a credit that stays still). A leg without an entry price, or no spot, makes
-    both figures absent with the reason (REQ-081 AC-3, AC-8)."""
+    """A leg without an LTP, or no spot, makes both figures absent with the reason (REQ-081 AC-3, AC-8)."""
     options = [leg for leg in legs if leg.instrument is not Instrument.FUT]
     if not options:
         return ValueSplit(None, None, None, None)
-    if spot is None or any(leg.entry_price is None for leg in options):
+    if spot is None or any(leg.ltp is None for leg in options):
         return ValueSplit(None, None, None, render_explanation("money_value_price_missing"))
     intrinsic, time = engine.intrinsic_and_time(options, spot)
     return ValueSplit(intrinsic, time, render_explanation("money_value_label"), None)

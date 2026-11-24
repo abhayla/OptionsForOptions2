@@ -1652,8 +1652,8 @@
     "reviewed": "owner read 2026-11-02 (accepted after independent screen, not read line by line)"
   },
   "explanation:money_value_price_missing": {
-    "sha256": "29f375c35481dee79910a97483def51755710b5071c860aa4cee0aaaec03ab4e",
-    "reviewed": "pending owner read"
+    "sha256": "eeffca39fce7599b1eadd51dc7927802de0dd0360d11e3fa878fc6bd4f858eb4",
+    "reviewed": "owner read 2026-11-02 (accepted after independent screen, not read line by line)"
   },
   "explanation:money_value_label": {
     "sha256": "1e3c6f16109fc32ab9f969b7a91f6c68608e18d2ebdb9810322b78d7edc25277",

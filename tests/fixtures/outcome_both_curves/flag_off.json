@@ -8578,7 +8578,7 @@
    "time_value_display": null,
    "upper_be": null,
    "value_label": null,
-   "value_reason": "a price is missing for at least one leg or for the index",
+   "value_reason": "a live price is missing for at least one leg or for the index",
    "what_can_i_lose": "At most ₹4,056.00 at expiry, before charges and taxes.",
    "what_can_i_make": "At most ₹8,944.00 at expiry, before charges and taxes.",
    "where_do_i_start_losing": "If NIFTY ends below 22,662.40 at expiry."

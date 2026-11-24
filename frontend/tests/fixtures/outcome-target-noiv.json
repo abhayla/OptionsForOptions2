@@ -2033,7 +2033,7 @@
   "intrinsic_value_display": null,
   "risk_reward": null,
   "value_label": null,
-  "value_reason": "a price is missing for at least one leg or for the index",
+  "value_reason": "a live price is missing for at least one leg or for the index",
   "net_premium": {
    "amount": "3334.50",
    "amount_display": "3,335",

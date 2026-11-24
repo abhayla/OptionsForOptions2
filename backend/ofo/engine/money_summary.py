@@ -71,10 +71,8 @@ def combined_price_series(legs: Sequence[Any], closes_by_leg: Sequence[Mapping[A
 
 
 def intrinsic_and_time(legs: Sequence[Any], spot: Decimal) -> tuple[Decimal, Decimal]:
-    """Over the option legs: intrinsic = max(spot - strike, 0) for a call, max(strike - spot, 0) for a put; time = the
-    leg's ENTRY price - intrinsic; each x quantity; bought +, sold -. A futures leg adds nothing. GC-ICLIVE-B D-17: the
-    time value is on the same prices as the net premium beside it (the entry prices), never on a live price that moves
-    while the credit stays still."""
+    """Over the option legs (all with an LTP): intrinsic = max(spot - strike, 0) for a call, max(strike - spot, 0) for a
+    put; time = ltp - intrinsic; each x quantity; bought +, sold -. A futures leg adds nothing."""
     intrinsic = time = Decimal(0)
     for leg in legs:
         if leg.instrument is Instrument.FUT:
@@ -83,7 +81,7 @@ def intrinsic_and_time(legs: Sequence[Any], spot: Decimal) -> tuple[Decimal, Dec
         per_unit = max(gap, Decimal(0))
         sign = 1 if leg.action is Action.BUY else -1
         intrinsic += sign * per_unit * leg.quantity
-        time += sign * (leg.entry_price - per_unit) * leg.quantity
+        time += sign * (leg.ltp - per_unit) * leg.quantity
     return intrinsic.quantize(PAISE, ROUND_HALF_EVEN), time.quantize(PAISE, ROUND_HALF_EVEN)
 
 

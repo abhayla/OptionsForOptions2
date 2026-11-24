@@ -1788,7 +1788,7 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("money_premium_futures", "values_seen", "premium and futures value cannot be added"),
     ExplanationTemplate("money_price_missing", "values_seen", "a planned price is missing for at least one leg"),
     ExplanationTemplate("money_value_price_missing", "values_seen",
-                        "a price is missing for at least one leg or for the index"),
+                        "a live price is missing for at least one leg or for the index"),
     ExplanationTemplate("money_basis_plan", "values_seen", "At plan prices"),
     ExplanationTemplate("money_basis_paper", "values_seen", "At paper fill prices"),
     ExplanationTemplate("money_plan_get", "values_seen", "Plan: Get {amount} at plan prices", {"amount": Rupees}),

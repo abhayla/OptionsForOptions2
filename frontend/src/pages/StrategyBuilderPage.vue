@@ -1189,7 +1189,6 @@ const pricesStamp = computed(() => {
             :estimate-label="data.output_label || null"
             :risk-reward="data.summary.risk_reward ?? null"
             :value-label="data.summary.value_label ?? null"
-            :price-basis="data.summary.price_basis_text ?? null"
             :value-reason="data.summary.value_reason ?? null"
             :funds-share="paperLeft ? null : data.summary.funds_share ?? null"
           >
