@@ -121,3 +121,24 @@ describe('paperOrdersFor puts every BUY before every SELL (REQ-159 AC-6)', () =>
     expect(seq(paperOrdersFor([L(9, 'SELL'), L(7, 'SELL'), L(8, 'BUY')], []))).toEqual(['BUY 9 exit', 'BUY 7 exit', 'SELL 8 exit'])
   })
 })
+
+// D-60 review finding 1 (A4 review 3): Drafts Mode must never merge a kept duplicate silently. Real case: held 1 lot SELL
+// 22950 CE (strategy 63 book) + "Keep separate" 1 lot SELL on the same contract = two rows of one contract and action.
+describe('paperOrdersFor: a kept duplicate is never merged into one order (D-60)', () => {
+  const dupEdit = (extra = {}) => [...net(), { ...net().find((l) => l.contract_id === ID.ce22950), id: 'kept-dup', ...extra }]
+  it('held 1 lot + Keep separate 1 lot -> two separate SELL adds on the contract (the server refuses them with its gate sentence)', () => {
+    const orders = paperOrdersFor(net(), dupEdit())
+    const mine = orders.filter((o) => o.contract_id === ID.ce22950)
+    expect(mine.map((o) => [o.side, o.quantity, o.kind])).toEqual([['SELL', 65, 'add'], ['SELL', 65, 'add']])
+    expect(strip(orders).filter((o) => o.contract_id !== ID.ce22950)).toEqual([]) // the other held contracts: no order
+  })
+  it('a single-row change of lots on one contract is still netted (held 1 -> 3 gives ONE add of 2 lots)', () => {
+    const edited = net().map((l) => (l.contract_id === ID.ce22950 ? { ...l, lots: 3 } : l))
+    expect(strip(paperOrdersFor(net(), edited))).toEqual([{ side: 'SELL', contract_id: ID.ce22950, quantity: 130, kind: 'add' }])
+  })
+  it('a buy and a sell of one contract (two legs, REQ-030 AC-11) still net as before', () => {
+    const edited = net().map((l) => l)
+    edited.push({ ...net().find((l) => l.contract_id === ID.ce22950), id: 'opp', action: 'BUY' })
+    expect(strip(paperOrdersFor(net(), edited))).toEqual([{ side: 'BUY', contract_id: ID.ce22950, quantity: 65, kind: 'exit' }])
+  })
+})
