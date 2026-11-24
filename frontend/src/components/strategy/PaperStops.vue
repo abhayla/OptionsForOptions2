@@ -13,10 +13,11 @@ const props = defineProps({
   underlying: { type: String, default: '' },
   // the strategy's open legs: { index, label, contractId }
   legs: { type: Array, default: () => [] },
-  // D-05: the parent list's reads started so far, and the start number of its last good read; a "Not saved" line clears only
-  // for a good read that started after the failure (a failed refresh does not move goodReadStart)
-  readsStarted: { type: Number, default: 0 },
-  goodReadStart: { type: Number, default: 0 },
+  // D-05: the parent list's latest-started read token and the token of its last good read; a "Not saved" line clears only
+  // when a good read is set and is not the token stamped at the failure (reads never overlap, so a different good token
+  // means a read started after the failure; a failed refresh does not move goodReadToken)
+  latestReadToken: { type: Object, default: null },
+  goodReadToken: { type: Object, default: null },
 })
 
 const LABEL = 'Paper - exits are recorded in the app, not sent to Zerodha'
@@ -61,11 +62,11 @@ async function run(call, saving = false) {
     }
     triggers.value = null
     error.value = saving ? NO_ANSWER : NEUTRAL_ERROR
-    failedAtRead = props.readsStarted
+    failedAtToken = props.latestReadToken
     return null
   } catch (e) {
     error.value = saving ? notSaved(e) : refusal(e)
-    failedAtRead = props.readsStarted
+    failedAtToken = props.latestReadToken
     return null
   } finally {
     busy.value = false
@@ -73,8 +74,8 @@ async function run(call, saving = false) {
 }
 
 onMounted(() => run(() => api.get(path)))
-let failedAtRead = 0 // reads started when the last save failed
-watch(() => props.goodReadStart, (n) => { if (!busy.value && error.value.startsWith('Not saved') && n > failedAtRead) error.value = '' })
+let failedAtToken = null // the latest-started read token when the last save failed
+watch(() => props.goodReadToken, (t) => { if (!busy.value && error.value.startsWith('Not saved') && t && t !== failedAtToken) error.value = '' })
 
 async function saveExit() {
   if (ceReason.value) return
