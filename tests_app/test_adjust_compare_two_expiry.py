@@ -128,3 +128,26 @@ def test_no_rate_says_so():
     cell = {c["id"]: c["values"] for c in body["criteria"]}["move_p1"]["A-04"]
     assert cell["value"] is None
     assert cell["unavailable_reason"] == "Not available: no interest rate was read to value the later expiry's legs."
+
+
+def test_d14_a_held_leg_the_chain_does_not_quote_is_not_closed_at_its_entry() -> None:
+    """D-14 round 2: the cost to close prices each HELD leg at its live chain LTP. A held leg with no LTP is not closed at
+    its average entry (that figure would differ from the trade page's): the charges are not known, so no after-charges
+    figure is given and the reply says "Charges not available"."""
+    sc = load("ADJ-02")
+    held = sc["position"]["legs"][0]["tradingsymbol"]
+    c = client_for(sc, rates=RATES)
+
+    async def market(_t, _ctx):
+        m = market_of(sc)
+        rows = [dataclasses.replace(r, ltp=None) if r.tradingsymbol == held else r for r in m.chain]
+        return dataclasses.replace(m, chain=rows)
+    c.app.dependency_overrides[route.get_market_reader] = lambda: market
+    body = post(c).json()
+    legs = sc["expected"]["approach_legs"]
+    hit = [a for a in body["approaches"] if a["refusal"] is None and a.get("after")
+           and any(x["tradingsymbol"] == held for x in legs.get(a["id"], {}).get("after", []))]
+    assert hit, "no approach keeps the held leg"
+    for a in hit:
+        assert a["after"]["after_charges"] is None, a["id"]
+        assert a["charges"]["not_available"].startswith("Charges not available"), a["id"]
