@@ -898,3 +898,15 @@ def test_core_the_real_router_over_http_on_a_real_kite_provider_replaying_the_re
             break
     assert depth is not None, "no held contract gave a depth read with 5 bid and 5 ask levels"
 
+
+
+def test_d18_the_strikes_reply_carries_the_oldest_quote_time_of_its_prices_not_the_reply_time():
+    """GC-ICLIVE-B D-18: "Chain prices as of" is the oldest price time the cells were made from (hand: one option quote
+    is 7 s older than the rest, so prices_at = that quote's time), never the reply's own answered_at."""
+    import dataclasses
+    provider, feed = priced_provider()
+    some = next(k for k, q in provider.quotes.items() if q.instrument_type is not None)
+    older = dataclasses.replace(provider.quotes[some], timestamp=T0 - datetime.timedelta(seconds=7))
+    provider.quotes[some] = older
+    out = answer(feed)
+    assert out.prices_at == older.price_at and out.prices_at < out.answered_at

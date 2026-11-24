@@ -25,18 +25,18 @@ describe('D-15 the Get says which prices it uses; the plan stays visible as the 
     expect(t(w, 'money-basis').exists()).toBe(false)
     expect(t(w, 'plan-line').exists()).toBe(false)
   })
-  it('a paper trade asks for the fill basis and sends each leg its plan price (strings, no arithmetic)', () => {
-    const plan = planPricesOf([{ instrument_id: 'NSE_FO:1', planned_entry: '23.85' }, { instrument_id: 'NSE_FO:2', planned_entry: '10.00' }])
-    expect(plan).toEqual({ 'NSE_FO:1': '23.85', 'NSE_FO:2': '10.00' })
-    const draft = { underlying: 'NIFTY', legs: [{ instrument_id: 'NSE_FO:1', planned_entry: '23.70' }, { instrument_id: 'NSE_FO:2', planned_entry: '10.05' }] }
+  it('a paper trade sends each leg its plan price and plan lots, and claims no basis (the server derives it)', () => {
+    const plan = planPricesOf([{ instrument_id: 'NSE_FO:1', planned_entry: '23.85', lots: 2 }, { instrument_id: 'NSE_FO:2', planned_entry: '10.00', lots: 1 }])
+    expect(plan).toEqual({ 'NSE_FO:1': { price: '23.85', lots: 2 }, 'NSE_FO:2': { price: '10.00', lots: 1 } })
+    const draft = { underlying: 'NIFTY', legs: [{ instrument_id: 'NSE_FO:1', planned_entry: '23.70', lots: 1 }, { instrument_id: 'NSE_FO:2', planned_entry: '10.05', lots: 1 }] }
     const sent = paperBasisFields({ plan }, draft)
-    expect(sent.price_basis).toBe('paper_fills')
-    expect(sent.legs.map((l) => [l.planned_entry, l.plan_entry])).toEqual([['23.70', '23.85'], ['10.05', '10.00']])
-    expect(paperBasisFields(null, draft)).toEqual({}) // a plan: the default basis, nothing added
+    expect(sent.price_basis).toBeUndefined()
+    expect(sent.legs.map((l) => [l.planned_entry, l.plan_entry, l.plan_lots])).toEqual([['23.70', '23.85', 2], ['10.05', '10.00', 1]])
+    expect(paperBasisFields(null, draft)).toEqual({}) // a plan: nothing added
     expect(paperBasisFields({ plan: null }, draft).legs.every((l) => l.plan_entry === undefined)).toBe(true) // plan not kept
   })
   it('the same instrument twice has no single plan price: none is sent for it', () => {
-    expect(planPricesOf([{ instrument_id: 'NSE_FO:1', planned_entry: '1.00' }, { instrument_id: 'NSE_FO:1', planned_entry: '2.00' }])).toEqual({})
+    expect(planPricesOf([{ instrument_id: 'NSE_FO:1', planned_entry: '1.00', lots: 1 }, { instrument_id: 'NSE_FO:1', planned_entry: '2.00', lots: 1 }])).toEqual({})
   })
 })
 
@@ -50,18 +50,25 @@ describe('D-15 (c) the Add to Paper price says when it differs from the plan', (
 
 describe('D-18 each panel that shows a leg price says when it was quoted', () => {
   const leg = { id: 'a', instrument_id: 'NSE_FO:1', underlying: 'NIFTY', action: 'SELL', lots: 1, planned_entry: '7.00', captured_at: '2026-11-23T05:00:00Z', expiry: '2026-11-25', instrument_type: 'PE', strike: '25300.00' }
-  it('the leg list: "Leg prices as of HH:MM:SS IST" from the outcome reply; none sent says so; no price shows no line', () => {
-    const w = mount(LegList, { props: { legs: [leg], ltpById: { 'NSE_FO:1': '7.45' }, priceAt: '2026-11-23T05:31:02Z' } })
-    expect(t(w, 'leg-prices-as-of').text()).toBe('Leg prices as of 11:01:02 IST')
-    const none = mount(LegList, { props: { legs: [leg], ltpById: { 'NSE_FO:1': '7.45' }, priceAt: null } })
-    expect(t(none, 'leg-prices-as-of').text()).toBe('Leg prices: time not given')
-    expect(t(mount(LegList, { props: { legs: [leg] } }), 'leg-prices-as-of').exists()).toBe(false)
-  })
   it('the paper book net table: the LTP carries its own quote time from price_at', () => {
     const p = { contract_id: 1, contract_text: 'NIFTY 25300 PE', net_quantity: -65, average_text: '7.00', ltp_text: '7.25', price_at: '2026-11-23T05:31:03Z', booked_text: '0', unbooked_text: '0', total_text: '0' }
     const book = { state: 'LIVE', positions: [p, { ...p, contract_id: 2, price_at: null }], orders: [] }
     const w = mount(PaperBookPanel, { props: { book, net: [] } })
     const stamps = w.findAll('[data-testid="net-ltp-at"]').map((n) => n.text())
     expect(stamps).toEqual(['11:01:03', 'time n/a'])
+  })
+})
+
+describe('D-18 (round 2) each leg shows its own quote time; the summary line is the OLDEST', () => {
+  const leg = (n) => ({ id: `a${n}`, instrument_id: `NSE_FO:${n}`, underlying: 'NIFTY', action: 'SELL', lots: 1, planned_entry: '7.00', captured_at: '2026-11-23T05:00:00Z', expiry: '2026-11-25', instrument_type: 'PE', strike: '25300.00' })
+  it('names the older of two leg quote times and each leg its own', () => {
+    const w = mount(LegList, { props: { legs: [leg(1), leg(2)], ltpById: { 'NSE_FO:1': '7.45', 'NSE_FO:2': '7.10' }, quoteAtById: { 'NSE_FO:1': '2026-11-23T05:31:09Z', 'NSE_FO:2': '2026-11-23T05:31:02Z' }, priceAt: '2026-11-23T05:31:09Z' } })
+    expect(t(w, 'leg-prices-as-of').text()).toBe('Oldest leg price as of 11:01:02 IST')
+    expect(w.findAll('[data-testid="leg-quote-at"]').map((n) => n.text())).toEqual(['11:01:09', '11:01:02'])
+  })
+  it('a leg with a price and no time says so, and the summary line does not borrow another time', () => {
+    const w = mount(LegList, { props: { legs: [leg(1), leg(2)], ltpById: { 'NSE_FO:1': '7.45', 'NSE_FO:2': '7.10' }, quoteAtById: { 'NSE_FO:1': '2026-11-23T05:31:09Z' }, priceAt: '2026-11-23T05:31:09Z' } })
+    expect(t(w, 'leg-prices-as-of').text()).toBe('Leg prices: time not given')
+    expect(w.findAll('[data-testid="leg-quote-at"]').map((n) => n.text())).toEqual(['11:01:09', 'time n/a'])
   })
 })
