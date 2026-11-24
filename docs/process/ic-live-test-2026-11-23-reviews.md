@@ -254,3 +254,132 @@ Findings
 
 ## Outside the defects: none. 5 files, no kit file, no response-model change.
 ## Not checked: the DB order of today's stop-out; exit-risk endpoint order independence; full suites.
+
+## A4 review 1 (2026-11-24): D-05 last fix, commit ef733f08
+
+Reviewer: fresh-context helper, read-only, diff only. Class: every path to a paper exit from the paper list while
+prices are paused (REQ-109 AC-5). Verdict: no CRITICAL, no MAJOR. `frontend/tests/paper-strategies.test.js` 19/19.
+
+Paths traced in `PaperStrategies.vue`: Exit button disabled while `stale` (l.122) and `ask()` refuses while stale
+(l.273); a confirm already open when a refresh fails or comes back unreadable is closed by `fail()` (l.242) and the
+`show()` unreadable branch (l.229); keyboard: the Modal handles only Escape and the Tab trap; no exit-all in this
+component; compact mode has no exit buttons; the parent `v-if` chain cannot hide the reason line while stale. Server:
+`POST /paper/strategies/{id}/orders` reads live prices itself (`_server_exit_prices`, `backend/ofo_app/routes/paper.py`
+960-985) and refuses with `tracking_exit_prices_not_live` (409); tests at `tests_app/test_strategy_tracking_list.py:242,274`.
+
+Findings:
+1. MINOR `PaperStrategies.vue:283`: the new `if (stale.value) return cancelExit()` cannot run (every stale path nulls
+   `confirm` first, so `doExit` returns at `!c`). Harmless defence in depth. Class: yes.
+2. MINOR `PaperStrategies.vue:229,242`: closing the confirm while a POST is in flight drops the dialog; if that POST
+   ends "unknown", the "unknown outcome, open Orderbook" notice (ADR-017) is not seen. A repeat exit is still refused
+   by the server's EXIT_EXCEEDS_OPEN check under the row lock. Not run. Class: no (different class).
+3. MINOR `PaperStrategies.vue:122`: `stale` means "refresh failed", not "server reports PAUSED"; a group the server
+   marks PAUSED keeps an enabled Exit, and the refusal comes after Confirm (server 409). The server checks only the
+   named legs: exiting a live leg while another leg is unpriced is accepted. AC-5 reading (per named leg) to confirm.
+
+Covers the class: yes for the screen (every paper-list exit path passes `ask()`/`doExit()`, stale-gated; confirm nulled
+on a failed or unreadable read); the server refuses independently. Not in this class: builder `PaperBookPanel` exit,
+`TrackingPanel` exit, trigger fires while paused.
+
+## A4 review 2 (2026-11-24): D-04 server change 2915daf6 and fallback 6972d3d7
+
+Reviewer: fresh-context helper, read-only, static read of HEAD ac04a0a. Class: every paper basket at or over the plan
+maximum (ADR-318 points 1 to 5); rules from the entry shape with the fallback (ADR-318 point 4). Verdict: REVISE.
+
+Findings:
+1. MAJOR, screen and server disagree when the entry shape cannot be classified. The server (`paper_limit.py:42`) calls
+   `check.entry_type`, which falls back to the current shape (`adjustment_check.py:176-177`). The screen's offer path
+   (`routes/adjustment.py:590`) passes `tracked.entry_position or position` to `guards_of`, and
+   `adjustment_readers.py:287` classifies that position alone, with no fallback. Case: a condor entered on an expiry no
+   longer listed, rolled, now at 2 of 2: the screen finds no playbook, shows no limit notice and offers rolls and adds;
+   the server refuses the same basket with STRATEGY_VALIDATION_505. Also the server classifies with spot None while the
+   screen uses the live spot. Fix: route the offer path through `check.entry_type`. Class: yes (offered against refused).
+2. MINOR, permissive paths with no "not checked" note: (a) entry and current shape both unclassifiable, or no listed
+   contracts (`paper_limit.py:133`): no limit, opens accepted; (b) `adjustment_readers.py:190-192` returns no entry shape
+   when any order lacks `placed_at`, so the current shape decides. These are the existing "no playbook means no limit"
+   state. Class: partly.
+3. MINOR, accepted set wider than offered: any basket made only of exit, stop or settle is accepted
+   (`paper_limit.py:99`), including closing only a protective wing. Matches ADR-318 (5) literally ("close or reduce open
+   legs"); not a defect. `paper_store._check_reducing` refuses an exit that does not strictly reduce.
+
+Basket matrix at or over the maximum (`paper_limit.py:78-102`): close only, reduce only, buy back a short, exit all,
+draft quantity reduction: accepted. Open a new leg, add to a leg, mixed close and open, roll, strike change, draft that
+crosses zero: refused. Already over the maximum: reduce accepted, open refused. The entry basket is never checked.
+
+Bypass check: `place_checked` has two callers (`routes/paper.py:1065`, `routes/tracking.py:539`); the other writers
+(`paper_monitor.py:231` stop, `paper_settlement.py:178` settle) only reduce; `INSERT INTO public.paper_orders` appears
+only in `paper_store.py:44`. No bypass found. Open: A-23 "Delta-neutral helper" is in EXIT_REDUCE (`offered.py:22`);
+whether it places add orders was not confirmed.
+
+`tests_app/test_adjustment_history_why.py:141`: the code is right and the expectation is wrong (ADR-318 point 5). The
+basket at line 140 is the third non-entry basket and sends one order of kind "add" at the plan maximum.
+
+Covers the class: no (finding 1 on the offer path; finding 2 silent no-limit paths).
+
+## A4 review 3 (2026-11-24): D-60 round 2, commits 1a81d59e, e1b210d8 and gate move aa6ea9fb
+
+Reviewer: fresh-context helper, read-only. Class: every way a leg is added or moved in the builder, and Add to Paper
+with a kept duplicate (ADR-319). Verdict: REVISE (the door is sound; the class is not closed).
+
+Findings:
+1. MAJOR `frontend/src/lib/paperDrafts.js:63-71` (signedByContract), `:90-121` (paperOrdersFor): a paper strategy
+   opened in the builder (Drafts Mode) merges a kept duplicate silently: both rows sum per contract_id into one `add`
+   order (held 1 lot + Keep separate 1 lot = one order of 1 lot), so the server's duplicate check
+   (`routes/paper.py:1021`), which sees only the posted batch, never fires. ADR-319 (3) "never merged silently" fails on
+   this paper entry path. Add to Paper is hidden in Drafts Mode (`StrategyBuilderPage.vue:989`). Class: yes.
+2. MAJOR `StrategyBuilderPage.vue:723-750` (editLeg, moveLeg) with `backend/ofo_app/routes/leg_edit.py`: the strike
+   stepper is the known gap, and the same `/strategies/leg-edit` call also carries Shift, Width and Hedge
+   (RELATIVE_CONTROLS `legEdit.js:50`; MOVES `leg_edit.py:118`). Each can land a leg on a held contract with the same
+   action; no browser door call and no server duplicate check (`_check_landing` checks tradability only). Class: yes.
+3. MINOR `StrategyBuilderPage.vue:130-153` (prepareApproach): adjustment apply sets the server's after-legs with no
+   door; a duplicate in a plan-only draft is refused later by the server; in Drafts Mode it merges as finding 1.
+   ADR-319 (1) does not list adjustment apply. Class: yes.
+4. MINOR `StrategyBuilderPage.vue:100-118, 616`: a draft link, saved strategy or ready-made template replaces the list
+   without asking; old duplicates show the LegList row warning (`LegList.vue:253`) and are refused at Add to Paper.
+   Chain Add Selected cannot create a same-action duplicate. Class: no.
+5. MINOR `LegList.vue:85`: the row warning is hand-copied text, not the served sentence (the server names the contract
+   and numbers legs over posted non-exit orders). Class: no.
+6. MINOR `legDoor.js:20-28`: incoming legs are not compared with each other; the picker does not produce that today.
+
+Holds: through the door: picker and edit-form save (`LegPicker.vue:529`, strike and expiry change in the form), Done
+(`resolveDuplicates`, :586), the Buy/Sell button (:652). One server entry for paper orders, POST
+/paper/strategies/{id}/orders (`paper.py:1036`, check at 1056); every frontend caller uses it; the refusal carries the
+gate's sentence. aa6ea9fb: behaviour unchanged.
+
+Runs: `npx vitest run tests/leg-duplicate-d60.test.js` 14 passed; `pytest tests -k "closure or order_path or
+duplicate_leg"` 15 passed; `pytest tests/execution/test_validation.py tests/errors/test_template_pins.py -k duplicate`
+2 passed; probe of `paper_duplicate_leg`: same-side repeat refused, buy and sell not, futures repeat refused.
+
+Covers the class: no (the leg-edit family and the Drafts Mode merge).
+
+## A4 review 4 (2026-11-24): gate commits 8b3b21d7, aa6ea9fb, ef1b1093
+
+Reviewer: fresh-context helper, read-only. Required: behaviour unchanged; the approved line still reads exactly as
+ADR-317 gives it. Verdict: PASS (no CRITICAL, no MAJOR).
+
+ADR-317 sentence (`spec/decisions/ADR-317.md:15`): "Not saved: the live price is already at or beyond this level, so
+this exit would close the trade straight away. To close now, use Exit." Shipped copies: "Not saved: " +
+`render("paper_trigger_already_crossed").what_happened` (`templates.py:1043`, `PaperStops.vue:44`), compared with `==`
+in Python: match; `frontend/tests/paper-stops.test.js:130`: match; `tests_app/test_paper_triggers_routes.py:509`
+`CE_SENTENCE`: match (read by eye); `template_pins.json`: hash only. No broker name in either crossed-level sentence.
+The lower-case pin of ef1b1093 matches the ADR, where the sentence follows "Not saved: ".
+
+aa6ea9fb: `safety._key is duplicate_leg.contract_key`; `duplicate_leg_failure` builds the same CheckFailure as before;
+`paper_duplicate_leg` is identical; no importer of the old `safety.paper_duplicate_leg` remains. No check lost.
+
+Findings:
+1. MINOR `PaperStops.vue:44`, `frontend/tests/paper-stops.test.js:100,201`: 8b3b21d7 removed the lower-casing regex, so
+   every other refusal after "Not saved: " now keeps its capital ("Not saved: That stop already fired.", also
+   paper_trigger_nothing_open and paper_trigger_level_invalid). Compatible with ADR-317 (5) ("Not saved: <that
+   reason>"); the tests were flipped to match and the commit message does not say so.
+2. MINOR `backend/ofo/errors/templates.py:1043,1049`: the two crossed-level templates are lower-case in the API
+   `what_happened`, correct only behind "Not saved: ". Only emitter: `routes/paper.py:1420`, called with saving=true.
+3. MINOR `tests/errors/template_pins.json:4286-4293`: the "owner read 2026-11-23" label sits on a new hash; the leg
+   sentence ("... this stop would close the leg straight away ...") is still `pending owner read` and is not in ADR-317.
+
+Attacks run and passed: `pytest -k "template or pin"` over tests; tests/errors, tests/execution,
+tests/strategy/test_builder_history.py; test_door_names_private, test_kite_http_guard, test_gates_import_no_flags;
+vitest paper-stops (21 tests).
+
+Behaviour unchanged: yes for the approved line and the duplicate-leg check; no for the first letter of other refusals
+(finding 1, MINOR).
