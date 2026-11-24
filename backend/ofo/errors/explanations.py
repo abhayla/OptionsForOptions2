@@ -1822,6 +1822,9 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         "At every level at expiry."),
     ExplanationTemplate("scenario_view_label", "values_seen", "{view}", {"view": ScenarioViewLabel}),
     ExplanationTemplate("table_column_label", "values_seen", "{column}", {"column": ColumnLabel}),
+    # D-12 (ADR-320 (1)): on expiry day theta per day is replaced by the time value left until the close, in rupees
+    ExplanationTemplate("table_column_decay_left_today", "values_seen", "Decay left today (Rs)", {}),
+    ExplanationTemplate("decay_left_today_text", "values_seen", "Decay left today: {amount}", {"amount": Rupees}),
     ExplanationTemplate("scenario_header_plain", "values_seen", "{level}", {"level": Points}),
     ExplanationTemplate("scenario_header_current", "values_seen", "CURRENT {level}", {"level": Points}),
     ExplanationTemplate("scenario_header_zero_pnl", "values_seen", "0-P&L {level}", {"level": Points}),

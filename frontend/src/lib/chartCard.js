@@ -27,6 +27,12 @@ export const GREEK_COLUMNS = [
   { id: 'vega', label: 'Vega' },
   { id: 'iv', label: 'IV' },
 ]
+/** D-12 (ADR-320 (1)): the Greeks tab's columns with each heading the reply's own when it sends one, so on expiry day
+ *  the Theta column reads the server's "Decay left today (Rs)" (its cells are then the rupees left until the close). */
+export function greekColumns(table) {
+  const sent = new Map((table?.columns ?? []).map((c) => [c.id, c.label]))
+  return GREEK_COLUMNS.map((c) => (c.id === 'theta' && typeof sent.get('theta') === 'string' ? { ...c, label: sent.get('theta') } : c))
+}
 // a reply made before the Decay column (REQ-145) still fills the Greeks tab; its Decay cells print the em dash
 const OPTIONAL_GREEK_IDS = new Set(['decay'])
 

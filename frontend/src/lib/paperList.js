@@ -19,6 +19,7 @@ export const ALL_CLOSED_TEXT = 'No open paper positions. Turn on Show closed pos
 
 // R-20 (ADR-210) and GC-TP fix1 (ADR-211 (5)): a reason code is never shown and no reason sentence is written here; the reply's
 // own `*_reason_text` (a pinned server template, one per code) is shown beside the dash as sent. No text: UNREADABLE_TEXT.
+export const DECAY_LEFT_TODAY_HEADING = 'Decay left today'
 export const GREEK_COLUMNS = [
   { key: 'delta', label: 'Delta' }, { key: 'gamma', label: 'Gamma' }, { key: 'theta', label: 'Theta' }, { key: 'vega', label: 'Vega' },
 ]
@@ -87,11 +88,13 @@ function readSummary(s) {
   const profit = shownText(s.max_profit_text, s.extremes_reason_text)
   const loss = shownText(s.max_loss_text, s.extremes_reason_text)
   const g = s.greeks
-  const greekRow = (r) => (r && typeof r === 'object' ? Object.fromEntries(GREEK_COLUMNS.map((c) => [c.key, text(r[`${c.key}_text`])])) : null)
+  // D-12 (ADR-320 (1)): on expiry day the server's "Decay left today: Rs X" stands in the theta place; nothing computed here
+  const greekRow = (r) => (r && typeof r === 'object' ? Object.fromEntries(GREEK_COLUMNS.map((c) => [c.key, text(c.key === 'theta' && text(r.decay_left_today_text) !== null ? r.decay_left_today_text : r[`${c.key}_text`])])) : null)
   const legs = g && Array.isArray(g.legs) ? g.legs.map((l) => (l && Number.isInteger(l.contract_id) ? { contractId: l.contract_id, ...greekRow(l) } : null)) : null
   const net = g ? greekRow(g.net) : null
   const greeksOk = !!net && !!legs && !legs.includes(null) && GREEK_COLUMNS.every((c) => net[c.key] !== null && legs.every((l) => l[c.key] !== null))
   return {
+    decayLeftToday: !!g && text(g.net?.decay_left_today_text) !== null,
     breakevens: hasBe ? s.breakevens_display.map((t) => t.trim()) : null,
     breakevensReason: hasBe ? null : (Array.isArray(s.breakevens) && s.breakevens.length === 0 ? null : absent(s.breakevens_reason_text)),
     maxProfit: profit.text, maxProfitReason: profit.reason,

@@ -62,8 +62,10 @@ def test_estimate_at_zero_time_left_is_the_hand_expiry_figure():
 
 
 def test_a_leg_at_intrinsic_with_no_iv_is_valued_at_intrinsic_not_dropped():
-    # 14:50, spot 25,280: the short 25300 PE is 20 in the money and quoted 19.90, under its intrinsic 20.00 -> no IV
-    legs = ((Action.BUY, Instrument.PE, "25200", "16.00", "0.40"), (Action.SELL, Instrument.PE, "25300", "22.05", "19.90"),
+    # 14:50, spot 25,280: the short 25300 PE is 20 in the money, quoted 19.85 (under its discounted intrinsic
+    # of about 19.87) -> no IV
+    legs = ((Action.BUY, Instrument.PE, "25200", "16.00", "0.40"),
+            (Action.SELL, Instrument.PE, "25300", "22.05", "19.85"),
             (Action.SELL, Instrument.CE, "25900", "4.10", "0.05"), (Action.BUY, Instrument.CE, "26000", "2.70", "0.05"))
     when = datetime.datetime(2026, 11, 25, 14, 50, tzinfo=IST)
     m = _model(legs, "25280", when)
@@ -92,7 +94,7 @@ def test_decay_left_today_is_the_time_value_left_never_theta_per_day():
     assert position.quantize(D("0.01")) == D("100.75")
     table = build_table(m)
     total = next(r for r in table.rows if r.row_id == "TOTAL").cells[ColumnId.THETA]
-    assert total.value == D("100.75")
+    assert total.display == "100.75" and total.value.quantize(D("0.01")) == D("100.75")
     assert abs(total.value) <= D("100.75")  # never the 4,008-per-day class of figure
     heading = next(c for c in table.columns if c.id == ColumnId.THETA).label
     assert "Decay left today" in str(heading)

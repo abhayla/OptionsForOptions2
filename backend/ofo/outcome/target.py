@@ -28,7 +28,15 @@ from ofo.engine import scenario_grid
 from ofo.engine.black_scholes import Greeks
 from ofo.engine.estimate import MODEL
 from ofo.engine.legs import Instrument
-from ofo.engine.model import ModelInputs, estimate, leg_close, leg_greeks_at_unrounded
+from ofo.engine.model import (
+    ModelInputs,
+    estimate,
+    expiry_day_close,
+    leg_close,
+    leg_decay_left_today,
+    leg_greeks_at_unrounded,
+    legs_without_estimate,
+)
 from ofo.engine.target import add_booked, add_booked_all, breakevens_at, greeks_total, target_level_limits
 from ofo.errors.explanations import ExplanationText, render_explanation
 from ofo.money import PAISE
@@ -99,6 +107,9 @@ class TargetGreeks:
     #: made from the UNROUNDED total so it is rounded once (delta, theta, vega 2; gamma 4)
     units: int | None = None
     total_display: dict[str, str] | None = None
+    #: D-12 (ADR-320 (1)): on expiry day the position's "Decay left today: Rs X" at the target (level, time), shown
+    #: in place of theta; None on any other day or when a leg cannot be valued
+    decay_left_today_text: ExplanationText | None = None
 
     @property
     def basis_text(self) -> ExplanationText:
@@ -218,7 +229,22 @@ def _greeks(model: ModelInputs, level: Decimal, at: datetime.datetime) -> Target
     shown = {"delta": display_number(total.delta, 2), "gamma": display_number(total.gamma, 4),
              "theta": display_number(total.theta, 2), "vega": display_number(total.vega, 2)}
     return TargetGreeks(tuple(rows), _rounded(total), None, yields,
-                        quantities.pop() if len(quantities) == 1 else None, shown)
+                        quantities.pop() if len(quantities) == 1 else None, shown, _decay_left_text(model, level, at))
+
+
+def _decay_left_text(model: ModelInputs, level: Decimal, at: datetime.datetime) -> ExplanationText | None:
+    """D-12: the engine's per-unit Decay left today of each leg at the target, x quantity x sign (the table's signing),
+    summed, to a paisa; None when it is not expiry day at ``at``."""
+    if expiry_day_close(model, at) is None:
+        return None
+    try:
+        units = [leg_decay_left_today(model, leg, level, at) for leg in model.legs]
+    except ValueError:  # a leg with no IV and time value left: no figure, never a partial sum
+        return None
+    zero = Decimal(0)
+    total = sum((position_greeks(Greeks(zero, zero, u, zero), leg.action, leg.quantity).theta
+                 for u, leg in zip(units, model.legs, strict=True) if u is not None), zero)
+    return render_explanation("decay_left_today_text", amount=total.quantize(PAISE, rounding=ROUND_HALF_EVEN))
 
 
 def yields_of(model: ModelInputs) -> tuple[tuple[datetime.date, Decimal], ...]:
@@ -233,7 +259,7 @@ def _rounded(g: Greeks) -> Greeks:
 
 
 def _missing_iv_reason(model: ModelInputs) -> ExplanationText | None:
-    missing = [leg.contract for leg in model.legs if leg.leg.is_option and leg.iv is None]
+    missing = legs_without_estimate(model)  # D-08: the engine's one list (a leg at intrinsic is valued, not missing)
     return render_explanation("scenario_estimated_unavailable", legs=tuple(missing)) if missing else None
 
 

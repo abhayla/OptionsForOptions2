@@ -77,7 +77,7 @@
             <div v-if="greeksOpen[g.id]" class="mt-2" :data-testid="`paper-greeks-${g.id}`">
               <p v-if="stale || !g.greeks" class="text-xs text-ink-muted" data-testid="paper-greeks-reason">{{ PAPER_NO_FIGURE }} {{ stale ? PAPER_PAUSED : g.greeksReason }}</p>
               <table v-else class="w-full text-left">
-                <thead><tr><th>Instrument</th><th v-for="c in GREEK_COLUMNS" :key="c.key">{{ c.label }}</th></tr></thead>
+                <thead><tr><th>Instrument</th><th v-for="c in GREEK_COLUMNS" :key="c.key">{{ c.key === 'theta' && g.decayLeftToday ? DECAY_LEFT_TODAY_HEADING : c.label }}</th></tr></thead>
                 <tbody>
                   <tr v-for="l in g.greeks.legs" :key="l.contractId" data-testid="paper-greeks-leg">
                     <td>{{ legName(g, l.contractId) }}</td>
@@ -154,7 +154,7 @@ import PaperStops from '@/components/strategy/PaperStops.vue'
 import AfterChargesTap from '@/components/common/AfterChargesTap.vue'
 import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
 import HeldNote from '@/components/strategy/HeldNote.vue'
-import { ALL_CLOSED_TEXT, GREEK_COLUMNS, PAPER_NO_FIGURE, PAPER_PAUSED, SHOW_CLOSED_LABEL, exitRowsFor, readPaperList, visibleGroups } from '@/lib/paperList'
+import { ALL_CLOSED_TEXT, DECAY_LEFT_TODAY_HEADING, GREEK_COLUMNS, PAPER_NO_FIGURE, PAPER_PAUSED, SHOW_CLOSED_LABEL, exitRowsFor, readPaperList, visibleGroups } from '@/lib/paperList'
 import { usePaperRefresh } from '@/lib/usePaperRefresh'
 import { EXITED_NOW_LABEL, HELD_TO_EXPIRY_LABEL } from '@/lib/paperDrafts'
 import { PAPER_STATE, paperPostOutcome } from '@/lib/tracking'

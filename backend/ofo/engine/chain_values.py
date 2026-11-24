@@ -30,7 +30,15 @@ from decimal import ROUND_HALF_UP, Decimal
 from typing import Literal
 
 from ofo.engine.legs import Instrument
-from ofo.engine.model import data_label, expiry_model, greeks, greeks_unrounded, implied_vol, iv_price
+from ofo.engine.model import (
+    data_label,
+    expiry_model,
+    greeks,
+    greeks_unrounded,
+    implied_vol,
+    iv_price,
+    unit_decay_left_today,
+)
 from ofo.errors.explanations import ExplanationText
 from ofo.marketdata.forward import PARITY, ForwardQuality, ForwardUnavailable, parity_forward
 from ofo.marketdata.quote import NormalizedQuote, is_live_price
@@ -63,6 +71,8 @@ class ChainGreeks:
     vega: Decimal
     #: the unrounded gamma, set only when the 4 dp gamma reads 0.0000 but the real one is not zero (deep OTM ~0.00001)
     gamma_exact: Decimal | None = None
+    #: D-12 (ADR-320 (1)): on the expiry's own day, the per-unit Decay left today (Rs, unrounded); None other days
+    decay_left_today: Decimal | None = None
 
 
 def cell_values(kind: str, strike: Decimal, ltp: Decimal | None, spot: Decimal | None, lot_size: int) -> CellValues:
@@ -158,10 +168,11 @@ def chain_model(chain: Iterable[NormalizedQuote], spot_quote: NormalizedQuote | 
             vol = implied_vol(em, q.instrument_type, price, q.strike).iv
             g = greeks(em, q.instrument_type, q.strike, vol).greeks
             exact = greeks_unrounded(em, q.instrument_type, q.strike, vol).gamma if g.gamma == 0 else None
+            left = unit_decay_left_today(em, q.instrument_type, q.strike, vol)
         except (ValueError, ArithmeticError):
             continue
         out[q.instrument_id] = ChainGreeks(vol, g.delta, g.gamma, g.theta, g.vega,
-                                           exact if exact is not None and exact > 0 else None)
+                                           exact if exact is not None and exact > 0 else None, left)
     return ChainModel(out, "PARITY" if fwd.source == PARITY else "SPOT_FALLBACK", None,
                       None if market_closed else data_label(reading))
 

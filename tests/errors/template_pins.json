@@ -4310,5 +4310,13 @@
   "explanation:paper_closed_result_before": {
     "sha256": "fa5fe597b9c22d034ef622b2f1213f9acff66fff7fad9a728fb8d5bdb6af5568",
     "reviewed": "pending owner read"
+  },
+  "explanation:table_column_decay_left_today": {
+    "sha256": "15ef15e222b4b8b799b3da7ace784b79be6c72364df82fceee9f2c74a4f7fb91",
+    "reviewed": "pending owner read"
+  },
+  "explanation:decay_left_today_text": {
+    "sha256": "e4f1f9e008dc41c281d75abcaa2dee7b2bfa1d1e72c525ab1eee4b2d91358694",
+    "reviewed": "pending owner read"
   }
 }

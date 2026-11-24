@@ -25,7 +25,7 @@ from __future__ import annotations
 import datetime
 import logging
 from collections.abc import Mapping, Sequence
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import ROUND_HALF_EVEN, ROUND_HALF_UP, Decimal
 from typing import Annotated, Any, Literal, get_args
 
 from fastapi import APIRouter, Depends, Query
@@ -354,6 +354,9 @@ class GreekFigures(ApiModel):
     gamma_text: CatalogueText
     theta_text: CatalogueText
     vega_text: CatalogueText
+    # D-12 (ADR-320 (1)): on expiry day, the time value left until the close in rupees, replacing theta on screen
+    decay_left_today: Money | None = None
+    decay_left_today_text: CatalogueText | None = None
 
 
 class PaperLegGreeks(GreekFigures):
@@ -727,8 +730,12 @@ def _open_contracts(figures: dict,
             for p in figures["positions"] if p["net_quantity"] != 0]
 
 
-def _greek_figures(g: Any) -> dict:
-    return {"delta": g.delta, "gamma": g.gamma, "theta": g.theta, "vega": g.vega,
+def _greek_figures(g: Any, left: Decimal | None = None) -> dict:
+    shown = None if left is None else left.quantize(PAISE, rounding=ROUND_HALF_EVEN)
+    return {"decay_left_today": shown,
+            "decay_left_today_text": None if shown is None else render_explanation("decay_left_today_text",
+                                                                                    amount=shown),
+            "delta": g.delta, "gamma": g.gamma, "theta": g.theta, "vega": g.vega,
             "delta_text": display_number(g.delta, 2), "gamma_text": display_number(g.gamma, 4),
             "theta_text": display_number(g.theta, 2), "vega_text": display_number(g.vega, 2)}
 
@@ -746,10 +753,13 @@ def _greeks(figures: dict, found: dict[int, tracked_contracts.TrackedContract], 
     got = paper_greeks.book_greeks(snapshot, underlying, _open_contracts(figures, found))
     if got.net is None or got.legs is None:
         return {"greeks": None, "greeks_reason": got.reason, "greeks_reason_text": greeks_reason_text(got.reason)}
-    legs = [{"contract_id": p["contract_id"]} | _greek_figures(g) for p, g in zip(held, got.legs, strict=True)]
+    lefts = got.legs_left_today or (None,) * len(got.legs)
+    legs = [{"contract_id": p["contract_id"]} | _greek_figures(g, x) for p, g, x in zip(held, got.legs, lefts,
+                                                                                      strict=True)]
     expiries = len({p["expiry"] for p in held})
     basis = render_explanation("paper_greeks_across_expiries", count=expiries) if expiries > 1 else None
-    return {"greeks": {"legs": legs, "net": _greek_figures(got.net), "expiry_count": expiries, "basis_text": basis},
+    return {"greeks": {"legs": legs, "net": _greek_figures(got.net, got.net_left_today), "expiry_count": expiries,
+                       "basis_text": basis},
             "greeks_reason": None,
             "greeks_reason_text": None}
 

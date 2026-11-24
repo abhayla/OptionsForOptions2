@@ -105,7 +105,9 @@ const onBox = (e) => {
           <div class="text-ink-muted">Greeks at target</div>
           <div v-if="t.greeks.basis_text && t.greeks.total" class="text-xs text-ink-muted" data-testid="target-greeks-basis">{{ t.greeks.basis_text }}</div>
           <div v-if="t.greeks.total" class="flex flex-wrap gap-3 tabular-nums" data-testid="target-greeks-total">
-            <span v-for="g in GREEKS" :key="g"><span class="text-ink-muted">{{ g }}</span> {{ t.greeks.total_display?.[g] ?? t.greeks.total[g] }}</span>
+            <span v-for="g in GREEKS.filter((k) => k !== 'theta' || !t.greeks.decay_left_today_text)" :key="g"><span class="text-ink-muted">{{ g }}</span> {{ t.greeks.total_display?.[g] ?? t.greeks.total[g] }}</span>
+            <!-- D-12 (ADR-320 (1)): on expiry day the server's "Decay left today: Rs X" replaces theta -->
+            <span v-if="t.greeks.decay_left_today_text" data-testid="target-decay-left-today">{{ t.greeks.decay_left_today_text }}</span>
           </div>
           <div v-else-if="t.greeks.unavailable_text" class="text-xs text-ink-muted" data-testid="target-greeks-unavailable">{{ t.greeks.unavailable_text }}</div>
         </div>

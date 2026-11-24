@@ -24,7 +24,7 @@ import StrategyPriceChart from './StrategyPriceChart.vue'
 import StrategyTable from './StrategyTable.vue'
 import ClosedRows from './ClosedRows.vue'
 import {
-  COMPACT_COLUMNS, GREEK_COLUMNS, PAYOFF_STEPS, compactRows, greekModeHeading, greekRows, greekText, payoffLevelRows, payoffStepTable, signOf,
+  COMPACT_COLUMNS, GREEK_COLUMNS, PAYOFF_STEPS, greekColumns, compactRows, greekModeHeading, greekRows, greekText, payoffLevelRows, payoffStepTable, signOf,
 } from '@/lib/chartCard'
 import { BOOKED_SWITCH_LABEL } from '@/lib/targetBlock'
 import { BEFORE_CHARGES } from '@/lib/tracking'
@@ -311,7 +311,7 @@ const toneOf = (v) => ({ profit: 'text-profit', loss: 'text-loss' })[signOf(v)] 
         <thead>
           <tr class="border-b border-line text-left text-ink-muted">
             <th scope="col" class="py-2 font-medium">Instrument</th>
-            <th v-for="c in GREEK_COLUMNS" :key="c.id" scope="col" class="py-2 text-right font-medium" data-testid="greeks-head">{{ c.label }}<FigureHint v-if="c.id === 'decay' || c.id === 'theta'" :id="c.id" /></th>
+            <th v-for="c in greekColumns(props.table)" :key="c.id" scope="col" class="py-2 text-right font-medium" data-testid="greeks-head">{{ c.label }}<FigureHint v-if="c.id === 'decay' || c.id === 'theta'" :id="c.id" /></th>
           </tr>
         </thead>
         <tbody>

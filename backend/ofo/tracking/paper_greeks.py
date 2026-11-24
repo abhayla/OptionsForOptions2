@@ -24,7 +24,7 @@ from typing import Literal
 from ofo.engine.black_scholes import Greeks
 from ofo.engine.inputs import LegInput, StrategyInput
 from ofo.engine.legs import Action, Instrument
-from ofo.engine.model import SpotRefused, leg_greeks_unrounded, model_inputs
+from ofo.engine.model import SpotRefused, expiry_day_close, leg_decay_left_today, leg_greeks_unrounded, model_inputs
 from ofo.marketdata.forward import ForwardUnavailable
 from ofo.outcome.snapshot import MarketSnapshot
 from ofo.scenario.spot import spot_reading
@@ -42,6 +42,10 @@ class BookGreeks:
     legs: tuple[Greeks, ...] | None
     net: Greeks | None
     reason: GreeksReason | None
+    # D-12 (ADR-320 (1)): on expiry day each contract's and the net "Decay left today" in rupees (signed like theta,
+    # unrounded, from the engine's ``leg_decay_left_today``); None on any other day
+    legs_left_today: tuple[Decimal, ...] | None = None
+    net_left_today: Decimal | None = None
 
 
 def _rounded(g: Greeks) -> Greeks:
@@ -71,6 +75,11 @@ def book_greeks(snapshot: MarketSnapshot, underlying: str, contracts: Sequence[O
     except (ValueError, ArithmeticError):  # the model refusing a leg's inputs: no figure, never a partial net
         return BookGreeks(None, None, MODEL_REFUSED)
     zero = Decimal(0)
+    left = None
+    if expiry_day_close(model) is not None:  # D-12: per unit x quantity x sign, the table's own signing
+        left = tuple(position_greeks(Greeks(zero, zero, leg_decay_left_today(model, leg), zero), leg.action,
+                                     leg.quantity).theta for leg in legs)
     net = Greeks(sum((g.delta for g in positions), zero), sum((g.gamma for g in positions), zero),
                  sum((g.theta for g in positions), zero), sum((g.vega for g in positions), zero))
-    return BookGreeks(tuple(_rounded(g) for g in positions), _rounded(net), None)
+    return BookGreeks(tuple(_rounded(g) for g in positions), _rounded(net), None, left,
+                      None if left is None else sum(left, zero))

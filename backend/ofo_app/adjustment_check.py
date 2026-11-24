@@ -66,7 +66,7 @@ from ofo.engine.extremes import ContractTerms
 from ofo.engine.extremes_charges import NOT_PRICED, RATES_UNAVAILABLE, book_after_charges, open_exit_charges
 from ofo.engine.legs import Action, Instrument, Leg
 from ofo.engine.metrics import UNLIMITED
-from ofo.engine.model import delta_at_intrinsic
+from ofo.engine.model import INTRINSIC_TICK, delta_at_intrinsic
 from ofo.errors.explanations import (
     DAY_RULE_GENERIC_TEXT,
     LEVEL_WATCH_LABEL_TEXT,
@@ -249,7 +249,6 @@ def prices_fresh(ctx: Any) -> bool | None:
 
 
 #: ADR-268 (1): an option price within one tick of its intrinsic value has no time value left (NSE/BSE option tick)
-INTRINSIC_TICK: Final = Decimal("0.05")
 
 
 def _abs_delta(market: MarketInputs, leg: Any, ltp: Decimal | None, spot: Decimal | None) -> Decimal | None:

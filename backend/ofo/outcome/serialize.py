@@ -183,6 +183,7 @@ def _target(t: Any, margin: Any = None) -> dict[str, Any]:
                                             "total": _greeks_out(t.greeks.total), "unavailable": t.greeks.unavailable,
                                             "unavailable_text": t.greeks.unavailable_text,
                                             "basis_text": t.greeks.basis_text,
+                                            "decay_left_today_text": t.greeks.decay_left_today_text,
                                             "total_display": t.greeks.total_display,
                                             "dividend_yields": {e.isoformat(): _s(q) for e, q in t.greeks.dividend_yields}}
     return {"limits": _limits(t.limits),

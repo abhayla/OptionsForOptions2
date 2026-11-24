@@ -161,6 +161,8 @@ class ChainCellOut(ApiModel):
     delta: Money | None  # per unit, 4 decimals
     gamma: Money | None
     theta: Money | None  # per calendar day
+    #: D-12 (ADR-320 (1)): on expiry day, Rs per unit of time value left until the close (shown in Theta's place)
+    decay_left_today: Money | None = None
     vega: Money | None  # per 1 volatility point
 
 
@@ -358,7 +360,7 @@ def _permission(catalogue: ChainCatalogue, contract: PickableContract) -> tuple[
     return False, value if value in _PERMISSIONS else "unknown"  # type: ignore[return-value]
 
 
-_NO_GREEKS: dict[str, Decimal | None] = dict.fromkeys(("iv", "delta", "gamma", "theta", "vega"))
+_NO_GREEKS: dict[str, Decimal | None] = dict.fromkeys(("iv", "delta", "gamma", "theta", "vega", "decay_left_today"))
 
 
 def _gamma_shown(g: ChainGreeks) -> Decimal:
@@ -379,7 +381,8 @@ def _greek_fields(quote: NormalizedQuote | None, model: ChainModel | None, instr
         return dict(_NO_GREEKS)
     return {"iv": (g.iv * _PERCENT).quantize(PAISE), "delta": g.delta.quantize(GREEK_STEP),
             "gamma": _gamma_shown(g), "theta": g.theta.quantize(GREEK_STEP),
-            "vega": g.vega.quantize(GREEK_STEP)}
+            "vega": g.vega.quantize(GREEK_STEP),
+            "decay_left_today": None if g.decay_left_today is None else g.decay_left_today.quantize(PAISE)}
 
 
 def _last_trade_at(ctx: MarketContext, instrument_id: str, *, market_closed: bool) -> datetime.datetime | None:

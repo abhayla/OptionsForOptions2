@@ -25,7 +25,7 @@ import MarketClosedBanner from '@/components/states/MarketClosedBanner.vue'
 import { useSettingsValues } from '@/stores/settingsValues'
 import { strikeRangesOf } from '@/lib/settingsValues'
 import { NOT_LIVE_LABEL, VALUE_UNAVAILABLE, chainRequest, daysLeft, useChainAnswer } from '@/composables/useChainLive'
-import { GREEKS_BASIS_LINES, GREEKS_MISSING_LINES, MONEYNESS, NO_FILTERS, anyServerFilter, fieldsFor, filterParams, filterRows, greeksStaleLabel } from '@/lib/chainDisplay'
+import { GREEKS_BASIS_LINES, GREEKS_MISSING_LINES, MONEYNESS, NO_FILTERS, anyServerFilter, fieldsFor, filterParams, onExpiryDay, filterRows, greeksStaleLabel } from '@/lib/chainDisplay'
 const ROWS_MISSING_LABELS = {
   SPOT_MISSING: 'The underlying price is missing, so no strikes can be chosen yet.',
   EXPIRY_UNKNOWN: 'This expiry is not in the catalogue.',
@@ -54,7 +54,7 @@ const strikeRanges = computed(() => (maxEachSide.value === null ? [] : strikeRan
 watch(maxEachSide, (max) => { if (max !== null && strikesEachSide.value === null) strikesEachSide.value = max }, { immediate: true })
 const ask = (exp) => follow(chainRequest(underlying.value, exp, strikesEachSide.value, maxEachSide.value, filterParams(filters.value)))
 const filters = ref({ ...NO_FILTERS })
-const SIDE_FIELDS = computed(() => fieldsFor(details.value))
+const SIDE_FIELDS = computed(() => onExpiryDay(fieldsFor(details.value), view.value)) // D-12: Theta's place on expiry day
 
 async function loadExpiries() {
   const mine = ++expirySeq

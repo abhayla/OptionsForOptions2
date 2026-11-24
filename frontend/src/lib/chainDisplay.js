@@ -12,10 +12,18 @@ export const DETAIL_FIELDS = [
   ['delta', 'Delta'], ['gamma', 'Gamma'], ['theta', 'Theta'], ['vega', 'Vega'],
 ]
 
+/** D-12 (ADR-320 (1)): on expiry day the server sends each cell's `decay_left_today` (Rs per unit left until the close);
+ *  the Theta column is then that figure under this heading. Nothing is computed here. */
+export const DECAY_LEFT_TODAY_FIELD = ['decay_left_today', 'Decay left today (Rs/unit)']
+export const expiryDayView = (view) => (view?.rows ?? []).some((r) => [r?.ce, r?.pe].some((c) => c?.decay_left_today != null))
+
 /** The columns per side: AC-2's defaults, plus AC-3's fields when Details is on. Takes no user level. */
 export function fieldsFor(details) {
   return details ? [...DEFAULT_FIELDS, ...DETAIL_FIELDS] : [...DEFAULT_FIELDS]
 }
+
+/** D-12: the columns with Theta's place taken by DECAY_LEFT_TODAY_FIELD on an expiry-day view; else as given. */
+export const onExpiryDay = (fields, view) => (expiryDayView(view) ? fields.map((f) => (f[0] === 'theta' ? DECAY_LEFT_TODAY_FIELD : f)) : fields)
 
 /** The line naming what the engine's IV and Greeks rest on, or why there are none (ADR-061: never silent). */
 export const GREEKS_BASIS_LINES = {
@@ -35,7 +43,7 @@ export const GREEK_KEYS = ['iv', 'delta', 'gamma', 'theta', 'vega']
 export function greeksStaleLabel(view, key) {
   if (view?.market_closed === true) return '' // ADR-177: the one market-closed banner carries it
   const label = view?.greeks_label
-  return GREEK_KEYS.includes(key) && typeof label === 'string' ? label : ''
+  return GREEK_KEYS.includes(key === DECAY_LEFT_TODAY_FIELD[0] ? 'theta' : key) && typeof label === 'string' ? label : ''
 }
 
 /** The server's row.moneyness is read on the calls' side: ITM calls are OTM puts. */

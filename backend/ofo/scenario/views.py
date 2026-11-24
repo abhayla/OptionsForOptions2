@@ -24,7 +24,7 @@ from ofo.charges import ChargeRates
 from ofo.charges.round_trip import round_trip_charges
 from ofo.engine import scenario_grid
 from ofo.engine.estimate import EstimateAssumptions
-from ofo.engine.model import ModelInputs, estimate, join_labels
+from ofo.engine.model import ModelInputs, estimate, join_labels, legs_without_estimate
 from ofo.marketdata.forward import FALLBACK_LABEL
 from ofo.scenario.levels import LevelSet
 from ofo.money import PAISE as _QUOTE
@@ -67,7 +67,7 @@ class ScenarioValues:
 
 
 def _missing_iv(inputs: ModelInputs) -> list[str]:
-    return [leg.contract for leg in inputs.legs if leg.leg.is_option and leg.iv is None]
+    return legs_without_estimate(inputs)  # D-08: a leg with no time value left is valued at intrinsic, not missing
 
 
 def scenario_values(level_set: LevelSet, inputs: ModelInputs, view: View = DEFAULT_VIEW, *,
