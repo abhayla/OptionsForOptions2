@@ -164,3 +164,69 @@ describe('D-60 A5: a step onto a contract another leg holds with the same action
     expect(t(w, 'dup-question').exists()).toBe(true)
   })
 })
+
+// D-60 round 2 (review A5 findings 1-3): exactly one live question per move, moved legs checked against each other
+describe('D-60 round 2: a newer move cancels the open question', () => {
+  const step = (w) => w.vm.$.setupState.editLeg({ control: 'step', index: 0, direction: 1 })
+  const track = (p) => { const s = { done: false }; p.then(() => { s.done = true }); return s }
+
+  it('a second step onto a FREE contract closes the old question, settles the first edit and shows the second move', async () => {
+    const w = await openPage()
+    answers['POST /strategies/leg-edit'] = landing(SELL_PE)
+    const first = track(step(w))
+    await flushPromises()
+    expect(all(w, 'dup-question')).toHaveLength(1)
+    answers['POST /strategies/leg-edit'] = landing(FREE)
+    const second = track(step(w))
+    await flushPromises()
+    expect(t(w, 'dup-question').exists()).toBe(false)
+    expect(first.done).toBe(true) // no hang: the first edit's finally ran
+    expect(second.done).toBe(true)
+    expect(ids(w)[0]).toBe(FREE.instrument_id)
+    expect(lotsOf(w)).toEqual([1, 1, 1, 1])
+  })
+
+  it('a second step onto a held contract leaves ONE question and answering it applies to the second move', async () => {
+    const w = await openPage()
+    answers['POST /strategies/leg-edit'] = landing(SELL_PE)
+    const first = track(step(w))
+    await flushPromises()
+    answers['POST /strategies/leg-edit'] = landing(SELL_PE, { lots: 3 })
+    const second = track(step(w))
+    await flushPromises()
+    expect(all(w, 'dup-question')).toHaveLength(1)
+    expect(first.done).toBe(true)
+    await t(w, 'dup-increase').trigger('click')
+    await flushPromises()
+    expect(second.done).toBe(true)
+    expect(ids(w)).toEqual([BEFORE[1], SELL_PE.instrument_id, BEFORE[3]])
+    expect(lotsOf(w)).toEqual([1, 4, 1]) // the second move's 3 lots, not the first move's 1
+  })
+
+  it('Width collapsing the two BUY wings onto one contract asks (moved against moved)', async () => {
+    const w = await openPage()
+    answers['POST /strategies/leg-edit'] = (body) => Promise.resolve({ data: {
+      seq: body.seq, shape: null, shape_name: null, outcome: null, controls: { shift: true, width: true, hedge: true }, shift_total: 0,
+      legs: real.legs.map((l, i) => replyLeg(l, i === 1 || i === 3 ? { instrument_id: FREE.instrument_id, instrument: 'CE', strike: '22850' } : {})),
+    } })
+    await t(w, 'width-minus').trigger('click')
+    await flushPromises()
+    expect(all(w, 'dup-question')).toHaveLength(1)
+    await t(w, 'dup-cancel').trigger('click')
+    await flushPromises()
+    expect(ids(w)).toEqual(BEFORE)
+  })
+
+  it('Hedge keeps the leg count and order: moving one hedge leg to a free contract asks nothing (finding 3)', async () => {
+    const w = await openPage()
+    answers['POST /strategies/leg-edit'] = (body) => Promise.resolve({ data: {
+      seq: body.seq, shape: null, shape_name: null, outcome: null, controls: { shift: true, width: true, hedge: true }, shift_total: 0,
+      legs: real.legs.map((l, i) => replyLeg(l, i === 1 ? { instrument_id: FREE.instrument_id, hedge: true } : {})),
+    } })
+    await t(w, 'hedge-plus').trigger('click')
+    await flushPromises()
+    expect(t(w, 'dup-question').exists()).toBe(false)
+    expect(ids(w)[1]).toBe(FREE.instrument_id)
+    expect(ids(w).length).toBe(4)
+  })
+})
