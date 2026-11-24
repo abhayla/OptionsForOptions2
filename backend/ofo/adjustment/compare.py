@@ -145,6 +145,9 @@ class Context:
     #: warning, and ``warn_cost_off`` (when set) is the reason the cost % cells carry
     warn_cost_pct: Decimal | None = None
     warn_cost_off: ExplanationText | None = None
+    #: D-12 (ADR-320 (1)): on expiry day, trading symbol -> the engine's per-unit Decay left today (unsigned,
+    #: ``unit_decay_left_today``); the Theta row then shows the position's Decay left today. None: another day
+    leg_decay_left: Mapping[str, Decimal] | None = None
 
 
 @dataclass(frozen=True)
@@ -471,7 +474,21 @@ class _Rows:
         for name, v in total.items():
             shown = v.quantize(GREEK_STEP, rounding=ROUND_HALF_EVEN)
             out[name] = _number(shown, shown if name == "theta" else abs(shown))
+        if self.ctx.leg_decay_left is not None:  # D-12: expiry day: the theta place is the rupees left until the close
+            out["theta"] = self._decay_left()
         return out
+
+    def _decay_left(self) -> Cell:
+        """D-12 (ADR-320 (1)): the engine's per-unit Decay left today x lots x lot size x sign, summed over the legs
+        after; a leg without the figure: a dash, never a partial sum."""
+        left = Decimal(0)
+        for x in self.b.after:
+            unit = self.ctx.leg_decay_left.get(x.tradingsymbol)  # type: ignore[union-attr]
+            if unit is None:
+                return _dash(render_explanation("adjust_cmp_no_greeks", leg=x.tradingsymbol))
+            left += unit * x.lots * self.lot * (1 if x.side == "BUY" else -1)
+        shown = left.quantize(PAISE, rounding=ROUND_HALF_EVEN)
+        return Cell(render_explanation("decay_left_today_text", amount=shown), shown, None, shown)
 
     def adjustments(self) -> Cell:
         if self.ctx.adjustments_used is None:
@@ -616,7 +633,9 @@ def compare(columns: Sequence[Column], ctx: Context, before: WholeTradeAfter | N
         for name in ("delta", "gamma", "theta", "vega"):
             cells[name][a] = g if isinstance(g, Cell) else g[name]
         cells["adjustments"][a], cells["liquidity"][a], cells["fresh"][a] = r.adjustments(), r.liquidity(), r.fresh()
-    criteria = tuple(Criterion(row, group, render_explanation(f"adjust_cmp_row_{row}"),
+    criteria = tuple(Criterion(row, group, render_explanation("table_column_decay_left_today")
+                               if row == "theta" and ctx.leg_decay_left is not None  # D-12: the row is renamed
+                               else render_explanation(f"adjust_cmp_row_{row}"),
                                render_explanation(f"adjust_cmp_lead_{row}"), leaders(cells[row], direction),
                                cells[row]) for row, group, direction in ROWS)
     m = sum(1 for c in criteria if c.leaders)

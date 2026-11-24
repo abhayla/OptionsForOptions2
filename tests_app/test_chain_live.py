@@ -247,7 +247,7 @@ async def test_ac1_core_two_pushes_for_a_five_strike_chain_with_changing_ltps_an
                              "change": None, "oi": 1000, "oi_change": None, "volume": 500, "health": "stale",
                              "at": T0.isoformat(), "last_trade_at": None, "permitted": False,
                              "unavailable_reason": "unknown", "iv": None, "delta": None, "gamma": None, "theta": None,
-                             "vega": None}
+                             "vega": None, "decay_left_today": None}
     assert second["rows"][2]["pe"]["health"] == "available"
 
 
@@ -264,7 +264,7 @@ async def test_ac2_default_columns_present_and_change_null_without_a_previous_cl
                                                         "oi_change", "volume", "health", "at", "last_trade_at",
                                                         "permitted",
                                                         "unavailable_reason", "iv", "delta", "gamma", "theta",
-                                                        "vega"})}
+                                                        "vega", "decay_left_today"})}
     assert [c["change"] for c in cells] == [None] * 10
     assert set(channel.sent[0]) == {"state", "underlying", "expiry", "spot", "spot_at", "spot_health", "atm_strike",
                                     "rows_missing", "rows", "answered_at", "market_closed", "last_price_at",
@@ -358,7 +358,8 @@ async def test_ac2_a_held_contract_without_a_quote_reads_unavailable():
                                                 "volume": None, "health": "unavailable", "at": None,
                                                 "last_trade_at": None,
                                                     "permitted": False, "unavailable_reason": "unknown",
-                                                "iv": None, "delta": None, "gamma": None, "theta": None, "vega": None}
+                                                "iv": None, "delta": None, "gamma": None, "theta": None, "vega": None,
+                                                "decay_left_today": None}
 
 
 @pytest.mark.parametrize("bad", [0, 16, -1, "x", "5", True, 2.0, None])
@@ -1221,7 +1222,8 @@ def _rig_at(at: datetime.datetime):
     wall = Clock(at)
     feed = LiveFeed(MarketContext(provider, wall, Decimal("0.065")), FanOut(provider))
     channel, mono = FakeChannel(), Clock(1000.0)
-    push = ChainPush(channel, feed, monotonic=mono, now=wall, reader=Reader(), poll=0.005, read_settings=settings_with())
+    push = ChainPush(channel, feed, monotonic=mono, now=wall, reader=Reader(), poll=0.005,
+                     read_settings=settings_with())
     return provider, channel, push
 
 

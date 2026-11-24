@@ -140,7 +140,7 @@ class ChainModel:
 
 def chain_model(chain: Iterable[NormalizedQuote], spot_quote: NormalizedQuote | None, expiry: datetime.date,  # noqa: PLR0913
                 valuation: datetime.datetime, rate: Decimal, quality: ForwardQuality, *,
-                market_closed: bool = False) -> ChainModel:
+                market_closed: bool = False, decay_until: datetime.datetime | None = None) -> ChainModel:
     """instrument_id -> engine Greeks for each option of the expiry whose price gives an implied volatility, with the
     forward's basis; no Greeks (and the reason) when the spot or the expiry's forward is refused. ``market_closed``
     (ADR-119 calendar): the held close is the answer (ADR-197, ADR-200 (2)), so no "stale since" label is made; the
@@ -168,7 +168,7 @@ def chain_model(chain: Iterable[NormalizedQuote], spot_quote: NormalizedQuote | 
             vol = implied_vol(em, q.instrument_type, price, q.strike).iv
             g = greeks(em, q.instrument_type, q.strike, vol).greeks
             exact = greeks_unrounded(em, q.instrument_type, q.strike, vol).gamma if g.gamma == 0 else None
-            left = unit_decay_left_today(em, q.instrument_type, q.strike, vol)
+            left = unit_decay_left_today(em, q.instrument_type, q.strike, vol, decay_until)
         except (ValueError, ArithmeticError):
             continue
         out[q.instrument_id] = ChainGreeks(vol, g.delta, g.gamma, g.theta, g.vega,

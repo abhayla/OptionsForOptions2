@@ -163,6 +163,9 @@ class MarketInputs:
     #: ADR-280: the market-wide inputs (``regime_inputs.RegimeInputs``: margin, VIX, VIX percentile, ADX); None = not
     #: read, so the triggers that read them answer not checked
     regime: Any = None
+    #: D-12 (ADR-320 (1)): on the position's expiry day, trading symbol -> the engine's per-unit Decay left today
+    #: (``unit_decay_left_today``, the chain model's own figure); None on any other day
+    leg_decay_left: Mapping[str, Decimal] | None = None
 
     def feed_at(self, judged: datetime.datetime) -> SourceReading | None:
         """The feed reading as of ``judged``: a LIVE quote is stamped at the judging instant (``feed_reading``'s one
@@ -758,7 +761,8 @@ async def _compare_reply(columns: list[Column], tracked: Tracked, spot: Decimal,
         before_margin = _margin_read(await _margin(margin_of, unchanged, market))
     warn_pct, warn_off = warn_threshold(guards)  # REQ-159 AC-6: no playbook / no level -> no warning and a reason
     ctx = Context(position, spot, market.chain, rates, pop_on, before_margin, market.leg_greeks,
-                  tracked.adjustments_used, prefs.compare, limits, plan_max(guards), warn_pct, warn_off)
+                  tracked.adjustments_used, prefs.compare, limits, plan_max(guards), warn_pct, warn_off,
+                  leg_decay_left=market.leg_decay_left)
     return _compare_block(compare(columns, ctx, before.after, before.charges_known, before.near))
 
 

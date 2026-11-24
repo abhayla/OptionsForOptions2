@@ -466,16 +466,25 @@ def expiry_day_close(model: ModelInputs, at: datetime.datetime | None = None) ->
     return close if when < close else None
 
 
-def unit_decay_left_today(em: ExpiryModel, kind: Instrument, strike: Decimal, vol: Decimal) -> Decimal | None:
-    """D-12 (ADR-320 (1)) for one contract of an expiry (the option chain): per-unit UNSIGNED, UNROUNDED Decay left
-    today at the live spot = its intrinsic value at the close minus its model value now (minus its time value), when
-    the expiry IS today (IST) and the valuation is before the 15:30 close; else None (theta stays)."""
+def unit_decay_left_today(em: ExpiryModel, kind: Instrument, strike: Decimal, vol: Decimal,
+                          until: datetime.datetime | None = None) -> Decimal | None:
+    """D-12 (ADR-320 (1)) for one contract of an expiry (the option chain, the adjustment drawer): per-unit UNSIGNED,
+    UNROUNDED Decay left today at the live spot = its value at today's close minus its model value now. The expiry IS
+    today (IST) and the valuation is before its 15:30 close: its intrinsic value at the close (minus its whole time
+    value). A later expiry with ``until`` (today's close of the position's nearest expiry, from
+    :func:`expiry_day_close`): its decay over the hours left today, as :func:`leg_decay_left_today` values a later
+    leg. Else None (theta stays)."""
     e = _require_expiry(em)
     f = e.forward
     when = f.valuation_time
-    if when.astimezone(IST).date() != e.expiry or when >= datetime.datetime.combine(e.expiry, _bs.EXPIRY_CLOSE):
+    close = datetime.datetime.combine(e.expiry, _bs.EXPIRY_CLOSE)
+    if until is not None and when < until < close:
+        then = _bs.year_fraction(until, e.expiry, days_in_year=f.days_in_year)
+    elif when.astimezone(IST).date() == e.expiry and when < close:
+        then = Decimal(0)
+    else:
         return None
-    return _bs.bs_decay_unrounded(kind, e.level, strike, f.years, Decimal(0), f.rate, vol,
+    return _bs.bs_decay_unrounded(kind, e.level, strike, f.years, then, f.rate, vol,
                                   dividend_yield=e.dividend_yield)
 
 

@@ -52,3 +52,17 @@ describe('D-12 paper Greeks pick', () => {
     expect(g.greeks.net.theta).toBe(s.greeks.net.theta_text)
   })
 })
+
+// D-12 drawer: the No-change Compare reply's Theta row as the server sends it on expiry day vs another day
+import { replyRows } from '@/lib/adjustDrawer'
+
+describe('D-12 adjustment drawer', () => {
+  const reply = (label, text) => ({ criteria: [{ id: 'theta', label, values: { 'A-36': { text, unavailable_reason: null } } }] })
+  it('shows the server row name and its Decay left today text on expiry day, Theta otherwise', () => {
+    const today = replyRows(reply('Decay left today (Rs)', 'Decay left today: ₹100.75')).find((r) => r.id === 'theta')
+    expect(today.label).toBe('Decay left today (Rs)')
+    expect(today.value).toBe('Decay left today: ₹100.75')
+    const other = replyRows(reply('Theta', '4,008.00')).find((r) => r.id === 'theta')
+    expect(other.label).toBe('Theta')
+  })
+})

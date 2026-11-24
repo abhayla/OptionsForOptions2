@@ -44,7 +44,7 @@ from ofo.marketdata.forward import ForwardUnavailable, parity_forward
 from ofo.marketdata.quote import planning_price_usable
 from ofo.marketdata.spot_source import SourceReading, SourceState, feed_is_live, feed_reading, resolve_spot
 from ofo.rules.inputs import DataHealth
-from ofo.timeutil import IST, SESSION_CLOSE
+from ofo.timeutil import EXPIRY_CLOSE, IST, SESSION_CLOSE
 from ofo.tracking.orderbook import net_positions
 
 from ofo_app import (
@@ -633,7 +633,7 @@ async def read_market(tracked: Tracked, ctx: Any, *, extra_ids: Iterable[str] = 
         reach[expiry] = rm
     if later is not None:  # that expiry's OWN chain model (its forward, its time), from the same frozen read
         later_model = chain_model(list(frozen.later.values()), spot_q, later, now, ctx.rate, ctx.forward_quality,
-                                  market_closed=closed)
+                                  market_closed=closed, decay_until=_today_close(expiry, now))
         if (rm := reach_model(frozen.later, spot_q, later, now, ctx, later_model.greeks)) is not None:
             reach[later] = rm
 
@@ -665,7 +665,28 @@ async def read_market(tracked: Tracked, ctx: Any, *, extra_ids: Iterable[str] = 
                         index_day_open(frozen.day, now), reach, ctx.carry_gap_pct, ctx.s02_delta_per_lot,
                         ctx.s12_percent, spot_q, feed_is_live(provider, now),
                         *leg_prices_state(ctx, quotes, ids, position),
-                        regime=await regime_inputs.read_regime(position.underlying))  # ADR-280: margin, VIX, ADX
+                        regime=await regime_inputs.read_regime(position.underlying),  # ADR-280: margin, VIX, ADX
+                        leg_decay_left=None if _today_close(expiry, now) is None else _decay_left(
+                            ids, model.greeks, later_symbols if later is not None else {},
+                            later_model.greeks if later is not None else {}))
+
+
+def _today_close(expiry: datetime.date, now: datetime.datetime) -> datetime.datetime | None:
+    """D-12 (ADR-320 (1)): the position's nearest expiry is today and its close is ahead -> today's close, else None."""
+    close = datetime.datetime.combine(expiry, EXPIRY_CLOSE)
+    return close if expiry == ist_today(now) and now < close else None
+
+
+def _decay_left(ids: Mapping[str, str], greeks: Mapping[str, Any], later_ids: Mapping[str, str],
+                later_greeks: Mapping[str, Any]) -> dict[str, Decimal]:
+    """D-12: trading symbol -> the chain model's per-unit Decay left today, for every contract that has one."""
+    out = {}
+    for symbols, model in ((ids, greeks), (later_ids, later_greeks)):
+        for sym, iid in symbols.items():
+            g = model.get(iid)
+            if g is not None and g.decay_left_today is not None:
+                out[sym] = g.decay_left_today
+    return out
 
 
 async def read_market_more(tracked: Tracked, ctx: Any, extra_ids: Iterable[str]) -> MarketInputs | None:

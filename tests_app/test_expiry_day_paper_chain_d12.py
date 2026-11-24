@@ -26,17 +26,18 @@ LEGS = ((1, Instrument.PE, "25200", 65, "3.10"), (2, Instrument.PE, "25300", -65
         (3, Instrument.CE, "25900", -65, "1.05"), (4, Instrument.CE, "26000", 65, "0.60"))
 
 
-def _quote(iid, kind, expiry, strike, ltp, at):
-    return NormalizedQuote(iid, "NIFTY", "NSE", "NSE_FO" if kind else "INDICES", kind, expiry, strike, D(ltp), None,
-                           None, None, None, None, None, None, None, None, None, at, SourceMetadata("fake", "fake-feed"),
-                           DataHealth.AVAILABLE)
+def _quote(iid, kind, strike, ltp, at):
+    """A live quote of ``iid`` (``kind`` None: the index) on EXPIRY."""
+    return NormalizedQuote(iid, "NIFTY", "NSE", "NSE_FO" if kind else "INDICES", kind, kind and EXPIRY, strike, D(ltp),
+                           None, None, None, None, None, None, None, None, None, None, at,
+                           SourceMetadata("fake", "fake-feed"), DataHealth.AVAILABLE)
 
 
 def _paper(at: datetime.datetime):
-    spot = _quote("NIFTY-INDEX", None, None, None, "25600", at)
+    spot = _quote("NIFTY-INDEX", None, None, "25600", at)
     fwd = spot_fallback_forward(EXPIRY, D("25600"), at, at, D("0.065"))
     snapshot = SimpleNamespace(spot=spot, valuation=at, rate=D("0.065"), forwards={EXPIRY: fwd},
-                               legs={f"k{cid}": SimpleNamespace(quote=_quote(f"k{cid}", kind, EXPIRY, D(k), ltp, at))
+                               legs={f"k{cid}": SimpleNamespace(quote=_quote(f"k{cid}", kind, D(k), ltp, at))
                                      for cid, kind, k, _q, ltp in LEGS})
     figures = {"unbooked": D(0), "pause_reason": None,
                "positions": [{"contract_id": cid, "net_quantity": q, "instrument": kind.value, "strike": D(k),

@@ -8,6 +8,7 @@ import dataclasses
 from decimal import Decimal as D
 
 from ofo.adjustment.compare import compare
+from ofo.errors.explanations import render_explanation
 from test_approach_compare import build_columns, row
 
 
@@ -19,7 +20,7 @@ def _units(cols):
 
 
 def test_expiry_day_theta_row_is_decay_left_today_summed_per_approach():
-    sc, cols, ctx = build_columns("ADJ-02")
+    _sc, cols, ctx = build_columns("ADJ-02")
     units = _units(cols)
     got = row(compare(cols, dataclasses.replace(ctx, leg_decay_left=units)), "theta")
     assert str(got.label) == "Decay left today (Rs)"
@@ -49,5 +50,4 @@ def test_a_leg_with_no_decay_figure_is_a_dash_never_a_partial_sum():
 
 
 def _rupees(value: D) -> str:
-    from ofo.errors.explanations import render_explanation
     return str(render_explanation("decay_left_today_text", amount=value)).removeprefix("Decay left today: ")
