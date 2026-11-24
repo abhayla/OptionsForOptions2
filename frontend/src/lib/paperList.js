@@ -62,6 +62,21 @@ function readPosition(p, underlying) {
   }
 }
 
+// D-10 (ADR-207 (2)): one CLOSED lifecycle of a contract as the server sent it: entry and exit average, its own booked. Texts as sent.
+function readClosed(c, underlying) {
+  if (!c || !Number.isInteger(c.contract_id) || typeof c.contract_text !== 'string' || !Number.isInteger(c.quantity)) return null
+  return {
+    key: `${c.contract_id}:${c.opened_at}`,
+    contractId: c.contract_id,
+    name: shownName(c, underlying),
+    side: c.side === 'BUY' ? 'B' : 'S', // the side that opened it
+    qtyText: Number.isInteger(c.lots) ? `${c.lots} ${c.lots === 1 ? 'lot' : 'lots'}` : `${c.quantity} units`,
+    entryText: text(c.average_entry_text),
+    exitText: text(c.average_exit_text),
+    booked: text(c.booked_text),
+  }
+}
+
 // GC-TP R-19b: Breakeven / Max Profit / Max Loss and the net Greeks are the server's texts, only re-grouped (ADR-008). A reply
 // that lacks a field (an older server) or sends it as not-a-list/not-an-object reads as absent with UNREADABLE_TEXT: a dash, never 0.
 function readSummary(s) {
@@ -84,7 +99,7 @@ function readSummary(s) {
     // D-14 (ADR-320 (2)): on the trade's expiry day only, the server's "If held to expiry" Max profit; null other days
     maxProfitHold: text(s.max_profit_hold_text),
     maxLoss: loss.text, maxLossReason: loss.reason,
-    greeks: greeksOk ? { legs, net } : null,
+    greeks: greeksOk ? { legs, net, basis: text(g.basis_text) } : null, // D-63: "summed across 2 expiries" as sent
     greeksReason: greeksOk ? null : (s.state === 'PAUSED' && s.greeks_reason === 'prices_not_live' ? withAsOf(absent(s.greeks_reason_text), s.as_of) : absent(s.greeks_reason_text)),
   }
 }
@@ -97,6 +112,8 @@ export function readPaperStrategy(s, index = 0) {
   if (id === null || !STATES.has(s.state) || !Array.isArray(s.positions) || !isCount(s.open_count) || !isCount(s.position_count)) return bad(id)
   const positions = s.positions.map((p) => readPosition(p, s.underlying))
   if (positions.some((p) => p === null)) return bad(id)
+  const closed = (Array.isArray(s.closed) ? s.closed : []).map((c) => readClosed(c, s.underlying))
+  if (closed.some((c) => c === null)) return bad(id)
   let stateText = ''
   if (s.state === 'PAUSED') stateText = withAsOf(PAPER_PAUSED, s.as_of)
   else if (s.state === 'NOT_CONNECTED') stateText = PAPER_NOT_CONNECTED
@@ -124,6 +141,8 @@ export function readPaperStrategy(s, index = 0) {
     held: s.held ?? null, // GC-TRACK1 k10: shown by HeldNote, which reads nothing it cannot parse
     ...readSummary(s),
     positions,
+    closed,
+    closedText: text(s.closed_text), // D-10 (ADR-306 (5)): a fully closed book says so, with its result
   }
 }
 
@@ -152,7 +171,7 @@ export const isOpenGroup = (g) => g.readable && g.state !== 'EXITED' && g.openCo
 /** What the Paper tab lists: everything with Show closed positions on; else only open strategies and their open contracts. */
 export function visibleGroups(groups, showClosed) {
   if (showClosed) return groups
-  return groups.filter((g) => !g.readable || isOpenGroup(g)).map((g) => (g.readable ? { ...g, positions: g.positions.filter((p) => p.open) } : g))
+  return groups.filter((g) => !g.readable || isOpenGroup(g)).map((g) => (g.readable ? { ...g, positions: g.positions.filter((p) => p.open), closed: [] } : g))
 }
 
 /** The confirm list's rows (PaperConfirmDialog orders) for the ticked open contracts: the opposite side, all open lots, price

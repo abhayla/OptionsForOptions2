@@ -1,5 +1,6 @@
 """D-10 (ADR-207 (2), REQ-109 AC-4): the paper reply serves each CLOSED lifecycle as its own row (contract, side, lots,
-average entry, average exit, booked) and an open row's booked is from its own lifecycle only. Real case C1 155: SELL 25400 PE
+average entry, average exit, booked) and an open row's booked is from its own lifecycle only.
+Real case C1 155: SELL 25400 PE
 bought back for +643.50, then a NEW long 25400 PE. Hand arithmetic: (120.00 - 115.71) x 150 = 4.29 x 150 = 643.50."""
 from __future__ import annotations
 
@@ -18,8 +19,8 @@ LOT = 75
 
 
 def _found(cid: int):
-    contract = SimpleNamespace(name="NIFTY", instrument_type="PE", strike=D("25400"), expiry=datetime.date(2026, 11, 24),
-                               lot_size=LOT)
+    contract = SimpleNamespace(name="NIFTY", instrument_type="PE", strike=D("25400"), lot_size=LOT,
+                               expiry=datetime.date(2026, 11, 24))
     return SimpleNamespace(contract_id=cid, state=tracked_contracts.LIVE, feed_key=f"NSE_FO:{cid}", identity=f"c{cid}",
                            stored=SimpleNamespace(listed=SimpleNamespace(contract=contract)))
 
@@ -35,7 +36,8 @@ def _figures(orders):
     return P._figures(orders, {7: _found(7)}, {7: live}, True, datetime.date(2026, 11, 23))
 
 
-C1 = [_order(0, "SELL", 150, "120.00", "open"), _order(1, "BUY", 150, "115.71", "exit"), _order(2, "BUY", 150, "90.00", "open")]
+C1 = [_order(0, "SELL", 150, "120.00", "open"), _order(1, "BUY", 150, "115.71", "exit"),
+      _order(2, "BUY", 150, "90.00", "open")]
 
 
 def test_c1_155_one_closed_short_row_and_one_open_long_row_booked_zero():
@@ -75,7 +77,7 @@ def test_greeks_across_two_expiries_are_labelled_one_expiry_is_not():
              "instrument": "PE", "strike": D("25400"), "ltp": D("10")}]
     figures = {"positions": held, "unbooked": D(1), "pause_reason": None}
     snap = SimpleNamespace()
-    import ofo_app.routes.paper as mod
+    mod = P
     real = mod.paper_greeks.book_greeks
     g = SimpleNamespace(delta=D(1), gamma=D(1), theta=D(1), vega=D(1))
     mod.paper_greeks.book_greeks = lambda *a: SimpleNamespace(net=g, legs=[g] * len(a[2]), reason=None)

@@ -4,7 +4,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createRouter, createMemoryHistory } from 'vue-router'
-import REAL from './fixtures/paper-strategies.json'
+import REAL0 from './fixtures/paper-strategies.json'
+import { closedFrom } from './_closedRows'
+const REAL = { ...REAL0, strategies: REAL0.strategies.map((s) => ({ ...s, closed: closedFrom(s.positions) })) }
 import { contractName } from '@/lib/displayFormat'
 
 const calls = []
@@ -84,7 +86,9 @@ describe('Paper tab from GET /paper/strategies (the real reply)', () => {
     expect(all(w, 'paper-group')[0].findAll('[data-testid="paper-leg"]')).toHaveLength(3)
     await t(w, 'show-closed').setValue(true)
     expect(all(w, 'paper-group').map((g) => g.attributes('data-strategy'))).toEqual(['2', '1', '3'])
-    expect(all(w, 'paper-group')[1].findAll('[data-testid="paper-leg"]')).toHaveLength(4)
+    expect(all(w, 'paper-group')[1].findAll('[data-testid="paper-leg"]')).toHaveLength(3) // open legs only: no Lots 0 row (D-10)
+    expect(all(w, 'paper-group')[1].findAll('[data-testid="paper-closed-leg"]')).toHaveLength(1) // the closed one, with entry and exit
+    expect(all(w, 'paper-group')[1].get('[data-testid="paper-closed-exit"]').text()).toBe(REAL.strategies[1].closed[0].average_exit_text)
     expect(all(w, 'paper-group')[0].get('[data-testid="paper-state"]').text()).toBe('Exited')
   })
 

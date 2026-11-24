@@ -9,7 +9,9 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import StrategyBuilderPage from '@/pages/StrategyBuilderPage.vue'
 import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
 import { PAPER_AVERAGE_LABEL } from '@/lib/paperDrafts'
-import REAL from './fixtures/paper-book-63.json'
+import REAL0 from './fixtures/paper-book-63.json'
+import { withClosed } from './_closedRows'
+const REAL = withClosed(REAL0)
 import OUTCOME from './fixtures/outcome-condor.json'
 
 const calls = []
@@ -173,9 +175,9 @@ describe('Net Positions | Orderbook switch on the REAL reply', () => {
     expect(t(w, 'paper-book-switch').exists()).toBe(true)
     const rows = all(w, 'net-row').map((r) => ['net-contract', 'net-lots', 'net-avg', 'net-ltp', 'net-booked', 'net-unbooked', 'net-pnl'].map((id) => r.find(`[data-testid="${id}"]`).text()))
     expect(rows).toEqual(OPEN.map((p) => [p.contract_text, '1', p.average_text, p.ltp_text, p.booked_text, p.unbooked_text, p.total_text]))
-    const closed = REAL.positions.filter((p) => p.net_quantity === 0)
+    const closed = REAL.positions.filter((p) => p.net_quantity === 0) // D-10: each also a closed lifecycle row, B or S by the side that opened it
     expect(all(w, 'closed-row').map((r) => [r.find('[data-testid="closed-contract"]').text(), r.find('[data-testid="closed-booked"]').text()]))
-      .toEqual(closed.map((p) => [p.contract_text, p.booked_text]))
+      .toEqual(closed.map((p) => ['S' + p.contract_text, p.booked_text]))
   })
   it('Orderbook: the reply orders (time IST, B/S, contract, qty, price, kind), in the reply order (newest last)', async () => {
     const w = await openBuilder()

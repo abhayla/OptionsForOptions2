@@ -24,7 +24,7 @@ const t = (w, id) => w.find(`[data-testid="${id}"]`)
 describe('item 2: before-charges groups carry one label', () => {
   it('the paper panel: Booked / Unbooked / P&L columns and the closed list say "(before charges)"', () => {
     const pos = (id, qty) => ({ contract_id: id, contract_text: `NIFTY C${id}`, net_quantity: qty, average_text: '75.65', ltp_text: '76.80', booked_text: '0.00', unbooked_text: '1.00', total_text: '1.00', price_state: 'live' })
-    const w = mount(PaperBookPanel, { props: { book: { strategy_id: 1, state: 'LIVE', total_text: '+1.00', total_after_text: '+0.50', after_charges_reason: null, positions: [pos(1, -65), pos(2, 0)] }, net: [] } })
+    const w = mount(PaperBookPanel, { props: { book: { strategy_id: 1, state: 'LIVE', total_text: '+1.00', total_after_text: '+0.50', after_charges_reason: null, positions: [pos(1, -65), pos(2, 0)], closed: [{ contract_id: 2, contract_text: 'NIFTY C2', side: 'SELL', quantity: 65, lots: 1, average_entry_text: '75.65', average_exit_text: '76.80', booked_text: '0.00', opened_at: '2026-11-17T04:00:00Z' }] }, net: [] } })
     expect(t(w, 'net-basis').text()).toBe('(before charges)')
     expect(t(w, 'closed-basis').text()).toContain('(before charges)')
   })

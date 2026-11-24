@@ -66,13 +66,22 @@
           </tr>
         </tbody>
       </table>
-      <p v-if="closed.length" class="mt-2 text-xs text-ink-muted" data-testid="closed-basis">Closed contracts: booked P&amp;L (before charges)</p>
-      <ul v-if="closed.length" class="text-xs text-ink-muted" data-testid="closed-list">
-        <li v-for="p in closed" :key="p.contract_id" class="flex gap-2" data-testid="closed-row">
-          <span class="flex-1" data-testid="closed-contract">{{ p.contract_text }}</span>
-          <span>Closed, booked</span><span class="num" data-testid="closed-booked">{{ p.booked_text }}</span>
-        </li>
-      </ul>
+      <!-- D-10 (ADR-207 (2)): the Closed section: each closed lifecycle with its entry, exit and its own booked P&L (before charges);
+           a contract bought back and opened again has a row here AND its open row above, whose Booked starts at 0 -->
+      <p v-if="closedRows.length" class="mt-2 text-xs text-ink-muted" data-testid="closed-basis">Closed: booked P&amp;L (before charges)</p>
+      <table v-if="closedRows.length" class="w-full text-xs text-ink-muted" data-testid="closed-list">
+        <thead><tr><th class="text-left font-normal">Contract</th><th class="font-normal">Lots</th><th class="font-normal">Entry</th><th class="font-normal">Exit</th><th class="font-normal">Booked</th></tr></thead>
+        <tbody>
+          <tr v-for="c in closedRows" :key="c.opened_at + c.contract_id" class="border-t border-line" data-testid="closed-row">
+            <td class="py-1 pr-2" data-testid="closed-contract"><span class="mr-1 font-semibold">{{ c.side === 'BUY' ? 'B' : 'S' }}</span>{{ c.contract_text }}</td>
+            <td class="num text-center" data-testid="closed-lots">{{ c.lots ?? c.quantity }}</td>
+            <td class="num text-right" data-testid="closed-entry">{{ c.average_entry_text }}</td>
+            <td class="num text-right" data-testid="closed-exit">{{ c.average_exit_text }}</td>
+            <td class="num text-right" data-testid="closed-booked">{{ c.booked_text }}</td>
+          </tr>
+        </tbody>
+      </table>
+      <p v-if="book.closed_text" class="mt-2 text-xs font-semibold" data-testid="closed-result">{{ book.closed_text }}</p>
     </div>
 
     <table v-else class="mt-2 w-full text-xs" data-testid="order-table">
@@ -128,7 +137,7 @@ const total = computed(() => afterFigure(props.book, props.book.total_text ?? nu
 const view = ref(props.showOrders > 0 ? 'orders' : 'net')
 watch(() => props.showOrders, (n) => { if (n > 0) view.value = 'orders' })
 const open = computed(() => props.book.positions.filter((p) => p.net_quantity !== 0))
-const closed = computed(() => props.book.positions.filter((p) => p.net_quantity === 0))
+const closedRows = computed(() => (Array.isArray(props.book.closed) ? props.book.closed : []))
 const lotsOf = (p) => openLots(props.net, p.contract_id)
 // the order's own kind in words ('open' is the first add)
 const kindText = (kind) => (kind === 'open' ? 'Open' : paperKindLabel(kind))

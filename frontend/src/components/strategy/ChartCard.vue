@@ -93,6 +93,11 @@ const showPct = ref(false) // D-B26 (REQ-137 AC-2): Show % adds the server's mov
 const greekMode = ref('unit') // REQ-084 AC-8: one toggle, Per unit (default) or Per position
 const compact = computed(() => compactRows(props.table, props.legs))
 const greeks = computed(() => greekRows(props.table, props.legs))
+// D-63: the Greeks Total adds every leg; with legs on two expiries it says so (a count of expiries, no money)
+const greeksTotalLabel = computed(() => {
+  const n = new Set((props.legs ?? []).map((l) => l?.expiry).filter(Boolean)).size
+  return n > 1 ? `Total (summed across ${n} expiries)` : 'Total'
+})
 const levels = computed(() => payoffLevelRows(props.table))
 const stepTable = computed(() => payoffStepTable(props.payoffTable))
 const pickStep = (e) => emit('payoff-step', e.target.value)
@@ -237,7 +242,7 @@ const toneOf = (v) => ({ profit: 'text-profit', loss: 'text-loss' })[signOf(v)] 
           <tbody>
             <tr v-for="r in compact" :key="r.rowId" :class="['border-b border-line', r.isTotal ? 'font-semibold' : '']" :data-row="r.rowId" data-testid="compact-row">
               <td class="py-1.5">
-                <span v-if="r.isTotal">Total</span>
+                <span v-if="r.isTotal" data-testid="greeks-total-label">{{ greeksTotalLabel }}</span>
                 <span v-else class="inline-flex flex-wrap items-center gap-1.5">
                   <Chip :kind="chipKind(r.side)" :label="chipLabel(r.side)" />
                   <span data-testid="instrument-text">{{ r.text }}</span>

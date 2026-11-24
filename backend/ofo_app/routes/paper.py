@@ -60,7 +60,7 @@ from ofo.engine.extremes_charges import (
 from ofo.engine.legs import Action, Instrument, Leg
 from ofo.errors import render
 from ofo.errors.explanations import render_explanation, restore_explanation
-from ofo.instruments.models import FUTURE_TYPE
+from ofo.instruments.models import FUTURE_TYPE, is_lot_aligned
 from ofo.limits import INTEGER_MAX
 from ofo.money import PAISE
 from ofo.outcome import read_snapshot
@@ -261,7 +261,8 @@ class PaperFigures(UnpricedFields):
     unbooked_text: CatalogueText | None
     total_text: CatalogueText | None
     positions: list[PaperNetOut]
-    closed: list[PaperClosedOut] = []  # D-10: every closed lifecycle; booked here + open positions' booked = booked
+    # D-10: every closed lifecycle; booked here + the open positions' booked = booked
+    closed: list[PaperClosedOut] = Field(default_factory=list)
     # GC-TP step 8a (REQ-109 AC-10, ADR-207 (7), Sensibull 050): the charges engine's sum over every paper order, BESIDE
     # the P&L above (never subtracted from it); absent with ``charges_reason`` (never 0) when it cannot be computed
     charges: Money | None = None
@@ -567,9 +568,11 @@ def _closed_row(leg: ClosedLeg, found: tracked_contracts.TrackedContract) -> dic
     lot = found.stored.listed.contract.lot_size
     entry = leg.average_entry.quantize(PAISE, rounding=ROUND_HALF_UP)
     exit_ = leg.average_exit.quantize(PAISE, rounding=ROUND_HALF_UP)
-    return {"contract_id": found.contract_id, "contract_text": describe_contract((underlying, instrument, strike, expiry)),
+    text_ = describe_contract((underlying, instrument, strike, expiry))
+    return {"contract_id": found.contract_id, "contract_text": text_,
             "instrument": instrument.value, "strike": strike, "expiry": expiry, "side": leg.side,
-            "quantity": leg.quantity, "lot_size": lot, "lots": leg.quantity // lot if leg.quantity % lot == 0 else None,
+            "quantity": leg.quantity, "lot_size": lot,
+            "lots": leg.quantity // lot if is_lot_aligned(leg.quantity, lot) else None,
             "average_entry": entry, "average_entry_text": price_text(entry),
             "average_exit": exit_, "average_exit_text": price_text(exit_),
             "booked": _exact(leg.booked), "booked_text": _signed(leg.booked),

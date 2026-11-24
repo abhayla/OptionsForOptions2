@@ -89,17 +89,19 @@
                   </tr>
                 </tbody>
               </table>
+              <p v-if="g.greeks && g.greeks.basis" class="mt-1 text-xs text-ink-muted" data-testid="paper-greeks-basis">{{ g.greeks.basis }}</p>
             </div>
+            <p v-if="g.closedText" class="mt-1 font-semibold" data-testid="paper-closed-result">{{ g.closedText }}</p>
             <p v-if="g.stateText" class="mt-1" data-testid="paper-state">{{ g.stateText }}</p>
             <!-- ADR-311: the open legs with no price, named by the server; the totals above stay paused -->
             <p v-if="g.unpricedText" class="mt-1 text-xs text-ink-muted" data-testid="paper-unpriced">{{ g.unpricedText }}</p>
             <div class="mt-2 flex gap-3">
-              <table v-if="g.positions.length" class="w-full min-w-0 flex-1 text-left">
+              <table v-if="g.positions.length || g.closed.length" class="w-full min-w-0 flex-1 text-left">
                 <thead>
-                  <tr><th class="w-6"><span class="sr-only">Select</span></th><th>Instrument</th><th>Lots</th><th>Avg</th><th>LTP</th><th>Booked</th><th>Unbooked</th><th>P&amp;L</th></tr>
+                  <tr><th class="w-6"><span class="sr-only">Select</span></th><th>Instrument</th><th>Lots</th><th>Avg / entry</th><th>LTP / exit</th><th>Booked</th><th>Unbooked</th><th>P&amp;L</th></tr>
                 </thead>
                 <tbody>
-                  <tr v-for="p in g.positions" :key="p.key" data-testid="paper-leg" :data-leg="p.contractId">
+                  <tr v-for="p in g.positions.filter((x) => x.open)" :key="p.key" data-testid="paper-leg" :data-leg="p.contractId">
                     <td>
                       <input v-if="canExit(p)" type="checkbox" :checked="isTicked(g.id, p.contractId)" :data-testid="`select-leg-${g.id}-${p.contractId}`" :aria-label="`Select ${p.name}`" @change="tick(g.id, p.contractId, $event.target.checked)" />
                     </td>
@@ -110,6 +112,16 @@
                     <td data-testid="paper-leg-booked">{{ pnlText(p.booked) }}</td>
                     <td data-testid="paper-leg-unbooked" :class="toneOf(p.unbooked)">{{ stale ? pnlText(null) : p.noPrice ?? pnlText(p.unbooked) }}</td>
                     <td data-testid="paper-leg-pnl" :class="toneOf(p.total)">{{ pnlText(p.total) }}</td>
+                  </tr>
+                  <!-- D-10 (ADR-207 (2)): each closed lifecycle: its entry and exit price and its own booked; no Lots 0 row -->
+                  <tr v-for="c in g.closed" :key="c.key" class="text-ink-muted" data-testid="paper-closed-leg" :data-leg="c.contractId">
+                    <td></td>
+                    <td data-testid="paper-closed-instrument"><span class="mr-1 rounded bg-surface-muted px-1 font-semibold">{{ c.side }}</span> <span>{{ c.name }}</span> <span>(closed)</span></td>
+                    <td data-testid="paper-closed-qty">{{ c.qtyText }}</td>
+                    <td data-testid="paper-closed-entry">{{ pnlText(c.entryText) }}</td>
+                    <td data-testid="paper-closed-exit">{{ pnlText(c.exitText) }}</td>
+                    <td data-testid="paper-closed-booked">{{ pnlText(c.booked) }}</td>
+                    <td></td><td></td>
                   </tr>
                 </tbody>
               </table>

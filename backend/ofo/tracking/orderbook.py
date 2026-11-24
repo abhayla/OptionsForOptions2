@@ -17,5 +17,6 @@ from ofo.engine.orderbook import (
     net_positions,
 )
 
-__all__ = ["ORDER_KINDS", "SIDES", "BookView", "ClosedLeg", "LifecycleView", "NetPosition", "OrderKind", "PaperOrder", "Side", "is_typed_price",
+__all__ = ["ORDER_KINDS", "SIDES", "BookView", "ClosedLeg", "LifecycleView", "NetPosition", "OrderKind", "PaperOrder",
+           "Side", "is_typed_price",
            "lifecycles", "net_positions"]
