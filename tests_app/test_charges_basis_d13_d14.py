@@ -102,3 +102,21 @@ def test_d14_c2_157_real_figures_hold_deducts_paid_only() -> None:
     before = BookExtremes(D("100.75"), D("-6399.25"), D("484.25"), D("-6015.75"), None)
     after = BookAfterCharges(D("383.50"), D("191.25"), D("97.24"), D("95.01"), None)
     assert expiry_hold(before, after) == (D("387.01"), D("195.76"))  # 387.01 - 191.25 = 195.76
+
+
+def test_d11_d16_the_chart_marks_are_on_the_curve_basis_and_the_tiles_after_charges() -> None:
+    """D-11 / D-16 (ADR-167 (1), ADR-209): ``breakevens_curve`` is where the drawn curve (booked in, BEFORE charges)
+    crosses zero; ``breakevens`` (the tiles) are after the charges Max Profit carries. Hand arithmetic: net credit
+    22.05 + 4.10 - 16.00 - 2.70 = 7.45 a unit; between the long and short put the slope is 65 a point, so the curve
+    crosses at 25300 - 7.45 = 25292.55 and 25900 + 7.45 = 25907.45; the tiles move in by charges / 65 each."""
+    orders, found, prices = _book()
+    charges = route._charges(orders, found, "NIFTY", RATES)
+    extremes = route._extremes(orders, found, prices, "NIFTY", RATES)
+    got = route._breakevens(orders, found, D("25600"), extremes["extremes_charges"])
+    assert [D(x) for x in got["breakevens_curve"]] == [D("25292.55"), D("25907.45")]
+    shift = extremes["extremes_charges"] / LOT
+    low, high = (D(x) for x in got["breakevens"])
+    assert abs(low - (D("25292.55") + shift)) <= D("0.01") and abs(high - (D("25907.45") - shift)) <= D("0.01")
+    assert charges["charges"] > 0
+    unpriced = route._breakevens(orders, found, D("25600"), None)
+    assert unpriced["breakevens"] == unpriced["breakevens_curve"]  # no charges priced: one basis
