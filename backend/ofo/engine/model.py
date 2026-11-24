@@ -190,9 +190,20 @@ def model_inputs(inputs: StrategyInput, forwards: Forwards) -> ModelInputs:
         expiries[leg.expiry] = em
     dlabel = data_label(reading)
     fell_back = any(em.forward.label for em in expiries.values())
-    return ModelInputs._make(_TOKEN, inputs=inputs, spot_level=reading.level, spot_at=reading.at, data_label=dlabel,
-                             expiries=types.MappingProxyType(dict(expiries)),
-                             label=join_labels(dlabel, FALLBACK_LABEL if fell_back else None))
+    built = ModelInputs._make(_TOKEN, inputs=inputs, spot_level=reading.level, spot_at=reading.at, data_label=dlabel,
+                              expiries=types.MappingProxyType(dict(expiries)),
+                              label=join_labels(dlabel, FALLBACK_LABEL if fell_back else None))
+    return _with_basis(built)
+
+
+def _with_basis(model: ModelInputs) -> ModelInputs:
+    """D-08: the ONE place the answer's label (Outcome.output_label, Table.output_label read ``model.label``) gains the
+    at-intrinsic basis line, when :func:`no_time_value` values any leg; else the model unchanged."""
+    basis = intrinsic_basis(model)
+    if basis is None:
+        return model
+    return ModelInputs._make(_TOKEN, **{n: getattr(model, n) for n in ModelInputs.__slots__ if n != "label"},
+                             label=join_labels(model.label, basis))
 
 
 def market_closed_model(model: ModelInputs) -> ModelInputs:
@@ -203,9 +214,10 @@ def market_closed_model(model: ModelInputs) -> ModelInputs:
                                      source=em.source, label=em.forward.label, forward=em.forward, spot_at=em.spot_at)
                 for d, em in model.expiries.items()}
     fell_back = any(em.forward.label for em in expiries.values())
-    return ModelInputs._make(_TOKEN, inputs=model.inputs, spot_level=model.spot_level, spot_at=model.spot_at,
-                             data_label=None, expiries=types.MappingProxyType(expiries),
-                             label=FALLBACK_LABEL if fell_back else None)
+    return _with_basis(ModelInputs._make(_TOKEN, inputs=model.inputs, spot_level=model.spot_level,
+                                         spot_at=model.spot_at, data_label=None,
+                                         expiries=types.MappingProxyType(expiries),
+                                         label=FALLBACK_LABEL if fell_back else None))
 
 
 def _require(model: object) -> ModelInputs:
