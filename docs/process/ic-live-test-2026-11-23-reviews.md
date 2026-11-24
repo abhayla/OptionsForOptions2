@@ -383,3 +383,131 @@ vitest paper-stops (21 tests).
 
 Behaviour unchanged: yes for the approved line and the duplicate-leg check; no for the first letter of other refusals
 (finding 1, MINOR).
+
+## A5 review (2026-11-24): D-60 strike stepper and leg-edit family, commits ee18a64 and e62bb43
+
+Reviewer: fresh-context helper, read-only, code read; the four named test files 44 of 44. Class: every way a leg is
+added or moved in the builder, and every paper entry with a kept duplicate (ADR-319).
+
+Findings:
+1. MINOR `StrategyBuilderPage.vue` `askMovedDuplicates` (~740): moved legs are checked against held legs only, not
+   against each other; Width or Shift moving two same-action legs onto one contract (Width collapsed to zero) makes a
+   silent duplicate row. Class: moved against moved.
+2. MAJOR `StrategyBuilderPage.vue` `askDuplicate` / `dupAsk` (~729-736): a newer edit while the question is open
+   leaves the old question on screen (or overwrites it); the old promise never settles, so the first `sendEdit` hangs
+   and its `finally` (`endMove`, `guard.settle`) never runs; answering the stale dialog is silently dropped
+   (`isNewest` false), so Increase does nothing. Fix: settle a pending ask as Cancel when a new edit starts.
+3. MINOR same function: moved-leg detection compares `landed[i]` with `baseLegs[i]` by index; a Hedge inserting a leg
+   mid-list would raise a false question (not a missed one). Check where Hedge places its leg.
+4. MINOR Increase after a move updates `lots` only, not `base_lots`; a later relative control may undo it. Not checked.
+
+Holds: opposite action on one contract asks nothing; Cancel leaves legs, controls and shift total untouched; Increase
+uses the picker's lots limit and wording; the page dialog reuses `DUP_QUESTION` and `admitLegs` from `legDoor.js` (only
+button labels repeated); Drafts Mode skips zero-lot rows, nets buy and sell pairs by action, sends a same-action
+duplicate as separate adds; `_refuse_duplicate_legs` in `paper.py` refuses them with the gate sentence.
+
+Covers the class: mostly yes (gaps: findings 1 and 2).
+
+## A6 item 3 review (2026-11-24): D-05 Not saved line and empty-level hint, commits 6b257fd and d0569fe
+
+Reviewer: fresh-context helper, read-only. `paper-stops.test.js` + `paper-strategies.test.js` 44/44. Verdict: REVISE.
+
+Findings:
+1. MAJOR `PaperStops.vue:72`, `PaperStrategies.vue:237`: `goodReads` moves when a refresh reply lands, with no link to
+   when that refresh started. A refresh starts, Save fails ("Not saved"), the earlier refresh then succeeds: the line is
+   cleared although no refresh began after the failure. Fix: clear only on a good refresh that STARTED after the
+   failure (a "refresh started" counter stamped at the failure). Class: a clear signal not ordered against the event
+   it clears.
+2. MAJOR `PaperStops.vue:125`: `v-if="ceReason && !saved"` hides every reason beside "Saved", not only "Enter at least
+   one level": after "Saved: exit above 24500", typing 24500.03 hides "price must be a multiple of 0.05" and Save is
+   disabled with nothing saying why. Fix: hide only the at-least-one-level case; the price reason always shows.
+3. MINOR same line: a leg-stop "Saved"/"Kept" line also hides the exit hint (intended; covered by finding 2's fix).
+
+Clean: the disabled Save rule is unchanged; leg stops, mixed saves and Already set untouched; no clearing mid-call; the
+refresh error banner and `stale` do not unmount PaperStops; a failed or unreadable refresh does not move `goodReads`.
+
+Covers the class: no (findings 1 and 2).
+
+## A5 round 2 review (2026-11-24): D-60 commits 27c60cf and 2acaf77
+
+Reviewer: fresh-context helper, read-only; `leg-step-duplicate-d60.test.js` + `leg-duplicate-d60.test.js` 27/27.
+Verdict: covers the class: no. D-60 PARKED after two rounds (common rules, section 3 step 8).
+
+Findings:
+1. MAJOR `StrategyBuilderPage.vue:~801` with `legDoor.js:25`: after "Increase quantity" the folded leg gets
+   `lots = a + b` but `base_lots` is unchanged; `backend/ofo/strategy/leg_edit.py:253` `apply_multiplier` computes
+   `lots = base_lots * multiplier`, so a later Lots/Multiplier edit drops the increase (BUY 1 + moved BUY 1, Increase:
+   lots 2, base 1; multiplier x1: lots 1). Shift, Width and Hedge pass lots through and are safe. The fold is in the
+   shared door, so the picker's Increase has the same gap. Class: a derived field not updated with its source.
+2. MAJOR `StrategyBuilderPage.vue:718`: when clicks net to zero (+1 then -1), `moveLeg` calls
+   `guard.cancel('leg-edit')` and `endMove` but not `answerDuplicate('cancel')`; the open question stays on screen and
+   answers nothing (`isNewest` false). Same class as the round-2 target (one live question per newest move).
+3. MINOR: `landed` is computed before the await on the question; after the answer, `legs.value = landed` overwrites any
+   change made while the dialog was open (not confirmed that anything can change legs then).
+
+Holds: rapid triple step (the old question is cancelled, the old `finally` runs); step, Cancel, step; Escape and
+backdrop map to Cancel; Width collapse checked moved against moved; a numbers reload never touches the question.
+
+Next step for D-60 (parked): (a) in `moveLeg`'s net-zero branch settle the open question as Cancel (one helper shared
+with `sendEdit`); (b) in `legDoor.js` Increase, raise `base_lots` with `lots` (test: Increase then multiplier x1 keeps
+the total); (c) recheck `landed` against the current legs after the await.
+
+## A6 item 3 round 2 review (2026-11-24): D-05 commits 3f66dc5 and e40a6c2
+
+Reviewer: fresh-context helper, read-only; paper-stops 27 + paper-strategies 19 = 46/46. Covers the class: yes.
+
+"Reads never overlap" holds: `usePaperRefresh.js:19` refresh() returns while `reading` is set; the timer, the Refresh
+button, mount and refreshNow() all pass through it; a queued read starts in `finally` after show(). So
+`goodReadStart = readsStarted` inside show() is that read's own number.
+
+Findings:
+1. MINOR `PaperStrategies.vue:240,255`: the no-overlap guarantee lives in another file and is stated only in a comment;
+   structural option: capture `const n = ++readsStarted.value` in read() and hand it to show(). Not a current defect.
+2. MINOR `PaperStops.vue:60-68,77`: a cancel() failure stamps the read count but its error does not start "Not saved",
+   so a good refresh never clears it (as before this change; not a Save, outside the owner decision).
+
+Checked: a failure while a read is in flight keeps the line (only the next read clears it); a failed or unreadable
+refresh never moves `goodReadStart`; leg-stop and keep failures stamp the same way; typed levels survive a failed
+save; a remount resets error and stamp; beside Saved only the at-least-one-level reason hides.
+
+## D-04 round 2 review (2026-11-24): commits cea53cf, f135690, and test changes 0802084, 38debbf
+
+Reviewer: fresh-context helper, read-only. `pytest -q tests -k "guard or entry_type or adjustment"` 1918 passed.
+Verdict: covers the class: no. D-04 PARKED after two rounds (common rules, section 3 step 8).
+
+Findings:
+1. MAJOR `backend/ofo_app/background.py:1882`, `routes/adjustment_check.py:442`, `routes/adjustment_plan.py:348`,
+   `routes/playbooks.py:482`: these four callers still pass the live spot to `check.entry_type`, while the server limit
+   (`paper_limit.py:42`) and now the offer path (`routes/adjustment.py:591`) pass None. `strategy_type` uses spot as the
+   reference level and falls back to the middle of the strikes only without it, so a shape near a type boundary can
+   read playbook A on the check route and the worker and playbook B (or the current-shape fallback) on the server.
+   Same class as the A4 finding. Next step: one shared spot-free entry-type call used by all six callers, plus a test
+   that offer, check, worker and server agree for a basket at the plan maximum.
+2. No regression for other guards: spot is used only to classify; guards are read from the playbook body.
+3. All `read_guards`/`guards_of` call sites are on the new path.
+4. Fallback verified on the offer path (same function and arguments as the server). MINOR: the offer's `listed` comes
+   from `check.listed_of(ctx)`, the server's from its own argument; same source not confirmed.
+5. 0802084 OK: ADR-318 (5); the test's purpose (why text naming both records) is unchanged. The add-refused case must
+   be covered elsewhere (it is: `tests_app/test_d04_*` and the paper limit tests).
+6. 38debbf OK: REQ-159 AC-6 buys first. MINOR: the expectation copies the production sort; a fixed expected price list
+   would be stronger.
+
+## A6 items 1 and 2 and the D-05 token review (2026-11-24): c88b8aa, 18158ae + 2a2532f, 7aac4d5 + 23b07db
+
+Reviewer: fresh-context helper, read-only. vitest paper-stops, paper-strategies, paper-armed-exits 49 passed;
+`pytest -k "paper_monitor or buys_first"` (non-DB) 1 passed. No CRITICAL, no MAJOR.
+
+Findings:
+1. MINOR `PaperConfirmDialog.vue` (askArmedExits): "Could not check" is set only when the request throws or `lines` is
+   not an array; an array with non-string or empty entries is filtered silently (partial read treated as complete).
+2. MINOR `PaperStops.vue` (watch on `goodReadToken`): a save failed while read R1 is in flight is kept when R1
+   succeeds (stamp equals R1): conservative and intended.
+
+c88b8aa: each read creates a fresh token that travels with its own answer; a failed refresh never sets the good
+token; a remount starts clean; no reader of the old counter props remains. Covers the class: yes.
+D-03: "Could not check" and an empty readable list are distinct; Confirm gating unchanged; another user's or a missing
+strategy is refused 404 by `/armed-exits` (`_load_strategy`), asserted by the new DB test. Covers the class: mostly
+(finding 1).
+D-02: the alert reads the stored book filtered by trigger id; `claim_fire` fires a trigger once, each in its own
+transaction, so two stop-outs list only their own legs; closed legs are not targets; sibling places (Orderbook, Alerts
+History) read stored rows in id order. Covers the class: yes.
