@@ -88,14 +88,14 @@ const duplicateLegText = (leg, other) => `Leg ${leg} is the same contract as leg
 const replacedNotes = computed(() => props.legs.flatMap((l, i) => (l.replaced_typed === true ? [replacedPriceNote(i + 1, l)] : [])))
 const needsReprice = (l) => l.planned_entry == null && l.reason_code === 'needs_reprice'
 // D-18: every leg price states its own quote time (the reply's per-leg time); the summary line is the OLDEST of them, and a leg
-// with a price but no time makes the line say so rather than borrow another time
+// with a price but no time makes the line say so rather than borrow another time (the server's times share one UTC format)
 const hasLegPrice = computed(() => Object.keys(props.ltpById ?? {}).length > 0)
 const legQuoteAt = (l) => istClock(props.quoteAtById?.[l.instrument_id] ?? null)
 const legPricesAsOf = computed(() => {
   const ids = Object.keys(props.ltpById ?? {})
   const times = ids.map((id) => props.quoteAtById?.[id] ?? null)
   if (times.some((x) => !istClock(x))) return 'Leg prices: time not given'
-  const oldest = times.reduce((a, b) => (Date.parse(a) <= Date.parse(b) ? a : b))
+  const oldest = [...times].sort()[0]
   return `Oldest leg price as of ${istClock(oldest)} IST`
 })
 const moved = (l) => movedMarker(l, props.ltpById[l.instrument_id], props.priceTextById[l.instrument_id])
