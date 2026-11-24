@@ -260,3 +260,24 @@ describe('D-60 r2: the picker obeys the door', () => {
     expect(w.find('[data-testid="duplicate-leg-warning"]').exists()).toBe(false)
   })
 })
+
+describe('D-60 r3: Increase raises base lots with lots', () => {
+  it('the door folds base_lots together with lots (lots stays base_lots x multiplier)', async () => {
+    const held2 = [{ id: 1, instrument_id: ID, action: 'BUY', lots: 2, base_lots: 1, underlying: 'NIFTY' }]
+    const inc = { id: 'x', instrument_id: ID, action: 'BUY', lots: 4, base_lots: 2 }
+    const r = await admitLegs(held2, [inc], { ask: async () => 'increase', maxLots: 100 })
+    expect([r.legs[0].lots, r.legs[0].base_lots]).toEqual([6, 3])
+  })
+  it('picker Increase then multiplier x1 keeps the total: the leg sent on carries base_lots equal to its lots', async () => {
+    PRICES()
+    const w = mountPicker()
+    await flushPromises()
+    await addVia(w, { type: 'PE', strike: '22200.00', action: 'BUY', lots: '1' })
+    await addVia(w, { type: 'PE', strike: '22200.00', action: 'BUY', lots: '2' })
+    await t(w, 'dup-increase').trigger('click')
+    await flushPromises()
+    const [leg] = w.props('legs')
+    expect(leg.lots).toBe(3)
+    expect(leg.base_lots).toBe(3) // x1: lots = base_lots x 1, so a later multiplier edit keeps 3
+  })
+})

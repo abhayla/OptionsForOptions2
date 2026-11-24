@@ -230,3 +230,60 @@ describe('D-60 round 2: a newer move cancels the open question', () => {
     expect(ids(w).length).toBe(4)
   })
 })
+
+// D-60 round 3 (review A5 round 2, findings 1-3)
+describe('D-60 round 3: net-zero step closes the question; Increase keeps base lots; legs changed under the dialog', () => {
+  const step = (w, direction = 1) => w.vm.$.setupState.editLeg({ control: 'step', index: 0, direction })
+  const track = (p) => { const s = { done: false }; p.then(() => { s.done = true }); return s }
+
+  it('step onto a held contract, step back (+1 then -1 nets to zero): no question on screen, no hanging edit, legs as before', async () => {
+    const w = await openPage()
+    answers['POST /strategies/leg-edit'] = landing(SELL_PE)
+    const first = track(step(w, 1))
+    await flushPromises()
+    expect(all(w, 'dup-question')).toHaveLength(1)
+    const back = track(step(w, -1))
+    await flushPromises()
+    expect(t(w, 'dup-question').exists()).toBe(false)
+    expect(first.done).toBe(true)
+    expect(back.done).toBe(true)
+    expect(ids(w)).toEqual(BEFORE)
+    expect(lotsOf(w)).toEqual([1, 1, 1, 1])
+  })
+
+  it('step Increase then multiplier x1 keeps the total (base lots rise with lots)', async () => {
+    const w = await openPage()
+    answers['POST /strategies/leg-edit'] = landing(SELL_PE)
+    await all(w, 'strike-plus')[0].trigger('click')
+    await flushPromises()
+    await t(w, 'dup-increase').trigger('click')
+    await flushPromises()
+    expect(lotsOf(w)).toEqual([1, 2, 1])
+    expect(w.vm.$.setupState.legs.map((l) => l.base_lots)).toEqual([1, 2, 1])
+    calls.length = 0
+    answers['POST /strategies/leg-edit'] = (body) => Promise.resolve({ data: {
+      seq: body.seq, shape: null, shape_name: null, outcome: null, controls: { shift: true, width: true, hedge: true }, shift_total: 0,
+      legs: body.legs.map((l, i) => replyLeg(real.legs[i % 4], { instrument_id: l.instrument_id, action: l.action, lots: l.base_lots * 1, base_lots: l.base_lots })),
+    } })
+    await w.vm.$.setupState.editLeg({ control: 'multiplier', multiplier: 1 })
+    await flushPromises()
+    const sent = calls.find((c) => c.url === '/strategies/leg-edit')
+    expect(sent.body.legs.map((l) => l.base_lots)).toEqual([1, 2, 1])
+    expect(lotsOf(w)).toEqual([1, 2, 1])
+  })
+
+  it('legs changed while the question is open are not overwritten: the answer is treated as Cancel', async () => {
+    const w = await openPage()
+    answers['POST /strategies/leg-edit'] = landing(SELL_PE)
+    const p = track(step(w, 1))
+    await flushPromises()
+    expect(all(w, 'dup-question')).toHaveLength(1)
+    const changed = w.vm.$.setupState.legs.map((l, i) => (i === 3 ? { ...l, lots: 5, base_lots: 5 } : l))
+    w.vm.$.setupState.legs = changed
+    await t(w, 'dup-increase').trigger('click')
+    await flushPromises()
+    expect(p.done).toBe(true)
+    expect(ids(w)).toEqual(BEFORE)
+    expect(lotsOf(w)).toEqual([1, 1, 1, 5])
+  })
+})
