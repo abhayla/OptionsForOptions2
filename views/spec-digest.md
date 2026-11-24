@@ -4,10 +4,9 @@
 
 One line per decision, requirement and spec section. Read it before asking the owner anything; cite the ids you rely on in a `Spec basis:` line, or write `Spec basis: none (searched: <terms>)`.
 
-## Decisions (307)
+## Decisions (308)
 
-- Older decisions: 267 rows, ADR-1..ADR-280 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
-- ADR-281 2026-11-09: Owner answer 2026-11-09 (question tool, GC-ICGUIDE planning). [Holds live order placement for GC-ICGUIDE; record…]
+- Older decisions: 268 rows, ADR-1..ADR-281 (oldest first). Read spec/decisions/*.md, or find one by meaning: python tools/spec_similar.py . "<text>"
 - ADR-282 2026-11-09: Owner answer 2026-11-09 (question tool, GC-ICGUIDE planning). [Fixes what "iron condor adjustments proven" means…]
 - ADR-283 2026-11-09: Decided under the owner's strategy delegation (owner 2026-11-09 ~15:00 IST: "Wherever you have ques… [Implements ADR-258 (starting point at the fill, n…]
 - ADR-284 2026-11-10: SPEC CHANGE of ADR-058 ("refuse the whole update, writing nothing, if more than 10% of an index's l… [amends ADR-058; amends ADR-059]
@@ -47,6 +46,7 @@ One line per decision, requirement and spec section. Read it before asking the o
 - ADR-318 2026-11-23: Owner decided 23 Nov 2026 17:20 IST (question D-04 of the 23 Nov live test). [Refines ADR-255 and REQ-163 AC-2, which define th…]
 - ADR-319 2026-11-23: Decided by the lead on 23 Nov 2026 23:45 IST as conformant with REQ-030 AC-5, AC-11, AC-12 and the… [Applies REQ-030 AC-12 to the builder paths that s…]
 - ADR-320 2026-11-24: Owner decided 24 Nov 2026 (question batch before the cloud run; one point per tracker item). [Refines REQ-145 (the Decay column) and the theta…]
+- ADR-321 2026-11-25: Taken by the unattended Part B run on 24-25 Nov 2026 (owner away), each point as the least change t… [Refines ADR-209 (switch scope), ADR-263 and ADR-3…]
 
 ## Requirements (161)
 

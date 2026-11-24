@@ -2355,6 +2355,17 @@
             ],
             "title": "Change"
           },
+          "decay_left_today": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decay Left Today"
+          },
           "delta": {
             "anyOf": [
               {
@@ -2410,6 +2421,18 @@
               }
             ],
             "title": "Iv"
+          },
+          "last_trade_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Trade At"
           },
           "ltp": {
             "anyOf": [
@@ -2509,6 +2532,7 @@
           "volume",
           "health",
           "at",
+          "last_trade_at",
           "permitted",
           "unavailable_reason",
           "iv",
@@ -5322,6 +5346,26 @@
         "additionalProperties": false,
         "description": "Position-level Greeks (per unit x quantity x sign), 4 dp, with the table's display text.",
         "properties": {
+          "decay_left_today": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decay Left Today"
+          },
+          "decay_left_today_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decay Left Today Text"
+          },
           "delta": {
             "title": "Delta",
             "type": "string"
@@ -6654,6 +6698,18 @@
             "title": "Instrument Id",
             "type": "string"
           },
+          "quote_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quote At"
+          },
           "symbol": {
             "anyOf": [
               {
@@ -7304,6 +7360,15 @@
               }
             ]
           },
+          "curve_includes_booked_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Curve Includes Booked Text"
+          },
           "curves": {
             "anyOf": [
               {
@@ -7394,6 +7459,18 @@
           "market_closed": {
             "title": "Market Closed",
             "type": "boolean"
+          },
+          "oldest_quote_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oldest Quote At"
           },
           "open_interest": {
             "anyOf": [
@@ -7701,6 +7778,29 @@
             ],
             "title": "Breakevens"
           },
+          "breakevens_basis_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Breakevens Basis Text"
+          },
+          "breakevens_curve": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Breakevens Curve"
+          },
           "breakevens_display": {
             "anyOf": [
               {
@@ -7824,6 +7924,22 @@
               }
             ],
             "title": "Charges To Close Text"
+          },
+          "closed": {
+            "items": {
+              "$ref": "#/components/schemas/PaperClosedOut"
+            },
+            "title": "Closed",
+            "type": "array"
+          },
+          "closed_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed Text"
           },
           "extremes_charges": {
             "anyOf": [
@@ -8021,6 +8137,30 @@
             ],
             "title": "Max Profit"
           },
+          "max_profit_hold": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "const": "unlimited",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Profit Hold"
+          },
+          "max_profit_hold_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Profit Hold Text"
+          },
           "max_profit_text": {
             "anyOf": [
               {},
@@ -8115,6 +8255,30 @@
               }
             ],
             "title": "Profit Left After Text"
+          },
+          "profit_left_hold": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "const": "unlimited",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profit Left Hold"
+          },
+          "profit_left_hold_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profit Left Hold Text"
           },
           "profit_left_text": {
             "anyOf": [
@@ -8297,9 +8461,140 @@
         "title": "PaperBookOut",
         "type": "object"
       },
+      "PaperClosedOut": {
+        "additionalProperties": false,
+        "description": "D-10 (ADR-207 (2)): one CLOSED lifecycle of a contract (open to flat) with its own entry, exit and booked P&L; a\ncontract bought back and opened again has this row AND an open row whose booked starts at 0.",
+        "properties": {
+          "average_entry": {
+            "title": "Average Entry",
+            "type": "string"
+          },
+          "average_entry_text": {
+            "title": "Average Entry Text"
+          },
+          "average_exit": {
+            "title": "Average Exit",
+            "type": "string"
+          },
+          "average_exit_text": {
+            "title": "Average Exit Text"
+          },
+          "booked": {
+            "title": "Booked",
+            "type": "string"
+          },
+          "booked_text": {
+            "title": "Booked Text"
+          },
+          "closed_at": {
+            "format": "date-time",
+            "title": "Closed At",
+            "type": "string"
+          },
+          "contract_id": {
+            "title": "Contract Id",
+            "type": "integer"
+          },
+          "contract_text": {
+            "title": "Contract Text"
+          },
+          "expiry": {
+            "format": "date",
+            "title": "Expiry",
+            "type": "string"
+          },
+          "instrument": {
+            "enum": [
+              "CE",
+              "PE",
+              "FUT"
+            ],
+            "title": "Instrument",
+            "type": "string"
+          },
+          "lot_size": {
+            "title": "Lot Size",
+            "type": "integer"
+          },
+          "lots": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lots"
+          },
+          "opened_at": {
+            "format": "date-time",
+            "title": "Opened At",
+            "type": "string"
+          },
+          "quantity": {
+            "title": "Quantity",
+            "type": "integer"
+          },
+          "side": {
+            "enum": [
+              "BUY",
+              "SELL"
+            ],
+            "title": "Side",
+            "type": "string"
+          },
+          "strike": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Strike"
+          }
+        },
+        "required": [
+          "contract_id",
+          "contract_text",
+          "instrument",
+          "strike",
+          "expiry",
+          "side",
+          "quantity",
+          "lot_size",
+          "lots",
+          "average_entry",
+          "average_entry_text",
+          "average_exit",
+          "average_exit_text",
+          "booked",
+          "booked_text",
+          "opened_at",
+          "closed_at"
+        ],
+        "title": "PaperClosedOut",
+        "type": "object"
+      },
       "PaperGreeksOut": {
         "additionalProperties": false,
         "properties": {
+          "basis_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Basis Text"
+          },
+          "expiry_count": {
+            "default": 1,
+            "title": "Expiry Count",
+            "type": "integer"
+          },
           "legs": {
             "items": {
               "$ref": "#/components/schemas/PaperLegGreeks"
@@ -8324,6 +8619,26 @@
           "contract_id": {
             "title": "Contract Id",
             "type": "integer"
+          },
+          "decay_left_today": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decay Left Today"
+          },
+          "decay_left_today_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decay Left Today Text"
           },
           "delta": {
             "title": "Delta",
@@ -8890,6 +9205,29 @@
             ],
             "title": "Breakevens"
           },
+          "breakevens_basis_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Breakevens Basis Text"
+          },
+          "breakevens_curve": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Breakevens Curve"
+          },
           "breakevens_display": {
             "anyOf": [
               {
@@ -9013,6 +9351,22 @@
               }
             ],
             "title": "Charges To Close Text"
+          },
+          "closed": {
+            "items": {
+              "$ref": "#/components/schemas/PaperClosedOut"
+            },
+            "title": "Closed",
+            "type": "array"
+          },
+          "closed_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed Text"
           },
           "extremes_charges": {
             "anyOf": [
@@ -9210,6 +9564,30 @@
             ],
             "title": "Max Profit"
           },
+          "max_profit_hold": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "const": "unlimited",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Profit Hold"
+          },
+          "max_profit_hold_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Profit Hold Text"
+          },
           "max_profit_text": {
             "anyOf": [
               {},
@@ -9305,6 +9683,30 @@
               }
             ],
             "title": "Profit Left After Text"
+          },
+          "profit_left_hold": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "const": "unlimited",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profit Left Hold"
+          },
+          "profit_left_hold_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profit Left Hold Text"
           },
           "profit_left_text": {
             "anyOf": [
@@ -12787,6 +13189,18 @@
             "title": "Market Closed",
             "type": "boolean"
           },
+          "prices_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prices At"
+          },
           "quick_pick_distances": {
             "items": {
               "type": "integer"
@@ -13252,6 +13666,15 @@
         "properties": {
           "basis_text": {
             "title": "Basis Text"
+          },
+          "decay_left_today_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decay Left Today Text"
           },
           "dividend_yields": {
             "default": {},
@@ -16144,6 +16567,24 @@
                 "type": "null"
               }
             ]
+          },
+          "plan_line": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan Line"
+          },
+          "price_basis_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Basis Text"
           },
           "reward_risk": {
             "anyOf": [
